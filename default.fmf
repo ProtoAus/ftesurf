@@ -1,0 +1,31 @@
+FTEMANIFEST 1
+
+// FTESurf -- CS:S surf training tool on FTEQW.
+// See src/ for the QC source and build.ps1.
+
+GAME "FTESurf"
+NAME "FTESurf"
+PROTOCOLNAME "FTE-Quake ftesurf"
+BASEGAME "ftesurf"
+
+// Everything (configs, screenshots, demos, the map index) writes under
+// the ftesurf/ gamedir rather than My Games\.  basedir is the process CWD
+// (sys_win.c:4787-4798), so launch the exe from the install root -- which is
+// what ftesurf.bat's `cd /d "%~dp0"` is for.
+DISABLEHOMEDIR 1
+
+// Saved config is ftesurf.cfg, not the generic fte.cfg.
+MAINCONFIG ftesurf
+
+// Source maps carry their own palette/colormap; don't let a mounted game
+// override ours (Patch 7).
+-set r_builtinpalette 1
+
+// --- tick rate -------------------------------------------------------------
+// 66.666... Hz == 15 ms exactly, which usercmd_t.msec carries losslessly.
+// (64-tick's 15.625 ms does not survive the integer msec field.)
+// Forced with `set` so a stale ftesurf.cfg can never desync the physics.
+set sv_mintic 0.015
+set sv_maxtic 0.015
+set cl_netfps 66.6667
+set sv_nqplayerphysics 0

@@ -1,0 +1,73 @@
+# The engine build this QuakeC requires.
+#
+# FTESurf is a mod, and it is not portable to stock FTEQW: the Source movement
+# module (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF
+# and VMT work only exist in the fork below.  Bump this file whenever a QC build
+# needs an engine change; build.ps1 -Engine warns when your local engine HEAD
+# does not match it.
+#
+# Deliberately not a git submodule: this repo does not build the engine, so a
+# submodule would drag ~58 MB of C into every clone and imply a build
+# relationship that does not exist.  A recorded SHA gives the same pin and
+# degrades to a comment if it ever stops being maintained.
+
+repo     https://github.com/ProtoAus/ftequakers
+branch   engine-patches
+commit   d097595a95d0ef13217de3ea891023cf3d976817
+tag      patch-266
+patch    266
+qcbuild  43
+date     2026-09-07
+
+# Build it (from that tree):
+#   make -C engine  m-rel       FTE_TARGET=win64
+#   make -C engine  sv-rel      FTE_TARGET=win64
+#   make -C plugins/hl2                                  # regenerates the GLSL header
+#   make -C engine  plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode"
+#   make -C engine  qcc-rel     FTE_TARGET=win64         # the QC compiler
+#
+# FTE_TARGET=win64 is mandatory -- msys2's gcc reports "mingw", so the
+# auto-detect in engine/Makefile picks win32.  A full rebuild is required after
+# ANY engine header change; the makefiles do not track header dependencies.
+
+
+# ---------------------------------------------------------------------------
+#  PROVENANCE OF src/defs/*.qc
+#
+#  Those three files (~361 KB) are not hand-written.  They are the output of
+#  FTE's own pr_dumpplatform builtin -- declarations of the engine's builtins
+#  and extensions -- and are regenerated rather than edited:
+#
+#      pr_dumpplatform -O csdefs -Tcs  -Ffte      -> cl_defs.qc
+#      pr_dumpplatform -O svdefs -Tsv  -Ffte      -> sv_defs.qc
+#      pr_dumpplatform -O mdefs  -Tmenu -Ffte     -> m_defs.qc
+#
+#  They were seeded from an earlier project of mine, github.com/ProtoAus/Nettest
+#  (m_defs.qc is byte-identical to a blob committed there; sv_defs.qc is 99.3%
+#  identical and cl_defs.qc about 95%), and have been extended since.
+#
+#  They describe a GPLv2 engine's internals, which is the strongest reason this
+#  repository is GPLv2-or-later.  See LICENSE.
+
+
+# ---------------------------------------------------------------------------
+#  PROVENANCE OF THE SOURCE-ENGINE CITATIONS IN THE COMMENTS
+#
+#  The QuakeC and cfg/default.cfg cite Source and Momentum Mod C++ files by name
+#  and line number in about 600 places.  Recording this once, here, so it does
+#  not have to be re-litigated:
+#
+#    * Valve's files (gamemovement.cpp, triggers.cpp, baseentity.cpp, props.cpp,
+#      viewrender.cpp, disp_vbsp.cpp and the rest) are from the PUBLIC
+#      Source SDK 2013: github.com/ValveSoftware/source-sdk-2013
+#
+#    * Momentum's files (mom_gamemovement.cpp, mom_gamerules.cpp,
+#      mom_system_gamemode.*, gamemovement_momentummod.cpp) are from
+#      github.com/momentum-mod/game, which the Momentum team deliberately left
+#      public under the Source 1 SDK Licence when development moved
+#      closed-source in 2020.  Their README says so explicitly.
+#
+#  FTESurf reproduces the BEHAVIOUR those files document.  It contains no Valve
+#  or Momentum code, and it ships no Source assets -- mounted Steam content is
+#  read from the player's own installs at runtime.  The citations are there so
+#  any value in this tree can be checked against the thing it had to match.

@@ -1,0 +1,13 @@
+FTESURF-SAVE 1
+note Patch 206 acceptance-band sweep, slot 2: feet z = 840.
+note Approach is identical to Patch 205's fixture -- 152 units out from
+note portal_s1_entry at 1200 u/s with +50 u/s of lift, which cancels the fall
+note over the 0.127s of travel so the feet arrive at about the starting z.
+note Only the height varies.  Delete data/saves/surf_kitsune when done.
+map surf_kitsune
+seq 2
+created 20260903-210000
+origin -15360.0000 -15200.0000 840.0000
+velocity 0.0000 -1200.0000 50.0000
+angles 0.0000 -90.0000
+duck 0

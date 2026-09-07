@@ -1,0 +1,49 @@
+// mapmeta_override.txt -- hand-written map details, for maps no automatic source
+// can reach.  This file is READ by tools/mapmeta.py and never written by it, so
+// nothing here is lost when mapmeta.txt is regenerated.
+//
+// WHY IT EXISTS.  Of the 1163 maps installed on this machine, 649 have no record
+// in Momentum's cache at all.  They are CS:S community maps -- Momentum has its
+// own, largely disjoint library -- and no amount of reading the Unlisted and Beta
+// sections will find them, because they were never submitted to Momentum.  This
+// is the only way those maps get a tier, and it needs a human with a source.
+//
+// The other 514 are handled automatically and you should not need to touch them:
+//
+//     rank    a ranked Momentum leaderboard tier                      1152 rows
+//     sugg    a submitter's suggestion, from Unlisted/Beta            1020 rows
+//     alias   inherited from the same map minus its port suffix         76 rows
+//             (surf_aircontrol_ksf taking surf_aircontrol's tier)
+//
+// FORMAT.  Exactly the line format mapmeta.txt uses, so a row can be copied out
+// of it and edited:
+//
+//     meta <name> <tier> <linear> <stages> <bonuses> <page> <cell> <thumb> <mode>
+//
+// Only the fields you fill in are applied.  Write `-` for everything you do not
+// want to change -- that means "leave whatever the other sources found", which is
+// NOT the same as "unknown", so you can set a tier alone without restating the
+// stage counts.  page and cell are ignored here; tools/mapthumbs.py owns those.
+//
+//     tier    1..10
+//     linear  1 = one continuous track, 0 = staged
+//     mode    1 surf   2 bhop   3 bhop-hl1   4 climb    5 kz     6 climb-16
+//             7 rj     8 sj     9 ahop      10 conc    11 df-cpm 12 df-vq3
+//
+// A tier set here is marked `over` in column 10 and draws as a plain ranked tier,
+// because a human wrote it down deliberately -- unlike `sugg` and `alias`, which
+// are marked in the browser as estimates.
+//
+// A name that is in no other source gets a row created for it, so this also works
+// for a map that is installed but that nothing else has ever heard of.
+//
+// EXAMPLES -- both commented out.  Delete the slashes to use them.
+//
+// A CS:S-only map, tier and layout, nothing else known:
+//     meta surf_kitsune 4 0 3 1 - - - 1
+//
+// Just correct a tier this tool got wrong, leaving everything else alone:
+//     meta surf_omnibus 6 - - - - - - -
+//
+// Re-run `python tools/mapmeta.py` after editing, then `python tools/mapthumbs.py`
+// if you added a map that needs a thumbnail cell.

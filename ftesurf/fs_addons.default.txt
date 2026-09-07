@@ -1,0 +1,150 @@
+// ===========================================================================
+//  fs_addons.default.txt -- the annotated master.  THIS is the file under
+//  version control; ftesurf/fs_addons.txt is NOT.
+//
+//  WHY THE SPLIT.  fs_load / fs_unload rewrite fs_addons.txt from the engine's
+//  in-memory mount list (FS_Addon_SaveList, engine/common/fs.c): it reloads the
+//  file, drops every blank line, trims, and writes it back.  Every comment
+//  below -- the priority argument, the 334/1409 dependency census, the measured
+//  13-second boot cost, the two corrections to earlier wrong numbers -- is gone
+//  the first time you mount an addon in-game.  Tracking that file would also
+//  mean `fs_load C:\somewhere` appends YOUR drive layout into a tracked file.
+//
+//  ftesurf.bat copies this into place when fs_addons.txt is absent, so a fresh
+//  clone gets the right mounts and your local mounts stay yours.
+// ===========================================================================
+// Addon games mounted at LOW priority by the engine's fs_load command.
+// One per line.  Forms: steam:Game/dir | C:\absolute\path | relativedir
+// The mod's own files always win; these only fill gaps (maps, materials, models).
+// Managed by fs_load / fs_unload / fs_loadlist -- edit by hand if you like.
+//
+// ORDER IS PRIORITY: earlier lines WIN.  Addon searchpaths are appended at the
+// tail in call order (FS_Addon_Mount's SPF_ADDON, fs.c:4505-4526), and
+// FS_RemountAddons walks this file top-down (fs.c:8815-8836).
+//
+// .vpk mounting comes from the hl2 plugin (plugins/hl2/fs_vpk.c registers
+// FS_RegisterArchiveType_vpk with loadscan=1), so fteplug_hl2_x64.dll MUST be
+// present next to the exe or none of the Source material/model archives load.
+// Momentum Mod -- the map library.  1308 BSPs, 1108 of them surf_*:
+//   VBSP v20 x980, v21 x82, v25 (Strata) x40, v19 x6.
+// ⚠ THIS WAS AN ABSOLUTE PATH, for a reason that was true when it was written
+// and is not any more: "the Win32 steam: resolver reads only
+// HKCU\SOFTWARE\Valve\Steam\SteamPath -- libraryfolders.vdf is parsed in the
+// Linux branch only, so the absolute form is immune to a second library drive."
+// Correct at the time, and it made this file WRONG ON EVERY OTHER MACHINE: an
+// absolute path hard-codes one drive letter and one install location, so a
+// random player got no map library at all -- 1308 maps silently missing.
+// Patch 182 hoisted the libraryfolders.vdf parser out of the unix-only arm of
+// the #if chain, so steam: specs now resolve across every library folder on
+// Windows too, second drive included.  The portable form is the right one again.
+steam:Momentum Mod Playtest/momentum
+// CS:S -- the materials/models most surf maps actually reference, and the
+// authority for the movement this tool reproduces.  cstrike_pak_dir.vpk.
+steam:Counter-Strike Source/cstrike
+// HL2 -- the shared Source base content (skyboxes, dev textures, common props).
+// Momentum expects this via its own mount/hl2_dir.vpk, but that directory
+// ships empty here, so we mount the real install instead.
+steam:Half-Life 2/hl2
+// ---------------------------------------------------------------------------
+//  Asset-only mounts.  LAST on purpose: this file is priority-ordered top-down,
+//  and a CS:GO texture must never win over the CS:S or Momentum one a surf map
+//  was actually built against.
+//
+//  These were here because maps reference them and go untextured without them.
+//  Build 11 tested that claim on FIVE maps and concluded "ONE map out of 1308
+//  is actually served by these two mounts".
+//
+//  ⚠ THAT NUMBER WAS WRONG, and wrong by two orders of magnitude.  It was a
+//  five-map sample extrapolated to 1308, and four of the five happened to be
+//  maps that needed nothing.  tools/mapdeps.py now asks the question of EVERY
+//  map, offline, out of each BSP's own texdata string lump:
+//
+//      334 of 1409 maps need one of these two packs, 39 of them need BOTH
+//     592 more reference content that is in NEITHER pack -- what the map
+//         shipped without, which no mount can fix.
+//
+//  ⚠ THAT 334 WAS ITSELF 104 UNTIL PATCH 181.  The scanner only ever asked
+//  whether the .vmt existed; it never opened one.  A map that packs a material
+//  STUB into its own BSP and leaves the .vtf in CS:GO therefore scored as
+//  "resolved" and got no line here, so the pack was never mounted and the
+//  surfaces rendered untextured.  surf_tensor2 is exactly that, and so are 154
+//  other maps.  mapdeps.py now follows every material to its actual textures,
+//  through the same keys mat_vmt.c reads, and also checks static props (with
+//  their .vvd/.vtx siblings and their own materials) and the skybox.
+//
+//  So the packs really are needed, and really are not needed at boot.  Both
+//  facts hold at once, which is what fs_automount is for: data/mapdeps.txt
+//  lists the maps and the pack each one wants, and the engine mounts it during
+//  that map's load and no other (fs.c, FS_AutoMountForMap).  Boot pays nothing;
+//  a listed map pays once per session, the first time you load it.  A map may
+//  have more than one line -- the engine loops over them.
+//
+//  Rebuild the list after adding maps:   python tools/mapdeps.py
+//
+//  CS:GO: the LEGACY Source 1 tree, "Counter-Strike Global Offensive/csgo",
+//  which still ships pak01_dir.vpk plus loose materials/ and models/.  NOT
+//  "game/csgo" -- that is CS2, Source 2, and its VPKs hold .vtex_c/.vmat_c
+//  which nothing here can read.  (The steam: resolver builds exactly one
+//  subdirectory level anyway, fs.c:8703-8710, so the two-deep path could not be
+//  written in this form even if it were useful.)
+//
+//  Both are VPK v2 and their VTFs are <= 7.5, inside what img_vtf.c accepts
+//  (<= 7.6), and their models are MDL v49, inside mod_hl2.c's v44-v49.
+//
+//  THEIR MAPS COME TOO and there is nothing to be done about it here:
+//  FS_IndexAddonMaps walks every line of this file and indexes each one's
+//  maps/*.bsp, with no per-mount "assets only" flag.  39 CS:GO and 233 TF2 maps
+//  are hidden in the menu instead (m_main.qc, SRC_ASSET); `fs_maps_assetmounts 1`
+//  lists them if you ever want one.
+//
+//  ⚠ AND THEY COST 13 SECONDS OF EVERY LAUNCH.  Measured, build 11, same
+//  machine, same map (surf_666), one arm each:
+//
+//      with these two lines     14 archives   339,103 files   boot 12.0s   +map 7.0s
+//      without them              6 archives    48,537 files   boot  3.0s   +map 3.0s
+//
+//  CS:GO's pak01_dir.vpk (133,676 files) and TF2's tf2_misc_dir.vpk (102,288)
+//  are 85% of everything indexed, and the maps that need neither pay for all of
+//  it.
+//
+//  ⚠ AN EARLIER NOTE HERE CLAIMED the cost is "paid twice, once indexing at
+//  boot and again on every shader rescan, which walks four COM_EnumerateFiles
+//  patterns across the whole index".  The four-enumerate rescan is real, but it
+//  is armed by Shader_NeedReload(true), and NOTHING on the normal map-load path
+//  calls that -- it fires on a filesystem REBUILD (fs_restart, a pure-mode
+//  change, vid_restart), not per map.  What actually made a second map load
+//  crawl was the name hash going stale for the whole load; see Patch 180 and
+//  `fs_loadstats`.
+//
+//  So they stay COMMENTED OUT and are mounted PER MAP instead.  Nothing to do
+//  by hand: fs_automount reads data/mapdeps.txt in SV_Map_f and mounts what
+//  that map needs, before anything of the map is located.  Verified end to end
+//  on surf_utopia -- 13 unresolved materials before, a fully textured map and
+//  zero unresolved after, with TF2 mounted during the load and not at boot.
+//
+//      fs_automount 0        turn it off; the maps that need a pack then come
+//                            up untextured, with the count on screen
+//      fs_load steam:...     the old manual route, still there.  ⚠ fs_load
+//                            PERSISTS -- it appends itself to THIS file, so the
+//                            next launch pays the 13 seconds again.  fs_unload
+//                            takes it back out.  fs_automount never writes here.
+//
+//  THE SKY GAP THAT USED TO BE DOCUMENTED HERE WAS WRONG TWICE, and is fixed.
+//  This note said the loader was `R_LoadSkys` -- a function with no definition
+//  anywhere in the tree, only a dead declaration in client/render.h -- and that
+//  TF2 "packs a skybox's four side faces into ONE <name>side.vtf".  It does not
+//  pack anything: sky_dustbowl_01side.vtf is an ordinary 512x256 face that four
+//  per-face .vmt files ALIAS, and there is nothing to unpack.
+//
+//  The real loader is Shader_ParseSkySides (engine/gl/gl_shader.c), and it
+//  loads faces as IMAGES, so a .vmt can never be in its extension list.  Patch
+//  181 makes it read the material first.  That fixed two things:
+//    - aliased faces (58 maps, surf_utopia among them) now resolve;
+//    - "$basetexturetransform ... scale 1 2" is honoured, so the half-height
+//      side faces Source ships stop being drawn at twice their height.  That
+//      one is NOT a TF2 quirk -- 16 of CS:S's 138 loose skybox materials carry
+//      it too, and exactly those 16 have 2:1 textures.
+//  15 maps name a sky that exists in no pack at all; nothing can fix those.
+// ---------------------------------------------------------------------------
+//steam:Counter-Strike Global Offensive/csgo
+//steam:Team Fortress 2/tf

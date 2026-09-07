@@ -1,0 +1,15 @@
+../ftesurf/qwprogs.dat
+
+defs/sv_defs.qc
+shared/sh_defs.qc
+shared/sh_time.qc
+shared/sh_json.qc
+shared/sh_zones.qc
+shared/sh_portal.qc
+
+server/sv_entities.qc
+server/sv_zones.qc
+server/sv_timer.qc
+server/sv_saveloc.qc
+server/sv_player.qc
+server/sv_main.qc

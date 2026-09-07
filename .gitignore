@@ -1,0 +1,213 @@
+# =============================================================================
+#  FTESurf .gitignore
+#
+#  This is an ALLOWLIST, not a blocklist.  The working tree is ~10,000 files and
+#  3.3 GB; the source is ~410 files and 4 MB.  At that ratio the safe default is
+#  "ignore everything, then name what goes in".
+#
+#  A blocklist is a foot-gun in THIS tree specifically:
+#    * three different directories are called "saves" -- ftesurf/saves/ (engine
+#      savegames), ftesurf/data/saves/ (personal saveloc state) and
+#      ftesurf/cfg/testrun/p206band_savelocs/ (hand-written .txt fixtures).
+#      A bare `saves/` rule would delete source.
+#    * all but one of the .cfg files are source; only ftesurf/ftesurf.cfg is
+#      engine-generated.  A `*.cfg` rule would delete source.
+#    * gfx/ holds both the required fonts and 1.1 GB of downloaded map shots.
+#    * data/ holds one hand-written file and 300+ MB of personal run data.
+#    * ftesurf_cache/ (642 MB) is a SIBLING of the ftesurf/ gamedir, so any
+#      pattern like `ftesurf*/` would swallow the entire game.
+#
+#  HOW TO ADD SOMETHING NEW
+#      root file            ->  !/<name>
+#      dir under root       ->  !/<name>/
+#      dir under ftesurf/   ->  !/ftesurf/<name>/     (below the /ftesurf/* line)
+#  Then prove it:
+#      git check-ignore -v <path>      # silence (exit 1) == it will be added
+#
+#  ORDER MATTERS.  The last matching pattern wins, and git will not descend into
+#  an ignored directory -- so every level must be re-included before the level
+#  below it can be.
+#
+#  THE REPO ROOT IS ALSO THE LIVE GAME INSTALL.  ~3.3 GB is ignored here,
+#  including your engine build and your recorded runs.  NEVER run `git clean -x`
+#  in this tree, and never point GitHub Desktop's "Discard all changes" at it.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+#  Binary and scratch denies.
+#
+#  Deliberately ABOVE the re-includes below, so that a future legitimate
+#  exception can be written next to the thing it belongs to and actually win.
+# -----------------------------------------------------------------------------
+*.exe
+*.dll
+*.so
+*.dylib
+*.prev
+*.lnk
+
+*.bak
+*.bak[0-9]*
+*.orig
+*.rej
+*~
+*.swp
+
+Thumbs.db
+desktop.ini
+.DS_Store
+
+__pycache__/
+*.py[cod]
+
+
+# -----------------------------------------------------------------------------
+#  Third-party engine code and Source assets.
+#
+#  This project is QuakeC, Python and PowerShell.  There is no legitimate C or
+#  C++ in it, so any that appears is somebody else's.  These rules are the
+#  durable form of "gamemovement.cpp must never be committed": they deny it in
+#  src/, in tools/, in cfg/ -- everywhere, not just at the root.
+#
+#  Likewise, content extracted from a mounted Steam game is never ours to
+#  publish.  FTESurf MOUNTS your own installs at runtime (see fs_addons.txt);
+#  it must never redistribute them.
+# -----------------------------------------------------------------------------
+*.c
+*.cpp
+*.h
+*.hpp
+
+*.vpk
+*.bsp
+*.vtf
+*.vmt
+*.mdl
+*.vtx
+*.vvd
+*.phy
+*.pak
+*.pk3
+*.wad
+*.dem
+
+
+# -----------------------------------------------------------------------------
+#  ROOT -- ignore everything, then name the source.
+#
+#  This one line is what keeps out ftesurf_cache/ (642 MB), ftesurf64.exe and
+#  fteplug_hl2_x64.dll and their .prev copies, installed.lst and the .lnk --
+#  without having to name any of them.
+#
+#  NOTE: gitignore's `*` matches leading dots, so `/*` ignores .gitignore
+#  itself.  The un-ignores below are load-bearing; without them a fresh clone
+#  would have no ignore rules at all.
+# -----------------------------------------------------------------------------
+/*
+
+!/.gitignore
+!/.gitattributes
+!/.editorconfig
+!/.github/
+!/README.md
+!/LICENSE
+!/CONTRIBUTING.md
+!/ENGINE.txt
+!/default.fmf
+!/ftesurf.bat
+!/ftesurf_debug.bat
+!/src/
+!/tools/
+!/ftesurf/
+
+
+# -----------------------------------------------------------------------------
+#  src/ -- QuakeC.  All source except the vendored compiler.
+#
+#  `!/src/` re-includes the DIRECTORY, which is all git needs: it then descends
+#  and everything inside is addable.  Do NOT "fix" this to `!/src/**`.
+# -----------------------------------------------------------------------------
+#  fteqcc is GPLv2 and we ship no source offer to go with a binary; an 822 KB
+#  exe does not belong in a source tree regardless.  build.ps1 finds it on PATH
+#  or in the engine tree:  make -C <ftequakers>/engine qcc-rel FTE_TARGET=win64
+/src/fteqcc*.exe
+/src/fteqccgui*.exe
+
+#  fteqcc writes ../ftesurf/*.dat and *.lno (first line of each .src), so those
+#  are caught by /ftesurf/* below.  These cover byproducts it can drop in place.
+/src/*.dat
+/src/*.lno
+/src/*.log
+/src/progdefs.h
+
+
+# -----------------------------------------------------------------------------
+#  tools/ -- all thirteen Python tools are source.  (__pycache__ is denied above.)
+# -----------------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------------
+#  ftesurf/ -- the gamedir.  Same trick as the root: nothing unless named.
+#
+#  This line excludes screenshots/ (1.2 GB), logs/ (95 MB), saves/ (21 MB), the
+#  compiled csprogs/qwprogs/menu .dat and .lno, ftesurf.cfg, qconsole.log and
+#  conhistory.txt.  Do not loosen it.
+# -----------------------------------------------------------------------------
+/ftesurf/*
+
+!/ftesurf/cfg/
+!/ftesurf/data/
+!/ftesurf/gfx/
+!/ftesurf/glsl/
+!/ftesurf/models/
+!/ftesurf/scripts/
+!/ftesurf/fs_addons.default.txt
+
+
+#  ftesurf/cfg/ -- ALL source: default.cfg (the ruleset), the mode/fix configs,
+#  the testrun/ verification fixtures and the hand-written saveloc .txt files.
+#
+#  There is deliberately NO rule below this line.  Nothing the QC writes goes to
+#  cfg/ -- every QC write path resolves to data/.  If you ever `saveconfig` into
+#  cfg/, that file WILL be picked up; check `git status` before committing.
+#  DO NOT add a `saves/` or `*.txt` rule anywhere in this file.
+
+
+#  ftesurf/gfx/ -- fonts are required source; sh_font.qc names all three files.
+#  mapshots/ (1.1 GB, fetched by tools/mapfetch.py) and mapthumbs/ (28 MB, built
+#  by tools/mapthumbs.py) ride on the GitHub Release instead.
+#
+#  `!/ftesurf/gfx/` above is REQUIRED: git must descend into gfx/ before the
+#  fonts negation below can take effect.  It is not a dead line -- do not delete.
+/ftesurf/gfx/*
+!/ftesurf/gfx/fonts/
+
+
+#  ftesurf/data/ -- one hand-written file; everything else is generated or
+#  personal.  runs/ and saves/ are your recorded times and saveloc state.
+#  mapmeta.txt and mapdeps.txt are tool output, but regenerating them needs the
+#  mounted Steam libraries and a walk of every BSP, so they ship on the Release.
+#  consent.txt is a local acceptance record and must never ship pre-accepted.
+#
+#  `!/ftesurf/data/` above is REQUIRED for the same reason as gfx/ -- do not
+#  delete it as dead.
+/ftesurf/data/*
+!/ftesurf/data/mapmeta_override.txt
+
+
+# -----------------------------------------------------------------------------
+#  SAFETY NET -- these must remain the LAST lines in this file.
+#  Nothing above may re-include a private key.
+# -----------------------------------------------------------------------------
+*.pfx
+*.p12
+*.pem
+*.key
+*.jks
+*.keystore
+.env
+.env.*
+.netrc
+id_rsa
+id_ed25519

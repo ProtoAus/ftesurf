@@ -1,0 +1,58 @@
+# =============================================================================
+#  FTESurf .gitattributes
+#
+#  POLICY: the repository stores LF for every text file, always.
+#
+#  Everything downstream reads LF -- fteqcc, FTE's cfg/shader/manifest parsers,
+#  Python, PowerShell -- and the engine repo this game is built against
+#  (ProtoAus/ftequakers) is LF throughout, so the two trees agree byte for byte.
+#
+#  `eol=lf` rather than a bare `text=auto`: with eol=lf a clone is identical on
+#  every machine, so line endings can never become a "works on mine" question.
+#  These attributes override a machine-wide core.autocrlf=true.
+# =============================================================================
+
+*                   text=auto eol=lf
+
+
+# --- the one place CRLF is load-bearing --------------------------------------
+#  cmd.exe's batch parser mishandles LF-only .bat files around multi-line
+#  `if (...) else (...)` blocks and `goto`.  Both launchers use exactly that
+#  construct, so this is not cargo cult.
+*.bat               text eol=crlf
+*.cmd               text eol=crlf
+*.ps1               text eol=crlf
+
+
+# --- binaries ----------------------------------------------------------------
+#  Git's own heuristic is "a NUL byte in the first 8000 bytes", and every binary
+#  here happens to pass it today.  That is not a guarantee worth taking:
+#  Roboto.ttf contains 36 CRLF pairs and 2,008 lone CRs, and BebasNeueRegular
+#  178 lone CRs.  A single misdetection silently corrupts the file on `add`.
+#  Being explicit costs nothing.
+*.ttf               binary
+*.otf               binary
+*.iqm               binary
+*.tga               binary
+*.png               binary
+*.jpg               binary
+*.wav               binary
+*.ogg               binary
+*.dat               binary
+*.lno               binary
+*.pk3               binary
+*.zip               binary
+*.7z                binary
+*.exe               binary
+
+
+# --- generated source ---------------------------------------------------------
+#  src/defs/*.qc is FTE's `pr_dumpplatform` output: ~5,000 lines of engine
+#  builtin declarations, regenerated rather than hand-edited.  Marking them
+#  generated collapses them in GitHub diffs and keeps them out of the language
+#  bar, so the repo reads as the ~48k lines of QuakeC it actually is.
+src/defs/*.qc       linguist-generated=true
+
+#  GitHub maps .qc to QuakeC already; this only guards against a .qc being
+#  re-detected as something else.
+*.qc                linguist-language=QuakeC

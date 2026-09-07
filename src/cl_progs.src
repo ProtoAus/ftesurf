@@ -1,0 +1,59 @@
+../ftesurf/csprogs.dat
+
+defs/cl_defs.qc
+shared/sh_defs.qc
+shared/sh_time.qc
+shared/sh_font.qc
+shared/sh_json.qc
+shared/sh_zones.qc
+shared/sh_portal.qc
+shared/sh_strafe.qc
+
+// BUILD 24.  The same file menu.dat compiles, not a copy -- the replay chrome
+// and the +showscores board want the list views, the sliders and the hit
+// testing the map browser already runs on.  Its one #ifdef MENU block stays
+// menu-only (cl_defs.qc already declares the IE_* constants); see the note
+// beside the printf define at the top of it.  Here rather than lower down
+// because cl_hud.qc and everything after it may draw with it.
+sui_sys.qc
+
+client/cl_board.qc
+client/cl_keys.qc
+// AFTER cl_keys.qc and BEFORE cl_hud.qc.  Build 30.  The HUD keeps reporting the
+// BODY while the camera is off flying, so it reads rec_gh_on and rec_gh_bodyorg --
+// and a QC global has to exist before the file that reads it, which is the same
+// ordering constraint the two declaration blocks at the top of cl_keys.qc are
+// there for.
+client/cl_ghost.qc
+client/cl_decals.qc
+// AFTER cl_decals.qc only by convention -- the two are independent walks of the
+// same entity lump and neither reads the other.  Before cl_main.qc, which calls
+// Sprite_LoadFromWorld from CSQC_WorldLoaded and Sprite_Draw from UpdateView.
+client/cl_sprites.qc
+// Source fog (env_fog_controller / sky_camera): a third independent walk of the
+// same lump, reading nothing from the other two.  It has to sit BEFORE
+// cl_gfx.qc, which greys the "Map fog" row out using vbsp_fog_count, and before
+// cl_main.qc, which calls Fog_LoadFromWorld from CSQC_WorldLoaded and Fog_Frame
+// from CSQC_UpdateView.  It needs nothing from anyone, so this is early enough.
+client/cl_fog.qc
+client/cl_hud.qc
+client/cl_timer.qc
+client/cl_saveloc.qc
+client/cl_gfx.qc
+client/cl_replay.qc
+client/cl_zones.qc
+// AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,
+// which calls into it from CSQC_UpdateView and CSQC_InputEvent.
+client/cl_watch.qc
+// AFTER cl_watch.qc, because clicking a row hands the file straight to
+// Watch_Open, and after cl_timer.qc because every time on it is formatted at
+// Timer_Tick's rate.  Stage 2 of build 24.
+client/cl_scores.qc
+client/cl_portal.qc
+// LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
+// screen with a replay or the leaderboard, so it needs rec_wt_open (cl_watch.qc)
+// and rec_sb_open (cl_scores.qc); it also consumes the rect registry, which has
+// to live in cl_hud.qc because every drawer calls into it.  After all of them is
+// the only position that satisfies both, and it needs nothing from cl_main.qc.
+client/cl_hudedit.qc
+client/cl_main.qc

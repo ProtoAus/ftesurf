@@ -1,0 +1,9 @@
+../ftesurf/menu.dat
+
+defs/m_defs.qc
+shared/sh_defs.qc
+shared/sh_time.qc
+shared/sh_font.qc
+sui_sys.qc
+
+menu/m_main.qc

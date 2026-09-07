@@ -1,0 +1,16 @@
+note Patch 205 test fixture. Copy this file to
+note   ftesurf/data/saves/surf_kitsune/save01/state.txt
+note and run cfg/testrun/p203c.cfg. `sl_goto 1` then places the player 152
+note units in front of portal_s1_entry at 1200 u/s with just enough lift to
+note cancel the fall, so the feet arrive in the middle of the 16-unit band
+note PM_PortalCSG's window accepts. It is NOT shipped in data/saves because
+note that would squat save slot 1 on this map. Unknown keys are ignored by
+note SV_SaveLocScan, so these lines are inert if the file is loaded as-is.
+FTESURF-SAVE 1
+map surf_kitsune
+seq 1
+created 20260903-194500
+origin -15360.0000 -15200.0000 870.0000
+velocity 0.0000 -1200.0000 50.0000
+angles 0.0000 -90.0000
+duck 0
