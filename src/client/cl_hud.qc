@@ -74,6 +74,126 @@ float  hude_n;
 
 float  ui_he_open;              // the layout editor is up
 
+/*
+  AND THE LEADERBOARD'S FLAG, HERE FOR THE SAME REASON.  Build 47.
+
+  cl_watch.qc has to test this before it lets the cursor go, and until now it
+  could not: it compiles BEFORE cl_scores.qc, where this used to be declared, so
+  the test was unwritable and the only honest thing there was an unconditional
+  setcursormode(FALSE).
+
+  What that cost is the exact sequence Scores_Close's own comment calls the
+  ordinary way to use the two together -- open the board, click a row to watch
+  it, stop the replay -- which turned the cursor off underneath a board still on
+  screen, with nothing able to press anything on it.  Scores_Close has always
+  tested for the mirror case; this is the half that was missing.
+
+  Declared HERE rather than moved into cl_watch.qc because cl_hudedit.qc tests
+  it too, and this is the one file all three of them compile after.
+*/
+float  rec_sb_open;             // the leaderboard is up
+
+/*
+===========================================================================
+  THE CURSOR CLAIM REGISTER.  Build 55.
+
+  THE PATTERN THIS ENDS.  The two blocks above are the same fix applied twice:
+  a panel could not release the mouse correctly because the flag it needed to
+  test was declared in a file that compiles later, so the flag got moved up
+  here.  Build 47 did it for rec_sb_open, build 48 for ui_rs_cursor.  Each
+  owner has to test EVERY other owner, so N owners need N*(N-1) tests and every
+  new panel silently invalidates the ones already written.
+
+  IT HAD ALREADY GONE WRONG, in the direction the pattern predicts.  Before
+  this block there were four owners and the tests read:
+
+    Results_Close  (cl_results.qc)  !rec_wt_open && !rec_sb_open && !ui_he_open
+    HUD_EditClose  (cl_hudedit.qc)  !rec_wt_open && !rec_sb_open && !ui_rs_cursor
+    Scores_Close   (cl_scores.qc)   !rec_wt_open && !ui_he_open
+    Watch_Close    (cl_watch.qc)    !rec_sb_open && !ui_he_open
+
+  The bottom two are missing ui_rs_cursor, and NOT because anybody forgot: it
+  is declared at cl_results.qc:58, which compiles AFTER both of them, so the
+  test was literally unwritable.  cl_scores.qc's own comment says "all three
+  now ask the same question" -- there were four by then, and they did not.
+  The reachable symptom is the one those comments already describe: take the
+  cursor with the results card, open the leaderboard, close it, and the mouse
+  is handed back to the game with the card still drawn and nothing able to
+  press anything on it.
+
+  A FIFTH owner (cl_entview.qc, build 54) and a sixth (the avatar customizer)
+  would each have to edit all the previous ones.  That is the thing to stop.
+
+  WHAT THIS DOES.  One bitmask, declared in the one file everybody compiles
+  after, so no owner ever needs to name another.  Claim when you take the
+  mouse, release when you are done, and the cursor goes back to the game
+  exactly when the last claim drops -- which is the property all four sites
+  above were separately trying and failing to express.
+
+  The panel flags (ui_he_open, rec_sb_open, rec_wt_open, ui_rs_cursor) STAY.
+  They answer "is this panel up", which drawing and input still ask, and that
+  is a different question from "does it want the mouse" -- the results card
+  spends most of its life drawn and passive, which is exactly why build 48 had
+  to introduce ui_rs_cursor separately from ui_rs_open.
+
+  NUMBERING IS FIXED AND SHARED.  UIC_ENTVIEW = 16 is reserved for
+  cl_entview.qc by the session that owns that file; do not renumber these to
+  close a gap.
+===========================================================================
+*/
+#define UIC_WATCH    1          // cl_watch.qc     -- replay chrome
+#define UIC_SCORES   2          // cl_scores.qc    -- leaderboard
+#define UIC_HUDEDIT  4          // cl_hudedit.qc   -- layout editor
+#define UIC_RESULTS  8          // cl_results.qc   -- the run card
+#define UIC_ENTVIEW  16         // cl_entview.qc   -- entity inspector (build 54)
+#define UIC_AVATAR   32         // cl_avatar.qc    -- customizer (not built yet)
+
+float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
+
+/*
+  Take the mouse for `who`.  Idempotent: claiming twice is a no-op, so a panel
+  that re-opens without closing cannot leave a claim it will never drop.
+*/
+void(float who) UI_CursorClaim =
+{
+	if (ui_cursor_claims & who)
+		return;
+	ui_cursor_claims = ui_cursor_claims | who;
+
+	// Only the FIRST claim touches the engine. setcursormode(TRUE) is not free
+	// -- it moves kdm_game into key_dest_absolutemouse (cl_watch.qc:3897) --
+	// and calling it again while already in that mode is a no-op that hides
+	// which panel actually owns the state.
+	if (ui_cursor_claims == who)
+		setcursormode(TRUE, "", '0 0 0', 1);
+};
+
+/*
+  Give it back.  The cursor returns to the game ONLY when the last claim drops.
+*/
+void(float who) UI_CursorRelease =
+{
+	if (!(ui_cursor_claims & who))
+		return;
+
+	// Subtraction, not &~. The guard above proves the bit is set, so this is
+	// exact, and it does not depend on how fteqcc lowers a bitwise complement
+	// of a float -- which is the sort of thing that works until it does not.
+	ui_cursor_claims = ui_cursor_claims - who;
+
+	if (!ui_cursor_claims)
+		setcursormode(FALSE);
+};
+
+/*
+  For a panel that wants to know whether ANYONE holds the mouse -- e.g. to
+  refuse to open on top of another modal. Returns the raw mask.
+*/
+float() UI_CursorHeld =
+{
+	return ui_cursor_claims;
+};
+
 void(string id, vector pos, vector size, vector anchor) HUD_Rect =
 {
 	if (!ui_he_open)
@@ -157,6 +277,23 @@ float  ui_hl_speed, ui_hl_e;    // the held speedometer and energy readings
 float  ui_hl_turn, ui_hl_ideal; // the two rate cells above the strafe bar
 float  ui_hl_best;              // the "u/s per tick at best" line
 float  ui_hl_have;              // a value has been latched at least once
+/*
+  BUILD 47: the hud_debug velocity rows, which had never been latched at all.
+
+  Every other panel here goes through ui_hl_tick.  HUD_DrawDebug did not, so its
+  numbers printed the live per-RENDERED-FRAME value at two decimals whatever
+  hud_update said -- and the value they print is pmove_vel, which really does
+  change per rendered frame, because prediction re-runs every frame and lands a
+  whole tick ahead or not depending on where the frame falls.  That is the
+  "0-4 units per frame at 1000 fps" report: an unlatched readout of a quantity
+  that is only defined per tick.
+
+  The underlying oscillation is a separate bug and is fixed separately (the
+  interpolation back-date uses cl_netfps raw while the send interval is snapped
+  to the tick -- see Net_MatchTicrate in cl_main.qc).  This half is correct on
+  its own: a per-tick quantity should be sampled on the tick.
+*/
+float  ui_hl_dbgxy, ui_hl_dbgz; // the hud_debug xy/z velocity rows
 
 /*
   THE MEASURED LATCH RATE, for `hud_edit status`.
@@ -572,6 +709,10 @@ void() HUD_RegisterCvars =
 	// console full of trace lines with no memory of asking for them.
 	registercvar("hud_wishtrace", "0");
 	registercvar("hud_eyetrace", "0");
+	// Build 47, and NOT archived for the same reason as the two above -- see
+	// HUD_VelTrace.  At 1400 fps this is the one of the three that would fill a
+	// log fastest, and it is the one you most want to leave on by accident.
+	registercvar("hud_veltrace", "0");
 	registercvar("hud_strafe",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board",   "1", CVAR_ARCHIVE);
 	registercvar("hud_keys",    "1", CVAR_ARCHIVE);
@@ -917,6 +1058,32 @@ void(vector org) HUD_UpdateAnchor =
 };
 
 /*
+  Are you standing in a START zone?  Build 47.
+
+  START only, not START-or-STAGE like HUD_UpdateAnchor above: this answers
+  "is this a fresh start" for the energy re-base, and a stage boundary is a
+  place you fly through rather than a place you pick a start from.  The server
+  asks the same question with SV_ZoneStartAt and gets the same answer, because
+  both VMs parse the same zone file with the same code.
+
+  A point test, matching HUD_UpdateAnchor and matching the server's arm scan at
+  run_zone_hull 1 -- occupancy is a point question.
+*/
+float(vector org) HUD_InStartZone =
+{
+	local float z;
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_START)
+			continue;
+		if (Zone_PointInside(z, org))
+			return TRUE;
+	}
+	return FALSE;
+};
+
+/*
   Momentum's reference height: the ground you last jumped from.
 
   A jump is "was on the ground last frame, is not now, and is going UP".  The
@@ -972,6 +1139,38 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 	{
 		ui_ground_z     = org_z;
 		ui_was_onground = TRUE;
+
+		/*
+		  BUILD 47: STANDING IN A START BOX, THE FLOOR IS THE REFERENCE.
+
+		  This is the fix for "I made a save that teleports me to the start
+		  zone, and instead of 0 the readout says e -65 until I press +jump".
+
+		  Everything above conspires to produce that.  Seq_AnchorRestore puts
+		  the SAVE'S ui_jump_z back and arms ui_rs_armed, which suppresses the
+		  teleport re-base at the top of this function; the block below only
+		  runs on the jump EDGE; and standing still returns here without ever
+		  touching ui_jump_z.  So the anchor stays wherever the save's last jump
+		  was -- 65 units up, in the report -- and the first +jump is the only
+		  thing that can move it.
+
+		  Re-basing while grounded in a start box with the clock stopped is not
+		  a new rule, it is the one this function's own header already claims:
+		  "before the first jump the reference tracks the ground, so standing
+		  still reads 0".  A save-lock load at a start box IS before the first
+		  jump of that attempt.
+
+		  GATED ON THE CLOCK, because a running route may pass back through a
+		  start box -- surf_doodles' overlaps its stage 1 by 480 units, and five
+		  legs in the library put the END zone inside the START zone -- and
+		  re-basing mid-run would throw away a live measurement.
+		*/
+		if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING)
+		if (HUD_InStartZone(org))
+		{
+			ui_jump_z    = org_z;
+			ui_jump_have = TRUE;
+		}
 		return;
 	}
 
@@ -1235,6 +1434,59 @@ vector() HUD_LiveVel =
 	vel_y = getstatf(STAT_FS_VELOCITY + 1);
 	vel_z = getstatf(STAT_FS_VELOCITY + 2);
 	return vel;
+};
+
+/*
+  BUILD 47: hud_veltrace <N> -- the per-RENDERED-FRAME predicted state.
+
+  Third of its family, and written for the same reason as the other two:
+  hud_wishtrace exists because a HUD row could not prove a claim about one frame
+  in five, and hud_eyetrace because a row can say the answer is wrong but only a
+  dump can say which term is.  This one is for the reported jitter -- "at 1400fps
+  tap a direction key and wait, the speedometer flickers 0-4, at 60 it doesn't
+  appear, moving the mouse stops it" -- where the whole question is what changes
+  BETWEEN two rendered frames that share one command frame.
+
+  So clientcommandframe is the first column and it is the point of the thing.
+  The engine runs one extra EXTRAPOLATED partial command per rendered frame
+  (cl_pred.c, the `if (simtime > to.time)` block) whose duration sawtooths across
+  a send cycle, so consecutive frames on the SAME command frame can carry
+  different amounts of extra simulation.  If the numbers move while that column
+  does not, the movement is extrapolation and not input -- and the input half is
+  already ruled out, since hud_wishtrace shows fore/side decaying to 0 within
+  about four frames of a release rather than sticking.
+
+  Self-clearing and NOT archived, exactly like hud_wishtrace: at 1400 fps an
+  unbounded version writes a hundred thousand lines a minute.
+
+  Deliberately reads through HUD_LiveVel and HUD_Feet rather than pmove_vel and
+  pmove_org directly, so it reports what the READOUTS report -- including the
+  save-lock hold substitution and the hud_predicted 0 fallback.  A trace that
+  bypassed those would answer a question nobody asked.
+*/
+void() HUD_VelTrace =
+{
+	local float  n;
+	local vector vel, org, eye;
+
+	n = cvar("hud_veltrace");
+	if (n <= 0)
+		return;
+	cvar_set("hud_veltrace", ftos(n - 1));
+
+	vel = HUD_LiveVel();
+	org = HUD_Feet();
+	eye = getproperty(VF_ORIGIN);   // a call result is not swizzleable in place
+
+	// Two prints rather than one: QC's sprintf takes at most eight parameters
+	// INCLUDING the format string, and the horizontal pair and the vertical pair
+	// are each worth full precision.
+	print(sprintf("vel cmd %g: spd %.4f  vxy %.3f %.3f  oxy %.3f %.3f\n",
+	              clientcommandframe, vlen([vel_x, vel_y, 0]),
+	              vel_x, vel_y, org_x, org_y));
+	print(sprintf("            vz %.3f  oz %.3f  eye %.3f  onground %g\n",
+	              vel_z, org_z, eye_z,
+	              (getstatf(STAT_FS_FLAGS) & FL_ONGROUND) ? 1 : 0));
 };
 
 /*
@@ -2970,10 +3222,25 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 
 	HUD_Text(p, state, sz, col, 1);                                    p_y += lh;
 
-	HUD_Text(p, "xy", sz, '1 1 1', 0.8);
-	HUD_TextR([rx, p_y], sprintf("%.2f", vlen([vel_x, vel_y, 0])), sz, '1 1 1', 0.8); p_y += lh;
-	HUD_Text(p, "z", sz, '1 1 1', 0.8);
-	HUD_TextR([rx, p_y], sprintf("%.2f", vel_z), sz, '1 1 1', 0.8);     p_y += lh;
+	/*
+	  BUILD 47: latched, like every other panel, and RENAMED.
+
+	  The row said `xy` and printed a SPEED -- vlen of the horizontal velocity.
+	  There is no position readout anywhere in this tree, so anyone reading `xy`
+	  as a coordinate and watching it "jump 0-4 units per frame" was chasing a
+	  position bug that does not exist.  `xyspd` costs three characters and
+	  ends that.
+	*/
+	if (ui_hl_tick)
+	{
+		ui_hl_dbgxy = vlen([vel_x, vel_y, 0]);
+		ui_hl_dbgz  = vel_z;
+	}
+
+	HUD_Text(p, "xyspd", sz, '1 1 1', 0.8);
+	HUD_TextR([rx, p_y], sprintf("%.2f", ui_hl_dbgxy), sz, '1 1 1', 0.8); p_y += lh;
+	HUD_Text(p, "zspd", sz, '1 1 1', 0.8);
+	HUD_TextR([rx, p_y], sprintf("%.2f", ui_hl_dbgz), sz, '1 1 1', 0.8);  p_y += lh;
 
 	if (gnorm != '0 0 0')
 	{
@@ -3178,9 +3445,19 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 	  on the reasoning that it needed no origin and so could not be fooled by a
 	  bad one.  It read 80.6 and went amber, which looked like proof the report
 	  was right.  It was not: on surf_aesthetic's spawn the player stands on a
-	  BRUSH ENTITY, which CSQC's traceline does not collide, so the trace fell
+	  BRUSH ENTITY, which CSQC's traceline did not collide, so the trace fell
 	  through it and found world geometry 16.5 units lower.  The eye was 64.06
 	  the whole time.
+
+	  BUILD 53 CHANGES THE SECOND HALF OF THAT AND NOT THE FIRST.  cl_sprites.qc
+	  now instantiates client-side copies of the map's solid brush entities so
+	  the glare and spotlight traces can hit them (vbsp_glare_brush), and this
+	  trace shares csqc_world with them, so it lands on the brush now.  That
+	  makes the cross-check better, and it does NOT make it the right answer:
+	  the floor trace still measures camera-to-floor, which is a different
+	  quantity from camera-to-feet whenever the player is not standing on the
+	  surface directly below the camera -- mid-air, on a ramp, on a ledge edge.
+	  It also silently depends on a cvar someone may have set to 0.
 
 	  So the floor trace stays only as a cross-check, clearly labelled, and never
 	  as the headline.  pmove_org is the feet and is what the question is about;
@@ -3222,8 +3499,8 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 				print(sprintf("eye: cam %.3f org %.3f -> eye %.3f | stat %.3f | ducked %g\n",
 				              cam_z, pmove_org_z, eyeh,
 				              getstatf(STAT_VIEWHEIGHT), ducked));
-				print(sprintf("eye: floortrace %.3f frac %.3f gap %.3f (brush ents are not hit)\n",
-				              floorz, trace_fraction, gap));
+				print(sprintf("eye: floortrace %.3f frac %.3f gap %.3f (brush ents hit: %g)\n",
+				              floorz, trace_fraction, gap, cvar("vbsp_glare_brush")));
 			}
 		}
 
@@ -3627,6 +3904,12 @@ void(vector scr) HUD_Draw =
 	*/
 	hude_n = 0;
 	HUD_UpdateLatch();
+
+	// Build 47.  AFTER the latch, so a traced frame reports the same numbers the
+	// rows on screen are about to; and here rather than inside HUD_UpdateLatch
+	// because that function is defined above HUD_LiveVel and QC has no forward
+	// declaration.  Costs one cvar read per frame when off.
+	HUD_VelTrace();
 
 	dt = cltime - ui_lasttime;
 	if (dt < 0 || dt > 0.5)             // first frame, or a hitch/loading pause

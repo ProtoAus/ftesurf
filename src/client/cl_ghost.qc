@@ -127,11 +127,20 @@ void() Ghost_RegisterCvars =
   The body's model, swapped on the duck state.
 
   Two files rather than one scaled model, because the hulls are two different
-  SHAPES and not two sizes of one: 32x32x72 standing, 32x32x54 ducked, same
+  SHAPES and not two sizes of one: 32x32x62 standing, 32x32x45 ducked, same
   footprint.  A uniform .scale -- which is the only scale a CSQC entity has --
   would take the width down with the height and draw a body narrower than the
   one you actually collide with.  tools/mkplayermodel.py cuts both from one
   description so they cannot drift.
+
+  The heights read 72 and 54 here from build 30 to build 51, and they were
+  wrong for the last eleven of those: the hull moved to Momentum's 62/45 in
+  build 41 (sh_defs.qc:36-39, asserted by the engine at pm_source.c:4111-4112)
+  and the model was left on CS:S's 72/54, so every drawn body was 10 units
+  taller than the box it collided with.  Patch 278 re-cut both files and put a
+  check in the generator's selftest that reads sh_defs.qc, because the old
+  selftest compared each output against the height the SCRIPT asked for -- a
+  test that cannot fail.
 */
 string() Ghost_Model =
 {
@@ -211,6 +220,21 @@ void() Ghost_DrawBody =
 	rec_gh_body.angles = [0, rec_gh_bodyang_y, 0];
 	rec_gh_body.alpha  = cvar("ghost_alpha");
 	rec_gh_body.colormod = '1 1 1';
+
+	/*
+	  Patch 278.  Hold the fullbright belt OFF on the ghost body.
+
+	  models/player_luma.tga arrived with the lobby avatars' glow, and a luma
+	  turns the fullbright pass on for the MATERIAL -- it is not per entity.
+	  glowmod is what scales it, and an unset glowmod is not zero: '0 0 0' is
+	  the identity sentinel, so leaving this alone would draw a full-white band
+	  around the single-player ghost body, which nobody asked for and which
+	  would read as a rendering bug.
+
+	  0.032 is one quantisation step above zero, which is the darkest value the
+	  encoding can actually express.
+	*/
+	rec_gh_body.glowmod = '0.032 0.032 0.032';
 
 	addentity(rec_gh_body);
 };

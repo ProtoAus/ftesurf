@@ -101,11 +101,42 @@
 #define FS_SETTLEMIN   0.5
 #define FS_SETTLEMAX   4.0
 
-// How many players get a padding ring and a split row.  This is a training
-// tool with one player in practice; the cap is here so the arrays are a fixed
-// 41 KB rather than a function of maxclients, and a player past it still gets
-// a timer -- just no pre-start padding and no split table.
-#define FS_MAXPLAYERS  4
+/*
+  How many players get a split row.  Was 4, and 4 was the whole reason the fifth
+  player onwards got a working clock with no splits, no checkpoints, no .rec and
+  no message saying why -- fine for a training tool, not fine for a 32-player
+  lobby.  PATCH 270, STAGE 2 raises it to 32.
+
+  FS_PADSLOTS STAYS AT 4, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
+
+  These two used to be one number.  Raising both looked free -- the split and
+  checkpoint rows are 24 floats per player, so 32 of them is 6 KB -- but the
+  pre-start padding ring is 9 parallel arrays x 256 samples PER PLAYER, and
+  fteqcc does not store a QC array as plain data.  It emits an accessor with a
+  dispatch whose size is O(the array's LENGTH), so length costs roughly 8x what
+  the data does.
+
+  Measured on this tree, changing nothing but this define:
+
+      FS_PADSLOTS 4  ->  qwprogs.dat  1,078,102 bytes
+      FS_PADSLOTS 8  ->  qwprogs.dat  1,641,738 bytes
+
+  563 KB for four more rings whose actual contents are 68 KB.  Thirty-two would
+  have been several megabytes of progs, parsed again by every mapcluster child.
+
+  What the fifth player onward loses is ONLY the pre-start padding -- the 3.84 s
+  of approach that gets prepended to a recording.  They still get a timer,
+  splits, checkpoints and a .rec; SV_RecPadBase returns -1 and SV_RecPadFlush
+  writes nothing.  And in a lobby it is moot in both directions, because
+  lobby_norec turns the recorder off entirely and the ring exists only to feed
+  it.  So this is today's behaviour preserved exactly, not a new limit.
+
+  32 rather than the engine's MAX_CLIENTS on purpose: it is also the width of
+  the trigger touch masks in sv_entities.qc, and having the two caps be the same
+  number means there is no partially-covered range for a bug to hide in.
+*/
+#define FS_MAXPLAYERS  32
+#define FS_PADSLOTS    4
 
 // 256 samples is 3.84s at 66.67Hz.  Measured in SAMPLES rather than seconds
 // because it is a ring: the array size is the cap, and expressing it in
@@ -169,6 +200,22 @@ float  run_t_tick;               // pm_ticrate, cached per map
   attempt in fifteen and 1 finishes every time.
 */
 float  run_t_swept;
+
+/*
+  run_zone_hull and run_zone_hull_live, cached per map for the same reason
+  run_t_swept is.  Build 47.
+
+  run_t_hullevt is level >= 1: the hull decides "did you leave" and "did you
+  touch".  run_t_hullocc is level >= 2: occupancy follows too, which moves every
+  stage time on every staged map and is therefore not the default.  Split into
+  two flags rather than compared against the level at each site so the hot loop
+  does no arithmetic and so the two decisions cannot be conflated by accident --
+  they are genuinely different questions, see the essay on SV_ZoneHit.
+*/
+float  run_t_hull;
+float  run_t_hullevt;
+float  run_t_hullocc;
+float  run_t_hulllive;
 
 /*
   run_prestrafe_time, cached per map.  Build 19.
@@ -291,6 +338,24 @@ float  run_t_stagefail;
 float  run_t_stagearm;
 float  run_t_stageclean;
 float  run_t_stagehop;
+
+/*
+  BUILD 48: run_stageghost, cached per map with the four above and a bisection
+  like them.
+
+    1  a ghosted stage is WRITTEN.  The camera being detached is a mark, not a
+       refusal -- which is what the run level has always said about the same
+       gesture (see SV_GhostSet: a ghosted run stays valid and is marked
+       instead).  The file-format disagreement build 43 avoided by refusing is
+       fixed properly instead, in SV_StageLine and SV_StageWrite.
+    0  build 47 exactly: SV_StageClose refuses on run_st_ghost.
+
+  A REAL BISECTION AND NOT A COSMETIC ONE, because the two settings write
+  different FILES -- at 1 a stage_N folder gains recordings it never had.  That
+  is the thing to switch off if a ghosted slice ever reads wrong, and it is why
+  this is a cvar rather than a deletion.
+*/
+float  run_t_stageghost;
 
 /*
   BUILD 44 -- THE RUN CLASSES, AND ONE OF THE TWO IS NOT A TUNING KNOB.
@@ -420,13 +485,113 @@ float(entity e) SV_CheatLevel =
 	return SV_CheatsOn();
 };
 
-// "Did this tick's movement touch zone z?"  The one place the two tests are
-// chosen between; everything else asks this.
-float(float z, vector a, vector b) SV_ZoneHit =
+/*
+  THE THREE ZONE QUESTIONS, AND THE ONE PLACE EACH IS ANSWERED.
+
+  Build 47 split what had been one function into three, because the ruleset
+  asks three different questions of a zone and only two of them changed:
+
+    SV_ZoneOcc   WHERE ARE YOU        -- occupancy.  "Which start box am I
+                                        standing in."  A POINT question, and it
+                                        stays one at run_zone_hull 1.  See the
+                                        essay at the top of SV_TimerFrame.
+    SV_ZoneIn    HAVE YOU LEFT        -- asked of one position, of the box you
+                                        armed in.  The clock starts when this
+                                        goes false.
+    SV_ZoneHit   DID YOU TOUCH        -- asked of the movement, for the events:
+                                        checkpoint, stage, end, cancel.
+
+  Occupancy is a point question.  "Did you leave" and "did you touch" are hull
+  questions.  That sentence is the whole of run_zone_hull 1, and it is worth
+  keeping in that shape: the previous version of this comment claimed the arm
+  test and the start test were the same test, and build 47 is where that stops
+  being true.
+
+  THE INVARIANT THAT MAKES IT SAFE: arming requires the POINT inside (level 1
+  leaves SV_ZoneOcc alone) and starting requires the HULL outside -- and
+  point-inside implies hull-inside, always.  So the hull rule can only DELAY a
+  start.  It can never fire before the arm and never prevent a start that would
+  otherwise happen.  What it does create is a band, one hull-width wide, around
+  every start box where you are TS_ARMED with az == -1 and the clock has not
+  started.  That band is the feature.
+*/
+float(float z, vector a, vector b, vector mins, vector maxs) SV_ZoneHit =
 {
+	if (run_t_hullevt)
+	{
+		if (run_t_swept)
+			return Zone_BoxSwept(z, a, b, mins, maxs);
+		return Zone_BoxInside(z, b, mins, maxs);
+	}
 	if (run_t_swept)
 		return Zone_SegmentInside(z, a, b);
 	return Zone_PointInside(z, b);
+};
+
+float(float z, vector p, vector mins, vector maxs) SV_ZoneIn =
+{
+	if (run_t_hullevt)
+		return Zone_BoxInside(z, p, mins, maxs);
+	return Zone_PointInside(z, p);
+};
+
+float(float z, vector p, vector mins, vector maxs) SV_ZoneOcc =
+{
+	if (run_t_hullocc)
+		return Zone_BoxInside(z, p, mins, maxs);
+	return Zone_PointInside(z, p);
+};
+
+/*
+  THE HULL THE RULESET TESTS WITH.  One function, because a rule spelled at ten
+  call sites is a rule that will disagree with itself at one of them.
+
+  PM_DUCK_MINS and PM_HULL_MINS are identical (sh_defs.qc), so only maxs can
+  differ, and only in z: 45 against 62.  See run_zone_hull_live for why the
+  constant hull is the default even though the engine has the live one right
+  there on the entity.
+*/
+vector(entity e) SV_RunHullMins =
+{
+	return PM_HULL_MINS;
+};
+
+vector(entity e) SV_RunHullMaxs =
+{
+	if (run_t_hulllive)
+		return e.maxs;
+	return PM_HULL_MAXS;
+};
+
+/*
+  Which START zone is p standing in, or -1.  Build 47.
+
+  Asked by the save-lock loader, and asked through SV_ZoneOcc rather than with a
+  fresh point test of its own SO THAT IT CANNOT DRIFT from what SV_TimerFrame's
+  arm scan means by "standing in a start box".  There is no ZoneAtPoint helper
+  in this tree and the arm scan is inline; adding a second speller that answers
+  a slightly different question is the failure this file keeps writing essays
+  about, so this one is a thin wrapper over the same predicate and nothing else.
+
+  Deliberately does NOT reproduce the scan's START-outranks-STAGE priority: the
+  caller wants the yes/no, and a STAGE box is not a place you pick a start from.
+*/
+float(entity e, vector p) SV_ZoneStartAt =
+{
+	local float z;
+	local vector mn, mx;
+
+	mn = SV_RunHullMins(e);
+	mx = SV_RunHullMaxs(e);
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_START)
+			continue;
+		if (SV_ZoneOcc(z, p, mn, mx))
+			return z;
+	}
+	return -1;
 };
 
 /*
@@ -465,19 +630,24 @@ float run_run_cp[FS_MAXPLAYERS * FS_MAXCPS];
 // it is the approach to the start zone -- so it has to carry everything a sample
 // does, or the key display would go dark for the first four seconds of every
 // replay.  It costs 8 KB.
-vector rec_pad_org[FS_MAXPLAYERS * FS_RECPAD];
-vector rec_pad_vel[FS_MAXPLAYERS * FS_RECPAD];
-vector rec_pad_mv [FS_MAXPLAYERS * FS_RECPAD];
-float  rec_pad_t  [FS_MAXPLAYERS * FS_RECPAD];
-float  rec_pad_pit[FS_MAXPLAYERS * FS_RECPAD];
-float  rec_pad_yaw[FS_MAXPLAYERS * FS_RECPAD];
-float  rec_pad_fl [FS_MAXPLAYERS * FS_RECPAD];
-float  rec_pad_key[FS_MAXPLAYERS * FS_RECPAD];
+//
+// PATCH 270, STAGE 2: FS_PADSLOTS, not FS_MAXPLAYERS, and the two are no longer
+// the same number -- see the measurement at that define.  Every index into
+// these now comes from SV_RecPadBase, which is what stops a slot of 4..31
+// walking off the end of an array silently.
+vector rec_pad_org[FS_PADSLOTS * FS_RECPAD];
+vector rec_pad_vel[FS_PADSLOTS * FS_RECPAD];
+vector rec_pad_mv [FS_PADSLOTS * FS_RECPAD];
+float  rec_pad_t  [FS_PADSLOTS * FS_RECPAD];
+float  rec_pad_pit[FS_PADSLOTS * FS_RECPAD];
+float  rec_pad_yaw[FS_PADSLOTS * FS_RECPAD];
+float  rec_pad_fl [FS_PADSLOTS * FS_RECPAD];
+float  rec_pad_key[FS_PADSLOTS * FS_RECPAD];
 // v4, and for the reason the v3 note above gives about mv and key: the padding
 // IS recording -- it is the approach to the start zone -- so a column that every
 // other sample carries has to be carried here too, or the strafe bar would go
 // blank for the first four seconds of every replay and then snap on.  12 KB.
-vector rec_pad_norm[FS_MAXPLAYERS * FS_RECPAD];
+vector rec_pad_norm[FS_PADSLOTS * FS_RECPAD];
 
 // Which ring/split row a player owns, or -1.  Handed out on connect rather
 // than derived from the edict number, which is not stable across a respawn.
@@ -552,6 +722,24 @@ float rec_retry_armed;
 .float  run_t_split;
 .float  run_t_delta;
 .float  run_t_pb;
+/*
+  BUILD 48: the personal best this run was measured AGAINST, latched before the
+  table is rewritten.  0 = there was none.
+
+  A DEFECT FIX AND NOT A FEATURE, and the defect has been shipping since build
+  19.  SV_TimerFinish sets run_pb_ticks[...] to this run's time when it is a
+  personal best, and then -- twenty lines later, unconditionally -- re-reads
+  run_t_pb out of that same table.  So on every PB run_t_pb IS run_t_ticks, the
+  delta drawn from the pair is exactly zero, and the finish row down the left has
+  never once shown a number on the runs anybody wanted a number for.
+
+  Kept beside run_t_pb rather than folded into it because run_t_pb still has a
+  live job: it is what the HUD compares the RUNNING clock against, and it has to
+  become the new best the moment the new best exists.  Two facts, two fields.
+
+  Cleared by SV_TimerArm with the rest of the attempt.
+*/
+.float  run_t_pbwas;
 .float  run_t_flags;             // TF_*
 /*
   THREE LATCHES, NOT ONE, because a Momentum zone is a TRIGGER and you can be
@@ -578,6 +766,52 @@ float rec_retry_armed;
 .float  run_t_armzone;           // the zone THIS arm came from, or -1
 .float  run_t_cpzone;            // checkpoint zone occupied, or -1
 .float  run_t_slot;              // index into the arrays above, or -1
+
+/*
+  The base index of a player's padding ring, or -1 for "has not got one".
+
+  PATCH 270, STAGE 2.  Every site that used to write `e.run_t_slot * FS_RECPAD`
+  behind an `if (e.run_t_slot < 0)` guard now goes through this, because the
+  guard has to test TWO things since the ring stopped being one per player: a
+  slot of -1, and a slot at or past FS_PADSLOTS.  An out-of-range write into a
+  QC array is silent, so the one-sided test would have corrupted the next
+  array in the globals block rather than erroring.
+
+  It lives HERE, immediately under the field it reads, and not up beside the
+  arrays where it belongs by subject: QuakeC has no forward declarations for
+  FIELDS either, and .run_t_slot is declared 150 lines below rec_pad_org.
+*/
+float(entity e) SV_RecPadBase =
+{
+	if (e.run_t_slot < 0 || e.run_t_slot >= FS_PADSLOTS)
+		return -1;
+	return e.run_t_slot * FS_RECPAD;
+};
+
+/*
+  Is this server writing .rec files at all?
+
+  PATCH 270, STAGE 2.  rec_enable is the player's own switch and stays exactly
+  what it was; lobby_norec is the server's, and it exists because the recorder
+  does not scale in the one dimension that matters here.
+
+  A run in progress lives as QC STRINGS in a strbuf until it closes -- the
+  whole run, every tick, one line each -- so 32 simultaneous recordings is on
+  the order of 50 MB of string table on a Pi with 3.2 GB and no swap.  The
+  failure mode is not a slow server, it is the OOM killer taking the process.
+  And the filenames collide: the archive name is <ticks>_<tag>.rec, so two
+  people finishing on the same tick write the same path.
+
+  Both call sites go through here rather than testing rec_enable twice, because
+  they were already an if/else pair whose arms disagreeing would mean a run
+  that starts a recording it never closes.
+*/
+float() SV_RecEnabled =
+{
+	if (!cvar("rec_enable"))
+		return FALSE;
+	return !Lobby_NoRec();
+};
 
 /*
   CHECKPOINTS, build 19.  The three that go on the wire plus the one that makes
@@ -958,6 +1192,43 @@ float rec_retry_armed;
 .float  run_st_recseg;
 .float  run_st_recticks;
 .float  run_st_recat;
+
+/*
+  BUILD 48 -- THE CLOSE REPORT, and it is deliberately NOT the four above.
+
+  run_st_rec* is "a stage was WRITTEN": it is published at the bottom of
+  SV_StageClose, past every refusal, and it exists so the client can slice the
+  matching .view.  This group is "a stage ENDED, and here is what it was" --
+  published at the TOP, before any refusal, because the interesting stages are
+  precisely the ones that did not qualify.
+
+  Two groups and not one widened group, because the two answer opposite
+  questions and a reader that conflated them would draw a mark only on the
+  stages that did not need one.
+
+  WHY THE CLIENT CANNOT DERIVE ANY OF IT:
+
+    the WORD      run_st_dirty, _cheat, _ghost and _stitch are all rewritten by
+                  SV_StageOpen from the live level in this same
+                  PlayerPostThink, and on a finish SV_StageStat's own
+                  `run_st_seg < 0` guard zeroes the packed word outright.  The
+                  engine samples stats when it builds the snapshot -- after
+                  every PlayerPostThink -- and deltas against the last value it
+                  SENT, so a value that lives and dies inside one
+                  PlayerPostThink is never on the wire to be read.
+    the TICKS     run_stagearm rebases run_st_tick to the moment you LEFT the
+                  boundary box, so a stage's own duration is NOT the difference
+                  between two consecutive run-relative splits and never was.
+
+  run_st_endrec IS BUMPED ON EVERY CLOSE, INCLUDING REFUSED ONES.  A counter
+  rather than a flag for the reason run_st_rec is one: a dropped snapshot loses
+  a one-tick boolean outright, whereas a counter arriving two higher is a gap
+  the reader can see and account for.
+*/
+.float  run_st_endrec;           // monotonic; bumped at the TOP of SV_StageClose
+.float  run_st_endseg;           // the segment that closed
+.float  run_st_endword;          // its SF_* word at the close, with SF_KNOWN
+.float  run_st_endticks;         // its own duration, in ticks
 .float  rec_pad_head;            // next ring slot to write
 .float  rec_pad_len;
 
@@ -1400,7 +1671,7 @@ void(entity e) SV_RecOpen =
 	rec_rec_nextserial = rec_rec_nextserial + 1;
 	e.rec_rec_serial = rec_rec_nextserial;
 
-	if (!cvar("rec_enable"))
+	if (!SV_RecEnabled())
 		return;
 
 	e.rec_rec_buf = buf_create_ex("string", 0);
@@ -1446,10 +1717,10 @@ void(entity e) SV_RecOpen =
 	// The padding, oldest first.  Timestamps are already relative to `time`
 	// and are made relative to the START here, so they come out negative --
 	// which is exactly what a playback needs to know where t=0 is.
-	if (e.run_t_slot < 0)
+	base = SV_RecPadBase(e);
+	if (base < 0)
 		return;
 
-	base = e.run_t_slot * FS_RECPAD;
 	for (i = 0; i < e.rec_pad_len; i = i + 1)
 	{
 		s = base + ((e.rec_pad_head - e.rec_pad_len + i + FS_RECPAD * 2) % FS_RECPAD);
@@ -1801,7 +2072,7 @@ float(entity e, string path, float mark, float serial,
 		return TRUE;
 	}
 
-	if (!cvar("rec_enable"))
+	if (!SV_RecEnabled())
 		return FALSE;
 
 	buf = buf_create_ex("string", 0);
@@ -1940,10 +2211,11 @@ void(entity e) SV_RecPad =
 {
 	local float s;
 
-	if (e.run_t_slot < 0)
+	s = SV_RecPadBase(e);
+	if (s < 0)
 		return;
 
-	s = e.run_t_slot * FS_RECPAD + e.rec_pad_head;
+	s = s + e.rec_pad_head;
 	rec_pad_org[s] = e.origin;
 	rec_pad_vel[s] = e.velocity;
 	rec_pad_mv [s] = e.movement;
@@ -2011,6 +2283,22 @@ void() SV_PBLoad =
 
 	SV_PBClear();
 
+	/*
+	  PATCH 270, STAGE 2.  A lobby loads no personal bests at all.
+
+	  Gating only the SAVE would leave the table populated from the host's own
+	  best.pb, and every one of the 32 people on the map would be shown that
+	  time as THEIR personal best -- in the HUD, in the "best by" line at every
+	  stage, and in the finish card.  A number presented as yours that belongs
+	  to somebody you have never met is worse than no number.
+
+	  This is also the one PB call that runs at map init, before the first
+	  StartFrame, which is why Lobby_NoPB reads its cvars live rather than a
+	  value Lobby_Frame cached.  See the essay at those accessors.
+	*/
+	if (Lobby_NoPB())
+		return;
+
 	f = fopen(SV_PBPath(), FILE_READ);
 	if (f < 0)
 		return;
@@ -2051,6 +2339,24 @@ void() SV_PBSave =
 	local filestream f;
 	local float t, s;
 
+	/*
+	  PATCH 270, STAGE 2 -- THE FILE-DESTROYING CASE, refused here rather than
+	  only at the two callers.
+
+	  This function rewrites data/runs/<map>/best.pb WHOLE from a table that has
+	  no player dimension.  On a 32-player lobby the table holds whoever
+	  finished last, so one stranger's run overwrites the host's entire history
+	  for that map -- every track, every split, every checkpoint -- and nothing
+	  anywhere says it happened.
+
+	  The two callers are gated too.  This second guard is not redundancy for
+	  its own sake: a third caller is exactly the kind of thing that gets added
+	  later by someone who has read SV_TimerFinish and not this essay, and the
+	  cost of that mistake is somebody's data.
+	*/
+	if (Lobby_NoPB())
+		return;
+
 	f = fopen(SV_PBPath(), FILE_WRITE);
 	if (f < 0)
 	{
@@ -2084,6 +2390,27 @@ float(float track, float startseg) SV_PBGet =
 {
 	if (track < 0 || track >= FS_MAXTRACKS || startseg < 0 || startseg >= FS_MAXSPLITS)
 		return 0;
+
+	/*
+	  PATCH 270, STAGE 2 -- and this is the READ side of the gate, which the
+	  first version of the patch did not have.
+
+	  SV_PBLoad refuses to read best.pb in a lobby, and that covers a map that
+	  LOADS as a lobby.  It cannot cover the host who practises with
+	  lobby_enable 0 and then types `lobby_enable 1` without changing map: the
+	  table is already populated, SV_PBLoad is not going to run again, and every
+	  one of the 32 people who join is then shown the host's time as their own
+	  personal best -- in the HUD, in "best by" at every stage, and on the
+	  finish card.
+
+	  Gating the accessor rather than clearing the table on the transition is
+	  deliberate: the table is still correct and still the host's, and flipping
+	  lobby_enable back to 0 restores it without a re-read.  Nothing has to
+	  detect the edge.
+	*/
+	if (Lobby_NoPB())
+		return 0;
+
 	return run_pb_ticks[track * FS_MAXSPLITS + startseg];
 };
 
@@ -2176,6 +2503,36 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 		return sprintf("cp %g %g", stof(argv(1)), stof(argv(2)) - tickbase);
 	}
 
+	/*
+	  BUILD 48: `ghost` IS KEPT, and keeping it is what lets a ghosted stage be
+	  written at all.
+
+	  It used to fall through to the drop below, and that was the whole of the
+	  problem build 43 solved by refusing the stage instead: SV_StageWrite's
+	  header copies TF_GHOST in from run_st_ghost, so a slice claimed a ghost in
+	  its header and carried no record of one in its body, which reccheck.py
+	  faults as a disagreement.  Keep the records and the two agree, and then
+	  there is nothing left to refuse.
+
+	  Rebased in TICKS like `cp` and for the same reason -- both carry the run
+	  clock, not a `t` in seconds.
+
+	  A record from before this stage began is dropped like a checkpoint's, and
+	  the state it carried is NOT lost: SV_StageWrite emits a synthetic opener
+	  when the stage began already ghosting.  That is the span case, and it has
+	  to be handled there rather than here, because this function sees one line
+	  at a time and cannot know it is looking at the first.
+	*/
+	if (substring(l, 0, 6) == "ghost ")
+	{
+		n = tokenize(l);
+		if (n < 3)
+			return "";
+		if (stof(argv(2)) < tickbase)
+			return "";              // before this stage; the opener covers it
+		return sprintf("ghost %g %g", stof(argv(1)), stof(argv(2)) - tickbase);
+	}
+
 	return "";
 };
 
@@ -2191,6 +2548,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
      float first, float last) SV_StageWrite =
 {
 	local float buf, i, fh, samples, cps, pad;
+	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local string l, dst;
 
 	buf = buf_create_ex("string", 0);
@@ -2215,13 +2573,19 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	  and leaving the copy in would have shipped the feature and then labelled
 	  every file it produced `practice`, which the leaderboard filter reads.
 
-	  DERIVED FROM THE TAINTS RATHER THAN WRITTEN AS 0, and it is provably 0:
-	  SV_StageClose has already refused every stage with either bit set, so this
-	  can only ever emit zero.  It is computed anyway for the same reason the
-	  `pad` count in the trailer is counted rather than asserted -- build 24 wrote
-	  a literal there and seven of the first twelve stage files disagreed with it.
-	  A header that is derived from the state it describes cannot drift when a
-	  third taint is added and this line is forgotten.
+	  DERIVED FROM THE TAINTS RATHER THAN WRITTEN AS 0.  It is computed for the
+	  same reason the `pad` count in the trailer is counted rather than asserted --
+	  build 24 wrote a literal there and seven of the first twelve stage files
+	  disagreed with it.  A header derived from the state it describes cannot drift
+	  when a taint is added and this line is forgotten.
+
+	  BUILD 48: AND IT IS NO LONGER PROVABLY ZERO.  This paragraph used to say so
+	  in as many words -- "SV_StageClose has already refused every stage with
+	  either bit set, so this can only ever emit zero" -- and that was true right
+	  up until run_stageghost stopped a ghosted stage being refused.  TF_GHOST is
+	  now a bit this line really can emit, which is exactly why the derivation was
+	  worth keeping when it looked like dead arithmetic.  TF_PRACTICE and the two
+	  class bits below are still provably zero, because run_st_dirty still refuses.
 
 	  TF_SHADOW needs no test of its own now: it implies TF_PRACTICE, which sets
 	  run_t_dirty, which the level watcher and SV_StageOpen turn into run_st_dirty
@@ -2256,6 +2620,43 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	           sprintf("runid %s-s%g", strftime(TRUE, "%Y%m%d-%H%M%S"), seg));
 	bufstr_set(buf, buf_getsize(buf), sprintf("flags %g", i));
 	bufstr_set(buf, buf_getsize(buf), "begin");
+
+	/*
+	  BUILD 48 -- THE SYNTHETIC GHOST OPENER, and it is the other half of letting
+	  a ghosted stage be written at all.
+
+	  SV_StageLine keeps `ghost` records now and rebases them, which makes a
+	  header claiming TF_GHOST agree with a body that contains one -- for a ghost
+	  that STARTED inside this stage.  A ghost that spans the boundary has its
+	  turn-on record in the PREVIOUS slice, so this one would carry the header bit
+	  and no record, which is the identical disagreement by a different route.
+
+	  Derived rather than latched, because it is derivable and a new field would
+	  be a fifth thing SV_StageOpen has to remember to clear.  The first ghost
+	  record in range answers it:
+
+	    none at all        it was on for the whole slice          -> opener
+	    first turns it OFF it must have been on when we began     -> opener
+	    first turns it ON  it began clear                         -> no opener
+
+	  `i = last` to stop rather than `break`, matching the tbase scan below.
+	*/
+	if (e.run_st_ghost)
+	{
+		gfirst = -1;
+		for (i = first; i < last; i = i + 1)
+		{
+			l = bufstr_get(e.rec_rec_buf, i);
+			if (substring(l, 0, 6) == "ghost ")
+			{
+				tokenize(l);
+				gfirst = stof(argv(1));
+				i = last;
+			}
+		}
+		if (gfirst != 1)
+			bufstr_set(buf, buf_getsize(buf), "ghost 1 0");
+	}
 
 	/*
 	  BUILD 25 -- tbase COMES FROM THE FIRST SAMPLE, NOT FROM THE SPLIT'S TICK.
@@ -2697,6 +3098,39 @@ void(entity e, float ticks) SV_StageFail =
   next boundary without leaving this one's box" is a fair question about a
   machine that has three states.
 */
+/*
+  The seven SF_* bits, packed.  Build 48 lifted this out of SV_StageStat.
+
+  ONE SPELLER, because there are now two readers of the same fact and they must
+  not be able to drift: the per-tick stat the HUD reads, and the close report the
+  results card and the split marks read.  Two copies of a seven-line bit pack is
+  exactly the shape of bug the field block above warns about -- five writers, five
+  chances to forget one -- and adding a second copy while quoting that paragraph
+  would have been funny rather than defensible.
+
+  SF_KNOWN IS ALWAYS SET HERE.  That is the whole point of the bit: a word this
+  function produced is a word somebody answered, and a zero is therefore
+  distinguishable from a clean stage.  The one place a zero is written on purpose
+  is SV_StageStat's no-stage-open guard, which means "nothing is true about it"
+  and is the correct absent answer.
+*/
+float(entity e) SV_StageWord =
+{
+	local float w;
+
+	w = SF_KNOWN;
+	if (e.run_st_armed)  w = w | SF_ARMED;
+	if (e.run_st_jump)   w = w | SF_JUMP;
+	if (e.run_st_ramp)   w = w | SF_RAMP;
+	if (e.run_st_dirty)  w = w | SF_DIRTY;
+	if (e.run_st_ghost)  w = w | SF_GHOST;
+	// Build 44.  SF_DIRTY is still the umbrella and still the only bit any filter
+	// reads; these two say WHY.
+	if (e.run_st_stitch) w = w | SF_STITCH;
+	if (e.run_st_cheat)  w = w | SF_CHEAT;
+	return w;
+};
+
 void(entity e, float ticks) SV_StageClose =
 {
 	local float dur, pb, seg;
@@ -2704,6 +3138,29 @@ void(entity e, float ticks) SV_StageClose =
 	seg = e.run_st_seg;
 	e.run_st_seg   = -1;
 	e.run_st_armed = FALSE;
+
+	/*
+	  BUILD 48 -- THE CLOSE REPORT, AND IT IS RAISED BEFORE EVERY REFUSAL BELOW.
+
+	  Above the returns deliberately.  The stages worth marking on screen are
+	  precisely the ones this function is about to refuse -- a stage you
+	  noclipped, a stage you loaded a save inside -- so a report published at the
+	  bottom, where run_st_rec* lives, would fire only for the stages that needed
+	  no mark at all.
+
+	  A REFUSED CLOSE STILL HAS A REAL DURATION and it is reported: `dur` below is
+	  computed from the same two numbers.  What the client does with it is its
+	  business; what this function must not do is decide, on the client's behalf,
+	  that an unrecorded stage is uninteresting.
+
+	  The word is taken HERE, before SV_StageOpen re-reads the taints from the
+	  live level a few frames' worth of calls later in SV_TimerSplit, because
+	  after that it is gone -- and gone before any snapshot could have carried it.
+	*/
+	e.run_st_endseg   = seg;
+	e.run_st_endword  = SV_StageWord(e);
+	e.run_st_endticks = ticks - e.run_st_tick;
+	e.run_st_endrec   = e.run_st_endrec + 1;
 
 	if (e.rec_rec_buf < 1)      return;
 	if (e.run_t_startseg > 0)   return;
@@ -2713,6 +3170,30 @@ void(entity e, float ticks) SV_StageClose =
 	if (run_t_stageclean)
 	{
 		if (e.run_st_dirty)     return;
+		/*
+		  BUILD 48 -- GHOSTING NO LONGER REFUSES A STAGE, ON THE USER'S CALL, AND
+		  THE REFUSAL WAS NEVER ABOUT FAIRNESS.
+
+		  Build 43 added `if (e.run_st_ghost) return;` here and said why in as
+		  many words: SV_StageLine dropped `ghost` records while SV_StageWrite's
+		  header copied TF_GHOST in, and reccheck.py faults that disagreement.  So
+		  the refusal was a cheap way to make a FILE FORMAT problem impossible, and
+		  it bought that by throwing the stage away.
+
+		  The run level never agreed with it.  SV_GhostSet's own essay says a
+		  ghosted run stays valid and is MARKED instead, because a body with
+		  nobody's hands on it is close to self-policing -- and detaching the
+		  camera to look around is a thing this game is FOR.  A rule that voided
+		  the stage but not the run around it was the odd one out.
+
+		  So the format problem is fixed instead: SV_StageLine now keeps `ghost`
+		  records and rebases them like `cp`, and SV_StageWrite emits a synthetic
+		  one when a stage began already ghosting.  Header and content agree, and
+		  the stage is written.
+
+		  run_stageghost 0 restores build 47 exactly.
+		*/
+		if (!run_t_stageghost)
 		if (e.run_st_ghost)     return;
 	}
 	else
@@ -2726,6 +3207,27 @@ void(entity e, float ticks) SV_StageClose =
 	if (e.rec_rec_lines <= e.run_st_line)
 		return;
 
+	/*
+	  PATCH 270, STAGE 2 -- no stage records in a lobby, and this one had to be
+	  refused UP HERE rather than at the PB write further down.
+
+	  A stage record IS a personal best; it is stored in the same table and
+	  written to the same file.  Gating only the write left the guard below
+	  reading a PB of 0 -- SV_PBGet returns 0 in a lobby -- so `dur >= pb` was
+	  never true, the "only if you beat it" test stopped rejecting anything, and
+	  SV_StageWrite would cut a stage .rec and print "first time on this stage"
+	  EVERY LAP, for all 32 players.  A gate that turns a filter off is worse
+	  than no gate.
+
+	  Unreachable today by a second route -- lobby_norec means rec_rec_lines is
+	  0, so the test two lines up already returns -- but that is one cvar away
+	  from being false, and depending on it would make lobby_norec 0 quietly
+	  destructive rather than merely noisy.  Stage times in a lobby belong in
+	  Stage 3's telemetry, which has a player dimension.
+	*/
+	if (Lobby_NoPB())
+		return;
+
 	pb = SV_PBGet(e.run_t_track, seg);
 	if (pb > 0)
 	if (dur >= pb)
@@ -2736,11 +3238,19 @@ void(entity e, float ticks) SV_StageClose =
 
 	// The stage leg's own record, through the same table a deliberate stage run
 	// writes: one PB per (track, startseg), and best.pb is rewritten whole.
-	if (e.run_t_track >= 0)
-	if (e.run_t_track < FS_MAXTRACKS)
-	if (seg < FS_MAXSPLITS)
-		run_pb_ticks[e.run_t_track * FS_MAXSPLITS + seg] = dur;
-	SV_PBSave();
+	//
+	// Patch 270, Stage 2: not in a lobby.  Same reasoning as the finish path --
+	// the table has no player dimension and the file is rewritten whole -- and
+	// the stage line above is still printed, because the split it reports is
+	// this player's own measurement either way.
+	if (!Lobby_NoPB())
+	{
+		if (e.run_t_track >= 0)
+		if (e.run_t_track < FS_MAXTRACKS)
+		if (seg < FS_MAXSPLITS)
+			run_pb_ticks[e.run_t_track * FS_MAXSPLITS + seg] = dur;
+		SV_PBSave();
+	}
 
 	sprint(e, PRINT_HIGH,
 	       sprintf("^2stage %g^7 -- %s%s\n", seg, SV_TimerString(dur),
@@ -3597,6 +4107,22 @@ float(entity e) SV_TimerJumpWatch =
 	else if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_FINISHED)
 		launchz = e.run_t_azone;
 
+	/*
+	  BUILD 47: HULLED, and for consistency rather than preference.
+
+	  If the run starts when the hull is fully clear of the box, then a jump
+	  taken while the hull still overlaps is by definition a jump taken FROM
+	  INSIDE the box.  Leaving this a point test would create a band, one hull
+	  wide, where you have not started (hull overlaps) but a qualifying bhop is
+	  not recognised as a launch either -- two predicates disagreeing about the
+	  same box, which is the exact bug class the sin/shit essay was written
+	  about.
+
+	  It asks about run_t_lastorg, so strictly it wants LAST tick's hull.  Under
+	  run_zone_hull_live 0 that is moot because the hull is a constant; under 1
+	  there is a one-tick skew on the duck state, which is one more argument for
+	  the constant.
+	*/
 	if (run_t_bhopjump)
 	if (!e.rec_gh_on)
 	if (jumped)
@@ -3604,7 +4130,7 @@ float(entity e) SV_TimerJumpWatch =
 	if (launchz >= 0)
 	if (launchz < zone_count)
 	if (zone_type[launchz] == ZONE_START)
-	if (Zone_PointInside(launchz, e.run_t_lastorg))
+	if (SV_ZoneIn(launchz, e.run_t_lastorg, SV_RunHullMins(e), SV_RunHullMaxs(e)))
 		bhopz = launchz;
 
 	if (jumped)
@@ -4070,6 +4596,11 @@ void(entity e, float z) SV_TimerArm =
 	// TF_SHADOW goes with run_t_flags above; this is the half that lives outside.
 	e.run_t_fromsave = 0;
 
+	// Build 48.  It describes the attempt, so it dies with the attempt -- a
+	// stale one would let the results card compare a fresh run against the
+	// previous leg's best.
+	e.run_t_pbwas = 0;
+
 	e.run_t_pb = SV_PBGet(e.run_t_track, e.run_t_startseg);
 	if (e.run_t_pb > 0)
 		e.run_t_flags = e.run_t_flags | TF_HAVEPB;
@@ -4126,6 +4657,22 @@ void(entity e, float ticks) SV_TimerFinish =
 	pb   = SV_PBGet(e.run_t_track, e.run_t_startseg);
 	ispb = FALSE;
 
+	/*
+	  BUILD 48: KEEP IT, because in about twenty lines it will not exist any more.
+
+	  The PB branch below writes this run's own time into
+	  run_pb_ticks[track][startseg], and then -- unconditionally, further down --
+	  run_t_pb is re-read out of that same table.  So on every personal best
+	  run_t_pb IS run_t_ticks, any delta taken from the pair is exactly zero, and
+	  the finish row in the split column has drawn no number since build 19 on
+	  precisely the runs somebody wanted a number for.
+
+	  Latched HERE, one line after the read and before anything can overwrite it,
+	  because this is the only instant at which "the time this run was measured
+	  against" is still on the machine.
+	*/
+	e.run_t_pbwas = pb;
+
 	if (e.run_t_flags & TF_SHADOW)
 	{
 		// A run resumed from a save.  Still a real time for the section you
@@ -4140,6 +4687,27 @@ void(entity e, float ticks) SV_TimerFinish =
 	{
 		sprint(e, PRINT_HIGH,
 		       sprintf("^3%s^7 (practice -- not saved)\n", SV_TimerString(ticks)));
+	}
+	/*
+	  PATCH 270, STAGE 2 -- a lobby finish, which is a real time and is not a
+	  personal best.
+
+	  Its own branch rather than an extra condition on the test below, because
+	  the else-arm's "+delta (pb ...)" line would then be printed against a pb
+	  of 0 -- SV_PBLoad loads nothing in a lobby -- and read as "you were 47
+	  seconds slower than a time of zero".  ispb stays FALSE, which is what
+	  keeps the run out of the best-named .rec slot as well.
+
+	  The time itself is still printed, and still told to the client, because
+	  the server measured it and it is the player's.  Where it gets RANKED is
+	  Stage 3's business: the lobby uploads to surfd, which has a player
+	  dimension, rather than to a one-row-per-map file that has not.
+	*/
+	else if (Lobby_NoPB())
+	{
+		sprint(e, PRINT_HIGH,
+		       sprintf("^2%s^7 (lobby -- ranked on the server, not saved here)\n",
+		               SV_TimerString(ticks)));
 	}
 	else
 	{
@@ -4203,6 +4771,30 @@ void(entity e, float ticks) SV_TimerFinish =
 	  so the RT_PB branch and the RT_CHEAT branch cannot both be live for one
 	  run, and no ordering between them can be wrong.
 	*/
+	/*
+	  BUILD 48: FIVE NAMES, AND THE NEW ONE IS AT THE BOTTOM OF THE LADDER.
+
+	  RT_RUN is what is left when none of the other three applies: you ran the
+	  leg, you were clean, and you were slower than your best.  That case used to
+	  fall through to RT_LAST and overwrite the attempt before it -- one slot,
+	  forty attempts an hour, and the archive kept exactly one of them.
+
+	  WHAT THAT COST WAS THE MEANING OF `RANK`.  Only PB-beating runs were ever
+	  archived, so every stamped file on a leg was faster than every file written
+	  before it: a monotone improvement chain, not a distribution.  A personal
+	  best was therefore rank 1 by construction and a slower run's rank counted
+	  your own past bests rather than a field of attempts.  No amount of care on
+	  the reading side could have fixed that; the data was never collected.
+
+	  BELOW SHADOW AND CHEAT, not above, because both of those say something this
+	  does not.  It is the residue, and residues go last.
+
+	  rec_runarchive 0 restores build 47: clean non-improving runs go back to
+	  overwriting last.rec.  READ LIVE rather than latched per map, unlike the
+	  run_stage* rules -- this decides a FILENAME once per finish, not a physics
+	  question per tick, and latching it would make the switch invisible until a
+	  map change, which is the one thing a bisection must not be.
+	*/
 	tag = RT_LAST;
 	if (ispb)
 		tag = RT_PB;
@@ -4210,6 +4802,9 @@ void(entity e, float ticks) SV_TimerFinish =
 		tag = RT_CHEAT;
 	else if (e.run_t_flags & TF_SHADOW)
 		tag = RT_SHADOW;
+	else if (cvar("rec_runarchive"))
+	if (!(e.run_t_flags & TF_PRACTICE))
+		tag = RT_RUN;
 
 	// The flags as they stand HERE, which is after every taint has been applied
 	// and after the tag has been decided from them -- so the header line and the
@@ -4240,7 +4835,13 @@ void(entity e, float seg, float ticks) SV_TimerSplit =
 	if (e.run_t_slot >= 0 && seg > 0 && seg < FS_MAXSPLITS)
 		run_run_split[e.run_t_slot * FS_MAXSPLITS + seg] = ticks;
 
-	if (seg > 0 && seg < FS_MAXSPLITS)
+	// Patch 270, Stage 2: and not in a lobby.  SV_PBGet grew the read-side gate
+	// but these two tables are indexed directly, so gating only the accessor
+	// left the SPLIT and CHECKPOINT deltas still being taken against whatever
+	// the host's best.pb happened to hold -- a running "+2.31" against a
+	// stranger's ghost, on every stage boundary, which is the same wrong
+	// number the finish card was fixed not to show.
+	if (seg > 0 && seg < FS_MAXSPLITS && !Lobby_NoPB())
 	{
 		pbs = run_pb_split[e.run_t_track * FS_MAXSPLITS + seg];
 		if (pbs > 0)
@@ -4280,7 +4881,10 @@ void(entity e, float cpn, float ticks) SV_TimerCheckpoint =
 
 	// Full-track runs only, matching run_pb_split: a stage run reaches a gate
 	// with a clock that started somewhere else, so the comparison is meaningless.
-	if (e.run_t_startseg == 0 && cpn > 0 && cpn < FS_MAXCPS)
+	// Patch 270, Stage 2: and not in a lobby -- the twin of the split gate a few
+	// lines up, and for the same reason.  Both tables are read directly here
+	// rather than through SV_PBGet, so the accessor's gate does not cover them.
+	if (e.run_t_startseg == 0 && cpn > 0 && cpn < FS_MAXCPS && !Lobby_NoPB())
 	{
 		pbc = run_pb_cp[e.run_t_track * FS_MAXCPS + cpn];
 		if (pbc > 0)
@@ -4570,6 +5174,7 @@ void(entity e) SV_TimerFrame =
 	local float bhopz, bhopstate, bhopdirty, bhopcheat;
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local vector p, lastp;
+	local vector mn, mx;            // build 47: the hull the ruleset tests with
 
 	/*
 	  FIRST, and above the zone_count guard on purpose.
@@ -4659,6 +5264,16 @@ void(entity e) SV_TimerFrame =
 	p = e.origin;
 	lastp = e.run_t_lastorg;
 
+	/*
+	  Build 47.  Hoisted rather than fetched per zone: SV_RunHullMaxs is a
+	  branch and this loop runs once per zone per player per tick.  e.mins/e.maxs
+	  are the LIVE post-move hull here -- the engine writes pmove's back onto the
+	  edict before PlayerPostThink -- which is what makes run_zone_hull_live 1
+	  possible at all, and also why it is not the default.
+	*/
+	mn = SV_RunHullMins(e);
+	mx = SV_RunHullMaxs(e);
+
 	az = ez = cp = -1;
 	azpri = ezpri = 0;
 	cancel = FALSE;
@@ -4672,21 +5287,21 @@ void(entity e) SV_TimerFrame =
 
 		if (ty == ZONE_CANCEL)
 		{
-			if (SV_ZoneHit(z, lastp, p))
+			if (SV_ZoneHit(z, lastp, p, mn, mx))
 				cancel = TRUE;
 			continue;
 		}
 		if (ty == ZONE_CHECKPOINT)
 		{
 			if (cp < 0)
-				if (SV_ZoneHit(z, lastp, p))
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
 					cp = z;
 			continue;
 		}
 		if (ty == ZONE_END)
 		{
 			if (ezpri < 2)
-				if (SV_ZoneHit(z, lastp, p))
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
 				{
 					ez = z;
 					ezpri = 2;
@@ -4699,8 +5314,18 @@ void(entity e) SV_TimerFrame =
 		  A START outranks a STAGE for arming: standing in both means you are
 		  at the map start, not mid-route.  Equal ranks keep the first, which
 		  is table order and therefore segment order.
+
+		  BUILD 47: STILL THE POINT, at run_zone_hull 1, and that is the
+		  load-bearing half of the change rather than an oversight.  az drives
+		  SV_TimerTryArm, which CANCELS a running attempt -- firing that a
+		  hull-width early is a regression with no upside, and the request was
+		  for the clock to start later, not for the run to be cancellable from
+		  further away.  It is also the only test that runs for every START and
+		  STAGE zone every tick, so keeping it a point test keeps the expensive
+		  narrow phase out of the common path.  run_zone_hull 2 moves it, so
+		  the claim is falsifiable in one map load.
 		*/
-		if (Zone_PointInside(z, p))
+		if (SV_ZoneOcc(z, p, mn, mx))
 		{
 			if (ty == ZONE_START)
 			{
@@ -4723,7 +5348,7 @@ void(entity e) SV_TimerFrame =
 		if (ty == ZONE_STAGE)
 		{
 			if (ezpri < 1)
-				if (SV_ZoneHit(z, lastp, p))
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
 				{
 					ez = z;
 					ezpri = 1;
@@ -4775,7 +5400,7 @@ void(entity e) SV_TimerFrame =
 	{
 		if (e.run_t_pendarm >= 0)
 		{
-			if (!Zone_PointInside(e.run_t_pendarm, p))
+			if (!SV_ZoneIn(e.run_t_pendarm, p, mn, mx))
 			{
 				SV_TimerArm(e, e.run_t_pendarm);
 
@@ -4808,7 +5433,20 @@ void(entity e) SV_TimerFrame =
 	{
 		if (e.run_t_armzone >= 0)
 		{
-			if (!Zone_PointInside(e.run_t_armzone, p))
+			/*
+			  BUILD 47: THE RUN START, and the line the request was about.
+
+			  "Only start the timer if your HULL leaves the start zone, not
+			  center point."  At run_zone_hull 1 this is the hull test, so the
+			  clock starts once your whole body is clear of the box rather than
+			  once your feet are -- which is what Source's trigger does and
+			  therefore what the mapper drew the box expecting.
+
+			  Strictly later than build 46, never earlier: point-inside implies
+			  hull-inside, so this cannot fire before the arm that set
+			  run_t_armzone.
+			*/
+			if (!SV_ZoneIn(e.run_t_armzone, p, mn, mx))
 				SV_TimerStart(e);
 		}
 	}
@@ -4888,10 +5526,7 @@ void(entity e) SV_TimerFrame =
 		/*
 		  TWO TESTS OF ONE BOX, and needing both is the whole of the fix above.
 
-		    sin   the point ENDS this tick inside it.  This is the run start's
-		          own test (`!Zone_PointInside(run_t_armzone, p)` at 1 above), so
-		          the stage arm and the run arm cannot disagree about what
-		          leaving a box means.
+		    sin   OCCUPANCY: the point ends this tick inside it.
 		    shit  this tick's MOVEMENT touched it.  True on the crossing tick by
 		          construction, because that swept test is what fired the event
 		          that opened this stage in the first place.
@@ -4900,12 +5535,38 @@ void(entity e) SV_TimerFrame =
 		  ended outside -- and that state is neither an entry nor an exit.  The
 		  machine waits one tick rather than guessing, which is exactly what the
 		  spurious `restart` a tick after every `stage` was.
+
+		  BUILD 47 SPLIT THESE TWO ACROSS THE HULL RULE, AND THE ASYMMETRY IS
+		  DELIBERATE.  sin is an occupancy question (SV_ZoneOcc, a point test at
+		  level 1); shit is a touch question (SV_ZoneHit, hulled).  The machine's
+		  invariant `sin implies shit` survives either pairing, because every
+		  swept test in this file accepts on its endpoint and Zone_BoxSwept's
+		  probe hexagon contains the endpoint rect by construction.
+
+		  WHAT A HULLED sin WOULD BREAK, since it is not obvious.  Cross a
+		  one-unit stage plane falling at 30 u/tick.  The hull-inside window in
+		  p_z is [bottom-62, top], sixty-three units tall, so sin would stay TRUE
+		  for two to four ticks AFTER the plane -- and the `else if (hold)` arm
+		  below would then fire SV_StageStart from where the hull finally cleared
+		  instead of from the plane.  Every flown-through stage boundary on every
+		  staged map would silently switch from build 42's plane-to-plane
+		  measurement to exit-from-box, ~45 ms shorter, contradicting build 43's
+		  "A BOUNDARY YOU FLY THROUGH NEVER REACHES HERE".  Nobody asked for that,
+		  so it lives behind run_zone_hull 2 where it can be measured.
+
+		  shit MUST follow the event test above and not be left a point sweep:
+		  the "true on the crossing tick by construction" clause is a COUPLING to
+		  the ZONE_STAGE arm in the scan loop.  Hull one and not the other and an
+		  event could fire on a tick where shit is FALSE, sending the machine down
+		  the disarm path -- the outcome would still be right, but the sentence
+		  above would be a lie, and this file's failure mode is comments that
+		  stopped being true.
 		*/
 		sin = shit = FALSE;
 		if (sz >= 0)
 		{
-			sin  = Zone_PointInside(sz, p);
-			shit = SV_ZoneHit(sz, lastp, p);
+			sin  = SV_ZoneOcc(sz, p, mn, mx);
+			shit = SV_ZoneHit(sz, lastp, p, mn, mx);
 		}
 
 		if (e.run_st_armed)
@@ -5092,20 +5753,17 @@ void(entity e) SV_StageStat =
 {
 	local float w;
 
-	w = 0;
-	if (e.run_st_armed)  w = w | SF_ARMED;
-	if (e.run_st_jump)   w = w | SF_JUMP;
-	if (e.run_st_ramp)   w = w | SF_RAMP;
-	if (e.run_st_dirty)  w = w | SF_DIRTY;
-	if (e.run_st_ghost)  w = w | SF_GHOST;
-	// Build 44.  SF_DIRTY is still the umbrella and still the only bit any filter
-	// reads; these two say WHY, which is the whole of what the report asked for
-	// one level up.
-	if (e.run_st_stitch) w = w | SF_STITCH;
-	if (e.run_st_cheat)  w = w | SF_CHEAT;
+	// BUILD 48: the pack moved to SV_StageWord, beside SV_StageClose, so that the
+	// per-tick stat and the close report cannot drift apart.  This function is now
+	// only the two things that are true HERE and not there.
+	w = SV_StageWord(e);
 
 	// Nothing is open, so nothing is true about it.  Without this the last
 	// stage's word would sit on the HUD through the finish and into the next arm.
+	//
+	// BUILD 48: and zero now MEANS that, rather than merely looking like a clean
+	// stage -- SV_StageWord always sets SF_KNOWN, so the only zero on the wire is
+	// this one, and every reader tests that bit before believing anything else.
 	if (e.run_st_seg < 0)
 		w = 0;
 
@@ -5147,6 +5805,22 @@ void() SV_TimerMapInit =
 	// Latched per map rather than read per zone per tick: this is inside the
 	// hottest loop the server runs.
 	run_t_swept = cvar("run_zone_swept");
+
+	// Build 47.  Latched for the same reason, and MAP-LATCHED for a second one:
+	// an A/B has to be a `map` apart so the ruleset cannot change underneath a
+	// run in progress.
+	run_t_hull     = cvar("run_zone_hull");
+	run_t_hullevt  = (run_t_hull >= 1);
+	run_t_hullocc  = (run_t_hull >= 2);
+	run_t_hulllive = cvar("run_zone_hull_live");
+
+	/*
+	  Published for the same reason run_prestrafe_time is: the ruleset is a
+	  SERVER decision and the client draws the zones.  zone_list prints where the
+	  trigger actually is, and reading that off a client cvar would let the two
+	  sides disagree about a boundary only one of them can see.
+	*/
+	localcmd(sprintf("serverinfo run_zone_hull %g\n", run_t_hull));
 
 	// Patch 224 publishes the exact resolved mode before gamecode starts.  Read
 	// that answer, not sv_gamemode (which may be empty/auto) or the map prefix.
@@ -5241,21 +5915,34 @@ void() SV_TimerMapInit =
 	  are read inside per-player, per-tick code.  Latched per map rather than
 	  read live, so an A/B is a `map` apart and cannot change under a live run.
 
-	  REGISTERED HERE AND NOT IN worldspawn, and that is not tidiness -- it is
-	  the only place it works.  StartFrame is called BEFORE the map's entities
-	  exist (SV_EntityReport's own comment in sv_main.qc says so), and StartFrame
-	  calls SV_ZoneFrame, which calls this.  So this function runs BEFORE
-	  worldspawn on every map load.  Reading an unregistered cvar in FTE creates
-	  it as the empty string, and registercvar then declines to overwrite a cvar
-	  that already exists -- so a registercvar in worldspawn would arrive too
-	  late and leave both of these reading "", i.e. 0, i.e. the feature silently
-	  off with `(default)` printed next to it.
+	  REGISTERED HERE AND NOT IN worldspawn.
 
-	  Found exactly that way: the first verification run reported
-	  `"run_starthop_strict" is "" (default)` while run_starthop, which is read at
-	  runtime instead, read 1.  run_prestrafe_time above already carries a
-	  fallback for the same reason ("csprogs registers the cvar; we may run
-	  first"); this is the same trap wearing a different hat.
+	  BUILD 47 CHANGED THE ORDERING THIS PARAGRAPH USED TO REST ON, so what it
+	  says has changed with it.  What it said, and what was true through build
+	  46: StartFrame is called BEFORE the map's entities exist (SV_EntityReport's
+	  own comment in sv_main.qc says so), StartFrame called SV_ZoneFrame
+	  unconditionally, and SV_ZoneFrame called this -- so this function ran
+	  BEFORE worldspawn on every map load, and a registercvar in worldspawn would
+	  arrive after the cvar() reads below had already created the names as the
+	  empty string.  registercvar declines to overwrite an existing cvar, so the
+	  defaults never landed and the features sat silently off with `(default)`
+	  printed beside them.  Found exactly that way: the first verification run
+	  reported `"run_starthop_strict" is "" (default)` while run_starthop, read at
+	  runtime instead, read 1.
+
+	  That ordering was ALSO the legacy-BSP zone bug -- the same early call meant
+	  find() ran before the trigger_momentum_timer_* entities existed, so 32 maps
+	  loaded zero zones and never timed.  Build 47 gates SV_ZoneFrame on
+	  zone_entsready, which the post-worldspawn block in StartFrame sets, so this
+	  function now runs AFTER worldspawn rather than before it.
+
+	  The registrations stay here regardless, and are still the safe side of the
+	  trap: this is the first thing that READS them either way, and registering
+	  next to the read is what makes that unarguable.  Moving them into worldspawn
+	  would work today and silently break again the next time something upstream
+	  reads one of these names early.  run_prestrafe_time above carries a fallback
+	  for the same family of reason ("csprogs registers the cvar; we may run
+	  first").
 	*/
 	/*
 	  BUILD 46: BEFORE THE REGISTRATIONS, for the reason the trap above is about
@@ -5277,6 +5964,8 @@ void() SV_TimerMapInit =
 	registercvar("run_stagearm", "1");
 	registercvar("run_stageclean", "1");
 	registercvar("run_stagehop", "1");
+	registercvar("run_stageghost", "1");      // build 48
+	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
 	registercvar("run_cheatwatch", "1");
 	run_t_startstrict = cvar("run_starthop_strict");
@@ -5286,6 +5975,7 @@ void() SV_TimerMapInit =
 	run_t_stagearm    = cvar("run_stagearm");
 	run_t_stageclean  = cvar("run_stageclean");
 	run_t_stagehop    = cvar("run_stagehop");
+	run_t_stageghost  = cvar("run_stageghost");   // build 48
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
 
@@ -5554,6 +6244,18 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage class: stitch %g cheat %g\n",
 	               e.run_st_stitch ? 1 : 0, e.run_st_cheat ? 1 : 0));
+	/*
+	  BUILD 48 VERIFICATION: the close report and the PB latch, which nothing in
+	  this function printed.  These five are what stats 85..89 carry; the client
+	  side of the timer command prints its own reading of the same five (cl stats:
+	  in cl_main.qc) and the two lines are meant to be diffed -- a value that is
+	  real here and 0 there is a stat that never reached the wire.  rec is
+	  monotonic and counts refused closes too.  A diagnostic, so no cvar.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        stage close: rec %g seg %g word %g ticks %g  pbwas %g\n",
+	               e.run_st_endrec, e.run_st_endseg, e.run_st_endword,
+	               e.run_st_endticks, e.run_t_pbwas));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage rules: fail %g arm %g clean %g hop %g\n",
 	               run_t_stagefail, run_t_stagearm, run_t_stageclean, run_t_stagehop));

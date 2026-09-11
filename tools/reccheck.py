@@ -932,11 +932,34 @@ def check_view(path, rec_report=None):
         r.info["hid"] = head["hid"].strip()
 
     frames = []
+    view_ghosts = []        # (lineno, state, cltime, ticks) -- the sidecar's ghost edges
     for lineno in range(i, len(lines)):
         s = lines[lineno].strip()
         if not s:
             continue
         tok = s.split()
+        if tok[0] == "ghost":
+            # The sidecar's copy of the .rec's build-30 ghost edge: `ghost <0|1>
+            # <cltime> <ticks>`, written by the client when the camera detaches
+            # and re-attaches.  It carries no angles, so it is a marker row and
+            # not a frame; a checker that only knew frames reported every ghosted
+            # run's .view as "4 columns, expected 6" (first seen on the build-48
+            # verification, b48c, 2026-09-09).  Counted and sanity-checked here;
+            # the windows themselves are judged on the .rec side.
+            if len(tok) != 4:
+                r.fault("line %d: .view 'ghost' takes 3 fields, has %d" % (lineno + 1, len(tok) - 1))
+                continue
+            try:
+                gst, gct, gtk = int(tok[1]), float(tok[2]), float(tok[3])
+            except ValueError:
+                r.fault("line %d: .view 'ghost' has a non-numeric field" % (lineno + 1))
+                continue
+            if gst not in (0, 1):
+                r.fault("line %d: .view 'ghost' state %r is not 0 or 1" % (lineno + 1, tok[1]))
+            elif view_ghosts and view_ghosts[-1][1] == gst:
+                r.fault("line %d: .view 'ghost %d' repeats the previous edge's state" % (lineno + 1, gst))
+            view_ghosts.append((lineno + 1, gst, gct, gtk))
+            continue
         if len(tok) != 6:
             r.fault("line %d has %d columns, expected 6" % (lineno + 1, len(tok)))
             continue

@@ -73,7 +73,9 @@ float  rec_sb_bpath;
 float  rec_sb_bowner;
 float  rec_sb_bdate;
 
-float  rec_sb_open;
+// rec_sb_open IS DECLARED IN cl_hud.qc, not here.  Build 47 moved it, for the
+// reason the block beside ui_he_open there gives: cl_watch.qc compiles before
+// this file and has to test it to know whether it may let the cursor go.
 float  rec_sb_leg;               // index into the leg table
 float  rec_sb_legbuilt;          // the leg the rows belong to; -1 = none
 float  rec_sb_filter;            // SB_F_*
@@ -1020,9 +1022,22 @@ void() Scores_Close =
 	  stopping the first is the ordinary way to use it -- and turning the cursor
 	  off there would leave the playback chrome up with no way to press anything
 	  on it.  One test, at the one place both features let go.
+
+	  BUILD 47: AND THE EDITOR, which this had always missed.  hud_edit can be
+	  opened over the board -- HUD_EditOpen refuses nothing -- and closing the
+	  board from under it took the cursor away from a panel whose whole interface
+	  is dragging.  cl_hudedit.qc has tested both of the others since it shipped;
+	  this file tested one of two and cl_watch.qc tested none.  All three now ask
+	  the same question, which is the property that was actually missing.
+
+	  BUILD 55: "all three" was already FOUR when that was written -- the
+	  results card takes the cursor too -- and this site could not test it,
+	  because ui_rs_cursor is declared at cl_results.qc:58 and that file
+	  compiles after this one.  So the card was missing from the list by
+	  construction.  The question is now asked once, in cl_hud.qc's cursor
+	  claim register, and no owner names another.
 	*/
-	if (!rec_wt_open)
-		setcursormode(FALSE);
+	UI_CursorRelease(UIC_SCORES);
 };
 
 void() Scores_Open =
@@ -1031,7 +1046,7 @@ void() Scores_Open =
 		return;
 	rec_sb_open = TRUE;
 	rec_sb_legbuilt = -1;            // re-read the folder every time it opens
-	setcursormode(TRUE, "", '0 0 0', 1);
+	UI_CursorClaim(UIC_SCORES);
 };
 
 void() Scores_Toggle =

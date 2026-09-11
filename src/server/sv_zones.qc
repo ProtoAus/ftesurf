@@ -15,10 +15,41 @@
   worldspawn.  The legacy trigger_momentum_timer_* path has to find entities,
   and worldspawn is the first entity spawned -- at that point the rest of the
   map does not exist yet.
+
+  BUILD 47: "THE FIRST SERVER FRAME" WAS NOT LATE ENOUGH, AND HAD NEVER BEEN.
+
+  StartFrame is called BEFORE the map's entity lump is spawned -- sv_main.qc's
+  own comment on the report block says so in as many words, and sv_timer.qc's
+  registercvar essay is built on the same fact.  So the load above deferred
+  itself past worldspawn's own body and landed in front of the entities anyway.
+  On surf_summer_ksf the console said it out loud and nobody read it:
+
+      zones(sv): 0 on surf_summer_ksf (none)          <- this file, FIRST
+      FTESurf: worldspawn                             <- and worldspawn after
+      zones:    12 on surf_summer_ksf (bsp entities)  <- CSQC, off the raw lump
+
+  CSQC walks the raw entity lump with getentitytoken and never needed anything
+  to be spawned, so it found all twelve; find() here matched nothing, cached
+  the empty answer under zone_loaded, and never looked again.  Net effect: on
+  every map whose zones come from BSP triggers -- 32 of the 1317 installed --
+  the cages drew and NOTHING TIMED.  The JSON paths were unaffected, which is
+  why this survived: they read a file and do not care when they run.
+
+  The fix is zone_entsready, set from the same guarded block that already knows
+  when the lump is finished (SV_RepairTargetCase and SV_EntityIOBuild are there
+  for exactly this reason).  Until it is set, SV_ZoneFrame declines to load
+  rather than loading nothing -- so the defensive `if (!zone_loaded)` calls
+  scattered through the client commands below can no longer cache an empty map
+  either.  They simply come up empty for the one frame before the lump lands.
 ===========================================================================
 */
 
 float zone_loaded;
+
+// Set by StartFrame's post-worldspawn block (sv_main.qc), and the whole of
+// what makes the deferral above actually deferred.  Cleared per map for free:
+// SSQC globals are re-initialised on every map load.
+float zone_entsready;
 
 // The stage number on a legacy trigger_momentum_timer_stage.  A VBSP entity
 // key is matched to a QC field by name, so declaring it is all it takes to
@@ -56,7 +87,28 @@ float() SV_ZoneLoadFromBsp =
 		e = world;
 		while ((e = find(e, classname, cn)))
 		{
-			Zone_AddBox(e.absmin, e.absmax, type, e.stage);
+			/*
+			  BUILD 47: DEFLATE THE ENGINE'S TOUCH EPSILON.
+
+			  absmin/absmax are not the brush.  SV_LinkEdict grows them by one
+			  unit on all six faces before storing them -- world.c:653-662,
+			  "because movement is clipped an epsilon away from an actual edge,
+			  we must fully check even when bounding boxes don't quite touch".
+			  That is a collision-system margin, not authored geometry, and it
+			  has been in every legacy zone this loader has ever built.
+
+			  It also made the two VMs disagree.  cl_zones.qc builds the drawn
+			  cage from probe.mins/maxs after setmodel, which is NOT expanded --
+			  so on the 34 legacy maps the server has been testing a box two
+			  units bigger per dimension than the client draws, and the claim at
+			  the top of this file that both VMs are "exact by construction" was
+			  only ever true of the JSON path.  The client is the one that is
+			  right; this is the side that moves.
+
+			  Deliberately its own change, landed before the hull rule, so the
+			  two effects can be told apart in an A/B.
+			*/
+			Zone_AddBox(e.absmin + '1 1 1', e.absmax - '1 1 1', type, e.stage);
 			n = n + 1;
 		}
 	}
@@ -149,6 +201,14 @@ void() SV_ZoneLoad =
 */
 void() SV_ZoneFrame =
 {
+	// BUILD 47: the entity lump first.  See the essay at the top of this file
+	// for what this cost -- without it the load ran a frame early, found no
+	// trigger_momentum_timer_* to find, and cached that.  Returning rather than
+	// loading is the point: zone_loaded stays FALSE, so the next frame gets it
+	// right instead of the map spending its life with an empty table.
+	if (!zone_entsready)
+		return;
+
 	if (!zone_loaded)
 	{
 		zone_loaded = TRUE;
@@ -302,10 +362,29 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	  to the hull) and build 7 gave trigger_teleport the same lift.  Landing with
 	  EXACTLY zero clearance is how a resting position becomes a start-solid on
 	  the next move.
+
+	  BUILD 47: THE LIFT IS NOW A FALLBACK RATHER THAN A TOLL.
+
+	  Reported as "when I !r it takes me to the ground, however when I move I
+	  lower by like 1 unit or so", and that is exactly what it was: the lift is
+	  unconditional, so every `!r` parked the player one unit in the air and the
+	  first move spent a tick falling back down.  On a timer that measures from a
+	  start box, a start position that is not the one you settle at is wrong twice
+	  over -- the fall is real physics the run did not ask for, and the energy
+	  readout is a unit of potential above the floor you are about to be on.
+
+	  The lift's REASON is still sound, so it is kept where it is needed instead
+	  of being deleted: a resting position with zero clearance can start-solid.
+	  But a tracebox already stops DIST_EPSILON short of what it hits, so the
+	  endpos is not flush against the floor to begin with, and in the ordinary
+	  case there is nothing for the lift to fix.  So: try the floor itself, and
+	  only lift if resting there actually is solid.  The failure the lift guards
+	  against is still guarded; the cost is no longer paid by every teleport that
+	  did not need it.
 	*/
 	down = dest - [0, 0, ZONE_SNAP_DROP];
 	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, self);
-	snapped = trace_endpos + '0 0 1';
+	snapped = trace_endpos;
 
 	/*
 	  DID IT ACTUALLY LAND ON ANYTHING?
@@ -326,13 +405,27 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	  The FGD's wording is "placed directly on the ground below this point IF
 	  POSSIBLE", so the fallback is the mapper's own point, unsnapped.
 	*/
-	if (dest_z - snapped_z >= ZONE_SNAP_DROP - 1)
+	// Build 47: >= ZONE_SNAP_DROP, not >= ZONE_SNAP_DROP - 1.  The old margin was
+	// carrying the lift that snapped no longer has, so the two spellings mean the
+	// same thing -- "the drop used the entire search and found nothing".  Getting
+	// this wrong by one would put agtricks back in the void, quietly.
+	if (dest_z - snapped_z >= ZONE_SNAP_DROP)
 	{
 		dprint(sprintf("zones: no floor within %g units under zone %g, using the raw destination\n",
 		               ZONE_SNAP_DROP, n));
 		return dest + '0 0 1';
 	}
 
+	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, self);
+	if (!trace_startsolid && !trace_allsolid)
+		return snapped;
+
+	// Resting exactly on the floor IS solid here -- so this is the case the
+	// unconditional lift existed for.  Take it, and re-test: a lift that is also
+	// solid means the drop found somewhere the player does not fit at all, and
+	// the mapper's own point is the better answer (the FGD's wording is "placed
+	// directly on the ground below this point IF POSSIBLE").
+	snapped = snapped + '0 0 1';
 	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, self);
 	if (trace_startsolid || trace_allsolid)
 	{
@@ -497,6 +590,211 @@ void() SV_EyeInfo =
 	       sprintf("     aim %.2f above floor, %+.2f vs eye, %.0f away, '%s'\n",
 	               aimz, hit_z - eye_z, vlen(hit - eye),
 	               (trace_ent == world) ? "world" : trace_ent.classname));
+};
+
+/*
+  run_slideinfo -- Patch 280's instrument: what the mover would see under the
+  feet, from the SERVER, where a traceline collides brush entities.  Two lines
+  per call so a log of samples reads as a table:
+
+      slide: org x y z  vel x y z  speed2d S  onground G  ducked D
+             under 'classname' skin K normal.z N frac F
+
+  onground is the FL_ONGROUND bit STAT_FS_FLAGS carries to the HUD
+  (sv_main.qc's clientstat), so it is the same bit the client reads.  skin in
+  -32..-25 means the brush wears the slide tag; with pm_slide 0 the tag is
+  still worn and still printed, which is what makes the A arm a control and
+  not a different map.  Not gated by anything.
+
+  The first line is two sprintf calls, not one: fteqcc's sprintf takes at most
+  8 arguments and the row has nine values.
+*/
+void() SV_SlideInfo =
+{
+	local vector o, v, h;
+	local string who;
+
+	o = self.origin;
+	v = self.velocity;
+	h = v;
+	h_z = 0;
+
+	traceline(o + '0 0 1', o - '0 0 16', TRUE, self);
+	who = (trace_ent == world) ? "world" : trace_ent.classname;
+
+	sprint(self, PRINT_HIGH,
+	       strcat(sprintf("^5slide^7: org %.1f %.1f %.1f  vel %.1f %.1f %.1f",
+	                      o_x, o_y, o_z, v_x, v_y, v_z),
+	              sprintf("  speed2d %.1f  onground %g  ducked %g\n",
+	                      vlen(h),
+	                      (self.flags & FL_ONGROUND) ? 1 : 0,
+	                      (self.pmove_flags & PMF_DUCKED) ? 1 : 0)));
+	sprint(self, PRINT_HIGH,
+	       sprintf("       under '%s' skin %g normal.z %.3f frac %.3f\n",
+	               who, trace_ent.skin, trace_plane_normal_z, trace_fraction));
+};
+
+/*
+===========================================================================
+  Build 54 -- ent_info: what the SERVER made of the entity the client is
+  pointing at.
+
+  The other half of cl_entview.qc.  The client can read the entity lump and
+  tell you everything the mapper authored; only this side knows what actually
+  happened to it -- which spawn function claimed it, what solidity it ended up
+  with, whether it has a touch, and what its entity-I/O outputs do.  When the
+  two disagree that IS the finding: a trigger the catch-all turned into
+  SOLID_NOT because its class is unimplemented reads identically to a working
+  one from the lump alone.
+
+  THE CLIENT SENDS A CLASSNAME AND A POINT, not an entity index, and not the
+  "*N" model string -- which was the obvious idea and does not work.
+  SV_OnEntityNoSpawnFunction CLEARS .model and .modelindex on every trigger it
+  does not implement (sv_entities.qc:5023-5030), so the one identifier both
+  sides share is gone on exactly the entities most worth asking about.  A
+  classname plus the crosshair's impact point survives that, and it also works
+  for point entities, which never had a model to match on.
+
+  A SERVER-SIDE TRACE WOULD NOT WORK EITHER, for a reason worth writing down:
+  World_ClipToEverything rejects a SOLID_TRIGGER or SOLID_BSPTRIGGER that is not
+  flagged FL_FINDABLE_NONSOLID (world.c:1918), and the server's own triggers are
+  not -- SV_BindInvisibleBrush does not set it and giving it to them would
+  change what findradius returns for gameplay code.  So the aim is done on the
+  client, against its own copies, and only the answer is asked for here.
+
+  The arguments are client-supplied, and they are used for exactly two things:
+  a find() by classname and a bbox compare.  Nothing is executed and the reply
+  goes to the asking client alone.
+===========================================================================
+*/
+string(float s) SV_SolidName =
+{
+	if (s == SOLID_NOT)         return "NOT";
+	if (s == SOLID_TRIGGER)     return "TRIGGER";
+	if (s == SOLID_BBOX)        return "BBOX";
+	if (s == SOLID_SLIDEBOX)    return "SLIDEBOX";
+	if (s == SOLID_BSP)         return "BSP";
+	if (s == SOLID_CORPSE)      return "CORPSE";
+	if (s == SOLID_BSPTRIGGER)  return "BSPTRIGGER";
+	return ftos(s);
+};
+
+/*
+  BUILD 56 -- A PER-CLIENT COOLDOWN, because this now ships to public lobbies.
+
+  Every ent_info costs one find() walk over a classname, and until this build
+  it answered as fast as a client could send it: no rate limit and no cheat
+  gate, on servers any stranger can join.  A person clicking the inspector
+  asks a few times a minute, so a quarter of a second between answers costs
+  nobody anything and caps a spamming client at four walks a second.
+
+  SILENT, deliberately.  A "slow down" reply per refused packet would move the
+  cost from the entity walk into the network, which is the opposite of the
+  point.  The field is on the asking client, not a global, so one player's
+  clicking can never delay another's.
+
+  AND IT ONLY BELIEVES A DEADLINE THAT IS AT MOST ONE COOLDOWN AWAY.  SSQC
+  `time` starts again from zero on every map load, so a deadline that survived
+  from a longer previous map would sit hours "in the future" and refuse the
+  command for the whole of this one -- silently, which would look exactly like
+  the inspector having broken.  Anything further ahead than the cooldown itself
+  is stale and is ignored.
+*/
+#define SV_ENTINFO_COOLDOWN 0.25
+.float sv_entinfo_next;         // earliest `time` this client may ask again
+
+void() SV_EntInfo =
+{
+	local entity e, best;
+	local vector p;
+	local string cn;
+	local float  bestd, d, n;
+
+	if (self.sv_entinfo_next > time &&
+	    self.sv_entinfo_next <= time + SV_ENTINFO_COOLDOWN)
+		return;
+	self.sv_entinfo_next = time + SV_ENTINFO_COOLDOWN;
+
+	if (argv(1) == "")
+	{
+		sprint(self, PRINT_HIGH, "^1ent_info^7: no classname given\n");
+		return;
+	}
+
+	cn = argv(1);
+	p  = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+
+	/*
+	  Containment first, nearest-origin second.  A brush entity's origin is
+	  almost always '0 0 0' -- VBSP bakes brush geometry in world coordinates and
+	  subtracts an origin only for the things that rotate -- so origin alone
+	  would tie every func_brush on the map at once.  The bbox is the thing that
+	  actually distinguishes them.
+	*/
+	best = world;
+	bestd = 0;
+	n = 0;
+	e = find(world, classname, cn);
+	while (e)
+	{
+		n = n + 1;
+		if (p_x >= e.absmin_x && p_x <= e.absmax_x &&
+		    p_y >= e.absmin_y && p_y <= e.absmax_y &&
+		    p_z >= e.absmin_z && p_z <= e.absmax_z)
+		{
+			best = e;
+			break;
+		}
+		d = vlen(e.origin - p);
+		if (best == world || d < bestd)
+		{
+			bestd = d;
+			best  = e;
+		}
+		e = find(e, classname, cn);
+	}
+
+	if (best == world)
+	{
+		/*
+		  Not a failure to report -- it is the most useful answer this command
+		  gives.  The catch-all removes a point entity outright when it has no
+		  geometry to preserve (sv_entities.qc:5010-5015), so "the lump has it
+		  and the server does not" is exactly what an unimplemented class looks
+		  like from here.
+		*/
+		sprint(self, PRINT_HIGH,
+		       sprintf("^3ent_info^7: '%s' is in the map but NOT on the server -- removed at spawn (unimplemented class)\n", cn));
+		return;
+	}
+
+	sprint(self, PRINT_HIGH,
+	       sprintf("^5ent_info^7: '%s' solid %s  model '%s'  modelindex %g\n",
+	               best.classname, SV_SolidName(best.solid),
+	               (best.model == "") ? "-" : best.model, best.modelindex));
+	sprint(self, PRINT_HIGH,
+	       sprintf("          targetname '%s'  target '%s'  touch %s  think %s  (%g of this class)\n",
+	               best.targetname, best.target,
+	               best.touch ? "yes" : "no",
+	               best.think ? "yes" : "no", n));
+
+	/*
+	  And what it DOES.  The output chain was parsed at map load and is sitting
+	  on the entity already (SV_EntityIOBuild, sv_entities.qc:1939), so this is a
+	  walk and not a re-parse.  This is the line the whole feature exists for:
+	  "which functions each trigger touches and what it does".
+	*/
+	e = best.vbsp_io_out;
+	if (!e)
+		sprint(self, PRINT_HIGH, "          no entity-I/O outputs\n");
+	while (e)
+	{
+		sprint(self, PRINT_HIGH,
+		       sprintf("          %s -> %s . %s (%s) delay %g x%g\n",
+		               e.vbsp_io_name, e.vbsp_io_target, e.vbsp_io_input,
+		               e.vbsp_io_param, e.vbsp_io_delay, e.vbsp_io_times));
+		e = e.vbsp_io_next;
+	}
 };
 
 /*
@@ -674,7 +972,7 @@ void() SV_ZoneDests =
 {
 	local float z, yaw, haveyaw;
 	local vector c, old, dest;
-	local string kind;
+	local string kind, state;
 
 	if (!zone_loaded)
 		SV_ZoneFrame();
@@ -729,13 +1027,35 @@ void() SV_ZoneDests =
 		  reset that will aim you north and a row reading `--` is a reset that
 		  cannot aim you at all.
 		*/
+		/*
+		  BUILD 47: THREE STATES, BECAUSE "OUTSIDE" STOPPED BEING A BOOLEAN.
+
+		  Once leaving means "the hull clears the box", a destination whose
+		  POINT is outside the ring but whose HULL still overlaps it is fine --
+		  the clock will not start until you walk out of the band.  The old
+		  boolean would cry OUTSIDE on a map with no problem at all.
+
+		    (blank)  the point is in the ring; nothing to say
+		    edge     point out, hull still overlapping -- fine under
+		             run_zone_hull 1, a genuine wart under 0
+		    OUTSIDE  clear of the box entirely, under either rule
+
+		  Deliberately reports against the SHIPPED hull rather than the live one:
+		  this is a static map audit, and there is no player ducking in it.
+		*/
+		if (Zone_PointInside(z, dest))
+			state = "";
+		else if (Zone_BoxInside(z, dest, PM_HULL_MINS, PM_HULL_MAXS))
+			state = "^3edge^7";
+		else
+			state = "^1OUTSIDE^7";
+
 		sprint(self, PRINT_HIGH,
 		       sprintf("  %2g %-10s track %g seg %g  %-24s  ",
 		               z, Zone_TypeName(zone_type[z]), zone_track[z], zone_seg[z], kind));
 		sprint(self, PRINT_HIGH,
 		       sprintf("moved %.0f  yaw %-4s %s\n",
-		               vlen(dest - old), haveyaw ? ftos(yaw) : "--",
-		               Zone_PointInside(z, dest) ? "" : "^1OUTSIDE^7"));
+		               vlen(dest - old), haveyaw ? ftos(yaw) : "--", state));
 	}
 };
 

@@ -2978,7 +2978,31 @@ void() Watch_Stop =
 	// that a restore that faults says so with the stop line still to come.
 	Watch_SeqRestore();
 
-	setcursormode(FALSE);
+	/*
+	  BUILD 47: ONLY IF NOTHING ELSE STILL WANTS THE CURSOR.
+
+	  This was an unconditional release and it was not carelessness -- it was
+	  unwritable.  rec_sb_open lived in cl_scores.qc, which compiles AFTER this
+	  file, so the test could not be spelled here at all.  Build 47 moved that
+	  declaration up to cl_hud.qc, beside ui_he_open, which is the same thing
+	  done for the same reason; see the block there.
+
+	  The sequence it cost is the one Scores_Close calls ordinary: open the
+	  board, click a row to watch it, stop the replay -- and the cursor went back
+	  to the game underneath a board that was still drawn, with nothing able to
+	  press anything on it.  The only way out was to guess that ESC still worked.
+
+	  All three panels now ask the same question at the one place each lets go.
+
+	  BUILD 55: there were FOUR by then, and this site could not test the
+	  fourth either.  ui_rs_cursor (the results card) is declared at
+	  cl_results.qc:58, which also compiles after this file -- so the same
+	  constraint that made rec_sb_open unwritable in build 47 was still hiding
+	  the card.  Moving one more declaration up would have worked once more and
+	  then broken again on the fifth owner, so the question itself moved
+	  instead: see the cursor claim register in cl_hud.qc.
+	*/
+	UI_CursorRelease(UIC_WATCH);
 	localcmd("cmd rec_watch 0\n");
 	print("replay: stopped\n");
 };
@@ -3094,7 +3118,7 @@ float(string path) Watch_Open =
 	// Build 43: so the first Watch_Camera publishes immediately rather than
 	// waiting out a throttle window seeded by the last replay this session.
 	PVS_Forget();
-	setcursormode(TRUE, "", '0 0 0', 1);
+	UI_CursorClaim(UIC_WATCH);
 
 	print(sprintf("replay: %s  %s  %s  %g samples\n",
 	              rec_wt_path, rec_wt_owner,

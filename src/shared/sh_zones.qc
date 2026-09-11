@@ -335,10 +335,52 @@ void(float z) Zone_Finish =
   Not used by the renderer.  It is here because it is the timer's whole
   broad-phase-plus-narrow-phase and belongs with the data it reads.
 */
-float(float z, vector p) Zone_PointInside =
+/*
+  PNPOLY over zone z's ring, x/y only.  No Z slab, no AABB -- the callers own
+  those.
+
+  BUILD 47 lifted this out of Zone_PointInside unchanged so the file has ONE
+  crossing-number test instead of three.  Zone_BoxInside and Zone_RingHitsProbe
+  both need exactly this question asked of exactly this ring, and the way this
+  file has previously acquired a second speller of one rule (see the note on
+  Zone_TrackSegs) is by writing the loop out again.
+
+  Cast a ray in -x from (px,py) and count edge crossings; odd means inside.
+
+  The `(a_y > py) != (b_y > py)` guard does two jobs: it selects only the edges
+  the ray can cross, and it guarantees b_y != a_y, so the division below cannot
+  be by zero.  A horizontal edge is never selected, which is what makes the test
+  well defined on the axis-aligned quads that are most of this data.
+*/
+float(float z, float px, float py) Zone_XYInRing =
 {
 	local float i, n, first, inside, xint;
-	local vector a, b, mn, mx;
+	local vector a, b;
+
+	first = zone_first[z];
+	n = zone_npts[z];
+	if (n < 3)
+		return FALSE;
+
+	inside = FALSE;
+	for (i = 0; i < n; i = i + 1)
+	{
+		a = zone_pt[first + i];
+		b = zone_pt[first + ((i + 1) % n)];
+
+		if ((a_y > py) != (b_y > py))
+		{
+			xint = a_x + (py - a_y) * (b_x - a_x) / (b_y - a_y);
+			if (px < xint)
+				inside = !inside;
+		}
+	}
+	return inside;
+};
+
+float(float z, vector p) Zone_PointInside =
+{
+	local vector mn, mx;
 
 	if (z < 0 || z >= zone_count)
 		return FALSE;
@@ -363,34 +405,7 @@ float(float z, vector p) Zone_PointInside =
 	if (p_x < mn_x || p_x > mx_x || p_y < mn_y || p_y > mx_y)
 		return FALSE;
 
-	first = zone_first[z];
-	n = zone_npts[z];
-	if (n < 3)
-		return FALSE;
-
-	/*
-	  Cast a ray in -x from p and count edge crossings; odd means inside.
-
-	  The `(a_y > p_y) != (b_y > p_y)` guard does two jobs: it selects only the
-	  edges the ray can cross, and it guarantees b_y != a_y, so the division
-	  below cannot be by zero.  A horizontal edge is never selected, which is
-	  what makes the test well defined on the axis-aligned quads that are most
-	  of this data.
-	*/
-	inside = FALSE;
-	for (i = 0; i < n; i = i + 1)
-	{
-		a = zone_pt[first + i];
-		b = zone_pt[first + ((i + 1) % n)];
-
-		if ((a_y > p_y) != (b_y > p_y))
-		{
-			xint = a_x + (p_y - a_y) * (b_x - a_x) / (b_y - a_y);
-			if (p_x < xint)
-				inside = !inside;
-		}
-	}
-	return inside;
+	return Zone_XYInRing(z, p_x, p_y);
 };
 
 /*
@@ -420,9 +435,49 @@ float(float z, vector p) Zone_PointInside =
   a crossing-number test now.  Cost is four cross products per edge against
   PNPOLY's one division, on rings that are four points 80% of the time.
 */
+/*
+  Clip the segment a..b to the height slab [lo, hi].  FALSE if it never enters;
+  otherwise the clipped ends land in zone_clip_a / zone_clip_b.
+
+  BUILD 47 lifted this out of Zone_SegmentInside unchanged, for the same reason
+  Zone_XYInRing was lifted out of Zone_PointInside: Zone_BoxSwept needs the same
+  clip against a DIFFERENT slab (the hull-expanded one), and two spellers of one
+  rule is how this file has gone wrong before.  Taking lo/hi as parameters rather
+  than reading zone_bottom/zone_top is the whole of the generalisation.
+*/
+vector zone_clip_a, zone_clip_b;
+
+float(vector a, vector b, float lo, float hi) Zone_ClipZ =
+{
+	local float dz, ta, tb, t0, t1, tmp;
+
+	t0 = 0;
+	t1 = 1;
+	dz = b_z - a_z;
+	if (dz == 0)
+	{
+		if (a_z < lo || a_z > hi)
+			return FALSE;
+	}
+	else
+	{
+		ta = (lo - a_z) / dz;
+		tb = (hi - a_z) / dz;
+		if (ta > tb) { tmp = ta; ta = tb; tb = tmp; }
+		if (ta > t0) t0 = ta;
+		if (tb < t1) t1 = tb;
+		if (t0 > t1)
+			return FALSE;
+	}
+
+	zone_clip_a = a + (b - a) * t0;
+	zone_clip_b = a + (b - a) * t1;
+	return TRUE;
+};
+
 float(float z, vector a, vector b) Zone_SegmentInside =
 {
-	local float i, n, first, dz, ta, tb, t0, t1, tmp;
+	local float i, n, first;
 	local float d1, d2, d3, d4;
 	local vector p, q, e0, e1, mn, mx;
 
@@ -434,27 +489,10 @@ float(float z, vector a, vector b) Zone_SegmentInside =
 		return FALSE;
 
 	/* --- clip to the height slab ------------------------------------- */
-	t0 = 0;
-	t1 = 1;
-	dz = b_z - a_z;
-	if (dz == 0)
-	{
-		if (a_z < zone_bottom[z] || a_z > zone_top[z])
-			return FALSE;
-	}
-	else
-	{
-		ta = (zone_bottom[z] - a_z) / dz;
-		tb = (zone_top[z]    - a_z) / dz;
-		if (ta > tb) { tmp = ta; ta = tb; tb = tmp; }
-		if (ta > t0) t0 = ta;
-		if (tb < t1) t1 = tb;
-		if (t0 > t1)
-			return FALSE;
-	}
-
-	p = a + (b - a) * t0;
-	q = a + (b - a) * t1;
+	if (!Zone_ClipZ(a, b, zone_bottom[z], zone_top[z]))
+		return FALSE;
+	p = zone_clip_a;
+	q = zone_clip_b;
 
 	/* --- reject on the ring's own x/y bounds -------------------------- */
 	mn = zone_zmins[z];
@@ -487,6 +525,306 @@ float(float z, vector a, vector b) Zone_SegmentInside =
 				return TRUE;
 	}
 	return FALSE;
+};
+
+/*
+===========================================================================
+  BUILD 47 -- THE HULL TESTS.
+
+  Momentum's maps were authored for Source, where a trigger fires on an
+  AABB-vs-AABB touch of the player hull -- 32x32x62 in Momentum and therefore
+  here (sh_defs.qc:36-39), 32x32x72 in stock Source/CS:S -- linked along the
+  swept path of the move.  A mapper drawing a one-unit finish plane across a 3456-unit
+  corridor is relying on exactly that.  Testing it with a POINT sampled at
+  66.67 Hz is a misreading of the same geometry, and Zone_SegmentInside above
+  is the workaround the misreading needed -- read its essay again with that in
+  mind.
+
+  The reading only holds if our hull and origin convention match Source's, and
+  they do: origin AT THE FEET (sh_defs.qc), hull taken from Momentum's own
+  g_ViewVectorsMom.  So this is not inflating the mapper's geometry; it is
+  applying the collision volume the geometry was authored against.
+
+  THE SEPARATION THAT MAKES IT CHEAP.  A hull is an AABB and a zone is a
+  prism, so the test factors exactly:
+
+      hull(p, mins, maxs) overlaps zone z
+        <=>  p_z in [bottom - maxs_z, top - mins_z]        (a POINT test on p_z)
+        AND  rect(p+mins, p+maxs) overlaps ring(z)         (a 2D area test)
+
+  Two things fall out of that, and both matter:
+
+    * Z NEVER NEEDS SAMPLING.  It is a slab test on an EXPANDED slab, and the
+      swept version is the slab CLIP that Zone_ClipZ already does.  Fall speed
+      is irrelevant -- the Z half is exact at any speed.
+
+    * WITH THE ORIGIN AT THE FEET, mins_z IS 0, so the slab grows DOWNWARD
+      ONLY: [bottom - 62, top], sixty-two units lower and not one unit higher.
+      Falling through a floor plane therefore answers exactly what the point
+      test answered, bit for bit.  Only a plane approached from BELOW moves.
+      "A one-unit plane becomes 63 units tall" is true in one direction and
+      false in the one surfers actually use.
+
+  A hull test is a point test against the Minkowski sum ring (+) rect.  We do
+  not precompute that offset polygon -- offsetting a non-convex ring self-
+  intersects and needs a boolean union and a variable point count, and 1029 of
+  10130 shipped regions are non-convex -- but naming it is what tells you where
+  the trigger really is, which is what zone_list now prints.
+===========================================================================
+*/
+
+/*
+  The scratch probe ring.  A fixed global because QC has no local arrays, and
+  structure-of-arrays is this file's existing shape.
+
+  NOT REENTRANT, and it does not need to be: Zone_RingHitsProbe calls only
+  Zone_XYInProbe and Zone_XYInRing, neither of which rebuilds the probe, and
+  nothing that builds a probe is reachable from inside one.  That is a fact
+  about today's call graph rather than something enforced, so if you ever make
+  a zone test call another zone test, read this line first.
+*/
+#define ZONE_PROBE_MAX 8
+vector zone_pv[ZONE_PROBE_MAX];
+float  zone_pn;
+
+// PNPOLY over the scratch probe.  Zone_XYInRing's loop, over the other array.
+float(float px, float py) Zone_XYInProbe =
+{
+	local float j, inside;
+	local vector a, b;
+
+	if (zone_pn < 3)
+		return FALSE;
+
+	inside = FALSE;
+	for (j = 0; j < zone_pn; j = j + 1)
+	{
+		a = zone_pv[j];
+		b = zone_pv[(j + 1) % zone_pn];
+
+		if ((a_y > py) != (b_y > py))
+		{
+			if (px < a_x + (py - a_y) * (b_x - a_x) / (b_y - a_y))
+				inside = !inside;
+		}
+	}
+	return inside;
+};
+
+void(vector p, vector mins, vector maxs) Zone_ProbeBox =
+{
+	zone_pv[0] = [p_x + mins_x, p_y + mins_y, 0];
+	zone_pv[1] = [p_x + maxs_x, p_y + mins_y, 0];
+	zone_pv[2] = [p_x + maxs_x, p_y + maxs_y, 0];
+	zone_pv[3] = [p_x + mins_x, p_y + maxs_y, 0];
+	zone_pn = 4;
+};
+
+/*
+  THE SWEPT RECT IS A HEXAGON, and it has a closed form -- so this needs no
+  convex-hull code and no sampling.
+
+  The hull of rect(a) and rect(b) is the two rects joined along whichever pair
+  of corners is the silhouette for the direction of travel, and the signs of
+  d = b - a pick that out in four cases.  All four were checked by hand: each
+  traces a convex boundary in order and encloses both rects.  Only the ORDER
+  matters, not the winding -- crossing-number and orientation tests need no
+  convention, which is the same reason Zone_PointInside is a PNPOLY.
+
+  Degenerates gracefully.  d == 0 duplicates two vertices, giving two zero-
+  length edges: PNPOLY never selects them (a zero-length edge is horizontal)
+  and the orientation test never fires on them (d3 == d4 == 0).  An axis-
+  aligned d makes two vertices collinear, which nothing here cares about.
+*/
+void(vector a, vector b, vector mins, vector maxs) Zone_ProbeSweep =
+{
+	local float dx, dy;
+	local vector c0, c1, c2, c3;
+
+	c0 = [mins_x, mins_y, 0];
+	c1 = [maxs_x, mins_y, 0];
+	c2 = [maxs_x, maxs_y, 0];
+	c3 = [mins_x, maxs_y, 0];
+
+	dx = b_x - a_x;
+	dy = b_y - a_y;
+
+	if (dx >= 0 && dy >= 0)
+	{
+		zone_pv[0] = a + c0; zone_pv[1] = a + c1; zone_pv[2] = b + c1;
+		zone_pv[3] = b + c2; zone_pv[4] = b + c3; zone_pv[5] = a + c3;
+	}
+	else if (dx >= 0)
+	{
+		zone_pv[0] = a + c0; zone_pv[1] = b + c0; zone_pv[2] = b + c1;
+		zone_pv[3] = b + c2; zone_pv[4] = a + c2; zone_pv[5] = a + c3;
+	}
+	else if (dy >= 0)
+	{
+		zone_pv[0] = b + c0; zone_pv[1] = a + c0; zone_pv[2] = a + c1;
+		zone_pv[3] = a + c2; zone_pv[4] = b + c2; zone_pv[5] = b + c3;
+	}
+	else
+	{
+		zone_pv[0] = b + c0; zone_pv[1] = b + c1; zone_pv[2] = a + c1;
+		zone_pv[3] = a + c2; zone_pv[4] = a + c3; zone_pv[5] = b + c3;
+	}
+	zone_pn = 6;
+};
+
+/*
+  Does zone z's ring overlap the scratch probe, in 2D?
+
+  EXACT FOR A NON-CONVEX RING, which is the whole reason this is three tests
+  and not one:
+
+    (a) any ring vertex inside the probe   -- catches ring entirely inside
+    (b) any probe vertex inside the ring   -- catches probe entirely inside
+    (c) any ring edge crossing a probe edge -- catches every partial overlap
+
+  None of the three implies the others.  Drop (c) and a 32-wide rect straddling
+  a one-unit-wide strip answers FALSE: no strip vertex is in the rect (they are
+  1024 units away up the strip) and no rect corner is in the strip (both are
+  outside its one unit of width).  The self-test pins exactly that case.
+
+  Indeterminate on EXACT boundary contact -- collinear overlapping edges give
+  four zero orientations, and PNPOLY is undefined on an edge.  That is the same
+  indeterminacy Zone_SegmentInside has had since it was written, it is measure
+  zero in float, and "touching exactly" has no defined answer anyway.
+*/
+float(float z) Zone_RingHitsProbe =
+{
+	local float i, j, n, first;
+	local vector a, b, e0, e1;
+	local float d1, d2, d3, d4;
+
+	n = zone_npts[z];
+	first = zone_first[z];
+	if (n < 3 || zone_pn < 3)
+		return FALSE;
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		a = zone_pt[first + i];
+		if (Zone_XYInProbe(a_x, a_y))
+			return TRUE;
+	}
+
+	for (j = 0; j < zone_pn; j = j + 1)
+	{
+		a = zone_pv[j];
+		if (Zone_XYInRing(z, a_x, a_y))
+			return TRUE;
+	}
+
+	// The same four cross products Zone_SegmentInside uses, ring edge against
+	// probe edge instead of ring edge against the travel segment.
+	for (i = 0; i < n; i = i + 1)
+	{
+		e0 = zone_pt[first + i];
+		e1 = zone_pt[first + ((i + 1) % n)];
+
+		for (j = 0; j < zone_pn; j = j + 1)
+		{
+			a = zone_pv[j];
+			b = zone_pv[(j + 1) % zone_pn];
+
+			d1 = (b_x - a_x)   * (e0_y - a_y) - (b_y - a_y)   * (e0_x - a_x);
+			d2 = (b_x - a_x)   * (e1_y - a_y) - (b_y - a_y)   * (e1_x - a_x);
+			d3 = (e1_x - e0_x) * (a_y - e0_y) - (e1_y - e0_y) * (a_x - e0_x);
+			d4 = (e1_x - e0_x) * (b_y - e0_y) - (e1_y - e0_y) * (b_x - e0_x);
+
+			if ((d1 > 0) != (d2 > 0))
+				if ((d3 > 0) != (d4 > 0))
+					return TRUE;
+		}
+	}
+	return FALSE;
+};
+
+/*
+  Does the hull (mins..maxs, hung off p) overlap zone z?
+
+  Z IS EXACT AND IS A POINT TEST ON p_z.  The hull spans [p_z+mins_z,
+  p_z+maxs_z]; it overlaps the slab iff p_z lies in [bottom-maxs_z,
+  top-mins_z].  See the essay above for why mins_z == 0 makes that a downward
+  expansion only.
+*/
+float(float z, vector p, vector mins, vector maxs) Zone_BoxInside =
+{
+	local vector mn, mx;
+
+	if (z < 0 || z >= zone_count)
+		return FALSE;
+	if (zone_npts[z] < 3)
+		return FALSE;
+
+	if (p_z < zone_bottom[z] - maxs_z) return FALSE;
+	if (p_z > zone_top[z]    - mins_z) return FALSE;
+
+	// The AABB reject, hull-expanded.  It cannot change the answer for the
+	// reason Zone_PointInside gives: zone_zmins/zmaxs ARE the ring's own x/y
+	// bounds, so a rect clear of them is clear of every edge too.
+	mn = zone_zmins[z];
+	mx = zone_zmaxs[z];
+	if (p_x + maxs_x < mn_x || p_x + mins_x > mx_x) return FALSE;
+	if (p_y + maxs_y < mn_y || p_y + mins_y > mx_y) return FALSE;
+
+	// FAST ACCEPT.  The centre being inside the ring is the overwhelmingly
+	// common yes, and it is one pass over the edges against the full test's
+	// forty.  Strictly redundant -- the full test below returns TRUE for every
+	// case this does -- so it can change the cost and never an answer.
+	if (Zone_XYInRing(z, p_x, p_y))
+		return TRUE;
+
+	Zone_ProbeBox(p, mins, maxs);
+	return Zone_RingHitsProbe(z);
+};
+
+/*
+  Did the hull, swept from a to b, touch zone z at any point?
+
+  EXACT.  No sampling, no substep count, no cap -- and therefore no speed at
+  which it silently degrades.
+
+  A substepped version was written and thrown away.  The tempting rule ("step
+  at most half the hull's 32-unit width and the sampled boxes cannot leave a
+  gap") is FALSE: step a 32x32 rect from (0,0) to (16,16) and the point
+  (20,-4) is inside the true swept rect at t = 0.5 and inside neither sampled
+  one.  It would have shipped safely for a different reason -- no shipped
+  region is small in all three axes -- which is the expensive kind of wrong in
+  this file: a correct answer with a false comment on it.  Zone_SegmentInside
+  already refuses sampling in as many words, and the hexagon costs 1.5x a box
+  probe against 2-4x for substeps at real surf speeds.
+*/
+float(float z, vector a, vector b, vector mins, vector maxs) Zone_BoxSwept =
+{
+	local vector p, q, mn, mx;
+
+	if (z < 0 || z >= zone_count)
+		return FALSE;
+	if (zone_npts[z] < 3)
+		return FALSE;
+
+	if (!Zone_ClipZ(a, b, zone_bottom[z] - maxs_z, zone_top[z] - mins_z))
+		return FALSE;
+	p = zone_clip_a;
+	q = zone_clip_b;
+
+	mn = zone_zmins[z];
+	mx = zone_zmaxs[z];
+	if (p_x + maxs_x < mn_x) { if (q_x + maxs_x < mn_x) return FALSE; }
+	if (p_x + mins_x > mx_x) { if (q_x + mins_x > mx_x) return FALSE; }
+	if (p_y + maxs_y < mn_y) { if (q_y + maxs_y < mn_y) return FALSE; }
+	if (p_y + mins_y > mx_y) { if (q_y + mins_y > mx_y) return FALSE; }
+
+	// Same fast accept, on both clipped ends -- the shape Zone_SegmentInside
+	// uses for the same reason.
+	if (Zone_XYInRing(z, p_x, p_y)) return TRUE;
+	if (Zone_XYInRing(z, q_x, q_y)) return TRUE;
+
+	Zone_ProbeSweep(p, q, mins, maxs);
+	return Zone_RingHitsProbe(z);
 };
 
 /*
@@ -537,6 +875,11 @@ float(string pts, float bottom, float height) Zone_AddRing =
 	zone_type[z]   = ZONE_START;
 	zone_track[z]  = 0;
 	zone_seg[z]    = 0;
+	// Build 47: zone_cp was the one field this did not clear, so a self-test
+	// ring inherited whatever checkpoint ordinal last occupied the slot.
+	// Harmless today -- nothing asks a self-test ring for its ordinal -- but
+	// it is a stale read waiting for the first caller that does.
+	zone_cp[z]     = 0;
 	zone_first[z]  = zone_ptcount;
 	zone_npts[z]   = n / 2;
 	zone_bottom[z] = bottom;
@@ -555,16 +898,31 @@ float(string pts, float bottom, float height) Zone_AddRing =
 	return z;
 };
 
+/*
+  The two hulls the ruleset can test with.  Spelled here rather than pulled
+  from sh_defs so the expected answers below can be read off the numbers in
+  front of you: standing is 62 tall, ducked 45, and BOTH have mins_z 0 and the
+  same 32x32 footprint.  That is the whole of run_zone_hull_live in two lines.
+*/
+#define ZT_MINS       '-16 -16 0'
+#define ZT_STAND_MAXS '16 16 62'
+#define ZT_DUCK_MAXS  '16 16 45'
+
 void() Zone_SelfTest =
 {
 	local float savecount, saveptcount;
-	local float sq, plane, ell;
+	local float sq, plane, ell, strip;
 
 	savecount   = zone_count;
 	saveptcount = zone_ptcount;
 	zt_ok = zt_fail = 0;
 
-	if (zone_count + 3 > ZONE_MAX || zone_ptcount + 16 > ZONE_MAX_POINTS)
+	/*
+	  BUILD 47 raised this from 3/16 to 4/20 for the strip ring.  IF YOU ADD A
+	  RING AND FORGET THIS LINE the suite prints one red line and returns,
+	  which on a quick read looks exactly like a pass.
+	*/
+	if (zone_count + 4 > ZONE_MAX || zone_ptcount + 20 > ZONE_MAX_POINTS)
 	{
 		print("^1zone_selftest: no room in the tables on this map\n");
 		return;
@@ -626,6 +984,125 @@ void() Zone_SelfTest =
 	           Zone_SegmentInside(ell, '48 48 32', '48 20 32'), TRUE);
 	Zone_Check("L: swept above the slab entirely",
 	           Zone_SegmentInside(ell, '16 16 100', '16 16 80'), FALSE);
+
+	/* ================================================================== */
+	/* ---- BUILD 47: the hull tests ------------------------------------ */
+	/* ================================================================== */
+
+	/*
+	  THE 16-UNIT BAND, both sides of the +x face of the 0..64 box.  The two
+	  rules disagreeing here IS the change: the same origin is outside under
+	  the point rule and inside under the hull rule.
+	*/
+	Zone_Check("hull/box: 15 units clear of +x -- hull",
+	           Zone_BoxInside(sq, '79 32 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/box: 15 units clear of +x -- POINT (must disagree)",
+	           Zone_PointInside(sq, '79 32 32'), FALSE);
+	Zone_Check("hull/box: 17 units clear of +x -- hull",
+	           Zone_BoxInside(sq, '81 32 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+
+	/*
+	  THE Z WINDOW IS [bottom - maxs_z, top], AND NOT ONE UNIT HIGHER.  This
+	  pair is the origin-at-the-feet convention made falsifiable: the hull
+	  reaches 62 units DOWN and zero units UP.
+	*/
+	Zone_Check("hull/box: feet 60 below, crown 2 inside",
+	           Zone_BoxInside(sq, '32 32 -60', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/box: feet 63 below, crown 1 short",
+	           Zone_BoxInside(sq, '32 32 -63', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/box: standing ABOVE the top -- no upward expansion",
+	           Zone_BoxInside(sq, '32 32 65', ZT_MINS, ZT_STAND_MAXS), FALSE);
+
+	/*
+	  THE DUCK, and this pair is the documentation for run_zone_hull_live: one
+	  origin, two hulls, opposite answers, seventeen units apart.  Shipping the
+	  live hull makes that a button the player can press.
+	*/
+	Zone_Check("hull/box: feet 50 below -- STANDING hull (crown +12)",
+	           Zone_BoxInside(sq, '32 32 -50', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/box: feet 50 below -- DUCKED hull (crown -5)",
+	           Zone_BoxInside(sq, '32 32 -50', ZT_MINS, ZT_DUCK_MAXS), FALSE);
+
+	Zone_Check("hull/box: swept alongside, 20 units clear",
+	           Zone_BoxSwept(sq, '32 200 32', '32 100 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/box: swept alongside, 2 units into the band",
+	           Zone_BoxSwept(sq, '32 200 32', '32 78 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+
+	/*
+	  A DEGENERATE SWEEP MUST EQUAL THE STATIC TEST.  Zone_ProbeSweep's d == 0
+	  case duplicates two vertices; these pin that the duplicates are inert.
+	*/
+	Zone_Check("hull/box: zero-length sweep at the centre == static",
+	           Zone_BoxSwept(sq, '32 32 32', '32 32 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/box: zero-length sweep well outside == static",
+	           Zone_BoxSwept(sq, '300 300 32', '300 300 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/box: pure-x sweep (two vertices collinear)",
+	           Zone_BoxSwept(sq, '200 32 32', '-200 32 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/box: pure-y sweep (two vertices collinear)",
+	           Zone_BoxSwept(sq, '32 200 32', '32 -200 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+
+	/*
+	  THE ONE-UNIT PLANE, and the direction of the change measured on it.
+
+	  A 62-tall hull hanging BELOW the feet spans the plane for 62 units of
+	  fall, so a 30 u/tick fall cannot pass it without at least two ticks
+	  answering inside -- the hull cannot tunnel it vertically even without a
+	  sweep.  Standing ABOVE the plane is still outside, because mins_z is 0.
+	*/
+	Zone_Check("hull/plane: 30 units below -- POINT test falls through",
+	           Zone_PointInside(plane, '512 512 -30'), FALSE);
+	Zone_Check("hull/plane: 30 units below -- hull does not",
+	           Zone_BoxInside(plane, '512 512 -30', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/plane: 63 below -- the exact extent of the reach",
+	           Zone_BoxInside(plane, '512 512 -63', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/plane: standing 10 ABOVE it -- feet are the origin",
+	           Zone_BoxInside(plane, '512 512 10', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/plane: a 30 u/tick fall, tick 1 of 2",
+	           Zone_BoxInside(plane, '512 512 -20', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/plane: a 30 u/tick fall, tick 2 of 2",
+	           Zone_BoxInside(plane, '512 512 -50', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/plane: a fall that stops 40 above it",
+	           Zone_BoxSwept(plane, '512 512 100', '512 512 40', ZT_MINS, ZT_STAND_MAXS), FALSE);
+
+	/* ---- the concave L, with a hull ----------------------------------- */
+	Zone_Check("hull/L: hull in the NOTCH, reaching neither arm",
+	           Zone_BoxInside(ell, '52 52 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/L: hull in the notch, reaching down into the foot",
+	           Zone_BoxInside(ell, '40 40 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/L: swept from the notch into the foot",
+	           Zone_BoxSwept(ell, '52 80 32', '52 20 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+
+	/*
+	  A ONE-UNIT-WIDE STRIP, 1024 long.  THIS IS THE RING THAT PROVES
+	  CONDITION (c) IS LOAD-BEARING.
+
+	  For the first case the rect is x[-6,26] y[496,528].  No strip vertex is
+	  in the rect -- they are all at y 0 or y 1024.  No rect corner is in the
+	  strip -- x -6 and x 26 are both outside its one unit of width.  So an
+	  implementation with only (a) and (b) answers FALSE, and the timer would
+	  walk through a wall.  Only the edge-crossing arm catches it.
+	*/
+	strip = Zone_AddRing("0 0  1 0  1 1024  0 1024", 0, 64);
+
+	Zone_Check("hull/strip: straddling it -- ONLY condition (c) finds this",
+	           Zone_BoxInside(strip, '10 512 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/strip: 4 units clear of it",
+	           Zone_BoxInside(strip, '20 512 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/strip: sweep start end, on its own",
+	           Zone_BoxInside(strip, '40 512 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	Zone_Check("hull/strip: sweep finish end, on its own",
+	           Zone_BoxInside(strip, '-40 512 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
+	/*
+	  Neither end touches, so this is the swept hexagon or nothing.  The second
+	  is 500 units in ONE TICK -- the case that would find a substep cap, and
+	  the reason there is no substep cap.
+	*/
+	Zone_Check("hull/strip: 80 units of travel through it, neither end touching",
+	           Zone_BoxSwept(strip, '40 512 32', '-40 512 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/strip: 500 units in one tick -- must not degrade",
+	           Zone_BoxSwept(strip, '250 512 32', '-250 512 32', ZT_MINS, ZT_STAND_MAXS), TRUE);
+	Zone_Check("hull/strip: 500 units in one tick, parallel and clear",
+	           Zone_BoxSwept(strip, '250 512 32', '250 -512 32', ZT_MINS, ZT_STAND_MAXS), FALSE);
 
 	zone_count   = savecount;
 	zone_ptcount = saveptcount;

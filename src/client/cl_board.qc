@@ -814,6 +814,29 @@ float  ui_rs_armed;             // a restore's teleport has not landed yet
 vector ui_rs_dest;              // where it will land
 
 /*
+  BUILD 47: AND A DEADLINE ON IT, because "until it arrives" is not bounded.
+
+  ui_rs_armed is disarmed by exactly one condition -- arriving within
+  SEG_JUMPDIST of ui_rs_dest -- and there are restores that never arrive.  The
+  `retry` path writes FS_RETRY_SLOT and map_restarts, which respawns you at the
+  START ZONE while ui_rs_dest still holds the origin the save was TAKEN at; that
+  distance never closes, so both guards stay suspended for the rest of the map
+  and the anchor can only ever be moved by a jump.  That is half of the `e -65`
+  report build 47 fixes; the other half is in HUD_UpdateJumpRef.
+
+  Two seconds rather than a frame count, deliberately: the failure build 25 hit
+  was a one-frame exemption spent on a quiet frame before the position step
+  arrived, and the fix for it was "hold until the evidence lands".  A deadline
+  in SECONDS keeps that -- the save event and the teleported origin do not have
+  to reach us in the same snapshot, and two seconds is many snapshots at any
+  rate -- while still guaranteeing the guard cannot outlive the gesture that
+  armed it.  Frames would have meant a different duration on every machine, the
+  same trap HUD_EnergyRate's ring documents.
+*/
+#define SEG_RS_DEADLINE 2.0
+float  ui_rs_deadline;          // cltime after which the arm expires anyway
+
+/*
 ===========================================================================
   BUILD 26 -- THE ENERGY ANCHOR, WHICH THE SAME TELEPORT ALSO DESTROYED.
 
@@ -898,8 +921,9 @@ void(float jz, float gz, float ong, float have, vector dest) Seq_AnchorRestore =
 	ui_was_onground = ong;
 	ui_jump_have    = have;
 
-	ui_rs_dest  = dest;
-	ui_rs_armed = TRUE;
+	ui_rs_dest     = dest;
+	ui_rs_armed    = TRUE;
+	ui_rs_deadline = cltime + SEG_RS_DEADLINE;   // build 47; see the declaration
 };
 
 void(float id) Seq_Mark =
@@ -2203,7 +2227,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 	  exactly what build 25's one-shot could not survive.
 	*/
 	if (ui_rs_armed)
-	if (vlen(org - ui_rs_dest) <= SEG_JUMPDIST)
+	if (vlen(org - ui_rs_dest) <= SEG_JUMPDIST || cltime >= ui_rs_deadline)
 		ui_rs_armed = FALSE;
 
 	/*

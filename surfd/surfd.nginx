@@ -1,0 +1,55 @@
+# surfd - FTESurf lobby directory - reverse proxy snippet
+#
+# NOT INSTALLED, AND DELIBERATELY SO.
+#
+# Installing this makes surfd PUBLICLY REACHABLE. That is a separate decision
+# that was explicitly not taken. Right now surfd listens on 0.0.0.0:8084 and is
+# reachable from the LAN only (nothing in nginx points at it).
+#
+# Before installing, consider:
+#   * /api/heartbeat is protected only by a shared secret in a form field. Over
+#     plain HTTP that secret is visible to anyone on the path. Terminate TLS.
+#   * surfd derives each lobby's advertised address from the socket peer. Behind
+#     a proxy every heartbeat would appear to come from 127.0.0.1 and every
+#     lobby would be advertised as 127.0.0.1:PORT. You MUST either
+#       (a) keep /api/heartbeat off the public vhost and let game servers reach
+#           port 8084 directly (recommended), or
+#       (b) pass X-Forwarded-For here AND change surfd to trust it via
+#           werkzeug's ProxyFix with a correct trusted-hop count. Do NOT do (b)
+#           casually: a wrong hop count lets clients forge their own source IP
+#           and advertise lobbies on hosts they do not own.
+#     The snippet below therefore proxies only the read-only endpoints.
+#
+# To install:
+#     sudo cp /srv/nvme/surfd/surfd.nginx /etc/nginx/snippets/surfd.conf
+#     # then inside the desired server{} block:  include snippets/surfd.conf;
+#     sudo nginx -t && sudo systemctl reload nginx
+
+location = /lobbies.json {
+    proxy_pass         http://127.0.0.1:8084/lobbies.json;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
+
+    # The menu polls this; let it be cached briefly to blunt a flood.
+    proxy_cache_valid 200 2s;
+    add_header X-Surfd-Proxied "1" always;
+}
+
+location = /health {
+    proxy_pass      http://127.0.0.1:8084/health;
+    proxy_set_header Host $host;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
+}
+
+# Heartbeats are intentionally NOT proxied. Uncommenting this without doing
+# the ProxyFix work described above will break every advertised address.
+#
+# location = /api/heartbeat {
+#     return 404;
+# }

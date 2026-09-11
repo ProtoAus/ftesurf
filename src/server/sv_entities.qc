@@ -23,6 +23,21 @@ void(entity e) SV_TimerWarped;
 // FTECONTENTS_LADDER in AddLinksToPmove (sv_user.c:7018).
 #define CONTENT_LADDER -16
 
+/*
+  Patch 280: func_slide.  .skin in -32..-25 tags a SOLID brush as a slide and
+  skin + 32 is the flag byte (engine pmove.h PMSLIDE_*).  Same channel as the
+  ladder above, but NOT a contents override: the engine traces a slide exactly
+  as a skin-0 brush and only pm_source.c reads the byte.
+  NEVER worn while SOLID_NOT: sv_ents.c:3643 sends any negative-skin brush as
+  ES_SOLID_BSP, so the client would predict a disabled slide as a wall the
+  server does not have.  func_slide sets it only when solid and SV_IOEnable
+  keeps it in step; vbsp_slide_skin remembers the value between the two.
+*/
+#define SKIN_SLIDE_BASE    -32
+#define SLIDE_STAYON        1
+#define SLIDE_ALLOWJUMP     2
+#define SLIDE_NOGRAVITY     4
+
 // Source's SF_TRIG_PUSH_ONCE.
 #define SF_PUSH_ONCE 128
 
@@ -311,6 +326,7 @@ float  vbsp_tele_disabled_n;
 .string vbsp_io_raw;		// parse-time accumulator, "key\tvalue\n" repeated
 .entity vbsp_io_out;		// head of this entity's output list
 .float  vbsp_io_solid;	// .solid as spawned, so Enable can put it BACK
+.float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 
 // On an vbsp_output entity.  .owner is the source entity.
 .entity vbsp_io_next;
@@ -340,6 +356,203 @@ float  vbsp_tele_disabled_n;
 .string run_fogctrl;
 .entity vbsp_touch_who;	// synthesised end-touch, see trigger_multiple
 .float  vbsp_touch_when;
+
+/*
+  PATCH 270, STAGE 2 -- the same state, once per player instead of once.
+
+  vbsp_touch_who tracks exactly ONE toucher, which the essay above
+  SV_TriggerEndThink states outright and names as "the first thing that would
+  need revisiting for real multiplayer".  This is that revisit.
+
+  Three slot masks on the TRIGGER, one bit per client:
+
+    vbsp_touch_in    confirmed inside as of the last sweep
+    vbsp_touch_seen  has touched since the last sweep
+    vbsp_once_done   has consumed this trigger_once (lobby_retrigger)
+
+  WHY A MASK AND NOT PER-PAIR STATE.  The correct structure is one record per
+  (player, trigger) pair, and QuakeC has nowhere to put one: there are no
+  per-entity arrays, and an entity per pair means a spawn/remove on every bhop
+  block crossing plus a find() -- which scans EVERY edict, not every match, so
+  on a 1122-brush map that is a five-figure per-frame cost.  A mask is two int
+  stores per touch and no allocation at all.
+
+  What the mask cannot hold is a per-player TIMESTAMP, which is what the 0.05 s
+  end-touch grace was built on.  So the grace is quantised into sweep windows
+  instead -- and getting that quantisation wrong is the interesting part.
+
+  THE FIRST VERSION USED ONE WINDOW AND WAS A REGRESSION FOR A SINGLE PLAYER.
+  It was argued from the MAXIMUM latency ("0.03-0.06 s against today's
+  0.05-0.07 s, no worse") and the maximum is not what 0.05 was chosen for.  The
+  essay at SV_TriggerEndThink says why: "too short and one dropped frame fires
+  a spurious end-touch mid-platform".  Build 51's test is `time - when > 0.05`
+  measured from the LAST touch, so its MINIMUM grace is 0.05 s whatever the
+  poll rate.  One window is 0.03 s -- two physics frames on surf, three on
+  bhop -- so any 0.030-0.049 s gap fired an OnEndTouch that build 51 would not
+  have fired, and then an OnStartTouch on re-contact.  On the seven maps where
+  AddOutput targetname IS the progression logic that is a rename mid-crossing.
+  It also made the claim that this is "a no-op with one player" false, which
+  broke the house rule rather than merely being untidy.
+
+  So a bit must now be absent for TWO consecutive windows.  vbsp_touch_out is
+  the intermediate state: seen-absent-once.  That puts the grace at 0.06-0.09 s
+  against build 51's 0.05-0.07 s -- LONGER at both ends, deliberately, because
+  the two errors are not symmetric.  Ending a touch too late re-fires logic
+  that is idempotent on these maps; ending it too early injects an end/start
+  pair that is not.  vbsp_mp 0 still restores the timestamp path exactly.
+
+  THE BIT INDEX IS num_for_edict(player) - 1, not run_t_slot.  It has to be,
+  twice over: run_t_slot is declared in sv_timer.qc, which compiles after this
+  file, and it is capped at FS_MAXPLAYERS and can be -1.  The edict number of a
+  client is assigned by the engine, is 1..maxclients, and never changes for the
+  life of the connection.  edict_num() turns it back into the entity, which is
+  what lets the sweep name an activator it only holds as a bit.
+
+  ABOVE 32 CLIENTS the bit does not exist -- an int is 32 bits -- and those
+  players fall back to the shared vbsp_touch_who path, i.e. exactly today's
+  behaviour.  That is deliberate rather than a limit worth removing: MAX_CLIENTS
+  is 40 so that a spectator, an MVD recorder and an admin have somewhere to sit
+  ABOVE the 32 playing slots, and none of those three should be tripping map
+  triggers in the first place.
+*/
+.int    vbsp_touch_in;
+.int    vbsp_touch_seen;
+.int    vbsp_touch_out;         // absent for one window, not yet ended
+.int    vbsp_once_done;
+
+/*
+  Which players have already spent the current `wait` window.
+
+  vbsp_io_next_ok alone is a per-TRIGGER cooldown, so on a 32-player map one
+  player crossing a trigger_multiple with `wait 1` swallows everybody else's
+  OnTrigger for a second.
+
+  THE FIRST ATTEMPT AT THIS WAS AN `.entity vbsp_io_next_who` -- "gate only
+  against whoever set it" -- AND IT WAS MUCH WORSE THAN THE BUG IT FIXED.  The
+  field was rewritten on every touch, so it could only ever match when the SAME
+  player touched twice in a row.  Two players standing in one volume overwrite
+  it for each other on every single command, so NEITHER ever matched, both
+  passed, and OnTrigger fired twice per tick -- about 200 times a second on a
+  bhop map against `wait 1`.  On a trigger driving a math_counter that reaches
+  OnHitMax instantly; on the 465 OnTrigger->AddOutput outputs it rewrites
+  gravity or targetname at tick rate.  It was written down as a residual
+  affecting "two players deliberately taking turns"; it actually needed no
+  deliberation at all, only co-occupancy, which is the normal lobby case.
+
+  What works is a consumption mask over the SHARED window: the window is still
+  one timer per trigger, but each player may spend it once.  Everyone gets
+  their OnTrigger, nobody swallows anyone else's, and the fire rate is bounded
+  by how many people are standing there rather than by the tick rate.
+*/
+.int vbsp_io_gate_seen;
+
+/*
+  Per-player func_bhop landing count -- the block's .count, moved onto the
+  player.  See SV_BhopFrame.
+*/
+.entity vbsp_bhop_cntblk;
+.float  vbsp_bhop_cnt;
+
+/*
+  vbsp_mp -- the master switch for everything in this block.  Latched once per
+  frame in StartFrame beside run_bv_debug, for the reason that comment gives.
+
+  0 restores build 51 exactly: one toucher per trigger, one shared `wait` gate,
+  one shared landing count.  With a single player on the server the two paths
+  are indistinguishable by construction -- one player is one bit -- so this is
+  a falsifier for the rewrite rather than a gameplay preference.
+*/
+float vbsp_mp;
+
+/*
+  vbsp_retrigger -- lobby_enable && lobby_retrigger, latched in the same place.
+
+  Kept as its own flag rather than read from sv_lobby.qc because that file
+  compiles AFTER this one; the policy is expressed once, in StartFrame, next to
+  every other per-frame cvar latch.  Separate from vbsp_mp because re-arming a
+  trigger_once is a real change to what a map does, and it is only ever right
+  in a lobby -- whereas vbsp_mp is a correctness fix that is a no-op with one
+  player.
+*/
+float vbsp_retrigger;
+
+/*
+  Bit for a client's edict, or 0 if it has not got one.
+
+  Returns 0 rather than a bit for anything that is not a live client edict in
+  1..32, and every caller treats 0 as "use the shared path".  Written once so
+  the two callers cannot disagree about the bound.
+*/
+int(entity p) SV_TouchBit =
+{
+	local float n;
+
+	if (!vbsp_mp)
+		return 0;
+	n = num_for_edict(p) - 1;
+	if (n < 0 || n >= 32)
+		return 0;
+	return (int)1 << (int)n;
+};
+
+/*
+  Give a departing client's bit back, everywhere.
+
+  THE BIT IS A SLOT, NOT A PERSON, and that is the hole this closes.  The essay
+  above says the edict number "never changes for the life of the connection",
+  which is true and is not enough: vbsp_once_done OUTLIVES the connection.
+  Under vbsp_retrigger a consumed trigger_once is deliberately not removed, so
+  the bit on the trigger is the only record that it was used -- and the engine
+  hands the lowest free client slot to the next person who connects
+  (sv_main.c:2516-2522), which is the same edict, which is the same bit.
+
+  Left uncleared, a joining player silently inherits every trigger_once the
+  previous occupant of their slot had consumed: no OnTrigger, no OnStartTouch,
+  no OnEndTouch, nothing printed, for the rest of the map.  On the 841 library
+  trigger_onces that wire an output that is the map's progression logic simply
+  absent for them.  It is the exact harm lobby_retrigger exists to prevent,
+  reintroduced one connection later.
+
+  THE THREE SWEEP MASKS ARE DELIBERATELY LEFT ALONE, and an earlier version of
+  this cleared them.  Clearing looks tidier and is wrong twice over.  It DROPS
+  the OnEndTouch and OnEndTouchAll the departure should produce -- and on the
+  seven maps where end-touch is the progression logic those events are map
+  state, not player state, so losing them leaves the map wedged.  And it is
+  inconsistent with the path beside it: build 51 holds the departing player in
+  .vbsp_touch_who and its sweep fires the map's OnEndTouch at them, because a
+  client edict is never freed -- ClientDisconnect leaves the slot allocated, so
+  the entity reference stays valid and the activator is the player who left.
+  Leaving the bits set makes the mask path do exactly the same thing, and the
+  sweep clears them two windows later of its own accord.
+
+  Aliasing is not a risk on that path: a slot passes through cs_zombie before
+  it is free (sv_main.c:666-670), which is seconds, against a 0.06 s sweep.
+  vbsp_once_done has no sweep at all, which is the whole point.
+
+  NOT gated on vbsp_mp, and the bit is computed here rather than through
+  SV_TouchBit: the bits may have been set while it was 1 and it is latched at
+  map load, so a release that only runs in one mode leaks in the other.
+
+  One walk of the edict table per disconnect -- the same shape as the four
+  map-init walks already in this file, on an event that happens far less often.
+*/
+void(entity p) SV_TouchForget =
+{
+	local entity e;
+	local float  n;
+	local int    keep;
+
+	n = num_for_edict(p) - 1;
+	if (n < 0 || n >= 32)
+		return;
+	keep = ~((int)1 << (int)n);
+
+	for (e = nextent(world); e; e = nextent(e))
+	{
+		e.vbsp_once_done    = e.vbsp_once_done    & keep;
+		e.vbsp_io_gate_seen = e.vbsp_io_gate_seen & keep;
+	}
+};
 
 // On a PLAYER.  ModifySpeed's multiplier, applied in PlayerPreThink; and the
 // func_bhop dwell state, driven from PlayerPostThink.  Declared here because
@@ -624,6 +837,26 @@ entity(string want, entity from) SV_FindByName =
 */
 .string filtername;
 .float  Negated;
+/*
+  BUILD 51: AND THE LOWERCASE SPELLING, which every other dual-cased key in this
+  file already had and this one did not.
+
+  ED_ParseEdict matches keys CASE-SENSITIVELY against QC field names, which is
+  why SV_Key2 exists at :141 and why Solidity/startdisabled/Solid/velocitymode/
+  Speed/setspeed are all declared in pairs above.  `Negated` was the one filter
+  key read raw, so a mapper whose Hammer wrote `negated` got the field left at 0
+  and the test un-inverted -- the filter then passed exactly the activators it
+  was authored to block.
+
+  Censused rather than assumed: 90 filter entities in the 1310-map library write
+  the key lowercase, and 26 of those are truthy.  Five of the 26 are
+  filter_activator_name -- bhop_2shiny2shuckle, bhop_floodwaters, surf_agony and
+  surf_dune -- which is the one filter class this build implements, so those five
+  are inverted TODAY.  The other 21 are filter_activator_context and
+  filter_multi, neither implemented yet; declaring the pair now means whichever
+  build adds them inherits the fix instead of the bug.
+*/
+.float  negated;
 .entity ui_filter;
 .float  vbsp_filterdone;
 
@@ -637,19 +870,138 @@ entity(string want, entity from) SV_FindByName =
   ME?" -- which is what Source's CBaseFilter::PassesFilter is (filters.cpp:46-50),
   and it is what the TestActivator input needs.  Same test, no duplicate.
 */
-float(entity f, entity act) SV_FilterPasses =
+/*
+===========================================================================
+  BUILD 51 -- filter_multi, the biggest hole in the filter system.
+
+  320 of them across 50 maps, and 2847 TRIGGERS point at one.  Every one of
+  those triggers has been failing open since the filter system was written,
+  which on the badges family is not a cosmetic loss: 252 of bhop_badges_mini's
+  reset teleports are gated on a filter_multi, so they fire on first touch and
+  end the run.  Same shape as the pre-build-37 bhop_futile bug, in a different
+  filter class.  Worst maps: kz_bhop_benchmark 415 triggers, bhop_pharma 403,
+  bhop_badges2 371, kz_bhop_badg3s 367, kz_bhop_yonkoma 357, bhop_lego 278,
+  bhop_badges_mini 252.
+
+  IT IS WORTH IMPLEMENTING BECAUSE ITS CHILDREN ARE.  Of the 901 sub-filter
+  references, 778 (86%) resolve to filter_activator_name -- the one class this
+  build already evaluates.  The rest are filter_activator_class 56, a nested
+  filter_multi 42, filter_activator_context 13, filter_momentum_collectibles 8,
+  and single figures of four more.
+
+  FAIL-OPEN COMPOSES, which is what makes this safe.  An unimplemented child
+  returns TRUE from the recursion below, exactly as it does when a trigger
+  points at it directly.  Under OR that passes the parent, under AND it simply
+  does not block -- both are the fail-open direction, so adding filter_multi
+  cannot make an unimplemented class start rejecting players.
+
+  filtertype: 1 is OR (280 of 319), 0 is AND (39).  The FGD's wording is
+  "0: AND (all filters must pass) / 1: OR (any filter must pass)".  Only 319 of
+  the 320 write it at all; the missing one gets Source's default of 0 = AND.
+
+  EIGHT SUB-FILTERS, not five.  Hammer's own dialog offers five and 305 of the
+  320 use two or fewer, but two instances in the library carry Filter06..08 and
+  stopping at five would evaluate those two incorrectly rather than visibly.
+  Both spellings of every one: 13 instances write `filter01`, 11 write
+  `negated`, and ED_ParseEdict is case-sensitive.
+===========================================================================
+*/
+.string Filter01; .string Filter02; .string Filter03; .string Filter04;
+.string Filter05; .string Filter06; .string Filter07; .string Filter08;
+.string filter01; .string filter02; .string filter03; .string filter04;
+.string filter05; .string filter06; .string filter07; .string filter08;
+.float  filtertype;
+
+// SV_Key2 is for floats; the same idea for the dual-cased string keys.
+string(string a, string b) SV_KeyS2 = { return (a != "") ? a : b; };
+
+string(entity f, float i) SV_MultiSub =
 {
-	local float pass;
+	if (i == 1) return SV_KeyS2(f.Filter01, f.filter01);
+	if (i == 2) return SV_KeyS2(f.Filter02, f.filter02);
+	if (i == 3) return SV_KeyS2(f.Filter03, f.filter03);
+	if (i == 4) return SV_KeyS2(f.Filter04, f.filter04);
+	if (i == 5) return SV_KeyS2(f.Filter05, f.filter05);
+	if (i == 6) return SV_KeyS2(f.Filter06, f.filter06);
+	if (i == 7) return SV_KeyS2(f.Filter07, f.filter07);
+	return SV_KeyS2(f.Filter08, f.filter08);
+};
+
+// Forward-declared for the recursion: 42 sub-filter references in the library
+// are themselves a filter_multi.
+float(entity f, entity act, float depth) SV_FilterPassesD;
+
+float(entity f, entity act, float depth) SV_FilterPassesD =
+{
+	local float pass, i, n, isor, sub;
+	local string nm;
+	local entity c;
 
 	if (!f)
 		return TRUE;						// no such filter -- Source passes
-	if (f.classname != "filter_activator_name")
-		return TRUE;						// censused by the caller -- fail open
 
-	pass = (act.targetname == f.filtername);
-	if (f.Negated)
-		pass = !pass;
-	return pass;
+	if (f.classname == "filter_activator_name")
+	{
+		pass = (act.targetname == f.filtername);
+		if (SV_Key2(f.Negated, f.negated))
+			pass = !pass;
+		return pass;
+	}
+
+	if (f.classname == "filter_multi")
+	{
+		/*
+		  A cycle in the graph would recurse forever, and nothing in a BSP
+		  stops a mapper pointing two filter_multis at each other.  Four is
+		  past the deepest chain the library actually contains and cheap
+		  enough that the guard costs nothing to be generous with.
+		*/
+		if (depth > 4)
+			return TRUE;
+
+		isor = f.filtertype;
+		n = 0;
+		// AND starts true and is cleared by a failure; OR starts false and is
+		// set by a success.  Source's CFilterMultiple does exactly this.
+		pass = !isor;
+
+		for (i = 1; i <= 8; i = i + 1)
+		{
+			nm = SV_MultiSub(f, i);
+			if (nm == "")
+				continue;
+			n = n + 1;
+			c = SV_FindByName(nm, world);
+			sub = SV_FilterPassesD(c, act, depth + 1);
+			if (isor)
+			{
+				if (sub)
+					pass = TRUE;
+			}
+			else if (!sub)
+				pass = FALSE;
+		}
+
+		/*
+		  A filter_multi naming nothing.  One instance in the library has zero
+		  sub-filters, and an empty OR would otherwise evaluate to FALSE and
+		  block every activator -- a filter that blocks everything is never what
+		  an empty one means, and it is the wrong direction to guess in.
+		*/
+		if (!n)
+			return TRUE;
+
+		if (SV_Key2(f.Negated, f.negated))
+			pass = !pass;
+		return pass;
+	}
+
+	return TRUE;							// censused by the caller -- fail open
+};
+
+float(entity f, entity act) SV_FilterPasses =
+{
+	return SV_FilterPassesD(f, act, 0);
 };
 
 float(entity trig, entity act) SV_PassesFilter =
@@ -675,7 +1027,12 @@ float(entity trig, entity act) SV_PassesFilter =
 		trig.ui_filter = SV_FindByName(trig.filtername, world);
 		trig.vbsp_filterdone = TRUE;
 
-		if (trig.ui_filter && trig.ui_filter.classname != "filter_activator_name")
+		// Build 51 adds filter_multi to the implemented set, so it must come out
+		// of the "not implemented" report as well -- a census that still names a
+		// class this file now evaluates is worse than no census.
+		if (trig.ui_filter)
+		if (trig.ui_filter.classname != "filter_activator_name")
+		if (trig.ui_filter.classname != "filter_multi")
 			if (SV_CensusAdd(strcat("filter ", trig.ui_filter.classname)))
 				dprint(sprintf("^3filter: %s is not implemented -- '%s' passes "
 				               "everything\n", trig.ui_filter.classname,
@@ -690,6 +1047,18 @@ void() filter_activator_name =
 {
 	// A point entity holding two strings.  Nothing to draw, nothing to touch;
 	// it exists only to be found by name.
+	self.solid = SOLID_NOT;
+	self.movetype = MOVETYPE_NONE;
+};
+
+/*
+  Build 51.  Without this the entity is a point entity with no '*' model, so
+  SV_OnEntityNoSpawnFunction removes it -- and a removed filter is exactly the
+  fail-open that SV_FilterPassesD is written to replace.  The predicate above
+  can only run if the entity is still there to be found by name.
+*/
+void() filter_multi =
+{
 	self.solid = SOLID_NOT;
 	self.movetype = MOVETYPE_NONE;
 };
@@ -892,12 +1261,17 @@ void(entity t, float on) SV_IOEnable =
 			t.vbsp_io_solid = t.solid;
 		t.solid = SOLID_NOT;
 		t.effects = t.effects | EF_NODRAW;
+		// Patch 280: a non-solid slide must not wear the tag (see SKIN_SLIDE_BASE).
+		if (t.vbsp_slide_skin)
+			t.skin = 0;
 	}
 	else
 	{
 		if (t.model != "" && substring(t.model, 0, 1) == "*")
 			t.solid = t.vbsp_io_solid ? t.vbsp_io_solid : SOLID_BSP;
 		t.effects = t.effects - (t.effects & EF_NODRAW);
+		if (t.vbsp_slide_skin && t.solid != SOLID_NOT)
+			t.skin = t.vbsp_slide_skin;
 	}
 
 	// Both spellings are read everywhere else through SV_Key2, so both are
@@ -1256,6 +1630,69 @@ void(entity src, string name, entity act) SV_FireOutput =
 void() SV_TriggerEndThink =
 {
 	local entity a;
+	local int    gone, bit, absent;
+	local float  i;
+
+	/*
+	  PATCH 270, STAGE 2 -- the per-player sweep, ahead of the legacy path
+	  because on a lobby it is the only one that runs.
+
+	  "Left" is defined as absent for one whole sweep window rather than by a
+	  timestamp, for the reason given at the field declarations: a mask has
+	  nowhere to put 32 timestamps.  gone = was-inside AND not-seen-since.
+
+	  OnEndTouchAll fires ONLY when the trigger empties, which is Source's
+	  actual rule (CBaseTrigger::EndTouch sweeps m_hTouchingEntities at
+	  triggers.cpp:449-475 and fires m_OnEndTouchAll only when nothing is left).
+	  The one-toucher code fired it after every OnEndTouch because with one
+	  toucher those are the same event; with several they are not, and only 10
+	  of the 555 OnEndTouchAll owners declare both outputs, so this is a visible
+	  change on ten entities and a correction on all of them.
+	*/
+	if (self.vbsp_touch_in || self.vbsp_touch_seen)
+	{
+		/*
+		  Two windows, not one -- see the essay at the field declarations for
+		  the regression the one-window version was.
+
+		    absent  did not touch during the window just ended
+		    out     was absent for the PREVIOUS window too
+		    gone    absent for both, so >= 2 sweeps ~ 0.06 s: end it
+		*/
+		absent = self.vbsp_touch_in & ~self.vbsp_touch_seen;
+		gone   = absent & self.vbsp_touch_out;
+		self.vbsp_touch_out = absent & ~gone;
+		a = world;
+
+		if (gone)
+		{
+			for (i = 0; i < 32; i = i + 1)
+			{
+				bit = (int)1 << (int)i;
+				if (!(gone & bit))
+					continue;
+				// +1: the mask is edict-number-minus-one, see SV_TouchBit.
+				a = edict_num(i + 1);
+				SV_FireOutput(self, "OnEndTouch", a);
+			}
+		}
+
+		/*
+		  A bit that is absent but not yet `gone` STAYS in vbsp_touch_in, and
+		  that is what restores the other half of build 51's behaviour: a
+		  player who re-touches inside the grace is still recorded as inside,
+		  so the entry test in SV_TriggerIOTouch does not fire a second
+		  OnStartTouch at them.  It is exactly what vbsp_touch_who staying set
+		  used to do.
+		*/
+		self.vbsp_touch_in   = (self.vbsp_touch_in | self.vbsp_touch_seen) & ~gone;
+		self.vbsp_touch_seen = 0;
+
+		// Emptied on this sweep.  `a` is the last player out, which is the
+		// activator Source passes for the same reason.
+		if (gone && !self.vbsp_touch_in)
+			SV_FireOutput(self, "OnEndTouchAll", a);
+	}
 
 	if (self.vbsp_touch_who && time - self.vbsp_touch_when > 0.05)
 	{
@@ -1281,9 +1718,21 @@ void() SV_TriggerEndThink =
 		SV_FireOutput(self, "OnEndTouchAll", a);
 	}
 
-	// Only think while somebody is inside.  A map with 1122 brush entities
-	// cannot afford a per-frame think on every trigger that ever fired.
-	if (self.vbsp_touch_who)
+	/*
+	  Only think while somebody is inside.  A map with 1122 brush entities
+	  cannot afford a per-frame think on every trigger that ever fired.
+
+	  TWO RATES, and the split is so that vbsp_mp 0 is build 51 to the frame.
+	  0.03 is the window the per-player grace is quantised in; 0.02 is what the
+	  legacy timestamp path has always polled at.  When only the legacy state is
+	  live it keeps its own number, so the control arm of the A/B is not a
+	  slightly different thing.  With both live -- which needs more than 32
+	  clients, or vbsp_mp flipped mid-map -- the masks win, and the legacy
+	  path's `> 0.05` test is unchanged either way.
+	*/
+	if (self.vbsp_touch_in || self.vbsp_touch_seen)
+		self.nextthink = time + 0.03;
+	else if (self.vbsp_touch_who)
 		self.nextthink = time + 0.02;
 	else
 		self.nextthink = 0;
@@ -1291,18 +1740,50 @@ void() SV_TriggerEndThink =
 
 void(entity trig, entity act) SV_TriggerIOTouch =
 {
+	local int bit;
+
 	if (!trig.vbsp_io_out)
 		return;
 
-	if (trig.vbsp_touch_who != act)
+	bit = SV_TouchBit(act);
+	if (bit)
 	{
-		trig.vbsp_touch_who = act;
-		SV_FireOutput(trig, "OnStartTouch", act);
-		//Patch 256: the entry-side twin, triggers.cpp:422.  Same one-toucher
-		//argument as OnEndTouchAll in SV_TriggerEndThink.  116 entities.
-		SV_FireOutput(trig, "OnStartTouchAll", act);
+		/*
+		  PATCH 270, STAGE 2.  Entry is "not currently recorded inside, by
+		  either half of the sweep state" -- `in` is last sweep's answer and
+		  `seen` is this window's, and a player who has already touched this
+		  window is in `seen` but not yet in `in`.  Testing only `in` would
+		  re-fire OnStartTouch on every frame until the next sweep.
+		*/
+		if (!((trig.vbsp_touch_in | trig.vbsp_touch_seen) & bit))
+		{
+			/*
+			  OnStartTouchAll fires only on the FIRST entrant, which is the
+			  same correction Patch 270 made on the exit side and it has to be
+			  made on both or the pair stops bracketing.  Source's rule
+			  (CBaseTrigger::StartTouch, triggers.cpp:422) is that
+			  m_OnStartTouchAll fires when m_hTouchingEntities goes from empty
+			  to one; with a single toucher "the first" and "every" were the
+			  same event, which is why the one-toucher code fired it
+			  unconditionally.  116 entities declare it.
+			*/
+			SV_FireOutput(trig, "OnStartTouch", act);
+			if (!(trig.vbsp_touch_in | trig.vbsp_touch_seen))
+				SV_FireOutput(trig, "OnStartTouchAll", act);
+		}
+		trig.vbsp_touch_seen = trig.vbsp_touch_seen | bit;
 	}
-	trig.vbsp_touch_when = time;
+	else
+	{
+		// vbsp_mp 0, or a client above the 32nd slot.  Build 51 exactly.
+		if (trig.vbsp_touch_who != act)
+		{
+			trig.vbsp_touch_who = act;
+			SV_FireOutput(trig, "OnStartTouch", act);
+			SV_FireOutput(trig, "OnStartTouchAll", act);
+		}
+		trig.vbsp_touch_when = time;
+	}
 
 	/*
 	  OnJump -- fired when the player jumps while inside the trigger.  Build 37's
@@ -1328,6 +1809,34 @@ void(entity trig, entity act) SV_TriggerIOTouch =
 			print(sprintf("basevel: OnJump from %s vz %.0f\n", trig.model, act.velocity_z));
 		SV_FireOutput(trig, "OnJump", act);
 	}
+
+	/*
+	  BUILD 51: OnLand, which is OnJump read backwards and shares its whole
+	  mechanism -- was airborne before the move, is grounded after it.
+
+	  2302 outputs across 7 maps, every one of them on a trigger_multiple:
+	  bhop_pharma 1206, bhop_badges_mini 789, bhop_orgrimmar 204, surf_rez 72,
+	  bhop_bowling 26, bhop_ragequit 3, bhop_aberrant 2.  What they do is almost
+	  entirely renaming the player so the next trigger in the chain sees a
+	  different targetname -- AddOutput targetname activator 723,
+	  AddOutput targetname default 636, RemoveContext _mom_leftground 758 -- so
+	  on those maps this output IS the progression logic, not decoration.
+
+	  NO VELOCITY TEST, unlike OnJump.  Its jump test needs velocity_z > 0 to
+	  tell a jump from walking off a ledge, because both leave the ground.
+	  Landing has no such twin: there is only one way to acquire FL_ONGROUND.
+
+	  THE EDGE IT CANNOT DISTINGUISH is a frame where the mover drops and
+	  regains the flag without the player ever having been airborne -- stepping
+	  up, or a moving surface pulling away and catching up.  run_wasground is
+	  stamped PRE-move and the flag is read POST-move, so a step-up that clears
+	  and restores the flag inside a single move is invisible here and does not
+	  fire; only a move that BEGINS airborne can.  The residual risk is a
+	  platform that genuinely un-grounds you for one whole command, which on
+	  these seven maps re-runs an idempotent rename.
+	*/
+	if (!(act.run_wasground) && (act.flags & FL_ONGROUND))
+		SV_FireOutput(trig, "OnLand", act);
 
 	if (trig.nextthink <= 0)
 	{
@@ -1554,6 +2063,7 @@ void() SV_EntityIOBuild =
 			    lk != "onendtouch" && lk != "ontrigger"   && lk != "onpressed"    &&
 			    lk != "onhitmax"   && lk != "onactivate"  && lk != "onusefinished"&&
 			    lk != "onlandinglimitreached" && lk != "onjump" &&
+			    lk != "onland" &&           // build 51, beside OnJump
 			    lk != "onstarttouchall" && lk != "onendtouchall" &&
 			    lk != "onlockeduse" && lk != "onpass" && lk != "onfail" &&
 			    lk != "ontimer")
@@ -1652,6 +2162,51 @@ void() env_sprite_oriented              = { remove(self); };
 void() env_glow                         = { remove(self); };
 void() point_spotlight                  = { remove(self); };
 void() beam_spotlight                   = { remove(self); };
+
+/*
+  Build 49.  The two POINT classes cl_emit.qc draws, stubbed under exactly the
+  rule above: CSQC reads them out of the lump itself, so the only thing the
+  server owes them is to stop ent_census reporting them as missing.
+
+      env_fire   13633 across 211 maps   the largest instance count in the
+                                         library after env_sprite
+      env_spark    452 across  67 maps
+
+  Without these they were reaching SV_OnEntityNoSpawnFunction and being removed
+  by its "point entity with no * model" rule -- the right OUTCOME, by an
+  accident of the catch-all rather than by a decision, and censused as unhandled
+  the whole time.
+
+  THE FIVE BRUSH CLASSES cl_emit.qc also draws -- func_dustmotes,
+  func_dustcloud, func_smokevolume, env_bubbles and env_embers -- get NO stub
+  and must not get one.  They are already handled deliberately, in the
+  non-solid list at the bottom of this file, which is where they have to stay:
+  a stub here would remove them, and removing them would drop the submodel that
+  IS the volume CSQC spawns particles inside.  Their census rows are honest for
+  a different reason -- that list is a decision, not a fallthrough.
+
+  env_firesource is deliberately absent from both this block and cl_emit.qc.
+  It carries fireradius and firedamage and no visual keys whatever; Source
+  draws nothing for it either, and it stays in the census as the genuinely
+  unimplemented gameplay entity it is.
+*/
+void() env_fire                         = { remove(self); };
+void() env_spark                        = { remove(self); };
+
+/*
+  Build 51 adds a third, under the same rule.
+
+      env_smokestack   2443 across 52 maps   worst: surf_anubis and
+                                             surf_anubis_ksf at 498 each,
+                                             surf_anoobis 381, surf_saturday 224
+
+  It is a point jet, so like the two above it was already being removed by
+  SV_OnEntityNoSpawnFunction and censused as missing the whole time.  The
+  difference is that this one was missing VISIBLY: it is most of the library's
+  torch flames, and the report that found it was a player asking why only some
+  of surf_anubis' fires light.
+*/
+void() env_smokestack                   = { remove(self); };
 
 /*
 ===========================================================================
@@ -3503,21 +4058,72 @@ void() button_target         = { func_wall(); };
 //callee defined first, and func_physbox is defined after this point.
 
 /*
-  func_slide -- 514 instances, but on only four maps, and on those four it is
-  most of the level.
+  func_slide -- 702 instances across 17 library maps (decompressed-lump census,
+  Patch 280; the earlier "514 on four maps" here was a raw-lump undercount, the
+  trap the vbsp-lumps-are-compressed note describes).  bhop_aberrant alone is
+  484 of them and is nothing but slides; then rj_tattarrattat 58,
+  bhop_retrowave 31, bhop_everfast 21, bhop_ithyphallophobia 19,
+  bhop_mom_training_beta 19, surf_mom_training 16, bhop_frigpx 12,
+  bhop_2shiny2shuckle 7, bhop_arcane 7, bhop_tripportals 7, surf_skatelife 7,
+  surf_skatelife1 7, surf_tripportals 3, surf_huecomundo 2, bhop_bowling 1,
+  surf_4plar 1.
 
-  The FGD is unambiguous: `@SolidClass base(func_brush) = func_slide`, "a brush
-  entity the player will slide on like a surf ramp, even at shallow angles".  So
-  it is a func_brush for spawning purposes and gets the same Solidity handling;
-  without a spawn function it reached the catch-all and became SOLID_BSP with
-  the key ignored.
+  The shipped FGD (momentum.fgd:10041 in the Steam install; it is NOT in the
+  public game-develop tree, whose slide is the trigger_momentum_slide volume):
+  "a brush entity the player will slide on like a surf ramp, even at shallow
+  angles.  Ducking and unducking while sliding work the same as when on normal
+  ground."  Three keys, every one written lowercase and lowercase only
+  (case-preserving check across all 702):
 
-  The SLIDING half -- treating a shallow face as if it were steeper than
-  pm_source's 0.7 standable cut, plus stayonslide/allowjump/disablegravity --
-  needs the movement code and belongs with the timer work.  Being correctly
-  solid is the part that stops those four maps reading as broken.
+      stayonslide      251 written (35 are 1)     absent on the other 451
+      allowjump        702 written (21 are 1)     FGD default 1 -- see below
+      disablegravity   251 written ( 2 are 1)
+
+  SPAWNING: base(func_brush), so the same Solidity / StartDisabled handling.
+  All 702 spawn solid: startdisabled is written 251 times, always 0; 48 say
+  solidity 2 and 200 say 0.  One is named, so I/O can still disable it, which
+  is why SV_IOEnable handles the tag.
+
+  SLIDING: the engine's Source mover reads the tag (pm_source.c, Patch 280,
+  behind pm_slide).  A ground probe that lands on a slide brush never grounds,
+  so there is no friction and no WalkMove -- gravity is clipped along the face
+  each tick exactly as on a ramp steeper than 45 degrees.  allowjump lets a
+  +jump ground for the one tick it needs; stayonslide snaps you back onto a
+  face that curves away; disablegravity skips both gravity half-steps while
+  in contact.
+
+  allowjump is read as a STRING so an absent key can take the FGD's default of
+  1 rather than 0 -- the SV_KeyTri reasoning above.  No shipped map leaves it
+  absent, so today this changes nothing; it is there so the next map cannot be
+  wrong.
 */
-void() func_slide = { func_brush(); };
+.float  stayonslide;
+.string allowjump;
+.float  disablegravity;
+
+void() func_slide =
+{
+	local float f;
+
+	if (!self.model)
+	{
+		remove(self);
+		return;
+	}
+	func_brush();
+
+	f = 0;
+	if (self.stayonslide)
+		f = f | SLIDE_STAYON;
+	if (self.allowjump == "" || stof(self.allowjump) != 0)
+		f = f | SLIDE_ALLOWJUMP;
+	if (self.disablegravity)
+		f = f | SLIDE_NOGRAVITY;
+
+	self.vbsp_slide_skin = SKIN_SLIDE_BASE + f;
+	if (self.solid != SOLID_NOT)
+		self.skin = self.vbsp_slide_skin;
+};
 
 /*
   Doors.
@@ -3786,6 +4392,8 @@ void() point_teleport = { remove(self); };
 */
 void() trigger_multiple_touch =
 {
+	local int bit;
+
 	if (other.classname != "player")
 		return;
 	if (other.health <= 0)
@@ -3795,13 +4403,65 @@ void() trigger_multiple_touch =
 	if (!SV_PassesFilter(self, other))
 		return;
 
+	/*
+	  PATCH 270, STAGE 2 -- a trigger_once this player has already used.
+	  Everything below is skipped, which is what "the entity was removed" looks
+	  like from inside one player's session.  See the wait < 0 arm at the foot
+	  of this function for how the bit gets set and why the entity survives.
+	*/
+	bit = SV_TouchBit(other);
+	if (bit)
+	if (self.vbsp_once_done & bit)
+		return;
+
 	SV_TriggerIOTouch(self, other);
 
-	// OnTrigger is the one output `wait` gates -- Source's ActivateMultiTrigger.
-	// StartTouch and EndTouch are CBaseTrigger's and are not gated, which is
-	// what lets futile rename you on every crossing despite `wait 1`.
-	if (time < self.vbsp_io_next_ok)
-		return;
+	/*
+	  OnTrigger is the one output `wait` gates -- Source's ActivateMultiTrigger.
+	  StartTouch and EndTouch are CBaseTrigger's and are not gated, which is
+	  what lets futile rename you on every crossing despite `wait 1`.
+
+	  PATCH 270, STAGE 2: one shared window, spent once per player, so one
+	  player's crossing does not swallow another's OnTrigger for `wait`
+	  seconds.  See vbsp_io_gate_seen -- including what the first version of
+	  this did instead, and why it fired 200 outputs a second.
+	*/
+	if (vbsp_mp && bit)
+	{
+		/*
+		  THE MASK IS CLEARED ON EXPIRY; THE TIMER IS PUSHED ON EVERY FIRE.
+		  Both halves are needed and an earlier version had only the first.
+
+		  With the timer pushed only when the window restarted, the window ended
+		  a fixed `wait` after the FIRST fire in it -- so a player who entered
+		  late spent the window at 0.9 s and then spent the next one at 1.0 s,
+		  firing twice a tenth of a second apart against `wait 1`.  Source's own
+		  rule (ActivateMultiTrigger sets m_flNextTrigger = curtime + m_flWait on
+		  every activation) does not allow that, and Source is a multiplayer
+		  engine -- the per-player relaxation here is a deliberate divergence for
+		  lobby fairness, so it must not also diverge in the direction of firing
+		  a map's logic MORE often than authored.
+
+		  Pushing on every fire does not compound the way it looks like it
+		  might: the mask lets each player through at most once, so the window
+		  ends `wait` after the LAST NEW player fired, not `wait` x 32.  With one
+		  player it collapses to exactly build 51 -- fire, push, blocked until
+		  the push expires.
+		*/
+		if (time >= self.vbsp_io_next_ok)
+			self.vbsp_io_gate_seen = 0;
+
+		if (self.vbsp_io_gate_seen & bit)
+			return;                     // already spent this window
+		self.vbsp_io_gate_seen = self.vbsp_io_gate_seen | bit;
+	}
+	else
+	{
+		// vbsp_mp 0, or a client above the 32nd slot.  Build 51 exactly.
+		if (time < self.vbsp_io_next_ok)
+			return;
+	}
+
 	self.vbsp_io_next_ok = time + ((self.wait > 0) ? self.wait : 0.2);
 	SV_FireOutput(self, "OnTrigger", other);
 
@@ -3822,6 +4482,35 @@ void() trigger_multiple_touch =
 	*/
 	if (self.wait < 0)
 	{
+		/*
+		  PATCH 270, STAGE 2 -- retire it for THIS PLAYER, in a lobby.
+
+		  A trigger_once that is genuinely removed is removed for all 32
+		  people, so the first player through a map's start gate consumes the
+		  event for everyone who has not reached it yet.  On the 841 library
+		  trigger_onces that wire an output, that is the map's progression
+		  logic disappearing for whoever is slower.
+
+		  Only when vbsp_retrigger is set (lobby_enable && lobby_retrigger), so
+		  offline this is bit-for-bit build 51: the entity really is removed and
+		  a map that counts on it being gone still gets that.
+
+		  The two mask clears are what makes it look like a removal rather than
+		  a mute.  Without them the player stays in vbsp_touch_in, the next
+		  sweep sees them absent -- this function returns before
+		  SV_TriggerIOTouch now -- and fires an OnEndTouch at them from an
+		  entity that is supposed to have ceased to exist.  On the seven maps
+		  where end-touch IS the progression logic that would be a real misfire.
+		*/
+		if (vbsp_retrigger && bit)
+		{
+			self.vbsp_once_done  = self.vbsp_once_done | bit;
+			self.vbsp_touch_in   = self.vbsp_touch_in   & ~bit;
+			self.vbsp_touch_seen = self.vbsp_touch_seen & ~bit;
+			self.vbsp_touch_out  = self.vbsp_touch_out  & ~bit;
+			return;
+		}
+
 		self.touch = SUB_Null;
 		self.solid = SOLID_NOT;
 		self.think = SUB_Remove;
@@ -4014,7 +4703,14 @@ void(entity b, entity pl) SV_BhopTeleport =
 		SV_TimerWarped(pl);
 
 	if (b.spawnflags & SF_BHOP_RESET_ON_FIRE)
+	{
 		b.count = 0;
+		// Patch 270, Stage 2: and the per-player copy, or under vbsp_retrigger
+		// the reset spawnflag is inert -- the block fires once and its landing
+		// limit never re-arms for that player.  Both counters or neither.
+		if (pl.vbsp_bhop_cntblk == b)
+			pl.vbsp_bhop_cnt = 0;
+	}
 
 	pl.vbsp_bhop_on = world;
 	pl.vbsp_bhop_since = 0;
@@ -4048,7 +4744,11 @@ void(entity pl) SV_BhopFrame =
 		// anything at all, which is the same thing from this side.
 		if ((pl.flags & FL_ONGROUND) && pl.vbsp_bhop_on)
 			if (pl.vbsp_bhop_on.spawnflags & (SF_BHOP_RESET_ON_OTHER | SF_BHOP_RESET_ON_ANY))
+			{
 				pl.vbsp_bhop_on.count = 0;
+				pl.vbsp_bhop_cnt      = 0;
+				pl.vbsp_bhop_cntblk   = world;
+			}
 
 		pl.vbsp_bhop_on = world;
 		pl.vbsp_bhop_since = 0;
@@ -4062,6 +4762,35 @@ void(entity pl) SV_BhopFrame =
 		pl.vbsp_bhop_on = b;
 		pl.vbsp_bhop_since = time;
 		b.count = b.count + 1;
+
+		/*
+		  PATCH 270, STAGE 2 -- the same count, kept on the player.
+
+		  b.count is one counter shared by everybody standing on the block, so
+		  32 players hopping a LandingLimit block exhaust it 32x faster than one
+		  player does and the block starts teleporting people who have landed on
+		  it once.  The per-player copy counts CONSECUTIVE landings on the same
+		  block, which is what b.count means for one player: a different block
+		  restarts it, and the spawnflag reset above clears it.
+
+		  b.count is still maintained.  It is what the entity-I/O layer exposes
+		  to a map's own AddOutput/counter logic, and silently making that
+		  per-player would be a different change with a different blast radius.
+		  Only the LandingLimit comparison moves.
+
+		  INVISIBLE ON THE WHOLE LIBRARY AS IT STANDS: LandingLimit is 0
+		  (unlimited) on every func_bhop in all 1310 maps, which is why the arm
+		  below is described as correct-by-construction rather than tested.  This
+		  is a latent bug being closed before 32 players can find it, not an
+		  observed one.
+		*/
+		if (pl.vbsp_bhop_cntblk == b)
+			pl.vbsp_bhop_cnt = pl.vbsp_bhop_cnt + 1;
+		else
+		{
+			pl.vbsp_bhop_cntblk = b;
+			pl.vbsp_bhop_cnt    = 1;
+		}
 	}
 
 	/*
@@ -4086,7 +4815,22 @@ void(entity pl) SV_BhopFrame =
 	// LandingLimit 0 is unlimited, which is every block on both maps here, so
 	// this arm is correct-by-construction rather than tested against a map.
 	// -1 is per-gamemode func_door emulation and is deliberately not done.
-	if (b.LandingLimit > 0 && b.count > b.LandingLimit)
+	//
+	/*
+	  Patch 270, Stage 2: compared against the PLAYER's count IN A LOBBY.
+
+	  Gated on vbsp_retrigger rather than vbsp_mp, and that is a correction to
+	  the first version of this patch.  The two counters do not mean the same
+	  thing: b.count is cumulative per block across visits (only the reset
+	  spawnflags clear it), while the per-player copy counts CONSECUTIVE
+	  landings and restarts when you land on a different block.  For one player
+	  alternating between two blocks those diverge, so hanging it on vbsp_mp --
+	  which is on everywhere -- would have changed offline behaviour while
+	  claiming to be a no-op.  In a lobby the per-player count is an
+	  approximation replacing something that is simply wrong at 32 players; on
+	  a listen server it is a change with no upside, so it is not made.
+	*/
+	if (b.LandingLimit > 0 && (vbsp_retrigger ? pl.vbsp_bhop_cnt : b.count) > b.LandingLimit)
 	{
 		SV_FireOutput(b, "OnLandingLimitReached", pl);
 		SV_BhopTeleport(b, pl);

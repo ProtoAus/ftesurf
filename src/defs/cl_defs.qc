@@ -1496,6 +1496,25 @@ const float DRAWFLAG_MODULATE = 2;
 const float DRAWFLAG_2D       = 4;
 const float DRAWFLAG_TWOSIDED = 1024;
 
+/*
+  BUILD 52 / ENGINE PATCH 274: draw the polygon OVER the world.
+
+  R_BeginPolygon queues into the scene, so a polygon is depth-tested against the
+  world and a sprite half-behind a pillar is sliced by it.  That is right for a
+  zone cage and wrong for a light glare, which is a lens effect and belongs on
+  top -- Source draws its glows with a material literally named
+  "..._add_noz", and the _noz is the whole trick (glow_overlay.cpp:397).
+
+  Before this flag the only route was to name a gamedir .shader carrying
+  `nodepthtest` (scripts/zones.shader does), but a shader fixes the texture, so
+  it cannot say "this sprite's own material, drawn over the world".
+
+  NOT A SUBSTITUTE FOR AN OCCLUSION TEST.  With no depth test the polygon is
+  drawn through everything, so whatever uses this has to decide visibility for
+  itself -- see Sprite_Glare, which traces to the sprite's centre and fades.
+*/
+const float DRAWFLAG_NODEPTHTEST = 4096;
+
 void(vector org, vector texcoords, vector rgb, float alpha) R_PolygonVertex = #307; /*
 		Specifies a polygon vertex with its various properties. */
 

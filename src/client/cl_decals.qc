@@ -130,6 +130,27 @@ void(vector org, string tex, float size) Decal_Place =
 		traceline(org, org + dir * DECAL_PROBE, MOVE_NOMONSTERS, world);
 		if (trace_fraction >= 1)
 			continue;
+		/*
+		  BUILD 53 -- WORLD SURFACES ONLY, and this line exists to keep that
+		  true rather than to make it true.
+
+		  csqc_world used to contain nothing but the world model, so "the trace
+		  hit something" and "the trace hit the world" were the same statement
+		  and neither had to be written down.  cl_sprites.qc now links the map's
+		  solid brush entities into the same world so the glare and spotlight
+		  traces can see them (vbsp_glare_brush), which silently made those two
+		  statements different here.
+
+		  Source's own infodecal does paint on brush entities, so hitting one is
+		  not wrong in principle -- but adddecal_static clips the decal against
+		  the world model, and a decal whose plane belongs to a func_brush has
+		  nothing there to clip to.  Declining the hit keeps every decal in the
+		  library exactly where it has been.  Painting on brush entities is a
+		  feature to add deliberately, with its own clip, not a side effect to
+		  inherit from a change about light glows.
+		*/
+		if (trace_ent != world)
+			continue;
 		d = trace_fraction * DECAL_PROBE;
 		if (d < bestd)
 		{

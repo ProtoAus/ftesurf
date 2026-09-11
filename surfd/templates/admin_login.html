@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center;
+         justify-content:center; background:#14161a; color:#d8dde4;
+         font:14px/1.5 system-ui, "Segoe UI", sans-serif; }
+  form { width:min(92vw, 22rem); background:#1c1f25; border:1px solid #2a2f38;
+         border-radius:10px; padding:1.6rem; }
+  h1 { margin:0 0 .3rem; font-size:1.1rem; letter-spacing:.02em; }
+  p.sub { margin:0 0 1.2rem; color:#8b94a2; font-size:.82rem; }
+  label { display:block; margin-bottom:.35rem; font-size:.8rem; color:#9aa4b2; }
+  input[type=password] { width:100%; box-sizing:border-box; padding:.55rem .65rem;
+        background:#0f1114; border:1px solid #333a45; border-radius:6px;
+        color:#e8edf4; font-size:.95rem; }
+  input[type=password]:focus { outline:2px solid #3d6fd1; outline-offset:1px; }
+  button { margin-top:1rem; width:100%; padding:.6rem; border:0; border-radius:6px;
+        background:#3d6fd1; color:#fff; font-size:.92rem; font-weight:600;
+        cursor:pointer; }
+  button:hover { background:#4b7ee0; }
+  .err { margin-top:.9rem; padding:.5rem .65rem; border-radius:6px;
+         background:#3a1d1f; border:1px solid #6b2b30; color:#ffb4b4;
+         font-size:.83rem; }
+  .lock { margin-top:.9rem; padding:.5rem .65rem; border-radius:6px;
+          background:#3a2f1a; border:1px solid #6b552b; color:#ffd79a;
+          font-size:.83rem; }
+</style>
+</head>
+<body>
+<form method="post" action="/admin/login" autocomplete="off">
+  <h1>FTESurf admin</h1>
+  <p class="sub">Fleet control for the lobby servers.</p>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="pw">Password</label>
+  <input id="pw" type="password" name="password" autocomplete="current-password"
+         autofocus required>
+  <button type="submit">Sign in</button>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  {% if lockout %}
+    <div class="lock">Locked out for about {{ (lockout // 60) + 1 }} more minute(s).</div>
+  {% endif %}
+</form>
+</body>
+</html>

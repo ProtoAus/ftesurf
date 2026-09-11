@@ -59,6 +59,74 @@ float vbsp_uv_reported;   // one-shot latch for the ui_bootcheck diagnostic
   latent bug and the same fix would suit them, but they are not what this patch
   is about and changing them unmeasured would be worse than leaving them.
 */
+/*
+===========================================================================
+  BUILD 47 -- cl_netfps MUST EQUAL 1/pm_ticrate, AND NOTHING RESTORED IT.
+
+  THE DEFECT.  cl_pred.c takes the RAW cvar for the interpolation back-date:
+
+      float netfps = cl_netfps.value;
+      ...
+      simtime = realtime - (1.0/netfps);
+
+  while the usercmd SEND interval is snapped to a whole number of ticks by
+  cl_netfps_snap (Patch 252).  With cl_netfps 100 against pm_ticrate 0.015 the
+  send interval snaps to 15 ms but the back-date stays 10 ms, so prediction
+  aims five milliseconds out of step with the commands it is replaying.  The
+  extrapolated partial command's msec sawtooths across that gap every cycle and
+  crosses the whole-tick boundary, which lands the predicted state a whole tick
+  ahead on some rendered frames and not others.
+
+  That is what "the speedometer reads 0-4 at 1000 fps but is fine at 60" is:
+  pmove_vel really is alternating between two states.  Sixty fps hides it
+  because a 16.7 ms frame period always crosses the 15 ms tick.
+
+  NOTE WHAT THIS IS *NOT*.  cfg/netfix.cfg blames the COMMAND INTERVAL -- 10 ms
+  commands into a 15 ms mover, the 101101 stall, "117 of 351 usercmds moved the
+  player ZERO units".  Patch 252 fixed that and netfix.cfg predates it.  The
+  rule it states is still right; its mechanism is not.  The file has been
+  corrected rather than left to look measured.
+
+  WHY THE 100 IS THERE AT ALL.  cfg/mode_bhop.cfg is right to set cl_netfps 100
+  -- it also sets pm_ticrate to 0.01, so on a bhop map all of it matches.  But
+  cl_netfps is a CLIENT cvar with CVAR_ARCHIVE and the mode overlay is applied
+  server-side, so loading one bhop map writes 100 into ftesurf.cfg, and the
+  saved config runs AFTER default.fmf's forced 66.6667.  Surf has no
+  mode_surf.cfg to set it back.  Nothing ever restored it.
+
+  WHY HERE AND NOT A STUFFCMD FROM THE SERVER.  Two reasons.  The client owns
+  the client cvar, so it can COMPARE and stay silent when the setting is already
+  right -- a server stuff would rewrite it on every map load whether or not
+  anything was wrong.  And the ordering works: netfix.cfg records that a value
+  set from a +exec config is overwritten by ftesurf.cfg loading afterwards, and
+  this hook runs long after both.
+
+  Symmetric on purpose.  A bhop map publishes pm_ticrate 0.01 and this sets 100
+  straight back; the rule is "match the tick", not "prefer surf".
+===========================================================================
+*/
+void() Net_MatchTicrate =
+{
+	local float tick, want, have;
+
+	tick = serverkeyfloat("pm_ticrate");
+	if (tick <= 0)
+		return;                     // no Source mover published; not our business
+
+	want = 1 / tick;
+	have = cvar("cl_netfps");
+
+	// A tenth of a command per second is the same setting.  66.6667 and 1/0.015
+	// are not equal in single precision and an exact compare would re-print,
+	// and re-archive, on every single map load.
+	if (fabs(have - want) < 0.1)
+		return;
+
+	cvar_set("cl_netfps", sprintf("%g", want));
+	print(sprintf("^3net:^7 cl_netfps %g -> %g, to match pm_ticrate %g\n",
+	              have, want, tick));
+};
+
 void() CSQC_WorldLoaded =
 {
 	Portal_LoadFromWorld();
@@ -76,6 +144,36 @@ void() CSQC_WorldLoaded =
 	// parser looks -- so until this ran, every fogged map drew flat.  cl_fog.qc.
 	Fog_LoadFromWorld();
 
+	// Build 49.  The volumetric and emissive entities, out of the same lump and
+	// here for the same reason -- func_dustmotes alone is 4999 instances across
+	// 464 maps and had never drawn anything.  cl_emit.qc.
+	Emit_LoadFromWorld();
+
+	/*
+	  Patch 278.  The lobby avatars' own particle effects.
+
+	  Its own file and its own exec rather than an append to
+	  particles/ftesurf.cfg, so the generated per-colour blocks stay separate
+	  from the hand-written map-entity ones.  tools/mkavatarfx.py writes it from
+	  the palette in sv_lobby.qc, so the trail colour and the body colour cannot
+	  disagree.
+
+	  IMMEDIATELY AFTER Emit_LoadFromWorld, which is deliberate rather than
+	  arbitrary: that call is what execs particles/ftesurf.cfg, so this line
+	  inherits an exec point already known to be correct.  All three of Patch
+	  272's rules are satisfied by being exactly here -- it is after
+	  Renderer_Start, so the blocks are not discarded in silence; it runs again
+	  on every map load, so it survives the r_particledesc callback the engine
+	  forces there through the cvar's alias; and localcmd from CSQC runs at
+	  RESTRICT_INSECURE, so P_SetModified returns early and f_modified_particles
+	  stays clear.
+
+	  Not latched to run once, for the same reason Emit_LoadForMap is not: a
+	  vid_restart calls PScript_Shutdown and frees the whole part_type table.
+	  Re-parsing an effect that already exists is idempotent.
+	*/
+	localcmd("exec particles/ftesurf_avatar.cfg\n");
+
 	// Build 30.  The ghost's stand-in models, said out loud once per map for the
 	// reason cl_portal.qc:261-266 gives -- setmodel would load them anyway, and
 	// fteqcc warns about a model it cannot see precached.  This hook is where
@@ -83,6 +181,17 @@ void() CSQC_WorldLoaded =
 	// executed"), and it is the one place a stray load cannot cost a frame
 	// mid-run.
 	Ghost_Precache();
+
+	// Patch 270.  Resolves the lobby avatar model indices for THIS map -- a
+	// modelindex means nothing on the next one, which is also why the engine
+	// zeroes its delta counters per map (cl_main.c, CL_ClearState).  Here
+	// rather than lazily because this hook is defined as "called after model
+	// and sound precaches have been executed", which is exactly the
+	// precondition modelnameforindex needs.
+	NM_WorldLoaded();
+
+	// Build 47.  Last, because it wants the serverinfo the map load published.
+	Net_MatchTicrate();
 };
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
@@ -96,7 +205,18 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
 	Ghost_RegisterCvars();
+	Results_RegisterCvars();        // build 48
+	/*
+	  Build 49.  This one also takes every particleeffectnum handle, ONCE, and
+	  that has to happen here rather than per map: the effect names are what
+	  auto-load particles/ftesurf.cfg, the load is queued through the command
+	  buffer, and asking at map load would leave the FIRST map particle-free
+	  while the buffer drains.  See the essay above Emit_Precache.
+	*/
+	Emit_RegisterCvars();
 	HUD_EditRegisterCvars();
+	NM_RegisterCvars();             // Patch 270, the lobby network monitor
+	Ev_Register();                  // build 54, the trigger/entity inspector
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
 	// from the last map would alias a live buffer.  See Rec_ViewInit.
@@ -151,12 +271,111 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	*/
 	registercvar("vbsp_sprites", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_spotlights", "1", CVAR_ARCHIVE);
+	/*
+	  BUILD 54 -- env_lightglow, the third switch and the newest class.
+
+	  Reported as "some of the light glow sprites on the flat white brush models
+	  acting as light are actually horizontally stretched in Source, looks like a
+	  lens flare almost, can you find that value?"  The value is
+	  HorizontalGlowSize / VerticalGlowSize, and this is the class that carries
+	  it: surf_tensor2 has 166 of them and 165 read 65 wide by 35 tall.
+
+	  ITS OWN SWITCH rather than sharing vbsp_sprites, for the reason the two
+	  above are split: this is 3393 NEW quads across 137 maps that have never
+	  drawn anything, and they are view-space flares drawn over the world.  If
+	  they turn out to be too much on some map, the answer needs to be "turn off
+	  the flares" and not "turn off every billboard in the map".  ARCHIVE, like
+	  its two neighbours, because it is a look preference.
+
+	  It is also the A/B: the flares are additive and sit on top of the
+	  env_sprite glows that were already there, so "is that halo the new thing or
+	  the old thing" has no answer from a screenshot without a switch.
+	*/
+	registercvar("vbsp_lightglow", "1", CVAR_ARCHIVE);
+	/*
+	  BUILD 55 -- how a sprite faces you.  2 = read $spriteorientation out of each
+	  material (the default), 1 = force vp_parallel, 0 = force parallel_upright.
+
+	  Reported as "the light sprites don't always face the camera, they stay
+	  'locked' from underneath and stand upright in the Z".  They did: every
+	  non-oriented sprite was drawn parallel_upright, which is Source's fallback
+	  for a SILENT material (spritemodel.cpp:311) and not what the materials
+	  actually say -- 177 of the library's 213 sprite materials ask for
+	  vp_parallel, including sprites/light_glow03 which is what tensor2 uses.
+
+	  The two forcing arms are here because this is a look you have to judge by
+	  eye, and flipping one cvar at a fixed vantage is the only way to compare the
+	  two without a rebuild.  NOT archived: the read-it-from-the-material answer is
+	  the correct one and a forced value should not survive a restart.
+	*/
+	registercvar("vbsp_sprite_orient", "2");
 	// Draw distance in units, 0 = unlimited.  A sprite is culled on its centre
 	// less its own radius, so a large glow stays visible past the line.
 	registercvar("vbsp_sprite_dist", "0");
 	// One-frame dump of the material table and the cull result; clears itself,
 	// same idiom as zone_debug.
 	registercvar("vbsp_sprite_debug", "0");
+
+	/*
+	  BUILD 52 -- LIGHT GLARES.  Reported as "the light sprites simply rotate
+	  towards the camera and get cut by the world geometry", and both halves are
+	  the same mistake: an additive glow is a LENS effect, so it belongs over the
+	  world with its visibility decided by a trace, not by the depth buffer.
+	  Sprite_Glare in cl_sprites.qc does what Source's CGlowOverlay does; the
+	  essay above it cites the file and line for every constant here.
+
+	  ARCHIVE on the switch, because it is a look preference and someone may
+	  prefer the old clipped sprites. The other two are tuning, not preference.
+
+	  traces 8: a traceline per glow per frame is not free at 263 sprites on
+	  surf_tensor2, so they are traced round-robin and the fade hides the
+	  staleness. 8/frame at 500fps revisits every glow ~15 times a second, which
+	  is far inside the 50ms ramp. Raise it if glows lag when you turn quickly;
+	  0 freezes the traces entirely, which is the A/B for "is the trace the cost".
+
+	  decay 0.05 is Source's cl_sun_decay_rate exactly (glow_overlay.cpp:59): a
+	  50ms fade either way, framerate-independent because it steps by frametime.
+	*/
+	registercvar("vbsp_glare", "1", CVAR_ARCHIVE);
+	registercvar("vbsp_glare_traces", "8");
+	registercvar("vbsp_glare_decay", "0.05");
+
+	/*
+	  BUILD 53 -- what that trace is allowed to hit.
+
+	  Reported as "brush entities do not block the sprites from rendering when
+	  they should", which is precisely the limitation build 52 shipped with and
+	  wrote down: a CSQC traceline runs against csqc_world, and the server's
+	  func_* brush entities are not in it. The client now builds its own
+	  invisible copies at map load, and this picks which ones.
+
+	      0  worldspawn and static props only -- build 52's behaviour
+	      1  ...plus SOLID brush entities. Source's own rule for the glow it
+	         traces: glow_overlay.cpp:236-237 traces with CONTENTS_SOLID
+	      2  ...plus the drawn-but-not-solid ones: func_illusionary (21,231
+	         across the library) and every func_brush declaring "solidity 1".
+	         Closer to what Source ACTUALLY does for a world glow, which is a
+	         hardware pixel query (glow_overlay.cpp:247-250) and therefore sees
+	         anything that draws.
+
+	  2 IS THE DEFAULT, and the map that prompted this is why. 1 looks like the
+	  conservative choice and on surf_tensor2 it is the useless one: 145 of the
+	  map's 160 func_brush declare "solidity 1", so mode 1 keeps 16 of 622 brush
+	  entities and the first measured run showed it changing nothing at all --
+	  232 of 240 glares hidden with the occluders in, and 232 of 240 with them
+	  out. The spawn portals themselves are in the 145: the combine shield is a
+	  func_brush with solidity 1. A mapper uses that for detail geometry you can
+	  walk through and cannot see through, which is precisely the thing a glow
+	  should be hidden behind.
+
+	  The cost of being wrong at 2 is a glare hidden behind something you can
+	  see through -- a glass pane, a grate. 1 is there for anyone who would
+	  rather have that than the reverse, and 0 restores build 52 exactly.
+
+	  It also fixes point_spotlight, which traced against the same empty world
+	  and shot its beam through every door on the map.
+	*/
+	registercvar("vbsp_glare_brush", "2", CVAR_ARCHIVE);
 
 	// The map's 3D skybox (sky_camera).  On by default because 43 maps look
 	// wrong without it, but it is a second full scene render, so it is the
@@ -421,6 +640,34 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		if (HUD_EditInputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	/*
+	  BUILD 56: the entity inspector's cursor, behind the editor and in front of
+	  the results card -- the reverse of its place in the draw order, which is
+	  after Results_Draw and before HUD_EditDraw.  ui_ev_cursor and not
+	  ui_ev_open, for the results card's reason: an overlay merely on screen
+	  joins nothing.  It refuses to share the screen with any of the four below
+	  and lets go if one appears, so in practice it answers alone.
+	*/
+	if (ui_ev_cursor)
+		if (Ev_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+
+	/*
+	  BUILD 48: the results card, and it sits AHEAD of the leaderboard because it
+	  is drawn in front of it.  Input order is the reverse of draw order and the
+	  two have to be kept in step by hand; see CSQC_UpdateView.
+
+	  ui_rs_cursor AND NOT ui_rs_open, which is the whole design of this panel.
+	  It spends most of its life drawn and passive -- it appears unasked the
+	  instant you cross the line, while you may already be walking back to run
+	  again -- so a card that entered the chain merely by being on screen would
+	  eat the first key you pressed after every single finish.  It joins the chain
+	  only once you have asked for the cursor.
+	*/
+	if (ui_rs_cursor)
+		if (Results_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+
 	if (rec_sb_open)
 		if (Scores_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -432,6 +679,17 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	if (evtype == IE_KEYDOWN)
 	{
 		Keys_Edge(scanx, TRUE);
+
+		// Build 48: the two gestures that ASK the passive card for the cursor,
+		// plus ESC to dismiss it.  Offered before the two menus below because it
+		// answers only F1, MOUSE3 and ESC, and only while a card is actually up.
+		if (Results_PassiveKey(scanx))
+			return TRUE;
+		// Build 56: MOUSE3 takes the inspector's cursor while its overlay is up.
+		// After the card on purpose -- the card was there first and keeps MOUSE3
+		// whenever one is up; see Ev_PassiveKey.
+		if (Ev_PassiveKey(scanx))
+			return TRUE;
 		/*
 		  The gfx menu is offered the press FIRST, and only while it is open --
 		  it shares the digit row with the save-lock menu, and the one that is
@@ -632,6 +890,21 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	if (rec_wt_on)
 		Watch_Path();
 
+	// Build 54.  The entity/trigger inspector's volumes, here for the same
+	// reason as the three above -- they are world outlines and a box behind a
+	// wall should be behind it.  Its LABELS are 2D and are drawn after
+	// renderscene by Ev_Labels; this pass queues them.  Costs one float test on
+	// the frames it is off, which is nearly all of them.
+	Ev_Draw();
+
+	/*
+	  Build 49.  Also before renderscene, but for a different reason than the
+	  three above: particles are drawn INSIDE renderscene by the engine's own
+	  pass, so emitting after it would land a frame late.  VF_ORIGIN is already
+	  final here, which is what the distance cull reads.
+	*/
+	Emit_Frame();
+
 	renderscene();
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
@@ -650,7 +923,17 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 	if (notmenu)
 	{
+		/*
+		  Patch 270.  NM_Frame samples the engine's received-delta counters and
+		  closes a one-second window; NM_Draw prints it.  Sampling is OUTSIDE the
+		  draw so the window keeps advancing even on frames the panel is off --
+		  which matters because the counter is free-running and the alternative
+		  is a bogus first reading whenever hud_net is switched on mid-session.
+		*/
+		NM_Frame();
+
 		HUD_Draw(scr);
+		NM_Draw(scr);
 
 		/*
 		  BUILD 43: the replay's path AGAIN, and this is not a duplicate.
@@ -677,10 +960,37 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (rec_wt_on)
 			Watch_Path2D();
 
+		/*
+		  Build 54.  The inspector's labels, and they are here for exactly the
+		  reason the block above gives: they are 2D, so they have to be after
+		  renderscene, and after HUD_Draw so that a later 2D call is guaranteed to
+		  flush the batch.  Their positions were projected in Ev_Draw, before
+		  renderscene, while the view matrix was set.
+		*/
+		Ev_Labels();
+
 		// Both read stats only, so they are drawn from here rather than from
 		// HUD_Draw: neither is part of the strafe/board layout chain and
 		// neither wants hud_* to switch it off.
+		/*
+		  BUILD 48.  The latch first, then the toast, and both before the panels
+		  that can cover them.
+
+		  Results_Frame owns two edges and draws nothing: the finish, which raises
+		  the card, and the stage close, which raises the toast.  It runs here
+		  rather than inside either draw function because the card can be switched
+		  off with hud_results and a detector you can switch off comes back seeded
+		  -- it would then pop a card about a run that ended four minutes ago.
+
+		  The toast is drawn beside the split column it belongs with, and NOT with
+		  the card down at the bottom of this list: they are mutually exclusive by
+		  construction, so nothing is gained by putting them on the same layer and
+		  the toast reads better next to the splits it is about.
+		*/
+		Results_Frame();
+
 		Timer_Draw(scr);
+		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
@@ -695,6 +1005,30 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// pick the next one, so it has to be the front-most thing on screen and
 		// the first thing offered a click.  See CSQC_InputEvent.
 		Scores_Draw(scr);
+
+		/*
+		  BUILD 48: the results card, over the leaderboard and under the editor.
+
+		  In FRONT of the board because it is raised by an event rather than
+		  opened by you, so it must not appear behind something you already had
+		  up; BEHIND the editor for the reason the editor gives below about
+		  drawing outlines around what it edits.  Its entry in CSQC_InputEvent
+		  sits one step ahead of the board's to match, and the two orders have to
+		  be kept in step by hand.
+		*/
+		Results_Draw(scr);
+
+		/*
+		  BUILD 56: the entity inspector's panel, over the results card and under
+		  the editor.  Its place matters for input, not only for looks: sui has
+		  one hit-test list and sui_begin empties it, so the LAST bracket drawn in
+		  a frame owns the clicks.  The card draws raw until it takes the cursor,
+		  and the inspector refuses to hold the cursor alongside the editor, the
+		  board, a replay or a card that has taken it -- so whenever this draws,
+		  its bracket is that last one.  Its entry in CSQC_InputEvent sits behind
+		  the editor's and ahead of the card's to match.
+		*/
+		Ev_Panel(scr);
 
 		/*
 		  BUILD 31: the layout editor, over everything.
@@ -847,6 +1181,34 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	if (argv(0) == "timer")
 	{
+		/*
+		  BUILD 48 VERIFICATION: the client's own reading of the five build-48
+		  stats and of the two tables built from them, printed BEFORE the server
+		  is asked, so a stat that never arrived reads 0 here beside a real number
+		  in the server's stage close: line.  ui_sp_class[] is the word each split
+		  row will draw its mark from (128|64 = the red !, 128|32 = ~, 0 = never
+		  told); the results lines are what the card is drawing.  Local, so it
+		  prints immediately and ahead of the queued cmd replies.  No cvar.
+		*/
+		{
+			local float i;
+			print(sprintf("cl stats: endrec %g endseg %g endst %g endticks %g pbwas %g\n",
+			              getstatf(STAT_FS_STAGEENDREC), getstatf(STAT_FS_STAGEENDSEG),
+			              getstatf(STAT_FS_STAGEENDST), getstatf(STAT_FS_STAGEENDTICKS),
+			              getstatf(STAT_FS_TIMERPBWAS)));
+			print(sprintf("cl splits: n %g over %g pend %g\n",
+			              ui_sp_n, ui_sp_over, ui_sp_pendword));
+			for (i = 0; i < ui_sp_n; i = i + 1)
+				print(sprintf("  row %g: kind %g seg %g ticks %g delta %g class %g\n",
+				              i, ui_sp_kind[i], ui_sp_seg[i], ui_sp_ticks[i],
+				              ui_sp_delta[i], ui_sp_class[i]));
+			print(sprintf("cl results: open %g ticks %g pb %g tag %g rank %g of %g\n",
+			              ui_rs_open, ui_rs_ticks, ui_rs_pb, ui_rs_tag,
+			              ui_rs_rank, ui_rs_of));
+			print(sprintf("cl results: track %g startseg %g seen %g  toast seg %g ticks %g word %g\n",
+			              ui_rs_track, ui_rs_startseg, ui_rs_seen,
+			              ui_rs_toastseg, ui_rs_toastticks, ui_rs_toastword));
+		}
 		localcmd("cmd timer\n");
 		return TRUE;
 	}
@@ -868,6 +1230,19 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Scores_ConsoleCommand(cmd))
 		return TRUE;
 
+	// Build 48.  `results` reopens the last card, which is the only way back to
+	// it once it has been dismissed -- and the only way to see one at all with
+	// hud_results 0.
+	if (Results_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Build 49.  `emit_list` -- what the map holds, what is emitting, and why
+	// the rest is not.  It also prints the particle handles, because "nothing
+	// is drawing" is nearly always either a handle of 0 or a cfg that did not
+	// parse, and those two have different fixes.
+	if (Emit_ConsoleCommand(cmd))
+		return TRUE;
+
 	// Build 30.  Registered on the client and forwarded with `cmd rec_ghost`,
 	// which is the same shape `replay` and the save-lock verbs use: the work is
 	// on the server, but an UNREGISTERED name never reaches
@@ -878,6 +1253,12 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	// Build 31.  `hud_edit`, `hud_edit status|reset|save|on|off`.
 	if (HUD_EditConsoleCommand(cmd))
+		return TRUE;
+
+	// Build 54.  `ent_here`, `ent_view`, `ent_reload` -- the trigger and entity
+	// inspector.  ent_here forwards `cmd ent_info` to the server for the half
+	// the entity lump cannot answer; see cl_entview.qc.
+	if (Ev_ConsoleCommand(cmd))
 		return TRUE;
 
 	// zone_goto is deliberately NOT registered here: it has to move the

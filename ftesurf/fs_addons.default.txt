@@ -25,6 +25,45 @@
 // .vpk mounting comes from the hl2 plugin (plugins/hl2/fs_vpk.c registers
 // FS_RegisterArchiveType_vpk with loadscan=1), so fteplug_hl2_x64.dll MUST be
 // present next to the exe or none of the Source material/model archives load.
+//
+// ===========================================================================
+//  IF THESE LINES SAY "not found/installed" ON SOMEBODY ELSE'S MACHINE
+// ===========================================================================
+//  Type `fs_steamlibs` in the console.  It prints where the engine looked and
+//  how every line below resolved, which is the thing the bare warning does not
+//  say.  A ^1NOT FOUND^7 line means the engine cannot see that Steam game.
+//
+//  Two drives are already handled: Patch 182 reads libraryfolders.vdf, so games
+//  on D: while Steam is on C: resolve by themselves.  What Patch 276 adds is
+//  everything ELSE that can be wrong -- a Steam the registry does not record (a
+//  portable copy, or games installed under a different Windows account), a
+//  library folder Steam has forgotten, a game folder simply copied off another
+//  machine with no Steam behind it at all.  Before 276 the Windows resolver gave
+//  up the instant HKCU\SOFTWARE\Valve\Steam was missing, taking the
+//  libraryfolders parse down with it.
+//
+//  The fix is one line:
+//
+//      fs_steamlibs add D:\SteamLibrary
+//
+//  That records the root in <install>/steam_libraries.txt, which the resolver
+//  reads BEFORE the registry.  Then `fs_restart`, or just relaunch.  A path is
+//  tried two ways, so either of these is right and you do not have to know
+//  which:
+//      as a Steam library     <path>/steamapps/common/<Game>
+//      as the folder your     <path>/<Game>
+//        game dirs sit in     (what "Browse local files" shows, one level up --
+//                              and the form that works with no Steam at all)
+//  One path per line, #/// comments allowed.  The file is per-machine and is NOT
+//  version controlled, for the same reason fs_addons.txt is not.
+//
+//  ⚠ WHY NOT JUST PUT AN ABSOLUTE PATH BELOW.  You can, and for these three
+//  lines it works.  It does NOT fix fs_automount: data/mapdeps.txt is GENERATED
+//  and its specs are steam: forms, so a map that needs the CS:GO or TF2 pack
+//  still comes up untextured.  steam_libraries.txt is read by the resolver
+//  itself, so it fixes both at once.  That is the whole reason it exists.
+// ===========================================================================
+//
 // Momentum Mod -- the map library.  1308 BSPs, 1108 of them surf_*:
 //   VBSP v20 x980, v21 x82, v25 (Strata) x40, v19 x6.
 // ⚠ THIS WAS AN ABSOLUTE PATH, for a reason that was true when it was written
@@ -42,8 +81,13 @@ steam:Momentum Mod Playtest/momentum
 // authority for the movement this tool reproduces.  cstrike_pak_dir.vpk.
 steam:Counter-Strike Source/cstrike
 // HL2 -- the shared Source base content (skyboxes, dev textures, common props).
-// Momentum expects this via its own mount/hl2_dir.vpk, but that directory
-// ships empty here, so we mount the real install instead.
+// Momentum mounts its own copy, mount/hl2_dir.vpk.  An earlier note here said
+// that directory "ships empty" -- it does not: it is Momentum's bundled HL2 PLUS
+// both episodes, 35,474 files (measured 2026-09-09).  The real install stays the
+// boot mount for the base content, and the bundle is mounted PER MAP by
+// fs_automount (data/mapdeps.txt) for maps whose props exist only in the
+// episodes -- surf_fantasy's pine trees and ferns among them, which drew as
+// nothing while that note stood.
 steam:Half-Life 2/hl2
 // ---------------------------------------------------------------------------
 //  Asset-only mounts.  LAST on purpose: this file is priority-ordered top-down,

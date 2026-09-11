@@ -42,9 +42,24 @@
 #define SPR_MAX      1024       // billboards.  Worst map (bhop_rpg) is 862.
 #define BEAM_MAX      768       // light shafts.  Worst map (surf_grotto) is 464.
 #define SPRMAT_MAX     96       // distinct materials.  Worst map is 34.
+/*
+  Occluders.  238,420 brush entities across the 1310 shipped maps, 182 a map on
+  average and 1398 on the worst (bhop_arcane) -- but 64% of those are triggers,
+  which are declined below, so the number actually instantiated is far smaller.
+  The cap is a backstop against a map nobody has measured, not a working limit.
+*/
+#define OCC_MAX       768
 
 #define SPRK_BILLBOARD  0       // faces the viewer, stays upright
 #define SPRK_ORIENTED   1       // fixed to the entity's own angles
+/*
+  BUILD 54 -- env_lightglow.  A VIEW-SPACE flare, not a world billboard: the
+  quad is placed at a fixed 100 units in front of the eye along the direction to
+  the glow (glow_overlay.cpp:330-343), so it holds a constant angular size at
+  any range, and its two half-extents come from the entity's own keys rather
+  than from the texture.  See Glow_Add.
+*/
+#define SPRK_GLOW       2
 
 // ---------------------------------------------------------------- materials
 /*
@@ -71,8 +86,50 @@
 string sprmat_name[SPRMAT_MAX];         // the STEM, as R_BeginPolygon wants it
 float  sprmat_w[SPRMAT_MAX];            // texture size in pixels, 0 = unresolved
 float  sprmat_h[SPRMAT_MAX];
+float  sprmat_orient[SPRMAT_MAX];       // BUILD 55: SPRO_*, read from the .vmt
 float  sprmat_n;
 float  sprmat_zoned;                    // names hold strzone handles to give back
+
+/*
+  BUILD 55 -- WHICH WAY A SPRITE FACES IS A PROPERTY OF ITS MATERIAL.
+
+  Reported as: "the light sprites don't always face the camera, they stay
+  'locked' from underneath and stand upright in the Z.  I believe this is wrong."
+
+  It was wrong.  Every non-oriented sprite was drawn as SPR_VP_PARALLEL_UPRIGHT
+  -- world +Z for up, right from the view's yaw only -- on the strength of
+  spritemodel.cpp:311, which really does default to that.  But it defaults to it
+  only when the material is SILENT, and almost none of them are:
+
+      m_orientation = orientationVar ? orientationVar->GetIntValue()
+                                     : SPR_VP_PARALLEL_UPRIGHT;
+
+  sprites/light_glow03.vmt -- the material surf_tensor2's 263 env_sprites
+  actually use -- says "$spriteorientation" "vp_parallel", which is the FULL
+  billboard: the view's own right and up (c_sprite.cpp:278-290).  Across the 213
+  Sprite-shader materials in the mounted VPKs: 177 vp_parallel, 17
+  parallel_upright, 4 vp_parallel_oriented, 3 oriented.  The old behaviour
+  implemented the 17.
+
+  The two that are counted and declined are not guesses either:
+    facing_upright       right is perpendicular to the direction to the SPRITE
+                         rather than to the view (c_sprite.cpp:245-275), so it
+                         needs a per-sprite basis; drawn as upright, which is
+                         what it degenerates to when you are level with it.
+    vp_parallel_oriented parallel plus a roll about the view axis taken from the
+                         entity's roll (:327+); drawn as parallel, i.e. correct
+                         except for the roll.
+  7 of 213 materials, and both are visible in the census rather than silent.
+*/
+#define SPRO_PARALLEL   0       // vp_parallel -- the view's right and up
+#define SPRO_UPRIGHT    1       // parallel_upright -- world +Z, right from yaw
+#define SPRO_FACING     2       // facing_upright -- declined, drawn as upright
+#define SPRO_VPORIENT   3       // vp_parallel_oriented -- declined, as parallel
+#define SPRO_ENTANGLES  4       // oriented -- the entity's own angles
+
+float sprmat_orient_read;               // materials whose .vmt answered
+float sprmat_orient_guess;              // materials that had to take the default
+float sprmat_orient_decl;               // facing_upright + vp_parallel_oriented
 
 // ---------------------------------------------------------------- billboards
 vector spr_org[SPR_MAX];
@@ -87,6 +144,117 @@ float  spr_mat[SPR_MAX];                // index into the table above
 float  spr_kind[SPR_MAX];
 float  spr_add[SPR_MAX];                // TRUE = additive rendermode
 float  spr_n;
+
+/*
+  BUILD 52 -- THE GLARE STATE.  See Sprite_Glare, below Sprite_Draw.
+
+  spr_gvis is the last answer the occlusion trace gave for this sprite: 1 clear,
+  0 blocked.  spr_glare is that answer RAMPED over time, which is what actually
+  multiplies the alpha.  They are separate because the trace is amortised -- only
+  a few sprites are traced per frame -- and the ramp is what makes the staleness
+  invisible.  Source does the same thing for the same reason.
+*/
+float  spr_gvis[SPR_MAX];               // last trace: 1 = centre point visible
+float  spr_glare[SPR_MAX];              // 0..1, ramped toward spr_gvis
+float  spr_gtraced[SPR_MAX];            // has this one ever been traced?
+float  spr_gnext;                       // round-robin cursor for the trace budget
+
+/*
+===========================================================================
+  BUILD 54 -- THE GLOW PARAMETER SETS, and why they are a table.
+
+  Four numbers belong to a glow rather than to its material: the three distances
+  of env_lightglow's fade ramp, and GlowProxySize, which is how far the
+  occlusion trace stops short of the glow.  Four more SPR_MAX float arrays would
+  cost roughly four times SPR_MAX*4 bytes times EIGHT in progs -- this project
+  has measured fteqcc's array overhead at about 8x the data -- for numbers that
+  in practice take a handful of distinct values per map.
+
+  surf_tensor2 is the case that decided it: 263 env_sprite carry GlowProxySize
+  2.0 (203 of them), 3 (56) and 6 (4), and all 166 env_lightglow carry the same
+  MinDist 500 / MaxDist 2500 / OuterMaxDist 7500.  Four distinct sets on a map
+  with 429 glows.  So one float per sprite indexes a small shared table, exactly
+  the indirection sprmat_* already uses and for the same reason.
+===========================================================================
+*/
+#define GLOWP_MAX      64
+float  glowp_min[GLOWP_MAX];            // env_lightglow MinDist (0 for a sprite)
+float  glowp_max[GLOWP_MAX];            // ...MaxDist
+float  glowp_outer[GLOWP_MAX];          // ...OuterMaxDist, 0 = no outer ramp
+float  glowp_backoff[GLOWP_MAX];        // how far short of the glow the trace stops
+float  glowp_n;
+float  glowp_over;                      // distinct sets that did not fit
+
+float  spr_pset[SPR_MAX];               // index into the four arrays above
+
+/*
+  BUILD 54 -- THE CONTAINING OCCLUDER, which is the fix for "some of them are
+  placed inside of the portal and now don't render".
+
+  A glow is placed AT the thing it lights, and on this library that thing is
+  routinely a brush entity the glow sits INSIDE.  Build 53 gave the trace those
+  brush entities to hit, so every such glow started reporting blocked from every
+  angle and vanished.  Measured on surf_tensor2: 38 additive sprites have their
+  origin inside a kept occluder, 21 of them at exactly 4.0 units of depth -- the
+  size of the trace's own back-off -- and 9 at 0.0, dead on a face.  The spawn
+  portal is the clean case: func_brush *19 is a 96 x 8 x 128 plate and the glow
+  is at its exact centre, so the half-thickness in Y is 4 and the back-off is 4.
+
+  Source does not hit this because its world-glow path never traces at all: it
+  rasterises a proxy pulled GlowProxySize toward the camera and counts surviving
+  pixels (c_pixel_visibility.cpp:75-91).  The FGD says so in as many words --
+  "if this glow is inside geometry (like a light bulb), set this value to be
+  bigger than the bulb's radius".
+
+  So the trace ignores the brush the glow lives in.  traceline's fourth argument
+  is the entity to skip, which makes this free per frame: the containing brush
+  is resolved once at load (Sprite_ResolveSkips) and world -- today's value --
+  stays the default for every glow that is not embedded.
+*/
+entity spr_gskip[SPR_MAX];              // occluder to ignore, world = none
+float  spr_gskip_n;                     // glows that resolved one
+float  spr_gskip_multi;                 // glows inside more than one brush
+
+/*
+  QuakeC allows at most eight parameters and Sprite_Add already uses all eight,
+  so the parameter-set index crosses the call boundary in a global.  Set it
+  immediately before the call; the parser already accumulates into locals, and
+  splitting one logical call into two would read worse than this does.
+*/
+float  spra_pset;
+
+/*
+  BUILD 53 -- THE BRUSH-ENTITY OCCLUDERS.  See Sprite_LoadOccluders.
+
+  Reported as: "brush entities do not block the sprites from rendering when they
+  should."  Correct, and build 52 said so in its own limitation note: a CSQC
+  traceline runs against `csqc_world` (pr_csqc.c:50), which is the world model
+  plus ONLY the entities the CSQC itself instantiated.  The server's func_* brush
+  entities are in the SERVER's world and the client's trace has never been able
+  to see them.
+
+  So the client instantiates its own.  The map's entity lump is already walked at
+  load (getentitytoken, the same walk that finds the sprites), every brush entity
+  in it names a submodel as `model "*N"`, and setmodel on a CSQC entity resolves
+  that against the world model exactly as it does server-side
+  (CS_FindModel -> Mod_FixName, pr_csqc.c:695).  Zone_LoadFromBsp already proves
+  the mechanism in this codebase.  Give the copy SOLID_BSP and the glare trace --
+  and the spotlight trace, which had the same hole -- sees it.
+
+  The copies are never drawn: the server's own entities draw the geometry, and a
+  second visible copy would z-fight with it.  They exist only to be hit.
+
+  MARKED WITH A FIELD RATHER THAN HELD IN AN ARRAY.  An entity array of any
+  useful size is expensive in progs -- measured on this project at roughly 8x the
+  data size -- and the only thing the list is ever used for is "remove them all
+  at the next map load", which findfloat does without storing anything.
+*/
+.float spr_occluder;                    // 1 on our own brush-model copies
+
+float  spr_occ_n;                       // brush entities instantiated
+float  spr_occ_seen;                    // brush entities in the lump
+float  spr_occ_over;                    // skipped: hit OCC_MAX
+float  spr_gbrush;                      // traces stopped by one, since the last report
 
 // ------------------------------------------------------------------- beams
 vector beam_org[BEAM_MAX];
@@ -106,7 +274,26 @@ float  vbsp_spr_over;                     // skipped: hit SPR_MAX / BEAM_MAX
 float  vbsp_beam_seen;
 float  vbsp_beam_off;                     // skipped: the spotlight starts off
 float  vbsp_trail_seen;                   // env_spritetrail, counted and declined
-float  vbsp_glow_seen;                    // env_lightglow, counted and declined
+float  vbsp_glow_seen;                    // env_lightglow found
+float  vbsp_glow_off;                     // ...skipped: vbsp_lightglow 0, or no size
+float  vbsp_glow_n;                       // ...instantiated (BUILD 54)
+
+/*
+  BUILD 54.  Source's own material for a light glow, and it is hardcoded there
+  too: glow_overlay.cpp:397 draws every CGlowOverlay sprite with this and the
+  entity has no key to change it.  The "_noz" is not decoration -- the material
+  is UnlitGeneric with $additive, $vertexcolor and $ignorez, which is exactly
+  the combination the draw below forces with DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST.
+*/
+#define GLOW_MATERIAL   "sprites/light_glow02_add_noz"
+
+/*
+  The fixed distance CalcBasis places the quad at (glow_overlay.cpp:330).  It is
+  what makes HorizontalGlowSize and VerticalGlowSize behave as an ANGULAR size:
+  the quad is always this far from the eye, so its two half-extents are world
+  units at 100 units and its size on screen never changes with range.
+*/
+#define GLOW_OVERLAYDIST 100
 
 /*
   The two materials Source hardcodes for a spotlight, named here for the same
@@ -186,11 +373,64 @@ string(string raw) Sprite_MatStem =
   library's sprite instances land here, almost all of them "sprites/glow.vmt",
   a name no mounted pack has ever contained.
 */
+/*
+  BUILD 55 -- read $spriteorientation out of the material.
+
+  A .vmt is plain text and FTE's filesystem has the mounted VPKs in it, so this
+  is one fopen per DISTINCT material at map load -- two on surf_tensor2, and the
+  library's worst map has 34.  Nothing per sprite and nothing per frame.
+
+  THE LOOP DOES NOT BREAK ON AN EMPTY LINE, and that is not tidiness.  fgets
+  returns the null string at EOF and a blank line is indistinguishable from it in
+  QuakeC, so `if (!ln) break;` would stop at the first paragraph break --
+  sprites/light_glow02_add_noz.vmt has one, three lines from the top, right above
+  the keys worth reading.  A fixed line budget costs a few wasted iterations
+  after EOF and cannot be fooled.
+
+  Longest-first on the string tests, because the names nest: every
+  "vp_parallel_oriented" contains "vp_parallel" and also contains "oriented", so
+  testing either of the short ones first would mislabel it.
+
+  Returns -1 when the file cannot be opened or says nothing -- a patch/include
+  material, or content that is simply not there -- and the caller counts that
+  separately from a material that answered.
+*/
+float(string stem) Sprite_ReadOrient =
+{
+	local float  fh, i, got;
+	local string ln;
+
+	fh = fopen(strcat("materials/", stem, ".vmt"), FILE_READ);
+	if (fh < 0)
+		return -1;
+
+	got = -1;
+	for (i = 0; i < 64; i = i + 1)
+	{
+		ln = fgets(fh);
+		if (ln == "")
+			continue;               // blank line OR eof -- see above
+		ln = strtolower(ln);
+		if (strstrofs(ln, "$spriteorientation") < 0)
+			continue;
+
+		if      (strstrofs(ln, "vp_parallel_oriented") >= 0) got = SPRO_VPORIENT;
+		else if (strstrofs(ln, "parallel_upright")     >= 0) got = SPRO_UPRIGHT;
+		else if (strstrofs(ln, "facing_upright")       >= 0) got = SPRO_FACING;
+		else if (strstrofs(ln, "vp_parallel")          >= 0) got = SPRO_PARALLEL;
+		else if (strstrofs(ln, "oriented")             >= 0) got = SPRO_ENTANGLES;
+		break;
+	}
+
+	fclose(fh);
+	return got;
+};
+
 float(string raw) Sprite_Material =
 {
 	local string stem;
 	local vector sz;
-	local float  i;
+	local float  i, o;
 
 	stem = Sprite_MatStem(raw);
 	if (stem == "")
@@ -205,10 +445,39 @@ float(string raw) Sprite_Material =
 
 	sz = drawgetimagesize(stem);
 
+	/*
+	  THE MATERIAL IS ALWAYS READ, and vbsp_sprite_orient overrides at DRAW time
+	  rather than here.  Caching the override would make the A/B need a map
+	  reload, and an A/B that needs a reload is one where the two pictures differ
+	  by a map load as well as by the thing under test -- which is exactly the
+	  trap vbsp_lightglow is still in (it is load-time, so toggling it in the
+	  console is a null test that looks like the feature not working).
+
+	  THE DEFAULT WHEN THE MATERIAL WILL NOT ANSWER IS PARALLEL, not Source's
+	  own parallel_upright fallback, and that is a deliberate disagreement.  A
+	  material we cannot read is one whose content is missing or is a patch/
+	  include we do not follow; guessing the 8% case for it reproduces exactly
+	  the bug being fixed, and 177 of the library's 213 sprite materials are
+	  parallel.  The guess is counted, so a map full of them says so.
+	*/
+	o = Sprite_ReadOrient(stem);
+	if (o < 0)
+	{
+		o = SPRO_PARALLEL;
+		sprmat_orient_guess = sprmat_orient_guess + 1;
+	}
+	else
+	{
+		sprmat_orient_read = sprmat_orient_read + 1;
+		if (o == SPRO_FACING || o == SPRO_VPORIENT)
+			sprmat_orient_decl = sprmat_orient_decl + 1;
+	}
+
 	i = sprmat_n;
 	sprmat_name[i] = strzone(stem);
 	sprmat_w[i] = sz_x;
 	sprmat_h[i] = sz_y;
+	sprmat_orient[i] = o;
 	sprmat_n = sprmat_n + 1;
 	sprmat_zoned = TRUE;
 
@@ -226,6 +495,9 @@ float(string raw) Sprite_Material =
 void() Sprite_FreeMaterials =
 {
 	local float i;
+	// BUILD 55: reset here rather than in Sprite_LoadForMap, so the counts can
+	// never outlive the table they describe.
+	sprmat_orient_read = sprmat_orient_guess = sprmat_orient_decl = 0;
 	if (!sprmat_zoned)
 	{
 		sprmat_n = 0;
@@ -288,6 +560,45 @@ vector(string s) Sprite_ParseVec =
   Get either half wrong and bhop_murder's 208 trees and wall lamps face into
   the walls they are mounted on.
 */
+/*
+  Intern one (MinDist, MaxDist, OuterMaxDist, backoff) tuple and return its
+  index.  Linear, because glowp_n is a handful on every map measured and a map
+  that somehow produced 64 distinct sets would spend 64 float compares per
+  entity at load and nothing per frame.
+
+  THE BACK-OFF IS CLAMPED UP, NEVER DOWN.  4 units is Source's own constant in
+  the software fallback (c_pixel_visibility.cpp:790-791, "trace 4in from
+  destination in case the glow is inside some parent object") and GlowProxySize
+  defaults to 2, so honouring the key alone would make the trace stricter than
+  it is today for two thirds of this library's sprites.  max() of the two keeps
+  build 53's behaviour as the floor and lets a map ask for more.
+*/
+float(float mn, float mx, float outer, float proxy) Glow_ParamSet =
+{
+	local float i, back;
+
+	back = (proxy > 4) ? proxy : 4;
+
+	for (i = 0; i < glowp_n; i = i + 1)
+		if (glowp_min[i] == mn && glowp_max[i] == mx &&
+		    glowp_outer[i] == outer && glowp_backoff[i] == back)
+			return i;
+
+	if (glowp_n >= GLOWP_MAX)
+	{
+		glowp_over = glowp_over + 1;
+		return 0;               // set 0 is always the plain 4-unit default
+	}
+
+	i = glowp_n;
+	glowp_min[i]     = mn;
+	glowp_max[i]     = mx;
+	glowp_outer[i]   = outer;
+	glowp_backoff[i] = back;
+	glowp_n = glowp_n + 1;
+	return i;
+};
+
 void(vector org, vector ang, float kind, float mat, float scale,
      vector col, float alpha, float additive) Sprite_Add =
 {
@@ -317,6 +628,8 @@ void(vector org, vector ang, float kind, float mat, float scale,
 	spr_mat[i]   = mat;
 	spr_kind[i]  = kind;
 	spr_add[i]   = additive;
+	spr_pset[i]  = spra_pset;
+	spr_gskip[i] = world;           // resolved after both walks, Sprite_ResolveSkips
 
 	if (kind == SPRK_ORIENTED)
 	{
@@ -331,6 +644,102 @@ void(vector org, vector ang, float kind, float mat, float scale,
 	}
 
 	spr_n = spr_n + 1;
+};
+
+/*
+===========================================================================
+  BUILD 54 -- add one env_lightglow.
+
+  Reported as: "some of the light glow sprites on the flat white brush models
+  acting as light are actually horizontally stretched in Source, looks like a
+  lens flare almost, can you find that value?"  It is HorizontalGlowSize and
+  VerticalGlowSize, and this class is where they live.  surf_tensor2 carries 166
+  env_lightglow and 165 of them read 65 wide by 35 tall -- a 1.857:1 stretch,
+  which is the lens-flare look exactly.  Until now every one of them was counted
+  and thrown away.
+
+  THE SIZES ARE THE RAW KEYS.  C_LightGlowOverlay::CalcSpriteColorAndSize
+  (c_lightglow.cpp:19-22) overrides the base class and assigns
+  m_flHorzSize/m_flVertSize straight through -- no view-dot multiplier, no
+  distance term.  The 70x/150x constants in glow_overlay.cpp:289-315 belong to
+  the SUN and this class never reaches them.  (Build 52's essay above
+  Sprite_LoadForMap got that right after getting it wrong once; this is the same
+  correction, now acted on.)
+
+  ONE-SIDED, and every one of these 166 is.  c_lightglow.cpp:27-34:
+
+      viewDir = normalize(eye - origin)          // FROM the glow TO the eye
+      if (m_bOneSided && dot(viewDir, forward) < 0)  -> colour is black
+
+  and m_vecDirection is AngleVectors(angles).forward with no adjustment
+  (:189-192) -- NOT the yaw+180 dance CSpriteOriented needs, which is a trap
+  worth naming because the sibling case three functions up does need it.  A port
+  that skips the test draws all 166 of them through the ceilings they are
+  mounted in.
+
+  Stored in the sprite arrays, so Sprite_Glare's round-robin trace, its 50 ms
+  ramp and the trace budget all cover glows with no extra machinery.  spr_mat is
+  -1 because a glow is not drawn by the material-major loop: they all share one
+  hardcoded material and are drawn in one batch of their own, the way the beams
+  are.  A material index of -1 can never equal a loop counter that starts at 0,
+  so the exclusion needs no test.
+===========================================================================
+*/
+void(vector org, vector ang, float hw, float hh, vector col, float alpha,
+     float pset, float onesided) Glow_Add =
+{
+	local float i;
+
+	if (spr_n >= SPR_MAX)
+	{
+		vbsp_spr_over = vbsp_spr_over + 1;
+		return;
+	}
+
+	// A glow with no size is not a glow.  The FGD defaults both to 30, but the
+	// key is optional and 1.1% of the library omits it.
+	if (hw <= 0 || hh <= 0)
+	{
+		vbsp_glow_off = vbsp_glow_off + 1;
+		return;
+	}
+
+	i = spr_n;
+	spr_org[i]   = org;
+	spr_col[i]   = col;
+	spr_alpha[i] = alpha;
+	spr_hw[i]    = hw;
+	spr_hh[i]    = hh;
+	/*
+	  Cull radius ZERO, and deliberately.  The quad is drawn 100 units from the
+	  eye, not at spr_org, so its world extent there says nothing about what it
+	  covers on screen; spr_org is only the point whose distance and visibility
+	  are being asked about.  A radius here would widen the behind-camera test
+	  into keeping glows that are genuinely behind the viewer.
+	*/
+	spr_rad[i]   = 0;
+	spr_mat[i]   = -1;              // see the note above: never matched by the loop
+	spr_kind[i]  = SPRK_GLOW;
+	spr_add[i]   = TRUE;            // a glow is additive by construction
+	spr_pset[i]  = pset;
+	spr_gskip[i] = world;
+
+	/*
+	  The forward vector doubles as the one-sided flag: makevectors can never
+	  return a zero forward, so '0 0 0' unambiguously means "not one-sided" and
+	  no second array is needed.
+	*/
+	if (onesided)
+	{
+		makevectors(ang);
+		spr_right[i] = v_forward;
+	}
+	else
+		spr_right[i] = '0 0 0';
+	spr_up[i] = '0 0 0';
+
+	spr_n = spr_n + 1;
+	vbsp_glow_n = vbsp_glow_n + 1;
 };
 
 /*
@@ -352,10 +761,20 @@ void(vector org, vector ang, float kind, float mat, float scale,
               beamdraw.cpp:359 turns into brightness = 1 - fraction: full at
               the source, zero at the far end.
 
-  The trace is CSQC's, so it sees the world and not brush entities, where
-  Source uses MASK_SOLID_BRUSHONLY and sees both.  A spotlight aimed at a door
-  or a moving platform therefore reaches past it to the wall behind.  It is one
-  traceline per spotlight at map load and none afterwards.
+  BUILD 53: this trace now sees brush entities too.  It used to say "the trace
+  is CSQC's, so it sees the world and not brush entities, where Source uses
+  MASK_SOLID_BRUSHONLY and sees both -- a spotlight aimed at a door or a moving
+  platform therefore reaches past it to the wall behind".  The client's own
+  copies (Sprite_AddOccluder) close that, and this call gets the fix for free
+  because it was always the same csqc_world trace.
+
+  ORDERING IS WHY THE OCCLUDERS GET THEIR OWN WALK.  A spotlight is traced ONCE,
+  as it is read, so it can only be traced against brush entities that already
+  exist -- and a func_brush declared later in the lump would not.  That is the
+  whole reason Sprite_LoadOccluders is a separate pass over the lump instead of
+  a branch inside the main one: a second getentitytoken walk costs one pass over
+  ~2000 entities at map load, and buying a complete occluder set for that is not
+  a close call.
 */
 void(vector org, vector ang, float len, float wid, float ignoresolid, vector col) Beam_Add =
 {
@@ -401,6 +820,354 @@ void(vector org, vector ang, float len, float wid, float ignoresolid, vector col
 
 /*
 ===========================================================================
+  BUILD 53 -- the client's own copies of the map's brush entities, so that a
+  trace can hit them.
+
+  WHICH BRUSH ENTITIES OCCLUDE, and this is a measured list rather than a taste
+  judgement.  Every `model "*N"` entity in all 1310 shipped maps, by class:
+
+      trigger_teleport   115891    func_brush        35258    func_illusionary 21231
+      trigger_multiple    26359    func_door          3485    func_dustmotes    4999
+      trigger_push         4891    func_rotating      2937    func_lod          1960
+      trigger_hurt         1446    func_button        2762    func_movelinear   1563
+      ... 152k triggers in all   ... plus breakable, wall, physbox, tracktrain,
+                                     conveyor, door_rotating, wall_toggle, ...
+
+  So 64% of the population is triggers, which are invisible volumes and must
+  never occlude anything.  The rule below is therefore a DENYLIST with a solid
+  catch-all, which is the same shape sv_entities.qc:2624 settled on server-side:
+  an unrecognised brush entity is geometry until something says otherwise.
+
+  Three tiers, because "solid" and "opaque" are not the same question:
+
+    0  never occludes -- triggers, effect volumes (dustmotes, embers, smoke,
+       precipitation, bubbles), area portals, ladders, gameplay volumes, and
+       INVISIBLE CLIP BRUSHES.  func_clip_vphysics is the interesting one: it is
+       genuinely solid and would pass any solidity test, and it is also
+       completely invisible, so letting it occlude would hide glows behind
+       nothing at all.
+    1  solid geometry.  This is Source's own rule for the glow it TRACES:
+       glow_overlay.cpp:236-237 traces with CONTENTS_SOLID.
+    2  drawn but not solid -- func_illusionary (21,231 of them), and every
+       func_brush declaring "solidity 1".  THE DEFAULT, and the map that
+       prompted this is why: 145 of surf_tensor2's 160 func_brush are
+       solidity 1, so mode 1 keeps 16 of 622 brush entities and measurably
+       changed nothing (232 of 240 hidden either way).  Source's CONTENTS_SOLID
+       trace does not hit these, but that trace is only used for the SUN; a
+       world glow is occluded by a hardware pixel query (glow_overlay.cpp:
+       247-250), which sees anything that draws.  So 2 is the closer answer as
+       well as the useful one.
+
+  WHAT THIS DOES NOT DO.  The copies are frozen at their spawn position, the
+  same trade sv_entities.qc's brush entities already make ("Spawn state only, by
+  design" at :3772).  A door that opens still occludes where it was closed.  On
+  a surf map the things that move are decoration and the things you surf are
+  placed at spawn, so this is the right way round; it is stated rather than
+  hidden because a glow behind a moving platform is exactly the case that will
+  look wrong to whoever finds it.
+===========================================================================
+*/
+float(string cn) Sprite_OccluderTier =
+{
+	// Triggers: 152,000 of the library's 238,420 brush entities, and not one of
+	// them is drawn.  Prefix-tested rather than listed because the family keeps
+	// growing -- Momentum alone adds nine trigger_momentum_* classes.
+	if (substring(cn, 0, 8) == "trigger_")
+		return 0;
+	// Momentum's zone brushes are triggers under another name (zone_timer_start,
+	// zone_allowbhop, ...): 184 across 26 maps.
+	if (substring(cn, 0, 5) == "zone_")
+		return 0;
+
+	// Effect volumes.  Drawn, in the sense that they emit particles, but they
+	// are not surfaces and nothing about them stops light.
+	if (cn == "func_dustmotes"  || cn == "func_dustcloud" ||
+	    cn == "func_smokevolume" || cn == "func_precipitation" ||
+	    cn == "env_embers"      || cn == "env_bubbles" ||
+	    cn == "color_correction_volume")
+		return 0;
+
+	// Invisible by construction: clips, area portals, occluder hints, ladders,
+	// and the gameplay volumes that are brushes only because they need a shape.
+	if (cn == "func_clip_vphysics" || cn == "func_occluder" ||
+	    cn == "func_areaportal"    || cn == "func_areaportalwindow" ||
+	    cn == "func_ladder"        || cn == "func_simpleladder" ||
+	    cn == "func_buyzone"       || cn == "func_bomb_target" ||
+	    cn == "func_respawnroom"   || cn == "func_respawnroomvisualizer" ||
+	    cn == "func_nobuild"       || cn == "func_nogrenades" ||
+	    cn == "func_regenerate"    || cn == "func_bhop" ||
+	    cn == "func_slide"         || cn == "func_portal_bumper")
+		return 0;
+
+	// Water is a volume you can see through; a glow under it is dimmed, not hidden.
+	if (cn == "func_water" || cn == "func_water_analog")
+		return 0;
+
+	// Drawn, never solid.  Source's CONTENTS_SOLID trace misses these; its pixel
+	// query does not.  See the three-tier note above.
+	if (cn == "func_illusionary")
+		return 2;
+
+	return 1;
+};
+
+/*
+  Drop last map's copies.  Held by a field rather than an array, so the list
+  costs nothing when it is empty -- which it is on the 759 maps with no brush
+  entity worth instantiating.
+
+  The NEXT one is found before the current one is removed: findfloat walks the
+  edict table from `start`, and handing it an edict that has just been freed is
+  how you get a walk that stops early and leaves half the copies behind.
+*/
+void() Sprite_FreeOccluders =
+{
+	local entity e, nxt;
+
+	e = findfloat(world, spr_occluder, TRUE);
+	while (e)
+	{
+		nxt = findfloat(e, spr_occluder, TRUE);
+		remove(e);
+		e = nxt;
+	}
+	spr_occ_n = 0;
+};
+
+/*
+  One brush entity.  `mdl` is "*N"; `org` is the entity's own origin key, which
+  is almost always zero because VBSP bakes brush geometry in world coordinates
+  and only subtracts an origin for the things that rotate.
+
+  SOLID BEFORE SETMODEL, because setmodel links the entity and World_LinkEdict
+  reads .solid to decide which of the areagrid's lists it belongs in -- the same
+  ordering constraint sv_entities.qc:2546 documents for the server's copies.
+*/
+void(string mdl, vector org) Sprite_AddOccluder =
+{
+	local entity e;
+
+	if (spr_occ_n >= OCC_MAX)
+	{
+		spr_occ_over = spr_occ_over + 1;
+		return;
+	}
+
+	e = spawn();
+	e.spr_occluder = TRUE;
+	e.solid        = SOLID_BSP;
+	e.movetype     = MOVETYPE_NONE;
+	setmodel(e, mdl);
+	setorigin(e, org);
+
+	/*
+	  Never drawn.  The server already draws this geometry; a second copy would
+	  z-fight with it everywhere.  Clearing modelindex would take the collision
+	  hull away with it (the mistake sv_entities.qc:2915 records), so the entity
+	  keeps its model and is hidden by the drawmask instead -- CSQC entities are
+	  only drawn by an explicit addentities/addentity call, and nothing here
+	  makes one.
+	*/
+	e.drawmask = 0;
+
+	spr_occ_n = spr_occ_n + 1;
+};
+
+/*
+  The occluder pass.  Its own walk of the entity lump, ahead of the sprite walk,
+  so that Beam_Add's one-shot traces see every brush entity and not merely the
+  ones declared above them -- see the ordering note on Beam_Add.
+*/
+void() Sprite_LoadOccluders =
+{
+	local string tok, key, cn, model;
+	local vector org;
+	local float  want, tier, solidity, startdisabled, hassolidity;
+
+	Sprite_FreeOccluders();
+	spr_occ_seen = spr_occ_over = 0;
+
+	// 0 off, 1 solid geometry only (Source's own trace rule), 2 also the
+	// drawn-but-not-solid ones.  Read once, not once per entity.
+	want = cvar("vbsp_glare_brush");
+	if (!want)
+		return;
+
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+
+		cn = model = "";
+		org = '0 0 0';
+		solidity = startdisabled = 0;
+		hassolidity = FALSE;
+
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if      (key == "classname") cn = tok;
+			else if (key == "model")     model = tok;
+			else if (key == "origin")    org = Sprite_ParseVec(tok);
+			// Both spellings of each, the way sv_entities.qc's SV_Key2 reads
+			// them: the library writes "Solidity"/"solidity" and
+			// "StartDisabled"/"startdisabled" interchangeably, and reading only
+			// one of each drops half the maps.
+			else if (key == "solidity"      || key == "Solidity")
+			{
+				solidity = stof(tok);
+				hassolidity = TRUE;
+			}
+			else if (key == "startdisabled" || key == "StartDisabled")
+				startdisabled = stof(tok);
+		}
+
+		if (substring(model, 0, 1) != "*")
+			continue;
+
+		// Counted whether or not it is instantiated, so the status line can say
+		// how many were DECLINED rather than only how many were kept.
+		spr_occ_seen = spr_occ_seen + 1;
+
+		tier = Sprite_OccluderTier(cn);
+		if (tier == 0 || tier > want)
+			continue;
+
+		/*
+		  func_brush is 35,258 of the library's brush entities -- 15% of all of
+		  them, and by far the largest class that is not a trigger -- and it is
+		  the one class whose solidity is a KEYVALUE rather than a property of
+		  the classname:
+
+		      solidity 0  toggle with Enable/Disable -> follow StartDisabled
+		      solidity 1  never solid
+		      solidity 2  always solid
+
+		  Read exactly as sv_entities.qc's func_brush reads it (:3820-3830),
+		  because the two disagreeing would be worse than either being wrong:
+		  the player would walk into something the glow says is not there, or
+		  the reverse.  StartDisabled also means INVISIBLE and not merely
+		  intangible (:3802-3804), so a disabled brush is skipped at both tiers.
+		*/
+		if (cn == "func_brush")
+		{
+			/*
+			  StartDisabled means INVISIBLE as well as intangible
+			  (:3802-3804), so a disabled brush is not an occluder at any
+			  tier and is dropped before the tier test.
+			*/
+			if ((!hassolidity || solidity == 0) && startdisabled)
+				continue;
+
+			/*
+			  MEASURED ON THE MAP THAT PROMPTED THIS, and it moved the
+			  default.  surf_tensor2 has 160 func_brush and 145 of them
+			  declare `solidity 1` -- never solid.  They are not junk: they
+			  are the decorative geometry you can walk through and cannot see
+			  through, and the spawn portals are among them (the combine
+			  shield at -11776 -10816 13744 is func_brush *19, solidity 1).
+
+			  So "solid" alone would have kept 16 of 622 brush entities on
+			  this map and changed nothing on screen, which is what the first
+			  run measured: 232 of 240 glares hidden with the occluders in,
+			  and 232 of 240 with them out.  A non-solid-but-drawn func_brush
+			  is the func_illusionary case wearing a different classname, and
+			  it belongs in the same tier.
+			*/
+			if (hassolidity && solidity == 1 && want < 2)
+				continue;
+		}
+
+		Sprite_AddOccluder(model, org);
+	}
+};
+
+/*
+===========================================================================
+  BUILD 54 -- which occluder is each glow buried in.
+
+  Runs after BOTH walks, because it needs the occluders to exist and the sprites
+  to have been read.  The answer is a load-time constant: neither a brush entity
+  nor a sprite moves.
+
+  OCCLUDERS IN THE OUTER LOOP, and that is not a stylistic choice.  findfloat
+  scans the edict table on every call, so sprites-outer would call it spr_n
+  times and cost spr_n * edicts * occluders -- on the library's worst map (862
+  sprites, 768 occluders) that is hundreds of millions of operations at load.
+  Occluders-outer calls findfloat once per occluder and leaves an inner loop of
+  plain float compares.
+
+  THE SMALLEST CONTAINER WINS.  A glow can sit inside a small light fitting that
+  is itself inside a large decorative shell, and the thing it belongs to is the
+  tight one; skipping the shell as well would punch a hole in the occlusion the
+  player can see.  spr_gskip_multi counts the overlaps so a map where one skip
+  is not enough says so rather than quietly under-fixing.
+
+  Only additive sprites are considered, because only they are ever traced
+  (Sprite_Glare gates on spr_add).  A non-additive billboard is depth-tested
+  world geometry and has no occlusion trace to exempt.
+===========================================================================
+*/
+void() Sprite_ResolveSkips =
+{
+	local entity e, p;
+	local float  i, v, best;
+	local vector mn, mx, o;
+
+	spr_gskip_n = spr_gskip_multi = 0;
+
+	for (i = 0; i < spr_n; i = i + 1)
+		spr_gskip[i] = world;
+
+	if (!spr_occ_n || !spr_n)
+		return;
+
+	e = findfloat(world, spr_occluder, TRUE);
+	while (e)
+	{
+		mn = e.absmin;
+		mx = e.absmax;
+		v  = (mx_x - mn_x) * (mx_y - mn_y) * (mx_z - mn_z);
+
+		for (i = 0; i < spr_n; i = i + 1)
+		{
+			if (!spr_add[i])
+				continue;
+
+			o = spr_org[i];
+			if (o_x < mn_x || o_x > mx_x) continue;
+			if (o_y < mn_y || o_y > mx_y) continue;
+			if (o_z < mn_z || o_z > mx_z) continue;
+
+			/*
+			  The incumbent's volume is recomputed rather than cached in a
+			  parallel SPR_MAX array: it costs three subtractions on the rare
+			  overlap and saves 8x SPR_MAX*4 bytes of progs for a number that is
+			  zero on almost every sprite.
+			*/
+			p = spr_gskip[i];
+			if (p != world)
+			{
+				spr_gskip_multi = spr_gskip_multi + 1;
+				best = (p.absmax_x - p.absmin_x) *
+				       (p.absmax_y - p.absmin_y) *
+				       (p.absmax_z - p.absmin_z);
+				if (v >= best)
+					continue;               // the one we already have is tighter
+			}
+			else
+				spr_gskip_n = spr_gskip_n + 1;
+
+			spr_gskip[i] = e;
+		}
+
+		e = findfloat(e, spr_occluder, TRUE);
+	}
+};
+
+/*
+===========================================================================
   Reading the entity lump
 
   WHY env_spritetrail IS COUNTED AND NOT DRAWN.  It is the third largest class
@@ -418,15 +1185,23 @@ void(vector org, vector ang, float len, float wid, float ignoresolid, vector col
   all -- the plan's census listed nine classes and this was not among them,
   which was an omission, because at 3393 instances across 137 maps it is bigger
   than env_spritetrail.  It is declined for a better reason than size:
-  glow_overlay.cpp:330-331 places it at a FIXED 100 units in front of the
-  camera along the direction to the glow, scales it by 70x to 150x depending on
-  the view dot product (:288-308), and gates it on an occlusion query
-  (:313 UpdateGlowObstruction).  Its apparent size does not change with
-  distance.  That is a lens-flare renderer, not a world billboard, and half of
-  it -- a world quad at HorizontalGlowSize units -- would be a small dull
-  square where a large soft flare belongs.  The keys are all there
-  (HorizontalGlowSize, VerticalGlowSize, MinDist, MaxDist, OuterMaxDist on
-  98.9% of them), so it is buildable; it is simply a second renderer.
+  glow_overlay.cpp:330-343 (CalcBasis) places it at a FIXED 100 units in front
+  of the camera along the direction to the glow, so its apparent size does not
+  change with distance, and it is gated on an occlusion query rather than on the
+  depth buffer (:205-252).  That is a lens-flare renderer, not a world
+  billboard.  The keys are all there (HorizontalGlowSize, VerticalGlowSize,
+  MinDist, MaxDist, OuterMaxDist on 98.9% of them), so it is buildable; it is
+  simply a second renderer.  Sprite_Glare below is that renderer.
+
+  CORRECTION, BUILD 52.  This paragraph used to add "scales it by 70x to 150x
+  depending on the view dot product (:288-308)", and that is WRONG -- it belongs
+  to the SUN.  Those constants live in the base CGlowOverlay::CalcSpriteColorAndSize
+  (glow_overlay.cpp:289-315), and C_LightGlowOverlay OVERRIDES that method:
+  c_lightglow.cpp:19-22 sets the size straight from m_flHorzSize/m_flVertSize and
+  never touches flDot at all.  Only CalcBasis' 100-unit placement is inherited.
+  The claim was checked against the real source rather than assumed, and the
+  practical effect is that a glare is EASIER than this note implied: the sizes
+  are the raw keys, not the keys times a view-dependent factor.
 ===========================================================================
 */
 void() Sprite_LoadForMap =
@@ -436,6 +1211,7 @@ void() Sprite_LoadForMap =
 	local float  scale, renderamt, rendermode, spawnflags, framerate;
 	local float  splen, spwid, ignoresolid;
 	local float  opened, wantspr, wantbeam, mat, alpha, additive, named;
+	local float  glowh, glowv, gmin, gmax, gouter, gproxy, wantglow;
 
 	map = serverkey("map");
 	if (map == "")
@@ -443,13 +1219,60 @@ void() Sprite_LoadForMap =
 
 	wantspr  = cvar("vbsp_sprites");
 	wantbeam = cvar("vbsp_spotlights");
+	wantglow = cvar("vbsp_lightglow");
 
 	Sprite_FreeMaterials();
+	/*
+	  BUILD 53.  FIRST, and its own walk of the lump.  Beam_Add traces each
+	  spotlight once as it is read, so every brush entity has to exist before
+	  the sprite walk starts or a beam will shoot through a door that is merely
+	  declared further down the file.
+	*/
+	Sprite_LoadOccluders();
 	spr_n = beam_n = 0;
+
+	/*
+	  BUILD 53: forget the last map's glare answers.
+
+	  Build 52 left spr_gvis/spr_glare/spr_gtraced untouched across a load, and
+	  the arrays are indexed by POSITION -- so for the first frames of a new map
+	  sprite 7 wore whatever sprite 7 of the previous map had decided, including
+	  spr_gtraced TRUE, which is the flag that says "this answer is real".  The
+	  round-robin corrects it within a few frames and the ramp hides most of it,
+	  which is exactly why it survived: it is a wrong first frame, not a
+	  persistent artefact.  It stops being invisible with vbsp_sprite_debug 2,
+	  which reloads in place and would otherwise carry every stale answer
+	  straight into the arm that is meant to be measuring the new one.
+	*/
+	for (mat = 0; mat < SPR_MAX; mat = mat + 1)
+	{
+		spr_gvis[mat] = 0;
+		spr_glare[mat] = 0;
+		spr_gtraced[mat] = FALSE;
+		/*
+		  BUILD 54.  Cleared here and not merely in Sprite_ResolveSkips, because
+		  Sprite_LoadOccluders has already removed the previous map's occluders a
+		  few lines above and spawn() recycles edicts: a stale handle would name
+		  a real entity that happens to be the wrong one.  Nothing traces between
+		  those two points, so this is belt and braces -- which is what it should
+		  be, since the failure would be a glow silently ignoring a wall.
+		*/
+		spr_gskip[mat] = world;
+	}
+	spr_gnext = 0;
+	glowp_n = glowp_over = 0;
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
-	vbsp_trail_seen = vbsp_glow_seen = 0;
+	vbsp_trail_seen = 0;
+	vbsp_glow_seen = vbsp_glow_off = vbsp_glow_n = 0;
 	opened = FALSE;
+
+	/*
+	  Set 0 is reserved as the plain default -- no fade ramp, Source's own 4-unit
+	  back-off -- so that Glow_ParamSet's overflow return of 0 is a sane answer
+	  rather than whichever set happened to be interned first.
+	*/
+	Glow_ParamSet(0, 0, 0, 0);
 
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
@@ -466,6 +1289,13 @@ void() Sprite_LoadForMap =
 		spawnflags = 0;
 		splen = spwid = ignoresolid = 0;
 		named = FALSE;
+		// BUILD 54.  The FGD's own defaults for env_lightglow (base.fgd:1198),
+		// so a map that omits a key gets what Hammer showed its author.
+		glowh = glowv = 30;
+		gmin  = 500;
+		gmax  = 2000;
+		gouter = 0;
+		gproxy = 2;
 
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
@@ -487,6 +1317,19 @@ void() Sprite_LoadForMap =
 			else if (key == "spotlightlength" || key == "SpotlightLength") splen = stof(tok);
 			else if (key == "spotlightwidth"  || key == "SpotlightWidth")  spwid = stof(tok);
 			else if (key == "IgnoreSolid"     || key == "ignoresolid")     ignoresolid = stof(tok);
+			/*
+			  BUILD 54.  Both spellings again, for the reason the three above
+			  give: the library is inconsistent and reading one form silently
+			  drops the maps that wrote the other.  GlowProxySize is on 263 of
+			  263 env_sprite on surf_tensor2 as well as on every env_lightglow,
+			  which is why it is read outside the class test.
+			*/
+			else if (key == "GlowProxySize"      || key == "glowproxysize")      gproxy = stof(tok);
+			else if (key == "HorizontalGlowSize" || key == "horizontalglowsize") glowh  = stof(tok);
+			else if (key == "VerticalGlowSize"   || key == "verticalglowsize")   glowv  = stof(tok);
+			else if (key == "MinDist"            || key == "mindist")            gmin   = stof(tok);
+			else if (key == "MaxDist"            || key == "maxdist")            gmax   = stof(tok);
+			else if (key == "OuterMaxDist"       || key == "outermaxdist")       gouter = stof(tok);
 		}
 
 		col = Sprite_ParseColor(srendercolor);
@@ -547,6 +1390,10 @@ void() Sprite_LoadForMap =
 			*/
 			additive = (rendermode == 3 || rendermode == 5 || rendermode == 9);
 
+			// BUILD 54.  A sprite has no fade ramp, so only the back-off half of
+			// the set is meaningful; the three zeros keep it one table.
+			spra_pset = Glow_ParamSet(0, 0, 0, gproxy);
+
 			Sprite_Add(org, ang,
 			           (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD,
 			           mat, scale, col, alpha, additive);
@@ -573,8 +1420,37 @@ void() Sprite_LoadForMap =
 		}
 		else if (cn == "env_spritetrail")
 			vbsp_trail_seen = vbsp_trail_seen + 1;
+		/*
+		  BUILD 54.  env_lightglow, drawn at last.  3393 instances across 137
+		  maps that have never put a pixel on the screen.
+
+		  NO start-on gate and no rendermode: the class has neither.  Its
+		  datadesc (lightglow.cpp:67-78) is the six sizes and distances, a colour
+		  input, and one spawnflag -- there is no targetname gate of the kind
+		  env_sprite needs, and CLightGlow has no render mode at all.  Its only
+		  runtime gate is a PVS poll every one to three seconds
+		  (c_lightglow.cpp:202-215), which the occlusion trace here subsumes.
+
+		  Alpha is 1 because Source draws the quad at a fixed alpha and puts the
+		  whole fade in the COLOUR (vColor * fade * obstruction, :48; the mesh
+		  builder writes Color4f(..., 1) at glow_overlay.cpp:420).  Under this
+		  engine's additive blend -- SRC_ALPHA, ONE (gl_backend.c:3264-3266) --
+		  scaling the colour and scaling the alpha are the same operation, so the
+		  fade is applied through spr_alpha in the draw where the existing
+		  obstruction ramp already lives, and the two agree.
+		*/
 		else if (cn == "env_lightglow")
+		{
 			vbsp_glow_seen = vbsp_glow_seen + 1;
+			if (!wantglow)
+			{
+				vbsp_glow_off = vbsp_glow_off + 1;
+				continue;
+			}
+			Glow_Add(org, ang, glowh, glowv, col, 1,
+			         Glow_ParamSet(gmin, gmax, gouter, gproxy),
+			         spawnflags & 1);        // SF_LIGHTGLOW_DIRECTIONAL
+		}
 	}
 
 	// Same guard the decals use: serverkey("map") can lead the entity data by a
@@ -582,6 +1458,10 @@ void() Sprite_LoadForMap =
 	if (!opened)
 		return;
 	vbsp_spr_map = map;
+
+	// BUILD 54.  Needs both walks finished: the occluders exist and the sprites
+	// have been read.  Neither ever moves, so the answer is a load-time constant.
+	Sprite_ResolveSkips();
 
 	/*
 	  One line per family, and every skipped entity is accounted for by name.
@@ -592,15 +1472,22 @@ void() Sprite_LoadForMap =
 	  content, one is a cap that would need raising -- and a bare "N of M" would
 	  hide which.
 	*/
+	/*
+	  BUILD 54.  spr_n IS NOT THE SPRITE COUNT ANY MORE -- env_lightglow shares
+	  these arrays, so it counts sprites AND glows.  Printing it against
+	  vbsp_spr_seen produced "sprites: 429 of 263 drawn" on surf_tensor2, a line
+	  that reads as a bug in the parser and is really 263 sprites plus 166 glows.
+	  The glows have their own line below; subtract them here.
+	*/
 	if (vbsp_spr_seen)
 	{
 		if (!wantspr)
 			print(sprintf("sprites: %g found, none drawn (vbsp_sprites 0)\n", vbsp_spr_seen));
 		else if (vbsp_spr_off + vbsp_spr_nomat + vbsp_spr_over)
 			print(sprintf("sprites: %g of %g drawn (%g off, %g no material, %g over cap)\n",
-			              spr_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over));
+			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over));
 		else
-			print(sprintf("sprites: %g of %g drawn\n", spr_n, vbsp_spr_seen));
+			print(sprintf("sprites: %g of %g drawn\n", spr_n - vbsp_glow_n, vbsp_spr_seen));
 	}
 
 	if (vbsp_beam_seen)
@@ -614,11 +1501,51 @@ void() Sprite_LoadForMap =
 			print(sprintf("spotlights: %g of %g drawn\n", beam_n, vbsp_beam_seen));
 	}
 
-	// Declined, not forgotten.  See the essay above this function for why each
-	// is a different renderer rather than a missing branch.
-	if (vbsp_trail_seen || vbsp_glow_seen)
-		dprint(sprintf("sprites: declined %g env_spritetrail (needs parent motion), %g env_lightglow (view-space flare)\n",
-		               vbsp_trail_seen, vbsp_glow_seen));
+	/*
+	  BUILD 53.  dprint, not print: this is a diagnostic about how a trace will
+	  behave and not a fact about the map, and the two lines above are already
+	  the ones a player reads.  The DECLINED count is printed beside the kept
+	  one because the interesting failure is "the wall you expected is in the
+	  declined pile", and a bare "161 occluders" cannot show that.
+	*/
+	if (spr_occ_seen)
+		dprint(sprintf("sprite occluders: %g of %g brush entities (%g declined, %g over cap, mode %g)\n",
+		               spr_occ_n, spr_occ_seen, spr_occ_seen - spr_occ_n - spr_occ_over,
+		               spr_occ_over, cvar("vbsp_glare_brush")));
+
+	/*
+	  BUILD 54.  How many glows are buried in the brush they light, which is the
+	  number the "some of them are placed inside of the portal and now don't
+	  render" report is about.  Printed even when it is zero on a map with
+	  occluders, because zero is itself the interesting answer there: it means
+	  either the map does not do this or the containment test is not finding it,
+	  and those want opposite responses.
+	*/
+	if (spr_occ_n)
+		dprint(sprintf("sprite glare skips: %g glows inside an occluder (%g of them inside more than one)\n",
+		               spr_gskip_n, spr_gskip_multi));
+
+	if (vbsp_glow_seen)
+	{
+		if (!wantglow)
+			print(sprintf("lightglows: %g found, none drawn (vbsp_lightglow 0)\n", vbsp_glow_seen));
+		else if (vbsp_glow_off)
+			print(sprintf("lightglows: %g of %g drawn (%g skipped)\n",
+			              vbsp_glow_n, vbsp_glow_seen, vbsp_glow_off));
+		else
+			print(sprintf("lightglows: %g of %g drawn\n", vbsp_glow_n, vbsp_glow_seen));
+	}
+
+	if (glowp_over)
+		dprint(sprintf("sprites: %g glow parameter sets over GLOWP_MAX -- some fades will be wrong\n",
+		               glowp_over));
+
+	// Declined, not forgotten.  env_lightglow is off this list as of build 54;
+	// env_spritetrail stays, and the essay above says why it is a different
+	// renderer rather than a missing branch.
+	if (vbsp_trail_seen)
+		dprint(sprintf("sprites: declined %g env_spritetrail (needs parent motion)\n",
+		               vbsp_trail_seen));
 };
 
 /*
@@ -651,12 +1578,207 @@ void(vector a, vector b, vector c, vector d, string mat, float flags,
 	R_EndPolygon();
 };
 
+/*
+===========================================================================
+  Sprite_Glare -- the light glows, drawn the way Source draws them.
+  BUILD 52.  Reported as: "the light sprites simply rotate towards the camera
+  and get cut by the world geometry."  Both halves of that are true and both are
+  wrong, and they are the same bug: a glare is a LENS effect, not a surface.
+
+  WHAT SOURCE ACTUALLY DOES (read, not assumed --
+  game/client/glow_overlay.cpp and c_lightglow.cpp in the public Momentum tree):
+
+    - the quad is drawn with sprites/light_glow02_add_noz (:397).  The _noz is
+      the point: NO DEPTH TEST.  It is never clipped by the world.
+    - visibility is a TRACE to the glow's centre, not the depth buffer
+      (:236-250), backed off 4 units toward the camera so the trace does not
+      hit the lamp the glow is sitting inside (c_pixel_visibility.cpp:787-802).
+    - the result does not switch, it RAMPS:
+          scale +/-= frametime / cl_sun_decay_rate,  clamped 0..1
+      with cl_sun_decay_rate 0.05 (:59, :262, :274) -- a 50ms fade either way,
+      framerate-independent.  Drawing is skipped outright at 0 (:365).
+    - final colour is spriteColour * distanceFade * obstructionScale
+      (c_lightglow.cpp:48).
+
+  WHY THE RAMP IS LOAD-BEARING HERE AND NOT JUST PRETTY.  One traceline per glow
+  per frame is not free at 263 sprites on surf_tensor2.  So only a few are traced
+  each frame, round-robin, and every glow's fade is advanced every frame from
+  whatever its last answer was.  The 50ms ramp is longer than the time it takes
+  the cursor to come back round, so the staleness never reaches the screen.  Cut
+  the ramp and the amortisation becomes visible as popping; that is the trade,
+  and it is the same one Source makes.
+
+  ONLY ADDITIVE BILLBOARDS.  spr_add is the discriminator, and it has to be:
+  this same array holds bhop_murder's 208 billboard TREES and kz_anubis' timer
+  digits, and drawing those with no depth test would put them through walls on
+  maps that work today.  Source's glow materials are additive by construction; a
+  tree is not.  SPRK_ORIENTED is excluded too -- it has a fixed world normal and
+  is a surface decoration, never a flare.
+
+  THE LIMIT BUILD 52 STATED HERE IS FIXED IN BUILD 53, and it was reported
+  before it was noticed: "brush entities do not block the sprites from rendering
+  when they should."  This note used to read "a CSQC traceline runs against
+  csqc_world ... not the server's func_* brush entities, so a glow occluded by a
+  moving door or a func_brush will not fade for it".  All of that was true, and
+  writing it down did not make it acceptable.  The client now instantiates its
+  own copies of the map's brush entities so that the trace has something to hit
+  -- see Sprite_OccluderTier and Sprite_AddOccluder above, and vbsp_glare_brush.
+
+  WHAT IS STILL NOT MODELLED, so the next reader does not have to rediscover it:
+  the copies are frozen at their spawn position, static props are hit only
+  because the VBSP plugin builds them into the world BIH rather than because
+  anything here asks for them, and a transparent brush (glass, a monitor)
+  occludes as though it were opaque, because a traceline has no notion of
+  opacity.  Source has none of these problems in the world-glow case because it
+  does not trace at all -- it asks the GPU how many of the glow's pixels
+  survived the depth test (glow_overlay.cpp:247-250).
+===========================================================================
+*/
+void() Sprite_Glare =
+{
+	local float  i, n, budget, decay, target, step, back;
+	local vector eye, d;
+
+	eye = getproperty(VF_ORIGIN);
+
+	decay = cvar("vbsp_glare_decay");
+	if (decay <= 0)
+		decay = 0.05;               // Source's cl_sun_decay_rate
+	step = frametime / decay;
+
+	budget = cvar("vbsp_glare_traces");
+	if (budget < 0)
+		budget = 0;
+
+	// ---- the amortised trace: `budget` sprites per frame, round-robin -------
+	n = 0;
+	while (n < budget && spr_n > 0)
+	{
+		i = spr_gnext;
+		spr_gnext = spr_gnext + 1;
+		if (spr_gnext >= spr_n)
+			spr_gnext = 0;
+		n = n + 1;
+
+		// BUILD 54: env_lightglow joins this, and it is the same question for the
+		// same reason.  Everything additive except an ORIENTED sprite, which has
+		// a fixed world normal and is a tree or a sign rather than a flare.
+		if (!spr_add[i] || spr_kind[i] == SPRK_ORIENTED)
+			continue;               // not a glare; see the essay
+
+		d = spr_org[i] - eye;
+
+		/*
+		  The back-off, and it is not cosmetic.  A glow is placed AT the lamp, so
+		  a trace to its exact centre lands on the lamp's own brush and reports
+		  "blocked" from every angle -- the glow would never appear at all.
+		  Source hits this and solves it the same way
+		  (c_pixel_visibility.cpp:790-791: "trace 4in from destination in case
+		  the glow is inside some parent object").
+
+		  BUILD 54: the distance is now the map's own GlowProxySize, floored at
+		  Source's 4.  See Glow_ParamSet for why the floor is a max and not a
+		  replacement.
+		*/
+		back = glowp_backoff[spr_pset[i]];
+		if (vlen(d) > back)
+			traceline(eye, spr_org[i] - normalize(d) * back, MOVE_NOMONSTERS, spr_gskip[i]);
+		else
+			traceline(eye, spr_org[i], MOVE_NOMONSTERS, spr_gskip[i]);
+
+		spr_gvis[i] = (trace_fraction >= 1) ? 1 : 0;
+		spr_gtraced[i] = TRUE;
+
+		/*
+		  BUILD 53 -- WAS IT A BRUSH ENTITY THAT STOPPED IT?
+
+		  This counter exists because the obvious A/B does not work.  Flipping
+		  vbsp_glare_brush and comparing the `hidden` count only detects a brush
+		  entity that is the ONLY thing between the eye and the glow, and on a
+		  real map almost every blocked glow is blocked by worldspawn as well --
+		  so the totals can be identical whether or not the feature works.  The
+		  first run of this measured exactly that: 232 of 240 hidden with the
+		  occluders in, 232 of 240 with them out, which proves nothing in either
+		  direction.
+
+		  trace_ent names what the trace actually hit, so counting the hits that
+		  landed on something other than the world answers the question directly
+		  and needs no lucky vantage.
+		*/
+		if (trace_fraction < 1 && trace_ent != world)
+			spr_gbrush = spr_gbrush + 1;
+	}
+
+	// ---- and every glare's fade advances every frame, traced or not ---------
+	/*
+	  BUILD 54, FIXED AFTER MEASUREMENT.  This gate MUST be the same gate the
+	  trace loop above uses, and for one build it was not: it read
+	  `spr_kind[i] != SPRK_BILLBOARD`, which is true for every SPRK_GLOW, so all
+	  166 of surf_tensor2's env_lightglows were traced, answered correctly, and
+	  then had their ramp skipped -- spr_glare stayed at its initial 0 forever
+	  and the draw loop's `if (glare <= 0) continue` threw every one of them
+	  away.
+
+	  IT LOOKED EXACTLY LIKE THE FEATURE NOT EXISTING.  The load-time census said
+	  "lightglows: 166 of 166 drawn" because that counts what was ADDED, and
+	  toggling vbsp_lightglow moved 0.160% of the frame against a same-setting
+	  control of 0.192% at the same vantage -- i.e. below its own noise floor.
+	  Only the control made that readable as "nothing is drawing" rather than as
+	  "the flares are subtle".
+
+	  Written as the trace loop's gate rather than as `== BILLBOARD || == GLOW`
+	  so the two cannot drift apart again: an ORIENTED sprite has a fixed world
+	  normal and is a sign or a tree, and everything else additive is a glare.
+	*/
+	for (i = 0; i < spr_n; i = i + 1)
+	{
+		if (!spr_add[i] || spr_kind[i] == SPRK_ORIENTED)
+			continue;
+
+		/*
+		  Never traced yet: start HIDDEN and let it fade up.  Starting visible
+		  would flash every glow on the map for one ramp on the first frame,
+		  including the ones behind walls -- which is exactly the artefact this
+		  whole function exists to remove.
+		*/
+		target = spr_gtraced[i] ? spr_gvis[i] : 0;
+
+		if (spr_glare[i] < target)
+		{
+			spr_glare[i] = spr_glare[i] + step;
+			if (spr_glare[i] > target) spr_glare[i] = target;
+		}
+		else if (spr_glare[i] > target)
+		{
+			spr_glare[i] = spr_glare[i] - step;
+			if (spr_glare[i] < target) spr_glare[i] = target;
+		}
+	}
+};
+
 void() Sprite_Draw =
 {
-	local float  i, m, maxdist, drawn, dbg;
-	local vector eye, fwd, vright, r, u, dd;
+	local float  i, m, maxdist, drawn, dbg, mo;
+	local vector eye, fwd, vright, vpright, vpup, r, u, dd;
 	local vector a, b, c, d, side, mid;
-	local float  flags;
+	local float  flags, glare, useglare, useglare_on;
+	local float  g_total, g_hidden, g_fading;
+	/*
+	  BUILD 54.  GLOW-ONLY COUNTERS, because the shared ones cannot answer the
+	  question that matters.
+
+	  g_total/g_hidden are incremented by BOTH the billboard loop and the glow
+	  loop, so "glare 349 in frame, 338 hidden by the trace" says nothing about
+	  whether any of the 166 env_lightglows reached the draw.  Eight vantages,
+	  each 1500 units along one glow's own forward, produced a lightglow on/off
+	  difference of exactly 0.000% at seven of them against a control that was
+	  also exactly 0.000% -- a perfectly still scene, so that is not a subtle
+	  effect being missed, it is nothing being drawn.  These five numbers say
+	  which gate is eating them.
+	*/
+	local float  gl_seen, gl_side, gl_hid, gl_fade, gl_drawn;
+	local float  dist, fade, pset, gmn, gmx, gout;
+	local vector toglow, base;
 
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
@@ -667,31 +1789,90 @@ void() Sprite_Draw =
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
+	/*
+	  BUILD 55.  SPR_VP_PARALLEL is literally the view's own basis --
+	  c_sprite.cpp:283-288 copies CurrentViewUp/Right/Forward element by element
+	  and does nothing else.  Taken here rather than per sprite because it is the
+	  same for every sprite on screen, exactly like vright below.  Roll comes
+	  along for free, which is correct: Source rolls parallel sprites with the
+	  view (:238-241 promotes them to VP_PARALLEL_ORIENTED when the entity has
+	  roll of its own, and the view's roll is already in these vectors).
+	*/
+	vpright = v_right;
+	vpup    = v_up;
 
 	maxdist = cvar("vbsp_sprite_dist");
 	drawn = 0;
+	// QuakeC locals are not zeroed; fteqcc warns F302 if you forget.
+	g_total = 0;
+	g_hidden = 0;
+	g_fading = 0;
+	gl_seen = gl_side = gl_hid = gl_fade = gl_drawn = 0;
+
+	// BUILD 52.  One read per frame, not one per sprite; and the trace/ramp pass
+	// runs before the draw so this frame's alphas are this frame's answers.
+	useglare_on = cvar("vbsp_glare");
+	if (useglare_on)
+		Sprite_Glare();
 
 	dbg = cvar("vbsp_sprite_debug");
 	if (dbg)
 	{
 		cvar_set("vbsp_sprite_debug", "0");
+		/*
+		  BUILD 53: 2 also RELOADS, and the reason is that vbsp_glare_brush is
+		  read once at map load.
+
+		  The occluders are built in the load walk, so setting the cvar in the
+		  console does nothing until the next map -- and "map <samename>" does
+		  not reload in this engine, which is a trap already written down in this
+		  project's notes.  Without this, the only way to A/B the feature is to
+		  load a different map in between, and an A/B that needs a detour
+		  through a third map is one nobody runs twice.
+
+		  Deliberately on the DEBUG cvar rather than as its own command: it is a
+		  test hook, it costs one entity-lump walk, and it clears itself the same
+		  way the rest of this block does.
+		*/
+		if (dbg == 2)
+			Sprite_LoadForMap();
 		print(sprintf("vbsp_sprite_debug: %g sprites, %g beams, %g materials, maxdist %g\n",
 		              spr_n, beam_n, sprmat_n, maxdist));
+		print(sprintf("  occluders: %g of %g brush entities, mode %g (%g over cap), %g traces stopped by one\n",
+		              spr_occ_n, spr_occ_seen, cvar("vbsp_glare_brush"), spr_occ_over,
+		              spr_gbrush));
+		spr_gbrush = 0;
+		/*
+		  BUILD 54.  Its own line because fteqcc caps a varargs call at eight
+		  parameters INCLUDING the format string, and the line above already
+		  spends seven.
+		*/
+		print(sprintf("  glows: %g env_lightglow drawn, %g parameter sets; %g glares skip their own brush (%g in more than one)\n",
+		              vbsp_glow_n, glowp_n, spr_gskip_n, spr_gskip_multi));
+		// BUILD 55.  "we could not read the material and guessed" has to be
+		// visible: a map whose sprite content is missing looks identical to one
+		// whose materials all say vp_parallel, and only this number tells them
+		// apart.
+		print(sprintf("  orientation: %g material(s) read from the .vmt, %g guessed (mode %g), %g declined\n",
+		              sprmat_orient_read, sprmat_orient_guess,
+		              cvar("vbsp_sprite_orient"), sprmat_orient_decl));
 		for (m = 0; m < sprmat_n; m = m + 1)
-			print(sprintf("  %2g %-40s %gx%g\n", m, sprmat_name[m], sprmat_w[m], sprmat_h[m]));
+			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
+			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
 	}
 
 	/*
-	  SPR_VP_PARALLEL_UPRIGHT, which is Source's default for any sprite whose
-	  material does not say otherwise (spritemodel.cpp:311).  It is NOT a
-	  full billboard: up stays world +Z and only the right vector turns, so a
-	  tall glow does not tip over as you look up at it.
+	  SPR_VP_PARALLEL_UPRIGHT.  It is NOT a full billboard: up stays world +Z and
+	  only the right vector turns, so a tall glow does not tip over as you look
+	  up at it -- which is right for the 17 library materials that ask for it and
+	  wrong for the 177 that do not.  BUILD 55 picks per material; see
+	  Sprite_ReadOrient.  This is still computed once rather than per sprite
+	  because c_sprite.cpp:305-309 derives right from the VIEW direction and not
+	  from the direction to each sprite.
 
-	  c_sprite.cpp:305-309 derives right from the VIEW direction rather than
-	  from the direction to each sprite, which is why this is computed once here
-	  and not per sprite.  Its degenerate case is looking almost straight up or
-	  down; Source declines to draw within one degree of vertical (:301-303) and
-	  so does the guard below.
+	  Its degenerate case is looking almost straight up or down; Source declines
+	  to draw within one degree of vertical (:301-303) and so does the guard
+	  below.
 	*/
 	vright = normalize([fwd_y, -fwd_x, 0]);
 	if (fwd_z > 0.999848 || fwd_z < -0.999848)
@@ -709,6 +1890,18 @@ void() Sprite_Draw =
 	{
 		if (sprmat_w[m] <= 0)
 			continue;
+
+		/*
+		  BUILD 55: once per material, not per sprite -- the loop is already
+		  material-major, so the cvar lookup costs at most 34 hash probes a frame
+		  on the library's worst map and buys a live A/B with no reload.
+		  2 (or anything else) = what the material said.
+		*/
+		mo = sprmat_orient[m];
+		if (cvar("vbsp_sprite_orient") == 0)
+			mo = SPRO_UPRIGHT;
+		else if (cvar("vbsp_sprite_orient") == 1)
+			mo = SPRO_PARALLEL;
 
 		for (i = 0; i < spr_n; i = i + 1)
 		{
@@ -734,23 +1927,184 @@ void() Sprite_Draw =
 				// Without this the far side is culled away (pr_csqc.c:1666).
 				flags = DRAWFLAG_TWOSIDED;
 			}
-			else
+			else if (mo == SPRO_UPRIGHT || mo == SPRO_FACING)
 			{
+				// parallel_upright, and facing_upright drawn as it (declined)
 				r = vright  * spr_hw[i];
 				u = '0 0 1' * spr_hh[i];
 				flags = 0;
 			}
+			else
+			{
+				// vp_parallel, and vp_parallel_oriented drawn as it (declined
+				// -- it differs only by the entity's own roll about the view
+				// axis).  This is the case for 177 of the library's 213 sprite
+				// materials, including every one surf_tensor2 uses.
+				r = vpright * spr_hw[i];
+				u = vpup    * spr_hh[i];
+				flags = 0;
+			}
 			if (spr_add[i])
 				flags = flags | DRAWFLAG_ADD;
+
+			/*
+			  BUILD 52.  An additive billboard is a light glare, so it is drawn
+			  OVER the world and its visibility comes from Sprite_Glare's trace
+			  instead of from the depth buffer.  Everything else keeps exactly
+			  the behaviour it had -- see the essay above Sprite_Glare for why
+			  that distinction is not optional.
+			*/
+			useglare = (useglare_on && spr_add[i] && spr_kind[i] == SPRK_BILLBOARD);
+			if (useglare)
+			{
+				g_total = g_total + 1;
+				glare = spr_glare[i];
+				if (glare <= 0)
+				{
+					g_hidden = g_hidden + 1;
+					continue;           // fully occluded: draw nothing at all
+				}
+				if (glare < 1)
+					g_fading = g_fading + 1;
+				flags = flags | DRAWFLAG_NODEPTHTEST;
+			}
+			else
+				glare = 1;
 
 			a = spr_org[i] - r + u;
 			b = spr_org[i] + r + u;
 			c = spr_org[i] + r - u;
 			d = spr_org[i] - r - u;
 
-			Sprite_Quad(a, b, c, d, sprmat_name[m], flags, spr_col[i], spr_alpha[i]);
+			Sprite_Quad(a, b, c, d, sprmat_name[m], flags, spr_col[i], spr_alpha[i] * glare);
 			drawn = drawn + 1;
 		}
+	}
+
+	/*
+	===========================================================================
+	  BUILD 54 -- env_lightglow, in one batch of its own.
+
+	  Its own loop rather than a branch inside the material-major one above,
+	  because a glow is not a world quad: it is placed in VIEW space, it shares
+	  one hardcoded material with every other glow on the map, and its size comes
+	  from the entity rather than from a texture.  All 166 of surf_tensor2's are
+	  therefore one batch, the same way the beams below are.
+
+	  THE BASIS IS SOURCE'S, transcribed from CalcBasis (glow_overlay.cpp:322-343):
+
+	      vBasePt = eye + vToGlow * 100
+	      vRight  = normalize(cross(vToGlow, (0,0,1))) * flHorzSize
+	      vUp     = normalize(cross(vRight,  vToGlow)) * flVertSize
+
+	  The fixed 100 units is what makes HorizontalGlowSize and VerticalGlowSize
+	  read as an ANGULAR size: the quad is always the same distance from the eye,
+	  so 65 by 35 is 65 by 35 on screen whether the lamp is 200 units away or
+	  6000.  Getting that wrong -- putting the quad at the glow -- would make
+	  every flare on the map shrink with distance and the effect would read as
+	  "the lens flares are tiny", which is not a bug anyone would connect back to
+	  this line.
+	===========================================================================
+	*/
+	for (i = 0; i < spr_n; i = i + 1)
+	{
+		if (spr_kind[i] != SPRK_GLOW)
+			continue;
+
+		dd = spr_org[i] - eye;
+		dist = vlen(dd);
+		if (dist < 0.01)
+			continue;               // standing inside it; no direction to face
+		toglow = dd * (1 / dist);
+
+		/*
+		  One-sided, c_lightglow.cpp:27-34.  Source tests the vector FROM the
+		  glow TO the eye against the glow's forward and blacks it out when the
+		  dot is negative; toglow points the other way, so the sign flips.
+		  spr_right is '0 0 0' on a glow that is not one-sided -- makevectors
+		  cannot produce that, so the test needs no separate flag.
+		*/
+		gl_seen = gl_seen + 1;
+		if (spr_right[i] != '0 0 0' && (toglow * spr_right[i]) > 0)
+		{
+			gl_side = gl_side + 1;
+			g_total = g_total + 1;  // in frame, and hidden -- see below
+			g_hidden = g_hidden + 1;
+			continue;
+		}
+
+		g_total = g_total + 1;
+
+		// The occlusion ramp, shared with every other glare.
+		glare = useglare_on ? spr_glare[i] : 1;
+		if (glare <= 0)
+		{
+			g_hidden = g_hidden + 1;
+			gl_hid = gl_hid + 1;
+			continue;
+		}
+		if (glare < 1)
+			g_fading = g_fading + 1;
+
+		/*
+		  The distance ramp, c_lightglow.cpp:36-47.  This is the half of the
+		  behaviour that makes a flare appear as you approach rather than being
+		  on from across the map.  RemapValClamped with equal endpoints returns
+		  the far value at or above them and the near value below
+		  (mathlib RemapValClamped), which is what the degenerate branches here
+		  reproduce -- a map that writes MinDist == MaxDist means "on beyond
+		  this point", not "divide by zero".
+		*/
+		pset = spr_pset[i];
+		gmn  = glowp_min[pset];
+		gmx  = glowp_max[pset];
+		gout = glowp_outer[pset];
+
+		if (gout > gmx && dist > gmx)
+			fade = 1 - (dist - gmx) / (gout - gmx);
+		else if (gmx > gmn)
+			fade = (dist - gmn) / (gmx - gmn);
+		else
+			fade = (dist >= gmx) ? 1 : 0;
+
+		if (fade <= 0)
+		{
+			g_hidden = g_hidden + 1;
+			gl_fade = gl_fade + 1;
+			continue;
+		}
+		if (fade > 1)
+			fade = 1;
+
+		base = eye + toglow * GLOW_OVERLAYDIST;
+
+		r = crossproduct(toglow, '0 0 1');
+		if (r == '0 0 0')
+		{
+			// Dead overhead: no horizontal axis exists.  Counted as trace-hidden
+			// rather than as nothing, because BUILD 55 relies on the four
+			// outcomes summing to gl_seen -- a glow that leaves the loop without
+			// incrementing any of them makes the line lie by omission, and a
+			// debug line that does not add up is worse than no line.
+			gl_hid = gl_hid + 1;
+			continue;
+		}
+		r = normalize(r);
+		u = normalize(crossproduct(r, toglow));
+
+		r = r * spr_hw[i];
+		u = u * spr_hh[i];
+
+		a = base - r + u;
+		b = base + r + u;
+		c = base + r - u;
+		d = base - r - u;
+
+		Sprite_Quad(a, b, c, d, GLOW_MATERIAL,
+		            DRAWFLAG_ADD | DRAWFLAG_NODEPTHTEST,
+		            spr_col[i], spr_alpha[i] * glare * fade);
+		drawn = drawn + 1;
+		gl_drawn = gl_drawn + 1;
 	}
 
 	/*
@@ -793,8 +2147,31 @@ void() Sprite_Draw =
 	}
 
 	if (dbg)
+	{
 		print(sprintf("vbsp_sprite_debug: %g of %g passed the cull\n",
 		              drawn, spr_n + beam_n));
+		/*
+		  BUILD 52.  COUNT WHAT THE GATE IS FILTERING, not just whether it ran.
+		  `hidden` is the number the occlusion trace suppressed this frame; if it
+		  is 0 from a vantage where glows are plainly behind walls, the trace is
+		  not gating anything and the glares are drawing through the world --
+		  which is the failure mode this feature can have, and it is invisible in
+		  a screenshot taken facing the glows.
+		*/
+		if (useglare_on)
+			print(sprintf("vbsp_sprite_debug: glare %g in frame, %g hidden by the trace, %g mid-fade\n",
+			              g_total, g_hidden, g_fading));
+		/*
+		  BUILD 54.  The env_lightglow half on its own, because the line above
+		  mixes it with the billboards and cannot say which gate is eating them.
+		  Read left to right: how many glows the loop reached, then each way out
+		  of it in the order they are tested, then how many quads were emitted.
+		  Every one of the 166 has to appear in exactly one of the last four
+		  numbers, so a total that does not add up is itself the answer.
+		*/
+		print(sprintf("vbsp_sprite_debug: glows %g reached, %g one-sided away, %g trace-hidden, %g out of fade range, %g drawn\n",
+		              gl_seen, gl_side, gl_hid, gl_fade, gl_drawn));
+	}
 };
 
 /*

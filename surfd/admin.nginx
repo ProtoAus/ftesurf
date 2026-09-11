@@ -1,0 +1,98 @@
+# surfd admin panel -- reverse proxy snippet
+#
+# NOT INSTALLED, AND DELIBERATELY SO. Installing this puts a login form on the
+# public internet, on the machine that runs the game servers. That is a
+# decision for a human, taken once, on purpose.
+#
+# THIS IS A SEPARATE FILE FROM surfd.nginx ON PURPOSE.
+#
+# The panel gets its OWN location block so that a mistake in the admin
+# blueprint cannot expose /lobbies.json or /api/heartbeat, and a mistake in the
+# public read-only endpoints cannot expose /admin. They share a process; they
+# must not share a routing rule. If you ever find yourself merging these two
+# files into one `location /` proxy_pass, that is the mistake.
+#
+# PREREQUISITES, all of them, before this goes in:
+#   1. TLS terminated on this vhost. The session cookie is the whole
+#      credential and surfd sets Secure on it by default, which means the
+#      panel simply will not work over plain HTTP -- that is the intended
+#      behaviour, not a bug to work around with SURFD_ADMIN_INSECURE_COOKIE.
+#   2. SURFD_ADMIN_HASH and SURFD_ADMIN_SECRET set in surfd.env (mkadminpw.py).
+#   3. surfd restarted, and its log line "admin panel enabled at /admin"
+#      present. If the log says "admin panel disabled", nothing here will work
+#      and the reason is in that line.
+#
+# To install:
+#     sudo cp /srv/nvme/surfd/admin.nginx /etc/nginx/snippets/surfd-admin.conf
+#     # add the limit_req_zone line below to the http{} block (it cannot live
+#     # inside a location), then inside the desired TLS server{} block:
+#     #     include snippets/surfd-admin.conf;
+#     sudo nginx -t && sudo systemctl reload nginx
+
+# ---------------------------------------------------------------------------
+# PUT THIS ONE LINE IN http{}, NOT HERE. nginx will refuse to start with
+# "limit_req_zone directive is not allowed here" if it is left inside a
+# location, which is a confusing way to take the whole web server down.
+#
+#     limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
+#
+# surfd has its own per-IP lockout (five failures, fifteen minutes) and does
+# not need nginx's help to be correct. This zone exists to keep a password
+# spray from reaching the scrypt verifier at all: each attempt costs 32 MB of
+# memory on an SBC with no swap, so the cheap rejection belongs in front.
+# ---------------------------------------------------------------------------
+
+location /admin {
+    proxy_pass         http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout   30s;
+
+    # systemctl start/restart can take a few seconds; do not buffer the reply.
+    proxy_buffering off;
+
+    # NOTE ON X-Forwarded-For, and it is deliberate that it is NOT set here.
+    #
+    # surfd does not honour XFF anywhere -- not for heartbeats (see the essay
+    # in surfd.py) and not for the admin lockout (see client_ip in admin.py).
+    # Behind this proxy every admin request appears to come from 127.0.0.1, so
+    # the lockout counts failures GLOBALLY rather than per client.
+    #
+    # That fails in the safe direction: five failures from anyone lock out
+    # everyone for fifteen minutes, including the real admin. It is annoying
+    # and it is not a security hole. The unsafe direction -- trusting a header
+    # a client can set, so that an attacker resets their own lockout by
+    # changing one string -- is the one to avoid, and it is why this is not a
+    # one-line "improvement".
+    #
+    # If per-client lockout is ever wanted, the correct fix is to teach
+    # admin.py a trusted-hop count explicitly, the same way the PUBLIC_HOST
+    # work reversed the trust direction rather than trusting the body.
+
+    # Do not let a proxy or browser keep an authenticated page.
+    proxy_set_header   Cache-Control     "no-store";
+    add_header         Cache-Control     "no-store" always;
+    add_header         X-Robots-Tag      "noindex, nofollow" always;
+}
+
+# The login endpoint specifically, rate limited. This must come AFTER the
+# generic /admin block above -- nginx picks the longest matching prefix, so the
+# exact-match form wins for this one URL regardless of order, but keeping it
+# below reads the way it behaves.
+location = /admin/login {
+    limit_req  zone=surfdlogin burst=5 nodelay;
+    limit_req_status 429;
+
+    proxy_pass         http://127.0.0.1:8084/admin/login;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    30s;
+    add_header         Cache-Control     "no-store" always;
+    add_header         X-Robots-Tag      "noindex, nofollow" always;
+}

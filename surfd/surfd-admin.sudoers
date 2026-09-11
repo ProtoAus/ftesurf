@@ -1,0 +1,78 @@
+# surfd admin panel -- the systemctl grant the panel needs.
+#
+# ALREADY INSTALLED ON THE PI, AND THIS FILE IS A RECORD OF IT, NOT A TASK.
+#
+# /etc/sudoers.d/ftesurf (0440 root:root, dated Sep 8 17:09) already grants the
+# proto user exactly these nine commands NOPASSWD. `sudo -l` as proto confirms
+# it. Do NOT install this file as a second grant -- two sudoers files granting
+# overlapping commands is how a later edit removes one and leaves the other,
+# and the panel keeps working for reasons nobody can find.
+#
+# It is kept in the repo because the grant itself is not in version control
+# anywhere, and "what privilege does the web panel hold" is exactly the thing
+# that should not live only in a root-owned file on one SBC.
+#
+# ------------------------------------------------------------------------
+# THE SPELLING IS LOAD-BEARING: ftesurf@1, NOT ftesurf@1.service
+# ------------------------------------------------------------------------
+#
+# sudo matches a granted command against the argument vector LITERALLY. systemd
+# treats `ftesurf@1` and `ftesurf@1.service` as the same unit, so the two look
+# interchangeable -- and they are, to systemctl. They are not to sudo.
+#
+#     sudo -n systemctl restart ftesurf@1           -> allowed (matches)
+#     sudo -n systemctl restart ftesurf@1.service   -> "a password is required"
+#
+# The second failure is indistinguishable from "the sudoers line was never
+# installed", which is the wrong conclusion and sends you to a human with root
+# for a file that is already there. admin.py's systemctl() builds the
+# suffix-less form deliberately and says so at the call site.
+#
+# If this grant is ever rewritten WITH the suffix, change admin.py to match.
+# Do not add a second line covering the other spelling.
+#
+# ------------------------------------------------------------------------
+# WHAT IT GRANTS, and why each restriction is worth keeping
+# ------------------------------------------------------------------------
+#
+#   * Nine exact commands. No wildcards anywhere, so sudo cannot be talked into
+#     restarting nginx, ssh or anything else on the box.
+#   * ftesurf@1..3 only. surfd.service is NOT in the list: a panel that can
+#     restart the process it runs inside can hang itself up mid-request with no
+#     way back.
+#   * NOPASSWD, because there is no terminal to type a password at. admin.py
+#     calls `sudo -n` and reports the refusal plainly rather than hanging.
+#   * No `systemctl is-active`. admin.py reads unit state WITHOUT sudo, because
+#     querying needs no privilege. Only the three state-changing verbs are
+#     granted. If unit state ever shows blank in the panel, that is a systemd
+#     question, not a reason to widen this file.
+#
+# THE HONEST RISK. Anyone who takes a session on the public panel can stop the
+# game servers. That is the intended feature -- an admin panel that cannot stop
+# a server is not an admin panel -- and it is bounded: three units, no shell,
+# no other service, no package manager, no file writes. The blast radius is
+# "the lobbies go down", recoverable from any ssh session in seconds.
+#
+# ------------------------------------------------------------------------
+# ONLY IF THE EXISTING GRANT IS EVER LOST
+# ------------------------------------------------------------------------
+#
+#     sudo cp /srv/nvme/surfd/surfd-admin.sudoers /etc/sudoers.d/ftesurf
+#     sudo chmod 0440 /etc/sudoers.d/ftesurf
+#     sudo visudo -c                      # MUST print "parsed OK"
+#
+# RUN visudo -c. A syntax error in a sudoers file can lock every user out of
+# sudo on the machine. `visudo -c` parses every file in /etc/sudoers.d and is
+# the whole safety net.
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@1
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@2
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@3
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@1
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@2
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@3
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@1
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@2
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@3

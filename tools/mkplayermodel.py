@@ -49,6 +49,7 @@ check there is.
 
 import argparse
 import os
+import re
 import shutil
 import struct
 import sys
@@ -62,8 +63,17 @@ HALF_X = 16.0
 HALF_Y = 16.0
 NOSE_X = 23.255          # the prow apex, at y = 0
 
-HEIGHT_STAND = 72.0      # PM_HULL_MAXS '16 16 72'
-HEIGHT_DUCK  = 54.0      # PM_DUCK_MAXS '16 16 54'
+# THESE TWO ARE CHECKED AGAINST sh_defs.qc BY THE SELFTEST.  Do not edit one
+# without the other -- see hull_from_sh_defs() and the essay above its call.
+#
+# They were 72.0 and 54.0 from build 30 to build 51, carrying a comment that
+# claimed sh_defs.qc as the source while sh_defs.qc said 62 and 45.  72/54 is
+# CS:S's pair; this game uses Momentum's, and sh_defs.qc:34-35 says so in as
+# many words.  The hull moved in build 41 and nothing brought the model with
+# it, so every drawn body was 10 units taller than the box it collides with,
+# standing, and 9 taller ducked, for eleven builds.
+HEIGHT_STAND = 62.0      # PM_HULL_MAXS '16 16 62'  (sh_defs.qc:37)
+HEIGHT_DUCK  = 45.0      # PM_DUCK_MAXS '16 16 45'  (sh_defs.qc:39)
 HEIGHT_ORIG  = 48.0      # what the pre-build-30 file was, for --selftest
 
 # THE MATERIAL IS PATH-QUALIFIED, AND IT HAS TO BE.
@@ -215,8 +225,30 @@ def build_mesh(height):
             normals.append(nrm)
             # w = 1: handedness.  Unused here, but the field is not optional.
             tangents.append((tan[0], tan[1], tan[2], 1.0))
+        # WOUND CW, BECAUSE FTE'S FRONT FACE IS CW AND THE MODEL WAS INSIDE OUT.
+        #
+        # build_faces produces polygons CCW seen from outside, which is the
+        # normal maths convention and is what makes _face_normal point outward.
+        # Fanning them in that order produced CCW triangles -- and FTE culls
+        # those.  GL_CullFace (gl_backend.c:1086-1089) maps SHADER_CULL_FRONT to
+        # `qglCullFace(GL_FRONT)`, and qglFrontFace is loaded but NEVER CALLED
+        # anywhere in the engine, so the winding stays at GL's default of
+        # GL_CCW = front.  Culling the front therefore culls the CCW triangles,
+        # and the visible ones are the CW ones.
+        #
+        # So every outward face of the player model was being discarded and what
+        # you saw was the inside of the far side of the box.  It is subtle on a
+        # convex solid -- the silhouette is identical and only the shading and
+        # the depth order give it away -- which is why it survived being drawn
+        # as a ghost body and in three lobby screenshots before somebody looked
+        # at another player and said the faces were on the inside.
+        #
+        # k+1 and k swapped, and ONLY here: the polygon order feeds
+        # _face_normal, so reversing the polygon itself would flip the normals
+        # inward and break the lighting instead.  Normals stay outward; only the
+        # index order changes.
         for k in range(1, len(poly) - 1):
-            triangles.append((base, base + k, base + k + 1))
+            triangles.append((base, base + k + 1, base + k))
 
     return positions, texcoords, normals, tangents, triangles
 
@@ -380,7 +412,85 @@ def geometry(info):
 
 # ---------------------------------------------------------------------------
 
-def selftest(original_path):
+def write_luma_tga(width=256, height=256, lo=0.42, hi=0.58):
+    """A fullbright mask for models/player: black, with one white band.
+
+    Dropping models/player_luma.tga beside models/player.tga is all it takes to
+    enable the fullbright pass -- R_BuildLegacyTexnums probes "%s_luma:%s_glow"
+    (gl_shader.c:7046-7048) and the permutation turns on when that texture
+    loads (gl_backend.c:4373-4374).  .glowmod then tints it per player.
+
+    WHY A BAND AND NOT FULL COVERAGE.  The skin is flat, so a fully white luma
+    would make the entire body self-lit -- which throws the lighting away and
+    turns every player into a flat silhouette.  A band is a belt around the
+    model that stays readable in a dark leaf, where colormod's lit term goes to
+    zero and a colour-only body goes black.
+
+    WHY THE BAND IS CENTRED ON v = 0.5.  build_faces lays u along the perimeter
+    and v as height, but v runs 1 at the FEET and 0 at the crown -- the
+    inversion noted beside the texcoord code.  A band placed off-centre would
+    therefore land at the ankles if that reading is wrong by a flip, and this
+    has not been checked against a rendered frame.  Centring it makes the
+    placement independent of the orientation: waist height either way.  Move it
+    once someone has actually looked at it.
+    """
+    band = bytearray()
+    for y in range(height):
+        v = (y + 0.5) / height
+        on = (lo <= v <= hi)
+        c = 255 if on else 0
+        band += bytes((c, c, c)) * width          # TGA is BGR; grey is symmetric
+
+    hdr = struct.pack("<BBBHHBHHHHBB",
+                      0,      # no image id
+                      0,      # no colour map
+                      2,      # uncompressed true-colour
+                      0, 0, 0,
+                      0, 0,   # x/y origin
+                      width, height,
+                      24,     # bits per pixel
+                      0)      # descriptor: bottom-left origin
+    return bytes(hdr) + bytes(band) + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
+
+
+def hull_from_sh_defs(path=None):
+    """Read the real hull out of sh_defs.qc.  Returns (mins_z, stand_z, duck_z)
+    or None if the file could not be read or did not contain what we need.
+
+    THE AUTHORITY IS NOT THIS FILE.  src/shared/sh_defs.qc holds the hull, the
+    engine asserts the same numbers in its own selftests (pm_source.c:4111-4112)
+    and cfg/default.cfg sets them as pm_standheight / pm_duckheight.  This
+    script only ever gets to AGREE with them.
+    """
+    if path is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(here, os.pardir, "src", "shared", "sh_defs.qc")
+    path = os.path.abspath(path)
+
+    try:
+        with open(path, "r") as f:
+            text = f.read()
+    except IOError:
+        return None
+
+    def vec(name):
+        m = re.search(r"#define\s+%s\s+'\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*'"
+                      % re.escape(name), text)
+        return tuple(float(g) for g in m.groups()) if m else None
+
+    hull_min, hull_max = vec("PM_HULL_MINS"), vec("PM_HULL_MAXS")
+    duck_min, duck_max = vec("PM_DUCK_MINS"), vec("PM_DUCK_MAXS")
+    if not (hull_min and hull_max and duck_min and duck_max):
+        return None
+    # Both hulls sit on the floor; the model is cut from z=0 up, so if these
+    # ever stop being 0 the whole feet-at-origin convention has moved and the
+    # heights are the least of it.
+    if hull_min[2] != duck_min[2]:
+        return None
+    return (hull_min[2], hull_max[2], duck_max[2])
+
+
+def selftest(original_path, hull_check=True):
     print("--- selftest: re-cut the shape at the ORIGINAL's height and compare")
 
     if not os.path.exists(original_path):
@@ -415,17 +525,99 @@ def selftest(original_path):
             print("    note: materials %r vs %r (skin name, not geometry)"
                   % (orig["materials"], mine["materials"]))
 
-    # And the two real outputs must parse and stand the right height.
+    # WINDING, which this selftest did not check and which is what broke.
+    #
+    # The first version compared unique_positions, num_triangles, bbox and
+    # rigidity against the preserved original -- everything except the order the
+    # indices are in.  So when the re-cut came out CCW where the hand-made
+    # player_48.iqm was CW, the selftest passed, and the model shipped inside
+    # out: FTE culls CCW (GL_CullFace maps SHADER_CULL_FRONT to
+    # glCullFace(GL_FRONT), and glFrontFace is never called, so GL's CCW=front
+    # default stands).  Every outward face was discarded and players saw the
+    # inside of each other's far side.  It survived three lobby screenshots and
+    # was found by a person looking at another player.
+    #
+    # The solid is convex, so the test needs no stored normals: a correctly
+    # wound triangle's right-hand normal points AWAY from the centroid, and CW
+    # is the one that must be true here.
+    def _winding(info):
+        pos, tris = info["positions"], info["triangles"]
+        n = len(pos)
+        cen = tuple(sum(p[i] for p in pos) / n for i in range(3))
+        ccw = cw = 0
+        for (a, b, c) in tris:
+            u = tuple(pos[b][i] - pos[a][i] for i in range(3))
+            v = tuple(pos[c][i] - pos[a][i] for i in range(3))
+            gn = (u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0])
+            mid = tuple((pos[a][i] + pos[b][i] + pos[c][i]) / 3.0 for i in range(3))
+            d = sum(gn[i] * (mid[i] - cen[i]) for i in range(3))
+            if d > 0: ccw += 1
+            elif d < 0: cw += 1
+        return ccw, cw
+
+    if orig is not None:
+        o_ccw, o_cw = _winding(orig)
+        print("    original winding : %d CCW, %d CW" % (o_ccw, o_cw))
+
+    # And the two real outputs must parse, stand the right height, and be CW.
     for name, height in (("player.iqm", HEIGHT_STAND),
                          ("player_duck.iqm", HEIGHT_DUCK)):
         info = read_iqm(write_iqm(height))
         geo = geometry(info)
         top = geo["bbox"][5]
-        status = "ok" if abs(top - height) < 1e-3 else "WRONG"
+        ccw, cw = _winding(info)
+        status = "ok" if abs(top - height) < 1e-3 else "WRONG HEIGHT"
+        if ccw:
+            status = "INSIDE OUT (%d CCW tris)" % ccw
         if status != "ok":
             ok = False
-        print("    %-16s %d verts, %d tris, z 0..%g  [%s]"
-              % (name, info["num_vertexes"], geo["num_triangles"], top, status))
+        print("    %-16s %d verts, %d tris, z 0..%g, %d CW  [%s]"
+              % (name, info["num_vertexes"], geo["num_triangles"], top, cw, status))
+
+    # THE HEIGHTS AGAINST THE HULL, which is the check that was missing and is
+    # the reason this file shipped a 72-unit model against a 62-unit hull for
+    # eleven builds.
+    #
+    # Everything above compares the writer against player_48.iqm, and then
+    # checks each output came out at the height THIS SCRIPT ASKED FOR.  That
+    # second test cannot fail: it compares HEIGHT_STAND to itself.  So the
+    # constants were free to say 72 while sh_defs.qc said 62, the comment beside
+    # them cited sh_defs.qc as the source, and the selftest passed the whole
+    # time and read as coverage.
+    #
+    # Same shape as the winding bug directly above: a round trip that compares
+    # every property except the one that broke.  The fix in both cases is to
+    # compare against something that is NOT this script -- there, the preserved
+    # original's index order; here, the hull the game actually collides with.
+    hull = hull_from_sh_defs() if hull_check else None
+    if not hull_check:
+        print("    hull     : CHECK SKIPPED (--no-hull-check).  The heights in this")
+        print("      script are unverified against sh_defs.qc.")
+    elif hull is None:
+        # Loudly, and as a FAILURE of the check rather than a silent pass.  A
+        # check that evaporates when its input moves is worse than no check,
+        # because the "PASSED" line still says everything was verified.
+        ok = False
+        print("    HULL CHECK UNAVAILABLE: could not read PM_HULL_MINS/MAXS and")
+        print("      PM_DUCK_MINS/MAXS from src/shared/sh_defs.qc.")
+        print("      Pass --no-hull-check if the file has genuinely moved, and")
+        print("      then go and fix this path.")
+    else:
+        floor_z, stand_z, duck_z = hull
+        for what, mine, theirs in (("HEIGHT_STAND", HEIGHT_STAND, stand_z),
+                                   ("HEIGHT_DUCK",  HEIGHT_DUCK,  duck_z)):
+            if abs(mine - theirs) >= 1e-6:
+                ok = False
+                print("    MISMATCH %s: this script says %g, sh_defs.qc says %g"
+                      % (what, mine, theirs))
+        if floor_z != 0.0:
+            ok = False
+            print("    MISMATCH hull floor: sh_defs.qc mins.z is %g, not 0 -- the"
+                  % floor_z)
+            print("      model is cut from z=0 up, so feet-at-origin has moved.")
+        if ok:
+            print("    hull     : sh_defs.qc says floor %g, stand %g, duck %g  [agrees]"
+                  % (floor_z, stand_z, duck_z))
 
     print("--- selftest %s" % ("PASSED" if ok else "FAILED"))
     return ok
@@ -440,6 +632,11 @@ def main():
     ap.add_argument("--models", default=None,
                     help="the models directory (default: ../ftesurf/models "
                          "relative to this script)")
+    ap.add_argument("--no-hull-check", action="store_true",
+                    help="skip checking HEIGHT_STAND/HEIGHT_DUCK against "
+                         "src/shared/sh_defs.qc.  Only for when that file has "
+                         "genuinely moved -- the check is what stops this "
+                         "script drifting away from the hull again.")
     args = ap.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -459,10 +656,12 @@ def main():
     # model kept by the first --apply, so it stays a real reference forever.
     reference = backup if os.path.exists(backup) else stand
 
-    if args.selftest:
-        return 0 if selftest(reference) else 1
+    hull_check = not args.no_hull_check
 
-    if not selftest(reference):
+    if args.selftest:
+        return 0 if selftest(reference, hull_check) else 1
+
+    if not selftest(reference, hull_check):
         print("refusing to write: the selftest failed")
         return 1
 
@@ -487,6 +686,14 @@ def main():
         with open(path, "wb") as f:
             f.write(data)
         print("wrote %s (%d bytes, z 0..%g)" % (path, len(data), height))
+
+    # The fullbright mask, written here so it cannot drift away from the model
+    # whose UVs it is cut against.  Patch 278.
+    luma = os.path.join(models, "player_luma.tga")
+    data = write_luma_tga()
+    with open(luma, "wb") as f:
+        f.write(data)
+    print("wrote %s (%d bytes, waist band for .glowmod)" % (luma, len(data)))
 
     return 0
 

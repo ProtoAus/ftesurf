@@ -4,6 +4,18 @@ defs/m_defs.qc
 shared/sh_defs.qc
 shared/sh_time.qc
 shared/sh_font.qc
+// Patch 270.  The other two .src files have had this for a long time and this
+// one never did, because until public lobbies the menu had no reason to read
+// JSON.  The MENU VM really does have the builtins -- pr_menu.c:2463-2472
+// registers all ten in its own BuiltinList, name-resolved (#0:) exactly as
+// sh_json.qc declares them -- despite that file's header comment saying SSQC
+// and CSQC "both".  There is a third module and this is it.
+shared/sh_json.qc
 sui_sys.qc
 
+// BEFORE m_main.qc, and the dependency runs one way: m_lobby.qc holds the
+// public-lobby list and knows nothing about the map picker, while m_main.qc
+// draws the rows with ui_thumb and resolves each lobby's map against ms_name.
+// Putting the drawing here instead would need both of those, which live below.
+menu/m_lobby.qc
 menu/m_main.qc

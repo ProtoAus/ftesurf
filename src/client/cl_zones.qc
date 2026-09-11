@@ -491,6 +491,27 @@ void() Zone_List =
 	              zone_count, zone_ptcount, Zone_SourceName(zone_source),
 	              zone_overflow ? " ^1(TRUNCATED -- hit a cap)" : ""));
 
+	/*
+	  BUILD 47: SAY WHERE THE TRIGGER IS, BECAUSE IT IS NO LONGER THE CAGE.
+
+	  Under run_zone_hull the effective trigger is the Minkowski sum of the drawn
+	  ring with the player's hull rectangle -- so the wireframe you can see stops
+	  being the boundary things fire on.  That is exactly the class of invisible
+	  mismatch the essay on Zone_PointInside warns about ("the renderer only
+	  draws the ring and never tests a point against it"), so it gets said out
+	  loud here rather than left for someone to rediscover from a split that
+	  fired early.
+
+	  A line rather than a second wireframe: the offset is a CONSTANT, and one
+	  sentence carries it exactly.  Drawing it needs the ring's winding and is
+	  only exact away from a reflex vertex, so it is a separate job.
+	*/
+	if (serverkeyfloat("run_zone_hull") >= 1)
+		print("  trigger = the drawn cage plus 16 units horizontally and 62 units DOWNWARD\n"
+		      "           (origin is at the feet, so it never grows upward).  run_zone_hull 0 to compare.\n");
+	else
+		print("  trigger = the drawn cage exactly (run_zone_hull 0 -- the point test)\n");
+
 	// The resolved draw flag and colour per type.  Worth printing: a wrong
 	// colour looks identical to a wrong TYPE in the world, and this is what
 	// separates the two.

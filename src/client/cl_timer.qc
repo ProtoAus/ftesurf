@@ -53,6 +53,27 @@ float  ui_tm_lastfails;         // last STAT_FS_STAGEFAILS seen; -1 = seeding
 float  ui_tm_failat;            // cltime the reset landed; 0 = none
 float  ui_tm_failseg;           // the stage it was, for the text
 
+/*
+  BUILD 48 -- THE STAGE-CLOSE EDGE.
+
+  STAT_FS_STAGEENDREC is monotonic and bumped on EVERY close, refused ones
+  included, which is what makes it usable as an edge at all: a one-tick boolean
+  would be lost outright to a dropped snapshot, whereas a counter that arrives
+  two higher than expected is a GAP THE READER CAN SEE.
+
+  Seeded to -1 for the reason ui_tm_lastfails is, and it is the same trap: the
+  stat legitimately reads 0 on a fresh connect, so an edge test of "different
+  from" would consume a phantom close and stamp its zero word onto the first
+  real row of the run.
+
+  ui_tm_endword is what the close REPORTED, held only from the moment the edge
+  is seen until the split push a few lines later consumes it.  It is not state
+  about the run; it is one value in flight between two edges that the server
+  raised in the same tick and the client therefore reads in one snapshot.
+*/
+float  ui_tm_lastendrec;        // last STAT_FS_STAGEENDREC seen; -1 = seeding
+float  ui_tm_endword;           // the SF_* word that close reported
+
 // Extrapolation.
 float  ui_tm_lastticks;         // the last DIFFERENT value the stat carried
 float  ui_tm_lastat;            // cltime it changed
@@ -117,6 +138,50 @@ float ui_sp_energy[SP_MAX];
 float ui_sp_n;
 float ui_sp_fadeat;             // cltime the clearing run started; 0 = not fading
 
+/*
+  BUILD 48 -- WHAT CLASS EACH ROW WAS, so a stage that did not record can say so
+  where you are already looking.
+
+  Since build 43 a run can legitimately contain a noclipped stage 2 and a clean
+  stage 3 -- that is the whole point of the per-stage taint -- and the file on
+  disk knows the difference while the screen did not.  This is the column that
+  closes that gap.
+
+  IT HOLDS THE RAW SF_* WORD, not a colour and not a reduced enum, for the
+  reason the wire does: the bits genuinely co-occur, and a row that is both
+  stitched and ghosted is a thing the umbrella cannot express but the word can.
+  Timer_SplitsClass is the one place it is turned into a mark.
+
+  ZERO MEANS "NOT TOLD", and that is exactly why SF_KNOWN exists -- see the
+  essay beside it in sh_defs.qc.  Three sources leave it zero and all three are
+  correct to: a replay (a .rec carries no per-stage taint), a server older than
+  build 48, and the finish row (the run's class is already the word under the
+  clock; saying it twice on the total was considered and cut).
+
+  PASSED BY GLOBAL AND NOT BY PARAMETER, which is the one thing here that looks
+  like a shortcut and is not.  Timer_SplitsPushAt already takes six arguments
+  against QuakeC's limit of eight, and it is called from cl_watch.qc as well as
+  from here -- so widening it would force an edit to the replay reader purely to
+  pass a zero it has nothing to say about.  Setting this immediately before the
+  push and letting the push consume it keeps the replay path CORRECT BY DOING
+  NOTHING, which is the property worth having.
+*/
+float ui_sp_class[SP_MAX];      // the SF_* word for this row; 0 = never reported
+float ui_sp_pendword;           // consumed by the next push, then cleared
+
+/*
+  Rows that fell off the top.  Build 48.
+
+  SP_MAX is 32 and a track may have up to FS_MAXSPLITS 24 stages AND FS_MAXCPS
+  24 checkpoints, so a long staged map overflows and the shift below drops the
+  OLDEST rows -- silently, until now.  Raising the caps is a separate build:
+  FS_MAXSPLITS and FS_MAXCPS are coupled through SV_PBLoad's shared bounds test
+  and touch four server arrays and the .pb reader.  Counting what was dropped
+  costs three lines and stops the truncation being invisible, which is the half
+  that actually misleads.
+*/
+float ui_sp_over;
+
 // The checkpoint ordinal last seen, so the edge can be detected the same way the
 // segment edge is.  Reset by a map change and by a new run.
 float ui_tm_lastcp;
@@ -142,6 +207,10 @@ void() Timer_SplitsClear =
 {
 	ui_sp_n = 0;
 	ui_sp_fadeat = 0;
+	// Build 48.  Both belong to the list and die with it: a pending word left
+	// over from the previous run would land on the first row of the next one.
+	ui_sp_over = 0;
+	ui_sp_pendword = 0;
 };
 
 /*
@@ -177,8 +246,11 @@ void(float kind, float seg, float ticks, float delta,
 			ui_sp_delta[i]  = ui_sp_delta[i + 1];
 			ui_sp_speed[i]  = ui_sp_speed[i + 1];
 			ui_sp_energy[i] = ui_sp_energy[i + 1];
+			ui_sp_class[i]  = ui_sp_class[i + 1];   // build 48, with its row
 		}
 		ui_sp_n = SP_MAX - 1;
+		// Build 48: say that one fell off.  See the ui_sp_over block.
+		ui_sp_over = ui_sp_over + 1;
 	}
 
 	ui_sp_kind[ui_sp_n]   = kind;
@@ -187,6 +259,16 @@ void(float kind, float seg, float ticks, float delta,
 	ui_sp_delta[ui_sp_n]  = delta;
 	ui_sp_speed[ui_sp_n]  = speed;
 	ui_sp_energy[ui_sp_n] = energy;
+
+	/*
+	  Build 48.  The class the CALLER set immediately before this, consumed here
+	  and cleared, so it can never be picked up a second time by the next row.
+	  A caller that says nothing -- the replay, and the finish row -- leaves 0,
+	  which reads as "not told" and draws no mark.
+	*/
+	ui_sp_class[ui_sp_n] = ui_sp_pendword;
+	ui_sp_pendword = 0;
+
 	ui_sp_n = ui_sp_n + 1;
 };
 
@@ -241,6 +323,21 @@ void() Timer_RegisterCvars =
 	// Build 19: the speed and energy you crossed each gate with.  0 puts the
 	// block back to three columns, which is the pre-19 width.
 	registercvar("hud_splits_speed", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 48 -- THE PER-STAGE CLASS MARK.  0 IS BUILD 47 EXACTLY: no gutter,
+	  no mark, and every stage row back in one colour.
+
+	  A real bisection and a cheap one, because of where the mark is drawn.  It
+	  goes in the LEFT GUTTER, outside the block, so nothing about the layout
+	  moves: the five column offsets stay 0/38/84/130/172, the box stays 201
+	  units, and the sentence in the column essay about that box abutting
+	  HUD_DrawSeq's anchor in the worst case stays true.  A mark placed INSIDE
+	  would have needed a second offset table, and then "is the block wider
+	  because of the class or because of something else" would be two map loads
+	  apart instead of one.
+	*/
+	registercvar("hud_splits_class", "1", CVAR_ARCHIVE);
 };
 
 float() Timer_Tick =
@@ -335,6 +432,56 @@ vector(float state, float ticks, float pb, float flags) Timer_Color =
 };
 
 /*
+  A row's SF_* word -> the mark it draws, and the colour, out through `col`.
+  Build 48.  Down here rather than beside the list because TC_CHEAT and
+  TC_PRACTICE are #defines and this is the first point they exist.
+
+  Returns "" for a row that gets no mark, which is the answer for four different
+  reasons and deliberately does not distinguish them on screen:
+
+    * the word is 0 -- nothing ever told us about this row.  A replay, a server
+      older than build 48, or the finish row.  SF_KNOWN is what makes this case
+      detectable at all; without it a silent zero would read as `clean`.
+    * the stage was clean.
+    * the stage was GHOSTED.  Build 48 stopped treating that as a taint at all --
+      detaching the camera does not put a hand on the body, and the run level has
+      always said so ("a ghosted run stays valid and is MARKED instead ...
+      ghosting is close to self-policing").  It refuses nothing now, so it marks
+      nothing.
+    * the stage merely FLEW the boundary without arming.  Common on a fast surf
+      map, because SV_StageJump refuses a plane crossed at 2000 u/s -- so marking
+      it would put a glyph on most boundaries of a good run, which is the
+      opposite of information.
+
+  TWO MARKS AND NOT ONE, which narrows what was asked for, so here is the reason.
+  "Tag cheated stages" taken literally against SF_DIRTY marks the UMBRELLA -- and
+  a save-lock load is the most common gesture there is in practice, so red would
+  fire three or four times a lap and would mean nothing by the end of it.  Red is
+  kept for the thing that says you did not earn the position.  Amber says the
+  milder true thing: this stage did not record.
+
+  A GLYPH AS WELL AS A COLOUR, because red and amber at 14 px on a dark ground
+  are not separable by a colour-blind player, and this UI already pairs the two
+  elsewhere for exactly that reason rather than tinting alone.
+*/
+string(float word, __inout vector col) Timer_SplitsClass =
+{
+	if (!(word & SF_KNOWN))
+		return "";
+	if (word & SF_CHEAT)
+	{
+		col = TC_CHEAT;
+		return "!";
+	}
+	if (word & SF_STITCH)
+	{
+		col = TC_PRACTICE;
+		return "~";
+	}
+	return "";
+};
+
+/*
   Drawn down the left, in order, complete time last and emphasised.
 
   The delta is coloured against the personal-best split, which is the only
@@ -346,6 +493,9 @@ void(vector scr, float tick) Timer_DrawSplits =
 	local float i, sz, big, lh, a, spd, bt;
 	local vector p, col, bp;
 	local string label;
+	local float  cls, mx;           // build 48: hud_splits_class, and the gutter x
+	local string mark;
+	local vector mcol;
 
 	if (!cvar("hud_splits") || ui_sp_n <= 0)
 		return;
@@ -402,6 +552,23 @@ void(vector scr, float tick) Timer_DrawSplits =
 	bt = p_y;
 
 	spd = cvar("hud_splits_speed");
+	cls = cvar("hud_splits_class");          // build 48
+
+	/*
+	  BUILD 48: SAY WHAT FELL OFF THE TOP.
+
+	  SP_MAX is 32 and the shift in Timer_SplitsPushAt drops the OLDEST rows, so
+	  a long staged map silently loses the beginning of its own run -- and a list
+	  that quietly starts at stage 9 looks exactly like a run that started there.
+	  One dim line, above the block and outside it, in the gutter the marks use.
+
+	  Drawn before the loop moves p, and it does not consume a row slot: the
+	  block's height is derived from ui_sp_n, so putting this inside would push
+	  the whole list half a row off its own centre.
+	*/
+	if (ui_sp_over > 0)
+		HUD_Text([p_x, p_y - lh], sprintf("+%g earlier", ui_sp_over),
+		         sz, '0.50 0.53 0.58', a * 0.8);
 
 	for (i = 0; i < ui_sp_n; i = i + 1)
 	{
@@ -429,6 +596,39 @@ void(vector scr, float tick) Timer_DrawSplits =
 		{
 			label = sprintf("stage %g", ui_sp_seg[i]);
 			col   = '0.70 0.73 0.78';
+		}
+
+		/*
+		  BUILD 48 -- THE CLASS MARK, IN THE GUTTER AND NOT IN A COLUMN.
+
+		  Outside the block deliberately.  The five offsets below are DERIVED from
+		  character counts, and the 201-unit box they add up to is recorded in that
+		  essay as abutting HUD_DrawSeq's anchor in the worst case -- so a mark
+		  given a column of its own would move all five and make that sentence
+		  false.  Out here it costs no width at all, and every mark on the list
+		  lands on one vertical scan line, which is what turns "did any stage fail"
+		  into a glance instead of a read.
+
+		  CLAMPED AT 0 because hud_splits_x is a cvar and 0 is a legal setting; at
+		  that anchor the mark shares the label's cell rather than being drawn off
+		  the left edge of the screen where nothing could ever see it.
+
+		  The label is tinted to match.  The glyph says which row; the tint is what
+		  makes it findable without hunting for one character.
+		*/
+		mark = "";
+		if (cls)
+		{
+			mcol = col;
+			mark = Timer_SplitsClass(ui_sp_class[i], mcol);
+			if (mark != "")
+			{
+				mx = p_x - 5 * ui_cv_scale;
+				if (mx < 0)
+					mx = 0;
+				HUD_Text([mx, p_y], mark, sz, mcol, a);
+				col = mcol;
+			}
 		}
 
 		/*
@@ -771,6 +971,7 @@ void(vector scr) Timer_Draw =
 	local float state, ticks, seg, segs, track, flags, split, delta, pb, cp;
 	local float tick, small, y;
 	local float fails;
+	local float endrec;             // build 48
 	local vector p;
 
 	if (zone_mapname != ui_tm_map)
@@ -787,6 +988,11 @@ void(vector scr) Timer_Draw =
 		// would otherwise flash a reset at you.  One sentinel, used both places.
 		ui_tm_lastfails = -1;
 		ui_tm_failat    = 0;
+
+		// Build 48, and the same sentinel for the same reason: a fresh map
+		// reports 0 closes, and seeding to 0 would make the first one invisible.
+		ui_tm_lastendrec = -1;
+		ui_tm_endword    = 0;
 	}
 
 	ui_tm_cv = cvar("hud_timer");
@@ -850,6 +1056,37 @@ void(vector scr) Timer_Draw =
 		ui_tm_lastat    = cltime;
 		ui_tm_laststate = state;
 	}
+	/*
+	  BUILD 48 -- THE STAGE-CLOSE EDGE, AND IT IS READ BEFORE THE SPLIT EDGE
+	  BELOW ON PURPOSE.
+
+	  The server raises both in one tick -- SV_TimerSplit closes the old stage
+	  and then moves run_t_seg -- so they arrive in ONE snapshot and the order up
+	  here is ours to choose.  Reading the close first means the word is in hand
+	  when the row it describes is pushed, which is what lets the class ride with
+	  the push instead of being matched to a row afterwards.
+
+	  THAT MATTERS MORE THAN IT LOOKS.  The row is labelled with the segment
+	  being ENTERED and the close reports the segment being LEFT, and the two
+	  numbering conventions do not agree -- SV_StageClose prints `stage 1` for
+	  the boundary this list draws as `stage 2`.  Reconciling them with an
+	  arithmetic offset would work until one of the two conventions moved.
+	  Consuming the value in flight needs no offset and cannot drift.
+
+	  A GAP OF MORE THAN ONE means a snapshot was lost, and the honest response
+	  is to take the word we did receive for the row we are about to push and let
+	  the rows we never heard about keep their zero -- which draws no mark, which
+	  is correct: we were not told.
+	*/
+	endrec = getstatf(STAT_FS_STAGEENDREC);
+	if (endrec != ui_tm_lastendrec)
+	{
+		if (ui_tm_lastendrec >= 0)
+		if (endrec > ui_tm_lastendrec)
+			ui_tm_endword = getstatf(STAT_FS_STAGEENDST);
+		ui_tm_lastendrec = endrec;
+	}
+
 	if (seg != ui_tm_lastseg)
 	{
 		// A split, not a reset: arming sets seg back to the leg's own start
@@ -857,9 +1094,15 @@ void(vector scr) Timer_Draw =
 		if (state == TS_RUNNING && split > 0)
 		{
 			ui_tm_splitat = cltime;
+			// Build 48: the class of the stage that just closed, consumed by the
+			// push and cleared there.  See the ui_sp_class block.
+			ui_sp_pendword = ui_tm_endword;
 			Timer_SplitsPush(SPK_STAGE, seg, split, delta);
 		}
 		ui_tm_lastseg = seg;
+		// Spent, whether or not a row took it -- an arm reaches this branch with
+		// split 0 and must not leave a stale word for the next real boundary.
+		ui_tm_endword = 0;
 	}
 
 	/*
@@ -877,9 +1120,22 @@ void(vector scr) Timer_Draw =
 	if (cp != ui_tm_lastcp)
 	{
 		if (state == TS_RUNNING && cp > 0)
+		{
+			/*
+			  BUILD 48: a checkpoint row takes the LIVE word, not the close report.
+
+			  This is the one case with no race in it, and the reason is worth
+			  stating because it looks like the inconsistent half of the pair.  A
+			  checkpoint does not end a segment -- on a linear map every gate lives
+			  inside segment 0 -- so nothing clears the per-stage taint on this
+			  edge and STAT_FS_STAGEST still describes the stage the gate is IN,
+			  which is exactly the thing the row wants to say.
+			*/
+			ui_sp_pendword = getstatf(STAT_FS_STAGEST);
 			Timer_SplitsPush(SPK_CP, cp,
 			                 getstatf(STAT_FS_TIMERCPT),
 			                 getstatf(STAT_FS_TIMERCPD));
+		}
 		ui_tm_lastcp = cp;
 	}
 

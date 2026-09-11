@@ -40,8 +40,9 @@
   hand it back.
 
   Restoring the duck matters more than it sounds.  Save while crouched under a
-  lip, load standing, and the 72-unit hull spawns inside the ceiling: you arrive
-  stuck, in the exact spot you were trying to practise.
+  lip, load standing, and the 62-unit hull spawns inside the ceiling: you arrive
+  stuck, in the exact spot you were trying to practise.  (17 units of it, the
+  difference between PM_HULL_MAXS and PM_DUCK_MAXS.)
 
   WHY THE LIST IS GLOBAL, AND THE CURSOR IS NOT
 
@@ -107,6 +108,12 @@ float  rec_sl_nextseq;                   // one past the highest seq on this map
 // loop in SV_SaveLocDeleteAll rather than passed down, so the eight other
 // callers of that function need no change.
 float  rec_sl_quiet;
+
+// Patch 270, Stage 2.  TRUE once SV_SaveLocScan has actually read the disk for
+// this map.  FALSE means the list is empty because the scan was refused in a
+// lobby, NOT because there is nothing on disk -- a distinction SV_SaveFreeID
+// would otherwise get wrong, by handing out an id whose folder already exists.
+float  rec_sl_scanned;
 
 .float rec_sl_count;             // networked mirror of rec_sl_n; see SV_SaveLocSync
 .float rec_sl_index;             // 1-based cursor; 0 when the list is empty
@@ -1018,8 +1025,46 @@ void() SV_SaveLocScan =
 	rec_sl_n = 0;
 	rec_sl_nextseq = 1;
 
+	/*
+	  PATCH 270, STAGE 2 -- THE OTHER ROW-ADDER, and the reason the gate in
+	  SV_SaveLocCreate was not enough on its own.
+
+	  That gate's own argument was "with nothing ever added the list stays
+	  empty, so load, step, delete and delete-all all find nothing".  The
+	  premise was false: THIS function adds rows too, from disk, at map init,
+	  before any player can be refused anything.  A server whose operator
+	  practised on this map solo loads their data/saves/<map>/save01../state.txt
+	  straight into the shared list, and then every one of the 32 strangers can
+	  press the delete-all key -- SV_SaveLocDeleteAll fremoves four files per
+	  row -- or teleport themselves to the operator's practice points.
+
+	  That is the same class of silent, irreversible, cross-player data
+	  destruction the patch was written to close on best.pb, left open one file
+	  over.  Gating the scan is what makes the create gate's premise true.
+
+	  Below the two resets on purpose: the list must still be CLEARED on a map
+	  change even in a lobby, or the previous map's rows would survive into it.
+
+	  rec_sl_scanned RECORDS THAT THIS WAS SKIPPED, and it is not bookkeeping
+	  for its own sake.  An empty list here does not mean an empty disk: the
+	  host's data/saves/<map>/save01../state.txt are still there.  SV_SaveFreeID
+	  picks the lowest id NOT IN THE LIST, so with the list empty and the folders
+	  present it hands back 1, and the next `save` overwrites save01 -- which is
+	  the same data destruction this gate exists to prevent, arriving through the
+	  gate instead of around it.  It needs the lobby to be switched off mid-map
+	  to happen, because create is refused while it is on, but that is a console
+	  command away.  SV_SaveLocCreate rescans when it sees this flag clear.
+	*/
+	if (Lobby_NoSaveLoc())
+	{
+		rec_sl_scanned = FALSE;
+		return;
+	}
+
 	if (mapname == "")
 		return;
+
+	rec_sl_scanned = TRUE;
 
 	pre = sprintf("data/saves/%s/save", mapname);
 	pl  = strlen(pre);
@@ -1196,6 +1241,43 @@ void(entity e) SV_SaveLocCreate =
 {
 	local float id, seq, row;
 
+	/*
+	  PATCH 270, STAGE 2 -- no save-locs in a lobby.
+
+	  The list above this function is ONE list.  rec_sl_* are plain globals with
+	  no player dimension anywhere in them, so on a 32-player server every
+	  `save` lands in the same shared list, every `delete` deletes out of it,
+	  and the cursor each player steps with rec_sl_index walks over everybody
+	  else's rows.  Player A pressing delete-all removes player B's practice
+	  points mid-section.
+
+	  Refused at CREATE only, and that is the whole surface that needs it: with
+	  nothing ever added the list stays empty, so load, step, delete and
+	  delete-all all find nothing and say so through their existing empty-list
+	  paths.  Gating six functions would be six chances to miss one.
+
+	  A save-loc is a tool for one player alone with a difficult section, which
+	  is exactly what a lobby is not.  Turning it off there costs nothing anyone
+	  would want; sharing it silently destroys work.
+	*/
+	if (Lobby_NoSaveLoc())
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: save points are off in a public lobby -- the list is "
+		       "shared, so a save here would be everyone's.\n");
+		return;
+	}
+
+	/*
+	  PATCH 270, STAGE 2.  The lobby refused the scan, so the empty list is a
+	  policy, not a fact about the disk -- and we are past the lobby gate above,
+	  so the lobby has since been switched off and the disk is authoritative
+	  again.  Read it before allocating an id, or SV_SaveFreeID returns 1 and
+	  SV_SaveWriteState overwrites an existing save01.  See rec_sl_scanned.
+	*/
+	if (!rec_sl_scanned)
+		SV_SaveLocScan();
+
 	if (rec_sl_n >= FS_MAXSAVES)
 	{
 		sprint(e, PRINT_HIGH,
@@ -1305,6 +1387,29 @@ void(entity e, float n) SV_SaveLocLoad =
 {
 	local float r, id;
 
+	/*
+	  PATCH 270, STAGE 2 -- the last of the four surfaces, and the only one that
+	  is not about destroying data.
+
+	  Gating the scan empties the list, so on a map that loads as a lobby this
+	  is unreachable.  It is reachable on the host who practised offline and
+	  then switched the lobby on: the list is still in memory, and every
+	  stranger's 3/4/5/6 key teleports them onto that host's practice points --
+	  and, through SV_SaveLocPlace, onto their saved velocity and run clock.
+	  Not destructive, but it is somebody else's position being handed out, and
+	  a shadow run started from it would be timed against a section the player
+	  never travelled.
+
+	  Load, delete, delete-all and create are now all refused.  Step, first and
+	  last only move a cursor and cannot act without this function.
+	*/
+	if (Lobby_NoSaveLoc())
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: save points are off in a public lobby.\n");
+		return;
+	}
+
 	if (rec_sl_n <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
@@ -1376,6 +1481,40 @@ void(entity e, float n) SV_SaveLocLoad =
 		// parked would leave the HUD reading the row you started the hold on.
 		SV_SaveLocHoldVel(e);
 	}
+
+	/*
+	  BUILD 47: LOADING AT A START BOX IS HOW YOU PICK A START, NOT A STITCH.
+
+	  A save-lock load taints the attempt -- SV_TimerStitched above sets
+	  TF_SEGMENT and TF_PRACTICE, and sl_hold's copy adds its own through
+	  SV_TimerFreeze, both of which arrive on ONE keypress because
+	  cl_saveloc.qc sends sl_load and sl_hold together.  That is right for a
+	  load taken halfway down a map.  It is wrong for the ordinary gesture of
+	  putting yourself back at a start box to pick which start you are running
+	  from, and there is nothing segmented about walking out of it afterwards.
+
+	  AFTER SV_SaveApplyState ON PURPOSE.  That call restores run_t_azone and
+	  run_t_armzone verbatim from the file (the whole point of a save STATE), so
+	  anything written before it is overwritten.  It is also exactly why the
+	  taint survived: with azone restored to the box you are standing in, the
+	  edge test in SV_TimerFrame (`az != e.run_t_azone`) never fires, so
+	  SV_TimerArm -- the ONLY thing that launders an attempt -- never runs.
+
+	  SO THIS FORCES THE EDGE AND LETS THE EXISTING MACHINE DO THE REST.
+	  SV_TimerArm already zeroes run_t_flags, run_t_said, run_t_hopped and
+	  run_t_fromsave, and RE-DERIVES run_t_dirty and run_t_cheat from the live
+	  state -- so a player who is actually noclipping or has sv_cheats on stays
+	  tainted, which is correct and is why reusing the arm beats writing a
+	  parallel clear that would have to remember all six fields.
+
+	  TS_RUNNING is excluded: a save taken mid-run that happens to sit inside a
+	  start box is still a resumed run and still owes its TF_SHADOW.  Nothing is
+	  printed in the intervening tick either -- SV_TimerClassSay is gated on
+	  TS_RUNNING, so the taint that is about to be laundered was never announced.
+	*/
+	if (e.run_t_state != TS_RUNNING)
+	if (SV_ZoneStartAt(e, e.origin) >= 0)
+		e.run_t_azone = -1;
 
 	// fixangle only on the one-shot load.  The hold re-places the origin every
 	// tick but must NOT keep stamping the view angles, or you could not look
@@ -1861,6 +2000,29 @@ void(entity e, float n) SV_SaveLocDelete =
 	local float i, id, r;
 	local entity p;
 
+	/*
+	  PATCH 270, STAGE 2 -- the one function in this file that calls fremove.
+
+	  Gating the scan makes the list empty on a map that LOADS as a lobby, and
+	  that covers the ordinary case.  It cannot cover the other one:
+	  Lobby_NoSaveLoc reads its cvars live, deliberately, so an operator who
+	  practises with lobby_enable 0 and then types `lobby_enable 1` still has a
+	  populated in-memory list -- create refused, delete wide open.
+
+	  Refused here rather than trusted to be unreachable.  This is the last line
+	  before four files per row are removed from somebody's disk, and "the list
+	  should be empty by now" is exactly the reasoning that left this hole in
+	  the first place.  SV_SaveLocDeleteAll loops this function, so it is
+	  covered by the same test.
+	*/
+	if (Lobby_NoSaveLoc())
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: save points are off in a public lobby -- the list is "
+		       "shared, so this would delete someone else's.\n");
+		return;
+	}
+
 	if (rec_sl_n <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
@@ -2017,12 +2179,47 @@ void(entity e) SV_SaveLocDeleteAll =
 		return;
 	}
 
+	/*
+	  PATCH 270, STAGE 2 -- BEFORE THE LOOP, and the loop is now guarded too.
+
+	  Adding the lobby refusal to SV_SaveLocDelete alone HUNG THE SERVER.  The
+	  loop below is `while (rec_sl_n > 0) SV_SaveLocDelete(...)` and its only
+	  termination condition is that the callee shrinks the list.  Give the
+	  callee a reason to decline and it spins forever, inside a QC frame, taking
+	  the whole server with it -- and the case that reaches it is exactly the
+	  one the refusal was added for: a host who practised offline, so the list
+	  is populated, and then turned the lobby on.
+
+	  Two changes rather than one.  This gate stops it happening; the progress
+	  check in the loop stops the NEXT reason a delete might decline from doing
+	  the same thing.  A loop whose exit depends on a callee's side effect
+	  should not trust the callee.
+	*/
+	if (Lobby_NoSaveLoc())
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: save points are off in a public lobby -- the list is "
+		       "shared, so this would delete someone else's.\n");
+		return;
+	}
+
 	n = rec_sl_n;
 
 	rec_sl_quiet = TRUE;
 	while (rec_sl_n > 0)
+	{
+		local float before;
+		before = rec_sl_n;
 		SV_SaveLocDelete(e, rec_sl_n);
+		if (rec_sl_n >= before)
+			break;                  // declined or failed: stop, do not spin
+	}
 	rec_sl_quiet = FALSE;
+
+	// What was actually removed, not what was planned.  They differ if the
+	// loop broke early, and printing the plan would claim a deletion that did
+	// not happen.
+	n = n - rec_sl_n;
 
 	sprint(e, PRINT_HIGH, sprintf("^1deleted^7 all %g save state(s) on %s\n", n, mapname));
 };

@@ -393,6 +393,95 @@
 #define STAT_FS_FOGCTRL     84   // targetname of the player's fog controller
 
 /*
+===========================================================================
+  BUILD 48 -- SAYING WHAT CLOSED.  Five stats, and the first four exist
+  because the question they answer is otherwise UNANSWERABLE, not merely
+  awkward.
+
+  THE PROBLEM.  STAT_FS_STAGEST describes the stage IN PROGRESS.  At a
+  boundary the stage that just ended is gone before any snapshot can be built,
+  by two independent mechanisms:
+
+    on a SPLIT   SV_StageOpen re-reads dirty, cheat and ghost from the LIVE
+                 LEVEL and zeroes stitch, jump, ramp and hold -- all seven
+                 inputs -- in the same PlayerPostThink;
+    on a FINISH  there is no SV_StageOpen at all.  SV_StageClose sets
+                 run_st_seg = -1 and SV_StageStat's own `if (run_st_seg < 0)
+                 w = 0` guard zeroes the word instead.
+
+  The engine samples QC-backed stats when it builds the snapshot, which is
+  strictly after every PlayerPostThink, and it deltas against the last value it
+  SENT.  So a value that appears and disappears inside one PlayerPostThink is
+  never compared against anything and never reaches the wire at all.  This is
+  not a race the client narrowly loses and could win with a latch -- there is
+  no client-side arrangement that can read it, and a "previous tick" latch is
+  not even expressible up there, because CSQC_UpdateView runs per RENDERED
+  FRAME and sees four to six frames carrying one snapshot's values.
+
+  SV_StageOpen's own essay saw this coming: "Nothing reads it in that tick
+  today -- SV_StageClose runs at the NEXT boundary -- but 'nothing reads it
+  yet' is a claim about the whole file."  These stats are that reader.
+
+    ENDREC     monotonic, bumped at the TOP of SV_StageClose on EVERY close
+               INCLUDING THE REFUSED ONES.  A counter and not a boolean for the
+               reason STAGEREC is one: a one-tick flag is lost outright when a
+               snapshot is dropped, whereas a counter that jumps by two is a
+               gap the reader can SEE and account for.  It must count refusals
+               because a refused stage is exactly the one the mark is about.
+    ENDSEG     the segment that closed.
+    ENDST      its SF_* word, as it stood at the close.
+    ENDTICKS   ticks - run_st_tick.  NOT derivable up there: run_stagearm
+               rebases run_st_tick when you leave the boundary box, so a
+               stage's own duration is not the difference between two
+               consecutive run-relative splits and never was.
+
+  DELIBERATELY NOT GATED BY A CVAR, alone among build 48's additions.  Every
+  new RULE here gets a bisection; a REPORT must not have one, because a switch
+  on a diagnostic is a setting at which the diagnostic lies.
+
+  PBWAS is separate and fixes a shipped defect rather than enabling a feature.
+  SV_TimerFinish re-reads run_t_pb AFTER it has already overwritten
+  run_pb_ticks, so on any personal best TIMERPB equals TIMERTICKS and the
+  finish row's delta has been identically zero since build 19.  This carries
+  the value the run was actually measured against, latched before the table is
+  rewritten.
+
+  THE FREE RANGE IS 85..219, NOT 85..255, and the paragraph above at
+  STAT_FS_STAGEBASE that says "ceiling is 256" is true of the array and
+  misleading about the usable space.  The engine assigns 36 STAT_MOVEVARS_* in
+  220..255 and writes them for every PEXT2_PREDINFO client BEFORE
+  SV_UpdateQCStats runs -- so a QC stat placed there wins the write and
+  corrupts the client's own movement prediction inputs.  32..84 is perfectly
+  packed with no reclaimable gaps: the defines appear out of numeric order in
+  this file, which makes the block LOOK holed and does not make it so.
+===========================================================================
+*/
+#define STAT_FS_STAGEENDREC    85   // monotonic; edge-detect it, and mind gaps
+#define STAT_FS_STAGEENDSEG    86   // the segment that just closed
+#define STAT_FS_STAGEENDST     87   // its SF_* word at the close
+#define STAT_FS_STAGEENDTICKS  88   // its own duration, in ticks
+
+/*
+  The personal best this run was measured against, latched before the PB table
+  is rewritten.  0 = there was none.  See the essay above.
+*/
+#define STAT_FS_TIMERPBWAS     89
+
+/*
+  90 and 91 ARE RESERVED FOR A GLOBAL LEADERBOARD -- a rank and an entry count
+  -- and are deliberately NOT registered with clientstat.
+
+  Reserved rather than defined, because a stat that exists and is permanently
+  zero is a promise the server is not keeping, and the results card has to be
+  able to tell "no board" from "rank 0".  It draws its world row from the
+  ABSENCE of a board, not from a zero in a slot.  When the board is real, these
+  two numbers are what it sends, and nothing above this line has to change.
+
+    90  STAT_FS_WORLDRANK
+    91  STAT_FS_WORLDOF
+*/
+
+/*
   STAT_FS_STAGEST's bits.
 
   32 and 64 were reserved by build 43 and are ASSIGNED HERE by build 44, exactly
@@ -419,6 +508,42 @@
 #define SF_GHOST     16  // the camera was detached during this stage
 #define SF_STITCH    32  // a save state was used inside THIS stage
 #define SF_CHEAT     64  // noclip, setpos or sv_cheats inside THIS stage
+
+/*
+  BUILD 48: SOMEBODY ANSWERED.  Not a state -- a marker that the word is real.
+
+  Every other bit here is a fact about a stage.  This one is a fact about the
+  REPORT, and it is what separates "this stage was clean" from "nothing told me
+  about this stage", which are the same zero without it.
+
+  Three readers need that distinction and all three would otherwise fail the
+  same way -- by drawing a confident, wrong answer:
+
+    * a client built against build 48 talking to a server that is not.  A
+      QC-only rebuild that leaves the other .dat stale is a mistake this project
+      has already paid for once; every new stat reads 0 in that case, and 0
+      without this bit is indistinguishable from a clean stage.  With it, the
+      marks simply do not appear, which is the correct behaviour for a client
+      that has not been told anything.
+    * a stage the server never closed -- a run still in progress, or one that
+      ended some way that never reached SV_StageClose.
+    * a REPLAY.  A .rec carries no per-stage taint and build 48 deliberately
+      does not widen it to add one, so a replayed row has nothing to say.  This
+      is the same answer Timer_DrawPanel already gives for the stage-arm state:
+      a replay passes zeroes and that is CORRECT, not a stub -- inventing a
+      class from a file that never recorded one would be worse than the mark
+      being absent.
+
+  SET BY THE SERVER, in SV_StageWord, on every word it packs -- including the
+  ones that are otherwise zero, which is the whole point.  A reader tests this
+  FIRST and stops if it is clear.
+
+  128 and not a ninth stat: it costs nothing, it travels with the value it
+  qualifies, and it therefore cannot arrive a snapshot apart from it -- which
+  is the same argument the block above makes for packing the SF_* bits into one
+  word in the first place.
+*/
+#define SF_KNOWN    128  // this word was actually reported; 0 alone means "not told"
 
 /*
   Radians to degrees.
@@ -539,6 +664,40 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define RT_CHEAT     4
 
 /*
+  BUILD 48: A CLEAN RUN THAT DID NOT BEAT ANYTHING IS STILL A RUN.
+
+  Until now the tag ladder had no word for the ordinary case -- you ran the leg,
+  you were clean, you were slower than your best -- so it fell through to
+  RT_LAST and overwrote the one before it.  One slot, forty attempts an hour,
+  and the archive kept exactly one of them.
+
+  WHAT THAT COST IS THE MEANING OF THE WORD `RANK`.  Only PB-beating runs were
+  ever archived, so every stamped file on a leg was faster than every file
+  written before it -- a monotone improvement chain, not a distribution.  A
+  personal best is therefore rank 1 BY CONSTRUCTION, and a slower run's "rank"
+  counts your own past bests rather than a field of attempts.  The number was
+  arithmetically correct and told you nothing, and no amount of care on the
+  reading side could have fixed that: the data was never collected.
+
+  ARCHIVED, so it takes a stamped name and accumulates.  That is the whole
+  point of it and it is the one thing that separates it from RT_LAST.
+
+  IT CANNOT EVICT A PERSONAL BEST.  SV_RecPrune's quota is per LEG per TAG
+  CLASS, so this competes only with other RT_RUN files -- the same property
+  that already lets RT_SHADOW accumulate beside RT_PB without either crowding
+  the other out.  rec_runs_keep bounds it.
+
+  IT WINS OVER NOTHING, and sits at the BOTTOM of the ladder: cheated, shadow
+  and personal-best all outrank it, because each of those says something this
+  does not.  This is what is left when none of them applies.
+
+  AND IT IS THE ARCHIVE THAT GOES ONLINE.  A leaderboard server cannot verify a
+  run it was never sent, and "keep one scratch file per leg" is not a corpus.
+  This is the local half of that, built now so the shape is right later.
+*/
+#define RT_RUN       5
+
+/*
   THE RECORDING TERMS, build 22.
 
   What the player has to have read and accepted before FTESurf records anything
@@ -560,6 +719,60 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   unforgeable.
 */
 #define FS_TERMS_VERSION 1
+
+/*
+  PATCH 270 -- THE ONLINE TIER, and why this is a SECOND number rather than
+  FS_TERMS_VERSION becoming 2.
+
+  Public lobbies made the version-1 text false in one specific place.  It said,
+  verbatim, "Nothing is sent anywhere.  FTESurf has no server to send it to and
+  no code that uploads anything."  There is a server now, and joining a lobby
+  shares a position and uploads times.
+
+  The obvious response is to bump FS_TERMS_VERSION to 2, and it is wrong -- not
+  because it is inconvenient, but because it would be a false statement about
+  the player.  m_draw forces the terms screen whenever the accepted version is
+  below FS_TERMS_VERSION and screen_terms has no way off it except accepting or
+  quitting.  So bumping it would stop an existing player from launching the
+  OFFLINE game they already agreed to, until they agreed to something else.
+  Nothing about their offline session changed; every word of version 1 is still
+  true for it.  Being re-prompted to keep playing exactly as before, with quit
+  as the only alternative, is the shape of a dark pattern even when the text is
+  honest.
+
+  So: two tiers.  FS_TERMS_VERSION stays 1 and remains the gate on recording and
+  on launching a map.  FS_TERMS_ONLINE is what anything that contacts a server
+  requires -- joining a lobby, and polling the lobby directory, which discloses
+  an IP address before any lobby is joined and therefore needs consent in its
+  own right.  An acceptance always stamps the highest tier, so a new player
+  agrees once and a version-1 player is asked exactly when it becomes true of
+  them, and can decline and carry on playing.
+
+  Add a tier here rather than bumping when a change affects only some players.
+  Bump FS_TERMS_VERSION when the change is to what happens to EVERYONE.
+
+  3, NOT 2, SINCE PATCH 285.  Two things changed in the online text and only one
+  of them would have justified a re-ask on its own:
+
+    * lines 14-15 promised that checkpoint and finish times "go to that server
+      so runs can be ranked".  No such upload exists or ever existed -- see the
+      essay over FS_TERMS_LINES in m_main.qc.  NARROWING a false promise does
+      not need a re-ask; nobody agreed to less than they thought.
+    * the text now names play.proto.bar as the host the map picker asks which
+      lobbies are live.  That IS a disclosure the reader was never shown -- the
+      poll has been happening since lobby_dir got a real default -- and naming
+      the host somebody's IP goes to is exactly what this tier is for.
+
+  So the bump is for the second one.  It re-asks only players who already
+  accepted the online tier; an offline player is untouched, which is the whole
+  point of the two-number design above.
+
+  The NEXT bump is already spoken for: whoever wires engine/common/qkupdate.c's
+  `update_check` must go to 4 and add dl.proto.bar to the text in that same
+  change.  Do not add the line ahead of the code -- that is precisely how
+  lines 14-15 came to be false.
+*/
+#define FS_TERMS_ONLINE 3
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from
@@ -1023,6 +1236,7 @@ string(float tag) FS_TagName =
 	if (tag == RT_PB)     return "pb";
 	if (tag == RT_SHADOW) return "shadow";
 	if (tag == RT_CHEAT)  return "cheat";
+	if (tag == RT_RUN)    return "run";     // build 48
 	return "last";
 };
 
@@ -1049,6 +1263,10 @@ float(string w) FS_TagFromName =
 	if (w == "shadow") return RT_SHADOW;
 	if (w == "cheat")  return RT_CHEAT;
 	if (w == "last")   return RT_LAST;
+	// Build 48.  Taught to the READER in the same edit that named it, which is
+	// the whole reason this function exists -- the paragraph above is about a
+	// fourth tag that reached the writer and not the scan, and this is the fifth.
+	if (w == "run")    return RT_RUN;
 	return RT_NONE;
 };
 
@@ -1083,6 +1301,22 @@ float(float tag) FS_TagArchived =
 {
 	if (tag == RT_PB)     return TRUE;
 	if (tag == RT_SHADOW) return TRUE;
+	/*
+	  BUILD 48, and this is the argument the comment below asks a new tag to make.
+
+	  RT_RUN accumulates because ACCUMULATING IS THE ENTIRE FEATURE.  It exists to
+	  turn a leg directory from a chain of personal bests into a distribution of
+	  attempts, and a fixed overwritten name would leave it exactly the RT_LAST it
+	  was carved out of -- the same one slot, renamed.
+
+	  What bounds it is SV_RecPrune's quota, which is per leg PER TAG CLASS, so
+	  this crowds out only other RT_RUN files and can never evict a personal best.
+	  That is the same property that already lets RT_SHADOW accumulate beside
+	  RT_PB, and it is why "archived" is safe to grant here and was not for
+	  RT_CHEAT -- there is no version of "keep every cheated run" anyone wants,
+	  and there is an obvious one of "keep my last twenty-five clean attempts".
+	*/
+	if (tag == RT_RUN)    return TRUE;
 	// RT_LAST and RT_CHEAT both fall through: one fixed name each, overwritten
 	// every time.  Written as the fall-through rather than as two more tests
 	// because the question is "does this class accumulate on disk", and a tag

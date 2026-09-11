@@ -119,6 +119,12 @@ void() PutClientInServer =
 	self.run_speedmod  = 0;
 	self.vbsp_bhop_on   = world;
 	self.vbsp_bhop_since = 0;
+	// Patch 270, Stage 2.  The per-player landing count, cleared with the rest
+	// of the bhop dwell state for the same reason: a count carried into the
+	// next life would teleport the player off a LandingLimit block they have
+	// only just landed on.
+	self.vbsp_bhop_cntblk = world;
+	self.vbsp_bhop_cnt    = 0;
 
 	// Patch 256.  Same reasoning one field over: `AddOutput gravity` is a
 	// MULTIPLIER a map writes onto the player (208 maps do), and 1441 of the
@@ -243,17 +249,34 @@ void() ClientConnect =
 	  join with every area but its own culled away.
 	*/
 	SV_OpenAllPortals();
+
+	// Patch 270: give this player a body for everyone else to look at.  A no-op
+	// unless lobby_enable is set, so a solo session is byte-identical to before.
+	Lobby_ClientConnect(self);
 };
 
 void() ClientDisconnect =
 {
 	bprint(PRINT_HIGH, self.netname, " left the game\n");
 
+	// Before the timer teardown, because it only removes an entity and the
+	// timer's teardown is the part that must not be skipped if this throws.
+	Lobby_ClientDisconnect(self);
+
 	// Close any open .rec before the edict goes: fclose is what actually
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
 	// the rest of the session.
 	SV_TimerIdle(self);
 	SV_TimerReleaseSlot(self);
+
+	/*
+	  Patch 270, Stage 2.  Beside SV_TimerReleaseSlot because it is the same
+	  act: this releases the OTHER per-player slot, the trigger bit, which is
+	  keyed on the edict number the engine is about to hand to whoever connects
+	  next.  Without it that player inherits every trigger_once this one
+	  consumed, for the rest of the map, in silence.  See SV_TouchForget.
+	*/
+	SV_TouchForget(self);
 };
 
 void() ClientKill =
@@ -606,6 +629,25 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "run_eyeinfo")
 	{
 		SV_EyeInfo();
+		return;
+	}
+
+	// Patch 280: what the mover sees under your feet.  See SV_SlideInfo.
+	if (c == "run_slideinfo")
+	{
+		SV_SlideInfo();
+		return;
+	}
+
+	/*
+	  Build 54: what the SERVER made of the entity the client is pointing at --
+	  its real solidity, whether it has a touch, and its entity-I/O chain.  Sent
+	  by cl_entview.qc's ent_here, which does the aiming; SV_EntInfo says why the
+	  aim cannot be done on this side.
+	*/
+	if (c == "ent_info")
+	{
+		SV_EntInfo();
 		return;
 	}
 

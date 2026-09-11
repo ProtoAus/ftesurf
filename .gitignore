@@ -119,7 +119,35 @@ __pycache__/
 !/ftesurf_debug.bat
 !/src/
 !/tools/
+!/surfd/
 !/ftesurf/
+
+
+# -----------------------------------------------------------------------------
+#  surfd/ -- the lobby directory service, and the Pi's server scripts.
+#
+#  It runs on the NanoPi, not here, and until Patch 285 it existed ONLY there:
+#  no backup, no history, no review.  The admin panel gives it a login and
+#  shell-adjacent controls, and writing auth into a directory that exists in
+#  exactly one unbackupable place is the wrong order of operations.  Deploy
+#  FROM here from now on; the Pi copy is a deployment, not the source.
+#
+#  Everything under surfd/ is source EXCEPT the four things a running instance
+#  leaves behind, named individually below.  Note that a bare `data/` rule is
+#  exactly the foot-gun this file's header warns about -- three directories in
+#  this tree are called some form of "data" and only one of them is disposable.
+#
+#  THE SECRET NEVER COMES HERE.  surfd.env (mode 0600 on the Pi) holds
+#  SURFD_KEY, which also lives in ftesurf/cfg/lobby_local.cfg on the Pi and in
+#  no repository.  `*.env` in the safety net at the very bottom of this file is
+#  what enforces that -- `surfd.env` does NOT match the `.env` / `.env.*` rules
+#  that were already there, which is the whole reason `*.env` was added.
+#  surfd.env.example carries the shape and no value.
+# -----------------------------------------------------------------------------
+/surfd/data/
+/surfd/logs/
+/surfd/__pycache__/
+/surfd/*.pid
 
 
 # -----------------------------------------------------------------------------
@@ -208,6 +236,17 @@ __pycache__/
 *.keystore
 .env
 .env.*
+# surfd.env is the shared secret between the three game servers and the lobby
+# directory.  It matches NEITHER rule above -- `.env` is an exact name and
+# `.env.*` needs the dot first -- so it would have been committable.  `*.env`
+# closes that, and an `.example` sibling is how the shape gets shared instead.
+*.env
+!*.env.example
+# lobby_local.cfg carries the same secret (lobby_master_key) on the Pi and is
+# exec'd after cfg/lobby.cfg.  It lives only there -- but /ftesurf/cfg/ is
+# re-included above, so a copy brought into this tree would have been
+# committable.  No slash, so it matches at any depth.
+lobby_local.cfg
 .netrc
 id_rsa
 id_ed25519

@@ -46,6 +46,66 @@ void() SV_UpdateMovementServerInfo =
 		run_bv_tick = 0.015;
 
 	run_bv_debug = cvar("run_bv_debug");
+
+	/*
+	  PATCH 270, STAGE 2.  Latched here for the reason the run_bv_debug comment
+	  one line up gives -- a cvar read per player per command is not free at 32
+	  players, and SV_TouchBit is on the touch path.
+
+	  vbsp_retrigger is the lobby policy folded into one flag because
+	  sv_entities.qc, which reads it, compiles BEFORE sv_lobby.qc and cannot
+	  call Lobby_Retrigger().  This is the one place both halves are in scope.
+
+	  vbsp_mp IS NOT READ HERE.  It is latched once, at map load, in worldspawn.
+
+	  It was read per frame, so that it could be flipped live like every other
+	  A/B switch in this tree.  That is unsound for this particular cvar and the
+	  reason is specific: vbsp_mp does not change a BEHAVIOUR, it changes which
+	  of two representations the trigger occupancy state lives in.  Flip it with
+	  a player standing inside a trigger and the state does not migrate -- the
+	  masks say nobody is there, so the next touch fires a spurious
+	  OnStartTouch and OnStartTouchAll; flip it back and the abandoned
+	  vbsp_touch_who goes stale and fires a spurious OnEndTouch about 0.05 s
+	  later.  A control that injects the very events it is meant to be measuring
+	  is not a control, and it was documented as being exactly that.
+
+	  Latched at map load, `vbsp_mp 0` followed by `map <same>` is a clean A/B
+	  with no migration to get wrong.  lobby_retrigger stays live below because
+	  it only gates a DECISION taken at the moment a trigger_once is consumed;
+	  it owns no state that could be left in the wrong representation.
+
+	  REGISTERED AT THE READ, AND NOT IN worldspawn.  This is the
+	  run_starthop_strict trap (sv_timer.qc:5867-5895) walked into a second
+	  time, and the first version of this patch had it:
+
+	    - cvar() is PF_cvar -> PF_Cvar_FindOrGet (pr_bgcmd.c:1865-1889), and
+	      with pr_autocreatecvars (default 1) a MISS CREATES THE CVAR as the
+	      empty string.
+	    - PF_registercvar (pr_bgcmd.c:2036) opens `if (Cvar_FindVar(name))
+	      return 0;` -- it declines to overwrite one that exists.
+	    - So whichever runs first wins, and the read did.  StartFrame reaches
+	      this function before worldspawn runs at all (the essays at :71-74 and
+	      sv_timer.qc:5871-5880 both say so), and even inside worldspawn this
+	      call is 79 lines above the registrations.
+
+	  It was not theoretical.  ftesurf/logs/b51b.log:339 and :341 log
+	  "Created QC Cvar vbsp_mp" and "Created QC Cvar lobby_retrigger" before
+	  worldspawn, so both read "" -> 0 forever and the ENTIRE per-player trigger
+	  rewrite was silently inert -- and vbsp_mp could not be falsified in either
+	  direction, because 0 and its documented default of 1 both behaved as 0.
+
+	  Moving the registrations up inside worldspawn would NOT have fixed it.
+	  Register beside the read; that is the rule this tree already wrote down.
+	*/
+	// lobby_enable too: this read is the FIRST one in the frame (StartFrame calls
+	// this function at :105, Lobby_Frame at :136), so it is the one that would
+	// auto-create the name.  Its default is "0" and an auto-created "" also reads
+	// 0, so nothing was broken -- but a verification run still logged
+	// "Created QC Cvar lobby_enable", and a rule that is only followed where it
+	// currently happens to matter is not a rule.
+	registercvar("lobby_enable",    "0");
+	registercvar("lobby_retrigger", "1");
+	vbsp_retrigger = cvar("lobby_enable") && cvar("lobby_retrigger");
 };
 
 void() StartFrame =
@@ -71,10 +131,52 @@ void() StartFrame =
 		SV_EntityIOBuild();
 
 		SV_EntityReport();
+
+		/*
+		  BUILD 47: and the zone loader wants exactly the same guarantee.
+
+		  SV_ZoneFrame is called unconditionally below, and used to load on the
+		  first StartFrame of any kind -- which, per the comment at the top of
+		  this block, is BEFORE the entity lump exists.  Its legacy path is a
+		  find() over trigger_momentum_timer_*, so it found none, cached the
+		  empty result, and 32 maps drew their zone cages and never timed.
+
+		  The flag rather than a call: the load also runs off the defensive
+		  `if (!zone_loaded) SV_ZoneFrame()` in half a dozen client commands, and
+		  those need the same gate or a `zone_dests` typed early does the caching
+		  instead.  See the essay in sv_zones.qc.
+		*/
+		zone_entsready = TRUE;
 	}
 
 	SV_UpdateMovementServerInfo();
 	SV_ZoneFrame();
+
+	// Patch 270.  Returns immediately unless lobby_enable is set, except for
+	// the dimension pass -- which has to run either way, because turning the
+	// lobby off has to put player collision back the way it was.
+	Lobby_Frame();
+
+	/*
+	  AFTER Lobby_Frame, and it has to be a separate call rather than the last
+	  line of it: QuakeC needs a function defined before it is used, and
+	  Lobby_Heartbeat sits below Lobby_Frame in sv_lobby.qc because it belongs
+	  next to the URI_Get_Callback it shares state with.  sv_main.qc compiles
+	  last, so here both are visible.
+
+	  Runs whether or not lobby_enable is set -- a server can want to be listed
+	  in the directory without turning on avatars -- and returns immediately
+	  unless lobby_master names a URL, so a listen server sends nothing.
+	*/
+	Lobby_Heartbeat();
+
+	/*
+	  Patch 275.  Also after Lobby_Frame and for the same compile-order reason,
+	  and also independent of lobby_enable: rotating the map is a property of
+	  the SERVER, not of whether avatars are switched on.  Returns immediately
+	  unless lobby_cycle is non-zero, so a listen server never moves by itself.
+	*/
+	Lobby_Cycle();
 };
 
 /*
@@ -228,6 +330,45 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STAGEBASE,   EV_FLOAT,  run_st_tick);
 
 	/*
+	  BUILD 48: the stage that just CLOSED -- a third question, and the only one
+	  of the three the client cannot answer for itself.
+
+	  STAGEREC (build 24) fires only when SV_StageClose actually WROTE a slice,
+	  which is past nine returns, so it says nothing about a stage that was
+	  refused -- and a refused stage is exactly the one a mark is about.  STAGEST
+	  describes the stage IN PROGRESS, and by the time a snapshot is built the
+	  closing stage's word is already gone: SV_StageOpen has re-read all seven
+	  taint inputs from the live level in the same PlayerPostThink, or on a
+	  finish SV_StageStat's own `run_st_seg < 0` guard has zeroed it.  The engine
+	  samples these at snapshot-build time and deltas against the last value it
+	  SENT, so a value that appears and disappears inside one PlayerPostThink
+	  never reaches the wire at all.  No client-side latch can recover it.
+
+	  ENDREC is bumped on EVERY close, refused ones included, which is what makes
+	  the other three meaningful.  A counter and not a flag, so that a lost
+	  snapshot is a visible GAP rather than a silently missed event.
+
+	  Free at rest like everything else here: all four sit still for a whole
+	  stage at a time.
+	*/
+	clientstat(STAT_FS_STAGEENDREC,   EV_FLOAT, run_st_endrec);
+	clientstat(STAT_FS_STAGEENDSEG,   EV_FLOAT, run_st_endseg);
+	clientstat(STAT_FS_STAGEENDST,    EV_FLOAT, run_st_endword);
+	clientstat(STAT_FS_STAGEENDTICKS, EV_FLOAT, run_st_endticks);
+
+	/*
+	  BUILD 48: the personal best this run was measured AGAINST.
+
+	  Not a feature -- a defect fix.  SV_TimerFinish re-reads run_t_pb AFTER it
+	  has overwritten run_pb_ticks, so on any personal best STAT_FS_TIMERPB has
+	  already become this run's own time and a delta taken from it is identically
+	  zero.  That is why the finish row in the split column has drawn no number
+	  since build 19.  This carries the value latched before the table was
+	  rewritten, and it is the one the results card compares against.
+	*/
+	clientstat(STAT_FS_TIMERPBWAS,    EV_FLOAT, run_t_pbwas);
+
+	/*
 	  The player's fog controller, by targetname.  The only EV_STRING stat in the
 	  game: it carries a NAME rather than an index so the two sides never have to
 	  agree on a numbering, and it is a stat rather than serverinfo because
@@ -316,8 +457,166 @@ void() worldspawn =
 	*/
 	registercvar("rec_enable", "1");
 
+	/*
+	  PATCH 270 -- public lobbies.  All default OFF: a solo session must be
+	  byte-identical to before this file was touched, and each switch has to be
+	  falsifiable on its own rather than as part of one blob.
+
+	  lobby_enable    the master switch.  0 = everything below is inert.
+	  lobby_nocollide players pass through each other (the two-bit dimension
+	                  split -- see the essay in sv_lobby.qc, the obvious
+	                  one-bit version silently kills every trigger).
+	  lobby_avatars   spawn a visible body per player.
+	  lobby_av_rate   Hz at which a body's pose is pushed.  15 is a considered
+	                  default, not a placeholder: the engine's own entity lerp
+	                  covers the gap (cl_lerp_maxinterval is 0.3s, twenty times
+	                  longer), while 66.7 would cost 4.5x the bandwidth for
+	                  motion the client is interpolating anyway.
+	  lobby_av_alpha  1 = a solid person.  Lower it to tell other people's
+	                  bodies apart from map geometry while testing.
+	  lobby_av_self   0 = you do not see your own body (.nodrawtoclient).  1 is
+	                  the pre-fix behaviour, kept deliberately: it is the only
+	                  way to inspect your own avatar's pose and duck swap with a
+	                  single client, from ghost mode.
+	*/
+	// PATCH 270, STAGE 2: THESE SIX MOVED to the top of Lobby_Frame, which is
+	// the function that READS them -- and reads them on a StartFrame that runs
+	// before worldspawn, so registering them here never landed the one default
+	// that is not zero.  lobby_avatars read 0 for the life of every process
+	// that did not exec cfg/lobby.cfg, which meant no avatars at all.  The full
+	// account is at that registration block.  The documentation above stays
+	// here, with the other cvars.
+
+	/*
+	  The directory heartbeat.  EMPTY by default and that is the whole switch:
+	  with no URL this server sends nothing anywhere, which is what keeps every
+	  single-player session -- which runs this same progs on a listen server --
+	  silent.  Set lobby_master to something like http://host:8084 to be listed.
+
+	  lobby_master_key is a shared secret so that a stranger cannot inject fake
+	  lobbies into the directory.  It is NOT authentication of anything else and
+	  it travels in plaintext over HTTP; treat it as a spam filter, not a
+	  credential.
+	*/
+	registercvar("lobby_master",      "");
+	registercvar("lobby_master_key",  "");
+	registercvar("lobby_master_rate", "5");
+
+	/*
+	  PATCH 270, STAGE 2 -- the per-feature lobby policies.
+
+	  All four default to 1, i.e. the restriction applies, and that does not
+	  break the rule that a new behaviour defaults to today's, because every one
+	  of them is ANDed with lobby_enable -- which is 0 above.  An offline
+	  session runs this same progs and reaches none of them.
+
+	  The reason each exists is at the accessors in sv_lobby.qc; the short
+	  version is that the personal-best table, the recorder, the save-loc list
+	  and trigger_once were all written for one player and each fails silently
+	  and destructively at 32.  Set one to 0 to watch it fail -- which is how
+	  they were falsified.
+
+	  vbsp_mp is different in kind and is NOT lobby-gated: it is a correctness
+	  fix for per-player trigger state that is a no-op with a single player
+	  (one player is one bit), so it is on everywhere and 0 restores build 51
+	  exactly.  Latched per frame in SV_UpdateMovementServerInfo beside
+	  run_bv_debug, which StartFrame calls at line 105 -- ahead of every player
+	  think, and therefore ahead of every touch.
+	*/
+	registercvar("lobby_nopb",      "1");
+	registercvar("lobby_norec",     "1");
+	registercvar("lobby_nosaveloc", "1");
+
+	/*
+	  vbsp_mp is registered AND LATCHED here, in worldspawn, and this is the one
+	  place both are safe: nothing reads the cvar before this line -- the
+	  pre-worldspawn StartFrame does not any more -- so the registration lands,
+	  and latching once per map load is what makes it a sound A/B control.  See
+	  the essay in SV_UpdateMovementServerInfo for why it must not be live.
+
+	  Changing it takes effect on the next `map`, deliberately.
+	*/
+	registercvar("vbsp_mp", "1");
+	vbsp_mp = cvar("vbsp_mp");
+
+	// lobby_retrigger and vbsp_mp are NOT registered here.  They are read by
+	// SV_UpdateMovementServerInfo, which runs before this function does, so a
+	// registercvar at this point arrives after the read has already created
+	// them as "" -- see the essay at that read.  These three are safe here
+	// because nothing reads them before worldspawn.
+
+	// Must be here, not at first use: with sv_gameplayfix_setmodelsize_qw set
+	// (below), an unprecached model does not error -- setmodel silently stamps
+	// a +/-16 cube on it.  See Lobby_Precache.
+	Lobby_Precache();
+
 	// See SV_ZoneHit.  0 is the build-9 point test and exists to A/B against.
 	registercvar("run_zone_swept", "1");
+
+	/*
+	  run_zone_hull -- test the player's HULL against a zone, or the origin
+	  point.  Build 47.
+
+	  Momentum's maps were authored for Source, where a trigger fires on an
+	  AABB-vs-AABB touch of the player hull along the swept path of the move.  A
+	  point test is a MISREADING of that geometry, and run_zone_swept above is
+	  the workaround the misreading needed -- read the essay on
+	  Zone_SegmentInside with that in mind.  The convention matches: origin at
+	  the feet, hull from Momentum's own g_ViewVectorsMom.
+
+	    0  the build-46 point test, in full, and it exists to A/B against.
+	    1  the hull decides "did you LEAVE" and "did you TOUCH".  The clock
+	       starts when your hull is fully clear of the start box, and a
+	       checkpoint / stage / end / cancel fires when your hull first touches
+	       it.  Occupancy -- "which zone am I standing in" -- stays a point test.
+	       DEFAULT, and the rule the change was asked for.
+	    2  occupancy follows too: the arm scan and the stage machine's `sin`.
+	       This MOVES EVERY STAGE TIME on every staged map -- a boundary you fly
+	       through spends two to four ticks with a 62-tall hull inside a one-unit
+	       plane, which reads as "you stood in the box" and switches the stage
+	       from build 42's plane-to-plane measurement to exit-from-box.  Offered
+	       so that claim is falsifiable in one map load rather than argued about.
+	       NOT the default.
+
+	  Because mins_z is 0 the hull grows the height slab DOWNWARD only, so
+	  falling through a floor plane is bit-identical to the point test and only
+	  a plane approached from below moves.  The horizontal change is one hull
+	  width, 16 units.
+
+	  LATCHED PER MAP (SV_TimerMapInit), like run_zone_swept and the stage rules,
+	  so an A/B is a `map` apart and cannot change underneath a run.
+	*/
+	registercvar("run_zone_hull", "1");
+
+	/*
+	  run_zone_hull_live -- the LIVE ducked hull, or always the standing one.
+
+	  0 (default) tests with PM_HULL_MINS/MAXS whatever you are doing.
+	  1 tests with e.mins/e.maxs, which the engine writes back from pmove before
+	    PlayerPostThink and which is therefore correct and free.  That is what
+	    Source does.
+
+	  SHIPPING AT 0, AND NOT BECAUSE THE LIVE HULL IS WRONG.
+
+	  PM_DUCK_MINS/MAXS differ from PM_HULL_MINS/MAXS in exactly one number:
+	  maxs_z, 45 against 62.  x and y are identical.  So the live hull buys
+	  NOTHING in the plane where every ring lives and where every thin region is
+	  thin -- and costs 17 units of z, which is the one axis where a hull test is
+	  already the dangerous half of this change.
+
+	  Those 17 units are a ruleset hole.  The hull-inside window in p_z is
+	  [bottom - maxs_z, top]: ducking raises the floor of that window by 17, so a
+	  duck clears a start box 17 units of fall sooner and touches a ceiling-
+	  mounted end plane 17 units later.  At a jump's 302 u/s that is ~56 ms,
+	  applicable on every map, discoverable by anybody, and unarguable from a
+	  .rec -- the duck is in the flags column and nobody would ever look.
+
+	  A timer's job is to give the same answer twice.  A constant hull does; a
+	  hull that is a function of a button does not.  1 is here so the cost of the
+	  choice is measurable, not because it is a tuning knob.  zone_selftest pins
+	  the exact pair of answers the 17 units produce.
+	*/
+	registercvar("run_zone_hull_live", "0");
 
 	/*
 	  The start may not be hopped.  Build 19.

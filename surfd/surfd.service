@@ -1,0 +1,85 @@
+# surfd - FTESurf lobby directory
+#
+# INSTALLED AND ENABLED as of Sep 8 17:06 -- /etc/systemd/system/surfd.service,
+# `systemctl is-active surfd` reports active and it owns the listener on 8084.
+# This file is the SOURCE; the installed copy is a deployment of it.
+#
+# To push a change to this file:
+#     sudo cp /srv/nvme/surfd/surfd.service /etc/systemd/system/surfd.service
+#     sudo systemd-analyze verify /etc/systemd/system/surfd.service
+#     sudo systemctl daemon-reload && sudo systemctl restart surfd
+#
+# To push a change to surfd.py, admin.py, rcon.py or templates/ -- no unit
+# change needed, just:
+#     sudo systemctl restart surfd
+#
+# Do NOT also run /srv/nvme/surfd/run.sh: it would race the unit for port 8084
+# and one of the two would die with EADDRINUSE. run.sh/stop.sh predate the unit
+# and are kept only for a machine where systemd is not in play.
+
+[Unit]
+Description=surfd - FTESurf lobby directory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=proto
+Group=proto
+WorkingDirectory=/srv/nvme/surfd
+Environment=SURFD_HOME=/srv/nvme/surfd
+
+# THE PUBLIC ADDRESS SWITCH. Uncomment this and restart to make lobbies
+# advertise themselves at a routable name instead of at the private address
+# they heartbeat from. It is the last thing to turn on before the ports open,
+# and it is a one-line change on purpose: everything it depends on is already
+# validated and tested (see the PUBLIC_HOST essay in surfd.py, and
+# test_surfd.py, which proves the option OFF is byte-identical to the old
+# behaviour). Leave it commented until DNS resolves and the ports are forwarded
+# -- an advertised address that is not reachable yet is worse than a LAN one,
+# because the LAN one at least fails honestly for people on the LAN.
+#Environment=SURFD_PUBLIC_HOST=play.proto.bar
+#
+# Which sources are "us". A heartbeat from outside this list keeps its own
+# address no matter what, which is what stops a stranger with a valid key
+# advertising a lobby on our hostname. The default in surfd.py is the same list;
+# it is spelled out here so that changing it is a visible edit to a unit file
+# rather than an invisible default.
+#Environment=SURFD_TRUSTED=127.0.0.0/8,::1/128,192.168.0.0/16,10.0.0.0/8
+ExecStart=/usr/bin/gunicorn \
+    --bind 0.0.0.0:8084 \
+    --workers 1 \
+    --threads 4 \
+    --worker-class gthread \
+    --timeout 30 \
+    --graceful-timeout 20 \
+    --keep-alive 5 \
+    --max-requests 5000 \
+    --max-requests-jitter 500 \
+    --forwarded-allow-ips '' \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info \
+    surfd:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Hardening. surfd only needs to read its own directory and write data/ + logs/.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/nvme/surfd/data /srv/nvme/surfd/logs
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

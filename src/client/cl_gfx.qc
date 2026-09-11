@@ -46,7 +46,7 @@ float ui_gfx_loadtime;          // cltime when this map's CSQC came up
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     27         // highest row index (Patch 254 added Map fog)
+#define GFX_ROWS     28         // highest row index (build 49 added Map particles)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_RegisterCvars =
@@ -391,6 +391,12 @@ string(float row) Gfx_Def =
 	  under someone's cursor.  Grouping is not worth that.
 	*/
 	if (row == 27) return "vbsp_fog|Map fog|0 1|Off;On|";
+	/*
+	  Build 49.  Appended for the reason the block above gives, not slotted in
+	  beside `Map fog` where it belongs by subject -- these rows are addressed
+	  BY NUMBER and ui_gfx_page remembers a position across builds.
+	*/
+	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On|";
 
 	return "";
 };
@@ -493,6 +499,13 @@ string(float row) Gfx_Inert =
 	// look broken.  Both counters are set by Fog_LoadFromWorld (cl_fog.qc).
 	if (cv == "vbsp_fog" && !vbsp_fog_count && !vbsp_fog_skyhave)
 		return "map has no fog";
+
+	// Build 49.  Roughly half the library carries none of the seven classes
+	// cl_emit.qc draws, so on those maps this toggle has nothing to toggle.
+	// em_any counts what the MAP holds rather than what is emitting, so the row
+	// does not grey itself out the moment you switch the feature off.
+	if (cv == "vbsp_emit" && !em_any)
+		return "map has none";
 
 	return "";
 };

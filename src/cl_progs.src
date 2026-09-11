@@ -36,7 +36,19 @@ client/cl_sprites.qc
 // cl_main.qc, which calls Fog_LoadFromWorld from CSQC_WorldLoaded and Fog_Frame
 // from CSQC_UpdateView.  It needs nothing from anyone, so this is early enough.
 client/cl_fog.qc
+// Build 49.  A FOURTH independent walk of the same entity lump -- the decals,
+// the sprites and the fog are the other three, and no one of the four reads
+// another.  It has to sit BEFORE cl_gfx.qc, which greys the "Map particles"
+// row out using em_seen, and before cl_main.qc, which calls Emit_RegisterCvars
+// from CSQC_Init, Emit_LoadFromWorld from CSQC_WorldLoaded and Emit_Frame from
+// CSQC_UpdateView.  Like cl_fog.qc it needs nothing from anyone, so beside its
+// three siblings is early enough.
+client/cl_emit.qc
 client/cl_hud.qc
+// AFTER cl_hud.qc, which owns HUD_Text/HUD_TextR, ui_cv_scale and ui_font_ui.
+// Patch 270: the lobby network monitor -- the on-screen replacement for
+// counting `cl_shownet 3` lines by eye.  It needs nothing from anything below.
+client/cl_netmon.qc
 client/cl_timer.qc
 client/cl_saveloc.qc
 client/cl_gfx.qc
@@ -50,10 +62,32 @@ client/cl_watch.qc
 // Timer_Tick's rate.  Stage 2 of build 24.
 client/cl_scores.qc
 client/cl_portal.qc
+// AFTER cl_scores.qc, which owns Scores_LastOf -- the rank scan parses the same
+// <ticks>_<tag> filenames the leaderboard does and there is no second copy of
+// that parser.  Also after cl_timer.qc, whose ui_sp_* rows ARE the card's split
+// table and whose Timer_SplitsClass draws the same marks in both places, and
+// after cl_hud.qc for HUD_Text and the rect registry.  Build 48.
+client/cl_results.qc
 // LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
-// screen with a replay or the leaderboard, so it needs rec_wt_open (cl_watch.qc)
-// and rec_sb_open (cl_scores.qc); it also consumes the rect registry, which has
-// to live in cl_hud.qc because every drawer calls into it.  After all of them is
-// the only position that satisfies both, and it needs nothing from cl_main.qc.
+// screen with a replay, the leaderboard or the results card, so it needs
+// rec_wt_open (cl_watch.qc) and ui_rs_cursor (cl_results.qc); it also consumes
+// the rect registry, which has to live in cl_hud.qc because every drawer calls
+// into it.  After all of them is the only position that satisfies both, and it
+// needs nothing from cl_main.qc.
+//
+// BUILD 48 took rec_sb_open OUT of that list -- it is declared in cl_hud.qc now,
+// because cl_watch.qc compiles before cl_scores.qc and could not otherwise test
+// it before releasing the cursor.  See the block beside ui_he_open there.
 client/cl_hudedit.qc
+// LAST, after cl_hudedit.qc.  Build 54: the trigger/entity inspector.
+//
+// It needs Sprite_ParseVec from cl_sprites.qc, Zone_Line/Zone_Face from
+// cl_zones.qc to draw a volume, and HUD_Text from cl_hud.qc -- but the binding
+// constraint is the CURSOR.  Releasing it means testing every other owner, and
+// the last of those to be declared is ui_he_open's neighbour in cl_hudedit.qc.
+// Its own flag, ui_ev_cursor, is declared up in cl_hud.qc for the mirror
+// reason: cl_hudedit.qc has to test it before letting the cursor go and
+// compiles before this file.  Same constraint, same solution, as build 47's
+// rec_sb_open and build 48's ui_rs_cursor.
+client/cl_entview.qc
 client/cl_main.qc

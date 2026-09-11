@@ -15,9 +15,280 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d097595a95d0ef13217de3ea891023cf3d976817
 tag      patch-266
-patch    266
-qcbuild  43
-date     2026-09-07
+patch    290
+qcbuild  55
+date     2026-09-09
+
+# NOTE: `patch` is 273 and `commit` is still patch 266's SHA, and that is not an
+# oversight -- everything from 267 up is APPLIED AND BUILT in the working tree
+# but NOT YET COMMITTED, so none of them can be pinned yet.  `build.ps1 -Engine`
+# will warn that HEAD does not match; that warning is correct and stops
+# mattering the moment they are committed and this SHA is bumped with them.
+#
+#   267  cfg/map_<mapname>.cfg, the per-map ruleset layer in
+#        engine/server/sv_phys.c.  QC build 47 NEEDS it: the 80 cfg/map_*.cfg
+#        files it ships are inert without SV_LoadMapRuleset, and inert quietly
+#        -- the maps simply keep running at the 3500 ceiling they have always
+#        had, with nothing printed.
+#   268  in_focusgrab and renderer work in the client.  NOT this build's -- it
+#        belongs to a concurrent session sharing this engine tree, and it is in
+#        the deployed exe because the tree is shared, not because build 47
+#        asked for it.
+#   269  engine/client/cl_pred.c: the prediction stops blending its live
+#        velocity against a network field that is not maintained for your own
+#        player.  QC build 47 does not strictly need it -- no QC change depends
+#        on it -- but without it every speed readout sweeps 0..5 while you
+#        stand still at high framerates.  With 269 in, the workaround build 47
+#        shipped for that (hud_predicted 0) is no longer needed.
+#   269b engine/client/cl_pred.c: instrumentation only, no behaviour change.
+#        cl_predtrace records nopred/viewheight/crouch and origin Z, dumps one
+#        line per record instead of five, and takes a NEGATIVE count to print a
+#        six-line verdict instead of thousands of rows.  Written because 269's
+#        verification could not be reproduced on the reporter's machine: every
+#        capture had run at a tenth of the reported framerate, so the
+#        measurement had to be shippable to the machine that reproduces it.
+#   269c engine/client/cl_pred.c AND engine/client/client.h (header change --
+#        rebuild with -Full).  269 was too big a hammer and regressed the
+#        energy readout: it left the reported POSITION blended while making the
+#        reported VELOCITY unblended, so energy -- which combines them -- read
+#        two different instants and climbed ~4 units over a jump that conserves
+#        it exactly.  269c restores the blend and gives it a from-velocity that
+#        exists, carried in playerview_t::prop beside onground/pmsrc/gravitydir
+#        under the same guard.  Read only to build the REPORTED value, so the
+#        mover is untouched and no run time can move.  cl_predict_velblend is
+#        now 0/1/2 with 2 the default; ALL THREE are verified against BOTH the
+#        speed and the energy property in logs/jit13.log.
+#   270  NOT MINE -- reserved by the concurrent session (public lobbies, the
+#        aarch64 dedicated server).  Listed so nobody takes the number twice.
+#   271  plugins/hl2/mod_vbsp.c: VBSP_MarkLeaves refused to compute a PVS for
+#        any RECURSED view, and VBSP_PrepareFrame answers a missing PVS by
+#        drawing every surface in the world model.  Mirrors/portals/water hand
+#        down a real PVS and were fine; the 3D SKYBOX hands down nothing, so on
+#        every Source map with a sky_camera the whole map was drawn a second
+#        time each frame with no PVS, no frustum and no area test.  On
+#        surf_tensor2 that pass emitted 24,762 surfaces -- exactly
+#        dmodel_t[0].numfaces -- where the sky_camera's own cluster admits 30.
+#        Fixed by computing the PVS and poisoning the shared cache, which is
+#        what q1bsp.c already does.  236 -> 323 fps at the spawn, Opaque
+#        Batches 1500 -> 288us, and the main view unchanged to the mesh.
+#        QC build 47 does not need it -- it is a pure rendering fix and moves
+#        no run time -- but every staged Source map with a 3D skybox is faster
+#        with it.  Verified in logs/t2after.log and logs/t2look.log.
+#   272  NOT MINE -- the concurrent session's.  Every map load unloaded the
+#        particle effect set the CSQC had just loaded.  Listed because the rain,
+#        fire and snow on staged maps only draw with it in.
+#   273  engine/client/cl_screen.c + engine/server/{sv_main.c,sv_phys.c,server.h}
+#        and plugins/hl2/mod_vbsp.c (HEADER CHANGE -- rebuild with -Full).
+#        Three things, in the order they were found:
+#          - r_speeds' "Framerate (refresh only)" meant it: RSPEED_SERVER is
+#            bracketed separately from RSPEED_TOTALREFRESH, so on a listen server
+#            the headline number omitted the whole server.  323 fps on the
+#            surf_tensor2 spawn was really 204.7.  Now prints both.
+#          - the listen server's cost was 98% one function: VBSP_HeadnodeVisible,
+#            a full recursive descent of the world node tree run per oversized
+#            entity per server frame -- ~218 MILLION node visits a second on
+#            tensor2.  It is a pure function, so it is now memoised
+#            (hl2_pvscache, 0 restores the old path).
+#          - VBSP_MarkLeaves scanned all 19,846 leafs to light up the 82 the PVS
+#            admits, and its single vis cache was evicted every frame by the 3D
+#            skybox view.  Leaves are now bucketed by cluster at load, and the
+#            cache is per recursion level.
+#        surf_tensor2 spawn 204.7 -> 506.4 fps real, stage 5 935.5, END 673.2;
+#        surf_tensor (the no-sky_camera control) unchanged at 1564.  The [world]
+#        census is byte-identical before and after (506 / 20 meshes) and
+#        Ent Batches is 49 in every A/B arm, so nothing is being culled that was
+#        not culled before.  Moves no run time: renderer, reporting and the
+#        server's visibility test only.  Verified in logs/p273h.log,
+#        logs/p273e.log and logs/p273smoke.log (six maps).
+#   274  engine/common/pr_common.h + engine/client/pr_csqc.c (HEADER CHANGE --
+#        rebuild with -Full).  DRAWFLAG_NODEPTHTEST (0x1000) for R_BeginPolygon
+#        and R_AddTrisoup, mapping to the BEF_FORCENODEPTH every backend already
+#        honoured but no QC could ask for.  QC BUILD 52 NEEDS IT: cl_sprites.qc's
+#        light glares are drawn over the world with their visibility coming from
+#        a traceline, which is what a Source glow is; without the flag they fall
+#        back to being depth-clipped and the feature is inert.  Naming a gamedir
+#        .shader with `nodepthtest` was the only previous route and cannot work
+#        here, because a shader fixes the texture and the glow material is the
+#        map's.  Verified in logs/glare02.log: at the tensor2 spawn the sprite
+#        draws go 244 -> 8, with 233 of 241 suppressed by the trace.
+#   275  NOT MINE -- the concurrent session's (public lobbies, cfg/default.cfg).
+#   276  NOT MINE -- the same session's, the steam-library mount hint in
+#        engine/common/fs.c.  Listed so nobody takes the number twice.
+#   277  engine/common/gl_q2bsp.c + plugins/hl2/mod_vbsp.c, no header change.
+#        The two Patch 273 open items, now closed:
+#          (a) the Q2/Q3 vis cache hit on a key alone, so a mirror/portal/skyroom
+#              pass that re-marked the tree between two main-view frames left
+#              the main view walking someone else's marks.  A marks OWNER
+#              (q23bsp_markowner + q23bsp_markmodel) says whose marks the tree
+#              holds; the main view hits only when they are its own, else it
+#              re-marks from its cached pvs without decompressing.  Sentinel
+#              {-1,-2} so a view in solid ({-1,-1}) cannot hit; a recursed
+#              forced pass no longer poisons the main key.  q23bsp_markstat.
+#          (b) VBSP_LoadLeafs bounded each leaf's cluster by the vis lump's own
+#              count (offenders -> -1, one warning per map), VBSP_ClusterPVS/PHS
+#              bounds-check, vbsp_pvsstat counts out-of-range queries, a vis
+#              header with 0 clusters is treated as unvised, a static prop's -1
+#              cluster no longer indexes pvs[-1].  Census: no library map is
+#              rewritten; fixtures p277_bad20/bad25 print the warning where the
+#              old dll printed "118 clusters" and crashed.  Verified 2026-09-09
+#              (logs/p277a.log, logs/p277b.log; ENGINE_PATCHES.md Patch 277).
+#   268 D1  engine/gl/gl_model.h (HEADER, was rebuilt -Full) + engine/client/
+#        r_surf.c + plugins/hl2/mod_vbsp.c: bumped Source lightmaps store 4 luxel
+#        sets per lightstyle and the style walk advanced by one, so every
+#        lightstyled bumped face read the next style's set from the wrong place.
+#        SURF_LMSTRIDE bits, VBSP_ProbeLightmapStride proves the layout per map
+#        (1/4, 2/5, 1/4+trailer) against the lump size, cvar hl2_bumpstride.
+#        Effect direction is per map (surf_affliction ~2x brighter, orgrimmar /
+#        floodwaters darker); verified 8 vantages (logs/p268d1_*.log).  Maps
+#        that Patch 281 repacks print its line instead and tag nothing.
+#   278  NOT MINE -- the concurrent session's, the player avatar work.
+#   279  plugins/hl2/mat_vmt.c, new plugins/hl2/glsl/vmt/twotexture.glsl,
+#        plugins/hl2/Makefile (one line -- VMTPROGSBASE is hand-maintained and a
+#        new .glsl is silently ignored without it), and three small hunks in
+#        plugins/hl2/mod_vbsp.c (two externs, one census Con_DPrintf, one cvar).
+#        No header change; -Engine is enough.  Three faults in two materials:
+#          - UnlitTwoTexture drew ONE of its two textures, declined the
+#            TextureScroll that drives $texture2Transform, and skipped the
+#            material proxies entirely.  On surf_tensor2 that is the spawn
+#            portals: a solid glowing web at full brightness from any range,
+#            where CS:S shows a two-layer interference pattern sliding
+#            diagonally and fading out past ~1000 units.  48 materials in the
+#            mounted packs are UnlitTwoTexture, including five of MOMENTUM'S
+#            OWN powerup props.
+#          - the proxy chain is now COMPILED into shader defines by a backward
+#            walk from $alpha and $frame -- it is a pure function of eye
+#            distance and time, so nothing has to be evaluated per frame.  The
+#            frame ramp is resolved and reported but NOT applied; see the patch
+#            note for the three shader shapes tried and why only one works.
+#          - SpriteCard, Source's PARTICLE shader, was unimplemented and fell
+#            back to vmt/unlit with no rgbgen.  p_script.c:743 gives BM_BLEND an
+#            EMPTY shader-name postfix, so a particle whose texture has a
+#            material of the same name takes that material INSTEAD of the
+#            particle template that carries `rgbgen vertex` -- and every Source
+#            particle in the library has been drawing flat white.  180
+#            SpriteCard materials in the mounted packs.
+#        QC BUILD 53 does not require any of it -- the portals just look wrong
+#        without it -- but build 53's own light-glare occluders are unrelated
+#        and need no engine change at all.
+#   280  engine/common/pmove.h (HEADER, was rebuilt -Full) + pm_source.c,
+#        sv_user.c, cl_ents.c, world.c, sv_phys.c, sv_main.c, cl_main.c,
+#        svhl_game.c, r_surf.c: func_slide's SLIDING half.  QC BUILD 53+ NEEDS
+#        IT: the QC tags a solid func_slide with .skin -32..-25 (stayonslide /
+#        allowjump / disablegravity bits) and without the engine side that skin
+#        range means nothing to pmove and is only excluded from the negative-
+#        skin contents override by world.c's hunk.  physent_t.slideflags in
+#        padding, movevars.slide from cvar pm_slide (1; 0 is the old mover
+#        exactly).  A slide face is never ground: no friction, air acceleration
+#        only, gravity clipped along the face; allowjump grounds for the jump
+#        tick; stayonslide re-seats; disablegravity skips both half-steps.
+#        Verified 2026-09-09 on bhop_everfast *92 (20.5 deg: pm_slide 0 stands,
+#        1 slides at ~262 u/s^2 with z tracking the face) and surf_mom_training
+#        *6/*8 (logs/slide02.log, slide03.log; run_slideinfo).  702 func_slide
+#        across 17 maps.
+#   281  plugins/hl2/mod_vbsp.c, no header change: nine v21 maps (bhop_24,
+#        surf_mjk, surf_at_the_limit, surf_windrunner, surf_swagtoast,
+#        surf_borderlands, surf_legends, surf_sup, surf_colours) store an extra
+#        byte per luxel so lightofs sits off the 4-byte grid; the whole-lump
+#        E5BGR9 conversion then read ~72% of their lit faces at the wrong byte
+#        and they drew EXACT BLACK.  VBSP_RepackLighting converts per face from
+#        the raw lump; cvar hl2_lightmap_repack (1).  surf_borderlands: 2264 of
+#        3154 faces, mean luxel 3600 -> 0.42; bhop_24 6805 of 9046.  Verified
+#        2026-09-09 (logs/bl_a*.log, bl_c*.log, screenshots/bl_*).
+#        Deployed state at 09:24 on 2026-09-09: ftesurf64.exe 09:24:37 (an
+#        incremental client+server relink on top of c8's 09:16 -Full, adding
+#        277's last two gl_q2bsp.c hunks) and c8's fteplug_hl2_x64.dll 09:18:40
+#        carry everything through 288 (288 itself did not draw on its first
+#        run -- c8's note above); progs are the 09:11 build.ps1 run.  protocol.h
+#        changed in 288, so any further engine build must be -Full.
+#   282  NOT MINE.  283, 284, 285 likewise -- a second concurrent session holds
+#        the block.  I had reserved 282 and yielded it; if you are bisecting and
+#        find a renderer change in that range it is not build 54's.
+#   286  plugins/hl2/mat_vmt.c, plugins/hl2/glsl/vmt/twotexture.glsl, two hunks
+#        and a cvar in plugins/hl2/mod_vbsp.c.  No header change; -Engine is
+#        enough, but -Full is needed if the GLSL header did not regenerate.
+#        THE THING 279 RESOLVED AND COULD NOT DRAW: comshieldwall.vtf is 31
+#        frames and its proxy chain picks one by DISTANCE, clamp(dist*0.2-24,
+#        0,30), so a combine shield should get DENSER as you approach.  We drew
+#        frame 0 forever, which is why the web got brighter and never denser.
+#        The way in is that the VMT points $basetexture and $texture2 at the
+#        same file AND drives $frame and $frame2 from two identical Clamp
+#        proxies -- so it is one 2DArray read twice at one layer, which is
+#        vmt/animated's proven one-pass one-sampler shape.  #FRAMES, taken only
+#        for a same-texture material; 7 of the library's 48 UnlitTwoTexture
+#        materials qualify, covering 42 of surf_tensor2's 44 shield faces.
+#        Off switch hl2_twoframes.  QC build 54 does not need it.
+#   287  NOT MINE -- a concurrent session's, a portal's far side culled by the
+#        near side's area (gl_rmain.c, renderer.c).  Description confirmed
+#        correct against ENGINE_PATCHES.md:23465 by its author.
+#        THE ONE THING THAT MATTERS TO A QC BUILD: the fix is behind cvar
+#        r_portalareas, default 0 = today's behaviour exactly, and it is
+#        cfg/default.cfg that sets it to 1.  So an engine carrying 287 with a
+#        QC build whose default.cfg does not set it renders kitsune's portals
+#        BLACK and looks like the engine fix never landed.  If you are
+#        bisecting a black portal, check the cvar before the binary.
+#   288  engine/common/protocol.h + engine/client/renderer.c + engine/gl/gl_rmain.c
+#        (HEADER CHANGE -- rebuild with -Full), and plugin-side new
+#        plugins/hl2/img_ccraw.c, new plugins/hl2/glsl/vmt/ccorrect.glsl, one
+#        line each in plugins/hl2/hl2.c, plugins/hl2/Makefile and
+#        plugins/Makefile, an intercept in mat_vmt.c and a block plus a cvar and
+#        a census line in mod_vbsp.c.
+#        COLOUR CORRECTION, which FTE has never had in any form -- the only
+#        mention of the feature in the entire engine was $toolcolorcorrection in
+#        an ignore list.  A Source map's color_correction entities name a
+#        32x32x32 .raw lookup table and a weight, and 31 maps in the library
+#        carry one.  surf_tensor2 runs two, which is why its portal particles
+#        read "wayy to blue": the PCF genuinely is blue and in Source the WHOLE
+#        SCENE is graded cool so they do not stand out.  It is also the reason
+#        QC build 54 does not retune any particle colour by hand.
+#        A dedicated post-process stage (RDF_COLOURCORRECT, r_colourcorrection)
+#        rather than a use of r_postprocshader, because that cvar belongs to the
+#        user and this string is generated per map.  Off switch
+#        hl2_colourcorrection, which is both a load-time gate and a LIVE shader
+#        uniform so the A/B needs no map change.
+#        QC build 54 does not need it.  VERIFIED ON SCREEN by 290 -- 288 as
+#        first shipped generated its script with an OUTER BRACE and loaded to a
+#        BLACK SCREEN; see 290.  The tonemapping/exposure offset against Source
+#        is still not measured -- read the last section of ENGINE_PATCHES.md's
+#        288 entry before trusting a comparison against Momentum.
+#   289  NOT MINE -- a concurrent session holds it.
+#   290  engine/gl/gl_rmain.c (two hunks), plugins/hl2/mat_vmt.c,
+#        plugins/hl2/mod_vbsp.c (a census line).  No header change; -Engine.
+#        288 SHIPPED A BLACK SCREEN AND THIS IS WHY IT COULD.  Its generated
+#        shader script began with "{".  That is right for R_RegisterShader,
+#        whose Shader_DefaultScript (gl_shader.c:7379-7391) requires and strips
+#        exactly one -- and wrong for a material loader, because
+#        Shader_LoadMaterialString (:8386-8390) strips nothing and starts
+#        parsing INSIDE the body.  So the brace opened a PASS, `program` bound
+#        pass->prog instead of shader->prog, and the console said only
+#        "unexpected indentation".
+#        The stage then drew nothing, and drawing nothing is NOT harmless:
+#        R_RenderPostProcess allocates a render target (:2639), never clears it,
+#        and returns it unconditionally (:2659) -- so a failed post-process
+#        stage costs the whole picture, not just its own effect.  290 therefore
+#        also GATES the stage on the shader having a program AND a pass, so any
+#        future failure is ungraded rather than blank.  Verified: pointing
+#        r_colourcorrection at a name that cannot resolve leaves the picture
+#        normal and prints one warning.
+#        WITH IT WORKING, the grade moves 91.7% of the frame against a 0.4%
+#        same-setting control on surf_tensor2, and near-white goes
+#        (251.7,253.1,253.6) -> (232.9,239.2,251.9) against a prediction of
+#        (234.2,239.8,253.0) from the LUT's white point at weight 0.40.
+#        A TRAP THAT INVALIDATED EVERY EARLIER POST-PROCESS MEASUREMENT:
+#        screenshot_mega forces an FBO (cl_screen.c:2941-2943), and gl_rmain.c
+#        :2841-2845 clears RDF_ALLPOSTPROC whenever dofbo is set.  A mega
+#        screenshot therefore contains NO post-processing at all -- no gamma, no
+#        fxaa, no r_postprocshader, no grade.  Use plain `screenshot` for
+#        anything that lives after the scene.
+#        Also: $ignorez used to emit `nodepth` at the shader top level, where it
+#        is not a key at all (it is a PASS key, gl_shader.c:4838).  It never did
+#        anything; it is now counted and declined instead of printing a warning
+#        that reads like a typo.
+#
+# Because the tree is shared, the deployed ftesurf64.exe contains all of them.
+# Anyone bisecting a rendering or input change should look at 268 before
+# assuming build 47's QC did it, and anyone comparing a framerate recorded
+# before 273 against one recorded after should read 273's first bullet first:
+# the number changed meaning, not just value.
 
 # Build it (from that tree):
 #   make -C engine  m-rel       FTE_TARGET=win64

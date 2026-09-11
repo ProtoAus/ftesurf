@@ -422,6 +422,15 @@ float(string path) ui_file_exists =
   against cannot drift apart, and bumping FS_TERMS_VERSION is the one action
   that puts the screen back in front of everybody.
 
+  PATCH 270 ADDED A SECOND TIER RATHER THAN BUMPING THE VERSION, and the
+  reasoning is at FS_TERMS_ONLINE in sh_defs.qc.  Short version: public lobbies
+  made one sentence of the version-1 text false ("Nothing is sent anywhere"),
+  but only for players who join one.  Bumping FS_TERMS_VERSION would have held
+  every existing player at a screen whose only alternative was quitting, in
+  order to re-agree to an offline game that had not changed.  The text below now
+  covers both, an acceptance stamps the higher number, and only the paths that
+  actually contact a server require it.
+
   IT IS NOT A LOCK, AND THE TEXT SAYS SO.  Anyone able to edit consent.txt could
   equally set rec_terms or the binary.  A consent record's job is to be an honest
   record that a person was shown something and agreed, not to be unforgeable.
@@ -440,28 +449,91 @@ string(float i) rec_terms_line =
 	if (i ==  4) return "  which movement keys you are holding, once per drawn frame";
 	if (i ==  5) return "  a journal of raw mouse and keyboard events, with timings";
 	if (i ==  6) return "";
-	if (i ==  7) return "^3Where it goes:";
+	if (i ==  7) return "^3Where it goes, playing on your own:";
 	if (i ==  8) return "  files under this game's own data folder, on this machine.";
-	if (i ==  9) return "  ^2Nothing is sent anywhere.^7 FTESurf has no server to send it to";
-	if (i == 10) return "  and no code that uploads anything.";
-	if (i == 11) return "";
-	if (i == 12) return "^3What it is for:";
-	if (i == 13) return "  replaying your runs, and being able to tell a real run from a";
-	if (i == 14) return "  scripted one.";
-	if (i == 15) return "";
-	if (i == 16) return "^3What is deliberately NOT recorded:";
-	if (i == 17) return "  anything you type. While the console or a menu has focus the";
-	if (i == 18) return "  journal keeps the timing of a keypress but drops which key it";
-	if (i == 19) return "  was, so a password typed in the console cannot end up in a file.";
-	if (i == 20) return "  Nothing outside this game's window is watched, ever.";
-	if (i == 21) return "";
-	if (i == 22) return "^3Turning it off:";
-	if (i == 23) return "  ^9fs_hid 0^7 stops the raw input journal. Runs recorded without it";
-	if (i == 24) return "  are marked as such in their own file rather than passing as";
-	if (i == 25) return "  runs that had one.";
+	if (i ==  9) return "  ^2Nothing about a run leaves this machine^7 -- there is no upload.";
+	if (i == 10) return "";
+	if (i == 11) return "^3Public lobbies, if you turn them on with the button below:";
+	if (i == 12) return "  the other people on the map see your position and view angle,";
+	if (i == 13) return "  and you see theirs. Voice and text chat reach everyone there.";
+	if (i == 14) return "  The server times your run and shows you the time. It is not";
+	if (i == 15) return "  uploaded or ranked anywhere. It sees your IP, as does any";
+	if (i == 16) return "  server you join.";
+	if (i == 17) return "  The map picker asks ^9play.proto.bar^7 which lobbies are live";
+	if (i == 18) return "  while it is open, which shows it your IP too.";
+	if (i == 19) return "";
+	if (i == 20) return "^3What it is for:";
+	if (i == 21) return "  replaying your runs, and telling a real run from a scripted one.";
+	if (i == 22) return "";
+	if (i == 23) return "^3What is deliberately NOT recorded:";
+	if (i == 24) return "  anything you type. While the console or a menu has focus the";
+	if (i == 25) return "  journal keeps the timing of a keypress but drops which key it";
+	if (i == 26) return "  was, so a password typed in the console cannot end up in a file.";
+	if (i == 27) return "  Nothing outside this game's window is watched, ever.";
+	if (i == 28) return "";
+	if (i == 29) return "^3Turning it off:";
+	// rec_hid, NOT fs_hid.  The cvar was renamed in build 46 with the rest of the
+	// fs_ -> rec_ move (sh_defs.qc:1409 is the forward), and this line went on
+	// naming the old one -- so the single actionable instruction on the consent
+	// screen told the reader to set a cvar that nothing reads.  Found by looking
+	// at the rendered screen, which is the only place it was visible.
+	if (i == 30) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
+	if (i == 31) return "  are marked as such rather than passing as runs that had one.";
 	return "";
 };
-#define FS_TERMS_LINES 26
+/*
+  29, not 30.  The line that used to sit at 16 read "lobby_dir is empty by
+  default; while it is, nothing is sent."  It was removed in the same edit that
+  gave lobby_dir a real default (menu/m_lobby.qc, Lob_Init), because the moment
+  the cvar ships pointing at a directory that sentence is FALSE, and a false
+  sentence on the consent screen is worse than no sentence at all.
+
+  What replaces it is not another sentence: it is the FS_TERMS_ONLINE gate
+  itself.  Nothing is sent before an acceptance at that tier; Lob_Poll checks
+  it before it looks at lobby_dir at all, in that order, deliberately.
+
+  TWO MORE LINES MOVED WITH IT, both for the same reason -- a review found them
+  saying things the shipped defaults had made untrue:
+
+    9   was "Playing offline sends nothing anywhere -- no server is involved".
+        Not true of a player who accepts the online tier and then plays alone:
+        opening the map picker polls the directory whether or not they ever
+        join anything.  Narrowed to the claim that IS true and is the one this
+        paragraph is about -- run data is not uploaded.
+
+    11  was "which are OFF until you switch them on", which read as a promise
+        of some later switch.  There is no later switch any more; the button at
+        the foot of this screen IS it, so the line now points at the button.
+
+  32 NOW, and the three added lines are the same lesson a third time.
+
+  Lines 14-15 said "Your checkpoint and finish times go to that server so runs
+  can be ranked."  NONE OF THAT HAPPENS.  A lobby finish takes the Lobby_NoPB()
+  branch in sv_timer.qc and prints "ranked on the server, not saved here"; there
+  is exactly one uri_post in the whole tree and it is the lobby heartbeat.  The
+  sentence was written ahead of Stage 3's telemetry, the telemetry never came,
+  and the text has been promising it since.  It now says what the server
+  actually does, which is time your run and show you the time.
+
+  THAT IS THE FAILURE MODE THIS FILE KEEPS REPEATING: a true-when-written
+  sentence about a feature that was coming.  So the rule, and it is not
+  negotiable on this screen -- DISCLOSE ONLY WHAT THE SHIPPED CODE DOES TODAY.
+  Not what the next patch will do, however certain it is.
+
+  The two new lines at 17-18 name the lobby directory, because polling it
+  discloses an IP before any lobby is joined and the reader was never told which
+  host that is.  play.proto.bar is written out rather than "a directory": a
+  hostname the reader can look up is a disclosure, a category is not.
+
+  ⚠ NOT MENTIONED, DELIBERATELY, AND IT MUST BE ADDED WITH THE CODE THAT MAKES
+  IT TRUE: dl.proto.bar.  engine/common/qkupdate.c ships update_enabled 1,
+  update_autocheck 1 and update_manifest_url https://dl.proto.bar/... -- but
+  nothing anywhere calls `update_check`, so FTESurf contacts it zero times.
+  Writing it here now would be the exact mistake above, in the same edit that
+  fixes it.  Whoever wires the updater bumps FS_TERMS_ONLINE to 4 and adds the
+  line in that change, not before.
+*/
+#define FS_TERMS_LINES 32
 
 float ms_consent;       // the FS_TERMS_VERSION on disk; 0 = none
 
@@ -492,7 +564,26 @@ float() ui_consent_read =
 	return v;
 };
 
-void() ui_consent_write =
+/*
+  Record an acceptance at `tier` -- FS_TERMS_VERSION for the offline game,
+  FS_TERMS_ONLINE to add public lobbies.
+
+  IT TAKES A TIER BECAUSE THE FIRST VERSION DID NOT, AND THAT WAS A CONSENT BUG
+  rather than an inconvenience.  It stamped FS_TERMS_ONLINE unconditionally,
+  reasoning that one text covering both tiers makes accepting it an acceptance
+  of both.  The text is indeed one text -- but the SCREEN offered a way to
+  decline the online half only to someone who had already accepted the offline
+  half (`ms_consent >= FS_TERMS_VERSION`, which is false on a fresh install).
+
+  So a new player had exactly one button, and pressing it opted them into
+  contacting a server.  Someone who only ever wanted to play offline had no way
+  to say so and no indication they had agreed to anything else.  A tier scheme
+  whose lower tier is unreachable is not a tier scheme.
+
+  Both buttons are now always drawn, and the lower one is a real answer rather
+  than a dismissal.  See screen_terms.
+*/
+void(float tier) ui_consent_write =
 {
 	local filestream fh;
 
@@ -503,12 +594,21 @@ void() ui_consent_write =
 		return;
 	}
 
+	// Never DOWNGRADE.  Someone who has already enabled lobbies and then
+	// re-reads the terms and presses the offline button is asking to be left
+	// alone on this screen, not to have an acceptance withdrawn behind their
+	// back -- and a silent downgrade would empty the lobby list with nothing
+	// said.  Turning lobbies back off is lobby_dir, which is a thing they can
+	// see and set; see Lob_Blocked.
+	if (tier < ms_consent)
+		tier = ms_consent;
+
 	fputs(fh, "FTESURF-CONSENT 1\n");
-	fputs(fh, sprintf("version %g\n", FS_TERMS_VERSION));
+	fputs(fh, sprintf("version %g\n", tier));
 	fputs(fh, sprintf("accepted %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
 	fclose(fh);
 
-	ms_consent = FS_TERMS_VERSION;
+	ms_consent = tier;
 
 	/*
 	  BUILD 23: and LEAVE the screen.  Three sites set menu_screen to
@@ -529,7 +629,7 @@ void() ui_consent_write =
 	  Not archived: it is derived from the file every boot in m_init, and an
 	  archived copy would be a second answer that could disagree with the first.
 	*/
-	cvar_set("rec_terms", ftos(FS_TERMS_VERSION));
+	cvar_set("rec_terms", ftos(tier));
 };
 
 float(string label) ui_chip_w =
@@ -1444,6 +1544,209 @@ void() ui_launch =
 	m_close();
 };
 
+/*
+  Patch 270 -- joining a public lobby.
+
+  IS THE ADDRESS SAFE TO PUT IN A CONSOLE COMMAND?  No, not without this.
+
+  The string came off the network from whatever host lobby_dir names.  It goes
+  to localcmd, which is the console -- so an address of
+  "1.2.3.4:1\nquit\n" or "1.2.3.4:1; exec something" is remote code execution
+  against anyone whose picker is open, from a directory that is compromised, is
+  someone else's, or is simply typo'd into a hostile host.  %S quotes and
+  escapes for the QC parser and is worth having, but it is not the thing being
+  relied on here.
+
+  An allow-list, not a deny-list.  Deny-lists on shell-ish input are how this
+  goes wrong: enumerate the characters an address may contain, reject
+  everything else, and no new metacharacter anybody thinks of later gets
+  through.  Numeric codes because 'x' in QuakeC is a VECTOR literal, not a
+  character.
+
+    48-57  0-9        46  .        (dotted quad, and the decimal in a port)
+    97-122 a-z        58  :        (host:port separator)
+    65-90  A-Z        45  -        (hostnames)
+*/
+float(string a) ui_addr_ok =
+{
+	local float i, n, c;
+
+	n = strlen(a);
+	if (n < 3 || n > 64)
+		return FALSE;
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(a, i);
+		if (c >= 48 && c <= 57)  continue;
+		if (c >= 97 && c <= 122) continue;
+		if (c >= 65 && c <= 90)  continue;
+		if (c == 46 || c == 58 || c == 45) continue;
+		return FALSE;
+	}
+	return TRUE;
+};
+
+/*
+===========================================================================
+  THE LOBBY HOST ALLOW-LIST.  Build 55, plan Stage 8b.
+
+  WHAT IT IS FOR.  ui_addr_ok above proves an address is well FORMED; it says
+  nothing about WHERE it points.  The address comes from /lobbies.json, which
+  comes from whoever answers lobby_dir -- so today the operator of that one
+  service chooses, for every player, what host their game runs `connect` at.
+  A compromised or substituted directory redirects the entire player base
+  somewhere else and nothing in the client objects.
+
+  This turns "anywhere" into "one of these".  It is the difference between
+  trusting a service and trusting a service to stay honest.
+
+  NOT CVAR_ARCHIVE, AND THAT IS THE WHOLE POINT.  lobby_dir is archived and it
+  is why Stage 8c needs a migration: an install that saved the old value never
+  sees a new default again.  For an allow-list that is exactly backwards -- a
+  list that can never be updated is a list that goes stale and starts refusing
+  the servers it is supposed to permit.  Shipping it unarchived means it
+  arrives with the game and the updater can change it, which is what Stage 7's
+  updater is for.  Someone who wants to override it can still set it from a
+  cfg; it just does not persist by accident.
+
+  THE LAN ADDRESS IS IN THE DEFAULT ON PURPOSE.  The three lobbies advertise
+  192.168.1.102:275x0 today and will until DNS, the port forwards and
+  SURFD_PUBLIC_HOST are all in place.  A default of only the public names would
+  refuse every lobby that currently exists, which is a regression shipped in
+  the name of security.  Remove it when play.proto.bar actually resolves.
+
+  EMPTY MEANS DISABLED, deliberately, so a player on a private server or a LAN
+  party is never stuck behind a list they cannot reach a developer about.
+===========================================================================
+*/
+#define FS_LOBBY_HOSTS_DEFAULT "play.proto.bar proto.bar 180.150.62.57 192.168.1.102"
+
+/*
+  The host half of "host" or "host:port", lowercased.
+
+  FIRST colon, not last.  The menu does not accept bracketed IPv6 -- ui_addr_ok
+  has no brackets in its character set and surfd refuses to emit one for the
+  same reason -- so a colon here is always the port separator.
+*/
+string(string a) ui_host_of =
+{
+	local float p;
+
+	p = strstrofs(a, ":");
+	if (p < 0)
+		return strtolower(a);
+	return strtolower(substring(a, 0, p));
+};
+
+float(string a) ui_host_allowed =
+{
+	local string list, h;
+	local float n, i;
+
+	/*
+	  REGISTERED BESIDE THE READ, and not up in Lob_Init with the other lobby_
+	  cvars, for the reason that has silently killed three features in this
+	  tree already: cvar_string() on an unregistered name AUTO-CREATES it as
+	  "", and a later registercvar() then declines to overwrite it.  If any
+	  path reached this function before Lob_Init ran, the list would be
+	  permanently empty -- which this function reads as "disabled" and would
+	  turn the whole allow-list off without a word.  Registering here makes
+	  that ordering impossible to get wrong.
+	*/
+	registercvar("lobby_hosts", FS_LOBBY_HOSTS_DEFAULT, 0);
+
+	list = cvar_string("lobby_hosts");
+	if (list == "")
+		return TRUE;                 // explicitly disabled by the operator
+
+	h = ui_host_of(a);
+	if (h == "")
+		return FALSE;
+
+	// tokenize() clobbers argv globally. Safe here: ui_connect is the only
+	// caller and does not read argv afterwards.
+	n = tokenize(list);
+	for (i = 0; i < n; i = i + 1)
+		if (strtolower(argv(i)) == h)
+			return TRUE;
+	return FALSE;
+};
+
+/*
+  The map-list index for a map name, or -1.
+
+  A linear scan, called at most three times and only when a lobby row is first
+  drawn -- the answer is cached back into the lobby list by the caller.  There
+  is no production name->index map in this file to reuse and building one for
+  three lookups a poll would cost more than it saved.
+*/
+float(string nm) ui_map_index =
+{
+	local float i;
+
+	for (i = 0; i < ms_count; i = i + 1)
+		if (bufstr_get(ms_name, i) == nm)
+			return i;
+	return -1;
+};
+
+void(float i) ui_connect =
+{
+	local string addr;
+
+	/*
+	  The same consent gate ui_launch has, and it is here for the reason the
+	  comment there gives: that gate is the single launch choke point, and a
+	  second entry point that skipped it would quietly reopen what build 22
+	  closed.  Joining a lobby is MORE of a disclosure than starting a local
+	  map, not less, so this is the last place it should be omitted.
+
+	  FS_TERMS_ONLINE, not FS_TERMS_VERSION -- this is the tier that exists.  A
+	  version-1 player reaches the terms screen here and gets a "not now" button
+	  there, because they have already agreed to everything the offline game
+	  does and declining has to leave them able to keep playing it.
+	*/
+	if (ms_consent < FS_TERMS_ONLINE)
+	{
+		menu_screen = SCREEN_TERMS;
+		return;
+	}
+
+	addr = Lob_Addr(i);
+	if (!ui_addr_ok(addr))
+	{
+		print(sprintf("^1lobby:^7 refusing to connect to a malformed address %S\n", addr));
+		return;
+	}
+
+	/*
+	  AND WHERE it points, not just that it is well formed.  See the essay over
+	  ui_host_allowed: without this, whoever answers lobby_dir chooses what host
+	  every player's game connects to.  Named in the message, because "refused"
+	  with no host is a bug report nobody can act on.
+	*/
+	if (!ui_host_allowed(addr))
+	{
+		print(sprintf("^1lobby:^7 refusing to connect to %S -- %S is not in "
+		              "lobby_hosts\n", addr, ui_host_of(addr)));
+		print(sprintf("^1lobby:^7 the directory at %S offered a host this build "
+		              "was not shipped trusting.\n", cvar_string("lobby_dir")));
+		return;
+	}
+
+	/*
+	  Deliberately NOT copying ui_launch's sv_public / deathmatch / maxclients
+	  lines.  Those configure a LISTEN server about to be started here; on a
+	  connect path they would be changing local server cvars for no reason,
+	  and maxclients in particular would be actively wrong.
+	*/
+	localcmd(sprintf("connect %S\n", addr));
+
+	ms_query_stale = TRUE;
+	m_close();
+};
+
 // ---------------------------------------------------------------------------
 //  Headless self-check driver (ui_bootcheck >= 2).
 //
@@ -1452,6 +1755,7 @@ void() ui_launch =
 //  m_draw calls this before its own menu_active gate.
 // ---------------------------------------------------------------------------
 string bc_ang;          // scratch for ui_bootangles; a local would shadow per branch
+float  bc_consent;      // Patch 270: ms_consent parked across the terms screenshot
 
 void() ui_bootcheck_tick =
 {
@@ -1459,6 +1763,37 @@ void() ui_bootcheck_tick =
 
 	if (ui_bootframe == 30)
 		localcmd("screenshot ui_menu_main\n");
+	/*
+	  PATCH 270, STAGE 2 -- the terms screen, which had never once been looked
+	  at.  Everything claimed about it was arithmetic: derived panel height, line
+	  count, button rects.  Arithmetic is what said the panel fit, and arithmetic
+	  is also what missed that centring a 625 px panel in a shorter window puts
+	  the accept button off the bottom of a screen that has no other way out.
+
+	  Driven by setting menu_screen directly rather than by clearing consent,
+	  because the alternative is moving the player's own data/consent.txt aside
+	  and hoping to put it back.  This costs one frame and touches no files.
+
+	  What it shows depends on the machine it runs on, and BOTH cases are worth
+	  seeing: a fresh install draws "I understand -- play offline", an install
+	  that already cleared FS_TERMS_VERSION draws "not now -- keep playing
+	  offline".  ui_bootterms forces the first without writing anything, by
+	  lying about ms_consent for exactly one screenshot and putting it back.
+	*/
+	else if (ui_bootframe == 33)
+	{
+		bc_consent = ms_consent;
+		if (cvar("ui_bootterms"))
+			ms_consent = 0;             // draw it as a fresh install
+		menu_screen = SCREEN_TERMS;
+	}
+	else if (ui_bootframe == 36)
+		localcmd("screenshot ui_menu_terms\n");
+	else if (ui_bootframe == 38)
+	{
+		ms_consent  = bc_consent;       // never persisted; the file is untouched
+		menu_screen = SCREEN_MAIN;
+	}
 	else if (ui_bootframe == 40)
 	{
 		menu_screen = SCREEN_CREATE;
@@ -1833,7 +2168,7 @@ void(vector screensize) ui_map_backdrop =
 void(vector screensize) screen_terms =
 {
 	local vector p;
-	local float i, y;
+	local float i, y, ph, foot, btn;
 
 	ui_backdrop(screensize);
 
@@ -1844,11 +2179,62 @@ void(vector screensize) screen_terms =
 	  screen with its own text obscured by the button that accepts it is not a
 	  detail -- it is the one screen where the reader has to be able to read
 	  everything before the control that says they did.
-	*/
-	p = [floor(screensize_x * 0.5) - 320, floor(screensize_y * 0.5) - 290];
 
-	sui_fill(p, [640, 580], COL_PANEL, 0.94, 0);
-	sui_border_box(p, [640, 580], 1, COL_BORDER, 1, 0);
+	  PATCH 270 MADE THAT COMMENT TRUE.  It described a panel that had been sized
+	  from the text ONCE, by hand, and then written down as the constants 580,
+	  486 and 516 -- so adding the four lines about public lobbies would have
+	  reproduced the exact bug the comment exists to warn about, and reproduced
+	  it in the one screen where it matters most.  Derived now, so the next
+	  person to add a line gets a taller box instead of a covered sentence:
+
+	      text     starts at +72, FS_TERMS_LINES at a 15 px pitch
+	      footer   24 px below the last line
+	      button   30 px below the footer
+	      panel    34 px below the button
+
+	  At 29 lines that is 625 px, leaving a 95 px margin at 720p -- the smallest
+	  window this is expected to run in, and the case the map picker's own clamp
+	  exists for.  Anything much past ~34 lines needs a scroll rather than a
+	  bigger box, and the honest fix at that point is shorter terms.
+
+	  The three buttons are 24..254, 270..500 and 516..616 inside a 640 px
+	  panel, so they do not overlap and the rightmost keeps a 24 px margin.
+	*/
+	foot = 72 + FS_TERMS_LINES * 15 + 24;
+	btn  = foot + 30;
+	ph   = btn + 30 + 34;
+
+	p = [floor(screensize_x * 0.5) - 320, floor(screensize_y * 0.5 - ph * 0.5)];
+
+	/*
+	  CLAMPED, because deriving the height from the text made this reachable.
+
+	  Centring a 625 px panel in a window shorter than that puts p_y negative,
+	  which pushes the BUTTON ROW below the bottom edge.  On this screen that is
+	  not a cosmetic clip: there is deliberately no ESC route out of the terms,
+	  and m_draw forces the screen back every frame while consent is missing --
+	  so a fresh install in a short window has no reachable control at all and
+	  the game cannot be started.  Quitting and editing a config is not a way
+	  out for the player this screen exists to protect.
+
+	  Two clamps.  The first pins the panel to the top so the text is read from
+	  its beginning rather than its middle; the second floats the buttons up
+	  from the bottom edge if the panel still overflows.  Text can be clipped --
+	  the reader can resize -- but the control that accepts must always be
+	  on screen, and must never sit ON the text it is accepting.
+	*/
+	if (p_y < 0)
+		p = [p_x, 0];
+
+	if (p_y + btn + 30 > screensize_y)
+	{
+		btn = screensize_y - 30 - 8 - p_y;
+		if (btn < foot + 8)
+			btn = foot + 8;         // never over the last line of the terms
+	}
+
+	sui_fill(p, [640, ph], COL_PANEL, 0.94, 0);
+	sui_border_box(p, [640, ph], 1, COL_BORDER, 1, 0);
 
 	Font_Set(ui_font_display);
 	sui_text([p_x + 24, p_y + 22], SZ_TITLE, "Before you play", COL_ACCENT, 1, 0);
@@ -1861,15 +2247,40 @@ void(vector screensize) screen_terms =
 		y = y + 15;
 	}
 
-	sui_text([p_x + 24, p_y + 486], SZ_LABEL,
+	sui_text([p_x + 24, p_y + foot], SZ_LABEL,
 	         "^9This is a record that you agreed, kept on your own machine. It is not a lock.",
 	         COL_DIM, 1, 0);
 
-	if (ui_button("tm_accept", [p_x + 24, p_y + 516], [200, 30],
-	              "I understand -- continue"))
-		ui_consent_write();
+	/*
+	  TWO ACCEPT BUTTONS, ALWAYS BOTH DRAWN, and the left one is the default.
 
-	if (ui_button("tm_exit", [p_x + 516, p_y + 516], [100, 30], "exit"))
+	  There used to be one accept plus a "not now" that appeared only for
+	  someone who had already accepted an earlier version.  On a fresh install
+	  that condition is false, so a new player had a single button -- and it
+	  stamped FS_TERMS_ONLINE, opting them into contacting a server.  The lower
+	  tier existed in the file format and in three gates and was unreachable
+	  from the only screen that can grant it.
+
+	  Now the tier is the choice, not a side effect of which button happened to
+	  be visible.  Left grants the offline game and nothing else; right adds
+	  lobbies.  A player who takes the left one keeps playing immediately, with
+	  every online path still shut, and can come back through the row
+	  Lob_Blocked draws in the map picker whenever they want the other half.
+
+	  For a version-1 player arriving here from a lobby row, the left button is
+	  still the "not now" it was: ui_consent_write refuses to downgrade, so it
+	  writes nothing new and just closes the screen.  The label says so.
+	*/
+	if (ui_button("tm_accept", [p_x + 24, p_y + btn], [230, 30],
+	              (ms_consent >= FS_TERMS_VERSION) ? "not now -- keep playing offline"
+	                                               : "I understand -- play offline"))
+		ui_consent_write(FS_TERMS_VERSION);
+
+	if (ui_button("tm_online", [p_x + 270, p_y + btn], [230, 30],
+	              "...and turn on public lobbies"))
+		ui_consent_write(FS_TERMS_ONLINE);
+
+	if (ui_button("tm_exit", [p_x + 516, p_y + btn], [100, 30], "exit"))
 		localcmd("quit\n");
 };
 
@@ -1920,6 +2331,40 @@ string(float slot) ui_filter_label =
 	if (slot == 2) return sprintf("cs:s %g",     ms_nsrc[SRC_CSS]);
 	if (slot == 3) return sprintf("other %g",    ms_nsrc[SRC_OTHER]);
 	return sprintf("all %g", ms_count);
+};
+
+/*
+  Shorten a string until it fits `w` pixels at `sz`, ending it with ".." so the
+  truncation is visible rather than looking like a map whose name really is
+  "surf_colin_blaster_6".
+
+  Needed only since the lobby rows went side by side: at full width a name had
+  938 px and the longest in the library wants 384, so nothing could overflow and
+  nothing measured.  In three columns on a 1280 desktop the name column is 241
+  px, which is fifteen characters -- surf_kitsune fits and
+  surf_colin_blaster_69000 does not, and without this it would draw straight
+  through the neighbouring lobby's thumbnail.
+
+  Binary search rather than a per-character walk: stringwidth is a builtin call
+  per invocation and this runs for at most three rows a frame either way, but
+  the loop bound matters more than the constant here -- a while() that shortens
+  by one is O(n) calls on exactly the pathological names this exists for.
+*/
+string(string s, float w, vector sz) ui_fit_text =
+{
+	if (stringwidth(s, TRUE, sz) <= w)
+		return s;
+
+	float lo = 0, hi = strlen(s);
+	while (lo < hi)
+	{
+		float mid = floor((lo + hi + 1) * 0.5);
+		if (stringwidth(strcat(substring(s, 0, mid), ".."), TRUE, sz) <= w)
+			lo = mid;
+		else
+			hi = mid - 1;
+	}
+	return strcat(substring(s, 0, lo), "..");
 };
 
 void(vector screensize) screen_create =
@@ -2088,6 +2533,174 @@ void(vector screensize) screen_create =
 	ui_field_sel("cs_search", [16, y + 20], [inner, 28],
 	             ms_query, ms_query_cursor, "search maps...", sel);
 	y += 56;
+
+	/*
+	  ---- public lobbies (Patch 270) -------------------------------------
+
+	  A FIXED section above the list, not rows inside it, and that is a
+	  correctness decision rather than a layout preference.  The list's row ids
+	  are keyed to the view index (`cs_row<idx>`) and every row does
+	  `real = stof(bufstr_get(ms_view, idx))` -- so it assumes every index in
+	  the window is a map index.  Prepending pseudo-rows would mean offsetting
+	  that everywhere, and sui_list_view_begin's visible-window arithmetic
+	  assumes a uniform item height as well.  Mixing row kinds in there is
+	  where this would get fragile.
+
+	  Costs the list nothing to give back, because the list geometry two blocks
+	  down is DERIVED from y (`by = size_y - 46; ls = [inner, by - y - 12]`) --
+	  it shrinks by itself and needs no matching edit.
+
+	  The whole section disappears when there are no lobbies and none are
+	  blocked, which is what a player who has cleared lobby_dir gets: exactly
+	  the screen they saw before.  Since lobby_dir now ships with a default,
+	  that is a deliberate opt-out rather than the out-of-the-box state.
+	*/
+	if (Lob_Blocked())
+	{
+		/*
+		  The online terms have not been accepted, so the
+		  directory is deliberately not being polled.  Say so, and make the row
+		  the way to fix it -- see Lob_Blocked for why silence here would be the
+		  worse failure.
+		*/
+		sui_text([16, y], SZ_LABEL, "public lobbies", COL_DIM, 1, 0);
+		y += 20;
+
+		vector cp = [16, y], crs = [inner, ROW_H];
+		sui_action_element(cp, crs, "cs_lobterms", sui_noop);
+		if (sui_is_hovered("cs_lobterms"))
+			sui_fill(cp, crs, COL_ROW_HOVER, 1, 0);
+		ui_thumb([cp_x + 3, cp_y + 2], [78, 44], -1, -1);
+		sui_text([cp_x + 90, cp_y + 5], SZ_ROW,
+		         "public lobbies are off", COL_TEXT, 1, 0);
+		sui_text([cp_x + 90, cp_y + 26], SZ_ROW,
+		         "^9they send data to a server -- click to read what, and choose",
+		         COL_DIM, 1, 0);
+		if (sui_is_released("cs_lobterms"))
+			menu_screen = SCREEN_TERMS;
+
+		y += ROW_H + 8;
+	}
+	else if (Lob_Count() > 0)
+	{
+		sui_text([16, y], SZ_LABEL, "public lobbies", COL_DIM, 1, 0);
+		y += 20;
+
+		/*
+		  SIDE BY SIDE (Patch 287).  Lex: "can you put the server lobbies side by
+		  side in the create server menu for more space saving?"
+
+		  Three lobbies stacked cost 3*ROW_H = 144 px of a 760 px panel to say
+		  three short things.  Across, they cost 48 -- and every pixel saved goes
+		  straight to the map list underneath, because the list geometry below is
+		  DERIVED from y (`by = size_y - 46; ls = [inner, by - y - 12]`).  So this
+		  needs no matching edit down there; the list simply gets 96 px taller,
+		  which is two more visible maps.
+
+		  The column count is Lob_Count() rather than a constant: with two lobbies
+		  live they take half the width each and there is no empty third slot.
+		  LB_MAX is 3 (m_lobby.qc) so this is bounded, and the general
+		  row/column arithmetic below is written to survive that changing.
+
+		  IT FALLS BACK TO STACKED when a column would be too narrow to read.
+		  inner is derived from the panel, the panel is clamped to the screen, and
+		  the screen can be 800 wide -- at which point three columns are 240 px,
+		  the name column is 150, and the layout that was meant to save space
+		  instead produces three unreadable stubs.  A player on a small desktop
+		  gets the old layout, which is worse in no way, rather than a clever one
+		  that fails silently.  LOB_MIN_COL is 300 because the thumbnail (78) and
+		  its gutter (90 to the text) are fixed costs, leaving 210 for a name at
+		  16 px -- thirteen characters, which covers the common surf_* names
+		  without truncation and lets ui_fit_text handle the rest.
+		*/
+		float lgap  = 8;
+		float lcols = Lob_Count();
+		float lcolw = (inner - lgap * (lcols - 1)) / lcols;
+		if (lcolw < 300)
+		{
+			lcols = 1;
+			lcolw = inner;
+		}
+
+		for (float li = 0; li < Lob_Count(); li = li + 1)
+		{
+			// Column and row within the grid.  QC has no integer modulo, hence
+			// the subtraction; with lcols == 1 this degenerates to the old
+			// one-per-line layout exactly, which is what the fallback relies on.
+			float lgr  = floor(li / lcols);
+			float lgc  = li - lgr * lcols;
+
+			vector lp  = [16 + lgc * (lcolw + lgap), y + lgr * (ROW_H + lgap)];
+			vector lrs = [lcolw, ROW_H];
+			string lid = strcat("cs_lob", ftos(li));
+
+			/*
+			  Resolve this lobby's map against the installed list ONCE and cache
+			  it back.  -2 is "not looked up yet", -1 is "looked up, not
+			  installed" -- a real answer that gets drawn, and re-deriving it
+			  every frame would mean scanning 2200 names three times a frame.
+			*/
+			float lrow = Lob_Row(li);
+			if (lrow == -2)
+			{
+				lrow = ui_map_index(Lob_Map(li));
+				Lob_SetRow(li, lrow);
+			}
+
+			float lpage = -1, lcell = -1;
+			if (lrow >= 0)
+				if (tokenize(bufstr_get(ms_meta, lrow)) > MT_UUID)
+				{
+					lpage = (argv(MT_PAGE) == "-") ? -1 : stof(argv(MT_PAGE));
+					lcell = (argv(MT_CELL) == "-") ? -1 : stof(argv(MT_CELL));
+				}
+
+			sui_action_element(lp, lrs, lid, sui_noop);
+			if (sui_is_hovered(lid))
+				sui_fill(lp, lrs, COL_ROW_HOVER, 1, 0);
+
+			ui_thumb([lp_x + 3, lp_y + 2], [78, 44], lpage, lcell);
+
+			/*
+			  An uninstalled map is shown, dimmed, rather than hidden.  Hiding
+			  it makes a lobby with people in it silently absent and looks like
+			  the directory is broken; saying "not installed" is the honest
+			  answer and tells the player what to do about it.
+			*/
+			// The text column is what is left of the cell after the thumbnail and
+			// its gutter, less 8 px so a truncated name cannot touch the next
+			// cell's border.  At one column this is 930 px and ui_fit_text
+			// returns every name unchanged, so the stacked layout is untouched.
+			float ltw = lcolw - 90 - 8;
+
+			sui_text([lp_x + 90, lp_y + 5], SZ_ROW,
+			         ui_fit_text(Lob_Map(li), ltw, SZ_ROW),
+			         (lrow >= 0) ? COL_TEXT : COL_DIM, 1, 0);
+
+			if (lrow >= 0)
+				sui_text([lp_x + 90, lp_y + 26], SZ_ROW,
+				         ui_fit_text(sprintf("^2%g^9 / %g players",
+				                             Lob_Players(li), Lob_Max(li)),
+				                     ltw, SZ_ROW),
+				         COL_DIM, 1, 0);
+			else
+				sui_text([lp_x + 90, lp_y + 26], SZ_ROW,
+				         ui_fit_text(sprintf("^1not installed^9  -  %g playing",
+				                             Lob_Players(li)),
+				                     ltw, SZ_ROW),
+				         COL_DIM, 1, 0);
+
+			if (lrow >= 0)
+				if (sui_is_released(lid))
+					ui_connect(li);
+		}
+
+		// Advanced once for the whole grid rather than once per lobby -- the loop
+		// above places each cell absolutely from its own row/column, so y must not
+		// move underneath it.
+		float lrows = ceil(Lob_Count() / lcols);
+		y += lrows * ROW_H + (lrows - 1) * lgap + 8;
+	}
 
 	// ---- the list ------------------------------------------------------
 	float by = size_y - 46;         // top of the start/back row
@@ -2281,6 +2894,13 @@ void() m_init =
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
+	// Patch 270.  Creates the public-lobby buffers and registers lobby_dir,
+	// which SHIPS WITH A DIRECTORY URL -- the empty default was removed once it
+	// became clear it was a step to be told about rather than a decision anyone
+	// made.  Nothing is polled before an FS_TERMS_ONLINE acceptance either way;
+	// see the consent essay at the top of m_lobby.qc.
+	Lob_Init();
+
 	ms_name = ms_src = ms_lst = -1;
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_selected = -1;
@@ -2313,6 +2933,14 @@ void() m_init =
 	//                   surf_kitsune, press start, screenshot in-game, quit
 	registercvar("ui_bootcheck", "0", 0);
 	registercvar("ui_bootmap", "", 0);      // which map ui_bootcheck 3 loads
+
+	// Patch 270: 1 makes the terms screenshot draw as a FRESH INSTALL, by
+	// zeroing ms_consent for that one frame and restoring it after.  Nothing is
+	// written -- data/consent.txt is not touched -- so the two variants of the
+	// screen can both be photographed on a machine that has already consented.
+	// Safe to register here despite the read-before-register trap: its default
+	// is "0" and an auto-created "" reads as 0 as well, so the two agree.
+	registercvar("ui_bootterms", "0", 0);
 
 	// CS:GO and TF2 are mounted for their materials and models; their 272 maps
 	// are not the point and are hidden.  See SRC_ASSET.
@@ -2380,7 +3008,17 @@ void(vector screensize) m_draw =
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_CREATE)
+	{
+		/*
+		  Patch 270.  Polled only while the picker is actually on screen, so
+		  sitting in the main menu or in a game makes no request at all -- and
+		  without an FS_TERMS_ONLINE acceptance Lob_Poll returns before touching
+		  the network.  It is BEFORE screen_create rather than inside it so the
+		  poll does not depend on where in the layout the rows ended up.
+		*/
+		Lob_Poll();
 		screen_create(screensize);
+	}
 	else
 		screen_main(screensize);
 

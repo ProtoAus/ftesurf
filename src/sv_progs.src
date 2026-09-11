@@ -9,6 +9,23 @@ shared/sh_portal.qc
 
 server/sv_entities.qc
 server/sv_zones.qc
+
+// Patch 270, Stage 2: MOVED UP, from just after sv_saveloc.qc.
+//
+// QuakeC has no forward declarations, so a file can only read globals that an
+// earlier file declared.  Stage 2 makes the timer, the recorder and the
+// save-loc list behave differently in a lobby, which means sv_timer.qc and
+// sv_saveloc.qc have to be able to read lobby_on -- and it was declared after
+// them.  The alternative was a second copy of the cvar reads in each file,
+// which is the shape that produced the ui_rs_armed bug this tree already ate.
+//
+// Safe to move because sv_lobby.qc depends on NOTHING in this project: grep it
+// and every identifier it touches is either its own lobby_ prefix or an engine
+// builtin/field from defs/sv_defs.qc.  It is only ever CALLED from later files
+// (sv_player.qc's connect/disconnect, sv_main.qc's frame), and calls still run
+// downhill.
+server/sv_lobby.qc
+
 server/sv_timer.qc
 server/sv_saveloc.qc
 server/sv_player.qc

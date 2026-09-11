@@ -110,6 +110,19 @@ ADDONS = [
      "steam:Portal 2/portal2"),
     ("portal", os.path.join(STEAM, "Portal", "portal"),
      "steam:Portal/portal"),
+    #Momentum Mod's OWN content mount, and the second time a missing candidate here
+    #was mistaken for missing content (see Portal 2 above).  momentum/gameinfo.txt
+    #mounts `game mount/hl2_dir.vpk`, a 35,474-file bundle of HL2 plus both episodes,
+    #and fs_addons.txt said that directory "ships empty" -- it does not.  So every
+    #episode-only prop fell into the "-" bucket: surf_fantasy's pine trees, ferns,
+    #stumps and fallen trees (126 of its 2345 static props, measured 2026-09-09) were
+    #filed as unfixable while this pack had every one of them.  Chosen over
+    #`steam:Half-Life 2/ep2`, which has them too at identical checksums, because the
+    #map library IS this install: anyone who has the maps has the mount, and nobody
+    #needs to own a second game.  Last, like every addition, so no existing
+    #attribution moves.
+    ("mount", os.path.join(STEAM, "Momentum Mod Playtest", "mount"),
+     "steam:Momentum Mod Playtest/mount"),
 ]
 
 #The VMT keys plugins/hl2/mat_vmt.c actually turns into a texture load, at
@@ -557,6 +570,7 @@ class Resolver:
         self.live = live
         self.addons = addons
         self.vmtcache = {}          #path -> (tex, inc), shared across maps
+        self.mdlcache = {}          #path -> the .mdl's material candidates, likewise
 
     def find(self, path):
         for p in self.live:
@@ -580,14 +594,28 @@ class Resolver:
         return out
 
 
-def resolve_material(rs, mat, need, seen, depth=0):
+def resolve_material(rs, mat, need, seen, depth=0, prefer=None):
     """Walk one material to its textures, recording every pack it needs.
 
     `need` is a dict pack-name -> set of paths that pack alone supplies.
     Missing-from-everything lands under "-".
+
+    `prefer` is an addon pack credited AHEAD of ADDONS order for anything the
+    live packs lack -- resolve_model passes the pack the model itself came from.
+    Content authored together should be served together: surf_fantasy's episode
+    pines come from Momentum's mount and wear arbre01.vtf, which TF2 (first in
+    ADDONS) also ships with DIFFERENT bytes.  Order alone credits TF2, which both
+    serves a texture the model was not authored with and mounts a 147k-entry
+    index for it.  World materials pass no preference and are unchanged.
     """
+    def find(path):
+        p, w = rs.find(path)
+        if w and prefer is not None and prefer.has(path):
+            return prefer, prefer.name
+        return p, w
+
     for cand in candidates(mat):
-        pack, who = rs.find(cand)
+        pack, who = find(cand)
         if pack is None:
             continue
         if who:
@@ -600,14 +628,14 @@ def resolve_material(rs, mat, need, seen, depth=0):
             if t in seen:
                 continue
             seen.add(t)
-            tpack, twho = rs.find(t)
+            tpack, twho = find(t)
             if twho:
                 need.setdefault(twho, set()).add(t)
                 if key in VISIBLE_TEXKEYS:
                     need.setdefault("visible:" + twho, set()).add(t)
         for i in inc:
             resolve_material(rs, i[len("materials/"):-len(".vmt")], need, seen,
-                             depth + 1)
+                             depth + 1, prefer)
         return True
     #No candidate resolved anywhere at all
     need.setdefault("-", set()).add(candidates(mat)[0])
@@ -648,6 +676,70 @@ def resolve_model(rs, mdl, need, seen):
                 if w and w != "-":
                     need.setdefault(w, set()).add(stem + v)
                 break
+
+    #...and the model's OWN materials, which the docstring at the top of this file
+    #has claimed since v2 and this function never did.  Measured on surf_fantasy:
+    #its pakfile carries arbre01.vmt, ferns01.vmt and arbrefallen01.vmt while the
+    #.vtf behind every one of them is in Momentum's mount only -- the surf_tensor2
+    #shape (a packed stub over an unmounted texture), for props.  Trees whose .mdl
+    #was missing as well got their dep line from the model; tree_pine04x2, packed
+    #whole and wearing the same arbre01, would not have.
+    cands = rs.mdlcache.get(mdl) if pack.name != "bsppak" else None
+    if cands is None:
+        try:
+            cands = mdl_materials(pack.read(mdl) or b"", mdl)
+        except Exception:
+            cands = []
+        if pack.name != "bsppak":
+            rs.mdlcache[mdl] = cands
+    #A model from an addon pack credits that pack first for its own materials; see
+    #resolve_material's `prefer`.  A model resolved from a live pack has no addon
+    #of its own to prefer.
+    mine = pack if who else None
+    for paths in cands:
+        for c in paths:
+            if rs.find(candidates(c)[0])[0] is not None or (mine is not None and mine.has(candidates(c)[0])):
+                resolve_material(rs, c, need, seen, prefer=mine)
+                break
+        else:
+            if paths:
+                resolve_material(rs, paths[0], need, seen, prefer=mine)
+
+
+def mdl_materials(data, mdl):
+    """For each texture a .mdl names, its material candidates in probe order.
+
+    mod_hl2.c:630-655 tries every texture under each $cdmaterials path in turn
+    and the first .vmt that exists wins; a model with no path list uses its own
+    directory.  Names only -- no materials/ prefix and no .vmt, the form
+    resolve_material takes.  Offsets are the studiohdr_t fields the loader reads:
+    texture count/offset at 204/208, cdtexture count/offset at 212/216, and a
+    64-byte mstudiotexture_t whose name offset is relative to itself.
+    """
+    if len(data) < 220 or data[:4] != b"IDST":
+        return []
+    try:
+        texn, texo = struct.unpack_from("<ii", data, 204)
+        pathn, patho = struct.unpack_from("<ii", data, 212)
+        if not (0 <= texn <= 1024 and 0 <= pathn <= 256):
+            return []
+
+        def cstr(o):
+            return data[o:data.index(b"\0", o)].decode("latin-1")
+
+        paths = [cstr(struct.unpack_from("<i", data, patho + i * 4)[0])
+                 for i in range(pathn)]
+        out = []
+        for i in range(texn):
+            base = texo + i * 64
+            name = cstr(base + struct.unpack_from("<i", data, base)[0])
+            if paths:
+                out.append([p + name for p in paths])
+            else:
+                out.append([mdl[:-4] + "/" + name])
+        return out
+    except (struct.error, ValueError, IndexError):
+        return []
 
 
 # --------------------------------------------------------------------------
@@ -716,6 +808,41 @@ def scan(bsp_path, live_packs, addon_packs, do_models=True, do_sky=True):
                 resolve_sky(rs, sky, need, seen)
         except Exception:
             pass
+
+    #Never mount a pack when the other packs this map already needs have every file
+    #it would supply.  Attribution above is first-in-ADDONS-order per FILE, which is
+    #right for one file and wrong for the set: surf_fantasy's arbre01.vtf lands on
+    #TF2, first in the list, while Momentum's mount -- needed anyway, for the models
+    #that wear it -- has the same file, and mounting TF2 for two textures costs the
+    #map a 147k-entry index on every load.  Biggest pack first, since dropping it
+    #saves the most; a pack stays if even one of its files is only its own.
+    chosen = [p for p in addon_packs if need.get(p.name)]
+    for p in sorted(chosen, key=len, reverse=True):
+        others = [q for q in chosen if q is not p and need.get(q.name)]
+        mine = need.get(p.name)
+        if not others or not mine:
+            continue
+        #...and only onto a copy that is the SAME FILE.  A same-path file is not the
+        #same file: the first version of this prune went by path alone and moved 47
+        #files on 11 maps that already drew correctly, and 25 of those 47 differ byte
+        #for byte (Portal 1's concrete_modular_floor001a against Portal 2's, CS:GO's
+        #train_box.mdl against Portal 2's).  That silently re-textures a working map.
+        import hashlib
+        home = {}
+        for f in mine:
+            mine_h = hashlib.sha1(p.read(f) or b"").digest()
+            q = next((q for q in others
+                      if q.has(f) and hashlib.sha1(q.read(f) or b"").digest() == mine_h), None)
+            if q is None:
+                break
+            home[f] = q
+        else:
+            vis = need.pop("visible:" + p.name, set())
+            need.pop(p.name)
+            for f, q in home.items():
+                need.setdefault(q.name, set()).add(f)
+                if f in vis:
+                    need.setdefault("visible:" + q.name, set()).add(f)
 
     if pak.zip:
         try:

@@ -1,0 +1,53 @@
+# play.proto.bar -- the public vhost for the FTESurf lobby directory.
+#
+# NOT INSTALLED BY HAND. Use setup_public.sh, which installs this together with
+# the two snippets it includes, obtains the certificate, and checks its work.
+#
+# WHAT IS AND IS NOT EXPOSED, AND WHY IT IS A LIST OF LOCATIONS RATHER THAN ONE
+# proxy_pass:
+#
+#   /lobbies.json   public, read-only        <- what the game menu polls
+#   /health         public, read-only
+#   /admin          public login             <- see admin.nginx's essay
+#   everything else 404, INCLUDING /api/heartbeat
+#
+# /api/heartbeat is the one that must never appear here, and the reason is not
+# that it is secret -- it is that surfd derives each lobby's advertised address
+# from the SOCKET PEER (see the PUBLIC_HOST essay in surfd.py). Proxied, every
+# heartbeat would arrive from 127.0.0.1 and every lobby would be advertised at
+# an address nobody can reach. The game servers are on this same box and post
+# straight to 127.0.0.1:8084; they do not need, and must not use, this vhost.
+#
+# There is deliberately NO `location / { proxy_pass ... }` catch-all. Adding one
+# would expose /api/heartbeat by accident, which is exactly the failure the
+# split-location design exists to prevent.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name play.proto.bar;
+
+    # Certbot writes its challenge here; everything else goes to TLS.
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name play.proto.bar;
+
+    # Filled in by certbot on first run.
+    ssl_certificate     /etc/letsencrypt/live/play.proto.bar/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/play.proto.bar/privkey.pem;
+
+    # The menu polls this; a tiny body and a short timeout are the whole point.
+    client_max_body_size 16k;
+
+    include snippets/surfd.conf;
+    include snippets/surfd-admin.conf;
+
+    # Anything not named above does not exist. This is what keeps
+    # /api/heartbeat off the internet.
+    location / { return 404; }
+}

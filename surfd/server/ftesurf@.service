@@ -1,0 +1,107 @@
+# ftesurf@.service -- one FTESurf lobby, as a systemd instance.
+#
+# INSTALLED AND ENABLED as of Sep 8 17:06 -- /etc/systemd/system/, with
+# instances 1, 2 and 3 all enabled and active. This file is the SOURCE; the
+# installed copy is a deployment of it.
+#
+# To push a change:
+#     sudo cp /srv/nvme/ftesurf-server/ftesurf@.service /etc/systemd/system/
+#     sudo systemd-analyze verify /etc/systemd/system/ftesurf@.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl restart ftesurf@1 ftesurf@2 ftesurf@3
+#
+# The admin panel drives these units through a NOPASSWD sudoers grant in
+# /etc/sudoers.d/ftesurf. That grant names the units WITHOUT the .service
+# suffix -- `systemctl restart ftesurf@1` -- and sudo matches literally, so the
+# suffixed spelling is refused as "a password is required". See
+# surfd/surfd-admin.sudoers, which records the grant and that trap.
+#
+# %i is the tier: 1, 2 or 3. run.sh maps that to a port, a hostname, a rotation
+# and a default map; this unit deliberately knows none of those, so there stays
+# exactly one place per lobby that says what its port is (cfg/lobbyN.cfg).
+#
+# WHY THIS EXISTS. Until now the three lobbies were nohup'd from runall.sh with
+# pid files and nothing restarted them -- not after a crash, not after a reboot.
+# "Control the servers" starts with the servers still being there.
+#
+# Type=simple and NOT Type=forking: run.sh ends in `exec ./fteqw-svarm64`, so
+# the shell is REPLACED and $MAINPID is the engine itself. If anybody ever
+# removes that `exec`, systemd will start tracking the shell and every restart
+# will leave an orphaned engine holding the UDP port. The failure looks like
+# "the server won't start" and the cause is three files away.
+
+[Unit]
+Description=FTESurf lobby %i
+After=network-online.target
+Wants=network-online.target
+# Not Requires=surfd: a lobby whose directory is down is still a playable
+# server that people can connect to directly. It just is not advertised.
+After=surfd.service
+
+# THESE TWO BELONG IN [Unit], NOT [Service], and systemd does not error if you
+# get it wrong -- it logs "Unknown key ... ignoring" once at load and then has
+# no rate limit at all. Caught by `systemd-analyze verify`; run that before
+# installing any change to this file.
+#
+# A config error that makes the engine exit immediately would otherwise respawn
+# forever at 5s intervals and bury the reason in a megabyte of log. Five tries
+# in five minutes, then stop and stay stopped so the failure is visible.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=proto
+Group=proto
+WorkingDirectory=/srv/nvme/ftesurf-server
+ExecStart=/srv/nvme/ftesurf-server/run.sh %i
+
+# The same log files runall.sh has always written, so nothing that reads them
+# has to change and the history is continuous across the switch to systemd.
+StandardOutput=append:/srv/nvme/ftesurf-server/server%i.log
+StandardError=inherit
+
+Restart=always
+RestartSec=5s
+# The start-rate limit that pairs with Restart=always is up in [Unit].
+
+# SIGTERM is what the engine handles; give it time to drop clients cleanly, then
+# SIGKILL. A lobby killed outright leaves its row in surfd until the 30s TTL,
+# which reads to a player as a lobby that is there and will not accept them.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Hardening. Deliberately lighter than surfd.service: this process loads BSPs,
+# VPKs and a plugin out of the Steam library, so it needs to read a great deal
+# more of the filesystem than a Flask app does.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+SystemCallArchitectures=native
+
+# DELIBERATELY ABSENT, and do not add them without testing:
+#
+#   MemoryDenyWriteExecute=true
+#       surfd.service sets it and is right to. Here it would be a bug: the
+#       engine has a QuakeC JIT (cfg/testrun/jit12.cfg exists because of it),
+#       and a JIT is by definition a writable mapping that is then executed.
+#       W^X would either disable it silently or kill the process.
+#
+#   ProtectSystem=strict
+#       Everything outside ReadWritePaths becomes read-only, and this process
+#       reads the Momentum/CS:S/HL2 Steam library and dlopen()s the hl2 plugin.
+#       If it is ever added, the ReadWritePaths list must cover the game dir AND
+#       the read paths must cover wherever the Steam library actually lives on
+#       this machine -- which is exactly the sort of thing that works until the
+#       library moves. ProtectSystem=full is the safer half-step.
+#
+# If a lobby fails to start after installing this, remove the hardening block
+# first and add it back one line at a time. Do not guess.
+
+[Install]
+WantedBy=multi-user.target

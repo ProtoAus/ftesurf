@@ -300,8 +300,14 @@ void() HUD_EditClose =
 	  replay chrome share this cursor, and turning it off underneath one of them
 	  leaves a panel up with nothing able to press anything on it.
 	*/
-	if (!rec_wt_open && !rec_sb_open)
-		setcursormode(FALSE);
+	// BUILD 48: and the results card, once it has actually TAKEN the cursor.
+	// ui_rs_cursor and not ui_rs_open -- the card spends most of its life drawn
+	// and passive, and a panel merely on screen has no claim on the mouse.
+	//
+	// BUILD 55: that distinction was the right one and it is preserved -- the
+	// card claims UIC_RESULTS only in Results_TakeCursor, not when it is merely
+	// drawn. What changed is that this file no longer enumerates the others.
+	UI_CursorRelease(UIC_HUDEDIT);
 
 	/*
 	  cfg_save_auto 1 means the engine writes ftesurf.cfg on a clean quit, so this
@@ -335,7 +341,7 @@ void() HUD_EditOpen =
 	ui_he_drag  = FALSE;
 	ui_he_shift = FALSE;
 	ui_he_held  = "";
-	setcursormode(TRUE, "", '0 0 0', 1);
+	UI_CursorClaim(UIC_HUDEDIT);
 
 	print("^5hud_edit^7: drag a panel to move it.  SHIFT suspends snapping.\n");
 	print("           click a name to toggle it; ESC, `done` or `hud_edit` to finish.\n");
