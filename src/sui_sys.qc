@@ -755,8 +755,17 @@ float _scan_listen_count;
 // Listen to a certain keycode if it was pressed, this way sui know it was requested
 float(float keycode) sui_listen_scan =
 {
-	_scan_listens[_scan_listen_count] = keycode;
-	_scan_listen_count += 1;
+	// FTESurf build 56: bounded, here and in sui_listen_command.  Nothing capped
+	// these writes and the count is reset only once per frame (sui_begin), so a
+	// scroll view fed a burst of wheel notches near its edge -- each one listens
+	// for three codes plus every key bound to +forward/+back -- wrote past
+	// _scan_listens[MAX_INPUTS] into _scan_listen_count itself.  Dropping a
+	// listen only means sui_block_listened may let that one key through.
+	if (_scan_listen_count < MAX_INPUTS)
+	{
+		_scan_listens[_scan_listen_count] = keycode;
+		_scan_listen_count += 1;
+	}
 	for (float i = 0; i < _input_length; i++)
 	{
 		if (_input_buffer[i].scan == keycode)
@@ -771,8 +780,11 @@ float(string command) sui_listen_command =
 	for (int i = 0; i < num_binds; i++)
 	{
 		float keycode = stof(argv(i));
-		_scan_listens[_scan_listen_count] = keycode;
-		_scan_listen_count += 1;
+		if (_scan_listen_count < MAX_INPUTS)	// bounded; see sui_listen_scan
+		{
+			_scan_listens[_scan_listen_count] = keycode;
+			_scan_listen_count += 1;
+		}
 		for (int j = 0; j < _input_length; j++)
 		{
 			if (_input_buffer[j].scan == keycode)

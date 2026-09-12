@@ -369,6 +369,30 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_TIMERPBWAS,    EV_FLOAT, run_t_pbwas);
 
 	/*
+	  BUILD 57, STAGE T: a lobby time, kept on the player's own PC.
+
+	  Five stats and not one, because the client cannot see a lobby finish at all
+	  -- the recorder is off, so the RUNTAG/RUNTICKS/RUNLEG triple above is never
+	  published, and TS_FINISHED can be skipped outright when a chained stage run
+	  re-arms inside the same server frame.  The full argument is over
+	  STAT_FS_FINREC in shared/sh_defs.qc; the writer is client/cl_lobbytime.qc.
+
+	  STAT_FS_LOBBY is the GATE: it is the only one of the five that means
+	  anything off a lobby, and what it means there is "do not write" -- a listen
+	  server writes its own files and must not be double-written.  It is mirrored
+	  onto the player once a frame by Lobby_Frame, because clientstat takes a field
+	  and "is this server a lobby" is not a fact about a person.
+
+	  The other four sit still between finishes and FINREC moves once per run, so
+	  the delta compressor sends nothing at all for any of them while one is going.
+	*/
+	clientstat(STAT_FS_LOBBY,         EV_FLOAT, lobby_stat);
+	clientstat(STAT_FS_FINREC,        EV_FLOAT, run_t_finrec);
+	clientstat(STAT_FS_FINTICKS,      EV_FLOAT, run_t_finticks);
+	clientstat(STAT_FS_FINLEG,        EV_FLOAT, run_t_finleg);
+	clientstat(STAT_FS_FINFLAGS,      EV_FLOAT, run_t_finflags);
+
+	/*
 	  The player's fog controller, by targetname.  The only EV_STRING stat in the
 	  game: it carries a NAME rather than an index so the two sides never have to
 	  agree on a numbering, and it is a stat rather than serverinfo because

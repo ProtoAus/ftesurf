@@ -102,7 +102,11 @@ string rec_wt_map;               // its `map` header key
 float  rec_wt_endticks;          // the `end` record's tick count
 float  rec_wt_nsamp;             // samples in the file
 float  rec_wt_recflags;          // the `flags` header key, -1 when absent
-float  rec_wt_startseg;
+float  rec_wt_startseg;          // the SEGMENT the recording began at
+// BUILD 57: and the LEG it belongs to -- 0 the full run, k stage k.  The two are
+// no longer one number: a stage-1 run and a full run both begin at segment 0.
+// From the `leg` header key, or derived from startseg for a file older than it.
+float  rec_wt_leg;
 
 /*
   BUILD 26: two more header facts, for hud_watch_info's file rows.
@@ -490,6 +494,7 @@ void() Watch_Scan =
 	ver            = 0;
 	rec_wt_track    = 0;
 	rec_wt_startseg = 0;
+	rec_wt_leg      = -1;           // build 57: -1 = no `leg` key seen yet
 	rec_wt_owner    = "";
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
@@ -517,6 +522,7 @@ void() Watch_Scan =
 		if (argv(0) == "map")         rec_wt_map      = argv(1);
 		if (argv(0) == "track")       rec_wt_track    = stof(argv(1));
 		if (argv(0) == "startseg")    rec_wt_startseg = stof(argv(1));
+		if (argv(0) == "leg")         rec_wt_leg      = stof(argv(1));
 		if (argv(0) == "tickrate")    rec_wt_tickrate = stof(argv(1));
 		if (argv(0) == "owner")       rec_wt_owner    = argv(1);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
@@ -525,6 +531,18 @@ void() Watch_Scan =
 
 	if (rec_wt_tickrate <= 0)
 		rec_wt_tickrate = PM_TICK;
+
+	/*
+	  BUILD 57: A FILE WITH NO `leg` KEY IS OLDER THAN STAGE 1 BEING A LEG, and it
+	  says exactly one thing: every stage run before build 57 began past segment 0
+	  and every run that began AT segment 0 was the full track.  So its leg is
+	  derived from the segment by the same helper the writer uses, with stagerun
+	  standing in as `startseg > 0` -- which is not a guess about those files but
+	  the only thing they could have meant.  After the loop, not inside it, because
+	  the header's own rule is that its keys are order-free.
+	*/
+	if (rec_wt_leg < 0)
+		rec_wt_leg = FS_LegOf(rec_wt_startseg, rec_wt_startseg > 0);
 
 	// ---- pass one: count samples, collect records ------------------------
 	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
@@ -3699,8 +3717,12 @@ void(vector scr) Watch_Info =
 	              sprintf("%g rec  %g view lines",
 	                      rec_wt_recn, rec_wt_viewn));                        y = y + lh;
 
+	// Build 57: the LEG and the segment it began at, which stopped being one
+	// number when stage 1 became a leg -- a stage-1 run and a full run both read
+	// `seg 0`, and only `leg` tells them apart.
 	Watch_InfoRow([p_x, y], w, sz, cw, "leg",
-	              sprintf("track %g  seg %g", rec_wt_track, rec_wt_startseg)); y = y + lh;
+	              sprintf("track %g  leg %g  seg %g",
+	                      rec_wt_track, rec_wt_leg, rec_wt_startseg));        y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "time",
 	              sprintf("%s  %g ticks",
@@ -3964,9 +3986,10 @@ float(float evtype, float scanx, float chary, float devid) Watch_InputEvent =
   and therefore SILENTLY does nothing when the name is taken -- the command would
   simply never arrive and nothing would say why.
 */
-string(float track, float startseg, string tag) Watch_LegPath =
+// BUILD 57: `leg` is the LEG -- 0 the full run, k stage k -- as FS_RunPath takes it.
+string(float track, float leg, string tag) Watch_LegPath =
 {
-	return FS_RunPath(serverkey("map"), track, startseg, -1, tag, "rec");
+	return FS_RunPath(serverkey("map"), track, leg, -1, tag, "rec");
 };
 
 /*
@@ -3974,14 +3997,18 @@ string(float track, float startseg, string tag) Watch_LegPath =
   zero-padded tick counts, so the first match IS the fastest.  That property is
   the whole reason build 23 padded them, and it is what lets a leaderboard exist
   with no index file.
+
+  BUILD 57: keyed on the LEG.  It took the 0-based starting segment and handed it
+  to FS_RunDir as though it were one, which is why `replay stage 2` opened stage
+  3's folder and `replay stage 1` opened stage 2's.
 */
-string(float track, float startseg, string tag) Watch_BestOnLeg =
+string(float track, float leg, string tag) Watch_BestOnLeg =
 {
 	local float h;
 	local string fn;
 
 	h = search_begin(sprintf("%s*_%s.rec", FS_RunDir(serverkey("map"),
-	                                                 track, startseg), tag),
+	                                                 track, leg), tag),
 	                 FS_NAMESORT, TRUE);
 	if (h < 0)
 		return "";
@@ -4116,7 +4143,7 @@ void() Watch_Status =
 float(string cmd) Watch_ConsoleCommand =
 {
 	local string a, p;
-	local float track, seg;
+	local float track, leg;
 
 	tokenize(cmd);
 	if (argv(0) != "replay")
@@ -4165,7 +4192,7 @@ float(string cmd) Watch_ConsoleCommand =
 	}
 
 	track = 0;
-	seg   = 0;
+	leg   = 0;
 	p     = "";
 
 	if (a == "")
@@ -4181,21 +4208,41 @@ float(string cmd) Watch_ConsoleCommand =
 	  one has exactly one and its path is already known.  Same reason SV_RecClose
 	  stopped spelling that test out in the same build.
 	*/
+	/*
+	  BUILD 57: A LOBBY TIME HAS NO REPLAY, and saying so is the whole fix.  Its
+	  .rec is a header with `samples 0`: the server measured the run and kept
+	  nothing, and this client wrote down only what the stats told it.  Left to
+	  fall through, Watch_Open reports "holds 0 samples -- nothing to play", which
+	  reads as a truncated or corrupt recording rather than as the shape every
+	  lobby row has.  The leaderboard already refuses the same click in the same
+	  words; this is the console door to it.
+	*/
+	else if (FS_TagFromName(a) == RT_LOBBY)
+	{
+		print("^3replay:^7 that time was set on a lobby -- no replay was recorded\n");
+		return TRUE;
+	}
 	else if (FS_TagFromName(a) != RT_NONE)
 	{
 		p = FS_TagArchived(FS_TagFromName(a)) ? Watch_BestOnLeg(0, 0, a)
 		                                      : Watch_LegPath(0, 0, a);
 	}
+	/*
+	  BUILD 57: `replay stage N` IS LEG N -- stage N as the HUD, `!s N` and the
+	  scoreboard all count it.  The number used to reach FS_RunDir as a 0-based
+	  segment, so `replay stage 2` opened stage 3's folder and stage 1 could not
+	  be asked for at all.  `bonus T N` takes the same leg for the bonus's stage N.
+	*/
 	else if (a == "stage")
 	{
-		seg = stof(argv(2));
-		p   = Watch_BestOnLeg(0, seg, "pb");
+		leg = stof(argv(2));
+		p   = Watch_BestOnLeg(0, leg, "pb");
 	}
 	else if (a == "bonus")
 	{
 		track = stof(argv(2));
-		seg   = stof(argv(3));
-		p     = Watch_BestOnLeg(track, seg, "pb");
+		leg   = stof(argv(3));
+		p     = Watch_BestOnLeg(track, leg, "pb");
 	}
 	else
 		p = a;
@@ -4203,7 +4250,7 @@ float(string cmd) Watch_ConsoleCommand =
 	if (p == "")
 	{
 		print(sprintf("replay: no recording for %s\n",
-		              FS_RunDir(serverkey("map"), track, seg)));
+		              FS_RunDir(serverkey("map"), track, leg)));
 		return TRUE;
 	}
 

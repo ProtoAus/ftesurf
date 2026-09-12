@@ -158,12 +158,18 @@ vector ev_mouse;                // last absolute cursor position, virtual pixels
 float  ev_mouse_seen;           // ...and whether one has arrived since it was taken
 float  ev_click_pending;        // a world click for Ev_Draw to resolve
 float  ev_click_centre;         // ...at screen centre, sized by Ev_Draw (ent_click)
+float  ev_click_script;         // ...and that it came from a cfg, not the pointer
 float  ev_hover;                // row under the mouse this frame, -1 for none
 vector ev_list_scroll;          // the key list's sui scroll offset
 string ev_copied;               // what the last copy was (strzone'd), for the toast
 float  ev_copied_at;
 vector ev_panel_p;              // where Ev_Panel last drew, so that a click on
 vector ev_panel_s;              // the panel never picks the world behind it
+float  ev_btn;                  // EVB_*: buttons whose PRESS the inspector took
+#define EVB_M1   1
+#define EVB_M2   2
+#define EVB_WUP  4
+#define EVB_WDN  8
 
 // The leaderboard's palette (cl_scores.qc SBC_*), so the two read as one UI.
 #define EVC_PANEL '0.07 0.08 0.11'
@@ -459,8 +465,14 @@ string(float row, string key) Ev_Key =
 
   The fallback for a probe that landed on cl_sprites.qc's occluder copy instead
   of ours -- see the header.  A "*N" names exactly one entity in the lump, so
-  this is exact rather than a guess, and it is a linear scan because it runs on
-  a keypress and never per frame.
+  this is exact rather than a guess.
+
+  BUILD 56: against the denormalised ev_mdl column, not Ev_Key.  This used to say
+  it "runs on a keypress and never per frame", and the cursor made that false:
+  Ev_ProbeDir runs every frame the overlay is up, and Ev_Key is a tokenize plus a
+  key scan per row -- about 2000 of each on surf_tensor2.  ev_mdl holds exactly
+  the "*N" key for a brush row and "" for a point one, so a string compare asks
+  the same question.
 */
 float(string mdl) Ev_RowForModel =
 {
@@ -469,7 +481,7 @@ float(string mdl) Ev_RowForModel =
 	if (mdl == "" || substring(mdl, 0, 1) != "*")
 		return -1;
 	for (i = 0; i < ev_n; i = i + 1)
-		if (Ev_Key(i, "model") == mdl)
+		if (bufstr_get(ev_mdl, i) == mdl)
 			return i;
 	return -1;
 };
@@ -493,16 +505,75 @@ float(string mdl) Ev_RowForModel =
   through the MOUSE rather than along the view's forward.  Ev_Probe keeps its
   exact build-54 behaviour by passing v_forward.
 */
+/*
+  BUILD 56, from the review: STAND INSIDE A COPY AND THE PROBE LIES.  A line that
+  starts inside a box hull and leaves it comes back fraction 1 with startsolid and
+  no impact (q1bsp.c:794-795, 859-865; com_bih.c:225-230 for a BIH brush), so the
+  enclosing copy is never what the trace returns.  Closer hits are still reported
+  correctly -- world.c:1984 ORs startsolid in before the swap below it, so that arm
+  cannot run, and an enclosing box takes trace_ent only on a fraction TIE
+  (:2007-2010), which means fraction 1, which this function already rejects.  What
+  it cost is precisely this: the walls of the volume you are standing in cannot be
+  hit from inside it, so the trigger you are standing in -- the one this tool exists
+  to name -- could never be selected at all.
+
+  So every copy whose box holds the eye sits out the trace, and the smallest is
+  remembered in ev_inside for the callers that want a fallback: ent_here and a
+  click do, hover does not (the room you are in would light up whenever the mouse
+  is on a wall).  SITTING OUT MEANS BOTH HALVES of world.c:1922 -- SOLID_NOT alone
+  is still hit, because every copy carries FL_FINDABLE_NONSOLID (Ev_AddCopy).
+  Nothing is relinked: the clip reads .solid and .flags per edict on every trace
+  (world.c:1916-1925), so putting both back afterwards is the whole undo.
+*/
+float  ev_inside;               // smallest copy holding the eye at the last probe, -1 none
+entity ev_inside_e;             // ...its edict, whose box the server request needs
+float  ev_inside_n;             // ...and how many copies held it
+.float  ev_oldsolid;
+.entity ev_hidnext;
+
 float(vector dir) Ev_ProbeDir =
 {
 	local vector eye;
-	local float  row;
+	local float  row, vol, best;
+	local entity c, hid;
 
+	ev_inside   = -1;
+	ev_inside_e = world;
+	ev_inside_n = 0;
 	if (!Ev_Ready())
 		return -1;
 
-	eye = getproperty(VF_ORIGIN);
+	eye  = getproperty(VF_ORIGIN);
+	hid  = world;
+	best = 0;
+	for (c = ev_head; c != world; c = c.ev_next)
+	{
+		if (eye_x <= c.absmin_x || eye_x >= c.absmax_x ||
+		    eye_y <= c.absmin_y || eye_y >= c.absmax_y ||
+		    eye_z <= c.absmin_z || eye_z >= c.absmax_z)
+			continue;
+		vol = (c.absmax_x - c.absmin_x) * (c.absmax_y - c.absmin_y) * (c.absmax_z - c.absmin_z);
+		if (ev_inside < 0 || vol < best)
+		{
+			best        = vol;
+			ev_inside   = c.ev_row;
+			ev_inside_e = c;
+		}
+		ev_inside_n   = ev_inside_n + 1;
+		c.ev_oldsolid = c.solid;
+		c.solid       = SOLID_NOT;
+		c.flags       = c.flags - (c.flags & FL_FINDABLE_NONSOLID);
+		c.ev_hidnext  = hid;
+		hid = c;
+	}
+
 	traceline(eye, eye + dir * EV_PROBE, MOVE_EVERYTHING, world);
+
+	for (c = hid; c != world; c = c.ev_hidnext)
+	{
+		c.solid = c.ev_oldsolid;
+		c.flags = c.flags | FL_FINDABLE_NONSOLID;
+	}
 
 	if (trace_fraction >= 1 || trace_ent == world)
 		return -1;
@@ -551,12 +622,11 @@ string(float row) Ev_Summary =
 	               tn, tgt);
 };
 
-string(float row) Ev_Line =
+string(float row, vector at) Ev_Line =
 {
 	if (row < 0 || row >= ev_n)
 		return "[enthere] nothing";
-	return sprintf("%s at=%.0f %.0f %.0f", Ev_Summary(row),
-	               trace_endpos_x, trace_endpos_y, trace_endpos_z);
+	return sprintf("%s at=%.0f %.0f %.0f", Ev_Summary(row), at_x, at_y, at_z);
 };
 
 /*
@@ -584,11 +654,13 @@ void(float row) Ev_PrintKeys =
   clipboard, and the server's half.  Shared by ent_here (the crosshair) and by a
   click with the cursor taken (the mouse), so the two cannot drift apart.
 
-  IT MUST RUN IMMEDIATELY AFTER THE PROBE'S TRACE -- Ev_Line reads trace_endpos
-  and the server request reads trace_ent's box -- and both callers do: nothing
-  between the traceline and this call traces again.
+  `hit` is the copy whose box goes to the server and `at` is the point the line
+  reports.  Both callers pass trace_ent and trace_endpos straight from the probe
+  -- nothing between the traceline and this call traces again -- except the
+  build-56 inside fallback, which passes the copy holding the eye and the eye
+  itself, because a trace that started inside that box never touched it.
 */
-void(float row) Ev_Report =
+void(float row, entity hit, vector at) Ev_Report =
 {
 	local string line;
 	local vector mid;
@@ -596,11 +668,11 @@ void(float row) Ev_Report =
 	ev_sel = row;
 	ev_list_scroll = '0 0 0';
 
-	line = Ev_Line(row);
+	line = Ev_Line(row, at);
 	print(sprintf("%s\n", line));
 	Ev_PrintKeys(row);
 	clipboard_set(EV_CLIPBOARD, line);
-	print("^2ent_here^7: copied to the clipboard\n");
+	print("^2ent^7: copied to the clipboard\n");
 
 	/*
 	  And ask the SERVER what it made of it.  The lump says what the mapper
@@ -615,7 +687,7 @@ void(float row) Ev_Report =
 	  client just hit is always inside the box the server will compare against,
 	  because both are the same submodel's absmin/absmax.
 	*/
-	mid = (trace_ent.absmin + trace_ent.absmax) * 0.5;
+	mid = (hit.absmin + hit.absmax) * 0.5;
 	localcmd(sprintf("cmd ent_info %s %.1f %.1f %.1f\n",
 	                 bufstr_get(ev_cn, row), mid_x, mid_y, mid_z));
 };
@@ -641,6 +713,30 @@ void() Ev_Here =
 	}
 
 	row = Ev_Probe();
+	/*
+	  BUILD 56: the volumes holding the eye sat that trace out (Ev_ProbeDir), so
+	  name them -- and when the ray found nothing else, the smallest of them IS
+	  the answer: you are standing in it.
+	*/
+	if (ev_inside_n > 0)
+		print(sprintf("^5ent_here^7: you are inside the bounding box of %g volume%s; the smallest is %s %s\n",
+		              ev_inside_n, (ev_inside_n == 1) ? "" : "s", bufstr_get(ev_cn, ev_inside),
+		              (bufstr_get(ev_mdl, ev_inside) == "") ? "(point)" : bufstr_get(ev_mdl, ev_inside)));
+	/*
+	  AND THE FALLBACK ONLY ANSWERS WHEN THE RAY FOUND NOTHING AT ALL.  Its first
+	  cut fired on row < 0, which is also what a ray that stopped on WORLD returns
+	  -- so aiming at a wall from inside a trigger selected the trigger, put it on
+	  the clipboard, and swallowed the diagnostics and the static-prop hint that
+	  the wall case exists to print.  trace_fraction >= 1 means the ray reached
+	  EV_PROBE units touching nothing, which is the only case where the volume you
+	  are standing in is the answer.  The test is the copies' AABBs, so this says
+	  "bounding box", not "inside": a rotated brush is bigger than its shape.
+	*/
+	if (row < 0 && ev_inside >= 0 && trace_fraction >= 1)
+	{
+		Ev_Report(ev_inside, ev_inside_e, getproperty(VF_ORIGIN));
+		return;
+	}
 	if (row < 0)
 	{
 		/*
@@ -680,16 +776,25 @@ void() Ev_Here =
 		  the ent_here is broken", aimed at the rock clusters on surf_fantasy.
 		  Those are STATIC PROPS.  A Source map keeps them in the sprp game lump,
 		  not the entity lump, so this table can never contain one -- and the
-		  hl2 plugin builds them into the world's collision, which is why the
-		  trace says world.  Naming them is the surface probe's job, not this
-		  one's; engine patch 291 (another session's) makes shader_here do it.
+		  hl2 plugin builds the solid ones into the world's collision, which is
+		  why the trace says world (a prop with no collision is not in the trace
+		  at all, and the ray carries on to whatever is behind it).  Naming props
+		  is the surface probe's job -- and NOBODY CAN DO IT TODAY.  Engine patch
+		  291 (another session's) now traces a model's render mesh rather than its
+		  .phy hull, which fixed players, viewmodels and prop_physics, and it was
+		  VERIFIED NEGATIVE for static props on 2026-09-12: mod_vbsp.c keeps them
+		  in prv->staticprops[] and draws them itself, so cl_visedicts never holds
+		  one and no trace over the entity list can reach one (2345 props on
+		  surf_fantasy, every probe: "models traced: 2", the viewmodel and the
+		  player).  Naming one needs a plugin-side trace over that array, which is
+		  unwritten.  So this line names the possibility and promises nothing.
 		*/
 		if (trace_fraction < 1)
-			print("^3ent_here^7: a static prop is not an entity (props live in the map's sprp lump, not the entity lump) -- aim at it and use shader_here\n");
+			print("^3ent_here^7: if that is a model, it may be a static prop -- props live in the map's sprp lump, not the entity lump, so there is no entity to name\n");
 		return;
 	}
 
-	Ev_Report(row);
+	Ev_Report(row, trace_ent, trace_endpos);
 };
 
 /*
@@ -813,7 +918,20 @@ void() Ev_Draw =
 			ev_mouse = [vsize_x * 0.5, vsize_y * 0.5];
 			ev_click_centre = FALSE;
 		}
-		if (ev_mouse_seen)
+		/*
+		  BUILD 56 review: NOTHING THROUGH THE PANEL.  A hand click there never
+		  gets here (Ev_InputEvent refuses it), but hover used to probe straight
+		  through, so the entity behind the panel lit up white and was named as
+		  "under the cursor" while clicking it did nothing -- and a scripted
+		  `ent_click x y` on the panel picked it.  Hover and click now agree.
+		  ev_panel_* are last frame's, which is the rectangle on screen now.
+		*/
+		if (ev_mouse_seen && is_2dpoint_in_bbox(ev_mouse, ev_panel_p, ev_panel_s))
+		{
+			if (ev_click_pending)
+				print("^3ent_click^7: that point is on the panel -- a click there never picks what is behind it\n");
+		}
+		else if (ev_mouse_seen)
 		{
 			mnear = unproject([ev_mouse_x, ev_mouse_y, 0]);
 			mfar  = unproject([ev_mouse_x, ev_mouse_y, 0.5]);
@@ -825,14 +943,35 @@ void() Ev_Draw =
 				if (ev_click_pending)
 				{
 					if (hover >= 0)
-						Ev_Report(hover);
+						Ev_Report(hover, trace_ent, trace_endpos);
+					else if (ev_inside >= 0 && trace_fraction >= 1)
+					{
+						// Standing in it -- see Ev_ProbeDir and Ev_Here.  Only when
+						// the ray touched nothing: one that stopped on world has a
+						// world answer, and this would bury it.
+						print(sprintf("^5ent_cursor^7: nothing under the cursor; you are inside the bounding box of %s\n",
+						              bufstr_get(ev_cn, ev_inside)));
+						Ev_Report(ev_inside, ev_inside_e, getproperty(VF_ORIGIN));
+					}
 					else
-						print(sprintf("^3ent_cursor^7: no entity under the cursor (trace frac %.4f) -- a static prop is not an entity; aim the crosshair at it and use shader_here\n",
-						              trace_fraction));
+						print(sprintf("^3ent_cursor^7: no entity under the cursor (trace frac %.4f)%s%s\n",
+						              trace_fraction, (trace_fraction < 1) ?
+						              " -- if that is a model, it may be a static prop, which has no entity" : "",
+						              (ev_inside >= 0) ? "; you are standing in a volume -- aim at open space to name it" : ""));
 				}
 			}
+			else if (ev_click_pending)
+				print("^3ent_cursor^7: could not build a ray through that point this frame -- click again\n");
 		}
 		ev_click_pending = FALSE;
+		if (ev_click_script)
+		{
+			// A scripted point is not where the pointer is.  Forget it once it has
+			// been resolved, so a later hand click cannot inherit a cfg's
+			// coordinates -- it asks for a real position instead.
+			ev_click_script = FALSE;
+			ev_mouse_seen   = FALSE;
+		}
 		ev_hover = hover;
 	}
 	else
@@ -950,14 +1089,14 @@ void() Ev_Labels =
   mouse back exactly when the last claim drops.
 
   BUT A CLAIM IS NOT ENOUGH TO SHARE THE SCREEN, because sui has ONE hit-test
-  list and sui_begin empties it (sui_sys.qc:1037-1042).  Two panels bracketing
+  list and sui_begin empties it (sui_sys.qc:1049-1059).  Two panels bracketing
   sui in one frame means the second owns every click, whatever is drawn in
-  front.  So, exactly like the layout editor (cl_hudedit.qc HUD_EditOpen):
-  refuse to take the cursor while the replay chrome, the leaderboard, the
-  editor, or a results card that has taken the cursor is up -- and let go of it
-  the frame one of them appears.  A results card that is merely ON SCREEN is
-  not a blocker: it draws with raw drawfill and only opens a sui frame once it
-  has been asked for the mouse (the essay above Results_Draw).
+  front.  So refuse to take the cursor while anyone else holds it -- the replay
+  chrome, the leaderboard, the editor, a results card that has taken the cursor,
+  or any later claim in the register -- and let go of it the frame one appears.
+  (HUD_EditOpen refuses only the replay and the leaderboard; the register
+  absorbs its one-frame overlap with this.)  A results card merely ON SCREEN is
+  not a blocker: it draws with raw drawfill and never brackets sui at all.
 
   THE PICK IS RESOLVED IN Ev_Draw, NOT IN THE INPUT HANDLER.  unproject reads the
   current view's inverse projection (pr_csqc.c PF_cs_unproject) and an input
@@ -1047,13 +1186,28 @@ void() Ev_CopyAll =
 	Ev_Copy(s, sprintf("%s and its %g keys", hdr, n));
 };
 
-// Which panel stands in the way, or "" when none does.
+/*
+  Which panel stands in the way, or "" when none does.
+
+  THE REGISTER DECIDES; the flags only pick the words.  Testing four panel flags
+  one by one was the per-owner list the claim register in cl_hud.qc exists to
+  end: the next owner (UIC_AVATAR is already reserved) would take the mouse
+  without setting any of them, and the inspector would neither refuse it nor let
+  go -- two sui brackets in one frame, and the later one owns every click.  So
+  any claim that is not ours blocks.
+*/
 string() Ev_CursorBlocker =
 {
+	local float others;
+
 	if (ui_he_open)   return "the layout editor";
 	if (rec_sb_open)  return "the leaderboard";
 	if (rec_wt_open)  return "a replay";
 	if (ui_rs_cursor) return "the results card";
+	// Subtraction, not &~, for UI_CursorRelease's reason.
+	others = UI_CursorHeld() - (UI_CursorHeld() & UIC_ENTVIEW);
+	if (others)
+		return sprintf("the panel holding the mouse (cursor claims %g)", others);
 	return "";
 };
 
@@ -1093,8 +1247,21 @@ void() Ev_CursorOn =
 	ev_mouse_seen    = FALSE;
 	ev_click_pending = FALSE;
 	ev_hover         = -1;
+	ev_btn           = 0;
 	// No hold or release left behind by whichever panel last used sui.
 	sui_reset_actions();
+	/*
+	  AND WAKE sui's MOUSE CURSOR, from the review.  _cursor_is_mouse_active starts
+	  at 0 in every VM, and only 10+ px of motion or a MOUSE1 press sets it
+	  (sui_sys.qc:395-404, 427).  Until then every sui_end calls
+	  _retarget_kb_cursor, which parks sui's cursor on the centre of element 0 --
+	  ev_bg, the middle of the panel -- and hovers whatever row is there, so a
+	  click before the mouse had moved copied a row nobody pointed at.  The engine
+	  sends no position when the cursor is taken, only on motion, so there is
+	  nothing better to seed it with; Ev_InputEvent re-tests the real position at
+	  the press instead.
+	*/
+	activate_mouse_cursor();
 	UI_CursorClaim(UIC_ENTVIEW);
 
 	print("^5ent_cursor^7: click an entity to select it, click a line to copy it; ESC or ent_cursor to finish\n");
@@ -1108,7 +1275,7 @@ void() Ev_CursorOn =
 void(vector scr) Ev_Panel =
 {
 	local vector p, tp, lp, rs;
-	local float  w, h, pad, tsz, rsz, rowh, keyw, first, n, idx, hot, a, chipw;
+	local float  w, h, pad, tsz, rsz, rowh, keyw, first, n, idx, hot, a, chipw, py, need;
 	local string why, rid, hdr;
 
 	if (!ui_ev_cursor)
@@ -1127,11 +1294,55 @@ void(vector scr) Ev_Panel =
 	tsz  = Font_Px(9 * ui_cv_scale);
 	rsz  = Font_Px(8 * ui_cv_scale);
 	rowh = rsz + 6 * ui_cv_scale;
+
+	/*
+	  BUILD 56 review: THE LAYOUT, which the first cut got wrong three ways.
+
+	  RIGHT OF THE CROSSHAIR.  The width was capped at half the screen and then
+	  set 16*s in from the right edge, which put the left edge LEFT of centre at
+	  any width under 1840 at hud_scale 2 -- 1600x900, 1366x768, 1280x720 -- so
+	  the thing you had just aimed at sat under the panel and could not be
+	  clicked.  Capped at half the screen less its margin twice, the left edge is
+	  always 16*s right of centre.
+
+	  SHORT WHEN THERE IS NOTHING TO LIST.  With nothing selected it was still
+	  the height of the screen, which made most of the right half unclickable for
+	  three lines of text.
+
+	  AND NEVER NEGATIVE.  h was scr_y - 200*s with no floor, so at hud_scale 3
+	  on a 720-high screen the key list -- the part you click -- had no rows, and
+	  past that h itself went below zero.  Short of the height it needs, the
+	  panel climbs to the top of the screen; if it still does not fit, the list
+	  says so instead of silently drawing nothing.
+	*/
 	w = 460 * ui_cv_scale;
-	if (w > scr_x * 0.5)
-		w = scr_x * 0.5;
-	h = scr_y - 200 * ui_cv_scale;
-	p = [scr_x - w - 16 * ui_cv_scale, 96 * ui_cv_scale, 0];
+	if (w > scr_x * 0.5 - 32 * ui_cv_scale)
+		w = scr_x * 0.5 - 32 * ui_cv_scale;
+	if (w < 64)
+		w = 64;
+	py = 96 * ui_cv_scale;
+	if (ev_sel < 0 || ev_sel >= ev_n)
+		h = pad + tsz + pad * 0.5 + rsz + pad + rowh * 2 + pad;
+	else
+	{
+		h = scr_y - py - 104 * ui_cv_scale;
+		// Title block, header row, chip row, four key rows and the toast.
+		need = pad + tsz + pad * 0.5 + rsz + pad + rowh + pad * 0.5 + rowh + pad + rowh * 5.5 + pad;
+		if (h < need)
+		{
+			/*
+			  LIFT IT ONLY AS FAR AS IT NEEDS.  Jumping straight to 16*s made the
+			  shipped default the worst case: at 1280x720, hud_scale 2, h misses
+			  need by four pixels, and the panel answered by covering 656 px
+			  instead of 324 -- twice what build 56 drew, for four pixels.
+			*/
+			py = scr_y - 104 * ui_cv_scale - need;
+			if (py < 16 * ui_cv_scale)
+				py = 16 * ui_cv_scale;
+			h = scr_y - py - 104 * ui_cv_scale;
+		}
+	}
+	p = [scr_x - w - 16 * ui_cv_scale, py, 0];
 	ev_panel_p = p;
 	ev_panel_s = [w, h, 0];
 
@@ -1143,10 +1354,18 @@ void(vector scr) Ev_Panel =
 	sui_fill(p, [w, h], EVC_PANEL, 0.92, 0);
 	sui_border_box(p, [w, h], 1, EVC_LINE, 0.6, 0);
 
+	/*
+	  Everything below is clipped to the panel.  Only the key list used to be
+	  (a sui scroll view clips to its own frame), so a long summary line or a
+	  copied value's toast ran past the border and off the edge of the screen.
+	  The list resets the clip when it ends, so it is set again after it.
+	*/
+	drawsetcliparea(p_x, p_y, w, h);
+
 	tp = p + [pad, pad];
 	sui_text(tp, [tsz, tsz], "entity inspector", EVC_TEXT, 1, 0);
 	tp_y = tp_y + tsz + pad * 0.5;
-	sui_text(tp, [rsz, rsz], "click an entity; click a line to copy it; esc to close", EVC_DIM, 1, 0);
+	sui_text(tp, [rsz, rsz], "click an entity; click a line to copy it; esc lets go of the mouse", EVC_DIM, 1, 0);
 	tp_y = tp_y + rsz + pad;
 
 	if (ev_sel < 0 || ev_sel >= ev_n)
@@ -1165,16 +1384,25 @@ void(vector scr) Ev_Panel =
 		if (sui_is_hovered("ev_hdr"))
 			sui_fill(tp, [w - pad * 2, rowh], EVC_HOT, 1, 0);
 		sui_text(tp + [2, (rowh - rsz) * 0.5], [rsz, rsz], hdr, EVC_SEL, 1, 0);
-		if (sui_is_released("ev_hdr"))
+		// sui_is_CLICKED, not _released, here and below: a release fires for the
+		// held element wherever the pointer went (sui_sys.qc:490-494), so pressing
+		// a line and dragging off it still copied it.  A click needs the release
+		// to land inside the element (:471-486).
+		if (sui_is_clicked("ev_hdr"))
 			Ev_Copy(hdr, hdr);
 		tp_y = tp_y + rowh + pad * 0.5;
 
+		// Clamped, or at a narrow panel the chip's hit rectangle sticks out past
+		// the border: a click in the margin copied everything while the hover
+		// under it named the world entity behind.
 		chipw = 110 * ui_cv_scale;
+		if (chipw > w - pad * 2)
+			chipw = w - pad * 2;
 		sui_action_element(tp, [chipw, rowh], "ev_all", sui_noop);
 		sui_fill(tp, [chipw, rowh], sui_is_hovered("ev_all") ? EVC_HOT : EVC_PANEL, 1, 0);
 		sui_border_box(tp, [chipw, rowh], 1, EVC_LINE, 0.6, 0);
 		sui_text(tp + [pad * 0.5, (rowh - rsz) * 0.5], [rsz, rsz], "copy all", EVC_TEXT, 1, 0);
-		if (sui_is_released("ev_all"))
+		if (sui_is_clicked("ev_all"))
 			Ev_CopyAll();
 		tp_y = tp_y + rowh + pad;
 
@@ -1187,24 +1415,33 @@ void(vector scr) Ev_Panel =
 
 		// Room for the toast underneath.
 		rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 1.5, 0];
-		sui_list_view_begin("ev_keys", tp, rs, [rs_x - 8 * ui_cv_scale, rowh], n,
-		                    ev_list_scroll, [0, 8 * ui_cv_scale]);
-		lp = '0 0 0';
-		for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+		if (rs_y < rowh)
+			// Short on purpose: this line appears exactly when the panel is too
+			// small, which is where the clip would cut a long one to nothing.
+			sui_text(tp, [rsz, rsz], "lower hud_scale", EVC_DIM, 1, 0);
+		else
 		{
-			rid = strcat("ev_k", ftos(idx));
-			sui_action_element(lp, [rs_x - 8 * ui_cv_scale, rowh], rid, sui_noop);
-			hot = sui_is_hovered(rid);
-			if (hot)
-				sui_fill(lp, [rs_x - 8 * ui_cv_scale, rowh], EVC_HOT, 1, 0);
-			sui_text(lp + [2, (rowh - rsz) * 0.5], [rsz, rsz],
-			         bufstr_get(ev_k, first + idx), hot ? EVC_TEXT : EVC_DIM, 1, 0);
-			sui_text(lp + [2 + keyw, (rowh - rsz) * 0.5], [rsz, rsz],
-			         bufstr_get(ev_v, first + idx), EVC_TEXT, 1, 0);
-			if (sui_is_released(rid))
-				Ev_CopyRow(idx);
+			sui_list_view_begin("ev_keys", tp, rs, [rs_x - 8 * ui_cv_scale, rowh], n,
+			                    ev_list_scroll, [0, 8 * ui_cv_scale]);
+			lp = '0 0 0';
+			for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+			{
+				rid = strcat("ev_k", ftos(idx));
+				sui_action_element(lp, [rs_x - 8 * ui_cv_scale, rowh], rid, sui_noop);
+				hot = sui_is_hovered(rid);
+				if (hot)
+					sui_fill(lp, [rs_x - 8 * ui_cv_scale, rowh], EVC_HOT, 1, 0);
+				sui_text(lp + [2, (rowh - rsz) * 0.5], [rsz, rsz],
+				         bufstr_get(ev_k, first + idx), hot ? EVC_TEXT : EVC_DIM, 1, 0);
+				sui_text(lp + [2 + keyw, (rowh - rsz) * 0.5], [rsz, rsz],
+				         bufstr_get(ev_v, first + idx), EVC_TEXT, 1, 0);
+				if (sui_is_clicked(rid))
+					Ev_CopyRow(idx);
+			}
+			sui_list_view_end();
+			// sui_list_view_end reset the clip; the toast below still needs it.
+			drawsetcliparea(p_x, p_y, w, h);
 		}
-		sui_list_view_end();
 	}
 
 	a = 1 - (cltime - ev_copied_at) / 2;
@@ -1216,6 +1453,7 @@ void(vector scr) Ev_Panel =
 		         strcat("copied  ", ev_copied), EVC_SEL, a, 0);
 	}
 
+	drawresetcliparea();
 	sui_end();
 	Font_Reset();
 };
@@ -1224,15 +1462,27 @@ void(vector scr) Ev_Panel =
   Input, reached only once the cursor has been taken -- the chain in cl_main.qc
   tests ui_ev_cursor, so an overlay that is merely on screen swallows nothing.
 
-  IE_MOUSEABS RETURNS TRUE UNCONDITIONALLY, for the reason Scores_InputEvent
-  gives: the engine zeroes the accumulated mouse delta only when CSQC returns
-  TRUE, and a handler that forgets leaves the view turning under the cursor.
-  MOUSE1 and MOUSE2 are swallowed because default.cfg binds them to +duck and
-  +jump.  Everything else falls through, so you can still walk while pointing.
+  IE_MOUSEABS RETURNS TRUE so the position stops here instead of falling on down
+  the chain.  (It is not what keeps the view still: in_generic.c:1242-1243 zeroes
+  the mouse delta whenever the cursor is free, before CSQC is asked.)
+
+  MOUSE1 and MOUSE2 are taken because default.cfg binds them to +duck and +jump,
+  and the wheel over the panel scrolls the key list.  Everything else falls
+  through, so you can still walk -- and wheel-jump -- while pointing.
+
+  BUILD 56 review: A RELEASE GOES WHERE ITS PRESS WENT.  Every MOUSE1/MOUSE2 up
+  used to be swallowed, including one whose press went to the GAME before the
+  cursor was taken: hold MOUSE2, press MOUSE3, let go, and keys.c returned at
+  :3860-3861 before running the stored "-jump" (:3971-3976), so the player kept
+  jumping until the button was pressed and released again in game -- and
+  Keys_Edge never saw the up either.  CSQC is still handed that up, because
+  CSQC_KeyPress marks a key down when it SEES the press, whatever it returned
+  (pr_csqc.c:9307, 9311).  ev_btn records the presses this handler took; an up
+  with no press on record returns FALSE, so the engine's release runs.
 */
 float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
 {
-	local float hit;
+	local float hit, b, onpanel;
 
 	if (!ui_ev_cursor)
 		return FALSE;
@@ -1248,29 +1498,77 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return FALSE;
 
+	onpanel = ev_mouse_seen && is_2dpoint_in_bbox(ev_mouse, ev_panel_p, ev_panel_s);
+
 	if (scanx == K_MOUSE1)
 	{
+		if (evtype == IE_KEYDOWN)
+		{
+			ev_btn = ev_btn | EVB_M1;
+			/*
+			  Re-test what is under the pointer NOW, against the rows as last
+			  drawn.  sui re-tests only on motion (sui_sys.qc:391-419) and copies
+			  its hover list into the hold list at the press (:432-434), so after
+			  a wheel scroll with the mouse held still the hover still named the
+			  row that USED to be under the pointer, and the click copied that one.
+			*/
+			if (ev_mouse_seen)
+				_sui_mouse_move(ev_mouse, FALSE);
+			sui_input_event(evtype, scanx, chary, devid);
+			return TRUE;
+		}
+		if (!(ev_btn & EVB_M1))
+			return FALSE;
+		ev_btn = ev_btn - EVB_M1;
 		hit = sui_input_event(evtype, scanx, chary, devid);
+		if (!ev_mouse_seen)
+			print("^3ent_cursor^7: move the mouse a little first -- the engine sends no position until it moves\n");
 		// A release no panel element took, and not over the panel at all, is a
 		// click on the world.  The pick itself waits for Ev_Draw.
-		if (evtype == IE_KEYUP && !hit && ev_mouse_seen &&
-		    !is_2dpoint_in_bbox(ev_mouse, ev_panel_p, ev_panel_s))
+		else if (!hit && !onpanel)
 			ev_click_pending = TRUE;
 		return TRUE;
 	}
 	if (scanx == K_MOUSE2)
-		return TRUE;
-
-	// The key list scrolls from sui's input buffer (sui_scroll_view_begin reads
-	// K_MWHEELUP/DOWN out of it), and only a KEYDOWN is ever put there.
-	if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
 	{
 		if (evtype == IE_KEYDOWN)
-			sui_input_event(evtype, scanx, chary, devid);
+		{
+			ev_btn = ev_btn | EVB_M2;
+			return TRUE;
+		}
+		if (!(ev_btn & EVB_M2))
+			return FALSE;
+		ev_btn = ev_btn - EVB_M2;
 		return TRUE;
 	}
 
-	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	/*
+	  The wheel scrolls the key list out of sui's input buffer
+	  (sui_scroll_view_begin reads K_MWHEELUP/DOWN from it; only a KEYDOWN is ever
+	  put there) -- but ONLY OVER THE PANEL.  default.cfg binds both notches to
+	  +jump, and taking the wheel everywhere stopped wheel-hopping for as long as
+	  the cursor was held.  Its up follows its down, for the MOUSE1 reason above.
+	*/
+	if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
+	{
+		b = (scanx == K_MWHEELUP) ? EVB_WUP : EVB_WDN;
+		if (evtype == IE_KEYDOWN)
+		{
+			if (!onpanel)
+				return FALSE;
+			ev_btn = ev_btn | b;
+			sui_input_event(evtype, scanx, chary, devid);
+			return TRUE;
+		}
+		if (!(ev_btn & b))
+			return FALSE;
+		ev_btn = ev_btn - b;
+		return TRUE;
+	}
+
+	// MOUSE3 lets go too, mirroring the gesture that took the cursor.  Its up
+	// then reaches Keys_Edge and SaveLoc_Key, as the taking press's up always did.
+	if (evtype == IE_KEYDOWN && (scanx == K_ESCAPE || scanx == K_MOUSE3))
 	{
 		Ev_CursorOff();
 		print("^5ent_cursor^7: off\n");
@@ -1284,10 +1582,18 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
   gesture: MOUSE1/MOUSE2 are duck and jump, and MOUSE3 is the only free click in
   the shipped config.  The card keeps it while a card is up -- it was there
   first, and Results_PassiveKey is offered the press before this one is.
+
+  "UP" MEANS DRAWN, from the review.  Results_Open raises the card on every
+  finish whatever hud_results says; the cvar only decides whether it is drawn and
+  whether Results_PassiveKey answers (cl_results.qc:759).  Testing ui_rs_open
+  alone gave MOUSE3 away to an invisible card that then declined it as well, so
+  with hud_results 0 MOUSE3 did nothing after any finish until the next run
+  started.  This is the card's own test, so exactly one of the two answers.
 */
 float(float scanx) Ev_PassiveKey =
 {
-	if (scanx != K_MOUSE3 || !ui_ev_open || ui_ev_cursor || ui_rs_open)
+	if (scanx != K_MOUSE3 || !ui_ev_open || ui_ev_cursor ||
+	    (ui_rs_open && cvar("hud_results")))
 		return FALSE;
 	Ev_CursorOn();
 	return ui_ev_cursor;
@@ -1382,8 +1688,10 @@ float(string cmd) Ev_ConsoleCommand =
 	/*
 	  BUILD 56.  ent_cursor toggles the mouse mode (MOUSE3 does the same while the
 	  overlay is up).  ent_click, ent_copyrow and ent_copyall are the scripted
-	  forms of the three things the mouse does, so a testrun cfg drives the exact
-	  code paths a hand does -- see the cursor essay.
+	  forms of the three things the mouse does, and they share its pick and copy
+	  functions -- but NOT its input path.  sui's hit test, the press/release
+	  pairing, the wheel, MOUSE3, ESC and the header-line copy are hand-only, so
+	  a green scripted run says nothing about those.
 	*/
 	if (argv(0) == "ent_cursor")
 	{
@@ -1414,15 +1722,25 @@ float(string cmd) Ev_ConsoleCommand =
 		if (argv(1) == "")
 			ev_click_centre = TRUE;
 		else
+		{
+			// A point overrides a centre request queued earlier in the same frame.
+			ev_click_centre = FALSE;
 			ev_mouse = [stof(argv(1)), stof(argv(2))];
+		}
 		ev_mouse_seen = TRUE;
 		ev_click_pending = TRUE;
+		ev_click_script = TRUE;
 		return TRUE;
 	}
 
 	if (argv(0) == "ent_copyrow")
 	{
-		Ev_CopyRow(stof(argv(1)));
+		// stof("") is 0, so a bare ent_copyrow used to overwrite the clipboard with
+		// the first key instead of saying how it is used.
+		if (argv(1) == "")
+			print("^3ent_copyrow^7: usage: ent_copyrow <n> -- n counts the selected entity's keys from 0\n");
+		else
+			Ev_CopyRow(stof(argv(1)));
 		return TRUE;
 	}
 

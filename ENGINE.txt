@@ -15,9 +15,9 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d097595a95d0ef13217de3ea891023cf3d976817
 tag      patch-266
-patch    290
-qcbuild  55
-date     2026-09-09
+patch    313
+qcbuild  62
+date     2026-09-13
 
 # NOTE: `patch` is 273 and `commit` is still patch 266's SHA, and that is not an
 # oversight -- everything from 267 up is APPLIED AND BUILT in the working tree
@@ -283,6 +283,654 @@ date     2026-09-09
 #        is not a key at all (it is a PASS key, gl_shader.c:4838).  It never did
 #        anything; it is now counted and declined instead of printing a warning
 #        that reads like a typo.
+#   268 C  engine/client/render.h + engine/gl/shader.h (HEADER CHANGE -- rebuild
+#        with -Full), engine/gl/{gl_shader.c,gl_vidcommon.c,gl_backend.c,
+#        gl_alias.c}, engine/d3d/d3d_backend.c, engine/client/renderer.c;
+#        plugins/hl2/{mat_vmt.c,mod_vbsp.c,glsl/vmt/vertexlit.glsl}.
+#        Per-pixel relief on bumped props -- BUILT, MEASURED, AND NOT ADOPTED.
+#        Every switch ships 0, so this is inert in the deployed build; it is in
+#        the tree because the uniform, the ambient-cube fill and the GLSL are
+#        prerequisites for the redesign named below.  A bumped VertexLitGeneric
+#        with no $envmap (surf_fantasy's island rocks) sampled its normal map
+#        for nothing, so it drew flat where Source shows moss relief.  The fix
+#        tried was Source's six-face ambient cube per pixel applied as a RATIO
+#        over VRAD's bake -- and a ratio of a cube against ITSELF at a slightly
+#        different normal is pinned near 1: measured 0.00% of the frame on two
+#        rocks filling the centre, and 0.9941 mean ratio (0.76 of 255 levels,
+#        0.02% of pixels over the 8-level threshold) computed off the real
+#        normal map under a synthetic hard top-lit cube, the best input it can
+#        ever get.  Source differs because it REPLACES vertex lighting with the
+#        cube plus up to four local lights; the per-pixel N.L against those is
+#        what carves relief.  QC build 56 does not need any of it.
+#   291  engine/common/com_mesh.c + com_mesh.h, engine/client/view.c.  No header
+#        change of its own.  shader_here can now trace a model's RENDER MESH
+#        (Mod_TraceRenderMesh) instead of funcs.NativeTrace, which for an HL2
+#        prop is its .phy COLLISION hull -- the first build went straight through
+#        the rocks it was written for.  Prints model/mesh/skin, each pass's
+#        program (a VertexLitGeneric program lives in a PASS, so the [shader]
+#        census prog field never shows it) and the entity's ambient cube.
+#        IT STILL CANNOT NAME A prop_static, AND THAT IS THE FINDING: Source
+#        static props are not engine entities at all -- mod_vbsp.c holds them in
+#        prv->staticprops[] with an embedded entity_t and draws them itself, so
+#        cl_visedicts never contains one ("models traced: 2" on a map with
+#        2,345 props).  Same reason ent_here cannot name one.  Useful for
+#        players, viewmodels and prop_physics; naming a static prop needs a
+#        plugin-side trace over that array.
+#   292  plugins/hl2/img_vtf.c + plugins/Makefile (win64 only).  No header change.
+#        THE TREES ON surf_fantasy, and not only there.  Momentum's own
+#        mount/hl2_dir.vpk stores 5,589 of its 6,748 VTFs (82.8%) as VTF 7.6
+#        with a Strata AXC auxiliary resource -- every mip a Zstandard frame --
+#        and img_vtf.c assumed 7.6 meant uncompressed (true of every map
+#        pakfile: 0 of 112,687).  It uploaded the compressed bytes as DXT blocks
+#        with NO error, so the trees drew as solid black silhouettes with a
+#        correct alpha cutout.  25 files in momentum/ itself (powerup props,
+#        mom_knife) were broken the same way before any mapdeps change.  Now
+#        decoded with ZSTD_decompress under HAVE_ZSTD, linking msys2 ucrt64's
+#        static libzstd.a (1.5.7); without HAVE_ZSTD such a file fails loudly
+#        instead of drawing garbage.  VERIFIED ON SCREEN 2026-09-12: near-black
+#        pixels at the pine vantage 15.87% -> 0.84%, and the shots show bark and
+#        needles where there were black cut-outs.  The models themselves needed
+#        tools/mapdeps.py to learn the mount (data/mapdeps.txt is regenerated);
+#        QC build 56 does not need any engine change for it.
+#   293  engine/client/in_generic.c, engine/client/input.h (HEADER CHANGE --
+#        rebuild with -Full), engine/client/cl_input.c.  ANTI-CHEAT, and the
+#        first patch of the run-validation work.  Adds a per-frame 'v' record to
+#        the Patch 202 .hid journal carrying the frame's raw device counts AND
+#        the viewangles they produced, plus the scale terms in the header, so
+#        that dyaw == -m_yaw*sensitivity*in_sensitivityscale*dx can be checked
+#        as arithmetic rather than inferred.  A new RECORD rather than a
+#        cross-check of the existing .hid and .view because those two cannot be
+#        aligned: IN_Commands emits the 'f' marker only on a NON-EMPTY drain, so
+#        .hid frames are a subset of rendered frames, and the only shared key is
+#        the command frame, which ~15 .view rows share at 811 fps.  Measured on
+#        this tree's own files: 3298 'f' against 4177 .view rows on
+#        surf_beginner/stage_2/0000279_pb, best index alignment 35.7%, and 8.5%
+#        on surf_boreas/main/0002930_pb -- so raising .view's %.2f, which was the
+#        first idea, would not have helped.  No QC change: the record is written
+#        entirely by the engine into a file the engine already owns, so no
+#        csprogs rebuild is required for it.  The falsifier is in
+#        tools/hidcheck.py (check_identity), which still passes on pre-293 files
+#        and now says there why the identity is not checkable in them.
+#        IN-GAME UNVERIFIED at the time of writing: no run has been recorded yet.
+#   294  engine/server/sv_phys.c only -- one extern and one entry in
+#        pms_lockedmovevars[].  No header change.  sv_gamespeed JOINS THE LOCKED
+#        MOVEMENT RULESET, because it was a one-word self-hosted world record:
+#        sv_main.c:171 declares it CVARAF("sv_gamespeed","1","slowmo",0) with
+#        flags 0 -- not cheat, not latched -- and sv_main.c:5688 is
+#        sv.time = (Sys_DoubleTime()-sv.starttime)*sv.gamespeed, which is the
+#        exact clock the QC run timer subtracts run_t_start from.  "slowmo 0.1"
+#        was 10x bullet-time with the run clock scaled to match, and nothing
+#        fired: the msec anti-speed-cheat in SV_RunCmd does not see it, because
+#        the client divides its own frametime back out.
+#        NOT CVAR_CHEAT, and that is the whole design note: cls.allow_cheats
+#        (cl_main.c:3173) and SV_MayCheat() (sv_ccmds.c:36) hand out cheats
+#        unconditionally to any server with ONE client slot -- which is every
+#        FTESurf session ever played -- so a cheat flag would have been silently
+#        inert.  pm_lockmovement reads sv_cheats.ival directly and is the only
+#        mechanism in the tree that means it.  See the essay above the table.
+#        VERIFIED IN-GAME 2026-09-12, cfg/testrun/gs294.cfg, three arms:
+#        "sv_gamespeed 0.5" reverted to 1 with the ruleset warning; "slowmo
+#        0.25" likewise (the alias funnels to one cvar); and the CONTROL --
+#        sv_cheats 1 then 0.5 -- STUCK at 0.5, which is what proves the lock
+#        reads sv_cheats rather than refusing the cvar unconditionally.  Without
+#        that third arm the first two would pass for the wrong reason.
+#        `pause` is believed to be the same hole with no number to type.  It is
+#        UNVERIFIED and it is not reachable from a cvar table.
+#   295  engine/client/in_generic.c, one default: in_journal_maxkb 8192 ->
+#        262144.  No header change.  A .hid that hits the cap writes a
+#        `truncated` marker and stops, which gives the run-submission rule a
+#        THIRD state to carry -- "no journal, no rank" is one condition, and a
+#        file that is present but stops early is neither present nor absent.
+#        Every consumer would need a branch for it and the first time it fired
+#        would be on somebody's long run.  256 MB is about 85 minutes at
+#        ~1.15 MB/min plus the 293 'v' records, which no real run reaches.
+#        Free to raise: in_jrn_cap starts at 64 KB and DOUBLES on demand bounded
+#        by in_jrn_max, so the allocation tracks what is written.  What does
+#        scale is the synchronous COM_WriteFile at run end (~40 ms at 8192), so
+#        a journal that genuinely reached the new cap would hitch for over a
+#        second -- only on a run where truncation would have been worse.
+#        VERIFIED 2026-09-12, cfg/testrun/gs295.cfg: reads 262144.
+#   296  plugins/hl2/mod_vbsp.c plus ONE cvar default in engine/gl/gl_warp.c.
+#        No header change; -Engine is enough, but rebuild the hl2 plugin or the
+#        old DLL is silently tested.  THE TREES, THE RAMP AND THE WINDOWS on
+#        surf_fantasy, from the reporter's own side-by-sides against CS:S.
+#          - VBSP_LoadPropBakedLight rejected any .vhv with vertexsize != 4, so
+#            surf_fantasy read "props: 0 of 2345" with 2345 bakes in its own
+#            pakfile and every prop fell back to the leaf ambient cube.  67 maps,
+#            27,178 props.  hl2_lt_vhv12 now defaults 1.  The 12-byte layout is
+#            PROVEN, not inferred: on 465 of those props the 12 bytes are three
+#            bit-identical copies of one BGRA, and against the CS:S build's
+#            ordinary 4-byte files the mean of the three out-correlates every
+#            individual basis (r 0.764 matched vs 0.236 shuffled).
+#          - THE CENSUS WAS LYING, which is why this shipped off for months.  The
+#            PROPLIGHT line reported sent->baked AFTER the per-prop peak gain
+#            (20.98x mean on boreas, 2.05x on fantasy) for baked props, and
+#            res_ambient instead of res_diffuse for unbaked ones -- two errors
+#            pointing opposite ways.  Fixed, with the old figure kept as a second
+#            column so the first run is self-checking.
+#          - THE DECODE CURVE was sRGB where VRAD wrote pow(b/127.5, 2.2).
+#            hl2_lt_baked_curve, default 1 = VRAD's.  Moves 4-byte maps +28%:
+#            that is the finding that they have been drawing too bright, not a
+#            regression.  The measured 239 byte ceiling over every prop of two
+#            builds of surf_fantasy pins the exponent, the 0.5 overbright AND
+#            hl2_lt_baked_scale's default of 2 in one number.
+#          - r_sky_forcedepth default 1 -> 2.  surf_fantasy has NO sky_camera in
+#            either build, so the stuff out the windows was never a 3D skybox --
+#            it is main-map geometry over sky that writes no depth.  Source-only
+#            by construction: the value is tested in exactly one place, the
+#            fg_new branch, so no Quake-family map can move by a pixel.
+#        hl2_lt_baked_dir is added at default 0 (today exactly) and hl2_cubelight
+#        is NOT flipped -- the bumped-rock fault needs the latter, because the
+#        directional term is per-VERTEX against the geometric normal and can
+#        never reach a normal map.
+#        QC build 57/58 needs none of it.  VERIFIED 2026-09-12,
+#        cfg/testrun/p294g_census.cfg / logs/p294g_census.log: six arms in one
+#        process, 9 of 10 pre-registered numbers exact, the bake measuring 42-48%
+#        BRIGHTER than the fallback it replaces.  (Named p294g because 294 was
+#        this patch's number until two concurrent sessions took 294 and 295.)
+#
+#   299  plugins/hl2/glsl/vmt/*.glsl (eight programs) plus one cvar in
+#        mod_vbsp.c.  No engine change, but the GLSL header must be regenerated
+#        -- `make -C plugins/hl2` -- or the old baked strings ship.
+#        FOG THE COLOUR, LEAVE THE ALPHA TO THE BLENDER.  Every VMT program
+#        ended in fog4(diffuse_f), and fog4() is
+#            vec4(fog3(rgb), 1.0) * regularcolour.a        gl_vidcommon.c:1887
+#        -- it multiplies the fogged colour by the surface's own alpha.  That is
+#        right for a PREMULTIPLIED blend and this plugin emits none: mat_vmt.c
+#        :3719/:3885 write `src_alpha one_minus_src_alpha`, so GL was already
+#        applying the alpha and fog4 applied it a SECOND time.
+#        Source does not treat base alpha as opacity unless the material says
+#        so.  On an opaque VertexLitGeneric it is a MASK -- $basealphaenvmapmask
+#        and friends -- and the surface is solid.  With no fog the opaque blend
+#        discards it, so nothing shows; the moment fog is on it multiplies every
+#        pixel.  THAT is the reporter's "bright black" buildings out the
+#        surf_tensor2 window: mean base alpha of the eight building materials in
+#        frame splits 0.028-0.094 against 0.920-0.984, and it matches the screen
+#        object for object -- the 0.03 props (row_hill_cluster, row_upscale)
+#        drew at 3% of the fog colour, a black cutout against a sky that was
+#        itself correctly fogged, and the low-alpha window panes inside the
+#        0.92-0.96 textures are the black windows beside them.
+#        hl2_fog_alphamul, default 0 = fixed; 1 restores fog4() bit-for-bit.
+#        VERIFIED 2026-09-12, cfg/testrun/p299_verify.cfg: the two restore arms
+#        reproduce the pre-fix runs at 0.000% pixel difference (the noise floor
+#        on that vantage is 0.000% within AND across processes), and the black
+#        props move from 3.8 5.3 6.8 against a 21.9 35.2 50.4 sky to
+#        26.5 41.0 58.4 -- i.e. they now sit AT the sky level instead of 5.8x
+#        below it, converging with the correctly-fogged props at 27.0 42.0 59.8.
+#        The frame now matches the reporter's CS:S capture.
+#        STILL OPEN, and separate: even with this fixed, a white fog forced to
+#        end at 1 unit reaches 148 not 255, and the skyroom pass sits ~0.68x of
+#        the main view.  Fog not quite saturating is a second fault, smaller and
+#        not this one.
+#   300  NOT this build's -- a concurrent session's, in the shared tree.
+#   301  engine/client/in_generic.c, in_win.c, client.h (two extern int, no
+#        struct change), plus tools/hidcheck.py.  THE .hid HEADER RECORDED THE
+#        RAW-INPUT CVAR, WHICH IS A REQUEST AND NOT A GRANT.  in_rawinput is
+#        asked for in a config; it is granted by INS_RawInput_Init actually
+#        binding devices, and that fails while the cvar still reads 1 -- an RDP
+#        session, no enumerable mouse, a refused RegisterRawInputDevices.  The
+#        engine then falls back to the GetCursorPos recentre, whose deltas are
+#        OS-summed AND OS-ACCELERATED, and the file said `rawinput 1` over the
+#        top of it, indistinguishable from a strict-profile recording.  New
+#        header keys `rawmice`/`rawkbds` carry what was BOUND.  -1 means the
+#        platform backend does not report it and must not read as "found none".
+#        VERIFIED 2026-09-12, cfg/testrun/p301hid.cfg, three arms: A
+#        (rawinput 1/rawmice 2) and B (0/0) clean, C (1/0 -- the contradiction)
+#        faults.  Arm selection is on the LAUNCH LINE because in_rawinput is
+#        read at startup, which is what makes arm C constructible at all.
+#   302  NOT this build's -- a concurrent session's (static-prop direct light).
+#   303  engine/client/in_generic.c only, plus tools/hidcheck.py.  No header
+#        change.  DEVICE PROVENANCE: the journal recorded FTE's own devid and
+#        nothing else, so every device in it was an anonymous small integer and
+#        a reader could not tell a real mouse from a virtual one -- the only
+#        question the file is kept to answer.  New `dev` lines in the header and
+#        `devmap` lines before the trailer, each  <type> <devid|unset|-> "<name>",
+#        written through INS_EnumerateDevices (a declared backend API every
+#        backend implements) rather than by reaching into in_win.c's statics.
+#        TWO TABLES ON PURPOSE: devids are allocated LAZILY at first use, so the
+#        opening one answers "what hardware was present" and the closing one
+#        "which device owns which devid"; a device in one and not the other was
+#        plugged or unplugged mid-run.  `-` and `unset` are NOT 0, and 0 is a
+#        real devid owned by a real device.
+#        `begin` had to move out of the header's snprintf (the device list is
+#        unbounded, that buffer is 1024 bytes), which edited the exact literal
+#        IN_JournalSynth_f's fixed-width strstr poke depends on -- so arm B
+#        exists solely to prove `synth 1` still lands.  It does.
+#        VERIFIED 2026-09-12, cfg/testrun/p303dev.cfg, two arms, plus three
+#        pre-303 journals under data/runs/ still clean (the additive rule).
+#        301 and 303 CROSS-CONFIRM: `rawmice 2` against exactly two real
+#        `dev mouse` lines, `rawkbds 0` against zero real keyboards, both
+#        written from the same rawmice[] array.
+#        A name is SELF-REPORTED by the device -- a KMBox can clone a real
+#        mouse's VID/PID -- so this is provenance, not attestation.
+#   304  NOT this build's -- a concurrent session's (the ambient-cube fold).
+#   305  engine/client/{in_generic.c,cl_input.c,input.h} (one declaration, no
+#        struct change), plus tools/hidcheck.py.  THE YAW IDENTITY FAILED 57.67%
+#        OF AN HONEST RUN, and the check was wrong rather than the run.
+#        Lex's first real recording (bhop_eazy 0004976_pb, a clean PB, 42,973
+#        'v' records) made Patch 293's identity print "YAW IDENTITY BROKEN on
+#        22,844 of 42,972 frames".  The residual is BIMODAL with an empty
+#        three-decade gap: no turn key held -> median 2.0e-6 deg; +left/+right
+#        held -> median 0.0558 and NOT ONE frame below 1e-4.  Sign matches
+#        CL_AdjustAngles 8,433 times of 8,437; residual/(cl_yawspeed*elapsed)
+#        has median 1.0014; and all 1,938 zero-count turning frames fall inside
+#        a +left or +right hold, none outside.  PITCH IS THE CONTROL and it is
+#        exact (median residual 0.000000000) because cl_pitchspeed is 0 -- so
+#        the mouse path was never wrong, the RECORD was incomplete.
+#        CL_AdjustAngles writes the keyboard turn into viewanglechange[YAW],
+#        the SAME accumulator IN_Move adds the mouse to, and nothing logged it.
+#        NOT AN EDGE CASE: +left/+right are shipped default binds
+#        (cfg/default.cfg:794,805) and this file's OWN prestrafe essay at
+#        default.cfg:409-425 derives pm_groundspeed 260 from turning with them.
+#        Keyboard turn is the prestrafe; the prestrafe opens every bhop run.
+#        The 'v' line gains kpitch/kyaw, captured by DIFFING viewanglechange
+#        across the CL_AdjustAngles call rather than re-deriving it -- a reader
+#        would otherwise have to re-implement CL_KeyState's sub-frame fractions,
+#        cl_anglespeedkey, in_strafe, in_rotate, r_xflip and the FPD_LIMIT_YAW
+#        clamp, and would still break when any of them changed.
+#        VERIFIED 2026-09-12, cfg/testrun/p305kbd.cfg -- and this is the rare
+#        input patch a cfg can fully test, because +left/+right are COMMANDS:
+#        arm B (+left 1.5s) sums kyaw +89.94 against cl_yawspeed 60 * 1.5 = 90,
+#        arm C -90.30, arm A exactly 0, kpitch 0 in all three.  THE CONTROL is
+#        arm B's own file with the kyaw column forced to 0: 144 of 144 turning
+#        frames become unexplained, against 0 with it -- so the column does the
+#        work and did not merely weaken the check.
+#        hidcheck.py also had TWO defects this exposed: EPS was a flat 2e-6,
+#        BELOW the float32 ulp of viewangles (1.526e-5 at 180 deg), which alone
+#        produced 12,751 of the 22,844 faults; and check_identity sat under an
+#        `if not frames: return`, so it never ran on the very files this patch
+#        produces.  A pre-305 file now gets a NOTE, not a fault: absent is not
+#        zero, and a residual there is unattributable rather than damning.
+#   306  engine/client/{in_generic.c,in_win.c,client.h} (two extern int, no
+#        struct change), plus tools/{hidcheck.py,test_hidcheck.py}.  RAW INPUT
+#        WAS ALREADY REJECTING SYNTHESIZED EVENTS AND DELETING THE ONLY
+#        EVIDENCE THAT IT HAD.  INS_RawInput_MouseRead drops any report whose
+#        header.hDevice is not in the enumerated table -- that drop is why an
+#        injected SendInput motion never reaches the view -- and it was silent,
+#        so a journal from a clean session and one from a session where 40,000
+#        synthesized events were thrown away were BYTE-IDENTICAL.
+#        Two counters, never one: hDevice == NULL is synthesized input, while a
+#        REAL handle not in the table is a mouse hot-plugged after init or an
+#        RDP device excluded by in_rawinput_rdp -- innocent, and also a live
+#        usability bug since that device's motion goes nowhere.  Collapsing
+#        them would let "you hot-plugged a mouse" read as "you were attacked".
+#        -1 IS NOT ZERO, the same rule Patch 301 set: -1 means this backend
+#        does not count, 0 is a measurement.  New 'i <dt> <inj> <unenum>'
+#        record, emitted when either moves, with the same honesty as the '!'
+#        drop marker (the count is known, the TIME IS NOT).  Emitted from
+#        IN_Journal_View as well as the drain, and ABOVE its quiet-frame
+#        return -- a rejected report produces no event to drain, so an
+#        injection-only session would otherwise write nothing at all.  The
+#        'end' trailer carries whole-run totals too, so the file states one
+#        quantity twice and an edit must be consistent in two places.
+#        VERIFIED 2026-09-12, cfg/testrun/p306inj.cfg + an external SendInput
+#        harness (NOT kept under tools/ -- a ready-made injector is what this
+#        subsystem exists to stop; the cfg specifies it well enough to
+#        rebuild).  200 sent -> 200 counted in 20 records of 10; 50 -> 50 in 5
+#        of 10; B:C exactly 4.00 as pre-registered; trailer == sum of deltas.
+#        THE CONTROL CAME FREE: 1,100 genuine mouse reports in arm B's own
+#        window ticked NEITHER counter, and their shape settles that they are
+#        not the injection leaking (650 have dy != 0, spanning -7..+4, against
+#        an injection that was uniformly dy 0, dx +-3).  And the view was not
+#        perturbed -- arm B is `ok` with the P293 identity EXACT on all 133
+#        governed frames while 200 reports were being rejected.
+#        A non-zero count is a REJECTED ATTEMPT, never proof of a cheat, and
+#        has innocent causes (remote desktop, accessibility, screen sharing),
+#        so hidcheck reports a NOTE and must never auto-reject.  Still blind
+#        to the two OPEN holes: injected mouse BUTTONS take the legacy
+#        WM_*BUTTONDOWN path, and with in_rawinput_keyboard 0 so does every
+#        keystroke.  Running test_hidcheck.py also found PATCH 305 had left it
+#        at 3 of 17 failing -- the fixtures still wrote pre-305 'v' lines, on
+#        which no identity fault can be raised, so the suite asserted faults
+#        that could no longer occur.  Tool right, tests stale.  Now 31/31.
+#   307  engine/client/{in_generic.c,in_win.c,client.h} (two extern int, no
+#        struct change), one new cvar in_rawinput_nolegacy DEFAULT 0, plus
+#        tools/{hidcheck.py,test_hidcheck.py}.  THE INJECTED MOUSE BUTTON WAS
+#        REACHING THE GAME.  in_win.c registers with dwFlags 0 (RIDEV_NOLEGACY
+#        is written out and deliberately unused), so legacy WM_*BUTTONDOWN
+#        flows beside WM_INPUT; an injected click's WM_INPUT is dropped at the
+#        hDevice test, which sits BEFORE the button stamping, so rawbuttondown[]
+#        stays false and INS_MouseEvent's dedupe passes the legacy message
+#        through as a genuine K_MOUSE1.  DEMONSTRATED, not assumed: 20
+#        synthesized clicks became 20 real K_MOUSE1 presses in arm B.
+#        NOT SIMPLY CLOSED, because this tree already measured the cost: a
+#        Windows precision touchpad is a HID DIGITIZER, not a RIM_TYPEMOUSE, so
+#        it emits NO raw button reports and the legacy message is its ONLY
+#        press.  RIDEV_NOLEGACY takes every mouse button from those users.  So
+#        the patch is two halves: the COUNTER is always on (in_raw_legacybtn,
+#        new 'b' record -- unlike 306's 'i' these ACCEPTED presses DID reach the
+#        game), and the BLOCK is opt-in and GRAB-SCOPED, the latter because
+#        NOLEGACY also kills the non-client messages a windowed player needs to
+#        move their own window.  Driven from INS_Move off the live state, so a
+#        mid-session cvar change is the same event as a grab transition.
+#        VERIFIED 2026-09-12/13, cfg/testrun/p307btn.cfg, four arms:
+#        b-sum 0 / 20 / 0 / 15 for control / open / blocked / restored.  THE
+#        CLEAN ARGUMENT IS NOT "C HAD ZERO" -- zero is also what a dead harness
+#        gives.  It is that the clicks STILL ARRIVED: Patch 306's injected
+#        counter reads 38 in the blocked arm against 38 in the restored one, so
+#        same arrivals, opposite acceptance, switched by the cvar alone.  The
+#        restore arm exists because the 306 falsifier lost 3 of 4 runs to a
+#        silently refused SetForegroundWindow and each looked like success.
+#        RUN 1 CHANGED THE PATCH: the blocked arm worked but its header said
+#        `nolegacylive 0`, because the state flipped FOUR TIMES in three seconds
+#        -- grab-scoped means every grab transition flips it, and a header field
+#        is a snapshot that cannot describe something that changes.  Hence the
+#        'g' record, one line per change, so an auditor can say WHICH SPANS were
+#        open.  Third patch running to land on this: 301 separated the cvar from
+#        the grant, 306 "not counted" from "counted zero", 307 "true at the
+#        start" from "true throughout".
+#        The count is a FLOOR, never a ceiling: the 100ms dedupe swallows an
+#        injected click that lands beside a genuine one (15 of 18 in arm D, with
+#        919 real events in the same window).  And it cannot name a cause -- an
+#        on-screen keyboard, RDP, accessibility software and a touchpad all
+#        click through legacy -- so hidcheck reports a NOTE pointing at the
+#        Patch 303 device table, never a fault.  45 checks, 0 failed.
+#        STILL OPEN: with in_rawinput_keyboard 0 no keyboard WM_INPUT is
+#        registered at all, so an injected KEYSTROKE passes both halves unseen.
+#   308  NOT this build's -- a concurrent session's (the v21/Strata worldlights
+#        lump).  Mine was renumbered to 309 after the collision.
+#   309  engine/client/in_generic.c only (one block in IN_Journal_Event), plus
+#        tools/{hidcheck.py,test_hidcheck.py}.  No header, no cvar, no backend
+#        change.  89.6% OF THE TURN-KEY PRESS RECORDS IN AN HONEST RUN
+#        DESCRIBED PRESSES THAT NEVER HAPPENED.  Measured on bhop_eazy
+#        0004976_pb: 326 '+' against 130 '-'.  e(101)=+left is 118 down / 9 up
+#        and CapsLock(129)=+right is 26 / 6, so the turn keys are 144 down
+#        against 15 up -- 129 of 144 phantom.  They are OS auto-repeat and
+#        nothing said so.  NOT A ROUNDING ERROR: the shape auto-repeat invents
+#        -- a fast, perfectly even press train -- is the shape a SCRIPTED TURN
+#        has, so the record was manufacturing the signature it exists to look
+#        for, on every honest run.  Nobody had been accused only because
+#        nothing read the column yet (third instance of that shape after 301's
+#        unprinted rawmice and 305's unreachable check_identity).
+#        FOUR LINES, because the value already existed: Key_Event computes
+#        `wasdown = !!(keydown[key]&devbit)` one line into its own body to
+#        block auto-repeat binds, and IN_Commands calls IN_Journal_Event BEFORE
+#        the switch that dispatches Key_Event -- so keydown[] still holds the
+#        prior state, which is exactly what Windows' lParam bit 30 means.
+#        DERIVED, not threaded from the wndproc, so it holds on every backend
+#        and on the raw path too; and Key_Event's scancode -1 release-everything
+#        sweep keeps it from going stale on a focus loss.  Emitted on the
+#        RELEASE as well: a '-' whose key was not down is an ORPHAN.  -1 where
+#        the question does not apply, never 0.
+#        VERIFIED 2026-09-13, cfg/testrun/p309rep.cfg, four arms of injected
+#        F12.  PRE-REGISTRATION CORRECTION: arm C was registered as 1 press + 9
+#        repeats and produced 1+5 then 1+3, with TWO prev=0.  The record
+#        explains itself -- both sit immediately after a '- -1' release-
+#        everything sweep caused by the harness stealing focus, so the next
+#        down really WAS fresh and the column said so.  It tracked reality
+#        including a state change the test itself caused; a naive
+#        count-the-downs-minus-one would have been wrong twice over.
+#        Two harness failures kept: PowerShell variable names are CASE-
+#        INSENSITIVE, so `$seq = $SEQ[...]` destroyed its own lookup table; and
+#        an injected letter is unreadable on a machine in active use, so the
+#        key had to be F12 with wScan set as well as wVk (FTE's MapKey reads
+#        the SCANCODE out of lParam, not the virtual key).
+#        hidcheck: '+'/'-' widened to 4 (pre-309) or 5 fields, presses and
+#        repeats counted apart, orphan releases noted, scancode -1 excluded
+#        from both, and a pre-309 file told its '+' records are a MIXTURE that
+#        cannot be counted as presses.  58 checks, 0 failed.
+#   310  engine/client/in_generic.c only, plus tools/{hidcheck.py,
+#        test_hidcheck.py}.  No cvar, no backend change.  THE RECORD DESCRIBED
+#        HOW THE PLAYER AIMED AND NOT WHAT THEY COULD SEE.  293/301/303 put the
+#        input pipeline's constants in the .hid because mouse counts prove
+#        nothing without the numbers that turn them into an angle; the same
+#        argument applies to the renderer and had never been made.
+#        r_fog_progless 0 restores the pre-266 behaviour where program-less
+#        surfaces take NO distance fog -- on a fogged map, seeing through it
+#        across much of the world -- and it is CVAR_ARCHIVE, NOT CVAR_CHEAT.
+#        Checked while building this: r_fullbright and r_drawflat carry NO
+#        FLAGS AT ALL.  Eleven cvars now recorded as repeating `render <name>
+#        "<value>" "<default>"` lines beside the device table (repeating, not
+#        header keys: a dict keeps the LAST of a key and eleven would arrive as
+#        one).  VALUE AND DEFAULT TOGETHER for the P293 reason -- a reader with
+#        only the value needs its own table of what is normal, which drifts.
+#        CHANGES TOO, by modifiedcount rather than by value: cheaper AND
+#        stricter, because a set-and-set-back leaves the value identical.
+#        RECORD, NOT BLOCK: a gate needs a client-cvar channel that does not
+#        exist yet, and a block with no record is unfalsifiable after the fact.
+#        hidcheck reports off-default as NOTES and never faults.
+#        VERIFIED 2026-09-13 FIRST ATTEMPT, cfg/testrun/p310render.cfg -- fully
+#        scriptable, unlike the mouse/button patches, because cvars are console
+#        commands.  Arms A/B/C/D gave 0/0/1/2 'c' records as registered.  ARM D
+#        IS THE ONE: header 1, final value 1, so start-vs-end sees NOTHING, and
+#        the fog was off for half a second in the middle.  A value-comparison
+#        design would have passed it while being wrong.
+#        The engine corrected the table: the source asks for r_wireframe and the
+#        file records r_showtris (renderer.c:162 is `cvar_t r_wireframe =
+#        CVARAFD("r_showtris",...)`), because cvar->name is written rather than
+#        the string we asked for.  Grepping a .hid for r_wireframe finds
+#        nothing, and that is correct.  80 checks, 0 failed.
+#        NOT DONE: $nofog is still ignored on the program-less pass, which is
+#        the one legitimate reason to want r_fog_progless 0.  shader_t.flags is
+#        FULL (SHADER_HASDISPLACEMENT is bit 31) so SHADER_NOFOG needs a new
+#        field, and gl_backend.c's fog path is where the concurrent session's
+#        300/302/304/308 live.  Size it before patching it.
+#   311  engine/client/{in_generic.c,input.h}, engine/common/plugin.c (five
+#        shims + one table), plus tools/{hidcheck.py,test_hidcheck.py}.
+#        A PLUGIN COULD FORGE INPUT THROUGH THE ENGINE'S OWN PUBLISHED API AND
+#        THE JOURNAL CALLED THE FILE CLEAN.  in_jrn_synth was set by
+#        IN_JournalSynth_f because THE COMMAND set it, not because the
+#        INJECTION did -- so the flag described one known caller rather than
+#        the property it is named for.  plugins/plugin.h:356-360 hands a plugin
+#        RAW POINTERS to IN_KeyEvent, IN_MouseMove, IN_JoystickAxisEvent,
+#        IN_Accelerometer and IN_Gyroscope; a plugin is an ordinary native DLL
+#        a player drops in, with no cheat gate, no patching and no hook.
+#        VERIFIED 2026-09-13 as a REAL BEFORE/AFTER ON TWO SHIPPED BINARIES
+#        (310 83D007EA974E vs 311 5A2A722CD7AA), cfg/testrun/p311synth.cfg:
+#          arm A control            synth 0  -> synth 0
+#          arm B in_journal_synth   synth 1  -> synth 1 + source named
+#          arm C PLUGIN injects 32  synth 0  -> synth 1 + "source plugin"
+#        Arm C pre-311 is the point: 32 forged events entered the same ring the
+#        mouse uses and the file declared itself clean evidence.
+#        MARKED AT THE ENTRY POINTS, not inside IN_KeyEvent, because "did this
+#        come from a backend?" is NOT answerable there -- backend and plugin
+#        call the identical function with identical arguments.  An in-band
+#        answer would need every backend on every platform to set a flag first,
+#        and ONE MISSED BACKEND WOULD SILENTLY POISON EVERY HONEST JOURNAL on
+#        that platform.  This fails the safe way instead: a new injection route
+#        added later is un-marked (a gap) rather than every honest run accused.
+#        THE SOURCE IS NAMED, because "a dev tested the format" and "a plugin
+#        forged input" were the same flag.  That forced a reader correction:
+#        hidcheck used to assert every synth file came from in_journal_synth --
+#        true when written, a FALSE ATTRIBUTION once a plugin could set it.  A
+#        pre-311 file now says the source is unknown rather than naming the
+#        innocent one.
+#        The falsifier needed a real plugin (openxr.c:1648 is the only in-tree
+#        caller and wants a VR runtime), so plugins/p311test/ exists: ~40 lines,
+#        built STANDALONE with gcc and never via `make plugins-rel`, which would
+#        rebuild the concurrent session's hl2 plugin.  THE DLL IS DELETED AFTER
+#        THE RUN -- an input-injecting DLL beside the game is exactly what this
+#        subsystem exists to notice.
+#        One defect found by running it: the note read `SYNTH source?plugin`,
+#        because IN_Journal_Note's sanitiser allows only alphanumerics, space,
+#        _ . and -.  Space-separated since; the sanitiser is right, a note must
+#        not be able to forge a record line.
+#        STILL OPEN: a DLL that detours IN_MouseMove itself, or patches the
+#        ring, runs BELOW this mark; so does a hardware replay device.
+#        88 checks, 0 failed.
+#   312  engine/client/{in_generic.c,input.h} only, plus
+#        tools/{hidcheck.py,test_hidcheck.py}.  Plan item P294b.
+#        THE YAW IDENTITY TESTS THE ENGINE'S MULTIPLICATION, NOT THE PLAYER.
+#        Patch 293 proves dyaw == -m_yaw*sens*scale*mx exactly -- but it
+#        computes BOTH SIDES from the engine's own mx, so a hook that rewrites
+#        the accumulated delta UPSTREAM of mx gets a conforming 293 record for
+#        free: the engine then multiplies the doctored number correctly.  That
+#        is the FTE shape of what momentum.dll does to CInput::ApplyMouse, and
+#        293's own essay says so.  The 'm' records come off the event ring in
+#        IN_Commands; mx is read from mouse->delta[] in IN_MoveMouse.  Those
+#        are the two ends of exactly the window such a hook occupies, so a
+#        DISAGREEMENT BETWEEN THEM IS THAT HOOK.
+#        MEASURED BEFORE ANY CODE, because the plan required it (assuming a
+#        frame correspondence is the mistake that made the .hid/.view
+#        cross-check impossible): across every journal in the tree, 45,447 'v'
+#        records including one real 4976-tick PB, the join ALREADY HELD on
+#        45,384 of 45,384 covered frames, 100.000000%.  So 'v' needed no
+#        sequence number and this patch adds no join key.
+#        WHAT IT CATCHES, demonstrated on a real file.  Applying THE FAITHFUL
+#        HOOK -- v.dx +1 AND yaw -k, which is what a real hook produces --
+#          identity  exact on all 1 governed frames   <- 293 sees NOTHING
+#          FAULT     COUNTS JOIN BROKEN ... sum(m)=(90,-2) but raw=(91,-2)
+#        One count in ninety.  At scale on the same PB, a hook touching 93.68%
+#        of frames moves 293's median residual from 0.121000 to 0.121001 deg
+#        -- the SIXTH decimal -- and this check from 0.00% to 93.68%.
+#        THREE THINGS HAD TO BE RECORDED FIRST, each of which would have
+#        ACCUSED AN HONEST PLAYER (the Patch 305 failure mode):
+#          in_xflip -- `mx *= -1` upstream of both taps, recorded NOWHERE.
+#            Arm B: identical input, v.dx -157.5 vs the control's +157.5, with
+#            no key in the header to say why.  Not CVAR_CHEAT, not archived.
+#          counts discarded while the cursor is free -- mx zeroed before the
+#            tap, so the quiet-frame return dropped the 'v' entirely while the
+#            'm' records were already written, ORPHANING them into the next
+#            window.  Arm D: one console press orphaned one 29-count batch.
+#          the M_TOUCH path's hardcoded `mx *= 1.75`, found as an unexplained
+#            ratio in the residuals before the line was located.
+#        ONE TAP, NOT A TABLE OF EXEMPTIONS.  A red-team pass found SEVEN more
+#        transforms between the 'm' record and 293's tap, six silent on an
+#        honest client -- the Key_Dest_Has(~kdm_game) zeroing (whose dests are
+#        NOT all covered by flags bit 4: opening chat discards counts with
+#        flags reading 0), CSQC_MouseMove (on by default, and this game ships
+#        CSQC panels), the two menu consumers, the weapon wheel (true on the
+#        key alone regardless of threshold) and the touch boost.  ALL SIX ARE
+#        DOWNSTREAM OF THE SINGLE TAP, so one line covers them and covers the
+#        seventh nobody has written yet; a flag per discard site would need six
+#        correct edits and fail silently when someone adds a seventh.
+#        A SPARSE RECORD CANNOT MARK A SPAN -- fifth time after 301/306/307/310.
+#        The obvious design marked touch mode with the 'a' record, but Patch 202
+#        DEDUPES unchanged absolute positions, so a run spent ungrabbed carries
+#        ONE 'a' for a state lasting the whole file: it would have exempted one
+#        window and faulted every other.  The final run proved the replacement
+#        by accident -- the launcher left the window unfocused, every frame took
+#        the 1.75 boost (d 90 -2 against v 157.5 -3.5), and the join still
+#        closed, because it is made against the value the engine STATED.
+#        REJECTED, so it is not re-proposed: the first 'v' of a file is short
+#        because in_journal_begin does not clear the pending ptr[].delta, and
+#        clearing it would make the join exact from line one -- by THROWING AWAY
+#        COUNTS THE PLAYER ALREADY MADE.  The engine must not alter a player's
+#        aim, even by one frame, to tidy its own evidence.
+#        WHAT IT DOES NOT COVER: an edit to the EVENT RING before the drain is
+#        transcribed by the 'm' record as truth, so both ends agree; same for
+#        the _GRID GetRawInputData pointer, a single static and so a data write
+#        rather than a code patch.  Anyone who can hook IN_Journal_Raw authors
+#        the whole file.  This spans the ring read to the delta read and claims
+#        nothing outside it -- and it is COMPLEMENTARY to 293, not a
+#        replacement: a hook that faithfully re-emits the counts and mutates
+#        only the angle passes this and fails 293 instead.
+#        Also enrols 293's own constants (sensitivity, m_yaw, m_filter, the
+#        m_accel family) in the existing modifiedcount tracking -- they were
+#        header snapshots, so a mid-run change stopped 293 closing with nothing
+#        in the file to say why -- plus leftisright (the console name of
+#        r_xflip, which inverts 293's sign downstream: the same alias trap 310
+#        hit with r_wireframe/r_showtris), dpcompat_csqcinputeventtypes and
+#        cl_threadedphysics.
+#        VERIFIED 2026-09-13 as a real before/after on two binaries (pre-312
+#        25253344A8B8 vs 312 B88F71EA1A8D), cfg/testrun/p312mvsv.cfg, four arms,
+#        each prediction registered before the run.  hidcheck's
+#        check_counts_join sits BESIDE check_identity, not inside it: that
+#        function's early returns all concern the pipeline DOWNSTREAM of v.dx
+#        and would have suppressed this check on exactly the files it exists
+#        for.  A pre-312 file reports the join UNANSWERABLE rather than broken.
+#        Six new suite cases: 104 checks, 0 failed; all 7 real .hid validate.
+#   313  engine/server/{sv_phys.c,sv_init.c,sv_ccmds.c} and
+#        engine/common/world.h (one declaration).  Plan item P296, the last
+#        open item in the anti-cheat plan's Phase 1.
+#        QC WAS STAMPING RUNS WITH HALF A PREDICATE.  sh_defs.qc's TF_CHEAT
+#        comment had said so for builds: the authoritative test for "were the
+#        physics locked" is SV_MovementLocked() = pm_lockmovement.defaultstr
+#        && !sv_cheats, and QC can see only the second half.  It may NOT
+#        re-derive the first from cvar("pm_lockmovement") -- that reads the
+#        LIVE value, and Patch 170 reads defaultstr precisely because the live
+#        one can be changed by the thing being policed.  So TF_CHEAT meant
+#        "cheats were off", not "the ruleset was locked", and a server whose
+#        pm_lockmovement default is 0 stamps every run on it clean.
+#        Publishes *ruleset "<locked> <off> <seq> <breach>" into svs.info,
+#        which SSQC reads straight back with serverkey() -- no network, no
+#        clone.
+#          locked  SV_MovementLocked(), BOTH halves.
+#          off     how many cvars in pms_lockedmovevars[] currently differ
+#                  from SV_MovementCanonical().  0 by construction while
+#                  locked; carries everything when the lock is off.
+#          seq     incremented on every set of a table cvar to an off-canonical
+#                  value, WHETHER OR NOT THE LOCK IS ENGAGED.  Never reset.
+#          breach  the subset of those that STOOD -- the lock was off, so
+#                  nothing reverted them.  The ONLY field a taint may read.
+#        WHY A COUNTER WHEN off EXISTS.  off is a snapshot and a snapshot
+#        cannot mark a span: a cvar moved and moved back inside a run reads 0
+#        at both ends.  Sixth instance of the same lesson (301, 306, 307, 310,
+#        312).  ARM C measured it -- sv_cheats 1 -> "0 0 1 0", move ->
+#        "0 1 2 1", sv_cheats 0 -> "1 0 2 1".  At the two ends of that window
+#        off says nothing happened and breach says it did.  Counting sits ABOVE
+#        the SV_MovementLocked test (the 306 shape), and is safe against the
+#        bounded re-entry because Cvar_ForceSet's second pass arrives already
+#        equal to canon and so neither counts nor publishes.
+#        AND WHY TWO COUNTERS, which is the correction this patch took before
+#        its consumer shipped.  seq counts ATTEMPTS; under the lock an attempt
+#        is reverted inside the same Cvar_Set, so no physics tick ever sees it
+#        and the run's physics WERE the ruleset's.  Tainting on seq would set a
+#        bit meaning "not provably the ruleset's" on a run where they provably
+#        were, because somebody mistyped a cvar name -- the Patch 305 failure
+#        mode one layer up.  Narrowing seq was wrong too: a refused attempt is
+#        real evidence and its console line is not parseable by anything.  So
+#        both are published.  ARM B is that arm: "1 0 0 0" -> "1 0 1 0", seq
+#        moves and breach does not.
+#        THE COUNTER IS NOT REDUNDANT WITH QC's OWN sv_cheats WATCH, checked
+#        before adding a second mechanism for one gesture.  That watch is an
+#        EDGE (sv_player.qc:472) sampled once per PlayerPostThink, so a toggle
+#        that goes 1 and back to 0 between two of them sets no TF_CHEAT while
+#        every snapshot of this key still reads locked 1 / off 0.  Measured in
+#        the arm built to isolate it, all three commands in one command-buffer
+#        flush:
+#          class:   clean (seg 0 cheat 0 cheatlatch 0)  cheats now 0
+#          ruleset: key "1 0 3 2"  breachat 1  noruleset 0  would 1
+#        A run every existing mechanism calls clean, whose physics left the
+#        ruleset, seen by nothing but the counter.
+#        ARM D DECIDED WHETHER IT SHIPS.  mode_bhop.cfg overrides six cvars in
+#        the locked table (sv_airaccelerate 1000 vs a defaultstr of 150).
+#        Those ARE the ruleset on a bhop map.  Measured "1 0 2 1" with all six
+#        rows live-equals-base: off is 0, NOT 6.  A census against defaultstr
+#        would have refused every bhop run on a correct server -- the Patch 305
+#        failure mode, the flagship check calling the game's own mechanic a
+#        cheat.
+#        "0" AND NOT "" FOR UNLOCKED, where *cheats uses "":
+#        PF_infokey_Internal falls through to svs.localinfo on an empty value
+#        (pr_cmds.c:6478-6479), so "" would read as "go ask localinfo"; and the
+#        key being ABSENT has to stay readable as its own third state, "this
+#        engine predates 313 and cannot answer".  That is the 306 distinction.
+#        NOT COVERED, said out loud: pm_lockmovement's own defaultstr.  A
+#        second exec of a doctored default.cfg followed by the automatic
+#        cvar_lockdefaults 1 (cmd.c:1067-1070) rewrites canonical under the
+#        whole table with no callback anywhere.  That is console access to the
+#        server process -- T3 -- which no patch in this series reaches.  Progs
+#        can overwrite any star key too (PF_setserverkey), so the key is worth
+#        exactly what the server's progs are worth: on the Ranked tier that is
+#        the point, on a listen server it is nothing and so is everything else.
+#        THE CONSUMER SHIPPED WITH IT, QC build 62: TF_NORULESET (1024), on the
+#        TF_NOJOURNAL precedent -- recorded, read by the archive, implying none
+#        of the three taint classes -- and NOT folded into SV_CheatsOn().  An
+#        unlocked ruleset is a hole in the certification, not something the
+#        player did, and folding it into TF_CHEAT would print `cheated` in red
+#        at a player whose install was merely misconfigured.
+#        SV_RulesetBroken is a PURE predicate called by both the latch
+#        (SV_TimerRuleset, start and finish) and `cmd timer`'s report, so there
+#        is one copy of the rule and asking does not mark the run.  That split
+#        is forced by the harness: a run CANNOT BE FINISHED from a config on a
+#        zoned map (zone_goto/setpos both void via SV_TimerWarped), so without
+#        a live `would` column the finish half of the latch would not be
+#        observable headlessly at all -- build 58's lesson, add a report line
+#        instead of chasing the finish.
+#        VERIFIED, ENGINE: real before/after on two binaries, pre-313
+#        C61844E3BE15 and 313 1628C06E3426, cfg/testrun/p313ruleset.cfg, four
+#        arms, every prediction registered before the run.  On the pre-313
+#        binary the key is absent from the serverinfo dump and `movement`
+#        prints no line.
+#        VERIFIED, QC: five arms on cfg/testrun/p313qc.cfg, all predicted.
+#          1 control clean run          class clean    "1 0 0 0"  norule 0 would 0
+#          2 armed with ruleset open    class cheated  "0 0 0 0"  norule 1 would 1
+#          3 a REFUSED set mid-run      class clean    "1 0 1 0"  norule 0 would 0
+#          4 unlock/move/relock mid-run class cheated  "1 0 2 1"  norule 0 would 1
+#          5 the same in one flush      class CLEAN    "1 0 3 2"  norule 0 would 1
+#        Arm 2 is the plan's named falsifier.  Arm 3 is the one the fourth
+#        field bought.  Arm 5 is the one that proves the counter sees what
+#        TF_CHEAT cannot.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before

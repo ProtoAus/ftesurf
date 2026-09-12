@@ -597,10 +597,16 @@ float(entity e, vector p) SV_ZoneStartAt =
 /*
   The personal best table, per map.
 
-  [track * FS_MAXSPLITS + startseg] is the best time for that LEG: startseg 0
-  is the full track, 1.. are the individual stage runs.  run_pb_split is only
-  meaningful for full runs and holds the cumulative time at each stage
-  boundary, which is what the +/- on the HUD is measured against.
+  [track * FS_MAXSPLITS + leg] is the best time for that LEG: leg 0 is the full
+  track and leg k is stage k.  run_pb_split is only meaningful for full runs and
+  holds the cumulative time at each stage boundary, which is what the +/- on the
+  HUD is measured against -- and it is still keyed by SEGMENT, because a split is
+  one.
+
+  BUILD 57: KEYED BY LEG, WHERE IT WAS KEYED BY THE STARTING SEGMENT.  Slot 1
+  used to hold stage 2 and stage 1 had no slot, because its segment is 0 and 0
+  was the full run.  FS_LegOf is the only speller of the key.  Legs cap at
+  FS_MAXSPLITS - 1 = 23; every write below tests the leg against that bound.
 */
 float run_pb_ticks[FS_MAXTRACKS * FS_MAXSPLITS];
 float run_pb_split[FS_MAXTRACKS * FS_MAXSPLITS];
@@ -714,7 +720,37 @@ float rec_retry_armed;
 
 .float  run_t_state;             // TS_*
 .float  run_t_track;
-.float  run_t_startseg;          // 0 = a full track run, N = a stage-N run
+.float  run_t_startseg;          // the 0-based SEGMENT the run began at
+/*
+  BUILD 57 -- A STAGE RUN SAYS SO, BECAUSE THE SEGMENT CANNOT.
+
+  run_t_startseg used to double as the LEG: 0 was the full run and N was "a run
+  that began at segment N", which FS_LegDir spelled stage_N.  That is one stage
+  late on every staged map -- segment N is stage N+1 -- and it left stage 1 with
+  no leg at all, because stage 1 begins at segment 0 and 0 already meant the
+  whole track.  So `!s 1` armed a full run, SV_StageClose refused segment 0, and
+  the scoreboard was one stage short.
+
+  The segment stays a segment wherever it means one (splits, the .rec `stage`
+  and `restart` records, the `startseg` header).  The leg is derived:
+
+      leg = FS_LegOf(run_t_startseg, run_t_stagerun)   // 0 full run, k stage k
+
+  run_t_stagerun is set by SV_TimerArm and nowhere else except a save restore.
+  It is TRUE for an arm at a STAGE zone, as every stage run already was, and for
+  an arm at the main track's START while run_t_wantstage1 is standing -- which is
+  the one new leg, stage 1 run on its own.
+
+  run_t_wantstage1 is the PLAYER'S REQUEST, not a fact about a run, and that is
+  why it is a separate field.  `!s 1` sets it and then moves to the START; the
+  arm that follows reads it.  It has to outlive the arm, because `!r` inside a
+  stage-1 run voids and re-arms the same START and must come back as stage 1 --
+  and it has to die the moment the player asks for anything else: `!m`, `!b`,
+  `!s N` for N > 1, walking into a START, or an arm anywhere that is not the
+  main track's START.  See SV_TimerArm, SV_TimerTryArm and SV_TimerChatLeg.
+*/
+.float  run_t_stagerun;          // TRUE: a stage-only run; its leg is startseg + 1
+.float  run_t_wantstage1;        // `!s 1` is standing: the main START arms stage 1
 .float  run_t_seg;               // segment in progress
 .float  run_t_segs;              // segments in this track
 .float  run_t_start;             // sv time the timer started
@@ -980,6 +1016,19 @@ float() SV_RecEnabled =
 .float  run_t_cheat;
 
 /*
+  THE *ruleset BREACH COUNT AS IT STOOD WHEN THIS ATTEMPT'S CLOCK STARTED.
+  Build 62.  BREACH, not seq: seq counts attempts to move a locked mover cvar,
+  breach counts the ones that were not reverted and therefore actually changed
+  the physics.  Differencing seq here would mark a run whose only sin was a
+  mistyped cvar name the lock refused.  See SV_TimerRuleset.
+
+  -1 means never sampled -- a pre-313 engine, or an attempt armed before this
+  build -- and SV_TimerRuleset refuses to compare against it, so a missing
+  sample can never manufacture a violation.
+*/
+.float  run_t_rbreach;
+
+/*
   The worst class this attempt has been TOLD it is.  Build 44.
 
   A high-water mark and not a mirror of the flags: SV_SaveApplyState restores
@@ -1066,10 +1115,14 @@ float() SV_RecEnabled =
   that are already in memory, not a second copy of them.
 
   run_st_jump is the filter, and run_st_ramp is what makes it honest -- see
-  SV_StageJump.  run_st_seg is the LEG, which is the segment index the stage
-  begins at, and is what FS_LegDir spells as stage_N.
+  SV_StageJump.  run_st_seg is the SEGMENT index the stage begins at.
+
+  BUILD 57: THIS USED TO SAY run_st_seg IS THE LEG, and FS_LegDir spelled it
+  stage_N, which is one stage early -- segment N is stage N+1 -- and it made
+  segment 0, stage 1, unwritable because 0 was `main`.  The leg of segment s is
+  s + 1, always, and FS_LegOf(s, TRUE) is how every writer spells it.
 */
-.float  run_st_seg;              // the leg, or -1 when no stage is open
+.float  run_st_seg;              // the 0-based segment, or -1 when no stage is open
 .float  run_st_line;             // buffer index where this stage's samples start
 .float  run_st_tick;             // the run clock the stage began at
 .float  run_st_jump;             // it began with a jump: this one is recordable
@@ -1229,6 +1282,30 @@ float() SV_RecEnabled =
 .float  run_st_endseg;           // the segment that closed
 .float  run_st_endword;          // its SF_* word at the close, with SF_KNOWN
 .float  run_st_endticks;         // its own duration, in ticks
+
+/*
+  BUILD 57, STAGE T -- THE FINISH, AS A COUNTER WITH ITS ANSWER BESIDE IT.
+
+  The group above is "a stage ended"; this one is "a LEG ended".  It exists
+  because in a lobby the client cannot see a finish at all: the recorder is off,
+  so SV_RecClose -- which publishes RUNTAG, RUNTICKS and RUNLEG -- is never
+  reached, and TS_FINISHED can be skipped outright when run_t_pendarm re-arms a
+  chained stage run inside the same server frame.  The full argument is over
+  STAT_FS_FINREC in shared/sh_defs.qc.
+
+  BUMPED BY EVERY FINISH, lobby or not, for the reason run_st_endrec is bumped by
+  every close: one rule at the one site that owns the event is cheaper than a
+  condition somebody has to remember, and a counter turns a dropped snapshot into
+  a visible GAP rather than a lost event.
+
+  THEY ARE NOT CLEARED BY THE NEXT ARM.  `results` reopens the last card from
+  these, exactly as it reads a RUNTAG that SV_RecDiscard deliberately leaves
+  standing; a value that died with the attempt would make that command lie.
+*/
+.float  run_t_finrec;            // monotonic; bumped LAST, in SV_TimerFinish
+.float  run_t_finticks;          // the time the finish was measured at
+.float  run_t_finleg;            // RUNLEG's encoding: track * 100 + leg + 1
+.float  run_t_finflags;          // TF_*, as the finish left them
 .float  rec_pad_head;            // next ring slot to write
 .float  rec_pad_len;
 
@@ -1462,7 +1539,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 */
 string(entity e, float ticks, string tag) SV_RecFinalPath =
 {
-	return FS_RunPath(mapname, e.run_t_track, e.run_t_startseg, ticks, tag, "rec");
+	// BUILD 57: by LEG.  A stage-1 run begins at segment 0 exactly as a full run
+	// does, and filing it by the segment would put it in `main`.
+	return FS_RunPath(mapname, e.run_t_track,
+	                  FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks, tag, "rec");
 };
 
 /*
@@ -1659,10 +1739,11 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_buf = -1;
 	e.rec_rec_lines = e.rec_rec_n = e.rec_rec_padn = e.rec_rec_cp = 0;
 	e.rec_rec_full = FALSE;
-	// +1 so that 0 can mean "no run": track 0 startseg 0 is the main track's
-	// full run, which is the most common leg there is, and it would otherwise
-	// encode to the same 0 that a discarded run leaves behind.
-	e.rec_rec_leg = e.run_t_track * 100 + e.run_t_startseg + 1;
+	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
+	// run, which is the most common leg there is, and it would otherwise encode
+	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
+	// the starting segment -- see FS_LegOf.
+	e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 	e.rec_rec_tag = RT_NONE;
 	e.rec_rec_ticks = 0;
 
@@ -1685,6 +1766,15 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
+	/*
+	  BUILD 57: THE LEG, BESIDE THE SEGMENT, because the segment stopped naming it.
+	  A stage-1 run and a full run both write `startseg 0`; this key is what tells
+	  a reader which folder the file belongs to.  ADDITIVE, by the header's own
+	  rule -- an older reader skips it, and a newer reader that does not find it
+	  derives FS_LegOf(startseg, startseg > 0), which is what every file written
+	  before this line meant.
+	*/
+	SV_RecPut(e, sprintf("leg %g", FS_LegOf(e.run_t_startseg, e.run_t_stagerun)));
 	SV_RecPut(e, sprintf("tickrate %g", run_t_tick));
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	SV_RecPut(e, sprintf("runid %s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"), e.run_t_slot));
@@ -1831,8 +1921,13 @@ void(entity e) SV_RecDiscard =
   folder instead of stage_N -- deleting real runs to make room for a file that is
   not even in that directory.  The call site is what knows which leg it just
   wrote, which is the same argument SV_RecLine already makes about its timestamp.
+
+  BUILD 57: AND IT IS A LEG NOW, NOT A SEGMENT.  The two call sites pass the leg
+  they just wrote into -- FS_LegOf of the run for a finish, seg + 1 for a lifted
+  stage -- because FS_RunDir takes a leg, and a segment handed to it sweeps the
+  folder of the stage before the one that was written.
 */
-void(entity e, float startseg, string tag, string keepme) SV_RecPrune =
+void(entity e, float leg, string tag, string keepme) SV_RecPrune =
 {
 	local float h, n, i, keep, kl;
 	local string fn, stem;
@@ -1842,7 +1937,7 @@ void(entity e, float startseg, string tag, string keepme) SV_RecPrune =
 		return;                 // 0 disables pruning entirely
 
 	h = search_begin(sprintf("%s*_%s.rec",
-	                         FS_RunDir(mapname, e.run_t_track, startseg),
+	                         FS_RunDir(mapname, e.run_t_track, leg),
 	                         tag), FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
@@ -1972,7 +2067,8 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// rather than sliced off dst, because it is the same two pieces the
 		// name was made from and slicing would be a second way of spelling it.
 		if (stamp >= 0)
-			SV_RecPrune(e, e.run_t_startseg, SV_RecTagName(tag),
+			SV_RecPrune(e, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
+			            SV_RecTagName(tag),
 			            sprintf("%s_%s.rec", FS_RunStamp(stamp),
 			                    SV_RecTagName(tag)));
 	}
@@ -2067,7 +2163,7 @@ float(entity e, string path, float mark, float serial,
 		e.rec_rec_padn  = padn;
 		e.rec_rec_cp    = cps;
 		e.rec_rec_full  = FALSE;     // room again, so the cap may be re-reported
-		e.rec_rec_leg   = e.run_t_track * 100 + e.run_t_startseg + 1;
+		e.rec_rec_leg   = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 		e.run_t_flags   = e.run_t_flags | TF_RECORDING;
 		return TRUE;
 	}
@@ -2120,8 +2216,12 @@ float(entity e, string path, float mark, float serial,
 	  FINISHED, and clearing it here would race a client that has not rendered a
 	  frame since a finish -- the same race SV_RecDiscard documents, and for the
 	  same reason it does not clear the tag unconditionally either.
+
+	  BUILD 57: the LEG, through FS_LegOf.  SV_SaveApplyState puts run_t_stagerun
+	  back before it calls this, so a restored stage-1 run names its sidecar
+	  stage_1 rather than main.
 	*/
-	e.rec_rec_leg = e.run_t_track * 100 + e.run_t_startseg + 1;
+	e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 
 	/*
 	  v4: find the reserved `flags` line again.
@@ -2263,7 +2363,7 @@ string() SV_PBPath = { return FS_PBPath(mapname); };
 /*
   data/runs/<map>.pb -- one line per fact, three numbers each:
 
-      best  <track> <startseg>  <ticks>    the leg's best time
+      best  <track> <leg>       <ticks>    the leg's best time
       split <track> <segment>   <ticks>    the PB's clock at that stage boundary
       cp    <track> <ordinal>   <ticks>    the PB's clock at that checkpoint
 
@@ -2274,12 +2374,32 @@ string() SV_PBPath = { return FS_PBPath(mapname); };
 
   The bounds test lives ABOVE the keyword dispatch on purpose -- it is why
   FS_MAXCPS is required to equal FS_MAXSPLITS.
+
+  BUILD 57: FTESURF-PB 2, AND `best` IS THE ONLY LINE WHOSE MEANING MOVED.
+  Version 1 keyed it by the 0-based SEGMENT a run began at, so `best 0 1` was
+  stage 2 and stage 1 could not be written at all.  Version 2 keys it by LEG --
+  `best 0 1` is stage 1.  `split` and `cp` were always keyed by segment and by
+  ordinal and are untouched.
+
+  A VERSION-1 FILE IS SHIFTED IN MEMORY, not refused and not rewritten here:
+  every `best t s` with s > 0 is read as leg s + 1, which is what it meant.  So
+  an un-migrated best.pb shows the right stage times the moment this build loads
+  it, and the next SV_PBSave writes it back as version 2.  What this cannot fix
+  is the stage_N FOLDERS beside it, which still hold stage N+1 -- so the load
+  says so, once per map, and names the tool that renames them.
+
+  The version comes from the header, which SV_PBSave always writes first; a file
+  with no header at all is older than the header and is version 1.  The shift
+  happens BEFORE the bounds test, so the test asks about the leg: a version-1
+  `best 0 23` is leg 24, which the table cannot hold, and it is dropped here
+  exactly as an out-of-range line always was.
 */
 void() SV_PBLoad =
 {
 	local filestream f;
 	local string line, w;
 	local float n, a, b, c;
+	local float ver, shifted;       // build 57: the file's version; a v1 stage key was moved
 
 	SV_PBClear();
 
@@ -2303,15 +2423,33 @@ void() SV_PBLoad =
 	if (f < 0)
 		return;
 
+	ver     = 1;
+	shifted = FALSE;
+
 	while ((line = fgets(f)) != "")
 	{
 		n = tokenize(line);
+		if (n >= 2)
+		if (argv(0) == "FTESURF-PB")
+		{
+			ver = stof(argv(1));
+			continue;
+		}
 		if (n < 4)
 			continue;
 		w = argv(0);
 		a = stof(argv(1));
 		b = stof(argv(2));
 		c = stof(argv(3));
+
+		// Build 57: a version-1 stage key is a segment; read it as its leg.
+		if (w == "best")
+		if (ver < 2)
+		if (b > 0)
+		{
+			b = b + 1;
+			shifted = TRUE;
+		}
 
 		if (a < 0 || a >= FS_MAXTRACKS || b < 0 || b >= FS_MAXSPLITS)
 			continue;
@@ -2332,6 +2470,49 @@ void() SV_PBLoad =
 			run_pb_cp[a * FS_MAXCPS + b] = c;
 	}
 	fclose(f);
+
+	/*
+	  BUILD 57: THE NOTICE IS ABOUT THE FOLDERS, AND IT MUST NOT GO QUIET WHEN THE
+	  TREE BECOMES HARDER TO FIX RATHER THAN EASIER.
+
+	  It used to print only on `shifted` -- a version-1 best.pb whose stage keys
+	  were moved on load.  That reads the wrong thing.  One finish on build 57 has
+	  SV_PBSave rewrite the file as FTESURF-PB 2 while the stage_N folders beside
+	  it are still segment-numbered, so the warning stops on exactly the map that
+	  now needs it most, and its silence reads as "migrated".  legs1 then refuses
+	  that map, and refuses the whole tree with it.
+
+	  So the test is the pair that actually disagrees: a stage folder with runs in
+	  it, and no data/runs/.legs1 to say the rename has happened.  `shifted` still
+	  prints on its own, because a version-1 file is worth naming even on a map
+	  with no stage folders yet.
+	*/
+	if (!shifted)
+	{
+		local filestream mk;
+		local float sh;
+
+		mk = fopen(strcat(FS_RUNS_ROOT, ".legs1"), FILE_READ);
+		if (mk < 0)
+		{
+			sh = search_begin(strcat(FS_RunDir(mapname, 0, 1), "*.rec"),
+			                  FS_NAMESORT, TRUE);
+			if (sh >= 0)
+			{
+				if (search_getsize(sh) > 0)
+					shifted = TRUE;
+				search_end(sh);
+			}
+		}
+		else
+			fclose(mk);
+	}
+
+	if (shifted)
+		print(sprintf("^3timer:^7 %s and its stage_N folders predate build 57 -- times load "
+		              "correctly, but the folders are one stage early until you run "
+		              "tools/migrate_runs.py legs1.  This line stops when %s.legs1 exists.\n",
+		              SV_PBPath(), FS_RUNS_ROOT));
 };
 
 void() SV_PBSave =
@@ -2364,9 +2545,13 @@ void() SV_PBSave =
 		return;
 	}
 
-	fputs(f, "FTESURF-PB 1\n");
+	// BUILD 57: version 2, whose `best` lines are keyed by LEG.  SV_PBLoad reads a
+	// version-1 file by shifting its stage keys, so a best.pb an older build wrote
+	// is rewritten here in the new meaning the first time anything on it changes.
+	fputs(f, "FTESURF-PB 2\n");
 	fputs(f, sprintf("# %s  %s\n", mapname, strftime(TRUE, "%Y-%m-%d %H:%M")));
 
+	// best: s is the LEG (0 the full run, k stage k), which is the table's own key.
 	for (t = 0; t < FS_MAXTRACKS; t = t + 1)
 		for (s = 0; s < FS_MAXSPLITS; s = s + 1)
 			if (run_pb_ticks[t * FS_MAXSPLITS + s] > 0)
@@ -2386,9 +2571,10 @@ void() SV_PBSave =
 	run_pb_dirty = FALSE;
 };
 
-float(float track, float startseg) SV_PBGet =
+// BUILD 57: `leg` is a LEG -- 0 the full run, k stage k -- and the bound is on it.
+float(float track, float leg) SV_PBGet =
 {
-	if (track < 0 || track >= FS_MAXTRACKS || startseg < 0 || startseg >= FS_MAXSPLITS)
+	if (track < 0 || track >= FS_MAXTRACKS || leg < 0 || leg >= FS_MAXSPLITS)
 		return 0;
 
 	/*
@@ -2411,7 +2597,7 @@ float(float track, float startseg) SV_PBGet =
 	if (Lobby_NoPB())
 		return 0;
 
-	return run_pb_ticks[track * FS_MAXSPLITS + startseg];
+	return run_pb_ticks[track * FS_MAXSPLITS + leg];
 };
 
 /*
@@ -2549,6 +2735,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 {
 	local float buf, i, fh, samples, cps, pad;
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
+	local float leg;                // build 57: the leg this slice is filed under
 	local string l, dst;
 
 	buf = buf_create_ex("string", 0);
@@ -2559,9 +2746,11 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	}
 
 	/*
-	  The header, and it is a v4 header like any other -- the only thing that
-	  differs from the parent run's is `startseg`, which is what makes this file
-	  a member of the stage_N leg rather than of main.
+	  The header, and it is a v4 header like any other -- the only things that
+	  differ from the parent run's are `startseg` and `leg`, which are what make
+	  this file a member of a stage leg rather than of main.  BUILD 57: `leg` is
+	  seg + 1, the folder it is written into; `startseg` stays the segment, and
+	  for stage 1 that is the same 0 the parent run's own header carries.
 
 	  `flags` is written directly rather than reserved and rewritten: unlike a
 	  live recording, everything about this one is already known.
@@ -2610,10 +2799,13 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	if (e.run_st_stitch) i = i | TF_PRACTICE | TF_SEGMENT;
 	if (e.run_st_cheat)  i = i | TF_PRACTICE | TF_CHEAT;
 
+	leg = FS_LegOf(seg, TRUE);      // build 57: a lifted stage is always a stage leg
+
 	bufstr_set(buf, buf_getsize(buf), "FTESURF-REC 4");
 	bufstr_set(buf, buf_getsize(buf), sprintf("map %s", mapname));
 	bufstr_set(buf, buf_getsize(buf), sprintf("track %g", e.run_t_track));
 	bufstr_set(buf, buf_getsize(buf), sprintf("startseg %g", seg));
+	bufstr_set(buf, buf_getsize(buf), sprintf("leg %g", leg));
 	bufstr_set(buf, buf_getsize(buf), sprintf("tickrate %g", run_t_tick));
 	bufstr_set(buf, buf_getsize(buf), sprintf("owner %s", e.netname));
 	bufstr_set(buf, buf_getsize(buf),
@@ -2734,7 +2926,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("end %g %g %g %g", dur, samples, pad, cps));
 
-	dst = FS_RunPath(mapname, e.run_t_track, seg, dur, FS_TagName(RT_PB), "rec");
+	dst = FS_RunPath(mapname, e.run_t_track, leg, dur, FS_TagName(RT_PB), "rec");
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
 		dprint(sprintf("stage: cannot open %s for writing\n", dst));
@@ -2747,7 +2939,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 
 		// Same pruner and the same rule as a full run: the archive grows one
 		// file per improvement and is capped per leg.
-		SV_RecPrune(e, seg, FS_TagName(RT_PB),
+		SV_RecPrune(e, leg, FS_TagName(RT_PB),
 		            sprintf("%s_%s.rec", FS_RunStamp(dur), FS_TagName(RT_PB)));
 	}
 
@@ -2813,10 +3005,11 @@ float(entity e) SV_StageZone =
   stage is taken again, and from the save-lock resume once the recorder has been
   rewound underneath it.
 
-  run_st_seg is set even for segment 0 -- which is `main` and is never written as
-  a stage of its own -- because SV_StageClose needs a consistent "there is a
-  stage open" state to close, and a -1 there would make the first boundary a
-  special case in a function that is otherwise the same every time.
+  run_st_seg is set for segment 0 like any other, because SV_StageClose needs a
+  consistent "there is a stage open" state to close, and a -1 there would make
+  the first boundary a special case in a function that is otherwise the same
+  every time.  BUILD 57: and segment 0 IS written now, as stage 1 -- it used to
+  be refused as `main`, which is the whole run and not its first stage.
 
   IT TAKES NO ZONE, AND THAT IS A DECISION RATHER THAN AN OMISSION.  The obvious
   shape is a fourth parameter naming the boundary that was crossed, so the arm
@@ -3050,13 +3243,19 @@ void(entity e, float ticks) SV_StageFail =
   SEVEN REASONS TO WRITE NOTHING, and each of them is a different question:
 
     no recording      rec_rec_buf < 1.  Nothing to slice.
-    not a main run    run_t_startseg > 0 means this IS a stage run, and it writes
-                      itself through SV_TimerFinish like any other leg
-    segment 0         the first segment of a main run is the `main` leg, not a
-                      stage -- FS_LegDir(track, 0) is "main", and writing it here
-                      would put a duplicate of the run's own opening into the
-                      folder the whole run belongs in
-    surfed through    run_st_jump.  The filter.
+    not a full run    run_t_stagerun means this IS a stage run, and it writes
+                      itself through SV_TimerFinish like any other leg.  BUILD
+                      57: the flag, not `run_t_startseg > 0`, because a stage-1
+                      run begins at segment 0 exactly as a full run does.
+    (segment 0)       BUILD 57 DELETED THIS ONE.  It said the first segment of a
+                      main run is the `main` leg -- FS_LegDir(track, 0) -- and
+                      that was the bug: segment 0 is STAGE 1, and main is the
+                      whole run.  Segment s is written under leg s + 1 now, and
+                      a linear track, whose one segment really is the whole run,
+                      is refused by SV_StageQualifies instead.
+    surfed through    run_st_jump.  The filter -- for every stage except the one
+                      the run began with, which the run's own start rules police.
+                      See SV_StageQualifies.
     this stage is dirty  run_st_dirty, which BUILD 44 makes an umbrella over
                       run_st_stitch and run_st_cheat exactly as TF_PRACTICE is one
                       over TF_SEGMENT and TF_CHEAT.  THIS LINE DID NOT CHANGE and
@@ -3131,9 +3330,134 @@ float(entity e) SV_StageWord =
 	return w;
 };
 
+/*
+  BUILD 57 -- DOES THIS STAGE QUALIFY?
+
+  The jump, taint and linear refusals of SV_StageClose, lifted out whole and free
+  of side effects, so a second reader can ask the same question and cannot get a
+  different answer.  Stage T's lobby times are that reader.
+
+  NOT HERE, DELIBERATELY: whether there is a recording to slice, whether a lobby
+  may keep it, whether it beat the leg's best, and whether this is a stage run
+  that files itself at the finish.  Those are questions about what gets WRITTEN.
+  This one is about the stage, and a stage that qualified still qualified when
+  nothing is written for it.
+
+  It reads only what SV_StageClose leaves alone at its top -- run_st_jump,
+  run_st_dirty, run_st_ghost, run_st_tick -- and the run's own flags, so it gives
+  the same answer before and after the close report is taken.
+
+  FOUR QUESTIONS, in order:
+
+    no stage       seg < 0.  Nothing was open, and -1 has no leg.
+    linear track   run_t_segs <= 1.  A track with one segment has no stages: that
+                   segment IS the full run, and lifting it would file a duplicate
+                   of main under stage_1 -- a leg the scoreboard rightly never
+                   lists for a linear map.  (The old `seg <= 0` refusal covered
+                   this by accident, along with the stage it should not have.)
+    how it began   THE STAGE THE RUN BEGAN WITH qualifies on the RUN'S START
+                   RULES; every later stage keeps the run_st_jump filter.
+    taint          run_st_dirty and the ghost rule under run_stageclean 1, the
+                   run's TF_PRACTICE under 0.  Build 48's rules, unchanged.
+
+  WHY THE FIRST STAGE CANNOT USE run_st_jump.  run_st_jump means "this stage began
+  the way a run begins", and SV_StageJump sets it from exactly two places: a
+  grounded jump with no ramp contact since the boundary, and the exit from a
+  boundary box that SV_TimerFrame's stage machine armed.  The stage a run begins
+  with gets neither -- the stage machine refuses segment 0 and every stage run,
+  because the run's own arm and start already own that box -- so a clean walk
+  out of the START onto a ramp never sets it, and stage 1 would be refused on the
+  single most ordinary start there is.
+
+  WHAT POLICES THAT START INSTEAD is what already polices the run: the START
+  zone's dwell and run_starthop.  Every way a start can be spoiled has landed in
+  run_t_flags as TF_PRACTICE by the time this stage can close --
+
+    a hop out of the box          run_t_hopped, consumed by SV_TimerStart
+    a hop just after leaving it   SV_TimerJumpWatch -> SV_TimerPractice, while
+                                  the start is unsettled
+    noclip or cheats into the box run_t_dirty / run_t_cheat, consumed by the start
+    a save-lock load              SV_TimerStitched: TF_SEGMENT | TF_PRACTICE
+    run_cheatwatch 0              SV_TimerFinish, before the final close
+
+  -- and run_st_dirty CANNOT stand in for it.  SV_TimerStart consumes those taints
+  BEFORE it calls SV_StageOpen, which re-reads run_st_dirty from the live level
+  and so launders a hopped start at the stage level.  The run's flag is the one
+  place the start's verdict survives, and it is exact rather than over-strict for
+  this stage: nothing can taint the run between its arm and the first boundary
+  except something that happened during this stage.
+
+  AND IT MUST HAVE BEGUN AT THE START.  run_st_tick == 0 says SV_TimerStart opened
+  it, the only opener that passes a literal 0.  A save resume or `retry` re-opens
+  the stage at the tick it resumed from, so its slice holds only what came after
+  the resume while the time on the board would claim the whole stage.  A load is
+  practice anyway; a retry of a clean run is not, and this refuses its short one.
+
+  THE SAME RULE ANSWERS FOR A STAGE RUN'S OWN STAGE (seg == run_t_startseg), which
+  SV_StageClose refuses before it asks but a second reader will ask about: that
+  stage's start is the run's start too, policed by the same flags, and
+  TF_PRACTICE is exactly what decides whether SV_TimerFinish ranks the run.
+*/
+float(entity e, float seg) SV_StageQualifies =
+{
+	if (seg < 0)
+		return FALSE;
+	if (e.run_t_segs <= 1)
+		return FALSE;
+
+	if (seg == e.run_t_startseg)
+	{
+		if (e.run_t_flags & TF_PRACTICE)
+			return FALSE;
+		if (e.run_st_tick != 0)
+			return FALSE;
+	}
+	else if (!e.run_st_jump)
+		return FALSE;
+
+	if (run_t_stageclean)
+	{
+		if (e.run_st_dirty)
+			return FALSE;
+		/*
+		  BUILD 48 -- GHOSTING NO LONGER REFUSES A STAGE, ON THE USER'S CALL, AND
+		  THE REFUSAL WAS NEVER ABOUT FAIRNESS.
+
+		  Build 43 added `if (e.run_st_ghost) return;` here and said why in as
+		  many words: SV_StageLine dropped `ghost` records while SV_StageWrite's
+		  header copied TF_GHOST in, and reccheck.py faults that disagreement.  So
+		  the refusal was a cheap way to make a FILE FORMAT problem impossible, and
+		  it bought that by throwing the stage away.
+
+		  The run level never agreed with it.  SV_GhostSet's own essay says a
+		  ghosted run stays valid and is MARKED instead, because a body with
+		  nobody's hands on it is close to self-policing -- and detaching the
+		  camera to look around is a thing this game is FOR.  A rule that voided
+		  the stage but not the run around it was the odd one out.
+
+		  So the format problem is fixed instead: SV_StageLine now keeps `ghost`
+		  records and rebases them like `cp`, and SV_StageWrite emits a synthetic
+		  one when a stage began already ghosting.  Header and content agree, and
+		  the stage is written.
+
+		  run_stageghost 0 restores build 47 exactly.  (Build 57 moved this rule
+		  here from SV_StageClose, word for word.)
+		*/
+		if (!run_t_stageghost)
+		if (e.run_st_ghost)
+			return FALSE;
+	}
+	else
+	{
+		if (e.run_t_flags & TF_PRACTICE)
+			return FALSE;
+	}
+	return TRUE;
+};
+
 void(entity e, float ticks) SV_StageClose =
 {
-	local float dur, pb, seg;
+	local float dur, pb, seg, leg;
 
 	seg = e.run_st_seg;
 	e.run_st_seg   = -1;
@@ -3159,47 +3483,41 @@ void(entity e, float ticks) SV_StageClose =
 	*/
 	e.run_st_endseg   = seg;
 	e.run_st_endword  = SV_StageWord(e);
+	/*
+	  BUILD 57, STAGE T -- AND THIS IS THE ONE BIT SV_StageWord CANNOT SET.
+
+	  SF_QUALIFIES is the verdict of SV_StageQualifies, published so that a second
+	  keeper of stage times -- the client's lobby store -- asks the server rather
+	  than re-implementing a jump detector and a taint ladder it cannot observe.
+
+	  It is OR'd in HERE rather than inside SV_StageWord because that function is
+	  shared with the per-tick stat and takes no segment: `e.run_st_seg` is already
+	  -1 four lines above, so the shared speller has nothing left to ask about.
+	  The local `seg` is the only surviving copy of the right question, which is
+	  why the answer can only be taken at this site.
+
+	  SV_StageQualifies reads run_t_segs, run_t_startseg, run_t_flags, run_st_tick,
+	  run_st_jump, run_st_dirty and run_st_ghost -- none of which this function has
+	  touched -- so asking it before or after the report gives the same answer.
+	*/
+	if (SV_StageQualifies(e, seg))
+		e.run_st_endword = e.run_st_endword | SF_QUALIFIES;
 	e.run_st_endticks = ticks - e.run_st_tick;
 	e.run_st_endrec   = e.run_st_endrec + 1;
 
-	if (e.rec_rec_buf < 1)      return;
-	if (e.run_t_startseg > 0)   return;
-	if (seg <= 0)              return;
-	if (!e.run_st_jump)         return;
+	/*
+	  BUILD 57: THREE REFUSALS WHERE THERE WERE FOUR, AND THE TAINT BLOCK MOVED.
 
-	if (run_t_stageclean)
-	{
-		if (e.run_st_dirty)     return;
-		/*
-		  BUILD 48 -- GHOSTING NO LONGER REFUSES A STAGE, ON THE USER'S CALL, AND
-		  THE REFUSAL WAS NEVER ABOUT FAIRNESS.
-
-		  Build 43 added `if (e.run_st_ghost) return;` here and said why in as
-		  many words: SV_StageLine dropped `ghost` records while SV_StageWrite's
-		  header copied TF_GHOST in, and reccheck.py faults that disagreement.  So
-		  the refusal was a cheap way to make a FILE FORMAT problem impossible, and
-		  it bought that by throwing the stage away.
-
-		  The run level never agreed with it.  SV_GhostSet's own essay says a
-		  ghosted run stays valid and is MARKED instead, because a body with
-		  nobody's hands on it is close to self-policing -- and detaching the
-		  camera to look around is a thing this game is FOR.  A rule that voided
-		  the stage but not the run around it was the odd one out.
-
-		  So the format problem is fixed instead: SV_StageLine now keeps `ghost`
-		  records and rebases them like `cp`, and SV_StageWrite emits a synthetic
-		  one when a stage began already ghosting.  Header and content agree, and
-		  the stage is written.
-
-		  run_stageghost 0 restores build 47 exactly.
-		*/
-		if (!run_t_stageghost)
-		if (e.run_st_ghost)     return;
-	}
-	else
-	{
-		if (e.run_t_flags & TF_PRACTICE) return;
-	}
+	  `startseg > 0` became run_t_stagerun, because a stage-1 run begins at
+	  segment 0.  `seg <= 0` is gone: segment 0 is stage 1, not `main`.  The jump
+	  filter and the taint rules are SV_StageQualifies now -- unchanged for every
+	  stage after the first -- so a second reader can ask this function's question
+	  and cannot get a different answer.  The recorder, lobby and improvement
+	  gates stay here, because they are about what may be WRITTEN.
+	*/
+	if (e.rec_rec_buf < 1)             return;
+	if (e.run_t_stagerun)              return;
+	if (!SV_StageQualifies(e, seg))    return;
 
 	dur = ticks - e.run_st_tick;
 	if (dur <= 0)
@@ -3228,7 +3546,15 @@ void(entity e, float ticks) SV_StageClose =
 	if (Lobby_NoPB())
 		return;
 
-	pb = SV_PBGet(e.run_t_track, seg);
+	/*
+	  BUILD 57: THE LEG, seg + 1, for everything below -- the best this stage must
+	  beat, the folder SV_StageWrite files it in, the slot it takes and the line
+	  it prints.  All four used the segment, which filed stage 2 as stage_1 and
+	  printed "stage 1" for the boundary every other readout calls stage 2.
+	*/
+	leg = FS_LegOf(seg, TRUE);
+
+	pb = SV_PBGet(e.run_t_track, leg);
 	if (pb > 0)
 	if (dur >= pb)
 		return;
@@ -3237,7 +3563,7 @@ void(entity e, float ticks) SV_StageClose =
 	              e.run_st_line, e.rec_rec_lines);
 
 	// The stage leg's own record, through the same table a deliberate stage run
-	// writes: one PB per (track, startseg), and best.pb is rewritten whole.
+	// writes: one PB per (track, leg), and best.pb is rewritten whole.
 	//
 	// Patch 270, Stage 2: not in a lobby.  Same reasoning as the finish path --
 	// the table has no player dimension and the file is rewritten whole -- and
@@ -3247,13 +3573,13 @@ void(entity e, float ticks) SV_StageClose =
 	{
 		if (e.run_t_track >= 0)
 		if (e.run_t_track < FS_MAXTRACKS)
-		if (seg < FS_MAXSPLITS)
-			run_pb_ticks[e.run_t_track * FS_MAXSPLITS + seg] = dur;
+		if (leg < FS_MAXSPLITS)
+			run_pb_ticks[e.run_t_track * FS_MAXSPLITS + leg] = dur;
 		SV_PBSave();
 	}
 
 	sprint(e, PRINT_HIGH,
-	       sprintf("^2stage %g^7 -- %s%s\n", seg, SV_TimerString(dur),
+	       sprintf("^2stage %g^7 -- %s%s\n", leg, SV_TimerString(dur),
 	               (pb > 0) ? sprintf(", best by %s", SV_TimerString(pb - dur))
 	                        : ", first time on this stage"));
 
@@ -3569,6 +3895,10 @@ void(entity e) SV_TimerIdle =
 	e.run_t_delta    = 0;
 	e.run_t_flags    = 0;
 	e.run_t_startseg = 0;
+	// Build 57: an idle timer has no leg.  run_t_wantstage1 is NOT cleared: it is
+	// the player's request rather than a fact about this attempt, and `!r` after a
+	// voided stage-1 run has to find it standing.
+	e.run_t_stagerun = FALSE;
 	e.run_t_seg      = 0;
 	e.run_t_pendarm  = -1;
 
@@ -3730,7 +4060,7 @@ void(entity e, float on) SV_TimerGhostMark =
 		e.run_t_flags  = e.run_t_flags | TF_GHOST;
 		// Build 43: and the stage.  The EDGE half; SV_TimerFrame's ghost branch
 		// sets it at level every tick, so a ghost that spans a boundary taints
-		// both stages rather than neither.  See SV_StageClose's sixth refusal.
+		// both stages rather than neither.  See the ghost rule in SV_StageQualifies.
 		e.run_st_ghost = TRUE;
 	}
 
@@ -3889,6 +4219,177 @@ void(entity e) SV_TimerCheat =
 		e.run_st_cheat = TRUE;
 	}
 	SV_TimerPractice(e);
+};
+
+/*
+  WAS THIS RUN'S RAW INPUT JOURNAL TAKEN?  Build 58.
+
+  DELIBERATELY NOT THROUGH SV_TimerPractice.  Every other function in this block
+  funnels into it because every other one describes something the player DID to
+  the world.  This one describes a missing recording, the run itself is clean,
+  and routing it through the funnel would print `practice` at somebody who
+  played a perfectly ordinary run.  See TF_NOJOURNAL in sh_defs.qc.
+
+  A LATCH, CALLED TWICE.  Once at SV_TimerStart so the bit is set before
+  SV_RecOpen writes the header, and once at the finish so a `rec_hid 0` typed
+  mid-run is caught too -- turning the journal off half way through leaves a
+  file that covers half a run, which is not evidence.  It only ever sets, never
+  clears, because turning the journal back ON mid-run does not retroactively
+  record the part that was missed.
+
+  ONLY A LITERAL "0", and this is the important line in the function.  infokey
+  returns "" for a key the client has never sent -- an older client, a client
+  that connected two frames ago, a client whose CSQC has not run a frame yet --
+  and "" is not a claim that no journal exists.  Reading it as one would stamp
+  this bit on a run that has a perfectly good .hid sitting beside it, and the
+  player would be shown a statement about their own run that is false.  Unknown
+  stays unknown; the board can decline to rank it quietly, which costs a player
+  nothing they can see.  See the essay on TF_NOJOURNAL.
+
+  NOT GATED ON run_t_runclass, unlike the three above it, and the difference is
+  deliberate.  That switch bisects build 44's CLASSIFICATION code, and this bit
+  is not a classification -- but the stronger reason is the rule its own essay
+  states about run_cheatwatch: a switch that stops the server watching must not
+  quietly produce runs that look clean, so it marks every run instead of none.
+  Gating an evidence bit on a development switch would be exactly the bypass
+  that essay refuses.
+*/
+void(entity e) SV_TimerJournal =
+{
+	if (infokey(e, "rechid") == "0")
+		e.run_t_flags = e.run_t_flags | TF_NOJOURNAL;
+};
+
+/*
+  WERE THIS RUN'S PHYSICS PROVABLY THE RULESET'S?  Build 62, engine Patch 313.
+
+  The long version is the TF_NORULESET essay in sh_defs.qc; the short version is
+  that TF_CHEAT's own comment has admitted for builds that QC could see only half
+  of SV_MovementLocked(), and engine Patch 313 publishes the whole predicate as
+  *ruleset "<locked> <off> <seq>".  This is the only reader of that key.
+
+  A LATCH, CALLED TWICE, exactly like SV_TimerJournal -- once at SV_TimerStart so
+  the bit is set before SV_RecOpen writes the header, once at the finish so a
+  ruleset opened MID-RUN is caught.  It only ever sets, never clears: re-locking
+  half way through does not retroactively make the first half legal.
+
+  THE START CALL EXISTS TO LATCH breach, NOT ONLY TO TEST.  This is the part
+  that would be easy to leave out and is the whole reason the engine publishes
+  counters at all.  `off` is a snapshot, and the window
+
+      sv_cheats 1   ->  "0 0 1 0"    lock disengages
+      sv_airaccel   ->  "0 1 2 1"    physics leave the ruleset, nothing reverts
+      sv_cheats 0   ->  "1 0 2 1"    re-latch puts them back
+
+  reads locked 1 / off 0 at BOTH ends.  A run spanning it is clean by every
+  snapshot test and was not played under the ruleset.  Only the counters moved,
+  so only a counter can say so -- measured on the shipped binary, those three
+  strings verbatim.
+
+  IT LATCHES breach AND NOT seq, AND THAT DISTINCTION IS THE WHOLE CORRECTION.
+  seq counts ATTEMPTS to set a locked cvar off its canonical value; breach
+  counts the subset that STOOD.  Under the lock the engine reverts inside the
+  same Cvar_Set, so no physics tick ever sees the value -- the run's physics
+  really were the ruleset's, and tainting on seq would state the opposite about
+  a player who mistyped a cvar name into the console.  That is the Patch 305
+  failure mode one layer up, and it was caught here by asking what the bit
+  claims rather than by a test failing.  seq is still read, and reported beside
+  the key at the finish, because a refused attempt is evidence even though it is
+  not a violation.
+
+  WHY A COUNTER IS NEEDED AT ALL WHEN SV_NoclipWatch ALREADY WATCHES sv_cheats.
+  Because that watch is an EDGE -- sv_player.qc:472, `if (sc) if
+  (!e.run_lastcheats)` -- sampled once per PlayerPostThink.  A toggle that goes
+  1 and back to 0 between two of those is invisible to it, and every snapshot of
+  this key still reads locked 1 / off 0 either side.  breach is the only thing
+  in the game that sees that window.
+
+  THE ABSENT KEY IS UNKNOWN AND IS NOT A VIOLATION.  serverkey returns "" on any
+  engine before Patch 313, and every run this game has recorded to date was set
+  on one.  Reading "" as "the ruleset was open" would stamp a false statement on
+  all of them -- the same mistake SV_TimerJournal refuses to make with infokey's
+  empty string, and the reason that function tests a literal "0".  Unknown stays
+  unknown and the board declines quietly.
+
+  run_t_rbreach carries -1 for "never sampled", set by SV_TimerArm, so a run that
+  was armed under a pre-313 engine cannot compare against a latch of 0 and
+  invent a violation out of the first real sample.
+
+  tokenize writes one global buffer.  Safe here for the same reason it is safe
+  at sv_entities.qc:1223 -- the value is parsed and consumed inside this
+  function, and nothing it calls tokenizes.  The token count is checked rather
+  than assumed: fewer than four fields is an engine that cannot answer this
+  question and is treated as such, and a later engine adding a FIFTH field
+  cannot break this reader.
+
+  NOT GATED ON run_t_runclass, for the reason SV_TimerJournal states: a
+  development switch that stops the server watching must not quietly produce
+  runs that look certified.
+*/
+/*
+  THE PREDICATE ITSELF, WITH NO SIDE EFFECT, so that the latch below and
+  SV_TimerReport can ask the same question and cannot answer it differently.
+
+  Split out for the reason SV_TimerReport's own harness note gives: a run cannot
+  be FINISHED from a config on a zoned map -- zone_goto and setpos both route
+  through SV_TimerWarped, which voids the attempt -- so the finish half of the
+  latch would be untestable headlessly if the only way to see its answer were to
+  reach an end box.  Build 58 hit this exact wall and the lesson it wrote down
+  was "add a report line instead of chasing the finish".  A report that CALLED
+  the latch would set the bit as a side effect of being asked, which is a report
+  that changes what it reports; a report with its own copy of the rule would be
+  the two-copies-of-one-predicate bug this file already refuses elsewhere.  So:
+  one pure function, two callers.
+*/
+float(entity e) SV_RulesetBroken =
+{
+	local string s;
+	local float n, locked, off, breach;
+
+	s = serverkey("*ruleset");
+	if (s == "")
+		return FALSE;           // pre-313 engine: unknown stays unknown
+
+	n = tokenize(s);
+	if (n < 4)
+		return FALSE;           // malformed is not a claim either
+
+	locked = stof(argv(0));
+	off    = stof(argv(1));
+	//   argv(2) is seq -- attempts, reported but never tainted on
+	breach = stof(argv(3));
+
+	if (!locked || off)
+		return TRUE;
+
+	// The span.  -1 is "never sampled" and refuses to compare, so a run armed
+	// under a pre-313 engine cannot invent a violation out of its first sample.
+	if (e.run_t_rbreach >= 0 && breach != e.run_t_rbreach)
+		return TRUE;
+
+	return FALSE;
+};
+
+void(entity e, float atstart) SV_TimerRuleset =
+{
+	local string s;
+
+	/*
+	  LATCH BEFORE TESTING, and only at the start.  With the latch taken first
+	  the breach comparison inside SV_RulesetBroken is trivially equal on this
+	  call, so a start can only be marked by `locked`/`off` -- which is right,
+	  because there is no span yet to have crossed.
+	*/
+	if (atstart)
+	{
+		s = serverkey("*ruleset");
+		if (s != "")
+		if (tokenize(s) >= 4)
+			e.run_t_rbreach = stof(argv(3));
+	}
+
+	if (SV_RulesetBroken(e))
+		e.run_t_flags = e.run_t_flags | TF_NORULESET;
 };
 
 /*
@@ -4444,6 +4945,48 @@ float(entity e, float n) SV_TimerTeleported =
 	return FALSE;
 };
 
+/*
+  BUILD 57 -- THE STAGE-1 REQUEST, FROM THE CHAT COMMANDS.
+
+  Called by SV_ZoneChatCommand BEFORE its move, for the reason SV_TimerTeleported
+  is called from there and lives here: the move voids the run, and `!r` has to
+  ask about the run before it is gone.  sv_zones.qc compiles first and cannot
+  read the run_t_* fields, so the decision is made in this file.
+
+    !s 1      stage 1 alone: the START that follows arms stage 1
+    !s N>1    a stage zone, which is a stage run by its own type -- the request ends
+    !m, !b N  the map, or a bonus -- the request ends
+    !r        SET when the run being restarted is a stage-1 run, and otherwise
+              left exactly as it stands.  "The start of the leg you are on" has
+              to come back as that leg, and deriving it from the run rather than
+              trusting the flag alone means nothing that cleared the flag in
+              between -- a bhop walk-through of the box, say -- can lose it.
+
+  `n <= 1` for `!s`, because the handler reads a missing or zero number as stage
+  1 and this must agree with it.  SV_TimerArm drops the request again if the
+  START it lands on is not the main track's, or the track is linear.
+
+  Returns whether the request stands afterwards, which is what lets `!r` say
+  "stage 1" in the chat line instead of "start of the map".
+*/
+float(entity e, string word, float n) SV_TimerChatLeg =
+{
+	if (word == "!r")
+	{
+		if (e.run_t_stagerun)
+		if (e.run_t_startseg == 0)
+		if (e.run_t_track == 0)
+			e.run_t_wantstage1 = TRUE;
+		return e.run_t_wantstage1;
+	}
+
+	e.run_t_wantstage1 = FALSE;
+	if (word == "!s")
+	if (n <= 1)
+		e.run_t_wantstage1 = TRUE;
+	return e.run_t_wantstage1;
+};
+
 // Stand in a zone a run can begin from.  Arms it; the timer does not start
 // until you leave THAT zone -- see the start check in SV_TimerFrame.
 void(entity e, float z) SV_TimerArm =
@@ -4457,11 +5000,48 @@ void(entity e, float z) SV_TimerArm =
 	e.run_t_startseg = zone_seg[z];
 	e.run_t_seg      = zone_seg[z];
 	e.run_t_segs     = SV_TrackSegs(zone_track[z]);
+
+	/*
+	  BUILD 57: WHICH LEG THIS IS -- the one thing the zone cannot decide alone.
+
+	  A STAGE zone arms a stage run, as it always did.  A START arms the full run
+	  UNLESS `!s 1` is standing, and then it arms stage 1.  Every arm route in the
+	  game reaches this line: the walk-in (SV_TimerTryArm), the bhop jump-start
+	  and its re-arm (SV_TimerFrame), SV_ZoneMove behind every chat command and
+	  zone_goto, and the FINISHED -> pendarm stage handover.  So this is the only
+	  place a leg is chosen, and a save restore is the only other writer.
+
+	  THE REQUEST IS ABOUT THE MAIN TRACK'S START ON A STAGED TRACK AND NOTHING
+	  ELSE, and it is dropped the moment an arm lands anywhere else.  The handover
+	  into stage 2 therefore ends it; a bonus START cannot inherit it and become
+	  "bonus 1 stage 1"; and a linear track -- whose only segment IS the full run
+	  -- can never file a run under stage_1.  Dropped rather than ignored, so a
+	  later `!r` or walk-in cannot find a request left over from a leg the player
+	  has already moved on from.
+
+	  Before SV_PBGet below, which is keyed by the leg this decides.
+	*/
+	if (zone_type[z] != ZONE_START)
+		e.run_t_wantstage1 = FALSE;
+	else if (zone_track[z] != 0)
+		e.run_t_wantstage1 = FALSE;
+	else if (e.run_t_segs <= 1)
+		e.run_t_wantstage1 = FALSE;
+
+	e.run_t_stagerun = FALSE;
+	if (zone_type[z] == ZONE_STAGE)
+		e.run_t_stagerun = TRUE;
+	else if (e.run_t_wantstage1)
+		e.run_t_stagerun = TRUE;
 	e.run_t_ticks    = 0;
 	e.run_t_split    = 0;
 	e.run_t_delta    = 0;
 	e.run_t_flags    = 0;
 	e.run_t_pendarm  = -1;
+	// Build 62: -1, not 0.  Zero is a legitimate *ruleset seq, so clearing to it
+	// would let a fresh attempt compare a real sample against a fake latch.  See
+	// SV_TimerRuleset.
+	e.run_t_rbreach     = -1;
 
 	e.run_t_cpmax    = 0;
 	e.run_t_cpn      = 0;
@@ -4476,7 +5056,7 @@ void(entity e, float z) SV_TimerArm =
 	  Nothing can reach that read from here (a close needs TS_RUNNING, and
 	  SV_TimerStart reopens the stage before the state can become that), but
 	  "unreachable" is a claim about the whole file and -1 is a fact about this
-	  line.  It also stops the timer report saying `leg 0` about a player who is
+	  line.  It also stops the timer report saying `seg 0` about a player who is
 	  standing in a start box doing nothing.
 	*/
 	e.run_st_seg     = -1;
@@ -4601,7 +5181,7 @@ void(entity e, float z) SV_TimerArm =
 	// previous leg's best.
 	e.run_t_pbwas = 0;
 
-	e.run_t_pb = SV_PBGet(e.run_t_track, e.run_t_startseg);
+	e.run_t_pb = SV_PBGet(e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun));
 	if (e.run_t_pb > 0)
 		e.run_t_flags = e.run_t_flags | TF_HAVEPB;
 };
@@ -4615,7 +5195,8 @@ float(entity e) SV_TimerTicks =
 
 void(entity e, float ticks) SV_TimerFinish =
 {
-	local float pb, ispb, i, base, tag;
+	local float pb, ispb, i, base, tag, leg;
+	local string what;              // build 57: a stage run's finish names its stage
 
 	e.run_t_state = TS_FINISHED;
 	e.run_t_ticks = ticks;
@@ -4654,14 +5235,31 @@ void(entity e, float ticks) SV_TimerFinish =
 	*/
 	SV_StageClose(e, ticks);
 
-	pb   = SV_PBGet(e.run_t_track, e.run_t_startseg);
+	/*
+	  BUILD 57: THE LEG, and it keys everything below -- the best this run is
+	  measured against, the slot a new best goes into, and (through
+	  SV_RecFinalPath) the folder the recording is filed in.  A stage run's
+	  finish also says which stage it was, so the console names the leg the
+	  results card names.
+	*/
+	leg  = FS_LegOf(e.run_t_startseg, e.run_t_stagerun);
+	what = "";
+	if (e.run_t_stagerun)
+	{
+		if (e.run_t_track > 0)
+			what = sprintf("^7bonus %g stage %g: ", e.run_t_track, leg);
+		else
+			what = sprintf("^7stage %g: ", leg);
+	}
+
+	pb   = SV_PBGet(e.run_t_track, leg);
 	ispb = FALSE;
 
 	/*
 	  BUILD 48: KEEP IT, because in about twenty lines it will not exist any more.
 
 	  The PB branch below writes this run's own time into
-	  run_pb_ticks[track][startseg], and then -- unconditionally, further down --
+	  run_pb_ticks[track][leg], and then -- unconditionally, further down --
 	  run_t_pb is re-read out of that same table.  So on every personal best
 	  run_t_pb IS run_t_ticks, any delta taken from the pair is exactly zero, and
 	  the finish row in the split column has drawn no number since build 19 on
@@ -4680,13 +5278,15 @@ void(entity e, float ticks) SV_TimerFinish =
 		// the shadow run -- but it is not comparable with a run from the start
 		// and is never written as a best.
 		sprint(e, PRINT_HIGH,
-		       sprintf("^5%s^7 (shadow run from save %g -- not saved as a time)\n",
-		               SV_TimerString(ticks), e.run_t_fromsave));
+		       strcat(what,
+		              sprintf("^5%s^7 (shadow run from save %g -- not saved as a time)\n",
+		                      SV_TimerString(ticks), e.run_t_fromsave)));
 	}
 	else if (e.run_t_flags & TF_PRACTICE)
 	{
 		sprint(e, PRINT_HIGH,
-		       sprintf("^3%s^7 (practice -- not saved)\n", SV_TimerString(ticks)));
+		       strcat(what, sprintf("^3%s^7 (practice -- not saved)\n",
+		                            SV_TimerString(ticks))));
 	}
 	/*
 	  PATCH 270, STAGE 2 -- a lobby finish, which is a real time and is not a
@@ -4699,25 +5299,49 @@ void(entity e, float ticks) SV_TimerFinish =
 	  keeps the run out of the best-named .rec slot as well.
 
 	  The time itself is still printed, and still told to the client, because
-	  the server measured it and it is the player's.  Where it gets RANKED is
-	  Stage 3's business: the lobby uploads to surfd, which has a player
-	  dimension, rather than to a one-row-per-map file that has not.
+	  the server measured it and it is the player's.
+
+	  BUILD 57, STAGE T -- AND THE LINE USED TO SAY SOMETHING FALSE.  It read
+	  "(lobby -- ranked on the server, not saved here)", which promised a ranking
+	  that has never existed and denied a saving that now does: the CLIENT keeps
+	  this time, in data/runs on the player's own PC, the moment this finish is
+	  published (client/cl_lobbytime.qc, STAT_FS_FINREC).  Nothing is uploaded and
+	  nothing is ranked anywhere, so the honest line names the only thing that
+	  actually happens.
+
+	  It says "saved" unconditionally because the writer's refusals are the
+	  player's own records rather than the server's rules -- the client prints
+	  `not a lobby best` itself when this time does not beat the one on disk, and
+	  it is the only half of the system that can know.
 	*/
 	else if (Lobby_NoPB())
 	{
 		sprint(e, PRINT_HIGH,
-		       sprintf("^2%s^7 (lobby -- ranked on the server, not saved here)\n",
-		               SV_TimerString(ticks)));
+		       strcat(what,
+		              sprintf("^2%s^7 (lobby -- saved on your PC)\n",
+		                      SV_TimerString(ticks))));
 	}
 	else
 	{
 		if (pb <= 0 || ticks < pb)
 		{
 			ispb = TRUE;
-			run_pb_ticks[e.run_t_track * FS_MAXSPLITS + e.run_t_startseg] = ticks;
+			/*
+			  BUILD 57: BY LEG, AND BOUNDS-CHECKED FOR THE FIRST TIME.  The index
+			  was track * 24 + startseg with no test at all, so a stage run past
+			  the table's width wrote into the NEXT track's full-run best -- and
+			  past the last track, off the end of the array.  Keying by leg moved
+			  that edge one stage closer, so it is tested now rather than trusted.
+			*/
+			if (e.run_t_track >= 0)
+			if (e.run_t_track < FS_MAXTRACKS)
+			if (leg < FS_MAXSPLITS)
+				run_pb_ticks[e.run_t_track * FS_MAXSPLITS + leg] = ticks;
 
 			// Splits belong to the full-track PB only; a stage run has none.
-			if (e.run_t_startseg == 0 && e.run_t_slot >= 0)
+			// BUILD 57: the flag, because a stage-1 run starts at segment 0 too, and
+			// its empty split row would otherwise overwrite the map's.
+			if (!e.run_t_stagerun && e.run_t_slot >= 0)
 			{
 				base = e.run_t_slot * FS_MAXSPLITS;
 				for (i = 1; i < FS_MAXSPLITS; i = i + 1)
@@ -4733,20 +5357,24 @@ void(entity e, float ticks) SV_TimerFinish =
 
 			if (pb > 0)
 				sprint(e, PRINT_HIGH,
-				       sprintf("^2%s^7 -- personal best by ^2%s^7\n",
-				               SV_TimerString(ticks), SV_TimerString(pb - ticks)));
+				       strcat(what,
+				              sprintf("^2%s^7 -- personal best by ^2%s^7\n",
+				                      SV_TimerString(ticks), SV_TimerString(pb - ticks))));
 			else
 				sprint(e, PRINT_HIGH,
-				       sprintf("^2%s^7 -- first time on this leg\n", SV_TimerString(ticks)));
+				       strcat(what,
+				              sprintf("^2%s^7 -- first time on this leg\n",
+				                      SV_TimerString(ticks))));
 		}
 		else
 			sprint(e, PRINT_HIGH,
-			       sprintf("^7%s  ^1+%s^7  (pb %s)\n",
-			               SV_TimerString(ticks), SV_TimerString(ticks - pb),
-			               SV_TimerString(pb)));
+			       strcat(what,
+			              sprintf("^7%s  ^1+%s^7  (pb %s)\n",
+			                      SV_TimerString(ticks), SV_TimerString(ticks - pb),
+			                      SV_TimerString(pb))));
 	}
 
-	e.run_t_pb = SV_PBGet(e.run_t_track, e.run_t_startseg);
+	e.run_t_pb = SV_PBGet(e.run_t_track, leg);
 	if (e.run_t_pb > 0)
 		e.run_t_flags = e.run_t_flags | TF_HAVEPB;
 
@@ -4795,6 +5423,28 @@ void(entity e, float ticks) SV_TimerFinish =
 	  question per tick, and latching it would make the switch invisible until a
 	  map change, which is the one thing a bisection must not be.
 	*/
+	/*
+	  BUILD 58: the journal latch, re-read at the finish.
+
+	  ABOVE the tag decision, not below, so that the flags word and the filename
+	  are still two views of one value -- the invariant the comment under this
+	  block states.  It cannot change which tag is chosen: the chain below tests
+	  TF_CHEAT, TF_SHADOW and TF_PRACTICE only, and TF_NOJOURNAL is none of them
+	  by construction.  It is placed here so that stays true if the chain ever
+	  grows a branch, rather than relying on the order it happens to have.
+
+	  The second call is what catches `rec_hid 0` typed mid-run; SV_TimerJournal
+	  latches, so a run that started without a journal stays marked.
+
+	  BUILD 62: the ruleset latch is re-read here for the same reasons, and the
+	  same argument about the tag chain holds -- it tests TF_CHEAT, TF_SHADOW and
+	  TF_PRACTICE only, and TF_NORULESET is none of them by construction.  This
+	  is the call that catches both a ruleset opened mid-run and the
+	  unlock-move-relock window that leaves every snapshot reading clean.
+	*/
+	SV_TimerJournal(e);
+	SV_TimerRuleset(e, FALSE);
+
 	tag = RT_LAST;
 	if (ispb)
 		tag = RT_PB;
@@ -4810,6 +5460,37 @@ void(entity e, float ticks) SV_TimerFinish =
 	// and after the tag has been decided from them -- so the header line and the
 	// filename are two views of one value rather than two reads of a field.
 	SV_RecClose(e, ticks, tag, e.run_t_flags);
+
+	/*
+	  BUILD 57, STAGE T -- THE FINISH, TOLD TO THE CLIENT IN ONE BREATH.
+
+	  LAST, after SV_RecClose, because this is the first instant at which every
+	  one of the four is final: the cheatwatch block at the top of this function
+	  can still add TF_PRACTICE, SV_StageClose can still taint, and SV_RecClose
+	  strips TF_RECORDING -- so flags read any earlier would describe a run that
+	  was still being decided.
+
+	  WHY IT IS PUBLISHED AT ALL, when RUNTAG/RUNTICKS/RUNLEG say the same things
+	  twenty lines up: those three are written by SV_RecClose, which a lobby never
+	  reaches (Lobby_NoRec leaves no buffer to close), and TS_FINISHED can be
+	  skipped outright by a pend-arm inside this same server frame.  This group is
+	  the one statement of "a leg ended" that survives both.  See STAT_FS_FINREC.
+
+	  UNCONDITIONAL, lobby or not.  A counter that only ran in lobbies would be a
+	  rule to remember at the one site that owns the finish, and the client already
+	  has the gate it needs in STAT_FS_LOBBY.
+
+	  THE COUNTER IS BUMPED LAST so that no snapshot can carry the edge ahead of
+	  the values it describes -- the same ordering the stage triple above uses, for
+	  the same reason.  FINLEG is spelled exactly as RUNLEG is at the three sites
+	  that write rec_rec_leg (track * 100 + leg + 1, so 0 can mean "no run"), from
+	  the local `leg` rather than re-read from the recorder's field, because the
+	  recorder may never have opened a buffer for this run.
+	*/
+	e.run_t_finticks = ticks;
+	e.run_t_finleg   = e.run_t_track * 100 + leg + 1;
+	e.run_t_finflags = e.run_t_flags;
+	e.run_t_finrec   = e.run_t_finrec + 1;
 };
 
 void(entity e, float seg, float ticks) SV_TimerSplit =
@@ -4884,7 +5565,9 @@ void(entity e, float cpn, float ticks) SV_TimerCheckpoint =
 	// Patch 270, Stage 2: and not in a lobby -- the twin of the split gate a few
 	// lines up, and for the same reason.  Both tables are read directly here
 	// rather than through SV_PBGet, so the accessor's gate does not cover them.
-	if (e.run_t_startseg == 0 && cpn > 0 && cpn < FS_MAXCPS && !Lobby_NoPB())
+	// BUILD 57: run_t_stagerun rather than `startseg == 0`, which a stage-1 run
+	// shares with a full run -- every stage run is refused alike.
+	if (!e.run_t_stagerun && cpn > 0 && cpn < FS_MAXCPS && !Lobby_NoPB())
 	{
 		pbc = run_pb_cp[e.run_t_track * FS_MAXCPS + cpn];
 		if (pbc > 0)
@@ -4923,10 +5606,14 @@ void(entity e, float z) SV_TimerEvent =
 	}
 
 	/* ZONE_STAGE */
-	if (e.run_t_startseg > 0)
+	if (e.run_t_stagerun)
 	{
 		// A stage run ends at the NEXT stage boundary.  Anything else is you
 		// wandering backwards, which is not a finish.
+		//
+		// BUILD 57: the flag, not `startseg > 0`.  A stage-1 run begins at
+		// segment 0 and finishes on entering segment 1, then hands over to stage
+		// 2 through run_t_pendarm exactly as every other stage run does.
 		if (sg == e.run_t_startseg + 1)
 		{
 			SV_TimerFinish(e, ticks);
@@ -4988,6 +5675,18 @@ void(entity e) SV_TimerStart =
 	else if (e.run_t_dirty || e.run_t_hopped)
 		SV_TimerPractice(e);
 
+	// Build 58: before SV_RecOpen for the same reason the latches above are --
+	// so the recording's header is written with the run already flagged.  It is
+	// NOT part of the if/else chain: a missing journal is not a taint class and
+	// is orthogonal to all three of them.  See SV_TimerJournal.
+	SV_TimerJournal(e);
+
+	// Build 62: same placement and the same argument -- before SV_RecOpen, not
+	// in the if/else chain.  The start call also LATCHES the *ruleset sequence
+	// number, which the finish call differences against; without it the mid-run
+	// unlock-and-relock window is invisible.  See SV_TimerRuleset.
+	SV_TimerRuleset(e, TRUE);
+
 	SV_RecOpen(e);
 
 	/*
@@ -4997,11 +5696,13 @@ void(entity e) SV_TimerStart =
 	  creates -- opening before it would record a line number from the previous
 	  run's buffer, and slicing from it would hand out somebody else's samples.
 
-	  For a main run this is segment 0, which SV_StageClose refuses to write
-	  because FS_LegDir(track, 0) is `main` and the whole run is already going
-	  there.  For a stage run (run_t_startseg > 0) it is that stage, and
-	  SV_StageClose refuses that too -- a stage run writes itself through
-	  SV_TimerFinish like any other leg.  Both refusals are in one place.
+	  For a full run this is segment 0, which BUILD 57 writes as stage 1 when it
+	  closes at the stage-2 boundary -- it used to be refused as `main`, which
+	  is the whole run and not its first stage.  It qualifies on the run's own
+	  start rules, and the literal 0 below is how SV_StageQualifies knows the
+	  stage began here rather than at a resume.  For a stage run
+	  (run_t_stagerun) it is that stage, and SV_StageClose refuses it -- a stage
+	  run writes itself through SV_TimerFinish like any other leg.
 
 	  BUILD 43: AND IT IS OPENED DISARMED, which is one line and was a visible bug
 	  without it.
@@ -5061,6 +5762,10 @@ void(entity e, float z) SV_TimerTryArm =
 		e.run_t_cheat = SV_CheatLevel(e);
 		if (e.run_t_cheat)
 			e.run_t_dirty = TRUE;
+		// Build 57: walking into a START ends a stage-1 request here too.  This is
+		// the walk-in on a bhop map, and the jump that commits it arms through
+		// SV_TimerArm with no chance to ask.  See the block below.
+		e.run_t_wantstage1 = FALSE;
 		return;
 	}
 
@@ -5072,6 +5777,23 @@ void(entity e, float z) SV_TimerTryArm =
 		if (run_t_rearmstops)
 			stops = TRUE;
 	}
+
+	/*
+	  BUILD 57: WALKING INTO A START ENDS A STAGE-1 REQUEST -- you are at the map's
+	  start and it arms the map, which is what a START has always meant.  `!s 1`
+	  is how to ask for stage 1, and `!r` inside a stage-1 run keeps it.
+
+	  EXCEPT THE RE-ARM OF THE BOX YOU ARE ALREADY ARMED IN, and without this the
+	  request would not survive one tick.  SV_ZoneMove arms the destination
+	  itself, and the next tick's scan sees that same START as newly entered and
+	  calls here again -- the idempotent re-arm SV_ZoneMove's own essay describes.
+	  `!s 1` and `!r` both arrive that way, and so do a restored ARMED save and a
+	  step back in from the hull band around the box.  None of those is arriving
+	  at the start; each is standing in the attempt that is already armed.
+	*/
+	if (zone_type[z] == ZONE_START)
+	if (!(e.run_t_state == TS_ARMED && e.run_t_armzone == z))
+		e.run_t_wantstage1 = FALSE;
 
 	/*
 	  BUILD 20: THE STOPPED CLOCK, AND WHY IT IS LATCHED HERE.
@@ -5497,7 +6219,10 @@ void(entity e) SV_TimerFrame =
 	  FOUR GUARDS BEFORE THE STATE MACHINE, and each is a different refusal:
 
 	    RUNNING      an armed or finished player is not in a stage.
-	    startseg 0   a MAIN run.  A stage RUN's own boundary is the run's start
+	    !stagerun    a FULL run.  BUILD 57: the flag, where this read `startseg
+	                 0` -- which a stage-1 run shares with a full run.  (Its
+	                 segment is always 0, so the guard below would refuse it as
+	                 well; this one says why.)  A stage RUN's own boundary is the run's start
 	                 box, armed and started by the run's state machine -- running
 	                 a second arm over the same box would rebase a clock the run
 	                 had just set, and re-entering it would print "stage reset"
@@ -5512,7 +6237,7 @@ void(entity e) SV_TimerFrame =
 	  Nested rather than `&&`, this file's convention.
 	*/
 	if (e.run_t_state == TS_RUNNING)
-	if (e.run_t_startseg == 0)
+	if (!e.run_t_stagerun)
 	if (e.run_t_seg > 0)
 	if (e.run_st_seg == e.run_t_seg)
 	{
@@ -6032,8 +6757,14 @@ void(entity e) SV_TimerReport =
 	       (e.run_t_state == TS_ARMED)   ? "armed" :
 	       (e.run_t_state == TS_RUNNING) ? "running" : "finished",
 	       mapname, run_t_tick, run_t_bhopjump ? "jump" : "leave"));
-	sprint(e, PRINT_HIGH, sprintf("        track %g  startseg %g  seg %g of %g\n",
-	       e.run_t_track, e.run_t_startseg, e.run_t_seg, e.run_t_segs));
+	sprint(e, PRINT_HIGH, sprintf("        track %g  leg %g  startseg %g  seg %g of %g\n",
+	       e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
+	       e.run_t_startseg, e.run_t_seg, e.run_t_segs));
+	// Build 57: the two halves of the leg, because "why did `!s 1` time the map"
+	// is answerable from these and from nothing else.  Its own line, clear of the
+	// varargs cap the lines below keep away from.
+	sprint(e, PRINT_HIGH, sprintf("        leg rule: stagerun %g  stage 1 asked %g\n",
+	       e.run_t_stagerun ? 1 : 0, e.run_t_wantstage1 ? 1 : 0));
 	sprint(e, PRINT_HIGH, sprintf("        %s  pb %s  practice %g  recording %g\n",
 	       SV_TimerString(e.run_t_ticks),
 	       (e.run_t_pb > 0) ? SV_TimerString(e.run_t_pb) : "--",
@@ -6062,6 +6793,60 @@ void(entity e) SV_TimerReport =
 	       sprintf("        class rules: run_class %g run_cheatwatch %g  (sv_cheats %g, noclip %g)\n",
 	               run_t_runclass, run_t_cheatwatch, cvar("sv_cheats"),
 	               (e.movetype == MOVETYPE_NOCLIP) ? 1 : 0));
+	/*
+	  BUILD 58: the raw input journal, as the SERVER sees it.
+
+	  TWO COLUMNS BECAUSE THERE ARE TWO FACTS.  `said` is the client's live
+	  userinfo claim, straight from infokey -- which is a STRING with three
+	  states, so it is printed rather than reduced to a number: "1", "0", and ""
+	  for a client that has not told us, which is not the same as one that told
+	  us no.  `nojournal` is whether this attempt has actually been stamped, i.e.
+	  whether the latch caught a "0" at the start or at the finish.
+
+	  They disagree legitimately and that is the point of showing both: a player
+	  who types `rec_hid 1` mid-run turns `said` back to 1 while `nojournal`
+	  stays 1, because turning the journal on does not retroactively record the
+	  part of the run that went unrecorded.  See SV_TimerJournal.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        journal: said \"%s\"  nojournal %g\n",
+	               infokey(e, "rechid"),
+	               (e.run_t_flags & TF_NOJOURNAL) ? 1 : 0));
+	/*
+	  BUILD 62: the movement ruleset, as the ENGINE sees it (Patch 313).
+
+	  THREE COLUMNS BECAUSE THERE ARE THREE FACTS, and the same reason the pair
+	  above is two.  `key` is printed as the raw string rather than reduced,
+	  because "" is a real and distinct state -- an engine older than Patch 313,
+	  which cannot answer -- and is NOT the same as an engine answering
+	  "0 0 0 0".  Its four fields are locked, off, seq and breach.  `breachat` is
+	  what this attempt latched when its clock started, -1 if it never sampled
+	  one.  `noruleset` is whether the bit actually got set.
+
+	  They disagree legitimately, and that disagreement is the whole feature: a
+	  key reading "1 0 7 3" against a breachat of 1 is a run whose ruleset is
+	  locked and conforming RIGHT NOW and which was not locked and conforming
+	  throughout -- two changes stood while this clock ran.  No single snapshot
+	  can show that.  The gap between the key's seq (7) and its breach (3) is the
+	  other half of the picture and is why they are separate numbers: four
+	  attempts were refused by the lock, which is worth seeing and is not a
+	  violation.  See SV_TimerRuleset.
+
+	  `would` IS THE LIVE ANSWER AND `noruleset` IS THE LATCHED ONE, and the
+	  fourth column exists because a run cannot be finished from a config on a
+	  zoned map -- so without it the finish half of the latch could not be
+	  observed headlessly at all.  It calls SV_RulesetBroken, the same pure
+	  predicate the latch calls, so the two can never drift; and it is pure, so
+	  asking does not mark the run.  would 1 with noruleset 0 is precisely the
+	  state a finish would convert into a taint, which is what makes the mid-run
+	  window testable without reaching an end box.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        ruleset: key \"%s\"  breachat %g  noruleset %g  would %g\n",
+	               serverkey("*ruleset"),
+	               e.run_t_rbreach,
+	               (e.run_t_flags & TF_NORULESET) ? 1 : 0,
+	               SV_RulesetBroken(e)));
 	/*
 	  Build 30.  Two different questions, so two columns rather than one:
 	  `ghost` is whether the camera is detached RIGHT NOW (and therefore whether
@@ -6208,7 +6993,7 @@ void(entity e) SV_TimerReport =
 	  the boundary, which is exactly when you can still read it.
 	*/
 	sprint(e, PRINT_HIGH,
-	       sprintf("        stage: leg %g  from %s  jump %g  ramp %g  line %g  wrote %g\n",
+	       sprintf("        stage: seg %g  from %s  jump %g  ramp %g  line %g  wrote %g\n",
 	               e.run_st_seg,
 	               (e.run_st_seg >= 0) ? SV_TimerString(e.run_st_tick) : "--",
 	               e.run_st_jump ? 1 : 0, e.run_st_ramp ? 1 : 0,
@@ -6271,8 +7056,12 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        padding %g samples, pending arm %g, splits %g\n",
 	       e.rec_pad_len, e.run_t_pendarm, e.run_t_seg - e.run_t_startseg));
 
+	// BUILD 57: z is a LEG -- 0 the full run, k stage k -- so the name beside it is
+	// the stage a player counts, and the table this reads is keyed the same way.
 	for (z = 0; z < FS_MAXSPLITS; z = z + 1)
 		if (SV_PBGet(e.run_t_track, z) > 0)
-			sprint(e, PRINT_HIGH, sprintf("        pb: track %g leg %g  %s\n",
-			       e.run_t_track, z, SV_TimerString(SV_PBGet(e.run_t_track, z))));
+			sprint(e, PRINT_HIGH, sprintf("        pb: track %g leg %g (%s)  %s\n",
+			       e.run_t_track, z,
+			       (z > 0) ? sprintf("stage %g", z) : "main",
+			       SV_TimerString(SV_PBGet(e.run_t_track, z))));
 };

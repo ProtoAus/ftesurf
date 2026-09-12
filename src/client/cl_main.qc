@@ -129,6 +129,10 @@ void() Net_MatchTicrate =
 
 void() CSQC_WorldLoaded =
 {
+	// BUILD 61: the per-map render layer at the bottom of this function.
+	local string rmap, rname;
+	local float  rf;
+
 	Portal_LoadFromWorld();
 
 	// The sprite entities, read from the same lump and for the same reason the
@@ -192,6 +196,72 @@ void() CSQC_WorldLoaded =
 
 	// Build 47.  Last, because it wants the serverinfo the map load published.
 	Net_MatchTicrate();
+
+	/*
+	  BUILD 61 -- cfg/render_<mapname>.cfg, THE PER-MAP CLIENT RENDER LAYER.
+
+	  Asked for directly: "vbsp_glare_interval 0.025 is fine for most maps, but I
+	  sort of want vbsp_glare_interval 0.2 on tensor2 because of the fps savings."
+	  Measured at the start box of surf_tensor2 (`!s 1`), that is worth +82%:
+	  328.5 fps at 0.025 against 597.4 at 0.2, four interleaved pairs, every
+	  delta positive.  So the preference is real and it needs somewhere to live.
+
+	  WHY NOT cfg/map_<mapname>.cfg, WHICH ALREADY EXISTS.  That file is the
+	  SERVER's ruleset layer (Patch 267, SV_LoadMapRuleset in sv_phys.c) and
+	  putting a rendering preference in it would be wrong three ways: it is
+	  applied in SV_SpawnServer, so on a dedicated lobby it would set the
+	  SERVER's copy of a cvar only the client reads; every line it applies is
+	  counted in pms_numover and named in the `movement` report beside
+	  sv_maxvelocity, so a framerate preference would pollute the audit trail of
+	  what physics a run was set under; and it resolves names with Cvar_FindVar,
+	  which on the first map of a session runs before the CSQC progs have
+	  registered anything -- so it would warn `no cvar named` and be ignored,
+	  then silently start working on the second map.  Those are three different
+	  trust and lifetime boundaries and this is the client's side of all of them.
+
+	  WHY TWO FILES AND NOT ONE.  A bare per-map exec is STICKY: set 0.2 on
+	  tensor2, load anything else, and the cvar is still 0.2 with nothing to put
+	  it back.  That is exactly how mode_bhop.cfg's cl_netfps 100 ended up on
+	  every surf map.  So the baseline is exec'd first and the per-map file
+	  second -- same ordering rule the server layer uses, and for the same
+	  reason: the general case is the family, the map file is the specific case
+	  and wins.  Both in one localcmd so nothing can interleave between them.
+
+	  SILENT WHEN ABSENT, LOUD WHEN IT FIRES.  Roughly none of the 1310 maps
+	  will have one of these, so a missing file must not print -- the same
+	  contract Emit_LoadForMap keeps for particles/<map>.cfg and Zone_LoadForMap
+	  for its json.  But a file that DOES change your settings must say so, or a
+	  per-map override becomes an unexplained framerate difference between two
+	  maps.  fopen rather than letting exec fail, because exec's own failure
+	  message is the thing being avoided.
+
+	  LAST IN THE HOOK deliberately: everything above has finished loading the
+	  map's own data, so this layer can override any of it and nothing it sets
+	  can be clobbered by a later loader.
+	*/
+	rmap = serverkey("map");
+	if (rmap != "")
+	{
+		rname = sprintf("cfg/render_%s.cfg", rmap);
+		rf = fopen(rname, FILE_READ);
+		if (rf >= 0)
+		{
+			fclose(rf);
+			localcmd(sprintf("exec cfg/render_default.cfg\nexec %s\n", rname));
+			print(sprintf("render: per-map layer %s applied over cfg/render_default.cfg\n",
+			              rname));
+		}
+		else
+		{
+			/*
+			  No map file, but the BASELINE still has to run -- otherwise an
+			  override applied on the previous map is never undone, which is the
+			  stickiness this whole arrangement exists to prevent.  Silent: this
+			  is the case for essentially every map.
+			*/
+			localcmd("exec cfg/render_default.cfg\n");
+		}
+	}
 };
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
@@ -327,18 +397,272 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  ARCHIVE on the switch, because it is a look preference and someone may
 	  prefer the old clipped sprites. The other two are tuning, not preference.
 
-	  traces 8: a traceline per glow per frame is not free at 263 sprites on
+	  traces: a traceline per glow per frame is not free at 429 glares on
 	  surf_tensor2, so they are traced round-robin and the fade hides the
-	  staleness. 8/frame at 500fps revisits every glow ~15 times a second, which
-	  is far inside the 50ms ramp. Raise it if glows lag when you turn quickly;
-	  0 freezes the traces entirely, which is the A/B for "is the trace the cost".
+	  staleness. 0 freezes the traces entirely, which is the A/B for "is the
+	  trace the cost".  See the BUILD 59 note below for the value.
 
 	  decay 0.05 is Source's cl_sun_decay_rate exactly (glow_overlay.cpp:59): a
 	  50ms fade either way, framerate-independent because it steps by frametime.
 	*/
 	registercvar("vbsp_glare", "1", CVAR_ARCHIVE);
-	registercvar("vbsp_glare_traces", "8");
+	/*
+	  BUILD 59: 8 -> 40, because BUILD 58 CHANGED WHAT THIS COUNTS AND LEFT THE
+	  VALUE ALONE.
+
+	  Reported as "the update rate of the sprites ... is really quite slow? like
+	  up to 1 sec on tensor2.  When they go behind a wall they keep shining, and
+	  when revealed they take a bit to render."
+
+	  Build 58 replaced Sprite_Glare's yes/no answer with a 5-ray sample (Source's
+	  proxy, c_pixel_visibility.cpp:83-91) and made this budget count RAYS rather
+	  than GLARES.  The unit changed; the number did not:
+
+	      build 57, 1 ray:   8 glares/frame -> 429/8  =  54 frames per sweep
+	      build 58, 5 rays:  2 glares/frame -> 429/2  = 215 frames per sweep
+
+	  -- 4x slower, and at ~200fps that is the reported ~1s.  Between sweeps a
+	  glare keeps its LAST answer, which is exactly "keeps shining behind a wall,
+	  takes a beat to come back".  The 50ms ramp was sized to hide a 54-frame
+	  sweep and cannot hide a 215-frame one.
+
+	  40 restores build 57's sweep rate EXACTLY (40/5 = 8 glares/frame) while
+	  keeping the better 5-ray fraction.  It is not new tuning; it is the old
+	  number converted into the new unit, which is what build 58 should have done.
+	  The build-58 comment in Sprite_Glare predicted this verbatim -- "If glares
+	  lag when you spin, raise the budget rather than lowering the rays" -- and
+	  writing that down instead of changing the default is the whole mistake.
+
+	  NOT ARCHIVED, deliberately, and that is load-bearing here: CVAR_ARCHIVE
+	  would have pinned 8 into every existing ftesurf.cfg, so the fix would reach
+	  new installs only and the person who reported it would still see the bug.
+
+	  KNOWN LIMITATION, stated rather than discovered later: the budget is FIXED,
+	  so sweep time scales with the map.  429 glares on tensor2 and a dozen on a
+	  quiet map get the same budget -- roughly a 30x spread in staleness across
+	  the library.  A target INTERVAL would be steadier than a target ray count.
+	  Not done here: this is a regression repair, and that is a redesign.
+	*/
+	registercvar("vbsp_glare_traces", "40");
 	registercvar("vbsp_glare_decay", "0.05");
+	/*
+	  BUILD 59 -- THE VIEW CULL, and it is a MARGIN rather than a boolean.
+
+	  Sprite_Glare's round-robin used to walk every glare on the map including the
+	  ones behind you: 429 on surf_tensor2.  Measured cost of a ray is 27.1us
+	  (from Lex's own fps at three budgets: 555-600 at traces 8, 360-420 at 40,
+	  200-220 at 120 -- a straight line).
+
+	  WHAT IT ACTUALLY BUYS, corrected in build 60 and worth reading before
+	  touching it, because the first answer written here was wrong.  It buys no
+	  framerate -- the budget is in RAYS and is saturated either way, measured
+	  383.4 fps cull-off against 399.0/412.5 cull-on.  It buys LATENCY: a culled
+	  glare is a visit that costs no rays and still advances the cursor, so the
+	  sweep goes from 53.6 frames to a MEASURED 11.2 and 10.8 (frames counted
+	  between cursor wraps, two arms).  The build 59 census divided by glares
+	  TRACED instead of VISITED and therefore reported this 4.8x as "54 -> 50
+	  frames"; I passed that on to Lex as "the cull bought almost nothing".  It
+	  was the denominator, not the cull.
+
+	  And "roughly 50 are ever on screen" -- also written here -- was wrong: 302
+	  of the 429 are inside the frustum and only 6 draw, because the other 296
+	  are occluded.  The cull pays on the ones BEHIND the eye.
+
+	  0     disables the cull -- the build-58 behaviour, and the A/B for "is the
+	        cull what changed".
+	  1.0   the exact circumscribed cone.
+	  1.25  default: 25% slack on the tangent, so turning has margin before a
+	        glare needs its first trace.
+
+	  The cone is built from `fov` assuming a SQUARE screen, which makes it wider
+	  than any real widescreen frustum -- deliberately, because a cone that is
+	  too generous wastes a few rays and a cone that is too tight drops a glare
+	  that is on screen.  See the essay in Sprite_Glare.
+	*/
+	registercvar("vbsp_glare_cull", "1.25");
+
+	/*
+	  BUILD 58 -- HOW MANY RAYS MAKE UP ONE GLARE'S ANSWER.
+
+	  Source does not ask "is the centre of the lamp visible": it rasterises a
+	  small proxy quad and multiplies the glow by pixels/pixelsPossible, a
+	  FRACTION. Ours answered 1 or 0, so a flare Source draws at 0.2 we drew at
+	  full or not at all -- measured at Lex's own vantage the flares alone lifted
+	  the frame by +17.30 mean luma against a zero noise floor.
+
+	  5 fires the centre plus the four corners of Source's own proxy; 1 restores
+	  builds 52-57 exactly. Only those two values; see Sprite_Glare for why the
+	  budget below counts RAYS, so the per-frame traceline cost is unchanged.
+	*/
+	registercvar("vbsp_glare_rays", "5");
+
+	/*
+	  BUILD 60 -- FIVE RAYS ONLY WHERE FIVE RAYS CAN CHANGE THE ANSWER.
+
+	  Build 59 measured the cost of the budget Lex needed for responsiveness:
+	  vbsp_glare_traces 8 gave 555-600fps, 40 gave 360-420, 120 gave 200-220 --
+	  a straight line at 27.1us per ray.  The frustum cull tried first removed
+	  only 7% of them, because the census shows 302 of surf_tensor2's 429 glares
+	  are genuinely in the frustum and 296 of those are HIDDEN, which is a thing
+	  only a trace can find out.
+
+	  So the saving is in the 296: each fires five rays to learn what its first
+	  ray already said.  This is the limit on how many consecutive centre-only
+	  confirmations a hidden glare may take before it owes a full five-ray
+	  re-check -- a MARGIN, not a boolean, so that 0 restores build 59 exactly
+	  and there is only one way to spell "off".  8 costs (8*1 + 5)/9 = 1.44 rays
+	  per hidden glare.
+
+	  The bound on the error is geometric, not hopeful: the four corners sit
+	  GlowProxySize (4.0 units on these glows) from the centre aim point, so a
+	  wrong cheap answer needs an occluder silhouette within 4 units, where the
+	  true answer is 1/5 or 2/5.  A glare becoming VISIBLE is never missed --
+	  its centre ray comes back clear and the shortcut declines.  The full essay
+	  is in Sprite_Glare.
+
+	  MEASURED, surf_tensor2 at Lex's vantage, sweep counted in frames between
+	  cursor wraps rather than derived: 11.2 frames without it, 3.7 with it, and
+	  9.8 at a ray budget of 12 -- i.e. build 59's responsiveness for 30% of the
+	  rays, which is ~580-630 fps against ~400.  fps at the SAME budget is
+	  unchanged (298.1/323.4 on vs 318.9 off, against a same-setting spread of
+	  25), and the frame is pixel-identical on vs off at two vantages.  The
+	  whole gain is latency; none of it is frame cost.
+	*/
+	registercvar("vbsp_glare_adaptive", "8");
+
+	/*
+	  BUILD 61 -- SPEND RAYS TO A DEADLINE, NOT TO A QUOTA PER FRAME.
+
+	  Build 60's own numbers are the argument.  vbsp_glare_traces is rays per
+	  FRAME, so what it delivers -- the age of a glare's occlusion answer -- is
+	  a different quantity on every map:
+
+	      surf_tensor2, 429 glares, 40 rays    3.7 frames = 9.3 ms at 397 fps
+	      a 12-glare map, 40 rays              the cursor wraps ~3x per FRAME
+
+	  The second case is pure waste: two of those three passes re-ask a question
+	  that has not had time to change, at 27.1 us a ray.  The first case is the
+	  opposite -- 9.3 ms is far finer than any eye needs, and the rays buying
+	  that precision are the ones Lex is paying ~200 fps for.
+
+	  So this cvar is the interval in SECONDS, and it is the age bound directly:
+	  every glare gets re-answered at least this often, whatever the map holds
+	  and whatever the framerate is.  vbsp_glare_traces stays as the CEILING, so
+	  a pathological map misses the deadline instead of dropping a frame, and
+	  the census names which of the two limits stopped the loop.
+
+	  DEFAULT 0, WHICH IS OFF, and that is deliberate rather than timid.  Lex
+	  chose vbsp_glare_traces 40 explicitly after measuring three values of it,
+	  and a default that silently overrode that choice would be me deciding his
+	  framerate/latency trade for him.  0 is build 60 exactly.
+
+	  MEASURED, surf_tensor2 at Lex's vantage, three runs -- b61int (mechanism
+	  and picture), b61fps (four interleaved pairs) and b61curve (the curve).
+	  Staleness is computed from the census's own two counters and needs no
+	  framerate reading at all: the quota IS spr_n * frametime / interval, so
+	  frametime = quota * interval / 429 and staleness = sweep * frametime.
+
+	      interval   rays/frame   staleness   fps     vs adjacent control
+	        0 (off)    40-44         9.5 ms   354.6        --
+	        0.015      20           15.9 ms   489.4       +43%
+	        0.025       7-12        26.8 ms   574.9       +62%
+	        0.05         1.5        42.6 ms   586.5       +55%
+	        0.10         2         110   ms   674.8       +71%
+
+	  Every arm met its deadline to within 15% and none was stopped by the ray
+	  ceiling.  THIS IS THE FIRST CHANGE IN THE SERIES THAT MOVES FRAMERATE: the
+	  view cull and the adaptive rays both could not, because the budget was in
+	  rays and saturated either way, and the one time I claimed otherwise I was
+	  reading a broken census.  Here the four interleaved pairs of b61fps read
+	  +227, +262, +289 and +252 fps, all the same sign.
+
+	  AND THE PICTURE DOES NOT CHANGE.  Eight of b61curve's nine settled arms --
+	  every interval from 0.025 to 0.1 plus four interval-0 controls -- are
+	  BYTE-IDENTICAL in the centre region, 0 of 28 pairs differing.  The 0.015
+	  arm differs by 0.118% of pixels, a quarter of the 0.43-0.62% same-setting
+	  floor measured at this vantage in the other two runs.
+
+	  THE ROW THAT MATTERS IS 0.025, and it is a match to a number Lex already
+	  accepted rather than a number I picked: build 59 at vbsp_glare_traces 40
+	  delivered 27.7 ms of staleness and he approved it explicitly.  0.025 gives
+	  26.8 ms -- the same responsiveness -- at ~575 fps against build 60's ~355.
+	  Build 60's own 9.5 ms is finer than anything reported as a problem and is
+	  being paid for at 40 rays a frame.
+
+	  WHAT IS STILL UNVERIFIED, and it is the only thing that decides the row:
+	  whether a given staleness is VISIBLE WHILE TURNING.  A static camera
+	  converges -- 296 of the 302 glares in frame are occluded and stay occluded
+	  -- so the pixel-identity above is guaranteed by construction and says
+	  nothing about a spin.  No cfg can pan the view smoothly (setpos jumps), so
+	  that one is Lex's to feel.
+
+	  DEFAULT 0.025 ON LEX'S INSTRUCTION: "0.025 is fine for most maps".  It was
+	  0 (inert) for one build while the trade was his to judge.
+
+	  AND THE CURVE ABOVE DOES NOT GENERALISE ACROSS A MAP, which I only found
+	  because he said "test on !s 1".  At surf_tensor2's START BOX the census
+	  reads `glare 415 in frame, 411 hidden` against 302/296 at the vantage the
+	  curve was measured at -- almost nothing is CULLABLE there, so a visit costs
+	  ~1.05 rays instead of ~0.35 and the quota no longer fits under the ray
+	  ceiling.  Measured at `!s 1`:
+
+	      interval 0      40 rays   sweep 11.5 frames   28.5 ms   269-337 fps
+	      0.025           40 rays   sweep 12.2 frames   30.2 ms   328.5 fps
+	      0.2            ~2  rays   sweep 141  frames  197   ms   597.4 fps
+
+	  0.025 IS INERT THERE.  It asked for 40-49 visits, the 40-ray ceiling
+	  covered 28-45 of them, and `stopped by THE RAY CEILING (interval not met)`
+	  fired on 7 of 9 samples -- so the sweep is 12 frames either way and the
+	  interval is not being honoured.  That is the census field earning its
+	  keep: without it this arm would read as "0.025 mysteriously does nothing
+	  here" instead of "the budget cannot afford what you asked for".
+
+	  So the per-map layer at the bottom of CSQC_WorldLoaded is not a
+	  convenience -- the right interval genuinely differs by map, and by more
+	  than a factor of eight on this one.  cfg/render_surf_tensor2.cfg.
+	*/
+	registercvar("vbsp_glare_interval", "0.025");
+
+	/*
+	  BUILD 58 -- THE SOURCE DIMMING TERMS, one switch over all of them.
+
+	  Reported as "a big square of translucent color, the texture has been
+	  reduced to flatness". It was neither the texture nor the size: the sprites
+	  are 2304-unit billboards because Source draws them that way, and the square
+	  is the faint tail of a correct glow texture made visible by too much gain.
+	  What was missing is everything Source dims a glow sprite BY --
+	  renderamt applied twice, an inverse-square distance fade, and a fractional
+	  rather than binary occlusion.
+
+	  ONE cvar for the lot, and NOT archived: this is a correctness switch, so
+	  the fixed path is the one that should survive a restart. It exists so the
+	  A/B is a runtime toggle inside one process, because the pixel noise floor
+	  is per-run -- see the trap file. Set it to 0 to see what was reported.
+	*/
+	registercvar("vbsp_sprite_source", "1");
+
+	/*
+	  BUILD 58 -- THE FLARE INTENSITY, and why it is a knob rather than a fix.
+
+	  The env_lightglow port is faithful: measured term by term against Source at
+	  Lex's own vantage it reads dist 2895, fade 0.921, glare 1.000, half 65x35 at
+	  a 100-unit basis, col 0.678 0.804 0.886 -- every factor is what
+	  glow_overlay.cpp and c_lightglow.cpp specify, and the 66-degree quad is
+	  CalcBasis's own geometry. It still does not look like his Momentum
+	  reference, where no such shape appears.
+
+	  The difference that survives scrutiny is not in this code: Momentum forces
+	  mat_hdr_level 2 and dynamic tonemapping with auto-exposure clamped to
+	  0.5-2.0 (cdll_client_int.cpp:917-929), which scales every additive
+	  contribution down, and we apply no tonemap at all. So a term that is
+	  correct here is composited into a frame that is not.
+
+	  1.0 is Source's own arithmetic and stays the default; this exists so the
+	  difference can be dialled rather than argued about, and so a value chosen
+	  by eye is one number in one place instead of a fudge buried in the draw.
+	  ARCHIVE: it is a look preference, like its three neighbours above.
+	*/
+	registercvar("vbsp_lightglow_scale", "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 53 -- what that trace is allowed to hit.
@@ -374,6 +698,27 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 
 	  It also fixes point_spotlight, which traced against the same empty world
 	  and shot its beam through every door on the map.
+
+	  WHAT IT COSTS, MEASURED IN BUILD 60 -- this is where the price of a glare
+	  ray goes.  Lex's fps against the ray budget gave 27.1us per ray, roughly
+	  30x what a BSP trace against a world model should cost, and the suspect was
+	  always these entities: every ray is tested against worldspawn PLUS all 161
+	  of them, with no spatial index in front.  A one-process A/B at his vantage,
+	  40 rays a frame, mode 2 / mode 0 / mode 2:
+
+	      444.9 fps   529.6 fps   451.5 fps     (same-setting spread 6.6)
+
+	  +18% of the whole frame, or 0.36ms over 40 rays = ~9us of the 27.1us per
+	  ray, ~56ns per occluder per ray.  So the occluders are a third of the ray
+	  price and the world trace is the other two thirds.
+
+	  NOT A REASON TO SET 0.  The same run shows 185 traces stopped by an
+	  occluder over a load sweep, so they do block glares -- just not any at that
+	  particular vantage, where `299 hidden` is identical with and without them
+	  because worldspawn hides the same ones.  A faster arm that draws the wrong
+	  thing is not an improvement.  Build 60's adaptive rays are the mitigation
+	  that does not cost correctness: at the 12-ray budget they make viable, the
+	  whole occluder cost falls to ~0.11ms.
 	*/
 	registercvar("vbsp_glare_brush", "2", CVAR_ARCHIVE);
 
@@ -606,7 +951,63 @@ void() CSQC_Input_Frame =
   a TRUE would light the W box and move nobody).  SaveLoc_Key does, for
   exactly the digits it acted on -- see cl_saveloc.qc.
 */
-float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
+/*
+  BUILD 56 REVIEW -- THE RELEASE GATE, and why it lives out here instead of in
+  each panel.
+
+  CSQC_KeyPress marks a key down as soon as CSQC SEES the press, whatever CSQC
+  returned for it (pr_csqc.c:9307), so the matching release is handed to CSQC as
+  well (:9311).  A panel that swallows that release -- returns TRUE -- makes
+  Key_Event return at keys.c:3860-3861, before the stored "-duck"/"-jump" runs at
+  :3971-3976.  Hold MOUSE1, tap TAB, let go: the leaderboard ate the up, the
+  release never ran, and the player stayed crouched until MOUSE1 was pressed and
+  released again in game, with the HUD key block lit the whole time.
+
+  ALL FIVE CURSOR PANELS HAD IT, and a per-panel fix does not survive a HAND-OFF:
+  the inspector declining an up it never took, and the results card swallowing
+  that same up one line later.  So the pairing is kept ONCE, here -- a bit per
+  mouse button whose PRESS the chain consumed, and an up whose bit is clear never
+  reaches a panel.  It still reaches Keys_Edge and the save-lock at the end of the
+  chain, which are as entitled to the edge as they were to the press; returning
+  before them would light the key block for good and latch a save-lock hold.
+
+  THE INVARIANT, which is what makes the panels' own "swallowed, so Keys_Edge
+  never sees it" comments true rather than exceptions: Keys_Edge and the save-lock
+  see BOTH edges of a button or NEITHER.  A press a panel consumed is hidden from
+  them, and its paired up is hidden too, because a panel returning TRUE stops the
+  chain before them.  An unpaired up is the mirror: they hold no state for a press
+  they never saw, so the gate hands them the edge itself.
+
+  ONE MASK, NOT ONE PER DEVICE.  devid is ignored, so two pointing devices could
+  cross bits.  The engine pairs per device; nothing in FTESurf reads devid yet.
+
+  NEVER READ THIS MASK AS "the button is physically held".  It records what the
+  CHAIN consumed, not what the hand is doing, and the wheel proves the point: a
+  notch is a press and a release back to back in the same batch (in_generic.c
+  1214-1215, in_sdl.c:1709-1710), so its bit is set and cleared within one input
+  batch and is never "held" for any observable time.
+*/
+float cl_btn_taken;             // CLB_*: buttons whose press the chain consumed
+#define CLB_M1   1
+#define CLB_M2   2
+#define CLB_M3   4
+#define CLB_WUP  8
+#define CLB_WDN  16
+
+float(float scanx) CL_ButtonBit =
+{
+	if (scanx == K_MOUSE1)     return CLB_M1;
+	if (scanx == K_MOUSE2)     return CLB_M2;
+	// MOUSE3 belongs here too: it is the gesture that TAKES the cursor, so its
+	// press is consumed by Ev_PassiveKey or Results_PassiveKey -- and since the
+	// build-56 review, by Ev_InputEvent as well, which releases the cursor.
+	if (scanx == K_MOUSE3)     return CLB_M3;
+	if (scanx == K_MWHEELUP)   return CLB_WUP;
+	if (scanx == K_MWHEELDOWN) return CLB_WDN;
+	return 0;
+};
+
+float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 {
 	/*
 	  BUILD 24: a replay gets the event FIRST, and before Keys_Edge sees it.
@@ -645,8 +1046,8 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	  the results card -- the reverse of its place in the draw order, which is
 	  after Results_Draw and before HUD_EditDraw.  ui_ev_cursor and not
 	  ui_ev_open, for the results card's reason: an overlay merely on screen
-	  joins nothing.  It refuses to share the screen with any of the four below
-	  and lets go if one appears, so in practice it answers alone.
+	  joins nothing.  It refuses to share the screen with the editor above, the
+	  three below, or any other cursor claim, and lets go if one appears.
 	*/
 	if (ui_ev_cursor)
 		if (Ev_InputEvent(evtype, scanx, chary, devid))
@@ -687,7 +1088,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 			return TRUE;
 		// Build 56: MOUSE3 takes the inspector's cursor while its overlay is up.
 		// After the card on purpose -- the card was there first and keeps MOUSE3
-		// whenever one is up; see Ev_PassiveKey.
+		// whenever one is up AND drawn (hud_results); see Ev_PassiveKey.
 		if (Ev_PassiveKey(scanx))
 			return TRUE;
 		/*
@@ -754,6 +1155,45 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		return rec_sl_holding && rec_sl_holdang_ok;
 
 	return FALSE;
+};
+
+// The gate in front of the chain above; its essay is up there.
+float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
+{
+	local float bit, took;
+
+	// Key events only: in an IE_MOUSEABS, scanx is an X COORDINATE, and 512 of
+	// them along it would otherwise read as K_MOUSE1.
+	bit = 0;
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+		bit = CL_ButtonBit(scanx);
+
+	if (bit && evtype == IE_KEYUP)
+	{
+		if (!(cl_btn_taken & bit))
+		{
+			/*
+			  Its press went to the game, so its release must go there too: return
+			  FALSE and keys.c runs the stored "-command".  The panels do not see
+			  it; the two observers at the end of the chain still do, in the order
+			  the chain gives them.
+			*/
+			Keys_Edge(scanx, FALSE);
+			SaveLoc_Key(scanx, FALSE);
+			return FALSE;
+		}
+		// Ours.  Cleared BEFORE the chain runs and unconditionally, so a panel
+		// that closed while the button was held cannot leave a bit stuck.
+		cl_btn_taken = cl_btn_taken - bit;
+	}
+
+	took = CL_InputChain(evtype, scanx, chary, devid);
+
+	// Recorded on the WHOLE chain's answer, not a single handler's, so the
+	// passive-key path (MOUSE3 taking a cursor) pairs the same way.
+	if (took && bit && evtype == IE_KEYDOWN)
+		cl_btn_taken = cl_btn_taken | bit;
+	return took;
 };
 
 void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
@@ -989,6 +1429,18 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		*/
 		Results_Frame();
 
+		/*
+		  BUILD 57, STAGE T: the lobby time store, and it must run AFTER
+		  Results_Frame rather than before it.
+
+		  Both watch the server's finish counter.  The card reads what the run was
+		  measured against out of the lobby files on disk -- the server zeroes
+		  TIMERPBWAS in a lobby -- and this call is what WRITES this run's file
+		  into that folder.  Swapped, every lobby card would report "personal best
+		  by 0.000" against the run's own time.  It draws nothing.
+		*/
+		LT_Frame();
+
 		Timer_Draw(scr);
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
@@ -1205,9 +1657,48 @@ float(string cmd) CSQC_ConsoleCommand =
 			print(sprintf("cl results: open %g ticks %g pb %g tag %g rank %g of %g\n",
 			              ui_rs_open, ui_rs_ticks, ui_rs_pb, ui_rs_tag,
 			              ui_rs_rank, ui_rs_of));
-			print(sprintf("cl results: track %g startseg %g seen %g  toast seg %g ticks %g word %g\n",
-			              ui_rs_track, ui_rs_startseg, ui_rs_seen,
+			/*
+			  BUILD 57: "leg", not "seg", in both places -- ui_rs_leg IS a leg and
+			  ui_rs_toastseg now holds one too (cl_results.qc assigns FS_LegOf).
+			  A diagnostic that calls a leg a segment reads a correct stage-1 toast
+			  as off by one, which is this tree's own recorded failure mode.
+			*/
+			print(sprintf("cl results: track %g leg %g startseg %g seen %g  toast leg %g ticks %g word %g\n",
+			              ui_rs_track, ui_rs_leg, ui_rs_startseg, ui_rs_seen,
 			              ui_rs_toastseg, ui_rs_toastticks, ui_rs_toastword));
+
+			/*
+			  BUILD 57, STAGE T VERIFICATION.  `mine` is the gate that decides
+			  whether a lobby time may be written to this disk at all, and the two
+			  numbers behind it are printed beside its answer because the identity
+			  they encode -- on a QW server client N is edict N + 1 -- is the one
+			  part of cl_lobbytime.qc read off the engine rather than measured
+			  here.  Playing normally, mine must read 1; track another player on a
+			  lobby, or play back a demo of one, and it must read 0 while the lobby
+			  bits stand and the FIN counters keep moving.  That is the whole test,
+			  and it needs no build to run.
+
+			  THE STAT IS THREE BITS (LS_LOBBY 1, LS_NOPB 2, LS_NOREC 4), so they
+			  are printed apart as well as raw: `lobby 7` is a real lobby keeping
+			  nothing, `lobby 1` is lobby_enable on a server that is still writing
+			  its own files -- where this client deliberately keeps nothing -- and 0
+			  is not a lobby at all.  Printing only the raw number would have made
+			  the middle case look like the first.
+
+			  TWO PRINTS, NOT ONE: fteqcc warns past 8 parameters on a varargs
+			  call ("More than 8 parameters on varargs function"), and this tree
+			  compiles at zero warnings.  The split is along the seam anyway --
+			  what the SERVER says, then who the client thinks it is.
+			*/
+			print(sprintf("cl lobby: stat %g (lobby %g nopb %g norec %g)\n",
+			              getstatf(STAT_FS_LOBBY),
+			              !!(getstatf(STAT_FS_LOBBY) & LS_LOBBY),
+			              !!(getstatf(STAT_FS_LOBBY) & LS_NOPB),
+			              !!(getstatf(STAT_FS_LOBBY) & LS_NOREC)));
+			print(sprintf("cl lobby: mine %g (localent %g localnum %g) finrec %g finleg %g\n",
+			              LT_StatsAreMine(),
+			              player_localentnum, player_localnum,
+			              getstatf(STAT_FS_FINREC), getstatf(STAT_FS_FINLEG)));
 		}
 		localcmd("cmd timer\n");
 		return TRUE;

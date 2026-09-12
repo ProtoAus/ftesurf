@@ -795,13 +795,20 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  not obvious on a staged map where !s 3 arms a stage run rather than the
 	  track.  A linear map (one segment) says nothing at all; there is only
 	  one thing it could be.
+
+	  BUILD 57: SEGMENT 0 SAYS "stage 1/N" TOO.  It used to fall through to
+	  "N stages" until the first boundary, which is the same reading that made
+	  stage 1 look like it was not a stage at all -- and on `!s 1` it would have
+	  named the leg you are timing by the count of legs you are not.  `seg` is
+	  the 0-based segment, so seg + 1 is the stage for every segment including
+	  the first.
 	*/
 	s = "";
 	if (track > 0)
 		s = sprintf("bonus %g", track);
 	if (segs > 1)
 	{
-		if (state != TS_IDLE && state != TS_FINISHED && seg > 0)
+		if (state != TS_IDLE && state != TS_FINISHED)
 			s = strcat(s, (s != "") ? "  " : "", sprintf("stage %g/%g", seg + 1, segs));
 		else if (s == "")
 			s = sprintf("%g stages", segs);
@@ -901,6 +908,12 @@ float(vector scr, float state, float ticks, float flags, float pb,
 		  cannot see.  With that cvar at 0 this would promise a recording that the
 		  server then refuses; `cmd timer` prints the rule and is the answer if
 		  they ever disagree.
+
+		  BUILD 57: `seg > 0` STAYS, AND IT IS LOAD-BEARING NOW.  Segment 0 is
+		  stage 1 and is written -- but it qualifies on the RUN's start rules
+		  (SV_StageQualifies), so a practice run's first stage is never clean and
+		  this line must never promise it.  Every later stage keeps the per-stage
+		  taint that this label describes.
 		*/
 		if (segs > 1)
 		if (seg > 0)
@@ -1067,11 +1080,17 @@ void(vector scr) Timer_Draw =
 	  the push instead of being matched to a row afterwards.
 
 	  THAT MATTERS MORE THAN IT LOOKS.  The row is labelled with the segment
-	  being ENTERED and the close reports the segment being LEFT, and the two
-	  numbering conventions do not agree -- SV_StageClose prints `stage 1` for
-	  the boundary this list draws as `stage 2`.  Reconciling them with an
-	  arithmetic offset would work until one of the two conventions moved.
-	  Consuming the value in flight needs no offset and cannot drift.
+	  being ENTERED and the close reports the segment being LEFT.  Reconciling
+	  them with an arithmetic offset would work until one of the two conventions
+	  moved.  Consuming the value in flight needs no offset and cannot drift.
+
+	  BUILD 57: THE LABEL NAMES THE STAGE JUST COMPLETED, and says so on purpose.
+	  The 0-based segment you ENTER is numerically the 1-based stage you FINISHED
+	  -- crossing into segment 2 completes stage 2 -- so `stage %g` over the
+	  entered segment is the right word without an offset.  Before this build
+	  SV_StageClose printed `stage 1` for the boundary this list drew as
+	  `stage 2`; it prints seg + 1 now, so the console, the toast, the card and
+	  this column all name that boundary `stage 2`.
 
 	  A GAP OF MORE THAN ONE means a snapshot was lost, and the honest response
 	  is to take the word we did receive for the row we are about to push and let

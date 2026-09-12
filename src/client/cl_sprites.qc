@@ -127,6 +127,29 @@ float  sprmat_zoned;                    // names hold strzone handles to give ba
 #define SPRO_VPORIENT   3       // vp_parallel_oriented -- declined, as parallel
 #define SPRO_ENTANGLES  4       // oriented -- the entity's own angles
 
+/*
+  BUILD 58 -- WHICH ADDITIVE KIND, packed into spr_add rather than beside it.
+
+  spr_add held a boolean and every reader asks `if (spr_add[i])`, so widening it
+  to a small enum costs nothing and keeps all of them working: every value below
+  except NONE is truthy. A second SPR_MAX array would have cost about eight times
+  its data in progs -- the measurement this file already cites for the glow
+  parameter table -- to carry one number per sprite that takes five values.
+
+  THE DISTINCTION IS SOURCE'S, NOT OURS. kRenderGlow (3) and kRenderWorldGlow (9)
+  are the only two rendermodes routed through GlowBlend (c_sprite.cpp:411-414),
+  and therefore the only two that get renderamt applied a SECOND time and an
+  inverse-square distance fade. kRenderTransAdd (5) is additive and gets neither.
+  The two renderfx that change that arithmetic ride along here for the same
+  reason: they are per-sprite, they take two values on any real map, and a third
+  array for them would be absurd.
+*/
+#define SPRA_NONE       0       // not additive; the material's own blendfunc
+#define SPRA_ADD        1       // kRenderTransAdd -- additive, ONE renderamt
+#define SPRA_GLOW       2       // kRenderGlow/kRenderWorldGlow -- the dimmed pair
+#define SPRA_NODISS     3       // ...plus kRenderFxNoDissipation (14): no distance fade
+#define SPRA_PULSE      4       // ...plus kRenderFxPulseSlowWide (3): renderamt pulses
+
 float sprmat_orient_read;               // materials whose .vmt answered
 float sprmat_orient_guess;              // materials that had to take the default
 float sprmat_orient_decl;               // facing_upright + vp_parallel_oriented
@@ -142,8 +165,17 @@ float  spr_hh[SPR_MAX];
 float  spr_rad[SPR_MAX];                // cull radius, precomputed
 float  spr_mat[SPR_MAX];                // index into the table above
 float  spr_kind[SPR_MAX];
-float  spr_add[SPR_MAX];                // TRUE = additive rendermode
+float  spr_add[SPR_MAX];                // SPRA_*, and every value but NONE is truthy
 float  spr_n;
+/*
+  BUILD 58.  How many sprites the Source dimming was applied to, and it is a
+  GLOBAL holding LAST frame's count rather than a local, because the census that
+  prints it runs at the top of Sprite_Draw -- upstream of the loop that does the
+  work.  As a local it printed 0 in every arm of the first A/B, which is exactly
+  the shape of a liveness check that cannot fail informatively: a switch that is
+  working and a switch that never ran both read zero.
+*/
+float  spr_dim_n;
 
 /*
   BUILD 52 -- THE GLARE STATE.  See Sprite_Glare, below Sprite_Draw.
@@ -153,10 +185,43 @@ float  spr_n;
   multiplies the alpha.  They are separate because the trace is amortised -- only
   a few sprites are traced per frame -- and the ramp is what makes the staleness
   invisible.  Source does the same thing for the same reason.
+
+  BUILD 60 -- spr_gtraced IS NOW A VISIT COUNT, and the one thing that reads it
+  still reads it as a boolean.  0 means "never traced, so spr_gvis is not an
+  answer yet" -- the ramp below turns that into a target of 0 so nothing flashes
+  on the first frame.  Anything >= 1 means "spr_gvis is a real answer", which is
+  all that reader wants.  The VALUE is how many times Sprite_Glare's round-robin
+  has visited this glare, and it only ever increments.
+
+  WHY A RUNNING COUNT AND NOT A RESETTING ONE, because the first version of this
+  was the latter and it did not work.  The adaptive path has to force a full
+  five-ray re-check occasionally; version one counted cheap confirmations and
+  reset to 1 on each full answer.  That cannot keep the re-checks SPREAD OUT:
+  every glare given a full answer in the same sweep then shares a phase forever,
+  so one sweep in nine cost five rays for everything and took as long as build
+  59's did -- measured, 9/50/14 frames per sweep on three consecutive frames.
+  Seeding the first period per glare fixed the load case and nothing else: one
+  sweep with the shortcut off -- vbsp_glare_adaptive 0, vbsp_glare_rays 1 or
+  vbsp_sprite_source 0, which is EVERY documented A/B arm -- set every glare to
+  the same value and re-synchronised the map permanently.  Three of four review
+  lenses found that independently and all three were right.
+
+  A count that never resets has no such state to lose.  A glare owes a full
+  re-check when its visit count is congruent to its own INDEX modulo adapt+1:
+  the period is exactly adapt+1 visits for every glare, the phase is a property
+  of the index rather than of history, and no toggle, reload or visibility change
+  can collapse two glares into one phase.  It also de-phases at adapt 1, which
+  `i mod adapt` could not (i mod 1 is identically 0).
+
+  A count rather than a fifth SPR_MAX array because this project has measured
+  fteqcc's array overhead at about 8x the data (see the glow parameter sets
+  below).  Precision: it rises about once per sweep, so 2^24 is days of play,
+  and it is read modulo adapt+1 anyway -- a wrap changes a phase, not a
+  behaviour.
 */
 float  spr_gvis[SPR_MAX];               // last trace: 1 = centre point visible
 float  spr_glare[SPR_MAX];              // 0..1, ramped toward spr_gvis
-float  spr_gtraced[SPR_MAX];            // has this one ever been traced?
+float  spr_gtraced[SPR_MAX];            // 0 = never traced; else the visit count
 float  spr_gnext;                       // round-robin cursor for the trace budget
 
 /*
@@ -255,6 +320,113 @@ float  spr_occ_n;                       // brush entities instantiated
 float  spr_occ_seen;                    // brush entities in the lump
 float  spr_occ_over;                    // skipped: hit OCC_MAX
 float  spr_gbrush;                      // traces stopped by one, since the last report
+/*
+  BUILD 59: what the frustum cull actually saved, per frame, so the claim is a
+  number and not an argument.  Both are needed: "culled 380" on its own cannot
+  distinguish a cull that is working from a cull that has thrown away everything
+  including what is on screen, and `spr_gtraced_n` is the half that would go to
+  zero if it had.
+*/
+float  spr_gcull;                       // glares skipped by the view test this frame
+float  spr_gtraced_n;                   // glares actually traced this frame
+/*
+  BUILD 60 -- THE DENOMINATOR, and adding it corrects a number I have been
+  reporting since build 59.
+
+  The round-robin cursor advances once per VISIT, so the time for a full pass
+  over the map is spr_n / visits-per-frame.  The build 59 census divided by
+  glares TRACED per frame instead, which treats a culled glare as if the cursor
+  never passed it -- and a culled glare is precisely a visit that costs no rays
+  and still advances the cursor.  It made the cull look like it moved the sweep
+  from 54 frames to 50 when the visit count says it moved it several-fold, and
+  I told Lex the cull "bought almost nothing" on the strength of it.
+
+  A derived figure with a wrong denominator is worse than no figure, because it
+  reads like a measurement.  This is the measured quantity.
+*/
+float  spr_gvisits;                     // loop iterations this frame = cursor advance
+/*
+  BUILD 60: and then stop deriving it at all.  A sweep is one wrap of the
+  round-robin cursor, so counting frames between wraps MEASURES the latency Lex
+  reported instead of computing it from a per-frame sample that the ray budget
+  makes unrepresentative.  spr_gsweep is the last complete pass, in frames.
+*/
+float  spr_gsweep;                      // frames the last full sweep took (measured)
+float  spr_gsweep_f;                    // frames since the cursor last wrapped
+/*
+  BUILD 61 -- THE BUDGET WAS THE WRONG UNIT, and build 60's own measurement is
+  what shows it.
+
+  vbsp_glare_traces is a fixed number of rays PER FRAME, so the thing it
+  actually controls -- how stale a glare's occlusion answer may be -- comes out
+  different on every map and at every framerate.  Measured on surf_tensor2 at
+  429 glares and 40 rays: a full sweep is 3.7 frames, which at 397 fps is 9.3
+  ms.  On a map with a dozen glares the same 40 rays wrap the cursor three
+  times in ONE frame: two of those passes re-answer questions that cannot have
+  changed since the last one, and they cost the full 27.1 us a ray either way.
+  Same cvar, same value, 30x apart in what it buys.
+
+  So the honest knob is the interval itself.  vbsp_glare_interval is in
+  SECONDS, and it is the age bound: every glare is re-answered at least that
+  often, whatever the map holds and whatever the framerate is.  The per-frame
+  visit quota is spr_n * frametime / interval, which is the definition
+  rearranged and nothing cleverer.
+
+  vbsp_glare_traces DOES NOT GO AWAY -- it becomes the ceiling rather than the
+  target.  A quota is a promise about latency and a ceiling is a promise about
+  the frame; a map dense enough that the quota cannot be met inside the ceiling
+  should miss its interval rather than drop a frame, and the census says which
+  of the two stopped the loop so that case is legible instead of mysterious.
+
+  THE FRACTION HAS TO BE CARRIED.  At 400 fps a 12-glare map wants 12 * 0.0025
+  / 0.05 = 0.6 visits per frame; floor() alone would make that 0 forever and
+  the glares would never be traced at all.  spr_gvacc accumulates the fractional
+  quota across frames, which is the same trick the decay ramp uses on frametime.
+
+  MEASURED (b61int / b61fps / b61curve, surf_tensor2 at Lex's vantage).  The
+  staleness column comes from the census's own counters, not from show_fps:
+  frametime = quota * interval / spr_n, staleness = sweep * frametime.
+
+      interval   rays/frame   staleness   fps
+        0 (off)    40-44         9.5 ms   354.6
+        0.015      20           15.9 ms   489.4
+        0.025       7-12        26.8 ms   574.9
+        0.05         1.5        42.6 ms   586.5
+        0.10         2         110   ms   674.8
+
+  Deadline met within 15% on every arm, ray ceiling never reached, and eight of
+  nine settled arms byte-identical in the centre region.  The fps gain SATURATES
+  past ~0.025 because by 7 rays a frame almost all of the ray cost is already
+  gone -- which is the argument for 0.025 over 0.05: it buys back the latency
+  for almost nothing.
+
+  A WORD ON THE fps COLUMN, since it cost a run to learn.  show_fps drifted
+  426.9 -> 369.7 monotonically over 90 seconds of b61int on a warm machine, and
+  a one-shot arm order cannot separate that from the setting.  Every figure
+  above is paired against an interval-0 control adjacent in time.  The quota is
+  the better probe -- it is frametime read backwards out of the frame that fired
+  the rays, with no averaging window and no screenshot hitch in it -- but it
+  only exists while the interval is on, so show_fps still has to carry the
+  comparison against interval 0.
+*/
+float  spr_gvacc;                       // fractional visit quota carried between frames
+float  spr_gquota;                      // this frame's visit quota; 0 = uncapped
+float  spr_glimit;                      // what stopped the loop: 1 rays, 2 visits, 0 neither
+/*
+  BUILD 60: the adaptive-ray split, and it needs THREE numbers, not one.
+
+  `spr_gcheap` is how many of this frame's traced glares took the centre-only
+  path and `spr_grays` is the rays actually fired.  Either alone can mislead: a
+  large cheap count with the ray count unchanged would mean the accounting is
+  wrong somewhere, and the ray count alone cannot show WHY it fell.
+  `spr_gforce` is the third, and it is the one that proves the shortcut is not
+  sticky -- it counts the forced full re-checks, so if it is ever 0 on a map
+  with hidden glares then a glare that became visible behind a thin edge could
+  stay dark forever.  See the essay in Sprite_Glare.
+*/
+float  spr_gcheap;                      // traced glares that fired 1 ray, this frame
+float  spr_gforce;                      // cheap streaks broken by a forced full re-check
+float  spr_grays;                       // rays actually fired this frame
 
 // ------------------------------------------------------------------- beams
 vector beam_org[BEAM_MAX];
@@ -720,7 +892,14 @@ void(vector org, vector ang, float hw, float hh, vector col, float alpha,
 	spr_rad[i]   = 0;
 	spr_mat[i]   = -1;              // see the note above: never matched by the loop
 	spr_kind[i]  = SPRK_GLOW;
-	spr_add[i]   = TRUE;            // a glow is additive by construction
+	/*
+	  SPRA_ADD, not SPRA_GLOW, and the difference is the whole of build 58 for
+	  this class: an env_lightglow has no renderamt to apply twice and Source
+	  gives it no inverse-square fade (c_lightglow.cpp:19-48 overrides
+	  CalcSpriteColorAndSize and never calls GlowBlend). Its only missing term
+	  was the occlusion FRACTION, which lives in spr_gvis and needs nothing here.
+	*/
+	spr_add[i]   = SPRA_ADD;
 	spr_pset[i]  = pset;
 	spr_gskip[i] = world;
 
@@ -1208,7 +1387,7 @@ void() Sprite_LoadForMap =
 {
 	local string tok, key, cn, map, model, srendercolor;
 	local vector org, ang, col;
-	local float  scale, renderamt, rendermode, spawnflags, framerate;
+	local float  scale, renderamt, rendermode, spawnflags, framerate, renderfx;
 	local float  splen, spwid, ignoresolid;
 	local float  opened, wantspr, wantbeam, mat, alpha, additive, named;
 	local float  glowh, glowv, gmin, gmax, gouter, gproxy, wantglow;
@@ -1260,6 +1439,14 @@ void() Sprite_LoadForMap =
 		spr_gskip[mat] = world;
 	}
 	spr_gnext = 0;
+	/*
+	  BUILD 61.  The carried fraction is per-map: spr_n has just changed, so a
+	  remainder accumulated against the old map's glare count would spend the
+	  new map's first frames at the wrong rate.  Cleared here rather than left
+	  to decay because this also runs on vbsp_sprite_debug 2, and an A/B arm
+	  must not inherit the previous arm's debt.
+	*/
+	spr_gvacc = 0;
 	glowp_n = glowp_over = 0;
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
@@ -1286,6 +1473,7 @@ void() Sprite_LoadForMap =
 		scale = framerate = 0;
 		renderamt = 255;
 		rendermode = 0;
+		renderfx = 0;
 		spawnflags = 0;
 		splen = spwid = ignoresolid = 0;
 		named = FALSE;
@@ -1307,6 +1495,13 @@ void() Sprite_LoadForMap =
 			else if (key == "scale")       scale = stof(tok);
 			else if (key == "renderamt")   renderamt = stof(tok);
 			else if (key == "rendermode")  rendermode = stof(tok);
+			// BUILD 58.  Only two values change the arithmetic and only for the
+			// two glow rendermodes; see SPRA_* and the draw.  Note 26 is NOT a
+			// valid RenderFx_t -- kRenderFxMax is 25 -- and 166 of surf_tensor2's
+			// 263 sprites carry it.  Source falls to `default:` there
+			// (c_baseentity.cpp:3502-3509), so 26 behaves exactly as 0 and must
+			// not be "fixed" into meaning something.
+			else if (key == "renderfx")    renderfx = stof(tok);
 			else if (key == "rendercolor") srendercolor = tok;
 			else if (key == "spawnflags")  spawnflags = stof(tok);
 			else if (key == "framerate")   framerate = stof(tok);
@@ -1388,7 +1583,19 @@ void() Sprite_LoadForMap =
 			  VARIANT (c_sprite.cpp:65) and there is no equivalent here -- the
 			  material's own opinion is the closest available answer.
 			*/
-			additive = (rendermode == 3 || rendermode == 5 || rendermode == 9);
+			additive = SPRA_NONE;
+			if (rendermode == 3 || rendermode == 9)
+			{
+				// The two that go through GlowBlend, hence the two Source dims
+				// twice.  BUILD 58; before it all three were one boolean.
+				additive = SPRA_GLOW;
+				if (renderfx == 14)
+					additive = SPRA_NODISS;         // kRenderFxNoDissipation
+				else if (renderfx == 3)
+					additive = SPRA_PULSE;          // kRenderFxPulseSlowWide
+			}
+			else if (rendermode == 5)
+				additive = SPRA_ADD;                // kRenderTransAdd
 
 			// BUILD 54.  A sprite has no fade ramp, so only the back-off half of
 			// the set is meaningful; the three zeros keep it one table.
@@ -1638,6 +1845,16 @@ void() Sprite_Glare =
 {
 	local float  i, n, budget, decay, target, step, back;
 	local vector eye, d;
+	// BUILD 58: the proxy rays.
+	local float  rays, hits, off;
+	local vector pr, pu, aim;
+	// BUILD 59: the view cull.
+	local float  visits, docull, tanx, fovx, fovy, zc, xc, rad, maxdist;
+	local vector fwd;
+	// BUILD 60: the adaptive rays, and the measured sweep.
+	local float  adapt, docorners, had, m, wrapped;
+	// BUILD 61: the interval-targeted budget.
+	local float  interval, vmax, ft;
 
 	eye = getproperty(VF_ORIGIN);
 
@@ -1650,15 +1867,229 @@ void() Sprite_Glare =
 	if (budget < 0)
 		budget = 0;
 
-	// ---- the amortised trace: `budget` sprites per frame, round-robin -------
+	/*
+	  BUILD 58 -- A FRACTION, NOT A YES/NO, and why the budget now counts RAYS.
+
+	  Source runs a hardware occlusion query on a small proxy quad at the glow --
+	  radius GlowProxySize, pulled GlowProxySize units toward the eye -- and
+	  multiplies the glow's colour by pixels/pixelsPossible
+	  (c_pixel_visibility.cpp:333-358). That is a FRACTION. Ours was
+	  `trace_fraction >= 1`, so a glare Source draws at 0.2 we drew at full or
+	  not at all, and on surf_tensor2 that was most of the reported wash: the
+	  flares alone lifted Lex's own vantage by +17.30 mean luma against a zero
+	  noise floor, with the sprites adding +10.26.
+
+	  Five rays reproduce its shape: the centre, plus the four corners of
+	  Source's own proxy, whose half-extent is GlowProxySize * sqrt(2)/2 in the
+	  VIEW's right and up (c_pixel_visibility.cpp:83-91). spr_gvis then holds
+	  hits/5 and NOTHING downstream changes -- it is already a float, the ramp
+	  below already interpolates toward it, and both draws already multiply by
+	  it. Source snaps >= 0.95 to 1.0 (:356); with five rays the nearest value
+	  below 1 is 0.8, so 5 of 5 is the only thing that can mean fully visible and
+	  no snap is needed.
+
+	  THE BUDGET COUNTS RAYS, so the per-frame traceline cost is exactly what it
+	  was: vbsp_glare_traces 8 was 8 tracelines and still is. What changes is
+	  that 8 rays cover 1.6 glares instead of 8, so the round-robin comes round
+	  5x slower and the 50 ms ramp does more of the hiding -- which is what it is
+	  for. If glares lag when you spin, raise the budget rather than lowering the
+	  rays. vbsp_glare_rays 1 restores builds 52-57 exactly.
+
+	  CORRECTED IN BUILD 60: this used to end "`n` still rises by 1 for every
+	  sprite VISITED, before the gate below, or a map with no additive sprites
+	  would spin here forever."  That stopped being true in build 59, which gave
+	  the loop a second bound -- `visits` -- precisely so a skipped or culled
+	  glare would cost no rays.  `n` now counts only rays actually fired and
+	  `visits` is what stops the spin.  See the two-limits note at the loop.
+	*/
+	rays = cvar("vbsp_glare_rays");
+	rays = (rays > 1) ? 5 : 1;      // only the two shapes; anything else is 1 or 5
+	if (!cvar("vbsp_sprite_source"))
+		rays = 1;                   // the A/B switch reaches this half too
+
+	/*
+	  BUILD 60: how many consecutive centre-only confirmations a hidden glare may
+	  take before it owes a full five-ray re-check.  Read here rather than in the
+	  loop so all 429 visits see one consistent value, and so the A/B toggle
+	  lands on a frame boundary.  The essay is at the shortcut itself.
+	*/
+	adapt = floor(cvar("vbsp_glare_adaptive"));
+	if (adapt < 0)
+		adapt = 0;              // floored, so anything under 1 means OFF and not
+	m = adapt + 1;              // a fractional period.  m is the congruence modulus.
+
+	makevectors(getproperty(VF_ANGLES));
+	fwd = v_forward;
+	pr = v_right;
+	pu = v_up;
+
+	/*
+	  BUILD 59 -- DO NOT SPEND RAYS ON GLARES THAT CANNOT PRODUCE A PIXEL.
+
+	  Reported as a framerate cost once the budget was raised: 555-600fps at
+	  vbsp_glare_traces 8, 360-420 at 40, 200-220 at 120.  Those three points fit
+	  a straight line at 27.1us PER RAY (predicting 385fps at 40 against 360-420
+	  measured), so the budget is almost entirely traceline cost and the way to
+	  buy latency is to stop wasting rays rather than to buy more of them.
+
+	  THE WASTE IS THE ROUND-ROBIN ITSELF.  It walked all 429 of surf_tensor2's
+	  glares in order, including the ~380 behind the player, because nothing in
+	  this loop had ever looked at where the camera was pointing.  Lex asked the
+	  right question -- "only dealing with the ones in the scene or something?
+	  are we doing it silly?" -- and the answer was yes.
+
+	  WHY CULLING THE TRACE IS SAFE WHERE CULLING THE DRAW WOULD NOT BE.  A glare
+	  outside the viewport contributes no pixels whatever spr_glare says, so a
+	  stale answer there is invisible by construction.  Verified: cull on vs off
+	  at the reported vantage is 0.007% of pixels, i.e. the same picture.
+
+	  IT BUYS NO FRAMERATE AT ALL, AND THAT IS CORRECT RATHER THAN DISAPPOINTING.
+	  The budget is in RAYS and it is saturated either way, so the cost per frame
+	  cannot move: measured 383.4 fps with the cull off against 399.0 and 412.5
+	  on two cull-on arms, i.e. if anything faster, and inside its own spread.
+	  What the cull buys is LATENCY, and a great deal of it.
+
+	  I REPORTED THAT WRONG FOR A WHOLE BUILD, off a census line of my own.  The
+	  build 59 line divided by glares TRACED per frame, which quietly assumes a
+	  culled glare does not advance the round-robin cursor -- it does, for free,
+	  which is the entire point.  So it read "sweep 54 -> 50 frames" and I told
+	  Lex the cull bought almost nothing, while the same line was printing 30
+	  culled and 8 traced: 38 visits, and a sweep five times shorter than it
+	  claimed.
+
+	  THEN I STOPPED DERIVING IT AND COUNTED FRAMES BETWEEN CURSOR WRAPS, which
+	  is the sweep itself with no denominator and no assumption.  Measured at
+	  Lex's vantage, six samples an arm, and repeated at a second vantage when he
+	  moved the mouse mid-run:
+
+	      cull off (b58)        53.6 frames per sweep  (429/8, the one case
+	                                                    the old formula got right)
+	      cull on  (b59)        11.2 and 10.8 frames   -> 4.8x
+	      + adaptive (b60)      3.7, 3.8 and 3.4       -> a further 3.0x, 14.5x on b58
+	      + adaptive at 12 rays 9.8 frames             -> better than b59 at 30%
+	                                                      of the ray budget
+
+	  A DERIVED FIGURE WITH THE WRONG DENOMINATOR IS WORSE THAN NO FIGURE,
+	  because it reads like a measurement and it survived three runs and a report
+	  to the user before anyone divided 429 by 38 by hand.  Note that even the
+	  CORRECTED derivation (spr_n/visits) was only accidentally close: it gave
+	  10.5 against a measured 11.2 here, but visits-per-frame swings 20-200 with
+	  the cursor's position because the loop stops on the ray budget, so a
+	  sampled mean of it is not the sweep.  Count the wraps.
+
+	  I ALSO HAD THE STRUCTURE WRONG.  "~50 glares on screen" confused DRAWN with
+	  IN VIEW.  The census reads `glare 302 in frame, 296 hidden by the trace`
+	  and `6 of 429 passed the cull`: 302 of the 429 are genuinely inside the
+	  frustum and are invisible because they are OCCLUDED, which is precisely the
+	  thing only a trace can determine.  The cull still pays, but it pays on the
+	  ~30-160 behind the eye rather than on any of those 302.
+
+	  WHICH POINTS AT THE ACTUAL LEVER: 296 of the 302 traced glares are FULLY
+	  hidden, and each spends 5 rays to establish what the centre ray alone
+	  already said.  That is the adaptive path below, added in build 60.
+
+	  THE CONE IS DELIBERATELY TOO WIDE.  It is built from the horizontal fov
+	  with a SQUARE aspect -- i.e. as if the screen were as tall as it is wide.
+	  Every real widescreen is shorter than that, so the cone circumscribes the
+	  true frustum and cannot cull something on screen.  Reading the real aspect
+	  would be tighter and would also make this depend on vid_conwidth/conheight,
+	  which are not reliably set here; a cone that is too generous costs a few
+	  wasted rays, a cone that is too tight costs correctness.
+
+	  vbsp_glare_cull is the margin ITSELF, not a boolean: 0 disables the cull
+	  entirely (the build-58 behaviour, and the A/B), 1.0 is the exact
+	  circumscribed cone, 1.25 is the default and gives 25% slack on the tangent
+	  for turning.  One cvar rather than two because a boolean plus a margin
+	  would have two ways to spell "off".
+	*/
+	docull = cvar("vbsp_glare_cull");
+	maxdist = cvar("vbsp_sprite_dist");
+	tanx = 0;
+	if (docull > 0)
+	{
+		fovx = cvar("fov");
+		if (fovx <= 0 || fovx >= 180)
+			fovx = 90;
+		fovy = fovx * 0.5 * 0.0174532925;       // half-fov in radians
+		// tan = sin/cos; sqrt(2) promotes the horizontal half-angle to the
+		// diagonal of a SQUARE frustum, which is the conservative choice above.
+		tanx = (sin(fovy) / cos(fovy)) * 1.41421356 * docull;
+	}
+
+	// ---- the amortised trace: `budget` RAYS per frame, round-robin ----------
+	/*
+	  BUILD 59: two limits now, and they bound different things.
+
+	  `n` bounds RAYS, because rays are the 27us each.  `visits` bounds LOOP
+	  ITERATIONS, because a culled glare costs one dot product and must NOT eat
+	  the ray budget -- if it did, culling would make the sweep slower rather
+	  than faster (429 cheap visits would exhaust a budget of 40 long before
+	  finding the 50 glares worth tracing).  Capping visits at spr_n also means
+	  at most one full pass per frame, which is what stops an all-culled map
+	  from spinning here forever.
+
+	  BUILD 61 MOVED THAT CAP but did not weaken it: the bound is now `vmax`,
+	  which is spr_n unless the interval asks for less, and the interval branch
+	  clamps its accumulator to spr_n before flooring it.  So vmax <= spr_n
+	  always and the one-pass guarantee above is unchanged.  Said here because
+	  the code no longer literally reads `visits < spr_n` and a reader checking
+	  the anti-spin argument would otherwise have to re-derive it.
+	*/
+	/*
+	  BUILD 61: and a third limit, which is the one with a unit anybody cares
+	  about.  `vmax` is spr_n -- one full pass, the build 60 behaviour -- unless
+	  vbsp_glare_interval asks for a staleness bound, in which case it is this
+	  frame's share of a sweep that must complete in `interval` seconds.
+
+	  frametime IS CLAMPED, and the direction matters.  A 250 ms hitch (a map
+	  load finishing, an alt-tab, a shader compile) would otherwise compute a
+	  quota of several whole sweeps and fire the entire ray ceiling on the frame
+	  immediately after the hitch -- i.e. spend the budget precisely when the
+	  frame is already late.  Clamping at 100 ms means a hitch loses a little
+	  freshness instead of making the stall worse, which is the trade I want.
+	  It cannot deadlock: the quota keeps accruing every frame afterwards.
+
+	  ONE SWEEP OF DEBT IS THE MOST THE ACCUMULATOR MAY HOLD.  Without the clamp
+	  a long pause banks arbitrary credit and pays it out in one frame; with it,
+	  the worst case after any stall is a single full pass, which is exactly the
+	  build 60 worst case and already measured.
+	*/
+	interval = cvar("vbsp_glare_interval");
+	vmax = spr_n;
+	spr_gquota = 0;                 // 0 in the census reads as "uncapped"
+	if (interval > 0 && spr_n > 0)
+	{
+		ft = frametime;
+		if (ft <= 0)
+			ft = 0.001;
+		else if (ft > 0.1)
+			ft = 0.1;
+		spr_gvacc = spr_gvacc + spr_n * ft / interval;
+		if (spr_gvacc > spr_n)
+			spr_gvacc = spr_n;
+		vmax = floor(spr_gvacc);
+		spr_gvacc = spr_gvacc - vmax;   // carry the fraction; see the decl
+		spr_gquota = vmax;
+	}
+
 	n = 0;
-	while (n < budget && spr_n > 0)
+	visits = 0;
+	wrapped = FALSE;
+	spr_gcull = 0;
+	spr_gtraced_n = 0;
+	spr_gcheap = 0;
+	spr_gforce = 0;
+	spr_grays = 0;
+	while (n < budget && visits < vmax && spr_n > 0)
 	{
 		i = spr_gnext;
 		spr_gnext = spr_gnext + 1;
 		if (spr_gnext >= spr_n)
+		{
 			spr_gnext = 0;
-		n = n + 1;
+			wrapped = TRUE;         // a sweep completed in this frame; see below
+		}
+		visits = visits + 1;
 
 		// BUILD 54: env_lightglow joins this, and it is the same question for the
 		// same reason.  Everything additive except an ORIENTED sprite, which has
@@ -1667,6 +2098,43 @@ void() Sprite_Glare =
 			continue;               // not a glare; see the essay
 
 		d = spr_org[i] - eye;
+
+		/*
+		  BUILD 59: the view test.  The first two conditions are the DRAW loop's
+		  own cull (:2091-2093) copied deliberately rather than reinvented -- if
+		  these two ever disagree about what is on screen, the disagreement is a
+		  glare that draws with an answer nothing is refreshing, which is the
+		  exact bug this is meant to cure.  The third is the cone, and it has no
+		  counterpart in the draw loop because the rasteriser does that clipping
+		  for free; here it has to be explicit.
+		*/
+		if (docull > 0)
+		{
+			rad = spr_rad[i];
+			zc = fwd * d;
+			if (zc < -rad)
+			{                       // behind the eye
+				spr_gcull = spr_gcull + 1;
+				continue;
+			}
+			if (maxdist > 0 && vlen(d) - rad > maxdist)
+			{                       // past the draw distance, so it is not drawn
+				spr_gcull = spr_gcull + 1;
+				continue;
+			}
+			// Outside the cone.  Only meaningful in front of the eye; a glare
+			// straddling the eye plane (-rad <= zc <= 0) is kept, because its
+			// distance from the axis says nothing useful there.
+			if (zc > 0)
+			{
+				xc = vlen(d - fwd * zc);        // distance from the view axis
+				if (xc - rad > zc * tanx)
+				{
+					spr_gcull = spr_gcull + 1;
+					continue;
+				}
+			}
+		}
 
 		/*
 		  The back-off, and it is not cosmetic.  A glow is placed AT the lamp, so
@@ -1682,12 +2150,30 @@ void() Sprite_Glare =
 		*/
 		back = glowp_backoff[spr_pset[i]];
 		if (vlen(d) > back)
-			traceline(eye, spr_org[i] - normalize(d) * back, MOVE_NOMONSTERS, spr_gskip[i]);
+			aim = spr_org[i] - normalize(d) * back;
 		else
-			traceline(eye, spr_org[i], MOVE_NOMONSTERS, spr_gskip[i]);
+			aim = spr_org[i];
 
-		spr_gvis[i] = (trace_fraction >= 1) ? 1 : 0;
-		spr_gtraced[i] = TRUE;
+		/*
+		  BUILD 59: the full ray cost, not rays-1.  Before the cull, every VISIT
+		  cost 1 from this budget and a traced glare paid the remaining rays-1;
+		  now a visit costs nothing (it is bounded by `visits` instead) so the
+		  whole cost belongs here.
+
+		  BUILD 60: the centre ray is charged HERE and the four corners are
+		  charged where they are fired, because whether they fire is now a
+		  decision.  The budget therefore still counts rays exactly -- getting
+		  this wrong in either direction silently rescales every measurement
+		  taken with it, in the direction that flatters the change.
+		*/
+		n = n + 1;
+		spr_grays = spr_grays + 1;
+		spr_gtraced_n = spr_gtraced_n + 1;
+
+		hits = 0;
+		traceline(eye, aim, MOVE_NOMONSTERS, spr_gskip[i]);
+		if (trace_fraction >= 1)
+			hits = hits + 1;
 
 		/*
 		  BUILD 53 -- WAS IT A BRUSH ENTITY THAT STOPPED IT?
@@ -1707,6 +2193,171 @@ void() Sprite_Glare =
 		*/
 		if (trace_fraction < 1 && trace_ent != world)
 			spr_gbrush = spr_gbrush + 1;
+
+		/*
+		  ===================================================================
+		  BUILD 60 -- SPEND FOUR MORE RAYS ONLY WHERE THEY CAN CHANGE THE ANSWER
+		  ===================================================================
+
+		  Build 59 measured 27.1us per ray and then found the frustum cull could
+		  only remove 7% of them.  The census said where the rest go: at Lex's
+		  vantage 302 of surf_tensor2's 429 glares are inside the frustum, 296 of
+		  those are FULLY hidden, and each of the 296 fires five rays to establish
+		  what its first ray already said.
+
+		  THE SHORTCUT.  If the last full answer was 0 -- every one of the five
+		  rays blocked -- and the centre ray is blocked AGAIN this visit, take 0
+		  and stop.  That is one ray instead of five on 98% of the traced set.
+
+		  WHY IT IS NEARLY EXACT, and this is a fact about the geometry rather
+		  than a hope.  `off` is GlowProxySize*sqrt(2)/2, but each corner is
+		  displaced along (pr +- pu), whose length is sqrt(2) -- so the corner
+		  sits off * sqrt(2) = GlowProxySize from the aim point, i.e. 4.0 UNITS
+		  to the side of a ray that just hit something, on the glows here.
+		  (An earlier version of this paragraph said 2.8 and had dropped that
+		  sqrt(2); a review lens caught it.  The bound is 4.0.)  For the cheap
+		  answer to be wrong, an occluder's silhouette edge has to pass within
+		  those 4 units.  When it does, the true answer is 1/5 or 2/5 -- a glare
+		  Source would draw at 20-40% -- so the error is bounded by a dim glare
+		  reading as dark, never by a bright one vanishing.  A glare going the
+		  other way (hidden -> visible) cannot be missed at all: the centre ray
+		  comes back clear, the shortcut declines, and the full five fire.
+
+		  THE BOUND IS LOOSER WHERE GlowProxySize IS BIG, and it is the map's
+		  number: glowp_backoff is max(GlowProxySize, 4), so a map authored with
+		  a 64-unit proxy puts its corners 64 units out and the cheap answer is
+		  correspondingly coarser.  Not gated on, because a large proxy is also a
+		  large soft glow where a 1/5 error is least visible -- but stated, so a
+		  map that looks wrong here has somewhere to start.
+
+		  AND WHY IT IS NOT STICKY, which is the failure this could have had.  A
+		  glare parked exactly behind a thin edge would keep confirming 0 forever
+		  and could never discover its corners had opened up.  So every glare owes
+		  a full five-ray re-check once every adapt+1 VISITS, whatever the centre
+		  ray says.  vbsp_glare_adaptive IS that period rather than a boolean:
+		  0 disables the shortcut and restores build 59 exactly, 8 is the default
+		  and costs (8*1 + 5)/9 = 1.44 rays per hidden glare instead of 5.  One
+		  cvar, because a boolean plus a period would have two ways to spell
+		  "off".  It is floored to an integer above, so 0.5 means off rather than
+		  meaning a 1.5-visit period.
+
+		  HOW THE RE-CHECKS ARE KEPT SPREAD OUT, which took two attempts.  Version
+		  one counted cheap confirmations and reset on each full answer; measured,
+		  that put every glare in the same phase and one sweep in nine cost the
+		  full five rays for everything -- 9/50/14 frames per sweep on three
+		  consecutive frames, i.e. a good mean with build 59's worst case intact,
+		  and the worst case is what Lex reported as "up to 1 sec".  Version two
+		  seeded the first period per glare, which fixed the load case and nothing
+		  else: one sweep with the shortcut off re-synchronised the whole map
+		  permanently, and three of four review lenses found that before it had
+		  run twice.
+
+		  So the due test is a CONGRUENCE on a counter that never resets: glare i
+		  is due when its visit count and its index agree modulo adapt+1.  The
+		  period is exactly adapt+1 for every glare, the phase is a property of
+		  the index, and there is no history for a toggle to destroy.  See
+		  spr_gtraced's declaration.
+
+		  WHAT IT DOES NOT TOUCH: rays, hits and spr_gvis keep their build-58
+		  meanings, the ramp below is unchanged, and both draw loops still just
+		  multiply by spr_glare.  A glare whose answer is anything other than 0
+		  is traced exactly as it was.
+		*/
+		had = spr_gtraced[i];                   // 0 = this is its first ever answer
+		spr_gtraced[i] = had + 1;               // one visit; never reset, see the decl
+
+		docorners = (rays > 1);
+		if (docorners && !hits && adapt > 0 && had >= 1 && spr_gvis[i] <= 0)
+		{
+			// due when count == index (mod adapt+1).  `m` is set once per frame.
+			if ((spr_gtraced[i] - floor(spr_gtraced[i] / m) * m)
+			    == (i - floor(i / m) * m))
+				spr_gforce = spr_gforce + 1;    // owed a re-check: fall through to five
+			else
+			{
+				docorners = FALSE;              // centre blocked, and it was blocked before
+				spr_gcheap = spr_gcheap + 1;
+			}
+		}
+
+		/*
+		  The four proxy corners. Taken in the VIEW basis rather than around the
+		  eye-to-glow direction because that is where Source puts them -- the
+		  proxy is a screen-facing quad, so at a grazing angle its corners spread
+		  across the lamp's face and that is exactly when a fraction differs most
+		  from a centre sample.
+		*/
+		if (docorners)
+		{
+			off = back * 0.70710678;    // GlowProxySize * sqrt(2)/2
+
+			n = n + 4;
+			spr_grays = spr_grays + 4;
+
+			traceline(eye, aim + (pr + pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			if (trace_fraction >= 1)
+				hits = hits + 1;
+			traceline(eye, aim + (pr - pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			if (trace_fraction >= 1)
+				hits = hits + 1;
+			traceline(eye, aim - (pr - pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			if (trace_fraction >= 1)
+				hits = hits + 1;
+			traceline(eye, aim - (pr + pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			if (trace_fraction >= 1)
+				hits = hits + 1;
+
+			spr_gvis[i] = hits * 0.2;
+		}
+		else if (rays == 1)
+			spr_gvis[i] = hits;        // no corners exist to skip; always a full answer
+		// else: the cheap path took 0 and left spr_gvis alone, which already IS 0.
+		//
+		// spr_gtraced was incremented once, above, on every one of these paths --
+		// it counts VISITS, not answers, so nothing is written back here.  The
+		// earlier version wrote it per path and that is what lost the phase.
+	}
+	spr_gvisits = visits;               // the cursor advance, for the census
+	/*
+	  BUILD 61 -- RECORD WHICH LIMIT BIT, because with two live limits "40 rays
+	  fired" and "40 rays allowed" are the same number for two opposite reasons
+	  and the census cannot tell them apart from the counters alone.  This is the
+	  same lesson as the sweep denominator: a figure that needs the reader to
+	  guess which term dominated is a figure that will be read wrong.
+
+	  Rays win a tie deliberately.  If both are exhausted on the same iteration
+	  the interval is not being met, and saying "the ray ceiling" points at the
+	  cvar that would fix it.
+	*/
+	spr_glimit = 0;
+	if (n >= budget)
+		spr_glimit = 1;
+	else if (visits >= vmax)
+		spr_glimit = 2;
+
+	/*
+	  BUILD 60 -- MEASURE THE SWEEP, DO NOT DERIVE IT.
+
+	  The build 59 census computed frames-per-sweep from the per-frame counters
+	  and got it wrong (see the census block in Sprite_Draw), and the corrected
+	  formula spr_n/visits is still a derivation resting on "the cursor advances
+	  once per visit" plus an assumption that this frame's visit count is typical
+	  of the sweep.  It is not: the loop stops when the ray budget runs out, so a
+	  frame crossing a stretch of culled glares reports 160 visits and one
+	  crossing visible lamps reports 20.  Sampling that at 400ms gave a mean that
+	  disagreed with the map-wide cull fraction by 4x, and rather than argue the
+	  statistics, count the thing itself.
+
+	  A sweep IS one wrap of the cursor.  So count frames, and when the cursor
+	  wraps, latch the count.  spr_gsweep is then the measured number of frames
+	  the last complete pass over every glare actually took -- no denominator, no
+	  assumption, and it is the exact quantity Lex reported as "up to 1 sec".
+	*/
+	spr_gsweep_f = spr_gsweep_f + 1;
+	if (wrapped)
+	{
+		spr_gsweep = spr_gsweep_f;
+		spr_gsweep_f = 0;
 	}
 
 	// ---- and every glare's fade advances every frame, traced or not ---------
@@ -1763,6 +2414,10 @@ void() Sprite_Draw =
 	local vector a, b, c, d, side, mid;
 	local float  flags, glare, useglare, useglare_on;
 	local float  g_total, g_hidden, g_fading;
+	// BUILD 58.  srcmode gates the Source dimming terms; the count they were
+	// applied to lives in the global spr_dim_n, for the reason given there.
+	local float  srcmode, amt, gfx, glowscale;
+	local vector gcol;
 	/*
 	  BUILD 54.  GLOW-ONLY COUNTERS, because the shared ones cannot answer the
 	  question that matters.
@@ -1782,6 +2437,25 @@ void() Sprite_Draw =
 
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
+
+	/*
+	  BUILD 58 -- THE RELOAD HOOK MOVED ABOVE THE EARLY RETURN, because below it
+	  the hook was unreachable in exactly the state it exists for.
+
+	  vbsp_sprite_debug 2 reloads the table in place; that is build 53's remedy
+	  for cvars that are only read at map load. But `vbsp_sprites 0` empties the
+	  table, and an empty table returns here -- before the debug block ever runs.
+	  So once the feature was switched off it could not be switched back on
+	  without changing map, and an A/B arm that tried produced two screenshots
+	  byte-identical to the sprites-off frame and looked like a result. It cost
+	  two arms of the build 58 measurement run before a diff against the control
+	  caught it.
+	*/
+	if (cvar("vbsp_sprite_debug") == 2)
+	{
+		cvar_set("vbsp_sprite_debug", "1");
+		Sprite_LoadForMap();
+	}
 
 	if (!spr_n && !beam_n)
 		return;
@@ -1807,6 +2481,12 @@ void() Sprite_Draw =
 	g_total = 0;
 	g_hidden = 0;
 	g_fading = 0;
+	srcmode = cvar("vbsp_sprite_source");
+	// Negative would invert an additive blend into nothing and read as "the
+	// flares stopped working"; 0 is a legitimate way to mute them entirely.
+	glowscale = cvar("vbsp_lightglow_scale");
+	if (glowscale < 0)
+		glowscale = 0;
 	gl_seen = gl_side = gl_hid = gl_fade = gl_drawn = 0;
 
 	// BUILD 52.  One read per frame, not one per sprite; and the trace/ramp pass
@@ -1856,6 +2536,11 @@ void() Sprite_Draw =
 		print(sprintf("  orientation: %g material(s) read from the .vmt, %g guessed (mode %g), %g declined\n",
 		              sprmat_orient_read, sprmat_orient_guess,
 		              cvar("vbsp_sprite_orient"), sprmat_orient_decl));
+		// BUILD 58.  Liveness, not decoration: a stale frame cannot fake a
+		// counter, so this is what says the dimming actually ran rather than
+		// the picture happening to look the same.
+		print(sprintf("  source dimming: %s, %g sprite(s) dimmed last frame; glare rays %g\n",
+		              srcmode ? "on" : "OFF", spr_dim_n, cvar("vbsp_glare_rays")));
 		for (m = 0; m < sprmat_n; m = m + 1)
 			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
 			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
@@ -1886,6 +2571,10 @@ void() Sprite_Draw =
 	  times 1024 tests of one float, once per frame, and no work at all for the
 	  ones that do not match.
 	*/
+	// Reset HERE rather than at the top of the function: the census above has
+	// already printed it, so what it printed is last frame's finished total.
+	spr_dim_n = 0;
+
 	for (m = 0; m < sprmat_n; m = m + 1)
 	{
 		if (sprmat_w[m] <= 0)
@@ -1976,7 +2665,66 @@ void() Sprite_Draw =
 			c = spr_org[i] + r - u;
 			d = spr_org[i] - r - u;
 
-			Sprite_Quad(a, b, c, d, sprmat_name[m], flags, spr_col[i], spr_alpha[i] * glare);
+			/*
+			  BUILD 58 -- THE TWO TERMS SOURCE DIMS A GLOW SPRITE BY.
+
+			  1. RENDERAMT IS APPLIED TWICE. The leaf system folds it into RGB
+			     (viewrender.cpp:4085 -> c_sprite.cpp:409, then r,g,b *= blend at
+			     :417-419) and it is ALSO the vertex alpha that the additive
+			     blend multiplies (Sprite.cpp:806 -> c_sprite.cpp:83, with
+			     SHADER_BLEND_SRC_ALPHA). So the output scales as
+			     (renderamt/255)^2. We applied it once: 1.46x too bright at the
+			     175 that 166 of surf_tensor2's sprites carry.
+			  2. AN INVERSE-SQUARE DISTANCE FADE, c_sprite.cpp:168-170:
+			     clamp((1200/dist)^2, 0, 1). It sits OUTSIDE the
+			     `rendermode != kRenderWorldGlow` guard at :172, so mode 9 gets
+			     it; only the screen-space *scale* fix-up is skipped. We had
+			     nothing: 3.7x too bright at 2300 units, 11x at 4000.
+
+			  No sqrt: dd is the eye-to-sprite vector and dd*dd is its length
+			  squared, which is the only form the fade needs.
+
+			  Folding both into the COLOUR rather than the alpha is exact under
+			  GL_SRC_ALPHA/GL_ONE (they are one product either way) and keeps the
+			  alpha meaning what the glare ramp means, so nothing downstream has
+			  to know this happened.
+			*/
+			gcol = spr_col[i];
+			if (srcmode && spr_add[i] >= SPRA_GLOW)
+			{
+				amt = spr_alpha[i];
+				if (spr_add[i] == SPRA_PULSE)
+				{
+					// c_baseentity.cpp:3342-3344: renderamt +/- 0x40 at 2 rad/s,
+					// de-synced per entity. Source offsets by the entity index;
+					// the sprite index serves the same purpose and is what we
+					// have. It modulates the COLOUR term only -- the vertex
+					// alpha stays GetRenderBrightness(), i.e. unpulsed
+					// (Sprite.cpp:806 reads m_nBrightness, not m_nFXBlend).
+					amt = amt + 0.25098 * sin(time * 2 + i * 363);
+					if (amt < 0) amt = 0;
+					if (amt > 1) amt = 1;
+				}
+
+				gfx = 1;
+				if (spr_add[i] != SPRA_NODISS && (dd * dd) > 0.01)
+				{
+					gfx = (1200 * 1200) / (dd * dd);
+					if (gfx > 1)
+						gfx = 1;
+				}
+
+				gcol = gcol * (amt * gfx);
+				spr_dim_n = spr_dim_n + 1;
+
+				// The same term-by-term dump as the glows below, for the same
+				// reason: which factor is carrying the brightness.
+				if (dbg)
+					print(sprintf("  sprite %g: dist %g renderamt %.3f fadeout %.3f  half %g  glare %.3f\n",
+					              i, vlen(dd), amt, gfx, spr_hw[i], glare));
+			}
+
+			Sprite_Quad(a, b, c, d, sprmat_name[m], flags, gcol, spr_alpha[i] * glare);
 			drawn = drawn + 1;
 		}
 	}
@@ -2100,9 +2848,50 @@ void() Sprite_Draw =
 		c = base + r - u;
 		d = base - r - u;
 
+		/*
+		  BUILD 58 -- TERM BY TERM, for the handful that actually reach the draw.
+
+		  Two read-derived explanations for the flares' brightness have now died
+		  (the arithmetic matches Source per channel; making the occlusion
+		  fractional moved 0.00 luma because the ones that draw are fully
+		  visible), and the project's own rule is that the third attempt is an
+		  instrument, not another hypothesis. At Lex's vantage exactly 2 of 166
+		  reach here, so this prints two lines and answers which factor is
+		  carrying the +17.30.
+		*/
+		if (dbg)
+		{
+			/*
+			  TWO prints, and that is not style: fteqcc caps a varargs call at
+			  EIGHT parameters INCLUDING the format string, and silently drops
+			  the rest. The first version of this passed eleven and printed the
+			  colour as "0.00 0.00 0.00" -- which reads as a real and alarming
+			  finding (an additive black quad contributes nothing, so the flares
+			  could not be what was on screen) rather than as a broken print.
+			  The cap is already documented forty lines up, in this same file.
+
+			  Through a temporary because `spr_col[i]_x` is not a component
+			  selector fteqcc accepts on an array element.
+			*/
+			print(sprintf("  glow %g: dist %g fade %.3f glare %.3f  half %gx%g\n",
+			              i, dist, fade, glare, spr_hw[i], spr_hh[i]));
+			gcol = spr_col[i];
+			print(sprintf("           col %.3f %.3f %.3f  alpha %.3f -> %.3f\n",
+			              gcol_x, gcol_y, gcol_z, spr_alpha[i], spr_alpha[i] * glare * fade));
+		}
+
+		/*
+		  BUILD 58.  Into the COLOUR, because that is where Source carries a
+		  glow's brightness -- glow_overlay.cpp:418 hard-wires the vertex alpha
+		  to 1 and puts fade and obstruction in the RGB, precisely because the
+		  blend is additive.  Under GL_SRC_ALPHA/GL_ONE the two are one product
+		  anyway, so this is a scale on the result either way.
+		*/
+		gcol = spr_col[i] * glowscale;
+
 		Sprite_Quad(a, b, c, d, GLOW_MATERIAL,
 		            DRAWFLAG_ADD | DRAWFLAG_NODEPTHTEST,
-		            spr_col[i], spr_alpha[i] * glare * fade);
+		            gcol, spr_alpha[i] * glare * fade);
 		drawn = drawn + 1;
 		gl_drawn = gl_drawn + 1;
 	}
@@ -2161,6 +2950,99 @@ void() Sprite_Draw =
 		if (useglare_on)
 			print(sprintf("vbsp_sprite_debug: glare %g in frame, %g hidden by the trace, %g mid-fade\n",
 			              g_total, g_hidden, g_fading));
+		/*
+		  BUILD 59, DENOMINATOR CORRECTED IN BUILD 60.  What the last frame of
+		  Sprite_Glare actually did.
+
+		  Every number here is counted, and the only derived one divides by the
+		  quantity that actually sets the latency: the cursor advances once per
+		  VISIT, so a full pass over spr_n sprites takes spr_n/visits frames.
+		  Build 59 divided by glares TRACED, which silently assumed a culled
+		  glare does not advance the cursor -- it does, for free, which is the
+		  entire point of the cull.  That error made the cull look inert.
+
+		  `culled` and `traced` are both printed against `visited` rather than
+		  against the map total, because they are counted over the glares this
+		  frame's budget actually reached, not over the map.  Reading them as
+		  map-wide figures is the mistake that produced the wrong sweep.
+
+		  The "no cull" comparison divides by traced, which is what visits would
+		  collapse to if nothing were culled.  It ignores the non-glare sprites
+		  that also cost a free visit, so it flatters the cull slightly less than
+		  the truth -- the honest direction for a number that argues for my own
+		  change.
+		*/
+		if (useglare_on)
+			print(sprintf("vbsp_sprite_debug: glare sweep %g FRAMES measured (last full pass);"
+			              " this frame %g of %g visited (%g culled, %g traced)\n",
+			              spr_gsweep, spr_gvisits, spr_n, spr_gcull, spr_gtraced_n));
+		/*
+		  BUILD 60.  The adaptive rays, and the LAST number is the measurement:
+		  rays/glare is what the 27.1us is multiplied by, so it is the only figure
+		  here that can be compared against a cost.  `cheap` and `forced` are
+		  there to show the mechanism is running AND that it is not sticky -- a
+		  frame with cheap > 0 and forced == 0 forever would mean a glare can
+		  never escape a stale 0, which is the one way this optimisation can be
+		  wrong.  (forced is legitimately 0 on most frames; it is 1 in every
+		  `adapt`+1 visits to a given glare, so read it over several frames.)
+
+		  THE BASELINE IS READ, NOT ASSUMED.  It used to print a literal
+		  "(5.00 unadapted)", which is false on any arm where vbsp_glare_rays 1
+		  or vbsp_sprite_source 0 has already forced one ray per glare -- there
+		  the line reported "1.00 rays/glare (5.00 unadapted)" and credited this
+		  change with a 5x it had nothing to do with.  Three review lenses filed
+		  it separately.  The line now prints the ray shape actually in force,
+		  and says so when the shortcut cannot be running at all.
+
+		  A NOTE ON `rays` EXCEEDING THE BUDGET BY UP TO 4: the loop test passes
+		  at n == budget-1 and the glare it admits may then fire five, so 43 rays
+		  against a budget of 40 is expected and is not a leak.  Build 59 had the
+		  same +4, invisibly; only this line makes it legible.
+		*/
+		if (useglare_on && cvar("vbsp_glare_adaptive") >= 1)
+		{
+			// `raybase`, not `base`: Sprite_Draw already has a `vector base`.
+			local float raybase;
+			raybase = (cvar("vbsp_glare_rays") > 1 && cvar("vbsp_sprite_source")) ? 5 : 1;
+			print(sprintf("vbsp_sprite_debug: glare adaptive %g cheap, %g forced full, %g rays"
+			              " for %g traced -> %.2f rays/glare (%.2f unadapted%s)\n",
+			              spr_gcheap, spr_gforce, spr_grays, spr_gtraced_n,
+			              (spr_gtraced_n > 0) ? spr_grays / spr_gtraced_n : 0,
+			              raybase, (raybase > 1) ? "" : ", so the shortcut is inert here"));
+		}
+		/*
+		  BUILD 61.  The interval budget, and the point of the line is the LAST
+		  field.  Everything else here is an input; "stopped by" is the only
+		  thing that says whether the interval is actually being honoured:
+
+		    the interval quota   the promise is being kept, and the ray ceiling
+		                         has headroom -- this is the healthy state
+		    THE RAY CEILING      the map wants more rays than vbsp_glare_traces
+		                         allows, so the real staleness is WORSE than the
+		                         interval asks.  Read the measured sweep line
+		                         above for what it actually is; do not trust the
+		                         interval on this frame.
+		    running out of map   the whole map was visited inside the quota, so
+		                         the interval is finer than it needs to be here
+		                         and rays are being spent on re-answers.
+
+		  Printed only when the interval is in use; with vbsp_glare_interval 0
+		  the sweep line above is the whole story and this would just be noise.
+		*/
+		if (useglare_on && cvar("vbsp_glare_interval") > 0)
+		{
+			local string glimtxt;
+			if (spr_glimit == 1)
+				glimtxt = "THE RAY CEILING (interval not met)";
+			else if (spr_glimit == 2)
+				glimtxt = "the interval quota";
+			else
+				glimtxt = "running out of map (interval finer than needed)";
+			print(sprintf("vbsp_sprite_debug: glare interval %gs -> quota %g visits,"
+			              " used %g, %g rays of %g allowed, stopped by %s\n",
+			              cvar("vbsp_glare_interval"), spr_gquota, spr_gvisits,
+			              spr_grays, cvar("vbsp_glare_traces"), glimtxt));
+		}
 		/*
 		  BUILD 54.  The env_lightglow half on its own, because the line above
 		  mixes it with the billboards and cannot say which gate is eating them.

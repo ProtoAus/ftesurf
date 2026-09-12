@@ -77,7 +77,7 @@ def main():
     print("SURFD_RCON_PASSWORD=<the servers' rcon_password>")
     print()
     print("Optional, defaults shown:")
-    print("#SURFD_ADMIN_LOBBIES=1:27510,2:27520,3:27530")
+    print("#SURFD_ADMIN_LOBBIES=1:27510,2:27520,3:27530,4:27540,5:27550")
     print("#SURFD_ADMIN_INSECURE_COOKIE=0   # 1 only for LAN testing without TLS")
     return 0
 

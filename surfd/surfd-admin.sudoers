@@ -1,12 +1,18 @@
 # surfd admin panel -- the systemctl grant the panel needs.
 #
-# ALREADY INSTALLED ON THE PI, AND THIS FILE IS A RECORD OF IT, NOT A TASK.
+# THIS FILE IS A RECORD OF THE GRANT ON THE PI, NOT AN INSTALLER.
 #
-# /etc/sudoers.d/ftesurf (0440 root:root, dated Sep 8 17:09) already grants the
-# proto user exactly these nine commands NOPASSWD. `sudo -l` as proto confirms
-# it. Do NOT install this file as a second grant -- two sudoers files granting
+# /etc/sudoers.d/ftesurf (0440 root:root, dated Sep 8 17:09) grants the proto
+# user these commands NOPASSWD. `sudo -n -l` as proto shows what is really
+# there. Do NOT install this file as a second grant -- two sudoers files granting
 # overlapping commands is how a later edit removes one and leaves the other,
 # and the panel keeps working for reasons nobody can find.
+#
+# FIFTEEN COMMANDS HERE; THE PI HELD NINE UNTIL QC BUILD 57. The six lines for
+# ftesurf@4 and ftesurf@5, the two bhop lobbies, are APPENDED to the existing
+# file by a human with root -- see "ADDING A LOBBY" at the bottom. Until they
+# are, the panel and `build.ps1 -Pi` get "a password is required" for lobbies
+# 4 and 5 only.
 #
 # It is kept in the repo because the grant itself is not in version control
 # anywhere, and "what privilege does the web panel hold" is exactly the thing
@@ -25,19 +31,19 @@
 #
 # The second failure is indistinguishable from "the sudoers line was never
 # installed", which is the wrong conclusion and sends you to a human with root
-# for a file that is already there. admin.py's systemctl() builds the
-# suffix-less form deliberately and says so at the call site.
+# for a file that is already there. admin.py's systemctl() and build.ps1 -Pi
+# both build the suffix-less form deliberately and say so where they do it.
 #
-# If this grant is ever rewritten WITH the suffix, change admin.py to match.
-# Do not add a second line covering the other spelling.
+# If this grant is ever rewritten WITH the suffix, change admin.py and
+# build.ps1 to match. Do not add a second line covering the other spelling.
 #
 # ------------------------------------------------------------------------
 # WHAT IT GRANTS, and why each restriction is worth keeping
 # ------------------------------------------------------------------------
 #
-#   * Nine exact commands. No wildcards anywhere, so sudo cannot be talked into
-#     restarting nginx, ssh or anything else on the box.
-#   * ftesurf@1..3 only. surfd.service is NOT in the list: a panel that can
+#   * Fifteen exact commands. No wildcards anywhere, so sudo cannot be talked
+#     into restarting nginx, ssh or anything else on the box.
+#   * ftesurf@1..5 only. surfd.service is NOT in the list: a panel that can
 #     restart the process it runs inside can hang itself up mid-request with no
 #     way back.
 #   * NOPASSWD, because there is no terminal to type a password at. admin.py
@@ -49,9 +55,24 @@
 #
 # THE HONEST RISK. Anyone who takes a session on the public panel can stop the
 # game servers. That is the intended feature -- an admin panel that cannot stop
-# a server is not an admin panel -- and it is bounded: three units, no shell,
+# a server is not an admin panel -- and it is bounded: five units, no shell,
 # no other service, no package manager, no file writes. The blast radius is
 # "the lobbies go down", recoverable from any ssh session in seconds.
+#
+# ------------------------------------------------------------------------
+# ADDING A LOBBY -- append to the existing file, never copy over it
+# ------------------------------------------------------------------------
+#
+#     sudo visudo -f /etc/sudoers.d/ftesurf   # append the unit's three lines
+#     sudo visudo -c                          # MUST print "parsed OK"
+#     sudo -n -l                              # as proto: the new lines listed
+#     sudo systemctl enable --now ftesurf@4 ftesurf@5
+#
+# visudo -f checks the syntax before it saves, which an ordinary editor does
+# not. Enable the unit only once its rotation maps are on the Pi: a lobby
+# started before its default map is there has no map to load. `enable` is not
+# in this grant and needs the password -- a one-off per new lobby, not
+# something the panel ever does.
 #
 # ------------------------------------------------------------------------
 # ONLY IF THE EXISTING GRANT IS EVER LOST
@@ -68,11 +89,17 @@
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@1
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@2
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@3
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@4
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@5
 
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@1
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@2
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@3
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@4
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@5
 
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@1
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@2
 proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@3
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@4
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@5

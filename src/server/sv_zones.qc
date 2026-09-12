@@ -708,7 +708,7 @@ void() SV_EntInfo =
 	local entity e, best;
 	local vector p;
 	local string cn;
-	local float  bestd, d, n;
+	local float  bestd, d, n, vol, bestvol;
 
 	if (self.sv_entinfo_next > time &&
 	    self.sv_entinfo_next <= time + SV_ENTINFO_COOLDOWN)
@@ -733,6 +733,14 @@ void() SV_EntInfo =
 	*/
 	best = world;
 	bestd = 0;
+	/*
+	  -1 IS "nothing has contained the point yet", and 0 is a real volume.  Not a
+	  pedantic distinction: a server entity with no model has absmin == absmax, so
+	  its volume IS zero, and b56b found one -- ent_info trigger_multiple answered
+	  "solid NOT  model '-'".  With 0 as the sentinel, every later containing
+	  entity would beat it and the LAST one would win instead of the smallest.
+	*/
+	bestvol = -1;
 	n = 0;
 	e = find(world, classname, cn);
 	while (e)
@@ -742,14 +750,31 @@ void() SV_EntInfo =
 		    p_y >= e.absmin_y && p_y <= e.absmax_y &&
 		    p_z >= e.absmin_z && p_z <= e.absmax_z)
 		{
-			best = e;
-			break;
+			/*
+			  THE SMALLEST BOX THAT HOLDS THE POINT, not the first one found.
+			  Volumes of one class nest -- a big trigger_multiple with small ones
+			  inside it is ordinary mapping -- and the client already picked the
+			  smallest it could see, so answering with whichever came first in
+			  edict order described a different entity than the one that was
+			  clicked.  No `break` for the same reason.
+			*/
+			vol = (e.absmax_x - e.absmin_x) * (e.absmax_y - e.absmin_y) *
+			      (e.absmax_z - e.absmin_z);
+			if (bestvol < 0 || vol < bestvol)
+			{
+				bestvol = vol;
+				best    = e;
+			}
 		}
-		d = vlen(e.origin - p);
-		if (best == world || d < bestd)
+		else if (bestvol < 0)
 		{
-			bestd = d;
-			best  = e;
+			// Nearest origin, but only while nothing has contained the point.
+			d = vlen(e.origin - p);
+			if (best == world || d < bestd)
+			{
+				bestd = d;
+				best  = e;
+			}
 		}
 		e = find(e, classname, cn);
 	}
@@ -875,6 +900,11 @@ void(float n) SV_ZoneMove =
 	  BUILD 12: a stage restart is the exception.  The run is still going and
 	  arming would throw it away, which is the whole thing this was asked to
 	  stop doing -- see samestage above.
+
+	  BUILD 57: WHICH LEG A START ARMS IS SV_TimerArm's QUESTION, not this
+	  function's.  The map's START is where both the full run and stage 1 begin,
+	  so the zone cannot say which was asked for; run_t_wantstage1, set by the
+	  chat command before this move, does.  Nothing here reads it.
 	*/
 	if (!samestage)
 	if (zone_type[n] == ZONE_START || zone_type[n] == ZONE_STAGE)
@@ -914,6 +944,11 @@ void(float n, float yaw, float pitch, float setang) SV_ZoneGotoAng =
 	}
 
 	c = zone_centre[n];
+
+	// BUILD 57: a standing `!s 1` is cleared by zone_goto, and it is cleared at
+	// the CALLER (sv_player.qc's zone_goto arm) rather than here -- run_t_* is
+	// declared in sv_timer.qc, which compiles AFTER this file.  Same constraint
+	// that makes SV_TimerChatLeg a forward declaration below.
 	SV_ZoneMove(n);
 
 	// The explicit angles win over the destination's own, since the point of
@@ -1116,6 +1151,12 @@ void() SV_ZoneCheckpoints =
   !b N     bonus N                   track N, segment 0
   !r       start of the leg you are on
 
+  BUILD 57: `!s 1` and `!m` go to the SAME zone and arm DIFFERENT legs.  Stage 1
+  begins at the map's START, so the destination cannot say which was asked for;
+  the request does, and it is handed to the timer before the move so the arm at
+  the bottom of SV_ZoneMove reads it.  `!s 1` times stage 1 alone and stops at
+  stage 2 like every other stage run; `!m` times the map.
+
   The teleport is all of it for now.  Momentum's `!r` also declines to reset
   your time unless you are on stage 1 or a linear map, which needs a timer to
   decline against; build 7 owns that, and until then this just moves you.
@@ -1154,6 +1195,16 @@ void(string word, string what, float n) SV_ZoneSayWhere =
 	               self.origin_x, self.origin_y, self.origin_z));
 };
 
+/*
+  BUILD 57: the stage-1 request, handed to the timer, which owns it.
+
+  Forward-declared here for the reason SV_TimerTeleported is: the run_t_* fields
+  are declared in sv_timer.qc, which compiles after this file, and `!r` has to
+  ask whether the run it is restarting is a stage-1 run.  Returns whether the
+  request is standing once the word has been applied.
+*/
+float(entity e, string word, float n) SV_TimerChatLeg;
+
 void(string word, float n) SV_ZoneChatCommand =
 {
 	local float track, seg, z;
@@ -1186,8 +1237,18 @@ void(string word, float n) SV_ZoneChatCommand =
 	{
 		track = self.run_leg_track;
 		seg   = self.run_leg_seg;
+
+		/*
+		  BUILD 57: BEFORE THE MOVE, because the move voids the run.  Inside a
+		  stage-1 run `!r` lands on the START that `!m` lands on, and SV_ZoneMove's
+		  arm has to come back as stage 1 rather than as the map -- so the timer is
+		  asked while the run it is restarting still exists to be asked about.
+		  The answer also names the leg in the chat line, which would otherwise
+		  say "start of the map" about a stage-1 restart.
+		*/
 		if (track > 0)   what = sprintf("bonus %g", track);
 		else if (seg > 0) what = sprintf("stage %g", seg + 1);
+		else if (SV_TimerChatLeg(self, word, n)) what = "stage 1";
 		else             what = "start of the map";
 
 		/*
@@ -1214,6 +1275,12 @@ void(string word, float n) SV_ZoneChatCommand =
 		sprint(self, PRINT_HIGH, sprintf("^3%s: this map has no %s\n", word, what));
 		return;
 	}
+
+	// BUILD 57: the request, applied only once the destination exists -- a `!s 9`
+	// on a five-stage map changes nothing, including a stage-1 request already
+	// standing.  `!r` reaches here only when its latched zone was invalid, and
+	// asking again is a no-op for it.
+	SV_TimerChatLeg(self, word, n);
 
 	SV_ZoneMove(z);
 	SV_ZoneSayWhere(word, what, z);

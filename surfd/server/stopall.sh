@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop all three FTESurf lobbies.  Patch 275.
+# Stop all five FTESurf lobbies.  Patch 275; five since QC build 57.
 #
 # SIGTERM, then wait, then SIGKILL.  The engine writes nothing on shutdown that
 # is worth protecting, but a lobby killed outright leaves its row in surfd until
@@ -12,13 +12,13 @@
 cd /srv/nvme/ftesurf-server
 if systemctl list-unit-files 'ftesurf@.service' 2>/dev/null | grep -q '^ftesurf@'; then
 	echo "stopall: ftesurf@.service is installed -- using systemd"
-	for N in 1 2 3; do
+	for N in 1 2 3 4 5; do
 		sudo systemctl stop "ftesurf@$N" && echo "lobby $N: stopped (systemd)"
 	done
 	# Leftovers from a pre-systemd nohup start would still be holding the ports
 	# and would still be heartbeating. Say so rather than let the next runall
 	# fail to bind for a reason nothing explains.
-	for N in 1 2 3; do
+	for N in 1 2 3 4 5; do
 		P=$(cat "lobby$N.pid" 2>/dev/null) || continue
 		if kill -0 "$P" 2>/dev/null; then
 			echo "lobby $N: WARNING a pre-systemd copy is still alive (pid $P);" >&2
@@ -29,7 +29,7 @@ if systemctl list-unit-files 'ftesurf@.service' 2>/dev/null | grep -q '^ftesurf@
 	done
 	exit 0
 fi
-for N in 1 2 3; do
+for N in 1 2 3 4 5; do
 	PID="lobby$N.pid"
 	[ -f "$PID" ] || { echo "lobby $N: no pid file"; continue; }
 	P=$(cat "$PID")

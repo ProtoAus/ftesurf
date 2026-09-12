@@ -28,7 +28,7 @@ set -e
 HOME_DIR="${SURFD_HOME:-/srv/nvme/surfd}"
 ENV_FILE="$HOME_DIR/surfd.env"
 HOSTNAME_PUBLIC="${PUBLIC_HOST:-play.proto.bar}"
-PORTS="27510 27520 27530"
+PORTS="27510 27520 27530 27540 27550"
 
 [ "$(id -u)" = "0" ] || { echo "run me with sudo -- I install nginx config." >&2; exit 1; }
 [ -f "$ENV_FILE" ] || { echo "no $ENV_FILE -- is SURFD_HOME right?" >&2; exit 1; }
@@ -48,7 +48,7 @@ if [ "$1" = "--advertise" ]; then
     echo "connection timeout rather than an empty list -- which is worse."
     echo
     echo "Check from a phone on mobile data (not wifi):"
-    echo "    https://$HOSTNAME_PUBLIC/lobbies.json   should list three lobbies"
+    echo "    https://$HOSTNAME_PUBLIC/lobbies.json   should list five lobbies"
     echo "and then actually join one from a machine outside your network."
     echo
     printf 'Have you forwarded UDP %s at the router? [type yes] ' "$PORTS"

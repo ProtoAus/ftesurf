@@ -4,21 +4,26 @@
 # instances 1, 2 and 3 all enabled and active. This file is the SOURCE; the
 # installed copy is a deployment of it.
 #
+# Instances 4 and 5, the bhop lobbies added in QC build 57, need no change to
+# this file: only their rotation maps on the Pi, their six sudoers lines, and a
+# one-off `sudo systemctl enable --now ftesurf@4 ftesurf@5`.
+#
 # To push a change:
 #     sudo cp /srv/nvme/ftesurf-server/ftesurf@.service /etc/systemd/system/
 #     sudo systemd-analyze verify /etc/systemd/system/ftesurf@.service
 #     sudo systemctl daemon-reload
-#     sudo systemctl restart ftesurf@1 ftesurf@2 ftesurf@3
+#     sudo systemctl restart ftesurf@1 ftesurf@2 ftesurf@3 ftesurf@4 ftesurf@5
 #
-# The admin panel drives these units through a NOPASSWD sudoers grant in
-# /etc/sudoers.d/ftesurf. That grant names the units WITHOUT the .service
-# suffix -- `systemctl restart ftesurf@1` -- and sudo matches literally, so the
-# suffixed spelling is refused as "a password is required". See
-# surfd/surfd-admin.sudoers, which records the grant and that trap.
+# The admin panel and `build.ps1 -Pi` drive these units through a NOPASSWD
+# sudoers grant in /etc/sudoers.d/ftesurf. That grant names the units WITHOUT
+# the .service suffix -- `systemctl restart ftesurf@1` -- and sudo matches
+# literally, so the suffixed spelling is refused as "a password is required".
+# See surfd/surfd-admin.sudoers, which records the grant and that trap.
 #
-# %i is the tier: 1, 2 or 3. run.sh maps that to a port, a hostname, a rotation
-# and a default map; this unit deliberately knows none of those, so there stays
-# exactly one place per lobby that says what its port is (cfg/lobbyN.cfg).
+# %i is the lobby: 1, 2 or 3 for the surf tiers, 4 or 5 for bhop easy and hard.
+# run.sh maps that to a port, a hostname, a rotation and a default map; this
+# unit deliberately knows none of those, so there stays exactly one place per
+# lobby that says what its port is (cfg/lobbyN.cfg).
 #
 # WHY THIS EXISTS. Until now the three lobbies were nohup'd from runall.sh with
 # pid files and nothing restarted them -- not after a crash, not after a reboot.

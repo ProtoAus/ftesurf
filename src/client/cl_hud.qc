@@ -2236,6 +2236,85 @@ void(vector scr) HUD_DrawMapInfo =
 };
 
 /*
+  "YOUR RUNS WILL NOT SUBMIT", said where it can actually be seen.
+
+  The submission rule is "no input journal, no rank" -- a run is only accepted
+  with its .hid recording attached.  That rule is enforced at submission, which
+  means the player finds out at the END of a run that the last however-many
+  minutes were never going to count.  This is the same fact, delivered before
+  the run instead of after it.
+
+  NOT DISMISSIBLE AND NOT BEHIND A CVAR, deliberately.  It says a thing the
+  player needs in order to not waste their time, and the two states it reports
+  are both states the player themselves chose; a warning you can turn off is one
+  the person who most needs it has already turned off.
+
+  WHY THE TEST IS REBUILT FROM CVARS HERE rather than calling Rec_HidOK.
+  cl_hud.qc compiles BEFORE cl_replay.qc (cl_progs.src, lines 47 and 55), so
+  neither Rec_HidOK nor rec_rp_consent is in scope in this file, and QC has no
+  forward declaration.  Declaring a global here for cl_replay.qc to fill is the
+  usual way out of that (see rec_sb_open) and is NOT used, because it would mean
+  editing a file another session currently has open.
+
+  AND IT MUST READ BOTH SOURCES, WHICH THE FIRST VERSION OF THIS DID NOT.
+  Reading only cvar("rec_terms") looked safe -- m_lobby.qc:292 gates the lobby
+  list on exactly that -- and it is wrong here.  cl_replay.qc:252-263 records
+  why: a headless launch that execs a config containing `map` reaches a loaded
+  map with rec_terms still UNREGISTERED, so the cvar reads 0 while the player
+  has in fact accepted.  That is why Rec_ConsentRead exists at all.  Measured:
+  data/consent.txt on this machine says `version 3` and the banner still fired.
+
+  A quiet gate can survive that (a hidden lobby row is a feature that does not
+  work); a banner across the top of the screen cannot, because it is an
+  ACCUSATION -- it tells a player who did accept that they did not.  So the test
+  is the same OR that Rec_HidOK uses: the disk record, published into
+  ui_consent_ver below, or the cvar, whichever is current.
+*/
+float ui_consent_ver;   // set by cl_replay.qc's Rec_Init from data/consent.txt.
+                        // Declared HERE because cl_hud.qc compiles before
+                        // cl_replay.qc (cl_progs.src 47 vs 55) and QC has no
+                        // forward declaration -- the same arrangement rec_sb_open
+                        // has for cl_watch.qc.  Zero until the first CSQC_Init,
+                        // which is long before any map is drawn.
+
+void(vector scr) HUD_DrawSubmitWarn =
+{
+	local string why, fix;
+	local float tsz;
+	local vector p;
+
+	if (rec_wt_on)
+		return;                     // a replay is not a run being set
+	if (serverkey("map") == "")
+		return;                     // no map: nothing here is answerable
+
+	if (!cvar("rec_hid"))
+	{
+		why = "INPUT RECORDING IS OFF - RUNS WILL NOT SUBMIT";
+		fix = "rec_hid 1 to record.  A run with no input journal cannot be ranked.";
+	}
+	else if (ui_consent_ver < FS_TERMS_ONLINE && cvar("rec_terms") < FS_TERMS_ONLINE)
+	{
+		why = "TERMS NOT ACCEPTED - RUNS WILL NOT SUBMIT";
+		fix = "Accept them from the main menu to rank.  Play stays unranked until you do.";
+	}
+	else
+		return;
+
+	Font_Set(ui_font_ui);
+	tsz = Font_Px(9 * ui_cv_scale);
+
+	// Centred, top-anchored.  Not registered with HUD_Rect: it is not a panel
+	// the layout editor should let you drag off screen.
+	p = [scr_x * 0.5, 6 * ui_cv_scale, 0];
+	HUD_TextC(p, why, 9 * ui_cv_scale, '1.00 0.58 0.22', 0.95);
+	p_y = p_y + tsz + 2 * ui_cv_scale;
+	HUD_TextC(p, fix, 7 * ui_cv_scale, '0.78 0.80 0.86', 0.85);
+
+	Font_Reset();
+};
+
+/*
   WHICH PLANE THE RAMP MATHS SHOULD BE EVALUATED ON.
 
   Not run_groundnorm.  That is QC's guess: PlayerPostThink traces one tick
@@ -4144,6 +4223,11 @@ void(vector scr) HUD_Draw =
 	// chain that early-out exists to protect.
 	if (ui_cv_mapinfo)
 		HUD_DrawMapInfo(scr);
+
+	// BEFORE the v3-replay early-out below, for the same reason the map info is:
+	// it reads cvars and serverinfo, not the strafe/board telemetry that early-out
+	// exists to protect.  It has its own rec_wt_on guard.
+	HUD_DrawSubmitWarn(scr);
 
 	if (rec_wt_on && !rec_wt_v4)
 	{

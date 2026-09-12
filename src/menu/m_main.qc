@@ -7,8 +7,8 @@
       MAIN     create server
                exit
 
-      CREATE   map picker (dropdown + search + source filter)
-               server name
+      CREATE   map picker (search + tier and gametype filters)
+               public lobbies
                start / back
 
   WHY THIS REPLACES FTE'S OWN MENU
@@ -97,7 +97,13 @@
   ui_load_maps: the engine's search deduplicates by name, Momentum is mounted
   first, and CS:S's 1024 surf and bhop maps were being hidden behind Momentum's
   copies.  With duplicates allowed and the results coalesced, a map that is in
-  both reads "MOM CSS" and appears under either filter.
+  both reads "MOM CSS".
+
+  BUILD 57: those two are the only sources LISTED.  The source strip is gone
+  (Lex: "list only Momentum Mod and CS:S maps"), and a map in neither -- Half-
+  Life 2's campaign and backdrops, a stray BSP in the gamedir -- is dropped in
+  ui_load_maps' second pass.  The bits stay, because the row label and that
+  test both read them.
 */
 #define SRC_OTHER       0
 #define SRC_MOMENTUM    1
@@ -119,8 +125,6 @@
 #define SRC_BIT_MOM     2
 #define SRC_BIT_CSS     4
 #define SRC_BIT_ASSET   8
-
-#define FILTER_ALL     -1               // ms_filter, when nothing is excluded
 
 float menu_active;
 float menu_screen;
@@ -168,8 +172,8 @@ const float EV_FLOAT = 2;
 //  buf_sort on one buffer alone would silently desync the pair.
 //
 //  ms_view holds INDICES into those buffers, as strings, and is what the list
-//  actually draws.  Rebuilt only when the query or the source filter changes,
-//  never per frame.
+//  actually draws.  Rebuilt only when the query or a filter changes, never
+//  per frame.
 // ---------------------------------------------------------------------------
 // Declared WITHOUT initialisers on purpose: fteqcc folds an initialised
 // global scalar into a compile-time constant and then refuses every
@@ -194,7 +198,7 @@ strbuf ms_lst;
 strbuf ms_view;
 float  ms_count;                // entries in ms_name
 float  ms_viewcount;            // entries in ms_view
-float  ms_nsrc[SRC_COUNT];      // entries per SRC_*, for the filter labels
+float  ms_nsrc[SRC_COUNT];      // entries per SRC_*, for the load report
 
 string ms_query;                // live contents of the search field
 float  ms_query_cursor;
@@ -216,19 +220,8 @@ string ms_applied_query;        // what ms_view was last built for
 */
 float  ms_query_stale;
 
-// The filter holds a SRC_* value directly, with FILTER_ALL (-1) meaning "no
-// filter".  It used to hold `SRC_* + 1` with 0 for all, which read fine but
-// meant the button at index 1 ("mom") selected `want = 1 - 1 = SRC_OTHER` --
-// so picking Momentum showed the HL2 mount and nothing else.  Storing the
-// source value itself removes the off-by-one rather than documenting it.
-float  ms_filter;
-float  ms_applied_filter;
-
 float  ms_selected;             // index into ms_name, -1 = nothing picked
 vector ms_scroll;
-
-string sv_name;                 // server name field
-float  sv_name_cursor;
 
 /*
   ---------------------------------------------------------------------------
@@ -248,9 +241,10 @@ float  sv_name_cursor;
                over every map on every keystroke and must not tokenize 2200 rows
                to answer "is this tier 4".  0 means untiered -- there is no tier 0,
                so the sentinel cannot collide with a real value.
-    ms_modev   the gamemode id, split out for exactly the same reason: it is the
-               second thing ui_refilter tests per map per keystroke.  0 means
-               unknown, and Momentum has no gamemode 0 either.
+    ms_modev   the gamemode id, as Momentum numbers it.  0 means unknown, and
+               Momentum has no gamemode 0 either.  Read for the row's detail
+               line and once per load by ui_cat_load; since build 57 the
+               filter reads ms_catv, below, and not this.
     ms_meta    the rest, packed as the file writes it: "linear stages bonuses
                page cell uuid".  Tokenized only for the dozen rows actually
                drawn.
@@ -264,19 +258,51 @@ strbuf ms_tierv;
 strbuf ms_modev;
 strbuf ms_meta;
 
-// Personal bests, indexed like the others: the full-run tick count for this map,
-// as a string, or "" when data/runs/<map>.pb has no `best 0 0` line.
-strbuf ms_pbv;
+/*
+  ms_catv -- the GAMETYPE a map is filed under, one GC_* per map, as a string.
+  Build 57.
 
-// The tier filter, ANDed with ms_filter.  0 = any; otherwise the tier itself.
+  Not ms_modev, because 639 of the 1334 listed maps have no Momentum gamemode
+  at all (measured 2026-09-12) -- nearly every CS:S-only map -- and the chips
+  now start at surf and bhop rather than at "any".  Filtering on Momentum's id
+  alone would have hidden 582 surf_ and bhop_ maps behind the default.  So
+  ui_cat_load fills this once per load: Momentum's category where it has one,
+  else the one the name prefix says (ui_name_cat), else GC_OTHER -- which is
+  what makes "other" a gametype every map without one answers, rather than a
+  hole maps fall into.
+*/
+strbuf ms_catv;
+
+// Personal bests, indexed like the others: the full-run tick count for this map,
+// as a string, or "" when neither data/runs/<map>/best.pb nor lobby.pb beside it
+// has a `best 0 0` line.  See run_pb_load.
+strbuf ms_pbv;
+// "1" where the time in ms_pbv came from lobby.pb, "" where it is a local run.
+strbuf ms_pblob;
+// The personal-best report last printed, so reopening the screen stays quiet.
+string ms_pbnote;
+// gettime(0) when run_pb_load last ran, for ui_create_open's latch.  0 = never.
+float  ui_pb_at;
+
+// The tier filter, ANDed with the gametype set.  0 = any; otherwise the tier.
 float  ms_tier;
 float  ms_applied_tier;
 
-// The gamemode filter, ANDed with both of the above.  0 = any; otherwise one of
-// Momentum's gamemode CATEGORIES (GC_*), not one of its gamemode ids -- climb
-// and defrag are three ids each.  See ui_mode_cat.
-float  ms_mode;
-float  ms_applied_mode;
+/*
+  The gametype SET, ANDed with the tier.  Build 57.
+
+  One bit per GC_* category, GC_OTHER included (ui_cat_bit), where it used to
+  be a single category with 0 for any.  Lex asked for two at once, surf and
+  bhop by default, and a single-select strip cannot say that.
+
+  NEVER 0.  The chips refuse to turn off the last lit one, and ui_modes_sane
+  puts the default back over a saved 0 -- a set that lists nothing draws an
+  empty list with no chip lit to explain why, which reads as a broken mount.
+
+  Saved as ui_maps_modes: ui_create_open reads it, ui_modes_set writes it.
+*/
+float  ms_modes;
+float  ms_applied_modes;
 
 // The background pic currently held open, so it can be freed when the selection
 // moves.  "" when nothing is loaded.  See ui_backdrop.
@@ -368,8 +394,10 @@ float(string id, vector pos, vector size, string label) ui_button =
   after "rj".  The caller tests sui_is_released(id) itself, which it can do at
   any point in the frame.
 
-  Three strips use this: source, tier and gametype.  They were three copies of
-  the same twelve lines before the gametype one made it three.
+  Two strips use this, tier and gametype.  There were three, copies of the same
+  twelve lines, until this existed; the third, source, went in build 57.  The
+  gametype chips are toggles and the tier chips are not, and the difference is
+  entirely in what the caller does with the click -- `on` is just a boolean.
 */
 #define CHIP_PAD    16          // horizontal padding, total, inside a chip
 #define CHIP_H      26
@@ -459,26 +487,27 @@ string(float i) rec_terms_line =
 	if (i == 14) return "  The server times your run and shows you the time. It is not";
 	if (i == 15) return "  uploaded or ranked anywhere. It sees your IP, as does any";
 	if (i == 16) return "  server you join.";
-	if (i == 17) return "  The map picker asks ^9play.proto.bar^7 which lobbies are live";
-	if (i == 18) return "  while it is open, which shows it your IP too.";
-	if (i == 19) return "";
-	if (i == 20) return "^3What it is for:";
-	if (i == 21) return "  replaying your runs, and telling a real run from a scripted one.";
-	if (i == 22) return "";
-	if (i == 23) return "^3What is deliberately NOT recorded:";
-	if (i == 24) return "  anything you type. While the console or a menu has focus the";
-	if (i == 25) return "  journal keeps the timing of a keypress but drops which key it";
-	if (i == 26) return "  was, so a password typed in the console cannot end up in a file.";
-	if (i == 27) return "  Nothing outside this game's window is watched, ever.";
-	if (i == 28) return "";
-	if (i == 29) return "^3Turning it off:";
+	if (i == 17) return "  Lobby times are saved in this game's data folder on this PC.";
+	if (i == 18) return "  The map picker asks ^9play.proto.bar^7 which lobbies are live";
+	if (i == 19) return "  while it is open, which shows it your IP too.";
+	if (i == 20) return "";
+	if (i == 21) return "^3What it is for:";
+	if (i == 22) return "  replaying your runs, and telling a real run from a scripted one.";
+	if (i == 23) return "";
+	if (i == 24) return "^3What is deliberately NOT recorded:";
+	if (i == 25) return "  anything you type. While the console or a menu has focus the";
+	if (i == 26) return "  journal keeps the timing of a keypress but drops which key it";
+	if (i == 27) return "  was, so a password typed in the console cannot end up in a file.";
+	if (i == 28) return "  Nothing outside this game's window is watched, ever.";
+	if (i == 29) return "";
+	if (i == 30) return "^3Turning it off:";
 	// rec_hid, NOT fs_hid.  The cvar was renamed in build 46 with the rest of the
 	// fs_ -> rec_ move (sh_defs.qc:1409 is the forward), and this line went on
 	// naming the old one -- so the single actionable instruction on the consent
 	// screen told the reader to set a cvar that nothing reads.  Found by looking
 	// at the rendered screen, which is the only place it was visible.
-	if (i == 30) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
-	if (i == 31) return "  are marked as such rather than passing as runs that had one.";
+	if (i == 31) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
+	if (i == 32) return "  are marked as such rather than passing as runs that had one.";
 	return "";
 };
 /*
@@ -520,9 +549,9 @@ string(float i) rec_terms_line =
   negotiable on this screen -- DISCLOSE ONLY WHAT THE SHIPPED CODE DOES TODAY.
   Not what the next patch will do, however certain it is.
 
-  The two new lines at 17-18 name the lobby directory, because polling it
-  discloses an IP before any lobby is joined and the reader was never told which
-  host that is.  play.proto.bar is written out rather than "a directory": a
+  The two new lines at 18-19 (17-18 until build 57) name the lobby directory,
+  because polling it discloses an IP before any lobby is joined and the reader
+  was never told which host that is.  play.proto.bar is written out rather than "a directory": a
   hostname the reader can look up is a disclosure, a category is not.
 
   ⚠ NOT MENTIONED, DELIBERATELY, AND IT MUST BE ADDED WITH THE CODE THAT MAKES
@@ -532,8 +561,17 @@ string(float i) rec_terms_line =
   Writing it here now would be the exact mistake above, in the same edit that
   fixes it.  Whoever wires the updater bumps FS_TERMS_ONLINE to 4 and adds the
   line in that change, not before.
+
+  33 SINCE BUILD 57, and this line is that rule kept rather than broken: it
+  arrived in the same change as the code that makes it true.  Line 17 says a
+  lobby time is saved in this game's data folder on this PC, because build 57's
+  client writes one into data/runs on the player's own disk when a run on a
+  lobby beats their lobby best (Stage T, client/cl_lobbytime.qc).  Nothing new
+  LEAVES the machine -- the lobby server already timed the run and sent the
+  time to this client to print, and keeping it is local -- so FS_TERMS_ONLINE
+  is not bumped, and 4 stays reserved for the updater.
 */
-#define FS_TERMS_LINES 32
+#define FS_TERMS_LINES 33
 
 float ms_consent;       // the FS_TERMS_VERSION on disk; 0 = none
 
@@ -802,10 +840,17 @@ string(float mask) ui_srcname =
 
       surf 557   bhop 531   rj 263   sj 256   kz 242   df-cpm 140
       conc 75    climb-16 57   ahop 32   bhop-hl1 15   df-vq3 4   unknown 22
-*/
-#define FS_NMODES   9           // "any", plus the eight gamemode CATEGORIES
 
-// GamemodeCategory, gamemode.enum.ts.  Only used through ui_mode_cat.
+  BUILD 57: TEN CHIPS, AND THEY ARE TOGGLES.  "all", the eight categories, and
+  "other" -- GC_OTHER, which Momentum does not have.  It is the gametype of a
+  map with no Momentum gamemode and no movement prefix in its name: de_dust2,
+  cs_office, ispy_*, the test maps -- 49 of the 1334 listed when measured.
+  Each chip is one bit of ms_modes, so any set of them can be lit at once, and
+  the strip still fits beside the tier chips at 1280 wide (~925 px of 1216).
+*/
+#define FS_NMODES   10          // "all", the eight gamemode CATEGORIES, "other"
+
+// GamemodeCategory, gamemode.enum.ts.  Read through ui_mode_cat and ui_name_cat.
 #define GC_SURF   1
 #define GC_BHOP   2
 #define GC_CLIMB  3
@@ -814,6 +859,13 @@ string(float mask) ui_srcname =
 #define GC_AHOP   6
 #define GC_CONC   7
 #define GC_DEFRAG 8
+/*
+  Ours, not Momentum's: the gametype of a map that has none.  9 because
+  Momentum's categories stop at 8, and it is a real category rather than 0 so
+  that "other" is a chip that is lit or not like every other one.  ui_mode_cat
+  never returns it; only ui_cat_load files a map under it.
+*/
+#define GC_OTHER  9
 
 // The specific mode, for the per-row detail line.  4 (CLIMB_MOM) and 13
 // (DEFRAG_VTG) have no maps in this library but are named anyway: a row that
@@ -840,7 +892,7 @@ string(float id) ui_mode_name =
 };
 
 // GamemodeToGamemodeCategory, ported.  0 for a map with no gamemode at all,
-// which is every CS:S-only row and answers only "any".
+// which is nearly every CS:S-only row; ui_cat_load then files it by its name.
 float(float id) ui_mode_cat =
 {
 	switch (id)
@@ -860,7 +912,8 @@ float(float id) ui_mode_cat =
 /*
   Strip SLOT to category, which is what lets the buttons be ordered by
   usefulness-to-this-game rather than by Momentum's numbering: surf first
-  because this is a surf trainer, then bhop, then the rest by population.
+  because this is a surf trainer, then bhop, then the rest by population, and
+  "other" last because it is the one nobody opens the picker looking for.
 */
 float(float slot) ui_mode_id =
 {
@@ -874,15 +927,16 @@ float(float slot) ui_mode_id =
 	case 6:  return GC_DEFRAG;  // 144
 	case 7:  return GC_CONC;    // 75
 	case 8:  return GC_AHOP;    // 32
+	case 9:  return GC_OTHER;   // no gamemode, no movement prefix
 	}
-	return 0;                   // slot 0 = "any"
+	return 0;                   // slot 0 = "all"
 };
 
 string(float slot) ui_mode_label =
 {
 	switch (slot)
 	{
-	case 0:  return "any";
+	case 0:  return "all";
 	case 1:  return "surf";
 	case 2:  return "bhop";
 	case 3:  return "rj";
@@ -891,8 +945,74 @@ string(float slot) ui_mode_label =
 	case 6:  return "defrag";
 	case 7:  return "conc";
 	case 8:  return "ahop";
+	case 9:  return "other";
 	}
 	return "";
+};
+
+// The slot a category's chip sits in, or 0.  For the bootcheck driver, which
+// toggles chips by what they mean rather than by where they happen to be drawn.
+float(float cat) ui_mode_slot =
+{
+	local float s;
+
+	for (s = 1; s < FS_NMODES; s = s + 1)
+		if (ui_mode_id(s) == cat)
+			return s;
+	return 0;
+};
+
+/*
+  One category's bit in ms_modes: 1 << (category - 1), so GC_SURF is 1, GC_BHOP
+  2, GC_CLIMB 4, and so on to GC_OTHER at 256.  From 1 rather than from the
+  category itself so the saved numbers stay short enough to read in ftesurf.cfg
+  and to type at the console: surf and bhop is 3, everything is 511.
+
+  0 for anything that is not a category, so a stray value is listed under no
+  chip rather than shifting by a negative count.
+*/
+float(float cat) ui_cat_bit =
+{
+	if (cat < 1 || cat > GC_OTHER)
+		return 0;
+	return (int)1 << (int)(cat - 1);
+};
+
+// Both follow from ui_cat_bit and GC_OTHER; change either and change these.
+#define FS_MODES_ALL      511   // (1 << GC_OTHER) - 1: every chip lit
+#define FS_MODES_DEFAULT  3     // GC_SURF | GC_BHOP, what Lex asked to open on
+
+/*
+  Which gametype does this NAME say, or 0.  Build 57.
+
+  ui_cat_load files a map Momentum has no gamemode for by its name, and the
+  names that mean a gamemode are exactly the prefixes ui_isgamemode below
+  already listed -- so that list became this function, and ui_isgamemode asks
+  it.  ONE list, so a prefix added for the gametype filter cannot go missing
+  from the Other-list test, or the other way round.
+
+  Two prefixes have no Momentum category of their own and are filed where they
+  play: xc_ is Xtreme-Climb, a KZ community, so climb; trikz_ is CS:S's
+  two-player boosting mode on bhop movement, so bhop (one such map is in the
+  CS:S library here, measured 2026-09-12).
+*/
+float(string nm) ui_name_cat =
+{
+	string p = strtolower(nm);
+
+	if (substring(p, 0, 5) == "surf_")  return GC_SURF;
+	if (substring(p, 0, 5) == "bhop_")  return GC_BHOP;
+	if (substring(p, 0, 6) == "trikz_") return GC_BHOP;
+	if (substring(p, 0, 5) == "ahop_")  return GC_AHOP;
+	if (substring(p, 0, 3) == "kz_")    return GC_CLIMB;
+	if (substring(p, 0, 3) == "xc_")    return GC_CLIMB;
+	if (substring(p, 0, 6) == "climb_") return GC_CLIMB;
+	if (substring(p, 0, 3) == "df_")    return GC_DEFRAG;
+	if (substring(p, 0, 7) == "defrag_")return GC_DEFRAG;
+	if (substring(p, 0, 3) == "rj_")    return GC_RJ;
+	if (substring(p, 0, 3) == "sj_")    return GC_SJ;
+	if (substring(p, 0, 5) == "conc_")  return GC_CONC;
+	return 0;
 };
 
 /*
@@ -915,21 +1035,63 @@ string(float slot) ui_mode_label =
 */
 float(string nm) ui_isgamemode =
 {
-	string p = strtolower(nm);
+	// The prefix list lives in ui_name_cat above; see why there.
+	return ui_name_cat(nm) != 0;
+};
 
-	if (substring(p, 0, 5) == "surf_")  return TRUE;
-	if (substring(p, 0, 5) == "bhop_")  return TRUE;
-	if (substring(p, 0, 5) == "ahop_")  return TRUE;
-	if (substring(p, 0, 3) == "kz_")    return TRUE;
-	if (substring(p, 0, 3) == "df_")    return TRUE;
-	if (substring(p, 0, 3) == "rj_")    return TRUE;
-	if (substring(p, 0, 3) == "sj_")    return TRUE;
-	if (substring(p, 0, 3) == "xc_")    return TRUE;
-	if (substring(p, 0, 5) == "conc_")  return TRUE;
-	if (substring(p, 0, 6) == "climb_") return TRUE;
-	if (substring(p, 0, 6) == "trikz_") return TRUE;
-	if (substring(p, 0, 7) == "defrag_")return TRUE;
-	return FALSE;
+/*
+  How long ONE TICK of this map's stored times is, in seconds.  Build 57.
+
+  THE .pb FILES HOLD TICKS AND NAME NO RATE.  A tick count is only a time once
+  something says how long a tick is, and neither writer says: SV_PBSave
+  (sv_timer.qc) and the client's LT_PBWrite (cl_lobbytime.qc) both write the
+  header, the `#` line and `best <track> <leg> <ticks>`, and nothing else.  The
+  server counted them at its own pm_ticrate (run_t_tick, SV_TimerMapInit), and
+  the in-game board sidesteps the whole question by reading that live off the
+  server (Timer_Tick, cl_scores.qc).  THIS VM CANNOT: the map list draws with no
+  game running and no server to ask.  So the rate is worked out from the map,
+  the same way the engine works out which ruleset to load in the first place.
+
+  BHOP RUNS AT 100 Hz.  cfg/mode_bhop.cfg sets pm_ticrate 0.01 and the engine
+  loads it for every bhop map (SV_ApplyGamemodeModes, sv_phys.c), so 30.000 s of
+  bhop is 3000 ticks -- which PM_TICK would draw as 0:45.000, half again as long,
+  with nothing on the row to say which of the two numbers is wrong.  Two of the
+  five lobbies are bhop (cfg/lobby4.cfg, lobby5.cfg), so for a bhop map somebody
+  has only ever played online this column is the ONLY time they are shown.
+
+  THE RULE IS THE ENGINE'S, IN THE ENGINE'S ORDER: mapmeta's gamemode id where
+  the map has one, else the name prefix (SV_MapMetaLookup then
+  SV_GamemodeFromName).  Ids 2 and 3 are bhop and bhop-hl1 and BOTH end at
+  cfg/mode_bhop.cfg -- there is no mode_bhop-hl1.cfg, so 3 falls through to its
+  category, which is bhop (SV_GamemodeCategory).
+
+  DELIBERATELY NOT ms_catv.  That is the FILTER's category, and it answers a
+  different question: ui_name_cat files trikz_ under GC_BHOP because trikz is
+  played on bhop movement, while the engine's own prefix table calls trikz_ mode
+  5, kz -- which has no ruleset file at all, so a trikz map really does run at
+  0.015.  Reading ms_catv here would fix the bhop rows and break that one.
+
+  sv_gamemode is not consulted, though the engine checks it before either of
+  these.  It pins the ruleset on the machine running the server, and a lobby time
+  was counted on the Pi, whose cvars this menu cannot see.  It is empty on both
+  by default, so this parts company with the engine only for someone who has
+  deliberately forced a mode -- and then only on times set under that force.
+*/
+#define UI_TICK_BHOP 0.01       // cfg/mode_bhop.cfg's pm_ticrate
+
+float(float row) ui_map_tick =
+{
+	local float mode;
+
+	// "-" and a missing row both stof to 0, and there is no gamemode 0.
+	mode = stof(bufstr_get(ms_modev, row));
+	if (!mode)
+		if (substring(strtolower(bufstr_get(ms_name, row)), 0, 5) == "bhop_")
+			mode = 2;
+
+	if (mode == 2 || mode == 3)
+		return UI_TICK_BHOP;
+	return PM_TICK;
 };
 
 // "maps/surf_kitsune.bsp" -> "surf_kitsune"
@@ -1101,6 +1263,55 @@ void() ui_meta_load =
 };
 
 /*
+  ms_catv, from ms_modev and the names.  Build 57.
+
+  AFTER ui_meta_load and never inside it: that function returns early when
+  mapmeta.txt is missing, and whether a surf_ map is a surf map must not depend
+  on whether a metadata file exists.  With no file every map falls through to
+  its name, which is the right answer for every one that has a prefix.
+
+  Momentum's category wins where both exist, because it is a statement about
+  the map rather than a reading of how somebody named it.
+*/
+void() ui_cat_load =
+{
+	local float i, c, s, k;
+	local string rep;
+
+	if (ms_catv >= 0) buf_del(ms_catv);
+	ms_catv = buf_create();
+
+	for (i = 0; i < ms_count; i = i + 1)
+	{
+		c = ui_mode_cat(stof(bufstr_get(ms_modev, i)));
+		if (!c)
+			c = ui_name_cat(bufstr_get(ms_name, i));
+		if (!c)
+			c = GC_OTHER;
+		bufstr_add(ms_catv, ftos(c), TRUE);
+	}
+
+	/*
+	  The census, in chip order.  One walk per chip -- nine walks of the list
+	  at load and nothing afterwards -- rather than a counter array, which
+	  would be a new global, and fteqcc charges an array about eight times its
+	  length in progs size, to save a loop that runs once.  This line is what
+	  "(N of M)" and the default surf + bhop are checked against.
+	*/
+	rep = "";
+	for (s = 1; s < FS_NMODES; s = s + 1)
+	{
+		c = ui_mode_id(s);
+		k = 0;
+		for (i = 0; i < ms_count; i = i + 1)
+			if (stof(bufstr_get(ms_catv, i)) == c)
+				k = k + 1;
+		rep = sprintf("%s  %s %g", rep, ui_mode_label(s), k);
+	}
+	print(sprintf("FTESurf: gametypes --%s\n", rep));
+};
+
+/*
   Personal bests, for the "have I run this" column.
 
   A single fopen per map is what data/runs/<map>.pb was shaped for
@@ -1112,19 +1323,173 @@ void() ui_meta_load =
   `best 0 0` is the main track's full run.  A map with only stage times (surf_ace
   today has best 0 2 .. best 0 7 and no 0 0) correctly reads as unrun -- the column
   is about the full run, and claiming a time for one would be wrong.
+
+  BUILD 57: TWO FILES PER MAP, AND THE COLUMN SHOWS THE BETTER ONE.
+
+  best.pb is what a run on this PC writes (SV_PBSave).  lobby.pb beside it is
+  what the client writes when a run on a public lobby beats the player's lobby
+  best (Stage T): a lobby server cannot write to this disk and saves nothing of
+  its own, so the time is kept here.  Both use `best <track> <leg> <ticks>`, and
+  `best 0 0` is the main track's full run in both.
+
+  A lobby time is MARKED when it is the one shown, because nothing is behind it
+  on this PC -- no replay, no splits -- and a number that looks like every other
+  personal best invites clicking in to watch a run that is not there.  A tie
+  shows the local time, which does have one.
+
+  RUN AGAIN EVERY TIME THE CREATE SCREEN OPENS (ui_create_open).  It used to run
+  only when the map list was built, which is once a session, so a time set in a
+  lobby was missing from the list until a relaunch.  It stays cheap enough for
+  that: two searches that find only the maps with a time, a hash of the names,
+  and one small read per file found.  The report prints only when it changes,
+  so reopening the screen does not fill the console.
 */
-void() run_pb_load =
+
+// The leaf itself is FS_LOBBYPB_LEAF, from shared/sh_defs.qc -- which is the
+// second entry in m_progs.src and therefore in scope here, exactly as FS_PB_LEAF
+// is on the line that reads best.pb.  There was a second #define of it here; two
+// statements of one fact in the same build, and the one that would have gone
+// stale is this one: the writer follows sh_defs.qc, so a moved leaf would have
+// left the map list searching the old name, finding nothing, and showing no
+// lobby times at all -- with no error and a clean compile.
+
+/*
+  The `best 0 0` ticks in one .pb file, or 0.
+
+  THE HEADER IS CHECKED, AND BOTH VERSIONS PASS.  best.pb is "FTESURF-PB 1" as
+  SV_PBSave writes it, or "FTESURF-PB 2" once tools/migrate_runs.py legs1 has
+  renumbered its stage legs; lobby.pb is always 2.  Version 2 changed what a
+  STAGE key means (stage k is leg k, where version 1 keyed by start segment) and
+  left `best 0 0` meaning the full run, so for this column the two read alike.
+
+  A version this build has never heard of is SKIPPED rather than guessed at.
+  The column promises a full-run time, and a later format is precisely the thing
+  that could change what 0 0 means.  A file with no header line at all is read
+  as before: no build has written one, and refusing it would blank a time over a
+  missing line rather than over a wrong one.
+*/
+float(string fn) run_pb_best =
+{
+	local filestream fh;
+	local string ln;
+	local float best, first, v;
+
+	fh = fopen(fn, FILE_READ);
+	if (fh < 0)
+		return 0;
+
+	best  = 0;
+	first = TRUE;
+	while ((ln = fgets(fh)) != "")
+	{
+		if (first)
+		{
+			first = FALSE;
+			tokenize(ln);
+			if (argv(0) == "FTESURF-PB")
+			{
+				v = stof(argv(1));
+				if (v != 1 && v != 2)
+					break;              // best is still 0: not read
+				continue;
+			}
+		}
+
+		if (tokenize(ln) < 4)
+			continue;
+		if (argv(0) != "best")
+			continue;
+		if (argv(1) != "0")
+			continue;
+		if (argv(2) != "0")
+			continue;
+		best = stof(argv(3));
+	}
+	fclose(fh);
+	return best;
+};
+
+/*
+  Every data/runs/<map><leaf>, folded into ms_pbv.  Returns the files found.
+
+  `lobby` says what this pass writes into ms_pblob.  run_pb_load calls it for
+  best.pb first and lobby.pb second, and a row is replaced only by a STRICTLY
+  faster time -- which is what makes a tie keep the local run.
+*/
+float(hashtable byname, string leaf, float lobby) run_pb_scan =
 {
 	local searchhandle h;
-	local filestream fh;
-	local hashtable byname;
-	local string fn, ln, nm;
-	local float i, n, row, cnt, best, pl, sl;
+	local string fn, nm;
+	local float i, n, row, cnt, best, have, pl, sl;
 
-	if (ms_pbv >= 0) buf_del(ms_pbv);
-	ms_pbv = buf_create();
+	h = search_begin(strcat(FS_RUNS_ROOT, "*", leaf), SB_NAMESORT, TRUE);
+	if (h < 0)
+		return 0;
+
+	pl = strlen(FS_RUNS_ROOT);
+	sl = strlen(leaf);
+
+	cnt = search_getsize(h);
+	for (i = 0; i < cnt; i = i + 1)
+	{
+		fn = search_getfilename(h, i);
+
+		/*
+		  "data/runs/surf_ace/best.pb" -> "surf_ace".  ui_mapname only knows
+		  about maps/ and .bsp, so the trim is done here.
+
+		  BOTH lengths are measured from the constants rather than typed.  An
+		  earlier version wrote the prefix out as a literal AND its length as a
+		  bare 10 on the next line, which is two statements of one fact that a
+		  rename silently desynchronises -- and build 23 renamed it.
+		*/
+		nm = fn;
+		n = strlen(nm);
+		if (n > pl)
+			if (strtolower(substring(nm, 0, pl)) == FS_RUNS_ROOT)
+			{
+				nm = substring(nm, pl, n - pl);
+				n = n - pl;
+			}
+		if (n > sl)
+			if (strtolower(substring(nm, n - sl, sl)) == leaf)
+				nm = substring(nm, 0, n - sl);
+
+		row = hash_get(byname, strtolower(nm), -1, EV_FLOAT);
+		if (row < 0)
+			continue;
+
+		best = run_pb_best(fn);
+		if (best <= 0)
+			continue;
+
+		have = stof(bufstr_get(ms_pbv, row));
+		if (have > 0 && have <= best)
+			continue;               // what is held is as fast or faster
+
+		bufstr_set(ms_pbv,   row, ftos(best));
+		bufstr_set(ms_pblob, row, lobby ? "1" : "");
+	}
+
+	search_end(h);
+	return cnt;
+};
+
+void() run_pb_load =
+{
+	local hashtable byname;
+	local string note;
+	local float i, cnt, lcnt, times, ltimes;
+
+	if (ms_pbv   >= 0) buf_del(ms_pbv);
+	if (ms_pblob >= 0) buf_del(ms_pblob);
+	ms_pbv   = buf_create();
+	ms_pblob = buf_create();
 	for (i = 0; i < ms_count; i = i + 1)
-		bufstr_add(ms_pbv, "", TRUE);
+	{
+		bufstr_add(ms_pbv,   "", TRUE);
+		bufstr_add(ms_pblob, "", TRUE);
+	}
 
 	/*
 	  BUILD 23: data/runs/<map>/best.pb, so the wildcard is a whole path
@@ -1136,83 +1501,44 @@ void() run_pb_load =
 	  would need two wildcards, which is a guess about Sys_EnumerateFiles2's
 	  recursion that nothing on this disk currently proves.
 	*/
-	h = search_begin(strcat(FS_RUNS_ROOT, "*", FS_PB_LEAF), SB_NAMESORT, TRUE);
-	if (h < 0)
-		return;
-
+	// Both searches are run_pb_scan's, and lobby.pb is a fixed leaf for the
+	// reason above.
 	byname = hash_createtab(4096, EV_FLOAT);
 	for (i = 0; i < ms_count; i = i + 1)
 		hash_add(byname, strtolower(bufstr_get(ms_name, i)), i,
 		         HASH_REPLACE | EV_FLOAT);
 
-	cnt = search_getsize(h);
-	for (i = 0; i < cnt; i = i + 1)
-	{
-		fn = search_getfilename(h, i);
-
-		/*
-		  "data/runs/surf_ace/best.pb" -> "surf_ace".  ui_mapname only knows
-		  about maps/ and .bsp, so the trim is done here.
-
-		  BOTH lengths are measured from the constants rather than typed.  The
-		  previous version wrote the prefix out as a literal AND its length as a
-		  bare 10 on the next line, which is two statements of one fact that a
-		  rename silently desynchronises -- and this build renamed it.
-		*/
-		nm = fn;
-		n = strlen(nm);
-		pl = strlen(FS_RUNS_ROOT);
-		sl = strlen(FS_PB_LEAF);
-		if (n > pl)
-			if (strtolower(substring(nm, 0, pl)) == FS_RUNS_ROOT)
-			{
-				nm = substring(nm, pl, n - pl);
-				n = n - pl;
-			}
-		if (n > sl)
-			if (strtolower(substring(nm, n - sl, sl)) == FS_PB_LEAF)
-				nm = substring(nm, 0, n - sl);
-
-		row = hash_get(byname, strtolower(nm), -1, EV_FLOAT);
-		if (row < 0)
-			continue;
-
-		fh = fopen(fn, FILE_READ);
-		if (fh < 0)
-			continue;
-
-		best = 0;
-		while ((ln = fgets(fh)) != "")
-		{
-			if (tokenize(ln) < 4)
-				continue;
-			if (argv(0) != "best")
-				continue;
-			if (argv(1) != "0")
-				continue;
-			if (argv(2) != "0")
-				continue;
-			best = stof(argv(3));
-		}
-		fclose(fh);
-
-		if (best > 0)
-			bufstr_set(ms_pbv, row, ftos(best));
-	}
-
-	search_end(h);
+	// best.pb FIRST.  run_pb_scan replaces a row only on a strictly faster time,
+	// so this order is what makes a tie keep the local run.
+	cnt  = run_pb_scan(byname, FS_PB_LEAF, FALSE);
+	lcnt = run_pb_scan(byname, FS_LOBBYPB_LEAF, TRUE);
 	hash_destroytab(byname);
 
 	// Counted separately from the file count: a .pb with only stage times has no
 	// full run to show, and "4 files, 1 time" is the difference between "the
 	// search found nothing" and "you have not finished one of these yet".
-	local float times;
-	times = 0;
+	times = ltimes = 0;
 	for (i = 0; i < ms_count; i = i + 1)
 		if (bufstr_get(ms_pbv, i) != "")
+		{
 			times = times + 1;
-	print(sprintf("FTESurf: %g personal-best files, %g full-run times\n",
-	              cnt, times));
+			if (bufstr_get(ms_pblob, i) != "")
+				ltimes = ltimes + 1;
+		}
+
+	// Once per CHANGE, not once per call: this now runs every time the create
+	// screen opens, and the same line every ESC is noise that buries the line
+	// that differs.
+	note = sprintf("FTESurf: %g personal-best files, %g lobby-best files, "
+	               "%g full-run times (%g of them from a lobby)\n",
+	               cnt, lcnt, times, ltimes);
+	if (note != ms_pbnote)
+	{
+		print(note);
+		if (ms_pbnote != "")
+			strunzone(ms_pbnote);
+		ms_pbnote = strzone(note);
+	}
 };
 
 /*
@@ -1284,6 +1610,7 @@ void() ui_load_maps =
 
 	float showasset = cvar("ui_maps_assetmounts");
 	float hidden = 0;
+	float unlisted = 0;
 	float dupes  = 0;
 
 	/*
@@ -1344,6 +1671,29 @@ void() ui_load_maps =
 		}
 
 		/*
+		  BUILD 57: MOMENTUM AND CS:S ONLY.  Lex: "list only Momentum Mod and
+		  CS:S maps".  A map in neither -- Half-Life 2's campaign and its
+		  background01/02, a stray BSP in the gamedir -- is not listed at all,
+		  where it used to wait under the source strip's "other".
+
+		  ms_src, the MOUNT, and not ms_lst.  ms_lst is decided by the NAME and
+		  files every unprefixed map under Other whatever mount it came from, so
+		  testing it would hide Momentum's own unprefixed maps (agtricks) while
+		  catching nothing extra.  The question here is where the file is.
+
+		  The asset mounts keep their own switch: with ui_maps_assetmounts 1 a
+		  CS:GO or TF2 map is listed although it is in neither, which is what that
+		  cvar has always meant.  Dropped in this compaction, so ms_count -- the M
+		  in "(N of M)" -- counts only maps that can be listed.
+		*/
+		if (!(mask & (SRC_BIT_MOM | SRC_BIT_CSS)))
+			if (!(showasset && (mask & SRC_BIT_ASSET)))
+			{
+				unlisted++;
+				continue;
+			}
+
+		/*
 		  Finish the list mask now that every source has been coalesced in.
 
 		  0 was written above to mean "movement map, list still to be decided" --
@@ -1385,19 +1735,24 @@ void() ui_load_maps =
 	if (hidden)
 		print(sprintf("FTESurf: %g maps hidden from the CS:GO/TF2 asset mounts "
 		              "(ui_maps_assetmounts 1 to list them)\n", hidden));
+	if (unlisted)
+		print(sprintf("FTESurf: %g maps not listed -- in neither Momentum nor "
+		              "Counter-Strike: Source\n", unlisted));
 
 	// The counts overlap now, deliberately: a map in both Momentum and CS:S is
-	// counted under both, because it is genuinely in both and either filter
-	// should find it.  They no longer sum to the total, and that is the point.
+	// counted under both, because it is genuinely in both.  They no longer sum
+	// to the total, and that is the point.
 	print(sprintf("FTESurf: %g maps (%g duplicate entries coalesced) -- "
 	              "momentum %g, counter-strike %g, other %g\n",
 	              ms_count, dupes,
 	              ms_nsrc[SRC_MOMENTUM], ms_nsrc[SRC_CSS], ms_nsrc[SRC_OTHER]));
 
-	// Both join onto ms_name, so they can only run once it is final.  Neither
-	// can fail in a way that matters: a missing mapmeta.txt costs the metadata
-	// columns, and no .pb files means no times to show.
+	// All three join onto ms_name, so they can only run once it is final, and
+	// ui_cat_load reads what ui_meta_load wrote.  None can fail in a way that
+	// matters: a missing mapmeta.txt costs the metadata columns and files every
+	// map by its name, and no .pb files means no times to show.
 	ui_meta_load();
+	ui_cat_load();
 	run_pb_load();
 };
 
@@ -1435,8 +1790,8 @@ void(string filter) ui_maplist_print =
 	              ms_count, mom, css, oth));
 };
 
-// Rebuild ms_view from the query + filter.  O(ms_count), but only ever run on
-// a keystroke or a filter change -- never from m_draw's steady state.
+// Rebuild ms_view from the query and the two filters.  O(ms_count), but only
+// ever run on a keystroke or a filter change -- never from m_draw's steady state.
 void() ui_refilter =
 {
 	if (ms_view >= 0) buf_del(ms_view);
@@ -1447,13 +1802,19 @@ void() ui_refilter =
 
 	for (float i = 0; i < ms_count; i++)
 	{
-		// A BIT test, not equality -- a map in Momentum and CS:S must appear
-		// under both filters, which is the whole point of the mask.
-		//
-		// ms_lst, not ms_src: the filter is about which LIST a map belongs to,
-		// and since build 12 that is decided by its name.  ms_src still drives
-		// the MOM / CSS label on the row.
-		if (ms_filter != FILTER_ALL && !(stof(bufstr_get(ms_lst, i)) & ms_filter))
+		/*
+		  The gametype set first, in the place the source filter had: with surf
+		  and bhop lit it is the test that turns most maps away, and it costs one
+		  bufstr_get.
+
+		  A BIT test against the map's CATEGORY -- ms_catv, not ms_modev.  The
+		  chip is "climb" and climb is three Momentum ids; and a map Momentum has
+		  no id for still has a category (ui_cat_load), so there is no "unknown"
+		  left for this to special-case.  That special case was the old rule
+		  "0 answers only any", and with any no longer the default it would have
+		  hidden every CS:S-only surf map.
+		*/
+		if (!(ms_modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
 			continue;
 		if (q != "" && strstrofs(strtolower(bufstr_get(ms_name, i)), q) < 0)
 			continue;
@@ -1465,23 +1826,13 @@ void() ui_refilter =
 		if (ms_tier != 0 && stof(bufstr_get(ms_tierv, i)) != ms_tier)
 			continue;
 
-		// Same shape, same reasoning: 0 in ms_modev is "no gamemode known", which
-		// is every CS:S-only map, and those answer only "any".  Momentum has no
-		// gamemode 0 to collide with, and ui_mode_cat returns 0 for it too.
-		//
-		// COMPARED AS A CATEGORY, not as an id -- the chip is "climb", and climb
-		// is three different gamemode ids.  See ui_mode_cat.
-		if (ms_mode != 0 && ui_mode_cat(stof(bufstr_get(ms_modev, i))) != ms_mode)
-			continue;
-
 		bufstr_add(ms_view, ftos(i), TRUE);
 		ms_viewcount++;
 	}
 
-	ms_applied_query  = ms_query;
-	ms_applied_filter = ms_filter;
-	ms_applied_tier   = ms_tier;
-	ms_applied_mode   = ms_mode;
+	ms_applied_query = ms_query;
+	ms_applied_tier  = ms_tier;
+	ms_applied_modes = ms_modes;
 	ms_scroll = '0 0 0';
 };
 
@@ -1490,6 +1841,117 @@ string() ui_selected_name =
 	if (ms_selected < 0 || ms_selected >= ms_count)
 		return "";
 	return bufstr_get(ms_name, ms_selected);
+};
+
+/*
+  ---------------------------------------------------------------------------
+   The gametype set: click, save, open.  Build 57.
+  ---------------------------------------------------------------------------
+*/
+
+// A saved or typed value made usable: real category bits only, and never the
+// empty set -- see ms_modes for why that is not a state worth drawing.
+float(float m) ui_modes_sane =
+{
+	m = m & FS_MODES_ALL;
+	if (!m)
+		m = FS_MODES_DEFAULT;
+	return m;
+};
+
+/*
+  What clicking chip `slot` makes of `mask`.  PURE -- it neither assigns nor
+  saves -- so the bootcheck driver can put the chips' own rule through its paces
+  without writing the player's config.
+
+  "all" sets every bit, and is not a toggle, because "all off" is the empty set.
+  Any other chip flips its own bit, EXCEPT the last lit one, which stays on:
+  with nothing lit the list would be empty and no chip would say why.
+*/
+float(float mask, float slot) ui_modes_click =
+{
+	local float b;
+
+	if (slot == 0)
+		return FS_MODES_ALL;
+
+	b = ui_cat_bit(ui_mode_id(slot));
+	if (!(mask & b))
+		return mask | b;
+	if (mask == b)
+		return mask;                // the last lit chip will not switch off
+	return mask - b;
+};
+
+/*
+  Apply and SAVE.  `seta`, for the reason at the top of client/cl_hudedit.qc and
+  in m_lobby.qc's lobby_dir migration: Cmd_set_f's not-from-gamecode branch
+  (cmd.c:4266) is the only path that puts CVAR_ARCHIVE on a cvar that already
+  exists, so a cvar_set here would hold for the session and be gone after a quit.
+  Queued by localcmd, which runs long before the one reader -- ui_create_open,
+  the next time the screen opens -- can look.
+*/
+void(float mask) ui_modes_set =
+{
+	ms_modes = mask;
+	localcmd(sprintf("seta ui_maps_modes %g\n", mask));
+};
+
+/*
+  Everything that has to happen when the create screen comes up.  Build 57.
+
+  THREE DOORS lead to that screen and they did three different things: the
+  create button (load if empty, refilter), m_open reopening the menu on the
+  screen it was left on (load if empty), and the bootcheck driver (load,
+  refilter).  All three come through here now.  That is what makes "the list
+  shows a time set since the screen was last open" true on the door players use
+  most -- ESC out of a lobby, which lands straight back on this screen -- and not
+  only on the button.
+
+  THE CVAR IS REGISTERED BESIDE ITS READ, for the trap that has silently killed
+  three features in this tree: cvar() on an unregistered name auto-creates it as
+  "", and a later registercvar() declines to overwrite it.  32 is CVAR_ARCHIVE,
+  a literal for the reason Lob_Init gives; it matters only on the very first
+  run, where this is the creating call, and ui_modes_set's `seta` is what keeps
+  it archived after that.
+
+  READ EVERY TIME, not once, so `ui_maps_modes 2` typed at the console shows the
+  next time the screen opens.  A changed ms_modes is picked up by m_draw's
+  change check, so this does not refilter -- except after loading the list, when
+  there is no view yet and nothing else would notice.
+*/
+void() ui_create_open =
+{
+	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
+	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+
+	if (ms_count == 0)
+	{
+		ui_load_maps();             // which runs run_pb_load itself
+		ui_refilter();
+		ui_pb_at = gettime(0);
+		return;
+	}
+
+	/*
+	  BUILD 57: RESCANNED ON A LATCH, because m_open routes through here and ESC
+	  is the key players press most.
+
+	  The rescan is two directory enumerations plus one open-and-read per .pb
+	  found, synchronous inside the menu frame, and it scales with the size of
+	  data/runs -- a few hundred map folders for anyone who has played a while.
+	  The plan asked for it "when the create screen opens", which it still is; what
+	  it must not become is per-ESC work proportional to the player's records.
+
+	  Two seconds is chosen against what the rescan is FOR: a time set since the
+	  screen was last open.  Setting one takes a run, so no real sequence can beat
+	  the latch -- while ESC-in, ESC-out, ESC-in does, every time.
+	*/
+	if (ui_pb_at != 0 && gettime(0) - ui_pb_at < 2)
+		return;
+
+	ui_pb_at = gettime(0);
+	run_pb_load();
 };
 
 // ---------------------------------------------------------------------------
@@ -1527,7 +1989,10 @@ void() ui_launch =
 		return;
 	}
 
-	cvar_set("hostname", sv_name != "" ? sv_name : "FTESurf");
+	// The name field went in build 57 (Lex).  This is a private, unlisted
+	// practice game, so a name had nowhere to be read.  Still SET rather than
+	// left alone, because the engine's own default is "unnamed".
+	cvar_set("hostname", "FTESurf");
 
 	localcmd("sv_public 0\n");
 	localcmd("deathmatch 1\n");
@@ -1610,7 +2075,7 @@ float(string a) ui_addr_ok =
   updater is for.  Someone who wants to override it can still set it from a
   cfg; it just does not persist by accident.
 
-  THE LAN ADDRESS IS IN THE DEFAULT ON PURPOSE.  The three lobbies advertise
+  THE LAN ADDRESS IS IN THE DEFAULT ON PURPOSE.  The lobbies advertise
   192.168.1.102:275x0 today and will until DNS, the port forwards and
   SURFD_PUBLIC_HOST are all in place.  A default of only the public names would
   refuse every lobby that currently exists, which is a regression shipped in
@@ -1676,10 +2141,10 @@ float(string a) ui_host_allowed =
 /*
   The map-list index for a map name, or -1.
 
-  A linear scan, called at most three times and only when a lobby row is first
-  drawn -- the answer is cached back into the lobby list by the caller.  There
-  is no production name->index map in this file to reuse and building one for
-  three lookups a poll would cost more than it saved.
+  A linear scan, called at most LB_MAX (five) times a poll and only when a
+  lobby cell is first drawn -- the answer is cached back into the lobby list by
+  the caller.  There is no production name->index map in this file to reuse
+  and building one for five lookups a poll would cost more than it saved.
 */
 float(string nm) ui_map_index =
 {
@@ -1796,27 +2261,41 @@ void() ui_bootcheck_tick =
 	}
 	else if (ui_bootframe == 40)
 	{
+		// Through the door the create button uses, so the saved gametype set
+		// is read exactly as a player gets it, and the log says what it read.
 		menu_screen = SCREEN_CREATE;
-		ui_load_maps();
+		ui_create_open();
 		ui_refilter();
+		print(sprintf("bootcheck: ui_maps_modes %g -- %g of %g maps listed\n",
+		              ms_modes, ms_viewcount, ms_count));
 	}
 	else if (ui_bootframe == 70)
 		localcmd("screenshot ui_menu_create\n");
 	else if (ui_bootframe == 75)
 	{
 		/*
-		  Exercise the source filter for real.  The mapping from button slot to
-		  SRC_* used to be off by one, so "momentum" showed the HL2 mount; a
-		  screenshot of the filtered list is the only check that catches that
-		  class of bug, because the counts on the buttons stay right.
+		  The gametype toggles, where the source strip used to be exercised.
+		  Build 57.
 
-		  And this line was itself an instance of it.  ms_filter holds a BIT
-		  (SRC_BIT_*), not an index (SRC_*) -- ui_refilter masks against ms_lst --
-		  and SRC_MOMENTUM is 1, which is SRC_BIT_OTHER.  So the "momentum"
-		  screenshot has been a picture of the Other list since the bit split
-		  landed, and the check that exists to catch an off-by-one had one.
+		  Through ui_modes_click, the function the chips themselves call, so the
+		  rule under test is the shipped one and not a copy typed here.  From a
+		  known surf + bhop, whatever this install saved: bhop off must leave
+		  surf alone, and then surf off must be REFUSED, because it is the last
+		  lit chip.  The log line checks both; the screenshot at 105 is the
+		  surf-only list.
+
+		  NOT SAVED.  ui_modes_set would `seta` the player's own config, and a
+		  self-check that rewrites the setting it checks leaves the next launch
+		  testing its own leftovers.  So this assigns ms_modes directly, and
+		  frame 180 puts back what the cvar says.
 		*/
-		ms_filter = SRC_BIT_MOM;
+		ms_modes = ui_modes_click(FS_MODES_DEFAULT, ui_mode_slot(GC_BHOP));
+		float bcl = ui_modes_click(ms_modes, ui_mode_slot(GC_SURF));
+		print(sprintf("bootcheck: bhop off leaves %g (want %g), the last lit "
+		              "chip off leaves %g (want %g) -- %s\n",
+		              ms_modes, ui_cat_bit(GC_SURF), bcl, ui_cat_bit(GC_SURF),
+		              (ms_modes == ui_cat_bit(GC_SURF) && bcl == ms_modes)
+		                  ? "^2ok^7" : "^1FAILED^7"));
 
 		/*
 		  Select a map too, because SELECTING is what loads the background, and
@@ -1834,7 +2313,11 @@ void() ui_bootcheck_tick =
 			}
 	}
 	else if (ui_bootframe == 105)
-		localcmd("screenshot ui_menu_mom\n");
+	{
+		print(sprintf("bootcheck: surf only -- %g of %g maps\n",
+		              ms_viewcount, ms_count));
+		localcmd("screenshot ui_menu_toggle\n");
+	}
 	else if (ui_bootframe == 110)
 		ms_tier = 3;                    // the tier strip, and a non-trivial refilter
 	else if (ui_bootframe == 140)
@@ -1842,23 +2325,91 @@ void() ui_bootcheck_tick =
 	else if (ui_bootframe == 145)
 	{
 		/*
-		  Now the gametype strip, on its own so the two filters are separable in
-		  the screenshots.  kz rather than surf: it is the third-largest mode here
-		  (287 maps) and shares no name prefix with the source filter above, so a
-		  strip that silently did nothing would still change the count and the
-		  rows visibly.  Tier goes back to any, or the two filters would AND down
-		  to a handful and prove much less.
+		  Two gametypes at once -- the thing the single-select strip could not
+		  say -- and neither of them the default.  Climb and other: both small
+		  (13 and 49 maps when measured), so "(N of M)" reads distinctly, and
+		  other is GC_OTHER, which exists only as ui_cat_load's last resort; a
+		  fallback that matched nothing would show here as climb's count alone.
+		  Built from frame 75's surf through the chips' own function: climb on,
+		  other on, surf off.  Tier goes back to any, or the two filters would
+		  AND down to a handful and prove much less.
+
+		  THIS FRAME WAS BROKEN FOR AS LONG AS IT EXISTED.  It set ms_mode = 12
+		  with the comment "kz": 12 is a Momentum gamemode ID, df-vq3 at that,
+		  while ms_mode held a CATEGORY and ui_mode_cat never returns 12 -- and
+		  the source filter from frame 75 was still on Momentum.  So
+		  ui_menu_mode.png has always been a picture of "no matches", "0 of
+		  1414", and an empty list cannot tell a broken strip from a correct one.
 		*/
-		ms_tier = 0;
-		ms_mode = 12;                   // kz
+		ms_tier  = 0;
+		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_CLIMB));
+		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_OTHER));
+		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_SURF));
 	}
 	else if (ui_bootframe == 175)
+	{
+		// Counted here rather than at 145: m_draw runs this driver BEFORE its
+		// change check, so on the frame that changes the set the view is stale.
+		print(sprintf("bootcheck: climb + other (modes %g) -- %g of %g maps%s\n",
+		              ms_modes, ms_viewcount, ms_count,
+		              ms_viewcount ? "" : "  ^1EMPTY^7"));
 		localcmd("screenshot ui_menu_mode\n");
+	}
+	/*
+	  THE FIVE-LOBBY ROW, REPORTED AS A NUMBER RATHER THAN AS A READING OF A
+	  PICTURE.
+
+	  Build 57 raised LB_MAX from 3 to 5, and until the Pi actually ran five
+	  lobbies a fourth and fifth cell had never been drawn at all.  Nothing
+	  reported the row: no lobby console command is registered anywhere in
+	  src/menu or src/client, and this driver said nothing about it either -- so
+	  the only evidence was a screenshot, and this session already spent four
+	  runs believing screenshots were 720p when every one of them was 1920x1111.
+
+	  Lob_Ready IS PRINTED BESIDE THE COUNT DELIBERATELY.  A count of 0 means
+	  either "the directory reports no lobbies" or "the poll has not answered
+	  yet", and those are opposite conclusions -- the first is a fault in the
+	  fleet, the second is an impatient test.  Only Lob_Ready separates them, and
+	  without it a slow WAN fetch reads exactly like five dead servers.
+
+	  The saved gametype set is restored FIRST, so the screenshot shows what a
+	  player actually opens the screen to rather than frame 175's climb+other
+	  probe.  Frame 178 because 180 either quits or launches a map.
+	*/
+	else if (ui_bootframe == 177)
+	{
+		ms_tier  = 0;
+		ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+
+		print(sprintf("bootcheck: lobbies ready %g count %g of LB_MAX %g%s\n",
+		              Lob_Ready(), Lob_Count(), LB_MAX,
+		              Lob_Ready() ? "" : "  ^3poll unanswered^7"));
+
+		for (float li = 0; li < Lob_Count(); li = li + 1)
+			print(sprintf("bootcheck:   lobby %g  %s  %s  %g/%g\n",
+			              li + 1, Lob_Addr(li), Lob_Map(li),
+			              Lob_Players(li), Lob_Max(li)));
+	}
+	/*
+	  THE CAPTURE IS TWO FRAMES AFTER THE RESTORE, NOT IN THE SAME FRAME.
+
+	  `screenshot` reads the backbuffer, so it lands a frame behind the QC that
+	  asked for it, and m_draw runs this driver BEFORE its own change check --
+	  the same reason frame 175 counts at 175 rather than at 145.  Asking for the
+	  restore and the shot on ONE frame produced a PNG byte-identical to
+	  ui_menu_mode.png: same sha256, same 271,074 bytes, still showing
+	  climb+other and "62 of 1334".  It was read as proof of the lobby row only
+	  because the row does not depend on the gametype filter and so is identical
+	  in both frames -- which is luck, not method.  Splitting the two costs one
+	  frame and makes the artifact say what it claims to say.
+	*/
+	else if (ui_bootframe == 179)
+		localcmd("screenshot ui_menu_lobbyrow\n");
 	else if (ui_bootframe == 180)
 	{
-		ms_filter = FILTER_ALL;
-		ms_tier = 0;
-		ms_mode = 0;
+		// Back to the SAVED set, which nothing above wrote to.
+		ms_tier  = 0;
+		ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
 
 		if (cvar("ui_bootcheck") < 3)
 		{
@@ -1887,7 +2438,6 @@ void() ui_bootcheck_tick =
 			return;
 		}
 
-		sv_name = "bootcheck";
 		ui_launch();
 	}
 	/*
@@ -2192,10 +2742,11 @@ void(vector screensize) screen_terms =
 	      button   30 px below the footer
 	      panel    34 px below the button
 
-	  At 29 lines that is 625 px, leaving a 95 px margin at 720p -- the smallest
-	  window this is expected to run in, and the case the map picker's own clamp
-	  exists for.  Anything much past ~34 lines needs a scroll rather than a
-	  bigger box, and the honest fix at that point is shorter terms.
+	  At 33 lines (build 57) that is 685 px, leaving a 35 px margin at 720p --
+	  the smallest window this is expected to run in, and the case the map
+	  picker's own clamp exists for.  Anything much past ~34 lines needs a
+	  scroll rather than a bigger box, and the honest fix at that point is
+	  shorter terms; there is room for about one more.
 
 	  The three buttons are 24..254, 270..500 and 516..616 inside a 640 px
 	  panel, so they do not overlap and the rightmost keeps a 24 px margin.
@@ -2299,8 +2850,7 @@ void(vector screensize) screen_main =
 	if (ui_option("mm_create", p, 400, 34, "create server", COL_TEXT))
 	{
 		menu_screen = SCREEN_CREATE;
-		if (ms_count == 0)
-			ui_load_maps();
+		ui_create_open();
 		ui_refilter();
 	}
 
@@ -2312,27 +2862,6 @@ void(vector screensize) screen_main =
 		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
 };
 
-// The four source filters, in the order they are drawn.  Kept as a function
-// rather than an array because fteqcc folds an initialised global array into
-// constants and then refuses to read it back reliably.
-float(float slot) ui_filter_src =
-{
-	if (slot == 1) return SRC_BIT_MOM;
-	if (slot == 2) return SRC_BIT_CSS;
-	if (slot == 3) return SRC_BIT_OTHER;
-	return FILTER_ALL;
-};
-
-string(float slot) ui_filter_label =
-{
-	// The counts are ON the buttons because "css 20" reads as a broken mount
-	// without them -- see the note in ui_load_maps.
-	if (slot == 1) return sprintf("momentum %g", ms_nsrc[SRC_MOMENTUM]);
-	if (slot == 2) return sprintf("cs:s %g",     ms_nsrc[SRC_CSS]);
-	if (slot == 3) return sprintf("other %g",    ms_nsrc[SRC_OTHER]);
-	return sprintf("all %g", ms_count);
-};
-
 /*
   Shorten a string until it fits `w` pixels at `sz`, ending it with ".." so the
   truncation is visible rather than looking like a map whose name really is
@@ -2340,15 +2869,16 @@ string(float slot) ui_filter_label =
 
   Needed only since the lobby rows went side by side: at full width a name had
   938 px and the longest in the library wants 384, so nothing could overflow and
-  nothing measured.  In three columns on a 1280 desktop the name column is 241
-  px, which is fifteen characters -- surf_kitsune fits and
-  surf_colin_blaster_69000 does not, and without this it would draw straight
-  through the neighbouring lobby's thumbnail.
+  nothing measured.  In five columns (build 57) a cell has 139 px of text on a
+  1280 desktop and 169 at the 1400 cap -- roughly seventeen and twenty
+  characters at 16 px, estimated rather than measured -- so a long lobby name
+  or surf_colin_blaster_69000 needs it, and without this either would draw
+  straight through the neighbouring lobby's thumbnail.
 
   Binary search rather than a per-character walk: stringwidth is a builtin call
-  per invocation and this runs for at most three rows a frame either way, but
-  the loop bound matters more than the constant here -- a while() that shortens
-  by one is O(n) calls on exactly the pathological names this exists for.
+  per invocation and this runs for a few strings per lobby cell a frame, but the
+  loop bound matters more than the constant here -- a while() that shortens by
+  one is O(n) calls on exactly the pathological names this exists for.
 */
 string(string s, float w, vector sz) ui_fit_text =
 {
@@ -2367,35 +2897,53 @@ string(string s, float w, vector sz) ui_fit_text =
 	return strcat(substring(s, 0, lo), "..");
 };
 
+/*
+  The narrowest a lobby cell may be before the grid wraps.  Build 57.
+
+  A cell spends 90 px on its thumbnail and gutter and 8 on a right margin, so
+  200 leaves 102 px of text at 16 px -- enough for a short lobby name whole and
+  a map name for ui_fit_text to shorten.  Five columns clear it from a 1064 px
+  panel (a screen about 1100 wide) up; at 1280 they are 236 px.  The 300 it
+  replaces would have put a 1280 screen's five lobbies in one column.
+*/
+#define LOB_MIN_COL 200
+
 void(vector screensize) screen_create =
 {
 	ui_backdrop(screensize);
 	ui_map_backdrop(screensize);
 
-	// Sized so the OPEN dropdown fits INSIDE the panel with the start/back row
-	// still below it.  An overlay list that spilled past the border covered
-	// those buttons entirely, which is how the first version shipped.
-	//
-	// The width used to be set by the SOURCE ROW -- four measured buttons at 16 px
-	// come to 680 px, and at 560 the last one hung outside the border, invisibly,
-	// because sui_push_frame does not clip fills.  Since build 14 the ROW is what
-	// sets it: a 78 px thumbnail, a tier chip, a name column wide enough for
-	// surf_colin_blaster_69000, and a right-aligned time.  980 also leaves the
-	// eleven-button tier strip room to fit on one line at 16 px.
-	//
-	// 760 tall rather than 600 because rows went from 22 px to ROW_H, and a list
-	// that shows four maps is not a list.
-	//
-	// CLAMPED to the screen, which 760 tall is not on a 1280x720 desktop: at
-	// vid_conautoscale 1 one unit is one pixel, so a fixed panel taller than the
-	// framebuffer hangs its title off the top and its start/back row off the
-	// bottom, and sui_push_frame does not clip, so nothing says so.  32 px of
-	// margin also leaves the map backdrop something to show through.
-	// 1060 rather than 980 so the gametype strip fits beside the tier strip at
-	// 1280 wide, which is the common case; below that the clamp takes over and
-	// the strip drops to its own line by itself.
-	vector size = [1060, 760];
-	if (size_x > screensize_x - 32) size_x = screensize_x - 32;
+	/*
+	  THE PANEL.  760 tall and up to 1400 wide, clamped to the screen.
+
+	  HEIGHT.  Sized so the list fits INSIDE the panel with the start/back row
+	  still below it -- an overlay list that spilled past the border covered those
+	  buttons entirely, which is how the first version shipped -- and 760 rather
+	  than 600 because rows went from 22 px to ROW_H, and a list that shows four
+	  maps is not a list.
+
+	  WIDTH, BUILD 57: SET BY FIVE LOBBY CELLS.  It was set in turn by the source
+	  row (four buttons, 680 px), by the map row's name column (980), and by the
+	  gametype strip fitting beside the tier strip at 1280 wide (1060).  Five
+	  lobbies in one row set it now.  A cell spends 98 px on its thumbnail, gutter
+	  and right margin before any text, so five across a 1060 panel would leave a
+	  lobby's name 107 px, about a dozen characters.  At 1400 a cell has 169 px of
+	  text; on a 1280 desktop the clamp makes the panel 1248 and a cell 139.
+	  Wider than 1400 buys nothing -- the map rows already have more room than any
+	  name wants -- and a panel that fills a 2560 screen puts the start button a
+	  long way from the list it acts on.
+
+	  The tier and gametype strips still share a row at 1248: about 925 px of the
+	  1216 inside it, from the 865 measured before build 57 plus ~59 for "other".
+	  Below that the gametype strip drops to its own line by itself, and at 720p
+	  that costs a map row -- see the header budget at `y` below.
+
+	  CLAMPED both ways: at vid_conautoscale 1 one unit is one pixel, so a panel
+	  bigger than the framebuffer hangs its title off the top and its start/back
+	  row off the bottom, and sui_push_frame does not clip, so nothing says so.
+	  32 px of margin also leaves the map backdrop something to show through.
+	*/
+	vector size = [min(screensize_x - 32, 1400), 760];
 	if (size_y > screensize_y - 32) size_y = screensize_y - 32;
 
 	vector pos  = [floor((screensize_x - size_x) * 0.5),
@@ -2409,37 +2957,27 @@ void(vector screensize) screen_create =
 
 	sui_push_frame(pos, size);
 
+	/*
+	  THE HEADER BUDGET, and 720p has none to spare.
+
+	  The list below takes whatever height is left, in whole ROW_H steps: it
+	  shows floor((size_y - 60 - y) / 48) rows, y being where it starts.  With the
+	  filter row (56), the search (56) and one row of lobby cells (76), y is 244:
+	  9 rows in a 760 panel, and EXACTLY 8 in 720p's 688 -- 384 px, none left
+	  over.  So one more pixel of header costs a 720p player a whole map row.
+	  The server name field (60) and the source strip (56) went in build 57, and
+	  they are the two rows the list got back.
+	*/
 	float y = 56;
-
-	// ---- server name --------------------------------------------------
-	sui_text([16, y], SZ_LABEL, "server name", COL_DIM, 1, 0);
-	ui_field("cs_name", [16, y + 20], [inner, 28], sv_name, sv_name_cursor, "FTESurf");
-	y += 60;
-
-	// ---- source filter ------------------------------------------------
-	sui_text([16, y], SZ_LABEL, "source", COL_DIM, 1, 0);
-	float fx = 16;
-	float f;
-	for (f = 0; f < 4; f++)
-	{
-		string flabel = ui_filter_label(f);
-		float  fsrc   = ui_filter_src(f);
-		string fid    = strcat("cs_flt", ftos(f));
-
-		fx += ui_chip([fx, y + 20], fid, flabel, ms_filter == fsrc) + CHIP_GAP;
-
-		if (sui_is_released(fid))
-			ms_filter = fsrc;
-	}
-	y += 56;
+	float fx, f;
 
 	/*
 	  ---- tier and gametype filters -------------------------------------
 
 	  Two strips on one row: tier on the left, gametype to its right, both
-	  ANDed into ui_refilter along with source and the search text.  Twenty-two
-	  more action elements against sui's MAX_ACTION_ELEMENTS 256
-	  (sui_sys.qc:194); the create screen is nowhere near it.
+	  ANDed into ui_refilter along with the search text.  Twenty-one action
+	  elements against sui's MAX_ACTION_ELEMENTS 256 (sui_sys.qc:206); the
+	  create screen is nowhere near it.
 
 	  "To its right" is MEASURED, not assumed.  Every chip is sized from its own
 	  label, the panel clamps itself to the framebuffer, and sui_push_frame does
@@ -2476,17 +3014,34 @@ void(vector screensize) screen_create =
 		y    += 46;
 	}
 
+	/*
+	  TOGGLES, build 57.  A chip is lit when its bit is in ms_modes, and "all"
+	  only when every bit is.  The click goes through ui_modes_click, which holds
+	  the rules (all sets everything; the last lit chip stays on), and a click
+	  that changed the set is saved at once, the way the HUD editor saves a drag.
+	  sui_is_released is true for one frame -- sui_end clears it -- which is
+	  what makes a toggle safe here where the old strip only ever assigned.
+	*/
 	sui_text([mx, mrow], SZ_LABEL, "gametype", COL_DIM, 1, 0);
 	for (f = 0; f < FS_NMODES; f++)
 	{
-		float  mgm  = ui_mode_id(f);
 		string mlbl = ui_mode_label(f);
 		string mcid = strcat("cs_mode", ftos(f));
+		float  mlit;
 
-		mx += ui_chip([mx, mrow + 20], mcid, mlbl, ms_mode == mgm) + CHIP_GAP;
+		if (f == 0)
+			mlit = (ms_modes == FS_MODES_ALL);
+		else
+			mlit = (ms_modes & ui_cat_bit(ui_mode_id(f))) != 0;
+
+		mx += ui_chip([mx, mrow + 20], mcid, mlbl, mlit) + CHIP_GAP;
 
 		if (sui_is_released(mcid))
-			ms_mode = mgm;
+		{
+			float mnew = ui_modes_click(ms_modes, f);
+			if (mnew != ms_modes)
+				ui_modes_set(mnew);
+		}
 	}
 	y += 56;
 
@@ -2587,39 +3142,44 @@ void(vector screensize) screen_create =
 		y += 20;
 
 		/*
-		  SIDE BY SIDE (Patch 287).  Lex: "can you put the server lobbies side by
-		  side in the create server menu for more space saving?"
+		  SIDE BY SIDE (Patch 287), FIVE ACROSS (build 57).  Lex: "can you put
+		  the server lobbies side by side in the create server menu for more space
+		  saving?", and later five lobbies, in one row.
 
-		  Three lobbies stacked cost 3*ROW_H = 144 px of a 760 px panel to say
-		  three short things.  Across, they cost 48 -- and every pixel saved goes
-		  straight to the map list underneath, because the list geometry below is
-		  DERIVED from y (`by = size_y - 46; ls = [inner, by - y - 12]`).  So this
-		  needs no matching edit down there; the list simply gets 96 px taller,
-		  which is two more visible maps.
+		  Five lobbies stacked would cost 5*ROW_H = 240 px of a 760 px panel to
+		  say five short things.  Across, they cost 48 -- and every pixel saved
+		  goes straight to the map list underneath, because the list geometry
+		  below is DERIVED from y (`by = size_y - 46; ls = [inner, by - y - 12]`).
+		  So this needs no matching edit down there.
 
 		  The column count is Lob_Count() rather than a constant: with two lobbies
-		  live they take half the width each and there is no empty third slot.
-		  LB_MAX is 3 (m_lobby.qc) so this is bounded, and the general
-		  row/column arithmetic below is written to survive that changing.
+		  live they take half the width each and there are no empty slots.
+		  LB_MAX is 5 (m_lobby.qc), so this is bounded, and the row/column
+		  arithmetic below is written to survive that changing.
 
-		  IT FALLS BACK TO STACKED when a column would be too narrow to read.
-		  inner is derived from the panel, the panel is clamped to the screen, and
-		  the screen can be 800 wide -- at which point three columns are 240 px,
-		  the name column is 150, and the layout that was meant to save space
-		  instead produces three unreadable stubs.  A player on a small desktop
-		  gets the old layout, which is worse in no way, rather than a clever one
-		  that fails silently.  LOB_MIN_COL is 300 because the thumbnail (78) and
-		  its gutter (90 to the text) are fixed costs, leaving 210 for a name at
-		  16 px -- thirteen characters, which covers the common surf_* names
-		  without truncation and lets ui_fit_text handle the rest.
+		  CELLS STAY PUT.  Lob_Parse orders lobbies by port rather than by the
+		  directory's busiest-first, so a lobby keeps its cell as people join and
+		  leave, and a click cannot land on a neighbour that slid into place
+		  between two polls.
+
+		  NARROW SCREENS GET FEWER COLUMNS, NOT ONE.  inner comes from the panel
+		  and the panel is clamped to the screen, so a small desktop narrows every
+		  cell; below LOB_MIN_COL the grid takes as many columns as still clear it
+		  and wraps the rest onto another row.  Each extra grid row costs the list
+		  a row, which a small screen trades for names it can read.  This used to
+		  drop straight to one column below 300 px, which with five lobbies would
+		  spend 5*ROW_H at exactly the sizes least able to afford it.
 		*/
 		float lgap  = 8;
 		float lcols = Lob_Count();
 		float lcolw = (inner - lgap * (lcols - 1)) / lcols;
-		if (lcolw < 300)
+		if (lcolw < LOB_MIN_COL)
 		{
-			lcols = 1;
-			lcolw = inner;
+			// Fewer than Lob_Count() by construction: the test above just failed.
+			lcols = floor((inner + lgap) / (LOB_MIN_COL + lgap));
+			if (lcols < 1)
+				lcols = 1;
+			lcolw = (inner - lgap * (lcols - 1)) / lcols;
 		}
 
 		for (float li = 0; li < Lob_Count(); li = li + 1)
@@ -2661,34 +3221,49 @@ void(vector screensize) screen_create =
 
 			ui_thumb([lp_x + 3, lp_y + 2], [78, 44], lpage, lcell);
 
-			/*
-			  An uninstalled map is shown, dimmed, rather than hidden.  Hiding
-			  it makes a lobby with people in it silently absent and looks like
-			  the directory is broken; saying "not installed" is the honest
-			  answer and tells the player what to do about it.
-			*/
 			// The text column is what is left of the cell after the thumbnail and
 			// its gutter, less 8 px so a truncated name cannot touch the next
-			// cell's border.  At one column this is 930 px and ui_fit_text
-			// returns every name unchanged, so the stacked layout is untouched.
+			// cell's border: 139 px at 1280 wide, 169 at the 1400 cap.
 			float ltw = lcolw - 90 - 8;
 
+			/*
+			  Line 1: WHICH lobby -- its name with "FTESurf -- " stripped
+			  (Lob_Title).  It was the map, and two lobbies on one map were two
+			  identical cells.
+
+			  An uninstalled map is shown, dimmed, rather than hidden.  Hiding it
+			  makes a lobby with people in it silently absent and looks like the
+			  directory is broken; saying "not installed" is the honest answer and
+			  tells the player what to do about it.  It is said where the picture
+			  would be, so the map's name keeps its place on line 2 -- which is
+			  the name the player has to go and find.
+			*/
 			sui_text([lp_x + 90, lp_y + 5], SZ_ROW,
-			         ui_fit_text(Lob_Map(li), ltw, SZ_ROW),
+			         ui_fit_text(Lob_Title(li), ltw, SZ_ROW),
 			         (lrow >= 0) ? COL_TEXT : COL_DIM, 1, 0);
 
-			if (lrow >= 0)
-				sui_text([lp_x + 90, lp_y + 26], SZ_ROW,
-				         ui_fit_text(sprintf("^2%g^9 / %g players",
-				                             Lob_Players(li), Lob_Max(li)),
-				                     ltw, SZ_ROW),
-				         COL_DIM, 1, 0);
-			else
-				sui_text([lp_x + 90, lp_y + 26], SZ_ROW,
-				         ui_fit_text(sprintf("^1not installed^9  -  %g playing",
-				                             Lob_Players(li)),
-				                     ltw, SZ_ROW),
-				         COL_DIM, 1, 0);
+			if (lrow < 0)
+			{
+				sui_text([lp_x + 8, lp_y + 5], SZ_ROW,
+				         ui_fit_text("^1not", 70, SZ_ROW), COL_DIM, 1, 0);
+				sui_text([lp_x + 8, lp_y + 24], SZ_ROW,
+				         ui_fit_text("^1installed", 70, SZ_ROW), COL_DIM, 1, 0);
+			}
+
+			/*
+			  Line 2: the map, and "n / 32".  The count is RIGHT-ALIGNED and
+			  fitted first, and the map gets what is left.  ui_fit_text cuts from
+			  the end, so one "map  n / 32" string would lose the count -- the half
+			  of the line a player choosing between five lobbies reads -- to any
+			  long map name.
+			*/
+			string lcnt = ui_fit_text(sprintf("^2%g^9 / %g", Lob_Players(li), Lob_Max(li)),
+			                          ltw, SZ_ROW);
+			float  lcw  = stringwidth(lcnt, TRUE, SZ_ROW);
+
+			sui_text([lp_x + 90 + ltw - lcw, lp_y + 26], SZ_ROW, lcnt, COL_DIM, 1, 0);
+			sui_text([lp_x + 90, lp_y + 26], SZ_ROW,
+			         ui_fit_text(Lob_Map(li), ltw - lcw - 8, SZ_ROW), COL_DIM, 1, 0);
 
 			if (lrow >= 0)
 				if (sui_is_released(lid))
@@ -2749,7 +3324,7 @@ void(vector screensize) screen_create =
 				  this is a dozen tokenize calls a frame, not 2200.
 				*/
 				local float mn, mpage, mcell, mstages, mbonus, mlinear;
-				local string mtier, mpb, mtsrc;
+				local string mtier, mpb, mtsrc, mtime;
 
 				mn = tokenize(bufstr_get(ms_meta, real));
 				mpage = mcell = -1;
@@ -2823,11 +3398,23 @@ void(vector screensize) screen_create =
 
 				// The time, right-aligned against the row's own right edge.
 				// sui_text measures and offsets, so the anchor is the text end.
+				//
+				// A LOBBY time says so in a word and not a colour alone -- the rule
+				// the tier chip above follows, for the same readers.  It is the one
+				// shown only when it beats this PC's own time; see run_pb_load.
+				//
+				// THE MAP'S OWN TICK, not PM_TICK: a bhop map's ticks were counted
+				// at 100 Hz, and 0.015 draws them half again as long.  See
+				// ui_map_tick, which is why this is a call and not a constant.
 				mpb = bufstr_get(ms_pbv, real);
 				if (mpb != "")
-					sui_text([rp_x + rs_x - 8 - stringwidth(Time_TickString(stof(mpb), PM_TICK), TRUE, SZ_ROW),
-					          rp_y + 14], SZ_ROW,
-					         Time_TickString(stof(mpb), PM_TICK), COL_TEXT, 1, 0);
+				{
+					mtime = Time_TickString(stof(mpb), ui_map_tick(real));
+					if (bufstr_get(ms_pblob, real) != "")
+						mtime = strcat("^9lobby  ^7", mtime);
+					sui_text([rp_x + rs_x - 8 - stringwidth(mtime, TRUE, SZ_ROW),
+					          rp_y + 14], SZ_ROW, mtime, COL_TEXT, 1, 0);
+				}
 				else
 					sui_text([rp_x + rs_x - 8 - stringwidth("--:--.---", TRUE, SZ_ROW),
 					          rp_y + 14], SZ_ROW, "--:--.---", COL_DIM, 0.5, 0);
@@ -2875,7 +3462,6 @@ void() m_init =
 	ms_query = "";
 	ms_applied_query = "";
 	ms_query_stale = FALSE;
-	sv_name = "";
 
 	/*
 	  BUILD 22.  Read the acceptance and publish it for the other two VMs before
@@ -2903,10 +3489,13 @@ void() m_init =
 
 	ms_name = ms_src = ms_lst = -1;
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
+	ms_catv = ms_pblob = -1;
 	ms_selected = -1;
-	ms_filter = ms_applied_filter = FILTER_ALL;
 	ms_tier = ms_applied_tier = 0;
-	ms_mode = ms_applied_mode = 0;
+	// The SAVED set is read when the create screen opens, beside its
+	// registercvar (ui_create_open); this only keeps the set from being empty
+	// before then.
+	ms_modes = ms_applied_modes = FS_MODES_DEFAULT;
 	ms_view = buf_create();
 
 	// ms_bgfor must not start equal to ms_selected, or the first frame would
@@ -2981,8 +3570,8 @@ void(vector screensize) m_draw =
 	// Re-filter only on an actual change.  ms_query is mutated by
 	// sui_text_input during the previous frame's draw, so comparing against
 	// the applied copy here is the cheapest place to notice.
-	if (ms_query != ms_applied_query || ms_filter != ms_applied_filter
-	    || ms_tier != ms_applied_tier || ms_mode != ms_applied_mode)
+	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
+	    || ms_modes != ms_applied_modes)
 		ui_refilter();
 
 	sui_begin(screensize_x, screensize_y);
@@ -3033,9 +3622,11 @@ void() m_open =
 	menu_active = TRUE;
 
 	// The list is always open now (there is no ms_open any more), so all this
-	// has to do is make sure there is something in it.
-	if (menu_screen == SCREEN_CREATE && ms_count == 0)
-		ui_load_maps();
+	// has to do is make sure there is something in it -- and, since build 57,
+	// that the time column and the gametype set are current.  This is the door
+	// ESC out of a game uses, and it lands straight on the create screen.
+	if (menu_screen == SCREEN_CREATE)
+		ui_create_open();
 };
 
 void() m_close =

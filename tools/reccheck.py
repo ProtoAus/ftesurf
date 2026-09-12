@@ -139,6 +139,41 @@ def run_class(fv):
 # agreeing with zeros.  It would have passed silently.
 TF_GHOST = 64
 
+# Build 58.  The run was set with the raw input journal switched off, so no .hid
+# describes it.
+#
+# LIKE TF_GHOST AND UNLIKE THE FOUR ABOVE, it implies nothing about how the run
+# was played and must not be folded into run_class().  `rec_hid 0` changes no
+# physics and loads no save; the run is clean, the EVIDENCE is not.  A checker
+# that reported it as a taint class would be calling an honest player's run
+# dirty on the strength of a recording switch.
+#
+# IT IS ALSO NOT A FAULT HERE, and that is the deliberate part.  The server sets
+# it only when the client explicitly reported `rechid 0` -- an absent key stays
+# unknown and sets nothing -- so the bit's presence means the player made a
+# choice the HUD had already warned them about, and its ABSENCE means either a
+# journal or an unknown, which this file cannot tell apart and must not guess
+# between.  What a .hid actually proves is hidcheck.py's business; all this
+# format check may say is whether the bit and the sidecar agree.
+TF_NOJOURNAL = 512
+
+# Build 62, engine Patch 313.  THE RUN'S PHYSICS WERE NOT PROVABLY THE RULESET'S.
+#
+# The server reads the engine's *ruleset "<locked> <off> <seq>" key at the start
+# of the run and again at the finish, and sets this if the lock was disengaged,
+# if any cvar in the locked movement table was off its canonical value, or if the
+# sequence counter moved while the clock was running -- the last of which is the
+# only way to see an unlock-and-relock window, because both ends of it read
+# locked 1 / off 0.
+#
+# NOT A TAINT CLASS AND NOT A FAULT HERE, for the same two reasons TF_NOJOURNAL
+# is neither.  It describes a hole in the CERTIFICATION rather than something the
+# player did -- an install that never set pm_lockmovement is misconfigured, not
+# cheating -- and the clear case is genuinely ambiguous: an engine older than
+# Patch 313 publishes no key at all, the server refuses to guess from its
+# absence, and every run recorded before this build is in exactly that state.
+TF_NORULESET = 1024
+
 # Build 17 added save states and a `resume` RECORD, not a header key -- a save
 # rewinds the buffer and appends from the mark, so anything written at the resume
 # lands in the middle of the sample stream, and the header ends at `begin`.  So
@@ -807,6 +842,28 @@ def check_rec(path, verbose=False):
                         "does not say ghost" % (len(ghost_windows), fv))
             r.info["ghosted"] = "yes" if (fv & TF_GHOST) else "no"
 
+            # Build 58.  Reported, never faulted -- see TF_NOJOURNAL above.
+            #
+            # THREE STATES COLLAPSED INTO A BIT, which is why the word for the
+            # unset case is "unknown" and not "yes".  Set means the client said
+            # `rechid 0`; clear means it said 1 OR said nothing at all, and this
+            # file cannot tell those apart.  Printing "yes, a journal exists"
+            # off a clear bit would be inventing the difference -- and a .hid
+            # beside the .rec is not proof either, since a run can finish with
+            # the journal on and still write none (Rec_HidEnd keeps PB only).
+            r.info["journal"] = "OFF (player set rec_hid 0)" if (fv & TF_NOJOURNAL) \
+                                else "unknown"
+
+            # Build 62.  Reported, never faulted -- see TF_NORULESET above, and
+            # it collapses three states into a bit exactly as the journal one
+            # does.  Set means the server read the key and it said the physics
+            # were not provably the ruleset's.  Clear means the ruleset checked
+            # out OR the engine was too old to publish the key at all, and this
+            # file cannot tell those apart.  "certified" would be a claim the
+            # bit does not support, so the clear word is "unknown".
+            r.info["ruleset"] = "NOT LOCKED/CONFORMING" if (fv & TF_NORULESET) \
+                                else "unknown"
+
     # ---- the v3 mask, against the movement it came from --------------------
     if ver >= 3:
         # 0:t 1..3:org 4..6:vel 7:pit 8:yaw 9:fl 10:keys 11:fwd 12:side 13:up
@@ -1205,6 +1262,16 @@ def emit(r, verbose):
                   # printed: the first is what every reader before this build
                   # filtered on, the second is why.
                   "boards", "ramp_samples", "clean", "class",
+                  # Build 62.  These three were being COMPUTED AND DISCARDED --
+                  # each is assigned into r.info above and none was in this
+                  # tuple, so a reader could not see them at any verbosity.
+                  # `ghosted` and `journal` date from builds 30 and 58 and have
+                  # been invisible ever since; `ruleset` would have shipped the
+                  # same way, which is how it was noticed.  A field nobody can
+                  # read is not evidence, which is the whole argument this
+                  # file's own header makes for writing the checker from the
+                  # grammar rather than from the writer.
+                  "ghosted", "journal", "ruleset",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

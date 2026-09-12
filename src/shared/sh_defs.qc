@@ -149,7 +149,7 @@
 */
 #define STAT_FS_TIMERSTATE  52   // TS_*
 #define STAT_FS_TIMERTICKS  53   // elapsed, in ticks
-#define STAT_FS_TIMERSEG    54   // segment in progress (0 = stage 1)
+#define STAT_FS_TIMERSEG    54   // SEGMENT in progress, 0-based: segment s is stage s+1 (leg s+1)
 #define STAT_FS_TIMERSEGS   55   // segments in this track; 1 means linear
 #define STAT_FS_TIMERTRACK  56   // 0 main, N bonus N
 #define STAT_FS_TIMERFLAGS  57   // TF_*
@@ -173,11 +173,16 @@
       data/runs/<map>/<leg>/<ticks>_<pb|shadow>.view       (FS_RunPath below)
       data/runs/<map>/<leg>/<last|cheat>.view              -- the unstamped pair
 
-  RUNLEG is track*100+startseg+1, and 0 means "no run".  The +1 is not
-  decoration: track 0 startseg 0 is the main track's full run, the most common
-  leg there is, and without it that leg would encode to the same 0 a discarded
-  run leaves behind.  startseg is bounded by FS_MAXSPLITS (24), so the pack
-  cannot carry.
+  RUNLEG is track*100+leg+1, and 0 means "no run".  The +1 is not decoration:
+  track 0 leg 0 is the main track's full run, the most common leg there is, and
+  without it that leg would encode to the same 0 a discarded run leaves behind.
+  The server's PB table bounds a leg by FS_MAXSPLITS (24), so the pack cannot
+  carry.
+
+  BUILD 57: A LEG, WHERE IT WAS THE STARTING SEGMENT.  0 is the full run and k is
+  stage k -- see FS_LegOf.  The old packing could not tell a stage-1 run from a
+  full run, because both begin at segment 0, and so stage 1 was the one stage
+  that could never be a leg of its own.
 
   RUNTAG is written at the moment the run closes and left standing until the
   next one opens, which is at minimum a re-arm away -- many frames, so the
@@ -185,7 +190,7 @@
   client can write straight to the final name and the server never has to rename
   a file the client is still holding.
 */
-#define STAT_FS_RUNLEG      63   // track * 100 + startseg, while recording
+#define STAT_FS_RUNLEG      63   // track * 100 + leg + 1, while recording; 0 = no run
 #define STAT_FS_RUNTAG      64   // RT_*, at the moment the run ends
 
 /*
@@ -236,7 +241,7 @@
 ===========================================================================
 */
 #define STAT_FS_STAGEREC    72   // monotonic; the edge, never a flag
-#define STAT_FS_STAGESEG    73   // which leg: the segment, i.e. FS_LegDir's startseg
+#define STAT_FS_STAGESEG    73   // the SEGMENT written; its leg is seg + 1 (build 57)
 #define STAT_FS_STAGETICKS  74   // the stage's own duration -- the filename stamp
 #define STAT_FS_STAGEAT     75   // the run clock the stage STARTED at
 
@@ -482,6 +487,75 @@
 */
 
 /*
+===========================================================================
+  BUILD 57, STAGE T -- FIVE STATS, SO A TIME SET ON A PUBLIC LOBBY IS KEPT ON
+  THE PLAYER'S OWN PC.
+
+  The choice this implements is "just me, on my PC": a lobby time goes into this
+  player's own records and nowhere else.  Nothing is uploaded and no identity is
+  involved, so the server's whole job is to MEASURE and to SAY -- the file is
+  written by the client, in client/cl_lobbytime.qc.
+
+  WHY THE CLIENT CANNOT ALREADY SEE A LOBBY FINISH, which is the reason 93..96
+  exist rather than the card reading what is on the wire already:
+
+    RUNTAG stays RT_NONE   a lobby switches the recorder off (Lobby_NoRec), so
+                           SV_RecClose -- the only writer of RUNTAG, RUNTICKS
+                           and RUNLEG at a finish -- is never reached.
+    TS_FINISHED can be     run_t_pendarm re-arms a chained stage run in the SAME
+    skipped outright       server frame it finished in, and the engine deltas a
+                           stat against the last value it SENT: a state written
+                           and overwritten inside one PlayerPostThink was never
+                           on the wire to be read.
+
+  So a finish is published as a COUNTER with its answer beside it -- the
+  arrangement STAT_FS_STAGEREC and STAT_FS_STAGEENDREC already use, and for the
+  same reason: a lost snapshot becomes a GAP the reader can account for rather
+  than an event that silently did not happen.
+
+  FINREC IS BUMPED BY EVERY SV_TimerFinish, lobby or not.  A counter that only
+  ran in lobbies would be a second rule to remember at the one site that owns
+  the finish, and the client's gate is STAT_FS_LOBBY -- a fact about the SERVER,
+  not about this run.
+
+  THE FOUR ANSWERS ARE WRITTEN IN ONE BREATH with the counter LAST, so no
+  snapshot can carry the counter ahead of the values it describes.  They are NOT
+  cleared by the next arm: `results` reopens the last card, and a value that died
+  with the attempt would make that command lie.  RUNTAG has stood the same way
+  since build 23 for exactly that reason.
+
+  90 AND 91 ARE STILL NOT HERE.  They stay reserved and unregistered for a world
+  board, which this feature deliberately is not -- see the block above.  The
+  unbuilt avatar stats an older plan pencilled in at 94/95 move to 97/98.
+===========================================================================
+*/
+/*
+  STAT_FS_LOBBY IS THREE BITS, and the reason is that "this is a lobby" and "the
+  server is keeping nothing for this run" are different questions with different
+  answers.
+
+  Lobby_Active() is one cvar; Lobby_NoPB() and Lobby_NoRec() are that cvar AND
+  their own.  cfg/lobby.cfg sets all three, so on a real lobby the three bits
+  arrive together -- but lobby_enable 1 with lobby_nopb 0 is a listen server that
+  writes best.pb and the .rec archive to THIS disk, and a client that kept its own
+  copy there would file the same run twice: two rows on the leaderboard's leg, and
+  a rank total inflated by its own duplicate.
+
+  So the client keeps a time only when the server is keeping NEITHER, and the
+  card's "am I on a lobby" test stays bit 0.  A reader that wants the old meaning
+  masks LS_LOBBY -- the raw value is no longer 0-or-1 and `if (getstatf(...))`
+  would now be true for a configuration that means the opposite.
+*/
+#define STAT_FS_LOBBY      92   // LS_* bits below
+#define LS_LOBBY            1   // Lobby_Active(): this server is a public lobby
+#define LS_NOPB             2   // Lobby_NoPB():  it keeps no best.pb for this run
+#define LS_NOREC            4   // Lobby_NoRec(): it keeps no .rec for this run
+#define STAT_FS_FINREC     93   // monotonic; EVERY finish bumps it.  Edge-detect it
+#define STAT_FS_FINTICKS   94   // the time that finish was measured at
+#define STAT_FS_FINLEG     95   // RUNLEG's encoding: track * 100 + leg + 1
+#define STAT_FS_FINFLAGS   96   // TF_*, as the finish decided them
+
+/*
   STAT_FS_STAGEST's bits.
 
   32 and 64 were reserved by build 43 and are ASSIGNED HERE by build 44, exactly
@@ -544,6 +618,32 @@
   word in the first place.
 */
 #define SF_KNOWN    128  // this word was actually reported; 0 alone means "not told"
+
+/*
+  BUILD 57, STAGE T: DID THIS STAGE QUALIFY?  The SERVER's answer, so that a
+  second writer of stage times never re-implements the rules.
+
+  SV_StageQualifies (sv_timer.qc) is the jump filter, the taint rules and the
+  start rules of the stage a run began with, lifted out free of side effects.
+  The client cannot derive any of it: run_st_jump is a grounded-jump detector
+  with a ramp latch, and the start rules read the run's TF_PRACTICE as it stood
+  at the arm.  client/cl_lobbytime.qc writes a file on exactly this bit.
+
+  ON THE CLOSE WORD ONLY -- STAT_FS_STAGEENDST -- AND NEVER ON THE PER-TICK ONE.
+  SV_StageWord is shared by both and cannot set this itself: by the time
+  SV_StageClose takes the close report it has already put run_st_seg back to -1,
+  so that function has no segment left to ask about.  The close site passes the
+  segment it latched, which is the only place the right answer exists.  A reader
+  of STAT_FS_STAGEST must therefore NOT test this bit -- it is always clear
+  there, which is the same "0 means not told" trap SF_KNOWN exists for one bit
+  along.
+
+  IT IS NOT A FILTER THE SERVER USES.  SV_StageClose keeps its own refusals --
+  is there a recording to slice, may a lobby keep it, did it beat the leg's best
+  -- because those are questions about what gets WRITTEN.  This bit says only
+  that the STAGE was legitimate, which is the half a second keeper needs.
+*/
+#define SF_QUALIFIES 256  // SV_StageQualifies said yes.  The CLOSE word only
 
 /*
   Radians to degrees.
@@ -698,6 +798,34 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define RT_RUN       5
 
 /*
+  BUILD 57, STAGE T -- A TIME SET ON A PUBLIC LOBBY, AND THE FIRST TAG THE
+  SERVER NEVER WRITES.
+
+  A lobby keeps nothing of its own (Lobby_NoPB / Lobby_NoRec) and could not write
+  to this disk anyway, so client/cl_lobbytime.qc writes a header-only .rec here
+  the instant the server says a leg was finished or a stage was beaten.
+
+  NO MOVEMENT IN IT, deliberately.  The recorder is off in a lobby, so there is
+  nothing to slice -- and a header with `samples 0` is the honest shape of that.
+  The leaderboard lists the time and clicking the row SAYS so, rather than
+  opening a replay of nothing (cl_scores.qc).
+
+  THE WORD HAS NO UNDERSCORE IN IT, and that is a requirement rather than a
+  preference.  Both readers of an archived name split it on the LAST underscore
+  -- cl_scores.qc's row scan and cl_results.qc's rank count -- so a word like
+  `lobby_pb` would parse as a stamp of "<ticks>_lobby" and a tag of "pb".  And an
+  unrecognised tag does not mislabel a row, it DROPS it (see FS_TagFromName), so
+  the failure mode is a time that is simply not on the board, with no gap and no
+  count to notice it by.
+
+  ARCHIVED, because the name carries a tick stamp -- but what bounds it is not
+  rec_runs_keep.  Its writer keeps exactly ONE _lobby.rec per leg, the best one,
+  and removes the file it beat: a lobby time has no replay behind it, so a
+  distribution of them would be a folder of empty files.
+*/
+#define RT_LOBBY     6
+
+/*
   THE RECORDING TERMS, build 22.
 
   What the player has to have read and accepted before FTESurf records anything
@@ -727,7 +855,13 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   Public lobbies made the version-1 text false in one specific place.  It said,
   verbatim, "Nothing is sent anywhere.  FTESurf has no server to send it to and
   no code that uploads anything."  There is a server now, and joining a lobby
-  shares a position and uploads times.
+  shares a position with the other people on it.
+
+  BUILD 57 NARROWED THE SECOND HALF OF THAT SENTENCE, which read "and uploads
+  times" and was never true -- the same false promise the essay over
+  FS_TERMS_ONLINE records at lines 14-15 of the version-1 text.  Stage T keeps a
+  lobby time in data/runs on the player's own PC (client/cl_lobbytime.qc) and
+  sends nothing, which is why saving lobby times needs no version bump at all.
 
   The obvious response is to bump FS_TERMS_VERSION to 2, and it is wrong -- not
   because it is inconvenient, but because it would be a false statement about
@@ -936,8 +1070,113 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   policed.  So this bit means "cheats were off", not "the ruleset was locked".
   The correct fix is a one-line engine patch publishing SV_MovementLocked() as a
   *ruleset serverinfo key; until then the stamp says what it can prove.
+
+  BUILD 62: THAT PATCH EXISTS NOW (engine 313) AND THE OTHER HALF IS TF_NORULESET,
+  below -- not this bit.  The gap is closed by a SEPARATE flag rather than by
+  widening this one, because the two say different things: this one says the
+  player took a position they did not earn, and that one says the server cannot
+  prove which physics they took it under.  An install with pm_lockmovement
+  unset is misconfigured, not cheating, and TF_CHEAT is the word this game
+  prints in red.  Read the sentence above as still true of THIS bit, by design.
 */
 #define TF_CHEAT    256
+
+/*
+  THE RUN WAS SET WITH THE RAW INPUT JOURNAL SWITCHED OFF.  Build 58.
+
+  IT IS NOT A TAINT CLASS AND IT IS DELIBERATELY OUTSIDE THE RC_* PRECEDENCE
+  BELOW.  `rec_hid 0` says nothing whatever about how the run was played -- the
+  physics are untouched, no save was loaded, nothing was noclipped -- so folding
+  it in beside practice/segment/cheat would put a fault word on an honest run.
+  What it is instead is a hole in the EVIDENCE: the one recording that says a
+  human moved the mouse in real time was not taken.  TF_GHOST is the precedent
+  for a bit that is recorded, is read by the archive, and implies none of the
+  three classes.
+
+  WHY THE SERVER RECORDS IT AT ALL, when `.view` already carries a `hid` key.
+  The `.view` is written by the CLIENT -- the same party that turned the journal
+  off -- so today the only record of the switch is in a file kept by the person
+  the switch is there to audit.  This bit puts the claim in the SERVER's own
+  file, where it can be compared against whether a `.hid` ever arrives.
+
+  AND HERE IS WHAT IT IS NOT, said out loud so nobody builds an accusation on
+  it: the server learns this from a userinfo key the client sets, so a client
+  that lies sets `1` and records nothing.  This is a gate against the console
+  opt-out that `m_main.qc:509` currently advertises to players, NOT attestation.
+  Its value is that the lie becomes PROVABLE the moment the backend asks for the
+  file it claims exists -- which is Phase 2's upload-on-PB, not this build.
+
+  THE ABSENT KEY IS "UNKNOWN" AND MUST NEVER BE READ AS "NO JOURNAL".  Only a
+  literal "0" sets this bit.  A client that has not sent the key yet, or is an
+  older build, or reconnected a frame ago, is not making a claim -- and marking
+  such a run would be a false statement about a player on that player's own
+  screen, which is the one failure this whole feature may not have.  A quiet
+  gate survives a false negative; an accusation does not.
+*/
+#define TF_NOJOURNAL 512
+
+/*
+  THE RUN'S PHYSICS WERE NOT PROVABLY THE RULESET'S.  Build 62, engine Patch 313.
+
+  WHAT THIS FIXES IS THE GAP THE TF_CHEAT COMMENT ABOVE ADMITS TO.  That comment
+  says QC can see only half of SV_MovementLocked() and that "the correct fix is a
+  one-line engine patch publishing it as a *ruleset serverinfo key".  Patch 313
+  is that patch, and it publishes four fields rather than one:
+
+      *ruleset "<locked> <off> <seq> <breach>"
+
+    locked  SV_MovementLocked() = pm_lockmovement.defaultstr && !sv_cheats.
+            BOTH halves, assembled inside the engine where defaultstr is
+            readable.  QC still may not derive it here: cvar("pm_lockmovement")
+            is the LIVE value, which is exactly what the lock exists to police.
+    off     how many cvars in the locked movement table currently differ from
+            the canonical value for this map -- which is the gamemode or per-map
+            override where one applies, NOT defaultstr.  0 while locked.
+    seq     every off-canonical set of a table cvar since the server came up,
+            counted whether or not the lock was engaged, never reset.
+    breach  the subset of those that STOOD, i.e. that happened while the lock
+            was off so nothing reverted them.  THIS is the one a taint may read.
+
+  IT IS NOT A TAINT CLASS, and TF_NOJOURNAL is the precedent rather than
+  TF_CHEAT.  An unlocked ruleset is a hole in the CERTIFICATION -- the server
+  cannot prove what physics the run was played under -- and not something the
+  player did.  Folding it into SV_CheatsOn() would print `cheated`, in red, at a
+  player whose install was merely misconfigured, or who joined a community server
+  that never set pm_lockmovement.  The same rule as the bit above: a quiet gate
+  survives a false negative; an accusation does not.  So it is recorded, it is
+  read by the archive, it implies none of the three classes, and the board simply
+  declines to rank it.
+
+  WHY IT READS A COUNTER AND NOT ONLY off, which is the whole reason the engine
+  publishes four numbers.  `off` is a snapshot, and a snapshot cannot mark a
+  span: sv_cheats 1, move sv_airaccelerate, sv_cheats 0 restores it, and a run
+  spanning that window reads off == 0 at BOTH ends while its physics were not the
+  ruleset's in the middle.  Measured on the shipped binary as exactly that --
+  "0 0 1 0" then "0 1 2 1" then "1 0 2 1".  So the start latches and the finish
+  compares, the same shape SV_TimerJournal uses for a mid-run rec_hid 0.
+
+  AND WHY IT LATCHES breach RATHER THAN seq.  seq counts ATTEMPTS; under the lock
+  the engine reverts inside the same Cvar_Set, so no physics tick ever sees the
+  value and the run's physics really were the ruleset's.  Differencing seq would
+  therefore set this bit -- whose meaning is "not provably the ruleset's" -- on a
+  run where they provably were, because somebody mistyped a cvar name into the
+  console.  That is the Patch 305 failure mode one layer up, and it is the reason
+  the engine publishes the two counts separately instead of one.
+
+  THE COUNTER IS NOT REDUNDANT WITH SV_NoclipWatch's sv_cheats watch, which was
+  the first thing to check before adding a second mechanism for one gesture.
+  That watch is an EDGE -- sv_player.qc:472, `if (sc) if (!e.run_lastcheats)` --
+  sampled once per PlayerPostThink, so a toggle that goes 1 and back to 0 between
+  two of them sets no TF_CHEAT, and every snapshot of this key still reads
+  locked 1 / off 0 either side of it.  breach is the only thing that sees it.
+
+  THE ABSENT KEY IS "UNKNOWN" AND MUST NEVER BE READ AS "UNLOCKED", for the
+  identical reason spelled out for TF_NOJOURNAL one block up.  serverkey returns
+  "" on any engine older than Patch 313, and "" is not a claim that the ruleset
+  was open -- it is an engine that cannot answer the question.  Marking those
+  runs would stamp a false statement on every run this game has ever recorded.
+*/
+#define TF_NORULESET 1024
 
 /*
   THE PRECEDENCE, IN ONE PLACE, because three readers ask it.
@@ -1129,26 +1368,69 @@ string(float id) FS_SaveSlotName =
 */
 
 /*
+===========================================================================
+  BUILD 57 -- THE LEG IS NOT THE SEGMENT, AND THIS IS THE ONE PLACE THAT SAYS
+  WHICH IS WHICH.
+
+  A SEGMENT is the zone parser's 0-based index: stage 1 begins at segment 0 (the
+  map's START), stage k at segment k-1, and the END zone carries the count.
+  A LEG is a thing with its own folder, its own personal best and its own
+  leaderboard: 0 is the full run of a track and k is stage k.
+
+  Until build 57 there was only the segment, and it was used as the leg -- 0
+  meant "full run" and N meant "a run that began at segment N", spelled stage_N.
+  That is one stage late on every staged map, and it gave stage 1 no leg at all,
+  because stage 1's segment is 0 and 0 was already the whole track.  So `!s 1`
+  armed the map, the stage-1 lift was refused, and every scoreboard was one
+  stage short with every stage row misnamed.
+
+  A leg cannot be recovered from the segment alone -- a full run and a stage-1
+  run both begin at segment 0 -- so the server carries the missing bit
+  (sv_timer.qc: run_t_stagerun) and every caller on either side of the wire
+  asks this function rather than doing the arithmetic:
+
+      a live run         FS_LegOf(run_t_startseg, run_t_stagerun)
+      a lifted stage     FS_LegOf(seg, TRUE)          -- always a stage leg
+      an old .rec/save   FS_LegOf(startseg, startseg > 0)
+                         which is not a guess: before build 57 nothing could
+                         run stage 1 alone, so startseg > 0 WAS "a stage run".
+
+  Callers must not pass a negative segment; -1 is "no stage open" and it has no
+  leg, which this function would otherwise answer as `main`.
+===========================================================================
+*/
+float(float startseg, float stagerun) FS_LegOf =
+{
+	if (stagerun)
+		return startseg + 1;
+	return 0;
+};
+
+/*
   The leg's folder name.  track 0 is the main track and tracks 1+ are bonuses
-  (sh_zones.qc: zone_track); startseg 0 is a full run of that track and N is a
-  run that started at stage N (sv_timer.qc: run_t_startseg).
+  (sh_zones.qc: zone_track); leg 0 is a full run of that track and leg k is
+  stage k -- see FS_LegOf just above for how a leg is derived.
+
+  BUILD 57: A LEG, NOT A SEGMENT, and the body did not change -- the number
+  handed to it did.  stage_k is now stage k.  Folders written before build 57
+  hold stage k+1 under stage_k; tools/migrate_runs.py legs1 renames them.
 
   Words rather than t0_s0, because these are directories a player opens.
 */
-string(float track, float startseg) FS_LegDir =
+string(float track, float leg) FS_LegDir =
 {
 	if (track <= 0)
 	{
-		if (startseg <= 0)
+		if (leg <= 0)
 			return "main";
-		return sprintf("stage_%g", startseg);
+		return sprintf("stage_%g", leg);
 	}
-	if (startseg <= 0)
+	if (leg <= 0)
 		return sprintf("bonus_%g", track);
 
 	// A stage of a bonus track.  Rare, but the zone format allows it and a
 	// collision here would silently file two different legs together.
-	return sprintf("bonus_%g_stage_%g", track, startseg);
+	return sprintf("bonus_%g_stage_%g", track, leg);
 };
 
 /*
@@ -1170,26 +1452,27 @@ string(float ticks) FS_RunStamp =
 };
 
 // The directory for one leg, trailing slash included.  fopen/COM_WriteFile call
-// FS_CreatePath, so nothing has to create these.
-string(string map, float track, float startseg) FS_RunDir =
+// FS_CreatePath, so nothing has to create these.  BUILD 57: `leg` is a LEG (0
+// the full run, k stage k) and never a segment -- see FS_LegOf.
+string(string map, float track, float leg) FS_RunDir =
 {
-	return sprintf("data/runs/%s/%s/", map, FS_LegDir(track, startseg));
+	return sprintf("data/runs/%s/%s/", map, FS_LegDir(track, leg));
 };
 
 /*
   The full path of one recording.  `tag` is SV_RecTagName's word and `ext` is
-  rec, view or hid.
+  rec, view or hid.  `leg` as FS_RunDir takes it.
 
   An empty stamp is how `last` gets its fixed name: the caller passes ticks < 0
   to mean "not archived".
 */
-string(string map, float track, float startseg, float ticks,
+string(string map, float track, float leg, float ticks,
        string tag, string ext) FS_RunPath =
 {
 	if (ticks < 0)
-		return sprintf("%s%s.%s", FS_RunDir(map, track, startseg), tag, ext);
+		return sprintf("%s%s.%s", FS_RunDir(map, track, leg), tag, ext);
 
-	return sprintf("%s%s_%s.%s", FS_RunDir(map, track, startseg),
+	return sprintf("%s%s_%s.%s", FS_RunDir(map, track, leg),
 	               FS_RunStamp(ticks), tag, ext);
 };
 
@@ -1205,6 +1488,29 @@ string(string map, float track, float startseg, float ticks,
 */
 #define FS_RUNS_ROOT  "data/runs/"
 #define FS_PB_LEAF    "/best.pb"
+
+/*
+  BUILD 57, STAGE T -- THE SECOND .pb IN THE SAME FOLDER, AND WHY IT IS A SECOND
+  FILE RATHER THAN MORE KEYS IN THE FIRST.
+
+  best.pb is what a run on THIS PC wrote (SV_PBSave, which rewrites it whole from
+  a table with no player dimension).  lobby.pb beside it is what the client wrote
+  when a run on a public lobby beat the player's own lobby best -- two different
+  claims about the same leg, which the map list shows side by side and marks.
+
+  Keeping them apart is what makes each writer safe.  SV_PBSave would otherwise
+  have to preserve keys it knows nothing about on every write, in a lobby where
+  it is refused outright; and the client would have to rewrite a file the server
+  owns, on a disk where the server is also running.  One writer per file, same
+  grammar, same fixed-leaf-in-a-wildcard-component shape as best.pb.
+
+  `best <track> <leg> <ticks>`, FTESURF-PB 2 -- always 2: there was never a
+  version-1 lobby.pb, so nothing here needs the segment-to-leg shift SV_PBLoad
+  does for an old best.pb.  The menu's map list reads both files through the same
+  parser (m_main.qc: run_pb_scan), which takes this name as an argument the same
+  way it takes FS_PB_LEAF -- one speller, here.
+*/
+#define FS_LOBBYPB_LEAF  "/lobby.pb"
 
 /*
   search_begin's SB_NAMESORT flag.  Named here because it is load-bearing for
@@ -1237,6 +1543,9 @@ string(float tag) FS_TagName =
 	if (tag == RT_SHADOW) return "shadow";
 	if (tag == RT_CHEAT)  return "cheat";
 	if (tag == RT_RUN)    return "run";     // build 48
+	// Build 57, stage T.  No underscore -- see the block over RT_LOBBY, where
+	// that is a requirement of the two readers rather than a style choice.
+	if (tag == RT_LOBBY)  return "lobby";
 	return "last";
 };
 
@@ -1267,6 +1576,11 @@ float(string w) FS_TagFromName =
 	// the whole reason this function exists -- the paragraph above is about a
 	// fourth tag that reached the writer and not the scan, and this is the fifth.
 	if (w == "run")    return RT_RUN;
+	// Build 57, stage T, and the sixth one makes the paragraph above literal: the
+	// tag is written by the CLIENT and read by the client's own scoreboard and
+	// rank count, so a word taught to the writer and not to this function would
+	// drop every lobby time off the board it was written for.
+	if (w == "lobby")  return RT_LOBBY;
 	return RT_NONE;
 };
 
@@ -1317,6 +1631,17 @@ float(float tag) FS_TagArchived =
 	  and there is an obvious one of "keep my last twenty-five clean attempts".
 	*/
 	if (tag == RT_RUN)    return TRUE;
+	/*
+	  BUILD 57, STAGE T, and it makes the argument this comment asks for.
+
+	  RT_LOBBY's name carries a tick stamp because the BOARD is a name sort: an
+	  unstamped lobby.rec would sort under the scratch slots and carry no time at
+	  all, which is the one thing the row is for.  What it does NOT get from being
+	  archived is accumulation -- its writer keeps one file per leg and removes
+	  the one it beat, so "archived" here means stamped, and the quota that bounds
+	  the other three is not what bounds this.
+	*/
+	if (tag == RT_LOBBY)  return TRUE;
 	// RT_LAST and RT_CHEAT both fall through: one fixed name each, overwritten
 	// every time.  Written as the fall-through rather than as two more tests
 	// because the question is "does this class accumulate on disk", and a tag

@@ -163,16 +163,18 @@ string() Rec_MapName = { return serverkey("map"); };
 // `ticks` comes from STAT_FS_RUNTICKS and must be the value the server closed
 // the run with -- NOT the live clock, which by this frame is describing the next
 // attempt.  Pass -1 for a tag that is not archived.
-string(float leg, float ticks, string tag, string ext) Rec_ViewPath =
+string(float runleg, float ticks, string tag, string ext) Rec_ViewPath =
 {
-	local float track, startseg;
+	local float track, leg;
 
-	// RUNLEG is track*100 + startseg + 1; see shared/sh_defs.qc for the +1.
-	leg      = leg - 1;
-	track    = floor(leg / 100);
-	startseg = leg - track * 100;
+	// RUNLEG is track*100 + leg + 1; see shared/sh_defs.qc for the +1.  BUILD 57:
+	// a LEG (0 the full run, k stage k), where it used to be the 0-based segment
+	// the run began at -- which could not tell a stage-1 run from a full one.
+	runleg = runleg - 1;
+	track  = floor(runleg / 100);
+	leg    = runleg - track * 100;
 
-	return FS_RunPath(Rec_MapName(), track, startseg, ticks, tag, ext);
+	return FS_RunPath(Rec_MapName(), track, leg, ticks, tag, ext);
 };
 
 // Kept as a name because this file calls it in several places; the definition is
@@ -243,6 +245,7 @@ float() Rec_ViewKeys =
   needs it too, and fteqcc wants the definition first.
 */
 float rec_rp_consent;            // the accepted terms version, read off disk at init
+float rec_rp_hidsent;            // last `setinfo rechid` value sent; -1 = none yet
 
 /*
   THE ACCEPTED VERSION, READ FROM THE RECORD ITSELF and not only from the cvar.
@@ -296,6 +299,44 @@ float() Rec_HidOK =
 	if (cvar("rec_terms") >= FS_TERMS_VERSION)
 		return TRUE;
 	return FALSE;
+};
+
+/*
+  TELL THE SERVER WHETHER THIS CLIENT IS JOURNALLING.  Build 58.
+
+  The server cannot see rec_hid -- it is a client cvar, and the `hid` key in the
+  .view header is written by this same client after the fact.  So the answer is
+  published as userinfo, which sv_lobby.qc already uses as a client->server
+  channel (`setinfo lobbycolor`), and SV_TimerJournal reads it with infokey.
+
+  SENT ON CHANGE, FROM THE PER-FRAME DRIVER, RATHER THAN AT RUN START, and the
+  timing is the whole reason this is not simply a line in Rec_HidBegin.  A
+  userinfo update is a round trip; setting it as the clock starts would race the
+  server's own read of it, and the run that lost the race would be recorded as
+  making no claim when it had in fact just made one.  Sent from Rec_ViewFrame,
+  the value has been on the server since long before any start zone was left.
+
+  The cached compare is what keeps that free: rec_hid changes approximately
+  never, so this is one cvar read per frame and a localcmd only on an edge.
+  -1 seeds it, so the first frame of every map always sends -- a reconnect
+  rebuilds the server's userinfo from scratch and a cache primed to the right
+  answer would skip the send that repopulates it.
+
+  IT REPORTS Rec_HidOK(), NOT cvar("rec_hid"), so a run declined for want of
+  consent reports the same 0 as one declined by the switch. That is correct:
+  the question the server is asking is "will a journal exist for this run",
+  and both answers to it are no.
+*/
+void() Rec_HidReport =
+{
+	local float v;
+
+	v = Rec_HidOK() ? 1 : 0;
+	if (v == rec_rp_hidsent)
+		return;
+
+	rec_rp_hidsent = v;
+	localcmd(sprintf("setinfo rechid %g\n", v));
 };
 
 /*
@@ -580,14 +621,21 @@ void(float seg, float dur, float at) Rec_ViewStage =
 	}
 
 	/*
-	  The leg is (this run's TRACK, the STAGE's segment) -- not the run's own leg,
+	  The leg is (this run's TRACK, the STAGE's leg) -- not the run's own leg,
 	  which is `main`.  Rec_ViewPath decomposes RUNLEG for the whole-run sidecar
-	  and is reused rather than repeated: track*100 + startseg + 1 is spelled in
+	  and is reused rather than repeated: track*100 + leg + 1 is spelled in
 	  exactly one place on this side, and adding a second one here is how the two
-	  drift and orphan a file.  The +100 puts the stage's segment where RUNLEG's
-	  startseg goes, which for a main run is zero.
+	  drift and orphan a file.  The addition puts the stage's leg where RUNLEG's
+	  leg goes, which for a main run is zero.
+
+	  BUILD 57: seg + 1, AND THE +1 IS THE WHOLE STAGE.  STAT_FS_STAGESEG is still
+	  the 0-based SEGMENT that closed, and the server writes the slice under leg
+	  seg + 1 (FS_LegOf(seg, TRUE)) -- so stage 1, segment 0, has a folder of its
+	  own at last.  Adding the bare segment here would name the folder one stage
+	  early and orphan every sidecar, which is exactly the drift described above.
+	  Only a full run lifts stages, so the run's own leg under RUNLEG is 0.
 	*/
-	dst = Rec_ViewPath(getstatf(STAT_FS_RUNLEG) + seg, dur,
+	dst = Rec_ViewPath(getstatf(STAT_FS_RUNLEG) + seg + 1, dur,
 	                   FS_TagName(RT_PB), "view");
 
 	fh = fopen(dst, FILE_WRITE);
@@ -598,7 +646,7 @@ void(float seg, float dur, float at) Rec_ViewStage =
 		buf_writefile(fh, buf, 0, buf_getsize(buf));
 		fclose(fh);
 		dprint(sprintf("replay: wrote %s (%g frames of stage %g)\n",
-		               dst, frames, seg));
+		               dst, frames, seg + 1));
 	}
 
 	buf_del(buf);
@@ -1003,6 +1051,10 @@ void() Rec_ViewFrame =
 {
 	local float rec, flags;
 
+	// Build 58: unconditional and first, because the server has to have this
+	// before a run arms rather than when one does.  See Rec_HidReport.
+	Rec_HidReport();
+
 	flags = getstatf(STAT_FS_TIMERFLAGS);
 	rec = (flags & TF_RECORDING) ? TRUE : FALSE;
 
@@ -1128,6 +1180,12 @@ void() Rec_ViewInit =
 	rec_rp_wasrec = FALSE;
 	rec_rp_full   = FALSE;
 
+	// Build 58: -1, not 0 or 1.  CSQC_Init runs per map load, and a reconnect
+	// gives the server a fresh userinfo -- so the cache must start at a value
+	// no real answer can equal, or the first frame skips the send that would
+	// have repopulated it.  See Rec_HidReport.
+	rec_rp_hidsent = -1;
+
 	// -1 rather than 0: the stage counter is per-connection and never resets, so
 	// a client joining a session in progress must SEED from whatever it currently
 	// reads rather than treat it as a change.  See Rec_ViewStageEvents.
@@ -1154,6 +1212,10 @@ void() Rec_ViewInit =
 	  consulted at all when there is a cvar for it.
 	*/
 	rec_rp_consent = Rec_ConsentRead();
+	// Published for cl_hud.qc's submit banner, which compiles BEFORE this file
+	// and so cannot see rec_rp_consent.  Same value, one read; see the block
+	// above HUD_DrawSubmitWarn for why the banner may not rely on the cvar alone.
+	ui_consent_ver = rec_rp_consent;
 
 	/*
 	  The marks go with the buffer they were taken in.  They are line numbers

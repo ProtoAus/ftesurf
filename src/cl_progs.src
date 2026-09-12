@@ -68,6 +68,19 @@ client/cl_portal.qc
 // table and whose Timer_SplitsClass draws the same marks in both places, and
 // after cl_hud.qc for HUD_Text and the rect registry.  Build 48.
 client/cl_results.qc
+// AFTER cl_results.qc and cl_scores.qc, and before cl_hudedit.qc.  Build 57,
+// Stage T: the lobby time store -- the client half of "a lobby saves your times
+// on your own PC", because a lobby server keeps nothing and could not write to
+// this disk if it wanted to.
+//
+// It needs Scores_LastOf from cl_scores.qc (the <ticks>_<tag> filename parse is
+// the leaderboard's and there is no second copy of it), Results_LegName from
+// cl_results.qc so a print names the leg the card names, and Timer_Tick from
+// cl_timer.qc to format a time.  cl_results.qc in turn asks it for the lobby best
+// a finish was measured against -- the server zeroes TIMERPBWAS in a lobby -- so
+// that ONE function is forward-declared there, the same arrangement sv_zones.qc
+// has with the timer's SV_TimerChatLeg.  Nothing below this line is needed by it.
+client/cl_lobbytime.qc
 // LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
 // screen with a replay, the leaderboard or the results card, so it needs
 // rec_wt_open (cl_watch.qc) and ui_rs_cursor (cl_results.qc); it also consumes
@@ -85,9 +98,9 @@ client/cl_hudedit.qc
 // cl_zones.qc to draw a volume, and HUD_Text from cl_hud.qc -- but the binding
 // constraint is the CURSOR.  Releasing it means testing every other owner, and
 // the last of those to be declared is ui_he_open's neighbour in cl_hudedit.qc.
-// Its own flag, ui_ev_cursor, is declared up in cl_hud.qc for the mirror
-// reason: cl_hudedit.qc has to test it before letting the cursor go and
-// compiles before this file.  Same constraint, same solution, as build 47's
-// rec_sb_open and build 48's ui_rs_cursor.
+// Its own flag, ui_ev_cursor, is declared in cl_entview.qc itself: nothing that
+// compiles earlier reads it (cl_hudedit.qc does not test it -- the claim
+// register in cl_hud.qc absorbs the overlap), and its two readers, this file and
+// cl_main.qc, both follow.  Move it up only if an earlier file ever needs it.
 client/cl_entview.qc
 client/cl_main.qc

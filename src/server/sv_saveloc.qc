@@ -288,6 +288,17 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("state %g\n", e.run_t_state));
 	fputs(f, sprintf("track %g\n", e.run_t_track));
 	fputs(f, sprintf("startseg %g\n", e.run_t_startseg));
+	/*
+	  BUILD 57: WHETHER THIS IS A STAGE-ONLY RUN, because startseg no longer says.
+
+	  A stage-1 run and a full run both begin at segment 0, so `startseg 0` names
+	  two different legs now -- `main` and `stage_1` -- and a load that guessed would
+	  file a stage-1 attempt's finish under the whole map.  Additive, by this
+	  format's own rule: an older build skips the key, and a save written before it
+	  restores as `stagerun = (startseg > 0)`, which is exactly what those files
+	  meant, since nothing before build 57 could run stage 1 on its own.
+	*/
+	fputs(f, sprintf("stagerun %g\n", e.run_t_stagerun ? 1 : 0));
 	fputs(f, sprintf("seg %g\n", e.run_t_seg));
 	fputs(f, sprintf("segs %g\n", e.run_t_segs));
 	/*
@@ -543,6 +554,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
+	local float srun;               // build 57, a stage-only run; -1 = the key was absent
 	local float az, ez, am, cz, pa, cmx;
 	local float rpit, ryaw, rduck;
 	local vector rorg, rvel;
@@ -556,6 +568,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	ticks = elapsed = haveelapsed = mark = samples = padn = cps = serial = 0;
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
+	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
 	az = ez = am = cz = pa = -1;
 	cmx = 0;                        // a pre-19 save file has reached no checkpoint
@@ -578,6 +591,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "state")      { st  = stof(argv(1)); continue; }
 		if (k == "track")      { tr  = stof(argv(1)); continue; }
 		if (k == "startseg")   { ss  = stof(argv(1)); continue; }
+		if (k == "stagerun")   { srun = stof(argv(1)); continue; }
 		if (k == "seg")        { sg  = stof(argv(1)); continue; }
 		if (k == "segs")       { sgs = stof(argv(1)); continue; }
 		if (k == "ticks")      { ticks = stof(argv(1)); continue; }
@@ -665,6 +679,26 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	e.run_t_state    = st;
 	e.run_t_track    = tr;
 	e.run_t_startseg = ss;
+	/*
+	  BUILD 57: the leg, from the file where it says, and from startseg where it
+	  does not -- a pre-57 save cannot hold a stage-1 run, so startseg > 0 is
+	  exactly what "a stage run" meant when it was written.
+
+	  THE STAGE-1 REQUEST COMES BACK WITH IT, because this attempt may be ARMED in
+	  the START box.  The very next zone scan re-arms that zone idempotently, and
+	  SV_TimerArm re-derives run_t_stagerun from run_t_wantstage1 -- so restoring
+	  the leg without the request would quietly turn a saved stage-1 attempt into
+	  a full run one tick after the load.  It is set from the restored leg rather
+	  than left as it was, so loading a full run also ends a stage-1 request.
+	*/
+	if (srun < 0)
+		srun = (ss > 0);
+	e.run_t_stagerun   = srun ? TRUE : FALSE;
+	e.run_t_wantstage1 = FALSE;
+	if (e.run_t_stagerun)
+	if (ss == 0)
+	if (tr == 0)
+		e.run_t_wantstage1 = TRUE;
 	e.run_t_seg      = sg;
 	e.run_t_segs     = (sgs > 0) ? sgs : 1;
 	e.run_t_split    = spl;

@@ -47,8 +47,14 @@
 #define SB_MAXROW   256
 
 // The leg table, built from the zone tables on the first open per map.
+//
+// BUILD 57: rec_sb_legnum was rec_sb_legseg, and the rename is the fix rather
+// than tidiness.  It holds the LEG -- 0 the full run, k stage k -- which is what
+// FS_RunDir takes now.  It used to hold the 0-based SEGMENT a stage began at, so
+// "stage 1" on this board was really stage 2 and stage 1 had no row at all.  A
+// name that said `seg` over a value that is not one is how that would come back.
 float  rec_sb_legtrack[SB_MAXLEG];
-float  rec_sb_legseg[SB_MAXLEG];
+float  rec_sb_legnum[SB_MAXLEG];
 float  rec_sb_legn;
 string rec_sb_legmap;            // the map rec_sb_leg* describes; "" = none
 float  rec_sb_legzoned;          // it holds a strzone that has to be given back
@@ -354,42 +360,54 @@ void() Scores_BuildLegs =
 		if (rec_sb_legn < SB_MAXLEG)
 		{
 			rec_sb_legtrack[rec_sb_legn] = t;
-			rec_sb_legseg[rec_sb_legn]   = 0;     // the full run of this track
+			rec_sb_legnum[rec_sb_legn]   = 0;     // leg 0: the full run of this track
 			rec_sb_legn = rec_sb_legn + 1;
 		}
 
-		// Stages, and only when there is more than one: on a linear map "stage
-		// 1" IS the run, and a row for it would be the same leg twice.
+		/*
+		  Stages, and only when there is more than one: on a linear map "stage
+		  1" IS the run, and a row for it would be the same leg twice.
+
+		  BUILD 57: 1..segs INCLUSIVE, BY LEG.  This loop used to run the 0-based
+		  segments 1..segs-1 and hand them to FS_RunDir as if they were stages, so
+		  surf_eclipse's three stages drew as `stage 1` and `stage 2` -- which were
+		  really stages 2 and 3 -- and stage 1 had no row at all, because its
+		  segment is 0 and 0 was the full run.  A leg is the stage number now
+		  (FS_LegOf), so the rows and the folders are the stages a player counts.
+		*/
 		if (segs > 1)
-		for (s = 1; s < segs; s = s + 1)
+		for (s = 1; s <= segs; s = s + 1)
 			if (rec_sb_legn < SB_MAXLEG)
 			{
 				rec_sb_legtrack[rec_sb_legn] = t;
-				rec_sb_legseg[rec_sb_legn]   = s;
+				rec_sb_legnum[rec_sb_legn]   = s;     // leg s: stage s
 				rec_sb_legn = rec_sb_legn + 1;
 			}
 	}
 };
 
+// `leg` here is the ROW index into the table above; the leg NUMBER it names is
+// rec_sb_legnum[leg].  Build 57 made that number the stage itself, so the words
+// below are a straight read of it rather than an offset.
 string(float leg) Scores_LegName =
 {
-	local float t, s;
+	local float t, k;
 
 	if (leg < 0 || leg >= rec_sb_legn)
 		return "?";
 
 	t = rec_sb_legtrack[leg];
-	s = rec_sb_legseg[leg];
+	k = rec_sb_legnum[leg];
 
 	if (t <= 0)
 	{
-		if (s <= 0)
+		if (k <= 0)
 			return "main";
-		return sprintf("stage %g", s);
+		return sprintf("stage %g", k);
 	}
-	if (s <= 0)
+	if (k <= 0)
 		return sprintf("bonus %g", t);
-	return sprintf("bonus %g st %g", t, s);
+	return sprintf("bonus %g st %g", t, k);
 };
 
 /*
@@ -424,7 +442,7 @@ void(float leg) Scores_BuildRows =
 		return;
 
 	h = search_begin(strcat(FS_RunDir(serverkey("map"),
-	                                  rec_sb_legtrack[leg], rec_sb_legseg[leg]),
+	                                  rec_sb_legtrack[leg], rec_sb_legnum[leg]),
 	                        "*.rec"),
 	                 FS_NAMESORT, TRUE);
 	if (h < 0)
@@ -893,9 +911,22 @@ void(vector scr) Scores_Draw =
 			             rec_sb_szrow, sprintf("%g", idx + 1),
 			             SBC_DIM, on ? 1 : 0.35);
 
+			/*
+			  BUILD 57, STAGE T: A LOBBY TIME IS COLOURED, not just labelled.
+
+			  The word is in the TAG column below, which is the first column this
+			  board DROPS on a narrow window -- so on a 1280-wide screen the mark
+			  would disappear and a row with no replay behind it would look like
+			  every other row.  The time itself is never dropped, so the colour is
+			  the half of the mark that always survives.  Amber and not green: it
+			  is a real time set against real players, and it is also the one row
+			  here that cannot be watched.
+			*/
 			Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
 			            (ticks > 0) ? Time_TickString(ticks, tick) : "--:--.---",
-			            on ? SBC_TEXT : SBC_DIM, on ? 1 : 0.35);
+			            on ? ((rec_sb_rowtag[idx] == RT_LOBBY) ? SBC_WARN : SBC_TEXT)
+			               : SBC_DIM,
+			            on ? 1 : 0.35);
 
 			// The delta against the leg's fastest clean run.  The reference row
 			// itself says "best" rather than "+0.000", which is a number that
@@ -962,10 +993,20 @@ void(vector scr) Scores_Draw =
 			  same thing here: the newest of its kind, not a ranked archive
 			  entry.  So both get `latest` and neither repeats what KIND says.
 			*/
+			/*
+			  BUILD 57, STAGE T: and `lobby`, which is the one word in this column
+			  that changes what a CLICK does -- see the hand-off below.  Five
+			  characters, so SBW_TAG's seven still fit it.
+			*/
 			if (rec_sb_cols > SBX_TAG)
-			if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
-				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
-				            "latest", SBC_DIM, on ? 0.7 : 0.25);
+			{
+				if (rec_sb_rowtag[idx] == RT_LOBBY)
+					Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+					            "lobby", SBC_WARN, on ? 0.85 : 0.3);
+				else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
+					Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+					            "latest", SBC_DIM, on ? 0.7 : 0.25);
+			}
 		}
 		sui_list_view_end();
 	}
@@ -998,9 +1039,25 @@ void(vector scr) Scores_Draw =
 	*/
 	if (pick >= 0)
 	{
-		s = bufstr_get(rec_sb_bpath, pick);
-		Scores_Close();
-		Watch_Open(s);
+		/*
+		  BUILD 57, STAGE T -- A LOBBY ROW HAS NOTHING TO WATCH, AND IT SAYS SO.
+
+		  The recorder is off in a lobby, so the file behind that row is a header
+		  with `samples 0` and no movement at all.  Watch_Open would refuse it --
+		  "holds 0 samples -- nothing to play" -- but it would refuse it AFTER
+		  closing this board and claiming the cursor, which reads as the replay
+		  having broken rather than as there being no replay.  Refused here, where
+		  the reason is known, and the board stays up so the next click is
+		  somewhere useful.
+		*/
+		if (rec_sb_rowtag[pick] == RT_LOBBY)
+			print("^3scores:^7 that time was set on a lobby -- no replay\n");
+		else
+		{
+			s = bufstr_get(rec_sb_bpath, pick);
+			Scores_Close();
+			Watch_Open(s);
+		}
 	}
 };
 
@@ -1190,11 +1247,11 @@ float(string cmd) Scores_ConsoleCommand =
 			print(sprintf("scores: %g leg(s) derived from %g zone(s) on %s\n",
 			              rec_sb_legn, zone_count, serverkey("map")));
 			for (i = 0; i < rec_sb_legn; i = i + 1)
-				print(sprintf("  %2g  track %g seg %g  \"%s\"  %s\n",
-				              i + 1, rec_sb_legtrack[i], rec_sb_legseg[i],
+				print(sprintf("  %2g  track %g leg %g  \"%s\"  %s\n",
+				              i + 1, rec_sb_legtrack[i], rec_sb_legnum[i],
 				              Scores_LegName(i),
 				              FS_RunDir(serverkey("map"), rec_sb_legtrack[i],
-				                        rec_sb_legseg[i])));
+				                        rec_sb_legnum[i])));
 			return TRUE;
 		}
 		else if (argv(1) == "watch")
@@ -1203,8 +1260,16 @@ float(string cmd) Scores_ConsoleCommand =
 			if (stof(argv(2)) >= 1)
 			if (stof(argv(2)) <= rec_sb_rown)
 			{
-				Scores_Close();
-				Watch_Open(bufstr_get(rec_sb_bpath, stof(argv(2)) - 1));
+				// Build 57, stage T: the same refusal the click gets, because a
+				// console handle that opened a file the mouse will not is a handle
+				// that cannot be used to check the mouse.
+				if (rec_sb_rowtag[stof(argv(2)) - 1] == RT_LOBBY)
+					print("^3scores:^7 that time was set on a lobby -- no replay\n");
+				else
+				{
+					Scores_Close();
+					Watch_Open(bufstr_get(rec_sb_bpath, stof(argv(2)) - 1));
+				}
 			}
 			return TRUE;
 		}

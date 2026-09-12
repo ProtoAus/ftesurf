@@ -42,10 +42,22 @@
 ===========================================================================
 */
 
-// Three, because three is what fits above the map list without pushing the
-// list itself off the bottom at 1280x720.  The directory may return more; the
-// extra rows are dropped here rather than drawn somewhere unreachable.
-#define LB_MAX 3
+/*
+  FIVE, because that is how many lobbies there are: surf tiers 1-3 on
+  27510/27520/27530 and bhop easy and hard on 27540/27550 (cfg/lobby1..5.cfg).
+
+  It was three, "because three is what fits above the map list without pushing
+  the list itself off the bottom at 1280x720".  That was true while the lobbies
+  were stacked a row each, and stopped being true when Patch 287 put them side
+  by side: one row of cells costs the list one ROW_H whether it holds three or
+  five.  What five costs instead is WIDTH, and m_main.qc's create panel widens
+  to 1400 to pay it -- see the essay over the cells in screen_create.
+
+  The directory may return more.  Lob_Parse keeps the five with the LOWEST
+  PORTS, so the extras are dropped here rather than drawn somewhere
+  unreachable, and which five are shown does not change as players move.
+*/
+#define LB_MAX 5
 
 /*
   Parallel strbufs, the same shape the map list itself uses (ms_name / ms_src /
@@ -215,6 +227,39 @@ float(float i)   Lob_Players = { return stof(bufstr_get(lb_playv, i)); };
 float(float i)   Lob_Max     = { return stof(bufstr_get(lb_maxv,  i)); };
 
 /*
+  The lobby's name as a cell can afford to draw it.  Build 57.
+
+  lb_name was fetched from the first poll and never drawn: the cells showed the
+  map, so five lobbies on the same map were five identical cells.  Every lobby
+  this project runs is called "FTESurf -- <what it is>" (the hostname line in
+  cfg/lobby1..5.cfg), so in a row of five the first eleven characters would say
+  the same thing five times, in the ~140 px a cell has for text at 1280 wide.
+
+  Stripped ONLY when the name starts with exactly that, case aside: a lobby
+  somebody else runs keeps its name whole, because there is no other way to
+  tell it from ours.  surfd fills an empty hostname with the node id before it
+  publishes one, so the address fallback is for a directory that does not.
+*/
+#define LB_NAME_PREFIX "ftesurf -- "
+
+string(float i) Lob_Title =
+{
+	local string s;
+	local float n, pl;
+
+	s  = bufstr_get(lb_name, i);
+	n  = strlen(s);
+	pl = strlen(LB_NAME_PREFIX);
+	if (n > pl)
+		if (strtolower(substring(s, 0, pl)) == LB_NAME_PREFIX)
+			s = substring(s, pl, n - pl);
+
+	if (s == "")
+		s = bufstr_get(lb_addr, i);
+	return s;
+};
+
+/*
   The map-list index for a lobby's map, cached by the drawer.
 
   -2 means "not looked up yet", -1 means "looked up, not installed here".  The
@@ -266,7 +311,7 @@ float() Lob_Blocked =
 
   SO IT CANNOT HAVE WORKED ONCE THE LIST WAS EVER NON-EMPTY.  The first poll of
   a session clears nothing (used is 0, the loop does not run) and populates
-  three rows; the SECOND poll, lobby_poll seconds later, hangs.  That is why it
+  the rows; the SECOND poll, lobby_poll seconds later, hangs.  That is why it
   reads as "open the picker, wait a bit, crash" rather than as a bad reply --
   the reply was fine, and Lob_Parse never got to look at it.
 
@@ -310,12 +355,68 @@ void() Lob_Clear =
 
   json_free is called on the ROOT only -- that is the documented rule, the
   builtin is PF_memfree underneath, and freeing a child would be a double free.
+
+  SORTED BY PORT, build 57, and the directory's own order is thrown away on
+  purpose.  surfd lists lobbies busiest first, which is a fine order for a list
+  somebody reads top to bottom and a bad one for five cells in a row: every
+  time a player joined one lobby, the cells would swap places under the cursor
+  between two polls, and a click aimed at "tier 2" would land on whichever
+  lobby had just slid into that slot.  The port is fixed per lobby
+  (27510..27550 is tier 1..bhop hard), so ordering by it pins every lobby to
+  one cell for as long as it is up.
+
+  INSERTED IN PLACE, not collected and sorted afterwards.  The buffers are
+  index-addressed and lb_count is the only authority on how many rows exist
+  (see Lob_Clear), so a row goes straight to the slot it will be read from and
+  the rows above it move down one with bufstr_set.  At five rows that is at
+  most four copies a row, once per poll.  When all five are held, a row with a
+  lower port pushes the highest one out, so the set kept is the five lowest
+  ports rather than the first five the directory happened to send -- which
+  would otherwise be the five busiest, and change as people moved.
 */
+
+// Sorts after every real port, so a row with no parseable port is the first
+// to be dropped when there are more rows than cells.
+#define LB_PORT_NONE 65536
+
+/*
+  The port half of "host:port", or LB_PORT_NONE.
+
+  FIRST colon, for the reason ui_host_of in m_main.qc gives: bracketed IPv6 is
+  refused on both sides, so a colon is always the port separator.  That function
+  cannot be called from here -- m_main.qc compiles after this file -- so this is
+  the port-side twin rather than a second copy of the host side.
+*/
+float(string a) Lob_PortOf =
+{
+	local float p, v;
+
+	p = strstrofs(a, ":");
+	if (p < 0)
+		return LB_PORT_NONE;
+	v = stof(substring(a, p + 1, strlen(a) - p - 1));
+	if (v < 1 || v > 65535)
+		return LB_PORT_NONE;
+	return v;
+};
+
+// One row of every lb_ buffer, copied.  All six, so a buffer added later
+// without a line here is the only way a moved row can arrive half-moved.
+void(float from, float to) Lob_CopyRow =
+{
+	bufstr_set(lb_map,   to, bufstr_get(lb_map,   from));
+	bufstr_set(lb_addr,  to, bufstr_get(lb_addr,  from));
+	bufstr_set(lb_name,  to, bufstr_get(lb_name,  from));
+	bufstr_set(lb_playv, to, bufstr_get(lb_playv, from));
+	bufstr_set(lb_maxv,  to, bufstr_get(lb_maxv,  from));
+	bufstr_set(lb_roww,  to, bufstr_get(lb_roww,  from));
+};
+
 void(string body) Lob_Parse =
 {
 	local int root, arr, o;
-	local float n, i;
-	local string m;
+	local float n, i, k, at, port;
+	local string m, ad;
 
 	Lob_Clear();
 
@@ -332,7 +433,9 @@ void(string body) Lob_Parse =
 	arr = json_find_object_child(root, "lobbies");
 	n   = json_get_length(arr);
 
-	for (i = 0; i < n && lb_count < LB_MAX; i = i + 1)
+	// Every row is looked at, not the first LB_MAX: a sixth row may have a
+	// lower port than one already held, and that one is kept instead.
+	for (i = 0; i < n; i = i + 1)
 	{
 		o = json_get_child_at_index(arr, i);
 
@@ -340,8 +443,36 @@ void(string body) Lob_Parse =
 		if (m == "")
 			continue;               // a row with no map is not drawable
 
+		ad   = json_get_string(json_find_object_child(o, "addr"));
+		port = Lob_PortOf(ad);
+
+		// The slot: below every held row whose port is no higher than this
+		// one's, so two rows on one port keep the directory's order.  An
+		// explicit break rather than a compound while(): QC does not promise
+		// to short-circuit &&, and the second half would read row -1.
+		at = lb_count;
+		while (at > 0)
+		{
+			if (Lob_PortOf(bufstr_get(lb_addr, at - 1)) <= port)
+				break;
+			at = at - 1;
+		}
+		if (at >= LB_MAX)
+			continue;               // higher than all five held rows
+
+		// Open the slot from the bottom up.  When all five are held, start one
+		// row higher, so the row that falls off the end is the highest port.
+		k = lb_count;
+		if (k >= LB_MAX)
+			k = LB_MAX - 1;
+		while (k > at)
+		{
+			Lob_CopyRow(k - 1, k);
+			k = k - 1;
+		}
+
 		/*
-		  bufstr_SET at lb_count, not bufstr_add(..., TRUE).
+		  bufstr_SET at the slot, not bufstr_add(..., TRUE).
 
 		  The second half of the Lob_Clear bug, and it would have outlived the
 		  fix: `order` true means "append at used" (PF_bufstr_add_internal,
@@ -352,16 +483,20 @@ void(string body) Lob_Parse =
 		  first poll of the session happened to say, and gone on looking live.
 
 		  Index-addressed, so a row always lands where it will be read from, and
-		  the count and the storage cannot drift apart.
+		  the count and the storage cannot drift apart.  Build 57's port order
+		  depends on exactly that: the slot is chosen above, and nothing here
+		  appends.
 		*/
-		bufstr_set(lb_map,   lb_count, m);
-		bufstr_set(lb_addr,  lb_count, json_get_string(json_find_object_child(o, "addr")));
-		bufstr_set(lb_name,  lb_count, json_get_string(json_find_object_child(o, "name")));
-		bufstr_set(lb_playv, lb_count, ftos(json_get_float(json_find_object_child(o, "players"))));
-		bufstr_set(lb_maxv,  lb_count, ftos(json_get_float(json_find_object_child(o, "max"))));
-		bufstr_set(lb_roww,  lb_count, "-2");   // unresolved; see Lob_Row
+		bufstr_set(lb_map,   at, m);
+		bufstr_set(lb_addr,  at, ad);
+		bufstr_set(lb_name,  at, json_get_string(json_find_object_child(o, "name")));
+		bufstr_set(lb_playv, at, ftos(json_get_float(json_find_object_child(o, "players"))));
+		bufstr_set(lb_maxv,  at, ftos(json_get_float(json_find_object_child(o, "max"))));
+		bufstr_set(lb_roww,  at, "-2");   // unresolved; see Lob_Row
 
-		lb_count = lb_count + 1;
+		// A full list stays full: the insert above pushed its highest row out.
+		if (lb_count < LB_MAX)
+			lb_count = lb_count + 1;
 	}
 
 	json_free(root);

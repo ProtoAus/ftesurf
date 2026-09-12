@@ -15,10 +15,15 @@
   The partition is a fact about the SERVER's control flow, not a guess up here.
   Only SV_TimerFinish sets TS_FINISHED, and a stage boundary during a full
   track run goes through SV_TimerSplit, which does not touch the state at all.
-  A deliberate stage run (run_t_startseg > 0) reaches SV_TimerFinish at the
-  NEXT boundary -- so "big card for a leg you chose, toast for a stage you flew
+  A deliberate stage run (run_t_stagerun) reaches SV_TimerFinish at the NEXT
+  boundary -- so "big card for a leg you chose, toast for a stage you flew
   through" already is the shape of the code, and this file only has to not
   fight it.
+
+  BUILD 57: LEGS ARE 1-BASED STAGES NOW, AND SEGMENTS ARE NOT.  RUNLEG decodes to
+  a LEG -- 0 the full run, k stage k -- so a stage-1 run (`!s 1`) gets the card
+  like any other stage, and the toast for a stage you flew through is named and
+  ranked as seg + 1, because STAT_FS_STAGEENDSEG is still a segment.
 
   NOTHING HERE OWNS RUN STATE.  Everything drawn comes from stats the server
   already publishes and from ui_sp_* in cl_timer.qc, which has held the split
@@ -53,6 +58,25 @@
 // the same arrangement Scores_Close and Scores_Status have in cl_scores.qc.
 void() Results_MapInit;
 
+/*
+  BUILD 57, STAGE T: the fastest lobby time already on a leg, in ticks.
+
+  Defined in client/cl_lobbytime.qc, which compiles AFTER this file -- the same
+  arrangement sv_zones.qc has with the timer's SV_TimerChatLeg, and for the same
+  reason: that file needs Results_LegName from here, so one of the two directions
+  has to be a declaration.  This is the cheaper one, because it is ONE function.
+
+  The card needs it because the server ZEROES the personal best in a lobby:
+  SV_PBGet refuses to read the host's table (Lobby_NoPB), so STAT_FS_TIMERPBWAS
+  arrives as 0 and the delta the card exists to draw would never appear.  The
+  lobby files on this disk are the only record of what the run was measured
+  against.
+
+  `mine` is "ignore a file stamped with this time", which is what keeps a card
+  REOPENED with `results` from comparing the run against the file it just wrote.
+*/
+float(string map, float track, float leg, float mine) LT_BestOnLeg;
+
 string ui_rs_map;               // the map the state below describes
 float  ui_rs_open;              // the card is up
 float  ui_rs_cursor;            // ...and it has asked for the mouse
@@ -65,6 +89,14 @@ float  ui_rs_flags;
 float  ui_rs_pb;                // the pb this run was measured AGAINST
 float  ui_rs_tag;               // RT_*
 float  ui_rs_track;
+/*
+  BUILD 57: TWO NUMBERS WHERE THERE WAS ONE.  ui_rs_leg is what the card is
+  about -- 0 the full run, k stage k -- and it is what the rank and the label
+  read.  ui_rs_startseg is kept as the SEGMENT that leg began at (leg - 1, or 0
+  for a full run), because cl_main.qc's `timer` verification print reads it by
+  name and a stage-1 run and a full run now share the value 0 there.
+*/
+float  ui_rs_leg;
 float  ui_rs_startseg;
 float  ui_rs_rank;              // 0 = unknown / no archive
 float  ui_rs_of;
@@ -72,6 +104,19 @@ float  ui_rs_of;
 // The finish edge.  Two of them OR'd -- see Results_Frame.
 float  ui_rs_laststate;
 float  ui_rs_lasttag;
+
+/*
+  BUILD 57, STAGE T: THE THIRD FINISH EDGE, and in a lobby it is the only one
+  that ever fires.
+
+  Neither of the two above can work there.  RUNTAG is published by SV_RecClose,
+  which a lobby never reaches -- the recorder is off, so there is no buffer to
+  close -- and TS_FINISHED can be skipped outright, because run_t_pendarm re-arms
+  a chained stage run inside the same server frame and the engine deltas a stat
+  against the last value it SENT.  STAT_FS_FINREC is a counter bumped by every
+  SV_TimerFinish for exactly that reason; -1 seeds it, as the toast's latch does.
+*/
+float  ui_rs_lastfinrec;
 
 /*
   BUILD 51: THIS WAS CALLED ui_rs_armed AND THAT NAME WAS ALREADY TAKEN.
@@ -118,6 +163,11 @@ float  ui_rs_seen;              // a run has been seen RUNNING since the last ca
 // toast on screen is about.  Two different things -- the stat moves on to the
 // next stage while the toast is still fading, so what is drawn has to be
 // latched rather than re-read.
+//
+// BUILD 57: ui_rs_toastseg holds the STAGE -- the leg, segment + 1 -- whatever its
+// name says.  It keeps the name because cl_main.qc's `timer` verification print
+// reads it, and that file is not this build's to edit.
+
 float  ui_rs_lastendrec;        // last STAT_FS_STAGEENDREC seen; -1 = seeding
 float  ui_rs_toastat;           // cltime it landed; 0 = none
 float  ui_rs_toastseg;
@@ -195,6 +245,13 @@ void() Results_RegisterCvars =
   The unstamped tags (last, cheat) carry no time in the name and cannot be
   ranked even in principle.
 
+  BUILD 57, STAGE T: AND RT_LOBBY, which is clean by the same construction.  Its
+  writer refuses a practice or shadow finish and files a stage only on the
+  server's own SF_QUALIFIES, so a lobby file on a leg is an earned time -- and in
+  a lobby it is the ONLY file there is, because the server keeps nothing.  Left
+  out, the card's rank row would read "no local archive yet" on every lobby
+  finish, on a leg whose whole archive this build just wrote.
+
   STRICTLY FASTER, so the run just written cannot outrank itself if it is
   already on disk, and cannot be missed if it is not.  The `of` count is the
   softer number and it does wobble by one depending on whether the server has
@@ -205,7 +262,7 @@ void() Results_RegisterCvars =
   archive to rank against", which is a different sentence from rank 1 and the
   card draws it differently.
 */
-void(float track, float startseg, float ticks,
+void(float track, float leg, float ticks,
      __inout float rank, __inout float of) Results_Rank =
 {
 	local float h, n, i, cut, dot, us, t, faster, total;
@@ -217,7 +274,8 @@ void(float track, float startseg, float ticks,
 	if (!cvar("hud_results_rank"))
 		return;
 
-	h = search_begin(strcat(FS_RunDir(serverkey("map"), track, startseg), "*.rec"),
+	// BUILD 57: a LEG (0 the full run, k stage k), which is what FS_RunDir takes.
+	h = search_begin(strcat(FS_RunDir(serverkey("map"), track, leg), "*.rec"),
 	                 FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;                 // no such directory: the first run on this leg
@@ -245,6 +303,7 @@ void(float track, float startseg, float ticks,
 		tagw = substring(base, us + 1, strlen(base) - us - 1);
 		if (FS_TagFromName(tagw) != RT_PB)
 		if (FS_TagFromName(tagw) != RT_RUN)
+		if (FS_TagFromName(tagw) != RT_LOBBY)   // build 57, stage T
 			continue;
 
 		t = stof(substring(base, 0, us));
@@ -257,8 +316,29 @@ void(float track, float startseg, float ticks,
 	}
 	search_end(h);
 
+	/*
+	  BUILD 57, STAGE T: AN EMPTY FOLDER IS RANK 1 OF 1 IN A LOBBY, not "no
+	  archive".  cl_main.qc runs Results_Frame before LT_Frame -- deliberately,
+	  so the card can read what the run was measured against before this run's
+	  file joins it -- so on the FIRST lobby time for a leg this scan runs one
+	  call before the file exists.  Left as a bare return the card drew
+	  "--  no local archive yet" while the console printed "main saved" about the
+	  same finish: two statements about one time, contradicting each other, on the
+	  one finish a player is most likely to be reading.
+
+	  It is rank 1 of 1 by construction: the write that follows IS the whole
+	  archive for that leg.  Off a lobby nothing changed -- the server has already
+	  written its file by the time this runs, so total > 0 there.
+	*/
 	if (total <= 0)
+	{
+		if ((getstatf(STAT_FS_LOBBY) & LS_LOBBY) && ticks > 0)
+		{
+			rank = 1;
+			of   = 1;
+		}
 		return;                 // nothing archived yet; rank stays 0
+	}
 
 	// +1 for this run itself, which may or may not be on disk yet.  Counting
 	// strictly-faster names and adding one is right either way.
@@ -275,16 +355,20 @@ void(float track, float startseg, float ticks,
   that is a directory name, and a directory name is the one thing a player
   should never be shown.  Same fact, two audiences, and the project already
   keeps those apart everywhere else.
+
+  BUILD 57: BY LEG, and the words did not change -- the number under them did.
+  `startseg` was the 0-based segment, so this card said "stage 2" about a stage-3
+  run and could never say "stage 1".  A leg IS the stage number (FS_LegOf).
 */
-string(float track, float startseg) Results_LegName =
+string(float track, float leg) Results_LegName =
 {
 	if (track <= 0)
 	{
-		if (startseg <= 0) return "main";
-		return sprintf("stage %g", startseg);
+		if (leg <= 0) return "main";
+		return sprintf("stage %g", leg);
 	}
-	if (startseg <= 0) return sprintf("bonus %g", track);
-	return sprintf("bonus %g, stage %g", track, startseg);
+	if (leg <= 0) return sprintf("bonus %g", track);
+	return sprintf("bonus %g, stage %g", track, leg);
 };
 
 void() Results_Close =
@@ -341,14 +425,61 @@ void() Results_TakeCursor =
 */
 void() Results_Open =
 {
-	local float leg;
+	local float leg, lobby;
 
-	ui_rs_ticks = getstatf(STAT_FS_RUNTICKS);
-	if (ui_rs_ticks <= 0)
-		ui_rs_ticks = getstatf(STAT_FS_TIMERTICKS);
+	/*
+	  BUILD 57, STAGE T -- IN A LOBBY THE CARD IS DRAWN FROM A DIFFERENT SET OF
+	  STATS, because the usual three are never published there.
 
-	ui_rs_flags = getstatf(STAT_FS_TIMERFLAGS);
-	ui_rs_tag   = getstatf(STAT_FS_RUNTAG);
+	  RUNTICKS, RUNTAG and RUNLEG are all written by SV_RecClose, and a lobby
+	  switches the recorder off -- so this function used to open a card reading
+	  0:00.000 on the main leg of whatever track the player happened to be on.
+	  FINTICKS / FINFLAGS / FINLEG are the same three facts, published by
+	  SV_TimerFinish itself and standing until the next finish, which is what lets
+	  `results` reopen the card later.
+	*/
+	// BUILD 57: LS_LOBBY, masked -- the stat carries three bits now and the
+	// question here is only "is this a lobby", because what is missing on one
+	// (RUNTICKS/RUNTAG/RUNLEG) is missing whatever its keeping cvars say.
+	lobby = getstatf(STAT_FS_LOBBY) & LS_LOBBY;
+
+	if (lobby)
+	{
+		ui_rs_ticks = getstatf(STAT_FS_FINTICKS);
+		ui_rs_flags = getstatf(STAT_FS_FINFLAGS);
+
+		/*
+		  BUILD 57: NOTHING TO SHOW IS NOT A CARD.  Off a lobby this branch falls
+		  back to the live clock, which is why `results` before a finish shows the
+		  attempt in progress; in a lobby there is no such fallback -- FINTICKS is
+		  0 until the first finish -- so a bare `results` drew 0:00.000 on `main`,
+		  class clean, "first".  Every one of those is false.  Refuse instead, and
+		  say which of the two it is, because "no finish yet" and "the card is
+		  switched off" look identical from the console.
+		*/
+		if (ui_rs_ticks <= 0)
+		{
+			print("^3results:^7 no finish on this map yet -- nothing to show\n");
+			return;
+		}
+	}
+	else
+	{
+		ui_rs_ticks = getstatf(STAT_FS_RUNTICKS);
+		if (ui_rs_ticks <= 0)
+			ui_rs_ticks = getstatf(STAT_FS_TIMERTICKS);
+
+		ui_rs_flags = getstatf(STAT_FS_TIMERFLAGS);
+	}
+
+	/*
+	  READ THE SAME WAY IN BOTH CASES, and in a lobby it is RT_NONE -- which is
+	  true rather than missing: the server kept no file for this run, and the one
+	  this client writes is not the server's answer to give.  Nothing on the card
+	  draws from it (cl_main.qc's `timer` verification print is its only reader),
+	  so an invented tag here would be a lie with no upside.
+	*/
+	ui_rs_tag = getstatf(STAT_FS_RUNTAG);
 
 	/*
 	  THE PB THE RUN WAS MEASURED AGAINST, and not STAT_FS_TIMERPB.
@@ -361,20 +492,44 @@ void() Results_Open =
 	*/
 	ui_rs_pb = getstatf(STAT_FS_TIMERPBWAS);
 
-	leg = getstatf(STAT_FS_RUNLEG);
+	// RUNLEG is track*100 + leg + 1 (sh_defs.qc).  BUILD 57: a LEG, so a stage-1
+	// run decodes to 1 and gets its own name and its own rank, where it used to
+	// decode to 0 and be ranked against the whole map.  STAGE T: FINLEG carries
+	// the identical encoding, so the decode below is shared rather than repeated.
+	leg = lobby ? getstatf(STAT_FS_FINLEG) : getstatf(STAT_FS_RUNLEG);
 	if (leg >= 1)
 	{
 		leg = leg - 1;
-		ui_rs_track    = floor(leg / 100);
-		ui_rs_startseg = leg - ui_rs_track * 100;
+		ui_rs_track = floor(leg / 100);
+		ui_rs_leg   = leg - ui_rs_track * 100;
 	}
 	else
 	{
-		ui_rs_track    = getstatf(STAT_FS_TIMERTRACK);
-		ui_rs_startseg = 0;
+		ui_rs_track = getstatf(STAT_FS_TIMERTRACK);
+		ui_rs_leg   = 0;
 	}
+	ui_rs_startseg = (ui_rs_leg > 0) ? ui_rs_leg - 1 : 0;
 
-	Results_Rank(ui_rs_track, ui_rs_startseg, ui_rs_ticks,
+	/*
+	  BUILD 57, STAGE T -- "PERSONAL BEST BY" AND "FIRST" IN A LOBBY COME FROM
+	  THIS DISK, because the server's answer there is deliberately zero.
+
+	  SV_PBGet refuses to read the host's table in a lobby (Lobby_NoPB, whose
+	  essay is about showing a stranger's time as yours), so TIMERPBWAS arrives as
+	  0 and the card would say "first" on every attempt for ever.  The lobby files
+	  ARE the record, so they are what this is measured against.
+
+	  THE ORDER WITH cl_lobbytime.qc IS LOAD-BEARING: cl_main.qc calls
+	  Results_Frame() and then LT_Frame(), so this read happens before this run's
+	  own file exists.  `ui_rs_ticks` is passed as the file to ignore anyway, which
+	  is what keeps a card reopened by `results` from comparing the run against
+	  itself.
+	*/
+	if (lobby)
+		ui_rs_pb = LT_BestOnLeg(serverkey("map"), ui_rs_track, ui_rs_leg,
+		                        ui_rs_ticks);
+
+	Results_Rank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
 	             ui_rs_rank, ui_rs_of);
 
 	ui_rs_open   = TRUE;
@@ -394,7 +549,8 @@ void() Results_Open =
 */
 void() Results_Frame =
 {
-	local float state, tag, endrec, seg, startseg, leg;
+	local float state, tag, endrec, seg, leg, fresh;
+	local float finrec, finfresh;   // build 57, stage T: the lobby's finish edge
 
 	/*
 	  A map change retires everything here -- the card describes a leg on a map
@@ -415,6 +571,19 @@ void() Results_Frame =
 	state = getstatf(STAT_FS_TIMERSTATE);
 	tag   = getstatf(STAT_FS_RUNTAG);
 
+	/*
+	  BUILD 57, STAGE T: the finish counter, latched here -- above everything that
+	  can open or close a card, and with no return between.  Consuming an edge is
+	  one question and deciding to draw is another; that is the same defect this
+	  build fixed for the toast latch below.
+	*/
+	finrec   = getstatf(STAT_FS_FINREC);
+	finfresh = FALSE;
+	if (ui_rs_lastfinrec >= 0)          // -1 seeds: the first value is not an event
+	if (finrec > ui_rs_lastfinrec)
+		finfresh = TRUE;
+	ui_rs_lastfinrec = finrec;
+
 	if (state == TS_RUNNING)
 	{
 		ui_rs_seen = TRUE;
@@ -425,11 +594,27 @@ void() Results_Frame =
 		ui_rs_toastat = 0;
 	}
 
-	// Edge one: the state.  Edge two: the tag leaving RT_NONE.
-	if (ui_rs_seen)
-	if ((state == TS_FINISHED && ui_rs_laststate != TS_FINISHED)
-	 || (tag != RT_NONE && ui_rs_lasttag == RT_NONE))
-		Results_Open();
+	/*
+	  Edge one: the state.  Edge two: the tag leaving RT_NONE.
+
+	  BUILD 57, STAGE T -- EDGE THREE REPLACES BOTH IN A LOBBY, and it is an
+	  either/or rather than a third term OR'd in.  Neither of the first two can
+	  fire there (see ui_rs_lastfinrec), and this one needs no ui_rs_seen arm: a
+	  counter cannot re-fire on a value it has already consumed, which is the
+	  whole reason the server publishes one.  The TS_RUNNING block above still
+	  retires the card when the next attempt starts.
+	*/
+	if (getstatf(STAT_FS_LOBBY) & LS_LOBBY)
+	{
+		if (finfresh)
+			Results_Open();
+	}
+	else if (ui_rs_seen)
+	{
+		if ((state == TS_FINISHED && ui_rs_laststate != TS_FINISHED)
+		 || (tag != RT_NONE && ui_rs_lasttag == RT_NONE))
+			Results_Open();
+	}
 
 	ui_rs_laststate = state;
 	ui_rs_lasttag   = tag;
@@ -442,53 +627,85 @@ void() Results_Frame =
 
 	  A DELIBERATE STAGE RUN GETS NO TOAST.  Its boundary IS its finish and the
 	  card has just covered it -- which the `ui_rs_open` test below happens to
-	  cover as well, but the startseg test says why rather than relying on the
-	  order two latches ran in.
+	  cover as well, but the leg test says why rather than relying on the order
+	  two latches ran in.
+
+	  BUILD 57: THE EDGE IS LATCHED FIRST, ABOVE EVERY RETURN, and that is a
+	  defect fix.  The latch used to sit at the bottom, past three returns --
+	  the cvar, `state != TS_RUNNING` and the stage-run test -- so a close that
+	  arrived on a frame that returned early was never consumed.  A stage run's
+	  close is raised on its FINISH frame, which is exactly such a frame, and it
+	  then sat unread until the next run went RUNNING and popped a toast about
+	  the attempt before.  Consuming the counter is one question and deciding
+	  to draw is another; only the second may be skipped.
 	*/
+	endrec = getstatf(STAT_FS_STAGEENDREC);
+	fresh  = FALSE;
+	if (ui_rs_lastendrec >= 0)          // -1 seeds: the first value is not an event
+	if (endrec > ui_rs_lastendrec)
+		fresh = TRUE;
+	ui_rs_lastendrec = endrec;
+
+	if (!fresh)
+		return;
+
+	/*
+	  BUILD 57, STAGE T: IN A LOBBY THE CARD RAISED THIS FRAME OWNS THE ENDING,
+	  and the leg test below cannot say so there.
+
+	  That test reads STAT_FS_RUNLEG, which only SV_RecOpen and SV_RecRewind ever
+	  write -- and a lobby switches the recorder off, so RUNLEG is 0 for the whole
+	  session and "a stage run: the card owns its ending" is dead in exactly the
+	  place this build added a card.  The finish counter is the one signal that
+	  still fires there, so it is what the refusal hangs on: if this frame opened a
+	  card, no toast.  That keeps the promise the header makes -- the toast is
+	  raised at the bottom and ONLY if the card was not.
+	*/
+	if (finfresh)
+		return;
+
 	if (!cvar("hud_results_toast"))
 		return;
 	if (state != TS_RUNNING)
 		return;
 
+	// RUNLEG is track*100 + leg + 1.  BUILD 57: a LEG, so a stage-1 run -- which
+	// begins at segment 0 exactly as a full run does -- is still a stage run here.
 	leg = getstatf(STAT_FS_RUNLEG);
-	startseg = 0;
 	if (leg >= 1)
 	{
 		leg = leg - 1;
-		startseg = leg - floor(leg / 100) * 100;
+		leg = leg - floor(leg / 100) * 100;
 	}
-	if (startseg > 0)
+	else
+		leg = 0;
+	if (leg > 0)
 		return;                 // a stage run: the card owns its ending
 
-	endrec = getstatf(STAT_FS_STAGEENDREC);
-	if (endrec == ui_rs_lastendrec)
-		return;
-	if (ui_rs_lastendrec < 0)
-	{
-		ui_rs_lastendrec = endrec;      // seed, not an event
-		return;
-	}
-	if (endrec > ui_rs_lastendrec)
-	{
-		ui_rs_toastword  = getstatf(STAT_FS_STAGEENDST);
-		ui_rs_toastticks = getstatf(STAT_FS_STAGEENDTICKS);
-		seg              = getstatf(STAT_FS_STAGEENDSEG);
+	ui_rs_toastword  = getstatf(STAT_FS_STAGEENDST);
+	ui_rs_toastticks = getstatf(STAT_FS_STAGEENDTICKS);
+	seg              = getstatf(STAT_FS_STAGEENDSEG);
 
-		/*
-		  Only for a stage that actually closed with a duration.  A refused close
-		  still bumps the counter -- it has to, or the class mark would miss the
-		  very rows it is about -- but a toast saying "stage 3: 0:00.000" is
-		  noise, and the mark down the left already carried the refusal.
-		*/
-		if (ui_rs_toastticks > 0 && seg > 0)
-		{
-			ui_rs_toastat  = cltime;
-			ui_rs_toastseg = seg;       // latched: the stat moves on, the toast does not
-			Results_Rank(getstatf(STAT_FS_TIMERTRACK), seg, ui_rs_toastticks,
-			             ui_rs_toastrank, ui_rs_toastof);
-		}
+	/*
+	  Only for a stage that actually closed with a duration.  A refused close
+	  still bumps the counter -- it has to, or the class mark would miss the
+	  very rows it is about -- but a toast saying "stage 3: 0:00.000" is
+	  noise, and the mark down the left already carried the refusal.
+
+	  BUILD 57: SEGMENT 0 IS A STAGE, so the `seg > 0` half of this test is gone
+	  and stage 1 gets its toast at the stage-2 boundary like every other stage.
+	  `seg >= 0` stays: -1 is "no stage was open", which has no leg to name.  The
+	  stat is a SEGMENT and the toast is about a LEG, so both the label and the
+	  rank take seg + 1 -- the same FS_LegOf(seg, TRUE) the server filed it under.
+	*/
+	if (ui_rs_toastticks > 0)
+	if (seg >= 0)
+	{
+		ui_rs_toastat  = cltime;
+		ui_rs_toastseg = FS_LegOf(seg, TRUE);   // latched: the stat moves on, the toast does not
+		Results_Rank(getstatf(STAT_FS_TIMERTRACK), ui_rs_toastseg, ui_rs_toastticks,
+		             ui_rs_toastrank, ui_rs_toastof);
 	}
-	ui_rs_lastendrec = endrec;
 };
 
 /*
@@ -618,7 +835,7 @@ void(vector scr) Results_Draw =
 	HUD_Text([p_x + 10 * ui_cv_scale, y],
 	         sprintf("%s  -  %s  -  %s",
 	                 serverkey("map"),
-	                 Results_LegName(ui_rs_track, ui_rs_startseg),
+	                 Results_LegName(ui_rs_track, ui_rs_leg),
 	                 FS_RunClassName(FS_RunClass(ui_rs_flags))),
 	         sz, RSC_DIM, a);
 	y = y + (sz + 6 * ui_cv_scale);
@@ -800,6 +1017,7 @@ void() Results_MapInit =
 	ui_rs_toastat    = 0;
 	ui_rs_toastseg   = 0;
 	ui_rs_lastendrec = -1;
+	ui_rs_lastfinrec = -1;          // build 57, stage T; seeded, like the one above
 	ui_rs_laststate  = -1;
 	ui_rs_lasttag   = RT_NONE;
 	ui_rs_seen      = FALSE;

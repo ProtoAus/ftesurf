@@ -111,6 +111,30 @@
 .float   lobby_colour;
 .float   lobby_fx;
 
+/*
+  BUILD 57, STAGE T -- THE LOBBY BITS ON THE WIRE, AS STAT_FS_LOBBY.
+
+  The client has to know it is on a lobby before it keeps a time there itself: off
+  a lobby the SERVER writes the files and a second writer would double-write, so
+  client/cl_lobbytime.qc is inert unless this stat says so.
+
+  THREE BITS, not one: LS_LOBBY, LS_NOPB and LS_NOREC (shared/sh_defs.qc, where
+  the essay is).  Lobby_Active() alone would have let lobby_enable 1 with
+  lobby_nopb 0 -- a listen server keeping its own files on this very disk -- file
+  every run twice.
+
+  A FIELD BECAUSE clientstat TAKES ONE, and the fact is global -- the same shape
+  rec_sl_count has, and the reason SV_SaveLocSync exists.  It is mirrored onto
+  every player once a frame in Lobby_Frame's dimensions loop, which is the one
+  loop here that runs WHETHER OR NOT THE LOBBY IS ON -- so switching lobby_enable
+  off clears it rather than leaving the client keeping times on a solo session.
+
+  ON THE PLAYER and not on world, because that is what clientstat can reach.  It
+  is registered in sv_main.qc, which compiles last and can therefore see both this
+  field and the STAT_FS_* numbers.
+*/
+.float   lobby_stat;
+
 // Cached cvars, refreshed once per frame in Lobby_Frame.
 float lobby_on;
 float lobby_nocollide;
@@ -991,6 +1015,21 @@ void() Lobby_Frame =
 	while (p)
 	{
 		Lobby_ApplyDimensions(p);
+
+		/*
+		  BUILD 57, STAGE T: and the wire copy of "is this a lobby", for the same
+		  reason the dimensions above are done unconditionally -- turning the lobby
+		  OFF has to reach the client too, or it would go on keeping lobby times
+		  for a session that is writing its own.
+
+		  Through Lobby_Active() rather than the lobby_on just cached above, so
+		  there is one speller of the question and not two.  One cvar lookup per
+		  player per frame, against an array walk and a setsize on the line above.
+		*/
+		p.lobby_stat = (Lobby_Active() ? LS_LOBBY : 0)
+		             + (Lobby_NoPB()  ? LS_NOPB  : 0)
+		             + (Lobby_NoRec() ? LS_NOREC : 0);
+
 		p = find(p, classname, "player");
 	}
 

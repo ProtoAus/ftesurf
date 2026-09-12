@@ -10,7 +10,7 @@ WHY THIS LIVES ON surfd
 =======================
 
 surfd already holds the `lobbies` table, already runs behind nginx, and is on
-the same box as the three game servers -- so it reaches them on 127.0.0.1.
+the same box as the five game servers -- so it reaches them on 127.0.0.1.
 That is the whole security argument for this design:
 
     THE PANEL IS PUBLIC. RCON NEVER IS.
@@ -79,8 +79,9 @@ from rcon import (Rcon, RconError, RconThrottled, RconBlocked, clean_reply,
 #
 # Renumbered in Stage 10 from 27500/27510/27520. The range starts at 27510 so
 # that 27500 -- what an unconfigured QuakeWorld server binds -- is never
-# forwarded at the router and so cannot be exposed by accident.
-DEFAULT_LOBBIES = "1:27510,2:27520,3:27530"
+# forwarded at the router and so cannot be exposed by accident. 4 and 5 are the
+# bhop lobbies, added in QC build 57 on the same ten-port spacing.
+DEFAULT_LOBBIES = "1:27510,2:27520,3:27530,4:27540,5:27550"
 
 SESSION_IDLE_MAX = 30 * 60      # seconds of inactivity before a session dies
 SESSION_ABS_MAX = 12 * 60 * 60  # hard lifetime regardless of activity
@@ -375,7 +376,7 @@ CVAR_TTL = 600.0
 
 
 class Fleet:
-    """The three (or however many) lobbies, addressed by tier."""
+    """The five (or however many) lobbies, addressed by tier."""
 
     def __init__(self, lobbies, password, crypt=True):
         self.lobbies = lobbies
