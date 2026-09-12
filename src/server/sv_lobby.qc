@@ -972,6 +972,15 @@ void() Lobby_Frame =
 	registercvar("lobby_av_colors", "1");
 	registercvar("lobby_av_fx",     "1");
 	registercvar("lobby_av_fxmax",  "8");
+	/*
+	  BUILD 64: the board probe, registered here so it EXISTS at 0 rather than
+	  being auto-created by the first cvar() read.  registercvar declines a name
+	  that already exists (and cvar() creates it as ""), so a default registered
+	  after the first read never lands -- which has silently killed three
+	  features in this tree already.  The default is 0 and must stay 0: this is
+	  a deliberate, operator-typed action.
+	*/
+	registercvar("lobby_run_probe", "0");
 
 	lobby_on        = cvar("lobby_enable");
 	lobby_nocollide = cvar("lobby_nocollide");
@@ -1143,6 +1152,7 @@ void() Lobby_Frame =
   every single-player session, which runs this same progs -- silent.
 ===========================================================================
 */
+float  lobby_run_waiting;       // build 64: the probe has said "waiting" once
 float  lobby_hb_next;           // next server time to send
 float  lobby_hb_id;             // uri request id, so replies can be told apart
 float  lobby_hb_lastcode;       // last status reported, to log changes only
@@ -1161,9 +1171,33 @@ float  lobby_hb_seen;           // has any reply been classified yet
   by name (pr_bgcmd.c:6003) and there can be exactly one, so anything else
   that ever wants uri_get on the server has to branch inside this function
   rather than declare its own.
+
+  BUILD 64 MADE THAT PROMISE COME TRUE, and it is the reason for the parity
+  test at the top of the function.  The run submission below is the second
+  caller, it could not declare its own callback, and until it branched here
+  every one of its replies was being read as a heartbeat status -- a 204 from
+  /api/run would have printed "directory returned 204" and then SUPPRESSED the
+  next genuine heartbeat change, because lobby_hb_lastcode had been overwritten
+  by a code the heartbeat never produced.
+
+  THE DISCRIMINATOR IS THE PARITY OF THE REQUEST ID.  Heartbeats take even ids
+  and run submissions odd ones, from two counters that both step by two, so the
+  two streams cannot collide however many of either are in flight.  The
+  alternative -- a table of outstanding submission ids -- is a fixed-size array
+  that silently mis-classifies the reply once more runs finish at once than it
+  has slots, which on a full lobby at a stage boundary is not hypothetical.
 */
+void(float code, string body) Lobby_RunReply;
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
+	// Odd ids are run submissions; see the parity note above.
+	if (reqid & 1)
+	{
+		Lobby_RunReply(responsecode, resourcebody);
+		return;
+	}
+
 	/*
 	  SUCCESS IS 0, NOT 200, AND THIS COST A DEBUGGING SESSION.
 
@@ -1242,10 +1276,19 @@ float() Lobby_PlayerCount =
 	return n;
 };
 
+/*
+  Defined below, beside the rest of the submission machinery; forward-declared
+  here because the probe hook lives in the per-frame function and QuakeC needs
+  a definition before a use.  The alternative was a second call in sv_main.qc's
+  StartFrame, which another session is editing.
+*/
+void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun;
+
 void() Lobby_Heartbeat =
 {
 	local string url, body;
 	local float  per;
+	local entity pl;
 
 	/*
 	  Read fresh rather than cached in a global, and that is a QC lifetime
@@ -1263,6 +1306,68 @@ void() Lobby_Heartbeat =
 	url = cvar_string("lobby_master");
 	if (url == "")
 		return;
+
+	/*
+	  ---- THE BOARD PROBE.  Build 64, stage 3. --------------------------------
+
+	  `lobby_run_probe 1` submits one synthetic run for the first player on the
+	  server and clears itself.  It answers the operator's question -- "is my key
+	  right and can this server reach the board at all" -- without waiting for
+	  somebody to finish a map, and it is the ONLY way any of this gets tested:
+	  a finish cannot be scripted on a zoned map, because zone_goto and setpos
+	  both route through SV_TimerWarped, which VOIDS the attempt, so
+	  SV_TimerFinish is unreachable from a config by construction.
+
+	  IT SUBMITS WITH TF_CHEAT AND THAT IS THE WHOLE POINT.  surfd refuses a
+	  cheated run a board entirely -- 204, deliberately not an error -- so this
+	  CANNOT put a time on a leaderboard however it is invoked, by anyone, on any
+	  server.  A probe that could would be a forgery tool shipped inside a game
+	  whose entire claim is that times are validated, and no amount of "it is
+	  only for testing" survives that.
+
+	  AND THE 204 IS A COMPLETE TEST OF THE REQUEST, which is what makes the
+	  trade worth taking rather than a consolation.  surfd validates map, track,
+	  leg, player, ticks, tickrate, flags and tier -- each a 400 with its own
+	  message -- and only THEN decides the run has no board.  So a 204 means
+	  every field was well formed and the key was accepted; the only thing it
+	  does not exercise is the row actually being written, and that half was
+	  already measured in stage 2 against the same field set.  A 400 names the
+	  field that is wrong, which is more than a stored row would have told us.
+	*/
+	if (cvar("lobby_run_probe"))
+	{
+		/*
+		  IT STAYS ARMED UNTIL A PLAYER EXISTS, rather than firing once and
+		  clearing.  A submission needs an entity to read a GUID off, and a
+		  dedicated server has no player entity until somebody joins -- so the
+		  obvious "one shot, whatever happens" version spends itself on the
+		  frame the operator typed it, prints a complaint, and leaves them
+		  typing it again at exactly the moment they are busy watching a client
+		  connect.  Armed-and-waiting also makes it settable in a server config,
+		  which is the only way to reach it on a headless box without rcon.
+
+		  The complaint is printed ONCE per arming for the same reason the
+		  heartbeat logs only on a change: every frame would be 66 lines a
+		  second of the same sentence.
+		*/
+		pl = find(world, classname, "player");
+		if (!pl)
+		{
+			if (!lobby_run_waiting)
+			{
+				lobby_run_waiting = TRUE;
+				print("^3board:^7 probe armed -- waiting for a player to join\n");
+			}
+		}
+		else
+		{
+			cvar_set("lobby_run_probe", "0");
+			lobby_run_waiting = FALSE;
+			print("^5board:^7 probe -- one synthetic CHEATED run, which has no "
+			      "board and cannot rank\n");
+			Lobby_SubmitRun(pl, 0, 0, 1234, TF_CHEAT);
+		}
+	}
 
 	if (time < lobby_hb_next)
 		return;
@@ -1307,8 +1412,213 @@ void() Lobby_Heartbeat =
 	// inject extra form fields into this request.
 	url = strcat(url, "/api/heartbeat");
 
-	lobby_hb_id = lobby_hb_id + 1;
+	// STEPS BY TWO, so heartbeat ids stay EVEN and can never collide with a run
+	// submission's odd ones.  See the parity note on URI_Get_Callback.
+	lobby_hb_id = lobby_hb_id + 2;
 	uri_post(url, lobby_hb_id, "application/x-www-form-urlencoded", body);
+};
+
+/*
+===========================================================================
+  THE RUN SUBMISSION.  Build 64, stage 3.
+
+  Stages 1 and 2 built the client half of the leaderboard: it asks surfd for a
+  board, parses it, and draws it under three tabs.  Every row it has ever drawn
+  was put there by hand with curl, because UNTIL THIS FUNCTION THERE WAS NO
+  WRITER AT ALL -- `uri_post` appeared exactly once in the whole tree and it was
+  the heartbeat above.  A leaderboard nobody can get onto is a demo.
+
+  WHO MAY WRITE IS THE ENTIRE SECURITY MODEL, and it is one `if`.
+
+  surfd refuses a POST without the shared key, so only a server the operator has
+  keyed can put a row on the board.  That IS the plan's "Ranked = official
+  servers only" decision, and it closes the hole the plan ranks above every
+  input-layer concern: on a listen server the host owns sv.time, the movement
+  cvars, the progs and the timer, so "beat the world record" is a cvar edit
+  rather than a cheat.  A player-hosted server holds no key, and the test below
+  means it does not even ask -- it keeps its times locally instead, which is the
+  Local tab and has existed since build 24.
+
+  WHAT IS DELIBERATELY NOT DECIDED HERE:
+
+  - WHICH RUNS HAVE A BOARD.  Practice and cheated runs have none, and surfd
+    answers 204 for them rather than an error.  This function could mirror that
+    rule with FS_RunClass and save the request -- and deliberately does not.
+    The rule is written twice already (here in QC, once in Python), and a third
+    copy that disagreed would mean a run silently never submitted, which is the
+    one failure nobody would ever see.  A finish is a rare event; one POST that
+    comes back 204 costs less than a rule that can drift.
+  - WHICH TIER THE ROW LANDS IN.  This always claims `ranked`; surfd lowers it
+    when the flags are not certifiable (TF_NOJOURNAL, TF_NORULESET) or when the
+    key does not vouch for the tier.  A submitter that graded itself would be a
+    submitter that could grade itself generously.
+
+  THE PLAYER ID IS THE ENGINE's GUID, AND IT IS A PLACEHOLDER THAT SAYS SO.
+  sv_main.c:137 warns in as many words: "do NOT treat the client's GUID as
+  something that is secure", and surfd's own header says a row means "an
+  official server saw this player finish", not "this human finished".  The
+  local-keypair work is Phase 2 of the plan and it is a VALUE change in this
+  one field rather than a schema change, which is why the column exists now.
+
+  It requires `sv_guidkey` to be set on the server (sv_main.c:1855) -- with it
+  empty the engine never asks the client for a GUID and infokey returns "".  A
+  run with no identity is not submitted, because the board's primary key is the
+  player and a row keyed on "" would collect every anonymous player's times
+  into one impostor.
+
+  NO runid IS SENT, and that is a decision rather than an omission.  surfd takes
+  the field so evidence can be found later, but the evidence link that matters
+  is Phase 3's rolling commitment hash, not a local filename stamp -- and the
+  stamp is not kept anywhere after SV_RecOpen writes it, so sending one would
+  mean adding a zoned string field to hold a value Phase 3 replaces.  The column
+  stays empty until there is a real answer to put in it.
+===========================================================================
+*/
+float lobby_run_id;             // uri request id; ODD, always -- see the parity note
+float lobby_run_sent;           // submissions attempted this session
+float lobby_run_ok;             // ...and how many surfd stored
+float lobby_run_lastcode;
+float lobby_run_seen;
+
+/*
+  The other half of the callback.  Fire-and-forget like the heartbeat, and
+  noisy on a CHANGE of status for the same reason: a board that is refusing
+  every run looks exactly like one nobody has finished on.
+
+  204 IS NOT A FAILURE and is reported as what it is.  It means the run was
+  received and understood and has no board to stand on -- a practice or cheated
+  run -- which is the single most common non-zero answer this will ever get and
+  must not read as an error beside it.
+*/
+void(float code, string body) Lobby_RunReply =
+{
+	if (!code)
+		lobby_run_ok = lobby_run_ok + 1;
+
+	if (lobby_run_seen && code == lobby_run_lastcode)
+		return;
+	lobby_run_seen     = TRUE;
+	lobby_run_lastcode = code;
+
+	if (!code)
+		print("^2board:^7 directory stored a run\n");
+	else if (code == 204)
+		print("^3board:^7 run has no board (practice or cheated) -- not an error\n");
+	else if (code == 403)
+		print("^1board:^7 directory refused the key -- this server cannot rank runs\n");
+	else
+		print(sprintf("^1board:^7 directory returned %g (%s)\n", code, body));
+};
+
+void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun =
+{
+	local string url, key, body, guid, nm;
+	local float rate;
+
+	// Registered at the read, like every other cvar in this file, and for the
+	// reason Lobby_Heartbeat gives: this can be reached before worldspawn.
+	registercvar("lobby_master", "");
+	registercvar("lobby_master_key", "");
+
+	url = cvar_string("lobby_master");
+	if (url == "")
+		return;                 // not pointed at a directory at all
+
+	/*
+	  NO KEY, NO REQUEST.  surfd would answer 403, so asking costs a round trip
+	  per finish to be told what is already known here -- and on a listen server,
+	  which runs this same progs, it would be one refused POST every time anybody
+	  crossed a finish line.  This is the "Ranked = official servers only" line.
+	*/
+	key = cvar_string("lobby_master_key");
+	if (key == "")
+		return;
+
+	if (ticks < 1)
+		return;                 // nothing measurable happened
+
+	/*
+	  AN UNIDENTIFIED RUN IS NOT SUBMITTED.  See the header: with sv_guidkey
+	  unset the engine never asks for a GUID and this is "", and the board is
+	  keyed on the player -- so every anonymous run would overwrite the same
+	  row and the board would show one impostor holding every time on the map.
+	  Quiet, because it describes a server that is misconfigured rather than a
+	  player who did anything.
+	*/
+	guid = infokey(e, "guid");
+	if (guid == "")
+		return;
+
+	nm = e.netname;
+	if (nm == "")
+		nm = "player";
+
+	/*
+	  HERTZ ON THE WIRE, and this is the third time the same inversion has had
+	  to be written down.  pm_ticrate is SECONDS PER TICK (0.015); surfd's
+	  `tickrate` is HERTZ (66.6667) because it computes millis = ticks * 1000 /
+	  tickrate and ranks on the result.  Submitting 0.015 does not corrupt the
+	  board -- the 1..10000 bound rejects it with a 400 -- but it would mean
+	  every run from this server silently failing to store.
+	*/
+	rate = cvar("pm_ticrate");
+	if (rate <= 0)
+		rate = PM_TICK;
+	rate = 1 / rate;
+
+	/*
+	  BUILT IN THREE PIECES BECAUSE A QC CALL TAKES AT MOST EIGHT PARAMETERS.
+	  Eleven fields plus the format is not expressible in one sprintf, and the
+	  ninth onward would be DROPPED by the calling convention rather than
+	  refused by the compiler -- a submission silently missing its flags would
+	  put a tainted run on the clean board.
+
+	  uri_escape on every free-form field for the reason the heartbeat gives:
+	  a player name is arbitrary text and an unescaped & or = in it would inject
+	  extra form fields into this request.  The player NAME reaches surfd from a
+	  stranger, so this is the one place in the file where that is not theory.
+	*/
+	body = sprintf("key=%s&map=%s&track=%g&leg=%g&node=%s",
+	               uri_escape(key), uri_escape(mapname), track, leg,
+	               uri_escape(sprintf("p%g", cvar("sv_port"))));
+	body = sprintf("%s&player=%s&name=%s",
+	               body, uri_escape(guid), uri_escape(nm));
+	body = sprintf("%s&ticks=%g&tickrate=%.4f&flags=%g&tier=ranked",
+	               body, ticks, rate, flags);
+
+	/*
+	  ODD, ALWAYS.  Seeded to 1 here rather than at a registration site so that
+	  the property is enforced by the only function that can break it: a QC
+	  global starts at 0, and 0 + 2 is EVEN, which would route this submission's
+	  reply into the heartbeat's status line and corrupt both.
+	*/
+	if (lobby_run_id < 1)
+		lobby_run_id = 1;
+	lobby_run_id = lobby_run_id + 2;
+
+	lobby_run_sent = lobby_run_sent + 1;
+	uri_post(strcat(url, "/api/run"), lobby_run_id,
+	         "application/x-www-form-urlencoded", body);
+
+	/*
+	  ONE LINE PER SUBMISSION, ON THE SERVER CONSOLE ONLY.
+
+	  This is the whole headless test surface for stage 3, and it has to be a
+	  print rather than a console subcommand: the server's command dispatch
+	  lives in SV_ParseClientCommand (sv_player.qc), which another session is
+	  editing, and adding a report there would be a merge conflict in somebody
+	  else's file for a line I can put in my own.
+
+	  Proportionate rather than noisy, because every gate above has already
+	  fired: an install with no directory, no key or no GUID -- which is every
+	  listen server and therefore every single-player session -- has returned
+	  long before here and says nothing at all.  What is left is a keyed server,
+	  where a finish is a notable event and its operator wants to see that runs
+	  are actually going up.  The KEY is not printed and never is; the body is
+	  not printed for the same reason.
+	*/
+	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %g\n",
+	              mapname, track, leg, ticks, flags));
 };
 
 /*

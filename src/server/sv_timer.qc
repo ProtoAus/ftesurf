@@ -5491,6 +5491,33 @@ void(entity e, float ticks) SV_TimerFinish =
 	e.run_t_finleg   = e.run_t_track * 100 + leg + 1;
 	e.run_t_finflags = e.run_t_flags;
 	e.run_t_finrec   = e.run_t_finrec + 1;
+
+	/*
+	  BUILD 64, STAGE 3 -- AND OFF TO THE LEADERBOARD, IF THIS SERVER HOLDS A KEY.
+
+	  LAST IN THE FUNCTION, after SV_RecClose and after the finish group above,
+	  for the same reason that group is where it is: this is the first instant at
+	  which e.run_t_flags is final.  The cheatwatch block at the top can still add
+	  TF_PRACTICE, SV_StageClose can still taint, SV_TimerJournal and
+	  SV_TimerRuleset both latch twenty lines up, and SV_RecClose strips
+	  TF_RECORDING.  Flags read any earlier describe a run that was still being
+	  decided -- and the flags word is what surfd derives the row's STYLE from and
+	  what demotes it out of the ranked tier, so reading it early would not fail
+	  loudly, it would file the run on the wrong board.
+
+	  UNCONDITIONAL FROM HERE.  Every gate belongs to Lobby_SubmitRun -- no
+	  directory, no key, no identity, no time -- and repeating any of them here
+	  would be a second place for the "which runs go up" rule to live.  In
+	  particular this does NOT test for practice or cheated: surfd owns that
+	  question and answers 204, which is not an error.  See the essay there.
+
+	  A LOBBY FINISH SUBMITS LIKE ANY OTHER, which is the point rather than an
+	  oversight: the keyed lobbies ARE the official servers, so a time set in
+	  front of other players is exactly the run the ranked board exists for.
+	  What a lobby does not do is keep a personal best (Lobby_NoPB), and that is
+	  a different question about a different disk.
+	*/
+	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags);
 };
 
 void(entity e, float seg, float ticks) SV_TimerSplit =
