@@ -274,6 +274,9 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Gfx_RegisterCvars();
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
+	// The online board's two console handles.  No cvars of its own: the
+	// directory URL is lobby_dir, which the menu progs already own and archive.
+	Online_RegisterCommands();
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	/*
@@ -1719,6 +1722,12 @@ float(string cmd) CSQC_ConsoleCommand =
 	// +showscores arrives here as a plain console command -- the engine offers
 	// TAB's bind to CSQC before it turns its own scoreboard on (sbar.c:788).
 	if (Scores_ConsoleCommand(cmd))
+		return TRUE;
+
+	// The online board. Before the card and after the local board, which is the
+	// order they are read in rather than any dependency -- none of the three
+	// shares a command name.
+	if (Online_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 48.  `results` reopens the last card, which is the only way back to

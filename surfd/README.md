@@ -76,7 +76,7 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 2
     player    stable player id, the board key
     name      display name at the time of the run
     ticks     1..1e8, the run's tick count
-    tickrate  1..10000, what a tick was worth
+    tickrate  1..10000, in HERTZ (66.6667), NOT seconds per tick
     flags     the TF_* word AT THE FINISH (the .rec header's `flags`)
     tier      "ranked" (default) or "community"; may only be lowered
     node      which server witnessed it
@@ -108,6 +108,19 @@ the earlier claim.
 tickrate. 4000 ticks at 100 Hz is 40 s and 3000 at 50 Hz is 60 s -- ranked on
 ticks the slower run wins. `pm_ticrate` is locked on a conforming server, but
 the board is not the thing that gets to assume so.
+
+**`tickrate` IS IN HERTZ AND THIS IS A REAL TRAP.** `millis = ticks * 1000 /
+tickrate`, so 66.6667 is what goes on the wire. But the game's own
+`pm_ticrate` is **seconds per tick** (0.015), and so is the parameter
+`sh_time.qc`'s `Time_TickString` takes -- despite being *called* `tickrate`
+there too. Three things share the name and one of them is inverted.
+
+Submitting `0.015` does not silently corrupt the board: the `1..10000` bound
+rejects it with a 400, which is the guard. But reading the field back and
+handing it straight to `Time_TickString` **does** — it printed 3500 ticks as
+`64:48:53.328` instead of `0:52.500`, a factor of 4444, caught only because
+`cfg/testrun/b64board.cfg` registered the expected times before the run.
+Convert at the point of use and keep the server's units everywhere else.
 
 **`style` is derived from `flags` here, never taken from the submitter**, as a
 mirror of `FS_RunClass` including its precedence (cheat outranks segment

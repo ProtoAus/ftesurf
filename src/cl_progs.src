@@ -57,6 +57,21 @@ client/cl_zones.qc
 // AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,
 // which calls into it from CSQC_UpdateView and CSQC_InputEvent.
 client/cl_watch.qc
+// BEFORE cl_scores.qc, which is the only thing that will read it -- the ONLINE
+// half of the leaderboard: one GET against surfd's /api/board, parsed and kept.
+//
+// It needs sh_json.qc for the parser and sh_time.qc for Time_TickString, both
+// of which are at the top of this file already, and NOTHING ELSE -- it draws
+// nothing and touches no HUD state.  That is why it can sit this early, and it
+// is also the point: the request path is testable from a config
+// (`board_fetch`, `board_status`) before a single tab consumes it, so a change
+// to the tabs cannot break the network path by accident.
+//
+// It declares CSQC's one and only URI_Get_Callback.  The engine finds that by
+// NAME (pr_bgcmd.c:6003) and there can be exactly one per VM, so anything else
+// in csprogs that ever wants uri_get has to branch inside it rather than
+// declare its own -- the same constraint m_lobby.qc documents for the menu.
+client/cl_online.qc
 // AFTER cl_watch.qc, because clicking a row hands the file straight to
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at
 // Timer_Tick's rate.  Stage 2 of build 24.
