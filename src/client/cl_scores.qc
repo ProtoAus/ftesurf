@@ -109,6 +109,55 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_F_STITCHED  2
 #define SB_F_CHEATED   3
 
+/*
+===========================================================================
+  BUILD 64, STAGE 2: THREE TABS, AND THE DEFAULT IS THE ONLINE ONE.
+
+  Stage 1 built cl_online.qc -- one GET against surfd, parsed and kept, drawing
+  nothing.  This is where that data becomes a board, and the tabs are the axis
+  the request asked for in as many words: "the default online leaderboard to
+  show, and for there to be a segmented tab, and both of these show players
+  best times ranked. with a local times that shows you every recording you
+  have."
+
+  SO THE TABS ARE ONLINE / SEGMENTED / LOCAL, AND NOT RANKED / COMMUNITY.
+  Those are two different questions and conflating them is the mistake worth
+  naming here:
+
+    the TAB  is which BOARD you are looking at -- surfd keys `style` into the
+             primary key precisely so clean and segmented are PEER boards a
+             player may hold a PB on each of, plus this disk's own archive.
+    the CHIP is which TIER within that board -- ranked (set on a keyed,
+             official server) or community (everywhere else).
+
+  A five-tab strip spelling out every combination would be the same two
+  questions multiplied together, and it would put `local` beside `ranked` as
+  though they were alternatives when one is a filter of the other two.
+
+  THE TWO ONLINE TABS ARE ONE REQUEST WITH ONE FIELD CHANGED, which is exactly
+  what cl_online.qc's Online_Fetch takes `style` as a parameter for.  Nothing
+  about the fetch, the parse or the storage knows a tab exists.
+
+  WHY ONLINE IS THE DEFAULT even though local is the one that always works: a
+  board that opens on your own times is a personal-best list, and the request
+  was for a leaderboard.  The cost is that opening it on an offline install
+  shows an empty panel -- so the empty states below are written to say WHICH
+  kind of nothing this is (not configured / still asking / it did not answer /
+  genuinely no times yet), because "no times" covering all four would make an
+  unplugged install look like an unplayed map.
+===========================================================================
+*/
+#define SB_T_ONLINE    0
+#define SB_T_SEGMENT   1
+#define SB_T_LOCAL     2
+
+#define SB_TIER_RANKED     0
+#define SB_TIER_COMMUNITY  1
+
+float rec_sb_tab;                // SB_T_*
+float rec_sb_tier;               // SB_TIER_*, meaningful on the online tabs
+vector rec_sb_oscroll;           // the online list's own scroll position
+
 #define SB_ROW_H   22
 #define SB_LEG_H   20
 
@@ -117,6 +166,19 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 // definitions for readability rather than for any structural reason.
 void() Scores_Close;
 void() Scores_Status;
+
+/*
+  The three questions the rest of this file asks about the tab, in one place.
+
+  Written as functions rather than read as `rec_sb_tab == SB_T_SEGMENT` at each
+  site because the two online tabs differ in EXACTLY ONE STRING and that string
+  goes to surfd -- so the mapping from tab to wire value is a fact with one
+  home.  A second copy of `"segmented"` spelled `"segment"` would fetch an
+  always-empty board and look like a server with no times on it.
+*/
+float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
+string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "clean"; };
+string() Scores_TierOf  = { return (rec_sb_tier == SB_TIER_COMMUNITY) ? "community" : "ranked"; };
 
 /*
   The index of the last `c` in `s`, or -1.
@@ -565,6 +627,30 @@ void() Scores_Refresh =
 	}
 	if (rec_sb_legbuilt != rec_sb_leg)
 		Scores_BuildRows(rec_sb_leg);
+
+	/*
+	  BUILD 64: AND THE ONLINE BOARD, ASKED FOR FROM HERE.
+
+	  Once per frame the board is open, and Online_Need is a no-op on all but
+	  the first -- its guard is "has anybody already asked for exactly this",
+	  so a leaderboard that is DOWN gets one request per leg the player clicks
+	  rather than one per frame.  The anti-hammer reasoning is written out
+	  beside Online_Need itself; what belongs here is why the call is
+	  unconditional: the three things that change what board is wanted are the
+	  tab, the tier chip and the leg, and all three are plain assignments made
+	  in a draw loop or a console handler.  Making each of them remember to
+	  kick a fetch is four call sites that must agree, and the fourth -- a map
+	  change, which nothing in this file initiates -- would have been missed.
+	  One question asked every frame cannot be forgotten by a new caller.
+
+	  THE LOCAL ROWS ARE STILL BUILT ON AN ONLINE TAB, deliberately.  It costs
+	  one directory scan per leg change, it is what makes clicking Local
+	  instant, and the footer reports both counts at once.
+	*/
+	if (Scores_IsOnline())
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+		Online_Need(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+		            Scores_TierOf(), Scores_StyleOf());
 };
 
 /*
@@ -618,7 +704,11 @@ void() Scores_Refresh =
 #define SBW_OWNER  19
 #define SBW_DATE   12
 #define SBW_KIND    9
-#define SBW_TAG     7
+// BUILD 64: 7 -> 11.  The online tabs put the DEMOTION REASON in this column
+// ("no ruleset", "no journal" -- 10 characters), where the local tab puts the
+// file's tag.  Widening the last column only widens what the panel ASKS for;
+// the clamp against the window and the drop order below are unchanged.
+#define SBW_TAG    11
 
 #define SBX_RANK    0
 #define SBX_TIME   (SBX_RANK  + SBW_RANK)
@@ -682,11 +772,426 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 	return sui_is_released(id);
 };
 
+/*
+===========================================================================
+  The rows -- one drawer per source
+
+  BUILD 64 SPLIT THESE OUT OF Scores_Draw RATHER THAN BRANCHING INSIDE ITS ROW
+  LOOP, and the reason is the column table.  The two sources share the layout
+  (rank, time, delta, player, then three that fit only on a wide window) and
+  share nothing else: one reads .rec headers off this disk, the other reads
+  ob_* out of a JSON reply that may describe a different leg than the one on
+  screen.  A single loop carrying both would need a conditional at every cell,
+  which is where a board starts drawing one source's data under the other's
+  heading.
+
+  They take the layout as parameters and read the type scale from the globals
+  Scores_Draw computed this frame, so neither can pick its own font size -- the
+  ladder argument at the top of the drawing section applies to both.
+===========================================================================
+*/
+
+/*
+  This disk's recordings.  Returns the row index a click landed on, or -1 --
+  see the hand-off note at the bottom of Scores_Draw for why it is returned
+  rather than acted on here.
+*/
+float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
+{
+	local vector lp;
+	local float idx, hot, on, cl, d, ticks, pick;
+	local string s, rid;
+
+	pick = -1;
+
+	if (rec_sb_rown <= 0)
+	{
+		Scores_Text([rp_x, rp_y + rec_sb_szhead + pad], rec_sb_szrow,
+		            "no runs recorded on this leg yet", SBC_DIM, 1);
+		return pick;
+	}
+
+	sui_list_view_begin("sb_runs", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
+	                    [rs_x - pad * 0.5, rec_sb_rowh], rec_sb_rown,
+	                    rec_sb_scroll, [0, ceil(rec_sb_cw)]);
+
+	lp = '0 0 0';
+	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+	{
+		/*
+		  A FILTERED-OUT ROW IS DRAWN DIM RATHER THAN REMOVED, and that is a
+		  decision rather than laziness.  sui_list_view is virtualised on a
+		  fixed item count, so hiding rows means maintaining a second index
+		  from view position to real row -- which is what the map browser's
+		  ms_view buffer is, and it exists there because 1,400 maps down to
+		  six is a different problem from a couple of dozen runs down to
+		  eighteen.  Dimming keeps the rank numbers honest (row 3 is still
+		  the third fastest) and keeps "how many did the filter drop" visible
+		  instead of silently changing the length of the list.
+		*/
+		rid = strcat("sb_run", ftos(idx));
+		hot = FALSE;
+		on  = Scores_Passes(idx);
+		d   = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;   // the row's baseline
+
+		if (on)
+		{
+			sui_action_element(lp, [rs_x - pad * 0.5, rec_sb_rowh], rid, sui_noop);
+			hot = sui_is_hovered(rid);
+			if (hot)
+				sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
+			if (sui_is_released(rid))
+				pick = idx;
+		}
+
+		ticks = rec_sb_rowticks[idx];
+		cl    = Scores_Clean(idx);
+
+		/*
+		  THE NUMBERS IN THE MONO FACE AND THE WORDS IN THE UI ONE, and the
+		  face is switched per column rather than per row because Font_Px
+		  snaps against whichever face is CURRENTLY selected -- the two
+		  ladders differ, so a size asked for before the Font_Set snaps
+		  against the wrong one and gets resampled.  That is the exact defect
+		  build 21 found in HUD_DrawSeq, one function over.
+		*/
+		Font_Set(ui_font_mono);
+
+		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
+		             rec_sb_szrow, sprintf("%g", idx + 1),
+		             SBC_DIM, on ? 1 : 0.35);
+
+		/*
+		  BUILD 57, STAGE T: A LOBBY TIME IS COLOURED, not just labelled.
+
+		  The word is in the TAG column below, which is the first column this
+		  board DROPS on a narrow window -- so on a 1280-wide screen the mark
+		  would disappear and a row with no replay behind it would look like
+		  every other row.  The time itself is never dropped, so the colour is
+		  the half of the mark that always survives.  Amber and not green: it
+		  is a real time set against real players, and it is also the one row
+		  here that cannot be watched.
+		*/
+		Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+		            (ticks > 0) ? Time_TickString(ticks, tick) : "--:--.---",
+		            on ? ((rec_sb_rowtag[idx] == RT_LOBBY) ? SBC_WARN : SBC_TEXT)
+		               : SBC_DIM,
+		            on ? 1 : 0.35);
+
+		// The delta against the leg's fastest clean run.  The reference row
+		// itself says "best" rather than "+0.000", which is a number that
+		// reads as a measurement and is really a tautology.
+		if (rec_sb_best > 0 && ticks > 0 && ticks != rec_sb_best)
+			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			            sprintf("+%s", Time_TickString(ticks - rec_sb_best, tick)),
+			            SBC_BAD, on ? 0.9 : 0.3);
+		else if (ticks > 0 && ticks == rec_sb_best)
+			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			            "best", SBC_GOOD, on ? 0.9 : 0.3);
+
+		Font_Set(ui_font_ui);
+
+		s = bufstr_get(rec_sb_bowner, idx);
+		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
+		            on ? 0.9 : 0.35);
+
+		if (rec_sb_cols > SBX_DATE)
+		{
+			s = bufstr_get(rec_sb_bdate, idx);
+			Scores_Text([lp_x + Scores_ColX(SBX_DATE), d], rec_sb_szrow,
+			            (s != "") ? s : "--", SBC_DIM, on ? 0.9 : 0.35);
+		}
+
+		/*
+		  What kind of run this was, in one word, and the honest fourth state.
+
+		  A v3 file has no `flags` key at all -- every recording anyone has on
+		  disk before build 24 -- so `last` genuinely cannot answer and says so
+		  with a dash rather than being guessed into one of the others.
+
+		  BUILD 44: THE WORD COMES FROM FS_RunClassName AND NOT FROM A LADDER
+		  HERE.  It was three branches with three literals, and the report is
+		  that one of those literals was wrong on a whole class of run.  A
+		  second copy of the words is a second place for that to happen.
+
+		  THE COLOUR STAYS LOCAL, because it is the only part that is about
+		  this list rather than about the run: red for cheated, amber for the
+		  two middle states -- which is what `practice` already is under the
+		  live timer -- green for clean, and dim for the dash.
+		*/
+		if (rec_sb_cols > SBX_KIND)
+		{
+			if (cl == RC_CLEAN)
+				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				            FS_RunClassName(cl), SBC_GOOD, on ? 0.85 : 0.3);
+			else if (cl == RC_CHEAT)
+				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				            FS_RunClassName(cl), SBC_BAD, on ? 0.85 : 0.3);
+			else if (cl == RC_UNKNOWN)
+				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				            "--", SBC_DIM, on ? 0.6 : 0.25);
+			else
+				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				            FS_RunClassName(cl), SBC_WARN, on ? 0.85 : 0.3);
+		}
+
+		/*
+		  The TAG column says WHICH FILE this row is, not what kind of run
+		  it was -- the `run` column beside it already carries the word.
+		  There are two unstamped slots as of build 45 and both mean the
+		  same thing here: the newest of its kind, not a ranked archive
+		  entry.  So both get `latest` and neither repeats what KIND says.
+		*/
+		/*
+		  BUILD 57, STAGE T: and `lobby`, which is the one word in this column
+		  that changes what a CLICK does -- see the hand-off below.  Five
+		  characters, so SBW_TAG's seven still fit it.
+		*/
+		if (rec_sb_cols > SBX_TAG)
+		{
+			if (rec_sb_rowtag[idx] == RT_LOBBY)
+				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				            "lobby", SBC_WARN, on ? 0.85 : 0.3);
+			else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
+				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				            "latest", SBC_DIM, on ? 0.7 : 0.25);
+		}
+	}
+	sui_list_view_end();
+
+	return pick;
+};
+
+/*
+  surfd's board -- whichever (tier, style) the tab and the chip currently name.
+
+  IT DRAWS FOUR DIFFERENT KINDS OF NOTHING, and that is most of the function.
+
+  The local list has one empty state, because a directory either has files in
+  it or does not.  A network board has four, they mean entirely different
+  things to the player, and collapsing them into "no times" is what makes an
+  unplugged install look like an unplayed map:
+
+    not configured  lobby_dir is "" -- an offline install, which is a normal
+                    way to own this game and is not a fault
+    still asking    a request is in flight; the rows in memory, if any, are
+                    some other leg's
+    did not answer  it answered with a code, or the reply would not parse --
+                    the last good rows are deliberately still in memory, but
+                    they are not THIS board's, so they are not drawn
+    genuinely none  it answered, and this leg has no times of this kind yet
+
+  Only the fourth is "no times", and it is the only one that then reports the
+  OTHER tier's count -- which is the whole reason cl_online.qc keeps both
+  counts from one reply.  "No ranked times yet, 37 community" tells the player
+  to click the chip beside it; a bare "no times" sends them away from a board
+  that has plenty.
+*/
+void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
+{
+	local vector lp;
+	local float idx, hot, d, ref, i, track, leg;
+	local string s, rid;
+
+	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
+		return;
+
+	track = rec_sb_legtrack[rec_sb_leg];
+	leg   = rec_sb_legnum[rec_sb_leg];
+
+	/*
+	  Online_Describes and NOT `ob_state == OBS_OK`.  A reply that landed for
+	  the previous leg leaves the state OK and the rows valid -- for that leg.
+	  Asking whether the stored rows describe THIS board is the whole of trap 3
+	  in cl_online.qc, and it is one function call here because it is one fact
+	  there.
+	*/
+	if (!Online_Describes(track, leg, Scores_TierOf(), Scores_StyleOf()))
+	{
+		lp = [rp_x, rp_y + rec_sb_szhead + pad];
+
+		if (ob_state == OBS_NODIR)
+		{
+			Scores_Text(lp, rec_sb_szrow,
+			            "this install is not pointed at a leaderboard",
+			            SBC_DIM, 1);
+			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+			            "set one with:  lobby_dir \"http://host:8084\"",
+			            SBC_DIM, 0.7);
+		}
+		else if (ob_state == OBS_FAIL)
+		{
+			Scores_Text(lp, rec_sb_szrow,
+			            (ob_code > 0)
+			              ? sprintf("the leaderboard answered %g", ob_code)
+			              : "the leaderboard could not be reached",
+			            SBC_BAD, 1);
+			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+			            "your own times are on the Local tab, and are unaffected",
+			            SBC_DIM, 0.7);
+		}
+		else
+			Scores_Text(lp, rec_sb_szrow, "asking the leaderboard...",
+			            SBC_DIM, 1);
+		return;
+	}
+
+	if (ob_n <= 0)
+	{
+		lp = [rp_x, rp_y + rec_sb_szhead + pad];
+		Scores_Text(lp, rec_sb_szrow,
+		            sprintf("no %s %s times on this leg yet",
+		                    Scores_TierOf(), Scores_StyleOf()),
+		            SBC_DIM, 1);
+
+		// The other tier, from the same reply -- see the header note.
+		i = (rec_sb_tier == SB_TIER_COMMUNITY) ? ob_cnt_ranked : ob_cnt_community;
+		if (i > 0)
+			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+			            sprintf("%g %s time(s) are on this leg -- the chip above",
+			                    i, (rec_sb_tier == SB_TIER_COMMUNITY)
+			                         ? "ranked" : "community"),
+			            SBC_WARN, 0.8);
+		return;
+	}
+
+	/*
+	  THE DELTA REFERENCE IS THE FASTEST ROW IN MILLISECONDS, not the first row
+	  and not the fastest tick count.
+
+	  surfd ranks by millis for a reason it writes down: a tick is only a
+	  duration at a tickrate, and 4000 ticks at 100 Hz beats 3000 at 50 Hz
+	  despite being the larger number.  Subtracting two rows' ticks would
+	  reproduce exactly that bug in the delta column, on a board that had
+	  ordered them correctly -- so the rank and the gap would disagree.
+	*/
+	ref = 0;
+	for (i = 0; i < ob_n; i = i + 1)
+		if (ob_ms[i] > 0)
+		if (ref == 0 || ob_ms[i] < ref)
+			ref = ob_ms[i];
+
+	sui_list_view_begin("sb_online", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
+	                    [rs_x - pad * 0.5, rec_sb_rowh], ob_n,
+	                    rec_sb_oscroll, [0, ceil(rec_sb_cw)]);
+
+	lp = '0 0 0';
+	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+	{
+		rid = strcat("sb_ob", ftos(idx));
+		d   = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;
+
+		/*
+		  HOVERABLE, AND THE CLICK SAYS WHY IT DOES NOTHING.
+
+		  There is no .rec behind an online row -- the recording is on the
+		  machine that set it -- so there is nothing to hand Watch_Open.  An
+		  inert list reads as broken, and a silent click reads as worse, so
+		  this follows the RT_LOBBY precedent one function up: refuse where
+		  the reason is known, keep the board open, and say the sentence.
+		*/
+		sui_action_element(lp, [rs_x - pad * 0.5, rec_sb_rowh], rid, sui_noop);
+		hot = sui_is_hovered(rid);
+		if (hot)
+			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
+		if (sui_is_released(rid))
+			print("^3scores:^7 online times are set on other machines -- "
+			      "there is no replay on this disk.  Your own are under Local.\n");
+
+		Font_Set(ui_font_mono);
+
+		/*
+		  THE SERVER'S RANK, NOT `idx + 1`.  They agree today because nothing
+		  asks for an offset, but the row carries `r` precisely so that a
+		  second page would not renumber itself from 1 -- and a board whose
+		  displayed rank is a function of the scroll position is wrong in a
+		  way nobody would think to check.
+		*/
+		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
+		             rec_sb_szrow, sprintf("%g", ob_rank[idx]), SBC_DIM, 1);
+
+		/*
+		  EVERY ROW AT ITS OWN RATE.  Time_TickString wants SECONDS PER TICK
+		  and surfd stores HERTZ; the inversion is here rather than at the
+		  parse so the stored value stays in the server's units, which is the
+		  rule cl_online.qc's header sets out.  Getting it backwards printed
+		  0:52.500 as 64:48:53.328.
+		*/
+		Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+		            Time_TickString(ob_ticks[idx], 1 / ob_rate[idx]),
+		            SBC_TEXT, 1);
+
+		/*
+		  Milliseconds formatted AS milliseconds: Time_TickString(ms, 0.001)
+		  multiplies back to exactly the number it was given, so the same
+		  m:ss.mmm formatting serves a gap that was never measured in ticks
+		  at all.  No second formatter, and no tickrate assumed for a
+		  difference between two runs that may not share one.
+		*/
+		if (ref > 0 && ob_ms[idx] > ref)
+			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			            sprintf("+%s", Time_TickString(ob_ms[idx] - ref, 0.001)),
+			            SBC_BAD, 0.9);
+		else if (ref > 0 && ob_ms[idx] == ref)
+			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			            "best", SBC_GOOD, 0.9);
+
+		Font_Set(ui_font_ui);
+
+		s = bufstr_get(ob_bname, idx);
+		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		            (s != "") ? s : "unknown", SBC_TEXT, 0.9);
+
+		if (rec_sb_cols > SBX_DATE)
+		{
+			s = Online_AgeString(idx);
+			Scores_Text([lp_x + Scores_ColX(SBX_DATE), d], rec_sb_szrow,
+			            (s != "") ? s : "--", SBC_DIM, 0.9);
+		}
+
+		/*
+		  THE CLASS WORD IS REDUNDANT HERE AND IS DRAWN ANYWAY, as a
+		  cross-check rather than as information.  surfd derives `style` from
+		  `flags` with its own mirror of FS_RunClass, so every row on the
+		  clean tab should read `clean` and every row on the segmented tab
+		  `segmented`.  If one ever does not, the two implementations of that
+		  precedence have diverged -- which is a real risk with a rule written
+		  twice in two languages, and this column is the only place it would
+		  ever be visible.
+		*/
+		if (rec_sb_cols > SBX_KIND)
+		{
+			i = FS_RunClass(ob_flags[idx]);
+			Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+			            FS_RunClassName(i),
+			            (i == RC_CLEAN) ? SBC_GOOD : SBC_WARN, 0.85);
+		}
+
+		/*
+		  WHY this row is not ranked, when the run itself says so.  Amber and
+		  never red: TF_NOJOURNAL and TF_NORULESET describe a hole in the
+		  certification, not something the player did, and both are kept out
+		  of the taint classes for exactly that reason.  Most community rows
+		  leave this blank, which is correct -- they are community because of
+		  the SERVER, and the run carries no bit saying so.
+		*/
+		if (rec_sb_cols > SBX_TAG)
+		{
+			s = Online_WhyString(idx);
+			if (s != "")
+				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				            s, SBC_WARN, 0.85);
+		}
+	}
+	sui_list_view_end();
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
-	local float w, h, x0, y0, lw, idx, hot, on, cl, d, ticks, tick, pick;
-	local float scale, chipw, chiph, pad, legw;
+	local float w, h, x0, y0, lw, idx, hot, on, tick, pick;
+	local float scale, chipw, chiph, pad, legw, ytabs, yhead;
 	local string s, rid;
 
 	if (!rec_sb_open)
@@ -772,29 +1277,87 @@ void(vector scr) Scores_Draw =
 	}
 
 	/*
-	  The filter chips, top right, each as wide as its own label.
+	  The chips, top right, each as wide as its own label -- and WHICH chips
+	  depends on the tab, because the two boards are filtered along different
+	  axes.  The tab is the BOARD; the chip is the tier or the class within it.
 
-	  Three states rather than a checkbox: "all" is a real answer and is the
-	  default, because hiding rows by default makes a board that disagrees with
-	  the folder it came from.
+	  LOCAL keeps the four class chips it has had since build 44.  Three states
+	  rather than a checkbox: "all" is a real answer and is the default, because
+	  hiding rows by default makes a board that disagrees with the folder it
+	  came from.
+
+	  ONLINE gets two tier chips, and there is deliberately NO "all".  Merging
+	  the tiers is the one thing the whole split exists to prevent: a community
+	  time ordered into a ranked list is tier T3 -- the host-forged time, the
+	  structural hole the plan puts ahead of every input-layer concern --
+	  rendered as though it were settled.  surfd keeps them apart in its primary
+	  key and refuses to merge them; an "all" chip here would undo that in the
+	  one place a player actually reads.
 	*/
 	chipw = ceil(rec_sb_cw * 10);
-	if (Scores_Chip("sb_fx", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
-	                "cheated", rec_sb_filter == SB_F_CHEATED))
-		rec_sb_filter = SB_F_CHEATED;
-	if (Scores_Chip("sb_fs", [x0 + w - pad * 2 - chipw * 2, y0 + pad],
-	                [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
-		rec_sb_filter = SB_F_STITCHED;
-	if (Scores_Chip("sb_fc", [x0 + w - pad * 3 - chipw * 3, y0 + pad],
-	                [chipw, chiph], "clean", rec_sb_filter == SB_F_CLEAN))
-		rec_sb_filter = SB_F_CLEAN;
-	if (Scores_Chip("sb_fa", [x0 + w - pad * 4 - chipw * 4, y0 + pad],
-	                [chipw, chiph], "all", rec_sb_filter == SB_F_ALL))
-		rec_sb_filter = SB_F_ALL;
+	if (Scores_IsOnline())
+	{
+		if (Scores_Chip("sb_tc", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
+		                "community", rec_sb_tier == SB_TIER_COMMUNITY))
+			rec_sb_tier = SB_TIER_COMMUNITY;
+		if (Scores_Chip("sb_tr", [x0 + w - pad * 2 - chipw * 2, y0 + pad],
+		                [chipw, chiph], "ranked", rec_sb_tier == SB_TIER_RANKED))
+			rec_sb_tier = SB_TIER_RANKED;
+	}
+	else
+	{
+		if (Scores_Chip("sb_fx", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
+		                "cheated", rec_sb_filter == SB_F_CHEATED))
+			rec_sb_filter = SB_F_CHEATED;
+		if (Scores_Chip("sb_fs", [x0 + w - pad * 2 - chipw * 2, y0 + pad],
+		                [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
+			rec_sb_filter = SB_F_STITCHED;
+		if (Scores_Chip("sb_fc", [x0 + w - pad * 3 - chipw * 3, y0 + pad],
+		                [chipw, chiph], "clean", rec_sb_filter == SB_F_CLEAN))
+			rec_sb_filter = SB_F_CLEAN;
+		if (Scores_Chip("sb_fa", [x0 + w - pad * 4 - chipw * 4, y0 + pad],
+		                [chipw, chiph], "all", rec_sb_filter == SB_F_ALL))
+			rec_sb_filter = SB_F_ALL;
+	}
+
+	/*
+	  ---- the tabs, on their own row ---------------------------------------
+
+	  A ROW OF THEIR OWN AND NOT BESIDE THE MAP NAME.  The obvious cheaper
+	  layout puts them to the right of the title and costs no vertical space,
+	  but the title is a map name of unbounded width -- surf_air_arena_rebuild
+	  is a real file -- so the tabs would collide with it on exactly the maps
+	  whose names are longest, and nowhere else.  One row is 1/26th of the
+	  panel's height and is predictable at every width.
+
+	  The refresh chip is the ONLY way an online tab re-asks for a board it has
+	  already asked for; see the anti-hammer note beside Online_Need.  It is
+	  drawn only on the online tabs because the local list rebuilds itself from
+	  the directory on every open anyway.
+	*/
+	ytabs = y0 + pad * 2 + rec_sb_sztitle;
+	if (Scores_Chip("sb_t0", [x0 + pad, ytabs], [chipw, chiph],
+	                "online", rec_sb_tab == SB_T_ONLINE))
+		rec_sb_tab = SB_T_ONLINE;
+	if (Scores_Chip("sb_t1", [x0 + pad * 2 + chipw, ytabs], [chipw, chiph],
+	                "segmented", rec_sb_tab == SB_T_SEGMENT))
+		rec_sb_tab = SB_T_SEGMENT;
+	if (Scores_Chip("sb_t2", [x0 + pad * 3 + chipw * 2, ytabs], [chipw, chiph],
+	                "local", rec_sb_tab == SB_T_LOCAL))
+		rec_sb_tab = SB_T_LOCAL;
+
+	if (Scores_IsOnline())
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	if (Scores_Chip("sb_tref", [x0 + w - pad - chipw, ytabs], [chipw, chiph],
+	                "refresh", FALSE))
+		Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+		             Scores_TierOf(), Scores_StyleOf());
+
+	yhead = ytabs + chiph + ceil(pad * 0.5);
 
 	// ---- the legs, down the left ----------------------------------------
 	lw = legw;
-	rp = [x0 + pad, y0 + pad * 2 + rec_sb_sztitle];
+	rp = [x0 + pad, yhead];
 	Scores_Text(rp, rec_sb_szhead, "leg", SBC_DIM, 1);
 
 	lp = [x0 + pad, rp_y + rec_sb_szhead + pad * 0.5];
@@ -823,17 +1386,23 @@ void(vector scr) Scores_Draw =
 	sui_list_view_end();
 
 	// ---- the runs, on the right -----------------------------------------
-	rp = [x0 + pad * 2 + lw, y0 + pad * 2 + rec_sb_sztitle];
+	rp = [x0 + pad * 2 + lw, yhead];
 	rs = [w - lw - pad * 3, y0 + h - (rp_y + rec_sb_szhead + pad * 0.5) - pad * 2 - rec_sb_szrow];
 
 	/*
 	  HOW MANY COLUMNS THE WINDOW CAN AFFORD, decided here and obeyed below.
 
-	  The table is 74 characters wide at full dress.  On a narrow window that
+	  The table is 76 characters wide at full dress.  On a narrow window that
 	  does not fit, and a column that runs off the right edge is worse than one
-	  that is not drawn -- so the two least load-bearing go first: the tag
-	  ("latest"), then the date.  Rank, time, delta, player and clean/stitched
-	  are what a leaderboard IS and are never dropped.
+	  that is not drawn -- so the two least load-bearing go first: the last
+	  column (the file's tag locally, the demotion reason online), then the
+	  date/age.  Rank, time, delta, player and the class word are what a
+	  leaderboard IS and are never dropped.
+
+	  BUILD 64: BOTH SOURCES OBEY THIS ONE DECISION.  rec_sb_cols is read by
+	  both row drawers, so a window narrow enough to drop a column drops the
+	  same column on every tab.  A per-drawer copy of this arithmetic would
+	  eventually let two tabs disagree about how wide the same table is.
 	*/
 	rec_sb_cols = SBX_END;
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_TAG;
@@ -844,182 +1413,77 @@ void(vector scr) Scores_Draw =
 	Scores_Text([rp_x + Scores_ColX(SBX_TIME), rp_y], rec_sb_szhead, "time", SBC_DIM, 1);
 	Scores_Text([rp_x + Scores_ColX(SBX_DELTA), rp_y], rec_sb_szhead, "delta", SBC_DIM, 1);
 	Scores_Text([rp_x + Scores_ColX(SBX_OWNER), rp_y], rec_sb_szhead, "player", SBC_DIM, 1);
+
+	/*
+	  THE LAST THREE HEADINGS ARE WHERE THE TWO SOURCES STOP AGREEING.
+
+	  An online row has no `date`.  surfd stores a submission timestamp, but
+	  this client has no clock it may trust against it -- so the column is an
+	  AGE, computed from the reply's own `t` minus the row's own `when`, both
+	  server-side.  Calling that "date" would be a heading that lies about its
+	  units, and a player would read "3d" as a day of the month.
+	*/
 	if (rec_sb_cols > SBX_DATE)
-		Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead, "date", SBC_DIM, 1);
+		Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
+		            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);
 	if (rec_sb_cols > SBX_KIND)
 		Scores_Text([rp_x + Scores_ColX(SBX_KIND), rp_y], rec_sb_szhead, "run", SBC_DIM, 1);
+	// The local board has never labelled its last column and does not start
+	// now: `latest` and `lobby` say what they are.  "no ruleset" does not.
+	if (rec_sb_cols > SBX_TAG)
+	if (Scores_IsOnline())
+		Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
 
-	// The tick this map's server is actually running, which is what every time on
-	// screen is divided by.  Read once per frame rather than per row.
+	/*
+	  The tick this map's server is actually running, which is what every LOCAL
+	  time on screen is divided by.  Read once per frame rather than per row.
+
+	  The online rows deliberately do NOT use it: each carries the rate it was
+	  actually set at, which is the case surfd ranks by milliseconds to get
+	  right.  Formatting a foreign run against this client's tickrate would
+	  print a time that disagrees with the rank printed beside it.
+	*/
 	tick = Timer_Tick();
 	pick = -1;
 
-	if (rec_sb_rown <= 0)
-	{
-		Scores_Text([rp_x, rp_y + rec_sb_szhead + pad], rec_sb_szrow,
-		            "no runs recorded on this leg yet", SBC_DIM, 1);
-	}
+	if (Scores_IsOnline())
+		Scores_DrawOnlineRows(rp, rs, pad);
 	else
-	{
-		sui_list_view_begin("sb_runs", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
-		                    [rs_x - pad * 0.5, rec_sb_rowh], rec_sb_rown,
-		                    rec_sb_scroll, [0, ceil(rec_sb_cw)]);
-
-		lp = '0 0 0';
-		for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
-		{
-			/*
-			  A FILTERED-OUT ROW IS DRAWN DIM RATHER THAN REMOVED, and that is a
-			  decision rather than laziness.  sui_list_view is virtualised on a
-			  fixed item count, so hiding rows means maintaining a second index
-			  from view position to real row -- which is what the map browser's
-			  ms_view buffer is, and it exists there because 1,400 maps down to
-			  six is a different problem from a couple of dozen runs down to
-			  eighteen.  Dimming keeps the rank numbers honest (row 3 is still
-			  the third fastest) and keeps "how many did the filter drop" visible
-			  instead of silently changing the length of the list.
-			*/
-			rid = strcat("sb_run", ftos(idx));
-			hot = FALSE;
-			on  = Scores_Passes(idx);
-			d   = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;   // the row's baseline
-
-			if (on)
-			{
-				sui_action_element(lp, [rs_x - pad * 0.5, rec_sb_rowh], rid, sui_noop);
-				hot = sui_is_hovered(rid);
-				if (hot)
-					sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
-				if (sui_is_released(rid))
-					pick = idx;
-			}
-
-			ticks = rec_sb_rowticks[idx];
-			cl    = Scores_Clean(idx);
-
-			/*
-			  THE NUMBERS IN THE MONO FACE AND THE WORDS IN THE UI ONE, and the
-			  face is switched per column rather than per row because Font_Px
-			  snaps against whichever face is CURRENTLY selected -- the two
-			  ladders differ, so a size asked for before the Font_Set snaps
-			  against the wrong one and gets resampled.  That is the exact defect
-			  build 21 found in HUD_DrawSeq, one function over.
-			*/
-			Font_Set(ui_font_mono);
-
-			Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
-			             rec_sb_szrow, sprintf("%g", idx + 1),
-			             SBC_DIM, on ? 1 : 0.35);
-
-			/*
-			  BUILD 57, STAGE T: A LOBBY TIME IS COLOURED, not just labelled.
-
-			  The word is in the TAG column below, which is the first column this
-			  board DROPS on a narrow window -- so on a 1280-wide screen the mark
-			  would disappear and a row with no replay behind it would look like
-			  every other row.  The time itself is never dropped, so the colour is
-			  the half of the mark that always survives.  Amber and not green: it
-			  is a real time set against real players, and it is also the one row
-			  here that cannot be watched.
-			*/
-			Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
-			            (ticks > 0) ? Time_TickString(ticks, tick) : "--:--.---",
-			            on ? ((rec_sb_rowtag[idx] == RT_LOBBY) ? SBC_WARN : SBC_TEXT)
-			               : SBC_DIM,
-			            on ? 1 : 0.35);
-
-			// The delta against the leg's fastest clean run.  The reference row
-			// itself says "best" rather than "+0.000", which is a number that
-			// reads as a measurement and is really a tautology.
-			if (rec_sb_best > 0 && ticks > 0 && ticks != rec_sb_best)
-				Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
-				            sprintf("+%s", Time_TickString(ticks - rec_sb_best, tick)),
-				            SBC_BAD, on ? 0.9 : 0.3);
-			else if (ticks > 0 && ticks == rec_sb_best)
-				Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
-				            "best", SBC_GOOD, on ? 0.9 : 0.3);
-
-			Font_Set(ui_font_ui);
-
-			s = bufstr_get(rec_sb_bowner, idx);
-			Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
-			            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
-			            on ? 0.9 : 0.35);
-
-			if (rec_sb_cols > SBX_DATE)
-			{
-				s = bufstr_get(rec_sb_bdate, idx);
-				Scores_Text([lp_x + Scores_ColX(SBX_DATE), d], rec_sb_szrow,
-				            (s != "") ? s : "--", SBC_DIM, on ? 0.9 : 0.35);
-			}
-
-			/*
-			  What kind of run this was, in one word, and the honest fourth state.
-
-			  A v3 file has no `flags` key at all -- every recording anyone has on
-			  disk before build 24 -- so `last` genuinely cannot answer and says so
-			  with a dash rather than being guessed into one of the others.
-
-			  BUILD 44: THE WORD COMES FROM FS_RunClassName AND NOT FROM A LADDER
-			  HERE.  It was three branches with three literals, and the report is
-			  that one of those literals was wrong on a whole class of run.  A
-			  second copy of the words is a second place for that to happen.
-
-			  THE COLOUR STAYS LOCAL, because it is the only part that is about
-			  this list rather than about the run: red for cheated, amber for the
-			  two middle states -- which is what `practice` already is under the
-			  live timer -- green for clean, and dim for the dash.
-			*/
-			if (rec_sb_cols > SBX_KIND)
-			{
-				if (cl == RC_CLEAN)
-					Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
-					            FS_RunClassName(cl), SBC_GOOD, on ? 0.85 : 0.3);
-				else if (cl == RC_CHEAT)
-					Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
-					            FS_RunClassName(cl), SBC_BAD, on ? 0.85 : 0.3);
-				else if (cl == RC_UNKNOWN)
-					Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
-					            "--", SBC_DIM, on ? 0.6 : 0.25);
-				else
-					Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
-					            FS_RunClassName(cl), SBC_WARN, on ? 0.85 : 0.3);
-			}
-
-			/*
-			  The TAG column says WHICH FILE this row is, not what kind of run
-			  it was -- the `run` column beside it already carries the word.
-			  There are two unstamped slots as of build 45 and both mean the
-			  same thing here: the newest of its kind, not a ranked archive
-			  entry.  So both get `latest` and neither repeats what KIND says.
-			*/
-			/*
-			  BUILD 57, STAGE T: and `lobby`, which is the one word in this column
-			  that changes what a CLICK does -- see the hand-off below.  Five
-			  characters, so SBW_TAG's seven still fit it.
-			*/
-			if (rec_sb_cols > SBX_TAG)
-			{
-				if (rec_sb_rowtag[idx] == RT_LOBBY)
-					Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
-					            "lobby", SBC_WARN, on ? 0.85 : 0.3);
-				else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
-					Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
-					            "latest", SBC_DIM, on ? 0.7 : 0.25);
-			}
-		}
-		sui_list_view_end();
-	}
+		pick = Scores_DrawLocalRows(rp, rs, tick, pad);
 
 	// ---- the footer ------------------------------------------------------
 	Font_Set(ui_font_ui);
-	s = sprintf("%g run(s) on %s", rec_sb_rown, Scores_LegName(rec_sb_leg));
-	if (rec_sb_rowover > 0)
-		s = sprintf("%s  (%g more than the %g this list holds)",
-		            s, rec_sb_rowover, SB_MAXROW);
+	if (Scores_IsOnline())
+	{
+		/*
+		  BOTH TIERS' TOTALS, ON EVERY ONLINE TAB.
+
+		  They come back with either request -- cl_online.qc keeps them from
+		  the same reply for exactly this -- so the footer can say what is on
+		  the chip the player is NOT looking at without a second round trip.
+		  On an empty ranked board that sentence is the difference between "no
+		  times here" and "no times here, 37 next door".
+		*/
+		s = sprintf("%g %s %s time(s) on %s", ob_n, Scores_TierOf(),
+		            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
+		s = sprintf("%s    ranked %g / community %g", s,
+		            ob_cnt_ranked, ob_cnt_community);
+	}
+	else
+	{
+		s = sprintf("%g run(s) on %s", rec_sb_rown, Scores_LegName(rec_sb_leg));
+		if (rec_sb_rowover > 0)
+			s = sprintf("%s  (%g more than the %g this list holds)",
+			            s, rec_sb_rowover, SB_MAXROW);
+	}
 	Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow, s, SBC_DIM, 1);
 
-	s = "click a run to watch it    tab or esc to close";
+	// The hint says what a CLICK does, and on the online tabs a click does not
+	// open anything -- so it names the keys instead of promising a replay that
+	// is on somebody else's disk.
+	s = Scores_IsOnline()
+	      ? "left/right change tab    up/down change leg    esc to close"
+	      : "click a run to watch it    tab or esc to close";
 	Scores_TextR([x0 + w - pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
 	             s, SBC_DIM, 0.8);
 
@@ -1168,6 +1632,30 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 					rec_sb_leg = rec_sb_leg + 1;
 				return TRUE;
 			}
+
+			/*
+			  BUILD 64: LEFT AND RIGHT CHANGE THE TAB, because up and down
+			  already change the leg and a board with three tabs and no
+			  keyboard route to them is one the mouse has to be borrowed for.
+
+			  They DO NOT WRAP.  A wrapping strip means pressing right twice
+			  from `local` lands on `segmented`, and a tab strip is a spatial
+			  thing -- the row does not loop on screen and it should not loop
+			  under the keys either.  Clamped, so holding a key settles at an
+			  end rather than cycling.
+			*/
+			if (scanx == K_LEFTARROW)
+			{
+				if (rec_sb_tab > SB_T_ONLINE)
+					rec_sb_tab = rec_sb_tab - 1;
+				return TRUE;
+			}
+			if (scanx == K_RIGHTARROW)
+			{
+				if (rec_sb_tab < SB_T_LOCAL)
+					rec_sb_tab = rec_sb_tab + 1;
+				return TRUE;
+			}
 		}
 		return FALSE;
 	}
@@ -1228,6 +1716,54 @@ float(string cmd) Scores_ConsoleCommand =
 			else if (argv(2) == "segmented") rec_sb_filter = SB_F_STITCHED;
 			else if (argv(2) == "cheated")  rec_sb_filter = SB_F_CHEATED;
 			else                            rec_sb_filter = SB_F_ALL;
+		}
+		/*
+		  BUILD 64.  THE TAB, THE TIER AND A FORCED REFETCH, from the console.
+
+		  These are the whole headless surface for stage 2, and they exist for
+		  the reason `replay status` and `board_status` both do: a config can
+		  neither click a chip nor read a pixel, so a feature reachable only by
+		  the mouse is one no arm can check.  Every one of them lands in the
+		  same state the chip would set, and the `Scores_Refresh()` below then
+		  drives the fetch exactly as a drawn frame would.
+
+		  AN UNKNOWN WORD FALLS BACK TO THE DEFAULT rather than being refused,
+		  which matches `scores filter` one block up.  `scores tab` on its own
+		  is therefore "go back to the default board", which is a useful thing
+		  to be able to type and is what the fall-through already means.
+		*/
+		else if (argv(1) == "tab")
+		{
+			if (argv(2) == "segmented")  rec_sb_tab = SB_T_SEGMENT;
+			else if (argv(2) == "local") rec_sb_tab = SB_T_LOCAL;
+			else                         rec_sb_tab = SB_T_ONLINE;
+		}
+		else if (argv(1) == "tier")
+		{
+			if (argv(2) == "community") rec_sb_tier = SB_TIER_COMMUNITY;
+			else                        rec_sb_tier = SB_TIER_RANKED;
+		}
+		else if (argv(1) == "refresh")
+		{
+			/*
+			  The refresh chip's twin, and it calls Online_Fetch DIRECTLY --
+			  Online_Need would decline, because the whole point of its guard
+			  is that a board already asked for is not asked for again.  This
+			  is the one path that is allowed past it, on both the chip and
+			  the console, and there is no third.
+			*/
+			Scores_Refresh();
+			if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+				Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+				             Scores_TierOf(), Scores_StyleOf());
+		}
+		// `scores` on its own toggles the board, which makes it useless for
+		// asking what the board holds.  This asks without touching anything.
+		else if (argv(1) == "status")
+		{
+			Scores_Refresh();
+			Scores_Status();
+			return TRUE;
 		}
 		else if (argv(1) == "legs")
 		{
@@ -1298,13 +1834,41 @@ void() Scores_Status =
 	local float i, cl, shown;
 	local string s;
 
-	print(sprintf("scores: %s on %s  leg %g/%g \"%s\"  filter %s\n",
+	/*
+	  BUILD 64 SPLIT THIS INTO TWO LINES, and the reason is the eight-parameter
+	  ceiling rather than taste: `filter` was the seventh argument of a call
+	  that now has a tab and a tier to report as well, and a ninth would be
+	  dropped by the calling convention rather than refused by the compiler.
+	  A status line silently missing its last field is precisely the defect
+	  this function exists to prevent elsewhere.
+	*/
+	print(sprintf("scores: %s on %s  leg %g/%g \"%s\"\n",
 	              rec_sb_open ? "open" : "closed",
 	              (rec_sb_legmap != "") ? rec_sb_legmap : "-",
-	              rec_sb_leg + 1, rec_sb_legn, Scores_LegName(rec_sb_leg),
+	              rec_sb_leg + 1, rec_sb_legn, Scores_LegName(rec_sb_leg)));
+
+	/*
+	  `cols` is the LAST DRAWN FRAME's column budget, and it is reported because
+	  it is otherwise checkable only by eye.
+
+	  The drop rule (SBX_END -> SBX_TAG -> SBX_DATE) is arithmetic over the
+	  panel width, and both row drawers obey the same global -- but a config
+	  cannot read a pixel, and the first attempt to test it set vid_conwidth,
+	  which is the MENU's virtual screen and does not reach CSQC at all.  The
+	  board looked identical and the arm looked passed.  A number that says
+	  which budget was actually chosen cannot be misread that way.
+
+	  It is 0 until the board has been drawn once, which is honest: nothing has
+	  decided a width yet.
+	*/
+	print(sprintf("  tab %s   tier %s   filter %s   cols %g\n",
+	              (rec_sb_tab == SB_T_LOCAL) ? "local"
+	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"),
+	              Scores_TierOf(),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
-	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all"))));
+	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all")),
+	              rec_sb_cols));
 
 	/*
 	  BUILD 44: HOW MANY ROWS THE FILTER ACTUALLY KEEPS.
@@ -1325,9 +1889,26 @@ void() Scores_Status =
 		if (Scores_Passes(i))
 			shown = shown + 1;
 
+	/*
+	  Timer_Tick() AND NOT PM_TICK, IN BOTH PLACES BELOW.  Found by build 64's
+	  tab arm, on a screenshot taken beside the log it was meant to confirm.
+
+	  PM_TICK is the COMPILE-TIME default, 0.015 -- and bhop maps run at 0.01
+	  (mode_bhop.cfg sets cl_netfps 100 to match).  So on every bhop map in the
+	  library this function has printed times 50% LONG since build 24, while
+	  the board two functions up drew them correctly from Timer_Tick(): one
+	  4976-tick PB read `0:49.760` on screen and `1:14.640` in the log.
+
+	  That is the worst possible place for the error.  This report exists so a
+	  scripted arm can check a board it cannot see, and a report that disagrees
+	  with the thing it reports is worse than no report at all -- an arm would
+	  either chase a phantom or, far likelier, enshrine the wrong number as the
+	  expected one.  cl_hud.qc:2595 records fixing this exact substitution once
+	  before; these two were the last of it in the client.
+	*/
 	print(sprintf("  legs: %g   rows: %g (%g pass the filter)   best %s\n",
 	              rec_sb_legn, rec_sb_rown, shown,
-	              rec_sb_best > 0 ? Time_TickString(rec_sb_best, PM_TICK) : "-"));
+	              rec_sb_best > 0 ? Time_TickString(rec_sb_best, Timer_Tick()) : "-"));
 
 	// Bounded: a status line is for reading, and twenty rows is already more
 	// than anyone scrolls past in a log.  EVERY row is listed whatever the filter
@@ -1342,11 +1923,28 @@ void() Scores_Status =
 		s  = (cl == RC_UNKNOWN) ? "unknown" : FS_RunClassName(cl);
 		print(sprintf("  %s%2g %s  rec%g %-9s  %s\n",
 		              Scores_Passes(i) ? "*" : " ",
-		              i + 1, Time_TickString(rec_sb_rowticks[i], PM_TICK),
+		              i + 1, Time_TickString(rec_sb_rowticks[i], Timer_Tick()),
 		              rec_sb_rowver[i], s, bufstr_get(rec_sb_bpath, i)));
 	}
 	if (rec_sb_rown > 20)
 		print(sprintf("  ... and %g more\n", rec_sb_rown - 20));
+
+	/*
+	  AND THE ONLINE BOARD, WHEN AN ONLINE TAB IS THE ONE ON SCREEN.
+
+	  Online_Status and NOT a second copy of it.  The rows, the Hz-to-seconds
+	  conversion and the demotion reason are all printed there already, and two
+	  reports of one board that could disagree by a digit is worse than one
+	  report -- the units bug b64board.cfg caught would have been invisible if
+	  the tab had printed its own idea of the time.
+
+	  EVERYTHING ABOVE THIS LINE IS THE LOCAL LIST, on every tab.  It is built
+	  regardless (see Scores_Refresh), so a run of this command answers "what
+	  is on my disk" and "what is on the board" in one go, which is the
+	  comparison an arm actually wants to make.
+	*/
+	if (Scores_IsOnline())
+		Online_Status();
 };
 
 void() Scores_RegisterCvars =
@@ -1366,4 +1964,16 @@ void() Scores_RegisterCvars =
 	rec_sb_legbuilt = -1;
 	rec_sb_legzoned = FALSE;
 	rec_sb_bpath = rec_sb_bowner = rec_sb_bdate = 0;
+
+	/*
+	  BUILD 64: THE DEFAULT TAB, SET RATHER THAN INHERITED FROM ZERO.
+
+	  SB_T_ONLINE and SB_TIER_RANKED are both 0, so a QC global would already
+	  hold them -- and that is exactly why this is written out.  "The online
+	  board is the default" is the request, not an accident of which constant
+	  was listed first, and reordering the three #defines would silently open
+	  the board on Local with nothing anywhere saying it had changed.
+	*/
+	rec_sb_tab  = SB_T_ONLINE;
+	rec_sb_tier = SB_TIER_RANKED;
 };

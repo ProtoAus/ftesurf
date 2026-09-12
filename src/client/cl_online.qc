@@ -74,6 +74,22 @@ float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
 
 /*
+  The SERVER's clock at the moment it answered -- root `t`, beside the rows'
+  own `when`.  The age column is the difference of those two, so it needs no
+  clock on this machine at all: a client with a wrong date, a wrong timezone or
+  no RTC still reads "3d" correctly, and there is no strftime here to get the
+  %s extension wrong on Windows.
+
+  BOTH ARE UNIX SECONDS IN A QC FLOAT, WHICH IS 32-BIT.  1.75e9 needs 31 bits
+  of integer and the mantissa holds 24, so each value lands on a 128-SECOND
+  GRID and their difference carries up to ~128 s of error.  That is why the
+  finest bucket below is "now" for anything under two minutes and everything
+  above it is minutes or coarser -- a seconds-accurate age is not available
+  from these two numbers and pretending otherwise would be a made-up digit.
+*/
+float  ob_t;
+
+/*
   What the IN-FLIGHT request asked for.  Read only by the callback, to label
   the rows it stores; never by the drawing code, which asks what the STORED
   rows describe (ob_have_*).  Keeping the two apart is trap 3 above.
@@ -101,6 +117,7 @@ float  ob_flags[OB_MAXROW];
   this client's rate would print a time that disagrees with the rank beside it.
 */
 float  ob_rate[OB_MAXROW];
+float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
 
@@ -144,6 +161,7 @@ void() Online_FreeHave =
 void() Online_Clear =
 {
 	ob_n = 0;
+	ob_t = 0;
 	ob_cnt_ranked = 0;
 	ob_cnt_community = 0;
 	Online_FreeHave();
@@ -256,6 +274,9 @@ void(string body) Online_Parse =
 	ob_cnt_ranked    = json_get_float(json_find_object_child(counts, "ranked"));
 	ob_cnt_community = json_get_float(json_find_object_child(counts, "community"));
 
+	// The reply's own clock, which the age column is measured against.
+	ob_t = json_get_float(json_find_object_child(root, "t"));
+
 	/*
 	  Label the rows with what the SERVER says it answered, not with what we
 	  asked for.  They should agree -- surfd echoes the query back -- but if
@@ -297,6 +318,8 @@ void(string body) Online_Parse =
 		if (ob_rate[i] <= 0)
 			ob_rate[i] = 1 / PM_TICK;   // a row with no rate: the shipped one
 
+		ob_wrow[i]  = json_get_float(json_find_object_child(row, "when"));
+
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 	}
@@ -333,6 +356,115 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	}
 
 	Online_Parse(resourcebody);
+};
+
+/*
+===========================================================================
+  What the tabs ask -- build 64 stage 2
+
+  cl_scores.qc drives all of this, once per drawn frame, and these three are
+  the whole interface between the two files.  They live here rather than there
+  because every one of them reads ob_q_* or ob_have_*, and the distinction
+  between those two is the trap this file exists to keep straight (point 3 at
+  the top).  A draw loop that compared the wrong one would render the previous
+  leg's times under this leg's heading.
+===========================================================================
+*/
+
+/*
+  Do the STORED rows describe this board?  ob_have_*, i.e. what the server said
+  it answered -- never ob_q_*, which is only what was last asked for.
+
+  The tab that is on screen calls this to decide whether to draw rows or to say
+  it is still waiting.  While a fetch for a DIFFERENT leg is in flight this is
+  FALSE, which is correct: the rows in memory are the old leg's.
+*/
+float(float track, float leg, string tier, string style) Online_Describes =
+{
+	if (ob_state != OBS_OK || !ob_have_zoned)
+		return FALSE;
+	return (ob_have_map   == serverkey("map") &&
+	        ob_have_track == track && ob_have_leg == leg &&
+	        ob_have_tier  == tier  && ob_have_style == style);
+};
+
+/*
+  Ask for this board if nobody has asked for it yet.  Called every frame the
+  board is open, so the guard is the whole function.
+
+  THE GUARD IS ob_q_*, NOT ob_have_*, AND THAT IS THE ANTI-HAMMER PROPERTY.  A
+  request that FAILED still recorded what it asked for, so a leaderboard that
+  is down gets exactly one request per leg the player clicks on -- not one per
+  frame for as long as they leave the board open.  Retrying is the refresh
+  chip's job, because a retry the player did not ask for is indistinguishable
+  from a retry loop.
+
+  The two cases that DO retry by themselves are the two that self-heal and cost
+  nothing to re-test: no lobby_dir and no map.  Online_Fetch returns before
+  recording the query in both, so setting lobby_dir or loading a map makes the
+  board work on the next frame rather than on the next click.
+*/
+float(float track, float leg, string tier, string style) Online_Need =
+{
+	if (ob_state == OBS_FETCH)
+		return FALSE;                   // one in flight; let it land
+
+	if (ob_q_zoned)
+	if (ob_q_map   == serverkey("map") &&
+	    ob_q_track == track && ob_q_leg == leg &&
+	    ob_q_tier  == tier  && ob_q_style == style)
+		return FALSE;                   // already asked for exactly this
+
+	return Online_Fetch(track, leg, tier, style);
+};
+
+/*
+  How long ago row `i` was set, in one short word.
+
+  Server minus server: `ob_t` is the clock of the reply and `when` is the clock
+  of the submission, so this machine's own date never enters into it.  See
+  ob_t's declaration for why the finest bucket is two minutes wide -- both
+  numbers sit on a 128-second grid once a QC float has held them, and a
+  seconds-accurate age is simply not recoverable from them.
+*/
+string(float i) Online_AgeString =
+{
+	local float a;
+
+	if (i < 0 || i >= ob_n || ob_t <= 0 || ob_wrow[i] <= 0)
+		return "";
+
+	a = ob_t - ob_wrow[i];
+	if (a < 120)        return "now";           // and see the grid note above
+	if (a < 3600)       return sprintf("%gm", floor(a / 60));
+	if (a < 86400)      return sprintf("%gh", floor(a / 3600));
+	if (a < 86400 * 365) return sprintf("%gd", floor(a / 86400));
+	return sprintf("%gy", floor(a / (86400 * 365)));
+};
+
+/*
+  WHY a row is not on the ranked board, in the row's own words, or "" when the
+  run itself says nothing.
+
+  Two bits demote a run without accusing anyone of anything -- TF_NOJOURNAL
+  (build 58) and TF_NORULESET (build 62) -- and both are deliberately NOT taint
+  classes: they describe a hole in the CERTIFICATION, not something the player
+  did.  So this is a separate column from `run`, which keeps saying clean or
+  segmented, and the two never contradict each other.
+
+  "" IS THE HONEST ANSWER FOR MOST COMMUNITY ROWS.  A run set on a server that
+  holds no key is community because of the SERVER, and the run carries no bit
+  saying so -- inventing a reason here would be putting words in its mouth.
+*/
+string(float i) Online_WhyString =
+{
+	if (i < 0 || i >= ob_n)
+		return "";
+	// Journal first: no journal is no evidence at all, where an unlocked
+	// ruleset is evidence that has not been certified.  A run can carry both.
+	if (ob_flags[i] & TF_NOJOURNAL) return "no journal";
+	if (ob_flags[i] & TF_NORULESET) return "no ruleset";
+	return "";
 };
 
 /*
@@ -388,11 +520,27 @@ void() Online_Status =
 	  error on a leaderboard row beside a correct rank would just look like the
 	  clock being broken.
 	*/
+	/*
+	  EIGHT ARGUMENTS INCLUDING THE FORMAT, WHICH IS THE CEILING.  A QC call
+	  passes at most MAX_PARMS=8, so the age and the reason are combined into
+	  one string above the call rather than passed as two -- a ninth would be
+	  dropped by the calling convention rather than refused by the compiler,
+	  and a status line silently missing its last column is the kind of defect
+	  this whole function exists to prevent.
+	*/
 	for (i = 0; i < ob_n; i = i + 1)
-		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %g\n",
+	{
+		word = Online_WhyString(i);
+		if (word != "")
+			word = strcat(Online_AgeString(i), " ", word);
+		else
+			word = Online_AgeString(i);
+
+		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %g  %s\n",
 		              ob_rank[i], bufstr_get(ob_bname, i),
 		              Time_TickString(ob_ticks[i], 1 / ob_rate[i]),
-		              ob_ticks[i], ob_rate[i], ob_flags[i]));
+		              ob_ticks[i], ob_rate[i], ob_flags[i], word));
+	}
 };
 
 /*
