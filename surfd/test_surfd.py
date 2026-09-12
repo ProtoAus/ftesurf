@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_surfd.py -- the falsifier for surfd's address derivation.
+test_surfd.py -- the falsifier for surfd's address derivation and rate limit.
 
 Run it anywhere Flask is installed, against a THROWAWAY home directory:
 
@@ -19,6 +19,11 @@ cases that matter are the two that must NOT change:
       before the option existed.
 
 A test that only proved the new path works would prove nothing about either.
+
+Section 9 holds RATE_MAX to the Pi's real traffic: five lobbies heartbeating
+from one address used to be exactly the per-IP cap.  It plays the same traffic
+against the old cap as a control, for the same reason -- a simulation that
+cannot produce a 429 proves nothing by not producing one.
 """
 
 import importlib
@@ -90,6 +95,103 @@ def beat(mod, src, node="p27510", port=27510, key="testkey", mapname=None):
     if len(mine) != 1:
         return "expected 1 row for %s, saw %d" % (mapname, len(mine))
     return mine[0]["addr"]
+
+
+class FakeClock(object):
+    """Stands in for the `time` module inside ONE imported surfd, and only there.
+
+    surfd reads the clock as time.time() through its own module global, so
+    setting mod.time moves the heartbeat's `now` and /lobbies.json's TTL cut
+    together, while Flask, sqlite and logging keep the real clock.  Nothing in
+    surfd.py changes to allow it.
+    """
+
+    def __init__(self, now=0.0):
+        self.now = float(now)
+
+    def time(self):
+        return self.now
+
+
+# The Pi's lobby ports, in lobby order: cfg/lobby1.cfg .. cfg/lobby5.cfg.
+LOBBY_PORTS = (27510, 27520, 27530, 27540, 27550)
+
+
+def lobby_schedule(seconds=120.0, start=1800000000.0):
+    """The five lobbies' heartbeats as surfd receives them: sorted (when, port).
+
+    Modelled on Lobby_Heartbeat (src/server/sv_lobby.qc) rather than on an
+    ideal five-second tick, because a tick that is never early -- ideal, or
+    only ever late -- is the one kind of traffic the old cap of 60 survived:
+
+      * a beat goes out on the first server frame at or after lobby_hb_next,
+        which is then set to time + lobby_master_rate (5), so each interval is
+        a frame (~15 ms) longer than five seconds;
+      * lobby_hb_next is a QC global, and QC globals do not survive a map
+        change or a restart, so a lobby's first frame on a new map beats at
+        once however recently the old map beat.  Lobby 4 changes map just
+        after a beat and is back two seconds later; from 90 s the five restart
+        one after another, the way build.ps1 -Pi restarts them;
+      * the POST is asynchronous and surfd is one worker, so each beat arrives
+        a varying fraction of a second after it was sent -- and surfd
+        truncates `now` to a whole second.
+
+    Deterministic on purpose: a check that fails one run in fifty is a check
+    people learn to ignore.
+    """
+    period, frame = 5.0, 0.015
+    delays = (0.02, 0.41, 0.07, 0.88, 0.15, 0.63, 0.02, 0.29)
+    beats = []
+    for i, port in enumerate(LOBBY_PORTS):
+        # (goes dark, first frame back): nothing is sent in between, and the
+        # first frame back beats at once.
+        gaps = [(90.0 + 2.0 * i, 92.5 + 2.0 * i)]
+        if port == 27540:
+            gaps.insert(0, (44.2, 46.2))
+        t = 0.45 + 1.1 * i              # phases spread across the period
+        n = 0
+        while t < seconds:
+            beats.append((start + t + delays[(n + 3 * i) % len(delays)], port))
+            n += 1
+            due = t + period + frame
+            for dark, back in gaps:
+                if t < dark <= due:
+                    due = back
+                    break
+            t = due
+    beats.sort()
+    return beats
+
+
+def heartbeat_storm(mod, schedule, src="127.0.0.1"):
+    """Play (when, port) heartbeats through /api/heartbeat on a fake clock.
+
+    Returns (refused, missing): (second, port, status) for every beat that did
+    not get 200, and how many times a lobby that had already been accepted was
+    absent from /lobbies.json straight after a beat -- which is what a player
+    looking at the picker would see.
+    """
+    clock = FakeClock(schedule[0][0])
+    mod.time = clock
+    client = mod.app.test_client()
+    first = int(schedule[0][0])
+    refused, missing, accepted = [], 0, set()
+    for when, port in schedule:
+        clock.now = when
+        resp = client.post(
+            "/api/heartbeat",
+            data={"key": "testkey", "node": "p%d" % port, "map": "bhop_eazy",
+                  "players": "3", "max": "32", "port": str(port), "name": "t"},
+            environ_base={"REMOTE_ADDR": src},
+        )
+        if resp.status_code == 200:
+            accepted.add(port)
+        else:
+            refused.append((int(when) - first, port, resp.status_code))
+        rows = client.get("/lobbies.json").get_json()["lobbies"]
+        live = set(int(r["addr"].rsplit(":", 1)[1]) for r in rows)
+        missing += len(accepted - live)
+    return refused, missing
 
 
 def main():
@@ -183,6 +285,37 @@ def main():
     homes.append(m9._test_home)
     check("an EMPTY SURFD_TRUSTED in the file trusts nothing",
           beat(m9, "192.168.1.102"), "192.168.1.102:27510")
+
+    # ---- 9. five lobbies on one address are never rate limited -------------
+    # All five lobbies POST from 127.0.0.1 every 5 s: 5 x 12 = 60 a minute,
+    # which was RATE_MAX until QC build 57, and at the cap any early beat is
+    # refused. A refused beat is not retried, so enough of them in a row take
+    # a running lobby out of the directory. Two simulated minutes of the Pi's
+    # own traffic (lobby_schedule) must draw no refusal and never lose a row.
+    m10 = fresh()
+    homes.append(m10._test_home)
+    refused, missing = heartbeat_storm(m10, lobby_schedule())
+    check("five lobbies, one IP, two minutes: no beat refused", refused, [])
+    check("...and no accepted lobby missing from /lobbies.json", missing, 0)
+
+    # THE CONTROL. The same traffic against the old cap must draw a 429. If it
+    # does not, the fake clock is not reaching the limiter and the two checks
+    # above would pass whatever RATE_MAX said.
+    #
+    # BOTH CAPS, and that is the point rather than belt-and-braces. The Pi's
+    # lobbies beat from 127.0.0.1, which TRUSTED_SOURCES trusts by default, so
+    # since the cluster change the heartbeat reads RATE_MAX_TRUSTED for this
+    # traffic and lowering RATE_MAX alone left the control unable to fail --
+    # caught by this check going FAIL the moment RATE_MAX_TRUSTED landed, which
+    # is exactly what it is here to do. Setting both keeps the control honest
+    # whichever cap the endpoint decides to apply.
+    m11 = fresh()
+    homes.append(m11._test_home)
+    m11.RATE_MAX = 60
+    m11.RATE_MAX_TRUSTED = 60
+    refused, _missing = heartbeat_storm(m11, lobby_schedule())
+    check("control: the same traffic at the old cap of 60 draws a 429",
+          429 in [r[2] for r in refused], True)
 
     for h in homes:
         shutil.rmtree(h, ignore_errors=True)

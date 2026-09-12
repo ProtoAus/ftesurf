@@ -12,7 +12,12 @@ the Pi copy in place.
     surfd/                      (this repo)          -> /srv/nvme/surfd/ (Pi)
       surfd.py          the app
       surfd.env.example the shape of the secret file, with no value in it
-      test_surfd.py     the falsifier for the address derivation (see below)
+      test_surfd.py     the falsifier for the address derivation and the rate
+                        limit (see below)
+      test_board.py     the falsifier for the leaderboard (schema 2) -- who
+                        may write to it, which board a run lands on, and the
+                        rate bucket that keeps submissions out of the
+                        heartbeat's budget
       run.sh            start under gunicorn, detached
       stop.sh           stop it
       surfd.service     systemd unit  -- INSTALLED and enabled (see below)
@@ -26,7 +31,7 @@ the Pi copy in place.
       play.nginx        the public vhost for play.proto.bar -- NOT INSTALLED
       setup_public.sh   installs that vhost + TLS, then the advertise switch
       test_admin.py     the falsifier for the panel
-      server/           the three game servers' scripts, from
+      server/           the five game servers' scripts, from
                         /srv/nvme/ftesurf-server/ (run.sh, runall.sh, stopall.sh)
 
 Not in the repo, and must never be -- `*.env` in the tree's `.gitignore`
@@ -62,9 +67,89 @@ The lobby address is `<source IP>:<port>`. There is no address field, and
 X-Forwarded-For is not trusted, so a heartbeat cannot advertise a lobby on
 another host.
 
+```
+POST /api/run         (application/x-www-form-urlencoded)   -- schema 2
+    key       shared secret; 403 if wrong or missing
+    map       map name, <=64 chars of [A-Za-z0-9_.+-]; REFUSED if longer
+    track     0 main, 1+ bonus            (sh_zones.qc: zone_track)  REQUIRED
+    leg       0 the full track, k stage k (sh_defs.qc:  FS_LegOf)    REQUIRED
+    player    stable player id, the board key
+    name      display name at the time of the run
+    ticks     1..1e8, the run's tick count
+    tickrate  1..10000, what a tick was worth
+    flags     the TF_* word AT THE FINISH (the .rec header's `flags`)
+    tier      "ranked" (default) or "community"; may only be lowered
+    node      which server witnessed it
+    runid     the .rec header's runid, so the evidence can be found later
+  -> 200 {"ok":true,"stored":true|false,"best":<ms>}
+  -> 204        the run has no board at all (practice or cheated)
+
+GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
+    track/leg default 0; tier defaults "ranked"; style defaults "clean"
+  -> 200 {"v":1,"t":..,"map":..,"track":..,"leg":..,"tier":..,"style":..,
+          "counts":{"ranked":n,"community":n},"offset":n,
+          "rows":[{"r":1,"player":..,"name":..,"ticks":..,"rate":..,
+                   "ms":..,"flags":..,"when":..}]}
+```
+
+`track` and `leg` are **required on POST and defaulted to 0 on GET**, and the
+asymmetry is deliberate. Defaulting them on a read is a convenience -- most
+reads want the main track's full run. Defaulting them on a write would mean a
+client that forgot the field files every bonus and every stage run silently
+onto the main board, and nothing downstream could tell. A 400 is loud; a
+misfiled leaderboard is not.
+
+**One row per player per board, not one per run.** The board answers "players'
+best times ranked", so the primary key is `(map, track, leg, tier, style,
+player)` and a submission replaces a row only on an improvement. A tie keeps
+the earlier claim.
+
+**`millis` is the rank key, not `ticks`.** A tick is only a duration at a
+tickrate. 4000 ticks at 100 Hz is 40 s and 3000 at 50 Hz is 60 s -- ranked on
+ticks the slower run wins. `pm_ticrate` is locked on a conforming server, but
+the board is not the thing that gets to assume so.
+
+**`style` is derived from `flags` here, never taken from the submitter**, as a
+mirror of `FS_RunClass` including its precedence (cheat outranks segment
+outranks practice). `clean` and `segmented` are peer boards -- a player may
+hold a PB on each -- and practice and cheated runs are refused a board
+entirely, with a 204 rather than an error, because they are real runs that
+simply have nowhere to stand.
+
+**`tier` is decided by who holds the key.** A leaderboard fed by player-hosted
+servers is forgeable by the host with no cheating skill at all: on a listen
+server the host owns `sv.time`, the movement cvars, the progs and the timer.
+Requiring the shared secret to POST is what makes "Ranked = official servers
+only" true without a line of policy code -- a player-hosted server holds no
+key, gets a 403, and keeps its times locally, which is the Local tab and is
+already built (`cl_scores.qc`).
+
+A submitter may ask for a *lower* tier than it is entitled to, and never a
+higher one. A run carrying `TF_NOJOURNAL` or `TF_NORULESET` is demoted to
+community whatever it asked for: both describe a hole in the *certification*
+rather than something the player did, so neither may call anyone a cheat, and
+a demotion is the quiet gate this tree prefers to an accusation. **This is the
+first consumer of either bit** -- they have been recorded, archived and
+reported since QC builds 58 and 62 with nothing downstream acting on them.
+
+**What this does NOT do is authenticate the player.** surfd has no player
+identity yet; `player` is whatever id the client generates for itself and a
+keyed server vouches for it. A row therefore means "an official server saw
+this player finish", not "this human finished". The local-keypair work is what
+upgrades that, and it is a *value* change in this column rather than a schema
+change -- which is why the column exists now and is separate from `name`.
+
+Run submissions and board reads each get **their own rate bucket**. `rate_ok`
+keys on the source IP and every lobby on the Pi posts from `127.0.0.1`, so a
+shared bucket would let a busy evening of finishes spend the heartbeat's
+budget and drop live lobbies out of `/lobbies.json` -- the failure the
+`RATE_MAX` essay in `surfd.py` spends twenty lines establishing.
+`test_board.py` section 8 floods submissions and asserts a heartbeat still
+gets through, with the shared-bucket case as its control.
+
 ### The one exception: SURFD_PUBLIC_HOST
 
-surfd and the three game servers run on the same Pi, so `REMOTE_ADDR` for a
+surfd and the five game servers run on the same Pi, so `REMOTE_ADDR` for a
 heartbeat is *structurally* private -- `192.168.1.102`, or `127.0.0.1` once
 nginx is in front. Left alone, a public deployment therefore advertises a LAN
 address to the whole internet and every row is unreachable. No game-side change
@@ -93,9 +178,12 @@ the option existed** -- which is what `test_surfd.py` proves:
 
     SURFD_HOME=/tmp/surfd-test python3 test_surfd.py
 
-Eighteen checks, and the two that matter most are the two that must NOT change:
-an untrusted source still keeps its own address, and with the option unset
-nothing changes at all.
+Twenty-one checks, and the two that matter most are the two that must NOT
+change: an untrusted source still keeps its own address, and with the option
+unset nothing changes at all. The last three hold the per-IP rate limit to the
+Pi's own traffic -- five lobbies heartbeating from one address for two
+simulated minutes -- with a control that plays the same traffic against the old
+cap of 60 and must draw a 429.
 
 Note that `SURFD_PUBLIC_HOST` and `SURFD_TRUSTED` are read from **the
 environment first and then `surfd.env`**, because `surfd.service` has no
@@ -121,9 +209,33 @@ GET /health
 
   * 30s liveness window; rows reaped after 1h.
   * At most 200 distinct nodes stored; a new node beyond that gets 429.
-  * 60 heartbeats/minute per source IP; over that gets 429.
+  * 150 heartbeats/minute per **untrusted** source IP; over that gets 429. Not
+    60: all five lobbies beat from 127.0.0.1 every 5 s, which is exactly 60 a
+    minute, so at that cap any early beat is refused, and enough refusals in a
+    row drop a running lobby out of the list. `RATE_MAX` in surfd.py has the
+    arithmetic.
+  * **1920/minute for a TRUSTED source** (`RATE_MAX_TRUSTED`), which is 2.5x
+    64 nodes beating every 5 s. Under FTE's `mapcluster` there is one server
+    process per live map and each one heartbeats, so the load is 12 x N and
+    the old flat 150 capped the cluster at **12 nodes** — below the box's own
+    RAM ceiling of 8–16 heavy maps (~24–30 curated to the median). This uses
+    the existing `TRUSTED_SOURCES`, which already governs the strictly more
+    sensitive question of whether a heartbeat may advertise itself as
+    `PUBLIC_HOST`, so it adds no new trust surface: with trust unconfigured,
+    behaviour is unchanged. Safe because nothing proxies to 8084 — verify that
+    before putting surfd behind nginx, or every request becomes "trusted".
   * Request body capped at 16 KiB.
-  * Strings stripped of control characters and truncated to 64.
+  * Strings stripped of control characters and truncated to 64 -- except the
+    map name, which is **refused** when it is too long rather than trimmed.
+    It is the board key, and trimming an identifier to fit merges two
+    leaderboards into one without a word.
+  * 120 run submissions/minute and 120 board reads/minute per source IP, each
+    in its own bucket, separate from the heartbeat's 150. See the API section.
+  * At most 200,000 board rows; a *new* row beyond that gets 429. One row per
+    player per board keeps this far from binding: 1,312 maps would each need
+    150 players on every leg to reach it.
+  * A board page returns at most 200 rows (default 50). An over-large `limit`
+    is clamped rather than refused.
 
 ## Admin panel (/admin)
 
@@ -171,7 +283,7 @@ on `127.0.0.1`, and `rcon.py` refuses any non-loopback host structurally rather
 than by convention. Everything else follows from that:
 
   * scrypt-hashed password (stdlib -- the Pi has no argon2), a separate secret
-    from `lobby_master_key`, because three game-server configs hold that one
+    from `lobby_master_key`, because five game-server configs hold that one
     and compromising a config must not hand over the fleet;
   * signed session cookie, `HttpOnly` + `SameSite=Strict` + `Secure` + scoped
     to `/admin`, 30-minute idle and 12-hour absolute lifetimes;
@@ -263,7 +375,17 @@ heartbeating normally. Three things came out of that, and all three matter:
 **Installed and enabled** (`/etc/systemd/system/`, dated Sep 8 17:06):
 `surfd.service` and `ftesurf@.service` (instances 1, 2, 3). `Restart=always`
 with a five-in-five-minutes start limit, so a config error stops rather than
-spinning. The panel's start/stop/restart drive these units.
+spinning. The panel's start/stop/restart and `src/build.ps1 -Pi` drive these
+units.
+
+Instances 4 and 5, the bhop lobbies (QC build 57), need three things on the
+Pi, in this order: their 17 rotation BSPs in
+`/srv/nvme/ftesurf-server/game/momentum/maps/`, because a lobby started before
+its default map is there has no map to load; the six `ftesurf@4`/`ftesurf@5`
+lines appended to `/etc/sudoers.d/ftesurf` (see `surfd-admin.sudoers`); and,
+once, by hand:
+
+    sudo systemctl enable --now ftesurf@4 ftesurf@5
 
 Still absent: a **heartbeat watchdog**. `Restart=always` cannot see a *hang* --
 a process that is running but has stopped beating. surfd already knows the
@@ -284,7 +406,11 @@ the alerting.
 
 ## Going public
 
-The ports are **27510 / 27520 / 27530** (renumbered from 27500/27510/27520).
+The ports are **27510 / 27520 / 27530** for the three surf tiers (renumbered
+from 27500/27510/27520) and **27540 / 27550** for bhop easy and hard (QC build
+57), so the router forwards **UDP 27510-27550**. Nothing listens between the
+five yet -- the gaps are kept for mapcluster children at sv_port+N -- so
+forwarding only the five ports is the tighter equivalent until those exist.
 The range starts at 27510 so that **27500 is never forwarded**: it is what an
 unconfigured QuakeWorld server binds, so anything that ends up listening there
 — a test server, a listen server, a mistake — would otherwise be exposed
@@ -296,7 +422,7 @@ different ways:
 | | what | who |
 |---|---|---|
 | 1 | the directory is **readable** at `https://play.proto.bar` | `setup_public.sh` (needs sudo) |
-| 2 | the game ports are **reachable** — UDP 27510/27520/27530 → 192.168.1.102 | the router; nothing here can do it |
+| 2 | the game ports are **reachable** — UDP 27510-27550 → 192.168.1.102 (27500 stays closed) | the router; nothing here can do it |
 | 3 | the directory **advertises** the public host, not the LAN one | `setup_public.sh --advertise` |
 | 4 | the shipped client **points** at that directory by default | `lobby_dir`, Patch 290 in the game |
 
@@ -306,7 +432,7 @@ including the developer's own, because `play.proto.bar` has no vhost until
 step 1 runs.
 
     cd /srv/nvme/surfd && sudo ./setup_public.sh              # 1
-    # ... forward UDP 27510/27520/27530 at the router ...     # 2
+    # ... forward UDP 27510-27550 at the router, never 27500 ... # 2
     cd /srv/nvme/surfd && sudo ./setup_public.sh --advertise  # 3
 
 Phase 1 is safe to run at any time: it publishes a read-only directory whose

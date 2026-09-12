@@ -48,10 +48,110 @@ MAX_FIELD_LEN = 64       # per the API contract
 MAX_BODY = 16 * 1024     # bytes; a heartbeat is a few hundred bytes at most
 
 RATE_WINDOW = 60         # seconds
-RATE_MAX = 60            # heartbeats per window per source IP
+RATE_MAX = 150           # heartbeats per window per source IP -- see below
 RATE_TABLE_MAX = 4096    # cap the limiter's own memory
 
-SCHEMA_VERSION = 1
+# RATE_MAX IS 150, NOT 60, OR THE PI'S OWN LOBBIES BLINK OUT OF THE DIRECTORY.
+#
+# Every lobby posts from the same source address -- 127.0.0.1, because surfd
+# is on the same Pi -- once per lobby_master_rate, which cfg/lobby.cfg sets to
+# 5 s. One lobby is 12 heartbeats a minute; five lobbies are 5 x 12 = 60, which
+# was this cap exactly. At exactly the cap there is no slack: an arriving beat
+# finds the other 59 of the last minute still in the window, so any beat that
+# counts as a second early is the 60th and gets a 429. Beats do arrive early.
+# Lobby_Heartbeat's next-send time is a QC global that does not survive a map
+# change or a restart, so a lobby beats at once on every new map however
+# recently it last beat; the POST is asynchronous and this is one worker, so
+# arrival times wobble; and `now` is truncated to a whole second, which turns
+# a wobble of a tenth into a whole second.
+#
+# A refused beat is not retried -- the lobby waits for its next one -- so each
+# 429 leaves that lobby's row one beat staler, and a lobby refused six times
+# running is older than LOBBY_TTL and vanishes from /lobbies.json while it is
+# up and full of players.
+#
+# 150 is 2.5 times the five-lobby load: room for all of that and for more
+# lobbies at the same rate (twelve would be 144), while one address is still
+# held to 2.5 requests a second. test_surfd.py plays five lobbies' traffic for
+# two simulated minutes against this value, and against 60 as the control.
+
+# --------------------------------------------------------------------------
+# The leaderboard (schema 2)
+# --------------------------------------------------------------------------
+#
+# RUN SUBMISSIONS GET THEIR OWN RATE BUCKET, AND THAT IS NOT TIDINESS.
+#
+# rate_ok keys on the source IP alone, and every lobby on this Pi posts from
+# 127.0.0.1.  The essay above spends 20 lines establishing that the five
+# lobbies sit at 60 beats a minute against a cap of 150, that a refused beat is
+# never retried, and that six refusals running drop a live lobby out of
+# /lobbies.json.  A run submission from those same five servers lands in that
+# same bucket.  A busy evening -- five lobbies, a finish every few seconds --
+# would therefore take the lobbies off the map picker, and the symptom would
+# be "the directory is flaky", a mile from the cause.
+#
+# So run submissions are counted separately and the heartbeat's proven number
+# is left exactly as it was.  test_board.py section 5 plays a submission flood
+# and asserts the heartbeat still gets through, because a limit nobody floods
+# is a claim rather than a limit.
+# THE HEARTBEAT CAP HAS TO SCALE WITH THE CLUSTER, AND 150 DOES NOT.
+#
+# The essay above sized RATE_MAX for FIVE lobbies: 5 nodes x 12 beats/minute
+# (lobby_master_rate 5) = 60, and 150 is 2.5x that for headroom.  Under FTE's
+# mapcluster there is one server PROCESS PER LIVE MAP, each running the same
+# QC and therefore each heartbeating at the same cadence, so the load is
+# 12 x N.  At 150 that ceiling is 12 NODES -- and the Pi's RAM ceiling is
+# 8-16 concurrent heavy maps, or ~24-30 curated to the median.  So this number
+# would have bitten first, and its symptom is the one the essay above already
+# describes: refused beats, staler rows, nodes vanishing from the map picker
+# while they are up and full of players.  "The directory is flaky" is a long
+# way from "a constant sized for five lobbies".
+#
+# RAISED ONLY FOR TRUSTED SOURCES, which is the part that matters.  A cluster's
+# nodes are on the operator's own machines and arrive from 127.0.0.1 or the
+# LAN; TRUSTED_SOURCES already decides exactly that question, and already
+# governs the strictly more sensitive choice of whether a heartbeat may
+# advertise itself as PUBLIC_HOST.  So this adds no new trust surface at all:
+# if the operator has not configured trust, nothing changes from today.
+# Checked before relying on it: no nginx site proxies to 8084, so REMOTE_ADDR
+# is the real peer and loopback genuinely means this machine.  An untrusted
+# source keeps 150, unchanged and still proven by test_surfd.py's control.
+CLUSTER_NODES_PLANNED = 64          # well past the RAM ceiling, deliberately
+RATE_MAX_TRUSTED = int(2.5 * CLUSTER_NODES_PLANNED * (60 / 5))   # = 1920
+
+RUN_RATE_MAX = 120       # run submissions per RATE_WINDOW per source IP
+
+MAX_RUNS = 200000        # hard cap on stored rows; see the reap in submit_run
+MAX_MAP_LEN = 64         # a map name is a directory component on the client
+MAX_TRACK = 63           # zone_track: 0 main, 1+ bonus
+MAX_LEG = 63             # FS_LegOf: 0 the full track, k stage k
+MAX_TICKS = 100000000    # ~17 days at 66.67 Hz; refuses an overflowed claim
+BOARD_LIMIT_MAX = 200    # rows one /api/board call may return
+BOARD_LIMIT_DEF = 50
+
+# Trust tiers.  See the essay on submit_run: this is the plan's Layer 0, and it
+# is decided by WHO HOLDS THE KEY rather than by anything the run says.
+TIER_RANKED = "ranked"
+TIER_COMMUNITY = "community"
+TIERS = (TIER_RANKED, TIER_COMMUNITY)
+
+# Run styles -- the client's own vocabulary (sh_defs.qc: FS_RunClass).  Derived
+# here from `flags`, never taken from the submitter; see style_of.
+STYLE_CLEAN = "clean"
+STYLE_SEGMENTED = "segmented"
+STYLES = (STYLE_CLEAN, STYLE_SEGMENTED)
+
+# sh_defs.qc's TF_* word, as it stood AT THE FINISH.  Kept in sync by name, and
+# test_board.py pins each value against the QC header so a renumber there fails
+# here rather than silently re-classifying every run on the board.
+TF_PRACTICE = 1
+TF_SHADOW = 8
+TF_SEGMENT = 128
+TF_CHEAT = 256
+TF_NOJOURNAL = 512
+TF_NORULESET = 1024
+
+SCHEMA_VERSION = 2
 
 
 # --------------------------------------------------------------------------
@@ -82,7 +182,7 @@ if not log.handlers:
 # --------------------------------------------------------------------------
 # PUBLIC_HOST -- the one place a lobby address does not come from the socket.
 #
-# THE PROBLEM.  surfd and the three game servers run on the same NanoPi, so
+# THE PROBLEM.  surfd and the five game servers run on the same NanoPi, so
 # REMOTE_ADDR for a heartbeat is structurally private -- 127.0.0.1 if they talk
 # over loopback, 192.168.1.102 if over the LAN.  Put nginx in front and it
 # becomes 127.0.0.1 for certain.  So `addr = REMOTE_ADDR + ":" + port` emits a
@@ -303,10 +403,20 @@ def connect():
 
 
 def migrate():
-    """Create/upgrade the schema on start. Safe to run every boot."""
+    """Create/upgrade the schema on start. Safe to run every boot.
+
+    STEPWISE, and each step sets its OWN version rather than jumping to
+    SCHEMA_VERSION.  Before schema 2 there was one step, so "migrate then stamp
+    the module constant" and "stamp what you actually did" were the same
+    number and the difference could not show.  They are not the same number
+    now: a v1 database upgraded by a v2 binary runs step 2 only, and a jump to
+    SCHEMA_VERSION would stamp a fresh database as 2 having run step 1 alone.
+    """
     conn = connect()
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
+        started = version
+
         if version < 1:
             conn.executescript(
                 """
@@ -325,9 +435,66 @@ def migrate():
             )
             conn.execute("PRAGMA user_version=1")
             conn.commit()
-            log.info("schema migrated to version %d (db=%s)", SCHEMA_VERSION, DB_PATH)
-        else:
+            version = 1
+
+        if version < 2:
+            # ONE ROW PER PLAYER PER BOARD, not one row per run.  Lex's ask is
+            # "players best times ranked", and a board of every attempt is a
+            # different thing that also grows without bound.  The primary key
+            # is therefore the board key plus the player, and submit_run
+            # replaces a row only on an improvement.
+            #
+            # WHY tier AND style ARE BOTH IN THE KEY.  They are orthogonal
+            # axes and each would corrupt the other if collapsed:
+            #
+            #   tier   how much the time is trusted -- ranked vs community.
+            #          Out of the key, a community run on a player-hosted
+            #          server would overwrite that player's ranked time, and
+            #          the ranked board would be editable by anyone who can
+            #          host.  That is the exact hole Layer 0 exists to close.
+            #   style  what kind of run -- clean vs segmented.  Out of the
+            #          key, a player could not hold both a clean PB and a
+            #          segmented PB, and the two tabs would fight over one
+            #          row.  They are peer achievements, not competitors.
+            #
+            # millis IS THE RANK KEY, NOT ticks.  A tick only means a duration
+            # at a tickrate, and pm_ticrate is a movement cvar -- locked on a
+            # conforming server, but the board must not be the thing that
+            # assumes so.  ticks is kept beside it because it is the exact
+            # integer the game ranks and names files by (FS_RunStamp).
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    map        TEXT    NOT NULL,
+                    track      INTEGER NOT NULL,
+                    leg        INTEGER NOT NULL,
+                    tier       TEXT    NOT NULL,
+                    style      TEXT    NOT NULL,
+                    player     TEXT    NOT NULL,
+                    name       TEXT    NOT NULL,
+                    ticks      INTEGER NOT NULL,
+                    tickrate   REAL    NOT NULL,
+                    millis     INTEGER NOT NULL,
+                    flags      INTEGER NOT NULL,
+                    node       TEXT    NOT NULL,
+                    runid      TEXT    NOT NULL,
+                    submitted  INTEGER NOT NULL,
+                    PRIMARY KEY (map, track, leg, tier, style, player)
+                );
+                CREATE INDEX IF NOT EXISTS runs_board
+                    ON runs (map, track, leg, tier, style, millis, submitted);
+                """
+            )
+            conn.execute("PRAGMA user_version=2")
+            conn.commit()
+            version = 2
+
+        if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
+        else:
+            log.info(
+                "schema migrated %d -> %d (db=%s)", started, version, DB_PATH
+            )
     finally:
         conn.close()
 
@@ -346,21 +513,40 @@ _rate_lock = threading.Lock()
 _rate = {}   # ip -> [timestamps]
 
 
-def rate_ok(ip, now):
+def rate_ok(ip, now, cap=None, bucket=""):
+    """Is this source allowed another request in `bucket` right now?
+
+    `bucket` SEPARATES THE COUNTS, and the default is the empty string so the
+    heartbeat's call site and its proven cap are byte-for-byte what they were.
+    See the RUN_RATE_MAX essay: every lobby on the Pi posts from 127.0.0.1, so
+    a shared bucket would let run submissions spend the heartbeat's budget and
+    take live lobbies out of /lobbies.json.
+
+    `cap` DEFAULTS TO None AND IS RESOLVED IN THE BODY, not written as
+    `cap=RATE_MAX` in the signature.  A default argument is evaluated once when
+    the function is defined, so the signature form would freeze the cap at
+    import and ignore RATE_MAX thereafter -- which is precisely how
+    test_surfd.py's control works (it sets mod.RATE_MAX = 60 and replays the
+    five lobbies' traffic expecting a 429).  Written the other way the control
+    stopped producing its 429, and a control that cannot fail is not one.
+    """
+    if cap is None:
+        cap = RATE_MAX
+    key = (bucket, ip)
     with _rate_lock:
         if len(_rate) > RATE_TABLE_MAX:
             cutoff = now - RATE_WINDOW
-            for key in [k for k, v in _rate.items() if not v or v[-1] < cutoff]:
-                del _rate[key]
+            for k in [k for k, v in _rate.items() if not v or v[-1] < cutoff]:
+                del _rate[k]
             if len(_rate) > RATE_TABLE_MAX:
                 _rate.clear()
                 log.warning("rate limiter table flushed under pressure")
-        hits = [t for t in _rate.get(ip, ()) if t > now - RATE_WINDOW]
-        if len(hits) >= RATE_MAX:
-            _rate[ip] = hits
+        hits = [t for t in _rate.get(key, ()) if t > now - RATE_WINDOW]
+        if len(hits) >= cap:
+            _rate[key] = hits
             return False
         hits.append(now)
-        _rate[ip] = hits
+        _rate[key] = hits
         return True
 
 
@@ -396,6 +582,88 @@ def strict_int(raw, low, high):
     return value if low <= value <= high else None
 
 
+def strict_float(raw, low, high):
+    """Parse a finite float, rejecting (None) anything out of range."""
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None            # NaN and infinities: "nan"/"inf" parse happily
+    return value if low <= value <= high else None
+
+
+# A map name is a DIRECTORY COMPONENT on the client (FS_RunDir builds
+# data/runs/<map>/<leg>/), and it comes back out of this service into that
+# path.  clean_text alone would pass "../../etc" and "a/b" through, so the
+# board's spelling of a map name is deliberately narrower than the
+# directory's: the character set Momentum's library actually uses, and
+# nothing that can traverse or separate.
+_MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
+
+
+def clean_map(raw):
+    """The map name, or None if it is not one we will put in a path.
+
+    TOO LONG IS REFUSED, NOT TRUNCATED, and that is the whole reason this does
+    not just call clean_text(raw, MAX_MAP_LEN).  A map name is an IDENTIFIER --
+    it is the board key -- and trimming one to fit merges two boards into one
+    without a word: every map sharing the first 64 characters would rank
+    against every other.  clean_text's truncation is right for a display name
+    and wrong for a key.  Caught by test_board.py section 3, which submitted a
+    65-character name and then found the 64-character one already occupied.
+    """
+    name = clean_text(raw, MAX_MAP_LEN + 1).lower()
+    if not name or len(name) > MAX_MAP_LEN or ".." in name:
+        return None
+    return name if _MAPNAME_OK.match(name) else None
+
+
+def style_of(flags):
+    """Which board this run belongs on, or None if it belongs on none.
+
+    A MIRROR OF sh_defs.qc's FS_RunClass, INCLUDING ITS PRECEDENCE, and the
+    precedence is the reason this is not four independent tests: a run that
+    saved-loaded and then cheated carries both bits, and a reader that tested
+    segment first would file the worse run under the gentler word.  Cheat
+    outranks segment outranks practice, there and here.
+
+    DERIVED FROM flags, NEVER TAKEN FROM THE SUBMITTER.  A submitter can lie
+    about the flags word -- that is what the tier is for -- but it cannot send
+    a flags word saying "segmented" and a style saying "clean" and have the
+    two disagree, because there is only one of them on the wire.
+
+    Practice and cheated runs are refused outright rather than given a board.
+    They are not ranked anywhere in this game and a board nobody reads is a
+    place for them to accumulate.
+    """
+    if flags & TF_CHEAT:
+        return None
+    if flags & (TF_SEGMENT | TF_SHADOW):
+        return STYLE_SEGMENTED
+    if flags & TF_PRACTICE:
+        return None
+    return STYLE_CLEAN
+
+
+def certifiable(flags):
+    """May this run stand on the RANKED board?
+
+    THIS IS THE FIRST CONSUMER OF TF_NOJOURNAL AND TF_NORULESET, which have
+    been recorded, archived and reported since QC builds 58 and 62 with
+    nothing downstream that acted on them.
+
+    Both describe a hole in the CERTIFICATION rather than something the player
+    did -- no input journal beside the run, or physics that cannot be shown to
+    have been the ruleset's -- so neither may call anyone a cheat.  The tree's
+    standing rule is that a quiet gate survives a false negative where an
+    accusation does not, and a tier demotion is exactly that quiet gate: the
+    run still stands on the community board under the player's name, and only
+    the ranked board declines it.
+    """
+    return not (flags & (TF_NOJOURNAL | TF_NORULESET))
+
+
 # --------------------------------------------------------------------------
 # App
 # --------------------------------------------------------------------------
@@ -426,7 +694,11 @@ def heartbeat():
     now = int(time.time())
     src = request.remote_addr or "0.0.0.0"
 
-    if not rate_ok(src, now):
+    # A cluster's nodes all beat from the operator's own address; see the
+    # RATE_MAX_TRUSTED essay. Untrusted sources keep the original cap.
+    if not rate_ok(src, now,
+                   RATE_MAX_TRUSTED if is_trusted(src, TRUSTED_SOURCES)
+                   else RATE_MAX):
         log.warning("rate limited %s", src)
         return fail(429, "rate limited")
 
@@ -540,6 +812,258 @@ def lobbies_json():
         # The menu must always get parseable JSON with a lobbies array.
         log.exception("lobbies.json db error: %s", exc)
     body = json.dumps({"v": 1, "t": now, "lobbies": lobbies}, separators=(",", ":"))
+    return Response(body, status=200, mimetype="application/json")
+
+
+# --------------------------------------------------------------------------
+# The leaderboard
+# --------------------------------------------------------------------------
+#
+# WHO MAY WRITE TO THE BOARD IS THE WHOLE SECURITY MODEL, and it is settled by
+# the same SECRET the heartbeat uses rather than by anything clever.
+#
+# A leaderboard fed by player-hosted servers is forgeable by the host with no
+# cheating skill at all: on a listen server the host owns sv.time, the movement
+# cvars, the progs and the timer, so "beat the world record" is a cvar edit.
+# The plan calls that tier T3 and calls it the structural hole, ahead of every
+# input-layer concern.
+#
+# Requiring the server key to POST closes it without a line of policy code:
+# only a server the operator has keyed can put a row on the board, which IS
+# the "Ranked = official servers only" decision.  A player-hosted server holds
+# no key, gets 403, and keeps its times locally -- which is the Local tab, and
+# is already built (cl_scores.qc).
+#
+# What this deliberately does NOT do is authenticate the PLAYER.  surfd has no
+# player identity yet; `player` is whatever id the client generates for itself,
+# and a keyed server vouches for it.  So a row means "an official server saw
+# this player finish", not "this human finished".  The local-keypair work in
+# Phase 2 is what upgrades that, and it is a VALUE change in this column rather
+# than a schema change -- which is why the column exists now and is separate
+# from the display name.
+
+
+@app.post("/api/run")
+def submit_run():
+    now = int(time.time())
+    src = request.remote_addr or "0.0.0.0"
+
+    if not rate_ok(src, now, RUN_RATE_MAX, "run"):
+        log.warning("rate limited run submission from %s", src)
+        return fail(429, "rate limited")
+
+    key = request.form.get("key", "")
+    if not SECRET or not key or not hmac.compare_digest(str(key), SECRET):
+        log.warning("rejected run from %s: bad key", src)
+        return fail(403, "forbidden")
+
+    mapname = clean_map(request.form.get("map"))
+    if not mapname:
+        return fail(400, "bad map")
+
+    track = strict_int(request.form.get("track"), 0, MAX_TRACK)
+    if track is None:
+        return fail(400, "bad track")
+
+    leg = strict_int(request.form.get("leg"), 0, MAX_LEG)
+    if leg is None:
+        return fail(400, "bad leg")
+
+    player = clean_text(request.form.get("player"))
+    if not player:
+        return fail(400, "missing player")
+
+    ticks = strict_int(request.form.get("ticks"), 1, MAX_TICKS)
+    if ticks is None:
+        return fail(400, "bad ticks")
+
+    # The run's own tickrate, because ticks alone is not a duration.  Bounded
+    # well outside anything playable rather than pinned to 66.67: the board
+    # records what the server reported and lets the number be read, and a
+    # ruleset check is the movement lock's job, not a magic constant here.
+    tickrate = strict_float(request.form.get("tickrate"), 1.0, 10000.0)
+    if tickrate is None:
+        return fail(400, "bad tickrate")
+
+    flags = strict_int(request.form.get("flags"), 0, 0x7FFFFFFF)
+    if flags is None:
+        return fail(400, "bad flags")
+
+    style = style_of(flags)
+    if style is None:
+        # Not an error on the submitter's part: a practice or cheated run is a
+        # real run that simply has no board.  204 says "understood, stored
+        # nothing", which a client can log without treating it as a failure.
+        log.info("run not boardable (flags=%d) from %s", flags, src)
+        return Response("", status=204)
+
+    tier = clean_text(request.form.get("tier")) or TIER_RANKED
+    if tier not in TIERS:
+        return fail(400, "bad tier")
+    # A submitter may ask for a LOWER tier than it is entitled to (a keyed
+    # server running a casual session), and may never ask for a higher one:
+    # holding the key is the entitlement, and an uncertifiable run is demoted
+    # whatever it asked for.  See certifiable().
+    if tier == TIER_RANKED and not certifiable(flags):
+        tier = TIER_COMMUNITY
+
+    name = clean_text(request.form.get("name")) or player
+    node = clean_text(request.form.get("node")) or "?"
+    runid = clean_text(request.form.get("runid"))
+
+    millis = int(round(ticks * 1000.0 / tickrate))
+
+    db = get_db()
+    try:
+        with db:
+            prev = db.execute(
+                """
+                SELECT millis FROM runs
+                 WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
+                   AND player=?
+                """,
+                (mapname, track, leg, tier, style, player),
+            ).fetchone()
+
+            if prev is None:
+                total = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+                if total >= MAX_RUNS:
+                    log.warning("run cap %d reached, refusing %s", MAX_RUNS, src)
+                    return fail(429, "run limit reached")
+            elif prev["millis"] <= millis:
+                # NOT an error, and not silence either: the client asked to
+                # file a time and is entitled to know it did not improve.
+                return jsonify(
+                    {"ok": True, "stored": False, "best": prev["millis"]}
+                )
+
+            db.execute(
+                """
+                INSERT INTO runs (map, track, leg, tier, style, player, name,
+                                  ticks, tickrate, millis, flags, node, runid,
+                                  submitted)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(map, track, leg, tier, style, player) DO UPDATE SET
+                    name      = excluded.name,
+                    ticks     = excluded.ticks,
+                    tickrate  = excluded.tickrate,
+                    millis    = excluded.millis,
+                    flags     = excluded.flags,
+                    node      = excluded.node,
+                    runid     = excluded.runid,
+                    submitted = excluded.submitted
+                """,
+                (mapname, track, leg, tier, style, player, name, ticks,
+                 tickrate, millis, flags, node, runid, now),
+            )
+    except sqlite3.Error as exc:
+        log.exception("run db error from %s: %s", src, exc)
+        return fail(500, "storage error")
+
+    log.info(
+        "run map=%r track=%d leg=%d tier=%s style=%s player=%r ticks=%d (%dms)",
+        mapname, track, leg, tier, style, player, ticks, millis,
+    )
+    return jsonify({"ok": True, "stored": True, "best": millis})
+
+
+@app.get("/api/board")
+def board():
+    now = int(time.time())
+    src = request.remote_addr or "0.0.0.0"
+
+    # Its own bucket, for the reason /api/run has one: a public read path must
+    # not be able to spend the heartbeat's budget and blank the map picker.
+    if not rate_ok(src, now, RUN_RATE_MAX, "board"):
+        return fail(429, "rate limited")
+
+    mapname = clean_map(request.args.get("map"))
+    if not mapname:
+        return fail(400, "bad map")
+
+    track = strict_int(request.args.get("track", 0), 0, MAX_TRACK)
+    leg = strict_int(request.args.get("leg", 0), 0, MAX_LEG)
+    if track is None or leg is None:
+        return fail(400, "bad leg")
+
+    tier = clean_text(request.args.get("tier")) or TIER_RANKED
+    style = clean_text(request.args.get("style")) or STYLE_CLEAN
+    if tier not in TIERS:
+        return fail(400, "bad tier")
+    if style not in STYLES:
+        return fail(400, "bad style")
+
+    limit = clamp_int(request.args.get("limit"), 1, BOARD_LIMIT_MAX,
+                      BOARD_LIMIT_DEF)
+    offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+
+    rows = []
+    counts = {}
+    try:
+        db = get_db()
+        # The counts for BOTH tiers of this board, in one query, because the
+        # client needs them to say "no ranked times yet, 37 community" without
+        # a second round trip -- and because the alternative, defaulting the
+        # board to whichever tier happens to be populated, would silently mix
+        # trust levels in one ranked list.  The plan's rule is that a
+        # community run never appears on the ranked board; showing a count is
+        # how the UI stays honest without breaking it.
+        for row in db.execute(
+            """
+            SELECT tier, COUNT(*) AS n FROM runs
+             WHERE map=? AND track=? AND leg=? AND style=?
+             GROUP BY tier
+            """,
+            (mapname, track, leg, style),
+        ).fetchall():
+            counts[row["tier"]] = row["n"]
+
+        for i, row in enumerate(db.execute(
+            """
+            SELECT player, name, ticks, tickrate, millis, flags, submitted
+              FROM runs
+             WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
+             ORDER BY millis ASC, submitted ASC
+             LIMIT ? OFFSET ?
+            """,
+            (mapname, track, leg, tier, style, limit, offset),
+        ).fetchall()):
+            rows.append(
+                {
+                    "r": offset + i + 1,
+                    "player": row["player"],
+                    "name": row["name"],
+                    "ticks": row["ticks"],
+                    "rate": row["tickrate"],
+                    "ms": row["millis"],
+                    "flags": row["flags"],
+                    "when": row["submitted"],
+                }
+            )
+    except sqlite3.Error as exc:
+        # Same contract as lobbies.json: the client must always get parseable
+        # JSON with a rows array, so a storage fault reads as an empty board
+        # rather than as a parse failure three layers away in QC.
+        log.exception("board db error: %s", exc)
+
+    body = json.dumps(
+        {
+            "v": 1,
+            "t": now,
+            "map": mapname,
+            "track": track,
+            "leg": leg,
+            "tier": tier,
+            "style": style,
+            "counts": {
+                TIER_RANKED: counts.get(TIER_RANKED, 0),
+                TIER_COMMUNITY: counts.get(TIER_COMMUNITY, 0),
+            },
+            "offset": offset,
+            "rows": rows,
+        },
+        separators=(",", ":"),
+    )
     return Response(body, status=200, mimetype="application/json")
 
 
