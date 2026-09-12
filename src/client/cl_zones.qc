@@ -186,6 +186,13 @@ void() Zone_RegisterCvars =
 	// which is the one that runs as the player.
 	registercommand("zone_goto");
 	registercommand("ent_census");
+
+	// Build 63.  ent_io says what the entity I/O layer actually DID on this map
+	// -- outputs wired against inputs delivered, plus the cycle fuse's peak and
+	// any refusals.  It needs registering here for exactly the reason the
+	// comment above gives: without it the console answers "Unknown command",
+	// which is what the first build-63 test run got for six arms in a row.
+	registercommand("ent_io");
 };
 
 void() Zone_ReadCvars =
@@ -577,6 +584,13 @@ float(string cmd) Zone_ConsoleCommand =
 	if (argv(0) == "ent_census")
 	{
 		localcmd("cmd ent_census\n");
+		return TRUE;
+	}
+
+	// Build 63.  Same trip as ent_census above, same reason.
+	if (argv(0) == "ent_io")
+	{
+		localcmd("cmd ent_io\n");
 		return TRUE;
 	}
 

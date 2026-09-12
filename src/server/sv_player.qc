@@ -607,6 +607,27 @@ void(string cmd) SV_ParseClientCommand =
 		return;
 	}
 
+	/*
+	  Build 63.  What the entity I/O layer has actually DONE on this map, as
+	  opposed to what it parsed.
+
+	  ent_census answers "what did we not handle"; SV_EntityReport answers "what
+	  did we wire".  Neither answers "did any of it run", and that gap is why
+	  vbsp_io_fired has been incremented, decremented and cleared since build 37
+	  without a single reader.  A dead output and a working one look identical
+	  from the console, which makes every claim about this layer unfalsifiable --
+	  and an unfalsifiable claim is the thing this tree's test convention exists
+	  to refuse.
+
+	  Unlike ent_census this needs no `developer 1`: it counts rather than
+	  narrates, so there is nothing to have missed before the map loaded.
+	*/
+	if (c == "ent_io")
+	{
+		SV_IOReport();
+		return;
+	}
+
 	if (c == "zone_dests")
 	{
 		SV_ZoneDests();
@@ -755,6 +776,30 @@ void(string cmd) SV_ParseClientCommand =
 
 	if (c == "zone_goto")
 	{
+		/*
+		  BUILD 57: A STANDING `!s 1` DOES NOT SURVIVE A zone_goto.
+
+		  SV_TimerArm honours run_t_wantstage1 on any track-0 START of a staged
+		  track and cannot tell which route reached it -- the map's START is where
+		  both the full run and stage 1 begin, which is the whole reason the
+		  request exists.  Its clears fire only for a non-START, a bonus track or a
+		  linear track, so `!s 1` followed by `zone_goto <the main start>` armed a
+		  STAGE-1 run while the operator was asking for the full run.  That is a
+		  harness lying to its own author: cfg/testrun/b57stage.cfg drives exactly
+		  that pair, and would have reported a stage-1 time as a full run.
+
+		  HERE AND NOT AT SV_ZoneGotoAng, which is the funnel every caller shares,
+		  because the run_t_* fields are declared in sv_timer.qc and sv_zones.qc
+		  compiles before it -- the same compile-order constraint that makes
+		  SV_TimerChatLeg a forward declaration there.  This is the only caller of
+		  SV_ZoneGotoAng, so the coverage is the same today; a second caller would
+		  need the same line, and the note over there says so.
+
+		  A chat command is then the only thing that sets the leg, which is what
+		  SV_TimerChatLeg exists for.
+		*/
+		self.run_t_wantstage1 = FALSE;
+
 		// zone_goto <n> [yaw] [pitch] -- the angles are optional and only
 		// applied when given, so an interactive `zone_goto 0` still leaves you
 		// looking wherever you were looking.

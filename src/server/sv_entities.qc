@@ -61,6 +61,52 @@ void(entity e) SV_TimerWarped;
 #define SF_WALLTOGGLE_START_OFF     1       // "[1] Starts Invisible"
 #define SF_BRUSH_IGNORE_USE         2
 
+// Build 63.  logic_relay, logicrelay.cpp:24-25.
+#define SF_RELAY_REMOVE_ON_FIRE     1       // "[1] Only trigger once"
+#define SF_RELAY_FAST_RETRIGGER     2       // "[2] Allow fast retrigger"
+
+// Build 63.  logic_case, logicentities.cpp:2204 (MAX_LOGIC_CASES).
+#define MAX_LOGIC_CASES            16
+
+/*
+  Build 63, Tier 2.  func_button and func_door STATE -- no geometry moves.
+
+  buttons.h:15-20 and doors.h:26-38.  Note SF_BUTTON_TOGGLE and
+  SF_DOOR_NO_AUTO_RETURN are the SAME BIT (32) on their respective classes, and
+  SF_BUTTON_LOCKED is the same bit as SF_DOOR_LOCKED (2048), which is already
+  #defined further down beside SV_UseFrame -- it is not repeated here.
+
+  SF_BUTTON_DAMAGE (512) is named and deliberately never read; see the OnDamaged
+  note in SV_UseFrame for why that one can never work in this game.
+*/
+#define SF_BUTTON_DONTMOVE          1       // buttons.h:15
+#define SF_BUTTON_TOGGLE            32      // buttons.h:17
+#define SF_BUTTON_TOUCH             256     // buttons.h:18
+#define SF_BUTTON_DAMAGE            512     // buttons.h:19 -- never read, see below
+#define SF_BUTTON_USE               1024    // buttons.h:20 "Use Activates"
+#define SF_DOOR_NO_AUTO_RETURN      32      // doors.h:26
+#define SF_DOOR_PUSE                256     // doors.h:30 "Use Opens"
+
+// Source's TOGGLE_STATE, in Source's order -- buttons.cpp:794-801 lists the
+// debug strings {Pressed, Unpressed, Pressing, Unpressing} indexed by
+// m_toggle_state, and Spawn sets TS_AT_BOTTOM = "Unpressed" (:397).
+#define TS_AT_TOP                   0
+#define TS_AT_BOTTOM                1
+#define TS_GOING_UP                 2
+#define TS_GOING_DOWN               3
+
+// CBaseButton's BUTTON_CODE, buttons.cpp.  PRESS toggles, ACTIVATE only goes
+// in, RETURN only comes out; the three are not interchangeable (:201-214).
+#define BUTTON_PRESS                1
+#define BUTTON_ACTIVATE             2
+#define BUTTON_RETURN               3
+
+// Which state machine an entity runs, stamped at spawn.  A float compare in the
+// input ladder rather than a classname ladder, and it doubles as "is this a
+// mover at all" -- which is what keeps the breakable aliases out (see below).
+#define MVK_BUTTON                  1
+#define MVK_DOOR                    2
+
 // func_brush "solidity"
 #define SOLIDITY_TOGGLE 0       // follows StartDisabled
 #define SOLIDITY_NEVER  1
@@ -322,8 +368,85 @@ string vbsp_io_esc;		// chr2str(27), built once
 float  vbsp_bhop_n, vbsp_bhop_tele_n;
 float  vbsp_tele_disabled_n;
 
+/*
+  FTESurf Build 63 -- the output-cycle fuse, and what it is actually protecting
+  against.
+
+  An output that fires an input that fires an output is the POINT of this layer,
+  so a cycle cannot be forbidden structurally; it can only be bounded.  Nothing
+  re-enters SV_FireOutput today, which is the only reason this has never
+  mattered -- logic_relay is a stub.  The moment Trigger works, `OnTrigger
+  <self> Trigger` is one line in Hammer and two relays aimed at each other is
+  barely more.
+
+  WHAT AN UNBOUNDED CYCLE COSTS, read out of the engine rather than guessed:
+
+    MAX_STACK_DEPTH is 1024 (qclib/progsint.h:167).  PR_EnterFunction prints
+    "stack overflow on call to %s (depth %i)" (pr_exec.c:514-518) and calls
+    externs->Abort.  Abort IS SV_Error (server/pr_cmds.c:779), and SV_Error
+    (sv_main.c:337-404) sends a final message, unspawns every client, and on a
+    dedicated build calls Sys_Error -- THE PROCESS EXITS.
+
+  So the same wiring that drops a map on this desktop drops all five Pi lobbies
+  and takes a systemd restart, with every run in progress lost.  SV_FireOutput
+  is ~4 QC frames per hop, so two relays pointing at each other reach 1024 in
+  well under a millisecond: there is no stutter to notice, the server simply
+  vanishes.
+
+  Hence a REFUSAL AND A CENSUS LINE, never an error().  A map with a cycle
+  should stay playable and tell you which entity did it.
+
+  Delayed outputs deliberately do not consume depth: SV_IODelayThink re-enters
+  through SV_IODeliver on a fresh stack with the counter back at zero, which is
+  correct -- a delay IS the break in the cycle.
+*/
+#define VBSP_IO_MAXDEPTH 32
+float  vbsp_io_depth;		// SV_FireOutput nesting right now
+float  vbsp_io_depth_max;	// high-water mark, so 32 can stop being a guess
+float  vbsp_io_depth_hit;	// fires refused by the fuse, for the report
+
+/*
+  Build 63.  TWO ceilings, and the per-entity one is the one that matters.
+
+  I predicted the failure mode wrong the first time, and the correction is
+  worth keeping because the wrong guess is the intuitive one.  The reasoning
+  was: SV_EntityIOBuild spawns one edict per declared output, pr_maxedicts is
+  131072 (engine/server/pr_cmds.c:76), bhop_miku_v2 declares far more than
+  that, so ED_Alloc Sys_Errors.  True as far as it goes -- and the map never
+  gets near it.
+
+  MEASURED, by loading the map with only VBSP_IO_MAXOUT in place: the log goes
+  "FTESurf: worldspawn" then "Server ended", with no error line at all.  That
+  is during ED_LoadFromFile -- the ENTITY PARSE -- which is long before
+  SV_EntityIOBuild runs on the first frame.  The edict ceiling was never
+  reached because the server died before any output edict was spawned.
+
+  What actually kills it is ED_ParseUnknownEpair's accumulator.  Every "On"
+  key is appended to self.vbsp_io_raw with strcat, so an entity carrying N
+  outputs builds its string in N successive reallocating concatenations -- and
+  bhop_miku_v2 has a single logic_relay carrying 170,428 of them, for a 5.9 MB
+  string built quadratically.
+
+  SO THE CAP HAS TO BE AT THE APPEND, not at the materialise.
+
+  The number, censused across all 1315 maps: the densest legitimate entity in
+  the library is surf_forbidden_tomb4's logic_case at 320 outputs, the median
+  map's densest entity carries 4, and EXACTLY ONE map has any entity above
+  500.  1024 is therefore 3.2x clear of anything real while stopping miku's
+  relay dead at 0.6% of its declared size.
+
+  VBSP_IO_MAXOUT stays as a second, map-wide backstop against a map that
+  spreads the same abuse over many entities -- which nothing in the library
+  does, but which costs one comparison to refuse.
+*/
+#define VBSP_IO_MAXRAW 1024		// outputs on ONE entity
+#define VBSP_IO_MAXOUT 32768	// outputs on the whole map
+float  vbsp_io_over_ent;	// refused by the per-entity ceiling
+float  vbsp_io_over_map;	// refused by the map-wide ceiling
+
 // On a SOURCE entity.
 .string vbsp_io_raw;		// parse-time accumulator, "key\tvalue\n" repeated
+.float  vbsp_io_rawn;		// how many are in it -- see VBSP_IO_MAXRAW
 .entity vbsp_io_out;		// head of this entity's output list
 .float  vbsp_io_solid;	// .solid as spawned, so Enable can put it BACK
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
@@ -343,8 +466,112 @@ float  vbsp_tele_disabled_n;
 .float  wait;
 .float  count;
 .float  vbsp_io_max;		// math_counter's `max`, see SV_EntityIOBuild
+// Build 63, completing CMathCounter.  `min` arrives through
+// ED_ParseUnknownEpair beside `max` and for the same reason -- see the hook.
+// The two latches are m_bHitMin / m_bHitMax: without them OnHitMin and
+// OnHitMax would re-fire on every input that left the value at the limit.
+.float  vbsp_io_min;
+.float  vbsp_io_hitmin, vbsp_io_hitmax;
+.float  startvalue,     StartValue;
 .float  vbsp_io_next_ok;	// trigger_multiple's `wait` gate on OnTrigger
 .string vbsp_dmgfilter;	// SetDamageFilter's argument, stored and not yet read
+
+/*
+  Build 63.  logic_relay's m_bWaitForRefire (logicrelay.cpp:32).
+
+  There is deliberately NO field for the relay's disabled state, and that is
+  worth a line because its absence looks like an omission.  CLogicRelay declares
+  it as DEFINE_KEYFIELD(m_bDisabled, FIELD_BOOLEAN, "StartDisabled")
+  (logicrelay.cpp:33) -- m_bDisabled IS StartDisabled, the same key SV_IOEnable
+  already writes in both capitalisations and SV_Key2 already reads.  So Enable
+  and Disable need no new code and cannot drift out of step with Toggle.
+*/
+.float  vbsp_relay_wait;
+
+/*
+  Build 63.  logic_case -- SIXTEEN cases in four fields, and no array.
+
+  This is the largest dead output family in the library: 6,258 OnCase01..16
+  outputs across 112 maps, none of which could ever have fired, because
+  logic_case is a point entity with no spawn function and the catch-all deleted
+  it before SV_EntityIOBuild ran.
+
+  The obvious storage -- sixteen Case values plus sixteen output slots per
+  entity, as Source has (string_t[16] + COutputEvent[16] + unsigned char[16]) --
+  would be a per-entity array, and this tree has a measured finding that fteqcc
+  array storage costs about 8x its data in progs size.  It turns out not to be
+  needed, for two separate reasons:
+
+  1. PickRandom NEEDS NO STORAGE AT ALL.  CLogicCase::BuildCaseMap
+     (logicentities.cpp:2349-2366) selects on m_OnCase[i].NumberOfElements() > 0
+     -- cases that have an output WIRED, not cases that have a value set; the
+     FGD says the same ("Fires a random OnCase output with at least one
+     connection").  That question is already answered by the vbsp_io_out chain,
+     so SV_IOCaseWired walks it instead.  And PickRandom is 1,142 of the 1,243
+     logic_case input fires, so the dominant path costs nothing.
+
+  2. InValue is 101 fires across 13 maps.  At that volume a linear walk of a
+     <=16-record accumulator string per fire is free, so the Case values reuse
+     the vbsp_io_raw idiom rather than being parsed into anything.
+*/
+.string vbsp_case_raw;		// "\tNN\tvalue\n" repeated, from ED_ParseUnknownEpair
+.int    vbsp_case_shuf;		// PickRandomShuffle: cases already spent this batch
+.float  vbsp_case_last;		// m_nLastShuffleCase, the cross-batch repeat avoid
+
+// Build 63.  logic_branch (CLogicBranch::m_bInValue) and logic_compare
+// (CLogicCompare::m_InValue / m_CompareValue).  Both key pairs are declared in
+// both capitalisations and read through SV_Key2, per the essay above; both mean
+// zero when absent, so neither needs the SV_KeyTri tri-state.
+.float  vbsp_branch_val;
+.float  vbsp_cmp_in;
+.float  vbsp_cmp_cmp;
+.float  InitialValue,  initialvalue;
+.float  CompareValue,  comparevalue;
+
+/*
+  Build 63, Tier 2.  func_button / func_door state.  NOTHING MOVES.
+
+  The rule that decides what may fire, and it is the whole design: FIRE WHAT IS
+  TRUE OF THE STATE MACHINE, NEVER WHAT IS A CLAIM ABOUT GEOMETRY.
+
+    OnPressed / OnUseLocked / OnLockedUse   fire -- pure interaction events.
+    OnOpen / OnClose                        fire -- they mean "told to open",
+                                            and Source fires them at the START
+                                            of the move (doors.cpp:1008/1091).
+    OnIn / OnOut                            fire -- and this is not emulation:
+                                            CBaseButton::Spawn collapses a
+                                            SF_BUTTON_DONTMOVE button's travel
+                                            to zero (buttons.cpp:406-409) and
+                                            LinearMove short-circuits straight
+                                            to MoveDone when the destination
+                                            equals the origin (subs.cpp:205-210).
+                                            A non-moving Source button fires
+                                            these through the identical path.
+    OnFullyOpen / OnFullyClosed             DO NOT FIRE.  Those are statements
+                                            about where the brush is.  Firing
+                                            one on a door that has not moved
+                                            tells a map the route is open while
+                                            a solid wall is still in it -- a
+                                            NEW failure mode that frozen-and-
+                                            silent does not have.
+
+  That costs the headline number: func_movelinear's 818 OnFullyOpen across 63
+  maps stay dead until a real mover exists.  It is the right trade, because
+  func_movelinear has no Source configuration in which it does not move, so
+  faking its arrival would be fabrication with no C++ to point at.
+
+  .speed, .lip and .wait are the map's own keys; `wait` is already declared
+  above for trigger_multiple and is the same key here.
+*/
+.float  vbsp_mv_kind;		// MVK_*, stamped at spawn.  0 = not a mover.
+.float  vbsp_mv_state;		// TS_*, Source's m_toggle_state
+.float  vbsp_mv_locked;		// m_bLocked -- SEEDED by the spawnflag, not equal to it
+.float  vbsp_mv_stay;		// m_fStayPushed, (wait == -1)
+.float  vbsp_mv_wait;		// resolved, with the CODE default not the FGD one
+.float  vbsp_mv_travel;		// cached traveltime; Tier 2 and a later mover agree
+.float  vbsp_mv_uselocked;	// m_flUseLockedTime, the 0.5s OnUseLocked debounce
+.entity vbsp_mv_act;		// m_hActivator -- OnIn/OnOut name it, buttons.cpp:731/762
+.float  lip,  Lip;			// both spellings, per SV_Key2
 
 /*
   On a PLAYER: the env_fog_controller SetFogController last put them on, by
@@ -749,6 +976,40 @@ float(entity t) SV_TimerInterval;
 void() SV_TimerThink;
 
 /*
+  Build 63.  The oscillator, SF_TIMER_UPDOWN (logicentities.cpp:195).
+
+  An "Oscillator" timer alternates OnTimerHigh and OnTimerLow instead of firing
+  OnTimer at all.  11 and 12 outputs respectively -- small, but they are the
+  only reason those two names appear in the library, and a map that sets the
+  flag fired NOTHING before this, because SV_TimerThink only ever knew OnTimer.
+
+  SV_TimerFire is prototyped here rather than inlined at the two call sites for
+  a reason worth keeping: SV_ApplyInput's FireTimer branch and SV_TimerThink
+  must not be able to disagree about WHICH of the three outputs a given timer
+  fires.  One function, two callers.
+*/
+#define SF_TIMER_UPDOWN 1
+.float vbsp_timer_updown;		// CTimerEntity::m_bUpDownState
+void(entity t) SV_TimerFire;
+
+/*
+  Build 63, Tier 2.  Button and door state -- prototypes only, same arrangement
+  and same reason as the timer block above.
+
+  The bodies cannot live up here: they read .speed, .lip and .wait, and .speed
+  is not declared until much further down (beside trigger_push).  But
+  SV_ApplyInput and SV_UseFrame both drive them and both compile long before
+  that.  So: names here, behaviour beside SV_SpawnDoor.
+*/
+void(entity t, float on)               SV_MoverLock;
+void(entity t, entity act, float code) SV_ButtonPress;
+void(entity t, entity act)             SV_ButtonUse;
+void(entity t, entity act)             SV_DoorUse;
+void(entity t, entity act)             SV_DoorOpen;
+void(entity t, entity act)             SV_DoorClose;
+void(entity t, entity act)             SV_MoverOnUseLocked;
+
+/*
   ED_PARSEUNKNOWNEPAIR -- called by the engine for every key with no field.
 
   Deliberately does almost nothing.  It runs for EVERY unmatched key on every
@@ -767,6 +1028,21 @@ void(string key, string value) ED_ParseUnknownEpair =
 
 	if (substring(key, 0, 2) == "On")
 	{
+		/*
+		  Build 63.  The per-entity ceiling -- see VBSP_IO_MAXRAW for why this
+		  is here and not at the materialise, and for the census that sets 1024.
+
+		  Counted rather than measured with strlen: this runs for every output
+		  key on every entity of every map, and a strlen of a string that is
+		  being built by repeated strcat is exactly the cost being avoided.
+		*/
+		if (self.vbsp_io_rawn >= VBSP_IO_MAXRAW)
+		{
+			vbsp_io_over_ent = vbsp_io_over_ent + 1;
+			return;
+		}
+		self.vbsp_io_rawn = self.vbsp_io_rawn + 1;
+
 		// A newline cannot occur inside a VBSP keyvalue (the lump is
 		// line-structured and the parser would have split there), and neither
 		// can a tab, so both are safe record separators.
@@ -775,7 +1051,48 @@ void(string key, string value) ED_ParseUnknownEpair =
 	}
 
 	if (key == "max" || key == "Max")
+	{
 		self.vbsp_io_max = stof(value);
+		return;
+	}
+
+	// Build 63.  `min` is here for exactly the reason `max` is, and it is worth
+	// stating so nobody "tidies" either into the field block: both are fteqcc
+	// intrinsics -- min is builtin #94 and max #95 (defs/sv_defs.qc:978/981) --
+	// so neither `.float min;` nor `.float max;` compiles at all.
+	if (key == "min" || key == "Min")
+	{
+		self.vbsp_io_min = stof(value);
+		return;
+	}
+
+	/*
+	  Build 63.  logic_case's Case01..Case16.
+
+	  These do not start with "On", so until now this hook dropped every one of
+	  them -- which was invisible, because the class had no spawn function
+	  either and the entity was deleted before anything could have read them.
+
+	  strlen FIRST, and that ordering is the point rather than fussiness: this
+	  function runs for EVERY unmatched key on EVERY entity -- thousands of
+	  times on a dense map -- and substring() allocates a temporary each call
+	  while strlen allocates nothing.  The length test also keeps a longer key
+	  beginning "Case" from being mistaken for one of the sixteen.
+
+	  Both capitalisations, for the reason the SV_Key2 essay gives at length.
+	  Stored in its OWN accumulator rather than vbsp_io_raw, so SV_EntityIOBuild
+	  never hands a non-output to the output parser or to the "nothing fires
+	  this" check.
+	*/
+	if (strlen(key) == 6)
+	if (substring(key, 0, 4) == "Case" || substring(key, 0, 4) == "case")
+	{
+		// Same record separators as vbsp_io_raw, and safe for the same reason:
+		// a VBSP keyvalue is line-structured, so it can hold neither a tab nor
+		// a newline.
+		self.vbsp_case_raw = strcat(self.vbsp_case_raw, "\t",
+		                            substring(key, 4, -1), "\t", value, "\n");
+	}
 };
 
 /*
@@ -1348,16 +1665,504 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 
   `max` reaches this through ED_ParseUnknownEpair, because `.float max;` does
   not compile -- see the hook's own note.
+
+  BUILD 63 COMPLETES IT, and this is the one change in the build with a real
+  regression surface, so the size of it is written down rather than discovered.
+
+  Source's CMathCounter::UpdateOutValue (logicentities.cpp:1728-1779) gates the
+  whole limit block on (min != 0 || max != 0), latches BOTH edges in
+  m_bHitMin/m_bHitMax, fires OnHitMin at the bottom, and -- the part that is new
+  behaviour -- CLAMPS the value into range afterwards.
+
+  The edge latch and the old `wasbelow` agree on every counter with max > 0 and
+  min 0, which is every counter that could reach the old code, so that half is a
+  superset rather than a change.  THE CLAMP IS NOT.  Censused across all 1315
+  maps: of 546 math_counters in the library, 505 across 112 maps write a
+  non-zero `max` (only 43 across 12 write a non-zero `min`).  Every one of those
+  505 could previously run past its maximum and now sticks there.  That is
+  Source's behaviour and it is why a counter has a maximum at all -- but it is
+  the reason this went in its own commit, and the reason it wants a real
+  before/after on bhop_arcane and surf_ny_platinum rather than a smoke test.
+
+  NOT fired: OutValue, OnChangedFromMin and OnChangedFromMax.  OutValue is a
+  COutputFloat whose entire purpose is carrying the value, and this layer has no
+  parameter pass-through -- see the note at `getvalue` in SV_ApplyInput.
 */
 void(entity t, float v, float fire) SV_IOCounter =
 {
-	local float wasbelow;
+	if (t.vbsp_io_min == 0 && t.vbsp_io_max == 0)
+	{
+		// No limits declared: nothing to latch and nothing to clamp against.
+		t.count = v;
+		return;
+	}
 
-	wasbelow = (t.count < t.vbsp_io_max);
-	t.count = v;
+	if (fire)
+	{
+		if (v >= t.vbsp_io_max)
+		{
+			if (!t.vbsp_io_hitmax)
+			{
+				t.vbsp_io_hitmax = TRUE;
+				SV_FireOutput(t, "OnHitMax", world);
+			}
+		}
+		else
+			t.vbsp_io_hitmax = FALSE;
 
-	if (fire && t.vbsp_io_max > 0 && wasbelow && t.count >= t.vbsp_io_max)
-		SV_FireOutput(t, "OnHitMax", world);
+		if (v <= t.vbsp_io_min)
+		{
+			if (!t.vbsp_io_hitmin)
+			{
+				t.vbsp_io_hitmin = TRUE;
+				SV_FireOutput(t, "OnHitMin", world);
+			}
+		}
+		else
+			t.vbsp_io_hitmin = FALSE;
+	}
+
+	// SetValueNoFire clamps too -- it suppresses the outputs, not the limits
+	// (InputSetValueNoFire, logicentities.cpp:1673).
+	t.count = bound(t.vbsp_io_min, v, t.vbsp_io_max);
+};
+
+/*
+  Does this entity declare an output by this (folded) name, with fires left?
+
+  Source asks exactly this question in two places and both matter later:
+  CLogicCase::BuildCaseMap tests m_OnCase[i].NumberOfElements() > 0 to decide
+  which cases PickRandom may choose (logicentities.cpp:2349-2366), and
+  CLogicRelay::Activate tests m_OnSpawn the same way to decide whether a
+  once-only relay consumes itself at map spawn (logicrelay.cpp:55-62).  Neither
+  is an optimisation; in both the answer CHANGES BEHAVIOUR.
+
+  `name` must already be folded -- vbsp_io_name is stored that way by
+  SV_EntityIOBuild, so callers pass a lowercase literal and no strtolower
+  happens per output.
+*/
+float(entity e, string name) SV_IOHasOutput =
+{
+	local entity o;
+
+	for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
+		if (o.vbsp_io_name == name)
+		if (o.vbsp_io_times != 0)			// -1 unlimited, 0 exhausted
+			return TRUE;
+	return FALSE;
+};
+
+/*
+===========================================================================
+  THE KNOWN-OUTPUT LIST, lifted out of SV_EntityIOBuild.
+
+  The essay that used to sit around the literal chain down there applies to this
+  function verbatim, and it is why the chain moved rather than merely grew:
+
+      "THIS LIST IS HAND-MAINTAINED AND NOTHING TIES IT TO THE FIRE SITES.
+       Adding a SV_FireOutput call without adding its name here makes the check
+       cry wolf; adding a name here without a fire site makes it lie the other
+       way and is worse, because the silence then reads as 'implemented'."
+
+  That remains exactly true.  What changed is that the chain was eight lines of
+  `&&`-joined `!=` tests, and the work this build starts roughly doubles the
+  name count -- logic_case alone contributes sixteen.  A forty-term boolean is
+  not something anyone can check against the fire sites by eye, and checking it
+  by eye is the ONLY thing keeping it honest.  So it became a readable function
+  with one name per line and a comment naming each fire site.
+
+  ONE CORRECTION TO THE OLD ESSAY while moving it.  It claimed "there are as
+  many names here as there are SV_FireOutput call sites in this file, and that
+  correspondence is the only thing keeping it honest."  That was already not
+  true: 19 names against 23 call sites, because OnStartTouch fires from three
+  sites, OnEndTouch from three and OnTimer from two.  The invariant that is
+  actually checkable, and the one to hold to, is the weaker pair:
+
+      every name below has AT LEAST ONE SV_FireOutput call site, and
+      every SV_FireOutput call site's name appears below.
+
+===========================================================================
+*/
+float(string lk) SV_IOOutputKnown =
+{
+	// Build 37.
+	if (lk == "onmapspawn")   return TRUE;	// SV_EntityIOBuild, logic_auto
+	if (lk == "onnewgame")    return TRUE;	// SV_EntityIOBuild, logic_auto
+	if (lk == "onstarttouch") return TRUE;	// SV_TriggerIOTouch (x2 paths)
+	if (lk == "onendtouch")   return TRUE;	// SV_TriggerEndThink (x3 paths)
+	if (lk == "ontrigger")    return TRUE;	// trigger_multiple_touch
+	if (lk == "onpressed")    return TRUE;	// SV_UseFrame
+	if (lk == "onhitmax")     return TRUE;	// SV_IOCounter
+	if (lk == "onactivate")   return TRUE;	// SV_BhopTeleport
+	if (lk == "onusefinished")return TRUE;	// SV_UseFrame
+	if (lk == "onlandinglimitreached") return TRUE;	// SV_BhopFrame
+	if (lk == "onjump")       return TRUE;	// SV_TriggerIOTouch
+	if (lk == "onland")       return TRUE;	// SV_TriggerIOTouch -- build 51
+
+	// Patch 256.
+	if (lk == "onstarttouchall") return TRUE;	// SV_TriggerIOTouch
+	if (lk == "onendtouchall")   return TRUE;	// SV_TriggerEndThink
+	if (lk == "onlockeduse")     return TRUE;	// SV_UseFrame
+	if (lk == "onpass")          return TRUE;	// TestActivator, SV_ApplyInput
+	if (lk == "onfail")          return TRUE;	// TestActivator, SV_ApplyInput
+	if (lk == "ontimer")         return TRUE;	// SV_TimerThink, and FireTimer
+
+	// Build 63.
+	if (lk == "onspawn")      return TRUE;	// SV_EntityIOBuild, logic_relay
+	if (lk == "ondefault")    return TRUE;	// SV_IOCaseValue
+	if (lk == "ontrue")       return TRUE;	// SV_IOBranch
+	if (lk == "onfalse")      return TRUE;	// SV_IOBranch
+	if (lk == "onequalto")    return TRUE;	// SV_IOCompare
+	if (lk == "onnotequalto") return TRUE;	// SV_IOCompare
+	if (lk == "ongreaterthan")return TRUE;	// SV_IOCompare
+	if (lk == "onlessthan")   return TRUE;	// SV_IOCompare
+	if (lk == "onhitmin")     return TRUE;	// SV_IOCounter
+	if (lk == "ongetvalue")   return TRUE;	// SV_ApplyInput, getvalue
+	if (lk == "ontimerhigh")  return TRUE;	// SV_TimerFire, oscillator
+	if (lk == "ontimerlow")   return TRUE;	// SV_TimerFire, oscillator
+	if (lk == "ontouching")   return TRUE;	// SV_ApplyInput, touchtest
+	if (lk == "onnottouching")return TRUE;	// SV_ApplyInput, touchtest
+	if (lk == "onuser1")      return TRUE;	// SV_ApplyInput, fireuser1
+	if (lk == "onuser2")      return TRUE;	// SV_ApplyInput, fireuser2
+	if (lk == "onuser3")      return TRUE;	// SV_ApplyInput, fireuser3
+	if (lk == "onuser4")      return TRUE;	// SV_ApplyInput, fireuser4
+
+	/*
+	  Build 63, Tier 2.  Button and door STATE.
+
+	  DELIBERATELY ABSENT, and this is the half of the list that needs saying
+	  out loud rather than being inferred from what is here:
+
+	    onfullyopen / onfullyclosed  are claims about where a brush IS, and
+	      nothing in this build moves one.  func_movelinear's 818 OnFullyOpen
+	      across 63 maps stay censused, correctly.
+	    ondamaged / onbreak          have no possible fire site in a game with
+	      no damage system -- see the essay in SV_UseFrame.
+	*/
+	if (lk == "onin")         return TRUE;	// SV_ButtonAtTop
+	if (lk == "onout")        return TRUE;	// SV_ButtonHome
+	if (lk == "onuselocked")  return TRUE;	// SV_MoverOnUseLocked
+	if (lk == "onopen")       return TRUE;	// SV_DoorOpen
+	if (lk == "onclose")      return TRUE;	// SV_DoorClose
+
+	/*
+	  logic_case's sixteen, as one prefix test rather than sixteen literals --
+	  which is most of why this function exists at all.
+
+	  The length and range tests are not decoration: without them "oncasexx" or
+	  "oncase99" would be accepted as known and silently lose their warning,
+	  and SV_IOCaseName only ever produces oncase01..oncase16.
+	*/
+	if (strlen(lk) == 8)
+	if (substring(lk, 0, 6) == "oncase")
+	if (stof(substring(lk, 6, 2)) >= 1)
+	if (stof(substring(lk, 6, 2)) <= MAX_LOGIC_CASES)
+		return TRUE;						// SV_IOCasePick / SV_IOCaseValue
+
+	return FALSE;
+};
+
+/*
+===========================================================================
+  logic_relay -- Build 63, and it is the largest unimplemented input in the
+  library that is not cosmetic.
+
+  2,506 Trigger inputs across 120 maps aim at one, and until now the class was
+  a spawn stub with a comment saying so (see logic_relay below).  A relay is a
+  pass-through: whatever fires its Trigger makes it fire OnTrigger, which is
+  what lets a map fan one event out to several targets, or put a delay in the
+  middle, or gate a chain behind an Enable.
+
+  CLogicRelay, logicrelay.cpp.
+===========================================================================
+*/
+void() SV_RelayRefireThink =
+{
+	self.vbsp_relay_wait = FALSE;
+	self.nextthink = 0;
+};
+
+void(entity t, entity act) SV_IORelayTrigger =
+{
+	local entity o;
+	local float  maxdelay;
+
+	// m_bDisabled, which is StartDisabled -- see the field note.
+	if (SV_Key2(t.StartDisabled, t.startdisabled))
+		return;
+	if (t.vbsp_relay_wait)
+		return;
+
+	/*
+	  THE FLAG IS SET BEFORE THE FIRE, AND SOURCE SETS IT AFTER.
+
+	  That is not a transcription slip; it is the one place this layer's
+	  architecture differs from Source's, and the difference is load-bearing.
+
+	  CLogicRelay::InputTrigger (logicrelay.cpp:136-158) calls
+	  m_OnTrigger.FireOutput() and THEN sets m_bWaitForRefire.  That ordering is
+	  safe there only because FireOutput does not deliver anything -- it queues
+	  into g_EventQueue, which is serviced later, by which time the flag is
+	  already true.
+
+	  SV_FireOutput delivers a zero-delay output INLINE, on this stack.  Keeping
+	  Source's order would mean a relay wired `OnTrigger <self> Trigger`
+	  re-entered here with the flag still clear, and 120 maps carry a relay --
+	  each one line in Hammer away from a QC stack overflow, which on a lobby
+	  is not a dead map but a dead server process (see VBSP_IO_MAXDEPTH).
+
+	  For every wiring that is NOT a cycle this is observationally identical to
+	  Source, because the flag can only be read again from inside the fire.
+	*/
+	if (t.spawnflags & SF_RELAY_REMOVE_ON_FIRE)
+	{
+		/*
+		  "Only trigger once".  Source calls UTIL_Remove (logicrelay.cpp:145).
+		  Latching Disabled instead is observationally the same -- a disabled
+		  relay forwards nothing -- and avoids remove()ing an entity from
+		  inside SV_FireOutput's own walk of that entity's output chain, which
+		  is the one thing the capture-nx dance up there cannot survive.  It
+		  also keeps the entity findable, so ent_info and ent_census still show
+		  what the map declared.
+		*/
+		SV_IOEnable(t, FALSE);
+	}
+	else if (!(t.spawnflags & SF_RELAY_FAST_RETRIGGER))
+	{
+		/*
+		  The lockout runs until the last output has been sent --
+		  m_OnTrigger.GetMaxDelay() + 0.001 (logicrelay.cpp:152).  Walked rather
+		  than cached in a field: Trigger is fired 2,506 times in the whole
+		  library and a relay carries a handful of outputs, so the walk is free,
+		  and AddOutput can extend a chain after any cache would have been built.
+		*/
+		maxdelay = 0;
+		for (o = t.vbsp_io_out; o; o = o.vbsp_io_next)
+			if (o.vbsp_io_name == "ontrigger")
+			if (o.vbsp_io_delay > maxdelay)
+				maxdelay = o.vbsp_io_delay;
+
+		t.vbsp_relay_wait = TRUE;
+		t.think     = SV_RelayRefireThink;
+		t.nextthink = time + maxdelay + 0.001;
+	}
+
+	SV_FireOutput(t, "OnTrigger", act);
+};
+
+/*
+  CancelPending -- 244 fires across 13 maps.
+
+  Source's g_EventQueue.CancelEvents(this) is CALLER-keyed (eventqueue.h:25/82),
+  and CLogicRelay::InputCancelPending (logicrelay.cpp:106-112) also clears the
+  refire wait.  Our pending deliveries are the vbsp_iodelay edicts SV_FireOutput
+  spawns, whose .owner is the OUTPUT and whose output's .owner is the source --
+  so "fired by t" is exactly d.owner.owner == t.
+*/
+void(entity t) SV_IOCancelPending =
+{
+	local entity d, nx;
+
+	for (d = find(world, classname, "vbsp_iodelay"); d; d = nx)
+	{
+		nx = find(d, classname, "vbsp_iodelay");	// captured BEFORE the remove
+		if (d.owner)
+		if (d.owner.owner == t)
+			remove(d);
+	}
+	t.vbsp_relay_wait = FALSE;
+};
+
+/*
+===========================================================================
+  logic_case -- Build 63, and the single largest dead output family in the
+  library: 6,258 OnCase01..OnCase16 outputs across 112 maps.
+
+  CLogicCase, logicentities.cpp:2204-2430.  See the field block for why none of
+  this needs a per-entity array.
+===========================================================================
+*/
+// "oncase07".  Built rather than sprintf'd with a %02g, because the zero pad on
+// a %g conversion is not a thing to rely on across fteqcc versions and
+// vbsp_io_name is compared as a plain folded string.
+string(float idx) SV_IOCaseName =
+{
+	return strcat("oncase", (idx < 10) ? "0" : "", ftos(idx));
+};
+
+/*
+  One bit per case, 1..16 -> bits 0..15.  This is CLogicCase's m_uchShuffleCaseMap
+  and its nNumCases in ONE int field instead of two 16-byte arrays.
+*/
+int(entity t) SV_IOCaseWired =
+{
+	local int   m;
+	local float i;
+
+	m = 0;
+	for (i = 1; i <= MAX_LOGIC_CASES; i = i + 1)
+		if (SV_IOHasOutput(t, SV_IOCaseName(i)))
+			m = m | (1 << (i - 1));
+	return m;
+};
+
+void(entity t, entity act, float shuffle) SV_IOCasePick =
+{
+	local int   wired, avail;
+	local float i, n, pick;
+
+	wired = SV_IOCaseWired(t);
+	if (!wired)
+		return;						// nothing wired: Source picks nothing either
+
+	avail = wired;
+	if (shuffle)
+	{
+		/*
+		  PickRandomShuffle, logicentities.cpp:2396-2430.  Spend each wired case
+		  once before any repeats; when the batch empties, refill -- and on the
+		  refill avoid repeating the case that ended the last batch, so a
+		  shuffle cannot hand out the same case twice across the seam.  That is
+		  Source's m_nLastShuffleCase, expressed as one bit clear rather than an
+		  array swap.
+		*/
+		avail = wired & ~t.vbsp_case_shuf;
+		if (!avail)
+		{
+			t.vbsp_case_shuf = 0;
+			avail = wired;
+			if (t.vbsp_case_last >= 1)
+			if (avail & ~(1 << (t.vbsp_case_last - 1)))	// unless it is the only one
+				avail = avail & ~(1 << (t.vbsp_case_last - 1));
+		}
+	}
+
+	// Uniform over the set bits, without an array to index.
+	n = 0;
+	for (i = 0; i < MAX_LOGIC_CASES; i = i + 1)
+		if (avail & (1 << i))
+			n = n + 1;
+	if (!n)
+		return;
+
+	pick = floor(random() * n);
+	if (pick >= n)
+		pick = n - 1;				// random() may return exactly 1.0
+	for (i = 0; i < MAX_LOGIC_CASES; i = i + 1)
+		if (avail & (1 << i))
+		{
+			if (!pick)
+				break;
+			pick = pick - 1;
+		}
+
+	if (shuffle)
+	{
+		t.vbsp_case_shuf = t.vbsp_case_shuf | (1 << i);
+		t.vbsp_case_last = i + 1;
+	}
+	SV_FireOutput(t, SV_IOCaseName(i + 1), act);
+};
+
+void(entity t, string want, entity act) SV_IOCaseValue =
+{
+	local string rec, idx, val;
+	local float  p0, pn, ptab, hit;
+
+	hit = FALSE;
+	p0  = 0;
+	while (1)
+	{
+		pn = strstrofs(t.vbsp_case_raw, "\n", p0);
+		if (pn < 0)
+			break;
+		rec = substring(t.vbsp_case_raw, p0 + 1, pn - p0 - 1);	// skip the lead \t
+		p0  = pn + 1;
+
+		ptab = strstrofs(rec, "\t", 0);
+		if (ptab < 0)
+			continue;
+		idx = substring(rec, 0, ptab);
+		val = substring(rec, ptab + 1, -1);
+
+		/*
+		  Source matches with Matcher_Match (logicentities.cpp:2330), a
+		  case-insensitive compare that ALSO honours '*' wildcards.
+
+		  THE WILDCARD IS NOT IMPLEMENTED, AND THAT IS MEASURED RATHER THAN
+		  OVERLOOKED: across all 1315 maps, not one Case value in the library
+		  contains a '*'.  If one ever does it falls to OnDefault, which is the
+		  safe direction.
+
+		  Numbers are compared as numbers as well as as strings, so that "1" and
+		  "1.0" agree -- which is what a mapper wiring a math_counter into a
+		  logic_case means.  Guarded so that stof()'s 0-for-junk does not make
+		  every non-numeric value match every other one.
+		*/
+		if (!strcasecmp(val, want) ||
+		    (val != "" && want != "" && stof(val) == stof(want) &&
+		     (stof(val) != 0 || val == "0" || want == "0")))
+		{
+			SV_FireOutput(t, SV_IOCaseName(stof(idx)), act);
+			hit = TRUE;
+			// MultipleCasesAllowed defaults off, so Source stops at the first
+			// match (logicentities.cpp:2334-2339).
+			break;
+		}
+	}
+
+	if (!hit)
+		SV_FireOutput(t, "OnDefault", act);
+};
+
+/*
+===========================================================================
+  logic_branch and logic_compare -- Build 63.
+
+  A branch stores one boolean and, when TESTED, says which way it points:
+  OnTrue 562 outputs, OnFalse 149, across 20 maps.  A compare stores two floats
+  and says how they relate: OnEqualTo 96, OnGreaterThan 78, OnLessThan 70,
+  OnNotEqualTo 8, across 20 maps.  Neither class had a spawn function before
+  this build, so the catch-all deleted both and every one of those outputs
+  resolved to nothing.
+
+  The distinction that matters in both classes, and the reason each has two
+  near-identical inputs: SetValue STORES WITHOUT TESTING and SetValueTest stores
+  and then tests (CLogicBranch::InputSetValue at logicentities.cpp:2723 vs
+  InputSetValueTest; CLogicCompare::InputSetValue at :2538 vs
+  InputSetValueCompare).  A map uses the silent one to arrange state and the
+  testing one to act on it, so collapsing them would fire outputs at moments the
+  map deliberately kept quiet.
+===========================================================================
+*/
+void(entity t, float nv, float fire, entity act) SV_IOBranch =
+{
+	t.vbsp_branch_val = nv ? TRUE : FALSE;
+	if (!fire)
+		return;
+	if (t.vbsp_branch_val)
+		SV_FireOutput(t, "OnTrue",  act);
+	else
+		SV_FireOutput(t, "OnFalse", act);
+};
+
+void(entity t, entity act) SV_IOCompare =
+{
+	// CLogicCompare::DoCompare, logicentities.cpp:2585-2613.  Equal wins
+	// outright; otherwise exactly one of greater/less fires, and OnNotEqualTo
+	// fires ALONGSIDE it rather than instead of it -- which is why this is not
+	// an if/else chain all the way down.
+	if (t.vbsp_cmp_in == t.vbsp_cmp_cmp)
+	{
+		SV_FireOutput(t, "OnEqualTo", act);
+		return;
+	}
+
+	SV_FireOutput(t, "OnNotEqualTo", act);
+	if (t.vbsp_cmp_in > t.vbsp_cmp_cmp)
+		SV_FireOutput(t, "OnGreaterThan", act);
+	else
+		SV_FireOutput(t, "OnLessThan", act);
 };
 
 void(entity t, entity o, entity act) SV_ApplyInput =
@@ -1382,15 +2187,220 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (in == "kill")           { remove(t);                            return; }
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
 	if (in == "disable")        { SV_IOEnable(t, FALSE);                return; }
-	if (in == "toggle")         { SV_IOEnable(t, t.solid == SOLID_NOT); return; }
+	/*
+	  TOGGLE, AND THE TWO DIFFERENT THINGS IT MEANS.
+
+	  This line has meant one thing since build 37 -- flip a brush entity's
+	  solidity -- and it is the most-declared input in the library, so the
+	  existing expression is NOT touched: it stays, unchanged, as the
+	  fall-through, and the new meaning is added above it by classname.
+
+	  THE HEADLINE NUMBER IS A TRAP AND IT IS WORTH SPENDING A PARAGRAPH ON,
+	  because it argues the opposite of what it looks like.  A census of all
+	  1315 maps counts 401,491 declared Toggles -- but 401,072 of those are ONE
+	  map, bhop_miku_v2, whose single logic_relay drives a song's worth of
+	  func_wall_toggle animation, and which cannot load at all (see
+	  VBSP_IO_MAXOUT).  Take it out and the real figure is 419 across 65 maps,
+	  of which 201 still target func_wall_toggle, where today's line is exactly
+	  right.  Only 68 reach a logic_relay, on 3 maps.
+
+	  WHY THE CLASSNAME ARM CANNOT REGRESS ANYTHING, said exactly.
+
+	  SV_SpawnIOPoint spawns every logic point entity SOLID_NOT with no model,
+	  and nothing ever changes that, so for all of them `t.solid == SOLID_NOT`
+	  is PERMANENTLY TRUE and today's line already resolves to
+	  SV_IOEnable(t, TRUE) every single time.  Walk what that does to a modelless
+	  point entity: the solid restore is gated on the model starting with '*' so
+	  .solid is untouched; the EF_NODRAW clear is a no-op on something with
+	  nothing to draw; and all it actually writes is StartDisabled = 0.
+
+	  So Toggle on a point entity has been an unconditional ENABLE since build
+	  37 -- never a toggle.  For logic_relay that write was observable by
+	  nothing at all, because the class read StartDisabled nowhere.
+
+	  logic_timer is the one real behaviour change, and it is a bug fix:
+	  SV_TimerThink DOES read StartDisabled, so Toggle could start a timer and
+	  never stop one, against CTimerEntity::Toggle (logicentities.cpp:351-361)
+	  which flips.  Censused before shipping rather than argued about: ONE fire,
+	  on ONE map (surf_era), in the whole library.
+	*/
+	if (in == "toggle")
+	{
+		if (t.classname == "logic_relay" || t.classname == "logic_timer")
+		{
+			SV_IOEnable(t, !SV_Key2(t.StartDisabled, t.startdisabled));
+			return;
+		}
+		// A branch's Toggle flips its stored boolean WITHOUT testing it --
+		// CLogicBranch::InputToggle, the silent twin of ToggleTest.  26 fires
+		// across 5 maps, none of which could reach this before build 63.
+		if (t.classname == "logic_branch")
+		{
+			SV_IOBranch(t, !t.vbsp_branch_val, FALSE, act);
+			return;
+		}
+		SV_IOEnable(t, t.solid == SOLID_NOT);
+		return;
+	}
 	if (in == "command")        { SV_IOCommand(pm);                     return; }
 	if (in == "modifyspeed")    { SV_IOModifySpeed(t, act, stof(pm));   return; }
 	if (in == "setdamagefilter"){ t.vbsp_dmgfilter = pm;                  return; }
 	if (in == "add")            { SV_IOCounter(t, t.count + stof(pm), TRUE);  return; }
-	if (in == "setvalue")       { SV_IOCounter(t, stof(pm), TRUE);      return; }
+	/*
+	  SETVALUE IS THE SECOND COLLISION, and unlike Toggle nobody had it on a
+	  list -- it surfaced only from reading the FGD against this ladder.  Three
+	  classes declare the name and mean three different things: math_counter
+	  sets its counter (and has owned this line since build 37), logic_branch
+	  sets its boolean WITHOUT testing it (logicentities.cpp:2723), logic_compare
+	  stores its input value without comparing (:2538).
+
+	  Same dispatch as Toggle, and safe for the same reason plus a stronger one:
+	  neither logic_branch nor logic_compare exists as an edict before this
+	  build, so the new arms are unreachable on every map that works today.
+
+	  The lesson, worth more than the fix: a new input name has to be grepped
+	  against this whole ladder, not checked against the names someone flagged.
+	*/
+	if (in == "setvalue")
+	{
+		if (t.classname == "logic_branch")
+			{ SV_IOBranch(t, stof(pm) != 0, FALSE, act); return; }
+		if (t.classname == "logic_compare")
+			{ t.vbsp_cmp_in = stof(pm);                  return; }
+		SV_IOCounter(t, stof(pm), TRUE);
+		return;
+	}
 	if (in == "setvaluenofire") { SV_IOCounter(t, stof(pm), FALSE);     return; }
+
+	// Build 63.  The rest of CMathCounter.  Divide's count is not a typo: one
+	// output, on one map, implemented because the divide-by-zero guard
+	// (logicentities.cpp:1615-1638) is the whole of what it needs.
+	if (in == "subtract") { SV_IOCounter(t, t.count - stof(pm), TRUE);  return; }
+	if (in == "multiply") { SV_IOCounter(t, t.count * stof(pm), TRUE);  return; }
+	if (in == "divide")
+	{
+		// Source logs a level-design error and re-runs the update with the value
+		// UNCHANGED -- which still evaluates the edges, so it is not a no-op.
+		if (stof(pm) != 0) SV_IOCounter(t, t.count / stof(pm), TRUE);
+		else               SV_IOCounter(t, t.count,            TRUE);
+		return;
+	}
+	if (in == "getvalue")
+	{
+		/*
+		  71 fires / 5 maps, 39 OnGetValue outputs.  KNOWN GAP, stated here
+		  rather than left to look finished: Source's m_OnGetValue is a
+		  COutputFloat and InputGetValue (logicentities.cpp:1708-1712) SETS it,
+		  i.e. the counter's value is substituted into any output whose own
+		  parameter field is blank.  This layer has no parameter pass-through --
+		  an output carries only what the map wrote -- so this fires at the right
+		  moment with the wrong (usually empty) parameter.
+
+		  Firing it is still strictly better than not: a map that uses
+		  GetValue purely as a "now" signal works, and one that needs the number
+		  is no worse off than when nothing fired at all.  Threading an override
+		  through SV_FireOutput/SV_IODeliver/SV_ApplyInput is the next piece of
+		  work and it is bigger than this line looks.
+		*/
+		SV_FireOutput(t, "OnGetValue", act);
+		return;
+	}
+	if (in == "sethitmax")
+	{
+		t.vbsp_io_max = stof(pm);
+		if (t.vbsp_io_max < t.vbsp_io_min)
+			t.vbsp_io_min = t.vbsp_io_max;		// logicentities.cpp:1559
+		SV_IOCounter(t, t.count, TRUE);
+		return;
+	}
+	if (in == "sethitmin")
+	{
+		t.vbsp_io_min = stof(pm);
+		if (t.vbsp_io_max < t.vbsp_io_min)
+			t.vbsp_io_max = t.vbsp_io_min;		// logicentities.cpp:1569
+		SV_IOCounter(t, t.count, TRUE);
+		return;
+	}
 	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW;    return; }
 	if (in == "turnon")         { t.effects = t.effects - (t.effects & EF_NODRAW); return; }
+
+	// Build 63.  logic_relay -- 2,506 Trigger fires across 120 maps, the most
+	// common unimplemented input in the library that is not cosmetic.
+	if (in == "trigger")        { SV_IORelayTrigger(t, act);            return; }
+	if (in == "cancelpending")  { SV_IOCancelPending(t);                return; }
+
+	// Build 63.  logic_case -- 6,258 OnCaseNN outputs across 112 maps, the
+	// largest dead output family in the library.  PickRandom is 1,142 of the
+	// 1,243 fires; InValue is 101.
+	if (in == "invalue")           { SV_IOCaseValue(t, pm, act);        return; }
+	if (in == "pickrandom")        { SV_IOCasePick(t, act, FALSE);      return; }
+	if (in == "pickrandomshuffle") { SV_IOCasePick(t, act, TRUE);       return; }
+
+	// Build 63.  logic_branch -- OnTrue 562 / OnFalse 149 across 20 maps.
+	// `setvalue` is up with the counter group because it collides there; these
+	// three are unambiguous.  Test re-fires the CURRENT value without changing
+	// it (CLogicBranch::InputTest).
+	if (in == "setvaluetest") { SV_IOBranch(t, stof(pm) != 0,       TRUE, act); return; }
+	if (in == "toggletest")   { SV_IOBranch(t, !t.vbsp_branch_val,  TRUE, act); return; }
+	if (in == "test")         { SV_IOBranch(t, t.vbsp_branch_val,   TRUE, act); return; }
+
+	// Build 63.  logic_compare -- OnEqualTo 96 / OnGreaterThan 78 /
+	// OnLessThan 70 / OnNotEqualTo 8 across 20 maps.  Note SetCompareValue
+	// stores silently while SetValueCompare tests: the asymmetry is Source's.
+	if (in == "setvaluecompare") { t.vbsp_cmp_in  = stof(pm); SV_IOCompare(t, act); return; }
+	if (in == "setcomparevalue") { t.vbsp_cmp_cmp = stof(pm);                       return; }
+	if (in == "compare")         { SV_IOCompare(t, act);                           return; }
+
+	/*
+	  Build 63.  FireUser1..4 -- and the thing to notice is that this is NOT a
+	  classname.  It is CBaseEntity (baseentity.cpp:6655-6670), so it works on
+	  anything, which is exactly what makes it useful: a map forwards a message
+	  through !activator to a target the sender knows nothing about.  278
+	  FireUser1 fires across 25 maps against 523 OnUser1 outputs, so most of
+	  those outputs hang off entities told to fire by something else entirely.
+
+	  It is also this build's easiest accidental cycle -- `OnUser1 !self
+	  FireUser1` is one line in Hammer, on ANY classname -- which is the other
+	  half of why VBSP_IO_MAXDEPTH is not optional.
+	*/
+	/*
+	  Build 63, Tier 2.  Button and door STATE inputs.
+
+	  Gated on vbsp_mv_kind rather than on classname: it is one float compare
+	  instead of a ladder of string compares in a function that runs on every
+	  delivery, it is the same test that keeps the breakable aliases out (see
+	  SV_SpawnBreakable), and an input aimed at something that is not a mover
+	  falls through to the census rather than doing something surprising --
+	  which is the rule the firetimer block above already follows.
+
+	  `Use` is NOT here, and that is a measured decision rather than an
+	  oversight: 1,154 of its 1,408 fires across 129 maps target
+	  game_player_equip, Source's weapon handout, which this game has no use
+	  for.  Only 3 fires in the whole library reach anything else.  It stays
+	  censused.
+	*/
+	if (t.vbsp_mv_kind)
+	{
+		if (in == "lock")     { SV_MoverLock(t, TRUE);                    return; }
+		if (in == "unlock")   { SV_MoverLock(t, FALSE);                   return; }
+
+		if (t.vbsp_mv_kind == MVK_BUTTON)
+		{
+			if (in == "press")    { SV_ButtonPress(t, act, BUTTON_PRESS);    return; }
+			if (in == "pressin")  { SV_ButtonPress(t, act, BUTTON_ACTIVATE); return; }
+			if (in == "pressout") { SV_ButtonPress(t, act, BUTTON_RETURN);   return; }
+		}
+		if (t.vbsp_mv_kind == MVK_DOOR)
+		{
+			if (in == "open")  { SV_DoorOpen(t, act);  return; }
+			if (in == "close") { SV_DoorClose(t, act); return; }
+		}
+	}
+
+	if (in == "fireuser1") { SV_FireOutput(t, "OnUser1", act); return; }
+	if (in == "fireuser2") { SV_FireOutput(t, "OnUser2", act); return; }
+	if (in == "fireuser3") { SV_FireOutput(t, "OnUser3", act); return; }
+	if (in == "fireuser4") { SV_FireOutput(t, "OnUser4", act); return; }
 
 	/*
 	  FTESurf Patch 256.  TestActivator -- and this is the input that makes
@@ -1431,8 +2441,25 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	*/
 	if (in == "firetimer")
 	{
-		if (t.think == SV_TimerThink) { SV_FireOutput(t, "OnTimer", act);
-		                                t.nextthink = time + SV_TimerInterval(t); }
+		/*
+		  Build 63 routes this through SV_TimerFire so an oscillator's FireTimer
+		  fires the same output its own think would, and adopts Source's
+		  disabled gate: CTimerEntity::FireTimer (logicentities.cpp:366-370)
+		  is `if (!m_iDisabled)`, and this branch was not.
+
+		  That gate can only change behaviour on a map that Disables a timer and
+		  then sends it FireTimer, so it was censused rather than argued about:
+		  across all 1315 maps, FireTimer is 20 fires on 12 maps, Disable-at-a-
+		  timer is 217 on 74, and only THREE maps do both -- surf_ethereal,
+		  surf_liberation and bhop_angst.  Those three are where to look if a
+		  one-shot stops working.
+		*/
+		if (t.think == SV_TimerThink)
+		if (!SV_Key2(t.StartDisabled, t.startdisabled))
+		{
+			SV_TimerFire(t);
+			t.nextthink = time + SV_TimerInterval(t);
+		}
 		return;
 	}
 	if (in == "resettimer")
@@ -1451,6 +2478,38 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	{
 		if (SV_FilterPasses(t, act)) SV_FireOutput(t, "OnPass", act);
 		else                         SV_FireOutput(t, "OnFail", act);
+		return;
+	}
+
+	/*
+	  Build 63.  TouchTest, put here rather than with the logic entities because
+	  it is the exact structural mirror of TestActivator above -- and the essay
+	  there is the one a reader will already have in view.
+
+	  Same shape, same reason: CBaseTrigger's m_OnTouching and m_OnNotTouching
+	  (triggers.cpp:119-120) are fired ONLY from InputTouchTest (:150-153 ->
+	  TouchTest, :241-252).  A trigger is inert until something ASKS it, and
+	  asking is what we could not do.  74 OnTouching and 11 OnNotTouching
+	  outputs across 32 maps.
+
+	  Our equivalent of Source's m_hTouchingEntities is Patch 270's per-player
+	  masks plus the legacy single-toucher.  ONE FIDELITY GAP, stated because it
+	  is not visible from here: those masks are swept on a 0.03s think with a
+	  two-window absence test (see SV_TriggerEndThink), so a player who left
+	  less than ~0.09s ago still reads as inside, where Source's set is exact.
+	  On 32 maps that is the right trade.
+
+	  Source passes the trigger as both caller and activator here, so the fire
+	  names `t` rather than `act`.
+	*/
+	if (in == "touchtest")
+	{
+		if (SV_Key2(t.StartDisabled, t.startdisabled))
+			return;						// a disabled trigger touches nothing
+		if (t.vbsp_touch_in || t.vbsp_touch_seen || t.vbsp_touch_who)
+			SV_FireOutput(t, "OnTouching",    t);
+		else
+			SV_FireOutput(t, "OnNotTouching", t);
 		return;
 	}
 
@@ -1556,6 +2615,30 @@ void(entity src, string name, entity act) SV_FireOutput =
 
 	name = strtolower(name);	//Patch 256 -- see the fold note in the loop
 
+	/*
+	  Build 63.  The fuse.  See the essay beside VBSP_IO_MAXDEPTH for why a
+	  refusal rather than an error, and what the engine does if this is absent.
+
+	  Bracketing works here without restructuring because this function has
+	  exactly ONE exit path: the loop below contains `continue` but no `return`,
+	  so the decrement at the tail cannot be skipped.  Check that before adding
+	  an early return to this function -- a fuse that leaks is worse than no
+	  fuse, because it bricks the map's I/O after enough unrelated fires rather
+	  than failing loudly.
+	*/
+	if (vbsp_io_depth >= VBSP_IO_MAXDEPTH)
+	{
+		vbsp_io_depth_hit = vbsp_io_depth_hit + 1;
+		if (SV_CensusAdd(strcat("output cycle ", name)))
+			dprint(sprintf("^1entity I/O: '%s' on %s exceeded %g nested fires -- "
+			               "this map has an output cycle; refusing to recurse\n",
+			               name, src.classname, VBSP_IO_MAXDEPTH));
+		return;
+	}
+	vbsp_io_depth = vbsp_io_depth + 1;
+	if (vbsp_io_depth > vbsp_io_depth_max)
+		vbsp_io_depth_max = vbsp_io_depth;
+
 	for (o = src.vbsp_io_out; o; o = nx)
 	{
 		// Captured first: an input may remove entities, and `Kill` on the
@@ -1578,6 +2661,31 @@ void(entity src, string name, entity act) SV_FireOutput =
 		if (o.vbsp_io_times == 0)
 			continue;					// -1 is unlimited; 0 is exhausted
 
+		/*
+		  Build 63.  THE DECREMENT MOVED ABOVE THE DELIVERY, and it is a real bug
+		  fix rather than tidying.
+
+		  It used to sit after the SV_IODeliver below.  For a ZERO-DELAY output
+		  that delivery is inline, on this stack, and it can re-enter
+		  SV_FireOutput on this same source and walk this same chain -- with
+		  vbsp_io_times not yet decremented.  So a relay wired `OnTrigger <self>
+		  Trigger` and declared `times 1`, which is exactly what a mapper writes
+		  to BOUND it, recursed without limit anyway: the one guard the map
+		  author was given did not work.
+
+		  Latent until now only because logic_relay was a stub and nothing
+		  re-entered.  Decrementing first makes the count mean what the map says
+		  it means, and it is what lets the fuse above stay a backstop rather
+		  than the only thing standing between a map and SV_Error.
+
+		  Order against the delay path is unchanged: a delayed output is spent
+		  when it is SCHEDULED, which is what Source does too -- the event is in
+		  the queue and cancelling it is CancelPending's job, not a refire
+		  count's.
+		*/
+		if (o.vbsp_io_times > 0)
+			o.vbsp_io_times = o.vbsp_io_times - 1;
+
 		if (o.vbsp_io_delay > 0)
 		{
 			d = spawn();
@@ -1589,10 +2697,9 @@ void(entity src, string name, entity act) SV_FireOutput =
 		}
 		else
 			SV_IODeliver(o, act);
-
-		if (o.vbsp_io_times > 0)
-			o.vbsp_io_times = o.vbsp_io_times - 1;
 	}
+
+	vbsp_io_depth = vbsp_io_depth - 1;
 };
 
 /*
@@ -1923,6 +3030,44 @@ void(entity pl) SV_UseFrame =
 	  the Lock/Unlock inputs to fire it correctly for any of them.  6 maps;
 	  surf_centipedes has 12, surf_bossfight 3.
 
+	  BUILD 63 ENDS THAT, and the paragraph above is left standing because it
+	  says exactly what stopped being true.  Lock and Unlock now exist, so
+	  "they all carry the spawnflag at spawn" is no longer the same statement as
+	  "they are locked": InputUnlock clears m_bLocked and leaves the spawnflag
+	  set forever (doors.cpp:882-885).  Reading spawnflags here would report an
+	  unlocked door as locked from the first Unlock onward.  The test below is
+	  now vbsp_mv_locked, which SV_SpawnDoor seeds from the flag and
+	  SV_MoverLock maintains.
+
+	  Two more things this function got wrong, both surfaced by Tier 2:
+
+	  THE SF_DOOR_PUSE GATE.  CBaseDoor::Use refuses a player activator outright
+	  unless spawnflag 256 is set (doors.cpp:731-735), BEFORE it even computes
+	  bAllowUse -- so we were firing at doors Source would not have looked at.
+	  Its FGD default is OFF, which made honouring it look like it might silence
+	  real maps, so it was censused rather than guessed: of the 20 doors in the
+	  library declaring OnLockedUse, NINETEEN already set bit 256.  Honouring it
+	  costs exactly one door, on one map.
+
+	  AND OnPressed WAS FIRED AT ANYTHING WITH OUTPUTS -- doors, triggers,
+	  logic_relays -- because the old body's only test was `trace_ent has a
+	  vbsp_io_out chain`.  A button's press is now routed through
+	  SV_ButtonUse so the toggle / stay-pushed / already-moving guards apply and
+	  OnIn and OnOut follow it; a door's through SV_DoorUse.  Everything else
+	  keeps the old behaviour, because for a func_brush or a trigger wired to
+	  OnPressed that behaviour is all there is.
+
+	  WHAT STILL CANNOT WORK, so the census keeps meaning "nobody has looked at
+	  this": OnDamaged.  It is func_button's second largest dead output -- 1,187
+	  outputs across 32 maps -- and Source fires it from CBaseButton::OnTakeDamage
+	  (buttons.cpp:309) under the "Damage activates" spawnflag.  This game has
+	  no damage system and no weapons: sv_player.qc sets takedamage DAMAGE_NO on
+	  the player and nothing anywhere calls T_Damage.  There is no honest fire
+	  site, so `ondamaged` is deliberately NOT in SV_IOOutputKnown -- adding a
+	  name there without a fire site is the failure that essay calls the worse
+	  one, because silence then reads as "implemented".  func_breakable's
+	  OnBreak (276) is dead for the same reason.
+
 	  FOUR OF THE 23 ARE UNREACHABLE and that is worth saying rather than
 	  discovering later: they also carry the passable spawnflags, so SV_SpawnDoor
 	  makes them SOLID_NOT and this traceline goes straight through them.  They
@@ -1932,9 +3077,26 @@ void(entity pl) SV_UseFrame =
 	  Fired BEFORE OnPressed and returning, because in Source a locked door does
 	  not activate -- firing both would report a press that never happened.
 	*/
-	if ((t.classname == "func_door" || t.classname == "func_door_rotating" ||
-	     t.classname == "prop_door_rotating") &&
-	    (t.spawnflags & SF_DOOR_LOCKED))
+	if (t.vbsp_mv_kind == MVK_DOOR)
+	{
+		SV_DoorUse(t, pl);
+		return;
+	}
+	if (t.vbsp_mv_kind == MVK_BUTTON)
+	{
+		if (!(t.spawnflags & SF_BUTTON_USE))
+			return;					// buttons.cpp:422-429 SetUse(NULL) without it
+		SV_ButtonUse(t, pl);
+		return;
+	}
+
+	/*
+	  prop_door_rotating keeps the old spawnflag path: it has the identical
+	  output on CBasePropDoor (props.cpp:3539) but is a MODEL entity here, not a
+	  brush, so it never went through SV_SpawnDoor and has no vbsp_mv_kind.
+	*/
+	if (t.classname == "prop_door_rotating")
+	if (t.spawnflags & SF_DOOR_LOCKED)
 	{
 		SV_FireOutput(t, "OnLockedUse", pl);
 		return;
@@ -2003,6 +3165,40 @@ void() SV_EntityIOBuild =
 			if (ntok < 2)
 				continue;				// no input name: nothing to fire
 
+			/*
+			  Build 63.  THE CEILING, and it exists because one map in the
+			  library kills the server without it.
+
+			  This loop spawns ONE EDICT PER DECLARED OUTPUT.  pr_maxedicts
+			  defaults to 131072 (engine/server/pr_cmds.c:76) and nothing in
+			  this game raises it; past that ED_Alloc calls Sys_Error
+			  ("no free edicts"), which is fatal and says nothing about why.
+
+			  bhop_miku_v2 is a music-sync map: 468 entities, and 416,366 of its
+			  416,464 outputs hang off ONE logic_relay driving a whole song of
+			  func_wall_toggle animation.  That is 3.2x the edict ceiling, so
+			  the map cannot load at all -- and could not before this build
+			  either.  This does not make it play; it makes it load, and makes
+			  it say what it dropped instead of dying.
+
+			  It is a 167x outlier and the number below is chosen against the
+			  rest of the library rather than against it: the next densest map
+			  is surf_forbidden_tomb4 at 2,494 outputs, and the MEDIAN map wires
+			  14.  32768 is therefore ~13x headroom over every other map in
+			  1315 while staying a quarter of the edict budget, leaving room for
+			  the vbsp_iodelay edicts SV_FireOutput spawns at runtime.
+			*/
+			if (vbsp_io_n >= VBSP_IO_MAXOUT)
+			{
+				vbsp_io_over_map = vbsp_io_over_map + 1;
+				if (SV_CensusAdd("output table full"))
+					dprint(sprintf("^1entity I/O: more than %g outputs on this map "
+					               "-- refusing the rest.  The map is playable but "
+					               "incomplete; see VBSP_IO_MAXOUT.\n",
+					               VBSP_IO_MAXOUT));
+				continue;
+			}
+
 			o = spawn();
 			o.classname    = "vbsp_output";
 			o.owner        = e;
@@ -2045,28 +3241,17 @@ void() SV_EntityIOBuild =
 			  and this file now fires OnJump and honours AddOutput basevelocity.
 			*/
 			/*
-			  FTESurf Patch 256 adds the second row: OnStartTouchAll and
+			  FTESurf Patch 256 added the second row: OnStartTouchAll and
 			  OnEndTouchAll (SV_TriggerIOTouch / SV_TriggerEndThink),
 			  OnLockedUse (SV_UseFrame), OnPass and OnFail (the TestActivator
 			  input in SV_ApplyInput), OnTimer (logic_timer).
 
-			  THIS LIST IS HAND-MAINTAINED AND NOTHING TIES IT TO THE FIRE SITES.
-			  Adding a SV_FireOutput call without adding its name here makes the
-			  check cry wolf; adding a name here without a fire site makes it
-			  lie the other way and is worse, because the silence then reads as
-			  "implemented".  There are as many names here as there are
-			  SV_FireOutput call sites in this file, and that correspondence is
-			  the only thing keeping it honest -- check it when you touch either.
+			  Build 63 moved the list itself up to SV_IOOutputKnown, where its
+			  hand-maintained-ness is written out at length and each name names
+			  its fire site.  The warning below is unchanged.
 			*/
 			lk = strtolower(k);
-			if (lk != "onmapspawn" && lk != "onnewgame"   && lk != "onstarttouch" &&
-			    lk != "onendtouch" && lk != "ontrigger"   && lk != "onpressed"    &&
-			    lk != "onhitmax"   && lk != "onactivate"  && lk != "onusefinished"&&
-			    lk != "onlandinglimitreached" && lk != "onjump" &&
-			    lk != "onland" &&           // build 51, beside OnJump
-			    lk != "onstarttouchall" && lk != "onendtouchall" &&
-			    lk != "onlockeduse" && lk != "onpass" && lk != "onfail" &&
-			    lk != "ontimer")
+			if (!SV_IOOutputKnown(lk))
 				if (SV_CensusAdd(strcat("output ", lk)))
 					dprint(sprintf("^3entity I/O: nothing fires '%s' -- %s's "
 					               "outputs on it are parsed and never run\n",
@@ -2092,6 +3277,32 @@ void() SV_EntityIOBuild =
 	{
 		SV_FireOutput(e, "OnMapSpawn", world);
 		SV_FireOutput(e, "OnNewGame", world);
+	}
+
+	/*
+	  Build 63.  logic_relay's OnSpawn, in the same place and for the same
+	  reason -- every output on the map has to exist before any of them fires.
+
+	  Source kicks a think at +0.01 from CLogicRelay::Activate and ONLY if
+	  m_OnSpawn has connections (logicrelay.cpp:55-62); the think fires OnSpawn
+	  and then removes the relay under SF_REMOVE_ON_FIRE (:70-81).  The
+	  "has connections" test is not an optimisation -- it decides whether a
+	  once-only relay consumes itself at map spawn, so a relay with no OnSpawn
+	  must stay armed for a later Trigger.  Hence SV_IOHasOutput.
+
+	  AFTER the logic_auto loop.  Source leaves the relative order unspecified,
+	  and a relay is far more often the TARGET of a logic_auto than the reverse,
+	  so a map that disables a relay from OnMapSpawn gets the ordering it plainly
+	  intended.  44 OnSpawn outputs in the library.
+	*/
+	for (e = find(world, classname, "logic_relay"); e;
+	     e = find(e, classname, "logic_relay"))
+	{
+		if (!SV_IOHasOutput(e, "onspawn"))
+			continue;
+		SV_FireOutput(e, "OnSpawn", e);
+		if (e.spawnflags & SF_RELAY_REMOVE_ON_FIRE)
+			SV_IOEnable(e, FALSE);
 	}
 };
 
@@ -2313,6 +3524,18 @@ void() SV_EntityReset =
 	// Build 37.  Same trap as every counter above: these are globals and they
 	// would otherwise accumulate across every map loaded in a session.
 	vbsp_io_n = vbsp_io_fired = 0;
+
+	/*
+	  Build 63.  vbsp_io_depth in particular MUST be cleared here, and it is the
+	  one in this function whose absence would not look like a counter bug.  It
+	  is a bracketing counter: a map change that landed while a chain was part
+	  way through -- a delayed output delivering into a changelevel, say --
+	  would leave the NEXT map starting at a non-zero depth, and a map that
+	  starts at or above the ceiling has its entity I/O silently dead from the
+	  first frame with no warning that says so.
+	*/
+	vbsp_io_depth = vbsp_io_depth_max = vbsp_io_depth_hit = 0;
+	vbsp_io_over_ent = vbsp_io_over_map = 0;
 	vbsp_bhop_n = vbsp_bhop_tele_n = 0;
 	vbsp_tele_disabled_n = 0;
 
@@ -2466,6 +3689,36 @@ void() SV_EntityReport =
 	*/
 	if (vbsp_io_n)
 		print(sprintf("entity I/O: %g output(s) wired\n", vbsp_io_n));
+
+	/*
+	  Build 63.  In red, unconditional, and it NAMES THE MAP.
+
+	  print rather than dprint, and the map name spelled out, because the
+	  failure this reports is one that will otherwise be described to you
+	  second-hand and wrongly: a map that silently drops 400,000 outputs gets
+	  reported as "the func_wall_toggles don't work on miku", and nobody
+	  connects that to a cap they cannot see.  A silent discard and a clean run
+	  produce identical evidence; the counter is the only thing that separates
+	  them.
+	*/
+	/*
+	  Reported SEPARATELY, because the two ceilings fail for different reasons
+	  and pointing at the wrong one sends the next reader to the wrong place.
+	  The first build-63 run proved that on itself: it printed "declares more
+	  than 32768 outputs" for bhop_miku_v2, when the map-wide ceiling had never
+	  been reached at all -- 4194 wired is well under it -- and every one of the
+	  412,270 refusals came from the per-entity cap.
+	*/
+	if (vbsp_io_over_ent)
+		print(sprintf("^1entity I/O: %s has an entity declaring more than %g "
+		              "outputs -- %g REFUSED and will never fire.  The map is "
+		              "playable but its wiring is incomplete.^7\n",
+		              mapname, VBSP_IO_MAXRAW, vbsp_io_over_ent));
+	if (vbsp_io_over_map)
+		print(sprintf("^1entity I/O: %s declares more than %g outputs in total "
+		              "-- %g REFUSED and will never fire.^7\n",
+		              mapname, VBSP_IO_MAXOUT, vbsp_io_over_map));
+
 	if (vbsp_bhop_n)
 		print(sprintf("func_bhop: %g solid platform(s)\n", vbsp_bhop_n));
 
@@ -2478,6 +3731,49 @@ void() SV_EntityReport =
 
 	print(sprintf("ent_census: %g unhandled classnames/inputs (`ent_census` to list)\n",
 	              ent_census_n));
+};
+
+/*
+===========================================================================
+  `ent_io` -- Build 63.  Did any of the wiring RUN?
+
+  SV_EntityReport says what the map declares; this says what happened to it.
+  The two numbers that matter are on the first line: outputs wired against
+  inputs delivered.  Wired but nothing delivered is a map whose logic never
+  started; delivered climbing while nobody moves is a timer driving something.
+
+  The depth high-water mark is here to turn VBSP_IO_MAXDEPTH from a guess into
+  a measured margin.  32 was chosen with no evidence behind it -- if the
+  deepest legitimate chain across the library turns out to be 5, the constant
+  can be justified rather than defended; if some map legitimately reaches 30,
+  the fuse is about to start truncating real map logic and reporting it as a
+  cycle, which is the exact failure the census exists to prevent.  Read it on
+  the densest maps before trusting the number.
+===========================================================================
+*/
+void() SV_IOReport =
+{
+	print(sprintf("entity I/O: %g output(s) wired, %g input(s) delivered\n",
+	              vbsp_io_n, vbsp_io_fired));
+
+	if (!vbsp_io_on)
+		print("  vbsp_entity_io is 0 -- the layer is switched off on this map\n");
+
+	print(sprintf("  fire depth: %g now, %g peak (ceiling %g)\n",
+	              vbsp_io_depth, vbsp_io_depth_max, VBSP_IO_MAXDEPTH));
+
+	// Both in red, because both mean map wiring that did not run.
+	if (vbsp_io_depth_hit)
+		print(sprintf("^1  %g fire(s) REFUSED by the cycle fuse^7\n", vbsp_io_depth_hit));
+	if (vbsp_io_over_ent)
+		print(sprintf("^1  %g output(s) REFUSED -- one entity over %g^7\n",
+		              vbsp_io_over_ent, VBSP_IO_MAXRAW));
+	if (vbsp_io_over_map)
+		print(sprintf("^1  %g output(s) REFUSED -- map over %g^7\n",
+		              vbsp_io_over_map, VBSP_IO_MAXOUT));
+
+	if (!vbsp_io_depth_hit && !vbsp_io_over_ent && !vbsp_io_over_map && vbsp_io_n)
+		print("  no refusals\n");
 };
 
 void(float defsolid) SV_SpawnProp =
@@ -4152,6 +5448,315 @@ void() func_slide =
 #define SF_DOOR_NONSOLID_TO_PLAYER  4
 #define SF_DOOR_PASSABLE            8
 
+/*
+===========================================================================
+  BUILD 63, TIER 2 -- BUTTON AND DOOR STATE.  STILL NOTHING MOVES.
+
+  The rule is stated in full beside the vbsp_mv_* field block: fire what is
+  true of the state machine, never what is a claim about geometry.  So a button
+  presses, latches, waits and returns, firing OnPressed / OnIn / OnOut; a door
+  locks, unlocks and is told to open, firing OnLockedUse / OnOpen / OnClose;
+  and neither ever claims to have ARRIVED anywhere, because neither has moved.
+
+  WHY THE TIMING USES .ltime AND NOT time, which is the trap in this whole
+  section and would otherwise be found the hard way.
+
+  sv_defs.qc:302 states the contract: on MOVETYPE_PUSH, .nextthink is relative
+  to .ltime, not to time.  Every existing think in this project is written
+  `nextthink = time + x` and every one of those is on a POINT entity, where
+  that is correct.  A button is MOVETYPE_PUSH.
+
+  Worse, .ltime on these entities is frozen at 0 and always has been.
+  WPhys_Physics_Pusher (sv_phys.c:1211-1222) clips this frame's movetime to
+  nextthink - ltime, and with nextthink 0 -- which is every brush entity in
+  every FTESurf map today -- movetime clamps to 0, PushMove is skipped, and
+  ltime never advances.  So `nextthink = time + dt` on a button would schedule
+  a think for when the SERVER'S UPTIME reaches dt: never, on any map loaded
+  more than dt seconds into the process.  Silent, and it would look like the
+  button simply not working.
+
+  Tier 2 uses ltime even though nothing moves, so that the scheduling is
+  already proven if geometry is ever added.
+
+  THE ONE EXCEPTION is the OnUseLocked debounce, which is wall-clock: it
+  rate-limits a PLAYER ACTION, not a mover.
+===========================================================================
+*/
+void(entity t, void() fn, float dt) SV_MoverArm =
+{
+	t.think = fn;
+	t.nextthink = t.ltime + dt;		// ltime.  NEVER time.  See above.
+};
+
+/*
+  Lock / Unlock -- 1,292 and 752 fires at func_button/func_rot_button across
+  116 and 14 maps, plus ~130 at doors.
+
+  m_bLocked is SEEDED by SF_DOOR_LOCKED at spawn (doors.cpp:290-292,
+  buttons.cpp:414-417) and is not the same thing as the spawnflag: InputUnlock
+  clears the flag, the spawnflag stays set forever.  Reading the spawnflag
+  where Source reads m_bLocked is precisely the bug this fixes in SV_UseFrame.
+*/
+void(entity t, float on) SV_MoverLock =
+{
+	if (!t.vbsp_mv_kind)
+		return;						// not a button or a door; say nothing
+	t.vbsp_mv_locked = on ? TRUE : FALSE;
+};
+
+/*
+  OnUseLocked, with Source's own 0.5s refire guard (buttons.cpp:484-496).
+
+  On `time` rather than ltime, deliberately -- see the ltime essay above.  This
+  bounds how often a player holding +use against a locked button can make the
+  map talk, which is a question about the player's hand, not about a mover.
+*/
+void(entity t, entity act) SV_MoverOnUseLocked =
+{
+	if (time <= t.vbsp_mv_uselocked)
+		return;
+	t.vbsp_mv_uselocked = time + 0.5;
+	SV_FireOutput(t, "OnUseLocked", act);
+};
+
+// Forward-declared so ButtonAtTop can arm ButtonReturn and ButtonReturn can
+// arm ButtonHome; QC resolves names in file order, and these are a cycle.
+void() SV_ButtonReturn;
+
+void() SV_ButtonAtTop =
+{
+	// TriggerAndWait, buttons.cpp:693-732.  Re-tests the lock, because a Lock
+	// can arrive while the button is on its way in.
+	if (self.vbsp_mv_locked)
+		return;
+
+	self.vbsp_mv_state = TS_AT_TOP;
+	self.nextthink = 0;
+
+	// A "stay pushed" button (wait -1) or a toggle button never comes back on
+	// its own, so nothing is armed and OnOut will only follow another press.
+	if (!self.vbsp_mv_stay)
+	if (!(self.spawnflags & SF_BUTTON_TOGGLE))
+		SV_MoverArm(self, SV_ButtonReturn, self.vbsp_mv_wait);
+
+	// After the re-arm, as Source does.  392 OnIn outputs across 38 maps.
+	SV_FireOutput(self, "OnIn", self.vbsp_mv_act);
+};
+
+void() SV_ButtonHome =
+{
+	// ButtonBackHome, buttons.cpp:757-783.
+	self.vbsp_mv_state = TS_AT_BOTTOM;
+	self.nextthink = 0;
+	SV_FireOutput(self, "OnOut", self.vbsp_mv_act);
+};
+
+void() SV_ButtonReturn =
+{
+	self.vbsp_mv_state = TS_GOING_DOWN;
+	SV_MoverArm(self, SV_ButtonHome, self.vbsp_mv_travel);
+};
+
+void() SV_ButtonActivate =
+{
+	self.vbsp_mv_state = TS_GOING_UP;
+	SV_MoverArm(self, SV_ButtonAtTop, self.vbsp_mv_travel);
+};
+
+/*
+  self-swapping wrappers, because the two above are used BOTH as .think targets
+  (which must be void() and read self) and as calls against an arbitrary entity
+  from the input ladder.  QuakeC has no other way to say "run this think body on
+  that entity", and forgetting to restore self is a classic way to corrupt the
+  caller -- SV_ApplyInput is often reached from inside a touch.
+*/
+void(entity t) SV_ButtonActivate1 =
+{
+	local entity o;
+	o = self; self = t; SV_ButtonActivate(); self = o;
+};
+
+void(entity t) SV_ButtonReturn1 =
+{
+	local entity o;
+	o = self; self = t; SV_ButtonReturn(); self = o;
+};
+
+/*
+  CBaseButton::Press, buttons.cpp:199-252.
+
+  The three guard clauses at :201-214 are not interchangeable and collapsing
+  them would be wrong in a way nobody would notice for a year: BUTTON_PRESS
+  toggles, BUTTON_ACTIVATE only ever goes in, BUTTON_RETURN only ever comes out.
+
+  LOCKED IS SILENT HERE, and that asymmetry is Source's.  Press() plays a lock
+  sound and returns (:217-222) firing NOTHING; m_OnUseLocked is fired only from
+  OnUseLocked(), which only ButtonUse reaches (:484-496, called at :515).  So a
+  Press input at a locked button says nothing and a +use at one does.  Getting
+  that backwards reads exactly like a typo, which is why it is spelled out.
+*/
+void(entity t, entity act, float code) SV_ButtonPress =
+{
+	if (t.vbsp_mv_kind != MVK_BUTTON)
+		return;
+
+	if (code == BUTTON_PRESS)
+	if (t.vbsp_mv_state == TS_GOING_UP || t.vbsp_mv_state == TS_GOING_DOWN)
+		return;
+	if (code == BUTTON_ACTIVATE)
+	if (t.vbsp_mv_state == TS_GOING_UP || t.vbsp_mv_state == TS_AT_TOP)
+		return;
+	if (code == BUTTON_RETURN)
+	if (t.vbsp_mv_state == TS_GOING_DOWN || t.vbsp_mv_state == TS_AT_BOTTOM)
+		return;
+
+	if (t.vbsp_mv_locked)
+		return;						// silent, on purpose -- see above
+
+	t.vbsp_mv_act = act;
+
+	if (code == BUTTON_RETURN)
+		{ SV_ButtonReturn1(t); return; }
+	if (code == BUTTON_PRESS && t.vbsp_mv_state == TS_AT_TOP)
+		{ SV_ButtonReturn1(t); return; }
+	SV_ButtonActivate1(t);
+};
+
+/*
+  CBaseButton::ButtonUse, buttons.cpp:506-551 -- what +use does, as opposed to
+  what the Press input does.
+*/
+void(entity t, entity act) SV_ButtonUse =
+{
+	if (t.vbsp_mv_state == TS_GOING_UP || t.vbsp_mv_state == TS_GOING_DOWN)
+		return;						// :510-511, ignore while in motion
+
+	if (t.vbsp_mv_locked)
+	{
+		SV_MoverOnUseLocked(t, act);
+		return;
+	}
+
+	t.vbsp_mv_act = act;
+
+	if (t.vbsp_mv_state == TS_AT_TOP)
+	{
+		// Already in.  Only a toggle button comes back out on a second press.
+		if (!(t.spawnflags & SF_BUTTON_TOGGLE))
+			return;
+		SV_FireOutput(t, "OnPressed", act);
+		SV_ButtonReturn1(t);
+		return;
+	}
+
+	SV_FireOutput(t, "OnPressed", act);
+	SV_ButtonActivate1(t);
+};
+
+/*
+  CBaseDoor's Open / Close, doors.cpp:1008 and :1091.
+
+  OnOpen and OnClose fire at the START of the move and mean "this door has been
+  told to open", which is true of a frozen door -- so they fire.  OnFullyOpen
+  and OnFullyClosed are statements about where the brush IS, so they do not.
+  194 OnOpen outputs across 17 maps.
+*/
+void(entity t, entity act) SV_DoorOpen =
+{
+	if (t.vbsp_mv_kind != MVK_DOOR)
+		return;
+	if (t.vbsp_mv_locked)
+		return;
+	if (t.vbsp_mv_state == TS_AT_TOP || t.vbsp_mv_state == TS_GOING_UP)
+		return;
+	t.vbsp_mv_state = TS_GOING_UP;
+	t.vbsp_mv_act   = act;
+	SV_FireOutput(t, "OnOpen", act);
+};
+
+void(entity t, entity act) SV_DoorClose =
+{
+	if (t.vbsp_mv_kind != MVK_DOOR)
+		return;
+	if (t.vbsp_mv_state == TS_AT_BOTTOM || t.vbsp_mv_state == TS_GOING_DOWN)
+		return;
+	t.vbsp_mv_state = TS_GOING_DOWN;
+	t.vbsp_mv_act   = act;
+	SV_FireOutput(t, "OnClose", act);
+};
+
+/*
+  CBaseDoor::Use, doors.cpp:723-769.
+
+  THE SF_DOOR_PUSE GATE (bit 256, "Use Opens") is at :731-735 and refuses a
+  player activator outright before bAllowUse is even computed -- so without it
+  we fire at doors Source would not have looked at.  Its FGD default is OFF,
+  which made honouring it look risky, so it was censused first: of the 20 doors
+  in the library that declare OnLockedUse, NINETEEN already set bit 256.
+  Honouring it silences exactly one door, on one map.
+*/
+void(entity t, entity act) SV_DoorUse =
+{
+	if (!(t.spawnflags & SF_DOOR_PUSE))
+		return;
+	if (t.vbsp_mv_locked)
+	{
+		SV_FireOutput(t, "OnLockedUse", act);
+		return;
+	}
+	if (t.vbsp_mv_state == TS_AT_TOP || t.vbsp_mv_state == TS_GOING_UP)
+		SV_DoorClose(t, act);
+	else
+		SV_DoorOpen(t, act);
+};
+
+/*
+  Shared spawn-time setup.  Resolves the two default sets and caches the travel
+  time so that Tier 2's scheduling and any later mover agree by construction.
+
+  THE FGD DEFAULTS AND THE CODE DEFAULTS DISAGREE, and the code wins because
+  the code is what shipped (buttons.cpp:380-395, doors.cpp:297-300):
+
+      button lip    FGD 0   code 4
+      button speed  FGD 5   code 40
+      button wait   FGD 3   code 1
+      door   speed  FGD 100 code 100
+
+  Hammer writes the FGD default into the VMF, so a map that took the default
+  writes `speed 5` and keeps it; only a map that explicitly wrote 0 gets 40.
+
+  The travel DISTANCE is not computed here.  Source's is
+  DotProductAbs(movedir, OBBSize - '2 2 2') - lip, where the -2 compensates for
+  its engine expanding bboxes by one unit each way; FTE's setmodel does not do
+  that expansion, so the expression is not portable as written and would need
+  measuring against a real brush.  Nothing in Tier 2 moves, so the travel TIME
+  is all that is needed, and a fixed nominal is honest: it is the wait before
+  OnIn, not a distance.  A real mover must replace this with the measured form.
+*/
+void() SV_MoverSetup =
+{
+	local float spd;
+
+	self.vbsp_mv_state = TS_AT_BOTTOM;
+	self.vbsp_mv_stay  = (self.wait == -1);		// m_fStayPushed, buttons.cpp:411
+
+	// Both spellings: the census in the SV_Key2 essay counts 'speed' 4608
+	// against 'Speed' 885, so reading only the lowercase one would miss 16%.
+	spd = SV_Key2(self.speed, self.Speed);
+	if (spd <= 0)
+		spd = (self.vbsp_mv_kind == MVK_DOOR) ? 100 : 40;
+
+	self.vbsp_mv_wait = self.wait;
+	if (self.vbsp_mv_wait == 0)
+		self.vbsp_mv_wait = 1;			// buttons.cpp:387-390
+
+	// A nominal travel: 4 units of lip at `spd` units/sec, floored so a very
+	// fast button still takes a tick rather than firing OnIn inside the press.
+	self.vbsp_mv_travel = 4 / spd;
+	if (self.vbsp_mv_travel < 0.05)
+		self.vbsp_mv_travel = 0.05;
+};
+
 void() SV_SpawnDoor =
 {
 	if (!self.model)
@@ -4166,6 +5771,13 @@ void() SV_SpawnDoor =
 		self.solid = SOLID_NOT;     // still drawn -- you walk through it
 	else
 		self.solid = SOLID_BSP;
+
+	// Build 63, Tier 2.  State only -- the door still does not move, and
+	// deliberately never claims to have arrived anywhere (see the vbsp_mv_*
+	// field block for the rule that decides which outputs may fire).
+	self.vbsp_mv_kind   = MVK_DOOR;
+	self.vbsp_mv_locked = (self.spawnflags & SF_DOOR_LOCKED) ? TRUE : FALSE;
+	SV_MoverSetup();
 };
 
 void() func_door          = { SV_SpawnDoor(); };
@@ -4237,9 +5849,18 @@ void() func_button =
 	self.movetype = MOVETYPE_PUSH;
 	self.solid = SOLID_BSP;
 	self.vbsp_io_solid = SOLID_BSP;
+
+	// Build 63, Tier 2.  m_bLocked is SEEDED by the spawnflag and is not the
+	// same thing as it -- Unlock clears the flag, the spawnflag stays set.
+	self.vbsp_mv_kind   = MVK_BUTTON;
+	self.vbsp_mv_locked = (self.spawnflags & SF_DOOR_LOCKED) ? TRUE : FALSE;
+	SV_MoverSetup();
 };
 
 // func_rot_button is the same thing on a hinge (225 instances).  Same trade.
+// CRotButton::Spawn uses m_vecAngle1/2 rather than m_vecPosition1/2, so this
+// would diverge the moment anything actually rotated -- but Tier 2 moves
+// nothing, and the state machine is identical, so the alias still holds.
 void() func_rot_button = { func_button(); };
 
 /*
@@ -4249,9 +5870,32 @@ void() func_rot_button = { func_button(); };
   the doors get, and for the same reason -- a moving brush can crush or strand
   a player, a static one cannot.
 */
-void() func_breakable      = { func_button(); };
-void() func_breakable_surf = { func_button(); };
-void() func_physbox        = { func_button(); };
+/*
+  BUILD 63: THE ALIAS NOW HAS A CONSEQUENCE, so it is broken deliberately.
+
+  These four have aliased func_button() since build 37 purely to get "solid
+  brush, named rather than left to the catch-all", and that was free while
+  func_button did nothing but set .solid.  It is no longer free: func_button
+  now stamps vbsp_mv_kind = MVK_BUTTON, and a breakable carrying that would
+  answer Press / PressIn / PressOut / Lock and run a button's press-latch-wait
+  state machine.  A crate is not a button.
+
+  So: still func_button() for the geometry, then the kind is cleared.  Clearing
+  it rather than duplicating the body keeps the one definition of "how a solid
+  brush entity spawns" in one place, which is what the alias was for.
+
+  Their real output, OnBreak (276 in the library), is not fired by anything and
+  cannot be -- see the OnDamaged note in SV_UseFrame.  It stays censused.
+*/
+void() SV_SpawnBreakable =
+{
+	func_button();
+	self.vbsp_mv_kind = 0;
+};
+
+void() func_breakable      = { SV_SpawnBreakable(); };
+void() func_breakable_surf = { SV_SpawnBreakable(); };
+void() func_physbox        = { SV_SpawnBreakable(); };
 //FTESurf Patch 256: `class CPhysBoxMultiplayer : public CPhysBox` -- the
 //multiplayer subclass differs only in its VPhysics shadow, which we have none
 //of, so it is the same entity here.  111 instances / 19 maps.
@@ -4903,17 +6547,83 @@ void() SV_SpawnIOPoint =
 // Fires OnMapSpawn once, from SV_EntityIOBuild.
 void() logic_auto      = { SV_SpawnIOPoint(); };
 
-// Counts, and fires OnHitMax.  `max` arrives via ED_ParseUnknownEpair, because
-// `.float max;` does not compile -- max is already a builtin.
-void() math_counter    = { SV_SpawnIOPoint(); };
+/*
+  Counts, and fires OnHitMax / OnHitMin.  `min` and `max` arrive via
+  ED_ParseUnknownEpair, because neither `.float min;` nor `.float max;` compiles
+  -- both are builtins (#94 and #95).
+
+  CMathCounter::Spawn, logicentities.cpp:1488-1513.  Both keys are already
+  parsed by the time a spawn function runs -- ED_ParseEdict reads every pair
+  before it dispatches -- so the swap and the clamp can happen here.
+*/
+void() math_counter =
+{
+	local float f;
+
+	SV_SpawnIOPoint();
+
+	if (self.vbsp_io_min > self.vbsp_io_max)
+	{
+		f = self.vbsp_io_max;
+		self.vbsp_io_max = self.vbsp_io_min;
+		self.vbsp_io_min = f;
+	}
+
+	self.count = SV_Key2(self.startvalue, self.StartValue);
+	if (self.vbsp_io_min != 0 || self.vbsp_io_max != 0)
+		self.count = bound(self.vbsp_io_min, self.count, self.vbsp_io_max);
+};
 
 // ModifySpeed's target.  The multiplier lands on the PLAYER, not on this.
 void() player_speedmod = { SV_SpawnIOPoint(); };
 
-// logic_relay is a pass-through: whatever fires its Trigger input makes it
-// fire OnTrigger.  Not wired here -- neither map has one -- but the stub keeps
-// it from being deleted, so a map that does have one still resolves the name.
+/*
+  logic_relay is a pass-through: whatever fires its Trigger input makes it fire
+  OnTrigger.
+
+  Build 37 left this a bare stub, whose only job was to keep the catch-all from
+  deleting the entity so a map's outputs still resolved the name.  Build 63
+  wires it: the behaviour is in SV_IORelayTrigger / SV_IOCancelPending beside
+  SV_ApplyInput (they have to be up there, since the input ladder calls them),
+  the OnSpawn fire is at the tail of SV_EntityIOBuild, and the disabled state is
+  StartDisabled, which SV_IOEnable already maintains.
+
+  Nothing to do at spawn but exist, so the stub body is unchanged.
+*/
 void() logic_relay     = { SV_SpawnIOPoint(); };
+
+/*
+  logic_case -- Build 63.  6,258 OnCase01..16 outputs across 112 maps, every one
+  of them dead until now, because without a spawn function the catch-all removed
+  the entity (":Point entity with no geometry") before SV_EntityIOBuild ran.
+
+  Like every class in this block it needs nothing at spawn but to survive: the
+  Case01..16 values are already in vbsp_case_raw by the time this runs (the hook
+  fires during the parse, ahead of the spawn function), the wired-case set is
+  read off the output chain at fire time, and the shuffle state starts zeroed.
+*/
+void() logic_case      = { SV_SpawnIOPoint(); };
+
+/*
+  logic_branch and logic_compare -- Build 63.  Same story as logic_case: no
+  spawn function meant the catch-all deleted them, so OnTrue/OnFalse and the
+  four comparison outputs never resolved.
+
+  Both read their starting state here rather than lazily, because "absent" and
+  "zero" mean the same thing for all three keys and SV_Key2 is enough.
+*/
+void() logic_branch =
+{
+	SV_SpawnIOPoint();
+	self.vbsp_branch_val = SV_Key2(self.InitialValue, self.initialvalue) ? TRUE : FALSE;
+};
+
+void() logic_compare =
+{
+	SV_SpawnIOPoint();
+	self.vbsp_cmp_in  = SV_Key2(self.InitialValue, self.initialvalue);
+	self.vbsp_cmp_cmp = SV_Key2(self.CompareValue, self.comparevalue);
+};
 
 /*
 ===========================================================================
@@ -4976,8 +6686,35 @@ void() SV_TimerThink =
 		self.nextthink = 0;
 		return;
 	}
-	SV_FireOutput(self, "OnTimer", world);
+	SV_TimerFire(self);
 	self.nextthink = time + SV_TimerInterval(self);
+};
+
+/*
+  Build 63.  WHICH output a timer fires, in one place.
+
+  CTimerEntity::FireTimer, logicentities.cpp:366-390.  An "Oscillator" timer --
+  SF_TIMER_UPDOWN, spawnflag 1 (:195) -- alternates OnTimerHigh and OnTimerLow
+  and does not fire OnTimer at all.  11 and 12 outputs respectively across the
+  library: small, but they are the only reason those two names exist in it, and
+  a map that set the flag fired NOTHING before this, because SV_TimerThink knew
+  only OnTimer.
+
+  Source fires the oscillator pair at (this, this); OnTimer has been fired here
+  with world as the activator since Patch 256 and that is left alone.
+*/
+void(entity t) SV_TimerFire =
+{
+	if (t.spawnflags & SF_TIMER_UPDOWN)
+	{
+		if (t.vbsp_timer_updown)
+			SV_FireOutput(t, "OnTimerHigh", t);
+		else
+			SV_FireOutput(t, "OnTimerLow", t);
+		t.vbsp_timer_updown = !t.vbsp_timer_updown;
+		return;
+	}
+	SV_FireOutput(t, "OnTimer", world);
 };
 
 void() logic_timer =
