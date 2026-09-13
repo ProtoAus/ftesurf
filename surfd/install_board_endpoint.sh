@@ -43,18 +43,30 @@ for f in /etc/nginx/snippets/surfd.conf /etc/nginx/conf.d/surfd-ratelimit.conf; 
 done
 
 echo "== the rate-limit zones (http{} scope -- limit_req_zone is not valid in a location) =="
-# ALL THREE zones, every time. The board zone is what keeps one player from
+# ALL FOUR zones, every time. The board zone is what keeps one player from
 # spending everybody's budget: surfd sees 127.0.0.1 for every request that
 # arrives through this proxy, so nginx is the only party that still knows who
 # is who.  surfdreplay is the same argument with a much smaller number, because
 # a replay is ~1 MB where a board page is ~4 KB -- at the board's rate one
 # address could pull the whole home upstream link indefinitely.
+#
+# surfdjoin (build 67) is the third variant of that argument and the rate is
+# the smallest of the three for a reason that is not bandwidth: a board page is
+# a SELECT and a replay is a file read, but a join can cost a MAP LOAD -- ~4 s
+# of a core and a 76 MB BSP at p90.  30r/m matches surfd's own JOIN_RATE_MAX so
+# the two agree rather than one silently masking the other.
+#
+# A ZONE THAT NO LOCATION REFERENCES IS HARMLESS; A LOCATION REFERENCING A ZONE
+# THAT DOES NOT EXIST IS A CONFIG THAT WILL NOT LOAD.  So the zones are written
+# unconditionally and ahead of the snippet, which is why this script survives
+# being run against an older surfd.nginx as well as a newer one.
 cat > /etc/nginx/conf.d/surfd-ratelimit.conf <<'ZONES'
 limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
 limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;
+limit_req_zone $binary_remote_addr zone=surfdjoin:4m rate=30r/m;
 ZONES
-echo "  wrote surfdlogin + surfdboard + surfdreplay"
+echo "  wrote surfdlogin + surfdboard + surfdreplay + surfdjoin"
 
 echo "== the snippet =="
 install -m 0644 "$HOME_DIR/surfd.nginx" /etc/nginx/snippets/surfd.conf

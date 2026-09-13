@@ -512,6 +512,39 @@ once, by hand:
 
     sudo systemctl enable --now ftesurf@4 ftesurf@5
 
+### Growing the pool past five (build 68)
+
+Lobbies **6..12** are prepared but **not started**, and that is the intended
+resting state until there is demand for them. `cfg/lobby6.cfg` .. `lobby12.cfg`
+exist (ports 27560..27620, all-timeable rotations, 6..11 surf and **12 the kz /
+df / ahop maps no lobby has ever rotated to**), `run.sh` takes any N that has a
+cfg, and `runall.sh`/`stopall.sh`/`build.ps1 -Pi` discover the fleet rather than
+listing it — so nothing in the tooling has to be edited again.
+
+Two things are still required, once, and only one of them is a decision:
+
+    # 1. let unattended tooling operate them (a grant, NOT permission --
+    #    proto already has (ALL:ALL) ALL; this is about not being PROMPTED)
+    sudo install -m 0440 -o root -g root \
+         /srv/nvme/surfd/ftesurf-pool.sudoers /etc/sudoers.d/ftesurf-pool
+    sudo visudo -c                       # must print "parsed OK"
+
+    # 2. enable the ones you actually want, one at a time the first time
+    sudo systemctl enable --now ftesurf@6
+    systemctl status ftesurf@6 --no-pager | head -20
+
+**Forward UDP for a port before enabling its lobby.** surfd advertises
+`play.proto.bar:<port>` the instant that lobby first beats, and a row pointing
+at a port nobody can reach is worse than no row — the player picks it, waits,
+and times out.
+
+**Do not enable more than there is demand for.** Each idle instance costs about
+100–260 MB and ~2.3% of one core (measured), which the Pi has plenty of; what it
+actually costs is the *picker*, where twelve rows at 0 players reads as a deader
+game than five. Since build 67 a player reaches a map by asking the directory,
+not by finding a lobby already sitting on it, so more lobbies buys concurrent
+*different* maps and nothing else.
+
 Still absent: a **heartbeat watchdog**. `Restart=always` cannot see a *hang* --
 a process that is running but has stopped beating. surfd already knows the
 last-beat age per node, and the panel shows it, so the missing piece is only

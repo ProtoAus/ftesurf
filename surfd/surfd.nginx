@@ -13,6 +13,10 @@
 #   GET  /health         public, read-only, not rate limited
 #   GET  /api/board      public, read-only, RATE LIMITED -- see the block below
 #   GET  /api/replay/N   public, read-only, RATE LIMITED HARDER -- ~1 MB a call
+#   GET  /api/join       public, and the ONE route here that is not read-only:
+#                        it can claim an IDLE lobby and move it.  RATE LIMITED.
+#                        See the essay over its block for why it is proxied at
+#                        all and what makes that safe.
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -158,6 +162,58 @@ location ^~ /api/replay/ {
     gzip_types        text/plain;
     gzip_min_length   1000;
     gzip_proxied      any;
+
+    add_header X-Surfd-Proxied "1" always;
+}
+
+# ---------------------------------------------------------------------------
+# GET /api/join?map=<name> -- "where do I play this".  Build 67, schema 4.
+#
+# ADDED FOR THE SAME REASON /api/board WAS, AND THE LESSON DID NOT TAKE THE
+# FIRST TIME.  The endpoint was built, tested against a throwaway surfd on
+# :8085, deployed, and verified with `curl http://127.0.0.1:8084/api/join` --
+# every one of which passed while the route a player actually takes returned
+# `404 Not Found` from this vhost.  Every shipped client defaults lobby_dir to
+# https://play.proto.bar, so "picking a map puts you on a real server" was
+# false for all of them.  The manifest at the top of this file is the thing to
+# keep true; a route that works on loopback is not deployed.
+#
+# THIS IS A WRITE-ISH ROUTE ON A READ-ONLY SNIPPET, AND THAT IS DELIBERATE.
+# It takes no body and no secret, but it does have an EFFECT: it can claim an
+# idle lobby and move it to another map.  It is proxied anyway because the menu
+# must call it before the player has connected to anything, so there is no
+# earlier moment at which they could be authenticated.  What makes that safe is
+# not this block -- it is surfd's idle rule, enforced at both ends: a lobby
+# with anybody on it is never a candidate, so the worst a stranger can do is
+# park EMPTY servers on unpopular maps, and nobody is ever thrown out of a run.
+# /api/run stays unproxied because it is a real write guarded by a secret; the
+# two are not the same case and must not be merged on the strength of both
+# being POST-shaped.
+#
+# ITS OWN ZONE AT 30r/m, MATCHING surfd's JOIN_RATE_MAX rather than guessing.
+# The board's 120r/m would be wrong in the expensive direction: a board page is
+# a SELECT, while a join can cost a map load -- up to ~4 s of a core and a
+# 76 MB BSP read at p90 -- so the two routes are not interchangeable however
+# similar their bodies look.  burst=10 absorbs a player reading down a map list
+# and picking a few in a row.
+#
+# X-Real-IP IS LOAD-BEARING HERE IN A WAY IT IS NOT ANYWHERE ELSE.  surfd
+# records the asking address in `assignments.src`, which is the only attribution
+# a claim ever gets; without this header every claim in the table would read
+# 127.0.0.1 and the column would be decoration.  Set by OVERWRITE, like the two
+# blocks above, and surfd believes it only from SURFD_PROXIES (loopback).
+location = /api/join {
+    limit_req             zone=surfdjoin burst=10 nodelay;
+    limit_req_status      429;
+
+    proxy_pass         http://127.0.0.1:8084/api/join$is_args$args;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
 
     add_header X-Surfd-Proxied "1" always;
 }

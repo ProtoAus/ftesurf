@@ -1,0 +1,61 @@
+# ftesurf-pool.sudoers -- NOPASSWD grants for lobbies 6..12.  QC build 68.
+#
+# WHAT THIS IS FOR, IN ONE SENTENCE: without it `systemctl start ftesurf@6`
+# prompts for a password, which means nothing that runs unattended -- runall.sh,
+# build.ps1 -Pi's restart step, the admin panel -- can touch lobbies past the
+# fifth.
+#
+# IT IS NOT ABOUT PERMISSION.  proto already has `(ALL : ALL) ALL` in
+# /etc/sudoers, so these units can always be started by a human at a terminal.
+# What the existing /etc/sudoers.d/ftesurf grants is the right to do it WITHOUT
+# BEING ASKED, which is a different thing and the only thing missing here.
+#
+# THE SPELLING IS LOAD-BEARING: `ftesurf@6`, never `ftesurf@6.service`.  sudo
+# matches the command line literally, and both admin.py and build.ps1 build the
+# suffix-less form on purpose -- they are the same unit to systemd and two
+# different commands to sudo.
+#
+# `enable` IS DELIBERATELY ABSENT, as it is for lobbies 1-5.  Enabling a unit
+# decides what starts at boot, which is a standing change to the machine rather
+# than an operation on a running service; it is done once, by hand, by someone
+# who meant it.  start/stop/restart are the operational verbs and are all that
+# is delegated.
+#
+# TO INSTALL (one command, and visudo validates before it saves -- a syntax
+# error written with a plain editor locks every user out of sudo):
+#
+#     sudo install -m 0440 -o root -g root \
+#          /srv/nvme/surfd/ftesurf-pool.sudoers /etc/sudoers.d/ftesurf-pool
+#     sudo visudo -c          # must print "parsed OK"
+#     sudo -n -l | grep -c ftesurf@     # expect 12 units named
+#
+# A SEPARATE FILE RATHER THAN AN EDIT TO /etc/sudoers.d/ftesurf, so the existing
+# grant for 1-5 is never rewritten: sudo reads the whole directory, the two
+# files are additive, and if this one is ever wrong it can be deleted without
+# taking the working five with it.
+#
+# TO UNDO:  sudo rm /etc/sudoers.d/ftesurf-pool
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@6
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@7
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@8
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@9
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@10
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@11
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start ftesurf@12
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@6
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@7
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@8
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@9
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@10
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@11
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl stop ftesurf@12
+
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@6
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@7
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@8
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@9
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@10
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@11
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl restart ftesurf@12
