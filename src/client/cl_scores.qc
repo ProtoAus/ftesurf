@@ -181,6 +181,52 @@ string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : 
 string() Scores_TierOf  = { return (rec_sb_tier == SB_TIER_COMMUNITY) ? "community" : "ranked"; };
 
 /*
+  ---- WHERE A RUN SET HERE ACTUALLY GOES.  Build 64. -----------------------
+
+  THE REPORT: "I set a time on bhop_eazy and it didn't write my time to the
+  public leaderboard.  I see the fake times you put there, but not my time?"
+
+  Both halves of that were working as designed and the combination was still a
+  defect.  The run was set on a LISTEN SERVER, where Lobby_SubmitRun returns at
+  its first gate because there is no lobby_master -- the "Ranked = official
+  servers only" line, which exists because a self-hosted server owns its own
+  clock and could otherwise post any time it liked.  Meanwhile the Online tab
+  is the DEFAULT tab and shows the global board for the current map, which is
+  correct and useful and looks exactly like a board your time should be on.
+
+  So the player is shown somebody else's times on their own map, told nothing,
+  and left to conclude the submission is broken.  It is not; it never ran.  The
+  server knows which of those it is, and now says so.
+
+  READ, NOT DERIVED.  The client cannot work this out for itself: lobby_master
+  and lobby_master_key are SERVER cvars and sv_guidkey is an engine cvar on the
+  server, none of which a connected client can see.  Lobby_BoardState publishes
+  one word into serverinfo (sv_lobby.qc) and this reads it back.
+
+  EMPTY MEANS AN OLDER SERVER AND IS NOT AN ERROR.  Anything running a progs
+  from before this key existed publishes nothing, and inventing a confident
+  sentence from a missing key would be a statement about a server we have not
+  heard from.  Silence there, exactly as the local board says nothing about
+  runs it has not scanned.
+*/
+string() Scores_BoardNote =
+{
+	local string b;
+
+	b = serverkey("board");
+
+	if (b == "ranked")
+		return "this server posts times to the online board";
+	if (b == "local")
+		return "times set here stay on this machine -- the online board only "
+		       "takes runs from official servers";
+	if (b == "noid")
+		return "this server is set up to post times but cannot identify "
+		       "players (sv_guidkey) -- nothing is being submitted";
+	return "";
+};
+
+/*
   The index of the last `c` in `s`, or -1.
 
   There is no strrchr in this VM -- strstrofs searches forward and takes a start
@@ -687,6 +733,16 @@ void() Scores_Refresh =
 #define SBC_GOOD    '0.45 0.90 0.50'
 #define SBC_BAD     '0.95 0.45 0.40'
 #define SBC_WARN    '1.00 0.82 0.20'
+
+// Amber for the two states that explain a MISSING time, dim for the one that
+// explains nothing.  Never red: neither is something the player did, and this
+// palette's red is for a run that was refused.  Down here rather than beside
+// Scores_BoardNote because these are #defines and fteqcc's preprocessor only
+// knows what it has already read.
+vector() Scores_BoardNoteCol =
+{
+	return (serverkey("board") == "ranked") ? SBC_DIM : SBC_WARN;
+};
 
 /*
   The column table, in characters of the mono face.
@@ -1239,7 +1295,7 @@ void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
 	local float w, h, x0, y0, lw, idx, hot, on, tick, pick;
-	local float scale, chipw, chiph, pad, legw, ytabs, yhead;
+	local float scale, chipw, chiph, pad, legw, ytabs, yhead, footh;
 	local string s, rid;
 
 	if (!rec_sb_open)
@@ -1408,8 +1464,23 @@ void(vector scr) Scores_Draw =
 	rp = [x0 + pad, yhead];
 	Scores_Text(rp, rec_sb_szhead, "leg", SBC_DIM, 1);
 
+	/*
+	  THE FOOTER IS TWO LINES NOW, AND BOTH LISTS HAVE TO KNOW.
+
+	  Every list height below ends `- pad * 2 - footh`, where footh used to be
+	  the single row the counts line occupies.  Build 64 adds the board-state
+	  sentence underneath it (Scores_BoardNote), and reserving the space in only
+	  one of the two lists would leave the legs column overlapping the text.
+
+	  RESERVED UNCONDITIONALLY, even on a server that publishes no state and
+	  therefore draws nothing there.  A panel whose list is a row taller when
+	  the server happens to be old is a layout that moves under the player for
+	  reasons they cannot see -- and one blank row costs less than that.
+	*/
+	footh = rec_sb_szrow * 2 + ceil(pad * 0.35);
+
 	lp = [x0 + pad, rp_y + rec_sb_szhead + pad * 0.5];
-	sui_list_view_begin("sb_legs", lp, [lw, y0 + h - lp_y - pad * 2 - rec_sb_szrow],
+	sui_list_view_begin("sb_legs", lp, [lw, y0 + h - lp_y - pad * 2 - footh],
 	                    [lw - pad * 0.5, rec_sb_rowh], rec_sb_legn,
 	                    rec_sb_legscroll, [0, ceil(rec_sb_cw)]);
 	rs = [lw - pad * 0.5, rec_sb_rowh];
@@ -1435,7 +1506,7 @@ void(vector scr) Scores_Draw =
 
 	// ---- the runs, on the right -----------------------------------------
 	rp = [x0 + pad * 2 + lw, yhead];
-	rs = [w - lw - pad * 3, y0 + h - (rp_y + rec_sb_szhead + pad * 0.5) - pad * 2 - rec_sb_szrow];
+	rs = [w - lw - pad * 3, y0 + h - (rp_y + rec_sb_szhead + pad * 0.5) - pad * 2 - footh];
 
 	/*
 	  HOW MANY COLUMNS THE WINDOW CAN AFFORD, decided here and obeyed below.
@@ -1542,7 +1613,7 @@ void(vector scr) Scores_Draw =
 			s = sprintf("%s  (%g more than the %g this list holds)",
 			            s, rec_sb_rowover, SB_MAXROW);
 	}
-	Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow, s, SBC_DIM, 1);
+	Scores_Text([x0 + pad, y0 + h - pad - footh], rec_sb_szrow, s, SBC_DIM, 1);
 
 	// The hint says what a CLICK does, and on the online tabs a click does not
 	// open anything -- so it names the keys instead of promising a replay that
@@ -1550,8 +1621,25 @@ void(vector scr) Scores_Draw =
 	s = Scores_IsOnline()
 	      ? "left/right change tab    up/down change leg    esc to close"
 	      : "click a run to watch it    tab or esc to close";
-	Scores_TextR([x0 + w - pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
+	Scores_TextR([x0 + w - pad, y0 + h - pad - footh], rec_sb_szrow,
 	             s, SBC_DIM, 0.8);
+
+	/*
+	  ---- AND WHERE A RUN SET HERE GOES.  On EVERY tab, including Local.
+
+	  Local is where the player's own times are, so it is exactly where "why is
+	  this the only place they are" gets asked -- putting the sentence only on
+	  the online tabs would hide it from the tab the question is asked on.
+
+	  Below the counts rather than beside them because it is a different KIND of
+	  fact: the line above describes the board being looked at, this one
+	  describes the server being played on, and running them together reads as
+	  one sentence about the board.
+	*/
+	s = Scores_BoardNote();
+	if (s != "")
+		Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
+		            s, Scores_BoardNoteCol(), 0.85);
 
 	sui_end();
 	Font_Reset();
@@ -1935,6 +2023,21 @@ void() Scores_Status =
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
 	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all")),
 	              rec_sb_cols));
+
+	/*
+	  THE SERVER'S ANSWER VERBATIM, then this file's reading of it.
+
+	  Both, because they are two different failures.  An empty `board=` means
+	  the server never published -- an older progs, or Lobby_BoardState not
+	  reached -- and is a SERVER problem.  A `board=local` with no sentence
+	  beside it would mean Scores_BoardNote does not recognise a word the server
+	  does send, which is a CLIENT problem, and printing only the sentence would
+	  make the two look identical from here.
+	*/
+	s = serverkey("board");
+	print(sprintf("  board=%s  %s\n", (s != "") ? s : "(unpublished)",
+	              (Scores_BoardNote() != "") ? Scores_BoardNote()
+	                                         : "-- no note drawn"));
 
 	/*
 	  BUILD 44: HOW MANY ROWS THE FILTER ACTUALLY KEEPS.

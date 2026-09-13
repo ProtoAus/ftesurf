@@ -135,6 +135,16 @@
 */
 .float   lobby_stat;
 
+/*
+  Build 64.  "I have already told this client its runs are not being
+  submitted."  Per-player rather than a file-scope global because the fault it
+  reports affects everyone on the server equally -- a global latch would tell
+  whoever finished first and stay silent for every player who joined after
+  them, which on a rotating lobby is almost everybody.  Cleared for free by the
+  engine when the slot is reused.
+*/
+.float   lobby_said_noid;
+
 // Cached cvars, refreshed once per frame in Lobby_Frame.
 float lobby_on;
 float lobby_nocollide;
@@ -1153,6 +1163,7 @@ void() Lobby_Frame =
 ===========================================================================
 */
 float  lobby_run_waiting;       // build 64: the probe has said "waiting" once
+string lobby_board_said;        // what serverinfo "board" currently says
 float  lobby_hb_next;           // next server time to send
 float  lobby_hb_id;             // uri request id, so replies can be told apart
 float  lobby_hb_lastcode;       // last status reported, to log changes only
@@ -1284,11 +1295,99 @@ float() Lobby_PlayerCount =
 */
 void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun;
 
+/*
+  ---- DOES THIS SERVER POST TIMES?  Build 64. ------------------------------
+
+  THE REPORT THIS EXISTS FOR: "I set a time on bhop_eazy and it didn't write my
+  time to the public leaderboard.  I see the fake times you put there, but not
+  my time?"  The run was set on a listen server, where Lobby_SubmitRun returns
+  at its very first gate -- no lobby_master, therefore no submission -- which
+  is the "Ranked = official servers only" decision working exactly as designed.
+
+  THE DESIGN WAS RIGHT AND THE SILENCE WAS NOT.  Every one of those gates
+  returns without a word, deliberately: they describe a server that is not
+  configured for the board, and printing a complaint on somebody's
+  single-player session every time they crossed a finish line would be noise
+  about a decision they did not make.  But the player is left with a finish
+  screen, a personal best, and a leaderboard that never changes, and NOTHING in
+  the game connects those three facts.  A quiet gate is right; an invisible one
+  is not.
+
+  SERVERINFO RATHER THAN A STAT, because this is a property of the SERVER and
+  not of the player, it is one short word, and it is wanted by the scoreboard
+  before any run has happened.  The idiom is already in this tree both ways --
+  SV_UpdateMovementServerInfo publishes with forceinfokey(world, ...) and CSQC
+  reads with serverkey() all over cl_hud.qc.
+
+  THE VALUES, and each names a DIFFERENT thing to do about it:
+
+    "ranked"  pointed at a directory, keyed, and asking clients for a GUID.
+              A finish here goes up.
+    "local"   no lobby_master or no lobby_master_key.  Every listen server,
+              i.e. every single-player session.  Nothing is wrong; times stay
+              on this machine.
+    "noid"    keyed and pointed, but sv_guidkey is unset -- so infokey(e,"guid")
+              is "" and Lobby_SubmitRun drops every run at its identity gate.
+              This is the one that is a FAULT, it is an operator's fault rather
+              than a player's, and before this key existed it was completely
+              invisible from both ends: the server logged nothing and the
+              player's times simply never arrived.
+
+  LATCHED ON CHANGE.  forceinfokey every frame would push a serverinfo update
+  to every connected client 66 times a second for a string that changes at most
+  when an operator edits a cvar.  The compare is safe against QC string
+  lifetimes because `want` only ever holds a LITERAL -- assigning a cvar_string
+  result to a global would be a dangling pointer next frame, which is the trap
+  the heartbeat documents below.
+*/
+void() Lobby_BoardState =
+{
+	local string want;
+
+	registercvar("lobby_master", "");
+	registercvar("lobby_master_key", "");
+
+	if (cvar_string("lobby_master") == "")
+		want = "local";
+	else if (cvar_string("lobby_master_key") == "")
+		want = "local";
+	else if (cvar_string("sv_guidkey") == "")
+		want = "noid";
+	else
+		want = "ranked";
+
+	if (want == lobby_board_said)
+		return;
+
+	/*
+	  ONE LINE ON THE SERVER CONSOLE WHEN IT BECOMES A FAULT, and only then.
+	  "local" is the normal state of every single-player session and says
+	  nothing; "ranked" is the normal state of a lobby and says nothing.  An
+	  operator who has set a master and a key has declared an intent to rank,
+	  and sv_guidkey silently defeating it is worth interrupting them for --
+	  sv_main.c:1855 never asks the client for a GUID unless it is set, so
+	  there is no other symptom to notice.
+	*/
+	if (want == "noid")
+		print("^1board:^7 sv_guidkey is unset -- runs cannot be attributed to a "
+		      "player and NONE will be submitted.  See cfg/lobby.cfg.\n");
+
+	lobby_board_said = want;
+	forceinfokey(world, "board", want);
+};
+
 void() Lobby_Heartbeat =
 {
 	local string url, body;
 	local float  per;
 	local entity pl;
+
+	/*
+	  FIRST, AND ABOVE THE lobby_master GATE BELOW.  The whole point of this key
+	  is to describe servers that send nothing -- so publishing it after the
+	  early return would tell exactly the servers that need it nothing at all.
+	*/
+	Lobby_BoardState();
 
 	/*
 	  Read fresh rather than cached in a global, and that is a QC lifetime
@@ -1544,10 +1643,32 @@ void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun
 	  row and the board would show one impostor holding every time on the map.
 	  Quiet, because it describes a server that is misconfigured rather than a
 	  player who did anything.
+
+	  QUIET TO THE SERVER LOG; NOT QUIET TO THE PERSON WHO JUST FINISHED.  This
+	  is the gate that fires on a server which has been set up to rank -- master
+	  set, key set -- and therefore on a server where the player has every
+	  reason to expect their time to go up.  It fired silently, and the only
+	  symptom was a leaderboard that never changed, which is the exact shape of
+	  the report that started this: "it didn't write my time... I see the fake
+	  times you put there, but not my time?"
+
+	  ONCE PER CLIENT, latched on the player rather than globally: a global
+	  latch would tell the first person to finish and nobody after them, on a
+	  server where the fault affects everybody equally.  sprint, not a
+	  centerprint -- the finish card owns the screen at this moment and a
+	  message competing with it would be read as part of the result.
 	*/
 	guid = infokey(e, "guid");
 	if (guid == "")
+	{
+		if (!e.lobby_said_noid)
+		{
+			e.lobby_said_noid = TRUE;
+			sprint(e, PRINT_HIGH, "^1board:^7 this server cannot identify you, "
+			         "so your times are not being submitted (sv_guidkey).\n");
+		}
 		return;
+	}
 
 	nm = e.netname;
 	if (nm == "")
