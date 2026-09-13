@@ -1460,6 +1460,35 @@ float(entity e) SV_RecLive =
 .float  rec_rec_ticks;
 
 /*
+  BUILD 66: DID THE FILE ACTUALLY LAND, AND HOW BIG WAS IT.
+
+  rec_rec_ticks and rec_rec_tag say what the recording WOULD be called.  They
+  are set on every close, including the one where the rename failed and the
+  bytes are still sitting in data/parts/ under a name nothing will ever serve
+  -- because their job is to tell the CLIENT which tag and time to name its own
+  sidecar after, and that is true either way.
+
+  The leaderboard needs the other question answered, and it is a different one:
+  is there a file at that name on this disk?  Only the close knows, and only
+  for the moment it ran.  Submitting a name for bytes that are not there would
+  put a row in surfd's ledger pointing at nothing -- the exact failure the
+  ledger exists to prevent, arrived at from the other end.
+
+  A FLOAT AND NOT THE NAME ITSELF.  A .string field has to be strzone'd to
+  survive the sprintf that built it and strunzone'd on every one of the five
+  sites that clear this group, and getting that wrong leaks the string table
+  slowly enough not to be noticed -- the argument rec_rec_runid already makes
+  two declarations below.  The name costs one FS_RunLeaf call to rebuild at the
+  finish, from the same pieces and the same helper that built it here.
+
+  rec_rec_bytes is the recorder's own final offset, taken before the header
+  fixup seeks backwards.  -1 means "not known", which is honest for the
+  buffered recorder and for a run whose file did not land.
+*/
+.float  rec_rec_saved;           // the file is at its final name, right now
+.float  rec_rec_bytes;           // its size at close, or -1
+
+/*
   WHICH RUN THIS BUFFER IS, so a save state can tell "rewind the buffer you are
   already holding" from "read the prefix back off disk".  Build 17.
 
@@ -1961,6 +1990,11 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 	e.rec_rec_tag = RT_NONE;
 	e.rec_rec_ticks = 0;
+	// BUILD 66, AND THIS IS THE RESET THAT MATTERS.  A run that records nothing
+	// at all never reaches a close, so without clearing here it would inherit
+	// the PREVIOUS run's answer and submit that run's filename as its own.
+	e.rec_rec_saved = FALSE;
+	e.rec_rec_bytes = -1;
 
 	// A new buffer is a new run, whether or not one is actually created below;
 	// a save state's mark from the PREVIOUS run must not match this one.
@@ -2129,6 +2163,8 @@ void(entity e) SV_RecDiscard =
 		e.rec_rec_leg = 0;
 		e.rec_rec_tag = RT_NONE;
 		e.rec_rec_ticks = 0;
+		e.rec_rec_saved = FALSE;
+		e.rec_rec_bytes = -1;
 	}
 
 	e.rec_rec_buf = -1;
@@ -2369,6 +2405,11 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	*/
 	if (e.rec_rec_stream)
 	{
+		// BEFORE the fixup seek, because a one-argument fseek REPORTS the
+		// position and the position is end-of-file only until the next line
+		// moves it back to correct the header.  One read, no stat, and it is
+		// the writer's own count rather than a second opinion about it.
+		e.rec_rec_bytes = fseek(e.rec_rec_fh);
 		if (e.rec_rec_flagofs >= 0)
 		{
 			fseek(e.rec_rec_fh, e.rec_rec_flagofs);
@@ -2382,9 +2423,11 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		{
 			dprint(sprintf("timer: cannot rename %s to %s; the recording is "
 			               "still in the part file\n", SV_RecPartPath(e), dst));
+			e.rec_rec_bytes = -1;
 		}
 		else
 		{
+			e.rec_rec_saved = TRUE;
 			dprint(sprintf("timer: streamed %s (%g samples, %g padding)\n",
 			               dst, e.rec_rec_n, e.rec_rec_padn));
 			if (stamp >= 0)
@@ -2416,6 +2459,11 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		fclose(fh);
 		dprint(sprintf("timer: wrote %s (%g samples, %g padding)\n",
 		               dst, e.rec_rec_n, e.rec_rec_padn));
+		// The buffered recorder writes straight to its final name -- no part
+		// file, no rename -- so reaching here IS the file landing.  Its size is
+		// not known without asking the filesystem, and nothing here needs it
+		// badly enough to open the file again.
+		e.rec_rec_saved = TRUE;
 
 		// Only the archived classes accumulate; `last` is one file by
 		// construction and has nothing to prune.  The basename is rebuilt here
@@ -2439,6 +2487,52 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// this same tag.  See STAT_FS_RUNTAG.
 	e.rec_rec_ticks = stamp;
 	e.rec_rec_tag = tag;
+};
+
+/*
+  BUILD 66: THE NAME OF THE RECORDING THIS RUN KEPT, or "" if it kept none.
+
+  The leaderboard submission carries this so surfd's replay ledger can point a
+  board row at a file -- see Lobby_SubmitRun, which takes it as a parameter
+  because sv_lobby.qc compiles first and cannot see anything in here.
+
+  REBUILT THROUGH FS_RunLeaf, not remembered as a string, and not sliced off
+  the path SV_RecClose built.  It is the same three pieces joined by the same
+  function that named the file, which is the rule the pruner's basename already
+  follows two functions up: a second way of spelling a name is a second thing
+  to keep in step.
+
+  THREE CONDITIONS, AND EACH OF THEM RULES OUT A DIFFERENT LIE:
+
+    rec_rec_saved   the file is at that name right now.  A failed frename
+                    leaves the bytes in data/parts/ and the close says so.
+    ticks >= 0      the name is STAMPED, i.e. the tag is archived.  An
+                    unstamped name -- `last`, `cheat`, the `lobby` stub -- is
+                    a FIXED name whose bytes the player's own next finish
+                    overwrites, so a durable index must never cite one.
+    FS_TagArchived  asked directly as well, rather than trusted to follow from
+                    the stamp.  They agree today because SV_RecClose derives
+                    one from the other; that is exactly the kind of agreement
+                    that a later tag quietly breaks, and the cost of asking is
+                    a function call on the finish path.
+
+  SV_RecWho IS ASKED A SECOND TIME HERE, which SV_RecClose's own comment warns
+  about -- it hashes a GUID.  It is once more per FINISH, not per sample, and
+  the alternative is carrying a zoned string through five reset sites for a
+  value used once.  It is deterministic in netname and guid, and both are the
+  same entity's, read in the same frame as the close: SV_TimerFinish calls
+  SV_RecClose and Lobby_SubmitRun with no return between them.
+*/
+string(entity e) SV_RecKeptLeaf =
+{
+	if (!e.rec_rec_saved)
+		return "";
+	if (e.rec_rec_ticks < 0)
+		return "";
+	if (!FS_TagArchived(e.rec_rec_tag))
+		return "";
+	return FS_RunLeaf(e.rec_rec_ticks, SV_RecWho(e),
+	                  SV_RecTagName(e.rec_rec_tag), "rec");
 };
 
 /*
@@ -5867,7 +5961,28 @@ void(entity e, float ticks) SV_TimerFinish =
 		tag = RT_CHEAT;
 	else if (e.run_t_flags & TF_SHADOW)
 		tag = RT_SHADOW;
-	else if (cvar("rec_runarchive"))
+	/*
+	  BUILD 66: ON A LOBBY THE ARCHIVE IS NOT OPTIONAL.
+
+	  rec_runarchive is read LIVE, at the finish, so it is not the kind of
+	  setting a config file can pin -- `rcon rec_runarchive 0` changes it for
+	  the next finish on a running server.  At 0 a clean lobby run falls through
+	  to RT_LAST, which is a FIXED name, and SV_RecClose's fremove-then-frename
+	  means that player's next finish DESTROYS the previous recording, with a
+	  dprint as the only trace.
+
+	  That is the one live path from today's configuration back to losing runs,
+	  and it exists on the servers whose whole point since build 66 is that they
+	  keep everything (rec_runs_keep 0).  Nothing on a lobby wants the build-47
+	  behaviour: nobody browses a public server's disk for their last attempt,
+	  and surfd's ledger now indexes every kept file by name.  The operator's
+	  lever for "stop writing recordings" is rec_enable 0, which stops writing
+	  them -- not a switch that quietly turns archiving into overwriting.
+
+	  On a personal disk it still means what it always meant, so the cvar is
+	  unchanged everywhere else.
+	*/
+	else if (Lobby_Active() || cvar("rec_runarchive"))
 	if (!(e.run_t_flags & TF_PRACTICE))
 		tag = RT_RUN;
 
@@ -5932,7 +6047,8 @@ void(entity e, float ticks) SV_TimerFinish =
 	  What a lobby does not do is keep a personal best (Lobby_NoPB), and that is
 	  a different question about a different disk.
 	*/
-	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags);
+	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
+	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
 };
 
 void(entity e, float seg, float ticks) SV_TimerSplit =
@@ -6949,6 +7065,8 @@ void(entity e) SV_TimerSpawn =
 	e.rec_rec_leg   = 0;
 	e.rec_rec_tag   = RT_NONE;
 	e.rec_rec_ticks = 0;
+	e.rec_rec_saved = FALSE;
+	e.rec_rec_bytes = -1;
 	e.run_t_azone   = -1;
 	e.run_t_evzone  = -1;
 	e.run_t_armzone = -1;
@@ -7188,6 +7306,8 @@ void() SV_TimerMapInit =
 		p.rec_rec_leg = 0;
 		p.rec_rec_tag = RT_NONE;
 		p.rec_rec_ticks = 0;
+		p.rec_rec_saved = FALSE;
+		p.rec_rec_bytes = -1;
 		SV_TimerIdle(p);
 	}
 

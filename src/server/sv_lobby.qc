@@ -1338,7 +1338,8 @@ float() Lobby_PlayerCount =
   a definition before a use.  The alternative was a second call in sv_main.qc's
   StartFrame, which another session is editing.
 */
-void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun;
+void(entity e, float track, float leg, float ticks, float flags,
+     string rec, float recbytes, float rectrunc) Lobby_SubmitRun;
 
 /*
   ---- DOES THIS SERVER POST TIMES?  Build 64. ------------------------------
@@ -1509,7 +1510,12 @@ void() Lobby_Heartbeat =
 			lobby_run_waiting = FALSE;
 			print("^5board:^7 probe -- one synthetic CHEATED run, which has no "
 			      "board and cannot rank\n");
-			Lobby_SubmitRun(pl, 0, 0, 1234, TF_CHEAT);
+			// No recording: the probe is synthetic, nothing was written, and
+			// naming a file that does not exist is the one thing the ledger
+			// must never be told.  It still exercises the whole submission
+			// path and now prints rep=0 back, which is what makes the chain
+			// checkable with nobody on the server.
+			Lobby_SubmitRun(pl, 0, 0, 1234, TF_CHEAT, "", -1, 0);
 		}
 	}
 
@@ -1792,7 +1798,32 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		print(sprintf("^1board:^7 directory returned %g (%s)\n", code, body));
 };
 
-void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun =
+/*
+  BUILD 66: `rec` IS A PARAMETER, AND IT HAD TO BE.
+
+  It is the BASENAME of the recording this run left on disk, "" when it left
+  none.  surfd stores it in the replay ledger, which is what lets a beaten run
+  stay attributable now that lobbies delete nothing (rec_runs_keep 0): the
+  board keeps one row per player, and the ledger keeps every file behind it.
+
+  WHY A PARAMETER RATHER THAN A FIELD READ HERE.  Two compile-order facts, and
+  between them they leave no other shape.  sv_lobby.qc is line 27 of
+  sv_progs.src and sv_timer.qc is line 29, so this file cannot see a field
+  sv_timer.qc declares, nor call SV_RecWho to rebuild the name -- QuakeC has no
+  forward references.  The alternative was declaring the field in shared defs,
+  which would put a server recorder's bookkeeping in the CSQC and menu VMs to
+  save one argument.
+
+  AND IT IS THE RIGHT SHAPE ANYWAY, because the caller is the only code that
+  can answer the question honestly.  SV_RecClose does fremove-then-frename and
+  a FAILED rename leaves the bytes in data/parts/ under a name nobody can
+  serve; only SV_TimerFinish, reading what the close actually did, knows
+  whether the file it is about to name exists.  A name rebuilt here from ticks
+  and tag would be right in every case except that one, and that one is
+  invisible.
+*/
+void(entity e, float track, float leg, float ticks, float flags,
+     string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
 {
 	local string url, key, body, guid, nm;
 	local float rate;
@@ -1889,6 +1920,22 @@ void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun
 	               body, uri_escape(guid), uri_escape(nm));
 	body = sprintf("%s&ticks=%g&tickrate=%.4f&flags=%g&tier=ranked",
 	               body, ticks, rate, flags);
+	/*
+	  A FOURTH sprintf, for the same reason there are three: the eighth
+	  parameter is the last one the calling convention carries and the ninth is
+	  DROPPED rather than refused.  Appending to a fourth is the cheap, boring
+	  way to stay under it, and the alternative -- squeezing these onto the end
+	  of the third -- would put this file one field away from silently
+	  submitting runs with no flags again.
+
+	  uri_escape on the leaf even though FS_RunLeaf can only emit [a-z0-9_.-]:
+	  it is a filename, this is a form body, and the escape costs nothing.  An
+	  empty `rec` is sent as an empty field rather than omitted, because
+	  clean_text(None) and clean_text("") are the same "" to surfd and one
+	  spelling is easier to grep for than two.
+	*/
+	body = sprintf("%s&rec=%s&recbytes=%g&rectrunc=%g",
+	               body, uri_escape(rec), recbytes, rectrunc);
 
 	/*
 	  ODD, ALWAYS.  Seeded to 1 here rather than at a registration site so that
@@ -1938,6 +1985,19 @@ void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun
 	*/
 	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %g\n",
 	              mapname, track, leg, ticks, flags));
+	/*
+	  THE RECORDING ON ITS OWN LINE, and only when there is one.
+
+	  It is the operator's proof that the run and the file on their disk are the
+	  same event -- the only end-to-end check of the recorder, the naming and
+	  the ledger that does not require reading the database.  A run with no
+	  recording says nothing rather than printing an empty field, because
+	  "submitting" already told the story and a blank value invites the reader
+	  to wonder which half broke.
+	*/
+	if (rec != "")
+		print(sprintf("^5board:^7   recording %s (%g bytes%s)\n",
+		              rec, recbytes, rectrunc ? ", TRUNCATED" : ""));
 };
 
 /*
