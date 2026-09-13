@@ -49,9 +49,11 @@
       file's hash stops the deploy here, with the live files untouched.
    4. In ONE ssh command: keeps the live pair as <name>.prev, mv -f's both .new
       files into place, and hashes the result.
-   5. Runs `sudo -n /usr/bin/systemctl restart ftesurf@N` for N = 1..5, one ssh
-      each so every unit keeps its own exit code and message.  A failure is
-      reported and the rest still restart; the script fails at the end.
+   5. Runs `sudo -n /usr/bin/systemctl restart ftesurf@N` for every lobby the Pi
+      reports (build 67: one ftesurf/cfg/lobbyN.cfg per lobby, read over ssh
+      before step 1, never a list written down here), one ssh each so every unit
+      keeps its own exit code and message.  A failure is reported and the rest
+      still restart; the script fails at the end.
 
  WHY STEP 4 IS A RENAME, AND BOTH FILES IN ONE COMMAND.  scp writes into its
  target in place.  A lobby that loads csprogs.dat while it is half-copied -- a
@@ -315,13 +317,51 @@ if ($Pi) {
     # because step 1 has to know exactly which lobbies step 5 will drop -- a
     # directory with no row for one of them cannot say that one is empty -- and
     # two separate lists would drift apart at the next renumber.
+    #
+    # BUILD 67: ASKED, NOT WRITTEN DOWN.  This was five hardcoded rows, which was
+    # correct for exactly as long as the fleet was five.  /api/join sizes the pool
+    # on demand, and a fixed list here fails in the worst available direction: a
+    # deploy would upload the new progs, restart 1..5, report success, and leave
+    # every lobby past the fifth running the OLD QC until it happened to rotate.
+    # That is a version skew INSIDE one fleet, and it presents to a player as "the
+    # bug is fixed on some servers" -- which is a long way from a list in a build
+    # script, and would survive any number of reproductions.
+    #
+    # The Pi already answers this authoritatively: a lobby IS its cfg (run.sh
+    # refuses to start without one) and that cfg is the single place naming its
+    # port.  So ask.  Same principle the comment above already states, moved one
+    # step further back so there is no second copy to drift.
+    #
+    # A FAILED QUERY IS FATAL, NOT A FALLBACK TO FIVE.  Quietly assuming the old
+    # list on a bad ssh would reintroduce precisely the skew this removes, on the
+    # one run where something was already wrong.
+    $lobbyProbe = 'for f in {0}/cfg/lobby[0-9]*.cfg; do [ -f "$f" ] || continue; n=${{f##*/lobby}}; n=${{n%.cfg}}; case "$n" in ""|*[!0-9]*) continue;; esac; p=$(sed -n "s/^[[:space:]]*set[[:space:]][[:space:]]*sv_port[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p" "$f" | head -n 1); [ -n "$p" ] && echo "$n $p"; done | sort -n' -f $PiGame
+    $r = PiNative 'ssh' ($sshOpts + @($PiHost, $lobbyProbe))
+    if ($r.Code -ne 0) {
+        $r.Out | Write-Host
+        throw "could not read the lobby list from $PiHost (ssh exit $($r.Code)) -- refusing to deploy against a guessed fleet"
+    }
     $lobbies = @(
-        [pscustomobject]@{ Unit = 1; Port = 27510 }     # surf tier 1
-        [pscustomobject]@{ Unit = 2; Port = 27520 }     # surf tier 2
-        [pscustomobject]@{ Unit = 3; Port = 27530 }     # surf tier 3
-        [pscustomobject]@{ Unit = 4; Port = 27540 }     # bhop easy
-        [pscustomobject]@{ Unit = 5; Port = 27550 }     # bhop hard
+        foreach ($line in ($r.Out -split "`r?`n")) {
+            if ($line -match '^\s*(\d+)\s+(\d+)\s*$') {
+                [pscustomobject]@{ Unit = [int]$Matches[1]; Port = [int]$Matches[2] }
+            }
+        }
     )
+    if ($lobbies.Count -eq 0) {
+        throw "no lobbyN.cfg with an sv_port found under $PiGame/cfg -- nothing to restart"
+    }
+    # Two lobbies on one port is the quiet double-bind lobby1.cfg's header warns
+    # about, and it would also collapse two rows onto one node in surfd, whose
+    # lobbies table has node as its primary key.  Cheaper to refuse here than to
+    # debug a lobby that flickers between two maps.
+    $dupPorts = @($lobbies | Group-Object Port | Where-Object { $_.Count -gt 1 })
+    if ($dupPorts.Count -gt 0) {
+        throw ("two lobby cfgs bind the same sv_port ({0}) -- refusing to deploy" -f
+               (($dupPorts | ForEach-Object { $_.Name }) -join ', '))
+    }
+    Ok ("fleet: {0} lobbies -- {1}" -f $lobbies.Count,
+        (($lobbies | ForEach-Object { "$($_.Unit):$($_.Port)" }) -join ' '))
 
     $local = @{}
     foreach ($n in $names) {
@@ -441,7 +481,8 @@ if ($Pi) {
 
     # 5. Restart all five.  NO .service SUFFIX -- sudo matches the grant
     #    literally, see the header.  -n: a missing grant fails, it never prompts.
-    Step "Pi: restart ftesurf@1..5"
+    Step ("Pi: restart {0} lobbies -- ftesurf@{1}" -f $lobbies.Count,
+          (($lobbies | ForEach-Object { $_.Unit }) -join ', ftesurf@'))
     $failed = @()
     foreach ($l in $lobbies) {
         $i = $l.Unit                    # same list step 1 demanded a row for

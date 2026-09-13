@@ -3580,6 +3580,23 @@ string(string s, float w, vector sz) ui_fit_text =
 */
 #define LOB_MIN_COL 200
 
+/*
+  The most grid rows the lobby cells may take from the map list.  Build 67.
+
+  TWO, and the number is a budget rather than a fit: at 1400 it draws ten
+  lobbies, at 1280 ten, and on a desktop narrow enough to collapse the grid to
+  one column it draws two -- which is fewer than the five build 66 would have
+  spent there.  The map list below is sized from whatever y the cells leave, so
+  this is denominated in exactly the units the cost is paid in.
+
+  It is NOT LB_MAX and must not be confused with it: LB_MAX (m_lobby.qc) is how
+  many lobbies are PARSED, and it has to cover the whole fleet or ui_map_players
+  under-counts a map's players with no way to tell.  This is only how many are
+  DRAWN as cells.  The two were one number until build 67 and that is precisely
+  how the under-count got in.
+*/
+#define LOB_ROWS_MAX 2
+
 void(vector screensize) screen_create =
 {
 	ui_backdrop(screensize);
@@ -3810,9 +3827,6 @@ void(vector screensize) screen_create =
 	}
 	else if (Lob_Count() > 0)
 	{
-		sui_text([16, y], SZ_LABEL, "public lobbies", COL_DIM, 1, 0);
-		y += 20;
-
 		/*
 		  SIDE BY SIDE (Patch 287), FIVE ACROSS (build 57).  Lex: "can you put
 		  the server lobbies side by side in the create server menu for more space
@@ -3854,7 +3868,61 @@ void(vector screensize) screen_create =
 			lcolw = (inner - lgap * (lcols - 1)) / lcols;
 		}
 
-		for (float li = 0; li < Lob_Count(); li = li + 1)
+		/*
+		  BUILD 67: BOUND THE GRID BY ROWS, NOT BY CELLS.
+
+		  LB_MAX is 64 now (m_lobby.qc) and it is the PARSE cap -- ui_map_players
+		  has to see the whole fleet or it under-counts a map's players in
+		  silence.  Drawing the whole fleet is a different question with a
+		  different answer: sixty-four cells is not a saving over a stacked list,
+		  it IS a stacked list, and every grid row comes out of the map list
+		  underneath because the list geometry below is derived from y.
+
+		  ROWS RATHER THAN A CELL COUNT, because a cell count does the wrong
+		  thing at both ends of the width range.  Ten cells is two tidy rows at
+		  1400 and TEN rows on a narrow desktop, where lcols has already
+		  collapsed to one -- i.e. the cap would spend the most space exactly
+		  where the essay above says there is least to spend.  Capping rows makes
+		  the bound adapt on its own: five across gives ten, one across gives
+		  two, and the map list never loses more than LOB_ROWS_MAX rows at any
+		  width.  It is also strictly better than build 66 behaved, where five
+		  lobbies at one column already spent five.
+
+		  STILL PORT ORDER, DELIBERATELY.  The obvious refinement is to show the
+		  BUSY lobbies and hide the empty ones, and it is wrong for the reason
+		  the essay above already gives: cells stay put so that a click cannot
+		  land on a neighbour that slid into place between two polls.  Sorting by
+		  players is precisely the reordering that breaks that, and it would do
+		  it every poll rather than rarely.  Since build 67 the cells are no
+		  longer how a player reaches a map anyway -- picking the map is -- so a
+		  stable sample plus an honest count beats an unstable ranking.
+		*/
+		float lshow = Lob_Count();
+		if (lshow > lcols * LOB_ROWS_MAX)
+			lshow = lcols * LOB_ROWS_MAX;
+
+		/*
+		  THE HEADING SAYS WHAT IS NOT BEING SHOWN, which is why it is drawn
+		  here rather than above the essay where it used to be: it needs lshow.
+
+		  A dropped row that nothing mentions is the same defect as the
+		  under-count this build just fixed, one level up -- the picker would
+		  show ten lobbies out of twelve and read exactly like a picker showing
+		  all twelve.  m_lobby.qc's own note that extras are "dropped here rather
+		  than drawn somewhere unreachable" was written when the cap was the
+		  whole fleet and dropping meant nothing was lost; now something is, so
+		  it gets a word.  The count is of lobbies, not of players, because
+		  players is the number the MAP rows carry and saying it twice in
+		  different units invites reading one as the other.
+		*/
+		string llbl = "public lobbies";
+		if (lshow < Lob_Count())
+			llbl = sprintf("public lobbies^9  -- showing %g of %g", lshow,
+			               Lob_Count());
+		sui_text([16, y], SZ_LABEL, llbl, COL_DIM, 1, 0);
+		y += 20;
+
+		for (float li = 0; li < lshow; li = li + 1)
 		{
 			// Column and row within the grid.  QC has no integer modulo, hence
 			// the subtraction; with lcols == 1 this degenerates to the old
@@ -3945,7 +4013,11 @@ void(vector screensize) screen_create =
 		// Advanced once for the whole grid rather than once per lobby -- the loop
 		// above places each cell absolutely from its own row/column, so y must not
 		// move underneath it.
-		float lrows = ceil(Lob_Count() / lcols);
+		// lshow, not Lob_Count(): with the fleet larger than the grid the two
+		// differ, and measuring the reserved height off the count rather than
+		// off what was drawn would reserve rows nothing occupies and push the
+		// map list down for empty space.
+		float lrows = ceil(lshow / lcols);
 		y += lrows * ROW_H + (lrows - 1) * lgap + 8;
 	}
 

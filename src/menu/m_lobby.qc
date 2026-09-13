@@ -56,8 +56,51 @@
   The directory may return more.  Lob_Parse keeps the five with the LOWEST
   PORTS, so the extras are dropped here rather than drawn somewhere
   unreachable, and which five are shown does not change as players move.
+
+  ---- BUILD 67: THIS IS THE PARSE CAP, AND IT IS NO LONGER THE DRAW CAP. ----
+
+  Everything above is about how many lobby CELLS fit above the map list, and it
+  is still true of the cells.  It stopped being the right bound for the LIST the
+  moment build 66 shipped ui_map_players, because that feature does not draw
+  lobbies at all -- it walks Lob_Count() and sums the players on each map, to
+  put a count beside the map's name in the picker.
+
+  So a cap of five silently became a WRONG ANSWER rather than a smaller one.
+  Grow the fleet past five and a map hosted on lobby 6 reports no players; not
+  "unknown", which the build-65 silence rule would have drawn as nothing, but
+  the same -1 that means "no lobby is on this map".  Eight people would be
+  playing a map the picker describes as empty, and nothing anywhere would log a
+  word about it.  The two caps had been the same number for so long that the
+  second one was never named.
+
+  SIXTY-FOUR, BECAUSE THAT IS surfd's OWN PLANNED CEILING.  surfd.py sets
+  CLUSTER_NODES_PLANNED = 64 and sizes RATE_MAX_TRUSTED off it, deliberately
+  "well past the RAM ceiling", so 64 is the number the directory is already
+  built to serve.  A client cap BELOW the server's planned ceiling is exactly
+  the invisible under-count described above, so the two numbers have to be read
+  together: if that one moves, this one moves with it.
+
+  WHAT IT COSTS, MEASURED RATHER THAN ASSERTED: 12 BYTES.  menu.dat is 200,678
+  at LB_MAX 5 and 200,690 at 64 -- same tree, same compiler, so the widening is
+  the changed literal and essentially nothing else.  That was worth compiling
+  both ways rather than reasoning about, because this tree has the OPPOSITE
+  result on record: four extra recorder rings once cost 563 KB of progs for
+  68 KB of data, and the note that left says to split a cap before widening it.
+  It does not apply here, and the reason is structural -- these rows are
+  parallel STRBUFS that grow on demand (lb_map, lb_addr, ... below), not QC
+  arrays, so there is no per-element storage for fteqcc to multiply and an empty
+  fleet allocates nothing at all.  What it does cost is
+  Lob_Parse's insertion sort, which is O(held x returned) with a string parse in
+  the inner test: five lobbies is ~25 of those per poll, sixty-four is ~4096.
+  Polls are seconds apart and menuqc is not the frame budget, so that is
+  affordable -- but it is the term that would bite first if this number grew
+  again, and the fix then is to sort once rather than to shrink the cap back.
+
+  THE CELLS ARE BOUNDED SEPARATELY, in m_main.qc's screen_create, by grid ROWS
+  rather than by cell count -- see LOB_ROWS_MAX there.  Bounding them here as
+  well would restore this bug in a second place.
 */
-#define LB_MAX 5
+#define LB_MAX 64
 
 /*
   Parallel strbufs, the same shape the map list itself uses (ms_name / ms_src /
