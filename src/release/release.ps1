@@ -989,6 +989,41 @@ if (-not $SkipUpload) {
 # =============================================================================
 if (-not $SkipSite) {
     Step 'Deploy to the Pi'
+
+    # THE PAGE MUST NEVER ADVERTISE A HASH THAT IS NOT PUBLISHED.
+    #
+    # The page states the archive's sha256 and byte count, and offers a
+    # Get-FileHash one-liner that prints OK or MISMATCH. The .7z is rebuilt on
+    # every run and 7-Zip stamps mtimes into it, so two runs at the same version
+    # produce different bytes -- which means a -SkipUpload re-run would render a
+    # page whose checksum belongs to an archive nobody can download, and every
+    # honest verifier would print MISMATCH at the one moment we asked them to
+    # trust us. (This is not hypothetical: it happened on the 0.1.0 release.)
+    #
+    # One rclone call closes it. Cheap, and it also catches a page deployed
+    # against an upload that silently failed earlier in the run.
+    $pubMd5 = $null
+    $pubJson = & rclone lsjson --hash "${Remote}:$Bucket/$ObjectKey" --bind 0.0.0.0 2>$null
+    if ($LASTEXITCODE -eq 0 -and $pubJson) {
+        $po = ($pubJson | Out-String | ConvertFrom-Json)
+        if ($po -and $po.Count -gt 0 -and ($po[0].PSObject.Properties.Name -contains 'Hashes') -and $po[0].Hashes) {
+            $pubMd5 = $po[0].Hashes.md5
+        }
+    }
+    if ($pubMd5 -ne $ArchiveMd5) {
+        $what = if ($pubMd5) { "R2 holds md5 $pubMd5, this run built $ArchiveMd5" } else { "no object at $ObjectKey" }
+        Fail @"
+refusing to deploy a page for an archive that is not published.
+  $what
+  The page would state a sha256 that no downloadable file has, so anyone who
+  checked it would get MISMATCH.
+  Fix: run without -SkipUpload. If R2 already holds DIFFERENT bytes at this
+  version, bump the version instead -- the edge caches /$Prefix/ immutably for a
+  year and there is no API token here to purge it with.
+"@
+    }
+    Good "published archive matches this run (md5 $ArchiveMd5)"
+
     $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
 
     # Always push the Pi-side files, so the installed snippet can never silently
@@ -1029,10 +1064,16 @@ if (-not $SkipSite) {
     } else {
         $servedFile = Join-Path $env:TEMP "ftesurf-served-$Ver.html"
         $hdrFile2   = Join-Path $env:TEMP "ftesurf-served-$Ver.txt"
+        # -L IS REQUIRED, not tidiness. $SiteUrl has no trailing slash, so it hits
+        # `location = /ftesurf { return 301 ... }` -- and a 301 carries neither the
+        # marker header nor the page body. Without -L this step reported "nginx has
+        # not reloaded" against a site that was serving the new page perfectly.
+        # -D appends BOTH header blocks, so the marker is still found in the 200.
+        #
         # No --compressed: curl sends no Accept-Encoding by default, so nginx's
         # gzip does not fire and the bytes on the wire are the file itself --
         # which is what makes the hash comparison exact.
-        & curl.exe -4 -s -D $hdrFile2 -o $servedFile $SiteUrl 2>$null | Out-Null
+        & curl.exe -4 -sL -D $hdrFile2 -o $servedFile $SiteUrl 2>$null | Out-Null
         $h2 = Get-Content -LiteralPath $hdrFile2 -Raw
         if ($h2 -notmatch '(?mi)^x-ftesurf-site:') {
             Warn 'the marker header is absent: the snippet is on disk but nginx has not reloaded it.'
