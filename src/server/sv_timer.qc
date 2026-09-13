@@ -1102,6 +1102,147 @@ float() SV_RecEnabled =
 .float  rec_rec_flagline;        // v4: the buffer index of the reserved `flags` line
 
 /*
+===========================================================================
+  BUILD 66 -- THE SECOND RECORDER, and it is the same recorder.
+
+  Everything above holds the whole run in the QC string table until it closes,
+  and the essay over rec_rec_buf explains why that is the honest shape rather
+  than a lazy one: QC's FILE_WRITE does not stream either, it merely hides the
+  buffer inside the engine and writes at fclose, and FILE_APPEND is worse
+  because it reads the file back IN at open.  The .part file that preceded the
+  buffer was zero bytes for the whole run.  There was no third option.
+
+  ENGINE PATCH 316 ADDS ONE.  FS_FILE_WRITESTREAM (fopen mode 9) write-throughs
+  every fputs with VFS_WRITE, so peak memory becomes ONE LINE instead of a whole
+  run -- and fseek still works on the handle, which is the only reason the
+  reserved `flags` header line survives the change.
+
+  WHY THIS IS NOT SIMPLY THE NEW DEFAULT.  The buffer is not only storage; three
+  features read it as a random-access array, and a stream is not one:
+
+    * a discard is buf_del -- nothing was opened, so nothing has to be removed;
+    * a SAVE STATE writes a PREFIX of it (buf_writefile takes a count) and a
+      load REWINDS to a line index, which is what makes a saved-and-resumed run
+      one continuous file rather than three fragments;
+    * a STAGE DEMO is a RANGE of it lifted out and rebased at the boundary --
+      SV_StageWrite reads lines [first..last] of a run that is still going.
+
+  The last two are features, not implementation details, and a stream cannot
+  give either of them without a second file open for the whole run.  So the two
+  recorders both stay and the choice is made per run:
+
+      OFF A LOBBY   the buffer, and everything above keeps working.  Memory was
+                    never the problem here -- one player, one run.
+      ON A LOBBY    the stream, forced.  Save points are already off in a lobby
+                    (lobby_nosaveloc) so the prefix/rewind pair has no caller,
+                    and stage lifting is declined with a line in the log rather
+                    than silently producing nothing.
+
+  That is a seam rather than a compromise: the features the stream cannot do are
+  exactly the features a lobby already does not have.
+
+  rec_stream exists so the streaming path can be exercised, and finished, off a
+  lobby -- a run cannot be finished from a config on a zoned map, so the only
+  way to test this at all is a real run on a listen server.  It defaults to 0,
+  which is today's behaviour exactly.
+===========================================================================
+*/
+.float  rec_rec_fh;              // the open stream, or -1.  Streaming runs only.
+.float  rec_rec_stream;          // this run is being streamed, not buffered
+.float  rec_rec_flagofs;         // byte offset of the reserved `flags` line
+
+/*
+  The reserved `flags` line, in one place and at a FIXED WIDTH.
+
+  A stream cannot change a line's LENGTH after the fact -- seeking back and
+  writing a longer `flags 1027` over a shorter `flags 0` would eat the newline
+  and the first character of the line after it -- so the field is padded out at
+  open and the correction writes the same number of bytes it reserved.
+
+  ONE SPELLING FOR BOTH RECORDERS even though the buffered one could rewrite
+  freely, because two ways of writing a header line that must agree is the exact
+  drift this file has been bitten by before (see FS_TagArchived, build 45: one
+  of the two spellings was updated and the other was not, and the failure was
+  silent).  The cost is ten trailing spaces in every new .rec.
+
+  Every reader was checked before choosing trailing whitespace over a
+  zero-padded number: cl_scores.qc:293 and cl_watch.qc:528 both tokenize and
+  stof argv(1), and tools/reccheck.py does int(float(...)) -- all three are
+  unaffected by trailing spaces, and a zero-padded `flags 00000` would have been
+  a worse choice for a human reading the file.
+*/
+string(float flags) SV_RecFlagLine =
+{
+	return sprintf("flags %-10s", ftos(flags));
+};
+
+/*
+  Does a run starting now stream, or buffer?
+
+  A lobby always streams, and it is not offered a choice: the whole reason
+  lobby_norec exists is that 32 buffered recordings is an out-of-memory, so a
+  lobby that recorded by buffering would be the defect rather than the feature.
+*/
+float() SV_RecStreams =
+{
+	if (Lobby_Active())
+		return TRUE;
+	return cvar("rec_stream") != 0;
+};
+
+/*
+  Where a streamed run is written WHILE IT RUNS.
+
+  It cannot go to its final name: that name carries the run's tick count
+  (FS_RunPath) and the tick count is not known until the run has finished.  So
+  the stream writes here and SV_RecClose renames.
+
+  NOT UNDER data/runs/.  Scores_BuildRows enumerates every ".rec" in a leg's own
+  folder, so a part file sitting in there would be picked up by the local scoreboard
+  mid-run; it would in fact be dropped, because FS_TagFromName does not know the
+  word and an unrecognised tag drops the row silently -- but relying on one bug
+  to hide another is not a plan.  A separate directory cannot be enumerated by
+  accident.
+
+  Keyed on the run slot rather than on the player, because the slot is what makes
+  it unique among the runs in progress ON THIS SERVER RIGHT NOW, which is the
+  only collision a part file can have.  Two players finishing on the same tick
+  collide on the FINAL name instead, and that is a separate defect with its own
+  fix.
+*/
+string(entity e) SV_RecPartPath =
+{
+	return sprintf("data/parts/%g.rec", e.run_t_slot);
+};
+
+/*
+  IS THERE A RECORDING OPEN RIGHT NOW?
+
+  `rec_rec_buf >= 1` used to be the whole answer and was spelled out at four
+  call sites, which is exactly what made build 66's first cut wrong: the
+  recorder streamed, the strbuf stayed at -1, and every one of those four tests
+  quietly said "not recording".  The run produced a file containing its header
+  and its pre-start padding and NOTHING ELSE -- 102 samples, all of them
+  padding, against the control's 271 -- and it did it without one error line,
+  because each site's failure is to skip rather than to complain.
+
+  The four were the per-frame SAMPLER (SV_TimerRecFrame), the `board` record
+  (SV_RecBoard), the `ghost` record (SV_TimerGhost) and the stage slice
+  (SV_StageClose).  Three of those write the columns that make a recording worth
+  having; the fourth decides whether a stage is lifted at all.
+
+  So the test is a function now, and the rule is: anything asking "should I
+  write this?" asks here, and only code that specifically means THE STRBUF
+  touches rec_rec_buf.
+*/
+float(entity e) SV_RecLive =
+{
+	if (e.rec_rec_stream)
+		return e.rec_rec_fh >= 0;
+	return e.rec_rec_buf >= 1;
+};
+
+/*
   BUILD 24 -- THE STAGE CURRENTLY BEING RUN INSIDE A MAIN RUN.
 
   A main run passes through every stage on the map, and each of those is a leg
@@ -1575,7 +1716,7 @@ string(float tag) SV_RecTagName = { return FS_TagName(tag); };
 */
 void(entity e, string s) SV_RecPut =
 {
-	if (e.rec_rec_buf < 1)
+	if (!SV_RecLive(e))
 		return;
 
 	if (e.rec_rec_lines >= FS_RECMAX)
@@ -1586,6 +1727,28 @@ void(entity e, string s) SV_RecPut =
 			dprint(sprintf("timer: recording hit the %g-line cap; "
 			               "the rest of this run is not being kept\n", FS_RECMAX));
 		}
+		return;
+	}
+
+	/*
+	  THE NEWLINE IS OURS ON THIS PATH AND NOT ON THE OTHER, which is the one
+	  place the two recorders genuinely differ rather than merely branch.
+	  buf_writefile appends a newline after every string it writes
+	  (PF_buf_writefile: the string, then "\n"), so the buffered path must NOT
+	  carry one -- the essay above this function is about exactly that.  fputs
+	  writes what it is given and nothing else, so here it must.
+
+	  Keeping the line count in step across both is what lets the FS_RECMAX cap,
+	  the save-state mark and `timer`'s report go on meaning one thing.  It is no
+	  longer a buf_writefile index on this path -- nothing indexes a stream -- but
+	  it is still the number of lines in the file, which is what every reader of
+	  it actually wanted.
+	*/
+	if (e.rec_rec_stream)
+	{
+		fputs(e.rec_rec_fh, s);
+		fputs(e.rec_rec_fh, "\n");
+		e.rec_rec_lines = e.rec_rec_lines + 1;
 		return;
 	}
 
@@ -1737,6 +1900,9 @@ void(entity e) SV_RecOpen =
 	local float i, s, base;
 
 	e.rec_rec_buf = -1;
+	e.rec_rec_fh = -1;
+	e.rec_rec_stream = FALSE;
+	e.rec_rec_flagofs = -1;
 	e.rec_rec_lines = e.rec_rec_n = e.rec_rec_padn = e.rec_rec_cp = 0;
 	e.rec_rec_full = FALSE;
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
@@ -1755,11 +1921,34 @@ void(entity e) SV_RecOpen =
 	if (!SV_RecEnabled())
 		return;
 
-	e.rec_rec_buf = buf_create_ex("string", 0);
-	if (e.rec_rec_buf < 1)
+	/*
+	  One of the two recorders, decided here and nowhere else.  The rest of this
+	  function is identical either way, which is the point: the header, the
+	  padding flush and every sample go through SV_RecPut and it is SV_RecPut
+	  that knows where they land.
+	*/
+	e.rec_rec_stream = SV_RecStreams();
+	if (e.rec_rec_stream)
 	{
-		dprint("timer: buf_create failed; this run is not being recorded\n");
-		return;
+		e.rec_rec_fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
+		if (e.rec_rec_fh < 0)
+		{
+			// Not fatal to the run, only to its recording -- the same shape as
+			// the buf_create failure below, and said the same way.
+			dprint(sprintf("timer: cannot stream to %s; this run is not being "
+			               "recorded\n", SV_RecPartPath(e)));
+			e.rec_rec_stream = FALSE;
+			return;
+		}
+	}
+	else
+	{
+		e.rec_rec_buf = buf_create_ex("string", 0);
+		if (e.rec_rec_buf < 1)
+		{
+			dprint("timer: buf_create failed; this run is not being recorded\n");
+			return;
+		}
 	}
 
 	SV_RecPut(e, "FTESURF-REC 4");
@@ -1791,8 +1980,17 @@ void(entity e) SV_RecOpen =
 	  Zero at open is the truth at open: a run cannot be practice before it has
 	  started.  Everything that can taint it happens later.
 	*/
+	/*
+	  BUILD 66: A BYTE OFFSET AS WELL AS A LINE INDEX, because the two recorders
+	  correct this line by different means and each needs its own handle on it.
+	  The buffered one overwrites by line index with bufstr_set; the streamed one
+	  seeks to a byte and writes the same width back.  fseek before the write is
+	  what makes the offset the START of the line rather than its end.
+	*/
 	e.rec_rec_flagline = e.rec_rec_lines;
-	SV_RecPut(e, "flags 0");
+	if (e.rec_rec_stream)
+		e.rec_rec_flagofs = fseek(e.rec_rec_fh);
+	SV_RecPut(e, SV_RecFlagLine(0));
 
 	SV_RecPut(e, "begin");
 
@@ -1852,17 +2050,42 @@ void(entity e) SV_RecDiscard =
 	  A VOIDED run is the case that must still clear it, and does: there the
 	  buffer is live, because the run was.
 	*/
-	live = (e.rec_rec_buf >= 1);
+	live = SV_RecLive(e);
 
 	if (live)
 	{
-		buf_del(e.rec_rec_buf);
+		/*
+		  BUILD 66: a streamed run has a FILE to get rid of, and this is the one
+		  place the essay above stops being true -- "nothing was opened, so there
+		  is nothing to truncate, close, remove or rename" is a property of the
+		  buffer, not of recording.  The part file is closed and removed; there is
+		  still no truncate and no rename, because the part name is not a name
+		  anything else ever reads.
+
+		  The bytes already written are wasted, and that is the honest cost of
+		  streaming: this path runs on every `!r`, which on a lobby is most of
+		  what a player does.  It is disk that was going to be written anyway and
+		  the alternative -- holding the run in memory in case it is thrown away --
+		  is the thing being fixed.
+		*/
+		if (e.rec_rec_stream)
+		{
+			if (e.rec_rec_fh >= 0)
+				fclose(e.rec_rec_fh);
+			fremove(SV_RecPartPath(e));
+		}
+		else
+			buf_del(e.rec_rec_buf);
+
 		e.rec_rec_leg = 0;
 		e.rec_rec_tag = RT_NONE;
 		e.rec_rec_ticks = 0;
 	}
 
 	e.rec_rec_buf = -1;
+	e.rec_rec_fh = -1;
+	e.rec_rec_stream = FALSE;
+	e.rec_rec_flagofs = -1;
 	e.rec_rec_lines = 0;
 
 	/*
@@ -1978,7 +2201,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	local float i, base, fh, stamp;
 	local string dst, hdr;
 
-	if (e.rec_rec_buf < 1)
+	if (!SV_RecLive(e))
 		return;
 
 	/*
@@ -2001,13 +2224,13 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	  It costs one string compare per finished run.
 	*/
 	flags = flags - (flags & TF_RECORDING) - (flags & TF_FROZEN);
+	if (!e.rec_rec_stream)
 	if (e.rec_rec_flagline >= 0)
 	if (e.rec_rec_flagline < e.rec_rec_lines)
 	{
 		hdr = bufstr_get(e.rec_rec_buf, e.rec_rec_flagline);
 		if (substring(hdr, 0, 6) == "flags ")
-			bufstr_set(e.rec_rec_buf, e.rec_rec_flagline,
-			           sprintf("flags %g", flags));
+			bufstr_set(e.rec_rec_buf, e.rec_rec_flagline, SV_RecFlagLine(flags));
 		else
 			dprint(sprintf("timer: rec header line %g is \"%s\", not flags -- left alone\n",
 			               e.rec_rec_flagline, hdr));
@@ -2047,6 +2270,65 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		stamp = ticks;
 
 	dst = SV_RecFinalPath(e, stamp, SV_RecTagName(tag));
+
+	/*
+	  BUILD 66 -- THE STREAMED RUN IS ALREADY WRITTEN.  What is left is to
+	  correct the header it reserved and move it to the name it earned.
+
+	  THE TRAILER WENT IN FIRST, DELIBERATELY.  `end` and the splits were
+	  appended above while the position was still the end of the file, so the
+	  seek below is the LAST thing that touches the handle and nothing has to
+	  seek back afterwards.  Doing it the other way round -- fix the header, then
+	  append -- would need a second seek and would leave the file wrong if the
+	  process died between the two.
+
+	  SV_RecFlagLine is why this is safe: it reserved a fixed width at open, so
+	  the correction writes exactly the bytes it is replacing.  A longer value
+	  would otherwise eat the newline and the first character of `begin`.
+
+	  fremove BEFORE frename, because FS_Rename is Sys_Rename underneath and
+	  Windows' rename does not overwrite -- the note over this function records
+	  that the pre-v3 recorder had to do the same.  The crash window it warns
+	  about is real and is narrower here than it was: back then the destination
+	  was the previous good recording, and now it can only be a file with this
+	  exact tick count and tag already in it, i.e. a re-run of the same time.
+	*/
+	if (e.rec_rec_stream)
+	{
+		if (e.rec_rec_flagofs >= 0)
+		{
+			fseek(e.rec_rec_fh, e.rec_rec_flagofs);
+			fputs(e.rec_rec_fh, SV_RecFlagLine(flags));
+		}
+		fclose(e.rec_rec_fh);
+		e.rec_rec_fh = -1;
+
+		fremove(dst);
+		if (frename(SV_RecPartPath(e), dst) != 0)
+		{
+			dprint(sprintf("timer: cannot rename %s to %s; the recording is "
+			               "still in the part file\n", SV_RecPartPath(e), dst));
+		}
+		else
+		{
+			dprint(sprintf("timer: streamed %s (%g samples, %g padding)\n",
+			               dst, e.rec_rec_n, e.rec_rec_padn));
+			if (stamp >= 0)
+				SV_RecPrune(e, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
+				            SV_RecTagName(tag),
+				            sprintf("%s_%s.rec", FS_RunStamp(stamp),
+				                    SV_RecTagName(tag)));
+		}
+
+		e.rec_rec_stream = FALSE;
+		e.rec_rec_flagofs = -1;
+		e.rec_rec_lines = 0;
+		e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING);
+		e.rec_rec_ticks = stamp;
+		e.rec_rec_tag = tag;
+		return;
+	}
+
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
 		dprint(sprintf("timer: cannot open %s for writing\n", dst));
@@ -2111,6 +2393,21 @@ float(entity e, string path) SV_RecWritePrefix =
 {
 	local float fh;
 
+	/*
+	  BUILD 66: a streamed run has no prefix to write.  Returning 0 is the
+	  ordinary "nothing to keep" answer this function already documents, so the
+	  save is taken and simply carries no movement -- the run continues, the
+	  clock is untouched, and the only loss is that a load will not stitch the
+	  recording back together.
+
+	  It is silent rather than warned about because on a lobby -- the only place
+	  a run streams unless someone asked for it with rec_stream -- save points do
+	  not exist at all (lobby_nosaveloc), so this branch has no caller there and a
+	  warning would only ever fire at the person who set rec_stream on purpose.
+	*/
+	if (e.rec_rec_stream)
+		return 0;
+
 	if (e.rec_rec_buf < 1 || e.rec_rec_lines <= 0)
 		return 0;
 
@@ -2152,6 +2449,13 @@ float(entity e, string path, float mark, float serial,
 	local float buf;
 
 	if (mark <= 0)
+		return FALSE;
+
+	// BUILD 66: a stream cannot be rewound -- the lines past the mark are
+	// already on disk and nothing indexes them.  The run carries on recording
+	// from where it is; it just does not rejoin the saved prefix.  See
+	// SV_RecWritePrefix for why this is quiet.
+	if (e.rec_rec_stream)
 		return FALSE;
 
 	if (e.rec_rec_buf >= 1)
@@ -2280,7 +2584,7 @@ float(entity e, string path, float mark, float serial,
 */
 void(entity e, float t) SV_RecBoard =
 {
-	if (e.rec_rec_buf < 1)
+	if (!SV_RecLive(e))
 		return;
 	if (e.run_boardcount == e.rec_rec_lastbc)
 		return;
@@ -2737,6 +3041,30 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local float leg;                // build 57: the leg this slice is filed under
 	local string l, dst;
+
+	/*
+	  BUILD 66: A STREAMED RUN HAS NO LINES TO LIFT.
+
+	  The slice below reads rec_rec_buf[first..last] of a run that is still
+	  going, and a stream is not addressable -- those lines are on disk, behind a
+	  write-only handle, in a file that is not finished.  Producing a stage demo
+	  anyway would mean a second stream opened at every stage boundary, written
+	  in parallel, renamed or removed once the boundary decides whether the stage
+	  qualifies.  That is a real design and it is not this one.
+
+	  SAID OUT LOUD rather than returned quietly, because unlike the save-state
+	  pair above this one HAS a caller in a lobby: finishing a stage during a main
+	  run is ordinary play, and the stage board would simply have no replay behind
+	  its rows with nothing anywhere saying why.  A stage run ARMED at the stage
+	  is an ordinary run and streams like any other -- it is only the lift out of
+	  a main run that is missing.
+	*/
+	if (e.rec_rec_stream)
+	{
+		dprint(sprintf("stage: seg %g not lifted -- this run is streamed, and a "
+		               "slice needs the buffer\n", seg));
+		return;
+	}
 
 	buf = buf_create_ex("string", 0);
 	if (buf < 1)
@@ -3515,7 +3843,7 @@ void(entity e, float ticks) SV_StageClose =
 	  and cannot get a different answer.  The recorder, lobby and improvement
 	  gates stay here, because they are about what may be WRITTEN.
 	*/
-	if (e.rec_rec_buf < 1)             return;
+	if (!SV_RecLive(e))                return;
 	if (e.run_t_stagerun)              return;
 	if (!SV_StageQualifies(e, seg))    return;
 
@@ -3537,11 +3865,18 @@ void(entity e, float ticks) SV_StageClose =
 	  EVERY LAP, for all 32 players.  A gate that turns a filter off is worse
 	  than no gate.
 
-	  Unreachable today by a second route -- lobby_norec means rec_rec_lines is
-	  0, so the test two lines up already returns -- but that is one cvar away
-	  from being false, and depending on it would make lobby_norec 0 quietly
-	  destructive rather than merely noisy.  Stage times in a lobby belong in
-	  Stage 3's telemetry, which has a player dimension.
+	  It used to be unreachable by a second route -- lobby_norec meant
+	  rec_rec_lines was 0, so the test two lines up already returned -- and that
+	  paragraph ended by saying the second route was "one cvar away from being
+	  false".  BUILD 66 IS THAT CVAR.  A lobby that records now streams, and a
+	  streamed run has a real line count, so this gate is the only thing left
+	  between a lobby and 32 players cutting a stage .rec every lap.  It was
+	  already correct; it is now also load-bearing.
+
+	  (SV_StageWrite refuses a streamed run on its own account as well, because a
+	  slice needs the buffer -- but that is a second reason and not this one.
+	  Stage times in a lobby belong in Stage 3's telemetry, which has a player
+	  dimension.)
 	*/
 	if (Lobby_NoPB())
 		return;
@@ -4064,7 +4399,7 @@ void(entity e, float on) SV_TimerGhostMark =
 		e.run_st_ghost = TRUE;
 	}
 
-	if (e.rec_rec_buf >= 1)
+	if (SV_RecLive(e))
 		SV_RecPut(e, sprintf("ghost %g %g", on ? 1 : 0, SV_TimerTicks(e)));
 };
 
@@ -5908,7 +6243,7 @@ void(entity e) SV_TimerRecFrame =
 	  IS advancing, the body IS moving, and those samples are the record of what
 	  it did while nobody was steering.  They are the evidence, not noise.
 	*/
-	if (e.rec_rec_buf >= 1 && !e.run_t_frzon)
+	if (SV_RecLive(e) && !e.run_t_frzon)
 	{
 		SV_RecBoard(e, SV_TimerElapsed(e));
 		SV_RecLine(e, SV_TimerElapsed(e), e.origin, e.velocity, e.movement,
@@ -6720,6 +7055,20 @@ void() SV_TimerMapInit =
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
 	registercvar("run_cheatwatch", "1");
+
+	/*
+	  BUILD 66.  0 is today's behaviour exactly -- the run is buffered -- and the
+	  default is 0 rather than 1 because the buffered recorder is the one that can
+	  still lift a stage out of a main run and stitch a save-and-resume back into
+	  one file.  A lobby ignores this and always streams; see SV_RecStreams.
+
+	  It exists mainly so the streaming path can be FINISHED off a lobby.  A run
+	  cannot be finished from a config on a zoned map -- zone_goto and setpos both
+	  void it through SV_TimerWarped -- so the only way to exercise a close, a
+	  header correction and a rename at all is a real run on a listen server, and
+	  that needs a switch a person can set.
+	*/
+	registercvar("rec_stream", "0");          // build 66
 	run_t_startstrict = cvar("run_starthop_strict");
 	run_t_rearmstops  = cvar("run_rearmstops");
 	run_t_rearmhop    = cvar("run_rearmhop");
@@ -6893,6 +7242,27 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        shadow %g  from save %g  rec lines %g (%g samples)\n",
 	       (e.run_t_flags & TF_SHADOW) ? 1 : 0, e.run_t_fromsave,
 	       e.rec_rec_lines, e.rec_rec_n));
+
+	/*
+	  BUILD 66: WHICH RECORDER, and where it is writing.
+
+	  `rec lines` above counts the same on both paths by design, so it cannot
+	  answer the one question this build introduces -- is this run in memory or on
+	  the disk?  Without this line the two are indistinguishable from inside the
+	  game, and the only way to tell would be to look at the filesystem, which is
+	  the test that needs a second process.
+
+	  The part path is printed rather than described because it is the thing a
+	  harness has to go and measure, and a path composed from real values beats a
+	  path a test script composes for itself -- the same argument the `would write`
+	  line below makes about the archive name.
+	*/
+	if (e.rec_rec_stream)
+		sprint(e, PRINT_HIGH, sprintf("        recorder: STREAM fh %g -> %s  (flagofs %g)\n",
+		       e.rec_rec_fh, SV_RecPartPath(e), e.rec_rec_flagofs));
+	else
+		sprint(e, PRINT_HIGH, sprintf("        recorder: buffer %g  (stream would be %g)\n",
+		       e.rec_rec_buf, SV_RecStreams() ? 1 : 0));
 	// The freeze, and BOTH halves of it: `want` is the request that survives an
 	// arm or a void, `frozen` is whether the maintain is actually holding the
 	// clock.  Seeing them disagree is the diagnostic -- want 1 with frozen 0
