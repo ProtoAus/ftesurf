@@ -91,6 +91,25 @@
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
+
+/*
+  ONE COUNTER FOR BOTH CONSUMERS OF uri_get IN THIS VM.  There is exactly one
+  URI_Get_Callback (trap 2 at the top), so the request id is the ONLY thing that
+  tells a board reply from a replay reply -- and two independent counters would
+  hand out the same number within a few clicks and route one answer into the
+  other's parser.  Every id in this file comes from here; none is ever reused.
+
+  It lives up here with the board's own state rather than beside the replay
+  fetch that made it necessary, because QuakeC has no forward references and
+  Online_Ask (below) is the first caller.
+*/
+float  ob_nextid;
+
+float() Online_NextReq =
+{
+	ob_nextid = ob_nextid + 1;
+	return ob_nextid;
+};
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
 float  ob_sent;            // cltime the in-flight request went out; 0 = none
@@ -141,6 +160,27 @@ float  ob_flags[OB_MAXROW];
 */
 float  ob_rate[OB_MAXROW];
 float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
+
+/*
+  THE LEDGER ROW BEHIND THIS TIME, or 0 for none.  Build 66.
+
+  AN INTEGER RATHER THAN A has_replay BOOLEAN, and surfd sends it that way on
+  purpose: the id is the download handle as well as the flag, so a row that can
+  be watched needs no second field and no second request to find out where.
+
+  A FLOAT ARRAY AND NOT A STRBUF, unlike ob_bname and ob_bplayer beside it.
+  Those are strings and a QC string in a parallel array would need a strzone
+  each; this is a number, and OB_MAXROW floats cost nothing.  That is also why
+  surfd returns `rep` as an integer rather than a URL.
+
+  0 IS THREE DIFFERENT FACTS AND THE UI MUST NOT PRETEND OTHERWISE: a Community
+  time set on somebody else's server, a time set before the lobbies recorded
+  anything, and a run whose recording was refused or never kept.  All three
+  mean "nothing to click"; only the first two are worth a sentence, and
+  Scores_DrawOnlineRows is where that distinction is drawn.
+*/
+float  ob_rep[OB_MAXROW];
+
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
 
@@ -308,7 +348,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	  the callback.  That is the right behaviour for a board the player is
 	  clicking around: the most recent click is the one they are waiting on.
 	*/
-	ob_req = ob_req + 1;
+	ob_req = Online_NextReq();
 	if (!uri_get(url, ob_req))
 	{
 		ob_state = OBS_FAIL;
@@ -407,6 +447,14 @@ void(string body) Online_Parse =
 
 		ob_wrow[i]  = json_get_float(json_find_object_child(row, "when"));
 
+		/*
+		  A row from a surfd older than schema 3 has no `rep` at all, and
+		  json_get_float of a missing child is 0 -- which is exactly the value
+		  that means "nothing to watch".  So an old board degrades to the
+		  pre-build-66 behaviour with no version check anywhere.
+		*/
+		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
+
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 	}
@@ -426,12 +474,309 @@ void(string body) Online_Parse =
 };
 
 /*
+===========================================================================
+  Fetching the recording behind a row -- build 66, plan step R5
+
+  WHY THIS IS A SEPARATE STATE MACHINE AND NOT A SECOND MODE OF THE BOARD'S.
+  Online_Need's very first test blocks EVERY board while ob_state is OBS_FETCH,
+  which is right for a board -- the player is waiting on one answer -- and
+  catastrophic here: a 1 MB download would freeze the leaderboard for its whole
+  duration, and a wedged one would take the board out for the session.  They
+  share a request-id counter and nothing else.
+
+  THE FILE DOES NOT LAND IN data/runs, and this is the trap this feature was
+  always going to walk into.  A stranger's run filed there would join the Local
+  tab's name-sorted list, become the delta reference if it were fast
+  (rec_sb_best), and count against SV_RecPrune's rec_runs_keep quota -- i.e.
+  DOWNLOADING A WORLD RECORD COULD EVICT THE PLAYER'S OWN PB.  data/online/ is
+  scanned by nothing, so a downloaded run also needs no new RT_* tag: an
+  unrecognised tag word does not mislabel a local row, it silently drops it.
+
+  NAMED BY LEDGER ID, because that is the only identity the client is given and
+  it is already unique across every map, leg and player.  The file's own header
+  carries the map, the owner and the tick count, so nothing is lost by not
+  spelling them in the name -- and a name built from the board key would have
+  walked into the same map-case defect surfd spent a schema fixing.
+===========================================================================
+*/
+
+#define OR_DIR       "data/online/"
+
+/*
+  frename IS NOT DECLARED FOR THIS VM, so declare it, in the idiom sv_timer.qc
+  already uses and for the reason written there: `#0:frename` resolves BY NAME
+  at load, so a renumber upstream cannot turn this into a different builtin.
+  The engine exposes it to CSQC as #651 (pr_csqc.c); fteqcc simply does not
+  know the name here, and the server progs only compiles because sv_timer.qc
+  declares its own.  Local to its one user, exactly as that one is.
+*/
+float(string src, string dst) frename = #0:frename;
+
+/*
+  Its own deadline, six times the board's.  OB_DEADLINE is 10s because a board
+  is 4 KB and anything slower than that is wedged; a recording is ~1 MB and a
+  player on a poor connection is not wedged, they are downloading.  Writing one
+  number for both would have declared the second case a failure.
+*/
+#define OR_DEADLINE  60
+
+#define ORS_IDLE   0       // nothing wanted
+#define ORS_FETCH  1       // in flight
+#define ORS_READY  2       // or_path is a complete file on this disk
+#define ORS_FAIL   3       // or_code says why
+
+float  or_state;
+float  or_req;             // uri request id in flight; 0 = none
+float  or_code;            // last non-zero responsecode
+float  or_sent;            // cltime it went out; 0 = none
+float  or_rep;             // the ledger id being fetched, or the one that landed
+string or_path;            // strzoned; valid whenever or_state is ORS_READY
+
+string(float rep) Online_ReplayPath =
+{
+	return sprintf("%s%g.rec", OR_DIR, rep);
+};
+
+void() Online_ReplayFree =
+{
+	if (or_path)
+		strunzone(or_path);
+	or_path = __NULL__;
+};
+
+/*
+  Is a complete recording for this row already on the disk?
+
+  CACHED ON PURPOSE: the second viewing of a run costs nothing and takes no
+  bandwidth off a home upstream link.  The one case the cache can be wrong is an
+  exact TICK-for-tick tie, which rewrites the same leaf and so keeps the same
+  ledger id while replacing the bytes -- rare, harmless (both runs really did
+  set that time), and written down here rather than paid for with a re-download
+  on every click.
+*/
+float(float rep) Online_ReplayCached =
+{
+	local float fh;
+
+	if (rep < 1)
+		return FALSE;
+	fh = fopen(Online_ReplayPath(rep), FILE_READ);
+	if (fh < 0)
+		return FALSE;
+	fclose(fh);
+	return TRUE;
+};
+
+/*
+  Ask for one recording.  Returns FALSE and sets or_state if it could not even
+  be asked for; a TRUE return means only that the request went out.
+*/
+float(float rep) Online_ReplayFetch =
+{
+	local string dir, url;
+
+	Online_ReplayFree();
+	or_code = 0;
+	or_rep  = rep;
+
+	if (rep < 1)
+	{
+		or_state = ORS_FAIL;
+		return FALSE;
+	}
+
+	// Already here: skip the network entirely and be ready this frame.
+	if (Online_ReplayCached(rep))
+	{
+		or_path  = strzone(Online_ReplayPath(rep));
+		or_state = ORS_READY;
+		or_sent  = 0;
+		return TRUE;
+	}
+
+	dir = cvar_string("lobby_dir");
+	if (dir == "")
+	{
+		or_state = ORS_FAIL;
+		return FALSE;
+	}
+
+	url = sprintf("%s/api/replay/%g", dir, rep);
+
+	or_req = Online_NextReq();
+	if (!uri_get(url, or_req))
+	{
+		or_req   = 0;
+		or_state = ORS_FAIL;
+		return FALSE;
+	}
+
+	or_state = ORS_FETCH;
+	or_sent  = cltime;
+	return TRUE;
+};
+
+/*
+  Write the body out, atomically enough that a crash cannot leave a truncated
+  file cached forever.
+
+  .part THEN frename, exactly as SV_RecClose does on the server: a half-written
+  file at the final name would satisfy Online_ReplayCached on every future click
+  and the row would be permanently broken with no way for the player to retry.
+
+  LENGTH BY strlen, AND THE SEAM IS WORTH RECORDING.  The engine does pass the
+  body's true byte count -- PR_uri_get_callback2 sets OFS_PARM3 to the length it
+  allocated the temp string at -- but cl_defs.qc declares URI_Get_Callback with
+  three parameters, and that file is FTE's generated extension list rather than
+  ours to edit.  For a .rec the two agree exactly: it is generated text with no
+  NUL in it, which is the only case where they could differ.  If a fourth
+  parameter ever becomes available, this is the call site that wants it.
+*/
+float(float rep, string body) Online_ReplayStore =
+{
+	local string part, dst;
+	local float fh;
+
+	if (strlen(body) < 1)
+		return FALSE;
+
+	dst  = Online_ReplayPath(rep);
+	part = strcat(dst, ".part");
+
+	// fopen calls FS_CreatePath, so data/online/ does not have to exist.
+	fh = fopen(part, FILE_WRITE);
+	if (fh < 0)
+		return FALSE;
+	fputs(fh, body);
+	fclose(fh);
+
+	if (frename(part, dst) != 0)
+	{
+		// A rename that failed leaves the .part behind; take it away rather
+		// than accumulate one per failed click.
+		fremove(part);
+		return FALSE;
+	}
+	return TRUE;
+};
+
+/*
+  Called once per drawn frame while the board is up.  The deadline lives here
+  because nothing else polls: the engine's HTTP client has no wall-clock timeout
+  (see OB_DEADLINE's essay) and URI_Get_Callback runs only when a transfer ENDS,
+  so a connection that is opened and never answered would sit at ORS_FETCH for
+  the session with the row spinning.
+*/
+void() Online_ReplayPoll =
+{
+	if (or_state != ORS_FETCH)
+		return;
+	if (!or_sent || cltime - or_sent < OR_DEADLINE)
+		return;
+
+	or_req   = 0;               // any late reply is now nobody's
+	or_sent  = 0;
+	or_code  = 0;
+	or_state = ORS_FAIL;
+};
+
+/*
+  One line saying exactly where the replay fetch is.  The report IS the test:
+  a config can start a download and read this back, which is the only way the
+  network half of R5 is falsifiable without a mouse.
+
+  It prints the path whenever one exists, not only when it is READY, so a run
+  that landed and a run that is cached are distinguishable from a failure that
+  left nothing behind.
+*/
+void() Online_ReplayStatus =
+{
+	local string w, r;
+	local float i;
+
+	if (or_state == ORS_IDLE)   w = "idle";
+	else if (or_state == ORS_FETCH) w = "fetching";
+	else if (or_state == ORS_READY) w = "ready";
+	else                        w = "failed";
+
+	print(sprintf("^5replay:^7 %s rep %g code %g file \"%s\"\n",
+	              w, or_rep, or_code,
+	              or_state == ORS_READY ? or_path : ""));
+
+	/*
+	  THE PARSED IDS, PER ROW, and this line is a falsifier rather than a
+	  convenience.  Driving board_replay with a literal id proves the download
+	  and proves nothing about whether the client ever READ `rep` off the
+	  board -- the two halves could both be wrong in the same direction and
+	  the test would still pass.  Printing what was parsed separates them.
+	*/
+	r = "";
+	for (i = 0; i < ob_n; i = i + 1)
+		r = sprintf("%s %g", r, ob_rep[i]);
+	print(sprintf("^5replay:^7 rows %g reps%s\n", ob_n, r));
+};
+
+float() Online_ReplayState  = { return or_state; };
+float() Online_ReplayRep    = { return or_rep; };
+float() Online_ReplayCode   = { return or_code; };
+string() Online_ReplayFile  = { return or_state == ORS_READY ? or_path : ""; };
+
+void() Online_ReplayClear =
+{
+	Online_ReplayFree();
+	or_state = ORS_IDLE;
+	or_req   = 0;
+	or_sent  = 0;
+	or_rep   = 0;
+	or_code  = 0;
+};
+
+/*
   CSQC's one URI_Get_Callback.  See trap 2 at the top: the engine finds this by
   name and there can be exactly one, so a second consumer of uri_get in this
   VM must branch here rather than declare its own.
+
+  THE SIGNATURE IS cl_defs.qc's AND NOT OURS.  The engine passes a fourth
+  argument (the body's true length) that this declaration does not name;
+  redeclaring it here is a type mismatch against the generated extension list,
+  so Online_ReplayStore uses strlen and says why.
 */
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
+	/*
+	  THE REPLAY BRANCH GOES FIRST AND TESTS or_req FOR NON-ZERO.  Both ids are
+	  compared against a stored value that is 0 when nothing is in flight, and
+	  a reply carrying reqid 0 -- which nothing issues, since Online_NextReq
+	  pre-increments -- would otherwise match whichever test ran first and be
+	  parsed as that kind of answer.
+	*/
+	if (or_req)
+	if (reqid == or_req)
+	{
+		or_req  = 0;
+		or_sent = 0;
+
+		// TRAP 1 again: 0 is success, the engine rewrote 200 for DP compat.
+		if (responsecode)
+		{
+			or_code  = responsecode;
+			or_state = ORS_FAIL;
+			return;
+		}
+
+		if (!Online_ReplayStore(or_rep, resourcebody))
+		{
+			or_code  = 0;
+			or_state = ORS_FAIL;
+			return;
+		}
+
+		Online_ReplayFree();
+		or_path  = strzone(Online_ReplayPath(or_rep));
+		or_state = ORS_READY;
+		return;
+	}
+
 	if (reqid != ob_req)
 		return;                 // a board we have already replaced, or not ours
 
@@ -705,6 +1050,16 @@ void() Online_RegisterCommands =
 {
 	registercommand("board_fetch");
 	registercommand("board_status");
+	/*
+	  board_replay <rep> -- build 66, step R5.
+
+	  THE CLICK CANNOT BE SCRIPTED.  A row is picked with the mouse through
+	  sui, and no cfg in this tree can drive a cursor -- so without this the
+	  download, the .part write, the rename and the cache hit would all ship
+	  having been reasoned about and never run.  It takes the ledger id
+	  directly, which is exactly what the click would have handed it.
+	*/
+	registercommand("board_replay");
 };
 
 float(string cmd) Online_ConsoleCommand =
@@ -721,6 +1076,44 @@ float(string cmd) Online_ConsoleCommand =
 	if (argv(0) == "board_status")
 	{
 		Online_Status();
+		Online_ReplayStatus();
+		return TRUE;
+	}
+
+	if (argv(0) == "board_replay")
+	{
+		/*
+		  TWO FORMS, AND THE `row` ONE IS THE REAL TWIN OF THE CLICK.
+		  Scores_OnlineHandOff reads ob_rep[pick] and hands THAT to
+		  Online_ReplayFetch; `board_replay row 0` does exactly the same thing
+		  with the same array, so the parse and the fetch are tested together.
+		  The bare-id form stays because it can ask for a row this board does
+		  not have, which is how the 404 path is reached at all.
+		*/
+		if (argv(1) == "row")
+		{
+			track = stof(argv(2));
+			if (argv(2) == "" || track < 0 || track >= ob_n)
+			{
+				print(sprintf("^5replay:^7 no row %s (the board holds %g)\n",
+				              argv(2), ob_n));
+				return TRUE;
+			}
+			if (ob_rep[track] < 1)
+				print(sprintf("^5replay:^7 row %g has no recording\n", track));
+			else
+				Online_ReplayFetch(ob_rep[track]);
+			Online_ReplayStatus();
+			return TRUE;
+		}
+
+		if (argv(1) == "")
+		{
+			print("^5replay:^7 board_replay <rep> | board_replay row <n>\n");
+			return TRUE;
+		}
+		Online_ReplayFetch(stof(argv(1)));
+		Online_ReplayStatus();
 		return TRUE;
 	}
 

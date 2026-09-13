@@ -156,6 +156,17 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 
 float rec_sb_tab;                // SB_T_*
 float rec_sb_tier;               // SB_TIER_*, meaningful on the online tabs
+
+/*
+  The ledger id this board is waiting on, or 0.  Build 66, step R5.
+
+  It exists because the download outlives the board: the transfer completes in
+  the engine whether this is open or not, so "a replay is ready" and "this
+  player still wants it" are two different facts and only one of them is in
+  cl_online.qc.  Cleared by Scores_Close, which is what makes closing the board
+  a cancel.
+*/
+float rec_sb_wantrep;
 vector rec_sb_oscroll;           // the online list's own scroll position
 
 #define SB_ROW_H   22
@@ -1043,14 +1054,14 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
   to click the chip beside it; a bare "no times" sends them away from a board
   that has plenty.
 */
-void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
+float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
 	local vector lp;
-	local float idx, hot, d, ref, i, track, leg;
+	local float idx, hot, d, ref, i, track, leg, pick;
 	local string s, rid;
 
 	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
-		return;
+		return -1;
 
 	track = rec_sb_legtrack[rec_sb_leg];
 	leg   = rec_sb_legnum[rec_sb_leg];
@@ -1137,7 +1148,7 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		else
 			Scores_Text(lp, rec_sb_szrow, "asking the leaderboard...",
 			            SBC_DIM, 1);
-		return;
+		return -1;
 	}
 
 	if (ob_n <= 0)
@@ -1156,7 +1167,7 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			                    i, (rec_sb_tier == SB_TIER_COMMUNITY)
 			                         ? "ranked" : "community"),
 			            SBC_WARN, 0.8);
-		return;
+		return -1;
 	}
 
 	/*
@@ -1179,6 +1190,9 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	                    [rs_x - pad * 0.5, rec_sb_rowh], ob_n,
 	                    rec_sb_oscroll, [0, ceil(rec_sb_cw)]);
 
+	// Explicitly, and not left to the local stack: 0 means "nobody clicked",
+	// and a row index of 0 is a real answer -- hence the +1 at the click site.
+	pick = 0;
 	lp = '0 0 0';
 	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
 	{
@@ -1186,21 +1200,37 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		d   = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;
 
 		/*
-		  HOVERABLE, AND THE CLICK SAYS WHY IT DOES NOTHING.
+		  CLICKABLE WHEN THERE IS SOMETHING BEHIND IT -- build 66, step R5.
 
-		  There is no .rec behind an online row -- the recording is on the
-		  machine that set it -- so there is nothing to hand Watch_Open.  An
-		  inert list reads as broken, and a silent click reads as worse, so
-		  this follows the RT_LOBBY precedent one function up: refuse where
-		  the reason is known, keep the board open, and say the sentence.
+		  This used to refuse every online row with "online times are set on
+		  other machines -- there is no replay on this disk", which was true
+		  when it was written and is now true of only some rows.  A lobby
+		  writes a .rec, surfd indexes it, and the row carries the ledger id;
+		  what is missing is a download, not a recording.
+
+		  THE PICK IS RETURNED, NEVER ACTED ON HERE, and the local drawer's
+		  essay one function down is the reason: acting inside the list runs
+		  with the scroll view's clip still pushed and sui's click-once state
+		  uncleared, so the next frame sees the same release and fires twice.
 		*/
 		sui_action_element(lp, [rs_x - pad * 0.5, rec_sb_rowh], rid, sui_noop);
 		hot = sui_is_hovered(rid);
+		/*
+		  THE HIGHLIGHT IS THE AFFORDANCE: a row with no recording behind it
+		  does not light up, so the list says which rows are worth clicking
+		  before one is clicked.  It still ACCEPTS the click -- silence is
+		  worse than a sentence -- and the hand-off says which of the three
+		  reasons applies.
+
+		  Still owed: the same fact as a WORD, in a column, per the RT_LOBBY
+		  precedent.  Colour alone is a poor mark and this board has no spare
+		  column to put one in yet.
+		*/
 		if (hot)
+		if (ob_rep[idx] > 0)
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
 		if (sui_is_released(rid))
-			print("^3scores:^7 online times are set on other machines -- "
-			      "there is no replay on this disk.  Your own are under Local.\n");
+			pick = idx + 1;     // +1 so row 0 is distinguishable from "none"
 
 		Font_Set(ui_font_mono);
 
@@ -1288,6 +1318,111 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		}
 	}
 	sui_list_view_end();
+	return pick - 1;
+};
+
+/*
+  Acting on a click in the ONLINE list -- build 66, step R5.
+
+  TWO PHASES, BECAUSE THE FILE IS NOT HERE YET.  The local list can hand a path
+  straight to Watch_Open; this one has to ask for ~1 MB over the network first,
+  so the click STARTS something and a later frame finishes it.  Both halves run
+  from here, after sui_end, for the reason the local hand-off gives at length.
+
+  THE INTENT IS REMEMBERED IN rec_sb_wantrep, and that is not bookkeeping for
+  its own sake.  The download completes in the engine whether or not this board
+  is open -- URI_Get_Callback is driven by the transfer, not by the draw -- so
+  without a live intent, closing the board mid-fetch and reopening it later
+  would find a READY replay sitting there and open it, seconds after the player
+  had moved on.  Closing the board cancels the intent; the bytes are still
+  cached, so the next click on that row is instant.
+*/
+void(float pick) Scores_OnlineHandOff =
+{
+	local string path;
+	local float rep, st, code;
+
+	if (pick >= 0)
+	{
+		rep = ob_rep[pick];
+		if (rep < 1)
+		{
+			/*
+			  THE REFUSAL NARROWED.  It used to be one sentence for every
+			  online row -- "online times are set on other machines" -- which
+			  was true of all of them when it was written and is now true of
+			  some.  0 is three different facts and they deserve different
+			  words; the tier separates the one that will never have a file
+			  from the ones that merely do not.
+			*/
+			if (rec_sb_tier == SB_TIER_COMMUNITY)
+				print("^3scores:^7 a community time is set on somebody "
+				      "else's server -- its recording never reaches us.\n");
+			else
+				print("^3scores:^7 no recording was kept for that run -- "
+				      "it predates recorded lobbies, or none was stored.\n");
+		}
+		else
+		{
+			rec_sb_wantrep = rep;
+			if (!Online_ReplayFetch(rep))
+				print("^3scores:^7 could not ask for that replay -- "
+				      "check lobby_dir.\n");
+			else if (Online_ReplayState() == ORS_FETCH)
+				print("^3scores:^7 fetching replay...\n");
+		}
+	}
+
+	// The deadline: nothing else polls, and the engine's HTTP client has no
+	// wall-clock timeout of its own.
+	Online_ReplayPoll();
+
+	if (!rec_sb_wantrep)
+		return;
+
+	st = Online_ReplayState();
+
+	if (st == ORS_FAIL)
+	{
+		code = Online_ReplayCode();
+		if (code == 404)
+			print("^3scores:^7 that recording is no longer on the server.\n");
+		else if (code == 429)
+			print("^3scores:^7 too many replay downloads just now -- "
+			      "try again in a minute.\n");
+		else if (code)
+			print(sprintf("^3scores:^7 replay download failed (%g).\n", code));
+		else
+			print("^3scores:^7 replay download failed.\n");
+		rec_sb_wantrep = 0;
+		Online_ReplayClear();
+		return;
+	}
+
+	if (st != ORS_READY)
+		return;
+
+	// A reply for a row the player has since clicked away from is not this
+	// board's business: the id that landed must be the id still wanted.
+	if (Online_ReplayRep() != rec_sb_wantrep)
+		return;
+
+	path = Online_ReplayFile();
+	if (path == "")
+	{
+		rec_sb_wantrep = 0;
+		return;
+	}
+
+	/*
+	  ORDER MATTERS: Watch_Open reads the file while `path` still points into
+	  cl_online.qc's strzone, so the clear comes last.  Scores_Close touches
+	  neither.
+	*/
+	rec_sb_wantrep = 0;
+	Scores_Close();
+	Watch_Open(path);
+	Online_ReplayClear();
 };
 
 void(vector scr) Scores_Draw =
@@ -1565,7 +1700,7 @@ void(vector scr) Scores_Draw =
 	pick = -1;
 
 	if (Scores_IsOnline())
-		Scores_DrawOnlineRows(rp, rs, pad);
+		pick = Scores_DrawOnlineRows(rp, rs, pad);
 	else
 		pick = Scores_DrawLocalRows(rp, rs, tick, pad);
 
@@ -1654,6 +1789,12 @@ void(vector scr) Scores_Draw =
 	  boundary, which is what every other button in this file does implicitly by
 	  being the last thing drawn.
 	*/
+	if (Scores_IsOnline())
+	{
+		Scores_OnlineHandOff(pick);
+		return;
+	}
+
 	if (pick >= 0)
 	{
 		/*
@@ -1685,6 +1826,18 @@ void(vector scr) Scores_Draw =
 */
 void() Scores_Close =
 {
+	/*
+	  CLOSING THE BOARD CANCELS A PENDING REPLAY, and this line is the whole
+	  reason rec_sb_wantrep exists.  The download itself is not cancelled --
+	  nothing in the engine can cancel one, and the bytes are worth having
+	  cached anyway -- but a player who closed the board is not waiting, and a
+	  replay that opened itself ten seconds later would be inexplicable.
+
+	  Before the `rec_sb_open` test, deliberately: Scores_Close is called on
+	  paths where the board is already shut and the intent must still go.
+	*/
+	rec_sb_wantrep = 0;
+
 	if (!rec_sb_open)
 		return;
 	rec_sb_open = FALSE;
