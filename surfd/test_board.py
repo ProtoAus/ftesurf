@@ -164,12 +164,12 @@ def user_version(mod):
 print("\n--- 1. schema -----------------------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 2", user_version(m), 2)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 2)
+check("a fresh database is stamped schema 3", user_version(m), 3)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 3)
 check("an empty board answers with an empty row list", names(board(m)), [])
 
 m = fresh(seed_v1=True)
-check("a schema-1 database upgrades to 2", user_version(m), 2)
+check("a schema-1 database upgrades to 3", user_version(m), 3)
 conn = sqlite3.connect(m._test_db)
 kept = conn.execute("SELECT map FROM lobbies").fetchall()
 conn.close()

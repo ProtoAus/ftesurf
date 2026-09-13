@@ -68,7 +68,7 @@ X-Forwarded-For is not trusted, so a heartbeat cannot advertise a lobby on
 another host.
 
 ```
-POST /api/run         (application/x-www-form-urlencoded)   -- schema 2
+POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     key       shared secret; 403 if wrong or missing
     map       map name, <=64 chars of [A-Za-z0-9_.+-]; REFUSED if longer
     track     0 main, 1+ bonus            (sh_zones.qc: zone_track)  REQUIRED
@@ -80,8 +80,26 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 2
     flags     the TF_* word AT THE FINISH (the .rec header's `flags`)
     tier      "ranked" (default) or "community"; may only be lowered
     node      which server witnessed it
-    runid     the .rec header's runid, so the evidence can be found later
-  -> 200 {"ok":true,"stored":true|false,"best":<ms>}
+    runid     accepted and stored, but NOTHING SENDS IT and it does not name
+              a recording.  sv_lobby.qc's body has no runid field, so every
+              real submission stores "".  The .rec header does carry one, but
+              it is <YYYYMMDD>-<HHMMSS>-<slot> written at run START, with no
+              node component, across five processes that all number slots from
+              zero -- its own grammar block calls it "unique-ish".  This line
+              used to say it was how the evidence is found later; that has
+              never been true.  `rec` is.
+    rec       the BASENAME of the .rec the server just closed, e.g.
+              0000279_lex-3eb1bd43_run.rec.  OPTIONAL: a run that left no
+              keepable recording sends nothing and its row honestly reports no
+              replay.  Ignored from an untrusted source -- a path is only
+              evidence for a node we own -- and checked three ways before it is
+              stored: the grammar FS_RunLeaf can emit, the 7-digit stamp
+              against `ticks` (SV_RecClose stamps with the same value it
+              submits), and the 8 hex against sha256(player).  A failed check
+              drops the leaf and logs it; it NEVER refuses the run.
+    recbytes  the recording's size as the recorder reported at close, or -1
+    rectrunc  1 if the run hit FS_RECMAX and the recording is short
+  -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>}
   -> 204        the run has no board at all (practice or cheated)
 
 GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
@@ -89,8 +107,23 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
   -> 200 {"v":1,"t":..,"map":..,"track":..,"leg":..,"tier":..,"style":..,
           "counts":{"ranked":n,"community":n},"offset":n,
           "rows":[{"r":1,"player":..,"name":..,"ticks":..,"rate":..,
-                   "ms":..,"flags":..,"when":..}]}
+                   "ms":..,"flags":..,"when":..,"rep":..}]}
 ```
+
+`rep` is a row in `replays`, or 0 when nothing is indexed for that row.
+
+THE TWO TABLES ANSWER TWO DIFFERENT QUESTIONS and neither can answer the
+other's.  `runs` is the BOARD: one row per player per board, their best, and
+an improvement overwrites the row that described the run it beat.  `replays`
+is the LEDGER: one row per recording on disk, appended at every finish that
+kept a file -- faster, slower and tied alike -- and never rewritten except to
+re-describe bytes that were genuinely replaced.
+
+Since build 66 the lobbies delete nothing (`rec_runs_keep 0`), so without the
+ledger a beaten run's file would survive on disk with nothing left anywhere to
+say whose run it was, under what name, on which board.  A kept file that
+cannot be attributed is not kept in any useful sense.  The board still shows
+one time per player; the ledger is what stands behind it.
 
 `track` and `leg` are **required on POST and defaulted to 0 on GET**, and the
 asymmetry is deliberate. Defaulting them on a read is a convenience -- most

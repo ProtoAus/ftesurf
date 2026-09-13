@@ -17,6 +17,7 @@ Deliberate design notes:
     distinct nodes is capped, and each source IP is rate limited.
 """
 
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -122,6 +123,21 @@ RATE_MAX_TRUSTED = int(2.5 * CLUSTER_NODES_PLANNED * (60 / 5))   # = 1920
 RUN_RATE_MAX = 120       # run submissions per RATE_WINDOW per source IP
 
 MAX_RUNS = 200000        # hard cap on stored rows; see the reap in submit_run
+
+# THE REPLAY LEDGER'S CAP, AND IT BEHAVES DIFFERENTLY FROM MAX_RUNS ON PURPOSE.
+# Reaching MAX_RUNS refuses the submission with a 429, because a board row is
+# the thing being asked for and silently not storing it would be a lie.  An
+# index entry is not: reaching this cap logs and stores the run anyway, with
+# replay_id 0.  A first-time player must never be refused a time because a
+# bookkeeping table filled up.
+#
+# The number is sized off the disk rather than off taste.  The lobbies keep
+# every recording (rec_runs_keep 0) at a measured ~90 KB median, so 76 GB of
+# free space is ~800k recordings; this cap sits above that, which makes the
+# DISK the thing that runs out first and keeps the warning honest -- if this
+# ever trips, something is submitting leaves that do not correspond to files.
+MAX_REPLAYS = 1000000
+
 MAX_MAP_LEN = 64         # a map name is a directory component on the client
 MAX_TRACK = 63           # zone_track: 0 main, 1+ bonus
 MAX_LEG = 63             # FS_LegOf: 0 the full track, k stage k
@@ -151,7 +167,7 @@ TF_CHEAT = 256
 TF_NOJOURNAL = 512
 TF_NORULESET = 1024
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 # --------------------------------------------------------------------------
@@ -578,6 +594,108 @@ def migrate():
             conn.commit()
             version = 2
 
+        if version < 3:
+            # SCHEMA 3: THE REPLAY LEDGER -- one row per recording on disk.
+            #
+            # WHY A SECOND TABLE AND NOT MORE COLUMNS ON `runs`.  `runs` is a
+            # PROJECTION: its primary key is the board key plus the player, and
+            # submit_run's ON CONFLICT ... DO UPDATE overwrites name, ticks,
+            # flags, node and runid every time that player improves.  It is the
+            # right shape for a board -- Lex's ask is "display the best from
+            # that user" and this table has always answered exactly that -- and
+            # it is the wrong shape for history, because the row that described
+            # the beaten run is gone.
+            #
+            # Since build 66 the lobbies KEEP every recording (rec_runs_keep 0
+            # returns out of SV_RecPrune before it opens the directory), so the
+            # bytes of a beaten run survive while the only record of WHOSE run
+            # they were, under WHICH name, on WHICH board, did not.  A kept file
+            # nothing can attribute is not kept in any useful sense.  This table
+            # is the thing that remembers.
+            #
+            # ONE ROW PER FILE, which is what UNIQUE(map, track, leg, leaf)
+            # says: map+track+leg IS the directory (FS_RunDir) and leaf is the
+            # basename, so the tuple is the path.  It has to be an upsert rather
+            # than a plain insert because the game can legitimately write the
+            # same name twice -- SV_RecClose does fremove(dst) then frename, so
+            # an exact tie by the same player on the same leg REPLACES the
+            # bytes.  Two rows for one file would mean one of them describes
+            # bytes that are not there; the upsert keeps the row describing
+            # whatever actually survived.
+            #
+            # map AND map_dir ARE BOTH HERE AND THEY ARE DIFFERENT STRINGS.
+            # clean_map lowercases, because the board key must merge two
+            # spellings of one map rather than rank them separately.  The DISK
+            # does not: the engine copies the map name as given and the game
+            # builds data/runs/<mapname>/, and six maps in the library are
+            # capitalised (Bhop_Mukiology, bhop_HaddocK, bhop_HeLL,
+            # bhop_addict_V2, surf_Rebel_Resistance_Revamp,
+            # surf_prottos_NightMare).  ext4 is case-sensitive, so a path built
+            # from the lowercased key misses every recording on those six and
+            # reads as "there is no replay".  map joins runs; map_dir builds the
+            # path.
+            #
+            # EVERY BOARD COLUMN IS COPIED, deliberately.  tier and style are
+            # frozen as of this submission because both are derived from flags
+            # and a player can move between boards between runs; `name` is
+            # frozen because it is the netname that PRODUCED this filename's
+            # slug and runs.name will not be it for long.  ~170 bytes a row.
+            #
+            # NO FOREIGN KEY from runs.replay_id.  A superseded run has no
+            # `runs` row at all, so there is nothing to point back at, and an FK
+            # invites a cascade -- which is the one behaviour this table exists
+            # to never have.
+            #
+            # seen/checked ARE FOR A SWEEPER THAT DOES NOT EXIST YET.  They are
+            # in the schema now so adding it later is not a migration: -1 means
+            # "no one has looked", not "missing".  `bytes` by contrast is filled
+            # at submission time from the recorder's own final offset, so the
+            # ledger can answer "how much disk is this" from day one.
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS replays (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    map        TEXT    NOT NULL,
+                    map_dir    TEXT    NOT NULL,
+                    track      INTEGER NOT NULL,
+                    leg        INTEGER NOT NULL,
+                    leaf       TEXT    NOT NULL,
+                    tier       TEXT    NOT NULL,
+                    style      TEXT    NOT NULL,
+                    player     TEXT    NOT NULL,
+                    name       TEXT    NOT NULL,
+                    ticks      INTEGER NOT NULL,
+                    tickrate   REAL    NOT NULL,
+                    millis     INTEGER NOT NULL,
+                    flags      INTEGER NOT NULL,
+                    node       TEXT    NOT NULL,
+                    submitted  INTEGER NOT NULL,
+                    bytes      INTEGER NOT NULL DEFAULT -1,
+                    truncated  INTEGER NOT NULL DEFAULT 0,
+                    seen       INTEGER NOT NULL DEFAULT -1,
+                    checked    INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE (map, track, leg, leaf)
+                );
+                CREATE INDEX IF NOT EXISTS replays_player
+                    ON replays (map, track, leg, tier, style, player,
+                                millis, submitted);
+                CREATE INDEX IF NOT EXISTS replays_sweep
+                    ON replays (checked, id);
+                """
+            )
+            # ALTER, not a rebuild: the live table is stamped user_version 2, so
+            # CREATE TABLE IF NOT EXISTS on `runs` would do nothing there while a
+            # fresh install got the new shape -- the exact divergence the
+            # docstring above is guarding against.  0 means "no recording is
+            # indexed for this row", which is the honest value for every row
+            # that already exists and for every run whose file never landed.
+            conn.execute(
+                "ALTER TABLE runs ADD COLUMN replay_id INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.execute("PRAGMA user_version=3")
+            conn.commit()
+            version = 3
+
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:
@@ -689,6 +807,37 @@ def strict_float(raw, low, high):
 # directory's: the character set Momentum's library actually uses, and
 # nothing that can traverse or separate.
 _MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
+
+# THE NAME OF A RECORDING, as the game wrote it.  Build 66's FS_RunLeaf emits
+# `<stamp>_<who>_<tag>.rec`, and this is that grammar transcribed -- narrowly,
+# because the value arrives over the network and ends up as a path component.
+#
+# FOUR SHAPES, ALL REAL, and the middle group is optional for that reason:
+#   0000279_lex-3eb1bd43_pb.rec   the ordinary lobby case: slug + 8 hex of
+#                                 sha256(guid).  FS_NameSlug emits only [a-z0-9]
+#                                 and caps at FS_WHO_NAMEMAX (12).
+#   0000279_3eb1bd43_pb.rec       a name that slugs to nothing ("!!!", "").
+#   0000279_s3_pb.rec             SV_RecWho's fallback when the GUID is empty,
+#                                 sprintf("s%g", slot), slot < FS_MAXPLAYERS.
+#   0000279_pb.rec                who == "" -- SV_RecWho returns that whenever
+#                                 Lobby_Active() is false.  A submitting server
+#                                 with lobby_enable 0 is an odd configuration
+#                                 but it is not an invalid one, and a pattern
+#                                 that demanded the id would have zeroed every
+#                                 row from it in silence.
+#
+# THE STAMP IS 7 DIGITS OR MORE, never fewer: FS_RunStamp left-pads to 7 and
+# lets a longer number through, and MAX_TICKS allows nine digits.
+#
+# THE TAG SET IS FS_TagArchived's, exactly.  Only an archived tag takes a
+# stamped name; `last`, `cheat` and the `lobby` stub are FIXED names whose
+# bytes are overwritten by their own next finish, so citing one in a durable
+# index would be citing bytes that change under the row.
+_LEAF_OK = re.compile(
+    r"^[0-9]{7,10}_"
+    r"(?:(?:[a-z0-9]{1,12}-)?[0-9a-f]{8}_|s[0-9]{1,2}_)?"
+    r"(?:run|pb|shadow)\.rec$"
+)
 
 
 def clean_map(raw):
@@ -1002,9 +1151,28 @@ def submit_run():
         log.warning("rejected run from %s: bad key", src)
         return fail(403, "forbidden")
 
-    mapname = clean_map(request.form.get("map"))
+    # TWO SPELLINGS OF ONE MAP NAME, AND THEY ARE BOTH NEEDED.
+    #
+    # `mapname` is the board KEY and clean_map lowercases it, so bhop_HeLL and
+    # bhop_hell rank against each other instead of forming two boards.  That is
+    # right and it stays.
+    #
+    # `map_dir` is the PATH component, and the disk does not lowercase: the
+    # engine copies the map name as given (Q_strncpyz into svs.name, no tolower
+    # anywhere on that path), the game builds data/runs/<mapname>/, and ext4 is
+    # case-sensitive.  Six maps in the shipped library carry capitals, so a path
+    # rebuilt from the key would miss every recording on them -- and a missing
+    # file reads as "this run has no replay", which is a lie that looks like a
+    # feature.  Keep the raw spelling when it is a valid name and differs only
+    # in case; fall back to the key otherwise, so a hostile spelling can never
+    # reach a path.
+    raw_map = clean_text(request.form.get("map"), MAX_MAP_LEN + 1)
+    mapname = clean_map(raw_map)
     if not mapname:
         return fail(400, "bad map")
+    map_dir = mapname
+    if _MAPNAME_OK.match(raw_map) and raw_map.lower() == mapname:
+        map_dir = raw_map
 
     track = strict_int(request.form.get("track"), 0, MAX_TRACK)
     if track is None:
@@ -1058,9 +1226,138 @@ def submit_run():
 
     millis = int(round(ticks * 1000.0 / tickrate))
 
+    # ------------------------------------------------------------------
+    # THE RECORDING THIS RUN LEFT BEHIND.
+    #
+    # The lobby sends the BASENAME of the .rec it just closed.  It is sent
+    # rather than derived, and that is the whole design decision, so here is
+    # why deriving it does not work even though it looks like it should:
+    #
+    #   * `name` here is not always the netname the filename was built from.
+    #     Lobby_SubmitRun substitutes "player" for an empty netname; SV_RecWho
+    #     hashes the unsubstituted one.  They diverge with nobody at fault.
+    #   * runs.name is overwritten on every improvement, so by the time anyone
+    #     asks, the slug that named a beaten file is a name we no longer hold.
+    #   * `tier` is in the board key and appears nowhere on disk, so two files
+    #     from one player on one leg cannot be told apart by inspection.
+    #
+    # A name that arrives is therefore transcribed, never rebuilt -- but it is
+    # checked three ways, and the checks are free because they run on every
+    # real finish forever rather than once in a test:
+    #
+    #   shape    the grammar FS_RunLeaf can actually emit (_LEAF_OK).
+    #   stamp    SV_RecClose stamps the file with the SAME `ticks` it then
+    #            submits, so the 7-digit prefix must equal this row's ticks.
+    #            Two views of one value; if they disagree, one of them is wrong
+    #            and the row must not claim the file.
+    #   digest   the 8 hex in the middle are sha256(guid)[:8] and `player` IS
+    #            that guid, so this compares FTE's digest_hex("SHA256") against
+    #            Python's hashlib on live data.  FS_PlayerSeg's own comment
+    #            says that agreement is checked rather than assumed; this is
+    #            where it is checked.
+    #
+    # A FAILED CHECK NEVER FAILS THE RUN.  It drops the leaf and logs.  Refusing
+    # a legitimate time because its filename surprised a regex would be a far
+    # worse failure than an unindexed file, and the unindexed file is counted.
+    # The digest check does not even drop it: the game named the file and the
+    # game is the authority on what it wrote -- a mismatch is a loud warning
+    # about our own assumption, not evidence against the run.
+    leaf = clean_text(request.form.get("rec"))
+    if leaf and not is_trusted(src, TRUSTED_SOURCES):
+        # A filesystem path is only evidence for a node we own.  Port 8084
+        # answers the internet with the shared key as its only barrier, so an
+        # untrusted submitter may file a time and may not name a file on our
+        # disk.  A future off-LAN official server must join TRUSTED_SOURCES or
+        # its rows lose their leaves -- which is the safe direction to fail.
+        log.warning("ignoring rec leaf from untrusted source %s", src)
+        leaf = ""
+    if leaf and not _LEAF_OK.match(leaf):
+        log.warning("rejecting malformed rec leaf %r from %s", leaf, src)
+        leaf = ""
+    if leaf and leaf.split("_", 1)[0] != str(ticks).zfill(7):
+        log.warning("rec leaf %r disagrees with ticks %d from %s",
+                    leaf, ticks, src)
+        leaf = ""
+    if leaf:
+        want = hashlib.sha256(player.encode("utf-8", "replace")).hexdigest()[:8]
+        if want not in leaf:
+            log.warning("rec leaf %r carries no sha256(player)[:8]=%s from %s",
+                        leaf, want, src)
+
+    recbytes = strict_int(request.form.get("recbytes"), -1, 1 << 40)
+    if recbytes is None:
+        recbytes = -1
+    rectrunc = 1 if clean_text(request.form.get("rectrunc")) == "1" else 0
+
     db = get_db()
     try:
         with db:
+            # THE LEDGER ROW GOES IN FIRST, ABOVE THE IMPROVEMENT TEST, and the
+            # ordering is the entire fix rather than a tidiness preference.
+            #
+            # The "you did not improve" branch below RETURNS.  That return is
+            # inside `with db:`, and sqlite3's context manager commits on any
+            # non-exception exit -- a return is one -- so a row written here is
+            # committed by the same transaction whichever way the request goes.
+            # Written after the test instead, a beaten run would be indexed only
+            # when it happened to be an improvement, which is precisely the
+            # history this exists to stop losing.
+            #
+            # Every finish that produced a keepable file gets a row: faster,
+            # slower and exactly tied alike.
+            rid = 0
+            if leaf:
+                have = db.execute(
+                    "SELECT id FROM replays"
+                    " WHERE map=? AND track=? AND leg=? AND leaf=?",
+                    (mapname, track, leg, leaf),
+                ).fetchone()
+                if have is None:
+                    nrep = db.execute(
+                        "SELECT COUNT(*) FROM replays").fetchone()[0]
+                else:
+                    nrep = 0          # an upsert of a row we already hold
+                if have is not None or nrep < MAX_REPLAYS:
+                    db.execute(
+                        """
+                        INSERT INTO replays (map, map_dir, track, leg, leaf,
+                                             tier, style, player, name, ticks,
+                                             tickrate, millis, flags, node,
+                                             submitted, bytes, truncated)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
+                            map_dir   = excluded.map_dir,
+                            tier      = excluded.tier,
+                            style     = excluded.style,
+                            player    = excluded.player,
+                            name      = excluded.name,
+                            ticks     = excluded.ticks,
+                            tickrate  = excluded.tickrate,
+                            millis    = excluded.millis,
+                            flags     = excluded.flags,
+                            node      = excluded.node,
+                            submitted = excluded.submitted,
+                            bytes     = excluded.bytes,
+                            truncated = excluded.truncated,
+                            seen      = -1,
+                            checked   = 0
+                        """,
+                        (mapname, map_dir, track, leg, leaf, tier, style,
+                         player, name, ticks, tickrate, millis, flags, node,
+                         now, recbytes, rectrunc),
+                    )
+                    rid = db.execute(
+                        "SELECT id FROM replays"
+                        " WHERE map=? AND track=? AND leg=? AND leaf=?",
+                        (mapname, track, leg, leaf),
+                    ).fetchone()[0]
+                else:
+                    # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
+                    # index being full is not a reason to refuse somebody a
+                    # time.
+                    log.warning("replay cap %d reached; not indexing %r",
+                                MAX_REPLAYS, leaf)
+
             prev = db.execute(
                 """
                 SELECT millis, submitted FROM runs
@@ -1088,15 +1385,15 @@ def submit_run():
                                    prev["millis"], prev["submitted"], player)
                 return jsonify(
                     {"ok": True, "stored": False, "best": prev["millis"],
-                     "rank": rank, "of": of}
+                     "rank": rank, "of": of, "rep": rid}
                 )
 
             db.execute(
                 """
                 INSERT INTO runs (map, track, leg, tier, style, player, name,
                                   ticks, tickrate, millis, flags, node, runid,
-                                  submitted)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                  submitted, replay_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(map, track, leg, tier, style, player) DO UPDATE SET
                     name      = excluded.name,
                     ticks     = excluded.ticks,
@@ -1105,10 +1402,11 @@ def submit_run():
                     flags     = excluded.flags,
                     node      = excluded.node,
                     runid     = excluded.runid,
-                    submitted = excluded.submitted
+                    submitted = excluded.submitted,
+                    replay_id = excluded.replay_id
                 """,
                 (mapname, track, leg, tier, style, player, name, ticks,
-                 tickrate, millis, flags, node, runid, now),
+                 tickrate, millis, flags, node, runid, now, rid),
             )
     except sqlite3.Error as exc:
         log.exception("run db error from %s: %s", src, exc)
@@ -1124,11 +1422,12 @@ def submit_run():
 
     log.info(
         "run map=%r track=%d leg=%d tier=%s style=%s player=%r ticks=%d (%dms) "
-        "rank=%d/%d",
+        "rank=%d/%d rep=%d %s",
         mapname, track, leg, tier, style, player, ticks, millis, rank, of,
+        rid, leaf or "-",
     )
     return jsonify({"ok": True, "stored": True, "best": millis,
-                    "rank": rank, "of": of})
+                    "rank": rank, "of": of, "rep": rid})
 
 
 @app.get("/api/board")
@@ -1194,7 +1493,8 @@ def board():
 
         for i, row in enumerate(db.execute(
             """
-            SELECT player, name, ticks, tickrate, millis, flags, submitted
+            SELECT player, name, ticks, tickrate, millis, flags, submitted,
+                   replay_id
               FROM runs
              WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
              ORDER BY """ + BOARD_ORDER + """
@@ -1212,6 +1512,20 @@ def board():
                     "ms": row["millis"],
                     "flags": row["flags"],
                     "when": row["submitted"],
+                    # THE REPLAY HANDLE.  0 means "no recording is indexed for
+                    # this row", which a client must render as "no replay" and
+                    # never as an error -- a community row, a row set before
+                    # build 66, and a row whose file failed to land all read 0
+                    # and all are legitimate times.
+                    #
+                    # AN INTEGER, NOT THE FILENAME, for two reasons that are
+                    # both about the consumer.  The client keeps per-row values
+                    # in parallel fixed arrays (OB_MAXROW), and a string column
+                    # there needs a strzone per entry -- a rule cl_online.qc and
+                    # cl_scores.qc both already carry.  And it makes R4's route
+                    # /api/replay/<int:id>, so the download's whole traversal
+                    # surface is one integer rather than a path from the wire.
+                    "rep": row["replay_id"],
                 }
             )
     except sqlite3.Error as exc:
