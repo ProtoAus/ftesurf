@@ -1,5 +1,13 @@
 #!/bin/sh
-# install_board_endpoint.sh -- put GET /api/board on the public vhost.
+# install_board_endpoint.sh -- put surfd's public read endpoints on the vhost.
+#
+# THE NAME IS NARROWER THAN THE JOB, and keeping it is deliberate: the path is
+# documented in three places and in the repo history, and renaming it to gain
+# accuracy in one line would cost a working instruction everywhere else.  What
+# it actually does is install $HOME_DIR/surfd.nginx WHOLESALE -- whatever
+# read-only routes that file currently declares.  As of schema 3 that is
+# /api/board AND /api/replay/<id>; the exposure manifest at the top of
+# surfd.nginx is the authority, not this header.
 #
 # WHY THIS EXISTS AS ITS OWN SCRIPT.  setup_public.sh does the whole public
 # deployment, certbot included, and re-running it to add one location block is
@@ -35,14 +43,18 @@ for f in /etc/nginx/snippets/surfd.conf /etc/nginx/conf.d/surfd-ratelimit.conf; 
 done
 
 echo "== the rate-limit zones (http{} scope -- limit_req_zone is not valid in a location) =="
-# BOTH zones, every time. The board zone is what keeps one player from spending
-# everybody's budget: surfd sees 127.0.0.1 for every request that arrives
-# through this proxy, so nginx is the only party that still knows who is who.
+# ALL THREE zones, every time. The board zone is what keeps one player from
+# spending everybody's budget: surfd sees 127.0.0.1 for every request that
+# arrives through this proxy, so nginx is the only party that still knows who
+# is who.  surfdreplay is the same argument with a much smaller number, because
+# a replay is ~1 MB where a board page is ~4 KB -- at the board's rate one
+# address could pull the whole home upstream link indefinitely.
 cat > /etc/nginx/conf.d/surfd-ratelimit.conf <<'ZONES'
 limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
+limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;
 ZONES
-echo "  wrote surfdlogin + surfdboard"
+echo "  wrote surfdlogin + surfdboard + surfdreplay"
 
 echo "== the snippet =="
 install -m 0644 "$HOME_DIR/surfd.nginx" /etc/nginx/snippets/surfd.conf
@@ -75,6 +87,20 @@ CODE=$(curl -s -o /tmp/b64board.out -w '%{http_code}' \
 echo "  GET /api/board -> $CODE"
 head -c 200 /tmp/b64board.out; echo
 rm -f /tmp/b64board.out
+
+# /api/replay: a HEAD, because a GET here would pull a whole recording through
+# the verification step for no extra information.  A 200 or 404 both prove the
+# route is REACHED -- 404 only means this box has no replay id 1 -- whereas the
+# 404 from `location / { return 404; }` is what it looked like before the
+# snippet was installed, so the body is what distinguishes them.  surfd answers
+# JSON; the vhost's catch-all answers nginx's HTML.
+REP=$(curl -s -o /tmp/b64rep.out -w '%{http_code}' -I \
+    "https://play.proto.bar/api/replay/1")
+echo "  HEAD /api/replay/1 -> $REP"
+curl -s "https://play.proto.bar/api/replay/99999999" | head -c 120; echo
+echo "    (the line above must be surfd's JSON, not nginx HTML -- that is how"
+echo "     you tell 'route installed, no such replay' from 'route missing')"
+rm -f /tmp/b64rep.out
 
 echo "  heartbeat must STILL be absent (it must never be proxied):"
 echo "    /api/heartbeat -> $(curl -s -o /dev/null -w '%{http_code}' \

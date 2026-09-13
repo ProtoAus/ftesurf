@@ -1918,7 +1918,7 @@ void(entity e, float track, float leg, float ticks, float flags,
 	               uri_escape(sprintf("p%g", cvar("sv_port"))));
 	body = sprintf("%s&player=%s&name=%s",
 	               body, uri_escape(guid), uri_escape(nm));
-	body = sprintf("%s&ticks=%g&tickrate=%.4f&flags=%g&tier=ranked",
+	body = sprintf("%s&ticks=%d&tickrate=%.4f&flags=%g&tier=ranked",
 	               body, ticks, rate, flags);
 	/*
 	  A FOURTH sprintf, for the same reason there are three: the eighth
@@ -1933,8 +1933,28 @@ void(entity e, float track, float leg, float ticks, float flags,
 	  empty `rec` is sent as an empty field rather than omitted, because
 	  clean_text(None) and clean_text("") are the same "" to surfd and one
 	  spelling is easier to grep for than two.
+
+	  %d AND NOT %g, AND THIS IS NOT STYLE.  `%g` carries SIX SIGNIFICANT
+	  DIGITS and then switches to exponent form, so a seven-digit byte count
+	  goes out as `1.12889e+06`, which surfd's strict_int correctly refuses --
+	  and a refused recbytes falls back to -1, i.e. "not stated", silently.
+	  That is exactly what the first real run on a public lobby did: 1,128,886
+	  bytes on disk, `bytes -1` in the ledger, no error anywhere.
+
+	  The test could not have caught it and that is the lesson worth keeping.
+	  The only finish a config can produce is a noclip flight, which is over in
+	  seconds -- 38,902 bytes, FIVE digits, which `%g` prints exactly.  The
+	  harness was not wrong, it was SMALLER THAN REALITY, and the boundary sat
+	  between the two.  Any field here that can reach seven digits has the same
+	  flaw, so `ticks` above takes %d as well: at 66.67/s it needs a 4.2-hour
+	  run to reach it, but that field is the TIME, and a time that arrives as
+	  `1.00000e+06` is not a time.
+
+	  Both are floats, and %d on a float is exact to 2^24 (16.7 MB, ~43 minutes
+	  of recording) and truncating beyond -- which for a size hint is fine, and
+	  is a different question from the one this fixes.
 	*/
-	body = sprintf("%s&rec=%s&recbytes=%g&rectrunc=%g",
+	body = sprintf("%s&rec=%s&recbytes=%d&rectrunc=%g",
 	               body, uri_escape(rec), recbytes, rectrunc);
 
 	/*

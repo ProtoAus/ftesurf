@@ -112,6 +112,36 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
 
 `rep` is a row in `replays`, or 0 when nothing is indexed for that row.
 
+```
+GET /api/replay/<id>            <id> being a row's `rep`
+  -> 200 the recording itself, text/plain, Content-Disposition: attachment
+  -> 404 {"ok":false,"error":"no such replay"}        no row with that id
+  -> 404 {"ok":false,"error":"replay not on this node"}   row exists, file does not
+  -> 429 rate limited (REPLAY_RATE_MAX per RATE_WINDOW per source)
+```
+
+`rep` IS the `has_replay` flag -- an integer is strictly more informative than
+a boolean would be, and 0 is the "nothing to click" case that a Community row,
+a pre-feature row, and a run whose recording was never kept all land on.
+
+**`rep` says a ROW exists, not that the file does.** Nothing prunes any more,
+so in the normal case they agree; they can disagree if the archive is restored
+from an older backup than the database, or -- the one that will actually happen
+-- once a keyed game server runs on a machine that is not this one. `replays`
+already records `node` per recording and this route does not consult it yet:
+that is the seam to pull when the second node appears.
+
+**The handle is the ledger id and never a path.** The caller names a row and
+surfd decides which file that row means, so there is no attacker-supplied path
+component in the route at all. `SURFD_RUNS` (default
+`/srv/nvme/ftesurf-server/game/ftesurf/data/runs`) is the only root it will
+read from, and a resolved path outside it is refused even though nothing
+validated should be able to produce one.
+
+**There is no upload half, and that is the whole reason this is cheap.** The
+five lobbies and surfd are the same machine, so a `.rec` is already on the disk
+surfd serves from. Only the download is new.
+
 THE TWO TABLES ANSWER TWO DIFFERENT QUESTIONS and neither can answer the
 other's.  `runs` is the BOARD: one row per player per board, their best, and
 an improvement overwrites the row that described the run it beat.  `replays`

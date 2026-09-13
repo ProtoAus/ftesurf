@@ -124,11 +124,13 @@ echo "  installed /etc/nginx/snippets/surfd.conf and surfd-admin.conf"
 # every other site on this box with it.  That is the failure this idempotence
 # check exists to prevent, so it has to test for all of them.
 ZONES='limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
-limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;'
+limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
+limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;'
 if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
-   ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
+   ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdreplay" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
     printf '%s\n' "$ZONES" > /etc/nginx/conf.d/surfd-ratelimit.conf
-    echo "  wrote the surfdlogin + surfdboard rate-limit zones in conf.d"
+    echo "  wrote the surfdlogin + surfdboard + surfdreplay zones in conf.d"
 else
     echo "  rate-limit zones already present"
 fi

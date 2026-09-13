@@ -113,8 +113,15 @@ def fresh(key="testkey", seed_v2=False):
         conn.commit()
         conn.close()
 
+    # The run tree is per-case too, and it MUST be set before the import:
+    # RUNS_DIR is a module constant read once at import time, which is exactly
+    # what stops a test ever reaching the live /srv/nvme default.
+    runs = os.path.join(home, "runs")
+    os.makedirs(runs, exist_ok=True)
+
     os.environ["SURFD_HOME"] = home
     os.environ["SURFD_DB"] = db
+    os.environ["SURFD_RUNS"] = runs
     os.environ["SURFD_ENV"] = os.path.join(home, "surfd.env")
     os.environ.pop("SURFD_PUBLIC_HOST", None)
     os.environ.pop("SURFD_TRUSTED", None)
@@ -122,7 +129,25 @@ def fresh(key="testkey", seed_v2=False):
     mod = importlib.import_module("surfd")
     mod._test_home = home
     mod._test_db = db
+    mod._test_runs = runs
     return mod
+
+
+def put_rec(mod, map_dir, track, leg, leaf_name, body):
+    """Write a recording where a lobby on this box would have left it."""
+    d = os.path.join(mod._test_runs, map_dir, mod.leg_dir(track, leg))
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, leaf_name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(body)
+    return path
+
+
+def fetch(mod, rid, src="127.0.0.1"):
+    """GET /api/replay/<rid>. Returns (status, body-bytes)."""
+    resp = mod.app.test_client().get(
+        "/api/replay/%s" % rid, environ_base={"REMOTE_ADDR": src})
+    return resp.status_code, resp.data
 
 
 def who(player, slug="alice"):
@@ -515,6 +540,137 @@ else:
         nm = "0004108_alice-%s_%s.rec" % (ident, tag)
         check("pattern accepts %-7s == %s" % (tag, want),
               bool(_s._LEAF_OK.match(nm)), want)
+
+
+# --------------------------------------------------------------------------
+print("\n--- 13. the download route serves the row, and only the row -------")
+# R4.  The board hands out `rep`; this is what `rep` is worth.  The cases are
+# the ones where the route would serve THE WRONG FILE or refuse a real one --
+# and the one where it would serve a file from outside the run tree, which is
+# the only genuinely dangerous thing in this feature.
+
+m = fresh()
+BODY = "FTESURF-REC 4\nmap surf_test\nowner Alice\n" + ("x 1 2 3\n" * 400)
+
+# The whole journey a player takes: finish -> board row -> click -> bytes.
+got = submit(m, ticks=4108, rec=leaf(4108))
+put_rec(m, "surf_test", 0, 0, leaf(4108), BODY)
+rid = got["rep"]
+check("a finish hands back a replay handle", rid, 1)
+
+b = board(m)
+check("the board row carries the same handle", b["rows"][0]["rep"], rid)
+
+st, data = fetch(m, rid)
+check("fetching it returns 200", st, 200)
+check("...with the file's exact bytes", data.decode("utf-8"), BODY)
+check("...and the byte count agrees with the disk", len(data), len(BODY))
+
+# An id nobody issued.  404 and not 500, and not a stack trace.
+check("an unknown id is 404", fetch(m, 9999)[0], 404)
+check("id 0 -- what a row with no replay carries -- is 404",
+      fetch(m, 0)[0], 404)
+
+# A row whose file is gone.  This is the drift case: nothing prunes, so it
+# should not happen, and the route must still say so rather than 500.
+os.remove(os.path.join(m._test_runs, "surf_test", "main", leaf(4108)))
+st, data = fetch(m, rid)
+check("an indexed row whose file is gone is 404", st, 404)
+check("...and says it is the FILE that is missing, not the row",
+      json.loads(data)["error"], "replay not on this node")
+put_rec(m, "surf_test", 0, 0, leaf(4108), BODY)          # control: restored
+check("...and the same id works again once the file is back",
+      fetch(m, rid)[0], 200)
+
+# CONTAINMENT.  A leaf that passes the grammar but resolves outside the tree.
+# A symlink is the only way to build one -- which is the point: the handle is
+# an integer, so there is no attacker-supplied path component at all, and this
+# tests the second lock rather than the first.
+m2 = fresh()
+submit(m2, ticks=4108, rec=leaf(4108))
+outside = os.path.join(m2._test_home, "not-a-replay.txt")
+with open(outside, "w") as fh:
+    fh.write("SECRET")
+link_dir = os.path.join(m2._test_runs, "surf_test", "main")
+os.makedirs(link_dir, exist_ok=True)
+link = os.path.join(link_dir, leaf(4108))
+try:
+    os.symlink(outside, link)
+except (OSError, NotImplementedError, AttributeError):
+    print("skip  symlinks unavailable here (containment untested)")
+else:
+    # The control: the target really is readable, so a 404 below is the guard
+    # doing its job and not the file merely being absent.
+    check("control -- the escape target is readable",
+          open(link).read(), "SECRET")
+    st, data = fetch(m2, 1)
+    check("a leaf resolving outside the run tree is refused", st, 404)
+    check("...and its contents are never in the body", b"SECRET" in data, False)
+
+# MAP CASE, again -- the defect three designs shipped.  The row's map_dir is
+# the capitalised spelling; the board key is the lowercased one.
+m3 = fresh()
+submit(m3, map="Bhop_Mukiology", ticks=4108, rec=leaf(4108))
+put_rec(m3, "Bhop_Mukiology", 0, 0, leaf(4108), BODY)
+r = one(m3, "SELECT map, map_dir FROM replays")
+check("the row keeps both spellings", (r["map"], r["map_dir"]),
+      ("bhop_mukiology", "Bhop_Mukiology"))
+check("and the route finds the capitalised directory", fetch(m3, 1)[0], 200)
+
+# A leg that is not the main track, so leg_dir is actually exercised.
+m4 = fresh()
+submit(m4, track=2, leg=3, ticks=4108, rec=leaf(4108))
+put_rec(m4, "surf_test", 2, 3, leaf(4108), BODY)
+check("a bonus-track stage files under bonus_2_stage_3",
+      os.path.isdir(os.path.join(m4._test_runs, "surf_test", "bonus_2_stage_3")),
+      True)
+check("...and the route follows it there", fetch(m4, 1)[0], 200)
+
+# The limiter.  A public route that moves ~1 MB a call needs one, and a cap
+# that never fires is not a cap.
+m5 = fresh()
+submit(m5, ticks=4108, rec=leaf(4108))
+put_rec(m5, "surf_test", 0, 0, leaf(4108), BODY)
+codes = [fetch(m5, 1, src="10.0.0.9")[0]
+         for _ in range(m5.REPLAY_RATE_MAX + 2)]
+check("the first fetch is served", codes[0], 200)
+check("the cap eventually refuses", codes[-1], 429)
+check("...exactly at REPLAY_RATE_MAX", codes.count(200), m5.REPLAY_RATE_MAX)
+check("and a different source is unaffected",
+      fetch(m5, 1, src="10.0.0.10")[0], 200)
+
+# A run with no recording must still file a TIME, and its row must be
+# unclickable rather than broken.
+m6 = fresh()
+got = submit(m6, ticks=4108, rec="")
+check("a finish with no recording still ranks", got["ok"], True)
+check("...and carries no handle", got["rep"], 0)
+check("...and the board says so", board(m6)["rows"][0]["rep"], 0)
+
+
+# --------------------------------------------------------------------------
+print("\n--- 14. leg_dir is pinned to the QC that names the directory ------")
+# surfd rebuilds a path the GAME chose the spelling of.  Two independent
+# spellings of one directory is how every recording on a bonus track goes
+# missing while every row still says it is there.
+
+if not os.path.exists(QC):
+    print("skip  src/shared/sh_defs.qc not beside this checkout")
+else:
+    qc = open(QC, encoding="utf-8", errors="replace").read()
+    hit = re.search(r"FS_LegDir\s*=\s*\{(.*?)\n\};", qc, re.S)
+    body = hit.group(1) if hit else ""
+    check("FS_LegDir spells the full run 'main'", '"main"' in body, True)
+    check("...a stage 'stage_%g'", '"stage_%g"' in body, True)
+    check("...a bonus 'bonus_%g'", '"bonus_%g"' in body, True)
+    check("...and a bonus stage 'bonus_%g_stage_%g'",
+          '"bonus_%g_stage_%g"' in body, True)
+
+    import surfd as _s
+    for (track, leg), want in (((0, 0), "main"), ((0, 4), "stage_4"),
+                               ((1, 0), "bonus_1"), ((2, 3), "bonus_2_stage_3")):
+        check("leg_dir(%d,%d) == %s" % (track, leg, want),
+              _s.leg_dir(track, leg), want)
 
 
 # --------------------------------------------------------------------------

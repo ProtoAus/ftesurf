@@ -12,6 +12,7 @@
 #   GET  /lobbies.json   public, read-only, not rate limited
 #   GET  /health         public, read-only, not rate limited
 #   GET  /api/board      public, read-only, RATE LIMITED -- see the block below
+#   GET  /api/replay/N   public, read-only, RATE LIMITED HARDER -- ~1 MB a call
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -99,6 +100,64 @@ location = /api/board {
     proxy_set_header   X-Forwarded-Proto $scheme;
     proxy_connect_timeout 2s;
     proxy_read_timeout    5s;
+
+    add_header X-Surfd-Proxied "1" always;
+}
+
+# ---------------------------------------------------------------------------
+# GET /api/replay/<id> -- the recording behind a board row.  Schema 3.
+#
+# THE HANDLE IS AN INTEGER, so this prefix carries no path component: surfd
+# looks the id up in `replays` and decides for itself which file that means.
+# Traversal is answered by construction rather than by filtering here, which is
+# why this is a plain prefix match and not a regex trying to be clever.
+#
+# ITS OWN ZONE, AND A MUCH SMALLER ONE, and this is the load-bearing line in
+# the block.  A board page is ~4 KB; a recording is ~1 MB and the first real
+# one was 1,128,886 bytes.  At the board's 120r/m a single address could pull
+# 120 MB a minute -- roughly the whole of a home upstream link, indefinitely,
+# from one IP -- so reusing zone=surfdboard here would have made the leaderboard
+# a bandwidth amplifier.  20r/m matches surfd's own REPLAY_RATE_MAX so the two
+# agree rather than one silently masking the other, and burst=5 absorbs a
+# player opening a few runs in a row without letting anyone stream the archive.
+#
+# surfd's limiter is the INNER bound and this is the OUTER one; both are needed
+# for the reason /api/board documents at length -- behind this proxy surfd sees
+# 127.0.0.1 for every player in the world unless X-Real-IP is set, and only
+# limit_req still has the real address if that ever regresses.
+#
+# gzip ON, DELIBERATELY, against the Pi's global `gzip off`.  A .rec is plain
+# text and compresses ~5x, which on a home upstream is the difference between
+# a second and five.  It is safe because the negotiation is real at both ends:
+# FTE emits `Accept-Encoding: gzip` only inside #ifdef AVAIL_GZDEC
+# (engine/http/httpclient.c:919), and a build without it never asks, so nginx
+# never compresses for a client that could not inflate it.  This is NOT a
+# substitute for compressing at rest, which the retention decision still owes.
+#
+# proxy_buffering off SO THE FILE STREAMS.  Left on, nginx spools a 1 MB
+# response into a temp file before sending a byte of it -- latency and writes
+# on the NVMe that also holds the 45 GB map library, for no gain on a loopback
+# upstream that is already a file read.
+location ^~ /api/replay/ {
+    limit_req             zone=surfdreplay burst=5 nodelay;
+    limit_req_status      429;
+
+    proxy_pass         http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    15s;
+
+    proxy_buffering    off;
+    send_timeout       60s;
+
+    gzip              on;
+    gzip_types        text/plain;
+    gzip_min_length   1000;
+    gzip_proxied      any;
 
     add_header X-Surfd-Proxied "1" always;
 }

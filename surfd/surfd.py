@@ -29,7 +29,7 @@ import sqlite3
 import threading
 import time
 
-from flask import Flask, Response, g, jsonify, request
+from flask import Flask, Response, g, jsonify, request, send_file
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -41,6 +41,29 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 DB_PATH = os.environ.get("SURFD_DB", os.path.join(DATA_DIR, "surfd.db"))
 ENV_PATH = os.environ.get("SURFD_ENV", os.path.join(BASE_DIR, "surfd.env"))
 LOG_PATH = os.path.join(LOG_DIR, "surfd.log")
+
+# WHERE THE RECORDINGS ARE, AND WHY surfd CAN JUST READ THEM.
+#
+# The five lobbies and surfd are the same machine, so a `.rec` written by
+# lobby 4 is already on the disk this process serves from: the storage half of
+# "watch any run on the board" is a filesystem read, not an upload.  That is
+# the one simplification the whole feature rests on, and it stops being true
+# the moment a keyed game server runs somewhere else -- at which point this
+# constant is the thing that has to grow a per-node dimension, because
+# `replays.node` already records WHICH lobby wrote each file and nothing here
+# consults it yet.
+#
+# It is one directory above the per-map tree: <RUNS_DIR>/<map_dir>/<leg>/<leaf>
+# exactly as FS_RunDir composes it in sh_defs.qc.  Kept as an env override
+# rather than hardcoded because test_replays.py has to point it at a tmpdir.
+RUNS_DIR = os.environ.get(
+    "SURFD_RUNS", "/srv/nvme/ftesurf-server/game/ftesurf/data/runs")
+
+# A replay is ~1 MB where a board page is ~4 KB, so it gets its own bucket and
+# a much smaller cap.  This is the first route that can move real bandwidth off
+# a home upstream link, and the limiter is the only thing standing between the
+# board and somebody pulling every recording in a loop.
+REPLAY_RATE_MAX = 20     # replay fetches per RATE_WINDOW per source
 
 LOBBY_TTL = 30           # seconds; a lobby older than this is not "live"
 REAP_AFTER = 3600        # seconds; rows older than this are deleted outright
@@ -1284,8 +1307,20 @@ def submit_run():
             log.warning("rec leaf %r carries no sha256(player)[:8]=%s from %s",
                         leaf, want, src)
 
-    recbytes = strict_int(request.form.get("recbytes"), -1, 1 << 40)
+    # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
+    # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
+    # gives six significant digits), strict_int did the right thing and refused
+    # it, and the column fell to -1 -- which is indistinguishable from "this
+    # server did not tell us", so nothing anywhere looked wrong.  The sender is
+    # fixed; this line is what would have found it in a minute instead of a
+    # database query.  Refusing the RUN over it would be wrong -- a size hint
+    # is not the time -- so this stays a warning and the row still lands.
+    raw_recbytes = request.form.get("recbytes")
+    recbytes = strict_int(raw_recbytes, -1, 1 << 40)
     if recbytes is None:
+        if raw_recbytes:
+            log.warning("rec bytes %r unparseable from %s (leaf %r)",
+                        raw_recbytes[:32], src, leaf)
         recbytes = -1
     rectrunc = 1 if clean_text(request.form.get("rectrunc")) == "1" else 0
 
@@ -1553,6 +1588,109 @@ def board():
         separators=(",", ":"),
     )
     return Response(body, status=200, mimetype="application/json")
+
+
+def leg_dir(track, leg):
+    """The directory name one leg's runs are filed under.
+
+    A TRANSCRIPTION OF FS_LegDir (sh_defs.qc), and it must stay one.  The board
+    key carries `track` and `leg` as integers; the disk spells them as a word,
+    and there is no third place that knows both.  test_replays.py pins this
+    against the QC source for the same reason it pins the leaf grammar: two
+    independent spellings of one filename is how a recording goes missing
+    while every row still says it is there.
+    """
+    if track <= 0:
+        return "main" if leg <= 0 else "stage_%d" % leg
+    if leg <= 0:
+        return "bonus_%d" % track
+    return "bonus_%d_stage_%d" % (track, leg)
+
+
+@app.get("/api/replay/<int:rid>")
+def replay(rid):
+    """Serve the recording named by one `replays` row.
+
+    THE HANDLE IS THE LEDGER ID AND NOT A PATH, which is the whole security
+    design.  A caller names a row; surfd decides what file that row means.  So
+    there is no attacker-supplied path component anywhere in this route, and
+    the traversal question is answered by construction rather than by
+    filtering -- the realpath check below is a second lock on a door that has
+    no handle on the outside.
+
+    WHY A ROW CAN EXIST AND THE FILE NOT.  Nothing prunes any more (see
+    `rec_runs_keep 0`), so in the normal case they agree.  They can still
+    disagree: a disk restored from a backup older than the row, a file moved by
+    hand, or -- the one that will actually happen -- a recording written by a
+    lobby on ANOTHER machine once more than one node is keyed.  That is a 404
+    with a distinct message, not a 500 and not a lie, and it is logged, because
+    it means the archive and the index have drifted and somebody should know.
+
+    NO WRITE ON A GET.  The `seen`/`checked` columns exist for exactly this
+    observation and filling them here would be nearly free -- and wrong: it
+    would put a database write on the one public path that can be hit in a
+    loop, on a single-worker gunicorn, to save a background sweep that is
+    deferred by design.  The sweep can do it when it exists.
+    """
+    now = int(time.time())
+    src = rate_key()
+    if not rate_ok(src, now, REPLAY_RATE_MAX, "replay"):
+        return fail(429, "rate limited")
+
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT map_dir, track, leg, leaf, bytes FROM replays WHERE id = ?",
+            (rid,),
+        ).fetchone()
+    except sqlite3.Error as exc:
+        log.exception("replay db error: %s", exc)
+        return fail(500, "storage error")
+
+    if row is None:
+        return fail(404, "no such replay")
+
+    # BELT AND BRACES ON DATA THAT IS ALREADY VALIDATED.  submit_run refuses a
+    # leaf that does not match _LEAF_OK and a map_dir that does not match
+    # _MAPNAME_OK, so a stored row cannot carry a separator today.  This is
+    # here because "today" is doing real work in that sentence: the validator
+    # is one edit away from the row, the row outlives the edit, and a public
+    # file-serving route is the wrong place to inherit that trust silently.
+    leaf, map_dir = row["leaf"], row["map_dir"]
+    if not _LEAF_OK.match(leaf) or not _MAPNAME_OK.match(map_dir):
+        log.error("replay %d has an unusable name: map_dir=%r leaf=%r",
+                  rid, map_dir, leaf)
+        return fail(404, "no such replay")
+
+    root = os.path.realpath(RUNS_DIR)
+    path = os.path.realpath(
+        os.path.join(root, map_dir, leg_dir(row["track"], row["leg"]), leaf))
+    if path != root and not path.startswith(root + os.sep):
+        log.error("replay %d resolved outside the run tree: %r", rid, path)
+        return fail(404, "no such replay")
+
+    if not os.path.isfile(path):
+        log.warning("replay %d indexed but absent on disk: %r", rid, path)
+        return fail(404, "replay not on this node")
+
+    # send_file AND NOT read-then-Response: the body is ~1 MB of a 7.9 GB box
+    # with no swap, and this is a single-worker gunicorn.  Reading it into a
+    # Python string first would hold the whole file per concurrent request for
+    # no gain; send_file hands nginx a file it can stream.
+    #
+    # text/plain BECAUSE A .rec IS TEXT, and being honest about that is what
+    # lets nginx gzip it -- ~5x on this content, on a home upstream link.  It
+    # is NOT gzipped at rest here; that is owed by the retention decision and
+    # is a separate piece of work.
+    try:
+        resp = send_file(path, mimetype="text/plain",
+                         as_attachment=True, download_name=leaf,
+                         conditional=True)
+    except OSError as exc:
+        log.exception("replay %d unreadable: %s", rid, exc)
+        return fail(500, "storage error")
+    resp.headers["X-Surfd-Replay"] = str(rid)
+    return resp
 
 
 @app.get("/health")
