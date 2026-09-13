@@ -468,6 +468,45 @@ void() Rec_ViewDrop =
   from a voided run by watching the timer, and guessing wrong either loses a
   sidecar or overwrites a good one.
 */
+/*
+  IS THE SERVER'S DISK MY DISK?  Build 66.
+
+  A .view is not a recording, it is a SIDECAR: angles and turn keys, named to
+  pair with the .rec beside it, and Watch_Open finds its other half by filename.
+  On a listen server both halves land here and the pair works, which is the only
+  arrangement that has ever existed -- so nothing before now had to ask.
+
+  Build 66 turns the recorder on for lobbies, and there the .rec is written on
+  the SERVER's disk.  A sidecar written here would pair with nothing, ever: no
+  reader can reach it, the server-side pruner that bounds the .rec archive is
+  not running on this machine, and at the measured ~800 KB per file a session of
+  attempts is hundreds of megabytes of the player's disk spent on files whose
+  only consumer is on another continent.  So it is dropped, on the same terms as
+  a voided run: quietly, because nothing went wrong.
+
+  IT COMES BACK AT STEP 6, which is the step that uploads the sidecar to the
+  server so the pair can be reassembled there.  That is a deliberate reopening
+  of this gate rather than something step 6 inherits by accident.
+
+  POSITIVE TEST, AND THE DEFAULT IS TO WRITE.  serverkey("ip") is
+  NET_AdrToString of the netchan's remote address, and a listen server's is
+  NA_LOOPBACK, which renders as "QLoopBack" (net_wins.c) possibly behind a
+  protocol prefix.  Anything this cannot read -- an empty answer, a form nobody
+  anticipated -- is treated as LOCAL, because the two failures are not
+  symmetrical: guessing remote on a listen server silently loses a sidecar the
+  player's own replays need, and guessing local on a lobby costs disk.  One is
+  recoverable by deleting files.
+*/
+float() Rec_ServerIsRemote =
+{
+	local string ip;
+
+	ip = serverkey("ip");
+	if (ip == "")
+		return FALSE;
+	return strstrofs(ip, "QLoopBack", 0) < 0;
+};
+
 void() Rec_ViewEnd =
 {
 	local float tag, leg, fh;
@@ -485,6 +524,26 @@ void() Rec_ViewEnd =
 	if (tag == RT_NONE || leg < 1)
 	{
 		// Voided, or the server was not keeping this one either.
+		Rec_ViewDrop();
+		return;
+	}
+
+	/*
+	  BUILD 66: and the .rec this would pair with has to be on this disk.
+
+	  IT SAYS SO RATHER THAN JUST DOING IT.  Every other return in this function
+	  is a run that produced nothing worth keeping; this one is a run that DID,
+	  somewhere else, and the two are indistinguishable from the outside -- an
+	  absent sidecar looks the same whether this gate fired, rec_rp_view was off,
+	  or consent was declined.  The line is also the only measurement
+	  Rec_ServerIsRemote has: the condition it answers cannot be reached from a
+	  listen server by construction, so without it the remote arm of a test is
+	  "no file appeared", which is what a silently broken writer also produces.
+	*/
+	if (Rec_ServerIsRemote())
+	{
+		dprint(sprintf("replay: sidecar dropped -- this run's .rec is on the "
+		               "server (%s), not here\n", serverkey("ip")));
 		Rec_ViewDrop();
 		return;
 	}

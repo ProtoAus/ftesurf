@@ -595,10 +595,41 @@ void() LT_Frame =
 	  disk; keeping a second copy beside them would put one run on the leg twice
 	  and inflate the card's rank total with its own duplicate.  The condition this
 	  writer exists for is "the server kept nothing", and that is what it tests.
+
+	  BUILD 66 -- AND "KEPT NOTHING" HAD TO BECOME "KEPT NOTHING *HERE*".
+
+	  The LS_NOREC half of that test was written when lobby_norec was 1 on every
+	  lobby there was, so "the server is recording" and "the recording is on this
+	  disk" were the same statement.  Build 66 turns the recorder on for lobbies,
+	  and they came apart: a remote lobby now records, to ITS disk, where this
+	  player cannot see it.  Left alone, this gate would have returned on the
+	  first byte of that change and the Local tab would have stopped keeping
+	  lobby times -- silently, with no error and nothing missing except rows that
+	  had always been there.  That is the whole of build 57 stage T undone by a
+	  cvar in a config file.
+
+	  So the two bits now answer separately:
+
+	    LS_NOPB    unchanged and unconditional.  A server keeping personal bests
+	               owns this leg's record; a second claim beside it is the
+	               duplicate the paragraph above describes.
+	    LS_NOREC   ONLY MATTERS ON A LISTEN SERVER, where the server's .rec lands
+	               in this same data/runs and really would show up as a second
+	               row.  On a remote lobby the file is somewhere else and this
+	               stub is the only thing that will ever put the time in front of
+	               the player who set it.
+
+	  Rec_ServerIsRemote (cl_replay.qc) is the same test the sidecar writer uses,
+	  and it is spelled once there for the reason FS_RunPath is spelled once:
+	  these two are the only readers of "is the server's disk my disk" and they
+	  must not drift.
 	*/
 	if (!(getstatf(STAT_FS_LOBBY) & LS_LOBBY))
 		return;
-	if ((getstatf(STAT_FS_LOBBY) & (LS_NOPB | LS_NOREC)) != (LS_NOPB | LS_NOREC))
+	if (!(getstatf(STAT_FS_LOBBY) & LS_NOPB))
+		return;
+	if (!Rec_ServerIsRemote())
+	if (!(getstatf(STAT_FS_LOBBY) & LS_NOREC))
 		return;
 
 	endrec = getstatf(STAT_FS_STAGEENDREC);
