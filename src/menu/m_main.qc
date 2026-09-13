@@ -1790,6 +1790,7 @@ void(string filter) ui_maplist_print =
 	              ms_count, mom, css, oth));
 };
 
+
 // Rebuild ms_view from the query and the two filters.  O(ms_count), but only
 // ever run on a keystroke or a filter change -- never from m_draw's steady state.
 void() ui_refilter =
@@ -2145,15 +2146,152 @@ float(string a) ui_host_allowed =
   lobby cell is first drawn -- the answer is cached back into the lobby list by
   the caller.  There is no production name->index map in this file to reuse
   and building one for five lookups a poll would cost more than it saved.
+
+  CASE-INSENSITIVE since build 66, and that is not tidiness.  ms_name holds the
+  case the file has ON DISK and the installed library is not all lowercase
+  (Bhop_Mukiology is the one that has already cost a wrong answer elsewhere),
+  while the name a lobby reports is whatever its server was handed.  An exact
+  compare therefore returns -1 for a map that IS installed, and -1 is not an
+  inert answer in either caller: the lobby cell draws it as a red "not
+  installed", and ui_map_players below reads it as "no lobby is on this map" and
+  so draws no headcount.  Both are wrong, both are silent, and both land only on
+  the capitalised minority nobody thinks to check.
+
+  strcasecmp is a builtin comparison that allocates nothing, so this costs the
+  same as the == it replaces.  Lowercasing every name instead would have meant
+  2200 tempstrings per lookup, five times a poll, to answer one question.
 */
 float(string nm) ui_map_index =
 {
 	local float i;
 
 	for (i = 0; i < ms_count; i = i + 1)
-		if (bufstr_get(ms_name, i) == nm)
+		if (!strcasecmp(bufstr_get(ms_name, i), nm))
 			return i;
 	return -1;
+};
+
+/*
+  How many players are on one map right now, or -1 if no lobby is on it.
+
+  THE TWO ANSWERS ARE DIFFERENT AND MUST STAY DIFFERENT.  0 means "a lobby is
+  running this map and nobody is on it".  -1 means "no lobby the directory has
+  told us about is on this map" -- which covers the directory not having
+  answered yet, consent never given so it was never asked, the directory being
+  down, and the ordinary case of a map with nothing running on it.  Every one of
+  those is "we do not know", and a caller that folded them into 0 would print a
+  headcount against 2200 maps that nobody has claimed anything about.  That is
+  the same rule the results card's world row settles on in build 65: silence is
+  what you draw when you have not been told, and it is not the same glyph as a
+  measured zero.
+
+  It reads Lob_Row's cache rather than comparing names, so a row costs five
+  float compares and the 2200-name scan still happens at most five times a poll
+  -- the contract the lobby cells already have.  It resolves that cache itself
+  when the cells have not, because the whole grid is skipped when the directory
+  holds no rows, and a helper that only works if something else drew first is a
+  helper that breaks the next time the layout moves.
+
+  The mapidx < 0 guard is load-bearing rather than defensive: -1 is also what
+  Lob_Row stores for "that lobby's map is not installed here", so without it a
+  caller passing a bad index would be told the headcount of every uninstalled
+  lobby, summed.
+*/
+float(float mapidx) ui_map_players =
+{
+	local float i, n, lrow, sum, found;
+
+	if (mapidx < 0)
+		return -1;
+
+	sum   = 0;
+	found = FALSE;
+	n     = Lob_Count();
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		lrow = Lob_Row(i);
+		if (lrow == -2)
+		{
+			lrow = ui_map_index(Lob_Map(i));
+			Lob_SetRow(i, lrow);
+		}
+		if (lrow == mapidx)
+		{
+			sum   = sum + Lob_Players(i);
+			found = TRUE;
+		}
+	}
+
+	if (!found)
+		return -1;
+	return sum;
+};
+
+/*
+  The headless twin of the headcount the map list draws.  Build 66.
+
+  The row itself needs the create screen open and a pointer on it, and neither
+  is reachable from a config -- so without this the only way to check the
+  feature is to look at it, which is the standard this tree holds itself to
+  everywhere else.  It prints the directory's own rows AND what each map row
+  would draw from them, because those are two different claims: the first is the
+  input and the second is the thing under test, and a bug in the join between
+  them shows up as the two disagreeing.
+
+  IT POLLS AS WELL AS REPORTS.  Lob_Poll runs only from m_draw while the create
+  screen is up, so a first call from a cold console would report an empty
+  directory forever and read as "the feature does not work".  Calling it here
+  makes the shape `ui_lobbypop`, wait, `ui_lobbypop` -- the first call is what
+  gives the second one something to say.  Lob_Poll rate-limits itself, so
+  calling it twice costs one request.
+
+  The "has NOT answered" line is deliberately separate from "0 lobbies": they
+  look identical in a list and they are opposite diagnoses.
+*/
+void() ui_lobbypop_print =
+{
+	local float i, n, lrow, pop, drawn;
+	local string nm;
+
+	ui_load_maps();
+	Lob_Poll();
+
+	n = Lob_Count();
+	print(sprintf("ui_lobbypop: directory %s -- %g lobbies, %g maps installed\n",
+	              Lob_Ready() ? "has answered" : "has NOT answered yet",
+	              n, ms_count));
+	if (Lob_Blocked())
+		print("  the online tier has not been accepted, so nothing is asked "
+		      "for and no count can exist\n");
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		lrow = Lob_Row(i);
+		if (lrow == -2)
+		{
+			lrow = ui_map_index(Lob_Map(i));
+			Lob_SetRow(i, lrow);
+		}
+		nm = (lrow >= 0) ? bufstr_get(ms_name, lrow)
+		                 : "^1not installed here^7";
+		print(sprintf("  lobby %-22s %g/%g  row %g  %s\n",
+		              Lob_Map(i), Lob_Players(i), Lob_Max(i), lrow, nm));
+	}
+
+	drawn = 0;
+	for (i = 0; i < ms_count; i = i + 1)
+	{
+		pop = ui_map_players(i);
+		if (pop >= 0)
+		{
+			print(sprintf("  row %-5g %-22s draws \"%g playing\"\n",
+			              i, bufstr_get(ms_name, i), pop));
+			drawn = drawn + 1;
+		}
+	}
+	print(sprintf("  %g of %g rows draw a count; every other row draws nothing\n",
+	              drawn, ms_count));
 };
 
 void(float i) ui_connect =
@@ -3394,30 +3532,100 @@ void(vector screensize) screen_create =
 					sub = strcat(sub, "  ^9|^7  linear");
 				if (mbonus > 0)
 					sub = sprintf("%s, %g bonus", sub, mbonus);
-				sui_text([rp_x + 126, rp_y + 26], SZ_ROW, sub, COL_DIM, 1, 0);
 
-				// The time, right-aligned against the row's own right edge.
-				// sui_text measures and offsets, so the anchor is the text end.
-				//
-				// A LOBBY time says so in a word and not a colour alone -- the rule
-				// the tier chip above follows, for the same readers.  It is the one
-				// shown only when it beats this PC's own time; see run_pb_load.
-				//
-				// THE MAP'S OWN TICK, not PM_TICK: a bhop map's ticks were counted
-				// at 100 Hz, and 0.015 draws them half again as long.  See
-				// ui_map_tick, which is why this is a call and not a constant.
+				/*
+				  The time, right-aligned against the row's own right edge.
+				  sui_text measures and offsets, so the anchor is the text end.
+
+				  A LOBBY time says so in a word and not a colour alone -- the
+				  rule the tier chip above follows, for the same readers.  It is
+				  the one shown only when it beats this PC's own time; see
+				  run_pb_load.
+
+				  THE MAP'S OWN TICK, not PM_TICK: a bhop map's ticks were
+				  counted at 100 Hz, and 0.015 draws them half again as long.
+				  See ui_map_tick, which is why this is a call and not a
+				  constant.
+
+				  BUILT BEFORE IT IS DRAWN, since build 66, because the headcount
+				  below sits immediately to its left and the sub line has to be
+				  fitted around both.  The placeholder is a string on the same
+				  footing as a real time rather than a second draw call, so its
+				  width is available to the same arithmetic -- a row with no time
+				  reserves exactly as much room as one with a time, which is what
+				  stops the headcount jumping sideways as you scroll.
+				*/
+				local float mtw, mpop, mpopw;
+				local string mpopt;
+
 				mpb = bufstr_get(ms_pbv, real);
 				if (mpb != "")
 				{
 					mtime = Time_TickString(stof(mpb), ui_map_tick(real));
 					if (bufstr_get(ms_pblob, real) != "")
 						mtime = strcat("^9lobby  ^7", mtime);
-					sui_text([rp_x + rs_x - 8 - stringwidth(mtime, TRUE, SZ_ROW),
-					          rp_y + 14], SZ_ROW, mtime, COL_TEXT, 1, 0);
 				}
 				else
-					sui_text([rp_x + rs_x - 8 - stringwidth("--:--.---", TRUE, SZ_ROW),
-					          rp_y + 14], SZ_ROW, "--:--.---", COL_DIM, 0.5, 0);
+					mtime = "--:--.---";
+				mtw = stringwidth(mtime, TRUE, SZ_ROW);
+
+				/*
+				  The live headcount, from the lobby directory this screen is
+				  already polling.
+
+				  NOTHING IS DRAWN WHEN NOBODY HAS SAID ANYTHING ABOUT THIS MAP,
+				  and that is the whole of the honesty here -- see the essay over
+				  ui_map_players for why -1 and 0 are different facts.  On a
+				  library of 2200 maps and five lobbies this is silent on all but
+				  a handful of rows, which is correct and is also why it costs
+				  nothing to read.
+
+				  The colour carries the difference between "people are here" and
+				  "a server is here and it is empty" while the WORDS stay the
+				  same, so the eye parses one shape down the list and the number
+				  is the thing that changes.  Same reasoning as the tier chip's
+				  "T9?" -- except here the two states are a measured count and
+				  another measured count, so a punctuation mark would be
+				  inventing a distinction the data does not have.
+
+				  IT IS LEFT OF THE TIME, ON THE TIME'S OWN LINE, not right-
+				  aligned on the sub line.  The sub line sits at +26 and the time
+				  at +14; at SZ_ROW those two bands overlap, so a second
+				  right-aligned item on the lower line would draw through the
+				  time on exactly the rows that have both.
+				*/
+				mpop  = ui_map_players(real);
+				mpopt = "";
+				mpopw = 0;
+				if (mpop >= 0)
+				{
+					mpopt = sprintf("%s%g^9 playing", (mpop > 0) ? "^2" : "^9",
+					                mpop);
+					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
+					sui_text([rp_x + rs_x - 8 - mtw - mpopw,
+					          rp_y + 14], SZ_ROW, mpopt, COL_DIM, 1, 0);
+				}
+
+				/*
+				  Second line, fitted into what the right-hand column actually
+				  leaves -- which it was not before build 66.  `sub` was drawn
+				  unbounded, so a long "COUNTER-STRIKE | surf | 12 stages, 3
+				  bonus" already ran under the time on a narrow window; adding a
+				  headcount would have made that the common case rather than the
+				  rare one.  ui_fit_text cuts from the end, so the source word --
+				  the half that answers "why is this map here at all" -- is the
+				  half that survives.
+				*/
+				sui_text([rp_x + 126, rp_y + 26], SZ_ROW,
+				         ui_fit_text(sub, rs_x - 134 - mtw - mpopw, SZ_ROW),
+				         COL_DIM, 1, 0);
+
+				if (mpb != "")
+					sui_text([rp_x + rs_x - 8 - mtw, rp_y + 14], SZ_ROW,
+					         mtime, COL_TEXT, 1, 0);
+				else
+					sui_text([rp_x + rs_x - 8 - mtw, rp_y + 14], SZ_ROW,
+					         mtime, COL_DIM, 0.5, 0);
 
 				if (sui_is_released(rid))
 					ms_selected = real;
@@ -3683,6 +3891,12 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_maplist")
 	{
 		ui_maplist_print(argv(1));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_lobbypop")
+	{
+		ui_lobbypop_print();
 		return TRUE;
 	}
 
