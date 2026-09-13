@@ -2294,6 +2294,130 @@ void() ui_lobbypop_print =
 	              drawn, ms_count));
 };
 
+/*
+  The falsifier for engine Patch 316 -- does a write actually reach the disk
+  before fclose?
+
+  IT IS HERE, IN THE MENU, FOR ONE REASON: this is the only VM whose sources
+  this session owns outright, so menu.dat can be rebuilt without compiling a
+  concurrent session's half-finished client and server code into the result.
+  The consumer of the patch is the run recorder in sv_timer.qc, and that is a
+  separate change -- it should not be the thing that first discovers whether the
+  builtin works.
+
+  THE TEST CANNOT BE COMPLETED FROM INSIDE THE ENGINE, and that is the whole
+  design problem.  Every number QC can ask for is identical under both modes:
+  fseek reports the same position, the same lines went in, and a readback after
+  close succeeds either way -- because the buffered mode produces a perfectly
+  good file that simply has not been handed to the OS yet.  The single
+  observable difference is THE SIZE ON DISK WHILE THE HANDLE IS STILL OPEN, and
+  nothing inside this process can read that.
+
+  So this writes, then HOLDS the handle open and announces it, and the run
+  script measures the file from the shell during that window:
+
+      stream   -> already its full size while held
+      buffered -> 0 bytes or absent while held, whole the instant it is closed
+
+  The buffered arm is not decoration.  It reproduces on purpose exactly what the
+  build-15 comment over rec_rec_buf describes discovering the hard way --
+  "that looked like streaming and never was ... the .part file was zero bytes
+  until the moment it was closed" -- so a run in which both arms read the same
+  is a broken harness, not a passing patch.
+
+  IT IS TWO COMMANDS AND NOT ONE, and the reason is not style.  The obvious
+  shape -- open, write, wait a few seconds, close -- cannot be written here: a
+  QC VM aborts on a runaway loop, so a busy wait long enough for the shell to
+  look is a wait long enough to kill the VM, and a menu console command has
+  nothing to yield to in any case.  So the handle is parked in a global and the
+  cfg's own `waitms` provides the window, which is what waitms is for.
+
+  b316_held is a separate flag rather than a sentinel in the handle itself,
+  because a QC global starts at 0 and 0 is not a value fopen can return:
+  FIRST_QC_FILE_INDEX is 1000 (pr_bgcmd.c), so every real handle is >= 1000 and
+  a `b316_fh >= 0` test would read an untouched global as an open file.
+*/
+filestream b316_fh;
+float      b316_held;
+string     b316_path;
+
+void(string verb, string mode) ui_fstream_test =
+{
+	local float i, mv, pos;
+	local string ln;
+
+	if (verb == "open")
+	{
+		if (b316_held)
+		{
+			print("^1b316: a handle is already held; close it first^7\n");
+			return;
+		}
+
+		mv        = (mode == "buffered") ? FILE_WRITE : FS_FILE_WRITESTREAM;
+		b316_path = (mode == "buffered") ? "data/b316_buffered.txt"
+		                                 : "data/b316_stream.txt";
+
+		b316_fh = fopen(b316_path, mv);
+		if (b316_fh < 0)
+		{
+			print(sprintf("^1b316: fopen(\"%s\", %g) FAILED^7\n", b316_path, mv));
+			return;
+		}
+		b316_held = TRUE;
+
+		// Enough bytes to be well clear of the 8 KB the buffered mode starts
+		// with, so "nothing on disk" and "not grown yet" cannot read the same.
+		for (i = 0; i < 2000; i = i + 1)
+			fputs(b316_fh, sprintf("%05g this is a recorded sample line, padded "
+			                       "out so that it resembles a real one\n", i));
+
+		/*
+		  Reserve-and-correct, which is the recorder's actual requirement: the
+		  `flags` header line cannot be known until the run has ended.  Seek to
+		  the start, overwrite line 0 IN PLACE at the same width, and put the
+		  position back.  If seek silently does nothing on a stream, the readback
+		  prints the original line 0 -- a fault, not a warning.
+		*/
+		pos = fseek(b316_fh);
+		fseek(b316_fh, 0);
+		fputs(b316_fh, "XXXXX this is a recorded sample line, padded ");
+		fseek(b316_fh, pos);
+
+		print(sprintf("b316: HOLDING %s mode %g, %g bytes written -- "
+		              "measure the file NOW\n", b316_path, mv, pos));
+		return;
+	}
+
+	if (verb == "close")
+	{
+		if (!b316_held)
+		{
+			print("^1b316: nothing is open^7\n");
+			return;
+		}
+		fclose(b316_fh);
+		b316_held = FALSE;
+		print(sprintf("b316: CLOSED %s\n", b316_path));
+
+		b316_fh = fopen(b316_path, FILE_READ);
+		if (b316_fh < 0)
+		{
+			print("^1b316: could not reopen for read -- nothing was written^7\n");
+			return;
+		}
+		ln = fgets(b316_fh);
+		print(sprintf("b316: line 0 reads \"%s\"\n", ln));
+		for (i = 1; i < 2000; i = i + 1)
+			ln = fgets(b316_fh);
+		print(sprintf("b316: line 1999 reads \"%s\"\n", ln));
+		fclose(b316_fh);
+		return;
+	}
+
+	print("b316: usage -- ui_fstream open <stream|buffered> / ui_fstream close\n");
+};
+
 void(float i) ui_connect =
 {
 	local string addr;
@@ -3897,6 +4021,13 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_lobbypop")
 	{
 		ui_lobbypop_print();
+		return TRUE;
+	}
+
+	// ui_fstream <stream|buffered> [hold-seconds] -- engine Patch 316.
+	if (argv(0) == "ui_fstream")
+	{
+		ui_fstream_test(argv(1), argv(2));
 		return TRUE;
 	}
 

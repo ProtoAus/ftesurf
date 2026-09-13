@@ -1469,6 +1469,46 @@ string(float id) FS_SaveSlotName =
   leg, which this function would otherwise answer as `main`.
 ===========================================================================
 */
+/*
+===========================================================================
+  FILE_WRITESTREAM -- fopen mode 9, engine Patch 316.  Write-only, and the
+  bytes go to disk as they are written instead of at fclose.
+
+  THE MODE THIS REPLACES DOES NOT STREAM AND NEVER DID, whatever its name
+  suggests.  FILE_WRITE (2) gets an 8 KB malloc at fopen that grows on every
+  fputs, and pr_bgcmd.c's PF_fclose_i is the first and only thing that touches
+  the file -- one COM_WriteFile of the whole accumulated buffer.  FILE_APPEND
+  (1) is not the way round it either: it FS_LoadMallocFile's the existing file
+  back IN at open, so writing in chunks re-reads and re-writes everything
+  written so far, every chunk.
+
+  This tree has already been caught by that once.  The run recorder used to
+  fputs into `<leg>.part` and rename at the end, and the build-15 comment over
+  rec_rec_buf records what was actually happening: *"that looked like streaming
+  and never was ... the engine was already buffering the whole run in memory and
+  the .part file was zero bytes until the moment it was closed."*  The strbuf
+  replaced it because the strbuf was honest about holding everything, not
+  because it held less.
+
+  So the cost is unchanged by anything QC can do: ~98 bytes per physics sample
+  at ~65 Hz, about 6.5 KB per second of play, held until the run ends.  One
+  player is nothing and thirty-two is the reason server-side recording is off on
+  every lobby.  With this mode the peak is one line.
+
+  fseek WORKS ON IT -- PF_fseek64 operates on the VFS handle whenever there is
+  one -- so a writer can still reserve a header field and go back to correct it
+  once the run is over.  That is the one thing streaming is usually assumed to
+  cost, and here it does not.
+
+  NOT ADDED TO defs/sv_defs.qc, defs/cl_defs.qc OR defs/m_defs.qc, deliberately:
+  those three are the engine's own generated builtin lists and a hand-edit to
+  them is lost the next time they are regenerated.  This is a FTESurf constant
+  for a FTESurf engine patch, so it lives with the other FS_ constants and every
+  VM that includes this file gets it.
+===========================================================================
+*/
+#define FS_FILE_WRITESTREAM 9
+
 float(float startseg, float stagerun) FS_LegOf =
 {
 	if (stagerun)
