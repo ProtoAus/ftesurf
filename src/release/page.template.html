@@ -1,0 +1,316 @@
+<!doctype html>
+<!--
+  FTESurf download page -- template.
+
+  Rendered by src\release\release.ps1, which substitutes double-at placeholders
+  with ordinal [string]::Replace() and asserts afterwards that (a) no such
+  placeholder survives and (b) the token set here exactly equals its
+  substitution map. Add one here without adding it there and the script fails
+  loudly rather than shipping an unsubstituted placeholder to production.
+
+  That assert reads the whole file, prose included, so do NOT write a token in
+  a comment to explain it -- an example here is indistinguishable from a real
+  placeholder, and the first version of this header tripped its own check.
+
+  Tokens: VERSION FILENAME URL SIZE_HUMAN SIZE_BYTES SHA256 DATE QCBUILD ENGINEPATCH
+
+  No token ever appears inside <script>. The copy buttons read textContent out of
+  the DOM, so the JS is a fixed constant in every release and a hash containing a
+  quote could never become a syntax error that takes the whole script down.
+
+  Palette is the game's own main menu, src/menu/m_main.qc:34-42 and ui_backdrop
+  at :3219-3222. Dark only -- the game has one look.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- without this the browser paints a white scrollbar down a #050508 page -->
+<meta name="color-scheme" content="dark">
+<title>FTESurf</title>
+<meta name="description" content="A competitive surf and bhop game on the FTEQW engine, reproducing Counter-Strike: Source and Momentum Mod movement.">
+<meta property="og:title" content="FTESurf @@VERSION@@">
+<meta property="og:description" content="Competitive surf and bhop with Source movement, playing the existing surf map library out of your own Steam installs.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://proto.bar/ftesurf">
+<meta property="og:image" content="https://proto.bar/ftesurf/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+/* Self-hosted: the page makes zero third-party requests, which is consistent
+   with a game whose whole premise is mounting content you already have.
+   Bebas Neue only -- Roboto.ttf alone is 488 KB and body copy renders fine in
+   the stack every supported platform already ships. */
+@font-face {
+  font-family: 'Bebas Neue FTE';
+  src: url('BebasNeueRegular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+:root {
+  --bg:      #050508;   /* ui_backdrop, m_main.qc:3221 */
+  --panel:   #0F0F14;   /* COL_PANEL  */
+  --row:     #1C1C24;   /* COL_ROW    */
+  --hover:   #2E3342;   /* COL_ROW_HOVER */
+  --sel:     #1A4D73;   /* COL_ROW_SEL */
+  --border:  #474D5C;   /* COL_BORDER */
+  --text:    #FFFFFF;   /* COL_TEXT   */
+  --dim:     #8C8C94;   /* COL_DIM    */
+  --accent:  #59BFFF;   /* COL_ACCENT */
+  --display: 'Bebas Neue FTE', 'Haettenschweiler', 'Arial Narrow', Impact, sans-serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Cascadia Mono', Consolas, 'SF Mono', 'DejaVu Sans Mono', monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; padding-block: 56px 72px; }
+
+/* ---- masthead ---------------------------------------------------------- */
+.mast { margin-bottom: 40px; }
+h1 {
+  font-family: var(--display);
+  font-size: clamp(64px, 17vw, 132px);
+  line-height: 0.84;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+h1 .surf { color: var(--accent); }
+.tagline { color: var(--dim); font-size: 17px; margin: 14px 0 0; max-width: 52ch; }
+.build {
+  margin-top: 18px; font-family: var(--mono); font-size: 12.5px;
+  color: var(--dim); letter-spacing: 0.02em;
+}
+.build b { color: var(--text); font-weight: 600; }
+
+/* ---- the one panel that matters ---------------------------------------- */
+.get {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 26px;
+  margin-bottom: 40px;
+}
+.get h2 {
+  font-family: var(--display); font-size: 27px; font-weight: 400;
+  margin: 0 0 4px; letter-spacing: 0.03em;
+}
+.needs-note { color: var(--dim); font-size: 14.5px; margin: 0 0 16px; }
+.needs-note b { color: var(--text); font-weight: 600; }
+
+/* styled as the in-game map list, so these read as a list of things rather
+   than as legal text the eye slides off */
+.req { list-style: none; margin: 0 0 22px; padding: 0; }
+.req li {
+  background: var(--row);
+  border-left: 3px solid var(--accent);
+  padding: 9px 14px;
+  margin-bottom: 4px;
+  font-size: 15px;
+  display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline;
+}
+.req li.opt { border-left-color: var(--border); color: var(--dim); }
+.req .who { font-weight: 600; }
+.req .why { color: var(--dim); font-size: 13.5px; }
+.req li.opt .who { font-weight: 500; }
+
+.dl {
+  display: block; text-align: center; text-decoration: none;
+  background: var(--accent); color: #041018;
+  font-family: var(--display); font-size: 30px; letter-spacing: 0.04em;
+  padding: 15px 20px 11px; border-radius: 3px;
+  transition: background .12s ease;
+}
+.dl:hover, .dl:focus-visible { background: #8FD4FF; }
+.dl:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.dl .sub {
+  display: block; font-family: var(--sans); font-size: 12.5px;
+  letter-spacing: 0; opacity: .72; margin-top: 3px; font-weight: 600;
+}
+.meta { margin: 12px 0 0; font-size: 13px; color: var(--dim); text-align: center; }
+
+/* ---- checksum ---------------------------------------------------------- */
+details { margin-top: 16px; border-top: 1px solid var(--row); padding-top: 14px; }
+summary { cursor: pointer; color: var(--dim); font-size: 13.5px; }
+summary:hover { color: var(--text); }
+.hash, .cmd {
+  font-family: var(--mono); font-size: 12px; background: var(--bg);
+  border: 1px solid var(--row); border-radius: 3px;
+  padding: 9px 11px; margin-top: 10px;
+  overflow-x: auto; white-space: pre; word-break: normal;
+}
+.copy {
+  background: var(--row); color: var(--dim); border: 1px solid var(--border);
+  border-radius: 3px; font: inherit; font-size: 12px; padding: 3px 9px;
+  margin-top: 7px; cursor: pointer;
+}
+.copy:hover { background: var(--hover); color: var(--text); }
+
+/* ---- prose ------------------------------------------------------------- */
+h3 {
+  font-family: var(--display); font-size: 22px; font-weight: 400;
+  letter-spacing: 0.03em; margin: 36px 0 10px; color: var(--text);
+}
+ol.steps { padding-left: 20px; margin: 0; }
+ol.steps li { margin-bottom: 9px; }
+p { margin: 0 0 12px; }
+.dimtext { color: var(--dim); font-size: 14.5px; }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--row); padding: 1px 5px; border-radius: 3px; }
+a { color: var(--accent); }
+a:hover { color: #8FD4FF; }
+.warn {
+  border-left: 3px solid var(--sel); background: var(--row);
+  padding: 11px 14px; margin: 16px 0; font-size: 14.5px; color: var(--dim);
+}
+.warn b { color: var(--text); font-weight: 600; }
+footer {
+  margin-top: 52px; padding-top: 22px; border-top: 1px solid var(--row);
+  color: var(--dim); font-size: 12.5px;
+}
+footer p { margin: 0 0 7px; }
+@media (max-width: 460px) {
+  .wrap { padding-block: 36px 48px; }
+  .get { padding: 18px; }
+  .req li { display: block; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <h1>FTE<span class="surf">SURF</span></h1>
+    <p class="tagline">
+      A competitive surf and bhop game on the FTEQW engine, reproducing
+      Counter-Strike&nbsp;: Source and Momentum&nbsp;Mod movement &mdash; and playing the
+      existing surf map library straight out of your own Steam installs.
+    </p>
+    <p class="build">
+      <b>@@VERSION@@</b> &nbsp;&middot;&nbsp; @@DATE@@ &nbsp;&middot;&nbsp;
+      QuakeC build @@QCBUILD@@ &nbsp;&middot;&nbsp; engine patch @@ENGINEPATCH@@
+    </p>
+  </header>
+
+  <!-- The requirements and the button are deliberately one object. A player who
+       downloads without these three games gets an empty map browser and
+       concludes the game is broken; co-location is the only reliable fix. -->
+  <section class="get">
+    <h2>Download</h2>
+    <p class="needs-note">
+      FTESurf ships no Valve or Momentum content &mdash; it reads your own installs at
+      runtime. <b>You need these three on Steam first.</b>
+    </p>
+
+    <ul class="req">
+      <li><span class="who">Momentum Mod Playtest</span> <span class="why">the map library &mdash; 1,308 maps</span></li>
+      <li><span class="who">Counter-Strike: Source</span> <span class="why">materials and models most surf maps use</span></li>
+      <li><span class="who">Half-Life 2</span> <span class="why">skyboxes, dev textures, common props</span></li>
+      <li class="opt"><span class="who">CS:GO (legacy Source 1) and TF2</span> <span class="why">optional, mounted only for the maps that need them</span></li>
+    </ul>
+
+    <a class="dl" href="@@URL@@" download>
+      Download for Windows
+      <span class="sub">@@FILENAME@@ &middot; @@SIZE_HUMAN@@</span>
+    </a>
+    <p class="meta">Windows&nbsp;x64 &middot; @@SIZE_BYTES@@ bytes &middot; 7-Zip archive, no installer</p>
+
+    <details>
+      <summary>Verify the download (SHA-256)</summary>
+      <div class="hash" id="sha">@@SHA256@@</div>
+      <button class="copy" type="button" data-copy="sha" hidden>Copy hash</button>
+      <div class="cmd" id="cmd">if ((Get-FileHash .\@@FILENAME@@ -Algorithm SHA256).Hash -eq '@@SHA256@@') { 'OK' } else { 'MISMATCH' }</div>
+      <button class="copy" type="button" data-copy="cmd" hidden>Copy PowerShell check</button>
+      <p class="dimtext" style="margin-top:10px">Paste the second one in PowerShell, in the folder you downloaded to. It prints <code>OK</code> or <code>MISMATCH</code> &mdash; no need to read 64 hex characters.</p>
+    </details>
+  </section>
+
+  <h3>After it downloads</h3>
+  <ol class="steps">
+    <li>Extract the archive into a folder of its own. Nothing is written outside it, and there is no installer.</li>
+    <li>Run <code>ftesurf.bat</code> &mdash; <b>not</b> <code>ftesurf64.exe</code>. The batch file sets the working directory the engine reads its game folder from and seeds <code>fs_addons.txt</code> on first run; launching the .exe directly gets neither and stops at a mod list.</li>
+    <li>If the map browser is empty, or a mount says <span class="dimtext">not found</span>, type <code>fs_steamlibs</code> in the console. It prints where the engine looked and how each mount resolved. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code> then <code>fs_restart</code>.</li>
+  </ol>
+
+  <div class="warn">
+    <b>Alpha.</b> The build is not code-signed, so SmartScreen will warn the first time you run it.
+    Physics fixes between builds can invalidate previously recorded run times &mdash; this is a
+    timing game whose ruleset is still moving.
+  </div>
+
+  <h3>What it is</h3>
+  <p class="dimtext">
+    Roughly 48,000 lines of QuakeC: a per-map timing system with zones, stages and bonuses;
+    savelocs; ghosts and full run replays; a strafe-quality HUD you can lay out yourself; and a
+    browser over 1,300+ maps with tiers, thumbnails and per-map asset resolution.
+  </p>
+  <p class="dimtext">
+    Movement is engine-side rather than QC-side, in a fork of FTEQW that adds the Source movement
+    module and the hl2 plugin's <code>.phy</code> collision, VTF/VMT materials and static-prop
+    lighting. Stock FTEQW will not run it; the engine is in the archive.
+  </p>
+
+  <footer>
+    <p>
+      FTESurf is <b>GPLv2 or later</b> &mdash; <a href="LICENSE.txt">LICENSE</a> &middot;
+      <a href="https://github.com/ProtoAus/ftesurf">game source</a> &middot;
+      <a href="https://github.com/ProtoAus/ftequakers">engine fork</a> &middot;
+      <a href="version.json">build manifest</a>
+    </p>
+    <p>
+      Bebas Neue &copy; 2010 Ryoichi Tsunekawa, Dharma Type, licensed under the
+      SIL Open Font Licence 1.1 &mdash; <a href="OFL.txt">OFL.txt</a>.
+    </p>
+    <p>
+      FTESurf contains no Valve or Momentum Mod code and redistributes no Source assets.
+      Mounted Steam content is read from your own installs at runtime.
+    </p>
+  </footer>
+
+</div>
+<script>
+// Fixed and token-free in every release: the values are read out of the DOM, so
+// nothing the release script substitutes can reach a JS parser. Buttons ship
+// hidden and are revealed here, because a dead button with JS off is worse than
+// no button at all.
+(function () {
+  function copy(text, btn) {
+    var done = function () {
+      var old = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = old; }, 1400);
+    };
+    // navigator.clipboard needs a secure context; fall back rather than no-op.
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { legacy(text, done); });
+    } else {
+      legacy(text, done);
+    }
+  }
+  function legacy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* leave it selectable */ }
+    document.body.removeChild(ta);
+  }
+  var btns = document.querySelectorAll('.copy[data-copy]');
+  for (var i = 0; i < btns.length; i++) {
+    (function (btn) {
+      var src = document.getElementById(btn.getAttribute('data-copy'));
+      if (!src) { return; }
+      btn.hidden = false;
+      btn.addEventListener('click', function () { copy(src.textContent, btn); });
+    })(btns[i]);
+  }
+})();
+</script>
+</body>
+</html>

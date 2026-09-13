@@ -1,0 +1,89 @@
+# =============================================================================
+#  ftesurf.nginx -- the download page at https://proto.bar/ftesurf
+#
+#  NOT INSTALLED BY HAND.  install.sh copies this to
+#  /etc/nginx/snippets/ftesurf.conf and adds the one `include` line to
+#  /etc/nginx/sites-enabled/filebrowsers.conf.  src/release/release.ps1 scp's
+#  this file to the Pi on every run and compares its sha256 against the
+#  installed copy, so the two can never silently drift.
+#
+#  WHY A SNIPPET AND NOT AN EDIT TO THE VHOST.  /etc/letsencrypt/renewal/
+#  proto.bar.conf has `installer = nginx`, so certbot rewrites that server block
+#  in place.  A snippet means a rewrite can only ever lose ONE line, which
+#  release.ps1 detects by grepping for it.  This is the same shape globe.conf
+#  and whodunchat.conf already use in that vhost.
+#
+#  WHY `location ^~` AND NOT `location /ftesurf`.  The vhost ends in
+#  `location / { proxy_pass http://127.0.0.1:8080/; }` -- the public filebrowser.
+#  A bare prefix location loses to any regex location, and `^~` is what stops
+#  the catch-all from taking these requests.  Note that /ftesurf ALREADY returns
+#  200 with an HTML body on an unconfigured box (it is the filebrowser SPA), so
+#  "does the URL work" is not a test of whether this file is installed -- that is
+#  what X-FTESurf-Site below is for.
+#
+#  WHY gzip IS TURNED ON HERE.  /etc/nginx/nginx.conf sets `gzip off` globally
+#  on this box, so every text location has to opt back in for itself.
+# =============================================================================
+
+# /ftesurf -> /ftesurf/  (the alias below only matches the trailing-slash form)
+location = /ftesurf {
+    return 301 https://$host/ftesurf/;
+}
+
+location ^~ /ftesurf/ {
+    alias /srv/nvme/ftesurf-site/static/;
+    index index.html;
+
+    # Deliberately NO try_files.  `alias` + `try_files` is a well-known nginx
+    # foot-gun (the $uri is re-resolved against the alias inconsistently across
+    # versions); with `index` alone a missing file 404s from this location,
+    # which is the wanted behaviour -- it must NOT fall through to filebrowser.
+
+    # The install marker.  `always` so it appears on the 404 too, which keeps
+    # "snippet installed" separable from "content deployed" for the four-way
+    # setup check in release.ps1.
+    add_header X-FTESurf-Site      "1" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy     "strict-origin-when-cross-origin" always;
+    # proto.bar apex is DNS-only (grey cloud), so nothing caches this for us and
+    # a new release must be visible immediately.  The page is a few KB.
+    add_header Cache-Control       "no-cache" always;
+
+    gzip              on;
+    gzip_vary         on;
+    gzip_min_length   512;
+    gzip_comp_level   6;
+    gzip_types        text/html text/plain text/css application/json;
+
+    # This page is a few KB, but releases/ holds every past version and LICENSE
+    # is 17 KB.  limit_rate needs no shared zone, unlike limit_conn -- see below.
+    limit_rate_after  512k;
+    limit_rate        2m;
+
+    # NO limit_conn HERE, ON PURPOSE.  limit_conn requires a limit_conn_zone
+    # declared in http{}, and the only one on this box is globe_conn in
+    # conf.d/globe-limits.conf.  Referencing another component's zone means that
+    # the day globe is removed, nginx refuses to START -- taking proto.bar,
+    # play.proto.bar, fastdl, momcdn and mom down with it.
+}
+
+# The wordmark font, served with a correct type.
+#
+# WHY ITS OWN EXACT-MATCH LOCATION.  This box's /etc/nginx/mime.types has
+# entries for woff and woff2 but NONE for ttf, so the file would otherwise go
+# out as application/octet-stream -- which makes the nosniff header above a
+# claim about a type we know is wrong, and makes gzip_types miss it entirely.
+# A `types { font/ttf ttf; }` block inside the location above would have fixed
+# the type but REPLACED the whole inherited types map for that location, which
+# would then serve index.html as octet-stream too.  An exact-match location with
+# default_type changes one file and nothing else.
+location = /ftesurf/BebasNeueRegular.ttf {
+    alias /srv/nvme/ftesurf-site/static/BebasNeueRegular.ttf;
+    default_type    font/ttf;
+    add_header      X-FTESurf-Site "1" always;
+    add_header      Cache-Control  "public, max-age=2592000" always;
+    gzip            on;
+    gzip_vary       on;
+    gzip_comp_level 6;
+    gzip_types      font/ttf;
+}

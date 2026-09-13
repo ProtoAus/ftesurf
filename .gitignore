@@ -114,6 +114,7 @@ __pycache__/
 !/LICENSE
 !/CONTRIBUTING.md
 !/ENGINE.txt
+!/VERSION
 !/default.fmf
 !/ftesurf.bat
 !/ftesurf_debug.bat
@@ -121,6 +122,23 @@ __pycache__/
 !/tools/
 !/surfd/
 !/ftesurf/
+
+
+# -----------------------------------------------------------------------------
+#  VERSION, and the two release directories that are deliberately NOT here.
+#
+#  VERSION is one line ("0.1.0") and is the ONLY hand-edited release input;
+#  src/release/release.ps1 reads it and derives everything else at release time.
+#  It has to be tracked, and the `/*` above ignores it by default: an untracked
+#  VERSION means a fresh clone has none, the script starts over at 0.1.0, and it
+#  publishes a version that dl.proto.bar already serves -- at a URL nothing can
+#  purge.  If you ever move it, re-prove the rule with `git check-ignore -v`.
+#
+#  dist/ (finished archives + receipts) and release/ (stage-<ver>/ scratch) are
+#  left to `/*` on purpose and must never be un-ignored.  Both hold a full copy
+#  of the shipping set, so a stray `git add -f` there would put an 8 MB exe and
+#  a 33 MB archive in the history of a GPL source repo, permanently.
+# -----------------------------------------------------------------------------
 
 
 # -----------------------------------------------------------------------------
