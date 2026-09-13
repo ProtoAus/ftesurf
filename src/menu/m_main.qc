@@ -2032,6 +2032,30 @@ void(string mapname) ui_launch_local =
 // sv_lobby.qc rather than beside its caller.
 float ui_join_pending;
 
+/*
+  ui_play_online, READ THROUGH ONE FUNCTION -- build 70, and it is a bug fix.
+
+  The essay in ui_launch below is right about the trap and was defeated by a
+  SECOND reader 2,500 lines away: `ui_join`'s status report printed
+  cvar("ui_play_online") with no registercvar beside it.  So running the
+  DIAGNOSTIC before ever pressing Start auto-created the cvar as "", ui_launch's
+  registercvar then declined to overwrite it, and online play was off for the
+  rest of that session -- silently, and with the report itself cheerfully
+  displaying the 0 it had just caused.  Measured, not reasoned about: a live run
+  logged `Created QC Cvar ui_play_online` on the report line and
+  `ui_play_online 0` in the same breath, on an install that had never opted out.
+
+  A tool that breaks what it measures is worse than no tool, and "remember to
+  register beside every read" is the instruction that has now failed four times
+  in this tree.  So there is one reader and the registration is inside it.  New
+  callers get it right by having nowhere else to go.
+*/
+float() ui_online_opt =
+{
+	registercvar("ui_play_online", "1", 0);
+	return cvar("ui_play_online");
+};
+
 void() ui_launch =
 {
 	string mapname = ui_selected_name();
@@ -2072,9 +2096,7 @@ void() ui_launch =
 	  rather than a consent gate -- the consent gate is rec_terms and it is
 	  checked separately, inside Lob_JoinAsk.
 	*/
-	registercvar("ui_play_online", "1", 0);
-
-	if (cvar("ui_play_online"))
+	if (ui_online_opt())
 	if (Lob_JoinAsk(mapname))
 	{
 		/*
@@ -4550,8 +4572,11 @@ float(string cmd) m_consolecommand =
 			              Lob_JoinState(), ui_join_pending, Lob_JoinMap()));
 			print(sprintf("  addr %S timed %g why %S\n",
 			              Lob_JoinAddr(), Lob_JoinTimed(), Lob_JoinWhy()));
+			// ui_online_opt(), NOT cvar(): reading it bare here is what
+			// switched online play off just by asking about it.  See the
+			// essay over that function.
 			print(sprintf("  lobby_dir %S  ui_play_online %g  rec_terms %g\n",
-			              cvar_string("lobby_dir"), cvar("ui_play_online"),
+			              cvar_string("lobby_dir"), ui_online_opt(),
 			              cvar("rec_terms")));
 			return TRUE;
 		}
