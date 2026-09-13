@@ -551,6 +551,24 @@ foreach ($rel in $shipRel) {
     $staged++; $stagedBytes += (Get-Item -LiteralPath $dstFile).Length
 }
 
+# Normalise the launchers to CRLF in the STAGE (never in the working tree).
+#
+# .gitattributes declares `*.bat text eol=crlf`, so a fresh clone gets CRLF --
+# but git will not fix a working-tree copy that is already LF: it normalises on
+# add, LF normalises to LF, and `git status` stays clean. Both launchers in this
+# tree are LF-only for that reason, so the archive would ship whatever this one
+# machine happens to hold rather than what the repository declares.
+#
+# Measured on Windows 11 build 26100: cmd.exe runs the LF launcher correctly --
+# multi-line if/else, goto, and nested for/if all behave -- so this is not a
+# live break, and the .gitattributes warning does not reproduce here. It is
+# removing a "works on mine" dependency from the shipped artifact, which is the
+# reason that attribute exists at all.
+foreach ($b in @(Get-ChildItem -LiteralPath $StageDir -Filter '*.bat' -File -Recurse)) {
+    $t = [System.IO.File]::ReadAllText($b.FullName) -replace "`r`n", "`n" -replace "`n", "`r`n"
+    [System.IO.File]::WriteAllText($b.FullName, $t, (New-Object System.Text.ASCIIEncoding))
+}
+
 # Generated companions. README.md deliberately does NOT ship: it is a
 # build-from-source document that opens by telling the reader to compile an
 # engine, which is the wrong first instruction for someone who just downloaded
@@ -845,6 +863,23 @@ if ($DryRun) {
         Native 'rclone' @('deletefile', "${Remote}:$Bucket/$Prefix/.writetest", '--bind', '0.0.0.0') 'rclone delete probe' | Out-Null
         Good 'R2 write access confirmed (probe object created and deleted)'
     } finally { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
+
+    # A dry run rebuilds the .7z and rewrites the receipt at this version. If the
+    # version is already published, those local files now disagree with what is
+    # live -- harmless, since dist\ is scratch and the deploy guard would refuse
+    # to act on them, but silence here reads as "dist\ matches production".
+    $dryPub = & rclone lsjson --hash "${Remote}:$Bucket/$ObjectKey" --bind 0.0.0.0 2>$null
+    if ($LASTEXITCODE -eq 0 -and $dryPub) {
+        $dp = ($dryPub | Out-String | ConvertFrom-Json)
+        if ($dp -and $dp.Count -gt 0 -and ($dp[0].PSObject.Properties.Name -contains 'Hashes') -and $dp[0].Hashes) {
+            if ($dp[0].Hashes.md5 -eq $ArchiveMd5) { Good "$Ver is already published, byte-identical to this build" }
+            else {
+                Warn "$Ver is ALREADY PUBLISHED with different bytes (R2 md5 $($dp[0].Hashes.md5), this build $ArchiveMd5)."
+                Warn "  The live page and the live archive still agree with each other; it is dist\ that is now scratch."
+                Warn "  To publish this build, -Bump first. That URL cannot be replaced -- the edge caches it for a year."
+            }
+        }
+    }
 
     Write-Host "`n=== DRY RUN COMPLETE ===" -ForegroundColor Cyan
     Info "archive   $ArchivePath"
