@@ -775,12 +775,36 @@ vector() Scores_BoardNoteCol =
 // file's tag.  Widening the last column only widens what the panel ASKS for;
 // the clamp against the window and the drop order below are unchanged.
 #define SBW_TAG    11
+/*
+  BUILD 68: THE REPLAY MARK, AND ITS POSITION IS THE WHOLE POINT.
+
+  Seven characters -- six for the longest word ("remote") plus a gutter, which
+  is what SBW_TAG was before build 64 widened it.
+
+  IT GOES BETWEEN `player` AND `age`, NOT AT THE END, AND THAT IS NOT A TASTE
+  DECISION.  The drop rule below keeps the largest of three budgets that fits:
+  SBX_END, then SBX_TAG, then SBX_DATE.  With this column inserted here those
+  become 83 / 72 / 51, and every one of them clears SBX_REP (44) -- so the mark
+  is drawn at every window width there is.  Put at the end instead it would sit
+  past SBX_TAG and vanish on the first narrowing.
+
+  That matters because of what the RT_LOBBY precedent actually says, which is
+  the opposite of how it is usually quoted.  Its WORD lives in the tag column
+  and its own comment concedes that column "is the first column this board DROPS
+  on a narrow window"; the amber on the TIME cell is there precisely as "the
+  half of the mark that always survives".  So the precedent is not "a word
+  survives" -- it is "a word does not, so pay for it in colour".  A column that
+  survives on its own is the better answer to the same problem, and it is why
+  this needs no second mark on the time.
+*/
+#define SBW_REP     7
 
 #define SBX_RANK    0
 #define SBX_TIME   (SBX_RANK  + SBW_RANK)
 #define SBX_DELTA  (SBX_TIME  + SBW_TIME)
 #define SBX_OWNER  (SBX_DELTA + SBW_DELTA)
-#define SBX_DATE   (SBX_OWNER + SBW_OWNER)
+#define SBX_REP    (SBX_OWNER + SBW_OWNER)
+#define SBX_DATE   (SBX_REP   + SBW_REP)
 #define SBX_KIND   (SBX_DATE  + SBW_DATE)
 #define SBX_TAG    (SBX_KIND  + SBW_KIND)
 #define SBX_END    (SBX_TAG   + SBW_TAG)
@@ -1276,6 +1300,29 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
 		            (s != "") ? s : "unknown", SBC_TEXT, 0.9);
 
+		/*
+		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.
+
+		  GREEN IS FOR THE ACTIONABLE ONE ONLY.  "watch" is the single row state
+		  on this board that a click does something with, so it gets the one
+		  colour that means "yes"; both negatives are SBC_DIM and neither is
+		  SBC_BAD, on the rule this palette already follows for the `why` column
+		  below -- red here is for a run that was REFUSED, and a missing
+		  recording is not something the player did.
+
+		  The guard is insurance rather than live logic: SBX_REP is 44 and the
+		  narrowest budget the drop rule can choose is 51, so this is true at
+		  every width today.  It is written anyway because a fourth drop step is
+		  exactly the kind of thing that gets added later, and an unguarded
+		  column is how the one that was added last time ran off the edge.
+		*/
+		if (rec_sb_cols > SBX_REP)
+		{
+			s = Online_RepString(idx);
+			Scores_Text([lp_x + Scores_ColX(SBX_REP), d], rec_sb_szrow,
+			            s, (ob_rep[idx] > 0) ? SBC_GOOD : SBC_DIM, 0.85);
+		}
+
 		if (rec_sb_cols > SBX_DATE)
 		{
 			s = Online_AgeString(idx);
@@ -1645,12 +1692,22 @@ void(vector scr) Scores_Draw =
 	/*
 	  HOW MANY COLUMNS THE WINDOW CAN AFFORD, decided here and obeyed below.
 
-	  The table is 76 characters wide at full dress.  On a narrow window that
-	  does not fit, and a column that runs off the right edge is worse than one
-	  that is not drawn -- so the two least load-bearing go first: the last
-	  column (the file's tag locally, the demotion reason online), then the
-	  date/age.  Rank, time, delta, player and the class word are what a
-	  leaderboard IS and are never dropped.
+	  The table is 83 characters wide at full dress (76 before build 68 added
+	  the replay column).  On a narrow window that does not fit, and a column
+	  that runs off the right edge is worse than one that is not drawn -- so the
+	  two least load-bearing go first: the last column (the file's tag locally,
+	  the demotion reason online), then the date/age.  Rank, time, delta, player
+	  and the class word are what a leaderboard IS and are never dropped.
+
+	  THE THREE BUDGETS ARE 83 / 72 / 51, AND THE FLOOR MOVED BY SEVEN.  That is
+	  the one cost of the new column and it is worth stating rather than
+	  discovering: the narrowest table this board can produce is now 51
+	  characters where it was 44, so a window that could just fit the old floor
+	  can overflow the new one.  No fourth step was added to drop the replay
+	  column too, deliberately -- the mark surviving every width is the reason it
+	  was put at SBX_REP in the first place, and 51 characters is roughly 370 px
+	  at the shipped scale, which no window this game runs in is narrower than.
+	  If one ever is, the honest fix is a fourth budget, not a narrower mark.
 
 	  BUILD 64: BOTH SOURCES OBEY THIS ONE DECISION.  rec_sb_cols is read by
 	  both row drawers, so a window narrow enough to drop a column drops the
@@ -1676,6 +1733,25 @@ void(vector scr) Scores_Draw =
 	  server-side.  Calling that "date" would be a heading that lies about its
 	  units, and a player would read "3d" as a day of the month.
 	*/
+	/*
+	  BUILD 68: `replay` IS AN ONLINE HEADING ONLY, AND THE LOCAL BOARD KEEPS
+	  THE GAP RATHER THAN FILLING IT.
+
+	  One column table serves both tabs, so the local board now has seven blank
+	  characters between `player` and `date`.  Filling them (RT_LOBBY -> "none",
+	  everything else -> "watch") would be the unification, and it is deliberately
+	  NOT done here: every local row's recording is on this disk already, so the
+	  column would answer a question nobody on that tab is asking, and the answer
+	  would be "yes" on essentially every row.  A heading over a column that says
+	  the same thing throughout is worse than a gap, which at least reads as
+	  "this tab does not use this".  Same reasoning the line below already gives
+	  for leaving the local tag column unlabelled.
+	*/
+	if (rec_sb_cols > SBX_REP)
+	if (Scores_IsOnline())
+		Scores_Text([rp_x + Scores_ColX(SBX_REP), rp_y], rec_sb_szhead,
+		            "replay", SBC_DIM, 1);
+
 	if (rec_sb_cols > SBX_DATE)
 		Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
 		            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);

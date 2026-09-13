@@ -943,6 +943,42 @@ string(float i) Online_WhyString =
 };
 
 /*
+  WHETHER THIS ROW HAS A RECORDING BEHIND IT, IN ONE WORD -- build 68, the last
+  of R5.
+
+  `rep` is both the handle and the flag: non-zero is the id /api/replay serves,
+  and 0 means there is nothing to click.  Until now that fact reached the player
+  only by the row's hover fill being suppressed -- i.e. one row at a time, only
+  while the cursor was physically on it, and identically to a row that simply
+  was not hovered.  A community board, where every row is 0, rendered as a
+  uniformly clickable list that did nothing when clicked.
+
+  THREE FACTS ON THE WIRE, TWO WORDS, AND THAT IS HONEST RATHER THAN LAZY.
+  surfd's own note says a community row, a row set before build 66, and a row
+  whose file failed to land "all read 0", and nothing distinguishes the last two
+  -- which is why Scores_OnlineHandOff already answers both with one sentence.
+  What the TIER does separate is the first from the other two, and that is a
+  real difference worth a different word: on a community board 0 means the run
+  was set somewhere we never held a recording from, which is permanent and not a
+  fault; on the ranked board it means one should exist and does not.
+
+  ob_have_tier, NOT the chip the player is looking at.  It describes the rows
+  actually in memory, which is the same distinction Online_Describes exists for
+  -- reading the chip would label this board with the tier of a request that may
+  still be in flight.
+
+  Six characters at most: SBW_REP is seven wide including its gutter.
+*/
+string(float i) Online_RepString =
+{
+	if (i < 0 || i >= ob_n)
+		return "";
+	if (ob_rep[i] > 0)
+		return "watch";
+	return (ob_have_tier == "community") ? "remote" : "none";
+};
+
+/*
   One line saying what the online board currently holds.  This is the whole
   headless test surface -- the same argument build 58 and Patch 313 both
   landed on: when a scripted test needs an artefact only the UI produces, add
@@ -1028,6 +1064,15 @@ void() Online_Status =
 			word = strcat(Online_AgeString(i), " ", word);
 		else
 			word = Online_AgeString(i);
+
+		/*
+		  BUILD 68: the replay column's word, appended to `word` rather than
+		  passed -- the call below is already at the eight-parameter ceiling the
+		  comment above describes, and a ninth would be dropped in silence.
+		  This is the only way to falsify what that cell draws from a config: the
+		  cell itself is a sui row and no cfg in this tree drives a cursor.
+		*/
+		word = strcat(word, "  ", Online_RepString(i));
 
 		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %g  %s\n",
 		              ob_rank[i], bufstr_get(ob_bname, i),
