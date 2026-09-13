@@ -1249,6 +1249,142 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define TF_NORULESET 1024
 
 /*
+  THE RUN'S AIM EVIDENCE CANNOT BE CHECKED.  Build 72.
+
+  THE THIRD BIT OF THE SAME KIND, and it closes the first bullet of the plan's
+  Layer 1 -- the only item in that layer with nothing behind it.  Engine patches
+  293, 305, 306, 311 and 312 spent a great deal of effort making the .hid/.view
+  pair CHECKABLE; nothing anywhere declined to rank a run whose input stack made
+  that check meaningless, so the strictest evidence in the game was being
+  gathered under settings that void it and then certified as ranked.
+
+  WHAT VOIDS IT, and each of these is Patch 293's own precondition rather than a
+  new rule invented here:
+
+    in_rawinput 0   the engine falls back to INS_Accumulate's GetCursorPos
+                    recentre -- ONE already-OS-summed, OS-ACCELERATED delta per
+                    call.  The counts in the journal are then the OS's arithmetic
+                    and not the device's, and the yaw identity is checking the
+                    engine's multiplication against a number the OS already
+                    altered.
+    m_filter 1      smooths deltas ACROSS frames, so the counts drained in one
+                    frame are not the counts that produced that frame's angle.
+                    The identity is per-frame; filtering breaks the frame.
+    m_accel != 0    a non-linear function of the delta sits between the counts
+                    and the angle, so `k * sum(counts)` is not the applied yaw
+                    for any constant k -- and k is what the verifier has.
+
+  IT IS NOT A TAINT CLASS, on the TF_NOJOURNAL / TF_NORULESET precedent and for
+  the identical reason: this describes a hole in the CERTIFICATION, not something
+  the player did.  Mouse acceleration is a legal, archived, extremely ordinary
+  setting that thousands of people play with.  Printing `cheated` in red at
+  somebody for having it on would be a false statement about a player on that
+  player's own screen.  So it is recorded, the board declines to rank it, and
+  FS_RunClass is untouched.
+
+  THE ABSENT KEY IS UNKNOWN AND MUST NEVER BE READ AS "BAD", which is the same
+  sentence written for the two bits above and is now load-bearing in a new way:
+  `in_rawinput` is registered in in_win.c and IN NO OTHER BACKEND (verified --
+  in_win.c:347, and in_generic.c:1677 has to Cvar_FindVar it precisely because it
+  may not be there).  A client on Linux, macOS or any SDL build does not have the
+  cvar at all.  Reading a missing cvar as 0 would demote EVERY RUN FROM EVERY
+  NON-WINDOWS PLAYER, permanently and invisibly, for a setting their engine never
+  offered them.  That is why the key carries a `have` mask instead of a sentinel
+  value -- see IPH_* below.
+
+  AND IT IS CLIENT-ASSERTED, WHICH IS THE HONEST LIMIT OF IT.  `inprof` is
+  ordinary userinfo: a patched client sends whatever it likes, and a client that
+  sends no key at all is treated as unknown and stays rankable.  That is Layer 1
+  working as specified -- it catches honest misconfiguration and the casual T2
+  who edits a config, and it is not and cannot be a defence against T4.  The
+  defence against a lying client is the evidence itself: the .hid records what
+  the input stack actually delivered, and a profile claiming `m_accel 0` over a
+  journal whose counts do not produce its angles is a contradiction Layer 3 can
+  see and this bit cannot.  Recorded here so nobody later mistakes the one for
+  the other.
+*/
+#define TF_NOPROFILE 2048
+
+/*
+  THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
+
+      inprof = "<version> <have> <in_rawinput> <m_filter> <m_accel> <bad>"
+
+  cl_replay.qc writes it, sv_timer.qc reads it, and neither may spell the field
+  order out for itself -- FS_TagName's lesson, where the server held one copy and
+  the client another and each carried a comment saying the other existed.
+
+  `have` IS A BITMASK OF WHICH CVARS EXIST ON THE WRITER, and it is the field
+  that makes this safe on a non-Windows client.  A sentinel value cannot do this
+  job: -1 is a legal m_accel, so "-1 means absent" would read a deliberately
+  inverted acceleration as "no such cvar" and rank it.  A separate mask has no
+  value it can collide with.
+
+  `bad` IS A COUNTER AND NOT A FLAG, AND IT IS THE FIELD THAT MAKES THE FINISH
+  READ MEAN ANYTHING.  The first cut of this shipped four fields and a comment
+  claiming the mid-run window was covered "because the client sends on the edge".
+  That was false, and it was false in the direction that ranks a run it should
+  not: set m_accel 1 at the top of the ramp, set it back to 0 before the end
+  zone, and BOTH the start read and the finish read see a clean profile while the
+  run in between was played under acceleration.  It is precisely the snapshot
+  failure Patch 313 found in `off` and answered with `seq`/`breach` -- measured
+  there as "0 0 1 0" then "0 1 2 1" then "1 0 2 1" -- one layer up and in the
+  same shape, so it gets the same answer rather than a new one.
+
+  So the client counts every transition INTO an off-profile state since it
+  started, never resets, and the server latches the count at the start and
+  differences it at the finish.  A run whose profile was bad for one frame in the
+  middle differs, and is marked, with nothing sampled per tick.
+
+  THE VERSION IS FIRST AND IS COMPARED EXACTLY.  A reader that accepted an
+  unknown grammar would be reading field 3 of a future key as m_filter because it
+  happens to sit where m_filter used to; a reader that accepted a SHORTER key
+  would be inventing the fields it did not get.  Both stay unknown, which stays
+  rankable, which is the safe direction.
+*/
+#define IP_VERSION    1
+#define IP_FIELDS     6
+#define IPH_RAW       1   // in_rawinput exists on this client
+#define IPH_FILTER    2   // m_filter exists
+#define IPH_ACCEL     4   // m_accel exists
+
+/*
+  IS THIS INPUT PROFILE ONE THE AIM EVIDENCE CAN BE CHECKED UNDER?
+
+  SHARED, BECAUSE BOTH ENDS NEED THE SAME ANSWER FOR DIFFERENT REASONS -- the
+  client to decide whether to step `bad`, the server to decide whether to latch
+  TF_NOPROFILE -- and two copies of a rule that must agree is the defect
+  FS_TagName and FS_RunClass are both here to prevent.  If the client counted
+  transitions by one rule and the server judged the current state by another, a
+  profile could be bad by the server's rule and never counted by the client's,
+  which is the same silent unranked-run-that-ranks as having no counter at all.
+
+  THE TESTS ARE ASYMMETRIC ON PURPOSE.  raw must be POSITIVE to pass, while
+  filter and accel must be non-zero to fail.  A future in_rawinput 2 is still raw
+  input and still passes; an m_accel of 0.0001 is still a non-linear function
+  between the counts and the angle and still fails.  Each test is written the way
+  the cvar it reads actually behaves rather than to a house style.
+
+  A CVAR THE WRITER DOES NOT HAVE IS NEVER A FAULT.  See TF_NOPROFILE.
+*/
+float(float have, float raw, float filt, float acc) FS_ProfileBroken =
+{
+	if (have & IPH_RAW)
+	if (raw <= 0)
+		return TRUE;            // OS-summed, OS-accelerated deltas
+
+	if (have & IPH_FILTER)
+	if (filt != 0)
+		return TRUE;            // deltas smeared across frames
+
+	if (have & IPH_ACCEL)
+	if (acc != 0)
+		return TRUE;            // counts -> angle is not linear
+
+	return FALSE;
+};
+
+/*
   THE PRECEDENCE, IN ONE PLACE, because three readers ask it.
 
   cl_scores.qc's row word, cl_watch.qc's replay panel and cl_timer.qc's

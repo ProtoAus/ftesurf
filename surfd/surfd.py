@@ -252,6 +252,7 @@ TF_SEGMENT = 128
 TF_CHEAT = 256
 TF_NOJOURNAL = 512
 TF_NORULESET = 1024
+TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 
 SCHEMA_VERSION = 4
 
@@ -1104,17 +1105,26 @@ def certifiable(flags):
 
     THIS IS THE FIRST CONSUMER OF TF_NOJOURNAL AND TF_NORULESET, which have
     been recorded, archived and reported since QC builds 58 and 62 with
-    nothing downstream that acted on them.
+    nothing downstream that acted on them.  QC build 72 adds TF_NOPROFILE.
 
-    Both describe a hole in the CERTIFICATION rather than something the player
-    did -- no input journal beside the run, or physics that cannot be shown to
-    have been the ruleset's -- so neither may call anyone a cheat.  The tree's
-    standing rule is that a quiet gate survives a false negative where an
+    All three describe a hole in the CERTIFICATION rather than something the
+    player did -- no input journal beside the run, physics that cannot be shown
+    to have been the ruleset's, or an input stack under which the journal's own
+    yaw identity does not hold -- so none of them may call anyone a cheat.  The
+    tree's standing rule is that a quiet gate survives a false negative where an
     accusation does not, and a tier demotion is exactly that quiet gate: the
     run still stands on the community board under the player's name, and only
     the ranked board declines it.
+
+    TF_NOPROFILE IS THE ONE MOST LIKELY TO FIRE ON AN INNOCENT INSTALL, and it
+    is worth saying so where the demotion happens.  Mouse acceleration is a
+    legal, archived, ordinary setting; a player with it on has done nothing
+    wrong and is told, in the board's own `why` column, that the run is on the
+    community board because of the input mode.  That is the whole intended
+    behaviour and not a rough edge -- the alternative is ranking a run whose
+    aim evidence provably cannot be checked.
     """
-    return not (flags & (TF_NOJOURNAL | TF_NORULESET))
+    return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE))
 
 
 # --------------------------------------------------------------------------

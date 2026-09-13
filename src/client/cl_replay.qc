@@ -247,6 +247,20 @@ float() Rec_ViewKeys =
 float rec_rp_consent;            // the accepted terms version, read off disk at init
 float rec_rp_hidsent;            // last `setinfo rechid` value sent; -1 = none yet
 
+// Build 72: the last `setinfo inprof` sent, as its parts.  Cached as FLOATS and
+// not as the assembled string on purpose -- a cached string would have to be
+// strzone'd to survive the frame, and three float compares cost nothing and free
+// nothing.  rec_rp_profseen seeds the first send; see Rec_ProfileReport.
+float rec_rp_profseen;
+float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
+
+// Transitions INTO an off-profile state since this client started, and the state
+// the last one was counted from.  Never reset -- the server differences it, so a
+// reset would read as "no transitions" across the reset.  See the `bad` note in
+// the inprof grammar (sh_defs.qc).
+float rec_rp_prof_bad;
+float rec_rp_prof_wasbad;
+
 /*
   THE ACCEPTED VERSION, READ FROM THE RECORD ITSELF and not only from the cvar.
 
@@ -337,6 +351,118 @@ void() Rec_HidReport =
 
 	rec_rp_hidsent = v;
 	localcmd(sprintf("setinfo rechid %g\n", v));
+};
+
+/*
+  ONE ACCESSOR FOR AN ENGINE CVAR THAT MAY NOT EXIST.  Build 72.
+
+  IT ASKS WHETHER THE CVAR EXISTS BEFORE IT READS IT, AND THAT ORDER IS THE
+  WHOLE FUNCTION.  cvar() is PF_Cvar_FindOrGet: on a miss, with
+  pr_autocreatecvars (default 1), it CREATES the name as the empty string.  So a
+  bare cvar("in_rawinput") on a Linux client -- where in_win.c never registered
+  it -- does not merely return 0, it brings the cvar into existence, and every
+  later cvar_type() on that name then reports EXISTS.  The absent case would
+  detect itself correctly exactly once and read as "present and 0" forever
+  after, which is the demote-every-non-Windows-player failure the TF_NOPROFILE
+  essay exists to prevent.  The probe would have manufactured the condition it
+  was probing for.
+
+  This tree has been bitten by cvar()'s autocreate FOUR times (see the essay at
+  sv_timer.qc:5867 and the ui_play_online case in m_main.qc), and every one of
+  them was a second reader somewhere else doing the naive thing.  So there is
+  one reader, it is this, and callers get a float and a mask bit.
+
+  cvar_type() is #495 and is documented in the engine as MUST NOT create --
+  pr_bgcmd.c:1944 says so on the line itself, which is why it is safe to ask
+  first and why nothing else here can be.
+*/
+#define CVAR_TYPEFLAG_EXISTS 1   // pr_common.h:225
+
+float(string name, float bit, __inout float have) Rec_InputCvar =
+{
+	if (!(cvar_type(name) & CVAR_TYPEFLAG_EXISTS))
+		return 0;
+	have = have | bit;
+	return cvar(name);
+};
+
+/*
+  TELL THE SERVER WHAT THE INPUT STACK IS SET TO.  Build 72.
+
+  The server cannot see any of these -- they are client cvars, read by the
+  engine's own input code and never sent -- so the answer is published as
+  userinfo on the `rechid` precedent immediately above, and SV_TimerProfile reads
+  it with infokey.  The grammar is IP_* in sh_defs.qc and is not repeated here.
+
+  SENT ON CHANGE FROM THE PER-FRAME DRIVER, for Rec_HidReport's reason and not a
+  new one: a userinfo update is a round trip, so setting it as the clock starts
+  would race the server's own read of it and the run that lost would be recorded
+  as making no claim when it had just made one.  From Rec_ViewFrame the value has
+  been on the server since long before any start zone was left.
+
+  rec_rp_profseen SEEDS THE FIRST SEND rather than a magic value in the cached
+  fields, because every field here has a legal 0: `have` is 0 on a client with
+  none of the three cvars, and 0/0/0 is the ordinary reading for a Windows
+  client with raw input OFF.  A cache primed to any of those would skip the send
+  that repopulates the server's userinfo after a reconnect -- and a skipped send
+  reads as "unknown", i.e. it would silently RANK a run it should have demoted.
+  That is the one direction this file may not fail in, so the flag is explicit.
+*/
+void() Rec_ProfileReport =
+{
+	local float have, raw, filt, acc, bad;
+
+	have = 0;
+	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
+	filt = Rec_InputCvar("m_filter",    IPH_FILTER, have);
+	acc  = Rec_InputCvar("m_accel",     IPH_ACCEL,  have);
+
+	/*
+	  THE COUNTER IS STEPPED HERE, BEFORE THE EARLY RETURN, AND IT IS STEPPED ON
+	  THE EDGE INTO BAD.
+
+	  Before the return because the return is a CACHE, not a decision: it exists
+	  to skip a redundant userinfo round trip, and a counter that only moved when
+	  the cache missed would be a counter that missed exactly the transitions the
+	  cache is best at hiding.  In practice the two agree -- a state change is a
+	  cache miss -- but making the counter depend on that is making a correctness
+	  property depend on an optimisation.
+
+	  ON THE EDGE rather than per frame because the server differences it: a
+	  per-frame count would make `bad` a duration, and a run that merely STARTED
+	  under a bad profile would then differ from its own start latch by thousands
+	  and be marked twice for one fault.  The start latch already carries the
+	  standing state; this field is only for what CHANGED inside the run.
+	*/
+	if (FS_ProfileBroken(have, raw, filt, acc))
+	{
+		if (!rec_rp_prof_wasbad)
+			rec_rp_prof_bad = rec_rp_prof_bad + 1;
+		rec_rp_prof_wasbad = TRUE;
+	}
+	else
+		rec_rp_prof_wasbad = FALSE;
+
+	bad = rec_rp_prof_bad;
+
+	// Nested, not &&: fteqcc evaluates both sides of && and this is a guard.
+	// `bad` is not compared -- it can only change when the state does, and a
+	// state change is already a miss on one of the four below.
+	if (rec_rp_profseen)
+	if (have == rec_rp_prof_have)
+	if (raw  == rec_rp_prof_raw)
+	if (filt == rec_rp_prof_filter)
+	if (acc  == rec_rp_prof_accel)
+		return;
+
+	rec_rp_profseen    = TRUE;
+	rec_rp_prof_have   = have;
+	rec_rp_prof_raw    = raw;
+	rec_rp_prof_filter = filt;
+	rec_rp_prof_accel  = acc;
+
+	localcmd(sprintf("setinfo inprof \"%g %g %g %g %g %g\"\n",
+	                 IP_VERSION, have, raw, filt, acc, bad));
 };
 
 /*
@@ -1113,6 +1239,9 @@ void() Rec_ViewFrame =
 	// Build 58: unconditional and first, because the server has to have this
 	// before a run arms rather than when one does.  See Rec_HidReport.
 	Rec_HidReport();
+
+	// Build 72: the same argument, the same place.  See Rec_ProfileReport.
+	Rec_ProfileReport();
 
 	flags = getstatf(STAT_FS_TIMERFLAGS);
 	rec = (flags & TF_RECORDING) ? TRUE : FALSE;

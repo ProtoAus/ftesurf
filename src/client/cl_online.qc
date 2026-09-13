@@ -935,10 +935,22 @@ string(float i) Online_WhyString =
 {
 	if (i < 0 || i >= ob_n)
 		return "";
-	// Journal first: no journal is no evidence at all, where an unlocked
-	// ruleset is evidence that has not been certified.  A run can carry both.
+	/*
+	  Journal first: no journal is no evidence at all, where the other two are
+	  evidence that has not been certified.  A run can carry all three, and the
+	  order is worst-first for the reason FS_RunClass's precedence block gives.
+
+	  Build 72 adds the third.  "input mode" is 10 characters, as "no journal"
+	  and "no ruleset" are, so SBW_TAG's 11 still fits and no column moves.
+
+	  IT NAMES THE HOLE AND NOT THE SETTING.  A row reading "m_accel 2" would be
+	  printing a stranger's config at everybody who opens the board, and the
+	  player who needs the detail already has `cmd timer`, which gives the whole
+	  key.  The board's job here is to say why the row is where it is.
+	*/
 	if (ob_flags[i] & TF_NOJOURNAL) return "no journal";
 	if (ob_flags[i] & TF_NORULESET) return "no ruleset";
+	if (ob_flags[i] & TF_NOPROFILE) return "input mode";
 	return "";
 };
 

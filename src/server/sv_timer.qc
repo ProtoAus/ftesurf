@@ -1029,6 +1029,25 @@ float() SV_RecEnabled =
 .float  run_t_rbreach;
 
 /*
+  The client's off-profile transition count as it stood when this attempt armed.
+  Build 72.
+
+  The same shape as run_t_rbreach above and for the same reason: `inprof`'s
+  current-state fields are a SNAPSHOT, and a snapshot cannot mark a span -- set
+  m_accel at the top of the ramp and unset it before the end zone and both ends
+  read clean.  So the client counts transitions into an off-profile state and
+  this latches the count to difference against.  See SV_TimerProfile.
+
+  -1 means never sampled -- a client that had sent no `inprof` key by the time
+  this attempt armed -- and SV_ProfileBroken refuses to compare against it.  That
+  matters more here than it does for the ruleset: `bad` counts for the life of
+  the CLIENT, so a player who had mouse acceleration on ten minutes ago is still
+  carrying a positive count, and differencing it against a zeroed field would
+  mark a run for something that happened before it started.
+*/
+.float  run_t_pbad;
+
+/*
   The worst class this attempt has been TOLD it is.  Build 44.
 
   A high-water mark and not a mirror of the flags: SV_SaveApplyState restores
@@ -4770,6 +4789,111 @@ void(entity e) SV_TimerJournal =
 };
 
 /*
+  CAN THIS RUN'S AIM EVIDENCE BE CHECKED AT ALL?  Build 72.  TF_NOPROFILE.
+
+  A PURE PREDICATE, ON THE SV_RulesetBroken PRECEDENT (p313), and for the same
+  harness reason rather than for tidiness: a run cannot be FINISHED from a config
+  on a zoned map -- zone_goto and setpos both void via SV_TimerWarped -- so a
+  rule that existed only inside the latch could not be checked headlessly at all.
+  Split out, `cmd timer` can report a live `wouldprof` beside the latched bit,
+  with one copy of the rule and no side effect from asking.
+
+  EVERY EARLY RETURN HERE IS "UNKNOWN", AND UNKNOWN IS RANKABLE.  There are four
+  of them and they are the whole safety of this function:
+
+    no key          an older client, or a client whose CSQC has not run a frame
+                    yet.  infokey returns "" and "" is not a claim.
+    short key       a grammar this build cannot read.  Taking the fields it
+                    recognises would be reading field 3 of a future key as
+                    m_filter because that is where m_filter used to sit.
+    wrong version   the same, said explicitly.
+    bit clear in    the cvar does not exist on that client.  in_rawinput is
+    `have`          registered in in_win.c ONLY, so this is every Linux, macOS
+                    and SDL player, and reading their missing cvar as 0 would
+                    demote all of them forever.  See TF_NOPROFILE in sh_defs.qc.
+
+  THE TESTS ARE ASYMMETRIC ON PURPOSE.  raw must be POSITIVE to pass, while
+  filter and accel must be non-zero to fail.  A future in_rawinput 2 is still raw
+  input and still passes; an m_accel of 0.0001 is still a non-linear function
+  between the counts and the angle and still fails.  Each test is written the way
+  the cvar it reads actually behaves rather than to a house style.
+*/
+float(entity e) SV_ProfileBroken =
+{
+	local string s;
+
+	s = infokey(e, "inprof");
+	if (s == "")
+		return FALSE;
+	if (tokenize(s) < IP_FIELDS)
+		return FALSE;
+	if (stof(argv(0)) != IP_VERSION)
+		return FALSE;
+
+	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here; this
+	// function's whole job is getting the four numbers out of the key safely.
+	if (FS_ProfileBroken(stof(argv(1)), stof(argv(2)),
+	                     stof(argv(3)), stof(argv(4))))
+		return TRUE;
+
+	/*
+	  ...and the span the snapshot above cannot see.  run_t_pbad is latched at
+	  the start; a client that stepped its counter in between was off-profile
+	  inside this run even though both ends read clean.  See the `bad` note in
+	  the inprof grammar.
+
+	  -1 IS "NEVER SAMPLED" AND REFUSES TO COMPARE, on run_t_rbreach's precedent
+	  and against the same failure: `bad` counts for the life of the CLIENT, not
+	  of the run, so a player who fixed their settings ten minutes ago is still
+	  carrying a positive count.  A run whose start took no latch -- an older
+	  client that started sending the key mid-run, a connect between the two
+	  calls -- would then difference a real count against a zeroed field and
+	  invent a violation out of the first sample it ever saw.  That is a false
+	  statement about a player, which is the one failure this bit may not have.
+	*/
+	if (e.run_t_pbad >= 0 && stof(argv(5)) != e.run_t_pbad)
+		return TRUE;
+
+	return FALSE;
+};
+
+/*
+  ...and the latch.
+
+  CALLED TWICE, exactly like SV_TimerJournal and SV_TimerRuleset: once at
+  SV_TimerStart so the bit is set before SV_RecOpen writes the header, and once
+  at the finish so an `m_accel 1` typed mid-run is caught too.  It only ever
+  sets: turning acceleration back off half way through does not retroactively
+  make the first half checkable.
+
+  THE START CALL LATCHES THE COUNTER FIRST, and in that order, so the comparison
+  inside SV_ProfileBroken is trivially equal on this call -- a start can only be
+  marked by the standing state, which is right, because there is no span yet to
+  have crossed.  SV_TimerRuleset does the same thing for the same reason and the
+  two are deliberately the same shape.
+
+  A START THAT CANNOT READ THE KEY LEAVES run_t_pbad AT -1, which is SV_TimerArm's
+  seed and means "never sampled" -- not 0, which would mean "sampled, and it was
+  zero".  The difference is a false accusation; see SV_ProfileBroken.
+*/
+void(entity e, float atstart) SV_TimerProfile =
+{
+	local string s;
+
+	if (atstart)
+	{
+		s = infokey(e, "inprof");
+		if (s != "")
+		if (tokenize(s) >= IP_FIELDS)
+		if (stof(argv(0)) == IP_VERSION)
+			e.run_t_pbad = stof(argv(5));
+	}
+
+	if (SV_ProfileBroken(e))
+		e.run_t_flags = e.run_t_flags | TF_NOPROFILE;
+};
+
+/*
   WERE THIS RUN'S PHYSICS PROVABLY THE RULESET'S?  Build 62, engine Patch 313.
 
   The long version is the TF_NORULESET essay in sh_defs.qc; the short version is
@@ -5551,6 +5675,10 @@ void(entity e, float z) SV_TimerArm =
 	// would let a fresh attempt compare a real sample against a fake latch.  See
 	// SV_TimerRuleset.
 	e.run_t_rbreach     = -1;
+	// Build 72: -1 for the same reason, and it bites harder here -- `bad` counts
+	// for the life of the client, so 0 is both a legitimate value and the wrong
+	// default.  See run_t_pbad and SV_ProfileBroken.
+	e.run_t_pbad        = -1;
 
 	e.run_t_cpmax    = 0;
 	e.run_t_cpn      = 0;
@@ -5954,6 +6082,11 @@ void(entity e, float ticks) SV_TimerFinish =
 	SV_TimerJournal(e);
 	SV_TimerRuleset(e, FALSE);
 
+	// Build 72: and the input profile, which catches an `m_accel 1` typed after
+	// the clock started AND the set-and-unset window that leaves both ends
+	// reading clean.  Same shape, same reason.  See SV_TimerProfile.
+	SV_TimerProfile(e, FALSE);
+
 	tag = RT_LAST;
 	if (ispb)
 		tag = RT_PB;
@@ -6244,6 +6377,12 @@ void(entity e) SV_TimerStart =
 	// number, which the finish call differences against; without it the mid-run
 	// unlock-and-relock window is invisible.  See SV_TimerRuleset.
 	SV_TimerRuleset(e, TRUE);
+
+	// Build 72: likewise before SV_RecOpen.  The start call LATCHES the client's
+	// off-profile counter, which the finish call differences against; without it
+	// an m_accel set and unset inside the run is invisible at both ends.  Exactly
+	// the ruleset's argument one line up.  See SV_TimerProfile.
+	SV_TimerProfile(e, TRUE);
 
 	SV_RecOpen(e);
 
@@ -7423,6 +7562,29 @@ void(entity e) SV_TimerReport =
 	               e.run_t_rbreach,
 	               (e.run_t_flags & TF_NORULESET) ? 1 : 0,
 	               SV_RulesetBroken(e)));
+	/*
+	  Build 72.  The same four columns for the same four reasons, one layer up.
+
+	  `key` is the client's raw `inprof`, "" for a client that has never sent one
+	  -- which is unknown, stays rankable, and is NOT the same as a client
+	  answering "1 7 0 0 0 0".  `badat` is the off-profile transition count this
+	  attempt latched at its start, -1 if it never sampled one.  `noprofile` is
+	  whether the bit got set, and `would` is the live answer from the same pure
+	  predicate the latch calls.
+
+	  THIS IS THE ONLY WAY TO SEE THE FINISH HALF, and more so than for the
+	  ruleset: the whole point of the counter is a window that is closed again by
+	  the time anybody looks, so a report that could only show the current state
+	  would be blind to exactly what the field exists for.  would 1 with
+	  noprofile 0 and a `bad` in the key above `badat` is a run that was played
+	  under acceleration and is not admitting to it now.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        inprof:  key \"%s\"  badat %g  noprofile %g  would %g\n",
+	               infokey(e, "inprof"),
+	               e.run_t_pbad,
+	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
+	               SV_ProfileBroken(e)));
 	/*
 	  Build 30.  Two different questions, so two columns rather than one:
 	  `ghost` is whether the camera is detached RIGHT NOW (and therefore whether
