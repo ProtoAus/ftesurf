@@ -349,6 +349,119 @@ void(float track, float leg, float ticks,
 };
 
 /*
+  ---- THE WORLD ROW.  Build 65. --------------------------------------------
+
+  The local rank above is a directory scan.  This one is an ANSWER FROM A
+  SERVER, arriving over a network some milliseconds after the card is already
+  drawn, and every difference between the two functions follows from that.
+
+  IT MUST MATCH THE RUN IN FRONT OF IT OR SAY NOTHING.  The server publishes
+  `*wrank` as "<map> <track> <leg> <ticks> <state> <rank> <of>" (sh_defs.qc has
+  the essay) precisely so this comparison is possible: a rank with no subject
+  would be drawn against whatever finish happened to be on screen, and a rank
+  from the previous leg drawn beside this leg's time is worse than the dash the
+  card drew before any of this existed -- it is wrong and it is believed.
+
+  RE-READ EVERY FRAME, not latched.  That is the whole mechanism by which a
+  late answer reaches a card that is already up: the row says "..." while the
+  directory is being asked and becomes "#3 of 17" in place when it replies,
+  with no event, no timer and no state of its own.
+
+  WR_NONE is returned for "nothing here is about this run", which covers the
+  server never having submitted anything, a key about some other run, and a
+  server that does not rank at all.  The caller separates those by asking the
+  serverinfo `board` key, because that is a property of the SERVER and this
+  function only knows about runs.
+*/
+#define WR_NONE (-1)
+
+float(float track, float leg, float ticks,
+      __inout float rank, __inout float of) Results_WorldRank =
+{
+	rank = 0;
+	of   = 0;
+
+	// Seven fields exactly.  A short key is a key from an older server, and a
+	// reader that took what it could get out of one would be inventing.
+	if (tokenize(getplayerkeyvalue(player_localnum, "*wrank")) < 7)
+		return WR_NONE;
+
+	if (argv(0) != serverkey("map"))
+		return WR_NONE;
+	if (stof(argv(1)) != track)
+		return WR_NONE;
+	if (stof(argv(2)) != leg)
+		return WR_NONE;
+	if (stof(argv(3)) != ticks)
+		return WR_NONE;
+
+	rank = stof(argv(5));
+	of   = stof(argv(6));
+	return stof(argv(4));
+};
+
+/*
+  The sentence the world row draws, as a PURE function of the state.
+
+  SPLIT OUT SO THE CONSOLE CAN PRINT THE SAME STRING THE CARD DRAWS, on the
+  SV_RulesetBroken precedent (p313): the card cannot be opened without a real
+  finish, and a finish cannot be reached from a config on a zoned map, so a
+  rule that only existed inside the draw call could not be checked headlessly
+  at all.  Asking it costs nothing and has no side effect, so `results wrank`
+  reports the truth rather than a second copy of it.
+
+  SIX SENTENCES, and the last three are about the SERVER rather than the run --
+  which is why they are reached only when nothing was published about this run.
+*/
+string(float wst, float wrank, float wof) Results_WorldNote =
+{
+	if (wst == WR_RANKED && wrank > 0)
+		return sprintf("#%g of %g", wrank, wof);
+
+	// Deliberately shown.  The gap between finishing and the directory
+	// answering is the moment the player is asking "did that count?", and an
+	// empty row through it reads as "no".
+	if (wst == WR_PENDING)
+		return "...  asking the leaderboard";
+
+	// Accepted, position unknown -- see WR_STORED's essay in sh_defs.qc.  It
+	// says what is actually known and does not guess at a number, which is the
+	// point of it being a separate state rather than a rank of 0.
+	if (wst == WR_STORED)
+		return "--  on the board (no rank given)";
+
+	if (wst == WR_NOBOARD)
+		return "--  this run has no board";
+	if (wst == WR_FAILED)
+		return "--  the leaderboard did not take it";
+
+	if (serverkey("board") == "noid")
+		return "--  this server cannot identify you";
+
+	// A ranked server that published nothing about this run: every gate in
+	// Lobby_SubmitRun that returns without posting lands here.
+	if (serverkey("board") == "ranked")
+		return "--  not submitted";
+
+	/*
+	  NO CLAIM AT ALL WHEN THE SERVER HAS NOT SAID.  An empty `board` key means
+	  either a server older than build 64 or -- caught in the b65rank run, at
+	  the very first sample -- serverinfo that has simply not arrived yet.  On
+	  that sample this row read "times here stay on this machine" ON A RANKED
+	  SERVER, which is a positive statement about somebody's times that happened
+	  to be false.  It cannot reach a player today, because a card needs a
+	  finish and a finish is long after serverinfo; it would the moment anything
+	  else drew this note.  A dash claims nothing and is always true.
+	*/
+	if (serverkey("board") == "")
+		return "--";
+
+	// The ordinary case, and the one the player most needed told: a listen
+	// server, or a server with no key.  Nothing is broken.
+	return "--  times here stay on this machine";
+};
+
+/*
   The leg, spelled for a HUMAN.
 
   NOT FS_LegDir, which is the path speller: it answers "bonus_2_stage_3" because
@@ -843,11 +956,20 @@ void(vector scr) Results_Draw =
 	/*
 	  THE RANK BLOCK.  Two rows, and the second is always drawn.
 
-	  `world` is reserved and says so.  A global board is the plan and this is
-	  the seam it lands on -- STAT_FS_WORLDRANK and STAT_FS_WORLDOF are reserved
-	  at 90 and 91 in sh_defs.qc and deliberately not registered, so that this
-	  row draws from the ABSENCE of a board rather than from a zero in a slot.
-	  Drawing it now, dashed, is what makes adding the board a data change.
+	  `world` WAS a reserved dash and is now a real answer.  The reservation in
+	  sh_defs.qc (stats 90 and 91) still stands and is still unregistered -- it
+	  is NOT what shipped, and the essay beside it says why two numbers with no
+	  subject cannot answer this question.  What arrives instead is one userinfo
+	  key that names the run it is about, which is what lets this row tell "your
+	  rank" from "somebody's rank", and lets a late reply land on a card that is
+	  already on screen.
+
+	  SIX SENTENCES, NOT A NUMBER AND A DASH.  Every one of these was, before
+	  this build, drawn as the same "no board yet" -- including the two that
+	  describe a FAULT an operator could fix and the one where the run really is
+	  on the board.  A single dash covering all of them is how a working feature
+	  and a broken one came to look identical from the player's seat, which is
+	  the report that started this work.
 	*/
 	if (ui_rs_rank > 0)
 		s = sprintf("#%g of %g", ui_rs_rank, ui_rs_of);
@@ -857,8 +979,32 @@ void(vector scr) Results_Draw =
 	HUD_Text([p_x + 60 * ui_cv_scale, y], s, sz, RSC_TEXT, a);
 	y = y + (sz + 3 * ui_cv_scale);
 
-	HUD_Text([p_x + 10 * ui_cv_scale, y], "world", sz, RSC_DIM, a * 0.7);
-	HUD_Text([p_x + 60 * ui_cv_scale, y], "--  no board yet", sz, RSC_DIM, a * 0.7);
+	{
+		local float  wst, wrank, wof, wlit;
+		local vector wcol;
+
+		// Initialised for the COMPILER, not because the callee might not write
+		// them: fteqcc cannot see through __inout and warns F302 on the call
+		// otherwise.  Results_WorldRank zeroes both on its first two lines.
+		wrank = 0;
+		wof   = 0;
+		wst   = Results_WorldRank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
+		                          wrank, wof);
+		s     = Results_WorldNote(wst, wrank, wof);
+		wlit  = (wst == WR_RANKED && wrank > 0);   // an ANSWER, or a note?
+
+		// Nested rather than a ternary on the colour: fteqcc's ternary
+		// evaluates BOTH arms, which is a documented trap in this tree, and a
+		// vector-valued one is not worth finding the edge of.
+		wcol = RSC_DIM;
+		if (wlit)
+			wcol = RSC_TEXT;
+
+		HUD_Text([p_x + 10 * ui_cv_scale, y], "world", sz, RSC_DIM,
+		         wlit ? a : a * 0.7);
+		HUD_Text([p_x + 60 * ui_cv_scale, y], s, sz, wcol,
+		         wlit ? a : a * 0.7);
+	}
 	y = y + (sz + 8 * ui_cv_scale);
 
 	drawfill([p_x + 10 * ui_cv_scale, y], [w - 20 * ui_cv_scale, 1, 0],
@@ -991,18 +1137,88 @@ float(float scanx) Results_PassiveKey =
 
 float(string cmd) Results_ConsoleCommand =
 {
-	if (cmd == "results")
+	// argv(0) RATHER THAN cmd, so the command can take a subcommand at all:
+	// `cmd` is the whole line, so `results wrank` never equalled "results" and
+	// fell through to the engine as an unknown command.  A bare `results` is
+	// unaffected.
+	if (argv(0) != "results")
+		return FALSE;
+
+	/*
+	  ---- `results wrank`.  Build 65. --------------------------------------
+
+	  THE WORLD ROW IS THE ONE THING ON THIS CARD THAT COMES FROM A SERVER, and
+	  the card cannot be opened without a real finish, which cannot be reached
+	  from a config on a zoned map.  So without this handle the entire path --
+	  a submission, a directory answer, a userinfo key, a subject match and a
+	  sentence -- was uncheckable except by playing the game, and "it looked
+	  right when I played it" is the standard this tree does not accept.
+
+	  IT PRINTS THE RAW KEY BEFORE ANYTHING IS DECIDED FROM IT.  A decoded
+	  reading that disagrees with its own input is the failure worth catching,
+	  and a reader that only ever showed its conclusion could not show it.
+	*/
+	if (argv(1) == "wrank")
 	{
-		if (ui_rs_open)
-			Results_Close();
+		local float wst, wrank, wof, qtrack, qleg, qticks;
+		local string raw;
+
+		/*
+		  THE SUBJECT MAY BE NAMED: `results wrank <track> <leg> <ticks>`.
+
+		  Without it this can only ever ask about the card's own finish, which
+		  on a headless client is 0/0/0 forever -- so the two answers that
+		  matter, "this IS your run" and "this is NOT your run", could not both
+		  be produced in one session.  Naming it turns the subject match itself
+		  into something a config can falsify: ask about the run that was
+		  submitted and about one digit off it, and the second must come back
+		  with nothing however good the first looks.
+		*/
+		if (argv(2) != "")
+		{
+			qtrack = stof(argv(2));
+			qleg   = stof(argv(3));
+			qticks = stof(argv(4));
+		}
 		else
 		{
-			Results_Open();
-			Results_TakeCursor();
+			qtrack = ui_rs_track;
+			qleg   = ui_rs_leg;
+			qticks = ui_rs_ticks;
 		}
+
+		raw = getplayerkeyvalue(player_localnum, "*wrank");
+		print(sprintf("  *wrank = %s\n", (raw != "") ? raw : "(unset)"));
+		print(sprintf("  board  = %s\n",
+		              (serverkey("board") != "") ? serverkey("board")
+		                                         : "(unpublished)"));
+
+		// The card's own subject is printed whether or not it is the one being
+		// asked about, because a key that matched a subject of all zeroes
+		// would be a bug in the stamp and this is where it would show.
+		print(sprintf("  card   = track %g leg %g ticks %g\n",
+		              ui_rs_track, ui_rs_leg, ui_rs_ticks));
+		print(sprintf("  asking = track %g leg %g ticks %g\n",
+		              qtrack, qleg, qticks));
+
+		wrank = 0;
+		wof   = 0;
+		wst   = Results_WorldRank(qtrack, qleg, qticks, wrank, wof);
+		print(sprintf("  state  = %g  rank %g of %g%s\n", wst, wrank, wof,
+		              (wst == WR_NONE) ? "   (nothing published about this run)"
+		                               : ""));
+		print(sprintf("  draws  = %s\n", Results_WorldNote(wst, wrank, wof)));
 		return TRUE;
 	}
-	return FALSE;
+
+	if (ui_rs_open)
+		Results_Close();
+	else
+	{
+		Results_Open();
+		Results_TakeCursor();
+	}
+	return TRUE;
 };
 
 /*

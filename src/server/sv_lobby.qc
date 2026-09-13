@@ -145,6 +145,46 @@
 */
 .float   lobby_said_noid;
 
+/*
+  Build 65.  The same latch for the other fault the player cannot do anything
+  about: the directory is reachable but refused or failed this submission.
+  Separate from lobby_said_noid because they are different sentences and a
+  server can have one without the other -- and because a server that starts
+  refusing halfway through an evening would otherwise be silent to anyone who
+  had already been told about a missing GUID.
+*/
+.float   lobby_said_fail;
+
+/*
+  Build 65.  The submission this player is waiting on an answer about, and what
+  run it was -- see the *wrank essay in sh_defs.qc.
+
+  THE REQUEST ID IS THE WHOLE LOOKUP, and it is on the player rather than in a
+  table because the engine maintains the table for free.  A reply arrives with
+  only its id (URI_Get_Callback), so something has to map that back to whoever
+  finished; findfloat over this field is that map, and it has no fixed size to
+  overflow -- which is the objection the parity note raises against a table of
+  outstanding ids, and the reason that note is not violated here.
+
+  IT CANNOT MIS-ATTRIBUTE A REPLY TO THE WRONG PLAYER, and that was checked
+  rather than assumed.  The failure to worry about is a player who finishes,
+  submits, disconnects inside the round trip, and has their slot taken by
+  somebody else who is then told a stranger's rank.  It cannot happen: a client
+  edict is run through ED_Clear when the slot is set up for a new connection
+  (sv_user.c:5654, taken because FTESurf is QW rather than NQ progs), so a new
+  player's id is 0 and findfloat cannot reach them.  Zero is never a live id --
+  lobby_run_id is seeded to 1 and steps by 2.
+
+  A SECOND SUBMISSION BEFORE THE FIRST ANSWERS overwrites this, so the older
+  reply finds nobody and is dropped in silence.  That is the wanted behaviour:
+  the answer to the run you just set is the one you want, and the stale one
+  would draw a rank for a run that is no longer on screen.
+*/
+.float   lobby_rq_id;
+.float   lobby_rq_track;
+.float   lobby_rq_leg;
+.float   lobby_rq_ticks;
+
 // Cached cvars, refreshed once per frame in Lobby_Frame.
 float lobby_on;
 float lobby_nocollide;
@@ -1198,14 +1238,19 @@ float  lobby_hb_seen;           // has any reply been classified yet
   that silently mis-classifies the reply once more runs finish at once than it
   has slots, which on a full lobby at a stage boundary is not hypothetical.
 */
-void(float code, string body) Lobby_RunReply;
+void(float reqid, float code, string body) Lobby_RunReply;
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	// Odd ids are run submissions; see the parity note above.
+	//
+	// THE ID IS PASSED ON, not just used to classify.  Build 65 answers the
+	// submitter with their rank, so the reply has to reach the player who
+	// finished -- and the id is the only thing tying it to them.  See the
+	// lobby_rq_id field note.
 	if (reqid & 1)
 	{
-		Lobby_RunReply(responsecode, resourcebody);
+		Lobby_RunReply(reqid, responsecode, resourcebody);
 		return;
 	}
 
@@ -1589,10 +1634,147 @@ float lobby_run_seen;
   run -- which is the single most common non-zero answer this will ever get and
   must not read as an error beside it.
 */
-void(float code, string body) Lobby_RunReply =
+/*
+  ---- WHERE THE RUN LANDED, PUBLISHED TO THE PLAYER.  Build 65. ------------
+
+  Two halves of one key, and they are separate functions because they know
+  different things at different times.  See the *wrank essay in sh_defs.qc for
+  the wire format and for why this is a userinfo key rather than the two stats
+  the plan reserved.
+
+  THE SUBJECT IS STAMPED ONCE, AT SUBMISSION, AND NEVER RE-DERIVED.  The answer
+  comes back some milliseconds later over a network, and by then `mapname` may
+  be a different map -- a map change disconnects nobody, so this key outlives
+  the map it describes.  Re-deriving the map at reply time would stamp a fresh
+  map name onto an old run's track/leg/ticks and manufacture exactly the false
+  match the format exists to prevent.  So Lobby_RankAnswer READS THE SUBJECT
+  BACK out of the key it is about to rewrite and copies it across verbatim; it
+  never asks the world what map this is.
+
+  If the key has gone (it cannot, but a rewrite that assumes is a rewrite that
+  can invent) the answer is dropped rather than published against a guess.
+*/
+void(entity e, float track, float leg, float ticks) Lobby_RankPending =
 {
+	forceinfokey(e, "*wrank",
+	             sprintf("%s %g %g %g %g 0 0",
+	                     mapname, track, leg, ticks, WR_PENDING));
+};
+
+void(entity e, float state, float rank, float of) Lobby_RankAnswer =
+{
+	local string subject;
+
+	// tokenize is the server's command tokenizer (KRIMZON_SV_PARSECLIENTCOMMAND).
+	// Safe here: this runs from the engine's uri callback, never nested inside
+	// SV_ParseClientCommand, so there is no argv() state being clobbered under
+	// somebody else's feet.
+	if (tokenize(infokey(e, "*wrank")) < 4)
+		return;
+	subject = sprintf("%s %s %s %s", argv(0), argv(1), argv(2), argv(3));
+
+	forceinfokey(e, "*wrank",
+	             sprintf("%s %g %g %g", subject, state, rank, of));
+};
+
+void(float reqid, float code, string body) Lobby_RunReply =
+{
+	local entity who;
+	local int   root;
+	local float rank, of, stored;
+
 	if (!code)
 		lobby_run_ok = lobby_run_ok + 1;
+
+	/*
+	  THE SUBMITTER, IF THEY ARE STILL HERE.  world means nobody is waiting on
+	  this id -- the player left, or has since submitted again -- and the answer
+	  is then dropped without a word.  findfloat returns world for no match and
+	  world is a perfectly valid entity to hold, so the guard is on USING it,
+	  not on the search.
+	*/
+	who = findfloat(world, lobby_rq_id, reqid);
+	if (who != world)
+		who.lobby_rq_id = 0;            // answered; do not match it twice
+
+	/*
+	  PARSED WITH THE REAL PARSER.  sh_json.qc is already in sv_progs.src, and
+	  a hand-rolled scan for `"rank":` would be a second JSON implementation
+	  written to match one server's current key order -- Flask sorts its keys
+	  and is entitled to stop.
+
+	  HANDLE 0 IS A VALID NULL NODE (see sh_json.qc), so a body that is not JSON
+	  at all, or one from an older surfd with no rank in it, walks to 0 and
+	  reads 0 -- which is exactly the "no answer" value the client already draws
+	  as a dash.  The only thing that must not happen is json_free on a failed
+	  parse, because json_free is PF_memfree and 0 is the engine's static node.
+	*/
+	root   = json_parse(body);
+	rank   = json_get_float(json_find_object_child(root, "rank"));
+	of     = json_get_float(json_find_object_child(root, "of"));
+	stored = json_get_float(json_find_object_child(root, "stored"));
+	if (root)
+		json_free(root);
+
+	if (who != world)
+	{
+		/*
+		  BRANCHED ON THE CODE FIRST AND THE RANK SECOND, which is not how this
+		  was first written and the difference matters.
+
+		  The first cut tested `!code && rank > 0` and let everything else fall
+		  through to the failure branch -- so a directory that ACCEPTED the run
+		  and simply did not say where it landed was reported to the player as
+		  one that had refused it.  That is not hypothetical: it is precisely
+		  what a surfd older than this build answers, so deploying these progs
+		  before the directory would have had the game telling players their
+		  runs were rejected while the rows went up on the board behind them.
+		  See WR_STORED in sh_defs.qc.
+		*/
+		if (!code)
+		{
+			if (rank > 0)
+			{
+				Lobby_RankAnswer(who, WR_RANKED, rank, of);
+
+				/*
+				  A LINE ONLY WHEN THE BOARD ACTUALLY MOVED.  The finish card
+				  draws the rank either way, and a run that did not improve has
+				  not changed anything the player did not already know.  On a
+				  bhop map a finish is ten seconds apart, so a line on every one
+				  of them would bury the messages that matter -- including the
+				  two below.
+				*/
+				if (stored)
+					sprint(who, PRINT_HIGH,
+					       sprintf("^5board:^7 your time is up: ^2#%g^7 of %g\n",
+					               rank, of));
+			}
+			else
+				Lobby_RankAnswer(who, WR_STORED, 0, 0);
+		}
+		else if (code == 204)
+			Lobby_RankAnswer(who, WR_NOBOARD, 0, 0);
+		else
+		{
+			Lobby_RankAnswer(who, WR_FAILED, 0, 0);
+
+			/*
+			  LATCHED PER PLAYER, on the lobby_said_noid precedent and for the
+			  same reason: a directory that is down is down for everybody, so a
+			  global latch would tell whoever finished first and nobody after.
+			  This is a fault the player did not cause and cannot fix, so it is
+			  said once and then dropped -- the server console keeps the
+			  per-code detail below.
+			*/
+			if (!who.lobby_said_fail)
+			{
+				who.lobby_said_fail = TRUE;
+				sprint(who, PRINT_HIGH, "^1board:^7 the leaderboard did not "
+				         "take your run -- it is saved on this machine.\n");
+			}
+		}
+	}
 
 	if (lobby_run_seen && code == lobby_run_lastcode)
 		return;
@@ -1600,7 +1782,8 @@ void(float code, string body) Lobby_RunReply =
 	lobby_run_lastcode = code;
 
 	if (!code)
-		print("^2board:^7 directory stored a run\n");
+		print(sprintf("^2board:^7 directory stored a run (rank %g of %g)\n",
+		              rank, of));
 	else if (code == 204)
 		print("^3board:^7 run has no board (practice or cheated) -- not an error\n");
 	else if (code == 403)
@@ -1716,6 +1899,21 @@ void(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitRun
 	if (lobby_run_id < 1)
 		lobby_run_id = 1;
 	lobby_run_id = lobby_run_id + 2;
+
+	/*
+	  WHO TO ANSWER, AND ABOUT WHAT.  Recorded BEFORE the post, because
+	  uri_post is asynchronous in principle and a reply that arrived before
+	  these were written would find lobby_rq_id still holding the PREVIOUS
+	  submission's id -- so the answer to this run would be attributed to the
+	  last one, on the same player, which is the one mis-attribution this
+	  design cannot detect afterwards.  It costs nothing to be in the right
+	  order and the wrong order is untestable.
+	*/
+	e.lobby_rq_id    = lobby_run_id;
+	e.lobby_rq_track = track;
+	e.lobby_rq_leg   = leg;
+	e.lobby_rq_ticks = ticks;
+	Lobby_RankPending(e, track, leg, ticks);
 
 	lobby_run_sent = lobby_run_sent + 1;
 	uri_post(strcat(url, "/api/run"), lobby_run_id,

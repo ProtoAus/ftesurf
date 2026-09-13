@@ -488,6 +488,76 @@
 
 /*
 ===========================================================================
+  BUILD 65 -- WHERE THE RUN YOU JUST SET LANDED, AS ONE USERINFO KEY.
+
+  THE RESERVATION ABOVE STANDS AND IS NOT WHAT SHIPPED.  Two stats cannot say
+  what this has to say, and the reason is worth writing down before the next
+  person tries to "finish" the reservation.
+
+  A stat is a bare number with no subject.  The results card is drawn for ONE
+  finish -- a track, a leg, a tick count -- and the answer from the directory
+  arrives some milliseconds LATER, over a network, after the card is already
+  up.  A pair of stats holding (3, 17) cannot tell the card whether that 3 is
+  the rank of the run it is drawing, of the previous leg, or of the last run on
+  the map before this one.  The card would draw a stale rank against a fresh
+  time and be believed, which is worse than the dash it draws today.
+
+  So the answer carries its own subject.  One key, seven fields:
+
+      *wrank = "<map> <track> <leg> <ticks> <state> <rank> <of>"
+
+  and the card draws it ONLY when all four of map, track, leg and ticks are the
+  run in front of it.  Anything else is an answer about a different run and is
+  not shown.
+
+  THE MAP IS IN THERE FOR A REASON THAT IS NOT PARANOIA.  A map change does not
+  disconnect anybody, and only a CONNECT clears a player's fields (ED_Clear,
+  sv_user.c:5654), so this key outlives the map it was set on.  Track, leg and
+  ticks alone would then match across maps -- and "leg 1 of track 0 took 4108
+  ticks" is an ordinary coincidence between two short bonus legs, not a remote
+  one.  The result would be a rank from the previous map drawn against this
+  map's time, which is precisely the stale-and-believed failure this whole
+  design exists to avoid.
+
+  A `*` KEY, WHICH IS THE SECURITY OF IT.  Info keys beginning with `*` cannot
+  be set by the client (only forceinfokey reaches them -- pr_cmds.c:11614 says
+  so in as many words), so a player cannot award themselves a world record by
+  typing setinfo.  It is also, by SV_UserInfoIsBasic (sv_user.c), a BASIC key:
+  every `*` key is broadcast to every client, so this is readable for any
+  player on the server and not merely for oneself.  That is deliberate -- it is
+  what a "so-and-so just took #1" line would be built from later.
+
+  STATE, BECAUSE "NO NUMBER" HAS FOUR DIFFERENT MEANINGS and the card must not
+  print the same dash for all of them.  A server that does not rank at all is
+  not the same sentence as a directory that refused the key, and neither is the
+  same as a run that is ineligible for a board.
+===========================================================================
+*/
+#define WR_PENDING      0       // submitted; the directory has not answered yet
+#define WR_RANKED       1       // rank and of are real
+#define WR_NOBOARD      2       // 204: practice or cheated, no board exists
+#define WR_FAILED       3       // the directory refused it or could not be asked
+#define WR_STORED       4       // accepted, but the answer carried no position
+
+/*
+  WR_STORED IS NOT A ROUNDING OF WR_FAILED, and the difference is the whole
+  reason this build exists.
+
+  A directory that accepts a run and does not say where it landed is a SUCCESS.
+  It is what a surfd older than this build answers -- /api/run returned
+  {"ok","stored","best"} and nothing else -- and it is therefore exactly what a
+  server running these progs against a directory that has not been updated will
+  see, which is a window an operator can create by deploying in the wrong
+  order.  Folded into WR_FAILED, the game would tell a player "the leaderboard
+  did not take your run" about a run that is sitting on the leaderboard.
+
+  That is the same class of false statement as the report this whole build
+  started from, pointing the other way, and it would be harder to catch:
+  nothing anywhere would disagree with it.
+*/
+
+/*
+===========================================================================
   BUILD 57, STAGE T -- FIVE STATS, SO A TIME SET ON A PUBLIC LOBBY IS KEPT ON
   THE PLAYER'S OWN PC.
 
