@@ -61,17 +61,40 @@
 
 #define OB_MAXROW  64      // one page; surfd's own cap is 200 and default 50
 
+/*
+  How long a failed board waits before ONE re-ask, and how long a request may
+  stay in flight before it is written off.
+
+  30s is long enough that a leaderboard which is down is not being hammered --
+  the anti-hammer property Online_Need exists for -- and short enough that a
+  player who hit a 429 during a busy minute gets their board back inside the
+  same session rather than the next one.
+
+  10s for the deadline because nothing else imposes one.  The engine's HTTP
+  client has no wall-clock timeout at all: HTTP_DL_Work's only timeout is a
+  0.1s select() used to decide readability (httpclient.c:370-381), and
+  URI_Get_Callback runs only when a transfer ENDS.  So a connection that is
+  established and then never answered leaves ob_state at OBS_FETCH forever --
+  and Online_Need's first test blocks EVERY board while one is in flight, so a
+  single wedged request takes the whole online scoreboard out for the session.
+*/
+#define OB_RETRY_SECS  30
+#define OB_DEADLINE    10
+
 // Board_State
 #define OBS_IDLE    0      // nothing asked for yet
 #define OBS_FETCH   1      // request in flight
 #define OBS_OK      2      // rows below are good
 #define OBS_FAIL    3      // ob_code / ob_err say why
 #define OBS_NODIR   4      // lobby_dir is empty: not an error, not configured
+#define OBS_NOTERMS 5      // the online terms have not been accepted
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
+float  ob_sent;            // cltime the in-flight request went out; 0 = none
+float  ob_retry_at;        // cltime after which ONE re-ask is allowed; 0 = never
 
 /*
   The SERVER's clock at the moment it answered -- root `t`, beside the rows'
@@ -129,6 +152,33 @@ float  ob_cnt_community;
 void() Online_Status;
 
 /*
+  Is this failure worth one more try, or is it an answer?
+
+  DEFINED THIS EARLY because URI_Get_Callback needs it and QuakeC has no
+  forward declaration for a function with a body below its use.
+
+  A 404 is an ANSWER: the directory does not implement this endpoint, and
+  asking again every thirty seconds for the rest of the session is exactly the
+  hammering Online_Need's guard exists to prevent.  A 429 is the opposite --
+  it means "ask again shortly" by definition, and now that the board sits
+  behind a rate limiter a 429 is the EXPECTED reply during a busy minute.
+  Treating it as permanent leaves a player's board broken long after the limit
+  has cleared, which is how one crowded moment costs somebody their session.
+
+  0 and -1 are this file's own codes for "never left the building" and "the
+  reply would not parse", both transient by nature; 5xx is the gateway having
+  a moment.  Everything else -- 400, 403, 404 -- is the server telling us
+  something true about the request, and repeating it cannot help.
+*/
+float(float code) Online_Retryable =
+{
+	if (code <= 0)   return TRUE;       // no reply, or an unparseable one
+	if (code == 429) return TRUE;       // rate limited: literally "try later"
+	if (code >= 500 && code <= 599) return TRUE;
+	return FALSE;
+};
+
+/*
   Give back the two zoned query strings.  Called before every overwrite and on
   reset; a strzone that is overwritten without this is a leak, and QC reports
   none of them.
@@ -183,6 +233,40 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 {
 	local string dir, url, mname;
 
+	/*
+	  CONSENT FIRST, BEFORE THE URL IS EVEN READ.
+
+	  sh_defs.qc:878 states the rule this file was missing: "FS_TERMS_ONLINE is
+	  what anything that contacts a server requires -- joining a lobby, and
+	  polling the lobby directory, which discloses an IP address before any
+	  lobby is joined and therefore needs consent in its own right."  m_lobby.qc
+	  has honoured that since it shipped; this file never did.
+
+	  THE GAP WAS ONE KEYPRESS WIDE.  The scoreboard opens on the ONLINE tab by
+	  default and +showscores is TAB, so on any loaded map -- including a purely
+	  offline single-player session with no server involved -- one TAB sent a GET
+	  to play.proto.bar and disclosed the player's address, whether or not they
+	  had ever accepted the online terms.  That is exactly the disclosure
+	  Lob_Blocked exists to prevent, and the argument there transfers verbatim:
+	  gating only the JOIN would mean the first disclosure happened before the
+	  question was asked, which makes the question decorative.
+
+	  THE OR IS THE SAME ONE Rec_HidOK AND HUD_DrawSubmitWarn USE, and it is not
+	  belt-and-braces: rec_terms is UNREGISTERED in a headless or early launch,
+	  so the cvar alone reads 0 for a player whose data/consent.txt says they
+	  accepted -- and telling them they have not is the false accusation
+	  cl_hud.qc:2820 spends a paragraph refusing to make.
+
+	  NO QUERY IS RECORDED on this path, so accepting the terms makes the board
+	  work on the very next frame rather than needing a manual refresh.
+	*/
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+	{
+		ob_state = OBS_NOTERMS;
+		return FALSE;
+	}
+
 	dir = cvar_string("lobby_dir");
 	if (dir == "")
 	{
@@ -229,10 +313,12 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	{
 		ob_state = OBS_FAIL;
 		ob_code  = 0;
+		ob_retry_at = cltime + OB_RETRY_SECS;
 		return FALSE;
 	}
 
 	ob_state = OBS_FETCH;
+	ob_sent  = cltime;          // the deadline Online_Need enforces
 	return TRUE;
 };
 
@@ -260,6 +346,7 @@ void(string body) Online_Parse =
 		// body we cannot parse is a bad poll, not a reason to blank a board.
 		ob_state = OBS_FAIL;
 		ob_code  = -1;
+		ob_retry_at = cltime + OB_RETRY_SECS;   // -1 is transient by nature
 		return;
 	}
 
@@ -335,6 +422,7 @@ void(string body) Online_Parse =
 	ob_state = OBS_OK;
 	ob_code  = 0;
 	ob_when  = cltime;
+	ob_retry_at = 0;            // it worked; nothing is owed a retry
 };
 
 /*
@@ -347,11 +435,16 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (reqid != ob_req)
 		return;                 // a board we have already replaced, or not ours
 
+	ob_sent = 0;                // it landed; the deadline no longer applies
+
 	// TRAP 1.  0 is success; the engine rewrote 200 to 0 for DP compat.
 	if (responsecode)
 	{
 		ob_state = OBS_FAIL;
 		ob_code  = responsecode;
+		// One re-ask later, but only for a code that means "later" -- see
+		// Online_Retryable.  A 404 is an answer and is not asked again.
+		ob_retry_at = Online_Retryable(responsecode) ? cltime + OB_RETRY_SECS : 0;
 		return;
 	}
 
@@ -407,13 +500,50 @@ float(float track, float leg, string tier, string style) Online_Describes =
 float(float track, float leg, string tier, string style) Online_Need =
 {
 	if (ob_state == OBS_FETCH)
+	{
+		/*
+		  THE DEADLINE, because nothing under us has one -- see OB_DEADLINE.
+		  Without it a single request that is never answered wedges every
+		  board on the panel for the rest of the session, and the only way
+		  out a player would ever find is the refresh chip.
+
+		  Written off rather than cancelled: there is no way to abort a
+		  uri_get, so the reply may still land.  It is dropped harmlessly by
+		  the reqid test in URI_Get_Callback, which is what that test is for.
+		*/
+		if (ob_sent > 0 && cltime - ob_sent > OB_DEADLINE)
+		{
+			ob_state = OBS_FAIL;
+			ob_code  = 0;
+			ob_sent  = 0;
+			ob_retry_at = cltime + OB_RETRY_SECS;
+		}
 		return FALSE;                   // one in flight; let it land
+	}
 
 	if (ob_q_zoned)
 	if (ob_q_map   == serverkey("map") &&
 	    ob_q_track == track && ob_q_leg == leg &&
 	    ob_q_tier  == tier  && ob_q_style == style)
-		return FALSE;                   // already asked for exactly this
+	{
+		/*
+		  Already asked for exactly this -- so normally, nothing to do.
+
+		  THE ONE EXCEPTION IS A TRANSIENT FAILURE THAT HAS AGED OUT.  The
+		  guard above is the anti-hammer property and it is right for an
+		  answer; it is wrong for a 429, which the board now gets by design
+		  whenever the directory is busy.  One re-ask, then the deadline is
+		  cleared, so a board that keeps failing still costs one request per
+		  OB_RETRY_SECS and never one per frame.
+		*/
+		if (ob_state == OBS_FAIL && ob_retry_at > 0 && cltime >= ob_retry_at)
+		if (Online_Retryable(ob_code))
+		{
+			ob_retry_at = 0;
+			return Online_Fetch(track, leg, tier, style);
+		}
+		return FALSE;
+	}
 
 	return Online_Fetch(track, leg, tier, style);
 };
@@ -478,16 +608,34 @@ void() Online_Status =
 	local float i;
 	local string word;
 
-	     if (ob_state == OBS_IDLE)  word = "idle";
-	else if (ob_state == OBS_FETCH) word = "fetching";
-	else if (ob_state == OBS_OK)    word = "ok";
-	else if (ob_state == OBS_NODIR) word = "no lobby_dir";
-	else                            word = "failed";
+	     if (ob_state == OBS_IDLE)    word = "idle";
+	else if (ob_state == OBS_FETCH)   word = "fetching";
+	else if (ob_state == OBS_OK)      word = "ok";
+	else if (ob_state == OBS_NODIR)   word = "no lobby_dir";
+	else if (ob_state == OBS_NOTERMS) word = "terms not accepted";
+	else                              word = "failed";
 
 	print(sprintf("^5online board:^7 %s", word));
 	if (ob_state == OBS_FAIL)
+	{
 		print(sprintf(" (code %g)", ob_code));
+		// Whether it will ask again, and when.  The difference between a
+		// board that is waiting and one that has given up is invisible
+		// otherwise, and it is the first thing anyone debugging this asks.
+		if (ob_retry_at > 0)
+			print(sprintf(", retrying in %gs", ceil(ob_retry_at - cltime)));
+		else
+			print(", not retrying");
+	}
 	print("\n");
+
+	if (ob_state == OBS_NOTERMS)
+	{
+		print("  the online terms have not been accepted, so nothing was "
+		      "asked.\n  Accept them from the main menu; play stays unranked "
+		      "until you do.\n");
+		return;
+	}
 
 	if (ob_state == OBS_NODIR)
 	{

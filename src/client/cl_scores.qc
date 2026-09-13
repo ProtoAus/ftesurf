@@ -1011,7 +1011,23 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 
-		if (ob_state == OBS_NODIR)
+		if (ob_state == OBS_NOTERMS)
+		{
+			/*
+			  NOT AN ERROR, AND IT MUST NOT LOOK LIKE ONE.  Nothing was asked
+			  and nothing was disclosed, which is the correct behaviour for a
+			  player who has not accepted the online terms -- see the essay at
+			  the top of Online_Fetch.  Dim, like the unconfigured case, rather
+			  than red like a failure.
+			*/
+			Scores_Text(lp, rec_sb_szrow,
+			            "the online terms have not been accepted",
+			            SBC_DIM, 1);
+			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+			            "accept them from the main menu to see online times",
+			            SBC_DIM, 0.7);
+		}
+		else if (ob_state == OBS_NODIR)
 		{
 			Scores_Text(lp, rec_sb_szrow,
 			            "this install is not pointed at a leaderboard",
@@ -1022,14 +1038,46 @@ void(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		}
 		else if (ob_state == OBS_FAIL)
 		{
-			Scores_Text(lp, rec_sb_szrow,
-			            (ob_code > 0)
-			              ? sprintf("the leaderboard answered %g", ob_code)
-			              : "the leaderboard could not be reached",
-			            SBC_BAD, 1);
-			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
-			            "your own times are on the Local tab, and are unaffected",
-			            SBC_DIM, 0.7);
+			/*
+			  THE THREE FAILURES ARE THREE DIFFERENT SENTENCES, because they
+			  ask the player for three different things -- and "the leaderboard
+			  answered 404" asks for nothing at all, which is why it read as a
+			  dead end when a real player hit it.
+
+			  404 is the one case where the SERVER is fine and the endpoint is
+			  simply not there, which is an operator problem and not the
+			  player's; 429 clears by itself and says so; anything else is the
+			  directory being unreachable or unwell.
+			*/
+			if (ob_code == 404)
+			{
+				Scores_Text(lp, rec_sb_szrow,
+				            "this leaderboard does not offer a board for this map",
+				            SBC_BAD, 1);
+				Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+				            "the directory is up, but has no /api/board -- tell whoever runs it",
+				            SBC_DIM, 0.7);
+			}
+			else if (ob_code == 429)
+			{
+				Scores_Text(lp, rec_sb_szrow,
+				            "the leaderboard is busy -- asking again shortly",
+				            SBC_WARN, 1);
+				Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+				            "nothing is wrong with your run or your times",
+				            SBC_DIM, 0.7);
+			}
+			else
+			{
+				Scores_Text(lp, rec_sb_szrow,
+				            (ob_code > 0)
+				              ? sprintf("the leaderboard answered %g", ob_code)
+				              : "the leaderboard could not be reached",
+				            SBC_BAD, 1);
+				Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
+				            "your own times are on the Local tab, and are unaffected",
+				            SBC_DIM, 0.7);
+			}
 		}
 		else
 			Scores_Text(lp, rec_sb_szrow, "asking the leaderboard...",
@@ -1464,10 +1512,28 @@ void(vector scr) Scores_Draw =
 		  On an empty ranked board that sentence is the difference between "no
 		  times here" and "no times here, 37 next door".
 		*/
-		s = sprintf("%g %s %s time(s) on %s", ob_n, Scores_TierOf(),
-		            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
-		s = sprintf("%s    ranked %g / community %g", s,
-		            ob_cnt_ranked, ob_cnt_community);
+		/*
+		  ONLY WHEN THE ROWS IN MEMORY ARE THIS BOARD'S, and that test was
+		  missing.  ob_n and ob_cnt_* survive a failed or in-flight fetch by
+		  design (Online_Clear is not called on failure), so this footer
+		  cheerfully printed the PREVIOUS leg's counts under the current leg's
+		  heading -- next to a panel that was simultaneously saying "asking the
+		  leaderboard...".  That is precisely the failure cl_online.qc's own
+		  header calls "worth spending four string reads to make impossible",
+		  written into the one place it was not checked.
+		*/
+		if (Online_Describes(rec_sb_legtrack[rec_sb_leg],
+		                     rec_sb_legnum[rec_sb_leg],
+		                     Scores_TierOf(), Scores_StyleOf()))
+		{
+			s = sprintf("%g %s %s time(s) on %s", ob_n, Scores_TierOf(),
+			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
+			s = sprintf("%s    ranked %g / community %g", s,
+			            ob_cnt_ranked, ob_cnt_community);
+		}
+		else
+			s = sprintf("%s %s on %s", Scores_TierOf(), Scores_StyleOf(),
+			            Scores_LegName(rec_sb_leg));
 	}
 	else
 	{
