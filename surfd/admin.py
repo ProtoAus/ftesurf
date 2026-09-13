@@ -612,12 +612,18 @@ def tail_file(path, lines=LOG_TAIL_LINES):
 # The blueprint
 # --------------------------------------------------------------------------
 
-def build_blueprint(app, log, db_connect, lobby_ttl):
+def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
     """Create and configure the /admin blueprint, or return None if disabled.
 
     `app` is configured here rather than by the caller because the cookie
     flags are part of this feature's security contract and must not be
     something a future edit to surfd.py can quietly drop.
+
+    `client_identity` is surfd's own attribution function, injected because
+    surfd imports this module and the reverse would be a cycle. It returns
+    (address, attributed). It is OPTIONAL so that this module keeps working
+    standalone -- test_admin.py builds the blueprint directly -- and the
+    fallback is the old behaviour: the socket peer, always believed.
     """
     admin_hash = setting("SURFD_ADMIN_HASH")
     if not admin_hash:
@@ -672,13 +678,65 @@ def build_blueprint(app, log, db_connect, lobby_ttl):
 
     # ---- session helpers ------------------------------------------------
 
+    # ---- who is calling ---------------------------------------------------
+    #
+    # THE OLD COMMENT HERE WAS WRONG, AND IT SAID SO IN ADVANCE.  It read:
+    # "if nginx ever fronts this, the lockout keys on the proxy and becomes
+    # global rather than per-client -- which fails safe (everyone is locked
+    # out) rather than unsafe (nobody is), but must be revisited on purpose."
+    #
+    # nginx does front this: play.nginx includes snippets/surfd-admin.conf.
+    # So request.remote_addr was 127.0.0.1 for the attacker AND the operator,
+    # and "everyone is locked out" is not a safe failure -- it is a DENIAL OF
+    # SERVICE WITH A FIVE-REQUEST PRICE TAG.  Any stranger could spend five
+    # wrong guesses and take the panel away from its owner for fifteen
+    # minutes, repeatedly and indefinitely, from a machine they do not own and
+    # with no password. This is the revisit.
+    #
+    # X-Real-IP, and only from a proxy we trust, is the same policy surfd uses
+    # for the board limiter -- one definition, injected (see build_blueprint).
+    # admin.nginx sets it with `proxy_set_header X-Real-IP $remote_addr` on
+    # BOTH /admin and /admin/login, which OVERWRITES anything the caller sent,
+    # so the value is our proxy's statement rather than the caller's.
+
+    def identity():
+        """(address, attributable). Never raises -- this gates a login page."""
+        if client_identity is None:
+            return (request.remote_addr or "0.0.0.0"), True
+        try:
+            ip, ok = client_identity()
+            return (ip or "0.0.0.0"), bool(ok)
+        except Exception:                              # pragma: no cover
+            log.exception("client_identity() failed; treating the caller as "
+                          "unattributable")
+            return (request.remote_addr or "0.0.0.0"), False
+
     def client_ip():
-        # Same reasoning as surfd's heartbeat handler: X-Forwarded-For is
-        # client-controlled and is NOT honoured. If nginx ever fronts this,
-        # the lockout keys on the proxy and becomes global rather than
-        # per-client -- which fails safe (everyone is locked out) rather than
-        # unsafe (nobody is), but must be revisited on purpose.
-        return request.remote_addr or "0.0.0.0"
+        return identity()[0]
+
+    def lockout_key():
+        """The address to hold failures against, or None to hold none.
+
+        None means "this request cannot be attributed to a caller", which
+        happens when we are behind a proxy that did not set X-Real-IP. Locking
+        such a key out would lock out everybody who shares it, so we decline
+        to -- and say so, because it is a misconfiguration, not a policy.
+
+        Declining costs less than it looks. /admin/login is separately capped
+        at 12 requests a minute PER REAL IP by nginx (`zone=surfdlogin`, which
+        is evaluated where the peer is still known), and the password is
+        scrypt-hashed. What is lost is the second layer; what is kept is the
+        operator's ability to log in at all.
+        """
+        ip, attributed = identity()
+        if attributed:
+            return ip
+        log.warning("admin login from %s cannot be attributed to a caller "
+                    "(no X-Real-IP from a SURFD_PROXIES source) -- the "
+                    "lockout is DISABLED for this request. Check that the "
+                    "reverse proxy sets X-Real-IP and that its address is in "
+                    "SURFD_PROXIES.", ip)
+        return None
 
     def logged_in():
         if not session.get("ok"):
@@ -712,14 +770,19 @@ def build_blueprint(app, log, db_connect, lobby_ttl):
     def login_form():
         if logged_in():
             return redirect(url_for("admin.index"))
-        wait = lockout_remaining(client_ip())
+        # identity() rather than lockout_key(): this is a page render, and a
+        # misconfiguration warning per page load would bury the one that
+        # matters. An unattributed caller holds no lockout, hence wait 0.
+        ip, attributed = identity()
+        wait = lockout_remaining(ip) if attributed else 0
         return render_template("admin_login.html", csrf=csrf_token(),
                                error="", lockout=wait)
 
     @bp.post("/login")
     def login():
         ip = client_ip()
-        wait = lockout_remaining(ip)
+        key = lockout_key()                 # None == do not punish this address
+        wait = lockout_remaining(key) if key else 0
         if wait:
             log.warning("admin login refused, %s is locked out for %ds", ip, wait)
             return render_template("admin_login.html", csrf=csrf_token(),
@@ -733,15 +796,16 @@ def build_blueprint(app, log, db_connect, lobby_ttl):
 
         password = request.form.get("password", "")
         if not password or not verify_password(password, admin_hash):
-            locked = note_failure(ip)
+            locked = note_failure(key) if key else False
             log.warning("admin login FAILED from %s%s", ip,
                         " -- now locked out" if locked else "")
             return render_template(
                 "admin_login.html", csrf=csrf_token(),
                 error="Wrong password.",
-                lockout=lockout_remaining(ip)), 401
+                lockout=lockout_remaining(key) if key else 0), 401
 
-        note_success(ip)
+        if key:
+            note_success(key)
         # Rotate the session id on privilege change (session fixation).
         session.clear()
         session["ok"] = True

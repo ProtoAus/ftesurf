@@ -83,6 +83,23 @@ def login(client, password, csrf=None):
     return client.post("/admin/login", data={"csrf": csrf, "password": password})
 
 
+def login_via(client, password, peer="127.0.0.1", real_ip=None, csrf=None):
+    """login(), but saying explicitly who the socket peer and the proxy's
+    claimed client are. Everything about the /admin lockout depends on the
+    difference between those two, and the plain helper above cannot express
+    it -- it sends neither, and Flask's default REMOTE_ADDR of 127.0.0.1
+    happens to BE a trusted proxy source, which is what made the defect
+    invisible to this suite for so long."""
+    hdrs = {"X-Real-IP": real_ip} if real_ip else {}
+    base = {"REMOTE_ADDR": peer}
+    if csrf is None:
+        page = client.get("/admin/login", headers=hdrs,
+                          environ_base=base).get_data(as_text=True)
+        csrf = page.split('name="csrf" value="')[1].split('"')[0]
+    return client.post("/admin/login", headers=hdrs, environ_base=base,
+                       data={"csrf": csrf, "password": password})
+
+
 def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import admin
@@ -198,13 +215,73 @@ def main():
     # ---- 4. lockout --------------------------------------------------------
     m = fresh(SURFD_ADMIN_HASH=HASH, SURFD_ADMIN_SECRET="s" * 48,
               SURFD_ADMIN_INSECURE_COOKIE="1")
+    # THE PEER IS NAMED, and that is new. This section used to call login(),
+    # which sends Flask's default REMOTE_ADDR of 127.0.0.1 -- an address that
+    # is in SURFD_PROXIES, i.e. the suite was unknowingly impersonating nginx
+    # on every request. It therefore could not tell a per-client lockout from
+    # a global one, which is precisely how the /admin lockout shipped keyed on
+    # the proxy. A direct caller has to come from somewhere that is not one of
+    # our own proxies for this to be testing what it says it tests.
     c2 = m.app.test_client()
-    codes = [login(c2, "nope").status_code for _ in range(admin.LOCKOUT_FAILS)]
+    codes = [login_via(c2, "nope", peer="192.168.5.5").status_code
+             for _ in range(admin.LOCKOUT_FAILS)]
     check("first %d bad logins all 401" % admin.LOCKOUT_FAILS,
           codes, [401] * admin.LOCKOUT_FAILS)
-    check("next attempt is locked out (429)", login(c2, "nope").status_code, 429)
+    check("next attempt is locked out (429)",
+          login_via(c2, "nope", peer="192.168.5.5").status_code, 429)
     check("lockout applies to the RIGHT password too",
-          login(c2, PW).status_code, 429)
+          login_via(c2, PW, peer="192.168.5.5").status_code, 429)
+
+    # ---- 4b. THE LOCKOUT MUST NOT BE A WEAPON ------------------------------
+    #
+    # nginx fronts /admin (play.nginx includes snippets/surfd-admin.conf), so
+    # every caller arrives from 127.0.0.1. Keying the lockout on that address
+    # meant five wrong guesses from ANY stranger locked the OPERATOR out of
+    # their own panel for fifteen minutes, repeatably, with no password. The
+    # first check below is that exact attack, and it is the falsifier: revert
+    # client_ip() to request.remote_addr and it goes 302 -> 429.
+    m = fresh(SURFD_ADMIN_HASH=HASH, SURFD_ADMIN_SECRET="s" * 48,
+              SURFD_ADMIN_INSECURE_COOKIE="1")
+    atk, op = m.app.test_client(), m.app.test_client()
+    codes = [login_via(atk, "nope", real_ip="203.0.113.9").status_code
+             for _ in range(admin.LOCKOUT_FAILS)]
+    check("proxied: attacker's %d bad logins all 401" % admin.LOCKOUT_FAILS,
+          codes, [401] * admin.LOCKOUT_FAILS)
+    check("proxied: the attacker IS locked out",
+          login_via(atk, "nope", real_ip="203.0.113.9").status_code, 429)
+    check("proxied: the OPERATOR still gets in",
+          login_via(op, PW, real_ip="198.51.100.4").status_code, 302)
+
+    # A caller who is NOT a trusted proxy cannot pick their own identity, so
+    # they cannot shed a lockout by rotating the header. Without this, the fix
+    # above would simply have moved the hole: every attacker would be
+    # unlockoutable rather than every operator lockable.
+    m = fresh(SURFD_ADMIN_HASH=HASH, SURFD_ADMIN_SECRET="s" * 48,
+              SURFD_ADMIN_INSECURE_COOKIE="1")
+    c4 = m.app.test_client()
+    for i in range(admin.LOCKOUT_FAILS):
+        login_via(c4, "nope", peer="192.168.5.5", real_ip="203.0.113.%d" % i)
+    check("unproxied: rotating X-Real-IP does NOT evade the lockout",
+          login_via(c4, "nope", peer="192.168.5.5",
+                    real_ip="203.0.113.77").status_code, 429)
+
+    # (that a genuinely direct caller is STILL locked out normally -- i.e. the
+    # feature was fixed rather than deleted -- is section 4 above, which now
+    # names its peer for the same reason.)
+
+    # THE DELIBERATE GAP, pinned so it is a decision and not a surprise. A
+    # proxy that sets no X-Real-IP leaves every caller sharing one identity,
+    # and we decline to lock that identity out -- nginx's per-real-IP
+    # `zone=surfdlogin` (12r/m) and scrypt are what hold the line there.
+    m = fresh(SURFD_ADMIN_HASH=HASH, SURFD_ADMIN_SECRET="s" * 48,
+              SURFD_ADMIN_INSECURE_COOKIE="1")
+    c6, op6 = m.app.test_client(), m.app.test_client()
+    for _ in range(admin.LOCKOUT_FAILS + 2):
+        login_via(c6, "nope")                        # loopback, no header
+    check("proxy with no X-Real-IP: no lockout is applied",
+          login_via(c6, "nope").status_code, 401)
+    check("proxy with no X-Real-IP: the operator is never locked out",
+          login_via(op6, PW).status_code, 302)
 
     # ---- 5. cookie flags ---------------------------------------------------
     m = fresh(SURFD_ADMIN_HASH=HASH, SURFD_ADMIN_SECRET="s" * 48)  # no INSECURE

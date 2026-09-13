@@ -401,19 +401,28 @@ if PUBLIC_HOST:
 PROXY_SOURCES = load_trusted(setting("SURFD_PROXIES", "127.0.0.1/32,::1/128"))
 
 
-def rate_key():
-    """The address to rate-limit this request against.
+def client_identity():
+    """Who is calling, and whether that answer is worth anything.
 
-    The socket peer -- except when the peer is one of our own reverse proxies
-    AND has told us who it is speaking for.  Returns a string; never raises.
+    Returns ``(address, attributed)``.
+
+    ``attributed`` is FALSE exactly when the address names a party that many
+    unrelated callers share -- i.e. the request came through one of our own
+    proxies and that proxy did not say who it was speaking for.  The address is
+    still the best available and is fine as a rate-limit bucket; what it must
+    not be used for is any decision that PUNISHES the address, because the
+    punishment would land on everyone behind it.  /admin's login lockout is
+    that decision, which is why this returns the flag rather than hiding it.
+
+    Never raises.
     """
     src = request.remote_addr or "0.0.0.0"
     if not is_trusted(src, PROXY_SOURCES):
-        return src
+        return src, True                    # the socket peer IS the caller
 
     claimed = (request.headers.get("X-Real-IP") or "").strip()
     if not claimed:
-        return src
+        return src, False                   # our proxy, speaking for nobody
 
     try:
         # Parsed, not passed through.  This value becomes a key in the
@@ -424,8 +433,22 @@ def rate_key():
     except ValueError:
         log.warning("X-Real-IP from %s is not an address (%r); using the peer",
                     src, claimed[:64])
-        return src
-    return claimed
+        return src, False
+    return claimed, True
+
+
+def rate_key():
+    """The address to rate-limit this request against.
+
+    The socket peer -- except when the peer is one of our own reverse proxies
+    AND has told us who it is speaking for.  Returns a string; never raises.
+
+    A rate limiter is the one consumer that is content with an unattributed
+    answer: sharing a bucket degrades service for the people behind a
+    misconfigured proxy, which is bad, but it does not hand a stranger a lever
+    over anyone else.  So this deliberately drops the flag.
+    """
+    return client_identity()[0]
 
 
 # --------------------------------------------------------------------------
@@ -1193,7 +1216,13 @@ def _register_admin():
         log.error("admin panel unavailable (import failed: %s)", exc)
         return
     try:
-        bp = build_blueprint(app, log, connect, LOBBY_TTL)
+        # client_identity is passed in rather than imported by admin.py:
+        # surfd imports admin, so admin importing surfd back would be a cycle,
+        # and a second copy of the SURFD_PROXIES policy is the kind of
+        # duplicate that drifts silently until the two disagree about who a
+        # caller is.  One definition, injected.
+        bp = build_blueprint(app, log, connect, LOBBY_TTL,
+                             client_identity=client_identity)
     except Exception as exc:                       # pragma: no cover
         log.exception("admin panel failed to configure: %s", exc)
         return
