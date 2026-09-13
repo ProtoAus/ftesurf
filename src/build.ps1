@@ -335,7 +335,22 @@ if ($Pi) {
     # A FAILED QUERY IS FATAL, NOT A FALLBACK TO FIVE.  Quietly assuming the old
     # list on a bad ssh would reintroduce precisely the skew this removes, on the
     # one run where something was already wrong.
-    $lobbyProbe = 'for f in {0}/cfg/lobby[0-9]*.cfg; do [ -f "$f" ] || continue; n=${{f##*/lobby}}; n=${{n%.cfg}}; case "$n" in ""|*[!0-9]*) continue;; esac; p=$(sed -n "s/^[[:space:]]*set[[:space:]][[:space:]]*sv_port[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p" "$f" | head -n 1); [ -n "$p" ] && echo "$n $p"; done | sort -n' -f $PiGame
+    #
+    # ACTIVE UNITS, NOT CFGS -- corrected the first time it was used in anger.
+    # The first cut asked the same question runall.sh asks ("which lobbies have a
+    # cfg"), which is right for STARTING them and wrong here.  The moment
+    # lobby6..12.cfg existed but were deliberately not enabled, this step found
+    # twelve, the who-is-on check could not find a directory row for seven of
+    # them, and it refused to deploy at all -- "no row for ftesurf@6 ... it may
+    # be up and full", about servers that were never started.  Nothing shipped,
+    # which is the safe direction, but the question was simply the wrong one.
+    #
+    # What -Pi actually needs is "which lobbies must be RESTARTED to pick this
+    # build up", and a stopped lobby is not one: it will read the new progs when
+    # it next starts.  So ask systemd for the active instances and take each
+    # one's port from its own cfg, which keeps the "one place says what port"
+    # property while dropping the wrong membership test.
+    $lobbyProbe = 'systemctl list-units "ftesurf@*" --state=active --no-legend --no-pager 2>/dev/null | sed -n "s/^[^a-z]*ftesurf@\([0-9][0-9]*\)\.service.*/\1/p" | sort -n | while read n; do f={0}/cfg/lobby$n.cfg; [ -f "$f" ] || continue; p=$(sed -n "s/^[[:space:]]*set[[:space:]][[:space:]]*sv_port[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p" "$f" | head -n 1); [ -n "$p" ] && echo "$n $p"; done' -f $PiGame
     $r = PiNative 'ssh' ($sshOpts + @($PiHost, $lobbyProbe))
     if ($r.Code -ne 0) {
         $r.Out | Write-Host
@@ -349,7 +364,7 @@ if ($Pi) {
         }
     )
     if ($lobbies.Count -eq 0) {
-        throw "no lobbyN.cfg with an sv_port found under $PiGame/cfg -- nothing to restart"
+        throw "no ACTIVE ftesurf@N unit with a readable cfg on $PiHost -- nothing to restart"
     }
     # Two lobbies on one port is the quiet double-bind lobby1.cfg's header warns
     # about, and it would also collapse two rows onto one node in surfd, whose
