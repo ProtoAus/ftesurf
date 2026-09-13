@@ -494,6 +494,109 @@ check("...and loopback is trusted by default, with no SURFD_TRUSTED set",
 check("...while a public address is not",
       m.is_trusted("203.0.113.9", m.TRUSTED_SOURCES), False)
 
+
+# --------------------------------------------------------------------------
+# 11. BEHIND THE REVERSE PROXY.
+#
+# /api/board is the first rate-limited route to be reachable from the internet,
+# and it arrives through nginx on loopback -- so request.remote_addr is
+# 127.0.0.1 for every player alive.  Keying the limiter on that collapses a
+# per-IP 120/min into ONE bucket shared by the whole game, which a single
+# stranger at 2 req/s can spend: strictly worse than the 404 it replaced.
+#
+# THIS SECTION EXISTS BECAUSE NOTHING ELSE IN EITHER SUITE SENDS A PROXY HEADER.
+# The bug it guards is invisible to every other case here -- they all speak to
+# surfd directly, which is exactly how the 404 that started this shipped: the
+# endpoint was only ever exercised on the one path no player takes.
+#
+# The security half matters as much as the rate half.  X-Real-IP is believed
+# ONLY from an address in SURFD_PROXIES; believed from anywhere, every client
+# could choose its own limiter identity and the limiter would be decorative.
+print("\n-- 11. behind the reverse proxy --")
+
+
+def board_via(mod, peer, real_ip=None):
+    """GET a board as nginx would relay it: peer is the proxy, the header is
+    the player.  real_ip=None sends no header at all."""
+    headers = {}
+    if real_ip is not None:
+        headers["X-Real-IP"] = real_ip
+    return mod.app.test_client().get(
+        "/api/board", query_string={"map": "surf_test"}, headers=headers,
+        environ_base={"REMOTE_ADDR": peer},
+    ).status_code
+
+
+def flood(mod, peer, real_ip, n):
+    """n board reads; returns how many were refused."""
+    return sum(1 for _ in range(n) if board_via(mod, peer, real_ip) == 429)
+
+
+m = fresh()
+m.RUN_RATE_MAX = 5           # small enough to exhaust in a few requests
+
+# The fix itself: two players behind one proxy are two buckets, not one.
+check("proxy: player A exhausts their own board budget",
+      flood(m, "127.0.0.1", "198.51.100.7", 8) > 0, True)
+check("...and player B, same proxy, is UNAFFECTED",
+      flood(m, "127.0.0.1", "198.51.100.8", 4), 0)
+
+# The control that proves the check above measures something.  With no header
+# there is nothing to separate them by, so the same traffic must now be refused
+# -- this is the collapsed-bucket bug itself, reproduced deliberately.
+m = fresh()
+m.RUN_RATE_MAX = 5
+check("control: with NO X-Real-IP the same two players share one bucket",
+      flood(m, "127.0.0.1", None, 8) > 0 and flood(m, "127.0.0.1", None, 4) > 0,
+      True)
+
+# The security half: a claim from an address that is not one of our proxies is
+# ignored, so a public caller cannot pick a fresh identity per request.
+m = fresh()
+m.RUN_RATE_MAX = 5
+check("an untrusted peer's X-Real-IP is IGNORED (no evasion)",
+      flood(m, "203.0.113.9", "198.51.100.1", 4) +
+      flood(m, "203.0.113.9", "198.51.100.2", 4) > 0, True)
+
+# Junk in the header falls back to the peer rather than becoming a table key.
+m = fresh()
+m.RUN_RATE_MAX = 5
+check("a non-address X-Real-IP falls back to the peer",
+      flood(m, "127.0.0.1", "not-an-ip", 8) > 0, True)
+with m.app.test_request_context("/api/board",
+                                headers={"X-Real-IP": "not-an-ip"},
+                                environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+    check("...and rate_key() returns the peer for it", m.rate_key(), "127.0.0.1")
+with m.app.test_request_context("/api/board",
+                                headers={"X-Real-IP": "198.51.100.4"},
+                                environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+    check("...and the player's address for a good one",
+          m.rate_key(), "198.51.100.4")
+
+# SURFD_PROXIES must NOT become SURFD_TRUSTED.  The trusted list contains whole
+# private ranges by default; if the header were believed from those, every
+# machine on the LAN could forge its own limiter identity.
+check("SURFD_PROXIES defaults to loopback only, unlike SURFD_TRUSTED",
+      [str(n) for n in m.PROXY_SOURCES], ["127.0.0.1/32", "::1/128"])
+check("...so a LAN address is trusted but is NOT a proxy",
+      (m.is_trusted("192.168.1.50", m.TRUSTED_SOURCES),
+       m.is_trusted("192.168.1.50", m.PROXY_SOURCES)), (True, False))
+
+# And the invariant the whole vhost design rests on: the HEARTBEAT still reads
+# the socket peer, so a proxied heartbeat would still advertise the proxy --
+# which is why it is kept off the public vhost.  Nothing above may change this.
+m = fresh()
+m.app.test_client().post(
+    "/api/heartbeat",
+    data={"key": "testkey", "node": "p1", "map": "surf_test",
+          "players": "0", "max": "32", "port": "27510", "name": "n"},
+    headers={"X-Real-IP": "198.51.100.9"},
+    environ_base={"REMOTE_ADDR": "127.0.0.1"},
+)
+rows = json.loads(m.app.test_client().get("/lobbies.json").data)["lobbies"]
+check("heartbeat still derives its address from the PEER, not X-Real-IP",
+      [l.get("addr", "") for l in rows], ["127.0.0.1:27510"])
+
 # --------------------------------------------------------------------------
 print("")
 if FAILED:

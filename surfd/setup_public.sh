@@ -103,14 +103,34 @@ install -m 0644 "$HOME_DIR/surfd.nginx"  /etc/nginx/snippets/surfd.conf
 install -m 0644 "$HOME_DIR/admin.nginx"  /etc/nginx/snippets/surfd-admin.conf
 echo "  installed /etc/nginx/snippets/surfd.conf and surfd-admin.conf"
 
-# The rate-limit zone must live in http{}, not in a location -- nginx refuses
+# The rate-limit zones must live in http{}, not in a location -- nginx refuses
 # to start otherwise, which would take every other site on this box down too.
-ZONE='limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;'
-if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
-    printf '%s\n' "$ZONE" > /etc/nginx/conf.d/surfd-ratelimit.conf
-    echo "  added the surfdlogin rate-limit zone in conf.d"
+#
+# TWO ZONES SINCE SCHEMA 2, AND THE BOARD ONE IS NOT OPTIONAL.  surfd rate
+# limits /api/board on the address it sees, and behind this proxy that address
+# is 127.0.0.1 for every player in the world -- so without a per-client limit
+# HERE, where the real peer is still known, the whole game shares one bucket
+# and any stranger can blank every scoreboard at 2 requests a second.  surfd
+# reads X-Real-IP to undo that collapse (see SURFD_PROXIES in surfd.py); this
+# zone is the outer bound that does not depend on a header being right.
+#
+# 120r/m matches surfd's own RUN_RATE_MAX board cap so the two agree rather
+# than one silently masking the other.  4m holds roughly 50k client addresses.
+#
+# THE WHOLE FILE IS REWRITTEN WHEN EITHER ZONE IS MISSING.  The previous
+# version tested only for surfdlogin, so on an install that already had it,
+# adding a second zone here would have been skipped entirely -- and nginx would
+# then refuse to start on a vhost referencing a zone nothing declared, taking
+# every other site on this box with it.  That is the failure this idempotence
+# check exists to prevent, so it has to test for all of them.
+ZONES='limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
+limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;'
+if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
+    printf '%s\n' "$ZONES" > /etc/nginx/conf.d/surfd-ratelimit.conf
+    echo "  wrote the surfdlogin + surfdboard rate-limit zones in conf.d"
 else
-    echo "  rate-limit zone already present"
+    echo "  rate-limit zones already present"
 fi
 
 # The vhost references a certificate that does not exist yet, and nginx will

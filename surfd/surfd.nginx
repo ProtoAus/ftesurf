@@ -1,12 +1,22 @@
 # surfd - FTESurf lobby directory - reverse proxy snippet
 #
-# NOT INSTALLED, AND DELIBERATELY SO.
+# INSTALLED, as /etc/nginx/snippets/surfd.conf, by setup_public.sh -- and this
+# header used to open "NOT INSTALLED, AND DELIBERATELY SO", which stopped being
+# true when play.proto.bar went up and was never corrected.  A file that
+# describes an exposure it no longer has is worse than one with no header: the
+# /api/board 404 was diagnosed against three documents that all still claimed
+# surfd was LAN-only.
 #
-# Installing this makes surfd PUBLICLY REACHABLE. That is a separate decision
-# that was explicitly not taken. Right now surfd listens on 0.0.0.0:8084 and is
-# reachable from the LAN only (nothing in nginx points at it).
+# THE EXPOSURE MANIFEST, which is the thing to keep true:
 #
-# Before installing, consider:
+#   GET  /lobbies.json   public, read-only, not rate limited
+#   GET  /health         public, read-only, not rate limited
+#   GET  /api/board      public, read-only, RATE LIMITED -- see the block below
+#   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
+#   POST /api/heartbeat  NOT proxied, and must never be -- see below
+#   everything else      404 from the vhost's own `location / { return 404; }`
+#
+# Before adding anything to that list, consider:
 #   * /api/heartbeat is protected only by a shared secret in a form field. Over
 #     plain HTTP that secret is visible to anyone on the path. Terminate TLS.
 #   * surfd derives each lobby's advertised address from the socket peer. Behind
@@ -46,6 +56,68 @@ location = /health {
     proxy_connect_timeout 2s;
     proxy_read_timeout    5s;
 }
+
+# ---------------------------------------------------------------------------
+# GET /api/board -- the leaderboard the in-game scoreboard reads.  Schema 2.
+#
+# ADDED BECAUSE ITS ABSENCE WAS A LIVE BUG, not because the allowlist was too
+# strict.  Every shipped client defaults lobby_dir to https://play.proto.bar
+# (FS_LOBBY_DIR_DEFAULT), so the first player to open a scoreboard got
+# "https://play.proto.bar/api/board?...: 404 Not Found".  The endpoint was
+# built and verified against http://<lan-ip>:8084 directly, which is not the
+# path any player takes -- so the proxy was never in the test at all.
+#
+# THE HEADER IS LOAD-BEARING, NOT DECORATION.  /api/board is the first
+# RATE-LIMITED route to be proxied (/lobbies.json and /health are not limited
+# at all), and surfd keys its limiter on the socket peer -- which behind this
+# block is 127.0.0.1 for every player in the world.  Left alone that collapses
+# a per-IP 120/min into one global bucket shared by the whole internet, so a
+# stranger at 2 req/s would blank every scoreboard in the game: strictly worse
+# than the 404 this fixes.  surfd reads X-Real-IP here, and ONLY from an
+# address in SURFD_PROXIES (loopback by default) -- see the essay there.
+#
+# X-Forwarded-For IS SET BY OVERWRITE, deliberately unlike /lobbies.json above.
+# $proxy_add_x_forwarded_for APPENDS to whatever the client sent, so its
+# left-hand entries are attacker text; surfd ignores XFF entirely, and this
+# keeps it from carrying a forged value to anything that might later read it.
+#
+# limit_req IS THE OUTER BOUND and it is where the real client address still
+# exists.  The zone lives in http{} (conf.d/surfd-ratelimit.conf, installed by
+# setup_public.sh) because limit_req_zone is not valid in a server or location
+# block.  120r/m matches surfd's own board cap so the two agree rather than
+# one silently masking the other; the burst absorbs a player opening the board
+# and clicking across tabs, legs and tiers in a few seconds.
+location = /api/board {
+    limit_req             zone=surfdboard burst=30 nodelay;
+    limit_req_status      429;
+
+    proxy_pass         http://127.0.0.1:8084/api/board;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
+
+    add_header X-Surfd-Proxied "1" always;
+}
+
+# NOTE ON CACHING, because the /lobbies.json block above is misleading:
+# `proxy_cache_valid` is INERT without a `proxy_cache <zone>` directive and an
+# http{}-level `proxy_cache_path ... keys_zone=<zone>`.  Neither exists
+# anywhere in this tree, so the "cached briefly to blunt a flood" comment on
+# /lobbies.json describes behaviour that has never happened.  No cache is
+# declared for /api/board either -- and if one ever is, note that the cache key
+# MUST include $is_args$args, or every leg, tier and style of a map would be
+# served the first one's board.
+#
+# /api/run IS NOT PROXIED.  It is a WRITE endpoint guarded only by a shared
+# secret in a form field, and nothing needs it here: all five game servers run
+# on this box and post to 127.0.0.1:8084 directly.  It becomes necessary only
+# when a keyed server runs somewhere else, and that is a deliberate decision to
+# take then -- with TLS already terminated here, which is the one part that is
+# already true.
 
 # Heartbeats are intentionally NOT proxied. Uncommenting this without doing
 # the ProxyFix work described above will break every advertised address.

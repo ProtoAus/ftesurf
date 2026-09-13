@@ -361,6 +361,72 @@ TRUSTED_SOURCES = load_trusted(
 if PUBLIC_HOST:
     log.info("advertising trusted lobbies as %s:<port>", PUBLIC_HOST)
 
+# --------------------------------------------------------------------------
+# SURFD_PROXIES -- who is allowed to TELL US who the client is.
+# --------------------------------------------------------------------------
+#
+# This is NOT the same list as SURFD_TRUSTED and it must never be merged with
+# it, however similar the two look.
+#
+#   SURFD_TRUSTED   "this source may be advertised under PUBLIC_HOST, and gets
+#                   the larger heartbeat cap" -- a statement about GAME SERVERS.
+#                   It defaults to whole private ranges: 192.168/16, 10/8.
+#   SURFD_PROXIES   "this source's X-Real-IP header is the truth" -- a statement
+#                   about OUR OWN reverse proxy, and nothing else.
+#
+# THE DEFAULT IS LOOPBACK ONLY, AND THE NARROWNESS IS THE WHOLE SECURITY
+# PROPERTY.  Anyone inside a SURFD_PROXIES range can choose their own
+# rate-limit identity and therefore evade the limiter entirely; at
+# 192.168.0.0/16 -- which SURFD_TRUSTED really does contain -- that would be
+# every machine on the LAN.  nginx runs on this box, so a /32 of loopback is
+# all this ever needs to be.
+#
+# WHY A HEADER IS INVOLVED AT ALL.  The moment a rate-limited read endpoint is
+# proxied, request.remote_addr is 127.0.0.1 for every player in the world, so a
+# per-IP limiter silently becomes ONE GLOBAL BUCKET -- which is worse than no
+# limiter, because one stranger can then spend everybody's budget and take the
+# leaderboard away from the whole game.  The identity has to come from the only
+# party that still knows it, and that is nginx.
+#
+# X-Real-IP AND NOT X-Forwarded-For.  nginx sets X-Real-IP with
+# `proxy_set_header X-Real-IP $remote_addr`, which OVERWRITES whatever the
+# client sent.  X-Forwarded-For is conventionally built with
+# $proxy_add_x_forwarded_for, which APPENDS to the client's own value -- so its
+# left-hand entries are attacker-authored text.  One is a statement by our
+# proxy; the other is a statement by the caller wearing our proxy's coat.
+#
+# READ ENDPOINTS ONLY.  /api/heartbeat keeps deriving the lobby address from the
+# socket peer (see the PUBLIC_HOST essay), which is exactly why the heartbeat is
+# kept off the public vhost at all, and nothing here changes that.
+PROXY_SOURCES = load_trusted(setting("SURFD_PROXIES", "127.0.0.1/32,::1/128"))
+
+
+def rate_key():
+    """The address to rate-limit this request against.
+
+    The socket peer -- except when the peer is one of our own reverse proxies
+    AND has told us who it is speaking for.  Returns a string; never raises.
+    """
+    src = request.remote_addr or "0.0.0.0"
+    if not is_trusted(src, PROXY_SOURCES):
+        return src
+
+    claimed = (request.headers.get("X-Real-IP") or "").strip()
+    if not claimed:
+        return src
+
+    try:
+        # Parsed, not passed through.  This value becomes a key in the
+        # limiter's table, so an unvalidated header would let one
+        # misconfigured proxy fill RATE_TABLE_MAX with junk and evict the
+        # real entries -- failing the limiter open, quietly.
+        ipaddress.ip_address(claimed)
+    except ValueError:
+        log.warning("X-Real-IP from %s is not an address (%r); using the peer",
+                    src, claimed[:64])
+        return src
+    return claimed
+
 
 # --------------------------------------------------------------------------
 # Shared secret
@@ -970,7 +1036,17 @@ def submit_run():
 @app.get("/api/board")
 def board():
     now = int(time.time())
-    src = request.remote_addr or "0.0.0.0"
+
+    # rate_key() AND NOT request.remote_addr, BECAUSE THIS ENDPOINT IS PROXIED.
+    #
+    # This is the one route on the public vhost that is both rate limited and
+    # reachable from the internet, so it is the one route where the peer
+    # address is nginx rather than the player.  Keying on the peer here would
+    # put every player in the game into a single 120-per-minute bucket: a
+    # stranger at two requests a second would blank the leaderboard for
+    # everybody, which is a cheaper attack than the 404 this replaced.
+    # See the SURFD_PROXIES essay.
+    src = rate_key()
 
     # Its own bucket, for the reason /api/run has one: a public read path must
     # not be able to spend the heartbeat's budget and blank the map picker.
