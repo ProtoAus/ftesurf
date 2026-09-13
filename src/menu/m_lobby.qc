@@ -506,6 +506,209 @@ void(string body) Lob_Parse =
 };
 
 /*
+===========================================================================
+  ASKING THE DIRECTORY WHERE TO PLAY A MAP.  Build 67.
+
+  WHAT IT IS FOR, AND IT IS NOT CONVENIENCE.  Picking a map starts a LISTEN
+  SERVER today (ui_launch's `map <name>`), and on a listen server the host owns
+  sv.time, the movement cvars, the progs and the timer -- so a world record
+  there is a cvar edit rather than a cheat.  That is exactly why
+  Lobby_SubmitRun refuses to submit one and why those times are Local-only.
+  The plan calls it tier T3 and ranks it above every input-layer concern.
+
+  So "every map someone plays is a lobby" is not a social feature with an
+  anti-cheat side effect; it IS the anti-cheat fix, and this is the half of it
+  the player touches: before starting a map locally, ask surfd whether there is
+  a server for it.
+
+  THE SHARED REQUEST COUNTER.  There is exactly one URI_Get_Callback per VM and
+  the request id is the ONLY thing separating a directory poll's reply from a
+  join's, so both draw from one counter and each remembers its own id.  This is
+  the same shape cl_online.qc uses for the board and the replay fetch, and for
+  the same reason: two independent counters can and eventually do collide.
+
+  A SEPARATE STATE MACHINE, NOT A FLAG ON THE POLL.  Lob_Poll's backoff exists
+  to stop hammering a dead directory for a browser nobody is looking at, and a
+  join is the opposite kind of request -- one, now, because somebody pressed a
+  button.  Sharing lb_state would also mean a join in flight made the lobby
+  list read as loading, which is what cl_online.qc's Online_Need essay records
+  as the cost of sharing one there.
+===========================================================================
+*/
+#define LJ_IDLE   0
+#define LJ_ASK    1
+#define LJ_READY  2
+#define LJ_FAIL   3
+
+// How long to wait before giving up and playing locally.  Short, because the
+// player is looking at a button they just pressed and the fallback is a map
+// that starts instantly.  A directory that cannot answer in this long is a
+// directory that is down, and the offline path is not a degraded experience --
+// it is the game as it shipped.
+#define LJ_DEADLINE 8
+
+float  lj_state;
+float  lj_req;                  // 0 when nothing is outstanding
+float  lj_at;                   // when the ask went out
+float  lj_code;                 // last status, for the message
+float  lj_timed;                // can a run on this map even be timed?
+string lj_addr;                 // strzoned
+string lj_map;                  // strzoned; what we asked for
+string lj_why;                  // strzoned; the directory's own word
+
+float  lb_nextid;
+
+float() Lob_NextReq =
+{
+	lb_nextid = lb_nextid + 1;
+	return lb_nextid;
+};
+
+void() Lob_JoinFree =
+{
+	if (lj_addr) { strunzone(lj_addr); lj_addr = ""; }
+	if (lj_map)  { strunzone(lj_map);  lj_map  = ""; }
+	if (lj_why)  { strunzone(lj_why);  lj_why  = ""; }
+};
+
+void() Lob_JoinClear =
+{
+	Lob_JoinFree();
+	lj_state = LJ_IDLE;
+	lj_req   = 0;
+	lj_at    = 0;
+	lj_code  = 0;
+	lj_timed = 0;
+};
+
+/*
+  Parse one /api/join reply.
+
+  EVERY FIELD IS OPTIONAL AS FAR AS THIS IS CONCERNED.  The body came off the
+  network from whoever answers lobby_dir; a missing "addr" must read as a
+  failure with a message, never as a connect to "".  json_get_string returns ""
+  for a child that is not there, so the emptiness test below is the whole guard
+  and it is deliberately on the VALUE rather than on the child pointer.
+*/
+void(float code, string body) Lob_JoinReply =
+{
+	local float  root;
+	local string ad, why;
+
+	lj_req  = 0;
+	lj_code = code;
+
+	if (code)
+	{
+		/*
+		  A refusal still carries a sentence, and it is the useful half: "that
+		  map is not installed on this server" and "every server is busy right
+		  now" are different problems with different answers, and a bare status
+		  code is neither.  Parsed on the failure path for exactly that reason.
+		*/
+		why = "";
+		root = json_parse(body);
+		if (root)
+		{
+			why = json_get_string(json_find_object_child(root, "error"));
+			json_free(root);
+		}
+		if (why == "")
+			why = sprintf("the directory returned %g", code);
+		if (lj_why) strunzone(lj_why);
+		lj_why   = strzone(why);
+		lj_state = LJ_FAIL;
+		return;
+	}
+
+	root = json_parse(body);
+	if (!root)
+	{
+		if (lj_why) strunzone(lj_why);
+		lj_why   = strzone("the directory sent something this build cannot read");
+		lj_state = LJ_FAIL;
+		return;
+	}
+
+	ad      = json_get_string(json_find_object_child(root, "addr"));
+	why     = json_get_string(json_find_object_child(root, "why"));
+	lj_timed = json_get_float(json_find_object_child(root, "timed"));
+	json_free(root);
+
+	if (ad == "")
+	{
+		if (lj_why) strunzone(lj_why);
+		lj_why   = strzone("the directory named no server");
+		lj_state = LJ_FAIL;
+		return;
+	}
+
+	if (lj_addr) strunzone(lj_addr);
+	if (lj_why)  strunzone(lj_why);
+	lj_addr  = strzone(ad);
+	lj_why   = strzone(why);
+	lj_state = LJ_READY;
+};
+
+/*
+  Start one ask.  Returns FALSE if there is no directory to ask, which is the
+  offline case and is not an error -- the caller plays locally and says so.
+*/
+float(string mapname) Lob_JoinAsk =
+{
+	local string dir;
+
+	/*
+	  THE SAME CONSENT TIER THE POLL USES, and for the reason Lob_Poll's essay
+	  gives at length: this GET discloses this machine's address to whoever runs
+	  the directory.  Starting a map must not be the thing that does that behind
+	  a question the player has not been asked.
+	*/
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return FALSE;
+
+	dir = cvar_string("lobby_dir");
+	if (dir == "")
+		return FALSE;
+
+	Lob_JoinClear();
+	lj_map   = strzone(mapname);
+	lj_at    = time;
+	lj_state = LJ_ASK;
+	lj_req   = Lob_NextReq();
+
+	// uri_escape on the name even though it came from our own directory scan:
+	// it is going into a query string, and a name with a & or a = in it would
+	// otherwise add fields to the request.  It costs nothing.
+	uri_get(sprintf("%s/api/join?map=%s", dir, uri_escape(mapname)), lj_req);
+	return TRUE;
+};
+
+/*
+  Give up if nothing came back.  A uri_get that never calls back leaves the
+  state at LJ_ASK forever, and the symptom is a button that does nothing --
+  which is worse than an error, because there is nothing to report.
+*/
+void() Lob_JoinPoll =
+{
+	if (lj_state != LJ_ASK)
+		return;
+	if (time - lj_at < LJ_DEADLINE)
+		return;
+
+	lj_req   = 0;
+	lj_state = LJ_FAIL;
+	if (lj_why) strunzone(lj_why);
+	lj_why = strzone("the directory did not answer");
+};
+
+float()  Lob_JoinState = { return lj_state; };
+float()  Lob_JoinTimed = { return lj_timed; };
+string() Lob_JoinAddr  = { return lj_addr ? lj_addr : ""; };
+string() Lob_JoinMap   = { return lj_map  ? lj_map  : ""; };
+string() Lob_JoinWhy   = { return lj_why  ? lj_why  : ""; };
+
+/*
   The one URI_Get_Callback in the menu progs.
 
   The engine finds it by NAME (pr_bgcmd.c:6003) and there can be exactly one,
@@ -516,6 +719,21 @@ void(string body) Lob_Parse =
 */
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
+	/*
+	  THE JOIN IS TESTED FIRST AND ONLY WHEN ONE IS OUTSTANDING.  lj_req is 0
+	  whenever nothing is in flight, and a reqid of 0 is never issued
+	  (Lob_NextReq pre-increments), so an idle join can never swallow a poll's
+	  reply.  Written as nested ifs rather than `if (lj_req && reqid == lj_req)`
+	  because `&&` evaluates both sides in fteqcc, which is the trap recorded
+	  against array guards elsewhere in this tree.
+	*/
+	if (lj_req)
+	if (reqid == lj_req)
+	{
+		Lob_JoinReply(responsecode, resourcebody);
+		return;
+	}
+
 	if (reqid != lb_req)
 		return;                     // a reply to a poll we have already replaced
 
@@ -610,6 +828,8 @@ void() Lob_Poll =
 	}
 	lb_next = time + per;
 
-	lb_req = lb_req + 1;
+	// SHARED WITH THE JOIN, see Lob_NextReq.  Was `lb_req + 1`; two independent
+	// counters in one VM with one callback collide the moment both are used.
+	lb_req = Lob_NextReq();
 	uri_get(strcat(dir, "/lobbies.json"), lb_req);
 };

@@ -1965,6 +1965,73 @@ void() ui_create_open =
 void() m_close;
 void() m_open;
 
+/*
+  Start the map here, on a listen server.  The original body of ui_launch,
+  split out because build 67 gave it a second caller: the fallback when the
+  directory cannot put us on a real server.  Nothing about it changed.
+*/
+void(string mapname) ui_launch_local =
+{
+	// The name field went in build 57 (Lex).  This is a private, unlisted
+	// practice game, so a name had nowhere to be read.  Still SET rather than
+	// left alone, because the engine's own default is "unnamed".
+	cvar_set("hostname", "FTESurf");
+
+	localcmd("sv_public 0\n");
+	localcmd("deathmatch 1\n");
+	localcmd("maxclients 2\n");
+	localcmd("coop 0\n");
+	localcmd(sprintf("map %S\n", mapname));
+
+	// The search that found this map has done its job.  Arm the field to empty
+	// itself the next time it is clicked -- not now, because ms_selected stays
+	// and the box draws the selection right-aligned beside the query, so wiping
+	// it here would blank the field while you are still looking at it.
+	ms_query_stale = TRUE;
+
+	m_close();
+};
+
+/*
+===========================================================================
+  PLAY IT ON A REAL SERVER IF THERE IS ONE.  Build 67.
+
+  THE PROBLEM, WHICH IS THE PLAN'S LAYER 0 AND NOT A NICETY.  Every map started
+  from this screen has been a LISTEN server, and on a listen server the host
+  owns sv.time, the movement cvars, the progs and the timer -- so beating a
+  world record there is a cvar edit, not a cheat.  sv_lobby.qc already knows
+  this and refuses to submit those runs: `board "local"`, times stay on this
+  machine, and the leaderboard never hears about them.  Which means the honest
+  summary of the game before this change is that THE ONLY RUNS THAT COUNT ARE
+  THE ONES SET ON THE THREE-OR-SO MAPS THE FIVE LOBBIES HAPPENED TO BE ON.
+
+  Asking the directory first is what makes the other 528 timeable maps count.
+
+  IT IS A TRY, NOT A REQUIREMENT, AND THAT IS DELIBERATE.  Every failure here
+  falls through to the local map: no directory configured, consent not given at
+  the online tier, the Pi down, every server busy, the map not installed there,
+  a malformed or untrusted address, or simply no answer in LJ_DEADLINE.  The
+  offline game is not a degraded mode to apologise for -- it is the game as it
+  shipped and it must keep working on a train.  What the fallback owes the
+  player is a SENTENCE, because "your time did not go up" with no explanation
+  is the exact report that made Lobby_BoardState exist.
+
+  WHY IT NEEDS A TICK AT ALL.  uri_get is asynchronous, so the answer arrives
+  several frames after the button.  The alternative -- blocking -- is not
+  available in QuakeC and would be wrong if it were.  So the press starts an
+  ask and ui_join_tick finishes it, which is the same two-phase shape
+  cl_scores.qc's rec_sb_wantrep uses for the replay click, and it has the same
+  hazard: an answer that arrives after the player has changed their mind must
+  not act.  ui_join_pending is that intent, and ESC clears it.
+===========================================================================
+*/
+// The intent itself lives here, above ui_launch which sets it.  The two
+// functions that ACT on it are further down, immediately above ui_connect,
+// because they need ui_addr_ok and ui_host_allowed and QuakeC has no forward
+// references -- the same reason Lobby_Heartbeat sits where it does in
+// sv_lobby.qc rather than beside its caller.
+float ui_join_pending;
+
 void() ui_launch =
 {
 	string mapname = ui_selected_name();
@@ -1990,24 +2057,39 @@ void() ui_launch =
 		return;
 	}
 
-	// The name field went in build 57 (Lex).  This is a private, unlisted
-	// practice game, so a name had nowhere to be read.  Still SET rather than
-	// left alone, because the engine's own default is "unnamed".
-	cvar_set("hostname", "FTESurf");
+	/*
+	  REGISTERED BESIDE THE READ, not in m_init, and this tree has lost three
+	  features to getting that backwards: cvar() on an unregistered name
+	  AUTO-CREATES it as "" and a later registercvar() then declines to
+	  overwrite it, so a non-zero default registered anywhere that can be
+	  reached second never lands.  Here that would mean online play silently
+	  defaulting OFF.
 
-	localcmd("sv_public 0\n");
-	localcmd("deathmatch 1\n");
-	localcmd("maxclients 2\n");
-	localcmd("coop 0\n");
-	localcmd(sprintf("map %S\n", mapname));
+	  WHY IT EXISTS.  Online is the default because a run that cannot be
+	  submitted is most of this game's point, but a player practising a trick a
+	  hundred times does not want a lobby, a stranger watching, or a round trip
+	  before every attempt.  `ui_play_online 0` is that, and it is a preference
+	  rather than a consent gate -- the consent gate is rec_terms and it is
+	  checked separately, inside Lob_JoinAsk.
+	*/
+	registercvar("ui_play_online", "1", 0);
 
-	// The search that found this map has done its job.  Arm the field to empty
-	// itself the next time it is clicked -- not now, because ms_selected stays
-	// and the box draws the selection right-aligned beside the query, so wiping
-	// it here would blank the field while you are still looking at it.
-	ms_query_stale = TRUE;
+	if (cvar("ui_play_online"))
+	if (Lob_JoinAsk(mapname))
+	{
+		/*
+		  The answer is several frames away, so the menu STAYS OPEN and
+		  ui_join_tick finishes the job.  Not closing is what makes the wait
+		  legible: the screen the player pressed the button on is still there,
+		  the button reads as busy, and ESC cancels.
+		*/
+		ui_join_pending = TRUE;
+		print(sprintf("^5online:^7 asking %s for a server on %s...\n",
+		              cvar_string("lobby_dir"), mapname));
+		return;
+	}
 
-	m_close();
+	ui_launch_local(mapname);
 };
 
 /*
@@ -2668,6 +2750,82 @@ void() ui_who_glob =
 
 	print(sprintf("ui_who glob: %s\n",
 	              b66_fail ? sprintf("^1%g FAILURES^7", b66_fail) : "^2all arms pass^7"));
+};
+
+/*
+  The two halves of the deferred launch, placed HERE rather than beside
+  ui_launch because they call ui_addr_ok and ui_host_allowed, which are defined
+  above this point and below that one.  See the essay over ui_launch_local for
+  what they are for.
+*/
+void() ui_join_cancel =
+{
+	if (!ui_join_pending)
+		return;
+	ui_join_pending = FALSE;
+	Lob_JoinClear();
+};
+
+void() ui_join_tick =
+{
+	local string addr, mapname;
+	local float  st;
+
+	if (!ui_join_pending)
+		return;
+
+	Lob_JoinPoll();                 // may time the ask out
+	st = Lob_JoinState();
+	if (st == LJ_ASK)
+		return;                     // still waiting; the button stays busy
+
+	ui_join_pending = FALSE;
+	addr    = Lob_JoinAddr();
+	mapname = Lob_JoinMap();
+
+	if (st == LJ_READY)
+	if (ui_addr_ok(addr))
+	if (ui_host_allowed(addr))
+	{
+		/*
+		  The same two gates ui_connect applies to a lobby picked by hand, and
+		  for the same reason: this address came off the network from whoever
+		  answers lobby_dir, and it is about to go to localcmd, which is the
+		  console.  A directory that is compromised, substituted or typo'd into
+		  a hostile host is the threat, and it does not become less of one
+		  because the player pressed Start rather than Join.
+		*/
+		if (!Lob_JoinTimed())
+			print(sprintf("^3online:^7 %s has no zone file, so nothing on it "
+			              "can be timed -- you are playing, not racing.\n",
+			              mapname));
+		print(sprintf("^5online:^7 joining %s for %s (%s)\n",
+		              addr, mapname, Lob_JoinWhy()));
+		localcmd(sprintf("connect %S\n", addr));
+		ms_query_stale = TRUE;
+		Lob_JoinClear();
+		m_close();
+		return;
+	}
+
+	/*
+	  EVERY OTHER OUTCOME PLAYS LOCALLY AND SAYS WHY.  Three shapes of refusal
+	  reach here and they are deliberately not collapsed: the directory said no
+	  (and its own sentence is the useful part), the directory said yes but to
+	  somewhere this build will not connect, or nothing answered at all.
+	*/
+	if (st == LJ_READY)
+		print(sprintf("^1online:^7 the directory offered %S, which this build "
+		              "will not connect to -- playing locally instead.\n", addr));
+	else
+		print(sprintf("^3online:^7 %s -- playing locally, so this run will not "
+		              "reach the leaderboard.\n", Lob_JoinWhy()));
+
+	// The string is read BEFORE the clear that frees it, which is the ordering
+	// cl_scores.qc's hand-off had to get right for the same reason: mapname
+	// points into m_lobby.qc's strzone.
+	ui_launch_local(mapname);
+	Lob_JoinClear();
 };
 
 void(float i) ui_connect =
@@ -4092,6 +4250,7 @@ void() m_init =
 	setcursormode(TRUE, "", '0 0 0', 1);
 
 	registercommand("ui_maplist");
+	registercommand("ui_join");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -4145,6 +4304,13 @@ void(vector screensize) m_draw =
 	// the last screenshot and quit.
 	if (cvar("ui_bootcheck") >= 2)
 		ui_bootcheck_tick();
+
+	// OUTSIDE THE menu_active GATE, like the bootcheck driver above and for a
+	// related reason: a join in flight has to be able to TIME OUT and fall back
+	// to a local map even if the menu stopped drawing, or the failure mode is a
+	// button that did nothing and no message anywhere.  It is a no-op whenever
+	// nothing is pending, which m_close guarantees after an ESC.
+	ui_join_tick();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
@@ -4215,6 +4381,19 @@ void() m_open =
 
 void() m_close =
 {
+	/*
+	  CLOSING THE MENU ABANDONS A PENDING JOIN.  Build 67: the answer to
+	  /api/join arrives several frames after the button, and without this an ESC
+	  during that window would leave the intent standing -- so the reply would
+	  land seconds later and `connect` somewhere the player had already decided
+	  against.  The same hazard cl_scores.qc's rec_sb_wantrep documents for the
+	  replay click, and the same answer.
+
+	  Safe on the success path, which clears the intent and then closes: the
+	  cancel finds nothing pending and returns.
+	*/
+	ui_join_cancel();
+
 	setkeydest(0);
 	menu_active = FALSE;
 };
@@ -4273,6 +4452,47 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_lobbypop")
 	{
 		ui_lobbypop_print();
+		return TRUE;
+	}
+
+	/*
+	  ui_join <map> -- THE HEADLESS TWIN OF THE START BUTTON.  Build 67.
+
+	  The button itself cannot be tested: it is a sui element picked with the
+	  mouse, and no cfg in this tree can drive a cursor -- the same limit
+	  cl_scores.qc records for the online row, which is why `board_replay` was
+	  built as its twin.  This drives the identical path: the same Lob_JoinAsk,
+	  the same ui_join_tick, the same ui_addr_ok/ui_host_allowed gates and the
+	  same fallback to a local map.  What it skips is exactly the pick.
+
+	  `ui_join` WITH NO ARGUMENT REPORTS instead of asking, so a config can
+	  observe the state machine between waits without starting a second request
+	  -- which is what makes the whole sequence falsifiable from a cfg.
+	*/
+	if (argv(0) == "ui_join")
+	{
+		if (argv(1) == "")
+		{
+			print(sprintf("ui_join: state %g (0 idle 1 asking 2 ready 3 failed)"
+			              " req %g map %S\n",
+			              Lob_JoinState(), ui_join_pending, Lob_JoinMap()));
+			print(sprintf("  addr %S timed %g why %S\n",
+			              Lob_JoinAddr(), Lob_JoinTimed(), Lob_JoinWhy()));
+			print(sprintf("  lobby_dir %S  ui_play_online %g  rec_terms %g\n",
+			              cvar_string("lobby_dir"), cvar("ui_play_online"),
+			              cvar("rec_terms")));
+			return TRUE;
+		}
+
+		if (!Lob_JoinAsk(argv(1)))
+		{
+			print("ui_join: nothing to ask -- no lobby_dir, or the online tier "
+			      "has not been accepted\n");
+			return TRUE;
+		}
+		ui_join_pending = TRUE;
+		print(sprintf("ui_join: asked %S for %S\n",
+		              cvar_string("lobby_dir"), argv(1)));
 		return TRUE;
 	}
 

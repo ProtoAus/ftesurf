@@ -1240,6 +1240,158 @@ float  lobby_hb_seen;           // has any reply been classified yet
 */
 void(float reqid, float code, string body) Lobby_RunReply;
 
+/*
+===========================================================================
+  THE DIRECTORY CAN MOVE THIS SERVER.  Build 67.
+
+  WHAT IT IS FOR.  "Every map someone plays is a lobby": the menu asks surfd
+  where to play a map, surfd picks an idle server, and THIS is how that server
+  finds out.  It closes the plan's Layer 0 -- on a listen server the host owns
+  sv.time, the movement cvars, the progs and the timer, so a world record there
+  is a cvar edit rather than a cheat, which is why Lobby_SubmitRun refuses one.
+  Getting the player onto a server the operator runs is the whole fix, and it
+  needs a way to put that server on the map they asked for.
+
+  WHY THE HEARTBEAT REPLY AND NOT RCON.  The obvious implementation is
+  `rcon changelevel <map>` from surfd, and it is wrong three times over.  FTE's
+  amplification guard gates rcon BEFORE the password check with no loopback
+  exemption, and fifteen packets in thirty seconds is a SELF-EXTENDING
+  24-HOUR BLOCK that only a restart clears -- so a busy evening would silently
+  take the admin panel down for a day.  It would need the rcon password in
+  surfd's reach for something that is not administration.  And it would only
+  work for a lobby on surfd's own machine, which is the exact assumption
+  `replays.node` exists to stop us baking in twice.
+
+  This channel already exists and is already authenticated: the POST carries
+  lobby_master_key, so only the directory we chose to key can answer it.
+
+  NOTHING ABOUT THE REPLY IS TRUSTED ANYWAY, and that is not belt-and-braces.
+  The body goes to localcmd, which is the console: a reply of
+  "map surf_x\nquit" or "map surf_x; rcon_password hunter2" is remote code
+  execution against this server from whoever answers lobby_master.  The menu
+  has had exactly this guard on lobby addresses since build 55 (ui_addr_ok) for
+  exactly this reason, and a directory that is compromised, substituted, or
+  simply typo'd into a hostile host is the threat both of them answer.  So the
+  name is checked character by character against an ALLOW-list -- enumerate
+  what a map name may contain and refuse everything else, so no metacharacter
+  anybody thinks of later gets through.
+
+  WHY IT DOES NOT SIMPLY OBEY.  Two refusals, and both are about people:
+
+    * ANYBODY HERE AND THE ANSWER IS NO.  surfd only ever claims a server
+      reporting zero players, but the reply it sends describes the world as of
+      that heartbeat, up to lobby_master_rate seconds ago, and somebody can
+      join inside that window.  Moving the map then would throw a stranger out
+      of a run to satisfy a menu -- which is precisely the outcome the idle
+      rule exists to make impossible, and a rule enforced at only one end is
+      enforced nowhere.  surfd drops the claim the moment it sees a player, so
+      refusing here costs one wasted instruction and never loops.
+
+    * THE MAP WE ARE ALREADY ON IS NOT A DESTINATION.  `changelevel` to the
+      current map is a full reload: it drops every client to reconnect for
+      nothing.  Lobby_NextMap refuses the same thing for the same reason.
+===========================================================================
+*/
+float() Lobby_PlayerCount;
+
+/*
+  May this string be a map name?  The allow-list, and a transcription of
+  surfd's own _MAPNAME_OK so the two ends agree about what they will exchange.
+
+    48-57  0-9      46  .        65-90  A-Z
+    97-122 a-z      95  _        43  +      45  -
+
+  Numeric codes because 'x' in QuakeC is a VECTOR literal, not a character --
+  the same note ui_addr_ok carries in m_main.qc.  No '/', no '\', no ';', no
+  whitespace, no quote, no control character: a name that passes this cannot
+  start a second console command however it is interpolated.
+*/
+float(string s) Lobby_MapNameOK =
+{
+	local float i, n, c;
+
+	n = strlen(s);
+	if (n < 1 || n > 64)
+		return FALSE;
+
+	// Must OPEN alphanumeric, so a name can never look like a switch to the
+	// console parser and can never be a bare "." or "-".
+	c = str2chr(s, 0);
+	if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 122) && !(c >= 65 && c <= 90))
+		return FALSE;
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c >= 48 && c <= 57)  continue;
+		if (c >= 97 && c <= 122) continue;
+		if (c >= 65 && c <= 90)  continue;
+		if (c == 46 || c == 95 || c == 43 || c == 45) continue;
+		return FALSE;
+	}
+	return TRUE;
+};
+
+/*
+  Act on one heartbeat reply.  Returns TRUE if it carried an instruction,
+  whether or not we obeyed it -- the caller uses that only to decide whether
+  the body was ordinary, and every refusal below says so on the console,
+  because a directory quietly failing to move a server is the shape of bug
+  that takes a day to find.
+
+  "ok" IS THE ONLY OTHER BODY THIS HAS EVER SENT, so anything that is not an
+  instruction is left entirely alone -- including a future word this build has
+  never heard of.  That is what makes the channel extensible in the safe
+  direction: an older server reads a newer instruction as a successful
+  heartbeat and does nothing, which is a lobby with fewer maps rather than a
+  broken one.
+*/
+float(string body) Lobby_Directed =
+{
+	local string want;
+	local float  n;
+
+	if (substring(body, 0, 4) != "map ")
+		return FALSE;
+
+	want = substring(body, 4, strlen(body) - 4);
+
+	/*
+	  TRIM TRAILING WHITESPACE, and nothing else.  A proxy or a future writer
+	  can legitimately leave a newline on a text/plain body, and refusing the
+	  whole instruction over it would be a fault that only appears once nginx
+	  is in the path -- i.e. in production and not in any test.  Leading
+	  whitespace is NOT trimmed: it cannot get past Lobby_MapNameOK's opening
+	  character test, and silently accepting it would mean two spellings of one
+	  instruction.
+	*/
+	n = strlen(want);
+	while (n > 0 && str2chr(want, n - 1) <= 32)
+		n = n - 1;
+	want = substring(want, 0, n);
+
+	if (!Lobby_MapNameOK(want))
+	{
+		print(sprintf("^1lobby:^7 directory asked for a map name this server "
+		              "will not put on a console -- ignored (%g chars)\n", n));
+		return TRUE;
+	}
+
+	if (strtolower(want) == strtolower(mapname))
+		return TRUE;            // already there; a reload is not a move
+
+	if (Lobby_PlayerCount() > 0)
+	{
+		print(sprintf("^3lobby:^7 directory wants %s, but somebody is here -- "
+		              "staying on %s\n", want, mapname));
+		return TRUE;
+	}
+
+	print(sprintf("^5lobby:^7 directory sends this server to %s\n", want));
+	localcmd(sprintf("changelevel %s\n", want));
+	return TRUE;
+};
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	// Odd ids are run submissions; see the parity note above.
@@ -1272,6 +1424,24 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	  all -- indistinguishable from one that is not running.  Hence the explicit
 	  `seen` flag rather than a sentinel value in lobby_hb_lastcode.
 	*/
+	/*
+	  ABOVE THE STATUS-CHANGE TEST, AND THAT PLACEMENT IS THE WHOLE THING.
+
+	  The `return` below fires whenever the status code has not changed -- which
+	  on a healthy lobby is EVERY BEAT FOREVER, because a working heartbeat
+	  returns 0 every five seconds for the life of the map.  A directive handled
+	  after it would be read exactly once, on the first reply after a status
+	  change, and be invisible the rest of the time.  That failure has no
+	  symptom on either end: surfd logs that it told the server to move, the
+	  server logs a healthy heartbeat, and the map never changes.
+
+	  Only on success.  A 403 or a 500 carries an error page, not an
+	  instruction, and running the parser over one is how a body that happens to
+	  begin "map " becomes a console command.
+	*/
+	if (!responsecode)
+		Lobby_Directed(resourcebody);
+
 	if (lobby_hb_seen && responsecode == lobby_hb_lastcode)
 		return;
 	lobby_hb_seen     = TRUE;

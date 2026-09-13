@@ -61,11 +61,60 @@ POST /api/heartbeat   (application/x-www-form-urlencoded)
     max      1..64   (clamped)
     port     1..65535 (rejected with 400 if outside)
     name     <=64 chars
-  -> 200 "ok"
+  -> 200 "ok"                    nothing to do
+  -> 200 "map <name>"            changelevel to <name>   -- schema 4
 
 The lobby address is `<source IP>:<port>`. There is no address field, and
 X-Forwarded-For is not trusted, so a heartbeat cannot advertise a lobby on
 another host.
+
+**The reply is also the control channel** (build 67). A lobby that `/api/join`
+has claimed is told, in its next heartbeat reply, which map to move to; the
+spelling is the one on DISK, because the other end puts it straight into
+`changelevel` and the filesystem is case-sensitive. The body was the literal
+`ok` from Patch 270 until schema 4 and a lobby running older QC reads anything
+else as a successful heartbeat and does nothing -- which is a directory with
+fewer maps, not a broken one.
+
+Not rcon, and that is the decision worth keeping: FTE's amplification guard
+gates rcon *before* the password check with no loopback exemption, and fifteen
+packets in thirty seconds is a self-extending 24-hour block that only a restart
+clears. It would also put the rcon password in this process's reach for
+something that is not administration, and it would only work for a lobby on
+this machine -- the assumption `replays.node` exists to stop us baking in.
+
+```
+GET /api/join?map=<name>                                    -- schema 4
+  -> 200 {"map","timed","state","wait","addr","name","players","max","why"}
+  -> 400 bad map        the name is not one we will put in a path
+  -> 404 not installed  no such .bsp in SURFD_MAPS
+  -> 429 rate limited   JOIN_RATE_MAX per RATE_WINDOW per source
+  -> 503 every server is busy   (carries `lobbies`: what people ARE playing)
+```
+
+"Where do I play this map?" -- the endpoint behind the map list's Start button.
+Three outcomes, in order: a live lobby is already on that map and is handed
+back (`state: "ready"`, nothing is written); one is already on its way there
+(`state: "loading"`); or an idle one is claimed and told to move on its next
+heartbeat (`state: "loading"`, `why: "starting"`).
+
+`timed` is REPORTED, NEVER ENFORCED. Only 531 of the Pi's 1312 maps have a zone
+file; the rest load perfectly and can never be timed, because with no start,
+end or checkpoints the run timer never arms. Refusing to host one would be
+surfd deciding a player may not walk around a map they own. Saying "yes, and
+you cannot set a time here" is the honest answer, and the menu prints it.
+
+**This is the only public endpoint that causes work on a game server, and it is
+unauthenticated** -- it has to be, because the menu calls it before the player
+has connected to anything. The structural answer is the idle rule: **a lobby
+with anybody on it is never moved**, at either end (surfd will not claim one,
+and sv_lobby.qc refuses the instruction if anyone is connected). So the worst a
+stranger can do is park idle servers on unpopular maps, which the next real
+request and the rotation undo. Nobody is ever thrown out of a run. On top of
+that: a per-source rate bucket, a claim that expires after `ASSIGN_TTL`, and
+`assignments.src` so the log can say who. It is **not** a defence against a
+distributed nuisance; if that happens the answer is a token from the game
+client, and the claim table is where it would be checked.
 
 ```
 POST /api/run         (application/x-www-form-urlencoded)   -- schema 3

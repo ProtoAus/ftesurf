@@ -65,6 +65,69 @@ RUNS_DIR = os.environ.get(
 # board and somebody pulling every recording in a loop.
 REPLAY_RATE_MAX = 20     # replay fetches per RATE_WINDOW per source
 
+# --------------------------------------------------------------------------
+# WHERE THE MAPS ARE.  Build 67, "every map someone plays is a lobby".
+# --------------------------------------------------------------------------
+#
+# THE LOBBIES DO NOT LOAD MAPS OUT OF THEIR OWN GAMEDIR AND THAT IS THE WHOLE
+# REASON THIS FEATURE IS CHEAP.  `game/ftesurf/maps/` on the Pi is EMPTY;
+# `game/momentum/maps/` holds the full 1312-BSP library, and the five live
+# lobbies already `changelevel` into it.  So "host any map in the library" needs
+# no content work at all -- the plan's Part 7 sized it as 45 GB of Valve-adjacent
+# BSPs to mirror, and that was true when it was written and is not true now.
+#
+# WHAT surfd USES IT FOR IS ONE STAT, and specifically NOT a listing served to
+# anybody: /api/join has to answer "is this map installed" before it moves a
+# server onto it, because `changelevel` at a map that is not there prints an
+# error to a log nobody reads and leaves the lobby exactly where it was -- i.e.
+# the player is told to connect somewhere that will never be the map they asked
+# for.  A refusal here is a sentence the menu can show.
+MAPS_DIR = os.environ.get(
+    "SURFD_MAPS", "/srv/nvme/ftesurf-server/game/momentum/maps")
+
+# ZONES ARE A SEPARATE QUESTION FROM BSPS AND THE DIFFERENCE IS THE PRODUCT.
+#
+# Measured on the Pi 2026-09-14: 1312 BSPs, 533 zone files, 531 maps with both.
+# A map with no zone file LOADS PERFECTLY and can never be timed -- no start, no
+# end, no checkpoints, so SV_TimerStart is never reached and the run timer never
+# arms.  From inside the game that is indistinguishable from a broken timer.
+#
+# So `timed` is REPORTED, never ENFORCED.  Refusing to host an unzoned map would
+# be surfd deciding a player may not walk around a map they own, which is not
+# its business; answering "yes, and you cannot set a time here" is.  The menu
+# decides what to do with that, and can say so before the player spends a
+# connect on it.
+ZONES_DIR = os.environ.get(
+    "SURFD_ZONES", os.path.join(MAPS_DIR, "zones", "online"))
+
+# HOW LONG THE DIRECTORY LISTING IS BELIEVED.  1312 entries is a ~2 ms scandir
+# on the NVMe and this is a single-worker process, so the cache is not about
+# cost -- it is about not doing it once per request under a flood while still
+# noticing a map that mapsync.py copied in five minutes ago.
+MAPS_TTL = 300           # seconds
+
+# A JOIN IS A CHEAP READ IN THE COMMON CASE (somebody is already on that map)
+# and a map load in the uncommon one, so it gets its own bucket like every other
+# route that can cost real work.  Higher than REPLAY_RATE_MAX because a menu
+# that lists twenty maps may legitimately ask about several in a session, and
+# the expensive branch is separately protected by the idle rule below.
+JOIN_RATE_MAX = 30       # join requests per RATE_WINDOW per source
+
+# HOW LONG A LOBBY IS HELD FOR THE PERSON WHO ASKED FOR IT.
+#
+# The claim exists because the answer is not instant: surfd replies to the
+# heartbeat, the lobby changelevels, and the map takes a few seconds to load
+# (measured on the Pi after engine Patch 298: 4 s for a heavy map, well under
+# one for a light one).  Without a claim, a second request in that window would
+# see the same lobby still reading `players 0` on its OLD map and send a second
+# player somewhere a third request would then move again.
+#
+# 90 SECONDS, NOT 10.  It has to cover the load AND the client's connect AND the
+# first heartbeat after the new map (up to lobby_master_rate, 5 s) -- and the
+# cost of being too long is one lobby held idle for a minute, while the cost of
+# being too short is two players sent to the same server for different maps.
+ASSIGN_TTL = 90          # seconds
+
 LOBBY_TTL = 30           # seconds; a lobby older than this is not "live"
 REAP_AFTER = 3600        # seconds; rows older than this are deleted outright
 MAX_NODES = 200          # hard cap on distinct nodes stored
@@ -190,7 +253,7 @@ TF_CHEAT = 256
 TF_NOJOURNAL = 512
 TF_NORULESET = 1024
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 # --------------------------------------------------------------------------
@@ -719,6 +782,46 @@ def migrate():
             conn.commit()
             version = 3
 
+        if version < 4:
+            # SCHEMA 4: WHICH MAP EACH LOBBY HAS BEEN ASKED TO BE ON.
+            #
+            # This is the whole of "every map someone plays is a lobby" on the
+            # storage side, and it is deliberately one small table rather than a
+            # column on `lobbies`.  `lobbies` is a MIRROR: every column in it is
+            # overwritten by the next heartbeat with whatever the server said
+            # about itself, and it is DELETEd wholesale when a node goes stale.
+            # An assignment is the opposite kind of fact -- it is what WE want,
+            # it must survive the node's own reporting, and it must survive the
+            # gap between `changelevel` and the first heartbeat from the new map,
+            # which is exactly the window in which the mirror still says the OLD
+            # map.  Putting it in `lobbies` would have it overwritten by the very
+            # heartbeat it is trying to answer.
+            #
+            # KEYED ON THE NODE, NOT ON THE MAP, because a node can be on only
+            # one map and the question every heartbeat asks is "should I move?".
+            # Keyed on the map instead, that lookup would be a scan and two
+            # claims could name the same server.
+            #
+            # `src` IS KEPT FOR ONE REASON: this is the only public endpoint in
+            # surfd that causes work on a game server, so when it is abused the
+            # log has to be able to say by whom.  It is not used for policy.
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS assignments (
+                    node     TEXT    PRIMARY KEY,
+                    map      TEXT    NOT NULL,
+                    map_dir  TEXT    NOT NULL,
+                    asked_at INTEGER NOT NULL,
+                    src      TEXT    NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS assignments_map
+                    ON assignments (map, asked_at);
+                """
+            )
+            conn.execute("PRAGMA user_version=4")
+            conn.commit()
+            version = 4
+
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:
@@ -880,6 +983,95 @@ def clean_map(raw):
     return name if _MAPNAME_OK.match(name) else None
 
 
+# --------------------------------------------------------------------------
+# The installed map library
+# --------------------------------------------------------------------------
+#
+# THE INDEX IS KEYED LOWERCASE AND STORES THE ON-DISK SPELLING, and that is the
+# same defect this tree has now shipped three times in three separate designs.
+# `clean_map` lowercases because the board key must, so two spellings of one map
+# rank against each other.  ext4 does not lowercase, and six maps in the library
+# carry capitals -- Bhop_Mukiology, bhop_HaddocK, bhop_HeLL, bhop_addict_V2,
+# surf_Rebel_Resistance_Revamp, surf_prottos_NightMare.  A path or a changelevel
+# argument rebuilt from the key misses every one of them, and the symptom is
+# "that map is not installed" for a map that is installed.  R3 shipped it, R4
+# shipped it, and it is written down here so R-this does not.
+#
+# WHAT COMES BACK OUT IS THE ON-DISK SPELLING, because that is what goes to
+# `changelevel`.  FTE's own filesystem is case-sensitive on Linux too.
+_maps_lock = threading.Lock()
+_maps_cache = {"at": -1.0, "bsp": {}, "zone": frozenset()}
+
+
+def _scan_maps():
+    """Read the library off disk.  Returns (bsp_index, zone_set).
+
+    NEVER RAISES.  A missing or unreadable MAPS_DIR is a deployment that has not
+    been pointed at the library yet -- surfd's other nine endpoints are unharmed
+    by it and must not 500 because this one directory moved.  An empty index
+    makes /api/join answer "not installed" for everything, which is wrong but is
+    a sentence rather than a stack trace, and it says so in the log once.
+    """
+    bsp = {}
+    zone = set()
+    try:
+        with os.scandir(MAPS_DIR) as it:
+            for entry in it:
+                name = entry.name
+                if not name.lower().endswith(".bsp"):
+                    continue
+                stem = name[:-4]
+                if not _MAPNAME_OK.match(stem):
+                    continue
+                # FIRST SPELLING WINS, deterministically by sort order rather
+                # than by whatever order the filesystem hands back, so a library
+                # that somehow holds both `surf_x.bsp` and `Surf_X.bsp` resolves
+                # to the same one on every boot of every node.
+                key = stem.lower()
+                if key not in bsp or stem < bsp[key]:
+                    bsp[key] = stem
+    except OSError as exc:
+        log.warning("map library %s unreadable: %s", MAPS_DIR, exc)
+        return {}, frozenset()
+
+    try:
+        with os.scandir(ZONES_DIR) as it:
+            for entry in it:
+                if entry.name.lower().endswith(".json"):
+                    zone.add(entry.name[:-5].lower())
+    except OSError as exc:
+        # NOT fatal and NOT the same failure as the one above.  With no zone
+        # directory every map reports `timed 0`, which is pessimistic and
+        # honest; with no map directory nothing can be hosted at all.
+        log.warning("zone directory %s unreadable: %s", ZONES_DIR, exc)
+
+    return bsp, frozenset(zone)
+
+
+def map_index(now=None):
+    """The installed library, cached for MAPS_TTL.  Returns (bsp, zone)."""
+    now = time.monotonic() if now is None else now
+    with _maps_lock:
+        if now - _maps_cache["at"] < MAPS_TTL:
+            return _maps_cache["bsp"], _maps_cache["zone"]
+    bsp, zone = _scan_maps()
+    with _maps_lock:
+        _maps_cache["at"] = now
+        _maps_cache["bsp"] = bsp
+        _maps_cache["zone"] = zone
+        log.info("map library: %d installed, %d with zones (%s)",
+                 len(bsp), len(zone), MAPS_DIR)
+        return bsp, zone
+
+
+def maps_reset():
+    """Drop the cached library.  For tests, and for a future admin control."""
+    with _maps_lock:
+        _maps_cache["at"] = -1.0
+        _maps_cache["bsp"] = {}
+        _maps_cache["zone"] = frozenset()
+
+
 def style_of(flags):
     """Which board this run belongs on, or None if it belongs on none.
 
@@ -1037,14 +1229,70 @@ def heartbeat():
         "heartbeat node=%r map=%r players=%d/%d addr=%s",
         node, mapname, players, maxplayers, addr,
     )
+
+    # ----------------------------------------------------------------------
+    # THE REPLY IS THE CONTROL CHANNEL.  Build 67; see the essay over /api/join.
+    #
+    # The body has been the literal "ok" since Patch 270 and the lobby only ever
+    # looked at the status code, so this is a pure extension: a server running
+    # older QC reads "map surf_lux" as a successful heartbeat, exactly as it read
+    # "ok", and simply does not move.  That is the right failure -- a directory
+    # that cannot move an old lobby is a directory with fewer maps, not a broken
+    # one -- and it is why the instruction is in the BODY rather than in a status
+    # code the old code already branches on.
+    # ----------------------------------------------------------------------
+    want = None
+    try:
+        with db:
+            db.execute("DELETE FROM assignments WHERE asked_at < ?",
+                       (now - ASSIGN_TTL,))
+            row = db.execute(
+                "SELECT map, map_dir FROM assignments WHERE node = ?", (node,)
+            ).fetchone()
+            if row is not None:
+                if mapname.lower() == row["map"]:
+                    # ARRIVED.  The claim is spent the moment the lobby reports
+                    # the map it was sent to, not when the asker connects --
+                    # surfd cannot see connections, and holding it until the TTL
+                    # would keep a server that is now correct and idle out of the
+                    # candidate pool for another minute.
+                    db.execute("DELETE FROM assignments WHERE node = ?", (node,))
+                    log.info("join: %s arrived at %r", node, mapname)
+                elif players > 0:
+                    # SOMEBODY GOT THERE FIRST, so the claim loses -- the idle
+                    # rule is not a preference that can be overridden once the
+                    # request is in flight.  The window is one heartbeat wide
+                    # (lobby_master_rate, 5 s) and the cost of losing is that the
+                    # asker connects to a server on the wrong map; the cost of
+                    # winning would be kicking a stranger out of a run.
+                    db.execute("DELETE FROM assignments WHERE node = ?", (node,))
+                    log.info("join: dropping claim on %s for %r -- %d player(s) "
+                             "arrived", node, row["map"], players)
+                else:
+                    want = row["map_dir"]
+    except sqlite3.Error as exc:
+        # NOT fatal to the heartbeat.  A lobby that cannot be told to move must
+        # still stay in the directory; failing here would take it off the map
+        # picker over a feature it is not currently using.
+        log.exception("assignment lookup failed for %s: %s", node, exc)
+
+    if want:
+        log.info("heartbeat reply: %s -> changelevel %r", node, want)
+        return Response("map %s" % want, status=200, mimetype="text/plain")
     return Response("ok", status=200, mimetype="text/plain")
 
 
 def live_rows(now):
+    # `node` IS SELECTED AND /lobbies.json DOES NOT PUBLISH IT.  It is the
+    # primary key, and build 67's /api/join needs it to name the row it is
+    # claiming -- a claim keyed on the address would break the moment
+    # SURFD_PUBLIC_HOST rewrote one.  lobbies_json builds its own dict field by
+    # field, so adding a column here publishes nothing new; that is checked
+    # rather than assumed (test_join.py section 1).
     db = get_db()
     return db.execute(
         """
-        SELECT map, players, maxplayers, addr, name, last_seen
+        SELECT node, map, players, maxplayers, addr, name, last_seen
           FROM lobbies
          WHERE last_seen > ?
          ORDER BY players DESC, map ASC
@@ -1074,6 +1322,199 @@ def lobbies_json():
         log.exception("lobbies.json db error: %s", exc)
     body = json.dumps({"v": 1, "t": now, "lobbies": lobbies}, separators=(",", ":"))
     return Response(body, status=200, mimetype="application/json")
+
+
+# --------------------------------------------------------------------------
+# "Where do I play this map?"  -- build 67
+# --------------------------------------------------------------------------
+#
+# THE PROBLEM THIS SOLVES IS THE PLAN'S LAYER 0, NOT A CONVENIENCE.
+#
+# Today the map list starts a LISTEN SERVER (m_main.qc's ui_launch does
+# `map <name>`), and on a listen server the host owns sv.time, the movement
+# cvars, the progs and the timer -- so a world record is a cvar edit, not a
+# cheat.  That is why Lobby_SubmitRun returns at its first gate there and why
+# those runs are Local-only.  The fix is not to trust the host; it is for the
+# player to be a CLIENT of a server the operator runs, which is what this
+# endpoint arranges.  Every run set through here is on our simulation, so tier
+# T3 -- the one the plan ranks above every input-layer concern -- disappears.
+#
+# HOW A SERVER ACTUALLY MOVES, AND WHY IT IS NOT RCON.
+#
+# The obvious implementation is `rcon changelevel <map>` at an idle lobby, and
+# it is wrong three times over.  FTE's amplification guard gates rcon BEFORE the
+# password check with no loopback exemption, and 15 packets in 30 seconds is a
+# SELF-EXTENDING 24-HOUR BLOCK that only a restart clears -- so a busy evening
+# would silently take the admin panel offline for a day.  It needs the rcon
+# password in this process's reach for a job that is not administration.  And it
+# only works for a lobby on this machine, which is exactly the constraint
+# `replays.node` already exists to stop us baking in again.
+#
+# The lobby already POSTs /api/heartbeat every 5 s and already reads the reply
+# (sv_lobby.qc's URI_Get_Callback).  So surfd ANSWERS the heartbeat with the map
+# it wants, and the lobby changelevels itself.  No new channel, no new auth --
+# the heartbeat is already keyed -- no rcon, no amplification exposure, and it
+# works unchanged for a keyed lobby in another datacentre.
+#
+# THE ABUSE SURFACE, STATED PLAINLY, BECAUSE THIS IS PUBLIC AND UNAUTHENTICATED.
+#
+# It has to be: the menu calls it before the player has connected to anything,
+# so there is no identity to check.  That means a stranger can cause a map load
+# on a machine they do not own.  The structural answer is the idle rule --
+# A LOBBY WITH ANYBODY ON IT IS NEVER MOVED, so the worst available outcome is
+# idle servers parked on unpopular maps, which the rotation and the next real
+# request undo.  Nobody is ever kicked out of a run.  On top of that: a per-
+# source rate bucket, a claim that expires, and `assignments.src` so the log can
+# say who.  What it is NOT is a defence against a distributed nuisance; if that
+# ever happens the answer is a token from the game client, and the claim table
+# is where it would be checked.
+
+
+def _join_reply(status, payload):
+    payload.setdefault("v", 1)
+    return Response(json.dumps(payload, separators=(",", ":")),
+                    status=status, mimetype="application/json")
+
+
+@app.get("/api/join")
+def join_map():
+    now = int(time.time())
+    src = rate_key()
+
+    if not rate_ok(src, now, JOIN_RATE_MAX, "join"):
+        log.warning("rate limited join from %s", src)
+        return _join_reply(429, {"error": "rate limited"})
+
+    mapname = clean_map(request.args.get("map"))
+    if not mapname:
+        return _join_reply(400, {"error": "bad map"})
+
+    bsp, zoned = map_index()
+    map_dir = bsp.get(mapname)
+    if not map_dir:
+        # A SENTENCE, NOT A 404 WITH NO BODY.  This is the single most likely
+        # refusal -- 781 of the library's names are only a typo away from each
+        # other -- and the menu shows whatever is in `error`.
+        return _join_reply(404, {"error": "that map is not installed on this server",
+                                 "map": mapname})
+
+    timed = 1 if mapname in zoned else 0
+
+    db = get_db()
+    try:
+        with db:
+            db.execute("DELETE FROM assignments WHERE asked_at < ?",
+                       (now - ASSIGN_TTL,))
+        rows = live_rows(now)
+        claims = {r["node"]: r for r in db.execute(
+            "SELECT node, map, map_dir, asked_at FROM assignments").fetchall()}
+    except sqlite3.Error as exc:
+        log.exception("join db error from %s: %s", src, exc)
+        return _join_reply(500, {"error": "storage error"})
+
+    # ---- 1. somebody is already there -------------------------------------
+    #
+    # THE FIRST CHECK AND THE COMMON ONE, and it costs nothing: no claim, no map
+    # load, no state written anywhere.  It is also the whole social half of the
+    # feature -- "every map is a lobby" is worth nothing if two people asking
+    # for the same map get two different servers -- so the tie-break is MOST
+    # PLAYERS rather than least: people gather.
+    best = None
+    for row in rows:
+        if row["map"].lower() != mapname:
+            continue
+        if row["players"] >= row["maxplayers"]:
+            continue
+        # A LOBBY UNDER A CLAIM IS NOT STILL ON THE MAP IT REPORTS, IT IS ABOUT
+        # TO LEAVE IT.  Found by test_join.py section 4, and it is the subtlest
+        # thing in this endpoint: a claim takes effect on the node's next
+        # HEARTBEAT, so for up to lobby_master_rate seconds the directory still
+        # says it is on its old map -- truthfully, and uselessly.  Offering it
+        # here as "already running" sends a third player to a server that
+        # changelevels out from under them a moment later, which is exactly the
+        # experience this whole feature exists to remove.  The claim is the
+        # newer fact; the mirror is the older one.
+        if row["node"] in claims:
+            continue
+        if best is None or row["players"] > best["players"]:
+            best = row
+    if best is not None:
+        return _join_reply(200, {
+            "map": mapname, "timed": timed, "state": "ready", "wait": 0,
+            "addr": best["addr"], "name": best["name"],
+            "players": best["players"], "max": best["maxplayers"],
+            "why": "already running",
+        })
+
+    # ---- 2. one is already on its way there -------------------------------
+    live = {r["node"]: r for r in rows}
+    for node, claim in claims.items():
+        if claim["map"] != mapname:
+            continue
+        row = live.get(node)
+        if row is None:
+            continue        # claimed a node that has since gone stale
+        return _join_reply(200, {
+            "map": mapname, "timed": timed, "state": "loading",
+            "wait": max(0, ASSIGN_TTL - (now - claim["asked_at"])),
+            "addr": row["addr"], "name": row["name"],
+            "players": 0, "max": row["maxplayers"],
+            "why": "loading",
+        })
+
+    # ---- 3. move an idle one ----------------------------------------------
+    #
+    # `players == 0` IS THE ENTIRE ANTI-ABUSE RULE and it is worth more than any
+    # policy that could be written above it: a server with a human on it is not
+    # a candidate, full stop, so no request from anybody can interrupt a run.
+    #
+    # LOWEST NODE WINS, and that is arbitrary-but-stable rather than clever --
+    # the same reasoning BOARD_ORDER gives for putting `player` in the sort.
+    # The right rule is least-recently-busy, which needs a column this schema
+    # does not have; until the pool is bigger than five that difference is not
+    # measurable, and an arbitrary rule that is the SAME on every request beats
+    # a smart one that reshuffles under concurrent asks.
+    free = sorted(r["node"] for r in rows
+                  if r["players"] == 0 and r["node"] not in claims)
+    if not free:
+        # WHAT IS RUNNING IS PART OF THE REFUSAL.  A bare 503 leaves the menu
+        # with nothing to offer; the list lets it say "all servers are busy --
+        # here is what people are playing", which is a better product than a
+        # queue and costs one field.
+        return _join_reply(503, {
+            "error": "every server is busy right now",
+            "map": mapname, "timed": timed,
+            "lobbies": [{"map": r["map"], "players": r["players"],
+                         "max": r["maxplayers"], "addr": r["addr"]}
+                        for r in rows],
+        })
+
+    node = free[0]
+    row = live[node]
+    try:
+        with db:
+            db.execute(
+                """
+                INSERT INTO assignments (node, map, map_dir, asked_at, src)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(node) DO UPDATE SET
+                    map = excluded.map, map_dir = excluded.map_dir,
+                    asked_at = excluded.asked_at, src = excluded.src
+                """,
+                (node, mapname, map_dir, now, src),
+            )
+    except sqlite3.Error as exc:
+        log.exception("join claim failed for %s: %s", node, exc)
+        return _join_reply(500, {"error": "storage error"})
+
+    log.info("join: %s asked for %r -- assigning %s (was %r)",
+             src, map_dir, node, row["map"])
+    return _join_reply(200, {
+        "map": mapname, "timed": timed, "state": "loading", "wait": ASSIGN_TTL,
+        "addr": row["addr"], "name": row["name"],
+        "players": 0, "max": row["maxplayers"],
+        "why": "starting",
+    })
 
 
 # --------------------------------------------------------------------------

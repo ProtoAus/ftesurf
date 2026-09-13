@@ -138,7 +138,14 @@ def put_rec(mod, map_dir, track, leg, leaf_name, body):
     d = os.path.join(mod._test_runs, map_dir, mod.leg_dir(track, leg))
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, leaf_name)
-    with open(path, "w", encoding="utf-8") as fh:
+    # newline="" OR THIS TEST CANNOT MEAN WHAT IT SAYS ON WINDOWS.  Text mode
+    # translates every \n to \r\n on this platform, so section 13's "the file's
+    # exact bytes" check was comparing the route's faithful output against bytes
+    # the HARNESS had rewritten -- it failed on Windows and passed on the Pi, for
+    # a defect that exists in neither.  A fixture that differs by platform makes
+    # a byte-exactness claim untestable on exactly one of them, which is worse
+    # than not making it.
+    with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(body)
     return path
 
@@ -472,11 +479,11 @@ check("...reporting rep 0", body["rows"][0]["rep"], 0)
 print("\n--- 11. the 2 -> 3 migration adds and does not rebuild -------------")
 
 m = fresh()
-check("a fresh database is stamped schema 3", user_version(m), 3)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 3)
+check("a fresh database is stamped schema 4", user_version(m), 4)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 4)
 
 m = fresh(seed_v2=True)
-check("a schema-2 database upgrades to 3", user_version(m), 3)
+check("a schema-2 database upgrades to 4", user_version(m), 4)
 check("...keeping the board rows it already held",
       [r["player"] for r in rows(m, "SELECT player FROM runs")], ["old"])
 check("...defaulting them to no replay",
