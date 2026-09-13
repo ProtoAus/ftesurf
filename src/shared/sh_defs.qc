@@ -1576,14 +1576,315 @@ string(string map, float track, float leg) FS_RunDir =
   An empty stamp is how `last` gets its fixed name: the caller passes ticks < 0
   to mean "not archived".
 */
+// BUILD 66: the body moved to FS_RunPathWho just below, and this is now the
+// no-player-dimension case of it -- which is every local run and therefore
+// every recording written before build 66.  Declared ahead of its definition
+// because QC has no forward references and the callers are in three VMs.
+string(string map, float track, float leg, float ticks,
+       string tag, string ext) FS_RunPath;
+
+/*
+===========================================================================
+  BUILD 66 -- WHO SET IT.  The player dimension in a recording's name.
+===========================================================================
+
+  Until this build a finished run was filed as <ticks7>_<tag>.rec and that was
+  the whole name.  On one player's disk it is complete: there is exactly one
+  player, so the time and the class identify the run.  On a LOBBY it is not.
+  Thirty-two people share a disk and a leg folder, and two of them finishing the
+  same leg on the same tick write the same path -- the second one silently
+  replaces the first.  cfg/lobby.cfg:183 has carried that as a known reason not
+  to record at all since Patch 270, alongside the memory one that build 66's
+  streaming recorder has now retired.  This is the other half.
+
+  THE SEGMENT GOES IN THE MIDDLE, and both ends are spoken for:
+
+    * NOT FIRST.  An ascending name sort over zero-padded tick counts IS the
+      leaderboard -- FS_RUNS_ROOT's note says so and SV_RecPrune's "slowest
+      first" safety depends on it outright.  A leading player segment sorts the
+      directory by player and turns the pruner from "drop the slowest" into
+      "drop whoever is last alphabetically", which would delete a personal best
+      to make room for a stranger's practice lap.
+    * NOT LAST.  Both readers of an archived name split it on the LAST
+      underscore, and an unrecognised tag word does not mislabel a row -- it
+      DROPS it (FS_TagFromName, and the essay over RT_LOBBY where the same
+      constraint already forbade an underscore inside a tag word).  A trailing
+      player segment would parse as the tag, so every lobby run would vanish
+      from every board with no gap and nothing to count it by.
+
+  So: <ticks7>_<who>_<tag>.rec, and the parse below takes the tag from the LAST
+  underscore and the stamp from the FIRST.  `who` can therefore never contain
+  one, which is what FS_NameSlug is really enforcing.
+
+  IT IS EMPTY OFF A LOBBY, AND THAT IS THE MIGRATION PLAN.  SV_RecWho returns ""
+  when Lobby_Active() is false, so a local run is filed under exactly the name
+  it has been filed under since build 23 and the 83 recordings already on this
+  disk keep theirs.  Nothing is renamed, nothing is converted, and a build-66
+  reader reads a build-23 file because "no middle component" is a case the
+  parser handles rather than a version it has to be told about.
+
+  BOTH A NAME AND AN ID, because neither alone does the job:
+
+    * the netname is what a human reading `ls` wants, and it is arbitrary,
+      changeable, duplicable and hostile -- two people called `player` are not
+      a collision the format may lose;
+    * the id is the board's actual primary key (Lobby_SubmitRun keys every row
+      on the engine GUID) and is unreadable.
+
+  Joined by '-', which is the one punctuation FS_NameSlug permits and cannot
+  itself produce, so the join can always be undone.
+
+  THE ID IS A HASH OF THE GUID AND NOT THE GUID.  These filenames become
+  publicly downloadable in Phase 5 R4, and sv_main.c:137's warning cuts both
+  ways: "do NOT treat the client's GUID as something that is secure" is a reason
+  not to trust it AND a reason not to publish it.  sha256 truncated to 8 hex is
+  stable for the life of an install, computable independently by surfd (which
+  holds the real GUID in the row it is trying to match a file to), and says
+  nothing about the client that the client did not already put on the board.
+
+  AND THE LIMIT, because it was asked about directly: this identifies an
+  INSTALL, not a human.  A player who deletes their client gets a new GUID and
+  therefore a new segment, and nothing in userland can stop that -- it is the
+  same ban-evasion hole the local-keypair decision accepts openly in Phase 2 of
+  the plan.  What it does buy is that a player who merely changes their NAME
+  keeps one id, so their runs still group.
+*/
+#define FS_WHO_NAMEMAX  12      // characters of netname kept
+#define FS_WHO_IDLEN     8      // hex characters of sha256(guid) kept
+
+/*
+  A display name reduced to something that can be a filename component.
+
+  DROPPED, NOT SUBSTITUTED, and that is the security-relevant half.  A netname
+  is arbitrary text from a stranger -- `../../../autoexec` and `..\..\` are two
+  keystrokes -- and a substitution rule ("anything odd becomes _") would put the
+  separator this format is parsed on back into the middle of a field.  Keeping
+  only [a-z0-9] means a hostile name cannot leave the directory, cannot reach a
+  reserved Windows device name (the stem always carries a stamp and a tag around
+  it), and cannot reintroduce the underscore.
+
+  It may legitimately return "".  A name that is all colour codes, all unicode
+  or all punctuation contributes nothing, and the id half is what actually makes
+  the file distinct -- so an empty slug is a name with no letters in it, not an
+  error, and FS_PlayerSeg files the run under the id alone.
+
+  strdecolorize first: a ^1 would otherwise survive as the digit `1`, so
+  ^1lex and ^2lex -- the same player between two name changes -- would slug
+  differently.  The colour codes are not part of the name, they are markup.
+*/
+string(string s) FS_NameSlug =
+{
+	local string out;
+	local float i, n, ch;
+
+	s   = strtolower(strdecolorize(s));
+	out = "";
+	n   = strlen(s);
+
+	for (i = 0; i < n; i = i + 1)
+	{
+		if (strlen(out) >= FS_WHO_NAMEMAX)
+			break;
+
+		ch = str2chr(s, i);
+		if (ch >= 48 && ch <= 57)               // 0-9
+			out = strcat(out, chr2str(ch));
+		else if (ch >= 97 && ch <= 122)         // a-z
+			out = strcat(out, chr2str(ch));
+	}
+
+	return out;
+};
+
+/*
+  The middle component, or "" when there is no player dimension to record.
+
+  NO GUID, NO SEGMENT.  An empty GUID is a server with sv_guidkey unset, which
+  Lobby_SubmitRun already refuses to submit under and already says so about
+  loudly; inventing a segment here would file the runs of every anonymous player
+  under one name, which is the same impostor problem one directory down.  The
+  caller decides what to do about it (SV_RecWho falls back to the slot, which
+  cannot collide between two people who are connected at the same time).
+
+  The digest is checked rather than assumed.  digest_hex is the first call to
+  that builtin anywhere in this tree, so a build where it is absent or refuses
+  "SHA256" returns a short string, and a four-character id would be a collision
+  the format cannot see.  Short means no segment, which the caller handles.
+*/
+string(string nm, string guid) FS_PlayerSeg =
+{
+	local string slug, id;
+
+	if (guid == "")
+		return "";
+
+	id = strtolower(digest_hex("SHA256", guid));
+	if (strlen(id) < FS_WHO_IDLEN)
+		return "";
+	id = substring(id, 0, FS_WHO_IDLEN);
+
+	slug = FS_NameSlug(nm);
+	if (slug == "")
+		return id;
+	return strcat(slug, "-", id);
+};
+
+/*
+  The basename of one recording: <ticks7>[_<who>]_<tag>.<ext>, or <tag>.<ext>
+  for the unstamped `last`.
+
+  A SEPARATE FUNCTION FROM THE PATH because SV_RecPrune needs exactly this and
+  nothing else -- it compares the tail of each enumerated result against the
+  file it was called to protect, and its own comment says the failure mode if
+  the two spellings ever disagree is to delete that file.  It used to rebuild
+  the leaf inline from the same two pieces; there are three pieces now.
+*/
+/*
+  THE UNSTAMPED NAMES TAKE `who` TOO, and that is not symmetry for its own sake.
+
+  `last` and `cheat` are FIXED names -- one file per leg, the next run replaces
+  it -- which is exactly right on a disk with one player on it and is a shared
+  write target on a lobby.  Thirty-two people would hold one `last.rec` between
+  them: every finish overwriting a stranger's, the file describing whoever
+  crossed the line most recently, and nothing anywhere saying so.  It is the
+  same collision as the archived case and it is worse, because a fixed name has
+  no tick count to make it even accidentally distinct.
+*/
+string(float ticks, string who, string tag, string ext) FS_RunLeaf =
+{
+	if (ticks < 0)
+	{
+		if (who == "")
+			return sprintf("%s.%s", tag, ext);
+		return sprintf("%s_%s.%s", who, tag, ext);
+	}
+
+	if (who == "")
+		return sprintf("%s_%s.%s", FS_RunStamp(ticks), tag, ext);
+
+	return sprintf("%s_%s_%s.%s", FS_RunStamp(ticks), who, tag, ext);
+};
+
+string(string map, float track, float leg, float ticks,
+       string who, string tag, string ext) FS_RunPathWho =
+{
+	return strcat(FS_RunDir(map, track, leg), FS_RunLeaf(ticks, who, tag, ext));
+};
+
 string(string map, float track, float leg, float ticks,
        string tag, string ext) FS_RunPath =
 {
-	if (ticks < 0)
-		return sprintf("%s%s.%s", FS_RunDir(map, track, leg), tag, ext);
+	return FS_RunPathWho(map, track, leg, ticks, "", tag, ext);
+};
 
-	return sprintf("%s%s_%s.%s", FS_RunDir(map, track, leg),
-	               FS_RunStamp(ticks), tag, ext);
+/*
+  ---- AND THE INVERSE.  Three answers out of one basename. ------------------
+
+  `base` is the basename with its extension already removed, which is the form
+  all three readers already had in hand (cl_scores.qc's row scan, cl_results.qc's
+  rank count and cl_lobbytime.qc's best-lobby-time scan).
+
+  ONE SPELLER, because there were three and they were about to become three
+  spellings of a two-underscore rule rather than of a one-underscore rule.  The
+  tree has paid for that class of drift twice already -- FS_RunPath exists
+  because the client and the server were spelling the same name separately, and
+  FS_TagFromName exists because the row scan and `replay <tag>` were two copies
+  of the same word list.
+
+  THE RULE, in one place:
+
+      last                      -> tag `last`, no stamp, no who
+      lex-a3f19c2b_last         -> tag `last`, no stamp, who `lex-a3f19c2b`
+      0000279_pb                -> stamp 279,  no who
+      0000279_lex-a3f19c2b_pb   -> stamp 279,  who `lex-a3f19c2b`
+
+  COUNTING UNDERSCORES IS NOT ENOUGH, and the middle two rows are why -- both
+  carry exactly one and they mean opposite things.  So the stamp is recognised
+  by SHAPE rather than by position: seven characters, all digits, then an
+  underscore, which is FS_RunStamp's output and nothing else.  A `who` cannot
+  imitate it, because FS_NameSlug emits only [a-z0-9] and the id is joined with
+  a '-' -- so a slug of seven digits is followed by '-', never by '_'.
+
+  The tag is still what follows the LAST underscore, which is what forbids one
+  inside `who` (and inside a tag word -- see the essay over RT_LOBBY, where the
+  same constraint was already load-bearing).  Anything that does not fit is not
+  guessed at: the tag comes back as a word FS_TagFromName does not know, and the
+  row is dropped exactly as it is today.
+*/
+float(string s, float c) FS_LastOf =
+{
+	local float i, n, at;
+	n  = strlen(s);
+	at = -1;
+	for (i = 0; i < n; i = i + 1)
+		if (str2chr(s, i) == c)
+			at = i;
+	return at;
+};
+
+float(string s, float c) FS_FirstOf =
+{
+	local float i, n;
+	n = strlen(s);
+	for (i = 0; i < n; i = i + 1)
+		if (str2chr(s, i) == c)
+			return i;
+	return -1;
+};
+
+/*
+  Does this name open with a tick stamp?  Seven digits and then an underscore,
+  which is FS_RunStamp's output and is the one shape a player segment cannot
+  take.  Everything else in the parse hangs off this answer.
+*/
+float(string base) FS_NameStamped =
+{
+	local float i, ch;
+
+	if (strlen(base) < 9)                   // 7 + '_' + at least one tag char
+		return FALSE;
+	if (str2chr(base, 7) != 95)             // '_'
+		return FALSE;
+
+	for (i = 0; i < 7; i = i + 1)
+	{
+		ch = str2chr(base, i);
+		if (ch < 48 || ch > 57)
+			return FALSE;
+	}
+	return TRUE;
+};
+
+string(string base) FS_NameTag =
+{
+	local float us;
+
+	us = FS_LastOf(base, 95);               // '_'
+	if (us < 0)
+		return base;                    // a bare tag: `last`
+	return substring(base, us + 1, strlen(base) - us - 1);
+};
+
+float(string base) FS_NameTicks =
+{
+	if (!FS_NameStamped(base))
+		return 0;                       // unstamped; the caller reads the trailer
+	return stof(substring(base, 0, 7));
+};
+
+string(string base) FS_NameWho =
+{
+	local float first, last;
+
+	last = FS_LastOf(base, 95);
+	if (last < 0)
+		return "";                      // a bare tag: `last`
+
+	// Where the who would start: after the stamp if there is one, at 0 if not.
+	first = FS_NameStamped(base) ? 7 : -1;
+	if (last <= first)
+		return "";                      // <ticks>_<tag>, the pre-build-66 name
+	return substring(base, first + 1, last - first - 1);
 };
 
 /*

@@ -265,7 +265,7 @@ void() Results_RegisterCvars =
 void(float track, float leg, float ticks,
      __inout float rank, __inout float of) Results_Rank =
 {
-	local float h, n, i, cut, dot, us, t, faster, total;
+	local float h, n, i, cut, dot, t, faster, total;
 	local string fn, base, tagw;
 
 	rank = 0;
@@ -296,19 +296,19 @@ void(float track, float leg, float ticks,
 			continue;
 		base = substring(base, 0, dot);
 
-		us = Scores_LastOf(base, 95);           // '_'
-		if (us < 0)
-			continue;                           // unstamped: last, cheat
-
-		tagw = substring(base, us + 1, strlen(base) - us - 1);
+		// BUILD 66: through the shared parse, which now has three fields in it
+		// -- see FS_NameTag.  This was the second of three copies of a
+		// one-underscore rule, and on a lobby-written file it would have read
+		// the PLAYER as the tag and counted the run out of its own rank.
+		tagw = FS_NameTag(base);
 		if (FS_TagFromName(tagw) != RT_PB)
 		if (FS_TagFromName(tagw) != RT_RUN)
 		if (FS_TagFromName(tagw) != RT_LOBBY)   // build 57, stage T
 			continue;
 
-		t = stof(substring(base, 0, us));
+		t = FS_NameTicks(base);
 		if (t <= 0)
-			continue;
+			continue;                       // unstamped: last, cheat
 
 		total = total + 1;
 		if (t < ticks)

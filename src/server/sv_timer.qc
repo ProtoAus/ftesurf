@@ -1678,12 +1678,61 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
   `ticks` < 0 means "not archived" and yields the fixed `last` name.
 */
-string(entity e, float ticks, string tag) SV_RecFinalPath =
+/*
+  BUILD 66: WHICH PLAYER THIS RUN BELONGS TO, as a filename component.
+
+  The format, the sanitiser and the reasons all live in FS_PlayerSeg
+  (shared/sh_defs.qc), beside the parser that has to undo them.  What is decided
+  HERE is the two things only the server knows: whether there is a player
+  dimension at all, and what to do when the identity is missing.
+
+  OFF A LOBBY IT IS "" AND THE NAME DOES NOT CHANGE.  One player per disk is not
+  an assumption, it is the definition of a listen server: `data/runs` is that
+  person's archive and always has been.  Adding their id to it would rename
+  every future file for no gain and orphan the .view sidecar their own client
+  writes under the old spelling (cl_replay.qc: Rec_ViewPath, which calls
+  FS_RunPath and knows nothing about any of this).
+
+  THE FALLBACK IS THE SLOT, and it is chosen for exactly the property the
+  collision needs.  Reaching it means sv_guidkey is unset on a server that is
+  running as a lobby -- a misconfiguration Lobby_SubmitRun already refuses to
+  submit under and already tells the player about, so it is not this function's
+  job to complain again.  But the recorder is still running and two people can
+  still tie, and a client slot is unique among everyone CONNECTED AT THE SAME
+  TIME, which is precisely the set of people who can tie on the same tick.  It
+  is reused after they leave, so it identifies nobody across sessions -- which
+  is honest about what an unidentified server can say.
+*/
+string(entity e) SV_RecWho =
+{
+	local string who;
+
+	if (!Lobby_Active())
+		return "";
+
+	who = FS_PlayerSeg(e.netname, infokey(e, "guid"));
+	if (who != "")
+		return who;
+
+	return sprintf("s%g", e.run_t_slot);
+};
+
+/*
+  BUILD 66: `who` IS A PARAMETER rather than asked for here, on the same
+  argument SV_RecClose's `flags` and SV_RecLine's timestamp are already made
+  with: the call site is what knows the value, and a function that re-derives
+  it is a second route to an answer that has to agree with the first.  Here it
+  is also a cost -- SV_RecWho hashes a GUID -- and SV_RecClose needs the same
+  string three times.
+*/
+string(entity e, float ticks, string who, string tag) SV_RecFinalPath =
 {
 	// BUILD 57: by LEG.  A stage-1 run begins at segment 0 exactly as a full run
 	// does, and filing it by the segment would put it in `main`.
-	return FS_RunPath(mapname, e.run_t_track,
-	                  FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks, tag, "rec");
+	// BUILD 66: and by PLAYER, which is "" everywhere except a lobby.
+	return FS_RunPathWho(mapname, e.run_t_track,
+	                     FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks,
+	                     who, tag, "rec");
 };
 
 /*
@@ -2150,7 +2199,24 @@ void(entity e) SV_RecDiscard =
   stage -- because FS_RunDir takes a leg, and a segment handed to it sweeps the
   folder of the stage before the one that was written.
 */
-void(entity e, float leg, string tag, string keepme) SV_RecPrune =
+/*
+  BUILD 66: AND PER PLAYER, on a lobby.  This is the second half of the
+  filename change and it is the half that could have cost somebody their runs.
+
+  The glob was `*_<tag>.rec` and the `*` swallows a middle component happily, so
+  this function would have kept working and quietly done the wrong thing: one
+  quota shared by thirty-two people, swept SLOWEST FIRST across all of them.
+  Slowest-first is what makes the pruner safe on a single-player disk -- the
+  padded stamp sorts by time so the entries past the quota are the ones you care
+  least about -- and on a shared disk it becomes "delete the slowest PLAYER",
+  who is the person whose runs matter most to them.  Twenty-five fast runs from
+  one regular would evict every recording a newcomer had ever set.
+
+  Putting `who` in the pattern makes the quota per player per leg per tag, which
+  is the same rule the single-player case has always had, applied to the unit
+  that now exists.  An empty `who` reproduces the old pattern exactly.
+*/
+void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
 {
 	local float h, n, i, keep, kl;
 	local string fn, stem;
@@ -2159,9 +2225,12 @@ void(entity e, float leg, string tag, string keepme) SV_RecPrune =
 	if (keep < 1)
 		return;                 // 0 disables pruning entirely
 
-	h = search_begin(sprintf("%s*_%s.rec",
+	if (who != "")
+		who = strcat(who, "_");
+
+	h = search_begin(sprintf("%s*_%s%s.rec",
 	                         FS_RunDir(mapname, e.run_t_track, leg),
-	                         tag), FS_NAMESORT, TRUE);
+	                         who, tag), FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 
@@ -2199,7 +2268,7 @@ void(entity e, float leg, string tag, string keepme) SV_RecPrune =
 void(entity e, float ticks, float tag, float flags) SV_RecClose =
 {
 	local float i, base, fh, stamp;
-	local string dst, hdr;
+	local string dst, hdr, who;
 
 	if (!SV_RecLive(e))
 		return;
@@ -2269,7 +2338,12 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	if (FS_TagArchived(tag))
 		stamp = ticks;
 
-	dst = SV_RecFinalPath(e, stamp, SV_RecTagName(tag));
+	// BUILD 66: asked ONCE and carried, because the path below and the pruner's
+	// two arguments are three uses of one answer -- and SV_RecWho hashes a GUID
+	// to produce it, so asking three times is three sha256s per finish as well
+	// as three chances for them to disagree.
+	who = SV_RecWho(e);
+	dst = SV_RecFinalPath(e, stamp, who, SV_RecTagName(tag));
 
 	/*
 	  BUILD 66 -- THE STREAMED RUN IS ALREADY WRITTEN.  What is left is to
@@ -2315,9 +2389,8 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 			               dst, e.rec_rec_n, e.rec_rec_padn));
 			if (stamp >= 0)
 				SV_RecPrune(e, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
-				            SV_RecTagName(tag),
-				            sprintf("%s_%s.rec", FS_RunStamp(stamp),
-				                    SV_RecTagName(tag)));
+				            SV_RecTagName(tag), who,
+				            FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
 		}
 
 		e.rec_rec_stream = FALSE;
@@ -2346,13 +2419,14 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 
 		// Only the archived classes accumulate; `last` is one file by
 		// construction and has nothing to prune.  The basename is rebuilt here
-		// rather than sliced off dst, because it is the same two pieces the
-		// name was made from and slicing would be a second way of spelling it.
+		// rather than sliced off dst, because it is the same pieces the name was
+		// made from and slicing would be a second way of spelling it.  BUILD 66:
+		// through FS_RunLeaf, which is now the ONE place those pieces are joined
+		// -- there are three of them and this sprintf knew about two.
 		if (stamp >= 0)
 			SV_RecPrune(e, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
-			            SV_RecTagName(tag),
-			            sprintf("%s_%s.rec", FS_RunStamp(stamp),
-			                    SV_RecTagName(tag)));
+			            SV_RecTagName(tag), who,
+			            FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
 	}
 
 	buf_del(e.rec_rec_buf);
@@ -3040,7 +3114,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	local float buf, i, fh, samples, cps, pad;
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local float leg;                // build 57: the leg this slice is filed under
-	local string l, dst;
+	local string l, dst, who;
 
 	/*
 	  BUILD 66: A STREAMED RUN HAS NO LINES TO LIFT.
@@ -3254,7 +3328,13 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("end %g %g %g %g", dur, samples, pad, cps));
 
-	dst = FS_RunPath(mapname, e.run_t_track, leg, dur, FS_TagName(RT_PB), "rec");
+	// BUILD 66: by player as well, on the same terms as a full run.  Unreachable
+	// with a non-empty `who` today -- a lobby streams, and a streamed run cannot
+	// be sliced, so SV_StageWrite refuses above -- but it is spelled correctly
+	// rather than left as a thing that becomes wrong the day that changes.
+	who = SV_RecWho(e);
+	dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who,
+	                    FS_TagName(RT_PB), "rec");
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
 		dprint(sprintf("stage: cannot open %s for writing\n", dst));
@@ -3266,9 +3346,9 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 		               dst, samples, first, last));
 
 		// Same pruner and the same rule as a full run: the archive grows one
-		// file per improvement and is capped per leg.
-		SV_RecPrune(e, leg, FS_TagName(RT_PB),
-		            sprintf("%s_%s.rec", FS_RunStamp(dur), FS_TagName(RT_PB)));
+		// file per improvement and is capped per leg, per player.
+		SV_RecPrune(e, leg, FS_TagName(RT_PB), who,
+		            FS_RunLeaf(dur, who, FS_TagName(RT_PB), "rec"));
 	}
 
 	buf_del(buf);
@@ -7287,8 +7367,13 @@ void(entity e) SV_TimerReport =
 	  printed 0000130 next to a clock reading 0:00.000.  run_t_ticks is the value
 	  the display and the wire already use, so the two agree by construction.
 	*/
+	// BUILD 66: SV_RecWho(e) inline rather than "" -- this line's whole job is to
+	// print the name the recorder WOULD use, and a report that quietly omitted
+	// the player segment would be the one place you could look to check it and
+	// be told the old answer.  It is also the only headless view of the segment
+	// before a run has finished, which is what makes the format testable.
 	sprint(e, PRINT_HIGH, sprintf("        would write %s\n",
-	       SV_RecFinalPath(e, e.run_t_ticks, "pb")));
+	       SV_RecFinalPath(e, e.run_t_ticks, SV_RecWho(e), "pb")));
 	/*
 	  Build 19.  `stopped` is the latch and the flag together, for the same
 	  reason the freeze prints both: a stopped time on screen with stopat 0 would

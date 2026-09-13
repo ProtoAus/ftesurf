@@ -2418,6 +2418,258 @@ void(string verb, string mode) ui_fstream_test =
 	print("b316: usage -- ui_fstream open <stream|buffered> / ui_fstream close\n");
 };
 
+/*
+  ---- `ui_who` -- the build 66 filename grammar, falsified headlessly. -------
+
+  The player segment (FS_PlayerSeg / FS_NameSlug, shared/sh_defs.qc) takes
+  ARBITRARY TEXT FROM A STRANGER and turns it into part of a path.  That is the
+  one piece of this build where being approximately right is a security bug
+  rather than a cosmetic one, and it is also the piece an in-game test reaches
+  worst: a run takes a map load and a flight to the end zone to produce ONE
+  name, and the interesting inputs are the ones no player will type by accident.
+
+  So the arms are a TABLE IN THE SOURCE rather than arguments at a prompt, and
+  each row checks itself.  Four properties, and every one of them is a failure
+  this build could actually have:
+
+    1. THE SEGMENT CANNOT LEAVE THE DIRECTORY.  `../../autoexec` is two
+       keystrokes in a name field.  A slug that kept '.' or '/' would write
+       outside data/runs, and nothing downstream would notice.
+    2. THE SEGMENT CANNOT CONTAIN '_'.  The name is parsed by taking the tag
+       from the LAST underscore and the stamp from the FIRST, so an underscore
+       inside the middle field silently moves both boundaries.  An unknown tag
+       word does not mislabel a row, it DROPS it (FS_TagFromName) -- so the
+       symptom would be lobby times that are simply not on the board.
+    3. IT ROUND-TRIPS.  Whatever FS_RunLeaf writes, FS_NameTicks / FS_NameWho /
+       FS_NameTag must read back unchanged.  This is the property the three
+       client readers depend on and none of them can check.
+    4. THE ID IS REAL.  digest_hex is called here for the first time anywhere in
+       this tree; a build where it is missing or does not know "SHA256" returns
+       a short string, FS_PlayerSeg refuses, and every lobby run falls back to
+       the slot.  That degrades quietly, so it is asserted loudly.
+
+  Menu-side because the menu compiles the same shared/sh_defs.qc the server
+  does, and because it needs no map: `menu_restart` then `ui_who` answers in
+  one launch.  What it does NOT cover is the half only the server knows --
+  Lobby_Active(), the GUID actually arriving, and the slot fallback -- which is
+  what the in-game arm of cfg/testrun/b66who.cfg is for.
+*/
+float b66_fail;
+
+void(string label, string nm, string guid, float ticks, string tag) ui_who_row =
+{
+	local string seg, leaf, stem;
+	local float  bad;
+
+	seg  = FS_PlayerSeg(nm, guid);
+	leaf = FS_RunLeaf(ticks, seg, tag, "rec");
+	stem = substring(leaf, 0, strlen(leaf) - 4);    // drop ".rec"
+
+	bad = 0;
+
+	// 1 and 2: what the segment may not contain.  '.' is checked as well as the
+	// separators because a leading ".." is the traversal and a trailing "." is a
+	// Windows filename that does not exist once it is created.
+	if (FS_FirstOf(seg, 95) >= 0)  bad = bad + 1;   // '_'
+	if (FS_FirstOf(seg, 47) >= 0)  bad = bad + 2;   // '/'
+	if (FS_FirstOf(seg, 92) >= 0)  bad = bad + 4;   // '\'
+	if (FS_FirstOf(seg, 46) >= 0)  bad = bad + 8;   // '.'
+	if (FS_FirstOf(seg, 32) >= 0)  bad = bad + 16;  // ' '
+
+	// 3: the round trip.  An unstamped leaf (ticks < 0) reads back as 0, which
+	// is the "not archived, go and read the trailer" answer and not a mismatch.
+	if (FS_NameTicks(stem) != ((ticks < 0) ? 0 : ticks))  bad = bad + 32;
+	if (FS_NameWho(stem)   != seg)    bad = bad + 64;
+	if (FS_NameTag(stem)   != tag)    bad = bad + 128;
+
+	// 4: a real guid must produce a real id.  FS_WHO_IDLEN hex characters, plus
+	// the slug and its '-' when the name had any letters in it at all.
+	if (guid != "")
+	if (strlen(seg) < FS_WHO_IDLEN)   bad = bad + 256;
+
+	if (bad)
+		b66_fail = b66_fail + 1;
+
+	print(sprintf("%s %-22s seg \"%s\"\n", bad ? "^1FAIL^7" : "^2ok  ^7",
+	              label, seg));
+	print(sprintf("       leaf %s  -> ticks %g who \"%s\" tag \"%s\"%s\n",
+	              leaf, FS_NameTicks(stem), FS_NameWho(stem), FS_NameTag(stem),
+	              bad ? sprintf("   ^1[bad %g]^7", bad) : ""));
+};
+
+void() ui_who_print =
+{
+	local string g;
+
+	g = "0123456789abcdef0123456789abcdef";   // a guid-shaped constant
+
+	b66_fail = 0;
+
+	print("ui_who: digest_hex(\"SHA256\", \"\") = \"");
+	print(digest_hex("SHA256", ""));
+	print("\"\n");
+
+	ui_who_row("plain",        "lex",                  g, 279, "pb");
+	ui_who_row("mixed case",   "LeX",                  g, 279, "pb");
+	ui_who_row("colour codes", "^1l^2e^3x",            g, 279, "pb");
+	ui_who_row("underscored",  "l_e_x",                g, 279, "pb");
+	ui_who_row("traversal",    "../../autoexec",       g, 279, "pb");
+	ui_who_row("backslash",    "..\\..\\autoexec",     g, 279, "pb");
+	ui_who_row("spaces+punct", "Lex the Great!",       g, 279, "pb");
+	ui_who_row("very long",    "abcdefghijklmnopqrstuvwxyz", g, 279, "pb");
+	ui_who_row("no letters",   "!!!",                  g, 279, "pb");
+	ui_who_row("empty name",   "",                     g, 279, "pb");
+	ui_who_row("other guid",   "lex",  "ffffffffffffffffffffffffffffffff", 279, "pb");
+	ui_who_row("no guid",      "lex",                  "", 279, "pb");
+	ui_who_row("unstamped",    "lex",                  g,  -1, "last");
+	ui_who_row("no guid, unst","lex",                  "", -1, "last");
+
+	/*
+	  THE AMBIGUOUS PAIR.  `0000279_pb` and `lex-a3f19c2b_last` both carry
+	  exactly one underscore and mean opposite things, so the parse recognises a
+	  stamp by SHAPE -- seven digits then '_'.  These two rows are the adversary
+	  for that rule: a name that slugs to seven digits, stamped and unstamped.
+	  If FS_NameStamped ever went back to counting underscores, the unstamped one
+	  would read its own player segment as a tick count of 279.
+	*/
+	ui_who_row("7-digit name",   "0000279",            g, 279, "pb");
+	ui_who_row("7-digit, unst",  "0000279",            g,  -1, "last");
+
+	/*
+	  THE SAME NAME UNDER TWO GUIDS MUST DIFFER, and the same guid under two
+	  names must share its id.  That pair is the whole point of carrying both
+	  fields, and neither half is visible in a row-by-row check: the first is the
+	  collision the build exists to fix, the second is what lets a player's runs
+	  still group after they rename themselves.
+	*/
+	if (FS_PlayerSeg("lex", g) == FS_PlayerSeg("lex", "ffffffffffffffffffffffffffffffff"))
+	{
+		b66_fail = b66_fail + 1;
+		print("^1FAIL^7  two guids, one segment -- the collision is not fixed\n");
+	}
+
+	// An empty name yields the id ALONE, which is what makes this readable: the
+	// two named forms must be exactly that id with their slug and a '-' in
+	// front, so the join is checked here as well as the stability.
+	if (FS_PlayerSeg("lex", g) != strcat("lex-", FS_PlayerSeg("", g))
+	 || FS_PlayerSeg("bob", g) != strcat("bob-", FS_PlayerSeg("", g)))
+	{
+		b66_fail = b66_fail + 1;
+		print("^1FAIL^7  one guid, two ids -- a rename would orphan the runs\n");
+	}
+
+	print(sprintf("ui_who: %s\n",
+	              b66_fail ? sprintf("^1%g FAILURES^7", b66_fail) : "^2all rows pass^7"));
+};
+
+/*
+  ---- `ui_who glob` -- THE PRUNER'S PATTERN, WHICH DELETES FILES. ------------
+
+  SV_RecPrune holds the archive to rec_runs_keep files per leg per tag and
+  sweeps SLOWEST FIRST, which is safe on a single-player disk for one reason:
+  the names begin with a zero-padded tick count, so an ascending NAME sort is an
+  ascending TIME sort and the entries past the quota are the slowest ones.  On a
+  lobby that same rule becomes "delete the slowest PLAYER" -- one quota shared
+  by thirty-two people, and twenty-five fast runs from a regular would evict
+  every recording a newcomer had ever set.  So build 66 puts `who` in the
+  pattern.
+
+  THIS IS THE ONE CHANGE IN THE BUILD THAT DESTROYS DATA IF IT IS WRONG, and it
+  is the one a scripted run cannot reach: the pruner fires only for an ARCHIVED
+  tag, every finish a config can produce is a `cheated` one (the flight to the
+  end zone is under noclip), and a cheated run is deliberately never archived.
+  So the pattern is falsified directly instead -- against real files, through
+  the engine's own enumerator, with the answers stated up front.
+
+  The legacy arm is here as the BUG rather than as a control: `*_pb.rec` is what
+  the pruner globbed before this build, and seeing it return every player's runs
+  is what makes the per-player quota a fix rather than a preference.
+*/
+float(string pat, float want, string what) ui_who_glob1 =
+{
+	local float h, n;
+
+	h = search_begin(pat, FS_NAMESORT, TRUE);
+	n = (h < 0) ? 0 : search_getsize(h);
+
+	if (n != want)
+	{
+		b66_fail = b66_fail + 1;
+		print(sprintf("^1FAIL^7 %-26s %s -> %g, wanted %g\n", what, pat, n, want));
+	}
+	else
+		print(sprintf("^2ok  ^7 %-26s %s -> %g\n", what, pat, n));
+
+	// Printed in the order the pruner would walk them, because "slowest first"
+	// is a claim about THIS order and nothing else checks it.
+	for (n = 0; n < ((h < 0) ? 0 : search_getsize(h)); n = n + 1)
+		print(sprintf("         [%g] %s\n", n, search_getfilename(h, n)));
+
+	if (h >= 0)
+		search_end(h);
+	return n;
+};
+
+/*
+  DECLARED HERE, not in defs/m_defs.qc.  The engine registers fremove for the
+  menu VM (pr_menu.c: {"fremove", PF_fremove, 652}) and the generated defs file
+  simply does not list it -- and those files are the engine's output, so a hand
+  edit is lost the next time they are regenerated.  `#0:fremove` resolves it by
+  NAME rather than by number, which is how sv_timer.qc and cl_replay.qc already
+  spell the same builtin and is what keeps this independent of 652 staying 652.
+*/
+float(string fname) fremove = #0:fremove;
+
+void(string p) ui_who_touch =
+{
+	local float fh;
+
+	fh = fopen(p, FILE_WRITE);
+	if (fh < 0)
+	{
+		b66_fail = b66_fail + 1;
+		print(sprintf("^1FAIL^7 cannot create probe file %s\n", p));
+		return;
+	}
+	fputs(fh, "FTESURF-REC 4\n");
+	fclose(fh);
+};
+
+void() ui_who_glob =
+{
+	local string dir;
+
+	dir = "data/probe/prune/";
+	b66_fail = 0;
+
+	// Two players on one leg, plus a pre-build-66 file with no segment at all
+	// and one archived file under a DIFFERENT tag.  Both of the last two are
+	// traps: the legacy file must still be swept by the legacy pattern, and the
+	// shadow must never be swept by the pb one (the per-tag-class quota, which
+	// this build must not have broken on its way past).
+	ui_who_touch(strcat(dir, "0000100_alpha-11111111_pb.rec"));
+	ui_who_touch(strcat(dir, "0000200_alpha-11111111_pb.rec"));
+	ui_who_touch(strcat(dir, "0000150_beta-22222222_pb.rec"));
+	ui_who_touch(strcat(dir, "0000050_pb.rec"));
+	ui_who_touch(strcat(dir, "0000300_alpha-11111111_shadow.rec"));
+
+	ui_who_glob1(strcat(dir, "*_alpha-11111111_pb.rec"), 2, "alpha's pb runs");
+	ui_who_glob1(strcat(dir, "*_beta-22222222_pb.rec"),  1, "beta's pb runs");
+	ui_who_glob1(strcat(dir, "*_alpha-11111111_shadow.rec"), 1, "alpha's shadows");
+	ui_who_glob1(strcat(dir, "*_pb.rec"),                4, "THE OLD PATTERN");
+
+	// Every probe file removed, whether or not the arms passed.  This command
+	// can be run in the player's own gamedir and data/ is theirs.
+	fremove(strcat(dir, "0000100_alpha-11111111_pb.rec"));
+	fremove(strcat(dir, "0000200_alpha-11111111_pb.rec"));
+	fremove(strcat(dir, "0000150_beta-22222222_pb.rec"));
+	fremove(strcat(dir, "0000050_pb.rec"));
+	fremove(strcat(dir, "0000300_alpha-11111111_shadow.rec"));
+
+	print(sprintf("ui_who glob: %s\n",
+	              b66_fail ? sprintf("^1%g FAILURES^7", b66_fail) : "^2all arms pass^7"));
+};
+
 void(float i) ui_connect =
 {
 	local string addr;
@@ -4028,6 +4280,16 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_fstream")
 	{
 		ui_fstream_test(argv(1), argv(2));
+		return TRUE;
+	}
+
+	// ui_who [glob] -- the build 66 run-filename grammar, self-checking.
+	if (argv(0) == "ui_who")
+	{
+		if (argv(1) == "glob")
+			ui_who_glob();
+		else
+			ui_who_print();
 		return TRUE;
 	}
 

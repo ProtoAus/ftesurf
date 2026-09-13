@@ -307,7 +307,7 @@ float(float word) LT_StageFlags =
 */
 float(string map, float track, float leg, float mine) LT_BestOnLeg =
 {
-	local float h, n, i, best, t, cut, dot, us;
+	local float h, n, i, best, t, cut, dot;
 	local string fn, base, tagw;
 
 	if (map == "" || track < 0 || leg < 0)
@@ -332,17 +332,18 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg =
 			continue;
 		base = substring(base, 0, dot);
 
-		// <ticks>_<tag>.  The tag word is checked rather than assumed from the
-		// search pattern, so a file somebody dropped in the folder is skipped
-		// instead of being read as a time.
-		us = Scores_LastOf(base, 95);           // '_'
-		if (us < 0)
-			continue;
-		tagw = substring(base, us + 1, strlen(base) - us - 1);
+		// <ticks>[_<who>]_<tag>.  The tag word is checked rather than assumed
+		// from the search pattern, so a file somebody dropped in the folder is
+		// skipped instead of being read as a time.  BUILD 66: through the shared
+		// parse -- this was the third copy of the split, and these files are
+		// written by THIS client on THIS disk so they never carry a `who`; the
+		// point of routing it through anyway is that there is now one answer to
+		// what a run filename means rather than three that happen to agree.
+		tagw = FS_NameTag(base);
 		if (FS_TagFromName(tagw) != RT_LOBBY)
 			continue;
 
-		t = stof(substring(base, 0, us));
+		t = FS_NameTicks(base);
 		if (t <= 0)
 			continue;
 		if (mine > 0 && t == mine)

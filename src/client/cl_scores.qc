@@ -235,16 +235,12 @@ string() Scores_BoardNote =
   directory from the basename, and the final '_' separates the tick stamp from
   the tag.
 */
-float(string s, float c) Scores_LastOf =
-{
-	local float i, n, at;
-	n  = strlen(s);
-	at = -1;
-	for (i = 0; i < n; i = i + 1)
-		if (str2chr(s, i) == c)
-			at = i;
-	return at;
-};
+// BUILD 66: the body moved to FS_LastOf in shared/sh_defs.qc, where the rest of
+// the filename grammar now lives -- the stamp/who/tag split needs a FIRST-of as
+// well and having half the scan here and half there is how the two get to
+// disagree about what a separator is.  The name stays because three files call
+// it for the '/' and renaming them would be churn in somebody else's diff.
+float(string s, float c) Scores_LastOf = { return FS_LastOf(s, c); };
 
 /*
 ===========================================================================
@@ -528,7 +524,7 @@ string(float leg) Scores_LegName =
 */
 void(float leg) Scores_BuildRows =
 {
-	local float h, n, i, r, cut, dot, us;
+	local float h, n, i, r, cut, dot;
 	local string fn, base, tagw;
 
 	rec_sb_rown     = 0;
@@ -578,26 +574,29 @@ void(float leg) Scores_BuildRows =
 		base = substring(base, 0, dot);
 
 		/*
-		  <ticks>_<tag>, or a bare <tag> for the unstamped `last`.
+		  <ticks>[_<who>]_<tag>, or a bare <tag> for the unstamped `last`.
 
-		  The underscore is the split and there is exactly one, because
-		  FS_RunStamp is seven digits and FS_TagName is one word -- so a name
-		  with none is the unstamped form and a name with one is the archive
-		  form.  Anything else is a file somebody dropped in the folder, and it
-		  is skipped rather than guessed at.
+		  BUILD 66: THE PARSE MOVED TO sh_defs.qc, beside the speller it undoes,
+		  and it grew a middle component while it was there.  It used to be
+		  written out here: "the underscore is the split and there is exactly
+		  one".  That stopped being true the moment a lobby run could be filed
+		  under who set it, and the failure was not a wrong label -- the tag
+		  would have come back as the PLAYER, FS_TagFromName would not know the
+		  word, and the `continue` below would have dropped every lobby row off
+		  the board with no gap and no count.  Two other files had the same two
+		  lines copied into them.
+
+		  `who` is read and not used HERE.  A local archive has one player by
+		  construction, so the column would be the same value on every row; the
+		  reader exists because the list is about to be shown files that were
+		  written on somebody else's machine (Phase 5 R4), and a parser that
+		  discards a field is a parser that has to be changed again to get it
+		  back.  Anything that still does not fit is skipped rather than guessed
+		  at, exactly as before.
 		*/
-		r  = rec_sb_rown;
-		us = Scores_LastOf(base, 95);           // '_'
-		if (us < 0)
-		{
-			tagw = base;
-			rec_sb_rowticks[r] = 0;
-		}
-		else
-		{
-			tagw = substring(base, us + 1, strlen(base) - us - 1);
-			rec_sb_rowticks[r] = stof(substring(base, 0, us));
-		}
+		r    = rec_sb_rown;
+		tagw = FS_NameTag(base);
+		rec_sb_rowticks[r] = FS_NameTicks(base);
 
 		/*
 		  THE WORD LIST IS NOT HERE ANY MORE.  Build 45 added a fourth tag and
