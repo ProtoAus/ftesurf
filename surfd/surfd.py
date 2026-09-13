@@ -932,6 +932,62 @@ def lobbies_json():
 # from the display name.
 
 
+# The one ordering the board has, written once.  Every query that ranks, pages
+# or counts ahead-of must use exactly this, and BOARD_AHEAD below is the same
+# rule expressed as a predicate -- the two are a matched pair and a change to
+# either is a change to both.
+#
+# WHY IT IS THREE COLUMNS AND NOT TWO.  `millis, submitted` is not a TOTAL
+# order: `submitted` is whole seconds, so two identical times filed in the same
+# second compare equal on every column and SQLite may return them in either
+# order, differently on different queries.  That is not merely untidy --
+# LIMIT/OFFSET paging over a non-total order can show one row twice and skip
+# another, and rank_of() could not agree with a list that does not agree with
+# itself.  `player` is the primary key's own column, so adding it makes the
+# order total without inventing a rule: the tie is broken, arbitrarily but
+# STABLY, and the board reads the same way every time it is asked.
+BOARD_ORDER = "millis ASC, submitted ASC, player ASC"
+BOARD_AHEAD = ("(millis < ? OR (millis = ? AND submitted < ?) "
+               " OR (millis = ? AND submitted = ? AND player < ?))")
+
+
+def rank_of(db, mapname, track, leg, tier, style, millis, submitted, player):
+    """Where one run stands on its own board.  Returns ``(rank, of)``.
+
+    THE ORDER HERE MUST MATCH /api/board's, or this names a different row than
+    the one the player sees when they open the board -- the game says third
+    while the list says fourth.  Both read BOARD_ORDER/BOARD_AHEAD above rather
+    than spelling the rule out twice.  A run is never ahead of itself: its own
+    row matches this millis, this submitted and this player, so no branch of the
+    predicate is true for it.
+
+    (0, 0) ON A STORAGE FAULT, because rank 0 is already the client's word for
+    "no answer" and the run itself has been stored by the time this is asked.
+    Failing the submission over a failed COUNT would throw away a real run to
+    avoid a cosmetic number.
+    """
+    try:
+        ahead = db.execute(
+            """
+            SELECT COUNT(*) FROM runs
+             WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
+               AND """ + BOARD_AHEAD,
+            (mapname, track, leg, tier, style,
+             millis, millis, submitted, millis, submitted, player),
+        ).fetchone()[0]
+        total = db.execute(
+            """
+            SELECT COUNT(*) FROM runs
+             WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
+            """,
+            (mapname, track, leg, tier, style),
+        ).fetchone()[0]
+    except sqlite3.Error:
+        log.exception("rank query failed for map=%r leg=%d", mapname, leg)
+        return 0, 0
+    return ahead + 1, total
+
+
 @app.post("/api/run")
 def submit_run():
     now = int(time.time())
@@ -1007,7 +1063,7 @@ def submit_run():
         with db:
             prev = db.execute(
                 """
-                SELECT millis FROM runs
+                SELECT millis, submitted FROM runs
                  WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
                    AND player=?
                 """,
@@ -1022,8 +1078,17 @@ def submit_run():
             elif prev["millis"] <= millis:
                 # NOT an error, and not silence either: the client asked to
                 # file a time and is entitled to know it did not improve.
+                #
+                # THE RANK IS OF THE STANDING ROW, not of the run just set --
+                # the run just set has no row, and the number the player wants
+                # is where they stand on this board, which did not move.  A
+                # slower run that still says "#3 of 17" is the correct answer
+                # and the delta beside it already says the time got worse.
+                rank, of = rank_of(db, mapname, track, leg, tier, style,
+                                   prev["millis"], prev["submitted"], player)
                 return jsonify(
-                    {"ok": True, "stored": False, "best": prev["millis"]}
+                    {"ok": True, "stored": False, "best": prev["millis"],
+                     "rank": rank, "of": of}
                 )
 
             db.execute(
@@ -1049,11 +1114,21 @@ def submit_run():
         log.exception("run db error from %s: %s", src, exc)
         return fail(500, "storage error")
 
+    # AFTER THE COMMIT, deliberately: the row this run just wrote has to be in
+    # the table for `of` to count it, and for the run to not be ranked ahead of
+    # a field it is not yet part of.  Its own row is excluded from `ahead` by
+    # the submitted test rather than by a WHERE player<>?, because a player is
+    # allowed exactly one row per board and excluding by id would hide a
+    # duplicate rather than reveal it.
+    rank, of = rank_of(db, mapname, track, leg, tier, style, millis, now, player)
+
     log.info(
-        "run map=%r track=%d leg=%d tier=%s style=%s player=%r ticks=%d (%dms)",
-        mapname, track, leg, tier, style, player, ticks, millis,
+        "run map=%r track=%d leg=%d tier=%s style=%s player=%r ticks=%d (%dms) "
+        "rank=%d/%d",
+        mapname, track, leg, tier, style, player, ticks, millis, rank, of,
     )
-    return jsonify({"ok": True, "stored": True, "best": millis})
+    return jsonify({"ok": True, "stored": True, "best": millis,
+                    "rank": rank, "of": of})
 
 
 @app.get("/api/board")
@@ -1122,7 +1197,7 @@ def board():
             SELECT player, name, ticks, tickrate, millis, flags, submitted
               FROM runs
              WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
-             ORDER BY millis ASC, submitted ASC
+             ORDER BY """ + BOARD_ORDER + """
              LIMIT ? OFFSET ?
             """,
             (mapname, track, leg, tier, style, limit, offset),

@@ -598,6 +598,157 @@ check("heartbeat still derives its address from the PEER, not X-Real-IP",
       [l.get("addr", "") for l in rows], ["127.0.0.1:27510"])
 
 # --------------------------------------------------------------------------
+print("\n--- 11. the rank a submitter is told ---------------------------------")
+
+# WHAT THIS SECTION IS FOR.  /api/run now answers with the run's position, and
+# the game prints that number to the person who just finished and draws it on
+# the finish card.  There are therefore TWO pieces of code that decide where a
+# run stands -- the COUNT in rank_of and the ORDER BY in /api/board -- and the
+# failure they can produce together is the worst kind available here: the game
+# says "#3 of 17", the player opens the board to look, and they are fourth.
+# Nothing errors, nothing is logged, and the player is simply told a falsehood
+# about their own run.
+#
+# So the falsifier is not "is the rank plausible" but "does it EQUAL what the
+# board shows", asserted for every player on a board after every kind of
+# submission.  agree() below is that check and it is the point of the section.
+
+
+def rank_on_board(mod, player, **kw):
+    """The rank /api/board gives `player`, or 0 if it does not list them."""
+    body = board(mod, limit=200, **kw)
+    if not isinstance(body, dict):
+        return body
+    for row in body["rows"]:
+        if row["player"] == player:
+            return row["r"]
+    return 0
+
+
+def agree(mod, label, player, reply, **kw):
+    """Assert the reply's rank/of is exactly what the board says."""
+    shown = rank_on_board(mod, player, **kw)
+    total = len(board(mod, limit=200, **kw)["rows"])
+    check(label, (reply.get("rank"), reply.get("of")), (shown, total))
+
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+
+r = submit(m, player="alice", ticks=4000)
+check("the first run on a board is told it is first", (r["rank"], r["of"]),
+      (1, 1))
+
+clock.now += 10
+r = submit(m, player="bob", ticks=3000)
+check("a faster second run is told #1 of 2", (r["rank"], r["of"]), (1, 2))
+agree(m, "...and the board agrees about bob", "bob", r)
+
+clock.now += 10
+r = submit(m, player="carol", ticks=5000)
+check("a slower third run is told #3 of 3", (r["rank"], r["of"]), (3, 3))
+agree(m, "...and the board agrees about carol", "carol", r)
+
+# THE CASE THAT PAYS FOR THE `prev` BRANCH.  A run that does not improve still
+# has a standing row, and the number the player wants is where they stand --
+# which did not move.  Reporting the SLOWER run's hypothetical rank here would
+# tell a player they had dropped to last by running a worse practice attempt.
+clock.now += 10
+r = submit(m, player="bob", ticks=9000)
+check("a non-improving run is not stored", r["stored"], False)
+check("...and is told the STANDING row's rank, not the slow run's",
+      (r["rank"], r["of"]), (1, 3))
+agree(m, "...which is what the board shows", "bob", r)
+
+clock.now += 10
+r = submit(m, player="carol", ticks=1000)
+check("an improving run is told its new rank", (r["rank"], r["of"]), (1, 3))
+agree(m, "...and the board agrees after the move", "carol", r)
+check("...and the run it displaced moved down",
+      rank_on_board(m, "bob"), 2)
+
+# TIES, WHICH ARE THE REASON BOARD_ORDER GREW A THIRD COLUMN.  `submitted` is
+# whole seconds, so two equal times filed in the same second compare equal on
+# millis AND on submitted.  Before the `player` tiebreak the order was whatever
+# SQLite felt like returning -- not stable between two calls of the SAME query,
+# which meant rank_of could not agree with a list that did not agree with
+# itself, and LIMIT/OFFSET paging across the tie could show one row twice and
+# skip another.
+m = fresh()
+clock = FakeClock()
+m.time = clock
+submit(m, player="zoe", ticks=3000)
+submit(m, player="adam", ticks=3000)         # same second, same time, exactly
+submit(m, player="mike", ticks=3000)
+check("an exact tie inside one second is ordered stably",
+      names(board(m)), ["adam", "mike", "zoe"])
+check("...the same way when asked again", names(board(m)),
+      ["adam", "mike", "zoe"])
+for who, want in (("adam", 1), ("mike", 2), ("zoe", 3)):
+    r = submit(m, player=who, ticks=3000)     # equal: not stored, ranks the row
+    check("...and %s is told %d, which is what the board shows" % (who, want),
+          (r["rank"], rank_on_board(m, who)), (want, want))
+
+# Paging across the tie: with a non-total order this is where a row gets
+# duplicated or lost.  Three equal rows, one per page.
+seen = []
+for off in range(3):
+    seen += names(board(m, limit=1, offset=off))
+check("...and paging one row at a time visits each exactly once",
+      sorted(seen), ["adam", "mike", "zoe"])
+
+# TIERS ARE SEPARATE BOARDS, so a community run must not inflate the field the
+# ranked submitter is told they beat.  Sharing `of` across tiers would let
+# anybody with an unkeyed server change every ranked player's displayed field.
+m = fresh()
+m.time = FakeClock()
+submit(m, player="ranked1", ticks=4000)
+submit(m, player="comm1", ticks=1000, tier="community")
+r = submit(m, player="ranked2", ticks=5000)
+check("a community run does not appear in a ranked field size",
+      (r["rank"], r["of"]), (2, 2))
+check("...and does not outrank a ranked run despite being faster",
+      names(board(m)), ["ranked1", "ranked2"])
+agree(m, "...and the ranked board agrees", "ranked2", r)
+
+# The community board ranks on its own terms.
+r = submit(m, player="comm2", ticks=2000, tier="community")
+check("the community board ranks within itself",
+      (r["rank"], r["of"]), (2, 2))
+agree(m, "...and its board agrees", "comm2", r, tier="community")
+
+# STYLES ARE SEPARATE BOARDS TOO -- the same argument, one level down.  A
+# segmented run standing in a clean field would tell every clean runner they
+# are one place further down than they are.
+m = fresh()
+m.time = FakeClock()
+submit(m, player="clean1", ticks=4000)
+submit(m, player="seg1", ticks=1000, flags=str(128))        # TF_SEGMENT
+r = submit(m, player="clean2", ticks=5000)
+check("a segmented run does not count in the clean field",
+      (r["rank"], r["of"]), (2, 2))
+agree(m, "...and the clean board agrees", "clean2", r)
+
+# A RUN WITH NO BOARD CARRIES NO RANK AT ALL.  204 already means "understood,
+# stored nothing"; attaching a number to it would be a rank on a board the run
+# is not on, and the client draws exactly that distinction.
+m = fresh()
+m.time = FakeClock()
+check("a cheated run is still 204 and carries no rank",
+      submit(m, player="x", flags=str(256)), "HTTP 204")
+
+# The rank must survive a per-leg split: leg 2's board is not leg 0's.
+m = fresh()
+m.time = FakeClock()
+submit(m, player="a", ticks=4000, leg=0)
+submit(m, player="b", ticks=1000, leg=0)
+r = submit(m, player="a", ticks=9000, leg=2)
+check("a stage board is ranked independently of the full run",
+      (r["rank"], r["of"]), (1, 1))
+agree(m, "...and that stage board agrees", "a", r, leg=2)
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILED" % len(FAILED))
