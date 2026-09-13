@@ -1,6 +1,8 @@
 # =============================================================================
 #  release.ps1 -- cut an FTESurf release: stage, pack, publish, page.
 #
+#    .\src\release\release.ps1 -SetupSite       # FIRST TIME ONLY: push the Pi-side
+#                                               # files so install.sh exists to sudo
 #    .\src\release\release.ps1 -DryRun          # stage + pack + verify, publish nothing
 #    .\src\release\release.ps1                  # full release at the current VERSION
 #    .\src\release\release.ps1 -Bump patch      # 0.1.0 -> 0.1.1, then full release
@@ -61,6 +63,7 @@ param(
 
     [switch] $Build,          # run src\build.ps1 -Engine first
     [switch] $DryRun,         # stage, pack and verify; publish nothing
+    [switch] $SetupSite,      # push the Pi-side files, print the sudo line, stop
     [switch] $SkipUpload,
     [switch] $SkipSite,
 
@@ -248,7 +251,33 @@ then prove it with:  git -C $SurfDir check-ignore -v VERSION
 Good "7-Zip, git, rclone, curl, ssh, scp present; VERSION is tracked"
 
 # =============================================================================
-#  0b. OPTIONAL BUILD
+#  0b. -SetupSite : push the Pi-side files and stop.
+#
+#  The three Pi-side files are normally uploaded by the deploy step at the end of
+#  a release -- which means that before the FIRST release they are not on the Pi
+#  at all, and the `sudo sh .../install.sh` line printed by the setup check has
+#  nothing to run. This switch exists so that chicken-and-egg has a one-command
+#  answer. It needs no version, no archive and no build.
+# =============================================================================
+if ($SetupSite) {
+    Step 'Push the Pi-side files'
+    $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
+    & ssh @sshOpts $PiHost "mkdir -p '$SiteRoot/releases' '$SiteRoot/.incoming'"
+    if ($LASTEXITCODE -ne 0) { Fail "cannot reach $PiHost over ssh" }
+    foreach ($f in @('ftesurf.nginx', 'install.sh', 'publish.sh')) {
+        & scp @sshOpts -q (Join-Path $RelDir $f) "${PiHost}:$SiteRoot/$f"
+        if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
+    }
+    & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/install.sh' '$SiteRoot/publish.sh'"
+    Good "pushed ftesurf.nginx, install.sh and publish.sh to $SiteRoot"
+    Write-Host "`n  Run this once. It is the only step in the pipeline that needs a password:" -ForegroundColor Yellow
+    Write-Host "`n      ssh $PiHost" -ForegroundColor White
+    Write-Host "      sudo sh $SiteRoot/install.sh`n" -ForegroundColor White
+    return
+}
+
+# =============================================================================
+#  0c. OPTIONAL BUILD
 # =============================================================================
 if ($Build) {
     Step 'Build (src\build.ps1 -Engine)'
