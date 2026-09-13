@@ -117,7 +117,17 @@ function Step ($m) { $script:StepNo++; Write-Host "`n[$script:StepNo] $m" -Foreg
 function Info ($m) { Write-Host "    $m" }
 function Good ($m) { Write-Host "    $m" -ForegroundColor Green }
 function Warn ($m) { Write-Host "    $m" -ForegroundColor Yellow }
-function Fail ($m) { throw $m }
+function Fail ($m) {
+    # PowerShell's error formatter folds a thrown multi-line message onto one line
+    # and then hard-wraps it, which turns a per-file gate report into an unreadable
+    # run-on. Print the real message first, then throw only its first line so the
+    # exception (and the exit code) stay intact.
+    $lines = $m -split "`r?`n"
+    Write-Host ''
+    foreach ($l in $lines) { Write-Host "  $l" -ForegroundColor Red }
+    Write-Host ''
+    throw $lines[0]
+}
 function HumanSize ([long]$b) {
     if ($b -ge 1MB) { '{0:N1} MB' -f ($b / 1MB) }
     elseif ($b -ge 1KB) { '{0:N0} KB' -f ($b / 1KB) }
