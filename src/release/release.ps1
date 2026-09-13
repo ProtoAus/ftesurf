@@ -310,13 +310,23 @@ if ($verRaw -notmatch '^\d+\.\d+\.\d+$') {
     Fail "VERSION must be exactly MAJOR.MINOR.PATCH; found '$verRaw'"
 }
 if ($Bump) {
-    $n = $verRaw.Split('.') | ForEach-Object { [int]$_ }
+    $n = @($verRaw.Split('.') | ForEach-Object { [int]$_ })
+    # EVERY component is parenthesised on purpose. PowerShell's comma operator
+    # binds TIGHTER than `+`, so @($n[0], $n[1], $n[2] + 1) parses as
+    # (@($n[0], $n[1], $n[2])) + 1 -- array concatenation, which APPENDS 1 and
+    # turns 0.1.0 into "0.1.0.1". It did exactly that on the first -Bump ever run.
     switch ($Bump) {
-        'major' { $n = @($n[0] + 1, 0, 0) }
-        'minor' { $n = @($n[0], $n[1] + 1, 0) }
-        'patch' { $n = @($n[0], $n[1], $n[2] + 1) }
+        'major' { $n = @(($n[0] + 1), 0, 0) }
+        'minor' { $n = @($n[0], ($n[1] + 1), 0) }
+        'patch' { $n = @($n[0], $n[1], ($n[2] + 1)) }
     }
     $newVer = $n -join '.'
+    # VALIDATE BEFORE WRITING. The first version of this wrote VERSION and then
+    # validated, so a bad computation persisted a bad version to disk and every
+    # later run started from it.
+    if ($newVer -notmatch '^\d+\.\d+\.\d+$') {
+        Fail "-Bump $Bump computed '$newVer' from '$verRaw', which is not MAJOR.MINOR.PATCH. VERSION not touched."
+    }
     if (-not $DryRun) {
         [System.IO.File]::WriteAllText($VersionFile, "$newVer`n", (New-Object System.Text.UTF8Encoding $false))
         Info "VERSION $verRaw -> $newVer"
