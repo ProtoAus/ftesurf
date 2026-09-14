@@ -5423,19 +5423,45 @@ void(entity e) SV_TimerJournal =
 float(entity e) SV_ProfileBroken =
 {
 	local string s;
+	local float n, nf, grant;
 
 	s = infokey(e, "inprof");
 	if (s == "")
 		return FALSE;
-	if (tokenize(s) < IP_FIELDS)
+
+	/*
+	  BUILD 77: THE VERSION SELECTS A FIELD COUNT INSTEAD OF GATING THE KEY.
+	  FS_ProfileFields answers 0 for a grammar this build does not know, which is
+	  the old `!= IP_VERSION` refusal; what it also does is keep reading a v1 key
+	  for the four facts it does carry, because v1 is a strict prefix of v2.  See
+	  the grammar essay in sh_defs.qc -- refusing v1 outright would have stopped
+	  checking m_filter and m_accel for the entire fleet for as long as it takes a
+	  release archive to reach players.
+	*/
+	n = tokenize(s);
+	if (n < 1)
 		return FALSE;
-	if (stof(argv(0)) != IP_VERSION)
+	nf = FS_ProfileFields(stof(argv(0)));
+	if (nf == 0)
+		return FALSE;
+	if (n < nf)
 		return FALSE;
 
+	/*
+	  THE UNKNOWN IS ASSIGNED AND NEVER COMPUTED, and it is nested ifs rather
+	  than a ternary for a reason this tree has paid for before: fteqcc evaluates
+	  BOTH sides of ?:, and argv(6) on a six-field key is "", whose stof is 0 --
+	  which is not the unknown, it is the FAULT value.  A tidier expression here
+	  would have demoted every client that predates engine Patch 326.
+	*/
+	grant = -1;
+	if (nf >= 7)
+		grant = stof(argv(6));
+
 	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here; this
-	// function's whole job is getting the four numbers out of the key safely.
+	// function's whole job is getting the numbers out of the key safely.
 	if (FS_ProfileBroken(stof(argv(1)), stof(argv(2)),
-	                     stof(argv(3)), stof(argv(4))))
+	                     stof(argv(3)), stof(argv(4)), grant))
 		return TRUE;
 
 	/*
@@ -5481,14 +5507,30 @@ float(entity e) SV_ProfileBroken =
 void(entity e, float atstart) SV_TimerProfile =
 {
 	local string s;
+	local float n, nf;
 
 	if (atstart)
 	{
+		/*
+		  Build 77: version-aware, through the same FS_ProfileFields the predicate
+		  uses.  `bad` is field 5 in BOTH grammars -- the grant was appended after
+		  it, so v1 is a strict prefix -- but the two readers still have to agree
+		  about what a short key means, and two copies of that rule is the
+		  FS_TagName defect.  A key this build cannot parse leaves run_t_pbad at
+		  SV_TimerArm's -1, which is "never sampled" and refuses to compare.
+		*/
 		s = infokey(e, "inprof");
 		if (s != "")
-		if (tokenize(s) >= IP_FIELDS)
-		if (stof(argv(0)) == IP_VERSION)
-			e.run_t_pbad = stof(argv(5));
+		{
+			n = tokenize(s);
+			if (n >= 1)
+			{
+				nf = FS_ProfileFields(stof(argv(0)));
+				if (nf != 0)
+				if (n >= nf)
+					e.run_t_pbad = stof(argv(5));
+			}
+		}
 	}
 
 	if (SV_ProfileBroken(e))

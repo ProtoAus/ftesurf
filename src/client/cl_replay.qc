@@ -253,6 +253,7 @@ float rec_rp_hidsent;            // last `setinfo rechid` value sent; -1 = none 
 // nothing.  rec_rp_profseen seeds the first send; see Rec_ProfileReport.
 float rec_rp_profseen;
 float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
+float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 
 // Transitions INTO an off-profile state since this client started, and the state
 // the last one was counted from.  Never reset -- the server differences it, so a
@@ -410,12 +411,31 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 */
 void() Rec_ProfileReport =
 {
-	local float have, raw, filt, acc, bad;
+	local float have, raw, filt, acc, bad, grant;
 
 	have = 0;
 	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
 	filt = Rec_InputCvar("m_filter",    IPH_FILTER, have);
 	acc  = Rec_InputCvar("m_accel",     IPH_ACCEL,  have);
+
+	/*
+	  THE GRANT.  Build 77, engine Patch 326.  in_rawmice is what raw input
+	  actually enumerated and bound, as against in_rawinput, which is only what
+	  was asked for -- see the grammar essay in sh_defs.qc for the bypass this
+	  closes and for why it was worth a version bump.
+
+	  THE ABSENT CVAR IS FORCED TO -1 RATHER THAN LEFT AT Rec_InputCvar's 0, so
+	  the key is honest read on its own without also consulting the mask.  The
+	  mask already protects the reader -- FS_ProfileBroken never looks at a field
+	  whose bit is clear -- but this key is printed verbatim by `cmd timer` and
+	  lands in board diagnostics, and a field reading 0 where it means "this
+	  engine is older than Patch 326" is the same false-looking-strict statement
+	  the whole -1 convention exists to prevent.  One sentinel, one meaning, at
+	  both ends and on the wire.
+	*/
+	grant = Rec_InputCvar("in_rawmice", IPH_GRANT, have);
+	if (!(have & IPH_GRANT))
+		grant = -1;
 
 	/*
 	  THE COUNTER IS STEPPED HERE, BEFORE THE EARLY RETURN, AND IT IS STEPPED ON
@@ -434,7 +454,7 @@ void() Rec_ProfileReport =
 	  and be marked twice for one fault.  The start latch already carries the
 	  standing state; this field is only for what CHANGED inside the run.
 	*/
-	if (FS_ProfileBroken(have, raw, filt, acc))
+	if (FS_ProfileBroken(have, raw, filt, acc, grant))
 	{
 		if (!rec_rp_prof_wasbad)
 			rec_rp_prof_bad = rec_rp_prof_bad + 1;
@@ -445,14 +465,25 @@ void() Rec_ProfileReport =
 
 	bad = rec_rp_prof_bad;
 
-	// Nested, not &&: fteqcc evaluates both sides of && and this is a guard.
-	// `bad` is not compared -- it can only change when the state does, and a
-	// state change is already a miss on one of the four below.
+	/*
+	  Nested, not &&: fteqcc evaluates both sides of && and this is a guard.
+	  `bad` is not compared -- it can only change when the state does, and a
+	  state change is already a miss on one of the five below.
+
+	  BUILD 77: `grant` IS IN THIS LIST AND LEAVING IT OUT WOULD HAVE SHIPPED THE
+	  PATCH INERT.  The bypass this field exists to catch ends with in_rawinput
+	  back at the value it started from -- the whole trick is that the REQUEST is
+	  unchanged and only the grant moved -- so on the four original compares the
+	  cache hits, the send is skipped, and the server keeps the clean key the
+	  client sent before the in_restart.  A field added to the grammar and not to
+	  the cache is a field that is only ever sent when something else changed.
+	*/
 	if (rec_rp_profseen)
-	if (have == rec_rp_prof_have)
-	if (raw  == rec_rp_prof_raw)
-	if (filt == rec_rp_prof_filter)
-	if (acc  == rec_rp_prof_accel)
+	if (have  == rec_rp_prof_have)
+	if (raw   == rec_rp_prof_raw)
+	if (filt  == rec_rp_prof_filter)
+	if (acc   == rec_rp_prof_accel)
+	if (grant == rec_rp_prof_grant)
 		return;
 
 	rec_rp_profseen    = TRUE;
@@ -460,9 +491,10 @@ void() Rec_ProfileReport =
 	rec_rp_prof_raw    = raw;
 	rec_rp_prof_filter = filt;
 	rec_rp_prof_accel  = acc;
+	rec_rp_prof_grant  = grant;
 
-	localcmd(sprintf("setinfo inprof \"%g %g %g %g %g %g\"\n",
-	                 IP_VERSION, have, raw, filt, acc, bad));
+	localcmd(sprintf("setinfo inprof \"%g %g %g %g %g %g %g\"\n",
+	                 IP_VERSION, have, raw, filt, acc, bad, grant));
 };
 
 /*

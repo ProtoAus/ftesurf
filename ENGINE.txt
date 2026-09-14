@@ -13,10 +13,10 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   3f15ace09aa7173150fc04219f546e9203bc0ca8
+commit   8d04da08edbbc5ad908bcac697ab3481c2edf5dd
 tag      patch-266
-patch    324
-qcbuild  73
+patch    326
+qcbuild  77
 date     2026-09-14
 
 # NOTE, CORRECTED 2026-09-14: the long-standing caveat here -- "`commit` is still

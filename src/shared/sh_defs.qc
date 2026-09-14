@@ -1429,7 +1429,9 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 /*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
 
-      inprof = "<version> <have> <in_rawinput> <m_filter> <m_accel> <bad>"
+      inprof = "<version> <have> <in_rawinput> <m_filter> <m_accel> <bad> <in_rawmice>"
+                    v1 .......................................... ends here
+                    v2 adds the last field
 
   cl_replay.qc writes it, sv_timer.qc reads it, and neither may spell the field
   order out for itself -- FS_TagName's lesson, where the server held one copy and
@@ -1462,12 +1464,71 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   happens to sit where m_filter used to; a reader that accepted a SHORTER key
   would be inventing the fields it did not get.  Both stay unknown, which stays
   rankable, which is the safe direction.
+
+  ...AND BUILD 77 IS WHY THAT SENTENCE NEEDED A TABLE RATHER THAN A CONSTANT.
+
+  `<in_rawmice>` IS THE GRANT, AND IT IS THE FIELD THAT CLOSES A MEASURED BYPASS.
+  Every other field in this key is a REQUEST -- a cvar the player set.  in_win.c
+  reads in_rawinput_mice only inside INS_RawInput_Init, so the request and the
+  enumeration can be made to disagree and then left disagreeing:
+
+      in_rawinput 0 ; in_restart ; in_rawinput 1
+
+  The cvar reads 1, rawmicecount is 0, the OS-summed GetCursorPos fallback is
+  live, and injected motion lands in full.  Measured in one process over four
+  arms: with raw input genuinely bound, 16,800 injected counts moved the view
+  0.022 degrees and every event was counted as rejected; after that sequence the
+  same injection moved it 232 degrees, the yaw identity held EXACTLY over the
+  injected motion (worst residual 1.5e-5 degrees), hidcheck called the file
+  clean, and the server reported `noprofile 0 would 0`.  The run ranked.
+
+  WHAT MADE IT WORTH A GRAMMAR CHANGE IS THAT IT NEEDED NO LIE.  The client
+  reported its cvar honestly and the fact that decides whether the evidence can
+  be checked at all was simply absent from the wire.  The three fields above are
+  client-asserted and a patched client can forge them, which is the stated and
+  honest limit of Layer 1; this one was not even that.  After this field the
+  bypass costs a forged key, which moves it from T2 to T4 -- still not a defence
+  against a patched client, and now no longer free to a player with a console.
+
+  TWO VERSIONS ARE ACCEPTED AND THAT IS NOT A RELAXATION OF THE RULE ABOVE.  The
+  rule refuses grammars the reader does not KNOW; v1 is one it knows exactly,
+  and v1 is a strict PREFIX of v2, so the five fields it does carry sit where
+  this reader expects them.  Refusing it instead would have been the b73live
+  failure in the ranking direction and on a far bigger window: the server half
+  deploys in minutes and the client half only reaches a player inside a release
+  archive, so between the two EVERY player is sending v1.  A reader that took
+  only v2 would have answered "unknown, therefore rankable" for all of them and
+  silently stopped checking m_filter and m_accel for the whole fleet -- turning
+  a patch that closes a hole into one that opens three wider ones for a week.
+
+  So the version selects a FIELD COUNT rather than gating the whole key, a v1
+  key is read for the four facts it has, and its grant is -1.
 */
-#define IP_VERSION    1
-#define IP_FIELDS     6
+#define IP_VERSION    2   // what this build WRITES
+#define IP_FIELDS     7   // ...and how many fields that is
 #define IPH_RAW       1   // in_rawinput exists on this client
 #define IPH_FILTER    2   // m_filter exists
 #define IPH_ACCEL     4   // m_accel exists
+#define IPH_GRANT     8   // in_rawmice exists -- engine Patch 326 or later
+
+/*
+  HOW MANY FIELDS A KEY OF THIS VERSION CARRIES.  0 for one this build does not
+  know, which the callers turn into "unknown", which stays rankable.
+
+  A FUNCTION AND NOT A PAIR OF CONSTANTS because there are two readers in
+  sv_timer.qc -- the predicate and the start latch -- and they must agree about
+  what a short key means.  They did agree when there was one version; the moment
+  there are two, two copies of `if (ver == 1) n = 6; else ...` is exactly the
+  FS_TagName defect this file exists to prevent.
+*/
+float(float ver) FS_ProfileFields =
+{
+	if (ver == 1)
+		return 6;
+	if (ver == 2)
+		return 7;
+	return 0;
+};
 
 /*
   IS THIS INPUT PROFILE ONE THE AIM EVIDENCE CAN BE CHECKED UNDER?
@@ -1481,14 +1542,35 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   which is the same silent unranked-run-that-ranks as having no counter at all.
 
   THE TESTS ARE ASYMMETRIC ON PURPOSE.  raw must be POSITIVE to pass, while
-  filter and accel must be non-zero to fail.  A future in_rawinput 2 is still raw
-  input and still passes; an m_accel of 0.0001 is still a non-linear function
-  between the counts and the angle and still fails.  Each test is written the way
-  the cvar it reads actually behaves rather than to a house style.
+  filter and accel must be non-zero to fail, and grant must be EXACTLY ZERO to
+  fail.  A future in_rawinput 2 is still raw input and still passes; an m_accel
+  of 0.0001 is still a non-linear function between the counts and the angle and
+  still fails.  Each test is written the way the cvar it reads actually behaves
+  rather than to a house style.
+
+  AND THE GRANT'S ASYMMETRY IS THE ONE THAT CARRIES A THIRD STATE.  in_rawmice is
+  -1 on a backend that does not report the figure -- in_generic.c declares it that
+  way so an SDL or X11 build leaves the honest unknown standing -- and 0 only
+  where raw input actually RAN and bound nothing.  `<= 0` would have collapsed
+  those, concluding the strictest thing about the least evidence, and would have
+  demoted every non-Windows player the moment their engine gained the cvar.  It
+  is the same sentence the engine writes at the declaration: zero is a
+  measurement, -1 is the absence of one.
+
+  A ZERO GRANT IS A REAL DEMOTION FOR SOME INNOCENT PLAYERS, AND THAT IS THE
+  CORRECT ANSWER RATHER THAN AN OVERSIGHT.  A player on RDP, or on a machine
+  whose only pointer is a precision touchpad, or one who plugged their mouse in
+  after the engine enumerated, genuinely IS feeding the game OS-summed and
+  OS-accelerated deltas through INS_Accumulate.  The yaw identity cannot be
+  checked against that, which is precisely what this bit means and precisely why
+  it is a quiet demotion and not an accusation: nothing is printed at the player,
+  nothing calls them a cheat, and the remedy -- in_rawinput_rdp, or replugging
+  and typing in_restart -- is theirs and costs them one run.  Demoting a run we
+  cannot check is the safe direction; ranking it is not.
 
   A CVAR THE WRITER DOES NOT HAVE IS NEVER A FAULT.  See TF_NOPROFILE.
 */
-float(float have, float raw, float filt, float acc) FS_ProfileBroken =
+float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroken =
 {
 	if (have & IPH_RAW)
 	if (raw <= 0)
@@ -1501,6 +1583,10 @@ float(float have, float raw, float filt, float acc) FS_ProfileBroken =
 	if (have & IPH_ACCEL)
 	if (acc != 0)
 		return TRUE;            // counts -> angle is not linear
+
+	if (have & IPH_GRANT)
+	if (grant == 0)
+		return TRUE;            // asked for raw input, bound nothing, fell back
 
 	return FALSE;
 };
