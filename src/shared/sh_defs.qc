@@ -1512,9 +1512,33 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   reported its cvar honestly and the fact that decides whether the evidence can
   be checked at all was simply absent from the wire.  The three fields above are
   client-asserted and a patched client can forge them, which is the stated and
-  honest limit of Layer 1; this one was not even that.  After this field the
-  bypass costs a forged key, which moves it from T2 to T4 -- still not a defence
-  against a patched client, and now no longer free to a player with a console.
+  honest limit of Layer 1; this one was not even that.
+
+  WHAT IT DOES NOT DO, CORRECTED AFTER AN AUDIT CAUGHT THE FIRST VERSION OF THIS
+  PARAGRAPH OVERSTATING IT.  It said the bypass now "costs a forged key, which
+  moves it from T2 to T4".  THAT IS WRONG AND THIS FILE'S OWN FIXTURE MEASURED IT
+  WRONG.  b77grant.cfg arm D is the single console line
+
+      setinfo inprof "1 7 1 0 0 0"
+
+  -- a v1 key, which FS_ProfileFields accepts forever, whose grant is therefore
+  the unknown -1, so the new clause cannot fire.  Measured: would 0.  Arm G is
+  the same thing spelled as a v2 key with a forged grant.  Neither needs a
+  patched client, so neither is T4, and the threat class does not move.
+
+  It did not move BEFORE this field either, which is the part that makes the
+  correction a small one rather than a retraction: e1prof.cfg had already
+  measured that `setinfo inprof "1 0 0 0 0 0"` -- a forged `have` mask, one
+  console line -- defeats all three original clauses, and it still does.  The key
+  has always been assertable and nothing here changed that.
+
+  So the honest claim is narrower and is still worth the patch: this closes the
+  case that needed NO LIE AT ALL, where a player typed two ordinary commands, the
+  client reported everything about itself truthfully, and the run ranked anyway.
+  Every remaining route requires the player to state something false.  Making a
+  false statement cost more than a console line is a DIFFERENT problem -- the key
+  is userinfo and CSQC cannot currently tell that the server's copy is not the
+  one it sent -- and it is not solved here.
 
   TWO VERSIONS ARE ACCEPTED AND THAT IS NOT A RELAXATION OF THE RULE ABOVE.  The
   rule refuses grammars the reader does not KNOW; v1 is one it knows exactly,
