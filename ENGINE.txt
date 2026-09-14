@@ -15,7 +15,7 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d097595a95d0ef13217de3ea891023cf3d976817
 tag      patch-266
-patch    321
+patch    322
 qcbuild  73
 date     2026-09-14
 
@@ -966,6 +966,35 @@ date     2026-09-14
 #        but are not enumerated here; several are another session's.  `patch`
 #        above is the highest APPLIED number, which is what it has always
 #        meant.
+#
+#   322  engine/server/sv_ccmds.c (a console command) plus a comment-only
+#        block in engine/common/com_bih.c.  NO behaviour change -- this one is
+#        an INSTRUMENT.  Plan experiment E4.
+#        CAN THE MOVER LEAVE THE MACHINE IT WAS BUILT ON?  Phase 3 wants a
+#        verifier that RE-COMPUTES a submitted time, which rests on the mover
+#        being deterministic; client prediction agreeing with the server proves
+#        that on ONE BINARY and is routinely cited as if it proved more.
+#        pm_dettest [traces] [ticks] drives a fixed, integer-derived input set
+#        through three things and prints THREE hashes, because "they differ" is
+#        not a finding and the three suspects need different remedies:
+#          libm   sin/cos/atan2/sqrt over 4096 fixed inputs
+#          trace  4096 traces against the world model -- no libm, no mover
+#          mover  2048 ticks of PM_PlayerMove, world-only physents
+#        Measured x86-64/msvcrt against aarch64/glibc, same source, same plugin:
+#          ANSWER: YES, and it costs one compiler flag.  With -ffp-contract=off
+#          on aarch64 the mover is BIT-IDENTICAL over 2048 ticks.  Without it,
+#          velocity drifts one ulp from tick 1 -- aarch64 has FMA in its
+#          baseline so gcc's default -ffp-contract=fast fuses, x86-64 does not.
+#          libm AGREES, which is the opposite of what the plan assumed: in-tree
+#          trig is not on Phase 3's critical path.
+#          RESIDUAL: the trace hash still differs.  Not contraction, not libm,
+#          not patches 317/318/320 (all controlled for).  It is the BIH sort --
+#          BIH_Sort_X/Y/Z return `am > bm`, never negative.  The obvious fix was
+#          tried on both arms and REVERTED: it changes which surface wins a tie
+#          (physics, standing records), glibc was already unaffected by the bug,
+#          and the two still disagreed, because qsort is UNSTABLE and those
+#          comparators return 0 for equal keys.  Closing it needs a TOTAL order,
+#          not a sign.  Left in place with the whole analysis at the site.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before
