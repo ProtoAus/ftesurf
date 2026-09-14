@@ -846,7 +846,23 @@ if (-not $SkipSite) {
     Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\BebasNeueRegular.ttf') -Destination $pageDir
     Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\OFL.txt')              -Destination $pageDir
     Copy-Item -LiteralPath (Join-Path $SurfDir 'LICENSE')                                -Destination (Join-Path $pageDir 'LICENSE.txt')
-    Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $pageDir 'version.json')
+    # THE PUBLISHED RECEIPT IS NOT A BYTE COPY OF THE dist\ ONE, and this is the
+    # only field they differ in.  `tool.host` is the operator's own name for
+    # their own PC; provenance-by-design is this script's ethos, but that ethos
+    # is about the BYTES SHIPPED, and a Windows hostname is not one of them.
+    # dist\ keeps it, because knowing which machine cut a release is genuinely
+    # useful to whoever cut it.
+    #
+    # It is WITHHELD rather than deleted, for the same reason this tree insists
+    # a skew window read UNKNOWN and not MISMATCH: an absent key and a pipeline
+    # that never recorded provenance are indistinguishable from outside, and
+    # anyone diffing the two receipts should see a DECLARED redaction rather
+    # than two provenance documents that silently disagree.
+    $pubReceipt = $receipt.Clone()
+    $pubReceipt.tool = [ordered]@{ script = 'src/release/release.ps1'; host = '(withheld)' }
+    $pubReceiptJson = ($pubReceipt | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
+    if ($pubReceiptJson -match [regex]::Escape($env:COMPUTERNAME)) { Fail 'the published receipt still names this machine' }
+    [System.IO.File]::WriteAllText((Join-Path $pageDir 'version.json'), $pubReceiptJson + "`n", (New-Object System.Text.UTF8Encoding $false))
     $pageSha = (Get-FileHash -LiteralPath (Join-Path $pageDir 'index.html') -Algorithm SHA256).Hash
     Good "rendered index.html ($((Get-Item (Join-Path $pageDir 'index.html')).Length) bytes) + 4 companions"
 }
