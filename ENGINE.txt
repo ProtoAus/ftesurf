@@ -13,9 +13,9 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   b7a332c2bd9821f0c4dd4764442166f8af1f9ecd
+commit   3f15ace09aa7173150fc04219f546e9203bc0ca8
 tag      patch-266
-patch    323
+patch    324
 qcbuild  73
 date     2026-09-14
 
