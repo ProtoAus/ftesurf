@@ -270,9 +270,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	*/
 	mark = SV_RecWritePrefix(e, SL_RecPath(id));
 
-	fputs(f, sprintf("FTESURF-SAVE %g\n", SL_STATE_VERSION));
+	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
-	fputs(f, sprintf("seq %g\n", seq));
+	fputs(f, sprintf("seq %d\n", seq));
 	fputs(f, sprintf("created %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
 
 	// Position.  Written at full precision rather than the %.1f the console
@@ -282,12 +282,12 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("velocity %.4f %.4f %.4f\n",
 	                 e.velocity_x, e.velocity_y, e.velocity_z));
 	fputs(f, sprintf("angles %.4f %.4f\n", e.v_angle_x, e.v_angle_y));
-	fputs(f, sprintf("duck %g\n", (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
+	fputs(f, sprintf("duck %d\n", (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
 
 	// The timer.
-	fputs(f, sprintf("state %g\n", e.run_t_state));
-	fputs(f, sprintf("track %g\n", e.run_t_track));
-	fputs(f, sprintf("startseg %g\n", e.run_t_startseg));
+	fputs(f, sprintf("state %d\n", e.run_t_state));
+	fputs(f, sprintf("track %d\n", e.run_t_track));
+	fputs(f, sprintf("startseg %d\n", e.run_t_startseg));
 	/*
 	  BUILD 57: WHETHER THIS IS A STAGE-ONLY RUN, because startseg no longer says.
 
@@ -298,9 +298,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  restores as `stagerun = (startseg > 0)`, which is exactly what those files
 	  meant, since nothing before build 57 could run stage 1 on its own.
 	*/
-	fputs(f, sprintf("stagerun %g\n", e.run_t_stagerun ? 1 : 0));
-	fputs(f, sprintf("seg %g\n", e.run_t_seg));
-	fputs(f, sprintf("segs %g\n", e.run_t_segs));
+	fputs(f, sprintf("stagerun %d\n", e.run_t_stagerun ? 1 : 0));
+	fputs(f, sprintf("seg %d\n", e.run_t_seg));
+	fputs(f, sprintf("segs %d\n", e.run_t_segs));
 	/*
 	  ZERO WHEN THERE IS NO RUN, and this was a real bug rather than a nicety.
 
@@ -326,9 +326,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  grow while you stood in the end zone.  run_t_ticks is the one that stopped.
 	*/
 	if (e.run_t_state == TS_RUNNING)
-		fputs(f, sprintf("ticks %g\n", SV_TimerTicks(e)));
+		fputs(f, sprintf("ticks %d\n", SV_TimerTicks(e)));
 	else if (e.run_t_state == TS_FINISHED)
-		fputs(f, sprintf("ticks %g\n", e.run_t_ticks));
+		fputs(f, sprintf("ticks %d\n", e.run_t_ticks));
 	else
 		fputs(f, "ticks 0\n");
 	/*
@@ -371,18 +371,18 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  the only place it could be recorded.
 	*/
 	fputs(f, sprintf("clock %s\n", e.run_t_clock ? "counted" : "sampled"));
-	fputs(f, sprintf("split %g\n", e.run_t_split));
-	fputs(f, sprintf("delta %g\n", e.run_t_delta));
+	fputs(f, sprintf("split %d\n", e.run_t_split));
+	fputs(f, sprintf("delta %d\n", e.run_t_delta));
 
 	// TF_FROZEN and TF_STOPPED are masked out for the same reason TF_RECORDING
 	// is on the way back in (see SV_SaveApplyState): each states something that
 	// is true RIGHT NOW -- a hold, and a cancelled run still on screen -- and no
 	// file can assert one.  Save while parked and the flag would otherwise
 	// travel to whoever loads that state later.
-	fputs(f, sprintf("flags %g\n",
+	fputs(f, sprintf("flags %d\n",
 	                 e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED))));
-	fputs(f, sprintf("pb %g\n", e.run_t_pb));
-	fputs(f, sprintf("dirty %g\n", e.run_t_dirty));
+	fputs(f, sprintf("pb %d\n", e.run_t_pb));
+	fputs(f, sprintf("dirty %d\n", e.run_t_dirty));
 	/*
 	  BUILD 44: the class latch, beside the umbrella it belongs to.
 
@@ -398,12 +398,12 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  older build reading a newer save skips a key it does not know.  No version
 	  and no format bump -- the same property the `fromsave` key relied on.
 	*/
-	fputs(f, sprintf("cheat %g\n", e.run_t_cheat));
+	fputs(f, sprintf("cheat %d\n", e.run_t_cheat));
 	// Which save this attempt was already resumed from, if any.  Only `retry`
 	// reads it back -- a load overwrites it with its own slot -- but without it
 	// a retry of a shadow run restores TF_SHADOW from `flags` and then reports
 	// "shadow run from save 0" at the finish.
-	fputs(f, sprintf("fromsave %g\n", e.run_t_fromsave));
+	fputs(f, sprintf("fromsave %d\n", e.run_t_fromsave));
 
 	/*
 	  The occupancy latches, VERBATIM.
@@ -413,11 +413,11 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  next tick sees the box as newly entered and fires the split again -- which
 	  is the difference between "exactly like it was" and "nearly".
 	*/
-	fputs(f, sprintf("azone %g\n", e.run_t_azone));
-	fputs(f, sprintf("evzone %g\n", e.run_t_evzone));
-	fputs(f, sprintf("armzone %g\n", e.run_t_armzone));
-	fputs(f, sprintf("cpzone %g\n", e.run_t_cpzone));
-	fputs(f, sprintf("pendarm %g\n", e.run_t_pendarm));
+	fputs(f, sprintf("azone %d\n", e.run_t_azone));
+	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
+	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
+	fputs(f, sprintf("cpzone %d\n", e.run_t_cpzone));
+	fputs(f, sprintf("pendarm %d\n", e.run_t_pendarm));
 	/*
 	  BUILD 19: the checkpoint high-water mark, which is a latch in exactly the
 	  same sense as the four above it.  Without it, resuming a save taken past
@@ -425,13 +425,13 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  their times would overwrite the run's, and on a PB the .pb file would
 	  record gates reached the second time round.
 	*/
-	fputs(f, sprintf("cpmax %g\n", e.run_t_cpmax));
+	fputs(f, sprintf("cpmax %d\n", e.run_t_cpmax));
 
 	// The splits actually set this run, one line each.  Zeroes are skipped:
 	// a segment with no split is not the same as a segment completed in 0.
 	for (i = 1; i < FS_MAXSPLITS; i = i + 1)
 		if (SV_TimerGetRunSplit(e, i) > 0)
-			fputs(f, sprintf("runsplit %g %g\n", i, SV_TimerGetRunSplit(e, i)));
+			fputs(f, sprintf("runsplit %d %d\n", i, SV_TimerGetRunSplit(e, i)));
 
 	/*
 	  BUILD 23: and the checkpoint times, which this file has never carried.
@@ -448,14 +448,14 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	*/
 	for (i = 1; i < FS_MAXCPS; i = i + 1)
 		if (SV_TimerGetRunCP(e, i) > 0)
-			fputs(f, sprintf("runcp %g %g\n", i, SV_TimerGetRunCP(e, i)));
+			fputs(f, sprintf("runcp %d %d\n", i, SV_TimerGetRunCP(e, i)));
 
 	// The recorder.
-	fputs(f, sprintf("reclines %g\n", mark));
-	fputs(f, sprintf("recsamples %g\n", e.rec_rec_n));
-	fputs(f, sprintf("recpad %g\n", e.rec_rec_padn));
-	fputs(f, sprintf("reccp %g\n", e.rec_rec_cp));
-	fputs(f, sprintf("recserial %g\n", e.rec_rec_serial));
+	fputs(f, sprintf("reclines %d\n", mark));
+	fputs(f, sprintf("recsamples %d\n", e.rec_rec_n));
+	fputs(f, sprintf("recpad %d\n", e.rec_rec_padn));
+	fputs(f, sprintf("reccp %d\n", e.rec_rec_cp));
+	fputs(f, sprintf("recserial %d\n", e.rec_rec_serial));
 
 	fclose(f);
 };
@@ -957,9 +957,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  makes the .rec's `t` column continuous by construction.
 		*/
 		if (retry)
-			SV_RecPut(e, sprintf("retry %g", ticks));
+			SV_RecPut(e, sprintf("retry %d", ticks));
 		else
-			SV_RecPut(e, sprintf("resume %g %g", id, ticks));
+			SV_RecPut(e, sprintf("resume %d %d", id, ticks));
 
 		/*
 		  BUILD 43 -- AND THE STAGE HAS TO BE REOPENED, WHICH IS NOT OPTIONAL.

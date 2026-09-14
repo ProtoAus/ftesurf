@@ -4063,7 +4063,7 @@ void() Watch_Status =
 	}
 
 	print(sprintf("replay: %s\n", rec_wt_path));
-	print(sprintf("  owner %s  map %s  track %g seg %g  end %g  samples %g\n",
+	print(sprintf("  owner %s  map %s  track %d seg %d  end %d  samples %d\n",
 	              (rec_wt_owner != "") ? rec_wt_owner : "-",
 	              (rec_wt_map != "") ? rec_wt_map : "-",
 	              rec_wt_track, rec_wt_startseg, rec_wt_endticks, rec_wt_nsamp));

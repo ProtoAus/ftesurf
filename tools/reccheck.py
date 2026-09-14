@@ -50,7 +50,25 @@ import argparse
 import glob
 import math
 import os
+import re
 import sys
+
+# BUILD 80.  A token in exponent form anywhere after `begin`.
+#
+# No writer of this format ever emits one deliberately: every column is either
+# %d (integers -- ticks, counters, segment indices) or a fixed-point %.2f/%.4f.
+# So a match here is one thing only -- a `%g` that ran past its six significant
+# digits and switched to exponent form, which means THE VALUE ARRIVED ROUNDED.
+#
+# This check exists because the failure is otherwise invisible to a reader.
+# float("1.00001e+06") parses perfectly happily, so nothing downstream errors;
+# the tick count is simply wrong in the sixth digit and stays wrong.  Before
+# build 80 every tick-bearing record in the .rec used %g, so any run past
+# 1,000,000 ticks -- 2.78 hours at 100 Hz -- was quietly recording a rounded
+# time.  The check is deliberately general rather than a per-record field table:
+# the next column that grows past a million should fault the day it does, not
+# the day someone remembers to add it to a list.
+EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
@@ -427,6 +445,13 @@ def check_rec(path, verbose=False):
             r.note("blank line at %d" % (lineno + 1))
             continue
         tok = s.split()
+
+        exp = [x for x in tok if EXP_RE.match(x)]
+        if exp:
+            r.fault("line %d: %s in exponent form -- a writer used %%g on a "
+                    "value past six significant digits, so the number is "
+                    "ROUNDED.  See EXP_RE."
+                    % (lineno + 1, ", ".join(exp[:3])))
 
         if is_sample(tok[0]):
             if len(tok) != want_cols:

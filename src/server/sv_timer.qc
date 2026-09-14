@@ -144,16 +144,55 @@
 #define FS_RECPAD      256
 
 /*
-  Lines one recording may hold.  50 minutes at 66.67 Hz; the longest run
-  actually observed in data/runs is about 19,000.
+  Lines one recording may hold.  TWO CAPS SINCE BUILD 80, because the two
+  recorders have genuinely different limits and only one of the limits is ours.
 
-  It exists because bufstr_set REFUSES an index past 1024*1024 with only a
-  PR_RunWarning (pr_bgcmd.c:PF_bufstr_set) -- so without a cap of our own, a
-  recording left running by a stuck timer would silently stop growing in the
-  middle and produce a file that looks complete and is not.  Stopping at a
-  number we chose, and saying so once, is the failure that can be recognised.
+  THE OLD SINGLE CAP WAS COSTED AT THE WRONG RATE, WHICH IS THE WHOLE BUG.
+  This comment read "50 minutes at 66.67 Hz".  That is true, and it is the SURF
+  case; nobody re-costed it when bhop maps shipped at 100 Hz.  Measured on a
+  real 100-tick recording -- bhop_monster_jam/main/cheat.rec, 58,396 lines over
+  647.2s -- the rate is 90.2 lines/s, so 200,000 lines was THIRTY-SEVEN MINUTES
+  and not fifty.  A bare line count is a duration divided by a rate; when the
+  rate moved, the constant did not, and nothing said so.  Both numbers below
+  therefore state the rate they were costed at and what they buy at the others.
+
+  BUFFERED: 1,000,000, AND THIS ONE IS NOT A NUMBER WE CHOSE.  bufstr_set
+  REFUSES an index past 1024*1024 with only a PR_RunWarning (pr_bgcmd.c:5566),
+  so the buffer physically cannot hold more; the cap exists to turn a silent
+  truncation into one we announce.  1,000,000 rather than 1,048,575 so that the
+  margin is visibly deliberate rather than exact-to-the-limit.  At 90.2 lines/s
+  that is 3.1 hours.  A RUN YOU CAN REWIND IS CAPPED BY THE BUFFER and it cannot
+  be otherwise: a save-state resume rewinds to a mark and appends from there,
+  which is random access, which is the one thing a stream cannot do.  That is
+  why this path still exists at all.
+
+  STREAMED: 8,640,000 = 12 hours * 3600 * 200 lines/s, and every term is load
+  bearing.  200/s is the WORST case rather than the measured one -- 100 Hz
+  packets plus a 100 Hz input trace -- so at today's measured 90.2/s it is 26.6
+  hours and at surf's 65/s it is 36.9.  The stream has no engine limit of any
+  kind: FRIK_FILE_WRITESTREAM is a plain FS_OpenVFS(name, "wb")
+  (pr_bgcmd.c:2835-2841) with no index and no array behind it, so nothing here
+  is protecting a data structure.  It protects the disk and the counter.
+
+  THE COUNTER IS THE CEILING THAT CANNOT BE RAISED HERE, and it is why the
+  budget is twelve hours and not twenty-four.  rec_rec_lines is a QC float, i.e.
+  IEEE single, so consecutive integers stop being representable at
+  2^24 = 16,777,216 -- past that `n + 1 == n`, the line count FREEZES, and the
+  file goes on growing underneath it.  That failure is silent in the worst way:
+  the counter reads plausible and the `end` trailer's sample count reads
+  plausible, and only counting the bytes disagrees.  8,640,000 is 51% of it, so
+  the margin is a factor of two rather than a few percent.  Two more walls sit
+  above and would also have to move: the 7-digit <ticks7> filename stamp
+  (9,999,999 ticks = 27.8 hours at 100 Hz) and the `t` column itself, which is a
+  float holding seconds and is down to a ~4 ms quantum by 43,200.
+
+  COST, measured rather than estimated: 96.9 bytes/line across the real files in
+  data/runs, so twelve hours is ~492 MB on disk and ~59 MB at rest under xz
+  (8.27x; `xz -6` gets 8.20x, so -9e buys 0.8% and is not worth its CPU).  That
+  is the number the retention policy has to answer for, not this cap.
 */
-#define FS_RECMAX      200000
+#define FS_RECMAX_BUF     1000000
+#define FS_RECMAX_STREAM  8640000
 
 /*
   Two builtins the platform dump does not declare.
@@ -181,7 +220,7 @@ float(string fname) fremove         = #0:fremove;
   defs/sv_defs.qc declares it as `strbuf() buf_create` -- no parameters -- but
   the builtin takes two: a type and a flags word.  The flags word DEFAULTS TO
   BUFFLAG_SAVED (pr_bgcmd.c PF_buf_create), which means a buffer created the
-  short way is serialised into savegames.  A recording is up to FS_RECMAX lines
+  short way is serialised into savegames.  A recording is up to FS_RECMAX_BUF lines
   of text, and putting that in a savegame is not something anyone asked for.
 
   Same builtin number, second name: builtins may be declared more than once, and
@@ -1393,7 +1432,7 @@ float() SV_RecEnabled =
 .float  rec_rec_n;               // samples written since `begin`
 .float  rec_rec_padn;            // how many of them were padding
 .float  rec_rec_cp;              // checkpoints crossed
-.float  rec_rec_full;            // said once that this run hit FS_RECMAX
+.float  rec_rec_full;            // said once that this run hit its line cap
 .float  rec_rec_lastbc;          // v4: last run_boardcount a `board` record covered
 .float  rec_rec_flagline;        // v4: the buffer index of the reserved `flags` line
 
@@ -2116,16 +2155,34 @@ string(float tag) SV_RecTagName = { return FS_TagName(tag); };
 */
 void(entity e, string s) SV_RecPut =
 {
+	local float cap;
+
 	if (!SV_RecLive(e))
 		return;
 
-	if (e.rec_rec_lines >= FS_RECMAX)
+	/*
+	  THE CAP IS A PROPERTY OF THE PATH, not of the recorder -- see the two
+	  constants.  Read here rather than latched at open, because rec_rec_stream
+	  can be cleared MID-OPEN: SV_RecOpen falls back to the buffer when the part
+	  file will not open, and a run that fell back has to take the buffer's real
+	  limit rather than the one it was promised on the way in.  Latching would
+	  have handed such a run an 8.6M cap over a structure that refuses at 1.05M,
+	  which is the silent truncation this constant exists to prevent, arrived at
+	  by a different road.
+
+	  %d AND NOT %g ON THE MESSAGE TOO.  `%g` is six significant digits, so the
+	  streamed cap would announce itself as `8.64e+06` -- a number in the one
+	  line whose whole job is to tell a human why their recording stopped.
+	*/
+	cap = e.rec_rec_stream ? FS_RECMAX_STREAM : FS_RECMAX_BUF;
+
+	if (e.rec_rec_lines >= cap)
 	{
 		if (!e.rec_rec_full)
 		{
 			e.rec_rec_full = TRUE;
-			dprint(sprintf("timer: recording hit the %g-line cap; "
-			               "the rest of this run is not being kept\n", FS_RECMAX));
+			dprint(sprintf("timer: recording hit the %d-line cap; "
+			               "the rest of this run is not being kept\n", cap));
 		}
 		return;
 	}
@@ -2138,7 +2195,7 @@ void(entity e, string s) SV_RecPut =
 	  carry one -- the essay above this function is about exactly that.  fputs
 	  writes what it is given and nothing else, so here it must.
 
-	  Keeping the line count in step across both is what lets the FS_RECMAX cap,
+	  Keeping the line count in step across both is what lets the line cap,
 	  the save-state mark and `timer`'s report go on meaning one thing.  It is no
 	  longer a buf_writefile index on this path -- nothing indexes a stream -- but
 	  it is still the number of lines in the file, which is what every reader of
@@ -2753,7 +2810,41 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 			               e.rec_rec_flagline, hdr));
 	}
 
-	SV_RecPut(e, sprintf("end %g %g %g %g",
+	/*
+	  BUILD 80: %d AND NOT %g, HERE AND ON EVERY OTHER RECORD IN THIS FILE THAT
+	  CARRIES A TICK COUNT OR A COUNTER.  This is the same defect build 76 fixed
+	  in Lobby_SubmitRun, and it is worth reading that essay (sv_lobby.qc) beside
+	  this one, because it ends with the sentence that let this survive:
+
+	      "Any field HERE that can reach seven digits has the same flaw"
+
+	  -- and `here` meant the wire body.  The fix went to the submission and
+	  stopped there.  The .rec's own records have the identical flaw on thirteen
+	  more lines, and they went unvisited for the ordinary reason: the thing that
+	  broke was a byte count, so the repair was scoped to the thing that broke.
+
+	  WHAT IT COSTS.  `%g` is six significant digits and then exponent form, so a
+	  run past 1,000,000 ticks writes `end 1.00001e+06 ...`.  That is 2.78 hours
+	  at 100 Hz, which is inside the range Lex has asked this format to cover.
+	  The damage is not a parse error -- Python's float() reads `1.00001e+06`
+	  perfectly happily -- it is that the value ARRIVES ROUNDED, to six digits,
+	  in the field that states how long the run took.  A reader cannot tell a
+	  rounded tick count from an exact one, which is the same shape as every
+	  other bug in this tree's history: the wrong answer and the right answer are
+	  the same bytes.
+
+	  reccheck.py would catch it SIDEWAYS and only by luck -- `int(e_n)` against
+	  len(samples) disagrees once the sample count rounds -- so the file would be
+	  faulted for the wrong reason, on a different field, at a different
+	  threshold from the one that actually went wrong.  Build 80 adds a direct
+	  check there instead.
+
+	  %d on a QC float is exact to 2^24 and truncates beyond, which is the same
+	  ceiling FS_RECMAX_STREAM is sized against, deliberately: past that point
+	  the counter feeding this line has stopped incrementing anyway, so there is
+	  no format that could have told the truth about it.
+	*/
+	SV_RecPut(e, sprintf("end %d %d %d %d",
 	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp));
 
 	if (e.run_t_slot >= 0)
@@ -2761,7 +2852,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		base = e.run_t_slot * FS_MAXSPLITS;
 		for (i = 1; i <= e.run_t_seg && i < FS_MAXSPLITS; i = i + 1)
 			if (run_run_split[base + i] > 0)
-				SV_RecPut(e, sprintf("split %g %g", i, run_run_split[base + i]));
+				SV_RecPut(e, sprintf("split %d %d", i, run_run_split[base + i]));
 	}
 
 	/*
@@ -3178,7 +3269,7 @@ void(entity e, float t) SV_RecBoard =
 		return;
 
 	// TWO sprintfs: nine values against the eight-argument varargs cap.
-	SV_RecPut(e, strcat(sprintf("board %.4f %g %.4f %.4f %.4f ",
+	SV_RecPut(e, strcat(sprintf("board %.4f %d %.4f %.4f %.4f ",
 	                            t, e.run_boardcount,
 	                            e.run_boardnormal_x, e.run_boardnormal_y,
 	                            e.run_boardnormal_z),
@@ -3537,17 +3628,17 @@ void() SV_PBSave =
 	for (t = 0; t < FS_MAXTRACKS; t = t + 1)
 		for (s = 0; s < FS_MAXSPLITS; s = s + 1)
 			if (run_pb_ticks[t * FS_MAXSPLITS + s] > 0)
-				fputs(f, sprintf("best %g %g %g\n", t, s, run_pb_ticks[t * FS_MAXSPLITS + s]));
+				fputs(f, sprintf("best %d %d %d\n", t, s, run_pb_ticks[t * FS_MAXSPLITS + s]));
 
 	for (t = 0; t < FS_MAXTRACKS; t = t + 1)
 		for (s = 0; s < FS_MAXSPLITS; s = s + 1)
 			if (run_pb_split[t * FS_MAXSPLITS + s] > 0)
-				fputs(f, sprintf("split %g %g %g\n", t, s, run_pb_split[t * FS_MAXSPLITS + s]));
+				fputs(f, sprintf("split %d %d %d\n", t, s, run_pb_split[t * FS_MAXSPLITS + s]));
 
 	for (t = 0; t < FS_MAXTRACKS; t = t + 1)
 		for (s = 0; s < FS_MAXCPS; s = s + 1)
 			if (run_pb_cp[t * FS_MAXCPS + s] > 0)
-				fputs(f, sprintf("cp %g %g %g\n", t, s, run_pb_cp[t * FS_MAXCPS + s]));
+				fputs(f, sprintf("cp %d %d %d\n", t, s, run_pb_cp[t * FS_MAXCPS + s]));
 
 	fclose(f);
 	run_pb_dirty = FALSE;
@@ -3668,7 +3759,7 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 			return "";
 		if (stof(argv(2)) < tickbase)
 			return "";              // a checkpoint from before this stage began
-		return sprintf("cp %g %g", stof(argv(1)), stof(argv(2)) - tickbase);
+		return sprintf("cp %d %d", stof(argv(1)), stof(argv(2)) - tickbase);
 	}
 
 	/*
@@ -3698,7 +3789,7 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 			return "";
 		if (stof(argv(2)) < tickbase)
 			return "";              // before this stage; the opener covers it
-		return sprintf("ghost %g %g", stof(argv(1)), stof(argv(2)) - tickbase);
+		return sprintf("ghost %d %d", stof(argv(1)), stof(argv(2)) - tickbase);
 	}
 
 	return "";
@@ -3952,7 +4043,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	  files disagreed with it.  A trailer that is derived from the body cannot.
 	*/
 	bufstr_set(buf, buf_getsize(buf),
-	           sprintf("end %g %g %g %g", dur, samples, pad, cps));
+	           sprintf("end %d %d %d %d", dur, samples, pad, cps));
 
 	// BUILD 66: by player as well, on the same terms as a full run.  Unreachable
 	// with a non-empty `who` today -- a lobby streams, and a streamed run cannot
@@ -4201,7 +4292,7 @@ void(entity e) SV_StageJump =
 */
 void(entity e, float ticks) SV_StageStart =
 {
-	SV_RecPut(e, sprintf("stagestart %g %g", e.run_st_seg, ticks));
+	SV_RecPut(e, sprintf("stagestart %d %d", e.run_st_seg, ticks));
 
 	e.run_st_tick  = ticks;
 	e.run_st_line  = e.rec_rec_lines;
@@ -4266,7 +4357,7 @@ void(entity e, float ticks) SV_StageFail =
 	       sprintf("^3stage %g reset^7 -- back in the stage zone (attempt %g)\n",
 	               e.run_t_seg + 1, e.run_st_fails + 1));
 
-	SV_RecPut(e, sprintf("restart %g %g", e.run_t_seg, ticks));
+	SV_RecPut(e, sprintf("restart %d %d", e.run_t_seg, ticks));
 
 	SV_StageOpen(e, e.run_t_seg, ticks);
 };
@@ -5245,7 +5336,7 @@ void(entity e, float on) SV_TimerGhostMark =
 	}
 
 	if (SV_RecLive(e))
-		SV_RecPut(e, sprintf("ghost %g %g", on ? 1 : 0, SV_TimerTicks(e)));
+		SV_RecPut(e, sprintf("ghost %d %d", on ? 1 : 0, SV_TimerTicks(e)));
 };
 
 /*
@@ -6488,7 +6579,7 @@ void(entity e) SV_TimerRestartSeg =
 	sprint(e, PRINT_HIGH, sprintf("^3stage %g restarted^7 -- the run clock keeps going\n",
 	                              e.run_t_seg + 1));
 
-	SV_RecPut(e, sprintf("restart %g %g", e.run_t_seg, now));
+	SV_RecPut(e, sprintf("restart %d %d", e.run_t_seg, now));
 
 	/*
 	  BUILD 24: the stage's slice starts again too, and this is not optional.
@@ -7428,7 +7519,7 @@ void(entity e, float seg, float ticks) SV_TimerSplit =
 			e.run_t_delta = ticks - pbs;
 	}
 
-	SV_RecPut(e, sprintf("stage %g %g", seg, ticks));
+	SV_RecPut(e, sprintf("stage %d %d", seg, ticks));
 
 	SV_StageOpen(e, seg, ticks);
 
@@ -7478,7 +7569,7 @@ void(entity e, float cpn, float ticks) SV_TimerCheckpoint =
 	// The ORDINAL, where this used to write zone_seg[] -- which on a linear map
 	// is 0 for every checkpoint on the map, so every record read `cp 0 <ticks>`
 	// and no reader could tell them apart.
-	SV_RecPut(e, sprintf("cp %g %g", cpn, ticks));
+	SV_RecPut(e, sprintf("cp %d %d", cpn, ticks));
 };
 
 /*
@@ -7820,7 +7911,7 @@ void(entity e) SV_TimerRecFrame =
 	  NOT WHILE FROZEN.  The clock is not advancing and the player cannot
 	  move, so every sample would carry the same timestamp and the same
 	  origin: a ten-second park is ~666 identical lines that say nothing
-	  and push the run towards FS_RECMAX.  Skipping them leaves no hole
+	  and push the run towards its line cap.  Skipping them leaves no hole
 	  either -- see the tick arithmetic in SV_TimerFreezeFrame; the samples
 	  either side end up exactly one tick apart.
 

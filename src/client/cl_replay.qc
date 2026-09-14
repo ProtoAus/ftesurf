@@ -117,13 +117,27 @@ strbuf(string bufclass, float bufflags) buf_create_ex = #460;
 float(string fname) fremove = #0:fremove;
 
 /*
-  Frames one sidecar may hold.  At 300 fps that is 22 minutes, against the
-  50 minutes FS_RECMAX gives the .rec at 66.67 Hz -- deliberately the same
-  order, so neither file can run away while the other stops.
+  Frames one sidecar may hold.  At 300 fps that is 22 minutes.
 
   bufstr_set refuses an index past 1024*1024 with only a PR_RunWarning, so
   without a cap of our own a runaway recording would stop growing silently in
   the middle and leave a file that looks complete.
+
+  THIS NO LONGER MATCHES THE .rec's CAP AND DELIBERATELY DOES NOT.  The line
+  above used to read "against the 50 minutes FS_RECMAX gives the .rec at
+  66.67 Hz -- deliberately the same order, so neither file can run away while
+  the other stops."  Build 80 split the .rec's cap in two (FS_RECMAX_BUF /
+  FS_RECMAX_STREAM in sv_timer.qc) and took the streamed one to twelve hours,
+  so the pairing is gone.  Nothing is lost by that, because the pairing had
+  already stopped meaning anything for the case that matters: since build 66 the
+  client does not write a sidecar at all on a remote server (Rec_ServerIsRemote),
+  so a RANKED run -- the only kind that can be twelve hours on a lobby -- has no
+  .view to keep in step with.  Where a sidecar does exist, the server is this
+  process and the recording is buffered, and the two caps are within one order
+  of each other again by accident rather than by maintenance.
+
+  Left at 400,000 rather than raised to match: this one is a strbuf and cannot
+  exceed 1024*1024 whatever we write here.
 */
 #define FS_VIEWMAX 400000
 
@@ -664,7 +678,21 @@ void() Rec_ViewSample =
 
 	ang = getproperty(VF_CL_VIEWANGLES);
 
-	Rec_ViewPut(sprintf("%.4f %g %g %.2f %.2f %g",
+	/*
+	  BUILD 80: %d ON THE THREE INTEGER COLUMNS -- see the essay on the `end`
+	  record in sv_timer.qc.  `%g` is six significant digits, so cmdframe and
+	  ticks start arriving as `1.33333e+06`, ROUNDED, in the two columns a
+	  reader joins this file to the .rec by.
+
+	  IT IS REACHABLE HERE DESPITE FS_VIEWMAX, which is the part worth writing
+	  down, because the cap looks like it already bounds this.  At 300 fps
+	  400,000 frames is 22 minutes and nothing gets near a million.  But the cap
+	  counts FRAMES and these columns count COMMANDS and TICKS, so the ratio is
+	  the player's framerate: at 30 fps the same 400,000 frames is 222 minutes
+	  and both columns pass 1.3 million well before the cap fires.  A low-end
+	  machine reaches the bug that a fast one never will.
+	*/
+	Rec_ViewPut(sprintf("%.4f %d %d %.2f %.2f %d",
 	                    cltime, clientcommandframe, getstatf(STAT_FS_TIMERTICKS),
 	                    ang_x, ang_y, Rec_ViewKeys()));
 };
@@ -1379,7 +1407,7 @@ void() Rec_ViewFrame =
 		*/
 		if (rec_gh_on != rec_rp_wasghost)
 		{
-			Rec_ViewPut(sprintf("ghost %g %.4f %g",
+			Rec_ViewPut(sprintf("ghost %d %.4f %d",
 			                    rec_gh_on ? 1 : 0, cltime,
 			                    getstatf(STAT_FS_TIMERTICKS)));
 			rec_rp_wasghost = rec_gh_on;

@@ -418,7 +418,9 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 	local string path, ln, mine;
 
 	path = sprintf("%s%s%s", FS_RUNS_ROOT, map, FS_LOBBYPB_LEAF);
-	mine = sprintf("best %g %g ", track, leg);
+	// %d to match LT_PBWrite's own `best` line below -- these two spellings
+	// MUST agree, because this one is the prefix that finds and replaces it.
+	mine = sprintf("best %d %d ", track, leg);
 
 	buf = buf_create_ex("string", 0);
 	if (buf < 1)
@@ -461,7 +463,7 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 	fputs(fh, "FTESURF-PB 2\n");
 	fputs(fh, sprintf("# %s  lobby times  %s\n", map,
 	                  strftime(TRUE, "%Y-%m-%d %H:%M")));
-	fputs(fh, sprintf("best %g %g %g\n", track, leg, ticks));
+	fputs(fh, sprintf("best %d %d %d\n", track, leg, ticks));
 
 	// fgets returns the line without its newline, so each one is put back.
 	n = buf_getsize(buf);
