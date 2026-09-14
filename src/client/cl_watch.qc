@@ -955,8 +955,30 @@ void() Watch_Scan =
 	  holds roughly twice the strings it used to, and that is the first place a
 	  memory ceiling will show up.
 	*/
-	if (ver > 6)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 6; "
+	/*
+	  BUILD 83: 6 -> 7, AND FOR THE FOURTH TIME THIS READER NEEDED NO NEW PARSE.
+
+	  Version 7 adds `startjit` (a header key, and header keys have been order-free
+	  since v3) and `warp` (a record, which falls out of all three sweeps below
+	  exactly as `in` does -- Watch_IsSample tests the first character, and `w` is
+	  not a digit), plus a sixth field on `end`, which the width guard above reads
+	  as `n >= 4` rather than assuming.
+
+	  WHAT THE WATCHER DELIBERATELY DOES NOT DO WITH EITHER, because it is worth
+	  saying once rather than being rediscovered as a missing feature.  A `warp` is
+	  a discontinuity the camera ALREADY follows correctly: the sample stream
+	  carries the post-teleport position, the curve is fitted through the samples,
+	  and build 23's control-point logic has handled stage teleports since long
+	  before anything recorded them.  The record exists for re-simulation, which
+	  happens somewhere else entirely.  Drawing a marker at one would be a feature
+	  request, not a format obligation.
+
+	  Same for `startjit`: two units at the run's first frame is below the sample
+	  stream's own %.2f-to-the-eye visibility, and the camera has no opinion about
+	  where a run was supposed to start.
+	*/
+	if (ver > 7)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 7; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

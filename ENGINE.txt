@@ -13,13 +13,27 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   74df7281c90fa760ac2653362036e1aad08cc3d6
+commit   8cfabc5aac12bd9c51b277fb02fa83c6e29be870
 tag      patch-266
-patch    327
-qcbuild  82
+patch    328
+qcbuild  83
 date     2026-09-15
 
-# qcbuild STAYS 82 AND THAT IS NOT AN OVERSIGHT.  Patch 327 adds a measurement
+# BUILD 83 MOVES qcbuild, AND THE 327 NOTE BELOW DOES NOT APPLY TO IT.  The two
+# halves are a writer and a reader: QC build 83 writes a new record type (`warp`)
+# and a new header key (`startjit`), and Patch 328 is what reads them.
+#
+# NEITHER HALF NEEDS THE OTHER TO RUN, so this is a pin and not a hard
+# requirement -- a build-83 server on a Patch 327 engine writes the records
+# perfectly well, and pm_recsim is a measurement command no player's install
+# ever reaches.  It is pinned anyway because a recording that CARRIES warp
+# records and a harness that CANNOT SEE them is exactly the pair that produces a
+# confident wrong answer: before 328 the parser had no else-branch, so an
+# unknown record was not skipped-with-a-count, it was invisible.
+#
+# (The 327 note, kept because its reasoning stands for that patch:)
+#
+# qcbuild STAYED 82 for 327 AND THAT WAS NOT AN OVERSIGHT.  Patch 327 adds a measurement
 # command (pm_recsim) and nothing else; no QC build needs it, and a player's
 # install runs identically with or without it.  `commit` moves anyway, because
 # this file's only automated consumer is build.ps1 -Engine's "HEAD does not match"
@@ -1044,6 +1058,46 @@ date     2026-09-15
 #        flight.  pm_type is not in the format, so the sim collides where the
 #        flight did not and reports >1000 u/s from the row that typed `noclip` --
 #        a tool that reproduced both files equally well would measure nothing.
+#
+#   328  engine/server/sv_ccmds.c only (the same console command).  NO behaviour
+#        change.  The reader half of QC build 83, which writes the event 327
+#        proved was missing: a `warp` record per imposed state change, and a
+#        `startjit` header key for the randomized start.
+#          THE PARSER HAD NO else-BRANCH, and that was the real finding here.  It
+#          knew samples and `in` rows; an unrecognised record was not skipped
+#          with a count, it was INVISIBLE, because the two-pass allocator counted
+#          only the two types it knew.  The tool that found the teleport problem
+#          could not have seen the record written to fix it.
+#          `warp` is now parsed and APPLIED IN BOTH ARMS -- it is evidence the
+#          FILE states, not a correction the HARNESS makes, and arm 2 already
+#          papered over teleports by snapping to the sample every packet, which
+#          is why its numbers looked fine in 327 while the format was short.
+#          `startjit` is read and REPORTED and never applied: the first sample is
+#          already post-displacement, so the seed carries it, and the key's job
+#          is to explain the 2 u step between the last padding sample and the
+#          first run sample rather than leave it reading as physics.
+#        MEASURED with a control REQUIRED TO FAIL (cfg/testrun/b83run.cfg):
+#                                SUBJECT v7        CONTROL v6
+#          warps                 10                0
+#          arm 1 tick arithmetic 1749/1749 exact   1339/1339 exact
+#          arm 2 median          0.0049 u          0.0046 u
+#          ARM 3 OPEN LOOP DIES  row 817           row 149
+#          The control is data/e3trace.rec, the build-82 file 327 was measured
+#          on.  The open loop crossed SIX trigger_teleports it could not
+#          previously cross even one of; the control still dies at its first.
+#          A harness that had merely got LOOSER would have improved both.
+#          And the control reproduces 327's numbers to the digit under a
+#          different binary, so 328 moved nothing it was not meant to.
+#          WHAT STOPS IT NOW IS NOT A MISSING FACT: row 817 sits four rows before
+#          a velocity error of 301.99 against a jumpvelocity of 301.993 -- one
+#          tick of disagreement about when a landing became a jump, which is
+#          chaos at a discrete boundary and which no format can record away.
+#        RESIDUAL, RECORDED AND NOT EXPLAINED: three consecutive arm-2 packets
+#        read an origin error of EXACTLY 16.00 u (the hull half-width) at a
+#        landing.  NOT this patch -- those rows carry movetick 2084-2089 and the
+#        nearest warps are at 1857 and 2168, so nothing was applied within 200
+#        ticks of them, and the control shows none of it.  Cause unknown, and a
+#        fourth explanation is not being offered.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before

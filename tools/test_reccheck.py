@@ -58,9 +58,21 @@ PAD = 4                 # pre-start padding samples, t < 0
 PACKETS = 40
 
 
-def build(instart=True, inputs=True):
-    """-> list of lines.  A finished, well-formed v6 recording."""
-    L = ["FTESURF-REC 6",
+def build(instart=True, inputs=True, ver=7, startjit=None, warps=()):
+    """-> list of lines.  A finished, well-formed recording, v7 by default.
+
+    BUILD 83: `ver` EXISTS SO THE TRAILER WIDTH IS DERIVED AND NEVER TYPED.  v6
+    ends with five fields and v7 with six, and the fixtures below used to reach
+    into that line by position -- `l.split()[5]` was the last field, and the
+    moment a sixth was appended the same expression silently DROPPED it.  The
+    test then failed on trailer WIDTH while claiming to be about the input
+    count, which is a failure that reports the wrong cause: exactly the class of
+    bug this suite exists to catch, one level up, in the suite itself.
+
+    `startjit` is None (no key) or a 4-tuple; `warps` is a sequence of
+    (pk, mt, kind) inserted into the body in order.
+    """
+    L = ["FTESURF-REC %d" % ver,
          "map bhop_eazy",
          "track 0",
          "startseg 0",
@@ -76,6 +88,8 @@ def build(instart=True, inputs=True):
          "zonerule 1 1 0"]
     if instart:
         L.append("instart %d %d" % (HORIZON, HORIZON))
+    if startjit is not None:
+        L.append("startjit %g %g %g %g" % tuple(startjit))
     L += ["flags 0", "begin"]
 
     def sample(t):
@@ -103,8 +117,41 @@ def build(instart=True, inputs=True):
             carry = round(carry % TICK, 5)
         L.append(sample(pk * TICK))
 
-    L.append("end %d %d %d %d %d" % (PACKETS, PAD + PACKETS, PAD, 0, n_in))
+    # Build 83.  Appended AFTER the loop so a fixture can state them without
+    # having to model the interleave; `warp` is not per-packet and the grammar
+    # imposes no position on it beyond being in the body.
+    for wpk, wmt, wkind in warps:
+        L.append("warp %d %d %s 0.00 0.00 64.00 0.00 0.00 0.00"
+                 % (wpk, wmt, wkind))
+
+    tail = [PACKETS, PAD + PACKETS, PAD, 0]
+    if ver >= 6:
+        tail.append(n_in)            # <inputs>, build 82
+    if ver >= 7:
+        tail.append(len(warps))      # <warps>, build 83
+    L.append("end " + " ".join(str(x) for x in tail))
     return L
+
+
+# The trailer's fields BY NAME, so a fixture never reaches into it by position.
+# See build()'s docstring for what that cost the first time.
+END_FIELD = {"ticks": 1, "samples": 2, "padding": 3, "cp": 4,
+             "inputs": 5, "warps": 6}
+
+
+def bump_end(lines, field, delta=1):
+    """Add `delta` to one named field of the `end` record."""
+    ix = [i for i, l in enumerate(lines) if l.startswith("end ")][0]
+    f = lines[ix].split()
+    n = END_FIELD[field]
+    if n >= len(f):
+        raise AssertionError(
+            "the trailer in this fixture has no %r field (%d tokens): %r"
+            % (field, len(f), lines[ix]))
+    f[n] = str(int(f[n]) + delta)
+    lines = list(lines)
+    lines[ix] = " ".join(f)
+    return lines
 
 
 def run(lines, name="t.rec"):
@@ -134,6 +181,19 @@ def row(lines, which=10, **kw):
            "yaw": 8, "bt": 10}[k]] = str(v)
     lines[ix] = " ".join(f)
     return lines
+
+
+def ok_clean(lines, what):
+    """Assert a fixture produces NO faults, and print them when it does.
+
+    Build 83.  The pattern was already written inline twice; a version bump adds
+    a third and a fourth, and a compatibility claim that is only ever asserted in
+    prose is the thing this file exists to replace.
+    """
+    f, _ = run(lines)
+    check(not f, what)
+    if f:
+        print("        %s" % f)
 
 
 def head(lines, key, value):
@@ -199,17 +259,27 @@ def case_horizon_without_rows():
 
 def case_trailer_width():
     b = [l if not l.startswith("end ") else " ".join(l.split()[:5])
-         for l in build()]
+         for l in build(ver=6)]
     faults_with(b, "'end' takes 5 fields in a v6 file, has 4",
                 "a v6 trailer with four fields is a fault")
+    b = [l if not l.startswith("end ") else " ".join(l.split()[:6])
+         for l in build()]
+    faults_with(b, "'end' takes 6 fields in a v7 file, has 5",
+                "a v7 trailer with five fields is a fault")
 
 
 def case_trailer_count():
-    b = build()
-    b = [l if not l.startswith("end ")
-         else " ".join(l.split()[:5] + [str(int(l.split()[5]) + 1)]) for l in b]
-    faults_with(b, "input records, the file has",
+    faults_with(bump_end(build(), "inputs"),
+                "input records, the file has",
                 "a trailer that over-counts the input rows is a fault")
+
+
+def case_v6_trailer_still_five_fields():
+    # The sibling of case_v5_trailer_still_four_fields, and it exists for the
+    # same reason: a version bump must not retroactively fault every file
+    # written before it.  A v6 file has five trailer fields and no `warp`
+    # records, and that is a complete and correct recording.
+    ok_clean(build(ver=6), "a v6 file with a five-field trailer still passes")
 
 
 def case_row_width():
@@ -295,13 +365,102 @@ def case_v5_trailer_still_four_fields():
     justification for being a version bump at all is that `end` grew a field --
     so a v5 file must still be read with four, and SV_StageWrite and
     cl_lobbytime.qc both still write v5 after build 82."""
-    b = [l.replace("FTESURF-REC 6", "FTESURF-REC 5") for l in build(
-        instart=False, inputs=False)]
-    b = [l if not l.startswith("end ") else " ".join(l.split()[:5]) for l in b]
-    f, _ = run(b)
-    check(not f, "a v5 file with a four-field trailer still passes")
-    if f:
-        print("        %s" % f)
+    ok_clean(build(ver=5, instart=False, inputs=False),
+             "a v5 file with a four-field trailer still passes")
+
+
+def case_warp_shape():
+    """Build 83.  `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` -- nine fields."""
+    b = build(warps=[(5, HORIZON + 5, "tele")])
+    ok_clean(b, "a well-formed warp record passes")
+
+    short = [l if not l.startswith("warp ") else " ".join(l.split()[:9])
+             for l in b]
+    faults_with(short, "'warp' takes 9 fields",
+                "a short warp record is a fault")
+
+
+def case_warp_count():
+    """The trailer's sixth field is EXACT and a disagreement is unambiguous.
+
+    It matters more than <inputs> does: a missing input row is one move of a
+    thousand, but a missing warp is a discontinuity with nothing in the file to
+    explain it -- which is what a verifier would otherwise read as tampering.
+    """
+    b = build(warps=[(5, HORIZON + 5, "tele"), (9, HORIZON + 9, "push")])
+    ok_clean(b, "two warp records counted correctly in the trailer pass")
+    faults_with(bump_end(b, "warps"), "warp records, the file has",
+                "a trailer that over-counts the warp records is a fault")
+    # And the direction that matters: the records are there, the count is not.
+    dropped = [l for l in b if not l.startswith("warp ")]
+    faults_with(dropped, "warp records, the file has",
+                "a trailer counting warps a truncated body does not have "
+                "is a fault")
+
+
+def case_warp_below_horizon():
+    """The horizon binds the warps as well as the `in` rows, and for the same
+    reason: nothing in the body can predate the tick the recording opened on."""
+    faults_with(build(warps=[(5, HORIZON - 3, "tele")]),
+                "below the trace's horizon",
+                "a warp stamped before the horizon is a fault")
+
+
+def case_warp_unknown_kind_is_a_note():
+    """A word this tool has not heard of is a NEWER SERVER, not a broken file.
+
+    The writers are five today and the set is expected to grow -- the
+    basevelocity family is named in sv_timer.qc's grammar as the next one.  A
+    checker written from the grammar that faulted an unknown word would fault
+    every file a newer build wrote, which is the failure this tool exists on the
+    other side of.
+    """
+    b = build(warps=[(5, HORIZON + 5, "basevel")])
+    f, n = run(b)
+    check(not f, "an unknown warp kind is not a fault")
+    check(any("not one this tool knows" in x for x in n),
+          "an unknown warp kind is reported as a note")
+
+
+def case_startjit_shape():
+    """Build 83.  `startjit <units> <dx> <dy> <dz>`."""
+    ok_clean(build(startjit=(2, 1.37, -0.82, 0)),
+             "a well-formed startjit key passes")
+    faults_with(head(build(startjit=(2, 1.37, -0.82, 0)), "startjit", "2 1 2"),
+                "startjit takes 4 fields",
+                "a three-field startjit is a fault")
+
+
+def case_startjit_outside_its_own_rule():
+    """The rule is written beside the outcome precisely so this is checkable
+    without the tool knowing what run_startjitter was set to."""
+    faults_with(build(startjit=(2, 3.5, 0, 0)),
+                "outside the rule of 2 it states",
+                "an offset larger than the rule it states is a fault")
+
+
+def case_startjit_vertical_is_a_fault():
+    """dz is structurally 0 -- the rule is horizontal, because a vertical nudge
+    changes GROUND CONTACT and that is a much larger felt change than the
+    anti-replay property needs.  A non-zero one means the writer grew a
+    component this block does not know about."""
+    faults_with(build(startjit=(2, 0.5, 0.5, 0.5)),
+                "the rule is horizontal",
+                "a vertical startjit component is a fault")
+
+
+def case_startjit_blocked_is_a_note_not_a_fault():
+    """ALL ZEROES IS A LEGAL AND EXPECTED FILE, and this is the check that says
+    so.  Every candidate can be blocked -- a start box flush against a wall, a
+    player in a corner -- and the server then applies nothing and says so.  A
+    checker that faulted that would fault a correct recording of a correct
+    refusal, which is the same shape as build 82's `carry printed at exactly one
+    tick` fixture two cases up."""
+    b = build(startjit=(2, 0, 0, 0))
+    f, n = run(b)
+    check(not f, "a startjit that applied nothing is not a fault")
+    check(any("applied nothing" in x for x in n),
+          "a startjit that applied nothing is reported as a note")
 
 
 def main():
@@ -313,7 +472,13 @@ def main():
                case_below_horizon, case_carry_bound, case_button_width,
                case_instart_ordering, case_resume_is_not_a_fault,
                case_offgrid_angle_is_a_note,
-               case_v5_trailer_still_four_fields):
+               case_v5_trailer_still_four_fields,
+               case_v6_trailer_still_five_fields,
+               case_warp_shape, case_warp_count, case_warp_below_horizon,
+               case_warp_unknown_kind_is_a_note,
+               case_startjit_shape, case_startjit_outside_its_own_rule,
+               case_startjit_vertical_is_a_fault,
+               case_startjit_blocked_is_a_note_not_a_fault):
         print("%s:" % fn.__name__)
         fn()
         print("")

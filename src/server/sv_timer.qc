@@ -353,6 +353,43 @@ float  run_t_startstrict;
 float  run_t_rearmstops;
 
 /*
+  BUILD 83: run_startjitter, cached per map.  THE RANDOMIZED START, IN UNITS.
+
+  A GAME RULE AND NOT AN ANTI-CHEAT, and it has to be said in that order because
+  the rule has a cost the player can feel: your run begins within this many units
+  of where you crossed the line, so ramp-one entry is no longer exactly
+  reproducible from one attempt to the next.  That is a real price and it is paid
+  by the honest player, which is why it is announced rather than hidden.  See
+  cfg/default.cfg, where it is documented for the person who has to live with it.
+
+  WHAT IT BUYS, stated at its true size.  A movement recorder replays a usercmd
+  stream.  Re-simulation cannot refuse one -- it accepts a replayed stream BY
+  CONSTRUCTION, which is the plan's own stated limit on Layer 2 -- so the only
+  thing that touches an MMR is entering the map somewhere the recording did not.
+  Surf is a single continuous momentum path with no recovery move: two units at
+  ramp entry compounds through ClipVelocity and does not come back.
+
+  WHY POSITION AND NOT THE SUB-TICK PHASE, which was the design this replaced.
+  Seeding msec_carry looked cheaper -- one float already in pmsourcestate_t -- and
+  is worthless: the phase is a function of the msec sequence and msec is a
+  CLIENT-WRITTEN byte on the shipping clc_move path, so a replayer re-chooses its
+  phase by re-choosing its msec.  Position is the one quantity entering the mover
+  as STATE rather than as input, so no choice of msec, angles or movement values
+  re-derives it.  That is the whole argument and it is why this is the carrier.
+
+  HORIZONTAL ONLY, on purpose.  A vertical nudge changes GROUND CONTACT -- a
+  player displaced up leaves the floor for a tick and gets air acceleration where
+  they expected friction, which is a bigger felt change than the anti-replay
+  property needs and a much larger one than two units of yaw-plane offset.  The
+  z component of run_t_jitter is therefore always 0, and the file records the
+  zero rather than omitting the column, so a reader never has to know that.
+
+  0 DISABLES IT, and 0 is the pre-83 game byte-for-byte, so the pair is a real
+  bisection.  A lobby pins it; see cfg/lobby.cfg.
+*/
+float  run_t_startjit;
+
+/*
   BUILD 21: run_rearmhop, cached per map.
 
   Whether a hopped start can be TAKEN BACK by stopping.  Fluff the start -- two
@@ -1241,9 +1278,40 @@ float() SV_RecEnabled =
 
   Every teleport has to reset this or the segment spans the whole map and
   sweeps every zone between the two ends.  SV_TimerWarped is that reset, and
-  every setorigin in the game calls it.
+  nearly every setorigin in the game calls it.
+
+  BUILD 83, CORRECTED: "every setorigin" was wrong, and the exception is small
+  but real -- trigger_push's continuous arm lifts you one unit off the floor
+  (sv_entities.qc:5427) with no SV_TimerWarped call.  One unit cannot span a
+  zone, so nothing is broken by it; the sentence is narrowed rather than the code
+  changed, because the invariant a reader takes away from an absolute claim is
+  the one that gets built on next.  The start jitter below is the second
+  exception and it is deliberate -- see SV_RunStartJitter.
 */
 .vector run_t_lastorg;
+
+/*
+  BUILD 83: THE OFFSET THE START JITTER ACTUALLY APPLIED, in units, z always 0.
+
+  Written by SV_RunStartJitter and read by SV_RecOpen, which is the whole of its
+  life -- it exists so the recording can state the displacement rather than leave
+  a verifier to infer it from a sample it has no other reading of.
+
+  IT IS RECORDED BECAUSE IT CANNOT BE RE-DERIVED.  random() is builtin #7 and
+  nothing in this tree seeds it (there is no crandom, no PRNG state, no cvar), so
+  the number is genuinely unreproducible off this machine.  That is the same
+  sentence experiment E3 wrote about trigger_teleport: THE FILE RECORDS THE
+  CONSEQUENCE AND NEVER THE EVENT -- and shipping a randomized start without this
+  field would have added a fresh instance of the hole E3 was run to find.
+
+  ZERO IS A FACT AND ABSENCE IS A DIFFERENT ONE.  A blocked roll -- every
+  candidate embedded in geometry or back inside the start box -- applies nothing
+  and records `0 0 0`; a run under a build or a server with the rule off writes
+  no key at all.  Those are different statements and the header keeps them
+  different, which is the sv_mapcheck lesson: a comparison whose two sides are
+  both zero agrees for a decade.
+*/
+.vector run_t_jitter;
 
 /*
   GHOST.  Build 30.  The camera is detached; this body is coasting unattended.
@@ -1525,6 +1593,7 @@ float() SV_RecEnabled =
 */
 .float  rec_rec_in;              // v6: input rows written since `begin`
 .float  rec_rec_pk;              // v6: packet ordinal, stamped on each of them
+.float  rec_rec_warp;            // v7: `warp` records written since `begin`
 
 /*
 ===========================================================================
@@ -1985,10 +2054,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 5, in full, because four different things are going to read this
+  FTESURF-REC 7, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
-    FTESURF-REC 5           always first
+  (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
+  until build 83 corrected it.  Left noted rather than silently fixed: a reader
+  who edits this block by following its own title documents the wrong version,
+  and that is a trap worth one sentence.)
+
+    FTESURF-REC 7           always first
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -2026,6 +2100,33 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             start tick and not the mover's counter -- so their
                             difference is the one fact a reader cannot get any
                             other way
+    startjit <u> <dx dy dz> v7, build 83.  THE RANDOMIZED START: the rule that
+                            was in force, in units, and the offset the server
+                            actually applied to the player at the instant the
+                            clock started.  dz is always 0 -- the rule is
+                            horizontal, see SV_RunStartJitter -- and the column
+                            is written anyway so a reader never has to know it.
+
+                            THREE STATES AND THEY ARE ALL DIFFERENT.  The key
+                            ABSENT means the rule was off or the file predates
+                            build 83.  `startjit <u> 0 0 0` means the rule ran
+                            and every candidate was blocked -- embedded in
+                            geometry, or back inside the start box -- so nothing
+                            moved.  Anything else is a displacement that
+                            happened.  Collapsing the middle case into absence
+                            would be two zeroes agreeing, which is the failure
+                            sv_mapcheck shipped for a decade.
+
+                            THE RULE IS BESIDE THE OUTCOME on the `zonerule`
+                            precedent: a verifier handed only an offset cannot
+                            tell a run that rolled a small number from one played
+                            under a smaller rule, and those are different runs.
+
+                            IT IS RECORDED BECAUSE IT CANNOT BE RE-DERIVED.
+                            random() is unseeded everywhere in this tree, so the
+                            number exists once, on one machine, at one instant.
+                            This is the same sentence `warp` is about, one step
+                            earlier in the run.
     flags <n>               TF_* as they stood AT THE FINISH -- see below
     begin                   header ends here; everything after is a record
 
@@ -2069,6 +2170,24 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   stamp, so SV_RecOpen writes neither the key nor the rows.  `instart` is what
   says which case a file is in, and a reader must key off the KEY and never off
   the version.
+
+  WHY VERSION 7 EXISTS, AND IT IS v6'S ARGUMENT AGAIN RATHER THAN A NEW ONE.
+  Build 83 adds one header key (`startjit`) and one record type (`warp`), and by
+  the rules above neither needs a bump: keys are order-free and an unknown record
+  is skipped.  What forces it is the same thing that forced v6 -- `end` grew a
+  field, the sixth, counting the `warp` records in the body.
+
+  But the reason to WANT the bump is sharper this time, and it is worth stating
+  because it is the whole of what a version number buys a verifier.  A v6 file
+  and a v7 file with no `warp` records are the same bytes and mean opposite
+  things.  In v6 a run across a stage teleport carries no record of it BECAUSE
+  THE WRITER DID NOT EXIST; in v7 the same silence means NOTHING TELEPORTED THE
+  PLAYER.  Re-simulation has to trust the second and must refuse to trust the
+  first, and without the marker it cannot tell which file it is holding.
+
+  Note what this does NOT claim.  Nothing existing changed meaning -- a v6 reader
+  handed a v7 file reads every field it knows correctly, exactly as v4 readers do
+  with v5's extra keys.  This is the cheap kind of bump, like v6 and unlike v5.
 
   AND SV_StageWrite STILL WRITES `FTESURF-REC 5` AFTER THIS BUILD, which is not
   an oversight and is the clearest statement this format has of what its version
@@ -2194,6 +2313,82 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             An input that can reach neither the mover nor the
                             gamecode cannot change a run, and recording it would
                             be 100 bytes a second asserting that it might.
+    warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>
+                            v7, build 83.  STATE IMPOSED ON THE PLAYER FROM
+                            OUTSIDE THE MOVER, written by the thing that imposed
+                            it, carrying the state as it stood AFTERWARDS.
+
+                            THIS RECORD EXISTS BECAUSE ITS ABSENCE WAS MEASURED.
+                            Experiment E3 (engine Patch 327, `pm_recsim`) replayed
+                            a real recording's input trace back through the mover
+                            that wrote it and reproduced 1307 of 1324 packets to
+                            this file's own printing floor.  Ten of the fifteen
+                            that failed were trigger_teleport: ~250 u of position
+                            with velocity preserved EXACTLY, landing on the run's
+                            own start coordinates.  The file recorded the
+                            CONSEQUENCE and never the EVENT -- so an open-loop
+                            re-simulation died at the first one, and a verifier
+                            could not tell a legitimate stage teleport from a
+                            cheat that moved the player, because those are the
+                            same bytes.
+
+                            <kind> IS WHAT MAKES IT EVIDENCE rather than a second
+                            copy of the sample stream.  A record synthesised by
+                            watching for a discontinuity would see the jump and
+                            still not know what caused it, which is the entire
+                            question.  Every writer is inside the handler that
+                            performed the imposition and names itself:
+
+                              tele     trigger_teleport
+                              telerel  trigger_teleport_relative
+                              bhop     func_bhop's teleport
+                              speed    trigger_setspeed
+                              push     trigger_push, the SF_PUSH_ONCE arm
+
+                            A reader must treat an unknown <kind> as a warp it
+                            cannot attribute -- NOT as a parse error.  The list
+                            above is expected to grow.
+
+                            <mt> AND NOT A TIME.  Touches run per USERCMD, inside
+                            SV_RunCmd after the move; samples and <pk> are per
+                            PACKET, because PlayerPostThink is called outside the
+                            usercmd loop.  So three teleports in one packet share
+                            one <pk> and one sample and only the mover's counter
+                            separates them.  <pk> is written beside it anyway so a
+                            reader can tie the event to the sample that follows.
+                            NOTE the `in` row for the same usercmd carries the
+                            PRE-move counter, so a warp sits one tick above its
+                            own input row BY CONSTRUCTION.
+
+                            WHAT IT COVERS is a boundary and not a list: every
+                            DIRECT WRITE of a player's origin or velocity, outside
+                            the mover, by a map entity.
+
+                            WHAT IT DOES NOT COVER, named because a gap that is
+                            not written down gets rediscovered as a bug:
+                            trigger_push's CONTINUOUS arm -- 4,940 instances
+                            across 46.9% of the library -- writes no velocity at
+                            all.  It writes .run_basevel, a carrier the engine
+                            folds into pmove.basevelocity, and the cash-out
+                            happens a whole command later in SV_BaseVelocityFrame.
+                            So "velocity was written" catches the once-pad and
+                            misses the common case entirely.  That family wants
+                            its own measurement, the way this one got E3's.
+
+                            AND THE FIRST WARP OF A RUN MAY LEGITIMATELY BE
+                            MISSING.  SV_RecOpen is called from SV_TimerStart, so
+                            a trigger in or beside the start box fires before the
+                            recorder exists and SV_RecPut discards it in silence.
+                            A reader must not read that as tampering; the trailer
+                            count is the handle it has instead.
+
+                            VELOCITY PRESERVED EXACTLY IS THE SIGNATURE OF THE
+                            LEGITIMATE CASE, not the suspicious one.  A landmark
+                            teleport -- 1,189 of them in this library -- returns
+                            before VelocityMode is ever read, which is what makes
+                            a stage-to-stage teleport preserve a run.  A check
+                            that flags exact preservation flags every stage
+                            transition there is.
     restart <seg> <ticks>   a stage was restarted mid-run
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
@@ -2275,8 +2470,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
   Then, written at close:
 
-    end <ticks> <samples> <padding> <checkpoints> <inputs>
+    end <ticks> <samples> <padding> <checkpoints> <inputs> <warps>
     split <seg> <ticks>     one per completed segment, ascending
+
+  <warps> IS v7 AND IT IS COUNTED THE SAME WAY <inputs> IS -- by whether a line
+  landed, not by having attempted one.  It matters more than <inputs> does: a
+  missing input row is one move of a thousand, but a missing `warp` is a
+  250-unit discontinuity with nothing in the file to explain it, which is exactly
+  the shape a verifier would have to read as tampering.  An exact count is what
+  lets it say "truncated" instead of "forged".
 
   <inputs> IS v6 AND IT IS COUNTED, NOT ASSERTED.  It is the number of `in`
   records in the body, on exactly the argument build 24 learned the hard way
@@ -2645,6 +2847,8 @@ void(entity e) SV_RecOpen =
 	  conclude the counter is broken.
 	*/
 	e.rec_rec_in = e.rec_rec_pk = 0;
+	// BUILD 83: and the warp count, here for the same reason and nowhere else.
+	e.rec_rec_warp = 0;
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
 	// run, which is the most common leg there is, and it would otherwise encode
 	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
@@ -2720,7 +2924,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 6");
+	SV_RecPut(e, "FTESURF-REC 7");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -2882,6 +3086,39 @@ void(entity e) SV_RecOpen =
 	if (e.run_movetickrate > 0)
 		SV_RecPut(e, sprintf("instart %d %d",
 		                     e.run_movetick, e.run_t_starttick));
+
+	/*
+	  BUILD 83: THE START JITTER, as a RULE and an OUTCOME on one line.
+
+	  `startjit <units> <dx> <dy> <dz>` -- the magnitude that was in force and the
+	  offset that was actually applied.  Both, on the zonerule precedent: a rule
+	  and the data it produced are two facts, and a verifier handed only the
+	  outcome cannot tell a run that rolled a small number from one played under
+	  a smaller rule.
+
+	  A HEADER KEY AND NOT A RECORD, which is this grammar's own distinction: a
+	  record is an event with a time, a key is a property of the run.  The jitter
+	  happens exactly at the start, and the header already says when that was.
+
+	  WRITTEN WHENEVER THE RULE WAS IN FORCE, including when it applied nothing.
+	  Three distinguishable states, and they have to stay distinguishable:
+
+	    absent           the rule was off, or the file predates build 83
+	    startjit 2 0 0 0 the rule ran and every candidate was blocked
+	    startjit 2 ...   the rule ran and moved the player
+
+	  Folding the middle one into absence is the sv_mapcheck shape exactly -- two
+	  sides that are both zero, agreeing, for as long as nobody looks.
+
+	  %.4f AND NOT %g.  The offset is a small number near zero and %g is six
+	  SIGNIFICANT digits, so it would spend all six on a value whose useful range
+	  is +-2; four decimals is 0.0001 u, well under the sample's own %.2f floor,
+	  and it is a fixed width a reader can rely on.
+	*/
+	if (run_t_startjit > 0)
+		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", run_t_startjit,
+		                     e.run_t_jitter_x, e.run_t_jitter_y,
+		                     e.run_t_jitter_z));
 
 	/*
 	  RESERVED, and rewritten by SV_RecClose.
@@ -3216,9 +3453,21 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	  in the body, and it is counted rather than asserted for the reason the
 	  padding count beside it is -- see the grammar block.
 	*/
-	SV_RecPut(e, sprintf("end %d %d %d %d %d",
+	/*
+	  BUILD 83: A SIXTH, BY THE SAME RULE, and it is what makes this a version
+	  bump rather than a free addition.  It is the count of `warp` records -- and
+	  it is the ONE field on this line whose absence changes what silence means.
+
+	  A file with no `in` rows is a file from an engine with no mover counter, and
+	  `instart` already says which.  A file with no `warp` records is either a run
+	  that nothing teleported, a run whose recording was truncated, or a run
+	  written by a build that could not record one -- and the first two are the
+	  difference between a clean re-simulation and an unexplained 250-unit jump.
+	  A counter plus a version number separates all three; neither alone does.
+	*/
+	SV_RecPut(e, sprintf("end %d %d %d %d %d %d",
 	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
-	                     e.rec_rec_in));
+	                     e.rec_rec_in, e.rec_rec_warp));
 
 	if (e.run_t_slot >= 0)
 	{
@@ -3649,6 +3898,118 @@ void(entity e, float t) SV_RecBoard =
 	                    sprintf("%.2f %.2f %.2f",
 	                            e.run_boardvelocity_x, e.run_boardvelocity_y,
 	                            e.run_boardvelocity_z)));
+};
+
+/*
+==============================================================================
+  BUILD 83: STATE IMPOSED ON A PLAYER FROM OUTSIDE THE MOVER.
+
+  This record exists because experiment E3 measured its absence.  pm_recsim
+  (engine Patch 327) replayed a real recording's input trace back through the
+  mover that produced it and reproduced 1307 of 1324 packets to the file's own
+  printing floor -- and TEN of the fifteen that did not were trigger_teleport:
+  ~250 units of position with velocity carried through exactly, landing on the
+  run's own start coordinates.
+
+      THE RECORDING RECORDED THE CONSEQUENCE AND NEVER THE EVENT.
+
+  So an open-loop re-simulation died at the first teleport and everything after
+  it was noise, and a verifier looking at the file could not tell a legitimate
+  stage teleport from a cheat that simply moved the player.  Those are the same
+  bytes.  This record is the event.
+
+  WRITTEN BY THE THING THAT DID IT, which is the whole design and not an
+  implementation detail.  A record synthesised by watching for a discontinuity
+  would be exactly as blind as the sample stream already is -- it would see a
+  jump and still not know what caused it, which is the question.  Every call
+  site is inside the handler that performed the imposition and names itself.
+
+  WHAT IT COVERS, stated as a boundary rather than a list: every DIRECT WRITE of
+  a player's origin or velocity, outside the mover, by a map entity.  That is
+  the three teleport classes, func_bhop's teleport, trigger_setspeed, and
+  trigger_push's once-pad arm.
+
+  WHAT IT DOES NOT COVER, and this is a measured gap rather than an oversight.
+  trigger_push's CONTINUOUS arm -- 4,940 instances across 46.9% of the library --
+  writes no velocity at all.  It writes .run_basevel, a carrier the engine folds
+  into pmove.basevelocity, and the cash-out happens a whole command later in
+  SV_BaseVelocityFrame, in PreThink, still outside the mover.  So "velocity was
+  written" catches the once-pad and misses the common case entirely, and a
+  record placed at the carrier would be recording an intention rather than an
+  event.  That family wants its own measurement, the way this one got E3's, and
+  guessing at its shape now would be the thing this record was built to stop.
+  It is named in the plan as the next gap and it is not claimed here.
+
+  AND THE FIRST TELEPORT OF A RUN MAY LEGITIMATELY HAVE NO RECORD.  SV_RecOpen
+  is called from SV_TimerStart, so a trigger sitting in or beside the start box
+  fires before the recorder exists.  SV_RecPut discards it silently -- that is
+  the ordinary behaviour of a closed recorder and not a fault -- and a reader
+  must not take a missing record as tampering.  What a reader CAN rely on is the
+  count in the trailer, which is why one is written.
+
+  NOT GATED ON run_teleport_warp.  That cvar decides a BEHAVIOUR (whether the
+  swept zone segment is reset across a teleport) and sharing its gate would mean
+  a bisection switch silently turned off the evidence too.  A record that exists
+  to prove an event happened may not share a gate with a flag that decides what
+  happens.
+
+  GATED ON THE MOVER COUNTER, on the `instart` precedent.  Against an engine
+  older than Patch 325 there is no run_movetick, so the file carries no input
+  trace, so nothing re-simulates it and <mt> would be a constant 0 -- a false
+  stamp rather than a missing one.  No trace, no events.
+==============================================================================
+*/
+void(entity e, string kind) SV_RecWarp =
+{
+	float was;
+
+	if (!SV_RecLive(e))
+		return;
+	if (e.run_movetickrate <= 0)
+		return;
+
+	was = e.rec_rec_lines;
+
+	/*
+	  <mt> AND NOT `time`, AND NOT <pk> ALONE.  Touches run per USERCMD, inside
+	  SV_RunCmd after the move; the sample and the packet ordinal are per PACKET,
+	  because PlayerPostThink is called from SV_PostRunCmd outside the usercmd
+	  loop.  So three teleports inside one packet share one <pk> and one sample
+	  and can only be separated by the mover's own counter -- which the engine
+	  has already advanced for this command (sv_user.c writes movetickcount
+	  before the touch loop runs), so the stamp here is exact rather than
+	  approximate.  <pk> is written beside it so a reader can still tie the event
+	  to the sample that follows it.
+
+	  The `in` row for the same usercmd carries the PRE-move counter, so an event
+	  record sits one tick above its own input row by construction.  Said out
+	  loud because a reader that expects them to match will "fix" the wrong one.
+
+	  TWO sprintfs: ten values against the eight-argument varargs cap, which
+	  fteqcc silently truncates rather than refusing to compile.
+	*/
+	SV_RecPut(e, strcat(sprintf("warp %d %d %s %.2f %.2f %.2f ",
+	                            e.rec_rec_pk, e.run_movetick, kind,
+	                            e.origin_x, e.origin_y, e.origin_z),
+	                    sprintf("%.2f %.2f %.2f",
+	                            e.velocity_x, e.velocity_y, e.velocity_z)));
+
+	/*
+	  COUNTED BY WHETHER A LINE ACTUALLY LANDED, on SV_TimerInFrame's argument and
+	  by the same mechanism.  Both of SV_RecPut's failure modes are silent -- a
+	  closed recorder and the line cap -- so an unconditional increment would make
+	  the trailer's <warps> a count of records we MEANT to write, which is the
+	  assertion this field exists instead of.  SV_RecPut returns void, so
+	  rec_rec_lines moving is the only handle on it.
+
+	  This matters more here than it does for <inputs>.  A missing input row is
+	  one move of a thousand; a missing warp record is a 250-unit discontinuity
+	  with nothing in the file to explain it -- which is precisely the shape a
+	  verifier would have to read as tampering.  An exact count is what lets it
+	  say "truncated" instead.
+	*/
+	if (e.rec_rec_lines != was)
+		e.rec_rec_warp = e.rec_rec_warp + 1;
 };
 
 /*
@@ -4191,6 +4552,32 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 
 	  SV_StageWrite writes no `instart` key for the same reason, so the file says
 	  it has no trace rather than claiming a horizon it does not honour.
+	*/
+
+	/*
+	  BUILD 83: AND A `warp` ROW FALLS THROUGH TOO, on the same argument and with
+	  one addition that makes it stronger rather than weaker.
+
+	  This function is DENY-BY-DEFAULT, so writing nothing here would already have
+	  dropped the record -- in total silence, which is precisely why the paragraph
+	  above exists and why this one does.  The build-43 ghost bug shipped by this
+	  exact route: SV_StageWrite copied a taint bit into the slice header from
+	  run_st_*, the body carried no record of it, and reccheck.py faulted the
+	  disagreement.  A record that can be dropped without a sentence will be.
+
+	  WHY IT IS DROPPED.  A `warp` carries <mt>, which is cumulative mover ticks
+	  PER MAP -- the same unrebasable quantity the `in` rows carry, for the same
+	  reason -- and it exists to be RE-SIMULATED, which a lifted stage cannot be
+	  anyway: its first sample is mid-flight rather than at a start plane, so no
+	  verifier can seed it.  Dropping the events beside the inputs they belong to
+	  keeps the slice internally consistent; keeping the events without the inputs
+	  would produce a file that states discontinuities nothing in it can explain.
+
+	  AND THE HEADER AGREES, which is the half build 43 got wrong.  SV_StageWrite
+	  writes `FTESURF-REC 5`: no `instart`, no trace, no `warp`, a four-field
+	  trailer, and therefore no <warps> count to disagree with an empty body.  The
+	  marker describes the file and not the build that wrote it, and a v5 file is
+	  exactly what a slice structurally is.
 	*/
 
 	return "";
@@ -5978,7 +6365,7 @@ void(entity e) SV_TimerCheat =
   THE RULE, SPLIT OUT PURE.  Build 79, on the SV_RulesetBroken (p313) and
   SV_ProfileBroken (build 72) precedent, and for their harness reason rather
   than for tidiness: a run cannot be FINISHED from a config on a zoned map --
-  zone_goto and setpos both void via SV_TimerWarped -- so a rule that existed
+  zone_goto voids and setpos taints -- see build 83's note -- so a rule that existed
   only inside the latch could not be checked headlessly at all.  Split out,
   `cmd timer` reports a live `would` beside the latched bit, with one copy of the
   rule and no side effect from asking.
@@ -6167,7 +6554,7 @@ float(entity e) SV_ProfileKeyBroken =
 
   A PURE PREDICATE, ON THE SV_RulesetBroken PRECEDENT (p313), and for the same
   harness reason rather than for tidiness: a run cannot be FINISHED from a config
-  on a zoned map -- zone_goto and setpos both void via SV_TimerWarped -- so a
+  on a zoned map -- zone_goto voids and setpos taints -- see build 83's note -- so a
   rule that existed only inside the latch could not be checked headlessly at all.
   Split out, `cmd timer` can report a live `wouldprof` beside the latched bit,
   with one copy of the rule and no side effect from asking.
@@ -6305,7 +6692,7 @@ void(entity e, float atstart) SV_TimerProfile =
 
   A PURE PREDICATE, on the SV_RulesetBroken / SV_ProfileBroken precedent, and for
   their harness reason rather than for tidiness: a run cannot be FINISHED from a
-  config on a zoned map -- zone_goto and setpos both void via SV_TimerWarped -- so
+  config on a zoned map -- zone_goto voids and setpos taints -- see build 83's note -- so
   a rule that existed only inside the latch could not be checked headlessly at
   all.  Split out, `cmd timer` reports a live `wouldmap` beside the latched bit,
   with one copy of the rule and no side effect from asking.
@@ -8053,6 +8440,167 @@ void(entity e, float z) SV_TimerEvent =
 		SV_TimerSplit(e, sg, ticks);
 };
 
+/*
+==============================================================================
+  BUILD 83: THE RANDOMIZED START.
+
+  Displace the player by a small random amount at the instant the clock starts,
+  so that an input stream replayed from a recording enters the map somewhere the
+  recording did not.  Announced as a GAME RULE -- see run_startjitter, where the
+  cost to the honest player is written down.
+
+  WHY IT IS SAFE TO WRITE A POSITION HERE, which is a thing this file has never
+  done before (there was no setorigin in sv_timer.qc until this build):
+
+    - IT MUST NOT CALL SV_TimerWarped.  That function EMPTIES THE PADDING RING
+      (rec_pad_len/rec_pad_head), and SV_RecOpen's flush is the ring's only
+      reader -- so warping here would silently replace every run's ~3.8 s of
+      recorded approach with nothing, and no check in the tree would say so.
+      It is also not needed: SV_TimerFrame's last statement is
+      `e.run_t_lastorg = e.origin`, downstream of all four SV_TimerStart call
+      sites, so the next tick's swept zone segment already begins at the
+      displaced origin.  Called after SV_StageOpen it would be worse still --
+      run_st_seg is >= 0 by then, so every run would report `teleports 1` for a
+      move the game itself made.
+
+    - IT MUST NOT CALL SV_TimerPractice OR SV_TimerCheat.  The game moved the
+      player; the player did not.  Those are the two funnels that would print a
+      class word at somebody for obeying a rule we imposed.
+
+    - IT MUST NOT RE-ENTER THE START BOX, and this is the failure that would not
+      show up in a same-tick test.  The start fired because the HULL cleared
+      run_t_armzone (see SV_TimerFrame).  A nudge back toward the box can put the
+      hull inside again, and on the NEXT packet SV_TimerTryArm's re-arm branch
+      (run_rearmstops, default 1) throws the attempt away with `run cancelled
+      (back in the start)`.  On a bhop map the sibling branch does something
+      quieter and worse -- it re-derives run_t_dirty and run_t_cheat from the
+      live movetype.  So every candidate is tested with SV_ZoneIn against the
+      SAME zone and the SAME hull the start itself used, because a second
+      speller of "inside the box" is the drift this file keeps writing essays
+      about.
+
+    - IT MUST NOT EMBED THE PLAYER.  setorigin neither tests for solidity nor
+      runs touch functions (which is separately why the nudge cannot fire a
+      trigger).  Two units is small, but start boxes sit flush against floors
+      and walls all over this library, so every candidate is traced with the
+      ruleset's own hull and a blocked one is simply not taken.
+
+  FOUR TRIES AND THEN NOTHING, which is a real decision rather than a loop bound.
+  One try would mean a player who starts in a corner defeats the rule by standing
+  there -- the roll fails, the run begins exactly where it did last time, and an
+  MMR replays it.  Four independent directions make "blocked every way" require
+  being genuinely boxed in.  When it does happen the offset applied is zero, the
+  header records `0 0 0`, and a reader can see that the rule ran and found
+  nowhere to go -- which is a different fact from the rule being off, and the
+  header keeps them different.
+
+  RECORDED, NEVER RE-DERIVED.  random() is unseeded here and everywhere in this
+  tree, so this number exists once.  See .run_t_jitter.
+==============================================================================
+*/
+float(entity e) SV_RunStartJitter =
+{
+	vector mn, mx, base, off, cand;
+	float  mag, tries, ok, wasin;
+
+	e.run_t_jitter = '0 0 0';
+
+	mag = run_t_startjit;
+	if (mag <= 0)
+		return FALSE;
+
+	base = e.origin;
+	mn   = SV_RunHullMins(e);
+	mx   = SV_RunHullMaxs(e);
+
+	// Where the player stands RIGHT NOW by the arm scan's own reckoning.  The
+	// invariant every candidate must hold is that this answer does not move --
+	// see the essay at the test below for why it is the answer and not the
+	// position that matters.
+	wasin = FALSE;
+	if (e.run_t_armzone >= 0)
+		wasin = SV_ZoneOcc(e.run_t_armzone, base, mn, mx);
+
+	tries = 0;
+	while (tries < 4)
+	{
+		tries = tries + 1;
+
+		/*
+		  random() is documented in sv_defs.qc as able to return exactly 1.0, so
+		  this is a CLOSED interval [-mag, +mag] on both axes rather than the
+		  half-open one the arithmetic looks like.  That is stated rather than
+		  clamped: an endpoint is a legal offset and clamping it would bias the
+		  two extremes by one ulp for no reason.  z is left at 0 -- see the rule.
+		*/
+		off_x = (random() - 0.5) * 2 * mag;
+		off_y = (random() - 0.5) * 2 * mag;
+		off_z = 0;
+		cand  = base + off;
+
+		// Can the hull actually get there?  Trace rather than point-test: the
+		// destination being empty says nothing about a 32x32x62 box reaching it.
+		tracebox(base, mn, mx, cand, FALSE, e);
+		if (trace_fraction < 1)
+			continue;
+		if (trace_startsolid)
+			continue;
+		if (trace_allsolid)
+			continue;
+
+		/*
+		  AND DOES IT CHANGE WHETHER THE PLAYER OCCUPIES THE START BOX?
+
+		  NOT "is it outside the box", WHICH WAS THE FIRST CUT AND WAS INERT ON
+		  EVERY BHOP MAP.  The reasoning that produced it was that the start
+		  fires when the hull leaves the box, so a candidate back inside would
+		  re-arm -- true for a walk-out start and false for the other kind.  A
+		  bhop map starts the clock ON THE JUMP (run_starthop), with the player
+		  standing squarely in the box: every candidate is "inside", all four
+		  tries are refused, and the rule applies nothing on every run forever.
+		  Measured on the first capture, and the header is what said so --
+		  `startjit 2.0000 0.0000 0.0000 0.0000`, the three-state design earning
+		  its keep on its first outing, because a writer that omitted the key
+		  when nothing was applied would have produced a silent inert feature
+		  indistinguishable from one that was switched off.
+
+		  THE HAZARD IS THE RE-ARM CANCEL AND ITS TRIGGER IS A CHANGE, not a
+		  position.  SV_TimerFrame's arm scan computes `az` and acts only on
+		  `az != e.run_t_azone`; so a candidate that leaves the answer alone
+		  cannot cancel anything, whether the answer is "inside" or "outside".
+		  Hold the occupancy invariant and the whole class is closed at both
+		  kinds of start.
+
+		  AND IT IS SV_ZoneOcc, NOT SV_ZoneIn.  The arm scan asks SV_ZoneOcc,
+		  which reads run_t_hullocc (run_zone_hull >= 2); SV_ZoneIn reads
+		  run_t_hullevt (>= 1).  At the shipped ruleset those differ -- the arm
+		  is a POINT test and the start is a HULL test -- so guarding with
+		  SV_ZoneIn refused a band one hull-width wide in which nothing bad
+		  happens.  "Use the predicate the start fired on" was the wrong rule;
+		  the right one is to use the predicate THE HAZARD fires on.
+
+		  Nested rather than `&&`: QC's && is OP_AND and evaluates BOTH sides,
+		  and SV_ZoneOcc indexes the zone arrays by z -- an out-of-range READ
+		  aborts the whole VM, so a negative armzone must never reach it.  This
+		  file has already paid for that once.
+		*/
+		ok = TRUE;
+		if (e.run_t_armzone >= 0)
+		{
+			if (SV_ZoneOcc(e.run_t_armzone, cand, mn, mx) != wasin)
+				ok = FALSE;
+		}
+		if (!ok)
+			continue;
+
+		setorigin(e, cand);
+		e.run_t_jitter = off;
+		return TRUE;
+	}
+
+	return FALSE;
+};
+
 void(entity e) SV_TimerStart =
 {
 	e.run_t_state = TS_RUNNING;
@@ -8154,6 +8702,25 @@ void(entity e) SV_TimerStart =
 	// file and the row have to be stamped from one latch taken before either is
 	// written.  See SV_TimerClock.
 	SV_TimerClock(e);
+
+	/*
+	  Build 83: and the start jitter, last of the six and for a reason the other
+	  five do not have.  They latch FACTS about the run so the header carries
+	  them; this one CHANGES the run, and it has to happen before SV_RecOpen for
+	  two independent reasons:
+
+	    - the header states the offset, and the header is written below;
+	    - SV_RecOpen flushes the pre-start padding ring and SV_TimerRecFrame
+	      writes this packet's first real sample immediately after SV_TimerFrame
+	      returns, so a displacement applied here lands in the file as the run's
+	      opening position rather than as an unexplained jump between two
+	      samples.  That is the whole shape E3 said was missing.
+
+	  AFTER the taint chain above, deliberately.  The run's class is already
+	  decided by this point, so nothing here can be mistaken for something the
+	  player did -- which is the mistake a later edit would otherwise make.
+	*/
+	SV_RunStartJitter(e);
 
 	SV_RecOpen(e);
 
@@ -9326,6 +9893,22 @@ void() SV_TimerMapInit =
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
 	registercvar("run_cheatwatch", "1");
+	/*
+	  BUILD 83: THE RANDOMIZED START, in units.  2 is the shipped rule.
+
+	  REGISTERED HERE AND READ SEVENTEEN LINES BELOW, beside every other per-map
+	  latch, because that is the trap this block is an essay about: cvar() on a
+	  name that does not exist AUTO-CREATES it as "" and registercvar then
+	  declines to overwrite it, so a non-zero default registered anywhere a read
+	  can beat it ships the feature inert and reading as 0.  Five features in this
+	  tree have died that way.  A start jitter that silently never fires is
+	  exactly the failure that would look like success -- runs would rank, times
+	  would be normal, and the only symptom would be an MMR that works.
+
+	  LATCHED PER MAP rather than read live, on the same rule as the nine above: a
+	  rule must not change underneath a run that is already going.
+	*/
+	registercvar("run_startjitter", "2");     // build 83
 
 	/*
 	  BUILD 66.  0 is today's behaviour exactly -- the run is buffered -- and the
@@ -9334,10 +9917,22 @@ void() SV_TimerMapInit =
 	  one file.  A lobby ignores this and always streams; see SV_RecStreams.
 
 	  It exists mainly so the streaming path can be FINISHED off a lobby.  A run
-	  cannot be finished from a config on a zoned map -- zone_goto and setpos both
-	  void it through SV_TimerWarped -- so the only way to exercise a close, a
-	  header correction and a rename at all is a real run on a listen server, and
-	  that needs a switch a person can set.
+	  cannot be finished from a config on a zoned map -- zone_goto voids it and
+	  setpos taints it -- so the only way to exercise a close, a header correction
+	  and a rename at all is a real run on a listen server, and that needs a
+	  switch a person can set.
+
+	  BUILD 83 CORRECTS THE MECHANISM IN ALL FOUR COPIES OF THIS SENTENCE, because
+	  the wrong one sends an implementer to the wrong function.  SV_TimerWarped
+	  VOIDS NOTHING AND TAINTS NOTHING -- it resets run_t_lastorg, empties the
+	  pre-start padding ring and bumps a diagnostic counter, and its own header
+	  says so.  The voids are SV_TimerVoid, reached from SV_TimerTeleported (which
+	  is what zone_goto goes through) and from SV_TimerFrame's cancel-zone branch.
+	  setpos does not void at all: it taints, via SV_TimerCheat, decided in
+	  sv_player.qc.  This matters beyond tidiness -- build 83's start jitter had to
+	  establish that a server-imposed move is exempt, and following these four
+	  sentences would have built the exemption around a function that never
+	  refused anything.
 	*/
 	registercvar("rec_stream", "0");          // build 66
 	run_t_startstrict = cvar("run_starthop_strict");
@@ -9350,6 +9945,7 @@ void() SV_TimerMapInit =
 	run_t_stageghost  = cvar("run_stageghost");   // build 48
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
+	run_t_startjit    = cvar("run_startjitter");   // build 83
 
 	SV_PBLoad();
 

@@ -19,6 +19,19 @@
 */
 void(entity e) SV_TimerWarped;
 
+/*
+  BUILD 83.  The `warp` record -- state imposed on a player from outside the
+  mover, written by the handler that imposed it.  See its essay in sv_timer.qc.
+
+  A FUNCTION AND NOT AN INLINE SV_RecPut, and the constraint is hard rather than
+  stylistic: QuakeC has no forward declaration for FIELDS, and every field the
+  record needs -- .run_movetick (sv_timer.qc), .rec_rec_pk, .rec_rec_lines --
+  is declared in a file that compiles after this one.  So the body has to live
+  over there and only the name can come here.  Exactly SV_TimerWarped's shape,
+  one line up, and for exactly the same reason.
+*/
+void(entity e, string kind) SV_RecWarp;
+
 // Q1CONTENTS_LADDER (bspfile.h:189).  Set on .skin, the engine turns it into
 // FTECONTENTS_LADDER in AddLinksToPmove (sv_user.c:7018).
 #define CONTENT_LADDER -16
@@ -4844,7 +4857,21 @@ void() trigger_teleport_touch =
 	// Landmark mode is a seam in the level, not a reset: velocity is carried
 	// through untouched and VelocityMode does not apply.
 	if (mark)
+	{
+		/*
+		  BUILD 83: and the record, at this exit as well as at the end -- because
+		  this is the exit that matters most.  A landmark teleport is what a
+		  stage-to-stage transition uses, 1,189 of them in this library, and it
+		  is the one E3 measured: ~250 u of position with velocity preserved
+		  EXACTLY.  Returning here without writing would mean the class of warp
+		  a real run is most likely to cross is the one class the file never
+		  mentions.  Two call sites rather than a restructure, because the early
+		  return is load-bearing prose and moving it to make one writer fit would
+		  be rearranging working code to suit a log line.
+		*/
+		SV_RecWarp(other, "tele");
 		return;
+	}
 
 	// VelocityMode is Momentum's extension (momentum.fgd:10590); a plain CS:S
 	// map has no such key, so it reads 0 == keep velocity.  That is deliberate:
@@ -4865,6 +4892,11 @@ void() trigger_teleport_touch =
 		makevectors(dest.angles);
 		other.velocity = v_forward * spd;
 	}
+
+	// BUILD 83: the record, last, so it carries the post-VelocityMode state.
+	// Deliberately NOT behind `run_teleport_warp` above -- that cvar decides a
+	// behaviour, and evidence may not share a gate with a behaviour flag.
+	SV_RecWarp(other, "tele");
 };
 
 /*
@@ -4990,6 +5022,12 @@ void() trigger_teleport_relative_touch =
 	// teleport moves you just as far, it just spells the destination differently.
 	if (cvar("run_teleport_warp"))
 		SV_TimerWarped(other);
+
+	// BUILD 83: and the record.  A separate <kind> from `tele` because the two
+	// impose differently -- this one never touches angles or velocity at all
+	// (276 instances / 44 maps), so a reader that sees `telerel` knows the
+	// velocity beside it is carried through rather than chosen.
+	SV_RecWarp(other, "telerel");
 };
 
 void() trigger_teleport_relative =
@@ -5392,6 +5430,24 @@ void() trigger_push_touch =
 			other.flags = other.flags - (other.flags & FL_ONGROUND);
 
 		other.velocity = other.velocity + SV_ClampImpulse(dir * spd);
+
+		/*
+		  BUILD 83: the record, and this arm ONLY.  SF_PUSH_ONCE is the one
+		  trigger_push branch that writes .velocity; the continuous arm below
+		  writes .run_basevel, a carrier the engine folds into pmove.basevelocity
+		  and cashes out a whole command later in SV_BaseVelocityFrame.  That is
+		  not a write and this record does not claim it -- 4,940 instances across
+		  46.9% of the library, named in sv_timer.qc's grammar as the next gap
+		  rather than guessed at here.
+
+		  NOTE THE PAYLOAD IS AN ADD, not a set, so the recorded velocity is the
+		  sum and the impulse is not separable from what the player brought.  A
+		  reader wanting the impulse differences against the previous sample; a
+		  reader wanting the post-state has it exactly, which is what
+		  re-simulation needs.
+		*/
+		SV_RecWarp(other, "push");
+
 		self.touch = SUB_Null;
 		self.solid = SOLID_NOT;
 		return;
@@ -5670,6 +5726,22 @@ void() trigger_setspeed_touch =
 	else if (vmode == SS_DECREASE)  { if (vel_z > vspeed) vel_z = vspeed; }
 
 	other.velocity = vel;
+
+	/*
+	  BUILD 83: the record.  A velocity imposition rather than a positional one,
+	  which is the whole reason the `warp` record carries both -- position and
+	  velocity impositions share no funnel in this tree (setspeed and push never
+	  call SV_TimerWarped, because they do not move you), so a record hung off
+	  that funnel would have missed every one of these.
+
+	  THE COST IS BOUNDED BY THE EDGE GATE ABOVE AND NOT BY THIS LINE.  On a
+	  default pad this fires once per entry; on an EveryTick pad it fires once per
+	  usercmd for as long as you overlap, and that is the same rate the `in` rows
+	  already run at, on a trigger 372 instances deep across 94 maps.  Recording
+	  it is what the format is for; not recording it would be a silent hole with
+	  exactly the shape of the one E3 found.
+	*/
+	SV_RecWarp(other, "speed");
 };
 
 void() trigger_setspeed =
@@ -7007,6 +7079,15 @@ void(entity b, entity pl) SV_BhopTeleport =
 	// the line between them.
 	if (cvar("run_teleport_warp"))
 		SV_TimerWarped(pl);
+
+	/*
+	  BUILD 83: and the record.  Its own <kind> because this one is reached from
+	  PlayerPostThink and not from a touch, i.e. once per PACKET rather than once
+	  per usercmd -- so a reader comparing a `bhop` warp's <mt> against the input
+	  rows around it is looking at a different quantisation from every other kind
+	  in the grammar, and had better be told which it is holding.
+	*/
+	SV_RecWarp(pl, "bhop");
 
 	if (b.spawnflags & SF_BHOP_RESET_ON_FIRE)
 	{

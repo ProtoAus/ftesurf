@@ -108,7 +108,15 @@ def is_prefix(path):
 # perfectly and be wrong about every time in it by 0-2 ticks with nothing to
 # notice.  A silent difference is what a version number is for; an unchanged
 # grammar is why the column count repeats.
-COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17}
+#
+# BUILD 83 ADDS VERSION 7 WITH THE SAME SEVENTEEN COLUMNS AGAIN, and for the same
+# kind of reason v6 had rather than v5's.  Nothing existing changed meaning: one
+# header key (`startjit`), one record type (`warp`), and a sixth field on `end`.
+# The bump is what separates two files that are byte-identical and mean opposite
+# things -- a v6 run across a stage teleport carries no `warp` record BECAUSE THE
+# WRITER DID NOT EXIST, while a v7 run with none means nothing teleported the
+# player.  Re-simulation must trust the second and refuse the first.
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -209,6 +217,30 @@ HEAD_V5 = HEAD_V4 | {"clock", "zonesrc", "zonecrc", "zonerule"}
 #           version marker.  What IS a fault is one without the other in either
 #           direction, which is the partial-pin shape the zone keys already take.
 HEAD_V6 = HEAD_V5 | {"instart"}
+
+#   startjit build 83.  `startjit <units> <dx> <dy> <dz>`: THE RANDOMIZED START.
+#           The rule that was in force and the offset the server actually applied
+#           to the player at the instant the clock started.  <dz> is always 0 --
+#           the rule is horizontal on purpose -- and is written anyway so a reader
+#           never has to know that.
+#
+#           THREE STATES, AND A CHECKER MUST NOT COLLAPSE THEM.  Absent means the
+#           rule was off or the file predates build 83.  `startjit <u> 0 0 0`
+#           means the rule ran and every candidate was blocked (embedded in
+#           geometry, or back inside the start box), so nothing moved.  Anything
+#           else is a displacement that happened.  The middle case is a legal and
+#           expected file and must not read as the first one.
+#
+#           WHY IT IS IN THE FILE AT ALL: random() is unseeded everywhere in the
+#           game, so the offset exists once and cannot be re-derived.  A verifier
+#           that re-simulated from the recorded samples without it would be
+#           seeding from a position the file never explained -- the same hole
+#           experiment E3 found for teleports, at t=0.
+#
+#           Checked below for shape only: four numbers, the first non-negative,
+#           the offset within the rule it states.  This tool does not know what
+#           run_startjitter was set to and deliberately does not guess.
+HEAD_V7 = HEAD_V6 | {"startjit"}
 
 # The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming
@@ -361,6 +393,22 @@ def is_sample(tok):
     return tok[0].isdigit() or (tok[0] == "-" and len(tok) > 1 and tok[1].isdigit())
 
 
+def is_float(s):
+    """Does this token parse as a number at all?
+
+    Build 83.  Written because two checks now want to say "this field is not a
+    number" as a fault rather than raise ValueError out of the checker -- which
+    is what an unguarded float() does, and what ramp_report still does at its
+    own version read.  A checker that crashes on a malformed file reports
+    nothing about the file.
+    """
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
 def check_rec(path, verbose=False):
     r = Report(path)
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -385,7 +433,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 6:
+    if ver >= 7:
+        allowed = HEAD_V7
+    elif ver >= 6:
         allowed = HEAD_V6
     elif ver >= 5:
         allowed = HEAD_V5
@@ -558,6 +608,45 @@ def check_rec(path, verbose=False):
                        % (in_run, in_start - in_run, in_start))
             r.info["instart"] = "%d run %d" % (in_start, in_run)
 
+    # ---- the randomized start, build 83 ------------------------------------
+    #
+    # `startjit <units> <dx> <dy> <dz>`.  Shape and internal consistency only:
+    # this tool cannot know what run_startjitter was set to on the server that
+    # wrote the file, and the whole reason the rule is written down beside the
+    # outcome is so it does not have to guess.  What it CAN say is that an
+    # offset must lie inside the rule that produced it.
+    #
+    # ALL ZEROES IS A LEGAL AND EXPECTED FILE.  Every candidate can be blocked --
+    # a start box flush against a wall, a player in a corner -- and the server
+    # then applies nothing and says so.  A checker that faulted that would fault
+    # a correct recording of a correct refusal.
+    sj = head.get("startjit")
+    if sj is not None:
+        f = sj.split()
+        if len(f) != 4:
+            r.fault("startjit takes 4 fields (units dx dy dz), has %d" % len(f))
+        elif not all(is_float(x) for x in f):
+            r.fault("startjit %r has a non-numeric field" % sj)
+        else:
+            u, dx, dy, dz = (float(x) for x in f)
+            if u < 0:
+                r.fault("startjit rule %g is negative" % u)
+            # dz is structurally 0: the rule is horizontal, and the column is
+            # written anyway so a reader never has to know that.  A non-zero one
+            # means a writer changed and this block did not.
+            if dz != 0:
+                r.fault("startjit dz is %g and the rule is horizontal -- either "
+                        "the writer grew a vertical component or this file was "
+                        "edited" % dz)
+            for nm, v in (("dx", dx), ("dy", dy)):
+                if abs(v) > u + 1e-4:
+                    r.fault("startjit %s is %g, outside the rule of %g it "
+                            "states" % (nm, v, u))
+            if dx == 0 and dy == 0:
+                r.note("startjit: the rule was in force at %g u and applied "
+                       "nothing -- every candidate was blocked" % u)
+            r.info["startjit"] = "%g (%g %g %g)" % (u, dx, dy, dz)
+
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
     padding = 0
@@ -571,6 +660,7 @@ def check_rec(path, verbose=False):
     ghosts = []             # (lineno, args) -- build 30 ghost window edges
     stagerecs = []          # (lineno, kind, args) -- build 43: stage/stagestart/restart
     inrows = 0              # build 82: `in` records seen
+    warps = []              # (lineno, args) -- build 83 v7 imposed-state records
     in_pk = None            # last packet ordinal
     in_mt = None            # last cumulative mover tick
     in_packets = 0          # distinct packet ordinals
@@ -800,12 +890,80 @@ def check_rec(path, verbose=False):
             # build-43 change gives them a second producer apiece: an untested
             # record grammar is one nobody notices breaking.
             stagerecs.append((lineno + 1, kind, tok[1:]))
+        elif kind == "warp":
+            # Build 83, v7.  `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` --
+            # state imposed on the player from OUTSIDE the mover, written by the
+            # handler that imposed it, carrying the state as it stood afterwards.
+            #
+            # THIS RECORD EXISTS BECAUSE EXPERIMENT E3 MEASURED ITS ABSENCE.
+            # pm_recsim replayed a real recording's input trace back through the
+            # mover and reproduced 1307 of 1324 packets to this file's own
+            # printing floor; ten of the fifteen failures were trigger_teleport.
+            # The file recorded the consequence and never the event, so an
+            # open-loop re-simulation died at the first one -- and a legitimate
+            # stage teleport and a cheat that moved the player were the same
+            # bytes.
+            #
+            # THE <kind> WORD IS NOT VALIDATED AGAINST A LIST, on purpose.  The
+            # writers are `tele`, `telerel`, `bhop`, `speed` and `push` today and
+            # the set is expected to grow (the basevelocity family is named in
+            # sv_timer.qc's grammar as the next one).  A checker written from the
+            # grammar that faulted an unknown word would fault every file written
+            # by a newer server -- which is the failure this tool exists on the
+            # other side of.  Shape is checked; vocabulary is reported.
+            warps.append((lineno + 1, tok[1:]))
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
     r.info["samples"] = len(samples)
     r.info["padding"] = padding
     r.info["records"] = len(records)
+
+    # ---- the imposed-state records, build 83 -------------------------------
+    #
+    # `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` -- nine fields after the
+    # keyword.  Shape, ordering against the trace's horizon, and a census of the
+    # <kind> words; nothing about whether the state is PLAUSIBLE, because this
+    # tool has no physics and a warp is by definition the one event the physics
+    # does not explain.
+    if warps:
+        kinds = {}
+        for ln, a in warps:
+            if len(a) != 9:
+                r.fault("line %d: 'warp' takes 9 fields "
+                        "(pk mt kind ox oy oz vx vy vz), has %d" % (ln, len(a)))
+                continue
+            if not all(x.lstrip("-").isdigit() for x in a[:2]):
+                r.fault("line %d: 'warp' pk/mt are not integers: %r %r"
+                        % (ln, a[0], a[1]))
+                continue
+            if not all(is_float(x) for x in a[3:]):
+                r.fault("line %d: 'warp' has a non-numeric origin or velocity"
+                        % ln)
+                continue
+            kinds[a[2]] = kinds.get(a[2], 0) + 1
+            mt = int(a[1])
+            # THE HORIZON APPLIES HERE TOO, and it is the same argument the `in`
+            # rows take: nothing in the body can predate the tick the recording
+            # opened on.  A warp below it is a writer that stamped the wrong
+            # counter, which is worth catching because <mt> is the only column
+            # that separates two impositions inside one packet.
+            if in_start is not None and mt < in_start:
+                r.fault("line %d: warp at movetick %d is below the trace's "
+                        "horizon %d" % (ln, mt, in_start))
+        if kinds:
+            r.info["warps"] = ", ".join(
+                "%s x%d" % (k, n) for k, n in sorted(kinds.items()))
+        # Reported and never faulted -- see the block at the dispatch.  A word
+        # this tool has not heard of is a newer server, not a broken file.
+        for k in sorted(kinds):
+            if k not in ("tele", "telerel", "bhop", "speed", "push"):
+                r.note("warp kind %r is not one this tool knows (tele, telerel, "
+                       "bhop, speed, push) -- a newer writer, most likely" % k)
+    if warps and ver < 7:
+        r.note("the file carries %d 'warp' records under a v%d header -- the "
+               "record is v7; an older marker over a newer body means a writer "
+               "and its version string moved apart" % (len(warps), ver))
 
     # ---- the trace and its horizon must agree, build 82 ---------------------
     #
@@ -1313,13 +1471,36 @@ def check_rec(path, verbose=False):
         # APPENDED rather than inserted -- so the first four are read identically
         # either way and this branch is about which count to demand, not about
         # where anything lives.
-        want_end = 5 if ver >= 6 else 4
+        #
+        # BUILD 83: AND SIX FROM v7, appended again and never inserted, so the
+        # ladder below stays a question about how many to DEMAND rather than
+        # about where anything lives.  The sixth is the `warp` count.
+        if ver >= 7:
+            want_end = 6
+        elif ver >= 6:
+            want_end = 5
+        else:
+            want_end = 4
         if len(args) != want_end:
             r.fault("line %d: 'end' takes %d fields in a v%d file, has %d"
                     % (ln, want_end, ver, len(args)))
         else:
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
-            if want_end == 5:
+            if want_end >= 6:
+                e_warp = float(args[5])
+                # EXACT, LIKE <inputs> AND UNLIKE <samples>.  The writer counts
+                # only records that actually landed, so a disagreement means the
+                # file was truncated below the trailer or edited.
+                #
+                # This one is worth faulting loudly.  A missing input row is one
+                # move of a thousand; a missing `warp` is a position or velocity
+                # discontinuity with nothing in the file to explain it, which is
+                # exactly what a verifier would otherwise have to read as
+                # tampering.  The count is what lets it say "truncated" instead.
+                if int(e_warp) != len(warps):
+                    r.fault("'end' says %d warp records, the file has %d"
+                            % (int(e_warp), len(warps)))
+            if want_end >= 5:
                 e_in = float(args[4])
                 # COUNTED AGAINST THE BODY, like the three above it.  The writer
                 # increments only when a line actually landed, so a disagreement
@@ -1718,6 +1899,14 @@ def emit(r, verbose):
                   # visible at a glance and not only through the fault.
                   "instart", "inputs", "in_packets", "in_per_packet",
                   "in_per_sample",
+                  # Build 83, added in the same edit as the code that computes
+                  # them, which is the rule the paragraph above sets after this
+                  # tuple had swallowed a field twice.  It was nearly three:
+                  # both of these were assigned and not listed on the first cut
+                  # of this build, and the omission survived a full corpus run
+                  # and a passing test suite -- because neither of those reads
+                  # this tuple.  Only a person looking at -v output sees it.
+                  "startjit", "warps",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:
