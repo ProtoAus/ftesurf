@@ -1610,6 +1610,12 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   One rule closes both, because both were the same mistake -- treating "the
   client never spoke" as "nothing to report" instead of as "nothing to check".
 
+  (THAT LAST SENTENCE IS TRUE OF SILENCE AND WAS READ AS TRUE OF MORE.  It closes
+  both cases of `cl_nocsqc 1`; it does NOT close the forged `rechid` key, which
+  build 78 left exactly as it found it.  See the build-79 block below -- the
+  correction is recorded there rather than edited into this paragraph, because
+  the paragraph is what was believed when the patch shipped.)
+
   WHAT THAT COSTS HONEST PLAYERS, stated plainly rather than discovered:
 
     a client older than build 78 has its runs demoted, because it does not know
@@ -1644,6 +1650,68 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   so neither end can be built from a #define.  A named constant nothing reads is
   the thing this tree keeps finding at the bottom of its worst bugs, so the
   pairing is documented here and enforced by the failure mode instead.
+*/
+
+/*
+  BUILD 79 TAKES THE JOURNAL OFF ITS KEY TOO, AND THAT IS A CORRECTION.
+
+  The block above says one rule closes both holes `cl_nocsqc 1` opened.  It does.
+  What it does not close -- and what reading it as "the journal is handled now"
+  would have missed -- is the NARROWER forgery next door, which survived build 78
+  untouched and was live on the fleet the moment build 78 deployed:
+
+      rec_hid 0                 the journal is off; no .hid will be written
+      setinfo rechid 1          ...and the server is told one was
+
+  That run has an honest CSQC, so it reports its input profile, so the silence
+  rule never fires and TF_NOPROFILE is never set.  Its `rechid` key says 1, so
+  SV_TimerJournal -- which tests for a literal "0" -- never sets TF_NOJOURNAL.
+  It ranks, and there is no raw input journal behind it at all.  One console line
+  and the entire P1 evidence chain is gone.
+
+  IT IS THE SAME CLASS BUILD 77 LEFT AND BUILD 78 CLOSED, ONE KEY OVER, and the
+  relationship is exact: build 77 made the grant visible and build 78 made it
+  unforgeable; build 58 made the journal visible and this makes it unforgeable.
+  The lesson that did not transfer the first time is that `inprof` and `rechid`
+  were never two features -- they are two userinfo keys written by the same CSQC
+  for the same reader, and a channel fix for one is a channel fix for neither
+  until it is applied to both.
+
+  AND IT IS WORSE THAN inprof's WAS, because of the cache rather than despite it.
+  Rec_HidReport sends on change against rec_rp_hidsent.  A player who sets
+  `rec_hid 0` has the honest 0 sent and cached; when they then type
+  `setinfo rechid 1`, Rec_HidOK() still answers 0, the cached compare still hits,
+  and CSQC never speaks again.  Nothing corrects the forgery for the rest of the
+  session -- where `inprof` at least got resent whenever any input cvar moved.
+  The comment on that cache says rec_hid "changes approximately never", which is
+  what makes it cheap AND what makes the lie durable.
+
+  THE FIX IS THE CHANNEL AGAIN AND NOTHING ELSE.  sendevent("rechid", "f", v)
+  against CSEv_rechid_f in sv_timer.qc -- one float, because there is one fact.
+  Everything the build-78 block says about why that is unforgeable (a console
+  writes clc_stringcmd and cannot write clcfte_qcrequest; csprogs is md4-pinned
+  and force-downloaded, so the code filling it in is the lobby's) applies here
+  verbatim and is not restated.
+
+  NO VERSION NUMBER, AND THE ASYMMETRY WITH inprof IS DELIBERATE.  run_t_pev
+  stores IP_VERSION because the `inprof` KEY has versions that a reader must
+  select a field count from.  `rechid` has no grammar -- it is one value with two
+  states -- so a version constant here would have exactly one writer, no reader,
+  and would be the dead constant the block above refuses to define.  The presence
+  flag is a presence flag and says so.  What versions this event is its NAME, for
+  free: a payload that ever needs a second field ships as CSEv_rechid_ff, which an
+  older server does not have, which arrives as silence, which faults.
+
+  SILENCE IS A FAULT HERE TOO, and it costs less than it did for the profile.
+  A client with no CSQC has no journal -- Rec_HidBegin is CSQC -- so "never
+  reported" and "no .hid" are the same state, and TF_NOJOURNAL is the true
+  statement about it rather than a conservative one.  The build-78 cost paragraph
+  still applies unchanged for an out-of-date client, and so does its answer: one
+  reconnect on a lobby, and on a listen server it is not a taint class.
+
+  THE KEY STAYS, DIAGNOSTIC ONLY, for build 78's reason exactly -- it is what
+  makes the forgery visible instead of merely dead.  `cmd timer` prints the key
+  beside the event, and the two disagreeing is the signature.
 */
 
 /*

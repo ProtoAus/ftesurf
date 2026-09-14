@@ -1286,7 +1286,7 @@ float() SV_RecEnabled =
 
   THEY ARE CLEARED PER PLAYER, NOT PER RUN, and that is deliberate: they
   describe the CLIENT, which outlives any one attempt, so SV_TimerArm must not
-  touch them.  What does touch them is SV_ProfileForget, from both ends of a
+  touch them.  What does touch them is SV_CSQCForget, from both ends of a
   connection -- the engine recycles edict numbers, and a slot handed to a new
   player still holding the last one's clean profile would rank a run nobody had
   checked.  That is SV_TouchForget's bug exactly, one layer up; see the essay
@@ -1299,6 +1299,30 @@ float() SV_RecEnabled =
 .float  run_t_pevacc;
 .float  run_t_pevbad;
 .float  run_t_pevgrant;
+
+/*
+  ...AND WHETHER ITS JOURNAL IS RUNNING, OVER THAT SAME CHANNEL.  Build 79.
+  The why is the build-79 block in sh_defs.qc; this is the storage.
+
+  run_t_jev IS A PRESENCE FLAG AND IT IS NOT A VERSION, which is the one place
+  this pair deliberately differs from the run_t_pev pair above.  There is no
+  `rechid` grammar to select a field count from -- one value, two states -- so a
+  version stored here would have a writer and no reader.  What versions the event
+  is its NAME; see the essay.
+
+  0 means this client's CSQC has never reported, and SV_TimerJournal turns that
+  into TF_NOJOURNAL rather than into "unknown".  That is not the conservative
+  reading, it is the true one: Rec_HidBegin is CSQC, so a client that cannot send
+  this event cannot have written a .hid either.
+
+  run_t_jevhid IS MEANINGLESS WHILE run_t_jev IS 0 and may not be read without
+  checking it -- 0 there is "never spoke", not "said no", and the two are the
+  same float.  Cleared per player by SV_CSQCForget for the edict-recycling
+  reason above, which bites harder here: an inherited jevhid of 1 is a slot that
+  claims a journal nobody asked it about.
+*/
+.float  run_t_jev;        // 0 = never reported; non-zero = this client's CSQC has spoken
+.float  run_t_jevhid;     // what Rec_HidOK() answered: 1 journalling, 0 not
 
 /*
   The worst class this attempt has been TOLD it is.  Build 44.
@@ -5393,14 +5417,33 @@ void(entity e) SV_TimerCheat =
   clears, because turning the journal back ON mid-run does not retroactively
   record the part that was missed.
 
-  ONLY A LITERAL "0", and this is the important line in the function.  infokey
-  returns "" for a key the client has never sent -- an older client, a client
-  that connected two frames ago, a client whose CSQC has not run a frame yet --
-  and "" is not a claim that no journal exists.  Reading it as one would stamp
-  this bit on a run that has a perfectly good .hid sitting beside it, and the
-  player would be shown a statement about their own run that is false.  Unknown
-  stays unknown; the board can decline to rank it quietly, which costs a player
-  nothing they can see.  See the essay on TF_NOJOURNAL.
+  BUILD 79: THE SOURCE IS THE EVENT, AND SILENCE IS A FAULT.  What follows is
+  the build-58 reasoning this replaced, kept because it explains a rule that is
+  still in force one channel over -- SV_ProfileKeyBroken reads the key the same
+  careful way, for diagnostics.
+
+    ONLY A LITERAL "0", and this is the important line in the function.  infokey
+    returns "" for a key the client has never sent -- an older client, a client
+    that connected two frames ago, a client whose CSQC has not run a frame yet --
+    and "" is not a claim that no journal exists.  Reading it as one would stamp
+    this bit on a run that has a perfectly good .hid sitting beside it, and the
+    player would be shown a statement about their own run that is false.
+    Unknown stays unknown; the board can decline to rank it quietly, which costs
+    a player nothing they can see.  See the essay on TF_NOJOURNAL.
+
+  THAT WAS RIGHT ABOUT THE KEY AND IT IS WHY THE KEY HAD TO GO.  A reader this
+  careful is a reader a player can talk to: `rec_hid 0` then `setinfo rechid 1`
+  is one console line that turns the careful "" handling into a forged "1", and
+  the send-on-change cache in Rec_HidReport means CSQC never contradicts it.  The
+  build-79 block in sh_defs.qc is the long version.
+
+  THE THREE UNKNOWNS ABOVE COLLAPSE INTO ONE FAULT, and the collapse is honest
+  rather than conservative.  "Older client", "connected two frames ago" and "CSQC
+  has not run a frame yet" are all clients that have written no .hid, because
+  Rec_HidBegin is CSQC -- so TF_NOJOURNAL is the true statement about every one
+  of them.  This is not the profile's trade, where silence had to be faulted
+  despite possibly being honest; here silence and the fault describe the same
+  state.  It is still a quiet demotion and still not an accusation.
 
   NOT GATED ON run_t_runclass, unlike the three above it, and the difference is
   deliberate.  That switch bisects build 44's CLASSIFICATION code, and this bit
@@ -5410,9 +5453,37 @@ void(entity e) SV_TimerCheat =
   Gating an evidence bit on a development switch would be exactly the bypass
   that essay refuses.
 */
+/*
+  THE RULE, SPLIT OUT PURE.  Build 79, on the SV_RulesetBroken (p313) and
+  SV_ProfileBroken (build 72) precedent, and for their harness reason rather
+  than for tidiness: a run cannot be FINISHED from a config on a zoned map --
+  zone_goto and setpos both void via SV_TimerWarped -- so a rule that existed
+  only inside the latch could not be checked headlessly at all.  Split out,
+  `cmd timer` reports a live `would` beside the latched bit, with one copy of the
+  rule and no side effect from asking.
+
+  It is two lines and it is still worth splitting.  The two facts it folds
+  together -- never reported, and reported no -- reach the same verdict today,
+  and a later rule that needs to tell them apart will find them named.
+*/
+float(entity e) SV_JournalBroken =
+{
+	// Never reported.  Not "unknown" -- no CSQC means no Rec_HidBegin, so there
+	// is no .hid for this attempt whatever the userinfo key says.
+	if (e.run_t_jev == 0)
+		return TRUE;
+
+	// Reported, and the answer was no.
+	if (!e.run_t_jevhid)
+		return TRUE;
+
+	return FALSE;
+};
+
 void(entity e) SV_TimerJournal =
 {
-	if (infokey(e, "rechid") == "0")
+	// Only ever sets, never clears -- see the latch note above.
+	if (SV_JournalBroken(e))
 		e.run_t_flags = e.run_t_flags | TF_NOJOURNAL;
 };
 
@@ -5455,6 +5526,35 @@ void(float have, float raw, float filt, float acc, float bad, float grant)
 };
 
 /*
+  THE CLIENT'S CSQC REPORTING WHETHER ITS JOURNAL IS RUNNING.  Build 79.
+
+  The partner is sendevent("rechid", "f", v) in cl_replay.qc's Rec_HidReport, and
+  the spelling is load-bearing in exactly the way CSEv_inprof_ffffff's is: the
+  engine composes "CSEv_" + name + one letter per argument and looks the string
+  up, so nothing on either side of this pairing is checked by a compiler.  Change
+  one and you must change the other.  The failure mode is the safe one -- every
+  client falls to the silence rule and every run reads nojournal 1.
+
+  ONE FLOAT BECAUSE THERE IS ONE FACT.  It is Rec_HidOK(), not cvar("rec_hid"),
+  so a run declined for want of consent reports the same 0 as one declined by the
+  switch -- the question is "will a journal exist for this run" and both answers
+  to it are no.  That was already true of the userinfo key and is not new here.
+
+  THE PRESENCE FLAG IS SET FROM A LITERAL, NOT FROM THE PAYLOAD.  `hid` is 0 on
+  an honest client that is simply not journalling, so assigning it to run_t_jev
+  would make an honest "no" indistinguishable from silence -- and silence and
+  "no" happen to reach the same verdict here, which is exactly what would keep
+  the mistake invisible until some later rule needed to tell them apart.
+
+  `self` IS THE PLAYER: the engine assigns it before the call (sv_user.c:8644).
+*/
+void(float hid) CSEv_rechid_f =
+{
+	self.run_t_jev    = TRUE;
+	self.run_t_jevhid = hid;
+};
+
+/*
   ...and the other half of that, which is the half that is easy to forget.
 
   THE EDICT OUTLIVES THE PLAYER.  The engine hands slot N to whoever connects
@@ -5468,8 +5568,18 @@ void(float have, float raw, float filt, float acc, float bad, float grant)
   is belt and braces and keeps an idle slot honest to anything that inspects it
   in between.  SV_TouchForget is the same act for the same reason on the trigger
   bits and the two sit together at the call site.
+
+  BUILD 79 WIDENED IT AND RENAMED IT, and the rename is the point rather than
+  tidiness.  It was SV_ProfileForget, which was an accurate name for a function
+  that cleared one report and a dangerous one for a tree that was about to have
+  two: the next reader adds a third CSQC report, finds a function named after the
+  first one, and writes a second forget beside it -- and then there are two lists
+  to keep in step, which is how the field that gets missed gets missed.  One
+  function, named for the class of thing rather than for its first member, and
+  the rule is stated here: EVERY FIELD A CSEv_ HANDLER IN THIS FILE WRITES IS
+  CLEARED IN THIS FUNCTION.  There is no second place.
 */
-void(entity e) SV_ProfileForget =
+void(entity e) SV_CSQCForget =
 {
 	e.run_t_pev      = 0;
 	e.run_t_pevhave  = 0;
@@ -5478,6 +5588,9 @@ void(entity e) SV_ProfileForget =
 	e.run_t_pevacc   = 0;
 	e.run_t_pevbad   = 0;
 	e.run_t_pevgrant = 0;
+
+	e.run_t_jev      = 0;
+	e.run_t_jevhid   = 0;
 };
 
 /*
@@ -8659,11 +8772,31 @@ void(entity e) SV_TimerReport =
 	  who types `rec_hid 1` mid-run turns `said` back to 1 while `nojournal`
 	  stays 1, because turning the journal on does not retroactively record the
 	  part of the run that went unrecorded.  See SV_TimerJournal.
+
+	  BUILD 79 MADE IT FOUR, and the first two are now the diagnostic pair
+	  rather than the decision.  `key` is the userinfo claim, which nothing
+	  decides on any more; `said` is whether the client's CSQC has reported over
+	  the channel a console cannot write, and `hid` is what it reported.  A key
+	  of "1" beside said 1 hid 0 is a forgery on screen -- the player typed
+	  `setinfo rechid 1` over a journal that is off, and the run is stamped
+	  anyway.  A key of "1" beside said 0 is the same lie told by a client with
+	  no CSQC at all.  Neither is reachable without showing both columns, which
+	  is the whole reason the key is still printed.
+
+	  `would` IS THE LIVE ANSWER AND `nojournal` IS THE LATCHED ONE, the same
+	  fifth column the ruleset and profile blocks carry and for the same reason:
+	  a run cannot be finished from a config on a zoned map, so without it the
+	  finish half of this latch could not be observed headlessly.  It calls
+	  SV_JournalBroken, the same pure predicate the latch calls, so the two can
+	  never drift, and it is pure, so asking does not mark the run.
 	*/
 	sprint(e, PRINT_HIGH,
-	       sprintf("        journal: said \"%s\"  nojournal %g\n",
+	       sprintf("        journal: key \"%s\"  said %g  hid %g  nojournal %g  would %g\n",
 	               infokey(e, "rechid"),
-	               (e.run_t_flags & TF_NOJOURNAL) ? 1 : 0));
+	               e.run_t_jev,
+	               e.run_t_jevhid,
+	               (e.run_t_flags & TF_NOJOURNAL) ? 1 : 0,
+	               SV_JournalBroken(e)));
 	/*
 	  BUILD 62: the movement ruleset, as the ENGINE sees it (Patch 313).
 

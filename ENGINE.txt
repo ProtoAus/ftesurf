@@ -16,7 +16,7 @@ branch   engine-patches
 commit   8d04da08edbbc5ad908bcac697ab3481c2edf5dd
 tag      patch-266
 patch    326
-qcbuild  78
+qcbuild  79
 date     2026-09-14
 
 # NOTE, CORRECTED 2026-09-14: the long-standing caveat here -- "`commit` is still

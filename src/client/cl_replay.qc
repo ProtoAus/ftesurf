@@ -351,6 +351,34 @@ void() Rec_HidReport =
 		return;
 
 	rec_rp_hidsent = v;
+
+	/*
+	  BUILD 79: THE SAME ANSWER OVER A CHANNEL THE CONSOLE CANNOT WRITE.
+
+	  The setinfo below stays and is now diagnostic only; this line is what the
+	  server decides on.  sendevent puts clcfte_qcrequest on the wire and the
+	  server dispatches it by name into CSEv_rechid_f -- a console can produce
+	  clc_stringcmd and nothing else.  The full argument, including why editing
+	  this csprogs does not help either, is the build-79 block in sh_defs.qc.
+
+	  IT SITS INSIDE THE CACHE, DELIBERATELY, and that is the one decision here
+	  worth a second look.  Sending the event unconditionally every frame would
+	  be free of the cache's failure mode and cost a wire message per frame per
+	  player forever; riding the cache costs nothing and is correct for the same
+	  reason the setinfo is -- rec_rp_hidsent is seeded to -1 in Rec_ViewInit,
+	  which no real answer equals, so the first frame after every map load always
+	  sends.  From build 78 that seed is a correctness property rather than an
+	  optimisation detail, and it is now load-bearing for two reports; the note
+	  at the reset says so.
+
+	  THE ORDER IS EVENT FIRST.  Nothing depends on it today -- they are two
+	  independent messages on the same netchan -- but the event is the one that
+	  decides, and putting the authoritative write ahead of the diagnostic one
+	  means a later edit that adds an early return between them cannot silently
+	  keep the key while dropping the fact.
+	*/
+	sendevent("rechid", "f", v);
+
 	localcmd(sprintf("setinfo rechid %g\n", v));
 };
 
