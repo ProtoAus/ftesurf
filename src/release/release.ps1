@@ -20,11 +20,24 @@
 #  WHY THE ALLOWLIST IS NOT NEGOTIABLE.  C:\FTESurf is the LIVE INSTALL, not a
 #  clean source tree.  Sitting in the repo root right now, beside the ~42 MB
 #  that ships: `report` (9,410 bytes, contains a plaintext SSH password),
-#  identity.pfx, qkey, client.dll + momentum.dll + Turnbind.exe (third-party
-#  cheat samples kept for anti-cheat work), and five superseded engine builds.
-#  Under ftesurf\: 3.3 GB of screenshots, 1.1 GB of mapshots, 630 MB of recorded
-#  runs, a 351 MB surf_fantasy.bsp, and data\consent.txt -- which, if shipped,
-#  pre-accepts the terms on the player's behalf.
+#  identity.pfx, qkey, and five superseded engine builds.  Under ftesurf\:
+#  3.3 GB of screenshots, 1.1 GB of mapshots, 630 MB of recorded runs, a 351 MB
+#  surf_fantasy.bsp, and data\consent.txt -- which, if shipped, pre-accepts the
+#  terms on the player's behalf.
+#
+#  THE CHEAT SAMPLES MOVED OUT on 2026-09-14.  client.dll, momentum.dll,
+#  Turnbind.exe and test2.cpp now live under C:\FTESurf-private\Cheats, which is
+#  outside this root and is not a git repo and has no ancestor that is one.  So
+#  this paragraph used to name four reasons the allowlist cannot be relaxed and
+#  now names three.  THE POLICY IS UNCHANGED: the plaintext password, the
+#  identity material and the consent record are all still here, and any one of
+#  them is sufficient on its own.
+#
+#  Their deny patterns below are KEPT DELIBERATELY.  A tripwire that matches
+#  nothing costs nothing, the anti-cheat work that put them here is ongoing so
+#  they can come back at any time, and a pattern removed on the grounds that it
+#  currently matches nothing is exactly the stale-exclude failure this whole
+#  header argues against.
 #
 #  So: name what ships, copy it out, and inspect the copy.  An exclude list over
 #  this tree is one stale pattern away from publishing a password, and 7-Zip's
@@ -221,10 +234,10 @@ $DenyPatterns = @(
     '\.pre[-0-9a-z]+$'
     '\.p[0-9]{3}$'
     '_p[0-9]{3}\.exe$'
-    '(^|/)(client|momentum)\.dll$'     # third-party cheat samples
-    '(^|/)Turnbind\.exe$'
-    '(^|/)config\.json$'
-    '\.(cpp|env|bsp|log|pyc)$'
+    '(^|/)(client|momentum)\.dll$'     # cheat samples -- moved to C:\FTESurf-private
+    '(^|/)Turnbind\.exe$'              #   2026-09-14; kept as a tripwire, see header
+    '(^|/)config\.json$'               #   (Turnbind's, among others)
+    '\.(cpp|env|bsp|log|py|pyc)$'      # py: strafepro is Python, and tools\ never ships
     '(^|/)testrun/'
     '(^|/)\.git'
     '(^|/)crashaddr\.txt$'
