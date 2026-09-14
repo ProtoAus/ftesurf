@@ -380,9 +380,29 @@ $GitShort   = $GitHead.Substring(0, 8)
 # `Checkpoint:` commit -- 9 of the last 32 subjects do not name a build.
 # Subjects only, never bodies: a body match finds "QC builds 58-62" and returns
 # 62, which is six behind and looks entirely plausible.
+#
+# THE `QC ` PREFIX IS NOT OPTIONAL DECORATION -- IT COST A WRONG RECEIPT ONCE.
+# Build 80's subject is "QC build 80: a run may be twelve hours long", and the
+# original pattern anchored straight to `Build`, so it did not match, scanned
+# past it, and found "build 79: measure the journal qcrequest..." one commit
+# back.  The release then measured 79 for an archive containing 80.
+#
+# That is a WRONG NUMBER IN A PERMANENT PUBLIC RECEIPT, which is the one class
+# of defect this script cannot walk back: a published version string can never
+# be replaced, only bumped.  It is also invisible at every other gate -- the
+# archive is correct, the hashes are correct, every file ships as intended, and
+# only the provenance line lies.
+#
+# WHAT ACTUALLY CAUGHT IT was the pin-drift check further down (ENGINE.txt says
+# qcbuild 80, this said 79).  That check exists because these are TWO
+# INDEPENDENT HAND-MAINTAINED STATEMENTS of the same fact, and it earned its
+# keep here.  Keep it a Warn rather than a Fail: the legitimate case -- a
+# release cut between a build commit and the ENGINE.txt bump -- is real, and a
+# hard failure there would block a release for a discrepancy a human can read.
+#
 $qcBuild = $null; $qcCommit = $null
 foreach ($line in (& git -C $SurfDir log -200 --pretty=format:'%H %s')) {
-    if ($line -match '^(\S+)\s+Build\s+(\d+)\b') { $qcCommit = $Matches[1]; $qcBuild = [int]$Matches[2]; break }
+    if ($line -match '^(\S+)\s+(?:QC\s+)?Build\s+(\d+)\b') { $qcCommit = $Matches[1]; $qcBuild = [int]$Matches[2]; break }
 }
 # The throw is the load-bearing half. An unmatched -match leaves $null, which
 # interpolates to "" and ships a receipt reading "QC build " that uploads and
