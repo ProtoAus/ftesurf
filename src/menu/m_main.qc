@@ -484,30 +484,32 @@ string(float i) rec_terms_line =
 	if (i == 11) return "^3Public lobbies, if you turn them on with the button below:";
 	if (i == 12) return "  the other people on the map see your position and view angle,";
 	if (i == 13) return "  and you see theirs. Voice and text chat reach everyone there.";
-	if (i == 14) return "  The server times your run and shows you the time. It is not";
-	if (i == 15) return "  uploaded or ranked anywhere. It sees your IP, as does any";
-	if (i == 16) return "  server you join.";
-	if (i == 17) return "  Lobby times are saved in this game's data folder on this PC.";
-	if (i == 18) return "  The map picker asks ^9play.proto.bar^7 which lobbies are live";
-	if (i == 19) return "  while it is open, which shows it your IP too.";
-	if (i == 20) return "";
-	if (i == 21) return "^3What it is for:";
-	if (i == 22) return "  replaying your runs, and telling a real run from a scripted one.";
-	if (i == 23) return "";
-	if (i == 24) return "^3What is deliberately NOT recorded:";
-	if (i == 25) return "  anything you type. While the console or a menu has focus the";
-	if (i == 26) return "  journal keeps the timing of a keypress but drops which key it";
-	if (i == 27) return "  was, so a password typed in the console cannot end up in a file.";
-	if (i == 28) return "  Nothing outside this game's window is watched, ever.";
-	if (i == 29) return "";
-	if (i == 30) return "^3Turning it off:";
+	if (i == 14) return "  ^1Your finish time is uploaded^7 to ^9play.proto.bar^7 and appears on";
+	if (i == 15) return "  a public leaderboard, under the name you are playing as.";
+	if (i == 16) return "  ^1That server also keeps its own recording of the run^7 -- positions,";
+	if (i == 17) return "  velocities and angles -- which anyone can download from the board.";
+	if (i == 18) return "  Your raw mouse and keyboard journal is ^2NOT^7 uploaded. It, and a";
+	if (i == 19) return "  copy of your lobby times, stay in this game's data folder here.";
+	if (i == 20) return "  That same host answers the map picker, so it sees your IP while";
+	if (i == 21) return "  the picker is open, as does any lobby you join.";
+	if (i == 22) return "";
+	if (i == 23) return "^3What it is for:";
+	if (i == 24) return "  replaying your runs, and telling a real run from a scripted one.";
+	if (i == 25) return "";
+	if (i == 26) return "^3What is deliberately NOT recorded:";
+	if (i == 27) return "  anything you type. While the console or a menu has focus the";
+	if (i == 28) return "  journal keeps the timing of a keypress but drops which key it";
+	if (i == 29) return "  was, so a password typed in the console cannot end up in a file.";
+	if (i == 30) return "  Nothing outside this game's window is watched, ever.";
+	if (i == 31) return "";
+	if (i == 32) return "^3Turning it off:";
 	// rec_hid, NOT fs_hid.  The cvar was renamed in build 46 with the rest of the
 	// fs_ -> rec_ move (sh_defs.qc:1409 is the forward), and this line went on
 	// naming the old one -- so the single actionable instruction on the consent
 	// screen told the reader to set a cvar that nothing reads.  Found by looking
 	// at the rendered screen, which is the only place it was visible.
-	if (i == 31) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
-	if (i == 32) return "  are marked as such rather than passing as runs that had one.";
+	if (i == 33) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
+	if (i == 34) return "  are marked as such rather than passing as runs that had one.";
 	return "";
 };
 /*
@@ -559,8 +561,10 @@ string(float i) rec_terms_line =
   update_autocheck 1 and update_manifest_url https://dl.proto.bar/... -- but
   nothing anywhere calls `update_check`, so FTESurf contacts it zero times.
   Writing it here now would be the exact mistake above, in the same edit that
-  fixes it.  Whoever wires the updater bumps FS_TERMS_ONLINE to 4 and adds the
-  line in that change, not before.
+  fixes it.  Whoever wires the updater bumps FS_TERMS_ONLINE and adds the line in
+  that change, not before.  (It was to have taken 4; build 77 needed that number
+  for a disclosure about code that had ALREADY shipped, which outranks a
+  reservation held for code that has not.  The updater takes 5.)
 
   33 SINCE BUILD 57, and this line is that rule kept rather than broken: it
   arrived in the same change as the code that makes it true.  Line 17 says a
@@ -569,9 +573,40 @@ string(float i) rec_terms_line =
   lobby beats their lobby best (Stage T, client/cl_lobbytime.qc).  Nothing new
   LEAVES the machine -- the lobby server already timed the run and sent the
   time to this client to print, and keeping it is local -- so FS_TERMS_ONLINE
-  is not bumped, and 4 stays reserved for the updater.
+  is not bumped.
+
+  35 SINCE BUILD 77, AND THIS ONE IS THE RULE ABOVE BEING BROKEN IN THE OTHER
+  DIRECTION -- which is the direction that matters, because the text promised the
+  reader LESS than the code does.
+
+  Lines 14-16 said "The server times your run and shows you the time.  It is not
+  uploaded or ranked anywhere."  That was true when it was written, and Patch
+  285's essay above is the record of it being NARROWED to the truth after an
+  earlier version over-promised.  It then stopped being true and nobody moved it.
+  Every lobby finish calls Lobby_SubmitRun (sv_timer.qc, at the foot of
+  SV_TimerFinish), which posts map, leg, tick count, flags and the player's id to
+  play.proto.bar; the row appears on a public board; and since build 66 the lobby
+  also writes a .rec of the run, which /api/replay serves to anybody who asks.
+
+  So the screen where a player decides whether to switch public lobbies on told
+  them their run stayed private, at the moment the decision was made, while the
+  shipped code uploaded it and published a downloadable recording of it.  That is
+  the worst version of this defect the file has had: the previous ones promised a
+  feature that did not exist, and this one concealed one that does.
+
+  WHAT IS ADDED IS ALSO WHAT IS NOT UPLOADED, and that line is not padding.  The
+  .hid journal is the most sensitive thing this game records -- it is raw mouse
+  and keyboard timing, which Part 7 of the plan flags as behavioural biometrics --
+  and it does NOT leave the machine today.  A reader told "your run is uploaded"
+  and nothing else would reasonably assume the journal went with it.
+
+  IT COST A LINE FROM THE SAME SECTION rather than a taller panel, because the
+  note below is right that ~34 is the ceiling: at 35 the panel is 715 px and the
+  button row sits at 651, so 720p still reaches the control with the bottom edge
+  5 px clear.  The IP disclosure used to be made twice (once for the lobby, once
+  for the picker) and is now made once, which paid for two of the three new lines.
 */
-#define FS_TERMS_LINES 33
+#define FS_TERMS_LINES 35
 
 float ms_consent;       // the FS_TERMS_VERSION on disk; 0 = none
 
@@ -1356,11 +1391,28 @@ void() ui_cat_load =
 /*
   The `best 0 0` ticks in one .pb file, or 0.
 
-  THE HEADER IS CHECKED, AND BOTH VERSIONS PASS.  best.pb is "FTESURF-PB 1" as
-  SV_PBSave writes it, or "FTESURF-PB 2" once tools/migrate_runs.py legs1 has
-  renumbered its stage legs; lobby.pb is always 2.  Version 2 changed what a
-  STAGE key means (stage k is leg k, where version 1 keyed by start segment) and
-  left `best 0 0` meaning the full run, so for this column the two read alike.
+  THE HEADER IS CHECKED, AND ALL THREE VERSIONS PASS.  best.pb is "FTESURF-PB 1"
+  as SV_PBSave once wrote it, "FTESURF-PB 2" once tools/migrate_runs.py legs1 has
+  renumbered its stage legs, or "FTESURF-PB 3" as SV_PBSave writes it today;
+  lobby.pb is always 2.  Version 2 changed what a STAGE key means (stage k is leg
+  k, where version 1 keyed by start segment) and left `best 0 0` meaning the full
+  run, so for this column the two read alike.
+
+  3 WAS MISSING AND IT WAS A LIVE REGRESSION, NOT A GAP LEFT FOR LATER.  Build 76
+  moved the run clock onto the mover's tick counter and bumped this header to 3
+  because the VALUES are no longer comparable with a v2 file -- but the key layout
+  did not move at all, `best 0 0` still means the full run, and this reader went
+  on rejecting it.  The effect on screen was not a blank: run_pb_best returned 0,
+  so the map list fell through to the slower lobby time and drew THAT instead, and
+  every player who had set a personal best since build 76 was shown a worse number
+  with nothing to say it had happened.  The bump was the safe half of the
+  migration and this reader turned it into the unsafe one.
+
+  Which is the rule below working exactly as written, and the rule is still right:
+  skipping an unknown version is correct, and the cost of that correctness is that
+  every version bump has to visit the readers.  This one was not visited.  The
+  writer is SV_PBSave (sv_timer.qc) and the readers are here and SV_PBLoad, which
+  keeps any version it is given and only branches on `ver < 2`.
 
   A version this build has never heard of is SKIPPED rather than guessed at.
   The column promises a full-run time, and a later format is precisely the thing
@@ -1389,7 +1441,7 @@ float(string fn) run_pb_best =
 			if (argv(0) == "FTESURF-PB")
 			{
 				v = stof(argv(1));
-				if (v != 1 && v != 2)
+				if (v != 1 && v != 2 && v != 3)
 					break;              // best is still 0: not read
 				continue;
 			}

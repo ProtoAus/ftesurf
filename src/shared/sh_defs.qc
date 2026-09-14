@@ -971,12 +971,38 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   accepted the online tier; an offline player is untouched, which is the whole
   point of the two-number design above.
 
-  The NEXT bump is already spoken for: whoever wires engine/common/qkupdate.c's
-  `update_check` must go to 4 and add dl.proto.bar to the text in that same
-  change.  Do not add the line ahead of the code -- that is precisely how
-  lines 14-15 came to be false.
+  4, NOT 3, SINCE BUILD 77, AND THIS IS THE FIRST BUMP HERE FOR A DISCLOSURE THAT
+  WAS OWED RATHER THAN NEW.
+
+  The test above is the one this file already states: NARROWING a false promise
+  does not need a re-ask, because nobody agreed to less than they thought.  The
+  converse is what happened here.  Since Patch 285 the online text has read "The
+  server times your run and shows you the time.  It is not uploaded or ranked
+  anywhere" -- which was accurate when it was written, and stopped being accurate
+  the moment build 66 turned the lobby recorders on and Lobby_SubmitRun started
+  posting every finish.  Today a lobby run's map, leg, tick count, flags and
+  player id go to play.proto.bar, the row appears on a public board, and the
+  server's own .rec of the run is downloadable by anyone through /api/replay.
+
+  So a player who accepted tier 3 agreed to a sentence saying their run stayed
+  private, and the shipped code uploads it and publishes a recording of it.  That
+  is strictly MORE than they agreed to, which is exactly the case this tier
+  mechanism exists for, and it is not a narrowing -- so it re-asks.
+
+  THE COST IS REAL AND IS THE RIGHT TRADE.  Every player who accepted tier 3 sees
+  the screen again and the map picker will not poll until they accept, because
+  Lob_Poll gates on this constant.  An offline player is untouched.  The
+  alternative is continuing to collect and publish under an agreement that
+  describes the opposite, which is the one failure this whole mechanism exists to
+  prevent.
+
+  IT TAKES THE NUMBER THE UPDATER HAD RESERVED, deliberately.  The note in
+  m_main.qc said whoever wires `update_check` goes to 4; nothing calls it yet, and
+  a reservation held for code that has not shipped cannot outrank a disclosure
+  owed by code that has.  The updater takes 5, and the rule it was written to
+  protect is unchanged: do not add the line ahead of the code.
 */
-#define FS_TERMS_ONLINE 3
+#define FS_TERMS_ONLINE 4
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from
