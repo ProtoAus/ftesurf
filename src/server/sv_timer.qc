@@ -4603,6 +4603,34 @@ void(entity e) SV_TimerIdle =
 	e.run_st_fails   = 0;
 	e.run_st_tp      = 0;
 	e.run_st_zseg    = -1;   // and a map change reloads the zone table under it
+
+	/*
+	  BUILD 75, AND THE LIVE ARM ON THE FLEET IS WHAT FOUND IT -- build 74 shipped
+	  the hazard it had just written an essay about.
+
+	  run_t_starttick's own comment says 0 is a LEGAL value of the counter, because
+	  run_movetick is reset per MAP and 0 is what every player's reads for the first
+	  seconds after a load; that is the whole reason the sentinel is -1 rather than
+	  0.  But the sentinel was written ONLY by SV_TimerArm, so between spawning and
+	  the first arm the field held the QC default -- 0 -- and SV_TickCounted read
+	  that as a latch taken at the map load.  Measured on lobby 4 over the real
+	  network, on a player standing still who had never armed anything:
+
+	      tick: counted 0 sampled 9033 gap 9033
+
+	  A confident number, to four significant figures, about a run that does not
+	  exist.  Nothing consumes SV_TickCounted yet so nothing was ranked wrongly --
+	  but that is luck, not design, and an instrument that answers when it has no
+	  reading is the sv_mapcheck failure exactly: a comparison whose two sides are
+	  not comparable, reporting anyway.
+
+	  It belongs HERE rather than in SV_TickReport.  Tearing the attempt down is
+	  what establishes "there is no run", which is what every other line in this
+	  function is for, and fixing it at the reader would leave the next consumer to
+	  rediscover it.
+	*/
+	e.run_t_starttick = -1;
+	e.run_t_frzticks  = 0;
 };
 
 /*

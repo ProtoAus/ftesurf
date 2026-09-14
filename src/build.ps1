@@ -6,7 +6,8 @@
    .\build.ps1 -Engine    QC + incremental engine/plugin rebuild + dual deploy
    .\build.ps1 -Engine -Full   as above, but forces a full recompile first
    .\build.ps1 -Pi        QC, then qwprogs.dat + csprogs.dat to the NanoPi and
-                          all five lobbies restarted.  Refused while anyone is
+                          every ACTIVE lobby restarted -- the set is asked of
+                          systemd, never written down here.  Refused while anyone is
                           on a lobby; -PiForce overrides.  -PiHost/-PiGame
                           name the Pi and its gamedir.
 
@@ -431,7 +432,7 @@ if ($Pi) {
             Write-Host ("    {0} on {1}: {2}/{3} players" -f $l.name, $l.map, $l.players, $l.max) -ForegroundColor Yellow
         }
         if (-not $PiForce) {
-            throw "players are on a lobby and -Pi restarts all five, so nothing was deployed.  Wait for 0 players, or pass -PiForce."
+            throw ("players are on a lobby and -Pi restarts all {0}, so nothing was deployed.  Wait for 0 players, or pass -PiForce." -f $lobbies.Count)
         }
         Write-Host "    -PiForce: deploying anyway -- everyone above is dropped" -ForegroundColor Yellow
     } elseif ($noRow.Count -gt 0) {
@@ -441,12 +442,12 @@ if ($Pi) {
         if (-not $PiForce) {
             $which = ($noRow | ForEach-Object { "ftesurf@$($_.Unit)" }) -join ', '
             throw ("the directory has no row for $which -- nothing can say who is on, " +
-                   "and -Pi restarts all five, so nothing was deployed.  Check that every lobby is up and " +
-                   "heart-beating -- 4 and 5 need the sudoers grant and the systemctl enable from Stage L -- or pass -PiForce.")
+                   "and -Pi restarts all $($lobbies.Count), so nothing was deployed.  Check that every lobby is up and " +
+                   "heart-beating -- a newly added unit needs its sudoers grant and a systemctl enable -- or pass -PiForce.")
         }
         Write-Host "    -PiForce: deploying without knowing who is on the lobbies above" -ForegroundColor Yellow
     } else {
-        Ok "nobody on any lobby (a row for each of the five, all 0 players)"
+        Ok ("nobody on any lobby (a row for each of the {0}, all 0 players)" -f $lobbies.Count)
     }
 
     # 2. Upload beside the live files.  Bare names from their own directory, so
@@ -494,7 +495,7 @@ if ($Pi) {
     }
     Ok "live qwprogs.dat and csprogs.dat are this build (previous pair kept as .prev)"
 
-    # 5. Restart all five.  NO .service SUFFIX -- sudo matches the grant
+    # 5. Restart every active lobby.  NO .service SUFFIX -- sudo matches the grant
     #    literally, see the header.  -n: a missing grant fails, it never prompts.
     Step ("Pi: restart {0} lobbies -- ftesurf@{1}" -f $lobbies.Count,
           (($lobbies | ForEach-Object { $_.Unit }) -join ', ftesurf@'))
@@ -517,7 +518,7 @@ if ($Pi) {
         throw ("the new progs are live on the Pi, but ftesurf@{0} did not restart and will run the old ones until it restarts or rotates" -f
                ($failed -join ', ftesurf@'))
     }
-    Ok "all five lobbies restarted on this build"
+    Ok ("all {0} lobbies restarted on this build" -f $lobbies.Count)
 }
 
 Step "Done"
