@@ -182,7 +182,9 @@ $ShipGameFiles = @(
     'ftesurf/csprogs.dat'
     'ftesurf/qwprogs.dat'
     'ftesurf/menu.dat'
-    'ftesurf/fs_addons.default.txt'   # ftesurf.bat copies this to fs_addons.txt on first run
+    # The annotated master. The staging step below ALSO generates the live
+    # fs_addons.txt from it -- that is the file the engine actually reads.
+    'ftesurf/fs_addons.default.txt'
     'ftesurf/data/mapdeps.txt'
     'ftesurf/data/mapmeta.txt'
     'ftesurf/data/mapmeta_override.txt'
@@ -223,7 +225,6 @@ $DenyPatterns = @(
     '(^|/)identity\.'
     '(^|/)consent\.txt$'               # shipping it pre-accepts the terms
     '^ftesurf/ftesurf\.cfg$'           # NOT particles/ftesurf.cfg -- see above
-    '(^|/)fs_addons\.txt$'             # the engine rewrites this; shipping it clobbers the player's
     '(^|/)lobby_local\.cfg$'           # SURFD_KEY
     '(^|/)installed\.lst$'
     '(^|/)conhistory\.txt$'
@@ -582,6 +583,43 @@ foreach ($b in @(Get-ChildItem -LiteralPath $StageDir -Filter '*.bat' -File -Rec
     [System.IO.File]::WriteAllText($b.FullName, $t, (New-Object System.Text.ASCIIEncoding))
 }
 
+# =============================================================================
+#  SHIP fs_addons.txt, GENERATED FROM THE .default MASTER.
+#
+#  The engine reads <gamedir>/fs_addons.txt and NOTHING ELSE -- fs.c:9206-9209,
+#  `#define FS_ADDONS_FILE "fs_addons.txt"`, remounted on every searchpath
+#  rebuild. It never reads fs_addons.default.txt; that file is this repository's
+#  annotated master and ftesurf.bat seeds from it on first run.
+#
+#  So a player who double-clicks ftesurf64.exe instead of ftesurf.bat -- which is
+#  the obvious thing to do, the .exe being the file that looks like the game --
+#  boots with NO addon list at all: no Momentum map library, no CS:S materials,
+#  no HL2 base content, and a map browser that is simply empty. Shipping the file
+#  the engine actually reads removes that dependency entirely.
+#
+#  GENERATED FROM .default, not copied from the working tree, on purpose. The
+#  tree's own fs_addons.txt is mutable state: `fs_load C:\somewhere` makes the
+#  engine append that absolute path to it, so copying it would eventually publish
+#  the release machine's drive layout, and would hard-code one drive letter into
+#  every player's install. The two files' mount lines are byte-identical today
+#  (three portable `steam:` specs); this guarantees they stay that way.
+$addonsDefault = Join-Path $StageDir 'ftesurf\fs_addons.default.txt'
+$addonsLive    = Join-Path $StageDir 'ftesurf\fs_addons.txt'
+if (-not (Test-Path -LiteralPath $addonsDefault)) { Fail 'ftesurf/fs_addons.default.txt is not in the ship set; cannot generate fs_addons.txt from it' }
+Copy-Item -LiteralPath $addonsDefault -Destination $addonsLive -Force
+$staged++
+
+# An absolute path here is the failure this generation exists to prevent, so
+# assert it rather than trusting the source. Drive letters and UNC both.
+$absLines = @(Get-Content -LiteralPath $addonsLive |
+    Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('//') } |
+    Where-Object { $_ -match '^\s*([A-Za-z]:[\\/]|\\\\)' })
+if ($absLines.Count) {
+    Fail ("fs_addons.txt would ship absolute path(s), which name one machine's drives:`n" +
+        (($absLines | ForEach-Object { "      $_" }) -join "`n") +
+        "`n  Fix ftesurf/fs_addons.default.txt to use portable `steam:Game/dir` specs.")
+}
+
 # Generated companions. README.md deliberately does NOT ship: it is a
 # build-from-source document that opens by telling the reader to compile an
 # engine, which is the wrong first instruction for someone who just downloaded
@@ -624,10 +662,11 @@ FTESurf $Ver -- install
     Optional, mounted per map and only when a map needs them:
         Counter-Strike: Global Offensive (legacy Source 1 branch), Team Fortress 2
 
-3.  Run ftesurf.bat  --  not ftesurf64.exe directly.  The .bat sets the working
-    directory the engine reads its game folder from, and seeds fs_addons.txt
-    from fs_addons.default.txt on first run.  Launching the .exe gets neither
-    and stops at a mod list.
+3.  Run ftesurf.bat.  The engine takes its game folder from the working
+    directory rather than from the .exe's location, and the .bat sets it -- so
+    a shortcut pointing straight at ftesurf64.exe from somewhere else stops at
+    a mod list.  The mounts above are already configured in ftesurf/fs_addons.txt
+    and need no first-run step.
 
 4.  If a Steam game is not found, type  fs_steamlibs  in the console.  It prints
     where the engine looked and how each mount resolved.  To add a library:

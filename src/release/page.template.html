@@ -231,7 +231,7 @@ footer p { margin: 0 0 7px; }
   <h3>After it downloads</h3>
   <ol class="steps">
     <li>Extract the archive into a folder of its own. Nothing is written outside it, and there is no installer.</li>
-    <li>Run <code>ftesurf.bat</code> &mdash; <b>not</b> <code>ftesurf64.exe</code>. The batch file sets the working directory the engine reads its game folder from and seeds <code>fs_addons.txt</code> on first run; launching the .exe directly gets neither and stops at a mod list.</li>
+    <li>Run <code>ftesurf.bat</code>. The engine takes its game folder from the working directory rather than from the .exe's location, and the batch file sets it &mdash; a shortcut pointing straight at <code>ftesurf64.exe</code> from elsewhere stops at a mod list.</li>
     <li>If the map browser is empty, or a mount says <span class="dimtext">not found</span>, type <code>fs_steamlibs</code> in the console. It prints where the engine looked and how each mount resolved. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code> then <code>fs_restart</code>.</li>
   </ol>
 
