@@ -40,11 +40,32 @@ passed.  A 45 GB copy onto a disk that had 58 GB free is the kind of thing that
 should be looked at once by a human before it runs, and re-running the preview
 costs nothing.
 
-Idempotent: it compares both sides every run and copies only what is absent, so
-it is safe to re-run after an interrupted transfer.  Comparison is
-case-insensitive, because the library contains at least one map whose file is
-capitalised (Bhop_Mukiology) and the Pi's filesystem is case-sensitive while
-Windows' is not.
+Idempotent: it compares both sides every run and copies what is absent OR a
+different size, so it is safe to re-run after an interrupted transfer.
+Comparison is case-insensitive, because the library contains at least one map
+whose file is capitalised (Bhop_Mukiology) and the Pi's filesystem is
+case-sensitive while Windows' is not.
+
+WHY SIZE AND NOT JUST PRESENCE -- this was a live bug, measured 2026-09-14.
+Until then this tool compared NAMES.  That makes it idempotent by presence, so
+a map already on the Pi under the right name was never looked at again however
+wrong its bytes were, and the Pi had maps predating this tool.  Result: 323 of
+1312 BSPs on the server were a DIFFERENT BUILD from the one the client loads --
+same name, different geometry.  surf_kitsune is the worked example: the Pi held
+the CS:S build (4,418,529 bytes, md5 ab1a0012) while the client loads Momentum's
+recompile (3,952,402, fbb9eb7c), and `pm_dettest` read mapcrc 9f259c44 against
+the client's f7871fad, with the Patch 318 bevel census counting 1244 brushes on
+one side and 1235 on the other.  A player on such a map is predicting against
+different walls from the ones the server is sweeping, and QC build 73's TF_NOMAP
+correctly demotes the run -- silently, on a quarter of the library.
+
+So the comparison has to be over CONTENT, and size is the cheap proxy: it costs
+one `find -printf` on each side and no reads.  It is a proxy, not a proof -- two
+builds can coincide in length -- but a sample of 12 same-size pairs hashed
+identical on both machines, and the real check is the one that matters anyway:
+mapcrc agreement between a client and the server, which is what TF_NOMAP reports
+per run.  Reach for hashes here only if a same-size pair is ever caught
+differing; hashing 45 GB on a NanoPi is not free.
 """
 
 import argparse
@@ -84,8 +105,8 @@ def ssh_cmd(host, remote, timeout=60):
 
 
 def local_inventory(mapsdir):
-    """-> ({name: size}, {names with a zone file})"""
-    bsps, zones = {}, set()
+    """-> ({name: size}, {name: size} for maps with a zone file)"""
+    bsps, zones = {}, {}
     for f in os.listdir(mapsdir):
         if f.lower().endswith(".bsp"):
             p = os.path.join(mapsdir, f)
@@ -93,24 +114,47 @@ def local_inventory(mapsdir):
                 bsps[f[:-4]] = os.path.getsize(p)
     zdir = os.path.join(mapsdir, "zones", "online")
     if os.path.isdir(zdir):
-        zones = {f[:-5] for f in os.listdir(zdir) if f.lower().endswith(".json")}
+        for f in os.listdir(zdir):
+            if f.lower().endswith(".json"):
+                p = os.path.join(zdir, f)
+                if os.path.isfile(p):
+                    zones[f[:-5]] = os.path.getsize(p)
     return bsps, zones
+
+
+def _sized(part):
+    """'<size> <name>' lines -> {name: size}.  Split from the RIGHT is wrong
+    here and rsplit is wrong too: sizes come first precisely because map names
+    are the half that could contain a space."""
+    out = {}
+    for l in part.splitlines():
+        l = l.strip()
+        if not l:
+            continue
+        size, _, name = l.partition(" ")
+        if size.isdigit() and name:
+            out[name] = int(size)
+    return out
 
 
 def remote_inventory(host, maps):
     """One ssh round trip for both lists, and the free space, so a preview is
-    one handshake rather than three."""
+    one handshake rather than three.
+
+    Returns SIZES, not just names -- see the --- drift note in the module
+    docstring.  `find -printf` puts the size first so the name can be taken
+    verbatim as the remainder of the line."""
     q = shlex.quote(maps)
     out = ssh_cmd(host,
-                  "find %s -maxdepth 1 -name '*.bsp' -printf '%%f\\n' 2>/dev/null | sed 's/\\.bsp$//'; "
+                  "find %s -maxdepth 1 -name '*.bsp' -printf '%%s %%f\\n' 2>/dev/null | sed 's/\\.bsp$//'; "
                   "echo '---ZONES---'; "
-                  "ls %s/zones/online/*.json 2>/dev/null | xargs -r -n1 basename | sed 's/\\.json$//'; "
+                  "find %s/zones/online -maxdepth 1 -name '*.json' -printf '%%s %%f\\n' 2>/dev/null | sed 's/\\.json$//'; "
                   "echo '---FREE---'; "
                   "df -B1 --output=avail %s | tail -1" % (q, q, q))
     bsp_part, _, rest = out.partition("---ZONES---")
     zone_part, _, free_part = rest.partition("---FREE---")
-    bsps = {l.strip() for l in bsp_part.splitlines() if l.strip()}
-    zones = {l.strip() for l in zone_part.splitlines() if l.strip()}
+    bsps = _sized(bsp_part)
+    zones = _sized(zone_part)
     free = 0
     for l in free_part.splitlines():
         if l.strip().isdigit():
@@ -151,18 +195,30 @@ def main():
         with open(args.only) as fh:
             want &= {l.strip() for l in fh if l.strip()}
 
-    have = {b.lower() for b in rbsps}
-    hz = {z.lower() for z in rzones}
-    todo = sorted(m for m in want if m.lower() not in have)
-    ztodo = sorted(m for m in want & zones if m.lower() not in hz)
+    # Case-insensitive, because Bhop_Mukiology is capitalised and the Pi's
+    # filesystem is case-sensitive while Windows' is not.
+    have = {b.lower(): s for b, s in rbsps.items()}
+    hz = {z.lower(): s for z, s in rzones.items()}
+
+    missing = sorted(m for m in want if m.lower() not in have)
+    stale = sorted(m for m in want
+                   if m.lower() in have and have[m.lower()] != bsps[m])
+    todo = sorted(missing + stale)
+    zmissing = sorted(m for m in want & set(zones) if m.lower() not in hz)
+    zstale = sorted(m for m in want & set(zones)
+                    if m.lower() in hz and hz[m.lower()] != zones[m])
+    ztodo = sorted(zmissing + zstale)
     need = sum(bsps[m] for m in todo)
 
     print("\nto copy: %d bsp (%.2f GB), %d zone" % (len(todo), need / 2**30, len(ztodo)))
+    print("   bsp : %d absent, %d present but DIFFERENT SIZE" % (len(missing), len(stale)))
+    print("   zone: %d absent, %d present but DIFFERENT SIZE" % (len(zmissing), len(zstale)))
     if not todo and not ztodo:
         print("nothing to do -- the Pi already has everything selected.")
         return
     for m in todo[:15]:
-        print("   %8.1f MB  %s" % (bsps[m] / 2**20, m))
+        tag = "replace" if m in stale else "new"
+        print("   %8.1f MB  %-7s %s" % (bsps[m] / 2**20, tag, m))
     if len(todo) > 15:
         print("   ... and %d more" % (len(todo) - 15))
 
@@ -178,24 +234,37 @@ def main():
     # scp is run with the maps dir as cwd and relative filenames, so no Windows
     # path with a drive letter is ever handed to scp, whose argument parser
     # would read "C:" as a hostname.
+    #
+    # EVERY BATCH LANDS IN A STAGING DIR AND IS THEN `mv`d INTO PLACE, and that
+    # is not tidiness.  Before the size comparison above this tool only ever
+    # wrote files that were ABSENT, so it could not disturb a running server.
+    # Now that it replaces files, it can overwrite a BSP a live lobby is in the
+    # middle of loading -- a truncate-then-write under a reader.  A rename on
+    # the same filesystem is atomic and leaves the old inode alive for anyone
+    # still holding it, which is the same rule the plugin .so install follows.
+    # The cost is one extra ssh per batch and `need` bytes of transient space.
     sent = 0
+    stage = "%s/.incoming" % args.maps
     for kind, names, sub, ext in (("bsp", todo, "", ".bsp"),
                                   ("zone", ztodo, "zones/online", ".json")):
         if not names:
             continue
         cwd = os.path.join(args.momentum, *([sub] if sub else []))
-        dest = "%s:%s/%s" % (args.host, args.maps, sub) if sub else "%s:%s/" % (args.host, args.maps)
-        if sub:
-            ssh_cmd(args.host, "mkdir -p %s" % shlex.quote("%s/%s" % (args.maps, sub)))
+        final = "%s/%s" % (args.maps, sub) if sub else args.maps
+        ssh_cmd(args.host, "mkdir -p %s %s" % (shlex.quote(stage), shlex.quote(final)))
         for i in range(0, len(names), BATCH):
             chunk = [n + ext for n in names[i:i + BATCH]]
             rc, out = sh(["scp", "-q", "-o", "ConnectTimeout=10",
-                          "-o", "BatchMode=yes"] + chunk + [dest], cwd=cwd)
+                          "-o", "BatchMode=yes"] + chunk + ["%s:%s/" % (args.host, stage)],
+                         cwd=cwd)
             if rc != 0:
                 print("scp failed on %s batch %d:\n%s" % (kind, i // BATCH, out))
                 raise SystemExit(1)
+            # mv -f rather than mv: the destination usually exists now.
+            ssh_cmd(args.host, "mv -f %s/* %s/" % (shlex.quote(stage), shlex.quote(final)))
             sent += len(chunk)
             print("  %s %d/%d" % (kind, min(i + BATCH, len(names)), len(names)))
+    ssh_cmd(args.host, "rmdir %s 2>/dev/null || true" % shlex.quote(stage))
 
     rb, rz, free2 = remote_inventory(args.host, args.maps)
     print("\ndone: %d files sent. pi now %d bsp, %d zone, %.1f GB free"
