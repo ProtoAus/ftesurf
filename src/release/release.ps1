@@ -858,7 +858,11 @@ if (-not $SkipSite) {
     # that never recorded provenance are indistinguishable from outside, and
     # anyone diffing the two receipts should see a DECLARED redaction rather
     # than two provenance documents that silently disagree.
-    $pubReceipt = $receipt.Clone()
+    # NOT $receipt.Clone(): OrderedDictionary implements ICloneable EXPLICITLY, so
+    # the method is invisible to PowerShell's member lookup and the call throws at
+    # run time -- caught by -DryRun, which is what -DryRun is for.
+    $pubReceipt = [ordered]@{}
+    foreach ($k in $receipt.Keys) { $pubReceipt[$k] = $receipt[$k] }
     $pubReceipt.tool = [ordered]@{ script = 'src/release/release.ps1'; host = '(withheld)' }
     $pubReceiptJson = ($pubReceipt | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
     if ($pubReceiptJson -match [regex]::Escape($env:COMPUTERNAME)) { Fail 'the published receipt still names this machine' }

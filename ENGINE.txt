@@ -13,17 +13,20 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   d097595a95d0ef13217de3ea891023cf3d976817
+commit   b7a332c2bd9821f0c4dd4764442166f8af1f9ecd
 tag      patch-266
-patch    322
+patch    323
 qcbuild  73
 date     2026-09-14
 
-# NOTE: `patch` is 273 and `commit` is still patch 266's SHA, and that is not an
-# oversight -- everything from 267 up is APPLIED AND BUILT in the working tree
-# but NOT YET COMMITTED, so none of them can be pinned yet.  `build.ps1 -Engine`
-# will warn that HEAD does not match; that warning is correct and stops
-# mattering the moment they are committed and this SHA is bumped with them.
+# NOTE, CORRECTED 2026-09-14: the long-standing caveat here -- "`commit` is still
+# patch 266's SHA because everything from 267 up is applied in the working tree
+# but NOT YET COMMITTED" -- is FINALLY OBSOLETE.  Patches 267-323 are committed
+# on `engine-patches`, and `commit` above now pins the real SHA rather than the
+# last tag's.  `tag` is still patch-266 because no newer tag has been cut;
+# `git describe --tags` reads patch-266-N-g<sha>.  If `build.ps1 -Engine` warns
+# that HEAD does not match this file again, it means a NEW uncommitted patch is
+# in the tree -- which is now information rather than noise.
 #
 #   267  cfg/map_<mapname>.cfg, the per-map ruleset layer in
 #        engine/server/sv_phys.c.  QC build 47 NEEDS it: the 80 cfg/map_*.cfg
