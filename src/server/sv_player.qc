@@ -271,6 +271,18 @@ void() ClientConnect =
 	*/
 	SV_AmbientResend(self);
 
+	/*
+	  Build 78.  The engine recycles edict numbers, so this slot may still be
+	  holding the LAST player's input-profile report -- and the direction that
+	  matters is the cheap one: inheriting a clean report makes the silence rule
+	  pass and ranks a run nobody checked.  A new player has told us nothing.
+
+	  Before Lobby_ClientConnect only because nothing here depends on the order;
+	  it is the same act as the SV_TouchForget call in ClientDisconnect, which
+	  carries the long version of this argument.
+	*/
+	SV_ProfileForget(self);
+
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
 	Lobby_ClientConnect(self);
@@ -298,6 +310,12 @@ void() ClientDisconnect =
 	  consumed, for the rest of the map, in silence.  See SV_TouchForget.
 	*/
 	SV_TouchForget(self);
+
+	// Build 78, and the same sentence one field along: the input-profile report
+	// is keyed on this edict too.  ClientConnect is the authoritative reset --
+	// this end keeps an idle slot honest to anything that inspects it in
+	// between, and covers a teardown that never reaches a connect.
+	SV_ProfileForget(self);
 };
 
 void() ClientKill =

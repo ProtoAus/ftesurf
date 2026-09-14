@@ -493,6 +493,36 @@ void() Rec_ProfileReport =
 	rec_rp_prof_accel  = acc;
 	rec_rp_prof_grant  = grant;
 
+	/*
+	  BUILD 78: THE SAME NUMBERS DOWN A CHANNEL THE CONSOLE CANNOT WRITE, AND
+	  THIS IS THE ONE THE SERVER DECIDES ON.
+
+	  sendevent puts these on the wire as clcfte_qcrequest and the server
+	  dispatches them into CSEv_inprof_ffffff; `setinfo` is a stringcmd, which is
+	  the same door the player's own console opens.  So the key below can be
+	  overwritten by one typed line and this cannot.  The reasoning, and why a
+	  missing event is now a fault rather than an unknown, is the sendevent block
+	  in sh_defs.qc.
+
+	  SIX ARGUMENTS IS THE BUILTIN'S LIMIT, so the version is not sent: it is
+	  carried by the function NAME the engine composes from the argument types.
+	  A seventh field would look for CSEv_inprof_fffffff, which an older server
+	  does not have, which arrives as silence, which faults.  The version check
+	  is the dispatch.
+
+	  IT IS FIRST, before the setinfo, on the ordering argument that cost build
+	  72 a comment: the event is what gets read, so it should be the one with the
+	  head start.  They can still be observed out of order -- the key goes
+	  through the command buffer -- and nothing depends on them agreeing.
+
+	  SENT FROM INSIDE THE CACHE, i.e. only when something changed, exactly like
+	  the key.  A per-frame event would be a reliable message per frame per
+	  player, which is a bandwidth bug, not a safety margin -- and the server
+	  holds the last report until the client replaces it or the edict is
+	  forgotten, so re-sending an unchanged one buys nothing.
+	*/
+	sendevent("inprof", "ffffff", have, raw, filt, acc, bad, grant);
+
 	localcmd(sprintf("setinfo inprof \"%g %g %g %g %g %g %g\"\n",
 	                 IP_VERSION, have, raw, filt, acc, bad, grant));
 };
@@ -1405,6 +1435,17 @@ void() Rec_ViewInit =
 	// no real answer can equal, or the first frame skips the send that would
 	// have repopulated it.  See Rec_HidReport.
 	rec_rp_hidsent = -1;
+
+	/*
+	  BUILD 78: EXPLICIT, AND NO LONGER MERELY TIDY.  A fresh VM zeroes it
+	  anyway, so this line changed no behaviour the day it was written -- but
+	  from build 78 the server FAULTS a client it has heard nothing from, and
+	  that makes "the first frame after a map load always sends" a correctness
+	  property rather than an optimisation detail.  Stated at the reset rather
+	  than left to the initialiser, beside rec_rp_hidsent, which learned the same
+	  lesson one field earlier.  See Rec_ProfileReport.
+	*/
+	rec_rp_profseen = FALSE;
 
 	// -1 rather than 0: the stage counter is per-connection and never resets, so
 	// a client joining a session in progress must SEED from whatever it currently

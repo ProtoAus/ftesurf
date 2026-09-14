@@ -1275,6 +1275,32 @@ float() SV_RecEnabled =
 .float  run_t_pbad;
 
 /*
+  WHAT THIS CLIENT'S CSQC SAID, OVER THE CHANNEL ITS CONSOLE CANNOT WRITE.
+  Build 78.  The why is the sendevent block in sh_defs.qc; this is the storage.
+
+  run_t_pev IS THE ONE THAT MATTERS AND IT IS A PRESENCE FLAG, NOT A VALUE.  0
+  means this client has never reported at all -- an older CSQC, `cl_nocsqc 1`,
+  or a player who has not yet rendered a frame -- and SV_ProfileBroken turns
+  that into TF_NOPROFILE rather than into "unknown".  Every other field here is
+  meaningless while it is 0 and none of them may be read without checking it.
+
+  THEY ARE CLEARED PER PLAYER, NOT PER RUN, and that is deliberate: they
+  describe the CLIENT, which outlives any one attempt, so SV_TimerArm must not
+  touch them.  What does touch them is SV_ProfileForget, from both ends of a
+  connection -- the engine recycles edict numbers, and a slot handed to a new
+  player still holding the last one's clean profile would rank a run nobody had
+  checked.  That is SV_TouchForget's bug exactly, one layer up; see the essay
+  there.
+*/
+.float  run_t_pev;        // 0 = never reported; else the grammar version reported in
+.float  run_t_pevhave;
+.float  run_t_pevraw;
+.float  run_t_pevfilt;
+.float  run_t_pevacc;
+.float  run_t_pevbad;
+.float  run_t_pevgrant;
+
+/*
   The worst class this attempt has been TOLD it is.  Build 44.
 
   A high-water mark and not a mirror of the flags: SV_SaveApplyState restores
@@ -5391,6 +5417,118 @@ void(entity e) SV_TimerJournal =
 };
 
 /*
+  THE CLIENT'S CSQC REPORTING ITS INPUT STACK.  Build 78.
+
+  THE NAME IS THE INTERFACE AND NOTHING CHECKS IT.  The engine builds
+  "CSEv_" + the name CSQC passed + one letter per argument (sv_user.c:8613-8621)
+  and looks that string up; a mismatch prints `qcrequest "..." not supported` to
+  that client and returns.  So this function's SPELLING is load-bearing in a way
+  no compiler on either side can verify, and the partner is the sendevent() call
+  in cl_replay.qc's Rec_ProfileReport.  Change one and you must change the other.
+
+  SIX FLOATS IS THE CEILING, NOT A CHOICE -- sendevent takes six arguments -- and
+  the grammar has seven fields.  The version is the one left out, because it is
+  already carried by the signature: a seventh field would ship as
+  CSEv_inprof_fffffff, a different function name, which an older server simply
+  does not have and answers as silence.  That is the version check, for free and
+  with no way to get it wrong.  If the payload ever needs more than six, pack
+  them into vectors ("vvf" is nine) rather than dropping a field.
+
+  NO VALIDATION, DELIBERATELY.  Everything here is compared and nothing is
+  indexed, so a hostile value can only make FS_ProfileBroken say TRUE, which is
+  the demoting direction.  A client that can reach this function with a lie in
+  it has already patched its engine or its protocol, which is T4 and outside
+  what this layer claims.
+
+  `self` IS THE PLAYER: the engine assigns it before the call (sv_user.c:8644).
+*/
+void(float have, float raw, float filt, float acc, float bad, float grant)
+	CSEv_inprof_ffffff =
+{
+	self.run_t_pev      = IP_VERSION;
+	self.run_t_pevhave  = have;
+	self.run_t_pevraw   = raw;
+	self.run_t_pevfilt  = filt;
+	self.run_t_pevacc   = acc;
+	self.run_t_pevbad   = bad;
+	self.run_t_pevgrant = grant;
+};
+
+/*
+  ...and the other half of that, which is the half that is easy to forget.
+
+  THE EDICT OUTLIVES THE PLAYER.  The engine hands slot N to whoever connects
+  next, and a report is a fact about a CLIENT, so without this a new player
+  inherits the last one's profile -- and the direction that matters is the
+  cheap one: they inherit a CLEAN profile, run_t_pev reads non-zero, the silence
+  rule never fires, and a run nobody checked ranks.
+
+  Called from both ends of a connection rather than just one.  ClientConnect is
+  the authoritative reset (a new player has told us nothing yet); ClientDisconnect
+  is belt and braces and keeps an idle slot honest to anything that inspects it
+  in between.  SV_TouchForget is the same act for the same reason on the trigger
+  bits and the two sit together at the call site.
+*/
+void(entity e) SV_ProfileForget =
+{
+	e.run_t_pev      = 0;
+	e.run_t_pevhave  = 0;
+	e.run_t_pevraw   = 0;
+	e.run_t_pevfilt  = 0;
+	e.run_t_pevacc   = 0;
+	e.run_t_pevbad   = 0;
+	e.run_t_pevgrant = 0;
+};
+
+/*
+  WHAT THE USERINFO KEY ALONE WOULD SAY.  Build 78.  DIAGNOSTIC ONLY.
+
+  NOTHING DECIDES ON THIS FUNCTION AND NOTHING MAY.  It exists so `cmd timer`
+  can print what the client's `inprof` key claims BESIDE what its CSQC actually
+  reported, because the two differing is the signature of an attempted forgery
+  and there is nowhere else it would ever be visible.  Build 77 decided on this
+  key; build 78 does not, and the sendevent block in sh_defs.qc says why.
+
+  IT IS THE SNAPSHOT HALF ONLY.  The `bad` counter is deliberately not read
+  here: run_t_pbad is latched from the EVENT now, and differencing a key's
+  counter against an event's latch would be comparing two channels that are
+  allowed to disagree -- the key is one console line away from saying anything.
+
+  The version/field-count handling is unchanged and still goes through
+  FS_ProfileFields, so a v1 key still reads for the four facts it carries.  That
+  is not vestigial: this is the reader that tells you what an old client, or a
+  forger, is putting on the wire.
+*/
+float(entity e) SV_ProfileKeyBroken =
+{
+	local string s;
+	local float n, nf, grant;
+
+	s = infokey(e, "inprof");
+	if (s == "")
+		return FALSE;
+
+	n = tokenize(s);
+	if (n < 1)
+		return FALSE;
+	nf = FS_ProfileFields(stof(argv(0)));
+	if (nf == 0)
+		return FALSE;
+	if (n < nf)
+		return FALSE;
+
+	// Assigned, never computed: fteqcc evaluates both sides of ?: and argv(6)
+	// on a six-field key is "", whose stof is 0 -- the FAULT value, not the
+	// unknown.  See the build-77 note this was lifted from.
+	grant = -1;
+	if (nf >= 7)
+		grant = stof(argv(6));
+
+	return FS_ProfileBroken(stof(argv(1)), stof(argv(2)),
+	                        stof(argv(3)), stof(argv(4)), grant);
+};
+
+/*
   CAN THIS RUN'S AIM EVIDENCE BE CHECKED AT ALL?  Build 72.  TF_NOPROFILE.
 
   A PURE PREDICATE, ON THE SV_RulesetBroken PRECEDENT (p313), and for the same
@@ -5422,46 +5560,33 @@ void(entity e) SV_TimerJournal =
 */
 float(entity e) SV_ProfileBroken =
 {
-	local string s;
-	local float n, nf, grant;
-
-	s = infokey(e, "inprof");
-	if (s == "")
-		return FALSE;
-
 	/*
-	  BUILD 77: THE VERSION SELECTS A FIELD COUNT INSTEAD OF GATING THE KEY.
-	  FS_ProfileFields answers 0 for a grammar this build does not know, which is
-	  the old `!= IP_VERSION` refusal; what it also does is keep reading a v1 key
-	  for the four facts it does carry, because v1 is a strict prefix of v2.  See
-	  the grammar essay in sh_defs.qc -- refusing v1 outright would have stopped
-	  checking m_filter and m_accel for the entire fleet for as long as it takes a
-	  release archive to reach players.
-	*/
-	n = tokenize(s);
-	if (n < 1)
-		return FALSE;
-	nf = FS_ProfileFields(stof(argv(0)));
-	if (nf == 0)
-		return FALSE;
-	if (n < nf)
-		return FALSE;
+	  BUILD 78: THE SOURCE IS THE EVENT, AND SILENCE IS A FAULT.
 
-	/*
-	  THE UNKNOWN IS ASSIGNED AND NEVER COMPUTED, and it is nested ifs rather
-	  than a ternary for a reason this tree has paid for before: fteqcc evaluates
-	  BOTH sides of ?:, and argv(6) on a six-field key is "", whose stof is 0 --
-	  which is not the unknown, it is the FAULT value.  A tidier expression here
-	  would have demoted every client that predates engine Patch 326.
-	*/
-	grant = -1;
-	if (nf >= 7)
-		grant = stof(argv(6));
+	  This replaces a read of the `inprof` userinfo key, and the swap is the
+	  whole of build 78 -- the numbers are the same numbers, but a userinfo key
+	  is one `setinfo` away from saying anything and a qcrequest is not.  The
+	  long version is the sendevent block in sh_defs.qc.
 
-	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here; this
-	// function's whole job is getting the numbers out of the key safely.
-	if (FS_ProfileBroken(stof(argv(1)), stof(argv(2)),
-	                     stof(argv(3)), stof(argv(4)), grant))
+	  THE FOURTH "UNKNOWN" OF THE BUILD-72 LIST BELOW HAS BECOME A FAULT AND THE
+	  OTHER THREE HAVE NOT.  "No key" used to mean unknown, and unknown is
+	  rankable; "no event" means the only witness that cannot be silenced from a
+	  console has not spoken, and that is not the same statement.  `cl_nocsqc 1`
+	  is the reason the difference matters: it is one line, it removes CSQC
+	  entirely, and under the old rule it bought both a rankable run with no
+	  profile AND a rankable run with no journal.
+
+	  The list below still governs everything INSIDE a report -- a client that
+	  speaks but lacks in_rawinput still gets its mask bit honoured, and that is
+	  still every Linux, macOS and SDL player.  Speaking is what is now required;
+	  having every cvar is not.
+	*/
+	if (e.run_t_pev == 0)
+		return TRUE;
+
+	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here.
+	if (FS_ProfileBroken(e.run_t_pevhave, e.run_t_pevraw,
+	                     e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant))
 		return TRUE;
 
 	/*
@@ -5479,7 +5604,7 @@ float(entity e) SV_ProfileBroken =
 	  invent a violation out of the first sample it ever saw.  That is a false
 	  statement about a player, which is the one failure this bit may not have.
 	*/
-	if (e.run_t_pbad >= 0 && stof(argv(5)) != e.run_t_pbad)
+	if (e.run_t_pbad >= 0 && e.run_t_pevbad != e.run_t_pbad)
 		return TRUE;
 
 	return FALSE;
@@ -5506,31 +5631,28 @@ float(entity e) SV_ProfileBroken =
 */
 void(entity e, float atstart) SV_TimerProfile =
 {
-	local string s;
-	local float n, nf;
-
 	if (atstart)
 	{
 		/*
-		  Build 77: version-aware, through the same FS_ProfileFields the predicate
-		  uses.  `bad` is field 5 in BOTH grammars -- the grant was appended after
-		  it, so v1 is a strict prefix -- but the two readers still have to agree
-		  about what a short key means, and two copies of that rule is the
-		  FS_TagName defect.  A key this build cannot parse leaves run_t_pbad at
-		  SV_TimerArm's -1, which is "never sampled" and refuses to compare.
+		  Build 78: latched from the EVENT, for the reason the predicate one
+		  function up gives at length -- the two must read the same channel or
+		  the difference at the finish is between numbers that were never
+		  comparable.  Build 77 parsed the key here and had to run FS_ProfileFields
+		  to do it; the event carries `bad` as an argument, so there is no grammar
+		  to get wrong on this side any more.
+
+		  A CLIENT THAT HAS NOT REPORTED LEAVES run_t_pbad AT SV_TimerArm's -1,
+		  which is "never sampled" and refuses to compare -- unchanged, and still
+		  the point: `bad` counts for the life of the client, so differencing a
+		  real count against a zeroed field would mark a run for something that
+		  happened before it started.  Such a run is already faulted by the
+		  silence rule, so this is belt and braces rather than the live path, but
+		  it must stay correct: TF_NOPROFILE is set once and never cleared, and a
+		  client that starts reporting mid-session would otherwise arrive at its
+		  first finish with a poisoned latch.
 		*/
-		s = infokey(e, "inprof");
-		if (s != "")
-		{
-			n = tokenize(s);
-			if (n >= 1)
-			{
-				nf = FS_ProfileFields(stof(argv(0)));
-				if (nf != 0)
-				if (n >= nf)
-					e.run_t_pbad = stof(argv(5));
-			}
-		}
+		if (e.run_t_pev != 0)
+			e.run_t_pbad = e.run_t_pevbad;
 	}
 
 	if (SV_ProfileBroken(e))
@@ -8600,6 +8722,41 @@ void(entity e) SV_TimerReport =
 	               e.run_t_pbad,
 	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
 	               SV_ProfileBroken(e)));
+	/*
+	  Build 78.  WHAT CSQC SAID, BESIDE WHAT THE KEY SAYS, because from here on
+	  only the first of those decides anything and a reader of the line above
+	  would have no way to know that.
+
+	  `said` 0 is the interesting reading and it is the one that now faults: the
+	  client has never reported over the channel its console cannot write.  When
+	  it is non-zero the six numbers after it are the ones `would` above was
+	  computed from -- so `key` and `ev` disagreeing is an attempted forgery
+	  displayed rather than inferred, and `keywould 0  would 1` is that forgery
+	  failing in one line.
+
+	  THEY ARE ALLOWED TO DISAGREE TRANSIENTLY AND THAT IS NOT A FAULT, which is
+	  why this prints rather than latches.  Both halves leave Rec_ProfileReport in
+	  the same frame, but the key goes out as a console command through the
+	  buffer and the event goes straight onto the netchan, so the server can see
+	  the event first.  A rule keyed on the difference would fire on the ordinary
+	  case.
+	*/
+	/*
+	  TWO LINES AND NOT ONE, AND THE REASON IS A COMPILER WARNING WORTH OBEYING.
+	  One `sprintf` carrying the format plus all eight values is nine parameters;
+	  fteqcc warns at more than eight on a varargs call, and a warning about
+	  argument passing on the one function in this file whose whole job is to
+	  report the truth is not a warning to ship.  Split, each call is well inside
+	  the limit and nothing has to be trusted.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        inprof:  said %g  keywould %g\n",
+	               e.run_t_pev,
+	               SV_ProfileKeyBroken(e)));
+	sprint(e, PRINT_HIGH,
+	       sprintf("        inprof:  ev \"%g %g %g %g %g %g\"\n",
+	               e.run_t_pevhave, e.run_t_pevraw, e.run_t_pevfilt,
+	               e.run_t_pevacc, e.run_t_pevbad, e.run_t_pevgrant));
 	/*
 	  Build 73, engine Patch 321.  BOTH HASHES, not the verdict, because the whole
 	  failure this replaces was a comparison that agreed for the wrong reason.

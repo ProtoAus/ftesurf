@@ -1538,7 +1538,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   Every remaining route requires the player to state something false.  Making a
   false statement cost more than a console line is a DIFFERENT problem -- the key
   is userinfo and CSQC cannot currently tell that the server's copy is not the
-  one it sent -- and it is not solved here.
+  one it sent -- and it is not solved here.  IT IS SOLVED IN BUILD 78, by the
+  next block: the answer was not to defend the key but to stop deciding on it.
 
   TWO VERSIONS ARE ACCEPTED AND THAT IS NOT A RELAXATION OF THE RULE ABOVE.  The
   rule refuses grammars the reader does not KNOW; v1 is one it knows exactly,
@@ -1560,6 +1561,90 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define IPH_FILTER    2   // m_filter exists
 #define IPH_ACCEL     4   // m_accel exists
 #define IPH_GRANT     8   // in_rawmice exists -- engine Patch 326 or later
+
+/*
+  ...AND BUILD 78 TAKES THE DECISION OFF THE KEY ENTIRELY.
+
+  Everything above is true and none of it is undone; what changes is which copy
+  of these numbers the server BELIEVES.  Read the correction three paragraphs up
+  first, because this block is its answer rather than a new feature:
+
+      setinfo inprof "1 7 1 0 0 0"
+
+  is one console line, and after it the grant, the filter and the acceleration
+  fields all say whatever the player typed.  A userinfo key is a thing the
+  PLAYER sets -- `setinfo` is a client command, the server stores what it is
+  told, and CSQC's own write goes out through exactly the same command.  There
+  is no version of this key the client's console cannot also write, so no
+  further field could ever have fixed it.
+
+  THE CHANNEL, NOT THE CONTENT, IS WHAT HAD TO CHANGE.  CSQC also has
+  sendevent(), which the engine puts on the wire as clcfte_qcrequest
+  (pr_csqc.c:3899) and the server dispatches by NAME into SSQC
+  (sv_user.c:8613-8648).  A console can produce clc_stringcmd and nothing else.
+  So a message that arrives as a qcrequest was written by the client's CSQC and
+  by nothing the player can type.
+
+  AND THE CLIENT'S CSQC IS NOT THE PLAYER'S TO EDIT, which is the half that
+  makes the first half worth anything.  The server md4s csprogs.dat at every map
+  load and publishes it as *csprogs (sv_init.c:1245); CSQC_FindMainProgs
+  (pr_csqc.c:7939) refuses to load any csprogs whose bytes do not match and
+  downloads the server's instead (cl_parse.c:1380).  So on a lobby the code that
+  fills in this event is the code the LOBBY shipped, every time, and a player who
+  edits their copy has it rejected by their own unmodified client.
+
+  Together those two facts are the whole patch: forging the profile now costs a
+  patched engine or a patched protocol, which is T4, which IS the stated ceiling
+  of this layer.  The claim the build-77 essay had to withdraw is the claim this
+  block is finally allowed to make.
+
+  SILENCE IS NOW A FAULT, AND THAT IS THE PART WITH A COST.  A client that has
+  sent no event has told us nothing we can act on, so TF_NOPROFILE is set.  The
+  alternative -- fall back to the key when the event is missing -- would have
+  been the whole patch undone by one more console line, because `cl_nocsqc 1` is
+  a real cvar (pr_csqc.c:72) that disables CSQC outright.  That line is a bypass
+  TODAY, and a wider one than the grant: with no CSQC there is no `inprof` at
+  all, which reads as unknown and ranks; and no `rechid` either, which
+  SV_TimerJournal correctly declines to read as "no journal" (it takes a literal
+  "0" only), so the same line also buys a run with no .hid that nothing marks.
+  One rule closes both, because both were the same mistake -- treating "the
+  client never spoke" as "nothing to report" instead of as "nothing to check".
+
+  WHAT THAT COSTS HONEST PLAYERS, stated plainly rather than discovered:
+
+    a client older than build 78 has its runs demoted, because it does not know
+    to send the event.  On a lobby that window is one reconnect long -- the
+    engine force-downloads the server's csprogs, so a CSQC change reaches
+    players at deploy speed and does NOT wait for a release archive, which is
+    the opposite of the b73live skew that shaped the version rule above.  On a
+    listen server it lasts until the player updates, and there it costs them
+    nothing real: TF_NOPROFILE is not a taint class, so PBs still save and the
+    run is still clean -- it is the board's certification it cannot pass, and a
+    listen server could never feed the board anyway.
+
+  IT FAILS LOUD AND IT FAILS SAFE, which is why it is allowed to be this strict.
+  The two ends are joined by a function NAME that no compiler checks --
+  sendevent("inprof", "ffffff", ...) in cl_replay.qc against CSEv_inprof_ffffff
+  in sv_timer.qc -- so a typo in either would be invisible to a build.  It is
+  not invisible to a run: every client would fall to the silence rule and every
+  run would read noprofile 1, while the engine prints `qcrequest "..." not
+  supported` to each player.  The failure mode of this pairing is a fleet that
+  ranks nothing, never a fleet that ranks everything.
+
+  THE KEY STAYS, AND IS NOW DIAGNOSTIC ONLY.  It is still written, still parsed,
+  still printed by `cmd timer` -- but nothing decides on it.  Keeping it is what
+  makes an attempted forgery visible: the key says one thing, the event says
+  another, and the difference is on screen.  Deleting it would have thrown that
+  away to save a sprintf.  See the parse site in SV_ProfileBroken, which says so
+  again at the point a later reader would be tempted to believe it.
+
+  NO CONSTANT IS DEFINED FOR ANY OF THIS AND THAT IS DELIBERATE.  The obvious
+  one -- the event's field count -- would have no consumer: sendevent's type
+  string must be a literal ("ffffff") and the server side is a function NAME,
+  so neither end can be built from a #define.  A named constant nothing reads is
+  the thing this tree keeps finding at the bottom of its worst bugs, so the
+  pairing is documented here and enforced by the failure mode instead.
+*/
 
 /*
   HOW MANY FIELDS A KEY OF THIS VERSION CARRIES.  0 for one this build does not
