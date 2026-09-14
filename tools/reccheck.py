@@ -113,7 +113,18 @@ HEAD_V3 = HEAD_V2 | {"owner", "runid"}
 #           know which bytes to re-simulate against.  Absent means unknown -- a
 #           pre-321 server, or a loader that computes no checksum -- and is not a
 #           fault: every file written before build 73 lacks it.
-HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc"}
+#   movetickrate
+#           the tick length the MOVER divided by, from engine Patch 325 / build
+#           74, written beside `tickrate` -- which is the game's cached
+#           cvar("pm_ticrate").  They should be identical, and the reason to
+#           store both is that nothing has ever checked.  Every consumer of a
+#           recording turns ticks into seconds by multiplying by the rate, so if
+#           the two ever disagree, every time in the file is wrong by their ratio
+#           and nothing in the file says so.  Build 64 shipped that class of bug
+#           once already, reading bhop maps at a 0.015 constant when they run at
+#           0.01.  Checked below.  Absent, or 0, means no engine value -- a
+#           pre-325 server, or the Source mover off -- and is not a fault.
+HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc", "movetickrate"}
 
 # shared/sh_defs.qc.  Only the two a stored run may assert: TF_RECORDING and
 # TF_FROZEN are masked out by SV_RecClose, because neither is a fact about the
@@ -320,6 +331,18 @@ def check_rec(path, verbose=False):
     if tickrate <= 0:
         r.fault("tickrate %r is not positive" % head.get("tickrate"))
         tickrate = 0.015
+
+    # Build 74: the game's cached rate against the mover's own.  A FAULT and not
+    # a note, because every time in this file is a tick count that some reader
+    # will multiply by one of these two -- so a disagreement is not a cosmetic
+    # discrepancy, it is every number in the file being wrong by that ratio.
+    # Absent or zero means no engine value (pre-325, or the Source mover off),
+    # which is unknown rather than wrong and must not fault: the whole library of
+    # existing recordings has no such line.
+    mtr = float(head.get("movetickrate", 0) or 0)
+    if mtr > 0 and abs(mtr - tickrate) > 1e-6:
+        r.fault("movetickrate %g disagrees with tickrate %g -- every time in "
+                "this file is out by a factor of %.6f" % (mtr, tickrate, mtr / tickrate))
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)

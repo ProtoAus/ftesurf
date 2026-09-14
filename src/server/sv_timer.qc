@@ -718,6 +718,55 @@ float rec_retry_armed;
 .float  run_boardcount;
 .vector run_rampnormal;
 
+/*
+  BUILD 74 / ENGINE PATCH 325 -- THE CLOCK THE RUN IS ACTUALLY MADE OF.
+
+  Written by the engine once per usercmd, on the same optional-field route as the
+  five above: declare them and they are filled, do not and the engine writes
+  nothing.
+
+  WHY THEY EXIST.  SV_TimerTicks has always been
+  floor((time - run_t_start)/run_t_tick + 0.5), and `time` in a think hook is
+  sv.time, which the engine advances ONCE PER SERVER FRAME.  So every usercmd
+  inside one frame reads the same clock.  Worse than that: PlayerPostThink is
+  called from SV_PostRunCmd, which sits OUTSIDE the engine's per-usercmd loop, so
+  everything in this file runs once per PACKET.  The stored time is therefore a
+  function of when packets arrived and where the server's frame loop landed --
+  neither of which is in the input stream, so a run time cannot be reproduced by
+  re-simulating the usercmds that produced it.  That is the whole obstacle to a
+  verifier, and it is what these measure.
+
+  run_movetick is cumulative PER MAP, not per run and not per connection -- the
+  engine resets it in SV_SpawnServer, because it is published as a QC float and a
+  float is an exact integer only to 2^24 (69.9 h at 0.015).  Latch it and take a
+  difference; never read it as an absolute.
+
+  run_movetickrate IS NOT `run_t_tick` AND MUST NOT BE ASSUMED EQUAL TO IT.  That
+  is the entire reason it is published.  run_t_tick is this file's cached
+  cvar("pm_ticrate") with a compile-time fallback; run_movetickrate is the number
+  the mover divided by.  While the clock is seconds a disagreement costs
+  rounding; the day the stored quantity becomes TICKS it multiplies every
+  recorded time by their ratio.  This tree shipped that bug once already in the
+  other direction -- build 64, bhop maps running 0.01 read against a 0.015
+  constant -- so the two are compared rather than conflated.  See SV_TickReport.
+
+  run_movecarry is the mover's sub-tick remainder, in seconds.  It is what lets
+  an elapsed time stay exact across a tick boundary; without it a counted clock
+  can only ever answer in whole ticks.  NOT USED YET -- it is here because the
+  save-state resume and the recorder's timestamps will both need it, and because
+  a field the engine publishes and QC ignores costs nothing while a field the
+  engine does not publish costs an engine release.
+
+  NOTHING HERE RANKS ANYTHING IN BUILD 74.  This build measures the gap between
+  the two clocks and reports it; it does not change one stored number.  That is
+  deliberate: the gap has never been measured on a real run, and every decision
+  that follows -- what the tolerance is, whether a stalled stream is a taint,
+  whether the migration is worth its cost -- needs the measurement first.
+*/
+.float  run_movetick;            // cumulative mover ticks this map, per player
+.float  run_movetickrate;        // the tick length the MOVER used, seconds
+.float  run_movecarry;           // sub-tick remainder, seconds
+
 .float  run_t_state;             // TS_*
 .float  run_t_track;
 .float  run_t_startseg;          // the 0-based SEGMENT the run began at
@@ -755,6 +804,30 @@ float rec_retry_armed;
 .float  run_t_segs;              // segments in this track
 .float  run_t_start;             // sv time the timer started
 .float  run_t_ticks;
+/*
+  BUILD 74: the counted clock's latch, and the two fields that make it readable.
+
+  -1 IS "NEVER LATCHED" and refuses to report, on run_t_rbreach's precedent and
+  for exactly its reason: a run whose start took no latch would otherwise
+  difference against a zero and invent a number.  A zero cannot mean this,
+  because zero is a legal counter value -- it is what the first run after a map
+  load starts at.  SV_TimerArm sets it to -1; SV_TimerStart latches the real one.
+
+  run_t_frzticks is the ticks that elapsed while the clock was held.  The mover
+  runs its ticks for a MOVETYPE_NONE player exactly as fast as for a moving one
+  -- PM_PlayerMove dispatches to the Source mover BEFORE any pm_type test, and
+  the test that recognises the pin lives INSIDE PMSrc_Tick, after the tick has
+  been spent -- so a counted clock does not get the freeze for free the way the
+  origin model did.  Accumulated rather than incremented: a packet can carry more
+  than one usercmd and therefore more than one tick, so this takes the DELTA of
+  the counter, which is right whatever the packet contained.
+
+  run_t_lastmt is the previous packet's counter, which is what that delta is
+  taken against.  It has no meaning outside SV_TimerFreezeFrame.
+*/
+.float  run_t_starttick;         // run_movetick at the start; -1 = never latched
+.float  run_t_frzticks;          // ticks elapsed while frozen
+.float  run_t_lastmt;            // previous packet's run_movetick
 .float  run_t_split;
 .float  run_t_delta;
 .float  run_t_pb;
@@ -2068,6 +2141,24 @@ void(entity e) SV_RecOpen =
 	*/
 	SV_RecPut(e, sprintf("leg %g", FS_LegOf(e.run_t_startseg, e.run_t_stagerun)));
 	SV_RecPut(e, sprintf("tickrate %g", run_t_tick));
+	/*
+	  BUILD 74: THE RATE THE MOVER ACTUALLY USED, beside the rate this file
+	  believes.  Engine Patch 325.  ADDITIVE, by the header's own rule above.
+
+	  `tickrate` on the line above is cvar("pm_ticrate") as cached by
+	  SV_TimerMapInit.  `movetickrate` is the number PMSrc_PlayerMove divided the
+	  command's msec by.  They SHOULD be identical and the whole reason to write
+	  both is that nothing has ever checked: a recording carries a tick count and
+	  a rate, and every reader -- reccheck.py, the replay, surfd's millis -- turns
+	  one into the other by multiplying.  If the two rates ever diverge, every
+	  time in the file is wrong by their ratio and nothing in the file says so.
+	  Build 64 shipped that bug in the other direction, reading bhop maps at a
+	  0.015 constant when they run at 0.01.  Two lines make it falsifiable.
+
+	  Zero means "no engine value" -- an engine older than Patch 325, or the
+	  Source mover off -- and readers must treat it as absent, not as a rate.
+	*/
+	SV_RecPut(e, sprintf("movetickrate %g", e.run_movetickrate));
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	SV_RecPut(e, sprintf("runid %s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"), e.run_t_slot));
 
@@ -4368,6 +4459,32 @@ void(entity e) SV_TimerThaw =
 */
 void(entity e) SV_TimerFreezeFrame =
 {
+	/*
+	  BUILD 74, and it must run on EVERY call, above the branch, because the
+	  counted clock needs the delta whether the freeze is on or off.
+
+	  THE FREEZE IS NOT FREE ON A COUNTED CLOCK, which is the one place the two
+	  models genuinely differ rather than merely being spelt differently.  The
+	  paragraph above proves the sampled clock's off-by-ones cancel because the
+	  clock is an ORIGIN and stopping it is re-deriving that origin.  A counter
+	  has no origin to re-derive: the mover keeps running ticks for a pinned
+	  player -- PM_PlayerMove reaches the Source mover BEFORE any pm_type test,
+	  and the test that recognises MOVETYPE_NONE is inside PMSrc_Tick, after the
+	  tick is already spent -- so the ticks of a save-lock hold are counted unless
+	  something subtracts them.  This is that something.
+
+	  A DELTA, NOT AN INCREMENT.  Everything in this file runs once per PACKET
+	  (PlayerPostThink is called from the engine's SV_PostRunCmd, which sits
+	  outside its per-usercmd loop), so one call can cover several usercmds and
+	  therefore several ticks.  `+ 1` would undercount a hold on a lagging client
+	  and the error would be invisible.  Differencing the counter is right
+	  whatever the packet contained, which is the same argument the delta form
+	  wins on everywhere else in this file.
+	*/
+	if (e.run_t_frzon && e.run_t_starttick >= 0)
+		e.run_t_frzticks = e.run_t_frzticks + (e.run_movetick - e.run_t_lastmt);
+	e.run_t_lastmt = e.run_movetick;
+
 	if (e.run_t_freeze && e.run_t_state == TS_RUNNING)
 	{
 		if (!e.run_t_frzon)
@@ -5779,6 +5896,13 @@ void(entity e, float z) SV_TimerArm =
 	// for the life of the client, so 0 is both a legitimate value and the wrong
 	// default.  See run_t_pbad and SV_ProfileBroken.
 	e.run_t_pbad        = -1;
+	// Build 74: -1 for the third time, and the reason is the sharpest of the
+	// three -- run_movetick is reset PER MAP, so 0 is not merely a legitimate
+	// value, it is the value every counter holds for the first seconds of every
+	// map.  A run armed there and differenced against a zeroed latch would read
+	// as having started at the map load.  See run_t_starttick and SV_TickReport.
+	e.run_t_starttick   = -1;
+	e.run_t_frzticks    = 0;
 
 	e.run_t_cpmax    = 0;
 	e.run_t_cpn      = 0;
@@ -5923,11 +6047,116 @@ void(entity e, float z) SV_TimerArm =
 		e.run_t_flags = e.run_t_flags | TF_HAVEPB;
 };
 
+/*
+  THE SAMPLED CLOCK.  Build 74 leaves it exactly as it was, and says here what it
+  is, because until now the file did not.
+
+  `time` is sv.time, which the engine advances ONCE PER SERVER FRAME -- so every
+  usercmd inside a frame reads the same value, and since PlayerPostThink is
+  called from SV_PostRunCmd (outside the engine's per-usercmd loop) this whole
+  file runs once per PACKET anyway.  The number this returns is therefore a
+  function of packet arrival and server frame pacing as well as of the player's
+  inputs, which is why re-simulating a usercmd stream cannot reproduce it.
+
+  Two comments elsewhere in this file overstate this and are corrected in build
+  74 rather than left: run_t_stopat's essay calls this "the usercmd's own clock,
+  so it is exact" -- it is sv.time, and it is exact only against the alternative
+  that paragraph is rejecting (a `say` hook, whose `time` is physicstime and
+  staler still); and SV_TimerFrame says it "is the only hook whose `time` is the
+  usercmd's", which is true only in that same relative sense.
+
+  STILL THE RANKING CLOCK IN BUILD 74.  SV_TickCounted below is measured beside
+  it and ranks nothing.  Changing which one ranks moves every stored time by up
+  to a tick and is a migration -- see SV_TickReport.
+*/
 float(entity e) SV_TimerTicks =
 {
 	if (run_t_tick <= 0)
 		return 0;
 	return floor((time - e.run_t_start) / run_t_tick + 0.5);
+};
+
+/*
+  THE COUNTED CLOCK.  Ticks of simulation this run actually consumed, excluding
+  any spent with the clock held.
+
+  -1 means "this run never latched", which is not the same as 0 and must never be
+  reported as a time.  The counter is reset per MAP, so 0 is a real value -- it
+  is what every player's counter reads for the first seconds after a map load --
+  and that is exactly why the sentinel is -1.  See run_t_starttick.
+
+  WHAT MAKES THIS THE HONEST UNIT.  It is what the mover did, so it is a function
+  of the usercmd stream and nothing else: it does not move when a packet arrives
+  late, when two commands land in one frame, or when the server hitches.  It is
+  also invariant to a client under-reporting its command msec -- fewer ticks is
+  both a slower player and a slower clock, where a wall clock would keep running.
+
+  WHAT IT IS NOT.  It is not immune to sv_gamespeed: the mover scales its tick
+  budget by gamespeed exactly as sv.time is scaled, so pms_lockedmovevars stays
+  load-bearing for this clock too.  And it is bounded above by the engine's
+  anti-speedcheat msec budget, which can drop a whole usercmd -- but a dropped
+  command costs the player the MOVEMENT of that tick as well as the tick, so it
+  buys nothing: you cannot reach an end zone without the ticks that carry you
+  there.  That is the answer to "does a stalled input stream become a fast run",
+  and it is the reason this is measured rather than gated in build 74.
+*/
+float(entity e) SV_TickCounted =
+{
+	if (e.run_t_starttick < 0)
+		return -1;
+	return (e.run_movetick - e.run_t_starttick) - e.run_t_frzticks;
+};
+
+/*
+  The two clocks, side by side, as one line -- which is the entire deliverable of
+  build 74.
+
+  The gap between them has NEVER BEEN MEASURED on a real run.  Every decision
+  downstream needs it: whether the counted clock is worth a migration that
+  rewrites best.pb on every install and re-bases every archived run filename;
+  what a tolerance would be if a stalled stream is ever to be gated; and whether
+  the sampled clock's error is the +/-1 tick the reading of the engine predicts
+  or something larger under load.  So this reports and accuses nobody.
+
+  `rate` IS THE ONE THAT CAN RUIN EVERYTHING QUIETLY, and it is printed first for
+  that reason.  run_t_tick is this file's cached cvar("pm_ticrate");
+  run_movetickrate is the number the mover actually divided by.  Today a
+  disagreement costs display rounding.  The day a tick count becomes the stored
+  quantity, the same disagreement multiplies every leaderboard time by their
+  ratio -- and this tree has already shipped that class of bug once, in build 64,
+  when bhop maps running 0.01 were read against a 0.015 constant.  So it is
+  compared on every report rather than assumed, and a mismatch says so in words.
+*/
+string(entity e) SV_TickReport =
+{
+	local float ct, st, mr;
+	local string rate;
+
+	/*
+	  THE RATE LINE HAS THREE STATES, NOT TWO, and collapsing them is how this
+	  would lie.  A zero run_movetickrate does NOT mean the mover used a tick
+	  length of zero -- it means nothing published one, i.e. this QC is running
+	  against an engine older than Patch 325, or against a build with the Source
+	  mover off.  Reading that as a mismatch would print an alarming red line on
+	  a perfectly healthy server, which is the sv_mapcheck failure shape: a check
+	  whose two sides are not comparable, reporting confidently anyway.
+	*/
+	mr = e.run_movetickrate;
+	if (mr <= 0)
+		rate = sprintf("rate --/%g (no engine value)", run_t_tick);
+	else if (fabs(mr - run_t_tick) > 0.0001)
+		rate = sprintf("rate %g/%g  ^1MISMATCH^7", mr, run_t_tick);
+	else
+		rate = sprintf("rate %g", mr);
+
+	ct = SV_TickCounted(e);
+	if (ct < 0)
+		return strcat("tick: not latched  ", rate);
+
+	st = SV_TimerTicks(e);
+
+	return sprintf("tick: counted %g sampled %g gap %g  frz %g  %s",
+	               ct, st, st - ct, e.run_t_frzticks, rate);
 };
 
 void(entity e, float ticks) SV_TimerFinish =
@@ -6429,6 +6658,19 @@ void(entity e) SV_TimerStart =
 	e.run_t_state = TS_RUNNING;
 	e.run_t_start = time;
 	e.run_t_ticks = 0;
+
+	/*
+	  BUILD 74: the counted clock starts in the same breath as the sampled one,
+	  which is the whole point -- the two are measuring the same interval and any
+	  difference between them at the finish is the thing being measured.
+
+	  Latched HERE and not at the arm, because the arm is not the start: you can
+	  stand in a start box for a minute before leaving it, and those ticks are
+	  not run time.  SV_TimerArm sets the sentinel; this takes the reading.
+	*/
+	e.run_t_starttick = e.run_movetick;
+	e.run_t_frzticks  = 0;
+	e.run_t_lastmt    = e.run_movetick;
 
 	// Leaving the start zone is the reset you asked for: the stopped time from
 	// the last attempt comes off the screen here and not before, so it is still
@@ -7827,6 +8069,15 @@ void(entity e) SV_TimerReport =
 	       e.run_boardcount,
 	       e.run_boardnormal_x, e.run_boardnormal_y, e.run_boardnormal_z,
 	       vlen(e.run_boardvelocity)));
+	/*
+	  BUILD 74: the two clocks, beside each other.  Here rather than in a test
+	  config because this is the number every later decision about the run clock
+	  depends on, and the only way to see it is to be in a run -- which no config
+	  in this tree can produce cleanly (the one way a script can cross an end
+	  zone is a noclip flight, and that is always a cheated run).  So it goes
+	  where a human running `cmd timer` mid-run will find it.
+	*/
+	sprint(e, PRINT_HIGH, strcat("        ", SV_TickReport(e), "\n"));
 	pl = SV_RecNormal(e);
 	sprint(e, PRINT_HIGH, sprintf("        rec plane: %.3f %.3f %.3f  (fl %g, v4 bit 16 = ramp)\n",
 	       pl_x, pl_y, pl_z, SV_RecFlags(e)));
