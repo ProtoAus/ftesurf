@@ -932,8 +932,31 @@ void() Watch_Scan =
 	  literal is the thing that must be edited when the format moves, and a
 	  constant three files away is how that gets missed.
 	*/
-	if (ver > 5)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 5; "
+	/*
+	  BUILD 82: 5 -> 6, AND FOR THE THIRD TIME THIS READER NEEDED NO NEW PARSE.
+
+	  Version 6 adds the INPUT TRACE: one `in` record per simulated move, plus an
+	  `instart` header key and a fifth field on `end`.  Every one of those is
+	  additive by this format's own rule -- the sample stream still has seventeen
+	  columns, the trailer's first four fields are unmoved (the width guard on
+	  `end` above already reads `n >= 4` rather than assuming), and an unknown
+	  record falls out of both sweeps below without being counted as anything.
+
+	  So the only thing that had to change is this literal, and it had to change
+	  for the reason the paragraph above gives: a yellow "this build knows 5" in
+	  front of every ordinary replay is the shape of message a player reports as
+	  a bug, and it would teach them to skip the next one, which might matter.
+
+	  WHAT v6 DOES COST THIS READER, said plainly because nothing else will say
+	  it: the file is about 1.8x the LINES, and this replay loads all of them into
+	  rec_wt_rec and sweeps them three times.  Nothing here is quadratic and the
+	  sample-indexed tables are sized off rec_wt_nsamp rather than off the line
+	  count, so the cost is linear and bounded -- but a long run's replay now
+	  holds roughly twice the strings it used to, and that is the first place a
+	  memory ceiling will show up.
+	*/
+	if (ver > 6)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 6; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

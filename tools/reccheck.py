@@ -108,7 +108,7 @@ def is_prefix(path):
 # perfectly and be wrong about every time in it by 0-2 ticks with nothing to
 # notice.  A silent difference is what a version number is for; an unchanged
 # grammar is why the column count repeats.
-COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17}
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -188,6 +188,27 @@ HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc", "movetickrate"}
 #           three, and a map with no zone table cannot be timed, so the server
 #           omits them rather than writing an empty value.
 HEAD_V5 = HEAD_V4 | {"clock", "zonesrc", "zonecrc", "zonerule"}
+
+#   instart build 82.  `instart <mt> <start>`: the mover tick this file's INPUT
+#           TRACE begins at, and the run's own start tick.  It is the horizon of
+#           the `in` records below -- see the block over check_in_rows -- and it
+#           is the one header key so far that describes what the file DOES NOT
+#           contain: the commands that carried the player across the start plane
+#           were simulated before SV_RecOpen ran and are not here.
+#
+#           Its two numbers are EQUAL on a fresh start and differ only after a
+#           save-state resume, which rebases the run's start tick while the
+#           mover's counter keeps running.  Checked below, where a start tick
+#           BELOW the horizon is a note (that is the resume case, and it is
+#           legal) and one above it is a fault (a run cannot start after its own
+#           recording does).
+#
+#           Absent is not a fault at any version: a server whose engine predates
+#           Patch 325 has no mover counter and correctly writes neither the key
+#           nor the rows, and a lifted stage drops the rows and keeps the older
+#           version marker.  What IS a fault is one without the other in either
+#           direction, which is the partial-pin shape the zone keys already take.
+HEAD_V6 = HEAD_V5 | {"instart"}
 
 # The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming
@@ -364,7 +385,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 5:
+    if ver >= 6:
+        allowed = HEAD_V6
+    elif ver >= 5:
         allowed = HEAD_V5
     elif ver >= 4:
         allowed = HEAD_V4
@@ -497,6 +520,44 @@ def check_rec(path, verbose=False):
         # way to know is to be told.
         r.info["zones"] = "not stated"
 
+    # ---- the input trace's horizon, build 82 --------------------------------
+    #
+    # `instart <mt> <start>`.  Parsed here so the `in` rows below can be checked
+    # against it; the rows themselves are checked in the body loop.
+    #
+    # THE TWO NUMBERS ARE NOT INTERCHANGEABLE AND THE ORDER OF THE CHECKS BELOW
+    # SAYS WHICH IS WHICH.  <mt> is where the RECORDING's trace begins -- the
+    # mover's cumulative tick count at the moment SV_RecOpen ran.  <start> is
+    # where the RUN's clock begins.  SV_TimerStart sets them equal; only a
+    # save-state resume moves the second one, and only downwards.  So start > mt
+    # is a run that began after its own recording did, which no path produces.
+    in_start = None         # the horizon, or None if this file states no trace
+    inst = head.get("instart")
+    if inst is not None:
+        f = inst.split()
+        if len(f) != 2:
+            r.fault("instart takes 2 fields (movetick starttick), has %d"
+                    % len(f))
+        elif not all(x.lstrip("-").isdigit() for x in f):
+            r.fault("instart %r has a non-integer field" % inst)
+        else:
+            in_start, in_run = int(f[0]), int(f[1])
+            if in_start < 0:
+                r.fault("instart movetick %d is negative" % in_start)
+            if in_run > in_start:
+                r.fault("instart says the run started at tick %d and the trace "
+                        "at %d -- a run cannot start after its own recording"
+                        % (in_run, in_start))
+            elif in_run < in_start:
+                # The resume case, and the only one.  Worth a line because it is
+                # the single fact `instart` carries that nothing else in the file
+                # does, and because a verifier has to know its seed is not the
+                # run's first tick.
+                r.note("instart: the run's start tick %d is %d below the trace's "
+                       "horizon %d -- this run was resumed from a save state"
+                       % (in_run, in_start - in_run, in_start))
+            r.info["instart"] = "%d run %d" % (in_start, in_run)
+
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
     padding = 0
@@ -509,6 +570,12 @@ def check_rec(path, verbose=False):
     boards = []             # (lineno, args) -- build 24 v4 board entries
     ghosts = []             # (lineno, args) -- build 30 ghost window edges
     stagerecs = []          # (lineno, kind, args) -- build 43: stage/stagestart/restart
+    inrows = 0              # build 82: `in` records seen
+    in_pk = None            # last packet ordinal
+    in_mt = None            # last cumulative mover tick
+    in_packets = 0          # distinct packet ordinals
+    in_offgrid = 0          # angles that are not a multiple of the wire quantum
+    in_badshape = 0         # rows this tool could not parse (reported once)
     seen_positive = False
     bad_cols = 0
     mask_disagree = 0
@@ -554,6 +621,102 @@ def check_rec(path, verbose=False):
                 r.fault("line %d: time goes backwards, %.4f after %.4f"
                         % (lineno + 1, t, samples[-1][0]))
             samples.append((t, vals))
+            continue
+
+        # ---- the input trace, build 82 -------------------------------------
+        #
+        # `in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt>`.
+        #
+        # HANDLED HERE AND NOT IN THE RECORD DISPATCH BELOW, on the same footing
+        # as a sample rather than as an event.  These arrive at roughly the
+        # sample rate -- a 12-hour run holds about four million of them -- so
+        # appending each to `records` would make `records` a number nobody meant
+        # and would hold the whole trace in memory for a count.  They are
+        # summarised as they stream past instead; the only state kept is the
+        # three running comparisons that need the previous row.
+        if tok[0] == "in":
+            if len(tok) != 11:
+                if not in_badshape:
+                    r.fault("line %d: 'in' takes 10 fields "
+                            "(pk mt carry fwd side up pit yaw roll bt), has %d"
+                            % (lineno + 1, len(tok) - 1))
+                in_badshape += 1
+                continue
+            try:
+                pk, mt = int(tok[1]), int(tok[2])
+                carry = float(tok[3])
+                ang = [float(x) for x in tok[7:10]]
+                bt = int(tok[10])
+            except ValueError:
+                if not in_badshape:
+                    r.fault("line %d: 'in' has a non-numeric field" % (lineno + 1))
+                in_badshape += 1
+                continue
+
+            inrows += 1
+            if in_pk is None or pk != in_pk:
+                in_packets += 1
+
+            # MONOTONIC, BOTH OF THEM, and neither may go backwards for the same
+            # reason the sample clock may not: one is the packet's arrival order
+            # as the server processed it and the other is a counter the mover
+            # only ever adds to.  A step backwards in either is a file assembled
+            # out of order, which is what a forged trace looks like when it is
+            # built by splicing.
+            if in_pk is not None and pk < in_pk:
+                r.fault("line %d: packet ordinal goes backwards, %d after %d"
+                        % (lineno + 1, pk, in_pk))
+            if in_mt is not None and mt < in_mt:
+                r.fault("line %d: movetick goes backwards, %d after %d"
+                        % (lineno + 1, mt, in_mt))
+            if in_start is not None and mt < in_start:
+                r.fault("line %d: movetick %d is below the trace's own horizon "
+                        "%d -- instart says this file begins later than it does"
+                        % (lineno + 1, mt, in_start))
+            in_pk, in_mt = pk, mt
+
+            # The sub-tick remainder is what is LEFT after the mover took whole
+            # ticks out, so it is in [0, one tick) by construction.  This is the
+            # one column of the row with an arithmetic bound at all, which is why
+            # it is worth spending a compare on.
+            #
+            # THE THRESHOLD IS ONE PRINTED STEP ABOVE THE BOUND, NOT THE BOUND,
+            # and that is forced by the format rather than chosen.  The writer
+            # prints carry at %.5f, so a legal remainder of 0.0099996 against a
+            # 0.01 tick arrives in the file as "0.01000" -- exactly the value the
+            # bound excludes.  Faulting at the bound would therefore fault honest
+            # rows at a rate set by rounding.  So the smallest value this can
+            # catch is one 1e-5 step higher, and a carry of exactly one tick is
+            # UNDECIDABLE from the file and is deliberately let through.  Said
+            # out loud because a check whose sensitivity is a rounding artifact
+            # is one somebody will later "tighten" back into false positives.
+            if carry < 0 or (mtr > 0 and carry >= mtr + 1e-5):
+                r.fault("line %d: carry %.5f is at or above one tick %.5f -- the "
+                        "mover's remainder is what is LEFT after whole ticks "
+                        "come out" % (lineno + 1, carry, mtr if mtr > 0 else 0.0))
+
+            if bt < 0 or bt > 7:
+                r.fault("line %d: bt %d is outside 0..7 -- the trace carries "
+                        "exactly three bits (1 jump, 2 duck, 4 speed)"
+                        % (lineno + 1, bt))
+
+            # DID THESE ANGLES COME OFF THE WIRE?  usercmd angles are 16-bit, so
+            # every one the protocol can deliver is a multiple of 360/65536 =
+            # 0.0054931640625 degrees, and four decimals recover that exactly.
+            # An angle off the grid was written by something other than a
+            # usercmd.
+            #
+            # A NOTE AND NOT A FAULT, deliberately.  `setpos` writes .v_angle
+            # straight from atof (sv_user.c:5636) and the next command overwrites
+            # it, so a harness-driven run can legitimately carry a row or two off
+            # the grid -- and a checker that faulted every scripted test would be
+            # one nobody could use to test this feature.  The COUNT is the useful
+            # quantity and it is reported either way.
+            for a in ang:
+                q = a / (360.0 / 65536.0)
+                if abs(q - round(q)) > 0.02:
+                    in_offgrid += 1
+                    break
             continue
 
         kind = tok[0]
@@ -643,6 +806,46 @@ def check_rec(path, verbose=False):
     r.info["samples"] = len(samples)
     r.info["padding"] = padding
     r.info["records"] = len(records)
+
+    # ---- the trace and its horizon must agree, build 82 ---------------------
+    #
+    # THE TWO DIRECTIONS ARE NOT THE SAME KIND OF PROBLEM and they do not get the
+    # same register.  Rows with no key is a fault: the rows are meaningless
+    # without a horizon, because a verifier cannot tell whether the trace starts
+    # at the run's start or somewhere after it.  A key with no rows is a note:
+    # it is what a recording that opened and closed inside one packet would look
+    # like, and while no real run does that, a checker that faulted it would be
+    # asserting something about the engine's packet scheduling that this tool has
+    # no business asserting.
+    if inrows and in_start is None:
+        r.fault("the file carries %d 'in' records and no 'instart' key -- the "
+                "trace has no horizon, so a reader cannot tell where it begins"
+                % inrows)
+    elif in_start is not None and not inrows:
+        r.note("instart is present and the file carries no 'in' records")
+
+    if inrows:
+        r.info["inputs"] = inrows
+        r.info["in_packets"] = in_packets
+        # THE WHOLE REASON THE PACKET ORDINAL IS IN THE FILE, expressed as one
+        # number.  The run's start and finish are latched once per packet, not
+        # once per command, so a verifier has to replay in these groups; a mean
+        # well above 1 is the case that makes the grouping load-bearing rather
+        # than decorative, and it is exactly the case -- packet loss -- that a
+        # local test will never produce.  Printed so it is visible on real runs.
+        r.info["in_per_packet"] = inrows / float(in_packets or 1)
+        if in_offgrid:
+            r.note("%d of %d 'in' rows carry an angle that is not a multiple of "
+                   "the 16-bit wire quantum (0.0055 deg) -- setpos writes "
+                   "v_angle directly and is the ordinary cause"
+                   % (in_offgrid, inrows))
+        # The sample stream and the input stream are written by two different
+        # hooks at two different rates, and there is no invariant tying their
+        # counts together -- so this is reported and NOT checked.  What it is
+        # good for is reading a file by hand: below 1.0 means packets carrying
+        # no simulated move at all, which is a stall.
+        if samples:
+            r.info["in_per_sample"] = inrows / float(len(samples))
     if resumes:
         # Reported rather than merely tolerated: "this is a shadow run and it was
         # resumed four times" is the single most useful thing to know about a
@@ -1106,10 +1309,26 @@ def check_rec(path, verbose=False):
             r.note("no 'end' record (expected: this is an interrupted .part)")
     else:
         ln, args = saw_end
-        if len(args) != 4:
-            r.fault("line %d: 'end' takes 4 fields, has %d" % (ln, len(args)))
+        # BUILD 82: FOUR FIELDS BEFORE v6, FIVE FROM v6, and the fifth is
+        # APPENDED rather than inserted -- so the first four are read identically
+        # either way and this branch is about which count to demand, not about
+        # where anything lives.
+        want_end = 5 if ver >= 6 else 4
+        if len(args) != want_end:
+            r.fault("line %d: 'end' takes %d fields in a v%d file, has %d"
+                    % (ln, want_end, ver, len(args)))
         else:
-            e_ticks, e_n, e_pad, e_cp = (float(x) for x in args)
+            e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            if want_end == 5:
+                e_in = float(args[4])
+                # COUNTED AGAINST THE BODY, like the three above it.  The writer
+                # increments only when a line actually landed, so a disagreement
+                # here means the file was truncated below the trailer or edited
+                # -- and unlike the sample count, which over-reports at the line
+                # cap by design, this one is exact and a mismatch is unambiguous.
+                if int(e_in) != inrows:
+                    r.fault("'end' says %d input records, the file has %d"
+                            % (int(e_in), inrows))
             if int(e_n) != len(samples):
                 r.fault("'end' says %d samples, the file has %d"
                         % (int(e_n), len(samples)))
@@ -1486,6 +1705,19 @@ def emit(r, verbose):
                   # deciding what a run is worth needs the difference between
                   # pinned and silent and cannot get it from an absent line.
                   "zones",
+                  # Build 82.  Added in the SAME edit as the code that computes
+                  # them, because the build-81 note directly above was written
+                  # about a field that was computed and then left out of this
+                  # tuple -- three lines below the paragraph warning against
+                  # exactly that.  Twice is a pattern; the rule now is that
+                  # nothing is assigned into r.info without being added here in
+                  # the same change.
+                  #
+                  # `instart` prints whenever the key is present and `inputs`
+                  # whenever the body has rows, so the two disagreeing is
+                  # visible at a glance and not only through the fault.
+                  "instart", "inputs", "in_packets", "in_per_packet",
+                  "in_per_sample",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

@@ -231,7 +231,15 @@ def read_rec(path):
                 elif len(t) >= 2:
                     head[t[0]] = " ".join(t[1:])
                 continue
-            if t[0] in ("end", "split", "cp", "stage", "board", "resume", "ghost", "best"):
+            # "in" is build 82's input trace, and it was ALREADY being dropped
+            # correctly -- float("in") raises and the except below skips the
+            # line.  Named here anyway for two reasons: this tuple is the list of
+            # records this tool has decided it does not want, and a record that
+            # is skipped by accident is one nobody notices arriving; and in a v6
+            # file it is the most numerous record there is, so leaving it to the
+            # exception path puts a raise in the hot loop of every read.
+            if t[0] in ("end", "split", "cp", "stage", "board", "resume", "ghost",
+                        "best", "in"):
                 continue
             try:
                 v = [float(x) for x in t]

@@ -334,8 +334,13 @@ void() SetChangeParms = { };
 ===========================================================================
   Per-frame hooks.
 
-  PreThink is empty on purpose -- the engine runs the whole move in
-  SV_RunCmd and there is nothing for QC to add before it.
+  PreThink was empty once -- the engine runs the whole move in SV_RunCmd and
+  there was nothing for QC to add before it.  That stopped being true at build
+  15 and this line went on claiming it until build 82; it now does four things,
+  and the LAST of them is the reason the hook matters at all.  It is the only
+  QC hook the engine calls once per SIMULATED MOVE rather than once per received
+  packet, which is what makes the input trace possible and what makes every
+  other timing essay in sv_timer.qc necessary.
 
   PostThink samples the surface the player is about to hit, purely so the
   HUD can show the ramp normal.  Tracing forward along velocity for exactly
@@ -411,6 +416,29 @@ void() PlayerPreThink =
 	*/
 	if (self.run_speedmod > 0 && self.run_speedmod != 1)
 		self.maxspeed = self.maxspeed * self.run_speedmod;
+
+	/*
+	  BUILD 82 -- THE INPUT TRACE, and it is the LAST thing PreThink does.
+
+	  The whole of the essay is in SV_TimerInFrame; what belongs here is why it
+	  goes at the bottom of this function rather than the top.  Everything above
+	  writes state the MOVE will consume -- .maxspeed twice over, and
+	  SV_BaseVelocityFrame cashing out a carrier -- so a row written first would
+	  describe the inputs correctly and the entity in a state no move ever ran
+	  from.  Written last, the row and the move that follows it see the same
+	  edict, which is the only ordering a re-simulation can reproduce.
+
+	  It reads .movement, .v_angle and the three button fields, all of which the
+	  engine wrote before calling us (sv_user.c:7782, :7812, :7895) and none of
+	  which anything in this function touches.  So this is also the only hook in
+	  the tree where those four facts and the mover's tick counter are
+	  simultaneously true.
+
+	  THE COMMENT AT THE TOP OF THIS BLOCK USED TO SAY "PreThink is empty on
+	  purpose".  It stopped being true at build 15 and has been wrong ever since;
+	  corrected there rather than left to mislead the next reader of this file.
+	*/
+	SV_TimerInFrame(self);
 };
 
 /*

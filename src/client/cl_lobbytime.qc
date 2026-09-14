@@ -587,6 +587,15 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 
 	  `samples 0` already says this file has no body and cannot be re-simulated,
 	  so nothing downstream wants the pin from here anyway.
+
+	  BUILD 82: AND NO `instart` EITHER, WHICH IS THE SAME SENTENCE ONE STEP
+	  FURTHER ON.  That key is the horizon of an input trace, and the input trace
+	  is written by PlayerPreThink on the server that ran the moves.  This client
+	  never saw one of them; it is writing down a time it was told.  A horizon
+	  over an empty body would be the confident wrong answer again.  The version
+	  marker stays at 5 for the reason SV_StageWrite's does -- the marker
+	  describes the FILE, not the build, and this is a version-5 file in every
+	  respect including the trailer it does not have.
 	*/
 	fputs(fh, "samples 0\n");
 	fclose(fh);

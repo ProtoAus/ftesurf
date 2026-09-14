@@ -1486,6 +1486,47 @@ float() SV_RecEnabled =
 .float  rec_rec_flagline;        // v4: the buffer index of the reserved `flags` line
 
 /*
+  BUILD 82 -- THE INPUT TRACE'S TWO COUNTERS, and the second one is the whole
+  reason the trace is worth writing at all.
+
+  rec_rec_in is to `in` rows what rec_rec_n is to samples: the number the `end`
+  record reports, so a reader can tell a truncated body from a short run.  It is
+  a SEPARATE counter and not a reuse of rec_rec_n, because rec_rec_n's value is
+  already spoken for by the padding arithmetic (rec_rec_padn is assigned FROM it
+  at the end of the ring flush) and because `end` has always meant "samples" by
+  that word.  Two facts, two counters.
+
+  rec_rec_pk IS THE PACKET ORDINAL, AND IT IS THE ANSWER TO A DEFECT THIS
+  FEATURE WOULD OTHERWISE HAVE SHIPPED WITH.
+
+  Every other column of an `in` row describes one usercmd.  But the run's start
+  and finish are not decided per usercmd: SV_TimerFrame runs from
+  PlayerPostThink, which the engine calls ONCE PER PACKET (see the essay at
+  SV_TimerElapsed and [[fte-postthink-is-per-packet]]), so a zone crossing is
+  tested against the position the LAST command of a packet left you in, and the
+  stored tick is latched there.  A verifier that re-ran the commands and tested
+  zones after each one would land on a different tick from the one in the file,
+  for a run that was in no way wrong -- and it would do so on exactly the runs
+  where several commands arrive together, i.e. under packet loss, i.e. not
+  reproducibly.
+
+  So the grouping has to be IN the file.  It is stamped as a column rather than
+  emitted as a marker record for two reasons: a marker would cost one more line
+  per packet against a cap counted in lines, and a column cannot go missing --
+  a dropped marker is indistinguishable from a packet with no commands in it,
+  while a column that repeats is a group by construction.
+
+  It is incremented at the TOP of SV_TimerFrame, so every row written by the
+  PreThinks of one packet carries the value the previous packet's PostThink
+  left behind.  That is all the reader needs: rows sharing a value belong to one
+  packet, and the sample row that SV_TimerRecFrame writes at the end of that
+  same SV_TimerFrame is that packet's post-state.  The ABSOLUTE value means
+  nothing and no reader may attach meaning to it.
+*/
+.float  rec_rec_in;              // v6: input rows written since `begin`
+.float  rec_rec_pk;              // v6: packet ordinal, stamped on each of them
+
+/*
 ===========================================================================
   BUILD 66 -- THE SECOND RECORDER, and it is the same recorder.
 
@@ -1972,6 +2013,19 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             run_zone_hull_live as latched for this map.  Not
                             geometry and not movevars: two servers with the same
                             table and different rules give different times
+    instart <mt> <start>    v6, build 82.  The mover tick this file's INPUT TRACE
+                            begins at, and the run's own start tick.  Absent
+                            means the file carries no `in` records at all.
+                            Present, it is the trace's HORIZON: no `in` row can
+                            exist below <mt>, so a verifier knows the commands
+                            that carried the player across the start plane are
+                            not in this file and must seed from the first sample
+                            instead of re-deriving the start.  The two numbers
+                            are EQUAL on a fresh start, by SV_TimerStart, and
+                            differ after a save-state resume, which rebases the
+                            start tick and not the mover's counter -- so their
+                            difference is the one fact a reader cannot get any
+                            other way
     flags <n>               TF_* as they stood AT THE FINISH -- see below
     begin                   header ends here; everything after is a record
 
@@ -1994,6 +2048,37 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   is what a version number is for and it is why `clock` is beside it rather than
   instead of it: the two are not the same fact, and a build-76 server on a
   pre-325 engine writes `FTESURF-REC 5` with `clock sampled`.
+
+  WHY VERSION 6 EXISTS, AND WHY IT IS THE CHEAP KIND OF BUMP RATHER THAN v5'S.
+  Build 82 adds the INPUT TRACE: one `in` record per simulated move, carrying
+  what the mover was handed rather than where it ended up.  By the rules this
+  format has kept since v3 that needs no bump at all -- one new record type,
+  which an older reader skips like any other unknown, and one new header key,
+  and header keys were already order-free.  Nothing existing changed meaning,
+  which is exactly what v5 could not say.
+
+  It is bumped anyway, for one reason: `end` grew a fifth field.  A reader that
+  splits that line and takes four is still correct, and reccheck.py accepted
+  exactly four until this build -- so the bump is what lets a checker tell "this
+  file predates the trace" from "this file lost it", which are the same bytes
+  otherwise.  That distinction is the whole of what a version number buys here
+  and it is worth one integer.
+
+  A v6 FILE MAY LEGITIMATELY CARRY NO `in` RECORDS: a run whose recording opened
+  with no mover counter -- an engine older than Patch 325 -- has no mover tick to
+  stamp, so SV_RecOpen writes neither the key nor the rows.  `instart` is what
+  says which case a file is in, and a reader must key off the KEY and never off
+  the version.
+
+  AND SV_StageWrite STILL WRITES `FTESURF-REC 5` AFTER THIS BUILD, which is not
+  an oversight and is the clearest statement this format has of what its version
+  marker means.  A lifted stage drops every `in` row (see SV_StageLine) and its
+  trailer has four fields, so the file it produces is a version-5 file in every
+  respect -- grammar, body and trailer.  THE MARKER DESCRIBES THE FILE, NOT THE
+  BUILD THAT WROTE IT.  Stamping 6 on it would either claim a fifth trailer field
+  that is not there, or require inventing one for a body that structurally cannot
+  have rows to count.  Both are worse than a writer that emits an older version
+  it genuinely conforms to.
 
   Then, in the order they happened, one per line:
 
@@ -2018,6 +2103,97 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             rates in real files are 65/s, 64.6/s and 43.5/s
                             rather than the nominal 66.67.  Interpolate using
                             each sample's own t; never by index.
+
+    in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt>
+                            v6, build 82.  ONE SIMULATED MOVE -- what the mover
+                            was HANDED, where the sample above is where it ended
+                            up.  These two record types are the whole body of a
+                            v6 file and they interleave: the `in` rows of one
+                            packet, then that packet's sample.
+
+                            IT IS PER SIMULATED MOVE AND NOT PER USERCMD, and
+                            the difference is not pedantry.  SV_RunCmd drops a
+                            command that is over its msec budget entirely,
+                            TRUNCATES one that is partly over (it writes through
+                            the caller's pointer, so the wire msec is not what
+                            ran), and splits anything over 50 ms into two halves
+                            that are each simulated separately.  So one received
+                            usercmd produces 0, 1, 2, 4 or 8 of these rows.  A
+                            row is what the mover actually consumed, which is
+                            the only thing a re-simulation can be checked
+                            against.
+
+                            <pk> is the packet this move belonged to -- see
+                            rec_rec_pk for why the grouping has to be in the
+                            file at all.  Rows sharing a value are one packet;
+                            the value itself means nothing.
+
+                            <mt> is cumulative run_movetick BEFORE this move and
+                            <carry> is run_movecarry before it, in seconds.
+                            Between them they are the authoritative timing
+                            column: the ticks this move ran are the NEXT row's
+                            <mt> minus this one's, and the frametime it was given
+                            is that difference times movetickrate plus the change
+                            in <carry>.  Both are therefore DERIVED rather than
+                            stored -- a column that must agree with two others is
+                            a second answer to a question that has one, which is
+                            the sv_mapcheck shape, so msec is deliberately not
+                            here.  The last row's span comes from the trailer.
+
+                            <bt> IS NOT input_buttons AND MUST NOT BE READ AS IT.
+                            1 jump, 2 duck, 4 speed -- exactly the three bits
+                            pm_source.c reads (BUTTON_JUMP 2, BUTTON_DUCK 8,
+                            BUTTON_SPEED 128) and nothing else, taken from
+                            .button2/.button4/.button8, which SV_SetEntityButtons
+                            writes by integer shift (pr_cmds.c:10482-10492).
+
+                            THE GLOBAL CANNOT CARRY THEM SAFELY.  input_buttons is
+                            registered `globalfloat` (pr_cmds.c:978 -- contrast
+                            `globaluint64` for input_weapon three lines down) and
+                            assigned from a quint64_t at :10523.  That is a float32
+                            VALUE CONVERSION, which ROUNDS THE WHOLE NUMBER; it
+                            does not truncate the high half and leave the low bits
+                            alone.  Measured, not reasoned about:
+
+                              (1<<25)|BUTTON_JUMP = 33554434 -> 33554432, & 2 == 0
+                              (1<<26)|BUTTON_JUMP = 67108866 -> 67108864, & 2 == 0
+                              (1<<25)|BUTTON_DUCK = 33554440 -> exact
+
+                            -- i.e. the jump bit is gone from 2^25 up, because the
+                            float32 spacing there is 4 and the bit is worth 2, so
+                            `input_buttons & 2` reads 0 WHILE THE MOVER JUMPED.
+                            The mover is unaffected: it reads pmove.cmd.buttons,
+                            the raw 64-bit word (sv_user.c:7735 `pmove.cmd =
+                            *ucmd`, unmasked).
+
+                            AND THE SHIPPING CLIENT CANNOT REACH THAT, WHICH IS
+                            THE POINT RATHER THAN A REASSURANCE.  cl_input.c's
+                            GATHERBIT table tops out at bit 18 (+button16), and
+                            every value it can send is exact in float32.  The
+                            SERVER's parse has no such ceiling -- common.c:1912 is
+                            a bare MSG_ReadUInt64 and nothing clamps it -- so the
+                            bit that defeats the read is reachable by a client
+                            that chooses to and by no other.  A trace whose
+                            faithfulness depends on the client not lying is not
+                            evidence, and that is the whole argument for the
+                            per-bit fields: each is one bit shifted into a float
+                            that holds 0 or 1, at any button word whatsoever.
+
+                            <pit> <yaw> <roll> are .v_angle, i.e.
+                            SHORT2ANGLE(ucmd->angles[]), at four decimals -- more
+                            than the sample's two, because the quantum is
+                            360/65536 = 0.0055 degrees and four decimals recover
+                            the wire short exactly.  <fwd side up> is .movement,
+                            the raw usercmd triple, the same one the sample
+                            carries.
+
+                            THE IMPULSE IS NOT RECORDED, and that is a decision
+                            rather than an omission: pm_source.c reads three
+                            button bits and no impulse, and this mod has no
+                            ImpulseCommands and no reader of .impulse anywhere.
+                            An input that can reach neither the mover nor the
+                            gamecode cannot change a run, and recording it would
+                            be 100 bytes a second asserting that it might.
     restart <seg> <ticks>   a stage was restarted mid-run
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
@@ -2099,8 +2275,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
   Then, written at close:
 
-    end <ticks> <samples> <padding> <checkpoints>
+    end <ticks> <samples> <padding> <checkpoints> <inputs>
     split <seg> <ticks>     one per completed segment, ascending
+
+  <inputs> IS v6 AND IT IS COUNTED, NOT ASSERTED.  It is the number of `in`
+  records in the body, on exactly the argument build 24 learned the hard way
+  about <padding>: a literal written there disagreed with the body in seven of
+  the first twelve stage files.  A reader with an `instart` key and no count
+  cannot tell a trace that stopped at the line cap from a run that was short,
+  and the line cap is the failure this format is most likely to meet -- an
+  input trace roughly doubles the rate at which a recording spends it.
 
   fl is the state mask: 1 onground, 2 PMF_DUCKED, 4 jump button, 8 attack,
   and v4 adds 16 RAMP CONTACT -- the engine's run_rampcontact, i.e. this tick's
@@ -2446,6 +2630,21 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_flagofs = -1;
 	e.rec_rec_lines = e.rec_rec_n = e.rec_rec_padn = e.rec_rec_cp = 0;
 	e.rec_rec_full = FALSE;
+	/*
+	  BUILD 82.  Both reset here and nowhere else, because this is the one place
+	  a recording begins.
+
+	  THE FIRST `in` ROWS CARRY 0, not 1, and it is worth writing down because the
+	  ordering is easy to get backwards.  This function is reached from
+	  SV_TimerStart, which is reached from SV_TimerFrame, which has ALREADY done
+	  its increment for the start packet -- so the reset lands after it.  The next
+	  packet's PreThinks then write their rows before that packet's PostThink
+	  increments anything.  Measured: the first row of a real run reads `in 0 605
+	  ...` against `instart 605 605`.  Nothing reads the absolute value; this note
+	  exists so that a reader checking the reset against the first row does not
+	  conclude the counter is broken.
+	*/
+	e.rec_rec_in = e.rec_rec_pk = 0;
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
 	// run, which is the most common leg there is, and it would otherwise encode
 	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
@@ -2521,7 +2720,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 5");
+	SV_RecPut(e, "FTESURF-REC 6");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -2642,6 +2841,47 @@ void(entity e) SV_RecOpen =
 		SV_RecPut(e, sprintf("zonerule %d %d %d",
 		                     run_t_swept, run_t_hull, run_t_hulllive));
 	}
+
+	/*
+	  BUILD 82: WHERE THE INPUT TRACE BEGINS, AND WHAT IT CANNOT COVER.
+
+	  The `in` records below this header are what a re-simulation verifier reads.
+	  They do not start at the start.  SV_RecOpen is called from SV_TimerStart,
+	  which is called from SV_TimerFrame, which runs in PlayerPostThink -- i.e. at
+	  the END of the packet that carried the player out of the start box.  Every
+	  usercmd in that packet has already been simulated by the time this line is
+	  written, so the commands that actually crossed the start plane are NOT IN
+	  THIS FILE and no arrangement of this call site would put them there short of
+	  a second ring buffer holding inputs, which is not built.
+
+	  SAYING SO IN THE FILE IS THE ENTIRE POINT.  A verifier that did not know
+	  this would re-simulate from the first `in` row, land short of the recorded
+	  start, and report a discrepancy that is the recorder's and not the run's.
+	  Knowing it, the horizon is exactly stated: seed from the first SAMPLE --
+	  which SV_TimerRecFrame writes in this same PlayerPostThink, from the
+	  post-move origin and velocity -- and verify forward from there.  What that
+	  costs is real and should be said plainly: the start LATCH itself is taken on
+	  trust, and only the run from the start packet's end state to the finish is
+	  reproducible.  That is a smaller claim than "the run is re-simulable" and it
+	  is the true one.
+
+	  TWO NUMBERS AND NOT ONE.  They are equal here, always, because SV_TimerStart
+	  assigns run_t_starttick = run_movetick three lines before calling this --
+	  which is exactly why writing only one of them would be a trap.  They come
+	  apart on SV_TimerResume, which rebases run_t_starttick to `movetick - ticks`
+	  for a run restored from a save state while the mover's counter keeps
+	  running.  A file written across that path has a start tick BELOW its own
+	  horizon, and a reader that had derived one from the other would have no way
+	  to see it.
+
+	  GATED ON THE MOVER COUNTER EXISTING, on the mapcrc precedent.  Against an
+	  engine older than Patch 325 there is no run_movetick, every `in` row would
+	  stamp a constant 0, and a horizon of 0 would be a false statement rather
+	  than a missing one.  No key, no rows -- SV_TimerInFrame takes the same test.
+	*/
+	if (e.run_movetickrate > 0)
+		SV_RecPut(e, sprintf("instart %d %d",
+		                     e.run_movetick, e.run_t_starttick));
 
 	/*
 	  RESERVED, and rewritten by SV_RecClose.
@@ -2969,8 +3209,16 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	  the counter feeding this line has stopped incrementing anyway, so there is
 	  no format that could have told the truth about it.
 	*/
-	SV_RecPut(e, sprintf("end %d %d %d %d",
-	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp));
+	/*
+	  BUILD 82: A FIFTH FIELD, APPENDED AND NEVER INSERTED, on the same rule the
+	  sample stream's v3 columns took: a reader that splits this line and takes
+	  four is still exactly right about all four.  It is the count of `in` records
+	  in the body, and it is counted rather than asserted for the reason the
+	  padding count beside it is -- see the grammar block.
+	*/
+	SV_RecPut(e, sprintf("end %d %d %d %d %d",
+	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
+	                     e.rec_rec_in));
 
 	if (e.run_t_slot >= 0)
 	{
@@ -3916,6 +4164,34 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 			return "";              // before this stage; the opener covers it
 		return sprintf("ghost %d %d", stof(argv(1)), stof(argv(2)) - tickbase);
 	}
+
+	/*
+	  BUILD 82: AN `in` ROW FALLS THROUGH TO THE DROP BELOW, DELIBERATELY, and
+	  this paragraph exists so that nobody later reads the silence as the build-81
+	  omission repeating itself.  (That one was real: this writer had been missing
+	  mapcrc since build 73 and nobody had written down that it was missing.)
+
+	  A lifted stage is a SLICE, and a slice rebases.  Every record this function
+	  keeps is rewritten into the slice's own origin -- `t` against tbase, `cp` and
+	  `ghost` against tickbase -- because the alternative is two clocks in one
+	  file, which is the hazard build 76 landed whole to avoid.  An `in` row's
+	  <mt> is cumulative mover ticks PER MAP; rebasing it would need the slice's
+	  own mover origin, which SV_StageWrite is not given and which is not
+	  derivable from tickbase alone, because tickbase is run ticks and the two
+	  differ by the run's start tick and its accumulated frozen ticks.  Copying it
+	  unrebased into a rebased file is exactly the thing not to do.
+
+	  And the cost of dropping them is small and bounded, which is what makes this
+	  the right call rather than a deferral.  A lifted stage exists to be WATCHED;
+	  the input trace exists to be RE-SIMULATED, and a stage run ARMED at the stage
+	  is an ordinary run that records one like any other.  What is lost is the
+	  ability to re-simulate a stage that was lifted out of a longer run -- which
+	  is also the only .rec in this tree that no verifier could seed anyway, since
+	  its first sample is mid-flight rather than at a start plane.
+
+	  SV_StageWrite writes no `instart` key for the same reason, so the file says
+	  it has no trace rather than claiming a horizon it does not honour.
+	*/
 
 	return "";
 };
@@ -8054,6 +8330,149 @@ void(entity e, float z) SV_TimerTryArm =
   a hole -- a gap would be indistinguishable from a dropped connection, and the
   markers written at the edges would then bracket nothing.
 */
+/*
+===========================================================================
+  BUILD 82 -- ONE SIMULATED MOVE, RECORDED FROM PlayerPreThink.
+
+  Everything else this recorder writes is STATE: where the player was, how fast,
+  on what plane.  A state trace answers "is this what happened" and cannot
+  answer "would this happen again", which is the question Layer 2 of the
+  anti-cheat plan exists to ask.  For that a verifier needs the INPUT the mover
+  was handed, and until this build nothing in the tree wrote it down.
+
+  WHY HERE AND NOT ANYWHERE ELSE.  PlayerPreThink is the only QC hook the engine
+  calls once per SIMULATED MOVE.  Its sibling PlayerPostThink runs once per
+  received PACKET (SV_RunCmd's caller does `if (ran) SV_PostRunCmd();` outside
+  the per-usercmd loop), so the sampler above cannot see individual commands at
+  all -- which is exactly why it samples at 65/s on a 66.67 Hz server and why
+  this file's whole timing essay exists.
+
+  AND THE ENGINE HAS ALREADY WRITTEN EVERY FIELD WE NEED, one screen above the
+  call.  sv_user.c sets .v_angle from SHORT2ANGLE(ucmd->angles[]) at :7782,
+  SV_SetEntityButtons at :7812, .movement from the raw ucmd triple at :7895, and
+  only then runs PlayerPreThink.  So this function reads no input_* global and
+  needs none -- which is fortunate twice over, because input_buttons rounds (see
+  the <bt> paragraph in the grammar block) and because input_sequence is not
+  declared in this tree's defs at all, so a read of it would have compiled, run,
+  and returned zero forever.
+
+  WHAT IS DELIBERATELY NOT STORED.  The frametime this move was given: it is
+  exactly (next row's mt - this row's mt) * movetickrate + (next carry - this
+  carry), so storing it would be a third copy of a two-copy fact.  The msec off
+  the wire: SV_RunCmd's budget writes through the caller's pointer (`ucmd->msec
+  -= 1` and `ucmd->msec = host_client->msecs`), so the received msec is not what
+  ran, and the received msec is what a cheating client controls.  mt and carry
+  are produced by the mover and are the two numbers no client writes.
+
+  NO CVAR GATES THIS, and that is a decision.  A `rec_inputs 0` would be a knob
+  whose only effect is to delete the evidence a ranked run is verified from, by
+  the person it verifies -- which is `rec_hid 0` exactly, the hole Phase 0.5 of
+  the plan named as outranking everything else in it.  The recorder being live
+  is the whole gate.
+
+  WHAT IT COSTS, MEASURED ON A REAL RUN rather than estimated (cfg/testrun/
+  b82input.cfg): 1.84x the LINES and 1.50x the BYTES, at 51.1 bytes per input row
+  against 85.9 for every other line in the same file.  The byte multiplier is the
+  LOWER of the two, which is the opposite of the first guess written here -- an
+  input row has ten columns and a sample has seventeen, so the trace is cheaper
+  per line than the thing it doubles.  Against build 81's ~439 MB per 12 hours
+  that is ~660 MB, ~80 MB at rest under xz -6.
+
+  THE LINE CAP ALREADY BUDGETED THIS and needs no revisiting: build 81 sized
+  FS_RECMAX_STREAM at 220 lines/s of which ~100 was named as the step trace, and
+  this is that trace arriving at 0.84 rows per existing line.
+===========================================================================
+*/
+void(entity e) SV_TimerInFrame =
+{
+	local float bt;                 // the three mover bits, repacked
+	local float was;                // rec_rec_lines before the write
+
+	if (e.run_t_state != TS_RUNNING)
+		return;
+	if (!SV_RecLive(e))
+		return;
+
+	/*
+	  THE SAME GATE THE `instart` KEY TOOK, and it has to be the same or the file
+	  contradicts itself: no counter means no horizon means no rows.  Rows
+	  stamping a constant 0 would be worse than no rows, because a verifier would
+	  read them as a mover that never advanced.
+	*/
+	if (e.run_movetickrate <= 0)
+		return;
+
+	/*
+	  NOT WHILE FROZEN, matching the sampler exactly.  A save-lock hold pins the
+	  player with MOVETYPE_NONE and re-zeroes velocity every tick; the commands
+	  still arrive and the mover still counts ticks, so without this a ten-second
+	  park is ~660 rows describing a body that cannot move, against a cap this
+	  trace already spends twice as fast as the samples do.  Keeping the two
+	  writers on ONE rule also means the interleaving a reader groups by never
+	  develops a span with inputs and no sample to terminate it.
+	*/
+	if (e.run_t_frzon)
+		return;
+
+	/*
+	  THE THREE BITS THE MOVER READS, from the three fields the engine wrote by
+	  integer shift -- .button2 is BUTTON_JUMP (2), .button4 is BUTTON_DUCK (8),
+	  .button8 is BUTTON_SPEED (128).  Repacked into 1/2/4 rather than re-emitting
+	  2/8/128, because the stored word is a description of this file's own columns
+	  and not a copy of a protocol constant that could be renumbered under it.
+
+	  .button8 HAS NO OTHER READER IN THIS TREE, which is the one thing about this
+	  line that is not obvious: the engine only populates an extended button field
+	  if the progs actually declare it (pr_cmds.c walks buttonfields[] and skips
+	  any whose offset is < 0), so this read is also what keeps the field alive.
+	  SV_RecKeys already reads .button4, and .button2 has been read since build 1.
+	*/
+	bt = 0;
+	if (e.button2) bt = bt + 1;
+	if (e.button4) bt = bt + 2;
+	if (e.button8) bt = bt + 4;
+
+	/*
+	  TWO sprintfs, for the reason SV_RecLine gives: fteqcc caps varargs at 8 and
+	  SILENTLY drops the rest, so an eleven-value format would write zeroes for
+	  the tail rather than fail to compile.
+
+	  %d AND NOT %g ON mt, which is not a style choice on this field: %g is six
+	  significant digits, run_movetick is cumulative per MAP rather than per run,
+	  and a lobby that has been up for an hour is already past 1,000,000 -- so
+	  every row of every run on that server would carry `1.00001e+06` and a reader
+	  could not tell a rounded mover tick from an exact one.  That is build 79's
+	  byte-count defect exactly, on the column this whole record is built around.
+	  Same for the packet ordinal, which counts from the start of the recording
+	  but is unbounded within it.
+	*/
+	was = e.rec_rec_lines;
+	SV_RecPut(e, strcat(sprintf("in %d %d %.5f %g %g %g ",
+	                            e.rec_rec_pk, e.run_movetick, e.run_movecarry,
+	                            e.movement_x, e.movement_y, e.movement_z),
+	                    sprintf("%.4f %.4f %.4f %d",
+	                            e.v_angle_x, e.v_angle_y, e.v_angle_z, bt)));
+
+	/*
+	  COUNTED BY WHETHER A LINE ACTUALLY LANDED, not by having attempted one.
+	  SV_RecPut refuses past the line cap and returns having written nothing, so
+	  an unconditional increment would make the trailer's <inputs> a count of rows
+	  we MEANT to write -- which is the assertion this field exists instead of.
+	  rec_rec_lines is the only handle on that, because SV_RecPut returns void and
+	  is shared with the buffered path.
+
+	  IT THEREFORE BEHAVES DIFFERENTLY FROM rec_rec_n AT THE CAP, and that is
+	  deliberate rather than an inconsistency to tidy up.  rec_rec_n over-counts
+	  there, so `end` claims more samples than the body holds and reccheck.py
+	  faults the file -- which is a true and useful statement about a truncated
+	  recording, and is not being removed.  <inputs> is exact, so the same capped
+	  file reports honestly on one axis and loudly on the other.  Between them a
+	  reader can tell WHERE the truncation landed.
+	*/
+	if (e.rec_rec_lines != was)
+		e.rec_rec_in = e.rec_rec_in + 1;
+};
+
 void(entity e) SV_TimerRecFrame =
 {
 	if (e.run_t_state != TS_RUNNING)
@@ -8099,6 +8518,26 @@ void(entity e) SV_TimerFrame =
 	  the usercmd's -- see SV_TimerElapsed.
 	*/
 	SV_TimerFreezeFrame(e);
+
+	/*
+	  BUILD 82: THE PACKET ORDINAL, and it is here for the same two reasons the
+	  line above is -- unconditional, above every early return.
+
+	  This function is called exactly once per received move packet
+	  (PlayerPostThink), which is what makes a bare increment a packet counter.
+	  Putting it below the `zone_count <= 0` guard or the ghost branch would make
+	  it a counter of packets ON A TIMED MAP WHILE NOT GHOSTING, and the `in` rows
+	  that read it are written from PlayerPreThink, which has no such gate: a
+	  ghosting player's rows would then all claim one packet, and the grouping a
+	  verifier reads would silently fuse the whole ghost window into a single
+	  move.  The counter must cost nothing to be right, so it is.
+
+	  It is a free-running float and nothing bounds it.  That is safe where the
+	  recorder's own counters are, and for the same reason: %d is exact to 2^24,
+	  which at 66.67 packets per second is 70 hours -- past the 12 the line cap is
+	  sized for, and past anything a single recording can reach.
+	*/
+	e.rec_rec_pk = e.rec_rec_pk + 1;
 
 	/*
 	  Both up here with it, and both for the same two reasons it is.
