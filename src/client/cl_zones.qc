@@ -301,12 +301,24 @@ void() Zone_LoadForMap =
 	else
 		Zone_LoadFromBsp();
 
+	/*
+	  BUILD 81: the client hashes its own table too, and the value is NOT written
+	  into any file from here -- see cl_lobbytime.qc's header, which deliberately
+	  does not carry one.  It exists so the two sides CAN be compared: the client
+	  loads the same three sources in the same order, so a disagreement means the
+	  player is looking at a different set of boxes from the ones the server is
+	  timing them against, which is a thing worth being able to ask.  Nothing asks
+	  yet; this is the half that has to exist first.
+	*/
+	Zone_Hash();
+
 	// SILENT when there is nothing -- 783 Momentum maps and every one of the
 	// 1082 CS:S maps have no zone data at all, so this is the common case and
 	// must not print.
 	if (zone_count)
-		print(sprintf("zones: %g on %s (%s)\n",
-		              zone_count, map, Zone_SourceName(zone_source)));
+		print(sprintf("zones: %g on %s (%s) crc %s\n",
+		              zone_count, map, Zone_SourceName(zone_source),
+		              (zone_crc != "") ? zone_crc : "-"));
 	else
 		dprint(sprintf("zones: none for %s\n", map));
 };
@@ -494,8 +506,21 @@ void() Zone_List =
 
 	Zone_ReadCvars();
 
-	print(sprintf("zone_list: %g zones, %g points, source %s%s\n",
+	/*
+	  BUILD 81: the crc is on this line because this line is the only way to SEE
+	  it without finishing a run.  A recording states the hash in its header, but
+	  SV_RecClose has one call site -- the finish -- so a table that hashes wrongly
+	  produces no evidence at all until somebody completes a map.  Printing it here
+	  makes the value falsifiable from a config: load, read, reload, read again.
+
+	  This is the CLIENT's table, which is not the one the .rec header states --
+	  the header carries the server's.  That is the point rather than a caveat:
+	  the two load the same three sources in the same order, so if they ever
+	  disagree the player is looking at different boxes from the ones timing them.
+	*/
+	print(sprintf("zone_list: %g zones, %g points, source %s crc %s%s\n",
 	              zone_count, zone_ptcount, Zone_SourceName(zone_source),
+	              (zone_crc != "") ? zone_crc : "-",
 	              zone_overflow ? " ^1(TRUNCATED -- hit a cap)" : ""));
 
 	/*

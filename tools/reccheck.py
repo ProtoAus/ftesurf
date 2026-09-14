@@ -163,7 +163,36 @@ HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc", "movetickrate"}
 #           build 76 meant; checked below, where a v5 file claiming `sampled` is
 #           a NOTE rather than a fault, because it is a correctly-labelled
 #           recording from a correctly-behaving server with an old engine.
-HEAD_V5 = HEAD_V4 | {"clock"}
+#   zonesrc / zonecrc / zonerule
+#           build 81, and additive for the same reason mapcrc was.  mapcrc says
+#           which BSP the physics ran on; these say WHICH BOXES STARTED AND
+#           STOPPED THE CLOCK, which on this game is a different file.  The
+#           server tries maps/zones/local/<map>.json, then
+#           maps/zones/online/<map>.json, and only then the BSP's own trigger
+#           brushes -- so two of the three sources are not the map at all and can
+#           be re-authored under a standing record with nothing to notice.
+#
+#           zonecrc IS OVER THE BUILT TABLE, NOT THE FILE, and that matters here
+#           because THIS TOOL MUST NOT TRY TO RECOMPUTE IT.  The BSP path deflates
+#           every box by a unit on six faces, so it hashes differently from a JSON
+#           of the same brush -- which is the distinction the key exists for -- but
+#           reproducing the value needs the loader, the float32 table and the same
+#           %.3f rendering, none of which this file has and all of which it would
+#           have to duplicate.  Duplicating the writer is exactly what this tool
+#           is written to avoid.  So the checks below are SHAPE and INTERNAL
+#           CONSISTENCY only, and the real comparison belongs to the re-simulation
+#           verifier, which loads the table through the same code that hashed it
+#           and therefore matches by construction rather than by agreement.
+#
+#           Absent is not a fault: every file written before build 81 lacks all
+#           three, and a map with no zone table cannot be timed, so the server
+#           omits them rather than writing an empty value.
+HEAD_V5 = HEAD_V4 | {"clock", "zonesrc", "zonecrc", "zonerule"}
+
+# The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
+# here: the server only writes the key when it has a table, so a file claiming
+# `zonesrc none` is a writer that has gone wrong, not an untimed map.
+ZONE_SRCS = ("local", "online", "bsp")
 
 # shared/sh_defs.qc.  Only the two a stored run may assert: TF_RECORDING and
 # TF_FROZEN are masked out by SV_RecClose, because neither is a fact about the
@@ -422,6 +451,51 @@ def check_rec(path, verbose=False):
     if head.get("clock", "").split()[:1] == ["counted"] and mtr <= 0:
         r.fault("clock counted but no movetickrate -- the file claims the mover's "
                 "ticks and does not say how long one is")
+
+    # ---- the zone pin, build 81 ---------------------------------------------
+    #
+    # SHAPE AND INTERNAL CONSISTENCY ONLY.  See the HEAD_V5 note: this tool
+    # cannot recompute zonecrc without duplicating the loader, and duplicating
+    # the writer is the thing it exists not to do.  What it CAN say is that the
+    # three keys arrive together or not at all, and that each is the shape the
+    # grammar describes -- which is enough to catch a half-applied patch, the
+    # failure this feature will actually have.
+    zsrc = head.get("zonesrc")
+    zcrc = head.get("zonecrc")
+    zrul = head.get("zonerule")
+    zhave = [k for k, v in (("zonesrc", zsrc), ("zonecrc", zcrc),
+                            ("zonerule", zrul)) if v is not None]
+
+    if zhave and len(zhave) != 3:
+        # ALL THREE OR NONE.  The server writes them inside one `if`, so a file
+        # with some of them did not come from a server this tool understands --
+        # and a partial pin is worse than none, because a reader that finds
+        # zonecrc will believe the run is pinned while the rule that decides the
+        # crossing is unstated.
+        r.fault("zone pin is partial: %s present, %s missing -- the writer emits "
+                "all three together or none"
+                % (", ".join(zhave),
+                   ", ".join(k for k in ("zonesrc", "zonecrc", "zonerule")
+                             if k not in zhave)))
+    elif zhave:
+        if zsrc not in ZONE_SRCS:
+            r.fault("zonesrc %r is not one of %s" % (zsrc, "/".join(ZONE_SRCS)))
+        if not re.fullmatch(r"[0-9a-f]{8}", zcrc or ""):
+            r.fault("zonecrc %r is not 8 lowercase hex digits" % zcrc)
+        zr = (zrul or "").split()
+        if len(zr) != 3:
+            r.fault("zonerule takes 3 fields (swept hull hull_live), has %d"
+                    % len(zr))
+        elif not all(x.lstrip("-").isdigit() for x in zr):
+            r.fault("zonerule %r has a non-integer field" % zrul)
+        r.info["zones"] = "%s %s rule %s" % (zsrc, zcrc, zrul)
+    else:
+        # NOT a fault and NOT silent.  Every file written before build 81 lacks
+        # the pin, and so does every run on a map with no zone table; but a
+        # reader deciding whether a recording can be re-simulated needs to know
+        # the difference between "pinned" and "nothing was said", and the only
+        # way to know is to be told.
+        r.info["zones"] = "not stated"
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
@@ -1402,6 +1476,16 @@ def emit(r, verbose):
                   # file's own header makes for writing the checker from the
                   # grammar rather than from the writer.
                   "ghosted", "journal", "ruleset",
+                  # Build 81, and it was left out of this tuple on the first
+                  # cut -- which is the defect the paragraph directly above
+                  # describes, reproduced three lines below its own warning.
+                  # `zones` is the one field here that says whether a recording
+                  # can be re-simulated AT ALL, so "computed and discarded"
+                  # would have been the worst possible one to lose.  It prints
+                  # for every file, including "not stated", because a reader
+                  # deciding what a run is worth needs the difference between
+                  # pinned and silent and cannot get it from an absent line.
+                  "zones",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

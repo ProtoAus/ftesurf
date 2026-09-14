@@ -566,6 +566,28 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	fputs(fh, sprintf("flags %g\n", flags));
 	fputs(fh, sprintf("clock %s\n", (flags & TF_NOCLOCK) ? "sampled" : "counted"));
 	fputs(fh, sprintf("lobby %s\n", LT_Host()));
+
+	/*
+	  BUILD 81: NO mapcrc AND NO ZONE PIN HERE, DELIBERATELY, and it is worth
+	  saying so because the other two FTESURF-REC writers both gained them and a
+	  later reader will notice the gap and try to close it.
+
+	  Those keys state what the machine that RAN THE PHYSICS loaded.  This writer
+	  is on the client, and the run it describes happened on a lobby.  The client
+	  has a zone table of its own -- cl_zones.qc loads the same three sources in
+	  the same order and Zone_Hash runs over it -- so filling these in from
+	  `zone_crc` would be trivially available and WRONG: it would assert the
+	  client's table as the one that timed the run, and the two can genuinely
+	  differ, which is precisely the condition worth detecting.
+
+	  That is the sv_mapcheck shape exactly: a second copy of a fact, derived from
+	  something that is not the fact, agreeing with itself and proving nothing.
+	  The header's own rule makes absence the right answer -- an unknown key is
+	  skipped, so a reader learns "not stated" rather than a confident wrong one.
+
+	  `samples 0` already says this file has no body and cannot be re-simulated,
+	  so nothing downstream wants the pin from here anyway.
+	*/
 	fputs(fh, "samples 0\n");
 	fclose(fh);
 

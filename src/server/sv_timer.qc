@@ -149,27 +149,69 @@
 
   THE OLD SINGLE CAP WAS COSTED AT THE WRONG RATE, WHICH IS THE WHOLE BUG.
   This comment read "50 minutes at 66.67 Hz".  That is true, and it is the SURF
-  case; nobody re-costed it when bhop maps shipped at 100 Hz.  Measured on a
-  real 100-tick recording -- bhop_monster_jam/main/cheat.rec, 58,396 lines over
-  647.2s -- the rate is 90.2 lines/s, so 200,000 lines was THIRTY-SEVEN MINUTES
-  and not fifty.  A bare line count is a duration divided by a rate; when the
-  rate moved, the constant did not, and nothing said so.  Both numbers below
-  therefore state the rate they were costed at and what they buy at the others.
+  case; nobody re-costed it when bhop maps shipped at 100 Hz.  A bare line count
+  is a duration divided by a rate; when the rate moved, the constant did not,
+  and nothing said so.  Both numbers below therefore state the rate they were
+  costed at and what they buy at the others.
+
+  BUILD 80 THEN COSTED IT AT THE WRONG RATE AGAIN, ONE BUILD LATER, IN THE SAME
+  SHAPE.  It measured bhop_monster_jam/main/cheat.rec -- 58,396 lines over
+  647.2 s -- called that 90.2 lines/s, and sized 200,000 at 37 minutes.  The
+  arithmetic is right and THE FILE IS WRONG FOR THE PURPOSE: it holds 58,353
+  samples against an `end` of 64,724 ticks, a ratio of 0.898, so about a tenth
+  of that run is FROZEN.  SV_TimerRecFrame deliberately writes no sample while
+  frozen, and says so thirty lines from here, CITING THIS CAP AS THE REASON.  So
+  build 80 calibrated a line cap on the one kind of run whose line rate is
+  deliberately suppressed, while quoting the mechanism that suppresses it.  The
+  baseline came out ~15% low.
+
+  MEASURED PROPERLY, over the 97 recordings in data/runs: every clean 100-tick
+  run reads 100.6-104.2 lines/s with samples/ticks EXACTLY 1.000 (twelve files),
+  the long ones settling at ~104, and 97.62 bytes/line corpus-wide.  The only
+  two files below 100 are the two cheat.rec captures, and they are the two with
+  freezes in them.  Corrected, at 104 lines/s:
+
+      200,000 (the pre-80 cap) ......  32 minutes, not 37
+      1,000,000 (BUF) ...............  2.7 hours, not 3.1
+      8,640,000 (build 80's STREAM) .  23.1 hours, not 26.6
+
+  THE FOURTH LINE IS THE ONE THAT MATTERS.  8,640,000 was 12 h * 3600 * 200/s,
+  and 200/s was "100 Hz packets plus a 100 Hz input trace".  With the sampler
+  measured at 104 rather than 90, that pair is 204/s, and 8,640,000 / 204 is
+  11.76 HOURS -- under the twelve the constant is named for.  The term also
+  budgeted exactly zero lines for the header, for the FS_RECPAD ring of up to
+  256, and for every board/cp/stage/split/end record, so the shortfall was
+  structural and not marginal.  Hence 220 below, not 200.
 
   BUFFERED: 1,000,000, AND THIS ONE IS NOT A NUMBER WE CHOSE.  bufstr_set
   REFUSES an index past 1024*1024 with only a PR_RunWarning (pr_bgcmd.c:5566),
   so the buffer physically cannot hold more; the cap exists to turn a silent
   truncation into one we announce.  1,000,000 rather than 1,048,575 so that the
-  margin is visibly deliberate rather than exact-to-the-limit.  At 90.2 lines/s
-  that is 3.1 hours.  A RUN YOU CAN REWIND IS CAPPED BY THE BUFFER and it cannot
+  margin is visibly deliberate rather than exact-to-the-limit.  At the measured
+  104 lines/s that is 2.7 hours.  A RUN YOU CAN REWIND IS CAPPED BY THE BUFFER
+  and it cannot
   be otherwise: a save-state resume rewinds to a mark and appends from there,
   which is random access, which is the one thing a stream cannot do.  That is
   why this path still exists at all.
 
-  STREAMED: 8,640,000 = 12 hours * 3600 * 200 lines/s, and every term is load
-  bearing.  200/s is the WORST case rather than the measured one -- 100 Hz
-  packets plus a 100 Hz input trace -- so at today's measured 90.2/s it is 26.6
-  hours and at surf's 65/s it is 36.9.  The stream has no engine limit of any
+  STREAMED: 9,504,000 = 12 hours * 3600 * 220 lines/s, and every term is load
+  bearing.  220/s is built from measurements and not from a round number: 104
+  for the per-packet sampler (measured, above), ~100 for the per-step input
+  trace Phase 3 needs, and ~16 for everything the old term forgot -- the header,
+  the padding ring, and the board/cp/stage/split/end records.  At today's rate,
+  with no step trace yet written, it is 25.4 hours; at surf's 66.67 Hz, 38.3.
+
+  A FREEZE IS THE ONE STATE WHERE THE TWO TERMS DISAGREE, and it is worth
+  writing down before the step trace lands: while run_t_frzon the sampler writes
+  NOTHING by design, so the combined rate falls from ~204 to ~100 rather than
+  rising.  A save-state hold therefore cannot blow this cap faster than running
+  does -- but it does spend budget for zero run time, which is the opposite of
+  what the sampler's own freeze gate was written to achieve.  The step trace has
+  to record frozen commands anyway, because the mover still runs ticks during
+  them (pm_source.c dispatches pm_type INSIDE the tick), and a clock that
+  excludes them can only be derived if they are present to exclude.
+
+  The stream has no engine limit of any
   kind: FRIK_FILE_WRITESTREAM is a plain FS_OpenVFS(name, "wb")
   (pr_bgcmd.c:2835-2841) with no index and no array behind it, so nothing here
   is protecting a data structure.  It protects the disk and the counter.
@@ -180,19 +222,26 @@
   2^24 = 16,777,216 -- past that `n + 1 == n`, the line count FREEZES, and the
   file goes on growing underneath it.  That failure is silent in the worst way:
   the counter reads plausible and the `end` trailer's sample count reads
-  plausible, and only counting the bytes disagrees.  8,640,000 is 51% of it, so
-  the margin is a factor of two rather than a few percent.  Two more walls sit
-  above and would also have to move: the 7-digit <ticks7> filename stamp
-  (9,999,999 ticks = 27.8 hours at 100 Hz) and the `t` column itself, which is a
-  float holding seconds and is down to a ~4 ms quantum by 43,200.
+  plausible, and only counting the bytes disagrees.  9,504,000 is 56.6% of it,
+  so the margin is 1.77x -- smaller than build 80's claimed "factor of two",
+  which is the honest price of the re-costing above and is stated rather than
+  rounded away.  Two more walls sit above and would also have to move: the
+  7-digit <ticks7> filename stamp (9,999,999 ticks = 27.8 hours at 100 Hz) and
+  the `t` column itself, which is a float holding seconds and is down to a ~4 ms
+  quantum by 43,200.
 
-  COST, measured rather than estimated: 96.9 bytes/line across the real files in
-  data/runs, so twelve hours is ~492 MB on disk and ~59 MB at rest under xz
-  (8.27x; `xz -6` gets 8.20x, so -9e buys 0.8% and is not worth its CPU).  That
-  is the number the retention policy has to answer for, not this cap.
+  COST, measured rather than estimated: 97.62 bytes/line across the 97 real
+  files in data/runs (27.4 MB over 280,981 lines).  Twelve hours at today's 104
+  lines/s is ~439 MB on disk and ~54 MB at rest under xz -6 (8.20x, measured;
+  -9e gets 8.27x, i.e. 0.8% for several times the CPU, which a NanoPi should not
+  pay).  With the step trace it is roughly 700 MB and ~85 MB at rest -- ROUGHLY,
+  and flagged as such, because a step row is about 60 bytes rather than 97.6 and
+  that record does not exist yet.  Build 80's "492 MB" reconciled with neither
+  its own bytes/line nor its own rate and is withdrawn.  These are the numbers
+  the retention policy has to answer for, not this cap.
 */
 #define FS_RECMAX_BUF     1000000
-#define FS_RECMAX_STREAM  8640000
+#define FS_RECMAX_STREAM  9504000
 
 /*
   Two builtins the platform dump does not declare.
@@ -1913,8 +1962,26 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     mapcrc <hex>            v4 key, build 73: the BSP THIS SERVER loaded
+    zonesrc local|online|bsp  build 81.  WHICH OF THE THREE zone sources built
+                            the table this run was timed against
+    zonecrc <hex>           build 81.  8 hex of sha256 over the BUILT table --
+                            not over the JSON file, so the BSP path's one-unit
+                            deflation hashes differently from a JSON of the same
+                            brush.  See Zone_Hash in sh_zones.qc
+    zonerule <s> <h> <hl>   build 81.  run_zone_swept, run_zone_hull,
+                            run_zone_hull_live as latched for this map.  Not
+                            geometry and not movevars: two servers with the same
+                            table and different rules give different times
     flags <n>               TF_* as they stood AT THE FINISH -- see below
     begin                   header ends here; everything after is a record
+
+  THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
+  is most of the library.  They are here because mapcrc's own argument -- a map
+  name is not a map -- stops one level short: on this game the map does not
+  contain the boxes that start and stop the clock.  All three are written by
+  SV_RecOpen and by SV_StageWrite and DELIBERATELY NOT by cl_lobbytime.qc, whose
+  header describes a run that happened on somebody else's machine; the note
+  there explains why writing the client's answer would be worse than silence.
 
   WHY VERSION 5 EXISTS, because it is the only bump in this format's history that
   a reader cannot shrug off.  Every key added since v4 -- leg, mapcrc,
@@ -1952,7 +2019,17 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             rather than the nominal 66.67.  Interpolate using
                             each sample's own t; never by index.
     restart <seg> <ticks>   a stage was restarted mid-run
-    cp <seg> <ticks>        a checkpoint was crossed
+    cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
+                            segment: this block said <seg> until build 81 and the
+                            writer has written the ordinal since build 19, whose
+                            own comment at the call site explains why (zone_seg
+                            is 0 for every checkpoint on a linear map, so every
+                            record read `cp 0 <ticks>` and no reader could tell
+                            them apart).  Three years of a checker written FROM
+                            THIS BLOCK inherited the wrong name
+    stagestart <seg> <ticks>  a stage run was started.  Added build 81 -- the
+                            writer has existed since the stage runs did, and this
+                            block never listed it
     stage <seg> <ticks>     a stage boundary was crossed
     board <t> <n> <nx ny nz> <vx vy vz>
                             v4.  The engine's board counter moved to <n>: you
@@ -1971,6 +2048,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             did rather than assume it did not.  A run that boards
                             twice inside one packet is a run bouncing off a lip
                             at 66 Hz, and no per-packet format can separate them.
+    retry <ticks>           a save-state retry, written beside `resume` by the
+                            same function in sv_saveloc.qc.  Added to this block
+                            in build 81; the writer long predates it.  ONE field,
+                            not two -- the only record in this grammar with a
+                            bare tick and no index, which is exactly the shape a
+                            checker written from a stale block gets wrong
     resume <slot> <ticks>   the run was resumed from save state <slot>, and
                             everything after this line is a fresh attempt at the
                             same section.  Build 17.
@@ -2517,6 +2600,48 @@ void(entity e) SV_RecOpen =
 	mcrc = infokey(world, "*mapcrc");
 	if (mcrc != "")
 		SV_RecPut(e, sprintf("mapcrc %s", mcrc));
+
+	/*
+	  BUILD 81: WHICH BOXES THE CLOCK WAS STARTED AND STOPPED BY.  Additive, the
+	  same way mapcrc was, and it exists because THE ARGUMENT DIRECTLY ABOVE DOES
+	  NOT GO FAR ENOUGH.
+
+	  mapcrc answers "which bytes did the physics run on".  It does not answer
+	  "which boxes decided the time", and on this game those are different files.
+	  SV_ZoneLoad tries maps/zones/local/<map>.json, then maps/zones/online/<map>
+	  .json, and only then the BSP's own trigger brushes (sv_zones.qc:173-178).
+	  Two of the three are not the map and can be re-authored at any moment, under
+	  a standing record, with nothing in the file to notice.  The start tick and
+	  the finish tick are both a function of that table, so a recording that names
+	  its map and not its zones is not sufficient to re-simulate -- which is the
+	  whole purpose mapcrc was added for.
+
+	  AND `zonesrc` ALONE WOULD NOT DO IT, which is why there are two keys and not
+	  one.  The BSP path deflates every box by a unit on all six faces
+	  (sv_zones.qc:111, deliberate and documented there), so a BSP-sourced end
+	  zone is two units smaller per axis than a JSON traced from the same brush.
+	  Same map, same source name, different geometry.  zonecrc is over the BUILT
+	  table precisely so those two hash differently -- see Zone_Hash.
+
+	  zonerule IS THE THIRD FACT AND IT IS NOT GEOMETRY.  Whether a crossing is a
+	  swept segment test or a point test (run_zone_swept), and whether entry and
+	  occupancy are asked of the player's HULL or of the origin, and which hull
+	  (run_zone_hull, run_zone_hull_live) -- all three are latched per map at
+	  SV_TimerMapInit precisely so they cannot move under a run, and none of them
+	  is a movevar, so pm_lockmovement does not cover them and nothing else in
+	  this header records them.  Two servers with an identical table and different
+	  rules produce different times from identical input.
+
+	  OMITTED WHEN THERE IS NO TABLE, on the mapcrc precedent: a map with no zones
+	  cannot be timed at all, so writing `zonecrc ` empty would describe nothing.
+	*/
+	if (zone_crc != "")
+	{
+		SV_RecPut(e, sprintf("zonesrc %s", Zone_SourceTag(zone_source)));
+		SV_RecPut(e, sprintf("zonecrc %s", zone_crc));
+		SV_RecPut(e, sprintf("zonerule %d %d %d",
+		                     run_t_swept, run_t_hull, run_t_hulllive));
+	}
 
 	/*
 	  RESERVED, and rewritten by SV_RecClose.
@@ -3930,6 +4055,35 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("runid %s-s%g", strftime(TRUE, "%Y%m%d-%H%M%S"), seg));
 	bufstr_set(buf, buf_getsize(buf), sprintf("flags %g", i));
+
+	/*
+	  BUILD 81: mapcrc AND THE ZONE PIN, both of which this writer had been
+	  missing since they were added -- mapcrc since build 73, the zone keys as of
+	  now.  This is the least visible of the three FTESURF-REC writers and it is a
+	  REAL recording with a real body, so a reader that trusts the header learns
+	  less from a lifted stage than from the run it was lifted out of, for no
+	  reason anybody chose.  It is the same omission twice, which is the argument
+	  for fixing it beside the second one rather than filing it again.
+
+	  The values are the parent run's by construction: a stage slice is cut out of
+	  a recording made on this server, on this map, against this zone table, in
+	  the same frame -- so these are not a second measurement of anything, they
+	  are the same measurement written into the second file.  cl_lobbytime.qc's
+	  header deliberately gets NEITHER; see the note there.
+	*/
+	if (infokey(world, "*mapcrc") != "")
+		bufstr_set(buf, buf_getsize(buf),
+		           sprintf("mapcrc %s", infokey(world, "*mapcrc")));
+	if (zone_crc != "")
+	{
+		bufstr_set(buf, buf_getsize(buf),
+		           sprintf("zonesrc %s", Zone_SourceTag(zone_source)));
+		bufstr_set(buf, buf_getsize(buf), sprintf("zonecrc %s", zone_crc));
+		bufstr_set(buf, buf_getsize(buf),
+		           sprintf("zonerule %d %d %d",
+		                   run_t_swept, run_t_hull, run_t_hulllive));
+	}
+
 	bufstr_set(buf, buf_getsize(buf), "begin");
 
 	/*

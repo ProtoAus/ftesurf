@@ -184,6 +184,8 @@ float  zone_ptcount;
 float  zone_source;                 // ZSRC_*
 string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
+string zone_crc;                    // build 81: 8 hex of sha256 over the BUILT
+                                    // table, "" until Zone_Hash runs.  See it.
 
 string(float t) Zone_TypeName =
 {
@@ -203,6 +205,97 @@ string(float s) Zone_SourceName =
 	if (s == ZSRC_ONLINE) return "maps/zones/online";
 	if (s == ZSRC_BSP)    return "bsp entities";
 	return "none";
+};
+
+// The one-word form, for a file rather than for a human.  Kept beside its
+// prose twin so the two cannot drift apart.
+string(float s) Zone_SourceTag =
+{
+	if (s == ZSRC_LOCAL)  return "local";
+	if (s == ZSRC_ONLINE) return "online";
+	if (s == ZSRC_BSP)    return "bsp";
+	return "none";
+};
+
+/*
+===========================================================================
+  BUILD 81: A HASH OF THE ZONE TABLE, AND WHY A MAP HASH DOES NOT COVER IT.
+
+  Patch 321 put `mapcrc` in every recording header on the argument that a map
+  NAME is not a map -- six maps in this library ship one name at two builds, and
+  re-simulation cannot start without knowing which bytes to re-simulate against.
+  That argument does not go far enough, because ON THIS GAME THE MAP DOES NOT
+  CONTAIN THE THING THE CLOCK IS A FUNCTION OF.
+
+  A run's start and finish ticks are decided by the ZONE TABLE, and that table
+  has three possible sources, tried in order (sv_zones.qc:173-177):
+  maps/zones/local/<map>.json, maps/zones/online/<map>.json, and only then the
+  BSP's own trigger_momentum_timer_* brushes.  Two of those are files that are
+  not the map and can be re-authored at any time, under a standing record, with
+  nothing anywhere to notice.  The third is not even the same geometry as a JSON
+  traced from the same brush: SV_ZoneLoadFromBsp deflates by a unit on all six
+  faces (sv_zones.qc:111), so a BSP-sourced box is two units smaller per axis
+  than the authored one -- deliberately, and documented there, but it means
+  `zonesrc` alone is not enough either.
+
+  SO THE HASH IS OVER THE BUILT TABLE AND NOT OVER THE FILE.  Hashing the JSON
+  bytes would make a whitespace edit look like a geometry change and would say
+  nothing at all about the BSP path, which has no file.  Hashing what the loader
+  PRODUCED makes the BSP's one-unit deflation hash differently from the JSON it
+  was derived from, which is exactly the distinction that matters.
+
+  WHAT IS COVERED: the authored inputs to a crossing test -- type, track, seg,
+  cp, the z band, and every polygon point.  NOT the derived fields (zmins/zmaxs,
+  centre, radius): those are a pure function of the points, so including them
+  would only make the hash sensitive to a change in OUR derivation code, which
+  is what the QC build number already records.
+
+  %.3f AND NOT %g.  A map coordinate reaches +-16384, which is five digits
+  before the point, so %g's six significant digits would quantise the table to
+  a tenth of a unit -- and silently, which is the whole defect build 80 swept.
+  Three decimals is a thousandth of a unit; the difference this exists to catch
+  is two units.
+
+  EIGHT HEX, matching mapcrc's width deliberately so the two read alike in a
+  header.  This is not a security boundary: the server computes it from its own
+  disk and no client can influence it.  It answers "is this the table that run
+  was set against", not "did someone forge one".
+*/
+void() Zone_Hash =
+{
+	local float z, p, e, b;
+	local vector v;
+
+	if (zone_crc != "")
+	{
+		strunzone(zone_crc);
+		zone_crc = "";
+	}
+	if (zone_count <= 0)
+		return;
+
+	b = buf_create();
+	if (b < 0)
+		return;         // out of buffers: leave "", which reads as "not stated"
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		bufstr_add(b, sprintf("z %d %d %d %d %.3f %.3f",
+		                      zone_type[z], zone_track[z], zone_seg[z],
+		                      zone_cp[z], zone_bottom[z], zone_top[z]), TRUE);
+
+		e = zone_first[z] + zone_npts[z];
+		for (p = zone_first[z]; p < e; p = p + 1)
+		{
+			v = zone_pt[p];
+			bufstr_add(b, sprintf("p %.3f %.3f", v_x, v_y), TRUE);
+		}
+	}
+
+	zone_crc = strzone(substring(strtolower(digest_hex("SHA256",
+	                                                   buf_implode(b, "\n"))),
+	                             0, 8));
+	buf_del(b);
 };
 
 /*
@@ -273,6 +366,16 @@ void() Zone_Clear =
 	zone_ptcount = 0;
 	zone_source = ZSRC_NONE;
 	zone_overflow = FALSE;
+
+	// Build 81: the hash describes the table that just went away.  Released
+	// HERE rather than at the top of Zone_Hash alone, because Zone_LoadJson
+	// calls Zone_Clear on a failed parse and would otherwise leave a hash
+	// standing over an empty table -- which reads as a stated fact.
+	if (zone_crc != "")
+	{
+		strunzone(zone_crc);
+		zone_crc = "";
+	}
 };
 
 /*

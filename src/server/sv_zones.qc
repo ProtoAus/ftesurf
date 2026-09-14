@@ -177,10 +177,19 @@ void() SV_ZoneLoad =
 	else
 		SV_ZoneLoadFromBsp();
 
+	/*
+	  BUILD 81: hash the table the moment it is final, and before SV_TimerMapInit
+	  below -- which is what arms the timer, so it is the last point at which no
+	  run can yet be in progress.  Every recording opened on this map states this
+	  hash in its header; see Zone_Hash for why the table and not the file.
+	*/
+	Zone_Hash();
+
 	// Silent when empty: most maps have no zones and saying so every load
 	// would be noise.  CSQC prints the one visible line.
-	dprint(sprintf("zones(sv): %g on %s (%s)\n",
-	               zone_count, mapname, Zone_SourceName(zone_source)));
+	dprint(sprintf("zones(sv): %g on %s (%s) crc %s\n",
+	               zone_count, mapname, Zone_SourceName(zone_source),
+	               (zone_crc != "") ? zone_crc : "-"));
 
 	// The timer's tables hang off the same load, and for the same reason:
 	// this is the first point at which the map is known and its entities
