@@ -299,6 +299,34 @@ check("a community time does not overwrite the same player's ranked time",
 check("...and the community row is its own",
       [r["ticks"] for r in board(m, tier="community")["rows"]], [1])
 
+# The two demotions that had no falsifier: build 72's TF_NOPROFILE and build
+# 73's TF_NOMAP.  Both were added to certifiable() and neither was tested, which
+# for a demotion is the expensive direction to miss -- a bit that is recorded,
+# archived and reported but never ACTED on looks exactly like a bit that works,
+# from every side except the board itself.
+#
+# ITS OWN FIXTURE, not section 5's.  Appending two rows to that one moved four
+# later expectations that count rows, so the first version of this block failed
+# tests it had not touched.  A fresh module is free and cannot reach them.
+m = fresh()
+submit(m, player="ranked1", flags=0, ticks=900)
+submit(m, player="noprof", flags=m.TF_NOPROFILE, ticks=1002)
+check("TF_NOPROFILE is demoted off the ranked board",
+      names(board(m, tier="community")), ["noprof"])
+
+submit(m, player="nomap", flags=m.TF_NOMAP, ticks=1003)
+check("TF_NOMAP is demoted too",
+      names(board(m, tier="community")), ["noprof", "nomap"])
+check("...and neither reached the ranked board",
+      names(board(m, tier="ranked")), ["ranked1"])
+
+# THE CONTROL.  The demotion has to be caused by the BIT and not by anything the
+# two demoted rows happen to share -- a slower time, a later arrival, the same
+# key.  Identical shape, flags 0, and it ranks.
+submit(m, player="clean2", flags=0, ticks=1004)
+check("a clean run arriving last, and slowest, still ranks",
+      names(board(m, tier="ranked")), ["ranked1", "clean2"])
+
 # --------------------------------------------------------------------------
 print("\n--- 6. ranking and personal bests ----------------------------------")
 
@@ -430,8 +458,13 @@ else:
             r"^#define\s+(TF_[A-Z]+)\s+(\d+)", src_text, re.M
         )
     )
+    # TF_NOPROFILE was added to surfd by build 72 and never added HERE, so the
+    # one constant most likely to be renumbered next was the one constant this
+    # cross-repo pin did not cover.  Both it and build 73's TF_NOMAP are listed
+    # now; the list is the point of the section, so an addition that skips it
+    # silently loses the guarantee for exactly the newest value.
     for const in ("TF_PRACTICE", "TF_SHADOW", "TF_SEGMENT", "TF_CHEAT",
-                  "TF_NOJOURNAL", "TF_NORULESET"):
+                  "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP"):
         check("%s matches sh_defs.qc" % const,
               getattr(m, const), found.get(const))
 

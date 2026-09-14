@@ -1306,6 +1306,86 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define TF_NOPROFILE 2048
 
 /*
+  THE RUN WAS SET ON A COPY OF THE MAP THAT IS NOT THE SERVER'S.  Build 73,
+  engine Patch 321.
+
+  THE FOURTH BIT OF THIS KIND, and the one that looked covered for the longest.
+  The engine has carried `sv_mapcheck` since QuakeWorld, it DEFAULTS 1, and it
+  drops any client whose map hash disagrees with the server's -- so every audit
+  of this tree, including the plan's own Layer 1 entry, could read the cvar and
+  move on.  It was not covered, twice over.
+
+  ONE: IT WAS INERT, AND SILENTLY.  The VBSP loader computed the map's hash into
+  `mod` after a loop that reassigns `mod` to each submodel, so the number landed
+  on the LAST SUBMODEL and the world model kept the zero Mod_FindName's memset
+  left there.  Both ends did that, so the server compared 0 against the client's
+  0, agreed, and let everyone through.  A check that passes for the right reason
+  and a check that passes because both sides are empty are indistinguishable from
+  outside, which is why it survived.  Measured before fixing: 1287 of the
+  library's 1312 maps have more than one submodel and took the broken path; the
+  25 with exactly one never entered the loop and had been hashing correctly the
+  whole time -- so a spot check could have confirmed either answer depending on
+  which map it picked.  Engine Patch 321.
+
+  TWO: A KICK IS THE WRONG INSTRUMENT, even now that it works.  sv_mapcheck drops
+  the client at prespawn with "Map model file does not match".  A player whose
+  copy of a map is one repack out of date has done nothing wrong, and the penalty
+  for it would be that the game does not let them in.  So the lobbies set
+  `sv_mapcheck 0` and this bit carries the fact instead: the run does not rank,
+  the player keeps playing, and nobody is accused.  Identical trade to the three
+  bits above -- a quiet gate survives a false negative where a refusal does not.
+
+  WHAT IT ACTUALLY CATCHES, SAID HONESTLY, because on a lobby it is NOT physics.
+  The server owns collision and owns the zone triggers, so editing your own BSP
+  does not flatten the ramp you slide on -- it desynchronises your prediction and
+  makes you rubber-band, which is a punishment rather than a cheat.  What a
+  client-side edit does buy is what you can SEE (a wall deleted, a skybox opened)
+  and -- the reason this belongs in Layer 1 rather than in a graphics note -- it
+  means the `.view` the client wrote describes a different world from the one the
+  `.rec`'s physics ran in, so the two can no longer be cross-checked against each
+  other.  On a listen server, i.e. everything in the Community tier, the host's
+  BSP *is* the physics and the bit is about the run itself.
+
+  THE COMPARISON IS BETWEEN STRINGS AND MUST NEVER GO THROUGH stof.  A checksum
+  is 32 bits; a QC float carries a 24-bit mantissa.  Roughly 255 of every 256
+  distinct hashes therefore have no exact float, and a numeric compare would
+  report two genuinely different maps as equal -- silently, and in the direction
+  that RANKS the run.  Build 66 paid for this once already when a seven-digit
+  byte count shipped as `1.12889e+06`; that one at least looked wrong.
+
+  UNKNOWN IS RANKABLE, and there are three ways to be unknown:
+    no server hash   an engine or a plugin older than Patch 321, or a map format
+                     whose loader sets no checksum at all.  Every run this game
+                     has recorded to date was set on one of those.
+    no client hash   a protocol that never sends one.  SVNQ_PreSpawn_f stores the
+                     ~0u sentinel and the engine says so itself: "sv_mapcheck
+                     cannot be enforced on player %s (nq)".  A hole in the
+                     certification is not a wrong map.
+    asked too early  a client that has not passed the map-check stage.  It cannot
+                     happen for a run -- prespawn precedes spawn, and a run needs
+                     a spawned player -- but the predicate answers safely anyway.
+
+  LATCHED ONCE, AT THE START, which is the one place this bit differs in shape
+  from the three above it, so the missing second call is deliberate rather than
+  forgotten.  Those three latch again at the finish because their subject can be
+  changed mid-run by typing into a console.  Neither side of this one can move
+  inside a run: the server's world model lives exactly as long as the map does
+  and a changelevel ENDS the run rather than continuing it, and the client's
+  claim is fixed at prespawn, before it could have spawned, let alone armed.
+  There is no set-and-unset span to difference, so there is no counter either.
+
+  AND IT IS CLIENT-ASSERTED, exactly like TF_NOPROFILE and with the same honest
+  limit: the hash is a number the client computed and sent, so a patched client
+  can send whatever it likes.  This is Layer 1 doing its specified job -- it
+  catches the unmodified client that loaded different bytes, which is T2 -- and
+  it is not a defence against T4.  What answers T4 here is the same thing that
+  answers it everywhere else in this plan: the server writes its OWN map hash
+  into the recording's header, so a stored run names the exact bytes its physics
+  ran on, whatever the client claimed at the time.
+*/
+#define TF_NOMAP    4096
+
+/*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
 
       inprof = "<version> <have> <in_rawinput> <m_filter> <m_accel> <bad>"

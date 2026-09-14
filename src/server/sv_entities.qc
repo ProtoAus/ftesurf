@@ -2165,6 +2165,495 @@ void(entity t, entity act) SV_IOCompare =
 		SV_FireOutput(t, "OnLessThan", act);
 };
 
+/*
+===========================================================================
+  ambient_generic -- Build 64, and THE FIRST SERVER-SIDE SOUND IN THIS GAME.
+
+  Worth saying plainly, because it changes what "implement an input" means
+  here: before this block there were ZERO precache_sound and ZERO sound() calls
+  in the entire server QC.  FTESurf played no server-side sound at all.  So
+  this is not another arm on the input ladder -- it is a subsystem, which is
+  why it was scoped last rather than first.
+
+  THE NUMBERS, censused over all 1315 maps.  5,522 ambient_generic across 387
+  maps, carrying 4,225 PlaySound fires across 301 maps, 959 Volume, 837
+  StopSound, 13 ToggleSound and 2 Pitch.  PlaySound is the broadest
+  unimplemented input in the library by map coverage.  Every one of those fires
+  was dead for the usual reason: ambient_generic is a point entity with no
+  spawn function, so the catch-all removed it before SV_EntityIOBuild ran and
+  every output aimed at one resolved to nothing.
+
+  NO COLLISIONS -- CHECKED BEFORE A LINE WAS WRITTEN, which is the SetValue
+  lesson from build 63 three screens up this file.  Resolving every fire of all
+  five names to its TARGET'S CLASSNAME across the whole library: PlaySound
+  4,225 of 4,226 reach an ambient_generic (the one exception is a !self on a
+  map carrying no ambient at all), StopSound 837 of 838, and ToggleSound (13),
+  Volume (959) and Pitch (2) are 100% ambient_generic.  Unlike Toggle and
+  SetValue, these five names mean exactly one thing in this library.
+
+  ---------------------------------------------------------------------------
+  THE TWO BUCKETS, AND WHY THERE HAS TO BE TWO.
+
+  The obvious implementation -- give every ambient a spawn function and call
+  sound() on it -- is wrong for most of the library, and the reason is in
+  SV_StartSound rather than anywhere in QC.
+
+  sv_send.c:1340-1343 sets `use_phs = (attenuation != 0)` unless the sound is
+  reliable, so an ordinary attenuated sound is multicast to the PHS of its
+  origin AT THE INSTANT IT IS SENT.  For a one-shot that is exactly right.  For
+  a LOOP it is useless: a player who was elsewhere when the loop started never
+  received it, and walking into the room later starts nothing, because nothing
+  is ever sent again.  A waterfall you cannot hear until the map restarts is
+  not a waterfall.
+
+  FTE already has the right mechanism and it is not sound().  ambientsound()
+  (PF_ambientsound_Internal, pr_cmds.c:3690-3719) appends to sv_staticsounds[],
+  which sv_user.c:1823-1831 replays to every client during PRESPAWN -- so it
+  reaches late joiners for free, costs nothing per frame, and the CLIENT owns
+  the spatialisation from then on.  S_StaticSound stamps every one of them
+  CF_FORCELOOP|CF_CLI_STATIC (snd_dma.c:3385), so they loop forever and cannot
+  be stopped, pitched or re-aimed.
+
+  That is a perfect fit for one half of the library and a disaster for the
+  other, so the split is by what the entity NEEDS, not by taste:
+
+    STATIC  (ambientsound) -- no targetname at all, so no output can ever
+            address it; already playing (START_SILENT clear); looping
+            (NOT_LOOPING clear); pitch 100; no SourceEntityName.  Everything a
+            static sound cannot do, this bucket does not ask for.
+    DYNAMIC (sound)        -- everything else.  Precached at spawn, started
+            from the tail of SV_EntityIOBuild, driven by the inputs below, and
+            re-sent to each joining player by SV_AmbientResend.
+
+  Censused, the split is roughly 2,500 static against 3,000 dynamic: 2,224
+  entities carry spawnflags 0 (looping, audible, normal radius) and 2,034 carry
+  48 = START_SILENT|NOT_LOOPING, the I/O-driven one-shot.
+
+  WHAT THIS DELIBERATELY DOES NOT DO.  CAmbientGeneric carries a whole LFO and
+  pitch-envelope engine -- lforate, lfotype, lfomodpitch, lfomodvol, spinup,
+  spindown, cspinup, fadeinsecs, fadeoutsecs, volstart, pitchstart, preset --
+  and Hammer writes all of them on ~3,890 of the 5,522 entities because they
+  have FGD defaults.  None of it is implemented and none of it can be: FTE has
+  no way to change the pitch or volume of a sound already playing, so an
+  envelope would have to be a per-frame re-issue that restarts the sample every
+  tick.  The keys are read and ignored, on purpose, and this paragraph is the
+  record of that being a decision rather than an oversight.
+
+  The same limit costs one thing that IS used: the Volume input re-issues the
+  sound rather than ramping to the new level, so a volume change restarts a
+  loop from its start.  959 fires across 33 maps.  Source ramps; we step.
+===========================================================================
+*/
+#define SF_AMBIENT_EVERYWHERE     1
+#define SF_AMBIENT_SMALLRADIUS    2
+#define SF_AMBIENT_MEDIUMRADIUS   4
+#define SF_AMBIENT_LARGERADIUS    8
+#define SF_AMBIENT_STARTSILENT   16
+#define SF_AMBIENT_NOTLOOPING    32
+
+/*
+  Both spellings for `radius` and `SourceEntityName`, one for the rest, and
+  that is a CENSUS RESULT rather than an omission -- the essay at THE OTHER
+  SPELLING says to check, not to always declare pairs.  Counted over the
+  library's 5,522 ambient_generic:
+
+      message  5515   (no `Message` at all)
+      health   5522   (no `Health`)
+      pitch    5522   (no `Pitch`)
+      radius   5510   Radius            12
+      SourceEntityName 86   sourceentityname  15
+
+  `message` and `health` are already declared in sv_defs.qc.
+*/
+.float  radius, Radius;
+.float  pitch;
+.string SourceEntityName, sourceentityname;
+
+.string vbsp_snd_wav;		// the resolved, prefix-stripped path; "" = inert
+.float  vbsp_snd_static;	// placed with ambientsound(); unaddressable, unstoppable
+.float  vbsp_snd_on;		// dynamic bucket: is a LOOP running right now
+.float  vbsp_snd_vol;		// 0..1, live -- the Volume input writes this
+.float  vbsp_snd_atten;
+.float  vbsp_snd_pitch;		// percent; 100 is the sample's own rate
+.float  vbsp_snd_loop;
+.entity vbsp_snd_src;		// SourceEntityName's entity, else self
+
+float vbsp_snd_static_n;	// placed via ambientsound()
+float vbsp_snd_dyn_n;		// precached for I/O control
+float vbsp_snd_script_n;	// skipped: soundscript names, no file to load
+float vbsp_snd_playing;		// loops currently running, for SV_AmbientResend
+
+/*
+  The widest-carrying ambient on the map, tracked so the FALLOFF ITSELF is
+  visible in ent_io rather than trusted.
+
+  This is the instrument that was missing when the radius conversion was wrong.
+  The report said "280 dynamic" and every count in it was correct; what nobody
+  could see was that each of those 280 was carrying 6100 units instead of 1730,
+  because the number that decides it was computed at spawn and then existed
+  only inside the sound packet.  A count tells you how many; this tells you how
+  far, and "how far" was the entire bug.
+*/
+float vbsp_snd_attn_lo;		// the SMALLEST attenuation = the widest carry
+float vbsp_snd_audible;		// emitters contributing at the listener, SV_AmbientSum
+
+/*
+  vbsp_sound -- the kill switch, and it exists because of how this feature's
+  first run went: a map put 253 copies of one loop on top of each other and the
+  first anyone knew of it was a person's speakers, not a log line.
+
+  Registered AND latched in worldspawn (sv_main.qc), beside vbsp_mp and for the
+  identical reason recorded there: nothing reads it before worldspawn, so the
+  registercvar actually lands.  Reading it with cvar() first would auto-create
+  the name as "" and make registercvar decline, which is the trap that has
+  silently killed three features in this tree -- see the essay at the
+  vbsp_mp read.
+
+  Latched per map rather than live: a player who turns it off mid-map wants the
+  noise to stop, and only SV_AmbientStop can do that, so the cvar gates SETUP
+  and `map` is what applies a change.  Stopping what is already playing is what
+  `snd_restart` and this switch together are for.
+*/
+float vbsp_snd_gate;
+
+/*
+  vbsp_sound_vol -- how loud the ambient bed is, and this is the knob that
+  exists because "every emitter is individually correct" and "the map is
+  bearable" turn out to be different claims.
+
+  FTE HAS NO MIXER LIMITER.  SND_Spatialize accumulates overlapping channels
+  additively -- `ch->vol[i] += bound(0, v, 255)` (snd_dma.c:2717) -- and the
+  mix stage clips whatever comes out.  So N emitters overlapping at full volume
+  is literally N x full scale, and everything above 1.0 is distortion.
+
+  MEASURED, from the maps' own entity lumps, summing every playing emitter's
+  gain under FTE's own falloff (scale = 1.0 - dist*attn/1000, snd_dma.c:2714):
+
+      map                 at spawn      worst point
+      surf_tensor2            0.00      2.00x   (2 emitters overlapping)
+      kz_secret_temple        0.60      2.08x   (5)
+      surf_lt_unicorn         0.00      2.29x   (4)
+
+  Those are the two maps reported as deafening plus one that was not, and the
+  worst-case figures are all about 2x -- i.e. hard clipping -- while every
+  individual emitter is exactly as loud and as far-carrying as Source declares
+  it.  surf_tensor2 reads 0.00 at every spawn point and 2.00 a short walk away,
+  which is precisely the "it suddenly blares" shape of the complaint.
+
+  0.5 IS A JUDGEMENT AND IS LABELLED AS ONE.  It is the value that brings the
+  measured worst case on those three maps to about unity, which is the most
+  that can be justified from the numbers rather than by ear.  FTE's own
+  precedent points the same way and lower: s_ambientlevel, the scale it applies
+  to a BSP's automatic water/wind bed, defaults to 0.3 (snd_dma.c:97).
+
+  It is a CVAR because the honest position is that the right constant is a
+  listening decision and this session has not listened -- every verification
+  run of this feature was deliberately muted.  Latched per map, like
+  vbsp_sound, because it is applied at setup.
+*/
+float vbsp_snd_scale;
+
+/*
+  241 of the library's 5,510 sound paths (4.4%) carry no file extension at all
+  -- `fire_medium`, `water_flood_finished_loop`, `Weapon.Reload`.  Those are
+  not files.  They are SOUNDSCRIPT names, resolved through Source's
+  scripts/game_sounds*.txt, which this game has no parser for.
+
+  Skipping them is the honest scope cut rather than a bug: precaching one burns
+  a precache slot on a name no client can ever load, and spends a "Couldn't
+  load" per client per name.  They are censused instead, so the count keeps
+  meaning "nobody has built this yet".
+
+  The test walks back to the basename because a DIRECTORY in the path may
+  contain a dot while the filename does not.
+*/
+float(string s) SV_AmbientIsScript =
+{
+	local float i;
+	local string c;
+
+	i = strlen(s) - 1;
+	while (i >= 0)
+	{
+		c = substring(s, i, 1);
+		if (c == "/" || c == "\\")
+			return TRUE;		// reached a separator with no dot
+		if (c == ".")
+			return FALSE;
+		i = i - 1;
+	}
+	return TRUE;
+};
+
+/*
+  Source's channel prefixes, stripped.  A leading '*' means "stream from disk"
+  and '#' means "bypass the soundscript system"; FTE has neither concept and
+  wants the bare path.  Censused as barely worth the loop -- 18 of 5,510 paths
+  carry any prefix -- but the loop is three lines and a prefixed path silently
+  fails to load, which is the expensive kind of wrong.
+
+  S_LoadSound tries "sound/<name>" and then "<name>" (snd_mem.c:1042), so the
+  Source-relative path goes through untouched, and it retries other extensions
+  by itself, which covers the 745 .mp3 references in the library.
+*/
+string(string s) SV_AmbientPath =
+{
+	local string c;
+
+	if (s == "")
+		return "";
+
+	c = substring(s, 0, 1);
+	while (c == "*" || c == "#" || c == ")" || c == "^" || c == "@" ||
+	       c == "<" || c == ">" || c == "(" || c == "}" || c == "$" ||
+	       c == "!" || c == "?")
+	{
+		s = substring(s, 1, -1);
+		if (s == "")
+			return "";
+		c = substring(s, 0, 1);
+	}
+	return strreplace("\\", "/", s);
+};
+
+/*
+  radius -> attenuation, TRANSCRIBED FROM SOURCE rather than derived from
+  FTE's own falloff -- and the difference between those two is not academic.
+  It is the bug that made surf_halloween_tf2 deafening on its first run, and
+  the reasoning that produced it is worth keeping because it was plausible.
+
+  THE WRONG VERSION, and why it looked right.  FTE's client sets
+  ss->dist_mult = attenuation / snd_nominaldistance (snd_dma.c:3383) and fades
+  a channel LINEARLY to silence where dist_mult * dist == 1, so a sound carries
+  snd_nominaldistance / attenuation units.  That default is 1000, which makes
+  `attenuation = 1000 / radius` reproduce Source's radius as an audible
+  distance exactly.  Every step of that is true.  It is still wrong, because
+  Source does not fade linearly -- it fades in dB, and matching the point where
+  a sound reaches zero says nothing about how loud it is everywhere BEFORE
+  that point.
+
+  THE RIGHT VERSION, ComputeSoundlevel (sound.cpp:55-69) followed by
+  SNDLVL_TO_ATTN (soundflags.h:106):
+
+      dB_loss = 20 * log10(radius / 36)     -- 36 is REFERENCE_dB_DISTANCE
+      sndlvl  = (int)(40 + dB_loss)         -- 40 dB at the reference distance
+      attn    = (sndlvl > 50) ? 20 / (sndlvl - 50) : 4
+
+  The two agree near radius 1000 and diverge hard at both ends:
+
+      radius    Source attn   1000/radius   ratio
+         128       4.00 (cap)     3.90(cap)  --
+         512       1.53           1.95       mine too STEEP
+        1250       0.96           0.80
+        3000       0.70           0.33       mine 2.1x too shallow
+        6100       0.58           0.16       mine 3.5x too shallow
+
+  surf_halloween_tf2 is 253 ambient_generic sharing one targetname, one sound
+  and radius 6100, all started together by a single logic_auto OnMapSpawn ->
+  PlaySound.  That is authentic Source wiring -- SV_IODeliver firing an input
+  at every entity holding the name is correct, and Source does the same -- so
+  the 253 emitters are not the bug.  Carrying each of them 6100 units instead
+  of 1730 is: it put a hundred-odd full-volume copies of one slime loop on top
+  of each other everywhere on the map.
+
+  THE UNITS ARE THE SAME IN BOTH ENGINES, which is what makes transcription
+  legitimate rather than a coincidence worth checking: soundflags.h:108-109
+  says Source "encodes attenuation * 64 in 8 bits, so the maximum is (255/64)",
+  and FTE writes bound(0, attenuation*64, 255) at sv_send.c:1260.  Identical
+  wire encoding, identical scale.  Hence the 3.9 cap rather than Source's 4.0:
+  4.0 encodes to 255 and trips SV_StartSound's warning at :1278.
+
+  RADIUS 0 MEANS NO FALLOFF, not "use the default".  ComputeSoundlevel gates
+  on `radius > 0` and otherwise returns SNDLVL_NONE, and Spawn special-cases
+  m_radius == 0 again at :313.  Only 12 of the library's 5,522 omit the key,
+  so this is faithful rather than consequential -- but guessing 1250 there, as
+  the first version did, is inventing a value Source never uses.
+*/
+float(entity t) SV_AmbientAtten =
+{
+	local float r, sndlvl;
+
+	r = SV_Key2(t.radius, t.Radius);
+	if ((t.spawnflags & SF_AMBIENT_EVERYWHERE) || r <= 0)
+		return ATTN_NONE;
+
+	sndlvl = floor(40 + 20 * logarithm(r / 36, 10));
+	if (sndlvl <= 50)
+		return 3.9;			// Source's SNDLVL_TO_ATTN floor of 4.0
+	return bound(0.05, 20 / (sndlvl - 50), 3.9);
+};
+
+/*
+  health -> volume.  Source keeps an ambient's volume in m_iHealth on a 0-10
+  scale (CAmbientGeneric::Spawn scales it by 10 into a 0-100 internal) and
+  FTE's sound() takes 0..1.
+
+  Zero is honoured as SILENCE rather than treated as absent, which is the
+  opposite of what SV_Key2 does everywhere else in this file -- and it is safe
+  here only because the census says so: all 5,522 entities in the library write
+  a `health` key, so "absent" never occurs and a zero is always a mapper
+  actually asking for silence.  4,242 write 10 (full).  54 write 100, which is
+  outside the FGD's own range and clamps.
+*/
+float(entity t) SV_AmbientVol =
+{
+	// vbsp_snd_scale applied here so BOTH buckets get it: ambientsound()'s
+	// volume is baked at map load and can never be revisited, so a scale that
+	// only reached the dynamic path would leave the static bed -- which is the
+	// half that was reported as deafening -- at full volume.
+	return bound(0, (t.health / 10) * vbsp_snd_scale, 1);
+};
+
+/*
+  The summed gain at a listener, under FTE'S OWN falloff -- the number that
+  decides whether a map is bearable, and the one nothing has ever printed.
+
+  Every figure this layer reported before now was a SETUP figure: how many
+  emitters, how loud each is declared, how far each carries.  All of them were
+  correct on surf_tensor2 and the map still blared, because none of them is the
+  SUM, and the sum is what a person hears.  Three instruments in a row have now
+  been added after a failure they could not express; this is the one that can.
+
+  Mirrors snd_dma.c:2709-2714 exactly: dist_mult = attenuation / 1000, and
+  scale = 1.0 - dist*dist_mult, clamped at zero.  A zero attenuation is
+  ATTN_NONE, which takes the !dist_mult branch and is full volume everywhere.
+
+  Above 1.0 the mix clips, because there is no limiter anywhere in the path.
+*/
+float(vector p) SV_AmbientSum =
+{
+	local entity e;
+	local float  t, g;
+
+	vbsp_snd_audible = 0;
+	t = 0;
+
+	for (e = find(world, classname, "ambient_generic"); e;
+	     e = find(e, classname, "ambient_generic"))
+	{
+		if (e.vbsp_snd_wav == "")
+			continue;
+		// A dynamic emitter contributes only while it is actually running; a
+		// static one is always running, by construction.
+		if (!e.vbsp_snd_static && !e.vbsp_snd_on)
+			continue;
+
+		if (e.vbsp_snd_atten <= 0)
+			g = e.vbsp_snd_vol;			// ATTN_NONE: no falloff at all
+		else
+			g = e.vbsp_snd_vol * (1 - vlen(p - e.origin) * e.vbsp_snd_atten / 1000);
+
+		if (g <= 0.001)
+			continue;
+		t = t + g;
+		vbsp_snd_audible = vbsp_snd_audible + 1;
+	}
+	return t;
+};
+
+void(entity t) SV_AmbientStop =
+{
+	// A static sound cannot be stopped -- it lives in the client's own static
+	// channel list (CF_CLI_STATIC) and the server has no handle on it.  Nothing
+	// can address one anyway (the bucket test requires no targetname), but the
+	// guard is here so that stays true if the bucket test ever loosens.
+	if (t.vbsp_snd_static)
+		return;
+	if (t.vbsp_snd_wav == "")
+		return;
+	if (t.vbsp_snd_on)
+	{
+		t.vbsp_snd_on = FALSE;
+		vbsp_snd_playing = vbsp_snd_playing - 1;
+	}
+	// PF_StopSound sends a null sample on the channel, reliably, to everyone
+	// (pr_cmds.c:9015-9021) -- so it reaches the same set a reliable loop did.
+	stopsound(t.vbsp_snd_src, CHAN_VOICE);
+};
+
+void(entity t) SV_AmbientPlay =
+{
+	local float fl;
+
+	if (t.vbsp_snd_static)
+		return;				// see SV_AmbientStop
+	if (t.vbsp_snd_wav == "")
+		return;
+
+	// Volume 0 means silence.  Re-issuing at zero would leave a live channel
+	// holding a slot and playing nothing, and the next Volume would have to
+	// guess whether it was running -- so zero stops instead.
+	if (t.vbsp_snd_vol <= 0)
+	{
+		SV_AmbientStop(t);
+		return;
+	}
+
+	/*
+	  FORCELOOP, AND DELIBERATELY NOT RELIABLE -- this line was the other half
+	  of the surf_halloween_tf2 blare and the reversal is worth recording.
+
+	  The first version set SOUNDFLAG_RELIABLE on every loop, reasoning that
+	  SV_StartSound skips the PHS for reliable sounds (sv_send.c:1340-1343) and
+	  that a player who was elsewhere when a loop started would otherwise never
+	  receive it.  True, and the wrong trade: it meant every client held a live
+	  channel for EVERY loop on the map, and the engine's own audibility culling
+	  -- the thing that stops 253 emitters of one sample from stacking -- was
+	  switched off by hand.
+
+	  Unreliable is what Source does too: ambient_generic plays on CHAN_STATIC
+	  through the PAS, not to everyone.  The late-joiner case is handled once,
+	  per player, by SV_AmbientResend, which is where it belongs.
+
+	  A one-shot stays unflagged for the same reason it always did: the PHS is
+	  the right audience, and dropping one is cheaper than a reliable stall.
+	*/
+	fl = 0;
+	if (t.vbsp_snd_loop)
+		fl = SOUNDFLAG_FORCELOOP;
+
+	sound(t.vbsp_snd_src, CHAN_VOICE, t.vbsp_snd_wav, t.vbsp_snd_vol,
+	      t.vbsp_snd_atten, t.vbsp_snd_pitch, fl);
+
+	if (t.vbsp_snd_loop && !t.vbsp_snd_on)
+	{
+		t.vbsp_snd_on = TRUE;
+		vbsp_snd_playing = vbsp_snd_playing + 1;
+	}
+};
+
+/*
+  Every running loop, re-sent to one joining player.
+
+  Without this, a player who connects to a live server hears only the STATIC
+  bucket: the dynamic loops were multicast at the moment something fired
+  PlaySound, which may have been an hour ago.  In a surf lobby -- where players
+  join and leave continuously and the map does not restart between runs -- that
+  is the normal case, not an edge case.
+
+  UNICAST needs msg_entity, and RELIABLE is what makes it ignore the PHS, so a
+  player who spawns across the map from a waterfall still gets the channel and
+  hears it when they arrive.  Called from PutClientInServer.
+*/
+void(entity pl) SV_AmbientResend =
+{
+	local entity e;
+
+	if (!vbsp_snd_playing)
+		return;
+
+	for (e = find(world, classname, "ambient_generic"); e;
+	     e = find(e, classname, "ambient_generic"))
+	{
+		if (!e.vbsp_snd_on)
+			continue;
+		msg_entity = pl;
+		sound(e.vbsp_snd_src, CHAN_VOICE, e.vbsp_snd_wav, e.vbsp_snd_vol,
+		      e.vbsp_snd_atten, e.vbsp_snd_pitch,
+		      SOUNDFLAG_FORCELOOP | SOUNDFLAG_RELIABLE | SOUNDFLAG_UNICAST);
+	}
+};
+
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
 	local string in, pm;
@@ -2535,6 +3024,63 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (t.classname == "player")
 			t.run_fogctrl = pm;
 		return;
+	}
+
+	/*
+	  Build 64.  ambient_generic's five inputs.
+
+	  Gated on vbsp_snd_src for the same reason the mover block above is gated
+	  on vbsp_mv_kind: it is one compare rather than a string test in a function
+	  that runs on every delivery, and an input aimed at something that is not a
+	  sound entity falls through to the CENSUS rather than silently doing
+	  nothing.  Every ambient_generic that reaches a spawn function sets the
+	  field -- including the soundscript ones this build skips -- so a PlaySound
+	  at one of those is correctly counted as delivered-and-inert rather than
+	  reported as an unimplemented input.
+
+	  The five are unambiguous across the whole library; see the collision
+	  census in the essay above.  All the work is in the two helpers.
+	*/
+	if (t.vbsp_snd_src)
+	{
+		if (in == "playsound")   { SV_AmbientPlay(t);  return; }
+		if (in == "stopsound")   { SV_AmbientStop(t);  return; }
+		if (in == "togglesound")
+		{
+			if (t.vbsp_snd_on) SV_AmbientStop(t);
+			else               SV_AmbientPlay(t);
+			return;
+		}
+
+		/*
+		  Volume and Pitch take effect by RE-ISSUING the sound, because FTE has
+		  no way to alter a channel that is already playing.  On a loop that
+		  restarts the sample from its start, which is audible where Source
+		  would have ramped smoothly.  959 Volume fires across 33 maps, 2 Pitch
+		  across 1.  Stated at the fire site, not just in the essay, because
+		  silence here would read as "this is faithful".
+
+		  Both are no-ops while the sound is stopped -- they set the level and
+		  the next PlaySound uses it, which is Source's behaviour too.
+		*/
+		if (in == "volume")
+		{
+			t.vbsp_snd_vol = bound(0, (stof(pm) / 10) * vbsp_snd_scale, 1);
+			if (t.vbsp_snd_on) SV_AmbientPlay(t);
+			return;
+		}
+		if (in == "pitch")
+		{
+			t.vbsp_snd_pitch = bound(1, stof(pm), 255);
+			if (t.vbsp_snd_on) SV_AmbientPlay(t);
+			return;
+		}
+
+		// FadeIn/FadeOut ramp over fadeinsecs/fadeoutsecs in Source.  With no
+		// way to ramp, the honest approximation is the endpoint: start, stop.
+		// One FadeOut fire exists in the entire library and no FadeIn.
+		if (in == "fadein")  { SV_AmbientPlay(t); return; }
+		if (in == "fadeout") { SV_AmbientStop(t); return; }
 	}
 
 	// Cosmetic and deliberately no-ops: honouring them would mean a render
@@ -3304,6 +3850,41 @@ void() SV_EntityIOBuild =
 		if (e.spawnflags & SF_RELAY_REMOVE_ON_FIRE)
 			SV_IOEnable(e, FALSE);
 	}
+
+	/*
+	  Build 64.  The DYNAMIC sound bucket is started here, and the placement is
+	  forced rather than chosen.
+
+	  A spawn function cannot do it.  sound() writes into sv.datagram, which is
+	  flushed per frame to connected clients -- and during ED_LoadFromFile there
+	  are no clients and no frame, so the sound would be composed and thrown
+	  away.  The STATIC bucket has the opposite constraint and is therefore done
+	  in the spawn function: ambientsound() appends to sv_staticsounds[], which
+	  is replayed at every client's prespawn, so it MUST be filled before anyone
+	  connects.  Two buckets, two places, for two engine reasons.
+
+	  SourceEntityName is resolved here for a third reason: it names another
+	  entity, which may not have been parsed yet when this one spawned.  101
+	  entities in the library use it, 86 spelling it SourceEntityName and 15
+	  sourceentityname.
+	*/
+	for (e = find(world, classname, "ambient_generic"); e;
+	     e = find(e, classname, "ambient_generic"))
+	{
+		if (e.vbsp_snd_static || e.vbsp_snd_wav == "")
+			continue;			// static, or a skipped soundscript
+
+		k = SV_KeyS2(e.SourceEntityName, e.sourceentityname);
+		if (k != "")
+		{
+			o = SV_FindByName(k, world);
+			if (o)
+				e.vbsp_snd_src = o;
+		}
+
+		if (!(e.spawnflags & SF_AMBIENT_STARTSILENT))
+			SV_AmbientPlay(e);
+	}
 };
 
 /*
@@ -3539,6 +4120,14 @@ void() SV_EntityReset =
 	vbsp_bhop_n = vbsp_bhop_tele_n = 0;
 	vbsp_tele_disabled_n = 0;
 
+	// Build 64.  Same trap as every counter above -- and vbsp_snd_playing in
+	// particular, which is a live count rather than a tally: carrying it across
+	// a map change would make SV_AmbientResend walk the NEW map looking for
+	// loops the OLD one started, and the engine has already dropped every
+	// static sound and channel by then (sv_main.c:276-282).
+	vbsp_snd_static_n = vbsp_snd_dyn_n = vbsp_snd_script_n = 0;
+	vbsp_snd_playing = vbsp_snd_attn_lo = vbsp_snd_audible = 0;
+
 	// The census buffers outlive the map too.  Drop them and let SV_CensusAdd
 	// recreate them lazily, rather than reporting the last map's classnames.
 	if (ent_census_name > 0)
@@ -3753,6 +4342,8 @@ void() SV_EntityReport =
 */
 void() SV_IOReport =
 {
+	local float sum;
+
 	print(sprintf("entity I/O: %g output(s) wired, %g input(s) delivered\n",
 	              vbsp_io_n, vbsp_io_fired));
 
@@ -3774,6 +4365,77 @@ void() SV_IOReport =
 
 	if (!vbsp_io_depth_hit && !vbsp_io_over_ent && !vbsp_io_over_map && vbsp_io_n)
 		print("  no refusals\n");
+
+	/*
+	  Build 64.  The sound line, and it reports the SPLIT rather than a total,
+	  because the two buckets fail in completely different ways and a single
+	  number would hide which one is wrong.  A map with sound that cannot be
+	  heard is either "static, so it should just be there" or "dynamic, so
+	  something has to fire PlaySound at it" -- and that is the first question
+	  anyone debugging this will ask.
+	*/
+	if (!vbsp_snd_gate)
+		print("^3  sound: vbsp_sound is 0 -- ambient_generic is parsed but silent^7\n");
+	else if (vbsp_snd_static_n || vbsp_snd_dyn_n || vbsp_snd_script_n)
+	{
+		print(sprintf("  sound: %g static, %g dynamic (%g loop(s) playing)\n",
+		              vbsp_snd_static_n, vbsp_snd_dyn_n, vbsp_snd_playing));
+
+		// The widest carry, in world units, because attenuation alone means
+		// nothing to a reader.  FTE fades to silence at snd_nominaldistance /
+		// attenuation (snd_dma.c:3383), and that default is 1000.
+		if (vbsp_snd_attn_lo > 0)
+			print(sprintf("  widest ambient: attn %.3f, audible ~%g units\n",
+			              vbsp_snd_attn_lo, floor(1000 / vbsp_snd_attn_lo)));
+
+		/*
+		  AND THE ONE THAT ACTUALLY PREDICTS A BLARE: the summed gain HERE,
+		  where the player is standing, against the 1.0 at which FTE's mixer
+		  starts clipping.
+
+		  Every other number in this report is a setup figure and every one of
+		  them was correct on surf_tensor2 while the map was unlistenable.  This
+		  is the sum.  Read it by walking to the place that sounds wrong and
+		  typing ent_io: it says how much of what you are hearing is distortion
+		  rather than sound.
+		*/
+		if (self.classname == "player")
+		{
+			sum = SV_AmbientSum(self.origin);
+			if (sum > 1.0)
+				print(sprintf("^1  here: %.2fx full scale from %g emitter(s) -- "
+				              "CLIPPING, the mixer has no limiter^7\n",
+				              sum, vbsp_snd_audible));
+			else
+				print(sprintf("  here: %.2fx full scale from %g emitter(s)\n",
+				              sum, vbsp_snd_audible));
+		}
+
+		/*
+		  IN YELLOW ABOVE A THRESHOLD, and this line is here because its absence
+		  cost a person their hearing for a second.
+
+		  The playing count was already printed on the run that blared -- 269
+		  where the pre-registered prediction said 0 -- and it scrolled past in
+		  a 2.8 MB log while the test was judged on whether the maps loaded.  A
+		  number that only a careful reader catches is not an instrument.
+
+		  32 is a judgement rather than a measurement and is labelled as one.
+		  What is measured is the distribution it sits in: across the library's
+		  387 maps with sound, the median map starts a handful of loops, and
+		  exactly one map (surf_halloween_tf2, 253 emitters sharing one
+		  targetname and one sample) is in the hundreds.  So this fires almost
+		  nowhere, which is what makes it worth reading when it does.
+		*/
+		if (vbsp_snd_playing > 32)
+			print(sprintf("^3  %g simultaneous loops -- unusually many; if this map "
+			              "is deafening, that is why (vbsp_sound 0 to silence it)^7\n",
+			              vbsp_snd_playing));
+
+		if (vbsp_snd_script_n)
+			print(sprintf("^3  %g ambient(s) name a SOUNDSCRIPT, not a file -- "
+			              "skipped, no game_sounds parser^7\n", vbsp_snd_script_n));
+	}
 };
 
 void(float defsolid) SV_SpawnProp =
@@ -6623,6 +7285,105 @@ void() logic_compare =
 	SV_SpawnIOPoint();
 	self.vbsp_cmp_in  = SV_Key2(self.InitialValue, self.initialvalue);
 	self.vbsp_cmp_cmp = SV_Key2(self.CompareValue, self.comparevalue);
+};
+
+/*
+  ambient_generic -- Build 64.  5,522 across 387 maps, every one of them
+  removed by the catch-all until now, which is why 4,225 PlaySound fires across
+  301 maps went nowhere.  The design essay is up beside SV_AmbientPlay; this is
+  only the classification.
+
+  PRECACHING IS SAFE HERE and the ceiling was checked rather than assumed.
+  precache_sound does not verify the file exists -- it registers the name and
+  touches it (pr_cmds.c:4516-4562) -- so a missing sound costs a client-side
+  "Couldn't load" and nothing worse.  The one hard limit is
+  MAX_PRECACHE_SOUNDS, 4096 (bothdefs.h:934), and overflow is a fatal
+  PR_BIError.  Censused: the worst map in the library (surf_era) needs 91
+  distinct sounds, then surf_froots2 at 70 and bhop_canals at 65; the median
+  map that has any needs 2.  That is 45x headroom on the worst case, so no
+  budgeting is needed and none is done.
+*/
+void() ambient_generic =
+{
+	local string p;
+
+	SV_SpawnIOPoint();
+
+	/*
+	  Set even when the entity turns out to be inert, because it is what the
+	  input ladder gates on: a PlaySound at a soundscript-named ambient should
+	  count as delivered-and-inert, not as an unimplemented input.  Overwritten
+	  with the SourceEntityName target, if any, in SV_EntityIOBuild.
+	*/
+	self.vbsp_snd_src = self;
+
+	if (!vbsp_snd_gate)
+		return;			// vbsp_sound 0 -- parsed, censused, never heard
+
+	p = SV_AmbientPath(self.message);
+	if (p == "")
+		return;
+
+	if (SV_AmbientIsScript(p))
+	{
+		vbsp_snd_script_n = vbsp_snd_script_n + 1;
+		if (SV_CensusAdd(strcat("soundscript ", p)))
+			dprint(sprintf("^3entity I/O: '%s' is a soundscript name, not a "
+			               "file -- no game_sounds parser, so it is skipped\n", p));
+		return;
+	}
+
+	precache_sound(p);
+
+	self.vbsp_snd_wav   = p;
+	self.vbsp_snd_vol   = SV_AmbientVol(self);
+	self.vbsp_snd_atten = SV_AmbientAtten(self);
+
+	// ATTN_NONE is excluded from the widest-carry figure on purpose: it is not
+	// a falloff at all, it is "play everywhere", and averaging it in would hide
+	// the thing this number exists to show.  It is reported separately.
+	if (self.vbsp_snd_atten > 0)
+	if (vbsp_snd_attn_lo == 0 || self.vbsp_snd_atten < vbsp_snd_attn_lo)
+		vbsp_snd_attn_lo = self.vbsp_snd_atten;
+	self.vbsp_snd_loop  = !(self.spawnflags & SF_AMBIENT_NOTLOOPING);
+	self.vbsp_snd_pitch = self.pitch;
+	if (self.vbsp_snd_pitch <= 0)
+		self.vbsp_snd_pitch = 100;	// 5,377 of 5,522 write exactly 100
+
+	/*
+	  THE BUCKET TEST.  Every clause is something a static sound CANNOT do, so
+	  an entity qualifies only by never needing any of them:
+
+	    no targetname          -- no output can ever address it, so it will
+	                              never be stopped, re-aimed or re-levelled
+	    not START_SILENT       -- it is supposed to be audible from map load
+	    looping                -- S_StaticSound stamps CF_FORCELOOP
+	                              unconditionally (snd_dma.c:3385), so a
+	                              one-shot placed here would repeat forever
+	    pitch 100              -- ss->rate is pinned to 1<<PITCHSHIFT (:3380)
+	    no SourceEntityName    -- the position is baked at map load
+
+	  What it buys is the thing sound() cannot do at all: sv_user.c:1823-1831
+	  replays the static list to every client during prespawn, so these reach
+	  late joiners for free and cost nothing per frame thereafter.
+
+	  vbsp_snd_wav is cleared afterwards so the entity reads as inert -- it is
+	  kept rather than removed only so ent_census and find() still see what the
+	  map declared, which is the same choice logic_auto makes.
+	*/
+	if (self.targetname == ""
+	 && !(self.spawnflags & SF_AMBIENT_STARTSILENT)
+	 && self.vbsp_snd_loop
+	 && self.vbsp_snd_pitch == 100
+	 && SV_KeyS2(self.SourceEntityName, self.sourceentityname) == "")
+	{
+		ambientsound(self.origin, p, self.vbsp_snd_vol, self.vbsp_snd_atten);
+		self.vbsp_snd_static = TRUE;
+		vbsp_snd_static_n = vbsp_snd_static_n + 1;
+		return;
+	}
+
+	vbsp_snd_dyn_n = vbsp_snd_dyn_n + 1;
 };
 
 /*

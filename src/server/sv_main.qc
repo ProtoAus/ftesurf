@@ -563,6 +563,44 @@ void() worldspawn =
 	registercvar("vbsp_mp", "1");
 	vbsp_mp = cvar("vbsp_mp");
 
+	/*
+	  Build 64.  vbsp_sound, registered and latched here for exactly the reasons
+	  in the paragraph above: nothing reads it before worldspawn, and worldspawn
+	  is the FIRST entity ED_LoadFromFile spawns -- so this lands before the
+	  first ambient_generic spawn function asks for it.
+
+	  It is a kill switch rather than a tuning knob.  The first run of the sound
+	  work put 253 copies of one looping sample on top of each other on
+	  surf_halloween_tf2, and a person heard it before anyone read the log line
+	  that said so.  A feature that can make the game unusable on one map needs
+	  a way to be switched off that is not a rebuild.
+	*/
+	registercvar("vbsp_sound", "1");
+	vbsp_snd_gate = cvar("vbsp_sound");
+
+	/*
+	  vbsp_sound_vol -- how loud the ambient bed is.  BACK TO 1.0 IN BUILD 66,
+	  and the reversal is the point rather than an embarrassment.
+
+	  Build 64 set it to 0.5 on a measurement: FTE's mixer sums overlapping
+	  channels with no limiter, and the worst-case overlap on the three maps
+	  checked (surf_tensor2 2.00x, kz_secret_temple 2.08x, surf_lt_unicorn
+	  2.29x) was about 2x full scale.  The arithmetic was right and it was
+	  treating a symptom.  The user, told that, said: "Leave the loudness true,
+	  deafening had to do with the fact I could hear pretty much all sounds
+	  play?  I think if they were correctly playing when they should volume is
+	  fine?" -- which is the correct diagnosis.  surf_tensor2 has 87
+	  env_soundscape that this build implements for the first time, and a map
+	  whose ambience is finally SELECTED does not need to be turned down.
+
+	  Halving it would have made the map quietly wrong instead of loudly wrong,
+	  and the rain still would not have faded in when you stepped outside.
+	  The knob stays, because it is a listening decision and a cvar is how a
+	  listener makes one.
+	*/
+	registercvar("vbsp_sound_vol", "1");
+	vbsp_snd_scale = cvar("vbsp_sound_vol");
+
 	// lobby_retrigger and vbsp_mp are NOT registered here.  They are read by
 	// SV_UpdateMovementServerInfo, which runs before this function does, so a
 	// registercvar at this point arrives after the read has already created

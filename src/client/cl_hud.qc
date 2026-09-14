@@ -23,9 +23,12 @@ float  ui_cv_speed, ui_cv_keys, ui_cv_debug, ui_cv_energy, ui_cv_energyref;
 float  ui_cv_predicted;     // build 39: read the predicted state, not the stats
 float  ui_cv_strict;        // build 39: no ramp plane means no target, not a wrong one
 float  ui_cv_strafe, ui_cv_board, ui_cv_boardfade;
+// Build 66: the Board panel's four rows and its wording switch.
+float  ui_cv_bseg, ui_cv_bgrade, ui_cv_bkept, ui_cv_bcost, ui_cv_bramp, ui_cv_bwords;
 float  ui_cv_seqlive;       // build 34: provisional rows for the OPEN segment
 float  ui_cv_mapinfo, ui_cv_mappos_x, ui_cv_mappos_y;   // build 34: the top-right block
 float  ui_cv_smooth, ui_cv_window, ui_cv_band, ui_cv_curve, ui_cv_minspeed;
+float  ui_cv_srates, ui_cv_swhy, ui_cv_sbest;   // build 66: the bar's text blocks
 vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
 
 /*
@@ -65,7 +68,13 @@ vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
   cl_keys.qc exist for.  The cost when closed is one float test per panel.
 ===========================================================================
 */
-#define HUDE_MAX 12
+// BUILD 65: 12 -> 16.  It was exactly full at 12 -- eleven rows and one spare --
+// and this build adds four (boarding, crosshair, net, results).  HE_MAX in
+// cl_hudedit.qc is the other half of this pair and moves with it; the comment there
+// records what happened the last time only one of the two was raised.  16 rather
+// than exactly 15 because a registration that overflows is dropped SILENTLY, and a
+// spare row is cheaper than finding that out from a panel that will not list.
+#define HUDE_MAX 16
 string hude_id[HUDE_MAX];
 vector hude_pos[HUDE_MAX];      // top-left of what was drawn, pixels
 vector hude_size[HUDE_MAX];     // pixels
@@ -73,6 +82,13 @@ vector hude_anchor[HUDE_MAX];   // the pixel point the element's two cvars encod
 float  hude_n;
 
 float  ui_he_open;              // the layout editor is up
+
+/*
+  BUILD 65: the y the Board panel finished at, for the Boarding window stacked
+  under it.  Declared here rather than in cl_boarding.qc for the same
+  compile-order reason ui_he_open is: HUD_DrawBoard writes it and compiles first.
+*/
+float  ui_board_bottom;
 
 /*
   AND THE LEADERBOARD'S FLAG, HERE FOR THE SAME REASON.  Build 47.
@@ -490,6 +506,14 @@ float  ui_ideal_lp;
 float  ui_ideal_regime;     // -1 none, 0 air, 1 ramp, 2 ground
 
 /*
+  BUILD 65: cltime the ground flag last went true, 0 = airborne.  The strafe bar's
+  dwell gate -- see the essay in HUD_DrawStrafe.  A global rather than a local
+  because it is a duration and this function is called once a frame; a local would
+  be the previous caller's stack slot, which is the trap build 39 hit here already.
+*/
+float  ui_gnd_since;
+
+/*
   Where the strafe panel finished drawing, in screen y.
 
   The board panel stacks under it, and it must not be computed independently or
@@ -656,6 +680,16 @@ void() HUD_ReadCvars =
 	ui_cv_debug     = cvar("hud_debug");
 
 	ui_cv_boardfade = cvar("hud_board_fade");   if (ui_cv_boardfade <= 0) ui_cv_boardfade = 3;
+
+	// Build 66: the Board panel's parts.  Read here with its fade rather than per
+	// row, for the reason HUD_DrawSeq's part switches are -- four cvar lookups a
+	// frame for values that cannot change inside one.
+	ui_cv_bseg      = cvar("hud_board_seg");
+	ui_cv_bgrade    = cvar("hud_board_grade");
+	ui_cv_bkept     = cvar("hud_board_kept");
+	ui_cv_bcost     = cvar("hud_board_cost");
+	ui_cv_bramp     = cvar("hud_board_ramp");
+	ui_cv_bwords    = cvar("hud_board_words");
 	ui_cv_seqlive   = cvar("hud_seq_live");
 
 	ui_cv_mapinfo   = cvar("hud_mapinfo");
@@ -675,6 +709,12 @@ void() HUD_ReadCvars =
 	ui_cv_minspeed  = cvar("hud_strafe_minspeed");
 	if (ui_cv_minspeed < 0) ui_cv_minspeed = 200;
 
+	// Build 66: which of the bar's three text blocks are drawn.  sbest is a
+	// three-state (off / short / full); the other two are plain switches.
+	ui_cv_srates    = cvar("hud_strafe_rates");
+	ui_cv_swhy      = cvar("hud_strafe_why");
+	ui_cv_sbest     = cvar("hud_strafe_best");
+
 	// Fractions of the screen, so a layout survives a resolution change.
 	ui_cv_speedpos_x  = cvar("hud_speed_x");   ui_cv_speedpos_y  = cvar("hud_speed_y");
 	ui_cv_keyspos_x   = cvar("hud_keys_x");    ui_cv_keyspos_y   = cvar("hud_keys_y");
@@ -688,6 +728,31 @@ void() HUD_RegisterCvars =
 	registercvar("hud_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_energy",  "1", CVAR_ARCHIVE);
 	registercvar("hud_energy_ref", "1");
+
+	/*
+	  BUILD 65 -- THE PER-ELEMENT TEXT SIZES.  See HUD_Size.
+
+	  ALL DEFAULT TO 0, and that is what makes this change invisible until somebody
+	  asks for it: 0 means "the size the drawer was going to use", i.e. N*hud_scale,
+	  i.e. build 64 byte for byte.  It also means the auto-create hazard cannot bite
+	  here -- cvar() creates a name as "" and registercvar then declines, so a
+	  non-zero default registered after a read never lands, and "" reads as 0 which
+	  is the default anyway.  Registered regardless, because an unregistered cvar is
+	  absent from cvarlist and from the saved config until it is first written.
+
+	  Non-zero is an ABSOLUTE pixel size that bypasses hud_scale, so the number on
+	  the editor's chip is the number on the screen.  The offered values are rungs
+	  of each element's own baked ladder; see HE_BuildTable.
+	*/
+	registercvar("hud_timer_size",    "0", CVAR_ARCHIVE);
+	registercvar("hud_splits_size",   "0", CVAR_ARCHIVE);
+	registercvar("hud_seq_size",      "0", CVAR_ARCHIVE);
+	registercvar("hud_strafe_size",   "0", CVAR_ARCHIVE);
+	registercvar("hud_board_size",    "0", CVAR_ARCHIVE);
+	registercvar("hud_speed_size",    "0", CVAR_ARCHIVE);
+	registercvar("hud_energy_size",   "0", CVAR_ARCHIVE);
+	registercvar("hud_debug_size",    "0", CVAR_ARCHIVE);
+	registercvar("hud_mapinfo_size",  "0", CVAR_ARCHIVE);
 	/*
 	  Build 39.  All four default on and all four exist to be turned OFF: the
 	  numbers they change are numbers you have been reading for months, so there
@@ -703,6 +768,23 @@ void() HUD_RegisterCvars =
 	registercvar("hud_predicted", "1", CVAR_ARCHIVE);
 	registercvar("hud_strafe_strict", "1", CVAR_ARCHIVE);
 	registercvar("hud_strafe_orient", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 65 -- HOW LONG THE GROUND HAS TO LAST BEFORE THE BAR BELIEVES IT.
+
+	  Seconds.  A bhop's ground contact is one tick, 0.015 s, and treating it as a
+	  grounded phase made the bar snap its low-pass, swap to a different target
+	  function, cross the ground optimum's square-root shoulder and blank its own
+	  fill -- four visible things per landing, which is the flicker.
+
+	  0.12 is eight ticks: far longer than any hop, far shorter than a pause.
+	  0 is build 64 exactly, and is the switch to reach for if the bar ever seems
+	  slow to notice that you have genuinely stopped.
+
+	  It is a DISPLAY gate.  Nothing that counts anything reads it -- see the essay
+	  at the gate itself for why it is not hoisted anywhere more central.
+	*/
+	registercvar("hud_strafe_groundhold", "0.12", CVAR_ARCHIVE);
 	registercvar("hud_board_exact", "1", CVAR_ARCHIVE);
 	// Build 40: a self-clearing frame counter, not a mode -- see HUD_WishDir.
 	// Deliberately NOT archived: leaving it set across a restart would be a
@@ -722,6 +804,41 @@ void() HUD_RegisterCvars =
 	registercvar("hud_debug",   "0", CVAR_ARCHIVE);
 
 	registercvar("hud_board_fade", "3");
+
+	/*
+	  BUILD 66 -- THE BOARD PANEL, PART BY PART.
+
+	    "Reduce the words and text, turning off/on the words 'okay', the
+	     percentage kept, be able to remove 'Kept' and the actual energy value
+	     below, be able to turn off 'board'.  Also move Ramp deg to the info you
+	     can turn on/off on board."
+
+	    hud_board_seg     1  the `air +47e 2.2s` line: what the segment before the
+	                         touchdown was worth.
+	    hud_board_grade   1  the grade word -- perfect / good / okay / bad /
+	                         terrible.
+	    hud_board_kept    1  the `98.3%` beside it.  Both off skips the row.
+	    hud_board_cost    1  what the plane took, `board -23e` / `cost 23`.
+	    hud_board_ramp    1  the ramp's angle off horizontal.  NEW HERE -- it was
+	                         the Boarding window's last row until this build.
+	    hud_board_words   1  0 drops the label words: `kept`, `board`/`cost` and
+	                         `deg`, leaving the numbers.
+
+	  Every one of them 1, so the panel out of the box is build 65 plus the ramp
+	  angle it gained from the window next to it.
+
+	  THE ROW SLOTS ARE STILL RESERVED WHEN A PART IS OFF -- p_y steps past them
+	  regardless.  That is deliberate and it is the same argument the fade's
+	  else-branch makes: this panel publishes ui_board_bottom for the Boarding
+	  window stacked under it, and a height that changed as parts were switched
+	  would move that window.  Switching a row off makes it blank, not absent.
+	*/
+	registercvar("hud_board_seg",   "1", CVAR_ARCHIVE);
+	registercvar("hud_board_grade", "1", CVAR_ARCHIVE);
+	registercvar("hud_board_kept",  "1", CVAR_ARCHIVE);
+	registercvar("hud_board_cost",  "1", CVAR_ARCHIVE);
+	registercvar("hud_board_ramp",  "1", CVAR_ARCHIVE);
+	registercvar("hud_board_words", "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 34 -- the open segment's provisional rows.
@@ -795,7 +912,40 @@ void() HUD_RegisterCvars =
 	  readouts of the same measurement disagreeing about their unit is worse than
 	  either choice of unit.
 	*/
+	/*
+	  BUILD 65 ADDED A THIRD VALUE: 2 draws BOTH, stacked.
+
+	  "one or the other or both, top to bottom".  The u/s figure goes on its own
+	  dimmer line under the energy one rather than beside it -- this column is
+	  right-anchored a quarter of the screen from the crosshair and a sixth column
+	  would reach the split list.  See the essay at the draw site.
+
+	  Everything that reads this cvar treats "non-zero" as "energy", so mode 2 is
+	  energy plus a translation rather than a third unit: the board panel and the
+	  single-line readout keep saying energy and are unaffected.
+	*/
 	registercvar("hud_seq_units", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 65 -- THE SEGMENT ROW'S PARTS, each its own switch.
+
+	      "for most of them, I just want to be able to turn off parts and leave
+	       parts on, so you can customize your display more"
+
+	  The row is "  Air: 345e +100e 1.45s 80%" and these are the first four of its
+	  five columns (hud_seq_pct is the fifth and predates this).  All default ON,
+	  because the row they compose is the row that was asked for; turning one off
+	  is a narrowing, and a HUD that shipped pre-narrowed would hide the feature
+	  from anyone who never opens the editor.
+
+	  hud_seq_name and hud_seq_abs are NEW COLUMNS rather than switches over
+	  existing ones -- build 64 had no name and no absolute -- so 0 on either is
+	  the only way back to build 64's row, and that is exactly what they are for.
+	*/
+	registercvar("hud_seq_name",  "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_abs",   "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_delta", "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_time",  "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 20 -- joining rows that were one thing.
@@ -818,6 +968,49 @@ void() HUD_RegisterCvars =
 	  Mode 2 is there for anyone who wants the alternation more than the honesty.
 	*/
 	registercvar("hud_seq_merge", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 65 -- AND THE ONE GAP THE PARAGRAPH ABOVE CLAIMED TO STOP AT.
+
+	  "It stops at a REAL gap: a genuine grounded phase" was true of the intent and
+	  not of the code.  The grounded phase only broke the chain if it lasted
+	  SEG_MINTIME, and a bhop's ground contact is ONE TICK -- so every chain of hops
+	  came out as a single merged Air row, which is "the ground energy keeps
+	  counting every bhop as one".
+
+	    1  a landing breaks the chain however brief it was (default).  Five hops,
+	       five Air rows.
+	    0  build 64 exactly: the duration test alone.
+
+	  A landing is an EVENT rather than a gap in something continuous, and it is the
+	  event being practised; the merge exists to repair blips, and a blip is the
+	  other thing.  The full argument is at the line itself, in cl_board.qc.
+
+	  It does not touch the ramp/air blip repair, which never reaches that branch.
+	*/
+	registercvar("hud_seq_hopbreak", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 66 -- AN AIR ROW SAYS HOW YOU GOT AIRBORNE.
+
+	    "Can we make the first Green segment read 'Jump:' and if the player keeps
+	     jumping, the next reads 'Bhop:' because when you do a bhop map it reads
+	     'air:' and looks funny on a bhop maps."
+
+	    1  air rows entered FROM THE GROUND read Jump or Bhop, split on how long
+	       the ground phase before them lasted (default).
+	    0  build 65 exactly: every air row reads Air.
+
+	  A ramp exit stays "Air" at either setting -- you did not jump off anything,
+	  and on a surf map that is most of the column.
+
+	  The threshold is run_prestrafe_time, which is the server's own definition of
+	  a jump against a hop and is already used by SV_TimerJumpWatch and by the
+	  pre-strafe assist.  A third answer to that question would be a bug waiting to
+	  be reported as "the game released my +forward but the column called it a
+	  hop".  The line itself is in cl_board.qc, where the segment opens.
+	*/
+	registercvar("hud_seq_hopname", "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 25 -- the touchdown as its own row.
@@ -887,6 +1080,35 @@ void() HUD_RegisterCvars =
 	*/
 	registercvar("hud_strafe_minspeed", "200");
 
+	/*
+	  BUILD 66 -- THE BAR'S THREE TEXT BLOCKS, EACH SWITCHABLE.
+
+	    "No way to turn off the digits above or the info below the strafe bar, or
+	     reduce the wording."
+
+	    hud_strafe_rates  1  both digit cells above the bar: what you ARE turning
+	                         at, and what you SHOULD be.  0 leaves the bar alone.
+	    hud_strafe_why    1  the sentence that replaces the target cell when there
+	                         is no target -- "ramp: no plane held", "too slow to
+	                         grade".  0 leaves that half empty instead.
+	    hud_strafe_best   2  the line under the bar.
+	                         0 off
+	                         1 "+3 u/s/tick"
+	                         2 "+3 u/s per tick at best"  (build 65 exactly)
+
+	  ALL THREE DEFAULT TO BUILD 65, which is this project's rule for anything
+	  that changes a reading.  They are separate cvars rather than one because the
+	  numbers and the explanation are noise to different people: somebody who
+	  steers by the fill wants the digits gone and the reason kept, and somebody
+	  who already knows why their ramp is ungradeable wants the opposite.
+
+	  ARCHIVE on all three -- they are layout, and layout is the thing hud_edit
+	  exists to make stick.
+	*/
+	registercvar("hud_strafe_rates", "1", CVAR_ARCHIVE);
+	registercvar("hud_strafe_why",   "1", CVAR_ARCHIVE);
+	registercvar("hud_strafe_best",  "2", CVAR_ARCHIVE);
+
 	// CVAR_ARCHIVE from build 31 on every value the layout editor can write.
 	// See the essay beside registercvar in cl_defs.qc: on an install that has a
 	// default.cfg the flag is inert and `seta` from the editor is what actually
@@ -934,6 +1156,55 @@ void() HUD_RegisterCvars =
 	*/
 	registercvar("hud_update",   "-1", CVAR_ARCHIVE);
 	registercvar("hud_round",    "1",  CVAR_ARCHIVE);
+
+	/*
+	  BUILD 65 -- THE CROSSHAIR.  See HUD_DrawCrosshair for the whole argument.
+
+	  BUILD 66 -- AND 0 NOW MEANS OFF.
+
+	      "Remove the crosshair button and replace it with a single cycling button
+	       that switches between the three crosshairs + off.  100% opacity,
+	       size 32."
+
+	    hud_crosshair       -1 = the engine's own, from its `crosshair` cvar.  This
+	                             is build 65's 0, moved out of the way; it is not
+	                             in the chip's cycle and is reachable only here.
+	                         0 = OFF.  No crosshair at all, ours or the engine's.
+	                         1/2/3 = gfx/crosshairs/xhair1|2|3.png.
+	    hud_crosshair_size   pixels.  Pinned at 32 -- the files' native size, and
+	                         anything else is a real resample.  NOT multiplied by
+	                         hud_scale: a sight is not text.
+	    hud_crosshair_alpha  pinned at 1.
+
+	  WHY 0 HAD TO CHANGE MEANING.  A four-state cycle over off / 1 / 2 / 3 has no
+	  room for a fifth, and "the engine's own" is the state nobody asked for: the
+	  three PNGs exist precisely so that nobody has to use it.  Keeping it as -1
+	  costs one branch and loses nothing.
+
+	  DEFAULT 1, where build 65 shipped 0.  Build 65's argument for 0 was that
+	  three new textures silently replacing everyone's crosshair is a change nobody
+	  asked for -- true then, and now they have been asked for.  0 no longer being
+	  a working crosshair is the other half of it: a default of 0 would now ship
+	  the game with no sight at all.
+
+	  SIZE AND ALPHA ARE STILL CVARS but are no longer offered anywhere.  The ask
+	  fixed both, and a picker for a value with one sensible setting is three rows
+	  of panel saying nothing.
+	*/
+	registercvar("hud_crosshair",       "1",  CVAR_ARCHIVE);
+	registercvar("hud_crosshair_size",  "32", CVAR_ARCHIVE);
+	registercvar("hud_crosshair_alpha", "1",  CVAR_ARCHIVE);
+
+	/*
+	  Precached at init rather than on first draw.  drawpic on an unprecached name
+	  works -- the engine loads it there and then -- but it does so on the frame the
+	  player first switches to it, which is a disk hit in the middle of a run and
+	  exactly the frame they are looking at the thing that caused it.  Three 32x32
+	  RGBA textures is under 16 KB of VRAM for all of them.
+	*/
+	precache_pic("gfx/crosshairs/xhair1");
+	precache_pic("gfx/crosshairs/xhair2");
+	precache_pic("gfx/crosshairs/xhair3");
 };
 
 /*
@@ -971,6 +1242,53 @@ void(vector pos, string s, float sz, vector rgb, float a) HUD_TextR =
 	sz = Font_Px(sz);
 	pos_x = pos_x - stringwidth(s, TRUE, [sz, sz]);
 	drawstring(pos, s, [sz, sz], rgb, a, 0);
+};
+
+/*
+  BUILD 65 -- A PANEL'S OWN TEXT SIZE, AND WHY IT IS AN ABSOLUTE RATHER THAN A
+  MULTIPLIER.
+
+  Every readout on this HUD has drawn at `N * hud_scale` since build 2, with N a
+  constant chosen per call site.  That gives one knob for the whole screen, and
+  "make the timer bigger and leave everything else alone" has never been
+  expressible.
+
+  hud_<id>_size is that knob, per element, and 0 means "the argument" -- i.e.
+  exactly what build 64 drew, so this ships changing nothing until somebody
+  presses a chip.
+
+  IT BYPASSES hud_scale RATHER THAN MULTIPLYING IT, and that is the whole design.
+  The editor offers these as BOXES WITH THE PIXEL SIZE WRITTEN IN THEM, and a
+  multiplier cannot honour that: 20 at hud_scale 2 would be 40 px, so the box
+  would be lying about the only thing it says.  An absolute is also the only form
+  that can be pinned to a LADDER RUNG -- see sh_font.qc, where the whole argument
+  for baking a ladder is that a size off it is a resample.  The offered sizes are
+  rungs; a multiplier would land between them at every hud_scale but one.
+
+  Font_Px still runs over the result at every call site, so a value typed into
+  the console rather than picked from a chip degrades to the nearest rung instead
+  of going soft.
+
+  THE CALLER STILL OWNS ITS LAYOUT.  This returns a glyph size and nothing else:
+  a drawer whose row advance or column offsets were written in units of
+  ui_cv_scale has to re-derive them from what this returned, because the two stop
+  being proportional the moment the cvar is set.  Timer_DrawSplits is the one
+  place in the tree where that is more than one line.
+
+  THE FULL CVAR NAME, NOT THE ELEMENT ID.  An id would read better at the call
+  site and would mean a strcat per element per frame to rebuild a name that is a
+  compile-time constant -- eight temporary strings a frame to save eight
+  characters of source.  The literal is also greppable, which the assembled name
+  would not be.
+*/
+float(string cv, float fallback) HUD_Size =
+{
+	local float v;
+
+	v = cvar(cv);
+	if (v < 1)
+		return fallback;
+	return v;
 };
 
 /*
@@ -1543,6 +1861,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 {
 	local float sp, sz, e, erel, veq, gravity, gain, ref, nozone;
 	local float bw, bh, tw, esz;
+	local float ehold;              // build 65: the restore/park hold
 	local vector p, bp;
 	local string s;
 
@@ -1558,7 +1877,9 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	gain = sp - ui_prev_speed;
 	ui_prev_speed = sp;
 
-	sz = 24 * ui_cv_scale;
+	// Build 65: hud_speed_size overrides, or 0 keeps 24*hud_scale.  p_y advances by
+	// `sz` below, so the panel's own height follows the size with no second edit.
+	sz = HUD_Size("hud_speed_size", 24 * ui_cv_scale);
 	p  = [scr_x * ui_cv_speedpos_x, scr_y * ui_cv_speedpos_y, 0];
 	bp = p;                     // the anchor, kept -- p walks down the panel
 
@@ -1628,7 +1949,48 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		// held, not the absolute -- the anchor can move under it (a jump, a zone
 		// crossing), and holding the wrong side of that subtraction would show a
 		// stale offset from a reference that no longer exists.
-		if (ui_hl_tick)
+		/*
+		  BUILD 65 -- HELD ACROSS A RESTORE, RATHER THAN DRAWN FROM A MISMATCHED
+		  PAIR.
+
+		      "energy indicator will load in a BS anchor value on loading of
+		       save-loads, and releasing a save-lock key, has your energy sort of
+		       flicker update"
+
+		  erel is `energy here` minus `the anchor`, and a restore moves those two at
+		  different times.  Seq_AnchorRestore installs the SAVE's ui_jump_z the
+		  moment the save event arrives; the teleported origin arrives with a
+		  snapshot, and the two do not have to be the same snapshot -- that is
+		  precisely why ui_rs_armed is a window and not a one-shot, as build 26
+		  measured and build 25 got wrong.  For the frames in between, this
+		  subtraction pairs the OLD position with the NEW anchor.  The result is not
+		  a small error: it is off by the whole teleport.  Then the position lands
+		  and it corrects in one frame, which is the "flicker update".
+
+		  A save-lock park is the same shape from the other end.  The server is the
+		  only thing simulating you while MOVETYPE_NONE holds, so the predicted pair
+		  stops advancing; on release it resumes and the readout steps.
+
+		  SO IT IS HELD, NOT RECOMPUTED.  ui_hl_e simply stops being latched while
+		  either condition is up, so the panel keeps drawing the last value that was
+		  computed from a matched pair, dimmed to say so.  Nothing is invented and
+		  nothing is smoothed -- the number on screen was true a moment ago and will
+		  be true again on the frame the arm clears.
+
+		  WHY DIM RATHER THAN BLANK: this is a readout people take screenshots of
+		  and compare against Momentum.  A blank would be read as "the feature
+		  broke"; a held value that visibly says it is held is the honest version of
+		  "not yet".  And a quiet hold survives a FALSE POSITIVE -- if the guard
+		  fires on a frame that did not actually need it, the cost is one dim frame
+		  rather than a wrong number, which is the way round to be wrong.
+
+		  ui_rs_armed is cleared by Board_Frame on the arrival frame, LAST in the
+		  frame and after both guards have read it, so the first undimmed frame is
+		  the first one whose pair is genuinely matched.
+		*/
+		ehold = (ui_rs_armed || rec_sl_held);
+
+		if (ui_hl_tick && !ehold)
 			ui_hl_e = erel;
 
 		if (nozone)
@@ -1636,19 +1998,31 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		else if (ui_cv_energy >= 2)
 		{
 			veq = Strafe_EquivSpeed(ui_hl_e, gravity);
-			s   = sprintf("e %d u/s", rint(HUD_Round(veq)));
+			// Build 66: no space before the unit, HUD-wide.
+			s   = sprintf("e %du/s", rint(HUD_Round(veq)));
 		}
 		else
 			s = sprintf("e %d", rint(HUD_Round(ui_hl_e)));
 
-		esz = 16 * ui_cv_scale;
+		// Build 65: its own size, because it is a second readout inside one panel
+		// and "make the energy line bigger" is not "make the speedometer bigger".
+		// It is the reason hud_energy_size is not on he_cvsize like the others --
+		// one element, two text sizes, and the editor puts this one in Speed's pane.
+		esz = HUD_Size("hud_energy_size", 16 * ui_cv_scale);
 		tw  = stringwidth(s, TRUE, [Font_Px(esz), Font_Px(esz)]);
 		if (tw > bw) bw = tw;
 		bh = bh + esz;
 
+		/*
+		  Build 65: the held state is drawn at 45% rather than 90%, in the same hue.
+		  A different COLOUR would read as a different kind of reading -- the grey
+		  beside it already means "there is no answer" (nozone) and this is not
+		  that.  Half alpha in the panel's own blue says "this one, a moment ago",
+		  which is exactly what it is.
+		*/
 		HUD_TextC(p, s, esz,
 		          nozone ? '0.5 0.5 0.5' : '0.75 0.85 1.00',
-		          nozone ? 0.5 : 0.9);
+		          nozone ? 0.5 : (ehold ? 0.45 : 0.9));
 	}
 	Font_Reset();
 
@@ -1681,12 +2055,17 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 void(vector scr, float y) HUD_DrawBoard =
 {
 	local vector p, col, bp;
-	local float sz, lh, a, la, ga, bx, by, bw, tw;
+	// Build 65: `la` went with the `leaving` row, which is now a Boarding window
+	// row -- see the note where it was.
+	local float sz, lh, a, ga, bx, by, bw, tw;
 	local float gk, gd, gs, gu;     // build 34: the gain row's four fields, live or latched
 	local string s;
 
-	sz = 10 * ui_cv_scale;
-	lh = sz + 3 * ui_cv_scale;
+	// Build 65: own size, and the advance derived from it -- 1.3 is what
+	// `sz + 3 * ui_cv_scale` produced at both shipped scales (10+3, 20+6), so this
+	// is the same layout re-expressed in terms of the thing it actually depends on.
+	sz = HUD_Size("hud_board_size", 10 * ui_cv_scale);
+	lh = sz * 1.3;
 
 	/*
 	  BUILD 31: A POSITION OF ITS OWN, OR THE STACK IT HAS ALWAYS HAD.
@@ -1710,7 +2089,21 @@ void(vector scr, float y) HUD_DrawBoard =
 	bp = p;
 	bw = 0;
 
-	Font_Set(ui_font_ui);
+	/*
+	  BUILD 65 -- MONO, WITH THE BAR ABOVE IT AND THE WINDOW BELOW IT.
+
+	  "boarding info, and strafebar numbers and text" is one request about one
+	  stack: the strafe bar, this panel and the Boarding window are drawn in a
+	  column, one under the other, and this was the only one of the three left in
+	  Roboto.  Two faces alternating down a stack of three reads as a mistake
+	  whichever one is in the middle.
+
+	  Every row here is also numeric with a unit suffix -- `ramp +77 e 1.2s`,
+	  `board -23 e` -- which is the case the fixed-pitch face was brought in for
+	  (sh_font.qc's build 21 essay): the row's width becomes its character count,
+	  so it stops changing width as the digits change.
+	*/
+	Font_Set(ui_font_mono);
 
 	/*
 	  What the last ramp, or the last air time, was worth.  See cl_board.qc:
@@ -1747,17 +2140,41 @@ void(vector scr, float y) HUD_DrawBoard =
 		ga = 1;
 	}
 
-	if (ga > 0 && gk != SEG_NONE)
+	/*
+	  BUILD 66 -- EVERY ROW OF THIS PANEL IS SWITCHABLE, AND THE WORDS ARE TOO.
+
+	      "Reduce the words and text, turning off/on the words 'okay', the
+	       percentage kept, be able to remove 'Kept' and the actual energy value
+	       below, be able to turn off 'board'.  Also move Ramp deg to the info you
+	       can turn on/off on board."
+
+	  Four row switches (seg / grade+kept / cost / ramp) and one wording switch
+	  that takes the label words off all of them at once.  The wording switch is
+	  one cvar rather than four because "kept", "board" and "deg" are the same kind
+	  of thing -- a word naming the number beside it -- and someone who wants one
+	  gone wants all three gone.
+
+	  hud_board_words 0:
+
+	      air  +47e  2.2s          air  +47e  2.2s
+	      okay  98.3% kept   ->    okay  98.3%
+	      board -23e               -23e
+	      ramp  53 deg             53
+	*/
+	if (ga > 0 && gk != SEG_NONE && ui_cv_bseg)
 	{
 		// Build 20: the same switch as the column, so the two never disagree
 		// about what they are measuring.  The colour keys off the sign, which is
 		// the same sign either way -- a gain in energy is a gain in u/s.
+		//
+		// Build 66: no space before the unit, which also settles an inconsistency
+		// -- this was the only place in the tree writing `e` with one.
 		if (seq_units)
-			s = sprintf("%s  %+.0f e   %.1fs",
+			s = sprintf("%s  %+.0fe   %.1fs",
 			            (gk == SEG_RAMP) ? "ramp" : "air",
 			            gd, gu);
 		else
-			s = sprintf("%s  %+.0f u/s   %.1fs",
+			s = sprintf("%s  %+.0fu/s   %.1fs",
 			            (gk == SEG_RAMP) ? "ramp" : "air",
 			            gs, gu);
 
@@ -1776,10 +2193,30 @@ void(vector scr, float y) HUD_DrawBoard =
 	{
 		col = Board_GradeColor(board_grade);
 
-		s  = sprintf("%s  %.1f%% kept", Board_GradeName(board_grade), board_kept);
-		tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
-		if (tw > bw) bw = tw;
-		HUD_TextC(p, s, sz, col, a);
+		/*
+		  Build 66: the grade word and the percentage are two switches on one row,
+		  and the row is skipped when neither is on.  Built up from nothing rather
+		  than being one sprintf with holes in it, because "okay  98.3% kept" has
+		  a double space and a trailing word that both belong to their neighbours
+		  -- assembling it any other way leaves a stray space at one end or the
+		  other whenever a part is missing.
+		*/
+		s = "";
+		if (ui_cv_bgrade)
+			s = Board_GradeName(board_grade);
+		if (ui_cv_bkept)
+		{
+			if (s != "") s = strcat(s, "  ");
+			s = sprintf("%s%.1f%%", s, board_kept);
+			if (ui_cv_bwords) s = strcat(s, " kept");
+		}
+
+		if (s != "")
+		{
+			tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
+			if (tw > bw) bw = tw;
+			HUD_TextC(p, s, sz, col, a);
+		}
 		p_y = p_y + lh;
 
 		/*
@@ -1813,27 +2250,75 @@ void(vector scr, float y) HUD_DrawBoard =
 		  `contact` stays as it was: it is a speed, it is the number that says how
 		  fast you arrived, and it has no energy form worth having.
 		*/
-		if (seq_units)
-			s = sprintf("board %+d e   contact %d",
-			            rint(0 - board_losse), rint(board_speedin_h));
-		else
-			s = sprintf("cost %d   contact %d",
-			            rint(board_loss), rint(board_speedin_h));
+		/*
+		  BUILD 65 -- `contact` MOVED OUT, and so did `leaving`.
 
-		tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
-		if (tw > bw) bw = tw;
-		HUD_TextC(p, s, sz, '0.8 0.8 0.8', a * 0.9);
+		  The two of them are the ENTER and LEAVE halves of one comparison and they
+		  were never adjacent: `contact` shared this row with the touchdown's cost
+		  and `leaving` had a row of its own two lines below.  Both are now rows of
+		  the Boarding window, paired, with the ride's energy beside them -- see
+		  cl_boarding.qc.
+
+		  THE TOUCHDOWN'S COST STAYS, because it belongs to the grade above it
+		  rather than to the pair that left: `Perfect 98.3% kept` and `board -23 e`
+		  are two statements about the same plane, and splitting them would leave a
+		  percentage with nothing to be a percentage of.  Nothing is printed twice:
+		  the window says what you ARRIVED at and what you LEFT with, this says what
+		  the plane took.
+		*/
+		// Build 66: switchable, and the leading word goes with hud_board_words.
+		// No space before the unit either -- see the seg row above.
+		if (ui_cv_bcost)
+		{
+			if (seq_units)
+				s = sprintf("%s%+de", ui_cv_bwords ? "board " : "",
+				            rint(0 - board_losse));
+			else
+				s = sprintf("%s%d", ui_cv_bwords ? "cost " : "",
+				            rint(board_loss));
+
+			tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
+			if (tw > bw) bw = tw;
+			HUD_TextC(p, s, sz, '0.8 0.8 0.8', a * 0.9);
+		}
+		p_y = p_y + lh;
+
+		/*
+		  BUILD 66 -- THE RAMP ANGLE, MOVED IN FROM THE BOARDING WINDOW.
+
+		      "Move Ramp deg to the info you can turn on/off on board."
+
+		  It belongs here on the merits as well as by request: it is a property of
+		  the PLANE, like the grade and the cost above it, and the window it came
+		  from is now only the enter/leave pair.  board_rampdeg has always been a
+		  global in cl_board.qc, so this is a move and not a new measurement.
+
+		  Unsigned degrees off horizontal, on the same fade as the grade -- it is
+		  the same touchdown.
+		*/
+		if (ui_cv_bramp)
+		{
+			s  = sprintf(ui_cv_bwords ? "ramp %.0f deg" : "%.0f", board_rampdeg);
+			tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
+			if (tw > bw) bw = tw;
+			HUD_TextC(p, s, sz, '0.72 0.74 0.76', a * 0.9);
+		}
 		p_y = p_y + lh;
 	}
 	else
-		p_y = p_y + lh * 2;
-
-	la = Board_Alpha(leave_time, ui_cv_boardfade);
-	if (la > 0)
-		HUD_TextC(p, sprintf("leaving %d", rint(leave_speed)), sz, '0.85 0.90 1.00', la);
-	p_y = p_y + lh;
+		p_y = p_y + lh * 3;
 
 	Font_Reset();
+
+	/*
+	  BUILD 65: where this panel finished, for the Boarding window stacked under
+	  it.  Published unconditionally, including on the frames every row has faded
+	  out -- the slots above are stepped past whether or not they were filled
+	  (that is what the `else` branch is for), so this y is stable rather than
+	  jumping as rows come and go.  A window that moved every time the panel above
+	  it went quiet would be the same twitch the -1 sentinel exists to prevent.
+	*/
+	ui_board_bottom = p_y + 3 * ui_cv_scale;
 
 	/*
 	  Build 31: the box, for the layout editor.
@@ -1846,8 +2331,10 @@ void(vector scr, float y) HUD_DrawBoard =
 	  filled), so the HEIGHT is honest at any fade; only the width goes away, and
 	  120 is about what "ramp  +77 e   1.2s" measures.
 	*/
-	if (bw < 120 * ui_cv_scale)
-		bw = 120 * ui_cv_scale;
+	// Build 65: 12*sz, which is 120*ui_cv_scale at the sizes this was written for
+	// and stays "about what one row measures" once hud_board_size can move it.
+	if (bw < 12 * sz)
+		bw = 12 * sz;
 	HUD_Rect("board", [bp_x - bw * 0.5, bp_y, 0], [bw, p_y - bp_y, 0], bp);
 };
 
@@ -1882,12 +2369,124 @@ vector(float kind, float launch) HUD_SeqColor =
 	return '1.00 0.96 0.62';                        // in the air, light yellow
 };
 
+/*
+  BUILD 65 -- THE ROW SAYS WHAT IT IS.
+
+      "with name displays and your actual energy value too"
+
+  Until now the only thing distinguishing an air row from a ramp row was its
+  COLOUR, which is a real signal and an unreliable one: it is the first thing lost
+  to a screenshot posted for advice, to a colour-blind reader, and to a row drawn
+  at 55% alpha because it is provisional.  The name is the same fact said out loud.
+
+  UNPADDED HERE, PADDED AT THE CALL SITE.  "%5s" in the caller's sprintf does the
+  right-alignment, so the width lives with the layout rather than being baked into
+  five string literals that would all have to change together if a sixth kind ever
+  appeared.  Five is the width of the longest ("Board").
+
+  The launch is not a kind of its own -- it is an air segment that happens to be
+  the first, and HUD_SeqColor already marks it.  Giving it a different word here
+  would make the column's two signals disagree about how many kinds there are.
+
+  BUILD 66 -- AND AN AIR ROW NOW SAYS HOW YOU GOT AIRBORNE.
+
+      "Can we make the first Green segment read 'Jump:' and if the player keeps
+       jumping, the next reads 'Bhop:' because when you do a bhop map it reads
+       'air:' and looks funny on a bhop maps."
+
+  The paragraph above still holds for KINDS -- there are still three, the colours
+  still mark the launch, and nothing about the state machine gained a case.  What
+  changed is that SEG_AIR has a sub-kind recorded when the segment opens
+  (seq_sub in cl_board.qc), because "did you jump or did you hop" is not
+  derivable from anything on the row: it is a fact about the GROUND PHASE BEFORE
+  it, and a ground phase opens no segment.
+
+  Only air rows have one.  A ramp exit is still "Air" -- you did not jump off
+  anything, and on a surf map that is the row you spend the most time reading.
+
+  FOUR CHARACTERS EACH, so "%5s" at the call site is untouched.  That is the one
+  layout constraint this function has and both new words respect it.
+*/
+string(float kind, float sub) HUD_SeqName =
+{
+	if (kind == SEG_BOARD) return "Board";
+	if (kind == SEG_RAMP)  return "Ramp";
+
+	/*
+	  hud_seq_hopname IS TESTED HERE, not where the sub-kind is measured, and the
+	  first capture run of this build is why.  It was gated at the measurement,
+	  which meant switching it off only affected segments opened AFTERWARDS -- the
+	  rows already in the ring kept the label they were stored with, so the column
+	  read Jump / Bhop / Jump at hud_seq_hopname 0 and the promise that 0 is build
+	  65 exactly was false for everything on screen.  Here it is true for the whole
+	  column on the frame it is switched, which is what a display switch has to be.
+	*/
+	if (seq_hopname)
+	{
+		if (sub == SEQSUB_JUMP) return "Jump";
+		if (sub == SEQSUB_BHOP) return "Bhop";
+	}
+	return "Air";
+};
+
+/*
+  BUILD 66 -- THE TWO NUMBER COLUMNS, EACH IN WHICHEVER UNIT IS IN FORCE.
+
+  Functions rather than four copies of the same ternary, because there are FOUR
+  places a row is assembled in HUD_DrawSeq -- committed, the mode-2 translation
+  line, and both live rows -- and build 65.1 shipped with the committed delta
+  carrying a trailing space that the live one did not.  A column that is built
+  four times is a column that stops agreeing with itself; this is the same
+  argument the grid essay makes, applied one level up.
+
+  seq_units is cached once per frame in Board_Frame (cl_board.qc) rather than
+  read here, so these cost one compare each.
+
+  The mode-2 padding is explained in the grid essay: `u/s` is two characters
+  wider than `e`, and both lines have to sit on the same column edges.
+*/
+string(float e, float grav) HUD_SeqAbsCol =
+{
+	if (seq_units == 0) return sprintf("%5.0fu/s ", Strafe_EquivSpeed(e, grav));
+	if (seq_units >= 2) return sprintf("%5.0fe   ", e);
+	return sprintf("%5.0fe ", e);
+};
+
+/*
+  Both forms are handed in because neither is derivable from the other here:
+  seq_gain is Seq_Gain(de, v, gravity) -- the u/s the delta is worth AT THE SPEED
+  THE SEGMENT CLOSED AT -- and a conversion done from de alone would quietly use
+  a different speed and disagree with the u/s column everywhere else on the HUD.
+*/
+string(float de, float gain) HUD_SeqDelCol =
+{
+	if (seq_units == 0) return sprintf("%+5.0fu/s ", gain);
+	if (seq_units >= 2) return sprintf("%+5.0fe   ", de);
+	return sprintf("%+5.0fe ", de);
+};
+
 void(vector scr) HUD_DrawSeq =
 {
 	local float i, sz, lh, a, rows, first, pct, pw, bw, bt;
 	local float nlive, liveb, la;
 	local vector p, col, bp;
-	local string s, ps;
+	// Build 65.1: the percentage is sprintf'd straight into its draw now -- it is
+	// no longer measured, so it no longer needs holding.
+	local string s;
+
+	// Build 65: the reference the absolutes are measured from, and the four part
+	// switches.  Read once rather than per row -- ten rows is ten cvar lookups a
+	// frame for a value that cannot change inside one.
+	local float eref, nm, sabs, sdel, stime, lines;
+	local string s2;
+
+	// Build 66: sv_gravity, for the u/s form of the absolute column.
+	local float grav;
+
+	// Build 65.1: the percentage column's reserved width, and the x every row is
+	// right-aligned on once it has been set aside.  See the column-grid essay below.
+	local float pctres;
+	local float rx;
 
 	/*
 	  BUILD 34 -- THE OPEN SEGMENT GETS PROVISIONAL ROWS.
@@ -1969,8 +2568,20 @@ void(vector scr) HUD_DrawSeq =
 	  read as a pair now that they no longer overlap.
 	*/
 	Font_Set(ui_font_mono);
-	sz = Font_Px(8 * ui_cv_scale);
-	lh = sz + 2 * ui_cv_scale;
+	sz = Font_Px(HUD_Size("hud_seq_size", 8 * ui_cv_scale));
+
+	/*
+	  BUILD 65 -- THE ROW ADVANCE IS DERIVED FROM THE SIZE, NOT FROM hud_scale.
+
+	  It was `sz + 2 * ui_cv_scale`, which is correct only while sz is itself
+	  8*ui_cv_scale: the two stop being proportional the moment hud_seq_size is
+	  set, and a 20 px row on a 10 px advance is a column written on top of itself.
+
+	  1.25 is not a new number -- it is exactly what the old expression produced at
+	  both shipped scales (8+2 at scale 1, 16+4 at scale 2), so this ships changing
+	  nothing and keeps being right at sizes the old form never had to handle.
+	*/
+	lh = sz * 1.25;
 
 	rows = cvar("hud_seq_rows");
 	if (rows < 1) rows = 10;
@@ -1992,8 +2603,17 @@ void(vector scr) HUD_DrawSeq =
 	// Build 34: the live rows are part of the block, so they are part of what it
 	// is centred on -- otherwise the whole column would jump half a row up and
 	// back down on every ramp, which is a worse fidget than the one being fixed.
+	//
+	// Build 65: and at hud_seq_units 2 every row draws TWO lines, so the block is
+	// twice as tall and the centring has to know.  Counting rows rather than lines
+	// here would put the column half its own height too low at that setting -- on
+	// top of the strafe bar, which is the overlap build 13 moved it to avoid.
+	// Build 66: the translation line follows either number column now, not just
+	// the delta -- so the height doubles whenever mode 2 has anything to say.
+	lines = rows * ((seq_units >= 2 &&
+	                 (cvar("hud_seq_abs") || cvar("hud_seq_delta"))) ? 2 : 1);
 	p = [scr_x * (0.5 + cvar("hud_seq_x")),
-	     scr_y * cvar("hud_seq_y") - (rows + nlive) * lh * 0.5, 0];
+	     scr_y * cvar("hud_seq_y") - (lines + nlive) * lh * 0.5, 0];
 
 	// The anchor the two cvars encode: the column's RIGHT edge, and the vertical
 	// CENTRE of the block -- not the top-left p walks from.  Kept before the loop
@@ -2005,21 +2625,170 @@ void(vector scr) HUD_DrawSeq =
 
 	pct = cvar("hud_seq_pct");
 
+	/*
+	===========================================================================
+	  BUILD 65 -- THE ROW, ASSEMBLED FROM PARTS.
+
+	      "  Air: 345e +100e 1.45s 80%"
+	      "Board: 335e -10e"
+	      " Ramp: 185e -150e 0.8s"
+
+	  Five columns, each behind its own cvar, where build 64 had one sprintf with
+	  two of them hard-wired into it.
+
+	  THE NAME IS RIGHT-ALIGNED IN FIVE CHARACTERS and that is what the quoted
+	  spec is doing with its leading spaces -- "  Air", "Board", " Ramp".  In a
+	  proportional face that would be five different widths and the colons would
+	  not line up; this block is drawn in Google Sans Code, where every glyph
+	  advances exactly 0.6 em (sh_font.qc), so padding with spaces IS alignment.
+	  It is the reason the column was moved to a mono face in build 21 and the
+	  first thing since to actually need it.
+
+	  BUILD 65.1 -- AND THAT ALONE WAS NOT ENOUGH, BECAUSE THE ROW IS DRAWN FROM
+	  ITS RIGHT EDGE.
+
+	      "align to the : part, so Air: Board: and Ramp: the semi-colin lines up"
+
+	  Every row here is HUD_TextR against one x, so "%5s: " aligns the name WITHIN
+	  its own string and then the string is hung off the right, which moves its left
+	  edge by however wide the rest of the row happens to be.  A board row with no
+	  duration is six characters shorter than the air row above it, so its colon sat
+	  six characters right of that one -- the padding was real and the anchor threw
+	  it away.  Padding the left of a right-aligned string is a no-op by definition:
+	  only the trailing end of the row is nailed down.
+
+	  So every column right of the name is fixed width too, and the row becomes a
+	  grid whose right edge is the anchor:
+
+	      "%5s: "       7   name, right-aligned in 5
+	      "%5.0fe "     7   absolute        |  "%5.0fu/s "    9
+	      "%+5.0fe "    8   delta           |  "%+5.0fu/s "  10
+	      "%5.2fs"      6   duration -- SIX SPACES when the row has none
+	      "  %3.0f%%"   6   percentage, RESERVED on every row (see pctres)
+
+	  The two that matter are the last two.  A row with no duration still has to pay
+	  for the column, or everything to its left shifts; and the percentage is a
+	  separate draw in its own colour, so its width has to be set aside by the rows
+	  that do not have one rather than measured from the ones that do.  Widths are
+	  cut for the values actually seen -- five digits of energy (-9999..99999), three
+	  of percentage.  A value past its field does not corrupt anything, it just makes
+	  that one row hang further left; the grid it sits in is unaffected.
+
+	  BUILD 66 -- THE SPACE BEFORE THE UNIT IS GONE, AND THE UNITS SWITCH REACHES
+	  BOTH NUMBER COLUMNS.
+
+	  "The 'Units' selection only changes the Gain/Loss energy value, and not the
+	  'Energy Now' column.  Both should display both the 'now' and the gain/loss.
+	  Remove the spacing between the number and u/s to save space."
+
+	  Three separate things, and the first two were a real inconsistency: the
+	  absolute was hard-wired to `e` at all four build sites, so hud_seq_units 0
+	  produced a row with a height in one column and a speed in the next.  It goes
+	  through Strafe_EquivSpeed now -- the same conversion the energy line under
+	  the speedometer uses at hud_energy 2, so the two panels agree about what a
+	  given energy is worth.
+
+	  IN MODE 2 THE ENERGY COLUMNS PAD OUT TO THE u/s WIDTHS.  `u/s` is two
+	  characters longer than `e`, so without that the second line's columns would
+	  each sit two characters left of the ones they translate -- the whole grid
+	  holding, and the two lines still not lining up with each other.  Two trailing
+	  spaces on the energy form in mode 2 costs nothing anywhere else (the row is
+	  right-aligned, so trailing space is right margin) and makes the pair exact.
+
+	  The translation line carries the ABSOLUTE as well as the delta now, which is
+	  what "both should display both" asks for.  It still has no name column, so it
+	  reads as indented under the row it translates.
+
+	  The live rows and the hud_seq_units 2 translation line use the SAME field
+	  widths and the same anchor.  They are the two places a row is built twice in
+	  this function, which is exactly where a column silently stops lining up.
+
+	  THE ABSOLUTE IS REFERENCED HERE, NOT AT PUSH TIME.  seq_eend holds raw
+	  Strafe_Energy output; subtracting the LIVE reference means every row on
+	  screen shares one zero, so `abs` of a row is `abs` of the row above plus this
+	  row's delta, and the bottom row agrees with the `e` readout by the crosshair.
+	  Freezing it at push time would have measured each row against whatever anchor
+	  was in force when it closed, and the anchor re-bases on every jump.  See
+	  seq_eend in cl_board.qc.
+
+	  A ROW LOADED FROM A BUILD-64 SAVE HAS NO ABSOLUTE.  Its seq_eend is 0, which
+	  after referencing is a large negative number rather than a plausible one --
+	  visibly missing, which is the right failure.  Nothing is invented for it.
+	===========================================================================
+	*/
+	eref  = HUD_EnergyRef();
+	nm    = cvar("hud_seq_name");
+	sabs  = cvar("hud_seq_abs");
+	sdel  = cvar("hud_seq_delta");
+	stime = cvar("hud_seq_time");
+
+	// Build 66: needed by the absolute column at hud_seq_units 0 and 2, where it
+	// is written as a speed.  Same fallback as every other reader of it in this
+	// file -- a server that does not publish sv_gravity gets Quake's 800.
+	grav  = serverkeyfloat("sv_gravity");
+	if (grav < 1) grav = 800;
+
+	// The percentage column, set aside by every row whether or not it has one.
+	// Measured rather than counted (sz * 6 * 0.6): the 0.6 em is a property of the
+	// face, and a caller who swaps the face should get a wrong-looking column, not
+	// a silently wrong one.  pct off costs nothing -- there is no column to reserve.
+	pctres = 0;
+	if (pct)
+		pctres = stringwidth("  100%", TRUE, [sz, sz]);
+	rx = p_x - pctres;
+
 	// The face is already selected -- see the note above sz; selecting it here
 	// was what made the snap above run against the wrong ladder.
 	for (i = first; i < seq_n; i = i + 1)
 	{
 		col = HUD_SeqColor(seq_kind[i], seq_launch[i]);
+
+		s = "";
+		if (nm)
+			s = sprintf("%5s: ", HUD_SeqName(seq_kind[i], seq_sub[i]));
+		if (sabs)
+			s = strcat(s, HUD_SeqAbsCol(seq_eend[i] - eref, grav));
+
 		/*
-		  Build 20.  `e` is world units of height, the same unit as the `e`
+		  Build 20/65.  `e` is world units of height, the same unit as the `e`
 		  readout by the crosshair and as the numerator of the % to the right --
-		  so the row is internally consistent for the first time.  u/s is one
-		  cvar away and is the build 19 string unchanged.
+		  so the row is internally consistent.  hud_seq_units 0 is the build 19
+		  u/s string; 2 draws both, stacked (see below).
 		*/
-		if (seq_units)
-			s = sprintf("%+.0f e  %.2fs", seq_de[i], seq_dur[i]);
-		else
-			s = sprintf("%+.0f u/s  %.2fs", seq_gain[i], seq_dur[i]);
+		if (sdel)
+			s = strcat(s, HUD_SeqDelCol(seq_de[i], seq_gain[i]));
+
+		/*
+		  The duration.  %.2fs as it has always been -- the spec's " 0.8s" is one
+		  decimal, but two is what distinguishes a 0.41s bump from a 0.45s one and
+		  the column is monospaced so the extra digit costs alignment nothing.
+
+		  Build 65.1: a row with no duration pays for the column in spaces instead
+		  of skipping it.  Skipping it is what pushed the board rows six characters
+		  right of everything else.
+
+		  BUILD 66: AND A BOARD ROW DOES NOT PRINT ONE AT ALL.
+
+		      "Duration of a 'board' doesn't need to be printed, since it's always
+		       0.01s."
+
+		  Correct, and it was printing it: Seq_Push is handed one pm_ticrate as a
+		  touchdown's duration (cl_board.qc:1944), which is 0.015 and therefore > 0,
+		  so the branch above took the number.  The LIVE board row has always
+		  blanked it explicitly -- so the two halves of the same row disagreed, and
+		  a board row changed shape at the moment it committed.  Now neither prints
+		  it.
+
+		  seq_dur keeps the tick.  It is real, it is on disk, and a merge sums it;
+		  this is a display rule and not a measurement change.
+		*/
+		if (stime)
+		{
+			if (seq_kind[i] != SEG_BOARD && seq_dur[i] > 0)
+				s = sprintf("%s%5.2fs", s, seq_dur[i]);
+			else
+				s = sprintf("%s      ", s);
+		}
 
 		/*
 		  BUILD 18 -- how much of the available gain that airtime took.
@@ -2040,24 +2809,72 @@ void(vector scr) HUD_DrawSeq =
 		  main string: measure it and shift the row left by its width, or the
 		  two would overlap on the same anchor.
 		*/
+		/*
+		  Build 65.1: the row always hangs off rx, never off p_x.  The percentage
+		  is drawn in its own colour so it cannot live inside s, and a row that
+		  does not have one still has to leave its width empty -- that is what rx
+		  is.  Measuring the shift from the string that happens to be there (which
+		  is what this did) means a ramp row and the air row above it are aligned
+		  on different anchors.
+		*/
 		if (pct && seq_pct[i] >= 0)
-		{
-			ps = sprintf("  %.0f%%", seq_pct[i]);
-			pw = stringwidth(ps, TRUE, [sz, sz]);
-			HUD_TextR([p_x, p_y], ps, sz,
+			HUD_TextR([p_x, p_y], sprintf("  %3.0f%%", seq_pct[i]), sz,
 			          HUD_QualityColor(seq_pct[i] * 0.01), a * 0.95);
-			HUD_TextR([p_x - pw, p_y], s, sz, col, a * 0.95);
-		}
-		else
-		{
-			pw = 0;
-			HUD_TextR([p_x, p_y], s, sz, col, a * 0.95);
-		}
 
-		pw = pw + stringwidth(s, TRUE, [sz, sz]);
+		HUD_TextR([rx, p_y], s, sz, col, a * 0.95);
+
+		pw = pctres + stringwidth(s, TRUE, [sz, sz]);
 		if (pw > bw) bw = pw;
 
 		p_y = p_y + lh;
+
+		/*
+		  BUILD 65 -- hud_seq_units 2: BOTH, AND STACKED.
+
+		      "one or the other or both, top to bottom"
+
+		  The u/s figure goes on its own line under the energy one rather than
+		  beside it, and the reason is width: this column is anchored by its RIGHT
+		  edge a quarter of the screen left of the crosshair, and a row that already
+		  carries a name, an absolute, a delta, a duration and a percentage has no
+		  room for a sixth column before it reaches the split list.  Stacking costs
+		  height, which this block has (it is centred and grows both ways), instead
+		  of width, which it does not.
+
+		  DIMMER AND INDENTED under its own row, because it is the SAME measurement
+		  in a second unit rather than a second measurement.  Two equally-weighted
+		  numbers would invite reading them as a pair of facts; one is the fact and
+		  the other is its translation.
+
+		  It follows hud_seq_delta: this line IS the delta, so a row with the delta
+		  switched off has nothing to say twice.
+		*/
+		/*
+		  Build 66: it carries the ABSOLUTE as well now -- "both should display
+		  both the now and the gain/loss" -- so it follows either switch rather
+		  than only the delta.  The columns land exactly under the ones they
+		  translate because mode 2 pads the energy forms to these widths; see
+		  HUD_SeqAbsCol.
+
+		  No name column, deliberately: that is what indents it under its own row.
+		*/
+		if (seq_units >= 2 && (sabs || sdel))
+		{
+			s2 = "";
+			if (sabs)
+				s2 = sprintf("%5.0fu/s ", Strafe_EquivSpeed(seq_eend[i] - eref, grav));
+			if (sdel)
+				s2 = sprintf("%s%+5.0fu/s ", s2, seq_gain[i]);
+			// Build 65.1: padded to end where the row above ends, so the pair
+			// shares a right edge instead of the translation hanging past it.
+			if (stime) s2 = sprintf("%s      ", s2);
+			HUD_TextR([rx, p_y], s2, sz, col, a * 0.5);
+
+			pw = pctres + stringwidth(s2, TRUE, [sz, sz]);
+			if (pw > bw) bw = pw;
+
+			p_y = p_y + lh;
+		}
 	}
 
 	/*
@@ -2073,24 +2890,49 @@ void(vector scr) HUD_DrawSeq =
 	  so there was never one to show; the ramp optimum has no closed form (see the
 	  hud_seq_pct essay in default.cfg).
 	*/
+	/*
+	  BUILD 65: THE PROVISIONAL PAIR IS BUILT THE SAME WAY AS ITS COMMITTED TWIN.
+
+	  They used to carry the word "board" in place of the duration, which was the
+	  only thing on the row saying which kind it was -- and it sat in the DURATION's
+	  column, so the two rows did not line up with each other or with the rows
+	  above.  Now the name is a real column and the live rows use it, which is the
+	  whole argument build 34 makes about these: the swap at segment end has to read
+	  as one thing settling, and a row that changes SHAPE when it commits reads as
+	  two.
+
+	  THE ABSOLUTE IS LIVE TOO.  seg_live_e is this instant's energy, so the bottom
+	  row of the column tracks the `e` readout by the crosshair continuously rather
+	  than jumping to meet it when the segment closes.
+	*/
 	if (nlive)
 	{
 		la = a * 0.55;
 
 		if (liveb)
 		{
-			s = seq_units ? sprintf("%+.0f e  board", seg_bd_de)
-			              : sprintf("%+.0f u/s  board", seg_live_bdgain);
-			HUD_TextR([p_x, p_y], s, sz, HUD_SeqColor(SEG_BOARD, FALSE), la);
-			pw = stringwidth(s, TRUE, [sz, sz]);
+			s = "";
+			if (nm)   s = sprintf("%5s: ", HUD_SeqName(SEG_BOARD, 0));
+			// The touchdown's own end: where the ramp segment opened.
+			if (sabs) s = strcat(s, HUD_SeqAbsCol(seg_live_e0 - eref, grav));
+			if (sdel) s = strcat(s, HUD_SeqDelCol(seg_bd_de, seg_live_bdgain));
+			// A touchdown has no duration of its own, so it pays for the column.
+			if (stime) s = sprintf("%s      ", s);
+
+			HUD_TextR([rx, p_y], s, sz, HUD_SeqColor(SEG_BOARD, FALSE), la);
+			pw = pctres + stringwidth(s, TRUE, [sz, sz]);
 			if (pw > bw) bw = pw;
 			p_y = p_y + lh;
 		}
 
-		s = seq_units ? sprintf("%+.0f e  %.2fs", seg_live_de, seg_live_dur)
-		              : sprintf("%+.0f u/s  %.2fs", seg_live_gain, seg_live_dur);
-		HUD_TextR([p_x, p_y], s, sz, HUD_SeqColor(seg_live_kind, FALSE), la);
-		pw = stringwidth(s, TRUE, [sz, sz]);
+		s = "";
+		if (nm)    s = sprintf("%5s: ", HUD_SeqName(seg_live_kind, seg_sub));
+		if (sabs)  s = strcat(s, HUD_SeqAbsCol(seg_live_e - eref, grav));
+		if (sdel)  s = strcat(s, HUD_SeqDelCol(seg_live_de, seg_live_gain));
+		if (stime) s = sprintf("%s%5.2fs", s, seg_live_dur);
+
+		HUD_TextR([rx, p_y], s, sz, HUD_SeqColor(seg_live_kind, FALSE), la);
+		pw = pctres + stringwidth(s, TRUE, [sz, sz]);
 		if (pw > bw) bw = pw;
 		p_y = p_y + lh;
 	}
@@ -2184,6 +3026,102 @@ string() HUD_MapStages =
 	return "";
 };
 
+/*
+===========================================================================
+  BUILD 65 -- THE CROSSHAIR.
+
+      "I have 3 new crosshairs people can select gfx/crosshairs/xhair1/2/3.png
+       ... and have an off option."
+
+  There has never been any crosshair code in this mod.  cl_main.qc sets
+  VF_DRAWCROSSHAIR and the ENGINE draws its own, from its own `crosshair` and
+  `crosshairsize` cvars; the only thing the QC has ever done is switch it off for
+  a replay.
+
+  BUILD 66 REWROTE THE NEXT PARAGRAPH.  Build 65 made 0 mean "the engine
+  decides", so that shipping the three textures changed nothing for anyone who
+  did not pick one.  That was the right default for the build that introduced
+  them and it is the wrong one for the build that puts them on a four-state chip:
+
+      "replace it with a single cycling button that switches between the three
+       crosshairs + off"
+
+  is off / 1 / 2 / 3, and there is no fifth position for "the engine decides".
+
+  So 0 IS OFF -- nothing drawn, ours or the engine's -- and the engine's own moves
+  to -1, which is reachable from the console and is not in the cycle.  1/2/3 draw
+  a texture and suppress the engine's in the same breath, in cl_main.qc, because
+  two crosshairs is worse than either.
+
+  THE COST OF THE CHANGE, SAID PLAINLY: a config that already has
+  `seta hud_crosshair 0` saved from build 65 launches with no crosshair rather
+  than the engine's.  There is no way to tell that apart from a deliberate 0, so
+  it is not fixable here -- one click of the chip sets it, and the default for
+  anyone who has not saved one is now 1.
+
+  32 PIXELS, NOT 16.  The three files are 32x32 RGBA -- measured, not assumed;
+  the request said 16x16 with an 8x8 offset, which would have drawn them at half
+  size through a bilinear downscale.  Native is pixel-exact and the offset is
+  therefore 16.  hud_crosshair_size is there for anyone who wants the smaller
+  one anyway, and it is a real resample at any value but 32.
+
+  NOT SCALED BY hud_scale, deliberately.  A crosshair is a sight: its size is a
+  decision about aiming, not about how big the HUD's text is, and tying it to a
+  cvar people change for legibility would move the thing they aim with.
+
+  DRAWN LAST, over the world and under the panels, and suppressed in a replay and
+  a ghost exactly as the engine's is -- a crosshair over someone else's run is
+  pointing at nothing.
+===========================================================================
+*/
+string(float n) HUD_CrosshairPic =
+{
+	if (n == 1) return "gfx/crosshairs/xhair1";
+	if (n == 2) return "gfx/crosshairs/xhair2";
+	if (n == 3) return "gfx/crosshairs/xhair3";
+	return "";
+};
+
+void(vector scr) HUD_DrawCrosshair =
+{
+	local float n, size, a;
+	local string pic;
+
+	n = cvar("hud_crosshair");
+	if (n < 1)
+		return;                     // the engine's, or none; see the essay above
+
+	// The two states the engine's own crosshair is already suppressed for.  Kept
+	// in step with cl_main.qc's VF_DRAWCROSSHAIR line by hand, which is the same
+	// arrangement that line has always had with rec_wt_on / rec_gh_on.
+	if (rec_wt_on || rec_gh_on)
+		return;
+
+	pic = HUD_CrosshairPic(n);
+	if (pic == "")
+		return;
+
+	size = cvar("hud_crosshair_size");
+	if (size < 1)
+		size = 32;                  // the files' native size
+
+	a = cvar("hud_crosshair_alpha");
+	if (a <= 0 || a > 1)
+		a = 1;
+
+	/*
+	  Centred by subtracting half the size, which is the "8x8 offset" of the
+	  request generalised -- at the native 32 it is 16, and it stays correct if the
+	  size is changed rather than being a constant that silently stops matching.
+
+	  Rounded to whole pixels: a crosshair on a half-pixel boundary is resampled
+	  across two columns and reads as a blurred, slightly-off-centre sight.  Screen
+	  widths are routinely odd (1919 after a border), so this is reachable.
+	*/
+	drawpic([rint((scr_x - size) * 0.5), rint((scr_y - size) * 0.5), 0],
+	        pic, [size, size, 0], '1 1 1', a, 0);
+};
+
 void(vector scr) HUD_DrawMapInfo =
 {
 	local vector p, bp;
@@ -2193,10 +3131,38 @@ void(vector scr) HUD_DrawMapInfo =
 	if (serverkey("map") == "")
 		return;                     // no map: nothing here is answerable
 
-	Font_Set(ui_font_ui);
-	tsz = Font_Px(10 * ui_cv_scale);
-	sz  = Font_Px(8 * ui_cv_scale);
-	lh  = sz + 3 * ui_cv_scale;
+	/*
+	  BUILD 66 -- MONO, FOR WEIGHT.
+
+	      "Map info, and the subtext of the timer, can it be made bolder? it looks
+	       quite thin."
+
+	  There is no bold face in this tree and the engine cannot reach the weight
+	  axis of the one variable font it loads -- Font_LoadFreeTypeFont opens face
+	  index 0 and never sets a design coordinate, so Roboto is always Regular.
+	  Google Sans Code is Medium, weight 500, and is already loaded for four other
+	  blocks.  It is the heaviest thing available without shipping a new file.
+
+	  This block is RIGHT-ANCHORED and its width is measured (bw below), so the
+	  0.6-em advance pushes its left edge left and cannot clip.  The one thing to
+	  look at on screen is the title: it is 1.25x the row size, and a condensed
+	  proportional heading over a fixed-pitch body is a different relationship
+	  from two proportional ones.
+
+	  Font_Set before Font_Px -- the ladders differ and the snap consults whichever
+	  face is selected.
+	*/
+	Font_Set(ui_font_mono);
+	/*
+	  Build 65.  hud_mapinfo_size names the ROW size and the title is 1.25x it,
+	  which is the 10:8 ratio this block has always drawn -- one cvar for a block
+	  with two sizes, because "FTESurf" and the map name are one thing that happens
+	  to have a heading.  The advance is 1.375x the row size, which is what
+	  `sz + 3 * ui_cv_scale` produced at both shipped scales.
+	*/
+	sz  = Font_Px(HUD_Size("hud_mapinfo_size", 8 * ui_cv_scale));
+	tsz = Font_Px(sz * 1.25);
+	lh  = sz * 1.375;
 
 	// Right-aligned, so the block stacks against the screen edge rather than
 	// ragged-right off a left margin.  x is the RIGHT edge, y the top.
@@ -2205,26 +3171,35 @@ void(vector scr) HUD_DrawMapInfo =
 	bt = p_y;
 	bw = 0;
 
+	/*
+	  BUILD 65: the four rows DRAW at the size they were MEASURED at.
+
+	  They used to measure with tsz/sz and draw with the literals the two were
+	  computed from -- identical while both were N*ui_cv_scale, and silently two
+	  different sizes the moment hud_mapinfo_size moves one of them.  The symptom
+	  would have been a right-aligned block whose box is the wrong width, i.e. text
+	  hanging off the screen edge with the editor's outline somewhere else.
+	*/
 	s = "FTESurf";
 	tw = stringwidth(s, TRUE, [tsz, tsz]);  if (tw > bw) bw = tw;
-	HUD_TextR(p, s, 10 * ui_cv_scale, '0.88 0.92 0.98', 0.95);
-	p_y = p_y + tsz + 3 * ui_cv_scale;
+	HUD_TextR(p, s, tsz, '0.88 0.92 0.98', 0.95);
+	p_y = p_y + tsz * 1.3;
 
 	s = serverkey("map");
 	tw = stringwidth(s, TRUE, [sz, sz]);    if (tw > bw) bw = tw;
-	HUD_TextR(p, s, 8 * ui_cv_scale, '0.70 0.75 0.84', 0.95);
+	HUD_TextR(p, s, sz, '0.70 0.75 0.84', 0.95);
 	p_y = p_y + lh;
 
 	s = HUD_MapTier();
 	tw = stringwidth(s, TRUE, [sz, sz]);    if (tw > bw) bw = tw;
-	HUD_TextR(p, s, 8 * ui_cv_scale, '0.55 0.70 0.90', 0.95);
+	HUD_TextR(p, s, sz, '0.55 0.70 0.90', 0.95);
 	p_y = p_y + lh;
 
 	s = HUD_MapStages();
 	if (s != "")
 	{
 		tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
-		HUD_TextR(p, s, 8 * ui_cv_scale, '0.55 0.60 0.68', 0.95);
+		HUD_TextR(p, s, sz, '0.55 0.60 0.68', 0.95);
 		p_y = p_y + lh;
 	}
 
@@ -2580,6 +3555,8 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
      vector vel, float dt) HUD_DrawStrafe =
 {
 	local float tick, airaccel, accel, maxspeed, aircap, gravity, fric, wishspeed;
+	local float ssz;                // build 65: hud_strafe_size, in Google Sans Code
+	local float ghold;              // build 65: the bhop-landing dwell gate
 	local float gfric, stopspeed, vf, best, havebest;
 	local float gain, ideal, q, cscale, frac, err, nz, wn, regime;
 	local float w, h, bx, by, fillfrom, fillto, t, ty;
@@ -2635,11 +3612,106 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 	  because the model should be the engine's, not because the bar was lying --
 	  pm_selftest pins both halves of exactly that statement.
 	*/
+	/*
+	===========================================================================
+	  BUILD 65 -- THE BAR STOPPED FLICKERING ON EVERY BHOP LANDING.
+
+	      "Strafe bar flickers every land of a bhop"
+
+	  It did, and there were four mechanisms rather than one -- all of them hanging
+	  off the same event, which is why one gate fixes all four:
+
+	    1  HUD_SmoothIdeal DISCARDS ITS LOW-PASS on any regime change and snaps.
+	       That is correct and deliberate for air <-> ramp, where the target really
+	       is a different function and blending would grade the first quarter second
+	       of every ramp against a flat-air number.  A one-tick ground touch is not
+	       that: it is the same flight, interrupted.
+	    2  The ground and air targets ARE different functions, so both the `/s` cell
+	       and the `u/s per tick at best` line jump -- and the ground ceiling goes
+	       NEGATIVE above about 270 u/s, so the best line does not merely move, it
+	       changes sign and colour.
+	    3  The ground optimum has a square-root shoulder at wishspeed - A = 231.25
+	       where 1 u/s of speed swings the target by about 15 deg/s, and below
+	       10 deg/s that branch zeroes `ideal` -- which BLANKS THE FILL ENTIRELY via
+	       the `if (ideal > 0.001)` gate below.  A landing crosses that shoulder.
+	    4  onground is pmove_onground, recomputed per RENDERED frame, so at high fps
+	       it can toggle inside a single command frame with nothing having happened.
+
+	  THE FIX IS A DWELL, NOT A FILTER.  Filtering any of the four would blur a
+	  reading that is correct when you are actually standing; what is wrong is only
+	  ever the CLAIM that a one-tick touch is a grounded phase.  So the bar adopts
+	  the ground regime once the flag has been continuously true for
+	  hud_strafe_groundhold seconds and not before, and inside that window it keeps
+	  the airborne answer -- which means HUD_SmoothIdeal is never asked to snap, the
+	  target never crosses the shoulder, and the fill never blanks.
+
+	  0.12 s is eight times a bhop's single tick and shorter than any real pause on
+	  the ground.  0 restores build 64 exactly.
+
+	  APPLIED HERE, ABOVE EVERYTHING THAT READS THE FLAG, so this function has ONE
+	  answer.  `fric` and the ducking wishspeed crop a few lines below both branch
+	  on it, and a gate placed after them would have left the bar grading an air
+	  regime against a ground-cropped wishspeed -- a third reading, correct nowhere.
+
+	  IT GATES THE BAR AND NOTHING ELSE.  onground is still the engine's own answer
+	  in the segment machine, the energy anchor and the key block, because those are
+	  accounting and this is an instrument's readability.  Deliberately not hoisted
+	  into HUD_Draw for exactly that reason.
+	===========================================================================
+	*/
+	if (onground)
+	{
+		if (ui_gnd_since <= 0)
+			ui_gnd_since = cltime;
+	}
+	else
+		ui_gnd_since = 0;
+
+	ghold = cvar("hud_strafe_groundhold");
+	if (onground && ghold > 0)
+	if (cltime - ui_gnd_since < ghold)
+		onground = FALSE;
+
 	fric = 1;
 	if (!onground && vel_z > 0 && vel_z <= PM_NONJUMP_VEL)
 		fric = 0.25;
 
-	Font_Set(ui_font_ui);
+	/*
+	  BUILD 65 -- GOOGLE SANS CODE, BY REQUEST, AND THE CONSTANTS ARE RE-CUT.
+
+	      "Set it to use the google font the default font for ... strafebar
+	       numbers and text."
+
+	  It is the right face for this block on its own terms too: the left cell is a
+	  live turn rate that changes 67 times a second, and in a proportional face a
+	  number whose digit COUNT changes drags its own left edge around as it does.
+	  This face advances every glyph by exactly 0.6 em, so a reading of 143 and one
+	  of 1430 occupy the same columns.
+
+	  BUT IT IS WIDER, and that is the trap sh_font.qc:69-88 exists to warn about:
+	  0.6 em against Roboto's 0.562 for a digit, and much worse for narrow glyphs
+	  -- Roboto charges 0.264 em for '.' and 0.243 for 'i' where this face charges
+	  0.6 for both.  So a size copied across makes every string here BIGGER, and
+	  the longest string on this panel is a sentence:
+
+	      " u/s per tick at best"   21 chars -> 12.6 em -> 252 px at 20 px
+	      "ramp: nz 0.42 out of band"  25 chars -> 15.0 em
+
+	  against a bar 260 * hud_scale wide.  The `best` line fits with room; the
+	  MESSAGE does not at the 8:10 ratio it had in Roboto, and would have run off
+	  the bar's right edge into the segment column.  So it is cut to 0.7 of the
+	  cell size below rather than 0.8, which lands on the mono ladder's 14 px rung
+	  at the shipped scale.
+
+	  Font_Set BEFORE any Font_Px, always: the snap consults whichever face is
+	  currently selected and has no other way to know which ladder it is on.  Doing
+	  it the other way round is the bug HUD_DrawSeq carries an essay about.
+	*/
+	Font_Set(ui_font_mono);
+
+	// The TEXT size.  The bar itself stays on hud_scale below -- it is a graphic
+	// and not a glyph, and "make the numbers bigger" is not "make the bar wider".
+	ssz = HUD_Size("hud_strafe_size", 10 * ui_cv_scale);
 
 	/*
 	  CROUCHING crops the wishspeed -- ON THE GROUND ONLY, which is what this
@@ -2913,15 +3985,39 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 	  sentence next to two three-character readings, and neutral grey rather
 	  than a graded colour, because it is a reason and not a score.
 	*/
-	HUD_TextR([p_x - 8 * ui_cv_scale, by - 15 * ui_cv_scale],
-	          sprintf("%.0f/s", HUD_Round(ui_hl_turn)), 10 * ui_cv_scale, col, 0.95);
+	/*
+	  BUILD 66 -- BOTH CELLS AND THE MESSAGE CAN GO.
 
-	if (msg != "")
+	  "No way to turn off the digits above or the info below the strafe bar."
+	  Nothing here was switchable: the measured rate was unconditional and the
+	  message could only be replaced by a target, never suppressed.
+
+	  hud_strafe_rates takes the pair of numbers; hud_strafe_why takes the
+	  sentence.  SEPARATE, because they answer different complaints -- the
+	  numbers are noise to somebody who steers by the bar, and the message is a
+	  paragraph of explanation to somebody who already knows why their ramp is not
+	  gradeable.  Either can be the one you want gone.
+
+	  With the rates off the message still has its slot, and vice versa: they
+	  occupy different halves and neither's absence moves the other.  The bar's
+	  own geometry is above this and does not move either way -- 15 units of
+	  headroom over a 260-unit bar is not worth a second layout to reclaim, and
+	  reclaiming it would move the bar out from under the cursor of whoever just
+	  switched the cells off.
+	*/
+	// Build 65: the two cells and the message are all sized off ssz now, so
+	// hud_strafe_size moves them together and the 8:10 relationship between the
+	// message and the cells survives -- cut to 7:10, see the mono note above.
+	if (ui_cv_srates)
+		HUD_TextR([p_x - 8 * ui_cv_scale, by - 15 * ui_cv_scale],
+		          sprintf("%.0f/s", HUD_Round(ui_hl_turn)), ssz, col, 0.95);
+
+	if (msg != "" && ui_cv_swhy)
 		HUD_Text ([p_x + 8 * ui_cv_scale, by - 14 * ui_cv_scale], msg,
-		          8 * ui_cv_scale, '0.74 0.74 0.74', 0.95);
-	else if (ideal > 0.001)
+		          ssz * 0.7, '0.74 0.74 0.74', 0.95);
+	else if (msg == "" && ideal > 0.001 && ui_cv_srates)
 		HUD_Text ([p_x + 8 * ui_cv_scale, by - 15 * ui_cv_scale],
-		          sprintf("%.0f/s", HUD_Round(ui_hl_ideal)), 10 * ui_cv_scale, '0.45 0.70 1.00', 0.95);
+		          sprintf("%.0f/s", HUD_Round(ui_hl_ideal)), ssz, '0.45 0.70 1.00', 0.95);
 
 	// --- the track ---
 	drawfill([bx, by], [w, h], '0.05 0.06 0.08', 0.55, 0);
@@ -3007,13 +4103,35 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 	  diagnostic belongs.
 	*/
 	ty = by + h + 4 * ui_cv_scale;
-	if (havebest)
+	if (havebest && ui_cv_sbest)
 	{
 		local float bsz, blw, bnw, bsplit;
 		local vector bcol;
+		local string blab;
 
-		bsz  = 10 * ui_cv_scale;
+		bsz  = ssz;                 // build 65: with the two cells above it
 		bcol = (best >= 0) ? '0.48 0.93 0.48' : '0.70 0.70 0.72';
+
+		/*
+		  BUILD 66 -- THE WORDING IS A SETTING, AND THE STRING IS A LOCAL.
+
+		  "No way to turn off the digits above or the info below the strafe bar,
+		  or reduce the wording."
+
+		  ONE local read TWICE below, and that is the whole reason it exists: the
+		  label is measured to place bsplit and then drawn from bsplit, and those
+		  two uses must be the same characters.  They were two copies of the same
+		  literal before, which is a pair that drifts the moment anyone edits one
+		  of them -- and the symptom would be the number and the label sliding
+		  apart, which reads as a layout bug rather than as a typo.
+
+		  The short form keeps the leading space: it is the gap between the number
+		  and the unit as well as part of the measured width, so dropping it would
+		  glue "+3" to "u/s".  "Remove the spacing between the numbers and units"
+		  is about `1204 u/s`, where the unit follows a complete reading; here the
+		  number and the label are two separately-anchored draws.
+		*/
+		blab = (ui_cv_sbest >= 2) ? " u/s per tick at best" : " u/s/tick";
 
 		/*
 		  TWO FIXED ANCHORS, NOT ONE CENTRED STRING.  This is why it used to
@@ -3037,7 +4155,7 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 		  is the one thing that has to.  The split is placed so a typical
 		  five-character reading sits centred on the bar.
 		*/
-		blw    = stringwidth(" u/s per tick at best", TRUE, [bsz, bsz]);
+		blw    = stringwidth(blab, TRUE, [bsz, bsz]);
 		bnw    = stringwidth("+00.0", TRUE, [bsz, bsz]);
 		bsplit = p_x - (bnw + blw) * 0.5 + bnw;
 
@@ -3057,9 +4175,11 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 			HUD_TextR([bsplit, ty], sprintf("%+.0f", HUD_Round(ui_hl_best)), bsz, bcol, 0.75);
 		else
 			HUD_TextR([bsplit, ty], sprintf("%+.1f", ui_hl_best), bsz, bcol, 0.75);
-		HUD_Text ([bsplit, ty], " u/s per tick at best", bsz, bcol, 0.75);
+		HUD_Text ([bsplit, ty], blab, bsz, bcol, 0.75);
 
-		ty = ty + 13 * ui_cv_scale;
+		// Build 65: 1.3 * the line's own size, which is 13 * ui_cv_scale at the
+		// size this was written for and follows hud_strafe_size from here on.
+		ty = ty + bsz * 1.3;
 	}
 
 	ui_strafe_bottom = ty;
@@ -3283,11 +4403,19 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 	local string state;
 	local vector col;
 
-	sz = 8 * ui_cv_scale;
-	lh = sz + 2 * ui_cv_scale;
+	/*
+	  Build 65: hud_debug_size, and BOTH derived numbers re-expressed in terms of
+	  it.  1.25 and 13.75 are what `sz + 2 * ui_cv_scale` and `110 * ui_cv_scale`
+	  produced at both shipped scales, so nothing moves until the cvar is set --
+	  but rx in particular had to change, because it is the x every number on this
+	  panel is right-aligned to and a label drawn at 24 px against a column placed
+	  for 16 px would overwrite its own value.
+	*/
+	sz = HUD_Size("hud_debug_size", 8 * ui_cv_scale);
+	lh = sz * 1.25;
 	p  = [scr_x * ui_cv_debugpos_x, scr_y * ui_cv_debugpos_y, 0];
 	bp = p;
-	rx = p_x + 110 * ui_cv_scale;       // the column the numbers END on
+	rx = p_x + sz * 13.75;              // the column the numbers END on
 
 	Font_Set(ui_font_ui);
 
@@ -3621,6 +4749,47 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 	HUD_TextR([rx, p_y], (ui_anchor_zone < 0 && !ui_anchor_manual)
 	          ? "--" : sprintf("%.0f", ui_anchor_z),
 	          sz, '0.6 0.6 0.6', 0.7);                                  p_y += lh;
+
+	/*
+	  BUILD 65 -- THE FOUR VALUES THAT DECIDE WHAT `e` SAYS, ON ONE LINE EACH.
+
+	      "energy indicator will load in a BS anchor value on loading of
+	       save-loads, and releasing a save-lock key, has your energy sort of
+	       flicker update"
+
+	  `e` is Strafe_Energy(org, vel) - HUD_EnergyRef(), and every way that can go
+	  wrong is a mismatch between the two halves rather than an error in either.
+	  Until now the panel showed neither half, so the only evidence available was
+	  the wrong answer itself.
+
+	    jumpz   ui_jump_z, the reference at hud_energy_ref 1.  A restore installs
+	            the SAVE's value here.
+	    orgz    the feet the energy is being measured at.  The point of printing
+	            them adjacent is that a restore can move one before the other --
+	            the anchor arrives with the save event, the position with a
+	            snapshot, and they do not have to be the same snapshot.
+	    rsarm   ui_rs_armed: a restore's teleport has not landed yet.  While this
+	            is 1 the pair above is EXPECTED to disagree, which is the whole
+	            reason the readout is now held rather than drawn.
+	    held    rec_sl_held: a save-lock park.  MOVETYPE_NONE, so the server is the
+	            only thing simulating you and the predicted pair is frozen.
+
+	  Read these across the arrival frame of a load, not after it: the symptom is
+	  two frames long and the steady state either side of it is correct.
+	*/
+	HUD_Text(p, "jumpz", sz, '0.6 0.6 0.6', 0.7);
+	HUD_TextR([rx, p_y], ui_jump_have ? sprintf("%.1f", ui_jump_z) : "--",
+	          sz, '0.6 0.6 0.6', 0.7);                                  p_y += lh;
+	// ui_jump_lastorg rather than a fresh HUD_Feet(): this function is handed no
+	// origin, and that global is written by HUD_UpdateJumpRef from the SAME org the
+	// anchor logic just ran against -- which is the pairing under test.  Calling
+	// HUD_Feet again here would sample a second time and could not show the skew.
+	HUD_Text(p, "orgz", sz, '0.6 0.6 0.6', 0.7);
+	HUD_TextR([rx, p_y], sprintf("%.1f", ui_jump_lastorg_z), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
+	HUD_Text(p, "rsarm", sz, '0.6 0.6 0.6', 0.7);
+	HUD_TextR([rx, p_y], ui_rs_armed ? "^11^7" : "0", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
+	HUD_Text(p, "slheld", sz, '0.6 0.6 0.6', 0.7);
+	HUD_TextR([rx, p_y], rec_sl_held ? "^11^7" : "0", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
 	HUD_Text(p, "tick", sz, '0.6 0.6 0.6', 0.7);
 	HUD_TextR([rx, p_y], sprintf("%.4f", PM_TICK), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
 	HUD_Text(p, "aacc", sz, '0.6 0.6 0.6', 0.7);
@@ -4242,4 +5411,10 @@ void(vector scr) HUD_Draw =
 	if (ui_cv_keys)   HUD_DrawKeys(scr);
 	if (ui_cv_debug)  HUD_DrawDebug(scr, vel, onground, gnorm, mtype);
 	if (cvar("hud_seq")) HUD_DrawSeq(scr);
+
+	// Build 65.  Last, so it sits over the world and under nothing that matters --
+	// there is no panel at dead centre by design, so ordering against the others is
+	// academic, but a sight drawn under a readout would be the one case where it is
+	// not.  It self-gates on hud_crosshair; see HUD_DrawCrosshair.
+	HUD_DrawCrosshair(scr);
 };

@@ -253,6 +253,7 @@ TF_CHEAT = 256
 TF_NOJOURNAL = 512
 TF_NORULESET = 1024
 TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
+TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
 
 SCHEMA_VERSION = 4
 
@@ -1123,8 +1124,20 @@ def certifiable(flags):
     community board because of the input mode.  That is the whole intended
     behaviour and not a rough edge -- the alternative is ranking a run whose
     aim evidence provably cannot be checked.
+
+    QC BUILD 73 ADDS TF_NOMAP: the client's copy of the BSP is not the copy this
+    server's physics ran on.  Same shape as the other three and demoted for the
+    same reason, but note what it does NOT mean.  On a lobby the server owns
+    collision and the zone triggers, so a differing client map did not give the
+    player faster physics -- it gave them a desynchronised prediction.  What it
+    costs is checkability: the `.view` the client wrote describes a different
+    world from the one the `.rec` recorded, so the two can no longer be
+    cross-checked.  It is also the bit most likely to fire on someone whose only
+    mistake is an out-of-date map file, which is precisely why the engine-side
+    kick (sv_mapcheck, which would simply refuse them the server) is switched off
+    on the lobbies and this demotion carries the fact instead.
     """
-    return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE))
+    return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP))
 
 
 # --------------------------------------------------------------------------

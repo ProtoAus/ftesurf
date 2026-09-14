@@ -1995,6 +1995,7 @@ float(entity e) SV_RecKeys =
 void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
+	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
 
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
@@ -2069,6 +2070,34 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("tickrate %g", run_t_tick));
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	SV_RecPut(e, sprintf("runid %s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"), e.run_t_slot));
+
+	/*
+	  BUILD 73: WHICH BYTES OF THE MAP THIS RUN'S PHYSICS ACTUALLY RAN ON.
+	  Engine Patch 321.  ADDITIVE, by the header's own rule above.
+
+	  `map` names a file and a file name is not a map -- six maps in this library
+	  are the same name at two different builds, and a recompiled BSP keeps its
+	  name while changing every ramp on it.  A re-simulation verifier (the plan's
+	  Layer 2) cannot check a claimed time without knowing exactly which bytes it
+	  is re-simulating against, and neither can anybody comparing two runs on
+	  "the same" map years apart.  This is the cheapest possible answer: one line,
+	  written once, at open.
+
+	  THE SERVER'S OWN HASH, NOT THE CLIENT'S CLAIM, and that is the distinction
+	  that makes it worth storing.  TF_NOMAP records whether the CLIENT agreed,
+	  which is a statement about the client and is only as good as the client;
+	  this line records what the machine that ran the physics loaded, which no
+	  client can influence.  The two answer different questions and the file
+	  carries both.
+
+	  OMITTED RATHER THAN WRITTEN EMPTY when the engine reports unknown -- a
+	  pre-321 engine or plugin, or a loader that computes no checksum.  An absent
+	  key reads as unknown to every reader by the header's existing rule, where a
+	  `mapcrc ` with no value would be a line the grammar does not describe.
+	*/
+	mcrc = infokey(world, "*mapcrc");
+	if (mcrc != "")
+		SV_RecPut(e, sprintf("mapcrc %s", mcrc));
 
 	/*
 	  RESERVED, and rewritten by SV_RecClose.
@@ -4894,6 +4923,77 @@ void(entity e, float atstart) SV_TimerProfile =
 };
 
 /*
+  DID THIS RUN HAPPEN ON OUR COPY OF THE MAP?  Build 73, engine Patch 321.
+
+  The long version is the TF_NOMAP essay in sh_defs.qc.  The short version is
+  that the engine has always had both numbers and never let QC see either: the
+  server's map hash lived in sv.world.worldmodel->checksum and the client's claim
+  in host_client->checksum, and the only consumer was sv_mapcheck's kick -- which
+  is a refusal, not a fact, and which was inert on 1287 of the 1312 maps in the
+  library until Patch 321.
+
+  A PURE PREDICATE, on the SV_RulesetBroken / SV_ProfileBroken precedent, and for
+  their harness reason rather than for tidiness: a run cannot be FINISHED from a
+  config on a zoned map -- zone_goto and setpos both void via SV_TimerWarped -- so
+  a rule that existed only inside the latch could not be checked headlessly at
+  all.  Split out, `cmd timer` reports a live `wouldmap` beside the latched bit,
+  with one copy of the rule and no side effect from asking.
+
+  ONE ENGINE KEY, TWO SUBJECTS.  `*mapcrc` on world is the hash of the BSP THIS
+  SERVER loaded; `*mapcrc` on a player is the hash THAT CLIENT claimed when it
+  prespawned.  Deliberately not a serverkey: the expected answer is never put in
+  serverinfo, because serverinfo reaches every client and a patched one would
+  only have to echo it back.  See the Patch 321 comment in pr_cmds.c.
+
+  EMPTY IS UNKNOWN AND UNKNOWN IS RANKABLE, on both sides and for four different
+  reasons -- an engine or plugin older than Patch 321, a protocol that never
+  sends a hash, a client asked before it prespawned, and a loader that computes
+  none.  The engine folds the last of those into "" for us on purpose, so QC
+  never has to know that a zero checksum means "nobody computed one": see the
+  deploy-order note in pr_cmds.c, which is the difference between this check
+  switching itself on per client as players update and it demoting every run by
+  every player the moment the server half ships.
+
+  STRING EQUALITY, NEVER stof.  A checksum is 32 bits and a QC float has a 24-bit
+  mantissa, so a numeric compare would call differing maps equal -- silently, and
+  in the direction that ranks.  See sh_defs.qc.
+*/
+float(entity e) SV_MapForeign =
+{
+	local string ours, theirs;
+
+	ours = infokey(world, "*mapcrc");
+	if (ours == "")
+		return FALSE;
+	theirs = infokey(e, "*mapcrc");
+	if (theirs == "")
+		return FALSE;
+	if (theirs == ours)
+		return FALSE;
+
+	return TRUE;
+};
+
+/*
+  ...and the latch.
+
+  CALLED ONCE, AT THE START, and that is the one way this differs in shape from
+  SV_TimerJournal, SV_TimerRuleset and SV_TimerProfile, all of which run again at
+  the finish.  The missing second call is deliberate, not an omission: those three
+  watch something a player can retype into a console mid-run, and neither side of
+  this one can move inside a run.  The server's world model lives exactly as long
+  as the map does, and a changelevel ENDS the run rather than continuing it; the
+  client's claim is fixed at prespawn, which happens before it can spawn, let
+  alone arm.  With no span to cross there is nothing to difference, which is also
+  why this takes no latched field where the other two take one.
+*/
+void(entity e) SV_TimerMap =
+{
+	if (SV_MapForeign(e))
+		e.run_t_flags = e.run_t_flags | TF_NOMAP;
+};
+
+/*
   WERE THIS RUN'S PHYSICS PROVABLY THE RULESET'S?  Build 62, engine Patch 313.
 
   The long version is the TF_NORULESET essay in sh_defs.qc; the short version is
@@ -6384,6 +6484,12 @@ void(entity e) SV_TimerStart =
 	// the ruleset's argument one line up.  See SV_TimerProfile.
 	SV_TimerProfile(e, TRUE);
 
+	// Build 73: and the map, before SV_RecOpen for the same reason as the three
+	// above -- so the recording's header is written with the run already flagged.
+	// No finish call: neither side of this one can change inside a run.  See
+	// SV_TimerMap.
+	SV_TimerMap(e);
+
 	SV_RecOpen(e);
 
 	/*
@@ -7585,6 +7691,25 @@ void(entity e) SV_TimerReport =
 	               e.run_t_pbad,
 	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
 	               SV_ProfileBroken(e)));
+	/*
+	  Build 73, engine Patch 321.  BOTH HASHES, not the verdict, because the whole
+	  failure this replaces was a comparison that agreed for the wrong reason.
+
+	  `ours` is what this server loaded and `theirs` is what the client claimed;
+	  printing only `nomap` would make "the two agree" and "there is nothing to
+	  compare" look identical on screen, which is exactly how an inert sv_mapcheck
+	  passed for years.  An empty column is therefore the interesting reading, and
+	  it has four causes -- all of them listed in SV_MapForeign, all of them
+	  rankable.  `would` is the live answer from the same pure predicate the latch
+	  calls; there is no second latch here, so unlike the two rows above it can
+	  never disagree with `nomap` on a run that has started.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        mapcrc:  ours \"%s\"  theirs \"%s\"  nomap %g  would %g\n",
+	               infokey(world, "*mapcrc"),
+	               infokey(e, "*mapcrc"),
+	               (e.run_t_flags & TF_NOMAP) ? 1 : 0,
+	               SV_MapForeign(e)));
 	/*
 	  Build 30.  Two different questions, so two columns rather than one:
 	  `ghost` is whether the camera is detached RIGHT NOW (and therefore whether

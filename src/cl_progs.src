@@ -44,11 +44,30 @@ client/cl_fog.qc
 // CSQC_UpdateView.  Like cl_fog.qc it needs nothing from anyone, so beside its
 // three siblings is early enough.
 client/cl_emit.qc
+// Build 66.  A FIFTH independent walk of the same entity lump -- the decals,
+// sprites, fog and emitters are the other four, and no one of the five reads
+// another.  env_soundscape: the entity Source maps actually use for ambience,
+// and the reason a Momentum map currently sounds identical in every room.
+//
+// It needs nothing from anyone (getentitytoken, fopen, sound/soundupdate and
+// traceline are all engine builtins), so beside its four siblings is early
+// enough.  It must sit BEFORE cl_main.qc, which calls Snds_RegisterCvars from
+// CSQC_Init, Snds_LoadFromWorld from CSQC_WorldLoaded, Snds_Frame from
+// CSQC_UpdateView and Snds_ConsoleCommand from CSQC_ConsoleCommand.
+client/cl_soundscape.qc
 client/cl_hud.qc
 // AFTER cl_hud.qc, which owns HUD_Text/HUD_TextR, ui_cv_scale and ui_font_ui.
 // Patch 270: the lobby network monitor -- the on-screen replacement for
 // counting `cl_shownet 3` lines by eye.  It needs nothing from anything below.
 client/cl_netmon.qc
+// Build 65: the Boarding window.  AFTER cl_hud.qc for HUD_Text*, HUD_Size,
+// HUD_Rect, HUD_EnergyRef, Board_Alpha's callers and the font globals, and AFTER
+// cl_board.qc (line 20) for board_* / leave_* / seg_live_*.  It must also sit
+// BEFORE cl_hudedit.qc, which lists it as a draggable element, and before
+// cl_main.qc, which calls Boarding_RegisterCvars from CSQC_Init and
+// Boarding_Draw from the HUD stack.  Beside cl_netmon.qc satisfies all four and
+// is the same slot that file documents for the same reason.
+client/cl_boarding.qc
 client/cl_timer.qc
 client/cl_saveloc.qc
 client/cl_gfx.qc

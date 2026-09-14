@@ -153,6 +153,13 @@ void() CSQC_WorldLoaded =
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
 
+	// Build 66.  env_soundscape, out of the same lump and here for the same
+	// reason -- 1,702 across 125 maps, and until this ran a map had no way to
+	// sound different inside than outside.  It also precaches every wave its
+	// soundscapes can play, and this hook is the documented place for that.
+	// cl_soundscape.qc.
+	Snds_LoadFromWorld();
+
 	/*
 	  Patch 278.  The lobby avatars' own particle effects.
 
@@ -287,6 +294,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  while the buffer drains.  See the essay above Emit_Precache.
 	*/
 	Emit_RegisterCvars();
+	Snds_RegisterCvars();           // build 66, env_soundscape
+	Boarding_RegisterCvars();       // build 65, the Boarding window
 	HUD_EditRegisterCvars();
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
 	Ev_Register();                  // build 54, the trigger/entity inspector
@@ -1265,7 +1274,29 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	clearscene();
 
 	setproperty(VF_DRAWENGINESBAR, 0);
-	setproperty(VF_DRAWCROSSHAIR, (rec_wt_on || rec_gh_on) ? 0 : 1);
+	/*
+	  BUILD 65: and off when the HUD is drawing one of its own.
+
+	  1/2/3 select one of the three textures in gfx/crosshairs, and the engine's
+	  has to go with it: two crosshairs a few pixels apart is worse than either of
+	  them alone.
+
+	  BUILD 66: `>= 1` BECAME `>= 0`, which is the whole of the meaning change.
+
+	  hud_crosshair 0 used to mean "let the engine draw its own" and now means OFF,
+	  so it has to suppress the engine's too -- otherwise the chip's `xhair off`
+	  position would leave the engine's cross sitting there, which is the one thing
+	  a control labelled off must not do.  -1 is the state that used to be 0 and is
+	  the only value that now falls through to the engine.  See HUD_DrawCrosshair,
+	  whose own `if (n < 1) return` is correct for both new states without change.
+
+	  The replay/ghost terms are unchanged and HUD_DrawCrosshair repeats them, by
+	  hand, for its own path.  Two tests rather than one shared flag because they
+	  run in different files at different points in the frame, and a crosshair that
+	  appeared in a replay would be pointing at somebody else's aim.
+	*/
+	setproperty(VF_DRAWCROSSHAIR,
+	            (rec_wt_on || rec_gh_on || cvar("hud_crosshair") >= 0) ? 0 : 1);
 
 	// The recorded camera, over the top of whatever the engine put in the
 	// refdef.  After clearscene, which resets both properties.
@@ -1348,6 +1379,11 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	*/
 	Emit_Frame();
 
+	// Build 66.  Beside Emit_Frame and for the same reason: VF_ORIGIN is final
+	// by this point, and the soundscape selection traces from it.  Cheap --
+	// the trace pass is on a 4 Hz timer and only the volume ramp runs per frame.
+	Snds_Frame();
+
 	renderscene();
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
@@ -1377,6 +1413,25 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		HUD_Draw(scr);
 		NM_Draw(scr);
+
+		/*
+		  BUILD 65 -- the Boarding window.
+
+		  CALLED FROM HERE RATHER THAN FROM HUD_Draw, and it is a compile-order
+		  fact rather than a choice: cl_boarding.qc has to come after cl_hud.qc to
+		  use HUD_Text/HUD_Size/HUD_Rect, so HUD_Draw cannot name Boarding_Draw
+		  without a forward declaration that would exist only to reverse the
+		  dependency it already has.
+
+		  AFTER HUD_Draw and not before, because ui_board_bottom is what the Board
+		  panel published THIS frame and this window stacks under it by default --
+		  the same one-way handshake ui_strafe_bottom performs one link up the
+		  chain.  Reading it before would lay this block out against last frame's
+		  Board panel, which is the exact fidget build 31 removed from that panel's
+		  own relationship with the strafe bar.
+		*/
+		Boarding_ReadCvars();
+		Boarding_Draw(scr, ui_board_bottom);
 
 		/*
 		  BUILD 43: the replay's path AGAIN, and this is not a duplicate.
@@ -1741,6 +1796,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	// is drawing" is nearly always either a handle of 0 or a cfg that did not
 	// parse, and those two have different fixes.
 	if (Emit_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Build 66.  `snd_report` -- which soundscape won, how far away, how many
+	// traces it cost, and what is audible right now at what level.
+	if (Snds_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 30.  Registered on the client and forwarded with `cmd rec_ghost`,

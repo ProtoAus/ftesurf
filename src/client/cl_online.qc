@@ -951,6 +951,21 @@ string(float i) Online_WhyString =
 	if (ob_flags[i] & TF_NOJOURNAL) return "no journal";
 	if (ob_flags[i] & TF_NORULESET) return "no ruleset";
 	if (ob_flags[i] & TF_NOPROFILE) return "input mode";
+	/*
+	  Build 73.  LAST in the order, because it is the least serious of the four:
+	  the three above say this run's evidence cannot be checked at all, and this
+	  one says the player's own copy of the map was not the server's -- which on
+	  a lobby did not change the physics, since the server owns collision and the
+	  zones.  What it cost is the .view/.rec cross-check.
+
+	  "other map", NOT "wrong map", and nine characters rather than the ten the
+	  three above use.  The word must not accuse: much the likeliest cause is a
+	  map file one repack out of date, and this column is read by everyone who
+	  opens the board, about somebody else.  Same rule as the paragraph above --
+	  name the hole, not the player's disk.  `cmd timer`'s mapcrc row gives both
+	  hashes to the player who wants the detail.
+	*/
+	if (ob_flags[i] & TF_NOMAP)     return "other map";
 	return "";
 };
 

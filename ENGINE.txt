@@ -15,9 +15,9 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d097595a95d0ef13217de3ea891023cf3d976817
 tag      patch-266
-patch    313
-qcbuild  62
-date     2026-09-13
+patch    321
+qcbuild  73
+date     2026-09-14
 
 # NOTE: `patch` is 273 and `commit` is still patch 266's SHA, and that is not an
 # oversight -- everything from 267 up is APPLIED AND BUILT in the working tree
@@ -931,6 +931,41 @@ date     2026-09-13
 #        Arm 2 is the plan's named falsifier.  Arm 3 is the one the fourth
 #        field bought.  Arm 5 is the one that proves the counter sees what
 #        TF_CHEAT cannot.
+#
+#   321  engine/server/pr_cmds.c (76 added lines, zero removed) and
+#        plugins/hl2/mod_vbsp.c (one token).  Plan item: the BSP half of
+#        Layer 1's "csprogs and BSP hashes pinned for ranked".
+#        THE MAP HASH THE SERVER COMPARES WAS NEVER THE MAP'S.  sv_mapcheck
+#        has defaulted 1 since QuakeWorld and kicks a client whose map hash
+#        disagrees, so every audit read the cvar and moved on.  It had never
+#        fired: VBSP_LoadModel computes the hash into `mod`, which the
+#        submodel loop above reassigns, so it landed on the LAST SUBMODEL and
+#        the world model kept Mod_FindName's memset zero.  Both ends did it,
+#        so 0 == 0 agreed and every client passed.  It did not fail -- it was
+#        INERT, which looks identical from outside.
+#        Measured before fixing: 1287 of the library's 1312 maps have more
+#        than one submodel and took the broken path; the 25 with exactly one
+#        never entered the loop and had been correct all along, so a spot
+#        check could have confirmed either answer.
+#        Adds one infokey key with two subjects, neither on the wire:
+#          infokey(world,  "*mapcrc")  the hash THIS SERVER loaded
+#          infokey(player, "*mapcrc")  the hash THAT CLIENT claimed
+#        Deliberately NOT in svs.info, unlike *csprogs: serverinfo reaches
+#        every client and a patched one would only have to echo it back.
+#        Hex strings, compared with strcmp -- a 32-bit checksum has no exact
+#        QC float, and a numeric compare would call differing maps equal in
+#        the direction that RANKS.  A zero checksum reports "" (unknown), not
+#        the hash 0, which is what stops a patched server demoting every
+#        still-unpatched client during the release window.
+#        Consumed by QC build 73's TF_NOMAP (4096) and by a new `mapcrc` line
+#        in the .rec header.  cfg/lobby.cfg gains `set sv_mapcheck 0` as the
+#        gate: left at 1, the fleet stops accepting EVERY player the moment
+#        the patched plugin lands, not just the ones with a wrong map.
+#
+#   NOTE: 314-320 are applied in the tree and written up in ENGINE_PATCHES.md
+#        but are not enumerated here; several are another session's.  `patch`
+#        above is the highest APPLIED number, which is what it has always
+#        meant.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before

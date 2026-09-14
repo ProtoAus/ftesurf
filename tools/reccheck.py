@@ -92,7 +92,28 @@ HEAD_V3 = HEAD_V2 | {"owner", "runid"}
 # header is still in memory then.  That is what lets the leaderboard read
 # clean-vs-stitched with nine fgets instead of by walking a 444 KB file to its
 # trailer.
-HEAD_V4 = HEAD_V3 | {"flags"}
+#
+# `leg` (build 57) and `mapcrc` (build 73) are listed here for the same reason and
+# neither bumps the version: the header's own rule is that a reader SKIPS a key it
+# does not know, so adding one is additive by construction and the version only
+# moves when an existing line changes meaning.
+#
+#   leg     which folder the file belongs to.  A stage-1 run and a full run both
+#           write `startseg 0`, so the segment stopped naming the leg.  It has
+#           been in every file written since build 57 -- including every run on
+#           the live board -- and this tool has been recording it as an
+#           unexpected key on all of them.  It took --verbose to see, which is
+#           exactly why it went unnoticed; a false note about a correct file is
+#           the one thing a format checker must not produce.  Fixed here, and
+#           confirmed with a control: a genuinely unknown key still notes.
+#   mapcrc  the hash of the BSP THIS SERVER loaded, from engine Patch 321.  A map
+#           name is not a map: six maps in the library are one name at two
+#           different builds, and a recompile keeps the name while changing the
+#           ramps.  Re-simulating a claimed time (the plan's Layer 2) needs to
+#           know which bytes to re-simulate against.  Absent means unknown -- a
+#           pre-321 server, or a loader that computes no checksum -- and is not a
+#           fault: every file written before build 73 lacks it.
+HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc"}
 
 # shared/sh_defs.qc.  Only the two a stored run may assert: TF_RECORDING and
 # TF_FROZEN are masked out by SV_RecClose, because neither is a fact about the

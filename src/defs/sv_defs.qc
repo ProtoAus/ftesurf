@@ -935,6 +935,19 @@ void(string cvarname, string valuetoset) cvar_set = #72; /*
 
 void(entity ent, string text, optional string text2, optional string text3, optional string text4, optional string text5, optional string text6, optional string text7) centerprint = #73;
 void (vector pos, string samp, float vol, float atten) ambientsound = #74;
+
+/*
+  FTESurf build 64.  Not in the stock defs, and it has to be looked up BY NAME:
+  pr_cmds.c registers it twice (:11517, :11527), once at QW builtin 106 and once
+  with no fixed number at all, so `#106` would bind in one build set and fail in
+  the other.  `#0:stopsound` asks the engine for it by name, which is the FTE
+  idiom used by every other late builtin in this file.
+
+  Terminates playback on one entity-channel.  CHAN_AUTO must not be used --
+  channel 0 mixes rather than replaces, so there is no single channel to stop.
+  Used by SV_AmbientStop for ambient_generic's StopSound input.
+*/
+void(entity ent, float channel) stopsound = #0:stopsound;
 string(string str) precache_model2 = #75;
 string(string str) precache_sound2 = #76;
 string(string str) precache_file2 = #77;

@@ -325,6 +325,28 @@ void() Timer_RegisterCvars =
 	registercvar("hud_splits_speed", "1", CVAR_ARCHIVE);
 
 	/*
+	  BUILD 66 -- AND THE ENERGY IS ITS OWN SWITCH.
+
+	  Reported as "Speed column control the energy too", which it did: one cvar
+	  drew both columns, so turning the speed off silently took the energy with
+	  it.  Two columns, two cvars, and either can go alone.
+
+	  1 rather than 0 so build 65's block is what you still get with both on.  The
+	  energy column moves to the speed column's x when the speed is off -- see the
+	  draw site -- so the two off-states are a narrower block and not a gap.
+	*/
+	registercvar("hud_splits_energy", "1", CVAR_ARCHIVE);
+
+	/*
+	  BUILD 66 -- THE TIMER SUBTEXT'S OWN SIZE.  0 is "follow hud_scale" exactly
+	  as every other size cvar's 0 is, and it is separate from hud_timer_size for
+	  the reason that one's essay gives: the clock is the number, and the lines
+	  under it are labels about it.  Two sizes, one panel -- the arrangement
+	  hud_energy_size already has under the speedometer.
+	*/
+	registercvar("hud_timer_sub_size", "0", CVAR_ARCHIVE);
+
+	/*
 	  BUILD 48 -- THE PER-STAGE CLASS MARK.  0 IS BUILD 47 EXACTLY: no gutter,
 	  no mark, and every stage row back in one colour.
 
@@ -491,6 +513,8 @@ string(float word, __inout vector col) Timer_SplitsClass =
 void(vector scr, float tick) Timer_DrawSplits =
 {
 	local float i, sz, big, lh, a, spd, bt;
+	local float nrg, blkw;          // build 66: hud_splits_energy, and the box width
+	local float base, k;            // build 65: hud_splits_size, as a ratio
 	local vector p, col, bp;
 	local string label;
 	local float  cls, mx;           // build 48: hud_splits_class, and the gutter x
@@ -524,10 +548,35 @@ void(vector scr, float tick) Timer_DrawSplits =
 	  both fall back to 8 and the size is unchanged there; the offsets still
 	  shrink, which is where most of the width was.
 	*/
+	/*
+	  BUILD 65 -- hud_splits_size, AND WHY IT IS APPLIED AS A RATIO.
+
+	  This is the one block in the tree whose layout is not just a row advance.
+	  The five column offsets below are DERIVED from the mono face's 0.6 em advance
+	  (the essay is at the draw loop) and are written in units of ui_cv_scale, so a
+	  size that no longer equals 7*ui_cv_scale would leave every column where it
+	  was while the glyphs grew into each other -- the time column written over the
+	  label, at a setting the editor offers.
+
+	  So the size is taken first and everything else is scaled by how far it moved
+	  from the size the offsets were cut for.  `k` is exactly 1.0 when
+	  hud_splits_size is 0, which makes this provably build 64 at the default
+	  rather than approximately it -- and the columns stay correct at any other
+	  size because they were always a function of the glyph width, which is what k
+	  is measuring.
+
+	  big keeps its 9:7 ratio to sz rather than being snapped from 9*ui_cv_scale
+	  independently: the two are one design (a finish row a notch larger than the
+	  rows above it), and letting them snap to different ladders at different sizes
+	  is how that relationship quietly stops holding.
+	*/
 	Font_Set(ui_font_mono);
-	sz  = Font_Px(7 * ui_cv_scale);
-	big = Font_Px(9 * ui_cv_scale);
-	lh  = sz + 3 * ui_cv_scale;
+	base = Font_Px(7 * ui_cv_scale);        // the size the columns below were cut for
+	sz   = Font_Px(HUD_Size("hud_splits_size", base));
+	if (base < 1) base = 1;                 // no divide by zero on a failed font load
+	k    = sz / base;
+	big  = Font_Px(sz * 9 / 7);
+	lh   = sz + 3 * ui_cv_scale * k;
 
 	/*
 	  BUILD 13: vertically CENTRED on hud_splits_y rather than starting there.
@@ -552,6 +601,7 @@ void(vector scr, float tick) Timer_DrawSplits =
 	bt = p_y;
 
 	spd = cvar("hud_splits_speed");
+	nrg = cvar("hud_splits_energy");         // build 66
 	cls = cvar("hud_splits_class");          // build 48
 
 	/*
@@ -579,7 +629,7 @@ void(vector scr, float tick) Timer_DrawSplits =
 		{
 			label = "finish";
 			col   = '0.95 0.97 1.00';
-			p_y   = p_y + 3 * ui_cv_scale;   // a little air above the total
+			p_y   = p_y + 3 * ui_cv_scale * k; // a little air above the total
 		}
 		else if (ui_sp_kind[i] == SPK_CP)
 		{
@@ -623,7 +673,7 @@ void(vector scr, float tick) Timer_DrawSplits =
 			mark = Timer_SplitsClass(ui_sp_class[i], mcol);
 			if (mark != "")
 			{
-				mx = p_x - 5 * ui_cv_scale;
+				mx = p_x - 5 * ui_cv_scale * k;
 				if (mx < 0)
 					mx = 0;
 				HUD_Text([mx, p_y], mark, sz, mcol, a);
@@ -649,8 +699,14 @@ void(vector scr, float tick) Timer_DrawSplits =
 		       0   label        "stage 12"     8      38.4    0
 		       1   time (big)   "0:12.345"     8      43.2   38
 		       2   delta        "+0:00.087"    9      43.2   84
-		       3   speed        "1204 u/s"     8      38.4  130
+		       3   speed        "1204u/s"      7      33.6  130
 		       4   energy       "e -312"       6      28.8  172
+
+		  BUILD 66 DROPPED THE SPACE in column 3 -- "remove the spacing between the
+		  numbers and units" -- which takes its worst case from 8 characters to 7
+		  and widens its clearance of column 4 from 3.6 units to 8.4.  The offsets
+		  did not move with it: they are where the two blocks were measured to abut
+		  (below), and buying 4 units of gap is not worth re-deriving that.
 
 		  Every column clears the next by 2-3 units, and the block ends at ~201
 		  against ~253 before -- a fifth narrower, on top of the smaller glyphs.
@@ -664,13 +720,20 @@ void(vector scr, float tick) Timer_DrawSplits =
 		  column sized for 8.  That was equally true of the old layout and a
 		  surf leg is minutes; it is a note, not a defect to design around.
 		*/
+		/*
+		  BUILD 65: every offset below carries `* k`, the ratio of the size in force
+		  to the size this table was computed for.  k is 1 at hud_splits_size 0, so
+		  these are the same five numbers build 21 derived; at any other size they
+		  move with the glyph they were derived from, which is the only way the
+		  derivation above stays true.
+		*/
 		HUD_Text([p_x, p_y], label, sz, col, a * 0.9);
-		HUD_Text([p_x + 38 * ui_cv_scale, p_y],
+		HUD_Text([p_x + 38 * ui_cv_scale * k, p_y],
 		         Time_TickString(ui_sp_ticks[i], tick),
 		         fin ? big : sz, fin ? '1.00 1.00 1.00' : '0.88 0.90 0.94', a);
 
 		if (ui_sp_delta[i] != 0)
-			HUD_Text([p_x + 84 * ui_cv_scale, p_y],
+			HUD_Text([p_x + 84 * ui_cv_scale * k, p_y],
 			         Time_DeltaString(ui_sp_delta[i], tick), sz,
 			         (ui_sp_delta[i] < 0) ? '0.45 1.00 0.45' : '1.00 0.55 0.45', a);
 
@@ -680,17 +743,30 @@ void(vector scr, float tick) Timer_DrawSplits =
 		  quieter still for the energy, which is the one you glance at rather than
 		  read.
 		*/
+		/*
+		  BUILD 66 -- TWO SWITCHES, NOT ONE.
+
+		  "Speed column control the energy too" -- it did, and that was the bug:
+		  hud_splits_speed 0 took the energy figure with it, so there was no way to
+		  keep one and drop the other.  They are two columns and now they are two
+		  cvars.
+
+		  AND THE ENERGY SLIDES LEFT WHEN THE SPEED IS OFF.  Its own x is 172,
+		  which is 42 units right of the speed column -- with nothing at 130 that
+		  is a hole in the middle of every row rather than a narrower block.  The
+		  block's width comes down to match, below.
+		*/
 		if (spd)
-		{
-			HUD_Text([p_x + 130 * ui_cv_scale, p_y],
-			         sprintf("%d u/s", rint(ui_sp_speed[i])), sz,
+			HUD_Text([p_x + 130 * ui_cv_scale * k, p_y],
+			         sprintf("%du/s", rint(ui_sp_speed[i])), sz,
 			         '0.72 0.78 0.86', a * 0.85);
-			HUD_Text([p_x + 172 * ui_cv_scale, p_y],
+
+		if (nrg)
+			HUD_Text([p_x + (spd ? 172 : 130) * ui_cv_scale * k, p_y],
 			         sprintf("e %d", rint(ui_sp_energy[i])), sz,
 			         '0.62 0.70 0.82', a * 0.75);
-		}
 
-		p_y = p_y + (fin ? (big + 3 * ui_cv_scale) : lh);
+		p_y = p_y + (fin ? (big + 3 * ui_cv_scale * k) : lh);
 	}
 
 	Font_Reset();
@@ -703,7 +779,18 @@ void(vector scr, float tick) Timer_DrawSplits =
 	  give a narrower box that changed size as rows arrived, which is worse for a
 	  hit target than a stable one that matches the layout's own reasoning.
 	*/
-	HUD_Rect("splits", [bp_x, bt, 0], [201 * ui_cv_scale, p_y - bt, 0], bp);
+	// Build 65: * k with the columns it is derived from, or the editor's outline
+	// would stop matching the block at any size but the default -- and the outline
+	// IS the hit target, so it would also stop being draggable where it looks.
+	//
+	// Build 66: and it tracks which columns are actually drawn.  The 201 was the
+	// energy column's 172 plus its 29 of worst-case content; without energy the
+	// block ends after the speed column (130 + 30), and without either after the
+	// delta (84 + 44).  A box that stayed 201 wide would be mostly empty space
+	// that still took clicks.
+	blkw = 201;
+	if (!nrg) blkw = spd ? 160 : 128;
+	HUD_Rect("splits", [bp_x, bt, 0], [blkw * ui_cv_scale * k, p_y - bt, 0], bp);
 };
 
 /*
@@ -780,15 +867,64 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  different sizes and asking the wrong one gives a size that then gets
 	  resampled.  Same reason HUD_Text calls it internally.
 	*/
+	/*
+	  BUILD 65: hud_timer_size names the CLOCK, which is the number this panel is
+	  for.  The lines under it stay on hud_scale: they are labels about the clock
+	  rather than part of it, and "make the timer bigger" means the digits.  Making
+	  them follow would also change how much of the screen this panel occupies for
+	  a change nobody asked for.
+
+	  The advance is 1.1x the digits, which is `big + 2 * ui_cv_scale` at both
+	  shipped scales (40+4, 20+2).
+
+	  BUILD 66 -- 64 PX, AND IT IS THE FALLBACK THAT MOVED, NOT THE CVAR DEFAULT.
+
+	  "For now default to size 64."  hud_timer_size's default is still 0, which
+	  still means "follow hud_scale" -- what changed is the N in that N*hud_scale,
+	  20 -> 32, so the derived size is 64 at the shipped scale instead of 40.
+
+	  Deliberately that way round rather than registering the cvar at 64.  A cvar
+	  default is beaten by any config that already has `seta hud_timer_size 0`
+	  saved, which every config that has ever opened this panel does -- so a new
+	  default would have reached nobody who has played build 65.  The fallback
+	  reaches everyone, and it still tracks hud_scale, which an absolute 64 would
+	  not.
+
+	  he_base in cl_hudedit.qc is the same 32 and has to stay that way, or the size
+	  row will print `size 40 auto` under a clock drawing at 64.
+	*/
 	Font_Set(ui_font_display);
-	big = Font_Px(20 * ui_cv_scale);
+	big = Font_Px(HUD_Size("hud_timer_size", 32 * ui_cv_scale));
 	s   = Time_TickString(disp, tick);
 	bw  = stringwidth(s, TRUE, [big, big]);
 	HUD_TextC([p_x, y], s, big, col, 1);
-	y = y + big + 2 * ui_cv_scale;
+	y = y + big * 1.1;
 
-	Font_Set(ui_font_ui);
-	small = Font_Px(8 * ui_cv_scale);
+	/*
+	  BUILD 66 -- THE SUBTEXT GETS A FACE AND A SIZE OF ITS OWN.
+
+	  "Map info, and the subtext of the timer, can it be made bolder? it looks
+	  quite thin" -- and "never had a setting to change the font size of the
+	  Subtext".  Two asks, both about these lines.
+
+	  MONO RATHER THAN A BOLD ROBOTO, because there is no bold Roboto.  The tree
+	  ships three faces (sh_font.qc:178-183) and none of them is a bold cut; the
+	  Roboto file is a variable font with a wght axis, but gl_font.c:1869 opens
+	  face index 0 and never calls FT_Set_Var_Design_Coordinates, so the axis is
+	  unreachable from here.  Google Sans Code is Medium -- weight 500 against
+	  Roboto's 400 -- already loaded, and heavier on screen, which is the whole of
+	  what was asked.
+
+	  It is also 0.6 em fixed-pitch against Roboto's proportional 0.562, so these
+	  lines get WIDER.  Harmless here: every one of them is centred with HUD_TextC
+	  and the block's width is a running max, so the panel grows around them
+	  rather than clipping them.
+
+	  Font_Set BEFORE Font_Px, as always: the two faces have different ladders and
+	  a snap against the wrong one is the bug HUD_DrawSeq carries an essay about.
+	*/
+	Font_Set(ui_font_mono);
+	small = Font_Px(HUD_Size("hud_timer_sub_size", 8 * ui_cv_scale));
 
 	/*
 	  The line under the clock, and it answers "what am I timing" -- which is
@@ -1208,7 +1344,17 @@ void(vector scr) Timer_Draw =
 	y = Timer_DrawPanel(scr, state, ticks, flags, pb, tick, [seg, segs, track],
 	                    [fails, getstatf(STAT_FS_STAGEST), 0]);
 	p = [scr_x * ui_tm_x, scr_y * ui_tm_y, 0];
-	small = Font_Px(8 * ui_cv_scale);
+
+	/*
+	  BUILD 66.  The flash line is one of the timer's subtext lines and has to
+	  match the ones Timer_DrawPanel just drew -- same face, same size cvar.  It
+	  re-derives them here because it draws AFTER that function returns, and this
+	  duplicate is exactly the kind that goes stale: if the block above changes
+	  face or fallback, this changes with it or the flash comes out in the wrong
+	  font, half a line off.
+	*/
+	Font_Set(ui_font_mono);
+	small = Font_Px(HUD_Size("hud_timer_sub_size", 8 * ui_cv_scale));
 
 	/*
 	  BUILD 43 -- THE RESET FLASH, AND IT OUTRANKS THE SPLIT FLASH.

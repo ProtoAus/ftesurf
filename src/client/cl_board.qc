@@ -47,6 +47,11 @@ float  board_rampdeg;       // how steep the ramp was
 float  board_riding;        // last frame's run_rampcontact
 float  leave_time;          // cltime we came off a ramp
 float  leave_speed;         // horizontal speed at that instant
+// Build 65, for the Boarding window: the raw energy at that instant, and what the
+// whole ride was worth.  Raw for the same reason seq_eend is -- the drawer applies
+// the live reference, so every absolute on the HUD shares one zero.
+float  leave_e;
+float  leave_de;
 
 /*
 ===========================================================================
@@ -378,6 +383,23 @@ float  seg_live_gain;       // the same dE as u/s, for hud_seq_units 0
 float  seg_live_bdgain;     // and the held touchdown's, at the speed IT took
 
 /*
+  BUILD 65 -- WHERE THE OPEN SEGMENT IS NOW, and where it began.
+
+  The committed rows gained an absolute (seq_eend) and the provisional pair has to
+  carry the same column or the swap at segment end would change the row's SHAPE,
+  which is exactly what build 34's live rows exist to avoid.
+
+  RAW, like seq_eend, and referenced by the drawer -- see the essay there.
+  seg_live_e is this instant's energy, so the bottom row tracks the `e` readout by
+  the crosshair continuously instead of jumping to meet it when the segment
+  closes.  seg_live_e0 is where the open segment STARTED, which is the touchdown
+  row's own end: the boundary block opens a ramp at the post-clip energy precisely
+  so those are one value.
+*/
+float  seg_live_e;
+float  seg_live_e0;
+
+/*
   BUILD 18 -- the best this segment could have done, integrated frame by frame.
 
   Air only.  An air segment's percentage is the honest question "how much of the
@@ -497,6 +519,86 @@ float  seq_pct[SEQ_MAX];        // % of the available gain taken; -1 = not measu
 float  seq_de[SEQ_MAX];
 float  seq_emax[SEQ_MAX];
 
+/*
+  BUILD 65 -- WHERE THE SEGMENT LEFT YOU, not just what it was worth.
+
+      "with name displays and your actual energy value too"
+
+  seq_de says a segment gained 100; it has never said whether that was 245 -> 345
+  or 1245 -> 1345, and on a ramp those are different rides.  This is the missing
+  half, and it cannot be derived from the deltas: the column starts at whatever
+  the run started at, and the energy ANCHOR re-bases on every jump, so summing
+  deltas from an unknown origin gives a number that is wrong by the origin.
+
+  STORED RAW -- Strafe_Energy's own output, org_z + |v|^2/2g -- AND REFERENCED AT
+  DRAW TIME, which is the whole reason this is one column and not two.  Storing
+  `e - HUD_EnergyRef()` at push time would freeze each row against the anchor that
+  happened to be in force when it closed, and the anchor moves on every jump: on a
+  bhop chain row N and row N+1 would be measured from two different zeros, and
+  `abs(row) == abs(row-1) + delta(row)` -- the one invariant that makes a column of
+  absolutes readable -- would quietly stop holding.  Subtracting the LIVE reference
+  when drawing makes every row share one zero by construction, and makes the last
+  row agree with the `e` readout by the crosshair, which is the same statement.
+
+  IT IS THE EIGHTH PARALLEL ARRAY.  The scroll in Seq_Push carries a warning about
+  exactly that and it is not decoration -- forgetting one there leaves the column
+  drawing happily with a single field one row out of step, which looks like a
+  physics bug and is not one.  Six places move together: the scroll, Seq_Mark,
+  Seq_Unmark, Seq_Push, Seq_Load and the seq.txt pair.
+*/
+float  seq_eend[SEQ_MAX];
+
+/*
+  BUILD 66 -- HOW THIS AIR SEGMENT STARTED.
+
+      "Can we make the first Green segment read 'Jump:' and if the player keeps
+       jumping, the next reads 'Bhop:'"
+
+  SEQSUB_NONE on every ramp and board row and on an air segment entered off a
+  ramp; JUMP or BHOP on one entered from the ground, decided by how long the
+  ground phase before it lasted.
+
+  IT HAS TO BE STORED, and that is the whole reason this is a column rather than
+  something HUD_DrawSeq works out.  The discriminator is the duration of the
+  GROUND PHASE, and a ground phase opens no segment at all (see the kind
+  derivation in Board_Frame: "standing opens no segment") -- so by the time the
+  air row exists the evidence is gone.  Nothing else on the row carries it:
+  seq_launch is one row per RUN, and seq_break is a boolean that Seq_Push
+  consumes.
+
+  NOT A NEW SEG_ KIND, deliberately.  Kinds are compared for merging
+  (seq_kind[n-1] == kind), tested for the percentage (kind == SEG_AIR), gate the
+  ceiling integration and pick the colour; splitting SEG_AIR in two would have
+  touched every one of those to change a word on screen.  A sub-kind is inert
+  everywhere except HUD_SeqName.
+
+  IT IS THE NINTH PARALLEL ARRAY.  The scroll in Seq_Push carries a warning about
+  exactly that and it is not decoration -- forgetting one there leaves the column
+  drawing happily with a single field one row out of step, which looks like a
+  physics bug and is not one.  Six places move together: the scroll, Seq_Mark,
+  Seq_Unmark, Seq_Push, Seq_Load and the seq.txt pair.
+*/
+#define SEQSUB_NONE  0
+#define SEQSUB_JUMP  1
+#define SEQSUB_BHOP  2
+
+float  seq_sub[SEQ_MAX];
+
+/*
+  The open segment's own sub-kind, and the pending one a file load is holding.
+
+  seg_sub is read by Seq_Push rather than passed to it: that call is already
+  seven parameters against plain QuakeC's eight registers, and this file's own
+  rule (see Seq_Push's header) is that the next column is a setter or a global,
+  not the eighth argument.  seq_pend_sub is the `rowsub` line's value waiting for
+  its `row`, exactly as pende is for `rowe`.
+
+  seg_sub is also what the LIVE row draws, so a hop in progress says "Bhop"
+  before it commits rather than changing word when it does.
+*/
+float  seg_sub;
+float  seq_pend_sub;
+
 float  seq_n;
 float  seq_fadeat;              // cltime the clearing run started; 0 = not fading
 float  seq_laststate;
@@ -509,6 +611,8 @@ float  seq_haslaunch;           // the launch row has been claimed for this run
 float  seq_merge;
 float  seq_units;
 float  seq_board;
+float  seq_hopbreak;            // build 65: a landing breaks the merge chain
+float  seq_hopname;             // build 66: air rows say Jump / Bhop
 
 // What the last push produced, so Board_SegmentEnd can drive the single-line
 // readout without computing the physics a second time.  On a merge these are
@@ -724,6 +828,8 @@ float  seq_mk_emax[SEQ_MAX];
 float  seq_mk_dur[SEQ_MAX];
 float  seq_mk_pct[SEQ_MAX];
 float  seq_mk_launch[SEQ_MAX];
+float  seq_mk_eend[SEQ_MAX];    // build 65; mirrors seq_eend
+float  seq_mk_sub[SEQ_MAX];     // build 66; mirrors seq_sub
 
 /*
 ===========================================================================
@@ -764,6 +870,7 @@ void() Board_Warped;
 
 float  seq_mk_ok;               // the snapshot carries an open segment
 float  seq_mk_skind;
+float  seq_mk_ssub;             // build 66; the open segment's Jump/Bhop
 float  seq_mk_se0;
 float  seq_mk_semax;
 float  seq_mk_sdur;
@@ -890,7 +997,15 @@ vector seq_mk_aorg;
   Seq_Frame, which is what reaches here -- so the rebase lands on the clock the
   next dt will be measured against.
 */
-void(float kind, float e0, float emax, float dur, float valid) Seq_OpenRestore =
+/*
+  Build 66: the sub-kind comes back with the segment.  A SIXTH PARAMETER and not
+  a global, unlike Seq_Load's -- this call is five against a ceiling of eight, so
+  there is room, and one function serving both restore paths is the whole reason
+  this exists (see the note above Seq_AnchorRestore).  Missing it would let a
+  save loaded mid-chain commit its in-flight hop as an "Air" row.
+*/
+void(float kind, float e0, float emax, float dur, float valid,
+     float sub) Seq_OpenRestore =
 {
 	seg_kind  = kind;
 	seg_e0    = e0;
@@ -898,6 +1013,7 @@ void(float kind, float e0, float emax, float dur, float valid) Seq_OpenRestore =
 	seg_t0    = board_now - dur;
 	seg_valid = valid;
 	seg_lastt = board_now;
+	seg_sub   = sub;
 };
 
 /*
@@ -936,6 +1052,7 @@ void(float id) Seq_Mark =
 
 	seq_mk_ok    = (seg_kind != SEG_NONE);
 	seq_mk_skind = seg_kind;
+	seq_mk_ssub  = seg_sub;         // build 66
 	seq_mk_se0   = seg_e0;
 	seq_mk_semax = seg_emax;
 	seq_mk_sdur  = board_now - seg_t0;
@@ -974,6 +1091,8 @@ void(float id) Seq_Mark =
 		seq_mk_dur[i]    = seq_dur[i];
 		seq_mk_pct[i]    = seq_pct[i];
 		seq_mk_launch[i] = seq_launch[i];
+		seq_mk_eend[i]   = seq_eend[i];         // build 65
+		seq_mk_sub[i]    = seq_sub[i];          // build 66
 	}
 };
 
@@ -1007,6 +1126,8 @@ float(float id) Seq_Unmark =
 		seq_dur[i]    = seq_mk_dur[i];
 		seq_pct[i]    = seq_mk_pct[i];
 		seq_launch[i] = seq_mk_launch[i];
+		seq_eend[i]   = seq_mk_eend[i];         // build 65
+		seq_sub[i]    = seq_mk_sub[i];          // build 66
 	}
 
 	// Build 25.  The open segment, if that save had one -- and Board_Warped
@@ -1015,7 +1136,7 @@ float(float id) Seq_Unmark =
 	if (seq_mk_ok)
 	{
 		Seq_OpenRestore(seq_mk_skind, seq_mk_se0, seq_mk_semax,
-		                seq_mk_sdur, seq_mk_svalid);
+		                seq_mk_sdur, seq_mk_svalid, seq_mk_ssub);
 		// After the restore, which does not touch these -- and Board_Warped in
 		// the else branch clears them, which is what the else branch means.
 		seg_bd_pend = seq_mk_bdpend;
@@ -1048,8 +1169,15 @@ float(float id) Seq_Unmark =
   The launch flag is NOT stored on disk: it is "the first air row", recomputed
   here, which keeps the row a field shorter and removes a way for the file to
   disagree with itself.
+
+  BUILD 66.  The sub-kind IS stored, because unlike the launch flag it cannot be
+  recomputed -- it is a fact about a ground phase that left no row.  It arrives
+  through the seq_pend_sub global rather than an eighth parameter: this call is
+  already seven against plain QuakeC's eight registers, and the file's rule (see
+  Seq_Push's header) is that the next column takes a global, not the last slot.
 */
-void(float kind, float de, float emax, float dur, float pct, float gain) Seq_Load =
+void(float kind, float de, float emax, float dur, float pct, float gain,
+     float eend) Seq_Load =
 {
 	if (seq_n >= SEQ_MAX)
 		return;
@@ -1060,6 +1188,8 @@ void(float kind, float de, float emax, float dur, float pct, float gain) Seq_Loa
 	seq_dur[seq_n]    = dur;
 	seq_pct[seq_n]    = pct;
 	seq_gain[seq_n]   = gain;
+	seq_eend[seq_n]   = eend;       // build 65; 0 from a file written before it
+	seq_sub[seq_n]    = seq_pend_sub;   // build 66; SEQSUB_NONE from an older file
 	seq_launch[seq_n] = (!seq_haslaunch && kind == SEG_AIR);
 	if (seq_launch[seq_n])
 		seq_haslaunch = TRUE;
@@ -1146,10 +1276,43 @@ void(float id) Seq_Write =
 
 	fputs(fh, "FTESURF-SEQ 1\n");
 	fputs(fh, sprintf("n %g\n", seq_n));
+	/*
+	  BUILD 65 -- seq_eend GOES ON ITS OWN LINE, AND IT GOES FIRST.
+
+	  `row` is already a format plus six, i.e. seven arguments against fteqcc's cap
+	  of eight, and the cap is exceeded SILENTLY -- the trap this file already
+	  carries two notes about.  A seventh value would land exactly on the limit with
+	  nothing left for whoever adds the eighth column, which is the situation those
+	  notes were written to stop recurring.  So: a second line, per the grammar's
+	  own rule that unknown keys are skipped.
+
+	  BEFORE its row rather than after it, so the reader can hold one pending value
+	  and hand it to Seq_Load rather than reaching back to patch a row it has
+	  already appended.  A build-64 reader meets `rowe`, skips it, and loads the
+	  rows with eend 0 -- which draws as an absolute of zero, i.e. visibly missing
+	  rather than plausibly wrong.
+	*/
+	/*
+	  BUILD 66 -- AND seq_sub RIDES ALONG ON THE SAME LINE, for the same reason and
+	  with one variation: it is written only when it has something to say.
+
+	  `rowe` is a format plus one against a cap of eight, so there is room, and the
+	  reader holds both pending values the same way.  Writing it only for a real
+	  sub-kind keeps a surf map's file exactly the size it was in build 65 -- every
+	  row there is a ramp, a board, or an air segment entered off a ramp.
+
+	  An older reader meets `rowsub`, skips it as the grammar says, and gets rows
+	  that say "Air" -- which is what build 65 called them.
+	*/
 	for (i = 0; i < seq_n; i = i + 1)
+	{
+		fputs(fh, sprintf("rowe %.4f\n", seq_eend[i]));
+		if (seq_sub[i] != SEQSUB_NONE)
+			fputs(fh, sprintf("rowsub %g\n", seq_sub[i]));
 		fputs(fh, sprintf("row %g %.4f %.4f %.4f %.2f %.4f\n",
 		                  seq_kind[i], seq_de[i], seq_emax[i],
 		                  seq_dur[i], seq_pct[i], seq_gain[i]));
+	}
 
 	/*
 	  Build 25.  The segment still open at the save, as a DURATION rather than a
@@ -1164,9 +1327,17 @@ void(float id) Seq_Write =
 	  forward-compatibility story gets.
 	*/
 	if (seq_mk_ok)
+	{
 		fputs(fh, sprintf("open %g %.4f %.4f %.4f %g\n",
 		                  seq_mk_skind, seq_mk_se0, seq_mk_semax,
 		                  seq_mk_sdur, seq_mk_svalid ? 1 : 0));
+
+		// Build 66.  Its own line for the reason the block below gives about
+		// `board`, and written only when it says something -- a surf save has an
+		// open ramp segment, which has no sub-kind by definition.
+		if (seq_mk_ssub != SEQSUB_NONE)
+			fputs(fh, sprintf("opensub %g\n", seq_mk_ssub));
+	}
 
 	/*
 	  A LINE OF ITS OWN rather than two more fields on `open`, and the reason is
@@ -1231,6 +1402,7 @@ void(float id) Seq_Read =
 {
 	local float fh, gotopen, gotanchor;
 	local float ajz, agz, aong, ahave;
+	local float pende;              // build 65: the `rowe` waiting for its `row`
 	local vector aorg;
 	local string l;
 
@@ -1268,6 +1440,21 @@ void(float id) Seq_Read =
 	ajz = agz = aong = ahave = 0;
 	aorg = '0 0 0';
 
+	// Build 65.  SEEDED EXPLICITLY: QC locals are a reused stack slot rather than
+	// zeroed storage, so an unassigned read here is whatever the previous caller
+	// left on that slot -- which for this one would be a plausible-looking energy
+	// stamped onto the first row of a file that carries no `rowe` at all.
+	pende = 0;
+
+	// Build 66: the same, and it is a GLOBAL rather than a local -- Seq_Load reads
+	// it directly because that call has no parameter slot left.  Seeded here for
+	// the same reason pende is, and cleared after every row below.
+	//
+	// seg_sub beside it, because `opensub` may precede or follow its `open` and
+	// the handler passes this through rather than resetting it.
+	seq_pend_sub = SEQSUB_NONE;
+	seg_sub      = SEQSUB_NONE;
+
 	// Only the file may set this on the cold path: a pending touchdown belongs to
 	// a ramp segment, and the one that is open right now is not that ramp.
 	seg_bd_pend = FALSE;
@@ -1277,14 +1464,31 @@ void(float id) Seq_Read =
 	{
 		tokenize(l);
 		if (argv(0) == "row")
+		{
+			// Build 65: `rowe` set pende immediately above this row; consumed here
+			// so a file that omits it (build 64 and earlier) loads a 0 rather than
+			// the PREVIOUS row's absolute, which would look like real data.
 			Seq_Load(stof(argv(1)), stof(argv(2)), stof(argv(3)),
-			         stof(argv(4)), stof(argv(5)), stof(argv(6)));
+			         stof(argv(4)), stof(argv(5)), stof(argv(6)), pende);
+			pende        = 0;
+			seq_pend_sub = SEQSUB_NONE;     // build 66, consumed with pende
+		}
+		else if (argv(0) == "rowe")
+			pende = stof(argv(1));
+		else if (argv(0) == "rowsub")
+			seq_pend_sub = stof(argv(1));
 		else if (argv(0) == "open")
 		{
+			// Build 66: seg_sub is passed THROUGH rather than reset, so `opensub`
+			// works whichever side of this line it arrives on.  It was seeded to
+			// SEQSUB_NONE above, which is what a build-65 file -- carrying no
+			// `opensub` at all -- correctly loads as.
 			Seq_OpenRestore(stof(argv(1)), stof(argv(2)), stof(argv(3)),
-			                stof(argv(4)), stof(argv(5)));
+			                stof(argv(4)), stof(argv(5)), seg_sub);
 			gotopen = TRUE;
 		}
+		else if (argv(0) == "opensub")
+			seg_sub = stof(argv(1));
 		else if (argv(0) == "board")
 		{
 			seg_bd_de   = stof(argv(1));
@@ -1528,7 +1732,14 @@ float(float de, float v, float gravity) Seq_Gain =
 	return 0 - v;
 };
 
-void(float kind, float de, float emax, float dur, float v, float gravity) Seq_Push =
+/*
+  BUILD 65 adds `eend` -- the RAW energy this segment finished at.  Seventh
+  parameter and not an eighth: plain QuakeC has eight parameter registers, and
+  this call is now one short of that ceiling rather than on it.  If a ninth column
+  is ever wanted, it is a setter like HE_Text and not a parameter.
+*/
+void(float kind, float de, float emax, float dur, float v, float gravity,
+     float eend) Seq_Push =
 {
 	local float i, p, merged;
 
@@ -1571,9 +1782,11 @@ void(float kind, float de, float emax, float dur, float v, float gravity) Seq_Pu
 	{
 		if (seq_n >= SEQ_MAX)
 		{
-			// SEVEN arrays now.  Forgetting one here is the easiest bug in this
-			// file to write and the hardest to see: the column would keep drawing,
-			// with one field a row out of step with the rest.
+			// NINE arrays now (build 65 added seq_eend, build 66 seq_sub).
+			// Forgetting one here is the easiest bug in this file to write and the
+			// hardest to see: the column would keep drawing, with one field a row
+			// out of step with the rest -- which reads as a physics fault rather
+			// than as a copy loop.
 			for (i = 0; i < SEQ_MAX - 1; i = i + 1)
 			{
 				seq_kind[i]   = seq_kind[i + 1];
@@ -1583,6 +1796,8 @@ void(float kind, float de, float emax, float dur, float v, float gravity) Seq_Pu
 				seq_dur[i]    = seq_dur[i + 1];
 				seq_launch[i] = seq_launch[i + 1];
 				seq_pct[i]    = seq_pct[i + 1];
+				seq_eend[i]   = seq_eend[i + 1];
+				seq_sub[i]    = seq_sub[i + 1];
 			}
 			seq_n = SEQ_MAX - 1;
 		}
@@ -1592,6 +1807,19 @@ void(float kind, float de, float emax, float dur, float v, float gravity) Seq_Pu
 		seq_launch[p] = (!seq_haslaunch && kind == SEG_AIR);
 		if (seq_launch[p])
 			seq_haslaunch = TRUE;
+
+		/*
+		  BUILD 66.  On the NON-MERGE path, beside seq_launch and for its reason:
+		  this is a fact about how the segment OPENED, and a merge is one ride that
+		  got split -- so the surviving row keeps the answer belonging to the row
+		  that opened first.  de/emax/dur accumulate because they are quantities;
+		  this and launch do not, because they are not.
+
+		  (At the default hud_seq_hopbreak 1 a Jump and a Bhop never reach a merge
+		  anyway, because a landing always breaks the chain.  At 0 they can, and
+		  "the jump that carried on" is the right label for the result.)
+		*/
+		seq_sub[p] = seg_sub;
 	}
 
 	/*
@@ -1656,6 +1884,16 @@ void(float kind, float de, float emax, float dur, float v, float gravity) Seq_Pu
 	seq_de[p]   = de;
 	seq_emax[p] = emax;
 	seq_dur[p]  = dur;
+
+	/*
+	  BUILD 65.  Assigned unconditionally, which is what makes a merge right for
+	  free: the three columns above SUM when p is an existing row, because a merged
+	  segment is the whole of both -- but "where did it leave you" does not sum, it
+	  is simply the LATER row's answer, and the later row is the one being pushed.
+	  So this is a plain assignment where those are accumulations, and the
+	  distinction is the entire merge handling for this column.
+	*/
+	seq_eend[p] = eend;
 
 	seq_lastgain = seq_gain[p];
 	seq_lastde   = seq_de[p];
@@ -1815,14 +2053,31 @@ float(float newkind, float e, vector vel, float gravity) Board_SegmentEnd =
 		btick = serverkeyfloat("pm_ticrate");
 		if (btick <= 0) btick = PM_TICK;
 
-		Seq_Push(SEG_BOARD, seg_bd_de, 0, btick, seg_bd_v, gravity);
+		/*
+		  BUILD 65 -- THE TOUCHDOWN ENDS AT THE RAMP'S START, which is seg_e0.
+
+		  Not `e`, which is where the RIDE ended, and not `e - seg_bd_de`, which
+		  would be the same number computed the long way round and would drift if
+		  either ever stopped being the other's complement.  The boundary block in
+		  Board_Frame opens the ramp at the POST-clip energy precisely so that the
+		  touchdown's end and the ramp's beginning are one value (build 25), and
+		  seg_e0 IS that value.  So the three rows telescope by construction:
+
+		      air ends   eb  =  e + stepe
+		      board ends seg_e0                     ( = eb + seg_bd_de )
+		      ramp ends  e
+
+		  and the column's absolutes chain exactly as its deltas do.
+		*/
+		Seq_Push(SEG_BOARD, seg_bd_de, 0, btick, seg_bd_v, gravity, seg_e0);
 		seg_bd_pend = FALSE;
 	}
 
 	// The COLUMN takes every valid segment, including an air time that ends by
 	// landing; the single-line readout below still takes only the two that are
 	// worth interrupting you for.  Same number, two different questions.
-	Seq_Push(seg_kind, de, emax, dur, v, gravity);
+	// Build 65: `e` is this segment's boundary and so is where it left you.
+	Seq_Push(seg_kind, de, emax, dur, v, gravity, e);
 
 	if (seg_kind == SEG_AIR && newkind != SEG_RAMP)
 		return TRUE;
@@ -1909,6 +2164,8 @@ void(vector org, vector vel, float onground) Board_Frame =
 	seq_merge = cvar("hud_seq_merge");
 	seq_units = cvar("hud_seq_units");
 	seq_board = cvar("hud_seq_board");
+	seq_hopbreak = cvar("hud_seq_hopbreak");        // build 65
+	seq_hopname  = cvar("hud_seq_hopname");         // build 66
 
 	// Zeroed rather than left to the edge block below, which is the only thing
 	// that ever writes them: fteqcc cannot see that `boarded` implies they were
@@ -1973,6 +2230,37 @@ void(vector org, vector vel, float onground) Board_Frame =
 		// and it makes the build pass work with no override of its own.
 		leave_speed = vlen([vel_x, vel_y, 0]);
 		leave_time  = board_now;
+
+		/*
+		  BUILD 65 -- AND WHAT THE RIDE WAS WORTH, captured on the same edge.
+
+		  The Boarding window pairs an ENTER value with a LEAVE value, and the
+		  entering half has existed since build 6 (board_speedin_h, board_losse)
+		  while the leaving half was a speed and nothing else.  This is its energy.
+
+		  COMPUTED HERE RATHER THAN READ FROM seg_live_de, and the ordering is the
+		  reason: seg_live_* is published at the BOTTOM of this function, so on this
+		  frame it still describes the previous one -- a ride's leave energy taken
+		  from it would be one frame stale, which on a short ramp is most of the
+		  ride.  `e` is likewise not computed until a few lines below, so this calls
+		  Strafe_Energy itself with the same three arguments that call will use.
+
+		  The same (e - seg_e0) + carry the committed row is built from, so the
+		  window and the segment column cannot report one ride two ways.  Guarded on
+		  the segment actually being the ramp: a leave edge with no open ramp segment
+		  is a restore or a build pass, and a delta against somebody else's e0 is
+		  worse than no number.
+		*/
+		if (seg_kind == SEG_RAMP && seg_valid)
+		{
+			leave_e  = Strafe_Energy(org, vel, gravity);
+			leave_de = (leave_e - seg_e0) + seg_carry_de;
+		}
+		else
+		{
+			leave_e  = 0;
+			leave_de = 0;
+		}
 	}
 	board_riding = riding;
 
@@ -2191,8 +2479,90 @@ void(vector org, vector vel, float onground) Board_Frame =
 			else
 				seg_carry_de = seg_carry_dur = seg_carry_emax = 0;
 		}
-		else if (board_now - seg_t0 >= SEG_MINTIME)
+		/*
+		  BUILD 65 -- A BHOP CHAIN WAS COMING OUT AS ONE ROW.
+
+		      "the ground energy keeps counting every bhop as one, can that be
+		       separated per bhop"
+
+		  It could not, and this line is why.  A ground phase opens no segment, so
+		  it arrives here as SEG_NONE and its only job is to set seq_break -- the
+		  flag Seq_Push tests at `if (seq_merge >= 2 || !seq_break)` before folding a
+		  segment into the row above it.  The test was on the ground phase's
+		  DURATION, against SEG_MINTIME, 0.10 s.
+
+		  A BHOP'S GROUND CONTACT IS ONE TICK.  0.015 s at the shipped pm_ticrate,
+		  between six and seven times under the threshold.  So no break was emitted,
+		  the air segments either side of the landing ended up adjacent, and
+		  hud_seq_merge 1 sewed them together: a chain of five hops read as a single
+		  Air row carrying the summed energy over the summed time.  Exactly the
+		  report, and it gets worse the better you hop.
+
+		  THE THRESHOLD WAS NOT WRONG FOR WHAT IT WAS FOR.  It is the same 0.10 s
+		  Board_SegmentEnd refuses a segment at, and the merge exists to put back a
+		  row that was LOST to a sub-threshold blip -- a bounce off a lip, a few
+		  ticks of lost ramp contact around a bend.  The mistake is treating a
+		  LANDING as one of those.  A blip is a gap in something that was continuous;
+		  a landing is an event, and it is the event being practised.  Its brevity is
+		  the whole point of it rather than a reason to discount it.
+
+		  So touching the ground at all breaks the chain.  The duration test stays
+		  reachable at hud_seq_hopbreak 0, which is build 64 byte for byte.  Nothing
+		  else weakens: ramp and air blips are refused by Board_SegmentEnd and travel
+		  through the seg_carry branch above, which never reaches this line.
+		*/
+		else if (seq_hopbreak || board_now - seg_t0 >= SEG_MINTIME)
 			seq_break = TRUE;
+
+		/*
+		  BUILD 66 -- JUMP OR BHOP, DECIDED HERE BECAUSE THIS IS THE LAST MOMENT
+		  THE EVIDENCE EXISTS.
+
+		  seg_kind still holds the OUTGOING kind on this line -- it is assigned
+		  immediately below -- and seg_t0 still holds when that outgoing phase
+		  began.  A ground phase opens no segment but it does set both (see the
+		  note at the assignment below), so `board_now - seg_t0` here is exactly
+		  how long you were on the ground.  One line later, both are gone.
+
+		  THE THRESHOLD IS THE SERVER'S, NOT A NEW ONE.  run_prestrafe_time is
+		  what SV_TimerJumpWatch uses to decide whether a start was hopped, and
+		  what the pre-strafe assist uses to decide whether to release +forward
+		  (cl_main.qc's PreStrafe_Dwell).  Three places asking "was that a jump or
+		  a hop" must not answer differently, so this reads the same serverinfo key
+		  with the same fallback chain.  Called through the builtin rather than
+		  through PreStrafe_Dwell itself because that function lives in cl_main.qc,
+		  which compiles LAST -- a builtin crosses no symbol.
+
+		  NOT SEG_MINTIME, which is 0.10 and is two lines up.  That one answers
+		  "was that ground phase long enough to break a merge chain"; this answers
+		  "was it a walk".  Same quantity, different questions, different numbers,
+		  and conflating them would make the label follow the merge setting.
+
+		  A RAMP EXIT IS STILL AIR.  You did not jump off anything, and on a surf
+		  map that is most of the column.
+
+		  hud_seq_hopname IS NOT TESTED HERE, and that is a fix rather than an
+		  omission -- the first capture run of this build had it here and caught the
+		  consequence on screen.  The sub-kind is STORED, so gating the measurement
+		  means switching the cvar off relabels nothing that is already on screen:
+		  the column sat there reading Jump / Bhop / Jump at hud_seq_hopname 0, and
+		  "0 is build 65 exactly" was false for every row already in the ring.
+		  The switch belongs where the word is chosen, in HUD_SeqName, where it
+		  takes effect on every row at once and costs one compare.
+		*/
+		if (kind != SEG_AIR)
+			seg_sub = SEQSUB_NONE;
+		else if (seg_kind != SEG_NONE)
+			seg_sub = SEQSUB_NONE;              // came off a ramp
+		else
+		{
+			local float dwell;
+			dwell = serverkeyfloat("run_prestrafe_time");
+			if (dwell <= 0) dwell = cvar("run_prestrafe_time");
+			if (dwell <= 0) dwell = 0.25;
+
+			seg_sub = (board_now - seg_t0 >= dwell) ? SEQSUB_JUMP : SEQSUB_BHOP;
+		}
 
 		seg_kind  = kind;
 		seg_e0    = eb;
@@ -2253,12 +2623,20 @@ void(vector org, vector vel, float onground) Board_Frame =
 	seg_live_dur    = 0;
 	seg_live_gain   = 0;
 	seg_live_bdgain = 0;
+	seg_live_e      = 0;            // build 65
+	seg_live_e0     = 0;
 	if (!rec_wt_build)
 	if (seg_kind != SEG_NONE && seg_valid)
 	{
 		seg_live_kind = seg_kind;
 		seg_live_de   = (e - seg_e0)         + seg_carry_de;
 		seg_live_dur  = (board_now - seg_t0) + seg_carry_dur;
+
+		// Build 65.  `e` is this frame's energy and seg_e0 is where this segment
+		// opened -- the same two values the delta above is the difference of, so
+		// the live row's absolute and its gain cannot disagree.
+		seg_live_e    = e;
+		seg_live_e0   = seg_e0;
 
 		/*
 		  Both u/s figures converted HERE, through the same Seq_Gain the committed
@@ -2422,6 +2800,7 @@ void() Board_Warped =
 	seg_emax  = 0;
 	seg_t0    = cltime;
 	seg_org   = '0 0 0';
+	seg_sub   = SEQSUB_NONE;        // build 66; nothing is open, so nothing is a hop
 
 	/*
 	  And any exemption a restore had armed.  Build 25 cleared its one-shot here

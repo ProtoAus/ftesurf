@@ -250,6 +250,27 @@ void() ClientConnect =
 	*/
 	SV_OpenAllPortals();
 
+	/*
+	  Build 64.  Re-send every ambient_generic loop that is currently running,
+	  and it is the same class of bug as the areaportal call directly above --
+	  state established before this client existed, which nothing would ever
+	  send again.
+
+	  The STATIC sound bucket needs nothing here: ambientsound() feeds
+	  sv_staticsounds[], which the engine replays at prespawn (sv_user.c:1823).
+	  The DYNAMIC bucket is the problem.  Those loops were multicast at the
+	  instant something fired PlaySound at them, which in a surf lobby -- where
+	  the map does not restart between runs and players join continuously -- was
+	  very likely a long time ago.  Without this, everyone but the players
+	  present at map load hears an ambience with holes in it.
+
+	  Deliberately in ClientConnect and NOT in PutClientInServer, which is also
+	  called by ClientKill and by the respawn path: re-issuing a loop restarts
+	  the sample, so hooking there would make every `kill` audibly stutter every
+	  ambient loop on the map.
+	*/
+	SV_AmbientResend(self);
+
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
 	Lobby_ClientConnect(self);

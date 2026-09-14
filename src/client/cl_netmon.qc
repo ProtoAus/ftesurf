@@ -249,9 +249,37 @@ void() NM_Frame =
 	nm_c_last = tot;
 };
 
+/*
+  BUILD 65 -- THE BOX, FOR THE LAYOUT EDITOR.
+
+  This panel has owned hud_net_x / hud_net_y since Patch 270 and has never been in
+  `hud_edit`'s table, so the only way to move it was to type a cvar name -- which
+  is the exact complaint the editor was written to answer, left half-answered for
+  five builds.  Listing it there needs this: the editor reads the box a drawer
+  published and refuses to invert one itself (see the registry essay in cl_hud.qc).
+
+  A FUNCTION BECAUSE NM_Draw HAS FOUR EXITS.  Three of them are the panel saying
+  why it has no numbers -- engine too old, no avatar models, still sampling -- and
+  those are exactly the states in which you would want to drag it out of the way.
+  A single publish at the bottom would leave the panel ungrabbable in all three,
+  which is the "unable to move a panel BECAUSE it is invisible" case the editor
+  exists for.
+
+  Left-top anchored: both cvars are plain fractions and the block grows down and
+  right from them, so the anchor IS the box's top-left and there is nothing to
+  correct for.
+*/
+void(vector bp, float bottom, float rx) NM_Rect =
+{
+	local float w;
+
+	w = (rx - bp_x) + 30 * ui_cv_scale;     // the number column plus its content
+	HUD_Rect("net", bp, [w, bottom - bp_y, 0], bp);
+};
+
 void(vector scr) NM_Draw =
 {
-	local vector p, col;
+	local vector p, col, bp;
 	local float sz, lh, rx, per;
 
 	if (!nm_cv_on)
@@ -260,6 +288,7 @@ void(vector scr) NM_Draw =
 	sz = 8 * ui_cv_scale;
 	lh = sz + 2 * ui_cv_scale;
 	p  = [scr_x * nm_cv_x, scr_y * nm_cv_y, 0];
+	bp = p;                             // build 65: kept, p walks down the panel
 	rx = p_x + 104 * ui_cv_scale;       // the column the numbers END on
 
 	Font_Set(ui_font_ui);
@@ -271,6 +300,7 @@ void(vector scr) NM_Draw =
 		// The engine predates Patch 270.  Named rather than blank, because a
 		// blank panel reads as "zero updates" -- the failure it is here to find.
 		HUD_Text(p, "engine too old", sz, '1.0 0.4 0.4', 1);
+		NM_Rect(bp, p_y + lh, rx);
 		return;
 	}
 
@@ -280,12 +310,14 @@ void(vector scr) NM_Draw =
 		// this map means either the server is not in lobby mode or Lobby_Precache
 		// did not run -- both are real answers and neither is "0 updates".
 		HUD_Text(p, "no avatar models", sz, '0.9 0.7 0.4', 1);
+		NM_Rect(bp, p_y + lh, rx);
 		return;
 	}
 
 	if (!nm_have)
 	{
 		HUD_Text(p, "sampling...", sz, '0.7 0.7 0.7', 1);
+		NM_Rect(bp, p_y + lh, rx);
 		return;
 	}
 
@@ -319,4 +351,6 @@ void(vector scr) NM_Draw =
 		HUD_Text (p, "per body", sz, '0.7 0.7 0.7', 1);
 		HUD_TextR([rx, p_y, 0], sprintf("%.1f", per), sz, col, 1);
 	}
+
+	NM_Rect(bp, p_y + lh, rx);
 };
