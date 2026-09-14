@@ -3455,12 +3455,16 @@ void() SV_PBSave =
 	  bounded at 1 after eleven readings and the next run measured 2.  Build 75's
 	  log retreated to a narrower claim -- that the gap is 0..2 and that sampled is
 	  ALWAYS at least counted, 18 of 18 -- and build 76's own verification arm
-	  measured **-1**, twice, on a loopback listen server.  So the direction is not
-	  a property of the system either.  Mechanically that reads as expected once
-	  stated: the sampled clock is floor(x + 0.5), which rounds BOTH ways, and the
-	  eighteen readings that only ever went one way were taken over a real network,
-	  where packets arriving late let sv.time run ahead of the mover.  Take the
-	  network away and rounding is all that is left.
+	  measured **-1**, twice.  So the direction is not a property of the system
+	  either.
+
+	  WHAT IS SOUND IS HALF OF THAT: the sampled clock is floor(x + 0.5), which
+	  rounds BOTH ways, so it cannot be one-sided by construction.  A -1 therefore
+	  needs no explaining; the old 18-of-18 does, and IT HAS NONE.  The obvious
+	  candidate -- that those were all taken over a real network, where late
+	  packets let sv.time run ahead of the mover -- was written down here and then
+	  falsified by b76net.cfg, a live lobby through the router, which read -1
+	  twice itself.  A fifth explanation is not being offered.
 
 	  THERE IS THEREFORE NO CONVERSION, and offering one would be a lie twice over
 	  -- the magnitude is not constant (2-of-7 on one run and 6-of-7 on the next,
