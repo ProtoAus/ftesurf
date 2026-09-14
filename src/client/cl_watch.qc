@@ -913,8 +913,27 @@ void() Watch_Scan =
 		}
 	}
 
-	if (ver > 4)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 4; "
+	/*
+	  BUILD 76: THE CEILING IS 5, AND WITHOUT THIS LINE THE NOTE WOULD HAVE FIRED
+	  ON EVERY RECORDING THIS GAME MAKES FROM NOW ON.
+
+	  Version 5 has exactly version 4's seventeen columns and version 4's header
+	  keys plus one, because the bump is about what the NUMBERS MEAN -- counted
+	  off the mover's tick counter rather than sampled off sv.time -- and not
+	  about the grammar.  So this reader needed no new parse at all.  What it
+	  needed was to stop calling a current file unknown: a yellow "this build
+	  knows 4" in front of an ordinary replay is the shape of message a player
+	  reports as a bug, and it would teach them to skip the next one, which might
+	  matter.
+
+	  STILL ONE-SIDED, deliberately.  A file NEWER than this build is worth a word
+	  because the columns really could move next time; an older one is handled by
+	  rec_wt_v4 and its own line.  And still a literal rather than a constant: the
+	  literal is the thing that must be edited when the format moves, and a
+	  constant three files away is how that gets missed.
+	*/
+	if (ver > 5)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 5; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

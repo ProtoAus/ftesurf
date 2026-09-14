@@ -1725,4 +1725,23 @@ accessor filestream : float
 // the progs outright with "system defs not recognised from quake nor clones".
 float sv_mv_maxspeed;
 
+// BUILD 76: the tick length the MOVER divided by, published per usercmd by
+// engine Patch 325 on the Patch 131 optional-field route.  0 means no engine
+// value -- an engine older than that patch, or the Source mover off.
+//
+// IT LIVES HERE, AWAY FROM ITS TWO SIBLINGS, for exactly the reason
+// sv_mv_maxspeed above does: sv_lobby.qc compiles BEFORE sv_timer.qc in
+// sv_progs.src, and Lobby_SubmitRun has to send this rate beside the tick count
+// it is submitting.  run_movetick and run_movecarry stay in sv_timer.qc because
+// nothing outside that file reads them; the essay explaining all three is there
+// too, and this is the pointer to it.
+//
+// WHY THE SUBMITTER NEEDS IT AT ALL.  surfd stores millis = ticks*1000/tickrate
+// and ranks on the result.  Since build 76 those ticks are the MOVER's, so the
+// rate that converts them has to be the mover's; sending cvar("pm_ticrate")
+// instead would put every stored time out by their ratio if the two ever
+// differed -- silently, on a board that looked entirely normal.  That is build
+// 64's defect, and this declaration is what lets the fix be one line.
+.float run_movetickrate;
+
 #pragma noref 0

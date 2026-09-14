@@ -534,8 +534,26 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	  the header's own rule: `lobby` says where it happened, and `samples 0` says
 	  out loud that there is no movement in here.  There is no `begin` and no
 	  `end`, because both of those introduce a body this file does not have.
+
+	  BUILD 76: VERSION 5, AND `clock` IS DERIVED FROM A BIT THE CLIENT ALREADY
+	  HAS RATHER THAN GUESSED AT.
+
+	  The version has to move because the one number in this file -- `ticks` --
+	  came off the SERVER's clock, and on a build-76 fleet that is the counted
+	  one.  Leaving it at 4 would file a counted time under a version that means
+	  sampled.
+
+	  But this writer is on the CLIENT, and the client cannot see which clock the
+	  server used... except that it already received the answer: TF_NOCLOCK is in
+	  the `flags` word three lines down, set by the server at the start of the run
+	  precisely because a run timed on the old clock cannot be recomputed.  So the
+	  key is read off the flag rather than assumed from the version, and the two
+	  can disagree in exactly the case they are meant to -- a build-76 lobby on a
+	  pre-325 engine, which writes a v5 file that says `sampled`.  Assuming
+	  instead would have been the sv_mapcheck shape: a second copy of a fact,
+	  derived from something that is not the fact.
 	*/
-	fputs(fh, "FTESURF-REC 4\n");
+	fputs(fh, "FTESURF-REC 5\n");
 	fputs(fh, sprintf("map %s\n", map));
 	fputs(fh, sprintf("track %g\n", track));
 	fputs(fh, sprintf("startseg %g\n", (leg > 0) ? leg - 1 : 0));
@@ -544,6 +562,7 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	fputs(fh, sprintf("owner %s\n", LT_Owner()));
 	fputs(fh, sprintf("runid %s-l%g\n", strftime(TRUE, "%Y%m%d-%H%M%S"), leg));
 	fputs(fh, sprintf("flags %g\n", flags));
+	fputs(fh, sprintf("clock %s\n", (flags & TF_NOCLOCK) ? "sampled" : "counted"));
 	fputs(fh, sprintf("lobby %s\n", LT_Host()));
 	fputs(fh, "samples 0\n");
 	fclose(fh);

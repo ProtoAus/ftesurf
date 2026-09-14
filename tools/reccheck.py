@@ -80,7 +80,17 @@ def is_prefix(path):
 # bit 16 is set, run_groundnorm while bit 1 is set, and zero in free air.  One
 # vector and not two, because the three consumers all pick exactly one of them
 # and pick it with those same two bits; see the format block in sv_timer.qc.
-COLUMNS = {2: 10, 3: 14, 4: 17}
+#
+# BUILD 76 ADDS VERSION 5 WITH THE SAME SEVENTEEN COLUMNS, and that repetition is
+# the point rather than an oversight.  Every key added since v4 -- leg, mapcrc,
+# movetickrate -- went in under the header's own rule that a reader skips what it
+# does not know, so the version stayed put.  v5 changes what the NUMBERS MEAN:
+# `ticks` in the trailer and `t` on every sample are counted off the mover's own
+# tick counter rather than sampled off sv.time.  A v4 reader would parse a v5 file
+# perfectly and be wrong about every time in it by 0-2 ticks with nothing to
+# notice.  A silent difference is what a version number is for; an unchanged
+# grammar is why the column count repeats.
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -125,6 +135,17 @@ HEAD_V3 = HEAD_V2 | {"owner", "runid"}
 #           0.01.  Checked below.  Absent, or 0, means no engine value -- a
 #           pre-325 server, or the Source mover off -- and is not a fault.
 HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc", "movetickrate"}
+
+#   clock   build 76.  Which of the two clocks timed this run: `counted` (the
+#           mover's own tick counter, engine Patch 325) or `sampled` (sv.time,
+#           every build before 76).  Listed as additive because a v5 server on a
+#           pre-325 engine writes `clock sampled` in a v5 file -- the version and
+#           this key are NOT the same fact, and that is the case the key exists
+#           for.  Absent means sampled, which is what every file written before
+#           build 76 meant; checked below, where a v5 file claiming `sampled` is
+#           a NOTE rather than a fault, because it is a correctly-labelled
+#           recording from a correctly-behaving server with an old engine.
+HEAD_V5 = HEAD_V4 | {"clock"}
 
 # shared/sh_defs.qc.  Only the two a stored run may assert: TF_RECORDING and
 # TF_FROZEN are masked out by SV_RecClose, because neither is a fact about the
@@ -296,7 +317,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 4:
+    if ver >= 5:
+        allowed = HEAD_V5
+    elif ver >= 4:
         allowed = HEAD_V4
     elif ver >= 3:
         allowed = HEAD_V3
@@ -343,6 +366,44 @@ def check_rec(path, verbose=False):
     if mtr > 0 and abs(mtr - tickrate) > 1e-6:
         r.fault("movetickrate %g disagrees with tickrate %g -- every time in "
                 "this file is out by a factor of %.6f" % (mtr, tickrate, mtr / tickrate))
+
+    # Build 76: which clock timed the run.  THREE STATES, and collapsing them is
+    # how this check would lie about a healthy server -- the same shape as the
+    # rate report in sv_timer.qc and as sv_mapcheck before it.
+    #
+    #   absent          a file older than build 76.  Sampled, and not a fault:
+    #                   it is most of the recordings that exist.
+    #   counted         what a build-76 server on a Patch 325 engine writes.
+    #   sampled in a v5 file
+    #                   a build-76 server whose ENGINE cannot count.  Correctly
+    #                   labelled by a correctly-behaving writer, so it is a NOTE:
+    #                   the file is valid, its times simply cannot be
+    #                   re-simulated, and the run carries TF_NOCLOCK to say so.
+    #                   Faulting here would blame the recording for the deploy.
+    #
+    # A word that is neither is a fault, because a reader that accepted an
+    # unknown value would be guessing which clock it is holding.
+    clk = head.get("clock")
+    if clk is not None:
+        clk = clk.split()[0] if clk.split() else ""
+        if clk not in ("counted", "sampled"):
+            r.fault("clock %r is neither 'counted' nor 'sampled'" % clk)
+        elif clk == "sampled" and ver >= 5:
+            r.note("clock sampled in a v%d file -- the server had no tick counter "
+                   "(engine older than Patch 325, or the Source mover off), so these "
+                   "times cannot be re-simulated" % ver)
+        r.info["clock"] = clk
+    else:
+        r.info["clock"] = "sampled (absent)"
+
+    # The pair that must not disagree.  A v5 file saying `clock counted` is
+    # claiming its times came from the mover, and the mover is the only thing that
+    # publishes movetickrate -- so a counted file with no rate is a file that
+    # cannot say what its ticks are worth, which is the one failure mode this
+    # whole migration was written to avoid.
+    if head.get("clock", "").split()[:1] == ["counted"] and mtr <= 0:
+        r.fault("clock counted but no movetickrate -- the file claims the mover's "
+                "ticks and does not say how long one is")
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)

@@ -304,11 +304,18 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	/*
 	  ZERO WHEN THERE IS NO RUN, and this was a real bug rather than a nicety.
 
-	  SV_TimerTicks is floor((time - run_t_start) / tick + 0.5) and run_t_start is
-	  0 until a run starts -- so on an idle timer it returns the number of ticks
-	  since the MAP loaded, and the save list cheerfully printed that as the run
-	  time.  Three saves taken while idle read 0:09.330, 0:16.170 and 0:18.780,
-	  which look exactly like three points along a run and are the wall clock.
+	  SV_TimerTicks differences against an origin that is 0 until a run starts --
+	  so on an idle timer it returns the number of ticks since the MAP loaded, and
+	  the save list cheerfully printed that as the run time.  Three saves taken
+	  while idle read 0:09.330, 0:16.170 and 0:18.780, which look exactly like
+	  three points along a run and are the wall clock.
+
+	  BUILD 76 DID NOT FIX THAT AND THIS GUARD IS STILL WHAT STANDS BETWEEN IT AND
+	  THE LIST.  The clock moved onto the mover's counter, so the idle reading is
+	  now simulated ticks since the map loaded rather than wall ticks, which is a
+	  different wrong number and no better.  SV_TimerTicks says the same thing at
+	  its own definition, and says why it was left alone in a build whose job was
+	  to move the clock.
 
 	  Caught by the verification pass, which is the only place it could have
 	  been: every number was plausible and they even increased in the right
@@ -325,20 +332,45 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	else
 		fputs(f, "ticks 0\n");
 	/*
-	  The same clock unrounded, and the one a load actually restores from.
+	  THE OTHER HALF OF THE CLOCK, and since build 76 that is the accurate way to
+	  put it -- it used to be "the same clock unrounded".
 
-	  `ticks` above is what the timer REPORTS -- the rounded integer a
-	  leaderboard compares -- and restoring from it would put the clock up to
-	  half a tick behind where the save was taken, which makes the first sample
-	  after a resume older than the last sample already in the recording.  Time
-	  running backwards mid-file is not something a reader can interpolate
-	  through, and tools/reccheck.py refuses it.
+	  BEFORE: `ticks` was the elapsed seconds ROUNDED, so restoring from it put
+	  the clock up to half a tick behind where the save was taken, which made the
+	  first sample after a resume older than the last sample already in the
+	  recording.  Time running backwards mid-file is not something a reader can
+	  interpolate through, and tools/reccheck.py refuses it.  This key existed to
+	  give the load something exact to restore from.
 
-	  Both are written because they answer different questions and the file is
-	  read by more than one thing: the list shows `ticks`, the load uses this.
+	  NOW: both are exact and neither is a rounding of the other.  `ticks` is the
+	  integer the mover produced and is what ranks; this is the simulated seconds
+	  the mover consumed, carry included, and is what the recorder stamps.  They
+	  differ by the sub-tick phase the run happened to start on -- up to one tick,
+	  by construction and not by error.  The load restores BOTH, each into its own
+	  origin, which is why SV_TimerResume takes two arguments now and why the
+	  half-tick problem this key was invented for cannot occur.
+
+	  A READER MUST NOT DERIVE ONE FROM THE OTHER in either direction.  It was
+	  always unsound and it used to be nearly right; it is now a statement about
+	  the start phase, which no reader knows.
 	*/
 	fputs(f, sprintf("elapsed %.6f\n",
 	                 (e.run_t_state == TS_RUNNING) ? SV_TimerElapsed(e) : 0));
+	/*
+	  BUILD 76: WHICH CLOCK THE TWO NUMBERS ABOVE WERE TAKEN ON.
+
+	  Additive, by this format's own rule -- an older build skips the key, and a
+	  save written before it is `sampled`, which is what every file predating this
+	  build meant.  Nothing in the load branches on it: both origins are re-based
+	  against readings taken at the resume, so a save crosses between clocks
+	  correctly either way, and a save load marks the run practice regardless.
+
+	  It is written for the person reading the file, not for the loader.  A save
+	  is the one artefact in this game that can be carried between installs, so
+	  "these seconds are wall seconds" is a fact a human may need and the file is
+	  the only place it could be recorded.
+	*/
+	fputs(f, sprintf("clock %s\n", e.run_t_clock ? "counted" : "sampled"));
 	fputs(f, sprintf("split %g\n", e.run_t_split));
 	fputs(f, sprintf("delta %g\n", e.run_t_delta));
 
@@ -745,6 +777,15 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  approximation this key was added to remove, so it is degraded rather than
 	  wrong -- and the only cost of that is one `resume` join a reader may find
 	  a few milliseconds out of order.
+
+	  BUILD 76 CHANGED WHAT THE PAIR MEANS AND DID NOT CHANGE THIS FALLBACK.
+	  `ticks` and `elapsed` are now two independent exact readings of one counter
+	  rather than a rounded quantity and its original, so on a build-76 file
+	  neither is derived from the other.  But a file that has no `elapsed` was
+	  written by a build that had no counter either, so `ticks * run_t_tick`
+	  remains the best available reconstruction of what IT meant.  Multiplying by
+	  run_t_tick rather than the mover's rate is right for the same reason: it is
+	  the rate the build that wrote the file was using.
 	*/
 	if (!haveelapsed)
 		elapsed = ticks * run_t_tick;
@@ -752,13 +793,19 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	/*
 	  ONLY A RUNNING CLOCK IS RESUMED.
 
-	  SV_TimerResume recomputes run_t_ticks from the origin it just set, so
-	  calling it for a FINISHED state would move the origin to now and rewrite
-	  the finishing time as zero -- erasing the result the save was taken to
-	  keep.  An idle or armed save has no clock to put back either.
+	  SV_TimerResume recomputes run_t_ticks from the origins it just set, so
+	  calling it for a FINISHED state would move them to now and rewrite the
+	  finishing time as zero -- erasing the result the save was taken to keep.
+	  An idle or armed save has no clock to put back either.
+
+	  BUILD 76: BOTH NUMBERS GO IN, and it is a resume rather than a re-derive.
+	  The run's tick count is an integer the mover produced, so the file's `ticks`
+	  is restored exactly into run_t_starttick instead of being recomputed from
+	  the seconds -- which is what the old single-argument call had to do, and
+	  what cost it up to half a tick.  See SV_TimerResume, which got shorter.
 	*/
 	if (st == TS_RUNNING)
-		SV_TimerResume(e, elapsed);
+		SV_TimerResume(e, ticks, elapsed);
 	else
 		e.run_t_ticks = ticks;
 
@@ -2407,12 +2454,18 @@ void(entity e) SV_RetryPoint =
 void(entity e) SV_RetryApply =
 {
 	/*
-	  run_t_tick comes from SV_TimerMapInit, and SV_TimerResume EARLY-RETURNS if
-	  it is still zero -- so getting here first would restore the position and
-	  the splits and silently not restore the CLOCK, which is the one thing a
-	  retry is for.  The ordering is in fact guaranteed (SV_SpawnServer runs two
-	  physics frames before any client is put in), but this is one compare
-	  against a silent failure, and it is the idiom sv_zones.qc already uses.
+	  The zones have to be loaded before the state is applied, or the restore puts
+	  the position and the splits back and lands in a world with no boxes to be
+	  inside.  The ordering is in fact guaranteed (SV_SpawnServer runs two physics
+	  frames before any client is put in), but this is one compare against a
+	  silent failure, and it is the idiom sv_zones.qc already uses.
+
+	  BUILD 76 RETIRED THE OTHER HALF OF THIS NOTE, which said SV_TimerResume
+	  early-returns when run_t_tick is still zero and would therefore silently not
+	  restore the clock.  That early return existed to guard a division; the
+	  counted clock restores by subtraction and there is nothing to divide, so the
+	  guard and the hazard are both gone.  Recorded rather than deleted, because a
+	  note describing a defence that no longer exists is worse than no note.
 	*/
 	if (!zone_loaded)
 		SV_ZoneFrame();

@@ -254,6 +254,7 @@ TF_NOJOURNAL = 512
 TF_NORULESET = 1024
 TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
+TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
 
 SCHEMA_VERSION = 4
 
@@ -1136,8 +1137,24 @@ def certifiable(flags):
     mistake is an out-of-date map file, which is precisely why the engine-side
     kick (sv_mapcheck, which would simply refuse them the server) is switched off
     on the lobbies and this demotion carries the fact instead.
+
+    QC BUILD 76 ADDS TF_NOCLOCK, and it is the only one of the five that is not
+    about the player's machine at all.  It says the SERVER that timed the run had
+    no tick counter to time it with -- an engine older than Patch 325, or one
+    with the Source mover off -- so the time was sampled off sv.time rather than
+    counted off the mover.  A sampled time is a function of packet arrival and
+    server frame pacing, neither of which is in the usercmd stream, so it cannot
+    be recomputed by anybody.  That is the property the whole re-simulation layer
+    rests on, which is why its absence demotes.
+
+    ON THE LIVE FLEET THIS SHOULD NEVER FIRE, and that is the useful part.  Every
+    lobby runs the engine and the QC deployed together, so a row carrying this bit
+    means an engine and a qwprogs.dat were shipped out of order -- a fact that is
+    much cheaper to read off a board row than to infer from times that are
+    quietly 0-2 ticks long.
     """
-    return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP))
+    return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP
+                         | TF_NOCLOCK))
 
 
 # --------------------------------------------------------------------------

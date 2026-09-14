@@ -320,6 +320,17 @@ check("TF_NOMAP is demoted too",
 check("...and neither reached the ranked board",
       names(board(m, tier="ranked")), ["ranked1"])
 
+# Build 76's TF_NOCLOCK, tested here for the reason the two above were: a
+# demotion with no falsifier looks identical to a demotion that works, from
+# everywhere except the board.  This one is the likeliest of the five to be
+# reached by an operator rather than a player -- it fires when the engine and the
+# QC are deployed out of order -- so the row it produces is the diagnostic.
+submit(m, player="noclock", flags=m.TF_NOCLOCK, ticks=1005)
+check("TF_NOCLOCK is demoted off the ranked board",
+      names(board(m, tier="community")), ["noprof", "nomap", "noclock"])
+check("...and the ranked board is still only the clean row",
+      names(board(m, tier="ranked")), ["ranked1"])
+
 # THE CONTROL.  The demotion has to be caused by the BIT and not by anything the
 # two demoted rows happen to share -- a slower time, a later arrival, the same
 # key.  Identical shape, flags 0, and it ranks.
@@ -464,7 +475,8 @@ else:
     # now; the list is the point of the section, so an addition that skips it
     # silently loses the guarantee for exactly the newest value.
     for const in ("TF_PRACTICE", "TF_SHADOW", "TF_SEGMENT", "TF_CHEAT",
-                  "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP"):
+                  "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP",
+                  "TF_NOCLOCK"):
         check("%s matches sh_defs.qc" % const,
               getattr(m, const), found.get(const))
 

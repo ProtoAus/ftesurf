@@ -1038,6 +1038,45 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  that changes what a CLICK does -- see the hand-off below.  Five
 		  characters, so SBW_TAG's seven still fit it.
 		*/
+		/*
+		  BUILD 76: AND `old clock`, WHICH IS THE VERSION MARKER FOR AN ARCHIVED RUN.
+
+		  The clock migration needed some way for a run filed before build 76 to be
+		  distinguishable from one filed after, because the two were measured with
+		  different instruments: the sampled clock ran 0-2 ticks long, always in the
+		  same direction, so a mixed list sorts two measurements into one order and
+		  the delta column differences across them.  That is exactly the cost build
+		  43 named when the stage measurement changed -- one list ranking runs that
+		  were never comparable -- and it was called out then as a real price rather
+		  than waved through.
+
+		  THE MARKER IS THE FILE'S OWN VERSION AND IT WAS ALREADY BEING READ.  The
+		  obvious route was a marker in the FILENAME, which would have touched
+		  FS_RunPathWho's grammar, the 7-digit stamp parse, FS_TagFromName, the
+		  pruner's glob and ui_who -- for a fact the file already states on its
+		  first line.  Scores_ReadHeader has parsed `FTESURF-REC <n>` into
+		  rec_sb_rowver[] for every listed row since build 23; nothing drew it.  So
+		  the whole marker is this branch.  Same shape as the padding ring on the
+		  server side: the cheap route was the one that added nothing.
+
+		  THIS COLUMN, because for the rows that matter it is EMPTY.  A stamped
+		  archive row -- which is every row in a PB list, and the only kind whose
+		  ordering this can distort -- draws nothing here today.  `lobby` keeps
+		  precedence because it is the one word in this column that changes what a
+		  CLICK does, and `latest` keeps it over this because a fixed-name file is
+		  overwritten every attempt, so its clock is whatever the last attempt used
+		  and the word would go stale in place.
+
+		  VERSION 0 IS NOT VERSION 4.  A row whose header could not be read at all
+		  leaves rec_sb_rowver at 0, and drawing `old clock` for it would be
+		  asserting a measurement about a file nothing could open -- the sv_mapcheck
+		  shape, a comparison whose two sides are not comparable answering anyway.
+		  Unknown draws nothing, which is this board's standing rule since build 65.
+
+		  Nine characters, so SBW_TAG's eleven still fit, and the same two words the
+		  online tab uses for TF_NOCLOCK -- deliberately, because it is the same fact
+		  about the reader's row: this time was taken on the old clock.
+		*/
 		if (rec_sb_cols > SBX_TAG)
 		{
 			if (rec_sb_rowtag[idx] == RT_LOBBY)
@@ -1046,6 +1085,9 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 			else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
 				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
 				            "latest", SBC_DIM, on ? 0.7 : 0.25);
+			else if (rec_sb_rowver[idx] > 0 && rec_sb_rowver[idx] < 5)
+				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				            "old clock", SBC_DIM, on ? 0.7 : 0.25);
 		}
 	}
 	sui_list_view_end();

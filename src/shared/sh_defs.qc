@@ -1386,6 +1386,47 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 #define TF_NOMAP    4096
 
 /*
+  BUILD 76: THIS RUN'S CLOCK WAS SAMPLED OFF THE WALL, SO NOTHING CAN RE-COMPUTE IT.
+
+  Build 76 moved the run clock onto the mover's own tick counter (engine Patch
+  325).  A counted run time is a function of the usercmd stream and of nothing
+  else, which is the property the whole re-simulation layer rests on: feed the
+  same commands to the same mover on the same map and you get the same number.
+  A SAMPLED time is a function of when packets arrived and where the server's
+  frame loop happened to land, and those are not in the stream, so it cannot be
+  recomputed by anybody -- not by a verifier, not by the player, not by us.
+
+  THE HOLE IS REACHABLE AND THAT IS WHY THIS BIT EXISTS RATHER THAN A REFUSAL.
+  The counter arrives on the Patch 131 optional-field route: declare the field
+  and the engine fills it, run against an engine that does not have Patch 325 --
+  or a build with the Source mover off -- and it is never written.  QC cannot
+  make that engine count ticks.  It has exactly two honest options: refuse to
+  time the run at all, or time it the old way and say so.  Refusing would turn a
+  stock FTE listen server into a game with no timer, which is a worse answer than
+  an unrankable run, so build 76 keeps the old clock as the fallback and marks
+  it.  SV_TimerStart latches the choice for the whole run -- see run_t_clock --
+  so no single recording ever carries both, which is the one thing this migration
+  was not allowed to do.
+
+  IT IS NOT A TAINT CLASS, on the TF_NOJOURNAL / TF_NORULESET / TF_NOPROFILE /
+  TF_NOMAP precedent and for their reason.  The player did nothing; their engine
+  is old.  Printing `cheated` in red at somebody for that would be a false
+  statement about a person on their own screen, and the quiet demotion survives a
+  false negative where an accusation does not.
+
+  NO COUNTER, LIKE TF_NOMAP AND UNLIKE TF_NOPROFILE.  The subject cannot move
+  inside a run: the field is latched once at the start and the engine that is
+  publishing it cannot be swapped underneath a running map.  There is no
+  set-and-unset span to difference, so there is nothing for a counter to count.
+
+  ON A LOBBY IT SHOULD NEVER BE SEEN, and if it is, it means the fleet is running
+  an engine older than the QC on it -- which is exactly the deploy-order mistake
+  `build.ps1 -Engine -Pi` exists to prevent.  That is worth being able to read off
+  a board row rather than discovering from physics.
+*/
+#define TF_NOCLOCK  8192
+
+/*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
 
       inprof = "<version> <have> <in_rawinput> <m_filter> <m_accel> <bad>"

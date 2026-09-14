@@ -702,7 +702,7 @@ void() worldspawn =
 	  SV_TimerArm reset the flag that gates the rule but not the air-phase clock
 	  the rule settles on -- so every arm that followed a fall closed the window
 	  on the tick after it opened.  This switch covers the two-line repair
-	  (SV_TimerArm clears run_t_airat; the settle needs TS_RUNNING) plus the stage
+	  (SV_TimerArm clears run_t_airsec; the settle needs TS_RUNNING) plus the stage
 	  handover exemption those two make necessary.
 
 	  0 is build 19 byte-for-byte, which makes this a real bisection rather than

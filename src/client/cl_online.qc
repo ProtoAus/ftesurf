@@ -966,6 +966,17 @@ string(float i) Online_WhyString =
 	  hashes to the player who wants the detail.
 	*/
 	if (ob_flags[i] & TF_NOMAP)     return "other map";
+	/*
+	  BUILD 76.  "old clock" -- nine characters, so SBW_TAG's 11 still fits and no
+	  column moves, same as the row above.
+
+	  It is LAST because it is the only word here that is not about the player's
+	  machine at all: it says the SERVER that timed this run had no tick counter
+	  to time it with, so the number is the wall-clock one and no verifier can
+	  recompute it.  Naming the hole rather than the player matters more here than
+	  anywhere else in this list, because the player had no way to affect it.
+	*/
+	if (ob_flags[i] & TF_NOCLOCK)   return "old clock";
 	return "";
 };
 

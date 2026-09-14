@@ -2065,8 +2065,32 @@ void(entity e, float track, float leg, float ticks, float flags,
 	  tickrate and ranks on the result.  Submitting 0.015 does not corrupt the
 	  board -- the 1..10000 bound rejects it with a 400 -- but it would mean
 	  every run from this server silently failing to store.
+
+	  BUILD 76: THE MOVER'S RATE, NOT THE CVAR, AND THIS IS THE LINE THAT MATTERED
+	  MOST IN THE WHOLE MIGRATION.
+
+	  `ticks` on the line below used to be a count of sv.time intervals, divided
+	  out by whatever run_t_tick said -- so cvar("pm_ticrate") was not merely the
+	  available answer, it was the RIGHT one: the same number had produced the
+	  count.  Since build 76 `ticks` is the count the MOVER produced, and the
+	  mover divides by movevars.ticrate with a fallback of its own.  The two
+	  should be identical and the entire reason Patch 325 publishes
+	  run_movetickrate is that nothing had ever checked.  If they ever differ,
+	  every millisecond surfd stores for every run from this server is out by
+	  their ratio, silently, with a board that looks completely normal -- which is
+	  precisely the bug build 64 shipped in the other direction, reading bhop maps
+	  at a 0.015 constant when they run at 0.01.
+
+	  So the count and its rate now leave this server from the SAME source.  The
+	  cvar stays as the fallback and only as the fallback: run_movetickrate is 0
+	  on an engine older than Patch 325, and a run from such a server was timed on
+	  the sampled clock anyway (it carries TF_NOCLOCK, and surfd's certifiable()
+	  demotes it), so the cvar is exactly the number that produced ITS ticks.
+	  Each branch uses the rate that made the count it is describing.
 	*/
-	rate = cvar("pm_ticrate");
+	rate = e.run_movetickrate;
+	if (rate <= 0)
+		rate = cvar("pm_ticrate");
 	if (rate <= 0)
 		rate = PM_TICK;
 	rate = 1 / rate;
