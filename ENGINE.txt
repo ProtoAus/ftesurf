@@ -13,11 +13,19 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   8d04da08edbbc5ad908bcac697ab3481c2edf5dd
+commit   74df7281c90fa760ac2653362036e1aad08cc3d6
 tag      patch-266
-patch    326
+patch    327
 qcbuild  82
-date     2026-09-14
+date     2026-09-15
+
+# qcbuild STAYS 82 AND THAT IS NOT AN OVERSIGHT.  Patch 327 adds a measurement
+# command (pm_recsim) and nothing else; no QC build needs it, and a player's
+# install runs identically with or without it.  `commit` moves anyway, because
+# this file's only automated consumer is build.ps1 -Engine's "HEAD does not match"
+# warning, and leaving the SHA behind a committed patch would make that warning
+# mean "somebody committed something" instead of "there is uncommitted work in
+# the tree".
 
 # NOTE, CORRECTED 2026-09-14: the long-standing caveat here -- "`commit` is still
 # patch 266's SHA because everything from 267 up is applied in the working tree
@@ -998,6 +1006,44 @@ date     2026-09-14
 #          and the two still disagreed, because qsort is UNSTABLE and those
 #          comparators return 0 for equal keys.  Closing it needs a TOTAL order,
 #          not a sign.  Left in place with the whole analysis at the site.
+#
+#   327  engine/server/sv_ccmds.c only (a console command beside pm_dettest).
+#        NO behaviour change -- the second INSTRUMENT in this file.  Plan
+#        experiment E3, and the last of the three Phase 0 experiments to become
+#        answerable: until QC build 82 put a usercmd stream in the .rec there was
+#        nothing to replay, because every recording was a STATE trace.
+#        DOES A RECORDED INPUT TRACE REPLAY?  pm_recsim <file.rec> feeds the `in`
+#        records back through the mover that produced them and measures three
+#        things, the first of which needs no geometry at all:
+#          1 tick arithmetic -- the mover's own ticksrun against the file's
+#            movetick delta, i.e. the derived duration tested against pm_source.c
+#          2 pinned loop -- org/vel snapped to the sample each packet, so errors
+#            cannot compound and the number means ONE packet of divergence
+#          3 open loop -- seeded once, never corrected; what a verifier does
+#        Measured on a real, clean (flags 0) bhop run of 1340 rows:
+#          ANSWER: YES, to the limit of what the file can express.  1339/1339
+#          moves exact on arm 1.  1307 of 1324 packets at the file's own PRINTING
+#          FLOOR on arm 2 -- origin error median 0.0046 u against a %.2f sample,
+#          i.e. +-0.005 u is the floor and the residue is the rounding.
+#          SO BUILD 82'S REFUSAL OF A FRAMETIME COLUMN HOLDS, and %.5f on <carry>
+#          survives the round trip -- neither was obvious from the arithmetic.
+#          WHAT IT FOUND is the fifteen packets that do NOT reproduce, and none
+#          of them is a simulation failure:
+#            TEN ARE TELEPORTS -- ~250 u of position with velocity PRESERVED
+#            exactly, i.e. trigger_teleport (sv_entities.qc:4632, stage/bonus
+#            teleports and the "you fell off" resets).  The .rec records the
+#            CONSEQUENCE and never the EVENT, so a verifier cannot tell one from
+#            a cheat that moved the player, and an open loop dies at the first.
+#            trigger_push and trigger_setspeed are the same class via velocity.
+#            TWO are one-tick jump-edge disagreements at a landing.
+#          ALSO: the FINAL move's duration is underivable (1340 rows, 1339
+#          durations, and the missing one is the move the finish latches on), and
+#          the file pins the map and the zones but not the movevars, the player
+#          hull or pm_type.
+#        NEGATIVE CONTROL: build 82's own recording, which is half a noclip
+#        flight.  pm_type is not in the format, so the sim collides where the
+#        flight did not and reports >1000 u/s from the row that typed `noclip` --
+#        a tool that reproduced both files equally well would measure nothing.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before
