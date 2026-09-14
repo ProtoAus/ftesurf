@@ -26,32 +26,43 @@ not approximated: `keys` carries FSI_JUMP/FSI_LEFT/FSI_RIGHT directly.
 TWO STATISTICS, AND THE SECOND IS THE USEFUL ONE.
 
   rho   the assist ratio: the player's own applied yaw per tick divided by the
-        optimiser's target angle for that speed.  An optimiser at full power
-        pins rho to a constant; a human's is broad.  BUT a PARTIAL assist adds a
-        constant to the human's own input rather than replacing it, so rho's
-        spread survives and only its mean moves.  At the strongest setting
-        StrafePro can reach -- POWER 0.50 x GAIN 0.75, with M_YAW hardcoded at
-        0.022 while the victim's `sensitivity` is ignored -- the delivered angle
-        is a third to a half of nominal at ordinary sensitivities.  So rho alone
-        is a weak per-run discriminator, which is the `opti_power 20` problem the
-        plan already names.
+        optimiser's target angle for that speed.  MEASURED ON 90,792 GATED
+        SAMPLES FROM 87 HONEST RECORDINGS: mean +0.59, sd 1.54, median +0.44.
+        The spread is 2.6x the mean, so rho's LEVEL separates nothing per run --
+        which is the `opti_power 20` problem the plan already names.  Its
+        VARIANCE is a different matter at full power, where the tool does
+        essentially all the steering and rho must collapse toward a constant;
+        the v2 sample's author reports 99.4% strafe accuracy at 100/100, which
+        is a claim about exactly that collapse.  Not implemented here: it needs
+        an assisted recording to calibrate against and there is not one yet.
 
-  step  the 280 u/s discontinuity.  Mean assist just below 280 against mean
-        assist just above it, under the same gate.  A human has no reason to
-        change behaviour at 280.000 u/s; the cheat changes behaviour there by
-        construction.  This is a regression-discontinuity design, it needs no
-        model of how well anybody strafes, and -- the point -- its signal scales
-        with POWER while the noise does not.  That is why it survives a partial
-        assist where rho does not.
+  step  the 280 u/s discontinuity, and THE OBVIOUS ESTIMATOR FOR IT DOES NOT
+        WORK.  Comparing mean assist below the gate with mean assist above it
+        reads +0.38 deg/tick on honest play, because speed and turn rate are
+        physically correlated and a +-30 u/s window carries that trend.  A
+        local-linear regression-discontinuity fit removes it and the honest
+        floor drops to -0.09, which is the zero it should always have been.
+        See rd_step().
+
+        VALIDATED AGAINST A KNOWN ANSWER, not only against nulls: --inject adds
+        the optimiser's own arithmetic to the honest corpus above the gate, and
+        the fit recovers 99.7% of the injected step for v1 and 82% for v2.  The
+        missing 18% is v2's exponential smoother, which resets at the gate and
+        ramps in over ~7 ticks -- so what the estimator is looking for is no
+        longer quite a step.
 
 WHAT THIS IS NOT.  It does not accuse.  The plan's decision policy says
 statistical findings flag for human review and never auto-reject, and nothing
-here produces a threshold.  It produces distributions.
+here produces a threshold.  It produces distributions.  Nor is --inject a
+simulation: a real assist would have changed the trajectory and therefore the
+speeds, so it bounds the signal rather than reproducing a run.
 
 Usage:
     python tools/strafestats.py                     # every .rec under data/runs
     python tools/strafestats.py <file.rec> [...]
     python tools/strafestats.py --pooled            # one distribution over all
+    python tools/strafestats.py --pooled --inject   # the positive control
+    python tools/strafestats.py --variant v1        # the older sample's presets
     python tools/strafestats.py --sens 0.3          # the k a prediction assumes
 """
 
@@ -73,8 +84,34 @@ FL_ONGROUND, FL_JUMPBTN, FL_RAMP = 1, 4, 16
 AIR_WISHSPEED = 30.0
 VELOCITY_THRESHOLD = 280.0
 M_YAW = 0.022
-POWER = 0.50    # POWER_PRESETS[3], the maximum
-GAIN = 0.75     # GAIN_PRESETS[3],  the maximum
+
+# TWO VARIANTS ARE IN THE SAMPLE SET AND THEY DIFFER IN WAYS THAT MATTER HERE.
+# The output stage is identical in both -- SendInput, MOUSEEVENTF_MOVE, dy 0 --
+# so E1's verdict covers both without re-running it. What changed is the size of
+# the signal and the SHAPE of it at the gate:
+#
+#   v1  POWER_PRESETS [0.125, 0.25, 0.375, 0.50], GAIN [0.1875 .. 0.75],
+#       injection = round(delta * power).  The rounding quantises small deltas
+#       to zero outright.
+#
+#   v2  POWER_PRESETS [0.25, 0.50, 0.75, 1.0] -- the maximum DOUBLES -- GAIN
+#       [0.184 .. 0.736], and two new mechanisms:
+#         * a sub-pixel accumulator carrying the fraction across ticks instead
+#           of round(), so the delivered angle is exact on average rather than
+#           quantised.  Removes a dither a detector could have keyed on.
+#         * an exponential smoother, alpha 0.35, RESET TO ZERO whenever the gate
+#           closes.  So crossing 280 no longer produces a step: it produces a
+#           ramp reaching 95% in about 7 ticks (~70 ms at 0.01).  That is aimed
+#           squarely at the discontinuity below, whether or not it was meant to
+#           be -- the author's note was that it feels smoother.
+#       It also resolves A+D held together to the LAST key pressed, where v1
+#       returned and did nothing.  The gate is therefore slightly wider.
+VARIANTS = {
+    "v1": {"power": 0.50, "gain": 0.75,  "alpha": 1.0,  "subpixel": False},
+    "v2": {"power": 1.00, "gain": 0.736, "alpha": 0.35, "subpixel": True},
+}
+POWER = VARIANTS["v2"]["power"]
+GAIN = VARIANTS["v2"]["gain"]
 
 # The speed windows either side of the gate. Deliberately narrow and symmetric:
 # a wide window measures "do fast players turn differently from slow ones", which
@@ -152,7 +189,7 @@ def theta_star(speed):
     return math.degrees(math.asin(min(AIR_WISHSPEED / speed, 1.0)))
 
 
-def injected_degrees(speed, k):
+def injected_degrees(speed, k, var=None):
     """Degrees of view rotation StrafePro delivers per 10 ms tick at this speed.
 
     Note what it does NOT do: `sensitivity` is absent from strafe_pro.py, which
@@ -160,9 +197,18 @@ def injected_degrees(speed, k):
     turns counts back into degrees with its own k = sensitivity * m_yaw.  So the
     delivered angle is the intended one scaled by (k / 0.022) -- at sensitivity
     0.5 that is half, at 0.3 it is under a third.  The cheat is quietly weaker
-    than its own settings claim on every config but sensitivity 1.0.
+    than its own settings claim on every config but sensitivity 1.0, and neither
+    variant knows it.
+
+    This is the STEADY-STATE value.  v2's smoother has unit gain once settled,
+    so it changes the transient at the gate and not the size here; v2's
+    accumulator makes the average exact rather than rounded, which is why only
+    v1 rounds.
     """
-    counts = round(theta_star(speed) * GAIN / M_YAW * POWER)
+    v = var or VARIANTS["v2"]
+    counts = theta_star(speed) * v["gain"] / M_YAW * v["power"]
+    if not v["subpixel"]:
+        counts = round(counts)
     return counts * k
 
 
@@ -199,7 +245,19 @@ def read_rec(path):
     return head, samples
 
 
-def analyse(path):
+def analyse(path, inject_k=None):
+    """inject_k: if set, ADD StrafePro's assist to every sample above the gate.
+
+    A SYNTHETIC POSITIVE CONTROL, and it is not a simulation.  The assisted view
+    would have changed the trajectory and therefore the speeds, so this file is
+    not a run that could have happened.  What it IS, exactly, is the question the
+    estimator has to answer: if this player's yaw had carried the optimiser's
+    increment above 280 u/s and nothing below it, does the fit recover the step,
+    and at what size?  A detector validated only against nulls is half validated
+    -- every honest recording in the tree is a true negative and there is not one
+    true positive anywhere, so a test that always returned "clean" would have
+    scored perfectly on all 87 of them.
+    """
     head, s = read_rec(path)
     if head is None:
         return None
@@ -217,7 +275,14 @@ def analyse(path):
     if rate <= 0:
         rate = 0.015
 
+    var = VARIANTS[inject_k[1]] if inject_k else VARIANTS["v2"]
+    k = inject_k[0] if inject_k else 0.0
+
     rows = []
+    last_key = None          # v2's A+D tie-break: whichever was pressed last
+    smoothed = 0.0           # v2's exponential state, reset when the gate shuts
+    carry = 0.0              # v2's sub-pixel accumulator, reset with it
+    prev_left = prev_right = False
     for i in range(1, len(s)):
         a, b = s[i - 1], s[i]
         dt = b[0] - a[0]
@@ -228,16 +293,52 @@ def analyse(path):
             continue
         keys = int(a[10])
         left, right = bool(keys & FSI_LEFT), bool(keys & FSI_RIGHT)
-        if left == right:            # both or neither -- StrafePro returns
+        if left and not prev_left:
+            last_key = "a"
+        if right and not prev_right:
+            last_key = "d"
+        prev_left, prev_right = left, right
+
+        gate = bool(keys & FSI_JUMP) and (left or right) and speed > VELOCITY_THRESHOLD
+        if not gate:
+            smoothed = carry = 0.0       # exactly where the cheat resets them
+        if not (left or right):
             continue
-        if not (keys & FSI_JUMP):    # `keyboard.is_pressed("space")`
+        if not (keys & FSI_JUMP):        # `keyboard.is_pressed("space")`
             continue
-        side = 1.0 if right else -1.0
+        if left and right:
+            # v1 returned here; v2 follows the last key pressed. Taking v2's
+            # reading widens the gate slightly, and both-held is rare enough
+            # that it does not move any number below.
+            side = -1.0 if last_key == "a" else 1.0
+        else:
+            side = 1.0 if right else -1.0
+
         # +dx is a rightward mouse move, which DECREASES yaw, and StrafePro signs
         # its injection with copysign(..., side). So the direction it pushes is
         # -side in yaw. `assist` is positive when the player turns that way.
         dyaw = wrap(b[8] - a[8])
         assist = -side * dyaw / (dt / rate)
+
+        if inject_k and speed > VELOCITY_THRESHOLD:
+            # Walk the cheat's own state machine per tick so the gate transient
+            # is modelled rather than assumed: v2 ramps in from zero with
+            # alpha 0.35, v1 (alpha 1.0) steps.
+            ticks = max(1, int(round(dt / rate)))
+            added = 0.0
+            target = theta_star(speed) * var["gain"] / M_YAW      # counts/tick
+            for _ in range(ticks):
+                smoothed += (target - smoothed) * var["alpha"]
+                want = smoothed * var["power"]
+                if var["subpixel"]:
+                    carry += want
+                    emit = int(carry)
+                    carry -= emit
+                else:
+                    emit = round(want)
+                added += emit * k
+            assist += added / ticks
+
         rows.append((speed, assist, int(a[9])))
 
     if not rows:
@@ -268,7 +369,7 @@ def analyse(path):
     }
 
 
-def report(r, sens, verbose):
+def report(r, sens, verbose, variant="v2"):
     if r is None:
         return
     if r.get("n", 0) == 0:
@@ -280,7 +381,7 @@ def report(r, sens, verbose):
     # What the cheat would ADD above the gate and not below it, at these speeds.
     # ARITHMETIC, NOT A SIMULATION: the assisted view would have changed the
     # trajectory and therefore the speeds. It bounds the signal, it is not a run.
-    pred = mean([injected_degrees(sp, k) for sp in r["speeds"]]) if r["speeds"] else float("nan")
+    pred = mean([injected_degrees(sp, k, VARIANTS[variant]) for sp in r["speeds"]]) if r["speeds"] else float("nan")
 
     print("%-44s %-18s n %5d  gated %5d" % (
         os.path.basename(r["path"])[:44], r["map"][:18], r["n"], r["n_gated"]))
@@ -308,6 +409,14 @@ def main(argv):
                          "per-player baseline would look like")
     ap.add_argument("--sens", type=float, default=0.5,
                     help="the sensitivity a prediction assumes (default 0.5)")
+    ap.add_argument("--variant", choices=sorted(VARIANTS), default="v2",
+                    help="which StrafePro's constants to use (default v2)")
+    ap.add_argument("--inject", action="store_true",
+                    help="SYNTHETIC POSITIVE CONTROL: add the optimiser's assist "
+                         "to every honest run above the gate and re-measure. Not "
+                         "a simulation -- the real assist would have changed the "
+                         "trajectory. It asks only whether the estimator RECOVERS "
+                         "a step it is known to have been given.")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
 
@@ -316,7 +425,11 @@ def main(argv):
         print("no .rec files found under %s" % RUNS)
         return 1
 
-    results = [analyse(f) for f in files]
+    inj = (a.sens * M_YAW, a.variant) if a.inject else None
+    if a.inject:
+        print("SYNTHETIC POSITIVE CONTROL -- StrafePro %s at sensitivity %.2f "
+              "added above the gate\n" % (a.variant, a.sens))
+    results = [analyse(f, inject_k=inj) for f in files]
     results = [r for r in results if r and r.get("n", 0) > 0]
 
     if a.pooled:
@@ -348,8 +461,10 @@ def main(argv):
             print()
             print("  a max-power assist (POWER %.2f x GAIN %.2f) at sensitivity %.2f would add"
                   % (POWER, GAIN, a.sens))
-            print("        %+.4f deg/tick above the gate and exactly 0 below it"
-                  % mean([injected_degrees(sp, k) for sp in speeds]))
+            print("        %+.4f deg/tick averaged over every gated speed, and" 
+                  % mean([injected_degrees(sp, k, VARIANTS[a.variant]) for sp in speeds]))
+            print("        %+.4f deg/tick AT THE CUT, which is what the RD fit recovers"
+                  % injected_degrees(VELOCITY_THRESHOLD, k, VARIANTS[a.variant]))
         # Per-file spread is what a threshold has to clear on ONE run.
         steps = [r["rd"] for r in results if r["rd"] == r["rd"]]
         if steps:
@@ -358,13 +473,13 @@ def main(argv):
             print("        mean %+.4f  sd %.4f  min %+.4f  max %+.4f"
                   % (mean(steps), sd(steps), min(steps), max(steps)))
             if speeds:
-                sig = mean([injected_degrees(sp, k) for sp in speeds])
+                sig = injected_degrees(VELOCITY_THRESHOLD, k, VARIANTS[a.variant])
                 print("        a max-power assist is %.2f sd from the honest mean"
                       % (sig / sd(steps) if sd(steps) else float('nan')))
         return 0
 
     for r in results:
-        report(r, a.sens, a.verbose)
+        report(r, a.sens, a.verbose, a.variant)
     print("%d recordings, %d with air-strafe samples under the gate"
           % (len(files), len(results)))
     return 0
