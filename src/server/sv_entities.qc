@@ -5515,6 +5515,7 @@ void() trigger_push_touch =
 	{
 		other.flags = other.flags - FL_ONGROUND;
 		setorigin(other, other.origin + '0 0 1');
+		SV_RecWarp(other, "lift");	// BUILD 87: an origin write outside the mover
 	}
 
 	other.run_basevel = push;

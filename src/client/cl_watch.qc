@@ -1024,8 +1024,10 @@ void() Watch_Scan =
 	  discontinuity at all, so there is nothing to show that the motion does not
 	  already show.  The record is for re-simulation, elsewhere.
 	*/
-	if (ver > 8)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 8; "
+	// BUILD 87: 8 -> 9.  `seed`, `pm`, `pe` and `portal` are records this reader
+	// skips like `in`; the in row's new column and the trailer's are unread here.
+	if (ver > 9)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 9; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

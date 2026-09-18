@@ -275,7 +275,7 @@ bannered as superseded.)
   `TF_CHEAT/NOJOURNAL/NORULESET/NOPROFILE/NOMAP/NOCLOCK` in `sh_defs.qc`,
   consumed by surfd's `certifiable()`.
 - THE `.rec` GRAMMAR BLOCK over `SV_RecOpen` (sv_timer.qc) IS AUTHORITATIVE,
-  currently FTESURF-REC 8. `tools/reccheck.py` is written from that block and
+  currently FTESURF-REC 9. `tools/reccheck.py` is written from that block and
   never from the writer, so a writer that drifts from its own documentation gets
   caught. Same rule for `hidcheck.py` and `.hid`.
 - Version bump rule: new header keys and new record types are additive and need

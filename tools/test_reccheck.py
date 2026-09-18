@@ -56,11 +56,19 @@ TICK = 0.01
 HORIZON = 606           # run_movetick when the recording opened
 PAD = 4                 # pre-start padding samples, t < 0
 PACKETS = 40
+# v9: a pin with an exponent-form value, as %.9g prints one.
+PIN = "pmsrcver=1 gravity=800 maxspeed=320 ticrate=0.00999999978 bounce=1e-05"
 
 
-def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
-          rides=(), inend=True):
-    """-> list of lines.  A finished, well-formed recording, v8 by default.
+def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
+          rides=(), inend=True, pmpin=True, seed=True, pms=(), pes=(),
+          portals=()):
+    """-> list of lines.  A finished, well-formed recording, v9 by default.
+
+    BUILD 87 (v9): `pmpin`/`seed` default on (off below v9); a `warp` may carry a
+    fourth item, its <row>, defaulting to its pk (one `in` row per packet here);
+    `pms` is (pk, row), `pes` (pk, row, crc), `portals` (pk, row, n), all
+    appended after the packet loop, so every row they name is already written.
 
     BUILD 83: `ver` EXISTS SO THE TRAILER WIDTH IS DERIVED AND NEVER TYPED.  v6
     ends with five fields and v7 with six, and the fixtures below used to reach
@@ -95,7 +103,13 @@ def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
         L.append("instart %d %d" % (HORIZON, HORIZON))
     if startjit is not None:
         L.append("startjit %g %g %g %g" % tuple(startjit))
-    L += ["flags 0", "begin"]
+    L.append("flags 0")
+    v9 = ver >= 9
+    if v9 and pmpin:
+        L.append("pmpin " + PIN)
+    L.append("begin")
+    if v9 and seed:
+        L.append("seed 0 0 64 0 0 0 0 ducked=0 ducktime=0 msec_carry=0.003")
 
     def sample(t):
         # t ox oy oz  vx vy vz  pit yaw  fl keys  fwd side up  nx ny nz
@@ -114,8 +128,12 @@ def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
     mt, carry, n_in = HORIZON, 0.003, 0
     for pk in range(PACKETS):
         if inputs:
-            L.append("in %d %d %.5f 0 0 0 0.0000 90.0000 0.0000 0" %
-                     (pk, mt, carry))
+            if v9:
+                L.append("in %d %d %.9g 0 0 0 0.0000 90.0000 0.0000 0 0" %
+                         (pk, mt, carry))
+            else:
+                L.append("in %d %d %.5f 0 0 0 0.0000 90.0000 0.0000 0" %
+                         (pk, mt, carry))
             n_in += 1
             carry += 0.016 - TICK * (2 if carry + 0.016 >= 2 * TICK else 1)
             mt += 2 if carry < 0.003 else 1
@@ -125,21 +143,33 @@ def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
     # Build 83.  Appended AFTER the loop so a fixture can state them without
     # having to model the interleave; `warp` is not per-packet and the grammar
     # imposes no position on it beyond being in the body.
-    for wpk, wmt, wkind in warps:
-        L.append("warp %d %d %s 0.00 0.00 64.00 0.00 0.00 0.00"
-                 % (wpk, wmt, wkind))
+    for w in warps:
+        if v9:
+            wrow = w[3] if len(w) > 3 else w[0]
+            L.append("warp %d %d %d %s 0 0 64 0 0 0 0"
+                     % (w[0], w[1], wrow, w[2]))
+        else:
+            L.append("warp %d %d %s 0.00 0.00 64.00 0.00 0.00 0.00"
+                     % tuple(w[:3]))
 
     # Build 85, appended after the warps for the same reason: the grammar imposes
     # no position on a `ride` beyond being in the body, and modelling the real
     # interleave would tie every fixture to the packet loop's arithmetic.
-    for rpk, rmt, rwhat, rbx, rby, rbz in rides:
-        L.append("ride %d %d %s %.2f %.2f %.2f"
-                 % (rpk, rmt, rwhat, rbx, rby, rbz))
+    for rd in rides:
+        L.append(("ride %d %d %s %.9g %.9g %.9g" if v9 else
+                  "ride %d %d %s %.2f %.2f %.2f") % tuple(rd))
+
+    for ppk, prow in pms:
+        L.append("pm %d %d %s" % (ppk, prow, PIN))
+    for ppk, prow, crc in pes:
+        L.append("pe %d %d %d" % (ppk, prow, crc))
+    for ppk, prow, n in portals:
+        L.append("portal %d %d %d 0 0 64 0 0 0" % (ppk, prow, n))
 
     # Build 85.  Before the trailer, where SV_RecClose writes it, and gated on
     # the trace as `instart` is -- one without the other means TRUNCATED.
     if ver >= 8 and inend and inputs:
-        L.append("inend %d %.5f" % (mt, carry))
+        L.append(("inend %d %.9g" if v9 else "inend %d %.5f") % (mt, carry))
 
     tail = [PACKETS, PAD + PACKETS, PAD, 0]
     if ver >= 6:
@@ -148,6 +178,8 @@ def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
         tail.append(len(warps))      # <warps>, build 83
     if ver >= 8:
         tail.append(len(rides))      # <rides>, build 85
+    if v9:
+        tail += [len(pms), len(pes), len(portals)]   # build 87
     L.append("end " + " ".join(str(x) for x in tail))
     return L
 
@@ -155,7 +187,8 @@ def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
 # The trailer's fields BY NAME, so a fixture never reaches into it by position.
 # See build()'s docstring for what that cost the first time.
 END_FIELD = {"ticks": 1, "samples": 2, "padding": 3, "cp": 4,
-             "inputs": 5, "warps": 6, "rides": 7}
+             "inputs": 5, "warps": 6, "rides": 7,
+             "pms": 8, "pes": 9, "portals": 10}
 
 
 def bump_end(lines, field, delta=1):
@@ -197,9 +230,28 @@ def row(lines, which=10, **kw):
     f = lines[ix].split()
     for k, v in kw.items():
         f[{"pk": 1, "mt": 2, "carry": 3, "fwd": 4, "pit": 7,
-           "yaw": 8, "bt": 10}[k]] = str(v)
+           "yaw": 8, "bt": 10, "fl": 11}[k]] = str(v)
     lines[ix] = " ".join(f)
     return lines
+
+
+def edit(lines, kind, pos, value, which=0):
+    """Set token `pos` (keyword = 0) of the `which`-th `kind` line; kind
+    "sample" picks sample lines."""
+    ix = [i for i, l in enumerate(lines)
+          if (l[:1].isdigit() or l[:1] == "-" if kind == "sample"
+              else l.split()[0] == kind)][which]
+    f = lines[ix].split()
+    f[pos] = str(value)
+    lines = list(lines)
+    lines[ix] = " ".join(f)
+    return lines
+
+
+def after_row(lines, which, text):
+    """Insert `text` directly after the `which`-th `in` row."""
+    ix = [i for i, l in enumerate(lines) if l.startswith("in ")][which]
+    return lines[:ix + 1] + [text] + lines[ix + 1:]
 
 
 def ok_clean(lines, what):
@@ -246,7 +298,7 @@ def case_control():
     """THE ARM EVERY OTHER ARM RESTS ON.  Without it, "the checker faulted"
     says nothing about whether the mutation is what it faulted on."""
     f, n = run(build())
-    check(not f, "a well-formed v6 recording passes with 0 faults")
+    check(not f, "a well-formed v9 recording passes with 0 faults")
     if f:
         print("        %s" % f)
     check(not n, "and emits no notes, so the note arms below are unambiguous")
@@ -283,7 +335,7 @@ def case_trailer_width():
     build the default and assert "in a v7 file", true only while the default was
     7 -- so the v8 bump made it fail about v8 while claiming to be about v7.
     """
-    for ver, want in ((6, 5), (7, 6), (8, 7)):
+    for ver, want in ((6, 5), (7, 6), (8, 7), (9, 10)):
         b = [l if not l.startswith("end ") else " ".join(l.split()[:want])
              for l in build(ver=ver)]
         faults_with(b, "'end' takes %d fields in a v%d file, has %d"
@@ -306,10 +358,13 @@ def case_v6_trailer_still_five_fields():
 
 
 def case_row_width():
-    b = build()
-    ix = [i for i, l in enumerate(b) if l.startswith("in ")][10]
-    b[ix] = " ".join(b[ix].split()[:10])
-    faults_with(b, "'in' takes 10 fields", "a short 'in' row is a fault")
+    """v9 appends <fl>, so the v8 width is a short v9 row."""
+    for ver, want in ((8, 10), (9, 11)):
+        b = build(ver=ver)
+        ix = [i for i, l in enumerate(b) if l.startswith("in ")][10]
+        b[ix] = " ".join(b[ix].split()[:want])
+        faults_with(b, "'in' takes %d fields" % want,
+                    "a v%d 'in' row with %d fields is a fault" % (ver, want - 1))
 
 
 def case_movetick_backwards():
@@ -378,9 +433,18 @@ def case_offgrid_angle_is_a_note():
     else -- ordinarily setpos, which writes .v_angle straight from atof and is
     exactly what a test harness does.  A NOTE with a count, because a checker
     that faulted every scripted run is one nobody could test this feature with."""
-    notes_with(row(build(), yaw="12.3456789"),
+    notes_with(row(build(ver=8), yaw="12.3456789"),
                "not a multiple of the 16-bit wire quantum",
-               "an off-grid angle is a note with a count")
+               "an off-grid angle is a note with a count (v8)")
+
+
+def case_v9_offgrid_angle_is_a_fault():
+    """v9 angles are input_angles, which only SHORT2ANGLE ever sets, so setpos
+    no longer excuses one.  The worst legal %.4f print is 0.0091 quanta."""
+    faults_with(row(build(), yaw="12.3456789"), "off the 16-bit wire quantum",
+                "a v9 off-grid angle is a fault")
+    ok_clean(row(build(), yaw="-21.0938"),
+             "a v9 on-grid angle at the %.4f print limit (0.0091) passes")
 
 
 def case_v5_trailer_still_four_fields():
@@ -393,14 +457,15 @@ def case_v5_trailer_still_four_fields():
 
 
 def case_warp_shape():
-    """Build 83.  `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` -- nine fields."""
-    b = build(warps=[(5, HORIZON + 5, "tele")])
-    ok_clean(b, "a well-formed warp record passes")
-
-    short = [l if not l.startswith("warp ") else " ".join(l.split()[:9])
-             for l in b]
-    faults_with(short, "'warp' takes 9 fields",
-                "a short warp record is a fault")
+    """Build 83.  `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` -- nine fields;
+    v9 adds <row> and <fl> for eleven."""
+    for ver, want in ((8, 9), (9, 11)):
+        b = build(ver=ver, warps=[(5, HORIZON + 5, "tele")])
+        ok_clean(b, "a well-formed v%d warp record passes" % ver)
+        short = [l if not l.startswith("warp ") else " ".join(l.split()[:want])
+                 for l in b]
+        faults_with(short, "'warp' takes %d fields" % want,
+                    "a short v%d warp record is a fault" % ver)
 
 
 def case_warp_count():
@@ -443,6 +508,14 @@ def case_warp_unknown_kind_is_a_note():
     check(not f, "an unknown warp kind is not a fault")
     check(any("not one this tool knows" in x for x in n),
           "an unknown warp kind is reported as a note")
+    # v9 adds lift and zone; a v8 file keeps the five.
+    ok_clean(build(warps=[(5, HORIZON + 5, "lift"), (9, HORIZON + 9, "zone")]),
+             "v9 warp kinds lift and zone pass")
+    f, n = run(build(warps=[(5, HORIZON + 5, "lift")]))
+    check(not n, "and draw no note in a v9 file")
+    notes_with(build(ver=8, warps=[(5, HORIZON + 5, "lift")]),
+               "not one this tool knows",
+               "lift in a v8 file is still an unknown-kind note")
 
 
 def case_ride_shape():
@@ -504,6 +577,10 @@ def case_bare_pay_is_the_addoutput_shape():
                           (9, HORIZON + 9, "arm", 0.0, 0.0, 0.0),
                           (20, HORIZON + 20, "pay", 0.0, 0.0, 650.0)]),
              "a ride span followed by a bare AddOutput pay is not a fault")
+    # Build 87 corrected the grammar: `arm 0` follows a pay only after a
+    # non-zero arm (or none since open), so a lone mid-run pay has none.
+    ok_clean(build(rides=[(12, HORIZON + 12, "pay", 0.0, 0.0, 650.0)]),
+             "a lone mid-run pay with no arm 0 after it is not a fault")
 
 
 def case_ride_below_horizon():
@@ -624,6 +701,124 @@ def case_startjit_blocked_is_a_note_not_a_fault():
           "a startjit that applied nothing is reported as a note")
 
 
+# ---------------------------------------------------------------------------
+# v9 (build 87): exact state.
+# ---------------------------------------------------------------------------
+V9_ALL = dict(warps=[(5, HORIZON + 6, "tele", 5)],
+              rides=[(3, HORIZON + 3, "arm", 0.0, 0.0, 250.0)],
+              pms=[(7, 7)], pes=[(0, 0, 1948226), (9, 9, 0xFFFFFF)],
+              portals=[(12, 12, 1)])
+
+
+def case_v9_every_record_clean():
+    f, n = run(build(**V9_ALL))
+    check(not f and not n, "a v9 file with seed, pmpin, warp, ride, pm, pe and "
+                           "portal passes with no faults and no notes")
+    if f or n:
+        print("        faults=%s notes=%s" % (f, n))
+
+
+def case_v9_exponent_is_legal_in_float_columns():
+    """%.9g switches to exponent form below 1e-4; those columns must not fault."""
+    for kind, pos, v in (("warp", 9, "-4.37113883e-08"),
+                         ("in", 3, "9.99999975e-05"),
+                         ("ride", 6, "7.26431608e-08"),
+                         ("seed", 4, "-1.25664083e-04"),
+                         ("portal", 8, "-4.37113883e-08"),
+                         ("inend", 2, "9.99999975e-05")):
+        ok_clean(edit(build(**V9_ALL), kind, pos, v),
+                 "v9 %s column %d in exponent form (%s) passes" % (kind, pos, v))
+
+
+def case_v9_exponent_still_faults_elsewhere():
+    """Integer columns, and the fixed-point sample columns, keep EXP_RE's rule."""
+    for kind, pos, v in (("pe", 3, "1.9e+06"), ("warp", 3, "5e+00"),
+                         ("in", 2, "6.06e+02"), ("end", 1, "4e+01"),
+                         ("sample", 1, "0e+00")):
+        faults_with(edit(build(**V9_ALL), kind, pos, v), "in exponent form",
+                    "v9 %s column %d in exponent form is a fault" % (kind, pos))
+
+
+def case_v9_trailer_counts():
+    b = build(**V9_ALL)
+    for field, kind in (("pms", "pm"), ("pes", "pe"), ("portals", "portal")):
+        for d, how in ((1, "over"), (-1, "under")):
+            faults_with(bump_end(b, field, d), "%s records, the file has" % kind,
+                        "a trailer that %s-counts %s is a fault" % (how, field))
+
+
+def case_v9_row_must_be_written_already():
+    """Every row-bound record is written after its row's move."""
+    faults_with(build(warps=[(5, HORIZON + 6, "tele", PACKETS)]),
+                "names row %d" % PACKETS, "a warp naming a row past the end "
+                                          "is a fault")
+    ok_clean(build(warps=[(5, HORIZON + 6, "tele", -1)]),
+             "a warp naming row -1 (imposed on the seed) passes")
+    faults_with(build(warps=[(5, HORIZON + 6, "tele", -2)]),
+                "names row -2", "a warp naming row -2 is a fault")
+    faults_with(build(pes=[(1, -1, 7)]), "'pe' names row -1",
+                "only a warp may name row -1")
+    # Row 6 exists later in the file, but not yet.
+    faults_with(after_row(build(), 5, "warp 5 %d 6 tele 0 0 64 0 0 0 0"
+                          % (HORIZON + 6)),
+                "names row 6 and 6", "a warp naming a row not yet written "
+                                     "is a fault")
+    ok_clean(bump_end(after_row(build(), 5, "warp 5 %d 5 tele 0 0 64 0 0 0 0"
+                                % (HORIZON + 6)), "warps"),
+             "a warp naming the row just written passes")
+    for kind, kw in (("pm", dict(pms=[(1, PACKETS)])),
+                     ("pe", dict(pes=[(1, PACKETS, 7)])),
+                     ("portal", dict(portals=[(1, PACKETS, 1)]))):
+        faults_with(build(**kw), "'%s' names row %d" % (kind, PACKETS),
+                    "a %s naming a row past the end is a fault" % kind)
+
+
+def case_v9_seed():
+    b = build()
+    ix = [i for i, l in enumerate(b) if l.startswith("seed ")][0]
+    faults_with(b[:ix + 1] + [b[ix]] + b[ix + 1:], "a second 'seed'",
+                "a second seed is a fault")
+    faults_with(build(pmpin=False), "with no 'pmpin'",
+                "a seed without pmpin is a fault")
+    faults_with(b[:ix] + [b[ix + 1], b[ix]] + b[ix + 2:],
+                "not the first line after 'begin'",
+                "a seed that is not right after begin is a fault")
+    notes_with(build(seed=False), "there is no 'seed'",
+               "pmpin with no seed is a note")
+    ok_clean(build(pmpin=False, seed=False),
+             "no pmpin and no seed (engine before Patch 346) passes")
+
+
+def case_v9_field_values():
+    for lines, want, what in (
+            (row(build(), fl=8), "is outside 0..7", "'in' fl 8"),
+            (row(build(), fwd="450.5"), "non-integer", "'in' fwd 450.5"),
+            (edit(build(**V9_ALL), "warp", 11, 2), "is not 0 or 1", "warp fl 2"),
+            (edit(build(**V9_ALL), "pe", 3, 0x1000000), "24-bit", "pe crc 2^24"),
+            (edit(build(**V9_ALL), "portal", 3, 0), "positive", "portal n 0"),
+            (edit(build(**V9_ALL), "pm", 3, "gravity"), "name=value",
+             "a pm token with no value"),
+            (edit(build(**V9_ALL), "pm", 5, "gravity=1"), "appears twice",
+             "a pm naming a value twice"),
+            (head(build(), "pmpin", PIN + " maxspeed"), "name=value",
+             "a pmpin token with no value"),
+            (head(build(), "pmpin", ""), "carries no values", "an empty pmpin")):
+        faults_with(lines, want, "%s is a fault" % what)
+    notes_with(row(build(), fl=4), "never occur on a clean run",
+               "'in' fl 4 is a note, not a fault")
+
+
+def case_v8_as_before():
+    """The v8 contract is untouched: blanket exponent rule, v9 records unknown."""
+    f, n = run(build(ver=8))
+    check(not f and not n, "a v8 file passes with no faults and no notes")
+    faults_with(row(build(ver=8), carry="9.99999975e-05"), "in exponent form",
+                "a v8 carry in exponent form is still a fault")
+    b = build(ver=8)
+    notes_with(b[:-1] + ["pe 1 1 7"] + b[-1:], "unknown record 'pe'",
+               "a pe record in a v8 file is still an unknown-record note")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -632,7 +827,7 @@ def main():
                case_movetick_backwards, case_packet_backwards,
                case_below_horizon, case_carry_bound, case_button_width,
                case_instart_ordering, case_resume_is_not_a_fault,
-               case_offgrid_angle_is_a_note,
+               case_offgrid_angle_is_a_note, case_v9_offgrid_angle_is_a_fault,
                case_v5_trailer_still_four_fields,
                case_v6_trailer_still_five_fields,
                case_warp_shape, case_warp_count, case_warp_below_horizon,
@@ -647,7 +842,12 @@ def main():
                case_v7_carrier_silence_is_not_a_claim,
                case_startjit_shape, case_startjit_outside_its_own_rule,
                case_startjit_vertical_is_a_fault,
-               case_startjit_blocked_is_a_note_not_a_fault):
+               case_startjit_blocked_is_a_note_not_a_fault,
+               case_v9_every_record_clean,
+               case_v9_exponent_is_legal_in_float_columns,
+               case_v9_exponent_still_faults_elsewhere,
+               case_v9_trailer_counts, case_v9_row_must_be_written_already,
+               case_v9_seed, case_v9_field_values, case_v8_as_before):
         print("%s:" % fn.__name__)
         fn()
         print("")

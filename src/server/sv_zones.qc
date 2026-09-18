@@ -864,6 +864,10 @@ void(float n) SV_ZoneMove =
 	// stage and end zone on the line between them.
 	SV_TimerWarped(self);
 
+	// BUILD 87: a stage restart (`!r`) teleports a run that stays live; the file
+	// must say so.  A voided run has no recorder left, so this writes nothing.
+	SV_RecWarp(self, "zone");
+
 	if (haveyaw)
 	{
 		self.angles   = [0, yaw, 0];

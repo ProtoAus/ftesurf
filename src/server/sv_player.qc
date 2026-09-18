@@ -368,6 +368,10 @@ void() SetChangeParms = { };
 */
 void() PlayerPreThink =
 {
+	// BUILD 87 (v9): what the PREVIOUS move changed (pin, physents, portals),
+	// written before this command's `ride` and `in` rows.  See SV_RecState.
+	SV_RecState(self);
+
 	/*
 	  The pre-move ground state, for OnJump (SV_TriggerIOTouch).
 
@@ -577,6 +581,7 @@ void() PlayerPostThink =
 	  the physics ran on.  It is also where the leg tracker (`!r`) now latches
 	  -- see SV_ZoneFrame for why that moved.
 	*/
+	SV_RecState(self);	// BUILD 87: the packet's last move, before its sample
 	SV_TimerFrame(self);
 
 	/*

@@ -70,6 +70,14 @@ import sys
 # the day someone remembers to add it to a list.
 EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 
+# v9 (build 87) prints imposed state at %.9g, so exponent form is LEGAL in these
+# columns (record -> token indices, keyword at 0) and still a fault in every
+# other one: integers, and the fixed-point sample/angle columns.  v8 and older
+# keep the blanket rule.
+EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
+             "seed": set(range(1, 7)), "portal": set(range(4, 10)),
+             "inend": {2}}
+
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
 SAVES = os.path.join(SURFDIR, "ftesurf", "data", "saves")
@@ -127,7 +135,9 @@ def is_prefix(path):
 # So the two versions read differently: for v7 and below the true sentence is
 # "nothing THIS FORMAT CAN EXPRESS imposed state"; only from v8 does silence about
 # boosters say anything about the run.
-COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17, 8: 17}
+#
+# v9 (build 87): samples unchanged; `in` and `warp` change shape, `end` grows three.
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17, 8: 17, 9: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -260,6 +270,14 @@ HEAD_V7 = HEAD_V6 | {"startjit"}
 # until the run ends and this header is sealed at `begin`.  A checker that went
 # looking for it up here would fault every correct v8 file.
 HEAD_V8 = HEAD_V7
+
+#   pmpin   build 87.  The physics pin, name=value at %.9g.  Absent is legal (an
+#           engine older than Patch 346): the physics are then unknown.
+HEAD_V9 = HEAD_V8 | {"pmpin"}
+
+# v9 warp kinds.  v8 and older keep the five, so their notes do not move.
+WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
+WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone")
 
 # The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming
@@ -428,6 +446,41 @@ def is_float(s):
         return False
 
 
+def is_int(s):
+    return s.lstrip("-").isdigit()
+
+
+def check_pairs(r, where, toks, numeric=True):
+    """v9 `name=value` lists (pmpin, pm, seed).  Readers match BY NAME, so a
+    malformed token or a repeated name is a fault.  -> number of pairs."""
+    names = set()
+    for t in toks:
+        k, eq, v = t.partition("=")
+        if not k or not eq or not v or (numeric and not is_float(v)):
+            r.fault("%s: %r is not name=value%s"
+                    % (where, t, " with a numeric value" if numeric else ""))
+            return len(toks)
+        if k in names:
+            r.fault("%s: %r appears twice -- values are matched by name" % (where, k))
+        names.add(k)
+    return len(toks)
+
+
+def check_row(r, ln, kind, tok, seen, seed_ok=False):
+    """v9 <row>: the 0-based position of an `in` row.  Every row-bound record is
+    written after its row's move, so it must name a row already in the file.
+    A `warp` may also say -1: imposed before the first row, i.e. on the seed."""
+    if not is_int(tok):
+        r.fault("line %d: '%s' row %r is not an integer" % (ln, kind, tok))
+        return
+    n = int(tok)
+    if seed_ok and n == -1:
+        return
+    if n < 0 or n >= seen:
+        r.fault("line %d: '%s' names row %d and %d 'in' row(s) precede it -- "
+                "<row> must be one already written" % (ln, kind, n, seen))
+
+
 def check_rec(path, verbose=False):
     r = Report(path)
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -452,7 +505,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 8:
+    if ver >= 9:
+        allowed = HEAD_V9
+    elif ver >= 8:
         allowed = HEAD_V8
     elif ver >= 7:
         allowed = HEAD_V7
@@ -668,6 +723,20 @@ def check_rec(path, verbose=False):
                        "nothing -- every candidate was blocked" % u)
             r.info["startjit"] = "%g (%g %g %g)" % (u, dx, dy, dz)
 
+    # ---- the physics pin, build 87 (v9) -------------------------------------
+    # Shape only; the values are the engine's.  Absent is legal and printed.
+    pmpin = head.get("pmpin") if ver >= 9 else None
+    if ver >= 9:
+        if pmpin is None:
+            r.info["pmpin"] = "absent (physics unknown)"
+        else:
+            n = check_pairs(r, "header pmpin", pmpin.split())
+            if not n:
+                r.fault("header pmpin carries no values")
+            r.info["pmpin"] = "%d values" % n
+    else:
+        r.info.pop("pmpin", None)   # a stray key below v9 prints nothing new
+
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
     padding = 0
@@ -688,7 +757,12 @@ def check_rec(path, verbose=False):
     in_mt = None            # last cumulative mover tick
     in_packets = 0          # distinct packet ordinals
     in_offgrid = 0          # angles that are not a multiple of the wire quantum
+    in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
+    in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
+    seeds = []              # (lineno, args) -- v9
+    pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
+    first_body = None       # line number of the first body line (seed goes there)
     seen_positive = False
     bad_cols = 0
     mask_disagree = 0
@@ -699,8 +773,14 @@ def check_rec(path, verbose=False):
             r.note("blank line at %d" % (lineno + 1))
             continue
         tok = s.split()
+        if first_body is None:
+            first_body = lineno + 1
 
-        exp = [x for x in tok if EXP_RE.match(x)]
+        if ver >= 9:
+            okc = EXP_OK_V9.get(tok[0], ())
+            exp = [x for n, x in enumerate(tok) if n not in okc and EXP_RE.match(x)]
+        else:
+            exp = [x for x in tok if EXP_RE.match(x)]
         if exp:
             r.fault("line %d: %s in exponent form -- a writer used %%g on a "
                     "value past six significant digits, so the number is "
@@ -748,7 +828,15 @@ def check_rec(path, verbose=False):
         # summarised as they stream past instead; the only state kept is the
         # three running comparisons that need the previous row.
         if tok[0] == "in":
-            if len(tok) != 11:
+            # v9 appends <fl>; <fwd side up> become integers.
+            if ver >= 9 and len(tok) != 12:
+                if not in_badshape:
+                    r.fault("line %d: 'in' takes 11 fields "
+                            "(pk mt carry fwd side up pit yaw roll bt fl), has %d"
+                            % (lineno + 1, len(tok) - 1))
+                in_badshape += 1
+                continue
+            if ver < 9 and len(tok) != 11:
                 if not in_badshape:
                     r.fault("line %d: 'in' takes 10 fields "
                             "(pk mt carry fwd side up pit yaw roll bt), has %d"
@@ -760,9 +848,15 @@ def check_rec(path, verbose=False):
                 carry = float(tok[3])
                 ang = [float(x) for x in tok[7:10]]
                 bt = int(tok[10])
+                if ver >= 9:
+                    for x in tok[4:7]:
+                        int(x)              # <fwd side up> are %d in v9
+                    infl = int(tok[11])
             except ValueError:
                 if not in_badshape:
-                    r.fault("line %d: 'in' has a non-numeric field" % (lineno + 1))
+                    r.fault("line %d: 'in' has a non-numeric field%s"
+                            % (lineno + 1, " (or a non-integer where v9 writes %d)"
+                               if ver >= 9 else ""))
                 in_badshape += 1
                 continue
 
@@ -803,6 +897,8 @@ def check_rec(path, verbose=False):
             # UNDECIDABLE from the file and is deliberately let through.  Said
             # out loud because a check whose sensitivity is a rounding artifact
             # is one somebody will later "tighten" back into false positives.
+            # v9 prints %.9g and keeps the same slack: the header's %g tick is
+            # itself a rounding of the mover's float32 one.
             if carry < 0 or (mtr > 0 and carry >= mtr + 1e-5):
                 r.fault("line %d: carry %.5f is at or above one tick %.5f -- the "
                         "mover's remainder is what is LEFT after whole ticks "
@@ -812,6 +908,14 @@ def check_rec(path, verbose=False):
                 r.fault("line %d: bt %d is outside 0..7 -- the trace carries "
                         "exactly three bits (1 jump, 2 duck, 4 speed)"
                         % (lineno + 1, bt))
+
+            if ver >= 9:
+                if infl < 0 or infl > 7:
+                    r.fault("line %d: fl %d is outside 0..7 -- three bits (1 "
+                            "onground, 2 teleport_time, 4 movetype not WALK)"
+                            % (lineno + 1, infl))
+                elif infl & 6:
+                    in_flx += 1
 
             # DID THESE ANGLES COME OFF THE WIRE?  usercmd angles are 16-bit, so
             # every one the protocol can deliver is a multiple of 360/65536 =
@@ -825,10 +929,17 @@ def check_rec(path, verbose=False):
             # the grid -- and a checker that faulted every scripted test would be
             # one nobody could use to test this feature.  The COUNT is the useful
             # quantity and it is reported either way.
+            #
+            # v9 IS A FAULT, at 0.01.  The angles are input_angles now, which the
+            # engine only ever sets to SHORT2ANGLE(ucmd short) (pr_cmds.c:10522,
+            # protocol.h:1496) and no server QC writes, so setpos is no longer a
+            # cause.  Worst legal %.4f error over all 65536 shorts: 0.0091 quanta.
             for a in ang:
                 q = a / (360.0 / 65536.0)
-                if abs(q - round(q)) > 0.02:
+                if abs(q - round(q)) > (0.01 if ver >= 9 else 0.02):
                     in_offgrid += 1
+                    if in_offgrid_ln is None:
+                        in_offgrid_ln = lineno + 1
                     break
             continue
 
@@ -934,7 +1045,9 @@ def check_rec(path, verbose=False):
             # grammar that faulted an unknown word would fault every file written
             # by a newer server -- which is the failure this tool exists on the
             # other side of.  Shape is checked; vocabulary is reported.
-            warps.append((lineno + 1, tok[1:]))
+            #
+            # The `in` count rides along for v9's <row> check.
+            warps.append((lineno + 1, tok[1:], inrows))
         elif kind == "ride":
             # Build 85, v8.  `ride <pk> <mt> <what> <bx by bz>` -- the velocity
             # CARRIER.  `arm` is the basevelocity handed to the mover, and it
@@ -952,6 +1065,15 @@ def check_rec(path, verbose=False):
                 r.fault("line %d: a second 'inend' -- the closing horizon is "
                         "written once, at close" % (lineno + 1))
             in_end = (lineno + 1, tok[1:])
+        # v9 (build 87).  Below v9 these stay unknown records, as they were.
+        elif kind == "seed" and ver >= 9:
+            seeds.append((lineno + 1, tok[1:]))
+        elif kind == "pm" and ver >= 9:
+            pms.append((lineno + 1, tok[1:], inrows))
+        elif kind == "pe" and ver >= 9:
+            pes.append((lineno + 1, tok[1:], inrows))
+        elif kind == "portal" and ver >= 9:
+            portals.append((lineno + 1, tok[1:], inrows))
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
@@ -966,9 +1088,22 @@ def check_rec(path, verbose=False):
     # <kind> words; nothing about whether the state is PLAUSIBLE, because this
     # tool has no physics and a warp is by definition the one event the physics
     # does not explain.
+    #
+    # v9: `warp <pk> <mt> <row> <kind> <ox oy oz> <vx vy vz> <fl>`, eleven fields.
+    # Dropping <row> and <fl> makes it the v7 shape, so one path checks both.
     if warps:
         kinds = {}
-        for ln, a in warps:
+        known = WARP_KINDS_V9 if ver >= 9 else WARP_KINDS_V7
+        for ln, a, seen in warps:
+            if ver >= 9:
+                if len(a) != 11:
+                    r.fault("line %d: 'warp' takes 11 fields (pk mt row kind "
+                            "ox oy oz vx vy vz fl), has %d" % (ln, len(a)))
+                    continue
+                check_row(r, ln, "warp", a[2], seen, seed_ok=True)
+                if a[10] not in ("0", "1"):
+                    r.fault("line %d: 'warp' fl %r is not 0 or 1" % (ln, a[10]))
+                a = a[:2] + a[3:10]
             if len(a) != 9:
                 r.fault("line %d: 'warp' takes 9 fields "
                         "(pk mt kind ox oy oz vx vy vz), has %d" % (ln, len(a)))
@@ -997,9 +1132,9 @@ def check_rec(path, verbose=False):
         # Reported and never faulted -- see the block at the dispatch.  A word
         # this tool has not heard of is a newer server, not a broken file.
         for k in sorted(kinds):
-            if k not in ("tele", "telerel", "bhop", "speed", "push"):
-                r.note("warp kind %r is not one this tool knows (tele, telerel, "
-                       "bhop, speed, push) -- a newer writer, most likely" % k)
+            if k not in known:
+                r.note("warp kind %r is not one this tool knows (%s) -- a newer "
+                       "writer, most likely" % (k, ", ".join(known)))
     if warps and ver < 7:
         r.note("the file carries %d 'warp' records under a v%d header -- the "
                "record is v7; an older marker over a newer body means a writer "
@@ -1098,6 +1233,63 @@ def check_rec(path, verbose=False):
         r.note("the file carries an 'inend' record under a v%d header -- the "
                "record is v8" % ver)
 
+    # ---- the exact-state records, build 87 (v9) -----------------------------
+    #
+    # `seed` once, first after `begin`, and only with `pmpin`.  pmpin without a
+    # seed is a note: the grammar does not say the seed is compulsory, and the
+    # writer omits it when the engine publishes no *pmstate.
+    if ver >= 9:
+        for n, (ln, a) in enumerate(seeds):
+            if n:
+                r.fault("line %d: a second 'seed' -- it is written once, right "
+                        "after 'begin'" % ln)
+                continue
+            if ln != first_body:
+                r.fault("line %d: 'seed' is not the first line after 'begin'" % ln)
+            if pmpin is None:
+                r.fault("line %d: 'seed' with no 'pmpin' header -- the seed is "
+                        "written only with the pin" % ln)
+            if len(a) < 7 or not all(is_float(x) for x in a[:6]):
+                r.fault("line %d: 'seed' takes <ox oy oz> <vx vy vz> <fl> "
+                        "<name=value ...>" % ln)
+                continue
+            if a[6] not in ("0", "1"):
+                r.fault("line %d: 'seed' fl %r is not 0 or 1" % (ln, a[6]))
+            check_pairs(r, "line %d: 'seed'" % ln, a[7:], numeric=False)
+        r.info["seed"] = "yes" if seeds else "no"
+        if pmpin is not None and not seeds:
+            r.note("pmpin is present and there is no 'seed' -- a replay has no "
+                   "exact starting state")
+
+        for ln, a, seen in pms:
+            if len(a) < 3 or not is_int(a[0]):
+                r.fault("line %d: 'pm' takes <pk> <row> <name=value ...>" % ln)
+                continue
+            check_row(r, ln, "pm", a[1], seen)
+            check_pairs(r, "line %d: 'pm'" % ln, a[2:])
+        for ln, a, seen in pes:
+            if len(a) != 3 or not is_int(a[0]):
+                r.fault("line %d: 'pe' takes 3 fields (pk row crc)" % ln)
+                continue
+            check_row(r, ln, "pe", a[1], seen)
+            if not a[2].isdigit() or int(a[2]) > 0xFFFFFF:
+                r.fault("line %d: 'pe' crc %r is not a 24-bit integer" % (ln, a[2]))
+        for ln, a, seen in portals:
+            if len(a) != 9 or not is_int(a[0]):
+                r.fault("line %d: 'portal' takes 9 fields "
+                        "(pk row n ox oy oz vx vy vz)" % ln)
+                continue
+            check_row(r, ln, "portal", a[1], seen)
+            if not a[2].isdigit() or int(a[2]) < 1:
+                r.fault("line %d: 'portal' n %r is not a positive crossing count"
+                        % (ln, a[2]))
+            if not all(is_float(x) for x in a[3:]):
+                r.fault("line %d: 'portal' has a non-numeric origin or velocity"
+                        % ln)
+        r.info["pms"] = len(pms)
+        r.info["pes"] = len(pes)
+        r.info["portals"] = len(portals)
+
     # ---- the trace and its horizon must agree, build 82 ---------------------
     #
     # THE TWO DIRECTIONS ARE NOT THE SAME KIND OF PROBLEM and they do not get the
@@ -1125,11 +1317,18 @@ def check_rec(path, verbose=False):
         # than decorative, and it is exactly the case -- packet loss -- that a
         # local test will never produce.  Printed so it is visible on real runs.
         r.info["in_per_packet"] = inrows / float(in_packets or 1)
-        if in_offgrid:
+        if in_offgrid and ver >= 9:
+            r.fault("%d of %d 'in' rows carry an angle off the 16-bit wire "
+                    "quantum, first at line %d -- v9 angles are the usercmd's "
+                    "own 16-bit shorts" % (in_offgrid, inrows, in_offgrid_ln))
+        elif in_offgrid:
             r.note("%d of %d 'in' rows carry an angle that is not a multiple of "
                    "the 16-bit wire quantum (0.0055 deg) -- setpos writes "
                    "v_angle directly and is the ordinary cause"
                    % (in_offgrid, inrows))
+        if in_flx:
+            r.note("%d of %d 'in' rows carry fl 2 or 4 (teleport_time, movetype "
+                   "not WALK), which never occur on a clean run" % (in_flx, inrows))
         # The sample stream and the input stream are written by two different
         # hooks at two different rates, and there is no invariant tying their
         # counts together -- so this is reported and NOT checked.  What it is
@@ -1614,7 +1813,10 @@ def check_rec(path, verbose=False):
         # `ride` track is a STATE track, so a record lost to the line cap is not
         # one missing fact but a WRONG carrier held for every command after it,
         # which does not heal.  The count is the only handle a reader has on that.
-        if ver >= 8:
+        # v9 (build 87): TEN -- <pms> <pes> <portals>, exact, counted like <rides>.
+        if ver >= 9:
+            want_end = 10
+        elif ver >= 8:
             want_end = 7
         elif ver >= 7:
             want_end = 6
@@ -1627,6 +1829,12 @@ def check_rec(path, verbose=False):
                     % (ln, want_end, ver, len(args)))
         else:
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            if want_end >= 10:
+                for nm, got, x in (("pm", pms, args[7]), ("pe", pes, args[8]),
+                                   ("portal", portals, args[9])):
+                    if int(float(x)) != len(got):
+                        r.fault("'end' says %d %s records, the file has %d"
+                                % (int(float(x)), nm, len(got)))
             if want_end >= 7:
                 e_ride = float(args[6])
                 # EXACT, and the loudest of the three for the reason above: a
@@ -2066,6 +2274,8 @@ def emit(r, verbose):
                   # mechanisms visible at a glance: `arm` then `pay` is a ride, a
                   # bare `pay` is an AddOutput launch never handed to the mover.
                   "rides", "inend",
+                  # Build 87 (v9), same edit as the code that assigns them.
+                  "pmpin", "seed", "pms", "pes", "portals",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

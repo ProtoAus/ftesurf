@@ -895,6 +895,14 @@ float rec_retry_armed;
 */
 .float  run_movetick;            // cumulative mover ticks this map, per player
 .float  run_movecarry;           // sub-tick remainder, seconds
+// BUILD 87, engine Patch 346: what the mover was handed.  Optional fields, written
+// after every move; 0 on an older engine, and run_pmepoch > 0 is how the recorder
+// knows the engine publishes (a client cannot write an edict field).
+.float  run_pmepoch;             // bumps when the mover's inputs (the pin) change
+.float  run_physcrc;             // 24-bit digest of the last move's physent list
+.float  run_portalx;             // linked-portal crossings, cumulative per map
+.vector run_portalorg;           // post-move state of the last crossing move
+.vector run_portalvel;
 /*
   run_movetickrate IS DECLARED IN defs/sv_defs.qc, not here, and it is the odd
   one of the three.  Build 76 made Lobby_SubmitRun send it beside the tick count
@@ -1611,6 +1619,14 @@ float() SV_RecEnabled =
 .float  rec_rec_ride;            // v8: `ride` records written since `begin`
 .vector rec_rec_bv;              // v8: the carrier value last written down
 .float  rec_rec_bvset;           // v8: rec_rec_bv means something
+// v9 (build 87): the state records -- see the grammar block and SV_RecState.
+.float  rec_rec_epoch;           // v9: pin epoch last written down (header or `pm`)
+.float  rec_rec_pcrc;            // v9: physent digest last written down
+.float  rec_rec_pcset;           // v9: rec_rec_pcrc means something
+.float  rec_rec_portalx;         // v9: portal crossings already written down
+.float  rec_rec_pm;              // v9: counts for the trailer, by landed line
+.float  rec_rec_pe;
+.float  rec_rec_portal;
 
 /*
 ===========================================================================
@@ -2071,7 +2087,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 8, in full, because four different things are going to read this
+  FTESURF-REC 9, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
   (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
@@ -2079,7 +2095,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 8           always first
+    FTESURF-REC 9           always first
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -2145,6 +2161,18 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             This is the same sentence `warp` is about, one step
                             earlier in the run.
     flags <n>               TF_* as they stood AT THE FINISH -- see below
+    pmpin <name=value ...>  v9, build 87, AFTER `flags` (the scoreboard reads 24
+                            header lines).  THE PHYSICS PIN: the 70 values the
+                            mover was handed on the start packet's last move --
+                            movevars, pm_type, gamespeed, hull x/y, capsule, the
+                            raw sv_maxvelocity of the pre-move clamp, the trace
+                            cvars and pmsrcver -- as engine Patch 346 snapshot
+                            them just before PM_PlayerMove, %.9g, matched BY NAME.
+                            Never cvar(): five movevars are spawn-latched and
+                            maxspeed/entgravity lag a send frame.  Absent when the
+                            engine does not publish: the physics are then UNKNOWN.
+                            Readers still take keys in any order; `after flags`
+                            is where the writer puts it, not a rule to check.
     begin                   header ends here; everything after is a record
 
   THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
@@ -2219,6 +2247,20 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   imposed state"; only from v8 is silence a statement about the run.  The engine's
   pm_recsim printed the strong form until engine Patch 344 narrowed it.
 
+  WHY VERSION 9 EXISTS: EXACT STATE.  Same-binary replay of the mover is
+  bit-exact (client prediction depends on it), so a re-simulation that drifts
+  means the FILE is short of state.  An audit of every input to one SV_RunCmd
+  found the drift sources E3 and b83 blamed on chaos: the seed and every
+  warp/ride vector at %.2f, pm_source's carried state zero-seeded, `in` angles
+  that were .v_angle (stale under fixangle) while the mover reads the usercmd,
+  and the physics unpinned.  v9 closes each: `pmpin`, `seed`, `pm`, %.9g on every
+  imposed vector, input_angles and an <fl> column on `in`, <row> and <fl> on
+  `warp`, and two records that are CHECKED rather than applied (`pe`, `portal`).
+  `in` and `warp` change shape and `end` grows three fields, hence the bump.
+  A v8 reader skips the new records and misreads nothing it already knew except
+  the widths it checks.  Readers key off `pmpin`/`seed`, never the version: an
+  engine older than Patch 346 still writes a v9 file, without them.
+
   AND SV_StageWrite STILL WRITES `FTESURF-REC 5` AFTER THIS BUILD, which is not
   an oversight and is the clearest statement this format has of what its version
   marker means.  A lifted stage drops every `in` row (see SV_StageLine) and its
@@ -2254,6 +2296,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             each sample's own t; never by index.
 
     in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt>
+    in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt> <fl>   (v9)
+                            v9: <carry> %.9g; <fwd side up> integers; the angles
+                            are input_angles, the usercmd the mover reads
+                            (pmove.c:1457), where v6-v8 wrote .v_angle, which
+                            SV_RunCmd leaves stale while fixangle is set; and
+                            <fl> is the state the engine reads next: 1
+                            FL_ONGROUND, 2 teleport_time set, 4 movetype not
+                            WALK (2 and 4 never occur on a clean run).  Rows are
+                            numbered by position from 0: <row> in the records
+                            below is that index.
                             v6, build 82.  ONE SIMULATED MOVE -- what the mover
                             was HANDED, where the sample above is where it ended
                             up.  These two record types are the whole body of a
@@ -2347,6 +2399,21 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             gamecode cannot change a run, and recording it would
                             be 100 bytes a second asserting that it might.
     warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>
+    warp <pk> <mt> <row> <kind> <ox oy oz> <vx vy vz> <fl>             (v9)
+                            v9: <row> is the `in` row whose move this followed,
+                            and it is the binding -- <mt> repeats across a
+                            zero-tick move.  -1 = before the first row (a `!r`
+                            or retouch between open and the first command):
+                            imposed on the seed.  Vectors %.9g; <fl> 1 = FL_ONGROUND
+                            after the imposition.  Two new kinds:
+                              lift     trigger_push's +1 u origin lift (grounded,
+                                       upward push) -- an origin write outside the
+                                       mover that v8 did not record
+                              zone     SV_ZoneMove: `!r` restarting the stage a
+                                       live run is on, which v8 did not record
+                            tele, telerel, bhop and zone reset the zone sweep
+                            origin iff run_teleport_warp; push, speed and lift
+                            never do.
                             v7, build 83.  STATE IMPOSED ON THE PLAYER FROM
                             OUTSIDE THE MOVER, written by the thing that imposed
                             it, carrying the state as it stood AFTERWARDS.
@@ -2432,7 +2499,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             a stage-to-stage teleport preserve a run.  A check
                             that flags exact preservation flags every stage
                             transition there is.
-    ride <pk> <mt> <what> <bx by bz>
+    ride <pk> <mt> <what> <bx by bz>      (v9: <bx by bz> at %.9g)
                             v8, build 85.  THE VELOCITY CARRIER -- basevelocity,
                             which moves the player every command without ever
                             being written to .velocity, so neither `warp` nor the
@@ -2467,7 +2534,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                                                 no span to open
                               arm v ... arm 0   Z is spent inside the mover, so a
                                                 vertical carrier ends with no pay
-                            A `pay` is always followed by `arm 0 0 0`.  Written,
+                            `arm 0 0 0` follows a `pay` exactly when the last
+                            `arm` written was non-zero or none has been written
+                            since open (the sentinel) -- so a bare AddOutput `pay`
+                            mid-run has none after it (corrected build 87).  Written,
                             not derived: a derivation rule is an exception a
                             future writer can falsify silently.
 
@@ -2486,6 +2556,33 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             The cash-out constant is TICK_INTERVAL, a movevar this
                             format does not yet pin; `pay` states the carrier, not
                             the product, so a reader can see which half it assumed.
+    seed <ox oy oz> <vx vy vz> <fl> <name=value ...>
+                            v9, build 87, once, right after `begin`, only with
+                            `pmpin`.  THE EXACT STATE the first `in` row's move
+                            starts from: origin and velocity %.9g, <fl> 1 =
+                            FL_ONGROUND, then pm_source's carried state (duck,
+                            ducktime, carry, oldbuttons, stamina, ladder ...) as
+                            the engine saved it after the start packet's last
+                            move.  A replay seeds from this, not from the %.2f
+                            sample.  The start LATCH is still taken on trust.
+    pm <pk> <row> <name=value ...>
+                            v9.  The pin changed: the full text, as `pmpin`, now
+                            in force FROM row <row>'s move on.  Written after that
+                            move (the engine publishes after it), so it can
+                            follow its row.  entgravity and maxspeed change
+                            mid-run legitimately (AddOutput gravity, speedmod).
+    pe <pk> <row> <crc>     v9.  The physent list the server built for row <row>'s
+                            move (world excluded; entity, solidity, portal flag,
+                            bounds, model) hashed to 24 bits, written on change.
+                            CHECKED, NOT APPLIED: a replay builds its own list
+                            and compares -- entity I/O can toggle a brush's
+                            solidity and nothing records why.
+    portal <pk> <row> <n> <ox oy oz> <vx vy vz>
+                            v9.  Row <row>'s move crossed <n> linked_portal_door
+                            pair(s) inside the mover (PM_PlayerTracePortals), and
+                            this is its post-move state.  CHECKED, NOT APPLIED: a
+                            replay with the server's physents crosses it itself.
+                            Not a `warp` -- nothing outside the mover wrote it.
     restart <seg> <ticks>   a stage was restarted mid-run
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
@@ -2581,7 +2678,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             `begin`.  Gated exactly as `instart` is, so a trailer
                             without one is a writer that has gone wrong.
     end <ticks> <samples> <padding> <checkpoints> <inputs> <warps> <rides>
+        <pms> <pes> <portals>                                   (v9, one line)
     split <seg> <ticks>     one per completed segment, ascending
+
+  <pms> <pes> <portals> ARE v9 AND COUNTED BY LANDED LINE, like <rides>: `pm` is a
+  state a reader holds, so a lost record is a wrong pin for an unbounded span.
 
   <rides> IS v8 AND IS COUNTED LIKE <warps>, but it answers a different question.
   A `ride` track is a STATE track -- a reader holds the last `arm` across every
@@ -2923,6 +3024,118 @@ float(entity e) SV_RecKeys =
 };
 
 /*
+  BUILD 87 (v9): engine text copied into a recording must be what the engine
+  wrote.  On an engine older than Patch 346 an unknown per-client infokey falls
+  through to the CLIENT's userinfo, whose star keys can carry any bytes -- a
+  newline included, i.e. a forged header line.  So the caller gates on
+  run_pmepoch > 0 (an edict field no client can write) and this refuses anything
+  outside the serializer's own alphabet.
+*/
+float(string s) SV_RecSafeText =
+{
+	local float i, n, c;
+	n = strlen(s);
+	if (n < 1 || n > 4000)
+		return FALSE;
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c >= 48 && c <= 57) continue;        // 0-9
+		if (c >= 65 && c <= 90) continue;        // A-Z
+		if (c >= 97 && c <= 122) continue;       // a-z
+		if (c == 32 || c == 43 || c == 45 || c == 46 || c == 61 || c == 95)
+			continue;                            // space + - . = _
+		return FALSE;
+	}
+	return TRUE;
+};
+
+// `*pmpin` / `*pmstate`: the engine's name=value text, reassembled from its
+// <=240-char chunks.  "" unless this engine publishes and the text is clean.
+string(entity e, string key) SV_RecPinText =
+{
+	local float i;
+	local string s, part;
+	if (e.run_pmepoch <= 0)
+		return "";
+	s = "";
+	for (i = 0; i < 16; i = i + 1)
+	{
+		part = infokey(e, strcat(key, ftos(i)));
+		if (part == "")
+			break;
+		s = (i ? strcat(s, " ", part) : part);
+	}
+	if (!SV_RecSafeText(s))
+		return "";
+	return s;
+};
+
+/*
+  BUILD 87 (v9): the three state tracks the engine publishes after each move --
+  `pm` (the pin changed), `pe` (the physent list changed), `portal` (the mover
+  crossed a linked_portal_door).  Each is written on CHANGE and bound to <row>,
+  the `in` row whose move produced it: the value is only visible AFTER that move,
+  so it cannot precede its row the way a `ride` does.
+
+  Called at the top of PreThink, before the PostThink sample, and at close --
+  i.e. before every `in` row, every sample and the trailer, so no change can
+  outlive the move that made it.  Nothing before the first row: the header's
+  `pmpin` covers the seed.
+*/
+void(entity e) SV_RecState =
+{
+	local float was, row;
+	local string pin;
+
+	if (!SV_RecLive(e))
+		return;
+	if (e.run_movetickrate <= 0 || e.run_pmepoch <= 0 || e.rec_rec_in < 1)
+		return;
+	row = e.rec_rec_in - 1;
+
+	if (e.run_pmepoch != e.rec_rec_epoch)
+	{
+		pin = SV_RecPinText(e, "*pmpin");
+		if (pin != "")
+		{
+			was = e.rec_rec_lines;
+			SV_RecPut(e, strcat(sprintf("pm %d %d ", e.rec_rec_pk, row), pin));
+			if (e.rec_rec_lines != was)
+			{
+				e.rec_rec_epoch = e.run_pmepoch;
+				e.rec_rec_pm = e.rec_rec_pm + 1;
+			}
+		}
+	}
+
+	if (!e.rec_rec_pcset || e.run_physcrc != e.rec_rec_pcrc)
+	{
+		was = e.rec_rec_lines;
+		SV_RecPut(e, sprintf("pe %d %d %d", e.rec_rec_pk, row, e.run_physcrc));
+		if (e.rec_rec_lines != was)
+		{
+			e.rec_rec_pcrc = e.run_physcrc;
+			e.rec_rec_pcset = TRUE;
+			e.rec_rec_pe = e.rec_rec_pe + 1;
+		}
+	}
+
+	if (e.run_portalx != e.rec_rec_portalx)
+	{
+		was = e.rec_rec_lines;
+		SV_RecPut(e, sprintf("portal %d %d %d %.9v %.9v", e.rec_rec_pk, row,
+		                     e.run_portalx - e.rec_rec_portalx,
+		                     e.run_portalorg, e.run_portalvel));
+		if (e.rec_rec_lines != was)
+		{
+			e.rec_rec_portalx = e.run_portalx;
+			e.rec_rec_portal = e.rec_rec_portal + 1;
+		}
+	}
+};
+
+/*
   Start a recording: take a buffer, write the header, dump the ring into it.
 
   The header is deliberately plain text with one key per line: a format that can
@@ -2940,6 +3153,7 @@ void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
 	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
+	local string pin, pst;	// build 87
 
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
@@ -2970,6 +3184,12 @@ void(entity e) SV_RecOpen =
 	// started at rest, i.e. hide the bug on every file except the ones that matter.
 	e.rec_rec_ride = 0;
 	e.rec_rec_bvset = 0;
+	// BUILD 87 (v9): the state tracks.  The epoch and portal count are seeded from
+	// the LIVE values below, so the first record is a change and not the history.
+	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
+	e.rec_rec_pcset = 0;
+	e.rec_rec_epoch = 0;
+	e.rec_rec_portalx = e.run_portalx;
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
 	// run, which is the most common leg there is, and it would otherwise encode
 	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
@@ -3045,7 +3265,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 8");
+	SV_RecPut(e, "FTESURF-REC 9");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -3265,7 +3485,36 @@ void(entity e) SV_RecOpen =
 		e.rec_rec_flagofs = fseek(e.rec_rec_fh);
 	SV_RecPut(e, SV_RecFlagLine(0));
 
+	/*
+	  BUILD 87 (v9): THE PHYSICS PIN, AFTER `flags` so the scoreboard's 24-line
+	  header read still reaches `flags`.  The mover's inputs as of the start
+	  packet's last move, as the engine snapshot them (Patch 346) -- never
+	  cvar(): five movevars are spawn-latched and maxspeed/entgravity lag a send
+	  frame.  Absent on an engine that does not publish, and a reader must then
+	  treat the physics as unknown.
+	*/
+	pin = SV_RecPinText(e, "*pmpin");
+	if (pin != "")
+	{
+		SV_RecPut(e, strcat("pmpin ", pin));
+		e.rec_rec_epoch = e.run_pmepoch;
+	}
+
 	SV_RecPut(e, "begin");
+
+	/*
+	  BUILD 87 (v9): THE EXACT SEED.  The state the first `in` row's move starts
+	  from, at %.9g (float32 round-trips), with the carried pm_source state.  The
+	  %.2f sample below it is for watching; seeding a replay from it is where E3
+	  and b83's open loops began to drift.  Only with the pin, for the same reason.
+	*/
+	if (pin != "")
+	{
+		pst = SV_RecPinText(e, "*pmstate");
+		if (pst != "")
+			SV_RecPut(e, strcat(sprintf("seed %.9v %.9v %d ", e.origin, e.velocity,
+			                            (e.flags & FL_ONGROUND) ? 1 : 0), pst));
+	}
 
 	// A fresh run has boarded nothing yet.  Seeded from the LIVE counter and not
 	// from zero: the engine's counter is per-map and does not reset with the run,
@@ -3596,17 +3845,26 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	  exactly the successor the last row lacks.  Gated as `instart` is, so the pair
 	  is written under one condition and one without the other means truncated.
 	*/
+	// BUILD 87: a pin, physent or portal change on the FINISHING move has no
+	// PreThink after it to be written from.
+	SV_RecState(e);
+
 	if (e.run_movetickrate > 0)
-		SV_RecPut(e, sprintf("inend %d %.5f",
+		SV_RecPut(e, sprintf("inend %d %.9g",
 		                     e.run_movetick, e.run_movecarry));
 
 	// BUILD 85: a seventh field, appended by the rule the fifth and sixth took --
 	// the `ride` count.  It is the one whose loss costs most: a dropped sample is
 	// one missing position, a dropped `ride` is a carrier a reader goes on holding
 	// for every command after it, and that error does not heal.
-	SV_RecPut(e, sprintf("end %d %d %d %d %d %d %d",
-	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
-	                     e.rec_rec_in, e.rec_rec_warp, e.rec_rec_ride));
+	// BUILD 87 (v9): eighth to tenth, the three state tracks, by the same rule.
+	// Two sprintfs: ten values against the eight-argument cap.
+	SV_RecPut(e, strcat(sprintf("end %d %d %d %d %d ",
+	                            ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
+	                            e.rec_rec_in),
+	                    sprintf("%d %d %d %d %d",
+	                            e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
+	                            e.rec_rec_pe, e.rec_rec_portal)));
 
 	if (e.run_t_slot >= 0)
 	{
@@ -3859,6 +4117,46 @@ float(entity e, string path) SV_RecWritePrefix =
 };
 
 /*
+  BUILD 87: after a rewind the body is the prefix up to the mark, so every count
+  a trailer states -- and v9's <row> -- must be recounted FROM IT, not carried:
+  the rows past the mark are gone.  (v6-v8 carried rec_rec_in across a rewind
+  and over-counted <inputs> on every resumed file.)  The change sentinels are
+  cleared so the resumed stretch opens with floor records.
+*/
+void(entity e) SV_RecRecount =
+{
+	local float i, c;
+	local string l;
+
+	e.rec_rec_in = e.rec_rec_warp = e.rec_rec_ride = 0;
+	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
+	for (i = 0; i < e.rec_rec_lines; i = i + 1)
+	{
+		l = bufstr_get(e.rec_rec_buf, i);
+		c = str2chr(l, 0);
+		if (c == 105 && substring(l, 0, 3) == "in ")              // i
+			e.rec_rec_in = e.rec_rec_in + 1;
+		else if (c == 119 && substring(l, 0, 5) == "warp ")       // w
+			e.rec_rec_warp = e.rec_rec_warp + 1;
+		else if (c == 114 && substring(l, 0, 5) == "ride ")       // r
+			e.rec_rec_ride = e.rec_rec_ride + 1;
+		else if (c == 112)                                        // p
+		{
+			if (substring(l, 0, 3) == "pm ")
+				e.rec_rec_pm = e.rec_rec_pm + 1;
+			else if (substring(l, 0, 3) == "pe ")
+				e.rec_rec_pe = e.rec_rec_pe + 1;
+			else if (substring(l, 0, 7) == "portal ")
+				e.rec_rec_portal = e.rec_rec_portal + 1;
+		}
+	}
+	e.rec_rec_bvset = FALSE;
+	e.rec_rec_pcset = FALSE;
+	e.rec_rec_epoch = 0;
+	e.rec_rec_portalx = e.run_portalx;
+};
+
+/*
   Put the recorder back at `mark`.  Two paths, and which one runs is decided by
   whether the buffer in hand is still the same run.
 
@@ -3901,6 +4199,7 @@ float(entity e, string path, float mark, float serial,
 		e.rec_rec_full  = FALSE;     // room again, so the cap may be re-reported
 		e.rec_rec_leg   = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 		e.run_t_flags   = e.run_t_flags | TF_RECORDING;
+		SV_RecRecount(e);            // build 87
 		return TRUE;
 	}
 
@@ -3935,6 +4234,7 @@ float(entity e, string path, float mark, float serial,
 	e.rec_rec_padn  = padn;
 	e.rec_rec_cp    = cps;
 	e.rec_rec_full  = FALSE;
+	SV_RecRecount(e);                // build 87
 
 	rec_rec_nextserial = rec_rec_nextserial + 1;
 	e.rec_rec_serial = rec_rec_nextserial;
@@ -4127,11 +4427,15 @@ void(entity e, string kind) SV_RecWarp =
 	  TWO sprintfs: ten values against the eight-argument varargs cap, which
 	  fteqcc silently truncates rather than refusing to compile.
 	*/
-	SV_RecPut(e, strcat(sprintf("warp %d %d %s %.2f %.2f %.2f ",
-	                            e.rec_rec_pk, e.run_movetick, kind,
-	                            e.origin_x, e.origin_y, e.origin_z),
-	                    sprintf("%.2f %.2f %.2f",
-	                            e.velocity_x, e.velocity_y, e.velocity_z)));
+	/*
+	  BUILD 87 (v9): <row>, the `in` row whose move this followed -- the binding a
+	  replay uses, because <mt> repeats across a zero-tick move.  Vectors at %.9g
+	  so the state is the state, not its %.2f print, and <fl> 1 = FL_ONGROUND
+	  after the imposition (setspeed leaves it, the others clear it).
+	*/
+	SV_RecPut(e, sprintf("warp %d %d %d %s %.9v %.9v %d",
+	                     e.rec_rec_pk, e.run_movetick, e.rec_rec_in - 1, kind,
+	                     e.origin, e.velocity, (e.flags & FL_ONGROUND) ? 1 : 0));
 
 	/*
 	  COUNTED BY WHETHER A LINE ACTUALLY LANDED, on SV_TimerInFrame's argument and
@@ -4197,9 +4501,9 @@ void(entity e, string what, vector bv) SV_RecRide =
 	  stream's velocity, not the `in` row's %.4f angles -- there is no wire quantum
 	  here to justify four.
 	*/
-	SV_RecPut(e, sprintf("ride %d %d %s %.2f %.2f %.2f",
-	                     e.rec_rec_pk, e.run_movetick, what,
-	                     bv_x, bv_y, bv_z));
+	// BUILD 87 (v9): %.9g -- a push along a diagonal is not a %.2f number.
+	SV_RecPut(e, sprintf("ride %d %d %s %.9v",
+	                     e.rec_rec_pk, e.run_movetick, what, bv));
 
 	// Counted by whether a line landed, on SV_RecWarp's argument.
 	if (e.rec_rec_lines != was)
@@ -4826,6 +5130,9 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 	  track, so the answer is "unknown" and not "zero" -- the same distinction the
 	  rec_rec_bvset sentinel keeps on the writing side.
 	*/
+
+	// BUILD 87: `seed`, `pm`, `pe` and `portal` fall through too -- row-bound and
+	// per-map like `in`, and a v5 slice has no rows for them to bind to.
 
 	return "";
 };
@@ -9201,6 +9508,7 @@ void(entity e) SV_TimerInFrame =
 {
 	local float bt;                 // the three mover bits, repacked
 	local float was;                // rec_rec_lines before the write
+	local float fl;                 // v9: the state the engine reads next
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
@@ -9260,12 +9568,27 @@ void(entity e) SV_TimerInFrame =
 	  Same for the packet ordinal, which counts from the start of the recording
 	  but is unbounded within it.
 	*/
+	/*
+	  BUILD 87 (v9): THREE CHANGES, ALL FOR EXACT REPLAY.
+	    - angles are input_angles, the usercmd the mover reads (pmove.c:1457), not
+	      .v_angle, which SV_RunCmd leaves stale while fixangle is set;
+	    - <carry> at %.9g, movement as integers (the wire fields are int);
+	    - <fl>, the state the engine reads next (sv_user.c:7964): 1 FL_ONGROUND,
+	      2 teleport_time set (waterjump, never on a clean run), 4 movetype not
+	      WALK.  Written here, the last thing PreThink does, so every QC write to
+	      the flag before the move is already in it.
+	*/
+	fl = 0;
+	if (e.flags & FL_ONGROUND)      fl = fl + 1;
+	if (e.teleport_time)            fl = fl + 2;
+	if (e.movetype != MOVETYPE_WALK) fl = fl + 4;
+
 	was = e.rec_rec_lines;
-	SV_RecPut(e, strcat(sprintf("in %d %d %.5f %g %g %g ",
+	SV_RecPut(e, strcat(sprintf("in %d %d %.9g %d %d %d ",
 	                            e.rec_rec_pk, e.run_movetick, e.run_movecarry,
 	                            e.movement_x, e.movement_y, e.movement_z),
-	                    sprintf("%.4f %.4f %.4f %d",
-	                            e.v_angle_x, e.v_angle_y, e.v_angle_z, bt)));
+	                    sprintf("%.4f %.4f %.4f %d %d",
+	                            input_angles_x, input_angles_y, input_angles_z, bt, fl)));
 
 	/*
 	  COUNTED BY WHETHER A LINE ACTUALLY LANDED, not by having attempted one.
@@ -10455,6 +10778,10 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        shadow %g  from save %g  rec lines %g (%g samples)\n",
 	       (e.run_t_flags & TF_SHADOW) ? 1 : 0, e.run_t_fromsave,
 	       e.rec_rec_lines, e.rec_rec_n));
+	// BUILD 87: the row-bound counts SV_RecRecount restores after a rewind.
+	sprint(e, PRINT_HIGH, sprintf("        rec rows: in %d warp %d ride %d pm %d pe %d portal %d\n",
+	       e.rec_rec_in, e.rec_rec_warp, e.rec_rec_ride,
+	       e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal));
 
 	/*
 	  BUILD 66: WHICH RECORDER, and where it is writing.

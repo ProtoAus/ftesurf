@@ -13,11 +13,21 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   f05671fb62a2ff18991489377eb8f237603850e6
+commit   9e4b2fc7391f278aedad10aee4dd531a308cf9f8
 tag      patch-266
-patch    346
+patch    348
 qcbuild  83
 date     2026-09-18
+
+# PATCH 348 IS QC BUILD 87, MOD-SIDE: FTESURF-REC 9, the recording carries exact
+# state -- the pin (`pmpin`), an exact `seed`, %.9g imposed vectors, row-bound
+# warps, `pm`/`pe`/`portal` tracks, usercmd angles and a ground flag on `in`,
+# `lift`/`zone` warps, and a recount after save-state rewinds.  Writes the pin
+# and state only on an engine with Patch 346.  qcbuild left at 83 per the rule.
+#
+# PATCH 347 IS ENGINE-ONLY: pm_recsim replays a v9 file EXACTLY -- b87warp 1667 of
+# 1667 packets text-identical, on the route b83's v7 file lost at row 817.
+# cfg/test/p347exact.cfg.
 
 # PATCH 346 IS ENGINE-ONLY, and the first half of FTESURF-REC 9: SV_RunCmd
 # snapshots the 70 values the mover is handed (movevars, pm_type, hull,
