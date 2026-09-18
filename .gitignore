@@ -8,14 +8,18 @@
 #  A blocklist is a foot-gun in THIS tree specifically:
 #    * three different directories are called "saves" -- ftesurf/saves/ (engine
 #      savegames), ftesurf/data/saves/ (personal saveloc state) and
-#      ftesurf/cfg/testrun/p206band_savelocs/ (hand-written .txt fixtures).
+#      ftesurf/cfg/test/p206band_savelocs/ (hand-written .txt fixtures).
 #      A bare `saves/` rule would delete source.
 #    * all but one of the .cfg files are source; only ftesurf/ftesurf.cfg is
 #      engine-generated.  A `*.cfg` rule would delete source.
 #    * gfx/ holds both the required fonts and 1.1 GB of downloaded map shots.
 #    * data/ holds one hand-written file and 300+ MB of personal run data.
-#    * ftesurf_cache/ (642 MB) is a SIBLING of the ftesurf/ gamedir, so any
-#      pattern like `ftesurf*/` would swallow the entire game.
+#    * the asset cache (642 MB) and the download cache lived at the root as
+#      ftesurf_cache/ and ftesurf_downloads/ siblings until P330 folded them
+#      into the gamedir as ftesurf/cache/ and ftesurf/downloads/ -- where the
+#      `/ftesurf/*` line below keeps them out just like logs/ and screenshots/.
+#      They were siblings precisely so a pattern like `ftesurf*/` would not
+#      swallow the entire game; inside the gamedir that trap is gone.
 #
 #  HOW TO ADD SOMETHING NEW
 #      root file            ->  !/<name>
@@ -113,6 +117,13 @@ __pycache__/
 !/README.md
 !/LICENSE
 !/CONTRIBUTING.md
+# The coding-agent brief and its style appendix.  Un-ignored deliberately: `/*`
+# above hid both, so every session up to build 86 rebuilt this context from
+# scratch and a fresh clone (or a cloud agent) got none of it.  They are as
+# load-bearing as CONTRIBUTING.md and belong in the history with the code they
+# describe.
+!/AGENTS.md
+!/CLAUDE.md
 !/ENGINE.txt
 !/VERSION
 !/default.fmf
@@ -212,7 +223,8 @@ __pycache__/
 
 
 #  ftesurf/cfg/ -- ALL source: default.cfg (the ruleset), the mode/fix configs,
-#  the testrun/ verification fixtures and the hand-written saveloc .txt files.
+#  the test/ verification fixtures, the maps/ per-map ruleset and render
+#  layer, and the hand-written saveloc .txt files.
 #
 #  There is deliberately NO rule below this line.  Nothing the QC writes goes to
 #  cfg/ -- every QC write path resolves to data/.  If you ever `saveconfig` into

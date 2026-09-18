@@ -1,0 +1,401 @@
+# AGENTS.md
+
+Working notes for coding-agent sessions in this repo. Read CONTRIBUTING.md too
+(git identity, `git clean -x`, line endings, `.src` ordering).
+Keep code comments concise; long-form reasoning belongs in ENGINE_PATCHES.md
+essays, not in source files. See CLAUDE.md for the comment-style rules.
+Beta phase, not release: building, deploying and restarting the Pi lobbies are
+routine — do not hesitate when a change needs it.
+
+## Repository layout
+
+- `ftesurf64.exe` — prebuilt FTE engine binary (Windows x64). Engine C code is
+  NOT here: separate checkout at `C:/msys64/home/Lex/fteqw` (`engine/…`), which
+  also holds `ENGINE_PATCHES.md`.
+- `ftesurf/` — the gamedir: `cfg/` (incl. `cfg/test/`, `cfg/lobby/`,
+  `cfg/maps/`), `data/` (saves, runs), `logs/`, `screenshots/`, `glsl/`,
+  compiled progs (`csprogs.dat`, `qwprogs.dat`, `menu.dat`).
+- `src/` — all QuakeC and the build script (`build.ps1`, `fteqcc64.exe`).
+- `surfd/` — Python (Flask/gunicorn) directory + join broker; runs on the Pi.
+- `src/release/` — packaging (`release.ps1`, `publish.sh`, `install.sh`, nginx +
+  page template); the ROOT `release/` is only its untracked staging output
+  (`stage-0.1.N/`). `ENGINE.txt` — pin of the engine commit/patch this tree
+  expects.
+- `.gitignore` IS AN ALLOWLIST: `/*` ignores everything at the root, then
+  `!/name` un-ignores. A new ROOT file is invisible to git until you add it
+  there — that is how AGENTS.md and CLAUDE.md first went untracked (both are
+  allowlisted now, `.gitignore:125-126`). Check a surprise with
+  `git check-ignore -v <path>`. `dist/` and the root `release/` must stay
+  ignored.
+
+## QuakeC sources → artifacts
+
+- `src/server/*.qc` + `sv_progs.src` → `qwprogs.dat` (server progs).
+- `src/client/*.qc` + `cl_progs.src` → `csprogs.dat` (CSQC: HUD, boards,
+  replays, saveloc client half).
+- `src/menu/*.qc` + `m_progs.src` → `menu.dat` (menu VM: picker, join flow).
+  Menu is client-local: never deployed to servers.
+- `src/shared/`, `src/defs/` — defs is GENERATED, do not hand-edit.
+- `.src` file order is load-bearing (compile order = declaration order; QC has
+  no forward references — add a prototype `void() Foo;` or reorder).
+
+## Build
+
+From `src/`, with pwsh 7 (NOT `powershell`):
+
+    pwsh -NoProfile -Command "./build.ps1 -Jobs 8"
+
+- Default: compiles all three progs + plugin, deploys to `C:\FTESurf` AND
+  `C:\FTEQuake` (dual deploy is mandatory).
+- `-Engine`: also rebuilds the engine from the fteqw checkout; add `-Full`
+  after any engine header change. Plugin rebuild is automatic.
+- `-Pi`: ships qwprogs+csprogs to the Pi lobbies and restarts them.
+- QC-only change → default build is enough. Treat "0 warnings" as the bar, but
+  check whether a warning is yours: this tree usually carries other people's
+  uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).
+
+## Run and test
+
+- Normal launch: `./ftesurf64.exe` (or `ftesurf.bat`).
+- Headless: `./ftesurf64.exe -WindowStyle Minimized +exec <name>` with cfgs in
+  `ftesurf/cfg/test/`; output in `ftesurf/logs/<log_name>.log` and
+  `ftesurf/screenshots/`. Verify by reading logs and screenshots.
+- Test-cfg recipe: `cl_idlefps 0` AND `cl_maxfps 100` (uncapped fps starves
+  async loads); `menu_restart` before any menu-VM command in a `+exec` run
+  (menu.dat loads lazily); `set <cvar> <v>` for cvars not registered yet.
+- The engine's BUILTIN menu is open from boot and `togglemenu` only OPENS;
+  `ui_close` is the way back. Until it closes `notmenu=0` skips the whole HUD
+  stack, so every screenshot harness needs `menu_restart` + `ui_close`.
+- This machine's archived `ftesurf/ftesurf.cfg` overrides `default.cfg` (it
+  archives `hud_energy_ref` and `hud_timer_size` among others, and the values
+  drift — read the file rather than trusting a number quoted here). A headless
+  test must `set` every cvar its measurement depends on, not assume a default.
+- DRIVING A RUN: the clock starts when you LEAVE THE START BOX. `+jump` hops in
+  place (~80 u in 4 s on a bhop map) and never starts it; `+forward` walks at
+  `sv_maxspeed` (260, `default.cfg:432` — the move values are 450 precisely so
+  they cap nothing) and clears the box in about a second. `timer` prints the
+  client latches, `cmd timer` the server's.
+- MEASURING A DRAW: with no console dump, take two screenshots with exactly one
+  variable changed between them and diff the numbers — a frozen column beside a
+  live readout that moved is a measurement, one picture is not.
+- Client-vs-server (prediction) tests need a REAL socket, not a listen server:
+  run `C:\FTEQuake\fteqwsv64.exe +set sv_port <p> +exec cfg/test/<sv>` from
+  `C:\FTESurf` (`ftesurf64.exe -dedicated` crashes after prop lighting), with
+  `sv_public 0` or it heartbeats to public masters.
+  - After EVERY csprogs rebuild run `python tools/seed_csprogs.py`, then RESTART
+    the dedicated server. A stale `downloads/csprogsvers/<hash>.dat` silently
+    runs the OLD code (no download line, no error); a server left running holds
+    the old progs in memory and the client then logs "no client game" with every
+    QC command reading "Unknown command" (panels absent, screenshots empty).
+    The advertised hash is the folded MD4 of csprogs.dat (`CalcHashInt(hash_md4)`,
+    digest bytes XORed by `i%4`); seeding by hand, STRIP LEADING ZEROS — the
+    engine spells the filename `%x`.
+  - Warp with `cmd zone_goto`, NOT `setpos`: setpos forces MOVETYPE_NOCLIP
+    server-side and desyncs the two simulations. It also taints the run
+    (`cheated`), which is fine once no measurement depends on the clock. On maps
+    with no zone data, setpos + `cmd noclip` TWICE lands in WALK — prove it with
+    a viewpos z-drop; ONE toggle leaves you in NOCLIP (level flight). Each
+    `noclip` is processed twice — engine `SV_Noclip_f` flips to WALK, then the
+    mod's QC handler flips back and prints "noclip ON" — so the printed state
+    lies; trust the z-drop, not the console.
+  - CSQC-registered cvars (`cl_trigdebug`, `cl_triggers`) must be set AFTER
+    `connect`: registercvar resets a pre-connect `set` to default.
+- No QC unit tests; surfd has pytest (`surfd/test_*.py`, run on Pi).
+
+## Generated / never edit
+
+`ftesurf/*.dat`, `*.lno`, `src/defs/*.qc`, `ftesurf/ftesurf.cfg` (auto-saved
+archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
+
+## Conventions
+
+- QC style: `type() Name =\n{ … };`, `local` declarations first, tabs,
+  ALL_CAPS defines, module-prefixed globals (`ui_`, `lb_`, `lj_`, `rec_sl_`).
+- THIS TREE USUALLY CARRIES MORE THAN ONE WORKSTREAM UNCOMMITTED. Before
+  claiming a build number, `grep -rn "BUILD 8[0-9]" src/` — comments claim
+  numbers before the commit does. A `build.ps1` failure in a prog you did not
+  touch is probably not yours: check `git status` first.
+- Every change is "Patch NNN": append to `ENGINE_PATCHES.md` (engine repo) and
+  bump the `patch` pin in `ENGINE.txt`. Mod-side-only patches still take a
+  number and say so; the engine `commit`/`tag` pins only move for engine work.
+  NEW ENTRIES ARE CONCISE: Problem / Change / Verified, a few lines each, no
+  prose padding. Entries up to patch 334 are a long-form archive: never rewrite
+  them and do not imitate their style. `qcbuild` bumps only on the user's
+  "Build NN" commit.
+- SOURCE CONTROL IS THE USER'S. Do not commit or push unless asked: the tree
+  normally holds several workstreams at once, so `git add -A` would fuse them
+  into one unbisectable commit, and `qcbuild` only moves on the user's own
+  "Build NN" commit. When asked, CONTRIBUTING.md has the format (`Build NN — …`,
+  subject ≤ 72, Root cause / Fix / Verified body) and the branch rule. Stage the
+  paths your change actually touched and say which files you left alone.
+- Compare two dynamic strings with `strcmp`; `==` only against literals.
+- One `URI_Get_Callback` per VM — branch on the request id.
+- Inspect existing implementations before adding systems: cvar mirrors in
+  cl_hud.qc, `HUD_Size` fallbacks, the `Seq_*` anchor chain in cl_board.qc, the
+  `sl_*` command table in cl_saveloc.qc/sv_saveloc.qc, surfd routes. Reuse
+  commands/cvars/paths instead of inventing parallel ones.
+- A display switch that can be turned off wants three things, not one: the
+  `registercvar`, a row in `cl_hudedit.qc`'s `HE_OptDef` (rows must stay
+  contiguous — the first `""` ends the pane, and `HE_ResetAll` walks them, so an
+  omitted row is a cvar the reset button cannot recover), and a documented
+  `set` line in `default.cfg`.
+
+## Boundaries and interfaces
+
+- Server QC is authoritative (saveloc lists, timer/zones, heartbeat, board
+  submits). Client QC renders/predicts. Menu QC is offline UI + directory.
+- Client→server: `cmd sl_*`-style registered command strings.
+  Server→client: `stuffcmd` (e.g. `set cl_saveroot`), stats, sprint, csqc
+  entity fields. MIRRORS SPLIT BY TYPE: floats ride a stuffed `set` read with
+  `cvar()`; STRINGS must ride `forceinfokey(p, "*key", …)` read with
+  `getplayerkeyvalue(player_localnum, "*key")` (`*wrank`, `*phash`) — a stuffed
+  `set` is Cvar_LockFromServer, and `cvar_string` then returns the LATCHED
+  pre-override string while `cvar()` still reads the effective value.
+  Customization channels: userinfo `lobbycolor`/`lobbyfx`/`lobbytrail` in;
+  `tc` (the engine's own chat-name colour key), `lc`, `lrgb` and `*phash`
+  (FS_GuidId) out.
+- Engine↔QC: traps (`registercommand`, `infokey`, `serverkey`,
+  `Mod_ForName`/`BIH_EnumBrushes`), per-frame cvar mirrors in QC, renderer cvars
+  (`r_voidview`, fog) live in the engine repo.
+- EVERY PUBLIC LOBBY SETS `lobby_nopb 1`. SV_PBGet then returns 0 and every PB
+  figure is zero there — `TF_HAVEPB`, `STAT_FS_TIMERPB`, and the split and
+  checkpoint deltas (`TIMERDELTA`, `TIMERCPD`). Anything PB-dependent is silent
+  on the servers people actually play on; test it offline or on a listen server.
+- CLIENT-SIDE TRIGGER PREDICTION (patches 335–338; full story in
+  ENGINE_PATCHES.md). `cl_triggers.qc` mirrors the stateless Source triggers
+  (teleport/push/setspeed) inside `CSQC_PredictPlayerMove`. It is a MIRROR of
+  `sv_entities.qc` — read the server counterpart before touching either half.
+  Load-bearing invariants:
+  - Push is NOT a one-command carrier: 337 mirrors the full Patch 249 state
+    machine. PUSH HAS THREE LEGS that must stay in lockstep: ride, CASH OUT held
+    into real velocity when `!armed`, spend held Z. Per predicted command the
+    engine runs `SV_BaseVelocityFrame`'s exact shape (restore, cash out, hand the
+    window to `pmove.basevelocity`, spend held Z) and QC reports fires via
+    `predmove_basevel` / `predmove_bvfired`. The engine keeps a sequence-keyed
+    ring of (held, armed) and it MUST survive chain restarts — the chain restarts
+    from the ack every rendered frame, so chain-scoped carrier state
+    systematically loses the first replayed command's push.
+  - THE SERVER STAYS AUTHORITATIVE for anything needing runtime state:
+    StartDisabled / IO-toggled triggers, and filters whose verdict depends on the
+    player's runtime targetname (`filter_activator_name` — outputs rename the
+    player). Missing or unimplemented filters FAIL OPEN exactly as the server
+    does, so those triggers ARE predicted (336). `.rec`/`.hid` evidence is
+    untouched by any of this, and LISTEN SERVERS GATE THE HOOK OFF — a listen
+    server never exercises prediction at all.
+  - Patch 338 mirrors only the Enable/Disable half of entity I/O, ZERO DELAY
+    ONLY: touch edges of predicted slots, event-only trigger_multiples, and
+    `logic_auto`'s OnMapSpawn. A demotion fixpoint keeps everything else
+    server-side — relays, buttons, timers, OnTrigger/OnJump/OnLand,
+    Toggle/Kill/AddOutput/ModifySpeed, the All-variants, delayed outputs — and
+    StartDisabled slots are predicted only when their enabler is mirrored too.
+    Gate state = persistent array + sequence-keyed ring committed at chain start;
+    edge seeding uses persistent last-overlap stamps (continuous stay vs
+    warp-in). `trig_io` dumps the graph, `cl_trigdebug 2` traces edge seeding.
+    If a map ever mis-gates, suspect a speculatively-committed event or a
+    suppressed setspeed enter-edge first (both bounded, both Patch-328 class).
+  - Exact client brush clipping = tracebox `MOVE_TRIGGERS|MOVE_OTHERONLY`
+    against an edict with `setmodel("*N")` AND `solid = SOLID_BSPTRIGGER`,
+    tested ZERO-LENGTH at the command's END position (the server's
+    `World_TouchAllLinks` dispatch shape). Sweeping fires on grazes the server
+    never sees. (A submodel with `solid = SOLID_NOT` silently clips its BOUNDING
+    BOX instead — `World_ClipMoveToEntity` resolves the model only for
+    SOLID_BSP/BSPTRIGGER/PORTAL — and huge trigger bboxes then fire from
+    everywhere under them.)
+  - `cl_prederror` prints one line per acked command whose server origin
+    differs. KNOWN RESIDUE, do not re-chase: 4–8 u transients at discrete
+    boundaries (pad entry, step-off lip) are Patch-328 class and self-heal in a
+    correction or two. A CONSTANT quantized cascade or a GROWING error is a real
+    bug — that is how 337 was found.
+  - Changes here need a REAL playtest on `bhop_mom_training_beta` (24 pushes,
+    20 setspeeds, training-scale blocks); synthetic walkers never once crossed a
+    live pad, and both push bugs only printed under a human riding them.
+    Harnesses: `p335k5` (walk-mode pad drop, z-drop WALK proof), `p338c`
+    (Enable/Disable lifecycle) / `p338e` (the mapspawn-enabled teleport) against
+    the `p335sv2` dedicated server.
+- Patch 339 was a CENSUS, not code (`tools/ioscan.py`): across 82 roster maps
+  there are ZERO zero-delay relay or timer gates on movement triggers — every
+  relay OnTrigger gate is delayed 0.05–200 s (song/hint/ending sequences; the
+  only MOVE-class rows are surf_lt_unicorn's ending viewholder swap) and timers
+  gate no triggers at all — so a relay or timer mirror has an EMPTY actionable
+  set — re-run the census before building one. The next real coverage step is a
+  delayed-output scheduler (absolute-clock pending queue), the prerequisite for
+  movers and song-timed work alike.
+- Movers: the server has NO real movers — func_door/func_button are Tier-2
+  state only ("NOTHING MOVES", sv_entities.qc:553 and :6221), func_rotating is a
+  MOVETYPE_PUSH stub, and competitive maps force doors open anyway. Client
+  mover prediction is moot until server movers exist.
+- Pi deploy of csprogs requiring engine 335+ is version-skew safe: csqc globals
+  bind BY NAME and missing ones point at junk (CSQC_FindGlobals), and
+  CSQC_PredictPlayerMove is simply never called on an old engine — prediction
+  degrades to server-authoritative, both directions.
+- surfd broker: `/lobbies.json` (directory), `/api/join` (files a claim and
+  returns a lobby NOT already running the map — the menu waits for the directory
+  row to flip, patch 334), `/api/heartbeat` (carries assignments back to
+  lobbies; children of mapcluster never heartbeat).
+
+## Anti-cheat and run evidence
+
+THE DESIGN IS NOT IN THIS REPO. It lives in
+`C:/Users/Lex/.claude/plans/i-m-developing-a-professional-tender-clock.md` —
+layers 0–3, threat classes T0–T5, phases 0–5, experiments E1–E5. Read it before
+touching anything below; none of this restates it. Half the commit log since
+build 72 is this workstream.
+
+- Three recordings of one run, joined by filename through `FS_RunPath`: `.rec`
+  (server, `sv_timer.qc`), `.view` (CSQC per-frame angles, `cl_replay.qc`),
+  `.hid` (engine raw-input journal, `in_generic.c`). A forgery has to be
+  consistent across all three. Taint bits demote and never accuse:
+  `TF_CHEAT/NOJOURNAL/NORULESET/NOPROFILE/NOMAP/NOCLOCK` in `sh_defs.qc`,
+  consumed by surfd's `certifiable()`.
+- THE `.rec` GRAMMAR BLOCK over `SV_RecOpen` (sv_timer.qc) IS AUTHORITATIVE,
+  currently FTESURF-REC 8. `tools/reccheck.py` is written from that block and
+  never from the writer, so a writer that drifts from its own documentation gets
+  caught. Same rule for `hidcheck.py` and `.hid`.
+- Version bump rule: new header keys and new record types are additive and need
+  no bump (readers skip what they do not know). Bump when `end` grows a field or
+  an existing line CHANGES MEANING. Then update, in reccheck.py: `COLUMNS`, the
+  `HEAD_Vn` ladder, the allowed-header ladder, the trailer-width ladder, and the
+  `r.info` print tuple — that tuple has silently swallowed a new field four
+  builds running, because nothing automatic reads it.
+- After ANY change here: `python tools/test_reccheck.py` (0 failed) AND a corpus
+  sweep over `ftesurf/data/runs` — the fault count must not move. A false note
+  about a correct file is the one thing these tools may not produce.
+- EVIDENCE BOUNDARY, exactly: `warp` = a direct write of origin or velocity
+  OUTSIDE the mover by a map entity. `ride` = the basevelocity carrier handed to
+  the mover (a span: `arm` persists until changed, `pay` is the cash-out). A
+  PORTAL crossing (`linked_portal_door`) is committed INSIDE the mover by the
+  engine (`PM_PlayerTracePortals`), so no QC site can record it — that needs the
+  engine to publish `pms_portalcrossed`.
+- Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
+  PRE-REGISTER the predictions and the falsifier in the cfg header before
+  running; keep a CONTROL that must still fail (a harness that merely got looser
+  improves both); write the result back into the header afterwards, INCLUDING
+  the predictions that failed — build 85's did, and the failure was the finding.
+- Capture pattern for a live recording: a run only closes at the finish, which a
+  scripted walk never reaches. So the harness holds the run open at the end and
+  an outside poller copies `data/parts/0.rec` during that window (an abandoned
+  stream is cleaned up on quit). `b85ride.cfg` is the current worked example.
+
+## Pi operations (public lobbies)
+
+- 12 lobbies, systemd `ftesurf@1..12`, basedir `/srv/nvme/ftesurf-server/game`;
+  lobby cfgs sourced from this repo's `ftesurf/cfg/lobby/` — edit here, scp there.
+- Restart: sudoers is per-unit only — loop `sudo -n systemctl restart ftesurf@$i`
+  for i in 1..12.
+- Deploy server progs with `./build.ps1 -Pi` (refuses while players are
+  connected, scp's both .new files, hash-verifies on the Pi, swaps in ONE ssh
+  command keeping `.prev`, restarts every active lobby); menu.dat stays local.
+  `-PiForce` overrides the refusal — beta phase, and the connected player is
+  usually the reporter; say so when you use it.
+- Post-deploy verification is a CLIENT CONNECT, not the journal: `ftesurf@N`
+  journals need sudo (sudoers is restart-only) and lobby cfgs write no file
+  logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live
+  lobby, check the `trig:` census, hook-alive line and prederr count; every
+  rotation map exists locally in the Steam Momentum library.
+- surfd runs as `surfd.service` (gunicorn :8084 behind nginx); logs via
+  `journalctl -u surfd`.
+
+## Chat and `say` — the contract, and it changed in 342
+
+Getting this wrong kills the restart keys silently, so it gets its own section.
+
+- `say` does NOT arrive via `registercommand` (engine commands beat
+  CSQC_ConsoleCommand). The engine offers it to the `CSQC_ChatSay(args, team)`
+  globalfunction before sending (patch 341, `zqtp.c`).
+- BARE `say` opens the draft; `say <text>` is DECLINED so CL_Say sends it
+  (patch 342). `say_team` is declined outright (no teams here), and `/me`
+  (`CL_Say`'s `extra`) never reaches the hook at all. Taking text back breaks
+  `bind r "say !r"` / `!m` in `default.cfg:864-865` (and `defaultuser.cfg`) —
+  i.e. the restart keys — and the `cfg/test` fixtures that drive runs with it
+  (seven today: b26a, b48d, b57eclipse, b57stage, b58ab, b86a, b86b).
+- THE MESSAGE MUST REACH THE SERVER AS ONE ARGUMENT: SV_ParseClientCommand reads
+  the whole thing from `argv(1)` and splits on the first space itself. CL_Say
+  wraps it in the one quote pair SV_Say strips (exactly one, `sv_user.c:4385`),
+  so plain `say !s 2` keeps its number; `cmd say !s 2` arrives as two arguments
+  and the number is LOST (stage 0, silently). Cfgs, fixtures and the menu
+  self-test use plain `say`. Corollary: a `%S`-quoted `say` line ships a second
+  quote pair and leaves visible quotes in everybody's chat.
+- The DRAFT's own submit is the exception and must stay `cmd say`: `set
+  cl_safetmp %S` then `cmd say $cl_safetmp` — the buffer's `;` split is
+  quote-aware, expansion runs after the split, and `cmd` bypasses CL_Say so the
+  hook cannot re-enter itself. The cost is that the draft cannot send `!s N`
+  (the tail splits); `!r`/`!m` are unaffected.
+- Key presses reach CSQC_InputEvent BEFORE their bind runs, so chat keys are
+  intercepted by stealing the key whose `getkeybind()` is `messagemode`,
+  `messagemode2` or `chat_say` (cl_chat.qc:533) — not by claiming the command.
+  `toggleconsole` is the one key a live draft gives back (it abandons the draft).
+- Hooking any engine command intercepts YOUR OWN callers. Audit cfgs, fixtures
+  and internal submitters before hooking one.
+
+## Pitfalls discovered the hard way
+
+- `pwsh`, never `powershell`.
+- Deleting save dirs behind a running server does NOT clear its in-memory list;
+  it rescans on map change/lobby flip/restart. Delete-all is `sl_delall`.
+- Two clients writing the same `log_name` interleave confusingly.
+- Engine cvar `timeout` (default 65 s) is the dead-client drop; lobbies set 30.
+- Unregistered cvar set by bare name in a cfg is "Unknown command" — `set` it.
+- Engine `sv.active` is never assigned anywhere — every `if (sv.active)` is dead
+  code; the live server test is `sv.state != ss_dead`.
+- fteqcc: `arr[i]_x` does not compile ("Cannot cast from vector to float") —
+  copy to a local vector first; sprintf takes ≤ 8 args (warns above, and DROPS
+  the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
+  big fixed arrays blow the globals/strings budget (4096 rows forced a 32-bit
+  target — size them to the library).
+- QC HAS NO FILE SCOPE, and fteqcc merges two same-named same-typed globals into
+  ONE with no warning. That is the mechanism forward declarations rely on, and it
+  is also a live hazard: build 48 added a `ui_rs_armed` in cl_results.qc that
+  already existed in cl_board.qc, silently aliasing build 26's teleport guard,
+  and BOTH features broke in opposite directions for several builds (see the
+  essay at the declaration in cl_results.qc). `grep -rn "float  <name>" src/`
+  before naming a new global.
+- PARALLEL-ARRAY COLUMNS ARE A STANDING TRAP. cl_board.qc's `seq_*` column is
+  TEN arrays (`kind gain de emax dur launch pct eend sub eref`) and the count in
+  the file's own warning says SEVEN places move together: the SEQ_MAX scroll
+  inside Seq_Push (cl_board.qc:2024) and Seq_Push's own row write (`Seq_Push` is
+  at 1976), Seq_Mark, Seq_Unmark, Seq_Load, and the seq.txt pair
+  Seq_Write/Seq_Read — PLUS the set that seven does not count,
+  cl_watch.qc's replay park/restore/apply trio
+  (`Watch_SeqSave` 1631, `Watch_SeqRestore` 1656, the replay apply ~1867), which
+  is exactly where `seq_eend` (build 65) and `seq_sub` (66) stayed stale in
+  replays for two builds until build 86 added all three there. `seq_mk_*` is a
+  full ten-array MIRROR of the column (cl_board.qc:883-892) and moves with it.
+  Miss one and the column draws happily with a single field a row out of step,
+  which reads as a physics bug.
+- Entity I/O's authoritative semantics live in `src/server/sv_entities.qc`
+  (~7800 lines, heavily essayed): ED_ParseUnknownEpair (case-sensitive "On"
+  prefix), SV_EntityIOBuild (five-field rows, ESC-or-comma), SV_FireOutput /
+  SV_IODeliver (exact-then-case-insensitive lookup), SV_ApplyInput, SV_IOEnable,
+  SV_TriggerIOTouch / SV_TriggerEndThink (edge tracking, 0.05 s end grace,
+  once-retirement).
+- Unimplemented server classes leave DORMANT wiring: `trigger_userinput` has no
+  spawn function, so its 14 OnKeyPressed outputs on mom_training fire nowhere
+  and its StartDisabled targets are dead server-side too. Before blaming client
+  prediction for a "broken" map mechanism, grep sv_entities.qc for the class.
+- Defining CSQC_Parse_Print routes EVERY svc_print into csprogs and the engine
+  prints nothing: re-`print()` each level you do not handle or it vanishes from
+  console and logs. Chat arrives pre-formatted by CL_PrintChat with console
+  escapes (`\1`, `^[`, `^]`, `\player\N^`) — parse it into (slot, text), never
+  blit it; the name comes back from the slot via getplayerkeyvalue.
+- sui has ONE hit-test list and ONE input buffer per frame: sui_begin empties
+  the list, sui_end clears the buffer, so a SECOND sui bracket in the same frame
+  draws dead buttons. Clickable panels either share a bracket (Players_Panel
+  draws inside Scores_Draw's) or refuse to coexist.
+- sui_slidercontrol's THIRD component is a DIVISION COUNT, not a step size
+  (`src/sui_sys.qc:1167` quantises by `rint(r*steps)/steps`): `[0, 255, 1]` is one
+  division = the whole range, so every drag snaps to an endpoint.
+  steps = stops − 1 (bytes: 255, off/trail/long: 2, binaries: 1).
+- A second clearscene/renderscene during the 2D phase with VF_VIEWPORT +
+  VF_DRAWWORLD 0 is a working subview (cl_avatar.qc's preview): park the stage
+  outside every game frustum and emit its particles after the main renderscene,
+  or the world view inherits them.
+- Chain guards gate handlers: CL_InputChain offers Scores_InputEvent under
+  `rec_sb_open || sc_held` — a handler written for a new state is dead code
+  until the guard admits that state. Read the guard, not just the handler, when
+  a key "does nothing".
+- A PANEL WITH TWO WAYS IN NEEDS BOTH WAYS OUT TESTED. The board is held by
+  `+showscores` and pinned by MOUSE2 — which is also `+jump`, so jumping while
+  peeking pinned it by accident and the release did not clear the pin. When a
+  state machine grows a second entry, walk every exit.
+- Build and verify (headless run + logs/screenshots, or Pi journal) before
+  declaring any task complete.
