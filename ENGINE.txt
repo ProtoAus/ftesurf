@@ -13,11 +13,17 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   9e4b2fc7391f278aedad10aee4dd531a308cf9f8
+commit   dcd1662595db8c5f699eada753f96718c323081c
 tag      patch-266
-patch    348
+patch    349
 qcbuild  83
 date     2026-09-18
+
+# PATCH 349 = ENGINE pm_verify + QC BUILD 88.  pm_verify replays a finished v9
+# file exactly and runs the live timer's own zone scan (SV_ZoneScan, moved verbatim
+# out of SV_TimerFrame) through QC hooks, printing VERIFY <file> PASS|HOLD|REFUSE.
+# Build 88 adds the `zseed` record the verifier seeds its latches from.
+# cfg/test/p349verify.cfg.  qcbuild left at 83 per the rule.
 
 # PATCH 348 IS QC BUILD 87, MOD-SIDE: FTESURF-REC 9, the recording carries exact
 # state -- the pin (`pmpin`), an exact `seed`, %.9g imposed vectors, row-bound

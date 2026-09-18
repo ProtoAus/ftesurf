@@ -1627,6 +1627,7 @@ float() SV_RecEnabled =
 .float  rec_rec_pm;              // v9: counts for the trailer, by landed line
 .float  rec_rec_pe;
 .float  rec_rec_portal;
+.float  rec_rec_zseed;           // v9, build 88: a `zseed` record is owed
 
 /*
 ===========================================================================
@@ -2565,6 +2566,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the engine saved it after the start packet's last
                             move.  A replay seeds from this, not from the %.2f
                             sample.  The start LATCH is still taken on trust.
+    zseed <name=value ...>  v9, build 88, additive (no bump): once, before the
+                            first `in` row -- the timer latches the START packet
+                            left: evzone azone cpzone track startseg stagerun, and
+                            twarp (run_teleport_warp, which decides whether tele/
+                            telerel/bhop move the zone sweep's origin).  Written at
+                            the END of that packet's SV_TimerFrame, because
+                            SV_RecOpen runs before steps 2-3 update the latches.
+                            engine pm_verify seeds SV_VerifyBegin from it.
     pm <pk> <row> <name=value ...>
                             v9.  The pin changed: the full text, as `pmpin`, now
                             in force FROM row <row>'s move on.  Written after that
@@ -3190,6 +3199,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_pcset = 0;
 	e.rec_rec_epoch = 0;
 	e.rec_rec_portalx = e.run_portalx;
+	e.rec_rec_zseed = TRUE;	// build 88: written at the end of this SV_TimerFrame
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
 	// run, which is the most common leg there is, and it would otherwise encode
 	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
@@ -9638,9 +9648,184 @@ void(entity e) SV_TimerRecFrame =
 	}
 };
 
-void(entity e) SV_TimerFrame =
+/*
+  BUILD 88: THE ZONE SCAN, MOVED VERBATIM OUT OF SV_TimerFrame so the verifier asks
+  exactly the question the live timer asks (SV_VerifyStep).  Pure: reads only the
+  zone table and the latched rules, writes only zs_*.  The explanation of each
+  test stays with the code below; the order of the tests is the ranking.
+*/
+float zs_az, zs_ez, zs_cp, zs_cancel;
+void(vector lastp, vector p, vector mn, vector mx) SV_ZoneScan =
 {
 	local float z, ty, az, ez, azpri, ezpri, cp, cancel;
+
+	az = ez = cp = -1;
+	azpri = ezpri = 0;
+	cancel = FALSE;
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		ty = zone_type[z];
+
+		if (ty == ZONE_BHOP || ty == ZONE_OVERBOUNCE)
+			continue;
+
+		if (ty == ZONE_CANCEL)
+		{
+			if (SV_ZoneHit(z, lastp, p, mn, mx))
+				cancel = TRUE;
+			continue;
+		}
+		if (ty == ZONE_CHECKPOINT)
+		{
+			if (cp < 0)
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
+					cp = z;
+			continue;
+		}
+		if (ty == ZONE_END)
+		{
+			if (ezpri < 2)
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
+				{
+					ez = z;
+					ezpri = 2;
+				}
+			continue;
+		}
+
+		/* START and STAGE: the arm question is asked of the point... */
+		/*
+		  A START outranks a STAGE for arming: standing in both means you are
+		  at the map start, not mid-route.  Equal ranks keep the first, which
+		  is table order and therefore segment order.
+
+		  BUILD 47: STILL THE POINT, at run_zone_hull 1, and that is the
+		  load-bearing half of the change rather than an oversight.  az drives
+		  SV_TimerTryArm, which CANCELS a running attempt -- firing that a
+		  hull-width early is a regression with no upside, and the request was
+		  for the clock to start later, not for the run to be cancellable from
+		  further away.  It is also the only test that runs for every START and
+		  STAGE zone every tick, so keeping it a point test keeps the expensive
+		  narrow phase out of the common path.  run_zone_hull 2 moves it, so
+		  the claim is falsifiable in one map load.
+		*/
+		if (SV_ZoneOcc(z, p, mn, mx))
+		{
+			if (ty == ZONE_START)
+			{
+				if (azpri < 2) { az = z; azpri = 2; }
+			}
+			else
+			{
+				if (azpri < 1) { az = z; azpri = 1; }
+			}
+
+		}
+
+		/*
+		  ...and the event question of the segment.  A stage zone ends the
+		  segment before it, so crossing one at 2000 u/s has to count even
+		  though you were never sampled inside it.  An END outranks a STAGE
+		  here (an end is terminal); the END arm above has already claimed
+		  ezpri 2 if one was crossed.
+		*/
+		if (ty == ZONE_STAGE)
+		{
+			if (ezpri < 1)
+				if (SV_ZoneHit(z, lastp, p, mn, mx))
+				{
+					ez = z;
+					ezpri = 1;
+				}
+
+		}
+	}
+
+	zs_az = az;
+	zs_ez = ez;
+	zs_cp = cp;
+	zs_cancel = cancel;
+};
+
+/*
+  BUILD 88: THE VERIFIER'S HALF.  Engine `pm_verify` replays a v9 file exactly and
+  calls these by name; the zone question is the live timer's own (SV_ZoneScan),
+  so a verifier and a lobby cannot disagree about what a box means.  vf_* is the
+  verifier's latch set, seeded from the file's `zseed`; nothing here touches an
+  entity or a live player's timer.
+*/
+float vf_evzone, vf_azone, vf_track, vf_stagerun, vf_startseg;
+
+// The zone pin as the header states it ("<src> <crc> <swept> <hull> <live>"),
+// for the engine to compare as a string; "" when this map has no table.
+string() SV_VerifyZonePin =
+{
+	if (zone_crc == "")
+		return "";
+	return sprintf("%s %s %d %d %d", Zone_SourceTag(zone_source), zone_crc,
+	               run_t_swept, run_t_hull, run_t_hulllive);
+};
+
+void(float evzone, float azone, float track, float stagerun, float startseg) SV_VerifyBegin =
+{
+	vf_evzone = evzone;
+	vf_azone = azone;
+	vf_track = track;
+	vf_stagerun = stagerun;
+	vf_startseg = startseg;
+};
+
+/*
+  One packet: 0 nothing, 1 the run finishes here, 2 a cancel zone was crossed,
+  3 the START of this track was re-entered (a note: bhop starts differ).
+  SV_TimerEvent's rule: an END of the run's track finishes any run; a stage run
+  also finishes on the STAGE after its own.  Nested ifs, this file's rule --
+  zone_track[-1] kills the VM.
+*/
+float(vector lastp, vector p, vector pmaxs) SV_VerifyStep =
+{
+	local vector mx;
+	local float ez, az, r;
+
+	mx = PM_HULL_MAXS;
+	if (run_t_hulllive)
+		mx = pmaxs;
+	SV_ZoneScan(lastp, p, PM_HULL_MINS, mx);
+	if (zs_cancel)
+		return 2;
+
+	r = 0;
+	az = zs_az;
+	if (az != vf_azone)
+	{
+		if (az >= 0)
+		if (zone_type[az] == ZONE_START)
+		if (zone_track[az] == vf_track)
+			r = 3;
+		vf_azone = az;
+	}
+
+	ez = zs_ez;
+	if (ez != vf_evzone)
+	{
+		if (ez >= 0)
+		if (zone_track[ez] == vf_track)
+		{
+			if (zone_type[ez] == ZONE_END)
+				r = 1;
+			else if (vf_stagerun)
+			if (zone_seg[ez] == vf_startseg + 1)
+				r = 1;
+		}
+		vf_evzone = ez;
+	}
+	return r;
+};
+
+void(entity e) SV_TimerFrame =
+{
+	local float az, ez, cp, cancel;
 	local float bhopz, bhopstate, bhopdirty, bhopcheat;
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local vector p, lastp;
@@ -9764,88 +9949,11 @@ void(entity e) SV_TimerFrame =
 	mn = SV_RunHullMins(e);
 	mx = SV_RunHullMaxs(e);
 
-	az = ez = cp = -1;
-	azpri = ezpri = 0;
-	cancel = FALSE;
-
-	for (z = 0; z < zone_count; z = z + 1)
-	{
-		ty = zone_type[z];
-
-		if (ty == ZONE_BHOP || ty == ZONE_OVERBOUNCE)
-			continue;
-
-		if (ty == ZONE_CANCEL)
-		{
-			if (SV_ZoneHit(z, lastp, p, mn, mx))
-				cancel = TRUE;
-			continue;
-		}
-		if (ty == ZONE_CHECKPOINT)
-		{
-			if (cp < 0)
-				if (SV_ZoneHit(z, lastp, p, mn, mx))
-					cp = z;
-			continue;
-		}
-		if (ty == ZONE_END)
-		{
-			if (ezpri < 2)
-				if (SV_ZoneHit(z, lastp, p, mn, mx))
-				{
-					ez = z;
-					ezpri = 2;
-				}
-			continue;
-		}
-
-		/* START and STAGE: the arm question is asked of the point... */
-		/*
-		  A START outranks a STAGE for arming: standing in both means you are
-		  at the map start, not mid-route.  Equal ranks keep the first, which
-		  is table order and therefore segment order.
-
-		  BUILD 47: STILL THE POINT, at run_zone_hull 1, and that is the
-		  load-bearing half of the change rather than an oversight.  az drives
-		  SV_TimerTryArm, which CANCELS a running attempt -- firing that a
-		  hull-width early is a regression with no upside, and the request was
-		  for the clock to start later, not for the run to be cancellable from
-		  further away.  It is also the only test that runs for every START and
-		  STAGE zone every tick, so keeping it a point test keeps the expensive
-		  narrow phase out of the common path.  run_zone_hull 2 moves it, so
-		  the claim is falsifiable in one map load.
-		*/
-		if (SV_ZoneOcc(z, p, mn, mx))
-		{
-			if (ty == ZONE_START)
-			{
-				if (azpri < 2) { az = z; azpri = 2; }
-			}
-			else
-			{
-				if (azpri < 1) { az = z; azpri = 1; }
-			}
-
-		}
-
-		/*
-		  ...and the event question of the segment.  A stage zone ends the
-		  segment before it, so crossing one at 2000 u/s has to count even
-		  though you were never sampled inside it.  An END outranks a STAGE
-		  here (an end is terminal); the END arm above has already claimed
-		  ezpri 2 if one was crossed.
-		*/
-		if (ty == ZONE_STAGE)
-		{
-			if (ezpri < 1)
-				if (SV_ZoneHit(z, lastp, p, mn, mx))
-				{
-					ez = z;
-					ezpri = 1;
-				}
-
-		}
-	}
+	SV_ZoneScan(lastp, p, mn, mx);	// build 88: the scan, shared with the verifier
+	az = zs_az;
+	ez = zs_ez;
+	cp = zs_cp;
+	cancel = zs_cancel;
 
 	/*
 	  The leg tracker (`!r`) latches on start/stage entry and never clears --
@@ -10230,6 +10338,17 @@ void(entity e) SV_TimerFrame =
 	// zone voids and the save-lock hold re-places), and the segment has to
 	// start from where they actually are.
 	e.run_t_lastorg = e.origin;
+
+	// BUILD 88: the latches the start packet left, once, before the first row.
+	// Written here and not in SV_RecOpen: that runs inside step 1, before steps
+	// 2 and 3 update azone/evzone for this very packet.
+	if (e.rec_rec_zseed)
+	{
+		e.rec_rec_zseed = FALSE;
+		SV_RecPut(e, sprintf("zseed evzone=%d azone=%d cpzone=%d track=%d startseg=%d stagerun=%d twarp=%d",
+		                     e.run_t_evzone, e.run_t_azone, e.run_t_cpzone, e.run_t_track,
+		                     e.run_t_startseg, e.run_t_stagerun, cvar("run_teleport_warp") ? 1 : 0));
+	}
 };
 
 /*

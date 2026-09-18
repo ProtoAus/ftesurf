@@ -761,6 +761,7 @@ def check_rec(path, verbose=False):
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
     seeds = []              # (lineno, args) -- v9
+    zseeds = []             # (lineno, args, rows so far) -- v9, build 88
     pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
     first_body = None       # line number of the first body line (seed goes there)
     seen_positive = False
@@ -1074,6 +1075,10 @@ def check_rec(path, verbose=False):
             pes.append((lineno + 1, tok[1:], inrows))
         elif kind == "portal" and ver >= 9:
             portals.append((lineno + 1, tok[1:], inrows))
+        elif kind == "zseed" and ver >= 9:
+            # build 88: the timer latches the start packet left, for pm_verify.
+            # Additive (no bump); written once, before the first `in` row.
+            zseeds.append((lineno + 1, tok[1:], inrows))
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
@@ -1257,6 +1262,19 @@ def check_rec(path, verbose=False):
                 r.fault("line %d: 'seed' fl %r is not 0 or 1" % (ln, a[6]))
             check_pairs(r, "line %d: 'seed'" % ln, a[7:], numeric=False)
         r.info["seed"] = "yes" if seeds else "no"
+        for ln, a, rows in zseeds:
+            if len(zseeds) > 1 and ln != zseeds[0][0]:
+                r.fault("line %d: a second 'zseed' -- written once, at open" % ln)
+            if rows:
+                r.fault("line %d: 'zseed' after %d 'in' row(s) -- it states the "
+                        "latches BEFORE the first row" % (ln, rows))
+            check_pairs(r, "line %d: 'zseed'" % ln, a)
+            names = set(t.partition("=")[0] for t in a)
+            missing = sorted({"evzone", "azone", "track", "startseg", "stagerun",
+                              "twarp"} - names)
+            if missing:
+                r.fault("line %d: 'zseed' lacks %s" % (ln, " ".join(missing)))
+        r.info["zseed"] = "yes" if zseeds else "no"
         if pmpin is not None and not seeds:
             r.note("pmpin is present and there is no 'seed' -- a replay has no "
                    "exact starting state")
@@ -2275,7 +2293,7 @@ def emit(r, verbose):
                   # bare `pay` is an AddOutput launch never handed to the mover.
                   "rides", "inend",
                   # Build 87 (v9), same edit as the code that assigns them.
-                  "pmpin", "seed", "pms", "pes", "portals",
+                  "pmpin", "seed", "zseed", "pms", "pes", "portals",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

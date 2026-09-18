@@ -819,6 +819,19 @@ def case_v8_as_before():
                "a pe record in a v8 file is still an unknown-record note")
 
 
+def case_v9_zseed():
+    """build 88: the timer latches for pm_verify -- once, before the first row."""
+    z = "zseed evzone=-1 azone=0 cpzone=-1 track=0 startseg=0 stagerun=0 twarp=1"
+    b = build(**V9_ALL)
+    k = b.index("begin") + 2          # after `begin` and `seed`
+    ok_clean(b[:k] + [z] + b[k:], "a zseed after the seed and before row 0 passes")
+    faults_with(b[:k] + [z, z] + b[k:], "a second 'zseed'", "two zseeds is a fault")
+    faults_with(after_row(build(**V9_ALL), 3, z), "'zseed' after",
+                "a zseed after a row is a fault")
+    faults_with(b[:k] + [z.replace(" twarp=1", "")] + b[k:], "'zseed' lacks twarp",
+                "a zseed missing a latch is a fault")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -846,7 +859,7 @@ def main():
                case_v9_every_record_clean,
                case_v9_exponent_is_legal_in_float_columns,
                case_v9_exponent_still_faults_elsewhere,
-               case_v9_trailer_counts, case_v9_row_must_be_written_already,
+               case_v9_trailer_counts, case_v9_row_must_be_written_already, case_v9_zseed,
                case_v9_seed, case_v9_field_values, case_v8_as_before):
         print("%s:" % fn.__name__)
         fn()
