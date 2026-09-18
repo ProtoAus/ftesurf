@@ -69,7 +69,7 @@
     }, function () { throw new Error('Could not reach the server'); });
   }
 
-  // ---- hash: #m=<map>&t=<track>&l=<leg>&s=<style>&k=<tier> ----------------
+  // ---- hash: #m=<map>&t=<track>&l=<leg>&s=<style> --------------------------
   function readHash() {
     var o = {};
     location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
@@ -80,9 +80,9 @@
     return o;
   }
 
-  function hashFor(map, track, leg, style, tier) {
+  function hashFor(map, track, leg, style) {
     return '#m=' + encodeURIComponent(map) + '&t=' + track + '&l=' + leg +
-      '&s=' + style + '&k=' + tier;
+      '&s=' + style;
   }
 
   // ---- map list ----------------------------------------------------------
@@ -159,13 +159,13 @@
     return b;
   }
 
-  function go(v, track, leg, style, tier) {
-    location.hash = hashFor(v.map, track, leg, style, tier);
+  function go(v, track, leg, style) {
+    location.hash = hashFor(v.map, track, leg, style);
   }
 
   function renderTabs(v) {
-    var legs = $('legs'), styles = $('styles'), tiers = $('tiers');
-    legs.textContent = ''; styles.textContent = ''; tiers.textContent = '';
+    var legs = $('legs'), styles = $('styles');
+    legs.textContent = ''; styles.textContent = '';
 
     var seen = {}, pairs = [];
     v.boards.concat([{ track: v.track, leg: v.leg }]).forEach(function (b) {
@@ -176,20 +176,16 @@
     pairs.forEach(function (p) {
       legs.appendChild(tabButton(legName(p.track, p.leg), null,
         p.track === v.track && p.leg === v.leg,
-        function () { go(v, p.track, p.leg, v.style, v.tier); }));
+        function () { go(v, p.track, p.leg, v.style); }));
     });
 
     ['clean', 'segmented'].forEach(function (s) {
       var n = 0;
       v.boards.forEach(function (b) {
-        if (b.track === v.track && b.leg === v.leg && b.tier === v.tier && b.style === s) { n = b.n; }
+        if (b.track === v.track && b.leg === v.leg && b.style === s) { n = b.n; }
       });
       styles.appendChild(tabButton(cap(s), n, s === v.style,
-        function () { go(v, v.track, v.leg, s, v.tier); }));
-    });
-    ['ranked', 'community'].forEach(function (k) {
-      tiers.appendChild(tabButton(cap(k), v.counts[k] || 0, k === v.tier,
-        function () { go(v, v.track, v.leg, v.style, k); }));
+        function () { go(v, v.track, v.leg, s); }));
     });
   }
 
@@ -211,9 +207,8 @@
 
   function renderMap(body) {
     var v = {
-      map: body.disp, track: body.track, leg: body.leg, tier: body.tier,
-      style: body.style, boards: body.boards || [], counts: body.counts || {},
-      shown: 0, best: 0
+      map: body.disp, track: body.track, leg: body.leg, style: body.style,
+      boards: body.boards || [], total: body.n || 0, shown: 0, best: 0
     };
     state.view = v;
     document.title = body.disp + ' \u00b7 FTESurf Leaderboard';
@@ -224,21 +219,17 @@
     if (rows.length && rows[0].r === 1) { v.best = rows[0].ms; }
     appendRows(v, rows);
     v.shown = rows.length;
-    var total = v.counts[v.tier] || 0;
     $('table').hidden = rows.length === 0;
-    $('more').hidden = v.shown >= total;
+    $('more').hidden = v.shown >= v.total;
     var empty = $('empty');
     if (rows.length === 0) {
-      var other = v.tier === 'ranked' ? 'community' : 'ranked';
-      empty.textContent = 'No ' + v.tier + ' ' + v.style + ' times on ' +
-        legName(v.track, v.leg) + ' yet' +
-        (v.counts[other] ? ' \u00b7 ' + v.counts[other] + ' ' + other : '');
+      empty.textContent = 'No ' + v.style + ' times on ' + legName(v.track, v.leg) + ' yet';
       empty.hidden = false;
     } else {
       empty.hidden = true;
     }
     // Make the address shareable once the server has picked the board.
-    var full = hashFor(v.map, v.track, v.leg, v.style, v.tier);
+    var full = hashFor(v.map, v.track, v.leg, v.style);
     if (location.hash !== full && history.replaceState) {
       history.replaceState(null, '', full);
     }
@@ -246,9 +237,9 @@
 
   function mapQuery(h, offset) {
     var q = 'api/map?map=' + encodeURIComponent(h.m);
-    if (h.t !== undefined || h.l !== undefined || h.s !== undefined || h.k !== undefined) {
+    if (h.t !== undefined || h.l !== undefined || h.s !== undefined) {
       q += '&track=' + encodeURIComponent(h.t || '0') + '&leg=' + encodeURIComponent(h.l || '0') +
-        '&style=' + encodeURIComponent(h.s || 'clean') + '&tier=' + encodeURIComponent(h.k || 'ranked');
+        '&style=' + encodeURIComponent(h.s || 'clean');
     }
     return q + (offset ? '&offset=' + offset : '');
   }
@@ -275,7 +266,7 @@
     var v = state.view;
     if (!v) { return; }
     var seq = state.seq;
-    var h = { m: v.map, t: v.track, l: v.leg, s: v.style, k: v.tier };
+    var h = { m: v.map, t: v.track, l: v.leg, s: v.style };
     $('more').disabled = true;
     get(mapQuery(h, v.shown)).then(function (body) {
       $('more').disabled = false;
@@ -283,7 +274,7 @@
       var rows = body.rows || [];
       appendRows(v, rows);
       v.shown += rows.length;
-      $('more').hidden = rows.length < PAGE || v.shown >= (v.counts[v.tier] || 0);
+      $('more').hidden = rows.length < PAGE || v.shown >= v.total;
     }, function (e) {
       $('more').disabled = false;
       showError(e.message);

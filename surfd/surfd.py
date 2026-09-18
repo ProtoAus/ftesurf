@@ -2349,11 +2349,10 @@ WEB_PAGE = 50            # rows per /board/api/map call
 WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
            "font-src 'self'; connect-src 'self'; img-src 'self'; "
            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-# A map opens on the first of these with rows, else the first board it has.
-WEB_DEFAULT_BOARDS = ((0, 0, TIER_RANKED, STYLE_CLEAN),
-                      (0, 0, TIER_COMMUNITY, STYLE_CLEAN),
-                      (0, 0, TIER_RANKED, STYLE_SEGMENTED),
-                      (0, 0, TIER_COMMUNITY, STYLE_SEGMENTED))
+# The web board is ranked only, like the in-game board since Patch 355: a
+# community (demoted) run is never counted or listed here.  A map opens on the
+# first of these with rows, else the first board it has.
+WEB_DEFAULT_BOARDS = ((0, 0, STYLE_CLEAN), (0, 0, STYLE_SEGMENTED))
 
 _web_lock = threading.Lock()
 _web_maps = {"at": None, "body": b""}
@@ -2393,14 +2392,14 @@ def web_asset(name):
 
 
 def _web_maps_body(now):
-    """Every zoned map with a BSP, plus every map with runs, with its main
-    ranked clean WR.  The WR window orders by BOARD_ORDER, so it is always
+    """Every zoned map with a BSP, plus every map with ranked runs, with its
+    main ranked clean WR.  The WR window orders by BOARD_ORDER, so it is always
     /api/board's row 1."""
     bsp, zoned = map_index()
     db = get_db()
     stats = {r["map"]: r for r in db.execute(
         "SELECT map, COUNT(*) AS runs, MAX(submitted) AS last"
-        "  FROM runs GROUP BY map").fetchall()}
+        "  FROM runs WHERE tier=? GROUP BY map", (TIER_RANKED,)).fetchall()}
     wrs = {r["map"]: r for r in db.execute(
         "SELECT r.map, r.name, r.millis, " + VER_SQL + " AS ver FROM ("
         "  SELECT map, name, millis, replay_id, ROW_NUMBER() OVER"
@@ -2450,15 +2449,13 @@ def web_map():
     mapname = clean_map(request.args.get("map"))
     if not mapname:
         return fail(400, "bad map")
-    raw = {k: request.args.get(k, "") for k in ("track", "leg", "tier", "style")}
+    # `tier` is not a parameter: old links that carry one still open ranked.
+    raw = {k: request.args.get(k, "") for k in ("track", "leg", "style")}
     track = strict_int(raw["track"] or 0, 0, MAX_TRACK)
     leg = strict_int(raw["leg"] or 0, 0, MAX_LEG)
-    tier = raw["tier"] or TIER_RANKED
     style = raw["style"] or STYLE_CLEAN
     if track is None or leg is None:
         return fail(400, "bad leg")
-    if tier not in TIERS:
-        return fail(400, "bad tier")
     if style not in STYLES:
         return fail(400, "bad style")
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
@@ -2466,19 +2463,20 @@ def web_map():
     bsp, zoned = map_index()
     try:
         db = get_db()
-        boards = [{"track": r["track"], "leg": r["leg"], "tier": r["tier"],
-                   "style": r["style"], "n": r["n"]} for r in db.execute(
-            "SELECT track, leg, tier, style, COUNT(*) AS n FROM runs"
-            " WHERE map=? GROUP BY 1, 2, 3, 4 ORDER BY 1, 2, 3, 4",
-            (mapname,)).fetchall()]
+        boards = [{"track": r["track"], "leg": r["leg"], "style": r["style"],
+                   "n": r["n"]} for r in db.execute(
+            "SELECT track, leg, style, COUNT(*) AS n FROM runs"
+            " WHERE map=? AND tier=? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
+            (mapname, TIER_RANKED)).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
         if not any(raw.values()) and boards:
-            have = [(b["track"], b["leg"], b["tier"], b["style"]) for b in boards]
-            track, leg, tier, style = next(
+            have = [(b["track"], b["leg"], b["style"]) for b in boards]
+            track, leg, style = next(
                 (d for d in WEB_DEFAULT_BOARDS if d in have), have[0])
-        counts = board_counts(db, mapname, track, leg, style)
-        rows = board_rows(db, mapname, track, leg, tier, style, WEB_PAGE, offset)
+        n = board_counts(db, mapname, track, leg, style)[TIER_RANKED]
+        rows = board_rows(db, mapname, track, leg, TIER_RANKED, style,
+                          WEB_PAGE, offset)
     except sqlite3.Error as exc:
         log.exception("web map db error: %s", exc)
         return fail(500, "storage error")
@@ -2486,9 +2484,9 @@ def web_map():
         del row["player"]
     return _json({"v": 1, "t": now, "map": mapname,
                   "disp": bsp.get(mapname, mapname), "boards": boards,
-                  "track": track, "leg": leg, "tier": tier, "style": style,
-                  "counts": counts, "offset": offset, "limit": WEB_PAGE,
-                  "rows": rows}, "max-age=15")
+                  "track": track, "leg": leg, "style": style, "n": n,
+                  "offset": offset, "limit": WEB_PAGE, "rows": rows},
+                 "max-age=15")
 
 
 @app.after_request

@@ -83,7 +83,38 @@ from rcon import (Rcon, RconError, RconThrottled, RconBlocked, clean_reply,
 # that 27500 -- what an unconfigured QuakeWorld server binds -- is never
 # forwarded at the router and so cannot be exposed by accident. 4 and 5 are the
 # bhop lobbies, added in QC build 57 on the same ten-port spacing.
-DEFAULT_LOBBIES = "1:27510,2:27520,3:27530,4:27540,5:27550"
+#
+# The fleet is read from LOBBY_CFG_DIR: one lobby per lobby<N>.cfg, port from
+# its first `set sv_port` -- the source build.ps1 -Pi reads too.  A hard-coded
+# list showed 5 of the 12 lobbies for days.  DEFAULT_LOBBIES is only the
+# fallback when that directory cannot be read.
+DEFAULT_LOBBIES = ",".join("%d:%d" % (n, 27500 + 10 * n) for n in range(1, 13))
+LOBBY_CFG_DIR = "/srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby"
+_LOBBY_CFG = re.compile(r"lobby(\d+)\.cfg")
+_SV_PORT = re.compile(r"\s*set\s+sv_port\s+(\d+)")
+
+
+def discover_lobbies(cfgdir):
+    """"N:port,..." from cfgdir's lobby<N>.cfg files, or "" if there are none."""
+    try:
+        names = os.listdir(cfgdir)
+    except OSError:
+        return ""
+    found = []
+    for name in names:
+        m = _LOBBY_CFG.fullmatch(name)
+        if not m:
+            continue
+        try:
+            with open(os.path.join(cfgdir, name), encoding="utf-8",
+                      errors="replace") as fh:
+                port = next((int(p.group(1)) for p in map(_SV_PORT.match, fh) if p),
+                            None)
+        except OSError:
+            continue
+        if port:
+            found.append((int(m.group(1)), port))
+    return ",".join("%d:%d" % t for t in sorted(found))
 
 SESSION_IDLE_MAX = 30 * 60      # seconds of inactivity before a session dies
 SESSION_ABS_MAX = 12 * 60 * 60  # hard lifetime regardless of activity
@@ -734,7 +765,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     "will load, show systemd state and the directory table, "
                     "and refuse every game-server control.")
 
-    lobbies = parse_lobbies(setting("SURFD_ADMIN_LOBBIES", DEFAULT_LOBBIES))
+    lobbies = parse_lobbies(
+        setting("SURFD_ADMIN_LOBBIES")
+        or discover_lobbies(setting("SURFD_LOBBY_CFGS", LOBBY_CFG_DIR))
+        or DEFAULT_LOBBIES)
     if not lobbies:
         log.error("admin panel DISABLED: SURFD_ADMIN_LOBBIES parsed to nothing")
         return None

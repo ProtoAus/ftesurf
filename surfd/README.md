@@ -594,16 +594,17 @@ URLs in the page are relative because the browser's prefix is not surfd's.
 
 ```
 GET /board/                     the page; /board/board.js and board.css only
-GET /board/api/maps             zoned maps with a BSP, plus maps with runs:
+GET /board/api/maps             zoned maps with a BSP, plus maps with ranked runs:
   -> {"v":1,"t":..,"maps":[{"map","runs","last","wr":{"name","ms","ver"}|null}]}
-GET /board/api/map?map=&track=&leg=&tier=&style=&offset=
-  -> {"v":1,"t":..,"map","disp","boards":[{"track","leg","tier","style","n"}],
-      "track","leg","tier","style","counts","offset","limit":50,"rows":[..]}
+GET /board/api/map?map=&track=&leg=&style=&offset=
+  -> {"v":1,"t":..,"map","disp","boards":[{"track","leg","style","n"}],
+      "track","leg","style","n","offset","limit":50,"rows":[..]}
 ```
 
-`wr` is the main ranked clean board's row 1 (`BOARD_ORDER`). With no board
-parameters a map opens on the first non-empty of main ranked clean, community
-clean, ranked segmented, community segmented, else its first board. Rows are
+RANKED ONLY, like the in-game board since Patch 355: community runs are never
+counted or listed, and a `tier` parameter (old links) is ignored. `wr` is the
+main clean board's row 1 (`BOARD_ORDER`). With no board parameters a map opens
+on main clean, else main segmented, else its first board. Rows are
 `/api/board`'s minus `player`. Both API routes share the `web` rate bucket
 (`WEB_RATE_MAX`, 120/min per `rate_key()`); the maps list is rebuilt at most
 every 60 s. Every `/board/` response carries a strict CSP (no inline script or

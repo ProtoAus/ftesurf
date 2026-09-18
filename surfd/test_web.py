@@ -174,6 +174,7 @@ def main():
     submit(m, "surf_nobsp", "cat", 4000)                # zoned, no BSP, has runs
     submit(m, "surf_ghost", "dan", 4000)                # neither, has runs
     submit(m, "surf_lux", "eli", 4000, tier="community")
+    submit(m, "surf_commonly", "gus", 4000, tier="community")   # neither, community only
     rid = api_board(m, "bhop_mukiology")["rows"][0]["rep"]
     add_verdict(m, rid, "PASS", t0 + 5)
     b = body(get(m, "/board/api/maps"))
@@ -191,8 +192,10 @@ def main():
           (row1["player"], row1["ver"]), ("amy", 1))
     check("runs and last count every board of the map",
           (got["Bhop_Mukiology"]["runs"], got["Bhop_Mukiology"]["last"]), (3, t0))
-    check("a community-only map has runs but no WR",
-          (got["surf_lux"]["runs"], got["surf_lux"]["wr"]), (1, None))
+    check("community runs are not counted on the web",
+          (got["surf_lux"]["runs"], got["surf_lux"]["wr"]), (0, None))
+    check("...and a map with only community runs is not listed",
+          "surf_commonly" in got, False)
     check("an untimed zoned map reads 0 runs, no WR",
           (got["surf_kitsune"]["runs"], got["surf_kitsune"]["wr"]), (0, None))
     text = get(m, "/board/api/maps").get_data(as_text=True)
@@ -220,37 +223,41 @@ def main():
     submit(m, "bhop_eazy", "p1", 900, leg=2)
     submit(m, "bhop_eazy", "p4", 1500, track=1)
     b = body(get(m, "/board/api/map?map=bhop_eazy"))
-    check("the board list, in order",
-          [(x["track"], x["leg"], x["tier"], x["style"], x["n"]) for x in b["boards"]],
-          [(0, 0, "community", "clean", 1), (0, 0, "ranked", "clean", 2),
-           (0, 2, "ranked", "clean", 1), (1, 0, "ranked", "clean", 1)])
-    check("no parameters open main ranked clean",
-          (b["track"], b["leg"], b["tier"], b["style"]), (0, 0, "ranked", "clean"))
+    check("the board list is ranked only, in order",
+          [(x["track"], x["leg"], x["style"], x["n"]) for x in b["boards"]],
+          [(0, 0, "clean", 2), (0, 2, "clean", 1), (1, 0, "clean", 1)])
+    check("...and names no tier", ["tier" in x for x in b["boards"]] + ["tier" in b],
+          [False, False, False, False])
+    check("no parameters open main clean",
+          (b["track"], b["leg"], b["style"]), (0, 0, "clean"))
     want = [dict((k, v) for k, v in x.items() if k != "player")
             for x in api_board(m, "bhop_eazy")["rows"]]
     check("rows are /api/board's rows minus player", b["rows"], want)
     check("...and name no player", any("player" in x for x in b["rows"]), False)
-    check("counts, offset and page size",
-          (b["counts"], b["offset"], b["limit"]),
-          ({"ranked": 2, "community": 1}, 0, 50))
+    check("ranked count, offset and page size",
+          (b["n"], b["offset"], b["limit"]), (2, 0, 50))
+    check("control: the community run is on the ranked board nowhere",
+          [x["name"] for x in b["rows"]], ["P1", "P2"])
     b = body(get(m, "/board/api/map?map=bhop_eazy&track=0&leg=2&tier=ranked&style=clean"))
     check("explicit parameters pick that board",
           ([x["name"] for x in b["rows"]], b["leg"]), (["P1"], 2))
-    b = body(get(m, "/board/api/map?map=bhop_eazy&tier=community&style=segmented"))
-    check("an empty board is 200 with no rows",
-          (b["rows"], b["counts"]), ([], {"ranked": 0, "community": 0}))
+    b = body(get(m, "/board/api/map?map=bhop_eazy&style=segmented"))
+    check("an empty board is 200 with no rows", (b["rows"], b["n"]), ([], 0))
+    b = body(get(m, "/board/api/map?map=bhop_eazy&track=0&leg=0&style=clean&tier=community"))
+    check("an old link's tier=community still opens the ranked board",
+          [x["name"] for x in b["rows"]], ["P1", "P2"])
 
     submit(m, "surf_lux", "c1", 3000, tier="community")
     b = body(get(m, "/board/api/map?map=surf_lux"))
-    check("default falls to community clean",
-          (b["tier"], b["style"]), ("community", "clean"))
+    check("a zoned map with only community runs shows no board and no rows",
+          (b["boards"], b["rows"], b["style"]), ([], [], "clean"))
     submit(m, "surf_kitsune", "s1", 3000, flags=128)          # TF_SEGMENT
     b = body(get(m, "/board/api/map?map=surf_kitsune"))
-    check("...then ranked segmented", (b["tier"], b["style"]), ("ranked", "segmented"))
+    check("default falls to segmented", b["style"], "segmented")
     submit(m, "surf_nobsp", "q1", 3000, leg=3)
     b = body(get(m, "/board/api/map?map=surf_nobsp"))
     check("...then the first board in the list",
-          (b["track"], b["leg"], b["tier"], b["style"]), (0, 3, "ranked", "clean"))
+          (b["track"], b["leg"], b["style"]), (0, 3, "clean"))
 
     submit(m, "Bhop_Mukiology", "m1", 3000)
     b = body(get(m, "/board/api/map?map=BHOP_MUKIOLOGY"))
@@ -268,7 +275,7 @@ def main():
             ("a BSP with no zone and no runs", "/board/api/map?map=surf_nozone", 404),
             ("no map", "/board/api/map", 400),
             ("a map with a slash", "/board/api/map?map=a/b", 400),
-            ("a bad tier", "/board/api/map?map=surf_lux&tier=elite", 400),
+            ("an ignored tier", "/board/api/map?map=surf_kitsune&tier=elite", 200),
             ("a bad style", "/board/api/map?map=surf_lux&style=free", 400),
             ("a negative track", "/board/api/map?map=surf_lux&track=-1", 400),
             ("a word for a leg", "/board/api/map?map=surf_lux&leg=x", 400)):

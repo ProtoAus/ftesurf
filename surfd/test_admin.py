@@ -71,6 +71,7 @@ def fresh(_file=None, **env):
     os.environ["SURFD_RUNS"] = os.path.join(home, "runs")
     os.environ["SURFD_MAPS"] = os.path.join(home, "maps")
     os.environ["SURFD_ZONES"] = os.path.join(home, "zones")
+    os.environ["SURFD_LOBBY_CFGS"] = os.path.join(home, "lobbycfg")
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_ADMIN_HASH",
               "SURFD_ADMIN_SECRET", "SURFD_RCON_PASSWORD",
               "SURFD_ADMIN_LOBBIES", "SURFD_ADMIN_INSECURE_COOKIE"):
@@ -772,6 +773,33 @@ def main():
 
     check("lobby list parses", admin.parse_lobbies("1:27500,2:27510"),
           [{"tier": "1", "port": 27500}, {"tier": "2", "port": 27510}])
+
+    # The fleet comes from cfg/lobby/lobby<N>.cfg, numerically ordered.
+    cfgdir = tempfile.mkdtemp(prefix="surfd-lobbycfg-")
+    for name, text in (("lobby1.cfg", "// set sv_port 1\nset sv_port     27510\n"),
+                       ("lobby12.cfg", "set  sv_port 27620 // twelve\n"),
+                       ("lobby2.cfg", "set sv_port 27520\nset sv_port 9\n"),
+                       ("lobby.cfg", "set sv_port 1\n"),          # shared, not a lobby
+                       ("lobby7.cfg", "set hostname x\n"),         # no port: skipped
+                       ("mode_bhop.cfg", "set sv_port 2\n")):
+        with open(os.path.join(cfgdir, name), "w") as fh:
+            fh.write(text)
+    check("lobbies are discovered from lobby<N>.cfg",
+          admin.discover_lobbies(cfgdir), "1:27510,2:27520,12:27620")
+    check("a missing cfg dir discovers nothing",
+          admin.discover_lobbies(os.path.join(cfgdir, "nope")), "")
+    check("the fallback is all 12 lobbies",
+          [l["port"] for l in admin.parse_lobbies(admin.DEFAULT_LOBBIES)],
+          list(range(27510, 27630, 10)))
+    m = fresh(SURFD_ADMIN_HASH=admin.hash_password(PW, n=2 ** 10),
+              SURFD_ADMIN_SECRET="s" * 48, SURFD_ADMIN_INSECURE_COOKIE="1",
+              SURFD_LOBBY_CFGS=cfgdir)
+    c = m.app.test_client()
+    login(c, PW)
+    page = c.get("/admin/").get_data(as_text=True)
+    check("the panel's fleet is the discovered one",
+          'const TIERS = ["1", "2", "12"];' in page, True)
+    shutil.rmtree(cfgdir, ignore_errors=True)
 
     # ---- the packet budget -------------------------------------------------
     # The engine treats rcon as a possible amplification attack and blocks the
