@@ -9,10 +9,12 @@ void() main = { };
 // Called by name before every changelevel, map_restart and quit (the engine's
 // PR_PreShutdown), while edicts and file handles still exist; a map change runs
 // no ClientDisconnect.  Patch 360: a run that posted stages keeps its recording.
+// Multi-Session parks the running runs first (not on a `retry`).
 void() SV_Shutdown =
 {
 	local entity p;
 
+	SV_MsShutdown();
 	p = world;
 	while ((p = find(p, classname, "player")))
 		if (p.rec_rec_posts > 0)
@@ -371,6 +373,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STAGEENDLAUNCH, EV_FLOAT, run_st_endlaunch);   // Patch 360
 	clientstat(STAT_FS_STAGEENDPBWAS,  EV_FLOAT, run_st_endpbwas);    // Patch 361
 	clientstat(STAT_FS_STATOWNER,      EV_FLOAT, run_statowner);      // Patch 361
+	clientstat(STAT_FS_MSSESSION,      EV_FLOAT, run_ms_sessions);    // Multi-Session
 
 	/*
 	  BUILD 48: the personal best this run was measured AGAINST.
@@ -804,6 +807,17 @@ void() worldspawn =
 	*/
 	registercvar("rec_retry_armed", "0");
 	registercvar("rec_serial", "0");        // Patch 364: SV_RecNextSerial; not archived
+
+	// Multi-Session (sv_resume.qc).  Registered before the sweep reads them.
+	registercvar("run_resume", "1");            // park a running run when its player leaves
+	registercvar("run_resume_min", "30");       // seconds a run must have lasted
+	registercvar("run_resume_max", "8");        // sessions per run
+	registercvar("run_resume_days", "14");      // slot expiry
+	registercvar("run_resume_grace", "30");     // seconds of a fresh run before an offer drops
+	registercvar("run_resume_countdown", "3");
+	registercvar("run_resume_copylines", "2000");   // recording lines restored per packet
+	registercvar("run_resume_recmb", "512");    // a larger recording resumes unrecorded
+	SV_MsSweep();
 
 	dprint("FTESurf: worldspawn\n");
 };

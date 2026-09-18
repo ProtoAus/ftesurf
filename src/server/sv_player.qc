@@ -233,6 +233,9 @@ void() PutClientInServer =
 	  see the arm latch in SV_TimerMapInit.
 	*/
 	SV_RetryApply(self);
+
+	// Multi-Session: the first spawn after a connect offers a paused run.
+	SV_MsOffer(self);
 };
 
 /*
@@ -291,6 +294,7 @@ void() ClientConnect =
 	  carries the long version of this argument.
 	*/
 	SV_CSQCForget(self);
+	SV_MsConnect(self);                 // edicts are recycled: no offer, no key
 
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
@@ -304,6 +308,9 @@ void() ClientDisconnect =
 	// Before the timer teardown, because it only removes an entity and the
 	// timer's teardown is the part that must not be skipped if this throws.
 	Lobby_ClientDisconnect(self);
+
+	// Multi-Session: park a long run before the teardown below throws it away.
+	SV_MsDisconnect(self);
 
 	// Close any open .rec before the edict goes: fclose is what actually
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
@@ -607,6 +614,9 @@ void() PlayerPostThink =
 	// takes a field, so the count and the cursor's stored time are mirrored into
 	// this player's fields here.  Three float compares; see SV_SaveLocSync.
 	SV_SaveLocSync(self);
+
+	// Multi-Session: the restore/countdown, and a fresh run against an offer.
+	SV_MsFrame(self);
 
 	// NOTE: view_ofs is NOT set here any more.
 	//
@@ -1052,6 +1062,12 @@ void(string cmd) SV_ParseClientCommand =
 			tail = substring(msg, sp + 1, strlen(msg) - (sp + 1));
 		}
 
+		if (tail == "")
+		{
+			if (w == "!resume")  { SV_MsAccept(self);     return; }
+			if (w == "!discard") { SV_MsDiscardCmd(self); return; }
+		}
+
 		if (w == "!m" || w == "!s" || w == "!b" || w == "!r")
 		{
 			alldigits = TRUE;
@@ -1094,6 +1110,9 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "zone_restart") { SV_ZoneChatCommand("!m", 0); return; }
 	if (c == "zone_reset")   { SV_ZoneChatCommand("!r", 0); return; }
+	// Multi-Session.  Not `run_resume`: that is the cvar's name.
+	if (c == "ms_resume")    { SV_MsAccept(self);     return; }
+	if (c == "ms_discard")   { SV_MsDiscardCmd(self); return; }
 
 	clientcommand(self, cmd);
 };

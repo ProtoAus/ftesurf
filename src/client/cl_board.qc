@@ -1889,6 +1889,9 @@ void() Seq_SaveEvents =
 		Board_ResetContact();
 		Seq_Read(FS_RETRY_SLOT);
 	}
+	// Multi-Session: the player was placed, and no segment state survived.
+	else if (op == SLOP_RESUME)
+		Board_ResetContact();
 	else if (seq_slseq != 0 || seq == 1)
 	{
 		if (op == SLOP_SAVED)

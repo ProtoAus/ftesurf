@@ -883,6 +883,8 @@ void() Bn_FullStrings =
 		if (nm != "")
 			ui_bn_s_sub = strcat(nm, "  ", ui_bn_s_sub);
 	}
+	if (ui_bn_flags & TF_MULTISESSION)
+		ui_bn_s_sub = strcat(ui_bn_s_sub, "  -  MULTI-SESSION");
 	ui_bn_s_time = Time_TickString(ui_bn_ticks, Timer_Tick());
 	Bn_Delta(FALSE);
 	Bn_Place(FALSE);

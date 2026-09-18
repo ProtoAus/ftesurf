@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   655006a4346bafe281bb3b597fecf6cc611026b5
 tag      patch-266
-patch    364
+patch    365
 qcbuild  83
 date     2026-09-19
+
+# PATCH 365 IS MOD-SIDE ONLY: Multi-Session -- a running run is parked when its
+# player drops, the map changes or the game quits, and resumed on return
+# (sv_resume.qc; !resume / F2).  cfg/test/ms1listen.cfg, ms1sv/ms1cl, ms1quit*.
 
 # PATCH 362: a joining client fetches the server's csprogs when none is cached.
 # Server: the prespawn list stages wait out a backbuffered fullserverinfo (the

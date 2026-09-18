@@ -1989,6 +1989,10 @@ float   run_t_stagecap;          // run_stagecap, cached per map
 .float  rec_rec_sesspend;        // a pause is open: 1, or 2 when a `seed` is owed with the session
 .float  rec_rec_pinned;          // the header carries `pmpin` (a seed is written only with it)
 float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix off disk
+// Multi-Session (sv_resume.qc).
+.float  run_ms_sessions;         // `session`s this run has had (stat 101); 0 = one session
+.float  run_st_ms;               // the open stage spans a pause: it never qualifies
+.float  run_ms_phase;            // a resume is restoring/counting down: no zone acts
 
 /*
   BUILD 57, STAGE T -- THE FINISH, AS A COUNTER WITH ITS ANSWER BESIDE IT.
@@ -4503,6 +4507,26 @@ void(entity e, string why, float ticks) SV_RecPause =
 		bufstr_set(e.rec_rec_buf, 0, "FTESURF-REC 10");
 };
 
+// Multi-Session: park the trace at the counter as it stands after the last move
+// (the closing horizon, as `inend`).  SV_MsApply's session answers it.  A stream's
+// line 0 is rewritten by the resume's copy.
+void(entity e, string why, float ticks) SV_RecParkLine =
+{
+	local float was;
+
+	if (!SV_RecLive(e))
+		return;
+	SV_RecState(e);
+	was = e.rec_rec_lines;
+	SV_RecPut(e, sprintf("pause %d %.9g %d %s", e.run_movetick, e.run_movecarry, ticks, why));
+	if (e.rec_rec_lines == was)
+		return;
+	e.rec_rec_pauses = e.rec_rec_pauses + 1;
+	if (!e.rec_rec_stream)
+	if (bufstr_get(e.rec_rec_buf, 0) == "FTESURF-REC 9")
+		bufstr_set(e.rec_rec_buf, 0, "FTESURF-REC 10");
+};
+
 /*
   Put the recorder back at `mark`.  Two paths, and which one runs is decided by
   whether the buffer in hand is still the same run.
@@ -5899,6 +5923,7 @@ void(entity e, float seg, float ticks) SV_StageOpen =
 	e.run_st_line = e.rec_rec_lines;
 	e.run_st_jump = FALSE;
 	e.run_st_ramp = FALSE;
+	e.run_st_ms   = FALSE;               // SV_MsApply sets it after reopening
 
 	e.run_st_armed = TRUE;
 	e.run_st_hold  = FALSE;
@@ -6100,6 +6125,7 @@ void(entity e, float ticks) SV_StageStart =
 
 	e.run_st_tick  = ticks;
 	e.run_st_line  = e.rec_rec_lines;
+	e.run_st_ms    = FALSE;              // a box exit after a resume is a clean start
 
 	/*
 	  DISARMED.  run_st_armed is the ONLY thing separating the two readings of
@@ -6331,6 +6357,8 @@ float(entity e) SV_StageWord =
 float(entity e, float seg) SV_StageQualifies =
 {
 	if (seg < 0)
+		return FALSE;
+	if (e.run_st_ms)                     // it began before a Multi-Session pause
 		return FALSE;
 	if (e.run_t_segs <= 1)
 		return FALSE;
@@ -7090,6 +7118,7 @@ void(entity e) SV_TimerIdle =
 	e.run_t_starttick = -1;
 	e.run_t_tickcarry = 0;
 	e.run_t_frzticks  = 0;
+	e.run_ms_sessions = 0;
 };
 
 /*
@@ -9731,6 +9760,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_startsec  = SV_ClockSec(e);
 	e.run_t_starttick = e.run_movetick;
 	e.run_t_tickcarry = 0;
+	e.run_ms_sessions = 0;
 	e.run_t_frzticks  = 0;
 	e.run_t_frzsec    = 0;
 	e.run_t_lastmt    = e.run_movetick;
@@ -10433,6 +10463,14 @@ void(entity e) SV_TimerFrame =
 
 	if (zone_count <= 0)
 		return;
+
+	// Multi-Session: parked for a restore.  A start here would open this run's
+	// part file under the copy that is writing it (sv_resume.qc).
+	if (e.run_ms_phase)
+	{
+		SV_TimerWarped(e);
+		return;
+	}
 
 	/*
 	  GHOSTING: NO ZONE TESTS AT ALL.  Build 30.

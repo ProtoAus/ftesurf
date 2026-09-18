@@ -1125,6 +1125,13 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// answers only F1, MOUSE3 and ESC, and only while a card is actually up.
 		if (Results_PassiveKey(scanx))
 			return TRUE;
+		// Multi-Session: F2 takes a paused run's offer, only while one is up.
+		if (scanx == K_F2)
+		if (Timer_ResumeOffered())
+		{
+			localcmd("cmd ms_resume\n");
+			return TRUE;
+		}
 		// Build 56/84: MOUSE3 toggles the inspector overlay, and ESC puts it
 		// away (Patch 331 -- it used to take the cursor; that is ent_panel now).
 		// After the card on purpose -- the card was there first and keeps MOUSE3
@@ -1547,6 +1554,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Results_BoardWatch();         // Patch 357: after LT_Frame (see it)
 
 		Timer_Draw(scr);
+		Timer_DrawResumeOffer(scr);   // Multi-Session; draws whatever hud_timer says
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);

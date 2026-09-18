@@ -261,6 +261,9 @@ TF_NORULESET = 1024
 TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
 TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
+# Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
+# and evidence only -- style_of and certifiable deliberately never read it.
+TF_MULTISESSION = 16384
 
 SCHEMA_VERSION = 5
 

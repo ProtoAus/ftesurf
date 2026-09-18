@@ -72,6 +72,7 @@
 float rec_rp_view;               // strbuf, or 0
 float rec_rp_lines;
 float rec_rp_wasrec;             // TF_RECORDING as of last frame
+float rec_rp_ms;                 // this recording is Multi-Session: no sidecars
 
 /*
   Build 30.  rec_gh_on as of the last frame that was RECORDED, so the ghost edges
@@ -1373,8 +1374,16 @@ void() Rec_ViewFrame =
 	{
 		if (!rec_rp_wasrec)
 		{
-			Rec_ViewBegin();
-			Rec_HidBegin();
+			// A sidecar covering one session cannot pair with a .rec that spans
+			// several (Multi-Session), so none is kept.
+			rec_rp_ms = (flags & TF_MULTISESSION) ? TRUE : FALSE;
+			if (rec_rp_ms)
+				dprint("replay: sidecar dropped -- multi-session run\n");
+			else
+			{
+				Rec_ViewBegin();
+				Rec_HidBegin();
+			}
 		}
 
 		/*
@@ -1430,8 +1439,14 @@ void() Rec_ViewFrame =
 		  twice in one frame is free and cannot disagree; splitting them across
 		  frames could.
 		*/
-		Rec_ViewEnd();
-		Rec_HidEnd();
+		if (rec_rp_ms)
+			Rec_ViewDrop();
+		else
+		{
+			Rec_ViewEnd();
+			Rec_HidEnd();
+		}
+		rec_rp_ms = FALSE;
 	}
 
 	rec_rp_wasrec = rec;

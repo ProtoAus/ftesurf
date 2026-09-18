@@ -1133,9 +1133,11 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		*/
 		if (rec_sb_cols > SBX_KIND)
 		{
-			if (cl == RC_CLEAN)
+			if (cl == RC_CLEAN)             // "multi" for a Multi-Session run
 				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
-				            FS_RunClassName(cl), SBC_GOOD, on ? 0.85 : 0.3);
+				            (rec_sb_rowflags[idx] > 0) ? FS_RunKindName(rec_sb_rowflags[idx])
+				                                        : FS_RunClassName(cl),
+				            SBC_GOOD, on ? 0.85 : 0.3);
 			else if (cl == RC_CHEAT)
 				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
 				            FS_RunClassName(cl), SBC_BAD, on ? 0.85 : 0.3);

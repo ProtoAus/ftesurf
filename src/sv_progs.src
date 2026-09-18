@@ -28,5 +28,6 @@ server/sv_lobby.qc
 
 server/sv_timer.qc
 server/sv_saveloc.qc
+server/sv_resume.qc
 server/sv_player.qc
 server/sv_main.qc

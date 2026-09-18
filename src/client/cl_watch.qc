@@ -3823,7 +3823,7 @@ void(vector scr) Watch_Info =
 	*/
 	if (!rec_wt_v4)             s = "rec3  unknown";
 	else                       s = strcat("rec4  ",
-	                                      FS_RunClassName(FS_RunClass(rec_wt_flags)));
+	                                      FS_RunKindName(rec_wt_flags));
 	Watch_InfoRow([p_x, y], w, sz, cw, "format", s);                        y = y + lh;
 
 	/*

@@ -222,6 +222,11 @@ float ui_tm_lastcp;
 */
 float ui_tm_lastdrawstate;
 
+// Multi-Session: the save/load stream as last seen (-1 = seed), and when a resume
+// is waiting for the server's `A` key to rebuild the list (0 = not waiting).
+float ui_tm_lastslseq;
+float ui_tm_resumeat;
+
 // A map change clears the list outright -- its rows describe a map you are no
 // longer on.  Watched here rather than hooked from HUD_UpdateAnchor's map-change
 // block (which is where Board_Clear is called from) because cl_hud.qc compiles
@@ -1077,6 +1082,12 @@ float(vector scr, float state, float ticks, float flags, float pb,
 		s = strcat(s, (s != "") ? "  " : "", "^3segmented^7");
 	else if (flags & TF_PRACTICE)
 		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");
+	// Multi-Session: which session of the run this is -- a mode, so cyan.
+	if (flags & TF_MULTISESSION)
+	if (state == TS_RUNNING)
+	if (!rec_wt_on)
+		s = strcat(s, (s != "") ? "  " : "",
+		           sprintf("^5session %g^7", getstatf(STAT_FS_MSSESSION) + 1));
 
 	/*
 	  BUILD 43 -- THE STAGE, AND IT IS DELIBERATELY TWO DIFFERENT WORDS.
@@ -1198,6 +1209,102 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	return y;
 };
 
+/*
+  Multi-Session: the list comes back from the server's `*resume` key,
+  "A <sessions> <omitted> [<seg> <ticks>]..." newest first (SV_MsSplitKey).  The
+  key is userinfo and the stats are not, so it may land a packet or two after
+  the resume's edge: wait for it, briefly.  No delta: the server kept none.
+*/
+void() Timer_ResumeRows =
+{
+	local string k;
+	local float n, i, who;
+
+	who = getstatf(STAT_FS_STATOWNER);
+	who = (who > 0) ? who - 1 : player_localnum;
+	k = getplayerkeyvalue(who, "*resume");
+	if (substring(k, 0, 2) != "A ")
+	{
+		if (cltime - ui_tm_resumeat > 3)
+			ui_tm_resumeat = 0;
+		return;
+	}
+	ui_tm_resumeat = 0;
+	n = tokenize(k);
+	for (i = n - 2; i >= 3; i = i - 2)
+		Timer_SplitsPushAt(SPK_STAGE, stof(argv(i)), stof(argv(i + 1)), 0, 0, 0);
+	ui_sp_over = ui_sp_over + stof(argv(2));
+};
+
+/*
+  Multi-Session: the offer and its progress, from the local player's `*resume`
+  key (SV_MsKeySet).  Centred, not a layout panel.
+  F2 takes the offer (cl_main.qc) only while an `O` is up -- this machine's
+  ftesurf.cfg binds F2, so outside the prompt the key is untouched.
+*/
+string ui_ms_key;               // zoned copy of the last key seen
+float  ui_ms_keyat;             // cltime it changed
+
+string() Timer_ResumeKey =
+{
+	local string k;
+	k = getplayerkeyvalue(player_localnum, "*resume");
+	if (k != ui_ms_key)
+	{
+		if (ui_ms_key != "")
+			strunzone(ui_ms_key);
+		ui_ms_key = (k != "") ? strzone(k) : "";
+		ui_ms_keyat = cltime;
+	}
+	return ui_ms_key;
+};
+
+float() Timer_ResumeOffered = { return substring(Timer_ResumeKey(), 0, 2) == "O "; };
+
+void(vector scr) Timer_DrawResumeOffer =
+{
+	local string k, a, b, what;
+	local float n, left;
+	local vector p;
+
+	if (rec_wt_on)
+		return;
+	k = Timer_ResumeKey();
+	if (k == "")
+		return;
+	n = tokenize(k);
+	what = argv(0);
+	a = b = "";
+	if (what == "O" && n >= 7)
+	{
+		a = strcat("PAUSED RUN  ", Time_TickString(stof(argv(1)), Timer_Tick()));
+		if (stof(argv(3)) > 1)
+			a = strcat(a, sprintf("  -  STAGE %g/%g", stof(argv(2)) + 1, stof(argv(3))));
+		b = "say !resume or press F2 to continue it  -  !discard drops it";
+	}
+	else if (what == "R" && n >= 2)
+		a = sprintf("RESTORING THE RECORDING  %g%%", stof(argv(1)));
+	else if (what == "C" && n >= 2)
+	{
+		left = ceil(stof(argv(1)) - (cltime - ui_ms_keyat));
+		a = sprintf("RESUMING IN %g", max(1, left));
+	}
+	// `A` draws nothing: the panel's sub-label says `session N` from here on.
+	if (a == "")
+		return;
+
+	// Below the timer panel and its sub-label (measured: they end near 0.21).
+	Font_Set(ui_font_ui);
+	p = [scr_x * 0.5, scr_y * 0.30, 0];
+	HUD_TextC(p, a, 10 * ui_cv_scale, '0.45 0.85 1.00', 0.95);
+	if (b != "")
+	{
+		p_y = p_y + Font_Px(10 * ui_cv_scale) + 3 * ui_cv_scale;
+		HUD_TextC(p, b, 7 * ui_cv_scale, '0.78 0.80 0.86', 0.85);
+	}
+	Font_Reset();
+};
+
 void(vector scr) Timer_Draw =
 {
 	local float state, ticks, seg, segs, track, flags, split, delta, pb, cp;
@@ -1227,6 +1334,8 @@ void(vector scr) Timer_Draw =
 		// reports 0 closes, and seeding to 0 would make the first one invisible.
 		ui_tm_lastendrec = -1;
 		ui_tm_endword    = 0;
+		ui_tm_lastslseq  = -1;
+		ui_tm_resumeat   = 0;
 	}
 
 	ui_tm_cv     = cvar("hud_timer");
@@ -1319,6 +1428,31 @@ void(vector scr) Timer_Draw =
 	  the rows we never heard about keep their zero -- which draws no mark, which
 	  is correct: we were not told.
 	*/
+	/*
+	  Multi-Session: a resume jumps the state, the segment, the checkpoint and
+	  the stage counters in one snapshot, and none of that is an event.  Seed
+	  every latch below; the rows come back from the `A` key.
+	*/
+	if (getstatf(STAT_FS_SLSEQ) != ui_tm_lastslseq)
+	{
+		if (ui_tm_lastslseq >= 0)
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_RESUME)
+		{
+			ui_tm_lastseg       = seg;
+			ui_tm_lastcp        = getstatf(STAT_FS_TIMERCP);
+			ui_tm_lastendrec    = getstatf(STAT_FS_STAGEENDREC);
+			ui_tm_lastfails     = getstatf(STAT_FS_STAGEFAILS);
+			ui_tm_lastdrawstate = state;
+			ui_tm_endword       = 0;
+			ui_tm_pace          = 0;
+			Timer_SplitsClear();
+			ui_tm_resumeat      = cltime;
+		}
+		ui_tm_lastslseq = getstatf(STAT_FS_SLSEQ);
+	}
+	if (ui_tm_resumeat > 0)
+		Timer_ResumeRows();
+
 	endrec = getstatf(STAT_FS_STAGEENDREC);
 	if (endrec != ui_tm_lastendrec)
 	{

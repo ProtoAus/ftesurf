@@ -1082,6 +1082,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  together with nothing in it to say so.  A recording that is missing is
 	  recoverable; one that is quietly wrong is not.
 	*/
+	// Multi-Session (retry 2): SV_MsApply attaches the recorder and reopens the
+	// stage itself -- the slot's counters are in ms.txt, not in this file.
+	if (retry == 2)
+		return TRUE;
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
 	{
 		/*

@@ -1032,7 +1032,7 @@ void(vector scr) Results_Draw =
 	         sprintf("%s  -  %s  -  %s",
 	                 serverkey("map"),
 	                 Results_LegName(ui_rs_track, ui_rs_leg),
-	                 FS_RunClassName(FS_RunClass(ui_rs_flags))),
+	                 FS_RunKindName(ui_rs_flags)),
 	         sz, RSC_DIM, a);
 	y = y + (sz + 6 * ui_cv_scale);
 
