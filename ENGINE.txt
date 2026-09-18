@@ -15,9 +15,18 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   23c5670035b7e860bff9afd50a56e19a30882df4
 tag      patch-266
-patch    342
+patch    343
 qcbuild  83
 date     2026-09-18
+
+# PATCH 343 IS MOD-SIDE ONLY (no engine change): the replay's segment column
+# draws its OWN rows.  rec_wt_sq* captured eight columns and never gained
+# seq_eend (build 65) or seq_sub (build 66), so every replayed row took its
+# absolute and its Jump/Bhop word from whatever the build pass left in the live
+# ring -- the run's last rows against whichever rows were on screen.  Two more
+# capture columns, written in Watch_SeqRow and read in Watch_SeqApply; the
+# absolute is the file's and the zero stays the viewer's, which is the build-39
+# approximation Watch_Splits already documents.  Fixture cfg/test/b86c.cfg.
 
 # PATCH 342 IS MOD-SIDE ONLY (no engine change): five UI fixes, four of them
 # regressions.  Patch 341's CSQC_ChatSay swallowed `say <text>` as well as bare

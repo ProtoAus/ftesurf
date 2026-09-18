@@ -381,12 +381,14 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the file's own warning says SEVEN places move together: the SEQ_MAX scroll
   inside Seq_Push (cl_board.qc:2024) and Seq_Push's own row write (`Seq_Push` is
   at 1976), Seq_Mark, Seq_Unmark, Seq_Load, and the seq.txt pair
-  Seq_Write/Seq_Read — PLUS the set that seven does not count,
-  cl_watch.qc's replay park/restore/apply trio
-  (`Watch_SeqSave` 1631, `Watch_SeqRestore` 1656, the replay apply ~1867), which
-  is exactly where `seq_eend` (build 65) and `seq_sub` (66) stayed stale in
-  replays for two builds until build 86 added all three there. `seq_mk_*` is a
-  full ten-array MIRROR of the column (cl_board.qc:883-892) and moves with it.
+  Seq_Write/Seq_Read — PLUS the FOUR sites in cl_watch.qc that seven does not
+  count: `Watch_SeqRow` (the replay CAPTURE into rec_wt_sq*), `Watch_SeqSave`,
+  `Watch_SeqRestore` (the park pair, rec_wt_sv*) and `Watch_SeqApply`. That is
+  exactly where `seq_eend` (build 65) and `seq_sub` (66) stayed stale for two
+  builds — the park pair was fixed in 342 and the capture in 343. A new column
+  needs BOTH rec_wt_ sets or a replay silently draws the run's last row on every
+  line. `seq_mk_*` is a full ten-array MIRROR of the column (cl_board.qc:883-892)
+  and moves with it.
   Miss one and the column draws happily with a single field a row out of step,
   which reads as a physics bug.
 - Entity I/O's authoritative semantics live in `src/server/sv_entities.qc`

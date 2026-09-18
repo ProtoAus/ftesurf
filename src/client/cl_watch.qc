@@ -366,6 +366,24 @@ float  rec_wt_sqdur [WT_SQMAX];
 float  rec_wt_sqpct [WT_SQMAX];
 float  rec_wt_sqlau [WT_SQMAX];
 float  rec_wt_sqtick[WT_SQMAX];
+/*
+  BUILD 86 / PATCH 343 -- THE TWO COLUMNS THE CAPTURE NEVER HAD.
+
+  seq_eend arrived in build 65 and seq_sub in build 66, and neither was added
+  here, so a replay's column drew them from whatever the BUILD PASS left in the
+  live ring -- which is the run's last row, repeated down every line. Every row
+  showed the same absolute and the same Jump/Bhop word, and because the numbers
+  were plausible nobody read them as missing.
+
+  Both come free: Watch_BuildSeq runs the real segment machine over the file, so
+  Seq_Push has already computed them from the .rec's own org/vel and ground
+  phases by the time Watch_SeqRow is called. They only had to be kept.
+
+  512 floats. The eight columns beside them are 2048 already, and the budget
+  note in AGENTS.md is about the 4096-row tables that forced a 32-bit target.
+*/
+float  rec_wt_sqeend[WT_SQMAX];
+float  rec_wt_sqsub [WT_SQMAX];
 float  rec_wt_sqn;
 float  rec_wt_sqshown;           // rows applied to the live ring right now
 float  rec_wt_sqbuildtick;       // the tick the build pass is currently on
@@ -1623,6 +1641,12 @@ void(float merged) Watch_SeqRow =
 	rec_wt_sqpct [rec_wt_sqn] = seq_pct[p];
 	rec_wt_sqlau [rec_wt_sqn] = seq_launch[p];
 	rec_wt_sqtick[rec_wt_sqn] = rec_wt_sqbuildtick;
+	// Patch 343.  Read from row p like every column above, which is what makes a
+	// MERGE right for free: the decrement above points rec_wt_sqn back at the row
+	// being rewritten, and Seq_Push has already put the later half's answer in
+	// seq_eend[p] / seq_sub[p] (both are plain assignments there, not sums).
+	rec_wt_sqeend[rec_wt_sqn] = seq_eend[p];
+	rec_wt_sqsub [rec_wt_sqn] = seq_sub[p];
 	rec_wt_sqn = rec_wt_sqn + 1;
 };
 
@@ -1850,19 +1874,22 @@ void(float ticks) Watch_SeqApply =
 		seq_launch[i] = rec_wt_sqlau[p];
 		if (seq_launch[i])
 			seq_haslaunch = TRUE;
+		// Patch 343: the row's own absolute and its Jump/Bhop word, from the file
+		// rather than from whatever the build pass left in the live ring.
+		seq_eend[i]   = rec_wt_sqeend[p];
+		seq_sub[i]    = rec_wt_sqsub[p];
 		/*
 		  BUILD 86: a replay's rows are stamped with the LIVE reference, which is
 		  the same approximation -- and the same reasoning -- Watch_Splits already
 		  applies to the split column's energies a few hundred lines up: replaying
 		  the anchor machine forward to each row's tick means a second driver for
-		  HUD_UpdateJumpRef, which is more machinery than this is worth.  Stamping
-		  it here rather than leaving the field alone is what keeps a replay drawing
-		  exactly as it did before the per-row stamp existed, instead of against
-		  whatever the build pass happened to leave behind.
+		  HUD_UpdateJumpRef, which is more machinery than this is worth.
 
-		  The capture arrays still carry no absolute of their own (rec_wt_sq* has
-		  never had one), so the value it is subtracted FROM is stale -- a build-65
-		  gap this does not close and must not be mistaken for having closed.
+		  So the ABSOLUTE is the file's and the ZERO is the viewer's. That pairing
+		  is exact at hud_energy_ref 0, where the anchor is the leg's start zone
+		  and does not move; at 1 it is the last jump and the column reads "energy
+		  above the reference you are looking at", which is the same honest
+		  approximation the split list has made since build 39.
 		*/
 		seq_eref[i]   = HUD_EnergyRef();
 	}
