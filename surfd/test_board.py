@@ -842,6 +842,8 @@ while submit(m, player="t%d" % n, leg=0) != "HTTP 429":
     if n > 100:
         break
 check("control: a leg-0 flood does refuse leg 0", n, 20)
+check("...and leg=00 is leg 0's bucket, not a second budget",
+      submit(m, player="t00", leg="00"), "HTTP 429")
 
 m = fresh()
 m.time = FakeClock()

@@ -538,6 +538,21 @@
 #define WR_NOBOARD      2       // 204: practice or cheated, no board exists
 #define WR_FAILED       3       // the directory refused it or could not be asked
 #define WR_STORED       4       // accepted, but the answer carried no position
+#define WR_UNRANKED     5       // CLIENT-ONLY, never on the wire: an answer that
+                                // landed on the community tier (Results_KeyRank)
+
+/*
+  PATCH 355: THREE TRAILING FIELDS, and the reader requires only the first seven,
+  so older readers are unaffected:
+
+      *wrank = "<map> <track> <leg> <ticks> <state> <rank> <of> <stored> <prevms> <tier>"
+
+  stored 1/0 (the row moved), prevms the standing row's ms before this submit,
+  tier WRT_*.  `*srank` is reserved for stage fill-in, with the same grammar.
+  Ticks and prevms are written %d: %g loses digits past 999999.
+*/
+#define WRT_RANKED      0
+#define WRT_COMMUNITY   1
 
 /*
   WR_STORED IS NOT A ROUNDING OF WR_FAILED, and the difference is the whole
@@ -1452,6 +1467,10 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_NOCLOCK  8192
 
+// The certification holes: any one keeps a run off the ranked board.  MIRRORS
+// surfd certifiable() (surfd.py) -- change both together.  FS_CertWhy names them.
+#define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK)
+
 /*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
 
@@ -1840,6 +1859,20 @@ string(float c) FS_RunClassName =
 	if (c == RC_SEGMENT)  return "segmented";
 	if (c == RC_CHEAT)    return "cheated";
 	return "--";
+};
+
+// The certification hole keeping a run off the ranked board, worst first; ""
+// when there is none.  The board's words (build 72-76, Online_WhyString's
+// essay): <= 10 characters for SBW_TAG, and they name the hole, never the
+// player's setting or disk -- `cmd timer` has the detail.
+string(float flags) FS_CertWhy =
+{
+	if (flags & TF_NOJOURNAL) return "no journal";
+	if (flags & TF_NORULESET) return "no ruleset";
+	if (flags & TF_NOPROFILE) return "input mode";
+	if (flags & TF_NOMAP)     return "other map";
+	if (flags & TF_NOCLOCK)   return "old clock";
+	return "";
 };
 
 /*

@@ -194,6 +194,7 @@
 .float   lobby_rq_track;
 .float   lobby_rq_leg;
 .float   lobby_rq_ticks;
+.float   lobby_rq_flags;        // the submitted flags: FS_CertWhy for the unranked line
 
 // Cached cvars, refreshed once per frame in Lobby_Frame.
 float lobby_on;
@@ -1839,7 +1840,7 @@ void() Lobby_BoardState =
 void() Lobby_Heartbeat =
 {
 	local string url, body;
-	local float  per;
+	local float  per, pflags;
 	local entity pl;
 
 	/*
@@ -1920,6 +1921,11 @@ void() Lobby_Heartbeat =
 		}
 		else
 		{
+			// 3 adds TF_NOPROFILE: still cheated (real surfd answers 204), but a
+			// stub in `cert` mode answers "community", driving the unranked path.
+			pflags = TF_CHEAT;
+			if (cvar("lobby_run_probe") == 3)
+				pflags = pflags | TF_NOPROFILE;
 			cvar_set("lobby_run_probe", "0");
 			lobby_run_waiting = FALSE;
 			print("^5board:^7 probe -- one synthetic CHEATED run, which has no "
@@ -1929,7 +1935,7 @@ void() Lobby_Heartbeat =
 			// must never be told.  It still exercises the whole submission
 			// path and now prints rep=0 back, which is what makes the chain
 			// checkable with nobody on the server.
-			Lobby_SubmitRun(pl, 0, 0, 1234, TF_CHEAT, "", -1, 0);
+			Lobby_SubmitRun(pl, 0, 0, 1234, pflags, "", -1, 0);
 		}
 	}
 
@@ -2074,16 +2080,19 @@ float lobby_run_seen;
   If the key has gone (it cannot, but a rewrite that assumes is a rewrite that
   can invent) the answer is dropped rather than published against a guess.
 */
-void(entity e, float track, float leg, float ticks) Lobby_RankPending =
+// `key` is "*wrank" (a finish); "*srank" is reserved for stage fill-in.  The
+// grammar is sh_defs.qc's, trailing fields included.
+void(entity e, string key, float track, float leg, float ticks) Lobby_RankPending =
 {
 	// %d ticks: %g turns 1000000+ into exponent form and the client's exact
-	// subject match (Results_WorldRank) then never fires.
-	forceinfokey(e, "*wrank",
-	             sprintf("%s %g %g %d %g 0 0",
+	// subject match (Results_KeyRank) then never fires.
+	forceinfokey(e, key,
+	             sprintf("%s %g %g %d %g 0 0 0 0 0",
 	                     mapname, track, leg, ticks, WR_PENDING));
 };
 
-void(entity e, float state, float rank, float of) Lobby_RankAnswer =
+void(entity e, string key, float state, float rank, float of,
+     float stored, float prevms, float tier) Lobby_RankAnswer =
 {
 	local string subject;
 
@@ -2091,19 +2100,33 @@ void(entity e, float state, float rank, float of) Lobby_RankAnswer =
 	// Safe here: this runs from the engine's uri callback, never nested inside
 	// SV_ParseClientCommand, so there is no argv() state being clobbered under
 	// somebody else's feet.
-	if (tokenize(infokey(e, "*wrank")) < 4)
+	if (tokenize(infokey(e, key)) < 4)
 		return;
 	subject = sprintf("%s %s %s %s", argv(0), argv(1), argv(2), argv(3));
 
-	forceinfokey(e, "*wrank",
-	             sprintf("%s %g %g %g", subject, state, rank, of));
+	forceinfokey(e, key,
+	             sprintf("%s %g %g %g %g %d %g", subject, state, rank, of,
+	                     stored, prevms, tier));
+};
+
+// A demoted run is TOLD, in the chatbox (PRINT_CHAT; PRINT_HIGH only reaches
+// the console): with the Community chip gone it is on no board the player sees.
+void(entity e) Lobby_SayUnranked =
+{
+	local string why;
+
+	why = FS_CertWhy(e.lobby_rq_flags);
+	if (why == "")
+		why = "not certified";      // surfd and TF_UNCERT disagree: worth seeing
+	sprint(e, PRINT_CHAT, sprintf("^5board:^7 ^3unranked (%s)^7 -- not on the "
+	       "online board\n", why));
 };
 
 void(float reqid, float code, string body) Lobby_RunReply =
 {
 	local entity who;
 	local int   root;
-	local float rank, of, stored;
+	local float rank, of, stored, prevms, tier;
 
 	if (!code)
 		lobby_run_ok = lobby_run_ok + 1;
@@ -2135,6 +2158,11 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	rank   = json_get_float(json_find_object_child(root, "rank"));
 	of     = json_get_float(json_find_object_child(root, "of"));
 	stored = json_get_float(json_find_object_child(root, "stored"));
+	prevms = json_get_float(json_find_object_child(root, "prevms"));
+	// A surfd older than Patch 353 sends no tier: read as ranked, as it was.
+	tier   = WRT_RANKED;
+	if (json_get_string(json_find_object_child(root, "tier")) == "community")
+		tier = WRT_COMMUNITY;
 	if (root)
 		json_free(root);
 
@@ -2156,30 +2184,35 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		if (!code)
 		{
 			if (rank > 0)
-			{
-				Lobby_RankAnswer(who, WR_RANKED, rank, of);
+				Lobby_RankAnswer(who, "*wrank", WR_RANKED, rank, of,
+				                 stored, prevms, tier);
+			else
+				Lobby_RankAnswer(who, "*wrank", WR_STORED, 0, 0,
+				                 stored, prevms, tier);
 
-				/*
-				  A LINE ONLY WHEN THE BOARD ACTUALLY MOVED.  The finish card
-				  draws the rank either way, and a run that did not improve has
-				  not changed anything the player did not already know.  On a
-				  bhop map a finish is ten seconds apart, so a line on every one
-				  of them would bury the messages that matter -- including the
-				  two below.
-				*/
-				if (stored)
+			/*
+			  A LINE ONLY WHEN THE BOARD ACTUALLY MOVED.  The finish card
+			  draws the rank either way, and a run that did not improve has
+			  not changed anything the player did not already know.  On a
+			  bhop map a finish is ten seconds apart, so a line on every one
+			  of them would bury the messages that matter -- including the
+			  two below.
+			*/
+			if (stored)
+			{
+				if (tier == WRT_COMMUNITY)
+					Lobby_SayUnranked(who);
+				else if (rank > 0)
 					sprint(who, PRINT_HIGH,
 					       sprintf("^5board:^7 your time is up: ^2#%g^7 of %g\n",
 					               rank, of));
 			}
-			else
-				Lobby_RankAnswer(who, WR_STORED, 0, 0);
 		}
 		else if (code == 204)
-			Lobby_RankAnswer(who, WR_NOBOARD, 0, 0);
+			Lobby_RankAnswer(who, "*wrank", WR_NOBOARD, 0, 0, 0, 0, 0);
 		else
 		{
-			Lobby_RankAnswer(who, WR_FAILED, 0, 0);
+			Lobby_RankAnswer(who, "*wrank", WR_FAILED, 0, 0, 0, 0, 0);
 
 			/*
 			  LATCHED PER PLAYER, on the lobby_said_noid precedent and for the
@@ -2204,8 +2237,8 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	lobby_run_lastcode = code;
 
 	if (!code)
-		print(sprintf("^2board:^7 directory stored a run (rank %g of %g)\n",
-		              rank, of));
+		print(sprintf("^2board:^7 directory stored a run (rank %g of %g, %s)\n",
+		              rank, of, (tier == WRT_COMMUNITY) ? "community" : "ranked"));
 	else if (code == 204)
 		print("^3board:^7 run has no board (practice or cheated) -- not an error\n");
 	else if (code == 403)
@@ -2420,7 +2453,8 @@ void(entity e, float track, float leg, float ticks, float flags,
 	e.lobby_rq_track = track;
 	e.lobby_rq_leg   = leg;
 	e.lobby_rq_ticks = ticks;
-	Lobby_RankPending(e, track, leg, ticks);
+	e.lobby_rq_flags = flags;
+	Lobby_RankPending(e, "*wrank", track, leg, ticks);
 
 	lobby_run_sent = lobby_run_sent + 1;
 	uri_post(strcat(url, "/api/run"), lobby_run_id,

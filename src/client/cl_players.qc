@@ -89,7 +89,7 @@ void() Players_AbsorbBoard =
 	// Only a reply that describes THIS map's main leg, ranked, clean -- the
 	// board the room list asked for.  Anything else in ob_* is some other
 	// leg's truth and would rank people by a time they set elsewhere.
-	if (!Online_Describes(0, 0, "ranked", "clean"))
+	if (!Online_Describes(0, 0, OB_TIER, "clean"))
 		return;
 
 	for (i = 0; i < ob_n; i = i + 1)
@@ -180,7 +180,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	if (!pl_basked)
 	{
 		pl_basked = TRUE;
-		Online_Fetch(0, 0, "ranked", "clean");
+		Online_Fetch(0, 0, OB_TIER, "clean");
 	}
 
 	rh = PL_RH;

@@ -292,10 +292,10 @@ float(float word) LT_StageFlags =
 /*
   The fastest lobby time already on a leg, in ticks, or 0 for none.
 
-  FILENAMES ONLY, which is the same reading cl_results.qc's rank does and for the
-  same reason: the tick count is zero-padded into the name precisely so that no
-  file has to be opened to be compared.  One search_begin with ONE wildcard, in
-  the last component, which is the pattern this disk has proven.
+  The tick count comes from the zero-padded name; since Patch 355 the CLASS
+  (certified or not) comes from the header, so each candidate is opened once
+  (at most two files per leg).  One search_begin with ONE wildcard, in the last
+  component, which is the pattern this disk has proven.
 
   `mine` is "ignore a file whose stamp is this number" -- pass 0 to count them
   all.  The improvement test passes 0, because at that moment nothing of this
@@ -305,7 +305,39 @@ float(float word) LT_StageFlags =
   tick count is the one case that confuses it, and that is the case the
   improvement test below refuses anyway.
 */
-float(string map, float track, float leg, float mine) LT_BestOnLeg =
+// A lobby file's `flags` header value (LT_Keep has always written one), or 0.
+float(string fn) LT_FileFlags =
+{
+	local float fh, i, f;
+	local string ln;
+
+	fh = fopen(fn, FILE_READ);
+	if (fh < 0)
+		return 0;
+	f = 0;
+	for (i = 0; i < 16; i = i + 1)          // the header is ~12 lines
+	{
+		ln = fgets(fh);
+		if (!ln)
+			break;
+		if (substring(ln, 0, 6) == "flags ")
+		{
+			f = stof(substring(ln, 6, -1));
+			break;
+		}
+	}
+	fclose(fh);
+	return f;
+};
+
+/*
+  CERTIFIED AND UNCERTIFIED LOBBY TIMES ARE KEPT APART: one of each per leg.  A
+  run surfd demotes (TF_UNCERT) is on no board the player can see, so Local is
+  where it lives -- but it must never displace the certified time, which is the
+  one lobby.pb and the card's delta are measured against.  `uncert` picks the
+  class; the flags header decides it (at most two files are opened).
+*/
+float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC =
 {
 	local float h, n, i, best, t, cut, dot;
 	local string fn, base, tagw;
@@ -348,11 +380,19 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg =
 			continue;
 		if (mine > 0 && t == mine)
 			continue;
+		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
+			continue;
 		if (best == 0 || t < best)
 			best = t;
 	}
 	search_end(h);
 	return best;
+};
+
+// The certified best: what the card, the banner and lobby.pb measure against.
+float(string map, float track, float leg, float mine) LT_BestOnLeg =
+{
+	return LT_BestOnLegC(map, track, leg, mine, FALSE);
 };
 
 /*
@@ -367,7 +407,7 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg =
   the pruner matches its own, rather than by rebuilding the full path a second
   way.
 */
-void(string map, float track, float leg, string keep) LT_Prune =
+void(string map, float track, float leg, string keep, float uncert) LT_Prune =
 {
 	local float h, n, i, kl;
 	local string fn;
@@ -386,6 +426,8 @@ void(string map, float track, float leg, string keep) LT_Prune =
 		if (strlen(fn) >= kl)
 		if (substring(fn, strlen(fn) - kl, kl) == keep)
 			continue;               // the file just written
+		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
+			continue;               // the other class keeps its own best
 
 		fremove(fn);
 		dprint(sprintf("lobbytime: removed %s\n", fn));
@@ -463,7 +505,8 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 	fputs(fh, "FTESURF-PB 2\n");
 	fputs(fh, sprintf("# %s  lobby times  %s\n", map,
 	                  strftime(TRUE, "%Y-%m-%d %H:%M")));
-	fputs(fh, sprintf("best %d %d %d\n", track, leg, ticks));
+	if (ticks > 0)                  // 0: drop this leg's line (LT_Keep)
+		fputs(fh, sprintf("best %d %d %d\n", track, leg, ticks));
 
 	// fgets returns the line without its newline, so each one is put back.
 	n = buf_getsize(buf);
@@ -489,8 +532,8 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 */
 void(float track, float leg, float ticks, float flags) LT_Keep =
 {
-	local float prev, fh, tick;
-	local string map, dst, nm;
+	local float prev, fh, tick, uncert;
+	local string map, dst, nm, kind;
 
 	if (track < 0 || leg < 0 || ticks <= 0)
 		return;
@@ -500,15 +543,31 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 		return;                 // no server: there is no leg to file this under
 
 	tick = Timer_Tick();
-	prev = LT_BestOnLeg(map, track, leg, 0);
+	uncert = (flags & TF_UNCERT) != 0;
+	prev = LT_BestOnLegC(map, track, leg, 0, uncert);
+	kind = "lobby best";
+	if (uncert)
+		kind = strcat("unranked best (", FS_CertWhy(flags), ")");
 
 	if (prev > 0)
 	if (ticks >= prev)
 	{
-		print(sprintf("^7%s  %s  ^3not a lobby best^7 (%s)\n",
+		print(sprintf("^7%s  %s  ^3not a new %s^7 (%s)\n",
 		              Results_LegName(track, leg),
-		              Time_TickString(ticks, tick),
+		              Time_TickString(ticks, tick), kind,
 		              Time_TickString(prev, tick)));
+		return;
+	}
+
+	// Both classes share the <ticks>_lobby.rec name, so an unranked time equal
+	// to the certified best would overwrite it: the certified one stands.  (The
+	// mirror case -- a certified time equal to the unranked best -- overwrites
+	// it on purpose: certified supersedes.)
+	if (uncert)
+	if (LT_BestOnLegC(map, track, leg, 0, FALSE) == ticks)
+	{
+		print(sprintf("^7%s  %s  ^3not kept^7 -- equals your certified lobby best\n",
+		              Results_LegName(track, leg), Time_TickString(ticks, tick)));
 		return;
 	}
 
@@ -603,18 +662,49 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	// The .rec is the archive and lobby.pb is the summary the map picker reads,
 	// in that order: a summary written first would name a file that did not exist
 	// if the write below failed.
-	LT_Prune(map, track, leg, nm);
-	LT_PBWrite(map, track, leg, ticks);
+	LT_Prune(map, track, leg, nm, uncert);
+	// lobby.pb stays certified.  A leg with no certified time drops its line,
+	// which an older build may have filled with an uncertified one.
+	if (!uncert)
+		LT_PBWrite(map, track, leg, ticks);
+	else if (LT_BestOnLegC(map, track, leg, 0, FALSE) == 0)
+		LT_PBWrite(map, track, leg, 0);
 
 	if (prev > 0)
-		print(sprintf("^2%s saved^7 -- %s, lobby best by ^2%s^7\n",
+		print(sprintf("^2%s saved^7 -- %s, %s by ^2%s^7\n",
 		              Results_LegName(track, leg),
-		              Time_TickString(ticks, tick),
+		              Time_TickString(ticks, tick), kind,
 		              Time_TickString(prev - ticks, tick)));
 	else
-		print(sprintf("^2%s saved^7 -- %s, first one on a lobby\n",
+		print(sprintf("^2%s saved^7 -- %s, first %s\n",
 		              Results_LegName(track, leg),
-		              Time_TickString(ticks, tick)));
+		              Time_TickString(ticks, tick),
+		              uncert ? kind : "one on a lobby"));
+};
+
+/*
+  `lobbytime keep <track> <leg> <ticks> <flags>` runs LT_Keep on demand -- a
+  scripted finish is practice-tainted and never reaches it -- and
+  `lobbytime best <track> <leg>` prints the certified and unranked bests.
+  Local files only; nothing here reaches a server.
+*/
+float(string cmd) LT_ConsoleCommand =
+{
+	local string map;
+
+	if (argv(0) != "lobbytime")
+		return FALSE;
+	if (argv(1) == "keep")
+	{
+		LT_Keep(stof(argv(2)), stof(argv(3)), stof(argv(4)), stof(argv(5)));
+		return TRUE;
+	}
+	map = serverkey("map");
+	print(sprintf("lobbytime: %s track %s leg %s  best %g  unranked %g\n", map,
+	              argv(2), argv(3),
+	              LT_BestOnLegC(map, stof(argv(2)), stof(argv(3)), 0, FALSE),
+	              LT_BestOnLegC(map, stof(argv(2)), stof(argv(3)), 0, TRUE)));
+	return TRUE;
 };
 
 /*
@@ -751,8 +841,16 @@ void() LT_Frame =
 		if (word & SF_QUALIFIES)
 		if (ticks > 0)
 		if (seg >= 0)
+		{
+			// The stage word has no certification bits; the run's do (latched at
+			// its start; FINFLAGS for a `!s N` run, whose close shares the finish
+			// frame and whose live flags a pendarm may already have cleared).
+			flags = getstatf(STAT_FS_TIMERFLAGS);
+			if (finfresh)
+				flags = flags | getstatf(STAT_FS_FINFLAGS);
 			LT_Keep(getstatf(STAT_FS_TIMERTRACK), FS_LegOf(seg, TRUE), ticks,
-			        LT_StageFlags(word));
+			        LT_StageFlags(word) | (flags & TF_UNCERT));
+		}
 	}
 
 	if (finfresh)

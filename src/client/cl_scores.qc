@@ -121,19 +121,13 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
   best times ranked. with a local times that shows you every recording you
   have."
 
-  SO THE TABS ARE ONLINE / SEGMENTED / LOCAL, AND NOT RANKED / COMMUNITY.
-  Those are two different questions and conflating them is the mistake worth
-  naming here:
+  SO THE TABS ARE ONLINE / SEGMENTED / LOCAL: which BOARD you are looking at --
+  surfd keys `style` into the primary key, so clean and segmented are PEER
+  boards, plus this disk's own archive.
 
-    the TAB  is which BOARD you are looking at -- surfd keys `style` into the
-             primary key precisely so clean and segmented are PEER boards a
-             player may hold a PB on each of, plus this disk's own archive.
-    the CHIP is which TIER within that board -- ranked (set on a keyed,
-             official server) or community (everywhere else).
-
-  A five-tab strip spelling out every combination would be the same two
-  questions multiplied together, and it would put `local` beside `ranked` as
-  though they were alternatives when one is a filter of the other two.
+  PATCH 355: NO TIER CHIP.  surfd's community tier only ever held runs from our
+  own lobbies that certifiable() demoted; the online tabs show OB_TIER (ranked)
+  and a demoted run is told to its player and kept in Local instead.
 
   THE TWO ONLINE TABS ARE ONE REQUEST WITH ONE FIELD CHANGED, which is exactly
   what cl_online.qc's Online_Fetch takes `style` as a parameter for.  Nothing
@@ -152,11 +146,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
 
-#define SB_TIER_RANKED     0
-#define SB_TIER_COMMUNITY  1
-
 float rec_sb_tab;                // SB_T_*
-float rec_sb_tier;               // SB_TIER_*, meaningful on the online tabs
 
 /*
   The ledger id this board is waiting on, or 0.  Build 66, step R5.
@@ -190,7 +180,6 @@ void() Scores_Status;
 */
 float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
 string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "clean"; };
-string() Scores_TierOf  = { return (rec_sb_tier == SB_TIER_COMMUNITY) ? "community" : "ranked"; };
 
 /*
   ---- WHERE A RUN SET HERE ACTUALLY GOES.  Build 64. -----------------------
@@ -694,7 +683,7 @@ void() Scores_Refresh =
 	  rather than one per frame.  The anti-hammer reasoning is written out
 	  beside Online_Need itself; what belongs here is why the call is
 	  unconditional: the three things that change what board is wanted are the
-	  tab, the tier chip and the leg, and all three are plain assignments made
+	  tab, the leg and the map (the tier chip is gone), plain assignments made
 	  in a draw loop or a console handler.  Making each of them remember to
 	  kick a fetch is four call sites that must agree, and the fourth -- a map
 	  change, which nothing in this file initiates -- would have been missed.
@@ -707,7 +696,7 @@ void() Scores_Refresh =
 	if (Scores_IsOnline())
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		Online_Need(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		            Scores_TierOf(), Scores_StyleOf());
+		            OB_TIER, Scores_StyleOf());
 };
 
 /*
@@ -783,7 +772,7 @@ vector() Scores_BoardNoteCol =
 /*
   BUILD 68: THE REPLAY MARK, AND ITS POSITION IS THE WHOLE POINT.
 
-  Seven characters -- six for the longest word ("remote") plus a gutter, which
+  Seven characters -- six for the longest word (was "remote") plus a gutter, which
   is what SBW_TAG was before build 64 widened it.
 
   IT GOES BETWEEN `player` AND `age`, NOT AT THE END, AND THAT IS NOT A TASTE
@@ -1085,8 +1074,17 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		if (rec_sb_cols > SBX_TAG)
 		{
 			if (rec_sb_rowtag[idx] == RT_LOBBY)
+			{
+				// A demoted lobby run is kept here (LT_Keep) and says why it is
+				// on no board; FS_CertWhy's words fit SBW_TAG.
+				s = "";
+				if (rec_sb_rowflags[idx] > 0)
+					s = FS_CertWhy(rec_sb_rowflags[idx]);
+				if (s == "")
+					s = "lobby";
 				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
-				            "lobby", SBC_WARN, on ? 0.85 : 0.3);
+				            s, SBC_WARN, on ? 0.85 : 0.3);
+			}
 			else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
 				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
 				            "latest", SBC_DIM, on ? 0.7 : 0.25);
@@ -1101,7 +1099,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 };
 
 /*
-  surfd's board -- whichever (tier, style) the tab and the chip currently name.
+  surfd's board -- OB_TIER, in the style the tab names.
 
   IT DRAWS FOUR DIFFERENT KINDS OF NOTHING, and that is most of the function.
 
@@ -1119,11 +1117,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
                     they are not THIS board's, so they are not drawn
     genuinely none  it answered, and this leg has no times of this kind yet
 
-  Only the fourth is "no times", and it is the only one that then reports the
-  OTHER tier's count -- which is the whole reason cl_online.qc keeps both
-  counts from one reply.  "No ranked times yet, 37 community" tells the player
-  to click the chip beside it; a bare "no times" sends them away from a board
-  that has plenty.
+  Only the fourth is "no times".
 */
 float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
@@ -1144,7 +1138,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	  in cl_online.qc, and it is one function call here because it is one fact
 	  there.
 	*/
-	if (!Online_Describes(track, leg, Scores_TierOf(), Scores_StyleOf()))
+	if (!Online_Describes(track, leg, OB_TIER, Scores_StyleOf()))
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 
@@ -1226,18 +1220,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 		Scores_Text(lp, rec_sb_szrow,
-		            sprintf("no %s %s times on this leg yet",
-		                    Scores_TierOf(), Scores_StyleOf()),
+		            sprintf("no %s times on this leg yet", Scores_StyleOf()),
 		            SBC_DIM, 1);
-
-		// The other tier, from the same reply -- see the header note.
-		i = (rec_sb_tier == SB_TIER_COMMUNITY) ? ob_cnt_ranked : ob_cnt_community;
-		if (i > 0)
-			Scores_Text([lp_x, lp_y + rec_sb_rowh], rec_sb_szrow,
-			            sprintf("%g %s time(s) are on this leg -- the chip above",
-			                    i, (rec_sb_tier == SB_TIER_COMMUNITY)
-			                         ? "ranked" : "community"),
-			            SBC_WARN, 0.8);
 		return -1;
 	}
 
@@ -1397,11 +1381,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 		/*
 		  WHY this row is not ranked, when the run itself says so.  Amber and
-		  never red: TF_NOJOURNAL and TF_NORULESET describe a hole in the
-		  certification, not something the player did, and both are kept out
-		  of the taint classes for exactly that reason.  Most community rows
-		  leave this blank, which is correct -- they are community because of
-		  the SERVER, and the run carries no bit saying so.
+		  never red: the TF_UNCERT bits describe a hole in the certification,
+		  not something the player did.  Blank on a ranked board by construction.
 		*/
 		if (rec_sb_cols > SBX_TAG)
 		{
@@ -1441,20 +1422,8 @@ void(float pick) Scores_OnlineHandOff =
 		rep = ob_rep[pick];
 		if (rep < 1)
 		{
-			/*
-			  THE REFUSAL NARROWED.  It used to be one sentence for every
-			  online row -- "online times are set on other machines" -- which
-			  was true of all of them when it was written and is now true of
-			  some.  0 is three different facts and they deserve different
-			  words; the tier separates the one that will never have a file
-			  from the ones that merely do not.
-			*/
-			if (rec_sb_tier == SB_TIER_COMMUNITY)
-				print("^3scores:^7 a community time is set on somebody "
-				      "else's server -- its recording never reaches us.\n");
-			else
-				print("^3scores:^7 no recording was kept for that run -- "
-				      "it predates recorded lobbies, or none was stored.\n");
+			print("^3scores:^7 no recording was kept for that run -- "
+			      "it predates recorded lobbies, or none was stored.\n");
 		}
 		else
 		{
@@ -1621,34 +1590,13 @@ void(vector scr) Scores_Draw =
 	}
 
 	/*
-	  The chips, top right, each as wide as its own label -- and WHICH chips
-	  depends on the tab, because the two boards are filtered along different
-	  axes.  The tab is the BOARD; the chip is the tier or the class within it.
-
-	  LOCAL keeps the four class chips it has had since build 44.  Three states
-	  rather than a checkbox: "all" is a real answer and is the default, because
-	  hiding rows by default makes a board that disagrees with the folder it
-	  came from.
-
-	  ONLINE gets two tier chips, and there is deliberately NO "all".  Merging
-	  the tiers is the one thing the whole split exists to prevent: a community
-	  time ordered into a ranked list is tier T3 -- the host-forged time, the
-	  structural hole the plan puts ahead of every input-layer concern --
-	  rendered as though it were settled.  surfd keeps them apart in its primary
-	  key and refuses to merge them; an "all" chip here would undo that in the
-	  one place a player actually reads.
+	  The class chips, top right, on LOCAL only (build 44).  "all" is the
+	  default: hiding rows by default makes a board that disagrees with the
+	  folder it came from.  The online tabs have no chips (Patch 355: ranked
+	  only -- never merge tiers, which is why there was never an "all" there).
 	*/
 	chipw = ceil(rec_sb_cw * 10);
-	if (Scores_IsOnline())
-	{
-		if (Scores_Chip("sb_tc", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
-		                "community", rec_sb_tier == SB_TIER_COMMUNITY))
-			rec_sb_tier = SB_TIER_COMMUNITY;
-		if (Scores_Chip("sb_tr", [x0 + w - pad * 2 - chipw * 2, y0 + pad],
-		                [chipw, chiph], "ranked", rec_sb_tier == SB_TIER_RANKED))
-			rec_sb_tier = SB_TIER_RANKED;
-	}
-	else
+	if (!Scores_IsOnline())
 	{
 		if (Scores_Chip("sb_fx", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
 		                "cheated", rec_sb_filter == SB_F_CHEATED))
@@ -1695,7 +1643,7 @@ void(vector scr) Scores_Draw =
 	if (Scores_Chip("sb_tref", [x0 + w - pad - chipw, ytabs], [chipw, chiph],
 	                "refresh", FALSE))
 		Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		             Scores_TierOf(), Scores_StyleOf());
+		             OB_TIER, Scores_StyleOf());
 
 	yhead = ytabs + chiph + ceil(pad * 0.5);
 
@@ -1844,15 +1792,6 @@ void(vector scr) Scores_Draw =
 	if (Scores_IsOnline())
 	{
 		/*
-		  BOTH TIERS' TOTALS, ON EVERY ONLINE TAB.
-
-		  They come back with either request -- cl_online.qc keeps them from
-		  the same reply for exactly this -- so the footer can say what is on
-		  the chip the player is NOT looking at without a second round trip.
-		  On an empty ranked board that sentence is the difference between "no
-		  times here" and "no times here, 37 next door".
-		*/
-		/*
 		  ONLY WHEN THE ROWS IN MEMORY ARE THIS BOARD'S, and that test was
 		  missing.  ob_n and ob_cnt_* survive a failed or in-flight fetch by
 		  design (Online_Clear is not called on failure), so this footer
@@ -1864,16 +1803,15 @@ void(vector scr) Scores_Draw =
 		*/
 		if (Online_Describes(rec_sb_legtrack[rec_sb_leg],
 		                     rec_sb_legnum[rec_sb_leg],
-		                     Scores_TierOf(), Scores_StyleOf()))
+		                     OB_TIER, Scores_StyleOf()))
 		{
-			s = sprintf("%g %s %s time(s) on %s", ob_n, Scores_TierOf(),
+			s = sprintf("%g %s time(s) on %s", ob_n,
 			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
-			s = sprintf("%s    ranked %g / community %g", s,
-			            ob_cnt_ranked, ob_cnt_community);
+			if (ob_cnt_ranked > ob_n)
+				s = sprintf("%s  (top %g of %g shown)", s, ob_n, ob_cnt_ranked);
 		}
 		else
-			s = sprintf("%s %s on %s", Scores_TierOf(), Scores_StyleOf(),
-			            Scores_LegName(rec_sb_leg));
+			s = sprintf("%s on %s", Scores_StyleOf(), Scores_LegName(rec_sb_leg));
 	}
 	else
 	{
@@ -2249,11 +2187,10 @@ float(string cmd) Scores_ConsoleCommand =
 			else if (argv(2) == "local") rec_sb_tab = SB_T_LOCAL;
 			else                         rec_sb_tab = SB_T_ONLINE;
 		}
+		// Kept handled: an unknown word falls through to Scores_Toggle, and old
+		// fixtures still type this.
 		else if (argv(1) == "tier")
-		{
-			if (argv(2) == "community") rec_sb_tier = SB_TIER_COMMUNITY;
-			else                        rec_sb_tier = SB_TIER_RANKED;
-		}
+			print("scores: the board shows ranked times only (Patch 355)\n");
 		else if (argv(1) == "refresh")
 		{
 			/*
@@ -2266,7 +2203,7 @@ float(string cmd) Scores_ConsoleCommand =
 			Scores_Refresh();
 			if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 				Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-				             Scores_TierOf(), Scores_StyleOf());
+				             OB_TIER, Scores_StyleOf());
 		}
 		// `scores` on its own toggles the board, which makes it useless for
 		// asking what the board holds.  This asks without touching anything.
@@ -2380,10 +2317,9 @@ void() Scores_Status =
 	  It is 0 until the board has been drawn once, which is honest: nothing has
 	  decided a width yet.
 	*/
-	print(sprintf("  tab %s   tier %s   filter %s   cols %g\n",
+	print(sprintf("  tab %s   filter %s   cols %g\n",
 	              (rec_sb_tab == SB_T_LOCAL) ? "local"
 	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"),
-	              Scores_TierOf(),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
 	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all")),
@@ -2409,7 +2345,7 @@ void() Scores_Status =
 	shown = 0;
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		shown = Online_Describes(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		                         Scores_TierOf(), Scores_StyleOf());
+		                         OB_TIER, Scores_StyleOf());
 	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
 
 	/*
@@ -2510,12 +2446,11 @@ void() Scores_RegisterCvars =
 	/*
 	  BUILD 64: THE DEFAULT TAB, SET RATHER THAN INHERITED FROM ZERO.
 
-	  SB_T_ONLINE and SB_TIER_RANKED are both 0, so a QC global would already
-	  hold them -- and that is exactly why this is written out.  "The online
+	  SB_T_ONLINE is 0, so a QC global would already hold it -- and that is
+	  exactly why this is written out.  "The online
 	  board is the default" is the request, not an accident of which constant
 	  was listed first, and reordering the three #defines would silently open
 	  the board on Local with nothing anywhere saying it had changed.
 	*/
 	rec_sb_tab  = SB_T_ONLINE;
-	rec_sb_tier = SB_TIER_RANKED;
 };

@@ -19,6 +19,11 @@ patch    356
 qcbuild  83
 date     2026-09-18
 
+# PATCH 355 IS MOD-SIDE (+ a surfd bucket fix): the leaderboard drops the
+# Community chip; a run surfd demotes is told ("unranked (<reason>)" in chat and
+# on the card) and Local keeps the best certified AND best uncertified lobby time
+# per leg.  *wrank gains stored/prevms/tier.  cfg/test/p355{unrsv,unrcl,keep,rk}.cfg.
+
 # PATCH 356 IS ENGINE-ONLY: pm_verify REFUSEs FTESURF-REC above 9 ("a newer
 # format"); it skips unknown records, so a v10 file would otherwise verify as
 # one continuous run.  On the Pi's disk for the sweeper; lobbies pick it up on

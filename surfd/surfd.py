@@ -1652,8 +1652,9 @@ def submit_run():
     now = int(time.time())
     src = request.remote_addr or "0.0.0.0"
 
-    # Bucket by leg class before parsing; a malformed leg is refused below.
-    bucket = "run" if (request.form.get("leg") or "0").strip() == "0" else "stage"
+    # Bucket by the PARSED leg ("00", "+0" are leg 0); a malformed leg counts
+    # against "run" and is refused below.
+    bucket = "stage" if strict_int(request.form.get("leg"), 1, MAX_LEG) else "run"
     cap = RUN_RATE_MAX_TRUSTED if is_trusted(src, TRUSTED_SOURCES) else RUN_RATE_MAX
     if not rate_ok(src, now, cap, bucket):
         log.warning("rate limited %s submission from %s", bucket, src)

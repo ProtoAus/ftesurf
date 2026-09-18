@@ -50,16 +50,15 @@
      nothing reports.  A strbuf is one handle and bufstr_set overwrites without
      either.
 
-  WHAT THIS DELIBERATELY DOES NOT DO: it never merges tiers.  `ranked` and
-  `community` are fetched and stored separately and the counts for both come
-  back with either, so the UI can say "no ranked times yet, 37 community"
-  without a second request and without ever ordering a community run into a
-  ranked list.  surfd enforces that separation in its primary key; this keeps
-  it on the client rather than relying on the server alone.
+  WHAT THIS DELIBERATELY DOES NOT DO: it never merges tiers.  The board draws
+  OB_TIER only (Patch 355); `board_fetch ... community` still asks for the
+  other tier, but only with the board closed (an open board re-asks for its
+  own).  surfd keeps the tiers apart in its primary key.
 ===========================================================================
 */
 
 #define OB_MAXROW  64      // one page; surfd's own cap is 200 and default 50
+#define OB_TIER    "ranked"   // the one tier any board draws; community holds demoted runs
 
 /*
   How long a failed board waits before ONE re-ask, and how long a request may
@@ -177,11 +176,8 @@ float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
   each; this is a number, and OB_MAXROW floats cost nothing.  That is also why
   surfd returns `rep` as an integer rather than a URL.
 
-  0 IS THREE DIFFERENT FACTS AND THE UI MUST NOT PRETEND OTHERWISE: a Community
-  time set on somebody else's server, a time set before the lobbies recorded
-  anything, and a run whose recording was refused or never kept.  All three
-  mean "nothing to click"; only the first two are worth a sentence, and
-  Scores_DrawOnlineRows is where that distinction is drawn.
+  0 means "nothing to click": a time set before the lobbies recorded anything,
+  or a run whose recording was refused or never kept.
 */
 float  ob_rep[OB_MAXROW];
 
@@ -943,57 +939,15 @@ string(float i) Online_AgeString =
   did.  So this is a separate column from `run`, which keeps saying clean or
   segmented, and the two never contradict each other.
 
-  "" IS THE HONEST ANSWER FOR MOST COMMUNITY ROWS.  A run set on a server that
-  holds no key is community because of the SERVER, and the run carries no bit
-  saying so -- inventing a reason here would be putting words in its mouth.
+  On the ranked board this is "" by construction (Patch 355 draws no other).
 */
 string(float i) Online_WhyString =
 {
 	if (i < 0 || i >= ob_n)
 		return "";
-	/*
-	  Journal first: no journal is no evidence at all, where the other two are
-	  evidence that has not been certified.  A run can carry all three, and the
-	  order is worst-first for the reason FS_RunClass's precedence block gives.
-
-	  Build 72 adds the third.  "input mode" is 10 characters, as "no journal"
-	  and "no ruleset" are, so SBW_TAG's 11 still fits and no column moves.
-
-	  IT NAMES THE HOLE AND NOT THE SETTING.  A row reading "m_accel 2" would be
-	  printing a stranger's config at everybody who opens the board, and the
-	  player who needs the detail already has `cmd timer`, which gives the whole
-	  key.  The board's job here is to say why the row is where it is.
-	*/
-	if (ob_flags[i] & TF_NOJOURNAL) return "no journal";
-	if (ob_flags[i] & TF_NORULESET) return "no ruleset";
-	if (ob_flags[i] & TF_NOPROFILE) return "input mode";
-	/*
-	  Build 73.  LAST in the order, because it is the least serious of the four:
-	  the three above say this run's evidence cannot be checked at all, and this
-	  one says the player's own copy of the map was not the server's -- which on
-	  a lobby did not change the physics, since the server owns collision and the
-	  zones.  What it cost is the .view/.rec cross-check.
-
-	  "other map", NOT "wrong map", and nine characters rather than the ten the
-	  three above use.  The word must not accuse: much the likeliest cause is a
-	  map file one repack out of date, and this column is read by everyone who
-	  opens the board, about somebody else.  Same rule as the paragraph above --
-	  name the hole, not the player's disk.  `cmd timer`'s mapcrc row gives both
-	  hashes to the player who wants the detail.
-	*/
-	if (ob_flags[i] & TF_NOMAP)     return "other map";
-	/*
-	  BUILD 76.  "old clock" -- nine characters, so SBW_TAG's 11 still fits and no
-	  column moves, same as the row above.
-
-	  It is LAST because it is the only word here that is not about the player's
-	  machine at all: it says the SERVER that timed this run had no tick counter
-	  to time it with, so the number is the wall-clock one and no verifier can
-	  recompute it.  Naming the hole rather than the player matters more here than
-	  anywhere else in this list, because the player had no way to affect it.
-	*/
-	if (ob_flags[i] & TF_NOCLOCK)   return "old clock";
-	return "";
+	// The words, their order and why they name the hole rather than the
+	// player: FS_CertWhy (sh_defs.qc), shared with the card and the chat line.
+	return FS_CertWhy(ob_flags[i]);
 };
 
 /*
@@ -1004,24 +958,10 @@ string(float i) Online_WhyString =
   and 0 means there is nothing to click.  Until now that fact reached the player
   only by the row's hover fill being suppressed -- i.e. one row at a time, only
   while the cursor was physically on it, and identically to a row that simply
-  was not hovered.  A community board, where every row is 0, rendered as a
-  uniformly clickable list that did nothing when clicked.
+  was not hovered.
 
-  THREE FACTS ON THE WIRE, TWO WORDS, AND THAT IS HONEST RATHER THAN LAZY.
-  surfd's own note says a community row, a row set before build 66, and a row
-  whose file failed to land "all read 0", and nothing distinguishes the last two
-  -- which is why Scores_OnlineHandOff already answers both with one sentence.
-  What the TIER does separate is the first from the other two, and that is a
-  real difference worth a different word: on a community board 0 means the run
-  was set somewhere we never held a recording from, which is permanent and not a
-  fault; on the ranked board it means one should exist and does not.
-
-  ob_have_tier, NOT the chip the player is looking at.  It describes the rows
-  actually in memory, which is the same distinction Online_Describes exists for
-  -- reading the chip would label this board with the tier of a request that may
-  still be in flight.
-
-  Six characters at most: SBW_REP is seven wide including its gutter.
+  Patch 355: only the ranked board is drawn, so 0 always means a recording
+  should exist and does not ("none"); the community "remote" word is gone.
 */
 string(float i) Online_RepString =
 {
@@ -1029,7 +969,7 @@ string(float i) Online_RepString =
 		return "";
 	if (ob_rep[i] > 0)
 		return "watch";
-	return (ob_have_tier == "community") ? "remote" : "none";
+	return "none";
 };
 
 /*

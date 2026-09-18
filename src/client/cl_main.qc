@@ -1858,6 +1858,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// hud_results 0.
 	if (Results_ConsoleCommand(cmd))
 		return TRUE;
+	if (LT_ConsoleCommand(cmd))
+		return TRUE;
 
 	// Build 49.  `emit_list` -- what the map holds, what is emitting, and why
 	// the rest is not.  It also prints the particle handles, because "nothing

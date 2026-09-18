@@ -31,8 +31,8 @@
   cl_timer.qc's own header makes about not inventing a network message for a
   table the client already has, and it is why this file adds no protocol.
 
-  THE ONE THING IT READS FROM DISK is the rank, and it reads FILENAMES ONLY --
-  no fopen, no header parse.  See Results_Rank.
+  THE ONE THING IT READS FROM DISK is the rank: filenames, plus one header read
+  per lobby file for its class (Patch 355).  See Results_Rank.
 
   IT NEVER TAKES THE SCREEN.  The card appears unasked while you are standing
   in a map you may be about to run again, so it draws without entering the
@@ -76,6 +76,9 @@ void() Results_MapInit;
   REOPENED with `results` from comparing the run against the file it just wrote.
 */
 float(string map, float track, float leg, float mine) LT_BestOnLeg;
+// Patch 355: the same, per class (certified / uncertified), and a file's flags.
+float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC;
+float(string fn) LT_FileFlags;
 
 string ui_rs_map;               // the map the state below describes
 float  ui_rs_open;              // the card is up
@@ -222,6 +225,7 @@ void() Results_RegisterCvars =
 	  FreeType test tool, which is not built into the command table.  Free.
 	*/
 	registercommand("results");
+	registercommand("lobbytime");   // cl_lobbytime.qc's test hook; name is free (grepped)
 };
 
 /*
@@ -262,7 +266,10 @@ void() Results_RegisterCvars =
   archive to rank against", which is a different sentence from rank 1 and the
   card draws it differently.
 */
-void(float track, float leg, float ticks,
+// `uncert` (Patch 355): lobby files count only within the run's own class
+// (certified or not, by the header's TF_UNCERT bits); the server's own .rec
+// files are always counted.
+void(float track, float leg, float ticks, float uncert,
      __inout float rank, __inout float of) Results_Rank =
 {
 	local float h, n, i, cut, dot, t, faster, total;
@@ -304,6 +311,9 @@ void(float track, float leg, float ticks,
 		if (FS_TagFromName(tagw) != RT_PB)
 		if (FS_TagFromName(tagw) != RT_RUN)
 		if (FS_TagFromName(tagw) != RT_LOBBY)   // build 57, stage T
+			continue;
+		if (FS_TagFromName(tagw) == RT_LOBBY)
+		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
 			continue;
 
 		t = FS_NameTicks(base);
@@ -375,18 +385,32 @@ void(float track, float leg, float ticks,
 */
 #define WR_NONE (-1)
 
-float(float track, float leg, float ticks,
-      __inout float rank, __inout float of) Results_WorldRank =
+/*
+  THE ONE PARSER for `*wrank` and `*srank` (grammar in sh_defs.qc).  `raw` is the
+  key's value, so a caller can read another player's key.  tier and stored come
+  back through the parameters, not globals, so two reads in one frame cannot
+  overwrite each other; stored is -1 when an older server did not say.
+
+  An answer that landed on the community tier comes back as WR_UNRANKED with
+  rank and of zeroed: a community position is never shown as a placement.
+*/
+float(string raw, float track, float leg, float ticks, __inout float rank,
+      __inout float of, __inout float tier, __inout float stored) Results_KeyRank =
 {
+	local float n, st;
+
 	rank = 0;
 	of   = 0;
+	tier = WRT_RANKED;
+	stored = -1;
 
-	// Seven fields exactly.  A short key is a key from an older server, and a
+	// At least seven fields.  A short key is a key from an older server, and a
 	// reader that took what it could get out of one would be inventing.
-	if (tokenize(getplayerkeyvalue(player_localnum, "*wrank")) < 7)
+	n = tokenize(raw);
+	if (n < 7)
 		return WR_NONE;
 
-	if (argv(0) != serverkey("map"))
+	if (strcmp(argv(0), serverkey("map")))
 		return WR_NONE;
 	if (stof(argv(1)) != track)
 		return WR_NONE;
@@ -395,9 +419,31 @@ float(float track, float leg, float ticks,
 	if (stof(argv(3)) != ticks)
 		return WR_NONE;
 
+	st = stof(argv(4));
+	if (n >= 10)
+	{
+		stored = stof(argv(7));
+		tier   = stof(argv(9));
+	}
+	if (tier == WRT_COMMUNITY)
+	if (st == WR_RANKED || st == WR_STORED)
+		return WR_UNRANKED;
+
 	rank = stof(argv(5));
 	of   = stof(argv(6));
-	return stof(argv(4));
+	return st;
+};
+
+// The local player's `*wrank`, for the card.
+float(float track, float leg, float ticks,
+      __inout float rank, __inout float of) Results_WorldRank =
+{
+	local float tier, stored;
+
+	tier = 0;
+	stored = 0;
+	return Results_KeyRank(getplayerkeyvalue(player_localnum, "*wrank"),
+	                       track, leg, ticks, rank, of, tier, stored);
 };
 
 /*
@@ -413,10 +459,22 @@ float(float track, float leg, float ticks,
   SIX SENTENCES, and the last three are about the SERVER rather than the run --
   which is why they are reached only when nothing was published about this run.
 */
-string(float wst, float wrank, float wof) Results_WorldNote =
+string(float wst, float wrank, float wof, float flags) Results_WorldNote =
 {
+	local string why;
+
 	if (wst == WR_RANKED && wrank > 0)
 		return sprintf("#%g of %g", wrank, wof);
+
+	// On no board the player can see (the Community chip is gone), so the
+	// reason is the answer.  The run is kept in Local (LT_Keep).
+	if (wst == WR_UNRANKED)
+	{
+		why = FS_CertWhy(flags);
+		if (why == "")
+			why = "not certified";
+		return strcat("--  unranked: ", why);
+	}
 
 	// Deliberately shown.  The gap between finishing and the directory
 	// answering is the moment the player is asking "did that count?", and an
@@ -638,12 +696,14 @@ void() Results_Open =
 	  is what keeps a card reopened by `results` from comparing the run against
 	  itself.
 	*/
+	// Measured within its own class: an unranked run against the unranked
+	// best, a certified one against the certified best (Patch 355).
 	if (lobby)
-		ui_rs_pb = LT_BestOnLeg(serverkey("map"), ui_rs_track, ui_rs_leg,
-		                        ui_rs_ticks);
+		ui_rs_pb = LT_BestOnLegC(serverkey("map"), ui_rs_track, ui_rs_leg,
+		                         ui_rs_ticks, (ui_rs_flags & TF_UNCERT) != 0);
 
 	Results_Rank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
-	             ui_rs_rank, ui_rs_of);
+	             (ui_rs_flags & TF_UNCERT) != 0, ui_rs_rank, ui_rs_of);
 
 	ui_rs_open   = TRUE;
 	ui_rs_at     = cltime;
@@ -817,6 +877,7 @@ void() Results_Frame =
 		ui_rs_toastat  = cltime;
 		ui_rs_toastseg = FS_LegOf(seg, TRUE);   // latched: the stat moves on, the toast does not
 		Results_Rank(getstatf(STAT_FS_TIMERTRACK), ui_rs_toastseg, ui_rs_toastticks,
+		             (getstatf(STAT_FS_TIMERFLAGS) & TF_UNCERT) != 0,
 		             ui_rs_toastrank, ui_rs_toastof);
 	}
 };
@@ -997,7 +1058,7 @@ void(vector scr) Results_Draw =
 		wof   = 0;
 		wst   = Results_WorldRank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
 		                          wrank, wof);
-		s     = Results_WorldNote(wst, wrank, wof);
+		s     = Results_WorldNote(wst, wrank, wof, ui_rs_flags);
 		wlit  = (wst == WR_RANKED && wrank > 0);   // an ANSWER, or a note?
 
 		// Nested rather than a ternary on the colour: fteqcc's ternary
@@ -1167,7 +1228,7 @@ float(string cmd) Results_ConsoleCommand =
 	*/
 	if (argv(1) == "wrank")
 	{
-		local float wst, wrank, wof, qtrack, qleg, qticks;
+		local float wst, wrank, wof, wtier, wstored, qtrack, qleg, qticks, qflags;
 		local string raw;
 
 		/*
@@ -1181,11 +1242,14 @@ float(string cmd) Results_ConsoleCommand =
 		  submitted and about one digit off it, and the second must come back
 		  with nothing however good the first looks.
 		*/
+		qflags = ui_rs_flags;
 		if (argv(2) != "")
 		{
 			qtrack = stof(argv(2));
 			qleg   = stof(argv(3));
 			qticks = stof(argv(4));
+			if (argv(5) != "")
+				qflags = stof(argv(5));     // the run's flags, for the unranked reason
 		}
 		else
 		{
@@ -1210,11 +1274,14 @@ float(string cmd) Results_ConsoleCommand =
 
 		wrank = 0;
 		wof   = 0;
-		wst   = Results_WorldRank(qtrack, qleg, qticks, wrank, wof);
-		print(sprintf("  state  = %g  rank %g of %g%s\n", wst, wrank, wof,
+		wtier = 0;
+		wstored = 0;
+		wst   = Results_KeyRank(raw, qtrack, qleg, qticks, wrank, wof, wtier, wstored);
+		print(sprintf("  state  = %g  rank %g of %g  tier %g stored %g%s\n", wst,
+		              wrank, wof, wtier, wstored,
 		              (wst == WR_NONE) ? "   (nothing published about this run)"
 		                               : ""));
-		print(sprintf("  draws  = %s\n", Results_WorldNote(wst, wrank, wof)));
+		print(sprintf("  draws  = %s\n", Results_WorldNote(wst, wrank, wof, qflags)));
 		return TRUE;
 	}
 
