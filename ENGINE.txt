@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   8cfabc5aac12bd9c51b277fb02fa83c6e29be870
+commit   23c5670035b7e860bff9afd50a56e19a30882df4
 tag      patch-266
 patch    342
 qcbuild  83
