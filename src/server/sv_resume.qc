@@ -829,6 +829,11 @@ void(entity e) SV_MsFrame =
 {
 	local float grace;
 
+	// The rotation hold (Lobby_Cycle) waits while any run is going.  A player who
+	// is timing out sends no packets, stops refreshing this, and is parked.
+	if (e.run_t_state == TS_RUNNING)
+		lobby_cyc_runseen = time;
+
 	if (e.run_ms_phase)
 	{
 		// Parked: no run can start under a restore in flight.
@@ -915,7 +920,7 @@ void() SV_MsShutdown =
 		if (p.run_ms_phase)
 			SV_MsAbort(p);
 		else
-			SV_MsPark(p, "server");
+			SV_MsPark(p, lobby_cyc_moving ? "rotate" : "server");
 	}
 };
 

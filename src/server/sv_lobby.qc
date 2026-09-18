@@ -2659,6 +2659,13 @@ float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitSt
 */
 float  lobby_cyc_next;          // absolute deadline; 0 = not latched this map
 float  lobby_cyc_warn;          // 0 none given, 1 the minute, 2 the ten seconds
+// WP11, the rotation hold.  All zeroed by the map change, which is what caps it:
+// players taking turns cannot restart lobby_cyc_hold0.
+float  lobby_cyc_runseen;       // last time a run was in progress (sv_resume.qc writes it)
+float  lobby_cyc_hold0;         // when the hold began; 0 = not holding
+float  lobby_cyc_holdwarn;      // the minute-to-cap warning is out
+float  lobby_cyc_holdend;       // the runs ended inside the hold: ten seconds given
+float  lobby_cyc_moving;        // the rotation's own changelevel: parks say `rotate`
 
 /*
   The map after this one.
@@ -2701,7 +2708,7 @@ string() Lobby_NextMap =
 
 void() Lobby_Cycle =
 {
-	local float  per, left;
+	local float  per, left, hold;
 	local string nxt;
 
 	// Registered beside the read, for the reason spelled out at length in
@@ -2709,6 +2716,7 @@ void() Lobby_Cycle =
 	// registration anywhere else is declined and the default never lands.
 	registercvar("lobby_maps",  "");
 	registercvar("lobby_cycle", "0");
+	registercvar("lobby_cycle_hold", "7200");
 
 	per = cvar("lobby_cycle");
 	if (per <= 0)
@@ -2763,6 +2771,7 @@ void() Lobby_Cycle =
 
 	if (left > 0)
 	{
+		lobby_cyc_moving = FALSE;       // a change that did not happen is not moving
 		/*
 		  Two warnings, and only when somebody is listening.  An empty lobby
 		  rotates in silence -- there is no one to warn, and the log line every
@@ -2801,13 +2810,56 @@ void() Lobby_Cycle =
 	  this function would then retry on every single frame, at 66 Hz, forever.
 	  One failed rotation should cost one log line per period, not a flood.
 	*/
+	/*
+	  WP11: THE DEADLINE WAITS FOR RUNS IN PROGRESS, for at most
+	  lobby_cycle_hold seconds (0 = the old behaviour).  At the cap the change
+	  goes ahead and SV_Shutdown parks every run still going (Multi-Session,
+	  `rotate`): !resume back on this map continues them.  Runs that end inside
+	  the hold get the usual ten seconds, once.
+	*/
+	hold = cvar("lobby_cycle_hold");
+	nxt = Lobby_NextMap();
+	if (hold > 0)
+	if (nxt != "")
+	{
+		if (time - lobby_cyc_runseen < 2)
+		{
+			if (!lobby_cyc_hold0)
+			{
+				lobby_cyc_hold0 = time;
+				bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s waits for the runs in progress "
+				       "(at most %g min)\n", nxt, ceil(hold / 60)));
+			}
+			if (time - lobby_cyc_hold0 < hold)
+			{
+				if (!lobby_cyc_holdwarn)
+				if (time - lobby_cyc_hold0 >= hold - 60)
+				{
+					lobby_cyc_holdwarn = TRUE;
+					bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in one minute -- runs still "
+					       "going are paused; !resume on %s continues them\n", nxt, mapname));
+				}
+				return;
+			}
+		}
+		else if (lobby_cyc_hold0)
+		if (!lobby_cyc_holdend)
+		{
+			lobby_cyc_holdend = TRUE;
+			lobby_cyc_next = time + 10;
+			lobby_cyc_warn = 2;
+			bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in ten seconds\n", nxt));
+			return;
+		}
+	}
+
 	lobby_cyc_next = time + per;
 	lobby_cyc_warn = 0;
 
-	nxt = Lobby_NextMap();
 	if (nxt == "")
 		return;
 
+	lobby_cyc_moving = TRUE;
 	localcmd(sprintf("changelevel %s\n", nxt));
 };
 

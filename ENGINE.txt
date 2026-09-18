@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   655006a4346bafe281bb3b597fecf6cc611026b5
 tag      patch-266
-patch    365
+patch    366
 qcbuild  83
 date     2026-09-19
+
+# PATCH 366 IS MOD-SIDE ONLY: the lobby rotation waits for runs in progress, at
+# most lobby_cycle_hold seconds, then parks them (`rotate`).  cfg/test/ms2sv/ms2cl.
 
 # PATCH 365 IS MOD-SIDE ONLY: Multi-Session -- a running run is parked when its
 # player drops, the map changes or the game quits, and resumed on return
