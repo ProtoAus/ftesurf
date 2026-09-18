@@ -13,11 +13,17 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   dcd1662595db8c5f699eada753f96718c323081c
+commit   580cc90805bb6ddaf383c2888a26b3b140d5c868
 tag      patch-266
 patch    353
 qcbuild  83
 date     2026-09-18
+
+# PATCH 352 IS ENGINE-ONLY: the physent digest hashes entity numbers relative
+# to the player slots, so a 32-slot lobby's file and a 2-slot verifier agree
+# (they matched on every sample and on no digest before).  Deployed to the
+# fleet with QC build 88: lobby recordings now replay EXACTLY on the Pi
+# (cfg/test/p352live.cfg).  Commit pin moves to it; patch stays 353 (surfd).
 
 # PATCH 353 IS SURFD ONLY: /api/run replies carry `tier` and `prevms`; stage legs
 # get their own rate bucket (trusted cap 3840) and row cap.  surfd/test_board.py 12-13.
