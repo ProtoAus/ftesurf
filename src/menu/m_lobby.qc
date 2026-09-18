@@ -43,24 +43,13 @@
 */
 
 /*
-  FIVE, because that is how many lobbies there are: surf tiers 1-3 on
-  27510/27520/27530 and bhop easy and hard on 27540/27550 (cfg/lobby/lobby1..5.cfg).
-
-  It was three, "because three is what fits above the map list without pushing
-  the list itself off the bottom at 1280x720".  That was true while the lobbies
-  were stacked a row each, and stopped being true when Patch 287 put them side
-  by side: one row of cells costs the list one ROW_H whether it holds three or
-  five.  What five costs instead is WIDTH, and m_main.qc's create panel widens
-  to 1400 to pay it -- see the essay over the cells in screen_create.
-
-  The directory may return more.  Lob_Parse keeps the five with the LOWEST
-  PORTS, so the extras are dropped here rather than drawn somewhere
-  unreachable, and which five are shown does not change as players move.
+  The fleet is 12 lobbies (cfg/lobby/lobby1..12.cfg).  Lob_Parse keeps rows in
+  PORT order, so a lobby keeps its cell as players move.
 
   ---- BUILD 67: THIS IS THE PARSE CAP, AND IT IS NO LONGER THE DRAW CAP. ----
 
-  Everything above is about how many lobby CELLS fit above the map list, and it
-  is still true of the cells.  It stopped being the right bound for the LIST the
+  How many CELLS are drawn is m_main.qc's LOB_COLS x LOB_ROWS_MAX.  This stopped
+  being the right bound for the LIST the
   moment build 66 shipped ui_map_players, because that feature does not draw
   lobbies at all -- it walks Lob_Count() and sums the players on each map, to
   put a count beside the map's name in the picker.

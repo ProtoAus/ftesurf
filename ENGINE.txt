@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   dcd1662595db8c5f699eada753f96718c323081c
 tag      patch-266
-patch    349
+patch    350
 qcbuild  83
 date     2026-09-18
+
+# PATCH 350 IS MOD-SIDE ONLY (menu): the map selector's public lobbies are a
+# 4 x 3 grid in an 1100 x 808 panel.  cfg/test/p350grid{720,1080,860}.cfg.
 
 # PATCH 349 = ENGINE pm_verify + QC BUILD 88.  pm_verify replays a finished v9
 # file exactly and runs the live timer's own zone scan (SV_ZoneScan, moved verbatim

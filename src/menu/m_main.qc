@@ -142,6 +142,8 @@
 float menu_active;
 float menu_screen;
 float ui_bootframe;             // ui_bootcheck 2 frame counter
+vector ui_cs_size;              // create-screen layout, mirrored for the bootcheck
+float  ui_cs_lcols, ui_cs_lshow, ui_cs_rows;
 
 // ---------------------------------------------------------------------------
 //  Builtins the MenuQC defs dump does not declare.
@@ -3312,7 +3314,11 @@ void() ui_bootcheck_tick =
 	  frame and makes the artifact say what it claims to say.
 	*/
 	else if (ui_bootframe == 179)
+	{
+		print(sprintf("bootcheck: layout panel %gx%g  lcols %g  lshow %g  rows %g\n",
+		              ui_cs_size_x, ui_cs_size_y, ui_cs_lcols, ui_cs_lshow, ui_cs_rows));
 		localcmd("screenshot ui_menu_lobbyrow\n");
+	}
 	else if (ui_bootframe == 180)
 	{
 		// Back to the SAVED set, which nothing above wrote to.
@@ -3893,33 +3899,15 @@ string(string s, float w, vector sz) ui_fit_text =
 	return strcat(substring(s, 0, lo), "..");
 };
 
-/*
-  The narrowest a lobby cell may be before the grid wraps.  Build 57.
-
-  A cell spends 90 px on its thumbnail and gutter and 8 on a right margin, so
-  200 leaves 102 px of text at 16 px -- enough for a short lobby name whole and
-  a map name for ui_fit_text to shorten.  Five columns clear it from a 1064 px
-  panel (a screen about 1100 wide) up; at 1280 they are 236 px.  The 300 it
-  replaces would have put a 1280 screen's five lobbies in one column.
-*/
+// The narrowest a lobby cell may be before the grid drops a column (90 px of
+// thumbnail and gutter + 8 margin leaves 102 px of text).
 #define LOB_MIN_COL 200
 
-/*
-  The most grid rows the lobby cells may take from the map list.  Build 67.
-
-  TWO, and the number is a budget rather than a fit: at 1400 it draws ten
-  lobbies, at 1280 ten, and on a desktop narrow enough to collapse the grid to
-  one column it draws two -- which is fewer than the five build 66 would have
-  spent there.  The map list below is sized from whatever y the cells leave, so
-  this is denominated in exactly the units the cost is paid in.
-
-  It is NOT LB_MAX and must not be confused with it: LB_MAX (m_lobby.qc) is how
-  many lobbies are PARSED, and it has to cover the whole fleet or ui_map_players
-  under-counts a map's players with no way to tell.  This is only how many are
-  DRAWN as cells.  The two were one number until build 67 and that is precisely
-  how the under-count got in.
-*/
-#define LOB_ROWS_MAX 2
+// The lobby grid: 4 across, at most 3 rows -- the 12-lobby fleet exactly.
+// LOB_ROWS_MAX is a DRAW cap, not LB_MAX (m_lobby.qc), which is the PARSE cap
+// and must cover the whole fleet or ui_map_players under-counts (build 67).
+#define LOB_COLS     4
+#define LOB_ROWS_MAX 3
 
 void(vector screensize) screen_create =
 {
@@ -3927,37 +3915,18 @@ void(vector screensize) screen_create =
 	ui_map_backdrop(screensize);
 
 	/*
-	  THE PANEL.  760 tall and up to 1400 wide, clamped to the screen.
+	  THE PANEL: up to 1100 x 808, clamped to the screen (sui_push_frame does not
+	  clip, so an unclamped panel hangs off the framebuffer silently).
 
-	  HEIGHT.  Sized so the list fits INSIDE the panel with the start/back row
-	  still below it -- an overlay list that spilled past the border covered those
-	  buttons entirely, which is how the first version shipped -- and 760 rather
-	  than 600 because rows went from 22 px to ROW_H, and a list that shows four
-	  maps is not a list.
-
-	  WIDTH, BUILD 57: SET BY FIVE LOBBY CELLS.  It was set in turn by the source
-	  row (four buttons, 680 px), by the map row's name column (980), and by the
-	  gametype strip fitting beside the tier strip at 1280 wide (1060).  Five
-	  lobbies in one row set it now.  A cell spends 98 px on its thumbnail, gutter
-	  and right margin before any text, so five across a 1060 panel would leave a
-	  lobby's name 107 px, about a dozen characters.  At 1400 a cell has 169 px of
-	  text; on a 1280 desktop the clamp makes the panel 1248 and a cell 139.
-	  Wider than 1400 buys nothing -- the map rows already have more room than any
-	  name wants -- and a panel that fills a 2560 screen puts the start button a
-	  long way from the list it acts on.
-
-	  The tier and gametype strips still share a row at 1248: about 925 px of the
-	  1216 inside it, from the 865 measured before build 57 plus ~59 for "other".
-	  Below that the gametype strip drops to its own line by itself, and at 720p
-	  that costs a map row -- see the header budget at `y` below.
-
-	  CLAMPED both ways: at vid_conautoscale 1 one unit is one pixel, so a panel
-	  bigger than the framebuffer hangs its title off the top and its start/back
-	  row off the bottom, and sui_push_frame does not clip, so nothing says so.
-	  32 px of margin also leaves the map backdrop something to show through.
+	  1100 wide: four lobby cells of 261 px (163 px of text); the tier +
+	  gametype strips share one row down to inner 796 (p350grid860).  808 tall: the third lobby
+	  row costs 56 px, and 808 gives it back so 1080p keeps 8 map rows; 720p is
+	  screen-clamped and shows 5.
 	*/
-	vector size = [min(screensize_x - 32, 1400), 760];
+	vector size = [min(screensize_x - 32, 1100), 808];
 	if (size_y > screensize_y - 32) size_y = screensize_y - 32;
+	ui_cs_size = size;
+	ui_cs_lcols = ui_cs_lshow = 0;
 
 	vector pos  = [floor((screensize_x - size_x) * 0.5),
 	               floor((screensize_y - size_y) * 0.5)];
@@ -3970,17 +3939,8 @@ void(vector screensize) screen_create =
 
 	sui_push_frame(pos, size);
 
-	/*
-	  THE HEADER BUDGET, and 720p has none to spare.
-
-	  The list below takes whatever height is left, in whole ROW_H steps: it
-	  shows floor((size_y - 60 - y) / 48) rows, y being where it starts.  With the
-	  filter row (56), the search (56) and one row of lobby cells (76), y is 244:
-	  9 rows in a 760 panel, and EXACTLY 8 in 720p's 688 -- 384 px, none left
-	  over.  So one more pixel of header costs a 720p player a whole map row.
-	  The server name field (60) and the source strip (56) went in build 57, and
-	  they are the two rows the list got back.
-	*/
+	// THE HEADER BUDGET: the list shows floor((size_y - 60 - y) / 48) rows.
+	// Filters (56) + search (56) + three lobby rows (188) put y at 356.
 	float y = 56;
 	float fx, f;
 
@@ -4152,36 +4112,15 @@ void(vector screensize) screen_create =
 	else if (Lob_Count() > 0)
 	{
 		/*
-		  SIDE BY SIDE (Patch 287), FIVE ACROSS (build 57).  Lex: "can you put
-		  the server lobbies side by side in the create server menu for more space
-		  saving?", and later five lobbies, in one row.
+		  A GRID, LOB_COLS across and at most LOB_ROWS_MAX down.  The list below
+		  is derived from y, so every grid row costs it a row and needs no edit.
 
-		  Five lobbies stacked would cost 5*ROW_H = 240 px of a 760 px panel to
-		  say five short things.  Across, they cost 48 -- and every pixel saved
-		  goes straight to the map list underneath, because the list geometry
-		  below is DERIVED from y (`by = size_y - 46; ls = [inner, by - y - 12]`).
-		  So this needs no matching edit down there.
-
-		  The column count is Lob_Count() rather than a constant: with two lobbies
-		  live they take half the width each and there are no empty slots.
-		  LB_MAX is 5 (m_lobby.qc), so this is bounded, and the row/column
-		  arithmetic below is written to survive that changing.
-
-		  CELLS STAY PUT.  Lob_Parse orders lobbies by port rather than by the
-		  directory's busiest-first, so a lobby keeps its cell as people join and
-		  leave, and a click cannot land on a neighbour that slid into place
-		  between two polls.
-
-		  NARROW SCREENS GET FEWER COLUMNS, NOT ONE.  inner comes from the panel
-		  and the panel is clamped to the screen, so a small desktop narrows every
-		  cell; below LOB_MIN_COL the grid takes as many columns as still clear it
-		  and wraps the rest onto another row.  Each extra grid row costs the list
-		  a row, which a small screen trades for names it can read.  This used to
-		  drop straight to one column below 300 px, which with five lobbies would
-		  spend 5*ROW_H at exactly the sizes least able to afford it.
+		  CELLS STAY PUT: Lob_Parse orders lobbies by port, so a click cannot
+		  land on a neighbour that slid into place between two polls.  Narrow
+		  screens drop columns below LOB_MIN_COL rather than squeezing names.
 		*/
 		float lgap  = 8;
-		float lcols = Lob_Count();
+		float lcols = min(LOB_COLS, Lob_Count());
 		float lcolw = (inner - lgap * (lcols - 1)) / lcols;
 		if (lcolw < LOB_MIN_COL)
 		{
@@ -4192,38 +4131,14 @@ void(vector screensize) screen_create =
 			lcolw = (inner - lgap * (lcols - 1)) / lcols;
 		}
 
-		/*
-		  BUILD 67: BOUND THE GRID BY ROWS, NOT BY CELLS.
-
-		  LB_MAX is 64 now (m_lobby.qc) and it is the PARSE cap -- ui_map_players
-		  has to see the whole fleet or it under-counts a map's players in
-		  silence.  Drawing the whole fleet is a different question with a
-		  different answer: sixty-four cells is not a saving over a stacked list,
-		  it IS a stacked list, and every grid row comes out of the map list
-		  underneath because the list geometry below is derived from y.
-
-		  ROWS RATHER THAN A CELL COUNT, because a cell count does the wrong
-		  thing at both ends of the width range.  Ten cells is two tidy rows at
-		  1400 and TEN rows on a narrow desktop, where lcols has already
-		  collapsed to one -- i.e. the cap would spend the most space exactly
-		  where the essay above says there is least to spend.  Capping rows makes
-		  the bound adapt on its own: five across gives ten, one across gives
-		  two, and the map list never loses more than LOB_ROWS_MAX rows at any
-		  width.  It is also strictly better than build 66 behaved, where five
-		  lobbies at one column already spent five.
-
-		  STILL PORT ORDER, DELIBERATELY.  The obvious refinement is to show the
-		  BUSY lobbies and hide the empty ones, and it is wrong for the reason
-		  the essay above already gives: cells stay put so that a click cannot
-		  land on a neighbour that slid into place between two polls.  Sorting by
-		  players is precisely the reordering that breaks that, and it would do
-		  it every poll rather than rarely.  Since build 67 the cells are no
-		  longer how a player reaches a map anyway -- picking the map is -- so a
-		  stable sample plus an honest count beats an unstable ranking.
-		*/
+		// Bounded by ROWS, not cells (build 67): a narrow screen that dropped to
+		// fewer columns still spends at most LOB_ROWS_MAX list rows.  Port order
+		// stays -- hiding empty lobbies would reorder cells every poll.
 		float lshow = Lob_Count();
 		if (lshow > lcols * LOB_ROWS_MAX)
 			lshow = lcols * LOB_ROWS_MAX;
+		ui_cs_lcols = lcols;
+		ui_cs_lshow = lshow;
 
 		/*
 		  THE HEADING SAYS WHAT IS NOT BEING SHOWN, which is why it is drawn
@@ -4285,9 +4200,7 @@ void(vector screensize) screen_create =
 
 			ui_thumb([lp_x + 3, lp_y + 2], [78, 44], lpage, lcell);
 
-			// The text column is what is left of the cell after the thumbnail and
-			// its gutter, less 8 px so a truncated name cannot touch the next
-			// cell's border: 139 px at 1280 wide, 169 at the 1400 cap.
+			// Text column: the cell less thumbnail, gutter and an 8 px margin.
 			float ltw = lcolw - 90 - 8;
 
 			/*
@@ -4348,6 +4261,7 @@ void(vector screensize) screen_create =
 	// ---- the list ------------------------------------------------------
 	float by = size_y - 46;         // top of the start/back row
 	vector ls = [inner, by - y - 12];
+	ui_cs_rows = floor((ls_y - 2) / ROW_H);
 
 	{
 		sui_fill([16, y], ls, '0.03 0.03 0.04', 1, 0);
