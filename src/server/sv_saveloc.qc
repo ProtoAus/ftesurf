@@ -2598,6 +2598,8 @@ void(entity e) SV_RetryPoint =
 	// folder lives under the player's own root -- same root a load would spell.
 	SV_SaveRootFor(e);
 
+	// Patch 368: a lobby streams, and a stream has no prefix to carry across.
+	SV_RecDestream(e);
 	SV_SaveWriteState(e, FS_RETRY_SLOT, 0);
 
 	rec_retry_sent = TRUE;

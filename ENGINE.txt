@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   7c0e48cfeb141e90f313ddbf039c4b604b05e4c2
 tag      patch-266
-patch    367
+patch    368
 qcbuild  83
 date     2026-09-19
+
+# PATCH 368 IS MOD-SIDE ONLY: a lobby `retry` keeps its recording (the stream is
+# read back into a buffer first).  cfg/test/rt1sv.cfg + rt1cl.cfg.
 
 # PATCH 367: pm_recsim and pm_verify replay a FTESURF-REC 10 Multi-Session run,
 # session by session, and check the clock and the resume at each pause (the Pi

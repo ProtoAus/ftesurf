@@ -4254,13 +4254,15 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// silently writes half a file whenever start is not 0.  Passing the
 		// count explicitly avoids the bug rather than relying on start being 0.
 		buf_writefile(fh, e.rec_rec_buf, 0, e.rec_rec_lines);
+		// Patch 368: the size, as the stream reports it -- a lobby run is
+		// buffered after a retry (SV_RecDestream), and its replay row said -1.
+		// A buffered handle's one-argument fseek is the bytes written.
+		e.rec_rec_bytes = fseek(fh);
 		fclose(fh);
 		dprint(sprintf("timer: wrote %s (%g samples, %g padding)\n",
 		               dst, e.rec_rec_n, e.rec_rec_padn));
 		// The buffered recorder writes straight to its final name -- no part
-		// file, no rename -- so reaching here IS the file landing.  Its size is
-		// not known without asking the filesystem, and nothing here needs it
-		// badly enough to open the file again.
+		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
 
 		// Only the archived classes accumulate; `last` is one file by
@@ -4370,6 +4372,11 @@ float(entity e, string path) SV_RecWritePrefix =
 	  a run streams unless someone asked for it with rec_stream -- save points do
 	  not exist at all (lobby_nosaveloc), so this branch has no caller there and a
 	  warning would only ever fire at the person who set rec_stream on purpose.
+
+	  [Patch 368: no longer true -- lobbies have had per-player saves since Patch
+	  333.  A lobby save carries no movement and its load drops the recording (a
+	  segmented run with no replay; measured, rt1cl.cfg).  A `retry` destreams
+	  first (SV_RecDestream) and keeps it.]
 	*/
 	if (e.rec_rec_stream)
 		return 0;
@@ -4390,6 +4397,40 @@ float(entity e, string path) SV_RecWritePrefix =
 	buf_writefile(fh, e.rec_rec_buf, 0, e.rec_rec_lines);
 	fclose(fh);
 	return e.rec_rec_lines;
+};
+
+// Patch 368: the stream read back into a buffer, counters kept, part file gone.
+// A lobby `retry` needs it: the stream died at the map_restart and the run went
+// on to rank clean with no replay (cfg/test/rt1cl.cfg).  Closed first: the stream
+// goes through stdio, and an open part file read back 0 of 358 lines.  A failed
+// read drops the recording, which is what every retry did before this.  Only
+// the retry calls this -- it has the server to itself; every save doing it
+// would buffer 32 players' runs.
+float(entity e) SV_RecDestream =
+{
+	local float buf;
+
+	if (!e.rec_rec_stream)
+		return TRUE;
+	fclose(e.rec_rec_fh);
+	e.rec_rec_fh = -1;
+	buf = buf_create_ex("string", 0);
+	if (buf >= 1)
+	if (buf_loadfile(SV_RecPartPath(e), buf))
+	if (buf_getsize(buf) == e.rec_rec_lines)
+	{
+		fremove(SV_RecPartPath(e));
+		e.rec_rec_flagofs = -1;
+		e.rec_rec_stream = FALSE;
+		e.rec_rec_buf = buf;
+		return TRUE;
+	}
+	dprint(sprintf("timer: %s did not read back (%g of %g lines); recording dropped\n",
+	               SV_RecPartPath(e), (buf >= 1) ? buf_getsize(buf) : -1, e.rec_rec_lines));
+	if (buf >= 1)
+		buf_del(buf);
+	SV_RecDiscard(e);
+	return FALSE;
 };
 
 /*

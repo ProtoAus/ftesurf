@@ -360,6 +360,9 @@ bannered as superseded.)
   seed within 0.0001 of the replayed state: the save writes %.4f) -- HOLD
   otherwise. Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
   `p367verify`.
+- A LOBBY STREAMS, AND A STREAM CANNOT REWIND. A `retry` reads it back into a
+  buffer first (Patch 368, SV_RecDestream); a lobby save-load still drops the
+  recording, so a segmented lobby run has no replay (`rt1cl.cfg`).
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
