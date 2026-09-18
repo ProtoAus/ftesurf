@@ -466,6 +466,8 @@
 #define STAT_FS_STAGEENDST     87   // its SF_* word at the close
 #define STAT_FS_STAGEENDTICKS  88   // its own duration, in ticks
 #define STAT_FS_STAGEENDLAUNCH 100  // its launch speed (u/s); -1 = never left its box.  Patch 360
+#define STAT_FS_STAGEENDPBWAS   99  // its leg's PB before this close; 0 = none, or a lobby that keeps none.  Patch 361
+#define STAT_FS_STATOWNER      102  // entity number of the player these stats describe; 0 = older server.  Patch 361
 
 /*
   The personal best this run was measured against, latched before the PB table

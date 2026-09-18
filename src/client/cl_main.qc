@@ -297,6 +297,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Online_RegisterCommands();
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
+	Banner_RegisterCvars();         // Patch 361
 	/*
 	  Build 49.  This one also takes every particleeffectnum handle, ONCE, and
 	  that has to happen here rather than per map: the effect names are what
@@ -1530,6 +1531,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  the toast reads better next to the splits it is about.
 		*/
 		Results_Frame();
+		Banner_Frame();               // Patch 361: after the card's rank scan, before LT_Frame writes
 
 		/*
 		  BUILD 57, STAGE T: the lobby time store, and it must run AFTER
@@ -1581,6 +1583,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  be kept in step by hand.
 		*/
 		Results_Draw(scr);
+		Banner_Draw(scr);             // Patch 361: over the card, under the inspector and editor
 
 		/*
 		  BUILD 56: the entity inspector's panel, over the results card and under
@@ -1756,10 +1759,10 @@ float(string cmd) CSQC_ConsoleCommand =
 		*/
 		{
 			local float i;
-			print(sprintf("cl stats: endrec %g endseg %g endst %g endticks %g pbwas %g\n",
+			print(sprintf("cl stats: endrec %g endseg %g endst %g endticks %g pbwas %g spbwas %g\n",
 			              getstatf(STAT_FS_STAGEENDREC), getstatf(STAT_FS_STAGEENDSEG),
 			              getstatf(STAT_FS_STAGEENDST), getstatf(STAT_FS_STAGEENDTICKS),
-			              getstatf(STAT_FS_TIMERPBWAS)));
+			              getstatf(STAT_FS_TIMERPBWAS), getstatf(STAT_FS_STAGEENDPBWAS)));
 			print(sprintf("cl splits: n %g over %g pend %g\n",
 			              ui_sp_n, ui_sp_over, ui_sp_pendword));
 			// BUILD 86: the clock's pace latch.  0 = no comparison this run,
@@ -1860,6 +1863,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Results_ConsoleCommand(cmd))
 		return TRUE;
 	if (LT_ConsoleCommand(cmd))
+		return TRUE;
+	if (Banner_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 49.  `emit_list` -- what the map holds, what is emitting, and why

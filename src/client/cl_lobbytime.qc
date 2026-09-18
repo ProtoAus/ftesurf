@@ -193,6 +193,21 @@ float() LT_Enabled =
 	return cvar("rec_lobbytimes") != 0;
 };
 
+// Patch 361: does this disk keep this server's times?  LT_Frame's own gates, as
+// one answer for a reader choosing a PB source (the card, the banner): when it
+// does not, the server's PB stats are the source, or there is none.
+float() LT_Keeps =
+{
+	if (!(getstatf(STAT_FS_LOBBY) & LS_LOBBY))
+		return FALSE;
+	if (!(getstatf(STAT_FS_LOBBY) & LS_NOPB))
+		return FALSE;
+	if (!Rec_ServerIsRemote())
+	if (!(getstatf(STAT_FS_LOBBY) & LS_NOREC))
+		return FALSE;
+	return LT_Enabled();
+};
+
 /*
   Are the stats on the wire the LOCAL player's own?  See trap 9A for why this is
   not implied by STAT_FS_LOBBY, and for the engine path that makes it necessary.
@@ -218,6 +233,14 @@ float() LT_Enabled =
 */
 float() LT_StatsAreMine =
 {
+	local float o;
+
+	// Patch 361: the server says whose stats these are.  viewentity alone lies in
+	// a spectator's wall camera, where it is our own slot while the stats are
+	// the target's.  0 is a server that does not publish it.
+	o = getstatf(STAT_FS_STATOWNER);
+	if (o > 0)
+		return o == player_localnum + 1;
 	return player_localentnum == player_localnum + 1;
 };
 

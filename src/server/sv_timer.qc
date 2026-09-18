@@ -1956,6 +1956,7 @@ float(entity e) SV_RecLive =
 .float  run_st_endword;          // its SF_* word at the close, with SF_KNOWN
 .float  run_st_endticks;         // its own duration, in ticks
 .float  run_st_endlaunch;        // Patch 360: its launch speed (stat 100); -1 = never left its box
+.float  run_st_endpbwas;         // Patch 361: its leg's PB before this close (stat 99, the banner)
 
 /*
   PATCH 360, STAGE FILL-IN.  The takeoff that began this flight: tkok 1 = primed
@@ -6311,6 +6312,9 @@ void(entity e, float ticks) SV_StageClose =
 	if (SV_StageQualifies(e, seg))
 		e.run_st_endword = e.run_st_endword | SF_QUALIFIES;
 	e.run_st_endticks = ticks - e.run_st_tick;
+	e.run_st_endpbwas = 0;
+	if (seg >= 0)
+		e.run_st_endpbwas = SV_PBGet(e.run_t_track, FS_LegOf(seg, TRUE));
 
 	// Patch 360: a primed stage of a main run is posted to its stage board --
 	// above every refusal below, which are about writing a local file.
@@ -11464,9 +11468,9 @@ void(entity e) SV_TimerReport =
 	  monotonic and counts refused closes too.  A diagnostic, so no cvar.
 	*/
 	sprint(e, PRINT_HIGH,
-	       sprintf("        stage close: rec %g seg %g word %g ticks %g  pbwas %g\n",
+	       sprintf("        stage close: rec %g seg %g word %g ticks %g  pbwas %g  spbwas %g\n",
 	               e.run_st_endrec, e.run_st_endseg, e.run_st_endword,
-	               e.run_st_endticks, e.run_t_pbwas));
+	               e.run_st_endticks, e.run_t_pbwas, e.run_st_endpbwas));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage fill: prime %g launch %g tk %g tkspd %g cap %g posts %g\n",
 	               e.run_st_prime, e.run_st_launch, e.run_st_tkok, e.run_st_tkspd,

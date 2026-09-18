@@ -81,9 +81,15 @@ entity() SV_SelectSpawnPoint =
   PutClientInServer
 ===========================================================================
 */
+// Patch 361: this player's entity number, published as STAT_FS_STATOWNER so a
+// client can tell whose stats it is being sent (a spectator gets the target's).
+.float run_statowner;
+
 void() PutClientInServer =
 {
 	local entity spot;
+
+	self.run_statowner = num_for_edict(self);
 
 	// First, because a save-lock hold owns the movetype and the velocity while
 	// it lasts.  Everything it gives back is overwritten a few lines down --

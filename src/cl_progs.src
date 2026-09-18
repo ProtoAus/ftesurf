@@ -138,6 +138,9 @@ client/cl_results.qc
 // that ONE function is forward-declared there, the same arrangement sv_zones.qc
 // has with the timer's SV_TimerChatLeg.  Nothing below this line is needed by it.
 client/cl_lobbytime.qc
+// Patch 361: the completion banner.  After cl_lobbytime.qc (LT_BestOnLegC) and
+// cl_results.qc (Results_KeyRank / Results_Rank, and the toast it replaces).
+client/cl_banner.qc
 // LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
 // screen with a replay, the leaderboard or the results card, so it needs
 // rec_wt_open (cl_watch.qc) and ui_rs_cursor (cl_results.qc); it also consumes

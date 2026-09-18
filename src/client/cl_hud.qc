@@ -74,7 +74,7 @@ vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
 // records what happened the last time only one of the two was raised.  16 rather
 // than exactly 15 because a registration that overflows is dropped SILENTLY, and a
 // spare row is cheaper than finding that out from a panel that will not list.
-#define HUDE_MAX 16
+#define HUDE_MAX 20              // Patch 361: with HE_MAX (the banner)
 string hude_id[HUDE_MAX];
 vector hude_pos[HUDE_MAX];      // top-left of what was drawn, pixels
 vector hude_size[HUDE_MAX];     // pixels

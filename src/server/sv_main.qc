@@ -369,6 +369,8 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STAGEENDST,    EV_FLOAT, run_st_endword);
 	clientstat(STAT_FS_STAGEENDTICKS, EV_FLOAT, run_st_endticks);
 	clientstat(STAT_FS_STAGEENDLAUNCH, EV_FLOAT, run_st_endlaunch);   // Patch 360
+	clientstat(STAT_FS_STAGEENDPBWAS,  EV_FLOAT, run_st_endpbwas);    // Patch 361
+	clientstat(STAT_FS_STATOWNER,      EV_FLOAT, run_statowner);      // Patch 361
 
 	/*
 	  BUILD 48: the personal best this run was measured AGAINST.

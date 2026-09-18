@@ -125,7 +125,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 16
+#define HE_MAX 20                // Patch 361: the banner makes 16 rows; spares kept
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -294,6 +294,8 @@ void() HE_BuildTable =
 	HE_Text("hud_boarding_size", "16 20 24 28", 10);     // mono; 20 shipped
 	HE_Add("speed",   "Speed",      "hud_speed_x",   "hud_speed_y",   "hud_speed",    0, HEA_CT,   70,  40);
 	HE_Text("hud_speed_size",    "40 48 64 80", 24);     // display; 48 today
+	HE_Add("banner",  "Banner",     "hud_banner_x",  "hud_banner_y",  "hud_banner",   0, HEA_CT,  300,  50);
+	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
 	/*
 	  BUILD 66 -- FROM HERE DOWN, EVERY ROW IS HIDDEN FROM THE LIST.
 
@@ -541,6 +543,17 @@ string(string id, float row) HE_OptDef =
 	  he_cvsize row for the reason hud_energy_size is: one element, two text
 	  sizes, and he_cvsize holds one.
 	*/
+	if (id == "banner")
+	{
+		if (row == 0) return "hud_banner_stages|Stage banners|t||"
+		                     "|A strip for each stage you pass in a full run. Off shows the one-line toast.";
+		if (row == 1) return "hud_banner_hold|Hold|c|2 3.5 5|2s;3.5s;5s"
+		                     "|How long it stays up. Stage strips stay 70% as long.";
+		if (row == 2) return "hud_banner_sound|Sound|t||"
+		                     "|Plays sound/ftesurf/complete, pb or wr .wav if you add them; a missing file is skipped.";
+		return "";
+	}
+
 	if (id == "timer")
 	{
 		// `auto` first, and it is the default -- see the note on hud_energy_size
@@ -578,6 +591,7 @@ string(string id) HE_Tip =
 	if (id == "board")    return "How well the last ramp contact went.";
 	if (id == "boarding") return "What you entered and left the last ramp with.";
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
+	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	return "";
 };
 
@@ -1705,6 +1719,7 @@ void(float r) HE_Default =
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
 	if (id == "board")   localcmd("seta hud_board_x -1\nseta hud_board_y -1\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.68\n");
+	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
 	if (id == "keys")    localcmd("seta hud_keys_x 0\nseta hud_keys_y 0.84\n");
 	if (id == "debug")   localcmd("seta hud_debug_x 0.012\nseta hud_debug_y 0.30\n");
 	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.018\nseta hud_saveloc_y 0.34\n");

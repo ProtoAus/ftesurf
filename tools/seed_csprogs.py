@@ -51,7 +51,9 @@ if os.path.isdir(d):
     shutil.copyfile(path, dst)
     print('seeded', dst)
     for f in os.listdir(d):
-        if f.endswith(('.tmp', '.dcl')) or (f.endswith('.dat') and f != h + '.dat'):
+        # Other hashes stay: a file is named by its own content's hash, so it can
+        # only ever serve that exact csprogs (e.g. the fleet's, while local differs).
+        if f.endswith(('.tmp', '.dcl')):
             os.remove(os.path.join(d, f))
             print('removed stale', f)
 else:

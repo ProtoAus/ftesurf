@@ -79,7 +79,9 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg;
 // Patch 355: the same, per class (certified / uncertified), and a file's flags.
 float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC;
 float(string fn) LT_FileFlags;
+float() LT_Keeps;               // Patch 361: this disk keeps this server's times
 
+float  ui_bn_cardat;            // Patch 361: the card waits for the banner until this cltime (cl_banner.qc)
 string ui_rs_map;               // the map the state below describes
 float  ui_rs_open;              // the card is up
 float  ui_rs_cursor;            // ...and it has asked for the mouse
@@ -698,9 +700,15 @@ void() Results_Open =
 	*/
 	// Measured within its own class: an unranked run against the unranked
 	// best, a certified one against the certified best (Patch 355).
-	if (lobby)
-		ui_rs_pb = LT_BestOnLegC(serverkey("map"), ui_rs_track, ui_rs_leg,
-		                         ui_rs_ticks, (ui_rs_flags & TF_UNCERT) != 0);
+	// Patch 361: only where the server keeps no PB, and only from files this disk
+	// actually keeps (LT_Keeps) -- a lobby with lobby_nopb 0 sends a real PBWAS.
+	if (getstatf(STAT_FS_LOBBY) & LS_NOPB)
+	{
+		ui_rs_pb = 0;
+		if (LT_Keeps())
+			ui_rs_pb = LT_BestOnLegC(serverkey("map"), ui_rs_track, ui_rs_leg,
+			                         ui_rs_ticks, (ui_rs_flags & TF_UNCERT) != 0);
+	}
 
 	Results_Rank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
 	             (ui_rs_flags & TF_UNCERT) != 0, ui_rs_rank, ui_rs_of);
@@ -764,8 +772,13 @@ void() Results_Frame =
 		// is running; nothing on screen should still be about the last attempt.
 		Results_Close();
 		ui_rs_at      = 0;
-		ui_rs_toastat = 0;
+		// On the edge only (Patch 361): the toast is raised WHILE running, so a
+		// clear on every running frame gave it a life of one frame.
+		if (ui_rs_laststate != TS_RUNNING)
+			ui_rs_toastat = 0;
 	}
+	else
+		ui_rs_toastat = 0;          // finished or reset: the toast was about that run
 
 	/*
 	  Edge one: the state.  Edge two: the tag leaving RT_NONE.
@@ -959,8 +972,10 @@ void(vector scr) Results_Draw =
 	tick = Timer_Tick();
 
 	// A 100 ms beat before it appears, so the stopped clock registers as the
-	// first thing that changed and this arrives as the second.
-	a = (cltime - ui_rs_at - 0.10) / 0.18;
+	// first thing that changed and this arrives as the second.  Patch 361: and
+	// after the banner, which covers the same rows while it is up.
+	x = max(ui_rs_at, ui_bn_cardat);
+	a = (cltime - x - 0.10) / 0.18;
 	if (a <= 0)
 		return;
 	if (a > 1)
@@ -1185,11 +1200,22 @@ float(float evtype, float scanx, float chary, float devid) Results_InputEvent =
   Reached from the key path in cl_main.qc while the card is open and the cursor
   has NOT been taken.  Returns TRUE only when it consumed the press.
 */
+// Patch 361: open AND drawn -- the card waits behind a completion banner, and a
+// card nobody can see must not eat ESC.  Results_Draw's own threshold.
+float() Results_Drawn =
+{
+	if (!ui_rs_open)
+		return FALSE;
+	return cltime - max(ui_rs_at, ui_bn_cardat) > 0.10;
+};
+
 float(float scanx) Results_PassiveKey =
 {
 	if (!ui_rs_open || !cvar("hud_results"))
 		return FALSE;
 
+	// F1 / MOUSE3 during the banner's hold skip to the card (the banner yields
+	// to a taken cursor); ESC then still reaches the menu.
 	if (scanx == K_F1 || scanx == K_MOUSE3)
 	{
 		Results_TakeCursor();
@@ -1197,6 +1223,8 @@ float(float scanx) Results_PassiveKey =
 	}
 	if (scanx == K_ESCAPE)
 	{
+		if (!Results_Drawn())
+			return FALSE;
 		Results_Close();
 		return TRUE;
 	}
@@ -1286,11 +1314,13 @@ float(string cmd) Results_ConsoleCommand =
 		return TRUE;
 	}
 
-	if (ui_rs_open)
+	// A card held behind the banner is shown, not closed unseen (Patch 361).
+	if (Results_Drawn())
 		Results_Close();
 	else
 	{
-		Results_Open();
+		if (!ui_rs_open)
+			Results_Open();
 		Results_TakeCursor();
 	}
 	return TRUE;

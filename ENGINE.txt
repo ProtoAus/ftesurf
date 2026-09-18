@@ -15,9 +15,14 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d310d3f0056065ced3c1676b768c1a1a17700bd0
 tag      patch-266
-patch    360
+patch    361
 qcbuild  83
 date     2026-09-18
+
+# PATCH 361 IS MOD-SIDE ONLY: the completion banner (cl_banner.qc) -- a ribbon
+# across the screen on a finish (time, delta, #N of M + WR / TOP n), a strip per
+# stage of a main run; stats 99 (a stage close's PB-was) and 102 (whose stats
+# these are).  cfg/test/p361bn{syn,listen,lob}.cfg.
 
 # PATCH 360 IS MOD-SIDE ONLY: a lobby main run posts a stage to its stage board
 # when the stage started primed (dwell, then a jump or walk-out <= run_stagecap
