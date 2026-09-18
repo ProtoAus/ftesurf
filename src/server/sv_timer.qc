@@ -2332,7 +2332,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             SHORT2ANGLE(ucmd->angles[]), at four decimals -- more
                             than the sample's two, because the quantum is
                             360/65536 = 0.0055 degrees and four decimals recover
-                            the wire short exactly.  <fwd side up> is .movement,
+                            the wire short exactly -- IF THE READER ROUNDS
+                            (x*65536/360, nearest).  Truncating returns 30134 of
+                            the 65536 shorts one step low (engine Patch 345).
+                            <fwd side up> is .movement,
                             the raw usercmd triple, the same one the sample
                             carries.
 

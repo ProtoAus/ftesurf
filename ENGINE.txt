@@ -13,11 +13,17 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   17bee4dad1c0783af50f26ebf37d6578b040f586
+commit   ed4d075be8ff9261d80a232bf0d0156d3d243811
 tag      patch-266
-patch    344
+patch    345
 qcbuild  83
 date     2026-09-18
+
+# PATCH 345 IS ENGINE-ONLY (sv_ccmds.c): pm_recsim rounded the `in` row's
+# %.4f angle back to a wire short by TRUNCATION, so ~46% of replayed rows gave
+# the mover a yaw one step (0.0055 deg) low.  Rounding recovers every short;
+# velocity-error p90 falls 25-30x on real runs.  qcbuild stays 83.
+# cfg/test/p345angle.cfg.
 
 # PATCH 344 IS ENGINE-ONLY (sv_ccmds.c), the first of build 85's two engine
 # follow-ups below: pm_recsim now replays `ride` (keyed to the `in` row it
