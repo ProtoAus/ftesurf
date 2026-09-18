@@ -62,7 +62,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   after any engine header change. Plugin rebuild is automatic. It builds the
   engine WORKING TREE, and `release.ps1` ships whatever it built. 0.1.8 went out
   with another session's uncommitted Patch 362, so commit engine edits before
-  anyone cuts a release.
+  anyone cuts a release. The same holds for the progs: `release.ps1` packs the
+  install's .dat, and its dirty gate cannot see uncommitted QC source -- build
+  HEAD's progs in a clean worktree and copy them in. fteqcc output varies with
+  the checkout path, so compare .dat hashes only between builds from one path.
 - `-Pi`: ships qwprogs+csprogs to the Pi lobbies and restarts them.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
@@ -310,7 +313,9 @@ bannered as superseded.)
   `TF_CHEAT/NOJOURNAL/NORULESET/NOPROFILE/NOMAP/NOCLOCK` in `sh_defs.qc`,
   consumed by surfd's `certifiable()`.
 - THE `.rec` GRAMMAR BLOCK over `SV_RecOpen` (sv_timer.qc) IS AUTHORITATIVE,
-  currently FTESURF-REC 9. `tools/reccheck.py` is written from that block and
+  currently FTESURF-REC 10 when the file holds a `pause` (retry, cold load,
+  Multi-Session) and 9 otherwise; pm_recsim and pm_verify REFUSE anything
+  above 9 (Patch 364). `tools/reccheck.py` is written from that block and
   never from the writer, so a writer that drifts from its own documentation gets
   caught. Same rule for `hidcheck.py` and `.hid`.
 - Version bump rule: new header keys and new record types are additive and need
@@ -324,6 +329,10 @@ bannered as superseded.)
     (resume, pause, session) must be taught to pm_recsim/pm_verify in the same
     patch, either consumed or REFUSEd. pm_verify REFUSEs any version above the
     one it reads (Patch 356).
+- A new recorder COUNTER or change-latch goes in four places, or a resumed file
+  lies: `SV_RecOpen`'s reset, `SV_RecRecount` (every rewind recounts from the
+  body), `SV_RecTrailer`, and sv_resume.qc's ms.txt (`SV_MsWriteMeta` /
+  `SV_MsReadMeta` / `SV_MsRecAttach`).
 - After ANY change here: `python tools/test_reccheck.py` (0 failed) AND a corpus
   sweep over `ftesurf/data/runs` — the fault count must not move. A false note
   about a correct file is the one thing these tools may not produce.
@@ -357,9 +366,15 @@ bannered as superseded.)
 - Capture pattern for a live recording: a run only closes at the finish, which a
   scripted walk never reaches. So the harness holds the run open at the end and
   an outside poller copies `data/parts/0.rec` during that window (an abandoned
-  stream is cleaned up on quit). `b85ride.cfg` is the current worked example.
+  stream is removed on quit -- unless the run passed `run_resume_min`, see
+  below). `b85ride.cfg` is the current worked example.
   On a lobby, copy `data/parts/p<port>-<slot>.rec` from the Pi over ssh during the hold
   (`p352live.cfg`). A copy taken mid-write ends in half a row.
+- Multi-Session (Patch 365): a run of at least `run_resume_min` s is PARKED on
+  every disconnect, map change and quit (QC `SV_Shutdown`; not `retry`) into
+  `data/resume/<map>/@<guid|local>/save000/`. A fixture that reloads or quits
+  mid-run leaves a slot there that the next run on that map is offered: clean it
+  with the rest of the test data, or `set run_resume 0`.
 
 ## Pi operations (public lobbies)
 
@@ -478,6 +493,10 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
   big fixed arrays blow the globals/strings budget (4096 rows forced a 32-bit
   target — size them to the library).
+- Every QC GLOBAL is zeroed on every map load, `map_restart` (so `retry`)
+  included. Anything that must identify state across one lives in a cvar or a
+  file: a per-map rewind serial let a pre-retry save rewind "warm" across the
+  counter restart (Patch 364 moved it to the `rec_serial` cvar).
 - QC HAS NO FILE SCOPE, and fteqcc merges two same-named same-typed globals into
   ONE with no warning. That is the mechanism forward declarations rely on, and it
   is also a live hazard: build 48 added a `ui_rs_armed` in cl_results.qc that
