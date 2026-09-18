@@ -559,6 +559,22 @@ a process that is running but has stopped beating. surfd already knows the
 last-beat age per node, and the panel shows it, so the missing piece is only
 the alerting.
 
+## Replay verification (sweep.py)
+
+`sweep.py` runs engine `pm_verify` (Patch 349) over every row in `replays`
+that has not been checked yet, and stores one verdict per attempt in its own
+`verdicts` table: PASS, HOLD (a reason for a human), REFUSE (out of scope,
+e.g. a pre-v9 file), or ERROR (no verdict printed; retried up to 3 times).
+It **stores only**: no board or rank reads the table yet. It starts one
+headless verifier per map on port 27698, with `nice 19`, idle IO and
+`oom_score_adj 1000`. Installed in proto's crontab:
+
+    */5 * * * * cd /srv/nvme/surfd && flock -n /tmp/surfd-sweep.lock python3 sweep.py --limit 20 >> /srv/nvme/surfd/logs/sweep.log 2>&1
+
+`python3 sweep.py --dry-run` lists what is pending. `test_sweep.py` stubs out the
+engine (use a throwaway `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the
+verifier itself.
+
 ## Not done on purpose
 
   * Not exposed publicly. Nothing in nginx points at surfd; making it public

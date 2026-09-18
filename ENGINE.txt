@@ -13,11 +13,16 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   580cc90805bb6ddaf383c2888a26b3b140d5c868
+commit   720a2f3d677ffadb653f14dd300c4790768412d9
 tag      patch-266
-patch    353
+patch    354
 qcbuild  83
 date     2026-09-18
+
+# PATCH 354 = ENGINE + SURFD: every early exit of pm_verify prints a REFUSE line,
+# so the new surfd/sweep.py always gets a verdict.  sweep.py verifies each indexed
+# replay on the Pi at idle priority and stores the verdict in its own `verdicts`
+# table (store only; no board reads it).  surfd/test_sweep.py 0 failed.
 
 # PATCH 352 IS ENGINE-ONLY: the physent digest hashes entity numbers relative
 # to the player slots, so a 32-slot lobby's file and a 2-slot verifier agree

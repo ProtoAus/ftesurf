@@ -1,0 +1,176 @@
+"""
+test_sweep.py -- the falsifier for the verdict sweeper (sweep.py).
+
+    SURFD_HOME=/tmp/surfd-test python3 test_sweep.py
+
+Never touches a live instance: surfd is imported against a throwaway home and
+run tree, and the engine is replaced by a stub runner that prints VERIFY lines,
+so this tests the sweeper and not pm_verify (cfg/test/p349verify.cfg does that).
+Each case has a control that fails if nothing landed.
+"""
+
+import importlib
+import os
+import sqlite3
+import sys
+import tempfile
+
+FAILED = []
+
+
+def check(label, got, want):
+    ok = got == want
+    print("%-4s %-60s %r" % ("ok" if ok else "FAIL", label, got))
+    if not ok:
+        FAILED.append("%s: got %r, want %r" % (label, got, want))
+
+
+def fresh():
+    home = tempfile.mkdtemp(prefix="surfd-sweep-")
+    with open(os.path.join(home, "surfd.env"), "w") as fh:
+        fh.write("SURFD_KEY=testkey\n")
+    runs = os.path.join(home, "ftesurf", "data", "runs")    # <game>/ftesurf/data/runs
+    os.makedirs(runs)
+    os.environ.update(SURFD_HOME=home, SURFD_DB=os.path.join(home, "test.db"),
+                      SURFD_ENV=os.path.join(home, "surfd.env"), SURFD_RUNS=runs,
+                      SURFD_GAME=home, SURFD_VERIFIER=os.path.join(home, "noengine"))
+    for m in ("surfd", "sweep"):
+        sys.modules.pop(m, None)
+    sweep = importlib.import_module("sweep")    # imports surfd, as cron does
+    return sys.modules["surfd"], sweep, runs
+
+
+def add_replay(conn, runs, map_dir, leaf, track=0, leg=0, make_file=True):
+    cur = conn.execute(
+        "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+        " name, ticks, tickrate, millis, flags, node, submitted)"
+        " VALUES (?, ?, ?, ?, ?, 'ranked', 'normal', 'p', 'n', 662, 100, 6620, 0,"
+        " '1', 1)", (map_dir.lower(), map_dir, track, leg, leaf))
+    conn.commit()
+    if make_file:
+        d = os.path.join(runs, map_dir, "main" if leg <= 0 else "stage_%d" % leg)
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, leaf), "w").write("FTESURF-REC 9\n")
+    return cur.lastrowid
+
+
+def latest(conn, rid):
+    return conn.execute("SELECT verdict, reason, ticks FROM verdicts WHERE replay_id = ?"
+                        " ORDER BY id DESC LIMIT 1", (rid,)).fetchone()
+
+
+def case_parse():
+    _, sweep, _ = fresh()
+    got = sweep.parse([
+        "junk",
+        "VERIFY data/runs/a/main/x.rec PASS ticks 662 rows 634",
+        "VERIFY data/runs/a/main/y.rec HOLD ticks: the zones say 662, the file says 663",
+        "VERIFY data/runs/a/main/z.rec REFUSE a save-state resume or retry",
+        "  pm_recsim  data/runs/a/main/x.rec",
+    ])
+    check("parse: PASS carries its ticks", got["data/runs/a/main/x.rec"], ("PASS", "ticks 662 rows 634", 662))
+    check("parse: HOLD keeps its reason, no ticks", got["data/runs/a/main/y.rec"][0::2], ("HOLD", -1))
+    check("parse: REFUSE", got["data/runs/a/main/z.rec"][0], "REFUSE")
+    check("parse: nothing else becomes a verdict", len(got), 3)
+
+
+def case_pass_and_group():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    sweep.ensure_schema(conn)
+    a = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    b = add_replay(conn, runs, "Bhop_Mukiology", "0000500_p-2c8f36b6_pb.rec")
+    calls = []
+
+    def runner(map_dir, paths):
+        calls.append((map_dir, paths))
+        return ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths]
+
+    counts = sweep.sweep(conn, 20, runner=runner, now=1234)
+    check("one verifier process per map", sorted(m for m, _ in calls), ["Bhop_Mukiology", "bhop_eazy"])
+    check("path is game-relative and keeps the disk spelling",
+          dict(calls)["Bhop_Mukiology"], ["data/runs/Bhop_Mukiology/main/0000500_p-2c8f36b6_pb.rec"])
+    check("PASS stored with its ticks", tuple(latest(conn, a)), ("PASS", "ticks 662 rows 634", 662))
+    row = conn.execute("SELECT checked, seen FROM replays WHERE id = ?", (b,)).fetchone()
+    check("a terminal verdict sets checked and seen", (row[0], row[1]), (1, 1234))
+    check("counts", counts, {"PASS": 2})
+    check("CONTROL: a second sweep finds nothing pending", sweep.sweep(conn, 20, runner=runner), {})
+
+
+def case_missing_and_bad_names():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    gone = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec", make_file=False)
+    bad = add_replay(conn, runs, "bhop_eazy", "../../../etc/passwd", make_file=False)
+    calls = []
+    sweep.sweep(conn, 20, runner=lambda m, p: calls.append(m) or [])
+    check("a missing file is REFUSED, not run", latest(conn, gone)[0], "REFUSE")
+    check("an unusable leaf is REFUSED, not run", latest(conn, bad)[0], "REFUSE")
+    check("CONTROL: the verifier was never started", calls, [])
+
+
+def case_error_retry_cap():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    for _ in range(sweep.MAX_ERRORS):
+        sweep.sweep(conn, 20, runner=lambda m, p: ["no verdict here"])
+    n = conn.execute("SELECT COUNT(*) FROM verdicts WHERE replay_id = ? AND verdict = 'ERROR'",
+                     (rid,)).fetchone()[0]
+    check("no VERIFY line is an ERROR, retried", n, sweep.MAX_ERRORS)
+    check("an ERROR leaves checked 0", conn.execute("SELECT checked FROM replays WHERE id = ?",
+                                                    (rid,)).fetchone()[0], 0)
+    check("after MAX_ERRORS it stops being pending", sweep.pending(conn, 20), [])
+
+
+def case_command_line():
+    surfd, sweep, runs = fresh()
+    seen = {}
+
+    class R:
+        stdout = "VERIFY data/runs/m/main/x.rec PASS ticks 1 rows 1\n"
+        stderr = ""
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return R()
+
+    real = sweep.subprocess.run
+    sweep.subprocess.run = fake_run
+    try:
+        out = sweep.run_verifier("surf_x", ["data/runs/surf_x/main/a.rec", "data/runs/surf_x/main/b.rec"])
+    finally:
+        sweep.subprocess.run = real
+    cmd = seen["cmd"]
+    check("idle priority", cmd[:6], ["nice", "-n", "19", "ionice", "-c", "3"])
+    check("the map once, then every file", [cmd[i + 1] for i, a in enumerate(cmd) if a in ("+map", "+pm_verify")],
+          ["surf_x", "data/runs/surf_x/main/a.rec", "data/runs/surf_x/main/b.rec"])
+    check("records nothing, advertises nothing",
+          all(x in " ".join(cmd) for x in ("rec_enable 0", "sv_public 0")), True)
+    check("ends with quit", cmd[-1], "+quit")
+    check("first in line for the OOM killer", seen["kw"].get("preexec_fn") is sweep._oom_first, True)
+    check("stdout comes back as lines", out[0].startswith("VERIFY"), True)
+
+
+def case_quiet_import():
+    # Must run first: surfd's logger outlives re-imports within this process.
+    surfd, _, _ = fresh()
+    check("CONTROL: surfd's log file is under this test's home",
+          surfd.LOG_PATH, os.path.join(os.environ["SURFD_HOME"], "logs", "surfd.log"))
+    body = open(surfd.LOG_PATH).read() if os.path.exists(surfd.LOG_PATH) else ""
+    check("importing via sweep writes no 'surfd ready' to surfd.log", "surfd ready" in body, False)
+
+
+def main():
+    for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
+                 case_error_retry_cap, case_command_line):
+        print("%s:" % case.__name__)
+        case()
+    print("\n%d failed" % len(FAILED))
+    for f in FAILED:
+        print("  " + f)
+    return 1 if FAILED else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
