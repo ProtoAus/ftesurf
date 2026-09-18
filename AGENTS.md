@@ -93,6 +93,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   run `C:\FTEQuake\fteqwsv64.exe +set sv_port <p> +exec cfg/test/<sv>` from
   `C:\FTESurf` (`ftesurf64.exe -dedicated` crashes after prop lighting), with
   `sv_public 0` or it heartbeats to public masters.
+  It writes nothing to stdout: pass `+set log_enable 1 +set log_dir logs +set
+  log_name <n>`, run it via `Start-Process -WindowStyle Minimized -PassThru` +
+  `WaitForExit`, then read `ftesurf/logs/<n>.log`. A cfg's own `log_name`
+  line overrides the `+set`.
   - After EVERY csprogs rebuild run `python tools/seed_csprogs.py`, then RESTART
     the dedicated server. A stale `downloads/csprogsvers/<hash>.dat` silently
     runs the OLD code (no download line, no error); a server left running holds
@@ -133,6 +137,12 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   prose padding. Entries up to patch 334 are a long-form archive: never rewrite
   them and do not imitate their style. `qcbuild` bumps only on the user's
   "Build NN" commit.
+  - PATCH NUMBERS COLLIDE BETWEEN CONCURRENT SESSIONS (343, 351 and 354 all did
+    on 2026-09-18). Right before committing, `git fetch` both repos and take
+    max+1 over the ENGINE_PATCHES.md headings AND untracked `cfg/test/pNNN*`
+    files, where a claim shows up first. Tell any other live session the
+    number. Fix a collision forward by renumbering yours; `patch` never moves
+    down.
 - COMMIT AFTER EVERY FEATURE, AND PUSH. Do not wait to be asked and do not batch
   a session's work into one lump — this is the development phase, and the cost of
   not committing is what the build-86 catch-up had to clean up: 75 unpushed
@@ -284,6 +294,11 @@ bannered as superseded.)
   `HEAD_Vn` ladder, the allowed-header ladder, the trailer-width ladder, and the
   `r.info` print tuple — that tuple has silently swallowed a new field four
   builds running, because nothing automatic reads it.
+  - "Additive" is safe for reccheck, NOT for the verifier: pm_recsim skips
+    unknown records. A record that changes physics or the run's continuity
+    (resume, pause, session) must be taught to pm_recsim/pm_verify in the same
+    patch, either consumed or REFUSEd. pm_verify REFUSEs any version above the
+    one it reads (Patch 356).
 - After ANY change here: `python tools/test_reccheck.py` (0 failed) AND a corpus
   sweep over `ftesurf/data/runs` — the fault count must not move. A false note
   about a correct file is the one thing these tools may not produce.
@@ -291,8 +306,17 @@ bannered as superseded.)
   OUTSIDE the mover by a map entity. `ride` = the basevelocity carrier handed to
   the mover (a span: `arm` persists until changed, `pay` is the cash-out). A
   PORTAL crossing (`linked_portal_door`) is committed INSIDE the mover by the
-  engine (`PM_PlayerTracePortals`), so no QC site can record it — that needs the
-  engine to publish `pms_portalcrossed`.
+  engine (`PM_PlayerTracePortals`), so no QC site sees it; the engine publishes
+  it (Patch 346) and v9 writes the `portal` record. None has been captured live
+  yet.
+- THE VERIFIER: `pm_verify <file>` (engine, headless server on the file's map)
+  replays a finished v9 file exactly and runs the timer's own zone scan, printing
+  `VERIFY <file> PASS|HOLD|REFUSE <reason>` (never FAIL). It is exact only on the
+  same binary and pin. If the file's trace cvars (`pm_trisoup_bevels`,
+  `pm_rotatedboxhulls`, `pm_portalcsg_scanall`) differ from the server's, it
+  warns and replays with the server's. `surfd/sweep.py` runs it from proto's
+  cron and STORES verdicts (`verdicts` table); what a verdict does to a board is
+  Lex's call, still open. Harnesses: `p349verify`, `p352slots`, `p356newer`.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
@@ -302,6 +326,8 @@ bannered as superseded.)
   scripted walk never reaches. So the harness holds the run open at the end and
   an outside poller copies `data/parts/0.rec` during that window (an abandoned
   stream is cleaned up on quit). `b85ride.cfg` is the current worked example.
+  On a lobby, copy `data/parts/<slot>.rec` from the Pi over ssh during the hold
+  (`p352live.cfg`). A copy taken mid-write ends in half a row.
 
 ## Pi operations (public lobbies)
 
@@ -314,6 +340,22 @@ bannered as superseded.)
   command keeping `.prev`, restarts every active lobby); menu.dat stays local.
   `-PiForce` overrides the refusal — beta phase, and the connected player is
   usually the reporter; say so when you use it.
+  `-Pi` SHIPS THE WORKING TREE. When the tree carries other sessions'
+  uncommitted QC, build from a clean `git worktree add <tmp> HEAD` instead, and
+  remove the worktree afterwards.
+- The lobbies run a NATIVE aarch64 engine, `game/fteqw-svarm64`, built on the Pi
+  in `/srv/nvme/p349build`. That tree is NOT a git checkout: send changed files
+  with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
+  `git archive` here ships CRLF), check them with `git hash-object`, then
+  `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
+  `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. Swap by
+  `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
+  lobbies keep the old binary until restarted; the sweeper picks up the new one
+  immediately.
+- Dedicated servers do not exec `default.cfg`. A cvar set only there (e.g.
+  `pm_portalcsg_scanall 1`) runs at the ENGINE default on the lobbies and the
+  headless verifier. A lobby's real physics values are in its recordings'
+  `pmpin` header.
 - Post-deploy verification is a CLIENT CONNECT, not the journal: `ftesurf@N`
   journals need sudo (sudoers is restart-only) and lobby cfgs write no file
   logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live
@@ -360,6 +402,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - Deleting save dirs behind a running server does NOT clear its in-memory list;
   it rescans on map change/lobby flip/restart. Delete-all is `sl_delall`.
 - Two clients writing the same `log_name` interleave confusingly.
+- A leftover test process (`ftesurf64*.exe`, `fteqwsv64.exe`) holds
+  `fteplug_hl2_x64.dll`, so build.ps1's deploy aborts part-way and `C:\FTEQuake`
+  keeps a stale server. Check `Get-Process ftesurf*,fteqw*` before `-Engine`.
 - Engine cvar `timeout` (default 65 s) is the dead-client drop; lobbies set 30.
 - Unregistered cvar set by bare name in a cfg is "Unknown command" — `set` it.
 - Engine `sv.active` is never assigned anywhere — every `if (sv.active)` is dead
