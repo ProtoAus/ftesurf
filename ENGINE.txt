@@ -13,11 +13,16 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   720a2f3d677ffadb653f14dd300c4790768412d9
+commit   3f7d36a1d4450fb9c7e49dd0aa7b7ee534dc0113
 tag      patch-266
-patch    354
+patch    356
 qcbuild  83
 date     2026-09-18
+
+# PATCH 356 IS ENGINE-ONLY: pm_verify REFUSEs FTESURF-REC above 9 ("a newer
+# format"); it skips unknown records, so a v10 file would otherwise verify as
+# one continuous run.  On the Pi's disk for the sweeper; lobbies pick it up on
+# their next restart.  cfg/test/p356newer.cfg.
 
 # PATCH 354 = ENGINE + SURFD: every early exit of pm_verify prints a REFUSE line,
 # so the new surfd/sweep.py always gets a verdict.  sweep.py verifies each indexed
