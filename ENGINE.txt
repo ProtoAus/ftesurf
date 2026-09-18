@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   3f7d36a1d4450fb9c7e49dd0aa7b7ee534dc0113
 tag      patch-266
-patch    356
+patch    357
 qcbuild  83
 date     2026-09-18
+
+# PATCH 357 IS MOD-SIDE ONLY: the leaderboard follows a finish (leg, and the tab
+# when it must), refetches once the row lands, highlights / pins the own row.
+# cfg/test/p357ref{sv,cl}.cfg with surfd/p357board.py.
 
 # PATCH 355 IS MOD-SIDE (+ a surfd bucket fix): the leaderboard drops the
 # Community chip; a run surfd demotes is told ("unranked (<reason>)" in chat and

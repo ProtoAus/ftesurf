@@ -182,6 +182,104 @@ float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
 string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "clean"; };
 
 /*
+  PATCH 357: THE BOARD FOLLOWS A FINISH.  Results_BoardWatch (cl_results.qc)
+  calls these.  A finish marks Local stale (legbuilt -2 = rescan, keep the
+  scroll) and, if the board is shut, makes its next open jump to the finished
+  leg; the tab moves only when the current one cannot hold the run.  When
+  `*wrank` says the row moved, the online store is marked stale.  seek scrolls
+  to the player's row once the answer is in; it survives a -showscores.
+*/
+float  rec_sb_finpend;           // follow on the next open
+float  rec_sb_fintrack, rec_sb_finleg, rec_sb_finticks, rec_sb_finflags;
+float  rec_sb_finwait;           // a board answer is still owed
+float  rec_sb_finrank;           // *wrank's rank once answered, 0 = none
+float  rec_sb_finbest;           // the standing online best (ms) after it
+float  rec_sb_seek;
+float  rec_sb_tabauto;           // the follow moved the tab to Local; the next can undo it
+
+void() Scores_NoteLocal =
+{
+	if (rec_sb_legbuilt == rec_sb_leg)
+		rec_sb_legbuilt = -2;
+};
+
+void(float track, float leg, float ticks, float flags, float owed) Scores_NoteFinish =
+{
+	Scores_NoteLocal();
+	rec_sb_fintrack = track;
+	rec_sb_finleg   = leg;
+	rec_sb_finticks = ticks;
+	rec_sb_finflags = flags;
+	rec_sb_finrank  = 0;
+	rec_sb_finbest  = 0;
+	rec_sb_finwait  = owed;
+	rec_sb_finpend  = !(rec_sb_open || sc_held);   // up already: refresh in place
+	rec_sb_seek     = TRUE;
+};
+
+void(float landed, float rank, float bestms) Scores_NoteAnswer =
+{
+	rec_sb_finwait = FALSE;
+	if (rank > 0)
+	{
+		rec_sb_finrank = rank;      // the standing, even when this run did not move it
+		rec_sb_finbest = bestms;
+	}
+	if (landed)
+		Online_MarkStale();
+};
+
+void() Scores_ForgetFinish =
+{
+	rec_sb_finpend = rec_sb_finwait = rec_sb_seek = FALSE;
+	rec_sb_finticks = rec_sb_finrank = 0;
+};
+
+string() Scores_FinStyle =
+{
+	return (FS_RunClass(rec_sb_finflags) == RC_SEGMENT) ? "segmented" : "clean";
+};
+
+void() Scores_ApplyFollow =
+{
+	local float i, c;
+
+	rec_sb_finpend = FALSE;
+	for (i = 0; i < rec_sb_legn; i = i + 1)
+		if (rec_sb_legtrack[i] == rec_sb_fintrack)
+		if (rec_sb_legnum[i] == rec_sb_finleg)
+			break;
+	if (i >= rec_sb_legn)
+		return;
+	if (rec_sb_leg != i)
+	{
+		rec_sb_leg = i;
+		rec_sb_legbuilt = -1;
+		rec_sb_oscroll = '0 0 0';
+	}
+	if (!Scores_IsOnline())
+	if (!rec_sb_tabauto)
+		return;                     // the player chose Local: it holds every finish
+	c = FS_RunClass(rec_sb_finflags);
+	if (serverkey("board") != "ranked" || (rec_sb_finflags & TF_UNCERT))
+	{
+		if (rec_sb_tab != SB_T_LOCAL)
+			rec_sb_tabauto = TRUE;
+		rec_sb_tab = SB_T_LOCAL;    // on no online board this player can see
+	}
+	else if (c == RC_SEGMENT)
+	{
+		rec_sb_tab = SB_T_SEGMENT;
+		rec_sb_tabauto = FALSE;
+	}
+	else if (c == RC_CLEAN)
+	{
+		rec_sb_tab = SB_T_ONLINE;
+		rec_sb_tabauto = FALSE;
+	}                               // practice/cheated: no board; leave the tab
+};
+
+/*
   ---- WHERE A RUN SET HERE ACTUALLY GOES.  Build 64. -----------------------
 
   THE REPORT: "I set a time on bhop_eazy and it didn't write my time to the
@@ -531,8 +629,11 @@ void(float leg) Scores_BuildRows =
 	rec_sb_rown     = 0;
 	rec_sb_rowover  = 0;
 	rec_sb_best     = 0;
+	// A rescan after a finish keeps the player's place (Patch 357); a leg
+	// change or an open starts at the top.
+	if (rec_sb_legbuilt != -2)
+		rec_sb_scroll = '0 0 0';
 	rec_sb_legbuilt = leg;
-	rec_sb_scroll   = '0 0 0';
 
 	if (leg < 0 || leg >= rec_sb_legn)
 		return;
@@ -671,6 +772,10 @@ void() Scores_Refresh =
 		rec_sb_leg      = 0;
 		rec_sb_legbuilt = -1;
 	}
+	// After the leg table is built (above), on the hold path and the pin alike.
+	if (rec_sb_finpend)
+	if (rec_sb_open || sc_held)
+		Scores_ApplyFollow();
 	if (rec_sb_legbuilt != rec_sb_leg)
 		Scores_BuildRows(rec_sb_leg);
 
@@ -883,7 +988,7 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 {
 	local vector lp;
-	local float idx, hot, on, cl, d, ticks, pick;
+	local float idx, hot, on, cl, d, ticks, pick, fin;
 	local string s, rid;
 
 	pick = -1;
@@ -893,6 +998,24 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		Scores_Text([rp_x, rp_y + rec_sb_szhead + pad], rec_sb_szrow,
 		            "no runs recorded on this leg yet", SBC_DIM, 1);
 		return pick;
+	}
+
+	// Patch 357: on the finished leg, seek once to the finish just set.
+	fin = FALSE;
+	if (rec_sb_finticks > 0)
+	if (rec_sb_leg >= 0)
+	if (rec_sb_legtrack[rec_sb_leg] == rec_sb_fintrack)
+	if (rec_sb_legnum[rec_sb_leg] == rec_sb_finleg)
+		fin = TRUE;
+	if (fin && rec_sb_seek && !Scores_IsOnline())
+	{
+		for (idx = 0; idx < rec_sb_rown; idx = idx + 1)
+			if (rec_sb_rowticks[idx] == rec_sb_finticks)
+			{
+				rec_sb_scroll_y = max(0, (idx - 2) * rec_sb_rowh);
+				break;
+			}
+		rec_sb_seek = FALSE;
 	}
 
 	sui_list_view_begin("sb_runs", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
@@ -917,6 +1040,10 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		hot = FALSE;
 		on  = Scores_Passes(idx);
 		d   = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;   // the row's baseline
+
+		if (fin)
+		if (rec_sb_rowticks[idx] == rec_sb_finticks)
+			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.35, 0);
 
 		if (on)
 		{
@@ -1121,8 +1248,8 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 */
 float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
-	local vector lp;
-	local float idx, hot, d, ref, i, track, leg, pick;
+	local vector lp, ncol;
+	local float idx, hot, d, ref, i, track, leg, pick, pinned;
 	local string s, rid;
 
 	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
@@ -1138,7 +1265,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	  in cl_online.qc, and it is one function call here because it is one fact
 	  there.
 	*/
-	if (!Online_Describes(track, leg, OB_TIER, Scores_StyleOf()))
+	// Shows, not Describes: a refetch of this same board keeps its rows up.
+	if (!Online_Shows(track, leg, OB_TIER, Scores_StyleOf()))
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 
@@ -1241,6 +1369,26 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (ref == 0 || ob_ms[i] < ref)
 			ref = ob_ms[i];
 
+	// Patch 357.  The player's own row, pinned under the list when the finish
+	// just set ranks past the page (OB_MAXROW); then the one-time seek to it.
+	pinned = FALSE;
+	if (ob_mine < 0 && rec_sb_finrank > 0 && ob_n > 0)
+	if (track == rec_sb_fintrack && leg == rec_sb_finleg)
+	if (!strcmp(Scores_StyleOf(), Scores_FinStyle()))
+	if (rec_sb_finrank > ob_rank[ob_n - 1])
+	{
+		pinned = TRUE;
+		rs_y = rs_y - rec_sb_rowh;
+	}
+	if (rec_sb_seek && !rec_sb_finwait && ob_state == OBS_OK && ob_q_gen == ob_gen)
+	if (track == rec_sb_fintrack && leg == rec_sb_finleg)
+	if (!strcmp(Scores_StyleOf(), Scores_FinStyle()))
+	{
+		if (ob_mine >= 0)
+			rec_sb_oscroll_y = max(0, (ob_mine - 2) * rec_sb_rowh);
+		rec_sb_seek = FALSE;
+	}
+
 	sui_list_view_begin("sb_online", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
 	                    [rs_x - pad * 0.5, rec_sb_rowh], ob_n,
 	                    rec_sb_oscroll, [0, ceil(rec_sb_cw)]);
@@ -1281,6 +1429,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  precedent.  Colour alone is a poor mark and this board has no spare
 		  column to put one in yet.
 		*/
+		if (idx == ob_mine)
+			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
 		if (hot)
 		if (ob_rep[idx] > 0)
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
@@ -1328,8 +1478,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		Font_Set(ui_font_ui);
 
 		s = bufstr_get(ob_bname, idx);
+		ncol = SBC_TEXT;
+		if (idx == ob_mine)
+			ncol = SBC_GOOD;
 		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
-		            (s != "") ? s : "unknown", SBC_TEXT, 0.9);
+		            (s != "") ? s : "unknown", ncol, 0.9);
 
 		/*
 		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.
@@ -1393,6 +1546,23 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		}
 	}
 	sui_list_view_end();
+
+	// The pinned own row: rank, the standing time, the name.  Not clickable.
+	if (pinned)
+	{
+		lp = [rp_x, rp_y + rec_sb_szhead + pad * 0.5 + rs_y];
+		sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
+		d = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;
+		Font_Set(ui_font_mono);
+		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
+		             rec_sb_szrow, sprintf("%g", rec_sb_finrank), SBC_DIM, 1);
+		if (rec_sb_finbest > 0)
+			Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+			            Time_TickString(rec_sb_finbest, 0.001), SBC_TEXT, 1);
+		Font_Set(ui_font_ui);
+		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		            getplayerkeyvalue(player_localnum, "name"), SBC_GOOD, 0.9);
+	}
 	return pick - 1;
 };
 
@@ -1583,6 +1753,7 @@ void(vector scr) Scores_Draw =
 		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], rec_sb_szhead,
 		            "this map has no zone file, so it has no legs and no times",
 		            SBC_DIM, 1);
+		pl_boardbusy = FALSE;             // no legs: no online board to protect
 		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not
 		sui_end();                        // about zones; it shows here too.
 		Font_Reset();
@@ -1630,13 +1801,22 @@ void(vector scr) Scores_Draw =
 	ytabs = y0 + pad * 2 + rec_sb_sztitle;
 	if (Scores_Chip("sb_t0", [x0 + pad, ytabs], [chipw, chiph],
 	                "online", rec_sb_tab == SB_T_ONLINE))
+	{
 		rec_sb_tab = SB_T_ONLINE;
+		rec_sb_tabauto = FALSE;     // the player chose; the follow leaves it
+	}
 	if (Scores_Chip("sb_t1", [x0 + pad * 2 + chipw, ytabs], [chipw, chiph],
 	                "segmented", rec_sb_tab == SB_T_SEGMENT))
+	{
 		rec_sb_tab = SB_T_SEGMENT;
+		rec_sb_tabauto = FALSE;
+	}
 	if (Scores_Chip("sb_t2", [x0 + pad * 3 + chipw * 2, ytabs], [chipw, chiph],
 	                "local", rec_sb_tab == SB_T_LOCAL))
+	{
 		rec_sb_tab = SB_T_LOCAL;
+		rec_sb_tabauto = FALSE;
+	}
 
 	if (Scores_IsOnline())
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
@@ -1801,14 +1981,16 @@ void(vector scr) Scores_Draw =
 		  header calls "worth spending four string reads to make impossible",
 		  written into the one place it was not checked.
 		*/
-		if (Online_Describes(rec_sb_legtrack[rec_sb_leg],
-		                     rec_sb_legnum[rec_sb_leg],
-		                     OB_TIER, Scores_StyleOf()))
+		if (Online_Shows(rec_sb_legtrack[rec_sb_leg],
+		                 rec_sb_legnum[rec_sb_leg],
+		                 OB_TIER, Scores_StyleOf()))
 		{
 			s = sprintf("%g %s time(s) on %s", ob_n,
 			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
 			if (ob_cnt_ranked > ob_n)
 				s = sprintf("%s  (top %g of %g shown)", s, ob_n, ob_cnt_ranked);
+			if (ob_state == OBS_FETCH)
+				s = strcat(s, "   refreshing...");
 		}
 		else
 			s = sprintf("%s on %s", Scores_StyleOf(), Scores_LegName(rec_sb_leg));
@@ -1867,6 +2049,14 @@ void(vector scr) Scores_Draw =
 	  function just computed because it anchors to it; cl_players.qc's header
 	  has the rest.
 	*/
+	// Nested, never && around an index (QC evaluates both sides).
+	pl_boardbusy = Scores_IsOnline();
+	if (rec_sb_tab == SB_T_ONLINE)
+	if (rec_sb_leg >= 0)
+	if (rec_sb_leg < rec_sb_legn)
+	if (rec_sb_legtrack[rec_sb_leg] == 0)
+	if (rec_sb_legnum[rec_sb_leg] == 0)
+		pl_boardbusy = FALSE;
 	Players_Panel(p, sz, pad, scr);
 
 	sui_end();
@@ -1967,7 +2157,9 @@ void() Scores_Open =
 	if (rec_sb_open)
 		return;
 	rec_sb_open = TRUE;
-	rec_sb_legbuilt = -1;            // re-read the folder every time it opens
+	// Re-read the folder every time it opens; a pin from the hold keeps the
+	// player's place (-2, Patch 357).
+	rec_sb_legbuilt = sc_held ? -2 : -1;
 	UI_CursorClaim(UIC_SCORES);
 };
 
@@ -2077,12 +2269,14 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			{
 				if (rec_sb_tab > SB_T_ONLINE)
 					rec_sb_tab = rec_sb_tab - 1;
+				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
 			if (scanx == K_RIGHTARROW)
 			{
 				if (rec_sb_tab < SB_T_LOCAL)
 					rec_sb_tab = rec_sb_tab + 1;
+				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
 		}
@@ -2186,6 +2380,28 @@ float(string cmd) Scores_ConsoleCommand =
 			if (argv(2) == "segmented")  rec_sb_tab = SB_T_SEGMENT;
 			else if (argv(2) == "local") rec_sb_tab = SB_T_LOCAL;
 			else                         rec_sb_tab = SB_T_ONLINE;
+			rec_sb_tabauto = FALSE;
+		}
+		// Patch 357 test hooks: a certified finish cannot be scripted (noclip needs
+		// sv_cheats, which breaks the ruleset), so these stand in for
+		// Results_BoardWatch's two calls.  `note <track> <leg> <ticks> <flags>`,
+		// `landed` (rank and prevms taken from this player's *wrank).
+		else if (argv(1) == "note")
+		{
+			Scores_NoteFinish(stof(argv(2)), stof(argv(3)), stof(argv(4)),
+			                  stof(argv(5)), TRUE);
+			return TRUE;        // not the shared tail: it would Refresh (fetch)
+		}
+		else if (argv(1) == "landed")
+		{
+			// Mirrors Results_BoardWatch: stored -> this run's time, else prevms.
+			tokenize(getplayerkeyvalue(player_localnum, "*wrank"));
+			if (stof(argv(7)) == 1)
+				Scores_NoteAnswer(TRUE, stof(argv(5)),
+				                  rint(rec_sb_finticks * Timer_Tick() * 1000));
+			else
+				Scores_NoteAnswer(TRUE, stof(argv(5)), stof(argv(8)));
+			return TRUE;
 		}
 		// Kept handled: an unknown word falls through to Scores_Toggle, and old
 		// fixtures still type this.
@@ -2344,9 +2560,12 @@ void() Scores_Status =
 	// best times has the room list absorbed from it.
 	shown = 0;
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
-		shown = Online_Describes(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		                         OB_TIER, Scores_StyleOf());
+		shown = Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+		                     OB_TIER, Scores_StyleOf());
 	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
+	print(sprintf("  follow %g leg %g/%g ticks %g  seek %g wait %g  rank %g\n",
+	              rec_sb_finpend, rec_sb_fintrack, rec_sb_finleg, rec_sb_finticks,
+	              rec_sb_seek, rec_sb_finwait, rec_sb_finrank));
 
 	/*
 	  BUILD 44: HOW MANY ROWS THE FILTER ACTUALLY KEEPS.

@@ -71,6 +71,10 @@ float  pl_bticks[PL_BMAX];
 float  pl_bn;
 string pl_bmap;                 // the map the fetch was asked for
 float  pl_basked;               // and that we asked at all
+float  pl_bgen;                 // ob_gen the room list last asked at (Patch 357)
+// Set by Scores_Draw: the board wants a DIFFERENT online board, so the room
+// list must not take the shared ob_* store from it with a fetch of its own.
+float  pl_boardbusy;
 
 // Medal plates, in the order the podium wears them.
 vector(float r) Pl_Medal =
@@ -177,9 +181,20 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		pl_basked = FALSE;
 		pl_bn = 0;                      // another map's times are not this one's
 	}
-	if (!pl_basked)
+	// The board's own main/clean fetch serves the room list; otherwise ask,
+	// again after a finish made the store stale, but never mid-flight and
+	// never out from under a board showing another leg.
+	Online_Poll();
+	if (Online_Asked(0, 0, OB_TIER, "clean", TRUE))
+	{
+		pl_basked = TRUE;               // asked at this gen: its backoff is the board's
+		pl_bgen = ob_gen;
+	}
+	else if ((!pl_basked || pl_bgen != ob_gen) && ob_state != OBS_FETCH
+	         && !pl_boardbusy)
 	{
 		pl_basked = TRUE;
+		pl_bgen = ob_gen;
 		Online_Fetch(0, 0, OB_TIER, "clean");
 	}
 
@@ -354,15 +369,17 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		if (b > 0)
 		{
 			id = Time_TickString(b, Timer_Tick());
-			sui_text([xx + tw - stringwidth(id, TRUE, [tsz, tsz]), y + 6],
+			sui_text([xx + tw - ceil(tsz * 0.6) - stringwidth(id, TRUE, [tsz, tsz]), y + 6],
 			         [tsz, tsz], id,
 			         (r >= 1 && r <= 3) ? Pl_Medal(r) : '0.65 0.65 0.7', 1, 0);
 		}
 		if (showping)
 		{
 			ping = getplayerkeyvalue(j, "ping");
+			// After the time column, before the voice icon.  (It was drawn at the
+			// time column's own start -- unseen until the room list absorbed rows.)
 			if (ping != "")
-				sui_text([p_x + sz_x - pad - 46 - tw - ceil(tsz * 3), y + 6],
+				sui_text([p_x + sz_x - pad - 46 - ceil(tsz * 3), y + 6],
 				         [tsz, tsz], strcat(ping, "ms"), '0.55 0.55 0.58', 1, 0);
 		}
 

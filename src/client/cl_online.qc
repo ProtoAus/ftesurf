@@ -113,6 +113,18 @@ float() Online_NextReq =
 	ob_nextid = ob_nextid + 1;
 	return ob_nextid;
 };
+/*
+  PATCH 357: A FINISH MAKES THE STORED BOARD STALE.  ob_gen is bumped when the
+  directory is known to hold something newer (Results_BoardWatch, once *wrank
+  says the row moved); a query asked at an older generation is asked again
+  ONCE by Online_Need.  Nothing is freed mid-flight.  ob_mine is the local
+  player's own row (FS_GuidId vs *phash), or -1.
+*/
+float  ob_gen;
+float  ob_q_gen;
+float  ob_mine;
+void() Online_MarkStale = { ob_gen = ob_gen + 1; };
+
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
 float  ob_sent;            // cltime the in-flight request went out; 0 = none
@@ -254,6 +266,7 @@ void() Online_Clear =
 	ob_t = 0;
 	ob_cnt_ranked = 0;
 	ob_cnt_community = 0;
+	ob_mine = -1;
 	Online_FreeHave();
 };
 
@@ -330,6 +343,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	ob_q_track = track;
 	ob_q_leg   = leg;
 	ob_q_zoned = TRUE;
+	ob_q_gen   = ob_gen;
 
 	/*
 	  uri_escape on the map name even though every name in the library is
@@ -461,6 +475,17 @@ void(string body) Online_Parse =
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 	}
 	ob_n = n;
+
+	// The local player's own row, for the board's highlight and seek.
+	ob_mine = -1;
+	s = getplayerkeyvalue(player_localnum, "*phash");
+	if (s != "")
+		for (i = 0; i < n; i = i + 1)
+			if (!strcmp(FS_GuidId(bufstr_get(ob_bplayer, i)), s))
+			{
+				ob_mine = i;
+				break;
+			}
 
 	// OK BEFORE the room list absorbs: Players_AbsorbBoard gates on
 	// Online_Describes, which requires OBS_OK (set after it, it absorbed nothing).
@@ -829,6 +854,39 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
   it is still waiting.  While a fetch for a DIFFERENT leg is in flight this is
   FALSE, which is correct: the rows in memory are the old leg's.
 */
+// The query in flight or last answered is this board (at the current ob_gen
+// when `current`).  Patch 357: the room list and Online_Shows ask it.
+float(float track, float leg, string tier, string style, float current) Online_Asked =
+{
+	if (!ob_q_zoned)
+		return FALSE;
+	if (strcmp(ob_q_map, serverkey("map")) || ob_q_track != track
+	    || ob_q_leg != leg || strcmp(ob_q_tier, tier) || strcmp(ob_q_style, style))
+		return FALSE;
+	if (current)
+	if (ob_q_gen != ob_gen)
+		return FALSE;
+	return TRUE;
+};
+
+/*
+  THE DEADLINE, because nothing under us has one -- see OB_DEADLINE.  A request
+  never answered would otherwise wedge every board for the session.  Written
+  off rather than cancelled: the reply may still land and is dropped by the
+  reqid test in URI_Get_Callback.  Online_Need and the room list both poll it.
+*/
+void() Online_Poll =
+{
+	if (ob_state == OBS_FETCH)
+	if (ob_sent > 0 && cltime - ob_sent > OB_DEADLINE)
+	{
+		ob_state = OBS_FAIL;
+		ob_code  = 0;
+		ob_sent  = 0;
+		ob_retry_at = cltime + OB_RETRY_SECS;
+	}
+};
+
 float(float track, float leg, string tier, string style) Online_Describes =
 {
 	if (ob_state != OBS_OK || !ob_have_zoned)
@@ -836,6 +894,28 @@ float(float track, float leg, string tier, string style) Online_Describes =
 	return (ob_have_map   == serverkey("map") &&
 	        ob_have_track == track && ob_have_leg == leg &&
 	        ob_have_tier  == tier  && ob_have_style == style);
+};
+
+// Describes, or a refetch of the SAME board is in flight: the rows in memory
+// are still this board's (only Online_Parse clears them), so a refresh after a
+// finish keeps them on screen instead of blanking to "asking...".
+float(float track, float leg, string tier, string style) Online_Shows =
+{
+	if (ob_state == OBS_OK)
+		return Online_Describes(track, leg, tier, style);
+	if (!ob_have_zoned)
+		return FALSE;
+	if (strcmp(ob_have_map, serverkey("map")) || ob_have_track != track
+	    || ob_have_leg != leg || strcmp(ob_have_tier, tier)
+	    || strcmp(ob_have_style, style))
+		return FALSE;
+	// A failed refresh keeps the last good rows (the footer says so); a fetch
+	// in flight keeps them only while it is for this same board.
+	if (ob_state == OBS_FAIL)
+		return TRUE;
+	if (ob_state == OBS_FETCH)
+		return Online_Asked(track, leg, tier, style, FALSE);
+	return FALSE;
 };
 
 /*
@@ -856,25 +936,9 @@ float(float track, float leg, string tier, string style) Online_Describes =
 */
 float(float track, float leg, string tier, string style) Online_Need =
 {
+	Online_Poll();                      // the deadline (see Online_Poll)
 	if (ob_state == OBS_FETCH)
 	{
-		/*
-		  THE DEADLINE, because nothing under us has one -- see OB_DEADLINE.
-		  Without it a single request that is never answered wedges every
-		  board on the panel for the rest of the session, and the only way
-		  out a player would ever find is the refresh chip.
-
-		  Written off rather than cancelled: there is no way to abort a
-		  uri_get, so the reply may still land.  It is dropped harmlessly by
-		  the reqid test in URI_Get_Callback, which is what that test is for.
-		*/
-		if (ob_sent > 0 && cltime - ob_sent > OB_DEADLINE)
-		{
-			ob_state = OBS_FAIL;
-			ob_code  = 0;
-			ob_sent  = 0;
-			ob_retry_at = cltime + OB_RETRY_SECS;
-		}
 		return FALSE;                   // one in flight; let it land
 	}
 
@@ -883,6 +947,10 @@ float(float track, float leg, string tier, string style) Online_Need =
 	    ob_q_track == track && ob_q_leg == leg &&
 	    ob_q_tier  == tier  && ob_q_style == style)
 	{
+		// Asked before a finish landed on the board: ask once more (Patch 357).
+		if (ob_q_gen != ob_gen)
+			return Online_Fetch(track, leg, tier, style);
+
 		/*
 		  Already asked for exactly this -- so normally, nothing to do.
 
@@ -1026,6 +1094,7 @@ void() Online_Status =
 
 	print(sprintf("  rows %g   ranked %g   community %g\n",
 	              ob_n, ob_cnt_ranked, ob_cnt_community));
+	print(sprintf("  gen %g asked %g  mine %g\n", ob_gen, ob_q_gen, ob_mine));
 
 	/*
 	  1/rate, AND THE INVERSION IS THE POINT.  Two different units meet here and

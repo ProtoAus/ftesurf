@@ -1542,6 +1542,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  by 0.000" against the run's own time.  It draws nothing.
 		*/
 		LT_Frame();
+		Results_BoardWatch();         // Patch 357: after LT_Frame (see it)
 
 		Timer_Draw(scr);
 		Results_DrawToast(scr);

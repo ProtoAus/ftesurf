@@ -1296,6 +1296,84 @@ float(string cmd) Results_ConsoleCommand =
 };
 
 /*
+  PATCH 357: THE BOARD HEARS ABOUT A FINISH.  Own FINREC/STAGEENDREC latches,
+  `>` and re-seeded while the stats are somebody else's (LT_Frame's rule), so a
+  spectator switch or a lower counter never fires.  Called after LT_Frame, so a
+  lobby finish's Local stub is on disk before the board rescans.  The answer is
+  *wrank for this finish's subject leaving PENDING; the ranked board changed
+  only if it stored (stored -1: an older server that did not say).
+*/
+#define RS_BW_GIVEUP 30
+float  ui_rs_bwfin, ui_rs_bwend, ui_rs_bwowed;
+float  ui_rs_bwtrack, ui_rs_bwleg, ui_rs_bwticks, ui_rs_bwat;
+float() LT_StatsAreMine;
+
+void() Results_BoardWatch =
+{
+	local float fin, end, leg, st, r, o, tier, stored, bestms;
+	local string raw;
+
+	fin = getstatf(STAT_FS_FINREC);
+	end = getstatf(STAT_FS_STAGEENDREC);
+	if (ui_rs_bwfin < 0 || !LT_StatsAreMine())
+	{
+		ui_rs_bwfin = fin;
+		ui_rs_bwend = end;
+		return;
+	}
+	if (end > ui_rs_bwend)
+		Scores_NoteLocal();
+	ui_rs_bwend = end;
+
+	if (fin > ui_rs_bwfin)
+	{
+		// The previous answer is superseded (the server drops it): the row it
+		// might have stored is only seen if the board refetches anyway.
+		if (ui_rs_bwowed)
+			Online_MarkStale();
+		leg = getstatf(STAT_FS_FINLEG) - 1;
+		if (leg >= 0)
+		{
+			ui_rs_bwtrack = floor(leg / 100);
+			ui_rs_bwleg   = leg - ui_rs_bwtrack * 100;
+			ui_rs_bwticks = getstatf(STAT_FS_FINTICKS);
+			ui_rs_bwowed  = (serverkey("board") == "ranked");
+			ui_rs_bwat    = cltime;
+			Scores_NoteFinish(ui_rs_bwtrack, ui_rs_bwleg, ui_rs_bwticks,
+			                  getstatf(STAT_FS_FINFLAGS), ui_rs_bwowed);
+		}
+	}
+	ui_rs_bwfin = fin;
+
+	if (!ui_rs_bwowed)
+		return;
+	r = 0;
+	o = 0;
+	tier = 0;
+	stored = 0;
+	raw = getplayerkeyvalue(player_localnum, "*wrank");
+	st = Results_KeyRank(raw, ui_rs_bwtrack, ui_rs_bwleg, ui_rs_bwticks,
+	                     r, o, tier, stored);
+	if (st == WR_PENDING || st == WR_NONE)
+	{
+		if (cltime - ui_rs_bwat < RS_BW_GIVEUP)
+			return;
+		Online_MarkStale();         // a slow directory may still have stored it
+		st = WR_FAILED;
+	}
+	ui_rs_bwowed = FALSE;
+
+	// The standing online best after the answer: this run if it stored, else
+	// the row it did not beat (prevms, field 8).
+	bestms = 0;
+	if (stored == 1)
+		bestms = rint(ui_rs_bwticks * Timer_Tick() * 1000);
+	else if (tokenize(raw) >= 10)
+		bestms = stof(argv(8));
+	Scores_NoteAnswer((st == WR_RANKED || st == WR_STORED) && stored != 0, r, bestms);
+};
+
+/*
   Per map.  The toast latch seeds to -1 for the reason cl_timer.qc's does: the
   stat legitimately reads 0 on a fresh map, and seeding to 0 would make the
   first close of the map invisible instead of the first close being a seed.
@@ -1303,6 +1381,9 @@ float(string cmd) Results_ConsoleCommand =
 void() Results_MapInit =
 {
 	Results_Close();
+	ui_rs_bwfin  = -1;
+	ui_rs_bwowed = FALSE;
+	Scores_ForgetFinish();
 	ui_rs_at        = 0;
 	ui_rs_toastat    = 0;
 	ui_rs_toastseg   = 0;
