@@ -23,10 +23,36 @@
 */
 
 float  ui_tm_cv, ui_tm_x, ui_tm_y, ui_tm_splittime;
+float  ui_tm_cvpace;            // build 86: hud_timer_pace, mirrored per frame
 
 // Split flash.
 float  ui_tm_lastseg;
 float  ui_tm_splitat;           // cltime the last split landed; 0 = none
+
+/*
+  BUILD 86 -- AM I AHEAD OF MY OWN PB, HELD BETWEEN GATES.
+
+  0 = no comparison has been made this run, -1 = the last gate said ahead (or
+  level), +1 = it said behind.  A THREE-STATE AND NOT THE DELTA, because zero has
+  to go on meaning "nobody told us": the server publishes a delta of 0 both for
+  "dead level" and for every case where there is nothing to compare against --
+  no PB split recorded for that segment, a stage run, or `lobby_nopb` (which is
+  set on every public lobby, so this feature is silent there by construction).
+  Collapsing it to a sign at the latch keeps that distinction where the evidence
+  is, instead of asking the colour rule to guess.
+
+  LATCHED AT THE GATES AND HELD, which is what makes it a pace and not a flash.
+  The comparison only exists at a boundary -- a checkpoint or a stage split is the
+  only moment the two runs are at the same PLACE and their clocks can be
+  subtracted -- so the clock carries the last verdict forward until the next one
+  rather than going blank between them.  Zeroed when a new run starts (a verdict
+  about the previous attempt is worse than no verdict) and on a map change.
+
+  A gate that reports 0 does NOT clear it: "this segment had no PB split on file"
+  is not evidence that you have stopped being behind, and the last real verdict is
+  the better answer until a real one replaces it.
+*/
+float  ui_tm_pace;
 
 /*
   BUILD 43 -- THE STAGE RESET FLASH.
@@ -294,6 +320,16 @@ void() Timer_RegisterCvars =
 	registercvar("hud_timer_smooth", "1");
 
 	/*
+	  BUILD 86: colour the running clock by your pace against your own PB -- green
+	  while the last gate said you were ahead, red once one says you are behind.
+	  0 is the flat white clock every build before this had.
+
+	  ARCHIVED, like the other two display switches on this panel: it is a
+	  preference about how the clock reads, not a per-session diagnostic.
+	*/
+	registercvar("hud_timer_pace", "1", CVAR_ARCHIVE);
+
+	/*
 	  The split list, upper left.
 
 	  BUILD 21 MOVED IT OFF THE SEQ COLUMN, and the collision was arithmetic
@@ -433,8 +469,39 @@ float(float state, float ticks, float tick, float flags) Timer_Display =
   them apart; the colour only says "stopped".
 */
 #define TC_STOPPED  '0.55 0.58 0.62'
+/*
+  BUILD 86.  AHEAD AND BEHIND, and these two were already in the file three times
+  over -- the finish arm below, the split list's delta column (Timer_DrawSplits)
+  and the split flash under the clock.  The live clock is the fourth reader, and
+  four copies of a pair of literals is how two of them end up different greens.
 
-vector(float state, float ticks, float pb, float flags) Timer_Color =
+  Naming them rather than adding a fifth copy is also the point of the feature:
+  the clock, the row that boundary pushes and the flash that announces it are
+  three statements about ONE comparison and they have to agree on sight.
+*/
+#define TC_AHEAD    '0.45 1.00 0.45'
+#define TC_BEHIND   '1.00 0.55 0.45'
+
+/*
+  BUILD 86 -- THE RUNNING CLOCK IS COLOURED BY YOUR OWN PACE.
+
+      "Timer vs your own PB checkpoints, stage timers ect, if you're behind your
+       PB make your Timer go from green to red, meaning you're behind your
+       checkpoint/stage at this point."
+
+  `pace` is a THREE-STATE, not a delta: 0 is "no comparison exists", negative is
+  "on pace" and positive is "behind".  Three rather than a signed number of ticks
+  because zero has to keep meaning "we were not told" -- a replay, a lobby with
+  lobby_nopb set, a leg with no PB, or a run before its first gate all arrive
+  here as 0, and a tick delta of exactly 0 is a legitimate value that must not
+  read as any of them.  The caller latches it; see ui_tm_pace.
+
+  BELOW cheat, shadow and practice on purpose, which is the same precedence the
+  rest of this function already argues for: "this run will not be kept" and "this
+  clock came out of a save" are facts about whether the number counts at all, and
+  they outrank how it compares to a run that did count.
+*/
+vector(float state, float ticks, float pb, float flags, float pace) Timer_Color =
 {
 	if (flags & (TF_STOPPED | TF_FROZEN))     return TC_STOPPED;
 	if (state == TS_FINISHED)
@@ -442,14 +509,19 @@ vector(float state, float ticks, float pb, float flags) Timer_Color =
 		if (flags & TF_CHEAT)                 return TC_CHEAT;
 		if (flags & TF_SHADOW)                return TC_SHADOW;
 		if (flags & TF_PRACTICE)              return TC_PRACTICE;
-		if (!(flags & TF_HAVEPB) || ticks <= pb) return '0.45 1.00 0.45';
-		return '1.00 0.55 0.45';
+		if (!(flags & TF_HAVEPB) || ticks <= pb) return TC_AHEAD;
+		return TC_BEHIND;
 	}
 	if (state == TS_ARMED)                    return '0.70 0.75 0.80';
 	if (flags & TF_CHEAT)                     return TC_CHEAT;
 	if (flags & TF_SHADOW)                    return TC_SHADOW;
 	if (flags & TF_PRACTICE)                  return TC_PRACTICE;
-	if (state == TS_RUNNING)                  return '1 1 1';
+	if (state == TS_RUNNING)
+	{
+		if (pace < 0)                         return TC_AHEAD;
+		if (pace > 0)                         return TC_BEHIND;
+		return '1 1 1';                       // nothing to race; the old white
+	}
 	return '0.55 0.58 0.62';
 };
 
@@ -735,7 +807,7 @@ void(vector scr, float tick) Timer_DrawSplits =
 		if (ui_sp_delta[i] != 0)
 			HUD_Text([p_x + 84 * ui_cv_scale * k, p_y],
 			         Time_DeltaString(ui_sp_delta[i], tick), sz,
-			         (ui_sp_delta[i] < 0) ? '0.45 1.00 0.45' : '1.00 0.55 0.45', a);
+			         (ui_sp_delta[i] < 0) ? TC_AHEAD : TC_BEHIND, a);
 
 		/*
 		  What you were carrying through the gate.  Dimmer than the time, because
@@ -859,7 +931,18 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	bw = 0;
 
 	disp = Timer_Display(state, ticks, tick, flags);
-	col  = Timer_Color(state, ticks, pb, flags);
+	/*
+	  BUILD 86: the pace rides in stv_z, which was the spare component.
+
+	  A PARAMETER AND NOT A GLOBAL, and that is this function's oldest rule rather
+	  than a preference -- see the header: "nothing in it reads a stat or a global
+	  that only a live run has, which is the property that makes it reusable".
+	  ui_tm_pace is exactly such a global, so reading it here would have coloured a
+	  REPLAY's clock by the pace of the player's own last run.  The replay call site
+	  passes '0 0 0' and therefore no pace, which is the honest answer: a .rec
+	  carries no per-gate PB (cl_watch.qc pushes every replayed split with delta 0).
+	*/
+	col  = Timer_Color(state, ticks, pb, flags, stv_z);
 
 	/*
 	  Font_Px snaps to the CURRENT face's baked ladder, so it has to be asked
@@ -1121,6 +1204,7 @@ void(vector scr) Timer_Draw =
 	local float tick, small, y;
 	local float fails;
 	local float endrec;             // build 48
+	local float cpd;                // build 86: the checkpoint delta, read once
 	local vector p;
 
 	if (zone_mapname != ui_tm_map)
@@ -1130,6 +1214,7 @@ void(vector scr) Timer_Draw =
 		ui_tm_lastdrawstate = -1;
 		ui_tm_lastseg = 0;
 		ui_tm_lastcp  = 0;
+		ui_tm_pace    = 0;      // build 86: a verdict belongs to one map's PB table
 
 		// Build 43.  -1 and not 0: a fresh map legitimately reports 0 fails, and
 		// seeding to 0 would be indistinguishable from having seen that value --
@@ -1144,7 +1229,8 @@ void(vector scr) Timer_Draw =
 		ui_tm_endword    = 0;
 	}
 
-	ui_tm_cv = cvar("hud_timer");
+	ui_tm_cv     = cvar("hud_timer");
+	ui_tm_cvpace = cvar("hud_timer_pace");      // build 86
 	if (!ui_tm_cv)
 		return;
 
@@ -1253,6 +1339,10 @@ void(vector scr) Timer_Draw =
 			// push and cleared there.  See the ui_sp_class block.
 			ui_sp_pendword = ui_tm_endword;
 			Timer_SplitsPush(SPK_STAGE, seg, split, delta);
+			// Build 86: the clock's pace, from the number this row already carries.
+			// Only a non-zero delta is a verdict -- see ui_tm_pace.
+			if (delta != 0)
+				ui_tm_pace = (delta < 0) ? -1 : 1;
 		}
 		ui_tm_lastseg = seg;
 		// Spent, whether or not a row took it -- an arm reaches this branch with
@@ -1287,9 +1377,18 @@ void(vector scr) Timer_Draw =
 			  which is exactly the thing the row wants to say.
 			*/
 			ui_sp_pendword = getstatf(STAT_FS_STAGEST);
+			cpd = getstatf(STAT_FS_TIMERCPD);
 			Timer_SplitsPush(SPK_CP, cp,
-			                 getstatf(STAT_FS_TIMERCPT),
-			                 getstatf(STAT_FS_TIMERCPD));
+			                 getstatf(STAT_FS_TIMERCPT), cpd);
+			/*
+			  Build 86: and the clock's pace, exactly as the stage edge above does
+			  it.  A CHECKPOINT IS THE MORE USEFUL OF THE TWO for this: it is the
+			  gate a linear surf map has dozens of, where a stage boundary may come
+			  once a leg, so on most of the library this is the edge that actually
+			  keeps the colour honest between stages.
+			*/
+			if (cpd != 0)
+				ui_tm_pace = (cpd < 0) ? -1 : 1;
 		}
 		ui_tm_lastcp = cp;
 	}
@@ -1332,6 +1431,12 @@ void(vector scr) Timer_Draw =
 	{
 		if (state == TS_RUNNING && ui_sp_n > 0)
 			ui_sp_fadeat = cltime;
+		// Build 86: a new run has been compared to nothing yet, and last attempt's
+		// verdict said something about a clock that no longer exists.  NOT gated on
+		// ui_sp_n like the fade above: the pace is cleared whether or not there were
+		// rows to fade, because the flag is about this run and not about the list.
+		if (state == TS_RUNNING)
+			ui_tm_pace = 0;
 		if (state == TS_FINISHED)
 			Timer_SplitsPush(SPK_FINISH, -1, ticks,
 			                 (flags & TF_HAVEPB) ? (ticks - pb) : 0);
@@ -1341,8 +1446,19 @@ void(vector scr) Timer_Draw =
 		if (cltime - ui_sp_fadeat >= SP_FADE)
 			Timer_SplitsClear();
 
+	/*
+	  BUILD 86: the third component of `stv` is the clock's pace -- see Timer_Color.
+
+	  GATED ON BOTH THE CVAR AND TF_HAVEPB.  Without a PB for this leg there is
+	  nothing to be ahead of, and a green clock would be claiming a comparison that
+	  was never made; with one, a run that has not reached its first gate yet is
+	  "not behind anything", which is the green the request describes as the
+	  starting state.  hud_timer_pace 0 restores the flat white clock.
+	*/
 	y = Timer_DrawPanel(scr, state, ticks, flags, pb, tick, [seg, segs, track],
-	                    [fails, getstatf(STAT_FS_STAGEST), 0]);
+	                    [fails, getstatf(STAT_FS_STAGEST),
+	                     (ui_tm_cvpace && (flags & TF_HAVEPB))
+	                       ? (ui_tm_pace ? ui_tm_pace : -1) : 0]);
 	p = [scr_x * ui_tm_x, scr_y * ui_tm_y, 0];
 
 	/*
@@ -1374,8 +1490,10 @@ void(vector scr) Timer_Draw =
 		fa = 1 - (cltime - ui_tm_failat) / ui_tm_splittime;
 		fa = fa * 2;  if (fa > 1) fa = 1;
 
+		// TC_BEHIND rather than a fourth copy of the literal: a stage reset IS the
+		// bad half of the same red this panel uses for losing time.
 		HUD_TextC([p_x, y], sprintf("stage %g reset", ui_tm_failseg), small,
-		          '1.00 0.55 0.45', fa);
+		          TC_BEHIND, fa);
 	}
 	/*
 	  The split flash.  It stays OUT of Timer_DrawPanel because only the live
@@ -1394,7 +1512,7 @@ void(vector scr) Timer_Draw =
 
 		if (delta != 0)
 			HUD_TextC([p_x, y], Time_DeltaString(delta, tick), small,
-			          (delta < 0) ? '0.45 1.00 0.45' : '1.00 0.55 0.45', a);
+			          (delta < 0) ? TC_AHEAD : TC_BEHIND, a);
 		else
 			HUD_TextC([p_x, y], Time_TickString(split, tick), small,
 			          '0.85 0.85 0.85', a);

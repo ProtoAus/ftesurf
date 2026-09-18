@@ -207,8 +207,13 @@ string(float tag) Rec_TagName = { return FS_TagName(tag); };
 */
 string(float id) Rec_SavePath =
 {
-	return sprintf("data/saves/%s/save%s/run.view",
-	               Rec_MapName(), FS_SaveSlotName(id));
+	local string r;
+
+	// Patch 333: same root the server spells -- see CL_SaveRoot in cl_board.qc.
+	r = cvar_string("cl_saveroot");
+	if (r == "")
+		r = sprintf("data/saves/%s", Rec_MapName());
+	return sprintf("%s/save%s/run.view", r, FS_SaveSlotName(id));
 };
 
 /*

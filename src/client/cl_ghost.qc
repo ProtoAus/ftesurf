@@ -70,6 +70,10 @@ float  rec_gh_lastt;             // cltime of the previous ghost frame
 entity rec_gh_body;              // the drawn stand-in, spawned once
 float  rec_gh_angsnaps;          // forced view angles absorbed this map
 
+// Patch 340, defined in cl_avatar.qc (which compiles after this file): dress
+// the stand-in in this player's resolved colour, glow, trail and motes.
+void(entity g) Av_GhostDress;
+
 // Quake's jump button.  BTN_DUCK (8) is already named in sh_defs.qc, beside the
 // note that FTE fills it from +button4; there is no name for this one there
 // because nothing else in the mod has needed to read it.
@@ -235,6 +239,19 @@ void() Ghost_DrawBody =
 	  encoding can actually express.
 	*/
 	rec_gh_body.glowmod = '0.032 0.032 0.032';
+
+	/*
+	  PATCH 340: ...and then WEAR YOU ANYWAY, if there is a you to wear.
+
+	  The block above is right about the default -- an unset glowmod is the
+	  identity sentinel and would light the belt white -- but it is a default,
+	  not a verdict: a player who picked a colour and switched the glow on in
+	  `hud_player` asked to see exactly this body dressed in exactly that, and
+	  "I went ghost mode and saw none of my changes" is the report that ends
+	  here.  Av_GhostDress is a no-op while cl_pcolour is unresolved (0), so a
+	  solo session with no lobby colour keeps every word of the essay above.
+	*/
+	Av_GhostDress(rec_gh_body);
 
 	addentity(rec_gh_body);
 };

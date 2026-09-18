@@ -5,7 +5,7 @@ tested on the cases the real directory cannot currently produce.
 
 WHY A STUB AND NOT THE LIVE DIRECTORY.  The join itself -- lobby row to map row
 to drawn count -- is already pinned against the real play.proto.bar by
-cfg/testrun/b66pop.cfg, and that arm is the one worth having because it proves
+cfg/test/b66pop.cfg, and that arm is the one worth having because it proves
 the feature works against the thing it ships against.  What it cannot prove is
 anything about a NON-ZERO count, because the five lobbies are idle: every row it
 saw drew "0 playing", so the green branch, the summation and the case fix were

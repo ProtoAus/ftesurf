@@ -62,7 +62,7 @@ server, look for sv_timestamplen.
 
 Once this client is the only rcon user, set `sv_crypt_rcon 1` on the servers to
 refuse the plaintext form entirely. That is a server-side change and belongs in
-cfg/lobby.cfg, not here.
+cfg/lobby/lobby.cfg, not here.
 
 WHAT THIS DOES NOT DO
 =====================

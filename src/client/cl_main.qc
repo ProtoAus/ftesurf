@@ -160,6 +160,11 @@ void() CSQC_WorldLoaded =
 	// cl_soundscape.qc.
 	Snds_LoadFromWorld();
 
+	// Patch 335.  The client-side trigger mirror, out of the same lump and here
+	// for the same reason: the prediction hook needs the map's teleport/push/
+	// setspeed volumes before the first usercmd replays.  cl_triggers.qc.
+	Trig_LoadForMap();
+
 	/*
 	  Patch 278.  The lobby avatars' own particle effects.
 
@@ -249,13 +254,13 @@ void() CSQC_WorldLoaded =
 	rmap = serverkey("map");
 	if (rmap != "")
 	{
-		rname = sprintf("cfg/render_%s.cfg", rmap);
+		rname = sprintf("cfg/maps/render_%s.cfg", rmap);	//P330: was cfg/render_%s.cfg
 		rf = fopen(rname, FILE_READ);
 		if (rf >= 0)
 		{
 			fclose(rf);
-			localcmd(sprintf("exec cfg/render_default.cfg\nexec %s\n", rname));
-			print(sprintf("render: per-map layer %s applied over cfg/render_default.cfg\n",
+			localcmd(sprintf("exec cfg/maps/render_default.cfg\nexec %s\n", rname));
+			print(sprintf("render: per-map layer %s applied over cfg/maps/render_default.cfg\n",
 			              rname));
 		}
 		else
@@ -266,7 +271,7 @@ void() CSQC_WorldLoaded =
 			  stickiness this whole arrangement exists to prevent.  Silent: this
 			  is the case for essentially every map.
 			*/
-			localcmd("exec cfg/render_default.cfg\n");
+			localcmd("exec cfg/maps/render_default.cfg\n");
 		}
 	}
 };
@@ -281,6 +286,12 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Gfx_RegisterCvars();
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
+	// Patch 340: the chatbox, the avatar customizer and the room list.  The
+	// chatbox registers and LOADS (data/chatsilence.txt); the customizer owns
+	// the `hud_player` command and the server's two mirrors.
+	Chat_RegisterCvars();
+	Av_RegisterCvars();
+	Players_RegisterCvars();
 	// The online board's two console handles.  No cvars of its own: the
 	// directory URL is lobby_dir, which the menu progs already own and archive.
 	Online_RegisterCommands();
@@ -295,6 +306,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	*/
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
+	Trig_RegisterCvars();           // Patch 335, predicted triggers
 	Boarding_RegisterCvars();       // build 65, the Boarding window
 	HUD_EditRegisterCvars();
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
@@ -1022,6 +1034,16 @@ float(float scanx) CL_ButtonBit =
 float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 {
 	/*
+	  PATCH 340: the chat draft, ahead of EVERYTHING including the replay and
+	  Keys_Edge.  While a draft exists every key belongs to the draft -- a W
+	  that also ducked mid-sentence is a draft you cannot trust -- and the
+	  steal of the messagemode bind happens here because this is the only
+	  place offered keys before the engine runs their bind.
+	*/
+	if (Chat_InputEvent(evtype, scanx, chary, devid))
+		return TRUE;
+
+	/*
 	  BUILD 24: a replay gets the event FIRST, and before Keys_Edge sees it.
 
 	  That ordering is an exception to the rule below, and it is the one case the
@@ -1081,7 +1103,11 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
-	if (rec_sb_open)
+	if (av_open)
+		if (Av_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+
+	if (rec_sb_open || sc_held)
 		if (Scores_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
@@ -1098,7 +1124,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// answers only F1, MOUSE3 and ESC, and only while a card is actually up.
 		if (Results_PassiveKey(scanx))
 			return TRUE;
-		// Build 56: MOUSE3 takes the inspector's cursor while its overlay is up.
+		// Build 56/84: MOUSE3 toggles the inspector overlay, and ESC puts it
+		// away (Patch 331 -- it used to take the cursor; that is ent_panel now).
 		// After the card on purpose -- the card was there first and keeps MOUSE3
 		// whenever one is up AND drawn (hud_results); see Ev_PassiveKey.
 		if (Ev_PassiveKey(scanx))
@@ -1384,6 +1411,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// the trace pass is on a 4 Hz timer and only the volume ramp runs per frame.
 	Snds_Frame();
 
+	// Patch 335.  Normally empty; it is the retry for a map whose entity lump
+	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
+	Trig_Frame();
+
 	renderscene();
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
@@ -1434,6 +1465,16 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Boarding_Draw(scr, ui_board_bottom);
 
 		/*
+		  PATCH 340: the chatbox.  Here rather than at the top of the panel
+		  stack: it is furniture, not a modal -- it sits UNDER the board's dim
+		  and under the results card, both of which are things you opened or an
+		  event raised, and a chat line must never cover either.  It reads only
+		  its own ring, so unlike the Boarding window it has no handshake with
+		  what runs before it.
+		*/
+		Chat_Draw(scr);
+
+		/*
 		  BUILD 43: the replay's path AGAIN, and this is not a duplicate.
 		  hud_watch_path_mode picks which of the two drawers does the work and
 		  the other returns immediately, so exactly one of these two calls ever
@@ -1466,6 +1507,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  renderscene, while the view matrix was set.
 		*/
 		Ev_Labels();
+
+		// Patch 331: the hover card, same pass and same reason -- it is 2D.
+		Ev_CardDraw();
 
 		// Both read stats only, so they are drawn from here rather than from
 		// HUD_Draw: neither is part of the strafe/board layout chain and
@@ -1510,6 +1554,15 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// The replay's own chrome, LAST, so the scrub bar and the close button
 		// sit over the panels rather than under them.
 		Watch_Draw(scr);
+
+		/*
+		  PATCH 340: the avatar customizer, under the leaderboard and over the
+		  chrome.  UNDER the board because sui gives the last bracket of a frame
+		  every click: Av_Open refuses to open while the board is up and Av_Draw
+		  skips itself if the board opened over it, so the two brackets never
+		  actually share a frame -- the ordering is the belt to that braces.
+		*/
+		Av_Draw(scr);
 
 		// And the leaderboard over THAT: it is opened from inside a replay to
 		// pick the next one, so it has to be the front-most thing on screen and
@@ -1708,6 +1761,13 @@ float(string cmd) CSQC_ConsoleCommand =
 			              getstatf(STAT_FS_TIMERPBWAS)));
 			print(sprintf("cl splits: n %g over %g pend %g\n",
 			              ui_sp_n, ui_sp_over, ui_sp_pendword));
+			// BUILD 86: the clock's pace latch.  0 = no comparison this run,
+			// -1 = the last gate said ahead, 1 = behind.  Its own line rather than
+			// squeezed into the one above: that print is already three of eight and
+			// the pace is the only thing here that decides a COLOUR, so a harness
+			// grepping for it should not have to parse a row of counters.
+			print(sprintf("cl pace: %g (cvar %g)\n",
+			              ui_tm_pace, cvar("hud_timer_pace")));
 			for (i = 0; i < ui_sp_n; i = i + 1)
 				print(sprintf("  row %g: kind %g seg %g ticks %g delta %g class %g\n",
 				              i, ui_sp_kind[i], ui_sp_seg[i], ui_sp_ticks[i],
@@ -1779,6 +1839,14 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Scores_ConsoleCommand(cmd))
 		return TRUE;
 
+	// Patch 340: `chat_say`, the console door to the chatbox draft line.
+	if (Chat_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Patch 340: `hud_player`, the avatar customizer's toggle.
+	if (Av_ConsoleCommand(cmd))
+		return TRUE;
+
 	// The online board. Before the card and after the local board, which is the
 	// order they are read in rather than any dependency -- none of the three
 	// shares a command name.
@@ -1801,6 +1869,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	// Build 66.  `snd_report` -- which soundscape won, how far away, how many
 	// traces it cost, and what is audible right now at what level.
 	if (Snds_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Patch 335.  `trig_dump` / `trig_here` -- what the prediction mirror
+	// loaded and what the player is standing in right now.
+	if (Trig_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 30.  Registered on the client and forwarded with `cmd rec_ghost`,

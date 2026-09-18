@@ -231,7 +231,7 @@ Submitting `0.015` does not silently corrupt the board: the `1..10000` bound
 rejects it with a 400, which is the guard. But reading the field back and
 handing it straight to `Time_TickString` **does** — it printed 3500 ticks as
 `64:48:53.328` instead of `0:52.500`, a factor of 4444, caught only because
-`cfg/testrun/b64board.cfg` registered the expected times before the run.
+`cfg/test/b64board.cfg` registered the expected times before the run.
 Convert at the point of use and keep the server's units everywhere else.
 
 **`style` is derived from `flags` here, never taken from the submitter**, as a
@@ -376,7 +376,7 @@ default" is a claim until something checks it.
     cd /srv/nvme/surfd && ./setup_admin.sh
 
 One step. It prompts for a password (hidden, twice), hashes it, generates the
-session secret, copies the lobbies' `rcon_password` out of `cfg/lobby.cfg` so it
+session secret, copies the lobbies' `rcon_password` out of `cfg/lobby/lobby.cfg` so it
 is never typed, rewrites only its own three lines in `surfd.env` (backing the
 file up and never touching `SURFD_KEY`), restarts surfd and checks `/health`.
 Re-run it to **rotate** the password — it replaces its lines rather than
@@ -515,7 +515,7 @@ once, by hand:
 ### Growing the pool past five (build 68)
 
 Lobbies **6..12** are prepared but **not started**, and that is the intended
-resting state until there is demand for them. `cfg/lobby6.cfg` .. `lobby12.cfg`
+resting state until there is demand for them. `cfg/lobby/lobby6.cfg` .. `lobby12.cfg`
 exist (ports 27560..27620, all-timeable rotations, 6..11 surf and **12 the kz /
 df / ahop maps no lobby has ever rotated to**), `run.sh` takes any N that has a
 cfg, and `runall.sh`/`stopall.sh`/`build.ps1 -Pi` discover the fleet rather than

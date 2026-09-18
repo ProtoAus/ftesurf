@@ -58,8 +58,9 @@ PAD = 4                 # pre-start padding samples, t < 0
 PACKETS = 40
 
 
-def build(instart=True, inputs=True, ver=7, startjit=None, warps=()):
-    """-> list of lines.  A finished, well-formed recording, v7 by default.
+def build(instart=True, inputs=True, ver=8, startjit=None, warps=(),
+          rides=(), inend=True):
+    """-> list of lines.  A finished, well-formed recording, v8 by default.
 
     BUILD 83: `ver` EXISTS SO THE TRAILER WIDTH IS DERIVED AND NEVER TYPED.  v6
     ends with five fields and v7 with six, and the fixtures below used to reach
@@ -71,6 +72,10 @@ def build(instart=True, inputs=True, ver=7, startjit=None, warps=()):
 
     `startjit` is None (no key) or a 4-tuple; `warps` is a sequence of
     (pk, mt, kind) inserted into the body in order.
+
+    BUILD 85: `rides` is a sequence of (pk, mt, what, bx, by, bz); `inend`
+    defaults ON because v8 writes it whenever the trace exists, so a fixture
+    without one would fault for a reason it is not about.
     """
     L = ["FTESURF-REC %d" % ver,
          "map bhop_eazy",
@@ -124,11 +129,25 @@ def build(instart=True, inputs=True, ver=7, startjit=None, warps=()):
         L.append("warp %d %d %s 0.00 0.00 64.00 0.00 0.00 0.00"
                  % (wpk, wmt, wkind))
 
+    # Build 85, appended after the warps for the same reason: the grammar imposes
+    # no position on a `ride` beyond being in the body, and modelling the real
+    # interleave would tie every fixture to the packet loop's arithmetic.
+    for rpk, rmt, rwhat, rbx, rby, rbz in rides:
+        L.append("ride %d %d %s %.2f %.2f %.2f"
+                 % (rpk, rmt, rwhat, rbx, rby, rbz))
+
+    # Build 85.  Before the trailer, where SV_RecClose writes it, and gated on
+    # the trace as `instart` is -- one without the other means TRUNCATED.
+    if ver >= 8 and inend and inputs:
+        L.append("inend %d %.5f" % (mt, carry))
+
     tail = [PACKETS, PAD + PACKETS, PAD, 0]
     if ver >= 6:
         tail.append(n_in)            # <inputs>, build 82
     if ver >= 7:
         tail.append(len(warps))      # <warps>, build 83
+    if ver >= 8:
+        tail.append(len(rides))      # <rides>, build 85
     L.append("end " + " ".join(str(x) for x in tail))
     return L
 
@@ -136,7 +155,7 @@ def build(instart=True, inputs=True, ver=7, startjit=None, warps=()):
 # The trailer's fields BY NAME, so a fixture never reaches into it by position.
 # See build()'s docstring for what that cost the first time.
 END_FIELD = {"ticks": 1, "samples": 2, "padding": 3, "cp": 4,
-             "inputs": 5, "warps": 6}
+             "inputs": 5, "warps": 6, "rides": 7}
 
 
 def bump_end(lines, field, delta=1):
@@ -258,14 +277,18 @@ def case_horizon_without_rows():
 
 
 def case_trailer_width():
-    b = [l if not l.startswith("end ") else " ".join(l.split()[:5])
-         for l in build(ver=6)]
-    faults_with(b, "'end' takes 5 fields in a v6 file, has 4",
-                "a v6 trailer with four fields is a fault")
-    b = [l if not l.startswith("end ") else " ".join(l.split()[:6])
-         for l in build()]
-    faults_with(b, "'end' takes 6 fields in a v7 file, has 5",
-                "a v7 trailer with five fields is a fault")
+    """Each rung DEMANDS its own width; one short is a fault.
+
+    BUILD 85: every rung names its version explicitly now.  The v7 arm used to
+    build the default and assert "in a v7 file", true only while the default was
+    7 -- so the v8 bump made it fail about v8 while claiming to be about v7.
+    """
+    for ver, want in ((6, 5), (7, 6), (8, 7)):
+        b = [l if not l.startswith("end ") else " ".join(l.split()[:want])
+             for l in build(ver=ver)]
+        faults_with(b, "'end' takes %d fields in a v%d file, has %d"
+                    % (want, ver, want - 1),
+                    "a v%d trailer with %d fields is a fault" % (ver, want - 1))
 
 
 def case_trailer_count():
@@ -422,6 +445,144 @@ def case_warp_unknown_kind_is_a_note():
           "an unknown warp kind is reported as a note")
 
 
+def case_ride_shape():
+    """Build 85.  `ride <pk> <mt> <what> <bx by bz>` -- six fields."""
+    b = build(rides=[(5, HORIZON + 5, "arm", 0.0, 0.0, 650.0)])
+    ok_clean(b, "a well-formed ride record passes")
+
+    short = [l if not l.startswith("ride ") else " ".join(l.split()[:6])
+             for l in b]
+    faults_with(short, "'ride' takes 6 fields",
+                "a short ride record is a fault")
+
+
+def case_ride_what_vocabulary_is_closed():
+    """AND `warp`'s IS NOT -- the one place the two records are checked
+    differently.  A <kind> names which HANDLER imposed state (a growing set, so an
+    unknown one is a newer server and gets a note); a <what> names which half of a
+    mechanism that has exactly two, so a third word is a fault.
+    """
+    ok_clean(build(rides=[(5, HORIZON + 5, "arm", 0.0, 0.0, 650.0)]),
+             "ride what 'arm' passes")
+    ok_clean(build(rides=[(5, HORIZON + 5, "pay", 0.0, 0.0, 650.0)]),
+             "ride what 'pay' passes")
+    faults_with(build(rides=[(5, HORIZON + 5, "held", 0.0, 0.0, 650.0)]),
+                "not 'arm' or 'pay'",
+                "an unknown ride what is a fault, unlike an unknown warp kind")
+
+
+def case_ride_count():
+    """The seventh field is EXACT, and its loss costs the most: a `ride` track is
+    a STATE track, so a dropped record is a WRONG carrier held for an unbounded
+    span rather than one missing fact, and that error does not heal.
+    """
+    b = build(rides=[(5, HORIZON + 5, "arm", 0.0, 0.0, 650.0),
+                     (9, HORIZON + 9, "pay", 0.0, 0.0, 650.0)])
+    ok_clean(b, "two ride records counted correctly in the trailer pass")
+    faults_with(bump_end(b, "rides"), "ride records, the file has",
+                "a trailer that over-counts the ride records is a fault")
+    dropped = [l for l in b if not l.startswith("ride ")]
+    faults_with(dropped, "ride records, the file has",
+                "a trailer counting rides a truncated body does not have "
+                "is a fault")
+
+
+def case_bare_pay_is_the_addoutput_shape():
+    """A `pay` with no `arm` before it is CORRECT.
+
+    Mid-run it is `AddOutput basevelocity` (789 outputs / 139 zoned maps), which
+    writes the carrier WITHOUT the armed flag, so the mover is never handed it and
+    there is no span to open.  At the horizon it is a run that began mid-ride and
+    ended it on the first recorded command -- what build 85's capture arm actually
+    measured, after pre-registering the opposite.
+    """
+    ok_clean(build(rides=[(0, HORIZON, "pay", -1700.0, 0.0, 0.0),
+                          (0, HORIZON, "arm", 0.0, 0.0, 0.0)]),
+             "a pay before any arm is not a fault (the inherited-ride shape)")
+    ok_clean(build(rides=[(5, HORIZON + 5, "arm", 0.0, 0.0, 250.0),
+                          (9, HORIZON + 9, "pay", 0.0, 0.0, 250.0),
+                          (9, HORIZON + 9, "arm", 0.0, 0.0, 0.0),
+                          (20, HORIZON + 20, "pay", 0.0, 0.0, 650.0)]),
+             "a ride span followed by a bare AddOutput pay is not a fault")
+
+
+def case_ride_below_horizon():
+    """The horizon binds the carrier track too."""
+    faults_with(build(rides=[(5, HORIZON - 3, "arm", 0.0, 0.0, 650.0)]),
+                "below the trace's horizon",
+                "a ride stamped before the horizon is a fault")
+
+
+def case_ride_monotone():
+    """A ride cannot go backwards in <mt>, and a warp can: several warps share a
+    packet and arrive in touch order, while these are written once per command.
+    """
+    faults_with(build(rides=[(9, HORIZON + 9, "arm", 0.0, 0.0, 650.0),
+                             (5, HORIZON + 5, "pay", 0.0, 0.0, 650.0)]),
+                "cannot go backwards",
+                "a ride track that steps backwards in movetick is a fault")
+
+
+def case_inend_shape():
+    """Build 85.  `inend <mt> <carry>`, written at close."""
+    ok_clean(build(), "a well-formed inend record passes")
+
+    b = build()
+    short = [l if not l.startswith("inend ") else "inend 700" for l in b]
+    faults_with(short, "'inend' takes 2 fields",
+                "a one-field inend is a fault")
+
+
+def case_inend_is_required_beside_a_trailer():
+    """`inend` and `end` come from one function, so a trailer without a closing
+    horizon is a writer that has gone wrong."""
+    faults_with(build(inend=False), "a writer that has gone wrong",
+                "a v8 file with a trace, a trailer and no inend is a fault")
+
+
+def case_inend_not_demanded_of_a_part():
+    """AND A .part LEGITIMATELY HAS NEITHER -- the arm that keeps the check honest.
+
+    SV_RecClose writes `inend` and `end` together or not at all.  The first cut of
+    this check keyed off the `in` rows alone and faulted build 85's own capture
+    arm: a false note about a correct file, which this tool may not produce.
+    """
+    b = [l for l in build(inend=False) if not l.startswith("end ")]
+    f, n = run(b, name="t.part")
+    check(not any("inend" in x for x in f),
+          "a .part with no trailer is not faulted for having no inend")
+    check(any("interrupted .part" in x for x in n),
+          "a .part is still reported as interrupted")
+
+
+def case_inend_not_below_the_last_row():
+    """The final move's duration is inend minus the last `in` row's <mt>; a
+    negative one is not a rounding question."""
+    b = build()
+    bad = [l if not l.startswith("inend ") else "inend %d 0.00300" % (HORIZON - 1)
+           for l in b]
+    faults_with(bad, "below the trace's horizon",
+                "an inend below the horizon is a fault")
+
+
+def case_v7_needs_no_inend_and_keeps_six_fields():
+    """A version bump must not retroactively fault every file already on disk.
+    v7 files are the corpus this build inherits: no `inend`, six trailer fields,
+    and still correct.  Same claim case_v6_trailer_still_five_fields makes.
+    """
+    ok_clean(build(ver=7), "a v7 file with no inend and six trailer fields "
+                           "still passes")
+
+
+def case_v7_carrier_silence_is_not_a_claim():
+    """AND THE REASON v8 EXISTS: v7 silence about boosters is a limit of the
+    format, not a statement.  E5 measured a v7 PB with zero warps across ten
+    boosters, so a v7 file with no carrier track must not fault.
+    """
+    ok_clean(build(ver=7, warps=()),
+             "a v7 file with no warp and no ride records is not faulted")
+
+
 def case_startjit_shape():
     """Build 83.  `startjit <units> <dx> <dy> <dz>`."""
     ok_clean(build(startjit=(2, 1.37, -0.82, 0)),
@@ -476,6 +637,14 @@ def main():
                case_v6_trailer_still_five_fields,
                case_warp_shape, case_warp_count, case_warp_below_horizon,
                case_warp_unknown_kind_is_a_note,
+               case_ride_shape, case_ride_what_vocabulary_is_closed,
+               case_ride_count, case_bare_pay_is_the_addoutput_shape,
+               case_ride_below_horizon, case_ride_monotone,
+               case_inend_shape, case_inend_is_required_beside_a_trailer,
+               case_inend_not_demanded_of_a_part,
+               case_inend_not_below_the_last_row,
+               case_v7_needs_no_inend_and_keeps_six_fields,
+               case_v7_carrier_silence_is_not_a_claim,
                case_startjit_shape, case_startjit_outside_its_own_rule,
                case_startjit_vertical_is_a_fault,
                case_startjit_blocked_is_a_note_not_a_fault):

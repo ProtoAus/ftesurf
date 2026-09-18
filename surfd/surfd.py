@@ -141,7 +141,7 @@ RATE_TABLE_MAX = 4096    # cap the limiter's own memory
 # RATE_MAX IS 150, NOT 60, OR THE PI'S OWN LOBBIES BLINK OUT OF THE DIRECTORY.
 #
 # Every lobby posts from the same source address -- 127.0.0.1, because surfd
-# is on the same Pi -- once per lobby_master_rate, which cfg/lobby.cfg sets to
+# is on the same Pi -- once per lobby_master_rate, which cfg/lobby/lobby.cfg sets to
 # 5 s. One lobby is 12 heartbeats a minute; five lobbies are 5 x 12 = 60, which
 # was this cap exactly. At exactly the cap there is no slack: an arriving beat
 # finds the other 59 of the last minute still in the window, so any beat that

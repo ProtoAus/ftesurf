@@ -113,7 +113,7 @@ class FakeClock(object):
         return self.now
 
 
-# The Pi's lobby ports, in lobby order: cfg/lobby1.cfg .. cfg/lobby5.cfg.
+# The Pi's lobby ports, in lobby order: cfg/lobby/lobby1.cfg .. cfg/lobby/lobby5.cfg.
 LOBBY_PORTS = (27510, 27520, 27530, 27540, 27550)
 
 

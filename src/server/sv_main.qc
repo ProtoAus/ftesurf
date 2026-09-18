@@ -507,7 +507,7 @@ void() worldspawn =
 	// the function that READS them -- and reads them on a StartFrame that runs
 	// before worldspawn, so registering them here never landed the one default
 	// that is not zero.  lobby_avatars read 0 for the life of every process
-	// that did not exec cfg/lobby.cfg, which meant no avatars at all.  The full
+	// that did not exec cfg/lobby/lobby.cfg, which meant no avatars at all.  The full
 	// account is at that registration block.  The documentation above stays
 	// here, with the other cvars.
 
@@ -549,7 +549,7 @@ void() worldspawn =
 	*/
 	registercvar("lobby_nopb",      "1");
 	registercvar("lobby_norec",     "1");
-	registercvar("lobby_nosaveloc", "1");
+	registercvar("lobby_nosaveloc", "0");   // Patch 333: lobby saves are per-player now; 1 is the operator's kill switch
 
 	/*
 	  vbsp_mp is registered AND LATCHED here, in worldspawn, and this is the one

@@ -51,7 +51,7 @@
    4. In ONE ssh command: keeps the live pair as <name>.prev, mv -f's both .new
       files into place, and hashes the result.
    5. Runs `sudo -n /usr/bin/systemctl restart ftesurf@N` for every lobby the Pi
-      reports (build 67: one ftesurf/cfg/lobbyN.cfg per lobby, read over ssh
+      reports (build 67: one ftesurf/cfg/lobby/lobbyN.cfg per lobby, read over ssh
       before step 1, never a list written down here), one ssh each so every unit
       keeps its own exit code and message.  A failure is reported and the rest
       still restart; the script fails at the end.
@@ -87,6 +87,14 @@ param(
     [switch]$Engine,
     [switch]$Full,
     [switch]$Run,
+
+    # Parallel make jobs for every engine/plugin make invocation.  The engine
+    # Makefile has no job count of its own and build.ps1 used to call make bare,
+    # so a full rebuild compiled 213 objects one at a time.  8 is a good match
+    # for the box this is developed on; the link step also picks the jobs up,
+    # because the release link is -flto=jobserver and the jobserver hands the
+    # LTO wrappers the same tokens.
+    [int]$Jobs = 8,
 
     # After the build, push qwprogs.dat and csprogs.dat to the NanoPi's lobbies
     # and restart them -- see the header.  -PiForce deploys even while the
@@ -194,11 +202,11 @@ if ($Engine) {
     # FTE_TARGET=win64 is MANDATORY: msys2's gcc reports mingw, so the
     # auto-detect in engine/Makefile:542-549 picks win32.
     Step "make m-rel (client)"
-    & $Make -C $EngineDir m-rel FTE_TARGET=win64
+    & $Make "-j$Jobs" -C $EngineDir m-rel FTE_TARGET=win64
     if ($LASTEXITCODE -ne 0) { throw "m-rel failed" }
 
     Step "make sv-rel (dedicated server)"
-    & $Make -C $EngineDir sv-rel FTE_TARGET=win64
+    & $Make "-j$Jobs" -C $EngineDir sv-rel FTE_TARGET=win64
     if ($LASTEXITCODE -ne 0) { throw "sv-rel failed" }
 
     # ---------------------------------------------------------------------
@@ -227,13 +235,13 @@ if ($Engine) {
         if ($LASTEXITCODE -ne 0) { throw "could not build generatebuiltinsl" }
         Ok "built generatebuiltinsl"
     }
-    & $Make -C "$FteRoot\plugins\hl2"
+    & $Make "-j$Jobs" -C "$FteRoot\plugins\hl2"
     if ($LASTEXITCODE -ne 0) { throw "hl2 glsl generation failed" }
 
     # Bare `plugins-rel` dies on an unrelated ffmpeg target (plugins/Makefile:241),
     # so NATIVE_PLUGINS is always explicit.
     Step "make plugins-rel (hl2 cod box3d ode)"
-    & $Make -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode"
+    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode"
     if ($LASTEXITCODE -ne 0) { throw "plugins-rel failed" }
 
     # ------------------------------------------------------- deploy ---------
@@ -313,7 +321,7 @@ if ($Pi) {
     $names   = @('qwprogs.dat', 'csprogs.dat')          # never menu.dat
 
     # The lobbies step 5 restarts, in restart order, each with the port its own
-    # cfg binds (ftesurf/cfg/lobbyN.cfg's sv_port; lobby1.cfg's header has why
+    # cfg binds (ftesurf/cfg/lobby/lobbyN.cfg's sv_port; lobby1.cfg's header has why
     # the port is a lobby's identity and why they are spaced by ten).  ONE list,
     # because step 1 has to know exactly which lobbies step 5 will drop -- a
     # directory with no row for one of them cannot say that one is empty -- and
@@ -351,7 +359,7 @@ if ($Pi) {
     # it next starts.  So ask systemd for the active instances and take each
     # one's port from its own cfg, which keeps the "one place says what port"
     # property while dropping the wrong membership test.
-    $lobbyProbe = 'systemctl list-units "ftesurf@*" --state=active --no-legend --no-pager 2>/dev/null | sed -n "s/^[^a-z]*ftesurf@\([0-9][0-9]*\)\.service.*/\1/p" | sort -n | while read n; do f={0}/cfg/lobby$n.cfg; [ -f "$f" ] || continue; p=$(sed -n "s/^[[:space:]]*set[[:space:]][[:space:]]*sv_port[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p" "$f" | head -n 1); [ -n "$p" ] && echo "$n $p"; done' -f $PiGame
+    $lobbyProbe = 'systemctl list-units "ftesurf@*" --state=active --no-legend --no-pager 2>/dev/null | sed -n "s/^[^a-z]*ftesurf@\([0-9][0-9]*\)\.service.*/\1/p" | sort -n | while read n; do f={0}/cfg/lobby/lobby$n.cfg; [ -f "$f" ] || continue; p=$(sed -n "s/^[[:space:]]*set[[:space:]][[:space:]]*sv_port[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p" "$f" | head -n 1); [ -n "$p" ] && echo "$n $p"; done' -f $PiGame
     $r = PiNative 'ssh' ($sshOpts + @($PiHost, $lobbyProbe))
     if ($r.Code -ne 0) {
         $r.Out | Write-Host

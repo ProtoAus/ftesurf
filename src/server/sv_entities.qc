@@ -32,6 +32,14 @@ void(entity e) SV_TimerWarped;
 */
 void(entity e, string kind) SV_RecWarp;
 
+// BUILD 85: the carrier's two writers, here for the same reason SV_RecWarp is.
+// TWO entry points rather than one with a mode string: the `arm` half compares
+// against .rec_rec_bv/.rec_rec_bvset and updates them, and those fields are as
+// unreachable from this file as .run_movetick is.  The change test lives with
+// the fields; the call sites here just say what happened.
+void(entity e, vector bv) SV_RecRideArm;
+void(entity e, vector bv) SV_RecRidePay;
+
 // Q1CONTENTS_LADDER (bspfile.h:189).  Set on .skin, the engine turns it into
 // FTECONTENTS_LADDER in AddLinksToPmove (sv_user.c:7018).
 #define CONTENT_LADDER -16
@@ -939,6 +947,19 @@ void(entity pl) SV_BaseVelocityFrame =
 			              vlen([pl.velocity_x, pl.velocity_y, 0]) - vlen([was_x, was_y, 0]),
 			              pl.velocity_z - was_z));
 
+		/*
+		  BUILD 85: THE RECORD, BEFORE THE ZERO (the value is gone a line later).
+		  This is the one write in the carrier path that changes .velocity, and it
+		  happens in PreThink -- outside the mover, invisible to the sample stream
+		  and to `warp`.  States the carrier, not the impulse: the constant between
+		  them is a movevar this format does not yet pin.
+
+		  NOT the same thing as the debug print above -- that is a cvar-gated
+		  console witness, this is evidence and is always on.  E5 had only the
+		  print, which reached a console and nowhere else.
+		*/
+		SV_RecRidePay(pl, pl.run_basevel);
+
 		pl.run_basevel = '0 0 0';
 	}
 
@@ -951,6 +972,19 @@ void(entity pl) SV_BaseVelocityFrame =
 	// Hand this command's carrier to the engine.  It reads and zeroes this
 	// field itself (sv_user.c:7994-7999); .run_basevel is ours and persists.
 	pl.run_basevelocity = pl.run_basevel;
+
+	/*
+	  BUILD 85: AND THE RECORD OF WHAT WAS HANDED OVER.  The line above IS the
+	  event -- a touch upstream is only a proposal the mover may never see.
+
+	  Called every command, writes almost none: the change test and sentinel live
+	  in SV_RecRideArm.  Unconditional here on purpose -- a caller that
+	  pre-filtered would be a second copy of the rule, and the two would drift.
+
+	  AFTER the cash-out and BEFORE the Z spend, which is the order the mover sees
+	  and so the only order the file may claim.
+	*/
+	SV_RecRideArm(pl, pl.run_basevelocity);
 
 	/*
 	  AND SPEND Z HERE, on the value just handed over -- not after the move.

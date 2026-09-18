@@ -74,7 +74,7 @@ from rcon import (Rcon, RconError, RconThrottled, RconBlocked, clean_reply,
 # --------------------------------------------------------------------------
 
 # "tier:port" pairs, overridable with SURFD_ADMIN_LOBBIES. run.sh maps
-# tier -> cfg/lobbyN.cfg, which is where the port actually lives; this list only
+# tier -> cfg/lobby/lobbyN.cfg, which is where the port actually lives; this list only
 # has to agree with it.
 #
 # Renumbered in Stage 10 from 27500/27510/27520. The range starts at 27510 so
@@ -969,7 +969,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
                 raise AdminError("%r is not a valid map name" % n)
         value = " ".join(names)
         # Lobby_NextMap looks up where the rotation currently IS rather than
-        # keeping an index (cfg/lobby.cfg:252-258), so rewriting the list live
+        # keeping an index (cfg/lobby/lobby.cfg:252-258), so rewriting the list live
         # does not desync the cycle. That is why this is safe to do hot.
         fleet.run(tier, ["set", "lobby_maps", value], expect_reply=False)
         fleet.note_cvar(tier, "lobby_maps", value)

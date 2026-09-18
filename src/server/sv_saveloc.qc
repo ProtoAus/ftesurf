@@ -89,19 +89,26 @@
   few hundred bytes once per keypress rather than 32 rows of run state resident
   for the whole map.
 */
-vector rec_sl_org  [FS_MAXSAVES];
-vector rec_sl_vel  [FS_MAXSAVES];
-float  rec_sl_pit  [FS_MAXSAVES];
-float  rec_sl_yaw  [FS_MAXSAVES];
-float  rec_sl_duck [FS_MAXSAVES];
-float  rec_sl_id   [FS_MAXSAVES];        // folder number, 1..FS_MAXSAVES, stable
-float  rec_sl_seq  [FS_MAXSAVES];        // creation order; the sort key
-float  rec_sl_tick [FS_MAXSAVES];        // the run clock stored in the slot
-float  rec_sl_seg  [FS_MAXSAVES];        // segment, for the console list
-float  rec_sl_cps  [FS_MAXSAVES];        // checkpoints crossed, for the same
+#define FS_SLCLIENTS 32
+#define FS_SLBLOCK   24
+#define FS_SLROWS    (FS_MAXSAVES + FS_SLCLIENTS * FS_SLBLOCK)
 
-float  rec_sl_n;                         // rows in use
-float  rec_sl_nextseq;                   // one past the highest seq on this map
+vector rec_sl_org  [FS_SLROWS];
+vector rec_sl_vel  [FS_SLROWS];
+float  rec_sl_pit  [FS_SLROWS];
+float  rec_sl_yaw  [FS_SLROWS];
+float  rec_sl_duck [FS_SLROWS];
+float  rec_sl_id   [FS_SLROWS];        // folder number, 1..FS_MAXSAVES, stable
+float  rec_sl_seq  [FS_SLROWS];        // creation order; the sort key
+float  rec_sl_tick [FS_SLROWS];        // the run clock stored in the slot
+float  rec_sl_seg  [FS_SLROWS];        // segment, for the console list
+float  rec_sl_cps  [FS_SLROWS];        // checkpoints crossed, for the same
+
+float  rec_sl_nb[FS_SLCLIENTS + 1];        // rows in use per block
+float  rec_sl_ns[FS_SLCLIENTS + 1];        // next seq per block
+float  rec_sl_scanlob[FS_SLCLIENTS + 1];   // Lobby_Active()+1 at scan time; 0 never
+string sl_root;                            // directory the paths are spelled from
+float  sl_lob_last;                        // lobby state the stamps were taken in
 
 // Build 25.  A delete-all drives SV_SaveLocDelete once per row and must not
 // print its per-row summary each time.  Bare (Q106), and set/cleared around the
@@ -109,13 +116,11 @@ float  rec_sl_nextseq;                   // one past the highest seq on this map
 // callers of that function need no change.
 float  rec_sl_quiet;
 
-// Patch 270, Stage 2.  TRUE once SV_SaveLocScan has actually read the disk for
-// this map.  FALSE means the list is empty because the scan was refused in a
-// lobby, NOT because there is nothing on disk -- a distinction SV_SaveFreeID
-// would otherwise get wrong, by handing out an id whose folder already exists.
-float  rec_sl_scanned;
+// Patch 333 replaced this with rec_sl_scanlob[]: a stamp per block, because
+// "the disk was read" is now a question about WHICH player's directory, and a
+// block read under one lobby state is stale under the other.
 
-.float rec_sl_count;             // networked mirror of rec_sl_n; see SV_SaveLocSync
+.float rec_sl_count;             // networked mirror of the caller's block; SV_SaveLocSync
 .float rec_sl_index;             // 1-based cursor; 0 when the list is empty
 
 // The save/load event stream, for the client's half of the recording.  See
@@ -206,6 +211,15 @@ void(entity e) SV_SaveLocRelease;
 // of a watch too, and it happens three hundred lines above the definition.
 void(entity e) SV_WatchRelease;
 
+// Patch 333: the block machinery, forward-declared because the gate and the
+// scan sit below every consumer that needs to name them.
+void(float blk) SV_SaveLocScanBlk;
+float(entity e) SL_Blk;
+float(float blk) SL_Base;
+float(float blk) SL_Cap;
+void(entity e) SV_SaveRootFor;
+float(entity e) SV_SaveLocBegin;
+
 /*
 ===========================================================================
   Paths
@@ -224,7 +238,7 @@ void(entity e) SV_WatchRelease;
 */
 string(float id) SL_NN = { return FS_SaveSlotName(id); };
 
-string(float id) SL_Dir      = { return sprintf("data/saves/%s/save%s/", mapname, SL_NN(id)); };
+string(float id) SL_Dir      = { return sprintf("%s/save%s/", sl_root, SL_NN(id)); };
 string(float id) SL_StatePath= { return strcat(SL_Dir(id), "state.txt"); };
 string(float id) SL_RecPath  = { return strcat(SL_Dir(id), "run.rec"); };
 string(float id) SL_ViewPath = { return strcat(SL_Dir(id), "run.view"); };
@@ -232,6 +246,129 @@ string(float id) SL_ViewPath = { return strcat(SL_Dir(id), "run.view"); };
 // client-side state and the server has never seen it.  Named here only so the
 // delete below can remove it; see SV_SaveLocDelete for why that matters.
 string(float id) SL_SeqPath  = { return strcat(SL_Dir(id), "seq.txt"); };
+
+/*
+  PATCH 333 -- WHICH BLOCK, WHICH SLICE, WHICH DIRECTORY.
+
+  SL_Blk is 0 off-lobby and the client slot in one: num_for_edict is 1-based,
+  which is why block 0 can be the shared one and why a 33-long array covers a
+  32-player server.  The lobby cvar is read live on purpose, the same live read
+  Lobby_NoSaveLoc always had: an operator who flips lobby_enable mid-map moves
+  every player to a different block, and SV_SaveLocSync's flip watch clears the
+  stamps and the holds so the move is a rescan rather than a misread.
+*/
+float(entity e) SL_Blk =
+{
+	if (Lobby_Active())
+		return num_for_edict(e);
+	return 0;
+};
+
+float(float blk) SL_Base =
+{
+	if (blk <= 0)
+		return 0;
+	return FS_MAXSAVES + (blk - 1) * FS_SLBLOCK;
+};
+
+float(float blk) SL_Cap =
+{
+	if (blk <= 0)
+		return FS_MAXSAVES;
+	return FS_SLBLOCK;
+};
+
+/*
+  A certificate guid is not a folder name.  It is hex in practice, but nothing
+  promises that, and this string goes straight into a path that fremove later
+  reads back -- so everything that is not a plain letter or digit becomes an
+  underscore, and an empty or hostile guid can neither escape the directory nor
+  collide with the map-root layout (the @ prefix is a character the sanitiser
+  cannot produce, so a per-player folder can never be mistaken for a slot).
+*/
+string(string g) SV_SaveSanitise =
+{
+	local string o, c, allow;
+	local float i;
+
+	// Character-code compares are not in the language; a whitelist haystack
+	// and strstrofs are, and a 62-char haystack per character of a guid is
+	// nothing next to what the scan it protects costs.
+	allow = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	o = "";
+	for (i = 0; i < strlen(g); i = i + 1)
+	{
+		c = substring(g, i, 1);
+		if (strstrofs(allow, c) >= 0)
+			o = strcat(o, c);
+		else
+			o = strcat(o, "_");
+	}
+	return o;
+};
+
+/*
+  Set sl_root for this player and TELL THEM, because the client writes two of
+  the four files in a slot -- seq.txt from cl_board.qc, run.view from
+  cl_replay.qc -- and spells their paths from the same root.  One stuffcmd per
+  saveloc operation is a `set` of a cvar the client never registers, and it
+  means the two VMs cannot drift: the server is the only place that knows the
+  lobby state, the guid and the map name at once.
+*/
+void(entity e) SV_SaveRootFor =
+{
+	local string k;
+
+	k = "";
+	if (Lobby_Active() && !cvar("lobby_nosaveloc"))
+		k = SV_SaveSanitise(infokey(e, "guid"));
+
+	if (k != "")
+		sl_root = sprintf("data/saves/%s/@%s", mapname, k);
+	else
+		sl_root = sprintf("data/saves/%s", mapname);
+
+	stuffcmd(e, sprintf("set cl_saveroot \"%s\"\n", sl_root));
+};
+
+/*
+  The gate every list-mutating and list-reading command goes through.
+
+  Off-lobby it is the old behaviour exactly: the shared block, scanned once and
+  cached.  In a lobby it is the two questions patch 270 had no answer for --
+  does the operator want saves here at all, and can this player be attributed
+  -- and then a scan of THAT PLAYER'S block, rescanned whenever the stamp says
+  the lobby state has moved since the last one.
+*/
+float(entity e) SV_SaveLocBegin =
+{
+	local float blk;
+
+	blk = SL_Blk(e);
+
+	if (blk > 0 && cvar("lobby_nosaveloc"))
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: save points are off in this lobby -- the operator set "
+		       "lobby_nosaveloc.\n");
+		return FALSE;
+	}
+
+	if (blk > 0 && infokey(e, "guid") == "")
+	{
+		sprint(e, PRINT_HIGH,
+		       "^3save: lobby saves are per player and need your certificate -- "
+		       "the server has no sv_guidkey to attribute them with.\n");
+		return FALSE;
+	}
+
+	SV_SaveRootFor(e);
+
+	if (rec_sl_scanlob[blk] != Lobby_Active() + 1)
+		SV_SaveLocScanBlk(blk);
+
+	return TRUE;
+};
 
 /*
 ===========================================================================
@@ -1040,13 +1177,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
   that misses one would put one save's origin against another's clock, and that
   failure is silent and would look like the timer being wrong.
 */
-void() SV_SaveSort =
+void(float base, float cnt) SV_SaveSort =
 {
 	local float i, j;
 	local vector vo, vv;
 	local float a, b, c, d, g, h, k, m;
 
-	for (i = 1; i < rec_sl_n; i = i + 1)
+	for (i = base + 1; i < base + cnt; i = i + 1)
 	{
 		vo = rec_sl_org [i];  vv = rec_sl_vel [i];
 		a  = rec_sl_pit [i];  b  = rec_sl_yaw [i];
@@ -1055,7 +1192,7 @@ void() SV_SaveSort =
 		k  = rec_sl_seg [i];  m  = rec_sl_cps [i];
 
 		j = i;
-		while (j > 0)
+		while (j > base)
 		{
 			if (rec_sl_seq[j - 1] <= g)
 				break;
@@ -1097,67 +1234,45 @@ void() SV_SaveSort =
   the name is what the three paths are spelled from -- a file whose `seq` says
   one thing and whose folder says another is still found under its folder.
 */
-void() SV_SaveLocScan =
+void(float blk) SV_SaveLocScanBlk =
 {
 	local searchhandle h;
 	local string pre, fn;
-	local float i, cnt, id, seq, pl;
+	local float i, cnt, id, seq, pl, base, cap, n;
 
-	rec_sl_n = 0;
-	rec_sl_nextseq = 1;
+	base = SL_Base(blk);
+	cap  = SL_Cap(blk);
+	n    = 0;
+	rec_sl_ns[blk] = 1;
 
 	/*
-	  PATCH 270, STAGE 2 -- THE OTHER ROW-ADDER, and the reason the gate in
-	  SV_SaveLocCreate was not enough on its own.
+	  PATCH 333 -- THE GATE MOVED INTO THE CALLERS, and became a question about
+	  WHO rather than WHETHER.  Patch 270 refused the scan in a lobby because the
+	  list it filled was shared: an operator's solo practice points landed in
+	  front of 32 strangers' delete-all keys.  The scan now fills ONE PLAYER'S
+	  block from ONE PLAYER'S directory, so the destruction it enabled is gone
+	  with the sharing, and a lobby scan is the ordinary case rather than the
+	  refused one.  What remains of 270 is the stamp: a block scanned under one
+	  lobby state is not valid under the other, because the root it was read
+	  from is not the root the next operation would spell.
 
-	  That gate's own argument was "with nothing ever added the list stays
-	  empty, so load, step, delete and delete-all all find nothing".  The
-	  premise was false: THIS function adds rows too, from disk, at map init,
-	  before any player can be refused anything.  A server whose operator
-	  practised on this map solo loads their data/saves/<map>/save01../state.txt
-	  straight into the shared list, and then every one of the 32 strangers can
-	  press the delete-all key -- SV_SaveLocDeleteAll fremoves four files per
-	  row -- or teleport themselves to the operator's practice points.
-
-	  That is the same class of silent, irreversible, cross-player data
-	  destruction the patch was written to close on best.pb, left open one file
-	  over.  Gating the scan is what makes the create gate's premise true.
-
-	  Below the two resets on purpose: the list must still be CLEARED on a map
-	  change even in a lobby, or the previous map's rows would survive into it.
-
-	  rec_sl_scanned RECORDS THAT THIS WAS SKIPPED, and it is not bookkeeping
-	  for its own sake.  An empty list here does not mean an empty disk: the
-	  host's data/saves/<map>/save01../state.txt are still there.  SV_SaveFreeID
-	  picks the lowest id NOT IN THE LIST, so with the list empty and the folders
-	  present it hands back 1, and the next `save` overwrites save01 -- which is
-	  the same data destruction this gate exists to prevent, arriving through the
-	  gate instead of around it.  It needs the lobby to be switched off mid-map
-	  to happen, because create is refused while it is on, but that is a console
-	  command away.  SV_SaveLocCreate rescans when it sees this flag clear.
+	  Below the resets on purpose, as before: a map change must clear the block
+	  even when nothing is rescanned into it.
 	*/
-	if (Lobby_NoSaveLoc())
-	{
-		rec_sl_scanned = FALSE;
-		return;
-	}
-
 	if (mapname == "")
 		return;
 
-	rec_sl_scanned = TRUE;
-
-	pre = sprintf("data/saves/%s/save", mapname);
+	pre = strcat(sl_root, "/save");
 	pl  = strlen(pre);
 
-	h = search_begin(sprintf("data/saves/%s/*/state.txt", mapname), SL_NAMESORT, TRUE);
+	h = search_begin(sprintf("%s/*/state.txt", sl_root), SL_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 
 	cnt = search_getsize(h);
 	for (i = 0; i < cnt; i = i + 1)
 	{
-		if (rec_sl_n >= FS_MAXSAVES)
+		if (n >= cap)
 			break;
 
 		fn = strtolower(search_getfilename(h, i));
@@ -1171,22 +1286,25 @@ void() SV_SaveLocScan =
 		if (id < 1 || id > FS_MAXSAVES)
 			continue;
 
-		seq = SV_SaveReadLight(id, rec_sl_n);
+		seq = SV_SaveReadLight(id, base + n);
 		if (seq < 0)
 			continue;               // not a save state, or torn
 
-		rec_sl_seq[rec_sl_n] = seq;
-		rec_sl_n = rec_sl_n + 1;
+		rec_sl_seq[base + n] = seq;
+		n = n + 1;
 
-		if (seq >= rec_sl_nextseq)
-			rec_sl_nextseq = seq + 1;
+		if (seq >= rec_sl_ns[blk])
+			rec_sl_ns[blk] = seq + 1;
 	}
 	search_end(h);
 
-	SV_SaveSort();
+	SV_SaveSort(base, n);
 
-	if (rec_sl_n > 0)
-		dprint(sprintf("saveloc: %g save state(s) on %s\n", rec_sl_n, mapname));
+	rec_sl_nb[blk] = n;
+	rec_sl_scanlob[blk] = Lobby_Active() + 1;
+
+	if (n > 0)
+		dprint(sprintf("saveloc: %g save state(s) under %s\n", n, sl_root));
 };
 
 /*
@@ -1201,6 +1319,7 @@ void() SV_SaveLocScan =
 void() SV_SaveLocReset =
 {
 	local entity p;
+	local float i;
 
 	p = world;
 	while ((p = find(p, classname, "player")))
@@ -1215,12 +1334,32 @@ void() SV_SaveLocReset =
 		p.rec_sl_index = 0;
 	}
 
-	SV_SaveLocScan();
+	/*
+	  PATCH 333: a map change re-roots the paths and invalidates every block --
+	  the rows belong to the previous map's directories, shared or personal.
+	  Block 0 is rescanned straight away when the lobby is off, which is the old
+	  map-init behaviour; in a lobby no block is scanned until that player's
+	  next Sync or command asks for it, because there is no single directory
+	  that is the map's any more.
+	*/
+	sl_root = sprintf("data/saves/%s", mapname);
+	sl_lob_last = Lobby_Active();
+	for (i = 0; i <= FS_SLCLIENTS; i = i + 1)
+	{
+		rec_sl_nb[i] = 0;
+		rec_sl_ns[i] = 1;
+		rec_sl_scanlob[i] = 0;
+	}
+	if (!Lobby_Active())
+		SV_SaveLocScanBlk(0);
 
 	p = world;
 	while ((p = find(p, classname, "player")))
-		if (rec_sl_n > 0)
-			p.rec_sl_index = rec_sl_n;
+	{
+		i = rec_sl_nb[SL_Blk(p)];
+		if (i > 0)
+			p.rec_sl_index = i;
+	}
 };
 
 /*
@@ -1235,17 +1374,57 @@ void() SV_SaveLocReset =
 */
 void(entity e) SV_SaveLocSync =
 {
-	e.rec_sl_count = rec_sl_n;
+	local float blk, base, cnt;
+	local entity p;
 
-	if (e.rec_sl_index > rec_sl_n)
-		e.rec_sl_index = rec_sl_n;
-	if (rec_sl_n > 0 && e.rec_sl_index < 1)
+	/*
+	  PATCH 333 -- THE FLIP WATCH.  An operator flipping lobby_enable mid-map
+	  moves every player between block 0 and their own block, which is a
+	  different directory and a different row set; a hold parked on a row of the
+	  old block would re-place its player at somebody else's save.  So the flip
+	  drops every hold and every stamp, and the rescan below is the first thing
+	  that repopulates anything.  One loop on the frame the cvar moves, not a
+	  per-tick cost.
+	*/
+	if (sl_lob_last != Lobby_Active())
+	{
+		sl_lob_last = Lobby_Active();
+		sl_root = sprintf("data/saves/%s", mapname);
+		for (blk = 0; blk <= FS_SLCLIENTS; blk = blk + 1)
+		{
+			rec_sl_nb[blk] = 0;
+			rec_sl_ns[blk] = 1;
+			rec_sl_scanlob[blk] = 0;
+		}
+		p = world;
+		while ((p = find(p, classname, "player")))
+		{
+			SV_SaveLocRelease(p);
+			SV_WatchRelease(p);
+		}
+	}
+
+	blk = SL_Blk(e);
+	if (rec_sl_scanlob[blk] != Lobby_Active() + 1)
+	{
+		SV_SaveRootFor(e);
+		SV_SaveLocScanBlk(blk);
+	}
+
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	e.rec_sl_count = cnt;
+
+	if (e.rec_sl_index > cnt)
+		e.rec_sl_index = cnt;
+	if (cnt > 0 && e.rec_sl_index < 1)
 		e.rec_sl_index = 1;
 
 	e.rec_sl_savetick = 0;
 	if (e.rec_sl_index >= 1)
-		if (e.rec_sl_index <= rec_sl_n)
-			e.rec_sl_savetick = rec_sl_tick[e.rec_sl_index - 1];
+		if (e.rec_sl_index <= cnt)
+			e.rec_sl_savetick = rec_sl_tick[base + e.rec_sl_index - 1];
 };
 
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
@@ -1264,10 +1443,10 @@ void(entity e, float op, float id) SV_SaveLocEvent =
 */
 void(entity e) SV_SaveLocSay =
 {
-	if (rec_sl_n <= 0)
+	if (rec_sl_nb[SL_Blk(e)] <= 0)
 		sprint(e, PRINT_HIGH, "^7saves: ^3none\n");
 	else
-		sprint(e, PRINT_HIGH, sprintf("^7saves: ^2%g^7/%g\n", e.rec_sl_index, rec_sl_n));
+		sprint(e, PRINT_HIGH, sprintf("^7saves: ^2%g^7/%g\n", e.rec_sl_index, rec_sl_nb[SL_Blk(e)]));
 };
 
 /*
@@ -1286,21 +1465,21 @@ void(entity e) SV_SaveLocSay =
   rec_sl_used is bare and is not cleared between calls beyond the ids it is about
   to read: only the rows actually in the list are stamped, and only those rows
   are consulted, so a stale mark from a longer list cannot be reached.  The stamp
-  is rec_sl_nextseq, which is monotonic for the life of the map and therefore
+  is rec_sl_ns[blk], which is monotonic for the life of the block and therefore
   cannot collide with a previous call's.
 */
 float  rec_sl_used[FS_MAXSAVES + 1];      // id -> the stamp of the call that used it
 float  rec_sl_usedstamp;
 
-float() SV_SaveFreeID =
+float(float base, float cnt) SV_SaveFreeID =
 {
 	local float id, i;
 
 	rec_sl_usedstamp = rec_sl_usedstamp + 1;
 
-	for (i = 0; i < rec_sl_n; i = i + 1)
+	for (i = 0; i < cnt; i = i + 1)
 	{
-		id = rec_sl_id[i];
+		id = rec_sl_id[base + i];
 		if (id >= 0)
 		if (id <= FS_MAXSAVES)
 			rec_sl_used[id] = rec_sl_usedstamp;
@@ -1320,61 +1499,40 @@ float() SV_SaveFreeID =
 */
 void(entity e) SV_SaveLocCreate =
 {
-	local float id, seq, row;
+	local float id, seq, row, blk, base, cnt;
 
 	/*
-	  PATCH 270, STAGE 2 -- no save-locs in a lobby.
-
-	  The list above this function is ONE list.  rec_sl_* are plain globals with
-	  no player dimension anywhere in them, so on a 32-player server every
-	  `save` lands in the same shared list, every `delete` deletes out of it,
-	  and the cursor each player steps with rec_sl_index walks over everybody
-	  else's rows.  Player A pressing delete-all removes player B's practice
-	  points mid-section.
-
-	  Refused at CREATE only, and that is the whole surface that needs it: with
-	  nothing ever added the list stays empty, so load, step, delete and
-	  delete-all all find nothing and say so through their existing empty-list
-	  paths.  Gating six functions would be six chances to miss one.
-
-	  A save-loc is a tool for one player alone with a difficult section, which
-	  is exactly what a lobby is not.  Turning it off there costs nothing anyone
-	  would want; sharing it silently destroys work.
+	  PATCH 333 -- THE REFUSAL BECAME A OWNERSHIP.  Patch 270 turned saves off in
+	  a lobby because the list had no player dimension: one list, 32 cursors, and
+	  a delete-all that reached across players.  The list grew the dimension
+	  (SL_Blk) and the disk grew a directory per player (SV_SaveRootFor), so a
+	  lobby save is now yours alone -- rows, seq counter, folder and all -- and
+	  the gate below is only the two questions that remain: does the operator
+	  want saves here at all, and can this player be attributed at all.
 	*/
-	if (Lobby_NoSaveLoc())
+	if (!SV_SaveLocBegin(e))
+		return;
+
+	blk  = SL_Blk(e);
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	if (cnt >= SL_Cap(blk))
 	{
 		sprint(e, PRINT_HIGH,
-		       "^3save: save points are off in a public lobby -- the list is "
-		       "shared, so a save here would be everyone's.\n");
+		       sprintf("^3save: the list is full (%g).  Delete one first.\n", SL_Cap(blk)));
 		return;
 	}
 
-	/*
-	  PATCH 270, STAGE 2.  The lobby refused the scan, so the empty list is a
-	  policy, not a fact about the disk -- and we are past the lobby gate above,
-	  so the lobby has since been switched off and the disk is authoritative
-	  again.  Read it before allocating an id, or SV_SaveFreeID returns 1 and
-	  SV_SaveWriteState overwrites an existing save01.  See rec_sl_scanned.
-	*/
-	if (!rec_sl_scanned)
-		SV_SaveLocScan();
-
-	if (rec_sl_n >= FS_MAXSAVES)
-	{
-		sprint(e, PRINT_HIGH,
-		       sprintf("^3save: the list is full (%g).  Delete one first.\n", FS_MAXSAVES));
-		return;
-	}
-
-	id = SV_SaveFreeID();
+	id = SV_SaveFreeID(base, cnt);
 	if (id < 1)
 	{
 		sprint(e, PRINT_HIGH, "^3save: no free slot number\n");
 		return;
 	}
 
-	seq = rec_sl_nextseq;
-	rec_sl_nextseq = rec_sl_nextseq + 1;
+	seq = rec_sl_ns[blk];
+	rec_sl_ns[blk] = rec_sl_ns[blk] + 1;
 
 	SV_SaveWriteState(e, id, seq);
 
@@ -1383,20 +1541,20 @@ void(entity e) SV_SaveLocCreate =
 	// the list is showing what a load would ACTUALLY restore -- if the write
 	// failed or was short, the list says so instead of showing a row that only
 	// exists in memory.
-	row = rec_sl_n;
+	row = base + cnt;
 	if (SV_SaveReadLight(id, row) < 0)
 	{
 		sprint(e, PRINT_HIGH, "^1save: the state file did not come back readable\n");
 		return;
 	}
 	rec_sl_seq[row] = seq;
-	rec_sl_n = rec_sl_n + 1;
+	rec_sl_nb[blk] = cnt + 1;
 
-	e.rec_sl_index = rec_sl_n;
+	e.rec_sl_index = cnt + 1;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
 
 	sprint(e, PRINT_HIGH, sprintf("^7save ^2%g^7 (slot %s)  %s\n",
-	                              rec_sl_n, SL_NN(id),
+	                              cnt + 1, SL_NN(id),
 	                              (e.run_t_state == TS_RUNNING)
 	                                ? SV_TimerString(SV_TimerTicks(e))
 	                                : "no run"));
@@ -1420,7 +1578,7 @@ void(entity e) SV_SaveLocHoldVel =
 		return;
 	if (e.rec_sl_holdrow < 0)
 		return;
-	if (e.rec_sl_holdrow >= rec_sl_n)
+	if (e.rec_sl_holdrow >= SL_Base(SL_Blk(e)) + rec_sl_nb[SL_Blk(e)])
 		return;
 
 	e.rec_sl_holdvel = rec_sl_vel[e.rec_sl_holdrow];
@@ -1466,42 +1624,32 @@ void(entity e, float r) SV_SaveLocPlace =
 
 void(entity e, float n) SV_SaveLocLoad =
 {
-	local float r, id;
+	local float r, id, blk, base, cnt;
 
 	/*
-	  PATCH 270, STAGE 2 -- the last of the four surfaces, and the only one that
-	  is not about destroying data.
-
-	  Gating the scan empties the list, so on a map that loads as a lobby this
-	  is unreachable.  It is reachable on the host who practised offline and
-	  then switched the lobby on: the list is still in memory, and every
-	  stranger's 3/4/5/6 key teleports them onto that host's practice points --
-	  and, through SV_SaveLocPlace, onto their saved velocity and run clock.
-	  Not destructive, but it is somebody else's position being handed out, and
-	  a shadow run started from it would be timed against a section the player
-	  never travelled.
-
-	  Load, delete, delete-all and create are now all refused.  Step, first and
-	  last only move a cursor and cannot act without this function.
+	  PATCH 333 -- load goes through the same gate as create: in a lobby the row
+	  set is the caller's own block, scanned from their own directory, so the
+	  cross-player teleport patch 270 refused is structurally gone rather than
+	  refused.  Off-lobby this is the shared list exactly as before.
 	*/
-	if (Lobby_NoSaveLoc())
-	{
-		sprint(e, PRINT_HIGH,
-		       "^3save: save points are off in a public lobby.\n");
+	if (!SV_SaveLocBegin(e))
 		return;
-	}
 
-	if (rec_sl_n <= 0)
+	blk  = SL_Blk(e);
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	if (cnt <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
 	}
 
 	if (n < 1) n = 1;
-	if (n > rec_sl_n) n = rec_sl_n;
+	if (n > cnt) n = cnt;
 	e.rec_sl_index = n;
 
-	r  = n - 1;
+	r  = base + n - 1;
 	id = rec_sl_id[r];
 
 	SV_SaveLocPlace(e, r);
@@ -1640,7 +1788,7 @@ void(entity e) SV_SaveLocRelease =
 	  evaluates both sides and would read the array anyway.
 	*/
 	if (e.rec_sl_holdrow >= 0)
-		if (e.rec_sl_holdrow < rec_sl_n)
+		if (e.rec_sl_holdrow < SL_Base(SL_Blk(e)) + rec_sl_nb[SL_Blk(e)])
 			e.velocity = rec_sl_vel[e.rec_sl_holdrow];
 
 	// The published copy goes with it.  .velocity is the live answer again from
@@ -1672,14 +1820,14 @@ void(entity e, float down) SV_SaveLocHold =
 	if (e.rec_sl_hold)
 		return;
 
-	if (rec_sl_n <= 0)
+	if (rec_sl_nb[SL_Blk(e)] <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
 	}
 
 	e.rec_sl_hold    = TRUE;
-	e.rec_sl_holdrow = e.rec_sl_index - 1;
+	e.rec_sl_holdrow = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
 	e.rec_sl_holdmove = e.movetype;
 
 	e.movetype = MOVETYPE_NONE;
@@ -1776,7 +1924,7 @@ void(entity e, float down) SV_SaveLocHold =
   entities, so what vanishes is "models and ramps".  prop_static survives -- it
   is not an entity at all, it lives in the map's own game lump.
 
-  MEASURED ON surf_fiellu BEFORE ANY OF THIS WAS WRITTEN (cfg/testrun/b43pvs):
+  MEASURED ON surf_fiellu BEFORE ANY OF THIS WAS WRITTEN (cfg/test/b43pvs):
       baseline        entities 324 (brush 0) -> 3 (brush 0) -> 0 (brush 0)
       sv_nopvs 1      entities 268 (brush 41) -> 107 (brush 41) -> 104 (brush 41)
       sv_nopvs 0      entities 164 (brush 0) -> 0 (brush 0)      (matches baseline)
@@ -2041,7 +2189,9 @@ void(entity e) SV_SaveLocHoldFrame =
 	// The list can shrink underneath a hold (3 deletes it, and the menu stays
 	// up while you hold 2).  Let go rather than stay frozen against a row that
 	// is no longer part of the list.
-	if (rec_sl_n <= 0 || e.rec_sl_holdrow < 0 || e.rec_sl_holdrow >= rec_sl_n)
+	if (rec_sl_nb[SL_Blk(e)] <= 0 || e.rec_sl_holdrow < 0
+	    || e.rec_sl_holdrow < SL_Base(SL_Blk(e))
+	    || e.rec_sl_holdrow >= SL_Base(SL_Blk(e)) + rec_sl_nb[SL_Blk(e)])
 	{
 		SV_SaveLocRelease(e);
 		return;
@@ -2078,42 +2228,32 @@ void(entity e) SV_SaveLocHoldFrame =
 */
 void(entity e, float n) SV_SaveLocDelete =
 {
-	local float i, id, r;
+	local float i, id, r, blk, base, cnt;
 	local entity p;
 
 	/*
-	  PATCH 270, STAGE 2 -- the one function in this file that calls fremove.
-
-	  Gating the scan makes the list empty on a map that LOADS as a lobby, and
-	  that covers the ordinary case.  It cannot cover the other one:
-	  Lobby_NoSaveLoc reads its cvars live, deliberately, so an operator who
-	  practises with lobby_enable 0 and then types `lobby_enable 1` still has a
-	  populated in-memory list -- create refused, delete wide open.
-
-	  Refused here rather than trusted to be unreachable.  This is the last line
-	  before four files per row are removed from somebody's disk, and "the list
-	  should be empty by now" is exactly the reasoning that left this hole in
-	  the first place.  SV_SaveLocDeleteAll loops this function, so it is
-	  covered by the same test.
+	  PATCH 333 -- delete reaches only the caller's own block, scanned from
+	  their own directory, so "somebody's disk" is always the somebody who
+	  pressed the key.  What remains of the 270 refusal is the operator's
+	  lobby_nosaveloc, inside SV_SaveLocBegin.
 	*/
-	if (Lobby_NoSaveLoc())
-	{
-		sprint(e, PRINT_HIGH,
-		       "^3save: save points are off in a public lobby -- the list is "
-		       "shared, so this would delete someone else's.\n");
+	if (!SV_SaveLocBegin(e))
 		return;
-	}
 
-	if (rec_sl_n <= 0)
+	blk  = SL_Blk(e);
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	if (cnt <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
 	}
 
 	if (n < 1) n = 1;
-	if (n > rec_sl_n) n = rec_sl_n;
+	if (n > cnt) n = cnt;
 
-	r  = n - 1;
+	r  = base + n - 1;
 	id = rec_sl_id[r];
 
 	/*
@@ -2150,7 +2290,7 @@ void(entity e, float n) SV_SaveLocDelete =
 	fremove(SL_ViewPath(id));
 	fremove(SL_SeqPath(id));
 
-	for (i = n; i < rec_sl_n; i = i + 1)
+	for (i = r + 1; i < base + cnt; i = i + 1)
 	{
 		rec_sl_org [i - 1] = rec_sl_org [i];
 		rec_sl_vel [i - 1] = rec_sl_vel [i];
@@ -2164,11 +2304,11 @@ void(entity e, float n) SV_SaveLocDelete =
 		rec_sl_cps [i - 1] = rec_sl_cps [i];
 	}
 
-	rec_sl_n = rec_sl_n - 1;
+	rec_sl_nb[blk] = cnt - 1;
 
-	if (e.rec_sl_index > rec_sl_n)
-		e.rec_sl_index = rec_sl_n;
-	if (rec_sl_n > 0 && e.rec_sl_index < 1)
+	if (e.rec_sl_index > cnt - 1)
+		e.rec_sl_index = cnt - 1;
+	if (cnt - 1 > 0 && e.rec_sl_index < 1)
 		e.rec_sl_index = 1;
 
 	// Build 25: silent when a delete-all is driving, which would otherwise print
@@ -2189,7 +2329,13 @@ void(entity e, float n) SV_SaveLocDelete =
 */
 void(entity e, float dir) SV_SaveLocStep =
 {
-	if (rec_sl_n <= 0)
+	local float cnt;
+
+	if (!SV_SaveLocBegin(e))
+		return;
+
+	cnt = rec_sl_nb[SL_Blk(e)];
+	if (cnt <= 0)
 	{
 		SV_SaveLocSay(e);
 		return;
@@ -2199,8 +2345,8 @@ void(entity e, float dir) SV_SaveLocStep =
 
 	// Wrap rather than clamp: the menu's 3/4 are a two-key cycle through a
 	// short list and stopping dead at the ends makes it feel broken.
-	if (e.rec_sl_index < 1)          e.rec_sl_index = rec_sl_n;
-	if (e.rec_sl_index > rec_sl_n)    e.rec_sl_index = 1;
+	if (e.rec_sl_index < 1)          e.rec_sl_index = cnt;
+	if (e.rec_sl_index > cnt)        e.rec_sl_index = 1;
 
 	SV_SaveLocLoad(e, e.rec_sl_index);
 };
@@ -2214,21 +2360,23 @@ void(entity e, float dir) SV_SaveLocStep =
 */
 void(entity e) SV_SaveLocFirst =
 {
-	if (rec_sl_n <= 0) { SV_SaveLocSay(e); return; }
+	if (!SV_SaveLocBegin(e)) return;
+	if (rec_sl_nb[SL_Blk(e)] <= 0) { SV_SaveLocSay(e); return; }
 	SV_SaveLocLoad(e, 1);
 };
 
 void(entity e) SV_SaveLocLast =
 {
-	if (rec_sl_n <= 0) { SV_SaveLocSay(e); return; }
-	SV_SaveLocLoad(e, rec_sl_n);
+	if (!SV_SaveLocBegin(e)) return;
+	if (rec_sl_nb[SL_Blk(e)] <= 0) { SV_SaveLocSay(e); return; }
+	SV_SaveLocLoad(e, rec_sl_nb[SL_Blk(e)]);
 };
 
 /*
   Delete every save on this map.
 
   IT DELETES FROM THE END, one row at a time, through SV_SaveLocDelete.  A loop
-  that removed the files itself and then set rec_sl_n = 0 would be shorter and
+  that removed the files itself and then set rec_sl_nb[blk] = 0 would be shorter and
   would skip three things that function does and that this one needs just as
   much: it drops every hold whose row is going away (otherwise a player parked on
   save 4 stays frozen against an array that no longer describes anything), it
@@ -2252,47 +2400,34 @@ void(entity e) SV_SaveLocLast =
 */
 void(entity e) SV_SaveLocDeleteAll =
 {
-	local float n;
+	local float n, blk;
 
-	if (rec_sl_n <= 0)
+	if (!SV_SaveLocBegin(e))
+		return;
+
+	blk = SL_Blk(e);
+
+	if (rec_sl_nb[blk] <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
 	}
 
 	/*
-	  PATCH 270, STAGE 2 -- BEFORE THE LOOP, and the loop is now guarded too.
-
-	  Adding the lobby refusal to SV_SaveLocDelete alone HUNG THE SERVER.  The
-	  loop below is `while (rec_sl_n > 0) SV_SaveLocDelete(...)` and its only
-	  termination condition is that the callee shrinks the list.  Give the
-	  callee a reason to decline and it spins forever, inside a QC frame, taking
-	  the whole server with it -- and the case that reaches it is exactly the
-	  one the refusal was added for: a host who practised offline, so the list
-	  is populated, and then turned the lobby on.
-
-	  Two changes rather than one.  This gate stops it happening; the progress
-	  check in the loop stops the NEXT reason a delete might decline from doing
-	  the same thing.  A loop whose exit depends on a callee's side effect
-	  should not trust the callee.
+	  PATCH 333 -- the loop now runs on the caller's own block.  The 270 essay
+	  described a spin when the callee declines; the progress check in the loop
+	  still guards that, because lobby_nosaveloc flipped mid-loop is exactly a
+	  callee that starts declining.
 	*/
-	if (Lobby_NoSaveLoc())
-	{
-		sprint(e, PRINT_HIGH,
-		       "^3save: save points are off in a public lobby -- the list is "
-		       "shared, so this would delete someone else's.\n");
-		return;
-	}
-
-	n = rec_sl_n;
+	n = rec_sl_nb[blk];
 
 	rec_sl_quiet = TRUE;
-	while (rec_sl_n > 0)
+	while (rec_sl_nb[blk] > 0)
 	{
 		local float before;
-		before = rec_sl_n;
-		SV_SaveLocDelete(e, rec_sl_n);
-		if (rec_sl_n >= before)
+		before = rec_sl_nb[blk];
+		SV_SaveLocDelete(e, rec_sl_nb[blk]);
+		if (rec_sl_nb[blk] >= before)
 			break;                  // declined or failed: stop, do not spin
 	}
 	rec_sl_quiet = FALSE;
@@ -2300,44 +2435,51 @@ void(entity e) SV_SaveLocDeleteAll =
 	// What was actually removed, not what was planned.  They differ if the
 	// loop broke early, and printing the plan would claim a deletion that did
 	// not happen.
-	n = n - rec_sl_n;
+	n = n - rec_sl_nb[blk];
 
 	sprint(e, PRINT_HIGH, sprintf("^1deleted^7 all %g save state(s) on %s\n", n, mapname));
 };
 
 void(entity e) SV_SaveLocList =
 {
-	local float i;
+	local float i, blk, base, cnt;
 	local vector o, v;
 
-	if (rec_sl_n <= 0)
+	if (!SV_SaveLocBegin(e))
+		return;
+
+	blk  = SL_Blk(e);
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	if (cnt <= 0)
 	{
 		sprint(e, PRINT_HIGH, "saveloc: nothing saved on this map\n");
 		return;
 	}
 
 	sprint(e, PRINT_HIGH, sprintf("saveloc: %g saved on %s, current %g\n",
-	                              rec_sl_n, mapname, e.rec_sl_index));
-	for (i = 0; i < rec_sl_n; i = i + 1)
+	                              cnt, sl_root, e.rec_sl_index));
+	for (i = 0; i < cnt; i = i + 1)
 	{
 		// An array element is not an lvalue fteqcc will swizzle, so both of
 		// these need a real local -- the same thing SV_ZoneMove needs for
 		// zone_centre.  And three prints, because varargs cap at 8.
-		o = rec_sl_org[i];
-		v = rec_sl_vel[i];
+		o = rec_sl_org[base + i];
+		v = rec_sl_vel[base + i];
 
 		sprint(e, PRINT_HIGH,
 		       sprintf("  %s%2g^7 slot %s  %6.0f %6.0f %6.0f  ",
 		               (i + 1 == e.rec_sl_index) ? "^2" : "^7", i + 1,
-		               SL_NN(rec_sl_id[i]), o_x, o_y, o_z));
+		               SL_NN(rec_sl_id[base + i]), o_x, o_y, o_z));
 		sprint(e, PRINT_HIGH,
 		       sprintf("%4.0f u/s  yaw %4.0f  %s  ",
-		               vlen([v_x, v_y, 0]), rec_sl_yaw[i],
-		               rec_sl_duck[i] ? "ducked" : "standing"));
+		               vlen([v_x, v_y, 0]), rec_sl_yaw[base + i],
+		               rec_sl_duck[base + i] ? "ducked" : "standing"));
 		sprint(e, PRINT_HIGH,
 		       sprintf("%s  stage %g  %g cp\n",
-		               (rec_sl_tick[i] > 0) ? SV_TimerString(rec_sl_tick[i]) : "--",
-		               rec_sl_seg[i] + 1, rec_sl_cps[i]));
+		               (rec_sl_tick[base + i] > 0) ? SV_TimerString(rec_sl_tick[base + i]) : "--",
+		               rec_sl_seg[base + i] + 1, rec_sl_cps[base + i]));
 	}
 };
 
@@ -2440,6 +2582,10 @@ void(entity e) SV_RetryPoint =
 	*/
 	SV_SaveLocRelease(e);
 
+	// Patch 333: the retry point is a slot like any other, and in a lobby its
+	// folder lives under the player's own root -- same root a load would spell.
+	SV_SaveRootFor(e);
+
 	SV_SaveWriteState(e, FS_RETRY_SLOT, 0);
 
 	rec_retry_sent = TRUE;
@@ -2476,6 +2622,9 @@ void(entity e) SV_RetryApply =
 	// Exactly once, whatever happens below -- a second player spawning must not
 	// re-consume it, and a failed read must not leave it armed for the next map.
 	rec_retry_armed = FALSE;
+
+	// Patch 333: same root the retry point was written under.
+	SV_SaveRootFor(e);
 
 	if (!SV_SaveApplyState(e, FS_RETRY_SLOT, TRUE))
 	{

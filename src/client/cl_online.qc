@@ -89,6 +89,10 @@
 #define OBS_NODIR   4      // lobby_dir is empty: not an error, not configured
 #define OBS_NOTERMS 5      // the online terms have not been accepted
 
+// Patch 340, defined in cl_players.qc (compiled after this file): copy the
+// fresh rows into the room list's own per-hash best-main table.
+void() Players_AbsorbBoard;
+
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
 
@@ -459,6 +463,14 @@ void(string body) Online_Parse =
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 	}
 	ob_n = n;
+
+	/*
+	  PATCH 340: hand the fresh rows to the room list (cl_players.qc), which
+	  keeps its own per-hash best-main table because ob_* is ONE table the
+	  next fetch of any other leg overwrites whole.  The prototype is at the
+	  top of this file: cl_online compiles before cl_players.
+	*/
+	Players_AbsorbBoard();
 
 	/*
 	  json_free MUST only be called on the root (sh_json.qc: it maps to

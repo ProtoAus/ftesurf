@@ -855,7 +855,7 @@ void(string cmd) SV_ParseClientCommand =
 		  request exists.  Its clears fire only for a non-START, a bonus track or a
 		  linear track, so `!s 1` followed by `zone_goto <the main start>` armed a
 		  STAGE-1 run while the operator was asking for the full run.  That is a
-		  harness lying to its own author: cfg/testrun/b57stage.cfg drives exactly
+		  harness lying to its own author: cfg/test/b57stage.cfg drives exactly
 		  that pair, and would have reported a stage-1 time as a full run.
 
 		  HERE AND NOT AT SV_ZoneGotoAng, which is the funnel every caller shares,

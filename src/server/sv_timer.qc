@@ -385,7 +385,7 @@ float  run_t_rearmstops;
   zero rather than omitting the column, so a reader never has to know that.
 
   0 DISABLES IT, and 0 is the pre-83 game byte-for-byte, so the pair is a real
-  bisection.  A lobby pins it; see cfg/lobby.cfg.
+  bisection.  A lobby pins it; see cfg/lobby/lobby.cfg.
 */
 float  run_t_startjit;
 
@@ -1596,6 +1596,23 @@ float() SV_RecEnabled =
 .float  rec_rec_warp;            // v7: `warp` records written since `begin`
 
 /*
+  BUILD 85 -- THE CARRIER'S THREE FIELDS.
+
+  rec_rec_bv is the last basevelocity the recorder WROTE DOWN, not the last one
+  the mover was handed; the writer emits only on a difference, so the file
+  carries one record per CHANGE (7 spans = ~14 records against 10,926 `in` rows).
+
+  rec_rec_bvset is a sentinel, not a convenience: '0 0 0' is a legitimate carrier
+  state, so without a flag the run's first record would be written only when the
+  carrier happened to be non-zero.  SV_RecOpen clears it and the next command
+  writes an unconditional floor record -- see the grammar block for why "zero at
+  `begin`" is not a safe default.
+*/
+.float  rec_rec_ride;            // v8: `ride` records written since `begin`
+.vector rec_rec_bv;              // v8: the carrier value last written down
+.float  rec_rec_bvset;           // v8: rec_rec_bv means something
+
+/*
 ===========================================================================
   BUILD 66 -- THE SECOND RECORDER, and it is the same recorder.
 
@@ -2054,7 +2071,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 7, in full, because four different things are going to read this
+  FTESURF-REC 8, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
   (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
@@ -2062,7 +2079,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 7           always first
+    FTESURF-REC 8           always first
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -2188,6 +2205,20 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   Note what this does NOT claim.  Nothing existing changed meaning -- a v6 reader
   handed a v7 file reads every field it knows correctly, exactly as v4 readers do
   with v5's extra keys.  This is the cheap kind of bump, like v6 and unlike v5.
+
+  WHY VERSION 8 EXISTS, AND IT IS THE FIRST BUMP THAT WITHDRAWS A CLAIM.
+
+  Mechanically it is v6 again: two new records (`ride`, `inend`) and a seventh
+  `end` field, all additive.  What forces the bump is that V7'S HEADLINE CLAIM
+  ABOVE -- no `warp` records means nothing imposed state -- IS FALSE.  E5
+  measured surf_trance: zero warps, TEN boosters.  Wrong on 181 of the 536 zoned
+  maps, and a verifier that trusted it would accept a run whose physics it cannot
+  reproduce.
+
+  So: for v7 and below the true sentence is "nothing THIS FORMAT CAN EXPRESS
+  imposed state"; only from v8 is silence a statement about the run.  The engine's
+  pm_recsim (sv_ccmds.c:4419-4420) still prints the strong form -- an engine fix,
+  not this QC-only build.
 
   AND SV_StageWrite STILL WRITES `FTESURF-REC 5` AFTER THIS BUILD, which is not
   an oversight and is the clearest statement this format has of what its version
@@ -2375,6 +2406,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             misses the common case entirely.  That family wants
                             its own measurement, the way this one got E3's.
 
+                            BUILD 85: E5 MEASURED IT; the answer is the `ride`
+                            record below.  The boundary above still holds -- a
+                            carrier is not a direct write -- so it is a second
+                            record, not a mode flag on this one.
+
+                            AND `push` ABOVE IS A NULL SET.  E5's census found
+                            exactly ONE SF_PUSH_ONCE trigger_push in 1310 maps
+                            (mg_dreamscraper, unzoned).  The writer stays; its
+                            absence says nothing.
+
                             AND THE FIRST WARP OF A RUN MAY LEGITIMATELY BE
                             MISSING.  SV_RecOpen is called from SV_TimerStart, so
                             a trigger in or beside the start box fires before the
@@ -2389,6 +2430,60 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             a stage-to-stage teleport preserve a run.  A check
                             that flags exact preservation flags every stage
                             transition there is.
+    ride <pk> <mt> <what> <bx by bz>
+                            v8, build 85.  THE VELOCITY CARRIER -- basevelocity,
+                            which moves the player every command without ever
+                            being written to .velocity, so neither `warp` nor the
+                            sample stream can see it.
+
+                              arm  the mover is handed this from this command on.
+                                   PERSISTS UNTIL THE NEXT RECORD -- a state
+                              pay  cashed out into real velocity in PreThink:
+                                   velocity += (1 + tick*0.5) * <bx by bz>
+
+                            A SPAN, NOT AN EVENT, because E5 measured that an
+                            event record is necessary and not sufficient.  On
+                            surf_trance (167 s, zero teleports): 1,683.8 u of
+                            displacement the recorded velocity cannot explain, in
+                            7 spans, longest 62 ticks = 0.915 s, and ZERO position
+                            discontinuities.  A record at the cash-out alone would
+                            fix the endpoint and leave the interior wrong, and a
+                            zone test inside that window is taken at the wrong
+                            place -- a rank.
+
+                            WRITTEN AT THE HAND-OVER (SV_BaseVelocityFrame's
+                            .run_basevelocity assignment), not at the touch.  A
+                            touch states an INTENTION the mover may never see;
+                            that line is the mover seeing it.  One record per
+                            CHANGE, so a ride costs 2 lines, not 62.
+
+                            SHAPES A READER MUST ACCEPT:
+                              arm v ... pay v   a ride: carried, then collected
+                              pay v (bare)      AddOutput basevelocity (789
+                                                outputs / 139 zoned maps): never
+                                                armed, so never handed over --
+                                                no span to open
+                              arm v ... arm 0   Z is spent inside the mover, so a
+                                                vertical carrier ends with no pay
+                            A `pay` is always followed by `arm 0 0 0`.  Written,
+                            not derived: a derivation rule is an exception a
+                            future writer can falsify silently.
+
+                            THE FIRST `ride` OF A RUN STATES THE CARRIER IT
+                            INHERITED -- `arm` if still riding, `pay` if the ride
+                            ended on that command (measured: build 85's capture
+                            arm opens `pay -1700` then `arm 0`).  Do NOT assume
+                            zero at `begin`: surf_hourglass's only trigger_push is
+                            inside the start box, so a run there begins mid-ride.
+
+                            <mt> IS PRE-MOVE AND MATCHES THE `in` ROW BELOW IT.
+                            Both come from PlayerPreThink.  A `warp`, written from
+                            a touch after the move, sits one tick ABOVE its own
+                            row instead -- the two conventions differ.
+
+                            The cash-out constant is TICK_INTERVAL, a movevar this
+                            format does not yet pin; `pay` states the carrier, not
+                            the product, so a reader can see which half it assumed.
     restart <seg> <ticks>   a stage was restarted mid-run
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
@@ -2470,8 +2565,26 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
   Then, written at close:
 
-    end <ticks> <samples> <padding> <checkpoints> <inputs> <warps>
+    inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
+                            counterpart, written at close.
+
+                            N ROWS GIVE N-1 DURATIONS.  An `in` row states the
+                            counter BEFORE its move, so a move's ticks are the
+                            NEXT row's <mt> minus this one's -- leaving the last
+                            row, which is the move the finish is latched on, with
+                            no successor.  E3 priced it at 1-2 ticks: a rank.
+
+                            A RECORD, NOT A HEADER KEY, because the value does not
+                            exist until the run ends and the header seals at
+                            `begin`.  Gated exactly as `instart` is, so a trailer
+                            without one is a writer that has gone wrong.
+    end <ticks> <samples> <padding> <checkpoints> <inputs> <warps> <rides>
     split <seg> <ticks>     one per completed segment, ascending
+
+  <rides> IS v8 AND IS COUNTED LIKE <warps>, but it answers a different question.
+  A `ride` track is a STATE track -- a reader holds the last `arm` across every
+  command -- so a record lost to the line cap is not one missing fact but a WRONG
+  value held for an unbounded span.  The count is how a reader notices.
 
   <warps> IS v7 AND IT IS COUNTED THE SAME WAY <inputs> IS -- by whether a line
   landed, not by having attempted one.  It matters more than <inputs> does: a
@@ -2849,6 +2962,12 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_in = e.rec_rec_pk = 0;
 	// BUILD 83: and the warp count, here for the same reason and nowhere else.
 	e.rec_rec_warp = 0;
+	// BUILD 85: the ride count and the carrier sentinel.  rec_rec_bv is
+	// deliberately NOT zeroed -- clearing the sentinel is what matters, and a
+	// zeroed vector would make a missing sentinel look correct on a run that
+	// started at rest, i.e. hide the bug on every file except the ones that matter.
+	e.rec_rec_ride = 0;
+	e.rec_rec_bvset = 0;
 	// +1 so that 0 can mean "no run": track 0 leg 0 is the main track's full
 	// run, which is the most common leg there is, and it would otherwise encode
 	// to the same 0 that a discarded run leaves behind.  BUILD 57: the LEG, not
@@ -2924,7 +3043,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 7");
+	SV_RecPut(e, "FTESURF-REC 8");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -3465,9 +3584,27 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	  difference between a clean re-simulation and an unexplained 250-unit jump.
 	  A counter plus a version number separates all three; neither alone does.
 	*/
-	SV_RecPut(e, sprintf("end %d %d %d %d %d %d",
+	/*
+	  BUILD 85: THE CLOSING HORIZON.  Without it the last `in` row has no duration
+	  -- N rows give N-1 spans, and the missing one is the move the finish is
+	  latched on (E3: 1-2 ticks, a rank).  See the grammar block.
+
+	  POST-FINISH VALUES, deliberately: SV_RecClose runs after PlayerPostThink has
+	  latched the finish, so run_movetick has already counted the final move --
+	  exactly the successor the last row lacks.  Gated as `instart` is, so the pair
+	  is written under one condition and one without the other means truncated.
+	*/
+	if (e.run_movetickrate > 0)
+		SV_RecPut(e, sprintf("inend %d %.5f",
+		                     e.run_movetick, e.run_movecarry));
+
+	// BUILD 85: a seventh field, appended by the rule the fifth and sixth took --
+	// the `ride` count.  It is the one whose loss costs most: a dropped sample is
+	// one missing position, a dropped `ride` is a carrier a reader goes on holding
+	// for every command after it, and that error does not heal.
+	SV_RecPut(e, sprintf("end %d %d %d %d %d %d %d",
 	                     ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
-	                     e.rec_rec_in, e.rec_rec_warp));
+	                     e.rec_rec_in, e.rec_rec_warp, e.rec_rec_ride));
 
 	if (e.run_t_slot >= 0)
 	{
@@ -4010,6 +4147,103 @@ void(entity e, string kind) SV_RecWarp =
 	*/
 	if (e.rec_rec_lines != was)
 		e.rec_rec_warp = e.rec_rec_warp + 1;
+};
+
+/*
+==============================================================================
+  BUILD 85: THE VELOCITY CARRIER.  Format and E5's numbers are in the grammar
+  block; what belongs here is the decision and the two gates.
+
+  A SPAN, NOT AN EVENT, and it took an experiment.  Build 83 declined to guess
+  ("a record placed at the carrier would be recording an intention rather than an
+  event") and named a measurement as the price.  E5 paid it and neither option
+  won: an event record is NECESSARY BUT NOT SUFFICIENT, because a ride has a
+  DURATION.  The intention problem is solved by WHERE this is called from --
+  SV_BaseVelocityFrame's .run_basevelocity assignment is the mover receiving the
+  carrier, so the record is written by the thing that did it, build 83's rule
+  kept rather than bent.
+
+  GATED ON THE MOVER COUNTER like `warp` and `instart`: no counter, no trace, and
+  <mt> would be a constant 0 -- a false stamp rather than a missing one.
+
+  NOT GATED ON run_t_frzon, which is where it parts company with the `in` rows.
+  That gate is about VOLUME (a ten-second park is 660 rows); this writer emits on
+  CHANGE, so a freeze costs nothing -- and the carrier DOES change across one.
+  Suppressing it would leave the last `arm` standing as the reader's answer for
+  the rest of the run.  A gate that makes silence mean the wrong thing may not be
+  shared with one that only makes it mean less.
+==============================================================================
+*/
+void(entity e, string what, vector bv) SV_RecRide =
+{
+	float was;
+
+	if (!SV_RecLive(e))
+		return;
+	if (e.run_movetickrate <= 0)
+		return;
+
+	was = e.rec_rec_lines;
+
+
+	/*
+	  <mt> IS PRE-MOVE and matches the `in` row this sits above -- the opposite of
+	  `warp`, which is written from a touch AFTER the move.  Each stamps the
+	  counter where it is written; both conventions are in the grammar block.
+
+	  ONE sprintf: six values, inside the 8-arg varargs cap.  %.2f like the sample
+	  stream's velocity, not the `in` row's %.4f angles -- there is no wire quantum
+	  here to justify four.
+	*/
+	SV_RecPut(e, sprintf("ride %d %d %s %.2f %.2f %.2f",
+	                     e.rec_rec_pk, e.run_movetick, what,
+	                     bv_x, bv_y, bv_z));
+
+	// Counted by whether a line landed, on SV_RecWarp's argument.
+	if (e.rec_rec_lines != was)
+		e.rec_rec_ride = e.rec_rec_ride + 1;
+};
+
+/*
+  The carrier handed to the mover this command.  Called EVERY command by
+  SV_BaseVelocityFrame and writing almost none of them.
+
+  THE TEST IS AGAINST WHAT THE FILE SAYS, not against last command's carrier.
+  SV_RecPut refuses past the line cap silently; testing the carrier would then see
+  "no change" forever after and the file would assert a value it never wrote.
+  rec_rec_bv moves only when a line landed, so a refusal is retried next command.
+
+  THE SENTINEL MAKES THE FIRST CALL UNCONDITIONAL -- the floor record.  A run may
+  begin mid-ride, so "zero at `begin`" is not a default a reader may take.
+*/
+void(entity e, vector bv) SV_RecRideArm =
+{
+	float was;
+
+	if (e.rec_rec_bvset && bv == e.rec_rec_bv)
+		return;
+
+	was = e.rec_rec_ride;
+	SV_RecRide(e, "arm", bv);
+
+	// Only once the line landed: a cap refusal must leave the recorder still
+	// owing this value, not believing it has stated it.
+	if (e.rec_rec_ride != was)
+	{
+		e.rec_rec_bv = bv;
+		e.rec_rec_bvset = TRUE;
+	}
+};
+
+/*
+  The cash-out: this carrier became real velocity, in PreThink, outside the mover.
+  Unconditional -- an event, not a state.  The `arm 0 0 0` that always follows is
+  written by the ordinary change test one call later, not derived; see the grammar
+  block for why.
+*/
+void(entity e, vector bv) SV_RecRidePay =
+{
+	SV_RecRide(e, "pay", bv);
 };
 
 /*
@@ -4578,6 +4812,17 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 	  trailer, and therefore no <warps> count to disagree with an empty body.  The
 	  marker describes the file and not the build that wrote it, and a v5 file is
 	  exactly what a slice structurally is.
+	*/
+
+	/*
+	  BUILD 85: `ride` AND `inend` FALL THROUGH TOO, same two reasons -- <mt> is
+	  per-MAP and unrebasable, and a slice cannot be re-simulated anyway.
+
+	  ONE DIFFERENCE WORTH THE SENTENCE: `ride` is the first STATE this function
+	  drops.  A reader carrying its own default across the gap would hold '0 0 0'
+	  through a ride.  Safe only because the v5 marker says the file has no such
+	  track, so the answer is "unknown" and not "zero" -- the same distinction the
+	  rec_rec_bvset sentinel keeps on the writing side.
 	*/
 
 	return "";
@@ -8937,7 +9182,7 @@ void(entity e, float z) SV_TimerTryArm =
   the plan named as outranking everything else in it.  The recorder being live
   is the whole gate.
 
-  WHAT IT COSTS, MEASURED ON A REAL RUN rather than estimated (cfg/testrun/
+  WHAT IT COSTS, MEASURED ON A REAL RUN rather than estimated (cfg/test/
   b82input.cfg): 1.84x the LINES and 1.50x the BYTES, at 51.1 bytes per input row
   against 85.9 for every other line in the same file.  The byte multiplier is the
   LOWER of the two, which is the opposite of the first guess written here -- an

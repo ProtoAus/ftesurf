@@ -120,7 +120,7 @@ attached to the matching [GitHub Release](../../releases) — unzip it into
 | `src/*.src` | fteqcc unit lists. **The ordering is load-bearing** and the comments say why |
 | `tools/` | 13 Python tools: BSP dependency/metadata scanners, thumbnail packer, player-model builder, and the `.rec`/`.hid` recording validators |
 | `ftesurf/cfg/default.cfg` | **the ruleset.** With `cvar_lockdefaults` on, every `set` here is the enforced default — changing a physics value here changes the game and invalidates times |
-| `ftesurf/cfg/testrun/` | per-patch verification scripts, one per build, each opening with its hypothesis and expected values |
+| `ftesurf/cfg/test/` | per-patch verification scripts, one per build, each opening with its hypothesis and expected values |
 | `default.fmf` | FTE manifest. Carries the 66.667 Hz / 15 ms tick constants, forced with `set` so a stale config cannot desync the physics |
 
 ---

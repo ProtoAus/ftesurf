@@ -196,6 +196,12 @@ void(float merged) Watch_SeqRow;
 */
 void() HUD_ClearRampHold;
 void() HUD_ClearEnergyHistory;
+// Build 86: Seq_Push stamps the reference each row was measured against, so it
+// needs the one function that decides which zero that is.  Declared here for the
+// reason its two neighbours are -- cl_hud.qc compiles after this file -- and
+// NOT respelled locally: the whole argument for factoring HUD_EnergyRef out in
+// build 19 was that two copies of that choice drift the moment either moves.
+float() HUD_EnergyRef;
 
 /*
 ===========================================================================
@@ -530,21 +536,24 @@ float  seq_emax[SEQ_MAX];
   the run started at, and the energy ANCHOR re-bases on every jump, so summing
   deltas from an unknown origin gives a number that is wrong by the origin.
 
-  STORED RAW -- Strafe_Energy's own output, org_z + |v|^2/2g -- AND REFERENCED AT
-  DRAW TIME, which is the whole reason this is one column and not two.  Storing
-  `e - HUD_EnergyRef()` at push time would freeze each row against the anchor that
-  happened to be in force when it closed, and the anchor moves on every jump: on a
-  bhop chain row N and row N+1 would be measured from two different zeros, and
-  `abs(row) == abs(row-1) + delta(row)` -- the one invariant that makes a column of
-  absolutes readable -- would quietly stop holding.  Subtracting the LIVE reference
-  when drawing makes every row share one zero by construction, and makes the last
-  row agree with the `e` readout by the crosshair, which is the same statement.
+  STORED RAW -- Strafe_Energy's own output, org_z + |v|^2/2g.
+
+  BUILD 65 ALSO REFERENCED IT AT DRAW TIME, deliberately, and build 86 undid that
+  half: freezing the reference per row was rejected here on the grounds that the
+  anchor moves on every jump, so row N and row N+1 of a bhop chain would be
+  measured from two different zeros and `abs(row) == abs(row-1) + delta(row)` would
+  stop holding.  Both halves of that are true -- and the conclusion was still
+  wrong, because the alternative it chose is that every row already on screen
+  silently re-states itself when the anchor moves.  seq_eref beside this array is
+  the stamp, and its essay is where the trade is argued.
 
   IT IS THE EIGHTH PARALLEL ARRAY.  The scroll in Seq_Push carries a warning about
   exactly that and it is not decoration -- forgetting one there leaves the column
   drawing happily with a single field one row out of step, which looks like a
-  physics bug and is not one.  Six places move together: the scroll, Seq_Mark,
-  Seq_Unmark, Seq_Push, Seq_Load and the seq.txt pair.
+  physics bug and is not one.  Seven places move together: the scroll, Seq_Mark,
+  Seq_Unmark, Seq_Push, Seq_Load, the seq.txt pair and the replay pair in
+  cl_watch.qc -- and this array is NOT in the last of those, which is why a
+  replay's absolute column is stale today (see seq_eref).
 */
 float  seq_eend[SEQ_MAX];
 
@@ -585,6 +594,48 @@ float  seq_eend[SEQ_MAX];
 float  seq_sub[SEQ_MAX];
 
 /*
+  BUILD 86 -- THE ZERO EACH ROW WAS MEASURED AGAINST.
+
+      "the segments energy indicators will all update to the new energy anchor
+       point when you're in the middle of a run and touch the floor, this is
+       incorrect, only the new ones set on the new anchor point should be at the
+       new anchor point, the older values use the old anchor point."
+
+  Build 65 stored seq_eend RAW and subtracted the LIVE reference at draw time, and
+  the essay beside it argues the case: one zero for the whole column makes
+  `abs(row) == abs(row-1) + delta(row)` telescope, and makes the bottom row agree
+  with the `e` readout by the crosshair.
+
+  THE COST OF THAT IS THE BUG ABOVE, and it is not a small one.  The anchor
+  re-bases on every jump (HUD_UpdateJumpRef), so the instant you touch down and
+  hop again EVERY row already on screen jumps by (new ref - old ref) -- rows
+  describing rides that finished ten seconds ago silently restate themselves
+  against a zero that did not exist when they happened.  On a bhop map, where
+  that is once a second, the column's history is rewritten continuously and no
+  row can be trusted to still say what it said when you read it.
+
+  So the reference is STAMPED PER ROW here and the drawer subtracts the row's own.
+  The telescoping invariant is what is given up: across an anchor change two
+  neighbouring absolutes no longer differ by exactly the delta between them.  That
+  is the correct trade -- the delta column states the difference directly and is
+  untouched, whereas a frozen absolute is the only way a row can keep meaning what
+  it meant.  Within one anchor (which is every pair of rows on a surf map's ramp
+  chain) the invariant still holds exactly.
+
+  RAW STAYS RAW.  Storing `eend - ref` instead would have been one array rather
+  than two, and it loses the ability to say anything else later -- the file format
+  keeps an absolute a future build can re-reference, and a build-65 file that
+  carries no stamp can still be drawn the old way (see Seq_Read).
+
+  IT IS THE TENTH PARALLEL ARRAY, and the count in the scroll's warning moved with
+  it.  Seven places move together now: the scroll, Seq_Mark, Seq_Unmark, Seq_Push,
+  Seq_Load, the seq.txt pair -- and the REPLAY pair in cl_watch.qc, which the
+  list above never named and which is why build 65's seq_eend and build 66's
+  seq_sub are still missing from a replay's column today.
+*/
+float  seq_eref[SEQ_MAX];
+
+/*
   The open segment's own sub-kind, and the pending one a file load is holding.
 
   seg_sub is read by Seq_Push rather than passed to it: that call is already
@@ -598,6 +649,14 @@ float  seq_sub[SEQ_MAX];
 */
 float  seg_sub;
 float  seq_pend_sub;
+
+/*
+  Build 86: the `rowref` line's value waiting for its `row`, on exactly the same
+  footing as seq_pend_sub and for the same reason -- Seq_Load has no parameter
+  slot left.  Seeded to the LIVE reference per row rather than to zero, which is
+  what makes an older file draw as it always did; see Seq_Read.
+*/
+float  seq_pend_ref;
 
 float  seq_n;
 float  seq_fadeat;              // cltime the clearing run started; 0 = not fading
@@ -830,6 +889,7 @@ float  seq_mk_pct[SEQ_MAX];
 float  seq_mk_launch[SEQ_MAX];
 float  seq_mk_eend[SEQ_MAX];    // build 65; mirrors seq_eend
 float  seq_mk_sub[SEQ_MAX];     // build 66; mirrors seq_sub
+float  seq_mk_eref[SEQ_MAX];    // build 86; mirrors seq_eref
 
 /*
 ===========================================================================
@@ -975,6 +1035,13 @@ float  ui_rs_deadline;          // cltime after which the arm expires anyway
 */
 float  ui_jump_z;           // z of the ground we last jumped from
 float  ui_jump_have;        // FALSE until we have seen ground at all
+/*
+  Patch 332: the zone half of the energy reference, moved here from cl_hud.qc
+  because Seq_Mark/Seq_AnchorRestore/Seq_AnchorReassert write it and this file
+  compiles first.  cl_hud.qc keeps the readers and a pointer comment.
+*/
+float  ui_anchor_z;         // the height everything is measured from
+float  ui_anchor_zone;      // which zone set it; -1 = none yet
 float  ui_ground_z;         // last z seen while standing; the jump latches THIS,
                             // not the origin one frame later, which is already
                             // four units up at 268 u/s and 66 Hz
@@ -989,6 +1056,33 @@ float  seq_mk_agz;
 float  seq_mk_aong;
 float  seq_mk_ahave;
 vector seq_mk_aorg;
+/*
+  Patch 332: the ZONE anchor travels with the save too, and the restore keeps an
+  in-flight copy of everything it wrote.
+
+  ui_anchor_z/ui_anchor_zone moved here from cl_hud.qc for the compile order
+  (this file writes them; cl_hud.qc only reads).  hud_energy_ref 0 measures the
+  speedometer's e from ui_anchor_z, so a restore that put back only the jump
+  anchor left half the readout's possible reference at whatever the load-side
+  zone occupancy last said -- which is the half that "glitches" for anyone
+  running the zone-floor reference.
+
+  The ui_rs_* copy is what makes a load's anchor CORRECT EVERY TIME rather than
+  correct-unless-something-clobbers-it: the restore writes at event time and the
+  teleport lands frames later, and in between sit the hold park's onground
+  edges, the start-zone floor rule (which is NOT suspended by ui_rs_armed, on
+  purpose), and the frame-ordering between HUD_UpdateJumpRef and the disarm.
+  Board_Frame re-asserts this copy on the frame the restore ARRIVES, so the
+  anchor lands with the teleport and nothing in the window outlives it.
+*/
+float  seq_mk_az;
+float  seq_mk_azone;
+float  ui_rs_jz;
+float  ui_rs_gz;
+float  ui_rs_ong;
+float  ui_rs_have;
+float  ui_rs_az;
+float  ui_rs_azone;
 
 /*
   Put an open segment back, from either path.
@@ -1030,16 +1124,55 @@ void(float kind, float e0, float emax, float dur, float valid,
   the same breath on both paths, and one flag armed once with one destination
   cannot get out of step with itself the way two could.
 */
-void(float jz, float gz, float ong, float have, vector dest) Seq_AnchorRestore =
+void(float jz, float gz, float ong, float have, float az, float azone, vector dest) Seq_AnchorRestore =
 {
 	ui_jump_z       = jz;
 	ui_ground_z     = gz;
 	ui_was_onground = ong;
 	ui_jump_have    = have;
+	ui_anchor_z     = az;         // Patch 332
+	ui_anchor_zone  = azone;      // Patch 332
+
+	ui_rs_jz    = jz;             // Patch 332: the in-flight copy, re-asserted
+	ui_rs_gz    = gz;             // on arrival by Seq_AnchorReassert
+	ui_rs_ong   = ong;
+	ui_rs_have  = have;
+	ui_rs_az    = az;
+	ui_rs_azone = azone;
 
 	ui_rs_dest     = dest;
 	ui_rs_armed    = TRUE;
 	ui_rs_deadline = cltime + SEG_RS_DEADLINE;   // build 47; see the declaration
+};
+
+/*
+  Patch 332 -- THE ANCHOR LANDS WITH THE TELEPORT.
+
+  Seq_AnchorRestore writes at event time; the position step arrives frames
+  later, and the window between is where "loading a save-lock often glitches
+  the energy value" lived: the hold park flips onground under a parked body,
+  the start-zone floor rule runs unsuspended by design, and HUD_UpdateJumpRef
+  and the disarm read the same frame in a fixed but fragile order.  Every one
+  of those can write ui_jump_z or ui_ground_z after the restore and before the
+  arrival, and each such write outlived the load.
+
+  So the arrival frame puts the saved values back, after both guards have read
+  the flag and before the next frame's dt.  From then on the anchor is exactly
+  the one the save was created against, and only a jump, a ground contact or a
+  zone occupancy can move it -- which is the ordinary life of the number.
+
+  NOT called on the deadline expiry: a restore that never arrived (the retry
+  path's respawn at the start zone) has no business overwriting the reference
+  of the place you actually are.
+*/
+void() Seq_AnchorReassert =
+{
+	ui_jump_z       = ui_rs_jz;
+	ui_ground_z     = ui_rs_gz;
+	ui_was_onground = ui_rs_ong;
+	ui_jump_have    = ui_rs_have;
+	ui_anchor_z     = ui_rs_az;
+	ui_anchor_zone  = ui_rs_azone;
 };
 
 void(float id) Seq_Mark =
@@ -1070,6 +1203,8 @@ void(float id) Seq_Mark =
 	seq_mk_agz   = ui_ground_z;
 	seq_mk_aong  = ui_was_onground;
 	seq_mk_ahave = ui_jump_have;
+	seq_mk_az    = ui_anchor_z;       // Patch 332: the zone half of the reference
+	seq_mk_azone = ui_anchor_zone;
 
 	/*
 	  And where this save IS, which is where loading it will put you back.
@@ -1093,6 +1228,7 @@ void(float id) Seq_Mark =
 		seq_mk_launch[i] = seq_launch[i];
 		seq_mk_eend[i]   = seq_eend[i];         // build 65
 		seq_mk_sub[i]    = seq_sub[i];          // build 66
+		seq_mk_eref[i]   = seq_eref[i];         // build 86
 	}
 };
 
@@ -1128,6 +1264,7 @@ float(float id) Seq_Unmark =
 		seq_launch[i] = seq_mk_launch[i];
 		seq_eend[i]   = seq_mk_eend[i];         // build 65
 		seq_sub[i]    = seq_mk_sub[i];          // build 66
+		seq_eref[i]   = seq_mk_eref[i];         // build 86
 	}
 
 	// Build 25.  The open segment, if that save had one -- and Board_Warped
@@ -1157,7 +1294,7 @@ float(float id) Seq_Unmark =
 	  taken in mid-air, which is the half that needs it least.
 	*/
 	Seq_AnchorRestore(seq_mk_ajz, seq_mk_agz, seq_mk_aong, seq_mk_ahave,
-	                  seq_mk_aorg);
+	                  seq_mk_az, seq_mk_azone, seq_mk_aorg);
 
 	seq_laststate = getstatf(STAT_FS_TIMERSTATE);
 	return TRUE;
@@ -1190,6 +1327,7 @@ void(float kind, float de, float emax, float dur, float pct, float gain,
 	seq_gain[seq_n]   = gain;
 	seq_eend[seq_n]   = eend;       // build 65; 0 from a file written before it
 	seq_sub[seq_n]    = seq_pend_sub;   // build 66; SEQSUB_NONE from an older file
+	seq_eref[seq_n]   = seq_pend_ref;   // build 86; the LIVE ref from an older file
 	seq_launch[seq_n] = (!seq_haslaunch && kind == SEG_AIR);
 	if (seq_launch[seq_n])
 		seq_haslaunch = TRUE;
@@ -1212,10 +1350,26 @@ float(string fname) fremove = #0:fremove;
 // Build 25: the slot name comes from FS_SaveSlotName now.  It was spelled here,
 // in Rec_SavePath and in SL_NN -- three copies of one directory name that four
 // files have to land in, across two VMs.  See the essay in sh_defs.qc.
+//
+// Patch 333: the ROOT of that directory is the server's to know -- in a lobby
+// it carries the player's own @guid component -- and it arrives as a stuffcmd
+// `set cl_saveroot` on every saveloc operation (SV_SaveRootFor).  The fallback
+// is the old map-root spelling, which is what a non-lobby server sends anyway
+// and what a client that has not done a saveloc op yet still reads correctly.
+string() CL_SaveRoot =
+{
+	local string r;
+
+	r = cvar_string("cl_saveroot");
+	if (r == "")
+		r = sprintf("data/saves/%s", serverkey("map"));
+	return r;
+};
+
 string(float id) Seq_Path =
 {
-	return sprintf("data/saves/%s/save%s/seq.txt",
-	               serverkey("map"), FS_SaveSlotName(id));
+	return sprintf("%s/save%s/seq.txt",
+	               CL_SaveRoot(), FS_SaveSlotName(id));
 };
 
 /*
@@ -1304,9 +1458,19 @@ void(float id) Seq_Write =
 	  An older reader meets `rowsub`, skips it as the grammar says, and gets rows
 	  that say "Air" -- which is what build 65 called them.
 	*/
+	/*
+	  BUILD 86 -- AND THE ROW'S OWN REFERENCE, on its own line beside `rowe`.
+
+	  Unconditional, unlike `rowsub`: zero is a legitimate reference (a leg whose
+	  start zone floor is at z = 0) so "absent" and "zero" have to stay different
+	  words, and the reader's fallback for an absent one is the LIVE reference
+	  rather than 0.  That fallback is what makes a build-65 or -66 file draw
+	  exactly as it drew before this build -- see Seq_Read.
+	*/
 	for (i = 0; i < seq_n; i = i + 1)
 	{
 		fputs(fh, sprintf("rowe %.4f\n", seq_eend[i]));
+		fputs(fh, sprintf("rowref %.4f\n", seq_eref[i]));
 		if (seq_sub[i] != SEQSUB_NONE)
 			fputs(fh, sprintf("rowsub %g\n", seq_sub[i]));
 		fputs(fh, sprintf("row %g %.4f %.4f %.4f %.2f %.4f\n",
@@ -1368,6 +1532,12 @@ void(float id) Seq_Write =
 	fputs(fh, sprintf("anchor %.4f %.4f %g %g\n",
 	                  seq_mk_ajz, seq_mk_agz,
 	                  seq_mk_aong ? 1 : 0, seq_mk_ahave ? 1 : 0));
+	/*
+	  Patch 332: the zone anchor, on its own line for the varargs-cap reason
+	  `board` and `anchorpos` already have.  A reader older than this skips the
+	  key and keeps its old behaviour, which is the grammar's contract.
+	*/
+	fputs(fh, sprintf("zanchor %.4f %g\n", seq_mk_az, seq_mk_azone));
 
 	/*
 	  A LINE OF ITS OWN, for the reason `board` above has one: `anchor` is already
@@ -1401,7 +1571,9 @@ void(float id) Seq_Write =
 void(float id) Seq_Read =
 {
 	local float fh, gotopen, gotanchor;
+	local float i, gotref, fallref;     // build 86: the unstamped-file fallback
 	local float ajz, agz, aong, ahave;
+	local float az, azone, gotza;   // Patch 332: the zone anchor's file copy
 	local float pende;              // build 65: the `rowe` waiting for its `row`
 	local vector aorg;
 	local string l;
@@ -1438,6 +1610,7 @@ void(float id) Seq_Read =
 	// and it warns rather than trusting the reader -- which is the right way
 	// round, since the alternative is a silently uninitialised anchor.
 	ajz = agz = aong = ahave = 0;
+	az = azone = gotza = 0;
 	aorg = '0 0 0';
 
 	// Build 65.  SEEDED EXPLICITLY: QC locals are a reused stack slot rather than
@@ -1454,6 +1627,24 @@ void(float id) Seq_Read =
 	// the handler passes this through rather than resetting it.
 	seq_pend_sub = SEQSUB_NONE;
 	seg_sub      = SEQSUB_NONE;
+
+	/*
+	  Build 86: the same holding global, plus a flag for whether the file stamped
+	  any row at all.
+
+	  SEEDED TO ZERO AND NOT TO THE LIVE REFERENCE, which looks like the wrong
+	  choice and is the whole subtlety.  A build-65 or -66 file carries `rowe` but
+	  no `rowref`, and those rows were written under the old contract -- raw
+	  absolute, referenced live at draw time -- so the fallback has to be the live
+	  reference.  But the reference this load leaves in force is the SAVE'S, and
+	  Seq_AnchorRestore does not run until the bottom of this function.  Reading it
+	  here would measure every row of an old save against the anchor the loading
+	  player happened to be carrying on the way in, which is a different place on
+	  the map.  So the fallback is applied after the restore instead; see the block
+	  beside it.
+	*/
+	seq_pend_ref = 0;
+	gotref       = FALSE;
 
 	// Only the file may set this on the cold path: a pending touchdown belongs to
 	// a ramp segment, and the one that is open right now is not that ramp.
@@ -1472,11 +1663,17 @@ void(float id) Seq_Read =
 			         stof(argv(4)), stof(argv(5)), stof(argv(6)), pende);
 			pende        = 0;
 			seq_pend_sub = SEQSUB_NONE;     // build 66, consumed with pende
+			seq_pend_ref = 0;               // build 86, consumed with pende
 		}
 		else if (argv(0) == "rowe")
 			pende = stof(argv(1));
 		else if (argv(0) == "rowsub")
 			seq_pend_sub = stof(argv(1));
+		else if (argv(0) == "rowref")
+		{
+			seq_pend_ref = stof(argv(1));
+			gotref       = TRUE;
+		}
 		else if (argv(0) == "open")
 		{
 			// Build 66: seg_sub is passed THROUGH rather than reset, so `opensub`
@@ -1512,6 +1709,12 @@ void(float id) Seq_Read =
 		}
 		else if (argv(0) == "anchorpos")
 			aorg = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+		else if (argv(0) == "zanchor")
+		{
+			az    = stof(argv(1));
+			azone = stof(argv(2));
+			gotza = TRUE;
+		}
 		l = fgets(fh);
 	}
 	fclose(fh);
@@ -1536,10 +1739,41 @@ void(float id) Seq_Read =
 	// everything else a warp invalidates -- so the restore has to be the last
 	// word rather than the first.
 	if (gotanchor)
-		Seq_AnchorRestore(ajz, agz, aong, ahave, aorg);
+		Seq_AnchorRestore(ajz, agz, aong, ahave,
+		                  gotza ? az : ui_anchor_z,
+		                  gotza ? azone : ui_anchor_zone,
+		                  aorg);
 	else
 		dprint(sprintf("seq: save %g has no anchor line -- pre-build-26 file, "
 		               "the energy reference will re-base\n", id));
+
+	/*
+	  BUILD 86 -- A FILE THAT STAMPED NO REFERENCE GETS THE OLD CONTRACT BACK.
+
+	  A build-65 or -66 seq.txt carries `rowe` but no `rowref`: its rows were
+	  written when the absolute was referenced against the LIVE anchor at draw
+	  time, so that is what they still mean, and stamping them with the reference
+	  now in force reproduces exactly how they used to draw.
+
+	  AFTER Seq_AnchorRestore ABOVE, which is the entire reason this is down here
+	  and not at the seed.  The reference this load leaves in force is the save's
+	  own, installed a few lines up; asked before that, HUD_EnergyRef would answer
+	  with wherever the loading player was standing -- a different place on the map,
+	  and on the retry path a value from a run that no longer exists.
+
+	  AND BEFORE Seq_Mark BELOW, so the warm snapshot is taken of the stamped list
+	  rather than of the zeros.
+
+	  A build-64 file has no `rowe` either, so its seq_eend is 0 and this makes the
+	  absolute a large negative rather than a plausible `e 0` -- visibly missing,
+	  which is the failure build 65 chose on purpose.
+	*/
+	if (!gotref)
+	{
+		fallref = HUD_EnergyRef();
+		for (i = 0; i < seq_n; i = i + 1)
+			seq_eref[i] = fallref;
+	}
 
 	// See Seq_Unmark: the state edge this load is about to produce is not a new
 	// run, and Seq_Frame would otherwise fade the list we just restored.
@@ -1782,11 +2016,11 @@ void(float kind, float de, float emax, float dur, float v, float gravity,
 	{
 		if (seq_n >= SEQ_MAX)
 		{
-			// NINE arrays now (build 65 added seq_eend, build 66 seq_sub).
-			// Forgetting one here is the easiest bug in this file to write and the
-			// hardest to see: the column would keep drawing, with one field a row
-			// out of step with the rest -- which reads as a physics fault rather
-			// than as a copy loop.
+			// TEN arrays now (build 65 added seq_eend, build 66 seq_sub, build 86
+			// seq_eref).  Forgetting one here is the easiest bug in this file to
+			// write and the hardest to see: the column would keep drawing, with one
+			// field a row out of step with the rest -- which reads as a physics
+			// fault rather than as a copy loop.
 			for (i = 0; i < SEQ_MAX - 1; i = i + 1)
 			{
 				seq_kind[i]   = seq_kind[i + 1];
@@ -1798,6 +2032,7 @@ void(float kind, float de, float emax, float dur, float v, float gravity,
 				seq_pct[i]    = seq_pct[i + 1];
 				seq_eend[i]   = seq_eend[i + 1];
 				seq_sub[i]    = seq_sub[i + 1];
+				seq_eref[i]   = seq_eref[i + 1];
 			}
 			seq_n = SEQ_MAX - 1;
 		}
@@ -1894,6 +2129,25 @@ void(float kind, float de, float emax, float dur, float v, float gravity,
 	  distinction is the entire merge handling for this column.
 	*/
 	seq_eend[p] = eend;
+
+	/*
+	  BUILD 86.  The zero that absolute was measured against, captured NOW -- see
+	  the essay beside seq_eref.
+
+	  A PLAIN ASSIGNMENT, like seq_eend above and for the identical reason: a merge
+	  is one ride that got split, the surviving row ends where the LATER half ended,
+	  and its reference is the one that half was measured against.  Anything else
+	  would pair an absolute with a zero from a different moment.
+
+	  PUSH TIME IS THE SEGMENT'S OWN TIME, not an approximation of it.  The anchor
+	  only ever moves on the jump edge (HUD_UpdateJumpRef), and a jump ENDS a ground
+	  phase -- which opens no segment -- so no anchor change can land inside a
+	  segment that is already open.  The frame order makes the boundary case right
+	  too: HUD_UpdateJumpRef runs before Board_Frame, so on the frame you jump the
+	  new anchor is already in force, and the row that jump opens is correctly
+	  measured against it while the row that closed on landing kept the old one.
+	*/
+	seq_eref[p] = HUD_EnergyRef();
 
 	seq_lastgain = seq_gain[p];
 	seq_lastde   = seq_de[p];
@@ -2598,7 +2852,14 @@ void(vector org, vector vel, float onground) Board_Frame =
 	*/
 	if (ui_rs_armed)
 	if (vlen(org - ui_rs_dest) <= SEG_JUMPDIST || cltime >= ui_rs_deadline)
+	{
+		// Patch 332: on ARRIVAL only, put the saved anchor back one last time
+		// so nothing the flight window wrote outlives the load.  See the essay
+		// on Seq_AnchorReassert for why the deadline expiry must not.
+		if (vlen(org - ui_rs_dest) <= SEG_JUMPDIST)
+			Seq_AnchorReassert();
 		ui_rs_armed = FALSE;
+	}
 
 	/*
 	  BUILD 34: publish the open segment.  See seg_live_kind.

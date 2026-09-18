@@ -78,7 +78,7 @@
   Two independent ways up, and they multiply: raise cl_lerp_maxdistance on the
   client (512 covers 6400 ups here, at the cost of smearing genuine teleports
   shorter than that, for every entity), or raise lobby_av_rate on the server.
-  cfg/lobby.cfg carries the same note beside the rate.
+  cfg/lobby/lobby.cfg carries the same note beside the rate.
 
   A hand-packed CSQC .SendEntity would get ~18 bytes down to ~8.  That is a
   real saving and it is Stage 8, deliberately after this, so that it can be
@@ -103,6 +103,12 @@
                                  cap has been applied.  Not the raw userinfo
                                  value: what someone asked for and what they got
                                  are different questions and both need answering.
+  .lobby_trailc on the PLAYER  -- resolved trail colour, 1..FS_AVCOLOURS.  The
+                                 `lobbytrail` infokey when it is in range, else
+                                 the player's own colour.  Patch 340.
+  .lobby_csent  on the PLAYER  -- the colour index last stuffcmd'd to this
+                                 client as cl_pcolour, so the mirror is sent on
+                                 CHANGE and not once a second.  Patch 340.
 */
 .entity  lobby_av;
 .entity  lobby_owner;
@@ -110,6 +116,10 @@
 .string  lobby_model;
 .float   lobby_colour;
 .float   lobby_fx;
+.float   lobby_trailc;
+.float   lobby_csent;
+.vector  lobby_rgb;              // PATCH 341: worn RGB 0..1, custom or palette echo
+.float   lobby_custom;           // PATCH 341: lobbyrgb was valid; not a palette entry
 
 /*
   BUILD 57, STAGE T -- THE LOBBY BITS ON THE WIRE, AS STAT_FS_LOBBY.
@@ -203,21 +213,11 @@ float lobby_was_on;
 /*
   Colour bookkeeping.
 
-  lobby_shuffle is the per-map rotation of the palette: the slot index picks
-  the colour, so without it slot 1 would be red on every map forever.  Latched
-  ONCE, on the first frame, rather than seeded in worldspawn -- Lobby_Frame
-  runs on a StartFrame that PRECEDES PR_SpawnInitialEntities (sv_init.c:1657 vs
-  :1686), so worldspawn is too late to be read from here.  Progs are reloaded
-  on a map change, so the latch clears itself and the rotation really is per
-  map.
-
   lobby_colcheck paces the userinfo re-read.  A player can retype
   `setinfo lobbycolor` at any time and there is no userinfo-change callback in
   SSQC, so the only way to notice is to look; 1 Hz is far below the cost of
   caring and far above the latency anyone will perceive.
 */
-float lobby_shuffle;
-float lobby_shuffled;
 float lobby_colcheck;
 
 /*
@@ -428,6 +428,137 @@ vector(float i) Lobby_ColourMod =
 };
 
 /*
+  PATCH 341: THE SAME TWO MODS FROM AN ARBITRARY RGB, and the nearest palette
+  entry to one, for `setinfo lobbyrgb "r g b"` (0..255 ints).
+
+  The body colour is exact -- colormod and glowmod are multiplies and take any
+  triple -- but the PARTICLES are not: trail and mote effects are generated
+  per palette entry by tools/mkavatarfx.py and cannot be tinted per entity,
+  so a custom colour wears its own rgb on the model and the NEAREST palette
+  entry in its trail, its motes, its chat name and everybody's swatch.  The
+  nearest index is what .lobby_colour holds when .lobby_custom is set, which
+  is also what keeps two custom players who picked near-identical rgbs from
+  confusing the taken-colour logic: they occupy the index they resemble.
+
+  Parse rejects anything but three 0..255 tokens; a half-typed rgb is "no rgb"
+  rather than black, because black is a colour somebody might actually want.
+*/
+vector(string s) Lobby_ParseRGB =
+{
+	local vector v;
+	local float i, sp, val;
+	local string t;
+
+	v = '-1 -1 -1';
+	for (i = 0; i < 3; i = i + 1)
+	{
+		s = strtrim(s);
+		if (s == "")
+			return '-1 -1 -1';
+		sp = strstrofs(s, " ", 0);
+		if (sp < 0)
+		{
+			t = s;
+			s = "";
+		}
+		else
+		{
+			t = substring(s, 0, sp);
+			s = substring(s, sp + 1, -1);
+		}
+		val = stof(t);
+		if (val < 0 || val > 255)
+			return '-1 -1 -1';
+		if (i == 0) v_x = val / 255;
+		else if (i == 1) v_y = val / 255;
+		else v_z = val / 255;
+	}
+	return v;
+};
+
+float(vector rgb) Lobby_NearestColour =
+{
+	local float i, best, bi, d;
+	local vector c;
+
+	best = -1;
+	bi   = 1;
+	for (i = 1; i <= FS_AVCOLOURS; i = i + 1)
+	{
+		c = Lobby_PaletteRGB(i) - rgb;
+		d = c_x * c_x + c_y * c_y + c_z * c_z;
+		if (best < 0 || d < best)
+		{
+			best = d;
+			bi   = i;
+		}
+	}
+	return bi;
+};
+
+vector(vector rgb) Lobby_ColourModRGB =
+{
+	local vector v;
+
+	v = rgb;
+	v_x = v_x / LOBBY_SKINBASE_R;
+	v_y = v_y / LOBBY_SKINBASE_G;
+	v_z = v_z / LOBBY_SKINBASE_B;
+	if (v_x > 7.96) v_x = 7.96;
+	if (v_y > 7.96) v_y = 7.96;
+	if (v_z > 7.96) v_z = 7.96;
+	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
+		v_x = 0.032;
+	return v;
+};
+
+vector(vector rgb) Lobby_GlowModRGB =
+{
+	local vector v;
+
+	v = rgb;
+	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
+		v_x = 0.032;
+	return v;
+};
+
+/*
+  PATCH 340: the palette index as a CONSOLE colour, 0..6.
+
+  The chat name colour is not ours to draw.  Every client renders a chat line
+  through the engine's own CL_PrintChat, which colours the speaker's name via
+  CL_PlayerColor (cl_parse.c) -- and in a non-teamplay QW game that reads the
+  `tc` userinfo key: c = atoi(tc), name painted ^(1 + c%7).  So "the chat name
+  is the player's colour" is one forceinfokey away, PROVIDED the value is
+  0..6: tc >= 7 takes the (c/7)&1 branch, which marks the name as already
+  coloured and paints it white instead.
+
+  Seven console colours against twelve palette entries, so this is the nearest
+  hue, and two palette neighbours can share one console colour -- orange and
+  yellow both say ^3.  That is the console's limit, not this table's; the
+  avatar and the customizer swatch carry the exact colour.
+
+  Console colours, for the mapping: ^1 red, ^2 green, ^3 yellow, ^4 blue,
+  ^5 cyan, ^6 magenta, ^7 white.
+*/
+float(float i) Lobby_TcOf =
+{
+	if (i == 1)  return 0;	// red        -> ^1 red
+	if (i == 2)  return 2;	// orange     -> ^3 yellow
+	if (i == 3)  return 2;	// yellow     -> ^3 yellow
+	if (i == 4)  return 1;	// chartreuse -> ^2 green
+	if (i == 5)  return 1;	// green      -> ^2 green
+	if (i == 6)  return 1;	// spring     -> ^2 green
+	if (i == 7)  return 4;	// cyan       -> ^5 cyan
+	if (i == 8)  return 3;	// azure      -> ^4 blue
+	if (i == 9)  return 3;	// blue       -> ^4 blue
+	if (i == 10) return 5;	// violet     -> ^6 magenta
+	if (i == 11) return 5;	// magenta    -> ^6 magenta
+	if (i == 12) return 5;	// rose       -> ^6 magenta
+	return 6;					// white
+};
+
+/*
   Is this palette index already spoken for by somebody else?
 
   O(players) per call and called at most once per player per second, so 32
@@ -452,13 +583,10 @@ float(entity p, float idx) Lobby_ColourTaken =
 /*
   Which colour this player should be.
 
-  Their own pick wins if they made one and it is free; otherwise the slot picks,
-  rotated by the per-map shuffle, and steps forward past anything taken.
-
-  The slot is num_for_edict - 1, which is stable for a connection and is
-  RECYCLED to the next joiner when someone leaves (sv_main.c:2516-2522).  That
-  recycling is the right behaviour here and not a bug to work around: a colour
-  freed by a departure should be available again.
+  Their own pick wins if they made one and it is free; then the colour they
+  already hold if it is still free; then a RANDOM free one (Patch 340 -- it
+  used to be the slot index, strided and rotated).  A colour freed by a
+  departure is available again the moment the 1 Hz re-resolve runs.
 
   `setinfo lobbycolor <n>` is how a player picks.  infokey is real in SSQC in
   this engine -- PF_infokey_s, builtin 80 (pr_cmds.c:11437), not PF_Fixme --
@@ -468,7 +596,7 @@ float(entity p, float idx) Lobby_ColourTaken =
 */
 float(entity p) Lobby_ColourFor =
 {
-	local float idx, n, tries;
+	local float idx, tries;
 	local string s;
 
 	// The player's own request, honoured only if it is in range and free.
@@ -481,24 +609,33 @@ float(entity p) Lobby_ColourFor =
 	}
 
 	/*
-	  Otherwise the slot picks, strided and rotated.
-
-	  STRIDE 5, not 1.  The palette is in hue order, so consecutive slots taking
-	  consecutive entries would hand two people who join together red and
-	  orange.  5 is coprime with 12, so multiplying by it is a permutation --
-	  every colour is still reachable and none is reachable twice -- and it
-	  moves 150 degrees around the hue circle per slot, which is about as far
-	  apart as adjacent joiners can be put.
-
-	  Written as a subtraction rather than with `%` because QC's modulo is not
-	  something to rely on across compilers.
+	  PATCH 340: THE COLOUR YOU ALREADY HOLD WINS NEXT, and this line is what
+	  makes the random pick below safe at all.  This function is re-run for
+	  every player once a second (the userinfo re-read above); a bare random()
+	  here would re-roll everybody's colour every second.  Held-and-free is
+	  stable, so the roll happens once per connection -- at
+	  Lobby_ClientConnect's clear -- and a colour only MOVES when its holder
+	  leaves or somebody's explicit pick takes it, which is exactly the
+	  re-resolve the 1 Hz loop exists for.
 	*/
-	n = (num_for_edict(p) - 1) * 5 + lobby_shuffle;
-	n = n - floor(n / FS_AVCOLOURS) * FS_AVCOLOURS;
-	idx = n + 1;
+	if (p.lobby_colour >= 1 && p.lobby_colour <= FS_AVCOLOURS
+	    && !Lobby_ColourTaken(p, p.lobby_colour))
+		return p.lobby_colour;
 
-	// Step past anyone already using it.  Bounded by the palette size, so a
-	// full lobby simply wraps and shares rather than spinning.
+	/*
+	  PATCH 340: RANDOM, where this used to be the slot index strided by 5 and
+	  rotated by a per-map shuffle.  The ask is "a random colour skin when they
+	  connect", and random is also strictly better at the thing the stride was
+	  built for: two people who join together cannot land on adjacent hues
+	  because they cannot land on the SAME hue at all -- Lobby_ColourTaken
+	  excludes it, which the stride's permutation could not promise once
+	  explicit picks had reserved entries out from under it.  The shuffle and
+	  its latch died with the stride; a random pick needs no rotation.
+
+	  Bounded by the palette size, so a full lobby simply wraps and shares
+	  rather than spinning.
+	*/
+	idx   = floor(random() * FS_AVCOLOURS) + 1;
 	tries = 0;
 	while (Lobby_ColourTaken(p, idx) && tries < FS_AVCOLOURS)
 	{
@@ -529,14 +666,22 @@ void(entity av, entity p) Lobby_ApplyColour =
 	if (!p.lobby_colour)
 		p.lobby_colour = Lobby_ColourFor(p);
 
-	av.colormod = Lobby_ColourMod(p.lobby_colour);
+	if (p.lobby_custom)
+		av.colormod = Lobby_ColourModRGB(p.lobby_rgb);
+	else
+		av.colormod = Lobby_ColourMod(p.lobby_colour);
 };
 
 /*
 ===========================================================================
   PER-PLAYER EFFECTS.
 
-  OPT-IN, PER CLIENT, with `setinfo lobbyfx <mask>`:  1 trail, 2 motes.
+  OPT-IN, PER CLIENT, with `setinfo lobbyfx <mask>`:  1 trail, 2 motes,
+  4 glow, and -- Patch 340 -- 8 long trail (modifies bit 1: the ribbon uses
+  the slower-dying ftesurf_avtrailL_<n> blocks instead of ftesurf_avtrail_<n>).
+  Trail COLOUR is its own key, `setinfo lobbytrail <n>`: unset or out of
+  range means "match my colour", which is all bit 1 did before 340.  Both are
+  surfaced by the CSQC customizer (cl_player.qc, `hud_player`).
   Off for everybody by default, which is the setting Lex asked for and is also
   the right default for a timing game -- visual clutter around another player
   is not something to inflict on someone mid-run without their say-so.
@@ -570,6 +715,11 @@ void(entity av, entity p) Lobby_ApplyColour =
 #define FS_AVFX_TRAIL 1
 #define FS_AVFX_MOTES 2
 #define FS_AVFX_GLOW  4
+// Patch 340: the LONG trail variant.  Meaningful only with FS_AVFX_TRAIL --
+// it selects ftesurf_avtrailL_<n> (a slower-dying ribbon) instead of
+// ftesurf_avtrail_<n>.  Not counted separately by lobby_av_fxmax: it is the
+// same one emitter, with a longer life; the cap's job is emitter counts.
+#define FS_AVFX_TRAILONG 8
 
 /*
   The glow colour.
@@ -595,15 +745,27 @@ vector(float i) Lobby_GlowMod =
 
 void(entity av, entity p) Lobby_ApplyFX =
 {
-	local float m;
+	local float m, tc;
 
 	m = p.lobby_fx;
+
+	// Trail colour resolves to the player's own when unset; the 1 Hz loop
+	// keeps .lobby_trailc current, but an avatar can be applied before the
+	// first pass and 0 is not a palette index.
+	tc = p.lobby_trailc;
+	if (tc < 1 || tc > FS_AVCOLOURS)
+		tc = p.lobby_colour;
 
 	// Assigned unconditionally rather than only on change: the delta
 	// compressor compares the packed values and only flags the bit when they
 	// actually differ, so writing the same number costs nothing.
 	if (m & FS_AVFX_TRAIL)
-		av.traileffectnum = particleeffectnum(sprintf("ftesurf_avtrail_%g", p.lobby_colour));
+	{
+		if (m & FS_AVFX_TRAILONG)
+			av.traileffectnum = particleeffectnum(sprintf("ftesurf_avtrailL_%g", tc));
+		else
+			av.traileffectnum = particleeffectnum(sprintf("ftesurf_avtrail_%g", tc));
+	}
 	else
 		av.traileffectnum = 0;
 
@@ -628,7 +790,8 @@ void(entity av, entity p) Lobby_ApplyFX =
 	  the belt does not.
 	*/
 	if (m & FS_AVFX_GLOW)
-		av.glowmod = Lobby_GlowMod(p.lobby_colour);
+		av.glowmod = p.lobby_custom ? Lobby_GlowModRGB(p.lobby_rgb)
+		                            : Lobby_GlowMod(p.lobby_colour);
 	else
 		/*
 		  NOT '0 0 0'.  That is the engine's IDENTITY sentinel, not black
@@ -684,6 +847,10 @@ void() Lobby_Precache =
 	while (i <= FS_AVCOLOURS)
 	{
 		particleeffectnum(sprintf("ftesurf_avtrail_%g", i));
+		// Patch 340: the long-trail variant, FS_AVFX_TRAILONG.  Same rule as
+		// the short one: precached at map init so the whole table rides the
+		// connect-time precache list, and generated by the same tool run.
+		particleeffectnum(sprintf("ftesurf_avtrailL_%g", i));
 		particleeffectnum(sprintf("ftesurf_avmote_%g", i));
 		i = i + 1;
 	}
@@ -981,7 +1148,8 @@ void() Lobby_Resync =
 void() Lobby_Frame =
 {
 	local entity av, nx, p;
-	local float  nfx, want;
+	local float  nfx, want, tc;
+	local vector rgbv;
 
 	/*
 	  REGISTERED HERE, NOT IN worldspawn, AND lobby_avatars IS WHY.
@@ -1002,11 +1170,11 @@ void() Lobby_Frame =
 	  "Created QC Cvar lobby_avatars" to prove it.
 
 	  What that cost: a lobby switched on from the console rather than through
-	  cfg/lobby.cfg spawned NO AVATARS AT ALL.  Lobby_Resync takes its else
+	  cfg/lobby/lobby.cfg spawned NO AVATARS AT ALL.  Lobby_Resync takes its else
 	  branch and removes them, Lobby_Frame returns before the pose loop, and
 	  Lobby_ClientConnect's own test refuses too -- so 32 people share a map and
 	  see nobody, with nothing printed.  It only ever worked because
-	  cfg/lobby.cfg `set`s the value before the map loads, which is exactly the
+	  cfg/lobby/lobby.cfg `set`s the value before the map loads, which is exactly the
 	  kind of accident that hides a bug until the day someone types the command
 	  instead.
 
@@ -1057,15 +1225,12 @@ void() Lobby_Frame =
 	lobby_self = cvar("lobby_av_self");
 
 	/*
-	  Latch the palette rotation.  First frame only, and it has to be here
-	  rather than in worldspawn for the same reason the registercvar calls
-	  above are here: this function runs before worldspawn exists.
+	  Patch 340: the per-map shuffle latch died with the stride it rotated --
+	  Lobby_ColourFor rolls a free colour at random now, and a random pick
+	  needs no rotation.  The latch had to live HERE rather than in worldspawn
+	  for the StartFrame-vs-SpawnInitialEntities ordering the registercvar
+	  block above documents; nothing replaced it because nothing needs it.
 	*/
-	if (!lobby_shuffled)
-	{
-		lobby_shuffled = TRUE;
-		lobby_shuffle  = floor(random() * FS_AVCOLOURS);
-	}
 
 	// Dimensions are cheap and must track the cvar live -- see the essay on
 	// Lobby_ApplyDimensions.  Done for every player whether or not the lobby
@@ -1126,6 +1291,27 @@ void() Lobby_Frame =
 			p.lobby_colour = Lobby_ColourFor(p);
 
 			/*
+			  PATCH 341: `setinfo lobbyrgb "r g b"` BEATS THE PALETTE for the
+			  body, and the palette stays for everything pre-generated: the
+			  nearest index becomes .lobby_colour, so trail, motes, chat tc and
+			  the taken-colour logic all keep working unchanged, while colormod
+			  and glowmod take the exact triple in Lobby_ApplyColour/FX.
+			*/
+			rgbv = Lobby_ParseRGB(infokey(p, "lobbyrgb"));
+			if (rgbv_x >= 0)
+			{
+				p.lobby_custom = TRUE;
+				p.lobby_rgb    = rgbv;
+				p.lobby_colour = Lobby_NearestColour(rgbv);
+			}
+			else
+			{
+				p.lobby_custom = FALSE;
+				p.lobby_colour = Lobby_ColourFor(p);
+				p.lobby_rgb    = Lobby_PaletteRGB(p.lobby_colour);
+			}
+
+			/*
 			  What this player ASKED for, then what they GET.
 
 			  lobby_av_fx 0 is the master switch and beats every opt-in: that
@@ -1153,6 +1339,64 @@ void() Lobby_Frame =
 					nfx = nfx + 1;
 			}
 			p.lobby_fx = want;
+
+			/*
+			  PATCH 340: trail colour, `setinfo lobbytrail <n>`, resolved here
+			  beside the mask rather than inside Lobby_ApplyFX because this loop
+			  is the one place that reads userinfo.  Out of range or unset means
+			  "match my colour", which is the pre-340 behaviour.
+			*/
+			tc = stof(infokey(p, "lobbytrail"));
+			if (tc >= 1 && tc <= FS_AVCOLOURS)
+				p.lobby_trailc = tc;
+			else
+				p.lobby_trailc = p.lobby_colour;
+
+			/*
+			  PATCH 340: PUBLISH THE COLOUR, two keys and one stuffcmd.
+
+			  `tc` is the engine's own chat-name colour key (CL_PlayerColor,
+			  cl_parse.c): setting it is what makes the speaker's name in every
+			  client's chat -- engine console, notify area and the CSQC chatbox
+			  alike -- the colour of their avatar.  forceinfokey rather than a
+			  stuffed `setinfo` because it writes the server's copy AND
+			  broadcasts the userinfo change (PF_ForceInfoKey_Internal ->
+			  SV_BroadcastUserinfoChange, pr_cmds.c:10001) without touching the
+			  client's config: the colour belongs to the connection, and a
+			  re-roll on the next connect must not fight an archived value.
+			  Unchanged writes are detected engine-side and cost no broadcast,
+			  so the unconditional 1 Hz call is the cheap one.
+
+			  `lc` is the palette index itself, for the two CSQC panels that
+			  draw swatches (the player list, the customizer).  tc is lossy --
+			  twelve colours into seven console hues -- and a panel that showed
+			  the console colour as "your colour" would disagree with the avatar
+			  standing next to it.
+
+			  cl_pcolour is the OWNER's mirror, on change only: the customizer
+			  reads it to mark the swatch the server actually resolved, which is
+			  not necessarily the one asked for (a taken colour falls through to
+			  the random pick).  The slot id rides the *phash infokey, set once
+			  at connect in Lobby_ClientConnect; this one can change
+			  mid-connection when somebody leaves, so it rides the loop.
+			*/
+			forceinfokey(p, "tc", ftos(Lobby_TcOf(p.lobby_colour)));
+			forceinfokey(p, "lc", ftos(p.lobby_colour));
+			/*
+			  PATCH 341: the exact worn rgb, for swatches and previews on other
+			  clients -- `lc` alone would show the nearest palette entry and a
+			  custom colour would read as somebody else's.  Unchanged writes
+			  cost no broadcast, so the 1 Hz unconditional call is the cheap one.
+			*/
+			forceinfokey(p, "lrgb", sprintf("%g %g %g",
+			    floor(p.lobby_rgb_x * 255 + 0.5),
+			    floor(p.lobby_rgb_y * 255 + 0.5),
+			    floor(p.lobby_rgb_z * 255 + 0.5)));
+			if (p.lobby_colour != p.lobby_csent)
+			{
+				p.lobby_csent = p.lobby_colour;
+				stuffcmd(p, sprintf("set cl_pcolour %g\n", p.lobby_colour));
+			}
 
 			if (p.lobby_av)
 			{
@@ -1586,7 +1830,7 @@ void() Lobby_BoardState =
 	*/
 	if (want == "noid")
 		print("^1board:^7 sv_guidkey is unset -- runs cannot be attributed to a "
-		      "player and NONE will be submitted.  See cfg/lobby.cfg.\n");
+		      "player and NONE will be submitted.  See cfg/lobby/lobby.cfg.\n");
 
 	lobby_board_said = want;
 	forceinfokey(world, "board", want);
@@ -2397,11 +2641,38 @@ void() Lobby_Cycle =
 
 void(entity p) Lobby_ClientConnect =
 {
+
 	// Fresh connection on a possibly-recycled edict: whatever colour the
 	// previous occupant of this slot had is not this player's.  Cleared here
 	// rather than in Lobby_AvatarSpawn because it must happen even when
 	// avatars are off, or turning them on later inherits a stale index.
 	p.lobby_colour = 0;
+
+	/*
+	  PATCH 340: THE PLAYER HASH, published to its owner once per connection.
+
+	  FS_GuidId is the same 8 hex chars the run filenames carry (SV_RecWho ->
+	  FS_PlayerSeg), so the string on the customizer panel and the string in
+	  data/runs are ONE spelling from ONE function.  It survives renames
+	  because the guid does -- that is the whole ask: records follow the
+	  hash, not the name.  "" on a server with no sv_guidkey, which the panel
+	  renders as "no id" rather than an empty hex box.
+
+	  THROUGH forceinfokey AND NOT A STUFFED `set`, and the first cut got this
+	  wrong the interesting way: a server-stuffed set is Cvar_LockFromServer
+	  (cvar.c:1466), which takes control of the cvar and LATCHES the client's
+	  previous value -- and PF_cvar_string returns the LATCHED string to QC
+	  (pr_bgcmd.c:1975), so the panel read "" forever while the console
+	  cheerfully printed the hash as the "effective value".  The star-key
+	  route is the tree's established server->client string channel (*wrank,
+	  read back in cl_results.qc with getplayerkeyvalue) and has no latch in
+	  it anywhere.
+	*/
+	forceinfokey(p, "*phash", FS_GuidId(infokey(p, "guid")));
+
+	// The colour mirror re-sends on the next 1 Hz pass, whichever colour the
+	// re-roll lands on; 0 is not a palette index, so the compare always fires.
+	p.lobby_csent = 0;
 
 	if (cvar("lobby_enable") && cvar("lobby_avatars"))
 		Lobby_AvatarSpawn(p);

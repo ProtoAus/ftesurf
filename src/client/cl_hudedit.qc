@@ -547,6 +547,11 @@ string(string id, float row) HE_OptDef =
 		// about why leaving 0 out of the list makes the chip print a bare `0`.
 		if (row == 0) return "hud_timer_sub_size|Subtext size|c|0 12 16 20 24|auto;12;16;20;24"
 		                     "|Size of the status and pb lines under the clock. auto follows the HUD scale.";
+		// BUILD 86: the pace colour.  A row here and not only a cvar, because
+		// HE_ResetAll walks these rows -- a switch left out of the list is one the
+		// reset button cannot recover.
+		if (row == 1) return "hud_timer_pace|PB pace colour|t||"
+		                     "|Colour the running clock green while you are ahead of your own PB at the last checkpoint or stage, red once you are behind. Needs a PB on the leg; public lobbies do not keep one.";
 		return "";
 	}
 

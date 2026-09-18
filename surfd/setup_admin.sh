@@ -9,7 +9,7 @@
 #
 # WHAT IT WILL NOT DO:
 #   * It never prints a secret. The admin password is read with a hidden
-#     prompt, the rcon password is copied out of cfg/lobby.cfg without being
+#     prompt, the rcon password is copied out of cfg/lobby/lobby.cfg without being
 #     displayed, and nothing is echoed back.
 #   * It never rewrites SURFD_KEY. That is the game servers' shared secret and
 #     losing it would silently stop every heartbeat; this script only ever
@@ -21,7 +21,7 @@ set -e
 
 HOME_DIR="${SURFD_HOME:-/srv/nvme/surfd}"
 ENV_FILE="$HOME_DIR/surfd.env"
-LOBBY_CFG="${LOBBY_CFG:-/srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby.cfg}"
+LOBBY_CFG="${LOBBY_CFG:-/srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby/lobby.cfg}"
 
 cd "$HOME_DIR"
 

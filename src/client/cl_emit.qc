@@ -554,7 +554,7 @@ void() Emit_RegisterCvars =
 	registercvar("vbsp_emit_lights",  "0", 0);
 	// The self-healing reload in Emit_Frame.  0 is build 51b exactly: one exec
 	// at map load and no repair, which is how you make the unload REPRODUCIBLE
-	// instead of papered over -- cfg/testrun/b51e.cfg needs it off to timestamp
+	// instead of papered over -- cfg/test/b51e.cfg needs it off to timestamp
 	// the kill.  Bisection cvar, not archived: nobody should keep it off.
 	registercvar("vbsp_emit_heal",    "1", 0);
 	// Child systems of a baked .pcf parent (build 53).  0 is build 52 exactly:
@@ -562,7 +562,7 @@ void() Emit_RegisterCvars =
 	// fix -- surf_tensor2 already runs at throttle 0.456 (logs/t2rain.log,
 	// demand 4390/sec) and its 12 water_splash02 children add 480/sec to every
 	// emitter's cut.  On surf_boreas the end-zone glow and laser ARE the
-	// children, so flip this once cfg/testrun/psboreas.cfg arms C/D have shown
+	// children, so flip this once cfg/test/psboreas.cfg arms C/D have shown
 	// them.  Read once per map load in Emit_LoadForMap; not archived.
 	registercvar("vbsp_emit_psys_children", "0", 0);
 

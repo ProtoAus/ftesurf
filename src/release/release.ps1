@@ -164,7 +164,7 @@ function Native ($exe, [string[]]$argv, [string]$what) {
 #  gfx\crosshairs\ (3, precached by name in the QC), gfx\mapthumbs\ (6 atlases,
 #  29.3 MB) and data\map*.txt -- it would boot with no crosshairs, no map
 #  thumbnails and no fs_automount dependency list -- while ADDING 624
-#  cfg\testrun\ fixtures, src\, tools\ and surfd\.
+#  cfg\test\ fixtures, src\, tools\ and surfd\.
 #
 #  ftesurf\data\ IS A NAMED LIST AND MUST STAY ONE.  consent.txt and 69
 #  p3??_*.hid patch-test captures live in that directory alongside the four
@@ -191,11 +191,22 @@ $ShipGameFiles = @(
     'ftesurf/data/mapparticles.txt'
 )
 $ShipGlobs = @(
-    # cfg\ top level only -- testrun\ (624 per-patch fixtures) is a subdirectory
+    # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory
     # and is excluded by not recursing.  build*.cfg are per-build test scripts and
     # fs_*.cfg are dev tools; lobby_local.cfg holds SURFD_KEY on the Pi and must
     # never appear here even by accident.
     @{ Path = 'ftesurf/cfg';            Filter = '*.cfg'; Deny = @('build*.cfg', 'fs_*.cfg', 'lobby_local.cfg') }
+    # P330: the per-map layer lives in cfg\maps\ now (80 map_*.cfg rulesets plus
+    # the render_*.cfg client layer and its render_default.cfg baseline).  It is
+    # shipping content -- SV_LoadMapRuleset and CSQC_WorldLoaded both read it at
+    # map load -- so the non-recursion above that keeps test\ out must not keep
+    # this out too.
+    @{ Path = 'ftesurf/cfg/maps';       Filter = '*.cfg'; Deny = @() }
+    # P330: the lobby and mode ruleset layer (lobby.cfg, lobby1..12, mode_bhop)
+    # lives in cfg\lobby\ now.  It shipped from the cfg top level before the
+    # move and still must: the Pi's run.sh execs it at boot.  lobby_local.cfg
+    # stays denied by the unanchored tripwire below wherever it sits.
+    @{ Path = 'ftesurf/cfg/lobby';      Filter = '*.cfg'; Deny = @('lobby_local.cfg') }
     @{ Path = 'ftesurf/glsl';           Filter = '*' }
     @{ Path = 'ftesurf/models';         Filter = '*' }
     @{ Path = 'ftesurf/particles';      Filter = '*' }
@@ -239,7 +250,7 @@ $DenyPatterns = @(
     '(^|/)Turnbind\.exe$'              #   2026-09-14; kept as a tripwire, see header
     '(^|/)config\.json$'               #   (Turnbind's, among others)
     '\.(cpp|env|bsp|log|py|pyc)$'      # py: strafepro is Python, and tools\ never ships
-    '(^|/)testrun/'
+    '(^|/)(testrun|test)/'             # P330: cfg/testrun became cfg/test; data/testrun rec fixtures stay denied too
     '(^|/)\.git'
     '(^|/)crashaddr\.txt$'
 )
@@ -464,7 +475,7 @@ Info "ship set resolves to $($shipRel.Count) files"
 
 # --- gate 1: dirty -----------------------------------------------------------
 #  Scoped to the ship set on purpose. `git status --porcelain` is ~50 lines in
-#  this tree and always will be -- most of it untracked cfg\testrun\ fixtures
+#  this tree and always will be -- most of it untracked cfg\test\ fixtures
 #  that never ship. A blanket refusal would fail 100% of runs, -Force would
 #  become reflexive, and the one line that matters would be buried in 50.
 $dirtyShipping = @()

@@ -392,6 +392,25 @@ float  rec_wt_svemax[SEQ_MAX];
 float  rec_wt_svdur [SEQ_MAX];
 float  rec_wt_svpct [SEQ_MAX];
 float  rec_wt_svlau [SEQ_MAX];
+/*
+  BUILD 86 -- THE THREE COLUMNS THIS PARK HAD BEEN DROPPING.
+
+  seq_eend (build 65), seq_sub (build 66) and seq_eref (build 86) were never added
+  here, and the park is one of the "places that move together" the essays beside
+  those arrays warn about -- cl_board.qc's list simply never named this file.  The
+  cost was real and silent: Watch_BuildSeq runs the segment machine over the FILE,
+  so it overwrites all three, and Watch_SeqApply refills only the seven that are
+  parked.  Stopping a replay therefore handed the player's own column back with
+  every row's absolute (and every air row's Jump/Bhop/Air word) belonging to the
+  demo they had just watched.
+
+  All three, not just the new one: an absolute and the reference it is measured
+  against are one value in two halves, and restoring either without the other
+  would pair a row's energy with a zero from a different run.
+*/
+float  rec_wt_sveend[SEQ_MAX];
+float  rec_wt_svsub [SEQ_MAX];
+float  rec_wt_sveref[SEQ_MAX];
 float  rec_wt_svheld;            // a snapshot is out; Watch_Stop must restore it
 
 // The .rec sample columns, named so the tokenize calls below read as English.
@@ -977,8 +996,18 @@ void() Watch_Scan =
 	  stream's own %.2f-to-the-eye visibility, and the camera has no opinion about
 	  where a run was supposed to start.
 	*/
-	if (ver > 7)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 7; "
+	/*
+	  BUILD 85: 7 -> 8, AND FOR THE FIFTH TIME THIS READER NEEDED NO NEW PARSE.
+	  `ride` and `inend` fall out of all three sweeps like `warp` and `in` do
+	  (Watch_IsSample tests the first character), and the seventh `end` field is
+	  covered by the `n >= 4` width guard above.
+
+	  The camera has even less to do with this one: a ride produces NO position
+	  discontinuity at all, so there is nothing to show that the motion does not
+	  already show.  The record is for re-simulation, elsewhere.
+	*/
+	if (ver > 8)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 8; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 
@@ -1617,6 +1646,9 @@ void() Watch_SeqSave =
 		rec_wt_svdur [i] = seq_dur[i];
 		rec_wt_svpct [i] = seq_pct[i];
 		rec_wt_svlau [i] = seq_launch[i];
+		rec_wt_sveend[i] = seq_eend[i];         // build 86, and see the decls
+		rec_wt_svsub [i] = seq_sub[i];
+		rec_wt_sveref[i] = seq_eref[i];
 	}
 	rec_wt_svheld = TRUE;
 };
@@ -1641,6 +1673,9 @@ void() Watch_SeqRestore =
 		seq_dur[i]    = rec_wt_svdur[i];
 		seq_pct[i]    = rec_wt_svpct[i];
 		seq_launch[i] = rec_wt_svlau[i];
+		seq_eend[i]   = rec_wt_sveend[i];       // build 86, and see the decls
+		seq_sub[i]    = rec_wt_svsub[i];
+		seq_eref[i]   = rec_wt_sveref[i];
 	}
 
 	/*
@@ -1815,6 +1850,21 @@ void(float ticks) Watch_SeqApply =
 		seq_launch[i] = rec_wt_sqlau[p];
 		if (seq_launch[i])
 			seq_haslaunch = TRUE;
+		/*
+		  BUILD 86: a replay's rows are stamped with the LIVE reference, which is
+		  the same approximation -- and the same reasoning -- Watch_Splits already
+		  applies to the split column's energies a few hundred lines up: replaying
+		  the anchor machine forward to each row's tick means a second driver for
+		  HUD_UpdateJumpRef, which is more machinery than this is worth.  Stamping
+		  it here rather than leaving the field alone is what keeps a replay drawing
+		  exactly as it did before the per-row stamp existed, instead of against
+		  whatever the build pass happened to leave behind.
+
+		  The capture arrays still carry no absolute of their own (rec_wt_sq* has
+		  never had one), so the value it is subtracted FROM is stale -- a build-65
+		  gap this does not close and must not be mistaken for having closed.
+		*/
+		seq_eref[i]   = HUD_EnergyRef();
 	}
 
 	/*
@@ -2563,7 +2613,7 @@ void() Watch_Path =
   calls a segment, and every one of them cheaper.
 
   AND MEASURED, build 45, because the paragraph above is an argument and the
-  report asked for "low effect / low cpu expense".  cfg/testrun/b45perf.cfg:
+  report asked for "low effect / low cpu expense".  cfg/test/b45perf.cfg:
   surf_rise, the same paused camera, developer 0, no frame cap, the three modes
   interleaved four times rather than run in three blocks.  Frame times, medians
   of four:
@@ -2601,7 +2651,7 @@ void() Watch_Path =
   guard keyed on "the two sizes differ" would switch drawers on those frames.
 
   The second is that the real hazard was measurable and was measured.
-  cfg/testrun/b45scale.cfg drives r_renderscale, which is the knob that rewrites
+  cfg/test/b45scale.cfg drives r_renderscale, which is the knob that rewrites
   r_refdef.vrect.width to vid.fbvwidth*scale (gl_backend.c:6058-6059) and is
   therefore the one that could put project's output in a different space from
   the 2D pass.  At r_renderscale 2 the frame cost went from 86.6 to 20.0 fps, so

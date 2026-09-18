@@ -605,7 +605,7 @@
   answers.
 
   Lobby_Active() is one cvar; Lobby_NoPB() and Lobby_NoRec() are that cvar AND
-  their own.  cfg/lobby.cfg sets all three, so on a real lobby the three bits
+  their own.  cfg/lobby/lobby.cfg sets all three, so on a real lobby the three bits
   arrive together -- but lobby_enable 1 with lobby_nopb 0 is a listen server that
   writes best.pb and the .rec archive to THIS disk, and a client that kept its own
   copy there would file the same run twice: two rows on the leaderboard's leg, and
@@ -2139,7 +2139,7 @@ string(string map, float track, float leg, float ticks,
   player, so the time and the class identify the run.  On a LOBBY it is not.
   Thirty-two people share a disk and a leg folder, and two of them finishing the
   same leg on the same tick write the same path -- the second one silently
-  replaces the first.  cfg/lobby.cfg:183 has carried that as a known reason not
+  replaces the first.  cfg/lobby/lobby.cfg:183 has carried that as a known reason not
   to record at all since Patch 270, alongside the memory one that build 66's
   streaming recorder has now retired.  This is the other half.
 
@@ -2252,14 +2252,28 @@ string(string s) FS_NameSlug =
   caller decides what to do about it (SV_RecWho falls back to the slot, which
   cannot collide between two people who are connected at the same time).
 
-  The digest is checked rather than assumed.  digest_hex is the first call to
-  that builtin anywhere in this tree, so a build where it is absent or refuses
-  "SHA256" returns a short string, and a four-character id would be a collision
-  the format cannot see.  Short means no segment, which the caller handles.
+  The digest is checked rather than assumed, in FS_GuidId above: a build where
+  digest_hex is absent or refuses "SHA256" returns "", and a four-character id
+  would be a collision the format cannot see.  No id means no segment, which
+  the caller handles.
 */
-string(string nm, string guid) FS_PlayerSeg =
+/*
+  Patch 340: THE ID ALONE, as its own function.
+
+  FS_PlayerSeg's id half is the player hash the game shows and keys effects
+  by: sha256(guid), first FS_WHO_IDLEN hex chars, stable across renames
+  because the guid is.  The server publishes exactly this string to its
+  owner (the *phash infokey, Lobby_ClientConnect) and the customizer panel
+  displays it, so the spelling has to be THIS function's and not a second
+  copy -- a hash displayed on a HUD that disagreed with the one in the
+  filenames would be worse than no hash.
+
+  "" means no identity: empty guid, or a digest_hex that refused (the same
+  checked-not-assumed rule FS_PlayerSeg documents below).
+*/
+string(string guid) FS_GuidId =
 {
-	local string slug, id;
+	local string id;
 
 	if (guid == "")
 		return "";
@@ -2267,7 +2281,16 @@ string(string nm, string guid) FS_PlayerSeg =
 	id = strtolower(digest_hex("SHA256", guid));
 	if (strlen(id) < FS_WHO_IDLEN)
 		return "";
-	id = substring(id, 0, FS_WHO_IDLEN);
+	return substring(id, 0, FS_WHO_IDLEN);
+};
+
+string(string nm, string guid) FS_PlayerSeg =
+{
+	local string slug, id;
+
+	id = FS_GuidId(guid);
+	if (id == "")
+		return "";
 
 	slug = FS_NameSlug(nm);
 	if (slug == "")
@@ -2634,9 +2657,9 @@ float(float tag) FS_TagArchived =
 
   WHY THIS FUNCTION EXISTS.  A renamed cvar does not fail loudly.  A config
   that sets the old name sets a cvar nobody reads, which is the "control that
-  never ran" trap the testrun notes are full of -- the run comes out on the
+  never ran" trap the test notes are full of -- the run comes out on the
   default path while claiming to be the arm you asked for.  default.cfg and the
-  145 testrun cfgs were rewritten alongside the source, so those are safe; what
+  145 test cfgs were rewritten alongside the source, so those are safe; what
   is NOT safe is the player's own saved ftesurf.cfg, their binds, and weeks of
   muscle memory.  So each old name forwards its value once and says where it
   went.

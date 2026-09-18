@@ -36,7 +36,7 @@ lobby_list() {
 
 LOBBIES=$(lobby_list)
 if [ -z "$LOBBIES" ]; then
-	echo "runall: no game/ftesurf/cfg/lobbyN.cfg found -- nothing to start." >&2
+	echo "runall: no game/ftesurf/cfg/lobby/lobbyN.cfg found -- nothing to start." >&2
 	exit 2
 fi
 echo "runall: lobbies found: $(echo $LOBBIES | tr '\n' ' ')"

@@ -15,9 +15,153 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   8cfabc5aac12bd9c51b277fb02fa83c6e29be870
 tag      patch-266
-patch    328
+patch    342
 qcbuild  83
-date     2026-09-15
+date     2026-09-18
+
+# PATCH 342 IS MOD-SIDE ONLY (no engine change): five UI fixes, four of them
+# regressions.  Patch 341's CSQC_ChatSay swallowed `say <text>` as well as bare
+# `say`, so `say !r` / `!m` / `!s N` opened a prefilled draft and sent nothing --
+# default.cfg binds r and m to those, so the restart keys were dead and six
+# cfg/test fixtures had been driving no runs.  It now declines a non-empty
+# argument and lets CL_Say send it (that one quote pair is the one SV_Say strips,
+# so `!s 2` keeps its number); bare `say` still opens the draft.  `-showscores`
+# closes a MOUSE2-pinned board instead of only clearing the hold -- MOUSE2 is
+# +jump, so jumping while peeking used to pin it by accident.  The segment column
+# stamps the energy anchor PER ROW (new seq_eref, a tenth parallel array, plus a
+# `rowref` save line and the replay park pair, which also regains the seq_eend /
+# seq_sub it had dropped since builds 65/66) so committed rows stop restating
+# themselves every time a jump re-bases the anchor.  Air rows (Jump/Bhop/Air) are
+# mint green.  The running clock is coloured by your pace against your own PB,
+# latched from the stage/checkpoint deltas the client already gets, behind
+# `hud_timer_pace` -- silent on public lobbies, which set `lobby_nopb 1`.
+# Engine tree unchanged since 341; qcbuild stays 83 until the next Build commit.
+
+# PATCH 341 ADDS ONE ENGINE HOOK: CL_Say offers the whole command to a new
+# name-bound csqc globalfunction CSQC_ChatSay(args, team) before it sends
+# (zqtp.c), so the console's `say` opens the mod's chat draft instead of the
+# corner input.  Name-bound like the rest: old engine + new csprogs is never
+# asked, new engine + old csprogs has nobody to ask -- both directions fall
+# back to the engine prompt.  Everything else in 341 is mod-side: quote-free
+# chat submission via a quoted cvar, the always-reserved draft line, hold-TAB
+# / pin-MOUSE2 scoreboard, and `setinfo lobbyrgb` exact body colour with the
+# nearest palette index kept for particles and chat tc (`lrgb` publishes the
+# exact triple).
+
+# PATCH 340 IS MOD-SIDE ONLY (no engine change): player customization phase 2.
+# The menu gates launch/join on a default name (SCREEN_NAME); the server rolls
+# a random free avatar colour per connection and publishes it as `tc` (the
+# engine's own chat-name colour key, so chatbox AND console names match the
+# body) plus `lc`, and the run-filing hash as `*phash` -- forceinfokey, because
+# a stuffed `set` is Cvar_LockFromServer and cvar_string reads the latch.  New
+# csprogs: cl_chat.qc (CSQC_Parse_Print -> stacking fading bottom-left chatbox;
+# once defined the hook takes ALL prints, so other levels are re-printed),
+# cl_avatar.qc (`hud_player` customizer: colour/trail swatches, fx chips, hash
+# line), cl_players.qc (room list drawn INSIDE the board's sui bracket, voice
+# thumbnails, local silence list; spectate stubbed by decision).  qcbuild
+# stays 83 until Build 84.
+
+# PATCH 338 IS MOD-SIDE ONLY (no engine change): the IO mirror.  cl_triggers
+# now replicates the Enable/Disable half of entity I/O -- touch edges of
+# predicted slots and event-only trigger_multiples, logic_auto OnMapSpawn on
+# schedule -- with a demotion fixpoint that keeps everything else (relays,
+# buttons, timers, OnTrigger/OnJump, delays, Toggle, All-variants,
+# player-movement writes) server-authoritative.  Gate state rides a
+# sequence-keyed ring committed at chain start, with persistent last-overlap
+# stamps separating continuous stays from warp-ins.  mom_training's
+# TELEPORT_SEND_PLAYER -- the 6956 u snapback from real play -- now fires
+# locally; the backtrack setspeed runs its full Enable/Disable cycle with
+# zero corrections.  tools/seed_csprogs.py exists because a stale
+# downloads/csprogsvers cache silently ran two rounds of OLD code against the
+# fix.  qcbuild stays 83 until Build 84.
+
+# PATCH 336 IS THE FILTER MIRROR.  Patch 335 skipped every filtered trigger;
+# the server's own essay says missing and unimplemented filters PASS (Source
+# fails open), and the two implemented classes are lump-static except for the
+# player's runtime targetname.  cl_triggers.qc now evaluates filters
+# three-valued from the lump: static PASS predicts, UNKNOWN (name filters --
+# futile's anti-backtrack) and FAIL stay server-only.  bhop_arcane recovers
+# its 16 filter_standing triggers; futile correctly keeps all 35.  Mod QC
+# only, engine tree unchanged since 335; qcbuild stays 83 until Build 84.
+
+# PATCH 335 MOVES THE TRIGGERS INTO PREDICTION.  Phase 1 of playing on the
+# client: CSQC_PredictPlayerMove runs the stateless Source triggers
+# (teleport, push, setspeed) inside the client's own usercmd replay, so a
+# booster or a fall-reset no longer costs a round trip, and cl_prederror
+# turns any residual snap-back into one console line naming the sequence and
+# both origins.  The server stays the authority -- filtered/StartDisabled/
+# IO-toggled triggers are deliberately not predicted, the .rec/.hid evidence
+# is untouched, and a listen server keeps the hook off (sv.state, because
+# sv.active is dead code).  New QC file cl_triggers.qc; fixtures
+# cfg/test/p335*.cfg; qcbuild stays 83 until the Build 84 commit.
+
+# PATCH 334 TEACHES THE PICKER TO WAIT.  The join reply's state/wait fields
+# become LJ_WAIT: hold the connect, poll the directory once a second, connect
+# when the row for that address reads the map asked for -- because connecting
+# on the reply's arrival landed players on the old map AND tripped surfd's
+# idle rule into dropping the switch claim.  lobby.cfg sets timeout 30 so a
+# crashed player stops haunting the broker's idle test for a minute.
+# Menu QC + cfg only; qcbuild stays 83 until the Build 84 commit.
+
+# PATCH 333 MAKES THE SAVELOCK YOURS.  The rec_sl_* list grew a player
+# dimension (block 0 shared off-lobby, blocks 1..32 per client in a lobby), the
+# disk grew data/saves/<map>/@<guid>/, and the client follows the root through
+# a stuffcmd'd cl_saveroot so seq.txt and run.view land where the server looks.
+# lobby_nosaveloc's default flipped to 0: the sharing it guarded against is
+# gone, and what remains is an operator kill switch.  QC-only; qcbuild stays 83
+# until the Build 84 commit.
+
+# BUILD 85 IS QC-ONLY -- the anti-cheat line, not the Patch 329-341 workstream
+# above.  FTESURF-REC 8 adds the velocity carrier (`ride <pk> <mt> arm|pay
+# <bx by bz>`), the closing horizon (`inend <mt> <carry>`) and a seventh `end`
+# field, all from SV_BaseVelocityFrame and SV_RecClose.  A build-85 server runs
+# on a 328 engine exactly as a build-83 one did.  It takes 85 because Patch 331's
+# inspector work claims 84 in its own essays and is still uncommitted.
+#
+# TWO ENGINE FOLLOW-UPS IT IDENTIFIED AND DID NOT MAKE:
+#   1  pm_recsim (sv_ccmds.c:4419-4420) still prints the v7 "nothing imposed
+#      state on this run" claim that E5 measured false -- wrong on 181 of 536
+#      zoned maps.  Narrow it to "nothing THIS FORMAT CAN EXPRESS"; from v8 the
+#      strong form is earned.  Two strings.
+#   2  pm_recsim does not CONSUME the record, so a re-simulation still cannot
+#      cross a ride.  That is the real prerequisite for the Phase 3 verifier.
+#
+# AND ONE IT PROVED IS NOT WHAT IT LOOKED LIKE.  The plan's item 5 ("a stage
+# transition writes no `warp`") is NOT a missing call site.  surf_kitsune moves
+# the player through 18 linked_portal_door entities, and a portal crossing is
+# committed by PM_PlayerTracePortals (pmove.c:156) INSIDE the mover -- outside
+# SV_RecWarp's stated boundary by construction, so the trailer's warp count is
+# correct rather than short.  Patch 205 removed the touch handler these doors
+# had, so there is no QC site to hang a record on.  The fix publishes the
+# engine's pms_portalcrossed (pm_source.c:299, which never escapes the engine)
+# to QC beside run_movetick, on the Patch 240/325 precedent: an engine patch.
+# Worth doing -- a portal is a discontinuity a verifier cannot otherwise explain.
+
+# PATCH 332 IS THE SAVELOC ANCHOR, WHOLE AND LANDED.  ui_anchor_z and
+# ui_anchor_zone moved to cl_board.qc so the save can carry them (new `zanchor`
+# key in seq.txt), and the arrival frame re-asserts the restored anchor so the
+# flight window -- park onground edges, the unsuspended start-zone rule, the
+# HUD/disarm frame order -- can no longer outlive a load.  QC-only; the pin
+# moves for the record.  qcbuild stays 83 until the Build 84 commit.
+
+# PATCH 331 IS THE INSPECTOR: ent_cursor became a passive hover overlay with a
+# crosshair card, and the dither fill reached r_showbrushes and the hovered
+# brush entity.  QC build moves with it (cl_entview.qc, cl_main.qc) -- the next
+# commit carrying these becomes Build 84, so qcbuild stays 83 here until then.
+
+# PATCH 330 MOVES THE FURNITURE.  The asset cache and the download cache came
+# inside the gamedir (ftesurf/cache, ftesurf/downloads), the per-map ruleset and
+# render layers moved to cfg/maps/, the 663 verification fixtures to cfg/test/,
+# and exec learned bare names.  The QC half is one line -- cl_main.qc's render
+# layer path -- and rides along in whatever commit becomes Build 84, so qcbuild
+# stays 83 here until then; the engine half (sv_phys.c's ruleset path, fs.c's
+# two directories, cmd.c's exec fallback) is what this pin requires.
+
+# PATCH 329 IS ENGINE-ONLY -- qcbuild STAYS 83.  r_voidfog lives entirely in
+# the renderer: the QC in cl_fog.qc never learns that its fog was not drawn on
+# a void frame, which is the point (see the patch entry).  Nothing on the wire,
+# in the progs or in the stats changed, so a build-83 client and server pair
+# with a 329 engine exactly as they did with a 328 one.
 
 # BUILD 83 MOVES qcbuild, AND THE 327 NOTE BELOW DOES NOT APPLY TO IT.  The two
 # halves are a writer and a reader: QC build 83 writes a new record type (`warp`)

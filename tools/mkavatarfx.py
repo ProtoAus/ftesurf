@@ -154,6 +154,39 @@ def block_trail(i, rgb):
 """ % (i, TRAIL_STEP, r, g, b)
 
 
+# Patch 340: the LONG variant, ftesurf_avtrailL_<n>, selected by lobbyfx bit 8.
+#
+# The ribbon's length is die x speed: the trail is emitted per unit DISTANCE
+# (`step`), so a particle's position along the ribbon is where the player was
+# `die` seconds ago at their current speed.  Tripling the life triples the
+# ribbon at any speed, and tripling `step` with it keeps the ALIVE-PARTICLE
+# COUNT per player about the same as the short trail -- three times the ribbon
+# at a third of the density.  Alpha drops to roughly compensate for the longer
+# overlap on screen, and alphadelta is stretched to match the longer life so
+# the tail fades out instead of ending in a visible hard stop.
+def block_trail_long(i, rgb):
+    r, g, b = (int(round(c * 255)) for c in rgb)
+    return """r_part ftesurf_avtrailL_%d
+{
+\ttexture "ftesurf_dot"
+\tblend adda
+\tstep %d
+\tscale 5 3
+\tscalefactor 1
+\tscaledelta -2.3
+\trgb %d %d %d
+\talpha 0.34
+\talphadelta -0.22
+\tdie 1.35 2.10
+\tspawnmode box
+\tspawnorg 2
+\tspawnvel 5 4
+\tfriction 1.4
+\tgravity 0
+}
+""" % (i, TRAIL_STEP * 3, r, g, b)
+
+
 def block_mote(i, rgb):
     r, g, b = (int(round(c * 255)) for c in rgb)
     return """r_part ftesurf_avmote_%d
@@ -184,9 +217,14 @@ HEADER = """// ftesurf/particles/ftesurf_avatar.cfg
 //     python tools/mkavatarfx.py --apply
 // `--check` fails if this file and the QC have drifted apart.
 //
-// Per-player effects for the lobby avatars (Patch 278).  Two per palette
-// colour, because a particle effect carries its colour in the template and
-// there is no per-entity tint for particles the way .colormod is for models.
+// Per-player effects for the lobby avatars (Patch 278, extended by 340).
+// Three per palette colour, because a particle effect carries its colour in
+// the template and there is no per-entity tint for particles the way
+// .colormod is for models:
+//
+//   ftesurf_avtrail_N   .traileffectnum, lobbyfx bit 1 -- short ribbon
+//   ftesurf_avtrailL_N  .traileffectnum, lobbyfx bits 1+8 -- long ribbon
+//   ftesurf_avmote_N    .emiteffectnum,  lobbyfx bit 2 -- rising motes
 //
 // These are ENGINE-DRIVEN, which makes their contract different from every
 // other block in particles/ftesurf.cfg:
@@ -222,6 +260,9 @@ def generate(pal):
         parts.append(block_trail(i, rgb))
         parts.append("\n")
     for i, rgb in pal:
+        parts.append(block_trail_long(i, rgb))
+        parts.append("\n")
+    for i, rgb in pal:
         parts.append(block_mote(i, rgb))
         parts.append("\n")
     return "".join(parts)
@@ -248,8 +289,8 @@ def main():
 
     want = generate(pal)
     print()
-    print("%d effects (%d trail + %d mote), %d bytes"
-          % (2 * len(pal), len(pal), len(pal), len(want)))
+    print("%d effects (%d trail + %d long trail + %d mote), %d bytes"
+          % (3 * len(pal), len(pal), len(pal), len(pal), len(want)))
 
     if args.check:
         try:

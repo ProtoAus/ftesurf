@@ -71,7 +71,7 @@ def main():
     print("SURFD_ADMIN_SECRET=%s" % session_secret)
     print()
     print("# The lobbies' rcon password, so the panel can reach them on loopback.")
-    print("# This is the value of rcon_password in cfg/lobby.cfg. Once the panel")
+    print("# This is the value of rcon_password in cfg/lobby/lobby.cfg. Once the panel")
     print("# is the only rcon user, move it out of lobby.cfg into lobby_local.cfg")
     print("# and set `sv_crypt_rcon 1` so the plaintext form is refused.")
     print("SURFD_RCON_PASSWORD=<the servers' rcon_password>")

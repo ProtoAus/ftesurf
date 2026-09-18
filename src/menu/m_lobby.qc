@@ -44,7 +44,7 @@
 
 /*
   FIVE, because that is how many lobbies there are: surf tiers 1-3 on
-  27510/27520/27530 and bhop easy and hard on 27540/27550 (cfg/lobby1..5.cfg).
+  27510/27520/27530 and bhop easy and hard on 27540/27550 (cfg/lobby/lobby1..5.cfg).
 
   It was three, "because three is what fits above the map list without pushing
   the list itself off the bottom at 1280x720".  That was true while the lobbies
@@ -259,6 +259,8 @@ void() Lob_Init =
 	*/
 };
 
+void() Lob_Poll;
+
 // Accessors, so m_main.qc never touches the buffers directly and the storage
 // can change without touching the drawing.
 float()          Lob_Count   = { return lb_count; };
@@ -275,7 +277,7 @@ float(float i)   Lob_Max     = { return stof(bufstr_get(lb_maxv,  i)); };
   lb_name was fetched from the first poll and never drawn: the cells showed the
   map, so five lobbies on the same map were five identical cells.  Every lobby
   this project runs is called "FTESurf -- <what it is>" (the hostname line in
-  cfg/lobby1..5.cfg), so in a row of five the first eleven characters would say
+  cfg/lobby/lobby1..5.cfg), so in a row of five the first eleven characters would say
   the same thing five times, in the ~140 px a cell has for text at 1280 wide.
 
   Stripped ONLY when the name starts with exactly that, case aside: a lobby
@@ -582,6 +584,27 @@ void(string body) Lob_Parse =
 #define LJ_ASK    1
 #define LJ_READY  2
 #define LJ_FAIL   3
+#define LJ_WAIT   4
+
+/*
+  Patch 334.  LJ_WAIT is the state the join reply's own fields demand and that
+  build 67's handshake never honoured.  /api/join answers "starting" or
+  "loading" with the address of a lobby that IS NOT RUNNING THE MAP YET: surfd
+  has merely filed a claim, and the lobby picks it up on its next heartbeat
+  (up to lobby_master_rate, 5 s) and then changelevels (measured: 4 s for a
+  heavy map).  Connecting the moment that reply lands -- which is what
+  ui_join_tick did with LJ_READY -- puts the player on whatever the lobby was
+  already running, and worse, the arrival trips surfd's idle rule ("a lobby
+  with anybody on it is never moved") which DROPS THE CLAIM, so the lobby
+  never switches and the player is parked on an unrelated map with nothing on
+  screen to explain it.  The surfd log of 2026-09-16 shows the loop exactly:
+  assign p27510, three seconds later "dropping claim on p27510 -- 1 player(s)
+  arrived", the player being the one the reply had just sent.  So the reply's
+  `wait` field becomes this state: hold the connect, poll the directory once a
+  second, and connect when the row for that address actually reads the map we
+  asked for.  The directory is the only witness both halves trust.
+*/
+#define LJ_WAITCAP 20
 
 // How long to wait before giving up and playing locally.  Short, because the
 // player is looking at a button they just pressed and the fallback is a map
@@ -593,6 +616,7 @@ void(string body) Lob_Parse =
 float  lj_state;
 float  lj_req;                  // 0 when nothing is outstanding
 float  lj_at;                   // when the ask went out
+float  lj_until;                // LJ_WAIT: give up on the switch after this
 float  lj_code;                 // last status, for the message
 float  lj_timed;                // can a run on this map even be timed?
 string lj_addr;                 // strzoned
@@ -620,6 +644,7 @@ void() Lob_JoinClear =
 	lj_state = LJ_IDLE;
 	lj_req   = 0;
 	lj_at    = 0;
+	lj_until = 0;
 	lj_code  = 0;
 	lj_timed = 0;
 };
@@ -636,7 +661,8 @@ void() Lob_JoinClear =
 void(float code, string body) Lob_JoinReply =
 {
 	local float  root;
-	local string ad, why;
+	local float  w;
+	local string ad, why, stt;
 
 	lj_req  = 0;
 	lj_code = code;
@@ -675,6 +701,8 @@ void(float code, string body) Lob_JoinReply =
 
 	ad      = json_get_string(json_find_object_child(root, "addr"));
 	why     = json_get_string(json_find_object_child(root, "why"));
+	stt     = json_get_string(json_find_object_child(root, "state"));
+	w       = json_get_float(json_find_object_child(root, "wait"));
 	lj_timed = json_get_float(json_find_object_child(root, "timed"));
 	json_free(root);
 
@@ -690,6 +718,26 @@ void(float code, string body) Lob_JoinReply =
 	if (lj_why)  strunzone(lj_why);
 	lj_addr  = strzone(ad);
 	lj_why   = strzone(why);
+
+	/*
+	  "starting" is a fresh claim, "loading" is an existing one somebody else
+	  asked for first; both mean the address is not running the map yet, and
+	  both carry the claim's remaining life in `wait`.  Anything else -- the
+	  directory's word for "somebody is already hosting it" -- is ready now.
+	  The clamp is because `wait` is surfd's ASSIGN_TTL remainder, which is
+	  longer than the switch can legitimately take: heartbeat 5 s + load 4 s +
+	  a directory refresh, against a player who is watching a busy button.
+	*/
+	if (stt == "loading" || stt == "starting")
+	{
+		if (w < 5)          w = 5;
+		if (w > LJ_WAITCAP) w = LJ_WAITCAP;
+		lj_until = time + w;
+		lj_state = LJ_WAIT;
+		print(sprintf("^5online:^7 %s is switching to %s -- waiting for it to "
+		              "come live\n", ad, lj_map));
+		return;
+	}
 	lj_state = LJ_READY;
 };
 
@@ -732,8 +780,93 @@ float(string mapname) Lob_JoinAsk =
   state at LJ_ASK forever, and the symptom is a button that does nothing --
   which is worse than an error, because there is nothing to report.
 */
+/*
+  Patch 334.  One pass over the directory rows looking for the address the
+  join reply named.  Three outcomes: the row reads our map, which is the
+  switch having happened and the wait being over (promote to LJ_READY and let
+  ui_join_tick connect); the row reads something else, which is the switch
+  still in flight or the claim having been dropped, and the wait continues;
+  and no row at all, which is the lobby having left the directory mid-wait --
+  a failure now rather than at the deadline, because there is nothing left to
+  wait FOR.  strcmp rather than == because the operands are two strzoned
+  strings and not a literal, and the fteqcc string-equality operator is not
+  the thing to reach for there.
+*/
+float() Lob_WaitScan =
+{
+	local float i, have;
+
+	/*
+	  No directory yet, no evidence yet.  The first pass here can land before
+	  the first lobbies.json reply of the session, and an empty buffer would
+	  otherwise read as "the server left the directory" one tick after the
+	  wait began -- which is exactly the false verdict patch 334 exists to
+	  avoid wearing.  lb_ready is set by Lob_Parse on a successful body and
+	  cleared when the poll is gated or the directory is unconfigured, so it
+	  is precisely "the rows below are a current picture of the fleet".
+	*/
+	if (!lb_ready)
+		return FALSE;
+
+	have = FALSE;
+	for (i = 0; i < lb_count; i = i + 1)
+	{
+		if (strcmp(Lob_Addr(i), lj_addr) != 0)
+			continue;
+		have = TRUE;
+		if (strcmp(Lob_Map(i), lj_map) != 0)
+			continue;
+		lj_state = LJ_READY;
+		print(sprintf("^5online:^7 %s has %s live now\n", lj_addr, lj_map));
+		return TRUE;
+	}
+	if (!have)
+	{
+		lj_state = LJ_FAIL;
+		if (lj_why) strunzone(lj_why);
+		lj_why = strzone("the server left the directory before it came live");
+		return TRUE;
+	}
+	return FALSE;
+};
+
 void() Lob_JoinPoll =
 {
+	if (lj_state == LJ_WAIT)
+	{
+		/*
+		  The directory poll runs at lobby_poll seconds (six by default) with a
+		  backoff for a dead host, and both are wrong here: the switch we are
+		  waiting for lands in the directory within a second or two of the
+		  lobby's heartbeat, and every second of slack is a second the player
+		  spends watching a busy button.  Pull the next poll in to one second
+		  without touching the backoff bookkeeping -- lb_fail is still zero on
+		  a healthy directory, so the ordinary cadence resumes the moment the
+		  wait ends either way.
+		*/
+		if (lb_next > time + 1)
+			lb_next = time + 1;
+		/*
+		  The poll itself, not just its schedule.  Lob_Poll is otherwise driven
+		  by the picker's draw loop, and a wait can outlive the screen that
+		  started it -- the console ui_join twin, a player who backs out mid-
+		  wait, a picker that closes behind the ask.  A wait that cannot poll
+		  cannot see the switch it is waiting for, and would spend its whole
+		  deadline watching an empty buffer.  Calling it here is safe: it is
+		  idempotent inside its own lb_next window, which the line above has
+		  just narrowed to one second.
+		*/
+		Lob_Poll();
+		if (Lob_WaitScan())
+			return;
+		if (time < lj_until)
+			return;
+		lj_state = LJ_FAIL;
+		if (lj_why) strunzone(lj_why);
+		lj_why = strzone(sprintf("the server never came live with %s", lj_map));
+		return;
+	}
+
 	if (lj_state != LJ_ASK)
 		return;
 	if (time - lj_at < LJ_DEADLINE)

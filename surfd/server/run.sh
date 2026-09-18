@@ -3,8 +3,8 @@
 # the fixed 1..5 list removed in QC build 67.
 # Usage: ./run.sh <lobby number> [map]
 #
-# One process per lobby.  They differ only in cfg/lobbyN.cfg, which sets the
-# port, the hostname and the map rotation; everything else is cfg/lobby.cfg.
+# One process per lobby.  They differ only in cfg/lobby/lobbyN.cfg, which sets the
+# port, the hostname and the map rotation; everything else is cfg/lobby/lobby.cfg.
 # 1-3 are the surf tiers, 4 and 5 bhop easy and hard.
 #
 # BUILD 67: ANY N THAT HAS A CFG, AND THE START MAP COMES FROM THAT CFG.
@@ -39,7 +39,7 @@
 #                    those empty defaults, so it comes second
 #   lobby_local.cfg  the surfd shared secret.  mode 0600, NOT in the repo.
 #
-# cfg/lobby.cfg is exec'd EXPLICITLY and is deliberately not called server.cfg:
+# cfg/lobby/lobby.cfg is exec'd EXPLICITLY and is deliberately not called server.cfg:
 # SV_ExecInitialConfigs would auto-prefer that name and silently stop
 # cfg/default.cfg (and therefore pm_physicsmode/pm_ticrate/sv_bigcoords) running.
 #
@@ -51,7 +51,7 @@ N="${1:-}"
 
 # DIGITS ONLY, AND THIS IS THE CHECK THE `case` USED TO BE DOING BY ACCIDENT.
 #
-# N is interpolated into "ftesurf/cfg/lobby$N.cfg" below.  While the only legal
+# N is interpolated into "ftesurf/cfg/lobby/lobby$N.cfg" below.  While the only legal
 # values were the five literals, that string could not be anything but a path in
 # this directory; now that any number is accepted, the validation has to be said
 # out loud or `run.sh ../../something` becomes a config this script will exec.
@@ -60,7 +60,7 @@ N="${1:-}"
 case "$N" in
   ''|*[!0-9]*)
     echo "usage: run.sh <lobby number> [map]" >&2
-    echo "       the number selects ftesurf/cfg/lobby<N>.cfg" >&2
+    echo "       the number selects ftesurf/cfg/lobby/lobby<N>.cfg" >&2
     exit 2 ;;
 esac
 
@@ -68,16 +68,16 @@ cd /srv/nvme/ftesurf-server/game
 
 # BUILD 57: REFUSE WITHOUT THE PER-LOBBY CFG, because every way this fails is
 # quiet.  A missing +exec target is not fatal in FTE -- it prints "couldn't exec"
-# and carries on -- and cfg/lobby.cfg deliberately sets no sv_port, so the server
-# would bind the engine's DEFAULT QuakeWorld port 27500: the one port cfg/lobby1.cfg
+# and carries on -- and cfg/lobby/lobby.cfg deliberately sets no sv_port, so the server
+# would bind the engine's DEFAULT QuakeWorld port 27500: the one port cfg/lobby/lobby1.cfg
 # says must never be listening, and the one a stranger's scan finds first.  It
 # would also take lobby.cfg's shared hostname and its empty rotation, so the
 # directory would show a row whose port and name belong to nothing.
 #
 # The path is relative to this directory because the engine resolves +exec
 # against the GAMEDIR (ftesurf/), which is one level down from the basedir.
-if [ ! -f "ftesurf/cfg/lobby$N.cfg" ]; then
-	echo "run.sh: ftesurf/cfg/lobby$N.cfg is missing -- refusing to start lobby $N." >&2
+if [ ! -f "ftesurf/cfg/lobby/lobby$N.cfg" ]; then
+	echo "run.sh: ftesurf/cfg/lobby/lobby$N.cfg is missing -- refusing to start lobby $N." >&2
 	echo "        Without it this binds the default port 27500 with no rotation." >&2
 	echo "        Deploy the cfg first; see surfd/README.md." >&2
 	exit 2
@@ -95,7 +95,7 @@ fi
 # no-match leaves DEF empty and reaches the test below, rather than killing the
 # script with a bare non-zero status nobody would be able to attribute.
 DEF=$(sed -n 's|^[[:space:]]*set[[:space:]][[:space:]]*lobby_maps[[:space:]][[:space:]]*"\([^" ]*\).*|\1|p' \
-      "ftesurf/cfg/lobby$N.cfg" | head -n 1)
+      "ftesurf/cfg/lobby/lobby$N.cfg" | head -n 1)
 
 MAP="${2:-$DEF}"
 
@@ -104,7 +104,7 @@ MAP="${2:-$DEF}"
 # console with a bound port and no world -- which heartbeats nothing, shows up
 # nowhere, and reads as a crash.
 if [ -z "$MAP" ]; then
-	echo "run.sh: ftesurf/cfg/lobby$N.cfg sets no lobby_maps -- refusing to start lobby $N." >&2
+	echo "run.sh: ftesurf/cfg/lobby/lobby$N.cfg sets no lobby_maps -- refusing to start lobby $N." >&2
 	echo "        The start map is the first entry of that rotation." >&2
 	echo "        Pass one explicitly (run.sh $N <map>) to override." >&2
 	exit 2
@@ -112,7 +112,7 @@ fi
 
 exec ./fteqw-svarm64 -basedir /srv/nvme/ftesurf-server/game \
      +developer 1 \
-     +exec cfg/lobby.cfg \
-     +exec "cfg/lobby$N.cfg" \
+     +exec cfg/lobby/lobby.cfg \
+     +exec "cfg/lobby/lobby$N.cfg" \
      +exec cfg/lobby_local.cfg \
      +map "$MAP"

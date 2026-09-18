@@ -55,6 +55,17 @@ client/cl_emit.qc
 // CSQC_Init, Snds_LoadFromWorld from CSQC_WorldLoaded, Snds_Frame from
 // CSQC_UpdateView and Snds_ConsoleCommand from CSQC_ConsoleCommand.
 client/cl_soundscape.qc
+// Patch 335, Phase 1 of playing on the client.  A SIXTH independent walk of
+// the entity lump: the client-side mirror of the stateless Source triggers
+// (teleport, push, setspeed), fired from inside client prediction through the
+// CSQC_PredictPlayerMove hook so a booster or a stage reset no longer costs a
+// round trip.  It needs nothing from anyone (getentitytoken, tracebox and the
+// predmove_* globals are all engine-provided), so beside its five siblings is
+// early enough, and it must sit BEFORE cl_main.qc, which calls
+// Trig_RegisterCvars from CSQC_Init, Trig_LoadForMap from CSQC_WorldLoaded,
+// Trig_Frame from CSQC_UpdateView and Trig_ConsoleCommand from
+// CSQC_ConsoleCommand.
+client/cl_triggers.qc
 client/cl_hud.qc
 // AFTER cl_hud.qc, which owns HUD_Text/HUD_TextR, ui_cv_scale and ui_font_ui.
 // Patch 270: the lobby network monitor -- the on-screen replacement for
@@ -91,6 +102,18 @@ client/cl_watch.qc
 // in csprogs that ever wants uri_get has to branch inside it rather than
 // declare its own -- the same constraint m_lobby.qc documents for the menu.
 client/cl_online.qc
+// Patch 340, player customization.  Three files, one direction of dependency:
+// cl_chat (the CSQC_Parse_Print hook, the ring, the silence list) needs nothing
+// but sh_font; cl_avatar (the `hud_player` customizer, the palette mirror,
+// UIC_AVATAR) needs cl_hud's cursor register and the panel flags; cl_players
+// (the room list) needs the palette from cl_avatar and the silence list and
+// colour rule from cl_chat -- and cl_scores calls INTO it (Players_Panel runs
+// inside the board's sui bracket, because a second bracket in a frame draws
+// dead buttons), so all three sit before cl_scores.qc and after everything
+// they read.
+client/cl_chat.qc
+client/cl_avatar.qc
+client/cl_players.qc
 // AFTER cl_watch.qc, because clicking a row hands the file straight to
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at
 // Timer_Tick's rate.  Stage 2 of build 24.

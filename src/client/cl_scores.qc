@@ -56,6 +56,7 @@
 float  rec_sb_legtrack[SB_MAXLEG];
 float  rec_sb_legnum[SB_MAXLEG];
 float  rec_sb_legn;
+float  sc_held;                  // PATCH 341: +showscores is down right now
 string rec_sb_legmap;            // the map rec_sb_leg* describes; "" = none
 float  rec_sb_legzoned;          // it holds a strzone that has to be given back
 
@@ -774,7 +775,11 @@ vector() Scores_BoardNoteCol =
 // ("no ruleset", "no journal" -- 10 characters), where the local tab puts the
 // file's tag.  Widening the last column only widens what the panel ASKS for;
 // the clamp against the window and the drop order below are unchanged.
-#define SBW_TAG    11
+// PATCH 340: 11 -> 10.  The eleventh character was a gutter nobody could see
+// the need for, and on a wide window it read as the dead space to the right
+// of "why" that the panel was then blamed for.  Ten is the longest word the
+// column can hold; the drop order still protects it on narrow windows.
+#define SBW_TAG    10
 /*
   BUILD 68: THE REPLAY MARK, AND ITS POSITION IS THE WHOLE POINT.
 
@@ -1521,7 +1526,7 @@ void(vector scr) Scores_Draw =
 	local float scale, chipw, chiph, pad, legw, ytabs, yhead, footh;
 	local string s, rid;
 
-	if (!rec_sb_open)
+	if (!rec_sb_open && !sc_held)
 		return;
 
 	Scores_Refresh();
@@ -1574,7 +1579,18 @@ void(vector scr) Scores_Draw =
 	legw = ceil(rec_sb_cw * 15);
 	w = SBX_END * rec_sb_cw + legw + pad * 4;
 	if (w > scr_x - pad * 2) w = scr_x - pad * 2;
-	if (w < scr_x * 0.5)     w = scr_x * 0.5;
+	/*
+	  PATCH 340: THE FLOOR DROPPED FROM HALF THE WINDOW TO 42%.
+
+	  The floor existed so a narrow window could not squeeze the board into
+	  illegibility, but on a WIDE one it did the opposite harm: the content
+	  asks for ~78 characters and the clamp handed the panel 960 px anyway,
+	  and the ~200 px of difference landed to the right of the last column --
+	  "the why column has way too much room", as the report put it.  The
+	  slack was never the column's; it was the clamp's.  42% still clears
+	  every column budget at 1280 and stops inventing space at 1920.
+	*/
+	if (w < scr_x * 0.42)     w = scr_x * 0.42;
 
 	h = scr_y * 0.78;
 	if (h > rec_sb_rowh * 26) h = rec_sb_rowh * 26;
@@ -1598,7 +1614,8 @@ void(vector scr) Scores_Draw =
 		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], rec_sb_szhead,
 		            "this map has no zone file, so it has no legs and no times",
 		            SBC_DIM, 1);
-		sui_end();
+		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not
+		sui_end();                        // about zones; it shows here too.
 		Font_Reset();
 		return;
 	}
@@ -1867,11 +1884,20 @@ void(vector scr) Scores_Draw =
 	}
 	Scores_Text([x0 + pad, y0 + h - pad - footh], rec_sb_szrow, s, SBC_DIM, 1);
 
-	// The hint says what a CLICK does, and on the online tabs a click does not
-	// open anything -- so it names the keys instead of promising a replay that
-	// is on somebody else's disk.
+	/*
+	  The hint says what a CLICK does, and on the online tabs a click does not
+	  open anything -- so it names the keys instead of promising a replay that
+	  is on somebody else's disk.
+
+	  BUILD 86: "rmb pins" became "rmb for cursor", and the online string gained
+	  the key.  Letting go of +showscores now closes the board on every tab, so
+	  "esc to close" alone was understating it -- and the pin no longer outlives
+	  the key, which means what mouse2 actually buys you is the cursor for the rest
+	  of the hold.  A hint that names a behaviour the build removed is worse than
+	  no hint.
+	*/
 	s = Scores_IsOnline()
-	      ? "left/right change tab    up/down change leg    esc to close"
+	      ? "left/right change tab    up/down change leg    rmb for cursor    tab or esc to close"
 	      : "click a run to watch it    tab or esc to close";
 	Scores_TextR([x0 + w - pad, y0 + h - pad - footh], rec_sb_szrow,
 	             s, SBC_DIM, 0.8);
@@ -1892,6 +1918,18 @@ void(vector scr) Scores_Draw =
 	if (s != "")
 		Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
 		            s, Scores_BoardNoteCol(), 0.85);
+
+	/*
+	  PATCH 340: the room list, INSIDE this bracket and before its sui_end.
+
+	  A second sui bracket in the same frame draws dead buttons -- sui_begin
+	  empties the hit-test list and sui_end clears the input buffer, so the
+	  LAST bracket owns every click (cl_main.qc's Ev_Panel comment).  Sharing
+	  this one is what makes the mute buttons live.  It gets the rect this
+	  function just computed because it anchors to it; cl_players.qc's header
+	  has the rest.
+	*/
+	Players_Panel(p, sz, pad, scr);
 
 	sui_end();
 	Font_Reset();
@@ -1955,6 +1993,7 @@ void() Scores_Close =
 	  paths where the board is already shut and the intent must still go.
 	*/
 	rec_sb_wantrep = 0;
+	sc_held = FALSE;          // PATCH 341: esc closes even mid-hold
 
 	if (!rec_sb_open)
 		return;
@@ -2017,7 +2056,35 @@ void() Scores_Toggle =
 */
 float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 {
-	if (!rec_sb_open)
+	/*
+	  PATCH 341: THE PIN.  MOUSE2 while the held board is up toggles the pinned
+	  state -- the one press that makes the scoreboard stay.  Swallowed, so the
+	  pin click is not also a jump; every other mouse2 in the game is untouched,
+	  because the gate is "the board is up because the key is down and not
+	  because it was pinned", which is exactly the moment a click can only
+	  have meant "keep this" or "let it go".
+	*/
+	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && !rec_sb_open)
+	{
+		Scores_Open();
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && rec_sb_open)
+	{
+		Scores_Close();
+		/*
+		  BUILD 86: BACK TO THE PEEK, NOT TO NOTHING.  Scores_Close clears sc_held
+		  as well -- it has to, because esc closes mid-hold -- but the key is still
+		  down on this path, and now that letting go of it is what closes the board
+		  (see Scores_ConsoleCommand) the two would otherwise disagree: unpinning
+		  would end a gesture the player is still making.  The pin owns the cursor;
+		  the key owns the board.
+		*/
+		sc_held = TRUE;
+		return TRUE;
+	}
+
+	if (!rec_sb_open && !sc_held)
 		return FALSE;
 
 	if (evtype == IE_MOUSEABS)
@@ -2095,26 +2162,46 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
   function hands off before reaching its own CSQC hook.  Either way the string
   passed is Cmd_Argv(0), so CSQC sees the literal bind.
 
-  TOGGLED ON THE DOWN EDGE, AND `-showscores` IS SWALLOWED AND IGNORED.  A
-  scoreboard you have to hold TAB to see is one you cannot click a row in, and
-  that is the entire feature.  The engine's early-return at sbar.c:783 means a
-  held TAB only produces one `+showscores`, so press-to-open and press-to-close
-  is exactly what the key does.
+  PATCH 341: HOLD, NOT TOGGLE.  `+showscores` arms sc_held for as long as the
+  key is down and `-showscores` drops it; the board draws while either it or
+  the pinned rec_sb_open is true.  The TOGGLE is MOUSE2 while the held board
+  is up (Scores_InputEvent, below) -- a board you can hold to peek and click
+  to keep, instead of one that flips state on every TAB press.
 
   `-showscores` is still CONSUMED rather than left alone, so that the engine's
   own scoreboard state does not flicker underneath -- VF_DRAWENGINESBAR 0 already
   keeps it off screen, but leaving a handler out because something else happens
   to hide the result is how a feature breaks when that something else changes.
+
+  BUILD 86: THE RELEASE CLOSES THE PIN TOO.
+
+      "When you release +showscores the scoreboard should close even when you
+       toggle it on with mouse2."
+
+  Patch 341 cleared only sc_held here, so a board that had been pinned stayed up
+  after the key came back -- and the pin is far easier to set than it looks:
+  default.cfg binds MOUSE2 to +jump, so jumping once while peeking at the board
+  pinned it, and the board was then stuck open with the cursor captured and no
+  obvious way back.  The key is the gesture; letting go of it ends the gesture.
+
+  Scores_Close() RATHER THAN TWO ASSIGNMENTS, because closing is more than two
+  flags: it releases the cursor claim (UIC_SCORES) and drops a pending replay.
+  Clearing the flags by hand here would have left the cursor with this panel
+  after its board was gone, which is the one failure that makes the game
+  unplayable rather than merely untidy.
 */
 float(string cmd) Scores_ConsoleCommand =
 {
 	if (argv(0) == "+showscores")
 	{
-		Scores_Toggle();
+		sc_held = TRUE;
 		return TRUE;
 	}
 	if (argv(0) == "-showscores")
+	{
+		Scores_Close();
 		return TRUE;
+	}
 
 	// A console handle, for the same reason `replay status` exists: a board that
 	// can only be reached by a keypress is one no config can ever check.
@@ -2266,8 +2353,16 @@ void() Scores_Status =
 	  A status line silently missing its last field is precisely the defect
 	  this function exists to prevent elsewhere.
 	*/
+	/*
+	  BUILD 86: THE HOLD IS REPORTED TOO.  rec_sb_open alone stopped describing the
+	  board when patch 341 made it a hold with a pin -- a board that is up because
+	  the key is down reads "closed" here, which is the one thing a status line must
+	  not do.  Three states, named: pinned (rec_sb_open), held (sc_held only), or
+	  closed.  Without this the release fix has no headless witness at all.
+	*/
 	print(sprintf("scores: %s on %s  leg %g/%g \"%s\"\n",
-	              rec_sb_open ? "open" : "closed",
+	              rec_sb_open ? (sc_held ? "pinned+held" : "pinned")
+	                          : (sc_held ? "held" : "closed"),
 	              (rec_sb_legmap != "") ? rec_sb_legmap : "-",
 	              rec_sb_leg + 1, rec_sb_legn, Scores_LegName(rec_sb_leg)));
 

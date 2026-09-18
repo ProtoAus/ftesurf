@@ -919,7 +919,14 @@ void(vector scr) Results_Draw =
 
 	drawfill(p, [w, hgt, 0], RSC_PANEL, a * 0.92, 0);
 	drawfill(p, [w, 1 * ui_cv_scale, 0],
-	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags), a, 0);
+	// BUILD 85, AND THIS LINE BELONGS TO A DIFFERENT WORKSTREAM.  The uncommitted
+	// Build 86 work gave Timer_Color a fifth parameter (`pace`) and updated one of
+	// its three call sites, so cl_progs.src did not compile at all -- which
+	// blocked the anti-cheat build from verifying its own client half.  0 is the
+	// value that changes nothing: TS_FINISHED takes its colour from the whole
+	// run's PB well above the pace branch.  Flagged rather than adopted -- whoever
+	// finishes Build 86 should confirm it, and this comment is how they find it.
+	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags, 0), a, 0);
 
 	y = p_y + 8 * ui_cv_scale;
 
@@ -928,7 +935,7 @@ void(vector scr) Results_Draw =
 	HUD_Text([p_x + 10 * ui_cv_scale, y],
 	         Time_TickString(ui_rs_ticks, tick),
 	         Font_Px(18 * ui_cv_scale),
-	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags), a);
+	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags, 0), a);
 	Font_Set(ui_font_mono);
 
 	// ...and what it was against.  ui_rs_pb is PBWAS, so this is a real delta

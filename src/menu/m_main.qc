@@ -89,6 +89,19 @@
 #define SCREEN_TERMS    2
 
 /*
+  The name gate.  Patch 340.
+
+  Forced by ui_launch -- the single launch choke point -- whenever the engine's
+  `name` cvar still holds a factory default ("Player", the collision-renamed
+  "(1)Player", "unnamed", empty).  A default name on a public lobby is twelve
+  "Player"s on one scoreboard and chat that cannot be attributed, and the
+  engine's own default is literally "Player" (cl_main.c:174).  Not a consent
+  screen: it has a real cancel, and it is skipped for ui_bootcheck, which is
+  the developer surface and would otherwise deadlock headless runs.
+*/
+#define SCREEN_NAME     3
+
+/*
   Map source, derived from the searchpath a BSP came out of.
 
   A map is tagged by EVERY source it appears in, so these are BITS in a mask
@@ -1091,7 +1104,7 @@ float(string nm) ui_isgamemode =
   loads it for every bhop map (SV_ApplyGamemodeModes, sv_phys.c), so 30.000 s of
   bhop is 3000 ticks -- which PM_TICK would draw as 0:45.000, half again as long,
   with nothing on the row to say which of the two numbers is wrong.  Two of the
-  five lobbies are bhop (cfg/lobby4.cfg, lobby5.cfg), so for a bhop map somebody
+  five lobbies are bhop (cfg/lobby/lobby4.cfg, lobby5.cfg), so for a bhop map somebody
   has only ever played online this column is the ONLY time they are shown.
 
   THE RULE IS THE ENGINE'S, IN THE ENGINE'S ORDER: mapmeta's gamemode id where
@@ -2108,6 +2121,138 @@ float() ui_online_opt =
 	return cvar("ui_play_online");
 };
 
+/*
+===========================================================================
+  THE NAME GATE.  Patch 340.
+
+  Twelve "Player"s on one lobby scoreboard is not a cosmetic problem: chat
+  cannot be attributed, the player list cannot be read, and every default
+  name looks like every other.  So ui_launch refuses to start or join while
+  the engine's `name` cvar still holds a factory default, and SCREEN_NAME
+  asks for a real one first.  The screen is drawn below, beside screen_terms;
+  the TEST lives here because ui_launch is the single launch choke point and
+  QuakeC has no forward references.
+
+  WHAT COUNTS AS DEFAULT, and the list is the engine's own shapes rather than
+  a guess: "Player" is the literal default (cl_main.c:174, capital P), and
+  the QW collision rename wraps it as "(1)Player", "(2)Player" -- so the test
+  strips a "(digits)" prefix, strips whitespace, lowercases, and compares
+  against {"", "player", "unnamed", "quake"}.  A name of "player!!" is a name
+  somebody chose; a name of "(3)PLAYER" is a name nobody chose.
+===========================================================================
+*/
+string ui_name_field;           // what the field holds, strzone-free: sui owns it
+float  ui_name_caret;
+string ui_name_err;
+float  ui_name_back;            // the screen to return to on cancel
+float  ui_name_resume;          // 1 = ui_launch, 2 = ui_connect(ui_name_arg)
+float  ui_name_arg;
+
+#define UI_NAME_MAX 15          // the scoreboard's own limit; longer truncates
+
+/*
+  Strip one "(digits)" prefix, whitespace on both ends, and lowercase.  Pure
+  string arithmetic with str2chr: no regexes in QC and no engine helper that
+  does this shape.
+*/
+string(string s) ui_name_norm =
+{
+	local float n, c, d;
+
+	s = strtolower(s);
+
+	// "(1)player" -> "player"
+	if (strlen(s) > 2 && str2chr(s, 0) == 40)      // '('
+	{
+		d = strstrofs(s, ")", 0);
+		if (d > 0 && d < 8)                        // a sane collision counter
+			s = substring(s, d + 1, strlen(s));
+	}
+
+	// trim
+	while (strlen(s) > 0 && (str2chr(s, 0) == 32 || str2chr(s, 0) == 9))
+		s = substring(s, 1, strlen(s));
+	n = strlen(s);
+	while (n > 0 && ((c = str2chr(s, n - 1)) == 32 || c == 9))
+	{
+		s = substring(s, 0, n - 1);
+		n = n - 1;
+	}
+
+	return s;
+};
+
+float(string s) ui_name_default =
+{
+	s = ui_name_norm(s);
+	if (s == "")          return TRUE;
+	if (s == "player")    return TRUE;
+	if (s == "unnamed")   return TRUE;
+	if (s == "quake")     return TRUE;
+	return FALSE;
+};
+
+/*
+  The gate itself, called from ui_launch.  TRUE means "the name screen is now
+  up and the launch must stop".  ui_bootcheck walks straight through: it is
+  the headless developer surface, and a name dialog no script can answer
+  would deadlock every bootcheck run ever taken.
+*/
+float(float resume, float arg) ui_name_gate =
+{
+	if (cvar("ui_bootcheck"))
+		return FALSE;
+	if (!ui_name_default(cvar_string("name")))
+		return FALSE;
+
+	ui_name_back   = menu_screen;
+	ui_name_field  = "";
+	ui_name_caret  = 0;
+	ui_name_err    = "";
+	ui_name_resume = resume;
+	ui_name_arg    = arg;
+	menu_screen    = SCREEN_NAME;
+	return TRUE;
+};
+
+/*
+  Validate and take the name.  Returns "" on success, or the sentence to show
+  on the screen.  cvar_set and NOT `localcmd("name ...")`: name is
+  CVAR_USERINFO, so setting the cvar updates userinfo for the connect that
+  follows, and there is no console-parse of a stranger-proof string to get
+  wrong.  Colour codes are deliberately ALLOWED -- ^1lex is a name somebody
+  chose, and the chat colour rule (engine CL_PlayerColor / our tc key) already
+  yields to codes in the name.
+*/
+string(string s) ui_name_take =
+{
+	local float i, n, c;
+
+	// trim, then judge
+	s = ui_name_norm(s);
+	n = strlen(s);
+
+	if (n == 0)
+		return "type a name first";
+	if (n > UI_NAME_MAX)
+		return sprintf("keep it to %g characters -- longer is cut off everywhere it is shown", UI_NAME_MAX);
+
+	// no control characters, ever: a name goes into chat lines, filenames
+	// and the console, and a newline in any of those is an injection.
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c < 32 || c == 127)
+			return "no control characters";
+	}
+
+	if (ui_name_default(s))
+		return "that is still the default -- pick a name of your own";
+
+	cvar_set("name", s);
+	return "";
+};
+
 void() ui_launch =
 {
 	string mapname = ui_selected_name();
@@ -2132,6 +2277,17 @@ void() ui_launch =
 		menu_screen = SCREEN_TERMS;
 		return;
 	}
+
+	/*
+	  PATCH 340: the name gate, and it sits in the SAME choke point as the
+	  consent gate for the same reason -- every launch route (start button,
+	  bootcheck, the ui_join twin's fallback) comes through here, so there is
+	  no refactor that walks past it.  Continuing after the screen closes is
+	  screen_name's job: its continue button calls ui_launch again, which
+	  re-runs this gate and passes.
+	*/
+	if (ui_name_gate(1, 0))
+		return;
 
 	/*
 	  REGISTERED BESIDE THE READ, not in m_init, and this tree has lost three
@@ -2608,7 +2764,7 @@ void(string verb, string mode) ui_fstream_test =
   does, and because it needs no map: `menu_restart` then `ui_who` answers in
   one launch.  What it does NOT cover is the half only the server knows --
   Lobby_Active(), the GUID actually arriving, and the slot fallback -- which is
-  what the in-game arm of cfg/testrun/b66who.cfg is for.
+  what the in-game arm of cfg/test/b66who.cfg is for.
 */
 float b66_fail;
 
@@ -2850,7 +3006,7 @@ void() ui_join_tick =
 
 	Lob_JoinPoll();                 // may time the ask out
 	st = Lob_JoinState();
-	if (st == LJ_ASK)
+	if (st == LJ_ASK || st == LJ_WAIT)
 		return;                     // still waiting; the button stays busy
 
 	ui_join_pending = FALSE;
@@ -2923,6 +3079,12 @@ void(float i) ui_connect =
 		menu_screen = SCREEN_TERMS;
 		return;
 	}
+
+	// Patch 340: the name gate, for the ui_launch reason -- this is the OTHER
+	// door onto a public lobby, and it is the door where being called
+	// "Player" matters most.  Resume 2 re-enters HERE with the same row.
+	if (ui_name_gate(2, i))
+		return;
 
 	addr = Lob_Addr(i);
 	if (!ui_addr_ok(addr))
@@ -3194,11 +3356,28 @@ void() ui_bootcheck_tick =
 	*/
 	else if (ui_bootframe == 705)
 	{
-		localcmd("cmd say !s 2\ncmd say !b 1\ncmd say !r\ncmd say !m\n");
+		/*
+		  BUILD 86: `say`, NOT `cmd say`, and the two with a NUMBER are why.
+
+		  SV_ParseClientCommand reads the whole message out of argv(1) and splits it
+		  on the first space itself (sv_player.qc:1030-1042), so the message has to
+		  arrive as ONE argument.  `cmd say !s 2` forwards it as two -- argv(1) is
+		  "!s" and the tail is empty -- so stof("") made it stage 0 and this
+		  self-test has been proving `!s 2` works by running `!s` with no number.
+		  `!b 1` was bonus 0 the same way.  b48d.cfg:5-6 records the same trap from
+		  the harness side ("the cmd route drops the stage number").
+
+		  Plain `say` is the route that quotes: CL_Say wraps the whole message in the
+		  one pair SV_Say strips, so the number survives.  It reaches CSQC's chat
+		  hook first, which declines anything with text (cl_chat.qc CSQC_ChatSay) --
+		  before build 86 that hook swallowed these into the typing line instead,
+		  which is the bug that made `bind r "say !r"` dead.
+		*/
+		localcmd("say !s 2\nsay !b 1\nsay !r\nsay !m\n");
 		// ...and two that must NOT be intercepted.  A prefix match would read
 		// "!rank" as "!r" and teleport instead of talking, which is the kind of
 		// thing nobody finds until they type it in front of someone.
-		localcmd("cmd say !rank\ncmd say hello\n");
+		localcmd("say !rank\nsay hello\n");
 	}
 	// Stand in zone 0, which is the start zone on every map that has one, so
 	// the in-game screenshot below covers zone_goto as well.  The angles matter:
@@ -3579,6 +3758,77 @@ void(vector screensize) screen_terms =
 
 	if (ui_button("tm_exit", [p_x + 516, p_y + btn], [100, 30], "exit"))
 		localcmd("quit\n");
+};
+
+/*
+  PATCH 340: the name gate's screen.  Forced by ui_name_gate from the two
+  launch doors (ui_launch, ui_connect); the essays are there.  The shape is
+  screen_terms' -- one panel, one decision, no ESC hole that skips it -- with
+  two differences that matter: it HAS a cancel (choosing a name is not a
+  consent), and its continue button RESUMES the launch it interrupted rather
+  than dropping the player back at a menu with a start button to find again.
+*/
+void(vector screensize) screen_name =
+{
+	local vector p;
+	local string err;
+	local float  ph, btn;
+
+	ui_backdrop(screensize);
+
+	ph  = 224;
+	btn = 168;
+	p = [floor(screensize_x * 0.5) - 260, floor(screensize_y * 0.5 - ph * 0.5)];
+	if (p_y < 0)
+		p = [p_x, 0];
+
+	sui_fill(p, [520, ph], COL_PANEL, 0.94, 0);
+	sui_border_box(p, [520, ph], 1, COL_BORDER, 1, 0);
+
+	Font_Set(ui_font_display);
+	sui_text([p_x + 24, p_y + 20], SZ_TITLE, "Choose your name", COL_ACCENT, 1, 0);
+	Font_Set(ui_font_ui);
+
+	sui_text([p_x + 24, p_y + 66], SZ_LABEL,
+	         "You are still on the factory default. On a public lobby that is", COL_TEXT, 1, 0);
+	sui_text([p_x + 24, p_y + 84], SZ_LABEL,
+	         "twelve \"Player\"s on one scoreboard -- pick something of your own.", COL_TEXT, 1, 0);
+
+	ui_field("nm_field", [p_x + 24, p_y + 112], [472, 30],
+	         ui_name_field, ui_name_caret, "your name");
+
+	if (ui_name_err != "")
+		sui_text([p_x + 24, p_y + 148], SZ_LABEL, ui_name_err, '1 0.55 0.35', 1, 0);
+	else
+		sui_text([p_x + 24, p_y + 148], SZ_LABEL,
+		         "^ codes allowed. Your times follow your id, not this name.",
+		         COL_DIM, 1, 0);
+
+	if (ui_button("nm_go", [p_x + 24, p_y + btn], [230, 30], "continue"))
+	{
+		err = ui_name_take(ui_name_field);
+		if (err != "")
+		{
+			ui_name_err = err;
+		}
+		else
+		{
+			// The launch this screen interrupted, resumed.  Both callees
+			// re-run their gates; the name gate now passes.
+			menu_screen = ui_name_back;
+			if (ui_name_resume == 1)
+				ui_launch();
+			else if (ui_name_resume == 2)
+				ui_connect(ui_name_arg);
+			ui_name_resume = 0;
+		}
+	}
+
+	if (ui_button("nm_back", [p_x + 396, p_y + btn], [100, 30], "back"))
+	{
+		ui_name_resume = 0;
+		menu_screen = ui_name_back;
+	}
 };
 
 void(vector screensize) screen_main =
@@ -4492,6 +4742,8 @@ void(vector screensize) m_draw =
 
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
+	else if (menu_screen == SCREEN_NAME)
+		screen_name(screensize);
 	else if (menu_screen == SCREEN_CREATE)
 	{
 		/*
@@ -4571,6 +4823,16 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			if (menu_screen == SCREEN_TERMS)
 				return TRUE;
 
+			// Patch 340: the name screen HAS a cancel -- unlike the terms --
+			// and ESC is it.  Back to the screen the gate interrupted; the
+			// launch stays interrupted, which is the point of a gate.
+			if (menu_screen == SCREEN_NAME)
+			{
+				ui_name_resume = 0;
+				menu_screen = ui_name_back;
+				return TRUE;
+			}
+
 			if (menu_screen == SCREEN_CREATE)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
@@ -4615,6 +4877,53 @@ float(string cmd) m_consolecommand =
 	  observe the state machine between waits without starting a second request
 	  -- which is what makes the whole sequence falsifiable from a cfg.
 	*/
+	if (argv(0) == "ui_close")
+	{
+		/*
+		  Patch 340's harness door, and a config one generally: the menu VM's
+		  toggle entry only ever OPENS (m_toggle's wantmode 1 is "toggle on",
+		  and `togglemenu` always sends 1), so a headless run that loaded the
+		  menu had no console route back to the game -- and notmenu=0 skips the
+		  whole in-game HUD stack, which is everything a screenshot harness
+		  wants to see.  m_close is safe when already closed: it drops the key
+		  dest and the active flag, which is exactly the state asked for.
+		*/
+		m_close();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_name")
+	{
+		/*
+		  Patch 340's headless surface.  `ui_name` alone reports what the gate
+		  sees; `ui_name test <s>` judges a string WITHOUT setting it, which is
+		  the interesting arm -- the defaults the gate exists for ("Player",
+		  "(1)Player") are shapes no test can otherwise reach without editing
+		  the config between runs.
+		*/
+		if (argv(1) == "test")
+			print(sprintf("ui_name: %S -- %s\n", argv(2),
+			              ui_name_default(argv(2)) ? "default" : "chosen"));
+		else if (argv(1) == "screen")
+		{
+			// Force the screen up regardless of the current name, for the
+			// screenshot harness: the gate's PREDICATE is testable from a log,
+			// its LAYOUT is not.
+			ui_name_back   = SCREEN_MAIN;
+			ui_name_field  = "";
+			ui_name_caret  = 0;
+			ui_name_err    = "";
+			ui_name_resume = 0;
+			menu_screen    = SCREEN_NAME;
+			print("ui_name: SCREEN_NAME forced\n");
+		}
+		else
+			print(sprintf("ui_name: name %S -- %s\n", cvar_string("name"),
+			              ui_name_default(cvar_string("name")) ? "default"
+			                                                  : "chosen"));
+		return TRUE;
+	}
+
 	if (argv(0) == "ui_join")
 	{
 		if (argv(1) == "")

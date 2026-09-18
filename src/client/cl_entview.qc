@@ -149,6 +149,30 @@ entity  ev_head;
 
 float  ui_ev_open;              // the overlay is up
 float  ev_sel;                  // selected row, -1 for none
+/*
+  BUILD 84 -- THE HOVER HALF.  Patch 331: ent_cursor stopped taking the mouse.
+  The passive overlay already probed the crosshair every frame (Ev_Probe in the
+  !ui_ev_cursor arm of Ev_Draw); what it lacked was anywhere to SAY what the
+  probe found, so the answer lived one console command away.  These hold the
+  crosshair row and the card built for it, rebuilt only when the row CHANGES --
+  Ev_Key is a tokenize plus a scan and Ev_FindRowByName is a walk of every row,
+  so the card is a per-hover cost, never a per-frame one.
+
+  ev_hover_mdl is the last "*N" published to the ent_hover_model cvar, which is
+  what the engine's CLQ1_AddHoverBrushes reads to dither the hovered brush's
+  exact faces.  Tracked so the cvar is written on change only, and published as
+  "" the frame the overlay closes or the probe leaves every entity -- a stale
+  "*N" there would keep dithering a trigger nobody is pointing at.
+*/
+float  ev_hover_row;            // row under the crosshair this frame, -1 for none
+string ev_hover_mdl;            // ...and its model, as last published
+string ev_mdl_list;             // the in-view brush models, space-separated
+string ev_mdl_last;             // ...as last published (strzone'd)
+float  ev_mdl_n;
+float  ev_card_row;             // row the cached card lines describe
+float  ev_card_n;
+string ev_card_l[10];
+vector ev_card_col;
 
 /*
   BUILD 56 -- the cursor half.  See the essay above Ev_Copy.
@@ -216,6 +240,16 @@ void() Ev_Free =
 	}
 
 	ev_head = world;
+
+	ev_hover_row = -1;
+	ev_card_row  = -1;
+	/*Ev_HoverPublish is defined further down and fteqcc is one-pass, so the
+	  unpublish is inlined here: same two writes, no forward reference.*/
+	if (ev_hover_mdl != "")
+	{
+		ev_hover_mdl = "";
+		cvar_set("ent_hover_model", "");
+	}
 
 	if (ev_built)
 	{
@@ -873,6 +907,204 @@ vector(string cn) Ev_Colour =
 	return '0.75 0.55 1.00';                                          // violet
 };
 
+/*
+  Publish the hovered brush model to the engine, on change only.  The engine
+  half (CLQ1_AddHoverBrushes, cl_ents.c) dithers that submodel's exact faces
+  through ftesurf_enthover; "" turns it off.  See the hover essay above.
+*/
+void(string mdl) Ev_HoverPublish =
+{
+	if (mdl == ev_hover_mdl)
+		return;
+	ev_hover_mdl = mdl;
+	cvar_set("ent_hover_model", mdl);
+};
+
+float(string tn) Ev_FindRowByName =
+{
+	local float r;
+
+	if (tn == "")
+		return -1;
+	for (r = 0; r < ev_n; r = r + 1)
+		if (Ev_Key(r, "targetname") == tn)
+			return r;
+	return -1;
+};
+
+/*
+  Field n of a comma-joined Source output value ("tgt,Command,args,delay,once").
+  tokenize splits on whitespace and these never contain one, so the comma has
+  to be walked by hand.  strofs, not a char loop: QC has no char access.
+*/
+string(string s, float n) Ev_CommaField =
+{
+	local float i, st, p;
+
+	st = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		p = strstrofs(s, ",", st);
+		if (p < 0)
+			return "";
+		st = p + 1;
+	}
+	p = strstrofs(s, ",", st);
+	if (p < 0)
+		return substring(s, st, strlen(s) - st);
+	return substring(s, st, p - st);
+};
+
+/*
+  THE CARD.  What is under the crosshair, in the order a bug report needs it:
+  what it is, how big it is, where it sends you, what it fires when touched.
+
+  The teleport line is the question that started the feature -- "a teleport,
+  where does it go?" -- answered by resolving `target` against the lump's own
+  targetnames and printing the destination's classname and origin, so "the
+  teleport near spawn" becomes "trigger_teleport "tp_s2" goes to "s2_land"
+  (info_teleport_destination) at 1180 -4200 64".  A target that is not in the
+  lump says so rather than printing nothing: a dangling target IS a finding.
+
+  The output lines are the trigger half -- "what does it do when you touch
+  it" -- straight off the authored On* keys, which are lump keyvalues like any
+  other (OnStartTouch, OnTrigger, OnEndTouch), each value a comma-joined
+  "targetname,Input,args,delay,once".  Three are shown and the rest counted,
+  because surf_tensor2's busier triggers carry nine and a ten-line card that
+  follows your head is worse than one that says "+6 more outputs" and points
+  at ent_report.
+*/
+void(float row) Ev_CardBuild =
+{
+	local string cn, tn, mdl, tgt, k, v, f0, f1, f2;
+	local float i, first, n, drow, shown, total;
+	local vector org, mn, mx;
+	local entity e;
+
+	ev_card_row = row;
+	ev_card_n = 0;
+	if (row < 0 || row >= ev_n)
+		return;
+
+	cn  = bufstr_get(ev_cn, row);
+	mdl = bufstr_get(ev_mdl, row);
+	ev_card_col = Ev_Colour(cn);
+
+	tn = Ev_Key(row, "targetname");
+	ev_card_l[ev_card_n] = (tn == "") ? cn : sprintf("%s \"%s\"", cn, tn);
+	ev_card_n = ev_card_n + 1;
+
+	if (mdl != "")
+	{
+		for (e = ev_head; e; e = e.ev_next)
+			if (e.ev_row == row)
+				break;
+		if (e)
+		{
+			mn = e.absmin;
+			mx = e.absmax;
+			ev_card_l[ev_card_n] = sprintf("brush %s  %.0f x %.0f x %.0f u", mdl,
+			                               mx_x - mn_x, mx_y - mn_y, mx_z - mn_z);
+			ev_card_n = ev_card_n + 1;
+		}
+	}
+
+	tgt = Ev_Key(row, "target");
+	if (tgt != "")
+	{
+		drow = Ev_FindRowByName(tgt);
+		if (drow >= 0)
+		{
+			tokenize(Ev_Key(drow, "origin"));
+			org = [stof(argv(0)), stof(argv(1)), stof(argv(2))];
+			ev_card_l[ev_card_n] = sprintf("%s \"%s\" (%s) at %.0f %.0f %.0f",
+			                               (cn == "trigger_teleport") ? "goes to" : "fires",
+			                               tgt, bufstr_get(ev_cn, drow), org_x, org_y, org_z);
+		}
+		else
+			ev_card_l[ev_card_n] = sprintf("%s \"%s\" -- NOT IN LUMP",
+			                               (cn == "trigger_teleport") ? "goes to" : "fires", tgt);
+		ev_card_n = ev_card_n + 1;
+	}
+
+	tokenize(bufstr_get(ev_ix, row));
+	first = stof(argv(0));
+	n     = stof(argv(1));
+	shown = 0;
+	total = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		k = bufstr_get(ev_k, first + i);
+		if (substring(k, 0, 2) != "On")
+			continue;
+		total = total + 1;
+		if (shown >= 3 || ev_card_n >= 8)
+			continue;
+		v  = bufstr_get(ev_v, first + i);
+		f0 = Ev_CommaField(v, 0);
+		f1 = Ev_CommaField(v, 1);
+		f2 = Ev_CommaField(v, 2);
+		ev_card_l[ev_card_n] = (f2 == "") ? sprintf("%s > %s . %s", k, f0, f1)
+		                                   : sprintf("%s > %s . %s(%s)", k, f0, f1, f2);
+		ev_card_n = ev_card_n + 1;
+		shown = shown + 1;
+	}
+	if (total > shown && ev_card_n < 9)
+	{
+		ev_card_l[ev_card_n] = sprintf("+ %g more output%s", total - shown,
+		                               (total - shown == 1) ? "" : "s");
+		ev_card_n = ev_card_n + 1;
+	}
+
+	if (ev_card_n < 9)
+	{
+		ev_card_l[ev_card_n] = "ent_report full | ent_copy copy | ESC off";
+		ev_card_n = ev_card_n + 1;
+	}
+};
+
+/*
+  The card, after renderscene and after HUD_Draw, beside Ev_Labels and for the
+  same reason: it is 2D.  Anchored to the crosshair rather than to the entity,
+  because the entity's projected centre can be off-screen for a trigger you
+  are standing inside -- which is exactly the hover the card exists for.
+*/
+void() Ev_CardDraw =
+{
+	local vector p, vsize;
+	local float i, tsz, rowh, pad, mw, w;
+
+	if (!ui_ev_open || ui_ev_cursor || ev_hover_row < 0 || ev_card_row != ev_hover_row)
+		return;
+
+	Font_Set(ui_font_mono);
+	vsize = getproperty(VF_SCREENVSIZE);
+	tsz   = Font_Px(8 * ui_cv_scale);
+	rowh  = tsz + 4 * ui_cv_scale;
+	pad   = 6 * ui_cv_scale;
+	mw    = 0;
+	for (i = 0; i < ev_card_n; i = i + 1)
+	{
+		w = stringwidth(ev_card_l[i], TRUE, [tsz, tsz]);
+		if (w > mw)
+			mw = w;
+	}
+
+	p = [vsize_x * 0.5 + 28 * ui_cv_scale, vsize_y * 0.5 - (ev_card_n * rowh) * 0.5];
+	drawfill([p_x - pad, p_y - pad], [mw + 2 * pad, ev_card_n * rowh + 2 * pad], EVC_PANEL, 0.55);
+	drawfill([p_x - pad, p_y - pad], [2 * ui_cv_scale, ev_card_n * rowh + 2 * pad], ev_card_col, 0.9);
+	for (i = 0; i < ev_card_n; i = i + 1)
+	{
+		if (i == 0)
+			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, ev_card_col, 1);
+		else if (i == ev_card_n - 1)
+			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.60 0.60 0.60', 0.8);
+		else
+			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.85 0.85 0.90', 0.95);
+		p_y = p_y + rowh;
+	}
+};
+
 void() Ev_Draw =
 {
 	local entity e;
@@ -881,12 +1113,24 @@ void() Ev_Draw =
 	local string cn, mdl;
 
 	if (!ui_ev_open)
+	{
+		Ev_HoverPublish("");
+		ev_hover_row = -1;
+		if (ev_mdl_last != "")
+		{
+			strunzone(ev_mdl_last);
+			ev_mdl_last = "";
+		}
+		cvar_set("ent_view_models", "");
 		return;
+	}
 	if (!Ev_Ready())
 		return;
 
 	// QuakeC locals are not zeroed; fteqcc warns F302 if you forget.
 	drawn = 0;
+	ev_mdl_list = "";
+	ev_mdl_n = 0;
 	vsize = getproperty(VF_SCREENVSIZE);
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
@@ -973,9 +1217,29 @@ void() Ev_Draw =
 			ev_mouse_seen   = FALSE;
 		}
 		ev_hover = hover;
+		ev_hover_row = hover;
 	}
 	else
+	{
 		hover = Ev_Probe();
+		ev_hover_row = hover;
+		/*
+		  The dither faces and the card both key off the row, and both are
+		  change-triggered: the cvar write because cvar_set is a hash insert,
+		  the card because Ev_Key is a tokenize plus a scan.
+		*/
+		if (hover >= 0)
+		{
+			Ev_HoverPublish(bufstr_get(ev_mdl, hover));
+			if (hover != ev_card_row)
+				Ev_CardBuild(hover);
+		}
+		else
+		{
+			Ev_HoverPublish("");
+			ev_card_row = -1;
+		}
+	}
 
 	e = ev_head;
 	while (e && drawn < budget)
@@ -1029,6 +1293,22 @@ void() Ev_Draw =
 		  dot-product test here is that guard and it runs BEFORE the projection,
 		  not after it.
 		*/
+		/*
+		  BUILD 84 / Patch 331 addendum: the in-view brush list.  The boxes above
+		  are edges only, and a box does not say which way a trigger's faces lie
+		  or that a func_ladder is a volume you can stand in -- so the same walk
+		  publishes the "*N" of every brush entity it drew, and the engine's
+		  CLQ1_AddEntViewBrushes dithers each one's exact faces at a faint
+		  coverage (the hover keeps its brighter one).  Capped at 48 because the
+		  list rides in a cvar string and 192 boxes' worth of indices would not.
+		*/
+		mdl = bufstr_get(ev_mdl, row);
+		if (mdl != "" && ev_mdl_n < 48)
+		{
+			ev_mdl_list = strcat(ev_mdl_list, sprintf("%g ", stof(substring(mdl, 1, strlen(mdl) - 1))));
+			ev_mdl_n = ev_mdl_n + 1;
+		}
+
 		if (labels && ev_lab_n < EV_LABELS && (fwd * (mid - eye)) > 8)
 		{
 			sp = project(mid);
@@ -1048,6 +1328,19 @@ void() Ev_Draw =
 		}
 
 		e = e.ev_next;
+	}
+
+	/*
+	  Publish on change only, zone'd like ev_copied: a cvar string is copied on
+	  set, but our comparison string has to outlive the frame that built it or
+	  every frame would look like a change.
+	*/
+	if (ev_mdl_list != ev_mdl_last)
+	{
+		if (ev_mdl_last != "")
+			strunzone(ev_mdl_last);
+		ev_mdl_last = (ev_mdl_list == "") ? "" : strzone(ev_mdl_list);
+		cvar_set("ent_view_models", ev_mdl_list);
 	}
 };
 
@@ -1264,7 +1557,7 @@ void() Ev_CursorOn =
 	activate_mouse_cursor();
 	UI_CursorClaim(UIC_ENTVIEW);
 
-	print("^5ent_cursor^7: click an entity to select it, click a line to copy it; ESC or ent_cursor to finish\n");
+	print("^5ent_panel^7: click an entity to select it, click a line to copy it; ESC or ent_panel to finish\n");
 };
 
 /*
@@ -1590,13 +1883,74 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
   with hud_results 0 MOUSE3 did nothing after any finish until the next run
   started.  This is the card's own test, so exactly one of the two answers.
 */
+/*
+  The overlay's on and off, as commands and as gestures see it.  Ev_On refuses
+  exactly where Ev_CursorOn refused (no lump data yet) and drops the panel
+  first if it happens to be open -- the two modes share one overlay and one
+  entity table, and a cursor you cannot see must never survive the toggle that
+  says "the mouse is mine again".
+*/
+void() Ev_On =
+{
+	if (ui_ev_open && !ui_ev_cursor)
+		return;
+	if (!Ev_Ready())
+	{
+		print("^1ent_cursor^7: no map entity data yet\n");
+		return;
+	}
+	if (ui_ev_cursor)
+		Ev_CursorOff();
+	ui_ev_open   = TRUE;
+	ev_card_row  = -1;
+	ev_hover_row = -1;
+	print(sprintf("^5ent_cursor^7: on -- %g entities (%g brush, %g point); point at anything%s\n",
+	              ev_n, ev_brush_n, ev_point_n,
+	              ev_over ? sprintf(", %g over EV_MAX not listed", ev_over) : ""));
+};
+
+void() Ev_Off =
+{
+	if (!ui_ev_open && !ui_ev_cursor)
+		return;
+	Ev_CursorOff();
+	ui_ev_open = FALSE;
+	Ev_HoverPublish("");
+	ev_hover_row = -1;
+	ev_card_row  = -1;
+	print("^5ent_cursor^7: off\n");
+};
+
+/*
+  BUILD 84 (Patch 331): MOUSE3 TOGGLES THE OVERLAY, and ESC puts it away.  The
+  old gesture here was "take the cursor", which is precisely what the feature
+  request asked to stop happening; the panel it opened is one command away at
+  ent_panel for whoever wants the click-to-copy half.  ESC falls through when
+  the overlay is off, so the menu still gets it, and the results card is asked
+  first by the chain in cl_main.qc, so a card on screen keeps the key it always
+  had.
+*/
 float(float scanx) Ev_PassiveKey =
 {
-	if (scanx != K_MOUSE3 || !ui_ev_open || ui_ev_cursor ||
-	    (ui_rs_open && cvar("hud_results")))
+	if (ui_ev_cursor)
 		return FALSE;
-	Ev_CursorOn();
-	return ui_ev_cursor;
+
+	if (scanx == K_ESCAPE)
+	{
+		if (!ui_ev_open)
+			return FALSE;
+		Ev_Off();
+		return TRUE;
+	}
+
+	if (scanx != K_MOUSE3 || (ui_rs_open && cvar("hud_results")))
+		return FALSE;
+
+	if (ui_ev_open)
+		Ev_Off();
+	else
+		Ev_On();
+	return TRUE;
 };
 
 /*
@@ -1618,7 +1972,13 @@ void() Ev_Register =
 	registercommand("ent_view");
 	registercommand("ent_reload");
 	// Build 56: the cursor, and the scripted forms of what the mouse does.
+	// Build 84 (Patch 331): ent_cursor became the passive overlay; ent_panel is
+	// the click-to-copy inspector it used to open; ent_report and ent_copy are
+	// the hover's full report and its clipboard line.
 	registercommand("ent_cursor");
+	registercommand("ent_panel");
+	registercommand("ent_report");
+	registercommand("ent_copy");
 	registercommand("ent_click");
 	registercommand("ent_copyrow");
 	registercommand("ent_copyall");
@@ -1643,6 +2003,22 @@ void() Ev_Register =
 	// See the essay in Ev_AddCopy; both are invisible to MOVE_NOMONSTERS, which
 	// is what keeps them off the glare traces.
 	registercvar("ent_view_solid", "1");
+	/*
+	  Patch 331: the engine reads this one.  CSQC publishes the hovered brush
+	  entity's "*N" here every time the hover changes, and CLQ1_AddHoverBrushes
+	  (cl_ents.c) dithers that submodel's exact faces through ftesurf_enthover.
+	  NOSAVE by nature -- it is written every frame the overlay is up and
+	  cleared the frame it is not, so a saved copy would be a lie by morning.
+	*/
+	registercvar("ent_hover_model", "");
+	/*
+	  Patch 331 addendum: the in-view brush models, space-separated submodel
+	  indices, published by Ev_Draw's box walk and read by the engine's
+	  CLQ1_AddEntViewBrushes so every trigger and func_ladder in view carries
+	  the dither, not just the hovered one.  Empty string = overlay off, which
+	  is the only off-switch the engine side needs.
+	*/
+	registercvar("ent_view_models", "");
 };
 
 float(string cmd) Ev_ConsoleCommand =
@@ -1673,13 +2049,23 @@ float(string cmd) Ev_ConsoleCommand =
 			return TRUE;
 		}
 		ui_ev_open = !ui_ev_open;
+		if (ui_ev_open)
+		{
+			ev_card_row  = -1;
+			ev_hover_row = -1;
+		}
 		// Closing the overlay closes the cursor with it: a panel you cannot see
-		// must not keep the mouse.
+		// must not keep the mouse.  And unpublishes the hover: Patch 331's
+		// dither faces key off a cvar the engine reads every frame, so a stale
+		// "*N" would keep stippling a trigger nobody is pointing at.
 		if (!ui_ev_open)
+		{
 			Ev_CursorOff();
+			Ev_HoverPublish("");
+		}
 		print(sprintf("^5ent_view^7: %s -- %g entities (%g brush, %g point)%s\n",
 		              ui_ev_open ? "on" : "off", ev_n, ev_brush_n, ev_point_n,
-		              ui_ev_open ? "; mouse3 or ent_cursor for the cursor" : ""));
+		              ui_ev_open ? "; ent_panel for the click-to-copy inspector" : ""));
 		if (ev_over)
 			print(sprintf("^3ent_view^7: %g entities past EV_MAX and not listed\n", ev_over));
 		return TRUE;
@@ -1693,15 +2079,70 @@ float(string cmd) Ev_ConsoleCommand =
 	  pairing, the wheel, MOUSE3, ESC and the header-line copy are hand-only, so
 	  a green scripted run says nothing about those.
 	*/
+	/*
+	  BUILD 84 / Patch 331.  ent_cursor IS THE OVERLAY, and it never takes the
+	  mouse.  Asked for as "make ent_cursor work without taking control of the
+	  player's mouse, just display a transparent overlay with whatever you're
+	  pointing at telling you what it is and the functions" -- and "have a
+	  ability to turn it off", which it now has three ways: `ent_cursor 0`,
+	  ESC, and MOUSE3.  The click-to-copy inspector it used to open still
+	  exists, one name over, at ent_panel.
+	*/
 	if (argv(0) == "ent_cursor")
+	{
+		if (argv(1) == "0")
+			Ev_Off();
+		else if (argv(1) == "1")
+			Ev_On();
+		else if (ui_ev_open && !ui_ev_cursor)
+			Ev_Off();
+		else
+			Ev_On();
+		return TRUE;
+	}
+
+	if (argv(0) == "ent_panel")
 	{
 		if (ui_ev_cursor)
 		{
 			Ev_CursorOff();
-			print("^5ent_cursor^7: off\n");
+			print("^5ent_panel^7: off\n");
 		}
 		else
 			Ev_CursorOn();
+		return TRUE;
+	}
+
+	/*
+	  The hovered entity, in full, without a click: the greppable line, every
+	  authored key, the clipboard line and the server's half -- Ev_Report is the
+	  same function a click with the cursor taken calls, so the hover and the
+	  pick cannot describe different entities.
+	*/
+	if (argv(0) == "ent_report")
+	{
+		local entity e;
+
+		if (ev_hover_row < 0 || !ui_ev_open)
+		{
+			print("^3ent_report^7: nothing hovered -- ent_cursor first\n");
+			return TRUE;
+		}
+		for (e = ev_head; e; e = e.ev_next)
+			if (e.ev_row == ev_hover_row)
+				break;
+		Ev_Report(ev_hover_row, e, getproperty(VF_ORIGIN));
+		return TRUE;
+	}
+
+	if (argv(0) == "ent_copy")
+	{
+		if (ev_hover_row < 0 || !ui_ev_open)
+		{
+			print("^3ent_copy^7: nothing hovered -- ent_cursor first\n");
+			return TRUE;
+		}
+		Ev_Copy(Ev_Summary(ev_hover_row), "the hovered entity");
 		return TRUE;
 	}
 

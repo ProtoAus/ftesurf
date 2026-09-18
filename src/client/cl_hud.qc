@@ -618,8 +618,9 @@ float  rec_sl_held;
 // first.  The two are read together everywhere else.
 
 // --- energy -----------------------------------------------------------------
-float  ui_anchor_z;         // the height everything is measured from
-float  ui_anchor_zone;      // which zone set it; -1 = none yet
+// ui_anchor_z and ui_anchor_zone MOVED TO cl_board.qc in Patch 332, for the
+// same reason build 26 moved ui_jump_* there: the saveloc restore writes them
+// and cl_board.qc compiles before this file.  Every reader here is unchanged.
 float  ui_anchor_manual;    // set by hand with `ui_anchor`; zones will not move it
 string ui_anchor_map;
 
@@ -751,6 +752,7 @@ void() HUD_RegisterCvars =
 	registercvar("hud_board_size",    "0", CVAR_ARCHIVE);
 	registercvar("hud_speed_size",    "0", CVAR_ARCHIVE);
 	registercvar("hud_energy_size",   "0", CVAR_ARCHIVE);
+	registercvar("hud_energy_dbg",  "0");
 	registercvar("hud_debug_size",    "0", CVAR_ARCHIVE);
 	registercvar("hud_mapinfo_size",  "0", CVAR_ARCHIVE);
 	/*
@@ -1993,6 +1995,17 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		if (ui_hl_tick && !ehold)
 			ui_hl_e = erel;
 
+		/*
+		  Patch 332's probe, kept: the E -1 report.  One line, behind a cvar, with
+		  every term of the subtraction and both latches -- because the anchor
+		  half of this readout is written by four different rules in two files
+		  and the only way to see which one moved it is to print them mid-frame.
+		  Goes to the console, so it lands in log files like every other probe.
+		*/
+		if (cvar("hud_energy_dbg"))
+			print(sprintf("edbg z %f ref %f e %f erel %f hl %f tick %g hold %g nz %g\n",
+			              org_z, ref, e, erel, ui_hl_e, ui_hl_tick, ehold, nozone));
+
 		if (nozone)
 			s = "-- no start zone";
 		else if (ui_cv_energy >= 2)
@@ -2366,7 +2379,24 @@ vector(float kind, float launch) HUD_SeqColor =
 	*/
 	if (kind == SEG_BOARD) return '1.00 0.62 0.34';
 	if (kind == SEG_RAMP) return '0.72 0.74 0.76';  // on a ramp, grey
-	return '1.00 0.96 0.62';                        // in the air, light yellow
+	/*
+	  BUILD 86 -- THE AIR FAMILY IS GREEN.
+
+	      "Make the hud colours of the Jump/Bhop/Air a greenish colour."
+
+	  One colour for all three words, because Jump, Bhop and Air are one KIND --
+	  HUD_SeqName picks between them off seq_sub and HUD_SeqColor is not handed
+	  it.  The row colour goes on saying which kind a row is; the word goes on
+	  saying how that air started.
+
+	  MINT RATHER THAN A PURE GREEN, and the three neighbours are the reason.
+	  The launch above is '0.62 1.00 0.62', a PALE yellow-green, and it has to
+	  stay the row that stands out; HUD_QualityColor's top two steps -- the
+	  percentage drawn at the right of this very row -- are '0.30 1.00 0.45' and
+	  '0.70 0.95 0.35'.  Pulling blue up and red down lands clear of all three,
+	  so the column's two signals stay separable at 14 px.
+	*/
+	return '0.40 0.90 0.70';                        // in the air, mint green
 };
 
 /*
@@ -2703,17 +2733,28 @@ void(vector scr) HUD_DrawSeq =
 	  widths and the same anchor.  They are the two places a row is built twice in
 	  this function, which is exactly where a column silently stops lining up.
 
-	  THE ABSOLUTE IS REFERENCED HERE, NOT AT PUSH TIME.  seq_eend holds raw
-	  Strafe_Energy output; subtracting the LIVE reference means every row on
-	  screen shares one zero, so `abs` of a row is `abs` of the row above plus this
-	  row's delta, and the bottom row agrees with the `e` readout by the crosshair.
-	  Freezing it at push time would have measured each row against whatever anchor
-	  was in force when it closed, and the anchor re-bases on every jump.  See
-	  seq_eend in cl_board.qc.
+	  BUILD 86: THE ABSOLUTE IS REFERENCED AGAINST THE ROW'S OWN ZERO.  seq_eend
+	  still holds raw Strafe_Energy output, and seq_eref beside it holds the
+	  reference in force when that row closed, so a row goes on saying what it said
+	  when you read it.
 
-	  A ROW LOADED FROM A BUILD-64 SAVE HAS NO ABSOLUTE.  Its seq_eend is 0, which
-	  after referencing is a large negative number rather than a plausible one --
-	  visibly missing, which is the right failure.  Nothing is invented for it.
+	  Build 65 subtracted the LIVE reference here instead, to give the whole column
+	  one zero -- `abs` of a row being `abs` of the row above plus this row's delta.
+	  The anchor re-bases on every jump, though, so that made every row on screen
+	  restate itself the moment you touched down and hopped: on a bhop map the
+	  history was rewritten once a second.  The telescoping is what was traded away
+	  for rows that hold still, and only across an anchor change; the essay beside
+	  seq_eref in cl_board.qc makes the whole argument.
+
+	  eref IS STILL READ (above) and is still what the LIVE rows below use -- they
+	  are happening now, so now's reference is theirs -- and it is what an older
+	  save's rows are stamped with on load, which is what keeps them drawing as they
+	  used to.
+
+	  A ROW LOADED FROM A BUILD-64 SAVE HAS NO ABSOLUTE.  Its seq_eend is 0 and its
+	  stamp is the live reference (Seq_Read seeds it so), which is a large negative
+	  number rather than a plausible one -- visibly missing, which is the right
+	  failure.  Nothing is invented for it.
 	===========================================================================
 	*/
 	eref  = HUD_EnergyRef();
@@ -2747,7 +2788,7 @@ void(vector scr) HUD_DrawSeq =
 		if (nm)
 			s = sprintf("%5s: ", HUD_SeqName(seq_kind[i], seq_sub[i]));
 		if (sabs)
-			s = strcat(s, HUD_SeqAbsCol(seq_eend[i] - eref, grav));
+			s = strcat(s, HUD_SeqAbsCol(seq_eend[i] - seq_eref[i], grav));
 
 		/*
 		  Build 20/65.  `e` is world units of height, the same unit as the `e`
@@ -2862,7 +2903,7 @@ void(vector scr) HUD_DrawSeq =
 		{
 			s2 = "";
 			if (sabs)
-				s2 = sprintf("%5.0fu/s ", Strafe_EquivSpeed(seq_eend[i] - eref, grav));
+				s2 = sprintf("%5.0fu/s ", Strafe_EquivSpeed(seq_eend[i] - seq_eref[i], grav));
 			if (sdel)
 				s2 = sprintf("%s%+5.0fu/s ", s2, seq_gain[i]);
 			// Build 65.1: padded to end where the row above ends, so the pair
@@ -5085,7 +5126,7 @@ vector() HUD_WishDir =
 	  column is washed out in a screenshot, which is no way to prove a claim
 	  about one frame in five.  This reaches the log, where it can be counted.
 
-	  A cvar rather than a command so a testrun cfg can arm it, and self-clearing
+	  A cvar rather than a command so a test cfg can arm it, and self-clearing
 	  so it cannot be left on: at 340 fps an unbounded version would write tens
 	  of thousands of lines a minute.  Same shape as zone_debug, for the same
 	  reason.

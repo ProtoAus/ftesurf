@@ -116,7 +116,18 @@ def is_prefix(path):
 # things -- a v6 run across a stage teleport carries no `warp` record BECAUSE THE
 # WRITER DID NOT EXIST, while a v7 run with none means nothing teleported the
 # player.  Re-simulation must trust the second and refuse the first.
-COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17}
+#
+# BUILD 85 ADDS VERSION 8 WITH THE SAME SEVENTEEN COLUMNS A FOURTH TIME, and it is
+# the first bump that WITHDRAWS a claim.  Two new records (`ride`, `inend`) and a
+# seventh `end` field, all additive -- but v7's claim that no `warp` records means
+# nothing imposed state was measured FALSE: E5 found ten boosters on surf_trance,
+# a v7 PB with zero warps and no position discontinuity anywhere.  trigger_push's
+# continuous arm writes no velocity, it writes a CARRIER handed to the mover.
+#
+# So the two versions read differently: for v7 and below the true sentence is
+# "nothing THIS FORMAT CAN EXPRESS imposed state"; only from v8 does silence about
+# boosters say anything about the run.
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17, 8: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -241,6 +252,14 @@ HEAD_V6 = HEAD_V5 | {"instart"}
 #           the offset within the rule it states.  This tool does not know what
 #           run_startjitter was set to and deliberately does not guess.
 HEAD_V7 = HEAD_V6 | {"startjit"}
+
+# v8 (build 85) ADDS NO HEADER KEY, which is worth a line precisely because the
+# version moved.  Its two additions are both RECORDS -- `ride` in the body and
+# `inend` written at close -- and `inend` is a record rather than the header key
+# its name and its `instart` twin both suggest, because the value does not exist
+# until the run ends and this header is sealed at `begin`.  A checker that went
+# looking for it up here would fault every correct v8 file.
+HEAD_V8 = HEAD_V7
 
 # The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming
@@ -433,7 +452,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 7:
+    if ver >= 8:
+        allowed = HEAD_V8
+    elif ver >= 7:
         allowed = HEAD_V7
     elif ver >= 6:
         allowed = HEAD_V6
@@ -661,6 +682,8 @@ def check_rec(path, verbose=False):
     stagerecs = []          # (lineno, kind, args) -- build 43: stage/stagestart/restart
     inrows = 0              # build 82: `in` records seen
     warps = []              # (lineno, args) -- build 83 v7 imposed-state records
+    rides = []              # (lineno, args) -- build 85 v8 carrier span records
+    in_end = None           # (lineno, args) -- build 85 v8 closing horizon
     in_pk = None            # last packet ordinal
     in_mt = None            # last cumulative mover tick
     in_packets = 0          # distinct packet ordinals
@@ -912,6 +935,23 @@ def check_rec(path, verbose=False):
             # by a newer server -- which is the failure this tool exists on the
             # other side of.  Shape is checked; vocabulary is reported.
             warps.append((lineno + 1, tok[1:]))
+        elif kind == "ride":
+            # Build 85, v8.  `ride <pk> <mt> <what> <bx by bz>` -- the velocity
+            # CARRIER.  `arm` is the basevelocity handed to the mover, and it
+            # PERSISTS UNTIL THE NEXT RECORD; `pay` is a cash-out into real
+            # velocity in PreThink.  A span, not an event: E5 measured rides up to
+            # 62 ticks (0.915 s) with no position discontinuity to fire on.
+            rides.append((lineno + 1, tok[1:]))
+        elif kind == "inend":
+            # Build 85, v8.  `inend <mt> <carry>` -- the closing horizon, and
+            # `instart`'s counterpart.  A record, not a key: the value does not
+            # exist until the run ends.  Without it the last `in` row has no
+            # duration, and that is the move the finish is latched on (E3: 1-2
+            # ticks, a rank).
+            if in_end is not None:
+                r.fault("line %d: a second 'inend' -- the closing horizon is "
+                        "written once, at close" % (lineno + 1))
+            in_end = (lineno + 1, tok[1:])
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
@@ -964,6 +1004,99 @@ def check_rec(path, verbose=False):
         r.note("the file carries %d 'warp' records under a v%d header -- the "
                "record is v7; an older marker over a newer body means a writer "
                "and its version string moved apart" % (len(warps), ver))
+
+    # ---- the carrier spans, build 85 ---------------------------------------
+    #
+    # `ride <pk> <mt> <what> <bx by bz>` -- six fields after the keyword.  Shape,
+    # the <what> vocabulary (CLOSED, unlike `warp`'s -- see below), the horizon,
+    # and the one ordering rule the record has.  Nothing about whether a carrier
+    # is PLAUSIBLE: this tool has no physics and a basevelocity is authored by a
+    # map, so any magnitude is a legal thing for a file to state.
+    if rides:
+        whats = {}
+        prev_mt = None
+        for ln, a in rides:
+            if len(a) != 6:
+                r.fault("line %d: 'ride' takes 6 fields "
+                        "(pk mt what bx by bz), has %d" % (ln, len(a)))
+                continue
+            if not all(x.lstrip("-").isdigit() for x in a[:2]):
+                r.fault("line %d: 'ride' pk/mt are not integers: %r %r"
+                        % (ln, a[0], a[1]))
+                continue
+            if not all(is_float(x) for x in a[3:]):
+                r.fault("line %d: 'ride' has a non-numeric carrier" % ln)
+                continue
+            # CLOSED VOCABULARY HERE, OPEN FOR `warp`, and that is not an
+            # inconsistency: a <kind> names WHICH handler imposed state and
+            # handlers are a growing set, while <what> names which half of a
+            # mechanism that has exactly two.  A third word means the writer grew
+            # a state this grammar cannot express -- a fault, not a note.
+            if a[2] not in ("arm", "pay"):
+                r.fault("line %d: 'ride' what is %r, not 'arm' or 'pay'"
+                        % (ln, a[2]))
+                continue
+            whats[a[2]] = whats.get(a[2], 0) + 1
+            mt = int(a[1])
+            if in_start is not None and mt < in_start:
+                r.fault("line %d: ride at movetick %d is below the trace's "
+                        "horizon %d" % (ln, mt, in_start))
+            # MONOTONE IN <mt>.  `warp` is not checked for this -- several can
+            # share a packet and arrive in touch order -- but these are written
+            # once per command from PreThink, so backwards means a wrong field.
+            if prev_mt is not None and mt < prev_mt:
+                r.fault("line %d: ride at movetick %d follows one at %d -- the "
+                        "carrier track is written per command and cannot go "
+                        "backwards" % (ln, mt, prev_mt))
+            prev_mt = mt
+        if whats:
+            r.info["rides"] = ", ".join(
+                "%s x%d" % (k, n) for k, n in sorted(whats.items()))
+    if rides and ver < 8:
+        r.note("the file carries %d 'ride' records under a v%d header -- the "
+               "record is v8; an older marker over a newer body means a writer "
+               "and its version string moved apart" % (len(rides), ver))
+
+    # ---- the closing horizon, build 85 --------------------------------------
+    #
+    # `inend <mt> <carry>`.  THE PAIR IS WRITTEN UNDER ONE CONDITION -- both
+    # gated on the mover counter existing -- so a file with one and not the other
+    # is saying something about itself, and which one is missing says what.
+    if in_end is not None:
+        ln, a = in_end
+        if len(a) != 2:
+            r.fault("line %d: 'inend' takes 2 fields (mt carry), has %d"
+                    % (ln, len(a)))
+        elif not a[0].lstrip("-").isdigit():
+            r.fault("line %d: 'inend' mt is not an integer: %r" % (ln, a[0]))
+        elif not is_float(a[1]):
+            r.fault("line %d: 'inend' carry is not a number: %r" % (ln, a[1]))
+        else:
+            e_mt = int(a[0])
+            r.info["inend"] = a[0]
+            if in_start is not None and e_mt < in_start:
+                r.fault("line %d: inend %d is below the trace's horizon %d -- "
+                        "the run ended before it began" % (ln, e_mt, in_start))
+            # AND IT MUST NOT PRECEDE THE LAST `in` ROW, which is the whole
+            # reason it is written: the final row's duration is inend minus that
+            # row's <mt>, and a negative duration is not a rounding question.
+            if in_mt is not None and e_mt < in_mt:
+                r.fault("line %d: inend %d is below the last 'in' row's "
+                        "movetick %d -- the final move would have negative "
+                        "duration" % (ln, e_mt, in_mt))
+    # DEMANDED ONLY WHERE A TRAILER IS DEMANDED.  SV_RecClose writes `inend` and
+    # `end` together and nothing else writes either, so a .part or a save prefix
+    # legitimately has neither.  The first cut of this check keyed off `inrows`
+    # alone and faulted build 85's own capture arm -- a false note about a correct
+    # file, the one thing this tool may not produce.
+    if inrows and in_end is None and ver >= 8 and saw_end is not None:
+        r.fault("the file carries %d 'in' records, an 'end' trailer and no "
+                "'inend' -- v8 writes the closing horizon and the trailer from "
+                "one function, so a trailer without one is a writer that has "
+                "gone wrong" % inrows)
+    if in_end is not None and ver < 8:
+        r.note("the file carries an 'inend' record under a v%d header -- the "
+               "record is v8" % ver)
 
     # ---- the trace and its horizon must agree, build 82 ---------------------
     #
@@ -1475,7 +1608,15 @@ def check_rec(path, verbose=False):
         # BUILD 83: AND SIX FROM v7, appended again and never inserted, so the
         # ladder below stays a question about how many to DEMAND rather than
         # about where anything lives.  The sixth is the `warp` count.
-        if ver >= 7:
+        #
+        # BUILD 85: AND SEVEN FROM v8, the `ride` count, appended by the same
+        # rule.  That field carries one meaning the two before it do not: a
+        # `ride` track is a STATE track, so a record lost to the line cap is not
+        # one missing fact but a WRONG carrier held for every command after it,
+        # which does not heal.  The count is the only handle a reader has on that.
+        if ver >= 8:
+            want_end = 7
+        elif ver >= 7:
             want_end = 6
         elif ver >= 6:
             want_end = 5
@@ -1486,6 +1627,14 @@ def check_rec(path, verbose=False):
                     % (ln, want_end, ver, len(args)))
         else:
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            if want_end >= 7:
+                e_ride = float(args[6])
+                # EXACT, and the loudest of the three for the reason above: a
+                # disagreement here means a reader is holding a carrier value the
+                # server never wrote, for an unbounded span.
+                if int(e_ride) != len(rides):
+                    r.fault("'end' says %d ride records, the file has %d"
+                            % (int(e_ride), len(rides)))
             if want_end >= 6:
                 e_warp = float(args[5])
                 # EXACT, LIKE <inputs> AND UNLIKE <samples>.  The writer counts
@@ -1907,6 +2056,16 @@ def emit(r, verbose):
                   # and a passing test suite -- because neither of those reads
                   # this tuple.  Only a person looking at -v output sees it.
                   "startjit", "warps",
+                  # Build 85, and the rule above caught a FOURTH one: both were
+                  # assigned and not listed, and the corpus run and the test suite
+                  # both passed anyway -- neither reads this tuple, and nothing
+                  # automatic does.  THIS TUPLE IS THE ONE PLACE IN THIS FILE WITH
+                  # NO FALSIFIER BEHIND IT.
+                  #
+                  # `rides` prints both kinds, which makes the two carrier
+                  # mechanisms visible at a glance: `arm` then `pay` is a ride, a
+                  # bare `pay` is an AddOutput launch never handed to the mover.
+                  "rides", "inend",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:
