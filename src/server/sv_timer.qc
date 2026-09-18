@@ -2647,7 +2647,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             this is its post-move state.  CHECKED, NOT APPLIED: a
                             replay with the server's physents crosses it itself.
                             Not a `warp` -- nothing outside the mover wrote it.
-    restart <seg> <ticks>   a stage was restarted mid-run
+    restart <seg> <ticks>   a stage was restarted mid-run.  The run clock is
+                            untouched; the zone latches reset (SV_TimerRestartSeg).
+                            engine pm_verify applies it (Patch 369).  Like a
+                            `warp`, it belongs to the last `in` row before it --
+                            and a `warp` or `restart` written AFTER that row's
+                            packet sample came between packets (`!r`, whose zone
+                            warp follows its restart): it acts after that
+                            packet's zone scan, not inside its move
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
                             writer has written the ordinal since build 19, whose
@@ -10449,6 +10456,14 @@ float(vector lastp, vector p, vector pmaxs) SV_VerifyStep =
 		vf_evzone = ez;
 	}
 	return r;
+};
+
+// Patch 369: a `restart` record.  SV_TimerRestartSeg's latch reset, so the zone
+// the replay is put into counts as entered at the next scan.
+void() SV_VerifyRestart =
+{
+	vf_azone = -1;
+	vf_evzone = -1;
 };
 
 void(entity e) SV_TimerFrame =

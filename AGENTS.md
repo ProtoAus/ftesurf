@@ -355,7 +355,9 @@ bannered as superseded.)
   verdict is PASS or the owner approved it (`VER_SQL`, surfd.py). "Current"
   means newer than the file (`at >= replays.submitted`). Reasons never leave
   `/admin`.
-  At each Multi-Session pause it checks the clock (the trace's ticks at the
+  It follows a stage restart through the progs' `SV_VerifyRestart` (Patch 369),
+  and a warp or restart written after its packet's sample (`!r`) acts after
+  that packet's zone scan. At each Multi-Session pause it checks the clock (the trace's ticks at the
   pause's closing horizon = the pause's = the session's) and the resume (the
   seed within 0.0001 of the replayed state: the save writes %.4f) -- HOLD
   otherwise. Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
