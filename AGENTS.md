@@ -155,6 +155,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   - ONE COMMIT PER FEATURE. `git add -A` fuses unrelated workstreams into an
     unbisectable lump — this tree usually holds more than one. Stage the paths
     your change actually touched, and check `git status` for what you left.
+    A shared file (AGENTS.md, ENGINE.txt, ENGINE_PATCHES.md) can hold another
+    session's uncommitted hunks. Stage only yours: `git apply --cached` a
+    trimmed diff. `git add -p` is interactive, which agents cannot use.
   - Format is CONTRIBUTING.md's: `Build NN — …` or a plain subject ≤ 72 chars,
     body Root cause / Fix / Verified. Say what you could NOT verify.
   - `git push origin HEAD:main`. Never force-push and never rewrite pushed
@@ -269,6 +272,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   and proxied at proto.bar/ftesurf/board/ by `src/release/ftesurf.nginx`. Owner
   review is `/admin/runs` on play.proto.bar. The page must use relative URLs,
   because the browser path and Flask's path differ.
+  The admin panel is PUBLIC at play.proto.bar/admin; proto.bar/admin/ is an
+  unrelated FileBrowser. The panel's fleet comes from `cfg/lobby/lobby<N>.cfg`.
+  nginx changes go in `src/release/ftesurf.nginx` or `surfd/surfd.nginx`, and
+  installing them needs Lex's sudo (`install.sh`). A proxied surfd route must
+  set `X-Real-IP`, or every client shares one rate bucket.
 
 ## Anti-cheat and run evidence
 
@@ -332,6 +340,9 @@ bannered as superseded.)
   running; keep a CONTROL that must still fail (a harness that merely got looser
   improves both); write the result back into the header afterwards, INCLUDING
   the predictions that failed — build 85's did, and the failure was the finding.
+  Each prediction must name an observable the change can actually move, and
+  every changed call site needs a subject that only it affects. p358 first
+  "verified" a restore through a cvar string the patch never writes.
 - Capture pattern for a live recording: a run only closes at the finish, which a
   scripted walk never reaches. So the harness holds the run open at the end and
   an outside poller copies `data/parts/0.rec` during that window (an abandoned
@@ -358,7 +369,8 @@ bannered as superseded.)
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
   `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
-  `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. Swap by
+  `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. Run
+  hand tests on a port other than 27698, which is the sweeper's. Swap by
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
   immediately.
@@ -377,8 +389,21 @@ bannered as superseded.)
   logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live
   lobby, check the `trig:` census, hook-alive line and prederr count; every
   rotation map exists locally in the Steam Momentum library.
-- surfd runs as `surfd.service` (gunicorn :8084 behind nginx); logs via
-  `journalctl -u surfd`.
+- surfd is `surfd.service` (gunicorn :8084 behind nginx), and its app log is
+  `/srv/nvme/surfd/logs/surfd.log`. To deploy:
+  1. Take the files FROM THE COMMIT, not the tree:
+     `git -c core.autocrlf=false archive HEAD surfd/... | ssh … tar -x` into a
+     /tmp stage.
+  2. Run the suite there, with `TMPDIR` set to a private dir; the tests leave
+     their temp dirs behind.
+  3. Back up `data/surfd.db` with sqlite's backup API.
+  4. Copy the files in under `flock /tmp/surfd-sweep.lock`.
+  5. Reload with `kill -HUP $(systemctl show surfd -p MainPID --value)` (no
+     sudo), then read the log for `surfd ready`.
+
+  `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
+  so each schema step must be idempotent and safe to race. admin.py must not
+  import surfd; surfd injects what it needs.
 
 ## Chat and `say` — the contract, and it changed in 342
 
