@@ -416,8 +416,10 @@ void(string body) Online_Parse =
 	  spending four string reads to make impossible.
 	*/
 	Online_FreeHave();
+	// surfd lowercases the map (surfd.py clean_map); keep our spelling when that
+	// is all that differs, or Online_Describes never matches a capitalised map.
 	s = json_get_string(json_find_object_child(root, "map"));
-	ob_have_map   = strzone(s == "" ? ob_q_map : s);
+	ob_have_map   = strzone((s == "" || !strcasecmp(s, ob_q_map)) ? ob_q_map : s);
 	s = json_get_string(json_find_object_child(root, "tier"));
 	ob_have_tier  = strzone(s == "" ? ob_q_tier : s);
 	s = json_get_string(json_find_object_child(root, "style"));
@@ -464,6 +466,13 @@ void(string body) Online_Parse =
 	}
 	ob_n = n;
 
+	// OK BEFORE the room list absorbs: Players_AbsorbBoard gates on
+	// Online_Describes, which requires OBS_OK (set after it, it absorbed nothing).
+	ob_state = OBS_OK;
+	ob_code  = 0;
+	ob_when  = cltime;
+	ob_retry_at = 0;            // it worked; nothing is owed a retry
+
 	/*
 	  PATCH 340: hand the fresh rows to the room list (cl_players.qc), which
 	  keeps its own per-hash best-main table because ob_* is ONE table the
@@ -478,11 +487,6 @@ void(string body) Online_Parse =
 	  pointer.
 	*/
 	json_free(root);
-
-	ob_state = OBS_OK;
-	ob_code  = 0;
-	ob_when  = cltime;
-	ob_retry_at = 0;            // it worked; nothing is owed a retry
 };
 
 /*

@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   dcd1662595db8c5f699eada753f96718c323081c
 tag      patch-266
-patch    350
+patch    351
 qcbuild  83
 date     2026-09-18
+
+# PATCH 351 IS MOD-SIDE ONLY: online board -- capitalised map names match surfd's
+# lowercase echo, the room list absorbs (OK before the absorb), *wrank ticks %d.
+# cfg/test/p351case.cfg.
 
 # PATCH 350 IS MOD-SIDE ONLY (menu): the map selector's public lobbies are a
 # 4 x 3 grid in an 1100 x 808 panel.  cfg/test/p350grid{720,1080,860}.cfg.

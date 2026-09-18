@@ -2404,6 +2404,14 @@ void() Scores_Status =
 	              (Scores_BoardNote() != "") ? Scores_BoardNote()
 	                                         : "-- no note drawn"));
 
+	// Witnesses: does the online store describe the leg on screen, and how many
+	// best times has the room list absorbed from it.
+	shown = 0;
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+		shown = Online_Describes(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+		                         Scores_TierOf(), Scores_StyleOf());
+	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
+
 	/*
 	  BUILD 44: HOW MANY ROWS THE FILTER ACTUALLY KEEPS.
 

@@ -2076,8 +2076,10 @@ float lobby_run_seen;
 */
 void(entity e, float track, float leg, float ticks) Lobby_RankPending =
 {
+	// %d ticks: %g turns 1000000+ into exponent form and the client's exact
+	// subject match (Results_WorldRank) then never fires.
 	forceinfokey(e, "*wrank",
-	             sprintf("%s %g %g %g %g 0 0",
+	             sprintf("%s %g %g %d %g 0 0",
 	                     mapname, track, leg, ticks, WR_PENDING));
 };
 
