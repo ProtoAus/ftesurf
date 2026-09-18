@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- Served by surfd at /board/, proxied from proto.bar/ftesurf/board/.
+     Every URL here is relative: surfd and the browser see different prefixes. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>FTESurf Leaderboard</title>
+<meta name="description" content="Times on every zoned FTESurf map, from the official servers.">
+<link rel="stylesheet" href="board.css">
+<script src="board.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="tabs"><a href="../">Download</a> <a href="./" aria-current="page">Leaderboard</a></nav>
+
+  <header class="mast">
+    <h1><a class="mark" href="../">FTE<span class="surf">SURF</span></a></h1>
+    <p class="tagline">Times from the official servers, on every zoned map.</p>
+  </header>
+
+  <p id="err" class="err" role="alert" hidden></p>
+
+  <section id="list">
+    <div class="tools">
+      <input id="q" type="search" placeholder="Search maps" autocomplete="off"
+             spellcheck="false" aria-label="Search maps">
+      <div class="chips" role="group" aria-label="Sort maps">
+        <button type="button" class="chip" data-sort="active" aria-pressed="true">Active</button>
+        <button type="button" class="chip" data-sort="az" aria-pressed="false">A-Z</button>
+        <button type="button" class="chip" data-sort="runs" aria-pressed="false">Most runs</button>
+      </div>
+    </div>
+    <p id="summary" class="summary">Loading maps&hellip;</p>
+    <ul id="maps" class="req"></ul>
+  </section>
+
+  <section id="map" hidden>
+    <a id="back" class="back" href="#">&larr; All maps</a>
+    <h2 id="title" class="maptitle"></h2>
+    <div id="legs" class="tabrow" role="group" aria-label="Track"></div>
+    <div class="tabrow">
+      <span id="styles" class="seg" role="group" aria-label="Style"></span>
+      <span id="tiers" class="seg" role="group" aria-label="Tier"></span>
+    </div>
+    <p id="empty" class="summary" hidden></p>
+    <table id="table" class="runs" hidden>
+      <thead><tr><th class="num">#</th><th>Player</th><th class="num">Time</th>
+        <th class="num gapcol">Gap to #1</th><th class="datecol">Date</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <button id="more" class="more" type="button" hidden>Show more</button>
+  </section>
+
+  <footer>
+    <p><span class="vchip">VERIFIED</span> the server re-simulated the recording exactly, or it was reviewed.</p>
+    <p><a class="dimlink" href="https://play.proto.bar/admin/runs">Run review</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

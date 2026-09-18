@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin - replay {{ rid }}</title>
+{% include "_admin_style.html" %}
+</head>
+<body>
+<header>
+  <h1>FTESurf admin</h1>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/runs" aria-current="page">Runs</a></nav>
+  <span class="spacer"></span>
+  <form method="post" action="/admin/logout" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+
+<main class="stack">
+  <div><a href="/admin/runs">&larr; all runs</a></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Replay <span id="title"></span> <span id="public"></span>
+        <span class="muted" style="font-weight:400" id="standing"></span></h2>
+      <dl id="details"><dt>&nbsp;</dt><dd class="empty">loading&hellip;</dd></dl>
+    </div>
+
+    <div class="card">
+      <h2>Review</h2>
+      <div id="review" class="note"></div>
+      <div class="row">
+        <input type="text" id="note" maxlength="200" spellcheck="false"
+               placeholder="note (private, optional)">
+      </div>
+      <div class="row">
+        <button class="primary" data-act="approve">Approve</button>
+        <button class="danger" data-act="reject">Reject</button>
+        <button data-act="clear">Clear</button>
+        <button data-act="recheck">Re-check</button>
+      </div>
+      <p class="note">Approve shows VERIFIED. Reject hides the run and the player's
+        next best stands; Clear removes the review. Re-check queues the replay for
+        the next sweep.</p>
+
+      <h3>Watch</h3>
+      <div class="row"><a class="button" id="download" href="#">Download .rec</a></div>
+      <div id="watch"></div>
+      <div class="row">
+        <select id="lobby" aria-label="lobby"></select>
+        <button id="send">Send lobby to this map</button>
+      </div>
+      <p class="note" id="lobbynote"></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Path <span class="muted" style="font-weight:400" id="pathinfo"></span></h2>
+    <canvas id="path"></canvas>
+    <div class="legend" id="pathlegend"></div>
+    <h3>Speed</h3>
+    <canvas id="speed"></canvas>
+    <div class="legend" id="speedlegend"></div>
+    <ul class="note" id="notes"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Verdicts</h2>
+    <div class="scroll">
+      <table id="verdicts"><thead><tr>
+        <th class="num">id</th><th>verdict</th><th>at</th><th class="num">ticks</th>
+        <th>engine</th><th>progs</th><th>reason</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="note">Grey rows predate the replay's current submission and no longer count.</p>
+  </div>
+
+  <div class="card">
+    <h2>Recording header</h2>
+    <dl id="head"><dt>&nbsp;</dt><dd class="empty">loading&hellip;</dd></dl>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const RID = {{ rid | tojson }};
+const CSRF = {{ csrf | tojson }};
+const TIERS = {{ tiers | tojson }};
+const HAVE_RCON = {{ have_rcon | tojson }};
+const MAPNAME = /^[a-z0-9_]{1,63}$/;          // admin.MAPNAME, the lobby map control's rule
+const HEAD_KEYS = ["map", "track", "leg", "startseg", "tickrate", "movetickrate",
+  "clock", "owner", "runid", "mapcrc", "zonesrc", "zonecrc", "zonerule", "instart",
+  "startjit", "flags"];
+const TRACE_KEYS = ["trisoup", "rotboxes", "portalcsg"];   // the pin's trace cvars
+const VERDICT_CLS = {PASS: "up", HOLD: "warn", ERROR: "down"};
+const DECISION_CLS = {approve: "up", reject: "down"};
+const PUBLIC_CLS = {verified: "up", hidden: "down"};
+const MARK_COLOUR = {cp: "#7fe0a0", stage: "#ffd79a", stagestart: "#ffd79a",
+  split: "#9dc0ff", resume: "#ff9d9d", retry: "#ff9d9d", restart: "#ff9d9d",
+  ghost: "#c59dff", warp: "#ffae57", portal: "#d38cff"};
+const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "restart", "ghost"];
+let RUN = null, PLOT = null;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function pill(word, cls) { return word ? el("span", "pill " + (cls || ""), word) : el("span", "muted", "none"); }
+function toast(msg, ok) {
+  const d = el("div", ok ? "ok" : "bad", msg);
+  document.getElementById("toast").appendChild(d);
+  setTimeout(() => d.remove(), ok ? 4000 : 9000);
+}
+function fmtMs(ms) {
+  if (!(ms >= 0)) return "-";
+  ms = Math.round(ms);
+  const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60;
+  return m + ":" + String(s).padStart(2, "0") + "." + String(ms % 1000).padStart(3, "0");
+}
+function fmtDate(t) {
+  return t > 0 ? new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "medium"}) : "-";
+}
+function legLabel(r) {
+  if (r.track <= 0) return r.leg <= 0 ? "Main" : "Stage " + r.leg;
+  return "Bonus " + r.track + (r.leg > 0 ? " / Stage " + r.leg : "");
+}
+function dlRow(dl, key, value) {
+  dl.appendChild(el("dt", "", key));
+  const dd = el("dd");
+  if (value instanceof Node) dd.appendChild(value);
+  else dd.textContent = value == null || value === "" ? "-" : String(value);
+  dl.appendChild(dd);
+}
+function span(cls, text) { return el("span", cls, text); }
+function frag(...parts) {
+  const f = document.createDocumentFragment();
+  for (const p of parts) f.append(p instanceof Node ? p : String(p));
+  return f;
+}
+
+async function getJSON(url) {
+  let r;
+  try { r = await fetch(url, {credentials: "same-origin"}); }
+  catch (e) { return {ok: false, error: "network error: " + e.message}; }
+  if (r.status === 401) { location.href = "/admin/login"; return {ok: false, error: "logged out"}; }
+  try { return await r.json(); } catch (e) { return {ok: false, error: "bad reply (" + r.status + ")"}; }
+}
+async function post(path, fields) {
+  const body = new URLSearchParams(Object.assign({csrf: CSRF}, fields));
+  let r, j;
+  try {
+    r = await fetch(path, {method: "POST", body, credentials: "same-origin"});
+  } catch (e) { toast("network error: " + e.message, false); return false; }
+  if (r.status === 401) { location.href = "/admin/login"; return false; }
+  try { j = await r.json(); } catch (e) { toast("bad reply from surfd", false); return false; }
+  toast(j.ok ? (j.message || "done") : (j.error || "failed"), !!j.ok);
+  return !!j.ok;
+}
+
+// ---- the run, its review and its verdicts ----------------------------------
+
+function renderRun(j) {
+  const r = j.run;
+  document.getElementById("title").textContent = "#" + r.id;
+  document.getElementById("public").replaceChildren(pill(j.public, PUBLIC_CLS[j.public]));
+  document.getElementById("standing").textContent = j.standing.on_board
+    ? "#" + j.standing.rank + " of " + j.standing.of : "not on the board";
+
+  const dl = document.getElementById("details");
+  dl.replaceChildren();
+  dlRow(dl, "map", r.map_dir === r.map ? r.map : r.map_dir + " (key " + r.map + ")");
+  dlRow(dl, "leg", legLabel(r) + " (" + r.legdir + ")");
+  dlRow(dl, "board", r.tier + " / " + r.style);
+  dlRow(dl, "name", r.name);
+  dlRow(dl, "player", span("mono", r.player));
+  dlRow(dl, "time", fmtMs(r.millis) + " \u2014 " + r.ticks + " ticks at " + r.tickrate + " Hz");
+  dlRow(dl, "flags", r.flags + " (0x" + Number(r.flags).toString(16) + ")");
+  dlRow(dl, "node", r.node);
+  dlRow(dl, "submitted", fmtDate(r.submitted));
+  dlRow(dl, "file", frag(span("mono", r.leaf), r.file ? "" : " \u2014 not on this node"));
+  dlRow(dl, "bytes", (r.bytes >= 0 ? r.bytes : "unknown") + (r.truncated ? " (truncated)" : ""));
+  dlRow(dl, "sweep", (r.checked ? "checked" : r.pending ? "pending" : "stopped after repeated ERRORs") +
+        ", last attempt " + fmtDate(r.seen) +
+        (r.recheck_at > 0 ? ", re-check asked " + fmtDate(r.recheck_at) : ""));
+
+  const rv = document.getElementById("review");
+  rv.replaceChildren();
+  if (j.review) {
+    rv.append(pill(j.review.decision, DECISION_CLS[j.review.decision]), " ",
+              fmtDate(j.review.at),
+              j.review.current ? "" : " \u2014 lapsed: before the current submission");
+    if (j.review.note) rv.append(el("div", "reason", j.review.note));
+  } else {
+    rv.textContent = "No review.";
+  }
+
+  const tb = document.querySelector("#verdicts tbody");
+  tb.replaceChildren();
+  for (const v of j.verdicts) {
+    const tr = el("tr", v.current ? "" : "stale");
+    const vc = el("td"); vc.appendChild(pill(v.verdict, v.current ? VERDICT_CLS[v.verdict] : ""));
+    const eng = el("td", "mono", String(v.engine).slice(0, 10)); eng.title = v.engine;
+    const prg = el("td", "mono", String(v.progs).slice(0, 10)); prg.title = v.progs;
+    tr.append(el("td", "num mono", v.id), vc, el("td", "nowrap", fmtDate(v.at)),
+              el("td", "num mono", v.ticks), eng, prg, el("td", "reason", v.reason));
+    tb.appendChild(tr);
+  }
+  if (!j.verdicts.length) {
+    const tr = el("tr"), td = el("td", "empty", "not verified yet");
+    td.colSpan = 7; tr.appendChild(td); tb.appendChild(tr);
+  }
+
+  const dlink = document.getElementById("download");
+  dlink.href = j.download;
+  dlink.hidden = !r.file;
+  const watch = document.getElementById("watch");
+  watch.replaceChildren();
+  for (const cmd of j.watch) {
+    const row = el("div", "row");
+    const input = el("input");
+    input.type = "text"; input.readOnly = true; input.value = cmd;
+    input.className = "mono";
+    const b = el("button", "", "Copy");
+    b.addEventListener("click", () => copy(input));
+    row.append(input, b);
+    watch.appendChild(row);
+  }
+
+  const send = document.getElementById("send"), note = document.getElementById("lobbynote");
+  const okName = MAPNAME.test(r.map_dir);
+  send.disabled = !okName || !HAVE_RCON || !TIERS.length;
+  note.textContent = !okName
+    ? "The lobby map control takes lowercase names only; this map is " + r.map_dir + "."
+    : (!HAVE_RCON ? "SURFD_RCON_PASSWORD is not configured, so lobby controls are unavailable."
+                  : "Changes the chosen lobby's map now; players on it move with it.");
+}
+
+async function copy(input) {
+  try { await navigator.clipboard.writeText(input.value); toast("copied", true); }
+  catch (e) { input.select(); toast("selected: press Ctrl+C", true); }
+}
+
+async function loadRun() {
+  const j = await getJSON("/admin/api/run/" + RID);
+  if (!j.ok) {
+    const dl = document.getElementById("details");
+    dl.replaceChildren(el("dt", "", "error"), el("dd", "", j.error || "failed"));
+    return;
+  }
+  RUN = j;
+  renderRun(j);
+}
+
+// ---- the recording: path, speed and header ----------------------------------
+
+function sizeCanvas(cv, ratio, minH) {
+  const W = Math.max(cv.clientWidth, 200);
+  const H = Math.max(Math.round(W * ratio), minH);
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.style.height = H + "px";
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  g.font = "11px system-ui, sans-serif";
+  return [g, W, H];
+}
+function message(cv, text) {
+  const [g, W, H] = sizeCanvas(cv, 0.15, 60);
+  g.fillStyle = "#6d7684"; g.textAlign = "center"; g.font = "13px system-ui, sans-serif";
+  g.fillText(text, W / 2, H / 2 + 4);
+}
+function speedColour(f) {
+  f = Math.max(0, Math.min(1, f));
+  return "hsl(" + Math.round(230 - 230 * f) + ",85%," + Math.round(50 + 10 * f) + "%)";
+}
+function niceStep(range, target) {
+  const raw = Math.max(range, 1e-9) / target, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
+function dot(g, x, y, r, fill) {
+  g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI);
+  g.fillStyle = fill; g.fill();
+  g.lineWidth = 1.5; g.strokeStyle = "#0f1114"; g.stroke();
+}
+
+function drawPath(P) {
+  const cv = document.getElementById("path");
+  const n = P.x.length;
+  if (!n) return message(cv, "no samples in this recording");
+  const [g, W, H] = sizeCanvas(cv, 0.62, 260);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const grow = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  for (let i = 0; i < n; i++) grow(P.x[i], P.y[i]);
+  for (const m of P.marks) if (m.x != null && m.y != null) grow(m.x, m.y);
+  const pad = 18, spanX = Math.max(x1 - x0, 1), spanY = Math.max(y1 - y0, 1);
+  const s = Math.min((W - 2 * pad) / spanX, (H - 2 * pad) / spanY);
+  const ox = (W - spanX * s) / 2, oy = (H - spanY * s) / 2;
+  const X = x => ox + (x - x0) * s, Y = y => H - oy - (y - y0) * s;   // world +y is up
+  let top = 1;
+  for (const v of P.spd) top = Math.max(top, v);
+
+  g.lineCap = "round";
+  for (let i = 1; i < n; i++) {
+    const dt = Math.abs(P.t[i] - P.t[i - 1]);
+    const d = Math.hypot(P.x[i] - P.x[i - 1], P.y[i] - P.y[i - 1]);
+    // Further than the samples' own speed could carry: a teleport, drawn faint.
+    const jump = d > Math.max(P.spd[i], P.spd[i - 1]) * dt * 3 + 64;
+    g.setLineDash(jump ? [3, 4] : []);
+    g.lineWidth = jump ? 1 : 2;
+    g.strokeStyle = jump ? "rgba(139,148,162,.4)"
+      : (P.t[i] < 0 ? "#4a5260" : speedColour(P.spd[i] / top));
+    g.beginPath(); g.moveTo(X(P.x[i - 1]), Y(P.y[i - 1])); g.lineTo(X(P.x[i]), Y(P.y[i])); g.stroke();
+  }
+  g.setLineDash([]);
+
+  g.textAlign = "left";
+  for (const m of P.marks) {
+    if (m.x == null || m.y == null) continue;
+    const px = X(m.x), py = Y(m.y), c = MARK_COLOUR[m.k] || "#d8dde4";
+    if (m.k === "cp") {
+      dot(g, px, py, 3.5, c);
+      g.fillStyle = c; g.fillText(String(m.n), px + 5, py - 4);
+    } else if (m.k === "stage" || m.k === "stagestart") {
+      g.beginPath(); g.moveTo(px, py - 5); g.lineTo(px + 5, py); g.lineTo(px, py + 5); g.lineTo(px - 5, py); g.closePath();
+      g.fillStyle = c; g.fill();
+      g.fillText("S" + m.n, px + 6, py - 5);
+    } else if (m.k === "warp") {
+      g.strokeStyle = c; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(px - 4, py - 4); g.lineTo(px + 4, py + 4);
+      g.moveTo(px + 4, py - 4); g.lineTo(px - 4, py + 4); g.stroke();
+    } else if (m.k === "portal") {
+      g.strokeStyle = c; g.lineWidth = 2;
+      g.beginPath(); g.arc(px, py, 5, 0, 2 * Math.PI); g.stroke();
+    }
+  }
+  let si = P.t.findIndex(t => t >= 0);
+  if (si < 0) si = 0;
+  dot(g, X(P.x[si]), Y(P.y[si]), 5.5, "#7fe0a0");
+  dot(g, X(P.x[n - 1]), Y(P.y[n - 1]), 5.5, "#ff6b6b");
+
+  // Scale bar, bottom left.
+  const unit = niceStep(spanX, 5);
+  g.strokeStyle = "#8b94a2"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(8, H - 8); g.lineTo(8 + unit * s, H - 8); g.stroke();
+  g.fillStyle = "#8b94a2"; g.fillText(unit + " u", 10, H - 12);
+}
+
+function drawSpeed(P) {
+  const cv = document.getElementById("speed");
+  const n = P.t.length;
+  if (!n) return message(cv, "no samples in this recording");
+  const [g, W, H] = sizeCanvas(cv, 0.28, 180);
+  const L = 46, R = 10, T = 10, B = 22;
+  const t0 = P.t[0], t1 = P.t[n - 1] > t0 ? P.t[n - 1] : t0 + 1;
+  let top = Math.max(P.stats.max_speed || 0, 1);
+  for (const v of P.spd) top = Math.max(top, v);
+  top *= 1.05;
+  const X = t => L + (t - t0) / (t1 - t0) * (W - L - R);
+  const Y = v => H - B - v / top * (H - T - B);
+
+  g.lineWidth = 1; g.strokeStyle = "#262b33"; g.fillStyle = "#8b94a2";
+  g.textAlign = "right";
+  const vs = niceStep(top, 4);
+  for (let v = 0; v <= top; v += vs) {
+    g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke();
+    g.fillText(String(Math.round(v)), L - 5, Y(v) + 4);
+  }
+  g.textAlign = "center";
+  const ts = niceStep(t1 - t0, 8);
+  for (let t = Math.ceil(t0 / ts) * ts; t <= t1; t += ts) {
+    g.fillText(String(Math.round(t * 100) / 100) + "s", X(t), H - 6);
+  }
+  if (t0 < 0) {
+    g.fillStyle = "rgba(255,255,255,.04)";
+    g.fillRect(X(t0), T, X(Math.min(0, t1)) - X(t0), H - T - B);
+  }
+  g.globalAlpha = 0.6;
+  for (const m of P.marks) {
+    if (m.t == null || !SPEED_LINES.includes(m.k) || m.t < t0 || m.t > t1) continue;
+    g.strokeStyle = MARK_COLOUR[m.k];
+    g.beginPath(); g.moveTo(X(m.t), T); g.lineTo(X(m.t), H - B); g.stroke();
+  }
+  g.globalAlpha = 1;
+  if (t0 <= 0 && 0 <= t1) {
+    g.strokeStyle = "#e8edf4"; g.setLineDash([4, 3]);
+    g.beginPath(); g.moveTo(X(0), T); g.lineTo(X(0), H - B); g.stroke();
+    g.setLineDash([]);
+  }
+  g.strokeStyle = "#8fb0ff"; g.lineWidth = 1.5;
+  g.beginPath();
+  for (let i = 0; i < n; i++) {
+    if (i) g.lineTo(X(P.t[i]), Y(P.spd[i])); else g.moveTo(X(P.t[i]), Y(P.spd[i]));
+  }
+  g.stroke();
+}
+
+function legend(id, items) {
+  const box = document.getElementById(id);
+  box.replaceChildren();
+  for (const [colour, label, dashed] of items) {
+    const sw = el("i");
+    if (dashed) sw.style.border = "1px dashed " + colour; else sw.style.background = colour;
+    if (colour.startsWith("linear-gradient")) sw.style.width = "2.4rem";
+    const item = el("span");
+    item.append(sw, label);
+    box.appendChild(item);
+  }
+}
+
+function renderHead(P) {
+  const dl = document.getElementById("head");
+  dl.replaceChildren();
+  dlRow(dl, "format", "FTESURF-REC " + P.v);
+  for (const k of HEAD_KEYS) if (k in P.head) dlRow(dl, k, P.head[k]);
+  if ("pmpin" in P.head) {
+    const box = el("div");
+    for (const tok of P.head.pmpin.split(/\s+/).filter(Boolean)) {
+      const hot = TRACE_KEYS.includes(tok.split("=")[0]);
+      box.appendChild(el("span", "kv mono" + (hot ? " hot" : ""), tok));
+    }
+    dlRow(dl, "pmpin", box);
+  }
+  dlRow(dl, "samples", P.n + (P.stride > 1 ? " (plotted every " + P.stride + ")" : ""));
+  dlRow(dl, "tick", P.rate ? P.rate + " s (" + Math.round(1 / P.rate * 100) / 100 + " Hz)" : null);
+  const c = P.counts, kinds = Object.entries(c.warp || {});
+  dlRow(dl, "records", "in " + c.in + ", pm " + c.pm + ", pe " + c.pe + ", ride " + c.ride +
+        ", portal " + c.portal + ", warp " + (kinds.length ? kinds.map(([k, v]) => k + " " + v).join(" ") : "0") +
+        (c.unknown ? ", unknown " + c.unknown : ""));
+  dlRow(dl, "end", P.end ? P.end.map(x => x == null ? "?" : x).join(" ") : "no trailer");
+}
+
+async function loadPath() {
+  const info = document.getElementById("pathinfo");
+  const P = await getJSON("/admin/api/run/" + RID + "/path");
+  if (!P.ok) {
+    info.textContent = "\u2014 " + (P.error || "failed");
+    message(document.getElementById("path"), P.error || "no recording");
+    message(document.getElementById("speed"), "no recording");
+    const dl = document.getElementById("head");
+    dl.replaceChildren(el("dt", "", "error"), el("dd", "", P.error || "failed"));
+    return;
+  }
+  PLOT = P;
+  const st = P.stats;
+  info.textContent = "\u2014 " + fmtMs(st.duration * 1000) + ", max " + Math.round(st.max_speed) +
+    " u/s, avg " + Math.round(st.avg_speed) + " u/s" + (P.truncated ? ", TRUNCATED" : "");
+  draw();
+  const notes = document.getElementById("notes");
+  notes.replaceChildren();
+  for (const t of P.notes) notes.appendChild(el("li", "", t));
+  renderHead(P);
+}
+
+function draw() {
+  if (!PLOT) return;
+  drawPath(PLOT);
+  drawSpeed(PLOT);
+  legend("pathlegend", [["linear-gradient(90deg," + [0, .25, .5, .75, 1].map(speedColour) + ")",
+    "slow to fast"], ["#4a5260", "before the start"], ["#8b94a2", "teleport", true], ["#7fe0a0", "start"],
+    ["#ff6b6b", "end"], [MARK_COLOUR.cp, "checkpoint"], [MARK_COLOUR.stage, "stage"],
+    [MARK_COLOUR.warp, "warp (x)"], [MARK_COLOUR.portal, "portal (o)"]]);
+  legend("speedlegend", [["#e8edf4", "t = 0", true], [MARK_COLOUR.cp, "checkpoint"],
+    [MARK_COLOUR.stage, "stage"], [MARK_COLOUR.split, "split"],
+    [MARK_COLOUR.resume, "resume / retry / restart"], [MARK_COLOUR.ghost, "ghost"]]);
+}
+
+// ---- actions ------------------------------------------------------------------
+
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-act]");
+  if (!b || !RUN) return;
+  const action = b.dataset.act;
+  if (action === "reject" && !confirm("Reject replay #" + RID + "? It leaves the public board until cleared."))
+    return;
+  const note = document.getElementById("note");
+  // The submission shown; surfd answers 409 if the run was resubmitted since.
+  const submitted = String(RUN.run.submitted);
+  if (await post("/admin/api/review", {rid: String(RID), action, note: note.value, submitted})) {
+    note.value = "";
+    loadRun();
+  }
+});
+document.getElementById("send").addEventListener("click", () => {
+  if (!RUN) return;
+  const tier = document.getElementById("lobby").value, map = RUN.run.map_dir;
+  if (confirm("Send lobby " + tier + " to " + map + "? Players on it change map."))
+    post("/admin/api/map", {tier, map});
+});
+let resizing = 0;
+window.addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(draw, 150); });
+
+const sel = document.getElementById("lobby");
+for (const t of TIERS) {
+  const o = el("option", "", "Lobby " + t);
+  o.value = t;
+  sel.appendChild(o);
+}
+loadRun();
+loadPath();
+</script>
+</body>
+</html>

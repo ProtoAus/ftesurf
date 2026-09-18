@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   3f7d36a1d4450fb9c7e49dd0aa7b7ee534dc0113
+commit   d310d3f0056065ced3c1676b768c1a1a17700bd0
 tag      patch-266
 patch    360
 qcbuild  83
@@ -24,6 +24,13 @@ date     2026-09-18
 # 290); `stagepost`/`abandon` records (additive); a run that posted keeps its
 # recording in data/evidence/<map>/<runid>.rec; lobby part files keyed by port.
 # cfg/test/p360sf{sv,cl}.cfg, p360sf2{sv,cl}.cfg, p360sweep.cfg.
+
+# PATCH 359 IS surfd ONLY: schema 5 (verdicts adopted, reviews, recheck_at), a
+# `ver` field on /api/board rows, the web leaderboard at /board/ (proxied from
+# proto.bar/ftesurf/board/) and owner review at /admin/runs.  surfd/test_*.py.
+
+# PATCH 358: pm_verify replays with the file's trace cvars (pin slots 10-12)
+# and restores the server's.  cfg/test/p358trace.cfg, subject p358cap.cfg.
 
 # PATCH 357 IS MOD-SIDE ONLY: the leaderboard follows a finish (leg, and the tab
 # when it must), refetches once the row lands, highlights / pins the own row.

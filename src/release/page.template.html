@@ -70,6 +70,16 @@ body {
 }
 .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; padding-block: 56px 72px; }
 
+/* ---- nav: this page and the leaderboard (surfd, proxied under board/) --- */
+.tabs { display: flex; gap: 6px; margin: -24px 0 32px; }
+.tabs a {
+  font-family: var(--display); font-size: 19px; letter-spacing: 0.04em;
+  color: var(--dim); text-decoration: none;
+  padding: 5px 12px 2px; border: 1px solid var(--row); border-radius: 3px;
+}
+.tabs a:hover { color: var(--text); border-color: var(--border); }
+.tabs a[aria-current="page"] { color: var(--text); background: var(--row); border-color: var(--border); }
+
 /* ---- masthead ---------------------------------------------------------- */
 .mast { margin-bottom: 40px; }
 h1 {
@@ -181,6 +191,8 @@ footer p { margin: 0 0 7px; }
 </head>
 <body>
 <div class="wrap">
+
+  <nav class="tabs"><a href="./" aria-current="page">Download</a> <a href="board/">Leaderboard</a></nav>
 
   <header class="mast">
     <h1>FTE<span class="surf">SURF</span></h1>

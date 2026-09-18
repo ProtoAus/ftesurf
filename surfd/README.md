@@ -21,16 +21,20 @@ the Pi copy in place.
       run.sh            start under gunicorn, detached
       stop.sh           stop it
       surfd.service     systemd unit  -- INSTALLED and enabled (see below)
-      surfd.nginx       nginx snippet -- NOT INSTALLED (deliberate)
+      surfd.nginx       nginx snippet -- installed as snippets/surfd.conf
       admin.py          the fleet control panel, a blueprint at /admin
       rcon.py           the panel's only channel to the game servers
-      templates/        the panel's two pages
+      templates/        the panel's pages
+      web/              the public leaderboard page (static; served at /board/)
       mkadminpw.py      generates the panel's credentials
-      admin.nginx       the panel's OWN nginx block -- NOT INSTALLED
+      admin.nginx       the panel's OWN nginx block -- installed as
+                        snippets/surfd-admin.conf
       surfd-admin.sudoers  a record of the systemctl grant (already installed)
-      play.nginx        the public vhost for play.proto.bar -- NOT INSTALLED
+      play.nginx        the public vhost for play.proto.bar -- installed
       setup_public.sh   installs that vhost + TLS, then the advertise switch
+      sweep.py          the replay verifier (cron), see below
       test_admin.py     the falsifier for the panel
+      test_web.py       the falsifier for the web leaderboard
       server/           the five game servers' scripts, from
                         /srv/nvme/ftesurf-server/ (run.sh, runall.sh, stopall.sh)
 
@@ -159,10 +163,13 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
   -> 200 {"v":1,"t":..,"map":..,"track":..,"leg":..,"tier":..,"style":..,
           "counts":{"ranked":n,"community":n},"offset":n,
           "rows":[{"r":1,"player":..,"name":..,"ticks":..,"rate":..,
-                   "ms":..,"flags":..,"when":..,"rep":..}]}
+                   "ms":..,"flags":..,"when":..,"rep":..,"ver":0|1}]}
 ```
 
 `rep` is a row in `replays`, or 0 when nothing is indexed for that row.
+`ver` (schema 5) is 1 when that replay's latest current non-ERROR verdict is
+PASS or the owner approved it, else 0; "current" means recorded at or after the replay
+row's `submitted`. Rows carry no verdict word, reason or review.
 
 ```
 GET /api/replay/<id>            <id> being a row's `rep`
@@ -562,10 +569,14 @@ the alerting.
 ## Replay verification (sweep.py)
 
 `sweep.py` runs engine `pm_verify` (Patch 349) over every row in `replays`
-that has not been checked yet, and stores one verdict per attempt in its own
-`verdicts` table: PASS, HOLD (a reason for a human), REFUSE (out of scope,
-e.g. a pre-v9 file), or ERROR (no verdict printed; retried up to 3 times).
-It **stores only**: no board or rank reads the table yet. It starts one
+that has not been checked yet, and stores one verdict per attempt in the
+`verdicts` table (surfd schema 5): PASS, HOLD (a reason for a human), REFUSE
+(out of scope, e.g. a pre-v9 file), or ERROR (no verdict printed; retried up
+to 3 times since the replay's last submission or re-check). A PASS as the latest
+current non-ERROR verdict sets the public `ver` badge (an ERROR never changes
+it); nothing else reads verdicts, and reasons and HOLD appear only on the
+owner's review pages. Verdicts are stamped with the time the sweep started, so a
+tie resubmitted or a re-check asked mid-run stays pending. It starts one
 headless verifier per map on port 27698, with `nice 19`, idle IO and
 `oom_score_adj 1000`. Installed in proto's crontab:
 
@@ -575,10 +586,67 @@ headless verifier per map on port 27698, with `nice 19`, idle IO and
 engine (use a throwaway `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the
 verifier itself.
 
+## Web leaderboard (/board/)
+
+A static page (`web/board.html`, `board.js`, `board.css`) and two JSON routes,
+proxied from `https://proto.bar/ftesurf/board/` by `src/release/ftesurf.nginx`.
+URLs in the page are relative because the browser's prefix is not surfd's.
+
+```
+GET /board/                     the page; /board/board.js and board.css only
+GET /board/api/maps             zoned maps with a BSP, plus maps with runs:
+  -> {"v":1,"t":..,"maps":[{"map","runs","last","wr":{"name","ms","ver"}|null}]}
+GET /board/api/map?map=&track=&leg=&tier=&style=&offset=
+  -> {"v":1,"t":..,"map","disp","boards":[{"track","leg","tier","style","n"}],
+      "track","leg","tier","style","counts","offset","limit":50,"rows":[..]}
+```
+
+`wr` is the main ranked clean board's row 1 (`BOARD_ORDER`). With no board
+parameters a map opens on the first non-empty of main ranked clean, community
+clean, ranked segmented, community segmented, else its first board. Rows are
+`/api/board`'s minus `player`. Both API routes share the `web` rate bucket
+(`WEB_RATE_MAX`, 120/min per `rate_key()`); the maps list is rebuilt at most
+every 60 s. Every `/board/` response carries a strict CSP (no inline script or
+style) and sets no cookie.
+
+## Run review (/admin/runs)
+
+Behind the admin login (`admin.py`, only when surfd injects its replay helpers).
+
+```
+GET  /admin/runs                 list page          (logged out: login redirect)
+GET  /admin/run/<rid>            one replay's page  (logged out: login redirect)
+GET  /admin/api/runs?state=&q=&offset=   state: queue hold pass refuse error
+                                 pending approved rejected all      (401)
+GET  /admin/api/run/<rid>        details, verdict history with reasons,
+                                 review, standing, download + watch commands (401)
+GET  /admin/api/run/<rid>/path   recplot.parse() of the file, 404 if unusable (401)
+POST /admin/api/review           rid, action=approve|reject|clear|recheck,
+                                 submitted, note (<= 200 chars)      (401/400/403/409)
+```
+
+The list shows each replay's latest current non-ERROR verdict (what the badge
+reads), an ERROR flag for a last attempt that printed nothing, the review and
+whether the run stands on a board. The queue is current HOLDs with no review;
+pending is what the next sweep picks (`checked=0`, under the ERROR cap).
+
+Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
+and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call
+`restand()`, which rewrites that player's board row from their best
+non-rejected replay, so public reads need no hidden filter. A review counts only
+while it is at or after the replay's `submitted`; the page posts the
+`submitted` it showed, and a replay resubmitted since answers 409 ("the run
+changed -- reload").
+
+Every POST goes through `control()`: a session, the CSRF token, and
+`Sec-Fetch-Site` absent or `same-origin` (else 403). proto.bar and
+play.proto.bar are one site, so SameSite=Strict alone does not separate them.
+
 ## Not done on purpose
 
-  * Not exposed publicly. Nothing in nginx points at surfd; making it public
-    is a separate step, see the warnings in surfd.nginx and admin.nginx.
+  * No catch-all proxy. The public routes are exactly `surfd.nginx`'s
+    manifest, `/admin` (admin.nginx) and `/board/` (proxied from
+    proto.bar/ftesurf/board/); `/api/heartbeat` and `/api/run` are not proxied.
   * The shared secret travels in clear over HTTP. Fine on a trusted LAN,
     not fine once this is public - terminate TLS first.
   * `SURFD_PUBLIC_HOST` is not set. It is the last switch before the ports

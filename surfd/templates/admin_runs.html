@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin - runs</title>
+{% include "_admin_style.html" %}
+</head>
+<body>
+<header>
+  <h1>FTESurf admin</h1>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/runs" aria-current="page">Runs</a></nav>
+  <span class="spacer"></span>
+  <form method="post" action="/admin/logout" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Runs <span class="muted" style="font-weight:400" id="summary"></span></h2>
+    <div class="tabs" id="chips" style="margin-top:.6rem"></div>
+    <div class="row" style="margin-bottom:.6rem">
+      <input type="text" id="q" placeholder="map, name or replay id"
+             maxlength="64" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="scroll">
+      <table id="runs"><thead><tr>
+        <th class="num">id</th><th>map</th><th>leg</th><th>board</th><th>name</th>
+        <th class="num">time</th><th>submitted</th><th>verdict</th><th>review</th>
+        <th>public</th><th>standing</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="row"><button id="more" hidden>Show more</button></div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const STATES = {{ states | tojson }};
+const LABEL = {queue: "Queue", hold: "Hold", pass: "Pass", refuse: "Refuse",
+  error: "Error", pending: "Pending", approved: "Approved", rejected: "Rejected",
+  all: "All"};
+const TITLE = {queue: "HOLD with no review", error: "the latest attempt printed no verdict",
+  pending: "the next sweep verifies it (no verdict since the last submission or re-check, under the ERROR cap)"};
+const VERDICT_CLS = {PASS: "up", HOLD: "warn", ERROR: "down"};
+const DECISION_CLS = {approve: "up", reject: "down"};
+const PUBLIC_CLS = {verified: "up", hidden: "down"};
+
+let state = "queue", q = "", offset = 0, seq = 0;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function pill(word, cls) { return word ? el("span", "pill " + (cls || ""), word) : el("span", "muted", "-"); }
+function toast(msg, ok) {
+  const d = el("div", ok ? "ok" : "bad", msg);
+  document.getElementById("toast").appendChild(d);
+  setTimeout(() => d.remove(), ok ? 4000 : 9000);
+}
+function fmtMs(ms) {
+  if (!(ms >= 0)) return "-";
+  const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60;
+  return m + ":" + String(s).padStart(2, "0") + "." + String(ms % 1000).padStart(3, "0");
+}
+function fmtDate(t) {
+  return t > 0 ? new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-";
+}
+function legLabel(r) {
+  if (r.track <= 0) return r.leg <= 0 ? "Main" : "Stage " + r.leg;
+  return "Bonus " + r.track + (r.leg > 0 ? " / Stage " + r.leg : "");
+}
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  state = STATES.includes(h.get("state")) ? h.get("state") : "queue";
+  q = (h.get("q") || "").slice(0, 64);
+  document.getElementById("q").value = q;
+}
+function writeHash() {
+  const h = new URLSearchParams({state});
+  if (q) h.set("q", q);
+  history.replaceState(null, "", "#" + h);
+}
+
+function renderChips(counts) {
+  const box = document.getElementById("chips");
+  box.replaceChildren();
+  for (const s of STATES) {
+    const b = el("button", s === state ? "primary" : "", LABEL[s] + " " + (counts[s] || 0));
+    b.dataset.state = s;
+    if (TITLE[s]) b.title = TITLE[s];
+    box.appendChild(b);
+  }
+}
+
+function runRow(r) {
+  const tr = el("tr", "link");
+  tr.dataset.rid = r.id;
+  const cells = [
+    el("td", "num mono", r.id), el("td", "", r.map_dir), el("td", "", legLabel(r)),
+    el("td", "", r.tier + " " + r.style), el("td", "", r.name),
+    el("td", "num mono", fmtMs(r.ms)), el("td", "", fmtDate(r.submitted))];
+  const v = el("td"); v.appendChild(pill(r.verdict, VERDICT_CLS[r.verdict]));
+  if (r.error) v.append(" ", pill("ERROR", VERDICT_CLS.ERROR));
+  if (r.pending) v.append(" ", pill("pending", "info"));
+  const d = el("td"); d.appendChild(pill(r.decision, DECISION_CLS[r.decision]));
+  const p = el("td"); p.appendChild(pill(r.public, PUBLIC_CLS[r.public]));
+  const s = el("td", r.standing ? "" : "muted", r.standing ? "on board" : "-");
+  tr.append(...cells, v, d, p, s);
+  return tr;
+}
+
+async function load(append) {
+  const my = ++seq;
+  const qs = new URLSearchParams({state, q, offset: String(append ? offset : 0)});
+  let r, j;
+  try {
+    r = await fetch("/admin/api/runs?" + qs, {credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+  } catch (e) { toast("could not load runs: " + e.message, false); return; }
+  if (my !== seq) return;                  // a newer request owns the table
+  if (!j.ok) { toast(j.error || "failed", false); return; }
+  renderChips(j.counts);
+  const tb = document.querySelector("#runs tbody");
+  if (!append) tb.replaceChildren();
+  for (const row of j.rows) tb.appendChild(runRow(row));
+  if (!tb.children.length) {
+    const tr = el("tr"), td = el("td", "empty", "no runs in this view");
+    td.colSpan = 11; tr.appendChild(td); tb.appendChild(tr);
+  }
+  offset = j.offset + j.rows.length;
+  document.getElementById("more").hidden = j.rows.length < j.limit;
+  document.getElementById("summary").textContent =
+    "\u2014 " + (j.counts.all || 0) + " replays, " + (j.counts.queue || 0) + " to review";
+}
+
+document.getElementById("chips").addEventListener("click", ev => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  state = b.dataset.state;
+  writeHash();
+  load(false);
+});
+document.getElementById("more").addEventListener("click", () => load(true));
+document.querySelector("#runs tbody").addEventListener("click", ev => {
+  const tr = ev.target.closest("tr[data-rid]");
+  if (tr) location.href = "/admin/run/" + encodeURIComponent(tr.dataset.rid);
+});
+let typing = 0;
+document.getElementById("q").addEventListener("input", ev => {
+  clearTimeout(typing);
+  typing = setTimeout(() => { q = ev.target.value.trim(); writeHash(); load(false); }, 250);
+});
+window.addEventListener("hashchange", () => { readHash(); load(false); });
+
+readHash();
+load(false);
+</script>
+</body>
+</html>

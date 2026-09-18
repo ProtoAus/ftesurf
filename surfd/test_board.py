@@ -28,8 +28,13 @@ are the ones where it would say something FALSE:
 Section 9 pins the TF_* constants against src/shared/sh_defs.qc itself, because
 every classification in this file is arithmetic on that word and a renumber
 there would silently re-file every run on the board rather than fail.
+
+Sections 14-17 are schema 5: the 4 -> 5 migration and its race, the `ver`
+flag, reject/clear through restand(), and that no verdict, reason or review
+reaches a public body.
 """
 
+import hashlib
 import importlib
 import json
 import os
@@ -37,6 +42,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
 
 FAILED = []
 
@@ -48,7 +54,7 @@ def check(label, got, want):
         FAILED.append("%s: got %r, want %r" % (label, got, want))
 
 
-def fresh(key="testkey", seed_v1=False):
+def fresh(key="testkey", seed_v1=False, seed=None):
     """Import surfd with a clean home dir.
 
     `seed_v1` builds a schema-1 database with a lobby row in it BEFORE the
@@ -83,6 +89,8 @@ def fresh(key="testkey", seed_v1=False):
         )
         conn.commit()
         conn.close()
+    if seed is not None:
+        seed(db)
 
     os.environ["SURFD_HOME"] = home
     os.environ["SURFD_DB"] = db
@@ -103,6 +111,9 @@ class FakeClock(object):
         self.now = float(now)
 
     def time(self):
+        return self.now
+
+    def monotonic(self):                 # map_index() reads this one
         return self.now
 
 
@@ -164,12 +175,12 @@ def user_version(mod):
 print("\n--- 1. schema -----------------------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 4", user_version(m), 4)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 4)
+check("a fresh database is stamped schema 5", user_version(m), 5)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 5)
 check("an empty board answers with an empty row list", names(board(m)), [])
 
 m = fresh(seed_v1=True)
-check("a schema-1 database upgrades to 4", user_version(m), 4)
+check("a schema-1 database upgrades to 5", user_version(m), 5)
 conn = sqlite3.connect(m._test_db)
 kept = conn.execute("SELECT map FROM lobbies").fetchall()
 conn.close()
@@ -886,6 +897,428 @@ m = fresh()
 m.time = FakeClock()
 r = submit(m, player="e", leg=2)
 check("a leafless stage row stores with rep 0", (r["stored"], r["rep"]), (True, 0))
+
+# --------------------------------------------------------------------------
+print("\n--- 14. schema 5: the 4 -> 5 migration, and its race --------------")
+
+# A live v4 database: steps 1-4 plus the table sweep.py created on its own.
+V4 = """
+CREATE TABLE lobbies (node TEXT PRIMARY KEY, map TEXT NOT NULL,
+    players INTEGER NOT NULL, maxplayers INTEGER NOT NULL, addr TEXT NOT NULL,
+    name TEXT NOT NULL, last_seen INTEGER NOT NULL);
+CREATE TABLE runs (map TEXT NOT NULL, track INTEGER NOT NULL,
+    leg INTEGER NOT NULL, tier TEXT NOT NULL, style TEXT NOT NULL,
+    player TEXT NOT NULL, name TEXT NOT NULL, ticks INTEGER NOT NULL,
+    tickrate REAL NOT NULL, millis INTEGER NOT NULL, flags INTEGER NOT NULL,
+    node TEXT NOT NULL, runid TEXT NOT NULL, submitted INTEGER NOT NULL,
+    replay_id INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (map, track, leg, tier, style, player));
+CREATE INDEX runs_board ON runs (map, track, leg, tier, style, millis, submitted);
+CREATE TABLE replays (id INTEGER PRIMARY KEY AUTOINCREMENT, map TEXT NOT NULL,
+    map_dir TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
+    leaf TEXT NOT NULL, tier TEXT NOT NULL, style TEXT NOT NULL,
+    player TEXT NOT NULL, name TEXT NOT NULL, ticks INTEGER NOT NULL,
+    tickrate REAL NOT NULL, millis INTEGER NOT NULL, flags INTEGER NOT NULL,
+    node TEXT NOT NULL, submitted INTEGER NOT NULL,
+    bytes INTEGER NOT NULL DEFAULT -1, truncated INTEGER NOT NULL DEFAULT 0,
+    seen INTEGER NOT NULL DEFAULT -1, checked INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (map, track, leg, leaf));
+CREATE INDEX replays_player ON replays (map, track, leg, tier, style, player,
+    millis, submitted);
+CREATE INDEX replays_sweep ON replays (checked, id);
+CREATE TABLE assignments (node TEXT PRIMARY KEY, map TEXT NOT NULL,
+    map_dir TEXT NOT NULL, asked_at INTEGER NOT NULL, src TEXT NOT NULL);
+CREATE INDEX assignments_map ON assignments (map, asked_at);
+CREATE TABLE verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    replay_id INTEGER NOT NULL, verdict TEXT NOT NULL, reason TEXT NOT NULL,
+    ticks INTEGER NOT NULL DEFAULT -1, engine TEXT NOT NULL,
+    progs TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE INDEX verdicts_replay ON verdicts (replay_id, id);
+INSERT INTO runs VALUES ('surf_test',0,0,'ranked','clean','old','Old',
+    4108,100.0,41080,0,'p27510','',1700000000,1);
+INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player, name,
+    ticks, tickrate, millis, flags, node, submitted, seen, checked)
+    VALUES ('surf_test','surf_test',0,0,'0004108_run.rec','ranked','clean',
+    'old','Old',4108,100.0,41080,0,'p27510',1700000000,1700000100,1);
+INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at)
+    VALUES (1,'REFUSE','an old format',-1,'e0','p0',1700000100);
+PRAGMA user_version=4;
+"""
+
+
+def seed_v4(path):
+    # WAL, as the live file is (header bytes 18-19 read 2 2 on the Pi).  From
+    # rollback mode, two connect()s racing to switch it lose with "database is
+    # locked" in connect() itself, before migrate() runs.
+    conn = sqlite3.connect(path)
+    conn.executescript(V4)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.commit()
+    conn.close()
+
+
+def q(mod, sql, args=()):
+    conn = sqlite3.connect(mod._test_db)
+    try:
+        return [tuple(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def objects(path):
+    conn = sqlite3.connect(path)
+    try:
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(replays)")]
+        return names, cols, conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
+m = fresh(seed=seed_v4)
+check("a v4 database upgrades to 5", user_version(m), 5)
+check("...keeping sweep's verdict row",
+      q(m, "SELECT replay_id, verdict, reason, at FROM verdicts"),
+      [(1, "REFUSE", "an old format", 1700000100)])
+check("...and the runs and replays rows",
+      (q(m, "SELECT player, millis, replay_id FROM runs"),
+       q(m, "SELECT id, leaf, checked FROM replays")),
+      ([("old", 41080, 1)], [(1, "0004108_run.rec", 1)]))
+names_, cols, _ = objects(m._test_db)
+check("...gaining reviews and the runs_replay index",
+      ("reviews" in names_, "runs_replay" in names_), (True, True))
+check("...and replays.recheck_at, 0 for the old row",
+      ("recheck_at" in cols, q(m, "SELECT recheck_at FROM replays")),
+      (True, [(0,)]))
+check("...and the old REFUSE row reads plain on the board",
+      [(r["player"], r["ver"]) for r in board(m)["rows"]], [("old", 0)])
+
+conn = sqlite3.connect(m._test_db)
+conn.execute("PRAGMA user_version=4")
+conn.commit()
+conn.close()
+try:
+    m.migrate()
+    rerun = "ok"
+except Exception as exc:                     # the failure being tested for
+    rerun = repr(exc)
+check("re-running step 5 over a finished step 5 does not raise", rerun, "ok")
+check("...and stamps 5 again", user_version(m), 5)
+
+
+class RacingConn(object):
+    """A connection whose ALTER is beaten to it by another process."""
+
+    def __init__(self, real, path):
+        self._real, self._path = real, path
+        self.raced = False
+
+    def execute(self, sql, *args):
+        if "ADD COLUMN recheck_at" in sql:
+            other = sqlite3.connect(self._path)
+            other.execute(sql)
+            other.commit()
+            other.close()
+            self.raced = True
+        return self._real.execute(sql, *args)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def migrate_file(mod, path, conn_factory=None):
+    """Run mod.migrate() against another database file."""
+    real_path, real_connect = mod.DB_PATH, mod.connect
+    mod.DB_PATH = path
+    if conn_factory is not None:
+        mod.connect = lambda: conn_factory(real_connect())
+    try:
+        mod.migrate()
+        return "ok"
+    except Exception as exc:
+        return repr(exc)
+    finally:
+        mod.DB_PATH, mod.connect = real_path, real_connect
+
+
+race_db = os.path.join(m._test_home, "race.db")
+seed_v4(race_db)
+seen = []
+
+
+def racing(real):
+    rc = RacingConn(real, race_db)
+    seen.append(rc)
+    return rc
+
+
+check("another process adding recheck_at between the check and the ALTER",
+      migrate_file(m, race_db, racing), "ok")
+check("...really raced (control)", any(rc.raced for rc in seen), True)
+names_, cols, ver = objects(race_db)
+check("...leaves one recheck_at, reviews, and schema 5",
+      (cols.count("recheck_at"), "reviews" in names_, ver), (1, True, 5))
+conn = sqlite3.connect(race_db)
+try:
+    conn.execute("ALTER TABLE replays ADD COLUMN recheck_at INTEGER")
+    dup = "no error"
+except sqlite3.OperationalError as exc:
+    dup = str(exc)
+conn.close()
+check("control: SQLite's error for the lost race is the tolerated one",
+      "duplicate column" in dup, True)
+
+# Two threads migrating one v4 file at once, released by a barrier.
+errors = []
+steps = []                                      # "migrated 4 -> 5" per round
+real_path = m.DB_PATH
+m.log.info =lambda msg, *a, **k: steps.append((n, msg % a))
+try:
+    for n in range(20):
+        path = os.path.join(m._test_home, "thr%d.db" % n)
+        seed_v4(path)
+        m.DB_PATH = path
+        gate = threading.Barrier(2)
+
+        def worker(gate=gate):
+            try:
+                gate.wait()
+                m.migrate()
+            except Exception as exc:
+                errors.append(repr(exc))
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        names_, cols, ver = objects(path)
+        if (cols.count("recheck_at"), "reviews" in names_, ver) != (1, True, 5):
+            errors.append("round %d: %r" % (n, (cols.count("recheck_at"), ver)))
+finally:
+    m.DB_PATH = real_path
+    del m.log.info                              # back to Logger.info
+both = sum(1 for k in range(20)
+           if sum(1 for r, s in steps if r == k and "4 -> 5" in s) == 2)
+print("     (both threads ran step 5 in %d of 20 rounds)" % both)
+check("two threads migrating one v4 file, 20 rounds: no error", errors, [])
+check("control: in some round both threads really ran step 5", both > 0, True)
+
+# --------------------------------------------------------------------------
+print("\n--- 15. the VERIFIED flag (`ver`) ---------------------------------")
+
+
+def leaf(ticks, player):
+    return "%07d_%s_run.rec" % (ticks, hashlib.sha256(player.encode()).hexdigest()[:8])
+
+
+def run(mod, player, ticks, rec=True, **kw):
+    """Submit at tickrate 100 (ms = ticks * 10); returns the reply."""
+    if rec:
+        kw["rec"] = leaf(ticks, player)
+    return submit(mod, player=player, name=player.capitalize(), ticks=ticks,
+                  tickrate=100, **kw)
+
+
+def add_verdict(mod, rid, verdict, at, reason="r"):
+    conn = sqlite3.connect(mod._test_db)
+    conn.execute("INSERT INTO verdicts (replay_id, verdict, reason, ticks,"
+                 " engine, progs, at) VALUES (?,?,?,-1,'e','p',?)",
+                 (rid, verdict, reason, at))
+    conn.commit()
+    conn.close()
+
+
+def review(mod, rid, decision, at, note=""):
+    """What an admin approve/reject/clear does: one transaction + restand."""
+    conn = mod.connect()
+    try:
+        with conn:
+            if decision is None:
+                conn.execute("DELETE FROM reviews WHERE replay_id = ?", (rid,))
+            else:
+                conn.execute(
+                    "INSERT INTO reviews (replay_id, decision, note, at)"
+                    " VALUES (?,?,?,?) ON CONFLICT(replay_id) DO UPDATE SET"
+                    " decision = excluded.decision, note = excluded.note,"
+                    " at = excluded.at", (rid, decision, note, at))
+            return mod.restand(conn, rid)
+    finally:
+        conn.close()
+
+
+def rows_by_player(mod, **kw):
+    body = board(mod, limit=200, **kw)
+    return {r["player"]: r for r in body["rows"]}
+
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+grid = []
+for verdict in (None, "PASS", "HOLD", "REFUSE", "ERROR"):
+    for decision in (None, "approve"):
+        who = "g%s%s" % ((verdict or "none").lower(), decision or "")
+        rid = run(m, who, 3000 + len(grid))["rep"]
+        if verdict:
+            add_verdict(m, rid, verdict, T + 5)
+        if decision:
+            review(m, rid, decision, T + 5)
+        grid.append((who, verdict, decision))
+got = rows_by_player(m)
+for who, verdict, decision in grid:
+    want = 1 if m.public_state(verdict, decision) == "verified" else 0
+    check("ver %-6s x %-7s == public_state" % (verdict, decision),
+          got[who]["ver"], want)
+check("control: the grid has both answers",
+      sorted({got[w]["ver"] for w, _, _ in grid}), [0, 1])
+r = run(m, "nofile", 2000, rec=False)
+check("a rep-0 row reads ver 0", (r["rep"], rows_by_player(m)["nofile"]["ver"]), (0, 0))
+
+a = run(m, "late1", 5000)["rep"]
+add_verdict(m, a, "PASS", T + 5)
+add_verdict(m, a, "HOLD", T + 6)
+b = run(m, "late2", 5001)["rep"]
+add_verdict(m, b, "HOLD", T + 5)
+add_verdict(m, b, "PASS", T + 6)
+e1 = run(m, "late3", 5002)["rep"]                # ERROR is not a verdict
+add_verdict(m, e1, "PASS", T + 5)
+add_verdict(m, e1, "ERROR", T + 6)
+e2 = run(m, "late4", 5003)["rep"]
+add_verdict(m, e2, "HOLD", T + 5)
+add_verdict(m, e2, "ERROR", T + 6)
+got = rows_by_player(m)
+check("the latest verdict wins: PASS then HOLD is 0", got["late1"]["ver"], 0)
+check("...and HOLD then PASS is 1", got["late2"]["ver"], 1)
+check("PASS then ERROR stays 1 (an ERROR never revokes)", got["late3"]["ver"], 1)
+check("HOLD then ERROR stays 0 (...nor grants)", got["late4"]["ver"], 0)
+
+c = run(m, "cur", 5100)["rep"]
+add_verdict(m, c, "PASS", T + 5)
+check("control: a PASS on the standing replay reads 1",
+      rows_by_player(m)["cur"]["ver"], 1)
+clock.now += 60
+r = run(m, "cur", 5100)                      # exact tie: same file, new bytes
+check("an exact-tie resubmission reuses the replay row", r["rep"], c)
+check("...and the older PASS no longer counts", rows_by_player(m)["cur"]["ver"], 0)
+
+# --------------------------------------------------------------------------
+print("\n--- 16. reject, clear, and restand() -------------------------------")
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+run(m, "xavier", 4400)                          # 44 s
+run(m, "yara", 6000)                            # 60 s
+clock.now += 1
+slow = run(m, "eve", 5000)["rep"]               # 50 s
+clock.now += 1
+fast = run(m, "eve", 4000)["rep"]               # 40 s, now her row
+check("eve stands on her 40 s run", rows_by_player(m)["eve"]["ms"], 40000)
+check("reject the 40 s replay -> moved", review(m, fast, "reject", T + 10), "moved")
+check("...and the board shows her 50 s run", rows_by_player(m)["eve"]["ms"], 50000)
+check("...pointing at that replay", rows_by_player(m)["eve"]["rep"], slow)
+check("clear -> moved back", review(m, fast, None, T + 11), "moved")
+check("...and the board shows 40 s again", rows_by_player(m)["eve"]["ms"], 40000)
+check("reject again", review(m, fast, "reject", T + 12), "moved")
+clock.now += 20
+r = run(m, "eve", 4500)                          # 45 s, slower than the rejected 40
+check("after the reject a 45 s run stores", r["stored"], True)
+body = board(m, limit=200)
+pos = [x["player"] for x in body["rows"]].index("eve") + 1
+check("...and submit_run's rank is the board position",
+      (r["rank"], r["of"]), (pos, len(body["rows"])))
+check("...which is #2 behind 44 s", pos, 2)
+
+m2 = fresh()
+m2.time = FakeClock()
+rid = run(m2, "lone", 3000)["rep"]
+check("a lone rejected row is removed", review(m2, rid, "reject", T + 10), "removed")
+check("...and is off the board", "lone" in rows_by_player(m2), False)
+check("...and clear restores it", (review(m2, rid, None, T + 11),
+      rows_by_player(m2)["lone"]["ms"]), ("moved", 30000))
+
+m3 = fresh()
+m3.time = FakeClock()
+rid = run(m3, "zero", 4000)["rep"]
+m3.time.now += 1
+run(m3, "zero", 3000, rec=False)                # faster, no recording: rep 0
+check("a rep-0 row is kept when an older replay is rejected",
+      (review(m3, rid, "reject", T + 10), rows_by_player(m3)["zero"]["rep"]),
+      ("kept", 0))
+check("restand of an unknown replay is none", m3.restand(m3.connect(), 9999), "none")
+
+# restand runs in the caller's transaction: a rollback undoes it.
+m4 = fresh()
+m4.time = FakeClock()
+rid = run(m4, "roll", 3000)["rep"]
+conn = m4.connect()
+try:
+    with conn:
+        conn.execute("INSERT INTO reviews (replay_id, decision, at)"
+                     " VALUES (?, 'reject', ?)", (rid, T + 10))
+        inner = m4.restand(conn, rid)
+        raise RuntimeError("roll back")
+except RuntimeError:
+    pass
+conn.close()
+check("restand inside a rolled-back transaction said removed", inner, "removed")
+check("...and nothing of it survived",
+      ("roll" in rows_by_player(m4), q(m4, "SELECT COUNT(*) FROM reviews")),
+      (True, [(0,)]))
+
+# An old reject lapses when an exact tie re-describes the replay row.
+m5 = fresh()
+clock = FakeClock()
+m5.time = clock
+rid = run(m5, "tie", 3000)["rep"]
+review(m5, rid, "reject", int(clock.now) + 5)
+check("control: the rejected run is off the board", "tie" in rows_by_player(m5), False)
+clock.now += 60
+r = run(m5, "tie", 3000)
+check("an exact tie after the reject stores on the same replay row",
+      (r["stored"], r["rep"]), (True, rid))
+check("...and the lapsed reject no longer moves it", m5.restand(m5.connect(), rid), "kept")
+
+# --------------------------------------------------------------------------
+print("\n--- 17. nothing private reaches a public body ---------------------")
+
+priv = tempfile.mkdtemp(prefix="surfd-board-maps-")
+os.makedirs(os.path.join(priv, "zones", "online"))
+os.environ["SURFD_MAPS"] = priv
+os.environ["SURFD_ZONES"] = os.path.join(priv, "zones", "online")
+m = fresh()
+m.time = FakeClock()
+T = int(m.time.now)
+held = run(m, "holdme", 3000)["rep"]
+add_verdict(m, held, "HOLD", T + 5, reason="SENTINEL-REASON")
+kept = run(m, "noted", 3100)["rep"]
+review(m, kept, "approve", T + 5, note="SENTINEL-NOTE")
+gone = run(m, "hidden", 2900)["rep"]
+review(m, gone, "reject", T + 5, note="SENTINEL-NOTE2")
+c = m.app.test_client()
+bodies = {}
+for path in ("/api/board?map=surf_test", "/board/api/maps",
+             "/board/api/map?map=surf_test", "/board/", "/board/board.js",
+             "/board/board.css"):
+    resp = c.get(path, environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    bodies[path] = (resp.status_code, resp.get_data(as_text=True))
+check("every public body answered 200",
+      sorted({s for s, _ in bodies.values()}), [200])
+for path, (_, text) in sorted(bodies.items()):
+    low = text.lower()
+    leaked = [w for w in ("sentinel", "verdict", "reason", "reject", "approve")
+              if w in low] + (["HOLD"] if "HOLD" in text else [])
+    check("no private word in %s" % path, leaked, [])
+check("control: the sentinels are in the database",
+      (q(m, "SELECT reason FROM verdicts WHERE replay_id = ?", (held,)),
+       sorted(r[0] for r in q(m, "SELECT note FROM reviews"))),
+      ([("SENTINEL-REASON",)], ["SENTINEL-NOTE", "SENTINEL-NOTE2"]))
+check("control: the approved run shows VERIFIED, the rejected one is gone",
+      (rows_by_player(m)["noted"]["ver"], "hidden" in rows_by_player(m)), (1, False))
+os.environ.pop("SURFD_MAPS", None)
+os.environ.pop("SURFD_ZONES", None)
 
 # --------------------------------------------------------------------------
 print("")

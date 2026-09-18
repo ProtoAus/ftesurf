@@ -14,6 +14,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 
 FAILED = []
 
@@ -123,6 +124,97 @@ def case_error_retry_cap():
     check("after MAX_ERRORS it stops being pending", sweep.pending(conn, 20), [])
 
 
+def case_schema_owned_by_surfd():
+    surfd, sweep, _ = fresh()
+    conn = surfd.connect()
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+    check("verdicts exists after `import sweep` (surfd's migrate)", "verdicts" in names, True)
+    check("sweep keeps no copy of the DDL", hasattr(sweep, "SCHEMA"), False)
+    sweep.ensure_schema(conn)
+    check("ensure_schema is still a harmless no-op", "verdicts_replay" in
+          {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}, True)
+
+
+def case_error_window():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    fail = lambda m, p: ["no verdict here"]
+    for t in (1000, 1001, 1002):
+        sweep.sweep(conn, 20, runner=fail, now=t)
+    ids = lambda: [r["id"] for r in sweep.pending(conn, 20)]
+    check("3 ERRORs: not pending", ids(), [])
+    conn.execute("UPDATE replays SET recheck_at = 2000 WHERE id = ?", (rid,))
+    conn.commit()
+    check("a re-check bump makes it pending again", ids(), [rid])
+    for t in (2000, 2001, 2002):
+        sweep.sweep(conn, 20, runner=fail, now=t)
+    check("control: 3 ERRORs after the re-check spend it again", ids(), [])
+    conn.execute("UPDATE replays SET submitted = 3000, checked = 0 WHERE id = ?", (rid,))
+    conn.commit()
+    check("an exact-tie resubmission reopens it too", ids(), [rid])
+    other = add_replay(conn, runs, "bhop_eazy", "0000663_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET recheck_at = 4000 WHERE id = ?", (other,))
+    conn.commit()
+    check("re-checks are verified first", ids(), [other, rid])
+
+
+def mid_run(event):
+    """Sweep one replay with a board row on real time; `event` (tie, recheck or
+    None) lands through a second connection while the verifier runs, as
+    submit_run or the admin's re-check would.  -> (surfd, conn, rid, sweep)."""
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    conn.execute(
+        "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+        " tickrate, millis, flags, node, runid, submitted, replay_id)"
+        " VALUES ('bhop_eazy', 0, 0, 'ranked', 'normal', 'p', 'n', 662, 100,"
+        " 6620, 0, '1', '', 1, ?)", (rid,))
+    conn.commit()
+
+    def runner(map_dir, paths):
+        other = surfd.connect()
+        with other:
+            if event == "tie":      # submit_run's upsert of the same row
+                other.execute("UPDATE replays SET submitted = ?, seen = -1,"
+                              " checked = 0 WHERE id = ?", (int(time.time()), rid))
+            elif event == "recheck":
+                other.execute("UPDATE replays SET checked = 0, recheck_at = ?"
+                              " WHERE id = ?", (int(time.time()), rid))
+        other.close()
+        return ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths]
+
+    sweep.sweep(conn, 20, runner=runner)
+    return surfd, conn, rid, sweep
+
+
+def verdict_state(surfd, conn, rid, sweep):
+    at = conn.execute("SELECT at FROM verdicts WHERE replay_id = ?", (rid,)).fetchone()[0]
+    sub, checked = conn.execute("SELECT submitted, checked FROM replays WHERE id = ?",
+                                (rid,)).fetchone()
+    ver = conn.execute("SELECT " + surfd.VER_SQL + " FROM runs r WHERE r.replay_id = ?",
+                       (rid,)).fetchone()[0]
+    return {"current": at >= sub, "checked": checked,
+            "pending": rid in [r["id"] for r in sweep.pending(conn, 20)], "ver": ver}
+
+
+def case_mid_run_tie():
+    got = verdict_state(*mid_run("tie"))
+    check("a tie resubmitted mid-run: its PASS is not current, still pending, ver 0",
+          got, {"current": False, "checked": 0, "pending": True, "ver": 0})
+    got = verdict_state(*mid_run(None))
+    check("control: no mid-run event -> current, checked, ver 1",
+          got, {"current": True, "checked": 1, "pending": False, "ver": 1})
+
+
+def case_mid_run_recheck():
+    # Same bytes, so the PASS stands (ver 1); the re-check still gets its own run.
+    got = verdict_state(*mid_run("recheck"))
+    check("a re-check queued mid-run stays pending (the PASS still counts)",
+          got, {"current": True, "checked": 0, "pending": True, "ver": 1})
+
+
 def case_command_line():
     surfd, sweep, runs = fresh()
     seen = {}
@@ -163,7 +255,8 @@ def case_quiet_import():
 
 def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
-                 case_error_retry_cap, case_command_line):
+                 case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
+                 case_mid_run_tie, case_mid_run_recheck, case_command_line):
         print("%s:" % case.__name__)
         case()
     print("\n%d failed" % len(FAILED))

@@ -24,9 +24,12 @@ file take minutes on the Pi for no extra coverage -- verify_password reads N
 back out of the stored string, so the code path is identical.
 """
 
+import hashlib
 import importlib
+import logging
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 
@@ -63,6 +66,11 @@ def fresh(_file=None, **env):
     os.environ["SURFD_HOME"] = home
     os.environ["SURFD_DB"] = os.path.join(home, "test.db")
     os.environ["SURFD_ENV"] = os.path.join(home, "surfd.env")
+    # Never the live run tree or map library (their defaults are /srv paths).
+    os.makedirs(os.path.join(home, "runs"))
+    os.environ["SURFD_RUNS"] = os.path.join(home, "runs")
+    os.environ["SURFD_MAPS"] = os.path.join(home, "maps")
+    os.environ["SURFD_ZONES"] = os.path.join(home, "zones")
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_ADMIN_HASH",
               "SURFD_ADMIN_SECRET", "SURFD_RCON_PASSWORD",
               "SURFD_ADMIN_LOBBIES", "SURFD_ADMIN_INSECURE_COOKIE"):
@@ -98,6 +106,406 @@ def login_via(client, password, peer="127.0.0.1", real_ip=None, csrf=None):
         csrf = page.split('name="csrf" value="')[1].split('"')[0]
     return client.post("/admin/login", headers=hdrs, environ_base=base,
                        data={"csrf": csrf, "password": password})
+
+
+# ---- run review (Patch 359) -------------------------------------------------
+
+class FakeClock(object):
+    """One clock for surfd AND admin: a review is current only at or after
+    replays.submitted, so the two modules must agree on what "now" is."""
+
+    def __init__(self, now=1800000000.0):
+        self.now = float(now)
+
+    def time(self):
+        return self.now
+
+    def monotonic(self):
+        return self.now
+
+
+# Three samples (t -0.01, 0, 0.01), a cp, and a trailer that agrees.
+REC = ("FTESURF-REC 9\nmap surf_kitsune\ntickrate 0.01\nmovetickrate 0.01\n"
+       "instart 100 100\npmpin trisoup=1 rotboxes=1 portalcsg=1\nbegin\n"
+       "-0.0100 0.00 0.00 0.00 0.00 0.00 0.00 0.0 16.0 0\n"
+       "0.0000 1.00 0.00 0.00 100.00 0.00 0.00 0.0 16.0 0\n"
+       "0.0100 2.00 0.00 0.00 300.00 400.00 0.00 0.0 16.0 0\n"
+       "cp 1 1\nend 2 3 1 1\n")
+
+REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
+                "/admin/api/run/<int:rid>", "/admin/api/run/<int:rid>/path",
+                "/admin/api/review"}
+ROW_KEYS = {"id", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
+            "name", "ms", "submitted", "checked", "recheck_at", "verdict",
+            "error", "pending", "decision", "public", "standing"}
+
+
+def rec_leaf(ticks, player):
+    return "%07d_%s_run.rec" % (ticks, hashlib.sha256(player.encode()).hexdigest()[:8])
+
+
+def review_section(pw_hash, pw):
+    print("\n--- 9. run review --")
+    clock = FakeClock()
+    m = fresh(SURFD_ADMIN_HASH=pw_hash, SURFD_ADMIN_SECRET="s" * 48,
+              SURFD_ADMIN_INSECURE_COOKIE="1")
+    adm = sys.modules["admin"]
+    m.time = clock
+    adm.time = clock
+    sys.modules.pop("sweep", None)
+    sweep = importlib.import_module("sweep")
+    c = m.app.test_client()
+
+    def submit(player, ticks, write=False):
+        leaf = rec_leaf(ticks, player)
+        j = m.app.test_client().post("/api/run", data={
+            "key": "testkey", "map": "surf_kitsune", "track": "0", "leg": "0",
+            "player": player, "name": player.capitalize(), "ticks": str(ticks),
+            "tickrate": "100", "flags": "0", "node": "p27510", "rec": leaf},
+            environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+        path = os.path.join(m.RUNS_DIR, "surf_kitsune", "main", leaf)
+        if write:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", newline="\n") as fh:
+                fh.write(REC)
+        clock.now += 1
+        return j["rep"], path
+
+    def record(rid, verdict, at, reason="r"):
+        conn = m.connect()
+        try:
+            with conn:
+                sweep.record(conn, rid, verdict, reason, -1, "e" * 32, "p" * 64, at)
+        finally:
+            conn.close()
+
+    def sql(query, args=()):
+        conn = sqlite3.connect(m.DB_PATH)
+        try:
+            return conn.execute(query, args).fetchall()
+        finally:
+            conn.close()
+
+    def snapshot():
+        return (sql("SELECT * FROM reviews ORDER BY replay_id"),
+                sql("SELECT * FROM runs ORDER BY player"),
+                sql("SELECT id, checked, recheck_at FROM replays ORDER BY id"))
+
+    def listing(**args):
+        r = c.get("/admin/api/runs", query_string=args)
+        return r.get_json() if r.status_code == 200 else {"code": r.status_code}
+
+    def ids(**args):
+        return [x["id"] for x in listing(**args)["rows"]]
+
+    def detail(rid):
+        return c.get("/admin/api/run/%d" % rid).get_json()
+
+    def board():
+        b = m.app.test_client().get("/api/board", query_string={
+            "map": "surf_kitsune", "limit": "200"}).get_json()
+        return {x["player"]: x for x in b["rows"]}
+
+    def pending():
+        conn = m.connect()
+        try:
+            return [r["id"] for r in sweep.pending(conn, 100)]
+        finally:
+            conn.close()
+
+    # -- 9a. logged out, every /admin rule but login refuses -----------------
+    rules = sorted((r.rule, meth) for r in m.app.url_map.iter_rules()
+                   if r.rule.startswith("/admin")
+                   and r.endpoint not in ("admin.login_form", "admin.login")
+                   for meth in r.methods - {"HEAD", "OPTIONS"})
+    wrong = []
+    for rule, meth in rules:
+        resp = c.open(rule.replace("<int:rid>", "1"), method=meth)
+        got = resp.status_code
+        if got == 302 and resp.headers.get("Location", "").endswith("/admin/login"):
+            got = "login"
+        if got != (401 if "/api/" in rule else "login"):
+            wrong.append((meth, rule, resp.status_code))
+    check("logged out: every /admin rule is 401 (api) or a login redirect",
+          wrong, [])
+    check("control: that sweep covered every review route",
+          sorted(REVIEW_RULES - {r for r, _ in rules}), [])
+    check("control: ...and the fleet controls",
+          ("/admin/api/map", "POST") in rules, True)
+
+    # -- seed: eve 50 s then 40 s, a HOLD, a PASS, three ERRORs ---------------
+    slow, _ = submit("eve", 5000)
+    fast, _ = submit("eve", 4000)
+    hal, hal_path = submit("hal", 4500, write=True)
+    pat, _ = submit("pat", 4600)
+    err, _ = submit("err", 4700)
+    T = int(clock.now)
+    record(hal, "HOLD", T, reason="SENTINEL-REASON")
+    record(pat, "PASS", T)
+    for i in range(3):
+        record(err, "ERROR", T + i, reason="no VERIFY line")
+
+    check("login", login(c, pw).status_code, 302)
+    page = c.get("/admin/runs")
+    check("/admin/runs renders", page.status_code, 200)
+    csrf = page.get_data(as_text=True).split('name="csrf" value="')[1].split('"')[0]
+    check("the fleet page links to Runs",
+          'href="/admin/runs"' in c.get("/admin/").get_data(as_text=True), True)
+    rp = c.get("/admin/run/%d" % hal)
+    check("/admin/run/<rid> renders with its rid",
+          (rp.status_code, "const RID = %d;" % hal in rp.get_data(as_text=True)),
+          (200, True))
+    check("...under the admin CSP (no img-src)",
+          rp.headers.get("Content-Security-Policy", "").startswith("default-src 'none'")
+          and "img-src" not in rp.headers.get("Content-Security-Policy", ""), True)
+
+    # -- 9b. the list ---------------------------------------------------------
+    j = listing()
+    check("the default view is the queue: the HOLD with no review",
+          [x["id"] for x in j["rows"]], [hal])
+    check("counts per state",
+          j["counts"], {"queue": 1, "hold": 1, "pass": 1, "refuse": 0, "error": 1,
+                        "pending": 2, "approved": 0, "rejected": 0, "all": 5})
+    check("row keys", set(j["rows"][0]), ROW_KEYS)
+    check("the HOLD row", {k: j["rows"][0][k] for k in
+                           ("verdict", "decision", "public", "standing", "legdir")},
+          {"verdict": "HOLD", "decision": None, "public": "plain",
+           "standing": True, "legdir": "main"})
+    check("all: queue first, then standing by newest, then the rest",
+          ids(state="all"), [hal, err, pat, fast, slow])
+    check("pending = no terminal verdict, under the ERROR cap", sorted(ids(state="pending")),
+          sorted([slow, fast]))
+    check("...exactly what sweep.pending() picks", sorted(ids(state="pending")),
+          sorted(pending()))
+    check("control: err (3 ERRORs, checked 0) is listed under error",
+          ids(state="error"), [err])
+    check("search by name", sorted(ids(state="all", q="EVE")), sorted([slow, fast]))
+    check("search by replay id", ids(state="all", q=str(pat)), [pat])
+    check("counts follow the search", listing(state="all", q="eve")["counts"]["all"], 2)
+    check("a % in the search is literal", listing(state="all", q="%")["counts"]["all"], 0)
+    for label, args in (("an unknown state", {"state": "bogus"}),
+                        ("a negative offset", {"offset": "-1"}),
+                        ("a word for an offset", {"offset": "x"})):
+        check("%s -> 400" % label, listing(**args), {"code": 400})
+
+    # -- 9c. CSRF and Sec-Fetch-Site ------------------------------------------
+    before = snapshot()
+    r = c.post("/admin/api/review", data={"rid": str(fast), "action": "reject"})
+    check("review without a CSRF token -> 400", r.status_code, 400)
+    r = c.post("/admin/api/review",
+               data={"rid": str(fast), "action": "reject", "csrf": "forged"})
+    check("review with a wrong token -> 400", r.status_code, 400)
+    for site in ("cross-site", "same-site", "none"):
+        r = c.post("/admin/api/review", headers={"Sec-Fetch-Site": site},
+                   data={"rid": str(fast), "action": "reject", "csrf": csrf})
+        check("Sec-Fetch-Site %s with a valid token -> 403" % site, r.status_code, 403)
+    check("...and none of those changed the database", snapshot(), before)
+    r = c.post("/admin/api/map", headers={"Sec-Fetch-Site": "cross-site"},
+               data={"tier": "1", "map": "surf_kitsune", "csrf": csrf})
+    check("the fleet controls get the same check", r.status_code, 403)
+
+    def act(rid, action, note="", site="same-origin", submitted=None):
+        if submitted is None:                    # what a fresh page load shows
+            submitted = sql("SELECT submitted FROM replays WHERE id = ?", (rid,))[0][0]
+        r = c.post("/admin/api/review",
+                   headers={"Sec-Fetch-Site": site} if site else {},
+                   data={"rid": str(rid), "action": action, "note": note,
+                         "submitted": str(submitted), "csrf": csrf})
+        j = r.get_json() or {}
+        j["code"] = r.status_code
+        return j
+
+    # -- 9d. every action, end to end -----------------------------------------
+    check("control: eve stands on her 40 s replay",
+          (board()["eve"]["ms"], board()["eve"]["rep"]), (40000, fast))
+    clock.now += 10
+    j = act(fast, "reject", note="spliced")
+    check("reject (same-origin) -> ok, and the board row moved",
+          (j.get("ok"), "board row moved" in j.get("message", "")), (True, True))
+    check("...the board shows her 50 s replay",
+          (board()["eve"]["ms"], board()["eve"]["rep"]), (50000, slow))
+    check("...the replay reads hidden", detail(fast)["public"], "hidden")
+    check("...and lists under rejected", ids(state="rejected"), [fast])
+    clock.now += 1
+    j = act(fast, "approve", site=None)
+    check("approve it (no Sec-Fetch-Site header) -> 40 s again, verified",
+          (j.get("ok"), board()["eve"]["ms"], board()["eve"]["ver"]), (True, 40000, 1))
+    clock.now += 1
+    j = act(fast, "clear")
+    d = detail(fast)
+    check("clear -> kept, no review, no badge (it has no verdict)",
+          (j.get("ok"), "board row kept" in j.get("message", ""), d["review"],
+           d["public"], board()["eve"]["ver"]), (True, True, None, "plain", 0))
+    j = act(hal, "approve", note="looked fine")
+    check("approving the HOLD empties the queue",
+          (j.get("ok"), listing()["counts"]["queue"],
+           listing()["counts"]["approved"]), (True, 0, 1))
+    check("...and hal's row is verified", board()["hal"]["ver"], 1)
+
+    check("control: three ERRORs keep err out of pending()", err in pending(), False)
+    check("control: pat has a PASS, not pending", pat in pending(), False)
+    clock.now += 5
+    j = act(err, "recheck")
+    check("recheck -> ok", j.get("ok"), True)
+    check("...checked 0 and recheck_at now",
+          sql("SELECT checked, recheck_at FROM replays WHERE id = ?", (err,)),
+          [(0, int(clock.now))])
+    check("...and pending() offers it again, first", pending()[:1], [err])
+    check("...and so does the pending list", err in ids(state="pending"), True)
+    check("control: pat was not re-checked", pat in pending(), False)
+    for i in range(3):
+        record(err, "ERROR", int(clock.now) + 1 + i)
+    check("three ERRORs after the recheck spend it again", err in pending(), False)
+    check("...and it leaves the pending list", err in ids(state="pending"), False)
+
+    # -- 9e. bad inputs and the note ------------------------------------------
+    before = snapshot()
+    shown = str(sql("SELECT submitted FROM replays WHERE id = ?", (pat,))[0][0])
+    for label, fields in (("no rid", {"action": "approve"}),
+                          ("a word for a rid", {"rid": "x", "action": "approve"}),
+                          ("a negative rid", {"rid": "-1", "action": "approve"}),
+                          ("an unknown replay", {"rid": "999999", "action": "approve"}),
+                          ("an unknown action", {"rid": str(pat), "action": "delete"}),
+                          ("no action", {"rid": str(pat)}),
+                          ("no submitted", {"rid": str(pat), "action": "approve",
+                                            "submitted": None}),
+                          ("a word for submitted", {"rid": str(pat), "action": "approve",
+                                                    "submitted": "x"})):
+        fields.setdefault("submitted", shown)
+        if fields["submitted"] is None:
+            del fields["submitted"]
+        fields["csrf"] = csrf
+        r = c.post("/admin/api/review", data=fields)
+        check("%s -> 400" % label, (r.status_code, (r.get_json() or {}).get("ok")),
+              (400, False))
+    check("...and none of them changed the database", snapshot(), before)
+    raw = "line1\nline2\x00\x1b[31m\u202e" + "x" * 300
+    check("a long, dirty note is accepted", act(pat, "approve", note=raw).get("ok"), True)
+    note = sql("SELECT note FROM reviews WHERE replay_id = ?", (pat,))[0][0]
+    check("...stored cleaned and capped at %d" % adm.NOTE_MAX,
+          note, ("line1 line2 [31m " + "x" * 300)[:adm.NOTE_MAX])
+
+    # -- 9f. the detail JSON --------------------------------------------------
+    d = detail(hal)
+    check("detail: the full reason", [v["reason"] for v in d["verdicts"]],
+          ["SENTINEL-REASON"])
+    check("...the download link", d["download"], "/api/replay/%d" % hal)
+    check("...the watch commands", d["watch"],
+          ["map surf_kitsune", "board_replay %d" % hal,
+           "replay data/online/%d.rec" % hal])
+    check("...the file, standing and review",
+          (d["run"]["file"], d["standing"], d["review"]["note"], d["public"]),
+          (True, {"on_board": True, "rank": 2, "of": 4}, "looked fine", "verified"))
+    check("control: the public board never carries the reason",
+          "SENTINEL" in m.app.test_client().get(
+              "/api/board?map=surf_kitsune").get_data(as_text=True), False)
+    check("an unknown replay -> 404",
+          c.get("/admin/api/run/999999").status_code, 404)
+    shown = detail(pat)["run"]["submitted"]       # the page loads...
+    clock.now += 60
+    submit("pat", 4600)                           # exact tie: same row, new bytes
+    d = detail(pat)
+    check("after an exact-tie resubmission the old PASS is not current",
+          [v["current"] for v in d["verdicts"]], [False])
+    check("...the approval lapses too", (d["review"]["current"], d["public"]),
+          (False, "plain"))
+    row = [x for x in listing(state="all")["rows"] if x["id"] == pat][0]
+    check("...and the list agrees", (row["verdict"], row["decision"], row["public"]),
+          (None, None, "plain"))
+    before = snapshot()
+    j = act(pat, "approve", submitted=shown)      # ...and is clicked after the tie
+    check("approve from the pre-tie page -> 409, reload",
+          (j["code"], j.get("error")), (409, "the run changed -- reload"))
+    check("...and it changed nothing", snapshot(), before)
+    j = act(pat, "approve")
+    check("control: from a reloaded page -> ok, verified",
+          (j["code"], detail(pat)["public"]), (200, "verified"))
+    submit("pat", 4600)                           # a tie in the approval's own second
+    check("a tie in the same second as the approval lapses it",
+          (detail(pat)["review"]["current"], board()["pat"]["ver"]), (False, 0))
+
+    # ERROR is not a verdict: it neither grants nor revokes the badge.
+    ann, _ = submit("ann", 4900)
+    hol, _ = submit("hol", 4950)
+    t = int(clock.now)
+    for rid, first in ((ann, "PASS"), (hol, "HOLD")):
+        record(rid, first, t)
+        record(rid, "ERROR", t + 1, reason="no VERIFY line")
+    rows = {x["id"]: x for x in listing(state="all")["rows"]}
+    check("PASS then ERROR: detail, list and board all read verified",
+          (detail(ann)["public"], rows[ann]["public"], rows[ann]["verdict"],
+           rows[ann]["error"], board()["ann"]["ver"]),
+          ("verified", "verified", "PASS", True, 1))
+    check("...and it lists under both pass and error",
+          (ann in ids(state="pass"), ann in ids(state="error")), (True, True))
+    check("HOLD then ERROR: plain, ver 0, and still in the queue",
+          (detail(hol)["public"], board()["hol"]["ver"], hol in ids()),
+          ("plain", 0, True))
+
+    # -- 9g. the path route: replay_file() first, recplot only on a good path -
+    calls = []
+    real_parse = adm.recplot.parse
+    adm.recplot.parse = lambda path, *a, **kw: (calls.append(path),
+                                                real_parse(path, *a, **kw))[1]
+    try:
+        r = c.get("/admin/api/run/%d/path" % hal)
+        p = r.get_json()
+        check("path: 200, parsed", (r.status_code, p["ok"], p["n"],
+                                    p["stats"]["max_speed"]), (200, True, 3, 500.0))
+        check("...with the pin's trace cvars and the cp",
+              ("trisoup=1" in p["head"]["pmpin"], [(k["k"], k["n"]) for k in p["marks"]]),
+              (True, [("cp", 1)]))
+        check("control: recplot.parse ran once, on the real file",
+              calls, [os.path.realpath(hal_path)])
+
+        outside = os.path.join(os.path.dirname(m.RUNS_DIR), "outside.rec")
+        with open(outside, "w") as fh:
+            fh.write(REC)
+        bad_leaf, _ = submit("t1", 4801)
+        bad_dir, _ = submit("t2", 4802)
+        linked, link_path = submit("t3", 4803)
+        missing, _ = submit("t4", 4804)
+        conn = sqlite3.connect(m.DB_PATH)
+        with conn:
+            conn.execute("UPDATE replays SET leaf = '../../../outside.rec' WHERE id = ?",
+                         (bad_leaf,))
+            conn.execute("UPDATE replays SET map_dir = 'surf_kitsune/../..' WHERE id = ?",
+                         (bad_dir,))
+        conn.close()
+        os.makedirs(os.path.dirname(link_path), exist_ok=True)
+        os.symlink(outside, link_path)
+        del calls[:]
+        for label, rid in (("a bad leaf", bad_leaf), ("a map_dir with a slash", bad_dir),
+                           ("a symlink out of the run tree", linked),
+                           ("a missing file", missing), ("an unknown replay", 999999)):
+            r = c.get("/admin/api/run/%d/path" % rid)
+            check("path: %s -> 404" % label, (r.status_code, r.get_json()["ok"]),
+                  (404, False))
+        check("...and recplot.parse was never called", calls, [])
+        check("control: the symlink target itself parses",
+              real_parse(outside)["ok"], True)
+    finally:
+        adm.recplot.parse = real_parse
+
+    # -- 9h. runs=None registers no review routes -----------------------------
+    import flask
+    app = flask.Flask("standalone")
+    bp = adm.build_blueprint(app, logging.getLogger("test_admin"), m.connect, 30)
+    app.register_blueprint(bp)
+    got = {r.rule for r in app.url_map.iter_rules()}
+    check("runs=None: none of the review routes", sorted(got & REVIEW_RULES), [])
+    check("control: the blueprint is there", "/admin/login" in got, True)
+    sa = app.test_client()
+    check("control: standalone login works", login(sa, pw).status_code, 302)
+    check("...and its fleet page has no Runs link",
+          "/admin/runs" in sa.get("/admin/").get_data(as_text=True), False)
+
+    # -- 9i. panel off --------------------------------------------------------
+    m = fresh()
+    c = m.app.test_client()
+    check("panel off: /admin/runs is 404", c.get("/admin/runs").status_code, 404)
+    check("panel off: /admin/api/runs is 404", c.get("/admin/api/runs").status_code, 404)
+    check("panel off: /board/ still works", c.get("/board/").status_code, 200)
 
 
 def main():
@@ -465,6 +873,8 @@ def main():
     check("a written cvar is served from cache",
           fleet2.snapshot("1")["hostname"], "renamed by the test")
     rcon2.budget_reset()
+
+    review_section(HASH, PW)
 
     for h in HOMES:
         shutil.rmtree(h, ignore_errors=True)

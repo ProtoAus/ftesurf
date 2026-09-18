@@ -24,6 +24,18 @@ TS=$(date +%Y%m%d-%H%M%S)
 [ "$(id -u)" = "0" ] || { echo "install.sh must run as root:  sudo sh $SITE/install.sh" >&2; exit 1; }
 [ -f "$SRC" ]   || { echo "missing $SRC -- run a release first, it scp's this file" >&2; exit 1; }
 [ -f "$VHOST" ] || { echo "missing $VHOST -- is this the right box?" >&2; exit 1; }
+# The /ftesurf/board/ block uses surfd's board zone; without it nginx -t fails.
+grep -qs 'zone=surfdboard' /etc/nginx/conf.d/surfd-ratelimit.conf || {
+    echo "no zone=surfdboard in /etc/nginx/conf.d/surfd-ratelimit.conf --" >&2
+    echo "run install_board_endpoint.sh first:  sudo /srv/nvme/surfd/install_board_endpoint.sh" >&2
+    exit 1
+}
+# ...and proxies to surfd's /board/, which only a surfd deployed with web/ serves.
+SURFD=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8084/board/api/maps || true)
+[ "$SURFD" = "200" ] || {
+    echo "surfd's /board/api/maps answered ${SURFD:-nothing}, not 200 -- deploy surfd (with web/) first" >&2
+    exit 1
+}
 
 echo "== baseline =="
 BEFORE=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
@@ -117,6 +129,13 @@ echo "== reloaded =="
 AFTER=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
 echo "   server_name proto.bar count after: $AFTER  (must equal $BEFORE)"
 [ "$AFTER" = "$BEFORE" ] || { echo "FAILED: the server_name count changed -- a duplicate vhost got loaded" >&2; exit 1; }
+
+# The leaderboard proxy, through this nginx rather than public DNS.
+sleep 1
+BOARD=$(curl -s -o /dev/null -w '%{http_code}' --resolve proto.bar:443:127.0.0.1 \
+    https://proto.bar/ftesurf/board/api/maps || true)
+echo "   GET /ftesurf/board/api/maps -> $BOARD"
+[ "$BOARD" = "200" ] || { echo "FAILED: the leaderboard did not answer 200 -- is surfd deployed with /board/ (surfd/web/ beside surfd.py)?" >&2; exit 1; }
 
 echo
 echo "Installed. Now re-run the release script, or if a page is already staged:"

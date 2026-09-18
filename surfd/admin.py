@@ -59,6 +59,7 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import threading
 import time
@@ -66,6 +67,7 @@ import time
 from flask import (Blueprint, Response, current_app, jsonify, redirect,
                    render_template, request, session, url_for)
 
+import recplot
 from rcon import (Rcon, RconError, RconThrottled, RconBlocked, clean_reply,
                   budget_left)
 
@@ -100,9 +102,92 @@ MAPNAME = re.compile(r"^[a-z0-9_]{1,63}$")
 HOSTNAME_TEXT = re.compile(r"^[A-Za-z0-9 _.:|!/+()\[\]-]{1,63}$")
 SAY_TEXT = re.compile(r"^[A-Za-z0-9 _.,:!?'/+()\[\]@-]{1,120}$")
 
+# --------------------------------------------------------------------------
+# Run review (Patch 359): /admin/runs over surfd's replays ledger
+# --------------------------------------------------------------------------
+
+REVIEW_ACTIONS = ("approve", "reject", "clear", "recheck")
+RUNS_PAGE = 100
+NOTE_MAX = 200
+QUERY_MAX = 64
+VERDICTS_SHOWN = 200
+RID_TEXT = re.compile(r"^[0-9]{1,18}$")
+# C0/C1 controls and bidi overrides; a note is shown to the owner only, via textContent.
+NOTE_JUNK = re.compile("[\x00-\x1f\x7f-\x9f\u200e\u200f\u2028\u2029"
+                       "\u202a-\u202e\u2066-\u2069]")
+
+# ERRORs in sweep.pending()'s window for replays row `p`; test_admin pins the
+# "pending" list to pending() itself.
+_ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
+    AND n.verdict = 'ERROR' AND n.at >= MAX(p.submitted, p.recheck_at))"""
+
+# One row per replay with its latest CURRENT (at >= submitted) review and
+# non-ERROR verdict, the pair surfd.VER_SQL reads; `error` = the latest current
+# attempt printed no verdict.  The ? is the ERROR cap.
+_RUNS_BASE = """
+SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
+       p.millis AS ms, p.submitted, p.checked, p.recheck_at, v.verdict,
+       COALESCE(e.verdict = 'ERROR', 0) AS error,
+       p.checked = 0 AND """ + _ERRORS_SQL + """ < ? AS pending,
+       CASE WHEN w.at >= p.submitted THEN w.decision END AS decision,
+       EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id) AS standing
+  FROM replays p
+  LEFT JOIN (SELECT v.replay_id, MAX(v.id) AS eid,
+                    MAX(CASE WHEN v.verdict <> 'ERROR' THEN v.id END) AS vid
+               FROM verdicts v JOIN replays q ON q.id = v.replay_id
+              WHERE v.at >= q.submitted GROUP BY v.replay_id) lv
+         ON lv.replay_id = p.id
+  LEFT JOIN verdicts v ON v.id = lv.vid
+  LEFT JOIN verdicts e ON e.id = lv.eid
+  LEFT JOIN reviews w ON w.replay_id = p.id"""
+
+# pending = what the next sweep would pick: checked 0 and under the ERROR cap.
+RUN_STATES = {
+    "queue": "x.verdict = 'HOLD' AND x.decision IS NULL",
+    "hold": "x.verdict = 'HOLD'",
+    "pass": "x.verdict = 'PASS'",
+    "refuse": "x.verdict = 'REFUSE'",
+    "error": "x.error",
+    "pending": "x.pending",
+    "approved": "x.decision = 'approve'",
+    "rejected": "x.decision = 'reject'",
+    "all": "1",
+}
+
+
+def clean_note(raw):
+    text = " ".join(NOTE_JUNK.sub(" ", raw or "").split())
+    return text[:NOTE_MAX].strip()
+
+
+def list_runs(conn, state, q, offset, max_errors):
+    """(counts, rows) for the review list; `counts` honours `q` but not `state`."""
+    where, args = "1", [max_errors]
+    if q:
+        like = "%" + re.sub(r"([\\%_])", r"\\\1", q) + "%"
+        where = "(x.map LIKE ? ESCAPE '\\' OR x.name LIKE ? ESCAPE '\\' OR x.id = ?)"
+        args += [like, like, int(q) if RID_TEXT.match(q) else -1]
+    base = " FROM (" + _RUNS_BASE + ") x WHERE " + where
+    counts = conn.execute(
+        "SELECT " + ", ".join('COUNT(CASE WHEN %s THEN 1 END) AS "%s"' % (sql, name)
+                              for name, sql in RUN_STATES.items()) + base,
+        args).fetchone()
+    rows = conn.execute(
+        "SELECT x.*" + base + " AND " + RUN_STATES[state] +
+        " ORDER BY CASE WHEN " + RUN_STATES["queue"] + " THEN 1 ELSE 0 END DESC,"
+        " x.standing DESC, x.submitted DESC, x.id DESC LIMIT ? OFFSET ?",
+        args + [RUNS_PAGE, offset]).fetchall()
+    return {k: counts[k] for k in RUN_STATES}, rows
+
 
 class AdminError(Exception):
     """A control was refused. The message is shown to the admin verbatim."""
+    status = 400
+
+
+class RunChanged(AdminError):
+    """The replay was resubmitted since the page showed it."""
+    status = 409
 
 
 # --------------------------------------------------------------------------
@@ -612,7 +697,8 @@ def tail_file(path, lines=LOG_TAIL_LINES):
 # The blueprint
 # --------------------------------------------------------------------------
 
-def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
+def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
+                    runs=None):
     """Create and configure the /admin blueprint, or return None if disabled.
 
     `app` is configured here rather than by the caller because the cookie
@@ -624,6 +710,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
     (address, attributed). It is OPTIONAL so that this module keeps working
     standalone -- test_admin.py builds the blueprint directly -- and the
     fallback is the old behaviour: the socket peer, always believed.
+
+    `runs` is surfd's replay helpers, injected for the same reason: a dict of
+    replay_file, restand, public_state, rank_of and leg_dir. Without it the
+    run-review routes are not registered.
     """
     admin_hash = setting("SURFD_ADMIN_HASH")
     if not admin_hash:
@@ -826,7 +916,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
             return redirect(url_for("admin.login_form"))
         return render_template("admin.html", csrf=csrf_token(),
                                tiers=fleet.tiers(),
-                               have_rcon=bool(rcon_password))
+                               have_rcon=bool(rcon_password),
+                               have_runs=runs is not None)
 
     @bp.get("/api/state")
     def state():
@@ -913,15 +1004,23 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
     # ---- controls -------------------------------------------------------
 
     def control(fn):
-        """Wrap a control: require a session, a CSRF token and an rcon key."""
+        """Wrap a control: require a session, a same-origin caller and a CSRF
+        token. proto.bar and play.proto.bar are one site, so SameSite=Strict
+        does not separate them; the token and Sec-Fetch-Site do."""
         def wrapper(*a, **kw):
             if not logged_in():
                 return jsonify({"ok": False, "error": "not logged in"}), 401
+            site = request.headers.get("Sec-Fetch-Site")
+            if site is not None and site != "same-origin":
+                log.warning("admin: %s refused, Sec-Fetch-Site %r (from %s)",
+                            request.path, site[:32], client_ip())
+                return jsonify({"ok": False,
+                                "error": "cross-origin request refused"}), 403
             try:
                 check_csrf()
                 return jsonify({"ok": True, "message": fn(*a, **kw)})
             except AdminError as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 400
+                return jsonify({"ok": False, "error": str(exc)}), exc.status
             except RconError as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 502
         wrapper.__name__ = fn.__name__
@@ -1067,6 +1166,195 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None):
             conn.close()
         log.warning("admin: directory flushed, %d rows (from %s)", n, client_ip())
         return "flushed %d rows from the directory" % n
+
+    # ---- run review (only when surfd injects its replay helpers) ----------
+
+    if runs is not None:
+        replay_file = runs["replay_file"]
+        restand = runs["restand"]
+        public_state = runs["public_state"]
+        rank_of = runs["rank_of"]
+        leg_dir = runs["leg_dir"]
+        max_errors = runs["max_errors"]
+
+        def run_row(row):
+            out = dict(row)
+            for k in ("standing", "error", "pending"):
+                out[k] = bool(out[k])
+            out["legdir"] = leg_dir(row["track"], row["leg"])
+            out["public"] = public_state(row["verdict"], row["decision"])
+            return out
+
+        @bp.get("/runs")
+        def runs_page():
+            if not logged_in():
+                return redirect(url_for("admin.login_form"))
+            return render_template("admin_runs.html", csrf=csrf_token(),
+                                   states=list(RUN_STATES))
+
+        @bp.get("/run/<int:rid>")
+        def run_page(rid):
+            if not logged_in():
+                return redirect(url_for("admin.login_form"))
+            return render_template("admin_run.html", csrf=csrf_token(), rid=rid,
+                                   tiers=fleet.tiers(),
+                                   have_rcon=bool(rcon_password))
+
+        @bp.get("/api/runs")
+        def runs_list():
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            state = request.args.get("state", "queue")
+            if state not in RUN_STATES:
+                return jsonify({"ok": False, "error": "unknown state"}), 400
+            q = " ".join(NOTE_JUNK.sub(" ", request.args.get("q", "")).split())
+            q = q[:QUERY_MAX]
+            raw = request.args.get("offset", "0")
+            if not RID_TEXT.match(raw) or int(raw) > 10 ** 7:
+                return jsonify({"ok": False, "error": "bad offset"}), 400
+            offset = int(raw)
+            conn = db_connect()
+            try:
+                counts, rows = list_runs(conn, state, q, offset, max_errors)
+            except sqlite3.Error as exc:
+                log.exception("admin runs db error: %s", exc)
+                return jsonify({"ok": False, "error": "storage error"}), 500
+            finally:
+                conn.close()
+            return jsonify({"ok": True, "state": state, "q": q, "offset": offset,
+                            "limit": RUNS_PAGE, "counts": counts,
+                            "rows": [run_row(r) for r in rows]})
+
+        @bp.get("/api/run/<int:rid>")
+        def run_detail(rid):
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            conn = db_connect()
+            try:
+                row = conn.execute("SELECT * FROM replays WHERE id = ?",
+                                   (rid,)).fetchone()
+                if row is None:
+                    return jsonify({"ok": False, "error": "no such replay"}), 404
+                sub = row["submitted"]
+                verdicts = [dict(v, current=v["at"] >= sub) for v in conn.execute(
+                    "SELECT id, verdict, reason, ticks, engine, progs, at"
+                    "  FROM verdicts WHERE replay_id = ? ORDER BY id DESC LIMIT ?",
+                    (rid, VERDICTS_SHOWN)).fetchall()]
+                latest = conn.execute(
+                    "SELECT verdict FROM verdicts WHERE replay_id = ? AND at >= ?"
+                    " AND verdict <> 'ERROR' ORDER BY id DESC LIMIT 1",
+                    (rid, sub)).fetchone()
+                errs = conn.execute("SELECT " + _ERRORS_SQL + " FROM replays p"
+                                    " WHERE p.id = ?", (rid,)).fetchone()[0]
+                rv = conn.execute("SELECT decision, note, at FROM reviews"
+                                  " WHERE replay_id = ?", (rid,)).fetchone()
+                stand = conn.execute(
+                    "SELECT map, track, leg, tier, style, millis, submitted,"
+                    "       player FROM runs WHERE replay_id = ?"
+                    " ORDER BY tier LIMIT 1", (rid,)).fetchone()
+                rank, of = rank_of(conn, *stand) if stand else (0, 0)
+            except sqlite3.Error as exc:
+                log.exception("admin run %d db error: %s", rid, exc)
+                return jsonify({"ok": False, "error": "storage error"}), 500
+            finally:
+                conn.close()
+            review = dict(rv, current=rv["at"] >= sub) if rv else None
+            decision = review["decision"] if review and review["current"] else None
+            run = dict(row)
+            run["file"] = replay_file(row)[0] is not None
+            run["legdir"] = leg_dir(row["track"], row["leg"])
+            run["pending"] = not row["checked"] and errs < max_errors
+            return jsonify({
+                "ok": True, "run": run,
+                "public": public_state(latest["verdict"] if latest else None,
+                                       decision),
+                "standing": {"on_board": stand is not None, "rank": rank, "of": of},
+                "review": review, "verdicts": verdicts,
+                "download": "/api/replay/%d" % rid,
+                "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
+                          "replay data/online/%d.rec" % rid],
+            })
+
+        @bp.get("/api/run/<int:rid>/path")
+        def run_path(rid):
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            conn = db_connect()
+            try:
+                row = conn.execute("SELECT map_dir, track, leg, leaf FROM replays"
+                                   " WHERE id = ?", (rid,)).fetchone()
+            finally:
+                conn.close()
+            if row is None:
+                return jsonify({"ok": False, "error": "no such replay"}), 404
+            path, why = replay_file(row)
+            if path is None:
+                if why != "missing":
+                    log.error("admin: replay %d path refused (%s): %r/%r",
+                              rid, why, row["map_dir"], row["leaf"])
+                return jsonify({"ok": False, "error": {
+                    "name": "the row's file name is unusable",
+                    "outside": "the file resolves outside the run tree",
+                }.get(why, "no file on this node")}), 404
+            return jsonify(recplot.parse(path))
+
+        @bp.post("/api/review")
+        @control
+        def review_action():
+            raw = request.form.get("rid", "").strip()
+            if not RID_TEXT.match(raw):
+                raise AdminError("rid must be a replay id")
+            rid = int(raw)
+            action = request.form.get("action", "")
+            if action not in REVIEW_ACTIONS:
+                raise AdminError("unknown action %r" % action[:32])
+            # The replays.submitted the page showed: a review stamped now would
+            # be current for an exact tie that landed after the page loaded.
+            shown = request.form.get("submitted", "").strip()
+            if not RID_TEXT.match(shown):
+                raise AdminError("submitted must be the run's submitted time")
+            note = clean_note(request.form.get("note", ""))
+            now = int(time.time())
+            conn = db_connect()
+            try:
+                with conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    row = conn.execute("SELECT submitted FROM replays WHERE id = ?",
+                                       (rid,)).fetchone()
+                    if row is None:
+                        raise AdminError("no such replay: %d" % rid)
+                    if row[0] != int(shown):
+                        raise RunChanged("the run changed -- reload")
+                    if action == "recheck":
+                        conn.execute("UPDATE replays SET checked = 0,"
+                                     " recheck_at = ? WHERE id = ?", (now, rid))
+                        result = "the next sweep verifies it again"
+                    else:
+                        if action == "clear":
+                            conn.execute("DELETE FROM reviews WHERE replay_id = ?",
+                                         (rid,))
+                        else:
+                            # -5: a tie whose submit_run began just before this
+                            # commit must lapse it (at < submitted); never below
+                            # the submission it reviews.
+                            conn.execute(
+                                "INSERT INTO reviews (replay_id, decision, note, at)"
+                                " VALUES (?, ?, ?, ?) ON CONFLICT(replay_id) DO"
+                                " UPDATE SET decision = excluded.decision,"
+                                " note = excluded.note, at = excluded.at",
+                                (rid, action, note, max(now - 5, row[0])))
+                        result = "board row " + restand(conn, rid)
+            except sqlite3.Error as exc:
+                log.exception("admin review of replay %d failed: %s", rid, exc)
+                raise AdminError("storage error")
+            finally:
+                conn.close()
+            log.info("admin: replay %d %s, %s (from %s)", rid, action, result,
+                     client_ip())
+            return "replay %d %s: %s" % (rid, {
+                "approve": "approved", "reject": "rejected",
+                "clear": "review cleared", "recheck": "re-check queued",
+            }[action], result)
 
     @bp.after_request
     def harden(resp):

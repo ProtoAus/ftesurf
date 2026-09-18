@@ -85,6 +85,29 @@ def fresh(key="testkey", seed_v3=False, library=None, zoned=None):
             );
             INSERT INTO lobbies VALUES
                 ('p27510','surf_legacy',0,16,'10.0.0.1:27510','Legacy',2000000000);
+            -- every real v3 database has these; schema 5 indexes and alters them
+            CREATE TABLE runs (map TEXT NOT NULL, track INTEGER NOT NULL,
+                leg INTEGER NOT NULL, tier TEXT NOT NULL, style TEXT NOT NULL,
+                player TEXT NOT NULL, name TEXT NOT NULL,
+                ticks INTEGER NOT NULL, tickrate REAL NOT NULL,
+                millis INTEGER NOT NULL, flags INTEGER NOT NULL,
+                node TEXT NOT NULL, runid TEXT NOT NULL,
+                submitted INTEGER NOT NULL,
+                replay_id INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (map, track, leg, tier, style, player));
+            CREATE TABLE replays (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                map TEXT NOT NULL, map_dir TEXT NOT NULL,
+                track INTEGER NOT NULL, leg INTEGER NOT NULL,
+                leaf TEXT NOT NULL, tier TEXT NOT NULL, style TEXT NOT NULL,
+                player TEXT NOT NULL, name TEXT NOT NULL,
+                ticks INTEGER NOT NULL, tickrate REAL NOT NULL,
+                millis INTEGER NOT NULL, flags INTEGER NOT NULL,
+                node TEXT NOT NULL, submitted INTEGER NOT NULL,
+                bytes INTEGER NOT NULL DEFAULT -1,
+                truncated INTEGER NOT NULL DEFAULT 0,
+                seen INTEGER NOT NULL DEFAULT -1,
+                checked INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (map, track, leg, leaf));
             PRAGMA user_version=3;
             """
         )
@@ -425,11 +448,11 @@ check("CONTROL: the heartbeat has its own bucket and is untouched",
 print("\n--- 7. the 3 -> 4 migration ----------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 4", user_version(m), 4)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 4)
+check("a fresh database is stamped schema 5", user_version(m), 5)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 5)
 
 m = fresh(seed_v3=True)
-check("a schema-3 database upgrades to 4", user_version(m), 4)
+check("a schema-3 database upgrades to 5", user_version(m), 5)
 conn = sqlite3.connect(m._test_db)
 kept = [r[0] for r in conn.execute("SELECT map FROM lobbies")]
 cols = [r[1] for r in conn.execute("PRAGMA table_info(assignments)")]

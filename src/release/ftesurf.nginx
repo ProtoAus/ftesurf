@@ -23,6 +23,10 @@
 #
 #  WHY gzip IS TURNED ON HERE.  /etc/nginx/nginx.conf sets `gzip off` globally
 #  on this box, so every text location has to opt back in for itself.
+#
+#  /ftesurf/board/ is the web leaderboard, proxied to surfd's /board/.  It uses
+#  zone=surfdboard from conf.d/surfd-ratelimit.conf (install_board_endpoint.sh),
+#  shared with play.proto.bar's /api/board; install.sh refuses to run without it.
 # =============================================================================
 
 # /ftesurf -> /ftesurf/  (the alias below only matches the trailing-slash form)
@@ -86,4 +90,33 @@ location = /ftesurf/BebasNeueRegular.ttf {
     gzip_vary       on;
     gzip_comp_level 6;
     gzip_types      font/ttf;
+}
+
+# The web leaderboard.  A longer ^~ prefix than /ftesurf/, so it wins.  surfd
+# sets CSP, nosniff and Cache-Control; X-Real-IP (overwritten) is its per-client
+# rate key.
+location = /ftesurf/board {
+    return 301 https://$host/ftesurf/board/;
+}
+
+location ^~ /ftesurf/board/ {
+    limit_req             zone=surfdboard burst=30 nodelay;
+    limit_req_status      429;
+    limit_except GET { deny all; }
+
+    proxy_pass            http://127.0.0.1:8084/board/;
+    proxy_http_version    1.1;
+    proxy_set_header      Host            $host;
+    proxy_set_header      X-Real-IP       $remote_addr;
+    proxy_set_header      X-Forwarded-For $remote_addr;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
+
+    add_header X-FTESurf-Site "1" always;
+
+    gzip              on;
+    gzip_vary         on;
+    gzip_proxied      any;
+    gzip_min_length   512;
+    gzip_types        text/css application/javascript text/javascript application/json;
 }

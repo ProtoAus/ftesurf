@@ -21,6 +21,9 @@
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
 #
+#   (/board/, the web leaderboard, is proxied from proto.bar/ftesurf/board/ by
+#   src/release/ftesurf.nginx, not from this vhost.)
+#
 # Before adding anything to that list, consider:
 #   * /api/heartbeat is protected only by a shared secret in a form field. Over
 #     plain HTTP that secret is visible to anyone on the path. Terminate TLS.

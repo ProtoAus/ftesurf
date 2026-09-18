@@ -262,7 +262,7 @@ TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
 TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 # --------------------------------------------------------------------------
@@ -602,6 +602,26 @@ def connect():
     return conn
 
 
+# One pm_verify verdict per sweep attempt (sweep.py writes it).  Also run by
+# sweep.ensure_schema, so the text must stay idempotent.
+VERDICTS_SQL = """
+CREATE TABLE IF NOT EXISTS verdicts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    replay_id  INTEGER NOT NULL,
+    verdict    TEXT    NOT NULL,
+    reason     TEXT    NOT NULL,
+    ticks      INTEGER NOT NULL DEFAULT -1,
+    engine     TEXT    NOT NULL,
+    progs      TEXT    NOT NULL,
+    at         INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
+"""
+# ERRORs since the last submission or re-check before sweep.pending() gives up;
+# the admin's "pending" list uses the same cap.
+VERIFY_MAX_ERRORS = 3
+
+
 def migrate():
     """Create/upgrade the schema on start. Safe to run every boot.
 
@@ -830,6 +850,34 @@ def migrate():
             conn.execute("PRAGMA user_version=4")
             conn.commit()
             version = 4
+
+        if version < 5:
+            # SCHEMA 5: verdicts (adopted from sweep.py), owner reviews, and a
+            # re-check stamp.  Idempotent: sweep.py's cron import can run this
+            # concurrently with gunicorn's, so every step tolerates the other
+            # having done it first.  A review is current only while
+            # at >= replays.submitted (an exact tie re-describes the row).
+            conn.executescript(VERDICTS_SQL + """
+                CREATE TABLE IF NOT EXISTS reviews (
+                    replay_id  INTEGER PRIMARY KEY,
+                    decision   TEXT    NOT NULL
+                               CHECK (decision IN ('approve', 'reject')),
+                    note       TEXT    NOT NULL DEFAULT '',
+                    at         INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS runs_replay ON runs (replay_id);
+                """)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
+            if "recheck_at" not in cols:
+                try:
+                    conn.execute("ALTER TABLE replays ADD COLUMN"
+                                 " recheck_at INTEGER NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc):
+                        raise
+            conn.execute("PRAGMA user_version=5")
+            conn.commit()
+            version = 5
 
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
@@ -1647,6 +1695,147 @@ def rank_of(db, mapname, track, leg, tier, style, millis, submitted, player):
     return ahead + 1, total
 
 
+# --------------------------------------------------------------------------
+# Verified badge and owner review (schema 5)
+# --------------------------------------------------------------------------
+#
+# A verdict or review counts only while its `at` >= replays.submitted: an
+# exact tie upserts the same replays row over new bytes (see submit_run).
+
+# `ver` for one runs row aliased `r`: 1 when its replay is approved, or its
+# latest current verdict is PASS.  An approval beats any later verdict.  ERROR
+# (the verifier printed nothing) is not a verdict: it never moves the badge.
+VER_SQL = """CASE WHEN r.replay_id > 0 AND EXISTS (
+    SELECT 1 FROM replays p WHERE p.id = r.replay_id AND (
+      EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id
+               AND w.decision = 'approve' AND w.at >= p.submitted)
+      OR (SELECT v.verdict FROM verdicts v WHERE v.replay_id = p.id
+           AND v.at >= p.submitted AND v.verdict <> 'ERROR'
+           ORDER BY v.id DESC LIMIT 1) = 'PASS'))
+  THEN 1 ELSE 0 END"""
+
+# True when replays row `p` carries a current reject.
+_REJECTED_SQL = ("EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id"
+                 " AND w.decision = 'reject' AND w.at >= p.submitted)")
+
+
+def public_state(verdict, decision):
+    """VER_SQL's rule in Python, for the admin display.
+
+    `verdict` is the latest CURRENT non-ERROR verdict word and `decision` the
+    CURRENT review decision, each None when there is none.  Returns "hidden",
+    "verified" or "plain"."""
+    if decision == "reject":
+        return "hidden"
+    if decision == "approve" or verdict == "PASS":
+        return "verified"
+    return "plain"
+
+
+def board_counts(db, mapname, track, leg, style):
+    """Row counts for both tiers of one board: {"ranked": n, "community": n}."""
+    counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0}
+    for row in db.execute(
+            "SELECT tier, COUNT(*) AS n FROM runs"
+            " WHERE map=? AND track=? AND leg=? AND style=? GROUP BY tier",
+            (mapname, track, leg, style)).fetchall():
+        if row["tier"] in counts:
+            counts[row["tier"]] = row["n"]
+    return counts
+
+
+def board_rows(db, mapname, track, leg, tier, style, limit, offset):
+    """One board page in BOARD_ORDER, as /api/board's row dicts (`ver` last)."""
+    rows = []
+    for i, row in enumerate(db.execute(
+            "SELECT r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
+            "       r.submitted, r.replay_id, " + VER_SQL + " AS ver"
+            "  FROM runs r"
+            " WHERE r.map=? AND r.track=? AND r.leg=? AND r.tier=? AND r.style=?"
+            " ORDER BY " + BOARD_ORDER + " LIMIT ? OFFSET ?",
+            (mapname, track, leg, tier, style, limit, offset)).fetchall()):
+        rows.append({
+            "r": offset + i + 1,
+            "player": row["player"],
+            "name": row["name"],
+            "ticks": row["ticks"],
+            "rate": row["tickrate"],
+            "ms": row["millis"],
+            "flags": row["flags"],
+            "when": row["submitted"],
+            # `replays` id, 0 when no recording is indexed (a legitimate
+            # time).  An integer: the client keeps rows in fixed float arrays,
+            # and /api/replay's whole surface stays one integer.
+            "rep": row["replay_id"],
+            "ver": row["ver"],
+        })
+    return rows
+
+
+_UPSERT_RUN = """
+    INSERT INTO runs (map, track, leg, tier, style, player, name,
+                      ticks, tickrate, millis, flags, node, runid,
+                      submitted, replay_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(map, track, leg, tier, style, player) DO UPDATE SET
+        name      = excluded.name,
+        ticks     = excluded.ticks,
+        tickrate  = excluded.tickrate,
+        millis    = excluded.millis,
+        flags     = excluded.flags,
+        node      = excluded.node,
+        runid     = excluded.runid,
+        submitted = excluded.submitted,
+        replay_id = excluded.replay_id
+"""
+
+
+def restand(db, rid):
+    """Re-derive the board row of replay `rid`'s player after a review change.
+
+    Runs inside the caller's transaction and never commits.  The row becomes
+    the player's best current non-rejected replay on that board:
+      "kept"     the row is not rejected and no replay beats it (rep-0 rows too)
+      "moved"    the row was (re)written from the best replay
+      "removed"  nothing is left to stand, the row was deleted
+      "none"     no such replay, or no row before and none after
+    So readers need no hidden filter, and submit_run compares the player's
+    next run against the re-derived row.
+    """
+    rep = db.execute(
+        "SELECT map, track, leg, tier, style, player FROM replays WHERE id = ?",
+        (rid,)).fetchone()
+    if rep is None:
+        return "none"
+    key = tuple(rep)
+    cur = db.execute(
+        "SELECT replay_id, millis FROM runs WHERE map=? AND track=? AND leg=?"
+        " AND tier=? AND style=? AND player=?", key).fetchone()
+    best = db.execute(
+        "SELECT p.* FROM replays p WHERE p.map=? AND p.track=? AND p.leg=?"
+        " AND p.tier=? AND p.style=? AND p.player=? AND NOT " + _REJECTED_SQL +
+        " ORDER BY p.millis, p.submitted, p.id LIMIT 1", key).fetchone()
+
+    if cur is not None:
+        rejected = cur["replay_id"] > 0 and db.execute(
+            "SELECT 1 FROM replays p WHERE p.id = ? AND " + _REJECTED_SQL,
+            (cur["replay_id"],)).fetchone() is not None
+        if not rejected and (best is None or best["millis"] >= cur["millis"]):
+            return "kept"
+    if best is not None:
+        db.execute(_UPSERT_RUN, (
+            best["map"], best["track"], best["leg"], best["tier"], best["style"],
+            best["player"], best["name"], best["ticks"], best["tickrate"],
+            best["millis"], best["flags"], best["node"], "", best["submitted"],
+            best["id"]))
+        return "moved"
+    if cur is not None:
+        db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
+                   " AND tier=? AND style=? AND player=?", key)
+        return "removed"
+    return "none"
+
+
 @app.post("/api/run")
 def submit_run():
     now = int(time.time())
@@ -1926,22 +2115,7 @@ def submit_run():
                 )
 
             db.execute(
-                """
-                INSERT INTO runs (map, track, leg, tier, style, player, name,
-                                  ticks, tickrate, millis, flags, node, runid,
-                                  submitted, replay_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(map, track, leg, tier, style, player) DO UPDATE SET
-                    name      = excluded.name,
-                    ticks     = excluded.ticks,
-                    tickrate  = excluded.tickrate,
-                    millis    = excluded.millis,
-                    flags     = excluded.flags,
-                    node      = excluded.node,
-                    runid     = excluded.runid,
-                    submitted = excluded.submitted,
-                    replay_id = excluded.replay_id
-                """,
+                _UPSERT_RUN,
                 (mapname, track, leg, tier, style, player, name, ticks,
                  tickrate, millis, flags, node, runid, now, rid),
             )
@@ -2012,60 +2186,10 @@ def board():
     counts = {}
     try:
         db = get_db()
-        # The counts for BOTH tiers of this board, in one query, because the
-        # client needs them to say "no ranked times yet, 37 community" without
-        # a second round trip -- and because the alternative, defaulting the
-        # board to whichever tier happens to be populated, would silently mix
-        # trust levels in one ranked list.  The plan's rule is that a
-        # community run never appears on the ranked board; showing a count is
-        # how the UI stays honest without breaking it.
-        for row in db.execute(
-            """
-            SELECT tier, COUNT(*) AS n FROM runs
-             WHERE map=? AND track=? AND leg=? AND style=?
-             GROUP BY tier
-            """,
-            (mapname, track, leg, style),
-        ).fetchall():
-            counts[row["tier"]] = row["n"]
-
-        for i, row in enumerate(db.execute(
-            """
-            SELECT player, name, ticks, tickrate, millis, flags, submitted,
-                   replay_id
-              FROM runs
-             WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
-             ORDER BY """ + BOARD_ORDER + """
-             LIMIT ? OFFSET ?
-            """,
-            (mapname, track, leg, tier, style, limit, offset),
-        ).fetchall()):
-            rows.append(
-                {
-                    "r": offset + i + 1,
-                    "player": row["player"],
-                    "name": row["name"],
-                    "ticks": row["ticks"],
-                    "rate": row["tickrate"],
-                    "ms": row["millis"],
-                    "flags": row["flags"],
-                    "when": row["submitted"],
-                    # THE REPLAY HANDLE.  0 means "no recording is indexed for
-                    # this row", which a client must render as "no replay" and
-                    # never as an error -- a community row, a row set before
-                    # build 66, and a row whose file failed to land all read 0
-                    # and all are legitimate times.
-                    #
-                    # AN INTEGER, NOT THE FILENAME, for two reasons that are
-                    # both about the consumer.  The client keeps per-row values
-                    # in parallel fixed arrays (OB_MAXROW), and a string column
-                    # there needs a strzone per entry -- a rule cl_online.qc and
-                    # cl_scores.qc both already carry.  And it makes R4's route
-                    # /api/replay/<int:id>, so the download's whole traversal
-                    # surface is one integer rather than a path from the wire.
-                    "rep": row["replay_id"],
-                }
-            )
+        # Both tiers' counts, so the client can say "no ranked times yet, 37
+        # community" without mixing trust levels in one list.
+        counts = board_counts(db, mapname, track, leg, style)
+        rows = board_rows(db, mapname, track, leg, tier, style, limit, offset)
     except sqlite3.Error as exc:
         # Same contract as lobbies.json: the client must always get parseable
         # JSON with a rows array, so a storage fault reads as an empty board
@@ -2108,6 +2232,27 @@ def leg_dir(track, leg):
     if leg <= 0:
         return "bonus_%d" % track
     return "bonus_%d_stage_%d" % (track, leg)
+
+
+def replay_file(row):
+    """The file a replays row names: ``(path, "")``, or ``(None, why)``.
+
+    `row` needs map_dir, track, leg and leaf.  `why` is "name" (leaf or
+    map_dir fails its grammar), "outside" (resolves outside RUNS_DIR) or
+    "missing" (not a file).  The one path check /api/replay, sweep.py and the
+    admin share; submit_run validates names too, but the row outlives that.
+    """
+    leaf, map_dir = row["leaf"] or "", row["map_dir"] or ""
+    if not _LEAF_OK.match(leaf) or not _MAPNAME_OK.match(map_dir):
+        return None, "name"
+    root = os.path.realpath(RUNS_DIR)
+    path = os.path.realpath(
+        os.path.join(root, map_dir, leg_dir(row["track"], row["leg"]), leaf))
+    if not path.startswith(root + os.sep):
+        return None, "outside"
+    if not os.path.isfile(path):
+        return None, "missing"
+    return path, ""
 
 
 @app.get("/api/replay/<int:rid>")
@@ -2153,27 +2298,19 @@ def replay(rid):
     if row is None:
         return fail(404, "no such replay")
 
-    # BELT AND BRACES ON DATA THAT IS ALREADY VALIDATED.  submit_run refuses a
-    # leaf that does not match _LEAF_OK and a map_dir that does not match
-    # _MAPNAME_OK, so a stored row cannot carry a separator today.  This is
-    # here because "today" is doing real work in that sentence: the validator
-    # is one edit away from the row, the row outlives the edit, and a public
-    # file-serving route is the wrong place to inherit that trust silently.
-    leaf, map_dir = row["leaf"], row["map_dir"]
-    if not _LEAF_OK.match(leaf) or not _MAPNAME_OK.match(map_dir):
+    leaf = row["leaf"]
+    path, why = replay_file(row)
+    if why == "name":
         log.error("replay %d has an unusable name: map_dir=%r leaf=%r",
-                  rid, map_dir, leaf)
+                  rid, row["map_dir"], leaf)
         return fail(404, "no such replay")
-
-    root = os.path.realpath(RUNS_DIR)
-    path = os.path.realpath(
-        os.path.join(root, map_dir, leg_dir(row["track"], row["leg"]), leaf))
-    if path != root and not path.startswith(root + os.sep):
-        log.error("replay %d resolved outside the run tree: %r", rid, path)
+    if why == "outside":
+        log.error("replay %d resolved outside the run tree: %r/%s",
+                  rid, row["map_dir"], leaf)
         return fail(404, "no such replay")
-
-    if not os.path.isfile(path):
-        log.warning("replay %d indexed but absent on disk: %r", rid, path)
+    if why:
+        log.warning("replay %d indexed but absent on disk: %r/%s",
+                    rid, row["map_dir"], leaf)
         return fail(404, "replay not on this node")
 
     # send_file AND NOT read-then-Response: the body is ~1 MB of a 7.9 GB box
@@ -2193,6 +2330,174 @@ def replay(rid):
         log.exception("replay %d unreadable: %s", rid, exc)
         return fail(500, "storage error")
     resp.headers["X-Surfd-Replay"] = str(rid)
+    return resp
+
+
+# --------------------------------------------------------------------------
+# Public web leaderboard (/board/), proxied from proto.bar/ftesurf/board/
+# --------------------------------------------------------------------------
+#
+# The browser sees /ftesurf/board/ where Flask sees /board/, so the page uses
+# relative URLs only.  These routes never touch `session`, so they never set
+# a cookie.  Public JSON carries no player id, verdict, reason or review.
+
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css"}
+WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
+WEB_MAPS_TTL = 60        # seconds the serialized maps list is reused
+WEB_PAGE = 50            # rows per /board/api/map call
+WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
+           "font-src 'self'; connect-src 'self'; img-src 'self'; "
+           "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+# A map opens on the first of these with rows, else the first board it has.
+WEB_DEFAULT_BOARDS = ((0, 0, TIER_RANKED, STYLE_CLEAN),
+                      (0, 0, TIER_COMMUNITY, STYLE_CLEAN),
+                      (0, 0, TIER_RANKED, STYLE_SEGMENTED),
+                      (0, 0, TIER_COMMUNITY, STYLE_SEGMENTED))
+
+_web_lock = threading.Lock()
+_web_maps = {"at": None, "body": b""}
+
+
+def _json(payload, cache):
+    resp = Response(json.dumps(payload, separators=(",", ":")),
+                    status=200, mimetype="application/json")
+    resp.headers["Cache-Control"] = cache
+    return resp
+
+
+def _web_file(name, mimetype):
+    try:
+        with open(os.path.join(WEB_DIR, name), "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        log.error("web board file %s unreadable: %s", name, exc)
+        return fail(404, "not found")
+    resp = Response(data, status=200, mimetype=mimetype)
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.add_etag()
+    return resp.make_conditional(request)
+
+
+@app.get("/board/")
+def web_page():
+    return _web_file("board.html", "text/html")
+
+
+@app.get("/board/<name>")
+def web_asset(name):
+    mimetype = WEB_FILES.get(name)       # a fixed allowlist, never a path
+    if mimetype is None:
+        return fail(404, "not found")
+    return _web_file(name, mimetype)
+
+
+def _web_maps_body(now):
+    """Every zoned map with a BSP, plus every map with runs, with its main
+    ranked clean WR.  The WR window orders by BOARD_ORDER, so it is always
+    /api/board's row 1."""
+    bsp, zoned = map_index()
+    db = get_db()
+    stats = {r["map"]: r for r in db.execute(
+        "SELECT map, COUNT(*) AS runs, MAX(submitted) AS last"
+        "  FROM runs GROUP BY map").fetchall()}
+    wrs = {r["map"]: r for r in db.execute(
+        "SELECT r.map, r.name, r.millis, " + VER_SQL + " AS ver FROM ("
+        "  SELECT map, name, millis, replay_id, ROW_NUMBER() OVER"
+        "         (PARTITION BY map ORDER BY " + BOARD_ORDER + ") AS k"
+        "    FROM runs WHERE track=0 AND leg=0 AND tier=? AND style=?) r"
+        " WHERE r.k = 1", (TIER_RANKED, STYLE_CLEAN)).fetchall()}
+    maps = []
+    for key in sorted((set(bsp) & set(zoned)) | set(stats)):
+        st, wr = stats.get(key), wrs.get(key)
+        maps.append({
+            "map": bsp.get(key, key),
+            "runs": st["runs"] if st else 0,
+            "last": st["last"] if st else 0,
+            "wr": ({"name": wr["name"], "ms": wr["millis"], "ver": wr["ver"]}
+                   if wr else None),
+        })
+    return json.dumps({"v": 1, "t": now, "maps": maps},
+                      separators=(",", ":")).encode("utf-8")
+
+
+@app.get("/board/api/maps")
+def web_maps():
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+    with _web_lock:
+        at, body = _web_maps["at"], _web_maps["body"]
+    if at is None or not 0 <= now - at < WEB_MAPS_TTL:
+        try:
+            body = _web_maps_body(now)
+        except sqlite3.Error as exc:
+            log.exception("web maps db error: %s", exc)
+            return fail(500, "storage error")
+        with _web_lock:
+            _web_maps["at"], _web_maps["body"] = now, body
+    resp = Response(body, status=200, mimetype="application/json")
+    resp.headers["Cache-Control"] = "max-age=60"
+    return resp
+
+
+@app.get("/board/api/map")
+def web_map():
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+
+    mapname = clean_map(request.args.get("map"))
+    if not mapname:
+        return fail(400, "bad map")
+    raw = {k: request.args.get(k, "") for k in ("track", "leg", "tier", "style")}
+    track = strict_int(raw["track"] or 0, 0, MAX_TRACK)
+    leg = strict_int(raw["leg"] or 0, 0, MAX_LEG)
+    tier = raw["tier"] or TIER_RANKED
+    style = raw["style"] or STYLE_CLEAN
+    if track is None or leg is None:
+        return fail(400, "bad leg")
+    if tier not in TIERS:
+        return fail(400, "bad tier")
+    if style not in STYLES:
+        return fail(400, "bad style")
+    offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+
+    bsp, zoned = map_index()
+    try:
+        db = get_db()
+        boards = [{"track": r["track"], "leg": r["leg"], "tier": r["tier"],
+                   "style": r["style"], "n": r["n"]} for r in db.execute(
+            "SELECT track, leg, tier, style, COUNT(*) AS n FROM runs"
+            " WHERE map=? GROUP BY 1, 2, 3, 4 ORDER BY 1, 2, 3, 4",
+            (mapname,)).fetchall()]
+        if not boards and not (mapname in bsp and mapname in zoned):
+            return fail(404, "no such map")
+        if not any(raw.values()) and boards:
+            have = [(b["track"], b["leg"], b["tier"], b["style"]) for b in boards]
+            track, leg, tier, style = next(
+                (d for d in WEB_DEFAULT_BOARDS if d in have), have[0])
+        counts = board_counts(db, mapname, track, leg, style)
+        rows = board_rows(db, mapname, track, leg, tier, style, WEB_PAGE, offset)
+    except sqlite3.Error as exc:
+        log.exception("web map db error: %s", exc)
+        return fail(500, "storage error")
+    for row in rows:
+        del row["player"]
+    return _json({"v": 1, "t": now, "map": mapname,
+                  "disp": bsp.get(mapname, mapname), "boards": boards,
+                  "track": track, "leg": leg, "tier": tier, "style": style,
+                  "counts": counts, "offset": offset, "limit": WEB_PAGE,
+                  "rows": rows}, "max-age=15")
+
+
+@app.after_request
+def web_headers(resp):
+    if request.path.startswith("/board/"):
+        resp.headers["Content-Security-Policy"] = WEB_CSP
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        resp.headers.setdefault("Cache-Control", "no-cache")
     return resp
 
 
@@ -2252,7 +2557,11 @@ def _register_admin():
         # duplicate that drifts silently until the two disagree about who a
         # caller is.  One definition, injected.
         bp = build_blueprint(app, log, connect, LOBBY_TTL,
-                             client_identity=client_identity)
+                             client_identity=client_identity,
+                             runs=dict(replay_file=replay_file, restand=restand,
+                                       public_state=public_state,
+                                       rank_of=rank_of, leg_dir=leg_dir,
+                                       max_errors=VERIFY_MAX_ERRORS))
     except Exception as exc:                       # pragma: no cover
         log.exception("admin panel failed to configure: %s", exc)
         return

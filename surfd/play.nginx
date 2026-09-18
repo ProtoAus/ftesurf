@@ -3,13 +3,9 @@
 # NOT INSTALLED BY HAND. Use setup_public.sh, which installs this together with
 # the two snippets it includes, obtains the certificate, and checks its work.
 #
-# WHAT IS AND IS NOT EXPOSED, AND WHY IT IS A LIST OF LOCATIONS RATHER THAN ONE
-# proxy_pass:
-#
-#   /lobbies.json   public, read-only        <- what the game menu polls
-#   /health         public, read-only
-#   /admin          public login             <- see admin.nginx's essay
-#   everything else 404, INCLUDING /api/heartbeat
+# WHAT IS EXPOSED is surfd.nginx's route manifest plus /admin (admin.nginx);
+# everything else is 404, INCLUDING /api/heartbeat.  It is a list of locations
+# rather than one proxy_pass on purpose:
 #
 # /api/heartbeat is the one that must never appear here, and the reason is not
 # that it is secret -- it is that surfd derives each lobby's advertised address

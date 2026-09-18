@@ -1,8 +1,7 @@
 # surfd admin panel -- reverse proxy snippet
 #
-# NOT INSTALLED, AND DELIBERATELY SO. Installing this puts a login form on the
-# public internet, on the machine that runs the game servers. That is a
-# decision for a human, taken once, on purpose.
+# INSTALLED as /etc/nginx/snippets/surfd-admin.conf by setup_public.sh and
+# included by play.nginx: the panel is live at https://play.proto.bar/admin.
 #
 # THIS IS A SEPARATE FILE FROM surfd.nginx ON PURPOSE.
 #
@@ -12,7 +11,7 @@
 # must not share a routing rule. If you ever find yourself merging these two
 # files into one `location /` proxy_pass, that is the mistake.
 #
-# PREREQUISITES, all of them, before this goes in:
+# It needs all of:
 #   1. TLS terminated on this vhost. The session cookie is the whole
 #      credential and surfd sets Secure on it by default, which means the
 #      panel simply will not work over plain HTTP -- that is the intended
@@ -22,25 +21,10 @@
 #      present. If the log says "admin panel disabled", nothing here will work
 #      and the reason is in that line.
 #
-# To install:
-#     sudo cp /srv/nvme/surfd/admin.nginx /etc/nginx/snippets/surfd-admin.conf
-#     # add the limit_req_zone line below to the http{} block (it cannot live
-#     # inside a location), then inside the desired TLS server{} block:
-#     #     include snippets/surfd-admin.conf;
-#     sudo nginx -t && sudo systemctl reload nginx
-
-# ---------------------------------------------------------------------------
-# PUT THIS ONE LINE IN http{}, NOT HERE. nginx will refuse to start with
-# "limit_req_zone directive is not allowed here" if it is left inside a
-# location, which is a confusing way to take the whole web server down.
-#
-#     limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
-#
-# surfd has its own per-IP lockout (five failures, fifteen minutes) and does
-# not need nginx's help to be correct. This zone exists to keep a password
-# spray from reaching the scrypt verifier at all: each attempt costs 32 MB of
-# memory on an SBC with no swap, so the cheap rejection belongs in front.
-# ---------------------------------------------------------------------------
+# zone=surfdlogin lives in http{} scope, in conf.d/surfd-ratelimit.conf
+# (setup_public.sh / install_board_endpoint.sh); limit_req_zone is not valid
+# here.  It keeps a password spray off the scrypt verifier (32 MB an attempt,
+# no swap); surfd's own per-IP lockout does not depend on it.
 
 location /admin {
     proxy_pass         http://127.0.0.1:8084;
@@ -54,23 +38,8 @@ location /admin {
     # systemctl start/restart can take a few seconds; do not buffer the reply.
     proxy_buffering off;
 
-    # NOTE ON X-Forwarded-For, and it is deliberate that it is NOT set here.
-    #
-    # surfd does not honour XFF anywhere -- not for heartbeats (see the essay
-    # in surfd.py) and not for the admin lockout (see client_ip in admin.py).
-    # Behind this proxy every admin request appears to come from 127.0.0.1, so
-    # the lockout counts failures GLOBALLY rather than per client.
-    #
-    # That fails in the safe direction: five failures from anyone lock out
-    # everyone for fifteen minutes, including the real admin. It is annoying
-    # and it is not a security hole. The unsafe direction -- trusting a header
-    # a client can set, so that an attacker resets their own lockout by
-    # changing one string -- is the one to avoid, and it is why this is not a
-    # one-line "improvement".
-    #
-    # If per-client lockout is ever wanted, the correct fix is to teach
-    # admin.py a trusted-hop count explicitly, the same way the PUBLIC_HOST
-    # work reversed the trust direction rather than trusting the body.
+    # X-Real-IP is set by overwrite above; admin.py believes it only from a
+    # SURFD_PROXIES address (surfd.client_identity).  XFF is never read.
 
     # Do not let a proxy or browser keep an authenticated page.
     proxy_set_header   Cache-Control     "no-store";

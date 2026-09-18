@@ -115,7 +115,9 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     lies; trust the z-drop, not the console.
   - CSQC-registered cvars (`cl_trigdebug`, `cl_triggers`) must be set AFTER
     `connect`: registercvar resets a pre-connect `set` to default.
-- No QC unit tests; surfd has pytest (`surfd/test_*.py`, run on Pi).
+- No QC unit tests. surfd's tests are plain scripts, run on the Pi (Flask is
+  not on Windows): `SURFD_HOME=$(mktemp -d) python3 surfd/test_x.py`.
+  `test_recplot.py` is stdlib only and runs anywhere.
 
 ## Generated / never edit
 
@@ -263,6 +265,10 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   returns a lobby NOT already running the map — the menu waits for the directory
   row to flip, patch 334), `/api/heartbeat` (carries assignments back to
   lobbies; children of mapcluster never heartbeat).
+- The web leaderboard (Patch 359) is surfd's `/board/`, served from `surfd/web/`
+  and proxied at proto.bar/ftesurf/board/ by `src/release/ftesurf.nginx`. Owner
+  review is `/admin/runs` on play.proto.bar. The page must use relative URLs,
+  because the browser path and Flask's path differ.
 
 ## Anti-cheat and run evidence
 
@@ -312,11 +318,15 @@ bannered as superseded.)
 - THE VERIFIER: `pm_verify <file>` (engine, headless server on the file's map)
   replays a finished v9 file exactly and runs the timer's own zone scan, printing
   `VERIFY <file> PASS|HOLD|REFUSE <reason>` (never FAIL). It is exact only on the
-  same binary and pin. If the file's trace cvars (`pm_trisoup_bevels`,
-  `pm_rotatedboxhulls`, `pm_portalcsg_scanall`) differ from the server's, it
-  warns and replays with the server's. `surfd/sweep.py` runs it from proto's
-  cron and STORES verdicts (`verdicts` table); what a verdict does to a board is
-  Lex's call, still open. Harnesses: `p349verify`, `p352slots`, `p356newer`.
+  same binary and pin. It replays with the file's own trace cvars
+  (`pm_trisoup_bevels`, `pm_rotatedboxhulls`, `pm_portalcsg_scanall`; Patch 358),
+  warns when they differ from the server's, and restores the server's values
+  after. `surfd/sweep.py` runs it from proto's cron into the `verdicts` table.
+  A board row reads Verified when its replay's latest current non-ERROR
+  verdict is PASS or the owner approved it (`VER_SQL`, surfd.py). "Current"
+  means newer than the file (`at >= replays.submitted`). Reasons never leave
+  `/admin`.
+  Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
@@ -352,10 +362,16 @@ bannered as superseded.)
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
   immediately.
-- Dedicated servers do not exec `default.cfg`. A cvar set only there (e.g.
-  `pm_portalcsg_scanall 1`) runs at the ENGINE default on the lobbies and the
-  headless verifier. A lobby's real physics values are in its recordings'
-  `pmpin` header.
+- Configs reach the Pi BY HAND: `-Pi` ships only the progs. A dedicated server
+  execs `cfg/default.cfg` when there is no `server.cfg` or `quake.rc`
+  (`sv_main.c:6714`).
+  DIFF BEFORE COPYING, and list the server-relevant cvars that would change.
+  Until 2026-09-18 the Pi's copy carried a hand-written `set pm_slide 0`
+  block, which gated func_slide (Patch 280) off from the build 66 deploy. Lex
+  turned slides on, and the Pi now runs the repo's file. Mover cvars must be
+  set IN default.cfg: `cvar_lockdefaults` makes a later cfg or rcon unable to
+  change them. A lobby's real physics values are in its recordings' `pmpin`
+  header.
 - Post-deploy verification is a CLIENT CONNECT, not the journal: `ftesurf@N`
   journals need sudo (sudoers is restart-only) and lobby cfgs write no file
   logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live

@@ -11,14 +11,11 @@ asks the timer's own zone scan where it finishes.  This runs it over the
     REFUSE  out of scope for v1 (old format, resumed, ghosted, other map ...)
     ERROR   the verifier printed no verdict; retried up to MAX_ERRORS times
 
-STORE ONLY (decided 2026-09-18).  Nothing here changes a board or a rank; the
-full reason stays in this table and in no public reply.
-
-THE TABLE IS THE SWEEPER'S.  `verdicts` is created here, not by surfd's
-migrate(), so shipping the sweeper needs no surfd deploy; surfd adopts it when
-the board starts showing verdicts.  `replays.seen`/`checked` were reserved for
-exactly this (surfd.py, schema 3): seen = last attempt, checked = 1 once a
-terminal verdict (not ERROR) exists.
+surfd owns the table (schema 5, surfd.VERDICTS_SQL).  A PASS as the latest
+current non-ERROR verdict drives the public VERIFIED badge (surfd.VER_SQL);
+reasons and HOLD stay in this table and the owner's review pages, never in a
+public reply.  seen = last attempt, checked = 1 once a terminal verdict (not
+ERROR) exists; the owner's re-check sets checked = 0 and replays.recheck_at.
 
 Run from the proto user's crontab under flock.  One verifier process per map,
 at idle CPU and IO priority, first in line for the OOM killer (the Pi is
@@ -48,28 +45,15 @@ ENGINE = os.environ.get("SURFD_VERIFIER", os.path.join(GAME, "fteqw-svarm64"))
 PROGS = os.path.join(GAME, "ftesurf", "qwprogs.dat")
 PORT = int(os.environ.get("SURFD_VERIFY_PORT", "27698"))
 MAP_TIMEOUT = 900        # seconds for one verifier process (all of one map's files)
-MAX_ERRORS = 3
+MAX_ERRORS = surfd.VERIFY_MAX_ERRORS
 
 VERIFY_RE = re.compile(r"^VERIFY (\S+) (PASS|HOLD|REFUSE)\b ?(.*)$")
 TICKS_RE = re.compile(r"\bticks (\d+)\b")
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS verdicts (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    replay_id  INTEGER NOT NULL,
-    verdict    TEXT    NOT NULL,
-    reason     TEXT    NOT NULL,
-    ticks      INTEGER NOT NULL DEFAULT -1,
-    engine     TEXT    NOT NULL,
-    progs      TEXT    NOT NULL,
-    at         INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
-"""
-
 
 def ensure_schema(conn):
-    conn.executescript(SCHEMA)
+    # surfd's migrate() already ran at import; a no-op safety net.
+    conn.executescript(surfd.VERDICTS_SQL)
     conn.commit()
 
 
@@ -85,27 +69,27 @@ def file_hash(path, algo):
 
 
 def pending(conn, limit):
+    # Only ERRORs since the last submission or re-check count against the cap,
+    # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
         """SELECT r.id, r.map_dir, r.track, r.leg, r.leaf FROM replays r
            WHERE r.checked = 0
              AND (SELECT COUNT(*) FROM verdicts v
-                  WHERE v.replay_id = r.id AND v.verdict = 'ERROR') < ?
-           ORDER BY r.id LIMIT ?""", (MAX_ERRORS, limit)).fetchall()
+                  WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
+                    AND v.at >= MAX(r.submitted, r.recheck_at)) < ?
+           ORDER BY r.recheck_at DESC, r.id LIMIT ?""",
+        (MAX_ERRORS, limit)).fetchall()
 
 
 def relpath(row):
     """The file as pm_verify names it (game-filesystem relative), or None.
 
-    The same checks /api/replay makes before it serves a file: validated
-    names, and a real path that stays inside RUNS_DIR."""
-    leaf, map_dir = row["leaf"], row["map_dir"]
-    if not surfd._LEAF_OK.match(leaf) or not surfd._MAPNAME_OK.match(map_dir):
+    surfd.replay_file makes the checks /api/replay makes before it serves."""
+    if surfd.replay_file(row)[0] is None:
         return None
-    sub = os.path.join(map_dir, surfd.leg_dir(row["track"], row["leg"]), leaf)
+    sub = os.path.join(row["map_dir"], surfd.leg_dir(row["track"], row["leg"]),
+                       row["leaf"])
     root = os.path.realpath(surfd.RUNS_DIR)
-    path = os.path.realpath(os.path.join(root, sub))
-    if not path.startswith(root + os.sep) or not os.path.isfile(path):
-        return None
     # pm_verify opens files through the game filesystem, i.e. relative to the
     # gamedir; RUNS_DIR is normally <gamedir>/data/runs.
     base = os.path.relpath(root, os.path.realpath(os.path.join(GAME, "ftesurf")))
@@ -153,21 +137,24 @@ def run_verifier(map_dir, paths):
         return ["sweep: verifier failed: %s" % exc]
 
 
-def record(conn, rid, verdict, reason, ticks, engine, progs, now):
+def record(conn, rid, verdict, reason, ticks, engine, progs, t0):
     conn.execute(
         "INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (rid, verdict, reason[:300], ticks, engine, progs, now))
-    if verdict == "ERROR":
-        conn.execute("UPDATE replays SET seen = ? WHERE id = ?", (now, rid))
-    else:
-        conn.execute("UPDATE replays SET seen = ?, checked = 1 WHERE id = ?",
-                     (now, rid))
+        (rid, verdict, reason[:300], ticks, engine, progs, t0))
+    # A row resubmitted (exact tie) or re-checked after t0 stays pending.
+    done = "" if verdict == "ERROR" else ", checked = 1"
+    conn.execute("UPDATE replays SET seen = ?" + done + " WHERE id = ?"
+                 " AND submitted <= ? AND recheck_at <= ?", (t0, rid, t0, t0))
 
 
 def sweep(conn, limit, runner=run_verifier, now=None):
     """Verify up to `limit` unchecked replays.  -> {verdict: count}."""
     ensure_schema(conn)
+    # Every verdict is stamped t0, taken before pending() reads the rows, so a
+    # tie landing mid-run is newer (not current: at < submitted).  The -1 covers
+    # one landing in t0's own second.
+    t0 = now if now is not None else int(time.time()) - 1
     engine = file_hash(ENGINE, "md5")
     progs = file_hash(PROGS, "sha256")
     counts = {}
@@ -177,18 +164,17 @@ def sweep(conn, limit, runner=run_verifier, now=None):
         if path is None:
             with conn:
                 record(conn, row["id"], "REFUSE", "file missing or unusable name",
-                       -1, engine, progs, now or int(time.time()))
+                       -1, engine, progs, t0)
             counts["REFUSE"] = counts.get("REFUSE", 0) + 1
             continue
         bymap.setdefault(row["map_dir"], []).append((row["id"], path))
 
     for map_dir, items in sorted(bymap.items()):
         verdicts = parse(runner(map_dir, [p for _, p in items]))
-        stamp = now or int(time.time())
         with conn:
             for rid, path in items:
                 v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
-                record(conn, rid, v, reason, ticks, engine, progs, stamp)
+                record(conn, rid, v, reason, ticks, engine, progs, t0)
                 counts[v] = counts.get(v, 0) + 1
     return counts
 

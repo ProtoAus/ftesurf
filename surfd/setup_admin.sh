@@ -15,8 +15,8 @@
 #     losing it would silently stop every heartbeat; this script only ever
 #     touches the three SURFD_ADMIN_* / SURFD_RCON_* lines, and it backs the
 #     file up first regardless.
-#   * It does not open the panel to the internet. That still needs the nginx
-#     block in admin.nginx plus TLS, both deliberately not installed.
+#   * It does not touch nginx. The panel is already live at
+#     https://play.proto.bar/admin (admin.nginx, installed by setup_public.sh).
 set -e
 
 HOME_DIR="${SURFD_HOME:-/srv/nvme/surfd}"
