@@ -13,11 +13,19 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   ed4d075be8ff9261d80a232bf0d0156d3d243811
+commit   f05671fb62a2ff18991489377eb8f237603850e6
 tag      patch-266
-patch    345
+patch    346
 qcbuild  83
 date     2026-09-18
+
+# PATCH 346 IS ENGINE-ONLY, and the first half of FTESURF-REC 9: SV_RunCmd
+# snapshots the 70 values the mover is handed (movevars, pm_type, hull,
+# gamespeed, trace cvars, PMSRC_VERSION) with an epoch that bumps on change, a
+# physent digest and a portal-crossing count, as optional fields (run_pmepoch
+# run_physcrc run_portalx run_portalorg run_portalvel) and per-client infokeys
+# (*pmpinN, *pmstateN).  `pm_pin` prints it.  Nothing reads it until QC build 87.
+# Needs -Full (pmove.h, server.h).  cfg/test/p346pin.cfg.
 
 # PATCH 345 IS ENGINE-ONLY (sv_ccmds.c): pm_recsim rounded the `in` row's
 # %.4f angle back to a wire short by TRUNCATION, so ~46% of replayed rows gave
