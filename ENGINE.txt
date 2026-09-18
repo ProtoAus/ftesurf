@@ -13,11 +13,16 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   092eaf95bd9e4eb2265e7ab10c6fd17235c3628f
+commit   655006a4346bafe281bb3b597fecf6cc611026b5
 tag      patch-266
 patch    364
 qcbuild  83
-date     2026-09-18
+date     2026-09-19
+
+# PATCH 362: a joining client fetches the server's csprogs when none is cached.
+# Server: the prespawn list stages wait out a backbuffered fullserverinfo (the
+# lobbies need the rebuilt fteqw-svarm64).  Client: ships in 0.1.8.
+# cfg/test/p362csqc.cfg.
 
 # PATCH 364: FTESURF-REC 10 -- a retry or a load read off disk continues the
 # recording in a new session (`pause` / `session`).  Engine: pm_recsim and
