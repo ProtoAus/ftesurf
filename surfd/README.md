@@ -148,7 +148,10 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
               drops the leaf and logs it; it NEVER refuses the run.
     recbytes  the recording's size as the recorder reported at close, or -1
     rectrunc  1 if the run hit FS_RECMAX and the recording is short
-  -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>}
+  -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>,
+          "tier":"ranked"|"community","prevms":<ms>}
+        `tier` is the board the run LANDED on (after certifiable() demotion);
+        `prevms` is this player's standing row before the submit, 0 if none.
   -> 204        the run has no board at all (practice or cheated)
 
 GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
@@ -271,6 +274,12 @@ budget and drop live lobbies out of `/lobbies.json` -- the failure the
 `RATE_MAX` essay in `surfd.py` spends twenty lines establishing.
 `test_board.py` section 8 floods submissions and asserts a heartbeat still
 gets through, with the shared-bucket case as its control.
+
+Run submissions are themselves split: leg 0 posts use the `run` bucket and
+stage legs the `stage` bucket, so a main run posting its stages can never
+spend the finishes' budget. Trusted sources get `RUN_RATE_MAX_TRUSTED`,
+everyone else `RUN_RATE_MAX`. Stage rows also have their own row cap
+(`MAX_STAGE_RUNS`). Section 13 pins all three.
 
 ### The one exception: SURFD_PUBLIC_HOST
 

@@ -17,7 +17,12 @@ and it could only ever produce the answer the real rules produce, so the three
 outcomes the card draws differently (a rank, no board, a refusal) could not all
 be reached from one harness.
 
-  usage:  b65stub.py <rank|norank|noboard|refuse> <port> [delay-seconds]
+  usage:  b65stub.py <rank|norank|noboard|refuse|cert> <port> [delay-seconds]
+
+`cert` answers like a surfd that reports tier and prevms: tier "community"
+when the posted flags carry a certification bit (0x3E00, certifiable()),
+else "ranked"; stored 1, prevms 20000.  It ignores TF_CHEAT so a warped test
+finish still gets an answer.  `rank`/`norank` stay the OLD replies (controls).
 
 `norank` IS THE OLD SURFD, not a broken one.  Before this build /api/run
 answered {"ok","stored","best"} with no position in it, so that is exactly what
@@ -74,7 +79,19 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        if MODE == "refuse":
+        form = dict(p.split("=", 1) for p in body.split("&") if "=" in p)
+        try:
+            flags = int(float(form.get("flags", "0")))
+        except ValueError:
+            flags = 0
+
+        if MODE == "cert":
+            out = json.dumps({"ok": True, "stored": True, "best": 18510,
+                              "rank": RANK, "of": OF, "rep": 0,
+                              "tier": "community" if flags & 0x3E00 else "ranked",
+                              "prevms": 20000}).encode()
+            code = 200
+        elif MODE == "refuse":
             out = b'{"ok":false,"error":"forbidden"}'
             code = 403
         elif MODE == "norank":

@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   dcd1662595db8c5f699eada753f96718c323081c
 tag      patch-266
-patch    351
+patch    353
 qcbuild  83
 date     2026-09-18
+
+# PATCH 353 IS SURFD ONLY: /api/run replies carry `tier` and `prevms`; stage legs
+# get their own rate bucket (trusted cap 3840) and row cap.  surfd/test_board.py 12-13.
 
 # PATCH 351 IS MOD-SIDE ONLY: online board -- capitalised map names match surfd's
 # lowercase echo, the room list absorbs (OK before the absorb), *wrank ticks %d.

@@ -420,6 +420,7 @@ m = fresh()
 clock = FakeClock()
 m.time = clock
 now = int(clock.now)
+m.RUN_RATE_MAX_TRUSTED = m.RUN_RATE_MAX   # loopback is trusted; section 12 covers that cap
 
 flood = 0
 while submit(m, player="p%d" % flood) != "HTTP 429":
@@ -792,6 +793,97 @@ r = submit(m, player="a", ticks=9000, leg=2)
 check("a stage board is ranked independently of the full run",
       (r["rank"], r["of"]), (1, 1))
 agree(m, "...and that stage board agrees", "a", r, leg=2)
+
+# --------------------------------------------------------------------------
+print("\n--- 12. the reply says which board, and what stood before ----------")
+
+# The client tells a demoted player "unranked: <reason>" from `tier`, and draws
+# the delta against the standing row from `prevms`.  Without `tier` a demoted
+# run would read as "#1 of 1" on a board the player never sees.
+m = fresh()
+m.time = FakeClock()
+r = submit(m, player="c", flags=0, ticks=2000)
+check("control: a clean first run lands on ranked, no standing row",
+      (r["tier"], r["prevms"], r["stored"]), ("ranked", 0, True))
+r = submit(m, player="d", flags=m.TF_NOJOURNAL, ticks=2000)
+check("a TF_NOJOURNAL run says it landed on community",
+      (r["tier"], r["stored"]), ("community", True))
+r = submit(m, player="d", flags=m.TF_NOJOURNAL, ticks=2100)
+check("...a slower resubmit: not stored, prevms is the standing 30000 ms",
+      (r["tier"], r["stored"], r["prevms"]), ("community", False, 30000))
+r = submit(m, player="c", flags=0, ticks=1800)
+check("a faster ranked resubmit: stored, prevms is the row it replaced",
+      (r["tier"], r["stored"], r["prevms"]), ("ranked", True, 30000))
+
+# --------------------------------------------------------------------------
+print("\n--- 13. stage legs get their own run bucket and row cap -------------")
+
+# Main runs post every primed stage they pass, so stage posts from loopback
+# multiply.  They must never spend leg 0's budget, and a trusted node gets the
+# cluster-sized cap while the internet keeps RUN_RATE_MAX.
+m = fresh()
+m.time = FakeClock()
+m.RUN_RATE_MAX_TRUSTED = 20
+n = 0
+while submit(m, player="s%d" % n, leg=2) != "HTTP 429":
+    n += 1
+    if n > 100:
+        break
+check("a stage-leg flood is refused at the trusted cap", n, 20)
+check("...and a main-run post from the same ip still stores",
+      submit(m, player="main1", leg=0)["stored"], True)
+
+m = fresh()
+m.time = FakeClock()
+m.RUN_RATE_MAX_TRUSTED = 20
+n = 0
+while submit(m, player="t%d" % n, leg=0) != "HTTP 429":
+    n += 1
+    if n > 100:
+        break
+check("control: a leg-0 flood does refuse leg 0", n, 20)
+
+m = fresh()
+m.time = FakeClock()
+refused = 0
+for i in range(12 * 30):                   # 12 lobbies x 30 stage posts, one minute
+    if submit(m, player="u%d" % (i % 12), leg=1 + i % 5,
+              ticks=1000 + i) == "HTTP 429":
+        refused += 1
+check("12 lobbies x 30 stage posts a minute from loopback: none refused",
+      refused, 0)
+m = fresh()
+m.time = FakeClock()
+m.RUN_RATE_MAX_TRUSTED = m.RUN_RATE_MAX          # pretend the fix was never made
+refused = 0
+for i in range(12 * 30):
+    if submit(m, player="u%d" % (i % 12), leg=1 + i % 5,
+              ticks=1000 + i) == "HTTP 429":
+        refused += 1
+check("control: the same traffic at the old cap IS refused", refused > 0, True)
+
+m = fresh()
+m.time = FakeClock()
+n = 0
+while submit(m, src="203.0.113.9", player="x%d" % n, leg=3) != "HTTP 429":
+    n += 1
+    if n > m.RUN_RATE_MAX * 3:
+        break
+check("an untrusted source is still held to RUN_RATE_MAX", n, m.RUN_RATE_MAX)
+
+m = fresh()
+m.time = FakeClock()
+m.MAX_STAGE_RUNS = 2
+submit(m, player="a", leg=1)
+submit(m, player="b", leg=2)
+check("the stage row cap refuses a third stage row",
+      submit(m, player="c", leg=3), "HTTP 429")
+check("...and does not touch main rows",
+      submit(m, player="c", leg=0)["stored"], True)
+m = fresh()
+m.time = FakeClock()
+r = submit(m, player="e", leg=2)
+check("a leafless stage row stores with rep 0", (r["stored"], r["rep"]), (True, 0))
 
 # --------------------------------------------------------------------------
 print("")

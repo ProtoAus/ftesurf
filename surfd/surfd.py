@@ -207,8 +207,14 @@ CLUSTER_NODES_PLANNED = 64          # well past the RAM ceiling, deliberately
 RATE_MAX_TRUSTED = int(2.5 * CLUSTER_NODES_PLANNED * (60 / 5))   # = 1920
 
 RUN_RATE_MAX = 120       # run submissions per RATE_WINDOW per source IP
+# Our own nodes (TRUSTED_SOURCES) all post from loopback, and main runs also
+# post every primed stage they pass (QC stage fill-in): 64 nodes x 24 posts/min
+# x 2.5.  Main runs (leg 0) and stage legs use separate buckets, so stage posts
+# can never spend the finishes' budget.
+RUN_RATE_MAX_TRUSTED = int(2.5 * CLUSTER_NODES_PLANNED * 24)   # = 3840
 
-MAX_RUNS = 200000        # hard cap on stored rows; see the reap in submit_run
+MAX_RUNS = 200000        # hard cap on stored MAIN rows (leg 0); see submit_run
+MAX_STAGE_RUNS = 1000000 # ...and on stage rows (leg > 0), counted separately
 
 # THE REPLAY LEDGER'S CAP, AND IT BEHAVES DIFFERENTLY FROM MAX_RUNS ON PURPOSE.
 # Reaching MAX_RUNS refuses the submission with a 429, because a board row is
@@ -1646,8 +1652,11 @@ def submit_run():
     now = int(time.time())
     src = request.remote_addr or "0.0.0.0"
 
-    if not rate_ok(src, now, RUN_RATE_MAX, "run"):
-        log.warning("rate limited run submission from %s", src)
+    # Bucket by leg class before parsing; a malformed leg is refused below.
+    bucket = "run" if (request.form.get("leg") or "0").strip() == "0" else "stage"
+    cap = RUN_RATE_MAX_TRUSTED if is_trusted(src, TRUSTED_SOURCES) else RUN_RATE_MAX
+    if not rate_ok(src, now, cap, bucket):
+        log.warning("rate limited %s submission from %s", bucket, src)
         return fail(429, "rate limited")
 
     key = request.form.get("key", "")
@@ -1884,9 +1893,17 @@ def submit_run():
             ).fetchone()
 
             if prev is None:
-                total = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-                if total >= MAX_RUNS:
-                    log.warning("run cap %d reached, refusing %s", MAX_RUNS, src)
+                if leg == 0:
+                    total = db.execute(
+                        "SELECT COUNT(*) FROM runs WHERE leg=0").fetchone()[0]
+                    cap = MAX_RUNS
+                else:
+                    total = db.execute(
+                        "SELECT COUNT(*) FROM runs WHERE leg>0").fetchone()[0]
+                    cap = MAX_STAGE_RUNS
+                if total >= cap:
+                    log.warning("run cap %d reached (leg %d), refusing %s",
+                                cap, leg, src)
                     return fail(429, "run limit reached")
             elif prev["millis"] <= millis:
                 # NOT an error, and not silence either: the client asked to
@@ -1899,9 +1916,12 @@ def submit_run():
                 # and the delta beside it already says the time got worse.
                 rank, of = rank_of(db, mapname, track, leg, tier, style,
                                    prev["millis"], prev["submitted"], player)
+                # `tier` is the board the run landed on AFTER demotion; `prevms`
+                # is the standing row before this submit (here the same as best).
                 return jsonify(
                     {"ok": True, "stored": False, "best": prev["millis"],
-                     "rank": rank, "of": of, "rep": rid}
+                     "rank": rank, "of": of, "rep": rid, "tier": tier,
+                     "prevms": prev["millis"]}
                 )
 
             db.execute(
@@ -1943,7 +1963,8 @@ def submit_run():
         rid, leaf or "-",
     )
     return jsonify({"ok": True, "stored": True, "best": millis,
-                    "rank": rank, "of": of, "rep": rid})
+                    "rank": rank, "of": of, "rep": rid, "tier": tier,
+                    "prevms": prev["millis"] if prev is not None else 0})
 
 
 @app.get("/api/board")
