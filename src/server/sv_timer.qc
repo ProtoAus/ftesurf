@@ -2675,10 +2675,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             `abandon`: the file name is its runid.)
     pause <mt> <carry> <ticks> <why>
                             v10, Patch 364.  The trace is parked at run clock
-                            <ticks>; <mt> <carry> are the last `in` row's (with
-                            no row yet, `instart`'s <mt> and 0).  <why>:
-                            retry | load (a cold rewind, sv_saveloc.qc) or
-                            drop | rotate | server (Multi-Session, TF_MULTISESSION).
+                            <ticks>.  <why> decides what <mt> <carry> are:
+                              retry | load  a cold rewind (sv_saveloc.qc): the
+                                       last `in` row's, as written (no row yet:
+                                       `instart`'s <mt> and 0)
+                              drop | rotate | server  Multi-Session (TF_MULTI-
+                                       SESSION): the counter AFTER the last move,
+                                       this session's closing horizon as `inend`;
+                                       <ticks> is the session's clock at <mt>
                             Nothing that moves -- no `in`, no sample -- until:
     session <n> <mt> <carry> <ticks>
                             v10.  Session <n> (the first is 1, unwritten) begins
@@ -2688,6 +2692,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             sample <t> and the clock run on; <ticks> equals the
                             pause's.  A `seed` follows when the header has `pmpin`.
                             A file is v10 exactly when it holds a `pause`.
+                            THE FLOOR: `pm` `pe` `portal` `warp` written between a
+                            `pause` and the next `in` row are the new session's --
+                            in force from its first row (a warp is imposed on the
+                            seed) -- though their <row> names the row before it.
+                            engine pm_verify replays Multi-Session pauses (Patch
+                            367) and refuses retry | load.
     stage <seg> <ticks>     a stage boundary was crossed
     board <t> <n> <nx ny nz> <vx vy vz>
                             v4.  The engine's board counter moved to <n>: you

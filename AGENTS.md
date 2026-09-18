@@ -314,8 +314,9 @@ bannered as superseded.)
   consumed by surfd's `certifiable()`.
 - THE `.rec` GRAMMAR BLOCK over `SV_RecOpen` (sv_timer.qc) IS AUTHORITATIVE,
   currently FTESURF-REC 10 when the file holds a `pause` (retry, cold load,
-  Multi-Session) and 9 otherwise; pm_recsim and pm_verify REFUSE anything
-  above 9 (Patch 364). `tools/reccheck.py` is written from that block and
+  Multi-Session) and 9 otherwise. pm_recsim and pm_verify replay a v10
+  Multi-Session file session by session (Patch 367) and REFUSE a retry/load
+  pause or anything above 10. `tools/reccheck.py` is written from that block and
   never from the writer, so a writer that drifts from its own documentation gets
   caught. Same rule for `hidcheck.py` and `.hid`.
 - Version bump rule: new header keys and new record types are additive and need
@@ -344,7 +345,7 @@ bannered as superseded.)
   it (Patch 346) and v9 writes the `portal` record. None has been captured live
   yet.
 - THE VERIFIER: `pm_verify <file>` (engine, headless server on the file's map)
-  replays a finished v9 file exactly and runs the timer's own zone scan, printing
+  replays a finished v9 or v10 file exactly and runs the timer's own zone scan, printing
   `VERIFY <file> PASS|HOLD|REFUSE <reason>` (never FAIL). It is exact only on the
   same binary and pin. It replays with the file's own trace cvars
   (`pm_trisoup_bevels`, `pm_rotatedboxhulls`, `pm_portalcsg_scanall`; Patch 358),
@@ -354,7 +355,11 @@ bannered as superseded.)
   verdict is PASS or the owner approved it (`VER_SQL`, surfd.py). "Current"
   means newer than the file (`at >= replays.submitted`). Reasons never leave
   `/admin`.
-  Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`.
+  At each Multi-Session pause it checks the clock (the trace's ticks at the
+  pause's closing horizon = the pause's = the session's) and the resume (the
+  seed within 0.0001 of the replayed state: the save writes %.4f) -- HOLD
+  otherwise. Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
+  `p367verify`.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser

@@ -13,11 +13,15 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   655006a4346bafe281bb3b597fecf6cc611026b5
+commit   7c0e48cfeb141e90f313ddbf039c4b604b05e4c2
 tag      patch-266
-patch    366
+patch    367
 qcbuild  83
 date     2026-09-19
+
+# PATCH 367: pm_recsim and pm_verify replay a FTESURF-REC 10 Multi-Session run,
+# session by session, and check the clock and the resume at each pause (the Pi
+# sweeper needs the rebuilt fteqw-svarm64).  cfg/test/p367verify.cfg.
 
 # PATCH 366 IS MOD-SIDE ONLY: the lobby rotation waits for runs in progress, at
 # most lobby_cycle_hold seconds, then parks them (`rotate`).  cfg/test/ms2sv/ms2cl.
