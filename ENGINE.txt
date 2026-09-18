@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   d310d3f0056065ced3c1676b768c1a1a17700bd0
 tag      patch-266
-patch    361
+patch    363
 qcbuild  83
 date     2026-09-18
+
+# PATCH 363 IS MOD-SIDE ONLY: the counted clock survives a counter restart (a
+# `retry` is a map_restart): SV_TimerResume carries the restored ticks and
+# latches on the first live packet.  cfg/test/p363retry.cfg.
 
 # PATCH 361 IS MOD-SIDE ONLY: the completion banner (cl_banner.qc) -- a ribbon
 # across the screen on a finish (time, delta, #N of M + WR / TOP n), a strip per

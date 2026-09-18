@@ -1007,6 +1007,8 @@ float rec_retry_armed;
   land whole rather than in pieces.  See TF_NOCLOCK.
 */
 .float  run_t_starttick;         // run_movetick at the start; -1 = never latched
+.float  run_t_tickcarry;         // Patch 363: ticks restored by SV_TimerResume, counted on top
+.float  run_t_resumesec;         // Patch 363: the restored seconds, for a latch deferred to the first packet
 .float  run_t_frzticks;          // ticks elapsed while frozen
 .float  run_t_frzsec;            // the same interval, simulated seconds
 .float  run_t_lastmt;            // previous packet's run_movetick
@@ -3478,12 +3480,10 @@ void(entity e) SV_RecOpen =
 
 	  TWO NUMBERS AND NOT ONE.  They are equal here, always, because SV_TimerStart
 	  assigns run_t_starttick = run_movetick three lines before calling this --
-	  which is exactly why writing only one of them would be a trap.  They come
-	  apart on SV_TimerResume, which rebases run_t_starttick to `movetick - ticks`
-	  for a run restored from a save state while the mover's counter keeps
-	  running.  A file written across that path has a start tick BELOW its own
-	  horizon, and a reader that had derived one from the other would have no way
-	  to see it.
+	  which is exactly why writing only one of them would be a trap.  (Until
+	  Patch 363 SV_TimerResume rebased run_t_starttick to `movetick - ticks`; it
+	  now latches movetick and carries the restored ticks in run_t_tickcarry, so
+	  a resumed run's clock never needs a start below any horizon.)
 
 	  GATED ON THE MOVER COUNTER EXISTING, on the mapcrc precedent.  Against an
 	  engine older than Patch 325 there is no run_movetick, every `in` row would
@@ -6561,7 +6561,11 @@ void(entity e, float ticks, float elapsed) SV_TimerResume =
 	now = SV_ClockSec(e);
 
 	e.run_t_startsec  = now - elapsed;
-	e.run_t_starttick = e.run_movetick - ticks;
+	// Patch 363: the counter restarts per map (a `retry` is a map_restart), so
+	// `movetick - ticks` went negative and the run fell to the sampled clock.
+	e.run_t_starttick = e.run_movetick;
+	e.run_t_tickcarry = ticks;
+	e.run_t_startwall = time - elapsed;     // the report's sampled side, same rebase
 	e.run_t_frzsec    = 0;
 	e.run_t_frzticks  = 0;
 	e.run_t_lastsec   = now;
@@ -6576,6 +6580,14 @@ void(entity e, float ticks, float elapsed) SV_TimerResume =
 	  run practice regardless, so no ranking decision rests on this line.
 	*/
 	e.run_t_clock = (e.run_movetickrate > 0);
+	// Patch 363: a `retry` resumes from PutClientInServer, before the engine has
+	// written this edict's mover fields -- latch on the first live packet
+	// (SV_TimerFreezeFrame), not on a stale 0.
+	if (!e.run_t_clock)
+	{
+		e.run_t_starttick = -2;
+		e.run_t_resumesec = elapsed;
+	}
 
 	e.run_t_ticks = SV_TimerTicks(e);
 
@@ -6742,6 +6754,17 @@ void(entity e) SV_TimerFreezeFrame =
 	  contained, which is the same argument the delta form wins on everywhere else
 	  in this file.
 	*/
+	if (e.run_t_starttick == -2)            // Patch 363: see SV_TimerResume
+	if (e.run_movetickrate > 0)
+	{
+		e.run_t_starttick = e.run_movetick;
+		e.run_t_clock = TRUE;
+		// ...and the seconds' origin with it: at the resume SV_ClockSec was still
+		// `time`, a different clock from the mover seconds it reads from now on.
+		e.run_t_startsec = SV_ClockSec(e) - e.run_t_resumesec;
+		e.run_t_startwall = time - e.run_t_resumesec;
+	}
+
 	now = SV_ClockSec(e);
 	if (e.run_t_frzon && e.run_t_starttick >= 0)
 	{
@@ -6899,6 +6922,7 @@ void(entity e) SV_TimerIdle =
 	  rediscover it.
 	*/
 	e.run_t_starttick = -1;
+	e.run_t_tickcarry = 0;
 	e.run_t_frzticks  = 0;
 };
 
@@ -8481,6 +8505,7 @@ void(entity e, float z) SV_TimerArm =
 	// map.  A run armed there and differenced against a zeroed latch would read
 	// as having started at the map load.  See run_t_starttick and SV_TickReport.
 	e.run_t_starttick   = -1;
+	e.run_t_tickcarry   = 0;
 	e.run_t_frzticks    = 0;
 	/*
 	  BUILD 76: the seconds half of the same teardown.
@@ -8749,7 +8774,7 @@ float(entity e) SV_TickCounted =
 {
 	if (e.run_t_starttick < 0)
 		return -1;
-	return (e.run_movetick - e.run_t_starttick) - e.run_t_frzticks;
+	return (e.run_movetick - e.run_t_starttick) + e.run_t_tickcarry - e.run_t_frzticks;
 };
 
 /*
@@ -9539,6 +9564,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_clock     = (e.run_movetickrate > 0);
 	e.run_t_startsec  = SV_ClockSec(e);
 	e.run_t_starttick = e.run_movetick;
+	e.run_t_tickcarry = 0;
 	e.run_t_frzticks  = 0;
 	e.run_t_frzsec    = 0;
 	e.run_t_lastmt    = e.run_movetick;
