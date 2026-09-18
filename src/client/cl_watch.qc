@@ -1026,8 +1026,9 @@ void() Watch_Scan =
 	*/
 	// BUILD 87: 8 -> 9.  `seed`, `pm`, `pe` and `portal` are records this reader
 	// skips like `in`; the in row's new column and the trailer's are unread here.
-	if (ver > 9)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 9; "
+	// Patch 364: 10.  `pause`/`session` are skipped too; `t` runs on across them.
+	if (ver > 10)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 10; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

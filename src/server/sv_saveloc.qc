@@ -1098,6 +1098,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  field 3 of a .view line, STAT_FS_TIMERTICKS -- because SV_TimerResume
 		  makes the .rec's `t` column continuous by construction.
 		*/
+		// Patch 364: a prefix read off disk opens a new session (v10).
+		if (rec_rewind_cold)
+			SV_RecPause(e, retry ? "retry" : "load", ticks);
 		if (retry)
 			SV_RecPut(e, sprintf("retry %d", ticks));
 		else

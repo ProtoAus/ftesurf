@@ -1983,6 +1983,12 @@ float(entity e) SV_RecLive =
 .float  run_t_armsec;            // SV_ClockSec at the arm: the opening stage's takeoff must follow it
 .float  rec_rec_posts;           // `stagepost` records in this recording (the abandon keep)
 float   run_t_stagecap;          // run_stagecap, cached per map
+// Patch 364 (v10).  Recounted from the body on every rewind, like the trailer's counts.
+.float  rec_rec_pauses;          // `pause` records: any at all makes the file v10
+.float  rec_rec_sess;            // `session` records: the trailer's 11th field
+.float  rec_rec_sesspend;        // a pause is open: 1, or 2 when a `seed` is owed with the session
+.float  rec_rec_pinned;          // the header carries `pmpin` (a seed is written only with it)
+float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix off disk
 
 /*
   BUILD 57, STAGE T -- THE FINISH, AS A COUNTER WITH ITS ANSWER BESIDE IT.
@@ -2058,12 +2064,25 @@ float   run_t_stagecap;          // run_stagecap, cached per map
   string table slowly enough not to be noticed -- for a value whose only use is
   an equality test.  A monotonic float answers the same question exactly.
 
-  It is per SESSION, not per map, and does not need to be more: a serial from a
-  previous session cannot match, because a previous session left no buffer
-  either, so the comparison correctly falls to the read-from-disk path.
+  Patch 364: this used to be a global, per map in fact (PR_Deinit zeroes globals
+  on every map load).  A retry's cold rewind then made a buffer with serial 1
+  again, a save from before it matched, and the load rewound WARM across the
+  counter restart -- no `pause` (p364rewind arm D: "movetick goes backwards").
+  Now a cvar, based once per process on the minute of the month x 256 so an
+  older process's saves miss too; %d in the save and < 2^24, so it stays exact.
 */
-float   rec_rec_nextserial;
 .float  rec_rec_serial;
+float() SV_RecNextSerial =
+{
+	local float s;
+	s = cvar("rec_serial");
+	if (s <= 0)
+		s = ((stof(strftime(TRUE, "%d")) - 1) * 1440 + stof(strftime(TRUE, "%H")) * 60
+		     + stof(strftime(TRUE, "%M"))) * 256;
+	s = s + 1;
+	cvar_set("rec_serial", sprintf("%d", s));
+	return s;
+};
 
 /*
   The slot a run was resumed from, + 1.  0 is "not a shadow run".
@@ -2128,7 +2147,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 9           always first
+    FTESURF-REC 9           always first; 10 once a `pause` is written (Patch 364)
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -2650,6 +2669,21 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             (A run with posts that FINISHES under an unarchived
                             tag -- last/cheat -- lands there too, with no
                             `abandon`: the file name is its runid.)
+    pause <mt> <carry> <ticks> <why>
+                            v10, Patch 364.  The trace is parked at run clock
+                            <ticks>; <mt> <carry> are the last `in` row's (with
+                            no row yet, `instart`'s <mt> and 0).  <why>:
+                            retry | load (a cold rewind, sv_saveloc.qc) or
+                            drop | rotate | server (Multi-Session, TF_MULTISESSION).
+                            Nothing that moves -- no `in`, no sample -- until:
+    session <n> <mt> <carry> <ticks>
+                            v10.  Session <n> (the first is 1, unwritten) begins
+                            on the mover counter as it now stands: <mt> is its
+                            horizon, and `in`/`warp`/`ride` <mt>, `board` <n> and
+                            the pm/pe/portal floors restart with it.  <pk>, <row>,
+                            sample <t> and the clock run on; <ticks> equals the
+                            pause's.  A `seed` follows when the header has `pmpin`.
+                            A file is v10 exactly when it holds a `pause`.
     stage <seg> <ticks>     a stage boundary was crossed
     board <t> <n> <nx ny nz> <vx vy vz>
                             v4.  The engine's board counter moved to <n>: you
@@ -2734,6 +2768,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             without one is a writer that has gone wrong.
     end <ticks> <samples> <padding> <checkpoints> <inputs> <warps> <rides>
         <pms> <pes> <portals>                                   (v9, one line)
+        <sessions>                                              (v10: `session`s)
     split <seg> <ticks>     one per completed segment, ascending
 
   <pms> <pes> <portals> ARE v9 AND COUNTED BY LANDED LINE, like <rides>: `pm` is a
@@ -3126,6 +3161,45 @@ string(entity e, string key) SV_RecPinText =
 	return s;
 };
 
+// BUILD 87 (v9): the exact state the next `in` row's move starts from, %.9g, with
+// the carried pm_source state.  Only in a file with `pmpin`.
+void(entity e) SV_RecSeed =
+{
+	local string pst;
+	pst = SV_RecPinText(e, "*pmstate");
+	if (pst != "")
+		SV_RecPut(e, strcat(sprintf("seed %.9v %.9v %d ", e.origin, e.velocity,
+		                            (e.flags & FL_ONGROUND) ? 1 : 0), pst));
+};
+
+/*
+  Patch 364: open the session a `pause` left owed (SV_RecPause), before the first
+  line that stamps the mover counter.  <ticks> is read at this instant, so reccheck's
+  "pause ticks == session ticks" tests that the clock stood still; while a retry's
+  latch is pending (starttick -2) nothing has been counted and the clock IS the carry.
+*/
+void(entity e) SV_RecSession =
+{
+	local float was, tk;
+
+	if (!e.rec_rec_sesspend)
+		return;
+	if (e.run_movetickrate <= 0)
+		return;
+	tk = e.run_t_tickcarry;
+	if (e.run_t_starttick != -2)
+		tk = SV_TimerTicks(e);
+	was = e.rec_rec_lines;
+	SV_RecPut(e, sprintf("session %d %d %.9g %d", e.rec_rec_sess + 2,
+	                     e.run_movetick, e.run_movecarry, tk));
+	if (e.rec_rec_lines == was)
+		return;
+	e.rec_rec_sess = e.rec_rec_sess + 1;
+	if (e.rec_rec_sesspend > 1)
+		SV_RecSeed(e);
+	e.rec_rec_sesspend = 0;
+};
+
 /*
   BUILD 87 (v9): the three state tracks the engine publishes after each move --
   `pm` (the pin changed), `pe` (the physent list changed), `portal` (the mover
@@ -3144,6 +3218,11 @@ void(entity e) SV_RecState =
 	local string pin;
 
 	if (!SV_RecLive(e))
+		return;
+	// Patch 364: this runs first in both thinks, so the session precedes every
+	// counter-stamped line; nothing of the new map's state is written before it.
+	SV_RecSession(e);
+	if (e.rec_rec_sesspend)
 		return;
 	if (e.run_movetickrate <= 0 || e.run_pmepoch <= 0 || e.rec_rec_in < 1)
 		return;
@@ -3208,7 +3287,7 @@ void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
 	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
-	local string pin, pst;	// build 87
+	local string pin;	// build 87
 
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
@@ -3243,6 +3322,7 @@ void(entity e) SV_RecOpen =
 	// the LIVE values below, so the first record is a change and not the history.
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
 	e.rec_rec_posts = 0;                // Patch 360
+	e.rec_rec_pauses = e.rec_rec_sess = e.rec_rec_sesspend = 0;    // Patch 364
 	e.rec_rec_pcset = 0;
 	e.rec_rec_epoch = 0;
 	e.rec_rec_portalx = e.run_portalx;
@@ -3262,8 +3342,7 @@ void(entity e) SV_RecOpen =
 
 	// A new buffer is a new run, whether or not one is actually created below;
 	// a save state's mark from the PREVIOUS run must not match this one.
-	rec_rec_nextserial = rec_rec_nextserial + 1;
-	e.rec_rec_serial = rec_rec_nextserial;
+	e.rec_rec_serial = SV_RecNextSerial();
 
 	if (!SV_RecEnabled())
 		return;
@@ -3560,6 +3639,7 @@ void(entity e) SV_RecOpen =
 	  treat the physics as unknown.
 	*/
 	pin = SV_RecPinText(e, "*pmpin");
+	e.rec_rec_pinned = (pin != "");
 	if (pin != "")
 	{
 		SV_RecPut(e, strcat("pmpin ", pin));
@@ -3575,12 +3655,7 @@ void(entity e) SV_RecOpen =
 	  and b83's open loops began to drift.  Only with the pin, for the same reason.
 	*/
 	if (pin != "")
-	{
-		pst = SV_RecPinText(e, "*pmstate");
-		if (pst != "")
-			SV_RecPut(e, strcat(sprintf("seed %.9v %.9v %d ", e.origin, e.velocity,
-			                            (e.flags & FL_ONGROUND) ? 1 : 0), pst));
-	}
+		SV_RecSeed(e);
 
 	// A fresh run has boarded nothing yet.  Seeded from the LIVE counter and not
 	// from zero: the engine's counter is per-map and does not reset with the run,
@@ -3629,6 +3704,21 @@ void(entity e) SV_RecOpen =
   data/evidence/<map>/<runid>.rec, outside data/runs so no list shows it;
   swept after run_evidence_days (SV_EvidenceSweep).  TRUE when it took the file.
 */
+// The `end` trailer.  Two sprintfs: ten values against the eight-argument cap.
+// Patch 364: an 11th field, <sessions>, in a v10 file (one with a `pause`).
+void(entity e, float ticks) SV_RecTrailer =
+{
+	local string s;
+	s = strcat(sprintf("end %d %d %d %d %d ",
+	                   ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp, e.rec_rec_in),
+	           sprintf("%d %d %d %d %d",
+	                   e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
+	                   e.rec_rec_pe, e.rec_rec_portal));
+	if (e.rec_rec_pauses > 0)
+		s = strcat(s, sprintf(" %d", e.rec_rec_sess));
+	SV_RecPut(e, s);
+};
+
 float(entity e) SV_RecKeepEvidence =
 {
 	local float ticks, flags, fh;
@@ -3642,12 +3732,7 @@ float(entity e) SV_RecKeepEvidence =
 	SV_RecState(e);
 	if (e.run_movetickrate > 0)
 		SV_RecPut(e, sprintf("inend %d %.9g", e.run_movetick, e.run_movecarry));
-	SV_RecPut(e, strcat(sprintf("end %d %d %d %d %d ",
-	                            ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
-	                            e.rec_rec_in),
-	                    sprintf("%d %d %d %d %d",
-	                            e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
-	                            e.rec_rec_pe, e.rec_rec_portal)));
+	SV_RecTrailer(e, ticks);
 	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
 	if (e.rec_rec_stream)
 	{
@@ -4029,13 +4114,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// one missing position, a dropped `ride` is a carrier a reader goes on holding
 	// for every command after it, and that error does not heal.
 	// BUILD 87 (v9): eighth to tenth, the three state tracks, by the same rule.
-	// Two sprintfs: ten values against the eight-argument cap.
-	SV_RecPut(e, strcat(sprintf("end %d %d %d %d %d ",
-	                            ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
-	                            e.rec_rec_in),
-	                    sprintf("%d %d %d %d %d",
-	                            e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
-	                            e.rec_rec_pe, e.rec_rec_portal)));
+	SV_RecTrailer(e, ticks);
 
 	if (e.run_t_slot >= 0)
 	{
@@ -4308,17 +4387,28 @@ float(entity e, string path) SV_RecWritePrefix =
 */
 void(entity e) SV_RecRecount =
 {
-	local float i, c;
+	local float i, c, last, pend, pk;
 	local string l;
 
 	e.rec_rec_in = e.rec_rec_warp = e.rec_rec_ride = 0;
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
+	e.rec_rec_pauses = e.rec_rec_sess = e.rec_rec_pinned = 0;     // Patch 364
+	last = -1;
+	pend = FALSE;
 	for (i = 0; i < e.rec_rec_lines; i = i + 1)
 	{
 		l = bufstr_get(e.rec_rec_buf, i);
 		c = str2chr(l, 0);
 		if (c == 105 && substring(l, 0, 3) == "in ")              // i
+		{
 			e.rec_rec_in = e.rec_rec_in + 1;
+			last = i;
+		}
+		else if (c == 115 && substring(l, 0, 8) == "session ")    // s
+		{
+			e.rec_rec_sess = e.rec_rec_sess + 1;
+			pend = FALSE;
+		}
 		else if (c == 119 && substring(l, 0, 5) == "warp ")       // w
 			e.rec_rec_warp = e.rec_rec_warp + 1;
 		else if (c == 114 && substring(l, 0, 5) == "ride ")       // r
@@ -4331,12 +4421,86 @@ void(entity e) SV_RecRecount =
 				e.rec_rec_pe = e.rec_rec_pe + 1;
 			else if (substring(l, 0, 7) == "portal ")
 				e.rec_rec_portal = e.rec_rec_portal + 1;
+			else if (substring(l, 0, 6) == "pause ")
+			{
+				e.rec_rec_pauses = e.rec_rec_pauses + 1;
+				pend = TRUE;
+			}
+			else if (substring(l, 0, 6) == "pmpin ")
+				e.rec_rec_pinned = TRUE;
 		}
 	}
 	e.rec_rec_bvset = FALSE;
 	e.rec_rec_pcset = FALSE;
 	e.rec_rec_epoch = 0;
 	e.rec_rec_portalx = e.run_portalx;
+
+	// Patch 364: a pause the prefix left open is still owed its session, and the
+	// packet ordinal runs on past the prefix's last row (a retry's edict starts at 0).
+	e.rec_rec_sesspend = 0;
+	if (pend)
+		e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
+	if (last >= 0)
+	{
+		tokenize(bufstr_get(e.rec_rec_buf, last));
+		pk = stof(argv(1)) + 1;
+		if (e.rec_rec_pk < pk)
+			e.rec_rec_pk = pk;
+	}
+	// The marker describes the file: v10 exactly when a `pause` is in it.
+	l = bufstr_get(e.rec_rec_buf, 0);
+	if (e.rec_rec_pauses > 0 && l == "FTESURF-REC 9")
+		bufstr_set(e.rec_rec_buf, 0, "FTESURF-REC 10");
+	if (e.rec_rec_pauses == 0 && l == "FTESURF-REC 10")
+		bufstr_set(e.rec_rec_buf, 0, "FTESURF-REC 9");
+};
+
+/*
+  Patch 364: a cold rewind (a retry, or a load that read its prefix off disk)
+  parks the trace.  The mover counter under it may have restarted and the state
+  was imposed, not simulated, so the rows go on in a new session (SV_RecSession).
+  <mt> <carry> are the prefix's last `in` row, copied as written -- or `instart`'s
+  <mt> and 0 when the save landed before the first row.  A prefix that ends inside
+  a pause (saved before its session) is already parked: SV_RecRecount re-armed it.
+*/
+void(entity e, string why, float ticks) SV_RecPause =
+{
+	local float i, was;
+	local string l, mt, cy;
+
+	if (e.rec_rec_buf < 1)
+		return;
+	if (e.rec_rec_sesspend)
+		return;
+	mt = cy = "";
+	for (i = e.rec_rec_lines - 1; i >= 0; i = i - 1)
+	{
+		l = bufstr_get(e.rec_rec_buf, i);
+		if (substring(l, 0, 3) == "in ")
+		{
+			tokenize(l);
+			mt = argv(2);
+			cy = argv(3);
+			break;
+		}
+		if (substring(l, 0, 8) == "instart ")
+		{
+			tokenize(l);
+			mt = argv(1);
+			cy = "0";
+			break;
+		}
+	}
+	if (mt == "")
+		return;                         // no counter, no trace: nothing to park
+	was = e.rec_rec_lines;
+	SV_RecPut(e, sprintf("pause %s %s %d %s", mt, cy, ticks, why));
+	if (e.rec_rec_lines == was)
+		return;
+	e.rec_rec_pauses = e.rec_rec_pauses + 1;
+	e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
+	if (bufstr_get(e.rec_rec_buf, 0) == "FTESURF-REC 9")
+		bufstr_set(e.rec_rec_buf, 0, "FTESURF-REC 10");
 };
 
 /*
@@ -4361,6 +4525,7 @@ float(entity e, string path, float mark, float serial,
 {
 	local float buf;
 
+	rec_rewind_cold = FALSE;
 	if (mark <= 0)
 		return FALSE;
 
@@ -4419,8 +4584,7 @@ float(entity e, string path, float mark, float serial,
 	e.rec_rec_full  = FALSE;
 	SV_RecRecount(e);                // build 87
 
-	rec_rec_nextserial = rec_rec_nextserial + 1;
-	e.rec_rec_serial = rec_rec_nextserial;
+	e.rec_rec_serial = SV_RecNextSerial();
 
 	/*
 	  WHICH LEG this buffer is now for, so the client names its sidecar after the
@@ -4479,6 +4643,7 @@ float(entity e, string path, float mark, float serial,
 	e.rec_rec_lastbc = e.run_boardcount;
 
 	e.run_t_flags = e.run_t_flags | TF_RECORDING;
+	rec_rewind_cold = TRUE;         // Patch 364: the caller writes the `pause`
 	return TRUE;
 };
 
@@ -4589,6 +4754,7 @@ void(entity e, string kind) SV_RecWarp =
 		return;
 	if (e.run_movetickrate <= 0)
 		return;
+	SV_RecSession(e);       // Patch 364: a touch on the first move after a retry
 
 	was = e.rec_rec_lines;
 

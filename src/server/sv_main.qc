@@ -803,6 +803,7 @@ void() worldspawn =
 	  the process.  See SV_TimerMapInit.
 	*/
 	registercvar("rec_retry_armed", "0");
+	registercvar("rec_serial", "0");        // Patch 364: SV_RecNextSerial; not archived
 
 	dprint("FTESurf: worldspawn\n");
 };

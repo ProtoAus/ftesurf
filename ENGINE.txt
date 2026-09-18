@@ -13,11 +13,15 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   d310d3f0056065ced3c1676b768c1a1a17700bd0
+commit   092eaf95bd9e4eb2265e7ab10c6fd17235c3628f
 tag      patch-266
-patch    363
+patch    364
 qcbuild  83
 date     2026-09-18
+
+# PATCH 364: FTESURF-REC 10 -- a retry or a load read off disk continues the
+# recording in a new session (`pause` / `session`).  Engine: pm_recsim and
+# pm_verify refuse REC > 9.  cfg/test/p364rewind.cfg, cfg/test/p364rsim.cfg.
 
 # PATCH 363 IS MOD-SIDE ONLY: the counted clock survives a counter restart (a
 # `retry` is a map_restart): SV_TimerResume carries the restored ticks and

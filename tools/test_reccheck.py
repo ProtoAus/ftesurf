@@ -62,7 +62,7 @@ PIN = "pmsrcver=1 gravity=800 maxspeed=320 ticrate=0.00999999978 bounce=1e-05"
 
 def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
           rides=(), inend=True, pmpin=True, seed=True, pms=(), pes=(),
-          portals=()):
+          portals=(), sessions=()):
     """-> list of lines.  A finished, well-formed recording, v9 by default.
 
     BUILD 87 (v9): `pmpin`/`seed` default on (off below v9); a `warp` may carry a
@@ -84,6 +84,11 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
     BUILD 85: `rides` is a sequence of (pk, mt, what, bx, by, bz); `inend`
     defaults ON because v8 writes it whenever the trace exists, so a fixture
     without one would fault for a reason it is not about.
+
+    PATCH 364 (v10): `sessions` is a sequence of (after_pk, new_mt, why): after
+    that packet the builder writes `pause`, `session` and (with the pin) a
+    `seed`, and the rows go on from new_mt.  A drop/rotate/server reason sets
+    TF_MULTISESSION; the trailer gains <sessions>.
     """
     L = ["FTESURF-REC %d" % ver,
          "map bhop_eazy",
@@ -103,7 +108,8 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
         L.append("instart %d %d" % (HORIZON, HORIZON))
     if startjit is not None:
         L.append("startjit %g %g %g %g" % tuple(startjit))
-    L.append("flags 0")
+    ms = any(w in ("drop", "rotate", "server") for _p, _m, w in sessions)
+    L.append("flags %d" % (16384 if ms else 0))
     v9 = ver >= 9
     if v9 and pmpin:
         L.append("pmpin " + PIN)
@@ -125,7 +131,7 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
     for i in range(PAD):
         L.append(sample(-(PAD - i) * TICK))
 
-    mt, carry, n_in = HORIZON, 0.003, 0
+    mt, carry, n_in, n_sess = HORIZON, 0.003, 0, 0
     for pk in range(PACKETS):
         if inputs:
             if v9:
@@ -139,6 +145,14 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
             mt += 2 if carry < 0.003 else 1
             carry = round(carry % TICK, 5)
         L.append(sample(pk * TICK))
+        for spk, smt, why in sessions:
+            if spk == pk:
+                L.append("pause %d %.9g %d %s" % (mt, carry, pk + 1, why))
+                L.append("session %d %d %.9g %d" % (n_sess + 2, smt, carry, pk + 1))
+                if v9 and seed:
+                    L.append("seed 0 0 64 0 0 0 0 ducked=0 ducktime=0 msec_carry=0.003")
+                mt = smt
+                n_sess += 1
 
     # Build 83.  Appended AFTER the loop so a fixture can state them without
     # having to model the interleave; `warp` is not per-packet and the grammar
@@ -180,6 +194,8 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
         tail.append(len(rides))      # <rides>, build 85
     if v9:
         tail += [len(pms), len(pes), len(portals)]   # build 87
+    if ver >= 10:
+        tail.append(n_sess)                          # Patch 364
     L.append("end " + " ".join(str(x) for x in tail))
     return L
 
@@ -188,7 +204,7 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
 # See build()'s docstring for what that cost the first time.
 END_FIELD = {"ticks": 1, "samples": 2, "padding": 3, "cp": 4,
              "inputs": 5, "warps": 6, "rides": 7,
-             "pms": 8, "pes": 9, "portals": 10}
+             "pms": 8, "pes": 9, "portals": 10, "sessions": 11}
 
 
 def bump_end(lines, field, delta=1):
@@ -906,6 +922,104 @@ def case_abandon():
                "an abandon with nothing posted is a note")
 
 
+# ---------------------------------------------------------------------------
+# Patch 364: v10 -- `pause` / `session`, a run across a counter restart.
+# ---------------------------------------------------------------------------
+V10 = dict(ver=10, sessions=[(15, 3, "drop")])
+
+
+def drop_kinds(lines, kinds):
+    return [l for l in lines if l.split()[0] not in kinds]
+
+
+def insert_before(lines, kind, text):
+    ix = [i for i, l in enumerate(lines) if l.split()[0] == kind][0]
+    return lines[:ix] + [text] + lines[ix:]
+
+
+def case_v10_session():
+    f, n = run(build(**V10))
+    check(not f and not n, "a v10 run with a drop pause and session 2 passes clean")
+    if f or n:
+        print("        faults=%s notes=%s" % (f, n))
+    d = tempfile.mkdtemp(prefix="reccheck_t")
+    try:
+        p = os.path.join(d, "t.rec")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(build(**V10)) + "\n")
+        out = subprocess.run([sys.executable, RECCHECK, "-v", p],
+                             capture_output=True, text=True).stdout
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    check("sessions       1" in out and "pauses         drop" in out,
+          "-v prints sessions 1 and the pause reason")
+
+    # THE CONTROL: the same body without the two records must fault.
+    b = bump_end(drop_kinds(build(**V10), ("pause", "session")), "sessions", -1)
+    faults_with(b, "movetick goes backwards",
+                "the same body minus pause/session faults (control)")
+
+    b = build(**V10)
+    faults_with(bump_end(b, "sessions", 1), "'end' says 2 sessions",
+                "a trailer over-counting sessions is a fault")
+    faults_with(edit(b, "session", 4, 99), "the clock does not run while parked",
+                "session ticks off the pause's is a fault")
+    faults_with(drop_kinds(b, ("pause",)), "with no 'pause' before it",
+                "a session with no pause is a fault")
+    faults_with(edit(b, "session", 1, 3), "where session 2 comes next",
+                "a session numbered out of order is a fault")
+    faults_with(insert_before(b, "session", "in 15 3 0.003 0 0 0 0.0000 90.0000 0.0000 0 0"),
+                "an 'in' row inside the pause", "an in row inside a pause is a fault")
+    faults_with(edit(b, "inend", 1, 2), "below the trace's horizon 3",
+                "an inend below the last session's horizon is a fault")
+    faults_with([l for l in b if not l.startswith("end ")]
+                + ["pause 50 0.003 41 drop", [l for l in b if l.startswith("end ")][0]],
+                "a run does not finish while parked", "a trailer while paused is a fault")
+    faults_with(bump_end(b, "sessions", 0)[:-1] + [" ".join(b[-1].split()[:-1])],
+                "'end' takes 11 fields in a v10 file", "a v10 trailer of 10 fields is a fault")
+    # <carry> is %.9g: a tiny one prints in exponent form (p364rewind arm C).
+    ok_clean(edit(edit(b, "pause", 2, "2.81259418e-07"), "session", 3, "2.81259418e-07"),
+             "a %.9g carry in exponent form on pause/session is legal")
+    faults_with(edit(b, "pause", 3, "1.6e+01"), "in exponent form",
+                "an exponent in a pause's <ticks> is a fault")
+
+
+def case_v10_horizons_restart():
+    # A warp below the new horizon faults; a ride and a board may restart.
+    b = build(**V10)
+    ix = [i for i, l in enumerate(b) if l.startswith("session ")][0]
+    w = b[:ix + 2] + ["warp 16 1 16 tele 0 0 64 0 0 0 0"] + b[ix + 2:]
+    faults_with(bump_end(w, "warps"), "warp at movetick 1 is below the trace's horizon 3",
+                "a warp below the session's horizon is a fault")
+    rides = b[:ix - 1] + ["ride 14 %d arm 0 0 250" % (HORIZON + 20)] + b[ix - 1:ix + 2] \
+        + ["ride 16 5 pay 0 0 250"] + b[ix + 2:]
+    ok_clean(bump_end(rides, "rides", 2),
+             "a ride track restarts with the session (mt 5 after %d)" % (HORIZON + 20))
+    boards = b[:ix - 1] + ["board 0.1 7 0 0 1 0 0 0"] + b[ix - 1:ix + 2] \
+        + ["board 0.2 1 0 0 1 0 0 0"] + b[ix + 2:]
+    f, _ = run(boards)
+    check(not any("board counter" in x for x in f),
+          "the board counter restarts with the session")
+    if any("board counter" in x for x in f):
+        print("        %s" % f)
+
+
+def case_v10_flag():
+    faults_with(head(build(**V10), "flags", 0), "does not say multi-session",
+                "a drop pause without TF_MULTISESSION is a fault")
+    ok_clean(build(ver=10, sessions=[(15, 3, "retry")]),
+             "a retry session sets no bit and passes")
+    faults_with(head(build(ver=10, sessions=[(15, 3, "retry")]), "flags", 16384),
+                "says multi-session, but there is no",
+                "TF_MULTISESSION with only a retry pause is a fault")
+
+
+def case_v9_session_is_unknown():
+    b = build()
+    notes_with(insert_before(b, "inend", "session 2 3 0.003 20"),
+               "unknown record 'session'", "a session in a v9 file is an unknown-record note")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -935,7 +1049,9 @@ def main():
                case_v9_exponent_still_faults_elsewhere,
                case_v9_trailer_counts, case_v9_row_must_be_written_already, case_v9_zseed,
                case_v9_seed, case_v9_field_values, case_v8_as_before,
-               case_stagepost, case_abandon):
+               case_stagepost, case_abandon,
+               case_v10_session, case_v10_horizons_restart, case_v10_flag,
+               case_v9_session_is_unknown):
         print("%s:" % fn.__name__)
         fn()
         print("")

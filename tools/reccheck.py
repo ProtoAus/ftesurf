@@ -76,7 +76,7 @@ EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 # keep the blanket rule.
 EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
              "seed": set(range(1, 7)), "portal": set(range(4, 10)),
-             "inend": {2}}
+             "inend": {2}, "pause": {2}, "session": {3}}     # Patch 364: <carry>
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
@@ -137,7 +137,7 @@ def is_prefix(path):
 # boosters say anything about the run.
 #
 # v9 (build 87): samples unchanged; `in` and `warp` change shape, `end` grows three.
-COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17, 8: 17, 9: 17}
+COLUMNS = {2: 10, 3: 14, 4: 17, 5: 17, 6: 17, 7: 17, 8: 17, 9: 17, 10: 17}
 
 # Header keys each version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault.
@@ -274,6 +274,9 @@ HEAD_V8 = HEAD_V7
 #   pmpin   build 87.  The physics pin, name=value at %.9g.  Absent is legal (an
 #           engine older than Patch 346): the physics are then unknown.
 HEAD_V9 = HEAD_V8 | {"pmpin"}
+# v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
+# `pause`: the buffered writer rewrites line 0 when the first one lands.
+HEAD_V10 = HEAD_V9
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
@@ -328,6 +331,11 @@ def run_class(fv):
 # pitch/yaw stop moving, and the mask check further down is satisfied by zeros
 # agreeing with zeros.  It would have passed silently.
 TF_GHOST = 64
+# Patch 364: a run resumed across a disconnect or a map change (Multi-Session).
+# Display and evidence only; set iff the file holds a Multi-Session pause.
+TF_MULTISESSION = 16384
+PAUSE_MS = ("drop", "rotate", "server")      # the player left: Multi-Session
+PAUSE_WHY = PAUSE_MS + ("retry", "load")     # a map_restart / a cold save-load
 
 # Build 58.  The run was set with the raw input journal switched off, so no .hid
 # describes it.
@@ -505,7 +513,9 @@ def check_rec(path, verbose=False):
         return r
     r.info["version"] = ver
     want_cols = COLUMNS[ver]
-    if ver >= 9:
+    if ver >= 10:
+        allowed = HEAD_V10
+    elif ver >= 9:
         allowed = HEAD_V9
     elif ver >= 8:
         allowed = HEAD_V8
@@ -766,6 +776,13 @@ def check_rec(path, verbose=False):
     zseeds = []             # (lineno, args, rows so far) -- v9, build 88
     pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
     first_body = None       # line number of the first body line (seed goes there)
+    # v10: `pause` / `session`.  cur_horizon is the horizon of the session the
+    # walk is in (instart's, then each session's <mt>).
+    pauses = []             # (lineno, mt, ticks, why)
+    sessions = []           # (lineno, n, mt, ticks)
+    open_pause = None       # the pause no session has answered yet
+    cur_horizon = in_start
+    in_paused = 0           # `in` rows / samples inside a pause (reported once)
     seen_positive = False
     bad_cols = 0
     mask_disagree = 0
@@ -817,6 +834,12 @@ def check_rec(path, verbose=False):
                 r.fault("line %d: time goes backwards, %.4f after %.4f"
                         % (lineno + 1, t, samples[-1][0]))
             samples.append((t, vals))
+            if open_pause is not None:
+                in_paused += 1
+                if in_paused == 1:
+                    r.fault("line %d: a sample inside the pause at line %d -- nothing "
+                            "moves between 'pause' and 'session'"
+                            % (lineno + 1, open_pause[0]))
             continue
 
         # ---- the input trace, build 82 -------------------------------------
@@ -879,10 +902,17 @@ def check_rec(path, verbose=False):
             if in_mt is not None and mt < in_mt:
                 r.fault("line %d: movetick goes backwards, %d after %d"
                         % (lineno + 1, mt, in_mt))
-            if in_start is not None and mt < in_start:
+            if cur_horizon is not None and mt < cur_horizon:
                 r.fault("line %d: movetick %d is below the trace's own horizon "
-                        "%d -- instart says this file begins later than it does"
-                        % (lineno + 1, mt, in_start))
+                        "%d -- %s says this file begins later than it does"
+                        % (lineno + 1, mt, cur_horizon,
+                           "its session" if sessions else "instart"))
+            if open_pause is not None:
+                in_paused += 1
+                if in_paused == 1:
+                    r.fault("line %d: an 'in' row inside the pause at line %d -- "
+                            "the next session starts with a 'session' record"
+                            % (lineno + 1, open_pause[0]))
             in_pk, in_mt = pk, mt
 
             # The sub-tick remainder is what is LEFT after the mover took whole
@@ -1086,6 +1116,52 @@ def check_rec(path, verbose=False):
             pes.append((lineno + 1, tok[1:], inrows))
         elif kind == "portal" and ver >= 9:
             portals.append((lineno + 1, tok[1:], inrows))
+        elif kind == "pause" and ver >= 10:
+            # Patch 364: the run was parked (Multi-Session) or rewound across a
+            # counter restart (retry, a cold load).  <mt> <carry> close this
+            # session's trace as `inend` closes the file's.
+            a = tok[1:]
+            if open_pause is not None:
+                r.fault("line %d: a second 'pause' with no 'session' after the "
+                        "one at line %d" % (lineno + 1, open_pause[0]))
+            if len(a) != 4 or not is_int(a[0]) or not is_float(a[1]) \
+                    or not is_float(a[2]):
+                r.fault("line %d: 'pause' takes <mt> <carry> <ticks> <why>"
+                        % (lineno + 1))
+            else:
+                pmt, ptk, why = int(a[0]), float(a[2]), a[3]
+                if why not in PAUSE_WHY:
+                    r.note("line %d: pause reason %r is not one this tool knows (%s)"
+                           % (lineno + 1, why, ", ".join(PAUSE_WHY)))
+                if in_mt is not None and pmt < in_mt:
+                    r.fault("line %d: 'pause' at movetick %d is below the last 'in' "
+                            "row's %d" % (lineno + 1, pmt, in_mt))
+                pauses.append((lineno + 1, pmt, ptk, why))
+                open_pause = (lineno + 1, pmt, ptk, why)
+        elif kind == "session" and ver >= 10:
+            # Patch 364: the next session begins on a restarted mover counter.
+            # <mt> is its horizon; <pk>, <row>, sample <t> and the clock run on.
+            a = tok[1:]
+            if len(a) != 4 or not is_int(a[0]) or not is_int(a[1]) \
+                    or not is_float(a[2]) or not is_float(a[3]):
+                r.fault("line %d: 'session' takes <n> <mt> <carry> <ticks>"
+                        % (lineno + 1))
+            else:
+                n, smt, stk = int(a[0]), int(a[1]), float(a[3])
+                if open_pause is None:
+                    r.fault("line %d: 'session %d' with no 'pause' before it"
+                            % (lineno + 1, n))
+                elif stk != open_pause[2]:
+                    r.fault("line %d: 'session %d' at %g ticks, its pause at %g -- "
+                            "the clock does not run while parked"
+                            % (lineno + 1, n, stk, open_pause[2]))
+                if n != len(sessions) + 2:
+                    r.fault("line %d: 'session %d' where session %d comes next"
+                            % (lineno + 1, n, len(sessions) + 2))
+                sessions.append((lineno + 1, n, smt, stk))
+                cur_horizon = smt
+                in_mt = None
+                open_pause = None
         elif kind == "zseed" and ver >= 9:
             # build 88: the timer latches the start packet left, for pm_verify.
             # Additive (no bump); written once, before the first `in` row.
@@ -1096,6 +1172,22 @@ def check_rec(path, verbose=False):
     r.info["samples"] = len(samples)
     r.info["padding"] = padding
     r.info["records"] = len(records)
+
+    # v10: the horizon, and the session index, at a line (post passes).
+    def horizon_at(ln):
+        h = in_start
+        for sl, _n, smt, _t in sessions:
+            if sl < ln:
+                h = smt
+        return h
+
+    def session_at(ln):
+        return sum(1 for sl, _n, _m, _t in sessions if sl < ln)
+
+    if sessions:
+        r.info["sessions"] = len(sessions)
+    if pauses:
+        r.info["pauses"] = ", ".join(w for _l, _m, _t, w in pauses)
 
     # ---- the imposed-state records, build 83 -------------------------------
     #
@@ -1139,9 +1231,10 @@ def check_rec(path, verbose=False):
             # opened on.  A warp below it is a writer that stamped the wrong
             # counter, which is worth catching because <mt> is the only column
             # that separates two impositions inside one packet.
-            if in_start is not None and mt < in_start:
+            h = horizon_at(ln)
+            if h is not None and mt < h:
                 r.fault("line %d: warp at movetick %d is below the trace's "
-                        "horizon %d" % (ln, mt, in_start))
+                        "horizon %d" % (ln, mt, h))
         if kinds:
             r.info["warps"] = ", ".join(
                 "%s x%d" % (k, n) for k, n in sorted(kinds.items()))
@@ -1166,6 +1259,7 @@ def check_rec(path, verbose=False):
     if rides:
         whats = {}
         prev_mt = None
+        prev_sess = 0
         for ln, a in rides:
             if len(a) != 6:
                 r.fault("line %d: 'ride' takes 6 fields "
@@ -1189,9 +1283,13 @@ def check_rec(path, verbose=False):
                 continue
             whats[a[2]] = whats.get(a[2], 0) + 1
             mt = int(a[1])
-            if in_start is not None and mt < in_start:
+            h = horizon_at(ln)
+            if h is not None and mt < h:
                 r.fault("line %d: ride at movetick %d is below the trace's "
-                        "horizon %d" % (ln, mt, in_start))
+                        "horizon %d" % (ln, mt, h))
+            if session_at(ln) != prev_sess:     # v10: a new counter, a new track
+                prev_sess = session_at(ln)
+                prev_mt = None
             # MONOTONE IN <mt>.  `warp` is not checked for this -- several can
             # share a packet and arrive in touch order -- but these are written
             # once per command from PreThink, so backwards means a wrong field.
@@ -1225,9 +1323,10 @@ def check_rec(path, verbose=False):
         else:
             e_mt = int(a[0])
             r.info["inend"] = a[0]
-            if in_start is not None and e_mt < in_start:
+            h = horizon_at(ln)
+            if h is not None and e_mt < h:
                 r.fault("line %d: inend %d is below the trace's horizon %d -- "
-                        "the run ended before it began" % (ln, e_mt, in_start))
+                        "the run ended before it began" % (ln, e_mt, h))
             # AND IT MUST NOT PRECEDE THE LAST `in` ROW, which is the whole
             # reason it is written: the final row's duration is inend minus that
             # row's <mt>, and a negative duration is not a rounding question.
@@ -1255,12 +1354,15 @@ def check_rec(path, verbose=False):
     # seed is a note: the grammar does not say the seed is compulsory, and the
     # writer omits it when the engine publishes no *pmstate.
     if ver >= 9:
+        after_session = set(sl + 1 for sl, _n, _m, _t in sessions)
         for n, (ln, a) in enumerate(seeds):
-            if n:
+            if n and ln in after_session:
+                pass                    # v10: each session restates the state
+            elif n:
                 r.fault("line %d: a second 'seed' -- it is written once, right "
-                        "after 'begin'" % ln)
+                        "after 'begin'%s" % (ln, " or 'session'" if ver >= 10 else ""))
                 continue
-            if ln != first_body:
+            elif ln != first_body:
                 r.fault("line %d: 'seed' is not the first line after 'begin'" % ln)
             if pmpin is None:
                 r.fault("line %d: 'seed' with no 'pmpin' header -- the seed is "
@@ -1708,7 +1810,11 @@ def check_rec(path, verbose=False):
             r.fault("%d 'board' records in a v%d file -- that record is v4"
                     % (len(boards), ver))
         last_t, last_n = None, None
+        last_sess = 0
         for ln, a in boards:
+            if session_at(ln) != last_sess:     # v10: the engine's counter restarted
+                last_sess = session_at(ln)
+                last_n = None
             if len(a) != 8:
                 r.fault("line %d: 'board' takes 8 fields, has %d" % (ln, len(a)))
                 continue
@@ -1859,6 +1965,17 @@ def check_rec(path, verbose=False):
                         "does not say ghost" % (len(ghost_windows), fv))
             r.info["ghosted"] = "yes" if (fv & TF_GHOST) else "no"
 
+            # Patch 364: the bit and the Multi-Session pauses agree, both ways.
+            # A retry or a cold load starts a session too, and sets no bit.
+            if saw_end is not None:
+                msp = [w for _l, _m, _t, w in pauses if w in PAUSE_MS]
+                if (fv & TF_MULTISESSION) and not msp:
+                    r.fault("header flags %d says multi-session, but there is no "
+                            "drop/rotate/server 'pause' in the stream" % fv)
+                if msp and not (fv & TF_MULTISESSION):
+                    r.fault("%d multi-session pause(s) in the stream, but header "
+                            "flags %d does not say multi-session" % (len(msp), fv))
+
             # Build 58.  Reported, never faulted -- see TF_NOJOURNAL above.
             #
             # THREE STATES COLLAPSED INTO A BIT, which is why the word for the
@@ -1934,7 +2051,9 @@ def check_rec(path, verbose=False):
         # one missing fact but a WRONG carrier held for every command after it,
         # which does not heal.  The count is the only handle a reader has on that.
         # v9 (build 87): TEN -- <pms> <pes> <portals>, exact, counted like <rides>.
-        if ver >= 9:
+        if ver >= 10:
+            want_end = 11               # Patch 364: <sessions>
+        elif ver >= 9:
             want_end = 10
         elif ver >= 8:
             want_end = 7
@@ -1949,6 +2068,14 @@ def check_rec(path, verbose=False):
                     % (ln, want_end, ver, len(args)))
         else:
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            if want_end >= 11:
+                if int(float(args[10])) != len(sessions):
+                    r.fault("'end' says %d sessions, the file has %d"
+                            % (int(float(args[10])), len(sessions)))
+            if open_pause is not None:
+                r.fault("line %d: an 'end' trailer with the pause at line %d "
+                        "unanswered -- a run does not finish while parked"
+                        % (ln, open_pause[0]))
             if want_end >= 10:
                 for nm, got, x in (("pm", pms, args[7]), ("pe", pes, args[8]),
                                    ("portal", portals, args[9])):
@@ -2340,6 +2467,8 @@ def emit(r, verbose):
                   # Patch 360: posted stages, and the tick an evidence file was
                   # abandoned at.
                   "stageposts", "abandoned",
+                  # Patch 364: sessions, and the pause reasons.
+                  "sessions", "pauses",
                   # Build 24, v4.  `clean` is the one the leaderboard filters on
                   # and the one worth being able to read off a file by hand.
                   # Build 44.  `class` is `clean`'s successor and both are
