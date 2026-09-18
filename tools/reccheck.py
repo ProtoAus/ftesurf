@@ -749,6 +749,8 @@ def check_rec(path, verbose=False):
     boards = []             # (lineno, args) -- build 24 v4 board entries
     ghosts = []             # (lineno, args) -- build 30 ghost window edges
     stagerecs = []          # (lineno, kind, args) -- build 43: stage/stagestart/restart
+                            # (+ Patch 360's stagepost, checked in the same sequence)
+    abandons = []           # (lineno, args) -- Patch 360: an abandoned run kept as evidence
     inrows = 0              # build 82: `in` records seen
     warps = []              # (lineno, args) -- build 83 v7 imposed-state records
     rides = []              # (lineno, args) -- build 85 v8 carrier span records
@@ -1025,6 +1027,15 @@ def check_rec(path, verbose=False):
             # build-43 change gives them a second producer apiece: an untested
             # record grammar is one nobody notices breaking.
             stagerecs.append((lineno + 1, kind, tok[1:]))
+        elif kind == "stagepost":
+            # Patch 360, additive: a MAIN run's stage posted to its stage board.
+            # Its <dur> is the stage's own duration, so it is checked against the
+            # boundary that closes it, in the stage sequence below.
+            stagerecs.append((lineno + 1, kind, tok[1:]))
+        elif kind == "abandon":
+            # Patch 360, additive: the run was abandoned and kept because it had
+            # posted stages; the normal trailer follows at the same ticks.
+            abandons.append((lineno + 1, tok[1:]))
         elif kind == "warp":
             # Build 83, v7.  `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` --
             # state imposed on the player from OUTSIDE the mover, written by the
@@ -1490,14 +1501,52 @@ def check_rec(path, verbose=False):
     # the run clock is deliberately not rewound by a stage fail -- that is the
     # decision build 12 made and build 43 kept, so a `restart` whose tick went
     # backwards would mean the writer had rewound something it promises not to.
+    stage_last = None           # Patch 360: the last stage-record tick, for `abandon`
     if stagerecs:
         open_seg = None         # the segment currently open, or None
         started = False         # has this stage's `stagestart` been seen
         opened_at = None
         last_tick = None
         n_start = n_restart = 0
+        # Patch 360: stagepost.  base = the open stage's clock base (its
+        # stagestart, or 0 for the run's own first stage); pending = a post
+        # awaiting the boundary (or trailer) that closes its stage.
+        try:
+            head_leg = int(float(r.info.get("leg", 0) or 0))
+            head_seg = int(float(r.info.get("startseg", 0) or 0))
+        except ValueError:
+            head_leg, head_seg = 0, 0
+        base = 0
+        posted = set()
+        pending = None
 
         for ln, kind, a in stagerecs:
+            if kind == "stagepost":
+                if len(a) != 3:
+                    r.fault("line %d: 'stagepost' takes 3 fields, has %d" % (ln, len(a)))
+                    continue
+                try:
+                    pseg, pdur, plaunch = (float(x) for x in a)
+                except ValueError:
+                    r.fault("line %d: 'stagepost' has a non-numeric field" % ln)
+                    continue
+                pseg = int(pseg)
+                cur = head_seg if open_seg is None else open_seg
+                if head_leg > 0:
+                    r.fault("line %d: 'stagepost' in a stage run (leg %d) -- only a "
+                            "main run posts its stages" % (ln, head_leg))
+                elif pseg != cur:
+                    r.fault("line %d: 'stagepost %d' names a stage that is not the "
+                            "open one (%d)" % (ln, pseg, cur))
+                elif open_seg is not None and not started:
+                    r.fault("line %d: 'stagepost %d' for a stage that never left its "
+                            "box -- a flown-through stage is never primed" % (ln, pseg))
+                elif pseg in posted:
+                    r.fault("line %d: a second 'stagepost' for stage %d" % (ln, pseg))
+                else:
+                    posted.add(pseg)
+                    pending = (ln, pseg, pdur, base)
+                continue
             if len(a) != 2:
                 r.fault("line %d: %r takes 2 fields, has %d" % (ln, kind, len(a)))
                 continue
@@ -1521,7 +1570,15 @@ def check_rec(path, verbose=False):
                 if open_seg is not None and seg != open_seg + 1:
                     r.fault("line %d: 'stage %d' after 'stage %d' -- boundaries "
                             "are crossed in order" % (ln, seg, open_seg))
+                if pending is not None:
+                    pln, pseg, pdur, pbase = pending
+                    if tick - pbase != pdur:
+                        r.fault("line %d: 'stagepost %d' says %g ticks, but its stage "
+                                "ran %g (%g - %g)" % (pln, pseg, pdur, tick - pbase,
+                                                      tick, pbase))
+                    pending = None
                 open_seg, started, opened_at = seg, False, tick
+                base = None
             elif kind == "stagestart":
                 n_start += 1
                 if open_seg is None:
@@ -1534,12 +1591,18 @@ def check_rec(path, verbose=False):
                             "'restart' between them" % (ln, seg))
                 else:
                     started = True
+                    base = tick
                     if opened_at is not None and tick < opened_at:
                         r.fault("line %d: 'stagestart' at %g is before the "
                                 "boundary that opened it at %g"
                                 % (ln, tick, opened_at))
             else:   # restart
                 n_restart += 1
+                if pending is not None:
+                    r.fault("line %d: 'restart' after stage %d was posted -- a post is "
+                            "written only at its stage's close" % (ln, pending[1]))
+                    pending = None
+                base = None
                 if open_seg is None:
                     # Legal: `!r` on the run's first segment reaches
                     # SV_TimerRestartSeg without a `stage` record ever having
@@ -1550,6 +1613,19 @@ def check_rec(path, verbose=False):
                             "open one (%d)" % (ln, seg, open_seg))
                 started, opened_at = False, tick
 
+        # A post still pending closed at the finish: the trailer's <ticks>.
+        if pending is not None and saw_end is not None:
+            pln, pseg, pdur, pbase = pending
+            try:
+                eticks = float(saw_end[1][0])
+                if eticks - pbase != pdur:
+                    r.fault("line %d: 'stagepost %d' says %g ticks, but its stage ran "
+                            "%g to the finish" % (pln, pseg, pdur, eticks - pbase))
+            except (ValueError, IndexError):
+                pass
+        stage_last = last_tick
+        if posted:
+            r.info["stageposts"] = len(posted)
         if n_start:
             r.info["stagestarts"] = n_start
         if n_restart:
@@ -1557,6 +1633,32 @@ def check_rec(path, verbose=False):
             # stage was taken four times" is the most useful thing to know about a
             # run whose sample stream is otherwise continuous.
             r.info["stage_restarts"] = n_restart
+
+    # Patch 360: `abandon <ticks>` -- once, numeric, the trailer at the same ticks.
+    if abandons:
+        if len(abandons) > 1:
+            r.fault("line %d: a second 'abandon'" % abandons[1][0])
+        aln, aa = abandons[0]
+        try:
+            aticks = float(aa[0]) if len(aa) == 1 else None
+        except ValueError:
+            aticks = None
+        if aticks is None:
+            r.fault("line %d: 'abandon' takes 1 numeric field" % aln)
+        else:
+            r.info["abandoned"] = int(aticks)
+            if stage_last is not None and aticks < stage_last:
+                r.fault("line %d: 'abandon %g' is before the stage record at %g -- "
+                        "the clock it was written with had been rewound" % (aln, aticks, stage_last))
+            if saw_end is not None:
+                try:
+                    if float(saw_end[1][0]) != aticks:
+                        r.fault("line %d: 'abandon %g' but the trailer says %s ticks"
+                                % (aln, aticks, saw_end[1][0]))
+                except (ValueError, IndexError):
+                    pass
+            if "stageposts" not in r.info:
+                r.note("line %d: an abandoned run kept with no 'stagepost'" % aln)
 
     if cprecs:
         r.info["checkpoints"] = len(cprecs)
@@ -2235,6 +2337,9 @@ def emit(r, verbose):
                   # print them cannot tell a run that was taken once from one
                   # whose stage was reset four times.
                   "stagestarts", "stage_restarts",
+                  # Patch 360: posted stages, and the tick an evidence file was
+                  # abandoned at.
+                  "stageposts", "abandoned",
                   # Build 24, v4.  `clean` is the one the leaderboard filters on
                   # and the one worth being able to read off a file by hand.
                   # Build 44.  `class` is `clean`'s successor and both are

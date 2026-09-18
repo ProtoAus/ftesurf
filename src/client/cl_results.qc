@@ -1260,6 +1260,7 @@ float(string cmd) Results_ConsoleCommand =
 
 		raw = getplayerkeyvalue(player_localnum, "*wrank");
 		print(sprintf("  *wrank = %s\n", (raw != "") ? raw : "(unset)"));
+		print(sprintf("  *srank = %s\n", getplayerkeyvalue(player_localnum, "*srank")));
 		print(sprintf("  board  = %s\n",
 		              (serverkey("board") != "") ? serverkey("board")
 		                                         : "(unpublished)"));

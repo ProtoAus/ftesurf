@@ -6,6 +6,19 @@
 
 void() main = { };
 
+// Called by name before every changelevel, map_restart and quit (the engine's
+// PR_PreShutdown), while edicts and file handles still exist; a map change runs
+// no ClientDisconnect.  Patch 360: a run that posted stages keeps its recording.
+void() SV_Shutdown =
+{
+	local entity p;
+
+	p = world;
+	while ((p = find(p, classname, "player")))
+		if (p.rec_rec_posts > 0)
+			SV_RecDiscard(p);
+};
+
 /*
   Push the movement parameters the client needs for prediction and for the
   HUD into serverinfo.  CSQC reads them back with serverkeyfloat() so both
@@ -355,6 +368,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STAGEENDSEG,   EV_FLOAT, run_st_endseg);
 	clientstat(STAT_FS_STAGEENDST,    EV_FLOAT, run_st_endword);
 	clientstat(STAT_FS_STAGEENDTICKS, EV_FLOAT, run_st_endticks);
+	clientstat(STAT_FS_STAGEENDLAUNCH, EV_FLOAT, run_st_endlaunch);   // Patch 360
 
 	/*
 	  BUILD 48: the personal best this run was measured AGAINST.

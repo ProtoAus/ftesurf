@@ -326,7 +326,7 @@ bannered as superseded.)
   scripted walk never reaches. So the harness holds the run open at the end and
   an outside poller copies `data/parts/0.rec` during that window (an abandoned
   stream is cleaned up on quit). `b85ride.cfg` is the current worked example.
-  On a lobby, copy `data/parts/<slot>.rec` from the Pi over ssh during the hold
+  On a lobby, copy `data/parts/p<port>-<slot>.rec` from the Pi over ssh during the hold
   (`p352live.cfg`). A copy taken mid-write ends in half a row.
 
 ## Pi operations (public lobbies)

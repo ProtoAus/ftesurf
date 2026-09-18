@@ -195,6 +195,23 @@
 .float   lobby_rq_leg;
 .float   lobby_rq_ticks;
 .float   lobby_rq_flags;        // the submitted flags: FS_CertWhy for the unranked line
+// A stage posted from a main run (Patch 360) waits on its OWN id and answers into
+// `*srank`, so the final stage and the finish, posted in one frame, both land.
+.float   lobby_sq_id;
+.float   lobby_sq_track;
+.float   lobby_sq_leg;
+.float   lobby_sq_flags;
+// The stage before it, if its reply is still out: that reply is told in chat
+// but never written to *srank, which now describes the newer stage.
+.float   lobby_sq_old;
+.float   lobby_sq_oldtrack;
+.float   lobby_sq_oldleg;
+.float   lobby_sq_oldflags;
+.float   lobby_sq_told;         // TF_UNCERT reasons already said for stage rows (this map)
+// The run's id, the .rec header's `runid`; written by SV_RecOpen (sv_timer.qc,
+// which compiles after this file), zoned there.
+.string  rec_rec_rid;
+float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitStage;
 
 // Cached cvars, refreshed once per frame in Lobby_Frame.
 float lobby_on;
@@ -1926,6 +1943,11 @@ void() Lobby_Heartbeat =
 			pflags = TF_CHEAT;
 			if (cvar("lobby_run_probe") == 3)
 				pflags = pflags | TF_NOPROFILE;
+			// 2: a stage-3 post in the SAME frame as the finish below, as a
+			// main run's final stage and its finish are (Patch 360).  TF_CHEAT
+			// too: a clean probe would be a forgery tool.
+			if (cvar("lobby_run_probe") == 2)
+				Lobby_SubmitStage(pl, 0, 3, 1111, TF_CHEAT);
 			cvar_set("lobby_run_probe", "0");
 			lobby_run_waiting = FALSE;
 			print("^5board:^7 probe -- one synthetic CHEATED run, which has no "
@@ -2111,11 +2133,11 @@ void(entity e, string key, float state, float rank, float of,
 
 // A demoted run is TOLD, in the chatbox (PRINT_CHAT; PRINT_HIGH only reaches
 // the console): with the Community chip gone it is on no board the player sees.
-void(entity e) Lobby_SayUnranked =
+void(entity e, float flags) Lobby_SayUnranked =
 {
 	local string why;
 
-	why = FS_CertWhy(e.lobby_rq_flags);
+	why = FS_CertWhy(flags);
 	if (why == "")
 		why = "not certified";      // surfd and TF_UNCERT disagree: worth seeing
 	sprint(e, PRINT_CHAT, sprintf("^5board:^7 ^3unranked (%s)^7 -- not on the "
@@ -2126,7 +2148,8 @@ void(float reqid, float code, string body) Lobby_RunReply =
 {
 	local entity who;
 	local int   root;
-	local float rank, of, stored, prevms, tier;
+	local float rank, of, stored, prevms, tier, isstage, isold, strk, sleg, sfl, u;
+	local string key;
 
 	if (!code)
 		lobby_run_ok = lobby_run_ok + 1;
@@ -2138,9 +2161,39 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	  world is a perfectly valid entity to hold, so the guard is on USING it,
 	  not on the search.
 	*/
+	isstage = isold = FALSE;
+	strk = sleg = sfl = 0;
 	who = findfloat(world, lobby_rq_id, reqid);
 	if (who != world)
 		who.lobby_rq_id = 0;            // answered; do not match it twice
+	else
+	{
+		// A stage posted from a main run (Patch 360): its own id, its own key.
+		who = findfloat(world, lobby_sq_id, reqid);
+		if (who != world)
+		{
+			who.lobby_sq_id = 0;
+			isstage = TRUE;
+			strk = who.lobby_sq_track;
+			sleg = who.lobby_sq_leg;
+			sfl  = who.lobby_sq_flags;
+		}
+		else
+		{
+			who = findfloat(world, lobby_sq_old, reqid);
+			if (who != world)
+			{
+				who.lobby_sq_old = 0;
+				isstage = isold = TRUE;
+				strk = who.lobby_sq_oldtrack;
+				sleg = who.lobby_sq_oldleg;
+				sfl  = who.lobby_sq_oldflags;
+			}
+		}
+	}
+	key = "*wrank";
+	if (isstage)
+		key = "*srank";
 
 	/*
 	  PARSED WITH THE REAL PARSER.  sh_json.qc is already in sv_progs.src, and
@@ -2183,12 +2236,15 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		*/
 		if (!code)
 		{
-			if (rank > 0)
-				Lobby_RankAnswer(who, "*wrank", WR_RANKED, rank, of,
-				                 stored, prevms, tier);
-			else
-				Lobby_RankAnswer(who, "*wrank", WR_STORED, 0, 0,
-				                 stored, prevms, tier);
+			if (!isold)                 // an older stage: *srank is the newer one's
+			{
+				if (rank > 0)
+					Lobby_RankAnswer(who, key, WR_RANKED, rank, of,
+					                 stored, prevms, tier);
+				else
+					Lobby_RankAnswer(who, key, WR_STORED, 0, 0,
+					                 stored, prevms, tier);
+			}
 
 			/*
 			  A LINE ONLY WHEN THE BOARD ACTUALLY MOVED.  The finish card
@@ -2200,16 +2256,36 @@ void(float reqid, float code, string body) Lobby_RunReply =
 			*/
 			if (stored)
 			{
-				if (tier == WRT_COMMUNITY)
-					Lobby_SayUnranked(who);
+				if (tier == WRT_COMMUNITY && isstage)
+				{
+					// Once per reason: every stage of a run carries the same bits.
+					u = sfl & TF_UNCERT;
+					if (!u)
+						u = 1;              // surfd's own reason: said once too
+					if (u - (u & who.lobby_sq_told))
+					{
+						Lobby_SayUnranked(who, sfl);
+						who.lobby_sq_told = who.lobby_sq_told | u;
+					}
+				}
+				else if (tier == WRT_COMMUNITY)
+					Lobby_SayUnranked(who, who.lobby_rq_flags);
+				else if (rank > 0 && isstage)
+					sprint(who, PRINT_HIGH,
+					       sprintf("^5board:^7 %s: ^2#%g^7 of %g\n",
+					               FS_LegWord(strk, sleg), rank, of));
 				else if (rank > 0)
 					sprint(who, PRINT_HIGH,
 					       sprintf("^5board:^7 your time is up: ^2#%g^7 of %g\n",
 					               rank, of));
 			}
 		}
+		else if (isold)
+			isold = FALSE;              // an older stage's failure: nothing to say
 		else if (code == 204)
-			Lobby_RankAnswer(who, "*wrank", WR_NOBOARD, 0, 0, 0, 0, 0);
+			Lobby_RankAnswer(who, key, WR_NOBOARD, 0, 0, 0, 0, 0);
+		else if (isstage)
+			Lobby_RankAnswer(who, key, WR_FAILED, 0, 0, 0, 0, 0);  // the finish's notice is not spent on a stage
 		else
 		{
 			Lobby_RankAnswer(who, "*wrank", WR_FAILED, 0, 0, 0, 0, 0);
@@ -2271,8 +2347,10 @@ void(float reqid, float code, string body) Lobby_RunReply =
   and tag would be right in every case except that one, and that one is
   invisible.
 */
-void(entity e, float track, float leg, float ticks, float flags,
-     string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
+// The gates and the form, shared by a finish and a stage post (Patch 360):
+// "" when this server does not submit.
+string(entity e, float track, float leg, float ticks, float flags,
+       string rec, float recbytes, float rectrunc) Lobby_RunBody =
 {
 	local string url, key, body, guid, nm;
 	local float rate;
@@ -2284,7 +2362,7 @@ void(entity e, float track, float leg, float ticks, float flags,
 
 	url = cvar_string("lobby_master");
 	if (url == "")
-		return;                 // not pointed at a directory at all
+		return "";                 // not pointed at a directory at all
 
 	/*
 	  NO KEY, NO REQUEST.  surfd would answer 403, so asking costs a round trip
@@ -2294,10 +2372,10 @@ void(entity e, float track, float leg, float ticks, float flags,
 	*/
 	key = cvar_string("lobby_master_key");
 	if (key == "")
-		return;
+		return "";
 
 	if (ticks < 1)
-		return;                 // nothing measurable happened
+		return "";                 // nothing measurable happened
 
 	/*
 	  AN UNIDENTIFIED RUN IS NOT SUBMITTED.  See the header: with sv_guidkey
@@ -2330,7 +2408,7 @@ void(entity e, float track, float leg, float ticks, float flags,
 			sprint(e, PRINT_HIGH, "^1board:^7 this server cannot identify you, "
 			         "so your times are not being submitted (sv_guidkey).\n");
 		}
-		return;
+		return "";
 	}
 
 	nm = e.netname;
@@ -2429,16 +2507,38 @@ void(entity e, float track, float leg, float ticks, float flags,
 	*/
 	body = sprintf("%s&rec=%s&recbytes=%d&rectrunc=%g",
 	               body, uri_escape(rec), recbytes, rectrunc);
+	// The run's id (the .rec header's runid): joins a stage row to its run.
+	if (e.rec_rec_rid != "")
+		body = sprintf("%s&runid=%s", body, uri_escape(e.rec_rec_rid));
+	return body;
+};
 
-	/*
-	  ODD, ALWAYS.  Seeded to 1 here rather than at a registration site so that
-	  the property is enforced by the only function that can break it: a QC
-	  global starts at 0, and 0 + 2 is EVEN, which would route this submission's
-	  reply into the heartbeat's status line and corrupt both.
-	*/
+// ODD, always: even ids route to the heartbeat's reply (see Lobby_RunReply).
+float() Lobby_NextRunId =
+{
 	if (lobby_run_id < 1)
 		lobby_run_id = 1;
 	lobby_run_id = lobby_run_id + 2;
+	return lobby_run_id;
+};
+
+void(entity e, float track, float leg, float ticks, float flags,
+     string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
+{
+	local string url, body;
+
+	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
+	if (body == "")
+		return;
+	url = cvar_string("lobby_master");
+
+	/*
+	  ODD, ALWAYS.  Seeded to 1 in Lobby_NextRunId rather than at a registration
+	  site so that the property is enforced by the only function that can break
+	  it: a QC global starts at 0, and 0 + 2 is EVEN, which would route this
+	  submission's reply into the heartbeat's status line and corrupt both.
+	*/
+	Lobby_NextRunId();
 
 	/*
 	  WHO TO ANSWER, AND ABOUT WHAT.  Recorded BEFORE the post, because
@@ -2492,6 +2592,42 @@ void(entity e, float track, float leg, float ticks, float flags,
 	if (rec != "")
 		print(sprintf("^5board:^7   recording %s (%g bytes%s)\n",
 		              rec, recbytes, rectrunc ? ", TRUNCATED" : ""));
+};
+
+/*
+  A STAGE FROM A MAIN RUN, posted to that stage's board (Patch 360).  SV_StageClose
+  decides it qualifies (primed start, at or under run_stagecap); this only posts.
+  No recording leaf: a stage row has none of its own (runid joins it to the run).
+  TRUE when the post went out, which is what SF_POSTED records.
+*/
+float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitStage =
+{
+	local string url, body;
+
+	body = Lobby_RunBody(e, track, leg, ticks, flags, "", -1, 0);
+	if (body == "")
+		return FALSE;
+	url = cvar_string("lobby_master");
+
+	if (e.lobby_sq_id)                  // the previous stage's reply is still out
+	{
+		e.lobby_sq_old      = e.lobby_sq_id;
+		e.lobby_sq_oldtrack = e.lobby_sq_track;
+		e.lobby_sq_oldleg   = e.lobby_sq_leg;
+		e.lobby_sq_oldflags = e.lobby_sq_flags;
+	}
+	e.lobby_sq_id    = Lobby_NextRunId();
+	e.lobby_sq_track = track;
+	e.lobby_sq_leg   = leg;
+	e.lobby_sq_flags = flags;
+	Lobby_RankPending(e, "*srank", track, leg, ticks);
+
+	lobby_run_sent = lobby_run_sent + 1;
+	uri_post(strcat(url, "/api/run"), e.lobby_sq_id,
+	         "application/x-www-form-urlencoded", body);
+	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %g (stage)\n",
+	              mapname, track, leg, ticks, flags));
+	return TRUE;
 };
 
 /*

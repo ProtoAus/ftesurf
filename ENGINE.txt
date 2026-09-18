@@ -15,9 +15,15 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   3f7d36a1d4450fb9c7e49dd0aa7b7ee534dc0113
 tag      patch-266
-patch    357
+patch    360
 qcbuild  83
 date     2026-09-18
+
+# PATCH 360 IS MOD-SIDE ONLY: a lobby main run posts a stage to its stage board
+# when the stage started primed (dwell, then a jump or walk-out <= run_stagecap
+# 290); `stagepost`/`abandon` records (additive); a run that posted keeps its
+# recording in data/evidence/<map>/<runid>.rec; lobby part files keyed by port.
+# cfg/test/p360sf{sv,cl}.cfg, p360sf2{sv,cl}.cfg, p360sweep.cfg.
 
 # PATCH 357 IS MOD-SIDE ONLY: the leaderboard follows a finish (leg, and the tab
 # when it must), refetches once the row lands, highlights / pins the own row.

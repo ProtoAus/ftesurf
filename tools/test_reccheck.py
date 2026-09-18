@@ -832,6 +832,80 @@ def case_v9_zseed():
                 "a zseed missing a latch is a fault")
 
 
+# ---------------------------------------------------------------------------
+# Patch 360: stagepost / abandon (additive, no version bump).
+# ---------------------------------------------------------------------------
+# A main run crossing 4 stages; the trailer's ticks are PACKETS (40).  Stage 0
+# posts from the run's start (base 0); stage 2 is flown through (no stagestart,
+# so never primed); stage 3 posts at the finish.
+STAGED = ["stagepost 0 10 280", "stage 1 10",
+          "stagestart 1 14", "stagepost 1 8 250", "stage 2 22",
+          "stage 3 30",
+          "stagestart 3 31", "stagepost 3 9 270"]
+
+
+def staged(recs=STAGED, pre=(), **kw):
+    """build() with stage records (and `pre`) spliced in before the trailer."""
+    b = build(**kw)
+    ix = [i for i, l in enumerate(b) if l.split()[0] in ("inend", "end")][0]
+    return b[:ix] + list(recs) + list(pre) + b[ix:]
+
+
+def swap(recs, old, new):
+    return [new if r == old else r for r in recs]
+
+
+def case_stagepost():
+    f, n = run(staged())
+    check(not f and not n, "a main run posting stages 0, 1 and 3 passes clean")
+    if f or n:
+        print("        faults=%s notes=%s" % (f, n))
+    # The print tuple has no other falsifier (see emit()).
+    d = tempfile.mkdtemp(prefix="reccheck_t")
+    try:
+        p = os.path.join(d, "t.rec")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(staged()) + "\n")
+        out = subprocess.run([sys.executable, RECCHECK, "-v", p],
+                             capture_output=True, text=True).stdout
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    check("stageposts     3" in out, "-v prints stageposts 3")
+    for recs, want, what in (
+            (swap(STAGED, "stagepost 1 8 250", "stagepost 1 9 250"),
+             "says 9 ticks, but its stage ran 8", "a post off by one tick"),
+            (swap(STAGED, "stagepost 3 9 270", "stagepost 3 10 270"),
+             "ran 9 to the finish", "a finish post off by one tick"),
+            (STAGED[:5] + ["stagepost 2 8 0"] + STAGED[5:],
+             "never left its box", "a post for a flown-through stage"),
+            (STAGED[:4] + ["stagepost 1 8 250"] + STAGED[4:],
+             "a second 'stagepost' for stage 1", "two posts for one stage"),
+            (swap(STAGED, "stagepost 1 8 250", "stagepost 2 8 250"),
+             "not the open one (1)", "a post naming the wrong stage"),
+            (STAGED[:4] + ["restart 1 20"] + STAGED[4:],
+             "'restart' after stage 1 was posted", "a restart after a post"),
+            (swap(STAGED, "stagepost 1 8 250", "stagepost 1 8"),
+             "takes 3 fields", "a two-field post")):
+        faults_with(staged(recs), want, "%s is a fault" % what)
+    b = head(staged(), "leg", 2)
+    faults_with(b, "only a main run posts", "a post in a stage run (leg 2) is a fault")
+
+
+def case_abandon():
+    ok_clean(staged(pre=["abandon %d" % PACKETS]),
+             "an abandoned run with posts, abandon at the trailer's ticks, passes")
+    faults_with(staged(pre=["abandon %d" % (PACKETS - 1)]),
+                "but the trailer says", "an abandon off the trailer's ticks is a fault")
+    faults_with(staged(pre=["abandon %d" % PACKETS] * 2), "a second 'abandon'",
+                "two abandons is a fault")
+    # A save-load rewinds the clock before the keep: abandon/end below the stages.
+    b = bump_end(staged(pre=["abandon 25"]), "ticks", 25 - PACKETS)
+    faults_with(b, "before the stage record at 31",
+                "an abandon earlier than its own stage records is a fault")
+    notes_with(staged(recs=(), pre=["abandon %d" % PACKETS]), "with no 'stagepost'",
+               "an abandon with nothing posted is a note")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -860,7 +934,8 @@ def main():
                case_v9_exponent_is_legal_in_float_columns,
                case_v9_exponent_still_faults_elsewhere,
                case_v9_trailer_counts, case_v9_row_must_be_written_already, case_v9_zseed,
-               case_v9_seed, case_v9_field_values, case_v8_as_before):
+               case_v9_seed, case_v9_field_values, case_v8_as_before,
+               case_stagepost, case_abandon):
         print("%s:" % fn.__name__)
         fn()
         print("")

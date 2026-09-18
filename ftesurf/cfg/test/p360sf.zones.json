@@ -1,0 +1,171 @@
+{
+ "formatVersion": 1,
+ "maxVelocity": 10000,
+ "tracks": {
+  "main": {
+   "stagesEndAtStageStarts": true,
+   "zones": {
+    "segments": [
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -14150
+           ],
+           [
+            -11240,
+            -14150
+           ],
+           [
+            -11240,
+            -14288
+           ],
+           [
+            -11800,
+            -14288
+           ]
+          ],
+          "bottom": 15360,
+          "height": 256
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -13800
+           ],
+           [
+            -11240,
+            -13800
+           ],
+           [
+            -11240,
+            -13950
+           ],
+           [
+            -11800,
+            -13950
+           ]
+          ],
+          "bottom": 15360,
+          "height": 256
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -13450
+           ],
+           [
+            -11240,
+            -13450
+           ],
+           [
+            -11240,
+            -13550
+           ],
+           [
+            -11800,
+            -13550
+           ]
+          ],
+          "bottom": 15380,
+          "height": 40
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -13100
+           ],
+           [
+            -11240,
+            -13100
+           ],
+           [
+            -11240,
+            -13250
+           ],
+           [
+            -11800,
+            -13250
+           ]
+          ],
+          "bottom": 15360,
+          "height": 256
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "end": {
+     "regions": [
+      {
+       "points": [
+        [
+         -11800,
+         -12800
+        ],
+        [
+         -11240,
+         -12800
+        ],
+        [
+         -11240,
+         -12950
+        ],
+        [
+         -11800,
+         -12950
+        ]
+       ],
+       "bottom": 15360,
+       "height": 256
+      }
+     ]
+    }
+   }
+  }
+ }
+}

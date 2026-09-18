@@ -465,6 +465,7 @@
 #define STAT_FS_STAGEENDSEG    86   // the segment that just closed
 #define STAT_FS_STAGEENDST     87   // its SF_* word at the close
 #define STAT_FS_STAGEENDTICKS  88   // its own duration, in ticks
+#define STAT_FS_STAGEENDLAUNCH 100  // its launch speed (u/s); -1 = never left its box.  Patch 360
 
 /*
   The personal best this run was measured against, latched before the PB table
@@ -729,6 +730,11 @@
   that the STAGE was legitimate, which is the half a second keeper needs.
 */
 #define SF_QUALIFIES 256  // SV_StageQualifies said yes.  The CLOSE word only
+// Patch 360, stage fill-in.  PRIMED: the stage started the way a run starts
+// (the +forward-release dwell, a jump or a walk-out) at <= run_stagecap.
+// POSTED: this close was sent to the online stage board (`*srank` answers).
+#define SF_PRIMED    512
+#define SF_POSTED   1024  // the CLOSE word only
 
 /*
   Radians to degrees.
@@ -2120,6 +2126,42 @@ string(float track, float leg) FS_LegDir =
 	// A stage of a bonus track.  Rare, but the zone format allows it and a
 	// collision here would silently file two different legs together.
 	return sprintf("bonus_%g_stage_%g", track, leg);
+};
+
+// Days since 1970-01-01 for a civil date (days_from_civil; exact in floats).
+// Patch 360: evidence expiry reads a runid's date prefix with it.
+float(float y, float m, float d) FS_DayNum =
+{
+	local float era, yoe, mp, doy;
+
+	if (m <= 2)
+		y = y - 1;
+	era = floor(y / 400);
+	yoe = y - era * 400;
+	mp = m - 3;
+	if (m <= 2)
+		mp = m + 9;
+	doy = floor((153 * mp + 2) / 5) + d - 1;
+	return era * 146097 + yoe * 365 + floor(yoe / 4) - floor(yoe / 100) + doy - 719468;
+};
+
+// "YYYYmmdd..." (a runid, a strftime stamp) as FS_DayNum, or -1.
+float(string s) FS_DayNumOf =
+{
+	if (strlen(s) < 8)
+		return -1;
+	return FS_DayNum(stof(substring(s, 0, 4)), stof(substring(s, 4, 2)),
+	                 stof(substring(s, 6, 2)));
+};
+
+// The same leg in words, for a line a player reads ("stage 3", "bonus 1 stage 2").
+string(float track, float leg) FS_LegWord =
+{
+	if (track <= 0)
+		return (leg <= 0) ? "main" : sprintf("stage %g", leg);
+	if (leg <= 0)
+		return sprintf("bonus %g", track);
+	return sprintf("bonus %g stage %g", track, leg);
 };
 
 /*

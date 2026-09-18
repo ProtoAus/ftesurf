@@ -816,6 +816,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	}
 	fclose(f);
 
+	// Patch 360: a run that posted stages keeps its recording as it stands, before
+	// the restore below rewrites its clock and flags and the rewind drops it.
+	if (e.rec_rec_posts > 0)
+		SV_RecDiscard(e);
+
 	/*
 	  Place the player, retry only.  Same shape as SV_SaveLocPlace, including
 	  the pitch in BOTH angle fields -- the engine transmits .angles rather than

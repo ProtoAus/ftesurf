@@ -1740,6 +1740,10 @@ float() SV_RecStreams =
 */
 string(entity e) SV_RecPartPath =
 {
+	// The Pi's lobbies share one data dir, so every lobby's slot 0 was one file
+	// (and the evidence keep renames it).  Keyed by port there; offline unchanged.
+	if (Lobby_Active())
+		return sprintf("data/parts/p%s-%g.rec", cvar_string("sv_port"), e.run_t_slot);
 	return sprintf("data/parts/%g.rec", e.run_t_slot);
 };
 
@@ -1951,6 +1955,31 @@ float(entity e) SV_RecLive =
 .float  run_st_endseg;           // the segment that closed
 .float  run_st_endword;          // its SF_* word at the close, with SF_KNOWN
 .float  run_st_endticks;         // its own duration, in ticks
+.float  run_st_endlaunch;        // Patch 360: its launch speed (stat 100); -1 = never left its box
+
+/*
+  PATCH 360, STAGE FILL-IN.  The takeoff that began this flight: tkok 1 = primed
+  (the +forward-release dwell was met: a jump, or a walk-off), -1 = a hop, 0 =
+  none.  Cleared by a ramp and by SV_StageOpen; a landing moves it to tkland for
+  one tick, so a primed jump that lands on the box-exit tick still counts.  The
+  verdict (prime, launch speed) is taken at the box exit by SV_StageLaunch.
+  Ramp contact is read from run_boardcount, which is cumulative: run_rampcontact
+  is only the packet's LAST tick, and a packet can hold up to 8.
+*/
+.float  run_st_tkok;
+.float  run_st_tkspd;
+.float  run_st_tksec;
+.float  run_st_tkbc;             // run_boardcount before the takeoff's packet
+.float  run_st_bcseen;           // run_boardcount at the end of the last JumpWatch
+.float  run_st_tkland;
+.float  run_st_tklandspd;
+.float  run_st_tklandsec;
+.float  run_st_prime;
+.float  run_st_launch;
+.float  run_st_launchsec;        // when the judged takeoff happened (SV_TimerStart vs the arm)
+.float  run_t_armsec;            // SV_ClockSec at the arm: the opening stage's takeoff must follow it
+.float  rec_rec_posts;           // `stagepost` records in this recording (the abandon keep)
+float   run_t_stagecap;          // run_stagecap, cached per map
 
 /*
   BUILD 57, STAGE T -- THE FINISH, AS A COUNTER WITH ITS ANSWER BESIDE IT.
@@ -2604,6 +2633,20 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     stagestart <seg> <ticks>  a stage run was started.  Added build 81 -- the
                             writer has existed since the stage runs did, and this
                             block never listed it
+    stagepost <seg> <dur> <launch>
+                            Patch 360, additive: stage <seg> of a MAIN run was
+                            posted to its online stage board.  <dur> is the
+                            stage's own duration (NOT the run clock): the next
+                            `stage`/finish tick minus its `stagestart` (0 for the
+                            run's first stage).  <launch> u/s at its primed start.
+                            Written just before that boundary's `stage` (or the
+                            trailer); never in a stage run (leg > 0).
+    abandon <ticks>         Patch 360, additive: the run was abandoned at <ticks>
+                            and KEPT because it had posted stages; the normal
+                            inend/end trailer follows.  data/evidence/, not runs/.
+                            (A run with posts that FINISHES under an unarchived
+                            tag -- last/cheat -- lands there too, with no
+                            `abandon`: the file name is its runid.)
     stage <seg> <ticks>     a stage boundary was crossed
     board <t> <n> <nx ny nz> <vx vy vz>
                             v4.  The engine's board counter moved to <n>: you
@@ -3196,6 +3239,7 @@ void(entity e) SV_RecOpen =
 	// BUILD 87 (v9): the state tracks.  The epoch and portal count are seeded from
 	// the LIVE values below, so the first record is a change and not the history.
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
+	e.rec_rec_posts = 0;                // Patch 360
 	e.rec_rec_pcset = 0;
 	e.rec_rec_epoch = 0;
 	e.rec_rec_portalx = e.run_portalx;
@@ -3325,7 +3369,18 @@ void(entity e) SV_RecOpen =
 	*/
 	SV_RecPut(e, sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
 	SV_RecPut(e, sprintf("owner %s", e.netname));
-	SV_RecPut(e, sprintf("runid %s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"), e.run_t_slot));
+	// Patch 360: kept (zoned) as the run's id for stage posts and the evidence
+	// file; a lobby appends its port -- 12 lobbies share one data dir.  Readers
+	// slice only the date prefix.
+	if (e.rec_rec_rid != "")
+		strunzone(e.rec_rec_rid);
+	if (Lobby_Active())
+		e.rec_rec_rid = strzone(sprintf("%s-%g-p%s", strftime(TRUE, "%Y%m%d-%H%M%S"),
+		                                e.run_t_slot, cvar_string("sv_port")));
+	else
+		e.rec_rec_rid = strzone(sprintf("%s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"),
+		                                e.run_t_slot));
+	SV_RecPut(e, strcat("runid ", e.rec_rec_rid));
 
 	/*
 	  BUILD 73: WHICH BYTES OF THE MAP THIS RUN'S PHYSICS ACTUALLY RAN ON.
@@ -3565,6 +3620,94 @@ void(entity e) SV_RecOpen =
   "that one was a PB" from the previous run cannot mistake a voided run for a
   kept one and write a sidecar over a recording that is still good.
 */
+/*
+  PATCH 360: AN ABANDONED RUN THAT POSTED STAGES KEEPS ITS RECORDING.  Its stage
+  rows are on the board, and deleting the stream would leave them with nothing
+  to audit.  The file is closed the way SV_RecClose closes one -- `abandon`,
+  then inend/end with the real counts -- and moved to
+  data/evidence/<map>/<runid>.rec, outside data/runs so no list shows it;
+  swept after run_evidence_days (SV_EvidenceSweep).  TRUE when it took the file.
+*/
+float(entity e) SV_RecKeepEvidence =
+{
+	local float ticks, flags, fh;
+	local string dst;
+
+	if (e.rec_rec_posts <= 0 || e.rec_rec_rid == "")
+		return FALSE;
+	ticks = SV_TimerTicks(e);
+	flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING) - (e.run_t_flags & TF_FROZEN);
+	SV_RecPut(e, sprintf("abandon %d", ticks));
+	SV_RecState(e);
+	if (e.run_movetickrate > 0)
+		SV_RecPut(e, sprintf("inend %d %.9g", e.run_movetick, e.run_movecarry));
+	SV_RecPut(e, strcat(sprintf("end %d %d %d %d %d ",
+	                            ticks, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp,
+	                            e.rec_rec_in),
+	                    sprintf("%d %d %d %d %d",
+	                            e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
+	                            e.rec_rec_pe, e.rec_rec_portal)));
+	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
+	if (e.rec_rec_stream)
+	{
+		if (e.rec_rec_fh < 0)
+			return FALSE;
+		if (e.rec_rec_flagofs >= 0)
+		{
+			fseek(e.rec_rec_fh, e.rec_rec_flagofs);
+			fputs(e.rec_rec_fh, SV_RecFlagLine(flags));
+		}
+		fclose(e.rec_rec_fh);
+		e.rec_rec_fh = -1;
+		fremove(dst);
+		if (frename(SV_RecPartPath(e), dst) != 0)
+		{
+			fremove(SV_RecPartPath(e));
+			return TRUE;                // the handle is gone either way
+		}
+	}
+	else
+	{
+		if (e.rec_rec_flagline >= 0 && e.rec_rec_flagline < e.rec_rec_lines)
+			bufstr_set(e.rec_rec_buf, e.rec_rec_flagline, SV_RecFlagLine(flags));
+		fh = fopen(dst, FILE_WRITE);
+		if (fh < 0)
+			return FALSE;
+		buf_writefile(fh, e.rec_rec_buf, 0, e.rec_rec_lines);
+		fclose(fh);
+	}
+	print(sprintf("^5board:^7 kept %s (%g posted stage(s))\n", dst, e.rec_rec_posts));
+	return TRUE;
+};
+
+// Evidence past run_evidence_days goes, by the runid's date (this map only).
+void() SV_EvidenceSweep =
+{
+	local float h, n, i, today, days, d, cut;
+	local string fn;
+
+	days = cvar("run_evidence_days");
+	if (days <= 0)
+		return;
+	today = FS_DayNumOf(strftime(TRUE, "%Y%m%d"));
+	h = search_begin(sprintf("data/evidence/%s/*.rec", mapname), FS_NAMESORT, TRUE);
+	if (h < 0)
+		return;
+	n = search_getsize(h);
+	for (i = 0; i < n; i = i + 1)
+	{
+		fn = search_getfilename(h, i);
+		cut = strlen(fn) - 1;
+		while (cut >= 0 && str2chr(fn, cut) != 47)     // '/'
+			cut = cut - 1;
+		d = FS_DayNumOf(substring(fn, cut + 1, 8));
+		if (d >= 0)
+		if (today - d > days)
+			fremove(fn);
+	}
+	search_end(h);
+};
+
 void(entity e) SV_RecDiscard =
 {
 	local float live;
@@ -3585,6 +3728,19 @@ void(entity e) SV_RecDiscard =
 	  buffer is live, because the run was.
 	*/
 	live = SV_RecLive(e);
+
+	if (live)
+	if (SV_RecKeepEvidence(e))          // Patch 360: posted stages keep the file
+	{
+		if (!e.rec_rec_stream)
+			buf_del(e.rec_rec_buf);
+		live = FALSE;
+		e.rec_rec_leg = 0;
+		e.rec_rec_tag = RT_NONE;
+		e.rec_rec_ticks = 0;
+		e.rec_rec_saved = FALSE;
+		e.rec_rec_bytes = -1;
+	}
 
 	if (live)
 	{
@@ -3638,6 +3794,10 @@ void(entity e) SV_RecDiscard =
 	e.rec_rec_full = FALSE;
 
 	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING);
+	e.rec_rec_posts = 0;
+	if (e.rec_rec_rid != "")
+		strunzone(e.rec_rec_rid);
+	e.rec_rec_rid = "";                 // an unrecorded next run posts no runid
 };
 
 /*
@@ -3912,6 +4072,18 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// as three chances for them to disagree.
 	who = SV_RecWho(e);
 	dst = SV_RecFinalPath(e, stamp, who, SV_RecTagName(tag));
+
+	// Patch 360: a run that posted stages must not land under a fixed name its
+	// next finish overwrites (last/cheat) -- it goes where an abandoned one does.
+	// RT_NONE: no sidecar is written against it, and KeptLeaf names nothing.
+	if (e.rec_rec_posts > 0)
+	if (e.rec_rec_rid != "")
+	if (!FS_TagArchived(tag))
+	{
+		dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
+		tag = RT_NONE;
+		print(sprintf("^5board:^7 kept %s (%g posted stage(s))\n", dst, e.rec_rec_posts));
+	}
 
 	/*
 	  BUILD 66 -- THE STREAMED RUN IS ALREADY WRITTEN.  What is left is to
@@ -5155,6 +5327,19 @@ string(string l, float tbase, float tickbase) SV_StageLine =
   about its own buffer -- and it means the header, the samples and the trailer
   are one contiguous write that either happens or does not.
 */
+// A stage's own taint, as run flags (the stage file's header and a stage post).
+float(entity e) SV_StageFlags =
+{
+	local float i;
+
+	i = 0;
+	if (e.run_st_dirty)  i = i | TF_PRACTICE;
+	if (e.run_st_ghost)  i = i | TF_GHOST;
+	if (e.run_st_stitch) i = i | TF_PRACTICE | TF_SEGMENT;
+	if (e.run_st_cheat)  i = i | TF_PRACTICE | TF_CHEAT;
+	return i;
+};
+
 void(entity e, float seg, float dur, float tbase, float tickbase,
      float first, float last) SV_StageWrite =
 {
@@ -5230,9 +5415,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	  -- and a save-lock load during a stage taints that stage by construction.
 	  Said out loud rather than left to be remembered.
 	*/
-	i = 0;
-	if (e.run_st_dirty)  i = i | TF_PRACTICE;
-	if (e.run_st_ghost)  i = i | TF_GHOST;
+	i = SV_StageFlags(e);   // the taint lines these essays describe, in one place (Patch 360)
 	/*
 	  BUILD 44: and the CLASS, on the same terms.  Both imply TF_PRACTICE and both
 	  set the umbrella above, so these two lines add nothing a filter reads -- they
@@ -5245,9 +5428,6 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	  which both of these imply.  Derived anyway, for the reason the paragraph
 	  above gives about a third taint and a forgotten line.
 	*/
-	if (e.run_st_stitch) i = i | TF_PRACTICE | TF_SEGMENT;
-	if (e.run_st_cheat)  i = i | TF_PRACTICE | TF_CHEAT;
-
 	leg = FS_LegOf(seg, TRUE);      // build 57: a lifted stage is always a stage leg
 
 	/*
@@ -5556,6 +5736,12 @@ void(entity e, float seg, float ticks) SV_StageOpen =
 	e.run_st_armed = TRUE;
 	e.run_st_hold  = FALSE;
 
+	// Patch 360: a takeoff before this boundary never starts this stage.
+	e.run_st_tkok   = 0;
+	e.run_st_tkland = 0;
+	e.run_st_prime  = FALSE;
+	e.run_st_launch = -1;
+
 	/*
 	  BUILD 44: the cheat half is the LEVEL and the stitch half is zero, and the
 	  asymmetry is the same one run_t_cheat and the missing run_t_stitch have.
@@ -5635,6 +5821,75 @@ void(entity e) SV_StageJump =
 	e.run_st_jump = TRUE;
 };
 
+// Patch 360: latch the takeoff that begins a flight (SV_TimerJumpWatch).
+void(entity e, float ok) SV_StageTakeoff =
+{
+	local vector hv;
+
+	hv = e.velocity;
+	hv_z = 0;
+	e.run_st_tkok  = ok;
+	e.run_st_tkspd = vlen(hv);
+	e.run_st_tksec = SV_ClockSec(e);
+	e.run_st_tkbc  = e.run_st_bcseen;   // a board anywhere in this packet counts
+};
+
+/*
+  PATCH 360: WAS THIS STAGE STARTED THE WAY A RUN STARTS?  Asked at the box exit
+  (SV_StageStart) and at the run start for the opening stage.  PRIMED: grounded
+  for the pre-strafe dwell -- the same dwell that releases +forward
+  (cl_main.qc) -- then a jump or a walk-out, at <= run_stagecap.  Speed is
+  judged at TAKEOFF for an airborne exit (air-strafe gain after a primed jump is
+  honest) and at the exit for a walk-out.  A flown-through boundary never gets
+  here, so it is never primed: speed carried through a stage is not a start.
+*/
+void(entity e) SV_StageLaunch =
+{
+	local float want, now;
+	local vector hv;
+
+	want = run_t_dwell;
+	if (want <= 0)
+		want = 0.25;
+	now = SV_ClockSec(e);
+	hv = e.velocity;
+	hv_z = 0;
+
+	e.run_st_prime = FALSE;
+	e.run_st_launchsec = now;
+	if (e.run_t_groundsec > 0)
+	{
+		if (e.run_t_groundsec >= now && e.run_st_tkland > 0)
+		{
+			e.run_st_launch = e.run_st_tklandspd;   // a primed jump landed on the exit tick
+			e.run_st_launchsec = e.run_st_tklandsec;
+			e.run_st_prime  = TRUE;
+		}
+		else
+		{
+			e.run_st_launch = vlen(hv);
+			e.run_st_prime  = (now - e.run_t_groundsec >= want);
+		}
+	}
+	else if (e.run_st_tkok != 0)
+	{
+		e.run_st_launch = e.run_st_tkspd;
+		e.run_st_launchsec = e.run_st_tksec;
+		e.run_st_prime  = (e.run_st_tkok > 0);
+	}
+	else
+		e.run_st_launch = vlen(hv);         // fell or was pushed out: never primed
+
+	// A ghost since the boundary: the exit was judged at the un-ghost, not where
+	// the body left the box (the ghost branch skips the stage block).
+	if (e.run_st_ghost)
+		e.run_st_prime = FALSE;
+
+	if (run_t_stagecap > 0)
+	if (e.run_st_launch > run_t_stagecap)
+		e.run_st_prime = FALSE;
+};
+
 /*
   THE STAGE'S CLOCK STARTS HERE.  Build 43.
 
@@ -5673,6 +5928,7 @@ void(entity e) SV_StageJump =
 */
 void(entity e, float ticks) SV_StageStart =
 {
+	SV_StageLaunch(e);                  // Patch 360: primed? (stage fill-in)
 	SV_RecPut(e, sprintf("stagestart %d %d", e.run_st_seg, ticks));
 
 	e.run_st_tick  = ticks;
@@ -5833,6 +6089,7 @@ float(entity e) SV_StageWord =
 	// reads; these two say WHY.
 	if (e.run_st_stitch) w = w | SF_STITCH;
 	if (e.run_st_cheat)  w = w | SF_CHEAT;
+	if (e.run_st_prime)  w = w | SF_PRIMED;     // Patch 360
 	return w;
 };
 
@@ -5961,6 +6218,51 @@ float(entity e, float seg) SV_StageQualifies =
 	return TRUE;
 };
 
+/*
+  PATCH 360, STAGE FILL-IN: MAY THIS STAGE OF A MAIN RUN GO ON THE STAGE BOARD?
+  SV_StageQualifies (clean, a real start) AND primed at <= run_stagecap
+  (SV_StageLaunch).  A `!s N` run posts at its finish instead.  run_cheatwatch 0
+  marks practice only at the finish, so it would let a mid-run close through.
+*/
+float(entity e, float seg, float dur) SV_StageFillable =
+{
+	if (e.run_t_stagerun)
+		return FALSE;
+	if (!run_t_cheatwatch)
+		return FALSE;
+	if (dur < 1)
+		return FALSE;
+	if (!e.run_st_prime)
+		return FALSE;
+	// Where runs are recorded, a post needs the recording it will be audited
+	// from: a lobby save-load drops the stream and the run carries on unrecorded.
+	if (SV_RecEnabled())
+	{
+		if (!SV_RecLive(e))
+			return FALSE;
+		if (e.rec_rec_rid == "")
+			return FALSE;
+	}
+	return SV_StageQualifies(e, seg);
+};
+
+float(entity e) SV_JournalBroken;
+float(entity e) SV_RulesetBroken;
+float(entity e) SV_ProfileBroken;
+
+// The stage's own taint plus the run's certification holes, re-checked now:
+// surfd demotes on those bits (TF_UNCERT), exactly as it does a finish.
+float(entity e) SV_StageSubmitFlags =
+{
+	local float f;
+
+	f = SV_StageFlags(e) | (e.run_t_flags & TF_UNCERT);
+	if (SV_JournalBroken(e)) f = f | TF_NOJOURNAL;
+	if (SV_RulesetBroken(e)) f = f | TF_NORULESET;
+	if (SV_ProfileBroken(e)) f = f | TF_NOPROFILE;
+	return f;
+};
+
 void(entity e, float ticks) SV_StageClose =
 {
 	local float dur, pb, seg, leg;
@@ -6009,6 +6311,19 @@ void(entity e, float ticks) SV_StageClose =
 	if (SV_StageQualifies(e, seg))
 		e.run_st_endword = e.run_st_endword | SF_QUALIFIES;
 	e.run_st_endticks = ticks - e.run_st_tick;
+
+	// Patch 360: a primed stage of a main run is posted to its stage board --
+	// above every refusal below, which are about writing a local file.
+	e.run_st_endlaunch = e.run_st_launch;
+	if (SV_StageFillable(e, seg, e.run_st_endticks))
+	if (Lobby_SubmitStage(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks,
+	                      SV_StageSubmitFlags(e)))
+	{
+		e.run_st_endword = e.run_st_endword | SF_POSTED;
+		SV_RecPut(e, sprintf("stagepost %d %d %d", seg, e.run_st_endticks,
+		                     rint(e.run_st_launch)));
+		e.rec_rec_posts = e.rec_rec_posts + 1;
+	}
 	e.run_st_endrec   = e.run_st_endrec + 1;
 
 	/*
@@ -7721,6 +8036,19 @@ float(entity e) SV_TimerJumpWatch =
 	if (jumped)
 		e.run_t_jumps = e.run_t_jumps + 1;
 
+	// Patch 360: the takeoff that begins this flight -- a jump, or walking off
+	// an edge (first airborne tick after ground, no jump) -- primed if the
+	// dwell was met.  groundsec is still last tick's here (clocks update last).
+	if (jumped)
+		SV_StageTakeoff(e, (dwell >= want) ? 1 : -1);
+	else if (!ong)
+	if (e.run_t_groundsec > 0)
+		SV_StageTakeoff(e, (dwell >= want) ? 1 : -1);
+	if (e.run_rampcontact)
+		e.run_st_tkok = 0;
+	if (e.run_boardcount != e.run_st_tkbc)
+		e.run_st_tkok = 0;          // a ramp on a tick the flag above did not see
+
 	/*
 	  BUILD 24: the same two observations, asked a different question.
 
@@ -7737,6 +8065,9 @@ float(entity e) SV_TimerJumpWatch =
 	*/
 	if (e.run_rampcontact)
 		e.run_st_ramp = TRUE;
+	if (e.run_boardcount != e.run_st_bcseen)
+		e.run_st_ramp = TRUE;       // Patch 360: same, mid-packet
+	e.run_st_bcseen = e.run_boardcount;
 	if (jumped)
 	if (e.run_t_state == TS_RUNNING)
 		SV_StageJump(e);
@@ -7886,7 +8217,14 @@ float(entity e) SV_TimerJumpWatch =
 	if (ong)
 	{
 		if (!e.run_t_groundsec)
+		{
 			e.run_t_groundsec = SV_ClockSec(e);
+			// Landed: the flight's takeoff is kept for this one tick (Patch 360).
+			e.run_st_tkland    = e.run_st_tkok;
+			e.run_st_tklandspd = e.run_st_tkspd;
+			e.run_st_tklandsec = e.run_st_tksec;
+			e.run_st_tkok = 0;
+		}
 		e.run_t_airsec = 0;
 	}
 	else
@@ -8078,6 +8416,7 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 void(entity e, float z) SV_TimerArm =
 {
 	SV_RecDiscard(e);
+	e.run_t_armsec = SV_ClockSec(e);    // Patch 360: see SV_TimerStart
 	SV_TimerClearSplits(e);
 
 	e.run_t_state    = TS_ARMED;
@@ -9167,6 +9506,8 @@ float(entity e) SV_RunStartJitter =
 
 void(entity e) SV_TimerStart =
 {
+	local float pr, ln;
+
 	e.run_t_state = TS_RUNNING;
 	e.run_t_ticks = 0;
 
@@ -9318,7 +9659,17 @@ void(entity e) SV_TimerStart =
 	  The arm rule therefore reaches exactly the boundaries in the middle, which
 	  is where the request lives.
 	*/
+	// Patch 360: the opening stage is judged here, and its takeoff must follow
+	// the arm (a primed jump outside, flown or landed into START, is not a start).
+	// SV_StageOpen clears the verdict, so it is carried across.
+	SV_StageLaunch(e);
+	if (e.run_st_launchsec < e.run_t_armsec)
+		e.run_st_prime = FALSE;
+	pr = e.run_st_prime;
+	ln = e.run_st_launch;
 	SV_StageOpen(e, e.run_t_startseg, 0);
+	e.run_st_prime  = pr;
+	e.run_st_launch = ln;
 	e.run_st_armed = FALSE;
 	e.run_st_fails = 0;
 	e.run_st_tp    = 0;
@@ -10579,6 +10930,8 @@ void() SV_TimerMapInit =
 	registercvar("run_stageclean", "1");
 	registercvar("run_stagehop", "1");
 	registercvar("run_stageghost", "1");      // build 48
+	registercvar("run_stagecap", "290");      // Patch 360: stage fill-in's launch cap, u/s
+	registercvar("run_evidence_days", "30");  // Patch 360: abandoned-run evidence kept this long
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
 	registercvar("run_cheatwatch", "1");
@@ -10632,6 +10985,9 @@ void() SV_TimerMapInit =
 	run_t_stageclean  = cvar("run_stageclean");
 	run_t_stagehop    = cvar("run_stagehop");
 	run_t_stageghost  = cvar("run_stageghost");   // build 48
+	run_t_stagecap    = cvar("run_stagecap");     // Patch 360
+	localcmd(sprintf("serverinfo run_stagecap %g\n", run_t_stagecap));
+	SV_EvidenceSweep();
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
 	run_t_startjit    = cvar("run_startjitter");   // build 83
@@ -11111,6 +11467,10 @@ void(entity e) SV_TimerReport =
 	       sprintf("        stage close: rec %g seg %g word %g ticks %g  pbwas %g\n",
 	               e.run_st_endrec, e.run_st_endseg, e.run_st_endword,
 	               e.run_st_endticks, e.run_t_pbwas));
+	sprint(e, PRINT_HIGH,
+	       sprintf("        stage fill: prime %g launch %g tk %g tkspd %g cap %g posts %g\n",
+	               e.run_st_prime, e.run_st_launch, e.run_st_tkok, e.run_st_tkspd,
+	               run_t_stagecap, e.rec_rec_posts));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage rules: fail %g arm %g clean %g hop %g\n",
 	               run_t_stagefail, run_t_stagearm, run_t_stageclean, run_t_stagehop));
