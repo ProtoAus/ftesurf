@@ -38,6 +38,8 @@ chatty.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
+- Then commit that feature and push it — see the source-control rule in
+  AGENTS.md. Verified work that is still only on this disk is not finished.
 - Prefer measuring to reasoning. This codebase has a long history of the right
   answer and the wrong answer being the same bytes; when a claim can be checked
   against a real file or a live run, check it.

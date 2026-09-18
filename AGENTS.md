@@ -7,6 +7,17 @@ essays, not in source files. See CLAUDE.md for the comment-style rules.
 Beta phase, not release: building, deploying and restarting the Pi lobbies are
 routine — do not hesitate when a change needs it.
 
+THIS WORK SPANS THREE DIRECTORIES AND A FRESH SESSION IS GIVEN ONE. Before
+starting anything that reaches past the gamedir, add the other two:
+
+    /add-dir C:\msys64\home\Lex\fteqw     engine C + ENGINE_PATCHES.md
+    /add-dir C:\FTESurf-private           anti-cheat plan, cheat samples, report
+
+The engine one is not optional for anything anti-cheat, movement or renderer:
+the mover, the recorder's consumer (`pm_recsim`) and every patch entry live
+there, and this repo ships only a prebuilt binary. `C:\FTEQuake` is the second
+install used for client-vs-server tests — add it too when you need one.
+
 ## Repository layout
 
 - `ftesurf64.exe` — prebuilt FTE engine binary (Windows x64). Engine C code is
@@ -122,12 +133,22 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   prose padding. Entries up to patch 334 are a long-form archive: never rewrite
   them and do not imitate their style. `qcbuild` bumps only on the user's
   "Build NN" commit.
-- SOURCE CONTROL IS THE USER'S. Do not commit or push unless asked: the tree
-  normally holds several workstreams at once, so `git add -A` would fuse them
-  into one unbisectable commit, and `qcbuild` only moves on the user's own
-  "Build NN" commit. When asked, CONTRIBUTING.md has the format (`Build NN — …`,
-  subject ≤ 72, Root cause / Fix / Verified body) and the branch rule. Stage the
-  paths your change actually touched and say which files you left alone.
+- COMMIT AFTER EVERY FEATURE, AND PUSH. Do not wait to be asked and do not batch
+  a session's work into one lump — this is the development phase, and the cost of
+  not committing is what the build-86 catch-up had to clean up: 75 unpushed
+  commits, the agent brief untracked, and four client sources that `cl_progs.src`
+  references missing from the repo entirely, so a fresh clone could not compile.
+  - The order is: build to 0 new warnings, run the falsifier, THEN commit.
+    Never commit something you have not verified.
+  - ONE COMMIT PER FEATURE. `git add -A` fuses unrelated workstreams into an
+    unbisectable lump — this tree usually holds more than one. Stage the paths
+    your change actually touched, and check `git status` for what you left.
+  - Format is CONTRIBUTING.md's: `Build NN — …` or a plain subject ≤ 72 chars,
+    body Root cause / Fix / Verified. Say what you could NOT verify.
+  - `git push origin HEAD:main`. Never force-push and never rewrite pushed
+    history; unpushed local commits are yours to reshape freely.
+  - `qcbuild` in ENGINE.txt still moves only on the user's own "Build NN" commit;
+    the `patch` pin moves with your ENGINE_PATCHES.md entry.
 - Compare two dynamic strings with `strcmp`; `==` only against literals.
 - One `URI_Get_Callback` per VM — branch on the request id.
 - Inspect existing implementations before adding systems: cvar mirrors in
@@ -236,10 +257,16 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 ## Anti-cheat and run evidence
 
 THE DESIGN IS NOT IN THIS REPO. It lives in
-`C:/Users/Lex/.claude/plans/i-m-developing-a-professional-tender-clock.md` —
-layers 0–3, threat classes T0–T5, phases 0–5, experiments E1–E5. Read it before
-touching anything below; none of this restates it. Half the commit log since
-build 72 is this workstream.
+`C:/FTESurf-private/anticheat-plan.md` — layers 0–3, threat classes T0–T5,
+phases 0–5, experiments E1–E5. Read it before touching anything below; none of
+this restates it. Half the commit log since build 72 is this workstream.
+
+IT IS OUTSIDE THIS REPO ON PURPOSE AND MUST STAY THERE. This repo is GPL and
+published to dl.proto.bar; the plan names live bypasses, the Layer 3 detection
+thresholds and the T5 ceiling. Quote a conclusion here when you need one, never
+the document. (It was in `C:/Users/Lex/.claude/plans/` until 2026-09-18 under a
+generated slug — tool-managed, unbacked, and the only copy. That one is now
+bannered as superseded.)
 
 - Three recordings of one run, joined by filename through `FS_RunPath`: `.rec`
   (server, `sv_timer.qc`), `.view` (CSQC per-frame angles, `cl_replay.qc`),
