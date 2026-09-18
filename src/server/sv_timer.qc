@@ -2217,8 +2217,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
   So: for v7 and below the true sentence is "nothing THIS FORMAT CAN EXPRESS
   imposed state"; only from v8 is silence a statement about the run.  The engine's
-  pm_recsim (sv_ccmds.c:4419-4420) still prints the strong form -- an engine fix,
-  not this QC-only build.
+  pm_recsim printed the strong form until engine Patch 344 narrowed it.
 
   AND SV_StageWrite STILL WRITES `FTESURF-REC 5` AFTER THIS BUILD, which is not
   an oversight and is the clearest statement this format has of what its version

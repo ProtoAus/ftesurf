@@ -13,11 +13,18 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   23c5670035b7e860bff9afd50a56e19a30882df4
+commit   17bee4dad1c0783af50f26ebf37d6578b040f586
 tag      patch-266
-patch    343
+patch    344
 qcbuild  83
 date     2026-09-18
+
+# PATCH 344 IS ENGINE-ONLY (sv_ccmds.c), the first of build 85's two engine
+# follow-ups below: pm_recsim now replays `ride` (keyed to the `in` row it
+# precedes, in SV_BaseVelocityFrame's order) and `inend` (the final move is
+# run), and its v7 "nothing imposed state" line is narrowed to what v7 can
+# express.  Measurement command only; qcbuild stays 83.  cfg/test/p344ride.cfg.
+# (First committed as 343, which a concurrent mod-side patch had just taken.)
 
 # PATCH 343 IS MOD-SIDE ONLY (no engine change): the replay's segment column
 # draws its OWN rows.  rec_wt_sq* captured eight columns and never gained
