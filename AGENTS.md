@@ -59,7 +59,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - Default: compiles all three progs + plugin, deploys to `C:\FTESurf` AND
   `C:\FTEQuake` (dual deploy is mandatory).
 - `-Engine`: also rebuilds the engine from the fteqw checkout; add `-Full`
-  after any engine header change. Plugin rebuild is automatic.
+  after any engine header change. Plugin rebuild is automatic. It builds the
+  engine WORKING TREE, and `release.ps1` ships whatever it built. 0.1.8 went out
+  with another session's uncommitted Patch 362, so commit engine edits before
+  anyone cuts a release.
 - `-Pi`: ships qwprogs+csprogs to the Pi lobbies and restarts them.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
@@ -105,6 +108,14 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     The advertised hash is the folded MD4 of csprogs.dat (`CalcHashInt(hash_md4)`,
     digest bytes XORed by `i%4`); seeding by hand, STRIP LEADING ZEROS — the
     engine spells the filename `%x`.
+  - A client whose csprogs.dat differs from the server's downloads the server's
+    copy to `downloads/csprogsvers/` (clients before 0.1.8 use
+    `<gamedir>_downloads/`). That only works against an engine at Patch 362 or
+    later; a rollback below it leaves every uncached client with no HUD after a
+    progs deploy. To test a join with no cache, delete that file first
+    (`cfg/test/p362csqc.cfg`). With no CSQC, nothing sends `rechid`/`inprof`,
+    so a community run flagged 2560 (TF_NOJOURNAL|TF_NOPROFILE) means the HUD
+    never loaded, not something the player did.
   - Warp with `cmd zone_goto`, NOT `setpos`: setpos forces MOVETYPE_NOCLIP
     server-side and desyncs the two simulations. It also taints the run
     (`cheated`), which is fine once no measurement depends on the clock. On maps
@@ -369,7 +380,12 @@ bannered as superseded.)
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
   `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
-  `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. Run
+  `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. For a
+  one-off run: `+set sv_port <p> +map bhop_eazy +exec cfg/<x>.cfg`. A dedicated
+  server with no `+map` dies with "Couldn't load a map", and the Pi has no
+  `cfg/test/`: copy the cfg in, then delete it. Also `pm_verify` a known PASS
+  file, because the sweeper uses the new binary at once. An ssh that starts a
+  background server does not return, so run it in the background. Run
   hand tests on a port other than 27698, which is the sweeper's. Swap by
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
@@ -450,6 +466,13 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - Unregistered cvar set by bare name in a cfg is "Unknown command" — `set` it.
 - Engine `sv.active` is never assigned anywhere — every `if (sv.active)` is dead
   code; the live server test is `sv.state != ss_dead`.
+- Engine `va()` is a small rotating buffer. Its pointer dies at the next `va()`
+  anywhere, including inside FS calls: FS_Remove restarts the loader threads,
+  whose names come from `va()`, and a download was saved as "loadworker_3". Copy
+  with `Q_snprintfz` before holding it across a call. Also:
+  `CL_CheckOrEnqueDownloadFile` returns FALSE when it STARTS a download.
+- The QuakeWorld join is `SV_New_f`; `SVNQ_New_f` (NQPROT) is NetQuake's, and
+  an edit there does nothing for FTESurf clients.
 - fteqcc: `arr[i]_x` does not compile ("Cannot cast from vector to float") —
   copy to a local vector first; sprintf takes ≤ 8 args (warns above, and DROPS
   the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
