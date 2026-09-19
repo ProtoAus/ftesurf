@@ -125,7 +125,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 20                // 18 rows since Patch 385's spectate; spares kept
+#define HE_MAX 20                // 19 rows since Patch 390's mouse; one spare
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -298,6 +298,8 @@ void() HE_BuildTable =
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
 	// Patch 385: listed for its options only -- the banner sits where it sits.
 	HE_Add("spectate","Spectate",   "",              "",              "",             0, HEA_CT,    0,   0);
+	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
+	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	/*
 	  BUILD 66 -- FROM HERE DOWN, EVERY ROW IS HIDDEN FROM THE LIST.
 
@@ -588,6 +590,15 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "mouse")
+	{
+		if (row == 0) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
+		                     "|Degrees of turn from edge to edge. The height is 10/16 of it.";
+		if (row == 1) return "hud_mouse_trail|Trail|c|0 0.25 0.5 1|off;0.25s;0.5s;1s"
+		                     "|How long the line behind the dot takes to fade.";
+		return "";
+	}
+
 	return "";
 };
 
@@ -613,6 +624,7 @@ string(string id) HE_Tip =
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
+	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
 };
 
@@ -665,6 +677,14 @@ float(string id) HE_Rect =
   guess, and it is exact for the case it exists for -- a panel that is simply
   switched off, whose cvars are ordinary fractions nobody has overridden.
 */
+// Patch 390: the attached mouse pad moves with the keys, so it is no snap target
+// while they are dragged.
+float(string id, string dragged) HE_Riding =
+{
+	return id == "mouse" && dragged == "keys"
+	    && (cvar("hud_mouse_x") < 0 || cvar("hud_mouse_y") < 0);
+};
+
 vector(float r, vector scr) HE_AnchorOf =
 {
 	local float x, y;
@@ -681,6 +701,13 @@ vector(float r, vector scr) HE_AnchorOf =
 	// where auto-right actually lands rather than at the left edge.
 	if (he_id[r] == "keys" && x == 0)
 		x = 0.86;
+	// Patch 390: attached, the placeholder sits where MPad_Geom draws.
+	if (he_id[r] == "mouse")
+	if (x < 0 || y < 0)
+	{
+		MPad_Geom(scr);
+		return ui_mp_bpos;
+	}
 	if (x < 0) x = 0.5;
 	if (y < 0) y = 0.5;
 
@@ -1090,7 +1117,7 @@ void(vector scr) HUD_EditDraw =
 				HE_Cand(64); HE_Cand(scr_x - 64); HE_Cand(scr_x * 0.5);
 				for (k = 0; k < hude_n; k = k + 1)
 				{
-					if (hude_id[k] == he_id[i])
+					if (hude_id[k] == he_id[i] || HE_Riding(hude_id[k], he_id[i]))
 						continue;
 					op = hude_pos[k];  os = hude_size[k];
 					HE_Cand(op_x);
@@ -1103,7 +1130,7 @@ void(vector scr) HUD_EditDraw =
 				HE_Cand(64); HE_Cand(scr_y - 64); HE_Cand(scr_y * 0.5);
 				for (k = 0; k < hude_n; k = k + 1)
 				{
-					if (hude_id[k] == he_id[i])
+					if (hude_id[k] == he_id[i] || HE_Riding(hude_id[k], he_id[i]))
 						continue;
 					op = hude_pos[k];  os = hude_size[k];
 					HE_Cand(op_y);
@@ -1761,6 +1788,7 @@ void(float r) HE_Default =
 	if (id == "boarding") localcmd("seta hud_boarding_x -1\nseta hud_boarding_y -1\n");
 	if (id == "net")      localcmd("seta hud_net_x 0.78\nseta hud_net_y 0.30\n");
 	if (id == "results")  localcmd("seta hud_results_x 0.72\nseta hud_results_y 0.50\n");
+	if (id == "mouse")    localcmd("seta hud_mouse_x -1\nseta hud_mouse_y -1\n");  // Patch 390: attached
 
 	ui_he_dirty = TRUE;
 };

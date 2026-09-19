@@ -4438,17 +4438,58 @@ void(vector pos, vector sz, float held, string label, float lsz) HUD_Key =
 	drawstring(pos, label, [lsz, lsz], fg, 1, 0);
 };
 
+/*
+  Patch 390: the key block's geometry, shared with the mouse pad (cl_mouse.qc),
+  which keeps this slot with hud_keys 0.  The label size is taken on the UI face
+  the labels are drawn in (it used to follow whatever face the previous drawer
+  left set), and the caller's face is restored.
+
+  The right-hand gap is MEASURED from the bottom one: the floor gap falls out of
+  hud_keys_y and the same number positions the right edge, at any aspect and
+  hud_scale.  hud_keys_x non-zero is a left-edge fraction instead.
+*/
+float  ui_kb_k, ui_kb_gap, ui_kb_lsz, ui_kb_bw;
+vector ui_kb_org;               // anchor: the A column's left, W's top (what hud_keys_x encodes)
+vector ui_kb_pos, ui_kb_size;   // the drawn box, +left/+right bars included
+
+void(vector scr) HUD_KeysGeom =
+{
+	local float pad, was;
+
+	ui_kb_k   = 16 * ui_cv_scale;
+	ui_kb_gap = 2 * ui_cv_scale;
+	ui_kb_bw  = 4 * ui_cv_scale;    // the +left / +right bars
+	was = ui_font_cur;
+	Font_Set(ui_font_ui);
+	ui_kb_lsz = Font_Px(8 * ui_cv_scale);
+	Font_Set(was);
+
+	ui_kb_org_y = scr_y * ui_cv_keyspos_y;
+	pad = scr_y - (ui_kb_org_y + 2 * (ui_kb_k + ui_kb_gap) + ui_kb_lsz * 2);
+	if (pad < 0)
+		pad = 0;
+	if (ui_cv_keyspos_x > 0)
+		ui_kb_org_x = scr_x * ui_cv_keyspos_x;
+	else
+		ui_kb_org_x = scr_x - pad - 3 * (ui_kb_k + ui_kb_gap) - ui_kb_bw;
+
+	ui_kb_pos  = [ui_kb_org_x - ui_kb_bw - ui_kb_gap, ui_kb_org_y, 0];
+	ui_kb_size = [3 * (ui_kb_k + ui_kb_gap) + 2 * ui_kb_bw + ui_kb_gap,
+	              2 * (ui_kb_k + ui_kb_gap) + ui_kb_lsz * 2, 0];
+};
+
 void(vector scr) HUD_DrawKeys =
 {
 	local vector p, sz;
-	local float k, gap, lsz, bw, pad;
+	local float k, gap, lsz, bw;
 	local float kw, ks, ka, kd, jump, duck, tl, tr;
 
-	p   = '0 0 0';              // set component-wise below; keep fteqcc happy
-	k   = 16 * ui_cv_scale;
-	lsz = Font_Px(8 * ui_cv_scale);
-	gap = 2 * ui_cv_scale;
-	bw  = 4 * ui_cv_scale;          // the +left / +right bars
+	HUD_KeysGeom(scr);
+	p   = ui_kb_org;
+	k   = ui_kb_k;
+	lsz = ui_kb_lsz;
+	gap = ui_kb_gap;
+	bw  = ui_kb_bw;
 	sz  = [k, k];
 
 	/*
@@ -4532,28 +4573,6 @@ void(vector scr) HUD_DrawKeys =
 	if (rec_wt_on ? rec_wt_psrel : (spc_hud ? FALSE : run_ps_release))
 		kw = KEY_RELEASED;
 
-	p_y = scr_y * ui_cv_keyspos_y;
-
-	/*
-	  The right-hand gap is MEASURED from the bottom one rather than guessed
-	  at as a screen fraction, because "the same padding it has against the
-	  floor" is only true at one aspect ratio and one hud_scale if you write
-	  it as a fraction.  The block's own bottom edge is
-	  y + 2*(k+gap) + lsz*2, so the floor gap falls out of hud_keys_y, and
-	  the same number then positions the right edge.
-
-	  hud_keys_x overrides it if you want the block somewhere else: non-zero
-	  is taken as a left-edge screen fraction, the way the other panels work.
-	*/
-	pad = scr_y - (p_y + 2 * (k + gap) + lsz * 2);
-	if (pad < 0)
-		pad = 0;
-
-	if (ui_cv_keyspos_x > 0)
-		p_x = scr_x * ui_cv_keyspos_x;
-	else
-		p_x = scr_x - pad - 3 * (k + gap) - bw;
-
 	Font_Set(ui_font_ui);
 
 	// row 1:  W
@@ -4585,10 +4604,7 @@ void(vector scr) HUD_DrawKeys =
 	  hangs bw+gap to the left of p_x, and the +right bar sits past the third key
 	  column -- so the box is stated from those edges rather than from p.
 	*/
-	HUD_Rect("keys",
-	         [p_x - bw - gap, p_y, 0],
-	         [3 * (k + gap) + 2 * bw + gap, 2 * (k + gap) + lsz * 2, 0],
-	         [p_x, p_y, 0]);
+	HUD_Rect("keys", ui_kb_pos, ui_kb_size, ui_kb_org);
 };
 
 /*

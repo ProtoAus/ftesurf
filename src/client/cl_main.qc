@@ -314,6 +314,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
 	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
 	Spec_RegisterCvars();           // Patch 385, spectate
+	MPad_RegisterCvars();           // Patch 390, the mouse pad
 	Ev_Register();                  // build 54, the trigger/entity inspector
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
@@ -1058,6 +1059,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	  place offered keys before the engine runs their bind.
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
+	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1526,6 +1528,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		NM_Frame();
 
 		HUD_Draw(scr);
+		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
 		NM_Draw(scr);
 
 		/*
@@ -1982,6 +1985,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (LT_ConsoleCommand(cmd))
 		return TRUE;
 	if (Banner_ConsoleCommand(cmd))
+		return TRUE;
+	if (MPad_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 49.  `emit_list` -- what the map holds, what is emitting, and why

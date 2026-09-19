@@ -103,6 +103,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - MEASURING A DRAW: with no console dump, take two screenshots with exactly one
   variable changed between them and diff the numbers — a frozen column beside a
   live readout that moved is a measurement, one picture is not.
+  A minimized harness draws slowly: wait ~500 ms after a change before
+  `screenshot` (100 ms captured the previous state in p390mouse).
+- MOUSE: `spectate look <dx> <dy>` pushes one IE_MOUSEDELTA through the input
+  chain; `mousepad` counts the deltas it saw. Real ones can reach a starting
+  harness window, so a mouse arm checks that count before it counts.
 - Client-vs-server (prediction) tests need a REAL socket, not a listen server:
   run `C:\FTEQuake\fteqwsv64.exe +set sv_port <p> +exec cfg/test/<sv>` from
   `C:\FTESurf` (`ftesurf64.exe -dedicated` crashes after prop lighting), with

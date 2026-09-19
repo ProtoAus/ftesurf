@@ -155,6 +155,9 @@ client/cl_lobbytime.qc
 // Patch 361: the completion banner.  After cl_lobbytime.qc (LT_BestOnLegC) and
 // cl_results.qc (Results_KeyRank / Results_Rank, and the toast it replaces).
 client/cl_banner.qc
+// Patch 390: the mouse pad.  After cl_watch.qc and cl_spectate.qc (rec_wt_*,
+// spc_tang) and cl_hud.qc (HUD_KeysGeom); before cl_hudedit.qc and cl_main.qc.
+client/cl_mouse.qc
 // LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
 // screen with a replay, the leaderboard or the results card, so it needs
 // rec_wt_open (cl_watch.qc) and ui_rs_cursor (cl_results.qc); it also consumes

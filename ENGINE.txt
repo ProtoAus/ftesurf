@@ -19,6 +19,9 @@ patch    391
 qcbuild  83
 date     2026-09-19
 
+# PATCH 390 IS MOD-SIDE ONLY: the mouse pad left of the key block (cl_mouse.qc; hud_mouse*).
+# Needs the CLIENT progs (-Pi serves csprogs).  cfg/test/p390mouse.cfg.
+
 # PATCH 391 IS MOD-SIDE ONLY: a clean running run refuses the save-lock load keys (2; 3-6 with
 # the panel open) with a warning and hud_snd_error; held 8 no longer confirms itself.  Needs the
 # CLIENT progs (-Pi serves csprogs).  cfg/test/p391lock.cfg.
