@@ -13,11 +13,14 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   f9ef8a55d76d48bad68390594d60c69356acbdcc
+commit   3dd8f93c572cf63102203c31b67515da23b27a28
 tag      patch-266
-patch    376
+patch    377
 qcbuild  83
 date     2026-09-19
+
+# PATCH 377: exec never runs a config out of a mounted game (Momentum's cfg/config.cfg
+# ran at every boot via the P330 fallback).  Needs this CLIENT.  cfg/test/p377boot.cfg.
 
 # PATCH 376: the client sends its mouse counts (input ring vs IN_MoveMouse read) in
 # the prydon cursor floats to a server with serverinfo fs_counts 1; the progs write
