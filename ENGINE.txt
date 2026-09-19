@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   5c13a679e4a628c8882203897eab90df28ec60d4
 tag      patch-266
-patch    369
+patch    370
 qcbuild  83
 date     2026-09-19
+
+# PATCH 370 IS MOD-SIDE ONLY: the chatbox wraps downward and never cuts a line
+# that fits.  cfg/test/p370wrap.cfg.
 
 # PATCH 369: pm_verify follows a stage restart (the progs' SV_VerifyRestart),
 # and between-packet warps act after the packet's scan.  cfg/test/p369verify.cfg.

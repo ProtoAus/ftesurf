@@ -8,9 +8,9 @@
   the QC return value is not read).  So every level this file does not handle
   is a level that vanishes from the console and the log.  Non-chat levels are
   therefore re-emitted with print(), byte for byte, and only level 3
-  (PRINT_CHAT, bothdefs.h:1140) becomes a chatbox line.  What IS given up,
-  deliberately: the engine's notify area (top-left scroll) and its chat
-  sounds for lines this file drops as silenced.  The console keeps everything.
+  (PRINT_CHAT, bothdefs.h:1140) becomes a chatbox line.  print() still feeds
+  the top-left notify area, and the engine has already played talk.wav by the
+  time a chat line gets here (CL_ParseChat, cl_parse.c:6784), silenced or not.
 
   WHAT A CHAT LINE LOOKS ON ARRIVAL.  CL_PrintChat (cl_parse.c:6900) has
   already formatted it by the time the hook sees it:
@@ -47,10 +47,28 @@
 #define CHAT_RING       32      // messages held; more than fit on screen
 #define CHAT_SIL_MAX    32
 #define CHAT_NAME_MAX   32
+#define CHAT_DRAFT_MAX  128     // typed or prefilled draft characters
+#define CHAT_ROWS_MIN   10      // rows the box may use; hud_chat_lines counts messages
 
 string chat_ring[CHAT_RING];    // built display lines, strzone'd
 float  chat_stamp[CHAT_RING];   // time of arrival; 0 = slot empty
 float  chat_write;              // next ring slot
+
+// Patch 370: each slot's wrapped rows, "\n"-joined and strzone'd; chat_wrapn 0 = stale.
+string chat_wrap[CHAT_RING];
+float  chat_wrapn[CHAT_RING];
+vector chat_wkey;               // (width, size, probe width) the cache was wrapped for
+float  chat_wr_n;               // rows in Chat_Wrap's last answer
+string chat_wr_carry;           // state codes so far, replayed at each continuation row
+string chat_wr_link;            // the carry at ^[, which ^] restores (common.c:4305)
+float  chat_wr_inlink;
+// What the last Chat_Draw drew, for `chat_rows`.
+float  chat_dr_y0, chat_dr_yl;  // Chat_DrawRows' first and last row y
+float  chat_dft_n, chat_dft_y0, chat_dft_yl, chat_dr_bottom, chat_dr_cap, chat_dr_room;
+float  chat_ord[CHAT_RING];     // ring slots drawn, newest first
+float  chat_ordr[CHAT_RING];    // rows drawn of each
+float  chat_ordy[CHAT_RING];    // top row y of each
+float  chat_ordn;
 
 // The typing line.  Patch 340: `say` opens HERE rather than the engine's
 // one-line console input, and the box makes room for it -- messages shift up
@@ -298,6 +316,7 @@ void(string line) Chat_Push =
 		strunzone(chat_ring[chat_write]);
 	chat_ring[chat_write]  = strzone(line);
 	chat_stamp[chat_write] = time;
+	chat_wrapn[chat_write] = 0;
 	chat_write = chat_write + 1;
 	if (chat_write >= CHAT_RING)
 		chat_write = 0;
@@ -354,14 +373,302 @@ string(string s, float maxw, float sz) Chat_Fit =
 	return out;
 };
 
+/*
+  PATCH 370: WRAPPING.  A row breaks at a space; a word wider than a row is cut
+  between units -- a whole markup code, a UTF-8 run, or one byte -- never inside
+  a code.  Unit lengths mirror COM_ParseFunString (common.c:4218-4450), which is
+  what drawstring and stringwidth both run.
+*/
+float(float c) Chat_IsHex =
+{
+	return (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
+};
+
+float(float c, string set) Chat_CharIn =
+{
+	return c > 0 && strstrofs(set, chr2str(c), 0) >= 0;
+};
+
+// Bytes of markup at s[i]; 0 = the byte draws itself.
+float(string s, float i, float n) Chat_CodeLen =
+{
+	local float c, l;
+
+	l = 0;
+	if (i + 1 >= n)
+		return 0;
+	c = str2chr(s, i);
+	if (c == 38)                         // ezQuake &cRGB / &r (common.c:4469), on by default
+	{
+		if (!cvar("ezcompat_markup"))
+			return 0;
+		c = str2chr(s, i + 1);
+		if (c == 114)
+			return 2;
+		if (c == 99)
+		if (Chat_IsHex(str2chr(s, i + 2)) && Chat_IsHex(str2chr(s, i + 3))
+		 && Chat_IsHex(str2chr(s, i + 4)))
+			return min(5, n - i);
+		return 0;
+	}
+	if (c != 94)
+		return 0;
+	c = str2chr(s, i + 1);
+	if ((c >= 48 && c <= 57) || Chat_CharIn(c, "bdmahsr[]^"))
+		return 2;
+	if (c == 120)                        // ^xRGB; a bad ^x is still eaten as 2
+		return (Chat_IsHex(str2chr(s, i + 2)) && Chat_IsHex(str2chr(s, i + 3))
+		     && Chat_IsHex(str2chr(s, i + 4))) ? 5 : 2;
+	if (c == 38)                         // ^&FB, else a literal ^
+		return (Chat_CharIn(str2chr(s, i + 2), "0123456789ABCDEF-")
+		     && Chat_CharIn(str2chr(s, i + 3), "0123456789ABCDEF-")) ? 4 : 0;
+	if (c == 85)                         // ^U always takes six
+		return min(6, n - i);
+	if (c == 123)                        // ^{hex} and its optional close
+	{
+		l = 2;
+		while (i + l < n && Chat_IsHex(str2chr(s, i + l)))
+			l = l + 1;
+		if (str2chr(s, i + l) == 125)
+			l = l + 1;
+		return min(l, n - i);
+	}
+	if (c == 96)                         // ^`u8: opens a span the engine reads to its `= or
+	if (substring(s, i + 2, 3) == "u8:")   // the string's end: a row may split it safely
+		return min(5, n - i);
+	return 0;
+};
+
+float(string s, float i, float n) Chat_UnitLen =
+{
+	local float l, c;
+
+	l = Chat_CodeLen(s, i, n);
+	if (l > 0)
+		return l;
+	l = 1;
+	if (str2chr(s, i) >= 192)            // UTF-8 lead: keep its continuation bytes
+		while (i + l < n)
+		{
+			c = str2chr(s, i + l);
+			if (c < 128 || c >= 192)
+				break;
+			l = l + 1;
+		}
+	return l;
+};
+
+// Continuation rows replay the state codes seen so far, in order (so ^d and the
+// ^s/^r stack replay too); a link restores the state it opened with, and glyph
+// codes are not state.
+void(string u) Chat_CarryEat =
+{
+	local float c;
+
+	c = str2chr(u, 1);
+	if (c == 91)
+	{
+		chat_wr_link   = chat_wr_carry;
+		chat_wr_inlink = TRUE;
+	}
+	else if (c == 93)
+	{
+		if (chat_wr_inlink)
+			chat_wr_carry = chat_wr_link;
+		chat_wr_inlink = FALSE;
+	}
+	else if (!Chat_CharIn(c, "^U{`"))
+	if (c != 120 || strlen(u) == 5)
+		chat_wr_carry = strcat(chat_wr_carry, u);
+};
+
+void(string w) Chat_CarryScan =
+{
+	local float i, n, l;
+
+	if (strstrofs(w, "^", 0) < 0)
+	if (strstrofs(w, "&", 0) < 0)
+		return;
+	n = strlen(w);
+	i = 0;
+	while (i < n)
+	{
+		l = Chat_UnitLen(w, i, n);
+		if (Chat_CodeLen(w, i, n) > 0)
+			Chat_CarryEat(substring(w, i, l));
+		i = i + l;
+	}
+};
+
+string(string out, string row) Chat_WrEmit =
+{
+	chat_wr_n = chat_wr_n + 1;
+	return (chat_wr_n == 1) ? row : strcat(out, "\n", row);
+};
+
+// s wrapped to maxw in the current font: rows "\n"-joined, chat_wr_n of them (>= 1).
+// A \n or \r in s forces a break.
+string(string s, float maxw, float sz) Chat_Wrap =
+{
+	local float n, i, j, k, p, l, c, wd;
+	local string out, row, u, cand;
+
+	n   = strlen(s);
+	out = "";
+	row = "";
+	wd  = 0;
+	chat_wr_n      = 0;
+	chat_wr_carry  = "";
+	chat_wr_link   = "";
+	chat_wr_inlink = FALSE;
+	c = str2chr(s, 0);
+	if (c == 1 || c == 2)
+		chat_wr_carry = "^m";            // a leading \1 or \2 flips the charset (common.c:4167)
+
+	i = 0;
+	while (i < n)
+	{
+		j = i;
+		while (j < n && str2chr(s, j) == 32)
+			j = j + 1;
+		k = j;
+		while (k < n)
+		{
+			c = str2chr(s, k);
+			if (c == 32 || c == 10 || c == 13)
+				break;
+			k = k + 1;
+		}
+
+		// Spaces with no word after them (end, or a forced break) are dropped.
+		if (k > j)
+		{
+			cand = strcat(row, substring(s, i, k - i));
+			l = stringwidth(cand, TRUE, [sz, sz]);
+			if (l <= maxw)
+			{
+				row = cand;
+				wd  = l;
+				Chat_CarryScan(substring(s, j, k - j));
+			}
+			else
+			{
+				cand = strcat(chat_wr_carry, substring(s, j, k - j));
+				l = stringwidth(cand, TRUE, [sz, sz]);
+				if (wd > 0 && l <= maxw)
+				{
+					// Break at the space; the spaces themselves are dropped.
+					out = Chat_WrEmit(out, row);
+					row = cand;
+					wd  = l;
+					Chat_CarryScan(substring(s, j, k - j));
+				}
+				else
+				{
+					// Wider than a whole row: fill this row first, then cut by units.
+					if (wd > 0)
+						row = strcat(row, substring(s, i, j - i));
+					p = j;
+					while (p < k)
+					{
+						l = Chat_UnitLen(s, p, k);
+						u = substring(s, p, l);
+						cand = strcat(row, u);
+						c = stringwidth(cand, TRUE, [sz, sz]);
+						if (c > maxw && wd > 0)
+						{
+							out  = Chat_WrEmit(out, row);
+							cand = strcat(chat_wr_carry, u);
+							c    = stringwidth(cand, TRUE, [sz, sz]);
+						}
+						row = cand;
+						wd  = c;
+						if (Chat_CodeLen(s, p, k) > 0)
+							Chat_CarryEat(u);
+						p = p + l;
+					}
+				}
+			}
+		}
+
+		i = k;
+		c = str2chr(s, i);
+		if (i < n && c != 32)            // \n or \r
+		{
+			out = Chat_WrEmit(out, row);
+			row = chat_wr_carry;
+			wd  = 0;
+			i = i + 1;
+		}
+	}
+	return Chat_WrEmit(out, row);
+};
+
+float(float j, float maxw, float sz) Chat_RowsOf =
+{
+	if (chat_wrapn[j] > 0)
+		return chat_wrapn[j];
+	if (chat_wrap[j] != "")
+		strunzone(chat_wrap[j]);
+	chat_wrap[j]  = Chat_Wrap(chat_ring[j], maxw, sz);
+	if (chat_wrap[j] != "")             // a zoned "" would read as unset and never be freed
+		chat_wrap[j] = strzone(chat_wrap[j]);
+	chat_wrapn[j] = chat_wr_n;
+	return chat_wr_n;
+};
+
+// The longest unit-whole prefix of t that still fits maxw with ".." after it.
+string(string t, float maxw, float sz) Chat_Cut =
+{
+	local float i, n, l;
+	local string keep;
+
+	n = strlen(t);
+	keep = "";
+	i = 0;
+	while (i < n)
+	{
+		l = Chat_UnitLen(t, i, n);
+		if (stringwidth(strcat(substring(t, 0, i + l), ".."), TRUE, [sz, sz]) > maxw)
+			break;
+		i = i + l;
+		keep = substring(t, 0, i);
+	}
+	return strcat(keep, "..");
+};
+
+// n rows of a "\n"-joined block, top-down from p; cut = the last row ends "..".
+void(string rows, float n, float cut, vector p, float sz, float lh, float a, float maxw) Chat_DrawRows =
+{
+	local float r, s, e;
+	local string t;
+
+	s = 0;
+	for (r = 0; r < n; r = r + 1)
+	{
+		e = strstrofs(rows, "\n", s);
+		if (e < 0)
+			e = strlen(rows);
+		t = substring(rows, s, e - s);
+		if (cut && r == n - 1)
+			t = Chat_Cut(t, maxw, sz);
+		drawstring([p_x + 1, p_y + lh * r + 1], t, [sz, sz], '0 0 0', a * 0.6, 0);
+		drawstring([p_x, p_y + lh * r], t, [sz, sz], '1 1 1', a, 0);
+		if (r == 0)
+			chat_dr_y0 = p_y + lh * r;
+		chat_dr_yl = p_y + lh * r;
+		s = e + 1;
+	}
+};
+
 void(vector scr) Chat_Draw =
 {
 	local float life, fade, lines, szu, sz, lh, x, yb, maxw;
-	local float i, j, age, a;
-	local float ord[CHAT_RING];
-	local float ordn, nl, k, cut;
-	local string draft, piece;
+	local float i, j, age, a, n, used, cap, room;
+	local string draft;
+	local vector key;
 
+	draft = "";
 	if (!cvar("hud_chat"))
 		return;
 
@@ -383,66 +690,61 @@ void(vector scr) Chat_Draw =
 	x    = scr_x * cvar("hud_chat_x");
 	yb   = scr_y * cvar("hud_chat_y");
 	maxw = scr_x * 0.45;
+	chat_dr_bottom = yb;
 
 	Font_Set(ui_font_ui);
 
-	/*
-	  THE DRAFT FIRST, at the very bottom, because it is what the box makes
-	  room FOR: every stored line starts one wrapped-draft-line higher while
-	  you type.  Wrapped rather than clipped -- a 200-character say is legal
-	  and reading only its tail while you edit it is not typing.
-
-	  PATCH 341: THE LINE IS ALWAYS THERE, typing or not.  A box that grew by
-	  a line when you started to type is a box that jumped; the reserved line
-	  with its idle blinking underscore is the room the messages were always
-	  shifted up into.  Idle draws dim, typing draws white -- the underscore
-	  is the prompt, not a state.
-	*/
-	nl = 0;
-	if (chat_typing)
-		draft = strcat("> ", chat_buf, (floor(time * 2) & 1) ? "_" : " ");
-	else
-		/*
-		  PATCH 341bis: A BLANK RESERVED LINE, not a blinking ghost.  The room
-		  is the point -- messages always sit one line higher -- but an idle
-		  underscore flashing in the corner reads as a stuck draft, which is
-		  exactly the report.  A single space wraps to exactly one line and
-		  draws nothing.
-		*/
-		draft = " ";
+	// Wrapped rows are good for one width, size and font.
+	key = [maxw, sz, stringwidth("abcdefghij", TRUE, [sz, sz])];
+	if (key != chat_wkey)
 	{
-		// count wrapped lines of the draft
-		k = 0;
-		while (k < strlen(draft))
-		{
-			piece = "";
-			cut = k;
-			while (cut < strlen(draft))
-			{
-				piece = strcat(piece, substring(draft, cut, 1));
-				if (stringwidth(piece, TRUE, [sz, sz]) > maxw)
-					break;
-				cut = cut + 1;
-			}
-			if (cut == k)
-				cut = k + 1;              // one char wider than the box: take it anyway
-			drawstring([x + 1, yb - lh * (nl + 1) + 1],
-			           substring(draft, k, cut - k), [sz, sz], '0 0 0', 0.6, 0);
-			drawstring([x, yb - lh * (nl + 1)],
-			           substring(draft, k, cut - k), [sz, sz],
-			           chat_typing ? '1 1 1' : '0.40 0.40 0.45', 1, 0);
-			nl = nl + 1;
-			k = cut;
-		}
-		yb = yb - lh * nl;
+		for (i = 0; i < CHAT_RING; i = i + 1)
+			chat_wrapn[i] = 0;
+		chat_wkey = key;
 	}
 
-	// Newest first, skipping the expired.  A negative age is a stamp from a
-	// PREVIOUS map (time restarted under it) -- expired by definition, which
-	// is how the ring clears itself on a map change with no hook.
-	ordn = 0;
-	for (i = 0; i < CHAT_RING && ordn < lines; i = i + 1)
+	/*
+	  THE DRAFT at the very bottom, first row on top (Patch 370: it used to grow
+	  upward).  Wrapped with the cursor always in, so the blink cannot re-wrap
+	  it.  Idle it is one blank row: the room the messages always sit above
+	  (341bis), so the box does not jump when you start typing.
+	*/
+	chat_dft_n  = 1;
+	chat_dft_y0 = yb - lh;
+	chat_dft_yl = yb - lh;
+	if (chat_typing)
 	{
+		draft = Chat_Wrap(strcat("> ", chat_buf, "_"), maxw, sz);
+		chat_dft_n = chat_wr_n;
+		if (!(floor(time * 2) & 1))
+			draft = strcat(substring(draft, 0, strlen(draft) - 1), " ");
+		Chat_DrawRows(draft, chat_dft_n, FALSE, [x, yb - lh * chat_dft_n], sz, lh, 1, maxw);
+		chat_dft_y0 = chat_dr_y0;
+		chat_dft_yl = chat_dr_yl;
+	}
+	yb = yb - lh * chat_dft_n;
+
+	/*
+	  Newest first, skipping the expired (a negative age is a previous map's
+	  stamp).  At most hud_chat_lines messages in at most max(lines, 10) rows,
+	  and older messages only whole.  The newest always shows, and is cut ("..")
+	  only when it alone is taller than the room above the draft.
+	*/
+	room = floor((yb - scr_y * 0.02) / lh);
+	if (room < 1)
+		room = 1;
+	cap = max(lines, CHAT_ROWS_MIN);
+	if (cap > room)
+		cap = room;
+	chat_dr_cap  = cap;
+	chat_dr_room = room;
+
+	chat_ordn = 0;
+	used = 0;
+	for (i = 0; i < CHAT_RING; i = i + 1)
+	{
+		if (chat_ordn >= lines || used >= cap)
+			break;
 		j = chat_write - 1 - i;
 		while (j < 0)
 			j = j + CHAT_RING;
@@ -451,31 +753,84 @@ void(vector scr) Chat_Draw =
 		age = time - chat_stamp[j];
 		if (age < 0 || age > life)
 			continue;
-		ord[ordn] = j;
-		ordn = ordn + 1;
+		n = Chat_RowsOf(j, maxw, sz);
+		if (chat_ordn > 0)
+		if (used + n > cap)
+			break;
+		if (n > room)
+			n = room;
+		chat_ord[chat_ordn]  = j;
+		chat_ordr[chat_ordn] = n;
+		chat_ordn = chat_ordn + 1;
+		used = used + n;
 	}
 
-	if (!ordn)
+	for (i = 0; i < chat_ordn; i = i + 1)
 	{
-		Font_Reset();
-		return;
-	}
-
-	Font_Set(ui_font_ui);
-	for (i = 0; i < ordn; i = i + 1)
-	{
-		j   = ord[i];
+		j   = chat_ord[i];
+		n   = chat_ordr[i];
 		age = time - chat_stamp[j];
 		a   = (age <= life - fade) ? 1 : 1 - (age - (life - fade)) / fade;
+		yb  = yb - lh * n;
+		chat_ordy[i] = yb;
 		if (a <= 0)
 			continue;
-		yb = yb - lh;
 		// Shadowed like the rest of the HUD's text: readable over both a dark
 		// leaf and a white skybox.
-		drawstring([x + 1, yb + 1], Chat_Fit(chat_ring[j], maxw, sz),
-		           [sz, sz], '0 0 0', a * 0.6, 0);
-		drawstring([x, yb], Chat_Fit(chat_ring[j], maxw, sz),
-		           [sz, sz], '1 1 1', a, 0);
+		Chat_DrawRows(chat_wrap[j], n, chat_wrapn[j] > n, [x, yb], sz, lh, a, maxw);
+		chat_ordy[i] = chat_dr_y0;
+	}
+	Font_Reset();
+};
+
+// `chat_rows`: what the last draw wrapped and where it drew it (^ doubled for the log).
+void(string tag, string rows, float n) Chat_DumpBlock =
+{
+	local float r, s, e;
+	local string t;
+
+	s = 0;
+	for (r = 0; r < n; r = r + 1)
+	{
+		e = strstrofs(rows, "\n", s);
+		if (e < 0)
+			e = strlen(rows);
+		t = substring(rows, s, e - s);
+		print(sprintf("chat_rows: %s %g w %.1f |%s|\n", tag, r,
+		              stringwidth(t, TRUE, [chat_wkey_y, chat_wkey_y]), strreplace("^", "^^", t)));
+		s = e + 1;
+	}
+};
+
+void() Chat_DumpRows =
+{
+	local float i, j;
+	local string rows;
+
+	rows = "";
+	if (chat_wkey_x <= 0)
+	{
+		print("chat_rows: not drawn yet\n");
+		return;
+	}
+	Font_Set(ui_font_ui);
+	print(sprintf("chat_rows: maxw %.1f sz %g lh %.2f lines %g cap %g room %g shown %g\n",
+	              chat_wkey_x, chat_wkey_y, chat_wkey_y * 1.35, cvar("hud_chat_lines"),
+	              chat_dr_cap, chat_dr_room, chat_ordn));
+	print(sprintf("chat_rows: draft n %g y0 %.1f yl %.1f bottom %.1f typing %g\n",
+	              chat_dft_n, chat_dft_y0, chat_dft_yl, chat_dr_bottom, chat_typing));
+	if (chat_typing)
+	{
+		rows = Chat_Wrap(strcat("> ", chat_buf, "_"), chat_wkey_x, chat_wkey_y);
+		print(sprintf("chat_rows: draft len %g\n", strlen(chat_buf)));
+		Chat_DumpBlock("draft", rows, chat_wr_n);
+	}
+	for (i = 0; i < chat_ordn; i = i + 1)
+	{
+		j = chat_ord[i];
+		print(sprintf("chat_rows: msg%g n %g drawn %g y0 %.1f\n", i, chat_wrapn[j],
+		              chat_ordr[i], chat_ordy[i]));
+		Chat_DumpBlock(sprintf("msg%g", i), chat_wrap[j], chat_wrapn[j]);
 	}
 	Font_Reset();
 };
@@ -488,7 +843,7 @@ void() Chat_RegisterCvars =
 	  registercvar declines to overwrite it.  Chat_Draw reads all of these.
 
 	  Defaults: on, bottom-left slightly off the corner (fractions, like every
-	  other hud_*_x/y), six lines, gone after 30 s with the last 5 s spent
+	  other hud_*_x/y), six messages, gone after 30 s with the last 5 s spent
 	  fading -- the ask, "~30sec", as a lifetime rather than a cliff.
 	*/
 	registercvar("hud_chat",       "1",     CVAR_ARCHIVE);
@@ -505,6 +860,7 @@ void() Chat_RegisterCvars =
 	Chat_SilenceLoad();
 
 	registercommand("chat_say");
+	registercommand("chat_rows");
 };
 
 /*
@@ -571,17 +927,33 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 
 	// Printable characters only; the draft is capped so a held key cannot
 	// grow it past what say itself would take.
-	if (chary >= 32 && chary < 127 && strlen(chat_buf) < 128)
+	if (chary >= 32 && chary < 127 && strlen(chat_buf) < CHAT_DRAFT_MAX)
 		chat_buf = strcat(chat_buf, chr2str(chary));
 	return TRUE;
 };
 
 float(string cmd) Chat_ConsoleCommand =
 {
+	local float n, i;
+	local string t;
+
+	if (argv(0) == "chat_rows")
+	{
+		Chat_DumpRows();
+		return TRUE;
+	}
 	if (argv(0) != "chat_say")
 		return FALSE;
+
+	// `chat_say <text>` opens the draft already filled (a test handle); bare is unchanged.
+	n = tokenize_console(cmd);
+	t = "";
+	for (i = 1; i < n; i = i + 1)
+		t = (i == 1) ? argv(1) : strcat(t, " ", argv(i));
+	if (strlen(t) > CHAT_DRAFT_MAX)
+		t = substring(t, 0, CHAT_DRAFT_MAX);
 	chat_typing = TRUE;
-	chat_buf    = "";
+	chat_buf    = t;
 	return TRUE;
 };
 

@@ -477,6 +477,11 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `toggleconsole` is the one key a live draft gives back (it abandons the draft).
 - Hooking any engine command intercepts YOUR OWN callers. Audit cfgs, fixtures
   and internal submitters before hooking one.
+- Harness handles (Patch 370): `chat_say <text>` opens the draft prefilled
+  (bare `chat_say` is unchanged); `chat_rows` prints the last draw's wrapped
+  rows, widths and drawn y (`^` doubled so the log keeps codes). The chatbox
+  wraps with the engine's markup units (`Chat_CodeLen`), so a new markup form
+  in COM_ParseFunString needs a line there too.
 
 ## Pitfalls discovered the hard way
 
