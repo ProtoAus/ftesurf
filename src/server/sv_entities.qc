@@ -5084,6 +5084,11 @@ void() trigger_teleport_relative_touch =
 	*/
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
+	// Source's Touch opens with PassesTriggerFilters, and StartTouch fires the
+	// outputs: surf_race's stage-5 lanes are two filtered boxes on one spot.
+	if (!SV_PassesFilter(self, other))
+		return;
+	SV_TriggerIOTouch(self, other);
 
 	// absmin/absmax are symmetric about the model centre, so their midpoint is
 	// WorldSpaceCenter; no hull alignment, origins are at the feet on both sides.
