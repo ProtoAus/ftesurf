@@ -167,6 +167,90 @@ float  rec_wt_vxn;
 float  rec_wt_vxstep;
 
 /*
+  PATCH 378: the load-time tables Watch_Sample interpolates with (sh_interp.qc).
+  tools/watchtrace.py --model re-derives every counter here; keep the two in step.
+*/
+// Sample pairs a straight blend must not cross: keyed by the interval's ta.
+#define WT_SNAPMAX 256
+float  rec_wt_snt[WT_SNAPMAX];
+float  rec_wt_snk[WT_SNAPMAX];   // 1 a record forced it, 2 Interp_Fit did
+float  rec_wt_snn;
+float  rec_wt_snover;
+float  rec_wt_snrec;             // snaps by source, overflow included
+float  rec_wt_snkin;
+float  rec_wt_nfit0;             // Interp_Fit's verdicts over every pair
+float  rec_wt_nfit1;
+float  rec_wt_nfit2;
+float  rec_wt_nveto;             // kinematic snaps a ride or speed/push/lift warp vetoed
+
+// Eye slides: PMSrc_Duck at sample resolution.  f = Interp_Smooth(u0 + (t-ts)*rate).
+#define WT_DKMAX    256
+#define WT_DUCK_T   0.4         // pm_source.c:133 PMSRC_TIME_TO_DUCK
+#define WT_UNDUCK_T 0.2         // pm_source.c:134 PMSRC_TIME_TO_UNDUCK
+float  rec_wt_dks[WT_DKMAX];
+float  rec_wt_dke[WT_DKMAX];
+float  rec_wt_dku[WT_DKMAX];
+float  rec_wt_dkr[WT_DKMAX];
+float  rec_wt_dkn;
+float  rec_wt_dkover;
+float  rec_wt_dkfix;             // hull rose on the ground with no press seen
+float  rec_wt_vh;                // eye heights: pmpin 2, serverinfo 1, 64/47 0
+float  rec_wt_dvh;
+float  rec_wt_vhsrc;
+
+// Watch_Scan's carry between samples (the previous one, and what records said).
+float  rec_wt_spt;
+vector rec_wt_spo;
+vector rec_wt_spv;
+float  rec_wt_spfl;
+float  rec_wt_spkey;
+float  rec_wt_sfrc;
+float  rec_wt_sveto;
+float  rec_wt_sride;             // a non-zero `ride arm` is open
+float  rec_wt_sdkrst;
+float  rec_wt_sphase;            // 1 = a ground duck is sliding down
+float  rec_wt_spress;
+
+/*
+  The .view time map.  A line's run time is tau = cltime - off, off being the
+  lower envelope of cltime - ticks*tickrate over a knot (the tick stat only
+  lags), lerped toward the next knot of the same span.  A span breaks at any
+  record, a WT_VGAP of cltime, cltime or ticks going backwards, or a tick stat
+  stalled WT_VGAP (those lines are dropped); `ghost` windows belong to none.
+*/
+#define WT_VKMAX  256
+#define WT_VKSPAN 192           // knots per run length; the rest absorb span starts
+#define WT_VGAP   0.1
+float  rec_wt_vkline[WT_VKMAX];  // first and last line
+float  rec_wt_vkend[WT_VKMAX];
+float  rec_wt_vkc0[WT_VKMAX];    // their cltimes
+float  rec_wt_vkc1[WT_VKMAX];
+float  rec_wt_vkoff[WT_VKMAX];
+float  rec_wt_vkbrk[WT_VKMAX];   // 1 = starts a span
+float  rec_wt_vkn;
+float  rec_wt_vkover;
+float  rec_wt_vspans;
+float  rec_wt_vshort;            // spans under 3 ticks, discarded
+float  rec_wt_vstall;
+float  rec_wt_vkstep;            // largest offset step between same-span knots, s
+float  rec_wt_vcline;            // the knot being built
+float  rec_wt_vcend;
+float  rec_wt_vcc0;
+float  rec_wt_vcc1;
+float  rec_wt_vcoff;
+float  rec_wt_vcbrk;
+float  rec_wt_vk0;               // ...its span's first knot, and first cltime
+float  rec_wt_vsc0;
+float  rec_wt_vin;
+
+float  rec_wt_noview;            // `replay <path> noview`: open without the sidecar
+float  rec_wt_loadms;
+float  rec_wt_vmapms;
+float  rec_wt_trfn;              // `replay trace frames`: real frames left to print
+// The engine's host_frametime, bound by name (pr_csqc.c:9079).
+float  clframetime;
+
+/*
   The stage and checkpoint records, lifted out of the sample stream at load.
 
   Collected up front rather than noticed as the clock passes them, because a
@@ -502,6 +586,313 @@ void() Watch_Free =
 	rec_wt_on   = FALSE;
 };
 
+// ---- Patch 378: the interpolation tables, built inside Watch_Scan's pass two ----
+
+void() Watch_TablesReset =
+{
+	rec_wt_snn = rec_wt_snover = rec_wt_snrec = rec_wt_snkin = 0;
+	rec_wt_nfit0 = rec_wt_nfit1 = rec_wt_nfit2 = rec_wt_nveto = 0;
+	rec_wt_dkn = rec_wt_dkover = rec_wt_dkfix = 0;
+	rec_wt_sfrc = rec_wt_sveto = rec_wt_sride = rec_wt_sdkrst = FALSE;
+	rec_wt_sphase = 0;
+	rec_wt_spress = 0;
+};
+
+/*
+  A record between two samples, for the interval they bound.  Only w/p/r lines
+  are tokenized, so an `in` row costs one str2chr.  warp kinds per the grammar
+  block (sv_timer.qc): tele/telerel/bhop/zone move the body, speed/push/lift only
+  its velocity, and an unknown kind is left to Interp_Fit.  `ride` vetoes the
+  kinematic test while its carrier moves the body (surf_trance's boosters).
+*/
+void(string s) Watch_ScanRecord =
+{
+	local float c, n;
+	local string k, kind;
+
+	c = str2chr(s, 0);
+	if (c != 119 && c != 112 && c != 114)       // 'w' 'p' 'r'
+		return;
+	n = tokenize(s);
+	k = argv(0);
+	if (k == "warp")
+	{
+		if (n < 4)
+			return;
+		kind = argv(3);
+		if (FS_IsSample(kind))                  // v9: argv(3) is the <row>
+		if (n >= 5)
+			kind = argv(4);
+		if (kind == "tele" || kind == "telerel" || kind == "bhop" || kind == "zone")
+			rec_wt_sfrc = TRUE;
+		else if (kind == "speed" || kind == "push" || kind == "lift")
+			rec_wt_sveto = TRUE;
+		return;
+	}
+	if (k == "portal")
+	{
+		rec_wt_sfrc = TRUE;
+		return;
+	}
+	if (k == "restart" || k == "resume" || k == "retry")
+	{
+		rec_wt_sfrc   = TRUE;
+		rec_wt_sdkrst = TRUE;
+		return;
+	}
+	if (k == "ride")
+	if (n >= 7)
+	{
+		rec_wt_sveto = TRUE;
+		rec_wt_sride = FALSE;
+		if (argv(3) == "arm")
+		if (stof(argv(4)) != 0 || stof(argv(5)) != 0 || stof(argv(6)) != 0)
+			rec_wt_sride = TRUE;
+	}
+};
+
+void(float ts, float te, float u0, float rate) Watch_DuckSeg =
+{
+	if (rec_wt_dkn >= WT_DKMAX)
+	{
+		rec_wt_dkover = rec_wt_dkover + 1;
+		return;
+	}
+	rec_wt_dks[rec_wt_dkn] = ts;
+	rec_wt_dke[rec_wt_dkn] = te;
+	rec_wt_dku[rec_wt_dkn] = u0;
+	rec_wt_dkr[rec_wt_dkn] = rate;
+	rec_wt_dkn = rec_wt_dkn + 1;
+};
+
+/*
+  The pair (previous sample, this one): its Interp_Fit verdict and snap, and the
+  duck machine.  The DUCKED bit is pmove.ducked, which flips at the END of a
+  ground slide (sv_user.c:8412), so slides are anchored on the flip: a duck
+  runs [press, flip], an unduck [flip - WT_UNDUCK_T, flip] -- exact even when a
+  ceiling held the player down.  In the air both are instant.
+*/
+void(float t, vector o, vector v, float fl, float key) Watch_ScanPair =
+{
+	local float dt, fit, snap, g, h, k, pg, ph, pk, u0;
+
+	if (rec_wt_sride)
+		rec_wt_sveto = TRUE;
+	dt = t - rec_wt_spt;
+	if (dt > 0)
+	{
+		fit = Interp_Fit(rec_wt_spo, rec_wt_spv, o, v, dt);
+		if (fit == INTERP_SNAP)        rec_wt_nfit0 = rec_wt_nfit0 + 1;
+		else if (fit == INTERP_LINEAR) rec_wt_nfit1 = rec_wt_nfit1 + 1;
+		else                           rec_wt_nfit2 = rec_wt_nfit2 + 1;
+
+		snap = 0;
+		if (rec_wt_sfrc)
+			snap = 1;
+		else if (fit == INTERP_SNAP)
+		{
+			if (rec_wt_sveto)
+				rec_wt_nveto = rec_wt_nveto + 1;
+			else
+				snap = 2;
+		}
+		if (snap)
+		{
+			if (snap == 1) rec_wt_snrec = rec_wt_snrec + 1;
+			else           rec_wt_snkin = rec_wt_snkin + 1;
+			if (rec_wt_snn < WT_SNAPMAX)
+			{
+				rec_wt_snt[rec_wt_snn] = rec_wt_spt;
+				rec_wt_snk[rec_wt_snn] = snap;
+				rec_wt_snn = rec_wt_snn + 1;
+			}
+			else
+				rec_wt_snover = rec_wt_snover + 1;
+		}
+	}
+
+	g  = fl & WT_F_ONGROUND;
+	h  = (fl & WT_F_DUCKED) ? 1 : 0;
+	k  = (key & FSI_DUCK) ? 1 : 0;
+	pg = rec_wt_spfl & WT_F_ONGROUND;
+	ph = (rec_wt_spfl & WT_F_DUCKED) ? 1 : 0;
+	pk = (rec_wt_spkey & FSI_DUCK) ? 1 : 0;
+	if (rec_wt_sdkrst)
+		rec_wt_sphase = 0;
+
+	if (h && !ph)
+	{
+		if (rec_wt_sphase == 1)
+		{
+			// in the air the rest of the slide is instant: Watch_Sample lerps it
+			Watch_DuckSeg(rec_wt_spress, pg ? t : rec_wt_spt, 0, 1 / WT_DUCK_T);
+			rec_wt_sphase = 0;
+		}
+		else if (pg)
+			rec_wt_dkfix = rec_wt_dkfix + 1;
+	}
+	else if (ph && !h)
+	{
+		if (pg)
+			Watch_DuckSeg(t - WT_UNDUCK_T, t, 1, -1 / WT_UNDUCK_T);
+		rec_wt_sphase = 0;
+	}
+	else if (!h)
+	{
+		if (rec_wt_sphase == 1 && pk && !k)
+		{
+			// released part way down: Duck() inverts the elapsed time (pm_source.c:2441)
+			u0 = (t - rec_wt_spress) / WT_DUCK_T;
+			if (u0 > 1)
+				u0 = 1;
+			Watch_DuckSeg(rec_wt_spress, t, 0, 1 / WT_DUCK_T);
+			Watch_DuckSeg(t, t + u0 * WT_UNDUCK_T, u0, -1 / WT_UNDUCK_T);
+			rec_wt_sphase = 0;
+		}
+		else if (rec_wt_sphase == 0 && k && !pk && g)
+		{
+			rec_wt_sphase = 1;
+			rec_wt_spress = t;
+		}
+	}
+};
+
+void(float ln, float c, float o, float brk) Watch_VKnotOpen =
+{
+	rec_wt_vcline = ln;
+	rec_wt_vcend  = ln;
+	rec_wt_vcc0   = c;
+	rec_wt_vcc1   = c;
+	rec_wt_vcoff  = o;
+	rec_wt_vcbrk  = brk;
+};
+
+void() Watch_VKnotClose =
+{
+	if (rec_wt_vkn >= WT_VKMAX)
+	{
+		rec_wt_vkover = rec_wt_vkover + 1;
+		return;
+	}
+	rec_wt_vkline[rec_wt_vkn] = rec_wt_vcline;
+	rec_wt_vkend[rec_wt_vkn]  = rec_wt_vcend;
+	rec_wt_vkc0[rec_wt_vkn]   = rec_wt_vcc0;
+	rec_wt_vkc1[rec_wt_vkn]   = rec_wt_vcc1;
+	rec_wt_vkoff[rec_wt_vkn]  = rec_wt_vcoff;
+	rec_wt_vkbrk[rec_wt_vkn]  = rec_wt_vcbrk;
+	rec_wt_vkn = rec_wt_vkn + 1;
+};
+
+void() Watch_VSpanEnd =
+{
+	Watch_VKnotClose();
+	rec_wt_vin = FALSE;
+	if (rec_wt_vcc1 - rec_wt_vsc0 < 3 * rec_wt_tickrate)
+	{
+		rec_wt_vkn    = rec_wt_vk0;
+		rec_wt_vshort = rec_wt_vshort + 1;
+	}
+	else
+		rec_wt_vspans = rec_wt_vspans + 1;
+};
+
+// Every .view line tokenized once; after pass two, which supplies t0 and t1.
+void() Watch_ViewMap =
+{
+	local float i, n, c, k, o, t0, stride, pend, ghost, prevc, prevk, kc;
+	local string s;
+
+	rec_wt_vkn = rec_wt_vkover = rec_wt_vspans = rec_wt_vshort = rec_wt_vstall = 0;
+	rec_wt_vkstep = 0;
+	rec_wt_vin = FALSE;
+	if (rec_wt_view < 1)
+		return;
+
+	t0 = rec_wt_t0;
+	if (t0 < 0)
+		t0 = 0;
+	stride = (rec_wt_t1 - t0) / WT_VKSPAN;
+	if (stride < 1)
+		stride = 1;
+
+	pend  = TRUE;
+	ghost = FALSE;
+	prevc = 0;
+	prevk = -1;
+	kc    = 0;
+	for (i = rec_wt_view0; i < rec_wt_viewn; i = i + 1)
+	{
+		s = bufstr_get(rec_wt_view, i);
+		if (!Watch_IsSample(s))
+		{
+			tokenize(s);
+			if (argv(0) == "ghost")
+				ghost = (stof(argv(1)) != 0);
+			if (rec_wt_vin)
+				Watch_VSpanEnd();
+			pend = TRUE;
+			continue;
+		}
+		if (ghost)
+			continue;
+		n = tokenize(s);
+		if (n < 6)
+			continue;
+		c = stof(argv(WT_V_CLTIME));
+		k = stof(argv(WT_V_TICKS));
+		if (k != prevk)
+			kc = c;
+		else if (c - kc > WT_VGAP)
+		{
+			if (rec_wt_vin)
+				Watch_VSpanEnd();
+			pend  = TRUE;
+			prevc = c;
+			rec_wt_vstall = rec_wt_vstall + 1;
+			continue;
+		}
+		if (rec_wt_vin)
+		if (c - prevc > WT_VGAP || c < prevc || k < prevk)
+		{
+			Watch_VSpanEnd();
+			pend = TRUE;
+		}
+		o = c - k * rec_wt_tickrate;
+		if (pend)
+		{
+			rec_wt_vk0  = rec_wt_vkn;
+			rec_wt_vsc0 = c;
+			Watch_VKnotOpen(i, c, o, 1);
+			rec_wt_vin  = TRUE;
+			pend = FALSE;
+		}
+		else if (c - rec_wt_vcc0 >= stride)
+		{
+			Watch_VKnotClose();
+			Watch_VKnotOpen(i, c, o, 0);
+		}
+		else
+		{
+			rec_wt_vcend = i;
+			rec_wt_vcc1  = c;
+			if (o < rec_wt_vcoff)
+				rec_wt_vcoff = o;
+		}
+		prevc = c;
+		prevk = k;
+	}
+	if (rec_wt_vin)
+		Watch_VSpanEnd();
+
+	for (i = 1; i < rec_wt_vkn; i = i + 1)
+		if (!rec_wt_vkbrk[i])
+		{
+			o = fabs(rec_wt_vkoff[i] - rec_wt_vkoff[i - 1]);
+			if (o > rec_wt_vkstep)
+				rec_wt_vkstep = o;
+		}
+};
+
 /*
   One pass to count and to collect the records, a second to build the index and
   the path.
@@ -521,6 +912,8 @@ void() Watch_Scan =
 	local string s;
 	local vector o;
 	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
+	local vector v;
+	local float fl, key, vp, vq;
 
 	rec_wt_rec0     = 0;
 	rec_wt_nsamp    = 0;
@@ -536,6 +929,7 @@ void() Watch_Scan =
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
 	rec_wt_pad      = 0;
+	rec_wt_vhsrc    = 0;
 
 	// ---- the header, up to and including `begin` -------------------------
 	for (i = 0; i < rec_wt_recn; i = i + 1)
@@ -564,10 +958,36 @@ void() Watch_Scan =
 		if (argv(0) == "owner")       rec_wt_owner    = argv(1);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
+		if (argv(0) == "pmpin")
+		{
+			// The file's own eye heights (sv_user.c:111 pins both by name).
+			vp = strstrofs(s, " viewheight=");
+			vq = strstrofs(s, " duckviewheight=");
+			if (vp >= 0)
+			if (vq >= 0)
+			{
+				rec_wt_vh    = stof(substring(s, vp + 12, 16));
+				rec_wt_dvh   = stof(substring(s, vq + 16, 16));
+				rec_wt_vhsrc = 2;
+			}
+		}
 	}
 
 	if (rec_wt_tickrate <= 0)
 		rec_wt_tickrate = PM_TICK;
+
+	if (!rec_wt_vhsrc)
+	{
+		rec_wt_vh  = serverkeyfloat("pm_viewheight");
+		rec_wt_dvh = serverkeyfloat("pm_duckviewheight");
+		rec_wt_vhsrc = 1;
+		if (rec_wt_vh <= 0 || rec_wt_dvh <= 0)
+		{
+			rec_wt_vh    = 64;
+			rec_wt_dvh   = 47;          // the engine's and default.cfg:346's, not 46
+			rec_wt_vhsrc = 0;
+		}
+	}
 
 	/*
 	  BUILD 57: A FILE WITH NO `leg` KEY IS OLDER THAN STAGE 1 BEING A LEG, and it
@@ -720,13 +1140,21 @@ void() Watch_Scan =
 	if (idmin <= 0) idmin = 0.5;
 	idpad        = cvar("hud_watch_idle_pad");
 
+	Watch_TablesReset();
 	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
 		if (!Watch_IsSample(s))
+		{
+			Watch_ScanRecord(s);
 			continue;
+		}
 
 		n = tokenize(s);
+		v   = [stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)),
+		       stof(argv(WT_C_VEL + 2))];
+		fl  = stof(argv(WT_C_FLAGS));
+		key = stof(argv(WT_C_KEYS));
 
 		if (c == 0)
 		{
@@ -859,6 +1287,17 @@ void() Watch_Scan =
 			}
 		}
 
+		if (c > 0)
+			Watch_ScanPair(t, o, v, fl, key);
+		rec_wt_spt    = t;
+		rec_wt_spo    = o;
+		rec_wt_spv    = v;
+		rec_wt_spfl   = fl;
+		rec_wt_spkey  = key;
+		rec_wt_sfrc   = FALSE;
+		rec_wt_sveto  = FALSE;
+		rec_wt_sdkrst = FALSE;
+
 		c = c + 1;
 	}
 
@@ -949,6 +1388,10 @@ void() Watch_Scan =
 			rec_wt_vxn = rec_wt_vxn + 1;
 		}
 	}
+
+	rec_wt_vmapms = gettime(1);
+	Watch_ViewMap();
+	rec_wt_vmapms = (gettime(1) - rec_wt_vmapms) * 1000;
 
 	/*
 	  BUILD 76: THE CEILING IS 5, AND WITHOUT THIS LINE THE NOTE WOULD HAVE FIRED
@@ -2201,7 +2644,7 @@ void() Watch_Sample =
 		  and it also cleans up the v3-file path that has always taken this
 		  branch for its whole length.
 		*/
-		rec_wt_yaw = rec_wt_yaw - floor((rec_wt_yaw + 180) / 360) * 360;
+		rec_wt_yaw = Interp_Wrap(rec_wt_yaw);
 	}
 
 	/*
@@ -3095,7 +3538,8 @@ void() Watch_Path2D =
 	}
 };
 
-void() Watch_Camera =
+// The camera origin; `replay trace` prints this, so it is what was drawn.
+vector() Watch_Eye =
 {
 	local float eye;
 
@@ -3107,8 +3551,15 @@ void() Watch_Camera =
 	eye = serverkeyfloat(rec_wt_ducked ? "pm_duckviewheight" : "pm_viewheight");
 	if (eye <= 0)
 		eye = rec_wt_ducked ? 46 : 64;
+	return rec_wt_org + [0, 0, eye];
+};
 
-	setproperty(VF_ORIGIN, rec_wt_org + [0, 0, eye]);
+void() Watch_Camera =
+{
+	local vector eye;
+
+	eye = Watch_Eye();
+	setproperty(VF_ORIGIN, eye);
 	setproperty(VF_ANGLES, [rec_wt_pitch, rec_wt_yaw, 0]);
 
 	/*
@@ -3123,7 +3574,7 @@ void() Watch_Camera =
 	  Watch_Frame: a seek, a scrub and an ordinary frame all arrive through this
 	  function, so there is no path that moves the camera without publishing it.
 	*/
-	PVS_Publish(rec_wt_org + [0, 0, eye]);
+	PVS_Publish(eye);
 };
 
 void() Watch_Stop =
@@ -3183,6 +3634,7 @@ float(string path) Watch_Open =
 	local float buf;
 	local string vp;
 
+	rec_wt_loadms = gettime(1);
 	Watch_Free();
 
 	if (strstrofs(path, ".rec") < 0)
@@ -3208,7 +3660,11 @@ float(string path) Watch_Open =
 	rec_wt_path = strzone(path);
 
 	vp = strcat(substring(path, 0, strlen(path) - 4), ".view");
-	buf = buf_create_ex("string", 0);
+	buf = 0;
+	if (rec_wt_noview)
+		print("replay: noview -- the sidecar is not loaded\n");
+	else
+		buf = buf_create_ex("string", 0);
 	if (buf >= 1)
 	{
 		if (buf_loadfile(vp, buf))
@@ -3265,6 +3721,9 @@ float(string path) Watch_Open =
 	// tables by the time anything asks for them.
 	Watch_BuildCurve();
 	Watch_BuildSeq();
+	rec_wt_loadms = (gettime(1) - rec_wt_loadms) * 1000;
+	print(sprintf("replay: opened in %.0f ms (view map %.0f ms)\n",
+	              rec_wt_loadms, rec_wt_vmapms));
 
 	if (!rec_wt_v4)
 		print("^3replay: this recording is FTESURF-REC 3 -- no ramp contact and no "
@@ -3973,7 +4432,8 @@ void(vector scr) Watch_Draw =
 */
 void() Watch_Frame =
 {
-	local float dt, i;
+	local float dt, i, dtcl;
+	local vector e;
 
 	rec_wt_on = FALSE;
 	if (!rec_wt_open)
@@ -3990,6 +4450,7 @@ void() Watch_Frame =
 
 	dt = cltime - rec_wt_lastreal;
 	rec_wt_lastreal = cltime;
+	dtcl = dt;
 	if (dt < 0 || dt > 0.5)             // a hitch, a load, or the first frame
 		dt = 0;
 
@@ -4059,6 +4520,18 @@ void() Watch_Frame =
 
 	Watch_Sample();
 	rec_wt_on = TRUE;
+
+	// `replay trace frames`: turnrate is ui_turnrate, i.e. the previous frame's.
+	if (rec_wt_trfn > 0)
+	{
+		e = Watch_Eye();
+		print(sprintf("wtf %.6f %.6f %.5f %.3f ", dtcl, clframetime, rec_wt_time, e_z),
+		      sprintf("%.3f %.1f %.3f %g\n", rec_wt_yaw, ui_turnrate, rec_wt_rate,
+		              rec_wt_paused));
+		rec_wt_trfn = rec_wt_trfn - 1;
+		if (rec_wt_trfn <= 0)
+			print("wtfe\n");
+	}
 };
 
 float(float evtype, float scanx, float chary, float devid) Watch_InputEvent =
@@ -4256,6 +4729,22 @@ void() Watch_Status =
 	print(sprintf("  ramp gaps bridged %g  (hold %.2fs, the engine's own board gate)\n",
 	              rec_wt_bridged, RAMP_GAP));
 
+	// Patch 378: the interpolation tables.  tools/watchtrace.py --model prints
+	// these three lines from the file; a difference is SUSPECT.
+	print(sprintf("  fit %d hermite  %d linear  %d snap   snaps %d rec  %d kin  "
+	              "(%d vetoed, +%d over)\n", rec_wt_nfit2, rec_wt_nfit1, rec_wt_nfit0,
+	              rec_wt_snrec, rec_wt_snkin, rec_wt_nveto, rec_wt_snover));
+	print(sprintf("  duck %d slide(s)  %d fix  (+%d over)  eye %g / %g  src %d\n",
+	              rec_wt_dkn, rec_wt_dkfix, rec_wt_dkover, rec_wt_vh, rec_wt_dvh,
+	              rec_wt_vhsrc));
+	if (rec_wt_view >= 1)
+		print(sprintf("  view %d span(s)  %d knot(s)  (+%d over)  %d short  "
+		              "%d stalled  step %.1f ms\n", rec_wt_vspans, rec_wt_vkn,
+		              rec_wt_vkover, rec_wt_vshort, rec_wt_vstall, rec_wt_vkstep * 1000));
+	else
+		print("  view none\n");
+	print(sprintf("  load %.0f ms  view map %.0f ms\n", rec_wt_loadms, rec_wt_vmapms));
+
 	/*
 	  BUILD 25: the same three rates the info panel draws, so the console and the
 	  screen cannot say different things.  See Watch_Info for what each is and why
@@ -4284,16 +4773,84 @@ void() Watch_Status =
 	}
 };
 
+// 378 draws a lerp; this is the verdict 379 draws the current interval with.
+float() Watch_TraceFit =
+{
+	local float ta, tb, fa, fb, i, fit;
+	local vector a, b, va, vb;
+
+	if (rec_wt_rnext < rec_wt_rec0)
+		return INTERP_LINEAR;
+	tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
+	ta = stof(argv(WT_C_T));
+	a  = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
+	va = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+	fa = stof(argv(WT_C_FLAGS));
+	tokenize(bufstr_get(rec_wt_rec, rec_wt_rnext));
+	tb = stof(argv(WT_C_T));
+	b  = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
+	vb = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+	fb = stof(argv(WT_C_FLAGS));
+	if (tb <= ta)
+		return INTERP_LINEAR;
+	for (i = 0; i < rec_wt_snn; i = i + 1)
+		if (rec_wt_snt[i] == ta)
+			return INTERP_SNAP;
+	fit = Interp_Fit(a, va, b, vb, tb - ta);
+	if (fit == INTERP_SNAP)
+		fit = INTERP_LINEAR;                    // vetoed at load
+	if ((fa & WT_F_DUCKED) != (fb & WT_F_DUCKED))
+		fit = INTERP_LINEAR;
+	return fit;
+};
+
+/*
+  `replay trace <n> <dt>`: n synthetic frames dt run-seconds apart from the
+  current position, one `wtr T ex ey ez pitch yaw src fit eyeh` line each, then
+  back to where it started.  Frame-rate independent, so a headless harness can
+  measure smoothness (tools/watchtrace.py --analyse).
+*/
+void(float n, float dt) Watch_Trace =
+{
+	local float i, t0;
+	local vector e;
+
+	if (!rec_wt_open)
+	{
+		print("replay: nothing loaded\n");
+		return;
+	}
+	t0 = rec_wt_time;
+	print(sprintf("wtrb %g %g %.5f %g %s\n", n, dt, t0,
+	              (rec_wt_view >= 1) ? 1 : 0, rec_wt_path));
+	for (i = 0; i < n; i = i + 1)
+	{
+		rec_wt_time = t0 + i * dt;
+		if (rec_wt_time > rec_wt_t1)
+			break;
+		Watch_Sample();
+		e = Watch_Eye();
+		print(sprintf("wtr %.6f %.3f %.3f %.3f ", rec_wt_time, e_x, e_y, e_z),
+		      sprintf("%.3f %.3f %g %g %.3f\n", rec_wt_pitch, rec_wt_yaw,
+		              (rec_wt_view >= 1 && rec_wt_time >= 0) ? 1 : 0,
+		              Watch_TraceFit(), e_z - rec_wt_org_z));
+	}
+	print("wtre\n");
+	Watch_Seek(t0);
+	Watch_Sample();
+};
+
 float(string cmd) Watch_ConsoleCommand =
 {
 	local string a, p;
-	local float track, leg;
+	local float track, leg, nv;
 
 	tokenize(cmd);
 	if (argv(0) != "replay")
 		return FALSE;
 
 	a = argv(1);
+	nv = (argv(2) == "noview" || argv(3) == "noview" || argv(4) == "noview");
 
 	if (a == "stop" || a == "off")
 	{
@@ -4332,6 +4889,19 @@ float(string cmd) Watch_ConsoleCommand =
 	{
 		Watch_SetRate(stof(argv(2)));
 		print(sprintf("replay: %.2fx\n", rec_wt_rate));
+		return TRUE;
+	}
+	// Patch 378: see Watch_Trace; `frames` prints the next n real frames instead.
+	if (a == "trace")
+	{
+		if (argv(2) == "frames")
+		{
+			rec_wt_trfn = stof(argv(3));
+			print(sprintf("wtfb %g %g %s\n", rec_wt_trfn, (rec_wt_view >= 1) ? 1 : 0,
+			              rec_wt_path));
+		}
+		else
+			Watch_Trace(stof(argv(2)), stof(argv(3)));
 		return TRUE;
 	}
 
@@ -4398,7 +4968,9 @@ float(string cmd) Watch_ConsoleCommand =
 		return TRUE;
 	}
 
+	rec_wt_noview = nv;
 	Watch_Open(p);
+	rec_wt_noview = FALSE;
 	return TRUE;
 };
 

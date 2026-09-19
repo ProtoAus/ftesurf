@@ -8,6 +8,9 @@ shared/sh_json.qc
 shared/sh_zones.qc
 shared/sh_portal.qc
 shared/sh_strafe.qc
+// Patch 378: sampled-motion interpolation, one speller for cl_watch.qc and the
+// body stream.  Pure functions; anywhere before cl_watch.qc would do.
+shared/sh_interp.qc
 
 // BUILD 24.  The same file menu.dat compiles, not a copy -- the replay chrome
 // and the +showscores board want the list views, the sliders and the hit
