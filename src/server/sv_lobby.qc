@@ -2254,12 +2254,11 @@ void() Lobby_Heartbeat =
   player and a row keyed on "" would collect every anonymous player's times
   into one impostor.
 
-  NO runid IS SENT, and that is a decision rather than an omission.  surfd takes
-  the field so evidence can be found later, but the evidence link that matters
-  is Phase 3's rolling commitment hash, not a local filename stamp -- and the
-  stamp is not kept anywhere after SV_RecOpen writes it, so sending one would
-  mean adding a zoned string field to hold a value Phase 3 replaces.  The column
-  stays empty until there is a real answer to put in it.
+  THE runid IS SENT (Patch 360): Lobby_RunBody appends the .rec header's runid
+  to every finish and every posted stage.  surfd keeps it on runs and (schema 6,
+  Patch 395) on replays; it is how a stage row finds the recording of the run it
+  was set in -- a kept replay, or that run's data/evidence file, which surfd
+  hard-links while the row stands.
 ===========================================================================
 */
 float lobby_run_id;             // uri request id; ODD, always -- see the parity note
