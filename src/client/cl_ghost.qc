@@ -210,7 +210,8 @@ void() Ghost_Precache =
   Pitch is deliberately dropped: FTE pitch-scales alias models on the player
   path, and a body that leans back as you look up is not what a stand-in is for.
 */
-void() Ghost_DrawBody =
+// Patch 384: at any feet and yaw, so spectate can draw the body it left frozen.
+void(vector feet, float yaw) Ghost_DrawBodyAt =
 {
 	if (!cvar("ghost_body"))
 		return;
@@ -219,9 +220,9 @@ void() Ghost_DrawBody =
 		rec_gh_body = spawn();
 
 	setmodel(rec_gh_body, Ghost_Model());
-	setorigin(rec_gh_body, rec_gh_bodyfeet);
+	setorigin(rec_gh_body, feet);
 
-	rec_gh_body.angles = [0, rec_gh_bodyang_y, 0];
+	rec_gh_body.angles = [0, yaw, 0];
 	rec_gh_body.alpha  = cvar("ghost_alpha");
 	rec_gh_body.colormod = '1 1 1';
 
@@ -254,6 +255,11 @@ void() Ghost_DrawBody =
 	Av_GhostDress(rec_gh_body);
 
 	addentity(rec_gh_body);
+};
+
+void() Ghost_DrawBody =
+{
+	Ghost_DrawBodyAt(rec_gh_bodyfeet, rec_gh_bodyang_y);
 };
 
 /*
@@ -310,14 +316,56 @@ float() Ghost_SpeedBase =
 };
 
 /*
+  One step of camera flight from `org`: direction from `ang`, magnitude from a
+  captured usercmd's movevalues and buttons.  Patch 384 took it out of
+  Ghost_Frame for spectate's freecam; move_z (+moveup/+movedown) is new, and
+  zero for every default bind.
+
+  Normalised as a whole rather than per axis, so diagonal flight is not 1.41x
+  faster and the speed does not depend on cl_forwardspeed -- but EACH AXIS BY ITS
+  OWN CVAR, so a config whose cl_sidespeed or cl_backspeed differs does not fly
+  its diagonals off-axis.
+*/
+vector(vector org, vector ang, vector move, float btn, float dt) Ghost_Fly =
+{
+	local float sp, fwd, side, back, up, f, s, u;
+	local vector wish;
+
+	fwd  = cvar("cl_forwardspeed"); if (fwd  < 1) fwd  = 450;
+	side = cvar("cl_sidespeed");    if (side < 1) side = fwd;
+	back = cvar("cl_backspeed");    if (back < 1) back = fwd;
+	up   = cvar("cl_upspeed");      if (up   < 1) up   = fwd;
+
+	f = move_x / ((move_x < 0) ? back : fwd);
+	s = move_y / side;
+
+	u = move_z / up;
+	if (btn & GH_BTN_JUMP) u = u + 1;
+	if (btn & BTN_DUCK)    u = u - 1;
+
+	makevectors(ang);
+
+	wish = v_forward * f + v_right * s + '0 0 1' * u;
+	if (vlen(wish) > 0.001)
+		wish = normalize(wish);
+
+	// +speed doubles it, as PMSrc_NoClipMove does with the same bit, applied to
+	// the resolved speed so an explicit ghost_speed keeps its modifier.
+	sp = Ghost_SpeedBase();
+	if (btn & GH_BTN_SPEED)
+		sp = sp * 2;
+
+	return org + wish * sp * dt;
+};
+
+/*
   Fly the camera.  Called from CSQC_UpdateView, after clearscene() -- which is
   what makes getproperty(VF_ORIGIN) the engine's own predicted eye for the body
   rather than last frame's override.
 */
 void() Ghost_Frame =
 {
-	local float now, dt, sp, fwd, side, back, f, s, u, eye;
-	local vector ang, wish;
+	local float now, dt, eye;
 
 	now = cltime;
 	dt  = now - rec_gh_lastt;
@@ -363,49 +411,9 @@ void() Ghost_Frame =
 	if (!rec_gh_on)
 		return;
 
-	/*
-	  Direction from the CAMERA's angles, magnitude from the captured usercmd.
-
-	  Normalised as a whole rather than per axis, so that diagonal flight is not
-	  1.41x faster than straight and so the speed does not depend on what
-	  cl_forwardspeed happens to be -- only its sign and relative size are used.
-
-	  EACH AXIS BY ITS OWN CVAR, though, because "relative size" is the one thing
-	  this does read: cl_sidespeed and cl_backspeed are separate settings and a
-	  config where they differ would otherwise fly its diagonals off-axis.  All
-	  three are 450 in cfg/default.cfg, so this changes nothing today and stops
-	  being silently wrong for anyone who moves one.
-	*/
-	fwd  = cvar("cl_forwardspeed"); if (fwd  < 1) fwd  = 450;
-	side = cvar("cl_sidespeed");    if (side < 1) side = fwd;
-	back = cvar("cl_backspeed");    if (back < 1) back = fwd;
-
-	f = rec_gh_move_x / ((rec_gh_move_x < 0) ? back : fwd);
-	s = rec_gh_move_y / side;
-
-	u = 0;
-	if (rec_gh_buttons & GH_BTN_JUMP) u = u + 1;
-	if (rec_gh_buttons & BTN_DUCK)    u = u - 1;
-
-	ang = getproperty(VF_CL_VIEWANGLES);
-	makevectors(ang);
-
-	wish = v_forward * f + v_right * s + '0 0 1' * u;
-	if (vlen(wish) > 0.001)
-		wish = normalize(wish);
-
-	/*
-	  +speed doubles it, which is what PMSrc_NoClipMove does with the same bit.
-	  Applied to the resolved speed rather than to the noclip factor alone, so
-	  that an explicit ghost_speed keeps its modifier instead of quietly losing
-	  it -- the engine's Patch 171 note makes the same argument about staying
-	  independent of whatever else is scaling the number.
-	*/
-	sp = Ghost_SpeedBase();
-	if (rec_gh_buttons & GH_BTN_SPEED)
-		sp = sp * 2;
-
-	rec_gh_camorg = rec_gh_camorg + wish * sp * dt;
+	// Direction from the CAMERA's angles, magnitude from the captured usercmd.
+	rec_gh_camorg = Ghost_Fly(rec_gh_camorg, getproperty(VF_CL_VIEWANGLES),
+	                          rec_gh_move, rec_gh_buttons, dt);
 
 	// The detach itself.  VF_ANGLES is deliberately NOT set: the engine already
 	// filled it from viewangles, which the mouse is still driving.

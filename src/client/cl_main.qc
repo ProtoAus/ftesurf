@@ -1019,9 +1019,11 @@ float cl_btn_taken;             // CLB_*: buttons whose press the chain consumed
 #define CLB_M3   4
 #define CLB_WUP  8
 #define CLB_WDN  16
+#define CLB_SPC  32             // Patch 384: SPACE (+jump) -- a draft, the replay and spectate swallow it
 
 float(float scanx) CL_ButtonBit =
 {
+	if (scanx == K_SPACE)      return CLB_SPC;
 	if (scanx == K_MOUSE1)     return CLB_M1;
 	if (scanx == K_MOUSE2)     return CLB_M2;
 	// MOUSE3 belongs here too: it is the gesture that TAKES the cursor, so its
