@@ -129,6 +129,7 @@ __pycache__/
 !/default.fmf
 !/ftesurf.bat
 !/ftesurf_debug.bat
+!/ftesurf.sh
 !/src/
 !/tools/
 !/surfd/

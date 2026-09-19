@@ -18,8 +18,8 @@ things correctly; they are documentation, not the implementation.
 
 ## What you need
 
-**Windows x64.** The launchers and the build script are Windows-only today;
-nothing in the QC is.
+**Windows x64, and Linux x86_64 as a beta** (`ftesurf.sh`). The build script is
+Windows-only; nothing in the QC is.
 
 **The engine.** [github.com/ProtoAus/ftequakers](https://github.com/ProtoAus/ftequakers),
 branch `engine-patches`. See [ENGINE.txt](ENGINE.txt) for the exact commit this
@@ -59,6 +59,10 @@ make -C engine  qcc-rel     FTE_TARGET=win64          # -> engine/release/fteqcc
 
 Copy `fteqw64.exe` to `ftesurf64.exe` and `fteplug_hl2_x64.dll` next to it, in
 this directory.
+
+Linux: `tools/linux/build.sh` (via `build-linux.ps1` on Windows, or as root on a
+Linux box after `chroot-setup.sh`) builds a portable `fteqw64` and
+`fteplug_hl2_amd64.so`; copy them here as `ftesurf64` and `fteplug_hl2_amd64.so`.
 
 `FTE_TARGET=win64` is mandatory — msys2's gcc reports `mingw`, so the Makefile's
 auto-detect picks win32. And **the `plugins/hl2` line is not optional**:
@@ -103,6 +107,7 @@ attached to the matching [GitHub Release](../../releases) — unzip it into
 
 ```
 .\ftesurf.bat              # or ftesurf_debug.bat for a flushed console log
+./ftesurf.sh               # Linux; ./ftesurf.sh --debug for the console log
 ```
 
 ---
