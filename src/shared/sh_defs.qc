@@ -1387,6 +1387,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   `sv_mapcheck 0` and this bit carries the fact instead: the run does not rank,
   the player keeps playing, and nobody is accused.  Identical trade to the three
   bits above -- a quiet gate survives a false negative where a refusal does not.
+  [2026-09-19: never done.  The lobbies keep the kick, `sv_mapcheck 1` in
+  lobby.cfg, by decision; this bit still covers listen servers.]
 
   WHAT IT ACTUALLY CATCHES, SAID HONESTLY, because on a lobby it is NOT physics.
   The server owns collision and owns the zone triggers, so editing your own BSP
