@@ -360,8 +360,11 @@ bannered as superseded.)
   that packet's zone scan. At each Multi-Session pause it checks the clock (the trace's ticks at the
   pause's closing horizon = the pause's = the session's) and the resume (the
   seed within 0.0001 of the replayed state: the save writes %.4f) -- HOLD
-  otherwise. Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
-  `p367verify`.
+  otherwise. A ghost window (Patch 373) runs no zone scan; it HOLDs on input
+  once the window's rows went empty or 1 s in. A physent digest mismatch is
+  only a note when every packet is exact (the replay runs no map I/O).
+  Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
+  `p367verify`, `p373verify`.
 - A LOBBY STREAMS, AND A STREAM CANNOT REWIND. A `retry` reads it back into a
   buffer first (Patch 368, SV_RecDestream); a lobby save-load still drops the
   recording, so a segmented lobby run has no replay (`rt1cl.cfg`).

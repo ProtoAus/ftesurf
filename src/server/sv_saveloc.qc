@@ -2163,6 +2163,13 @@ void(entity e, float on) SV_GhostSet =
 		sprint(e, PRINT_HIGH, "^3ghost: stop the replay first\n");
 		return;
 	}
+	// Patch 373: the restore voids the run first, so a ghost begun here would
+	// write no `ghost 1` and leave the later `ghost 0` unpaired.
+	if (e.run_ms_phase)
+	{
+		sprint(e, PRINT_HIGH, "^3ghost: wait for the resume to finish\n");
+		return;
+	}
 
 	e.rec_gh_on = TRUE;
 

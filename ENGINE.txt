@@ -13,11 +13,15 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   5c13a679e4a628c8882203897eab90df28ec60d4
+commit   d2cf09e65127f5353ee31b03d848d5a39bd23aec
 tag      patch-266
-patch    370
+patch    373
 qcbuild  83
 date     2026-09-19
+
+# PATCH 373: pm_verify replays a ghost window (no zone scan while detached;
+# HOLD on input once the window went empty or 1 s in); a physent digest mismatch
+# under an exact trajectory is a note.  cfg/test/p373verify.cfg.
 
 # PATCH 370 IS MOD-SIDE ONLY: the chatbox wraps downward and never cuts a line
 # that fits.  cfg/test/p370wrap.cfg.

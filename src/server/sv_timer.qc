@@ -2772,6 +2772,18 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             that only wants to know "was this clean" does not
                             have to scan the samples.
 
+                            Patch 373, THE POSITION RULE: a client command, so
+                            always between packets -- after the previous
+                            packet's sample, before the next `in` row.  It acts
+                            after that packet: from the next packet to the `0`
+                            no zone is scanned (latches kept) and the sweep
+                            origin follows the body.  <ticks> is SV_TimerTicks
+                            there, the counter after the last move.  Emptying is
+                            the client's, one RTT late: the first rows of a
+                            window may carry input, and once empty they stay
+                            empty.  pm_verify replays it and HOLDs on input a
+                            second into a window, or after it went empty.
+
   Then, written at close:
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s

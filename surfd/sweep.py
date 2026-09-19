@@ -8,7 +8,7 @@ asks the timer's own zone scan where it finishes.  This runs it over the
 
     PASS    every sample reproduces and the zones finish the run at its tick
     HOLD    something disagrees -- a reason for a human, never an accusation
-    REFUSE  out of scope for v1 (old format, resumed, ghosted, other map ...)
+    REFUSE  out of scope for v1 (old format, resumed, other map ...)
     ERROR   the verifier printed no verdict; retried up to MAX_ERRORS times
 
 surfd owns the table (schema 5, surfd.VERDICTS_SQL).  A PASS as the latest
