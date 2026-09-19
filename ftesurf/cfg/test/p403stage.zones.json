@@ -1,0 +1,171 @@
+{
+  "formatVersion": 1,
+  "_comment": "Fixture zones for bhop_arcane, STAGED variant (cfg/test/p403stage.cfg). Same as p403ride.zones.json -- start box inside *88 so the run rides *87 and *86 -- but with a second segment whose start box sits just past the booster stack at y 3620..3680. That closes the OPENING stage at 1800 u/s, so the stage row is posted with run_stagecap (290) live and SV_StageLaunch reading launch 0. Copy to maps/zones/local/bhop_arcane.json for the run and DELETE after. The start box bottom is -118 (not -200): `!r` has no teleDest here so SV_ZoneDest drops the body at the polygon centroid, bottom+2, and -198 was inside the floor -- the body froze there and never started. -116 is above the floor (~-128) and inside *88's z span -128..0.",
+  "tracks": {
+    "main": {
+      "zones": {
+        "segments": [
+          {
+            "limitStartGroundSpeed": true,
+            "checkpointsRequired": false,
+            "checkpointsOrdered": true,
+            "checkpoints": [
+              {
+                "regions": [
+                  {
+                    "points": [
+                      [
+                        6820,
+                        2100
+                      ],
+                      [
+                        7000,
+                        2100
+                      ],
+                      [
+                        7000,
+                        2555
+                      ],
+                      [
+                        6820,
+                        2555
+                      ]
+                    ],
+                    "bottom": -118,
+                    "height": 140
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "limitStartGroundSpeed": false,
+            "checkpointsRequired": false,
+            "checkpointsOrdered": true,
+            "checkpoints": [
+              {
+                "regions": [
+                  {
+                    "points": [
+                      [
+                        6820,
+                        3620
+                      ],
+                      [
+                        7000,
+                        3620
+                      ],
+                      [
+                        7000,
+                        3680
+                      ],
+                      [
+                        6820,
+                        3680
+                      ]
+                    ],
+                    "bottom": -200,
+                    "height": 200
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "end": {
+          "regions": [
+            {
+              "points": [
+                [
+                  6700,
+                  3700
+                ],
+                [
+                  7200,
+                  3700
+                ],
+                [
+                  7200,
+                  5400
+                ],
+                [
+                  6700,
+                  5400
+                ]
+              ],
+              "bottom": -1100,
+              "height": 1400
+            }
+          ]
+        }
+      }
+    },
+    "bonuses": [
+      {
+        "zones": {
+          "segments": [
+            {
+              "limitStartGroundSpeed": false,
+              "checkpointsRequired": false,
+              "checkpointsOrdered": true,
+              "checkpoints": [
+                {
+                  "regions": [
+                    {
+                      "points": [
+                        [
+                          1300,
+                          -11100
+                        ],
+                        [
+                          1800,
+                          -11100
+                        ],
+                        [
+                          1800,
+                          -10400
+                        ],
+                        [
+                          1300,
+                          -10400
+                        ]
+                      ],
+                      "bottom": 13500,
+                      "height": 200
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "end": {
+            "regions": [
+              {
+                "points": [
+                  [
+                    1300,
+                    -11100
+                  ],
+                  [
+                    1800,
+                    -11100
+                  ],
+                  [
+                    1800,
+                    -10400
+                  ],
+                  [
+                    1300,
+                    -10400
+                  ]
+                ],
+                "bottom": 15100,
+                "height": 500
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
