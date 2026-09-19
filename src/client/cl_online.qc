@@ -192,6 +192,9 @@ float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
   or a run whose recording was refused or never kept.
 */
 float  ob_rep[OB_MAXROW];
+// Patch 374: surfd's `ver` (VER_SQL: re-simulated PASS or owner-approved).  A
+// surfd without it reads 0, so no mark.
+float  ob_ver[OB_MAXROW];
 
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
@@ -470,6 +473,7 @@ void(string body) Online_Parse =
 		  pre-build-66 behaviour with no version check anywhere.
 		*/
 		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
+		ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
 
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
@@ -1136,6 +1140,8 @@ void() Online_Status =
 		  cell itself is a sui row and no cfg in this tree drives a cursor.
 		*/
 		word = strcat(word, "  ", Online_RepString(i));
+		if (ob_ver[i] > 0)
+			word = strcat(word, " verified");	// Patch 374: the cell's mark
 
 		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %g  %s\n",
 		              ob_rank[i], bufstr_get(ob_bname, i),

@@ -945,6 +945,20 @@ void(vector pos, float sz, string text, vector col, float a) Scores_TextR =
 	sui_text(pos, [sz, sz], text, col, a, 0);
 };
 
+// Patch 374: the Verified mark, drawn as two lines.  None of the three faces
+// has U+2713, and a missing glyph draws as a box with its hex code in it.
+void(vector pos, float sz, vector col, float a) Scores_Tick =
+{
+	float w;
+	sz = Font_Px(sz);
+	sui_transform_box(pos, [sz, sz]);
+	w = max(1, sz * 0.14);
+	drawline(w, pos + [sz*0.06, sz*0.50] + '1 1 0', pos + [sz*0.28, sz*0.76] + '1 1 0', '0 0 0', a * 0.5, 0);
+	drawline(w, pos + [sz*0.28, sz*0.76] + '1 1 0', pos + [sz*0.72, sz*0.18] + '1 1 0', '0 0 0', a * 0.5, 0);
+	drawline(w, pos + [sz*0.06, sz*0.50], pos + [sz*0.28, sz*0.76], col, a, 0);
+	drawline(w, pos + [sz*0.28, sz*0.76], pos + [sz*0.72, sz*0.18], col, a, 0);
+};
+
 // The x of a column, in pixels, from its character offset.
 float(float chars) Scores_ColX = { return chars * rec_sb_cw; };
 
@@ -1507,6 +1521,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			s = Online_RepString(idx);
 			Scores_Text([lp_x + Scores_ColX(SBX_REP), d], rec_sb_szrow,
 			            s, (ob_rep[idx] > 0) ? SBC_GOOD : SBC_DIM, 0.85);
+			// Patch 374: after the word; "watch" + the mark fits SBW_REP in Roboto.
+			if (ob_ver[idx] > 0)
+				Scores_Tick([lp_x + Scores_ColX(SBX_REP) + rec_sb_cw * 0.3
+				             + stringwidth(s, TRUE, [Font_Px(rec_sb_szrow), Font_Px(rec_sb_szrow)]), d],
+				            rec_sb_szrow, SBC_GOOD, 0.95);
 		}
 
 		if (rec_sb_cols > SBX_DATE)
