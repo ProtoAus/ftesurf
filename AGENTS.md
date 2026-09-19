@@ -141,6 +141,8 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   headless client, so a key's effect cannot be driven. Probe the input chain's
   verdict instead: `vote key <scan> <0|1>` runs CSQC_InputEvent and prints
   `took`, which is what decides whether keys.c runs the stored `-command`.
+- A cross-session heads-up can sit unapproved and expire undelivered: park and
+  restore shared fixtures regardless, and never wait on a reply.
 - Another session may run game copies from `%TEMP%` on its own ports. Between
   harness arms kill only processes whose ExecutablePath is under `C:\FTESurf`,
   `C:\FTEQuake` or `engine\release`. Agent PowerShell cannot `Remove-Item`
@@ -493,7 +495,9 @@ bannered as superseded.)
   COMMITTED patches: check `git log <last deployed>..HEAD` and ask; if one is not
   approved to ship, `git -C <tmp> revert --no-commit <sha>` in the worktree only.
 - The lobbies run a NATIVE aarch64 engine, `game/fteqw-svarm64`, built on the Pi
-  in `/srv/nvme/p349build`. That tree is NOT a git checkout: send changed files
+  in `/srv/nvme/p349build` -- as of 2026-09-20 the 375 deploy plus Patch 380's
+  three server files, NOT 386-388's fs.c/fs_stdio.c; `git hash-object` a file
+  before assuming it is current. That tree is NOT a git checkout: send changed files
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
   `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
