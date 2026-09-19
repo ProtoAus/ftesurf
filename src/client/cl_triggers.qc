@@ -952,8 +952,7 @@ float(float i, float seq) TG_FireTeleport =
 	else
 	{
 		newpos  = tt_org[drow] + '0 0 1';
-		snapang = (tg_uselm[i] != 0) &&
-		          !(tg_flags[i] & TG_SF_TELE_KEEPANGLES);
+		snapang = !(tg_flags[i] & TG_SF_TELE_KEEPANGLES);   // Patch 398: as sv_entities.qc
 	}
 
 	predmove_org = newpos;

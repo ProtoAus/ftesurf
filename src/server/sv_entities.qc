@@ -4840,12 +4840,11 @@ void() trigger_teleport_touch =
 	  angles and leave me facing wherever I was".  The flag half was nearly
 	  harmless by luck: only 7 teleports in the entire library set bit 32.
 
-	  Then Momentum's own key on top, which is not optional -- 16,829 teleports
-	  write it.  It applies in both modes (only 1,189 teleports even have a
-	  landmark), and in landmark mode it is the thing that turns the FGD's
-	  "angles are left alone" into "reoriented to the destination if enabled".
-	  Absent means the FGD default, and the FGD default differs by mode: without
-	  a landmark, snap; with one, leave alone.  See SV_KeyTri.
+	  UseLandmarkAngles (16,899 teleports write it) speaks to landmark mode only,
+	  where it turns "angles are left alone" into "reoriented to the destination";
+	  absent = leave alone (SV_KeyTri).  Without a landmark Source and Momentum
+	  snap whatever it says (mom_triggers.cpp:930): honouring a written 0 there
+	  left 3,596 teleports on 131 maps not turning you (Patch 398).
 	*/
 	uselm  = SV_KeyTri(self.UseLandmarkAngles, self.uselandmarkangles);
 	snapv  = SV_KeyTri(self.snapvelocitytodestangles, "");
@@ -4865,7 +4864,7 @@ void() trigger_teleport_touch =
 		// term is zero and the lift is all that was missing -- and it is what
 		// keeps a destination sitting exactly on the floor from arriving solid.
 		newpos  = dest.origin + '0 0 1';
-		snapang = (uselm != 0) && !(self.spawnflags & SF_TELEPORT_PRESERVE_ANGLES);
+		snapang = !(self.spawnflags & SF_TELEPORT_PRESERVE_ANGLES);
 	}
 
 	setorigin(other, newpos);
