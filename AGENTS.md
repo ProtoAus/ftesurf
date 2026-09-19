@@ -97,7 +97,7 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   odd binds, no chat on ENTER or a dead restart key should delete that file.
 - DRIVING A RUN: the clock starts when you LEAVE THE START BOX. `+jump` hops in
   place (~80 u in 4 s on a bhop map) and never starts it; `+forward` walks at
-  `sv_maxspeed` (260, `default.cfg:432` — the move values are 450 precisely so
+  `sv_maxspeed` (260 in `default.cfg` — the move values are 450 precisely so
   they cap nothing) and clears the box in about a second. `timer` prints the
   client latches, `cmd timer` the server's.
 - MEASURING A DRAW: with no console dump, take two screenshots with exactly one
@@ -229,8 +229,8 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 - A display switch that can be turned off wants three things, not one: the
   `registercvar`, a row in `cl_hudedit.qc`'s `HE_OptDef` (rows must stay
   contiguous — the first `""` ends the pane, and `HE_ResetAll` walks them, so an
-  omitted row is a cvar the reset button cannot recover), and a documented
-  `set` line in `default.cfg`.
+  omitted row is a cvar the reset button cannot recover), and a `set` line in
+  `default.cfg`.
 
 ## Boundaries and interfaces
 
@@ -582,7 +582,7 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - BARE `say` opens the draft; `say <text>` is DECLINED so CL_Say sends it
   (patch 342). `say_team` is declined outright (no teams here), and `/me`
   (`CL_Say`'s `extra`) never reaches the hook at all. Taking text back breaks
-  `bind r "say !r"` / `!m` in `default.cfg:864-865` (and `defaultuser.cfg`) —
+  `bind r "say !r"` / `!m` in `default.cfg` (and `defaultuser.cfg`) —
   i.e. the restart keys — and the `cfg/test` fixtures that drive runs with it
   (seven today: b26a, b48d, b57eclipse, b57stage, b58ab, b86a, b86b).
 - THE MESSAGE MUST REACH THE SERVER AS ONE ARGUMENT: SV_ParseClientCommand reads

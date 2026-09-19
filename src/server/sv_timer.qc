@@ -364,8 +364,8 @@ float  run_t_rearmstops;
   the rule has a cost the player can feel: your run begins within this many units
   of where you crossed the line, so ramp-one entry is no longer exactly
   reproducible from one attempt to the next.  That is a real price and it is paid
-  by the honest player, which is why it is announced rather than hidden.  See
-  cfg/default.cfg, where it is documented for the person who has to live with it.
+  by the honest player, which is why it is announced rather than hidden: the
+  GAME RULE note over `set run_startjitter` in cfg/default.cfg states it.
 
   WHAT IT BUYS, stated at its true size.  A movement recorder replays a usercmd
   stream.  Re-simulation cannot refuse one -- it accepts a replayed stream BY
@@ -556,7 +556,7 @@ float  run_t_cheatwatch;
   Two states, one question.  MOVETYPE_NOCLIP is the state build 13b started
   watching because the commands that produce it never reach QC at all; sv_cheats
   is the state that unlocks the physics this whole mod is a ruleset for
-  (default.cfg's pm_lockmovement essay is the other half of that sentence).
+  (default.cfg's pm_lockmovement note is the other half of that sentence).
   Neither is an event, and both can be true across a stage boundary -- which is
   precisely why the answer is a level and why every caller asks it again rather
   than remembering it.
@@ -11697,7 +11697,7 @@ void() SV_TimerMapInit =
 	  Gating it on a gamemode would also mean the setting that makes a fast ruleset
 	  possible is only present on maps that ruleset already applied to.
 
-	  NOT in cfg/default.cfg: serverinfo is not persisted here (see the essay at
+	  NOT in cfg/default.cfg: serverinfo is not persisted here (see cfg_save_infos at
 	  the top of that file -- a saved `serverinfo <key>` line would restore a stale
 	  mirror at boot), so every serverinfo key this mod owns is published from
 	  right here, once per map, from the value the server actually holds.

@@ -38,8 +38,9 @@ With `cvar_lockdefaults` on, every `set` in that file is the *enforced* default.
 Changing a movement value there changes the game and invalidates recorded times.
 Treat a physics change as a versioned ruleset change, not a tweak.
 
-The file is also the project's design record — it cites engine source lines and
-narrates why values are what they are. Keep that up when you change something.
+Comments there are one line, and only where a value is not obvious. Long-form
+reasoning goes to `ENGINE_PATCHES.md`; the old notes are in git (the file's header
+names the commit).
 
 ## `src/defs/*.qc` is generated — do not hand-edit
 
