@@ -184,11 +184,10 @@ def sweep(conn, limit, runner=run_verifier, now=None):
 
 
 def evidence_step(conn):
-    """surfd schema 6's upkeep: header runids, then index and GC the evidence
-    behind stage rows.  A fault is reported and never stops the verification.
+    """surfd schema 6's upkeep: index and GC the evidence behind stage rows.
+    A fault is reported and never stops the verification.
     -> (rows indexed, rows dropped)."""
     try:
-        surfd.backfill_runids(conn)
         added = surfd.index_evidence(conn)["indexed"]
         return added, surfd.gc_evidence(conn)
     except Exception as exc:

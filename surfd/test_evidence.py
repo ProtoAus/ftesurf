@@ -375,38 +375,58 @@ def case_public():
         check("E6 no private word in %s" % path, leaked, [])
 
 
-def case_backfill_legacy_only():
-    """E7: the header backfill reads only rows that predate schema 6"""
-    m = fresh()
-    submit(m, leg=2, ticks=454, runid=R)                  # the clean branch's stage
+def shadow_of_r(m):
+    """kap's clean stage 2 of R, R's evidence, and a TF_SHADOW continuation
+    sent with no runid whose rebuilt header still says R.  -> its replay id."""
+    submit(m, leg=2, ticks=454, runid=R)
     sh = leaf(4000, "kap").replace("_run.rec", "_shadow.rec")
-    rid = submit(m, ticks=4000, runid=None, rec=sh)["rep"]   # lobby cleared the runid
-    put_run(m, sh, evbody(R))                             # ...its header still says R
+    rid = submit(m, ticks=4000, runid=None, rec=sh)["rep"]
+    hdr = m._rec_meta(put_run(m, sh, evbody(R)))
     put_ev(m, R + ".rec", evbody(R), age=3600)
+    check("E7 control: the continuation is a row, its header says R",
+          (rid > 0, hdr[0].get("runid") if hdr else hdr), (True, R))
+    return rid
+
+
+def case_no_header_runid():
+    """E7: a replay's runid never comes from its .rec header"""
+    m = fresh()
+    sweep = importlib.import_module("sweep")
+    rid = shadow_of_r(m)
+    check("E7 a replay sent with no runid is stored '-'", runid_of(m, rid), [("-",)])
+    conn = m.connect()
+    check("E7 the sweep indexes R's evidence", sweep.evidence_step(conn), (1, 0))
+    eid = evid(m, R)
+    check("E7 ...the clean stage row plays it, not the continuation",
+          (runid_of(m, rid), eid > 0, by_player(m, 2)["kap"].get("run")),
+          ([("-",)], True, eid))
+    submit(m, leg=4, ticks=300, runid="-")
+    check("E7 a stage row whose runid is '-' links to no '-' replay",
+          by_player(m, 4)["kap"].get("run"), 0)
+
+    # The same stored before schema 6 (runid ''), then migrate()d.
+    m = fresh()
+    sweep = importlib.import_module("sweep")
+    rid = shadow_of_r(m)
     bl = leaf(5000, "bob")
     old = submit(m, player="bob", name="Bob", ticks=5000, runid=R2, rec=bl)["rep"]
     submit(m, player="bob", name="Bob", leg=3, ticks=600, runid=R2)
     put_run(m, bl, evbody(R2))
     conn = m.connect()
     with conn:
-        conn.execute("UPDATE replays SET runid = '' WHERE id = ?", (old,))  # pre-6
-    check("E7 control: both replays are real rows; bob's stage row reads run 0",
-          (rid > 0, old > 0, by_player(m, 3)["bob"].get("run")), (True, True, 0))
-    m.backfill_runids(conn)
-    check("E7 a replay sent with no runid stays '-' after the backfill",
-          runid_of(m, rid), [("-",)])
-    check("E7 ...so the clean branch's stage row does not name the continuation",
-          by_player(m, 2)["kap"].get("run"), 0)
-    got = m.index_evidence(conn)
+        conn.execute("UPDATE replays SET runid = ''")
+    conn.execute("PRAGMA user_version = 5")
+    m.migrate()
+    check("E7 control: migrate() links bob's parent from runs; the continuation"
+          " stays ''", (runid_of(m, old), by_player(m, 3)["bob"].get("run"),
+                         runid_of(m, rid)), ([(R2,)], old, [("",)]))
+    check("E7 legacy: the sweep indexes R's evidence", sweep.evidence_step(conn), (1, 0))
     eid = evid(m, R)
-    check("E7 ...and R's evidence is indexed and backs it",
-          (got["indexed"], eid > 0, by_player(m, 2)["kap"].get("run")), (1, True, eid))
-    check("E7 control: the pre-schema-6 row takes its header's runid and links",
-          (runid_of(m, old), by_player(m, 3)["bob"].get("run")), ([(R2,)], old))
-    check("E7 control: a second pass reads nothing", m.backfill_runids(conn), 0)
-    submit(m, leg=4, ticks=300, runid="-")
-    check("E7 a stage row whose runid is '-' links to no '-' replay",
-          by_player(m, 4)["kap"].get("run"), 0)
+    check("E7 legacy: ...the continuation keeps '' and the clean stage row plays R",
+          (runid_of(m, rid), eid > 0, by_player(m, 2)["kap"].get("run")),
+          ([("",)], True, eid))
+    check("E7 legacy: a second sweep changes nothing",
+          (sweep.evidence_step(conn), runid_of(m, rid)), ((0, 0), [("",)]))
 
 
 def case_runid_trust():
@@ -469,18 +489,25 @@ def case_torn_index():
           (meta[0].get("runid"), meta[1], meta[2]) if meta else meta, (R, -1, True))
 
 
-def case_torn_backfill():
-    """E10: a pre-schema-6 replay torn after `end ` is backfilled, once"""
+def case_torn_ticks():
+    """E10: an `end` torn inside its ticks is no end"""
     m = fresh()
-    dl = leaf(5000, "dave")
-    rid = submit(m, player="dave", name="Dave", ticks=5000, runid=R, rec=dl)["rep"]
-    put_run(m, dl, evbody(R, end=False) + TORN)
+    submit(m, leg=2, ticks=454, runid=R)
+    torn = put_ev(m, R + ".rec", evbody(R, end=False)
+                  + "abandon 8262\ninend 8744 0.009\nend 82")   # just written
+    meta = m._rec_meta(torn)
+    check("E10 _rec_meta: end -1, abandon seen",
+          (meta[1], meta[2]) if meta else meta, (-1, True))
     conn = m.connect()
-    with conn:
-        conn.execute("UPDATE replays SET runid = '' WHERE id = ?", (rid,))
-    check("E10 backfill_runids reads its header",
-          (m.backfill_runids(conn), runid_of(m, rid)), (1, [(R,)]))
-    check("E10 ...and a second pass reads nothing", m.backfill_runids(conn), 0)
+    got = m.index_evidence(conn)
+    check("E10 index_evidence defers it and indexes nothing",
+          (got["indexed"], got["deferred"], evid(m, R)), (0, 1, 0))
+    with open(torn, "a", newline="\n") as fh:           # the writer finishes the line
+        fh.write("62 8519 256 0 8262 4 1 0 1 0\n")
+    got = m.index_evidence(conn)
+    check("E10 control: once whole it is indexed at once, with its end's ticks",
+          (got["indexed"], q(m, "SELECT ticks FROM replays WHERE kind = 'evidence'")),
+          (1, [(8262,)]))
 
 
 def case_keep_same_gc():
@@ -508,8 +535,8 @@ def case_keep_same_gc():
 def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
                  case_keep_is_not_evidence, case_exclusion, case_public,
-                 case_backfill_legacy_only, case_runid_trust, case_torn_index,
-                 case_torn_backfill, case_keep_same_gc):
+                 case_no_header_runid, case_runid_trust, case_torn_index,
+                 case_torn_ticks, case_keep_same_gc):
         print("\n--- %s" % case.__doc__)
         try:
             case()

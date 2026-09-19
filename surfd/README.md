@@ -596,14 +596,16 @@ A lobby posts each stage of a main run with that run's `runid` and no
 recording, and keeps no `data/runs` file for a run that is abandoned or ends
 under an unarchived tag (practice): SV_RecKeepEvidence and SV_RecClose file it
 as `data/evidence/<map>/<runid>.rec`, which SV_EvidenceSweep deletes after
-`run_evidence_days` (30). Before verifying, each sweep:
+`run_evidence_days` (30).
 
-  1. `backfill_runids`: reads the header `runid` of leg-0 run replays that
-     predate schema 6 (`runid` `''`) and migrate()'s backfill (from `runs`)
-     could not reach; `-` when there is none. A later replay sent with no runid
-     is stored as `-` and never read: a TF_SHADOW continuation's header still
-     names the run the lobby cut it from.
-  2. `index_evidence`: for each `SURFD_EVIDENCE` file (default: `data/evidence`
+A replay's `runid` is the one its lobby sent (`-` for none, as a TF_SHADOW
+continuation sends) or, for a replay older than schema 6, the one on the `runs`
+row that named it at migrate(); else `''`, which links nothing. It is never read
+from a .rec header: a continuation's still names the run the lobby cut it from.
+
+Before verifying, each sweep:
+
+  1. `index_evidence`: for each `SURFD_EVIDENCE` file (default: `data/evidence`
      beside `SURFD_RUNS`) named `<runid>.rec` that one player's leafless stage
      rows reference and no leg-0 replay of that run/player stands for, checks
      the header (runid, map, track, leg 0), hard-links it to
@@ -611,10 +613,11 @@ as `data/evidence/<map>/<runid>.rec`, which SV_EvidenceSweep deletes after
      `SURFD_HOME`; a copy if the link is refused) and adds a `replays` row with
      `kind='evidence'`, tier and style `''` and `checked=1`, so it is on no
      board, in no review list and never verified. A file named by more than one
-     player's stage rows is bad (logged, not indexed). A file with no `end` (a
-     torn `end` line counts as none) younger than 10 minutes waits for the next
-     sweep; an unreadable one skips only itself.
-  3. `gc_evidence`: deletes each evidence row no leafless stage row references
+     player's stage rows is bad (logged, not indexed). A file with no `end`
+     line (only a newline-terminated one counts: an unterminated last line is a
+     torn write) younger than 10 minutes waits for the next sweep; an
+     unreadable one skips only itself.
+  2. `gc_evidence`: deletes each evidence row no leafless stage row references
      any more (the check is inside the DELETE), then its kept file; kept files
      with no row, older than an hour, go too. Nothing under `SURFD_EVIDENCE` is
      ever unlinked, whatever `SURFD_KEEP` resolves to.

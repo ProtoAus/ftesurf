@@ -910,8 +910,9 @@ def migrate():
                     except sqlite3.OperationalError as exc:
                         if "duplicate column" not in str(exc):
                             raise
-            # The backfill reaches only replays a board row still names;
-            # backfill_runids() reads the rest from their headers.
+            # Only replays a board row still names get a runid; the rest stay ''
+            # and link nothing.  Never from a .rec header: a TF_SHADOW
+            # continuation's still names the run the lobby cut it from.
             conn.executescript("""
                 CREATE INDEX IF NOT EXISTS replays_runid
                     ON replays (runid, map, player);
@@ -1769,7 +1770,7 @@ _REJECTED_SQL = ("EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id"
 # The parent of runs row `r` when it is a stage row with no recording of its
 # own: the leg-0 replay of the same run, a kept run before evidence.  A
 # correlated subquery, not a JOIN: BOARD_ORDER's column names are bare.
-# '-' is a replay's "no runid" (submit_run, backfill_runids), never a link.
+# '-' is a replay's "no runid" (submit_run), never a link.
 _PARENT_SQL = ("(SELECT p.id FROM replays p WHERE r.leg > 0 AND r.replay_id = 0"
                " AND r.runid NOT IN ('', '-') AND p.runid = r.runid"
                " AND p.map = r.map AND p.track = r.track AND p.leg = 0"
@@ -2128,10 +2129,8 @@ def submit_run():
                             seen      = -1,
                             checked   = 0
                         """,
-                        # '-' when none was sent: backfill_runids reads only
-                        # the pre-schema-6 '' rows, and a TF_SHADOW
-                        # continuation's header still names the run the lobby
-                        # cut it from.
+                        # '-' when none was sent (a TF_SHADOW continuation),
+                        # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-"),
@@ -2351,8 +2350,9 @@ def _rec_meta(path):
     """``(header, end_ticks or -1, abandoned, size, mtime)`` of a .rec, or None.
 
     The header is read to `begin` (64 lines at most), first spelling of a key
-    wins; `end`/`abandon` come from the last _REC_TAIL bytes.  A torn `end`
-    line reads as no end."""
+    wins; `end`/`abandon` come from whole lines in the last _REC_TAIL bytes.
+    Both writers end every line with a newline, so an unterminated last line
+    is a torn write (`end 82` of `end 8262 ...`) and reads as no end."""
     try:
         with open(path, "rb") as fh:
             st = os.fstat(fh.fileno())
@@ -2367,13 +2367,14 @@ def _rec_meta(path):
                     break
                 hdr.setdefault(word, rest)
             fh.seek(max(0, st.st_size - _REC_TAIL))
-            tail = fh.read().decode("utf-8", "replace").splitlines()
+            # [:-1] drops what follows the last \n: '' or a torn line.
+            tail = fh.read().decode("utf-8", "replace").split("\n")[:-1]
         if st.st_size > _REC_TAIL:
             tail = tail[1:]                       # a partial first line
         end, abandoned = -1, False
         for line in tail:
             if line.startswith("end "):
-                words = line.split()          # ["end"] alone when torn after it
+                words = line.split()
                 end = strict_int(words[1] if len(words) > 1 else None, 0, MAX_TICKS)
                 end = -1 if end is None else end
             elif line.startswith("abandon "):
@@ -2381,26 +2382,6 @@ def _rec_meta(path):
     except (OSError, ValueError, IndexError):
         return None
     return hdr, end, abandoned, st.st_size, st.st_mtime
-
-
-def backfill_runids(conn, limit=200):
-    """Header runids for leg-0 run replays that predate schema 6 and that
-    migrate()'s backfill could not reach (no board row names them any more).
-    Only '' rows: submit_run stores '-' when no runid is sent, and a later
-    header may name a run the lobby deliberately did not.  '-' also marks a
-    file with none or no file, so each row is read once.  -> rows written."""
-    rows = conn.execute(
-        "SELECT id, map_dir, track, leg, leaf, kind FROM replays"
-        " WHERE kind = 'run' AND leg = 0 AND runid = '' ORDER BY id LIMIT ?",
-        (limit,)).fetchall()
-    for row in rows:
-        path = replay_file(row)[0]
-        meta = _rec_meta(path) if path else None
-        runid = clean_text(meta[0].get("runid")) if meta else ""
-        with conn:
-            conn.execute("UPDATE replays SET runid = ? WHERE id = ? AND runid = ''",
-                         (runid or "-", row["id"]))
-    return len(rows)
 
 
 def _keep_file(src, dst):
