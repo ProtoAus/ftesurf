@@ -865,6 +865,7 @@ void() Chat_RegisterCvars =
 	Chat_SilenceLoad();
 
 	registercommand("chat_say");
+	registercommand("chat_open");       // Patch 392: a plain "open chat" name
 	registercommand("chat_rows");
 };
 
@@ -891,7 +892,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		if (evtype != IE_KEYDOWN)
 			return FALSE;
 		b = getkeybind(scanx);
-		if (b != "messagemode" && b != "messagemode2" && b != "chat_say")
+		if (b != "messagemode" && b != "messagemode2" && b != "chat_say" && b != "chat_open")
 			return FALSE;
 		chat_typing = TRUE;
 		chat_buf    = "";
@@ -947,10 +948,11 @@ float(string cmd) Chat_ConsoleCommand =
 		Chat_DumpRows();
 		return TRUE;
 	}
-	if (argv(0) != "chat_say")
+	if (argv(0) != "chat_say" && argv(0) != "chat_open")
 		return FALSE;
 
 	// `chat_say <text>` opens the draft already filled (a test handle); bare is unchanged.
+	// chat_open is the same command under a plainer name.
 	n = tokenize_console(cmd);
 	t = "";
 	for (i = 1; i < n; i = i + 1)
