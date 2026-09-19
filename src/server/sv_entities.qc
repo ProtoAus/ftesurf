@@ -5054,15 +5054,19 @@ void() trigger_teleport =
 ===========================================================================
   trigger_teleport_relative -- 276 instances across 44 maps.
 
-  The simplest teleport there is: no destination entity, no landmark, just a
-  "teleportoffset" vector added to wherever you happen to be (every one of the
-  276 writes that key).  Source's CTriggerTeleportRelative::Touch is one line,
-  and so is this.  Angles and velocity are untouched by design -- a relative
-  teleport is a seam in the level, not a reset.
+  Source (triggers.cpp:2305-2315; Momentum does not override it): the TRIGGER's
+  WorldSpaceCenter() + "teleportoffset", velocity zeroed, angles untouched.  The
+  FGD's "offset from their current position" is not the code, and maps are built
+  for the code: surf_4am's stage boxes land 20 u over their zone floors, and
+  surf_sirius's three all land on one point.  Before Patch 394 this added the
+  offset to the player's origin and kept velocity (surf_4am `!s 2..7`: 76 u into
+  the floor).
 ===========================================================================
 */
 void() trigger_teleport_relative_touch =
 {
+	local vector p;
+
 	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
@@ -5082,7 +5086,23 @@ void() trigger_teleport_relative_touch =
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
 
-	setorigin(other, other.origin + self.teleportoffset);
+	// absmin/absmax are symmetric about the model centre, so their midpoint is
+	// WorldSpaceCenter; no hull alignment, origins are at the feet on both sides.
+	p = (self.absmin + self.absmax) * 0.5 + self.teleportoffset;
+	// Lift 1 only if resting there is solid (surf_excavation lands exactly on
+	// its floor); if that is solid too, keep Source's point.
+	tracebox(p, other.mins, other.maxs, p, TRUE, other);
+	if (trace_startsolid || trace_allsolid)
+	{
+		tracebox(p + '0 0 1', other.mins, other.maxs, p + '0 0 1', TRUE, other);
+		if (!trace_startsolid && !trace_allsolid)
+		{
+			p = p + '0 0 1';
+			dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
+		}
+	}
+	setorigin(other, p);
+	other.velocity = '0 0 0';
 
 	/*
 	  BUILD 39 -- AND THE GROUND FLAG, WHICH BOTH SIBLINGS CLEAR AND THIS ONE
@@ -5104,9 +5124,8 @@ void() trigger_teleport_relative_touch =
 	  bhop dwell timer -- none of which get a trace of their own, plus a usercmd
 	  that runs zero ticks and so reaches no CategorizePosition at all.
 
-	  "Angles and velocity are untouched by design" above is still true and is a
-	  different statement.  Keeping your velocity is the whole point of a
-	  relative teleport; asserting ground contact you never made is not.
+	  Angles untouched and velocity zeroed (Source) is a different statement from
+	  asserting ground contact you never made.
 	*/
 	other.flags = other.flags - (other.flags & FL_ONGROUND);
 
@@ -5115,10 +5134,9 @@ void() trigger_teleport_relative_touch =
 	if (cvar("run_teleport_warp"))
 		SV_TimerWarped(other);
 
-	// BUILD 83: and the record.  A separate <kind> from `tele` because the two
-	// impose differently -- this one never touches angles or velocity at all
-	// (276 instances / 44 maps), so a reader that sees `telerel` knows the
-	// velocity beside it is carried through rather than chosen.
+	// BUILD 83: and the record, a separate <kind> from `tele`.  Patch 394: its
+	// vectors are centre+offset and '0 0 0'; earlier files carry origin+offset
+	// and the velocity through.  Readers use the vectors, never the kind.
 	SV_RecWarp(other, "telerel");
 };
 

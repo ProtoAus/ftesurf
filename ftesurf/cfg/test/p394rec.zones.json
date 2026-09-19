@@ -1,0 +1,70 @@
+{
+ "formatVersion": 1,
+ "tracks": {
+  "main": {
+   "zones": {
+    "segments": [
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            1900,
+            700
+           ],
+           [
+            2100,
+            700
+           ],
+           [
+            2100,
+            900
+           ],
+           [
+            1900,
+            900
+           ]
+          ],
+          "bottom": -700,
+          "height": 16
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "end": {
+     "regions": [
+      {
+       "points": [
+        [
+         -500,
+         -950
+        ],
+        [
+         -270,
+         -950
+        ],
+        [
+         -270,
+         -710
+        ],
+        [
+         -500,
+         -710
+        ]
+       ],
+       "bottom": -520,
+       "height": 40
+      }
+     ]
+    }
+   }
+  }
+ }
+}
