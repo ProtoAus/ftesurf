@@ -189,8 +189,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     on 2026-09-18). Right before committing, `git fetch` both repos and take
     max+1 over the ENGINE_PATCHES.md headings AND untracked `cfg/test/pNNN*`
     files, where a claim shows up first. Tell any other live session the
-    number. Fix a collision forward by renumbering yours; `patch` never moves
-    down.
+    number, and claim one number at a time: an open range ("392 and up")
+    leaves the other session no free max+1. Fix a collision forward by
+    renumbering yours; `patch` never moves down.
 - COMMIT AFTER EVERY FEATURE, AND PUSH. Do not wait to be asked and do not batch
   a session's work into one lump — this is the development phase, and the cost of
   not committing is what the build-86 catch-up had to clean up: 75 unpushed
@@ -204,8 +205,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     A shared file (AGENTS.md, ENGINE.txt, ENGINE_PATCHES.md) can hold another
     session's uncommitted hunks. Stage only yours: `git apply --cached` a
     trimmed diff. `git add -p` is interactive, which agents cannot use.
-    Other sessions also STAGE files in this shared index: commit with
-    `git commit -- <paths>`, never a bare `git commit`, which takes theirs too.
+    Other sessions also STAGE files in this shared index. `git commit --
+    <paths>` commits those paths' WORKING-TREE content: right for files wholly
+    yours, wrong for one holding another session's hunks. There, `git apply
+    --cached` yours, check `git diff --cached` is exactly your set, then a bare
+    `git commit`.
   - A working-tree build proves nothing about a commit whose tree also holds
     other sessions' QC. Prove it alone: `git diff --cached > p`, `git worktree
     add <tmp> HEAD`, `git -C <tmp> apply p`, copy the untracked

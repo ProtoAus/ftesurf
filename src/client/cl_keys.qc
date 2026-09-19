@@ -96,7 +96,7 @@ vector rec_wt_gnorm;             // v4: the plane under you, ramp or ground
 float  rec_wt_onground;
 float  rec_wt_ducked;            // PMF_DUCKED, from the .rec flags column
 float  rec_wt_keys;              // the FSI_* mask, from the .view
-float  rec_wt_psrel;             // FSI_PSREL split out of it, for KEY_RELEASED
+float  rec_wt_psrel;             // FSI_PSREL split out of it: W released for the prestrafe
 float  rec_wt_ticks;             // the run clock, in ticks
 float  rec_wt_state;             // TS_*
 float  rec_wt_flags;             // TF_*

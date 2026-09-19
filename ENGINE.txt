@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   2424fd9d3485a3854cf57bbca3a3e0c0cf1dc23b
 tag      patch-266
-patch    398
+patch    399
 qcbuild  83
 date     2026-09-19
+
+# PATCH 399 IS MOD-SIDE ONLY: the key display loses its letters; the overridden strafe key and
+# a released W show the forced-crouch yellow; the mouse-pad trail is orange while A/D is held.
+# Needs the CLIENT progs (-Pi serves csprogs).  cfg/test/p399keys.cfg.
 
 # PATCH 390 IS MOD-SIDE ONLY: the mouse pad left of the key block (cl_mouse.qc; hud_mouse*).
 # Needs the CLIENT progs (-Pi serves csprogs).  cfg/test/p390mouse.cfg.

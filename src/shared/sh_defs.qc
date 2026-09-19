@@ -1952,7 +1952,7 @@ string(float flags) FS_CertWhy =
   the two masks.
 
   Playing the two against each other is what reproduces HUD_DrawKeys exactly:
-  a key set on the client and clear on the server is KEY_RELEASED, and DUCKED
+  a key set on the client and clear on the server is the released-W tint, and DUCKED
   in the sample flags with no client DUCK bit is KEY_FORCED.
 
   BIT ORDER IS FSK ORDER.  FSI_<x> is exactly 1 << FSK_<x> (cl_keys.qc), which

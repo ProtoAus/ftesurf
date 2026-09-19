@@ -4,9 +4,9 @@
 
   A 16:10 box left of the key block (or at hud_mouse_x/y).  The dot moves by
   the degrees of turn the mouse is worth and wraps at the edges; its trail
-  fades on the HUD clock.  Live it is the hand: raw IE_MOUSEDELTA x sensitivity
-  x |m_yaw| (|m_pitch| down), in_xflip undone, m_accel and m_filter not
-  modelled.  In a replay or while spectating it is the view: per-frame angle
+  fades on the HUD clock, blue, orange while a strafe key (A/D) is held.  Live
+  it is the hand: raw IE_MOUSEDELTA x sensitivity x |m_yaw| (|m_pitch| down),
+  in_xflip undone, m_accel and m_filter not modelled.  In a replay or while spectating it is the view: per-frame angle
   deltas of the recorded or watched player.
 
   MPad_Track only observes: CL_InputChain calls it and ignores it, so the
@@ -20,6 +20,8 @@
 #define MPS_REPLAY  2
 #define MPS_SPEC    3
 #define MPWIN     128           // sampled trail/(MPWIN-2) apart: the ring outlasts the trail
+#define MPC_TURN  '0.45 0.70 1.00'  // the trail: the +left/+right bars' blue,
+#define MPC_STRAFE '1.00 0.55 0.15' // orange while +moveleft/+moveright is held (Patch 399)
 
 float  ui_mp_rx, ui_mp_ry;      // IE_MOUSEDELTA since the last frame, virtual px
 float  ui_mp_nev;               // deltas seen (a harness counts its own against it)
@@ -32,7 +34,8 @@ vector ui_mp_last;              // last frame's move, degrees
 float  ui_mp_wx, ui_mp_wy;      // net wraps, + = off right / bottom
 float  ui_mp_brk, ui_mp_resets, ui_mp_snaps;
 vector ui_mp_sp[MPWIN];         // u, v, board_now
-vector ui_mp_sd[MPWIN];         // the unwrapped move into that sample
+vector ui_mp_sd[MPWIN];         // the unwrapped move into that sample; z = strafe key held
+float  ui_mp_st;                // this frame's strafe key (Patch 399)
 float  ui_mp_head, ui_mp_len, ui_mp_lastt;
 vector ui_mp_bpos, ui_mp_bsize; // the box, whole pixels
 vector ui_mp_px;                // one physical pixel, virtual units
@@ -73,7 +76,7 @@ void() MPad_Push =
 	if (fabs(ui_mp_acc_x) >= 1 || fabs(ui_mp_acc_y) >= 1)
 		ui_mp_brk = ui_mp_brk + 1;      // MPad_Seg leaves it undrawn
 	ui_mp_sp[ui_mp_head] = [ui_mp_pos_x, ui_mp_pos_y, board_now];
-	ui_mp_sd[ui_mp_head] = ui_mp_acc;
+	ui_mp_sd[ui_mp_head] = [ui_mp_acc_x, ui_mp_acc_y, ui_mp_st];
 	ui_mp_head = ui_mp_head + 1;
 	if (ui_mp_head >= MPWIN)
 		ui_mp_head = 0;
@@ -121,6 +124,16 @@ void() MPad_Frame =
 	d = [ui_mp_rx, ui_mp_ry, 0];
 	ui_mp_rx = 0;
 	ui_mp_ry = 0;
+
+	// Patch 399: A or D held, from the same source as the key display.
+	if (src == MPS_REPLAY)
+		s = rec_wt_keys & (FSI_LEFT | FSI_RIGHT);
+	else if (src == MPS_SPEC)
+		s = spc_hkeys & (FSI_LEFT | FSI_RIGHT);
+	else
+		s = (Keys_Held(FSK_LEFT) || Keys_Held(FSK_RIGHT));
+	iv = ui_mp_st;
+	ui_mp_st = s ? 1 : 0;
 
 	// A new source, target or file, the clock going back, or a replay jumping
 	// ahead (a seek): start clean.
@@ -196,9 +209,9 @@ void() MPad_Frame =
 	ui_mp_pos = [u, v, 0];
 	ui_mp_acc = ui_mp_acc + [d_x / span, d_y / spanv, 0];
 
-	iv = max(0.004, MPad_Life() / (MPWIN - 2));
+	// A strafe key going down or up starts a sample, so the colour turns there.
 	if (ui_mp_acc_x || ui_mp_acc_y)
-	if (!ui_mp_len || board_now - ui_mp_lastt >= iv)
+	if (!ui_mp_len || iv != ui_mp_st || board_now - ui_mp_lastt >= max(0.004, MPad_Life() / (MPWIN - 2)))
 		MPad_Push();
 };
 
@@ -232,24 +245,27 @@ void(vector scr) MPad_Geom =
 	               floor(sz_y / ui_mp_px_y + 0.5) * ui_mp_px_y, 0];
 };
 
-// One trail stroke a -> b in screen units, t thick, alpha la at a and lb at b.
-// Queued 2D polygons: MPad_Draw's drawresetcliparea flushes them under the clip.
-void(vector a, vector b, float t, float la, float lb) MPad_Stroke =
+// One trail stroke a -> b in screen units, t thick, colour/alpha ca/la at a and
+// cb/lb at b.  Queued 2D polygons: MPad_Draw's drawresetcliparea flushes them
+// under the clip.
+void(vector a, vector b, float t, vector ca, float la, vector cb, float lb) MPad_Stroke =
 {
 	local vector n;
 
 	n = normalize([a_y - b_y, b_x - a_x, 0]) * (t * 0.5);
 	R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
-	R_PolygonVertex(a + n, '0 0 0', '0.45 0.70 1.00', la);  // the +left/+right bars' blue
-	R_PolygonVertex(b + n, '0 0 0', '0.45 0.70 1.00', lb);
-	R_PolygonVertex(b - n, '0 0 0', '0.45 0.70 1.00', lb);
-	R_PolygonVertex(a - n, '0 0 0', '0.45 0.70 1.00', la);
+	R_PolygonVertex(a + n, '0 0 0', ca, la);
+	R_PolygonVertex(b + n, '0 0 0', cb, lb);
+	R_PolygonVertex(b - n, '0 0 0', cb, lb);
+	R_PolygonVertex(a - n, '0 0 0', ca, la);
 	R_EndPolygon();
 };
 
+vector(float st) MPad_Colour = { return st ? MPC_STRAFE : MPC_TURN; };
+
 // a -> b in panel units, b inside [0,1), |b-a| < 1.  The copy shifted back
 // across the edge a lies past draws what the wrap carried over; the clip trims.
-void(vector a, vector b, vector o, vector wh, float t, float la, float lb) MPad_Seg =
+void(vector a, vector b, vector o, vector wh, float t, vector ca, float la, vector cb, float lb) MPad_Seg =
 {
 	local float sx, sy, i, j;
 
@@ -267,7 +283,7 @@ void(vector a, vector b, vector o, vector wh, float t, float la, float lb) MPad_
 		{
 			MPad_Stroke([o_x + (a_x + i * sx) * wh_x, o_y + (a_y + j * sy) * wh_y, 0],
 			            [o_x + (b_x + i * sx) * wh_x, o_y + (b_y + j * sy) * wh_y, 0],
-			            t, la, lb);
+			            t, ca, la, cb, lb);
 			if (!sy)
 				break;
 		}
@@ -278,8 +294,8 @@ void(vector a, vector b, vector o, vector wh, float t, float la, float lb) MPad_
 
 void(vector scr) MPad_Draw =
 {
-	local vector o, wh, p, d, q;
-	local float px, py, i, slot, os, age, oage, life, ds, sx, sy, t;
+	local vector o, wh, p, d, q, dq;
+	local float px, py, i, slot, os, age, oage, life, ds, sx, sy, t, ost;
 
 	MPad_Frame();                   // hidden too: switching on shows now
 	if (!cvar("hud_mouse"))
@@ -299,7 +315,18 @@ void(vector scr) MPad_Draw =
 	t = max(px, ui_cv_scale);
 	if (life > 0)
 	{
-		MPad_Seg(ui_mp_pos - ui_mp_acc, ui_mp_pos, o, wh, t, 0.85, 0.85);   // not yet sampled
+		// Not yet sampled: from the newest sample's colour to this frame's.
+		ost = ui_mp_st;
+		if (ui_mp_len)
+		{
+			slot = ui_mp_head - 1;
+			if (slot < 0)
+				slot = slot + MPWIN;
+			dq = ui_mp_sd[slot];
+			ost = dq_z;
+		}
+		MPad_Seg(ui_mp_pos - ui_mp_acc, ui_mp_pos, o, wh, t,
+		         MPad_Colour(ost), 0.85, MPad_Colour(ui_mp_st), 0.85);
 		for (i = 0; i < ui_mp_len; i = i + 1)
 		{
 			slot = ui_mp_head - 1 - i;
@@ -310,7 +337,9 @@ void(vector scr) MPad_Draw =
 			if (age >= life)
 				break;
 			// The stroke starts at the older sample, faded to that sample's age.
+			d = ui_mp_sd[slot];
 			oage = life;
+			ost = d_z;
 			if (i + 1 < ui_mp_len)
 			{
 				os = slot - 1;
@@ -318,10 +347,12 @@ void(vector scr) MPad_Draw =
 					os = os + MPWIN;
 				q = ui_mp_sp[os];
 				oage = min(life, board_now - q_z);
+				dq = ui_mp_sd[os];
+				ost = dq_z;
 			}
-			d = ui_mp_sd[slot];
 			MPad_Seg([p_x - d_x, p_y - d_y, 0], [p_x, p_y, 0], o, wh, t,
-			         0.85 * (1 - oage / life), 0.85 * (1 - age / life));
+			         MPad_Colour(ost), 0.85 * (1 - oage / life),
+			         MPad_Colour(d_z), 0.85 * (1 - age / life));
 		}
 	}
 
@@ -374,12 +405,15 @@ float(string cmd) MPad_ConsoleCommand =
 	              cvar("hud_mouse"), ui_mp_src, ui_mp_pos_x, ui_mp_pos_y));
 	print(sprintf("  box %g %g %g %g px %g\n", ui_mp_bpos_x, ui_mp_bpos_y,
 	              ui_mp_bsize_x, ui_mp_bsize_y, ui_mp_px_x));
-	print(sprintf("  span %g trail %g samples %g live %g breaks %g\n",
-	              MPad_Span(), life, ui_mp_len, n, ui_mp_brk));
+	print(sprintf("  span %g trail %g samples %g live %g breaks %g strafe %g\n",
+	              MPad_Span(), life, ui_mp_len, n, ui_mp_brk, ui_mp_st));
 	print(sprintf("  wraps %g %g resets %g snaps %g events %g\n",
 	              ui_mp_wx, ui_mp_wy, ui_mp_resets, ui_mp_snaps, ui_mp_nev));
 	print(sprintf("  last %.4f %.4f deg  lang %.3f %.3f\n",
 	              ui_mp_last_x, ui_mp_last_y, ui_mp_lang_x, ui_mp_lang_y));
+	// Patch 399: the key block's strafe-order latch, as HUD_DrawKeys last left it.
+	print(sprintf("  keys a %g d %g newer %g cl_iDrive %g\n",
+	              ui_kb_pa, ui_kb_pd, ui_kb_newer, cvar("cl_iDrive")));
 	if (cvar("cl_threadedphysics"))
 		print("  cl_threadedphysics: the engine sends no mouse deltas\n");
 	return TRUE;

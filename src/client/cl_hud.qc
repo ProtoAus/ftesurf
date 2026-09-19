@@ -4414,43 +4414,23 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
   +left and +right set no usercmd button bit for anything to read.
 */
 /*
-  `held` is a FOUR-state, not a boolean:
-     0  not pressed
-     1  pressed
-     2  the game is holding it for you   -- filled yellow, as Momentum does
-     3  the game is letting go for you   -- yellow on dark
-
-  Two and three are the same statement -- "this is not your hand" -- so they
-  share the yellow, and they are inverted against each other because they are
-  opposite: FORCED is a key you are not pressing that is going out anyway, and
-  RELEASED is a key you ARE pressing that is not.  Filled means "the game is
-  sending this", which is true of one and false of the other, so the fill is
-  doing the work and the hue only says who decided.
-
-  FORCED is the crouch case: ducked without asking, because PMSrc_CanUnduck
-  traced the standing hull and it did not fit, so your hull stays 45 tall until
-  you are clear.  RELEASED is run_prestrafe dropping W for the flight.  Telling
-  either apart from a stuck key by feel alone is most of a confusing minute.
+  `held`: 0 up, 1 pressed, 2 KEY_FORCED -- the game overrides your hand: a crouch
+  it holds for you (PMSrc_CanUnduck), W let go for the prestrafe flight, or a
+  strafe key the opposite one suppresses (cl_iDrive).  Filled yellow, as Momentum
+  does.  No letters since Patch 399.
 */
 #define KEY_UP       0
 #define KEY_DOWN     1
 #define KEY_FORCED   2
-#define KEY_RELEASED 3
 
-void(vector pos, vector sz, float held, string label, float lsz) HUD_Key =
+void(vector pos, vector sz, float held) HUD_Key =
 {
-	local vector bg, fg;
-	local float  a;
-
-	if (held == KEY_FORCED)        { bg = '1.00 0.82 0.20'; fg = '0.10 0.08 0.02'; a = 0.85; }
-	else if (held == KEY_RELEASED) { bg = '0.16 0.13 0.03'; fg = '1.00 0.82 0.20'; a = 0.85; }
-	else if (held)                 { bg = '1 1 1';          fg = '0.06 0.09 0.11'; a = 0.85; }
-	else                           { bg = '0 0 0';          fg = '0.75 0.75 0.75'; a = 0.35; }
-
-	drawfill(pos, sz, bg, a, 0);
-	pos_x = pos_x + (sz_x - stringwidth(label, TRUE, [lsz, lsz])) * 0.5;
-	pos_y = pos_y + (sz_y - lsz) * 0.5;
-	drawstring(pos, label, [lsz, lsz], fg, 1, 0);
+	if (held == KEY_FORCED)
+		drawfill(pos, sz, '1.00 0.82 0.20', 0.85, 0);
+	else if (held)
+		drawfill(pos, sz, '1 1 1', 0.85, 0);
+	else
+		drawfill(pos, sz, '0 0 0', 0.35, 0);
 };
 
 /*
@@ -4466,6 +4446,8 @@ void(vector pos, vector sz, float held, string label, float lsz) HUD_Key =
 float  ui_kb_k, ui_kb_gap, ui_kb_lsz, ui_kb_bw;
 vector ui_kb_org;               // anchor: the A column's left, W's top (what hud_keys_x encodes)
 vector ui_kb_pos, ui_kb_size;   // the drawn box, +left/+right bars included
+float  ui_kb_pa, ui_kb_pd;      // Patch 399: last frame's A and D
+float  ui_kb_newer;             // which of them went down last: -1 A, 1 D, 0 unknown
 
 void(vector scr) HUD_KeysGeom =
 {
@@ -4497,7 +4479,7 @@ void(vector scr) HUD_DrawKeys =
 {
 	local vector p, sz;
 	local float k, gap, lsz, bw;
-	local float kw, ks, ka, kd, jump, duck, tl, tr;
+	local float kw, ks, ka, kd, jump, duck, tl, tr, ra, rd;
 
 	HUD_KeysGeom(scr);
 	p   = ui_kb_org;
@@ -4586,27 +4568,45 @@ void(vector scr) HUD_DrawKeys =
 	*/
 	if (kw)
 	if (rec_wt_on ? rec_wt_psrel : (spc_hud ? FALSE : run_ps_release))
-		kw = KEY_RELEASED;
+		kw = KEY_FORCED;            // Patch 399: was yellow-on-dark
 
-	Font_Set(ui_font_ui);
+	/*
+	  Patch 399: A and D both down.  cl_iDrive (default 1) lets the later press
+	  win and suppresses the other until it is let go, so the earlier one is
+	  tinted.  The order is read off the frames' rising edges -- a replay's mask
+	  has none; spectate only ever carries the winner.
+	*/
+	ra = (ka && !ui_kb_pa);        // parenthesised: see AGENTS.md on `x = a && b`
+	rd = (kd && !ui_kb_pd);
+	if (ra != rd)
+		ui_kb_newer = ra ? -1 : 1;
+	else if (ra || (!ka && !kd))
+		ui_kb_newer = 0;            // both in one frame, or neither held
+	ui_kb_pa = ka;
+	ui_kb_pd = kd;
+	if (ka && kd && ui_kb_newer && cvar("cl_iDrive"))
+	{
+		if (ui_kb_newer > 0)
+			ka = KEY_FORCED;
+		else
+			kd = KEY_FORCED;
+	}
 
 	// row 1:  W
-	HUD_Key([p_x + k + gap, p_y], sz, kw, "W", lsz);
+	HUD_Key([p_x + k + gap, p_y], sz, kw);
 
 	// row 2:  |  A S D  |   -- the flanking bars are +left and +right
 	drawfill([p_x - bw - gap, p_y + k + gap], [bw, k],
 	         tl ? '0.45 0.70 1.00' : '0 0 0', tl ? 0.85 : 0.35, 0);
-	HUD_Key([p_x,               p_y + k + gap], sz, ka, "A", lsz);
-	HUD_Key([p_x + k + gap,     p_y + k + gap], sz, ks, "S", lsz);
-	HUD_Key([p_x + 2*(k + gap), p_y + k + gap], sz, kd, "D", lsz);
+	HUD_Key([p_x,               p_y + k + gap], sz, ka);
+	HUD_Key([p_x + k + gap,     p_y + k + gap], sz, ks);
+	HUD_Key([p_x + 2*(k + gap), p_y + k + gap], sz, kd);
 	drawfill([p_x + 3*(k + gap), p_y + k + gap], [bw, k],
 	         tr ? '0.45 0.70 1.00' : '0 0 0', tr ? 0.85 : 0.35, 0);
 
 	// row 3:  duck + jump
-	HUD_Key([p_x,           p_y + 2*(k + gap)], [k, lsz * 2], duck, "C", lsz);
-	HUD_Key([p_x + k + gap, p_y + 2*(k + gap)], [k * 2 + gap, lsz * 2], jump, "Jump", lsz);
-
-	Font_Reset();
+	HUD_Key([p_x,           p_y + 2*(k + gap)], [k, lsz * 2], duck);
+	HUD_Key([p_x + k + gap, p_y + 2*(k + gap)], [k * 2 + gap, lsz * 2], jump);
 
 	/*
 	  Build 31: the box, and the anchor is p_x -- the block's own left origin,
