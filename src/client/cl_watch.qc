@@ -134,6 +134,7 @@ float  rec_wt_t1;                // last sample's t
 float  rec_wt_slider;            // the speed slider's own 0..1 position
 float  rec_wt_paused;
 float  rec_wt_lastreal;          // cltime at the previous frame
+float  rec_wt_clkerr;            // Patch 379: cltime advance not yet taken (Watch_Frame)
 
 /*
   The cursors.  Both are monotone in the common case -- playback only ever runs
@@ -142,9 +143,6 @@ float  rec_wt_lastreal;          // cltime at the previous frame
 */
 float  rec_wt_rcur;              // .rec line: the sample with the largest t <= now
 float  rec_wt_rnext;             // the sample line after it
-float  rec_wt_vti;               // the tick rec_wt_vblk0/1 were computed for
-float  rec_wt_vblk0;             // .view lines [vblk0, vblk1) share that tick
-float  rec_wt_vblk1;
 
 /*
   THE COARSE INDEX, and it is what stops a scrub being a 25,000-line walk.
@@ -162,7 +160,7 @@ float  rec_wt_ixn;
 float  rec_wt_ixstep;
 
 float  rec_wt_vxline[WT_IDX];
-float  rec_wt_vxtick[WT_IDX];
+float  rec_wt_vxc[WT_IDX];       // Patch 379: the line's cltime (was its tick)
 float  rec_wt_vxn;
 float  rec_wt_vxstep;
 
@@ -242,6 +240,44 @@ float  rec_wt_vcbrk;
 float  rec_wt_vk0;               // ...its span's first knot, and first cltime
 float  rec_wt_vsc0;
 float  rec_wt_vin;
+
+// Patch 379: Watch_Parse's per-interval cache, and the cursors Watch_Seek resets.
+float  rec_wt_ccur;              // the rcur / rnext it holds; -1 none
+float  rec_wt_cnext;
+float  rec_wt_cta;
+float  rec_wt_ctb;
+vector rec_wt_ca;
+vector rec_wt_cb;
+vector rec_wt_cva;
+vector rec_wt_cvb;
+vector rec_wt_cpa;               // [pitch, yaw, 0]
+vector rec_wt_cpb;
+float  rec_wt_cfla;
+float  rec_wt_cflb;
+float  rec_wt_ckeys;
+vector rec_wt_cnorm;
+vector rec_wt_cmv;
+float  rec_wt_cfit;              // INTERP_*: what this interval is drawn with
+float  rec_wt_cfa;               // the duck fraction at ta
+float  rec_wt_snc;
+float  rec_wt_dkc;
+float  rec_wt_vkc;
+float  rec_wt_vj;                // .view bracket: line vj (tau vjt) to vnl (vnt)
+float  rec_wt_vjk;               // ...and their knots
+float  rec_wt_vjt;
+float  rec_wt_vjl;               // the line vja / vjkeys were read from
+vector rec_wt_vja;
+float  rec_wt_vjkeys;
+float  rec_wt_vnl;               // -1: vj ends its span
+float  rec_wt_vnk;
+float  rec_wt_vnt;
+float  rec_wt_vnal;
+vector rec_wt_vna;
+float  rec_wt_vnkeys;
+float  rec_wt_eyeh;              // eye above the feet
+float  rec_wt_asrc;              // 1: this frame's angles came from the .view
+float  rec_wt_fit;
+#define WT_ASNAP 45             // degrees: a bigger step between two samples is held
 
 float  rec_wt_noview;            // `replay <path> noview`: open without the sidecar
 float  rec_wt_loadms;
@@ -584,6 +620,10 @@ void() Watch_Free =
 	rec_wt_pn   = 0;
 	rec_wt_evn  = 0;
 	rec_wt_on   = FALSE;
+	// a `replay trace frames` still counting would print into the next file
+	if (rec_wt_trfn > 0)
+		print("wtfe\n");
+	rec_wt_trfn = 0;
 };
 
 // ---- Patch 378: the interpolation tables, built inside Watch_Scan's pass two ----
@@ -717,8 +757,16 @@ void(float t, vector o, vector v, float fl, float key) Watch_ScanPair =
 	pg = rec_wt_spfl & WT_F_ONGROUND;
 	ph = (rec_wt_spfl & WT_F_DUCKED) ? 1 : 0;
 	pk = (rec_wt_spkey & FSI_DUCK) ? 1 : 0;
+	// A save-state rewind: no slide spans it, and a release slide still running
+	// (the only kind that ends past its sample) stops at the last sample before.
 	if (rec_wt_sdkrst)
+	{
 		rec_wt_sphase = 0;
+		if (rec_wt_dkn > 0)
+		if (rec_wt_dke[rec_wt_dkn - 1] > rec_wt_spt)
+			rec_wt_dke[rec_wt_dkn - 1] = rec_wt_spt;
+		return;
+	}
 
 	if (h && !ph)
 	{
@@ -1351,9 +1399,10 @@ void() Watch_Scan =
 		  loop used to take whatever line the stride landed on and read argv(2)
 		  as a run tick -- which on a ghost line is a CLTIME, a number in the
 		  hundreds where a tick is in the thousands but on a different scale
-		  entirely.  One poisoned entry sends Watch_ViewBlock's seek to the wrong
+		  entirely.  One poisoned entry sent Watch_ViewBlock's seek to the wrong
 		  starting line, and the same unfiltered read in Watch_ViewBlock itself
-		  could hand the camera a tick count as its pitch.
+		  could hand the camera a tick count as its pitch.  (Patch 379 replaced
+		  Watch_ViewBlock with Watch_ViewStart, and the index holds cltime.)
 
 		  Latent rather than observed: no .rec or .view on disk carries a ghost
 		  record, because no ghosted run has ever been recorded.  It is fixed
@@ -1384,7 +1433,7 @@ void() Watch_Scan =
 				break;
 			tokenize(bufstr_get(rec_wt_view, i));
 			rec_wt_vxline[rec_wt_vxn] = i;
-			rec_wt_vxtick[rec_wt_vxn] = stof(argv(WT_V_TICKS));
+			rec_wt_vxc[rec_wt_vxn]    = stof(argv(WT_V_CLTIME));
 			rec_wt_vxn = rec_wt_vxn + 1;
 		}
 	}
@@ -1456,6 +1505,10 @@ void() Watch_Scan =
 	  Same for `startjit`: two units at the run's first frame is below the sample
 	  stream's own %.2f-to-the-eye visibility, and the camera has no opinion about
 	  where a run was supposed to start.
+
+	  PATCH 379: superseded for `warp` -- a blend across a teleport smeared the
+	  camera over the jump, so its kind now feeds the snap table
+	  (Watch_ScanRecord), and `ride` vetoes it.
 	*/
 	/*
 	  BUILD 85: 7 -> 8, AND FOR THE FIFTH TIME THIS READER NEEDED NO NEW PARSE.
@@ -1869,70 +1922,178 @@ void(float want) Watch_RecSeek =
 };
 
 /*
-  The block of .view lines belonging to one tick.
-
-  There are about five of them at 300 fps and one or none at 60, so the block is
-  found rather than assumed: [vblk0, vblk1) is every line carrying tick `ti`, and
-  the caller picks inside it by where it is within the tick.  Cached, because the
-  tick only changes once every 15 ms of playback and the cache therefore hits on
-  four frames out of five.
+  PATCH 379: .view angles on the knot map (the block over rec_wt_vkline).
+  tau = cltime - off is formed per line, never T + off: both sit near the map's
+  uptime, so the subtraction is exact, where T + off would round to float32's
+  step there (0.24 ms after an hour).
 */
-void(float ti) Watch_ViewBlock =
+float(float c, float j) Watch_ViewTau =
 {
-	local float i, j, tk;
+	local float off;
 
-	if (rec_wt_view < 1)
-		return;
-	if (ti == rec_wt_vti)
-	if (rec_wt_vblk1 > rec_wt_vblk0)
-		return;
+	off = rec_wt_vkoff[j];
+	if (j + 1 < rec_wt_vkn)
+	if (!rec_wt_vkbrk[j + 1])
+	if (rec_wt_vkc0[j + 1] > rec_wt_vkc0[j])
+		off = off + (rec_wt_vkoff[j + 1] - off) * (c - rec_wt_vkc0[j])
+		                                        / (rec_wt_vkc0[j + 1] - rec_wt_vkc0[j]);
+	return c - off;
+};
 
-	// Nearest index entry at or before the wanted tick, then walk.
-	j = rec_wt_view0;
+// The line after vj in its span, if any.  Its tau is stof of the line (cltime
+// leads it); the angles are read once the bracket settles.
+void() Watch_ViewNext =
+{
+	local float nl, nk;
+
+	nl = rec_wt_vj + 1;
+	nk = rec_wt_vjk;
+	if (nl > rec_wt_vkend[nk])
+	{
+		rec_wt_vnl = -1;
+		if (nk + 1 >= rec_wt_vkn)
+			return;
+		if (rec_wt_vkbrk[nk + 1])
+			return;
+		nk = nk + 1;
+		nl = rec_wt_vkline[nk];
+	}
+	rec_wt_vnl = nl;
+	rec_wt_vnk = nk;
+	rec_wt_vnt = Watch_ViewTau(stof(bufstr_get(rec_wt_view, nl)), nk);
+};
+
+// Put vj on knot j's last indexed line at or before T, else its first line.
+void(float j, float T) Watch_ViewStart =
+{
+	local float i, ln;
+
+	ln = rec_wt_vkline[j];
 	for (i = 0; i < rec_wt_vxn; i = i + 1)
-		if (rec_wt_vxtick[i] <= ti)
-			j = rec_wt_vxline[i];
-
-	/*
-	  BUILD 43: SAMPLES ONLY, on both walks.  See the essay beside the index
-	  build in Watch_Scan -- a `ghost` record's argv(2) is a cltime, and reading
-	  it as a tick here would either end the search early or leave a record
-	  inside [vblk0, vblk1), where the caller's sub-tick pick could land on it
-	  and read a tick count as a pitch.
-	*/
-	for (i = j; i < rec_wt_viewn; i = i + 1)
 	{
-		if (!Watch_IsSample(bufstr_get(rec_wt_view, i)))
-			continue;
-		tokenize(bufstr_get(rec_wt_view, i));
-		if (stof(argv(WT_V_TICKS)) >= ti)
+		if (rec_wt_vxline[i] > rec_wt_vkend[j])
 			break;
+		if (rec_wt_vxline[i] > ln)
+		if (Watch_ViewTau(rec_wt_vxc[i], j) <= T)
+			ln = rec_wt_vxline[i];
 	}
-	if (i >= rec_wt_viewn)
-		i = rec_wt_viewn - 1;
+	rec_wt_vj   = ln;
+	rec_wt_vjk  = j;
+	rec_wt_vjt  = Watch_ViewTau(stof(bufstr_get(rec_wt_view, ln)), j);
+	rec_wt_vjl  = -1;
+	rec_wt_vnal = -1;
+	Watch_ViewNext();
+};
 
-	rec_wt_vblk0 = i;
+/*
+  Pitch, yaw and keys for rec_wt_time from the .view; FALSE where no knot covers
+  it (the approach, a ghost window, a gap), and the caller uses the .rec.  A knot
+  is held 2 ticks past its edges.  Keys come from line vj.
+*/
+float() Watch_ViewAngles =
+{
+	local float T, j, f;
+	local vector ang;
 
-	tokenize(bufstr_get(rec_wt_view, i));
-	tk = stof(argv(WT_V_TICKS));
+	T = rec_wt_time;
+	if (rec_wt_view < 1 || rec_wt_vkn < 1 || T < 0)
+		return FALSE;
 
-	/*
-	  A record ENDS the block rather than being skipped inside it, so the range
-	  the caller indexes into is contiguous samples and nothing else.  The cost
-	  is a shorter block on the one frame a ghost edge falls in -- a marginally
-	  coarser sub-tick angle pick, once per toggle -- which is the cheap side of
-	  this trade by a wide margin.
-	*/
-	for (j = i + 1; j < rec_wt_viewn; j = j + 1)
+	j = rec_wt_vkc;
+	if (j >= rec_wt_vkn)
+		j = 0;
+	while (j + 1 < rec_wt_vkn)
 	{
-		if (!Watch_IsSample(bufstr_get(rec_wt_view, j)))
+		if (rec_wt_vkc0[j + 1] - rec_wt_vkoff[j + 1] > T)
 			break;
-		tokenize(bufstr_get(rec_wt_view, j));
-		if (stof(argv(WT_V_TICKS)) != tk)
-			break;
+		j = j + 1;
 	}
-	rec_wt_vblk1 = j;
-	rec_wt_vti   = ti;
+	while (j > 0)
+	{
+		if (rec_wt_vkc0[j] - rec_wt_vkoff[j] <= T)
+			break;
+		j = j - 1;
+	}
+	rec_wt_vkc = j;
+
+	if (T < rec_wt_vkc0[j] - rec_wt_vkoff[j] - 2 * rec_wt_tickrate)
+		return FALSE;
+	if (T > rec_wt_vkc1[j] - rec_wt_vkoff[j] + 2 * rec_wt_tickrate)
+	{
+		if (j + 1 >= rec_wt_vkn)
+			return FALSE;
+		if (rec_wt_vkbrk[j + 1])
+			return FALSE;
+	}
+
+	// Walk on from the cursor when it is in knot j, or in the same span's j-1
+	// and not past T; otherwise start over inside knot j.
+	if (rec_wt_vj < 0)
+		Watch_ViewStart(j, T);
+	else if (rec_wt_vjk != j && (rec_wt_vjk != j - 1 || rec_wt_vkbrk[j]))
+		Watch_ViewStart(j, T);
+	else if (rec_wt_vjt > T && rec_wt_vj != rec_wt_vkline[rec_wt_vjk])
+		Watch_ViewStart(j, T);
+
+	while (rec_wt_vnl >= 0)
+	{
+		if (rec_wt_vnt > T)
+			break;
+		rec_wt_vj  = rec_wt_vnl;
+		rec_wt_vjk = rec_wt_vnk;
+		rec_wt_vjt = rec_wt_vnt;
+		if (rec_wt_vnal == rec_wt_vnl)
+		{
+			rec_wt_vja    = rec_wt_vna;
+			rec_wt_vjkeys = rec_wt_vnkeys;
+			rec_wt_vjl    = rec_wt_vj;
+		}
+		Watch_ViewNext();
+	}
+
+	if (rec_wt_vjl != rec_wt_vj)
+	{
+		tokenize(bufstr_get(rec_wt_view, rec_wt_vj));
+		rec_wt_vja    = [stof(argv(WT_V_PITCH)), stof(argv(WT_V_YAW)), 0];
+		rec_wt_vjkeys = stof(argv(WT_V_KEYS));
+		rec_wt_vjl    = rec_wt_vj;
+	}
+	if (rec_wt_vnl >= 0)
+	if (rec_wt_vnal != rec_wt_vnl)
+	{
+		tokenize(bufstr_get(rec_wt_view, rec_wt_vnl));
+		rec_wt_vna    = [stof(argv(WT_V_PITCH)), stof(argv(WT_V_YAW)), 0];
+		rec_wt_vnkeys = stof(argv(WT_V_KEYS));
+		rec_wt_vnal   = rec_wt_vnl;
+	}
+
+	ang = rec_wt_vja;
+	if (rec_wt_vnl >= 0)
+	if (fabs(Interp_Arc(rec_wt_vja_x, rec_wt_vna_x)) <= WT_ASNAP)
+	if (fabs(Interp_Arc(rec_wt_vja_y, rec_wt_vna_y)) <= WT_ASNAP)
+	{
+		f = 0;
+		if (rec_wt_vnt > rec_wt_vjt)
+			f = (T - rec_wt_vjt) / (rec_wt_vnt - rec_wt_vjt);
+		if (f < 0) f = 0;
+		if (f > 1) f = 1;
+		ang = Interp_View(rec_wt_vja, rec_wt_vna, f);
+	}
+	rec_wt_pitch = ang_x;
+	rec_wt_yaw   = Interp_Wrap(ang_y);
+	rec_wt_keys  = rec_wt_vjkeys;
+	rec_wt_psrel = (rec_wt_vjkeys & FSI_PSREL) ? TRUE : FALSE;
+	return TRUE;
+};
+
+// The recording's frame rate at the cursor, for `run fps now`.
+float() Watch_ViewHz =
+{
+	if (!rec_wt_asrc || rec_wt_vnl < 0)
+		return 0;
+	if (rec_wt_vnt <= rec_wt_vjt)
+		return 0;
+	return 1 / (rec_wt_vnt - rec_wt_vjt);
 };
 
 /*
@@ -2433,11 +2594,14 @@ void(float t) Watch_Seek =
 	if (t > rec_wt_t1) t = rec_wt_t1;
 	rec_wt_time = t;
 
-	// A seek can go either way, so both cursors are invalidated rather than
+	// A seek can go either way, so every cursor is invalidated rather than
 	// nudged.  Watch_RecSeek notices it is ahead of the target and restarts from
-	// the index; the view block is cleared so the next pick recomputes it.
-	rec_wt_vblk0 = rec_wt_vblk1 = 0;
-	rec_wt_vti   = -1;
+	// the index; the rest restart from zero or from their own index.
+	rec_wt_ccur    = -1;             // Patch 379: the parse cache and its cursors
+	rec_wt_snc     = 0;
+	rec_wt_dkc     = 0;
+	rec_wt_vkc     = 0;
+	rec_wt_vj      = -1;
 	rec_wt_evshown = -1;             // force Watch_Splits to rebuild
 	rec_wt_evfin   = -1;
 	rec_wt_sqshown = -1;             // and the segment column with it
@@ -2445,144 +2609,198 @@ void(float t) Watch_Seek =
 };
 
 /*
-  Fill the override block for this frame.
-
-  The position is interpolated between two ticks, exactly as the engine's own
-  prediction does, and BY TIMESTAMP rather than by index -- the recorder's own
-  comment measures real sample rates of 65, 64.6 and 43.5/s against a nominal
-  66.67, because a sample is written per received packet and a packet can carry
-  several usercmds.  Stepping by index would play those stretches at the wrong
-  speed.
-
-  The angles are NOT interpolated, and that is deliberate.  The .view carries one
-  line per rendered frame, so at the rate it was recorded the steps are already
-  finer than the display; and yaw wraps at +-180, where a naive lerp spins the
-  camera the long way round through a whole revolution.  Picking the right line
-  is both simpler and correct.
+  PATCH 379: tokenize rcur and rnext once per interval, and decide there what
+  the interval is drawn with: SNAP from the load table, else Interp_Fit, with
+  a vetoed snap and a hull change (the 8.5 u air shift) drawn LINEAR.
 */
-void() Watch_Sample =
+void() Watch_Parse =
 {
-	local float t, tick, frac, k, i, fl, kb;
-	local vector a, b, va, vb, mv, fwd, rgt;
-	local float ta, tb;
-	local float sidecar;
+	local float snap;
 
-	Watch_RecSeek(rec_wt_time);
-	if (rec_wt_rcur < rec_wt_rec0)
-		return;
+	rec_wt_ccur  = rec_wt_rcur;
+	rec_wt_cnext = rec_wt_rnext;
 
 	tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
-	ta  = stof(argv(WT_C_T));
-	a_x = stof(argv(WT_C_ORG + 0));
-	a_y = stof(argv(WT_C_ORG + 1));
-	a_z = stof(argv(WT_C_ORG + 2));
-	va_x = stof(argv(WT_C_VEL + 0));
-	va_y = stof(argv(WT_C_VEL + 1));
-	va_z = stof(argv(WT_C_VEL + 2));
-	fl  = stof(argv(WT_C_FLAGS));
+	rec_wt_cta   = stof(argv(WT_C_T));
+	rec_wt_ca    = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+	                stof(argv(WT_C_ORG + 2))];
+	rec_wt_cva   = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
+	                stof(argv(WT_C_VEL + 2))];
+	rec_wt_cpa   = [stof(argv(WT_C_PITCH)), stof(argv(WT_C_YAW)), 0];
+	rec_wt_cfla  = stof(argv(WT_C_FLAGS));
+	rec_wt_ckeys = stof(argv(WT_C_KEYS));
+	rec_wt_cnorm = '0 0 1';
+	rec_wt_cmv   = '0 0 0';
+	if (rec_wt_v4)
+	{
+		rec_wt_cnorm = [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
+		                stof(argv(WT_C_NORM + 2))];
+		rec_wt_cmv   = [stof(argv(WT_C_MOVE)), stof(argv(WT_C_MOVE + 1)), 0];
+	}
 
-	frac = 0;
+	rec_wt_ctb  = rec_wt_cta;
+	rec_wt_cb   = rec_wt_ca;
+	rec_wt_cvb  = rec_wt_cva;
+	rec_wt_cpb  = rec_wt_cpa;
+	rec_wt_cflb = rec_wt_cfla;
 	if (rec_wt_rnext >= rec_wt_rec0)
 	{
 		tokenize(bufstr_get(rec_wt_rec, rec_wt_rnext));
-		tb  = stof(argv(WT_C_T));
-		b_x = stof(argv(WT_C_ORG + 0));
-		b_y = stof(argv(WT_C_ORG + 1));
-		b_z = stof(argv(WT_C_ORG + 2));
-		vb_x = stof(argv(WT_C_VEL + 0));
-		vb_y = stof(argv(WT_C_VEL + 1));
-		vb_z = stof(argv(WT_C_VEL + 2));
-
-		if (tb > ta)
-		{
-			frac = (rec_wt_time - ta) / (tb - ta);
-			if (frac < 0) frac = 0;
-			if (frac > 1) frac = 1;
-		}
-		a  = a  + (b  - a)  * frac;
-		va = va + (vb - va) * frac;
+		rec_wt_ctb  = stof(argv(WT_C_T));
+		rec_wt_cb   = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+		               stof(argv(WT_C_ORG + 2))];
+		rec_wt_cvb  = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
+		               stof(argv(WT_C_VEL + 2))];
+		rec_wt_cpb  = [stof(argv(WT_C_PITCH)), stof(argv(WT_C_YAW)), 0];
+		rec_wt_cflb = stof(argv(WT_C_FLAGS));
 	}
 
-	rec_wt_org      = a;
-	rec_wt_vel      = va;
-	rec_wt_onground = (fl & WT_F_ONGROUND) ? TRUE : FALSE;
-	rec_wt_ducked   = (fl & WT_F_DUCKED)   ? TRUE : FALSE;
+	rec_wt_cfit = INTERP_LINEAR;
+	if (rec_wt_ctb > rec_wt_cta)
+	{
+		if (rec_wt_snc > 0)
+		if (rec_wt_snt[rec_wt_snc - 1] >= rec_wt_cta)
+			rec_wt_snc = 0;
+		while (rec_wt_snc < rec_wt_snn)
+		{
+			if (rec_wt_snt[rec_wt_snc] >= rec_wt_cta)
+				break;
+			rec_wt_snc = rec_wt_snc + 1;
+		}
+		snap = FALSE;
+		if (rec_wt_snc < rec_wt_snn)
+		if (rec_wt_snt[rec_wt_snc] == rec_wt_cta)
+			snap = TRUE;
+		if (snap)
+			rec_wt_cfit = INTERP_SNAP;
+		else
+		{
+			rec_wt_cfit = Interp_Fit(rec_wt_ca, rec_wt_cva, rec_wt_cb, rec_wt_cvb,
+			                         rec_wt_ctb - rec_wt_cta);
+			if (rec_wt_cfit == INTERP_SNAP)
+				rec_wt_cfit = INTERP_LINEAR;
+			if ((rec_wt_cfla & WT_F_DUCKED) != (rec_wt_cflb & WT_F_DUCKED))
+				rec_wt_cfit = INTERP_LINEAR;
+		}
+	}
+
+	// The duck fraction at ta: a slide covering ta (ending exactly on it counts),
+	// else the hull bit.
+	if (rec_wt_dkc > 0)
+	if (rec_wt_dke[rec_wt_dkc - 1] >= rec_wt_cta)
+		rec_wt_dkc = 0;
+	while (rec_wt_dkc < rec_wt_dkn)
+	{
+		if (rec_wt_dke[rec_wt_dkc] >= rec_wt_cta)
+			break;
+		rec_wt_dkc = rec_wt_dkc + 1;
+	}
+	rec_wt_cfa = (rec_wt_cfla & WT_F_DUCKED) ? 1 : 0;
+	if (rec_wt_dkc < rec_wt_dkn)
+	if (rec_wt_dks[rec_wt_dkc] <= rec_wt_cta)
+		rec_wt_cfa = Interp_Smooth(rec_wt_dku[rec_wt_dkc]
+		                           + (rec_wt_cta - rec_wt_dks[rec_wt_dkc])
+		                             * rec_wt_dkr[rec_wt_dkc]);
+};
+
+/*
+  Fill the override block for this frame.
+
+  Interpolated BY TIMESTAMP rather than by index -- a sample is written per
+  received packet, and measured rates are 65, 64.6 and 43.5/s against a nominal
+  66.67.  PATCH 379: the feet follow the interval's verdict (Watch_Parse): a
+  Hermite through both samples' recorded velocities, a lerp, or on a snap a jump
+  at the midpoint with each half moving at its own sample's velocity.  The eye
+  follows the duck-slide table.  Angles come from the .view on the knot map
+  where a knot covers T (Watch_ViewAngles), else from the .rec pair on the
+  shortest arc, holding either side of a snap or a step over WT_ASNAP.
+*/
+void() Watch_Sample =
+{
+	local float t, tick, i, s, dt, f, db, reseek;
+	local vector fwd, rgt, ang;
+
+	// Inside the interval already parsed: no seek and no tokenize.
+	reseek = TRUE;
+	if (rec_wt_ccur >= rec_wt_rec0)
+	if (rec_wt_ccur == rec_wt_rcur)
+	if (rec_wt_time >= rec_wt_cta)
+	if (rec_wt_time < rec_wt_ctb || rec_wt_cnext < rec_wt_rec0)
+		reseek = FALSE;
+	if (reseek)
+	{
+		Watch_RecSeek(rec_wt_time);
+		if (rec_wt_rcur < rec_wt_rec0)
+			return;
+		if (rec_wt_rcur != rec_wt_ccur || rec_wt_rnext != rec_wt_cnext)
+			Watch_Parse();
+	}
+
+	s  = 0;
+	dt = rec_wt_ctb - rec_wt_cta;
+	if (dt > 0)
+	{
+		s = (rec_wt_time - rec_wt_cta) / dt;
+		if (s < 0) s = 0;
+		if (s > 1) s = 1;
+	}
+
+	if (dt <= 0)
+		rec_wt_org = rec_wt_ca;
+	else if (rec_wt_cfit == INTERP_SNAP)
+	{
+		if (s < 0.5)
+			rec_wt_org = rec_wt_ca + rec_wt_cva * (rec_wt_time - rec_wt_cta);
+		else
+			rec_wt_org = rec_wt_cb - rec_wt_cvb * (rec_wt_ctb - rec_wt_time);
+	}
+	else if (rec_wt_cfit == INTERP_HERMITE)
+		rec_wt_org = Interp_Hermite(rec_wt_ca, rec_wt_cva, rec_wt_cb, rec_wt_cvb, dt, s);
+	else
+		rec_wt_org = rec_wt_ca + (rec_wt_cb - rec_wt_ca) * s;
+	rec_wt_vel      = rec_wt_cva + (rec_wt_cvb - rec_wt_cva) * s;
+	rec_wt_onground = (rec_wt_cfla & WT_F_ONGROUND) ? TRUE : FALSE;
+	rec_wt_ducked   = (rec_wt_cfla & WT_F_DUCKED)   ? TRUE : FALSE;
+	rec_wt_fit      = rec_wt_cfit;
+
+	// The eye: a slide covering T, else from ta's fraction to rnext's hull bit
+	// across the interval (an air duck: the head drops 8.5 u, as it did).
+	db = (rec_wt_cflb & WT_F_DUCKED) ? 1 : 0;
+	f  = -1;
+	for (i = rec_wt_dkc; i < rec_wt_dkn; i = i + 1)
+	{
+		if (rec_wt_dks[i] > rec_wt_time)
+			break;
+		if (rec_wt_dke[i] >= rec_wt_time)
+		{
+			f = Interp_Smooth(rec_wt_dku[i] + (rec_wt_time - rec_wt_dks[i]) * rec_wt_dkr[i]);
+			break;
+		}
+	}
+	if (f < 0)
+		f = rec_wt_cfa + (db - rec_wt_cfa) * s;
+	rec_wt_eyeh = rec_wt_vh + (rec_wt_dvh - rec_wt_vh) * f;
 
 	/*
-	  v4: the plane, the ramp contact and the wishdir.
-
-	  THE PLANE IS NOT INTERPOLATED between the two bracketing samples, and the
-	  reason is the same one the angles are not: it is a direction, and a lerp of
-	  two unit vectors is neither a unit vector nor on the shorter arc.  Down a
-	  curved ramp the normal turns by a fraction of a degree per tick and the
-	  nearest one is right to well inside what the bar can show; at a ramp edge it
-	  changes discontinuously, and a blend across that would draw a target for a
-	  plane that was never there.
-
-	  The wishdir is rebuilt the way AirMove builds it -- the recorded usercmd's
-	  forward and side signs against the recorded yaw -- rather than taken from
-	  input_movevalues, which CSQC_Input_Frame zeroes while a replay is up
-	  precisely so the frozen player cannot be nudged.  It is finished below,
-	  after the .view has supplied the yaw.
+	  v4: the plane, the ramp contact and the wishdir, all from rcur and not
+	  interpolated: the plane is a direction (a lerp of two normals is neither
+	  unit nor on the short arc) and changes discontinuously at a ramp edge.
 	*/
+	rec_wt_gnorm = rec_wt_cnorm;
+	rec_wt_rc    = FALSE;
 	if (rec_wt_v4)
-	{
-		// Re-tokenize: the interpolation above left argv() holding rnext, and
-		// the plane belongs to the sample the clock is actually ON.
-		tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
-		rec_wt_gnorm = [stof(argv(WT_C_NORM + 0)),
-		               stof(argv(WT_C_NORM + 1)),
-		               stof(argv(WT_C_NORM + 2))];
-		rec_wt_rc    = (fl & WT_F_RAMP) ? TRUE : FALSE;
-		mv_x = stof(argv(WT_C_MOVE + 0));
-		mv_y = stof(argv(WT_C_MOVE + 1));
-	}
-	else
-	{
-		rec_wt_gnorm = '0 0 1';
-		rec_wt_rc    = FALSE;
-		mv = '0 0 0';
-	}
+		rec_wt_rc = (rec_wt_cfla & WT_F_RAMP) ? TRUE : FALSE;
 
 	/*
 	  ---- the angles and the keys ------------------------------------------
 
-	  BUILD 43 -- THE APPROACH HAD NO ANGLES, AND THE FILE ALWAYS DID.
-
-	  The report: "demos don't have the starting viewangles before they leave
-	  the start zone, the angle is looking at the direction of the demo when it
-	  leaves the start zone, and then viewangles play back correctly."
-
-	  Exactly right, and the mechanism is the two lines below.  `tick` is
-	  clamped at 0 for the whole negative-t approach, so Watch_ViewBlock(0) finds
-	  the block of frames at run tick 0 -- the FIRST recorded frame -- and the
-	  sub-tick pick lands on its first line every frame, because the fraction of
-	  a clamped tick is always zero.  So the camera holds the angle the run
-	  started at, right up until the clock reaches 0 and the sidecar takes over.
-	  rec_wt_keys was stuck the same way.
-
-	  THE SIDECAR GENUINELY HAS NO COVERAGE THERE and cannot be made to without
-	  a format change: it opens on the TF_RECORDING edge, which IS leaving the
-	  start zone, and its join key -- STAT_FS_TIMERTICKS -- reads 0 or, after a
-	  stopped attempt, the PREVIOUS run's finish tick while armed.  A sidecar
-	  opened earlier would carry a run clock that goes backwards, which is a
-	  fault reccheck.py already refuses.
-
-	  BUT THE .rec HAS COVERED IT SINCE BUILD 18.  SV_RecPad stores v_angle_x
-	  and v_angle_y into the pre-start ring every tick (sv_timer.qc:1632-1633),
-	  and SV_RecOpen flushes the ring in with negative timestamps.  The 129
-	  padding rows of the surf_fiellu run are a coherent two seconds of
-	  pre-strafing left with the pitch easing down -- real angles, not a spawn
-	  default.  So the fix is to take the fallback branch that already exists for
-	  a file with NO sidecar, and take it for the part of a file the sidecar does
-	  not reach.  No writer change, no format change, and it repairs every
-	  recording already on disk.
-
-	  WHAT IT COSTS, and it is worth stating rather than discovering: across the
-	  approach the camera is tick-rate rather than frame-rate, and the key
-	  display is the .rec's coarser mask with no +left/+right and no FSI_PSREL.
-	  That is already the accepted trade for a whole file without a sidecar
-	  (:1565-1566), and during the approach you are walking or standing.
+	  Before t = 0 the sidecar has no lines (it opens on the TF_RECORDING edge),
+	  but the .rec's pad has carried real per-tick angles since build 18
+	  (SV_RecPad), so the approach and a file with no .view use the .rec's
+	  columns: tick-rate, 0.1 degree, no +left/+right and no FSI_PSREL.  Their
+	  yaw may be written 270 against -89.5 (the first pad sample after a spawn);
+	  Interp_View takes the shortest arc and wraps, so HUD_UpdateTurn never sees
+	  a 359.5-degree turn.
 	*/
 	tick = rec_wt_time / rec_wt_tickrate;
 	if (tick < 0)
@@ -2590,85 +2808,41 @@ void() Watch_Sample =
 
 	rec_wt_keys  = 0;
 	rec_wt_psrel = FALSE;
-
-	// The sidecar covers this frame only if there IS one and the run clock has
-	// started.  Both halves, in one place, so the branch below reads as the one
-	// question it is.
-	sidecar = (rec_wt_view >= 1 && rec_wt_time >= 0);
-
-	if (sidecar)
+	rec_wt_asrc  = Watch_ViewAngles();
+	if (!rec_wt_asrc)
 	{
-		Watch_ViewBlock(floor(tick));
-
-		k = rec_wt_vblk1 - rec_wt_vblk0;
-		if (k < 1)
-			k = 1;
-
-		// Where inside the tick we are, mapped onto the frames that tick held.
-		i = rec_wt_vblk0 + floor((tick - floor(tick)) * k);
-		if (i >= rec_wt_vblk1) i = rec_wt_vblk1 - 1;
-		if (i < rec_wt_view0)  i = rec_wt_view0;
-
-		if (i < rec_wt_viewn)
+		if (rec_wt_cfit == INTERP_SNAP
+		 || fabs(Interp_Arc(rec_wt_cpa_x, rec_wt_cpb_x)) > WT_ASNAP
+		 || fabs(Interp_Arc(rec_wt_cpa_y, rec_wt_cpb_y)) > WT_ASNAP)
 		{
-			tokenize(bufstr_get(rec_wt_view, i));
-			rec_wt_pitch = stof(argv(WT_V_PITCH));
-			rec_wt_yaw   = stof(argv(WT_V_YAW));
-			kb = stof(argv(WT_V_KEYS));
-			rec_wt_keys  = kb;
-			rec_wt_psrel = (kb & FSI_PSREL) ? TRUE : FALSE;
+			if (s < 0.5)
+				ang = rec_wt_cpa;
+			else
+				ang = rec_wt_cpb;
 		}
-	}
-	else
-	{
-		// No sidecar, or before the run clock started: the .rec's own angle
-		// columns are tick-rate and lack +left/+right entirely, but they are
-		// better than a fixed camera.
-		tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
-		rec_wt_pitch = stof(argv(WT_C_PITCH));
-		rec_wt_yaw   = stof(argv(WT_C_YAW));
-		rec_wt_keys  = stof(argv(WT_C_KEYS));
-
-		/*
-		  WRAPPED TO (-180, 180], and only on this branch.
-
-		  The .rec's yaw is e.v_angle_y verbatim, and the engine writes that in
-		  whichever range it happens to hold: the FIRST padding sample after a
-		  spawn or a teleport is still in 0..360 while every sample after it is
-		  in -180..180.  Your surf_fiellu run opens 270.0 then -89.5, which are
-		  the same angle written two ways.
-
-		  setproperty does not care, but anything that DIFFERENCES yaw does, and
-		  HUD_UpdateTurn differences it every frame -- so without this the first
-		  frame of a replay reports a 359.5-degree turn.  One statement, no loop,
-		  and it also cleans up the v3-file path that has always taken this
-		  branch for its whole length.
-		*/
-		rec_wt_yaw = Interp_Wrap(rec_wt_yaw);
+		else
+			ang = Interp_View(rec_wt_cpa, rec_wt_cpb, s);
+		rec_wt_pitch = Interp_Wrap(ang_x);
+		rec_wt_yaw   = Interp_Wrap(ang_y);
+		rec_wt_keys  = rec_wt_ckeys;
 	}
 
 	/*
-	  The wishdir, finished now the yaw is known.
-
-	  Flattened BEFORE normalising, which is what AirMove does and is why looking
-	  up a ramp does not change where you accelerate -- HUD_WishDir says the same
-	  thing about the live path in the same words.  Built from the .rec's yaw
-	  column rather than the .view's, deliberately: the usercmd's forward and side
-	  were resolved against the angle the SERVER simulated the tick with, and
-	  pairing them with the finer per-frame angle would produce a wishdir the
-	  physics never used.
+	  The wishdir, the way AirMove builds it: the usercmd's forward and side
+	  against the .rec's yaw (the angle the server simulated the tick with, not
+	  the finer .view one), flattened BEFORE normalising.  input_movevalues is
+	  zeroed while a replay is up, so it is rebuilt here.
 	*/
 	rec_wt_wish = '0 0 0';
 	if (rec_wt_v4)
-	if (mv_x != 0 || mv_y != 0)
+	if (rec_wt_cmv_x != 0 || rec_wt_cmv_y != 0)
 	{
-		tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
-		makevectors([0, stof(argv(WT_C_YAW)), 0]);
+		makevectors([0, rec_wt_cpa_y, 0]);
 		fwd = v_forward;  fwd_z = 0;
 		rgt = v_right;    rgt_z = 0;
 		if (vlen(fwd) > 0.001) fwd = normalize(fwd);
 		if (vlen(rgt) > 0.001) rgt = normalize(rgt);
-		rec_wt_wish = fwd * mv_x + rgt * mv_y;
+		rec_wt_wish = fwd * rec_wt_cmv_x + rgt * rec_wt_cmv_y;
 		rec_wt_wish_z = 0;
 		if (vlen(rec_wt_wish) < 0.001)
 			rec_wt_wish = '0 0 0';
@@ -3539,19 +3713,10 @@ void() Watch_Path2D =
 };
 
 // The camera origin; `replay trace` prints this, so it is what was drawn.
+// Patch 379: rec_wt_eyeh slides with the duck (Watch_Sample).
 vector() Watch_Eye =
 {
-	local float eye;
-
-	// 64 standing, 46 ducked -- Source's VEC_VIEW and VEC_DUCK_VIEW, published
-	// to serverinfo by pm_viewheight / pm_duckviewheight.  The mid-duck slide
-	// between them is NOT recoverable: the .rec stores the duck STATE and not
-	// the eye, so a replay of a crouch transition steps where the original slid.
-	// Four frames, once per duck, and inventing a spline would be a guess.
-	eye = serverkeyfloat(rec_wt_ducked ? "pm_duckviewheight" : "pm_viewheight");
-	if (eye <= 0)
-		eye = rec_wt_ducked ? 46 : 64;
-	return rec_wt_org + [0, 0, eye];
+	return rec_wt_org + [0, 0, rec_wt_eyeh];
 };
 
 void() Watch_Camera =
@@ -3714,6 +3879,7 @@ float(string path) Watch_Open =
 	rec_wt_paused = FALSE;
 	rec_wt_rcur   = -1;
 	rec_wt_lastreal = cltime;
+	rec_wt_clkerr   = 0;
 	rec_wt_open   = TRUE;
 
 	// The two passes that cost anything at load, and between them the reason both
@@ -4148,12 +4314,12 @@ void(vector scr) Watch_Chrome =
   the three that are NOT in there and cannot usefully be:
 
   THE RUN'S OWN FRAME RATE, LIVE.  The .view sidecar is one line per RENDERED
-  frame and the reader already brackets the lines belonging to the tick it is
-  drawing (rec_wt_vblk0/vblk1, computed in Watch_ViewBlock for the sub-tick
-  angle pick).  So the count in that bracket, over the tick length, is the frame
-  rate the run was actually being played at AT THIS MOMENT -- not an average over
-  the file, which is a different and much less interesting number.  Watch it
-  against the scrub and you can see where the recording's own machine struggled.
+  frame and the reader already brackets the two lines it is drawing between
+  (Watch_ViewHz, Patch 379: one over their spacing on the knot map).  So that is
+  the frame rate the run was actually being played at AT THIS MOMENT -- not an
+  average over the file, which is a different and much less interesting number.
+  Watch it against the scrub and you can see where the recording's own machine
+  struggled.
 
   THE .rec's MEASURED SAMPLE RATE.  The nominal rate is 66.67, and the recorder's
   own comment measures 65, 64.6 and 43.5 on real files, because a sample is
@@ -4255,7 +4421,7 @@ void(vector scr) Watch_Info =
 
 	tick   = rec_wt_tickrate;
 	if (tick <= 0) tick = PM_TICK;
-	livehz = (rec_wt_vblk1 - rec_wt_vblk0) / tick;
+	livehz = Watch_ViewHz();
 
 	s = rec_wt_path;
 	if (strlen(s) > 34)
@@ -4451,6 +4617,22 @@ void() Watch_Frame =
 	dt = cltime - rec_wt_lastreal;
 	rec_wt_lastreal = cltime;
 	dtcl = dt;
+	// Patch 379: cltime is a float32 of map uptime (0.24 ms steps after an hour,
+	// 2 ms after 4.5); clframetime is exact but the frame pacer moves it off the
+	// cltime delta by up to half a frame (cl_main.c:7572).  The difference is
+	// banked and paid once past half a frame (missed time, an unrendered
+	// stretch), so the clock cannot drift from cltime.  A per-frame choice
+	// between the two drifts whenever it is not the same choice every frame.
+	if (clframetime > 0)
+	{
+		rec_wt_clkerr = rec_wt_clkerr + dt - clframetime;
+		dt = clframetime;
+		if (fabs(rec_wt_clkerr) > clframetime * 0.5 + cltime * 0.00000024)
+		{
+			dt = dt + rec_wt_clkerr;
+			rec_wt_clkerr = 0;
+		}
+	}
 	if (dt < 0 || dt > 0.5)             // a hitch, a load, or the first frame
 		dt = 0;
 
@@ -4744,6 +4926,9 @@ void() Watch_Status =
 	else
 		print("  view none\n");
 	print(sprintf("  load %.0f ms  view map %.0f ms\n", rec_wt_loadms, rec_wt_vmapms));
+	print(sprintf("  now angles %s  fit %g  eye %.2f  view line %g (knot %g)\n",
+	              rec_wt_asrc ? "view" : "rec", rec_wt_fit, rec_wt_eyeh, rec_wt_vj,
+	              rec_wt_vkc));
 
 	/*
 	  BUILD 25: the same three rates the info panel draws, so the console and the
@@ -4760,7 +4945,7 @@ void() Watch_Status =
 		// and two zeros would read as one.
 		if (rec_wt_view >= 1)
 			print(sprintf("  run fps %.0f now / %.0f avg   yours %.0f   rec %.1f Hz of %.1f\n",
-			              (rec_wt_vblk1 - rec_wt_vblk0) / tick,
+			              Watch_ViewHz(),
 			              (span > 0.001) ? ((rec_wt_viewn - rec_wt_view0) / span) : 0,
 			              rec_wt_fps,
 			              (span > 0.001) ? (rec_wt_nsamp / span) : 0,
@@ -4771,37 +4956,6 @@ void() Watch_Status =
 			              (span > 0.001) ? (rec_wt_nsamp / span) : 0,
 			              1 / tick));
 	}
-};
-
-// 378 draws a lerp; this is the verdict 379 draws the current interval with.
-float() Watch_TraceFit =
-{
-	local float ta, tb, fa, fb, i, fit;
-	local vector a, b, va, vb;
-
-	if (rec_wt_rnext < rec_wt_rec0)
-		return INTERP_LINEAR;
-	tokenize(bufstr_get(rec_wt_rec, rec_wt_rcur));
-	ta = stof(argv(WT_C_T));
-	a  = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
-	va = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
-	fa = stof(argv(WT_C_FLAGS));
-	tokenize(bufstr_get(rec_wt_rec, rec_wt_rnext));
-	tb = stof(argv(WT_C_T));
-	b  = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
-	vb = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
-	fb = stof(argv(WT_C_FLAGS));
-	if (tb <= ta)
-		return INTERP_LINEAR;
-	for (i = 0; i < rec_wt_snn; i = i + 1)
-		if (rec_wt_snt[i] == ta)
-			return INTERP_SNAP;
-	fit = Interp_Fit(a, va, b, vb, tb - ta);
-	if (fit == INTERP_SNAP)
-		fit = INTERP_LINEAR;                    // vetoed at load
-	if ((fa & WT_F_DUCKED) != (fb & WT_F_DUCKED))
-		fit = INTERP_LINEAR;
-	return fit;
 };
 
 /*
@@ -4832,8 +4986,7 @@ void(float n, float dt) Watch_Trace =
 		e = Watch_Eye();
 		print(sprintf("wtr %.6f %.3f %.3f %.3f ", rec_wt_time, e_x, e_y, e_z),
 		      sprintf("%.3f %.3f %g %g %.3f\n", rec_wt_pitch, rec_wt_yaw,
-		              (rec_wt_view >= 1 && rec_wt_time >= 0) ? 1 : 0,
-		              Watch_TraceFit(), e_z - rec_wt_org_z));
+		              rec_wt_asrc, rec_wt_fit, e_z - rec_wt_org_z));
 	}
 	print("wtre\n");
 	Watch_Seek(t0);

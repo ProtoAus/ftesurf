@@ -9,10 +9,14 @@ the analyser for its `replay trace` dumps.  Patches 378 and 379.
         ...and compares them with every `replay status` block for REC in LOG
     python tools/watchtrace.py --sim new|old REC --at T --n N --dt DT [--noview]
         the `wtr` lines cl_watch.qc should print (old = 378's drawing)
-    python tools/watchtrace.py --analyse LOG [--gamedir ftesurf]
-        P1-P9 of p379wsm.cfg over every wtr/wtf block in LOG
+    python tools/watchtrace.py --analyse LOG [--control | --new] [--gamedir ftesurf]
+        P1-P10 of p379wsm.cfg / P1, P8 of p379wsmfps.cfg over LOG's last run, a
+        verdict per prediction, exit 0 when all are as registered.  A log named
+        *ctl* is judged as the 378 control unless --new says otherwise
     python tools/watchtrace.py --compare new|old LOG [--gamedir ftesurf]
         every wtr line in LOG against the simulator: MATCH or SUSPECT
+    python tools/watchtrace.py --fixture OUT
+        writes p379wsm's rewind fixture (ftesurf/data/p379/rewind.rec)
     python tools/watchtrace.py --windows REC
         the snap, unduck and air-duck times a harness window wants
     python tools/watchtrace.py --corpus DIR
@@ -316,8 +320,11 @@ def scan_rec(path):
             ph = 1 if prev.fl & F_DUCKED else 0
             pkey = 1 if prev.keys & FSI_DUCK else 0
             if dkreset:
+                # a rewind: no slide spans it; a running release slide stops
                 phase = 0
-            if h and not ph:
+                if m.dke and m.dke[-1] > prev.t:
+                    m.dke[-1] = prev.t
+            elif h and not ph:
                 if phase == 1:
                     seg(press, cur.t if pg else prev.t, 0, f32(1 / WT_DUCK_T))
                     phase = 0
@@ -722,29 +729,41 @@ def wtr_line(r):
 
 # ---- the analyser ---------------------------------------------------------
 
-MARK = re.compile(r'(?:^|\s)(wtrb|wtre|wtr|wtfb|wtfe|wtf)\s(.*)$')
+MARK = re.compile(r'(?:^|\s)(wtrb|wtre|wtr|wtfb|wtfe|wtf)(?:\s(.*))?$')
+RUN = re.compile(r'=== p379wsm\w*: replay smoothing')
+
+
+def run_lines(path):
+    """The log's last run.  The engine appends (log.c opens "ab"), so a log
+    not deleted between runs holds several."""
+    with open(path, 'r', errors='replace') as f:
+        lines = [l.rstrip('\r\n') for l in f]
+    starts = [i for i, l in enumerate(lines) if RUN.search(l)]
+    if len(starts) > 1:
+        print("note: %s holds %d runs; reading the last (line %d)" %
+              (path, len(starts), starts[-1] + 1))
+    return lines[starts[-1]:] if starts else lines
 
 
 def parse_log(path):
     """[(kind, header tokens, [row tokens])] for every wtr / wtf block."""
     blocks = []
     cur = None
-    with open(path, 'r', errors='replace') as f:
-        for line in f:
-            mm = MARK.search(line.rstrip('\r\n'))
-            if not mm:
-                continue
-            tag, rest = mm.group(1), mm.group(2).split()
-            if tag in ('wtrb', 'wtfb'):
-                cur = [tag[:3], rest, []]
-                blocks.append(cur)
-            elif tag in ('wtre', 'wtfe'):
-                cur = None
-            elif cur is not None and tag == cur[0]:
-                try:
-                    cur[2].append([float(x) for x in rest])
-                except ValueError:
-                    pass
+    for line in run_lines(path):
+        mm = MARK.search(line)
+        if not mm:
+            continue
+        tag, rest = mm.group(1), (mm.group(2) or '').split()
+        if tag in ('wtrb', 'wtfb'):
+            cur = [tag[:3], rest, []]
+            blocks.append(cur)
+        elif tag in ('wtre', 'wtfe'):
+            cur = None
+        elif cur is not None and tag == cur[0]:
+            try:
+                cur[2].append([float(x) for x in rest])
+            except ValueError:
+                pass
     return blocks
 
 
@@ -828,7 +847,6 @@ def analyse_wtr(rows, ref, dtn, view):
     g = m.gravity
     R = []
     zero = 0
-    nturn = 0
     anom = {}
     stray = 0
     curv = []
@@ -849,11 +867,10 @@ def analyse_wtr(rows, ref, dtn, view):
         psnap = ref.snap_iv(p[0])
         ra, rb = yrate(p[0]), yrate(q[0])
         dy = abs(arc(p[5], q[5]))
-        if ra is not None and rb is not None and dy < WT_ASNAP and                 not ref.near_snap(p[0]) and not ref.near_snap(q[0]):
-            rate = max(ra, rb)
+        if ra is not None and rb is not None and dy < WT_ASNAP and \
+                not ref.near_snap(p[0]) and not ref.near_snap(q[0]):
             if min(ra, rb) > 100:
-                nturn += 1
-                R.append(dy / (rate * dT))
+                R.append(dy / (max(ra, rb) * dT))
                 if dy < 1e-4:
                     zero += 1
         v = ref.vel(q[0])
@@ -889,9 +906,8 @@ def analyse_wtr(rows, ref, dtn, view):
                 z0, z1, z2 = o[3] - o[8], p2[3] - p2[8], q[3] - q[8]
                 zdd = 2 * ((z2 - z1) / h2 - (z1 - z0) / h1) / (h1 + h2)
                 curv.append(abs(zdd) / g)
-    out['turn_frames'] = nturn
-    out['R'] = max(R) if R else None
-    out['zero'] = (zero / nturn) if nturn else None
+    out['R'] = R
+    out['zero'] = zero
     out['snaps'] = anom
     out['stray'] = stray
     out['curv'] = max(curv) if curv else None
@@ -900,13 +916,13 @@ def analyse_wtr(rows, ref, dtn, view):
 
 
 def unduck_metric(rows, ref):
-    """P4 over the ground unducks inside a block: max per-frame eye change and
-    the RMS against the S-curve anchored on the hull-fall sample."""
+    """P4 over the ground unducks a block covers whole: max per-frame eye
+    change and the RMS against the S-curve anchored on the hull-fall sample."""
     m = ref.m
     res = []
     for (t, pt) in m.unducks:
         sel = [r for r in rows if t - 0.3 <= r[0] <= t + 0.05]
-        if len(sel) < 3:
+        if len(sel) < 3 or sel[0][0] > t - WT_UNDUCK_T or sel[-1][0] < t:
             continue
         mx = max(abs(sel[k][8] - sel[k - 1][8]) for k in range(1, len(sel)))
         se = 0.0
@@ -924,12 +940,13 @@ def unduck_metric(rows, ref):
 
 
 def airduck_metric(rows, ref):
-    """P5: over each air duck in the block, the head's rise against the
-    recorded vertical velocity, and its largest one-frame drop."""
+    """P5: over each air duck the block covers whole, the head's rise against
+    the recorded vertical velocity, and its largest one-frame drop.  A block
+    that only clips one (a snap window) would read a net of 0."""
     res = []
     for (ta, tb) in ref.m.airducks:
         sel = [r for r in rows if ta - 0.005 <= r[0] <= tb + 0.02]
-        if len(sel) < 3:
+        if len(sel) < 3 or sel[0][0] > ta or sel[-1][0] < tb + 0.01:
             continue
         rise = 0.0
         drop = 0.0
@@ -983,6 +1000,11 @@ def median(x):
     return x[n // 2] if n % 2 else 0.5 * (x[n // 2 - 1] + x[n // 2])
 
 
+def pct(x, q):
+    """x sorted: its q-quantile, nearest rank."""
+    return x[min(len(x) - 1, int(q * len(x)))]
+
+
 def resolve(p, gamedir):
     for base in (gamedir, '.', os.path.join('ftesurf')):
         q = os.path.join(base, p)
@@ -991,10 +1013,127 @@ def resolve(p, gamedir):
     return p
 
 
-def analyse(log, gamedir):
+def file_tag(path):
+    for t in ('kitsune', 'monster_jam'):
+        if t in path:
+            return t
+    return os.path.basename(path)
+
+
+def speed(dt):
+    return {0.004: '1x', 0.001: '0.25x', 0.0: 'exact'}.get(dt, 'dt %g' % dt)
+
+
+class Gates(object):
+    """The pre-registered predictions of p379wsm.cfg / p379wsmfps.cfg.
+    mode 'disc': 379 passes and the 378 control fails; 'both': both pass;
+    'new': 379 passes, the control's value is recorded."""
+
+    def __init__(self):
+        self.rows = []
+
+    def add(self, pid, arm, value, ok, rule, mode):
+        self.rows.append((pid, arm, value, ok, rule, mode))
+
+    def report(self, control):
+        print("\nVERDICTS, judged as %s" %
+              ("the 378 CONTROL (discriminating gates must FAIL)" if control
+               else "379 (every gate must PASS)"))
+        bad = 0
+        for pid, arm, value, ok, rule, mode in sorted(self.rows,
+                                                      key=lambda r: (int(r[0][1:]), r[1])):
+            if not control:
+                v = 'PASS' if ok else 'FAIL'
+                bad += 0 if ok else 1
+            elif mode == 'disc':
+                v = 'fails, as registered' if not ok else 'PASSES: NOT A CONTROL'
+                bad += 1 if ok else 0
+            elif mode == 'both':
+                v = 'PASS' if ok else 'FAIL'
+                bad += 0 if ok else 1
+            else:
+                v = 'recorded (%s)' % ('pass' if ok else 'fail')
+            print("  %-4s %-26s %-52s %-22s [%s]" % (pid, arm, value, v, rule))
+        if not self.rows:
+            print("SUSPECT  nothing to judge: no gated block in the log")
+            return 1
+        print("%s  %d verdict(s), %d not as registered" %
+              ('AS REGISTERED' if not bad else 'NOT AS REGISTERED', len(self.rows), bad))
+        return 1 if bad else 0
+
+
+def wtr_gates(G, tag, view, dt, a):
+    arm = '%s %s %s' % (tag, 'view' if view else 'noview', speed(dt))
+    known = tag in ('kitsune', 'monster_jam')
+    if tag == 'kitsune' and a['R'] and (not view or dt == 0.001):
+        R = max(a['R'])
+        z = a['zero'] / float(len(a['R']))
+        G.add('P1', arm, 'R %.2f  zero-step %.3f  (%d frames)' % (R, z, len(a['R'])),
+              R <= 1.5 and z < 0.01, 'R <= 1.5, zero < 0.01', 'disc')
+    if known and a['snaps']:
+        off = [x for x in a['snaps'] if (x[1] != 1 if x[2] > 16 else x[1] > 1)]
+        G.add('P2', arm, '%d snap(s), jump frames %s, %d off' %
+              (len(a['snaps']), sorted(set(x[1] for x in a['snaps'])), len(off)),
+              not off, '1 per snap; 0 or 1 under 16 u', 'disc')
+    if tag == 'kitsune' and a['curv'] is not None:
+        G.add('P3', arm, "max |z''|/g %.2f" % a['curv'], a['curv'] <= 3, '<= 3', 'disc')
+    if tag == 'monster_jam' and a['unduck']:
+        lim = 0.2 if dt <= 0.001 else 0.8
+        mx = max(x[1] for x in a['unduck'])
+        rms = max(x[2] for x in a['unduck'])
+        G.add('P4', arm, '%d unduck(s): step %.3f u  rms %.3f u' % (len(a['unduck']), mx, rms),
+              mx <= lim and rms < 0.5, 'step <= %g u, rms < 0.5 u' % lim, 'disc')
+    if known and a['airduck']:
+        off = [x for x in a['airduck']
+               if not (x[2] < 1 and x[3] <= 8.5 * dt / (x[1] - x[0]) + 1 and
+                       abs(x[4] + 8.5) <= 0.5)]
+        G.add('P5', arm, '%d duck(s): rise %.2f drop %.2f net %.2f..%.2f' %
+              (len(a['airduck']), max(x[2] for x in a['airduck']),
+               max(x[3] for x in a['airduck']), min(x[4] for x in a['airduck']),
+               max(x[4] for x in a['airduck'])),
+              not off, 'rise < 1, drop <= 8.5dt/iv+1, net -8.5+-0.5', 'disc')
+    if tag == 'kitsune' and view and len(a['bias']) >= 5:
+        b = sorted(a['bias'])
+        med, spread = median(b), pct(b, 0.9) - pct(b, 0.1)
+        G.add('P6', arm, 'median %.2f ms  p10..p90 %.2f ms  (%d)' % (med, spread, len(b)),
+              abs(med) <= 2 and spread <= 1.2, '|median| <= 2, p10..p90 <= 1.2 ms', 'disc')
+    if known and dt > 0:
+        G.add('P7', arm, '%d still frame(s) at speed' % a['zmove'], a['zmove'] == 0,
+              '0', 'both')
+    if known and a['exact']:
+        feet = max(x[0] for x in a['exact'])
+        ang = max(x[1] for x in a['exact'])
+        G.add('P9', arm, 'feet %.3f u  angles %.3f deg  (%d)' % (feet, ang, len(a['exact'])),
+              feet <= 0.01 and (view or ang <= 0.01),
+              'feet <= 0.01 u' + ('' if view else ', angles <= 0.01'), 'both')
+
+
+def status_loads(log):
+    """(path, view, load ms, view map ms) of every `replay status` block."""
+    out = []
+    cur = None
+    for line in run_lines(log):
+        mm = re.search(r'replay: (\S+\.rec)$', line)
+        if mm:
+            cur = [mm.group(1), True, None, None]
+            out.append(cur)
+            continue
+        if cur is None:
+            continue
+        if re.search(r'\s\sview none$', line):
+            cur[1] = False
+        mm = re.search(r'\s\sload (\d+) ms  view map (\d+) ms', line)
+        if mm:
+            cur[2], cur[3] = int(mm.group(1)), int(mm.group(2))
+            cur = None
+    return out
+
+
+def analyse(log, gamedir, control):
     blocks = parse_log(log)
     models = {}
-    ok = True
+    arms = {}
+    G = Gates()
     for kind, head, rows in blocks:
         if not rows:
             continue
@@ -1004,6 +1143,10 @@ def analyse(log, gamedir):
             # wtrb n dt T0 view path
             view = int(float(head[3]))
             noview = not view
+        else:
+            # wtfb n view path
+            view = int(float(head[1])) if len(head) >= 3 else 0
+            noview = not view
         key = (path, noview)
         if key not in models:
             models[key] = model(resolve(path, gamedir), noview)
@@ -1012,35 +1155,49 @@ def analyse(log, gamedir):
         if kind == 'wtr':
             dtn = float(head[1])
             a = analyse_wtr(rows, ref, dtn, not noview)
+            ak = (file_tag(path), view, dtn)
+            arm = arms.setdefault(ak, {'R': [], 'zero': 0, 'snaps': [], 'curv': None,
+                                       'unduck': [], 'airduck': [], 'bias': [],
+                                       'zmove': 0, 'exact': [], 'stray': 0})
             label = "wtr %s T0 %s dt %s %s" % (os.path.basename(path), head[2],
                                                head[1], 'view' if view else 'noview')
             print(label)
-            if a['turn_frames']:
+            if a['R']:
                 print("   P1 yaw   %4d turn frames  R %.2f  zero-step %.3f" %
-                      (a['turn_frames'], a['R'], a['zero']))
+                      (len(a['R']), max(a['R']), a['zero'] / float(len(a['R']))))
+            arm['R'] += a['R']
+            arm['zero'] += a['zero']
             for ta, n in sorted(a['snaps'].items()):
                 k = ref.ts.index(ta)
                 sa, sb = ref.s[k], ref.s[min(k + 1, len(ref.s) - 1)]
                 r = fit_resid(sa.o, sa.v, sb.o, sb.v, sb.t - sa.t)
                 print("   P2 snap  %.4f  %d jump frame(s)  (jump %.1f u; want %s)" %
                       (ta, n, r, '1' if r > 16 else '0 or 1'))
+                arm['snaps'].append((ta, n, r))
             if a['stray']:
                 print("   P2 stray %d frame(s) off the recorded velocity outside "
                       "any snap" % a['stray'])
+                arm['stray'] += a['stray']
             if a['curv'] is not None:
                 print("   P3 curv  %.2f  (|d2z| / g dt^2, Hermite air)" % a['curv'])
+                arm['curv'] = max(arm['curv'] or 0, a['curv'])
             for t, mx, rms in unduck_metric(rows, ref):
                 print("   P4 unduck %.4f  max step %.3f u  S-curve rms %.3f u" %
                       (t, mx, rms))
+                arm['unduck'].append((t, mx, rms))
             for ta, tb, rise, drop, total in airduck_metric(rows, ref):
                 print("   P5 airduck %.4f..%.4f  rise %.2f  max drop %.2f  net %.2f" %
                       (ta, tb, rise, drop, total))
+                arm['airduck'].append((ta, tb, rise, drop, total))
             b = bias_metric(rows, ref)
             if len(b) >= 5 and view:
-                print("   P6 bias  median %.2f ms over %d sample(s)" %
-                      (median(b), len(b)))
+                b.sort()
+                print("   P6 bias  median %.2f ms  p10..p90 %.2f ms over %d sample(s)" %
+                      (median(b), pct(b, 0.9) - pct(b, 0.1), len(b)))
+                arm['bias'] += b
             if a['zmove']:
                 print("   P7 %d still frame(s) at speed" % a['zmove'])
+            arm['zmove'] += a['zmove']
             if len(rows) == 1:
                 r = rows[0]
                 s = None
@@ -1053,49 +1210,76 @@ def analyse(log, gamedir):
                     da = max(abs(arc(r[4], s.pit)), abs(arc(r[5], s.yaw)))
                     print("   P9 exact sample: origin off %.3f u  angles off %.3f deg%s" %
                           (d, da, '' if noview else ' (view: angles are the .view\'s)'))
+                    arm['exact'].append((d, da))
         else:
-            # wtfb n view path ; wtf dtcl dtfr T ez yaw turnrate rate paused
-            r = []
-            for k in range(1, len(rows)):
-                p, q = rows[k - 1], rows[k]
-                if len(q) < 8 or q[7] or q[6] <= 0 or q[1] <= 0:
-                    continue
-                dT = q[2] - p[2]
-                if dT <= 0:
-                    continue
-                r.append((dT / q[6]) / q[1])
-            label = "wtf %s  %d frame(s)" % (os.path.basename(path), len(rows))
+            # wtf dtcl dtfr T ez yaw turnrate rate paused
+            want = int(float(head[0])) if head else 0
+            play = [k for k in range(1, len(rows))
+                    if len(rows[k]) >= 8 and not rows[k][7] and rows[k][6] > 0 and
+                    rows[k][1] > 0 and 0 < rows[k][0] <= 0.5 and
+                    rows[k][2] >= rows[k - 1][2]]
+            label = "wtf %s %s  %d of %d frame(s)%s" % (
+                os.path.basename(path), 'view' if view else 'noview', len(rows), want,
+                '  (fps short: the arm ended first)' if len(rows) < want else '')
             print(label)
-            if r:
-                mu = sum(r) / len(r)
-                sd = math.sqrt(sum((x - mu) ** 2 for x in r) / len(r))
-                print("   P8 clock (dT/rate)/clframetime mean %.4f  cv %.4f" %
-                      (mu, sd / mu if mu else 0))
+            if not play:
+                continue
+            rate = median([rows[k][6] for k in play])
+            arm = '%s %s %s frames' % (file_tag(path), 'view' if view else 'noview',
+                                       '1x' if rate > 0.5 else '0.25x')
+            r = [((rows[k][2] - rows[k - 1][2]) / rows[k][6]) / rows[k][1] for k in play]
+            mu = sum(r) / len(r)
+            cv = math.sqrt(sum((x - mu) ** 2 for x in r) / len(r)) / mu if mu else 0
+            adv = sum((rows[k][2] - rows[k - 1][2]) / rows[k][6] for k in play)
+            wall = sum(rows[k][0] for k in play)
+            drift = adv / wall - 1 if wall > 0 else 0
+            print("   P8 clock (dT/rate)/clframetime mean %.4f  cv %.4f;  "
+                  "advance / cltime %+.3f%% over %.2f s" % (mu, cv, 100 * drift, wall))
+            # cv fails when this nears half a frame: 379 then pays banked time
+            gap = sorted(abs(rows[k][0] - rows[k][1]) for k in play)
+            print("   pacer |dtcl - dtfr| p99 %.3f ms of a %.3f ms frame" %
+                  (1000 * pct(gap, 0.99), 1000 * median([rows[k][1] for k in play])))
             dcl = [q[0] for q in rows if q[0] > 0]
             dfr = [q[1] for q in rows if q[1] > 0]
             if dcl and dfr:
                 print("   dtcl mean %.3f ms  dtfr mean %.3f ms" %
                       (1000 * sum(dcl) / len(dcl), 1000 * sum(dfr) / len(dfr)))
-            view = int(float(head[1])) if len(head) >= 3 else 0
+            G.add('P8', arm, 'cv %.4f  (%d frames)' % (cv, len(play)), cv < 0.01,
+                  'cv < 0.01: clframetime taken', 'new')
+            G.add('P8', arm, 'advance / cltime %+.3f%% over %.2f s' % (100 * drift, wall),
+                  abs(drift) <= 0.005, '|drift| <= 0.5 %', 'both')
             ys = []
-            for k in range(1, len(rows)):
+            for k in play:
                 p, q = rows[k - 1], rows[k]
                 dT = q[2] - p[2]
-                if dT <= 0 or len(q) < 8 or q[7]:
+                if dT <= 0:
                     continue
                 ra = ref.rate_at(p[2], view)
                 rb = ref.rate_at(q[2], view)
                 dy = abs(arc(p[4], q[4]))
-                if ra is None or rb is None or dy >= WT_ASNAP or                         ref.near_snap(p[2]) or ref.near_snap(q[2]):
+                if ra is None or rb is None or dy >= WT_ASNAP or \
+                        ref.near_snap(p[2]) or ref.near_snap(q[2]):
                     continue
                 if min(ra, rb) > 100:
                     ys.append((dy / (max(ra, rb) * dT), dy < 1e-4))
             if ys:
+                R = max(x[0] for x in ys)
+                z = sum(1 for x in ys if x[1]) / float(len(ys))
                 print("   P1 yaw   %4d turn frames  R %.2f  zero-step %.3f  (%s)" %
-                      (len(ys), max(x[0] for x in ys),
-                       sum(1 for x in ys if x[1]) / len(ys),
-                       'view' if view else 'noview'))
-    return 0 if ok else 1
+                      (len(ys), R, z, 'view' if view else 'noview'))
+                if file_tag(path) == 'kitsune' and not (view and rate > 0.5):
+                    G.add('P1', arm, 'R %.2f  zero-step %.3f  (%d frames)' % (R, z, len(ys)),
+                          R <= 1.5 and z < 0.01, 'R <= 1.5, zero < 0.01', 'disc')
+    for (tag, view, dt), a in sorted(arms.items()):
+        wtr_gates(G, tag, view, dt, a)
+    for path, view, load, vmap in status_loads(log):
+        if load is not None:
+            print("P10 %s %s: opened in %d ms, view map %d ms" %
+                  (os.path.basename(path), 'view' if view else 'noview', load, vmap))
+            if file_tag(path) == 'kitsune' and view:
+                G.add('P10', 'kitsune view', 'view map %d ms' % vmap, vmap <= 150,
+                      '<= 150 ms', 'both')
+    return G.report(control)
 
 
 # ---- status comparison -----------------------------------------------------
@@ -1145,53 +1329,104 @@ def compare(log, new, gamedir):
                            ' '.join('%g' % x for x in r[1:]), ' ' * 18,
                            ' '.join('%g' % x for x in e[1:])))
     print("%s  %d frame(s), %d past tolerance; worst feet %.3f u  angle %.3f deg  "
-          "eye %.3f u" % ('MATCH' if not bad else 'SUSPECT', n, bad,
+          "eye %.3f u" % ('MATCH' if n and not bad else 'SUSPECT', n, bad,
                           worst[0], worst[1], worst[2]))
-    return 1 if bad else 0
+    return 1 if bad or not n else 0
+
+
+# Watch_Status's three counter lines, by shape: `  ang ... duck %g` and
+# `  view %g lines` print first and share a word with them.
+COUNTER = re.compile(r'\s\s(fit \d+ hermite .*|duck \d+ slide\(s\) .*|'
+                     r'view \d+ span\(s\) .*|view none)$')
 
 
 def check(m, log):
-    want = status_lines(m)
+    want = [w.strip() for w in status_lines(m)]
     got = []
     blk = None
     name = m.path.replace('\\', '/')
-    with open(log, 'r', errors='replace') as f:
-        for line in f:
-            line = line.rstrip('\r\n')
-            mm = re.search(r'replay: (\S+\.rec)$', line)
-            if mm:
-                blk = [] if name.endswith(mm.group(1)) else None
-                if blk is not None:
-                    got.append(blk)
-                continue
-            if blk is None:
-                continue
-            for w in ('  fit ', '  duck ', '  view '):
-                k = line.find(w)
-                if k >= 0 and (w != '  view ' or 'span' in line or 'none' in line):
-                    blk.append(line[k:])
+    for line in run_lines(log):
+        mm = re.search(r'replay: (\S+\.rec)$', line)
+        if mm:
+            blk = [] if name.endswith(mm.group(1)) else None
+            if blk is not None:
+                got.append(blk)
+            continue
+        if blk is None:
+            continue
+        cm = COUNTER.search(line)
+        if cm:
+            blk.append(cm.group(1).rstrip())
     if not got:
-        print("check: no `replay status` block for %s in %s" % (name, log))
+        print("SUSPECT  no `replay status` block for %s in %s" % (name, log))
         return 2
     m.vlines, keep = None, m.vlines
-    want_nv = status_lines(m)
+    want_nv = [w.strip() for w in status_lines(m)]
     m.vlines = keep
     bad = 0
     for n, blk in enumerate(got):
-        if not blk:
-            continue
-        nv = any(x.startswith('view none') or x.strip() == 'view none' for x in blk)
+        # an empty block is a build before 378 or a cut-off log, not a match
+        nv = 'view none' in blk
         for w in (want_nv if nv else want):
             head = w.split()[0]
             g = [x for x in blk if x.split()[0] == head]
-            if not g:
-                continue
-            if g[0] != w:
+            if not g or g[0] != w:
                 bad += 1
-                print("SUSPECT block %d\n  model: %s\n  game:  %s" % (n, w, g[0]))
+                print("SUSPECT block %d\n  model: %s\n  game:  %s" %
+                      (n, w, g[0] if g else '(no such line)'))
     if not bad:
         print("MATCH  %d status block(s) agree with the model" % len(got))
     return 1 if bad else 0
+
+
+def fixture(out):
+    """p379wsm's rewind fixture: a v7 file on surf_kitsune, 15 ms samples, with
+    three `retry` rewinds that cross the duck machine (review #8):
+      A 1.005|1.020  crouched on the ground -> standing (no unduck slide)
+      B 1.485|1.500  standing -> crouched (no dkfix)
+      C 2.370|2.385  inside a part-way release slide (the slide stops at 2.370)"""
+    start = (-15360.0, -15088.0, 816.03)
+    rows = []
+    t0 = [0.0]                  # when the current stretch left the start
+
+    def put(k, fl, keys, moving=True):
+        t = k * 0.015
+        vy = 200.0 if moving else 0.0
+        y = start[1] + vy * (t - t0[0])
+        rows.append("%.4f %.2f %.2f %.2f 0.00 %.2f 0.00 0.0 90.0 %d %d 0 0 0 "
+                    "0.0000 0.0000 1.0000" % (t, start[0], y, start[2], vy, fl, keys))
+
+    for k in range(0, 201):
+        if k in (68, 100, 159):
+            rows.append("retry %d" % (k - 1))
+            t0[0] = k * 0.015
+        if k < 20:
+            put(k, 1, 0)
+        elif k < 47:
+            put(k, 1, 32)               # press 0.300; the hull falls at 0.705
+        elif k < 68:
+            put(k, 3, 32)
+        elif k < 100:
+            put(k, 1, 0)
+        elif k < 121:
+            put(k, 3, 32)
+        elif k < 134:
+            put(k, 3, 0)                # released 1.815; the hull rises at 2.010
+        elif k < 147:
+            put(k, 1, 0)
+        elif k < 157:
+            put(k, 1, 32)               # press 2.205, released 2.355 part way
+        else:
+            put(k, 1, 0)
+    head = ["FTESURF-REC 7", "map surf_kitsune", "track 0", "startseg 0", "leg 0",
+            "tickrate 0.015", "movetickrate 0.015", "owner fixture",
+            "runid p379-rewind", "flags 0", "begin"]
+    d = os.path.dirname(out)
+    if d and not os.path.isdir(d):
+        os.makedirs(d)
+    with open(out, 'w', newline='\n') as f:
+        f.write('\n'.join(head + rows) + '\n')
+    print("wrote %s: %d lines" % (out, len(head) + len(rows)))
 
 
 def windows(m):
@@ -1249,7 +1484,13 @@ def main():
         print("wtre")
         return 0
     if '--analyse' in a:
-        return analyse(opt('--analyse'), gamedir)
+        log = opt('--analyse')
+        control = '--control' in a or \
+            ('--new' not in a and 'ctl' in os.path.basename(log))
+        return analyse(log, gamedir, control)
+    if '--fixture' in a:
+        fixture(opt('--fixture'))
+        return 0
     if '--compare' in a:
         k = a.index('--compare')
         return compare(a[k + 2], a[k + 1] == 'new', gamedir)
