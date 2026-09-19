@@ -296,6 +296,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// The online board's two console handles.  No cvars of its own: the
 	// directory URL is lobby_dir, which the menu progs already own and archive.
 	Online_RegisterCommands();
+	Online_MigrateBegin();          // Patch 395: the flat replay cache, moved per frame
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
@@ -1368,6 +1369,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  rec_wt_on false on every frame that is not a replay, and one float test is
 	  the entire cost of that.
 	*/
+	Online_MigrateFrame();
 	Watch_Frame();
 
 	clearscene();

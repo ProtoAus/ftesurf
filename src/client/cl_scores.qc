@@ -158,6 +158,8 @@ float rec_sb_tab;                // SB_T_*
   a cancel.
 */
 float rec_sb_wantrep;
+float rec_sb_wantleg;            // Patch 395: open it at this board leg (its run's file)
+float rec_sb_olpick;             // `scores olpick <row>` + 1: the next draw's click
 vector rec_sb_oscroll;           // the online list's own scroll position
 
 #define SB_ROW_H   22
@@ -1448,7 +1450,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (idx == ob_mine)
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
 		if (hot)
-		if (ob_rep[idx] > 0)
+		if (Online_RowRep(idx) > 0)
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
 		if (sui_is_released(rid))
 			pick = idx + 1;     // +1 so row 0 is distinguishable from "none"
@@ -1520,7 +1522,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		{
 			s = Online_RepString(idx);
 			Scores_Text([lp_x + Scores_ColX(SBX_REP), d], rec_sb_szrow,
-			            s, (ob_rep[idx] > 0) ? SBC_GOOD : SBC_DIM, 0.85);
+			            s, (Online_RowRep(idx) > 0) ? SBC_GOOD : SBC_DIM, 0.85);
 			// Patch 374: after the word; "watch" + the mark fits SBW_REP in Roboto.
 			if (ob_ver[idx] > 0)
 				Scores_Tick([lp_x + Scores_ColX(SBX_REP) + rec_sb_cw * 0.3
@@ -1584,6 +1586,15 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
 		            getplayerkeyvalue(player_localnum, "name"), SBC_GOOD, 0.9);
 	}
+	// Patch 395: `scores olpick`, a click minus the hit test.
+	if (!pick)
+	if (rec_sb_olpick > 0)
+	if (rec_sb_olpick <= ob_n)
+	{
+		pick = rec_sb_olpick;
+		print(sprintf("scores: olpick row %g\n", pick - 1));
+	}
+	rec_sb_olpick = 0;
 	return pick - 1;
 };
 
@@ -1606,20 +1617,28 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 void(float pick) Scores_OnlineHandOff =
 {
 	local string path;
-	local float rep, st, code;
+	local float rep, st, code, leg;
 
 	if (pick >= 0)
 	{
-		rep = ob_rep[pick];
+		// Patch 395: a stage row with no recording of its own plays its run's.
+		rep = Online_RowRep(pick);
+		leg = Online_RowLeg(pick);
 		if (rep < 1)
 		{
-			print("^3scores:^7 no recording was kept for that run -- "
-			      "it predates recorded lobbies, or none was stored.\n");
+			if (ob_have_leg > 0)
+				print("^3scores:^7 no recording was kept for that stage time -- "
+				      "the run it was set in was not kept (unranked, expired, or "
+				      "before recorded lobbies).\n");
+			else
+				print("^3scores:^7 no recording was kept for that run -- "
+				      "it predates recorded lobbies, or none was stored.\n");
 		}
 		else
 		{
 			rec_sb_wantrep = rep;
-			if (!Online_ReplayFetch(rep))
+			rec_sb_wantleg = leg;
+			if (!Online_ReplayFetchRow(pick))
 				print("^3scores:^7 could not ask for that replay -- "
 				      "check lobby_dir.\n");
 			else if (Online_ReplayState() == ORS_FETCH)
@@ -1649,6 +1668,7 @@ void(float pick) Scores_OnlineHandOff =
 		else
 			print("^3scores:^7 replay download failed.\n");
 		rec_sb_wantrep = 0;
+		rec_sb_wantleg = 0;
 		Online_ReplayClear();
 		return;
 	}
@@ -1665,17 +1685,22 @@ void(float pick) Scores_OnlineHandOff =
 	if (path == "")
 	{
 		rec_sb_wantrep = 0;
+		rec_sb_wantleg = 0;
 		return;
 	}
 
 	/*
 	  ORDER MATTERS: Watch_Open reads the file while `path` still points into
 	  cl_online.qc's strzone, so the clear comes last.  Scores_Close touches
-	  neither.
+	  neither -- but it clears rec_sb_wantleg, so the leg is taken first.
 	*/
+	leg = rec_sb_wantleg;
 	rec_sb_wantrep = 0;
+	rec_sb_wantleg = 0;
 	Scores_Close();
-	Watch_Open(path);
+	if (Watch_Open(path))
+	if (leg > 0)
+		Watch_StageWindow(leg - 1);
 	Online_ReplayClear();
 };
 
@@ -2193,6 +2218,8 @@ void() Scores_Close =
 	  paths where the board is already shut and the intent must still go.
 	*/
 	rec_sb_wantrep = 0;
+	rec_sb_wantleg = 0;
+	rec_sb_olpick  = 0;
 	sc_held = FALSE;          // PATCH 341: esc closes even mid-hold
 
 	if (!rec_sb_open)
@@ -2425,6 +2452,12 @@ float(string cmd) Scores_ConsoleCommand =
 				print("scores pick <name>: pin the board, name one player\n");
 			else
 				pl_specpick = sp_s + 1;
+		}
+		// Patch 395: an online-list row click (0-based), taken by the next draw.
+		else if (argv(1) == "olpick")
+		{
+			rec_sb_olpick = stof(argv(2)) + 1;
+			return TRUE;
 		}
 		else if (argv(1) == "leg")
 		{

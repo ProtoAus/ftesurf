@@ -302,6 +302,15 @@ float  rec_wt_evtick[WT_EVMAX];
 float  rec_wt_evn;
 float  rec_wt_evshown;           // how many are in the split list right now
 
+// Patch 395: the stage windows (Watch_StageWindow).
+#define WT_STGMAX 24                  // sv_timer.qc FS_MAXSPLITS (server-only define)
+float  rec_wt_pw0[WT_STGMAX];         // a seg's `stagepost` window, ticks; -1 none
+float  rec_wt_pw1[WT_STGMAX];
+float  rec_wt_abandon;                // an `abandon` record: no finish row
+float  rec_wt_winseg;                 // the window's seg, -1 none
+float  rec_wt_wint0, rec_wt_wint1;    // its start and stop, run seconds
+float  rec_wt_stopon;                 // the one pause at wint1 is still armed
+
 /*
 ===========================================================================
   THE PATH, AND WHY IT IS A CURVE AND NOT A POLYLINE.
@@ -620,6 +629,8 @@ void() Watch_Free =
 	rec_wt_pn   = 0;
 	rec_wt_evn  = 0;
 	rec_wt_on   = FALSE;
+	rec_wt_stopon = FALSE;          // Patch 395: no window survives the file
+	rec_wt_winseg = -1;
 	// a `replay trace frames` still counting would print into the next file
 	if (rec_wt_trfn > 0)
 		print("wtfe\n");
@@ -962,6 +973,7 @@ void() Watch_Scan =
 	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
 	local vector v;
 	local float fl, key, vp, vq;
+	local float wpseg, wpdur, wpend;
 
 	rec_wt_rec0     = 0;
 	rec_wt_nsamp    = 0;
@@ -1050,6 +1062,14 @@ void() Watch_Scan =
 		rec_wt_leg = FS_LegOf(rec_wt_startseg, rec_wt_startseg > 0);
 
 	// ---- pass one: count samples, collect records ------------------------
+	for (i = 0; i < WT_STGMAX; i = i + 1)
+	{
+		rec_wt_pw0[i] = -1;
+		rec_wt_pw1[i] = -1;
+	}
+	rec_wt_abandon = FALSE;
+	wpseg = -1;
+	wpdur = 0;
 	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
@@ -1062,6 +1082,45 @@ void() Watch_Scan =
 		n = tokenize(s);
 		if (n < 2)
 			continue;
+
+		/*
+		  Patch 395: `stagepost <seg> <dur>` is written just before the `stage`
+		  (or `end`) that closes seg, so its window is [T - dur, T] at that tick
+		  -- the stage's own start, past any `!r` restarts inside it.
+		*/
+		if (argv(0) == "stagepost")
+		{
+			wpseg = -1;
+			if (n >= 3)
+			{
+				wpseg = stof(argv(1));
+				wpdur = stof(argv(2));
+			}
+			continue;
+		}
+		if (argv(0) == "abandon")
+		{
+			rec_wt_abandon = TRUE;
+			continue;
+		}
+		if (wpseg >= 0)
+		{
+			wpend = -1;
+			if (argv(0) == "end")
+				wpend = stof(argv(1));
+			else if (argv(0) == "stage")
+			if (n >= 3)
+				wpend = stof(argv(2));
+			if (wpend >= 0)
+			{
+				if (wpseg < WT_STGMAX)
+				{
+					rec_wt_pw0[wpseg] = wpend - wpdur;
+					rec_wt_pw1[wpseg] = wpend;
+				}
+				wpseg = -1;
+			}
+		}
 
 		if (argv(0) == "end")
 		{
@@ -2122,6 +2181,7 @@ void(float ntick) Watch_Splits =
 
 	fin = FALSE;
 	if (rec_wt_endticks > 0)
+	if (!rec_wt_abandon)                // Patch 395: an abandoned run never finished
 	if (ntick >= rec_wt_endticks)
 		fin = TRUE;
 
@@ -2860,7 +2920,7 @@ void() Watch_Sample =
 
 	if (rec_wt_time < 0)
 		rec_wt_state = TS_ARMED;
-	else if (rec_wt_endticks > 0 && t >= rec_wt_endticks)
+	else if (rec_wt_endticks > 0 && t >= rec_wt_endticks && !rec_wt_abandon)
 		rec_wt_state = TS_FINISHED;
 	else
 		rec_wt_state = TS_RUNNING;
@@ -3915,9 +3975,10 @@ float(string path) Watch_Open =
 	PVS_Forget();
 	UI_CursorClaim(UIC_WATCH);
 
-	print(sprintf("replay: %s  %s  %s  %g samples\n",
+	print(sprintf("replay: %s  %s  %s  %g samples%s\n",
 	              rec_wt_path, rec_wt_owner,
-	              Time_TickString(rec_wt_endticks, rec_wt_tickrate), rec_wt_nsamp));
+	              Time_TickString(rec_wt_endticks, rec_wt_tickrate), rec_wt_nsamp,
+	              rec_wt_abandon ? " (abandoned)" : ""));
 
 	// Said once per replay rather than once per session, and only when it is
 	// off: the panel is the answer to "what am I actually watching" and there
@@ -3925,6 +3986,61 @@ float(string path) Watch_Open =
 	if (!cvar("hud_watch_info"))
 		print("        ^5hud_watch_info 1^7 for the run's frame rate, tick rate, "
 		      "sample rate and file details\n");
+	return TRUE;
+};
+
+/*
+  Patch 395: play stage `seg` (0-based) of the open file -- from its start less
+  1 s, pausing ONCE at its end (Watch_Frame).  The window is the `stagepost`
+  table from Watch_Scan, else the `stage` records around seg.
+*/
+float(float seg) Watch_StageWindow =
+{
+	local float a, b, i;
+	local string how;
+
+	rec_wt_stopon = FALSE;
+	rec_wt_winseg = -1;
+	if (!rec_wt_open)
+		return FALSE;
+	a = b = -1;
+	how = "stagepost";
+	if (seg >= 0 && seg < WT_STGMAX)
+	{
+		a = rec_wt_pw0[seg];
+		b = rec_wt_pw1[seg];
+		if (a < 0)
+		{
+			how = "stage records";
+			a = (seg > 0) ? -1 : 0;
+			b = rec_wt_endticks;
+			for (i = 0; i < rec_wt_evn; i = i + 1)
+			{
+				if (rec_wt_evkind[i] != SPK_STAGE)
+					continue;
+				if (rec_wt_evseg[i] == seg)
+					a = rec_wt_evtick[i];
+				if (rec_wt_evseg[i] == seg + 1)
+				{
+					b = rec_wt_evtick[i];
+					break;
+				}
+			}
+		}
+	}
+	if (a < 0 || b <= a)
+	{
+		print(sprintf("replay: no window for stage %g in this file\n", seg + 1));
+		return FALSE;
+	}
+	rec_wt_winseg = seg;
+	rec_wt_wint0  = a * rec_wt_tickrate;
+	rec_wt_wint1  = min(b * rec_wt_tickrate, rec_wt_t1);
+	rec_wt_stopon = TRUE;
+	Watch_Seek(max(rec_wt_t0, rec_wt_wint0 - 1));
+	rec_wt_paused = FALSE;
+	print(sprintf("replay: stage %g window %.4f..%.4f s from %.4f (ticks %g..%g, %s)\n",
+	              seg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time, a, b, how));
 	return TRUE;
 };
 
@@ -4055,7 +4171,8 @@ void(vector scr) Watch_Chrome =
 	  about whether it is "unknown".
 	*/
 	s = (rec_wt_owner != "") ? rec_wt_owner : "unknown";
-	stitle = sprintf("%s   %s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate));
+	stitle = sprintf("%s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
+	                 rec_wt_abandon ? " (abandoned)" : "");
 	sclock = sprintf("%s / %s   %.2fx%s",
 	                 Time_TickString(rec_wt_ticks, rec_wt_tickrate),
 	                 Time_TickString(rec_wt_endticks, rec_wt_tickrate),
@@ -4606,7 +4723,7 @@ void(vector scr) Watch_Draw =
 */
 void() Watch_Frame =
 {
-	local float dt, i, dtcl;
+	local float dt, i, dtcl, was;
 	local vector e;
 
 	rec_wt_on = FALSE;
@@ -4659,6 +4776,7 @@ void() Watch_Frame =
 
 	if (!rec_wt_paused)
 	{
+		was = rec_wt_time;
 		rec_wt_time = rec_wt_time + dt * rec_wt_rate;
 		if (rec_wt_time >= rec_wt_t1)
 		{
@@ -4705,6 +4823,19 @@ void() Watch_Frame =
 				Watch_Seek(rec_wt_idt1[i] + rec_wt_tickrate);
 				break;
 			}
+		}
+
+		// Patch 395: a stage window's end, once, on a playback crossing (after
+		// the idle skip, so a skip over it counts; a seek or scrub does not).
+		if (rec_wt_stopon)
+		if (was < rec_wt_wint1)
+		if (rec_wt_time >= rec_wt_wint1)
+		{
+			rec_wt_stopon = FALSE;
+			Watch_Seek(rec_wt_wint1);
+			rec_wt_paused = TRUE;
+			print(sprintf("replay: stage %g window end %.4f -- paused\n",
+			              rec_wt_winseg + 1, rec_wt_time));
 		}
 	}
 
@@ -4858,6 +4989,10 @@ void() Watch_Status =
 	print(sprintf("  t %.4f  span %.4f..%.4f  tick %g  rate %.2f  paused %g\n",
 	              rec_wt_time, rec_wt_t0, rec_wt_t1, rec_wt_ticks,
 	              rec_wt_rate, rec_wt_paused));
+	// Patch 395.  Stage 0 = no window; finrow = the finish row is in the list.
+	print(sprintf("  window stage %g  %.4f..%.4f  armed %g  abandoned %g  state %g  finrow %g\n",
+	              rec_wt_winseg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_stopon,
+	              rec_wt_abandon, rec_wt_state, rec_wt_evfin));
 	print(sprintf("  org %.2f %.2f %.2f  vel %.2f %.2f %.2f\n",
 	              rec_wt_org_x, rec_wt_org_y, rec_wt_org_z,
 	              rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z));
@@ -5001,6 +5136,8 @@ void(float n, float dt) Watch_Trace =
 	Watch_Sample();
 };
 
+string(float rep, string dir) Online_ReplayFind;     // cl_online.qc, compiled after
+
 float(string cmd) Watch_ConsoleCommand =
 {
 	local string a, p;
@@ -5066,12 +5203,33 @@ float(string cmd) Watch_ConsoleCommand =
 		return TRUE;
 	}
 
+	// Patch 395: `window <leg>` plays that stage of the open file (Watch_StageWindow).
+	if (a == "window")
+	{
+		if (!rec_wt_open)
+			print("replay: nothing loaded\n");
+		else
+			Watch_StageWindow(stof(argv(2)) - 1);
+		return TRUE;
+	}
+
 	track = 0;
 	leg   = 0;
 	p     = "";
 
 	if (a == "")
 		p = Watch_BestOnLeg(0, 0, "pb");
+	// Patch 395: `online <id>`, a downloaded run by its ledger id (data/online/).
+	else if (a == "online")
+	{
+		p = Online_ReplayFind(stof(argv(2)), "");
+		if (p == "")
+		{
+			print(sprintf("replay: r%s is not cached -- board_replay %s\n",
+			              argv(2), argv(2)));
+			return TRUE;
+		}
+	}
 	/*
 	  The word IS the tag, so there is no list here to keep in step -- build 45
 	  asks FS_TagFromName whether the argument names one, and a fifth tag needs

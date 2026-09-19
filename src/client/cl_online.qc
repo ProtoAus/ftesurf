@@ -192,6 +192,9 @@ float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
   or a run whose recording was refused or never kept.
 */
 float  ob_rep[OB_MAXROW];
+// Patch 395: surfd's `run` -- a stage row's parent replay (its run's leg-0
+// recording or kept evidence) when the row has no `rep` of its own; 0 none.
+float  ob_run[OB_MAXROW];
 // Patch 374: surfd's `ver` (VER_SQL: re-simulated PASS or owner-approved).  A
 // surfd without it reads 0, so no mark.
 float  ob_ver[OB_MAXROW];
@@ -473,6 +476,7 @@ void(string body) Online_Parse =
 		  pre-build-66 behaviour with no version check anywhere.
 		*/
 		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
+		ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
 		ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
 
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
@@ -533,15 +537,16 @@ void(string body) Online_Parse =
   scanned by nothing, so a downloaded run also needs no new RT_* tag: an
   unrecognised tag word does not mislabel a local row, it silently drops it.
 
-  NAMED BY LEDGER ID, because that is the only identity the client is given and
-  it is already unique across every map, leg and player.  The file's own header
-  carries the map, the owner and the tick count, so nothing is lost by not
-  spelling them in the name -- and a name built from the board key would have
-  walked into the same map-case defect surfd spent a schema fixing.
+  Patch 395: data/online/<map>/<legdir>/<MMmSS.mmms>_<owner>[_dnf]_r<id>.rec,
+  every word from the downloaded file's own header and trailer (Online_RecName);
+  the ledger id stays the suffix because it is the only key a row click has.
 ===========================================================================
 */
 
 #define OR_DIR       "data/online/"
+#define OR_TAIL      16384      // trailer bytes Online_RecName scans for `end`/`abandon`
+#define OR_HEADMAX   64         // header lines read looking for `begin`
+#define OR_WORDMAX   48         // a map folder: the whole name must fit MAX_QPATH (128)
 
 /*
   frename IS NOT DECLARED FOR THIS VM, so declare it, in the idiom sv_timer.qc
@@ -573,11 +578,6 @@ float  or_sent;            // cltime it went out; 0 = none
 float  or_rep;             // the ledger id being fetched, or the one that landed
 string or_path;            // strzoned; valid whenever or_state is ORS_READY
 
-string(float rep) Online_ReplayPath =
-{
-	return sprintf("%s%g.rec", OR_DIR, rep);
-};
-
 void() Online_ReplayFree =
 {
 	if (or_path)
@@ -585,34 +585,178 @@ void() Online_ReplayFree =
 	or_path = __NULL__;
 };
 
-/*
-  Is a complete recording for this row already on the disk?
-
-  CACHED ON PURPOSE: the second viewing of a run costs nothing and takes no
-  bandwidth off a home upstream link.  The one case the cache can be wrong is an
-  exact TICK-for-tick tie, which rewrites the same leaf and so keeps the same
-  ledger id while replacing the bytes -- rare, harmless (both runs really did
-  set that time), and written down here rather than paid for with a re-download
-  on every click.
-*/
-float(float rep) Online_ReplayCached =
+// A name word as one folder: lowercased [a-z0-9_.+-], else "unknown" (a header
+// is a stranger's text and fopen refuses "..").
+string(string s) Online_DirWord =
 {
+	local float i, n, c;
+
+	s = strtolower(s);
+	n = strlen(s);
+	if (n < 1 || n > OR_WORDMAX || str2chr(s, 0) == 46 || strstrofs(s, "..") >= 0)
+		return "unknown";
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c >= 97 && c <= 122) continue;                          // a-z
+		if (c >= 48 && c <= 57) continue;                           // 0-9
+		if (c == 95 || c == 46 || c == 43 || c == 45) continue;     // _ . + -
+		return "unknown";
+	}
+	return s;
+};
+
+// data/online/<map>/<legdir>/ -- the map lowercased: surfd's key, and ext4 is
+// case-sensitive where this disk is not.
+string(string map, float track, float leg) Online_CacheDir =
+{
+	return sprintf("%s%s/%s/", OR_DIR, Online_DirWord(map), FS_LegDir(track, leg));
+};
+
+string(string pat) Online_FirstMatch =
+{
+	local float h;
+	local string fn;
+
+	h = search_begin(pat, FS_NAMESORT, TRUE);
+	if (h < 0)
+		return "";
+	fn = "";
+	if (search_getsize(h) > 0)
+		fn = search_getfilename(h, 0);
+	search_end(h);
+	return fn;
+};
+
+/*
+  The cache name of the .rec at `path`, read from ITS header and trailer (the
+  grammar block over SV_RecOpen): Online_CacheDir + <MMmSS.mmms>_<owner>[_dnf]
+  _r<id>.rec.  _dnf when it holds `abandon`, or no `end` (torn: the time is the
+  last sample's).  "" when it is not a recording.  Model: tools/onlinecache.py.
+*/
+string(string path, float rep) Online_RecName =
+{
+	local float fh, i, n, got, ver, track, sseg, leg, rate, mrate;
+	local float ticks, lastt, dnf, sz, ms, m, s;
+	local string l, map, owner;
+
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return "";
+	got = ver = track = sseg = rate = mrate = lastt = dnf = 0;
+	leg = ticks = -1;
+	map = owner = "";
+	for (i = 0; i < OR_HEADMAX; i = i + 1)
+	{
+		l = fgets(fh);
+		if (!l)
+			break;
+		n = tokenize(l);
+		if (n < 1)
+			continue;
+		if (argv(0) == "begin")
+		{
+			got = TRUE;
+			break;
+		}
+		if (n < 2)
+			continue;
+		if (argv(0) == "FTESURF-REC")  ver   = stof(argv(1));
+		if (argv(0) == "map")          map   = argv(1);
+		if (argv(0) == "track")        track = stof(argv(1));
+		if (argv(0) == "startseg")     sseg  = stof(argv(1));
+		if (argv(0) == "leg")          leg   = stof(argv(1));
+		if (argv(0) == "tickrate")     rate  = stof(argv(1));
+		if (argv(0) == "movetickrate") mrate = stof(argv(1));
+		if (argv(0) == "owner")        owner = substring(l, 6, strlen(l) - 6);
+	}
+	if (got)
+	{
+		sz = fsize(fh);
+		if (sz > OR_TAIL)
+		{
+			fseek(fh, sz - OR_TAIL);
+			fgets(fh);              // the partial line the seek landed in
+		}
+		while (1)
+		{
+			l = fgets(fh);
+			if (!l)
+				break;
+			if (FS_IsSample(l))
+				lastt = stof(l);
+			else if (substring(l, 0, 4) == "end ")
+			{
+				tokenize(l);
+				ticks = stof(argv(1));
+			}
+			else if (substring(l, 0, 8) == "abandon ")
+				dnf = TRUE;
+		}
+	}
+	fclose(fh);
+	if (!got || ver < 1)
+		return "";
+
+	if (leg < 0)
+		leg = FS_LegOf(sseg, sseg > 0);         // pre-57: Watch_Scan's rule
+	if (mrate > 0)
+		rate = mrate;                           // the grammar: seconds prefer the mover's
+	if (rate <= 0)
+		rate = PM_TICK;
+	if (ticks < 0)
+	{
+		ticks = rint(lastt / rate);
+		dnf = TRUE;
+	}
+	// Time_TickString's rounding, minutes unbounded.
+	ms = floor(ticks * rate * 1000 + 0.5);
+	m  = floor(ms / 60000);     ms = ms - m * 60000;
+	s  = floor(ms / 1000);      ms = ms - s * 1000;
+	l  = FS_NameSlug(owner);
+	if (l == "")
+		l = "anon";
+	return strcat(Online_CacheDir(map, track, leg),
+	              sprintf("%02gm%02g.%03gs_%s%s_r%d.rec", m, s, ms, l,
+	                      dnf ? "_dnf" : "", rep));
+};
+
+/*
+  The cached file for ledger id `rep`, or "".  `dir` (Online_CacheDir) keeps a
+  row click to one folder; "" searches every map and leg (console forms only).
+  `*_r18.rec` cannot match `_r118.rec`.  A flat pre-395 name is still found
+  until Online_MigrateFrame moves it.
+
+  CACHED ON PURPOSE: an exact tick-for-tick tie rewrites the same leaf under the
+  same id, so a cached copy can be the other of two equal runs -- harmless.
+*/
+string(float rep, string dir) Online_ReplayFind =
+{
+	local string fn;
 	local float fh;
 
 	if (rep < 1)
-		return FALSE;
-	fh = fopen(Online_ReplayPath(rep), FILE_READ);
+		return "";
+	if (dir != "")
+		fn = Online_FirstMatch(sprintf("%s*_r%d.rec", dir, rep));
+	else
+		fn = Online_FirstMatch(sprintf("%s*/*/*_r%d.rec", OR_DIR, rep));
+	if (fn != "")
+		return fn;
+	fn = sprintf("%s%d.rec", OR_DIR, rep);
+	fh = fopen(fn, FILE_READ);
 	if (fh < 0)
-		return FALSE;
+		return "";
 	fclose(fh);
-	return TRUE;
+	return fn;
 };
 
 /*
   Ask for one recording.  Returns FALSE and sets or_state if it could not even
-  be asked for; a TRUE return means only that the request went out.
+  be asked for; a TRUE return means only that the request went out.  `hint` is
+  Online_ReplayFind's folder ("" = search them all).
 */
-float(float rep) Online_ReplayFetch =
+float(float rep, string hint) Online_ReplayFetchIn =
 {
 	local string dir, url;
 
@@ -627,9 +771,10 @@ float(float rep) Online_ReplayFetch =
 	}
 
 	// Already here: skip the network entirely and be ready this frame.
-	if (Online_ReplayCached(rep))
+	dir = Online_ReplayFind(rep, hint);
+	if (dir != "")
 	{
-		or_path  = strzone(Online_ReplayPath(rep));
+		or_path  = strzone(dir);
 		or_state = ORS_READY;
 		or_sent  = 0;
 		return TRUE;
@@ -657,13 +802,52 @@ float(float rep) Online_ReplayFetch =
 	return TRUE;
 };
 
+float(float rep) Online_ReplayFetch = { return Online_ReplayFetchIn(rep, ""); };
+
+// Row i's recording: its own `rep`, else (Patch 395) its run's, `run`.
+float(float i) Online_RowRep =
+{
+	if (i < 0 || i >= ob_n)
+		return 0;
+	if (ob_rep[i] > 0)
+		return ob_rep[i];
+	return ob_run[i];
+};
+
+// The board leg to open at when row i plays its run's recording, else 0.
+float(float i) Online_RowLeg =
+{
+	if (i < 0 || i >= ob_n)
+		return 0;
+	if (ob_rep[i] > 0)
+		return 0;
+	if (ob_run[i] > 0)
+		return ob_have_leg;
+	return 0;
+};
+
+// Row i's recording, looked up in the one folder its header files it in: the
+// row's leg for its own `rep`, the track's full run (leg 0) for a `run`.
+float(float i) Online_ReplayFetchRow =
+{
+	local string hint;
+
+	hint = "";
+	if (ob_have_zoned)
+		hint = Online_CacheDir(ob_have_map, ob_have_track,
+		                       (Online_RowLeg(i) > 0) ? 0 : ob_have_leg);
+	return Online_ReplayFetchIn(Online_RowRep(i), hint);
+};
+
 /*
   Write the body out, atomically enough that a crash cannot leave a truncated
-  file cached forever.
+  file cached forever.  Returns the cache path, or "".
 
   .part THEN frename, exactly as SV_RecClose does on the server: a half-written
-  file at the final name would satisfy Online_ReplayCached on every future click
+  file at the final name would satisfy Online_ReplayFind on every future click
   and the row would be permanently broken with no way for the player to retry.
+  The name comes from the part's own header (Online_RecName), so it is read
+  back before the rename.
 
   LENGTH BY strlen, AND THE SEAM IS WORTH RECORDING.  The engine does pass the
   body's true byte count -- PR_uri_get_callback2 sets OFS_PARM3 to the length it
@@ -673,32 +857,102 @@ float(float rep) Online_ReplayFetch =
   NUL in it, which is the only case where they could differ.  If a fourth
   parameter ever becomes available, this is the call site that wants it.
 */
-float(float rep, string body) Online_ReplayStore =
+string(float rep, string body) Online_ReplayStore =
 {
 	local string part, dst;
 	local float fh;
 
 	if (strlen(body) < 1)
-		return FALSE;
+		return "";
 
-	dst  = Online_ReplayPath(rep);
-	part = strcat(dst, ".part");
+	part = sprintf("%sr%d.rec.part", OR_DIR, rep);
 
 	// fopen calls FS_CreatePath, so data/online/ does not have to exist.
 	fh = fopen(part, FILE_WRITE);
 	if (fh < 0)
-		return FALSE;
+		return "";
 	fputs(fh, body);
 	fclose(fh);
 
-	if (frename(part, dst) != 0)
+	dst = Online_RecName(part, rep);
+	if (dst != "")
 	{
-		// A rename that failed leaves the .part behind; take it away rather
-		// than accumulate one per failed click.
-		fremove(part);
-		return FALSE;
+		// Windows MoveFileW will not overwrite (sys_win.c Sys_Rename).
+		fh = fopen(dst, FILE_READ);
+		if (fh >= 0)
+		{
+			fclose(fh);
+			fremove(dst);
+		}
+		if (frename(part, dst) == 0)
+			return dst;
 	}
-	return TRUE;
+	// Not a recording, or the rename failed: take the .part away rather than
+	// accumulate one per failed click.
+	fremove(part);
+	return "";
+};
+
+/*
+  Patch 395: the pre-395 flat cache (data/online/<id>.rec) moves to its
+  Online_RecName, one file per frame from CSQC_Init.  A flat copy whose name is
+  already taken is dropped: the same ledger id is the same recording.
+*/
+float or_mig;               // strbuf of the flat names; 0 = done
+float or_mign, or_migi;
+
+void() Online_MigrateBegin =
+{
+	local float h, i;
+
+	h = search_begin(strcat(OR_DIR, "*.rec"), FS_NAMESORT, TRUE);
+	if (h < 0)
+		return;
+	or_mign = search_getsize(h);
+	or_migi = 0;
+	if (or_mign > 0)
+	{
+		or_mig = buf_create();
+		for (i = 0; i < or_mign; i = i + 1)
+			bufstr_set(or_mig, i, search_getfilename(h, i));
+	}
+	search_end(h);
+};
+
+void() Online_MigrateFrame =
+{
+	local string src, stem, dst;
+	local float rep, fh;
+
+	if (or_mig < 1)
+		return;
+	if (or_migi >= or_mign)
+	{
+		buf_del(or_mig);
+		or_mig = 0;
+		return;
+	}
+	src = bufstr_get(or_mig, or_migi);
+	or_migi = or_migi + 1;
+
+	stem = substring(src, strlen(OR_DIR), strlen(src) - strlen(OR_DIR) - 4);
+	rep = stof(stem);
+	if (rep < 1 || strcmp(sprintf("%d", rep), stem))
+		return;                 // digits only: <id>.rec
+	dst = Online_RecName(src, rep);
+	if (dst == "")
+		return;
+	fh = fopen(dst, FILE_READ);
+	if (fh >= 0)
+	{
+		fclose(fh);
+		fremove(src);
+		print(sprintf("^5replay:^7 cache %s dropped, %s holds it\n", src, dst));
+	}
+	else if (frename(src, dst) == 0)
+		print(sprintf("^5replay:^7 cache %s -> %s\n", src, dst));
+	else
+		print(sprintf("^5replay:^7 cache %s cannot move to %s\n", src, dst));
 };
 
 /*
@@ -755,6 +1009,10 @@ void() Online_ReplayStatus =
 	for (i = 0; i < ob_n; i = i + 1)
 		r = sprintf("%s %g", r, ob_rep[i]);
 	print(sprintf("^5replay:^7 rows %g reps%s\n", ob_n, r));
+	r = "";
+	for (i = 0; i < ob_n; i = i + 1)
+		r = sprintf("%s %g", r, ob_run[i]);
+	print(sprintf("^5replay:^7 rows %g runs%s\n", ob_n, r));
 };
 
 float() Online_ReplayState  = { return or_state; };
@@ -784,6 +1042,8 @@ void() Online_ReplayClear =
 */
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
+	local string fn;
+
 	/*
 	  THE REPLAY BRANCH GOES FIRST AND TESTS or_req FOR NON-ZERO.  Both ids are
 	  compared against a stored value that is 0 when nothing is in flight, and
@@ -805,7 +1065,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 			return;
 		}
 
-		if (!Online_ReplayStore(or_rep, resourcebody))
+		fn = Online_ReplayStore(or_rep, resourcebody);
+		if (fn == "")
 		{
 			or_code  = 0;
 			or_state = ORS_FAIL;
@@ -813,7 +1074,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		}
 
 		Online_ReplayFree();
-		or_path  = strzone(Online_ReplayPath(or_rep));
+		or_path  = strzone(fn);
 		or_state = ORS_READY;
 		return;
 	}
@@ -1039,7 +1300,7 @@ string(float i) Online_RepString =
 {
 	if (i < 0 || i >= ob_n)
 		return "";
-	if (ob_rep[i] > 0)
+	if (ob_rep[i] > 0 || ob_run[i] > 0)
 		return "watch";
 	return "none";
 };
@@ -1140,6 +1401,8 @@ void() Online_Status =
 		  cell itself is a sui row and no cfg in this tree drives a cursor.
 		*/
 		word = strcat(word, "  ", Online_RepString(i));
+		if (ob_run[i] > 0)
+			word = strcat(word, sprintf(" run %g", ob_run[i]));
 		if (ob_ver[i] > 0)
 			word = strcat(word, " verified");	// Patch 374: the cell's mark
 
@@ -1198,9 +1461,9 @@ float(string cmd) Online_ConsoleCommand =
 	{
 		/*
 		  TWO FORMS, AND THE `row` ONE IS THE REAL TWIN OF THE CLICK.
-		  Scores_OnlineHandOff reads ob_rep[pick] and hands THAT to
-		  Online_ReplayFetch; `board_replay row 0` does exactly the same thing
-		  with the same array, so the parse and the fetch are tested together.
+		  Scores_OnlineHandOff hands the row to Online_ReplayFetchRow (Patch 395:
+		  `rep`, else `run`); `board_replay row 0` does exactly the same thing
+		  with the same arrays, so the parse and the fetch are tested together.
 		  The bare-id form stays because it can ask for a row this board does
 		  not have, which is how the 404 path is reached at all.
 		*/
@@ -1213,10 +1476,15 @@ float(string cmd) Online_ConsoleCommand =
 				              argv(2), ob_n));
 				return TRUE;
 			}
-			if (ob_rep[track] < 1)
+			if (Online_RowRep(track) < 1)
 				print(sprintf("^5replay:^7 row %g has no recording\n", track));
 			else
-				Online_ReplayFetch(ob_rep[track]);
+			{
+				if (Online_RowLeg(track) > 0)
+					print(sprintf("^5replay:^7 row %g is stage %g of run %g\n",
+					              track, Online_RowLeg(track), Online_RowRep(track)));
+				Online_ReplayFetchRow(track);
+			}
 			Online_ReplayStatus();
 			return TRUE;
 		}
