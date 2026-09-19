@@ -13,11 +13,18 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   2424fd9d3485a3854cf57bbca3a3e0c0cf1dc23b
+commit   985203228741c4e3cd462fff36c00531035d9047
 tag      patch-266
 patch    400
 qcbuild  83
-date     2026-09-19
+date     2026-09-20
+
+# PATCH 397: `status` while connected to an FTE QW server (a lobby) prints the server's
+# answer, not "Server is not running".  Client.  cfg/test/p397e.cfg.
+
+# PATCH 396: a predicted teleport's view snap and the server's setangle agree: no second turn,
+# no undo, no stale slot for the next `!s` to eat.  Client; its float newa half (server-only
+# setangles up to 1 deg short) needs the Pi's server binary rebuilt.  cfg/test/p396*.cfg.
 
 # PATCH 399 IS MOD-SIDE ONLY: the key display loses its letters; the overridden strafe key and
 # a released W show the forced-crouch yellow; the mouse-pad trail is orange while A/D is held.
