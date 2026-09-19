@@ -679,6 +679,13 @@ That hash is published beside the download, and in ftesurf-$Ver.json.
 FTESurf $Ver -- install
 =======================
 
+Upgrading from 0.1.9 or earlier: delete ftesurf\ftesurf.cfg once, after
+extracting and before you start the game.  Earlier builds ran Momentum Mod's
+own config at every start and saved its binds into that file (R stopped
+restarting your run).  This build no longer runs it, but the saved binds stay
+until the file is gone.  Deleting it also resets your own settings, so note
+your sensitivity first.  A fresh install has no ftesurf.cfg.
+
 1.  Extract this archive into a folder of its own.  There is no installer and
     nothing is written outside that folder.
 
