@@ -55,6 +55,7 @@ string ui_bn_fake;              // `banner fake`: a key read by test banners onl
 
 // Sound files present on this map (probed at map init; `banner probe` again).
 float  ui_bn_sndok_end, ui_bn_sndok_pb, ui_bn_sndok_wr;
+float  ui_bn_sndok_err;         // Patch 391: hud_snd_error
 
 // What Bn_Place / Bn_Delta decided, for one draw (tempstrings: this frame only).
 string ui_bn_pl1, ui_bn_pl2, ui_bn_dl;
@@ -78,6 +79,8 @@ void() Banner_RegisterCvars =
 	registercvar("hud_banner_snd_end", "sound/ftesurf/complete.wav", CVAR_ARCHIVE);
 	registercvar("hud_banner_snd_pb", "sound/ftesurf/pb.wav", CVAR_ARCHIVE);
 	registercvar("hud_banner_snd_wr", "sound/ftesurf/wr.wav", CVAR_ARCHIVE);
+	// Patch 391: a refused save-lock load.  None ships yet either.
+	registercvar("hud_snd_error", "sound/ftesurf/error.wav", CVAR_ARCHIVE);
 	registercommand("banner");      // free: grepped the engine and plugins
 	ui_bn_lastfin = -1;             // the first value seen is not an event
 	ui_bn_lastend = -1;
@@ -120,6 +123,7 @@ void() Bn_SndProbeAll =
 	ui_bn_sndok_end = Bn_SndProbe("hud_banner_snd_end");
 	ui_bn_sndok_pb  = Bn_SndProbe("hud_banner_snd_pb");
 	ui_bn_sndok_wr  = Bn_SndProbe("hud_banner_snd_wr");
+	ui_bn_sndok_err = Bn_SndProbe("hud_snd_error");
 };
 
 // 0 end, 1 pb, 2 wr.  A file that was not there at the probe plays nothing.
@@ -145,6 +149,15 @@ void(float which) Bn_Sound =
 	else if (!ui_bn_sndok_end)
 		return;
 	localsound(substring(Bn_SndPath(cvar_string(cv)), 6, -1));
+};
+
+// Patch 391: a refused save-lock load (cl_saveloc.qc).  Not the banner's switch;
+// "" is silent even if the probe passed on an older value.
+void() Bn_ErrorSound =
+{
+	if (ui_bn_sndok_err)
+	if (cvar_string("hud_snd_error") != "")
+		localsound(substring(Bn_SndPath(cvar_string("hud_snd_error")), 6, -1));
 };
 
 // ---- words -----------------------------------------------------------------
@@ -1235,6 +1248,7 @@ void() Bn_Status =
 	print(sprintf("banner: sound %g  end %g pb %g wr %g  (%s)\n",
 	              cvar("hud_banner_sound"), ui_bn_sndok_end, ui_bn_sndok_pb,
 	              ui_bn_sndok_wr, Bn_SndPath(cvar_string("hud_banner_snd_end"))));
+	print(sprintf("banner: error sound %g  (%s)\n", ui_bn_sndok_err, cvar_string("hud_snd_error")));
 };
 
 float(string cmd) Banner_ConsoleCommand =
@@ -1306,13 +1320,15 @@ float(string cmd) Banner_ConsoleCommand =
 	}
 	if (sub == "probe")
 		Bn_SndProbeAll();
-	// banner sound end|pb|wr  -- plays it as a banner would (or nothing)
+	// banner sound end|pb|wr|err  -- plays it as a banner would (or nothing)
 	if (sub == "sound")
 	{
 		if (argv(2) == "pb")
 			Bn_Sound(1);
 		else if (argv(2) == "wr")
 			Bn_Sound(2);
+		else if (argv(2) == "err")
+			Bn_ErrorSound();
 		else
 			Bn_Sound(0);
 	}

@@ -160,6 +160,15 @@ float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 vector rec_sl_holdang;
 float  rec_sl_holdang_ok;        // the latch is valid; a hold with no latch yet must not force '0 0 0'
 
+// Patch 391: the load key a clean run refused, latched until its key-up so the
+// auto-repeats neither warn nor sound again.
+float rec_sl_refkey;             // scancode; 0 = none
+float rec_sl_refseen;            // cltime of its last down edge
+float rec_sl_8held;              // cltime of 8's last down edge while held; 0 = up
+
+float() LT_StatsAreMine;         // cl_lobbytime.qc
+void() Bn_ErrorSound;            // cl_banner.qc
+
 void() SaveLoc_RegisterCvars =
 {
 	/*
@@ -316,7 +325,7 @@ void() SaveLoc_InputFrame =
   window.  See the note on rec_sl_holding: a release that never arrives would
   otherwise leave you parked at a save with no way out but pressing 2 again.
 */
-void() SaveLoc_Idle = { SaveLoc_Release(); };
+void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; };
 
 /*
   The load key, from either state.
@@ -350,6 +359,62 @@ void() SaveLoc_HoldFrame =
 };
 
 /*
+  Patch 391: a clean run on the clock, which any load would end (SV_SaveApplyState
+  replaces the run: segmented, shadow or re-armed).  Practice, segmented and
+  shadow runs keep loading -- that is the fail-and-reload loop.  The stats are
+  the live run's under a replay or spectate too.  `cmd sl_load` is not gated, and
+  for ~1 RTT after the start the stat has not said RUNNING yet.
+*/
+float() SaveLoc_RunLocked =
+{
+	if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING)
+		return FALSE;
+	if (FS_RunClass(getstatf(STAT_FS_TIMERFLAGS)) != RC_CLEAN)
+		return FALSE;
+	return LT_StatsAreMine();       // unknown owner fails open
+};
+
+// The keys that load: 2, and 3-6 with the panel up (SV_SaveLocStep teleports).
+float(float scan) SaveLoc_LoadsOn =
+{
+	if (scan == '2')
+		return TRUE;
+	return rec_sl_open && scan >= '3' && scan <= '6';
+};
+
+// The key bound to `say !r` (default.cfg), else "!r".
+string() SaveLoc_RestartKey =
+{
+	local string k;
+	local float sp;
+
+	k = findkeysforcommandex("say !r");
+	sp = strstrofs(k, " ", 0);
+	if (sp > 0)
+		k = substring(k, 0, sp);
+	if (k == "")
+		return "!r";
+	return strtoupper(k);
+};
+
+void(float scan) SaveLoc_Refuse =
+{
+	local string k;
+
+	rec_sl_refkey  = scan;
+	rec_sl_refseen = cltime;
+	rec_sl_armdel  = 0;             // any save-lock key disarms 8, this one too
+
+	k = SaveLoc_RestartKey();
+	if (ui_tm_lockmsg != "")
+		strunzone(ui_tm_lockmsg);
+	ui_tm_lockmsg = strzone(sprintf("no loads mid-run -- %s restarts", k));
+	ui_tm_lockat  = cltime;
+	print(sprintf("^3saveloc:^7 no loads mid-run -- %s restarts the run\n", k));
+	Bn_ErrorSound();
+};
+
+/*
   One key press.  Returns TRUE when it consumed it.
 */
 float(float scan, float down) SaveLoc_Key =
@@ -358,6 +423,8 @@ float(float scan, float down) SaveLoc_Key =
 	if (!rec_sl_cv)
 	{
 		SaveLoc_Release();
+		rec_sl_refkey = 0;
+		rec_sl_8held  = 0;
 		return FALSE;
 	}
 
@@ -370,6 +437,14 @@ float(float scan, float down) SaveLoc_Key =
 			SaveLoc_Release();
 			return TRUE;
 		}
+		if (scan == '8')
+			rec_sl_8held = 0;
+		// Patch 391: a refused press's release is taken like its press.
+		if (rec_sl_refkey && scan == rec_sl_refkey)
+		{
+			rec_sl_refkey = 0;
+			return TRUE;
+		}
 		return FALSE;
 	}
 
@@ -380,6 +455,21 @@ float(float scan, float down) SaveLoc_Key =
 	{
 		rec_sl_holdseen = cltime;
 		rec_sl_holdrep  = TRUE;
+		return TRUE;
+	}
+
+	// Patch 391: a refused key's repeats stay refused and silent.  Lapses after
+	// SL_HOLD_DEADMAN of quiet, since a key-up can be eaten (the chat draft).
+	if (rec_sl_refkey && scan == rec_sl_refkey)
+	if (cltime - rec_sl_refseen <= SL_HOLD_DEADMAN)
+	{
+		rec_sl_refseen = cltime;
+		return TRUE;
+	}
+	if (SaveLoc_LoadsOn(scan))
+	if (SaveLoc_RunLocked())
+	{
+		SaveLoc_Refuse(scan);
 		return TRUE;
 	}
 
@@ -417,6 +507,14 @@ float(float scan, float down) SaveLoc_Key =
 	*/
 	if (scan == '8')
 	{
+		// Patch 391: a repeat is not a second press -- holding 8 used to confirm
+		// its own arm with the first auto-repeat.  Lapses like the refusal latch.
+		if (rec_sl_8held && cltime - rec_sl_8held <= SL_HOLD_DEADMAN)
+		{
+			rec_sl_8held = cltime;
+			return TRUE;
+		}
+		rec_sl_8held = cltime;
 		if (rec_sl_armdel > 0 && cltime - rec_sl_armdel <= FS_SL_ARMTIME)
 		{
 			rec_sl_armdel = 0;
@@ -468,7 +566,7 @@ void(vector p, float w, float h, string key, string label, float hot, float lsz)
 void(vector scr) SaveLoc_Draw =
 {
 	local vector p;
-	local float w, h, lsz, gap, count, idx, y;
+	local float w, h, lsz, gap, count, idx, y, locked, fresh;
 	local string hdr;
 
 	if (!rec_sl_open)
@@ -524,6 +622,19 @@ void(vector scr) SaveLoc_Draw =
 		y = y + h + gap * 2;
 	}
 
+	// Patch 391: loads are refused on a clean run; the armed-row red just after
+	// a refusal.
+	locked = SaveLoc_RunLocked();
+	if (locked)
+	{
+		fresh = (ui_tm_lockat > 0 && cltime - ui_tm_lockat <= FS_SL_ARMTIME);
+		drawfill([p_x, y], [w, h], fresh ? '0.30 0.08 0.08' : '0.10 0.13 0.17',
+		         fresh ? 0.90 : 0.75, 0);
+		HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "no loads mid-run", lsz,
+		         fresh ? '1.00 0.65 0.55' : '0.55 0.58 0.62', 1);
+		y = y + h + gap * 2;
+	}
+
 	/*
 	  Build 25 -- Momentum's nine, in Momentum's order.
 
@@ -537,7 +648,7 @@ void(vector scr) SaveLoc_Draw =
 	  a voided run, and goes back to its own label when the arm lapses.
 	*/
 	SaveLoc_Row([p_x, y], w, h, "1", "Create Save",   FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "2", "Load Save",     count > 0, lsz);  y = y + h + gap;
+	SaveLoc_Row([p_x, y], w, h, "2", "Load Save",     count > 0 && !locked, lsz);  y = y + h + gap;
 	SaveLoc_Row([p_x, y], w, h, "3", "Go to next",    FALSE, lsz);      y = y + h + gap;
 	SaveLoc_Row([p_x, y], w, h, "4", "Go to previous",FALSE, lsz);      y = y + h + gap;
 	SaveLoc_Row([p_x, y], w, h, "5", "Go to First",   FALSE, lsz);      y = y + h + gap;

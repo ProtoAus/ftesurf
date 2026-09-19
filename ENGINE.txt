@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   2424fd9d3485a3854cf57bbca3a3e0c0cf1dc23b
 tag      patch-266
-patch    389
+patch    391
 qcbuild  83
 date     2026-09-19
+
+# PATCH 391 IS MOD-SIDE ONLY: a clean running run refuses the save-lock load keys (2; 3-6 with
+# the panel open) with a warning and hud_snd_error; held 8 no longer confirms itself.  Needs the
+# CLIENT progs (-Pi serves csprogs).  cfg/test/p391lock.cfg.
 
 # PATCH 389 IS MOD-SIDE ONLY: only Windows clients rank during the Linux beta (SV_ProfileBroken:
 # no IPH_RAW -> TF_NOPROFILE).  Needs the SERVER progs (-Pi).  cfg/test/p387xi2.cfg, b78event.cfg.

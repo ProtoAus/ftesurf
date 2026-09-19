@@ -79,6 +79,10 @@ float  ui_tm_lastfails;         // last STAT_FS_STAGEFAILS seen; -1 = seeding
 float  ui_tm_failat;            // cltime the reset landed; 0 = none
 float  ui_tm_failseg;           // the stage it was, for the text
 
+// Patch 391: a refused save-lock load (SaveLoc_Refuse), on the same flash line.
+float  ui_tm_lockat;            // cltime; 0 = none
+string ui_tm_lockmsg;           // strzone'd
+
 /*
   BUILD 48 -- THE STAGE-CLOSE EDGE.
 
@@ -1336,6 +1340,7 @@ void(vector scr) Timer_Draw =
 		// would otherwise flash a reset at you.  One sentinel, used both places.
 		ui_tm_lastfails = -1;
 		ui_tm_failat    = 0;
+		ui_tm_lockat    = 0;
 
 		// Build 48, and the same sentinel for the same reason: a fresh map
 		// reports 0 closes, and seeding to 0 would make the first one invisible.
@@ -1645,7 +1650,16 @@ void(vector scr) Timer_Draw =
 	  It fades on the same curve and the same cvar as the split flash rather than
 	  a second constant -- one setting still governs how long an event stays up.
 	*/
-	if (ui_tm_failat > 0 && cltime - ui_tm_failat < ui_tm_splittime)
+	// Patch 391: a refused save-lock load, while it is the newest event here.
+	if (ui_tm_lockat > ui_tm_failat && ui_tm_lockat > ui_tm_splitat
+	    && cltime - ui_tm_lockat < ui_tm_splittime)
+	{
+		local float la;
+		la = 1 - (cltime - ui_tm_lockat) / ui_tm_splittime;
+		la = la * 2;  if (la > 1) la = 1;
+		HUD_TextC([p_x, y], ui_tm_lockmsg, small, TC_BEHIND, la);
+	}
+	else if (ui_tm_failat > 0 && cltime - ui_tm_failat < ui_tm_splittime)
 	{
 		local float fa;
 		fa = 1 - (cltime - ui_tm_failat) / ui_tm_splittime;
