@@ -409,7 +409,8 @@ void(float scan) SaveLoc_Refuse =
 	if (ui_tm_lockmsg != "")
 		strunzone(ui_tm_lockmsg);
 	ui_tm_lockmsg = strzone(sprintf("no loads mid-run -- %s restarts", k));
-	ui_tm_lockat  = cltime;
+	if (!spc_hud && !rec_wt_on)
+		ui_tm_lockat = cltime;      // the timer draws no flash line there; no late flash after
 	print(sprintf("^3saveloc:^7 no loads mid-run -- %s restarts the run\n", k));
 	Bn_ErrorSound();
 };
@@ -461,10 +462,13 @@ float(float scan, float down) SaveLoc_Key =
 	// Patch 391: a refused key's repeats stay refused and silent.  Lapses after
 	// SL_HOLD_DEADMAN of quiet, since a key-up can be eaten (the chat draft).
 	if (rec_sl_refkey && scan == rec_sl_refkey)
-	if (cltime - rec_sl_refseen <= SL_HOLD_DEADMAN)
 	{
-		rec_sl_refseen = cltime;
-		return TRUE;
+		if (cltime - rec_sl_refseen <= SL_HOLD_DEADMAN)
+		{
+			rec_sl_refseen = cltime;
+			return TRUE;
+		}
+		rec_sl_refkey = 0;          // lapsed: this press's up is not ours to take
 	}
 	if (SaveLoc_LoadsOn(scan))
 	if (SaveLoc_RunLocked())
