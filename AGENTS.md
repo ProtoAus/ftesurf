@@ -172,6 +172,10 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     A shared file (AGENTS.md, ENGINE.txt, ENGINE_PATCHES.md) can hold another
     session's uncommitted hunks. Stage only yours: `git apply --cached` a
     trimmed diff. `git add -p` is interactive, which agents cannot use.
+  - A working-tree build proves nothing about a commit whose tree also holds
+    other sessions' QC. Prove it alone: `git diff --cached > p`, `git worktree
+    add <tmp> HEAD`, `git -C <tmp> apply p`, copy the untracked
+    `src/fteqcc64.exe` in, compile the three `.src` there, remove the worktree.
   - Format is CONTRIBUTING.md's: `Build NN — …` or a plain subject ≤ 72 chars,
     body Root cause / Fix / Verified. Say what you could NOT verify.
   - `git push origin HEAD:main`. Never force-push and never rewrite pushed
@@ -538,7 +542,12 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   client joins IT and is dropped when it quits: kill leftovers between runs.
 - Sessions share test fixtures (surf_666 + `p360sf.zones.json`, `data/runs`,
   `data/saves`, `data/resume`). Tell the other live session before a run that
-  moves them, park rather than delete, restore and `diff -r` afterwards.
+  moves them, park rather than delete, restore and `diff -r` afterwards. The
+  same goes for `build.ps1`: it redeploys the progs a running harness loads.
+- Two-process harnesses drift: over a five-minute run the clients' `waitms`
+  timeline ran 5-9 s ahead of the server's. Leave windows of 5 s or more
+  between a server `set` and the client action that depends on it, and read the
+  logs' timestamps rather than the cfg's arithmetic.
 - A lobby process sees files another process wrote only after its own next map
   load (the name hash; `SV_MsAdopt` renames onto itself to force it). A
   cross-lobby test starts the second server after the first one's write.
