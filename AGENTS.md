@@ -507,6 +507,12 @@ bannered as superseded.)
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
   immediately.
+- To pm_verify a fixture-zoned file on the Pi (surf_666 with p360sf) without
+  touching live zones: an overlay basedir -- link every entry of game/ except
+  ftesurf/, and every entry of game/ftesurf except data, logs and maps; put the
+  fixture at <overlay>/ftesurf/maps/zones/local/<map>.json and the files under
+  <overlay>/ftesurf/data; run game/fteqw-svarm64 -basedir <overlay> with the
+  sweeper's arguments (port != 27698). Remove it after (rm -r keeps link targets).
 - Configs reach the Pi BY HAND: `-Pi` ships only the progs. A dedicated server
   execs `cfg/default.cfg` when there is no `server.cfg` or `quake.rc`
   (`sv_main.c:6714`).

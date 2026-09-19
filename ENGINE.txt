@@ -32,6 +32,15 @@ date     2026-09-19
 # PATCH 386: Linux loads EGL/GLESv2/Xrandr/Xxf86vm/Xxf86dga by soname; Snap, Debian and XDG Steam
 # layouts; default.cfg prefers GLX on Linux.  Linux client only.  cfg/test/p386lin.cfg.
 
+# PATCH 385 IS MOD-SIDE ONLY: spectate from the room list (cl_spectate.qc) over Patch 382's
+# hold; needs Patch 380's engine and BOTH progs (-Pi).  cfg/test/p385view.cfg, p385rec.cfg.
+
+# PATCHES 378, 379, 381-384 ARE MOD- OR TOOLS-SIDE: replay smoothing (378-379), the tools
+# read `spec` (381), the hold's QC (382), 66 Hz tick-stamped bodies (383), SPACE pairing (384).
+
+# PATCH 380: a held player runs zero mover ticks (.run_pmhold; infokey *pmhold "1") and
+# pm_verify checks `spec` windows.  The progs refuse a ranked hold without it.  p380verify.cfg.
+
 # PATCH 377: exec never runs a config out of a mounted game (Momentum's cfg/config.cfg
 # ran at every boot via the P330 fallback).  Needs this CLIENT.  cfg/test/p377boot.cfg.
 
