@@ -451,6 +451,9 @@ bannered as superseded.)
 
 - 12 lobbies, systemd `ftesurf@1..12`, basedir `/srv/nvme/ftesurf-server/game`;
   lobby cfgs sourced from this repo's `ftesurf/cfg/lobby/` — edit here, scp there.
+- The Pi's `game/hl2` is EMPTY (measured 2026-09-19): maps with HL2 props load 33
+  fewer models there, so the server collides fewer prop faces than a client with
+  HL2 (bhop_monster_jam: 2142 vs 6048; pm_dettest trace hash differs).
 - Restart: sudoers is per-unit only — loop `sudo -n systemctl restart ftesurf@$i`
   for i in 1..12.
 - Deploy server progs with `./build.ps1 -Pi` (refuses while players are
@@ -572,6 +575,36 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   (client) and `cmd vote` (server) print both sides.
 - A test that lowers lobby_cycle must raise it again before a map change: on
   the next map a short period opens the end-of-map vote on its first frame.
+
+## Linux build, test rig and release (Patches 386-389, 0.1.11)
+
+- BUILD: `pwsh -NoProfile -File tools\linux\build-linux.ps1 -Commit <engine sha>
+  -ExpectSonames -OutName linux-build-<x>` builds in a Debian bullseye chroot
+  inside WSL `Ubuntu-22.04` (made once by `tools/linux/chroot-setup.sh`), from a
+  fresh clone, offline, from `tarballs.sha256`. Output `dist\<OutName>\` with
+  BUILDINFO.txt; `gates.sh` G1-G10 must all PASS (libc/libm only, glibc <= 2.31,
+  zstd in the plugin -- Momentum's VTF 7.6 -- versioned sonames, clean stamp).
+  `makelibs` runs at -j1: its two-target rules race under -j.
+- Call `wsl.exe -d <distro> --exec ...` from PowerShell. Git Bash rewrites
+  /mnt/c paths, and without `--exec` the login shell expands `$vars`.
+- A Windows exe built from a `git worktree` carries NO revision stamp (the
+  Makefile tests `-d .git`, a file in a worktree): set `$env:SVN_VERSION =
+  git-<rev-list --count + 29>-<describe --long --always>` and `$env:SVN_DATE`
+  before `build.ps1 -Engine -Full -FteRoot <worktree>`.
+- RELEASE: `release.ps1 -Bump patch -Linux dist\<drop> -FteRoot <worktree>`. The
+  Linux drop and ftesurf64.exe must come from the same engine commit (gate L2);
+  build.ps1 recompiles the progs from `src`, so copy the lobby-deployed .dat back
+  in before releasing.
+- TEST RIG: WSL `Debian` is a runtime-only player machine (user `surf`;
+  `tools/linux/rig-setup.sh`), driven by `rig-install.sh` / `rig-run.sh` /
+  `rig-steam.sh` / `rig-sv.sh`. Case tests need ext4 (`/home/surf/fakesteam`,
+  `rig-fakesteam.sh`): /mnt/c is case-insensitive, and so slow that a lobby join
+  over it timed out. A cfg's own `log_name` wins and logs APPEND: read the tail.
+- Linux engine facts: loose files fold case ONLY through the name hash
+  (fs_cache); a stale hash or an FSLF_IGNOREPURE lookup (`exec`) is exact-case.
+  Linux runs are UNRANKED during the beta (Patch 389: SV_ProfileBroken demotes a
+  profile without IPH_RAW; delete those three lines to lift it). Patch 387's
+  entry lists what Linux input evidence cannot see.
 
 ## Pitfalls discovered the hard way
 
