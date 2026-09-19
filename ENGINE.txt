@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   985203228741c4e3cd462fff36c00531035d9047
+commit   3d1e00c3e65e8b85119c8a4a5af546afb124b141
 tag      patch-266
 patch    401
 qcbuild  83
@@ -25,6 +25,8 @@ date     2026-09-20
 # PATCH 396: a predicted teleport's view snap and the server's setangle agree: no second turn,
 # no undo, no stale slot for the next `!s` to eat.  Client; its float newa half (server-only
 # setangles up to 1 deg short) needs the Pi's server binary rebuilt.  cfg/test/p396*.cfg.
+# Review fixes (3d1e00c3e): a moved crossing rotates 0 at any distance, an absolute setangle
+# keeps a newer predicted snap.  cfg/test/p396p.cfg.
 
 # PATCH 399 IS MOD-SIDE ONLY: the key display loses its letters; the overridden strafe key and
 # a released W show the forced-crouch yellow; the mouse-pad trail is orange while A/D is held.
