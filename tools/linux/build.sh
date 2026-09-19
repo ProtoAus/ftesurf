@@ -2,7 +2,7 @@
 # Portable Linux x86_64 build of the FTESurf engine fork at one commit, inside the bullseye chroot
 # made by chroot-setup.sh.  Run as root in Ubuntu-22.04 WSL (build-linux.ps1 wraps this):
 #   bash tools/linux/build.sh <engine commit> [--expect-sonames]
-# Output (Windows-visible): C:\FTESurf\dist\linux-build\  -- fteqw64, fteplug_hl2_amd64.so,
+# Output (Windows-visible): C:\FTESurf\dist\linux-build\ (or $FTESURF_LINUX_OUT) -- fteqw64, fteplug_hl2_amd64.so,
 # fteqw-sv64, BUILDINFO.txt, db/ (unstripped, for crash symbolising), logs/.
 set -eu
 COMMIT=${1:?usage: build.sh <engine commit> [--expect-sonames]}
@@ -12,12 +12,14 @@ CH=/srv/ftebuild-bullseye
 MIRROR=/srv/fteqw-mirror.git
 CACHE=/srv/ftebuild-cache
 SRC=/mnt/c/msys64/home/Lex/fteqw
-OUT=/mnt/c/FTESurf/dist/linux-build
+OUT=${FTESURF_LINUX_OUT:-/mnt/c/FTESurf/dist/linux-build}
 ZSTDVER=1.5.6
 JOBS=$(nproc)
 
 die() { echo "build.sh: $*" >&2; exit 1; }
 [ -x "$CH/bin/bash" ] || die "no chroot at $CH -- run chroot-setup.sh first"
+# The publish step renames $OUT aside; an empty name once made it dist/ itself.
+case $OUT in */dist/linux-build*) ;; *) die "output must be a dist/linux-build* folder, not '$OUT'" ;; esac
 
 # 1. The commit, from the Windows repo, into the mirror (tags too: the revision stamp uses describe).
 git -C "$MIRROR" -c safe.directory='*' fetch -q --prune "$SRC" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'

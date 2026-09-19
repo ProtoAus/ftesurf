@@ -13,11 +13,18 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   443337a1c080c1de12d0a3750c2c2f8d7ef7a48e
+commit   2424fd9d3485a3854cf57bbca3a3e0c0cf1dc23b
 tag      patch-266
-patch    386
+patch    388
 qcbuild  83
 date     2026-09-19
+
+# PATCH 388: Linux name hash -- a log line no longer crashes it (vid_restart/quit with
+# log_developer), a file created this session is findable, a fresh install's first map is not
+# stale.  Linux client.  cfg/test/p388crash.cfg, p388save.cfg, p386first.cfg.
+
+# PATCH 387: Linux publishes the raw-input grant (XI2 off -> demoted); core XTEST rejected and
+# counted.  Ceiling in the entry (device-targeted XTEST, compositor, uinput).  cfg/test/p387*.cfg.
 
 # PATCH 386: Linux loads EGL/GLESv2/Xrandr/Xxf86vm/Xxf86dga by soname; Snap, Debian and XDG Steam
 # layouts; default.cfg prefers GLX on Linux.  Linux client only.  cfg/test/p386lin.cfg.

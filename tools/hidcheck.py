@@ -144,7 +144,15 @@ HEAD_P312 = {"input"}
 
 # Names that are not physical devices: FTE's own fallback paths, enumerated
 # alongside the real hardware.  Excluded when counting mice against `rawmice`.
-PSEUDO_DEVICES = {"system", "di", "di7"}
+# Patch 387 adds the Linux backends' own (X11 core, DGA, one Wayland seat).
+WINDOWS_PSEUDO = {"system", "di", "di7"}
+PSEUDO_DEVICES = WINDOWS_PSEUDO | {"x11", "dga", "wayland"}
+# Patch 387: an X11 XTEST slave, listed but never counted as hardware.
+PSEUDO_TYPES = {"xtest"}
+# Patch 387: only a Linux backend enumerates `keyboard - "x11"|"wayland"`.
+NONWIN_KEYBOARDS = {"x11", "wayland"}
+# K_MOUSE1-5, K_MWHEELDOWN/UP, K_MOUSE6-10 (engine client/keys.h).
+MOUSE_KEYS = set(range(178, 185)) | set(range(265, 270))
 
 
 def _unquote_pair(rest):
@@ -355,9 +363,28 @@ def check_hid(path, verbose=False):
         r.fault("base is not a number: %r" % head["base"])
         return r
 
+    # Patch 387: a Linux journal. Decided by the device table, not by a value a
+    # Windows player can set, and never when the table holds a Windows name (a
+    # spliced x11 line must not silence the Windows faults below).
+    nonwin = (any(t == "keyboard" and n in NONWIN_KEYBOARDS for t, _, n in devs)
+              and not any(n.startswith("\\") or n in WINDOWS_PSEUDO
+                          for _, _, n in devs))
+    if nonwin:
+        names = set((t, n) for t, _, n in devs)
+        if ("keyboard", "wayland") in names:
+            r.info["input_backend"] = "Wayland (one merged seat)"
+        elif ("mouse", "x11") in names:
+            r.info["input_backend"] = "X11 core pointer (OS-accelerated)"
+        elif ("mouse", "dga") in names:
+            r.info["input_backend"] = "X11 DGA"
+        else:
+            r.info["input_backend"] = "X11 XInput2"
+
     raw = head.get("rawinput", "?")
     r.info["rawinput"] = raw
-    if raw == "0":
+    if nonwin:
+        pass    # Patch 387: in_rawinput is a Windows cvar; -1 (and pre-387 0) = no such request
+    elif raw == "0":
         r.note("rawinput 0 -- the mouse column is per-FRAME deltas already summed "
                "by the OS (GetCursorPos recentre), not per-report. No conclusion "
                "about report rate or delta shape may be drawn from this file.")
@@ -384,6 +411,7 @@ def check_hid(path, verbose=False):
     # in_generic.c is cross-platform and only in_win.c maintains these -- so an
     # SDL or X11 journal says -1 and must not be read as "found no mouse".
     # Absence of a measurement is not a measurement of zero.
+    # (Patch 387: X11 and Wayland now report it; see `nonwin`.)
     if "rawmice" in head:
         try:
             mice = int(head["rawmice"])
@@ -394,12 +422,20 @@ def check_hid(path, verbose=False):
         else:
             r.info["rawmice"] = "not reported by backend" if mice < 0 else str(mice)
             r.info["rawkbds"] = "not reported by backend" if kbds < 0 else str(kbds)
-            if raw == "1" and mice == 0:
+            if nonwin:
+                if mice == 0:
+                    r.note("rawmice 0 on a non-Windows backend: no XInput2 relative "
+                           "pointer was bound (x11_allow_xi2 0, -noxi2, no XInput2, "
+                           "or a Wayland compositor without relative-pointer/"
+                           "pointer-constraints); pointer motion is OS-accelerated "
+                           "core/compositor motion and the server demotes the run "
+                           "(TF_NOPROFILE).")
+            elif raw == "1" and mice == 0:
                 r.fault("rawinput 1 but rawmice 0 -- raw input was REQUESTED and "
                         "never granted, so every delta here is an OS-summed, "
                         "OS-accelerated GetCursorPos delta. The header's own "
                         "'rawinput 1' does not describe this file.")
-            if raw == "0" and mice > 0:
+            if raw == "0" and mice > 0 and not nonwin:
                 r.fault("rawinput 0 but rawmice %d -- the cvar and the bound "
                         "device count disagree in the impossible direction; one "
                         "of the two was written from stale state." % mice)
@@ -411,7 +447,8 @@ def check_hid(path, verbose=False):
     # counts are exact and repeating this caveat would tell a reader to distrust
     # a number that is now correct. Emitted from the body, where `saw_prev` is
     # known -- see the press/repeat section.
-    r.info["rawkbd_legacy"] = (rawkbd == "0")
+    # Patch 387: never on Linux -- the note it selects names WM_KEYDOWN.
+    r.info["rawkbd_legacy"] = (rawkbd == "0") and not nonwin
 
     # The synth flag is read here but REPORTED in the body section, because
     # engine Patch 311 names the source in a note and the notes are not parsed
@@ -665,7 +702,17 @@ def check_hid(path, verbose=False):
             events += 1
             if kind == "x":
                 hidden += 1
+            keynum = None
             if kind in ("+", "-"):
+                # Parsed once here: the Patch 387 attribution below reads it, and
+                # an int() there on a corrupt line aborted the whole sweep.  Only
+                # non-Windows files read it, so only they fault on it.
+                if nonwin and len(tok) > 3:
+                    try:
+                        keynum = int(tok[3])
+                    except ValueError:
+                        r.fault("line %d: %r key is not a number: %r"
+                                % (lineno + 1, kind, tok[3]))
                 # Patch 309. Two or three payload fields; three is current.
                 if len(tok) not in (4, 5):
                     r.fault("line %d: %r has %d fields, expected 4 (pre-309) "
@@ -694,7 +741,12 @@ def check_hid(path, verbose=False):
             except (ValueError, IndexError):
                 pass
             else:
-                if kind in ("+", "-", "x"):
+                # Patch 387: on Linux a mouse button carries its pointer's devid
+                # (Xwayland: buttons from xwayland-pointer, motion from the
+                # relative one), so it is attributed as a pointer event.
+                if nonwin and keynum in MOUSE_KEYS:
+                    devids_used[d] = devids_used.get(d, 0) + 1
+                elif kind in ("+", "-", "x"):
                     devids_key[d] = devids_key.get(d, 0) + 1
                 else:
                     devids_used[d] = devids_used.get(d, 0) + 1
@@ -767,6 +819,14 @@ def check_hid(path, verbose=False):
         # third supports the sentence "nothing was injected", and saying it
         # about either of the other two would be drawing the strictest possible
         # conclusion from the least possible evidence.
+        # Patch 387: X11 XInput2 counts XTEST but has no unenumerated class, so
+        # its trailer reads <injected> -1. The counter is process-wide and
+        # monotone, so a core or Wayland table after an XI2 session carries a 0
+        # that counted nothing (measured, p387wl/p387xi2 B): a count only under
+        # an XInput2 table, or where 'i' records show rejections happened.
+        xi_only = (nonwin and t_injected is not None and t_injected >= 0
+                   and t_unenum is not None and t_unenum < 0
+                   and (r.info.get("input_backend") == "X11 XInput2" or saw_i))
         if t_injected is None:
             if saw_i:
                 r.fault("'i' records are present but the trailer has no "
@@ -775,6 +835,26 @@ def check_hid(path, verbose=False):
                 r.note("no injected-report counters: this journal predates "
                        "engine Patch 306, so whether synthesized input was "
                        "REJECTED during it cannot be asked of this file.")
+        elif xi_only:
+            r.info["injected"] = t_injected
+            r.info["unenum"] = "not counted by this backend"
+            if unenum:
+                r.fault("'i' records carry %d unenumerated reports although the "
+                        "trailer says this backend does not count them" % unenum)
+            if truncated is None and t_injected != injected:
+                r.fault("trailer says %d injected reports, the 'i' records "
+                        "account for %d" % (t_injected, injected))
+            elif truncated is not None and t_injected < injected:
+                r.fault("trailer says %d injected reports but the 'i' records "
+                        "already hold %d" % (t_injected, injected))
+            if t_injected:
+                r.note("%d core XTEST reports (synthesized input: xdotool, "
+                       "x11vnc, Barrier/Synergy/Input Leap, XKB MouseKeys) were "
+                       "REJECTED while the pointer was grabbed. They did NOT "
+                       "reach the game. Evidence of an attempt -- review, never "
+                       "auto-reject. Only core XTEST requests are caught; an "
+                       "empty count does not mean nothing was injected."
+                       % t_injected)
         elif t_injected < 0 or t_unenum < 0:
             r.note("the input backend does not count rejected reports "
                    "(injected=%d unenum=%d); this is not Windows raw input, "
@@ -891,6 +971,21 @@ def check_hid(path, verbose=False):
                            "that ungrabs the mouse reopens it; an injected "
                            "click landing in one of those spans would be "
                            "accepted." % len(legacy_states))
+                elif nonwin and live0 < 0 and not legacy_states:
+                    # Patch 387: no Windows legacy path. Only XInput2 with the
+                    # pointer grabbed rejects (core XTEST) clicks; ungrabbed,
+                    # core/DGA and Wayland accept them.
+                    if r.info.get("input_backend") == "X11 XInput2":
+                        r.info["legacy_path"] = (
+                            "not a Windows path -- core XTEST clicks are "
+                            "blocked only while the pointer is grabbed under "
+                            "XInput2; ungrabbed (menus, console, "
+                            "in_windowed_mouse 0) they are accepted")
+                    else:
+                        r.info["legacy_path"] = (
+                            "open -- this backend does not block injected "
+                            "clicks (clicks are blocked only while the pointer "
+                            "is grabbed under XInput2)")
                 else:
                     r.info["legacy_path"] = ("open -- injected clicks are not "
                                              "blocked in this session")
@@ -1019,7 +1114,8 @@ def check_hid(path, verbose=False):
     if not devs and not devmaps:
         r.info["devices"] = "not recorded (pre-303 journal)"
     else:
-        real = [d for d in devs if d[2] not in PSEUDO_DEVICES]
+        real = [d for d in devs
+                if d[2] not in PSEUDO_DEVICES and d[0] not in PSEUDO_TYPES]
         # Broken down by type rather than totalled as "physical", because this
         # tool cannot tell a plugged-in controller from an empty XInput slot --
         # the backend enumerates xi0..xi3 either way. Counting those as physical
@@ -1074,7 +1170,16 @@ def check_hid(path, verbose=False):
         # '+'/'-'/'x' is a key and an 'm'/'a'/'j' is a pointer, whatever devid
         # they share.  So attribution is still possible per kind, and the fix is
         # to stop asking the pointer question about keyboard events.
+        # Patch 387: a Wayland seat is written `mouse - "wayland..."` (it cannot
+        # be remapped) and sends every pointer event as devid 0.
+        wl_seat = nonwin and any(t == "mouse" and did == "-" and n.startswith("wayland")
+                                 for t, did, n in devs + devmaps)
+        if wl_seat and 0 in devids_used:
+            r.info["pointer_attribution"] = ("one merged Wayland seat -- every "
+                                             "pointer event carries devid 0")
         for did, n in sorted(devids_used.items()):
+            if wl_seat and did == 0:
+                continue
             if str(did) not in claimed:
                 r.note("devid %d produced %d pointer events but no device in "
                        "the table claims it -- it was unplugged mid-run, or "
@@ -1137,7 +1242,7 @@ def check_hid(path, verbose=False):
                        % (mice_hdr, mice_tbl))
 
         resolved = len([d for d in devmaps if d[1] not in ("-", "unset")])
-        if not resolved:
+        if not resolved and not wl_seat:
             r.info["devices_resolved"] = ("none -- no ENUMERATED device was ever "
                                           "allocated a devid. Note this says "
                                           "nothing about whether the file has "
@@ -1607,10 +1712,11 @@ def emit(r, verbose):
         # vanishing. A reporter that can silently drop a result is the wrong
         # shape for a tool whose whole job is to report results.
         ORDER = ("version", "map", "rawinput", "rawkbd", "rawmice", "rawkbds",
+                 "input_backend",
                  "synth", "synth_source", "devices", "devices_resolved", "identity",
                  "identity_frames", "identity_violations", "frames_not_governed",
                  "time", "events", "frames", "dropped", "hidden",
-                 "render_cvars", "render_changes", "key_devids", "key_attribution", "key_presses", "key_repeats", "key_repeat_pct",
+                 "render_cvars", "render_changes", "key_devids", "key_attribution", "pointer_attribution", "key_presses", "key_repeats", "key_repeat_pct",
                  "orphan_releases", "injected", "unenum", "legacy_presses",
                  "legacy_path", "nolegacy_at_start", "nolegacy_changes", "marks",
                  "truncated_at", "frame_rate", "events_per_sec",

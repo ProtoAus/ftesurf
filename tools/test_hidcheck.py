@@ -53,7 +53,7 @@ class Journal:
     def __init__(self, sens=0.3, myaw=0.022, scale=1.0, mfilter=0.0, maccel=0.0,
                  p293=True, nolegacy=None, nolegacylive=None,
                  rawkbds=None, devices=None, render=None, synth=0,
-                 inputcvars=None):
+                 inputcvars=None, rawinput="1", rawkbd="0", rawmice=None):
         self.sens, self.myaw, self.scale = sens, myaw, scale
         self.lines = []
         self.clock = 0.0          # seconds since base, as the sum of emitted dt
@@ -63,7 +63,10 @@ class Journal:
         self.unenum = 0
         self.legacybtn = 0        # Patch 307: summed by legacypress()
         head = ["FTESURF-HID 1", "map test_identity", "base 100.000000",
-                "rawinput 1", "rawkbd 0"]
+                "rawinput %s" % rawinput, "rawkbd %s" % rawkbd]
+        # Patch 387: the grant, omitted unless asked for (no fixture had one).
+        if rawmice is not None:
+            head.append("rawmice %d" % rawmice)
         # Patch 307: omitted entirely unless asked for, so the pre-307 grammar
         # stays the default and keeps being exercised.
         # Patch 303 device tables + Patch 301's bound-keyboard count, so the
@@ -990,6 +993,267 @@ def case_join_first_window_exempt():
           "first window: nothing else flagged (got %s)" % r.info.get("join_broke"))
 
 
+# ---------------------------------------------------------------------------
+# Patch 387 -- Linux journals (X11 XInput2, X11 core, Wayland)
+# ---------------------------------------------------------------------------
+# What gl_vidlinuxglx.c enumerates under Xwayland: buttons arrive from the
+# absolute xwayland-pointer (devid 1), motion from the relative one (devid 0).
+X11_XI2 = [("keyboard", "-", "x11"),
+           ("mouse", "0", "xwayland-relative-pointer"),
+           ("mouse", "unset", "xwayland-pointer-gestures"),
+           ("tablet", "1", "xwayland-pointer"),
+           ("xtest", "unset", "Virtual core XTEST pointer")]
+X11_CORE = [("keyboard", "-", "x11"), ("mouse", "0", "x11")]
+WL_TABLE = [("keyboard", "-", "wayland"), ("mouse", "0", "wayland-relative-pointer")]
+# The shape a real Windows journal writes (the device path starts \\?\).
+WIN_TABLE = [("keyboard", "-", "system"), ("mouse", "-", "system"),
+             ("mouse", "0", "\\\\?\\HID#VID_DEAD&PID_BEEF")]
+
+
+def _linuxrun(devices, rawmice, btndev, **kw):
+    """A patched Linux journal: requests -1, one key, one MOUSE1 click."""
+    args = dict(rawinput="-1", rawkbd="-1", rawmice=rawmice, rawkbds=0,
+                nolegacy=-1, nolegacylive=-1, devices=devices)
+    args.update(kw)
+    j = Journal(**args)
+    j.frame(3000)
+    j.key(True, 101, prev=0, dev=0)         # core KeyPress: devid 0
+    j.key(True, 178, prev=0, dev=btndev)    # K_MOUSE1 from a pointer
+    j.mouse(2, 0, dev=0)
+    j.view(2, 0, 10.0, j.k * 2)
+    j.key(False, 178, prev=1, dev=btndev)
+    j.key(False, 101, prev=1, dev=0)
+    return j
+
+
+def case_x11_xi2_clean():
+    """An honest XInput2 journal: no Windows note may fire on it."""
+    r = run(_linuxrun(X11_XI2, 2, 1).end(injected=0, unenum=-1, legacybtn=-1))
+    check(r.ok, "x11 xi2: no faults (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("input_backend") == "X11 XInput2",
+          "x11 xi2: backend named (got %r)" % r.info.get("input_backend"))
+    check(not has_note(r, "GetCursorPos") and not has_note(r, "unknown mode"),
+          "x11 xi2: no Windows rawinput note for rawinput -1")
+    check(not has_note(r, "does not match the engine"),
+          "x11 xi2: a MOUSE1 on devid 1 is not read as a keyboard devid")
+    check(not has_note(r, "no device in the table claims it"),
+          "x11 xi2: the button's devid 1 is claimed by the tablet")
+    check(not has_note(r, "header says rawmice"),
+          "x11 xi2: grant 2 = the table's mice (tablet and xtest excluded)")
+    check(str(r.info.get("legacy_path", "")).startswith("not a Windows path"),
+          "x11 xi2: legacy path is not the Windows one (got %r)"
+          % r.info.get("legacy_path"))
+    check(r.info.get("injected") == 0 and
+          r.info.get("unenum") == "not counted by this backend",
+          "x11 xi2: trailer <0> -1 read as counted/not counted (got %r/%r)"
+          % (r.info.get("injected"), r.info.get("unenum")))
+    check(not has_note(r, "does not count rejected reports"),
+          "x11 xi2: <inj> -1 is not the backend-silent shape")
+
+
+def case_x11_core_fallback():
+    """x11_allow_xi2 0 / -noxi2: grant 0 is reported, never faulted."""
+    r = run(_linuxrun(X11_CORE, 0, 0).end(injected=-1, unenum=-1, legacybtn=-1))
+    check(r.ok, "x11 core: no faults (%s)" % (r.faults[:1] or "none"))
+    check(has_note(r, "rawmice 0 on a non-Windows backend"),
+          "x11 core: the rawmice-0 note")
+    check(not has_note(r, "header says rawmice"),
+          "x11 core: the x11 pseudo-mouse is not counted against rawmice 0")
+    check(r.info.get("input_backend") == "X11 core pointer (OS-accelerated)",
+          "x11 core: backend named (got %r)" % r.info.get("input_backend"))
+    # After an XI2 session the monotone counter reads 0 under the core pointer,
+    # which rejects nothing (measured: p387xi2 arm B). Not a count.
+    r = run(_linuxrun(X11_CORE, 0, 0).end(injected=0, unenum=-1, legacybtn=-1))
+    check("injected" not in r.info and has_note(r, "does not count rejected"),
+          "x11 core after xi2: trailer 0 -1 is not read as 'none injected'")
+    # ...unless 'i' records show rejections did happen (XI2 part of the window).
+    j = _linuxrun(X11_CORE, 0, 0)
+    j.rejected(20)
+    r = run(j.end(unenum=-1, legacybtn=-1))
+    check(r.ok and r.info.get("injected") == 20,
+          "x11 core with 'i' records: counted, no fault (%s)" % (r.faults[:1] or "none"))
+
+
+def case_x11_xtest_rejected():
+    """XTEST rejected while grabbed: counted, XTEST wording, never a fault."""
+    j = _linuxrun(X11_XI2, 2, 1)
+    j.rejected(200)
+    j.frame(3001)
+    j.rejected(50)
+    r = run(j.end(unenum=-1, legacybtn=-1))
+    check(r.ok, "xtest: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("injected") == 250,
+          "xtest: 250 counted (got %s)" % r.info.get("injected"))
+    check(has_note(r, "XTEST reports"), "xtest: XTEST wording")
+    check(not has_note(r, "no device handle"), "xtest: not the Windows wording")
+
+    j = _linuxrun(X11_XI2, 2, 1)
+    j.rejected(200)
+    r = run(j.end(injected=99, unenum=-1, legacybtn=-1))
+    check(has_fault(r, "injected reports"),
+          "xtest: a trailer that disagrees with the 'i' records still faults")
+
+    j = _linuxrun(X11_XI2, 2, 1)
+    j.rejected(10, unenum=3)
+    r = run(j.end(unenum=-1, legacybtn=-1))
+    check(has_fault(r, "unenumerated reports although"),
+          "xtest: unenum counts under a backend that has none is a mixed grammar")
+
+
+def case_wayland_table():
+    r = run(_linuxrun(WL_TABLE, 1, 0).end(injected=-1, unenum=-1, legacybtn=-1))
+    check(r.ok, "wayland: no faults (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("input_backend") == "Wayland (one merged seat)",
+          "wayland: backend named (got %r)" % r.info.get("input_backend"))
+    check(not has_note(r, "header says rawmice"),
+          "wayland: grant 1 = the relative-pointer mouse")
+    check(has_note(r, "does not count rejected reports"),
+          "wayland: counters -1 read as not measured")
+    # Switched from X11 in one process (measured, p387wl arm W): trailer 0 -1 -1.
+    r = run(_linuxrun(WL_TABLE, 1, 0).end(injected=0, unenum=-1, legacybtn=-1))
+    check(r.ok and "injected" not in r.info,
+          "wayland after x11: the monotone 0 is not a count (%s)"
+          % (r.faults[:1] or "none"))
+
+
+def case_win_rawinput_minus1_is_not_linux():
+    """-1 in the header does not make a Windows file Linux: the table decides."""
+    j = Journal(rawinput="-1", rawmice=1, rawkbds=0, devices=WIN_TABLE)
+    j.frame(3000)
+    j.mouse(1, 0)
+    j.view(1, 0, 10.0, j.k)
+    r = run(j.end())
+    check(has_note(r, "unknown mode"), "win -1: the existing 'unknown mode' note")
+    check("input_backend" not in r.info, "win -1: no input_backend")
+
+
+def case_win_nolegacy_minus1_still_open():
+    """On Windows, nolegacylive -1 still means the legacy click path is open."""
+    j = _clickrun(nolegacy=0, nolegacylive=-1, devices=WIN_TABLE, rawmice=1,
+                  rawkbds=0)
+    r = run(j.end())
+    check(str(r.info.get("legacy_path", "")).startswith("open"),
+          "win nolegacylive -1: still 'open' (got %r)" % r.info.get("legacy_path"))
+
+
+def case_prepatch_linux():
+    """A pre-387 Linux journal wrote rawinput 0 for a cvar that does not exist."""
+    pre = [("keyboard", "-", "x11"), ("mouse", "0", "xwayland-relative-pointer"),
+           ("mouse", "unset", "Virtual core XTEST pointer"),
+           ("tablet", "1", "xwayland-pointer")]
+    j = _linuxrun(pre, -1, 1, rawinput="0", rawkbd="0", rawkbds=-1, nolegacy=0)
+    r = run(j.end(injected=-1, unenum=-1, legacybtn=-1))
+    check(r.ok, "pre-387 linux: no faults (%s)" % (r.faults[:1] or "none"))
+    check(not has_note(r, "GetCursorPos"),
+          "pre-387 linux: no false GetCursorPos note")
+
+
+def case_win_spliced_x11_keyboard_still_faults():
+    """Critic M6: one spliced `keyboard - "x11"` line must not silence Windows."""
+    for label, table in (("system names", WIN_TABLE + [("keyboard", "-", "x11")]),
+                         ("device path", [("keyboard", "-", "x11"),
+                                          ("mouse", "0", "\\\\?\\HID#VID_DEAD&PID_BEEF")])):
+        j = Journal(rawinput="1", rawmice=0, rawkbds=0, devices=table)
+        j.frame(3000)
+        j.view(0, 0, 10.0, 0.0)
+        r = run(j.end())
+        check(has_fault(r, "rawinput 1 but rawmice 0"),
+              "spliced (%s): the Windows fault still fires" % label)
+        check("input_backend" not in r.info,
+              "spliced (%s): not read as Linux" % label)
+    # CONTROL: the same header on a table with no Windows name reads as Linux,
+    # so the guard, not the header, is what kept the fault above.
+    j = Journal(rawinput="1", rawmice=0, rawkbds=0, devices=X11_CORE)
+    j.frame(3000)
+    j.view(0, 0, 10.0, 0.0)
+    r = run(j.end())
+    check(not has_fault(r, "rawinput 1 but rawmice 0"),
+          "control: a pure x11 table does not take the Windows fault")
+
+
+def _malformed_key_journal():
+    """A Linux journal whose MOUSE1 press reads `--178`: isdigit() on the
+    lstripped text passes it, int() does not."""
+    j = _linuxrun(X11_XI2, 2, 1)
+    j.key(True, 178, prev=0, dev=1, us=100)
+    assert j.lines[-1] == "+ 100 1 178 0"
+    j.lines[-1] = "+ 100 1 --178 0"
+    return j.end(injected=0, unenum=-1, legacybtn=-1)
+
+
+def case_malformed_key_faults_not_raises():
+    """Review SHOULD 1: a corrupt scancode is a fault in that file, not a
+    traceback that ends the sweep."""
+    try:
+        r = run(_malformed_key_journal())
+    except ValueError as e:
+        check(False, "malformed key: raised %r instead of faulting" % e)
+        return
+    check(has_fault(r, "key is not a number"),
+          "malformed key: faulted (%s)" % (r.faults[:1] or "no fault"))
+
+
+def case_malformed_key_sweep_continues():
+    """The sweep reports the file AFTER the corrupt one."""
+    import subprocess
+    tmp = tempfile.mkdtemp()
+    try:
+        bad = os.path.join(tmp, "a_bad.hid")
+        good = os.path.join(tmp, "b_good.hid")
+        with open(bad, "w") as f:
+            f.write(_malformed_key_journal())
+        with open(good, "w") as f:
+            f.write(_linuxrun(X11_XI2, 2, 1).end(injected=0, unenum=-1,
+                                                 legacybtn=-1))
+        p = subprocess.run([sys.executable, hidcheck.__file__, bad, good],
+                           capture_output=True, text=True)
+        check("Traceback" not in p.stderr and "b_good.hid" in p.stdout
+              and "2 file(s), 1 with faults" in p.stdout,
+              "sweep: bad file faulted, next file still reported (%r)"
+              % (p.stdout.strip().splitlines()[-1:] or p.stderr[-200:]))
+    finally:
+        for n in os.listdir(tmp):
+            os.unlink(os.path.join(tmp, n))
+        os.rmdir(tmp)
+
+
+# Patch 387 review NIT 4: the seat's mouse cannot be remapped, so it is `-`.
+WL_TABLE_NULL = [("keyboard", "-", "wayland"),
+                 ("mouse", "-", "wayland-relative-pointer")]
+
+
+def case_wayland_seat_devid0_not_unclaimed():
+    r = run(_linuxrun(WL_TABLE_NULL, 1, 0).end(injected=-1, unenum=-1,
+                                                legacybtn=-1))
+    check(r.ok, "wayland '-': no faults (%s)" % (r.faults[:1] or "none"))
+    check(not has_note(r, "no device in the table claims it"),
+          "wayland '-': devid 0 motion is the seat, not an unplugged device")
+    check(str(r.info.get("pointer_attribution", "")).startswith("one merged"),
+          "wayland '-': pointer_attribution says so (got %r)"
+          % r.info.get("pointer_attribution"))
+    check(not has_note(r, "header says rawmice"),
+          "wayland '-': grant 1 = the relative-pointer mouse")
+    # CONTROL: the same '-' mouse under an X11 name is not a seat, so an
+    # unclaimed devid 0 still gets the note.
+    x11 = [("keyboard", "-", "x11"), ("mouse", "-", "xwayland-relative-pointer")]
+    r = run(_linuxrun(x11, 1, 0).end(injected=0, unenum=-1, legacybtn=-1))
+    check(has_note(r, "no device in the table claims it"),
+          "control: an X11 '-' mouse leaves devid 0 unclaimed")
+
+
+def case_linux_legacy_path_wording():
+    """Review NIT 6: only a grabbed XInput2 pointer blocks clicks."""
+    r = run(_linuxrun(X11_XI2, 2, 1).end(injected=0, unenum=-1, legacybtn=-1))
+    lp = str(r.info.get("legacy_path", ""))
+    check("only while the pointer is grabbed under XInput2" in lp,
+          "xi2: grab-scoped wording (got %r)" % lp)
+    for label, table, grant in (("core", X11_CORE, 0), ("wayland", WL_TABLE, 1)):
+        r = run(_linuxrun(table, grant, 0).end(injected=-1, unenum=-1,
+                                               legacybtn=-1))
+        lp = str(r.info.get("legacy_path", ""))
+        check(lp.startswith("open"), "%s: legacy path open (got %r)" % (label, lp))
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1012,7 +1276,16 @@ def main():
                case_join_declared_transform_is_not_a_break,
                case_join_pre312_is_unanswerable_not_broken,
                case_join_absolute_window_not_joinable,
-               case_join_first_window_exempt):
+               case_join_first_window_exempt,
+               case_x11_xi2_clean, case_x11_core_fallback,
+               case_x11_xtest_rejected, case_wayland_table,
+               case_win_rawinput_minus1_is_not_linux,
+               case_win_nolegacy_minus1_still_open, case_prepatch_linux,
+               case_win_spliced_x11_keyboard_still_faults,
+               case_malformed_key_faults_not_raises,
+               case_malformed_key_sweep_continues,
+               case_wayland_seat_devid0_not_unclaimed,
+               case_linux_legacy_path_wording):
         print("%s:" % fn.__name__)
         fn()
         print("")
