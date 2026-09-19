@@ -366,9 +366,18 @@ bannered as superseded.)
   surf_derpis's finish than the Pi and the live server (Patch 373).
   Harnesses: `p349verify`, `p352slots`, `p356newer`, `p358trace`,
   `p367verify`, `p373verify`.
-- A LOBBY STREAMS, AND A STREAM CANNOT REWIND. A `retry` reads it back into a
-  buffer first (Patch 368, SV_RecDestream); a lobby save-load still drops the
-  recording, so a segmented lobby run has no replay (`rt1cl.cfg`).
+- A LOBBY STREAMS. A `retry` reads it back into a buffer first (Patch 368,
+  SV_RecDestream). A save copies the stream's prefix to its slot a 512 KB
+  chunk per packet (Patch 375); a load of the same lineage truncates the
+  stream in place (`fsize(fh, n)`), any other rebuilds it from the slot.
+  Anything that closes, renames or truncates the part file calls
+  SV_RecCopyFlush first. The first load after a posted stage is always cold
+  (Patch 360 keeps the stream as evidence). `p375sv/p375cl`, `p375bsv/bcl`.
+- MOUSE COUNTS (Patch 376): a 376 client sends its input-ring and read sums
+  in the prydon cursor floats when serverinfo says `fs_counts 1`; the progs
+  write `mc` records and pm_verify HOLDs on ring != read. `p376sv/p376cl`.
+  `sl_prev`/`sl_next` LOAD the save they step to -- a harness that follows
+  them with `sl_load` loads twice.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser

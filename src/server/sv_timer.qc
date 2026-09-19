@@ -263,6 +263,11 @@
 float(string src, string dst) frename = #0:frename;
 float(string fname) fremove         = #0:fremove;
 
+// Patch 375 (engine): a byte range onto a file, or onto an open FILE_WRITESTREAM.
+// Engines before 375 lack both; checkbuiltin gates every call.
+int(string src, int ofs, int len, string dst, float append) fcopyrange = #0:fcopyrange;
+int(filestream fh, string src, int ofs, int len) fappendrange = #0:fappendrange;
+
 /*
   buf_create, with the arguments the platform dump's prototype leaves off.
 
@@ -1680,6 +1685,19 @@ float() SV_RecEnabled =
 .float  rec_rec_fh;              // the open stream, or -1.  Streaming runs only.
 .float  rec_rec_stream;          // this run is being streamed, not buffered
 .float  rec_rec_flagofs;         // byte offset of the reserved `flags` line
+// Patch 375: a lobby save-load keeps its stream.  See SV_RecSnapshot.
+.float  rec_rec_ver;             // line 0 of the stream as written: 9 or 10
+.float  rec_rec_partlob;         // the part file's name as opened: 1 lobby, 2 plain, 0 not yet
+.float  rec_rec_inmt, rec_rec_incy; // the last `in` row's <mt> <carry> (or instart's, 0)
+.float  rec_rec_gen;             // warm rewinds since the serial began
+.float  rec_rec_genbuf;          // strbuf: the mark each of them truncated to
+.float  rec_cp_q;                // strbuf: pending save copies, "<bytes> <done> <dst>"
+.float  rec_cp_head;             // the next one to work on
+// Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
+// read for the command being run.  See the `mc` record.
+vector  input_cursor_trace_start, input_cursor_trace_endpos;
+.vector rec_mc_ring, rec_mc_read;    // the last `mc` written
+.float  rec_mc_n, rec_mc_bad, rec_mc_badrow;
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -1744,7 +1762,8 @@ string(entity e) SV_RecPartPath =
 {
 	// The Pi's lobbies share one data dir, so every lobby's slot 0 was one file
 	// (and the evidence keep renames it).  Keyed by port there; offline unchanged.
-	if (Lobby_Active())
+	// Patch 375: the name as opened, so a lobby_enable flip mid-run cannot move it.
+	if (e.rec_rec_partlob ? (e.rec_rec_partlob == 1) : Lobby_Active())
 		return sprintf("data/parts/p%s-%g.rec", cvar_string("sv_port"), e.run_t_slot);
 	return sprintf("data/parts/%g.rec", e.run_t_slot);
 };
@@ -1775,6 +1794,153 @@ float(entity e) SV_RecLive =
 		return e.rec_rec_fh >= 0;
 	return e.rec_rec_buf >= 1;
 };
+
+/*
+  Patch 375: a lobby save's copy of the stream's prefix, written to disk "after a
+  bit" -- FS_RECCOPY_CHUNK bytes per packet from SV_TimerFrame -- rather than
+  held in memory.  Bytes below a save's mark never change while the part file
+  is open, so anything that closes, renames, truncates or reopens it finishes
+  the player's copies first (SV_RecCopyFlush).  A failed copy removes its target;
+  that save then loads warm only.  Byte counts are ints: a float is exact only to
+  16 MB.
+*/
+#define FS_RECCOPY_CHUNK 524288
+#define FS_RECCOPY_MAX   268435456      // 256 MB: a bigger prefix is not copied
+
+void(entity e, int budget) SV_RecCopyStep =
+{
+	local int b, d, n, r;
+	local string src, dst;
+
+	while (e.rec_cp_q >= 1 && budget > 0)
+	{
+		if (e.rec_cp_head >= buf_getsize(e.rec_cp_q))
+		{
+			buf_del(e.rec_cp_q);
+			e.rec_cp_q = 0;
+			e.rec_cp_head = 0;
+			return;
+		}
+		tokenize(bufstr_get(e.rec_cp_q, e.rec_cp_head));
+		b = stoi(argv(0));
+		d = stoi(argv(1));
+		src = argv(2);                  // taken at the save: lobby_enable can flip
+		dst = argv(3);
+		n = b - d;
+		if (n > budget)
+			n = budget;
+		if (n > 0)
+		{
+			r = fcopyrange(src, d, n, dst, d > 0);
+			if (r != n)
+			{
+				dprint(sprintf("timer: save copy %s failed at %s of %s bytes (got %s)\n", dst, itos(d), itos(b), itos(r)));
+				fremove(dst);
+				n = b - d;
+			}
+			d = d + n;
+			budget = budget - n;
+		}
+		if (d >= b)
+			e.rec_cp_head = e.rec_cp_head + 1;
+		else
+			bufstr_set(e.rec_cp_q, e.rec_cp_head, sprintf("%s %s %s %s", itos(b), itos(d), src, dst));
+	}
+};
+
+void(entity e) SV_RecCopyFlush =
+{
+	if (e.rec_cp_q >= 1)
+		dprint(sprintf("timer: finishing %g pending save cop%s now\n",
+		               buf_getsize(e.rec_cp_q) - e.rec_cp_head,
+		               (buf_getsize(e.rec_cp_q) - e.rec_cp_head == 1) ? "y" : "ies"));
+	while (e.rec_cp_q >= 1)
+		SV_RecCopyStep(e, FS_RECCOPY_MAX);
+};
+
+// A slot that is deleted or saved over: its pending copy must not land -- in
+// anyone's queue, since a dropped connection's edict keeps its own a while.
+void(string dst) SV_RecCopyDrop =
+{
+	local float i;
+	local entity p;
+
+	p = world;
+	while ((p = find(p, classname, "player")))
+	{
+		if (p.rec_cp_q < 1)
+			continue;
+		for (i = p.rec_cp_head; i < buf_getsize(p.rec_cp_q); i = i + 1)
+		{
+			tokenize(bufstr_get(p.rec_cp_q, i));
+			if (argv(3) == dst)
+				bufstr_set(p.rec_cp_q, i, "0 0 - -");
+		}
+	}
+};
+
+int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one save
+int   rs_bytes;                         // the save being loaded: 0 = no stream copy
+float rs_gen, rs_ver, rs_flagofs, rs_pend;
+float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
+float rs_pauses, rs_sess, rs_inmt, rs_incy;
+string rs_rid;
+
+float(entity e, float mark) SV_RecGenOK =
+{
+	local float g;
+
+	if (rs_gen < 0 || rs_gen > e.rec_rec_gen)
+		return FALSE;
+	if (rs_rid == "" || rs_rid != e.rec_rec_rid)
+		return FALSE;
+	for (g = rs_gen + 1; g <= e.rec_rec_gen; g = g + 1)
+		if (e.rec_rec_genbuf < 1 || stof(bufstr_get(e.rec_rec_genbuf, g)) < mark)
+			return FALSE;
+	return TRUE;
+};
+
+void(entity e, float mark) SV_RecGenPush =
+{
+	if (e.rec_rec_genbuf < 1)
+		e.rec_rec_genbuf = buf_create_ex("string", 0);
+	e.rec_rec_gen = e.rec_rec_gen + 1;
+	if (e.rec_rec_genbuf >= 1)
+		bufstr_set(e.rec_rec_genbuf, e.rec_rec_gen, sprintf("%d", mark));
+};
+
+void(entity e) SV_RecGenReset =
+{
+	if (e.rec_rec_genbuf >= 1)
+		buf_del(e.rec_rec_genbuf);
+	e.rec_rec_genbuf = 0;
+	e.rec_rec_gen = 0;
+};
+
+float(entity e, string path) SV_RecSnapshot =
+{
+	local int b;
+
+	rec_snap_bytes = 0;
+	if (e.rec_rec_fh < 0 || e.rec_rec_lines <= 0 || !checkbuiltin(fcopyrange))
+		return 0;
+	b = fsize(e.rec_rec_fh);            // flushes (Patch 375)
+	if (b <= 0 || b > FS_RECCOPY_MAX)
+		return 0;
+	if (e.rec_cp_q < 1)
+	{
+		e.rec_cp_q = buf_create_ex("string", 0);
+		e.rec_cp_head = 0;
+		if (e.rec_cp_q < 1)
+			return 0;
+	}
+	SV_RecCopyDrop(path);
+	bufstr_set(e.rec_cp_q, buf_getsize(e.rec_cp_q),
+	           sprintf("%s 0 %s %s", itos(b), SV_RecPartPath(e), path));
+	rec_snap_bytes = b;
+	return e.rec_rec_lines;
+};
+
 
 /*
   BUILD 24 -- THE STAGE CURRENTLY BEING RUN INSIDE A MAIN RUN.
@@ -2784,6 +2950,20 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             empty.  pm_verify replays it and HOLDs on input a
                             second into a window, or after it went empty.
 
+    mc <pk> <row> <rx> <ry> <ax> <ay> <rej>
+                            Patch 376 (additive, no bump): the client's mouse
+                            counts, in-band.  <rx> <ry> is what the input ring
+                            delivered, <ax> <ay> what IN_MoveMouse read, both
+                            summed since the client started and wrapped at 2^20;
+                            <rej> the reports raw input rejected (Patch 306).
+                            After the `in` row <row> of the packet that carried
+                            it, when the payload changed, and first at a run's
+                            first row.  A client before 376 writes none.  An
+                            honest client has <rx> = <ax> and <ry> = <ay>
+                            exactly; a hook that rewrites the delta between
+                            ring and read (momentum.dll's shape) breaks it.
+                            pm_verify HOLDs on any line where they differ.
+
   Then, written at close:
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
@@ -3322,6 +3502,12 @@ void(entity e) SV_RecOpen =
 	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
 	local string pin;	// build 87
 
+	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
+	SV_RecGenReset(e);
+	e.rec_rec_ver = 9;
+	e.rec_rec_inmt = -1;
+	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
+	e.rec_mc_badrow = -1;
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
 	e.rec_rec_stream = FALSE;
@@ -3389,6 +3575,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_stream = SV_RecStreams();
 	if (e.rec_rec_stream)
 	{
+		e.rec_rec_partlob = Lobby_Active() ? 1 : 2;
 		e.rec_rec_fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
 		if (e.rec_rec_fh < 0)
 		{
@@ -3603,8 +3790,12 @@ void(entity e) SV_RecOpen =
 	  than a missing one.  No key, no rows -- SV_TimerInFrame takes the same test.
 	*/
 	if (e.run_movetickrate > 0)
+	{
 		SV_RecPut(e, sprintf("instart %d %d",
 		                     e.run_movetick, e.run_t_starttick));
+		e.rec_rec_inmt = e.run_movetick;    // Patch 375: SV_RecPause's `instart` case
+		e.rec_rec_incy = 0;
+	}
 
 	/*
 	  BUILD 83: THE START JITTER, as a RULE and an OUTCOME on one line.
@@ -3771,6 +3962,7 @@ float(entity e) SV_RecKeepEvidence =
 	{
 		if (e.rec_rec_fh < 0)
 			return FALSE;
+		SV_RecCopyFlush(e);             // Patch 375: before the rename
 		if (e.rec_rec_flagofs >= 0)
 		{
 			fseek(e.rec_rec_fh, e.rec_rec_flagofs);
@@ -3847,6 +4039,8 @@ void(entity e) SV_RecDiscard =
 	  buffer is live, because the run was.
 	*/
 	live = SV_RecLive(e);
+	SV_RecCopyFlush(e);                 // Patch 375: the part file goes below
+	SV_RecGenReset(e);
 
 	if (live)
 	if (SV_RecKeepEvidence(e))          // Patch 360: posted stages keep the file
@@ -4222,6 +4416,8 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	*/
 	if (e.rec_rec_stream)
 	{
+		SV_RecCopyFlush(e);             // Patch 375: before the rename
+		SV_RecGenReset(e);
 		// BEFORE the fixup seek, because a one-argument fseek REPORTS the
 		// position and the position is end-of-file only until the next line
 		// moves it back to correct the header.  One read, no stat, and it is
@@ -4396,9 +4592,10 @@ float(entity e, string path) SV_RecWritePrefix =
 	  333.  A lobby save carries no movement and its load drops the recording (a
 	  segmented run with no replay; measured, rt1cl.cfg).  A `retry` destreams
 	  first (SV_RecDestream) and keeps it.]
+	  [Patch 375: a stream's prefix is copied after the fact; SV_RecSnapshot.]
 	*/
 	if (e.rec_rec_stream)
-		return 0;
+		return SV_RecSnapshot(e, path);
 
 	if (e.rec_rec_buf < 1 || e.rec_rec_lines <= 0)
 		return 0;
@@ -4431,6 +4628,7 @@ float(entity e) SV_RecDestream =
 
 	if (!e.rec_rec_stream)
 		return TRUE;
+	SV_RecCopyFlush(e);                 // Patch 375
 	fclose(e.rec_rec_fh);
 	e.rec_rec_fh = -1;
 	buf = buf_create_ex("string", 0);
@@ -4450,6 +4648,178 @@ float(entity e) SV_RecDestream =
 		buf_del(buf);
 	SV_RecDiscard(e);
 	return FALSE;
+};
+
+/*
+  Patch 375: A LOBBY SAVE-LOAD KEEPS ITS STREAM.  A save queues a copy of the
+  part file's first <recbytes> bytes to its slot (SV_RecCopyStep) and states
+  every counter a load needs, since nothing can rescan a stream.  A load of the
+  same lineage cuts the stream back to those bytes (fsize with a new size);
+  anything else rebuilds it from the slot's copy.  The file that results is the
+  one the buffered path writes.
+
+  The lineage is the serial plus rec_rec_gen: each warm rewind records the mark
+  it cut to, and a save is warm only if no rewind since it cut below its mark --
+  truncating to an earlier save destroys the bytes of every later one.  The
+  buffered path takes the same test (before it, a later save loaded warm after
+  an earlier one got the wrong branch as its prefix).
+*/
+// Into a save's state.txt, after SV_RecWritePrefix.
+void(entity e, filestream f) SV_RecSaveKeys =
+{
+	fputs(f, sprintf("recgen %d\n", e.rec_rec_gen));
+	if (e.rec_rec_rid != "")
+		fputs(f, sprintf("recrid %s\n", e.rec_rec_rid));
+	if (rec_snap_bytes <= 0)
+		return;
+	fputs(f, sprintf("recbytes %s\n", itos(rec_snap_bytes)));
+	fputs(f, sprintf("recstream %d %d %d\n", e.rec_rec_ver, e.rec_rec_flagofs, e.rec_rec_sesspend));
+	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
+	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
+	fputs(f, sprintf("recsess %d %d\n", e.rec_rec_pauses, e.rec_rec_sess));
+	if (e.rec_rec_inmt >= 0)
+		fputs(f, sprintf("reclast %d %.9g\n", e.rec_rec_inmt, e.rec_rec_incy));
+	rec_snap_bytes = 0;
+};
+
+void() SV_RecKeysReset =
+{
+	rs_bytes = 0;
+	rs_gen = -1;                        // a save before Patch 375: no lineage, so cold
+	if (rs_rid != "")
+		strunzone(rs_rid);
+	rs_rid = "";
+	rs_ver = 9;
+	rs_flagofs = -1;
+	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
+	rs_pinned = rs_pauses = rs_sess = rs_incy = 0;
+	rs_inmt = -1;
+};
+
+// One state.txt line, already tokenized; TRUE if it was ours.
+float(string k, float n) SV_RecKeyRead =
+{
+	if (k == "recgen")    { rs_gen = stof(argv(1)); return TRUE; }
+	if (k == "recrid")    { if (rs_rid != "") strunzone(rs_rid); rs_rid = strzone(argv(1)); return TRUE; }
+	if (k == "recbytes")  { rs_bytes = stoi(argv(1)); return TRUE; }
+	if (k == "recstream" && n >= 4)
+		{ rs_ver = stof(argv(1)); rs_flagofs = stof(argv(2)); rs_pend = stof(argv(3)); return TRUE; }
+	if (k == "recrows" && n >= 5)
+		{ rs_in = stof(argv(1)); rs_pk = stof(argv(2)); rs_warp = stof(argv(3)); rs_ride = stof(argv(4)); return TRUE; }
+	if (k == "recstate" && n >= 5)
+		{ rs_pm = stof(argv(1)); rs_pe = stof(argv(2)); rs_portal = stof(argv(3)); rs_pinned = stof(argv(4)); return TRUE; }
+	if (k == "recsess" && n >= 3)
+		{ rs_pauses = stof(argv(1)); rs_sess = stof(argv(2)); return TRUE; }
+	if (k == "reclast" && n >= 3)
+		{ rs_inmt = stof(argv(1)); rs_incy = stof(argv(2)); return TRUE; }
+	return FALSE;
+};
+
+// SV_RecRecount for a stream: the counters the save stated, the latches cleared.
+void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
+{
+	e.rec_rec_lines = mark;
+	e.rec_rec_n     = samples;
+	e.rec_rec_padn  = padn;
+	e.rec_rec_cp    = cps;
+	e.rec_rec_full  = FALSE;
+	e.rec_rec_in = rs_in;       e.rec_rec_warp = rs_warp;     e.rec_rec_ride = rs_ride;
+	e.rec_rec_pm = rs_pm;       e.rec_rec_pe = rs_pe;         e.rec_rec_portal = rs_portal;
+	e.rec_rec_pinned = rs_pinned;
+	e.rec_rec_pauses = rs_pauses;
+	e.rec_rec_sess = rs_sess;
+	if (e.rec_rec_pk < rs_pk)
+		e.rec_rec_pk = rs_pk;
+	e.rec_rec_sesspend = rs_pend;
+	e.rec_rec_inmt = rs_inmt;
+	e.rec_rec_incy = rs_incy;
+	e.rec_rec_bvset = FALSE;
+	e.rec_rec_pcset = FALSE;
+	e.rec_rec_epoch = 0;
+	e.rec_rec_portalx = e.run_portalx;
+	e.rec_rec_lastbc = e.run_boardcount;
+	e.rec_rec_flagline = -1;
+	e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
+	e.run_t_flags = e.run_t_flags | TF_RECORDING;
+};
+
+float(entity e, string path, float mark, float serial,
+      float samples, float padn, float cps, int b) SV_RecRewindStream =
+{
+	local int ofs, n;
+	local float fh;
+	local string why;
+
+	if (!checkbuiltin(fappendrange))
+		return FALSE;
+	if (e.run_ms_phase)                 // the resume's copy owns the part file (SV_SaveLocLoad refuses too)
+		return FALSE;
+	SV_RecCopyFlush(e);
+
+	// WARM: this save's lineage is the stream in hand -- cut it back.
+	why = "no stream";
+	if (e.rec_rec_stream && e.rec_rec_fh >= 0)
+	{
+		why = "another run";
+		if (e.rec_rec_serial == serial)
+		{
+			why = "a later branch";
+			if (e.rec_rec_lines >= mark && SV_RecGenOK(e, mark) && fsize(e.rec_rec_fh) >= b)
+			{
+				why = "truncate failed";
+				if (fsize(e.rec_rec_fh, b) == b)
+				{
+					SV_RecRestore(e, mark, samples, padn, cps);
+					SV_RecGenPush(e, mark);
+					dprint(sprintf("timer: load warm, cut to %s bytes\n", itos(b)));
+					return TRUE;
+				}
+			}
+		}
+	}
+	dprint(sprintf("timer: load cold (%s): %s bytes from %s\n", why, itos(b), path));
+
+	// COLD: a new stream from the slot's copy, line 0 rewritten to 10 for the
+	// `pause` the caller writes.  The old recording goes as the buffered path's
+	// does -- dropped, its runid kept.
+	if (!SV_RecEnabled() || !SV_RecStreams())
+		return FALSE;
+	if (e.rec_rec_stream)
+	{
+		if (e.rec_rec_fh >= 0)
+			fclose(e.rec_rec_fh);
+		fremove(SV_RecPartPath(e));
+	}
+	else if (e.rec_rec_buf >= 1)
+		buf_del(e.rec_rec_buf);
+	e.rec_rec_fh = -1;
+	e.rec_rec_buf = -1;
+	e.rec_rec_stream = FALSE;
+
+	e.rec_rec_partlob = Lobby_Active() ? 1 : 2;
+	fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
+	if (fh < 0)
+		return FALSE;
+	ofs = (rs_ver == 10) ? 15 : 14;     // "FTESURF-REC 9\n" or "...10\n"
+	fputs(fh, "FTESURF-REC 10\n");
+	n = fappendrange(fh, path, ofs, b - ofs + 1);   // one over: the copy must END at b
+	if (n != b - ofs)
+	{
+		dprint(sprintf("timer: %s gave %s of %s bytes; recording dropped\n",
+		               path, itos(n), itos(b - ofs)));
+		fclose(fh);
+		fremove(SV_RecPartPath(e));
+		return FALSE;
+	}
+	e.rec_rec_fh = fh;
+	e.rec_rec_stream = TRUE;
+	e.rec_rec_ver = 10;
+	e.rec_rec_flagofs = (rs_flagofs >= 0) ? rs_flagofs + 15 - ofs : -1;
+	SV_RecRestore(e, mark, samples, padn, cps);
+	SV_RecGenReset(e);
+	e.rec_rec_serial = SV_RecNextSerial();
+	rec_rewind_cold = TRUE;
+	return TRUE;
 };
 
 /*
@@ -4542,6 +4912,17 @@ void(entity e, string why, float ticks) SV_RecPause =
 	local float i, was;
 	local string l, mt, cy;
 
+	// Patch 375: a stream rebuilt from a save; its line 0 is already 10.
+	if (e.rec_rec_stream && e.rec_rec_fh >= 0 && !e.rec_rec_sesspend && e.rec_rec_inmt >= 0)
+	{
+		was = e.rec_rec_lines;
+		SV_RecPut(e, sprintf("pause %d %.9g %d %s", e.rec_rec_inmt, e.rec_rec_incy, ticks, why));
+		if (e.rec_rec_lines == was)
+			return;
+		e.rec_rec_pauses = e.rec_rec_pauses + 1;
+		e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
+		return;
+	}
 	if (e.rec_rec_buf < 1)
 		return;
 	if (e.rec_rec_sesspend)
@@ -4618,10 +4999,15 @@ float(entity e, string path, float mark, float serial,
       float samples, float padn, float cps) SV_RecRewind =
 {
 	local float buf;
+	local int sb;
 
+	sb = rs_bytes;                      // Patch 375: consumed by whichever load asked
+	rs_bytes = 0;
 	rec_rewind_cold = FALSE;
 	if (mark <= 0)
 		return FALSE;
+	if (sb > 0)                         // a save with a stream copy
+		return SV_RecRewindStream(e, path, mark, serial, samples, padn, cps, sb);
 
 	// BUILD 66: a stream cannot be rewound -- the lines past the mark are
 	// already on disk and nothing indexes them.  The run carries on recording
@@ -4633,7 +5019,9 @@ float(entity e, string path, float mark, float serial,
 	if (e.rec_rec_buf >= 1)
 	if (e.rec_rec_serial == serial)
 	if (e.rec_rec_lines >= mark)
+	if (SV_RecGenOK(e, mark))           // Patch 375: no rewind since cut below it
 	{
+		SV_RecGenPush(e, mark);
 		e.rec_rec_lines = mark;
 		e.rec_rec_n     = samples;
 		e.rec_rec_padn  = padn;
@@ -4679,6 +5067,7 @@ float(entity e, string path, float mark, float serial,
 	SV_RecRecount(e);                // build 87
 
 	e.rec_rec_serial = SV_RecNextSerial();
+	SV_RecGenReset(e);
 
 	/*
 	  WHICH LEG this buffer is now for, so the client names its sidecar after the
@@ -10173,6 +10562,35 @@ void(entity e, float z) SV_TimerTryArm =
   this is that trace arriving at 0.84 rows per existing line.
 ===========================================================================
 */
+// Patch 376: an `mc` after the `in` row its payload came with, when it changed --
+// every command in a packet carries the packet's newest -- and always the first.
+void(entity e) SV_RecCounts =
+{
+	local vector r, a;
+	local float was;
+
+	if (input_cursor_trace_start_z != 1 || e.rec_rec_in < 1)
+		return;
+	r = input_cursor_trace_start;
+	a = input_cursor_trace_endpos;
+	if (e.rec_mc_n > 0 && r == e.rec_mc_ring && a == e.rec_mc_read)
+		return;
+	was = e.rec_rec_lines;
+	SV_RecPut(e, sprintf("mc %d %d %.10g %.10g %.10g %.10g %d",
+	                     e.rec_rec_pk, e.rec_rec_in - 1, r_x, r_y, a_x, a_y, a_z));
+	if (e.rec_rec_lines == was)
+		return;
+	e.rec_mc_ring = r;
+	e.rec_mc_read = a;
+	e.rec_mc_n = e.rec_mc_n + 1;
+	if (r_x != a_x || r_y != a_y)
+	{
+		if (!e.rec_mc_bad)
+			e.rec_mc_badrow = e.rec_rec_in - 1;
+		e.rec_mc_bad = e.rec_mc_bad + 1;
+	}
+};
+
 void(entity e) SV_TimerInFrame =
 {
 	local float bt;                 // the three mover bits, repacked
@@ -10258,6 +10676,11 @@ void(entity e) SV_TimerInFrame =
 	                            e.movement_x, e.movement_y, e.movement_z),
 	                    sprintf("%.4f %.4f %.4f %d %d",
 	                            input_angles_x, input_angles_y, input_angles_z, bt, fl)));
+	if (e.rec_rec_lines > was)
+	{
+		e.rec_rec_inmt = e.run_movetick;    // Patch 375: a stream's `pause` reads these
+		e.rec_rec_incy = e.run_movecarry;
+	}
 
 	/*
 	  COUNTED BY WHETHER A LINE ACTUALLY LANDED, not by having attempted one.
@@ -10276,7 +10699,10 @@ void(entity e) SV_TimerInFrame =
 	  reader can tell WHERE the truncation landed.
 	*/
 	if (e.rec_rec_lines != was)
+	{
 		e.rec_rec_in = e.rec_rec_in + 1;
+		SV_RecCounts(e);                // Patch 376
+	}
 };
 
 void(entity e) SV_TimerRecFrame =
@@ -10497,6 +10923,9 @@ void(entity e) SV_TimerFrame =
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
+
+	if (e.rec_cp_q >= 1)            // Patch 375: a save's copy, a chunk a packet
+		SV_RecCopyStep(e, FS_RECCOPY_CHUNK);
 
 	/*
 	  FIRST, and above the zone_count guard on purpose.
@@ -11311,6 +11740,7 @@ void() SV_TimerMapInit =
 	run_t_stageghost  = cvar("run_stageghost");   // build 48
 	run_t_stagecap    = cvar("run_stagecap");     // Patch 360
 	localcmd(sprintf("serverinfo run_stagecap %g\n", run_t_stagecap));
+	localcmd("serverinfo fs_counts 1\n");     // Patch 376: clients send mouse counts
 	SV_EvidenceSweep();
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
@@ -11795,6 +12225,9 @@ void(entity e) SV_TimerReport =
 	       sprintf("        stage fill: prime %g launch %g tk %g tkspd %g cap %g posts %g\n",
 	               e.run_st_prime, e.run_st_launch, e.run_st_tkok, e.run_st_tkspd,
 	               run_t_stagecap, e.rec_rec_posts));
+	sprint(e, PRINT_HIGH,
+	       sprintf("        mouse counts: %g record(s), %g ring/read disagreement(s), first row %g\n",
+	               e.rec_mc_n, e.rec_mc_bad, e.rec_mc_badrow));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage rules: fail %g arm %g clean %g hop %g\n",
 	               run_t_stagefail, run_t_stagearm, run_t_stageclean, run_t_stagehop));

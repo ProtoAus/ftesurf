@@ -1014,6 +1014,18 @@ def case_v10_flag():
                 "TF_MULTISESSION with only a retry pause is a fault")
 
 
+def case_mc():
+    """Patch 376: the client's mouse counts, additive in v9."""
+    b = build()
+    ok_clean(insert_before(b, "inend", "mc 3 3 234 0 234 0 0"),
+             "an mc whose ring equals its read passes clean")
+    notes_with(insert_before(b, "inend", "mc 3 3 234 0 235 0 0"),
+               "the view used counts the device did not send",
+               "an mc whose read differs from its ring is a note")
+    faults_with(insert_before(b, "inend", "mc 3 3 234 0 234 0"),
+                "'mc' takes 7 fields", "a short mc is a fault")
+
+
 def case_v9_session_is_unknown():
     b = build()
     notes_with(insert_before(b, "inend", "session 2 3 0.003 20"),
@@ -1051,7 +1063,7 @@ def main():
                case_v9_seed, case_v9_field_values, case_v8_as_before,
                case_stagepost, case_abandon,
                case_v10_session, case_v10_horizons_restart, case_v10_flag,
-               case_v9_session_is_unknown):
+               case_v9_session_is_unknown, case_mc):
         print("%s:" % fn.__name__)
         fn()
         print("")

@@ -13,11 +13,19 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   af86b63e90ab10162adba8b2eb44cb053e82bce7
+commit   f9ef8a55d76d48bad68390594d60c69356acbdcc
 tag      patch-266
-patch    374
+patch    376
 qcbuild  83
 date     2026-09-19
+
+# PATCH 376: the client sends its mouse counts (input ring vs IN_MoveMouse read) in
+# the prydon cursor floats to a server with serverinfo fs_counts 1; the progs write
+# `mc`, pm_verify HOLDs on ring != read.  Needs this CLIENT.  cfg/test/p376cl.cfg.
+
+# PATCH 375: a lobby save-load keeps its recording -- fsize(fh, n) truncates a
+# FILE_WRITESTREAM, fcopyrange/fappendrange copy byte ranges.  Progs call them only
+# behind checkbuiltin.  cfg/test/p375sv.cfg + p375cl.cfg, p375bsv.cfg + p375bcl.cfg.
 
 # PATCH 374 IS MOD-SIDE ONLY: the in-game board draws a tick after "watch" on a
 # Verified row.  cfg/test/p374ver.cfg.

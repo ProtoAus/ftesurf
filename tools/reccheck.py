@@ -775,6 +775,7 @@ def check_rec(path, verbose=False):
     seeds = []              # (lineno, args) -- v9
     zseeds = []             # (lineno, args, rows so far) -- v9, build 88
     pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
+    mcs = []                         # Patch 376: the client's mouse counts
     first_body = None       # line number of the first body line (seed goes there)
     # v10: `pause` / `session`.  cur_horizon is the horizon of the session the
     # walk is in (instart's, then each session's <mt>).
@@ -1116,6 +1117,8 @@ def check_rec(path, verbose=False):
             pes.append((lineno + 1, tok[1:], inrows))
         elif kind == "portal" and ver >= 9:
             portals.append((lineno + 1, tok[1:], inrows))
+        elif kind == "mc" and ver >= 9:
+            mcs.append((lineno + 1, tok[1:], inrows))
         elif kind == "pause" and ver >= 10:
             # Patch 364: the run was parked (Multi-Session) or rewound across a
             # counter restart (retry, a cold load).  <mt> <carry> close this
@@ -1417,9 +1420,23 @@ def check_rec(path, verbose=False):
             if not all(is_float(x) for x in a[3:]):
                 r.fault("line %d: 'portal' has a non-numeric origin or velocity"
                         % ln)
+        # Patch 376: additive.  Format is a fault; ring != read is evidence, so
+        # a note (pm_verify HOLDs on it).
+        for ln, a, seen in mcs:
+            if (len(a) != 7 or not is_int(a[0]) or not is_int(a[6])
+                    or not all(is_float(x) for x in a[2:6])):
+                r.fault("line %d: 'mc' takes 7 fields (pk row rx ry ax ay rej)" % ln)
+                continue
+            check_row(r, ln, "mc", a[1], seen)
+            if not all(0 <= float(x) < 1048576 for x in a[2:6]):
+                r.fault("line %d: 'mc' count outside its 2^20 wrap" % ln)
+            elif (float(a[2]), float(a[3])) != (float(a[4]), float(a[5])):
+                r.note("line %d: 'mc' ring %s %s but read %s %s -- the view used "
+                       "counts the device did not send" % (ln, a[2], a[3], a[4], a[5]))
         r.info["pms"] = len(pms)
         r.info["pes"] = len(pes)
         r.info["portals"] = len(portals)
+        r.info["mcs"] = len(mcs)
 
     # ---- the trace and its horizon must agree, build 82 ---------------------
     #

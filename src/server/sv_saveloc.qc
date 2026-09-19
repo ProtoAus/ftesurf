@@ -593,6 +593,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("recpad %d\n", e.rec_rec_padn));
 	fputs(f, sprintf("reccp %d\n", e.rec_rec_cp));
 	fputs(f, sprintf("recserial %d\n", e.rec_rec_serial));
+	SV_RecSaveKeys(e, f);           // Patch 375: the lineage, and a stream's counters
 
 	fclose(f);
 };
@@ -745,6 +746,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	rorg = e.origin;                // a file with no origin leaves you where you are
 	rvel = '0 0 0';
 
+	SV_RecKeysReset();              // Patch 375
+
 	// The splits are cleared BEFORE the file is read, not after: a save with
 	// fewer splits than the run currently in progress must not inherit the
 	// leftovers of the one it is replacing.
@@ -796,6 +799,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "recpad")     { padn    = stof(argv(1)); continue; }
 		if (k == "reccp")      { cps     = stof(argv(1)); continue; }
 		if (k == "recserial")  { serial  = stof(argv(1)); continue; }
+		if (SV_RecKeyRead(k, n))  continue;   // Patch 375
 
 		if (k == "runsplit")
 		{
@@ -1646,6 +1650,12 @@ void(entity e, float n) SV_SaveLocLoad =
 	*/
 	if (!SV_SaveLocBegin(e))
 		return;
+	// Patch 375: a resume's copy owns the part file until it attaches.
+	if (e.run_ms_phase)
+	{
+		sprint(e, PRINT_HIGH, "^3save: wait for the resume to finish\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -2304,6 +2314,7 @@ void(entity e, float n) SV_SaveLocDelete =
 	  class Rec_ViewRetry's own fremove essay describes: it does not look broken,
 	  it looks like it worked.
 	*/
+	SV_RecCopyDrop(SL_RecPath(id));     // Patch 375: a pending copy must not recreate it
 	fremove(SL_StatePath(id));
 	fremove(SL_RecPath(id));
 	fremove(SL_ViewPath(id));

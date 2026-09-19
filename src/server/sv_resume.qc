@@ -345,6 +345,7 @@ void(entity e, string why) SV_MsPark =
 		SV_RecParkLine(e, why, ticks);
 		if (e.rec_rec_stream)
 		{
+			SV_RecCopyFlush(e);         // Patch 375: before the rename
 			bytes = fseek(e.rec_rec_fh);
 			fclose(e.rec_rec_fh);
 			e.rec_rec_fh = -1;
@@ -452,6 +453,7 @@ float(entity e) SV_MsCopyBegin =
 	e.rec_ms_src = fopen(SV_MsPath(e, "run.rec"), FILE_READ);
 	if (e.rec_ms_src < 0)
 		return FALSE;
+	e.rec_rec_partlob = Lobby_Active() ? 1 : 2;     // Patch 375: see SV_RecPartPath
 	e.rec_ms_dst = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
 	if (e.rec_ms_dst < 0)
 	{
@@ -642,6 +644,9 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_lastbc = e.run_boardcount;
 		e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
 		e.rec_rec_serial = SV_RecNextSerial();
+		SV_RecGenReset(e);              // Patch 375: a new lineage; the copy wrote line 0 as 10
+		e.rec_rec_ver = 10;
+		e.rec_rec_inmt = -1;            // no `in` row read back: a cold load before one writes no pause
 		e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 		e.run_t_flags = e.run_t_flags | TF_RECORDING;
 	}
@@ -912,6 +917,10 @@ void() SV_MsShutdown =
 {
 	local entity p;
 
+	// Patch 375: every pending save copy, while the part files are still open.
+	p = world;
+	while ((p = find(p, classname, "player")))
+		SV_RecCopyFlush(p);
 	if (rec_retry_sent)
 		return;
 	p = world;
