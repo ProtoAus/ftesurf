@@ -67,6 +67,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   HEAD's progs in a clean worktree and copy them in. fteqcc output varies with
   the checkout path, so compare .dat hashes only between builds from one path.
 - `-Pi`: ships qwprogs+csprogs to the Pi lobbies and restarts them.
+- `src/release/release.ps1`: ALWAYS `-Bump patch -DryRun`. A bare `-DryRun`
+  targets the PUBLISHED version and rewrites its stage, archive, receipt and
+  page. A run that fails after its upload cannot be re-run (each pack stamps a
+  new `built` time, so the md5 no longer matches R2): scp `dist\site-<v>\*` to
+  the Pi's `ftesurf-site/.incoming/<v>/` and run `publish.sh <v>`, or bump.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).
@@ -87,6 +92,9 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   archives `hud_energy_ref` and `hud_timer_size` among others, and the values
   drift — read the file rather than trusting a number quoted here). A headless
   test must `set` every cvar its measurement depends on, not assume a default.
+  An install that ran 0.1.9 or earlier saved Momentum Mod's binds and some
+  settings into its ftesurf.cfg (fixed by Patch 377, not undone): a player with
+  odd binds, no chat on ENTER or a dead restart key should delete that file.
 - DRIVING A RUN: the clock starts when you LEAVE THE START BOX. `+jump` hops in
   place (~80 u in 4 s on a bhop map) and never starts it; `+forward` walks at
   `sv_maxspeed` (260, `default.cfg:432` — the move values are 450 precisely so
@@ -191,6 +199,8 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     A shared file (AGENTS.md, ENGINE.txt, ENGINE_PATCHES.md) can hold another
     session's uncommitted hunks. Stage only yours: `git apply --cached` a
     trimmed diff. `git add -p` is interactive, which agents cannot use.
+    Other sessions also STAGE files in this shared index: commit with
+    `git commit -- <paths>`, never a bare `git commit`, which takes theirs too.
   - A working-tree build proves nothing about a commit whose tree also holds
     other sessions' QC. Prove it alone: `git diff --cached > p`, `git worktree
     add <tmp> HEAD`, `git -C <tmp> apply p`, copy the untracked
@@ -479,9 +489,14 @@ bannered as superseded.)
 
 - 12 lobbies, systemd `ftesurf@1..12`, basedir `/srv/nvme/ftesurf-server/game`;
   lobby cfgs sourced from this repo's `ftesurf/cfg/lobby/` — edit here, scp there.
-- The Pi's `game/hl2` is EMPTY (measured 2026-09-19): maps with HL2 props load 33
-  fewer models there, so the server collides fewer prop faces than a client with
-  HL2 (bhop_monster_jam: 2142 vs 6048; pm_dettest trace hash differs).
+- Server CONTENT is hand-copied beside the engine: `game/{momentum (maps only),
+  cstrike, hl2}` hold VPKs from a Windows Steam install, mounted by the Pi's
+  `fs_addons.txt`, and a lobby mounts new content only on restart. There is no
+  Steam and no `data/mapdeps.txt`, so fs_automount mounts nothing: props from the
+  CS:GO/TF2/Portal/Momentum-`mount` packs are NOT solid on the server. `hl2` was
+  empty until 2026-09-20 (bhop_monster_jam collided 2142 of 6048 prop faces);
+  with the 31 `hl2_*.vpk` copied in, the Pi's pm_dettest equals Windows. Prove
+  any content change the same way (`cfg/test/p386det.cfg`, a spare port).
 - Restart: sudoers is per-unit only — loop `sudo -n systemctl restart ftesurf@$i`
   for i in 1..12.
 - Deploy server progs with `./build.ps1 -Pi` (refuses while players are
