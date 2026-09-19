@@ -412,6 +412,20 @@ bannered as superseded.)
   write `mc` records and pm_verify HOLDs on ring != read. `p376sv/p376cl`.
   `sl_prev`/`sl_next` LOAD the save they step to -- a harness that follows
   them with `sl_load` loads twice.
+- THE SPECTATE HOLD (Patches 380/382) keeps a run RANKED. `cmd rec_spec <n>`
+  (entnum; 0 starts the countdown) sets `.run_pmhold`, and the engine then runs
+  ZERO mover ticks for that player and links it without touching triggers
+  (`*pmhold` "1" says the engine can; the progs refuse a ranked hold without it).
+  A MOVETYPE_NONE pin is NOT a hold: the duck timer and stamina decay under it.
+  The window is `spec 1|0` edges plus TF_SPEC (32768, a marker, not a class);
+  the trace stays continuous, so a replay needs nothing from them, and pm_verify
+  checks each edge where it sits among its row's warps. Anything new that moves
+  a player, idles or rewinds a run, or parks it must call `SV_SpecRelease` FIRST
+  (the funnels: disconnect, SV_Shutdown, retry, load, SV_ZoneMove, setpos,
+  respawn), and nothing may write to the recorder while `run_pmhold` is set.
+  Entry is refused while a trigger is touching the body or has not seen it leave.
+  STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown.
+  Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
