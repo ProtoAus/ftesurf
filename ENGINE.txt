@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   af86b63e90ab10162adba8b2eb44cb053e82bce7
 tag      patch-266
-patch    373
+patch    374
 qcbuild  83
 date     2026-09-19
+
+# PATCH 374 IS MOD-SIDE ONLY: the in-game board draws a tick after "watch" on a
+# Verified row.  cfg/test/p374ver.cfg.
 
 # PATCH 373: pm_verify replays a ghost window (no zone scan while detached;
 # HOLD on input once the window went empty or 1 s in).  cfg/test/p373verify.cfg,
