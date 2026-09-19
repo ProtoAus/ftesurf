@@ -1686,7 +1686,7 @@ vector() HUD_Feet =
 	  pmove_org is the body either way -- setproperty writes r_refdef.vieworg and
 	  never pv->simorg -- so the comparison below is body against body.
 	*/
-	if (rec_gh_on)
+	if (rec_gh_on || spc_cam)           // Patch 385: spectate's camera too
 		ref = rec_gh_bodyfeet;
 	else
 	{
@@ -1902,7 +1902,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	HUD_TextC(p, s, sz, HUD_GainColor(gain), 1);
 	p_y = p_y + sz;
 
-	if (ui_cv_energy)
+	if (ui_cv_energy && !spc_hud)       // Patch 385: your anchor, not the watched player's
 	{
 		gravity = serverkeyfloat("sv_gravity");
 		if (gravity < 1) gravity = 800;
@@ -3138,7 +3138,7 @@ void(vector scr) HUD_DrawCrosshair =
 	// The two states the engine's own crosshair is already suppressed for.  Kept
 	// in step with cl_main.qc's VF_DRAWCROSSHAIR line by hand, which is the same
 	// arrangement that line has always had with rec_wt_on / rec_gh_on.
-	if (rec_wt_on || rec_gh_on)
+	if (rec_wt_on || rec_gh_on || spc_cam)
 		return;
 
 	pic = HUD_CrosshairPic(n);
@@ -4474,6 +4474,19 @@ void(vector scr) HUD_DrawKeys =
 		tl   = (rec_wt_keys & FSI_TLEFT)  ? TRUE : FALSE;
 		tr   = (rec_wt_keys & FSI_TRIGHT) ? TRUE : FALSE;
 	}
+	else if (spc_hud)
+	{
+		// Patch 385: the watched player's usercmd keys (Body_Keys).  +left/+right
+		// are client-only, so they never light here.
+		kw   = (spc_hkeys & FSI_FWD)    ? TRUE : FALSE;
+		ks   = (spc_hkeys & FSI_BACK)   ? TRUE : FALSE;
+		ka   = (spc_hkeys & FSI_LEFT)   ? TRUE : FALSE;
+		kd   = (spc_hkeys & FSI_RIGHT)  ? TRUE : FALSE;
+		jump = (spc_hkeys & FSI_JUMP)   ? TRUE : FALSE;
+		duck = (spc_hkeys & FSI_DUCK)   ? TRUE : FALSE;
+		tl   = FALSE;
+		tr   = FALSE;
+	}
 	else
 	{
 		kw   = Keys_Held(FSK_FWD);
@@ -4505,7 +4518,8 @@ void(vector scr) HUD_DrawKeys =
 	*/
 	if (duck)
 		duck = KEY_DOWN;
-	else if (rec_wt_on ? rec_wt_ducked : (getstatf(STAT_FS_PMFLAGS) & PMF_DUCKED))
+	else if (rec_wt_on ? rec_wt_ducked
+	                   : (spc_hud ? spc_hducked : (getstatf(STAT_FS_PMFLAGS) & PMF_DUCKED)))
 		duck = KEY_FORCED;
 
 	/*
@@ -4515,7 +4529,7 @@ void(vector scr) HUD_DrawKeys =
 	  key nobody is touching.
 	*/
 	if (kw)
-	if (rec_wt_on ? rec_wt_psrel : run_ps_release)
+	if (rec_wt_on ? rec_wt_psrel : (spc_hud ? FALSE : run_ps_release))
 		kw = KEY_RELEASED;
 
 	p_y = scr_y * ui_cv_keyspos_y;
@@ -5404,6 +5418,17 @@ void(vector scr) HUD_Draw =
 		// branch never reads the stat that would say so.
 		rec_sl_held = FALSE;
 	}
+	else if (spc_hud)
+	{
+		// Patch 385: the watched player, from the pose stream (Spec_Frame).  No
+		// ground plane is streamed, so the panels that need one stay off below.
+		vel      = spc_hvel;
+		org      = spc_hfeet;
+		gnorm    = '0 0 1';
+		onground = spc_hongr;
+		mtype    = MOVETYPE_WALK;
+		rec_sl_held = FALSE;
+	}
 	else
 	{
 		/*
@@ -5479,9 +5504,12 @@ void(vector scr) HUD_Draw =
 		gnorm_z = getstatf(STAT_FS_GROUNDNORM + 2);
 	}
 
-	HUD_UpdateTurn(dt);
-	HUD_UpdateAnchor(org);
-	HUD_UpdateJumpRef(org, vel, onground);
+	HUD_UpdateTurn(dt);                 // VF_ANGLES: spectate's camera while watching
+	if (!spc_hud)                       // Patch 385: both are your own body's
+	{
+		HUD_UpdateAnchor(org);
+		HUD_UpdateJumpRef(org, vel, onground);
+	}
 
 	/*
 	  Needs the origin and velocity now: as well as the two ramp edges it has
@@ -5509,7 +5537,7 @@ void(vector scr) HUD_Draw =
 	  over a two-second wall-clock window and is debug-only, and feeding it a
 	  scrubbed clock would produce a number nobody could interpret.
 	*/
-	if (!rec_wt_on)
+	if (!rec_wt_on && !spc_hud)
 	{
 		Board_Frame(org, vel, onground);
 
@@ -5584,7 +5612,9 @@ void(vector scr) HUD_Draw =
 	// exists to protect.  It has its own rec_wt_on guard.
 	HUD_DrawSubmitWarn(scr);
 
-	if (rec_wt_on && !rec_wt_v4)
+	// Patch 385: watching, the same cut -- the strafe bar, board and segments
+	// are fed by your own body's machine, and the crosshair is not your aim.
+	if ((rec_wt_on && !rec_wt_v4) || spc_hud)
 	{
 		if (ui_cv_keys)  HUD_DrawKeys(scr);
 		if (ui_cv_debug) HUD_DrawDebug(scr, vel, onground, gnorm, mtype);

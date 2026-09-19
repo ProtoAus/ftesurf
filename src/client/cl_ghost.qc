@@ -628,6 +628,14 @@ float(string cmd) Ghost_ConsoleCommand =
 		return TRUE;
 	}
 
+	// Patch 385: the server refuses a ghost under spectate, a pending one included;
+	// keep rec_gh_want honest.
+	if (Spec_Active())
+	{
+		print("^3ghost:^7 stop spectating first\n");
+		return TRUE;
+	}
+
 	if (argv(1) == "on")       { Ghost_Request(TRUE);  return TRUE; }
 	if (argv(1) == "off")      { Ghost_Request(FALSE); return TRUE; }
 

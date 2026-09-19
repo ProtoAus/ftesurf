@@ -287,7 +287,8 @@ void() SaveLoc_LockAngles =
 {
 	SaveLoc_AngleEvents();
 
-	if (!rec_sl_holding)
+	// Patch 385: spectating never writes the view angles (the .hid identity).
+	if (!rec_sl_holding || Spec_Active())
 	{
 		rec_sl_holdang_ok = FALSE;
 		return;

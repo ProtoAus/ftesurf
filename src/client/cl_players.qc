@@ -30,11 +30,12 @@
            cannot show its own state is a lie waiting to happen.  Silence
            filters the chatbox hook AND the console echo (see cl_chat.qc).
 
-  SELECTION is stored and drawn, and the spectate button says what it is:
-  a stub.  The ask deferred it, correctly -- watching a player smoothly needs
-  more than the ~30 Hz state sampling the .rec carries and a smoothing pass
-  demo playback has never had (Patch 327/328's essays are the map of that
-  ground).  The button exists so the day that lands, the wiring is here.
+  A ROW CLICK SPECTATES that player (Patch 385, cl_spectate.qc): the row sets
+  pl_specpick and Scores_Draw hands it to Spec_Request after its sui_end, which
+  closes the board.  Only on the pinned board, whose cursor is real.  Your own
+  row has no click; the watched player's row is outlined.  Bodies come from the
+  pose stream (Patch 383: one sample per owner tick while watched), not from any
+  recording.
 
   Thumbnails: gfx/thumbnails/ (the voice-status set).  Precached at init --
   drawpic on an unprecached name is a disk hit on the frame you hover the
@@ -42,7 +43,7 @@
 ===========================================================================
 */
 
-float pl_sel;                   // selected slot, or -1
+float pl_specpick;              // slot + 1 a row click asked to spectate, 0 none (Scores_Draw takes it)
 float pl_rows;                  // players drawn this frame (diagnostics)
 
 #define PL_MAXSLOT  64          // QW slots; getplayerkeyvalue returns "" past the end
@@ -318,16 +319,24 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			break;
 		}
 
-		// Row background: selection first, then hover.
-		if (pl_sel == j)
+		// The row is the spectate button.  The voice and chat chips register after
+		// it, so they are in front and keep their own clicks (sui hit-tests front
+		// to back).  sui_is_clicked: pressed AND released on the row.
+		if (spc_stat == j + 1)
 			sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], '0.16 0.22 0.30', 1, 0);
-
-		sui_action_element([p_x + 4, y], [sz_x - 8, rh - 2],
-		                   sprintf("pl_row%g", j), sui_noop);
-		if (sui_is_hovered(sprintf("pl_row%g", j)))
-			sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], '0.12 0.12 0.16', 0.6, 0);
-		if (sui_is_released(sprintf("pl_row%g", j)))
-			pl_sel = j;
+		if (j != me)
+		{
+			sui_action_element([p_x + 4, y], [sz_x - 8, rh - 2],
+			                   sprintf("pl_row%g", j), sui_noop);
+			if (sui_is_hovered(sprintf("pl_row%g", j)))
+				sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], '0.12 0.12 0.16', 0.6, 0);
+			// A held-TAB peek has no cursor: a click there lands on a stale position.
+			if (rec_sb_open)
+			if (sui_is_clicked(sprintf("pl_row%g", j)))
+				pl_specpick = j + 1;
+		}
+		if (spc_stat == j + 1)
+			sui_border_box([p_x + 4, y], [sz_x - 8, rh - 2], 1, '0.35 0.85 1', 0.95, 0);
 
 		xx = p_x + pad;
 
@@ -358,8 +367,11 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		id = (strstrofs(nm, "^", 0) >= 0)
 			? nm
 			: strcat("^", Chat_ColourOf(j), nm, "^7");
-		sui_text([xx, y + 6], [tsz, tsz], Chat_Fit(id, namew, tsz),
-		         '1 1 1', 1, 0);
+		id = Chat_Fit(id, namew, tsz);
+		sui_text([xx, y + 6], [tsz, tsz], id, '1 1 1', 1, 0);
+		if (j == me)
+			sui_text([xx + stringwidth(id, TRUE, [tsz, tsz]) + 6, y + 6], [tsz, tsz],
+			         "you", '0.45 0.45 0.5', 1, 0);
 
 		// Best main time, right-aligned before the icon block; medal-coloured
 		// on the podium, plain above it.
@@ -422,28 +434,21 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		y = y + rh;
 	}
 
-	// ---- footer: the selection's one action --------------------------------
-	if (pl_sel >= 0 && getplayerkeyvalue(pl_sel, "name") != "")
-	{
-		nm = getplayerkeyvalue(pl_sel, "name");
-		sui_action_element([p_x + pad, p_y + sz_y - 28], [sz_x - pad * 2, 20],
-		                   "pl_spec", sui_noop);
-		sui_fill([p_x + pad, p_y + sz_y - 28], [sz_x - pad * 2, 20],
-		         sui_is_hovered("pl_spec") ? '0.14 0.14 0.18' : '0.09 0.09 0.12', 1, 0);
-		sui_border_box([p_x + pad, p_y + sz_y - 28], [sz_x - pad * 2, 20], 1,
-		               '0.28 0.30 0.36', 1, 0);
-		sui_text([p_x + pad + 8, p_y + sz_y - 24], [tsz, tsz],
-		         strcat("spectate ", nm), '0.65 0.65 0.7', 1, 0);
-		if (sui_is_released("pl_spec"))
-			print("^3players:^7 spectate is not in this build -- the .rec state\n"
-			      "  sampling (~30 Hz) and demo smoothing have to land first.\n");
-	}
+	// ---- footer: what a row click does -------------------------------------
+	if (spc_stat > 0)
+		nm = strcat("watching ", getplayerkeyvalue(spc_stat - 1, "name"), "^7 -- esc to return");
+	else if (serverkeyfloat("fs_spec") != 1)
+		nm = "this server does not offer spectate";
+	else if (!rec_sb_open)
+		nm = "pin the board (mouse2) to pick a player";
+	else
+		nm = "click a player to spectate";
+	sui_text([p_x + pad, p_y + sz_y - 24], [tsz, tsz], Chat_Fit(nm, sz_x - pad * 2, tsz),
+	         '0.55 0.55 0.58', 1, 0);
 };
 
 void() Players_RegisterCvars =
 {
-	pl_sel = -1;
-
 	if (!pl_bid)
 		pl_bid = buf_create();
 

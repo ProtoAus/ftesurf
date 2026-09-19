@@ -903,7 +903,15 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "rec_watchpos")
 	{
 		// Patch 382: while spectating it claims the eye for SPEC_EYE_STALE; bare,
-		// it hands the eye back to the server (SV_SpecEyeSteer).
+		// it hands the eye back to the server (SV_SpecEyeSteer).  Patch 385: not
+		// in the countdown, which draws from the body -- a freecam send already in
+		// flight at ESC, or at a lost target, would otherwise steer it away.
+		if (self.run_sp_phase == 2)
+		{
+			if (cmdargc >= 4)
+				dprint(sprintf("spectate: %s eye claim ignored (countdown)\n", self.netname));
+			return;
+		}
 		if (self.run_sp_phase)
 		{
 			if (cmdargc < 4)

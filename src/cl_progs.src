@@ -124,6 +124,10 @@ client/cl_avatar.qc
 // before cl_players.qc, cl_scores.qc and cl_main.qc, which call Body_*.
 client/cl_body.qc
 client/cl_players.qc
+// Patch 385: spectate.  After cl_players.qc (PL_MAXSLOT), cl_body.qc, cl_ghost.qc
+// and cl_hud.qc; before cl_scores.qc (the room-list click calls Spec_Request)
+// and cl_main.qc.  What the earlier files read (spc_*) is declared in cl_keys.qc.
+client/cl_spectate.qc
 // AFTER cl_watch.qc, because clicking a row hands the file straight to
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at
 // Timer_Tick's rate.  Stage 2 of build 24.

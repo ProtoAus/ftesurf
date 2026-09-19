@@ -313,6 +313,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	HUD_EditRegisterCvars();
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
 	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
+	Spec_RegisterCvars();           // Patch 385, spectate
 	Ev_Register();                  // build 54, the trigger/entity inspector
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
@@ -915,6 +916,15 @@ void() PreStrafe_InputFrame =
 
 void() CSQC_Input_Frame =
 {
+	// Patch 385: the spectate window, countdown included, ahead of the replay so
+	// its time is zeroed whatever else is open.  The stat, not spc_stat: this can
+	// run before the frame that latches it.
+	if (getstatf(STAT_FS_SPEC))
+	{
+		Spec_InputFrame();
+		return;
+	}
+
 	/*
 	  BUILD 24: WATCHING A RECORDING SENDS NOTHING.
 
@@ -924,9 +934,10 @@ void() CSQC_Input_Frame =
 	  empty, so nothing you press between here and the server acknowledging can
 	  move you into a start box or off a ledge.
 
-	  First, and unconditionally, so neither of the two below can put a value
-	  back -- PreStrafe_InputFrame reads input_movevalues_x and would otherwise
-	  latch its release off a key that is not being sent.
+	  Ahead of the two below (only spectate's, which zeroes more, is earlier), so
+	  neither can put a value back -- PreStrafe_InputFrame reads
+	  input_movevalues_x and would otherwise latch its release off a key that is
+	  not being sent.
 	*/
 	if (rec_wt_open)
 	{
@@ -1015,6 +1026,7 @@ void() CSQC_Input_Frame =
   batch and is never "held" for any observable time.
 */
 float cl_btn_taken;             // CLB_*: buttons whose press the chain consumed
+float cl_btn_down;              // CLB_*: buttons down as CSQC was told (Patch 385: repeats)
 #define CLB_M1   1
 #define CLB_M2   2
 #define CLB_M3   4
@@ -1121,6 +1133,22 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Watch_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	// Patch 385: behind the draft and every panel, ahead of Keys_Edge.  The two
+	// passive overlays below keep ESC first too.  See Spec_InputEvent.
+	if (Spec_Active())
+	{
+		if (evtype == IE_KEYDOWN)
+		if (scanx == K_ESCAPE)
+		{
+			if (Results_PassiveKey(scanx))
+				return TRUE;
+			if (Ev_PassiveKey(scanx))
+				return TRUE;
+		}
+		if (Spec_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+	}
+
 	if (evtype == IE_KEYDOWN)
 	{
 		Keys_Edge(scanx, TRUE);
@@ -1154,7 +1182,12 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 			return TRUE;
 		if (Gfx_Key(scanx, TRUE))
 			return TRUE;
-		return SaveLoc_Key(scanx, TRUE);
+		if (SaveLoc_Key(scanx, TRUE))
+			return TRUE;
+		// Patch 385: last, so the menus above keep their keys.
+		if (Spec_Active())
+			return !Spec_BindAllowed(Keys_BindNow(scanx));
+		return FALSE;
 	}
 
 	/*
@@ -1222,8 +1255,24 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 		bit = CL_ButtonBit(scanx);
 
+	/*
+	  Patch 385: an OS auto-repeat reaches CSQC as another KEYDOWN (pr_csqc.c
+	  CSQC_KeyPress filters only ups; keys.c drops bind repeats after us).  A
+	  repeat of a press that went to the game goes there too -- a panel taking
+	  it would set the bit, take the paired up, and strand the "-jump" of a SPACE
+	  held into a draft or a spectate window.
+	*/
+	if (bit && evtype == IE_KEYDOWN)
+	{
+		if (cl_btn_down & bit)
+		if (!(cl_btn_taken & bit))
+			return FALSE;
+		cl_btn_down = cl_btn_down | bit;
+	}
+
 	if (bit && evtype == IE_KEYUP)
 	{
+		cl_btn_down = cl_btn_down - (cl_btn_down & bit);
 		if (!(cl_btn_taken & bit))
 		{
 			/*
@@ -1242,6 +1291,12 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	}
 
 	took = CL_InputChain(evtype, scanx, chary, devid);
+	if (evtype == IE_KEYUP)
+		Spec_KeyUp(scanx);
+	// After the chain: the engine reads the modifiers before it marks this key
+	// down (keys.c:3824).  A modifier has no button bit, so no early return skips it.
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+		Keys_ModEdge(scanx, evtype == IE_KEYDOWN);
 
 	// Recorded on the WHOLE chain's answer, not a single handler's, so the
 	// passive-key path (MOUSE3 taking a cursor) pairs the same way.
@@ -1338,7 +1393,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  appeared in a replay would be pointing at somebody else's aim.
 	*/
 	setproperty(VF_DRAWCROSSHAIR,
-	            (rec_wt_on || rec_gh_on || cvar("hud_crosshair") >= 0) ? 0 : 1);
+	            (rec_wt_on || rec_gh_on || getstatf(STAT_FS_SPEC) > 0
+	             || cvar("hud_crosshair") >= 0) ? 0 : 1);
 
 	// The recorded camera, over the top of whatever the engine put in the
 	// refdef.  After clearscene, which resets both properties.
@@ -1363,6 +1419,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Patch 383: the streamed bodies, after the ghost's capture and before the
 	// spectate camera, which reads Body_Pose, and addentities, which draws them.
 	Body_Frame();
+
+	// Patch 385: the spectate camera, after the bodies it reads and before
+	// everything below that reads VF_ORIGIN.
+	Spec_Frame();
 
 	/*
 	  The map's 3D skybox, if it has one.  See cl_decals.qc for where the
@@ -1434,6 +1494,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
 	Trig_Frame();
 
+	Spec_Trace();                   // Patch 385: what is actually drawn
+
 	renderscene();
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
@@ -1483,7 +1545,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  own relationship with the strafe bar.
 		*/
 		Boarding_ReadCvars();
-		Boarding_Draw(scr, ui_board_bottom);
+		if (!spc_hud)                 // Patch 385: it is your own ramp, not the watched player's
+			Boarding_Draw(scr, ui_board_bottom);
 
 		/*
 		  PATCH 340: the chatbox.  Here rather than at the top of the panel
@@ -1568,6 +1631,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		Timer_Draw(scr);
 		Timer_DrawResumeOffer(scr);   // Multi-Session; draws whatever hud_timer says
+		Spec_Draw(scr);               // Patch 385: the banner and the countdown
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
@@ -1726,7 +1790,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		  excuse of running before the override: it runs outside CSQC_UpdateView
 		  entirely and sees whatever the last frame left in the refdef.
 		*/
-		if (rec_gh_on)
+		if (rec_gh_on || spc_cam)
 			ui_anchor_z = rec_gh_bodyfeet_z;
 		else
 		{
@@ -1784,6 +1848,18 @@ float(string cmd) CSQC_ConsoleCommand =
 	}
 	if (argv(0) == "vote")
 		return Vote_Console();
+
+	// Patch 385.  `spectate look <dx> <dy>`: an IE_MOUSEDELTA through the whole
+	// chain, as `vote key` does for keys -- `took 1` is what zeroes the engine's.
+	if (argv(0) == "spectate")
+	if (argv(1) == "look")
+	{
+		local float sl_took;
+		sl_took = CSQC_InputEvent(IE_MOUSEDELTA, stof(argv(2)), stof(argv(3)), 0);
+		print(sprintf("spectate look: took %g, camera %v, aim %v\n", sl_took,
+		              spc_camang, getproperty(VF_CL_VIEWANGLES)));
+		return TRUE;
+	}
 
 	if (argv(0) == "timer")
 	{
@@ -1933,6 +2009,10 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	// Patch 383.  `body_stats`, `body_trace <slot|-1> <frames>`.
 	if (Body_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Patch 385.  `spectate ...`, `spec_trace <frames>`.
+	if (Spec_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 31.  `hud_edit`, `hud_edit status|reset|save|on|off`.

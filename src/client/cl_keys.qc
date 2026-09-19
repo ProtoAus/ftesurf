@@ -151,6 +151,27 @@ float  pb_bf_total;              // body-frames evaluated
 float  pb_late_total;            // ...that ran past the newest sample
 float  pb_nbodies;               // stream bodies holding a sample, last frame
 
+// Patch 385, spectate: written by cl_spectate.qc's Spec_Frame, read by cl_hud,
+// cl_timer, cl_ghost and cl_players, which compile before it.
+float  spc_stat;                 // STAT_FS_SPEC as last latched: 0 off, n>0 entnum n, <0 countdown
+float  spc_cam;                  // the camera is spectate's this frame
+float  spc_hud;                  // the HUD draws the watched player from the spc_h* below
+vector spc_hvel, spc_hfeet;
+float  spc_hongr, spc_hducked, spc_hkeys;
+float  spc_hrun;                 // Body_Run answered: a SPEC sample has arrived
+float  spc_htstate, spc_hticks, spc_htrack, spc_htflags;
+float  spc_want;                 // entnum asked for, 0 none
+float  spc_leaving;              // cltime of a `rec_spec 0` the stat has not answered, 0 none
+
+// Asking, leaving, watching or counting down -- or a stat not latched yet (a raw
+// `cmd rec_spec`, a new VM): spectate owns the input and the aim stays put.
+float() Spec_Active =
+{
+	if (spc_stat || spc_want || spc_leaving)
+		return TRUE;
+	return getstatf(STAT_FS_SPEC) != 0;
+};
+
 /*
 ===========================================================================
   BUILD 43 -- TELLING THE SERVER WHERE A DETACHED CAMERA IS.
@@ -252,11 +273,135 @@ float(string bind) Keys_Action =
 	return -1;
 };
 
+// Patch 385: keys whose bind turns but has no FSK slot (+lookup/+lookdown, or a
+// compound "+left; +forward") -- FSI bit order is FSK order and the .view mask is
+// written from it; spectate only needs to know one is held.
+float ui_klook[FSK_SLOTS];
+
+// c as a whole command anywhere in the bind: after its start, ';' or a space, and
+// before its end, ';' or a space.  No tokenize -- `vote key` still reads argv.
+float(string b, string c) Keys_BindHas =
+{
+	local float at, n, pre, post;
+
+	n = strlen(c);
+	at = strstrofs(b, c, 0);
+	while (at >= 0)
+	{
+		pre = TRUE;
+		if (at > 0)
+			pre = (strstrofs(" ;\t", substring(b, at - 1, 1), 0) >= 0);
+		post = TRUE;
+		if (at + n < strlen(b))
+			post = (strstrofs(" ;\t", substring(b, at + n, 1), 0) >= 0);
+		if (pre)
+		if (post)
+			return TRUE;
+		at = strstrofs(b, c, at + 1);
+	}
+	return FALSE;
+};
+
+float(string b) Keys_TurnBind =
+{
+	if (Keys_BindHas(b, "+left") || Keys_BindHas(b, "+right"))
+		return TRUE;
+	return (Keys_BindHas(b, "+lookup") || Keys_BindHas(b, "+lookdown"));
+};
+
+// #342 with its bindmap and modifier arguments (pr_clcmd.c PF_cl_getkeybind).  A
+// plain `bind` fills all eight modifier slots, `bind shift+q` one of them, and
+// the engine runs the slot for the modifiers held (keys.c:3824, 4108).
+string(float keynum, float bindmap, float modifier) getkeybind_mod = #342;
+float ui_kmods;                 // held: L/R shift 1/2, alt 4/8, ctrl 16/32 (the chain's own edges)
+
+void(float scan, float down) Keys_ModEdge =
+{
+	local float b;
+
+	b = 0;
+	if (scan == K_LSHIFT)      b = 1;
+	else if (scan == K_RSHIFT) b = 2;
+	else if (scan == K_LALT)   b = 4;
+	else if (scan == K_RALT)   b = 8;
+	else if (scan == K_LCTRL)  b = 16;
+	else if (scan == K_RCTRL)  b = 32;
+	if (!b)
+		return;
+	if (down)
+		ui_kmods = ui_kmods | b;
+	else
+		ui_kmods = ui_kmods - (ui_kmods & b);
+};
+
+// The bind a press of `scan` runs now (keys.h KEY_MODIFIER_*: shift 1, alt 2, ctrl 4).
+string(float scan) Keys_BindNow =
+{
+	local float m;
+	local string b;
+
+	m = 0;
+	if (ui_kmods & 3)
+		m = m | 1;
+	if (ui_kmods & 12)
+		m = m | 2;
+	if (ui_kmods & 48)
+		m = m | 4;
+	b = getkeybind_mod(scan, 0, m);
+	// An unbound right-hand modifier runs its left-hand twin's bind (keys.c:4118-4131).
+	if (b == "")
+	{
+		if (scan == K_RALT)
+			b = getkeybind_mod(K_LALT, 0, m);
+		else if (scan == K_RCTRL)
+			b = getkeybind_mod(K_LCTRL, 0, m);
+		else if (scan == K_RSHIFT)
+			b = getkeybind_mod(K_LSHIFT, 0, m);
+		else if (scan == K_RWIN)
+			b = getkeybind_mod(K_LWIN, 0, m);
+	}
+	return b;
+};
+
+// A turn in ANY modifier slot: ui_kmods misses a modifier the engine holds when
+// it went down under the console or before a map change.
+float(float scan) Keys_TurnAny =
+{
+	local float m;
+
+	for (m = 0; m < 8; m = m + 1)
+		if (Keys_TurnBind(getkeybind_mod(scan, 0, m)))
+			return TRUE;
+	return Keys_TurnBind(Keys_BindNow(scan));
+};
+
 void() Keys_Clear =
 {
 	local float i;
 	for (i = 0; i < FSK_COUNT * FSK_SLOTS; i = i + 1)
 		ui_kdown[i] = 0;
+	for (i = 0; i < FSK_SLOTS; i = i + 1)
+		ui_klook[i] = 0;
+};
+
+void(float scan, float down) Keys_LookEdge =
+{
+	local float i, free;
+
+	free = -1;
+	for (i = 0; i < FSK_SLOTS; i = i + 1)
+	{
+		if (ui_klook[i] == scan)
+		{
+			if (!down)
+				ui_klook[i] = 0;
+			return;
+		}
+		if (free < 0 && !ui_klook[i])
+			free = i;
+	}
+	if (down && free >= 0)
+		ui_klook[free] = scan;
 };
 
 float(float act) Keys_Held =
@@ -272,16 +417,35 @@ float(float act) Keys_Held =
 	return FALSE;
 };
 
+// Any key bound to +left/+right/+lookup/+lookdown held, as far as its bind ran.
+float() Keys_TurnHeld =
+{
+	local float i;
+
+	for (i = 0; i < FSK_SLOTS; i = i + 1)
+		if (ui_klook[i])
+			return TRUE;
+	if (Keys_Held(FSK_TLEFT))
+		return TRUE;
+	return Keys_Held(FSK_TRIGHT);
+};
+
 void(float scan, float down) Keys_Edge =
 {
 	local float act, i, base, free;
+	local string b;
 
 	if (scan <= 0)
 		return;
 
-	act = Keys_Action(getkeybind(scan));
+	b = getkeybind(scan);
+	act = Keys_Action(b);
 	if (act < 0)
+	{
+		if (Keys_TurnBind(b))
+			Keys_LookEdge(scan, down);
 		return;
+	}
 
 	base = act * FSK_SLOTS;
 	free = -1;

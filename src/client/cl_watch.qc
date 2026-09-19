@@ -3799,6 +3799,14 @@ float(string path) Watch_Open =
 	local float buf;
 	local string vp;
 
+	// Patch 385: the server refuses the pin under spectate (a pending one too), and
+	// both would own the camera.
+	if (Spec_Active())
+	{
+		print("^3replay:^7 stop spectating first\n");
+		return FALSE;
+	}
+
 	rec_wt_loadms = gettime(1);
 	Watch_Free();
 

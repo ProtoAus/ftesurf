@@ -125,7 +125,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 20                // Patch 361: the banner makes 16 rows; spares kept
+#define HE_MAX 20                // 18 rows since Patch 385's spectate; spares kept
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -296,6 +296,8 @@ void() HE_BuildTable =
 	HE_Text("hud_speed_size",    "40 48 64 80", 24);     // display; 48 today
 	HE_Add("banner",  "Banner",     "hud_banner_x",  "hud_banner_y",  "hud_banner",   0, HEA_CT,  300,  50);
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
+	// Patch 385: listed for its options only -- the banner sits where it sits.
+	HE_Add("spectate","Spectate",   "",              "",              "",             0, HEA_CT,    0,   0);
 	/*
 	  BUILD 66 -- FROM HERE DOWN, EVERY ROW IS HIDDEN FROM THE LIST.
 
@@ -579,6 +581,13 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "spectate")
+	{
+		if (row == 0) return "spec_dist|Distance|c|70 110 160 240|70;110;160;240"
+		                     "|How far the third-person camera sits from the player you watch. Walls pull it in.";
+		return "";
+	}
+
 	return "";
 };
 
@@ -603,6 +612,7 @@ string(string id) HE_Tip =
 	if (id == "boarding") return "What you entered and left the last ramp with.";
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
+	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
 	return "";
 };
 

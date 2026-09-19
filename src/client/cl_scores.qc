@@ -1708,6 +1708,22 @@ void(vector tp, float xmax) Scores_DrawClock =
 	Scores_Text([x, tp_y + rec_sb_sztitle - rec_sb_szhead], rec_sb_szhead, s, col, 1);
 };
 
+// Patch 385: a room-list row click (cl_players.qc), after sui_end like the replay
+// pick.  The board closes only when a request actually went out.
+float() Scores_SpecHandOff =
+{
+	local float slot;
+
+	if (!pl_specpick)
+		return FALSE;
+	slot = pl_specpick - 1;
+	pl_specpick = 0;
+	if (!Spec_Request(slot))
+		return FALSE;
+	Scores_Close();
+	return TRUE;
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
@@ -1809,6 +1825,7 @@ void(vector scr) Scores_Draw =
 		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not
 		sui_end();                        // about zones; it shows here too.
 		Font_Reset();
+		Scores_SpecHandOff();
 		return;
 	}
 
@@ -2114,6 +2131,9 @@ void(vector scr) Scores_Draw =
 	sui_end();
 	Font_Reset();
 
+	if (Scores_SpecHandOff())
+		return;
+
 	/*
 	  THE HAND-OFF, AFTER sui_end AND AFTER THE LOOP.
 
@@ -2395,6 +2415,17 @@ float(string cmd) Scores_ConsoleCommand =
 			Scores_Close();
 		else if (argv(1) == "open")
 			Scores_Open();
+		else if (argv(1) == "pick")
+		{
+			// Patch 385: a room-list row click, minus the hit test -- the next
+			// Scores_Draw hands it off (Scores_SpecHandOff).  Pinned board only.
+			local float sp_s;
+			sp_s = Spec_FindName(argv(2));
+			if (!rec_sb_open || sp_s < 0)
+				print("scores pick <name>: pin the board, name one player\n");
+			else
+				pl_specpick = sp_s + 1;
+		}
 		else if (argv(1) == "leg")
 		{
 			Scores_Refresh();

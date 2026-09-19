@@ -1188,6 +1188,8 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	*/
 	if (rec_gh_on)
 		s = strcat(s, (s != "") ? "  " : "", "^5ghost^7");
+	if (spc_hud)                        // Patch 385: this clock is the watched player's
+		s = strcat(s, (s != "") ? "  " : "", "^5watching^7");
 
 	if (s != "")
 	{
@@ -1383,6 +1385,26 @@ void(vector scr) Timer_Draw =
 		                tick, [rec_wt_seg, rec_wt_segs, rec_wt_track], '0 0 0');
 		Font_Reset();
 		Timer_DrawSplits(scr, tick);
+		return;
+	}
+
+	/*
+	  Patch 385: the watched player's clock, from its SPEC samples.  Body_Run has
+	  already advanced it to the drawn tick, so ui_tm_lastat = cltime keeps
+	  Timer_Display from adding any.  Your own splits are hidden; nothing draws
+	  until the first SPEC sample.  The stage state is not streamed: '0 0 0'.
+	*/
+	if (spc_hud)
+	{
+		if (spc_hrun)
+		{
+			ui_tm_lastticks = spc_hticks;
+			ui_tm_lastat    = cltime;
+			ui_tm_laststate = spc_htstate;
+			Timer_DrawPanel(scr, spc_htstate, floor(spc_hticks), spc_htflags, 0,
+			                Timer_Tick(), [0, 0, spc_htrack], '0 0 0');
+			Font_Reset();
+		}
 		return;
 	}
 

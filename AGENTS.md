@@ -426,6 +426,32 @@ bannered as superseded.)
   Entry is refused while a trigger is touching the body or has not seen it leave.
   STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown.
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
+- SPECTATING (Patch 385, `client/cl_spectate.qc`) drives that hold. The camera
+  integrates IE_MOUSEDELTA itself and NEVER writes VF_CL_VIEWANGLES, so the
+  body's aim cannot move (the .hid shows no 'v' record inside a window).
+  `Spec_Active()` (cl_keys.qc) is the one "spectate owns the input" test --
+  asking, leaving, watching, counting down, or the stat says so; anything new
+  that opens over the game must refuse under it, as the ghost and replay do.
+  Under it a key press runs only a bind on SPEC_CMDS, looked up with
+  `Keys_BindNow` (the bind for the modifiers held -- plain `getkeybind` misses
+  `bind shift+q`; an unbound right Alt runs left Alt's), and a key with a turn in
+  ANY modifier slot is swallowed (`Keys_TurnAny`); a new menu key that must work
+  while watching goes on that list or into a handler ahead of it in
+  CL_InputChain. Two routes stay open, outside CSQC: a console `+left` and an
+  F-key under the engine menu; the per-frame release cuts a held turn
+  from either, not a force_centerview.
+  The usercmd and its time are zeroed for the whole window, so after the release
+  about one round trip of anti-hover moves land as no-input rows (one on a local
+  host, p385rec).
+  Handles: `spectate look <dx> <dy>` (a mouse delta through the chain),
+  `scores pick <name>` (a row click minus the hit test), `spectate status`,
+  `spec_trace` for `tools/spectrace.py`. Harnesses `p385view` (+`sv/own/two`),
+  `p385hid` (+`t`), `p385rec` + `p385verify` (a recorded run, surf_666 fixture).
+  A three-client harness needs `set sv_playerslots 4` (default.cfg allows 2;
+  the third client just retries "full").
+- At a frame rate near the 66 Hz stream a raw-sample control jitters between
+  0, 1 and 2 samples a frame instead of stalling: grade the rate band, not the
+  no-step fraction alone (p385view P4c).
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
