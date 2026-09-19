@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "_comment": "Fixture zones for bhop_badges_mini (cfg/test/p403liftrec.cfg). Copy to maps/zones/local/bhop_badges_mini.json for the run and DELETE after. Built around the *249 jump pad (trigger_push UP 400, world 2304 -7232 11392 .. 2560 -6960 11584). 400 is WEAKER than gravity 800, so a body lands back on it -- which is the point: the START box is a slab of air 100 u above the pad, the body falls out of it (the run starts), lands on the pad GROUNDED, and the upward push fires with the recording already open. The END box sits where a setpos east of the pad actually resolves -- 3056 -7376 11296.6, measured; the first cut aimed at 2700 -7096 and the engine pushed the body out of solid to there instead, so the run never finished and pm_verify held on no finish. bhop_pharma *939 was tried first and its pad sits inside a fail teleport that yanks the body to 12993 -61 -879.",
+  "tracks": {
+    "main": {
+      "zones": {
+        "segments": [
+          {
+            "limitStartGroundSpeed": false,
+            "checkpointsRequired": false,
+            "checkpointsOrdered": true,
+            "checkpoints": [
+              {
+                "regions": [
+                  {
+                    "points": [[2320, -7220], [2545, -7220], [2545, -6975], [2320, -6975]],
+                    "bottom": 11500,
+                    "height": 60
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "end": {
+          "regions": [
+            {
+              "points": [[2950, -7480], [3200, -7480], [3200, -7280], [2950, -7280]],
+              "bottom": 11240,
+              "height": 240
+            }
+          ]
+        }
+      }
+    }
+  }
+}

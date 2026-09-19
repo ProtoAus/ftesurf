@@ -1,0 +1,70 @@
+{
+  "formatVersion": 1,
+  "_comment": "Fixture zones for bhop_arcane (cfg/test/p403ride.cfg). Copy to maps/zones/local/bhop_arcane.json for the run and DELETE after -- this map has a real shipped zone file and local wins. Geometry measured by cfg/test/p403probe.cfg. MAIN's start zone sits inside *88 (push +y 1000, y 2048..2560) and stops at y 2555, so the run STARTS with a carrier already armed and then rides *87 (1400, y 2560..3072) and *86 (1800, y 3072..3584) for 1024 u INSIDE the run -- which is where a multi-command ride span can appear. Its end box catches the fall past y~3670 where the floor stops. The first cut put the start zone around *86 itself: the run then began past the booster and lasted 5 ticks, which captured a pay of 1800 but no span. BONUS 1 sits on the floor at z~13600 inside *252 (push UP 1250, world 1024 -11232 13056 .. 2048 -10240 15616): standing there is grounded under an upward push, which is the `lift` warp (sv_entities.qc:5614).",
+  "tracks": {
+    "main": {
+      "zones": {
+        "segments": [
+          {
+            "limitStartGroundSpeed": true,
+            "checkpointsRequired": false,
+            "checkpointsOrdered": true,
+            "checkpoints": [
+              {
+                "regions": [
+                  {
+                    "points": [[6820, 2100], [7000, 2100], [7000, 2555], [6820, 2555]],
+                    "bottom": -200,
+                    "height": 200
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "end": {
+          "regions": [
+            {
+              "points": [[6700, 3700], [7200, 3700], [7200, 5400], [6700, 5400]],
+              "bottom": -1100,
+              "height": 1400
+            }
+          ]
+        }
+      }
+    },
+    "bonuses": [
+      {
+        "zones": {
+          "segments": [
+            {
+              "limitStartGroundSpeed": false,
+              "checkpointsRequired": false,
+              "checkpointsOrdered": true,
+              "checkpoints": [
+                {
+                  "regions": [
+                    {
+                      "points": [[1300, -11100], [1800, -11100], [1800, -10400], [1300, -10400]],
+                      "bottom": 13500,
+                      "height": 200
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "end": {
+            "regions": [
+              {
+                "points": [[1300, -11100], [1800, -11100], [1800, -10400], [1300, -10400]],
+                "bottom": 15100,
+                "height": 500
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
