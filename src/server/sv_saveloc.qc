@@ -835,6 +835,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	{
 		setorigin(e, rorg);
 		e.velocity = rvel;
+		SV_ClearCarrier(e);     // Patch 400, as SV_SaveLocPlace
 		e.angles   = [rpit, ryaw, 0];
 		e.v_angle  = e.angles;
 		e.fixangle = TRUE;
@@ -1615,6 +1616,7 @@ void(entity e, float r) SV_SaveLocPlace =
 {
 	setorigin(e, rec_sl_org[r]);
 	e.velocity = rec_sl_vel[r];
+	SV_ClearCarrier(e);     // Patch 400: Momentum's load passes a velocity to Teleport
 
 	/*
 	  THE PITCH GOES IN BOTH, and that is not a style choice -- it is the whole

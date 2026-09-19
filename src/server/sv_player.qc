@@ -1063,6 +1063,7 @@ void(string cmd) SV_ParseClientCommand =
 
 		setorigin(self, [stof(argv(1)), stof(argv(2)), stof(argv(3))]);
 		self.velocity = '0 0 0';
+		SV_ClearCarrier(self);          // Patch 400: or a push pays out here
 		SV_TimerWarped(self);
 
 		// Angles are optional, and all three arrive together or not at all --

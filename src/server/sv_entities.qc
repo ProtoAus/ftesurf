@@ -977,6 +977,16 @@ float run_bv_set_n, run_bv_paid_n;
 // alongside the movement vars it already refreshes.
 float run_bv_debug;
 
+// Patch 400: what Source's TeleportEntity does whenever it is given a velocity
+// (SetBaseVelocity(0), baseentity.cpp:4474-4477).  A placement that sets .velocity
+// and keeps the carrier pays the old push out at the new spot a command later.
+// The next command's SV_RecRideArm records the `arm 0 0 0`.
+void(entity e) SV_ClearCarrier =
+{
+	e.run_basevel = '0 0 0';
+	e.run_basevel_armed = FALSE;
+};
+
 void(entity pl) SV_BaseVelocityFrame =
 {
 	if (!pl.run_basevel_armed && pl.run_basevel != '0 0 0')
@@ -4969,6 +4979,8 @@ void() trigger_teleport_touch =
 	// everywhere else -- 65 maps write `velocitymode` and 467 write `setspeed`.
 	vmode = SV_Key2(self.VelocityMode, self.velocitymode);
 
+	// Momentum passes a velocity to Teleport in these three modes (not in 0 or
+	// landmark mode), so they drop the carrier too.
 	if (vmode == 1)
 		other.velocity = '0 0 0';
 	else if (vmode == 2)
@@ -4982,6 +4994,8 @@ void() trigger_teleport_touch =
 		makevectors(dest.angles);
 		other.velocity = v_forward * spd;
 	}
+	if (vmode == 1 || vmode == 2 || vmode == 3)
+		SV_ClearCarrier(other);
 
 	// BUILD 83: the record, last, so it carries the post-VelocityMode state.
 	// Deliberately NOT behind `run_teleport_warp` above -- that cvar decides a
@@ -5107,6 +5121,7 @@ void() trigger_teleport_relative_touch =
 	}
 	setorigin(other, p);
 	other.velocity = '0 0 0';
+	SV_ClearCarrier(other);             // Patch 400: Teleport(.., &vec3_origin)
 
 	/*
 	  BUILD 39 -- AND THE GROUND FLAG, WHICH BOTH SIBLINGS CLEAR AND THIS ONE
