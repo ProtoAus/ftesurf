@@ -132,6 +132,23 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - No QC unit tests. surfd's tests are plain scripts, run on the Pi (Flask is
   not on Windows): `SURFD_HOME=$(mktemp -d) python3 surfd/test_x.py`.
   `test_recplot.py` is stdlib only and runs anywhere.
+- TEST AN ENGINE CHANGE WITHOUT DEPLOYING IT: with `C:\msys64\ucrt64\bin;
+  C:\msys64\usr\bin` on PATH, `make -j8 -C <fteqw>/engine sv-rel m-rel
+  FTE_TARGET=win64`, then run `engine\release\fteqwsv64.exe` or `fteqw64.exe`
+  with cwd `C:\FTESurf` (the basedir is the cwd). The installs keep their binary
+  and a control run on `C:\FTEQuake\fteqwsv64.exe` stays one command away.
+- A synthetic key (`in_journal_synth`) never reaches the binds in a minimized
+  headless client, so a key's effect cannot be driven. Probe the input chain's
+  verdict instead: `vote key <scan> <0|1>` runs CSQC_InputEvent and prints
+  `took`, which is what decides whether keys.c runs the stored `-command`.
+- Another session may run game copies from `%TEMP%` on its own ports. Between
+  harness arms kill only processes whose ExecutablePath is under `C:\FTESurf`,
+  `C:\FTEQuake` or `engine\release`. Agent PowerShell cannot `Remove-Item`
+  under `C:\FTESurf`, and logs append: give each run a fresh `log_name`.
+- A smoothness gate needs the subject's own motion measured first. Patch 383's
+  owner walking circles varies its speed 4.3% by itself, so `speed CV < 2%` was
+  falsified by the owner, not the renderer. Compare the render with the sampled
+  motion (frames drawn exactly on a sample tick), not with a constant.
 
 ## Generated / never edit
 
@@ -295,6 +312,19 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   nginx changes go in `src/release/ftesurf.nginx` or `surfd/surfd.nginx`, and
   installing them needs Lex's sudo (`install.sh`). A proxied surfd route must
   set `X-Real-IP`, or every client shares one rate bucket.
+- LOBBY BODIES ARE A CSQC STREAM (Patch 383): the avatar's SendEntity
+  (`sv_pose.qc`) feeds CSQC_Ent_Update (`cl_body.qc`). Each sample carries the
+  owner's `run_movetick`, and the client interpolates on that clock, never by
+  arrival; `Body_Pose(slot, ...)` is the API. `lobby_av_stream 0` is the old
+  engine avatar byte for byte (the control), `lobby_av_rate 0` every moved tick,
+  `lobby_av_budget` the cap for a full lobby. qwprogs and csprogs ship TOGETHER:
+  a client whose csprogs lacks CSQC_Ent_Update is kicked. CSQC_Ent_Remove is
+  global, so a second networked CSQC entity dispatches on the reserved type bit
+  0x80. Measure with `body_trace`/`body_stats` and `tools/bodytrace.py`.
+- `shared/sh_interp.qc` is the one interpolation speller (the replay viewer and
+  the body stream). The replay viewer is measured per frame with `replay trace
+  <n> <dt>` / `replay trace frames <n>` and `tools/watchtrace.py` (`--model`
+  re-derives its tables, `--compare` replays the frames through a Python model).
 
 ## Anti-cheat and run evidence
 
@@ -570,6 +600,15 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
   big fixed arrays blow the globals/strings budget (4096 rows forced a 32-bit
   target — size them to the library).
+- fteqcc parses `x = a && b` as `(x = a) && b`: assignment binds tighter than
+  `&&` and `||` (measured: `t = !first && FALSE` gave 1). Wrap the whole
+  right-hand side, `x = (a && b);`, as the tree mostly does. Still unwrapped in
+  committed code, left for a decision because fixing them changes behaviour:
+  `snapang` in trigger_teleport_touch (sv_entities.qc) and its mirror in
+  TG_FireTeleport (cl_triggers.qc) -- the keep-angles flag is ignored on both
+  sides; `probe`/`hit` in TG_ChainStart and Trig_ConsoleCommand (cl_triggers.qc);
+  `lpd_active` in Portal_LoadForMap; `onpanel` in Ev_InputEvent; `vote_on` in
+  Vote_Frame; `vbsp_retrigger` in SV_UpdateMovementServerInfo.
 - Every QC GLOBAL is zeroed on every map load, `map_restart` (so `retry`)
   included. Anything that must identify state across one lives in a cvar or a
   file: a per-map rewind serial let a pre-retry save rewind "warm" across the
