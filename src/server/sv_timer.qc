@@ -2158,6 +2158,7 @@ float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix 
 // Multi-Session (sv_resume.qc).
 .float  run_ms_sessions;         // `session`s this run has had (stat 101); 0 = one session
 .float  run_st_ms;               // the open stage spans a pause: it never qualifies
+.float  run_st_sp;               // Patch 382: ...or a spectate window
 .float  run_ms_phase;            // a resume is restoring/counting down: no zone acts
 
 /*
@@ -2949,6 +2950,31 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             window may carry input, and once empty they stay
                             empty.  pm_verify replays it and HOLDs on input a
                             second into a window, or after it went empty.
+
+    spec 1 <ticks> <mt> <carry> <ox> <oy> <oz> <vx> <vy> <vz> <fl> <wall>
+    spec 0 <ticks> <mt> <carry> <ox> <oy> <oz> <vx> <vy> <vz> <fl> <wall> <why>
+                            Patch 382 (additive, no bump).  The body was HELD for
+                            a spectate: the engine ran ZERO mover ticks for it
+                            (.run_pmhold, Patch 380) and no trigger touched it.
+                            <ticks> SV_TimerTicks; <mt> <carry> run_movetick and
+                            run_movecarry; <o*> origin, <v*> velocity; all %.9g.
+                            <fl> 1 when FL_ONGROUND else 0.  <wall> the server's
+                            `time`, %.3f: the window's length is the difference,
+                            and it is NOT part of the edge identity.
+                            A client command, so between packets: after the last
+                            `in` row -- whose packet may lack its sample, since a
+                            held packet writes none.
+                            NOTHING is written between a 1 and its 0, and the two
+                            edges state the same <ticks> .. <fl>.  The next
+                            counter-bearing line after the 0 (`in`, a
+                            drop|rotate|server `pause`) restates <mt> <carry>:
+                            the trace is continuous and a replay needs nothing
+                            from this record.
+                            <why>: leave drop rotate server retry load zone setpos
+                            respawn move notarget.
+                            TF_SPEC in the header iff the file holds a window.
+                            Only while TS_RUNNING.  Stage slices drop it; a stage
+                            spanning a window never qualifies.
 
     mc <pk> <row> <rx> <ry> <ax> <ay> <rej>
                             Patch 376 (additive, no bump): the client's mouse
@@ -5965,6 +5991,7 @@ string(string l, float tbase, float tickbase) SV_StageLine =
 
 	// BUILD 87: `seed`, `pm`, `pe` and `portal` fall through too -- row-bound and
 	// per-map like `in`, and a v5 slice has no rows for them to bind to.
+	// Patch 382: `spec` too; a stage spanning a window never qualifies (run_st_sp).
 
 	return "";
 };
@@ -6383,6 +6410,7 @@ void(entity e, float seg, float ticks) SV_StageOpen =
 	e.run_st_jump = FALSE;
 	e.run_st_ramp = FALSE;
 	e.run_st_ms   = FALSE;               // SV_MsApply sets it after reopening
+	e.run_st_sp   = FALSE;
 
 	e.run_st_armed = TRUE;
 	e.run_st_hold  = FALSE;
@@ -6585,6 +6613,7 @@ void(entity e, float ticks) SV_StageStart =
 	e.run_st_tick  = ticks;
 	e.run_st_line  = e.rec_rec_lines;
 	e.run_st_ms    = FALSE;              // a box exit after a resume is a clean start
+	e.run_st_sp    = FALSE;
 
 	/*
 	  DISARMED.  run_st_armed is the ONLY thing separating the two readings of
@@ -6818,6 +6847,8 @@ float(entity e, float seg) SV_StageQualifies =
 	if (seg < 0)
 		return FALSE;
 	if (e.run_st_ms)                     // it began before a Multi-Session pause
+		return FALSE;
+	if (e.run_st_sp)                     // Patch 382: it spans a spectate window
 		return FALSE;
 	if (e.run_t_segs <= 1)
 		return FALSE;
@@ -7507,6 +7538,9 @@ void(entity e, float ticks) SV_TimerStopAt =
 
 void(entity e) SV_TimerIdle =
 {
+	// Patch 382: every funnel that ends a run releases a spectate first.
+	if (e.run_sp_open)
+		dprint(sprintf("spectate: %s's run torn down inside a window\n", e.netname));
 	SV_RecDiscard(e);
 	e.run_t_state    = TS_IDLE;
 	e.run_t_ticks    = 0;
@@ -7715,6 +7749,56 @@ void(entity e, float on) SV_TimerGhostMark =
 
 	if (SV_RecLive(e))
 		SV_RecPut(e, sprintf("ghost %d %d", on ? 1 : 0, SV_TimerTicks(e)));
+};
+
+// Patch 382: the pm_source state the engine carried out of the last move, for the
+// log -- a held body's must read the same at both edges (`*pmstate`, Patch 346).
+string(entity e) SV_SpecPMState =
+{
+	local float i;
+	local string s, c;
+
+	s = "";
+	for (i = 0; i < 8; i = i + 1)
+	{
+		c = infokey(e, sprintf("*pmstate%g", i));
+		if (c == "")
+			break;
+		s = strcat(s, c);
+	}
+	return s;
+};
+
+// Patch 382: a spectate window's edge (the `spec` record, grammar block).  Only a
+// line that LANDED opens a window; the 0 is owed only for one that did.
+void(entity e, float on, string why) SV_TimerSpecMark =
+{
+	local float was, fl;
+	local string l;
+
+	if (!on)
+	if (!e.run_sp_open)
+		return;
+	e.run_sp_open = FALSE;
+	if (e.run_t_state != TS_RUNNING || !SV_RecLive(e))
+	{
+		if (!on)
+			dprint(sprintf("spectate: %s's `spec 0` has no recording left to go in\n", e.netname));
+		return;
+	}
+
+	fl = (e.flags & FL_ONGROUND) ? 1 : 0;
+	l = strcat(sprintf("spec %d %.9g %.9g %.9g ", on ? 1 : 0, SV_TimerTicks(e),
+	                   e.run_movetick, e.run_movecarry),
+	           sprintf("%.9v %.9v %d %.3f", e.origin, e.velocity, fl, time));
+	if (!on)
+		l = strcat(l, " ", why);
+	was = e.rec_rec_lines;
+	SV_RecPut(e, l);
+	if (on)
+		e.run_sp_open = (e.rec_rec_lines != was);
+	if (cvar("developer"))
+		dprint(sprintf("spectate: %s %s\n  pmstate %s\n", e.netname, l, SV_SpecPMState(e)));
 };
 
 /*
@@ -12000,6 +12084,11 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        ghost %g  ghosted %g\n",
 	       e.rec_gh_on ? 1 : 0,
 	       (e.run_t_flags & TF_GHOST) ? 1 : 0));
+	// Patch 382: the same two questions for a spectate, plus whose body and
+	// whether a `spec 0` is owed.
+	sprint(e, PRINT_HIGH, sprintf("        spectate %g  watching %g  open %g  spectated %g\n",
+	       e.run_sp_phase, num_for_edict(e.pb_watch), e.run_sp_open ? 1 : 0,
+	       (e.run_t_flags & TF_SPEC) ? 1 : 0));
 	// Build 17.  Printed even when clear, and printed HERE rather than folded
 	// into the practice column, because "is this a shadow run and which save is
 	// it from" is a question with two halves and this is the diagnostic that is

@@ -14,6 +14,11 @@ void() SV_Shutdown =
 {
 	local entity p;
 
+	// Patch 382: every spectate ends first -- the park writes `pause` after the
+	// `spec 0`, and a run that is not parked must not arrive on the next map held.
+	p = world;
+	while ((p = find(p, classname, "player")))
+		SV_SpecRelease(p, lobby_cyc_moving ? "rotate" : "server");
 	SV_MsShutdown();
 	p = world;
 	while ((p = find(p, classname, "player")))
@@ -172,6 +177,7 @@ void() StartFrame =
 	// lobby off has to put player collision back the way it was.
 	Lobby_Frame();
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
+	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
 
 	/*
 	  AFTER Lobby_Frame, and it has to be a separate call rather than the last
@@ -376,6 +382,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STAGEENDPBWAS,  EV_FLOAT, run_st_endpbwas);    // Patch 361
 	clientstat(STAT_FS_STATOWNER,      EV_FLOAT, run_statowner);      // Patch 361
 	clientstat(STAT_FS_MSSESSION,      EV_FLOAT, run_ms_sessions);    // Multi-Session
+	clientstat(STAT_FS_SPEC,           EV_FLOAT, run_sp_stat);        // Patch 382
 
 	/*
 	  BUILD 48: the personal best this run was measured AGAINST.
@@ -822,6 +829,10 @@ void() worldspawn =
 	registercvar("run_resume_copylines", "2000");   // recording lines restored per packet
 	registercvar("run_resume_recmb", "512");    // a larger recording resumes unrecorded
 	SV_MsSweep();
+
+	// Patch 382: spectate's countdown back into the body, seconds.  Read only by
+	// client commands and player thinks, which come after this.
+	registercvar("run_spec_countdown", "3");
 
 	dprint("FTESurf: worldspawn\n");
 };

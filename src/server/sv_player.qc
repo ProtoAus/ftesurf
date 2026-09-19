@@ -91,6 +91,9 @@ void() PutClientInServer =
 
 	self.run_statowner = num_for_edict(self);
 
+	// Patch 382: `kill` while spectating -- before SV_TimerSpawn idles the recorder.
+	SV_SpecRelease(self, "respawn");
+
 	// First, because a save-lock hold owns the movetype and the velocity while
 	// it lasts.  Everything it gives back is overwritten a few lines down --
 	// what matters is that the LATCH is off, or the pin would re-freeze this
@@ -298,6 +301,7 @@ void() ClientConnect =
 	SV_CSQCForget(self);
 	SV_MsConnect(self);                 // edicts are recycled: no offer, no key
 	self.pb_dwatch = world;             // Patch 383: edicts are recycled
+	SV_SpecForget(self);                // Patch 382: ...and no hold, no target
 
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
@@ -313,6 +317,9 @@ void() ClientDisconnect =
 	// timer's teardown is the part that must not be skipped if this throws.
 	Lobby_ClientDisconnect(self);
 	Vote_ClientDisconnect(self);
+
+	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
+	SV_SpecRelease(self, "drop");
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
@@ -386,6 +393,15 @@ void() SetChangeParms = { };
 */
 void() PlayerPreThink =
 {
+	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
+	// row, a ride or a pin, cash out a carrier or hand the engine one.
+	if (self.run_pmhold)
+	{
+		self.run_wasground = ((self.flags & FL_ONGROUND) != 0);
+		self.run_basevelocity = '0 0 0';
+		return;
+	}
+
 	// BUILD 87 (v9): what the PREVIOUS move changed (pin, physents, portals),
 	// written before this command's `ride` and `in` rows.  See SV_RecState.
 	SV_RecState(self);
@@ -573,7 +589,28 @@ void() PlayerPostThink =
 {
 	local vector dest;
 
+	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
+
 	SV_NoclipWatch(self);
+
+	/*
+	  Patch 382: HELD (spectate).  No bhop dwell, +use, sample, zone scan or clock:
+	  SV_TimerFrame does not run, so rec_rec_pk does not advance and nothing is
+	  written until SV_SpecRelease (which rebases the world-time latches this
+	  skips).  A held run still holds the rotation, as SV_MsFrame's does.
+	*/
+	if (self.run_pmhold)
+	{
+		if (self.run_t_state == TS_RUNNING)
+			lobby_cyc_runseen = time;
+		if (self.rec_cp_q >= 1)         // Patch 375's save copy is not a record
+			SV_RecCopyStep(self, FS_RECCOPY_CHUNK);
+		SV_StageStat(self);
+		SV_SaveLocSync(self);
+		Pose_Capture(self);             // Patch 383: the held flag and its keepalive
+		SV_SpecFrame(self);
+		return;
+	}
 
 	/*
 	  BUILD 37 -- the func_bhop dwell rule.
@@ -836,6 +873,11 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_ghost")   { SV_GhostSet(self, stof(argv(1)));           return; }
 
+	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
+	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.
+	if (c == "rec_spec")        { SV_SpecCmd(self, stof(argv(1)));        return; }
+	if (c == "rec_spec_nudge")  { SV_SpecNudge(self);                     return; }
+
 	/*
 	  BUILD 43 -- WHERE THE DETACHED CAMERA IS, for the PVS and for nothing else.
 
@@ -860,7 +902,18 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_watchpos")
 	{
-		if (self.rec_wt_hold || self.rec_gh_on)
+		// Patch 382: while spectating it claims the eye for SPEC_EYE_STALE; bare,
+		// it hands the eye back to the server (SV_SpecEyeSteer).
+		if (self.run_sp_phase)
+		{
+			if (cmdargc < 4)
+			{
+				SV_SpecEyeServer(self, "released");
+				return;
+			}
+			SV_SpecEyeClient(self);
+		}
+		if (self.rec_wt_hold || self.rec_gh_on || self.run_sp_phase)
 			SV_ViewEyeAt(self, [stof(argv(1)), stof(argv(2)), stof(argv(3))]);
 		return;
 	}
@@ -978,6 +1031,7 @@ void(string cmd) SV_ParseClientCommand =
 			return;
 		}
 
+		SV_SpecRelease(self, "setpos");     // Patch 382
 		SV_SaveLocRelease(self);
 		/*
 		  BUILD 44: A CHEAT, NOT A STITCH, and it is the one call in the class

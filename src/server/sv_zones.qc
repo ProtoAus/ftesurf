@@ -841,6 +841,9 @@ void(float n) SV_ZoneMove =
 	local float  yaw, haveyaw;
 	local float  samestage;
 
+	// Patch 382: first -- SV_TimerTeleported below can write `restart` or void.
+	SV_SpecRelease(self, "zone");
+
 	dest = SV_ZoneDest(n, yaw, haveyaw);
 
 	/*

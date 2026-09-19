@@ -262,10 +262,6 @@ float(string a, string b) SV_KeyTri =
 // .buttonuse is the NetQuake spelling and stays 0 here forever.
 .float button5;
 
-// Spectate (Patch 383 reads them, Patch 382 writes them); this file compiles first.
-.float  run_pmhold;     // the engine reads this by name: nonzero = the body is held
-.entity pb_watch;       // the player this client is spectating, world if none
-
 /*
   Classname census, developer-gated.
   Surf maps are third-party CS:S content and the FGD is a poor guide to what
@@ -816,6 +812,62 @@ void(entity p) SV_TouchForget =
 // and read by SV_TriggerIOTouch after it -- which is how OnJump can tell a jump
 // from walking off a ledge on the exact command it happens.
 .float  run_wasground;
+
+// Patch 382: the spectate hold (SV_Spec* in sv_saveloc.qc; `spec` in the grammar
+// block).  Here because this file compiles first and its touches stamp the gate.
+.float  run_pmhold;     // ENGINE READS THIS BY NAME: nonzero = SV_RunCmd runs zero mover ticks, no trigger touches
+.entity pb_watch;       // the player this client is spectating, world if none (written only by SV_Spec*)
+.float  run_pkn;        // PlayerPostThink calls: the packet count
+.float  run_trig_pkn;   // run_pkn + 1 at a push/setspeed/multiple/teleport touch
+.float  run_sp_phase;   // 0 off, 1 held, 2 counting down to the release
+.float  run_sp_open;    // a `spec 1` landed; its `spec 0` is owed
+.float  run_sp_until;   // the countdown's end, server time
+.float  run_sp_lost;    // the countdown began because the target left: why "notarget"
+.float  run_sp_uid;     // pb_watch's *userid when chosen (edicts are recycled)
+.float  run_sp_eyeat;   // time of the client's last rec_watchpos this hold; 0 = the server steers the eye
+.float  run_sp_stat;    // STAT_FS_SPEC
+.float  run_sp_t0;      // server time the hold began: world-time latches rebase by it
+.float  run_sp_move;    // the movetype the hold replaced (MOVETYPE_NONE is 0: 0 = WALK)
+// The rollback snapshot: what the `spec` edges state (SV_SpecRelease).
+.vector run_sp_org, run_sp_vel;
+.float  run_sp_gnd;     // flags & FL_ONGROUND
+.entity run_sp_gent;
+void(entity e, string why) SV_SpecRelease;
+
+// The entry gate, touch half: a body a trigger touched on the last packet may not
+// be held.
+void(entity p) SV_TrigStamp =
+{
+	if (p.classname == "player")
+		p.run_trig_pkn = p.run_pkn + 1;
+};
+
+// The entry gate, world-time half: 1 while a trigger has not yet seen p leave
+// (OnEndTouch fires 0.06-0.09 s after the last touch, SV_TriggerEndThink), 2 while
+// an output delayed with p as activator is pending; either would act on the held
+// body.  One edict walk, per entry request only.
+float(entity p) SV_TrigPending =
+{
+	local entity t;
+	local float  n;
+	local int    bit;
+
+	n = num_for_edict(p) - 1;
+	bit = 0;
+	if (n >= 0 && n < 32)
+		bit = (int)1 << (int)n;
+	for (t = nextent(world); t; t = nextent(t))
+	{
+		if (t.vbsp_touch_who == p)
+			return 1;
+		if ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit)
+			return 1;
+		if (t.enemy == p)
+		if (t.classname == "vbsp_iodelay")
+			return 2;
+	}
+	return 0;
+};
 
 /*
   On a PLAYER.  Source's basevelocity, and the field engine Patch 240 reads.
@@ -4716,6 +4768,7 @@ void() trigger_teleport_touch =
 	local vector newpos;
 	local float  vmode, uselm, snapv, snapang;
 
+	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.health <= 0)
@@ -5010,6 +5063,7 @@ void() trigger_teleport =
 */
 void() trigger_teleport_relative_touch =
 {
+	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (SV_TeleportBypassed(other))
@@ -5418,6 +5472,7 @@ void() trigger_push_touch =
 	local vector dir, push;
 	local float  spd;
 
+	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	// MOVETYPE_NOCLIP falls into Source's do-nothing arm of the movetype
@@ -5650,6 +5705,7 @@ void() trigger_setspeed_touch =
 	local float  hmode, vmode, hspeed, vspeed, cur, iv, old;
 	local vector ang, dir, vel;
 
+	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.movetype == MOVETYPE_NOCLIP)
@@ -6811,6 +6867,7 @@ void() trigger_multiple_touch =
 {
 	local int bit;
 
+	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.health <= 0)

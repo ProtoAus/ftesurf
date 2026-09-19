@@ -1528,6 +1528,12 @@ void(entity e) SV_SaveLocCreate =
 	*/
 	if (!SV_SaveLocBegin(e))
 		return;
+	// Patch 382: a held body's recording ends in an open `spec` window.
+	if (e.run_pmhold)
+	{
+		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -1674,6 +1680,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	r  = base + n - 1;
 	id = rec_sl_id[r];
 
+	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
 	SV_SaveLocPlace(e, r);
 
 	/*
@@ -1841,6 +1848,11 @@ void(entity e, float down) SV_SaveLocHold =
 	// heartbeat in cl_saveloc.qc -- and it must not stack a second movetype.
 	if (e.rec_sl_hold)
 		return;
+	if (e.run_pmhold)                   // Patch 382
+	{
+		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
+		return;
+	}
 
 	if (rec_sl_nb[SL_Blk(e)] <= 0)
 	{
@@ -2077,6 +2089,11 @@ void(entity e, float on) SV_WatchHold =
 		       "^3replay: let go of the save-lock key first\n");
 		return;
 	}
+	if (e.run_pmhold)                   // Patch 382
+	{
+		sprint(e, PRINT_HIGH, "^3replay: stop spectating first\n");
+		return;
+	}
 
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
@@ -2173,6 +2190,11 @@ void(entity e, float on) SV_GhostSet =
 		sprint(e, PRINT_HIGH, "^3ghost: stop the replay first\n");
 		return;
 	}
+	if (e.run_pmhold)                   // Patch 382
+	{
+		sprint(e, PRINT_HIGH, "^3ghost: stop spectating first\n");
+		return;
+	}
 	// Patch 373: the restore voids the run first, so a ghost begun here would
 	// write no `ghost 1` and leave the later `ghost 0` unpaired.
 	if (e.run_ms_phase)
@@ -2202,6 +2224,425 @@ void(entity e, float on) SV_GhostSet =
 		       "^5ghost^7 -- your body is still running; the clock has not stopped\n");
 	else
 		sprint(e, PRINT_HIGH, "^5ghost^7 -- `ghost` again to go back\n");
+};
+
+/*
+===========================================================================
+  SPECTATE.  Patch 382.  The fourth mode: the body is HELD where it is --
+  MOVETYPE_NONE plus .run_pmhold, so the engine runs zero mover ticks and no
+  trigger touches it (Patch 380) -- while the client watches another player.
+  Velocity is kept.  A ranked run is marked (TF_SPEC and a `spec` pair, grammar
+  block), not tainted.  The release is a rollback to the snapshot taken at entry,
+  so its `spec 0` restates the `spec 1`.  Refuses under the other three modes and
+  they refuse under it (one owner of the movetype and of rec_vw_eye).
+===========================================================================
+*/
+
+// Serverinfo fs_spec: lobby, avatars and the pose stream.  lobby_av_stream is
+// Patch 383's -- a cvar() read before its registercvar would create it empty and
+// its default would never land (the trap in Lobby_Frame), so ask whether it exists.
+float() SV_SpecOffered =
+{
+	return (lobby_on && lobby_avatars && lobby_stream);    // Lobby_Frame's cache
+};
+
+float sv_sp_fspub;              // fs_spec as last published, plus 1; 0 = not on this map
+
+// StartFrame, after Lobby_Frame refreshed lobby_on/lobby_avatars.  The fs_counts
+// pattern (SV_TimerMapInit), on change.
+void() SV_SpecPublish =
+{
+	local float on;
+
+	on = SV_SpecOffered();
+	if (sv_sp_fspub == on + 1)
+		return;
+	sv_sp_fspub = on + 1;
+	localcmd(sprintf("serverinfo fs_spec %g\n", on));
+};
+
+// Who may be watched: a connected player other than e, with a body.
+float(entity e, entity t) SV_SpecTarget =
+{
+	local float ct;
+
+	if (t == world || t == e || t.classname != "player")
+		return FALSE;
+	ct = clienttype(t);
+	if (ct != CLIENTTYPE_REAL && ct != CLIENTTYPE_BOT)
+		return FALSE;
+	if (!t.lobby_av)
+		return FALSE;
+	return SV_SpecOffered();
+};
+
+// The first target after entnum `after`, wrapping; world if there is none.
+entity(entity e, float after) SV_SpecPick =
+{
+	local float i;
+	local entity p, first;
+
+	first = world;
+	i = 1;
+	p = edict_num(i);
+	while (clienttype(p) != CLIENTTYPE_NOTACLIENT)
+	{
+		if (SV_SpecTarget(e, p))
+		{
+			if (i > after)
+				return p;
+			if (!first)
+				first = p;
+		}
+		i = i + 1;
+		p = edict_num(i);
+	}
+	return first;
+};
+
+void(entity e) SV_SpecStat =
+{
+	if (e.run_sp_phase == 1)
+		e.run_sp_stat = num_for_edict(e.pb_watch);
+	else if (e.run_sp_phase == 2)
+		e.run_sp_stat = -max(1, ceil(e.run_sp_until - time));
+	else
+		e.run_sp_stat = 0;
+};
+
+/*
+  The PVS eye while held.  The server steers it (at the target, or at the body in
+  the countdown) unless the client claims it with `rec_watchpos x y z` (a freecam);
+  the claim lapses SPEC_EYE_STALE after the last one, on a new target, on the
+  countdown, or on a bare `rec_watchpos`.
+*/
+#define SPEC_EYE_STALE 1.0      // 2x cl_keys.qc's PVS_MAXDT: a detached camera re-sends at least that often
+
+void(entity e, string why) SV_SpecEyeServer =
+{
+	if (e.run_sp_eyeat)
+		dprint(sprintf("spectate: %s eye -> server (%s)\n", e.netname, why));
+	e.run_sp_eyeat = 0;
+};
+
+void(entity e) SV_SpecEyeClient =
+{
+	if (!e.run_sp_eyeat)
+		dprint(sprintf("spectate: %s eye -> client\n", e.netname));
+	e.run_sp_eyeat = time;
+};
+
+// Once per held packet, and at every change of phase or target.
+void(entity e) SV_SpecEyeSteer =
+{
+	if (e.run_sp_eyeat)
+	if (time - e.run_sp_eyeat > SPEC_EYE_STALE)
+		SV_SpecEyeServer(e, "stale");
+	if (e.run_sp_eyeat)
+		return;
+	if (e.run_sp_phase == 1)
+		SV_ViewEyeAt(e, e.pb_watch.origin + e.pb_watch.view_ofs);
+	else
+		SV_ViewEyeAt(e, e.origin + e.view_ofs);
+};
+
+void(entity e, entity t) SV_SpecWatch =
+{
+	e.pb_watch = t;
+	e.run_sp_uid = stof(infokey(t, "*userid"));
+	e.run_sp_phase = 1;
+	e.run_sp_lost = FALSE;
+	SV_SpecEyeServer(e, "target");
+	SV_SpecEyeSteer(e);
+	SV_SpecStat(e);
+};
+
+// The countdown (run_spec_countdown s) back into the body; `lost`: the target left.
+void(entity e, float lost) SV_SpecCount =
+{
+	e.run_sp_phase = 2;
+	e.run_sp_until = time + max(0, cvar("run_spec_countdown"));
+	e.run_sp_lost = lost;
+	e.pb_watch = world;
+	SV_SpecEyeServer(e, "countdown");
+	SV_SpecEyeSteer(e);
+	SV_SpecStat(e);
+};
+
+// The contract's refusal: the reason, and a stuffcmd so the client's pending
+// request clears at once rather than timing out.
+void(entity e, string why) SV_SpecRefuse =
+{
+	sprint(e, PRINT_HIGH, sprintf("^3spectate:^7 %s\n", why));
+	stuffcmd(e, "spectate _refused\n");
+};
+
+void(entity e, float n) SV_SpecStart =
+{
+	local entity t;
+	local float  pend;
+
+	t = edict_num(n);
+	if (!SV_SpecOffered())
+	{
+		SV_SpecRefuse(e, "this server does not offer it");
+		return;
+	}
+	if (t == e)
+	{
+		SV_SpecRefuse(e, "you cannot watch yourself");
+		return;
+	}
+	if (!SV_SpecTarget(e, t))
+	{
+		SV_SpecRefuse(e, sprintf("nobody to watch at %g", n));
+		return;
+	}
+
+	// Already held: a new target, or back from the countdown.  No record.
+	if (e.run_sp_phase)
+	{
+		if (e.run_sp_phase != 1 || e.pb_watch != t)
+			SV_SpecWatch(e, t);
+		return;
+	}
+
+	if (e.rec_sl_hold)
+	{
+		SV_SpecRefuse(e, "let go of the save-lock key first");
+		return;
+	}
+	if (e.rec_wt_hold)
+	{
+		SV_SpecRefuse(e, "stop the replay first");
+		return;
+	}
+	if (e.rec_gh_on)
+	{
+		SV_SpecRefuse(e, "leave ghost first");
+		return;
+	}
+	if (e.run_ms_phase)
+	{
+		SV_SpecRefuse(e, "wait for the resume to finish");
+		return;
+	}
+	if (e.movetype != MOVETYPE_WALK)
+	{
+		SV_SpecRefuse(e, "only while walking");
+		return;
+	}
+	if (e.teleport_time)
+	{
+		SV_SpecRefuse(e, "not during a water jump");
+		return;
+	}
+	// The engine applies a forced duck even on a zero-tick move (sv_user.c:8294).
+	if (e.run_forceduck)
+	{
+		SV_SpecRefuse(e, "a save is still landing");
+		return;
+	}
+	// A trigger's state (a push carrier, a `wait`) would run on in world time under
+	// a held body.  run_trig_pkn 0: no touch since connecting.
+	if (e.run_trig_pkn)
+	if (e.run_trig_pkn >= e.run_pkn)
+	{
+		SV_SpecRefuse(e, "a trigger is touching you -- step out of it first");
+		return;
+	}
+	pend = SV_TrigPending(e);
+	if (pend == 1)
+	{
+		SV_SpecRefuse(e, "a trigger has not seen you leave yet -- try again");
+		return;
+	}
+	if (pend == 2)
+	{
+		SV_SpecRefuse(e, "a map output is still due on you -- try again");
+		return;
+	}
+
+	if (e.run_t_state == TS_RUNNING)
+	{
+		if (infokey(world, "*pmhold") != "1")
+		{
+			SV_SpecRefuse(e, "this server's engine cannot hold a running body");
+			return;
+		}
+		if (e.rec_rec_sesspend || e.run_t_starttick == -2)
+		{
+			SV_SpecRefuse(e, "the run is still resuming");
+			return;
+		}
+		if (e.run_movetickrate <= 0 || !e.run_t_clock || (e.run_t_flags & TF_NOCLOCK))
+		{
+			SV_SpecRefuse(e, "this run's clock is not counted");
+			return;
+		}
+		// The edge binds to the last `in` row (grammar block).
+		if (SV_RecLive(e))
+		if (e.rec_rec_in < 1)
+		{
+			SV_SpecRefuse(e, "the run has not recorded a move yet");
+			return;
+		}
+	}
+
+	e.run_sp_org  = e.origin;
+	e.run_sp_vel  = e.velocity;
+	e.run_sp_gnd  = e.flags & FL_ONGROUND;
+	e.run_sp_gent = e.groundentity;
+	e.run_sp_t0   = time;
+	e.run_sp_move = e.movetype;
+	e.run_sp_eyeat = 0;
+
+	e.movetype = MOVETYPE_NONE;
+	e.run_pmhold = 1;
+	e.run_t_flags = e.run_t_flags | TF_FROZEN;      // a mirror: the HUD and the .view gate
+	if (e.run_t_state == TS_RUNNING)
+	{
+		e.run_t_flags = e.run_t_flags | TF_SPEC;
+		e.run_st_sp = TRUE;
+		SV_TimerSpecMark(e, TRUE, "");
+	}
+	SV_SpecWatch(e, t);
+	sprint(e, PRINT_HIGH, sprintf("^5spectate:^7 watching %s -- your body is held\n",
+	                              Lobby_ChatName(t)));
+};
+
+void(entity e, float n) SV_SpecCmd =
+{
+	if (n)
+		SV_SpecStart(e, n);
+	else if (e.run_sp_phase == 1)
+		SV_SpecCount(e, FALSE);
+};
+
+/*
+  The release, from every exit (see the grammar block's <why> list).  Rolls back
+  only what the edges state (origin, velocity, FL_ONGROUND; groundentity rides
+  with them), so the `spec 0` restates the `spec 1`.  gravity, speedmod and
+  basevel are the map's: a write during the hold stands, and the first move after
+  it records it (`pm`, `ride pay`) -- restoring them would keep a value the map
+  has already reset.  The two world-time latches keyed on the player are rebased
+  here; a new one needs a line here too.
+*/
+void(entity e, string why) SV_SpecRelease =
+{
+	local string rb;
+
+	if (!e.run_sp_phase)
+		return;
+
+	rb = "";
+	if (e.origin != e.run_sp_org)
+	{
+		setorigin(e, e.run_sp_org);         // relinks; touches nothing
+		rb = strcat(rb, " origin");
+	}
+	if (e.velocity != e.run_sp_vel)
+	{
+		e.velocity = e.run_sp_vel;
+		rb = strcat(rb, " velocity");
+	}
+	if ((e.flags & FL_ONGROUND) != e.run_sp_gnd)
+	{
+		e.flags = e.flags - (e.flags & FL_ONGROUND) + e.run_sp_gnd;
+		rb = strcat(rb, " onground");
+	}
+	// A zero-tick move can write a stale one (sv_user.c:8547).
+	if (e.groundentity != e.run_sp_gent)
+	{
+		e.groundentity = e.run_sp_gent;
+		rb = strcat(rb, " groundentity");
+	}
+
+	if (e.vbsp_bhop_since)                          // the func_bhop dwell
+		e.vbsp_bhop_since = e.vbsp_bhop_since + (time - e.run_sp_t0);
+	if (e.run_t_state == TS_RUNNING)                // `cmd timer`'s sampled side
+		e.run_t_startwall = e.run_t_startwall + (time - e.run_sp_t0);
+
+	SV_TimerSpecMark(e, FALSE, why);
+
+	// Engine noclip ("move") changed it: that movetype is the player's now.
+	if (e.movetype == MOVETYPE_NONE)
+		e.movetype = e.run_sp_move ? e.run_sp_move : MOVETYPE_WALK;
+
+	e.run_pmhold = 0;
+	e.run_sp_phase = 0;
+	e.run_sp_lost = FALSE;
+	e.pb_watch = world;
+	e.run_sp_stat = 0;
+	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_FROZEN);
+	SV_ViewEyeDetach(e);
+	dprint(sprintf("spectate: %s released (%s) after %.3f s%s\n", e.netname, why,
+	               time - e.run_sp_t0, (rb != "") ? strcat(", rolled back:", rb) : ""));
+};
+
+// Once per packet from the held PlayerPostThink.
+void(entity e) SV_SpecFrame =
+{
+	local entity t;
+
+	if (e.movetype != MOVETYPE_NONE)
+	{
+		SV_SpecRelease(e, "move");
+		return;
+	}
+
+	// The target left, lost its body, or its slot went to someone else.
+	t = e.pb_watch;
+	if (e.run_sp_phase == 1)
+	if (!SV_SpecTarget(e, t) || stof(infokey(t, "*userid")) != e.run_sp_uid)
+	{
+		t = SV_SpecPick(e, num_for_edict(t));
+		if (t)
+		{
+			SV_SpecWatch(e, t);
+			sprint(e, PRINT_HIGH, sprintf("^5spectate:^7 now watching %s\n", Lobby_ChatName(t)));
+		}
+		else
+		{
+			SV_SpecCount(e, TRUE);
+			sprint(e, PRINT_HIGH, "^3spectate:^7 nobody left to watch\n");
+		}
+	}
+
+	if (e.run_sp_phase == 2)
+	if (time >= e.run_sp_until)
+	{
+		SV_SpecRelease(e, e.run_sp_lost ? "notarget" : "leave");
+		return;
+	}
+
+	SV_SpecEyeSteer(e);
+	SV_SpecStat(e);
+};
+
+// Developer only: moves the held body, which the release must roll back -- the
+// rollback's one test subject (nothing honest moves a held body).  Taints.
+void(entity e) SV_SpecNudge =
+{
+	if (!cvar("developer") || !e.run_sp_phase)
+	{
+		sprint(e, PRINT_HIGH, "^3rec_spec_nudge:^7 developer only, while spectating\n");
+		return;
+	}
+	SV_TimerCheat(e);
+	setorigin(e, e.origin + '0 16 0');
+	dprint(sprintf("spectate: %s nudged to %v\n", e.netname, e.origin));
+};
+
+// ClientConnect: the edict may be a recycled one.  Nothing is written.
+void(entity e) SV_SpecForget =
+{
+	e.run_pmhold = 0;
+	e.run_sp_phase = 0;
+	e.run_sp_open = FALSE;
+	e.run_sp_stat = 0;
+	e.pb_watch = world;
+	e.run_pkn = e.run_trig_pkn = 0;
 };
 
 /*
@@ -2568,7 +3009,6 @@ float rec_retry_sent;
 
 void(entity e) SV_RetryPoint =
 {
-	local entity p;
 	local float n;
 
 	if (!cvar("rec_retry"))
@@ -2588,10 +3028,9 @@ void(entity e) SV_RetryPoint =
 	  everyone else back to spawn is worse than refusing.  Single-player is what
 	  this build is, so this is a guard rather than a limitation.
 	*/
-	n = 0;
-	p = world;
-	while ((p = find(p, classname, "player")))
-		n = n + 1;
+	// Patch 382: CONNECTED players -- a departed one's edict keeps its classname
+	// (Lobby_PlayerCount), and a spectator left alone must be able to retry.
+	n = Lobby_PlayerCount();
 	if (n > 1)
 	{
 		sprint(e, PRINT_HIGH,
@@ -2610,6 +3049,7 @@ void(entity e) SV_RetryPoint =
 	  "retry while parked" mean "let go, then retry", which is the only sane
 	  reading of it.
 	*/
+	SV_SpecRelease(e, "retry");         // Patch 382: before the state is written
 	SV_SaveLocRelease(e);
 
 	// Patch 333: the retry point is a slot like any other, and in a lobby its

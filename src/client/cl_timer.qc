@@ -1088,6 +1088,11 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	if (!rec_wt_on)
 		s = strcat(s, (s != "") ? "  " : "",
 		           sprintf("^5session %g^7", getstatf(STAT_FS_MSSESSION) + 1));
+	// Patch 382: the run holds a spectate window -- a marker, cyan like session.
+	if (flags & TF_SPEC)
+	if (state == TS_RUNNING)
+	if (!rec_wt_on)
+		s = strcat(s, (s != "") ? "  " : "", "^5spectated^7");
 
 	/*
 	  BUILD 43 -- THE STAGE, AND IT IS DELIBERATELY TWO DIFFERENT WORDS.

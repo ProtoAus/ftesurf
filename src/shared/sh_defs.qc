@@ -469,6 +469,7 @@
 #define STAT_FS_STAGEENDPBWAS   99  // its leg's PB before this close; 0 = none, or a lobby that keeps none.  Patch 361
 #define STAT_FS_MSSESSION      101  // `session`s in the running run (Multi-Session); 0 = one session
 #define STAT_FS_STATOWNER      102  // entity number of the player these stats describe; 0 = older server.  Patch 361
+#define STAT_FS_SPEC           103  // 0 off; n>0 watching entnum n (slot n-1); -3..-1 countdown, whole seconds left.  Patch 382
 
 /*
   The personal best this run was measured against, latched before the PB table
@@ -1505,6 +1506,10 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // class, not in FS_RunClass, TF_UNCERT or surfd's style_of/certifiable.
 #define TF_MULTISESSION 16384
 
+// Patch 382: the run contained a spectate hold (a `spec` window in the .rec).
+// MARKER ONLY, like TF_MULTISESSION: not a class, not in TF_UNCERT.
+#define TF_SPEC     32768
+
 // The certification holes: any one keeps a run off the ranked board.  MIRRORS
 // surfd certifiable() (surfd.py) -- change both together.  FS_CertWhy names them.
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK)
@@ -1900,12 +1905,17 @@ string(float c) FS_RunClassName =
 };
 
 // The kind word for a row: the class, except a clean Multi-Session run reads
-// "multi" (fits SBW_KIND's 9).  A tainted class wins -- the taint is the news.
+// "multi" and a clean spectated one "spec" (fits SBW_KIND's 9).  A tainted class
+// wins -- the taint is the news.
 string(float flags) FS_RunKindName =
 {
 	if (FS_RunClass(flags) == RC_CLEAN)
-	if (flags & TF_MULTISESSION)
-		return "multi";
+	{
+		if (flags & TF_MULTISESSION)
+			return "multi";
+		if (flags & TF_SPEC)
+			return "spec";
+	}
 	return FS_RunClassName(FS_RunClass(flags));
 };
 

@@ -487,6 +487,11 @@ void(entity e) SV_MsAccept =
 		sprint(e, PRINT_HIGH, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
+	if (e.run_pmhold)                   // Patch 382: the restore owns the movetype
+	{
+		sprint(e, PRINT_HIGH, "^5resume:^7 stop spectating first\n");
+		return;
+	}
 	SV_MsAdopt(e);
 	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 	{

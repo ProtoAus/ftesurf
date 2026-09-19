@@ -602,6 +602,8 @@ void() Bn_ChatSay =
 		ln = strcat(ln, "  ^9SEGMENTED^7");               // no rank (yet): still say the class
 	if (ui_bn_flags & TF_MULTISESSION)
 		ln = strcat(ln, "  ^9MULTI-SESSION^7");
+	if (ui_bn_flags & TF_SPEC)
+		ln = strcat(ln, "  ^9SPECTATED^7");
 	print(strcat(ln, "\n"));
 	Chat_Push(ln);
 };
@@ -983,6 +985,8 @@ void() Bn_FullStrings =
 	}
 	if (ui_bn_flags & TF_MULTISESSION)
 		ui_bn_s_sub = strcat(ui_bn_s_sub, "  -  MULTI-SESSION");
+	if (ui_bn_flags & TF_SPEC)
+		ui_bn_s_sub = strcat(ui_bn_s_sub, "  -  SPECTATED");
 	ui_bn_s_time = Time_TickString(ui_bn_ticks, Timer_Tick());
 	Bn_Delta(FALSE);
 	Bn_Place(FALSE);
