@@ -238,6 +238,22 @@ footer p { margin: 0 0 7px; }
       <button class="copy" type="button" data-copy="cmd" hidden>Copy PowerShell check</button>
       <p class="dimtext" style="margin-top:10px">Paste the second one in PowerShell, in the folder you downloaded to. It prints <code>OK</code> or <code>MISMATCH</code> &mdash; no need to read 64 hex characters.</p>
     </details>
+    <!--LINUX-BEGIN-->
+    <!-- rendered only by release.ps1 -Linux; tokens LINUX_URL FILENAME SIZE_HUMAN SIZE_BYTES SHA256 GLIBC ENGINE -->
+    <a class="dl" style="margin-top:28px" href="@@LINUX_URL@@" download>
+      Download for Linux &middot; beta
+      <span class="sub">@@LINUX_FILENAME@@ &middot; @@LINUX_SIZE_HUMAN@@</span>
+    </a>
+    <p class="meta">Linux&nbsp;x86_64, glibc @@LINUX_GLIBC@@ or newer &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; tar.xz, no installer &middot; <b>beta, tested in WSL only</b> &middot; engine patch @@LINUX_ENGINE@@</p>
+    <details>
+      <summary>Verify the Linux download (SHA-256)</summary>
+      <div class="hash" id="sha-linux">@@LINUX_SHA256@@</div>
+      <button class="copy" type="button" data-copy="sha-linux" hidden>Copy hash</button>
+      <div class="cmd" id="cmd-linux">echo '@@LINUX_SHA256@@  @@LINUX_FILENAME@@' | sha256sum -c</div>
+      <button class="copy" type="button" data-copy="cmd-linux" hidden>Copy shell check</button>
+      <p class="dimtext" style="margin-top:10px">Run it in the folder you downloaded to. It prints <code>@@LINUX_FILENAME@@: OK</code>, or <code>FAILED</code> if the file is damaged.</p>
+    </details>
+    <!--LINUX-END-->
   </section>
 
   <h3>After it downloads</h3>
@@ -253,6 +269,17 @@ footer p { margin: 0 0 7px; }
     into that file (R stopped restarting your run); this build no longer runs it, but the saved binds stay until the
     file is gone. Deleting it also resets your own settings &mdash; note your sensitivity first.
   </div>
+  <!--LINUX-BEGIN-->
+
+  <h3>On Linux (beta)</h3>
+  <ol class="steps">
+    <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>. The game saves everything inside it, so your home folder works and <code>/opt</code> does not.</li>
+    <li>Run <code>./ftesurf.sh</code> from that folder, or point a launcher at it. Engine errors go to <code>stderr.log</code> beside it, and a crash writes <code>crash.log</code>.</li>
+    <li><b>Momentum Mod Playtest has no Linux version on Steam.</b> Install it with Steam Play: Properties &rsaquo; Compatibility &rsaquo; force a Proton version, then install. FTESurf only reads its maps; you never start Momentum. Counter-Strike: Source and Half-Life 2 install natively.</li>
+    <li>Native, Flatpak and Snap Steam are found automatically. For a library on another drive: <code>fs_steamlibs add /path/to/SteamLibrary</code>, then <code>fs_restart</code>.</li>
+  </ol>
+  <p class="dimtext">The first Linux build, tested only under WSL on Windows &mdash; not yet on a native Linux desktop. Report problems, with <code>stderr.log</code> and <code>crash.log</code>, on <a href="https://discord.com/channels/471331861839216643/1327302504823787541">Discord</a>.</p>
+  <!--LINUX-END-->
 
   <div class="warn">
     <b>Alpha.</b> The build is not code-signed, so SmartScreen will warn the first time you run it.

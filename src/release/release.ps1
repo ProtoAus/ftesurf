@@ -7,6 +7,8 @@
 #    .\src\release\release.ps1                  # full release at the current VERSION
 #    .\src\release\release.ps1 -Bump patch      # 0.1.0 -> 0.1.1, then full release
 #    .\src\release\release.ps1 -Build -Bump minor
+#    .\src\release\release.ps1 -Bump patch -Linux <drop>   # also ship the Linux
+#                                               # x86_64 tar.xz from a tools\linux drop
 #
 #  It does four things in order, and refuses rather than guesses at every step:
 #
@@ -67,6 +69,8 @@
 #    src\release\ftesurf.nginx   the nginx snippet (source of truth, in git)
 #    src\release\install.sh      one-time sudo wiring on the Pi
 #    src\release\publish.sh      routine no-sudo atomic swap
+#    src\release\releaselib.ps1  helpers (tests: test_releaselib.ps1)
+#    src\release\linux-pack.sh   the WSL half of -Linux (inspect, pack, verify)
 #    dist\ftesurf-<ver>.json     the receipt; the page renders only from this
 # =============================================================================
 [CmdletBinding()]
@@ -105,7 +109,12 @@ param(
     [string] $Remote   = 'r2',
     [string] $Bucket   = 'quakers-dl',
     [string] $Prefix   = 'ftesurf',
-    [string] $DlBase   = 'https://dl.proto.bar'
+    [string] $DlBase   = 'https://dl.proto.bar',
+
+    # A tools\linux build drop: fteqw64, fteplug_hl2_amd64.so, BUILDINFO.txt.
+    [string]   $Linux,
+    [string]   $LinuxDistro = $(if ($env:FTESURF_WSL_DISTRO) { $env:FTESURF_WSL_DISTRO } else { 'Ubuntu-22.04' }),
+    [string[]] $LinuxNeededAllow = @('libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1', 'ld-linux-x86-64.so.2', 'libz.so.1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -154,6 +163,7 @@ function Native ($exe, [string[]]$argv, [string]$what) {
     }
     return $out
 }
+. (Join-Path $PSScriptRoot 'releaselib.ps1')
 
 # =============================================================================
 #  THE SHIP SET
@@ -255,6 +265,57 @@ $DenyPatterns = @(
     '(^|/)crashaddr\.txt$'
 )
 
+# --- -Linux: a second archive, ftesurf-<ver>-linux-x86_64.tar.xz ---------------
+#  Its ftesurf\ tree, default.fmf, LICENSE and SOURCE.txt are copied from the
+#  Windows stage, so both archives carry the same game bytes. $LinuxDeny is
+#  applied on top of $DenyPatterns, and only to the Linux tree.
+$LinuxTop  = 'FTESurf'
+$LinuxExec = @('ftesurf64', 'ftesurf.sh')
+$LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'default.fmf', 'LICENSE',
+    'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
+    'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
+$LinuxTokenNames = @('LINUX_URL', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
+$LinuxDeny = @(
+    '\.(exe|dll|bat|cmd|lnk|pdb)$'
+    '\.db$'                            # symbols stay with the drop, for crash reports
+    '(^|/)steam_libraries\.txt$'
+    '(^|/)(crash|stderr)\.log'
+    '(^|/)fteqw(-sv)?64$'              # the client ships as ftesurf64; no server
+)
+# The build's own gates (BUILDINFO `gates all PASS`), re-checked on the bytes that
+# ship: GnuTLS compiled in, Patch 386's versioned EGL/GLESv2 names, and zstd in the
+# plugin (without it img_vtf.c refuses most of Momentum's textures).
+$LinuxExeMustHave   = @('libgnutls.so.30', 'gnutls_certificate_allocate_credentials', 'libEGL.so.1', 'libGLESv2.so.2', 'libXrandr.so.2', 'libXxf86vm.so.1', 'libXxf86dga.so.1')
+$LinuxPluginMustNot = @('needs a build with zstd')
+
+function Invoke-Wsl ([string[]]$argv, [string]$what) {
+    $r = Invoke-WslRaw $LinuxDistro $argv
+    if ($r.Rc -ne 0) { Fail "$what failed (exit $($r.Rc))`n$($r.Lines -join "`n")" }
+    return $r.Lines
+}
+function WslPath ([string]$p) {
+    try { return ConvertTo-WslPath $LinuxDistro $p } catch { Fail $_.Exception.Message }
+}
+# One R2 object's size and md5, or $null when absent.
+function Get-R2Object ([string]$Key) {
+    $j = & rclone lsjson --hash "${Remote}:$Bucket/$Key" --bind 0.0.0.0 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $j) { return $null }
+    $o = @($j | Out-String | ConvertFrom-Json)
+    if (-not $o.Count) { return $null }
+    $md5 = if (($o[0].PSObject.Properties.Name -contains 'Hashes') -and $o[0].Hashes) { $o[0].Hashes.md5 } else { $null }
+    [pscustomobject]@{ Size = [long]$o[0].Size; Md5 = $md5 }
+}
+# The Windows PUT's throttle policy; its $limit exists only when that PUT runs.
+function Get-BwLimit {
+    if ($BwLimit) { return $BwLimit }
+    if ($NoLobbyCheck) { return '3M' }
+    try {
+        $lob = Invoke-RestMethod -Uri "http://$(($PiHost -split '@')[-1]):8084/lobbies.json" -TimeoutSec 5
+        if (($lob.lobbies | Measure-Object -Property players -Sum).Sum -eq 0) { return '3M' }
+    } catch { }
+    return '512k'
+}
+
 # =============================================================================
 #  0.  PREFLIGHT
 # =============================================================================
@@ -284,6 +345,22 @@ then prove it with:  git -C $SurfDir check-ignore -v VERSION
 "@
 }
 Good "7-Zip, git, rclone, curl, ssh, scp present; VERSION is tracked"
+if ($Linux) {
+    if (-not (Test-Path -LiteralPath $Linux -PathType Container)) { Fail "-Linux: no drop directory at $Linux" }
+    $LinuxDrop = (Resolve-Path -LiteralPath $Linux).Path
+    foreach ($f in @('fteqw64', 'fteplug_hl2_amd64.so', 'BUILDINFO.txt')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $LinuxDrop $f) -PathType Leaf)) {
+            Fail "-Linux: the drop $LinuxDrop has no $f (tools\linux\build.sh writes all three)"
+        }
+    }
+    $LinuxPack = Join-Path $RelDir 'linux-pack.sh'
+    if (-not (Test-Path -LiteralPath $LinuxPack)) { Fail "missing $LinuxPack" }
+    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { Fail 'wsl.exe is not on PATH' }
+    $LinuxPackWsl = WslPath $LinuxPack
+    $LinuxDropWsl = WslPath $LinuxDrop
+    Invoke-Wsl @('sh', $LinuxPackWsl, 'tools') "linux-pack.sh tools (WSL $LinuxDistro)" | Out-Null
+    Good "WSL $LinuxDistro has the pack tools; Linux drop $LinuxDrop"
+}
 
 # =============================================================================
 #  0b. -SetupSite : push the Pi-side files and stop.
@@ -371,6 +448,10 @@ $ArchiveName = "ftesurf-$Ver.7z"
 $ArchivePath = Join-Path $OutDir $ArchiveName
 $ObjectKey   = "$Prefix/$ArchiveName"
 $ArchiveUrl  = "$DlBase/$ObjectKey"
+$LinuxArchiveName = "ftesurf-$Ver-linux-x86_64.tar.xz"
+$LinuxArchivePath = Join-Path $OutDir $LinuxArchiveName
+$LinuxObjectKey   = "$Prefix/$LinuxArchiveName"
+$LinuxArchiveUrl  = "$DlBase/$LinuxObjectKey"
 
 # =============================================================================
 #  2.  PROVENANCE
@@ -559,6 +640,116 @@ if (Test-Path -LiteralPath $enginePin) {
     if ($pinTxt -match '(?m)^\s*qcbuild\s+(\d+)\s*$') { $pq = [int]$Matches[1] } else { $pq = $null }
     if (($null -ne $pp -and $pp -ne $enginePatch) -or ($null -ne $pq -and $pq -ne $qcBuild)) {
         Warn "ENGINE.txt pin drift: says patch $pp / qcbuild $pq, measured $enginePatch / $qcBuild (not changed by this script)"
+    }
+}
+
+# --- Linux gates (-Linux) -----------------------------------------------------
+#  L1 the launcher is committed. L2 the drop is what BUILDINFO says, the build
+#  passed its own gates, its stamp names BUILDINFO's commit and that commit's
+#  engine code is the Windows exe's. L3 it needs only libraries every distro has.
+#  Every problem is listed before failing; only the skew lines (hashes, stamp,
+#  code) yield to -AllowEngineSkew.
+if ($Linux) {
+    $lxHard = @(); $lxSkew = @()
+    $lxExe  = Join-Path $LinuxDrop 'fteqw64'
+    $lxPlug = Join-Path $LinuxDrop 'fteplug_hl2_amd64.so'
+
+    & git -C $SurfDir ls-files --error-unmatch -- ftesurf.sh 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { $lxHard += 'ftesurf.sh is not tracked by git (.gitignore needs !/ftesurf.sh)' }
+    else {
+        if ("$(& git -C $SurfDir ls-files -s -- ftesurf.sh)" -notmatch '^100755 ') { Warn 'ftesurf.sh is not mode 100755 in git (the archive sets 0755 regardless)' }
+        if (& git -C $SurfDir status --porcelain -- ftesurf.sh) {
+            if ($AllowDirty) { Warn 'ftesurf.sh has uncommitted changes -> allowed by -AllowDirty'; $Overrides += 'AllowDirty:linux' }
+            else { $lxHard += 'ftesurf.sh has uncommitted changes (commit it, or -AllowDirty)' }
+        }
+    }
+
+    foreach ($f in @($lxExe, $lxPlug)) { if (-not (Test-ElfX64 $f)) { $lxHard += "$(Split-Path -Leaf $f) is not an x86-64 ELF file" } }
+    $lxHard += @(Test-ByteStrings $lxExe -MustHave $LinuxExeMustHave)
+    $lxHard += @(Test-ByteStrings $lxPlug -MustNot $LinuxPluginMustNot)
+    $hLxExe   = (Get-FileHash -LiteralPath $lxExe -Algorithm SHA256).Hash
+    $hLxPlug  = (Get-FileHash -LiteralPath $lxPlug -Algorithm SHA256).Hash
+    $lxBinRev = @(Get-BinaryRevisions $lxExe)
+    $winRevs  = @(Get-BinaryRevisions $exeLocal)
+    $lxPatch = 0; $lxCmpTo = $null; $lxPinEq = $null
+    $bi = $null
+    try { $bi = Read-LinuxBuildInfo (Join-Path $LinuxDrop 'BUILDINFO.txt') } catch { $lxHard += $_.Exception.Message }
+    if ($bi) {
+        if ($bi.Gates -cne 'all PASS') { $lxHard += "BUILDINFO gates: $($bi.Gates)" }
+        foreach ($p in @(@('fteqw64', $hLxExe), @('fteplug_hl2_amd64.so', $hLxPlug))) {
+            if ($bi.Sha256[$p[0]] -ne $p[1]) { $lxHard += "$($p[0]) sha256 $($p[1].Substring(0, 12)) != BUILDINFO $($bi.Sha256[$p[0]].Substring(0, 12))" }
+        }
+        & git -C $FteRoot cat-file -e "$($bi.Commit)^{commit}" 2>$null
+        if ($LASTEXITCODE -ne 0) { $lxHard += "BUILDINFO commit $($bi.Commit) is not in $FteRoot" }
+        else {
+            # The stamp is make's (engine/Makefile), matched tolerantly: count + 29,
+            # then any describe whose hash is a prefix of the commit, never -dirty.
+            $lxCount = [int]"$(& git -C $FteRoot rev-list --count $bi.Commit)".Trim()
+            $lxExpRev = "git-$($lxCount + 29)-...-g$($bi.Commit.Substring(0, 9))"
+            if (-not $lxBinRev.Count -or @($lxBinRev | Where-Object { -not (Test-RevisionMatch $_ $lxCount $bi.Commit) }).Count) {
+                $lxHard += "fteqw64 carries revision '$($lxBinRev -join ', ')', expected $lxExpRev"
+            }
+            if ($bi.Revision -and -not (Test-RevisionMatch $bi.Revision $lxCount $bi.Commit)) { $lxHard += "BUILDINFO revision $($bi.Revision) does not match $lxExpRev" }
+
+            # The label comes from the commit's own changelog, never the working tree:
+            # another session's claimed-but-uncommitted heading is not in this binary.
+            $pm = Get-MaxPatchHeading ((& git -C $FteRoot show "$($bi.Commit):ENGINE_PATCHES.md") -join "`n")
+            if ($pm.Count -lt 100) { $lxHard += "only $($pm.Count) patch headings in $($bi.Commit.Substring(0, 9)):ENGINE_PATCHES.md" }
+            $lxPatch = $pm.Max
+
+            $winHex = if ($winRevs.Count -eq 1 -and $winRevs[0] -cmatch '^git-\d+-(?:.+-g)?([0-9a-f]{7,40})$') { $Matches[1] } else { $null }
+            $winSha = if ($winHex) { "$(& git -C $FteRoot rev-parse --verify --quiet "$winHex^{commit}" 2>$null)".Trim() } else { '' }
+            if ($winSha) {
+                $lxCmpTo = 'windows-exe-commit'
+                $dargs = @('-C', $FteRoot, 'diff', '--quiet', $winSha, $bi.Commit, '--', 'engine', 'plugins')
+            } else {
+                $lxSkew += "ftesurf64.exe carries revision '$($winRevs -join ', ')', which names no clean commit in $FteRoot (compared with that tree's working copy instead)"
+                $lxCmpTo = 'engine-worktree'
+                $dargs = @('-C', $FteRoot, 'diff', '--quiet', $bi.Commit, '--', 'engine', 'plugins')
+            }
+            & git @dargs 2>$null
+            $drc = $LASTEXITCODE
+            if ($drc -eq 1) {
+                $sargs = @($dargs); $sargs[3] = '--stat'
+                $lxSkew += "engine code differs from ftesurf64.exe's ($lxCmpTo):"
+                $lxSkew += @(& git @sargs | ForEach-Object { "  $_" })
+            } elseif ($drc -ne 0) { $lxHard += "git $($dargs -join ' ') failed (exit $drc)" }
+
+            if ((Test-Path -LiteralPath $enginePin) -and ((Get-Content -LiteralPath $enginePin -Raw) -match '(?m)^\s*commit\s+([0-9a-f]{40})\s*$')) {
+                $lxPinEq = ($Matches[1] -eq $bi.Commit)
+                if (-not $lxPinEq) { Warn "ENGINE.txt pins commit $($Matches[1].Substring(0, 9)); the Linux drop is $($bi.Commit.Substring(0, 9)) (not changed by this script)" }
+            }
+        }
+    }
+
+    $lxNeeded = [ordered]@{}; $lxGlibcs = @(); $lxHostGlibc = $null; $lxHostOs = $null
+    foreach ($l in (Invoke-Wsl @('sh', $LinuxPackWsl, 'inspect', "$LinuxDropWsl/fteqw64", "$LinuxDropWsl/fteplug_hl2_amd64.so") 'linux-pack.sh inspect')) {
+        if ($l -cmatch '^N (\S+) (\S+)$') { if (-not $lxNeeded.Contains($Matches[1])) { $lxNeeded[$Matches[1]] = @() }; $lxNeeded[$Matches[1]] += $Matches[2] }
+        elseif ($l -cmatch '^G \S+ GLIBC_([0-9.]+)$') { $lxGlibcs += $Matches[1] }
+        elseif ($l -cmatch '^HOST ([0-9.]+)$') { $lxHostGlibc = $Matches[1] }
+        elseif ($l -cmatch '^OS (.+)$') { $lxHostOs = $Matches[1] }
+    }
+    foreach ($f in $lxNeeded.Keys) {
+        $extra = @($lxNeeded[$f] | Where-Object { $LinuxNeededAllow -notcontains $_ })
+        if ($extra.Count) { $lxHard += "$f needs $($extra -join ', ') (not in -LinuxNeededAllow)" }
+    }
+    $lxGlibc = if ($lxGlibcs.Count) { Get-MaxVersion $lxGlibcs } else { $null }
+    if (-not $lxGlibc -or -not $lxHostGlibc) { $lxHard += 'linux-pack.sh inspect reported no GLIBC versions or no host glibc' }
+    elseif ([version]$lxGlibc -gt [version]$lxHostGlibc) {
+        $lxHard += "the drop needs glibc $lxGlibc and $LinuxDistro has $lxHostGlibc, so it has never run where it was tested"
+    }
+
+    $lxVerified = ($lxSkew.Count -eq 0)
+    $lxLabel = if ($lxVerified) { "$lxPatch" } else { "$lxPatch (unverified against this binary)" }
+    if ($lxHard.Count -or $lxSkew.Count) {
+        $msg = "the Linux drop fails its gates ($LinuxDrop):"
+        if ($lxHard.Count) { $msg += "`n" + (($lxHard | ForEach-Object { "      $_" }) -join "`n") }
+        if ($lxSkew.Count) { $msg += "`n    skew (-AllowEngineSkew):`n" + (($lxSkew | ForEach-Object { "      $_" }) -join "`n") }
+        if ($lxHard.Count -or -not $AllowEngineSkew) { Fail "$msg`n  Rebuild with tools\linux\build.sh (BUILDINFO must say 'gates all PASS'), then re-run." }
+        Warn "$msg`n    -> skew allowed by -AllowEngineSkew; the receipt and page will say 'unverified'"
+        $Overrides += 'AllowEngineSkew:linux'
+    } else {
+        Good "Linux gates: drop = BUILDINFO ($($bi.Commit.Substring(0, 9)), gates all PASS), stamp $($lxBinRev[0]), code = ftesurf64.exe's, glibc $lxGlibc <= $lxHostGlibc"
     }
 }
 
@@ -752,10 +943,10 @@ $stageFiles = Get-ChildItem -LiteralPath $StageDir -Recurse -File
 $prefixLen  = $StageDir.Length + 1
 $stageRel   = @($stageFiles | ForEach-Object { $_.FullName.Substring($prefixLen).Replace('\', '/') })
 
-function Test-Deny ([string[]]$paths, [string]$where) {
+function Test-Deny ([string[]]$paths, [string]$where, [string[]]$extra = @()) {
     $hits = @()
     foreach ($p in $paths) {
-        foreach ($rx in $DenyPatterns) {
+        foreach ($rx in @($DenyPatterns) + @($extra)) {
             if ($p -match $rx) { $hits += "$p   (matched /$rx/)"; break }
         }
     }
@@ -849,6 +1040,160 @@ foreach ($must in @('ftesurf64.exe', 'fteplug_hl2_x64.dll', 'default.fmf', 'ftes
 Good "$($inArchive.Count) entries, identical to the stage, all required files present"
 
 # =============================================================================
+#  7b. -Linux: STAGE, PACK AND VERIFY THE tar.xz
+#
+#  Packed in WSL by linux-pack.sh: drvfs reports every file as 777, so modes are
+#  set on an ext4 copy, owner 0/0. Its listing and an extraction come back here
+#  and are compared with the stage, so the chain BUILDINFO -> drop -> stage ->
+#  archive entry is checked hash by hash.
+# =============================================================================
+if ($Linux) {
+    Step 'Linux: stage'
+    $LxStageRoot = Join-Path $StageRoot "stage-linux-$Ver"
+    $LxMarker    = Join-Path $StageRoot ".stage-linux-$Ver.owned"
+    if (Test-Path -LiteralPath $LxStageRoot) {
+        if ((Test-Path -LiteralPath $LxMarker) -and ($LxStageRoot -match '[\\/]release[\\/]stage-linux-\d')) {
+            Remove-Item -LiteralPath $LxStageRoot -Recurse -Force
+        } else {
+            Fail "$LxStageRoot exists but is not a stage directory this script made (no $LxMarker beside it). Refusing to delete it."
+        }
+    }
+    $LxTree = Join-Path $LxStageRoot $LinuxTop
+    New-Item -ItemType Directory -Path $LxTree -Force | Out-Null
+    Set-Content -LiteralPath $LxMarker -Value "ftesurf linux release stage $Ver" -NoNewline
+
+    Copy-Item -LiteralPath (Join-Path $StageDir 'ftesurf') -Destination $LxTree -Recurse
+    foreach ($f in @('default.fmf', 'LICENSE')) { Copy-Item -LiteralPath (Join-Path $StageDir $f) -Destination $LxTree }
+    # SOURCE.txt names the engine patch; the Linux binary's comes from its own commit.
+    $lxSrc = [System.IO.File]::ReadAllText((Join-Path $StageDir 'SOURCE.txt'))
+    $lxSrcLine = "  engine patch $lxLabel (Linux engine $($bi.Commit.Substring(0, 9)))"
+    $lxSrc = [regex]::Replace($lxSrc, '(?m)^  engine patch .*$', $lxSrcLine.Replace('$', '$$'))
+    if (-not $lxSrc.Contains($lxSrcLine)) { Fail 'Linux SOURCE.txt: no engine patch line to replace' }
+    [System.IO.File]::WriteAllText((Join-Path $LxTree 'SOURCE.txt'), $lxSrc, (New-Object System.Text.UTF8Encoding $false))
+    Copy-Item -LiteralPath $lxExe  -Destination (Join-Path $LxTree 'ftesurf64')
+    Copy-Item -LiteralPath $lxPlug -Destination (Join-Path $LxTree 'fteplug_hl2_amd64.so')
+    # A CR after the shebang is "bad interpreter: /bin/sh^M".
+    $sh = [System.IO.File]::ReadAllText((Join-Path $SurfDir 'ftesurf.sh')).Replace("`r`n", "`n")
+    if (-not $sh.StartsWith('#!') -or $sh.Contains("`r")) { Fail 'ftesurf.sh must start with #! and contain no CR' }
+    [System.IO.File]::WriteAllText((Join-Path $LxTree 'ftesurf.sh'), $sh, (New-Object System.Text.UTF8Encoding $false))
+    foreach ($p in @(@('ftesurf64', $hLxExe), @('fteplug_hl2_amd64.so', $hLxPlug))) {
+        if ((Get-FileHash -LiteralPath (Join-Path $LxTree $p[0]) -Algorithm SHA256).Hash -ne $p[1]) { Fail "staged $($p[0]) does not hash to the drop's" }
+    }
+    $lxDat = @{}
+    foreach ($d in @('csprogs.dat', 'qwprogs.dat', 'menu.dat')) { $lxDat[$d] = (Get-FileHash -LiteralPath (Join-Path $LxTree "ftesurf\$d") -Algorithm SHA256).Hash }
+
+    [System.IO.File]::WriteAllText((Join-Path $LxTree 'VERSION.txt'), @"
+FTESurf $Ver for Linux x86_64 (beta)
+built            $stamp
+QuakeC build     $qcBuild
+engine patch     $lxLabel
+engine commit    $($bi.Commit)
+engine revision  $($lxBinRev -join ' ')
+engine built     $($bi.Built)  $($bi.Builder)  $($bi.Cc)
+glibc needed     $lxGlibc or newer
+git HEAD         $GitShort  $GitHeadSub
+ftesurf64             sha256 $hLxExe
+fteplug_hl2_amd64.so  sha256 $hLxPlug
+csprogs.dat           sha256 $($lxDat['csprogs.dat'])
+qwprogs.dat           sha256 $($lxDat['qwprogs.dat'])
+menu.dat              sha256 $($lxDat['menu.dat'])
+
+This file cannot contain the archive's own SHA-256 -- it is inside it.
+That hash is published beside the download, and in ftesurf-$Ver.json.
+"@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+
+    [System.IO.File]::WriteAllText((Join-Path $LxTree 'INSTALL.txt'), @"
+FTESurf $Ver for Linux (beta) -- install
+========================================
+
+This is the first Linux build.  It is a BETA, tested only under WSL2 on
+Windows (WSLg) -- not yet on a native Linux desktop.  Report problems on
+Discord, in the FTESurf channel:
+    https://discord.com/channels/471331861839216643/1327302504823787541
+
+Needs: 64-bit x86 Linux with glibc $lxGlibc or newer (ldd --version shows
+yours), OpenGL, and an X11 or Wayland desktop.
+
+1.  Extract it somewhere you own:   tar xf $LinuxArchiveName
+    This makes a folder called FTESurf.  Everything the game saves --
+    settings, runs, screenshots, logs -- goes INSIDE that folder, so it must
+    be writable: your home folder works, /opt and /usr do not.  To upgrade,
+    extract a newer archive in the same place; your settings and runs stay.
+
+2.  Install these from Steam if you do not have them.  FTESurf ships NO Valve
+    or Momentum content -- it reads your own installs at runtime:
+        Momentum Mod Playtest     the map library (1,308 maps)
+        Counter-Strike: Source    materials and models most surf maps use
+        Half-Life 2               shared Source content, skyboxes, dev textures
+    Momentum Mod Playtest has no Linux version on Steam.  Install it anyway
+    with Steam Play: right-click it > Properties > Compatibility, tick "Force
+    the use of a specific Steam Play compatibility tool", pick a Proton
+    version, then install.  FTESurf only reads its maps; you never start it.
+    Optional, mounted per map only when needed: CS:GO (legacy), TF2.
+
+3.  Run  ./ftesurf.sh  (or  ./ftesurf.sh <mapname>).  It changes to its own
+    folder first, so a launcher or symlink pointing at it works from anywhere.
+    Starting ftesurf64 directly from another folder stops at a mod list.
+
+4.  If a Steam game is not found, type  fs_steamlibs  in the console: it
+    prints where the engine looked and how each mount resolved.  Native,
+    Flatpak and Snap Steam are found on their own.  For a library on another
+    drive, add the folder that contains steamapps:
+        fs_steamlibs add /mnt/games/SteamLibrary
+        fs_restart
+
+If it crashes: ftesurf.sh keeps the engine's error output in stderr.log, and a
+crash writes crash.log -- both in the FTESurf folder.  Post both on the Discord
+channel above, with what you were doing.  ./ftesurf.sh --debug also writes
+ftesurf/logs/qconsole.log.
+
+Alpha software: physics fixes between builds can invalidate recorded times.
+Licence: GPLv2 or later, see LICENSE.  The three fonts in ftesurf/gfx/fonts are
+SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.
+"@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+
+    $lxFiles = @(Get-ChildItem -LiteralPath $LxTree -Recurse -File)
+    $lxRel   = @($lxFiles | ForEach-Object { $_.FullName.Substring($LxTree.Length + 1).Replace('\', '/') })
+    $odd     = @($lxRel | Where-Object { $_ -cmatch '[^\x20-\x7E]' })
+    if ($odd.Count) { Fail ("non-ASCII path(s) in the Linux stage:`n" + (($odd | ForEach-Object { "      $_" }) -join "`n")) }
+    $lxStage = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($f in $lxFiles) { $lxStage[$f.FullName.Substring($LxTree.Length + 1).Replace('\', '/')] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLower() }
+    $lxBytes = [long]($lxFiles | Measure-Object -Property Length -Sum).Sum
+    Good "staged $($lxFiles.Count) files, $(HumanSize $lxBytes), in $LxTree"
+
+    Step 'Linux: deny tripwire'
+    Test-Deny $lxRel 'the Linux stage' $LinuxDeny
+    $big = @($lxFiles | Where-Object { $_.Length -gt ($MaxFileMB * 1MB) })
+    if ($big.Count) { Fail ("file(s) over ${MaxFileMB} MB in the Linux stage:`n" + (($big | ForEach-Object { "      $($_.Name) $(HumanSize $_.Length)" }) -join "`n")) }
+    if ($lxBytes -gt ($MaxTotalMB * 1MB)) { Fail "the Linux stage is $(HumanSize $lxBytes), over the ${MaxTotalMB} MB ceiling." }
+    Good "no denied path in $($lxRel.Count) staged files"
+
+    Step 'Linux: pack (WSL)'
+    Remove-Item -LiteralPath $LinuxArchivePath -Force -ErrorAction SilentlyContinue   # never ship a previous pack
+    $LxOutWsl = "$(WslPath $OutDir)/$LinuxArchiveName"
+    Invoke-Wsl (@('sh', $LinuxPackWsl, 'pack', (WslPath $LxStageRoot), $LinuxTop, $LxOutWsl) + $LinuxExec) 'linux-pack.sh pack' | Out-Null
+    if (-not (Test-Path -LiteralPath $LinuxArchivePath)) { Fail 'linux-pack.sh reported success but produced no archive' }
+    $LinuxArchiveBytes = (Get-Item -LiteralPath $LinuxArchivePath).Length
+    $LinuxArchiveSha   = (Get-FileHash -LiteralPath $LinuxArchivePath -Algorithm SHA256).Hash
+    $LinuxArchiveMd5   = (Get-FileHash -LiteralPath $LinuxArchivePath -Algorithm MD5).Hash.ToLower()
+    Good "$LinuxArchiveName  $(HumanSize $LinuxArchiveBytes)  ($('{0:N1}' -f (100 * $LinuxArchiveBytes / $lxBytes))% of raw)"
+
+    Step 'Linux: verify archive contents'
+    $vr = @(Invoke-Wsl @('sh', $LinuxPackWsl, 'verify', $LxOutWsl, $LinuxTop) 'linux-pack.sh verify')
+    if ($vr -cnotcontains 'VERIFIED') { Fail "linux-pack.sh verify did not finish:`n$($vr -join "`n")" }
+    $lxEntries = @(ConvertFrom-TarListing @($vr | Where-Object { $_.StartsWith('T ') } | ForEach-Object { $_.Substring(2) }))
+    $lxHashes  = ConvertFrom-ShaLines @($vr | Where-Object { $_.StartsWith('H ') } | ForEach-Object { $_.Substring(2) })
+    $prob = @(Test-LinuxArchiveEntries $lxEntries $lxHashes $lxStage $LinuxTop $LinuxExec)
+    # Relative to FTESurf/: the anchored ^ftesurf/ftesurf\.cfg$ would miss FTESurf/ftesurf/ftesurf.cfg.
+    $arcRel = @($lxEntries | Where-Object { $_.Type -eq '-' -and $_.Path.StartsWith("$LinuxTop/") } | ForEach-Object { $_.Path.Substring($LinuxTop.Length + 1) })
+    Test-Deny $arcRel 'the packed Linux archive' $LinuxDeny
+    foreach ($must in $LinuxRequired) { if ($arcRel -cnotcontains $must) { $prob += "missing required file $LinuxTop/$must" } }
+    foreach ($l in @($vr | Where-Object { $_.StartsWith('L ') })) { $prob += "ldd: $($l.Substring(2))" }
+    if ($prob.Count) { Fail ("the Linux archive does not match its stage:`n" + (($prob | ForEach-Object { "      $_" }) -join "`n")) }
+    Good "$($arcRel.Count) files: owner 0/0, 0755 only $($LinuxExec -join ' and '), sha256 = stage, ldd resolves both binaries"
+}
+
+# =============================================================================
 #  8.  RECEIPT
 # =============================================================================
 Step 'Receipt'
@@ -883,11 +1228,50 @@ $receipt = [ordered]@{
     overrides    = $Overrides
     tool         = [ordered]@{ script = 'src/release/release.ps1'; host = $env:COMPUTERNAME }
 }
+if ($Linux) {
+    # Appended, so every existing key keeps its place.
+    $receipt['linux'] = [ordered]@{
+        archive   = [ordered]@{ name = $LinuxArchiveName; bytes = $LinuxArchiveBytes; sha256 = $LinuxArchiveSha; md5 = $LinuxArchiveMd5; url = $LinuxArchiveUrl }
+        platform  = 'linux-x86_64'
+        beta      = $true
+        glibc_min = $lxGlibc
+        needed    = @($lxNeeded.Values | ForEach-Object { $_ } | Sort-Object -Unique)
+        packed_on = "$lxHostOs (WSL $LinuxDistro)"
+        engine    = [ordered]@{
+            patch_doc            = $lxPatch
+            binary_verified      = $lxVerified
+            commit               = $bi.Commit
+            revision             = ($lxBinRev -join ' ')
+            gates                = $bi.Gates
+            builder              = $bi.Builder
+            cc                   = $bi.Cc
+            built_utc            = $bi.Built
+            code_compared_to     = $lxCmpTo
+            windows_exe_revision = ($winRevs -join ' ')
+            code_matches_pin     = $lxPinEq
+            exe_sha256           = $hLxExe
+            plugin_sha256        = $hLxPlug
+        }
+        content   = [ordered]@{
+            file_count = $arcRel.Count
+            raw_bytes  = $lxBytes
+            hashes     = [ordered]@{
+                'ftesurf64'            = $hLxExe
+                'fteplug_hl2_amd64.so' = $hLxPlug
+                'ftesurf.sh'           = $lxStage['ftesurf.sh'].ToUpper()
+                'ftesurf/csprogs.dat'  = $lxDat['csprogs.dat']
+                'ftesurf/qwprogs.dat'  = $lxDat['qwprogs.dat']
+                'ftesurf/menu.dat'     = $lxDat['menu.dat']
+            }
+        }
+    }
+}
 $ReceiptPath = Join-Path $OutDir "ftesurf-$Ver.json"
 $json = ($receipt | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
 [System.IO.File]::WriteAllText($ReceiptPath, $json + "`n", (New-Object System.Text.UTF8Encoding $false))
 [System.IO.File]::WriteAllText((Join-Path $OutDir 'ftesurf-latest.json'), $json + "`n", (New-Object System.Text.UTF8Encoding $false))
 [System.IO.File]::WriteAllText("$ArchivePath.sha256", "$($ArchiveSha.ToLower())  $ArchiveName`n", (New-Object System.Text.UTF8Encoding $false))
+if ($Linux) { [System.IO.File]::WriteAllText("$LinuxArchivePath.sha256", "$($LinuxArchiveSha.ToLower())  $LinuxArchiveName`n", (New-Object System.Text.UTF8Encoding $false)) }
 Good "wrote $ReceiptPath"
 
 # --- render the page (runs in -DryRun too: it exercises the token asserts) ---
@@ -895,7 +1279,10 @@ if (-not $SkipSite) {
     Step 'Render the page'
     $tpl = Join-Path $RelDir 'page.template.html'
     if (-not (Test-Path -LiteralPath $tpl)) { Fail "missing $tpl" }
-    $html = Get-Content -LiteralPath $tpl -Raw
+    # <!--LINUX-BEGIN/END--> blocks render only with -Linux; without it the page
+    # is byte-identical to the template before they existed.
+    try { $pb = Split-PageBlocks (Get-Content -LiteralPath $tpl -Raw) } catch { Fail "$tpl`: $($_.Exception.Message)" }
+    $html = if ($Linux) { $pb.Kept } else { $pb.Outside }
 
     function HtmlEsc ([string]$s) {
         $s.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;').Replace("'", '&#39;')
@@ -916,15 +1303,29 @@ if (-not $SkipSite) {
     # and -f treats { } as format metacharacters. Neither is safe for a value
     # that contains a hash or a URL.
     foreach ($k in $tokens.Keys) { $html = $html.Replace("@@$k@@", (HtmlEsc $tokens[$k])) }
+    if ($Linux) {
+        $lxTokens = [ordered]@{
+            'LINUX_URL'        = $LinuxArchiveUrl
+            'LINUX_FILENAME'   = $LinuxArchiveName
+            'LINUX_SIZE_HUMAN' = (HumanSize $LinuxArchiveBytes)
+            'LINUX_SIZE_BYTES' = ('{0:N0}' -f $LinuxArchiveBytes)
+            'LINUX_SHA256'     = $LinuxArchiveSha.ToLower()      # sha256sum -c prints and wants lowercase
+            'LINUX_GLIBC'      = $lxGlibc
+            'LINUX_ENGINE'     = $lxLabel
+        }
+        foreach ($k in $lxTokens.Keys) { $html = $html.Replace("@@$k@@", (HtmlEsc $lxTokens[$k])) }
+    }
 
     # Bidirectional assert: a typo'd token in the template would otherwise ship a
     # literal @@FOO@@ to production, and a stale key in the map would ship the
     # previous release's value.
     if ($html -match '@@([A-Z0-9_]+)@@') { Fail "template token @@$($Matches[1])@@ was not substituted" }
-    $tplTokens = [regex]::Matches((Get-Content -LiteralPath $tpl -Raw), '@@([A-Z0-9_]+)@@') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    $mapTokens = @($tokens.Keys) | Sort-Object -Unique
-    $diff = Compare-Object $tplTokens $mapTokens
-    if ($diff) { Fail ("template tokens and substitution map disagree:`n" + (($diff | ForEach-Object { "      $($_.InputObject) only in $(if($_.SideIndicator -eq '<='){'template'}else{'script'})" }) -join "`n")) }
+    # Checked with or without -Linux: outside the blocks exactly $tokens, inside
+    # exactly $LinuxTokenNames.
+    $diff = @(Compare-TokenSets (Get-TemplateTokens $pb.Outside) @($tokens.Keys))
+    if ($diff.Count) { Fail ("template tokens and substitution map disagree:`n" + (($diff | ForEach-Object { "      $_" }) -join "`n")) }
+    $diff = @(Compare-TokenSets (Get-TemplateTokens $pb.Inside) $LinuxTokenNames)
+    if ($diff.Count) { Fail ("the template's LINUX blocks and `$LinuxTokenNames disagree:`n" + (($diff | ForEach-Object { "      $_" }) -join "`n")) }
 
     $pageDir = Join-Path $OutDir "site-$Ver"
     if (Test-Path -LiteralPath $pageDir) { Remove-Item -LiteralPath $pageDir -Recurse -Force }
@@ -991,10 +1392,17 @@ if ($DryRun) {
         }
     }
 
+    if ($Linux) {
+        $lo = Get-R2Object $LinuxObjectKey
+        if ($lo -and $lo.Md5 -eq $LinuxArchiveMd5) { Good "$LinuxArchiveName is already published, byte-identical to this build" }
+        elseif ($lo) { Warn "$LinuxArchiveName is ALREADY PUBLISHED with different bytes (R2 md5 $($lo.Md5), this build $LinuxArchiveMd5); -Bump first." }
+    }
+
     Write-Host "`n=== DRY RUN COMPLETE ===" -ForegroundColor Cyan
     Info "archive   $ArchivePath"
     Info "receipt   $ReceiptPath"
     Info "would publish to  $ArchiveUrl"
+    if ($Linux) { Info "linux     $LinuxArchivePath"; Info "would publish to  $LinuxArchiveUrl" }
     Info "would deploy page to  $SiteUrl"
     if ($Overrides.Count) { Warn "overrides in effect: $($Overrides -join ', ')" }
     return
@@ -1005,6 +1413,16 @@ if ($DryRun) {
 # =============================================================================
 if (-not $SkipUpload) {
     Step "Upload to R2 ($ObjectKey)"
+
+    # Both keys are checked before either PUT: a refusal after the first PUT
+    # would cost the version.
+    $LxSkipPut = $false
+    if ($Linux) {
+        $lo = Get-R2Object $LinuxObjectKey
+        if ($lo -and $lo.Md5 -eq $LinuxArchiveMd5) { Warn "$LinuxObjectKey already published with identical bytes -- skipping its PUT, still verifying"; $LxSkipPut = $true }
+        elseif ($lo -and $Force) { Warn "$LinuxObjectKey exists with DIFFERENT bytes; -Force given, overwriting."; $Overrides += 'ForceOverwrite:linux' }
+        elseif ($lo) { Fail "$LinuxObjectKey already exists in R2 with different bytes (remote md5 $($lo.Md5), local $LinuxArchiveMd5).`n  Bump the version -- there is no API token to purge the edge with." }
+    }
 
     # Refuse to overwrite. There is no Cloudflare API token in this setup, so
     # nothing here can purge: a same-version re-upload with different bytes can
@@ -1133,6 +1551,52 @@ if (-not $SkipUpload) {
         if ($back -ne $ArchiveSha) { Fail "round-trip sha256 $back != $ArchiveSha" }
         Good 'full round-trip sha256 matches'
     }
+
+    if ($Linux) {
+        # Same PUT and checks as above. No Content-Encoding: the .xz is the body.
+        Step "Upload to R2 ($LinuxObjectKey)"
+        if (-not $LxSkipPut) {
+            $rcArgs = @(
+                'copyto', $LinuxArchivePath, "${Remote}:$Bucket/$LinuxObjectKey",
+                '--bind', '0.0.0.0',
+                '--s3-upload-cutoff', '200M',
+                '--retries', '3', '--low-level-retries', '10',
+                '--header-upload', 'Cache-Control: public, max-age=31536000, immutable',
+                '--header-upload', 'Content-Type: application/x-xz',
+                '--bwlimit', (Get-BwLimit), '--stats', '20s', '--stats-one-line', '--progress'
+            )
+            if ($Force) { $rcArgs += '--ignore-times' }
+            Native 'rclone' $rcArgs 'rclone copyto (linux)' | Out-Null
+            Good "uploaded $(HumanSize $LinuxArchiveBytes) to $LinuxObjectKey"
+        }
+        Native 'rclone' @('copyto', "$LinuxArchivePath.sha256", "${Remote}:$Bucket/$LinuxObjectKey.sha256",
+            '--bind', '0.0.0.0', '--header-upload', 'Cache-Control: public, max-age=31536000, immutable',
+            '--header-upload', 'Content-Type: text/plain; charset=utf-8') 'rclone copyto sha256 (linux)' | Out-Null
+        $lo = Get-R2Object $LinuxObjectKey
+        if (-not $lo) { Fail "object not found at $LinuxObjectKey after upload" }
+        if ($lo.Size -ne $LinuxArchiveBytes) { Fail "R2 size $($lo.Size) != local $LinuxArchiveBytes ($LinuxObjectKey)" }
+        if (-not $lo.Md5) { Fail "R2 returned no md5 for $LinuxObjectKey; cannot verify it end to end" }
+        if ($lo.Md5 -ne $LinuxArchiveMd5) { Fail "R2 md5 $($lo.Md5) != local $LinuxArchiveMd5 ($LinuxObjectKey)" }
+        Good "origin: size and md5 match ($LinuxArchiveMd5)"
+        $hdrFile = Join-Path $env:TEMP "ftesurf-edge-linux-$Ver.txt"
+        & curl.exe -4 -s -o NUL -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
+        & curl.exe -4 -s -D $hdrFile -o NUL -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
+        $hdrs = Get-Content -LiteralPath $hdrFile -Raw
+        Remove-Item -LiteralPath $hdrFile -Force -ErrorAction SilentlyContinue
+        if ($hdrs -notmatch '(?m)^HTTP/[\d.]+ 206') { Fail "edge did not honour a Range request for the Linux archive:`n$hdrs" }
+        if ($hdrs -match '(?mi)^content-range:\s*bytes\s+0-99/(\d+)') {
+            if ([long]$Matches[1] -ne $LinuxArchiveBytes) { Fail "edge reports total $($Matches[1]) bytes, local is $LinuxArchiveBytes ($LinuxObjectKey)" }
+            Good "edge: 206 with Content-Range total $LinuxArchiveBytes"
+        } else { Warn 'edge returned 206 but no parseable Content-Range (linux)' }
+        if ($VerifyFull) {
+            $tmp = Join-Path $env:TEMP $LinuxArchiveName
+            & curl.exe -4 -s -o $tmp $LinuxArchiveUrl
+            $back = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash
+            Remove-Item -LiteralPath $tmp -Force
+            if ($back -ne $LinuxArchiveSha) { Fail "round-trip sha256 $back != $LinuxArchiveSha ($LinuxObjectKey)" }
+            Good 'full round-trip sha256 matches (linux)'
+        }
+    }
 }
 
 # =============================================================================
@@ -1178,6 +1642,14 @@ refusing to deploy a page for an archive that is not published.
 "@
     }
     Good "published archive matches this run (md5 $ArchiveMd5)"
+    if ($Linux) {
+        $lo = Get-R2Object $LinuxObjectKey
+        if (-not $lo -or $lo.Md5 -ne $LinuxArchiveMd5) {
+            Fail ("refusing to deploy a page for a Linux archive that is not published.`n  " +
+                $(if ($lo) { "R2 holds md5 $($lo.Md5), this run built $LinuxArchiveMd5" } else { "no object at $LinuxObjectKey" }))
+        }
+        Good "published Linux archive matches this run (md5 $LinuxArchiveMd5)"
+    }
 
     $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
 
@@ -1265,27 +1737,21 @@ if ($Tag) {
 
 if ($Prune -and -not $SkipUpload) {
     Step "Prune R2 (keeping the newest $PruneKeep)"
-    $all = @()
-    foreach ($n in (& rclone lsf "${Remote}:$Bucket/$Prefix/" --bind 0.0.0.0)) {
-        if ($n -match '^ftesurf-(\d+)\.(\d+)\.(\d+)\.7z$') {
-            $all += [pscustomobject]@{ Name = $n.Trim(); Key = ([int]$Matches[1] * 1000000 + [int]$Matches[2] * 1000 + [int]$Matches[3]) }
-        }
-    }
-    # Sorted by PARSED SEMVER, never by ModTime: a -Force re-upload rewrites
-    # ModTime and would reorder the list.
-    $doomed = @($all | Sort-Object Key -Descending | Select-Object -Skip $PruneKeep)
-    if (-not $doomed.Count) { Info "nothing to prune ($($all.Count) releases published)" }
+    $names = @(& rclone lsf "${Remote}:$Bucket/$Prefix/" --bind 0.0.0.0)
+    # Whole versions (.7z and .tar.xz together), by PARSED SEMVER, never by
+    # ModTime: a -Force re-upload rewrites ModTime and would reorder the list.
+    $doomed = @(Select-PruneDoomed $names $PruneKeep @($ArchiveName, $LinuxArchiveName))
+    if (-not $doomed.Count) { Info "nothing to prune ($($names.Count) objects listed)" }
     else {
-        Warn "about to delete $($doomed.Count) old release(s): $(($doomed.Name) -join ', ')"
+        Warn "about to delete $($doomed.Count) old archive(s): $($doomed -join ', ')"
         $ans = Read-Host '  type DELETE to confirm'
         if ($ans -ceq 'DELETE') {
             foreach ($d in $doomed) {
-                if ($d.Name -eq $ArchiveName) { continue }   # never the one just published
                 # deletefile on a named object, never `rclone delete` on the
                 # prefix (it would take the .sha256 sidecars too) and never sync.
-                Native 'rclone' @('deletefile', "${Remote}:$Bucket/$Prefix/$($d.Name)", '--bind', '0.0.0.0') 'rclone deletefile' | Out-Null
-                & rclone deletefile "${Remote}:$Bucket/$Prefix/$($d.Name).sha256" --bind 0.0.0.0 2>$null | Out-Null
-                Info "deleted $($d.Name)"
+                Native 'rclone' @('deletefile', "${Remote}:$Bucket/$Prefix/$d", '--bind', '0.0.0.0') 'rclone deletefile' | Out-Null
+                & rclone deletefile "${Remote}:$Bucket/$Prefix/$d.sha256" --bind 0.0.0.0 2>$null | Out-Null
+                Info "deleted $d"
             }
         } else { Info 'not confirmed; nothing deleted' }
     }
@@ -1296,5 +1762,9 @@ Write-Host "`n=== FTESurf $Ver released ===" -ForegroundColor Green
 Info "download  $ArchiveUrl"
 Info "page      $SiteUrl"
 Info "size      $(HumanSize $ArchiveBytes)   sha256 $ArchiveSha"
+if ($Linux) {
+    Info "linux     $LinuxArchiveUrl"
+    Info "          $(HumanSize $LinuxArchiveBytes)   sha256 $LinuxArchiveSha   glibc $lxGlibc+   engine patch $lxLabel"
+}
 Info "provenance  QC build $qcBuild - engine patch $engineLabel - git $GitShort"
 if ($Overrides.Count) { Warn "OVERRIDES USED: $($Overrides -join ', ')  (recorded in $ReceiptPath)" }
