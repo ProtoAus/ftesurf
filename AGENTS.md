@@ -519,9 +519,9 @@ bannered as superseded.)
   COMMITTED patches: check `git log <last deployed>..HEAD` and ask; if one is not
   approved to ship, `git -C <tmp> revert --no-commit <sha>` in the worktree only.
 - The lobbies run a NATIVE aarch64 engine, `game/fteqw-svarm64`, built on the Pi
-  in `/srv/nvme/p349build` -- as of 2026-09-20 the 375 deploy plus Patch 380's
-  three server files, NOT 386-388's fs.c/fs_stdio.c; `git hash-object` a file
-  before assuming it is current. That tree is NOT a git checkout: send changed files
+  in `/srv/nvme/p349build` -- as of 2026-09-20 the 375 deploy, Patch 380's three
+  server files and Patch 396's `sv_send.c`, NOT 386-388's fs.c/fs_stdio.c;
+  `git hash-object` a file before assuming it is current. That tree is NOT a git checkout: send changed files
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
   `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
