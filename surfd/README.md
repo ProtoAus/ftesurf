@@ -35,6 +35,8 @@ the Pi copy in place.
       sweep.py          the replay verifier (cron), see below
       test_admin.py     the falsifier for the panel
       test_web.py       the falsifier for the web leaderboard
+      test_evidence.py  the falsifier for the evidence behind stage rows
+                        (schema 6)
       server/           the five game servers' scripts, from
                         /srv/nvme/ftesurf-server/ (run.sh, runall.sh, stopall.sh)
 
@@ -133,14 +135,10 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     flags     the TF_* word AT THE FINISH (the .rec header's `flags`)
     tier      "ranked" (default) or "community"; may only be lowered
     node      which server witnessed it
-    runid     accepted and stored, but NOTHING SENDS IT and it does not name
-              a recording.  sv_lobby.qc's body has no runid field, so every
-              real submission stores "".  The .rec header does carry one, but
-              it is <YYYYMMDD>-<HHMMSS>-<slot> written at run START, with no
-              node component, across five processes that all number slots from
-              zero -- its own grammar block calls it "unique-ish".  This line
-              used to say it was how the evidence is found later; that has
-              never been true.  `rec` is.
+    runid     the .rec header's runid, <YYYYmmdd>-<HHMMSS>-<slot>-p<port>,
+              sent with every lobby finish and every posted stage since Patch
+              360.  Stored on `runs` and (schema 6) on `replays`: it is how a
+              stage row finds the recording of the run it was set in.
     rec       the BASENAME of the .rec the server just closed, e.g.
               0000279_lex-3eb1bd43_run.rec.  OPTIONAL: a run that left no
               keepable recording sends nothing and its row honestly reports no
@@ -163,10 +161,14 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
   -> 200 {"v":1,"t":..,"map":..,"track":..,"leg":..,"tier":..,"style":..,
           "counts":{"ranked":n,"community":n},"offset":n,
           "rows":[{"r":1,"player":..,"name":..,"ticks":..,"rate":..,
-                   "ms":..,"flags":..,"when":..,"rep":..,"ver":0|1}]}
+                   "ms":..,"flags":..,"when":..,"rep":..,"run":..,"ver":0|1}]}
 ```
 
 `rep` is a row in `replays`, or 0 when nothing is indexed for that row.
+`run` (schema 6) is, for a stage row (leg > 0) with `rep` 0, the replay of the
+run it was set in -- the leg-0 replay with the same `runid`, map, track and
+player, a kept run before an evidence row -- else 0. The client plays it and
+seeks to the stage's window.
 `ver` (schema 5) is 1 when that replay's latest current non-ERROR verdict is
 PASS or the owner approved it, else 0; "current" means recorded at or after the replay
 row's `submitted`. Rows carry no verdict word, reason or review.
@@ -582,9 +584,36 @@ headless verifier per map on port 27698, with `nice 19`, idle IO and
 
     */5 * * * * cd /srv/nvme/surfd && flock -n /tmp/surfd-sweep.lock python3 sweep.py --limit 20 >> /srv/nvme/surfd/logs/sweep.log 2>&1
 
-`python3 sweep.py --dry-run` lists what is pending. `test_sweep.py` stubs out the
-engine (use a throwaway `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the
-verifier itself.
+`python3 sweep.py --dry-run` lists what is pending and what the evidence step
+would index. `test_sweep.py` stubs out the engine (use a throwaway
+`SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the verifier itself.
+
+### Evidence behind stage rows (schema 6)
+
+A lobby posts each stage of a main run with that run's `runid` and no
+recording, and keeps no `data/runs` file for a run that is abandoned or ends
+under an unarchived tag (practice): SV_RecKeepEvidence and SV_RecClose file it
+as `data/evidence/<map>/<runid>.rec`, which SV_EvidenceSweep deletes after
+`run_evidence_days` (30). Before verifying, each sweep:
+
+  1. `backfill_runids`: reads the header `runid` of leg-0 run replays that
+     migrate()'s backfill (from `runs`) could not reach; `-` when there is none.
+  2. `index_evidence`: for each `SURFD_EVIDENCE` file (default: `data/evidence`
+     beside `SURFD_RUNS`) named `<runid>.rec` that a leafless stage row
+     references and no leg-0 replay of that run/player stands for, checks the
+     header (runid, map, track, leg 0), hard-links it to
+     `SURFD_KEEP/<map_dir>/<runid>.rec` (default `data/evidence` under
+     `SURFD_HOME`; a copy if the link is refused) and adds a `replays` row with
+     `kind='evidence'`, tier and style `''` and `checked=1`, so it is on no
+     board, in no review list and never verified. A file with no `end` younger
+     than 10 minutes waits for the next sweep.
+  3. `gc_evidence`: deletes each evidence row no leafless stage row references
+     any more (the check is inside the DELETE), then its kept file; kept files
+     with no row, older than an hour, go too.
+
+The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
+the kept file byte-exact, like any other replay. The log line gains
+`evidence +added -dropped` when either is non-zero.
 
 ## Web leaderboard (/board/)
 
@@ -630,6 +659,8 @@ The list shows each replay's latest current non-ERROR verdict (what the badge
 reads), an ERROR flag for a last attempt that printed nothing, the review and
 whether the run stands on a board. The queue is current HOLDs with no review;
 pending is what the next sweep picks (`checked=0`, under the ERROR cap).
+Evidence rows (schema 6) are not runs: the list omits them and every review
+action refuses them (400).
 
 Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
 and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call

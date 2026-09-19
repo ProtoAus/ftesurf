@@ -448,11 +448,11 @@ check("CONTROL: the heartbeat has its own bucket and is untouched",
 print("\n--- 7. the 3 -> 4 migration ----------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 5", user_version(m), 5)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 5)
+check("a fresh database is stamped schema 6", user_version(m), 6)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
 
 m = fresh(seed_v3=True)
-check("a schema-3 database upgrades to 5", user_version(m), 5)
+check("a schema-3 database upgrades to 6", user_version(m), 6)
 conn = sqlite3.connect(m._test_db)
 kept = [r[0] for r in conn.execute("SELECT map FROM lobbies")]
 cols = [r[1] for r in conn.execute("PRAGMA table_info(assignments)")]

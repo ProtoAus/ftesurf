@@ -170,7 +170,8 @@ SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
          ON lv.replay_id = p.id
   LEFT JOIN verdicts v ON v.id = lv.vid
   LEFT JOIN verdicts e ON e.id = lv.eid
-  LEFT JOIN reviews w ON w.replay_id = p.id"""
+  LEFT JOIN reviews w ON w.replay_id = p.id
+ WHERE p.kind = 'run'"""
 
 # pending = what the next sweep would pick: checked 0 and under the ERROR cap.
 RUN_STATES = {
@@ -1306,7 +1307,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "review": review, "verdicts": verdicts,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
-                          "replay data/online/%d.rec" % rid],
+                          "replay online %d" % rid],
             })
 
         @bp.get("/api/run/<int:rid>/path")
@@ -1315,8 +1316,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 return jsonify({"ok": False, "error": "not logged in"}), 401
             conn = db_connect()
             try:
-                row = conn.execute("SELECT map_dir, track, leg, leaf FROM replays"
-                                   " WHERE id = ?", (rid,)).fetchone()
+                row = conn.execute("SELECT map_dir, track, leg, leaf, kind"
+                                   " FROM replays WHERE id = ?", (rid,)).fetchone()
             finally:
                 conn.close()
             if row is None:
@@ -1353,10 +1354,13 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             try:
                 with conn:
                     conn.execute("BEGIN IMMEDIATE")
-                    row = conn.execute("SELECT submitted FROM replays WHERE id = ?",
-                                       (rid,)).fetchone()
+                    row = conn.execute("SELECT submitted, kind FROM replays"
+                                       " WHERE id = ?", (rid,)).fetchone()
                     if row is None:
                         raise AdminError("no such replay: %d" % rid)
+                    if row[1] != "run":
+                        raise AdminError("replay %d is stage evidence, not a run"
+                                         " -- nothing to review" % rid)
                     if row[0] != int(shown):
                         raise RunChanged("the run changed -- reload")
                     if action == "recheck":

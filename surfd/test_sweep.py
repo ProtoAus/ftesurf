@@ -9,7 +9,9 @@ so this tests the sweeper and not pm_verify (cfg/test/p349verify.cfg does that).
 Each case has a control that fails if nothing landed.
 """
 
+import contextlib
 import importlib
+import io
 import os
 import sqlite3
 import sys
@@ -35,6 +37,8 @@ def fresh():
     os.environ.update(SURFD_HOME=home, SURFD_DB=os.path.join(home, "test.db"),
                       SURFD_ENV=os.path.join(home, "surfd.env"), SURFD_RUNS=runs,
                       SURFD_GAME=home, SURFD_VERIFIER=os.path.join(home, "noengine"))
+    for k in ("SURFD_EVIDENCE", "SURFD_KEEP"):     # schema 6: beside runs / under home
+        os.environ.pop(k, None)
     for m in ("surfd", "sweep"):
         sys.modules.pop(m, None)
     sweep = importlib.import_module("sweep")    # imports surfd, as cron does
@@ -244,6 +248,73 @@ def case_command_line():
     check("stdout comes back as lines", out[0].startswith("VERIFY"), True)
 
 
+EVR = "20260918-142825-0-p27510"
+
+
+def case_evidence_not_pending():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    ev = conn.execute(
+        "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+        " name, ticks, tickrate, millis, flags, node, submitted, checked, runid, kind)"
+        " VALUES ('bhop_eazy', 'bhop_eazy', 0, 0, ?, '', '', 'p', 'n', 662, 100,"
+        " 6620, 0, 'p27510', 1, 0, ?, 'evidence')", (EVR + ".rec", EVR)).lastrowid
+    conn.commit()
+    run = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    check("an evidence row at checked 0 is not pending; the run is",
+          [r["id"] for r in sweep.pending(conn, 20)], [run])
+    calls = []
+
+    def runner(map_dir, paths):
+        calls.append(paths)
+        return ["VERIFY %s PASS ticks 662 rows 1" % p for p in paths]
+
+    sweep.sweep(conn, 20, runner=runner)
+    check("...and the sweep verifies only the run, recording nothing for it",
+          (calls, latest(conn, ev)),
+          ([["data/runs/bhop_eazy/main/0000662_p-2c8f36b6_run.rec"]], None))
+
+
+def case_main_evidence():
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    conn.execute(
+        "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+        " tickrate, millis, flags, node, runid, submitted, replay_id)"
+        " VALUES ('surf_aser', 0, 2, 'ranked', 'clean', 'p', 'n', 454, 66.666667,"
+        " 6810, 0, 'p27510', ?, 1, 0)", (EVR,))
+    conn.commit()
+    d = os.path.join(os.path.dirname(runs), "evidence", "surf_aser")
+    os.makedirs(d)
+    path = os.path.join(d, EVR + ".rec")
+    with open(path, "w", newline="\n") as fh:
+        fh.write("FTESURF-REC 9\nmap surf_aser\ntrack 0\nleg 0\ntickrate 0.015\n"
+                 "runid %s\nflags 0\nbegin\n0.0000 0 0 0 0 0 0 0 0 1\n"
+                 "abandon 8262\nend 8262 8519 256 0 8262 4 1 0 1 0\n" % EVR)
+    os.utime(path, (1, 1))
+
+    def cron(*argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = sweep.main(list(argv))
+        return rc, out.getvalue()
+
+    rc, text = cron("--dry-run")
+    check("main --dry-run lists the evidence it would index",
+          (rc, "'files': ['surf_aser/%s.rec']" % EVR in text), (0, True))
+    n = lambda: conn.execute("SELECT COUNT(*) FROM replays WHERE kind = 'evidence'").fetchone()[0]
+    check("...and writes nothing", n(), 0)
+    rc, text = cron()
+    check("main: the cron line reports what it indexed",
+          (rc, text.rstrip().endswith("nothing to verify evidence +1 -0"), n()), (0, True, 1))
+    check("control: a second run adds nothing and says nothing of it",
+          "evidence" in cron()[1], False)
+    conn.execute("DELETE FROM runs")
+    conn.commit()
+    check("...and the stage row gone, the next run drops it",
+          (cron()[1].rstrip().endswith("evidence +0 -1"), n()), (True, 0))
+
+
 def case_quiet_import():
     # Must run first: surfd's logger outlives re-imports within this process.
     surfd, _, _ = fresh()
@@ -256,9 +327,14 @@ def case_quiet_import():
 def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
                  case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
-                 case_mid_run_tie, case_mid_run_recheck, case_command_line):
+                 case_mid_run_tie, case_mid_run_recheck, case_command_line,
+                 case_evidence_not_pending, case_main_evidence):
         print("%s:" % case.__name__)
-        case()
+        try:
+            case()
+        except Exception as exc:                 # a pre-schema-6 surfd lands here
+            check("%s ran to the end" % case.__name__,
+                  "%s: %s" % (type(exc).__name__, exc), "no exception")
     print("\n%d failed" % len(FAILED))
     for f in FAILED:
         print("  " + f)

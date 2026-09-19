@@ -19,7 +19,8 @@ ERROR) exists; the owner's re-check sets checked = 0 and replays.recheck_at.
 
 Run from the proto user's crontab under flock.  One verifier process per map,
 at idle CPU and IO priority, first in line for the OOM killer (the Pi is
-shared).  Usage:  python3 sweep.py [--limit N] [--dry-run]
+shared).  Each run first does surfd's schema-6 evidence upkeep (evidence_step).
+Usage:  python3 sweep.py [--limit N] [--dry-run]
 """
 
 import argparse
@@ -72,8 +73,8 @@ def pending(conn, limit):
     # Only ERRORs since the last submission or re-check count against the cap,
     # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
-        """SELECT r.id, r.map_dir, r.track, r.leg, r.leaf FROM replays r
-           WHERE r.checked = 0
+        """SELECT r.id, r.map_dir, r.track, r.leg, r.leaf, r.kind FROM replays r
+           WHERE r.checked = 0 AND r.kind = 'run'
              AND (SELECT COUNT(*) FROM verdicts v
                   WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
                     AND v.at >= MAX(r.submitted, r.recheck_at)) < ?
@@ -84,7 +85,10 @@ def pending(conn, limit):
 def relpath(row):
     """The file as pm_verify names it (game-filesystem relative), or None.
 
-    surfd.replay_file makes the checks /api/replay makes before it serves."""
+    surfd.replay_file makes the checks /api/replay makes before it serves.
+    Only a kind 'run' file lives under RUNS_DIR (schema 6)."""
+    if "kind" in row.keys() and row["kind"] != "run":
+        return None
     if surfd.replay_file(row)[0] is None:
         return None
     sub = os.path.join(row["map_dir"], surfd.leg_dir(row["track"], row["leg"]),
@@ -179,22 +183,38 @@ def sweep(conn, limit, runner=run_verifier, now=None):
     return counts
 
 
+def evidence_step(conn):
+    """surfd schema 6's upkeep: header runids, then index and GC the evidence
+    behind stage rows.  A fault is reported and never stops the verification.
+    -> (rows indexed, rows dropped)."""
+    try:
+        surfd.backfill_runids(conn)
+        added = surfd.index_evidence(conn)["indexed"]
+        return added, surfd.gc_evidence(conn)
+    except Exception as exc:
+        print("sweep: evidence step failed: %r" % exc, file=sys.stderr)
+        return 0, 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true",
-                    help="list what would be verified and exit")
+                    help="list what would be verified or indexed and exit")
     args = ap.parse_args(argv)
     conn = surfd.connect()
     ensure_schema(conn)
     if args.dry_run:
         for row in pending(conn, args.limit):
             print(row["id"], row["map_dir"], relpath(row))
+        print("evidence:", surfd.index_evidence(conn, dry_run=True))
         return 0
+    added, dropped = evidence_step(conn)
     counts = sweep(conn, args.limit)
-    print("%s sweep: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"),
-                             " ".join("%s %d" % kv for kv in sorted(counts.items()))
-                             or "nothing to verify"))
+    line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
+    if added or dropped:
+        line += " evidence +%d -%d" % (added, dropped)
+    print("%s sweep: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), line))
     return 0
 
 

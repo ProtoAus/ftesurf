@@ -25,6 +25,7 @@ import logging
 import logging.handlers
 import os
 import re
+import shutil
 import sqlite3
 import threading
 import time
@@ -58,6 +59,16 @@ LOG_PATH = os.path.join(LOG_DIR, "surfd.log")
 # rather than hardcoded because test_replays.py has to point it at a tmpdir.
 RUNS_DIR = os.environ.get(
     "SURFD_RUNS", "/srv/nvme/ftesurf-server/game/ftesurf/data/runs")
+
+# Schema 6.  The lobbies' data/evidence/<map>/<runid>.rec (SV_RecKeepEvidence),
+# read-only here and swept by them after run_evidence_days; KEEP_DIR holds
+# surfd's hard links to the ones that back a stage row, <KEEP_DIR>/<map_dir>/<leaf>.
+EVIDENCE_DIR = os.environ.get(
+    "SURFD_EVIDENCE",
+    os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "evidence"))
+KEEP_DIR = os.environ.get("SURFD_KEEP", os.path.join(DATA_DIR, "evidence"))
+EVIDENCE_SETTLE = 600    # s; a file with no `end` younger than this may be mid-write
+KEEP_ORPHAN_AGE = 3600   # s; a kept file with no row older than this is removed
 
 # A replay is ~1 MB where a board page is ~4 KB, so it gets its own bucket and
 # a much smaller cap.  This is the first route that can move real bandwidth off
@@ -268,7 +279,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 # --------------------------------------------------------------------------
@@ -885,6 +896,34 @@ def migrate():
             conn.commit()
             version = 5
 
+        if version < 6:
+            # SCHEMA 6: replays.runid ties a stage row (leg>0, no leaf) to the
+            # recording of the run it was set in -- runs.runid is overwritten on
+            # every improvement, so the link has to live here.  kind is 'run' (a
+            # submitted leaf) or 'evidence' (index_evidence).  Idempotent, as 5.
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
+            for col, ddl in (("runid", "runid TEXT NOT NULL DEFAULT ''"),
+                             ("kind", "kind TEXT NOT NULL DEFAULT 'run'")):
+                if col not in cols:
+                    try:
+                        conn.execute("ALTER TABLE replays ADD COLUMN " + ddl)
+                    except sqlite3.OperationalError as exc:
+                        if "duplicate column" not in str(exc):
+                            raise
+            # The backfill reaches only replays a board row still names;
+            # backfill_runids() reads the rest from their headers.
+            conn.executescript("""
+                CREATE INDEX IF NOT EXISTS replays_runid
+                    ON replays (runid, map, player);
+                UPDATE replays SET runid = COALESCE((SELECT r.runid FROM runs r
+                       WHERE r.replay_id = replays.id AND r.runid <> ''
+                       LIMIT 1), '')
+                 WHERE runid = '' AND kind = 'run';
+                """)
+            conn.execute("PRAGMA user_version=6")
+            conn.commit()
+            version = 6
+
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:
@@ -1027,6 +1066,9 @@ _LEAF_OK = re.compile(
     r"(?:(?:[a-z0-9]{1,12}-)?[0-9a-f]{8}_|s[0-9]{1,2}_)?"
     r"(?:run|pb|shadow)\.rec$"
 )
+
+# An evidence file's leaf: its runid (sv_timer.qc SV_RecOpen) + ".rec".
+_EVLEAF_OK = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{1,3}(?:-p[0-9]{1,5})?\.rec$")
 
 
 def clean_map(raw):
@@ -1724,6 +1766,15 @@ VER_SQL = """CASE WHEN r.replay_id > 0 AND EXISTS (
 _REJECTED_SQL = ("EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id"
                  " AND w.decision = 'reject' AND w.at >= p.submitted)")
 
+# The parent of runs row `r` when it is a stage row with no recording of its
+# own: the leg-0 replay of the same run, a kept run before evidence.  A
+# correlated subquery, not a JOIN: BOARD_ORDER's column names are bare.
+_PARENT_SQL = ("(SELECT p.id FROM replays p WHERE r.leg > 0 AND r.replay_id = 0"
+               " AND r.runid <> '' AND p.runid = r.runid AND p.map = r.map"
+               " AND p.track = r.track AND p.leg = 0 AND p.player = r.player"
+               " AND NOT " + _REJECTED_SQL +
+               " ORDER BY p.kind <> 'run', p.id DESC LIMIT 1)")
+
 
 def public_state(verdict, decision):
     """VER_SQL's rule in Python, for the admin display.
@@ -1755,7 +1806,8 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
     rows = []
     for i, row in enumerate(db.execute(
             "SELECT r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
-            "       r.submitted, r.replay_id, " + VER_SQL + " AS ver"
+            "       r.submitted, r.replay_id, " + _PARENT_SQL + " AS prun, "
+            + VER_SQL + " AS ver"
             "  FROM runs r"
             " WHERE r.map=? AND r.track=? AND r.leg=? AND r.tier=? AND r.style=?"
             " ORDER BY " + BOARD_ORDER + " LIMIT ? OFFSET ?",
@@ -1773,6 +1825,8 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
             # time).  An integer: the client keeps rows in fixed float arrays,
             # and /api/replay's whole surface stays one integer.
             "rep": row["replay_id"],
+            # Schema 6: a stage row's parent replay (_PARENT_SQL), else 0.
+            "run": row["prun"] or 0,
             "ver": row["ver"],
         })
     return rows
@@ -1809,17 +1863,19 @@ def restand(db, rid):
     next run against the re-derived row.
     """
     rep = db.execute(
-        "SELECT map, track, leg, tier, style, player FROM replays WHERE id = ?",
-        (rid,)).fetchone()
-    if rep is None:
-        return "none"
-    key = tuple(rep)
+        "SELECT map, track, leg, tier, style, player, kind FROM replays"
+        " WHERE id = ?", (rid,)).fetchone()
+    if rep is None or rep["kind"] != "run":
+        return "none"           # evidence stands on no board (schema 6)
+    key = (rep["map"], rep["track"], rep["leg"], rep["tier"], rep["style"],
+           rep["player"])
     cur = db.execute(
         "SELECT replay_id, millis FROM runs WHERE map=? AND track=? AND leg=?"
         " AND tier=? AND style=? AND player=?", key).fetchone()
     best = db.execute(
         "SELECT p.* FROM replays p WHERE p.map=? AND p.track=? AND p.leg=?"
-        " AND p.tier=? AND p.style=? AND p.player=? AND NOT " + _REJECTED_SQL +
+        " AND p.tier=? AND p.style=? AND p.player=? AND p.kind = 'run'"
+        " AND NOT " + _REJECTED_SQL +
         " ORDER BY p.millis, p.submitted, p.id LIMIT 1", key).fetchone()
 
     if cur is not None:
@@ -2035,7 +2091,8 @@ def submit_run():
                 ).fetchone()
                 if have is None:
                     nrep = db.execute(
-                        "SELECT COUNT(*) FROM replays").fetchone()[0]
+                        "SELECT COUNT(*) FROM replays WHERE kind = 'run'"
+                    ).fetchone()[0]
                 else:
                     nrep = 0          # an upsert of a row we already hold
                 if have is not None or nrep < MAX_REPLAYS:
@@ -2044,8 +2101,8 @@ def submit_run():
                         INSERT INTO replays (map, map_dir, track, leg, leaf,
                                              tier, style, player, name, ticks,
                                              tickrate, millis, flags, node,
-                                             submitted, bytes, truncated)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                             submitted, bytes, truncated, runid)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
                             tier      = excluded.tier,
@@ -2060,12 +2117,13 @@ def submit_run():
                             submitted = excluded.submitted,
                             bytes     = excluded.bytes,
                             truncated = excluded.truncated,
+                            runid     = excluded.runid,
                             seen      = -1,
                             checked   = 0
                         """,
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
-                         now, recbytes, rectrunc),
+                         now, recbytes, rectrunc, runid),
                     )
                     rid = db.execute(
                         "SELECT id FROM replays"
@@ -2243,22 +2301,255 @@ def leg_dir(track, leg):
 def replay_file(row):
     """The file a replays row names: ``(path, "")``, or ``(None, why)``.
 
-    `row` needs map_dir, track, leg and leaf.  `why` is "name" (leaf or
-    map_dir fails its grammar), "outside" (resolves outside RUNS_DIR) or
-    "missing" (not a file).  The one path check /api/replay, sweep.py and the
-    admin share; submit_run validates names too, but the row outlives that.
+    `row` needs map_dir, track, leg and leaf, and kind (schema 6; absent reads
+    'run').  `why` is "name" (leaf or map_dir fails its grammar, or an unknown
+    kind), "outside" (resolves outside its root) or "missing" (not a file).
+    The one path check /api/replay, sweep.py and the admin share; submit_run
+    validates names too, but the row outlives that.  A 'run' lives under
+    RUNS_DIR/<map_dir>/<leg dir>/, an 'evidence' row under KEEP_DIR/<map_dir>/.
     """
+    kind = row["kind"] if "kind" in row.keys() else "run"
     leaf, map_dir = row["leaf"] or "", row["map_dir"] or ""
-    if not _LEAF_OK.match(leaf) or not _MAPNAME_OK.match(map_dir):
+    if kind == "evidence":
+        ok, root, sub = _EVLEAF_OK.match(leaf), KEEP_DIR, (map_dir, leaf)
+    elif kind == "run":
+        ok, root = _LEAF_OK.match(leaf), RUNS_DIR
+        sub = (map_dir, leg_dir(row["track"], row["leg"]), leaf)
+    else:
         return None, "name"
-    root = os.path.realpath(RUNS_DIR)
-    path = os.path.realpath(
-        os.path.join(root, map_dir, leg_dir(row["track"], row["leg"]), leaf))
+    if not ok or not _MAPNAME_OK.match(map_dir):
+        return None, "name"
+    root = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(root, *sub))
     if not path.startswith(root + os.sep):
         return None, "outside"
     if not os.path.isfile(path):
         return None, "missing"
     return path, ""
+
+
+# --------------------------------------------------------------------------
+# Evidence behind stage rows (schema 6).  sweep.py's cron runs these; none
+# raises OSError.
+# --------------------------------------------------------------------------
+
+_REC_TAIL = 16384        # both writers put `abandon`/`end` in the last lines
+
+
+def _rec_meta(path):
+    """``(header, end_ticks or -1, abandoned, size, mtime)`` of a .rec, or None.
+
+    The header is read to `begin` (64 lines at most), first spelling of a key
+    wins; `end`/`abandon` come from the last _REC_TAIL bytes."""
+    try:
+        with open(path, "rb") as fh:
+            st = os.fstat(fh.fileno())
+            hdr = {}
+            for _ in range(64):
+                line = fh.readline()
+                if not line:
+                    break
+                word, _sp, rest = line.decode("utf-8", "replace") \
+                    .rstrip("\r\n").partition(" ")
+                if word == "begin":
+                    break
+                hdr.setdefault(word, rest)
+            fh.seek(max(0, st.st_size - _REC_TAIL))
+            tail = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    if st.st_size > _REC_TAIL:
+        tail = tail[1:]                           # a partial first line
+    end, abandoned = -1, False
+    for line in tail:
+        if line.startswith("end "):
+            end = strict_int(line.split()[1], 0, MAX_TICKS)
+            end = -1 if end is None else end
+        elif line.startswith("abandon "):
+            abandoned = True
+    return hdr, end, abandoned, st.st_size, st.st_mtime
+
+
+def backfill_runids(conn, limit=200):
+    """Header runids for leg-0 run replays migrate()'s backfill could not reach
+    (no board row names them any more).  '-' marks a file with none or no file,
+    so each row is read once.  -> rows written."""
+    rows = conn.execute(
+        "SELECT id, map_dir, track, leg, leaf, kind FROM replays"
+        " WHERE kind = 'run' AND leg = 0 AND runid = '' ORDER BY id LIMIT ?",
+        (limit,)).fetchall()
+    for row in rows:
+        path = replay_file(row)[0]
+        meta = _rec_meta(path) if path else None
+        runid = clean_text(meta[0].get("runid")) if meta else ""
+        with conn:
+            conn.execute("UPDATE replays SET runid = ? WHERE id = ? AND runid = ''",
+                         (runid or "-", row["id"]))
+    return len(rows)
+
+
+def _keep_file(src, dst):
+    """Hard-link src at dst (a copy when a link is refused), atomically."""
+    if os.path.exists(dst) and os.path.samefile(src, dst):
+        return
+    tmp = dst + ".tmp"
+    if os.path.lexists(tmp):
+        os.unlink(tmp)
+    try:
+        os.link(src, tmp)
+    except OSError:
+        shutil.copyfile(src, tmp)
+    os.replace(tmp, dst)
+
+
+def index_evidence(conn, now=None, dry_run=False):
+    """Index each EVIDENCE_DIR file that a leafless stage row's run left and no
+    replay stands for, as a kind='evidence' leg-0 row kept under KEEP_DIR.
+
+    tier/style '' and checked 1 keep the row off every board query and the
+    verifier.  -> {"indexed", "bad", "deferred", "files"}; a dry run writes
+    nothing and counts what it would index."""
+    now = int(time.time()) if now is None else now
+    out = {"indexed": 0, "bad": 0, "deferred": 0, "files": []}
+    try:
+        dirs = sorted(os.listdir(EVIDENCE_DIR))
+    except OSError:
+        return out
+    have = {(r["map"], r["runid"]) for r in conn.execute(
+        "SELECT map, runid FROM replays WHERE kind = 'evidence'")}
+    for d in dirs:
+        if not _MAPNAME_OK.match(d):
+            continue
+        try:
+            leaves = sorted(os.listdir(os.path.join(EVIDENCE_DIR, d)))
+        except OSError:
+            continue
+        for leaf in leaves:
+            if not _EVLEAF_OK.match(leaf):
+                continue
+            runid, key = leaf[:-4], d.lower()
+            if (key, runid) in have:
+                continue
+            refs = conn.execute(
+                "SELECT r.track, r.player, MAX(r.name) AS name FROM runs r"
+                " WHERE r.leg > 0 AND r.replay_id = 0 AND r.runid = ? AND r.map = ?"
+                "   AND NOT EXISTS (SELECT 1 FROM replays p WHERE p.runid = r.runid"
+                "        AND p.map = r.map AND p.track = r.track"
+                "        AND p.player = r.player AND p.leg = 0)"
+                " GROUP BY r.track, r.player ORDER BY r.track, r.player",
+                (runid, key)).fetchall()
+            if not refs:
+                continue                  # backs nothing; the lobby sweeps it
+            src = os.path.join(EVIDENCE_DIR, d, leaf)
+            meta = _rec_meta(src)
+            hdr = meta[0] if meta else {}
+            track = strict_int(hdr.get("track"), 0, MAX_TRACK)
+            ref = next((r for r in refs if r["track"] == track), None)
+            spt = strict_float(hdr.get("movetickrate"), 1e-6, 1.0) or \
+                strict_float(hdr.get("tickrate"), 1e-6, 1.0)
+            if (meta is None or ref is None or spt is None
+                    or clean_text(hdr.get("runid")) != runid
+                    or clean_text(hdr.get("map")).lower() != key
+                    or strict_int(hdr.get("leg"), 0, MAX_LEG) != 0):
+                log.warning("evidence %s/%s does not describe its stage rows"
+                            " (header runid %r map %r track %r leg %r)", d, leaf,
+                            hdr.get("runid"), hdr.get("map"), hdr.get("track"),
+                            hdr.get("leg"))
+                out["bad"] += 1
+                continue
+            _hdr, end, _abandoned, size, mtime = meta
+            if end < 0 and now - mtime < EVIDENCE_SETTLE:
+                out["deferred"] += 1      # the non-stream writer may be mid-file
+                continue
+            if dry_run:
+                out["indexed"] += 1
+                out["files"].append("%s/%s" % (d, leaf))
+                continue
+            ticks = max(end, 0)
+            words = (hdr.get("flags") or "0").split()
+            flags = strict_int(words[0] if words else 0, 0, 0x7FFFFFFF) or 0
+            port = re.search(r"-p([0-9]+)$", runid)
+            try:
+                os.makedirs(os.path.join(KEEP_DIR, d), exist_ok=True)
+                _keep_file(src, os.path.join(KEEP_DIR, d, leaf))
+            except OSError as exc:
+                log.error("evidence %s/%s not kept: %s", d, leaf, exc)
+                out["bad"] += 1
+                continue
+            with conn:
+                n = conn.execute(
+                    "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
+                    " style, player, name, ticks, tickrate, millis, flags, node,"
+                    " submitted, bytes, truncated, seen, checked, runid, kind)"
+                    " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,1,?,'evidence')"
+                    " ON CONFLICT(map, track, leg, leaf) DO NOTHING",
+                    (key, d, track, leaf, ref["player"], ref["name"], ticks,
+                     1.0 / spt, int(round(ticks * spt * 1000.0)), flags,
+                     "p" + port.group(1) if port else "?", int(mtime), size,
+                     runid)).rowcount
+            have.add((key, runid))
+            if n:
+                out["indexed"] += 1
+                out["files"].append("%s/%s" % (d, leaf))
+    return out
+
+
+def gc_evidence(conn):
+    """Drop each evidence row no leafless stage row references any more, then
+    (after the commit) its kept file; then kept files with no row that are
+    older than KEEP_ORPHAN_AGE.  -> rows dropped."""
+    n = 0
+    for row in conn.execute(
+            "SELECT id, map_dir, track, leg, leaf, kind FROM replays"
+            " WHERE kind = 'evidence'").fetchall():
+        with conn:
+            # The reference test sits inside the DELETE: a stage post landing
+            # between a SELECT and a DELETE cannot orphan its link.
+            gone = conn.execute(
+                "DELETE FROM replays WHERE id = ? AND kind = 'evidence'"
+                " AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.leg > 0"
+                "   AND r.replay_id = 0 AND r.runid = replays.runid"
+                "   AND r.map = replays.map AND r.track = replays.track"
+                "   AND r.player = replays.player)", (row["id"],)).rowcount
+            if gone:
+                conn.execute("DELETE FROM verdicts WHERE replay_id = ?", (row["id"],))
+                conn.execute("DELETE FROM reviews WHERE replay_id = ?", (row["id"],))
+        if gone:
+            n += 1
+            path = replay_file(row)[0]
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError as exc:
+                    log.warning("evidence %d: kept file not removed: %s",
+                                row["id"], exc)
+
+    if os.path.realpath(KEEP_DIR) == os.path.realpath(EVIDENCE_DIR):
+        log.error("SURFD_KEEP is the lobbies' evidence dir; orphan pass skipped")
+        return n
+    kept = {(r["map_dir"], r["leaf"]) for r in conn.execute(
+        "SELECT map_dir, leaf FROM replays WHERE kind = 'evidence'")}
+    now = time.time()
+    try:
+        dirs = os.listdir(KEEP_DIR)
+    except OSError:
+        return n
+    for d in dirs:
+        try:
+            leaves = os.listdir(os.path.join(KEEP_DIR, d))
+        except OSError:
+            continue
+        for leaf in leaves:
+            if not leaf.endswith((".rec", ".rec.tmp")) or (d, leaf) in kept:
+                continue
+            path = os.path.join(KEEP_DIR, d, leaf)
+            try:
+                if now - os.lstat(path).st_mtime > KEEP_ORPHAN_AGE:
+                    os.unlink(path)
+                    log.warning("evidence: removed orphan %s/%s", d, leaf)
+            except OSError:
+                pass
+    return n
 
 
 @app.get("/api/replay/<int:rid>")
@@ -2294,7 +2585,8 @@ def replay(rid):
     try:
         db = get_db()
         row = db.execute(
-            "SELECT map_dir, track, leg, leaf, bytes FROM replays WHERE id = ?",
+            "SELECT map_dir, track, leg, leaf, kind, bytes FROM replays"
+            " WHERE id = ?",
             (rid,),
         ).fetchone()
     except sqlite3.Error as exc:

@@ -461,10 +461,10 @@ check("...and rep is not zero", rid > 0, True)
 check("the existing row keys are untouched",
       sorted(row.keys()),
       sorted(["r", "player", "name", "ticks", "rate", "ms", "flags", "when",
-              "rep", "ver"]))
+              "rep", "run", "ver"]))
 check("...in their documented order, with ver last", list(row.keys()),
       ["r", "player", "name", "ticks", "rate", "ms", "flags", "when", "rep",
-       "ver"])
+       "run", "ver"])
 
 # A missing recording must never hide a time -- and this also catches the
 # failure where a column is added to the row dict but not to the SELECT, which
@@ -482,11 +482,11 @@ check("...reporting rep 0", body["rows"][0]["rep"], 0)
 print("\n--- 11. the 2 -> 3 migration adds and does not rebuild -------------")
 
 m = fresh()
-check("a fresh database is stamped schema 5", user_version(m), 5)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 5)
+check("a fresh database is stamped schema 6", user_version(m), 6)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
 
 m = fresh(seed_v2=True)
-check("a schema-2 database upgrades to 5", user_version(m), 5)
+check("a schema-2 database upgrades to 6", user_version(m), 6)
 check("...keeping the board rows it already held",
       [r["player"] for r in rows(m, "SELECT player FROM runs")], ["old"])
 check("...defaulting them to no replay",

@@ -393,7 +393,7 @@ def review_section(pw_hash, pw):
     check("...the download link", d["download"], "/api/replay/%d" % hal)
     check("...the watch commands", d["watch"],
           ["map surf_kitsune", "board_replay %d" % hal,
-           "replay data/online/%d.rec" % hal])
+           "replay online %d" % hal])
     check("...the file, standing and review",
           (d["run"]["file"], d["standing"], d["review"]["note"], d["public"]),
           (True, {"on_board": True, "rank": 2, "of": 4}, "looked fine", "verified"))

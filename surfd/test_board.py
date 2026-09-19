@@ -31,7 +31,8 @@ there would silently re-file every run on the board rather than fail.
 
 Sections 14-17 are schema 5: the 4 -> 5 migration and its race, the `ver`
 flag, reject/clear through restand(), and that no verdict, reason or review
-reaches a public body.
+reaches a public body.  Section 18 is schema 6: a stage row's `run`, and the
+5 -> 6 migration and its race.
 """
 
 import hashlib
@@ -175,12 +176,12 @@ def user_version(mod):
 print("\n--- 1. schema -----------------------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 5", user_version(m), 5)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 5)
+check("a fresh database is stamped schema 6", user_version(m), 6)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
 check("an empty board answers with an empty row list", names(board(m)), [])
 
 m = fresh(seed_v1=True)
-check("a schema-1 database upgrades to 5", user_version(m), 5)
+check("a schema-1 database upgrades to 6", user_version(m), 6)
 conn = sqlite3.connect(m._test_db)
 kept = conn.execute("SELECT map FROM lobbies").fetchall()
 conn.close()
@@ -1012,7 +1013,7 @@ def objects(path):
 
 
 m = fresh(seed=seed_v4)
-check("a v4 database upgrades to 5", user_version(m), 5)
+check("a v4 database upgrades to 6", user_version(m), 6)
 check("...keeping sweep's verdict row",
       q(m, "SELECT replay_id, verdict, reason, at FROM verdicts"),
       [(1, "REFUSE", "an old format", 1700000100)])
@@ -1039,18 +1040,18 @@ try:
 except Exception as exc:                     # the failure being tested for
     rerun = repr(exc)
 check("re-running step 5 over a finished step 5 does not raise", rerun, "ok")
-check("...and stamps 5 again", user_version(m), 5)
+check("...and stamps 6 again", user_version(m), 6)
 
 
 class RacingConn(object):
     """A connection whose ALTER is beaten to it by another process."""
 
-    def __init__(self, real, path):
-        self._real, self._path = real, path
+    def __init__(self, real, path, needle="ADD COLUMN recheck_at"):
+        self._real, self._path, self._needle = real, path, needle
         self.raced = False
 
     def execute(self, sql, *args):
-        if "ADD COLUMN recheck_at" in sql:
+        if self._needle in sql:
             other = sqlite3.connect(self._path)
             other.execute(sql)
             other.commit()
@@ -1092,8 +1093,8 @@ check("another process adding recheck_at between the check and the ALTER",
       migrate_file(m, race_db, racing), "ok")
 check("...really raced (control)", any(rc.raced for rc in seen), True)
 names_, cols, ver = objects(race_db)
-check("...leaves one recheck_at, reviews, and schema 5",
-      (cols.count("recheck_at"), "reviews" in names_, ver), (1, True, 5))
+check("...leaves one recheck_at, reviews, and schema 6",
+      (cols.count("recheck_at"), "reviews" in names_, ver), (1, True, 6))
 conn = sqlite3.connect(race_db)
 try:
     conn.execute("ALTER TABLE replays ADD COLUMN recheck_at INTEGER")
@@ -1106,7 +1107,7 @@ check("control: SQLite's error for the lost race is the tolerated one",
 
 # Two threads migrating one v4 file at once, released by a barrier.
 errors = []
-steps = []                                      # "migrated 4 -> 5" per round
+steps = []                                      # "migrated 4 -> 6" per round
 real_path = m.DB_PATH
 m.log.info =lambda msg, *a, **k: steps.append((n, msg % a))
 try:
@@ -1128,13 +1129,13 @@ try:
         for t in threads:
             t.join()
         names_, cols, ver = objects(path)
-        if (cols.count("recheck_at"), "reviews" in names_, ver) != (1, True, 5):
+        if (cols.count("recheck_at"), "reviews" in names_, ver) != (1, True, 6):
             errors.append("round %d: %r" % (n, (cols.count("recheck_at"), ver)))
 finally:
     m.DB_PATH = real_path
     del m.log.info                              # back to Logger.info
 both = sum(1 for k in range(20)
-           if sum(1 for r, s in steps if r == k and "4 -> 5" in s) == 2)
+           if sum(1 for r, s in steps if r == k and "migrated 4 -> " in s) == 2)
 print("     (both threads ran step 5 in %d of 20 rounds)" % both)
 check("two threads migrating one v4 file, 20 rounds: no error", errors, [])
 check("control: in some round both threads really ran step 5", both > 0, True)
@@ -1355,6 +1356,174 @@ check("control: the approved run shows VERIFIED, the rejected one is gone",
       (rows_by_player(m)["noted"]["ver"], "hidden" in rows_by_player(m)), (1, False))
 os.environ.pop("SURFD_MAPS", None)
 os.environ.pop("SURFD_ZONES", None)
+
+# --------------------------------------------------------------------------
+print("\n--- 18. schema 6: the run a stage row was set in (`run`) ----------")
+
+R = "20260918-142825-0-p27510"
+R2 = "20260918-150000-0-p27510"
+
+
+def q6(mod, sql, args=()):
+    """q(), but a schema-5 database's missing column reads as a value."""
+    try:
+        return q(mod, sql, args)
+    except sqlite3.Error as exc:
+        return "error: %s" % exc
+
+
+def legrows(mod, leg):
+    body = board(mod, leg=leg, limit=200)
+    return {r["player"]: r for r in body["rows"]} if isinstance(body, dict) else {}
+
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+run(m, "alice", 700, rec=False, leg=1, runid=R)       # posted mid-run, no leaf
+clock.now += 1
+run(m, "alice", 900, rec=False, leg=2, runid=R)
+check("(b) a stage posted before its run finishes reads run 0",
+      legrows(m, 2)["alice"].get("run"), 0)
+clock.now += 1
+main = run(m, "alice", 4000, runid=R)["rep"]
+a1, a2 = legrows(m, 1)["alice"], legrows(m, 2)["alice"]
+check("(a) legs 1 and 2: rep 0, run = the main run's replay",
+      (a1["rep"], a1.get("run"), a2["rep"], a2.get("run")), (0, main, 0, main))
+check("(a) ...and the main row itself reads run 0",
+      legrows(m, 0)["alice"].get("run"), 0)
+check("(a) control: the main replay is a real id", main > 0, True)
+
+clock.now += 1
+new = run(m, "alice", 3500, runid=R2)["rep"]
+check("(c) alice improves her main run: a new replay stands",
+      (new != main, legrows(m, 0)["alice"]["rep"]), (True, new))
+check("(c) ...and the stage row still names the run it was set in",
+      legrows(m, 2)["alice"].get("run"), main)
+check("(c) control: no leg-0 runs row carries R now (a runs join reads 0)",
+      q(m, "SELECT 1 FROM runs WHERE leg = 0 AND runid = ?", (R,)), [])
+
+check("(d) reject the parent replay", review(m, main, "reject", T + 10), "kept")
+check("(d) ...and the stage row reads run 0", legrows(m, 2)["alice"].get("run"), 0)
+review(m, main, None, T + 11)
+check("(d) control: clearing the review links it again",
+      legrows(m, 2)["alice"].get("run"), main)
+
+clock.now += 1
+bob = run(m, "bob", 5000, runid=R)["rep"]
+check("(e) bob's run under the same runid string leaves alice's link",
+      legrows(m, 2)["alice"].get("run"), main)
+check("(e) control: bob's is the newest leg-0 replay with that runid",
+      q6(m, "SELECT MAX(id) FROM replays WHERE leg = 0 AND runid = ?", (R,)),
+      [(bob,)])
+
+clock.now += 1
+own = run(m, "carol", 800, leg=2, runid="R-carol")["rep"]   # !s 2: its own leaf
+run(m, "carol", 6000, runid="R-carol")
+row = legrows(m, 2)["carol"]
+check("(f) a stage-only run with its own leaf: rep > 0, run 0",
+      (own > 0 and row["rep"] == own, row.get("run")), (True, 0))
+
+# (g) the 5 -> 6 migration: a live v5 file, one run and one superseded replay.
+V5 = V4.replace("PRAGMA user_version=4;", "") + """
+CREATE TABLE reviews (replay_id INTEGER PRIMARY KEY, decision TEXT NOT NULL
+    CHECK (decision IN ('approve', 'reject')), note TEXT NOT NULL DEFAULT '',
+    at INTEGER NOT NULL);
+CREATE INDEX runs_replay ON runs (replay_id);
+ALTER TABLE replays ADD COLUMN recheck_at INTEGER NOT NULL DEFAULT 0;
+UPDATE runs SET runid = '%s';
+INSERT INTO runs VALUES ('surf_test',0,2,'ranked','clean','old','Old',
+    700,100.0,7000,0,'p27510','%s',1700000000,0);
+INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player, name,
+    ticks, tickrate, millis, flags, node, submitted, seen, checked)
+    VALUES ('surf_test','surf_test',0,0,'0005000_run.rec','ranked','clean',
+    'old','Old',5000,100.0,50000,0,'p27510',1690000000,-1,0);
+PRAGMA user_version=5;
+""" % (R, R)
+
+
+def seed_v5(path):
+    conn = sqlite3.connect(path)
+    conn.executescript(V5)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.commit()
+    conn.close()
+
+
+m = fresh(seed=seed_v5)
+names_, cols, ver = objects(m._test_db)
+check("(g) a v5 database upgrades to 6", ver, 6)
+check("(g) ...gaining replays.runid, kind and the replays_runid index",
+      (cols.count("runid"), cols.count("kind"), "replays_runid" in names_),
+      (1, 1, True))
+check("(g) ...keeping its rows, runid backfilled from runs, kind 'run'",
+      (q(m, "SELECT player, leg, runid, replay_id FROM runs ORDER BY leg"),
+       q6(m, "SELECT id, runid, kind FROM replays ORDER BY id")),
+      ([("old", 0, R, 1), ("old", 2, R, 0)], [(1, R, "run"), (2, "", "run")]))
+check("(g) ...and the upgraded stage row names its run",
+      [(r["player"], r.get("run")) for r in board(m, leg=2)["rows"]], [("old", 1)])
+
+race5 = os.path.join(m._test_home, "race5.db")
+seed_v5(race5)
+seen5 = []
+
+
+def racing5(real):
+    rc = RacingConn(real, race5, "ADD COLUMN runid")
+    seen5.append(rc)
+    return rc
+
+
+check("(g) another process adding runid between the check and the ALTER",
+      migrate_file(m, race5, racing5), "ok")
+check("(g) ...really raced (control)", any(rc.raced for rc in seen5), True)
+names_, cols, ver = objects(race5)
+check("(g) ...leaves one runid, one kind, and schema 6",
+      (cols.count("runid"), cols.count("kind"), ver), (1, 1, 6))
+conn = sqlite3.connect(race5)
+try:
+    conn.execute("ALTER TABLE replays ADD COLUMN runid TEXT")
+    dup = "no error"
+except sqlite3.OperationalError as exc:
+    dup = str(exc)
+conn.close()
+check("(g) control: SQLite's error for the lost race is the tolerated one",
+      "duplicate column" in dup, True)
+
+errors = []
+steps = []
+real_path = m.DB_PATH
+m.log.info = lambda msg, *a, **k: steps.append((n, msg % a))
+try:
+    for n in range(20):
+        path = os.path.join(m._test_home, "thr5_%d.db" % n)
+        seed_v5(path)
+        m.DB_PATH = path
+        gate = threading.Barrier(2)
+
+        def worker(gate=gate):
+            try:
+                gate.wait()
+                m.migrate()
+            except Exception as exc:
+                errors.append(repr(exc))
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        names_, cols, ver = objects(path)
+        if (cols.count("runid"), cols.count("kind"), ver) != (1, 1, 6):
+            errors.append("round %d: %r" % (n, (cols.count("runid"), ver)))
+finally:
+    m.DB_PATH = real_path
+    del m.log.info
+both = sum(1 for k in range(20)
+           if sum(1 for r, s in steps if r == k and "5 -> 6" in s) == 2)
+print("     (both threads ran step 6 in %d of 20 rounds)" % both)
+check("(g) two threads migrating one v5 file, 20 rounds: no error", errors, [])
+check("(g) control: in some round both threads really ran step 6", both > 0, True)
 
 # --------------------------------------------------------------------------
 print("")
