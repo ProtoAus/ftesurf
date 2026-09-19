@@ -137,8 +137,10 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     node      which server witnessed it
     runid     the .rec header's runid, <YYYYmmdd>-<HHMMSS>-<slot>-p<port>,
               sent with every lobby finish and every posted stage since Patch
-              360.  Stored on `runs` and (schema 6) on `replays`: it is how a
-              stage row finds the recording of the run it was set in.
+              360.  Stored on `runs` and (schema 6) on `replays` (`-` when none
+              is sent): it is how a stage row finds the recording of the run
+              it was set in.  Ignored from an untrusted source, like `rec`: it
+              decides whose stage rows an evidence file backs.
     rec       the BASENAME of the .rec the server just closed, e.g.
               0000279_lex-3eb1bd43_run.rec.  OPTIONAL: a run that left no
               keepable recording sends nothing and its row honestly reports no
@@ -597,19 +599,25 @@ as `data/evidence/<map>/<runid>.rec`, which SV_EvidenceSweep deletes after
 `run_evidence_days` (30). Before verifying, each sweep:
 
   1. `backfill_runids`: reads the header `runid` of leg-0 run replays that
-     migrate()'s backfill (from `runs`) could not reach; `-` when there is none.
+     predate schema 6 (`runid` `''`) and migrate()'s backfill (from `runs`)
+     could not reach; `-` when there is none. A later replay sent with no runid
+     is stored as `-` and never read: a TF_SHADOW continuation's header still
+     names the run the lobby cut it from.
   2. `index_evidence`: for each `SURFD_EVIDENCE` file (default: `data/evidence`
-     beside `SURFD_RUNS`) named `<runid>.rec` that a leafless stage row
-     references and no leg-0 replay of that run/player stands for, checks the
-     header (runid, map, track, leg 0), hard-links it to
+     beside `SURFD_RUNS`) named `<runid>.rec` that one player's leafless stage
+     rows reference and no leg-0 replay of that run/player stands for, checks
+     the header (runid, map, track, leg 0), hard-links it to
      `SURFD_KEEP/<map_dir>/<runid>.rec` (default `data/evidence` under
      `SURFD_HOME`; a copy if the link is refused) and adds a `replays` row with
      `kind='evidence'`, tier and style `''` and `checked=1`, so it is on no
-     board, in no review list and never verified. A file with no `end` younger
-     than 10 minutes waits for the next sweep.
+     board, in no review list and never verified. A file named by more than one
+     player's stage rows is bad (logged, not indexed). A file with no `end` (a
+     torn `end` line counts as none) younger than 10 minutes waits for the next
+     sweep; an unreadable one skips only itself.
   3. `gc_evidence`: deletes each evidence row no leafless stage row references
      any more (the check is inside the DELETE), then its kept file; kept files
-     with no row, older than an hour, go too.
+     with no row, older than an hour, go too. Nothing under `SURFD_EVIDENCE` is
+     ever unlinked, whatever `SURFD_KEEP` resolves to.
 
 The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
 the kept file byte-exact, like any other replay. The log line gains

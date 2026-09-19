@@ -88,14 +88,17 @@ def fresh(admin_pw=None, keep=None):
     return m
 
 
-def submit(m, player="kap", name="Kap", leg=0, ticks=4000, runid=R, rec=None):
+def submit(m, player="kap", name="Kap", leg=0, ticks=4000, runid=R, rec=None,
+           addr="127.0.0.1"):
     form = {"key": "testkey", "map": "surf_Aser", "track": "0", "leg": str(leg),
             "player": player, "name": name, "ticks": str(ticks),
-            "tickrate": "66.666667", "flags": "0", "node": "p27510", "runid": runid}
+            "tickrate": "66.666667", "flags": "0", "node": "p27510"}
+    if runid is not None:                        # None: the lobby sent none
+        form["runid"] = runid
     if rec:
         form["rec"] = rec
     return m.app.test_client().post("/api/run", data=form,
-                                    environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+                                    environ_base={"REMOTE_ADDR": addr}).get_json()
 
 
 def board(m, leg, path="/api/board"):
@@ -133,9 +136,25 @@ def put_ev(m, name, body, d="surf_Aser", age=None):
     return path
 
 
+def put_run(m, name, body):
+    """A main-leg recording under SURFD_RUNS, where a kind 'run' row names it."""
+    path = os.path.join(m.RUNS_DIR, "surf_Aser", "main", name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="\n") as fh:
+        fh.write(body)
+    return path
+
+
 def evid(m, runid):
     got = q(m, "SELECT id FROM replays WHERE kind = 'evidence' AND runid = ?", (runid,))
     return got[0][0] if got else 0
+
+
+def runid_of(m, rid):
+    return q(m, "SELECT runid FROM replays WHERE id = ?", (rid,))
+
+
+TORN = "abandon 8262\ninend 8744 0.009\nend "      # cut right after "end "
 
 
 # --------------------------------------------------------------------------
@@ -356,9 +375,141 @@ def case_public():
         check("E6 no private word in %s" % path, leaked, [])
 
 
+def case_backfill_legacy_only():
+    """E7: the header backfill reads only rows that predate schema 6"""
+    m = fresh()
+    submit(m, leg=2, ticks=454, runid=R)                  # the clean branch's stage
+    sh = leaf(4000, "kap").replace("_run.rec", "_shadow.rec")
+    rid = submit(m, ticks=4000, runid=None, rec=sh)["rep"]   # lobby cleared the runid
+    put_run(m, sh, evbody(R))                             # ...its header still says R
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    bl = leaf(5000, "bob")
+    old = submit(m, player="bob", name="Bob", ticks=5000, runid=R2, rec=bl)["rep"]
+    submit(m, player="bob", name="Bob", leg=3, ticks=600, runid=R2)
+    put_run(m, bl, evbody(R2))
+    conn = m.connect()
+    with conn:
+        conn.execute("UPDATE replays SET runid = '' WHERE id = ?", (old,))  # pre-6
+    check("E7 control: both replays are real rows; bob's stage row reads run 0",
+          (rid > 0, old > 0, by_player(m, 3)["bob"].get("run")), (True, True, 0))
+    m.backfill_runids(conn)
+    check("E7 a replay sent with no runid stays '-' after the backfill",
+          runid_of(m, rid), [("-",)])
+    check("E7 ...so the clean branch's stage row does not name the continuation",
+          by_player(m, 2)["kap"].get("run"), 0)
+    got = m.index_evidence(conn)
+    eid = evid(m, R)
+    check("E7 ...and R's evidence is indexed and backs it",
+          (got["indexed"], eid > 0, by_player(m, 2)["kap"].get("run")), (1, True, eid))
+    check("E7 control: the pre-schema-6 row takes its header's runid and links",
+          (runid_of(m, old), by_player(m, 3)["bob"].get("run")), ([(R2,)], old))
+    check("E7 control: a second pass reads nothing", m.backfill_runids(conn), 0)
+    submit(m, leg=4, ticks=300, runid="-")
+    check("E7 a stage row whose runid is '-' links to no '-' replay",
+          by_player(m, 4)["kap"].get("run"), 0)
+
+
+def case_runid_trust():
+    """E8: a runid is a trusted node's claim, and a run is one player's"""
+    m = fresh()
+    submit(m, leg=2, ticks=454, runid=R)
+    r = submit(m, player="evil", name="Evil", leg=2, ticks=300, runid=R,
+               addr="203.0.113.9")
+    check("E8 control: an untrusted keyed source may file a time", r["stored"], True)
+    check("E8 ...but not a runid",
+          q(m, "SELECT player, runid FROM runs WHERE leg = 2 ORDER BY player"),
+          [("evil", ""), ("kap", R)])
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    got = m.index_evidence(conn)
+    eid = evid(m, R)
+    check("E8 ...so R's evidence is filed under kap and backs kap's row",
+          (got["indexed"], q(m, "SELECT player FROM replays WHERE id = ?", (eid,)),
+           by_player(m, 2)["kap"].get("run")), (1, [("kap",)], eid))
+
+    m = fresh()
+    submit(m, leg=2, ticks=454, runid=R)
+    submit(m, player="bob", name="Bob", leg=3, ticks=600, runid=R)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    got = m.index_evidence(conn)
+    check("E8 a file two players' stage rows name is bad, not indexed",
+          (got["indexed"], got["bad"], evid(m, R)), (0, 1, 0))
+    submit(m, player="bob", name="Bob", leg=3, ticks=500, runid=R2)
+    got = m.index_evidence(conn)
+    check("E8 control: once only kap's rows name it, it is indexed under kap",
+          (got["indexed"], q(m, "SELECT player FROM replays WHERE kind = 'evidence'")),
+          (1, [("kap",)]))
+
+
+def case_torn_index():
+    """E9: an evidence file torn after `end ` skips only itself"""
+    m = fresh()
+    sweep = importlib.import_module("sweep")
+    conn = m.connect()
+    submit(m, player="carol", name="Carol", leg=4, ticks=700, runid=R3)
+    put_ev(m, R3 + ".rec", evbody(R3), age=3600)
+    check("E9 control: carol's evidence is indexed", m.index_evidence(conn)["indexed"], 1)
+    e3 = evid(m, R3)
+    submit(m, player="carol", name="Carol", leg=4, ticks=650,
+           runid="20260918-170000-0-p27510")               # nothing names R3 now
+    submit(m, leg=2, ticks=454, runid=R)
+    torn = put_ev(m, R + ".rec", evbody(R, end=False) + TORN, age=3600)
+    submit(m, player="bob", name="Bob", leg=3, ticks=600, runid=R2)
+    put_ev(m, R2 + ".rec", evbody(R2), age=3600)
+    check("E9 control: the torn file sorts before the good one", R < R2, True)
+    check("E9 sweep.evidence_step finishes: +2 -1", sweep.evidence_step(conn), (2, 1))
+    check("E9 ...the torn file indexed as a run with no end (ticks 0)",
+          q(m, "SELECT ticks FROM replays WHERE kind = 'evidence' AND runid = ?", (R,)),
+          [(0,)])
+    check("E9 ...the good file after it indexed", evid(m, R2) > 0, True)
+    check("E9 ...and gc_evidence ran", (e3 > 0, evid(m, R3)), (True, 0))
+    meta = m._rec_meta(torn)
+    check("E9 _rec_meta: the header kept, end -1, abandon seen",
+          (meta[0].get("runid"), meta[1], meta[2]) if meta else meta, (R, -1, True))
+
+
+def case_torn_backfill():
+    """E10: a pre-schema-6 replay torn after `end ` is backfilled, once"""
+    m = fresh()
+    dl = leaf(5000, "dave")
+    rid = submit(m, player="dave", name="Dave", ticks=5000, runid=R, rec=dl)["rep"]
+    put_run(m, dl, evbody(R, end=False) + TORN)
+    conn = m.connect()
+    with conn:
+        conn.execute("UPDATE replays SET runid = '' WHERE id = ?", (rid,))
+    check("E10 backfill_runids reads its header",
+          (m.backfill_runids(conn), runid_of(m, rid)), (1, [(R,)]))
+    check("E10 ...and a second pass reads nothing", m.backfill_runids(conn), 0)
+
+
+def case_keep_same_gc():
+    """E11: SURFD_KEEP at the lobbies' tree: gc drops the row, not their file"""
+    m = fresh(keep="same")
+    submit(m, leg=2, ticks=454, runid=R)
+    src = put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    check("E11 control: indexed in place", m.index_evidence(conn)["indexed"], 1)
+    submit(m, leg=2, ticks=400, runid=R3)                  # nothing names R now
+    check("E11 control: gc_evidence drops the row", (m.gc_evidence(conn), evid(m, R)),
+          (1, 0))
+    check("E11 ...and leaves the lobby's file", os.path.exists(src), True)
+
+    m = fresh()                                  # KEEP apart, one map dir linked in
+    os.makedirs(os.path.join(m._ev, "surf_Aser"), exist_ok=True)
+    os.makedirs(m.KEEP_DIR, exist_ok=True)
+    os.symlink(os.path.join(m._ev, "surf_Aser"), os.path.join(m.KEEP_DIR, "surf_Aser"))
+    lone = put_ev(m, R + ".rec", evbody(R), age=7200)
+    m.gc_evidence(m.connect())
+    check("E11 the orphan pass leaves a lobby file reached through a link",
+          os.path.exists(lone), True)
+
+
 def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
-                 case_keep_is_not_evidence, case_exclusion, case_public):
+                 case_keep_is_not_evidence, case_exclusion, case_public,
+                 case_backfill_legacy_only, case_runid_trust, case_torn_index,
+                 case_torn_backfill, case_keep_same_gc):
         print("\n--- %s" % case.__doc__)
         try:
             case()

@@ -1769,9 +1769,11 @@ _REJECTED_SQL = ("EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id"
 # The parent of runs row `r` when it is a stage row with no recording of its
 # own: the leg-0 replay of the same run, a kept run before evidence.  A
 # correlated subquery, not a JOIN: BOARD_ORDER's column names are bare.
+# '-' is a replay's "no runid" (submit_run, backfill_runids), never a link.
 _PARENT_SQL = ("(SELECT p.id FROM replays p WHERE r.leg > 0 AND r.replay_id = 0"
-               " AND r.runid <> '' AND p.runid = r.runid AND p.map = r.map"
-               " AND p.track = r.track AND p.leg = 0 AND p.player = r.player"
+               " AND r.runid NOT IN ('', '-') AND p.runid = r.runid"
+               " AND p.map = r.map AND p.track = r.track AND p.leg = 0"
+               " AND p.player = r.player"
                " AND NOT " + _REJECTED_SQL +
                " ORDER BY p.kind <> 'run', p.id DESC LIMIT 1)")
 
@@ -1988,6 +1990,11 @@ def submit_run():
     name = clean_text(request.form.get("name")) or player
     node = clean_text(request.form.get("node")) or "?"
     runid = clean_text(request.form.get("runid"))
+    if runid and not is_trusted(src, TRUSTED_SOURCES):
+        # The rec leaf's rule (below): a runid decides whose stage rows a
+        # lobby's evidence file backs (index_evidence).
+        log.warning("ignoring runid from untrusted source %s", src)
+        runid = ""
 
     millis = int(round(ticks * 1000.0 / tickrate))
 
@@ -2121,9 +2128,13 @@ def submit_run():
                             seen      = -1,
                             checked   = 0
                         """,
+                        # '-' when none was sent: backfill_runids reads only
+                        # the pre-schema-6 '' rows, and a TF_SHADOW
+                        # continuation's header still names the run the lobby
+                        # cut it from.
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
-                         now, recbytes, rectrunc, runid),
+                         now, recbytes, rectrunc, runid or "-"),
                     )
                     rid = db.execute(
                         "SELECT id FROM replays"
@@ -2329,8 +2340,8 @@ def replay_file(row):
 
 
 # --------------------------------------------------------------------------
-# Evidence behind stage rows (schema 6).  sweep.py's cron runs these; none
-# raises OSError.
+# Evidence behind stage rows (schema 6).  sweep.py's cron runs these; a bad
+# file skips only itself (none raises OSError, ValueError or IndexError).
 # --------------------------------------------------------------------------
 
 _REC_TAIL = 16384        # both writers put `abandon`/`end` in the last lines
@@ -2340,7 +2351,8 @@ def _rec_meta(path):
     """``(header, end_ticks or -1, abandoned, size, mtime)`` of a .rec, or None.
 
     The header is read to `begin` (64 lines at most), first spelling of a key
-    wins; `end`/`abandon` come from the last _REC_TAIL bytes."""
+    wins; `end`/`abandon` come from the last _REC_TAIL bytes.  A torn `end`
+    line reads as no end."""
     try:
         with open(path, "rb") as fh:
             st = os.fstat(fh.fileno())
@@ -2356,24 +2368,27 @@ def _rec_meta(path):
                 hdr.setdefault(word, rest)
             fh.seek(max(0, st.st_size - _REC_TAIL))
             tail = fh.read().decode("utf-8", "replace").splitlines()
-    except OSError:
+        if st.st_size > _REC_TAIL:
+            tail = tail[1:]                       # a partial first line
+        end, abandoned = -1, False
+        for line in tail:
+            if line.startswith("end "):
+                words = line.split()          # ["end"] alone when torn after it
+                end = strict_int(words[1] if len(words) > 1 else None, 0, MAX_TICKS)
+                end = -1 if end is None else end
+            elif line.startswith("abandon "):
+                abandoned = True
+    except (OSError, ValueError, IndexError):
         return None
-    if st.st_size > _REC_TAIL:
-        tail = tail[1:]                           # a partial first line
-    end, abandoned = -1, False
-    for line in tail:
-        if line.startswith("end "):
-            end = strict_int(line.split()[1], 0, MAX_TICKS)
-            end = -1 if end is None else end
-        elif line.startswith("abandon "):
-            abandoned = True
     return hdr, end, abandoned, st.st_size, st.st_mtime
 
 
 def backfill_runids(conn, limit=200):
-    """Header runids for leg-0 run replays migrate()'s backfill could not reach
-    (no board row names them any more).  '-' marks a file with none or no file,
-    so each row is read once.  -> rows written."""
+    """Header runids for leg-0 run replays that predate schema 6 and that
+    migrate()'s backfill could not reach (no board row names them any more).
+    Only '' rows: submit_run stores '-' when no runid is sent, and a later
+    header may name a run the lobby deliberately did not.  '-' also marks a
+    file with none or no file, so each row is read once.  -> rows written."""
     rows = conn.execute(
         "SELECT id, map_dir, track, leg, leaf, kind FROM replays"
         " WHERE kind = 'run' AND leg = 0 AND runid = '' ORDER BY id LIMIT ?",
@@ -2440,6 +2455,13 @@ def index_evidence(conn, now=None, dry_run=False):
                 (runid, key)).fetchall()
             if not refs:
                 continue                  # backs nothing; the lobby sweeps it
+            players = sorted({r["player"] for r in refs})
+            if len(players) > 1:
+                # A run is one player's; filing it under either would be a guess.
+                log.warning("evidence %s/%s is named by %d players' stage rows"
+                            " %r; not indexed", d, leaf, len(players), players[:4])
+                out["bad"] += 1
+                continue
             src = os.path.join(EVIDENCE_DIR, d, leaf)
             meta = _rec_meta(src)
             hdr = meta[0] if meta else {}
@@ -2494,6 +2516,12 @@ def index_evidence(conn, now=None, dry_run=False):
     return out
 
 
+def _lobbies_file(path):
+    """True for a path under EVIDENCE_DIR: the lobbies' own, never unlinked here."""
+    return os.path.realpath(path).startswith(
+        os.path.realpath(EVIDENCE_DIR) + os.sep)
+
+
 def gc_evidence(conn):
     """Drop each evidence row no leafless stage row references any more, then
     (after the commit) its kept file; then kept files with no row that are
@@ -2517,7 +2545,10 @@ def gc_evidence(conn):
         if gone:
             n += 1
             path = replay_file(row)[0]
-            if path:
+            if path and _lobbies_file(path):    # SURFD_KEEP is SURFD_EVIDENCE
+                log.warning("evidence %d: %s is the lobbies' file; not removed",
+                            row["id"], path)
+            elif path:
                 try:
                     os.unlink(path)
                 except OSError as exc:
@@ -2543,6 +2574,8 @@ def gc_evidence(conn):
             if not leaf.endswith((".rec", ".rec.tmp")) or (d, leaf) in kept:
                 continue
             path = os.path.join(KEEP_DIR, d, leaf)
+            if _lobbies_file(path):
+                continue
             try:
                 if now - os.lstat(path).st_mtime > KEEP_ORPHAN_AGE:
                     os.unlink(path)
