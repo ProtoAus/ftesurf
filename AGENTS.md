@@ -412,7 +412,9 @@ bannered as superseded.)
   usually the reporter; say so when you use it.
   `-Pi` SHIPS THE WORKING TREE. When the tree carries other sessions'
   uncommitted QC, build from a clean `git worktree add <tmp> HEAD` instead, and
-  remove the worktree afterwards.
+  remove the worktree afterwards. A clean HEAD still carries other sessions'
+  COMMITTED patches: check `git log <last deployed>..HEAD` and ask; if one is not
+  approved to ship, `git -C <tmp> revert --no-commit <sha>` in the worktree only.
 - The lobbies run a NATIVE aarch64 engine, `game/fteqw-svarm64`, built on the Pi
   in `/srv/nvme/p349build`. That tree is NOT a git checkout: send changed files
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
@@ -532,6 +534,17 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - A leftover test process (`ftesurf64*.exe`, `fteqwsv64.exe`) holds
   `fteplug_hl2_x64.dll`, so build.ps1's deploy aborts part-way and `C:\FTEQuake`
   keeps a stale server. Check `Get-Process ftesurf*,fteqw*` before `-Engine`.
+  A server still in its closing `waitms` also keeps the port, and the next run's
+  client joins IT and is dropped when it quits: kill leftovers between runs.
+- Sessions share test fixtures (surf_666 + `p360sf.zones.json`, `data/runs`,
+  `data/saves`, `data/resume`). Tell the other live session before a run that
+  moves them, park rather than delete, restore and `diff -r` afterwards.
+- A lobby process sees files another process wrote only after its own next map
+  load (the name hash; `SV_MsAdopt` renames onto itself to force it). A
+  cross-lobby test starts the second server after the first one's write.
+- Agent shells: a Bash heredoc collapses `\\` to `\`, so an inline edit script
+  that must match QC's literal `\n` fails or writes a real newline. Write such
+  scripts with the file tool, or build the backslash with `chr(92)`.
 - Engine cvar `timeout` (default 65 s) is the dead-client drop; lobbies set 30.
 - Unregistered cvar set by bare name in a cfg is "Unknown command" — `set` it.
 - Engine `sv.active` is never assigned anywhere — every `if (sv.active)` is dead

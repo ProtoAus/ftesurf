@@ -45,3 +45,7 @@ chatty.
   against a real file or a live run, check it.
 - Report what the measurement said, including when it contradicts what you
   predicted. A falsified prediction is a result, not a setback.
+- Changes to the recorder, the verifier or anything that writes evidence get an
+  independent review (reviewers who see the code, not your conclusion) before
+  deploy. Patch 375 passed every harness arm and still had five real defects,
+  two of which corrupted recordings.
