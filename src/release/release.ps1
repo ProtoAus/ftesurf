@@ -1107,7 +1107,9 @@ FTESurf $Ver for Linux (beta) -- install
 ========================================
 
 This is the first Linux build.  It is a BETA, tested only under WSL2 on
-Windows (WSLg) -- not yet on a native Linux desktop.  Report problems on
+Windows (WSLg) -- not yet on a native Linux desktop.  Runs on Linux are NOT
+ranked during the beta: the leaderboard cannot yet tell injected input from a
+real mouse there, so every Linux run is marked unverified.  Report problems on
 Discord, in the FTESurf channel:
     https://discord.com/channels/471331861839216643/1327302504823787541
 

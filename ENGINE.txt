@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   2424fd9d3485a3854cf57bbca3a3e0c0cf1dc23b
 tag      patch-266
-patch    388
+patch    389
 qcbuild  83
 date     2026-09-19
+
+# PATCH 389 IS MOD-SIDE ONLY: only Windows clients rank during the Linux beta (SV_ProfileBroken:
+# no IPH_RAW -> TF_NOPROFILE).  Needs the SERVER progs (-Pi).  cfg/test/p387xi2.cfg, b78event.cfg.
 
 # PATCH 388: Linux name hash -- a log line no longer crashes it (vid_restart/quit with
 # log_developer), a file created this session is findable, a fresh install's first map is not

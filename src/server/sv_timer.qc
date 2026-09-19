@@ -8250,6 +8250,12 @@ float(entity e) SV_ProfileBroken =
 	if (e.run_t_pev == 0)
 		return TRUE;
 
+	// Linux beta (Lex, 2026-09-19): only Windows clients rank.  in_rawinput exists only in
+	// in_win.c, so no IPH_RAW means Linux/macOS/SDL -- where device-targeted XTEST and
+	// compositor injection cannot be seen (engine Patch 387's ceiling).
+	if (!(e.run_t_pevhave & IPH_RAW))
+		return TRUE;
+
 	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here.
 	if (FS_ProfileBroken(e.run_t_pevhave, e.run_t_pevraw,
 	                     e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant))
