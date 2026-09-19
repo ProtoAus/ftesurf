@@ -13,11 +13,14 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   3dd8f93c572cf63102203c31b67515da23b27a28
+commit   ff940bfec127e6f8ab8bc0a62c75e3c64d70f91f
 tag      patch-266
-patch    384
+patch    386
 qcbuild  83
 date     2026-09-19
+
+# PATCH 386: Linux loads EGL/GLESv2/Xrandr/Xxf86vm/Xxf86dga by soname; Snap, Debian and XDG Steam
+# layouts; default.cfg prefers GLX on Linux.  Linux client only.  cfg/test/p386lin.cfg.
 
 # PATCH 377: exec never runs a config out of a mounted game (Momentum's cfg/config.cfg
 # ran at every boot via the P330 fallback).  Needs this CLIENT.  cfg/test/p377boot.cfg.
