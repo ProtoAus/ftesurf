@@ -27,7 +27,8 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RECCHECK = os.path.join(HERE, "reccheck.py")
+# $RECCHECK runs the suite against another copy (the pre-patch control).
+RECCHECK = os.environ.get("RECCHECK") or os.path.join(HERE, "reccheck.py")
 
 CHECKS = 0
 FAILED = []
@@ -1032,6 +1033,278 @@ def case_v9_session_is_unknown():
                "unknown record 'session'", "a session in a v9 file is an unknown-record note")
 
 
+# ---------------------------------------------------------------------------
+# Patch 382: `spec` -- a spectate hold (additive, no bump).
+# ---------------------------------------------------------------------------
+TF_SPEC = 32768
+SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
+            "setpos", "respawn", "move", "notarget")
+# <ox oy oz> <vx vy vz> <fl>, %.9g.  Plain by default, so the pre-patch control
+# faults nothing for an unrelated reason; EXP_BODY is what %.9g prints near 0.
+SPEC_BODY = "-123.456001 4.5 64.03125 250.5 -1 0 0"
+EXP_BODY = "-123.456001 4.5e-05 64.03125 250.5 -7.26431608e-08 0 0"
+
+
+def spec_edges(ticks, mt, carry, why="leave", wall=(812.5, 815.25), body=SPEC_BODY):
+    return ["spec 1 %s %s %s %s %.3f" % (ticks, mt, carry, body, wall[0]),
+            "spec 0 %s %s %s %s %.3f %s" % (ticks, mt, carry, body, wall[1], why)]
+
+
+def set_spec_flag(lines):
+    fx = [i for i, l in enumerate(lines) if l.startswith("flags ")][0]
+    lines = list(lines)
+    lines[fx] = "flags %d" % (int(lines[fx].split()[1]) | TF_SPEC)
+    return lines
+
+
+def spectated(lines=None, which=12, flag=True, **kw):
+    """A window between packets, before the `which`-th `in` row: its edges state
+    that row's <mt> <carry>, the counter after the last move."""
+    b = build() if lines is None else list(lines)
+    ix = [i for i, l in enumerate(b) if l.startswith("in ")][which]
+    f = b[ix].split()
+    b = b[:ix] + spec_edges(which, f[2], f[3], **kw) + b[ix:]
+    return set_spec_flag(b) if flag else b
+
+
+def spec_line(lines, on, which=0):
+    return [i for i, l in enumerate(lines) if l.startswith("spec %d " % on)][which]
+
+
+def spec_edit(lines, on, pos, value, which=0):
+    """Set token `pos` (keyword = 0, state = 1) of a `spec <on>` line."""
+    lines = list(lines)
+    ix = spec_line(lines, on, which)
+    f = lines[ix].split()
+    f[pos] = str(value)
+    lines[ix] = " ".join(f)
+    return lines
+
+
+def verbose_out(lines, name="t.rec"):
+    d = tempfile.mkdtemp(prefix="reccheck_t")
+    try:
+        p = os.path.join(d, name)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        return subprocess.run([sys.executable, RECCHECK, "-v", p],
+                              capture_output=True, text=True).stdout
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def case_spec_clean():
+    f, n = run(spectated())
+    check(not f and not n, "a spectated v9 file passes with no faults and no notes")
+    if f or n:
+        print("        faults=%s notes=%s" % (f, n))
+    out = verbose_out(spectated())
+    for want in ("spectated      yes", "spec_windows   1", "spec_held      2.750",
+                 "spec_why       leave"):
+        check(want in out, "-v prints %r (the r.info tuple)" % want)
+    check("spectated      no" in verbose_out(build()),
+          "-v prints 'spectated no' for a file without the bit")
+    ok_clean(spectated(body=EXP_BODY),
+             "a %.9g origin and velocity in exponent form pass")
+    ok_clean(spectated(lines=row(build(), which=12, carry="9.99999975e-05")),
+             "a %.9g <carry> in exponent form on both edges and the row passes")
+    two = spectated()
+    ix = spec_line(two, 1)
+    e = two[ix].split()
+    two = two[:ix] + spec_edges(e[2], e[3], e[4], why="zone") + two[ix:]
+    ok_clean(spectated(two, which=30, flag=False, why="notarget"),
+             "three windows, two back to back before one row, pass")
+    for why in SPEC_WHY:
+        f, n = run(spectated(why=why))
+        check(not f and not n, "reason %r passes with no note" % why)
+    ok_clean(spectated(lines=build(ver=10, sessions=[(15, 3, "drop")]), which=25),
+             "a window in the second session of a v10 Multi-Session file passes")
+
+
+def case_spec_malformed():
+    b = spectated()
+    ix = spec_line(b, 1)
+    for lines, want, what in (
+            (spec_edit(b, 1, 1, 2), "state '2' is not 0 or 1", "a spec state 2"),
+            (b[:ix] + [" ".join(b[ix].split()[:-1])] + b[ix + 1:],
+             "'spec 1' takes 11 fields", "a spec 1 with 10 fields"),
+            (b[:ix] + [b[ix] + " leave"] + b[ix + 1:],
+             "'spec 1' takes 11 fields", "a spec 1 with a <why>"),
+            (b[:ix + 1] + [" ".join(b[ix + 1].split()[:-1])] + b[ix + 2:],
+             "'spec 0' takes 12 fields", "a spec 0 with no <why>"),
+            (spec_edit(b, 0, 6, "x"), "has a non-numeric field", "a non-numeric origin"),
+            (spec_edit(b, 0, 7, "nan"), "has a non-numeric field", "a nan origin"),
+            (spec_edit(spec_edit(b, 0, 3, "618.5"), 1, 3, "618.5"),
+             "a non-integer <mt>", "a non-integer <mt>"),
+            (spec_edit(spec_edit(b, 0, 11, 2), 1, 11, 2), "an <fl> other than 0 or 1",
+             "an <fl> of 2"),
+            (spec_edit(b, 1, 3, "6.18e+02"), "in exponent form",
+             "an <mt> in exponent form")):
+        faults_with(lines, want, "%s is a fault" % what)
+
+
+def case_spec_alternation():
+    b = spectated()
+    faults_with([l for l in b if not l.startswith("spec 1 ")],
+                "'spec 0' with no window open", "a spec 0 with no 1 open is a fault")
+    ix = spec_line(b, 1)
+    faults_with(b[:ix] + [b[ix]] + b[ix:], "while the window opened at line",
+                "a spec 1 inside an open window is a fault")
+
+
+def case_spec_nothing_inside():
+    b = spectated()
+    ix = spec_line(b, 0)
+    row = [l for l in b if l.startswith("in ")][12]
+    smp = [l for l in b if l[:1].isdigit()][12]
+    for text, what in ((row, "an 'in' row"), (smp, "a sample"),
+                       ("ghost 1 12", "a 'ghost' line"), ("foo 1 2", "a 'foo' line")):
+        faults_with(b[:ix] + [text] + b[ix:], "%s inside the spec window" % what,
+                    "%s between a 1 and its 0 is a fault" % what)
+
+
+def case_spec_edges_agree():
+    b = spectated()
+    for pos, name, value in ((2, "ticks", 13), (3, "mt", 999), (4, "carry", 0.00499),
+                             (6, "oy", 16), (9, "vy", 5), (11, "fl", 1)):
+        faults_with(spec_edit(b, 0, pos, value), "disagree on %s" % name,
+                    "a spec 0 whose <%s> differs from its 1 is a fault" % name)
+    ok_clean(spec_edit(spec_edit(spectated(body=EXP_BODY), 0, 7, "64.031250"),
+                       0, 6, "0.000045"),
+             "the same numbers in other text (64.031250, 0.000045) pass")
+    ok_clean(spec_edit(b, 0, 12, "9999.000"),
+             "a different <wall> is not part of the edge identity")
+    notes_with(spec_edit(b, 0, 12, "800.000"), "<wall> runs backwards",
+               "a window whose <wall> runs backwards is a note")
+
+
+def case_spec_next_row_restates():
+    base = build()
+    ix = [i for i, l in enumerate(base) if l.startswith("in ")][12]
+    mt, carry = base[ix].split()[2:4]
+    for emt, ecarry, what in ((int(mt) - 1, carry, "mt"), (mt, "0.00123", "carry")):
+        b = set_spec_flag(base[:ix] + spec_edges(12, emt, ecarry) + base[ix:])
+        faults_with(b, "the 'in' row after the 'spec 0' at line",
+                    "a next 'in' row not restating the edge's <%s> is a fault" % what)
+    b = set_spec_flag(base[:ix] + spec_edges(12, int(mt) - 1, carry)
+                      + spec_edges(12, mt, carry) + base[ix:])
+    faults_with(b, "the 'in' row after the 'spec 0' at line",
+                "a row restating only the second of two windows before it is a fault")
+    # A Multi-Session pause is counter-bearing; a retry/load pause ends the check.
+    for why in ("drop", "retry"):
+        v = build(ver=10, sessions=[(15, 3, why)])
+        px = [i for i, l in enumerate(v) if l.startswith("pause ")][0]
+        p = v[px].split()
+        good = v[:px] + spec_edges(16, p[1], p[2]) + v[px:]
+        bad = v[:px] + spec_edges(16, int(p[1]) + 5, p[2]) + v[px:]
+        ok_clean(set_spec_flag(good), "a window before a '%s' pause stating its "
+                                      "counter passes" % why)
+        if why == "drop":
+            faults_with(set_spec_flag(bad), "the 'drop' pause after the 'spec 0'",
+                        "a 'drop' pause not restating the edge's <mt> is a fault")
+            faults_with(set_spec_flag(v[:px] + spec_edges(16, p[1], "0.00777") + v[px:]),
+                        "the 'drop' pause after the 'spec 0'",
+                        "a 'drop' pause not restating the edge's <carry> is a fault")
+            f, _ = run(set_spec_flag(v[:px] + spec_edges(16, int(p[1]) + 5, p[2])
+                                     + ["resume 1 16"] + v[px:]))
+            check(any("'drop' pause" in x and "the rewind at line" in x for x in f),
+                  "a 'drop' pause past a rewind, below the edge's <mt>, is a fault")
+            if not f:
+                print("        got: NO FAULT")
+        else:
+            ok_clean(set_spec_flag(bad), "a 'retry' pause after a window is not "
+                                         "read as restating it")
+    # A warm rewind whose mark sat right after the 0: the rows run on from the
+    # live counter, so only >= holds.  (The control is the mt-1 arm above.)
+    for rec in ("resume 1 12", "retry 12"):
+        kw = rec.split()[0]
+        ok_clean(set_spec_flag(base[:ix] + spec_edges(12, int(mt) - 1, carry) + [rec]
+                               + base[ix:]),
+                 "a '%s' between the 0 and the next row: a counter that ran on passes" % kw)
+        faults_with(set_spec_flag(base[:ix] + spec_edges(12, int(mt) + 5, carry) + [rec]
+                                  + base[ix:]), "and the rewind at line",
+                    "...and a row below the edge's <mt> after a '%s' is a fault" % kw)
+
+
+def case_spec_where():
+    """Positions SV_SpecStart never writes a window in.  The clean twins pass on
+    the pre-381 reccheck too: they show the fault is the position, not the edges."""
+    base = build()
+    ii = [i for i, l in enumerate(base) if l.startswith("inend ")][0]
+    ie = [i for i, l in enumerate(base) if l.startswith("end ")][0]
+    s1, s0 = spec_edges(PACKETS, *base[ii].split()[1:3])
+    ok_clean(set_spec_flag(base[:ii] + [s1, s0] + base[ii:]),
+             "its clean twin: a window just before the trailer passes")
+    for lines, what in (
+            (base[:ii] + [s1, base[ii], s0] + base[ii + 1:], "a window spanning 'inend'"),
+            (base[:ii] + [s1] + base[ii:ie + 1] + [s0] + base[ie + 1:],
+             "a window spanning 'inend' and 'end'"),
+            (base[:ii + 1] + [s1, s0] + base[ii + 1:], "a window between 'inend' and 'end'"),
+            (base + [s1, s0], "a window after 'end'")):
+        faults_with(set_spec_flag(lines), "after the trailer", "%s is a fault" % what)
+    f, _ = run(set_spec_flag(base[:ii] + [s1] + base[ii:]))
+    check(len(f) == 1 and "never closed" in f[0],
+          "a window open across the trailer is one fault, 'never closed'")
+    if len(f) != 1:
+        print("        got: %s" % (f or "NO FAULT"))
+
+    # pm_verify refuses this one too (sv_ccmds.c "a spec edge inside a ghost window").
+    def ghosted(lines):
+        fx = [i for i, l in enumerate(lines) if l.startswith("flags ")][0]
+        lines[fx] = "flags %d" % (int(lines[fx].split()[1]) | 64)     # TF_GHOST
+        return lines
+    b = spectated()
+    i1, i0 = spec_line(b, 1), spec_line(b, 0)
+    faults_with(ghosted(b[:i1] + ["ghost 1 12"] + b[i1:i0 + 1] + ["ghost 0 12"] + b[i0 + 1:]),
+                "inside the ghost window opened at line",
+                "a spec window inside a ghost window is a fault")
+    ok_clean(ghosted(b[:i1] + ["ghost 1 12", "ghost 0 12"] + b[i1:]),
+             "its clean twin: a ghost window just before the spec window passes")
+
+    # Clean twins: case_spec_next_row_restates' windows just before the pause.
+    for why in ("drop", "retry"):
+        v = build(ver=10, sessions=[(15, 3, why)])
+        sx = [i for i, l in enumerate(v) if l.startswith("session ")][0]
+        s = v[sx].split()
+        faults_with(set_spec_flag(v[:sx] + spec_edges(16, s[2], s[3]) + v[sx:]),
+                    "between the 'pause' at line",
+                    "a window between a '%s' pause and its session is a fault" % why)
+
+
+def case_spec_flag_and_finish():
+    faults_with(set_spec_flag(build()), "says spectated, but there is no 'spec' window",
+                "TF_SPEC with no window is a fault")
+    faults_with(spectated(flag=False), "does not say spectated",
+                "a window with TF_SPEC clear is a fault")
+    faults_with([l for l in spectated() if not l.startswith("spec 0 ")],
+                "'spec 1' is never closed", "a window left open at the finish is a fault")
+    # A live part file copied during a hold ends at its `spec 1`; its flags line
+    # is still the `flags 0` reserved at open.
+    b = spectated(flag=False)
+    f, n = run(b[:spec_line(b, 1) + 1], name="t.part")
+    check(not f, "a part file (no end) with an open window: no fault")
+    if f:
+        print("        %s" % f)
+    check(any("still open" in x for x in n), "...and the open window is a note")
+    f, _ = run([l for l in b if l.split()[0] not in ("inend", "end")], name="t.part")
+    check(not f, "a part file with a closed window and flags 0: no fault")
+    if f:
+        print("        %s" % f)
+
+
+def case_spec_unknown_why_is_a_note():
+    notes_with(spectated(why="max"), "spec reason 'max' is not one this tool knows",
+               "an unknown <why> is a note, not a fault")
+
+
+def case_spec_below_v9_is_unknown():
+    b = build(ver=8)
+    ix = [i for i, l in enumerate(b) if l.startswith("in ")][12]
+    notes_with(b[:ix] + spec_edges(12, 1, 0) + b[ix:],
+               "unknown record 'spec'",
+               "a spec record in a v8 file stays an unknown-record note")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -1063,7 +1336,14 @@ def main():
                case_v9_seed, case_v9_field_values, case_v8_as_before,
                case_stagepost, case_abandon,
                case_v10_session, case_v10_horizons_restart, case_v10_flag,
-               case_v9_session_is_unknown, case_mc):
+               case_v9_session_is_unknown, case_mc,
+               case_spec_clean, case_spec_malformed, case_spec_alternation,
+               case_spec_nothing_inside, case_spec_edges_agree,
+               case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
+               case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown):
+        # argv: case-name prefixes to run (default all).
+        if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):
+            continue
         print("%s:" % fn.__name__)
         fn()
         print("")

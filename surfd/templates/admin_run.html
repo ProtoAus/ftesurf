@@ -101,8 +101,10 @@ const DECISION_CLS = {approve: "up", reject: "down"};
 const PUBLIC_CLS = {verified: "up", hidden: "down"};
 const MARK_COLOUR = {cp: "#7fe0a0", stage: "#ffd79a", stagestart: "#ffd79a",
   split: "#9dc0ff", resume: "#ff9d9d", retry: "#ff9d9d", restart: "#ff9d9d",
-  ghost: "#c59dff", warp: "#ffae57", portal: "#d38cff"};
-const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "restart", "ghost"];
+  ghost: "#c59dff", warp: "#ffae57", portal: "#d38cff", spec: "#5fd3e0"};
+const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "restart", "ghost", "spec"];
+// surfd.py TF_MULTISESSION / TF_SPEC: markers on a run that still ranks.
+const FLAG_WORDS = [[16384, "multi-session"], [32768, "spectated"]];
 let RUN = null, PLOT = null;
 
 function el(tag, cls, text) {
@@ -180,7 +182,9 @@ function renderRun(j) {
   dlRow(dl, "name", r.name);
   dlRow(dl, "player", span("mono", r.player));
   dlRow(dl, "time", fmtMs(r.millis) + " \u2014 " + r.ticks + " ticks at " + r.tickrate + " Hz");
-  dlRow(dl, "flags", r.flags + " (0x" + Number(r.flags).toString(16) + ")");
+  const words = FLAG_WORDS.filter(([bit]) => Number(r.flags) & bit).map(([, w]) => w);
+  dlRow(dl, "flags", frag(r.flags + " (0x" + Number(r.flags).toString(16) + ")",
+        ...words.map(w => frag(" ", pill(w, "info")))));
   dlRow(dl, "node", r.node);
   dlRow(dl, "submitted", fmtDate(r.submitted));
   dlRow(dl, "file", frag(span("mono", r.leaf), r.file ? "" : " \u2014 not on this node"));
@@ -291,6 +295,9 @@ function dot(g, x, y, r, fill) {
   g.lineWidth = 1.5; g.strokeStyle = "#0f1114"; g.stroke();
 }
 
+// A spectate window is one point and one instant (held body, stopped clock).
+function specLabel(m) { return m.held == null ? m.why : m.held + " s " + m.why; }
+
 function drawPath(P) {
   const cv = document.getElementById("path");
   const n = P.x.length;
@@ -339,6 +346,10 @@ function drawPath(P) {
     } else if (m.k === "portal") {
       g.strokeStyle = c; g.lineWidth = 2;
       g.beginPath(); g.arc(px, py, 5, 0, 2 * Math.PI); g.stroke();
+    } else if (m.k === "spec") {
+      g.strokeStyle = c; g.lineWidth = 2;
+      g.strokeRect(px - 5, py - 5, 10, 10);
+      g.fillStyle = c; g.fillText(specLabel(m), px + 7, py + 4);
     }
   }
   let si = P.t.findIndex(t => t >= 0);
@@ -433,7 +444,9 @@ function renderHead(P) {
   const c = P.counts, kinds = Object.entries(c.warp || {});
   dlRow(dl, "records", "in " + c.in + ", pm " + c.pm + ", pe " + c.pe + ", ride " + c.ride +
         ", portal " + c.portal + ", warp " + (kinds.length ? kinds.map(([k, v]) => k + " " + v).join(" ") : "0") +
-        (c.unknown ? ", unknown " + c.unknown : ""));
+        (c.spec ? ", spec " + c.spec : "") + (c.unknown ? ", unknown " + c.unknown : ""));
+  const specs = P.marks.filter(m => m.k === "spec");
+  if (specs.length) dlRow(dl, "spectate", specs.map(specLabel).join(", "));
   dlRow(dl, "end", P.end ? P.end.map(x => x == null ? "?" : x).join(" ") : "no trailer");
 }
 
@@ -466,10 +479,12 @@ function draw() {
   legend("pathlegend", [["linear-gradient(90deg," + [0, .25, .5, .75, 1].map(speedColour) + ")",
     "slow to fast"], ["#4a5260", "before the start"], ["#8b94a2", "teleport", true], ["#7fe0a0", "start"],
     ["#ff6b6b", "end"], [MARK_COLOUR.cp, "checkpoint"], [MARK_COLOUR.stage, "stage"],
-    [MARK_COLOUR.warp, "warp (x)"], [MARK_COLOUR.portal, "portal (o)"]]);
+    [MARK_COLOUR.warp, "warp (x)"], [MARK_COLOUR.portal, "portal (o)"],
+    [MARK_COLOUR.spec, "spectate hold (square)"]]);
   legend("speedlegend", [["#e8edf4", "t = 0", true], [MARK_COLOUR.cp, "checkpoint"],
     [MARK_COLOUR.stage, "stage"], [MARK_COLOUR.split, "split"],
-    [MARK_COLOUR.resume, "resume / retry / restart"], [MARK_COLOUR.ghost, "ghost"]]);
+    [MARK_COLOUR.resume, "resume / retry / restart"], [MARK_COLOUR.ghost, "ghost"],
+    [MARK_COLOUR.spec, "spectate"]]);
 }
 
 // ---- actions ------------------------------------------------------------------

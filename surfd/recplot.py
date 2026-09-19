@@ -30,7 +30,8 @@ HEAD_KEYS = frozenset((
     "map track leg startseg tickrate movetickrate clock owner runid mapcrc "
     "zonesrc zonecrc zonerule instart startjit flags pmpin").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
-COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal")
+COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
+           "spec")     # spec: windows, parsed before the counted fallback
 
 _VERSION = re.compile(r"FTESURF-REC\s+(\d{1,4})$")
 _NUMBER = re.compile(r"[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
@@ -179,6 +180,7 @@ def _parse(fh, max_bytes, max_points):
     in_row = -1         # position of the last `in` row, and its <mt>
     in_mt = None
     rebase = None       # resume/retry: SV_TimerResume sets starttick = movetick - ticks
+    spec_open = None    # the open spectate window's `spec 1`: (t, x, y, wall)
 
     def mark(k, num, t, x=None, y=None, **extra):
         nonlocal marks_dropped
@@ -290,6 +292,26 @@ def _parse(fh, max_bytes, max_points):
             if row == in_row and in_mt is not None and start is not None and rate is not None:
                 t = (in_mt - start) * rate
             mark("portal", num, t, vec[0], vec[1])
+        elif kw == "spec":
+            # Patch 382: spec <0|1> <ticks> <mt> <carry> <o3> <v3> <fl> <wall> [<why>].
+            # The body is held and the clock stopped, so a window is one point
+            # and one instant: one mark per window, carrying its wall length.
+            num = _int(a[0]) if len(a) >= 12 else None
+            ticks = _num(a[1]) if len(a) >= 12 else None
+            vec = _vec(a[4:7]) if len(a) >= 12 else None
+            wall = _num(a[11]) if len(a) >= 12 else None
+            if num not in (0, 1) or ticks is None or vec is None or wall is None \
+                    or abs(wall) > VALUE_LIMIT:
+                bad_recs += 1
+                continue
+            if num == 1:
+                spec_open = (ticks_t(ticks), vec[0], vec[1], wall)
+                continue
+            counts["spec"] += 1
+            held = round(wall - spec_open[3], 3) if spec_open is not None else None
+            why = (_WORD.sub("", a[12])[:24] or "?") if len(a) > 12 else "?"
+            mark("spec", None, ticks_t(ticks), vec[0], vec[1], held=held, why=why)
+            spec_open = None
         elif kw == "end":
             end = [_int(x) for x in a[:16]]
         elif kw in counts:
@@ -305,6 +327,11 @@ def _parse(fh, max_bytes, max_points):
             name = _WORD.sub("", kw)[:24] or "?"
             if name in unknown_names or len(unknown_names) < MAX_UNKNOWN_NAMES:
                 unknown_names[name] = unknown_names.get(name, 0) + 1
+
+    # A window still open at the end of what was read (a live part file).
+    if spec_open is not None:
+        counts["spec"] += 1
+        mark("spec", None, spec_open[0], spec_open[1], spec_open[2], held=None, why="open")
 
     # The last sample is always on the path.
     if last is not None and last_i % stride != 0:

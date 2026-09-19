@@ -76,7 +76,8 @@ EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 # keep the blanket rule.
 EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
              "seed": set(range(1, 7)), "portal": set(range(4, 10)),
-             "inend": {2}, "pause": {2}, "session": {3}}     # Patch 364: <carry>
+             "inend": {2}, "pause": {2}, "session": {3},     # Patch 364: <carry>
+             "spec": set(range(4, 11))}                      # Patch 382: <carry> <o> <v>
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
@@ -336,6 +337,14 @@ TF_GHOST = 64
 TF_MULTISESSION = 16384
 PAUSE_MS = ("drop", "rotate", "server")      # the player left: Multi-Session
 PAUSE_WHY = PAUSE_MS + ("retry", "load")     # a map_restart / a cold save-load
+# Patch 382: the run held a spectate window.  Marker only (not a class, not a
+# taint); set iff the file holds a `spec` window.  An unknown <why> is a newer
+# writer: a note.
+TF_SPEC = 32768
+SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
+            "setpos", "respawn", "move", "notarget")
+# The edge identity: <ticks> <mt> <carry> <ox oy oz> <vx vy vz> <fl>, token 2..11.
+SPEC_FIELDS = ("ticks", "mt", "carry", "ox", "oy", "oz", "vx", "vy", "vz", "fl")
 
 # Build 58.  The run was set with the raw input journal switched off, so no .hid
 # describes it.
@@ -487,6 +496,47 @@ def check_row(r, ln, kind, tok, seen, seed_ok=False):
     if n < 0 or n >= seen:
         r.fault("line %d: '%s' names row %d and %d 'in' row(s) precede it -- "
                 "<row> must be one already written" % (ln, kind, n, seen))
+
+
+def parse_spec(r, ln, tok):
+    """Patch 382 `spec` edge -> (on, vals, wall, why), or None when the state is
+    unreadable.  vals are SPEC_FIELDS as floats, None when the edge is malformed
+    (faulted here); why is None on a 1."""
+    if len(tok) < 2 or tok[1] not in ("0", "1"):
+        r.fault("line %d: 'spec' state %r is not 0 or 1"
+                % (ln, tok[1] if len(tok) > 1 else ""))
+        return None
+    on = tok[1] == "1"
+    want = 11 if on else 12
+    a = tok[2:]
+    if len(a) != want:
+        r.fault("line %d: 'spec %s' takes %d fields (ticks mt carry ox oy oz vx vy "
+                "vz fl wall%s), has %d" % (ln, tok[1], want, "" if on else " why", len(a)))
+        return on, None, None, None
+    try:
+        v = [float(x) for x in a[:11]]
+    except ValueError:
+        v = None
+    if v is None or not all(math.isfinite(x) for x in v) or not is_int(a[1]) \
+            or v[9] not in (0.0, 1.0):
+        r.fault("line %d: 'spec %s' has a non-numeric field, a non-integer <mt> "
+                "or an <fl> other than 0 or 1" % (ln, tok[1]))
+        return on, None, None, None
+    return on, v[:10], v[10], (None if on else a[11])
+
+
+def spec_restates(r, ln, what, mt, carry, pend):
+    """Patch 382: the next counter-bearing line after a `spec 0` restates its <mt>
+    <carry>; past a warm rewind (4th item: its line) the live counter only grows."""
+    for sln, smt, scarry, rw in pend:
+        if rw is None and (mt != smt or carry != scarry):
+            r.fault("line %d: %s after the 'spec 0' at line %d states mt %d carry "
+                    "%.9g, the edge %d %.9g -- it must restate them"
+                    % (ln, what, sln, mt, carry, smt, scarry))
+        elif rw is not None and mt < smt:
+            r.fault("line %d: %s after the 'spec 0' at line %d and the rewind at line "
+                    "%d states mt %d, below the edge's %d -- a warm rewind runs on "
+                    "from the live counter" % (ln, what, sln, rw, mt, smt))
 
 
 def check_rec(path, verbose=False):
@@ -784,6 +834,14 @@ def check_rec(path, verbose=False):
     open_pause = None       # the pause no session has answered yet
     cur_horizon = in_start
     in_paused = 0           # `in` rows / samples inside a pause (reported once)
+    # Patch 382: spectate windows.
+    spec_open = None        # [lineno, vals, wall, lines inside] of the open window
+    spec_opened = 0         # `spec 1` edges: TF_SPEC iff any
+    spec_windows = []       # closed: (held wall seconds or None, why)
+    spec_next = []          # 0s awaiting the next counter-bearing line: (ln, mt, carry,
+                            # line of the warm rewind since, or None)
+    trailer_at = None       # (lineno, kind) of the first inend/end
+    gh_open = None          # line of the `ghost 1` no `ghost 0` has closed yet
     seen_positive = False
     bad_cols = 0
     mask_disagree = 0
@@ -807,6 +865,19 @@ def check_rec(path, verbose=False):
                     "value past six significant digits, so the number is "
                     "ROUNDED.  See EXP_RE."
                     % (lineno + 1, ", ".join(exp[:3])))
+
+        # Patch 382: NOTHING is written between a 1 and its 0.  A trailer line
+        # inside one is faulted once, at the `spec` after it or as never closed.
+        if spec_open is not None and tok[0] not in ("spec", "inend", "end", "split"):
+            spec_open[3] += 1
+            if spec_open[3] == 1:
+                r.fault("line %d: %s inside the spec window opened at line %d -- "
+                        "nothing is written between a 1 and its 0"
+                        % (lineno + 1, "a sample" if is_sample(tok[0]) else
+                           "an 'in' row" if tok[0] == "in" else "a %r line" % tok[0],
+                           spec_open[0]))
+        if trailer_at is None and tok[0] in ("inend", "end"):
+            trailer_at = (lineno + 1, tok[0])
 
         if is_sample(tok[0]):
             if len(tok) != want_cols:
@@ -855,6 +926,7 @@ def check_rec(path, verbose=False):
         # summarised as they stream past instead; the only state kept is the
         # three running comparisons that need the previous row.
         if tok[0] == "in":
+            spec_pend, spec_next = spec_next, []
             # v9 appends <fl>; <fwd side up> become integers.
             if ver >= 9 and len(tok) != 12:
                 if not in_badshape:
@@ -890,6 +962,7 @@ def check_rec(path, verbose=False):
             inrows += 1
             if in_pk is None or pk != in_pk:
                 in_packets += 1
+            spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
 
             # MONOTONIC, BOTH OF THEM, and neither may go backwards for the same
             # reason the sample clock may not: one is the packet's arrival order
@@ -1000,6 +1073,11 @@ def check_rec(path, verbose=False):
             # attempt lasted -- there is real wall-clock time on either side of
             # this line that no frame in the file describes.
             resumes.append((lineno + 1, tok[1:]))
+            # A save made right after a `spec 0` puts its rewind mark there, and
+            # the rows after a warm rewind run on from the live counter: only >=
+            # holds.  A cold one's `pause` came first and took the check
+            # (SV_SaveApplyState, sv_saveloc.qc:1111).
+            spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
         elif kind == "retry":
             # Build 18.  The MAP was restarted underneath the run -- `retry` --
             # and the attempt was restored from a state written a moment before
@@ -1018,6 +1096,8 @@ def check_rec(path, verbose=False):
             # because the writer restores the unrounded clock precisely so the
             # .rec's own `t` column stays continuous through it.
             retries.append((lineno + 1, tok[1:]))
+            # Patch 382: as at `resume`.
+            spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
         elif kind == "cp":
             # Build 19.  `cp <ordinal> <ticks>`.
             #
@@ -1044,6 +1124,8 @@ def check_rec(path, verbose=False):
             # the forgery this record could enable is claiming a stretch of play
             # was a ghost when it was not.
             ghosts.append((lineno + 1, tok[1:]))
+            if len(tok) > 1 and tok[1] in ("0", "1"):
+                gh_open = lineno + 1 if tok[1] == "1" else None     # Patch 382
         elif kind in ("stage", "stagestart", "restart"):
             # Build 43.  The three records that describe one stage's life, and
             # they are collected together because the only checks worth making
@@ -1124,6 +1206,7 @@ def check_rec(path, verbose=False):
             # counter restart (retry, a cold load).  <mt> <carry> close this
             # session's trace as `inend` closes the file's.
             a = tok[1:]
+            spec_pend, spec_next = spec_next, []
             if open_pause is not None:
                 r.fault("line %d: a second 'pause' with no 'session' after the "
                         "one at line %d" % (lineno + 1, open_pause[0]))
@@ -1133,6 +1216,12 @@ def check_rec(path, verbose=False):
                         % (lineno + 1))
             else:
                 pmt, ptk, why = int(a[0]), float(a[2]), a[3]
+                # Patch 382: a Multi-Session pause restates a `spec 0` before it;
+                # a retry/load pause states the last row's counter, so it ends
+                # the check unread.
+                if why in PAUSE_MS:
+                    spec_restates(r, lineno + 1, "the '%s' pause" % why, pmt,
+                                  float(a[1]), spec_pend)
                 if why not in PAUSE_WHY:
                     r.note("line %d: pause reason %r is not one this tool knows (%s)"
                            % (lineno + 1, why, ", ".join(PAUSE_WHY)))
@@ -1169,12 +1258,78 @@ def check_rec(path, verbose=False):
             # build 88: the timer latches the start packet left, for pm_verify.
             # Additive (no bump); written once, before the first `in` row.
             zseeds.append((lineno + 1, tok[1:], inrows))
+        elif kind == "spec" and ver >= 9:
+            # Patch 382: a spectate hold.  The engine ran no mover ticks, so the
+            # two edges state the same body and the trace runs on unbroken.
+            # Only while TS_RUNNING; SV_SpecStart refuses a parked run and a
+            # ghost, and pm_verify refuses an edge in a ghost window too.
+            where = None
+            if trailer_at is not None:
+                where = "after the trailer ('%s' at line %d) -- a window is " \
+                        "written only while the run is running" \
+                        % (trailer_at[1], trailer_at[0])
+            elif open_pause is not None:
+                where = "between the 'pause' at line %d and its 'session' -- a " \
+                        "parked run holds no window" % open_pause[0]
+            elif gh_open is not None:
+                where = "inside the ghost window opened at line %d" % gh_open
+            if where:
+                r.fault("line %d: 'spec %s' %s"
+                        % (lineno + 1, tok[1] if len(tok) > 1 else "", where))
+            e = parse_spec(r, lineno + 1, tok)
+            if e is not None:
+                on, vals, wall, why = e
+                if on:
+                    if spec_open is not None:
+                        r.fault("line %d: 'spec 1' while the window opened at line "
+                                "%d is still open" % (lineno + 1, spec_open[0]))
+                    spec_open = [lineno + 1, vals, wall, 0]
+                    spec_opened += 1
+                elif spec_open is None:
+                    r.fault("line %d: 'spec 0' with no window open" % (lineno + 1))
+                else:
+                    oln, ovals, owall = spec_open[:3]
+                    if vals is not None and ovals is not None:
+                        bad = [n for n, x, y in zip(SPEC_FIELDS, vals, ovals) if x != y]
+                        if bad:
+                            r.fault("line %d: 'spec 0' and its 'spec 1' at line %d "
+                                    "disagree on %s -- both edges state the same "
+                                    "<ticks> .. <fl>" % (lineno + 1, oln, " ".join(bad)))
+                    held = None
+                    if wall is not None and owall is not None:
+                        held = wall - owall
+                        if held < 0:
+                            r.note("line %d: the spec window's <wall> runs backwards "
+                                   "(%.3f s)" % (lineno + 1, held))
+                    spec_windows.append((held, why))
+                    spec_open = None
+                if not on and vals is not None:
+                    spec_next.append((lineno + 1, int(vals[1]), vals[2], None))
+                if why is not None and why not in SPEC_WHY:
+                    r.note("line %d: spec reason %r is not one this tool knows (%s)"
+                           % (lineno + 1, why, ", ".join(SPEC_WHY)))
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
     r.info["samples"] = len(samples)
     r.info["padding"] = padding
     r.info["records"] = len(records)
+
+    # Patch 382.  An open window is legal in a live part file, never at a finish.
+    if spec_opened:
+        r.info["spec_windows"] = spec_opened
+        held = [h for h, _w in spec_windows if h is not None]
+        if held:
+            r.info["spec_held"] = sum(held)
+        if spec_windows:
+            r.info["spec_why"] = ", ".join(w or "?" for _h, w in spec_windows)
+    if spec_open is not None:
+        if saw_end is not None:
+            r.fault("line %d: 'spec 1' is never closed -- a finished run holds no "
+                    "open window" % spec_open[0])
+        else:
+            r.note("line %d: the spec window is still open (no trailer yet)"
+                   % spec_open[0])
 
     # v10: the horizon, and the session index, at a line (post passes).
     def horizon_at(ln):
@@ -1992,6 +2147,14 @@ def check_rec(path, verbose=False):
                 if msp and not (fv & TF_MULTISESSION):
                     r.fault("%d multi-session pause(s) in the stream, but header "
                             "flags %d does not say multi-session" % (len(msp), fv))
+                # Patch 382: TF_SPEC iff the file holds a window.
+                if (fv & TF_SPEC) and not spec_opened:
+                    r.fault("header flags %d says spectated, but there is no "
+                            "'spec' window in the stream" % fv)
+                if spec_opened and not (fv & TF_SPEC):
+                    r.fault("%d spec window(s) in the stream, but header flags %d "
+                            "does not say spectated" % (spec_opened, fv))
+            r.info["spectated"] = "yes" if (fv & TF_SPEC) else "no"
 
             # Build 58.  Reported, never faulted -- see TF_NOJOURNAL above.
             #
@@ -2486,6 +2649,8 @@ def emit(r, verbose):
                   "stageposts", "abandoned",
                   # Patch 364: sessions, and the pause reasons.
                   "sessions", "pauses",
+                  # Patch 382: the TF_SPEC bit, and the windows the body holds.
+                  "spectated", "spec_windows", "spec_held", "spec_why",
                   # Build 24, v4.  `clean` is the one the leaderboard filters on
                   # and the one worth being able to read off a file by hand.
                   # Build 44.  `class` is `clean`'s successor and both are

@@ -367,6 +367,24 @@ check("...|TF_NOJOURNAL is still demoted",
 check("...|TF_CHEAT is still refused",
       submit(m, player="mscheat", flags=m.TF_MULTISESSION | m.TF_CHEAT), "HTTP 204")
 
+# Patch 382: TF_SPEC is a marker like TF_MULTISESSION -- a spectated run stays
+# ranked, and the bit masks neither a demotion nor a refusal.
+m = fresh()
+check("TF_SPEC alone is clean", m.style_of(m.TF_SPEC), "clean")
+check("...and certifiable", m.certifiable(m.TF_SPEC), True)
+check("...|TF_SEGMENT is still segmented",
+      m.style_of(m.TF_SPEC | m.TF_SEGMENT), "segmented")
+submit(m, player="spec", flags=m.TF_SPEC, ticks=1000)
+b = board(m, tier="ranked")
+check("a spectated run ranks", names(b), ["spec"])
+check("...and its row keeps the bit",
+      b["rows"][0]["flags"] if isinstance(b, dict) else b, m.TF_SPEC)
+submit(m, player="specjrn", flags=m.TF_SPEC | m.TF_NOJOURNAL, ticks=1001)
+check("...|TF_NOJOURNAL is still demoted",
+      names(board(m, tier="community")), ["specjrn"])
+check("...|TF_CHEAT is still refused",
+      submit(m, player="speccheat", flags=m.TF_SPEC | m.TF_CHEAT), "HTTP 204")
+
 # --------------------------------------------------------------------------
 print("\n--- 6. ranking and personal bests ----------------------------------")
 
@@ -506,7 +524,7 @@ else:
     # silently loses the guarantee for exactly the newest value.
     for const in ("TF_PRACTICE", "TF_SHADOW", "TF_SEGMENT", "TF_CHEAT",
                   "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP",
-                  "TF_NOCLOCK", "TF_MULTISESSION"):
+                  "TF_NOCLOCK", "TF_MULTISESSION", "TF_SPEC"):
         check("%s matches sh_defs.qc" % const,
               getattr(m, const), found.get(const))
 

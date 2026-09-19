@@ -264,6 +264,9 @@ TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the e
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
 TF_MULTISESSION = 16384
+# Patch 382: the run held a spectate window.  Marker only, like TF_MULTISESSION:
+# a spectated run stays ranked.
+TF_SPEC = 32768
 
 SCHEMA_VERSION = 5
 

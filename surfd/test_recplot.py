@@ -293,6 +293,28 @@ def case_resume_rebase():
     check("no instart: warp untimed, still on the map", (w["t"], w["x"]), (None, 1.0))
 
 
+def case_spec():
+    body = ["in 1 1000 0 0 0 0 0 0 0 0 0", S(0.0, 5, 6),
+            "spec 1 1 1001 0.004 5 6 64 300 0 0 0 100.000",
+            "spec 0 1 1001 0.004 5 6 64 300 0 0 0 112.250 leave",
+            "in 2 1001 0.004 0 0 0 0 0 0 0 0", S(0.015, 10, 6),
+            "spec 1 2 1002 0 10 6 64 300 0 0 0 130.000"]
+    r = recplot.parse(rec("spec.rec", 9, body, head=V7_HEAD))
+    got = [(m["t"], m["x"], m["y"], m["held"], m["why"]) for m in r["marks"] if m["k"] == "spec"]
+    check("spec: one mark per window at its point; an open one last", got,
+          [(0.015, 5.0, 6.0, 12.25, "leave"), (0.03, 10.0, 6.0, None, "open")])
+    check("spec: windows counted, not unknown", (r["counts"].get("spec"), r["counts"]["unknown"]), (2, 0))
+    check("spec: no note but the missing trailer", r["notes"], ["no 'end' trailer"])
+    r = recplot.parse(rec("specbad.rec", 9, [S(0.0), "spec 1 1 1001", "spec 2 1 1 0 1 2 3 4 5 6 0 1.0",
+                                            "spec 0 1 1 0 1 2 3 4 5 6 0 1e400 leave"]))
+    check("spec: malformed edges skipped and noted, no mark",
+          (notes_with(r, "3 malformed"), r["marks"], r["counts"].get("spec")),
+          (["3 malformed record(s) skipped"], [], 0))
+    r = recplot.parse(rec("specold.rec", 9, [S(0.0), "spek 1 1 1001"]))
+    check("spec: a near-miss word is still an unknown record", r["counts"]["unknown"], 1)
+    json.dumps(r, allow_nan=False)
+
+
 def case_never_raises():
     rnd = random.Random(359)
     cases = [("missing", os.path.join(TMP, "nope.rec")), ("None", None), ("directory", TMP),
@@ -301,7 +323,7 @@ def case_never_raises():
     for i in range(20):
         cases.append(("random %d" % i, write("r%d.rec" % i, bytes(rnd.randrange(256) for _ in range(5000)))))
         junk = "\n".join(rnd.choice(["cp", "warp", "portal", "end", "split", "in", "-1", "1e5", "x", "nan",
-                                     "resume", "retry", "ghost", "0"]) + " " + " ".join(
+                                     "resume", "retry", "ghost", "spec", "0"]) + " " + " ".join(
             rnd.choice(["1", "-2", "nan", "inf", "tele", "", "3.5", "1e400", "x"]) for _ in range(rnd.randrange(12)))
             for _ in range(200))
         cases.append(("fuzz %d" % i, write("f%d.rec" % i, "FTESURF-REC 9\ntickrate 0.015\ninstart 5\nbegin\n" + junk)))
@@ -355,7 +377,8 @@ def case_corpus():
 def main():
     for case in (case_v3_v4, case_v5_stage, case_v7_warp, case_v9, case_padding, case_nonfinite,
                  case_long_lines, case_missing_begin, case_non_utf8, case_rates, case_downsample,
-                 case_trailer_notes, case_unknown_records, case_resume_rebase, case_never_raises,
+                 case_trailer_notes, case_unknown_records, case_resume_rebase, case_spec,
+                 case_never_raises,
                  case_corpus):
         print("%s:" % case.__name__)
         case()
