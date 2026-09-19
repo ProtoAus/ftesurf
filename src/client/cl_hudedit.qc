@@ -528,8 +528,8 @@ string(string id, float row) HE_OptDef =
 		                     "|On a ramp with no usable plane, show nothing rather than a flat-air target.";
 		if (row == 1) return "hud_strafe_orient|Orient plane|t||"
 		                     "|Work out which way the ramp faces before grading. Off uses the raw plane.";
-		if (row == 2) return "hud_strafe_band|Band|c|0.5 1 2|0.5;1.0;2.0"
-		                     "|How far off the ideal rate fills the bar completely. Smaller is twitchier.";
+		if (row == 2) return "hud_strafe_sens|Sensitivity|c|0.5 1 2 3 4|0.5x;1x;2x;3x;4x"
+		                     "|How far the bar moves per unit of error. Lower shows a wider range; 4x is the old bar.";
 		if (row == 3) return "hud_strafe_curve|Curve|c|0.5 1|sqrt;linear"
 		                     "|Shape of the fill. sqrt magnifies small errors near the centre.";
 		if (row == 4) return "hud_strafe_groundhold|Hop hold|c|0 0.12 0.25|off;0.12s;0.25s"

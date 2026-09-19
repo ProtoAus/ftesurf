@@ -29,6 +29,9 @@ float  ui_cv_seqlive;       // build 34: provisional rows for the OPEN segment
 float  ui_cv_mapinfo, ui_cv_mappos_x, ui_cv_mappos_y;   // build 34: the top-right block
 float  ui_cv_mapclock;      // Patch 372: time left and the next map, in that block
 float  ui_cv_smooth, ui_cv_window, ui_cv_band, ui_cv_curve, ui_cv_minspeed;
+float  ui_cv_ssens;                     // Patch 393: hud_strafe_sens
+float  ui_sb_err, ui_sb_frac;           // the last drawn fill, for hud_strafe_probe
+#define STRAFE_SENS_REF 4               // the sens that reproduces the pre-393 bar
 float  ui_cv_srates, ui_cv_swhy, ui_cv_sbest;   // build 66: the bar's text blocks
 vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
 
@@ -706,6 +709,7 @@ void() HUD_ReadCvars =
 	ui_cv_smooth    = cvar("hud_strafe_smooth"); if (ui_cv_smooth < 0.02) ui_cv_smooth = 0.2;
 	ui_cv_window    = cvar("hud_strafe_window"); if (ui_cv_window <= 0) ui_cv_window = 2;
 	ui_cv_band      = cvar("hud_strafe_band");   if (ui_cv_band <= 0)   ui_cv_band = 1.0;
+	ui_cv_ssens     = cvar("hud_strafe_sens");   if (ui_cv_ssens <= 0)  ui_cv_ssens = 1;
 	ui_cv_curve     = cvar("hud_strafe_curve");
 	if (ui_cv_curve < 0.2) ui_cv_curve = 1;
 	if (ui_cv_curve > 2)   ui_cv_curve = 1;
@@ -1061,6 +1065,11 @@ void() HUD_RegisterCvars =
 	  twice as fast as you should", and the middle is right.
 	*/
 	registercvar("hud_strafe_band", "1.0");
+
+	// Patch 393: how far the bar moves per unit of that error.  4 is the bar
+	// above; the default 1 shows four times the range (a 5x-ideal turn fills it).
+	registercvar("hud_strafe_sens", "1", CVAR_ARCHIVE);
+	registercommand("hud_strafe_probe");
 
 	/*
 	  Shape of the axis.  1 is linear; below 1 bends travel towards the centre.
@@ -3726,8 +3735,8 @@ string(vector wishdir, float nz, vector rnorm) HUD_StrafeWhy =
 /*
   The strafe bar, above the crosshair.
 
-  ITS CENTRE IS THE IDEAL RATE, NOT ZERO.  The axis unit is hud_strafe_band,
-  so full deflection is that fraction off the ideal.  The fill runs the way
+  ITS CENTRE IS THE IDEAL RATE, NOT ZERO.  Full deflection is hud_strafe_band
+  x 4/hud_strafe_sens off the ideal (Patch 393).  The fill runs the way
   you are turning: reaching the centre is right, past it is too fast, short
   of it is too slow.  That is the same in both mirror images, which is what
   makes it readable without thinking about which way you are facing.
@@ -4224,11 +4233,17 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 		  bar's stop and the grade's zero the SAME POINT by construction at
 		  hud_strafe_band 1: full deflection is exactly q = 0.  On flat ground
 		  cscale == aircap and this is identical to the old expression.
+
+		  Patch 393: that holds at hud_strafe_sens 4.  Below it the fill spans a
+		  wider range than the grade, so the colour (still q) leads the fill, and
+		  the slow side stops at sens/4 (a turn rate cannot go below zero).
 		*/
 		err  = ((ui_turnrate / ideal) - 1) * (cscale / aircap);
-		frac = err / ui_cv_band;
+		frac = err * ui_cv_ssens / (STRAFE_SENS_REF * ui_cv_band);
 		if (frac >  1) frac =  1;
 		if (frac < -1) frac = -1;
+		ui_sb_err  = err;
+		ui_sb_frac = frac;
 
 		/*
 		  hud_strafe_curve shapes the axis.  1 is linear and is the default.

@@ -1988,6 +1988,13 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	if (MPad_ConsoleCommand(cmd))
 		return TRUE;
+	// Patch 393: the strafe bar's last drawn error and fill.
+	if (argv(0) == "hud_strafe_probe")
+	{
+		print(sprintf("strafe probe: err %.5f frac %.5f sens %g band %g\n",
+		              ui_sb_err, ui_sb_frac, ui_cv_ssens, ui_cv_band));
+		return TRUE;
+	}
 
 	// Build 49.  `emit_list` -- what the map holds, what is emitting, and why
 	// the rest is not.  It also prints the particle handles, because "nothing
