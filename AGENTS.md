@@ -486,6 +486,18 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   rows, widths and drawn y (`^` doubled so the log keeps codes). The chatbox
   wraps with the engine's markup units (`Chat_CodeLen`), so a new markup form
   in COM_ParseFunString needs a line there too.
+- SYSTEM CHAT LINES (Patch 371) are PRINT_CHAT spelled `^C word:^7 text\n`
+  (`server:`, `finish:`, `board:`, `lobby:`, `vote:`): a `^` right after the
+  colon means the engine can never read one as a player's `name: ` chat
+  (zqtp.c:2288). Send to the others with `Lobby_SayOthers`, name players with
+  `Lobby_ChatName`, pass player text through `Lobby_Clean`. The server log's
+  copy reads `said> ...` (dprint, log_developer) -- on a listen server it shares
+  the client's log, so grep chat lines by what follows the timestamp.
+- A JOIN IS PER CONNECTION: the `*ann` userinfo star key survives changelevel
+  and map_restart (ClientConnect runs again on both; parms would not survive
+  map_restart). Your own finish line is client-side (cl_banner.qc Bn_ChatSay,
+  `banner chat`), so a harness client needs `menu_restart` + `ui_close` or
+  notmenu skips Banner_Frame and no line is ever said.
 
 ## Pitfalls discovered the hard way
 

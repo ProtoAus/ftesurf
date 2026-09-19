@@ -23,6 +23,7 @@
 #define BN_GRACE    1.0         // the key of a submitted run can trail the finish
 #define BN_PENDMAX  2.0         // the longest a hold waits for an answer
 #define BN_REPLYMIN 1.5         // a late answer stays up at least this long
+#define BN_CHATWAIT 5.0         // the longest the chat line waits for the board
 
 #define BNC_BAND     '0.06 0.07 0.10'
 #define BNC_WR       '1.00 0.84 0.30'
@@ -60,6 +61,8 @@ string ui_bn_pl1, ui_bn_pl2, ui_bn_dl;
 vector ui_bn_plc, ui_bn_pl2c, ui_bn_dlc, ui_bn_placc;
 float  ui_bn_newpb;
 float  ui_bn_drawu;             // the unit the last full draw fitted to (`banner` prints it)
+float  ui_bn_chatowed;          // Patch 371: this finish's chat line is still to be said
+float  ui_bn_chatpend;          // ...and this finish's PENDING key has been seen
 
 void() Banner_RegisterCvars =
 {
@@ -70,6 +73,7 @@ void() Banner_RegisterCvars =
 	registercvar("hud_banner_y", "0.25", CVAR_ARCHIVE);
 	registercvar("hud_banner_size", "0", CVAR_ARCHIVE);    // 0 = 32 * hud_scale
 	registercvar("hud_banner_sound", "1", CVAR_ARCHIVE);
+	registercvar("hud_banner_chat", "1", CVAR_ARCHIVE);   // Patch 371: the chatbox line
 	// The mod's own files -- none ship yet; a missing one is skipped silently.
 	registercvar("hud_banner_snd_end", "sound/ftesurf/complete.wav", CVAR_ARCHIVE);
 	registercvar("hud_banner_snd_pb", "sound/ftesurf/pb.wav", CVAR_ARCHIVE);
@@ -550,6 +554,82 @@ void(float st) Bn_SoundFor =
 		Bn_Sound(0);
 };
 
+// ---- the chat line ---------------------------------------------------------
+
+string(vector c) Bn_ChatCol =
+{
+	if (c == TC_AHEAD)
+		return "^2";
+	if (c == TC_BEHIND || c == TC_CHEAT)
+		return "^1";
+	if (c == BNC_WR || c == BNC_UNRANKED || c == TC_PRACTICE)
+		return "^3";
+	if (c == TC_SHADOW || c == BNC_TOP)
+		return "^5";
+	if (c == RSC_DIM)
+		return "^9";
+	return "^7";
+};
+
+/*
+  PATCH 371: ONE CHATBOX LINE PER OWN FINISH, built from the ribbon's own
+  Bn_Delta / Bn_Place so the two cannot disagree.  Client-side because only
+  this machine holds both the lobby best (its data/runs) and the board's
+  `stored` answer.  Never the pending dots; a LOCAL placement counts.
+*/
+void() Bn_ChatSay =
+{
+	local string ln;
+
+	ui_bn_chatowed = FALSE;
+	if (!cvar("hud_banner_chat"))
+		return;
+	Bn_Delta(FALSE);
+	Bn_Place(FALSE);
+	ln = "^5finish:^7 ";
+	if (ui_bn_track > 0 || ui_bn_leg > 0)
+		ln = strcat(ln, strtolower(Bn_LegLabel(ui_bn_track, ui_bn_leg)), " ");
+	ln = strcat(ln, Time_TickString(ui_bn_ticks, Timer_Tick()));
+	if (ui_bn_dl != "")
+		ln = strcat(ln, "  ", Bn_ChatCol(ui_bn_dlc), ui_bn_dl, "^7");
+	if (ui_bn_pl1 != "" && ui_bn_pl1 != "...")
+	{
+		ln = strcat(ln, "  ", Bn_ChatCol(ui_bn_plc), ui_bn_pl1, "^7");
+		if (ui_bn_pl2 != "")
+			ln = strcat(ln, "  ", Bn_ChatCol(ui_bn_pl2c), ui_bn_pl2, "^7");
+	}
+	else if (FS_RunClass(ui_bn_flags) == RC_SEGMENT)
+		ln = strcat(ln, "  ^9SEGMENTED^7");               // no rank (yet): still say the class
+	if (ui_bn_flags & TF_MULTISESSION)
+		ln = strcat(ln, "  ^9MULTI-SESSION^7");
+	print(strcat(ln, "\n"));
+	Chat_Push(ln);
+};
+
+// The line waits for the board like the ribbon does (Banner_Frame), capped at
+// BN_CHATWAIT, and does not depend on the ribbon being drawn.  Where the board
+// answers it also waits to see this finish's PENDING (or BN_GRACE): a run tying
+// the last one's ticks matches that run's answer until the new key lands, and
+// unlike the ribbon the line is said only once.
+void() Bn_ChatFrame =
+{
+	local float st;
+
+	st = Bn_Answer(FALSE);
+	if (st == WR_PENDING)
+		ui_bn_chatpend = TRUE;
+	if (cltime < ui_bn_at + BN_CHATWAIT)
+	{
+		if (st == WR_PENDING)
+			return;
+		if (ui_bn_sub)
+		if (!ui_bn_chatpend)
+		if (cltime - ui_bn_at < BN_GRACE)
+			return;
+	}
+	Bn_ChatSay();
+};
+
 void(float state) Bn_RaiseFull =
 {
 	local float leg, uncert, cls, server;
@@ -557,6 +637,8 @@ void(float state) Bn_RaiseFull =
 	leg = getstatf(STAT_FS_FINLEG);
 	if (leg < 1 || getstatf(STAT_FS_FINTICKS) <= 0)
 		return;
+	if (ui_bn_chatowed)
+		Bn_ChatSay();                   // the previous finish's line, with what it has
 	leg = leg - 1;
 	ui_bn_track = floor(leg / 100);
 	ui_bn_leg   = leg - ui_bn_track * 100;
@@ -609,6 +691,8 @@ void(float state) Bn_RaiseFull =
 		else
 			Bn_SoundFor(WR_NONE);
 	}
+	ui_bn_chatowed = ui_bn_mine;        // said by Bn_ChatFrame once the board answers
+	ui_bn_chatpend = FALSE;
 };
 
 // The final stage of a main run closes in the finish frame: a tail, not a banner.
@@ -647,6 +731,8 @@ void(float kept) Bn_RaiseStage =
 	ticks = getstatf(STAT_FS_STAGEENDTICKS);
 	if (seg < 0 || ticks <= 0)
 		return;
+	if (ui_bn_chatowed)
+		Bn_ChatSay();                   // before the subject is overwritten
 	shown = (ui_bn_kind == BN_STAGE && !ui_bn_outat);
 
 	ui_bn_track = getstatf(STAT_FS_TIMERTRACK);
@@ -693,6 +779,7 @@ void() Banner_MapInit =
 	ui_bn_laststate = -1;
 	ui_bn_tailleg = -1;
 	ui_bn_sndowed = FALSE;
+	ui_bn_chatowed = FALSE;
 	Bn_SndProbeAll();
 };
 
@@ -810,6 +897,9 @@ void() Banner_Frame =
 	if (cvar("hud_banner") && cvar("hud_banner_stages"))
 	if (!(ui_bn_kind == BN_FULL && cltime - ui_bn_at < BN_MINAGE))
 		Bn_RaiseStage(skept);
+
+	if (ui_bn_chatowed)
+		Bn_ChatFrame();
 
 	if (ui_bn_kind == BN_NONE)
 		return;
@@ -1138,6 +1228,7 @@ void() Bn_Status =
 float(string cmd) Banner_ConsoleCommand =
 {
 	local string sub;
+	local float a2, a3, a4, a5, a6;
 
 	if (argv(0) != "banner")
 		return FALSE;
@@ -1147,20 +1238,28 @@ float(string cmd) Banner_ConsoleCommand =
 	// banner stage <track> <leg> <ticks> [pb] [word]  -- a compact one
 	if (sub == "test" || sub == "stage")
 	{
-		ui_bn_track = stof(argv(2));
-		ui_bn_leg   = stof(argv(3));
-		ui_bn_ticks = stof(argv(4));
-		ui_bn_pb    = stof(argv(5));
+		// An owed chat line is said first, and it tokenizes: read the args before.
+		a2 = stof(argv(2));
+		a3 = stof(argv(3));
+		a4 = stof(argv(4));
+		a5 = stof(argv(5));
+		a6 = stof(argv(6));
+		if (ui_bn_chatowed)
+			Bn_ChatSay();
+		ui_bn_track = a2;
+		ui_bn_leg   = a3;
+		ui_bn_ticks = a4;
+		ui_bn_pb    = a5;
 		ui_bn_mine  = TRUE;
 		ui_bn_slot  = player_localnum;
 		ui_bn_lrank = ui_bn_lof = 0;
 		ui_bn_kind  = BN_FULL;
 		ui_bn_word  = 0;
-		ui_bn_flags = stof(argv(6));
+		ui_bn_flags = a6;
 		if (sub == "stage")
 		{
 			ui_bn_kind  = BN_STAGE;
-			ui_bn_word  = stof(argv(6));
+			ui_bn_word  = a6;
 			ui_bn_flags = LT_StageFlags(ui_bn_word);
 		}
 		ui_bn_sub  = FALSE;
@@ -1180,6 +1279,12 @@ float(string cmd) Banner_ConsoleCommand =
 		if (argv(2) != "")
 			ui_bn_fake = strzone(argv(2));
 		print(sprintf("banner: fake key \"%s\"\n", ui_bn_fake));
+		return TRUE;
+	}
+	// banner chat  -- the chatbox line for the current subject (a test handle)
+	if (sub == "chat")
+	{
+		Bn_ChatSay();
 		return TRUE;
 	}
 	if (sub == "off")

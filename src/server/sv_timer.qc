@@ -9493,6 +9493,18 @@ void(entity e, float ticks) SV_TimerFinish =
 	  What a lobby does not do is keep a personal best (Lobby_NoPB), and that is
 	  a different question about a different disk.
 	*/
+	// Patch 371: a new server best is told to the others where no board answers
+	// finishes (Lobby_RunReply speaks there): one finish, one line.
+	if (ispb)
+	if (leg == 0)
+	if (FS_RunClass(e.run_t_flags) == RC_CLEAN)
+	if (!Lobby_BoardAnswers())
+	if (Lobby_AnnOn())
+	if (Lobby_AnnGate(e, 0, e.run_t_track))
+		Lobby_SayOthers(e, sprintf("^5board:^7 %s set the server best on %s -- %s%s\n",
+		                Lobby_ChatName(e), Lobby_Where(e.run_t_track), SV_TimerString(ticks),
+		                (pb > 0) ? strcat(", ", SV_TimerString(pb - ticks), " faster") : ""));
+
 	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
 	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
 };

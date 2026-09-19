@@ -26,6 +26,9 @@ date     2026-09-19
 # HOLD on input once the window went empty or 1 s in).  cfg/test/p373verify.cfg,
 # run on the Pi: the Windows verify box builds one physent fewer at surf_derpis's finish.
 
+# PATCH 371 IS MOD-SIDE ONLY: chat lines for joins, leaves, your finish and others'
+# new bests.  cfg/test/p371annl.cfg, p371sv.cfg + p371a.cfg + p371b.cfg.
+
 # PATCH 370 IS MOD-SIDE ONLY: the chatbox wraps downward and never cuts a line
 # that fits.  cfg/test/p370wrap.cfg.
 

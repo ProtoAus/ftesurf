@@ -164,6 +164,10 @@
   had already been told about a missing GUID.
 */
 .float   lobby_said_fail;
+.float   lobby_ann_due;         // Patch 371: >0 = the join line is owed at this time
+.float   lobby_ann_pbat, lobby_ann_rank;   // the last "new best" line said for this player,
+.float   lobby_ann_track;       // and its track + 1 (0 = none)
+.float   lobby_ann_at;          // the last join or leave line for this player
 
 /*
   Build 65.  The submission this player is waiting on an answer about, and what
@@ -1163,6 +1167,172 @@ void() Lobby_Resync =
 	}
 };
 
+/*
+===========================================================================
+  CHAT ANNOUNCEMENTS.  Patch 371.
+
+  System lines are PRINT_CHAT (the only level the chatbox shows) spelled
+  "^C word:^7 text": a ^ always follows the colon, so the engine can never
+  read one as a player's "name: " chat (zqtp.c:2288).
+
+  A JOIN IS KEYED ON THE CONNECTION, not on ClientConnect, which runs again
+  for everyone on every changelevel and map_restart.  `*ann` is a userinfo
+  star key: it survives both, is rebuilt on a real connect (sv_main.c:3147)
+  and is cleared at the drop (sv_main.c:682).  Parms would not do: map_restart
+  skips SetChangeParms (sv_ccmds.c:1212).  The line waits LOBBY_ANN_DELAY so
+  the 1 Hz colour pass has published `tc`, which is what colours the name.
+===========================================================================
+*/
+#define LOBBY_ANN_DELAY 1.5
+#define LOBBY_ANN_PACE  30      // observe/join toggling: one join or leave line per player per 30 s
+                                // (lobby_ann_at 0: none said yet on this edict this map)
+
+float() Lobby_AnnOn =
+{
+	registercvar("lobby_announce", "1");        // beside the read: StartFrame precedes worldspawn
+	return cvar("lobby_announce") != 0;
+};
+
+// {..} is cl_parsewhitetext markup (cl_parse.c:7031); ^[ ^] steer Chat_ParseServer.
+string(string s) Lobby_Clean =
+{
+	s = strreplace("{", "(", s);
+	s = strreplace("}", ")", s);
+	while (strstrofs(s, "^[", 0) >= 0)          // one pass can make a new one: "^^[["
+		s = strreplace("^[", "", s);
+	while (strstrofs(s, "^]", 0) >= 0)
+		s = strreplace("^]", "", s);
+	return s;
+};
+
+// The name as the chatbox colours it (cl_chat.qc Chat_ColourOf): `tc`, else the
+// userid, ^(1 + c%7); a name with its own ^ codes paints itself.
+string(entity p) Lobby_ChatName =
+{
+	local string nm, t;
+	local float c;
+
+	nm = Lobby_Clean(p.netname);
+	if (nm == "")
+		nm = "player";
+	if (strstrofs(nm, "^", 0) >= 0)
+		return strcat(nm, "^7");
+	t = infokey(p, "tc");
+	if (t == "")
+		t = infokey(p, "*userid");
+	c = stof(t);
+	if (c < 0)
+		c = 0;
+	c = c - floor(c / 7) * 7;
+	return sprintf("^%g%s^7", c + 1, nm);
+};
+
+string(float track) Lobby_Where =
+{
+	if (track > 0)
+		return sprintf("%s bonus %g", Lobby_Clean(mapname), track);
+	return Lobby_Clean(mapname);
+};
+
+// PRINT_CHAT to every connected client but one; the server log gets it too.
+void(entity except, string msg) Lobby_SayOthers =
+{
+	local float i, t;
+	local entity e;
+
+	i = 1;
+	e = edict_num(i);
+	t = clienttype(e);
+	while (t != CLIENTTYPE_NOTACLIENT)          // past the last slot: world, NOTACLIENT
+	{
+		if (t == CLIENTTYPE_REAL)
+		if (e != except)
+			sprint(e, PRINT_CHAT, msg);
+		i = i + 1;
+		e = edict_num(i);
+		t = clienttype(e);
+	}
+	dprint(strcat("said> ", msg));          // the server log's copy (log_developer)
+};
+
+void(entity p) Lobby_AnnConnect =
+{
+	p.lobby_ann_due = 0;
+	if (infokey(p, "*ann") == "")               // this connection is not announced yet
+		p.lobby_ann_due = time + LOBBY_ANN_DELAY;
+};
+
+void(entity p) Lobby_AnnJoin =
+{
+	local float t;
+	local string host;
+
+	p.lobby_ann_due = 0;
+	t = clienttype(p);
+	if (t != CLIENTTYPE_REAL)
+	if (t != CLIENTTYPE_BOT)
+		return;
+	forceinfokey(p, "*ann", "1");
+	if (!Lobby_AnnOn())
+		return;
+	if (!p.lobby_ann_at || time >= p.lobby_ann_at + LOBBY_ANN_PACE)
+		Lobby_SayOthers(p, sprintf("^5server:^7 %s joined\n", Lobby_ChatName(p)));
+	p.lobby_ann_at = time;
+	if (t != CLIENTTYPE_REAL)
+		return;
+	if (strstrofs(infokey(p, "ip"), "LoopBack", 0) >= 0)
+		return;                                 // the listen host is not welcomed to its own game
+	host = Lobby_Clean(cvar_string("hostname"));
+	if (host == "" || host == "unnamed")
+		host = "FTESurf";
+	sprint(p, PRINT_CHAT, sprintf("^5server:^7 welcome to %s -- on %s\n",
+	                              host, Lobby_Clean(mapname)));
+};
+
+void(entity p) Lobby_AnnDisconnect =
+{
+	local float was;
+
+	was = (infokey(p, "*ann") != "");
+	p.lobby_ann_due = 0;                        // an unannounced join gets no leave line
+	if (!was)
+		return;
+	forceinfokey(p, "*ann", "");                // `observe` keeps the connection: a later `join` is new
+	if (Lobby_AnnOn())
+	if (!p.lobby_ann_at || time >= p.lobby_ann_at + LOBBY_ANN_PACE)
+		Lobby_SayOthers(p, sprintf("^5server:^7 %s left\n", Lobby_ChatName(p)));
+	p.lobby_ann_at = time;
+};
+
+/*
+  Others hear a new best at most once a minute per player (lobby_announce_gap),
+  so a newcomer grinding a bhop map in ten-second runs does not flood the box.
+  A climb within the top ten on that track speaks anyway -- taking the world
+  record included, but not improving one already held (a fresh board, where
+  every best is #1).
+*/
+float(entity e, float rank, float track) Lobby_AnnGate =
+{
+	local float gap, prev;
+
+	registercvar("lobby_announce_gap", "60");
+	gap = cvar("lobby_announce_gap");
+	prev = 0;
+	if (e.lobby_ann_track == track + 1)
+		prev = e.lobby_ann_rank;
+	if (e.lobby_ann_pbat > 0)
+	if (time < e.lobby_ann_pbat + gap)
+	if (!(rank > 0 && rank <= 10 && (prev <= 0 || rank < prev)))
+		return FALSE;
+	e.lobby_ann_pbat = time;
+	if (rank > 0)
+	{
+		e.lobby_ann_rank = rank;
+		e.lobby_ann_track = track + 1;
+	}
+	return TRUE;
+};
+
 void() Lobby_Frame =
 {
 	local entity av, nx, p;
@@ -1271,6 +1441,10 @@ void() Lobby_Frame =
 		p.lobby_stat = (Lobby_Active() ? LS_LOBBY : 0)
 		             + (Lobby_NoPB()  ? LS_NOPB  : 0)
 		             + (Lobby_NoRec() ? LS_NOREC : 0);
+
+		if (p.lobby_ann_due > 0)
+		if (time >= p.lobby_ann_due)
+			Lobby_AnnJoin(p);               // Patch 371: after the colour pass published tc
 
 		p = find(p, classname, "player");
 	}
@@ -1854,6 +2028,13 @@ void() Lobby_BoardState =
 	forceinfokey(world, "board", want);
 };
 
+// Patch 371: where the board answers finishes, Lobby_RunReply tells the others
+// about a new best; elsewhere SV_TimerFinish does.  One finish, one line.
+float() Lobby_BoardAnswers =
+{
+	return lobby_board_said == "ranked";
+};
+
 void() Lobby_Heartbeat =
 {
 	local string url, body;
@@ -2144,6 +2325,42 @@ void(entity e, float flags) Lobby_SayUnranked =
 	       "online board\n", why));
 };
 
+// Patch 371: the others hear a new online best (the finisher has their own line,
+// cl_banner.qc).  Full runs on the ranked board only; Lobby_AnnGate paces it.
+void(entity e, float rank, float of, float prevms) Lobby_SayBoardPB =
+{
+	local string nm, where, t, pos;
+	local float rate;
+
+	if (!Lobby_AnnOn())
+		return;
+	if (clienttype(e) != CLIENTTYPE_REAL)
+		return;                                 // gone before the board answered
+	if (!Lobby_AnnGate(e, rank, e.lobby_rq_track))
+		return;
+	rate = e.run_movetickrate;                  // the rate that made the count (Lobby_RunBody)
+	if (rate <= 0)
+		rate = cvar("pm_ticrate");
+	nm    = Lobby_ChatName(e);
+	where = Lobby_Where(e.lobby_rq_track);
+	t     = Time_TickString(e.lobby_rq_ticks, rate);
+	if (rank == 1)
+	{
+		Lobby_SayOthers(e, sprintf("^3board:^7 %s set the ^3world record^7 on %s -- %s\n",
+		                nm, where, t));
+		return;
+	}
+	pos = "";
+	if (rank > 0)
+		pos = sprintf(", #%g of %g", rank, of);
+	if (prevms <= 0)
+		Lobby_SayOthers(e, sprintf("^5board:^7 %s finished %s for the first time -- %s%s\n",
+		                nm, where, t, pos));
+	else
+		Lobby_SayOthers(e, sprintf("^5board:^7 %s set a personal best on %s -- %s%s\n",
+		                nm, where, t, pos));
+};
+
 void(float reqid, float code, string body) Lobby_RunReply =
 {
 	local entity who;
@@ -2269,7 +2486,17 @@ void(float reqid, float code, string body) Lobby_RunReply =
 					}
 				}
 				else if (tier == WRT_COMMUNITY)
-					Lobby_SayUnranked(who, who.lobby_rq_flags);
+				{
+					// Once per reason, like the stages: the finish line says UNRANKED too.
+					u = who.lobby_rq_flags & TF_UNCERT;
+					if (!u)
+						u = 1;
+					if (u - (u & who.lobby_sq_told))
+					{
+						Lobby_SayUnranked(who, who.lobby_rq_flags);
+						who.lobby_sq_told = who.lobby_sq_told | u;
+					}
+				}
 				else if (rank > 0 && isstage)
 					sprint(who, PRINT_HIGH,
 					       sprintf("^5board:^7 %s: ^2#%g^7 of %g\n",
@@ -2279,6 +2506,12 @@ void(float reqid, float code, string body) Lobby_RunReply =
 					       sprintf("^5board:^7 your time is up: ^2#%g^7 of %g\n",
 					               rank, of));
 			}
+			if (stored)
+			if (!isstage)
+			if (who.lobby_rq_leg == 0)
+			if (tier == WRT_RANKED)
+			if (FS_RunClass(who.lobby_rq_flags) == RC_CLEAN)
+				Lobby_SayBoardPB(who, rank, of, prevms);
 		}
 		else if (isold)
 			isold = FALSE;              // an older stage's failure: nothing to say

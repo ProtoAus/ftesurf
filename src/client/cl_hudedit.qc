@@ -551,6 +551,8 @@ string(string id, float row) HE_OptDef =
 		                     "|How long it stays up. Stage strips stay 70% as long.";
 		if (row == 2) return "hud_banner_sound|Sound|t||"
 		                     "|Plays sound/ftesurf/complete, pb or wr .wav if you add them; a missing file is skipped.";
+		if (row == 3) return "hud_banner_chat|Chat line|t||"
+		                     "|One chatbox line per finish: your time, the delta to your PB and the placement.";
 		return "";
 	}
 

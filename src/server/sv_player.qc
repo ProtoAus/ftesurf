@@ -245,7 +245,9 @@ void() PutClientInServer =
 */
 void() ClientConnect =
 {
-	bprint(PRINT_HIGH, self.netname, " entered the game\n");
+	// Patch 371: a join line only for a new connection -- this runs again for
+	// everyone on every changelevel (Lobby_AnnConnect).
+	Lobby_AnnConnect(self);
 
 	/*
 	  Re-open the map's areaportals for THIS client.  See func_areaportal.
@@ -303,7 +305,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
-	bprint(PRINT_HIGH, self.netname, " left the game\n");
+	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
 
 	// Before the timer teardown, because it only removes an entity and the
 	// timer's teardown is the part that must not be skipped if this throws.
