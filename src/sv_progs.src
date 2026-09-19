@@ -32,5 +32,8 @@ server/sv_vote.qc
 server/sv_timer.qc
 server/sv_saveloc.qc
 server/sv_resume.qc
+// Patch 383: the pose stream.  After sv_timer.qc (run_movetick, SV_RecKeys),
+// sv_saveloc.qc (rec_sl_hold) and sv_lobby.qc; sv_player.qc and sv_main.qc call it.
+server/sv_pose.qc
 server/sv_player.qc
 server/sv_main.qc

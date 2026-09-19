@@ -297,6 +297,7 @@ void() ClientConnect =
 	*/
 	SV_CSQCForget(self);
 	SV_MsConnect(self);                 // edicts are recycled: no offer, no key
+	self.pb_dwatch = world;             // Patch 383: edicts are recycled
 
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
@@ -622,6 +623,10 @@ void() PlayerPostThink =
 	// Multi-Session: the restore/countdown, and a fresh run against an offer.
 	SV_MsFrame(self);
 
+	// Patch 383: this packet's pose onto the avatar's stream.  Reads the player,
+	// writes only the avatar.
+	Pose_Capture(self);
+
 	// NOTE: view_ofs is NOT set here any more.
 	//
 	// The eye moves SMOOTHLY through a crouch (Source's SetDuckedEyeOffset on
@@ -773,6 +778,10 @@ void(string cmd) SV_ParseClientCommand =
 		SV_Stuck();
 		return;
 	}
+
+	// Patch 383: `pose_stats`, and the developer `pose_watch`.
+	if (Pose_Command(self, c))
+		return;
 
 	// What the timer's state machine currently believes.  See SV_TimerReport.
 	if (c == "timer")

@@ -130,10 +130,9 @@ void() Zone_RegisterCvars =
 
 	  PVS WAS NEVER WHAT WAS HIDING THEM.  The zones are not entities and are
 	  never networked -- both VMs parse the same Momentum JSON independently at
-	  map load (sv_zones.qc:5-7), nothing in this game sets .SendEntity, so no
-	  server-side PVS test has ever been applied to a single one of them, and
-	  .pvsflags is declared in the defs and assigned nowhere.  What was hiding
-	  them was a 4096-unit distance gate and the depth test, both above.
+	  map load (sv_zones.qc:5-7), so no server-side PVS test has ever been
+	  applied to a single one of them.  What was hiding them was a 4096-unit
+	  distance gate and the depth test, both above.
 
 	  And a CLIENT-side gate was built, tested, and removed.  checkpvs (#240) is
 	  registered for CSQC and takes its world from the client's own

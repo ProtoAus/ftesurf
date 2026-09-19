@@ -262,6 +262,10 @@ float(string a, string b) SV_KeyTri =
 // .buttonuse is the NetQuake spelling and stays 0 here forever.
 .float button5;
 
+// Spectate (Patch 383 reads them, Patch 382 writes them); this file compiles first.
+.float  run_pmhold;     // the engine reads this by name: nonzero = the body is held
+.entity pb_watch;       // the player this client is spectating, world if none
+
 /*
   Classname census, developer-gated.
   Surf maps are third-party CS:S content and the FGD is a poor guide to what

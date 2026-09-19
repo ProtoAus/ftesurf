@@ -97,6 +97,10 @@ float  nm_t_last;               // cltime the window opened
 float  nm_rate;                 // last full window, deltas/sec, all bodies
 float  nm_bodies;               // bodies counted at the last window close
 float  nm_have;                 // a full window has closed at least once
+// Patch 383: the stream's share of the window (pb_* totals, cl_keys.qc).
+float  nm_rx_last, nm_tk_last, nm_bf_last, nm_late_last;
+float  nm_gap;                  // mean sample gap, ticks
+float  nm_late;                 // share of body-frames past the newest moving sample
 
 /*
   Does this engine have getdeltacount?
@@ -206,16 +210,17 @@ float() NM_CountBodies =
 */
 void() NM_Frame =
 {
-	local float now, tot, dt;
+	local float now, tot, dt, drx;
 
 	nm_cv_on = cvar("hud_net");
 	nm_cv_x  = cvar("hud_net_x");
 	nm_cv_y  = cvar("hud_net_y");
 
-	if (!nm_ok)
-		return;
-
-	tot = getdeltacount(nm_mi_stand) + getdeltacount(nm_mi_duck);
+	// Patch 383: stream samples count with the engine's deltas, and must not
+	// wait on getdeltacount -- a streamed body sends no engine delta at all.
+	tot = pb_rx_total;
+	if (nm_ok)
+		tot = tot + getdeltacount(nm_mi_stand) + getdeltacount(nm_mi_duck);
 	now = cltime;
 
 	/*
@@ -229,6 +234,8 @@ void() NM_Frame =
 	{
 		nm_t_last = now;
 		nm_c_last = tot;
+		nm_rx_last = pb_rx_total;  nm_tk_last = pb_tk_total;
+		nm_bf_last = pb_bf_total;  nm_late_last = pb_late_total;
 		return;
 	}
 
@@ -237,16 +244,22 @@ void() NM_Frame =
 		return;
 
 	nm_rate = (tot - nm_c_last) / dt;
+	drx = pb_rx_total - nm_rx_last;
+	nm_gap  = drx > 0 ? (pb_tk_total - nm_tk_last) / drx : 0;
+	nm_late = (pb_bf_total > nm_bf_last)
+	        ? (pb_late_total - nm_late_last) / (pb_bf_total - nm_bf_last) : 0;
 
 	// Only scanned when the panel is up: this is the one loop here that is not
 	// O(1), and nothing else reads nm_bodies.
 	if (nm_cv_on)
-		nm_bodies = NM_CountBodies();
+		nm_bodies = (nm_ok ? NM_CountBodies() : 0) + pb_nbodies;
 
 	nm_have = TRUE;
 
 	nm_t_last = now;
 	nm_c_last = tot;
+	nm_rx_last = pb_rx_total;  nm_tk_last = pb_tk_total;
+	nm_bf_last = pb_bf_total;  nm_late_last = pb_late_total;
 };
 
 /*
@@ -295,7 +308,7 @@ void(vector scr) NM_Draw =
 
 	HUD_Text(p, "net", sz, '0.6 0.8 1.0', 1);                          p_y += lh;
 
-	if (!nm_ok)
+	if (!nm_ok && !pb_nbodies)
 	{
 		// The engine predates Patch 270.  Named rather than blank, because a
 		// blank panel reads as "zero updates" -- the failure it is here to find.
@@ -304,7 +317,7 @@ void(vector scr) NM_Draw =
 		return;
 	}
 
-	if (!nm_mi_stand && !nm_mi_duck)
+	if (!nm_mi_stand && !nm_mi_duck && !pb_nbodies)
 	{
 		// Said out loud rather than drawn as 0.0.  No avatar model precached on
 		// this map means either the server is not in lobby mode or Lobby_Precache
@@ -328,14 +341,12 @@ void(vector scr) NM_Draw =
 	HUD_TextR([rx, p_y, 0], sprintf("%.1f", nm_rate), sz, '1 1 1', 1); p_y += lh;
 
 	/*
-	  The row the whole panel exists for.
-
-	  Colour is a verdict, and the thresholds are the two outcomes the design
-	  predicts rather than round numbers.  Anything near 66.7 means the pose is
-	  being sent every server frame -- which is what happens if the avatar ever
-	  becomes a client edict and SVFTE_DeltaCalcBits' force-resend branch starts
-	  firing on it.  That is the failure this measurement is for, so it is red.
+	  The row the whole panel exists for.  Engine avatars: near 66.7 per body
+	  means the avatar became a client edict (SVFTE_DeltaCalcBits' force-resend),
+	  so red.  Stream bodies (Patch 383) run at 66.7 by design; red there is
+	  more than 5% of frames past the newest moving sample (`late`).
 	*/
+	col = '1 1 1';
 	if (nm_bodies <= 0)
 	{
 		HUD_Text (p, "per body", sz, '0.7 0.7 0.7', 1);
@@ -344,12 +355,27 @@ void(vector scr) NM_Draw =
 	else
 	{
 		per = nm_rate / nm_bodies;
-		if (per > 45)                                 col = '1.0 0.4 0.4';
+		if (pb_nbodies > 0)
+		{
+			if (nm_late > 0.05)                       col = '1.0 0.4 0.4';
+			else if (nm_late > 0.01)                  col = '1.0 0.8 0.4';
+			else                                      col = '0.5 0.9 0.5';
+		}
+		else if (per > 45)                            col = '1.0 0.4 0.4';
 		else if (per > 30)                            col = '1.0 0.8 0.4';
 		else                                          col = '0.5 0.9 0.5';
 
 		HUD_Text (p, "per body", sz, '0.7 0.7 0.7', 1);
 		HUD_TextR([rx, p_y, 0], sprintf("%.1f", per), sz, col, 1);
+	}
+
+	if (pb_nbodies > 0)
+	{
+		p_y += lh;
+		HUD_Text (p, "gap", sz, '0.7 0.7 0.7', 1);
+		HUD_TextR([rx, p_y, 0], sprintf("%.2f", nm_gap), sz, '1 1 1', 1);  p_y += lh;
+		HUD_Text (p, "late%", sz, '0.7 0.7 0.7', 1);
+		HUD_TextR([rx, p_y, 0], sprintf("%.1f", nm_late * 100), sz, col, 1);
 	}
 
 	NM_Rect(bp, p_y + lh, rx);

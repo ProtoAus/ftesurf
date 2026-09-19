@@ -142,6 +142,15 @@ float  rec_wt_time;              // the playback position in the .rec's own `t`
                                 // domain -- the HUD's frame clock while a replay
                                 // is up; see board_now in HUD_Draw
 
+// Patch 383, the pose stream: written by cl_body.qc, read by cl_netmon.qc
+// (which compiles before it).  Free-running totals, zeroed per map.
+float  spc_hideslot;             // slot+1 of the body NOT to draw this frame, 0 none (spectate writes it)
+float  pb_rx_total;              // pose samples received
+float  pb_tk_total;              // sum of their tick gaps
+float  pb_bf_total;              // body-frames evaluated
+float  pb_late_total;            // ...that ran past the newest sample
+float  pb_nbodies;               // stream bodies holding a sample, last frame
+
 /*
 ===========================================================================
   BUILD 43 -- TELLING THE SERVER WHERE A DETACHED CAMERA IS.

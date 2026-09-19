@@ -171,6 +171,7 @@ void() StartFrame =
 	// the dimension pass -- which has to run either way, because turning the
 	// lobby off has to put player collision back the way it was.
 	Lobby_Frame();
+	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 
 	/*
 	  AFTER Lobby_Frame, and it has to be a separate call rather than the last
@@ -511,11 +512,13 @@ void() worldspawn =
 	                  split -- see the essay in sv_lobby.qc, the obvious
 	                  one-bit version silently kills every trigger).
 	  lobby_avatars   spawn a visible body per player.
-	  lobby_av_rate   Hz at which a body's pose is pushed.  15 is a considered
-	                  default, not a placeholder: the engine's own entity lerp
-	                  covers the gap (cl_lerp_maxinterval is 0.3s, twenty times
-	                  longer), while 66.7 would cost 4.5x the bandwidth for
-	                  motion the client is interpolating anyway.
+	  lobby_av_stream 1 = bodies are CSQC entities fed every moved tick
+	                  (sv_pose.qc, Patch 383); 0 = the engine-entity avatar.
+	  lobby_av_rate   the stream's rate cap in Hz, applied in whole ticks;
+	                  0 = every moved tick.  With lobby_av_stream 0 it is the
+	                  entity copy's rate, <= 0 meaning 15.
+	  lobby_av_budget bytes/s of bodies per viewer (default 24000); widens the
+	                  stream's gap when a full lobby would exceed it.
 	  lobby_av_alpha  1 = a solid person.  Lower it to tell other people's
 	                  bodies apart from map geometry while testing.
 	  lobby_av_self   0 = you do not see your own body (.nodrawtoclient).  1 is

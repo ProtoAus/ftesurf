@@ -45,44 +45,12 @@
   sv_ents.c:1009.  Move it 15 times a second and it costs 15 updates a second.
   The delta compressor becomes the rate limiter and we do not write one.
 
-  INTERPOLATION IS ALSO FREE, and this is the part worth not re-deriving.  On
-  the frames where no delta arrives for an entity, cl_ents.c:5039-5060 leaves
-  `snew->sequence` untouched (it is only rewritten in SVFTE_ParseEntityDelta),
-  so `le->newsequence != snew->sequence` is false and the client keeps lerping
-  toward the last origin it received.  The lerp is clamped by
-  cl_lerp_maxinterval, default 0.3s, which is far longer than the 1/15s gap we
-  create.  A 15 Hz avatar therefore moves smoothly with ZERO lines of CSQC --
-  and this tree has zero lines of CSQC entity code to build on, so that
-  mattered.
-
-  ...UP TO 3000 UPS, AND THE PARAGRAPH ABOVE USED TO STOP BEFORE SAYING SO.
-  cl_lerp_maxinterval is only one of the two clamps.  The other is a DISTANCE:
-
-      maxdist = cl_lerp_maxdistance * cl_lerp_maxdistance     cl_ents.c:4883
-      if (DotProduct(move, move) > maxdist || ...) isnew = true;   :5013
-
-  whose own comment is "disable lerping (and indirectly trails)".  `move` is the
-  gap between two consecutive RECEIVED poses, i.e. speed / lobby_av_rate, and
-  cl_lerp_maxdistance defaults to 200 (cl_main.c:124).  So the ceiling is
-
-      cl_lerp_maxdistance * lobby_av_rate  =  200 * 15  =  3000 ups
-
-  and above it an avatar is not interpolated at all -- it steps 15 times a
-  second -- and any .traileffectnum on it is dropped, because the isnew branch
-  at cl_ents.c:5921-5926 delinks the trailstate and `continue`s before the trail
-  is ever run.  Surf speeds are above 3000 routinely, so this is the ordinary
-  case and not a corner of it.
-
-  Found in Patch 278, while working out why a speed trail would be invisible
-  exactly when it was worth having.  It has been true since Stage 1 shipped.
-  Two independent ways up, and they multiply: raise cl_lerp_maxdistance on the
-  client (512 covers 6400 ups here, at the cost of smearing genuine teleports
-  shorter than that, for every entity), or raise lobby_av_rate on the server.
-  cfg/lobby/lobby.cfg carries the same note beside the rate.
-
-  A hand-packed CSQC .SendEntity would get ~18 bytes down to ~8.  That is a
-  real saving and it is Stage 8, deliberately after this, so that it can be
-  argued against a measured baseline rather than a guess.
+  PATCH 383: THE POSE STREAM.  With lobby_av_stream 1 the avatar is a CSQC
+  entity (server/sv_pose.qc, client/cl_body.qc): every moved tick up to the
+  lobby_av_rate / lobby_av_budget cap, 17 B plus 1 B of header, interpolated in
+  CSQC.  The engine lerp and its cl_lerp_maxdistance * rate speed ceiling
+  (cl_ents.c:5413) are left to clients without CSQC, which get a 15 Hz mirror,
+  and to lobby_av_stream 0, which is the pre-383 path byte for byte.
 ===========================================================================
 */
 
@@ -227,6 +195,16 @@ float lobby_self;
 float lobby_colors;
 float lobby_fxon;
 float lobby_fxmax;
+float lobby_stream;             // Patch 383: lobby_av_stream
+float lobby_streamwas;
+
+// Patch 383, defined in sv_pose.qc (which compiles after this file).
+float(entity to, float sf) Pose_Send;
+void(entity av, entity p) Pose_Look;
+void(entity av, entity p) Pose_Seed;
+
+// The engine-entity copy's rate while streaming: clients without CSQC only.
+#define LOBBY_MIRROR_HZ 15
 
 // Edge detector for lobby_on, so a mid-session flip can resync rather than
 // waiting for everyone to reconnect.
@@ -1078,6 +1056,15 @@ void(entity p) Lobby_AvatarSpawn =
 	av.lobby_next = 0;
 
 	p.lobby_av = av;
+
+	// Patch 383.  Read here, not cached: a connect can precede this map's first
+	// Lobby_Frame.
+	if (cvar("lobby_av_stream"))
+	{
+		av.SendEntity = Pose_Send;
+		Pose_Look(av, p);
+		Pose_Seed(av, p);
+	}
 };
 
 /*
@@ -1110,7 +1097,8 @@ void(entity av) Lobby_AvatarPose =
 
 	if (time < av.lobby_next)
 		return;
-	av.lobby_next = time + (1 / lobby_rate);
+	// Streaming (Patch 383), this copy only feeds clients without CSQC.
+	av.lobby_next = time + (1 / (av.SendEntity ? LOBBY_MIRROR_HZ : lobby_rate));
 
 	want = Lobby_Model(p);
 	if (want != av.lobby_model)
@@ -1127,7 +1115,10 @@ void(entity av) Lobby_AvatarPose =
 	av.angles_z = 0;
 
 	if (av.alpha != lobby_alpha)
+	{
 		av.alpha = lobby_alpha;
+		Pose_Look(av, p);
+	}
 
 	// Re-applied per pose so lobby_av_self flips live.  Safe to change at
 	// runtime only because PVSF_NOREMOVE is gone -- with it set, turning this
@@ -1372,7 +1363,9 @@ void() Lobby_Frame =
 	registercvar("lobby_enable",    "0");
 	registercvar("lobby_nocollide", "0");
 	registercvar("lobby_avatars",   "1");
-	registercvar("lobby_av_rate",   "15");
+	registercvar("lobby_av_rate",   "0");     // Patch 383: 0 = every moved tick; the legacy path reads <= 0 as 15
+	registercvar("lobby_av_stream", "1");     // Patch 383: 0 = the engine-entity avatar, pre-383
+	registercvar("lobby_av_budget", "24000"); // Patch 383: bytes/s of bodies per viewer; caps the gap
 	registercvar("lobby_av_alpha",  "1");
 	registercvar("lobby_av_self",   "0");
 	registercvar("lobby_av_colors", "1");
@@ -1411,6 +1404,7 @@ void() Lobby_Frame =
 		lobby_alpha = 1;
 
 	lobby_self = cvar("lobby_av_self");
+	lobby_stream = cvar("lobby_av_stream");
 
 	/*
 	  Patch 340: the per-map shuffle latch died with the stride it rotated --
@@ -1457,6 +1451,26 @@ void() Lobby_Frame =
 
 	if (!lobby_on || !lobby_avatars)
 		return;
+
+	// Patch 383: lobby_av_stream flips every avatar live.  Clearing SendEntity
+	// makes the engine REMOVE the CSQC copy and send the entity path instead.
+	if (lobby_stream != lobby_streamwas)
+	{
+		lobby_streamwas = lobby_stream;
+		av = find(world, classname, "lobbyavatar");
+		while (av)
+		{
+			if (!lobby_stream)
+				av.SendEntity = __NULL__;
+			else if (!av.SendEntity && av.lobby_owner)
+			{
+				av.SendEntity = Pose_Send;
+				Pose_Look(av, av.lobby_owner);
+				Pose_Seed(av, av.lobby_owner);
+			}
+			av = find(av, classname, "lobbyavatar");
+		}
+	}
 
 	/*
 	  Re-resolve colours once a second.
@@ -1594,6 +1608,7 @@ void() Lobby_Frame =
 			{
 				Lobby_ApplyColour(p.lobby_av, p);
 				Lobby_ApplyFX(p.lobby_av, p);
+				Pose_Look(p.lobby_av, p);
 			}
 			p = find(p, classname, "player");
 		}

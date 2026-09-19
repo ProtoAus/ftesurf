@@ -119,6 +119,10 @@ client/cl_online.qc
 // they read.
 client/cl_chat.qc
 client/cl_avatar.qc
+// Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After
+// cl_avatar.qc (Av_ColourModRGB, Av_PaletteRGB) and cl_netmon.qc (getdeltacount);
+// before cl_players.qc, cl_scores.qc and cl_main.qc, which call Body_*.
+client/cl_body.qc
 client/cl_players.qc
 // AFTER cl_watch.qc, because clicking a row hands the file straight to
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at

@@ -312,6 +312,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Boarding_RegisterCvars();       // build 65, the Boarding window
 	HUD_EditRegisterCvars();
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
+	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
 	Ev_Register();                  // build 54, the trigger/entity inspector
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
@@ -1359,6 +1360,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	*/
 	Ghost_Frame();
 
+	// Patch 383: the streamed bodies, after the ghost's capture and before the
+	// spectate camera, which reads Body_Pose, and addentities, which draws them.
+	Body_Frame();
+
 	/*
 	  The map's 3D skybox, if it has one.  See cl_decals.qc for where the
 	  sky_camera is read and for what this does and does not reproduce.
@@ -1924,6 +1929,10 @@ float(string cmd) CSQC_ConsoleCommand =
 	// SV_ParseClientCommand -- Cmd_ExecuteString offers it to the SSQC
 	// server-command hook instead, where `self` is world.  See cl_zones.qc:98.
 	if (Ghost_ConsoleCommand(cmd))
+		return TRUE;
+
+	// Patch 383.  `body_stats`, `body_trace <slot|-1> <frames>`.
+	if (Body_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 31.  `hud_edit`, `hud_edit status|reset|save|on|off`.
