@@ -861,6 +861,11 @@ void(float n) SV_ZoneMove =
 
 	setorigin(self, dest);
 	self.velocity = '0 0 0';
+	// Patch 400: and the push carrier, as Momentum's restart does (TeleportEntity
+	// -> SetBaseVelocity(0)).  Kept, `!r` inside a trigger_push launched you out of
+	// the start at the push's speed.  The next command records `ride arm 0 0 0`.
+	self.run_basevel = '0 0 0';
+	self.run_basevel_armed = FALSE;
 
 	// You did not travel here.  Without this the next tick's swept zone test
 	// runs a segment from wherever you were to the destination and fires every
