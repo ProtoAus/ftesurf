@@ -192,6 +192,7 @@ void() StartFrame =
 	  unless lobby_cycle is non-zero, so a listen server never moves by itself.
 	*/
 	Lobby_Cycle();
+	Vote_Frame();                   // Patch 372: reads the deadline just set; publishes last
 };
 
 /*

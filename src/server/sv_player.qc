@@ -301,6 +301,7 @@ void() ClientConnect =
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
 	Lobby_ClientConnect(self);
+	Vote_ClientConnect(self);           // Patch 372: every begin, map changes included
 };
 
 void() ClientDisconnect =
@@ -310,6 +311,7 @@ void() ClientDisconnect =
 	// Before the timer teardown, because it only removes an entity and the
 	// timer's teardown is the part that must not be skipped if this throws.
 	Lobby_ClientDisconnect(self);
+	Vote_ClientDisconnect(self);
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
@@ -1090,6 +1092,10 @@ void(string cmd) SV_ParseClientCommand =
 				return;
 			}
 		}
+
+		// Patch 372: !rtv !extend !nominate !timeleft !nextmap (sv_vote.qc).
+		if (Vote_Say(self, w, tail, 2, cmdargc))
+			return;
 	}
 
 	/*
@@ -1115,6 +1121,10 @@ void(string cmd) SV_ParseClientCommand =
 	// Multi-Session.  Not `run_resume`: that is the cvar's name.
 	if (c == "ms_resume")    { SV_MsAccept(self);     return; }
 	if (c == "ms_discard")   { SV_MsDiscardCmd(self); return; }
+
+	// Patch 372: vote_cast (the vote box) and the chat commands' twins.
+	if (Vote_Command(self, c, cmdargc))
+		return;
 
 	clientcommand(self, cmd);
 };

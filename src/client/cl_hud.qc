@@ -27,6 +27,7 @@ float  ui_cv_strafe, ui_cv_board, ui_cv_boardfade;
 float  ui_cv_bseg, ui_cv_bgrade, ui_cv_bkept, ui_cv_bcost, ui_cv_bramp, ui_cv_bwords;
 float  ui_cv_seqlive;       // build 34: provisional rows for the OPEN segment
 float  ui_cv_mapinfo, ui_cv_mappos_x, ui_cv_mappos_y;   // build 34: the top-right block
+float  ui_cv_mapclock;      // Patch 372: time left and the next map, in that block
 float  ui_cv_smooth, ui_cv_window, ui_cv_band, ui_cv_curve, ui_cv_minspeed;
 float  ui_cv_srates, ui_cv_swhy, ui_cv_sbest;   // build 66: the bar's text blocks
 vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
@@ -696,6 +697,7 @@ void() HUD_ReadCvars =
 	ui_cv_mapinfo   = cvar("hud_mapinfo");
 	ui_cv_mappos_x  = cvar("hud_mapinfo_x");
 	ui_cv_mappos_y  = cvar("hud_mapinfo_y");
+	ui_cv_mapclock  = cvar("hud_mapinfo_timeleft");
 
 	// CLAMPED, not just defaulted.  hud_strafe_smooth had no guard at all, and
 	// at 0 HUD_UpdateTurn's window collapses to a single frame -- which is
@@ -872,6 +874,7 @@ void() HUD_RegisterCvars =
 	registercvar("hud_mapinfo",   "1",    CVAR_ARCHIVE);
 	registercvar("hud_mapinfo_x", "0.99", CVAR_ARCHIVE);
 	registercvar("hud_mapinfo_y", "0.02", CVAR_ARCHIVE);
+	registercvar("hud_mapinfo_timeleft", "1", CVAR_ARCHIVE);   // Patch 372
 
 	/*
 	  The sequence column (build 12): the launch, then every ramp and every air
@@ -3163,9 +3166,125 @@ void(vector scr) HUD_DrawCrosshair =
 	        pic, [size, size, 0], '1 1 1', a, 0);
 };
 
+/*
+  PATCH 372: THE MAP CLOCK (grammar: sh_defs.qc, VOTE_*).  HUD_SK is serverkey
+  with a local override for `vote fake`: a harness never writes the real
+  serverinfo, which the server rewrites four times a second.
+*/
+string hud_skf_k[12];                   // zoned; "" = a free slot
+string hud_skf_v[12];
+float  ui_mc_state;                     // -1 no limit, else mapclock's state
+float  ui_mc_end;
+float  ui_mc_level;                     // 0 calm, 1 under a minute or held, 2 under ten seconds or changing
+
+string(string k) HUD_SK =
+{
+	local float i;
+
+	for (i = 0; i < 12; i = i + 1)
+		if (hud_skf_k[i] != "")
+		if (strcmp(hud_skf_k[i], k) == 0)
+			return hud_skf_v[i];
+	return serverkey(k);
+};
+
+void(string k, string v) HUD_SKFake =
+{
+	local float i, slot;
+
+	slot = -1;
+	for (i = 0; i < 12; i = i + 1)
+	{
+		if (hud_skf_k[i] == "")
+		{
+			if (slot < 0)
+				slot = i;
+		}
+		else if (strcmp(hud_skf_k[i], k) == 0)
+		{
+			strunzone(hud_skf_v[i]);
+			hud_skf_v[i] = strzone(v);
+			return;
+		}
+	}
+	if (slot < 0)
+		return;
+	hud_skf_k[slot] = strzone(k);
+	hud_skf_v[slot] = strzone(v);
+};
+
+void() HUD_SKFakeOff =
+{
+	local float i;
+
+	for (i = 0; i < 12; i = i + 1)
+	{
+		if (hud_skf_k[i] != "")
+		{
+			strunzone(hud_skf_k[i]);
+			strunzone(hud_skf_v[i]);
+		}
+		hud_skf_k[i] = "";
+		hud_skf_v[i] = "";
+	}
+};
+
+void() MapClock_Read =
+{
+	local string s;
+	local float sp;
+
+	ui_mc_state = -1;
+	s = HUD_SK("mapclock");
+	sp = strstrofs(s, " ", 0);
+	if (sp < 0)
+		return;
+	ui_mc_end   = stof(substring(s, 0, sp));
+	ui_mc_state = stof(substring(s, sp + 1, -1));
+};
+
+// Seconds to a counted or forced change; -1 for no limit or a hold.
+float() MapClock_Left =
+{
+	MapClock_Read();
+	if (ui_mc_state < 0 || ui_mc_state == 1)
+		return -1;
+	return max(0, ui_mc_end - time);
+};
+
+string() HUD_MapClockText =
+{
+	local float left;
+	local string nx;
+
+	MapClock_Read();
+	ui_mc_level = 0;
+	if (ui_mc_state < 0)
+		return "";
+	left = max(0, ui_mc_end - time);
+	if (ui_mc_state == 2)
+	{
+		ui_mc_level = 2;
+		nx = HUD_SK("mapnext");
+		if (nx == "")
+			return strcat("changing map ", Time_Clock(left));
+		return sprintf("changing to %s %s", nx, Time_Clock(left));
+	}
+	if (ui_mc_state == 1)
+	{
+		ui_mc_level = 1;
+		return strcat("waiting for runs ", Time_Clock(left));
+	}
+	if (left < 10)
+		ui_mc_level = 2;
+	else if (left < 60)
+		ui_mc_level = 1;
+	return strcat("time left ", Time_Clock(left));
+};
+
 void(vector scr) HUD_DrawMapInfo =
 {
-	local vector p, bp;
+	local vector p, bp, col;
 	local float sz, tsz, lh, bw, bt, tw;
 	local string s;
 
@@ -3242,6 +3361,32 @@ void(vector scr) HUD_DrawMapInfo =
 		tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
 		HUD_TextR(p, s, sz, '0.55 0.60 0.68', 0.95);
 		p_y = p_y + lh;
+	}
+
+	// Patch 372: the map clock, then the next map (not while changing: that says where).
+	if (ui_cv_mapclock)
+	{
+		s = HUD_MapClockText();
+		if (s != "")
+		{
+			col = '0.70 0.75 0.84';
+			if (ui_mc_level == 1)
+				col = '1 0.85 0.35';
+			else if (ui_mc_level == 2)
+				col = '1 0.35 0.30';
+			tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
+			HUD_TextR(p, s, sz, col, 0.95);
+			p_y = p_y + lh;
+			s = HUD_SK("mapnext");
+			if (ui_mc_state != 2)
+			if (s != "")
+			{
+				s = strcat("next ", s);
+				tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
+				HUD_TextR(p, s, sz, '0.55 0.60 0.68', 0.95);
+				p_y = p_y + lh;
+			}
+		}
 	}
 
 	Font_Reset();

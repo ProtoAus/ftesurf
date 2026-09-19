@@ -49,3 +49,16 @@ string(float ticks, float tickrate) Time_DeltaString =
 		return strcat("+", Time_TickString(ticks, tickrate));
 	return Time_TickString(ticks, tickrate);
 };
+
+// A countdown in whole seconds, rounded up so 0:00 means now: "m:ss" or "h:mm:ss".
+string(float secs) Time_Clock =
+{
+	local float h, m, s;
+
+	s = ceil(max(0, secs));
+	h = floor(s / 3600);    s = s - h * 3600;
+	m = floor(s / 60);      s = s - m * 60;
+	if (h > 0)
+		return sprintf("%g:%02g:%02g", h, m, s);
+	return sprintf("%g:%02g", m, s);
+};

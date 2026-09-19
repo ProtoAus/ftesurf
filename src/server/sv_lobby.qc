@@ -2891,7 +2891,7 @@ float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitSt
 ===========================================================================
 */
 float  lobby_cyc_next;          // absolute deadline; 0 = not latched this map
-float  lobby_cyc_warn;          // 0 none given, 1 the minute, 2 the ten seconds
+float  lobby_cyc_warn;          // 0 none, 1 five minutes, 2 the minute, 3 ten seconds
 // WP11, the rotation hold.  All zeroed by the map change, which is what caps it:
 // players taking turns cannot restart lobby_cyc_hold0.
 float  lobby_cyc_runseen;       // last time a run was in progress (sv_resume.qc writes it)
@@ -2899,6 +2899,26 @@ float  lobby_cyc_hold0;         // when the hold began; 0 = not holding
 float  lobby_cyc_holdwarn;      // the minute-to-cap warning is out
 float  lobby_cyc_holdend;       // the runs ended inside the hold: ten seconds given
 float  lobby_cyc_moving;        // the rotation's own changelevel: parks say `rotate`
+// Patch 372: votes.  sv_vote.qc writes these; they live here because Lobby_Cycle
+// reads them and compiles first.
+float  lobby_vt_kind;           // a vote is running (VOTE_*): the deadline waits for it
+string lobby_vt_next;           // the voted next map (zoned), "" = the rotation's
+float  lobby_vt_force;          // when a vote-forced change goes (no hold), 0 none
+float  lobby_vt_ext;            // seconds extensions added: widens the pull-in cap
+float  lobby_vt_emap;           // the end-of-map vote has run this period
+float  lobby_cyc_per;           // the last lobby_cycle: a lowered one forfeits extensions
+
+// The warning a deadline this far off has earned: 1 five minutes, 2 one, 3 ten seconds.
+float(float left) Lobby_WarnLvl =
+{
+	if (left <= 10)
+		return 3;
+	if (left <= 60)
+		return 2;
+	if (left <= 300)
+		return 1;
+	return 0;
+};
 
 /*
   The map after this one.
@@ -2913,7 +2933,7 @@ float  lobby_cyc_moving;        // the rotation's own changelevel: parks say `ro
   the rotation, and the rotation should resume at the top rather than give up
   silently and leave the lobby parked there forever.
 */
-string() Lobby_NextMap =
+string() Lobby_RotNext =
 {
 	local float n, i, j;
 
@@ -2939,9 +2959,43 @@ string() Lobby_NextMap =
 	return argv(0);
 };
 
+// Patch 372: a voted map beats the rotation at every call site -- while there
+// is a rotation: clearing lobby_maps takes its vote with it.
+string() Lobby_NextMap =
+{
+	if (lobby_vt_next != "")
+	if (Lobby_RotNext() != "")
+		return lobby_vt_next;
+	return Lobby_RotNext();
+};
+
+// Re-arm BEFORE the changelevel (the essay in Lobby_Cycle), then go.  A voted
+// map is unzoned after the localcmd has copied it: one that fails to load is not
+// tried again, and the rotation takes over.
+void(float per, string nxt) Lobby_CycleGo =
+{
+	lobby_cyc_next = time + per;
+	lobby_cyc_warn = 0;
+	lobby_vt_emap = FALSE;          // a failed change votes again next period
+	lobby_cyc_hold0 = 0;            // ...and holds, and warns, afresh
+	lobby_cyc_holdwarn = FALSE;
+	lobby_cyc_holdend = FALSE;
+
+	if (nxt == "")
+		return;
+
+	lobby_cyc_moving = TRUE;
+	localcmd(sprintf("changelevel %s\n", nxt));
+	if (lobby_vt_next != "")
+	{
+		strunzone(lobby_vt_next);
+		lobby_vt_next = "";
+	}
+};
+
 void() Lobby_Cycle =
 {
-	local float  per, left, hold;
+	local float  per, left, hold, lvl;
 	local string nxt;
 
 	// Registered beside the read, for the reason spelled out at length in
@@ -2973,11 +3027,14 @@ void() Lobby_Cycle =
 	*/
 	if (per < 60)
 		per = 60;
+	if (per < lobby_cyc_per)
+		lobby_vt_ext = 0;               // Patch 372: an admin's pull-in beats the extensions
+	lobby_cyc_per = per;
 
 	if (!lobby_cyc_next)
 	{
 		lobby_cyc_next = time + per;
-		lobby_cyc_warn = 0;
+		lobby_cyc_warn = Lobby_WarnLvl(per);    // a short period gets no "N minutes left"
 		return;
 	}
 
@@ -2997,38 +3054,68 @@ void() Lobby_Cycle =
 	  most of the way through would mean the map they were told was ending in a
 	  minute silently is not.
 	*/
-	if (lobby_cyc_next > time + per)
-		lobby_cyc_next = time + per;
+	if (lobby_cyc_next > time + per + lobby_vt_ext)
+		lobby_cyc_next = time + per + lobby_vt_ext;
+
+	/*
+	  Patch 372: A VOTE-FORCED CHANGE (!rtv) goes at its moment whether or not
+	  runs are going -- SV_Shutdown parks them as `rotate`, so !resume continues
+	  them.  The timed deadline below keeps the hold.
+	*/
+	if (lobby_vt_force)
+	{
+		lobby_cyc_moving = FALSE;
+		if (time >= lobby_vt_force)
+		{
+			lobby_vt_force = 0;
+			Lobby_CycleGo(per, Lobby_NextMap());
+		}
+		return;
+	}
 
 	left = lobby_cyc_next - time;
+	if (lobby_vt_kind)
+	if (left <= 10)
+	{
+		// Vote_Open leaves room, and the last ten seconds wait for its result so
+		// the warning names the right map.  This also pauses a hold's cap for the
+		// vote's length.
+		lobby_cyc_moving = FALSE;
+		return;
+	}
 
 	if (left > 0)
 	{
 		lobby_cyc_moving = FALSE;       // a change that did not happen is not moving
 		/*
-		  Two warnings, and only when somebody is listening.  An empty lobby
-		  rotates in silence -- there is no one to warn, and the log line every
-		  half hour on an idle server is noise that makes the real ones harder
-		  to find.
+		  Three warnings, in the chatbox, and only when somebody is listening.  An
+		  empty lobby rotates in silence -- there is no one to warn, and the log
+		  line every half hour on an idle server is noise that makes the real ones
+		  harder to find.
 
-		  Sixty seconds is enough to finish a stage; ten is enough to stop
-		  starting one.  Both are printed with the destination, because "the map
-		  is changing" without saying to what is the thing that makes people
-		  leave rather than wait.
+		  Five minutes is the time limit's own notice; sixty seconds is enough to
+		  finish a stage; ten is enough to stop starting one.  The last two name the
+		  destination, because "the map is changing" without saying to what is the
+		  thing that makes people leave rather than wait.
 		*/
-		if (left <= 60 && lobby_cyc_warn < 1)
+		lvl = Lobby_WarnLvl(left);
+		if (lvl > lobby_cyc_warn)
 		{
-			lobby_cyc_warn = 1;
+			lobby_cyc_warn = lvl;
 			nxt = Lobby_NextMap();
-			if (nxt != "" && Lobby_PlayerCount() > 0)
-				bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in one minute\n", nxt));
-		}
-		if (left <= 10 && lobby_cyc_warn < 2)
-		{
-			lobby_cyc_warn = 2;
-			nxt = Lobby_NextMap();
-			if (nxt != "" && Lobby_PlayerCount() > 0)
-				bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in ten seconds\n", nxt));
+			if (nxt != "")
+			if (Lobby_PlayerCount() > 0)
+			{
+				if (lvl == 1)
+					bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s left on %s\n",
+					       Time_Clock(left), mapname));
+				else if (lvl == 3)
+					bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s in ten seconds\n", nxt));
+				else if (lobby_vt_kind == VOTE_EMAP || lobby_vt_kind == VOTE_RTV)
+					bprint(PRINT_CHAT, sprintf("^3lobby:^7 one minute left on %s\n", mapname));
+				else
+					bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s in one minute\n", nxt));
+			}
 		}
 		return;
 	}
@@ -3060,7 +3147,7 @@ void() Lobby_Cycle =
 			if (!lobby_cyc_hold0)
 			{
 				lobby_cyc_hold0 = time;
-				bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s waits for the runs in progress "
+				bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s waits for the runs in progress "
 				       "(at most %g min)\n", nxt, ceil(hold / 60)));
 			}
 			if (time - lobby_cyc_hold0 < hold)
@@ -3069,7 +3156,7 @@ void() Lobby_Cycle =
 				if (time - lobby_cyc_hold0 >= hold - 60)
 				{
 					lobby_cyc_holdwarn = TRUE;
-					bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in one minute -- runs still "
+					bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s in one minute -- runs still "
 					       "going are paused; !resume on %s continues them\n", nxt, mapname));
 				}
 				return;
@@ -3080,20 +3167,13 @@ void() Lobby_Cycle =
 		{
 			lobby_cyc_holdend = TRUE;
 			lobby_cyc_next = time + 10;
-			lobby_cyc_warn = 2;
-			bprint(PRINT_HIGH, sprintf("^3lobby:^7 %s in ten seconds\n", nxt));
+			lobby_cyc_warn = 3;
+			bprint(PRINT_CHAT, sprintf("^3lobby:^7 %s in ten seconds\n", nxt));
 			return;
 		}
 	}
 
-	lobby_cyc_next = time + per;
-	lobby_cyc_warn = 0;
-
-	if (nxt == "")
-		return;
-
-	lobby_cyc_moving = TRUE;
-	localcmd(sprintf("changelevel %s\n", nxt));
+	Lobby_CycleGo(per, nxt);
 };
 
 void(entity p) Lobby_ClientConnect =

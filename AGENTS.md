@@ -499,6 +499,21 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `banner chat`), so a harness client needs `menu_restart` + `ui_close` or
   notmenu skips Banner_Frame and no line is ever said.
 
+## Map clock and votes (Patch 372)
+
+- The rotation's deadline, its state, the next map and any running vote go
+  out as serverinfo (grammar: sh_defs.qc, VOTE_*), written only by sv_vote.qc
+  Vote_Publish. A change a vote decides is always EXECUTED BY Lobby_Cycle
+  (lobby_vt_force / lobby_vt_next): a changelevel issued from a client command
+  runs before StartFrame clears lobby_cyc_moving, and the runs it interrupts
+  would park as `server` instead of `rotate`.
+- Harness handles: `vote fake clock|next|open|label|votec|off` overrides
+  serverinfo on the client only (HUD_SK); `vote key <scan> <0|1>` runs the
+  whole CSQC_InputEvent chain, so it proves handler ORDER; `vote status`
+  (client) and `cmd vote` (server) print both sides.
+- A test that lowers lobby_cycle must raise it again before a map change: on
+  the next map a short period opens the end-of-map vote on its first frame.
+
 ## Pitfalls discovered the hard way
 
 - `pwsh`, never `powershell`.

@@ -1679,6 +1679,35 @@ void(float pick) Scores_OnlineHandOff =
 	Online_ReplayClear();
 };
 
+// Patch 372: the map clock beside the title, dropped (next map first) if it cannot fit.
+void(vector tp, float xmax) Scores_DrawClock =
+{
+	local string s, t;
+	local float x;
+	local vector col;
+
+	s = HUD_MapClockText();
+	if (s == "")
+		return;
+	t = serverkey("map");
+	if (t == "")
+		t = "no map";
+	x = tp_x + stringwidth(t, TRUE, [rec_sb_sztitle, rec_sb_sztitle]) + rec_sb_cw * 3;
+	col = SBC_DIM;
+	if (ui_mc_level == 1)
+		col = SBC_WARN;
+	else if (ui_mc_level == 2)
+		col = SBC_BAD;
+	t = HUD_SK("mapnext");
+	if (ui_mc_state != 2)
+	if (t != "")
+	if (x + stringwidth(strcat(s, "   next ", t), TRUE, [rec_sb_szhead, rec_sb_szhead]) <= xmax)
+		s = strcat(s, "   next ", t);
+	if (x + stringwidth(s, TRUE, [rec_sb_szhead, rec_sb_szhead]) > xmax)
+		return;
+	Scores_Text([x, tp_y + rec_sb_sztitle - rec_sb_szhead], rec_sb_szhead, s, col, 1);
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
@@ -1768,6 +1797,8 @@ void(vector scr) Scores_Draw =
 	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle,
 	            (serverkey("map") != "") ? serverkey("map") : "no map",
 	            SBC_TEXT, 1);
+	Scores_DrawClock([x0 + pad, y0 + pad], Scores_IsOnline() ? x0 + w - pad
+	                 : x0 + w - pad * 5 - ceil(rec_sb_cw * 10) * 4);   // left of the chips
 
 	if (zone_count <= 0)
 	{

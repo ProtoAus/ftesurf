@@ -559,6 +559,25 @@
 #define WRT_COMMUNITY   1
 
 /*
+  PATCH 372: THE MAP CLOCK AND ITS VOTES, as serverinfo (sv_vote.qc Vote_Publish
+  writes every key; cl_hud.qc / cl_vote.qc read them).  Times are server time,
+  which is CSQC's `time`, so what is left is <end> - time.
+
+      mapclock = "" | "<end> <state>"   state 0 counting, 1 held for runs (end = the
+                                        hold's cap), 2 changing (end = the change)
+      mapnext  = "" | "<map>"           the voted map, else the rotation's next
+      vote     = "" | "<id> <kind> <end> <n>"   id from 1 on each map, kind VOTE_*
+      vote1..vote6 = option labels      votec = "<c1> .. <cn>"
+      *vpick   = "" | "<id> <n>"        per player: the server's copy of their pick
+
+  Client -> server: `cmd vote_cast <n> <id>` (a stale id is refused).
+*/
+#define VOTE_MAX        6
+#define VOTE_EMAP       1       // the end-of-map vote: maps, plus Extend while it may
+#define VOTE_EXTEND     2       // !extend: Yes / No
+#define VOTE_RTV        3       // after !rtv: maps only, and the change comes at once
+
+/*
   WR_STORED IS NOT A ROUNDING OF WR_FAILED, and the difference is the whole
   reason this build exists.
 

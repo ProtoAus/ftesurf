@@ -284,6 +284,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
 	Gfx_RegisterCvars();
+	Vote_RegisterCvars();           // Patch 372: the vote box
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
 	// Patch 340: the chatbox, the avatar customizer and the room list.  The
@@ -1041,6 +1042,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	  steal of the messagemode bind happens here because this is the only
 	  place offered keys before the engine runs their bind.
 	*/
+	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1145,6 +1147,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		  the user's business; the front one wins and the other keeps its keys
 		  the moment you close this.
 		*/
+		if (Vote_Key(scanx))            // Patch 372: drawn over both menus, so asked first
+			return TRUE;
 		if (Gfx_Key(scanx, TRUE))
 			return TRUE;
 		return SaveLoc_Key(scanx, TRUE);
@@ -1439,6 +1443,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		              vwidth * cvar("hud_speed_x"), vheight * cvar("hud_speed_y")));
 	}
 
+	Vote_Sync();                        // Patch 372: outside notmenu, so a vote opened under the console still raises the box
+
 	if (notmenu)
 	{
 		/*
@@ -1558,6 +1564,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
+		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
 		// the first twenty seconds of a map -- see the essay above it.
 		Gfx_DrawMissing(scr);
@@ -1753,6 +1760,23 @@ float(string cmd) CSQC_ConsoleCommand =
 	// BUILD 33 gave it arguments -- see Gfx_Console.
 	if (argv(0) == "gfx_menu")
 		return Gfx_Console();
+
+	// Patch 372.  `vote key <scan> <0|1>` runs the whole input chain, so a harness
+	// proves the handlers' ORDER, which cl_vote.qc's own handles cannot reach.
+	if (argv(0) == "vote")
+	if (argv(1) == "key")
+	{
+		local float vk_scan, vk_down, vk_took;
+		vk_scan = stof(argv(2));
+		vk_down = stof(argv(3));
+		vk_took = CSQC_InputEvent(vk_down ? IE_KEYDOWN : IE_KEYUP, vk_scan, 0, 0);
+		print(sprintf("vote key: scan %g down %g took %g pick %g capture %g saves %g\n",
+		              vk_scan, vk_down, vk_took, vt_pick, Vote_Capturing(),
+		              getstatf(STAT_FS_SAVECOUNT)));
+		return TRUE;
+	}
+	if (argv(0) == "vote")
+		return Vote_Console();
 
 	if (argv(0) == "timer")
 	{

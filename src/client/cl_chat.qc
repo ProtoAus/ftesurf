@@ -730,7 +730,12 @@ void(vector scr) Chat_Draw =
 	  and older messages only whole.  The newest always shows, and is cut ("..")
 	  only when it alone is taller than the room above the draft.
 	*/
-	room = floor((yb - scr_y * 0.02) / lh);
+	room = scr_y * 0.02;
+	if (vt_box_z > 0)                   // Patch 372: a vote box above, in the chat's column
+	if (vt_boxtop < yb)
+	if (vt_box_x < x + maxw && vt_box_y > x)
+		room = max(room, vt_box_z + lh * 0.25);
+	room = floor((yb - room) / lh);
 	if (room < 1)
 		room = 1;
 	cap = max(lines, CHAT_ROWS_MIN);

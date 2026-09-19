@@ -82,6 +82,9 @@ client/cl_boarding.qc
 client/cl_timer.qc
 client/cl_saveloc.qc
 client/cl_gfx.qc
+// Patch 372: the vote box.  After cl_gfx.qc (Gfx_Row, Gfx_Field) and cl_hud.qc
+// (HUD_SK, the map clock); cl_hudedit.qc and cl_main.qc call into it.
+client/cl_vote.qc
 client/cl_replay.qc
 client/cl_zones.qc
 // AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,

@@ -613,8 +613,16 @@ void() Bn_ChatSay =
 // unlike the ribbon the line is said only once.
 void() Bn_ChatFrame =
 {
-	local float st;
+	local float st, left;
 
+	// Patch 372: the map changes within a second, taking the chatbox with it.
+	left = MapClock_Left();
+	if (left >= 0)
+	if (left < 1)
+	{
+		Bn_ChatSay();
+		return;
+	}
 	st = Bn_Answer(FALSE);
 	if (st == WR_PENDING)
 		ui_bn_chatpend = TRUE;

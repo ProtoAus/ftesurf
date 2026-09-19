@@ -317,6 +317,8 @@ void() HE_BuildTable =
 	HE_Hide();
 	HE_Add("gfx",     "Video menu", "hud_gfx_x",     "hud_gfx_y",     "",             0, HEA_LT,  150, 180);
 	HE_Hide();
+	HE_Add("vote",    "Vote",       "hud_vote_x",    "hud_vote_y",    "",             0, HEA_LT,  110, 108);
+	HE_Hide();
 	HE_Add("mapinfo", "Map info",   "hud_mapinfo_x", "hud_mapinfo_y", "hud_mapinfo",  0, HEA_RT,   96,  56);
 	HE_Text("hud_mapinfo_size",  "12 16 20 24",  8);     // UI; 16 today
 	HE_Hide();
@@ -567,6 +569,13 @@ string(string id, float row) HE_OptDef =
 		// reset button cannot recover.
 		if (row == 1) return "hud_timer_pace|PB pace colour|t||"
 		                     "|Colour the running clock green while you are ahead of your own PB at the last checkpoint or stage, red once you are behind. Needs a PB on the leg; public lobbies do not keep one.";
+		return "";
+	}
+
+	if (id == "mapinfo")
+	{
+		if (row == 0) return "hud_mapinfo_timeleft|Time left|t||"
+		                     "|On a server with a time limit: the time left on this map, then the next map.";
 		return "";
 	}
 
@@ -1726,6 +1735,7 @@ void(float r) HE_Default =
 	if (id == "debug")   localcmd("seta hud_debug_x 0.012\nseta hud_debug_y 0.30\n");
 	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.018\nseta hud_saveloc_y 0.34\n");
 	if (id == "gfx")     localcmd("seta hud_gfx_x 0.018\nseta hud_gfx_y 0.10\n");
+	if (id == "vote")    localcmd("seta hud_vote_x 0.018\nseta hud_vote_y 0.30\n");
 	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.99\nseta hud_mapinfo_y 0.02\n");
 
 	/*
