@@ -965,7 +965,13 @@ float(float i, float seq) TG_FireTeleport =
 		// Destinations are yaw markers; the server zeroes pitch and roll.
 		dang = tt_ang[drow];   // through a temporary: `tt_ang[drow]_y` is not
 		predmove_anglesnap = [0, dang_y, 0];   // a component expression (fteqcc)
-		predmove_fixangle  = 1;
+		// Patch 401: predict the view snap only on an engine that reconciles it
+		// exactly -- Patch 396 registers the command predangle_dump (1 = an engine
+		// command; a cvar's ENGINE flag would not do: any `set` marks it user-made).
+		// Older engines double or undo the snap at fps above cl_netfps; unpredicted,
+		// the server's delta turns you 1 RTT late.
+		if (checkcommand("predangle_dump") == 1)
+			predmove_fixangle = 1;
 
 		if (tg_snapv[i] > 0)
 		{
