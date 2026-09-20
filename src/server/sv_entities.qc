@@ -960,6 +960,40 @@ float(entity p) SV_TrigPending =
 .vector run_basevel;
 .float  run_basevel_armed;
 
+/*
+  PATCH 409: a push acted on this player this packet.  Set by the three sites
+  that can move a body without a jump, read ONLY by the hopped-start branch
+  (sv_timer.qc), cleared at the foot of SV_TimerJumpWatch -- so it is exactly
+  one packet wide and no other detector sees it.
+
+  WHY THE HOP RULE NEEDS IT.  SV_TimerJumpWatch has one way to see a jump --
+  velocity_z crossing PM_NONJUMP_VEL -- and one exclusion, run_rampcontact.
+  But pm_source.c:1313 sets rampcontact only for |n_z| in [0.1, 0.7], so a
+  STANDABLE slope that deflects a horizontal carrier upward is not a ramp and
+  is not excluded.  Measured on surf_666 bonus 3: a 3000 u/s pushdir "0 90 0"
+  carrier clipped off a 26.57 degree floor puts 1453 u/s into velocity_z, and
+  the player who fell into the pit was told "hopped start".
+*/
+.float  run_pushed;
+
+/*
+  PATCH 409: and the other half -- the mover COULD have jumped this player.
+
+  run_pushed on its own is far too wide: a continuous pad re-arms every command
+  you touch it, so it switched the hop rule off for the whole time you stood in
+  the volume.  A magnitude bound was tried and is beaten, because the jump
+  impulse and the clip's gain ADD within one tick -- CheckJumpButton runs before
+  AirMove, so a deliberate bhop out of B3's start box reads ~1259 u/s (296 of
+  jump plus ~963 of clip) against any bound a jump alone would set.
+
+  So the discriminator is the input, not the number.  CheckJumpButton is the
+  only path to a commanded rise and it needs the jump button AND pre-move
+  ground; a body falling into a pit has neither, and no geometry changes that.
+  Latched per command beside the run_wasground stamp in PlayerPreThink and read
+  once per packet, because PostThink is where the detector lives.
+*/
+.float  run_jumpcmd;
+
 // TICK_INTERVAL, for the (1.0 + frametime * 0.5) fudge in the cash-out --
 // Source's own "add in half of the previous frame of velocity first".  It is
 // worth 0.75% at a 15 ms tick, which is not why it is here; it is here because
@@ -1026,6 +1060,13 @@ void(entity pl) SV_BaseVelocityFrame =
 		*/
 		SV_RecRidePay(pl, pl.run_basevel);
 
+		// Patch 409.  The cash-out is horizontal for a trigger_push (run_basevel_z
+		// is zeroed at the foot of every call), but AddOutput basevelocity does
+		// not set `armed`, so it cashes out the NEXT command with its Z intact:
+		// `basevelocity 0 0 650` is +654.9 velocity_z in one tick and reads as a
+		// jump.  That is the one carrier write that lands as a vertical impulse.
+		pl.run_pushed = TRUE;
+
 		pl.run_basevel = '0 0 0';
 	}
 
@@ -1038,6 +1079,13 @@ void(entity pl) SV_BaseVelocityFrame =
 	// Hand this command's carrier to the engine.  It reads and zeroes this
 	// field itself (sv_user.c:7994-7999); .run_basevel is ours and persists.
 	pl.run_basevelocity = pl.run_basevel;
+
+	// Patch 409.  Exactly the commands the mover was handed a carrier, which is
+	// exactly the set on which PMSrc_TryPlayerMove's clip can turn it into
+	// velocity_z -- the last ride command included, where armed is already
+	// FALSE.  Testing the handover rather than `armed` is what covers that one.
+	if (pl.run_basevelocity != '0 0 0')
+		pl.run_pushed = TRUE;
 
 	/*
 	  BUILD 85: AND THE RECORD OF WHAT WAS HANDED OVER.  The line above IS the
@@ -5560,6 +5608,7 @@ void() trigger_push_touch =
 			other.flags = other.flags - (other.flags & FL_ONGROUND);
 
 		other.velocity = other.velocity + SV_ClampImpulse(dir * spd);
+		other.run_pushed = TRUE;   // Patch 409; this arm never touches the carrier
 
 		/*
 		  BUILD 83: the record, and this arm ONLY.  SF_PUSH_ONCE is the one

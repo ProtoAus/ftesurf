@@ -9047,7 +9047,50 @@ float(entity e) SV_TimerJumpWatch =
 
 		  Nested rather than `&&`: this file's convention, and cheap to keep.
 		*/
+		/*
+		  PATCH 409: A BOOSTER IS NOT A JUMP, and run_rampcontact does not say so.
+
+		  The exclusion above `jumped` covers a RAMP clipping a fast descent into
+		  a rise.  A trigger_push does the same thing by the same code path --
+		  PMSrc_TryPlayerMove clips velocity+basevelocity against the plane and
+		  only the carrier is subtracted back out, so every unit of Z the clip
+		  made stays in .velocity -- but the surface that did it is usually
+		  STANDABLE, and pm_source.c:1313 sets rampcontact only for |n_z| in
+		  [0.1, 0.7].  Reported live on surf_666 bonus 3, where the start box
+		  overlaps a 3000 u/s pad: falling into the pit put 1453 u/s into
+		  velocity_z off a 26.57 degree floor and the run was called a hopped
+		  start.  See .run_pushed in sv_entities.qc for the three writers.
+
+		  READ HERE AND NOWHERE ELSE, deliberately: `jumped` itself is unchanged,
+		  so the bhop launch latch, run_t_jumps, SV_StageTakeoff and SV_StageJump
+		  all behave exactly as before.  This withdraws an accusation; it grants
+		  no speed, no position and no other forgiveness.
+
+		  AND IT TAKES TWO FIELDS, which the first two drafts did not.
+		  `run_pushed` alone says only "a carrier was handed to the mover this
+		  packet", and a continuous pad re-arms that every command you touch it --
+		  so on the 21 maps whose start box overlaps a push (census 2026-09-20,
+		  1316 bsps: 21 overlap, 36 more within 300 u) it switched the whole rule
+		  off for as long as you stood in the volume.  Both reviewers found that
+		  independently.
+
+		  A MAGNITUDE BOUND WAS THE SECOND DRAFT AND IS BEATEN.  CheckJumpButton
+		  runs BEFORE AirMove, and AirMove is where the carrier is added, clipped
+		  and subtracted back -- so the impulse and the clip's gain land in the
+		  same tick and add.  A deliberate bhop out of B3's start box reads about
+		  1259 (296 of jump, ~963 of clip) against a bound of 317, on the exact
+		  map this patch exists for.  Sizing the rise cannot separate them.
+
+		  SO IT IS THE INPUT.  CheckJumpButton is the only path to a commanded
+		  rise and it needs the jump button and pre-move ground; a body falling
+		  into a pit has neither, and no floor angle changes that.
+
+		  RESIDUAL, stated rather than closed: grounded on a pad with jump held
+		  while the clip lifts you is still read as a hop.  It is the ambiguous
+		  case -- you did press it -- and it keeps the pre-409 answer.
+		*/
 		if (jumped && !e.run_t_startok && cvar("run_starthop"))
+		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
 		{
 			if (dwell < want)
@@ -9146,6 +9189,13 @@ float(entity e) SV_TimerJumpWatch =
 			e.run_t_airsec = SV_ClockSec(e);
 		e.run_t_groundsec = 0;
 	}
+
+	// Patch 409.  Their only reader is above, so clearing them here makes both
+	// latches exactly one packet wide.  PlayerPostThink returns early under
+	// run_pmhold (sv_player.qc) and so does PreThink, so nothing can set them
+	// during a hold and the slack is one packet after release.
+	e.run_pushed  = FALSE;
+	e.run_jumpcmd = FALSE;
 
 	return bhopz;
 };
