@@ -432,6 +432,24 @@ void() PlayerPreThink =
 	  vector and then assigns the engine field from it, in that order, so the
 	  engine gets '0 0 0' on exactly the command the money is paid.
 	*/
+	/*
+	  PATCH 403: the start cap, and it has to be HERE.  This is PlayerPreThink,
+	  which the engine runs once per usercmd (sv_user.c:8148, inside SV_RunCmd);
+	  PlayerPostThink -- where SV_TimerFrame and the timer live -- runs once per
+	  PACKET, outside that loop.  trigger_push_touch re-arms the whole push every
+	  command it touches, so a clamp on the packet path trimmed one command in
+	  every bunch and the client picked the ratio by its own packet rate.
+
+	  Above SV_BaseVelocityFrame, so the clamped carrier is what gets cashed out,
+	  what is handed to the mover, and what `ride arm` states -- the record is
+	  written from .run_basevelocity a few lines into that call, so the file can
+	  only ever carry the clamped number.
+	*/
+	if (self.run_t_state == TS_ARMED && self.run_t_armzone >= 0 &&
+	    SV_ZoneIn(self.run_t_armzone, self.origin,
+	              SV_RunHullMins(self), SV_RunHullMaxs(self)))
+		SV_StartCapClamp(self);
+
 	SV_BaseVelocityFrame(self);
 
 	if (sv_mv_maxspeed > 0)

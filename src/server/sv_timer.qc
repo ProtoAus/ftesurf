@@ -6540,21 +6540,41 @@ void(entity e, float ok) SV_StageTakeoff =
   what makes this free of evidence work:
 
     - the carrier's value reaches a recording only through `ride arm`, written
-      from .run_basevelocity in the NEXT PreThink (sv_entities.qc:1053), i.e.
-      after this has run.  The file states the clamped number and a replay
-      reproduces it exactly.  No new record, no REC bump, old files unaffected.
-    - both call sites are outside any recording anyway: TS_ARMED means no run is
-      open, and the latch call runs before SV_RecOpen, so it lands in `seed`.
+      from .run_basevelocity inside SV_BaseVelocityFrame (sv_entities.qc:1053).
+      The in-box call sits immediately ABOVE that call in PlayerPreThink and the
+      latch call is a packet later, so no record can ever state a number this
+      has not already trimmed.  No new record, no REC bump, old files unaffected.
     - .velocity is never written at all.  The rule owns the carrier and nothing
       else, so a fast bhop or slope landing inside a start box is untouched.
 
-  Momentum's own rule is a per-tick clamp to walking speed while you stand in a
-  start zone (`limitStartGroundSpeed`, "prevents the player from bhopping in
-  start zones"), and it is GROUND-only.  This keeps the ground condition -- an
-  airborne launch is left alone, as it is there -- but applies on every map
-  rather than reading the per-segment key, because the key is false on
-  bhop_arcane's start segment and on 15 of the rotation's 17 bhop maps, which
-  would exempt the exact case this exists for.  Lex's call, 2026-09-20.
+  WHERE IT IS CALLED, and the first cut got this wrong.  The in-box call is in
+  PlayerPreThink (sv_player.qc), which the engine runs once per USERCMD.  It used
+  to sit in SV_TimerFrame, on the PlayerPostThink path, which runs once per
+  PACKET -- while trigger_push_touch re-arms the whole push once per command.  So
+  it trimmed the last command of each bunch and left the rest at full value, and
+  a client setting its own packet rate set the ratio.  Review finding, 2026-09-20.
+
+  NO GROUND GATE, and that is also a correction.  Momentum's rule is ground-only
+  because Momentum clamps the player's VELOCITY, where a ground condition is what
+  keeps it off bhop prespeed.  This clamps the carrier instead, so the ground test
+  bought nothing and cost the whole rule: `FL_ONGROUND` is read after the move and
+  after the touch loop, and both a jump and any upward-tilted push clear it, so a
+  booster could exempt itself and every bhop start was a structural no-op.  Read
+  the carrier and the ground question stops being one -- prespeed is .velocity and
+  is never touched, while a jump pad's vertical carrier survives because only the
+  x/y components are written.
+
+  Applied on every map rather than reading the per-segment `limitStartGroundSpeed`
+  key, because the key is false on bhop_arcane's start segment and on 15 of the
+  rotation's 17 bhop maps, which would exempt the exact case this exists for.
+  Lex's call, 2026-09-20.
+
+  WHAT IT DOES NOT DO.  A push volume that reaches PAST the start box re-arms its
+  full value on the first command of the run, and nothing clamps once the state is
+  TS_RUNNING.  The run therefore BEGINS at the cap and then accelerates on the
+  map, which is what happens in Momentum too -- its clamp also stops at the zone
+  edge.  What is closed is building or inheriting speed inside the box; what is
+  not closed is a booster the mapper drew across the start plane.
 */
 void(entity e) SV_StartCapClamp =
 {
@@ -6563,8 +6583,6 @@ void(entity e) SV_StartCapClamp =
 
 	if (run_t_startcap <= 0)
 		return;
-	if (!(e.flags & FL_ONGROUND))
-		return;                     // ground-only, as Momentum's is
 	if (!e.run_basevel_x && !e.run_basevel_y)
 		return;                     // nothing carried: nothing this rule owns
 
@@ -6588,6 +6606,9 @@ void(entity e) SV_StartCapClamp =
 	  business, at any speed.
 	*/
 	own = vlen(hv);
+	if (own >= sp)
+		return;                     // the carrier is BRAKING: dropping it would
+		                            // raise the start, not lower it
 	if (own >= run_t_startcap)
 	{
 		e.run_basevel_x = 0;        // already at the cap on your own
@@ -11333,11 +11354,14 @@ void(entity e) SV_TimerFrame =
 			*/
 			if (!SV_ZoneIn(e.run_t_armzone, p, mn, mx))
 				SV_TimerStart(e);
-			else
-				// Patch 403: still standing in it.  Momentum's own rule is this
-				// per-tick one and nothing else; the latch call in SV_TimerStart
-				// is the half that a booster reaching past the box needs.
-				SV_StartCapClamp(e);
+			// Patch 403 review: the in-box clamp used to live HERE, and here it
+			// is worth almost nothing.  SV_TimerFrame runs from PlayerPostThink,
+			// which the engine calls once per PACKET (sv_user.c:9331 brackets the
+			// per-usercmd loop), while trigger_push_touch re-arms the full push
+			// once per COMMAND -- so every command but the last rode unclamped,
+			// and a client choosing its packet rate chose the ratio.  It is now
+			// called per command from PlayerPreThink (sv_player.qc), ahead of the
+			// cash-out and the `ride arm` record.
 		}
 	}
 
