@@ -1698,6 +1698,8 @@ float() SV_RecEnabled =
 vector  input_cursor_trace_start, input_cursor_trace_endpos;
 .vector rec_mc_ring, rec_mc_read;    // the last `mc` written
 .float  rec_mc_n, rec_mc_bad, rec_mc_badrow;
+.float  rec_mc_sup;                 // Patch 405: commands that sent cursor data
+                                    // instead of counts -- the off switch, seen
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3535,6 +3537,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_inmt = -1;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
 	e.rec_mc_badrow = -1;
+	e.rec_mc_sup = 0;                   // Patch 405
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
 	e.rec_rec_stream = FALSE;
@@ -4259,6 +4262,19 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 
 	if (!SV_RecLive(e))
 		return;
+
+	/*
+	  Patch 405: the counts off switch, on the OPERATOR's line -- `cmd timer`
+	  prints it too, but nobody reads a player's console.  Printed here rather
+	  than beside `board: submitting` because sv_progs.src:22 keeps sv_lobby.qc
+	  depending on nothing in this project, and this is a sv_timer field.
+	  Absence is never reported: a client older than Patch 376 is silent too.
+	  This is cursor data arriving WITH no marker.  See SV_RecCounts.
+	*/
+	if (e.rec_mc_sup)
+		print(sprintf("^1counts:^7 %s sent cursor data and no marker on %g"
+		              " command(s) -- cl_prydoncursor suppresses Patch 376\n",
+		              e.netname, e.rec_mc_sup));
 
 	/*
 	  v4: the reserved header line, finally answerable.
@@ -10773,7 +10789,39 @@ void(entity e) SV_RecCounts =
 	local vector r, a;
 	local float was;
 
-	if (input_cursor_trace_start_z != 1 || e.rec_rec_in < 1)
+	/*
+	  Patch 405: THE COUNTS CHANNEL HAS AN OFF SWITCH, AND THIS IS WHAT IT LOOKS
+	  LIKE FROM HERE.  CL_SendCounts is the `else if` of the engine's
+	  prydon-cursor branch (cl_input.c:3477-3481), tested as
+	  `*cl_prydoncursor.string && cl_prydoncursor.ival >= 0`.  The cvar defaults
+	  to "" so the string test fails and the counts send; setting it to ANY value
+	  >= 0 takes the cursor branch instead and the `mc` rows stop -- and
+	  `cl_prydoncursor 0` reads like switching something OFF.  It is a plain
+	  CVAR, not CVAR_CHEAT and not latched, and PEXT2_PRYDONCURSOR is advertised
+	  unconditionally (sv_main.c:2156, "mods might break without").
+
+	  ABSENCE ALONE CANNOT BE THE TEST, and that is why this is not a taint: a
+	  client older than Patch 376 is also silent, and marking those would demote
+	  every legacy client -- the skew-window failure this tree already measured
+	  for mapcrc.  But the suppression has a POSITIVE signature.  The engine's
+	  third branch, the one a client with no counts and no cursor takes, CLEARS
+	  all of it (`Vector2Clear(cmd->cursor_screen)` and the two VectorClears).
+	  So cursor data PRESENT with no version marker is the cursor branch running
+	  on a server that asked for counts -- and nothing in FTESurf uses the prydon
+	  cursor, so there is no honest reason to be in that branch here.
+
+	  COUNTED, NOT ACTED ON.  Attaching a taint bit demotes real players, which
+	  is Lex's call and not this function's; `cmd timer` and the finish log now
+	  state it so the decision can be made on numbers.
+	*/
+	if (input_cursor_trace_start_z != 1)
+	{
+		if (input_cursor_trace_start != '0 0 0'
+		 || input_cursor_trace_endpos != '0 0 0')
+			e.rec_mc_sup = e.rec_mc_sup + 1;
+		return;
+	}
+	if (e.rec_rec_in < 1)
 		return;
 	r = input_cursor_trace_start;
 	a = input_cursor_trace_endpos;
@@ -12448,6 +12496,12 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH,
 	       sprintf("        mouse counts: %g record(s), %g ring/read disagreement(s), first row %g\n",
 	               e.rec_mc_n, e.rec_mc_bad, e.rec_mc_badrow));
+	// Patch 405: 0 is every honest client, legacy ones included.  Non-zero is
+	// the prydon-cursor branch running on a server that asked for counts.
+	if (e.rec_mc_sup)
+		sprint(e, PRINT_HIGH,
+		       sprintf("        ^1counts suppressed^7: %g command(s) sent cursor data"
+		               " and no marker (cl_prydoncursor)\n", e.rec_mc_sup));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage rules: fail %g arm %g clean %g hop %g\n",
 	               run_t_stagefail, run_t_stagearm, run_t_stageclean, run_t_stagehop));
