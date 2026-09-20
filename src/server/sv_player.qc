@@ -413,13 +413,39 @@ void() PlayerPreThink =
 	SV_RecState(self);
 
 	/*
-	  The pre-move ground state, for OnJump (SV_TriggerIOTouch).
+	  PATCH 414: the PREVIOUS command's jump edge, read here because this is the
+	  last moment the evidence exists.
+
+	  .run_wasground still holds the previous command's PRE-move ground state --
+	  the stamp below is about to overwrite it -- while .flags and .velocity hold
+	  that command's POST-move state, because nothing has run yet this command.
+	  Those are the same three values SV_TriggerIOTouch used to compare, and
+	  comparing them here reaches the triggers the player is standing in on the
+	  command a jump takes them out of the brush.  See SV_TriggerJumpEdge, which
+	  is where the whole argument lives.
+
+	  ABOVE the stamp, and above SV_BaseVelocityFrame further down: a carrier this
+	  arms is handed to the mover on THIS command, which is the timing the touch
+	  path had.
+	*/
+	if (self.run_wasground)
+	if (!(self.flags & FL_ONGROUND))
+	if (self.velocity_z > 0)
+		SV_TriggerJumpEdge(self);
+
+	/*
+	  The pre-move ground state, for OnLand (SV_TriggerIOTouch) and for the edge
+	  above.
 
 	  This runs BEFORE the move; the trigger touch loop runs after it.  So a
 	  player whose flags said ONGROUND here and do not by the time a touch fires,
 	  and who is moving upward, jumped on this exact command.  Recording it costs
 	  one field write per player per command and is the only way to tell a jump
 	  from a walk off a ledge without the engine telling us.
+
+	  OnLand still reads it from the touch and is correct there: landing puts you
+	  INTO the floor trigger, so the command its test passes on is a command the
+	  trigger is touched.  Only the jump leaves.
 	*/
 	self.run_wasground = ((self.flags & FL_ONGROUND) != 0);
 

@@ -495,6 +495,12 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_io_hitmin, vbsp_io_hitmax;
 .float  startvalue,     StartValue;
 .float  vbsp_io_next_ok;	// trigger_multiple's `wait` gate on OnTrigger
+
+// Patch 414.  The chain of source entities owning an OnJump output, built in a
+// second pass at the foot of SV_EntityIOBuild and walked by SV_TriggerJumpEdge.
+// A global, so it is zeroed on every map load like everything else in QC.
+.entity vbsp_onjump_next;
+entity  vbsp_onjump_head;
 .string vbsp_dmgfilter;	// SetDamageFilter's argument, stored and not yet read
 
 /*
@@ -3679,29 +3685,15 @@ void(entity trig, entity act) SV_TriggerIOTouch =
 	}
 
 	/*
-	  OnJump -- fired when the player jumps while inside the trigger.  Build 37's
-	  static output check reported this as the one output nothing fires, and it
-	  is bhop_futile's six booster pads: a trigger_multiple with
+	  OnJump USED TO BE FIRED HERE AND COULD NEVER FIRE.  Patch 414 moved it to
+	  SV_TriggerJumpEdge, called from PlayerPreThink; the argument is there.  The
+	  one line to carry away is that this function is the wrong place for it: it
+	  runs only on a command the trigger was TOUCHED, and the jump is the one
+	  command it is not.
 
-	      OnJump  !activator,AddOutput,basevelocity 0 0 <650..1140>,0,-1
-
-	  THE DETECTION IS PRE-MOVE STATE COMPARED WITH POST-MOVE STATE, and the
-	  ordering is what makes it exact rather than a command late.  Within one
-	  SV_RunCmd the engine runs PlayerPreThink, then the move, then this touch
-	  loop, then PlayerPostThink.  PlayerPreThink stamps run_wasground from the
-	  flags as they stood BEFORE the move; here, after it, a player who was on
-	  the ground, is not now, and is moving up has jumped on this very command.
-
-	  Leaving the ground by walking off a ledge fails the velocity test, and
-	  being launched by something else fails the wasground test on every command
-	  after the first, so this does not fire continuously while airborne.
+	  Left as a comment rather than deleted because the old code looked correct,
+	  reads correct, and is the obvious thing to write again.
 	*/
-	if ((act.run_wasground) && !(act.flags & FL_ONGROUND) && act.velocity_z > 0)
-	{
-		if (run_bv_debug)
-			print(sprintf("basevel: OnJump from %s vz %.0f\n", trig.model, act.velocity_z));
-		SV_FireOutput(trig, "OnJump", act);
-	}
 
 	/*
 	  BUILD 51: OnLand, which is OnJump read backwards and shares its whole
@@ -3735,6 +3727,81 @@ void(entity trig, entity act) SV_TriggerIOTouch =
 	{
 		trig.think = SV_TriggerEndThink;
 		trig.nextthink = time + 0.02;
+	}
+};
+
+/*
+  PATCH 414 -- OnJump, fired from the player instead of from the touch.
+
+  IT HAD NEVER FIRED ONCE.  Build 37 put the test inside SV_TriggerIOTouch, where
+  the pre-move/post-move comparison is exact -- and where it is also unreachable,
+  because that function only runs on a command the trigger was touched and the
+  server dispatches touches at the command's END position, with no sweep.  A jump
+  moves you out of the brush on the very command the test would pass:
+  pm_jumpzoffset lifts the body 1.5 u the moment the ground is released and the
+  tick adds pm_jumpvelocity * pm_ticrate on top, 4.53 u at the shipped tuning.
+  Every command before that still has FL_ONGROUND, so the test fails there too.
+
+  MEASURED, not deduced: cfg/test/probe_b4jump2.cfg stands in surf_prosurf bonus
+  4's pad (a 2 u floor slab, OnJump -> AddOutput basevelocity 2000 0 0) and jumps
+  14 times.  Stock build: no dprint, no cash-out, x never moves.  The engine's own
+  `jump z: moving player up 1.5000 (-31.9688 => -30.4688)` line is the mechanism
+  written out -- the origin is above the slab's top of -30 before the tick's rise
+  is even added.
+
+  AND IT IS THE LIBRARY'S SHAPE, not one map's: 1352 OnJump outputs on 123 maps,
+  median brush height 1.0 u, 1101 of them shorter than one tick of jump rise.
+  bhop_futile's six boosters -- the pads this output was implemented FOR -- are
+  among them.  surf_cement's is half a unit.
+
+  SO THE TOUCHING SET IS THE RIGHT SOURCE, which is what Source does: Momentum
+  fires OnJump against m_hTouchingEntities, a set that persists across commands,
+  not against a touch dispatched this instant.  Our equivalent is Patch 270's
+  per-player masks plus the legacy single-toucher, and they are already swept with
+  a two-window absence test, so a player who left under ~0.09 s ago still reads as
+  inside -- which is exactly the tolerance this needs.
+
+  ONE COMMAND LATE, AND IT HAS TO BE.  PlayerPreThink is the only per-usercmd hook
+  in QC, and it runs before the move, so the jump it can see is the PREVIOUS
+  command's: at that point .run_wasground still holds that command's pre-move
+  ground state and .flags/.velocity its post-move state -- the same three values
+  the touch used to read, one command on.  Called ABOVE SV_BaseVelocityFrame in
+  PlayerPreThink so a carrier armed here is handed to the mover on this command,
+  which is the timing the touch path had.
+
+  NOT AN ANTI-CHEAT HOLE: nothing here writes velocity.  The output arms the
+  carrier through SV_IOAddOutput, and the cash-out in SV_BaseVelocityFrame marks
+  run_pushed as it has since Patch 409 -- that path is unchanged and still the
+  one carrier write that lands as a vertical impulse.
+*/
+void(entity p) SV_TriggerJumpEdge =
+{
+	local entity t;
+	local int    bit;
+
+	if (!vbsp_io_on)
+		return;
+
+	bit = SV_TouchBit(p);
+	for (t = vbsp_onjump_head; t; t = t.vbsp_onjump_next)
+	{
+		if (!t.vbsp_io_out)
+			continue;
+		if (SV_Key2(t.StartDisabled, t.startdisabled))
+			continue;			// a disabled trigger touches nothing
+
+		// Nested, not `&&`: this tree's rule where an array or a mask is read.
+		if (bit)
+		{
+			if (!((t.vbsp_touch_in | t.vbsp_touch_seen) & bit))
+				continue;
+		}
+		else if (t.vbsp_touch_who != p)
+			continue;			// vbsp_mp 0, or a client above the 32nd slot
+
+		if (run_bv_debug)
+			print(sprintf("basevel: OnJump from %s vz %.0f\n", t.model, p.velocity_z));
+		SV_FireOutput(t, "OnJump", p);
 	}
 };
 
@@ -4124,6 +4191,37 @@ void() SV_EntityIOBuild =
 
 		if (!(e.spawnflags & SF_AMBIENT_STARTSILENT))
 			SV_AmbientPlay(e);
+	}
+
+	/*
+	  PATCH 414 -- index the OnJump owners, because the PLAYER has to find them.
+
+	  OnJump used to fire from inside SV_TriggerIOTouch, which only runs on a
+	  command the trigger was actually touched -- and it never is, on the one
+	  command the test could pass.  SV_TriggerJumpEdge walks this chain instead;
+	  the essay there is the whole argument.
+
+	  A SECOND PASS, not a link inside the row loop, so the test is "does this
+	  entity own an OnJump" rather than "is this row one".  An entity declaring
+	  two of them would otherwise be linked twice, and a chain with a cycle in it
+	  hangs the server rather than misbehaving visibly.  It costs one walk of the
+	  edicts at map load, next to the one this function already does.
+
+	  The chain is small: 1352 OnJump outputs across 1316 maps, and the biggest
+	  single map is bhop_pharma.  Most maps link nothing at all.
+	*/
+	for (e = nextent(world); e; e = nextent(e))
+	{
+		if (!e.vbsp_io_out)
+			continue;
+		for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
+		{
+			if (o.vbsp_io_name != "onjump")
+				continue;		// folded at build time, see SV_FireOutput
+			e.vbsp_onjump_next = vbsp_onjump_head;
+			vbsp_onjump_head   = e;
+			break;
+		}
 	}
 };
 
