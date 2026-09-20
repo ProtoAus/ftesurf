@@ -2149,6 +2149,7 @@ float(entity e, string path) SV_RecSnapshot =
 .float  run_t_armsec;            // SV_ClockSec at the arm: the opening stage's takeoff must follow it
 .float  rec_rec_posts;           // `stagepost` records in this recording (the abandon keep)
 float   run_t_stagecap;          // run_stagecap, cached per map
+float   run_t_startcap;          // run_startcap, cached per map (Patch 403)
 // Patch 364 (v10).  Recounted from the body on every rewind, like the trailer's counts.
 .float  rec_rec_pauses;          // `pause` records: any at all makes the file v10
 .float  rec_rec_sess;            // `session` records: the trailer's 11th field
@@ -6522,6 +6523,90 @@ void(entity e, float ok) SV_StageTakeoff =
   honest) and at the exit for a walk-out.  A flown-through boundary never gets
   here, so it is never primed: speed carried through a stage is not a start.
 */
+/*
+  PATCH 403: A RUN MAY NOT BEGIN CARRYING SPEED THE MOVER DID NOT PRODUCE.
+
+  The speed is not in .velocity.  A trigger_push arms .run_basevel and the engine
+  rides it as pmove.basevelocity; it only becomes .velocity on the first command
+  nothing re-armed it (SV_BaseVelocityFrame, sv_entities.qc:992).  So a body
+  crossing the start plane at 1800 u/s has `seed ... 0 0 0 1` -- measured, and
+  pm_verify PASSed it (cfg/test/p403stage.cfg).  Anything that reads .velocity
+  here reads zero, which is also why run_stagecap never fired: SV_StageLaunch
+  takes `hv = e.velocity` and logged `prime 1 launch 0 ... cap 290` at 1809 u/s.
+
+  So the cap is taken on the EFFECTIVE horizontal speed -- what the body will be
+  doing once the carrier cashes out, at the cash-out's own scale -- and it is
+  paid out of the CARRIER first.  Clamping the carrier rather than .velocity is
+  what makes this free of evidence work:
+
+    - the carrier's value reaches a recording only through `ride arm`, written
+      from .run_basevelocity in the NEXT PreThink (sv_entities.qc:1053), i.e.
+      after this has run.  The file states the clamped number and a replay
+      reproduces it exactly.  No new record, no REC bump, old files unaffected.
+    - both call sites are outside any recording anyway: TS_ARMED means no run is
+      open, and the latch call runs before SV_RecOpen, so it lands in `seed`.
+    - .velocity is never written at all.  The rule owns the carrier and nothing
+      else, so a fast bhop or slope landing inside a start box is untouched.
+
+  Momentum's own rule is a per-tick clamp to walking speed while you stand in a
+  start zone (`limitStartGroundSpeed`, "prevents the player from bhopping in
+  start zones"), and it is GROUND-only.  This keeps the ground condition -- an
+  airborne launch is left alone, as it is there -- but applies on every map
+  rather than reading the per-segment key, because the key is false on
+  bhop_arcane's start segment and on 15 of the rotation's 17 bhop maps, which
+  would exempt the exact case this exists for.  Lex's call, 2026-09-20.
+*/
+void(entity e) SV_StartCapClamp =
+{
+	local vector hv, bv, tot, want;
+	local float  k, sp, own;
+
+	if (run_t_startcap <= 0)
+		return;
+	if (!(e.flags & FL_ONGROUND))
+		return;                     // ground-only, as Momentum's is
+	if (!e.run_basevel_x && !e.run_basevel_y)
+		return;                     // nothing carried: nothing this rule owns
+
+	k  = 1 + run_bv_tick * 0.5;     // the cash-out's own scale (sv_entities.qc:997)
+	hv = [e.velocity_x, e.velocity_y, 0];
+	bv = k * [e.run_basevel_x, e.run_basevel_y, 0];
+	tot = hv + bv;
+	sp = vlen(tot);
+	if (sp <= run_t_startcap)
+		return;
+
+	/*
+	  IT ONLY EVER TOUCHES THE CARRIER, never .velocity, and that is measured
+	  rather than tidy.  Across the Pi's 43,369 grounded sample rows, 16.2% sit
+	  at 250-299 u/s and 1.0% are above 300 -- ground running against the 289
+	  prestrafe ceiling, and bhop landings and slope slides above it.  Clamping
+	  the player's own speed would take prespeed off every bhop start, which is
+	  the very thing `limitStartGroundSpeed: false` exists to permit and is set
+	  on 15 of the rotation's 17 bhop maps.  So: a push may not carry you over
+	  the cap at the start.  Under your own power you are not this rule's
+	  business, at any speed.
+	*/
+	own = vlen(hv);
+	if (own >= run_t_startcap)
+	{
+		e.run_basevel_x = 0;        // already at the cap on your own
+		e.run_basevel_y = 0;
+	}
+	else
+	{
+		// Scale the SUM onto the cap and hand the carrier back the difference.
+		// Exact for any angle between the two, unlike scaling bv on its own.
+		want = tot * (run_t_startcap / sp);
+		e.run_basevel_x = (want_x - hv_x) / k;
+		e.run_basevel_y = (want_y - hv_y) / k;
+	}
+
+	if (run_bv_debug)
+		print(sprintf("startcap: %.1f -> %.1f (own %.1f, cap %g)\n",
+		              sp, run_t_startcap, own, run_t_startcap));
+};
+
 void(entity e) SV_StageLaunch =
 {
 	local float want, now;
@@ -10359,6 +10444,14 @@ void(entity e) SV_TimerStart =
 	  start is neither a cheat nor a stitch, and it is the whole of what the
 	  residual `practice` word means on a file written after this build.
 	*/
+	// Patch 403: THE LATCH CLAMP, and it has to be here rather than one level up.
+	// The per-tick call only sees the body while it is still inside the box; a
+	// push volume that reaches past the box (bhop_arcane's stack, surf_666's
+	// bonus-3 start) hands over a fresh carrier on the crossing tick itself.
+	// Above the taint chain and therefore above SV_RecOpen, so the clamped
+	// velocity is what `seed` states and a replay reproduces it.
+	SV_StartCapClamp(e);
+
 	if (e.run_t_cheat)
 		SV_TimerCheat(e);
 	else if (e.run_t_dirty || e.run_t_hopped)
@@ -11240,6 +11333,11 @@ void(entity e) SV_TimerFrame =
 			*/
 			if (!SV_ZoneIn(e.run_t_armzone, p, mn, mx))
 				SV_TimerStart(e);
+			else
+				// Patch 403: still standing in it.  Momentum's own rule is this
+				// per-tick one and nothing else; the latch call in SV_TimerStart
+				// is the half that a booster reaching past the box needs.
+				SV_StartCapClamp(e);
 		}
 	}
 
@@ -11774,6 +11872,7 @@ void() SV_TimerMapInit =
 	registercvar("run_stagehop", "1");
 	registercvar("run_stageghost", "1");      // build 48
 	registercvar("run_stagecap", "290");      // Patch 360: stage fill-in's launch cap, u/s
+	registercvar("run_startcap", "290");      // Patch 403: a run may not BEGIN above this, u/s
 	registercvar("run_evidence_days", "30");  // Patch 360: abandoned-run evidence kept this long
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
@@ -11830,6 +11929,8 @@ void() SV_TimerMapInit =
 	run_t_stageghost  = cvar("run_stageghost");   // build 48
 	run_t_stagecap    = cvar("run_stagecap");     // Patch 360
 	localcmd(sprintf("serverinfo run_stagecap %g\n", run_t_stagecap));
+	run_t_startcap    = cvar("run_startcap");     // Patch 403
+	localcmd(sprintf("serverinfo run_startcap %g\n", run_t_startcap));
 	localcmd("serverinfo fs_counts 1\n");     // Patch 376: clients send mouse counts
 	SV_EvidenceSweep();
 	run_t_runclass    = cvar("run_class");
