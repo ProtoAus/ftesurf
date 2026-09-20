@@ -272,6 +272,7 @@ TF_NORULESET = 1024
 TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
 TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
+TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_prydoncursor)
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
 TF_MULTISESSION = 16384
@@ -1255,9 +1256,21 @@ def certifiable(flags):
     means an engine and a qwprogs.dat were shipped out of order -- a fact that is
     much cheaper to read off a board row than to infer from times that are
     quietly 0-2 ticks long.
+
+    PATCH 406 ADDS TF_NOCOUNTS, and it is the only one of the six that describes
+    something the player had to DO.  The Patch 376 counts channel rides the
+    prydon-cursor slot, and `cl_prydoncursor 0` -- a plain cvar, not cheat-gated
+    -- takes the cursor branch instead and silences it.  The bit is NOT set on
+    silence, which every pre-376 client also shows; it is set when cursor data
+    arrived with no version marker, i.e. that branch ran on a server that asked
+    for counts, and nothing in FTESurf uses the prydon cursor.
+
+    It still only demotes.  A quiet gate survives a false negative where an
+    accusation does not, and that rule does not bend just because this bit is
+    harder to reach by accident than the other five.  Lex's call 2026-09-20.
     """
     return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP
-                         | TF_NOCLOCK))
+                         | TF_NOCLOCK | TF_NOCOUNTS))
 
 
 # --------------------------------------------------------------------------

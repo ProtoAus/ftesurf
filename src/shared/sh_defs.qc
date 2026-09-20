@@ -1512,7 +1512,30 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 
 // The certification holes: any one keeps a run off the ranked board.  MIRRORS
 // surfd certifiable() (surfd.py) -- change both together.  FS_CertWhy names them.
-#define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK)
+/*
+  TF_NOCOUNTS -- the client sent CURSOR DATA instead of mouse counts.  P405/406.
+
+  The Patch 376 counts channel is CL_SendCounts, the `else if` of the engine's
+  prydon-cursor branch (cl_input.c:3477-3481), tested as
+  `*cl_prydoncursor.string && cl_prydoncursor.ival >= 0`.  The cvar defaults to
+  "" so the string test fails and the counts send.  Any value >= 0 takes the
+  cursor branch instead and the counts stop -- and `cl_prydoncursor 0` reads
+  like switching something OFF.  It is a plain CVAR, not CVAR_CHEAT and not
+  latched, and PEXT2_PRYDONCURSOR is advertised unconditionally
+  (sv_main.c:2156).  Measured: cfg/test/p405cnt.cfg, 217 of ~250 commands.
+
+  IT IS NOT SET ON SILENCE, and that distinction is the whole reason this bit
+  can exist at all.  A client older than Patch 376 is silent too, and demoting
+  those would repeat the mapcrc skew-window failure.  The engine's third branch
+  -- neither counts nor cursor -- CLEARS the cursor fields, so cursor data
+  PRESENT with no version marker is the cursor branch running on a server that
+  asked for counts.  Nothing in FTESurf uses the prydon cursor, so there is no
+  honest way into that branch here.
+*/
+#define TF_NOCOUNTS 65536
+
+#define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
+                     | TF_NOCOUNTS)
 
 /*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
@@ -1930,6 +1953,7 @@ string(float flags) FS_CertWhy =
 	if (flags & TF_NOPROFILE) return "input mode";
 	if (flags & TF_NOMAP)     return "other map";
 	if (flags & TF_NOCLOCK)   return "old clock";
+	if (flags & TF_NOCOUNTS)  return "input counts";
 	return "";
 };
 

@@ -343,6 +343,19 @@ check("TF_NOCLOCK is demoted off the ranked board",
 check("...and the ranked board is still only the clean row",
       names(board(m, tier="ranked")), ["ranked1"])
 
+# Patch 406's TF_NOCOUNTS, for the same reason: the client sent cursor data
+# instead of Patch 376 mouse counts (cl_prydoncursor).  The sixth bit, and the
+# only one that describes something the player had to do -- it still only
+# demotes, because a quiet gate survives a false negative and an accusation
+# does not.
+submit(m, player="nocount", flags=m.TF_NOCOUNTS, ticks=1007)
+check("TF_NOCOUNTS is demoted off the ranked board",
+      names(board(m, tier="community")), ["noprof", "nomap", "noclock", "nocount"])
+check("...and certifiable() refuses it on its own",
+      (m.certifiable(m.TF_NOCOUNTS), m.certifiable(0)), (False, True))
+check("...and the ranked board is STILL only the clean row",
+      names(board(m, tier="ranked")), ["ranked1"])
+
 # THE CONTROL.  The demotion has to be caused by the BIT and not by anything the
 # two demoted rows happen to share -- a slower time, a later arrival, the same
 # key.  Identical shape, flags 0, and it ranks.

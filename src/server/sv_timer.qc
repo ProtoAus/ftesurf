@@ -7067,6 +7067,7 @@ float(entity e) SV_StageSubmitFlags =
 	if (SV_JournalBroken(e)) f = f | TF_NOJOURNAL;
 	if (SV_RulesetBroken(e)) f = f | TF_NORULESET;
 	if (SV_ProfileBroken(e)) f = f | TF_NOPROFILE;
+	if (e.rec_mc_sup)        f = f | TF_NOCOUNTS;   // Patch 406
 	return f;
 };
 
@@ -10000,6 +10001,13 @@ void(entity e, float ticks) SV_TimerFinish =
 	// the clock started AND the set-and-unset window that leaves both ends
 	// reading clean.  Same shape, same reason.  See SV_TimerProfile.
 	SV_TimerProfile(e, FALSE);
+
+	// Patch 406: and the counts channel.  No latch function and no re-read --
+	// rec_mc_sup is a COUNT taken per command across the whole run, so it
+	// already carries the mid-run case the three above need a second call for.
+	// Lex's call 2026-09-20: demote, do not kick.  See TF_NOCOUNTS.
+	if (e.rec_mc_sup)
+		e.run_t_flags = e.run_t_flags | TF_NOCOUNTS;
 
 	tag = RT_LAST;
 	if (ispb)
