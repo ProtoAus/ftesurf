@@ -107,6 +107,17 @@ string rec_rp_lastview;
 float  rec_rp_hadhid;
 
 /*
+  Patch 418: forward-declared, because QuakeC has none and this one is CALLED
+  from Rec_ViewEnd (up here) and DEFINED beside Rec_ViewInit (down there, with
+  the rest of the per-VM lifecycle).  Moving the definition up would put a
+  housekeeping sweep in the middle of the writer; a prototype is the smaller
+  intrusion, and it is the arrangement cl_lobbytime.qc already documents for
+  Results_LegName.
+*/
+void(string keep, string keep2) Rec_StagedClear;
+string rec_rp_ulkeep;       // the PREVIOUS run's nonce, still being asked about
+
+/*
   SAVE STATES: the client's half of the mark.  Build 17.
 
   A save keeps the run so far and a load rewinds to it, so the .view has to move
@@ -344,15 +355,30 @@ float() Rec_ConsentRead =
 	return v;
 };
 
-float() Rec_HidOK =
+/*
+  Patch 418: THE CONSENT HALF ON ITS OWN, because a second thing now needs it.
+
+  Rec_HidOK answers "will this client journal", which is consent AND the journal
+  switch.  Sending a run's angle sidecar to the server is a different act with
+  the same question underneath it: the terms are what the player agreed to about
+  their own play being recorded and kept, and an upload is the first time any of
+  it leaves their machine.  So the upload asks THIS, and `rec_upload` is its own
+  switch beside it -- the way `rec_hid` is the journal's.
+*/
+float() Rec_ConsentOK =
 {
-	if (!cvar("rec_hid"))
-		return FALSE;
 	if (rec_rp_consent >= FS_TERMS_VERSION)
 		return TRUE;
 	if (cvar("rec_terms") >= FS_TERMS_VERSION)
 		return TRUE;
 	return FALSE;
+};
+
+float() Rec_HidOK =
+{
+	if (!cvar("rec_hid"))
+		return FALSE;
+	return Rec_ConsentOK();
 };
 
 /*
@@ -821,8 +847,63 @@ void() Rec_ViewEnd =
 	  listen server by construction, so without it the remote arm of a test is
 	  "no file appeared", which is what a silently broken writer also produces.
 	*/
+	/*
+	  PATCH 418: UNLESS THE SERVER ASKED FOR IT.
+
+	  Dropping was right while the sidecar could only ever sit beside a .rec
+	  that is somewhere else.  A server that publishes `fs_ul 1` is saying it
+	  will take the file -- so the run's own evidence is written to a staging
+	  name and offered, and the pairing happens where the .rec is.  This is the
+	  whole of what "the journals never leave the player's machine" meant, and
+	  it is the only one of the three files small enough to send today: a
+	  sidecar is about 20 KB for seven seconds of run, against a MEGABYTE A
+	  MINUTE for the raw input journal.
+
+	  THE NAME IS THE RUN'S NONCE, which is the only per-run unique this end
+	  has: the client does not know the server's runid.  Everything in
+	  data/staged/ is thrown away at the next map load (Rec_ViewInit), so the
+	  directory holds one map session's runs and nothing accumulates.
+	*/
 	if (Rec_ServerIsRemote())
 	{
+		/*
+		  THE HEADER-ONLY GUARD APPLIES HERE TOO, and the first cut jumped over
+		  it: this branch sat ABOVE the `rec_rp_lines <= FS_VIEWHEAD` test
+		  below, so a run that began and ended inside one rendered frame staged,
+		  armed, hashed and uploaded a sidecar with no frames in it -- the file
+		  that test's own comment calls "one a reader has to special-case for
+		  nothing".  Local runs kept the guard; the remote ones, which are the
+		  only ones that upload, lost it.
+		*/
+		if (cvar("rec_upload") && Rec_ConsentOK()
+		    && stof(serverkey("fs_ul")) >= 1 && rec_rp_nonce != ""
+		    && rec_rp_lines > FS_VIEWHEAD)
+		{
+			dst = sprintf("data/staged/%s.view", rec_rp_nonce);
+			fh = fopen(dst, FILE_WRITE);
+			if (fh < 0)
+				dprint(sprintf("replay: cannot stage %s\n", dst));
+			else
+			{
+				buf_writefile(fh, rec_rp_view, 0, rec_rp_lines);
+				fclose(fh);
+				if (rec_rp_lastview != "")
+					strunzone(rec_rp_lastview);
+				rec_rp_lastview = strzone(dst);
+				/*
+				  ARMED HERE AND NOWHERE ELSE.  The engine sends the file this
+				  line names and no other, whatever the server asks for later --
+				  see CL_Receipt_ULArm_f.  The receipt signs its digest in the
+				  same frame, so what is offered and what is committed to are
+				  one decision.
+				*/
+				localcmd(sprintf("rec_ul_arm %s\n", dst));
+				dprint(sprintf("replay: staged %s (%g frames)\n",
+				               dst, rec_rp_lines - FS_VIEWHEAD));
+			}
+			Rec_ViewDrop();
+			return;
+		}
 		dprint(sprintf("replay: sidecar dropped -- this run's .rec is on the "
 		               "server (%s), not here\n", serverkey("ip")));
 		Rec_ViewDrop();
@@ -1225,8 +1306,36 @@ void() Rec_HidEnd =
 	tag = getstatf(STAT_FS_RUNTAG);
 	leg = getstatf(STAT_FS_RUNLEG);
 
+	/*
+	  PATCH 418: THE JOURNAL, WHEN THE SERVER SAYS IT WILL TAKE ONE.
+
+	  `fs_ul 2` is the operator asking for the raw input journal as well as the
+	  angle sidecar, and it is a separate value rather than the same one because
+	  the two cost different amounts by a factor of FORTY: a sidecar is about
+	  20 KB for seven seconds of run, a journal is a MEGABYTE A MINUTE.  On the
+	  wire that is seconds against a minute, so the second is an operator's
+	  decision and never a default.
+
+	  It is also the only way a lobby run's journal survives at all -- the PB
+	  rule below keeps one for the player's own archive, and a lobby has no PBs
+	  (lobby_nopb).  Staged under the nonce like the sidecar, cleared at the next
+	  map load, and armed for upload; the receipt signs its digest in the same
+	  frame, so what is offered and what is committed to are one decision.
+	*/
 	if (tag != RT_PB || leg < 1)
 	{
+		/*Rec_ServerIsRemote, like the sidecar's branch: on a LISTEN server the
+		  recording is on this disk already, so staging a journal for upload is
+		  megabytes of copying to hand the server a file it wrote itself.*/
+		if (cvar("rec_upload") && Rec_ServerIsRemote()
+		    && stof(serverkey("fs_ul")) >= 2 && rec_rp_nonce != "")
+		{
+			local string dst;
+			dst = sprintf("data/staged/%s.hid", rec_rp_nonce);
+			localcmd(sprintf("in_journal_end %s\n", dst));
+			localcmd(sprintf("rec_ul_arm %s\n", dst));
+			return;
+		}
 		localcmd("in_journal_end\n");
 		return;
 	}
@@ -1659,6 +1768,38 @@ void() Rec_ViewFrame =
 		  twice in one frame is free and cannot disagree; splitting them across
 		  frames could.
 		*/
+		/*
+		  PATCH 418: THE LAST RUN'S OFFER AND ITS FILES GO FIRST, HERE.
+
+		  Both of these were at the run-START edge, and the review found what
+		  that cost: the server's request for a run's evidence arrives a ROUND
+		  TRIP after the run ends, and on a bhop map the finish teleports you
+		  into the start box -- so the next run began, cleared the slots, and
+		  the request found nothing armed.  Invisible on a LAN, reliable on the
+		  Pi.  Clearing one frame before this run arms instead leaves no window
+		  at all: nothing else writes these between the two.
+
+		  The staged files go at the same moment and for the second half of the
+		  same reason: `Rec_StagedClear` used to sit on the .view path only, so
+		  a player who abandoned fifty runs staged fifty journals -- a megabyte
+		  a minute each -- and nothing deleted them until some later run
+		  finished.
+		*/
+		/*
+		  AND THE ARMS ARE NOT CLEARED HERE ANY MORE.  `rec_ul_arm -` at this
+		  edge wiped the arms for the run the server was still asking about --
+		  so its request for that run's journal was answered with THIS run's
+		  sidecar, filed under the other run's id, where the checker calls it a
+		  digest mismatch.  The engine holds four slots (two runs) and drops the
+		  oldest by itself; the map load and the disconnect are where arms are
+		  cleared, because those are the moments nothing can still be asked.
+		*/
+		if (rec_rp_nonce != "")
+		{
+			Rec_StagedClear(rec_rp_nonce, rec_rp_ulkeep);
+			rec_rp_ulkeep = rec_rp_nonce;
+		}
+
 		if (rec_rp_ms)
 			Rec_ViewDrop();
 		else
@@ -1752,6 +1893,60 @@ void() Rec_ViewFrame =
   there would be an orphan describing a .rec that does not exist.  Two halves of
   one recording, dropped together.
 */
+/*
+  PATCH 418: EMPTY data/staged/.
+
+  The staging directory holds one thing at a time in the ordinary case -- the
+  sidecar of the run that just ended, named for its nonce, offered to the server
+  and then of no further use.  It is cleared at every map load rather than after
+  each upload for one reason: this end never learns whether the upload finished.
+  The engine knows; the gamecode does not, and asking it to would mean a third
+  handshake for a file that is measured in tens of kilobytes.
+
+  A MAP LOAD IS NOT A MOMENT WHEN NOTHING CAN BE IN FLIGHT, which is what the
+  first version of this paragraph claimed.  CL_ParseServerData does not stop an
+  upload and a QW map change reuses the netchan, so a send can still be running
+  when this VM is replaced -- on Windows the delete then fails and the file
+  survives.  What bounds the directory is the `keep` argument and the sweep at
+  every run end, not this call; this one is the tidy-up for a session that
+  ended.
+*/
+void(string keep, string keep2) Rec_StagedClear =
+{
+	local float h, n, i;
+	local string fn;
+
+	h = search_begin("data/staged/*", FS_NAMESORT, TRUE);
+	if (h < 0)
+		return;
+	n = search_getsize(h);
+	for (i = 0; i < n; i = i + 1)
+	{
+		fn = search_getfilename(h, i);
+		/*
+		  TWO RUNS' FILES, which is the bound the transport needs.
+
+		  One was wrong, and the review found why: the server asks for a run's
+		  SECOND file only when its first has arrived, and a sidecar takes 25 to
+		  80 seconds on the wire.  Deleting the previous run's staged files at
+		  the next run's end therefore deleted files the server was about to ask
+		  for -- on Windows the delete fails while the file is open and the
+		  upload survives by accident; a file not yet started is simply gone,
+		  and the receipt still commits to its digest.
+
+		  Called with (this run, the one before) at every staging, and with
+		  ("", "") at a map load.  Without any of this the directory grew by a
+		  sidecar per run for the length of a map session.
+		*/
+		if (keep != "" && strstrofs(fn, keep, 0) >= 0)
+			continue;
+		if (keep2 != "" && strstrofs(fn, keep2, 0) >= 0)
+			continue;
+		fremove(fn);
+	}
+	search_end(h);
+};
+
 void() Rec_ViewInit =
 {
 	local float i;
@@ -1798,6 +1993,16 @@ void() Rec_ViewInit =
 	registercvar("rec_hid", "1");
 
 	/*
+	  Patch 418: MAY THE SERVER HAVE THIS RUN'S ANGLE SIDECAR?  Default on, and
+	  a switch rather than an assumption for the same reason rec_hid is one: it
+	  is the player's own recording of their own play, and a game that takes it
+	  without asking has to say so somewhere.  The run says which regime it was
+	  played under either way -- the `hid` key in the .view header does it for
+	  the journal, and the receipt's `view` digest does it for this.
+	*/
+	registercvar("rec_upload", "1");
+
+	/*
 	  Patch 416: the server's run nonce arrives as a stuffcmd.  Registered so it
 	  is dispatched to CSQC_ConsoleCommand rather than printed as an unknown
 	  word.  The two resets are the VM's, not a run's -- a map load ends any run
@@ -1811,6 +2016,17 @@ void() Rec_ViewInit =
 	rec_rp_recat    = 0;
 	rec_rp_lastview = "";           // Patch 417
 	rec_rp_hadhid   = FALSE;
+
+	/*
+	  Patch 418: EMPTY THE STAGING DIRECTORY.  What is in it belongs to the map
+	  session that just ended -- offered, sent, and of no further use to anybody
+	  -- and a directory nobody ever prunes is the finding this patch's
+	  predecessor had to answer for.  A map load is the one moment no upload can
+	  be in flight: the netchan that would have carried it is gone.
+	*/
+	Rec_StagedClear("", "");
+	rec_rp_ulkeep = "";
+	localcmd("rec_ul_arm -\n");	/*nothing can be in flight across a map load*/
 
 	/*
 	  Read once per VM rather than per run: CSQC_Init runs at every map load, so

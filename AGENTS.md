@@ -551,6 +551,76 @@ bannered as superseded.)
   below). `b85ride.cfg` is the current worked example.
   On a lobby, copy `data/parts/p<port>-<slot>.rec` from the Pi over ssh during the hold
   (`p352live.cfg`). A copy taken mid-write ends in half a row.
+- THE RUN NONCE (Patch 416). The server draws 128 bits at `SV_RecOpen`, writes
+  `nonce <hex32>` in the `.rec` header, stuffs it to the running client, and sets
+  **TF_NONCE (131072)** when that client echoes it (`cmd rec_nack`). A resume
+  draws a fresh one into the body as `nonce <mt> <hex32>`; a retry or save-load
+  re-publishes the one in force (`SV_RecNoncePublish`), and a COLD load adopts the
+  nonce the rebuilt file's header states. MARKER ONLY -- not a class, not in
+  TF_UNCERT, nothing demoted for its absence, and it must stay that way while
+  pre-416 clients exist: the attacker picks which silence they present.
+  reccheck FAULTS a v9+ file whose flags claim the bit with no nonce anywhere;
+  the converse is never a finding.
+- THE RUN RECEIPT (Patch 417). At the run-end edge the client signs five lines --
+  server, nonce, ticks, sha256 of its `.hid`, sha256 of its `.view` -- with an
+  Ed25519 key kept in `fskey` beside `qkey`, and the server writes
+  `data/evidence/<map>/<runid>.rcpt`. Check one with `python tools/rcptcheck.py
+  <file|dir>` (`--hid`/`--view` to hash the files, `--tamper` for the negative
+  control, `--server` to check the address binding). THREE RULES THAT COST
+  SOMETHING TO LEARN: a server may not ask a client to sign (`rec_sign` refuses
+  `Cmd_FromGamecode()`, or a relay attaches a victim's key to your run); the
+  statement names the server the CLIENT's netchan is talking to, which is what
+  makes a signature non-portable; and the server refuses a receipt while the run
+  is still recording, or the commitment is not made at the finish.
+- EVIDENCE UPLOAD (Patch 418). `run_evidence_ul 1` takes the client's `.view`,
+  `2` also takes the `.hid`; the client's own switch is `rec_upload`. The client
+  stages to `data/staged/<nonce>.<ext>` and ARMS it; the server asks after the
+  receipt lands (`sv_recupload <entnum> <nonce> <path> [path2]`) and the files
+  arrive as `data/evidence/<map>/<runid>.<ext>`, swept by `run_evidence_days`
+  with the recordings. THE REQUEST CARRIES NO PATH THE CLIENT READS -- it names
+  the RUN and the KIND (`rec_ul_send <nonce> view|hid`, stuffed) and the client
+  answers from the slot it armed for that run, or not at all. That asymmetry is
+  the security argument; the nonce is what stops a LATE answer being the NEXT
+  run's file, which is not a corner case (see the race arm). The client holds
+  four arm slots -- two runs -- and `data/staged/` keeps two runs' files,
+  because a run's second file is asked for only when its first has arrived.
+  One chunk per request, written to `<name>.part` and renamed at 100%; a
+  completion carrying no bytes is discarded, and a teardown deletes the part. Sizes decide the default: a `.view` is 2.93 KB per second of run
+  (20 KB for 7 s), a `.hid` is 110 KB (8.38 MB for 76 s), 38x more.
+  ONE UPLOAD AT A TIME PER CLIENT. A sidecar is one <=768-byte chunk per round
+  trip -- 459 of them for a two-minute run, 25 s at 30 ms RTT and 80 s at 150 --
+  so on a lobby the NEXT run finishes while the last one is still arriving. That
+  request is refused and logged (`sv_recupload: <n> is still sending <path> --
+  not asking again`), so **a run may legitimately have a receipt and no
+  sidecar**; rcptcheck calls an absent sibling absent, not a fault. A request the
+  client never answers expires after 120 s of silence, and every teardown (drop,
+  cap, `snap`, expiry) DELETES the partial file -- a truncated `.view` beside a
+  recording reads as a digest mismatch, which is the shape of an accusation.
+  `run_evidence_ul 2` IS A LAN AND SHORT-RUN SWITCH: at 110 KB/s the client's
+  4 MiB cap refuses any journal past ~38 s of run, and one that fits is 17,000
+  round trips. Collecting journals from a public lobby needs a transport that is
+  not the netchan.
+- EVIDENCE RETENTION REACHES EVERY MAP, NOT THE LOADED ONE (Patch 418, after
+  review). `SV_EvidenceSweep` globs the current map's directory at every map
+  init and, where `run_evidence_sweepall 1` is set, the whole `data/evidence/`
+  tree once a day, stamped in `localinfo fs_evswept`. SET THAT ON EXACTLY ONE
+  PROCESS: the tree is shared by twelve lobbies, so a whole-tree sweep imposes
+  that process's `run_evidence_days` on all of them. Before that, `run_evidence_days` only ever applied to maps that
+  were in rotation. The stamp is localinfo because an SSQC global is reset by
+  the map load and a cvar the gamecode creates is purged with the progs -- both
+  were tried and both silently swept at every init (`cfg/test/p418sweep.cfg`).
+- A SERVERINFO KEY IS PUBLISHED AT MAP INIT, so a cvar it is derived from must be
+  set BEFORE the map loads: `+set run_evidence_ul 2` on the command line, not
+  `set` inside the `+exec` cfg. Cost a harness run.
+- TWO-PROCESS HARNESS TRAPS, one run each: a RUNNING dedicated server holds
+  `C:\FTEQuake\fteqwsv64.exe`, so `build.ps1`'s deploy fails with "being used by
+  another process" and the next arm measures the PREVIOUS binary -- kill it
+  first and read the deploy line. And a second server started on a port another
+  one already holds logs "Server spawned" and then sees no clients: the connect
+  goes to the incumbent, so the run lands in the OTHER log file.
+- `Con_DPrintf` NEVER REACHES THE LOG FILE unless `log_developer 1` (console.c:
+  `developer` echoes to the console, `log_developer` writes). A falsifier that
+  greps a server log for a DPrint measures nothing.
 - Multi-Session (Patch 365): a run of at least `run_resume_min` s is PARKED on
   every disconnect, map change and quit (QC `SV_Shutdown`; not `retry`) into
   `data/resume/<map>/@<guid|local>/save000/`. A fixture that reloads or quits

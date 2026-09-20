@@ -10,8 +10,11 @@ its tick count and the SHA-256 of its own two evidence files.
 
 WHAT THIS TOOL SAYS AND WHAT IT DOES NOT.  It answers one question exactly --
 does the signature verify over the lines the file says were signed -- and then
-reports every JOIN it can make against the rest of the evidence: the .rec header
-this receipt names, the .hid it commits to, the two tick counts. It does not
+makes every JOIN it can against the rest of the evidence: the .rec header this
+receipt names (by runid), the two tick counts, the server it was signed on, and
+THE UPLOADED FILES SITTING BESIDE IT, which it hashes and holds against the
+digests that were signed.  That last one is the point of the exercise: it is
+how "what arrived is what was committed to" stops being a claim. It does not
 decide anything about a player.  A valid signature means the holder of that key
 made that statement; it does not mean the statement is true, and no threat class
 above a casual one is touched by it.  That sentence is in the engine source too.
@@ -277,6 +280,31 @@ def join_hid(r):
     r.note("journal kept, %s bytes, sha256 %s..." % (nbytes, digest[:16]))
 
 
+def join_uploaded(r, want):
+    """Hash the evidence that was uploaded BESIDE this receipt.
+
+    THIS IS THE CHECK THE WHOLE THING IS FOR, and until the review it only ran
+    when an operator typed a path by hand -- so the property every comment
+    claimed ("what arrives can be checked against what was committed to") was
+    asserted everywhere and tested nowhere.  A receipt at
+    data/evidence/<map>/<runid>.rcpt sits beside <runid>.view and <runid>.hid
+    when Patch 418's upload landed; those are the files to hash, and no operator
+    should have to know that.
+
+    An ABSENT sibling is not a fault: the upload is off by default for journals,
+    a client can decline, a run can produce no sidecar, and a receipt copied
+    away from its host has neither.  A sibling that does not match IS one.
+    """
+    base = os.path.splitext(r.path)[0]
+    for key in ("view", "hid"):
+        if key in want:
+            continue            # the caller named one explicitly; that wins
+        path = base + "." + key
+        if not os.path.exists(path):
+            continue
+        check_file(r, key, path)
+
+
 def check_file(r, key, path):
     """Hash a file the caller points at and hold it against what was signed.
 
@@ -378,7 +406,13 @@ def main(argv):
     default = sorted(glob.glob(os.path.join(GAME, "data", "evidence", "*")))
     for a in argv or (default or [os.path.join(GAME, "data", "evidence")]):
         if os.path.isdir(a):
-            files += sorted(glob.glob(os.path.join(a, "*.rcpt")))
+            # RECURSIVE, because the natural thing to type is the top of the
+            # tree and receipts live one level down in data/evidence/<map>/.
+            # Pointed at the parent, the non-recursive glob printed "no
+            # receipts" and returned 1 -- a verifier that reports nothing wrong
+            # because it looked in the wrong place.
+            files += sorted(glob.glob(os.path.join(a, "**", "*.rcpt"),
+                                      recursive=True))
         else:
             files.append(a)
     if not files:
@@ -393,7 +427,9 @@ def main(argv):
         join_server(r, want.get("server"))
         join_hid(r)
         for key, path in want.items():
-            check_file(r, key, path)
+            if key != "server":
+                check_file(r, key, path)
+        join_uploaded(r, want)
         report(r, verbose)
         if r.faults:
             bad += 1

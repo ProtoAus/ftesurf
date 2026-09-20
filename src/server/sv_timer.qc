@@ -1704,6 +1704,10 @@ vector  input_cursor_trace_start, input_cursor_trace_endpos;
 // worth.  Zoned, freed and rebuilt at every open.
 .string rec_rec_nonce;              // the 32 hex chars in force for this run
 string  run_nonce_seed;             // per-boot, zoned; the seed under all of them
+// Patch 418: what `fs_ul` was PUBLISHED as at map init.  Read instead of the
+// cvar so the server cannot ask for evidence under a policy its clients were
+// never told about -- the key is sent once and the cvar can move afterwards.
+float   run_t_evul;
 .float  rec_rec_rcpt;               // Patch 417: this run's receipt is written
 
 /*
@@ -3988,6 +3992,52 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	fputs(fh, sprintf("signed view %s\n", view));
 	fclose(fh);
 	dprint(sprintf("timer: receipt %s\n", path));
+
+	/*
+	  PATCH 418: AND NOW ASK FOR THE FILE THE CLIENT HAS JUST COMMITTED TO.
+
+	  Here and not at the finish, because THIS is the moment both halves exist:
+	  the client has signed a digest for its sidecar, and the server has a
+	  receipt to check the arriving bytes against.  Asked for only when the
+	  receipt names one -- `view -` is a run with no sidecar and nothing to
+	  send.
+
+	  THE REQUEST CARRIES NO PATH THE CLIENT READS.  sv_recupload names where
+	  the SERVER's copy lands; the client sends the file its own gamecode armed,
+	  or nothing at all.  That asymmetry is the whole security argument and it
+	  lives in engine/client/cl_receipt.c.
+	*/
+	if (run_t_evul && e.rec_rec_nonce != "")
+	{
+		/*
+		  BOTH FILES IN ONE REQUEST, IN THE ORDER THE CLIENT ARMED THEM.  The
+		  engine sends them one after the other -- an upload is a single stream
+		  -- and asks for the second only when the first has landed.  The
+		  journal is asked for ONLY at `run_evidence_ul 2`, and only when this
+		  receipt says the client kept one: measured, it is 110 KB per second of
+		  run against the sidecar's 2.93 KB, and the client's own cap refuses it
+		  past ~38 seconds of run.  At `2` this asks for a file most runs cannot
+		  send; see the transport arithmetic in engine/client/cl_receipt.c.
+		*/
+		/*
+		  THE REQUEST NAMES THE RUN.  The engine stuffs `rec_ul_send <nonce>
+		  <kind>` and the client answers with the file it armed for THAT run --
+		  because the next run can finish while this one's evidence is still on
+		  the wire, and a bare request was answered with whatever was armed
+		  last.  A run with no nonce cannot be asked: there would be nothing to
+		  name it by, and nothing staged under it either.
+		*/
+		if (view != "-" && hid != "-" && kept == "1" && run_t_evul >= 2)
+			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.view data/evidence/%s/%s.hid\n",
+			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid,
+			                 mapname, e.rec_rec_rid));
+		else if (view != "-")
+			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.view\n",
+			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid));
+		else if (hid != "-" && kept == "1" && run_t_evul >= 2)
+			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.hid\n",
+			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid));
+	}
 };
 
 /*
@@ -4602,7 +4652,18 @@ float(entity e) SV_RecKeepEvidence =
 };
 
 // Evidence past run_evidence_days goes, by the runid's date (this map only).
-void() SV_EvidenceSweep =
+/*
+  Patch 418, after review: SWEEP ONE MAP EVERY INIT, THE WHOLE TREE ONCE.
+
+  `pat` is the glob.  The per-map form is what this always did and it is cheap;
+  the problem it left is that the directory is only ever visited while the map
+  is in rotation, so a map that drops out keeps its evidence FOREVER.  With
+  receipts that was ~500 bytes a run.  With uploads it is a few hundred KB a
+  run, and it is also a promise broken: `run_evidence_days` is the retention
+  this server states, and it was only being applied to whatever happened to be
+  loaded.
+*/
+void(string pat) SV_EvidenceSweepPat =
 {
 	local float h, n, i, today, days, d, cut;
 	local string fn;
@@ -4619,7 +4680,14 @@ void() SV_EvidenceSweep =
 	  problem rather than a file problem: 12 lobbies write into one tree, and
 	  inodes run out long before bytes do.
 	*/
-	h = search_begin(sprintf("data/evidence/%s/*.rc*", mapname), FS_NAMESORT, TRUE);
+	/*
+	  Patch 418: `*.*` rather than `*.rc*`, because this directory now holds
+	  three kinds of file with one lifetime -- the recording, its receipt, and
+	  the client's uploaded sidecar.  They are all named for the same runid, so
+	  the same date test covers all three, and a sweep that knew about two of
+	  them would leave the third to grow forever.
+	*/
+	h = search_begin(pat, FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 	n = search_getsize(h);
@@ -4634,7 +4702,45 @@ void() SV_EvidenceSweep =
 		if (today - d > days)
 			fremove(fn);
 	}
+	dprint(sprintf("timer: evidence sweep %s (%g file(s) considered)\n", pat, n));
 	search_end(h);
+};
+
+void() SV_EvidenceSweep =
+{
+	local string today;
+
+	SV_EvidenceSweepPat(sprintf("data/evidence/%s/*.*", mapname));
+
+	/*
+	  AND ONCE A DAY, EVERY MAP -- including the ones no longer in rotation,
+	  which is the only way their evidence is ever reaped.  Rotation is the
+	  whole hole: this only ever visited the directory of the map that was
+	  LOADED, so a map that leaves the pool keeps its evidence forever and
+	  `run_evidence_days` quietly stops being the retention this server states.
+
+	  The stamp is LOCALINFO and not a global or a cvar, both of which were
+	  tried: SSQC globals are reset by the map load, and a cvar the gamecode
+	  creates is purged when the progs are freed -- measured, the cvar version
+	  ran the full sweep at every map init.  `svs.localinfo` outlives the progs,
+	  is not sent to clients, and holds a day number rather than a flag so a
+	  server that stays up for a fortnight sweeps on each of those days rather
+	  than once at boot.
+	*/
+	/*
+	  ONE PROCESS, NOT TWELVE, AND THAT IS WHY IT IS OPT-IN.  The tree is
+	  shared: a whole-tree sweep applies THIS server's `run_evidence_days` to
+	  every other lobby's evidence, so a practice server set to 1 would reap the
+	  ranked lobbies a day after they recorded.  Set `run_evidence_sweepall 1`
+	  on exactly one process -- the one whose retention is the house rule.
+	*/
+	if (!cvar("run_evidence_sweepall"))
+		return;
+	today = strftime(TRUE, "%Y%m%d");
+	if (infokey(world, "fs_evswept") == today)
+		return;
+	localcmd(sprintf("localinfo fs_evswept %s\n", today));
+	SV_EvidenceSweepPat("data/evidence/*/*.*");
 };
 
 void(entity e) SV_RecDiscard =
@@ -12754,6 +12860,23 @@ void() SV_TimerMapInit =
 	run_t_startcap    = cvar("run_startcap");     // Patch 403
 	localcmd(sprintf("serverinfo run_startcap %g\n", run_t_startcap));
 	localcmd("serverinfo fs_counts 1\n");     // Patch 376: clients send mouse counts
+	/*
+	  Patch 418: THIS SERVER WILL TAKE A RUN'S ANGLE SIDECAR.  A client drops it
+	  by default whenever the recording is somewhere else (Rec_ViewEnd), so the
+	  key is the server saying the file has a home here -- and a client that
+	  does not want to send one still does not have to (`rec_upload 0`).
+	  Published unconditionally rather than per-run: it describes the SERVER, and
+	  a key that appeared and disappeared would be a race against the run that
+	  reads it.
+	*/
+	/*
+	  THE VALUE AND NOT A BOOLEAN.  The first cut published `? 1 : 0`, so an
+	  operator asking for journals at 2 told every client 1 and got sidecars --
+	  the client reads this key to decide whether to KEEP its journal at all,
+	  and a flattened value is a flattened decision.
+	*/
+	run_t_evul = bound(0, rint(cvar("run_evidence_ul")), 2);
+	localcmd(sprintf("serverinfo fs_ul %g\n", run_t_evul));
 	SV_EvidenceSweep();
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
