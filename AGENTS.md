@@ -778,6 +778,21 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `CL_CheckOrEnqueDownloadFile` returns FALSE when it STARTS a download.
 - The QuakeWorld join is `SV_New_f`; `SVNQ_New_f` (NQPROT) is NetQuake's, and
   an edit there does nothing for FTESurf clients.
+- THE PI TALKS UTC AND `git log` TALKS LOCAL (+10). Comparing a Pi file's mtime
+  against a commit date silently misreads which build is live — it cost a fleet
+  record that understated the fleet by nine patches. Pin a deploy with
+  `TZ=UTC git log --date=iso-local`, and remember the Pi keeps no receipt: the
+  DEPLOYED notes in ENGINE_PATCHES.md and the `.prev`/`.preNNN` files are the
+  only record, so write one after every `-Pi`.
+- Off the home LAN, 192.168.1.102 is dead but `proto@180.150.62.57` answers, and
+  `build.ps1 -Pi -PiHost proto@180.150.62.57` deploys fine (its lobbies.json
+  probe reaches :8084 too). Only the 12 lobby ports are forwarded, so a
+  hand-started test server on another port is unreachable from outside — run
+  that arm locally and say so in the entry.
+- A player's guid is the `qkey` in the install ROOT, so two clients from one
+  install are ONE player to the server. Any per-player test (save rows, board
+  attribution) needs a second install; read both guids out of the lobby log as
+  the control before believing the result.
 - fteqcc: `arr[i]_x` does not compile ("Cannot cast from vector to float") —
   copy to a local vector first; sprintf takes ≤ 8 args (warns above, and DROPS
   the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
