@@ -1254,6 +1254,42 @@ def case_linux_legacy_path_wording():
         check(lp.startswith("open"), "%s: legacy path open (got %r)" % (label, lp))
 
 
+def case_nonce_note():
+    """Patch 416's nonce, noted into the journal, is REPORTED and not judged.
+
+    `in_journal_note` is an ungated console command, so a note is a claim by
+    whoever was at the keyboard; the only thing that makes it evidence is the
+    `.rec` agreeing with it, and that join is not this tool's.  What this tool
+    owes a reader is the value, and the fact when there is more than one."""
+    j = Journal()
+    j.frame(1)
+    j.lines.append("# 0 nonce 1bf8d0a2e3c94f6712ab34cd56ef7890")
+    j.frame(2)
+    r = run(j.end())
+    check(r.info.get("nonce") == "1bf8d0a2e3c94f6712ab34cd56ef7890",
+          "one nonce note is reported as the run's nonce")
+
+    # TWO DIFFERENT VALUES IS A NOTE, NOT A FAULT: a Multi-Session resume does
+    # it legitimately, and so did a pre-416 client holding a stale one.
+    j = Journal()
+    j.frame(1)
+    j.lines.append("# 0 nonce 1bf8d0a2e3c94f6712ab34cd56ef7890")
+    j.frame(2)
+    j.lines.append("# 0 nonce 0123456789abcdef0123456789abcdef")
+    j.frame(3)
+    r = run(j.end())
+    check(has_note(r, "names 2 different nonces"),
+          "two different nonces are a note")
+    check(not has_fault(r, "nonce"), "...and not a fault")
+
+    # THE CONTROL: a journal with no note says nothing about a nonce at all.
+    j = Journal()
+    j.frame(1)
+    j.frame(2)
+    r = run(j.end())
+    check("nonce" not in r.info, "a journal with no note reports no nonce")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1285,7 +1321,8 @@ def main():
                case_malformed_key_faults_not_raises,
                case_malformed_key_sweep_continues,
                case_wayland_seat_devid0_not_unclaimed,
-               case_linux_legacy_path_wording):
+               case_linux_legacy_path_wording,
+               case_nonce_note):
         print("%s:" % fn.__name__)
         fn()
         print("")

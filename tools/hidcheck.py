@@ -1263,6 +1263,32 @@ def check_hid(path, verbose=False):
     # counts that reached no view at all.
     check_counts_join(r, joins, bool(inputcvars))
 
+    # Patch 416: the run nonce, noted into the journal by the client when the
+    # server issues one.  REPORTED AND NOT CHECKED, and the distinction is the
+    # whole of what this tool may say about it: `in_journal_note` is an ungated
+    # console command, so a note is a claim by whoever was at the keyboard.  The
+    # only thing that makes it evidence is agreeing with the `.rec` this journal
+    # pairs with, and that join is the caller's to make (tools/rcptcheck.py does
+    # it for a receipt).
+    nonces = []
+    for n in notes_seen:
+        f = n.split()
+        if len(f) == 2 and f[0] == "nonce":
+            nonces.append(f[1])
+    if nonces:
+        r.info["nonce"] = nonces[-1] if len(nonces) == 1 else \
+            "%s (%d notes)" % (nonces[-1], len(nonces))
+        if len(set(nonces)) > 1:
+            # TWO DIFFERENT NUMBERS IS NOT A FAULT and there is a legitimate
+            # path to it: a Multi-Session resume issues a new nonce into a
+            # journal that is still open.  It is also what the Patch 416 defect
+            # looked like -- a run inheriting the previous run's number -- so it
+            # is worth a note either way, and the .rec says which it is.
+            r.note("this journal names %d different nonces (%s) -- a resume "
+                   "does that legitimately; so did a client holding a stale one "
+                   "before Patch 416. The .rec is what tells them apart."
+                   % (len(set(nonces)), ", ".join(sorted(set(nonces)))))
+
     if not frames:
         r.fault("no frame markers -- nothing was ever drained while the journal "
                 "was open")
@@ -1311,6 +1337,7 @@ def check_hid(path, verbose=False):
         r.note("mark: %s" % n)
     if notes_seen:
         r.info["marks"] = len(notes_seen)
+
 
     if events == 0:
         r.note("no input events at all. That is the EXPECTED result for a "
@@ -1719,6 +1746,9 @@ def emit(r, verbose):
                  "render_cvars", "render_changes", "key_devids", "key_attribution", "pointer_attribution", "key_presses", "key_repeats", "key_repeat_pct",
                  "orphan_releases", "injected", "unenum", "legacy_presses",
                  "legacy_path", "nolegacy_at_start", "nolegacy_changes", "marks",
+                 # Patch 416, listed in the same edit as the code that assigns
+                 # it -- reccheck.py's tuple swallowed four fields that way.
+                 "nonce",
                  "truncated_at", "frame_rate", "events_per_sec",
                  "events_per_frame", "movesequence", "view_movesequence",
                  "view_hid", "view_span")
