@@ -584,8 +584,21 @@ bannered as superseded.)
   run's file, which is not a corner case (see the race arm). The client holds
   four arm slots -- two runs -- and `data/staged/` keeps two runs' files,
   because a run's second file is asked for only when its first has arrived.
-  One chunk per request, written to `<name>.part` and renamed at 100%; a
-  completion carrying no bytes is discarded, and a teardown deletes the part. Sizes decide the default: a `.view` is 2.93 KB per second of run
+  One chunk per request -- enforced by the packet sequence, not just by a flag
+  -- written to `<name>.part` and renamed at 100%; a completion carrying no
+  bytes is discarded, and a teardown deletes the part. A CLIENT THAT CANNOT
+  ANSWER SAYS SO: `rec_ul_send` with nothing armed, or a file over the client's
+  4 MiB cap, sends the `snap` stringcmd, which is QuakeWorld's existing "I
+  decline" and reaches the same teardown. An armed destination nobody has
+  answered expires in 15 s (a round trip), one with bytes arriving in 120 s of
+  silence -- two clocks, because holding the first for two minutes also blocked
+  the next runs' evidence behind it. A loopback client is never asked: on a
+  listen server the recording is already here.
+  `rcptcheck` now COUNTS the receipts that commit to evidence which is not on
+  the host ("N of them commit to evidence that is not on this host"). That is
+  not a fault -- an upload can legitimately not arrive -- but before it, a
+  client that signed digests and handed nothing over looked exactly like a
+  server with uploads switched off. Sizes decide the default: a `.view` is 2.93 KB per second of run
   (20 KB for 7 s), a `.hid` is 110 KB (8.38 MB for 76 s), 38x more.
   ONE UPLOAD AT A TIME PER CLIENT. A sidecar is one <=768-byte chunk per round
   trip -- 459 of them for a two-minute run, 25 s at 30 ms RTT and 80 s at 150 --

@@ -1797,7 +1797,21 @@ void() Rec_ViewFrame =
 		if (rec_rp_nonce != "")
 		{
 			Rec_StagedClear(rec_rp_nonce, rec_rp_ulkeep);
-			rec_rp_ulkeep = rec_rp_nonce;
+			/*
+			  strzone, AND THE REASON IS NOT THAT THE PLAIN ASSIGN WAS BROKEN.
+
+			  It was not: `strunzone` forty lines below is a NO-OP on this
+			  engine (`QCGC` is unconditionally defined, pr_bgcmd.c:4963), so
+			  the string stayed reachable through this global and the two-run
+			  window worked -- measured, both runs' staged files survived.  One
+			  reviewer read it as a use-after-free and worked out exactly what
+			  PR_memfree would write over the nonce; the only thing standing
+			  between that reading and the truth is a #define in a file this
+			  repo does not own.  Owning the reference costs one builtin call.
+			*/
+			if (rec_rp_ulkeep != "")
+				strunzone(rec_rp_ulkeep);
+			rec_rp_ulkeep = strzone(rec_rp_nonce);
 		}
 
 		if (rec_rp_ms)
@@ -2025,6 +2039,8 @@ void() Rec_ViewInit =
 	  be in flight: the netchan that would have carried it is gone.
 	*/
 	Rec_StagedClear("", "");
+	if (rec_rp_ulkeep != "")
+		strunzone(rec_rp_ulkeep);
 	rec_rp_ulkeep = "";
 	localcmd("rec_ul_arm -\n");	/*nothing can be in flight across a map load*/
 

@@ -301,11 +301,27 @@ def join_uploaded(r, want):
             continue            # the caller named one explicitly; that wins
         path = base + "." + key
         if not os.path.exists(path):
+            # ABSENT IS NOT A FAULT, BUT IT IS NOT NOTHING EITHER.  A receipt
+            # that signs a real digest and has no file beside it is the only
+            # on-disk trace of "the client committed to evidence and did not
+            # hand it over" -- and until this said so, a client that declined
+            # every upload looked exactly like a host with uploads switched
+            # off.  `signed <kind> -` means there was nothing to send; a digest
+            # with no file means it did not arrive.
+            want_d = (signed_get(r, key) or "").split(" ")[0]
+            if want_d and want_d != "-":
+                if os.path.exists(path + ".part"):
+                    r.note("%s.part is here but was never renamed into place -- "
+                           "an upload that did not finish, not a mismatch"
+                           % os.path.basename(path))
+                else:
+                    r.note("commits to a %s digest, and no %s is on this host"
+                           % (key, key))
             continue
-        check_file(r, key, path)
+        check_file(r, key, path, sibling=True)
 
 
-def check_file(r, key, path):
+def check_file(r, key, path, sibling=False):
     """Hash a file the caller points at and hold it against what was signed.
 
     THE PATHS ARE NOT IN THE RECEIPT and cannot be: the server never knew where
@@ -315,11 +331,15 @@ def check_file(r, key, path):
     the file says which file they mean."""
     v = signed_get(r, key)
     if not v or not v.split():
-        r.fault("--%s given but this receipt signs no %s digest" % (key, key))
+        r.fault(("a %s is stored under this run's name and the receipt signs no "
+                 "%s digest" % (key, key)) if sibling else
+                ("--%s given but this receipt signs no %s digest" % (key, key)))
         return
     digest = v.split()[0]
     if digest == "-":
-        r.fault("--%s given but this receipt's %s digest is absent" % (key, key))
+        r.fault(("a %s is stored under this run's name and the receipt's %s "
+                 "digest is absent" % (key, key)) if sibling else
+                ("--%s given but this receipt's %s digest is absent" % (key, key)))
         return
     try:
         with open(path, "rb") as fh:
@@ -420,6 +440,7 @@ def main(argv):
         return 1
 
     bad = 0
+    missing = 0
     for f in files:
         r = read(f)
         join_rec(r)
@@ -433,7 +454,16 @@ def main(argv):
         report(r, verbose)
         if r.faults:
             bad += 1
+        if any("and no " in m for m in r.notes):
+            missing += 1
     print("%d receipt(s) checked, %d with faults" % (len(files), bad))
+    if missing:
+        # COUNTED IN THE SUMMARY AND NOT ONLY UNDER -v, because it is the line
+        # that distinguishes a host with uploads off from a client that signs
+        # digests and hands nothing over.  It is not a fault: an upload can
+        # legitimately not arrive, and a receipt without its files is still a
+        # complete receipt.
+        print("%d of them commit to evidence that is not on this host" % missing)
     return 1 if bad else 0
 
 
