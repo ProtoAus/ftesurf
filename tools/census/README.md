@@ -21,6 +21,7 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `sscensus.py` | `trigger_setspeed` pads that can drive `velocity_z` over 140 |
 | `sscount.py` | ...counted by real overlap VOLUME and by containment |
 | `ssd1.py` | horizontal-only setspeed pads in a start zone (Patch 412's open case) |
+| `onjumpstart.py` | OnJump basevelocity pads vs start zones, on the live rotation (Patch 414) |
 
 ## READ THIS BEFORE QUOTING A NUMBER
 
