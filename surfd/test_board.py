@@ -1644,6 +1644,101 @@ check("(f) ...alice's row still hers",
       [(a_before[0][0], a_before[0][1])])
 
 # --------------------------------------------------------------------------
+print("\n--- 20. the published TIME and the badge, bound to the file -------")
+
+# The second review of section 19's fix found two criticals in it, both
+# measured.  Section 19 tested WHO may claim a file; neither of these is about
+# who -- they are about what a row may then SAY while wearing a badge.  Every
+# input is public: /api/board emits player, name and ticks, and /api/replay
+# serves the .rec (header: owner, runid) under the leaf as its filename.
+#
+#  (a) millis = ticks * 1000 / tickrate.  `ticks` is pinned by the leaf's own
+#      prefix; `tickrate` was pinned by nothing, so the published TIME was a
+#      caller-typed field no file contradicted.  The header carries it as a
+#      PERIOD (`tickrate 0.01`) against the POST's frequency (100), so the
+#      compare is a reciprocal, not a string.
+#  (b) `bytes` was the sender's `recbytes`, and it is one of the four columns
+#      deciding whether `submitted` moves.  One digit forced the ELSE arm and
+#      voided the standing PASS and any owner approval -- the badge strip
+#      section 19 claimed to close, still a one-field operation.  It is now the
+#      file's real size, from the same stat the header came from.
+#
+# WHAT IS NOT CLOSED HERE, AND CANNOT BE AT THIS LAYER: a key holder may still
+# post a FASTER time as anybody, and the runs row updates on an improvement, so
+# the victim's board row is displaced.  The badge does not transfer -- the fake
+# has no replay behind it -- but it does go dark.  Only player identity (the
+# keypair, plan item 6) closes that; the shared key is documented as "a spam
+# filter rather than a credential".  Asserted below so the boundary is pinned
+# rather than assumed.
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+
+vleaf = leaf(700, "vic")
+wrec(m, "surf_test", 0, 0, vleaf, "Vic", "rv")
+vrep = submit(m, player="vic", name="Vic", ticks=700, tickrate=100,
+              rec=vleaf, runid="rv")["rep"]
+add_verdict(m, vrep, "PASS", T + 1)
+before = q(m, "SELECT millis, tickrate FROM replays WHERE id=?", (vrep,))
+check("(a) vic's honest run: 7000 ms and verified",
+      (before[0][0], rows_by_player(m)["vic"]["ver"]), (7000, 1))
+
+# THE FABRICATION: same player, name, runid, ticks and leaf -- only tickrate
+# changed.  Before this fix it produced a 70 ms VERIFIED row.
+clock.now += 10
+fake = submit(m, player="vic", name="Vic", ticks=700, tickrate=10000,
+              rec=vleaf, runid="rv")
+check("(a) a tickrate the file contradicts drops the leaf", fake.get("rep"), 0)
+check("(a) ...the replay row keeps its own millis and tickrate",
+      q(m, "SELECT millis, tickrate FROM replays WHERE id=?", (vrep,)),
+      [(before[0][0], before[0][1])])
+row = rows_by_player(m)["vic"]
+check("(a) THE BADGE DID NOT FOLLOW THE FABRICATED TIME",
+      (row["ms"], row["ver"]), (70, 0))
+check("(a) boundary: no row anywhere wears a badge for 70 ms",
+      [r["ms"] for r in board(m)["rows"] if r["ver"]], [])
+
+# CONTROL: the file's own tickrate still indexes, so this is not a blanket drop.
+clock.now += 10
+ok2 = submit(m, player="vic", name="Vic", ticks=700, tickrate=100,
+             rec=vleaf, runid="rv")
+check("(a) control: the file's own tickrate still indexes", ok2.get("rep"), vrep)
+
+# (b) on its own database, because (a) legitimately displaced vic's board row.
+m2 = fresh()
+clock2 = FakeClock()
+m2.time = clock2
+T2 = int(clock2.now)
+bleaf = leaf(700, "bob")
+wrec(m2, "surf_test", 0, 0, bleaf, "Bob", "rb")
+brep = submit(m2, player="bob", name="Bob", ticks=700, tickrate=100,
+              rec=bleaf, runid="rb")["rep"]
+add_verdict(m2, brep, "PASS", T2 + 1)
+check("(b) bob's honest run is verified", rows_by_player(m2)["bob"]["ver"], 1)
+b_before = q(m2, "SELECT submitted, checked, bytes FROM replays WHERE id=?", (brep,))
+real = len(open(os.path.join(m2.RUNS_DIR, "surf_test", "main", bleaf), "rb").read())
+check("(b) bytes is the file on disk, not the wire", b_before[0][2], real)
+
+clock2.now += 10
+strip = submit(m2, player="bob", name="Bob", ticks=700, tickrate=100,
+               rec=bleaf, runid="rb", recbytes=999999)
+check("(b) a wrong recbytes moves neither submitted, checked nor bytes",
+      q(m2, "SELECT submitted, checked, bytes FROM replays WHERE id=?", (brep,)),
+      b_before)
+check("(b) ...so the PASS is still current", rows_by_player(m2)["bob"]["ver"], 1)
+check("(b) control: it is still the same row", strip.get("rep"), brep)
+
+# An owner approval is the other thing a moved `submitted` would void.
+review(m2, brep, "approve", int(clock2.now) + 1)
+clock2.now += 10
+submit(m2, player="bob", name="Bob", ticks=700, tickrate=100, rec=bleaf,
+       runid="rb", recbytes=12345)
+check("(b) an approval survives a re-post with a wrong recbytes",
+      rows_by_player(m2)["bob"]["ver"], 1)
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILED" % len(FAILED))

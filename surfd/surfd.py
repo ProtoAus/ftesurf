@@ -2097,6 +2097,14 @@ def submit_run():
     # The bytes on disk are the one thing a claim cannot choose.  index_evidence
     # has always made this check on the evidence path (_rec_meta + the
     # runid/map/leg compare); the ranked path simply never did.
+    #
+    # `fsize` IS THE FILE'S REAL SIZE, and it is taken here rather than trusted
+    # from the wire.  The second review (2026-09-20) showed why that matters:
+    # `bytes` is one of the four columns that decide whether `submitted` moves,
+    # and while it was the caller's `recbytes` a one-digit change forced the
+    # ELSE arm and voided the row's PASS and any owner approval -- the badge
+    # strip this fix claimed to have closed, still a one-field operation.
+    fsize = None
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -2113,7 +2121,9 @@ def submit_run():
             log.warning("rec leaf %r names no readable file (%s) from %s;"
                         " indexing it unverified", leaf, why or "unreadable", src)
         else:
-            bad = _rec_disagrees(meta[0], mapname, track, leg, name, runid)
+            fsize = meta[3]
+            bad = _rec_disagrees(meta[0], mapname, track, leg, name, runid,
+                                 tickrate)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
@@ -2135,6 +2145,19 @@ def submit_run():
                         raw_recbytes[:32], src, leaf)
         recbytes = -1
     rectrunc = 1 if clean_text(request.form.get("rectrunc")) == "1" else 0
+
+    # THE FILE'S OWN SIZE WINS over the sender's hint whenever we could read it.
+    # `bytes` stopped being cosmetic when it became one of the four columns that
+    # decide whether `submitted` moves: while it was caller-supplied, changing
+    # it by one byte forced the ELSE arm and voided the row's standing PASS and
+    # any owner approval.  Taken from the same stat the header came from, so the
+    # two cannot disagree.  The wire value remains the fallback for a leaf whose
+    # file we could not open, where it is a hint and nothing rides on it.
+    if fsize is not None and fsize != recbytes:
+        if recbytes >= 0:
+            log.info("rec leaf %r: sender said %d bytes, the file is %d;"
+                     " recording the file", leaf, recbytes, fsize)
+        recbytes = fsize
 
     db = get_db()
     try:
@@ -2476,7 +2499,38 @@ def _rec_meta(path):
     return hdr, end, abandoned, st.st_size, st.st_mtime
 
 
-def _rec_disagrees(hdr, mapname, track, leg, name, runid):
+def _rec_tickrate_disagrees(hdr, tickrate):
+    """"" when the header's tick can be this row's tickrate, else why not.
+
+    THE TWO SPELLINGS ARE RECIPROCALS.  SV_RecOpen writes a PERIOD
+    (`tickrate 0.01`, from pm_ticrate) and the POST sends a FREQUENCY (100), so
+    this cannot be a string compare like the keys beside it.
+
+    It is here because `millis` is `ticks * 1000 / tickrate` and `ticks` is
+    pinned by the leaf's own prefix -- so with tickrate unbound, the published
+    TIME was a caller-typed field that nothing on disk contradicted.  Measured
+    by the second review: one POST turned a 7.000 s verified run into a 0.070 s
+    verified run, under the victim's own name, with the PASS still current.
+    """
+    raw = (hdr.get("tickrate") or "").strip()
+    if not raw or not tickrate:
+        return ""                      # a recorder older than the key, or no claim
+    try:
+        period = float(raw)
+    except ValueError:
+        return ""                      # unparseable on disk is not the row's fault
+    if period <= 0:
+        return ""
+    want = 1.0 / period
+    # Generous: %g gives six significant digits and pm_ticrate is not always a
+    # round reciprocal (0.0078125 -> 128).  This is here to refuse 100 vs 10000,
+    # not to police the sixth decimal.
+    if abs(want - tickrate) > max(0.5, want * 0.001):
+        return "tickrate %s (= %.4f/s) != %.4f/s" % (raw, want, tickrate)
+    return ""
+
+
+def _rec_disagrees(hdr, mapname, track, leg, name, runid, tickrate=0):
     """"" when a .rec header can be the run being filed, else why not.
 
     Compares only keys the file actually carries, so a recorder older than a
@@ -2494,7 +2548,8 @@ def _rec_disagrees(hdr, mapname, track, leg, name, runid):
 
     return (differs("map", mapname) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
-            or (name and differs("owner", name)) or "")
+            or (name and differs("owner", name))
+            or _rec_tickrate_disagrees(hdr, tickrate) or "")
 
 
 def _keep_file(src, dst):
