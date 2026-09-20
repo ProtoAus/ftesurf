@@ -169,7 +169,6 @@ vector tt_ang[TG_TT_MAX];
 
 // chain state
 float  tg_lastseq;              // sequence of the last command hooked
-float  tg_pushseq;              // sequence the push accumulator belongs to
 float  tg_pusharmed;
 vector tg_pushvec;
 vector tg_pmins, tg_pmaxs;      // last hook's hull, for trig_here
@@ -1234,12 +1233,45 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	tg_pmins = predmove_mins;
 	tg_pmaxs = predmove_maxs;
 
-	if (seq != tg_pushseq)
-	{
-		tg_pushseq   = seq;
-		tg_pusharmed = 0;
-		tg_pushvec   = '0 0 0';
-	}
+	/*
+	  PATCH 410: UNCONDITIONAL, because the server's is (sv_entities.qc's
+	  `pl.run_basevel_armed = FALSE`, whose comment ends "Drop it and a push
+	  compounds forever").  This mirror dropped it, and it compounded.
+
+	  The accumulator exists to sum OVERLAPPING pads within one command -- it is
+	  written and re-read inside the trigger loop below, and nothing outside this
+	  function reads it -- so a per-command clear keeps that sum and kills
+	  everything else.  Keying it on `seq` instead assumed one hook call per
+	  sequence, and the engine makes two kinds of repeat call: CL_PredictUsercmd
+	  splits any command over 50 ms and recurses with the SAME sequence, and the
+	  pt_extrap=2 branch re-runs the last replayed command verbatim.  Each repeat
+	  folded the previous call's push into the new one, so the mirror rode
+	  n x 3000 u/s where the server rode 1 x 3000.
+
+	  MEASURED, surf_666 bonus 3 (the player's own prederr log, 15 consecutive
+	  acked commands): the error vector divided by one command of the pad's
+	  ramp-clipped carrier, (0, 36, 18) u at pm_ticrate 0.015, gives
+	  9,7,9,8,8,8,9,0,8,0,8,0,8,0,-1 -- integers on both components to three
+	  decimals, and dx exactly 0.0 on all fifteen.  A client simply running
+	  ahead in TIME would have shown 2.007 u of x error per command; there is
+	  none, so the offset is parallel to the CARRIER, not to the trajectory.
+	  That is also what rules out Patch 403's run_startcap, which was blamed for
+	  this in commit 341341b: the server was doing 3243 u/s past a cap of 290.
+
+	  TWO MORE VICTIMS OF THE SAME REPEAT CALLS, both older than this patch and
+	  both left alone on purpose -- they need a hitch (under ~18 fps) or an
+	  extrapolated frame to fire, so neither is the reported bug, and both want
+	  their own falsifier:
+	    - TG_FirePush's once arm tests `seq > tg_onceseq[i]`, so a repeat call at
+	      the SAME seq re-adds the one-shot impulse the server fires exactly once.
+	    - `if (seq <= tg_lastseq) TG_ChainStart(seq)`, a few lines above, reads a
+	      repeat call as a new chain, so TG_IOCommit folds still-unacked IO edges
+	      into the committed state and drops the ring -- permanent, rest of map.
+	  Both want the same discriminator: a repeat call re-enters at the PREVIOUS
+	  call's end origin, a real chain restart re-enters at the acked one.
+	*/
+	tg_pusharmed = 0;
+	tg_pushvec   = '0 0 0';
 
 	// The sweep's bounding box, for the cheap reject.  org1 is latched
 	// BEFORE any fire: a teleport rewrites predmove_org mid-pass and the
@@ -1330,7 +1362,6 @@ void() Trig_LoadForMap =
 	tg_n = 0;
 	tt_n = 0;
 	tg_lastseq = -1;
-	tg_pushseq = -1;
 	tg_pusharmed = 0;
 	tg_hookseen = 0;
 	tg_c_tele = tg_c_push = tg_c_speed = 0;
