@@ -634,6 +634,11 @@ bannered as superseded.)
 - `Con_DPrintf` NEVER REACHES THE LOG FILE unless `log_developer 1` (console.c:
   `developer` echoes to the console, `log_developer` writes). A falsifier that
   greps a server log for a DPrint measures nothing.
+- EDITING ENGINE FILES FROM A SCRIPT: the tree is stored LF and checked out CRLF
+  (`core.autocrlf`), and earlier patch blocks were written back as LF -- so ONE
+  FILE HOLDS BOTH. A multi-line match must try `\r\n` and then `\n`, or it
+  silently finds nothing. Git normalises on commit, so the mix costs nothing but
+  failed edits.
 - Multi-Session (Patch 365): a run of at least `run_resume_min` s is PARKED on
   every disconnect, map change and quit (QC `SV_Shutdown`; not `retry`) into
   `data/resume/<map>/@<guid|local>/save000/`. A fixture that reloads or quits

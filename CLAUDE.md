@@ -43,6 +43,11 @@ chatty.
 - Prefer measuring to reasoning. This codebase has a long history of the right
   answer and the wrong answer being the same bytes; when a claim can be checked
   against a real file or a live run, check it.
+- An arm that passes because its condition never occurred proves nothing. Show
+  it discriminates: two cuts of `p418race.cfg` measured nothing (wrong forcing
+  knob, then the window closed early) before it reproduced anything. The
+  cheapest proof of a fix is the same arm against a build with the fix compiled
+  out.
 - Report what the measurement said, including when it contradicts what you
   predicted. A falsified prediction is a result, not a setback.
 - Changes to the recorder, the verifier or anything that writes evidence get an
@@ -55,4 +60,9 @@ chatty.
   the patch worse than no patch. Dozens of agents is not more rigour, it is the
   same finding many times over; the lenses do the work, not the count.
   Re-review after a redesign: the version that shipped is not the version they
-  read.
+  read. A FIX IS A CHANGE and gets its own round -- Patch 418 took four, and
+  round 2's length clamp covered one of the two exits that read that length,
+  turning a sign-extension bug into a one-packet server hang. Stop when a round
+  finds nothing, not when you are tired of rounds.
+  Review a CLEAN tree: one round's headline finding was a 4 MiB -> 8 KB cap left
+  in the working copy to measure something else.
