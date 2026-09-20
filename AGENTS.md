@@ -134,7 +134,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     never loaded, not something the player did.
   - Warp with `cmd zone_goto`, NOT `setpos`: setpos forces MOVETYPE_NOCLIP
     server-side and desyncs the two simulations. It also taints the run
-    (`cheated`), which is fine once no measurement depends on the clock. On maps
+    (`cheated`), which is fine once no measurement depends on the clock. And it
+    writes NO `warp` record — the only placement in the mod that records nothing
+    (`sv_player.qc`: setorigin + SV_ClearCarrier + SV_TimerWarped) — so a replay
+    cannot follow it and pm_verify HOLDs `no finish` on any run a harness drove
+    with it. On maps
     with no zone data, setpos + `cmd noclip` TWICE lands in WALK — prove it with
     a viewpos z-drop; ONE toggle leaves you in NOCLIP (level flight). Each
     `noclip` is processed twice — engine `SV_Noclip_f` flips to WALK, then the
@@ -236,6 +240,23 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 - Server QC is authoritative (saveloc lists, timer/zones, heartbeat, board
   submits). Client QC renders/predicts. Menu QC is offline UI + directory.
+- **PlayerPreThink is per USERCMD; PlayerPostThink is per PACKET.** The engine
+  brackets the usercmd loop in SV_PreRunCmd/SV_PostRunCmd (`sv_user.c:9331`), so
+  `SV_TimerFrame` and the whole timer run ONCE PER PACKET while touches and the
+  mover run per command. Anything that must act on every command belongs in
+  PreThink. Corollary: `FL_ONGROUND` read in PostThink is post-move AND
+  post-touch — a jump or any upward `trigger_push` has already cleared it, so a
+  ground test there is not the ground state the player had. Patch 403's first cut
+  put a per-command clamp on the PostThink path and a client's own packet rate
+  chose how often it fired.
+- **A speed check must say whether it means `.velocity` or velocity + carrier.**
+  `trigger_push` does not write `.velocity`; it arms `.run_basevel`, which the
+  engine rides as `pmove.basevelocity` and which becomes velocity only on the
+  first command nothing re-armed it (`SV_BaseVelocityFrame`). A body can be doing
+  1800 u/s with `.velocity` EXACTLY ZERO — measured, and the recording's `seed`
+  says `0 0 0` because that is honest. Effective horizontal speed is
+  `.velocity + (1 + run_bv_tick * 0.5) * .run_basevel`. `run_stagecap` has read
+  the wrong one since P360 and logs `launch 0 ... cap 290` at 1809 u/s.
 - Client→server: `cmd sl_*`-style registered command strings.
   Server→client: `stuffcmd` (e.g. `set cl_saveroot`), stats, sprint, csqc
   entity fields. MIRRORS SPLIT BY TYPE: floats ride a stuffed `set` read with
@@ -402,7 +423,9 @@ bannered as superseded.)
 - THE VERIFIER: `pm_verify <file>` (engine, headless server on the file's map)
   replays a finished v9 or v10 file exactly and runs the timer's own zone scan, printing
   `VERIFY <file> PASS|HOLD|REFUSE <reason>` (never FAIL). It is exact only on the
-  same binary and pin. It replays with the file's own trace cvars
+  same binary and pin. It REFUSES on a zone-table mismatch before replaying a
+  single tick, so a file recorded under a `cfg/test/*.zones.json` fixture only
+  verifies with that same fixture installed at `maps/zones/local/<map>.json`. It replays with the file's own trace cvars
   (`pm_trisoup_bevels`, `pm_rotatedboxhulls`, `pm_portalcsg_scanall`; Patch 358),
   warns when they differ from the server's, and restores the server's values
   after. `surfd/sweep.py` runs it from proto's cron into the `verdicts` table.
@@ -473,6 +496,13 @@ bannered as superseded.)
 - At a frame rate near the 66 Hz stream a raw-sample control jitters between
   0, 1 and 2 samples a frame instead of stalling: grade the rate band, not the
   no-step fraction alone (p385view P4c).
+- To put MORE THAN ONE COMMAND IN A PACKET use `cl_c2spps`, not `cl_netfps`.
+  Lowering cl_netfps makes one LONGER command ("cl_netfps 20 -> one usercmd per
+  50 ms"), and CSQC re-pins it to `pm_ticrate` at every map load
+  (`Net_MatchTicrate`), so it only sticks if you set it AFTER the map. `cl_c2spps`
+  drops outgoing packets (`cl_input.c:3570`, at most 2 in a row) and QW's backup
+  moves then travel together — 3 `in` rows per packet. This is the only way to
+  reach the multi-command paths a LAN never exercises.
 - Experiment convention: numbered (E1…), one cfg per arm in `cfg/test/`.
   PRE-REGISTER the predictions and the falsifier in the cfg header before
   running; keep a CONTROL that must still fail (a harness that merely got looser
@@ -481,6 +511,10 @@ bannered as superseded.)
   Each prediction must name an observable the change can actually move, and
   every changed call site needs a subject that only it affects. p358 first
   "verified" a restore through a cvar string the patch never writes.
+  When you DERIVE an arm from another cfg (`sed` on log_name and a path is the
+  usual way), rewrite the header — a RESULT block inherited from the source
+  states another run's numbers for this one, and a stale RESULT is worse than
+  none. Two of Patch 403's arms shipped that way and the review caught it.
 - Capture pattern for a live recording: a run only closes at the finish, which a
   scripted walk never reaches. So the harness holds the run open at the end and
   an outside poller copies `data/parts/0.rec` during that window (an abandoned
