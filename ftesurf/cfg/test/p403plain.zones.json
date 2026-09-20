@@ -1,0 +1,138 @@
+{
+  "formatVersion": 1,
+  "_comment": "Fixture zones for bhop_arcane, BOOSTER-FREE variant (cfg/test/p403plain.cfg). The start box sits on the strip of floor just past the *86 booster, which ends at y 3584; the floor itself runs to about y 3670 and then drops. So a body restarted here stands on ordinary floor with NO trigger_push touching it, walks out under +forward, and falls into the same end box. That makes an ordinary start short enough to finish inside a harness, which is what a seed-level diff of run_startcap 290 against 0 needs. Copy to maps/zones/local/bhop_arcane.json and DELETE after.",
+  "tracks": {
+    "main": {
+      "zones": {
+        "segments": [
+          {
+            "limitStartGroundSpeed": false,
+            "checkpointsRequired": false,
+            "checkpointsOrdered": true,
+            "checkpoints": [
+              {
+                "regions": [
+                  {
+                    "points": [
+                      [
+                        6850,
+                        3596
+                      ],
+                      [
+                        6980,
+                        3596
+                      ],
+                      [
+                        6980,
+                        3652
+                      ],
+                      [
+                        6850,
+                        3652
+                      ]
+                    ],
+                    "bottom": -118,
+                    "height": 140
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "end": {
+          "regions": [
+            {
+              "points": [
+                [
+                  6700,
+                  3700
+                ],
+                [
+                  7200,
+                  3700
+                ],
+                [
+                  7200,
+                  5400
+                ],
+                [
+                  6700,
+                  5400
+                ]
+              ],
+              "bottom": -1100,
+              "height": 1400
+            }
+          ]
+        }
+      }
+    },
+    "bonuses": [
+      {
+        "zones": {
+          "segments": [
+            {
+              "limitStartGroundSpeed": false,
+              "checkpointsRequired": false,
+              "checkpointsOrdered": true,
+              "checkpoints": [
+                {
+                  "regions": [
+                    {
+                      "points": [
+                        [
+                          1300,
+                          -11100
+                        ],
+                        [
+                          1800,
+                          -11100
+                        ],
+                        [
+                          1800,
+                          -10400
+                        ],
+                        [
+                          1300,
+                          -10400
+                        ]
+                      ],
+                      "bottom": 13500,
+                      "height": 200
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "end": {
+            "regions": [
+              {
+                "points": [
+                  [
+                    1300,
+                    -11100
+                  ],
+                  [
+                    1800,
+                    -11100
+                  ],
+                  [
+                    1800,
+                    -10400
+                  ],
+                  [
+                    1300,
+                    -10400
+                  ]
+                ],
+                "bottom": 15100,
+                "height": 500
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
