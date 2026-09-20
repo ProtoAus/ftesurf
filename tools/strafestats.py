@@ -44,6 +44,22 @@ TWO STATISTICS, AND THE SECOND IS THE USEFUL ONE.
         floor drops to -0.09, which is the zero it should always have been.
         See rd_step().
 
+        ON THE LIVE CORPUS, 2026-09-21 (the Pi's twelve lobbies: 43 of 50
+        recordings carry air-strafe samples, 60,446 gated).  The honest floor
+        is +0.0178 deg/tick -- the zero it should be -- against a max-power
+        assist's +2.2634 AT THE CUT, which is the quantity this fit recovers.
+        The naive estimator reads +0.4242 on the same data, i.e. twenty times
+        the real floor, which is the trend it cannot remove.
+
+        AND THE PER-RUN NUMBER IS THE ONE THAT DECIDES ANYTHING.  Across the 23
+        live files with enough support either side, the per-file step is mean
+        -0.279, sd 0.909 -- so a MAXIMUM-power optimiser sits 2.49 sd from the
+        honest mean ON ONE RUN.  That is a number worth looking at and not a
+        verdict: 2.5 sd is one run in a hundred of honest play, and a public
+        board may not accuse a named person at those odds.  It is the direct
+        measurement behind the plan's "per-player baselining across a season,
+        not per-run flags".
+
         VALIDATED AGAINST A KNOWN ANSWER, not only against nulls: --inject adds
         the optimiser's own arithmetic to the honest corpus above the gate, and
         the fit recovers 99.7% of the injected step for v1 and 82% for v2.  The
