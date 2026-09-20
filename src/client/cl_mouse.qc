@@ -4,7 +4,8 @@
 
   A 16:10 box left of the key block (or at hud_mouse_x/y).  The dot moves by
   the degrees of turn the mouse is worth and wraps at the edges; its trail
-  fades on the HUD clock, blue, orange while a strafe key (A/D) is held.  Live
+  fades on the HUD clock: blue while +moveleft steers, orange while +moveright
+  does, and the later press wins the colour the way it wins the move.  Live
   it is the hand: raw IE_MOUSEDELTA x sensitivity x |m_yaw| (|m_pitch| down),
   in_xflip undone, m_accel and m_filter not modelled.  In a replay or while spectating it is the view: per-frame angle
   deltas of the recorded or watched player.
@@ -21,7 +22,7 @@
 #define MPS_SPEC    3
 #define MPWIN     128           // sampled trail/(MPWIN-2) apart: the ring outlasts the trail
 #define MPC_TURN  '0.45 0.70 1.00'  // the trail: the +left/+right bars' blue,
-#define MPC_STRAFE '1.00 0.55 0.15' // orange while +moveleft/+moveright is held (Patch 399)
+#define MPC_STRAFE '1.00 0.55 0.15' // orange while +moveright steers (Patch 404)
 
 float  ui_mp_rx, ui_mp_ry;      // IE_MOUSEDELTA since the last frame, virtual px
 float  ui_mp_nev;               // deltas seen (a harness counts its own against it)
@@ -34,8 +35,10 @@ vector ui_mp_last;              // last frame's move, degrees
 float  ui_mp_wx, ui_mp_wy;      // net wraps, + = off right / bottom
 float  ui_mp_brk, ui_mp_resets, ui_mp_snaps;
 vector ui_mp_sp[MPWIN];         // u, v, board_now
-vector ui_mp_sd[MPWIN];         // the unwrapped move into that sample; z = strafe key held
-float  ui_mp_st;                // this frame's strafe key (Patch 399)
+vector ui_mp_sd[MPWIN];         // the unwrapped move into that sample; z = +moveright steering
+float  ui_mp_st;                // this frame's colour: 1 = +moveright steers (Patch 404)
+float  ui_mp_pa, ui_mp_pd;      // last frame's A/D, for the rising edges
+float  ui_mp_newer;             // -1 = A pressed later, +1 = D, 0 = neither
 float  ui_mp_head, ui_mp_len, ui_mp_lastt;
 vector ui_mp_bpos, ui_mp_bsize; // the box, whole pixels
 vector ui_mp_px;                // one physical pixel, virtual units
@@ -103,6 +106,7 @@ float(float t0, float t1) MPad_ReplaySnap =
 void() MPad_Frame =
 {
 	local float src, key, key2, rdt, span, spanv, s, u, v, w, iv, t0;
+	local float ka, kd, ra, rd;     // Patch 404
 	local vector ang, d, ps, vs;
 
 	src = MPS_LIVE;  key = 0;  key2 = 0;  ang = '0 0 0';
@@ -125,13 +129,50 @@ void() MPad_Frame =
 	ui_mp_rx = 0;
 	ui_mp_ry = 0;
 
-	// Patch 399: A or D held, from the same source as the key display.
+	/*
+	  Patch 404: which of A/D is STEERING, not merely which is held -- blue for
+	  +moveleft, orange for +moveright.  cl_iDrive (default 1) lets the later
+	  press win and suppresses the earlier key until it is let go, so the colour
+	  follows the same rule the mover does.  Patch 399 asked only "is either
+	  held", which could not tell the two apart at all.
+
+	  ITS OWN LATCH rather than HUD_DrawKeys' ui_kb_newer, which is the same six
+	  lines: that one is updated inside HUD_DrawKeys, and the block is drawn only
+	  `if (ui_cv_keys)` (cl_hud.qc:5650), so sharing it would freeze the pad's
+	  colour for anyone who turns the key display off.
+	*/
 	if (src == MPS_REPLAY)
-		s = rec_wt_keys & (FSI_LEFT | FSI_RIGHT);
+	{
+		ka = (rec_wt_keys & FSI_LEFT)  ? TRUE : FALSE;
+		kd = (rec_wt_keys & FSI_RIGHT) ? TRUE : FALSE;
+	}
 	else if (src == MPS_SPEC)
-		s = spc_hkeys & (FSI_LEFT | FSI_RIGHT);
+	{
+		ka = (spc_hkeys & FSI_LEFT)  ? TRUE : FALSE;
+		kd = (spc_hkeys & FSI_RIGHT) ? TRUE : FALSE;
+	}
 	else
-		s = (Keys_Held(FSK_LEFT) || Keys_Held(FSK_RIGHT));
+	{
+		ka = Keys_Held(FSK_LEFT);
+		kd = Keys_Held(FSK_RIGHT);
+	}
+
+	ra = (ka && !ui_mp_pa);        // parenthesised: see AGENTS.md on `x = a && b`
+	rd = (kd && !ui_mp_pd);
+	if (ra != rd)
+		ui_mp_newer = ra ? -1 : 1;
+	else if (ra || (!ka && !kd))
+		ui_mp_newer = 0;            // both in one frame, or neither held
+	ui_mp_pa = ka;
+	ui_mp_pd = kd;
+
+	// With one key down IT steers, whatever the latch remembers of the press
+	// before it -- the latch only turns on a rising edge, so a released D would
+	// otherwise keep the colour while A is still held.
+	if (ka && kd)
+		s = (ui_mp_newer > 0);
+	else
+		s = kd;
 	iv = ui_mp_st;
 	ui_mp_st = s ? 1 : 0;
 
@@ -405,13 +446,20 @@ float(string cmd) MPad_ConsoleCommand =
 	              cvar("hud_mouse"), ui_mp_src, ui_mp_pos_x, ui_mp_pos_y));
 	print(sprintf("  box %g %g %g %g px %g\n", ui_mp_bpos_x, ui_mp_bpos_y,
 	              ui_mp_bsize_x, ui_mp_bsize_y, ui_mp_px_x));
-	print(sprintf("  span %g trail %g samples %g live %g breaks %g strafe %g\n",
-	              MPad_Span(), life, ui_mp_len, n, ui_mp_brk, ui_mp_st));
+	print(sprintf("  span %g trail %g samples %g live %g breaks %g\n",
+	              MPad_Span(), life, ui_mp_len, n, ui_mp_brk));
+	// Patch 404: held A/D, the rising-edge latch, and the colour it resolves to.
+	print(sprintf("  keys a%g d%g  newer %s  colour %s\n",
+	              ui_mp_pa, ui_mp_pd,
+	              ui_mp_newer > 0 ? "d" : (ui_mp_newer < 0 ? "a" : "-"),
+	              ui_mp_st ? "orange (+moveright)" : "blue (+moveleft/none)"));
 	print(sprintf("  wraps %g %g resets %g snaps %g events %g\n",
 	              ui_mp_wx, ui_mp_wy, ui_mp_resets, ui_mp_snaps, ui_mp_nev));
 	print(sprintf("  last %.4f %.4f deg  lang %.3f %.3f\n",
 	              ui_mp_last_x, ui_mp_last_y, ui_mp_lang_x, ui_mp_lang_y));
-	// Patch 399: the key block's strafe-order latch, as HUD_DrawKeys last left it.
+	// The key block's own latch, for comparison with the pad's above.  STALE when
+	// hud_keys is off: HUD_DrawKeys is called only `if (ui_cv_keys)` and nothing
+	// else updates it -- which is why Patch 404 keeps its own rather than share.
 	print(sprintf("  keys a %g d %g newer %g cl_iDrive %g\n",
 	              ui_kb_pa, ui_kb_pd, ui_kb_newer, cvar("cl_iDrive")));
 	if (cvar("cl_threadedphysics"))
