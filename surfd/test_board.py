@@ -1235,7 +1235,11 @@ add_verdict(m, c, "PASS", T + 5)
 check("control: a PASS on the standing replay reads 1",
       rows_by_player(m)["cur"]["ver"], 1)
 clock.now += 60
-r = run(m, "cur", 5100)                      # exact tie: same file, new bytes
+# Exact tie, but a SECOND RUN: its own runid, as every real one has (SV_RecOpen
+# stamps wallclock+slot).  That is what makes it new evidence rather than the
+# same row re-posted -- section 19 (c) pins the other half, that an identical
+# re-post must NOT move `submitted` and void the verdict under it.
+r = run(m, "cur", 5100, runid="r-cur-2")
 check("an exact-tie resubmission reuses the replay row", r["rep"], c)
 check("...and the older PASS no longer counts", rows_by_player(m)["cur"]["ver"], 0)
 
@@ -1313,7 +1317,7 @@ rid = run(m5, "tie", 3000)["rep"]
 review(m5, rid, "reject", int(clock.now) + 5)
 check("control: the rejected run is off the board", "tie" in rows_by_player(m5), False)
 clock.now += 60
-r = run(m5, "tie", 3000)
+r = run(m5, "tie", 3000, runid="r-tie-2")    # a second run, so its own runid
 check("an exact tie after the reject stores on the same replay row",
       (r["stored"], r["rep"]), (True, rid))
 check("...and the lapsed reject no longer moves it", m5.restand(m5.connect(), rid), "kept")
@@ -1528,12 +1532,32 @@ check("(g) control: in some round both threads really ran step 6", both > 0, Tru
 # --------------------------------------------------------------------------
 print("\n--- 19. a leaf is a claim on a file, not just a description -------")
 
-# A 2026-09-20 finding.  `replays` is UNIQUE(map, track, leg, leaf) and the
-# upsert rewrites `player` and resets `checked`, so before this section's fix a
-# submission naming somebody else's leaf took their row, re-queued THEIR file,
-# and wore the PASS it earned.  Capability: the shared key and a trusted source
-# address -- no Pi write, no patched client.  The leaf is public: /api/replay
-# hands it out as the download filename.
+# 2026-09-20.  `replays` is UNIQUE(map, track, leg, leaf) and the upsert rewrites
+# the row, so a submission naming somebody else's leaf took their row, re-queued
+# THEIR file, and wore the PASS it earned (VER_SQL).  Capability: the shared key
+# and a trusted source -- no Pi write, no patched client.  The leaf is public
+# (/api/replay serves it as the download filename) and so is `player`
+# (/api/board emits it), which is why THE FIRST FIX FOR THIS WAS WRONG: it
+# authenticated on `player`, and the attacker simply asserted the victim's.
+# These cases therefore attack as the victim, which is the case that fix missed.
+#
+# The binding is now the FILE: submit_run opens the .rec and compares its header
+# (map/track/leg/runid/owner) with the row being filed.  So these arms write real
+# files under RUNS_DIR, which the rest of the suite does not.
+
+
+def wrec(mod, mapname, track, leg, leafname, owner, runid, ticks=700):
+    """Write a minimal but honest .rec where replay_file() will look for it."""
+    d = os.path.join(mod.RUNS_DIR, mapname, mod.leg_dir(track, leg))
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, leafname)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("FTESURF-REC 9\nmap %s\ntrack %d\nleg %d\nowner %s\nrunid %s\n"
+                 "tickrate 0.01\nclock counted\nbegin\n"
+                 % (mapname, track, leg, owner, runid))
+        fh.write("end %d 0 0 0 0 0 0 0 0 0 1\n" % ticks)
+    return path
+
 
 m = fresh()
 clock = FakeClock()
@@ -1541,83 +1565,70 @@ m.time = clock
 T = int(clock.now)
 
 alice_leaf = leaf(700, "alice")
+wrec(m, "surf_test", 0, 0, alice_leaf, "Alice", "r1")
 arep = run(m, "alice", 700)["rep"]
 add_verdict(m, arep, "PASS", T + 1)
 check("(a) alice's run is indexed and verified",
       (arep > 0, rows_by_player(m)["alice"]["ver"]), (True, 1))
-a_before = q(m, "SELECT submitted, checked FROM replays WHERE id=?", (arep,))
-a_sub = a_before[0][0]
+a_before = q(m, "SELECT player, name, submitted, checked FROM replays WHERE id=?",
+             (arep,))
 
-# THE ATTACK: mallory files her own time, naming alice's file.
+# THE ATTACK THE FIRST FIX MISSED: assert the victim's `player` (it is public),
+# and put your own name on the row.  Both of the old rules passed this.
 clock.now += 10
-reply = submit(m, player="mallory", name="Mallory", ticks=700, tickrate=100,
+steal = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
                rec=alice_leaf)
-check("(b) mallory naming alice's leaf gets no replay of her own",
-      reply.get("rep"), 0)
-check("(b) ...and alice's replay still belongs to alice",
-      q(m, "SELECT player FROM replays WHERE id=?", (arep,)), [("alice",)])
-check("(b) ...and alice is still verified",
+check("(b) naming alice's file under a different name gets no replay",
+      steal.get("rep"), 0)
+check("(b) ...and her row is untouched: player, name, submitted, checked",
+      q(m, "SELECT player, name, submitted, checked FROM replays WHERE id=?",
+        (arep,)), a_before)
+check("(b) ...and her standing PASS is still current",
       rows_by_player(m)["alice"]["ver"], 1)
-check("(b) ...and mallory is NOT verified",
-      rows_by_player(m)["mallory"]["ver"], 0)
-check("(b) the row count did not move: no second replay exists",
-      q(m, "SELECT COUNT(*) FROM replays"), [(1,)])
 
-# The badge-stripping variant: the upsert used to reset `submitted`, which makes
-# a standing PASS and an owner approval non-current (both VER_SQL clauses test
-# at >= p.submitted).
-check("(c) alice's replay row is untouched: submitted AND checked",
+# The badge-strip variant: re-post the row EXACTLY, to push `submitted` past the
+# verdict and the approval.  Identical rows are now a no-op.
+clock.now += 10
+same = submit(m, player="alice", name="Alice", ticks=700, tickrate=100,
+              rec=alice_leaf, runid="r1")
+check("(c) re-posting an identical row does not move submitted/checked",
       q(m, "SELECT submitted, checked FROM replays WHERE id=?", (arep,)),
-      a_before)
-check("(c) control: her standing PASS is still current (at >= submitted)",
-      q(m, "SELECT COUNT(*) FROM verdicts v JOIN replays p ON p.id=v.replay_id"
-           " WHERE p.id=? AND v.at >= p.submitted AND v.verdict='PASS'",
-        (arep,)), [(1,)])
+      [(a_before[0][2], a_before[0][3])])
+check("(c) ...so the PASS stays current", rows_by_player(m)["alice"]["ver"], 1)
+check("(c) control: it is still the same row", same.get("rep"), arep)
 
-# CONTROL: the drop is not blanket -- mallory's own correctly named file indexes.
+# A file whose header names another map/leg/runid cannot be filed here either.
 clock.now += 10
-mrep = run(m, "mallory", 650)["rep"]
-check("(d) control: mallory's OWN leaf still indexes", mrep > 0, True)
-check("(d) control: ...as her own row",
-      q(m, "SELECT player FROM replays WHERE id=?", (mrep,)), [("mallory",)])
+wrong = leaf(650, "mallory")
+wrec(m, "surf_test", 0, 0, wrong, "Mallory", "rX")
+bad = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
+             rec=wrong, runid="r-different")
+check("(d) a runid that disagrees with the file drops the leaf",
+      bad.get("rep"), 0)
 
-# CONTROL: a player may still improve on their own leaf (the upsert path that
-# the ownership rule must not break).
+# CONTROL: the honest submission of that same file indexes.
 clock.now += 10
-again = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
-               rec=leaf(650, "mallory"))
-check("(e) control: a player re-submitting their OWN leaf keeps the row",
-      again.get("rep"), mrep)
+good = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
+              rec=wrong, runid="rX")
+check("(d) control: with the file's own runid it indexes", good.get("rep") > 0, True)
+check("(d) control: ...as mallory's row",
+      q(m, "SELECT player, name FROM replays WHERE id=?", (good["rep"],)),
+      [("mallory", "Mallory")])
 
-# A digest-less leaf is still ACCEPTED -- test_replays pins the `s<slot>` and
-# no-`who` shapes, which a server without a guidkey really does emit.  What must
-# not happen is a second player taking one, and the digest check cannot see it.
+# A leaf with NO file behind it is kept, deliberately: it can inherit no verdict,
+# and dropping it would punish a submit that races the recorder's rename.
 clock.now += 10
-nodig = submit(m, player="mallory", name="Mallory", ticks=640, tickrate=100,
-               rec="0000640_run.rec")
-check("(f) a digest-less leaf is still accepted", nodig.get("rep") > 0, True)
-clock.now += 10
-grab = submit(m, player="eve", name="Eve", ticks=640, tickrate=100,
-              rec="0000640_run.rec")
-check("(f) ...but another player cannot take it", grab.get("rep"), 0)
-check("(f) ...and it still reads mallory",
-      q(m, "SELECT player FROM replays WHERE id=?", (nodig["rep"],)),
-      [("mallory",)])
+nofile = submit(m, player="eve", name="Eve", ticks=640, tickrate=100,
+                rec="0000640_run.rec")
+check("(e) a leaf with no file is indexed unverified", nofile.get("rep") > 0, True)
 
-# The ownership rule in isolation: a row whose leaf DOES carry the submitter's
-# digest but which another player already holds.  Unreachable through the
-# digest check, which is the point of having both.
-conn = m.connect()
-with conn:
-    conn.execute("UPDATE replays SET player='alice' WHERE id=?", (mrep,))
-conn.close()
+# And the digest rule still bites when the leaf carries one that is not yours.
 clock.now += 10
-stolen = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
-                rec=leaf(650, "mallory"))
-check("(g) ownership rule alone: a row held by another player is not taken",
-      stolen.get("rep"), 0)
-check("(g) ...and that row still reads alice",
-      q(m, "SELECT player FROM replays WHERE id=?", (mrep,)), [("alice",)])
+dig = submit(m, player="eve", name="Eve", ticks=700, tickrate=100, rec=alice_leaf)
+check("(f) a leaf whose digest is another player's is dropped", dig.get("rep"), 0)
+check("(f) ...alice's row still hers",
+      q(m, "SELECT player, name FROM replays WHERE id=?", (arep,)),
+      [(a_before[0][0], a_before[0][1])])
 
 # --------------------------------------------------------------------------
 print("")

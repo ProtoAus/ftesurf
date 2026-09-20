@@ -158,11 +158,17 @@ def review_section(pw_hash, pw):
     c = m.app.test_client()
 
     def submit(player, ticks, write=False):
+        # A DISTINCT runid PER CALL, because every real one is distinct:
+        # SV_RecOpen stamps wallclock+slot.  The ties below mean "a second run
+        # that happened to tie", i.e. new evidence, and since 2026-09-20 that is
+        # what decides whether `submitted` moves and lapses the verdict under
+        # it -- an identical re-post is a no-op it must not be able to ride.
         leaf = rec_leaf(ticks, player)
         j = m.app.test_client().post("/api/run", data={
             "key": "testkey", "map": "surf_kitsune", "track": "0", "leg": "0",
             "player": player, "name": player.capitalize(), "ticks": str(ticks),
-            "tickrate": "100", "flags": "0", "node": "p27510", "rec": leaf},
+            "tickrate": "100", "flags": "0", "node": "p27510", "rec": leaf,
+            "runid": "r-%s-%d" % (player, clock.now)},
             environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
         path = os.path.join(m.RUNS_DIR, "surf_kitsune", "main", leaf)
         if write:

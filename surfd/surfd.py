@@ -2058,10 +2058,13 @@ def submit_run():
         log.warning("rec leaf %r disagrees with ticks %d from %s",
                     leaf, ticks, src)
         leaf = ""
-    # Only when the leaf HAS a digest field.  FS_RunLeaf omits `who` entirely
-    # when the server has no guidkey, and writes `s<slot>` when it has no name
-    # to slug -- test_replays pins both as acceptable, so their absence is a
-    # configuration, not a claim.  The ownership rule below is what guards them.
+    # Only when the leaf HAS a digest field, and the two shapes that lack one are
+    # the other way round from what this comment said until 2026-09-20:
+    # SV_RecWho (sv_timer.qc) returns "" when !Lobby_Active(), so the `who`
+    # segment is missing OFF A LOBBY; on a lobby it falls back to `s<slot>` when
+    # FS_PlayerSeg yields nothing (no guid, or no sluggable name).  test_replays
+    # pins both as acceptable, so their absence is a configuration, not a claim.
+    # The file check below is what guards them -- it needs no digest.
     if leaf and shape.group("digest"):
         want = hashlib.sha256(player.encode("utf-8", "replace")).hexdigest()[:8]
         if shape.group("digest") != want:
@@ -2069,6 +2072,39 @@ def submit_run():
                         " from %s; dropping the leaf",
                         leaf, shape.group("digest"), want, src)
             leaf = ""
+
+    # THE CLAIM MUST AGREE WITH THE FILE IT NAMES, and this is the check that
+    # actually holds the line.  Every test above compares the leaf against a
+    # field the SUBMITTER TYPED, and the 2026-09-20 review showed why that can
+    # never be enough: `player` arrives in the POST body and /api/board
+    # publishes it, so asserting the victim's identity satisfies any
+    # per-player rule by construction.  A first cut of this fix authenticated
+    # on `player` twice over and was bypassed by copying one public field.
+    #
+    # The bytes on disk are the one thing a claim cannot choose.  index_evidence
+    # has always made this check on the evidence path (_rec_meta + the
+    # runid/map/leg compare); the ranked path simply never did.
+    if leaf:
+        path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
+                                 "leaf": leaf, "kind": "run"})
+        meta = _rec_meta(path) if path else None
+        if meta is None:
+            # KEPT, NOT DROPPED, and the reasoning is about what the attack is
+            # FOR: naming a leaf buys the row the verdict that file earns, so a
+            # leaf with no file behind it buys nothing -- the sweeper has
+            # nothing to verify and /api/replay serves "missing".  Dropping
+            # here would instead punish every legitimate submit that races the
+            # rename, and the whole surfd suite (which files rows without ever
+            # writing a .rec) would stop indexing replays.  The residual is a
+            # row taken over while its file is absent; it carries no badge.
+            log.warning("rec leaf %r names no readable file (%s) from %s;"
+                        " indexing it unverified", leaf, why or "unreadable", src)
+        else:
+            bad = _rec_disagrees(meta[0], mapname, track, leg, name, runid)
+            if bad:
+                log.warning("rec leaf %r disagrees with the row it is filed on"
+                            " (%s) from %s; dropping the leaf", leaf, bad, src)
+                leaf = ""
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -2111,20 +2147,13 @@ def submit_run():
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
-                # A REPLAY ROW BELONGS TO WHOEVER FIRST CLAIMED IT, and this is
-                # load-bearing rather than belt-and-braces: the digest check
-                # above can only fire on a leaf that HAS a digest, and the two
-                # digest-less shapes (`s<slot>`, and no `who` at all) are both
-                # pinned as acceptable by test_replays.  For those, this is the
-                # only thing standing between a key holder and another player's
-                # verdict.  Dropping the leaf leaves their row untouched and
-                # costs this run only its index entry.
-                if have is not None and have["player"] != player:
-                    log.warning("replay %d (%s track %d leg %d, leaf %r) belongs"
-                                " to %s, not %s; dropping the leaf from %s",
-                                have["id"], mapname, track, leg, leaf,
-                                have["player"], player, src)
-                    leaf, have = "", None
+                # NO OWNERSHIP RULE HERE.  A first cut of this fix refused an
+                # update when `have["player"] != player`, which was worthless
+                # (the attacker asserts the victim's player) and harmful in two
+                # ways the review measured: it froze a row on whoever claimed it
+                # first, and it overrode a digest that PROVED ownership, so a
+                # leaf stolen before the patch stayed stolen.  The file check
+                # above is the binding; this is just the ledger.
             if leaf:
                 if have is None:
                     nrep = db.execute(
@@ -2151,12 +2180,33 @@ def submit_run():
                             millis    = excluded.millis,
                             flags     = excluded.flags,
                             node      = excluded.node,
-                            submitted = excluded.submitted,
                             bytes     = excluded.bytes,
                             truncated = excluded.truncated,
                             runid     = excluded.runid,
-                            seen      = -1,
-                            checked   = 0
+                            -- `submitted` MEANS "WHEN THIS EVIDENCE ARRIVED",
+                            -- so it may only move when the evidence does.  It
+                            -- used to move on every submit, and since both
+                            -- VER_SQL clauses test `at >= p.submitted` that
+                            -- silently voided the row's standing PASS *and any
+                            -- owner approval* -- a badge strip available to
+                            -- anyone who could re-post the same row.  Re-filing
+                            -- an identical row is now a no-op it cannot ride.
+                            submitted = CASE WHEN replays.player = excluded.player
+                                             AND replays.runid  = excluded.runid
+                                             AND replays.ticks  = excluded.ticks
+                                             AND replays.bytes  = excluded.bytes
+                                        THEN replays.submitted
+                                        ELSE excluded.submitted END,
+                            seen      = CASE WHEN replays.player = excluded.player
+                                             AND replays.runid  = excluded.runid
+                                             AND replays.ticks  = excluded.ticks
+                                             AND replays.bytes  = excluded.bytes
+                                        THEN replays.seen ELSE -1 END,
+                            checked   = CASE WHEN replays.player = excluded.player
+                                             AND replays.runid  = excluded.runid
+                                             AND replays.ticks  = excluded.ticks
+                                             AND replays.bytes  = excluded.bytes
+                                        THEN replays.checked ELSE 0 END
                         """,
                         # '-' when none was sent (a TF_SHADOW continuation),
                         # so no new row reads as a pre-schema-6 ''.
@@ -2411,6 +2461,27 @@ def _rec_meta(path):
     except (OSError, ValueError, IndexError):
         return None
     return hdr, end, abandoned, st.st_size, st.st_mtime
+
+
+def _rec_disagrees(hdr, mapname, track, leg, name, runid):
+    """"" when a .rec header can be the run being filed, else why not.
+
+    Compares only keys the file actually carries, so a recorder older than a
+    key is not punished for it -- the header grew `owner`/`runid` in v3 and
+    `leg` in b57.  Used by submit_run to bind a claimed leaf to its file; the
+    evidence path makes the same comparison inline in index_evidence.
+
+    `owner` is the run's netname and so is `name`, but Lobby_SubmitRun
+    substitutes "player" for an EMPTY netname while SV_RecOpen writes the
+    unsubstituted one -- so an empty on either side is not a disagreement.
+    """
+    def differs(key, want):
+        got = (hdr.get(key) or "").strip()
+        return got and str(want) != got and "%s %r != %r" % (key, got, str(want))
+
+    return (differs("map", mapname) or differs("track", track)
+            or differs("leg", leg) or differs("runid", runid)
+            or (name and differs("owner", name)) or "")
 
 
 def _keep_file(src, dst):
