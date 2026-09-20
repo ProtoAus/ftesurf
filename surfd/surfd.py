@@ -1064,7 +1064,7 @@ _MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 # index would be citing bytes that change under the row.
 _LEAF_OK = re.compile(
     r"^[0-9]{7,10}_"
-    r"(?:(?:[a-z0-9]{1,12}-)?[0-9a-f]{8}_|s[0-9]{1,2}_)?"
+    r"(?:(?:[a-z0-9]{1,12}-)?(?P<digest>[0-9a-f]{8})_|s[0-9]{1,2}_)?"
     r"(?:run|pb|shadow)\.rec$"
 )
 
@@ -2032,9 +2032,15 @@ def submit_run():
     # A FAILED CHECK NEVER FAILS THE RUN.  It drops the leaf and logs.  Refusing
     # a legitimate time because its filename surprised a regex would be a far
     # worse failure than an unindexed file, and the unindexed file is counted.
-    # The digest check does not even drop it: the game named the file and the
-    # game is the authority on what it wrote -- a mismatch is a loud warning
-    # about our own assumption, not evidence against the run.
+    #
+    # THE DIGEST CHECK ONLY WARNED UNTIL 2026-09-20, on the reasoning that the
+    # game named the file and is the authority on what it wrote.  True, and
+    # beside the point: a leaf is not only a description, it is a CLAIM ON A
+    # FILE.  `replays` is UNIQUE(map, track, leg, leaf) and the upsert below
+    # rewrites `player`/`name` and resets `checked`, so a submission naming
+    # somebody else's leaf takes their row, re-queues THEIR file, and wears the
+    # PASS it earns (VER_SQL).  The digest is the only part of a leaf a
+    # submitter cannot choose for a file that is not theirs, so it drops now.
     leaf = clean_text(request.form.get("rec"))
     if leaf and not is_trusted(src, TRUSTED_SOURCES):
         # A filesystem path is only evidence for a node we own.  Port 8084
@@ -2044,18 +2050,25 @@ def submit_run():
         # its rows lose their leaves -- which is the safe direction to fail.
         log.warning("ignoring rec leaf from untrusted source %s", src)
         leaf = ""
-    if leaf and not _LEAF_OK.match(leaf):
+    shape = _LEAF_OK.match(leaf) if leaf else None
+    if leaf and not shape:
         log.warning("rejecting malformed rec leaf %r from %s", leaf, src)
         leaf = ""
     if leaf and leaf.split("_", 1)[0] != str(ticks).zfill(7):
         log.warning("rec leaf %r disagrees with ticks %d from %s",
                     leaf, ticks, src)
         leaf = ""
-    if leaf:
+    # Only when the leaf HAS a digest field.  FS_RunLeaf omits `who` entirely
+    # when the server has no guidkey, and writes `s<slot>` when it has no name
+    # to slug -- test_replays pins both as acceptable, so their absence is a
+    # configuration, not a claim.  The ownership rule below is what guards them.
+    if leaf and shape.group("digest"):
         want = hashlib.sha256(player.encode("utf-8", "replace")).hexdigest()[:8]
-        if want not in leaf:
-            log.warning("rec leaf %r carries no sha256(player)[:8]=%s from %s",
-                        leaf, want, src)
+        if shape.group("digest") != want:
+            log.warning("rec leaf %r carries digest %s, not this player's %s,"
+                        " from %s; dropping the leaf",
+                        leaf, shape.group("digest"), want, src)
+            leaf = ""
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -2091,12 +2104,28 @@ def submit_run():
             # Every finish that produced a keepable file gets a row: faster,
             # slower and exactly tied alike.
             rid = 0
+            have = None
             if leaf:
                 have = db.execute(
-                    "SELECT id FROM replays"
+                    "SELECT id, player FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
+                # A REPLAY ROW BELONGS TO WHOEVER FIRST CLAIMED IT, and this is
+                # load-bearing rather than belt-and-braces: the digest check
+                # above can only fire on a leaf that HAS a digest, and the two
+                # digest-less shapes (`s<slot>`, and no `who` at all) are both
+                # pinned as acceptable by test_replays.  For those, this is the
+                # only thing standing between a key holder and another player's
+                # verdict.  Dropping the leaf leaves their row untouched and
+                # costs this run only its index entry.
+                if have is not None and have["player"] != player:
+                    log.warning("replay %d (%s track %d leg %d, leaf %r) belongs"
+                                " to %s, not %s; dropping the leaf from %s",
+                                have["id"], mapname, track, leg, leaf,
+                                have["player"], player, src)
+                    leaf, have = "", None
+            if leaf:
                 if have is None:
                     nrep = db.execute(
                         "SELECT COUNT(*) FROM replays WHERE kind = 'run'"

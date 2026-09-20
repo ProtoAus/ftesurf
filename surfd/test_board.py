@@ -1526,6 +1526,100 @@ check("(g) two threads migrating one v5 file, 20 rounds: no error", errors, [])
 check("(g) control: in some round both threads really ran step 6", both > 0, True)
 
 # --------------------------------------------------------------------------
+print("\n--- 19. a leaf is a claim on a file, not just a description -------")
+
+# A 2026-09-20 finding.  `replays` is UNIQUE(map, track, leg, leaf) and the
+# upsert rewrites `player` and resets `checked`, so before this section's fix a
+# submission naming somebody else's leaf took their row, re-queued THEIR file,
+# and wore the PASS it earned.  Capability: the shared key and a trusted source
+# address -- no Pi write, no patched client.  The leaf is public: /api/replay
+# hands it out as the download filename.
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+
+alice_leaf = leaf(700, "alice")
+arep = run(m, "alice", 700)["rep"]
+add_verdict(m, arep, "PASS", T + 1)
+check("(a) alice's run is indexed and verified",
+      (arep > 0, rows_by_player(m)["alice"]["ver"]), (True, 1))
+a_before = q(m, "SELECT submitted, checked FROM replays WHERE id=?", (arep,))
+a_sub = a_before[0][0]
+
+# THE ATTACK: mallory files her own time, naming alice's file.
+clock.now += 10
+reply = submit(m, player="mallory", name="Mallory", ticks=700, tickrate=100,
+               rec=alice_leaf)
+check("(b) mallory naming alice's leaf gets no replay of her own",
+      reply.get("rep"), 0)
+check("(b) ...and alice's replay still belongs to alice",
+      q(m, "SELECT player FROM replays WHERE id=?", (arep,)), [("alice",)])
+check("(b) ...and alice is still verified",
+      rows_by_player(m)["alice"]["ver"], 1)
+check("(b) ...and mallory is NOT verified",
+      rows_by_player(m)["mallory"]["ver"], 0)
+check("(b) the row count did not move: no second replay exists",
+      q(m, "SELECT COUNT(*) FROM replays"), [(1,)])
+
+# The badge-stripping variant: the upsert used to reset `submitted`, which makes
+# a standing PASS and an owner approval non-current (both VER_SQL clauses test
+# at >= p.submitted).
+check("(c) alice's replay row is untouched: submitted AND checked",
+      q(m, "SELECT submitted, checked FROM replays WHERE id=?", (arep,)),
+      a_before)
+check("(c) control: her standing PASS is still current (at >= submitted)",
+      q(m, "SELECT COUNT(*) FROM verdicts v JOIN replays p ON p.id=v.replay_id"
+           " WHERE p.id=? AND v.at >= p.submitted AND v.verdict='PASS'",
+        (arep,)), [(1,)])
+
+# CONTROL: the drop is not blanket -- mallory's own correctly named file indexes.
+clock.now += 10
+mrep = run(m, "mallory", 650)["rep"]
+check("(d) control: mallory's OWN leaf still indexes", mrep > 0, True)
+check("(d) control: ...as her own row",
+      q(m, "SELECT player FROM replays WHERE id=?", (mrep,)), [("mallory",)])
+
+# CONTROL: a player may still improve on their own leaf (the upsert path that
+# the ownership rule must not break).
+clock.now += 10
+again = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
+               rec=leaf(650, "mallory"))
+check("(e) control: a player re-submitting their OWN leaf keeps the row",
+      again.get("rep"), mrep)
+
+# A digest-less leaf is still ACCEPTED -- test_replays pins the `s<slot>` and
+# no-`who` shapes, which a server without a guidkey really does emit.  What must
+# not happen is a second player taking one, and the digest check cannot see it.
+clock.now += 10
+nodig = submit(m, player="mallory", name="Mallory", ticks=640, tickrate=100,
+               rec="0000640_run.rec")
+check("(f) a digest-less leaf is still accepted", nodig.get("rep") > 0, True)
+clock.now += 10
+grab = submit(m, player="eve", name="Eve", ticks=640, tickrate=100,
+              rec="0000640_run.rec")
+check("(f) ...but another player cannot take it", grab.get("rep"), 0)
+check("(f) ...and it still reads mallory",
+      q(m, "SELECT player FROM replays WHERE id=?", (nodig["rep"],)),
+      [("mallory",)])
+
+# The ownership rule in isolation: a row whose leaf DOES carry the submitter's
+# digest but which another player already holds.  Unreachable through the
+# digest check, which is the point of having both.
+conn = m.connect()
+with conn:
+    conn.execute("UPDATE replays SET player='alice' WHERE id=?", (mrep,))
+conn.close()
+clock.now += 10
+stolen = submit(m, player="mallory", name="Mallory", ticks=650, tickrate=100,
+                rec=leaf(650, "mallory"))
+check("(g) ownership rule alone: a row held by another player is not taken",
+      stolen.get("rep"), 0)
+check("(g) ...and that row still reads alice",
+      q(m, "SELECT player FROM replays WHERE id=?", (mrep,)), [("alice",)])
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILED" % len(FAILED))
