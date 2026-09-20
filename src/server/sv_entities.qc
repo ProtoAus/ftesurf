@@ -961,10 +961,32 @@ float(entity p) SV_TrigPending =
 .float  run_basevel_armed;
 
 /*
-  PATCH 409: a push acted on this player this packet.  Set by the three sites
-  that can move a body without a jump, read ONLY by the hopped-start branch
-  (sv_timer.qc), cleared at the foot of SV_TimerJumpWatch -- so it is exactly
-  one packet wide and no other detector sees it.
+  PATCH 409: a mover acted on this player this packet.  Read ONLY by the
+  hopped-start branch (sv_timer.qc), cleared at the foot of SV_TimerJumpWatch --
+  so it is exactly one packet wide and no other detector sees it.
+
+  THE WRITERS, and Patch 412 added the last one:
+    the cash-out         SV_BaseVelocityFrame, below
+    the handover         SV_BaseVelocityFrame, below
+    trigger_push SF_ONCE trigger_push_touch
+    trigger_setspeed     trigger_setspeed_touch, only when the pad's own write
+                         puts velocity_z over PM_NONJUMP_VEL
+
+  The first three re-arm every command a carrier is live, which is what makes them
+  cover a clip that lands a packet after the touch.  The fourth cannot: it writes
+  once.  See the NOT DONE note in trigger_setspeed_touch for what that leaves open.
+
+  A FIFTH WAS WRITTEN AND REMOVED: trigger_teleport's VelocityMode 3 sets velocity
+  from v_forward * spd, which is a mover-imposed Z whenever the destination is
+  pitched.  Marking it was wrong twice over.  The predicate `v_forward_z * spd >
+  velocity_z` reduces to `0 > velocity_z` on a flat destination, so it fired for
+  every DESCENDING player -- the normal way to reach a teleport -- and all 106
+  VelocityMode 3 teleports in the library are flat, so
+  the "inert" claim written beside it was false.  Worse, trigger_teleport_touch
+  strips FL_ONGROUND without setting run_pushlift, so run_jumpcmd cannot
+  latch on the next command: the mark would have been a suppression with 409's
+  override disabled, which is a bhop out of a teleport ranking clean.  Both
+  reviewers found it independently.
 
   WHY THE HOP RULE NEEDS IT.  SV_TimerJumpWatch has one way to see a jump --
   velocity_z crossing PM_NONJUMP_VEL -- and one exclusion, run_rampcontact.
@@ -991,6 +1013,24 @@ float(entity p) SV_TrigPending =
   ground; a body falling into a pit has neither, and no geometry changes that.
   Latched per command beside the run_wasground stamp in PlayerPreThink and read
   once per packet, because PostThink is where the detector lives.
+
+  PATCH 412, RAISED IN REVIEW AND NOT YET MEASURED: THE OVERRIDE IS WEAKER THAN THE
+  PARAGRAPH ABOVE IMPLIES, and it is 409's problem rather than 412's.  run_wasground
+  is a PRE-MOVE sample, and the ground phase of a bhop happens mid-move --
+  CategorizePosition grounds you and CheckJumpButton un-grounds you inside the one
+  move, which is the whole reason this detector is velocity-based (see the essay
+  over SV_TimerJumpWatch).  So on an autohop chain with +jump held, the FIRST hop
+  latches (you were standing when PreThink sampled) and every hop after it does not.
+  Where no mover acted that is harmless -- run_pushed is FALSE, `!run_pushed` passes
+  and the accusation proceeds -- so it bites only on the ambiguous packets where a
+  mover acted too, and there it suppresses.  run_pushlift repairs exactly one cause
+  of the same thing (an upward pad's strip) and is not a general fix.
+
+  Structurally confirmed from the code, NOT from a harness: p409hop's J2 arm prints
+  hopped 1 with jumps 2, but its first hop is from a stand, so it cannot tell a
+  latch-on-hop-1 from a latch-on-every-hop.  Wanted: a pure autohop chain over a
+  carrier, with no standing hop to open it.  Until that is run this is a suspicion
+  with a mechanism, which is not the same as a measurement.
 */
 .float  run_jumpcmd;
 
@@ -998,12 +1038,12 @@ float(entity p) SV_TrigPending =
   PATCH 411: the pad took the ground flag before PreThink could read it.
 
   trigger_push_touch strips FL_ONGROUND on an upward push -- in BOTH arms, the
-  continuous one at :5681 and SF_PUSH_ONCE at :5621 -- and the touch loop runs
+  continuous one and SF_PUSH_ONCE, both in trigger_push_touch -- and the touch loop runs
   AFTER the move, so the next command's run_wasground stamp reads FALSE for a
   body the mover will re-ground inside pmove (PMSrc_Tick -> CategorizePosition,
   a 2 u ground band against the 1 u lift).  run_jumpcmd then never latches and
   Patch 409's gate switches the hop rule off outright -- draft 1's hole by
-  another route.  Measured (scratchpad/pushtilt.py over the 1316-bsp census):
+  another route.  Measured (tools/census/pushtilt.py):
   4 of the 21 overlapping pads push up, on surf_prosurf (2200 u/s),
   surf_polygon (770) and surf_ethereal (400 x2); the rest are horizontal or
   point down and never strip the flag, which is why surf_666 bonus 3 behaves
@@ -1014,6 +1054,22 @@ float(entity p) SV_TrigPending =
   PostThink return early and the latch waits out the hold.  Cleared on release
   there for that reason.  run_wasground itself is NOT widened: SV_TriggerIOTouch
   reads it for OnJump and that is a recorded event.
+
+  PATCH 412, NOT DONE: THE TELEPORT STRIPS, and the pad's reasoning does not
+  transfer to them.  Three more sites take FL_ONGROUND and set nothing --
+  trigger_teleport_touch, trigger_teleport_relative_touch and SV_BhopTeleport -- so
+  run_jumpcmd cannot latch for one command after any teleport, and 409's override is
+  dead on that command.  A reviewer proposed setting the flag there and it is the
+  wrong fix: the pad strips the flag and then LIFTS you one unit precisely because
+  pmove would re-ground you, so its poison is certain, whereas a teleport into a
+  fall leaves you genuinely airborne and run_wasground FALSE is then the true
+  answer.  Setting it unconditionally would let run_jumpcmd latch for a body in
+  mid-air holding +jump, trading a narrow false acquittal for a false ACCUSATION --
+  the worse direction.  QC cannot tell a grounded destination from an airborne one
+  at the strip; CategorizePosition decides it later (pm_source.c:2732, and the
+  double-jump note in trigger_teleport_relative_touch).  Needs a post-move test, not
+  a flag in the toucher.  Both exposures require a mover to set run_pushed in the
+  same packet as the teleport, which is why this is narrow rather than urgent.
 */
 .float  run_pushlift;
 
@@ -5932,6 +5988,75 @@ void() trigger_setspeed_touch =
 	if (vmode == SSV_SET)           vel_z = vspeed;
 	else if (vmode == SS_INCREASE)  { if (vel_z < vspeed) vel_z = vspeed; }
 	else if (vmode == SS_DECREASE)  { if (vel_z > vspeed) vel_z = vspeed; }
+
+	/*
+	  PATCH 412: a setspeed pad manufactures the jump reading, and the hop rule
+	  could not see it.  SSV_SET forces velocity_z whatever you arrived with, so a
+	  pad authored over PM_NONJUMP_VEL IS the `jumped` edge (sv_timer.qc:8915) --
+	  but this function touched neither the carrier nor run_pushed, so Patch 409's
+	  gate (sv_timer.qc:9156) passed on a rise nobody commanded.  It needs no ground
+	  contact to bite: dwell is 0 when run_t_groundsec is 0 (sv_timer.qc:8927), and
+	  0 < want, so an AIRBORNE player crossing the pad is accused.
+
+	  BOTH CLAUSES, and each one alone was a draft that failed review.  The
+	  threshold alone marks a player whose OWN jump put them over 140 -- vel_z is
+	  untouched under SS_IGNORE (KeepVerticalSpeed), and unchanged under SS_INCREASE
+	  when they arrive higher than the pad's value -- so a genuine bhop across a
+	  horizontal-only pad inside a start box would suppress the accusation it earned.
+	  `vel_z > other.velocity_z` alone is TRUE for any DESCENDING player, and 25 of
+	  the start-overlapping pads SET a small or negative vertical (`verticalspeed -6`
+	  is the common authoring), so it switched the rule off on almost every approach.
+	  Together they say what is meant: the result is jump-like AND the pad is what
+	  raised it.  other.velocity is still the pre-touch value here; `vel` is the
+	  working copy and is not written back until the line below.
+
+	  TIMED FOR THIS CASE ONLY.  The touch runs after the move but writes .velocity
+	  directly, so PostThink reads the pad's Z in the SAME packet the flag is set in
+	  -- and run_pushed is cleared per packet (sv_timer.qc:9260).  See the NOT DONE
+	  note below for the case where that timing does not hold.
+
+	  Measured (tools/census, 1316 bsps): of 376 pads, 183
+	  write a vertical over 140.  Of those, 38 touch a start zone, but 8 touch it on
+	  a zero-width plane -- the unreachable shape surf_prosurf's trigger_push had --
+	  so the honest figures are 30 with real overlap volume and SIXTEEN, across nine
+	  maps, lying ENTIRELY inside a start zone.  Containment is the one claim an
+	  AABB can make safely: wherever the brush sits inside that box, it is still
+	  inside the start zone.  (P411's "4 upward pads" was a gap-zero figure like the
+	  38, and two of its three maps turned out unreachable.  Same trap, counted
+	  properly this time.)  Reachable in fact, not only on paper: p369/surf_deoa.rec
+	  holds 9 `speed` rows at vel_z 245.8, the recorded origins one hull-radius
+	  outside the pad's box in x and squarely inside it in y and z.
+
+	  NOT THE ONLY DIRECT WRITER -- SF_PUSH_ONCE above does the same and marks
+	  itself.  Same sign as 409, so this is not withdrawn 411b
+	  (sv_timer.qc:8997): run_pushed WITHHOLDS an accusation and grants nothing, and
+	  run_jumpcmd still overrides it for anyone who did press jump on the pad.
+
+	  ---- NOT DONE: THE CLIP CASE, and it is the bigger half ----
+	  A pad that writes only HORIZONTAL speed is not marked here, and a horizontal
+	  imposition still becomes velocity_z exactly the way Patch 409 measured:
+	  PMSrc_TryPlayerMove clips it off a STANDABLE slope, pm_source.c:1313 does not
+	  call that a ramp, and the Z stays.  Measured exposure (tools/census/ssd1.py): 25
+	  such pads over 300 u/s lie inside a start zone across 13 maps, nine of them
+	  surf_bossfight's at 5000 u/s -- against the 3000 u/s that put 1453 u/s into
+	  velocity_z on surf_666 bonus 3.  So this is a live false-accusation path and
+	  the comment that first shipped here claimed the opposite.
+
+	  IT CANNOT BE FIXED BY A FLAG SET IN THIS FUNCTION.  The clip happens on the
+	  NEXT command's move, one or more packets after the touch, and run_pushed is
+	  one packet wide; the carrier path survives that only because the handover in
+	  SV_BaseVelocityFrame re-arms it every command the carrier is live, and a setspeed pad writes once and has
+	  nothing to re-arm.  A grace counter was considered and is not obviously
+	  soluble: a body flung at 5000 u/s may meet the slope five commands later, by
+	  which time "the pad lifted me" and "I surfed into a wall" are the same number
+	  -- the defect class this whole series is about.  The candidate that does not
+	  need the enumeration is 409's own conclusion taken further: gate the
+	  accusation on run_jumpcmd ALONE, so every mover is excluded by construction.
+	  That changes a shipped rule and needs its own review and harness.
+	*/
+	if (vel_z > PM_NONJUMP_VEL)
+	if (vel_z > other.velocity_z)
+		other.run_pushed = TRUE;
 
 	other.velocity = vel;
 
