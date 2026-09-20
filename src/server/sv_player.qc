@@ -1149,6 +1149,32 @@ void(string cmd) SV_ParseClientCommand =
 		{
 			w = msg;
 			tail = "";
+
+			/*
+			  Patch 408: AND THE TAIL MAY BE IN THE OTHER TOKENS AFTER ALL.
+
+			  The essay above is right about `say`: Cmd_ForwardToServer quotes
+			  the text, so `say !s 2` arrives whole in argv(1) and the old
+			  `cmdargc >= 3` branch really was dead.  It is NOT right about
+			  `cmd say`, which bypasses that quoting -- and `cmd say` is exactly
+			  what the chat draft must use (Chat_RunSafe, cl_chat.qc: `cmd`
+			  keeps Patch 341's own CSQC_ChatSay hook from re-entering itself).
+			  So from the chatbox `!b 3` arrived as argv(1) "!b" + argv(2) "3",
+			  the tail read empty, stof("") gave 0, and SV_ZoneChatCommand's
+			  `if (n < 1) n = 1` turned every `!b N` into bonus 1 and every
+			  `!s N` into stage 1.  Reported live 2026-09-20.
+
+			  Rebuilt HERE rather than quoting at the draft, because the fix
+			  then covers every split sender and every client already out there
+			  -- including one that cannot be updated -- instead of only the
+			  chatbox in the next release.  Costs nothing when the text did
+			  arrive whole: cmdargc is 2 and the loop does not run.
+			*/
+			for (i = 2; i < cmdargc; i = i + 1)
+				if (tail == "")
+					tail = strtolower(argv(i));
+				else
+					tail = strcat(tail, " ", strtolower(argv(i)));
 		}
 		else
 		{
