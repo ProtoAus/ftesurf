@@ -426,7 +426,7 @@ string(string id, float row) HE_OptDef =
 		if (row == 3) return "hud_seq_time|Duration|t||"
 		                     "|How long the segment lasted, in seconds.";
 		if (row == 4) return "hud_seq_pct|Air %|t||"
-		                     "|Share of the gain your strafing alone could have made. Ramp energy is not in the divisor, so it can pass 100%.";
+		                     "|Share of the best that launch could have made: the jump's own energy plus a perfect air strafe, down to the floor. A mid-air booster is not in the divisor, so those rows still pass 100%.";
 		if (row == 5) return "hud_seq_units|Units|c|0 1 2|u/s;energy;both"
 		                     "|Count in speed, in height, or both stacked.";
 		if (row == 6) return "hud_seq_board|Board rows|t||"

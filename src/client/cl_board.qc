@@ -428,9 +428,49 @@ float  seg_live_e0;
 
   seg_lastt rather than a fixed tick because this integrates per RENDERED frame:
   the client does not run physics and its frame rate is not the tick rate.
+
+  BUILD 88: IT NO LONGER STARTS AT ZERO ON A HOP.  A segment opened from the
+  ground is seeded with Board_JumpEnergy, because the jump is part of what that
+  launch had available and the gain is now measured from the same instant -- see
+  the open block in Board_Frame.  A ramp exit still starts at zero.  One float
+  either way, so Seq_OpenRestore, Seq_Mark, the seq.txt `open` line and the carry
+  all keep working unchanged: this is still "the open segment's ceiling so far".
+
+  THE dt CLAMP IS NOT SYMMETRIC AND IS LEFT THAT WAY.  A frame slower than 100 ms
+  contributes 100 ms of ceiling but its full length to the row's dur, so a stall
+  reads as a miss the player did not make.  Fixing it properly wants the ceiling
+  derived from dur at close rather than integrated, which is two more floats
+  through Seq_OpenRestore and the mark pair; not worth it for a stutter, and said
+  here so the next reader does not rediscover it as a new bug.
 */
 float  seg_emax;            // units of height, accumulated
 float  seg_lastt;           // cltime of the previous frame
+
+/*
+  BUILD 88 -- THE LAUNCH POINT, LATCHED RATHER THAN INFERRED.
+
+      "the maximum gain you could of made in energy, from that launch
+       point/jump point to when you touch the ground"
+
+  The gain and the ceiling used to be measured from two different moments, and
+  which two depended on the frame rate.  A segment opens on the frame the client
+  first sees !onground, and seg_e0 was sampled THERE -- but the ground edge comes
+  from onground and the energy from the velocity source, and at a render rate
+  that is not the tick rate those two do not always agree about whether the jump
+  impulse has landed yet.  A jump is worth v^2/2g -- 57 units of height at the
+  shipped tuning, a quarter of what a whole flight is worth -- so the same hop
+  read 59% or 139% depending on where the frame fell.  Both numbers are in the
+  save corpus.
+
+  So the origin is latched on the last GROUNDED frame instead of guessed at the
+  edge, and the jump's own energy is put in the ceiling to match (see the
+  assignment in Board_Frame's open block).  seg_ground_ok is the "this is a real
+  sample, not the zero it was initialised to" flag -- an energy of 0 is a legal
+  reading at z = 0, so the value cannot carry its own validity.
+*/
+float  seg_ground_e;        // Strafe_Energy at the last frame onground was true
+float  seg_ground_ok;       // ...and TRUE once that has actually been sampled
+float  seg_laste;           // ...and the previous frame's, for the landing edge
 
 float  gain_kind;           // the finished segment on screen; SEG_NONE = nothing
 float  gain_speed;          // u/s, signed
@@ -2217,6 +2257,28 @@ void() Seq_Frame =
 };
 
 /*
+  What the jump itself was worth, in the same units of height.
+
+  v^2/2g, and it is a CEILING term rather than a measurement: the impulse is a
+  constant the player cannot strafe better or worse, so what a perfect flight had
+  available off the ground is the authored value whatever this frame caught.  Read
+  from the server like every other movevar here -- PM_JUMP_APEX is the same number
+  but only at sv_gravity 800, and a percentage measured against the wrong ceiling
+  is worse than no percentage (see Board_AirCeiling).
+*/
+float(float gravity) Board_JumpEnergy =
+{
+	local float vj;
+
+	vj = serverkeyfloat("pm_jumpvelocity");
+	if (vj <= 0)
+		vj = PM_JUMP_IMPULSE;
+	if (gravity < 1)
+		gravity = 1;
+	return (vj * vj) / (2 * gravity);
+};
+
+/*
   Units of height per SECOND that a perfect air strafe could add, right now.
 
   Per tick the best is a^2 / 2g with a = Strafe_AirGain (see seg_emax); divide by
@@ -2552,6 +2614,15 @@ void(vector org, vector vel, float onground) Board_Frame =
 	else if (riding) kind = SEG_RAMP;
 	else             kind = SEG_AIR;
 
+	// Build 88: the launch point, sampled while it still exists.  See seg_ground_e
+	// -- the open block below reads the LAST of these, which is the frame before
+	// the takeoff it is about to measure.
+	if (onground)
+	{
+		seg_ground_e  = e;
+		seg_ground_ok = TRUE;
+	}
+
 	/*
 	  Integrate the ceiling BEFORE the state edge below, so the frame that ends
 	  a segment contributes to the segment it is ending rather than to the next
@@ -2645,6 +2716,33 @@ void(vector org, vector vel, float onground) Board_Frame =
 		*/
 		eb = e;
 		vb = vel;
+
+		/*
+		  BUILD 88 -- A LANDING IS NOTICED ONE FRAME LATE, AND THAT COSTS THE
+		  WHOLE JUMP.
+
+		  The boundary is sampled on the frame the client first sees onground, by
+		  which point the engine has already zeroed the vertical velocity that was
+		  most of the flight's energy.  So an air segment that ends by LANDING read
+		  its close about 57 units of height below the truth -- and only sometimes,
+		  because whether the sampling frame falls before or after the zeroing is a
+		  frame-rate accident.  Three identical hops in one p413air run gave
+		  de = -59.5168, -0.0025 and +58.4957.  The `if (pct < 0) pct = 0` clamp
+		  below has been hiding the first of those since build 18.
+
+		  So an air time that ends on the GROUND closes at the previous frame's
+		  energy, which is the last sample taken while the fall still existed.  That
+		  is the same decision build 19 made for a ramp -- the arrival's cost belongs
+		  to what you arrived on, not to the air time that delivered you -- and a
+		  ramp arrival already does it through eb/vin below, which is why this only
+		  covers the SEG_NONE case.
+
+		  ONE FRAME EARLY IS THE RIGHT SIDE TO ERR ON: it gives up the last frame of
+		  strafe gain, 0.56 units of height at 100 fps, to stop losing 57.
+		*/
+		if (seg_kind == SEG_AIR && kind == SEG_NONE)
+			eb = seg_laste;
+
 		if (boarded && kind == SEG_RAMP)
 		{
 			vb = vin;
@@ -2828,6 +2926,46 @@ void(vector org, vector vel, float onground) Board_Frame =
 		seg_emax  = 0;
 
 		/*
+		  BUILD 88 -- A HOP IS MEASURED FROM THE GROUND, ON BOTH SIDES.
+
+		      "the maximum gain you could of made in energy, from that launch
+		       point/jump point to when you touch the ground ... if you were to
+		       fall further, it takes that into account"
+
+		  seg_sub is the discriminator and it was computed six lines up: it is
+		  non-NONE exactly when this air segment opened from a GROUND phase, which
+		  is the only case with a launch point to measure from.  A ramp exit keeps
+		  eb and a ceiling of 0 -- there is no jump in it, and on a surf map that is
+		  most of the column.
+
+		  BOTH LINES OR NEITHER.  Taking seg_ground_e without the jump term makes
+		  every hop read ~140% (the 57 units the impulse gave land in the numerator
+		  against a strafe-only divisor -- 571 of 1482 rows in the save corpus were
+		  over 100%, median 250% on a Jump row).  Taking the jump term without
+		  seg_ground_e makes a perfect hop read 43%, because 57 of the 99 available
+		  would be counted as unreachable.  Together, a perfect flat hop is 99e of
+		  99e.
+
+		  FALLING FURTHER IS ALREADY IN IT and needs no term of its own: a longer
+		  drop is a longer airtime, the strafe ceiling integrates over that airtime,
+		  so the bar rises and the same gain reads lower.  That is the asked-for
+		  behaviour falling out of the existing integral rather than a second rule
+		  to keep in step with it.
+
+		  KNOWN GAP, not introduced here: a bhop chain the client never sees touch
+		  down is one air segment with ONE jump term, so its ceiling under-counts
+		  the hops it did not see.  hud_seq_hopbreak makes any seen ground contact
+		  break the chain (build 65), which is what keeps that rare.
+		*/
+		if (seg_sub != SEQSUB_NONE)
+		if (seg_ground_ok)
+		{
+			seg_e0 = seg_ground_e;
+			if (vel_z > 0)
+				seg_emax = Board_JumpEnergy(gravity);
+		}
+
+		/*
 		  BUILD 25.  The ramp opens at the POST-clip energy when its touchdown has
 		  been split out; eb is still what closed the air segment above.  One
 		  assignment, and it is the whole of the split -- everything else is about
@@ -2863,6 +3001,11 @@ void(vector org, vector vel, float onground) Board_Frame =
 			Seq_AnchorReassert();
 		ui_rs_armed = FALSE;
 	}
+
+	// Build 88: last frame's energy, for the landing boundary above.  Written
+	// here and not beside seg_lastt because the transition block READS it, and
+	// seg_lastt is updated before that block runs.
+	seg_laste = e;
 
 	/*
 	  BUILD 34: publish the open segment.  See seg_live_kind.
@@ -3002,6 +3145,7 @@ void() Board_ResetRun =
 	seg_valid = FALSE;
 	seg_org   = '0 0 0';
 	seg_emax  = 0;
+	seg_ground_ok = FALSE;  // build 88: that ground sample was other geometry
 	seg_lastt = board_now;  // not 0: a dt measured from the epoch would clamp
 	gain_kind = SEG_NONE;
 	gain_time = 0;
@@ -3065,6 +3209,7 @@ void() Board_Warped =
 	seg_t0    = cltime;
 	seg_org   = '0 0 0';
 	seg_sub   = SEQSUB_NONE;        // build 66; nothing is open, so nothing is a hop
+	seg_ground_ok = FALSE;          // build 88; and the launch point moved with you
 
 	/*
 	  And any exemption a restore had armed.  Build 25 cleared its one-shot here
