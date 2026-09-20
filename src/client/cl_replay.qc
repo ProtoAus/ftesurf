@@ -94,6 +94,17 @@ string rec_rp_nonce;
 float  rec_rp_hidopen;
 float  rec_rp_recat;             // cltime the current recording began at
 float  rec_rp_asked;             // this run has already asked for its nonce
+// Patch 417: the .view this run wrote, for the receipt to hash.  "" when none.
+string rec_rp_lastview;
+/*
+  Patch 417: did THIS run open a journal?  The engine keeps the last journal's
+  digest so a receipt can sign it after the buffer is freed -- and a run that
+  opened none (rec_hid 0, or a Multi-Session resume, which opens no sidecars at
+  all) would otherwise sign the digest of whichever earlier run did.  The review
+  named the use for that: play one clean PB so a real journal is latched, turn
+  journalling off, and every later run commits to the clean one's bytes.
+*/
+float  rec_rp_hadhid;
 
 /*
   SAVE STATES: the client's half of the mark.  Build 17.
@@ -848,6 +859,15 @@ void() Rec_ViewEnd =
 		fclose(fh);
 		dprint(sprintf("replay: wrote %s (%g frames)\n",
 		               dst, rec_rp_lines - FS_VIEWHEAD));
+		/*
+		  Patch 417: WHERE IT LANDED, for the receipt to hash.  Kept only on the
+		  branch that actually wrote a file -- every other path above leaves it
+		  empty, and the receipt then says `-` rather than naming a file that is
+		  not there.
+		*/
+		if (rec_rp_lastview != "")
+			strunzone(rec_rp_lastview);
+		rec_rp_lastview = strzone(dst);
 	}
 
 	Rec_ViewDrop();
@@ -1040,6 +1060,7 @@ void() Rec_HidBegin =
 		return;
 	localcmd("in_journal_begin\n");
 	rec_rp_hidopen = TRUE;
+	rec_rp_hadhid  = TRUE;      // Patch 417: this run has a journal of its own
 
 	/*
 	  PATCH 416: THE NONCE, IF ONE IS ALREADY HELD -- and this line came back
@@ -1530,6 +1551,27 @@ void() Rec_ViewFrame =
 	{
 		if (!rec_rp_wasrec)
 		{
+			/*
+			  THE PREVIOUS RUN'S STATE GOES FIRST, BEFORE ANYTHING THAT SETS
+			  THIS RUN'S.  Written the other way round, the clear of
+			  rec_rp_hadhid below Rec_HidBegin ERASED THE FLAG IT HAD JUST SET,
+			  so every receipt reported "this run took no journal" and the
+			  digest the engine was holding went unclaimed.  Measured: the
+			  engine logged `digestok 1 len 1897` while the signed statement
+			  read `hid - 0 0`.  The same ordering mistake the Patch 416 note
+			  above Rec_HidBegin is about, made again one field over.
+
+			  Patch 417: the .view path is cleared here for the same reason it
+			  was added -- held across runs, a run that writes no sidecar would
+			  sign the PREVIOUS run's file.
+			*/
+			rec_rp_hadhid = FALSE;
+			if (rec_rp_lastview != "")
+				strunzone(rec_rp_lastview);
+			rec_rp_lastview = "";
+			rec_rp_recat = time;    // Patch 416: when to give up waiting
+			rec_rp_asked = FALSE;
+
 			// A sidecar covering one session cannot pair with a .rec that spans
 			// several (Multi-Session), so none is kept.
 			rec_rp_ms = (flags & TF_MULTISESSION) ? TRUE : FALSE;
@@ -1540,8 +1582,6 @@ void() Rec_ViewFrame =
 				Rec_ViewBegin();
 				Rec_HidBegin();
 			}
-			rec_rp_recat = time;    // Patch 416: when to give up waiting
-			rec_rp_asked = FALSE;
 		}
 
 		/*
@@ -1627,6 +1667,27 @@ void() Rec_ViewFrame =
 			Rec_HidEnd();
 		}
 		rec_rp_ms = FALSE;
+
+		/*
+		  PATCH 417: THE RECEIPT, and it is signed HERE because this is the one
+		  moment both halves of this client's evidence exist and are final --
+		  Rec_ViewEnd has just written the .view and Rec_HidEnd has just closed
+		  the journal, which is where the engine took its digest (the buffer is
+		  freed immediately after, so a later signature would have nothing to
+		  hash).
+
+		  BEFORE THE NONCE IS CLEARED, three lines down, and that ordering is
+		  the whole of what binds the signature to this run.
+
+		  Silent when there is no nonce: a client that was never issued one has
+		  nothing to sign over, and an unsigned run is the state every build
+		  before this one is in.
+		*/
+		if (rec_rp_nonce != "")
+			localcmd(sprintf("rec_sign %s %d %s %g\n", rec_rp_nonce,
+			                 getstatf(STAT_FS_RUNTICKS),
+			                 rec_rp_lastview == "" ? "-" : rec_rp_lastview,
+			                 rec_rp_hadhid ? 1 : 0));
 
 		/*
 		  Patch 416: the run's nonce dies with the run, on BOTH branches.
@@ -1744,10 +1805,12 @@ void() Rec_ViewInit =
 	  initialiser for the reason rec_rp_hidsent's neighbour documents.
 	*/
 	registercommand("rec_nonce");
-	rec_rp_nonce   = "";
-	rec_rp_hidopen = FALSE;
-	rec_rp_asked   = FALSE;
-	rec_rp_recat   = 0;
+	rec_rp_nonce    = "";
+	rec_rp_hidopen  = FALSE;
+	rec_rp_asked    = FALSE;
+	rec_rp_recat    = 0;
+	rec_rp_lastview = "";           // Patch 417
+	rec_rp_hadhid   = FALSE;
 
 	/*
 	  Read once per VM rather than per run: CSQC_Init runs at every map load, so

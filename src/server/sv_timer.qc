@@ -1704,6 +1704,7 @@ vector  input_cursor_trace_start, input_cursor_trace_endpos;
 // worth.  Zoned, freed and rebuilt at every open.
 .string rec_rec_nonce;              // the 32 hex chars in force for this run
 string  run_nonce_seed;             // per-boot, zoned; the seed under all of them
+.float  rec_rec_rcpt;               // Patch 417: this run's receipt is written
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3719,6 +3720,277 @@ void(entity e, float cold) SV_RecNoncePublish =
 };
 
 /*
+  PATCH 417: THE RUN RECEIPT, WRITTEN WHERE THE RECORDING CANNOT REACH.
+
+  The client signs a short fixed statement over the nonce, the tick count it
+  saw, and the SHA-256 of its own two evidence files, and sends the signature
+  and its public key.  This writes that down.
+
+  A SEPARATE FILE AND NOT A RECORD IN THE .rec, for a reason the format cannot
+  argue with: the digests do not exist until the run has ENDED and the client's
+  files have been written, and by then the .rec has been closed, counted and
+  renamed.  A receipt is also a statement ABOUT a recording rather than part of
+  one -- it is made afterwards, by the other end, and putting it inside the file
+  it attests to would be the only circular line in the grammar.
+
+  THE SERVER FILLS IN EVERY FIELD IT KNOWS AND THE CLIENT ONLY THE ONES IT
+  SIGNED.  map, runid, the nonce and the server's own tick count come from here;
+  pub, ticks, the two digests and the signature come from the client.  So a
+  client cannot put a different run's name on its receipt, and the one field
+  that appears twice -- ticks, once as the client signed it and once as this
+  server counted it -- is a disagreement a reader can see rather than a
+  contradiction hidden inside a signature.
+
+  REFUSED UNLESS TF_NONCE IS ALREADY SET.  The bit says this client echoed the
+  number this run was issued, so there is exactly one nonce the receipt can be
+  about.  Without that the file would have to record whose nonce it thought it
+  was signing, and a receipt naming its own referent is a receipt that proves
+  nothing.
+
+  ONE PER RUN, and the shapes are checked before anything is written: this is a
+  client-driven file write on a public server.
+*/
+// A plain integer, optionally signed, short enough that nothing downstream has
+// to think about it.  Used on the two receipt fields that are written verbatim.
+/*
+  Patch 417: ONE LINE OF A KEY/VALUE FILE, with everything that could end it
+  early replaced by `?`.
+
+  SV_RecSafeText above is a WHITELIST of six punctuation marks, which is right
+  for a pin value and wrong here: a receipt carries a player's name and a server
+  address, so it has to keep `^`, `:` and the rest of printable ASCII or it
+  keeps nothing.  What it may not keep is anything a line-based reader treats as
+  a break -- and the reader is Python, whose splitlines() ends a line on \v, \f,
+  \x1c, \x1d, \x1e, U+0085, U+2028 and U+2029 as well as the two everybody
+  remembers.  SV_FixupName strips none of those.  Printable ASCII contains none
+  of them, so that is the line.
+*/
+string(string s) SV_RecCleanLine =
+{
+	local float i, n, c;
+	local string out;
+
+	n = strlen(s);
+	if (n > 96)
+		n = 96;
+	out = "";
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		out = strcat(out, (c >= 32 && c < 127) ? chr2str(c) : "?");
+	}
+	return out;
+};
+
+float(string s, float neg) SV_RecIsInt =
+{
+	local float i, c, n;
+
+	n = strlen(s);
+	if (n < 1 || n > 11)
+		return FALSE;
+	i = 0;
+	if (str2chr(s, 0) == '-')
+	{
+		if (!neg || n < 2)
+			return FALSE;
+		i = 1;
+	}
+	for (; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c < '0' || c > '9')
+			return FALSE;
+	}
+	return TRUE;
+};
+
+float(string s, float n) SV_RecIsHex =
+{
+	local float i, c;
+
+	if (strlen(s) != n)
+		return FALSE;
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+			return FALSE;
+	}
+	return TRUE;
+};
+
+void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
+     string view, string sig, string svname) SV_RecRcpt =
+{
+	local float fh;
+	local string path, who;
+
+	/*
+	  EVERY REFUSAL SAYS WHY, under developer.  A receipt that silently does not
+	  appear is indistinguishable from a client that never sent one, and the
+	  first cut of this patch spent a harness run on exactly that question.
+	  dprint rather than a print: it is client-driven, so it may not be
+	  something a stranger can put on an operator's console.
+	*/
+	if (e.rec_rec_rid == "" || e.rec_rec_nonce == "")
+	{
+		dprint("timer: receipt refused -- no run id or no nonce\n");
+		return;
+	}
+	if (!(e.run_t_flags & TF_NONCE))
+	{
+		dprint("timer: receipt refused -- the nonce was never answered\n");
+		return;
+	}
+	/*
+	  THE RUN HAS TO BE OVER, and the review found what its absence bought.
+	  Every gate above is true from the moment the client acks the nonce, i.e.
+	  the first second of the run -- so a client could send its receipt at tick
+	  one, committing to digests of evidence that did not exist yet, record a
+	  server tick count of zero, and BURN THE ONE-PER-RUN LATCH so the honest
+	  receipt at the finish was refused.  The whole claim this patch makes about
+	  the commitment is that it is made at the finish; this is the line that
+	  makes that true.
+	*/
+	if (e.run_t_flags & TF_RECORDING)
+	{
+		dprint("timer: receipt refused -- the run is still recording\n");
+		return;
+	}
+	if (e.rec_rec_rcpt)                 // one per run
+	{
+		dprint("timer: receipt refused -- this run already has one\n");
+		return;
+	}
+	// Named one by one rather than as one test: "malformed field" cost a harness
+	// run on the question of WHICH, and a refusal a reader cannot act on is a
+	// refusal that has to be debugged twice.
+	if (!SV_RecIsHex(pub, 64))
+	{
+		dprint(sprintf("timer: receipt refused -- pub %s\n", pub));
+		return;
+	}
+	if (!SV_RecIsHex(sig, 128))
+	{
+		dprint(sprintf("timer: receipt refused -- sig %s\n", sig));
+		return;
+	}
+	if (hid != "-" && !SV_RecIsHex(hid, 64))
+	{
+		dprint(sprintf("timer: receipt refused -- hid %s\n", hid));
+		return;
+	}
+	if (view != "-" && !SV_RecIsHex(view, 64))
+	{
+		dprint(sprintf("timer: receipt refused -- view %s\n", view));
+		return;
+	}
+	/*
+	  -1 IS A LEGAL TICK COUNT HERE and refusing it was this patch's third
+	  harness failure.  STAT_FS_RUNTICKS is -1 on a run the server is not
+	  keeping -- a cheated or practice one -- so the client honestly signs -1,
+	  and a server that threw the receipt away would drop every receipt on
+	  exactly the runs a harness can produce.  What the client saw is what it
+	  signs; `svticks` beside it is what this server counted, and the two
+	  disagreeing is a fact for a reader rather than a reason to refuse.
+
+	  THE SHAPE IS CHECKED AND NOT ONLY THE VALUE, because these two strings are
+	  written into a file verbatim: `stof` alone would accept anything and store
+	  it, and a field a client chooses the characters of is a field that ends up
+	  in somebody's parser.  A digit string cannot.
+	*/
+	if (!SV_RecIsInt(ticks, TRUE) || !SV_RecIsInt(hidlen, FALSE))
+	{
+		dprint(sprintf("timer: receipt refused -- ticks %s hidlen %s\n", ticks, hidlen));
+		return;
+	}
+	if (stof(ticks) < -1)
+	{
+		dprint(sprintf("timer: receipt refused -- ticks %s\n", ticks));
+		return;
+	}
+	if (kept != "0" && kept != "1")
+	{
+		dprint(sprintf("timer: receipt refused -- kept %s\n", kept));
+		return;
+	}
+	/*
+	  THE SERVER LINE IS SIGNED, SO IT IS WRITTEN AS THE CLIENT SIGNED IT --
+	  cleaned of anything that could end a line early, and not otherwise
+	  touched.  It is the address the CLIENT's netchan says it is talking to,
+	  and it is what makes a signature non-portable: see the relay in the patch
+	  entry.  A cleaned value that no longer matches what was signed simply
+	  fails to verify, which is the right outcome for a client that sent
+	  something strange.
+	*/
+	svname = SV_RecCleanLine(svname);
+	if (svname == "")
+	{
+		dprint("timer: receipt refused -- empty server name\n");
+		return;
+	}
+
+	/*
+	  THE LATCH BEFORE THE OPEN, not after.  Set afterwards, a disk that will
+	  not take the file leaves the client free to send this again for the rest
+	  of the run, one failed open each time, at whatever rate it likes.
+	*/
+	e.rec_rec_rcpt = TRUE;
+
+	/*
+	  BESIDE THE EVIDENCE AND NOT IN A DIRECTORY OF ITS OWN, so that
+	  SV_EvidenceSweep's `run_evidence_days` reaps it on the same clock as the
+	  recording it attests.  The first cut wrote data/receipts/, flat, shared by
+	  12 lobbies, swept by nothing at all.
+	*/
+	path = sprintf("data/evidence/%s/%s.rcpt", mapname, e.rec_rec_rid);
+	fh = fopen(path, FILE_WRITE);
+	if (fh < 0)
+	{
+		dprint(sprintf("timer: cannot write %s\n", path));
+		return;
+	}
+
+	/*
+	  THE OWNER IS A STRANGER'S TEXT AND IS WRITTEN THROUGH THE RECORDER'S OWN
+	  SAFETY TEST.  SV_FixupName strips the characters a QuakeC parser trips on;
+	  it does not strip the ones PYTHON's splitlines() breaks on -- \v, \f, the
+	  file separators, U+2028 -- and this file is read by a Python checker that
+	  takes key/value lines.  A name carrying one of those could add lines to
+	  this receipt.  Unsafe text is replaced by the player's slot, which nobody
+	  can choose.
+	*/
+	who = SV_RecCleanLine(e.netname);
+	if (who == "")
+		who = sprintf("slot %g", e.run_t_slot);
+
+	/*
+	  THE SIGNED LINES ARE THE FIVE PREFIXED `signed `, IN THIS ORDER -- server,
+	  nonce, ticks, hid, view -- each newline-terminated under the version line.
+	  A verifier rebuilds the message from them and from nothing else, so any
+	  reformatting here breaks every receipt this server writes.  The unsigned
+	  context above them is this server's own: what IT calls the run, who IT had
+	  connected, and what IT counted.
+	*/
+	fputs(fh, sprintf("FTESURF-RCPT 1\n"));
+	fputs(fh, sprintf("map %s\n", mapname));
+	fputs(fh, sprintf("runid %s\n", e.rec_rec_rid));
+	fputs(fh, sprintf("owner %s\n", who));
+	fputs(fh, sprintf("svticks %d\n", e.rec_rec_ticks));
+	fputs(fh, sprintf("svport %s\n", cvar_string("sv_port")));
+	fputs(fh, sprintf("pub %s\n", pub));
+	fputs(fh, sprintf("sig %s\n", sig));
+	fputs(fh, sprintf("signed server %s\n", svname));
+	fputs(fh, sprintf("signed nonce %s\n", e.rec_rec_nonce));
+	fputs(fh, sprintf("signed ticks %s\n", ticks));
+	fputs(fh, sprintf("signed hid %s %s %s\n", hid, hidlen, kept));
+	fputs(fh, sprintf("signed view %s\n", view));
+	fclose(fh);
+	dprint(sprintf("timer: receipt %s\n", path));
+};
+
+/*
   The client asking for the number it should already have.  `cmd rec_nonce_ask`.
 
   It exists because a stuffcmd is fire-and-forget and there is one case where it
@@ -3841,6 +4113,7 @@ void(entity e) SV_RecOpen =
 		strunzone(e.rec_rec_nonce);
 		e.rec_rec_nonce = "";
 	}
+	e.rec_rec_rcpt = FALSE;             // Patch 417: one receipt per run
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
 	e.rec_rec_stream = FALSE;
@@ -4338,7 +4611,15 @@ void() SV_EvidenceSweep =
 	if (days <= 0)
 		return;
 	today = FS_DayNumOf(strftime(TRUE, "%Y%m%d"));
-	h = search_begin(sprintf("data/evidence/%s/*.rec", mapname), FS_NAMESORT, TRUE);
+	/*
+	  Patch 417: `.rc*` rather than `.rec`, so the run RECEIPTS this directory
+	  now also holds expire on the same clock as the recordings they attest.
+	  A receipt is client-driven -- one per run, written where nothing else
+	  reaps it -- and an unbounded directory on a shared data dir is a fleet
+	  problem rather than a file problem: 12 lobbies write into one tree, and
+	  inodes run out long before bytes do.
+	*/
+	h = search_begin(sprintf("data/evidence/%s/*.rc*", mapname), FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 	n = search_getsize(h);

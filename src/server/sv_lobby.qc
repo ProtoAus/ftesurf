@@ -2716,7 +2716,18 @@ string(entity e, float track, float leg, float ticks, float flags,
 	               uri_escape(sprintf("p%g", cvar("sv_port"))));
 	body = sprintf("%s&player=%s&name=%s",
 	               body, uri_escape(guid), uri_escape(nm));
-	body = sprintf("%s&ticks=%d&tickrate=%.4f&flags=%g&tier=ranked",
+	/*
+	  Patch 417: `flags=%d` AND NOT `%g`, and this is a trap that had one bit of
+	  margin left.  %g is six significant digits, so it prints the flags word
+	  exactly only while the word stays under seven: with every bit up to
+	  TF_NONCE (131072) the maximum is 262143, six digits, fine -- and the bit
+	  AFTER the next one takes it to 2097151, which %g sends as `2.09715e+06`
+	  and surfd's strict_int refuses.  A run would then arrive with no flags at
+	  all, which is the shape the essay above this block is about.  It is the
+	  same seven-digit %g trap `ticks` and `recbytes` were converted for; this
+	  field was missed, and Patch 416 spent one of the two remaining bits.
+	*/
+	body = sprintf("%s&ticks=%d&tickrate=%.4f&flags=%d&tier=ranked",
 	               body, ticks, rate, flags);
 	/*
 	  A FOURTH sprintf, for the same reason there are three: the eighth

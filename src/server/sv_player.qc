@@ -950,6 +950,19 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_nonce_ask")   { SV_RecNonceAsk(self);                   return; }
 
+	/*
+	  Patch 417: the run receipt -- `rec_rcpt <pub> <ticks> <hid> <hidlen>
+	  <kept> <view> <sig> <server>`, sent by the engine's rec_sign at the end of
+	  a run.  Eight fields: the client signed five of them, two more say what its
+	  journal was, and the last is the address its own netchan says it is talking
+	  to -- which is what stops a signature made on one server being posted as a
+	  receipt on another.  The server adds what only it knows.  See SV_RecRcpt.
+	*/
+	if (c == "rec_rcpt")        { SV_RecRcpt(self, argv(1), argv(2), argv(3),
+	                                         argv(4), argv(5), argv(6), argv(7),
+	                                         argv(8));
+	                              return; }
+
 	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.
 	if (c == "rec_spec")        { SV_SpecCmd(self, stof(argv(1)));        return; }
