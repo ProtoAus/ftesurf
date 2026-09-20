@@ -6522,7 +6522,40 @@ void(entity e, float ok) SV_StageTakeoff =
 {
 	local vector hv;
 
-	hv = e.velocity;
+	/*
+	  Patch 411: THE EFFECTIVE speed, and Patch 407 is why this line is here.
+	  That patch fixed the same read in SV_StageLaunch one function below -- but
+	  SV_StageLaunch's airborne branch takes its launch speed straight back out of
+	  run_st_tkspd, and its landing branch out of run_st_tklandspd, a copy of it.
+	  So both box exits that go through a takeoff kept reading bare .velocity and
+	  run_stagecap stayed decorative on exactly the exit P360 wrote it for.
+
+	  COUNTED ONCE OR NOT AT ALL: run_basevel is zeroed on cash-out
+	  (sv_entities.qc:1086) and the mover subtracts the carrier back out of
+	  .velocity, so the two terms are disjoint at PostThink.  NOT because the Z is
+	  already gone -- sv_entities.qc:1140 zeroes run_basevel_z in PreThink and the
+	  touch loop re-arms a full Z afterwards, so on an up-pad it is routinely
+	  non-zero right here.  `hv_z = 0` below is what makes that harmless.  (Review
+	  finding; the first draft of this comment had the reason wrong.)
+
+	  THE INSTANT IS THE PACKET'S, NOT THE TAKEOFF COMMAND'S.  This runs once per
+	  packet from the last command's state, so a carrier armed after the takeoff
+	  is the one read.  Still strictly better than a read that was always zero,
+	  and on a map with no push the two are byte-identical -- which also bounds
+	  the evidence exposure, because `stagepost <launch>` carries this number.
+
+	  RE-SCANNED, because P407's does not transfer: it sampled the box EXIT and a
+	  carrier can be armed at takeoff and gone by then.  Live corpus 2026-09-20,
+	  218 `ride` rows: exactly two files hold both a non-zero carrier and a
+	  stagepost.  surf_deoa/main/0014484_kap has all four posts before its first
+	  armed carrier, as P407 said.  surf_rookie/main/0033772_proto interleaves
+	  them -- 17 posts against arms of 200, 300, 500 and 550 -- but every
+	  `stagestart` there is bracketed by `ride ... arm 0 0 0` and every non-zero
+	  arm falls strictly after it, mid-stage.  So no post on the board was taken
+	  with a carrier live at its takeoff, and this line moves nothing already
+	  recorded.  It arms run_stagecap for the future, which is the point.
+	*/
+	hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 	hv_z = 0;
 	e.run_st_tkok  = ok;
 	e.run_st_tkspd = vlen(hv);
@@ -8961,6 +8994,34 @@ float(entity e) SV_TimerJumpWatch =
 		e.run_st_tkok = 0;
 	if (e.run_boardcount != e.run_st_tkbc)
 		e.run_st_tkok = 0;          // a ramp on a tick the flag above did not see
+	/*
+	  PATCH 411, NOT DONE, and the two reasons are worth more than the attempt.
+	  A booster IS credited as a stage start today: run_rampcontact above is the
+	  only mover exclusion run_st_tkok and run_st_jump have, and it is blind to
+	  the standable floor a pad clips off (pm_source.c:1313, |n_z| in [0.1, 0.7])
+	  -- the same blind spot Patch 409 closed for the START rule.  A clear here
+	  reading `run_pushed && !run_jumpcmd` was written, reviewed and withdrawn:
+
+	    - IT IS NOT TAKEOFF-SCOPED.  This function runs every packet while
+	      run_st_tkok lives from takeoff to landing, so it asks "did a carrier act
+	      during this flight", not "was the takeoff the mover's".  run_pushed is
+	      set by the CASH-OUT (sv_entities.qc:1084), which fires one command AFTER
+	      you leave a volume, and run_jumpcmd cannot latch airborne -- so jumping
+	      honestly out of a stage box that holds a pad, or merely flying through
+	      one, silently deleted the split with no way to restore it.
+	    - THE PREDICATE DOES NOT SURVIVE THE SIGN FLIP.  For P409 run_jumpcmd TRUE
+	      means "press on with the accusation"; reused for CREDIT it means "grant
+	      it", so holding +jump on a pad buys the mover's rise.  P409's own
+	      residual (:9120) becomes a hole rather than an admission.
+
+	  What it needs is a takeoff-scoped refusal that does not consult the jump
+	  button at all, and the cost of that has to be measured first: the census
+	  behind Patch 409 counted pushes overlapping START zones, not STAGE
+	  boundaries, so the number of honest splits it would refuse is unknown.
+	  run_stagecap catches the horizontal case once the takeoff speed is read
+	  correctly (see SV_StageTakeoff); a purely vertical pad adds no horizontal
+	  speed and is still credited.  Its own patch, after its own corpus scan.
+	*/
 
 	/*
 	  BUILD 24: the same two observations, asked a different question.
@@ -8981,6 +9042,8 @@ float(entity e) SV_TimerJumpWatch =
 	if (e.run_boardcount != e.run_st_bcseen)
 		e.run_st_ramp = TRUE;       // Patch 360: same, mid-packet
 	e.run_st_bcseen = e.run_boardcount;
+	// A mover-driven rise still sets run_st_jump here; see the withdrawn clear
+	// over the run_st_tkok lines above for why Patch 411 does not gate it yet.
 	if (jumped)
 	if (e.run_t_state == TS_RUNNING)
 		SV_StageJump(e);

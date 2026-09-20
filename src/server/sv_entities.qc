@@ -994,6 +994,29 @@ float(entity p) SV_TrigPending =
 */
 .float  run_jumpcmd;
 
+/*
+  PATCH 411: the pad took the ground flag before PreThink could read it.
+
+  trigger_push_touch strips FL_ONGROUND on an upward push -- in BOTH arms, the
+  continuous one at :5681 and SF_PUSH_ONCE at :5621 -- and the touch loop runs
+  AFTER the move, so the next command's run_wasground stamp reads FALSE for a
+  body the mover will re-ground inside pmove (PMSrc_Tick -> CategorizePosition,
+  a 2 u ground band against the 1 u lift).  run_jumpcmd then never latches and
+  Patch 409's gate switches the hop rule off outright -- draft 1's hole by
+  another route.  Measured (scratchpad/pushtilt.py over the 1316-bsp census):
+  4 of the 21 overlapping pads push up, on surf_prosurf (2200 u/s),
+  surf_polygon (770) and surf_ethereal (400 x2); the rest are horizontal or
+  point down and never strip the flag, which is why surf_666 bonus 3 behaves
+  and why its falsifier could not see this.
+
+  Set in each strip, read and cleared one command later beside the stamp it
+  repairs (sv_player.qc) -- EXCEPT across a run_pmhold, where both PreThink and
+  PostThink return early and the latch waits out the hold.  Cleared on release
+  there for that reason.  run_wasground itself is NOT widened: SV_TriggerIOTouch
+  reads it for OnJump and that is a recorded event.
+*/
+.float  run_pushlift;
+
 // TICK_INTERVAL, for the (1.0 + frametime * 0.5) fudge in the cash-out --
 // Source's own "add in half of the previous frame of velocity first".  It is
 // worth 0.75% at a 15 ms tick, which is not why it is here; it is here because
@@ -5605,7 +5628,10 @@ void() trigger_push_touch =
 		  original and both are copied.
 		*/
 		if (dir_z > 0)
+		{
 			other.flags = other.flags - (other.flags & FL_ONGROUND);
+			other.run_pushlift = TRUE;  // Patch 411: the SECOND strip, same poison
+		}
 
 		other.velocity = other.velocity + SV_ClampImpulse(dir * spd);
 		other.run_pushed = TRUE;   // Patch 409; this arm never touches the carrier
@@ -5659,6 +5685,7 @@ void() trigger_push_touch =
 	if (push_z > 0 && (other.flags & FL_ONGROUND))
 	{
 		other.flags = other.flags - FL_ONGROUND;
+		other.run_pushlift = TRUE;  // Patch 411: this strip poisons run_wasground
 		setorigin(other, other.origin + '0 0 1');
 		SV_RecWarp(other, "lift");	// BUILD 87: an origin write outside the mover
 	}

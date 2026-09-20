@@ -152,6 +152,7 @@ void() PutClientInServer =
 	self.run_basevelocity  = '0 0 0';
 	self.run_pushed        = 0;   // Patch 409, same argument one line up
 	self.run_jumpcmd       = 0;
+	self.run_pushlift      = 0;   // Patch 411
 
 	self.classname   = "player";
 	self.health      = 100;
@@ -401,6 +402,9 @@ void() PlayerPreThink =
 	{
 		self.run_wasground = ((self.flags & FL_ONGROUND) != 0);
 		self.run_basevelocity = '0 0 0';
+		self.run_pushlift = FALSE;  // Patch 411: this return is above its clear,
+		                            // and PostThink's is above run_pushed's, so a
+		                            // strip latched into a hold would outlive it
 		return;
 	}
 
@@ -422,9 +426,12 @@ void() PlayerPreThink =
 	// Patch 409.  Per command, one line below the stamp it reads, because
 	// SV_TimerJumpWatch runs once per PACKET and would otherwise see only the
 	// last command's buttons.  See .run_jumpcmd in sv_entities.qc.
-	if (self.run_wasground)
+	//   Patch 411: ...or the ground an upward pad took off us after the last
+	// move, which the stamp above cannot see.  See .run_pushlift.
+	if (self.run_wasground || self.run_pushlift)
 	if (self.button2)
 		self.run_jumpcmd = TRUE;
+	self.run_pushlift = FALSE;      // one command wide: set in the touch, spent here
 
 	/*
 	  PATCH 249 -- CheckMovingGround, in its own slot.
