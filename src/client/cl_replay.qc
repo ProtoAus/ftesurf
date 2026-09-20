@@ -358,9 +358,21 @@ float() Rec_HidOK =
   answer would skip the send that repopulates it.
 
   IT REPORTS Rec_HidOK(), NOT cvar("rec_hid"), so a run declined for want of
-  consent reports the same 0 as one declined by the switch. That is correct:
-  the question the server is asking is "will a journal exist for this run",
-  and both answers to it are no.
+  consent reports the same 0 as one declined by the switch. That much is
+  correct: both are "this client will not journal".
+
+  BUT IT IS A CAPABILITY, NOT A PROMISE OF AN ARTIFACT, and this comment used
+  to say otherwise ("the question the server is asking is 'will a journal exist
+  for this run'"). It is not, and it cannot be: the tag is not known until the
+  run ENDS, and Rec_HidEnd then discards unless it is RT_PB. On a lobby
+  `lobby_nopb 1` means the tag is never RT_PB, so EVERY RANKED RUN DISCARDS ITS
+  JOURNAL while this reports 1 -- and TF_NOJOURNAL, which is a TF_UNCERT member
+  and so a certification input, is set only when this answers 0. Measured
+  2026-09-20 on the Pi: 0 .hid, 0 .view, 44 .rec.
+  So the bit means "willing and able", and the artifact it implies does not
+  reach the server on any ranked run. Closing that is the .hid/.view upload
+  (plan item 4), which is blocked on MAX_BODY (16 KiB) against 1.9-8.8 MB of
+  journal. Until then do not read this bit as evidence that evidence exists.
 */
 void() Rec_HidReport =
 {
