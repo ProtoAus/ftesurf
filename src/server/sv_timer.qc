@@ -6653,7 +6653,25 @@ void(entity e) SV_StageLaunch =
 	if (want <= 0)
 		want = 0.25;
 	now = SV_ClockSec(e);
-	hv = e.velocity;
+	/*
+	  Patch 407: THE EFFECTIVE speed, not `.velocity`.  A trigger_push does not
+	  write velocity -- it arms .run_basevel, which the engine rides as
+	  pmove.basevelocity and cashes out at (1 + run_bv_tick * 0.5)
+	  (sv_entities.qc:997).  Reading velocity alone judged a boundary crossed on
+	  a booster as a STANDING START: the live log read
+	  `prime 1 launch 0 tk 1 tkspd 1809 cap 290` while the body did 1809, so
+	  run_stagecap has been decorative on any map with a push since P360.
+	  Same quantity P403's SV_StartCapClamp uses for the start box, and AGENTS.md
+	  states it once for both.
+
+	  COST OF THE CHANGE, MEASURED BEFORE MAKING IT (tools/../stagescan): across
+	  the whole live corpus -- 49 files, 69 stagepost records, 61 ride records of
+	  which 8 carry a non-zero horizontal value -- ZERO stage posts were made
+	  while a carrier was armed.  One file holds both kinds of record
+	  (surf_deoa/main/0014484_kap), and its four posts (launch 260-273) all
+	  precede its first armed carrier.  So nothing already on the board moves.
+	*/
+	hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 	hv_z = 0;
 
 	e.run_st_prime = FALSE;
