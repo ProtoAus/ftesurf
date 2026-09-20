@@ -49,3 +49,10 @@ chatty.
   independent review (reviewers who see the code, not your conclusion) before
   deploy. Patch 375 passed every harness arm and still had five real defects,
   two of which corrupted recordings.
+  Two or three reviewers, each given a DIFFERENT lens — predicate and control
+  flow, consequences for recorded evidence, what a cheater gains — and never your
+  reasoning. That shape found four real defects in Patch 412, two of which made
+  the patch worse than no patch. Dozens of agents is not more rigour, it is the
+  same finding many times over; the lenses do the work, not the count.
+  Re-review after a redesign: the version that shipped is not the version they
+  read.

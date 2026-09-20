@@ -82,6 +82,19 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - Headless: `./ftesurf64.exe -WindowStyle Minimized +exec <name>` with cfgs in
   `ftesurf/cfg/test/`; output in `ftesurf/logs/<log_name>.log` and
   `ftesurf/screenshots/`. Verify by reading logs and screenshots.
+  CWD MUST BE `C:\FTESurf` — the basedir is the cwd and Start-Process inherits the
+  caller's, so a shell left in `ftesurf/` produces NO log at all and the run just
+  sits there: two 200 s timeouts read as a hang before the cwd was the answer.
+  Pass `-WorkingDirectory "C:\FTESurf"` rather than trusting the shell's.
+- AN ARM NEEDS A CONTROL BUILD AND A DETECTOR PROVEN TO HAVE FIRED. "Not flagged"
+  is also what a subject that never fired prints, so an arm with no pre-change
+  build beside it measures nothing — p411push printed a textbook flip on a pad
+  that never armed. Prove the subject ACTED before believing any verdict: its own
+  dprint, or a latch carrying its authored number (p412speed used `tkspd 2060`,
+  the pad's own horizontalspeed). Expect the pre-registered detector to be the
+  wrong one and say so when it is. Control recipe — NOT `git stash`, which would
+  take the other session's files: copy the file aside, `git checkout -- <file>`,
+  build, run, copy back, rebuild, and diff the diffstat against the saved one.
 - Test-cfg recipe: `cl_idlefps 0` AND `cl_maxfps 100` (uncapped fps starves
   async loads); `menu_restart` before any menu-VM command in a `+exec` run
   (menu.dat loads lazily); `set <cvar> <v>` for cvars not registered yet.
@@ -413,6 +426,22 @@ bannered as superseded.)
 - After ANY change here: `python tools/test_reccheck.py` (0 failed) AND a corpus
   sweep over `ftesurf/data/runs` — the fault count must not move. A false note
   about a correct file is the one thing these tools may not produce.
+- A MAP ENTITY THAT WRITES A PLAYER'S VELOCITY MUST MARK ITSELF. The hop rule's
+  only view of a jump is velocity_z crossing PM_NONJUMP_VEL, so any direct write is
+  read as a jump unless the site sets `run_pushed` — keep its writer list in
+  sv_entities.qc current. `trigger_setspeed` was missing for three patches and
+  falsely accused players on 16 pads across 9 maps (Patch 412). Two rules, each
+  paid for with a withdrawn patch:
+  - ONE PACKET WIDE. `run_pushed` is cleared every packet, so it cannot cover a
+    consequence that lands later, and a horizontal write clipped upward off a
+    STANDABLE slope on the next move still is not covered (Patch 412's NOT DONE
+    note). The carrier path survives only because it re-arms every command; a site
+    that writes once has nothing to re-arm.
+  - SIGN DISCIPLINE. A flag that WITHHOLDS an accusation must not be reused to
+    GRANT credit. Reversed, `run_jumpcmd` turns "press on with the accusation"
+    into "holding +jump buys the mover's rise" (withdrawn 411b, sv_timer.qc).
+  Both directions are defects: a false accusation taints an honest run, a false
+  acquittal ranks a driven one. Say which one a change trades for the other.
 - EVIDENCE BOUNDARY, exactly: `warp` = a direct write of origin or velocity
   OUTSIDE the mover by a map entity. `ride` = the basevelocity carrier handed to
   the mover (a span: `arm` persists until changed, `pay` is the cash-out). A
@@ -703,6 +732,19 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 ## Pitfalls discovered the hard way
 
 - `pwsh`, never `powershell`.
+- AN ENTITY BOX FROM THE MODELS LUMP IS WHERE A BRUSH CAN BE, NOT WHERE IT IS —
+  wrong by a wide margin three times; `tools/census/README.md` has the cases. Grade
+  the claim before quoting it: `gap == 0` counts a zero-width plane contact as an
+  overlap and is nearly meaningless, positive overlap VOLUME is better, and
+  CONTAINMENT (the pad's whole box inside the zone) is the only figure that
+  survives — and even that does not prove you can touch the brush. A `cmd viewpos`
+  read back after a `setpos`, or a `.rec` row from a real player, beats all three.
+- A `file:line` CITATION DIES WHEN ANYTHING ABOVE IT GROWS, in its own file and in
+  every file that cites it: one added comment block invalidated ~10 numbers here,
+  two of them in sv_timer.qc. Cite QC by FUNCTION NAME; keep line numbers for
+  `pm_source.c` and other engine files this repo never edits. Cite a measurement to
+  a committed script (`tools/census/`), never to a scratch path that will not exist
+  for the next reader.
 - Deleting save dirs behind a running server does NOT clear its in-memory list;
   it rescans on map change/lobby flip/restart. Delete-all is `sl_delall`.
 - Two clients writing the same `log_name` interleave confusingly.
