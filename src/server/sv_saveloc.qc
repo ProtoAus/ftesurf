@@ -218,7 +218,8 @@ float(entity e) SL_Blk;
 float(float blk) SL_Base;
 float(float blk) SL_Cap;
 void(entity e) SV_SaveRootFor;
-float(entity e) SV_SaveLocBegin;
+float(entity e, float quiet) SV_SaveLocAllowed;
+float(entity e, float quiet) SV_SaveLocBegin;
 
 /*
 ===========================================================================
@@ -276,6 +277,80 @@ float(float blk) SL_Cap =
 	if (blk <= 0)
 		return FS_MAXSAVES;
 	return FS_SLBLOCK;
+};
+
+/*
+  PATCH 415 -- a point that has been through state.txt, put back on the floor it
+  was standing on, and ONLY when that is what the rounding did to it.
+
+  `origin %.4f` rounds to nearest, so it moves a coordinate by at most 0.00005 in
+  either direction.  A zone whose bottom IS that floor then rejects the position
+  by exactly that: bhop_eazy's start bottom is 64.031250 and a save taken standing
+  in the middle of the box holds 64.0312.  Zone_PointInside's ring test passes and
+  its z-slab test fails.
+
+  SNAPPED UP TO THE BOTTOM RATHER THAN LIFTED.  An unconditional `+ quantum`
+  would also push a save resting on a zone's TOP face out through the ceiling --
+  Zone_PointInside tests both ends of the slab -- trading a false negative at the
+  floor for one at the roof.  This only moves a point that is within the format's
+  own error BELOW the bottom, and moves it exactly onto the bottom, so no other
+  answer can change.
+
+  THE TOLERANCE IS NOT JUST THE DECIMAL QUANTUM, and assuming it was is what made
+  the first two attempts at this fail.  `%.4f` rounds to 5e-5, but the text is
+  then parsed back into a 24-bit mantissa, and THAT error grows with the
+  coordinate: 7.6e-6 at z 64, 0.002 at a map's 16384.  bhop_eazy's real gap is
+  5.34e-5 -- over a 5e-5 threshold by a third of a float ulp, which is exactly the
+  kind of margin that reads as "the feature does not work".  So the tolerance is
+  the decimal quantum plus two ulps at this magnitude, and it is still far below
+  anything a player or a mapper can express.
+*/
+#define SL_ORIGIN_QUANTUM 0.0001
+#define SL_ORIGIN_ULP     0.00000012            // ~2 float32 ulps, relative
+
+vector(float z, vector p) SV_SaveZonePoint =
+{
+	local float eps;
+
+	// Guarded although the one caller validates z first: this file's rule is
+	// that an array read carries its own bound, because the SECOND caller is
+	// where that stops being true and an out-of-range read takes the VM down.
+	if (z < 0 || z >= zone_count)
+		return p;
+
+	eps = SL_ORIGIN_QUANTUM + fabs(zone_bottom[z]) * SL_ORIGIN_ULP;
+
+	if (p_z < zone_bottom[z])
+	if (zone_bottom[z] - p_z <= eps)
+		p_z = zone_bottom[z];
+	return p;
+};
+
+/*
+  Is a coordinate out of a save file a number at all?
+
+  NOTHING VALIDATES rec_sl_org.  `origin` is parsed with stof, so a hand-edited
+  `nan` or `inf` in state.txt becomes one -- and NaN fails EVERY comparison, so
+  Zone_PointInside's slab test, its AABB reject and Zone_XYInRing's edge tests
+  are all false-and-therefore-not-outside.  A NaN origin passes the whole zone
+  test and reaches setorigin.  Only reachable where the player owns the file (a
+  listen server or their own install), so this is hardening rather than a hole,
+  but it costs three compares.
+
+  WRITTEN AS A NEGATED RANGE, deliberately: `p_x > 65536 || p_x < -65536` lets a
+  NaN straight through, because both halves are false.  Asking "is it inside the
+  range" and negating the answer is the form that catches it.  65536 is four
+  times a map's +-16384.
+*/
+float(vector p) SV_SaveOriginSane =
+{
+	if (!(p_x > -65536 && p_x < 65536))
+		return FALSE;
+	if (!(p_y > -65536 && p_y < 65536))
+		return FALSE;
+	if (!(p_z > -65536 && p_z < 65536))
+		return FALSE;
+	return TRUE;
 };
 
 /*
@@ -340,7 +415,30 @@ void(entity e) SV_SaveRootFor =
   -- and then a scan of THAT PLAYER'S block, rescanned whenever the stamp says
   the lobby state has moved since the last one.
 */
-float(entity e) SV_SaveLocBegin =
+/*
+  THE TWO POLICY GATES, SPLIT OUT BY PATCH 415 so a caller can ask them without
+  paying for the scan below.
+
+  They are cheap -- a cvar and an infokey -- while the expensive half is the
+  directory read.  SV_SaveLocPickInZone wants the gates on every `!r` and the
+  scan only when the block is stale, and the first cut of it got that by skipping
+  SV_SaveLocBegin when the block was fresh, which skipped the gates too.  On a
+  lobby that is always: SV_SaveLocSync stamps rec_sl_scanlob from every
+  PlayerPostThink, so SV_SaveLocBegin was never reached from `!r` at all.  Both
+  gates silently stopped applying -- `lobby_nosaveloc` was no longer an off
+  switch, and a player with no certificate reads SL_Blk's per-player block filled
+  from the SHARED directory (SV_SaveRootFor's no-guid fallback), i.e. other
+  players' saves, which is the cross-player placement Patch 333's essay below
+  calls structurally gone.  Two functions, so "may I" and "load the list" cannot
+  come apart again.
+
+  `quiet` is for a caller that is ASKING rather than being told.  Every gesture
+  below this is a player typing `sl_something`, and a refusal owes them the
+  reason; `!r` looking to see whether there is a save to prefer is not a gesture,
+  and printing "save points are off" at every restart would be noise about a
+  feature the player never asked for.
+*/
+float(entity e, float quiet) SV_SaveLocAllowed =
 {
 	local float blk;
 
@@ -348,19 +446,33 @@ float(entity e) SV_SaveLocBegin =
 
 	if (blk > 0 && cvar("lobby_nosaveloc"))
 	{
-		sprint(e, PRINT_HIGH,
-		       "^3save: save points are off in this lobby -- the operator set "
-		       "lobby_nosaveloc.\n");
+		if (!quiet)
+			sprint(e, PRINT_HIGH,
+			       "^3save: save points are off in this lobby -- the operator set "
+			       "lobby_nosaveloc.\n");
 		return FALSE;
 	}
 
 	if (blk > 0 && infokey(e, "guid") == "")
 	{
-		sprint(e, PRINT_HIGH,
-		       "^3save: lobby saves are per player and need your certificate -- "
-		       "the server has no sv_guidkey to attribute them with.\n");
+		if (!quiet)
+			sprint(e, PRINT_HIGH,
+			       "^3save: lobby saves are per player and need your certificate -- "
+			       "the server has no sv_guidkey to attribute them with.\n");
 		return FALSE;
 	}
+
+	return TRUE;
+};
+
+float(entity e, float quiet) SV_SaveLocBegin =
+{
+	local float blk;
+
+	blk = SL_Blk(e);
+
+	if (!SV_SaveLocAllowed(e, quiet))
+		return FALSE;
 
 	SV_SaveRootFor(e);
 
@@ -1527,7 +1639,7 @@ void(entity e) SV_SaveLocCreate =
 	  the gate below is only the two questions that remain: does the operator
 	  want saves here at all, and can this player be attributed at all.
 	*/
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 	// Patch 382: a held body's recording ends in an open `spec` window.
 	if (e.run_pmhold)
@@ -1656,7 +1768,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	  cross-player teleport patch 270 refused is structurally gone rather than
 	  refused.  Off-lobby this is the shared list exactly as before.
 	*/
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 	// Patch 375: a resume's copy owns the part file until it attaches.
 	if (e.run_ms_phase)
@@ -1771,6 +1883,36 @@ void(entity e, float n) SV_SaveLocLoad =
 	  start box is still a resumed run and still owes its TF_SHADOW.  Nothing is
 	  printed in the intervening tick either -- SV_TimerClassSay is gated on
 	  TS_RUNNING, so the taint that is about to be laundered was never announced.
+
+	  PATCH 415 MEASURED THIS GATE FAILING AND DELIBERATELY LEFT IT ALONE.
+
+	  state.txt stores `origin %.4f`, so on a map whose start zone BOTTOM IS ITS
+	  FLOOR the placed origin lands below the zone by that rounding -- bhop_eazy's
+	  bottom is 64.031250 and the slot holds 64.0312.  Zone_PointInside's ring test
+	  passes and its z-slab test fails by 0.00005, so SV_ZoneStartAt answers -1 and
+	  this gate never fires.  Even forced past it the laundering does not complete:
+	  the scan cannot see that body in the box either, so `run_t_azone = -1`
+	  produces no edge and SV_TimerArm never runs.  Measured -- `arm zone -1
+	  (armed from 0)` two seconds after the load, run still reading `segmented,
+	  stitch 1, practice 1`.
+
+	  SO A START-BOX LOAD KEEPS A TAINT BUILD 47 SAYS IT SHOULD LOSE -- BUT ONLY
+	  WHERE THE ZONE'S BOTTOM IS THE FLOOR, AND THAT IS NOT MOST MAPS.  Measured
+	  over the 48 shipped start regions that carry an authored teleDestPos, the
+	  only ones where the floor and the bottom can be compared from data: 37 have
+	  the destination AT the bottom, where the gate fails as described; 11 have it
+	  ABOVE, by up to 189 units (surf_simpsons2, surf_leet_xl_beta7z_swg, others).
+	  On those eleven the rounded origin is still inside the slab, the gate fires,
+	  the scan sees the body, the edge comes and SV_TimerArm launders normally.
+
+	  WHICH IS WHY IT IS LEFT ALONE RATHER THAN FIXED, and the reason is not scope.
+	  `SV_SaveLocPlace` writes `e.velocity = rec_sl_vel[r]` and this function clears
+	  the ground flag, so a save taken while carrying speed inside a start box is a
+	  prespeed injection into a clean armed attempt -- live TODAY on that quarter of
+	  regions, via `sl_load`.  Closing the rounding would extend it to the other
+	  three quarters.  The velocity has to be answered first; until then this stays
+	  broken in the direction that fails safe.  It is why `!r` (Patch 415) takes the
+	  save's ORIGIN through SV_ZoneMove instead of loading it at all.
 	*/
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
@@ -2709,7 +2851,7 @@ void(entity e, float n) SV_SaveLocDelete =
 	  pressed the key.  What remains of the 270 refusal is the operator's
 	  lobby_nosaveloc, inside SV_SaveLocBegin.
 	*/
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 
 	blk  = SL_Blk(e);
@@ -2804,7 +2946,7 @@ void(entity e, float dir) SV_SaveLocStep =
 {
 	local float cnt;
 
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 
 	cnt = rec_sl_nb[SL_Blk(e)];
@@ -2833,14 +2975,14 @@ void(entity e, float dir) SV_SaveLocStep =
 */
 void(entity e) SV_SaveLocFirst =
 {
-	if (!SV_SaveLocBegin(e)) return;
+	if (!SV_SaveLocBegin(e, FALSE)) return;
 	if (rec_sl_nb[SL_Blk(e)] <= 0) { SV_SaveLocSay(e); return; }
 	SV_SaveLocLoad(e, 1);
 };
 
 void(entity e) SV_SaveLocLast =
 {
-	if (!SV_SaveLocBegin(e)) return;
+	if (!SV_SaveLocBegin(e, FALSE)) return;
 	if (rec_sl_nb[SL_Blk(e)] <= 0) { SV_SaveLocSay(e); return; }
 	SV_SaveLocLoad(e, rec_sl_nb[SL_Blk(e)]);
 };
@@ -2875,7 +3017,7 @@ void(entity e) SV_SaveLocDeleteAll =
 {
 	local float n, blk;
 
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 
 	blk = SL_Blk(e);
@@ -2913,12 +3055,187 @@ void(entity e) SV_SaveLocDeleteAll =
 	sprint(e, PRINT_HIGH, sprintf("^1deleted^7 all %g save state(s) on %s\n", n, mapname));
 };
 
+/*
+  PATCH 415 -- WHERE `!r` should put you, if you left yourself a spot.
+
+      "can you make it when you !r, it loads the last save you placed in the
+       start zone if you have one"
+
+  A PLACEMENT, NOT A LOAD, and that distinction is the whole design.  This hands
+  back an origin and a view angle and nothing else; `!r` then goes through
+  SV_ZoneMove exactly as it always has.  The first cut called SV_SaveLocLoad and
+  three independent reviews took it apart for the same reason: a load restores the
+  save's whole run state, and `.velocity` is part of that.
+
+      SV_ZoneMove zeroes velocity and clears the push carrier (Patch 400, whose
+      comment is "`!r` inside a trigger_push launched you out of the start at the
+      push's speed").  SV_SaveLocPlace writes `e.velocity = rec_sl_vel[r]` and the
+      load clears the ground flag, so there is no friction tick either.
+
+  So the loading version turned the restart key into a prespeed injector: carry
+  speed into the start box -- on a surf map re-entering one while running ARMS
+  you outright, and on a bhop map, where SV_TimerTryArm refuses that under
+  run_t_bhopjump, voiding first and flying in while idle does the same -- press
+  save while the clock reads 0, and every `!r` afterwards hands that velocity back
+  into a freshly armed attempt whose `.rec` opens with it in the seed, no lead-in
+  and no warp record.  pm_verify would PASS it.  Taking only the origin cannot do
+  that, because the placement it feeds zeroes velocity and clears the carrier --
+  and the ground snap below is what stops the same trick returning as height.
+
+  It also drops everything else the file could have decided: the leg
+  (SV_SaveApplyState overwrites run_t_stagerun/run_t_wantstage1 from `state.txt`,
+  so the save was choosing which board your finish filed under), the timer state,
+  the taint, the zone latches, and the recorder lineage.  Nothing here is trusted
+  but a position, and a position is bounded by the zone test below.
+
+  THE ZONE IS THE LEG'S OWN, not "any start zone".  surf_prosurf has five bonus
+  starts; `!r` on bonus 4 must not find the save you left in bonus 1.  Asking
+  SV_ZoneStartAt instead would also re-derive the leg and get it wrong where two
+  starts share geometry -- surf_aircontrol's bonus-2 start is byte-identical to
+  its main one, which is why SV_ZoneMove latches an INDEX (see its essay).
+
+  SV_ZoneOcc, the arm scan's own occupancy test, so a save the timer would not
+  call "in the box" is not one this offers.  At the shipped run_t_hullocc 0 that
+  is Zone_PointInside -- the ORIGIN in the quad, not the hull overlapping it, and
+  the two differ by a hull width at the edges.
+
+  ONLY SAVES TAKEN WITH THE CLOCK STOPPED, through rec_sl_tick, which
+  SV_SaveReadLight already carries -- no new column in the ten parallel rec_sl_
+  arrays and no new key in state.txt.  `!= 0`, NOT `> 0`: `ticks` comes from a
+  file and a negative one is not "not running".  The proxy is faithful because
+  SV_TimerArm zeroes run_t_ticks, so an armed attempt writes `ticks 0`; if arming
+  ever stops doing that, this reads the wrong thing silently.
+
+  NEWEST BY seq, not by index or slot: ids are stable and lowest-free
+  (SV_SaveFreeID), so slot 2 can be newer than slot 7.
+*/
+float(entity e, float z, __out vector org, __out float yaw, __out float pit)
+	SV_SaveLocPickInZone =
+{
+	local float i, blk, base, cnt, bestseq;
+	local vector o, mn, mx, down;
+
+	org = '0 0 0';
+	yaw = 0;
+	pit = 0;
+
+	if (z < 0 || z >= zone_count)
+		return FALSE;
+	if (e.run_ms_phase)
+		return FALSE;		// a resume owns the part file; let !r do its old thing
+
+	// The policy gates ALWAYS, the scan only when stale.  They are a cvar and an
+	// infokey; the directory read is the expensive half and `!r` is a held key.
+	// See SV_SaveLocAllowed for what skipping them silently turned off.
+	if (!SV_SaveLocAllowed(e, TRUE))	// quiet: this is asking, not being told
+		return FALSE;
+
+	blk = SL_Blk(e);
+	if (rec_sl_scanlob[blk] != Lobby_Active() + 1)
+		if (!SV_SaveLocBegin(e, TRUE))
+			return FALSE;
+
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+
+	mn = SV_RunHullMins(e);
+	mx = SV_RunHullMaxs(e);
+
+	bestseq = -1;
+	for (i = 0; i < cnt; i = i + 1)
+	{
+		if (rec_sl_tick[base + i] != 0)
+			continue;
+		if (rec_sl_seq[base + i] <= bestseq)
+			continue;
+
+		// A real local: an array element is not an lvalue fteqcc will swizzle,
+		// the same thing SV_SaveLocList needs one for.
+		o = rec_sl_org[base + i];
+		if (!SV_SaveOriginSane(o))
+			continue;
+		if (!SV_ZoneOcc(z, SV_SaveZonePoint(z, o), mn, mx))
+			continue;
+
+		bestseq = rec_sl_seq[base + i];
+		org     = o;
+		yaw     = rec_sl_yaw[base + i];
+		// Clamped: an edited `angles` pitch reaches the wire, because fixangle
+		// makes the engine transmit .angles rather than .v_angle.  One frame and
+		// cosmetic -- the client sends its own on the next command -- but there
+		// is no reason to pass a file's number through unlooked at.
+		pit     = bound(-90, rec_sl_pit[base + i], 90);
+	}
+
+	if (bestseq < 0)
+		return FALSE;
+
+	/*
+	  GROUND-SNAP AND HULL-TEST THE ANSWER, and REFUSE it if either fails.
+
+	  Same shape SV_ZoneDest ends with -- its essay is where the reasoning lives,
+	  including why trace_fraction cannot answer "did it land on anything" and why
+	  resting exactly on a floor reads solid.  THE FALLBACK IS THE DIFFERENCE and
+	  it is the whole reason this is written here rather than shared: a mapper's
+	  destination falls back to ITSELF, because the mapper put it somewhere the
+	  player fits.  A save carries no such warrant.
+
+	  WITHOUT THE SNAP THE VELOCITY HOLE COMES BACK AS POTENTIAL ENERGY.  A start
+	  slab is typically 256 units tall, a save taken mid-jump inside one still has
+	  `ticks 0`, and parking the player up there with velocity zeroed lets gravity
+	  supply the prespeed instead -- repeatable, and as invisible as the stored
+	  velocity was.  Build 47 deleted SV_ZoneDest's unconditional +1 lift on the
+	  grounds that "a start position that is not the one you settle at is wrong
+	  twice over"; this would have reopened that at up to 250 units and let the
+	  player choose it.
+
+	  WITHOUT THE FIT TEST a save taken DUCKED under an overhang, or made inside
+	  geometry while noclipping, places a standing hull in solid on every press,
+	  with no way out but `!m`.  Neither the picker nor SV_ZoneMoveAt restores
+	  run_forceduck -- this is a placement, not a load -- so the duck that made
+	  that spot legal is gone.
+
+	  The zone test is re-run on the SNAPPED point: a save floating inside the box
+	  whose floor is outside it is not a start you can have.
+	*/
+	down = org - [0, 0, ZONE_SNAP_DROP];
+	tracebox(org, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, e);
+	if (org_z - trace_endpos_z >= ZONE_SNAP_DROP)
+		return FALSE;			// nothing under it at all -- SV_ZoneDest's void case
+
+	org = trace_endpos;
+	tracebox(org, PM_HULL_MINS, PM_HULL_MAXS, org, FALSE, e);
+	if (trace_startsolid || trace_allsolid)
+	{
+		org = org + '0 0 1';
+		tracebox(org, PM_HULL_MINS, PM_HULL_MAXS, org, FALSE, e);
+		if (trace_startsolid || trace_allsolid)
+			return FALSE;
+	}
+
+	/*
+	  THROUGH SV_SaveZonePoint AGAIN, and the answer is what gets RETURNED.
+
+	  Two reasons, and the first cost a run of this arm.  A save standing on a
+	  floor that IS the zone's bottom traces down zero distance -- it is already
+	  resting there -- so the snapped point carries the same sub-ulp shortfall the
+	  raw one did, and testing it unlifted rejects the save all over again.  And
+	  the placement has to agree with the ARM SCAN about where the body is: hand
+	  back a point the zone table calls outside, and at run_zone_hull 0 (the
+	  documented A/B control) SV_ZoneIn degrades to the same point test, answers
+	  "hull outside" on the first frame, and SV_TimerStart fires with the player
+	  standing still on their save.
+	*/
+	org = SV_SaveZonePoint(z, org);
+	return SV_ZoneOcc(z, org, mn, mx);
+};
+
 void(entity e) SV_SaveLocList =
 {
 	local float i, blk, base, cnt;
 	local vector o, v;
 
-	if (!SV_SaveLocBegin(e))
+	if (!SV_SaveLocBegin(e, FALSE))
 		return;
 
 	blk  = SL_Blk(e);

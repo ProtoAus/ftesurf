@@ -9361,20 +9361,26 @@ void(entity e) SV_TimerRestartSeg =
   the caller needs to know, because arming a zone it just restarted into would
   throw the run away by the back door.
 */
-float(entity e, float n) SV_TimerTeleported =
+/*
+  Restart-in-place is exactly one case: mid-run, going back to the start of the
+  segment you are ALREADY on, on your own track, and not the segment the run began
+  from.  That last clause is what keeps it off stage 1 -- going back to where you
+  started is restarting the run, and there voiding is right.
+
+  Nested ifs, not `&&`: QuakeC's && is OP_AND and evaluates both sides, so a
+  guarded zone_track[-1] still reads and still kills the server.
+
+  PATCH 415 LIFTED IT OUT OF SV_TimerTeleported, which is the only caller that
+  acts on it.  `!r` has to know the answer BEFORE the move rather than after: it
+  decides whether this is a restart that keeps the clock (leave it alone) or a
+  reset (where a start-box save may be preferred instead), and by the time
+  SV_ZoneMove has run, the run it would have asked about is gone.  One spelling,
+  because two of a rule this sharp is how they drift.
+*/
+float(entity e, float n) SV_TimerWouldRestartSeg =
 {
 	local float restart;
 
-	/*
-	  Restart-in-place is exactly one case: mid-run, going back to the start of
-	  the segment you are ALREADY on, on your own track, and not the segment the
-	  run began from.  That last clause is what keeps it off stage 1 -- going
-	  back to where you started is restarting the run, and there voiding is
-	  right.
-
-	  Nested ifs, not `&&`: QuakeC's && is OP_AND and evaluates both sides, so a
-	  guarded zone_track[-1] still reads and still kills the server.
-	*/
 	restart = FALSE;
 	if (e.run_t_state == TS_RUNNING)
 	if (n >= 0)
@@ -9385,7 +9391,12 @@ float(entity e, float n) SV_TimerTeleported =
 	if (e.run_t_seg > e.run_t_startseg)
 		restart = TRUE;
 
-	if (restart)
+	return restart;
+};
+
+float(entity e, float n) SV_TimerTeleported =
+{
+	if (SV_TimerWouldRestartSeg(e, n))
 	{
 		SV_TimerRestartSeg(e);
 		return TRUE;

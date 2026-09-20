@@ -835,7 +835,22 @@ void() SV_EntInfo =
   Stand at zone n's destination.  Silent: the chat commands go through here
   too, and they say their own, much shorter thing.
 */
-void(float n) SV_ZoneMove =
+/*
+  PATCH 415: `at` is a destination the CALLER chose, inside zone n.
+
+  `!r` uses it to land on the save you left in the box instead of on the map's
+  teleport destination.  Everything else about the move is unchanged and has to
+  be -- the velocity zero, the carrier clear, the void-or-restart decision, the
+  warp record, the leg latch and the arm are the whole reason `!r` goes through
+  here rather than placing the player itself.  A caller that passes a point it
+  has not zone-tested gets whatever that point is, so test it first.
+
+  havepit separates "no pitch" from "pitch 0": a destination entity's pitch is
+  authoring noise and is deliberately levelled (see SV_ZoneDest), but a SAVE's
+  pitch is what the player set up with and 0 is a legitimate value of it.
+*/
+void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
+	SV_ZoneMoveAt =
 {
 	local vector dest;
 	local float  yaw, haveyaw;
@@ -844,7 +859,21 @@ void(float n) SV_ZoneMove =
 	// Patch 382: first -- SV_TimerTeleported below can write `restart` or void.
 	SV_SpecRelease(self, "zone");
 
-	dest = SV_ZoneDest(n, yaw, haveyaw);
+	/*
+	  NOT CALLED AT ALL when the caller brought its own point.  SV_ZoneDest is a
+	  find() by targetname plus two traceboxes, it latches zone_td_kind[n] to
+	  ZTD_NONE when a destination entity is missing, and it leaves the trace_*
+	  globals set -- all of it discarded a line later if the answer is overwritten,
+	  on the most frequent gesture there is.
+	*/
+	if (haveat)
+	{
+		dest    = at;
+		yaw     = atyaw;
+		haveyaw = TRUE;
+	}
+	else
+		dest = SV_ZoneDest(n, yaw, haveyaw);
 
 	/*
 	  Build 12: ONE teleport does not void, and it is the one you asked for.
@@ -876,7 +905,7 @@ void(float n) SV_ZoneMove =
 
 	if (haveyaw)
 	{
-		self.angles   = [0, yaw, 0];
+		self.angles   = [havepit ? atpit : 0, yaw, 0];
 		self.v_angle  = self.angles;
 		self.fixangle = TRUE;
 	}
@@ -928,6 +957,11 @@ void(float n) SV_ZoneMove =
 	if (!samestage)
 	if (zone_type[n] == ZONE_START || zone_type[n] == ZONE_STAGE)
 		SV_TimerArm(self, n);
+};
+
+void(float n) SV_ZoneMove =
+{
+	SV_ZoneMoveAt(n, '0 0 0', 0, 0, FALSE, FALSE);
 };
 
 /*
@@ -1197,11 +1231,19 @@ void() SV_ZoneCheckpoints =
   ground-snapped before you arrive.  A row that reads `none` is a legacy map
   falling back to the box floor.
 */
-void(string word, string what, float n) SV_ZoneSayWhere =
+/*
+  `kindover` is Patch 415's: the bracket names where the destination CAME FROM,
+  and once `!r` can place you on your own save that is no longer always the
+  zone's own answer.  Saying "teleDestPos" about a point the zone never supplied
+  is the kind of small lie that costs someone an hour later.  Empty = derive it.
+*/
+void(string word, string what, float n, string kindover) SV_ZoneSayWhere =
 {
 	local string kind;
 
-	if (zone_td_kind[n] == ZTD_POS)
+	if (kindover != "")
+		kind = kindover;
+	else if (zone_td_kind[n] == ZTD_POS)
 		kind = "teleDestPos";
 	else if (zone_td_kind[n] == ZTD_NAME)
 		kind = zone_td_name[n];
@@ -1223,11 +1265,19 @@ void(string word, string what, float n) SV_ZoneSayWhere =
   request is standing once the word has been applied.
 */
 float(entity e, string word, float n) SV_TimerChatLeg;
+// Patch 415: `!r` prefers a spot left in the leg's own start box.  Both live in
+// files that compile after this one -- sv_timer.qc and sv_saveloc.qc -- so they
+// arrive the way SV_TimerVoid and the rest above do.
+float(entity e, float n) SV_TimerWouldRestartSeg;
+float(entity e, float z, __out vector org, __out float yaw, __out float pit)
+	SV_SaveLocPickInZone;
 
 void(string word, float n) SV_ZoneChatCommand =
 {
 	local float track, seg, z;
 	local string what;
+	local vector sorg;              // Patch 415: the save `!r` landed on, if any
+	local float  syaw, spit;
 
 	if (!zone_loaded)
 		SV_ZoneFrame();
@@ -1282,8 +1332,44 @@ void(string word, float n) SV_ZoneChatCommand =
 		*/
 		if (self.run_leg_zone >= 0 && self.run_leg_zone < zone_count)
 		{
+			/*
+			  PATCH 415 -- IF YOU LEFT A SAVE IN THIS BOX, THAT IS THE SPOT YOU
+			  MEANT.
+
+			      "can you make it when you !r, it loads the last save you placed
+			       in the start zone if you have one"
+
+			  THE SAVE SUPPLIES A DESTINATION AND NOTHING ELSE.  This is the same
+			  SV_ZoneMove `!r` has always run -- same velocity zero, same carrier
+			  clear, same void-or-restart, same warp record, same leg latch, same
+			  arm -- with the save's origin and view angle in place of the map's
+			  teleport destination.  It is NOT a save load, and the difference is
+			  not cosmetic: a load restores `.velocity` too, which turns the
+			  restart key into a prespeed injector.  See SV_SaveLocPickInZone.
+
+			  ONLY ON THE RESET PATH.  `!r` on a stage you did not start from is a
+			  restart that KEEPS THE RUN CLOCK RUNNING and stays ranked
+			  (SV_TimerRestartSeg); moving the destination under it would land the
+			  surviving run somewhere it did not ask to be.  SV_TimerWouldRestartSeg
+			  is that exact test, asked here rather than inferred, because
+			  SV_ZoneMove answers it by acting on it.
+
+			  NO SAVE, NO CHANGE: the fall-through below is the line that has
+			  always been here, so `!r` on a map you never saved on is untouched.
+
+			  Nested ifs, not `&&`: this file's rule, and the picker writes three
+			  __out parameters that must not be evaluated speculatively.
+			*/
+			if (!SV_TimerWouldRestartSeg(self, self.run_leg_zone))
+			if (SV_SaveLocPickInZone(self, self.run_leg_zone, sorg, syaw, spit))
+			{
+				SV_ZoneMoveAt(self.run_leg_zone, sorg, syaw, spit, TRUE, TRUE);
+				SV_ZoneSayWhere(word, what, self.run_leg_zone, "your save");
+				return;
+			}
+
 			SV_ZoneMove(self.run_leg_zone);
-			SV_ZoneSayWhere(word, what, self.run_leg_zone);
+			SV_ZoneSayWhere(word, what, self.run_leg_zone, "");
 			return;
 		}
 	}
@@ -1302,5 +1388,5 @@ void(string word, float n) SV_ZoneChatCommand =
 	SV_TimerChatLeg(self, word, n);
 
 	SV_ZoneMove(z);
-	SV_ZoneSayWhere(word, what, z);
+	SV_ZoneSayWhere(word, what, z, "");
 };
