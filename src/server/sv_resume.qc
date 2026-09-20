@@ -605,6 +605,18 @@ void(entity e) SV_MsRecAttach =
 	local float ok;
 	local string oldroot;
 
+	/*
+	  Patch 416: THE ANSWER BIT GOES DOWN BEFORE ANY OF THE RETURNS BELOW.
+
+	  SV_SaveApplyState has already restored run_t_flags from the parked save,
+	  and session one's TF_NONCE is in it.  SV_RecNonce clears it -- but four of
+	  the paths through this function never reach it, and one of those
+	  (run_ms_norec) is a session that will finish and SUBMIT with the bit set,
+	  asserting that a client answered a number nobody ever issued.  Cleared
+	  here as well as there because this is the funnel every one of them passes.
+	*/
+	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
+
 	if (e.run_ms_norec)
 	{
 		if (e.rec_ms_dst >= 0)
@@ -678,6 +690,17 @@ void(entity e) SV_MsRecAttach =
 	e.rec_rec_rid = "";
 	if (ms_rid != "")
 		e.rec_rec_rid = strzone(ms_rid);
+
+	/*
+	  Patch 416: A RESUMED SESSION GETS ITS OWN NONCE, written into the body.
+
+	  Here rather than in SV_MsApply because this is the function that makes the
+	  recorder live again, and SV_RecNonce refuses on a dead one -- and because
+	  both branches above converge here, so the buffer case (a cold rebuild from
+	  the slot) is covered by the same line as the stream case.  After the rid,
+	  which it hashes.
+	*/
+	SV_RecNonce(e, TRUE);
 };
 
 // The splits back to the client (Timer_ResumeSeed), newest first, under the

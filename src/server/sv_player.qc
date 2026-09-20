@@ -933,6 +933,23 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_ghost")   { SV_GhostSet(self, stof(argv(1)));           return; }
 
+	/*
+	  Patch 416: the run nonce, answered.  The server stuffed `rec_nonce <hex>`
+	  when this run opened; this is the client saying it back.  Sets TF_NONCE on
+	  a match and does nothing at all otherwise -- see SV_RecNack for why a
+	  mismatch is silent rather than a fault.
+	*/
+	if (c == "rec_nack")        { SV_RecNack(self, argv(1));              return; }
+
+	/*
+	  Patch 416: "I am recording and I have no nonce."  A retry re-publishes at
+	  the instant the client is still loading and cannot receive it, so the
+	  client asks a second later instead of the server guessing when it is
+	  ready.  Answers only with a number this run already has -- it draws
+	  nothing, changes no flag, and says nothing when there is none.
+	*/
+	if (c == "rec_nonce_ask")   { SV_RecNonceAsk(self);                   return; }
+
 	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.
 	if (c == "rec_spec")        { SV_SpecCmd(self, stof(argv(1)));        return; }

@@ -274,7 +274,13 @@ HEAD_V8 = HEAD_V7
 
 #   pmpin   build 87.  The physics pin, name=value at %.9g.  Absent is legal (an
 #           engine older than Patch 346): the physics are then unknown.
-HEAD_V9 = HEAD_V8 | {"pmpin"}
+#   nonce   Patch 416.  The 128 bits the server picked when this session opened,
+#           32 lowercase hex.  Additive on the `leg`/`mapcrc` precedent and so
+#           legal in v9 and v10 alike; absent on every file written before 416
+#           and on one whose engine has no SHA256, which is why its absence is
+#           not a finding.  A LATER SESSION'S is a `nonce <mt> <hex>` RECORD in
+#           the body, not a second header key -- see the body checks.
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce"}
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -341,6 +347,11 @@ PAUSE_WHY = PAUSE_MS + ("retry", "load")     # a map_restart / a cold save-load
 # taint); set iff the file holds a `spec` window.  An unknown <why> is a newer
 # writer: a note.
 TF_SPEC = 32768
+# Patch 416: the client answered the run's nonce.  Marker only, like the two
+# above.  Set implies the file states a nonce; CLEAR IMPLIES NOTHING -- every
+# recording written before 416, and every one made by a client that simply did
+# not answer, has it down.
+TF_NONCE = 131072
 SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
             "setpos", "respawn", "move", "notarget")
 # The edge identity: <ticks> <mt> <carry> <ox oy oz> <vx vy vz> <fl>, token 2..11.
@@ -706,6 +717,27 @@ def check_rec(path, verbose=False):
         # way to know is to be told.
         r.info["zones"] = "not stated"
 
+    # ---- the run nonce, Patch 416 -------------------------------------------
+    #
+    # SHAPE ONLY, and there is nothing else a checker could say about it: the
+    # value is 128 bits the server drew and nothing outside that server can
+    # recompute or predict it.  What the shape catches is the failure this will
+    # actually have -- a half-applied patch writing an empty or truncated key,
+    # which reads to every later consumer as a nonce that simply is not there.
+    #
+    # ABSENCE IS NOT A FINDING, on the `zones` precedent and for a stronger
+    # reason: every file written before Patch 416 lacks it, so a note on every
+    # archived run is a note nobody will read twice.  It is REPORTED, because
+    # "this run had no nonce" and "this run's nonce was not answered" are
+    # different facts and only the file can say which.
+    nonce = head.get("nonce")
+    if nonce is not None:
+        if not re.fullmatch(r"[0-9a-f]{32}", nonce.strip()):
+            r.fault("nonce %r is not 32 lowercase hex digits" % nonce)
+        r.info["nonce"] = nonce.strip()
+    else:
+        r.info["nonce"] = "not stated"
+
     # ---- the input trace's horizon, build 82 --------------------------------
     #
     # `instart <mt> <start>`.  Parsed here so the `in` rows below can be checked
@@ -832,6 +864,7 @@ def check_rec(path, verbose=False):
     pauses = []             # (lineno, mt, ticks, why)
     sessions = []           # (lineno, n, mt, ticks)
     open_pause = None       # the pause no session has answered yet
+    renonces = []           # Patch 416: body `nonce` records (lineno, mt, hex)
     cur_horizon = in_start
     in_paused = 0           # `in` rows / samples inside a pause (reported once)
     # Patch 382: spectate windows.
@@ -1254,6 +1287,41 @@ def check_rec(path, verbose=False):
                 cur_horizon = smt
                 in_mt = None
                 open_pause = None
+        elif kind == "nonce" and ver >= 10:
+            # Patch 416: a SECOND client was handed this run -- a Multi-Session
+            # resume, which can be another machine days later and never saw the
+            # header's nonce.  Written by SV_RecNonce from SV_MsRecAttach.
+            #
+            # IT SITS INSIDE THE OPEN PAUSE AND THAT IS CORRECT, unlike a sample
+            # or an `in` row, which fault there.  Those say something moved; this
+            # says a client attached, which is exactly what happens between the
+            # park and the first move of the new session.  It deliberately does
+            # not open the session: a session is opened by the first MOVE
+            # (SV_RecSession), and a bookkeeping line that opened one would put
+            # the pause's closing horizon in the wrong place for pm_verify.
+            #
+            # v10 AND NOT v9, matching `pause` above: the record can only be
+            # written by a resume, a resume always parks first, and a park makes
+            # the file v10.  The first cut gated it at v9, where `pause` is not
+            # parsed at all -- so its position check could never have fired.
+            a = tok[1:]
+            if len(a) != 2 or not is_int(a[0]):
+                r.fault("line %d: 'nonce' takes <mt> <hex32>" % (lineno + 1))
+            elif not re.fullmatch(r"[0-9a-f]{32}", a[1]):
+                r.fault("line %d: nonce %r is not 32 lowercase hex digits"
+                        % (lineno + 1, a[1]))
+            else:
+                # OUTSIDE AN OPEN PAUSE is the only way this record can be
+                # wrong, and the first cut checked something weaker -- whether
+                # ANY pause had been seen -- which said nothing at all about a
+                # `nonce` written mid-session in a file that had resumed once
+                # before.  `open_pause` is the value this comment describes.
+                if open_pause is None:
+                    r.note("line %d: a body 'nonce' outside an open 'pause' -- "
+                           "the writer reaches this record only from a resume, "
+                           "and the header's key is where a first session's "
+                           "nonce goes" % (lineno + 1))
+                renonces.append((lineno + 1, int(a[0]), a[1]))
         elif kind == "zseed" and ver >= 9:
             # build 88: the timer latches the start packet left, for pm_verify.
             # Additive (no bump); written once, before the first `in` row.
@@ -1546,6 +1614,13 @@ def check_rec(path, verbose=False):
             if missing:
                 r.fault("line %d: 'zseed' lacks %s" % (ln, " ".join(missing)))
         r.info["zseed"] = "yes" if zseeds else "no"
+        # Patch 416.  One per resumed session; the LAST is the one in force, so
+        # the count and the last value are what a reader needs.  Absent leaves
+        # the key out entirely: the header's `nonce` already says what a file
+        # with one session has.
+        if renonces:
+            r.info["renonce"] = "%d (last %s at mt %d)" % (
+                len(renonces), renonces[-1][2], renonces[-1][1])
         if pmpin is not None and not seeds:
             r.note("pmpin is present and there is no 'seed' -- a replay has no "
                    "exact starting state")
@@ -2154,6 +2229,31 @@ def check_rec(path, verbose=False):
                 if spec_opened and not (fv & TF_SPEC):
                     r.fault("%d spec window(s) in the stream, but header flags %d "
                             "does not say spectated" % (spec_opened, fv))
+                # Patch 416: the answer bit and the number it answers, ONE WAY
+                # ONLY.  TF_NONCE says a client echoed the nonce this session
+                # was issued, so a file carrying it must state one somewhere --
+                # header key or body record.  The four ways a writer can produce
+                # the contradiction are all real and were all found by review: a
+                # resume that returned before issuing, a server with no SHA256,
+                # a line-cap return, and a cold load onto a different lineage.
+                #
+                # THE CONVERSE IS NOT A FAULT and must not become one.  A file
+                # can state a nonce and carry no bit for the most ordinary
+                # reason there is -- the client was older than Patch 416, or
+                # simply did not answer -- and that is the silence the whole
+                # design refuses to punish.
+                #
+                # v9 and up only: a v5 file (a lifted stage, or the client-side
+                # lobby writer in cl_lobbytime.qc) takes its flags from a stat
+                # and has no header key to state, so the pair cannot be checked
+                # there and its absence is not a finding.
+                if (ver >= 9 and (fv & TF_NONCE)
+                        and r.info.get("nonce") == "not stated"
+                        and not renonces):
+                    r.fault("header flags %d says the run nonce was answered, but "
+                            "the file states no nonce -- no header key and no "
+                            "'nonce' record" % fv)
+                r.info["nonce_answered"] = "yes" if (fv & TF_NONCE) else "no"
             r.info["spectated"] = "yes" if (fv & TF_SPEC) else "no"
 
             # Build 58.  Reported, never faulted -- see TF_NOJOURNAL above.
@@ -2710,6 +2810,12 @@ def emit(r, verbose):
                   "rides", "inend",
                   # Build 87 (v9), same edit as the code that assigns them.
                   "pmpin", "seed", "zseed", "pms", "pes", "portals",
+                  # Patch 416, same edit as the code that assigns them -- see the
+                  # paragraph above, which this tuple has swallowed a field from
+                  # four builds running.  `nonce` prints "not stated" rather than
+                  # nothing, because a run with no nonce and a run whose nonce
+                  # went unanswered are different facts.
+                  "nonce", "renonce",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd"):
             if k in r.info:

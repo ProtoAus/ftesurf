@@ -28,7 +28,10 @@ VALUE_LIMIT = 1e9       # |t|, origin or velocity beyond this is malformed; keep
 
 HEAD_KEYS = frozenset((
     "map track leg startseg tickrate movetickrate clock owner runid mapcrc "
-    "zonesrc zonecrc zonerule instart startjit flags pmpin").split())
+    "zonesrc zonecrc zonerule instart startjit flags pmpin "
+    # Patch 416: the run nonce.  Listed so it does not show on the owner's run
+    # page as an unknown key -- it is a normal header key, not a finding.
+    "nonce").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
 COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
            "spec")     # spec: windows, parsed before the counted fallback

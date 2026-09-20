@@ -1700,6 +1700,10 @@ vector  input_cursor_trace_start, input_cursor_trace_endpos;
 .float  rec_mc_n, rec_mc_bad, rec_mc_badrow;
 .float  rec_mc_sup;                 // Patch 405: commands that sent cursor data
                                     // instead of counts -- the off switch, seen
+// Patch 416: the run nonce.  See SV_RecNonce for what it is for and what it is
+// worth.  Zoned, freed and rebuilt at every open.
+.string rec_rec_nonce;              // the 32 hex chars in force for this run
+string  run_nonce_seed;             // per-boot, zoned; the seed under all of them
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -2335,6 +2339,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             file before build 76 meant
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
+    nonce <hex32>           Patch 416.  The 128 bits the server picked when this
+                            session opened and told the running client.  Additive
+                            by the rule above; absent on every file written before
+                            416 and on one whose engine has no SHA256.  The
+                            matching answer is not a record: it is TF_NONCE in
+                            `flags`.  A LATER SESSION HAS ITS OWN, written into
+                            the body as `nonce <mt> <hex32>` -- see SV_RecNonce
     mapcrc <hex>            v4 key, build 73: the BSP THIS SERVER loaded
     zonesrc local|online|bsp  build 81.  WHICH OF THE THREE zone sources built
                             the table this run was timed against
@@ -2875,6 +2886,35 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             seed) -- though their <row> names the row before it.
                             engine pm_verify replays Multi-Session pauses (Patch
                             367) and refuses retry | load.
+    nonce <mt> <hex32>      Patch 416, additive (no bump).  A SECOND client was
+                            handed this run: a Multi-Session resume, which can be
+                            another machine days later and never saw the header's
+                            nonce.  The last one written is the one in force, and
+                            TF_NONCE in `flags` answers only the last.  Nothing
+                            counts these: `end` does not grow a field, so a v9 or
+                            v10 reader that skips the record loses nothing but
+                            this.
+
+                            <mt> IS THE NEW SESSION'S EPOCH, not the pause's.
+                            run_movetick is cumulative per MAP and the engine
+                            resets it in SV_SpawnServer, so this record -- the
+                            only one that can sit between a `pause` and the
+                            `session` that re-establishes the epoch -- carries a
+                            number BELOW the pause above it and equal to the
+                            session below it.  Measured, `p416/ms.rec` 766-768:
+                            pause 826, nonce 466, session 2 466.  A reader that
+                            assumes the body's <mt> column is monotone reads it
+                            wrong.
+
+                            A RETRY OR A SAVE-LOAD WRITES NONE, and does not mean
+                            nothing happened: the recorder re-publishes the nonce
+                            already in force (SV_RecNoncePublish) so the client
+                            can answer again, because a retry destroys the CSQC VM
+                            and takes the client's copy with it.  A COLD load is
+                            the exception worth knowing -- it rebuilds the file
+                            from a save slot, so the header, nonce included, is
+                            the SAVED run's, and the server adopts it rather than
+                            keeping a number this file does not state
     stage <seg> <ticks>     a stage boundary was crossed
     board <t> <n> <nx ny nz> <vx vy vz>
                             v4.  The engine's board counter moved to <n>: you
@@ -3443,6 +3483,264 @@ void(entity e) SV_RecSession =
 };
 
 /*
+  PATCH 416: THE PER-RUN NONCE.  128 bits the server picks when a run opens,
+  written into this file's header and stuffed to the one client that is running
+  it, which answers `cmd rec_nack <hex>` and sets TF_NONCE.
+
+  WHAT IT IS FOR, because on its own it catches nobody.  Every taint bit above
+  is a statement about what a client CLAIMED -- its ruleset, its map hash, its
+  input profile -- and so is worth what the client is worth.  This is the first
+  thing in the chain a client cannot answer by asserting: the number did not
+  exist until the run started, and it exists nowhere else.  That buys two
+  things, and neither is a verdict:
+
+    1. A CLIENT THAT ANSWERS IS A CLIENT THAT COULD HAVE.  The plan's open
+       question about uploading evidence is not "did this run come with a
+       journal" but "was the client ASKED and able".  A run with TF_NONCE and no
+       journal is a client that would not; a run without it is a client that
+       could not -- any build before this one.  Those are the same silence
+       today and a demotion that cannot tell them apart would demote every
+       legacy client, which is exactly the skew window sv_mapcheck shipped.
+       So TF_NONCE is a MARKER, like TF_MULTISESSION and TF_SPEC: not a class,
+       not in TF_UNCERT, and nothing is refused for its absence.
+
+       AND THE ATTACKER PICKS WHICH SILENCE THEY PRESENT, which is the honest
+       limit of this and was put to the patch by its own review.  Echoing the
+       number is free for a patched client, and so is staying quiet and sitting
+       in the legacy bucket.  So the bit does not separate honest from dishonest
+       and must never be asked to: what it separates is a POPULATION.  While
+       pre-416 clients exist, absence means nothing; once they do not, absence
+       is a client choosing to look old, which is a different conversation and a
+       later one.  Nothing here may be wired to a demotion before then.
+
+    2. IT IS A REFERENT ANY LATER EVIDENCE CAN BE BOUND TO -- A LOWER BOUND ON
+       WHEN THAT EVIDENCE WAS MADE, AND NOTHING MORE.  The client notes it into
+       its own raw input journal (`in_journal_note nonce <hex>`), which stamps
+       it at a position in the stream.  What that rules out is a journal written
+       BEFORE the run: a library of pre-made ones cannot carry a number that did
+       not exist yet.  What it does not rule out is the journal being assembled
+       afterwards, at leisure, with the nonce in hand -- and `in_journal_note`
+       is an ungated console command, so on a hostile client the note's position
+       is chosen by the attacker too.  The note is therefore a convenience for
+       honest clients and not, on its own, evidence against a dishonest one.
+       Making it evidence means the ENGINE owning both ends of it, which is the
+       next patch's job and not this one's.
+
+  STRENGTH, AND THE FIRST VERSION OF THIS PARAGRAPH WAS WRONG IN THE DIRECTION
+  THAT FLATTERS THE PATCH.  It said the seed was hard to predict because an
+  attacker would have to know both the boot second and how many draws the server
+  had made since, "which moves with every run every player takes".  THE DRAW
+  COUNT IS PUBLISHED.  `startjit` two lines above writes the randomized start's
+  offset at four decimals, and with run_startjitter 2 a draw's step is 4/32768 =
+  0.000122 -- so each printed dx and dy names its own random() exactly, two
+  draws per run, in the same header.  A player does not even need the file: the
+  offset is applied to their own body.  random() is (rand()&0x7fff)/0x8000 and
+  rand() is seeded once from time(0) at COM_Init (common.c:6861), so enough
+  observed draws recover the stream.
+
+  So: this is a nonce a determined attacker can predict, and it is worth having
+  anyway -- prediction buys them nothing here, because the server sends them the
+  number regardless.  What the same leak DOES buy is `startjit` itself, which
+  exists precisely so a run cannot be replayed from a known start.  That is a
+  pre-existing hole this patch found rather than made, and it is written down
+  here because a later patch that leans on either one needs to know.
+
+  The upgrade for both is an engine patch exposing Sys_RandomBytes to this VM
+  (it is already there: sys_linux.c, sys_win.c, used for master challenges).
+  Done this way so the whole patch ships with a progs deploy, which is routine,
+  instead of an engine one, which is not.
+
+  `run_nonce_seed` is a progs global, so it is rebuilt at every MAP LOAD and not
+  once per boot.  Said plainly for the same reason as the rest of this note.
+
+  ONE PER SESSION AND NOT ONE PER RUN, and the difference shows up in exactly
+  one place: a Multi-Session resume (sv_resume.qc) can be a different machine
+  days later, and that client never saw the header's nonce.  So the resume
+  issues a fresh one, written into the body as `nonce <mt> <hex>` -- which is
+  also the only honest thing to write, since the two sessions were answered by
+  two clients and the file should say so.  A retry or a save-load keeps the one
+  in force: same client, same connection, nothing to re-establish.
+*/
+void(entity e, float body) SV_RecNonce =
+{
+	local string n;
+	local float was;
+
+	/*
+	  THE BIT GOES DOWN BEFORE ANYTHING ELSE HAPPENS, and it is the first thing
+	  here because every other line below can fail.  TF_NONCE says "the client
+	  answered THIS session's number"; a session that could not issue one must
+	  not inherit an answer from the session before it -- and a resumed run's
+	  flags are restored from its parked save, which carries the bit.  Reviewed
+	  into existence: six paths reached a finish with a stale bit set, one of
+	  them (`run_ms_norec`) a session in which no nonce was ever issued.
+	*/
+	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
+
+	if (!SV_RecLive(e))
+		return;
+
+	/*
+	  LATCHED ON THE LENGTH AND NOT ON `!= ""`.  strzone() of the null string an
+	  engine without SHA256 returns is a real, non-zero allocation whose CONTENT
+	  still compares equal to "" -- so an emptiness test never latches, and this
+	  would allocate one of them per run open, forever, on exactly the engine
+	  the rest of this function is careful to handle.
+	*/
+	if (strlen(run_nonce_seed) < 32)
+		run_nonce_seed = strzone(digest_hex("SHA256",
+		                         sprintf("%s|%g|%g|%g|%g|%g|%s",
+		                                 strftime(TRUE, "%Y%m%d-%H%M%S"), time,
+		                                 random(), random(), random(), random(),
+		                                 cvar_string("sv_port"))));
+
+	n = strtolower(digest_hex("SHA256", sprintf("%s|%s|%s|%g|%g|%g",
+	                                            run_nonce_seed, e.rec_rec_rid,
+	                                            infokey(e, "guid"),
+	                                            e.run_movetick, time, random())));
+	/*
+	  CHECKED AND NOT ASSUMED, on FS_GuidId's precedent (sh_defs.qc): an engine
+	  whose digest_hex is absent or refuses "SHA256" returns "", and a run whose
+	  header carried four characters of nonce would look like a run with one.
+	  No nonce is a state this patch already handles everywhere; a short one is
+	  not.
+	*/
+	if (strlen(n) < 32)
+		return;
+	n = substring(n, 0, 32);
+
+	/*
+	  THE LINE FIRST, THE LATCH SECOND, and the order is SV_RecWarp's argument:
+	  SV_RecPut fails silently at the line cap and on a closed recorder, so a
+	  latch set before the write would leave the server holding a nonce the file
+	  does not name -- and the client would then ack a number no reader can find.
+	  Keeping the previous one in force is the right failure: it is still a
+	  number the file states.
+	*/
+	was = e.rec_rec_lines;
+	if (body)
+		SV_RecPut(e, sprintf("nonce %d %s", e.run_movetick, n));
+	else
+		SV_RecPut(e, sprintf("nonce %s", n));
+	if (e.rec_rec_lines == was)
+		return;
+
+	if (e.rec_rec_nonce != "")
+		strunzone(e.rec_rec_nonce);
+	e.rec_rec_nonce = strzone(n);
+	stuffcmd(e, sprintf("rec_nonce %s\n", n));
+};
+
+/*
+  The client's answer.  `cmd rec_nack <hex>` -- see SV_ParseClientCommand.
+
+  SILENT ON A MISMATCH, and deliberately.  A stale echo is ordinary: the nonce
+  is re-issued on a resume and the old one can still be in flight, and a player
+  who types the command in their own console is answering with nothing.  None of
+  those is a fault to report, and a print here would be a print any client could
+  ask for at any rate.  The bit is what the file records, and no bit is the
+  answer to all three.
+*/
+void(entity e, string got) SV_RecNack =
+{
+	if (!SV_RecLive(e))
+		return;
+	if (e.rec_rec_nonce == "" || got != e.rec_rec_nonce)
+		return;
+	e.run_t_flags = e.run_t_flags | TF_NONCE;
+};
+
+/*
+  A REWIND HAS TO RE-ESTABLISH BOTH HALVES, and the review found four ways it
+  did not.
+
+  WHY THE CLIENT HAS TO BE TOLD AGAIN.  A `retry` is a map_restart: it destroys
+  the CSQC VM, and Rec_ViewInit clears the client's nonce with it.  Nothing
+  re-issues one (a retry keeps the run and its header), so the run would finish
+  with the file asserting an answer that the client running it could not have
+  given -- and its journal naming no nonce at all.
+
+  WHY A COLD LOAD ADOPTS THE FILE'S.  A cold load rebuilds the recording from a
+  save slot, so the header this run now carries is the SAVED run's, nonce and
+  all.  The server would otherwise keep holding the number it drew for the run
+  it has just discarded, and the `SV_RecNonce` rule "the client would then ack a
+  number no reader can find" would be broken by the one path that changes the
+  file underneath it.  Drawing a fresh one instead would mean a body record on a
+  load, which the grammar says belongs to a resumed SESSION; adopting is both
+  simpler and truer -- the file states a nonce and now so do we.
+
+  A pre-416 save has no such key, and then this run has no nonce: the string is
+  emptied so nothing can be acked, which is the honest reading of a header that
+  does not name one.
+
+  THE BIT ALWAYS GOES DOWN.  Whatever the client answered belongs to the run as
+  it was before the rewind; re-earning it costs one round trip.
+*/
+void(entity e, float cold) SV_RecNoncePublish =
+{
+	local float i;
+	local string l;
+
+	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
+
+	if (cold)
+	{
+		if (e.rec_rec_nonce != "")
+			strunzone(e.rec_rec_nonce);
+		e.rec_rec_nonce = "";
+		/*
+		  Bounded by `begin` and not by a line count, on the flags scan's rule
+		  directly below in SV_RecRewind: the header's keys are order-free.
+
+		  A STREAMED cold load has no buffer to read -- its header is on disk
+		  and rec_rec_buf is -1 -- so it ends here with no nonce, which is the
+		  honest outcome rather than a gap: nothing can be acked, the bit stays
+		  down, and the file's own header remains the only claim about the run.
+		  A load is segmented and off the ranked board in any case.
+		*/
+		if (e.rec_rec_buf < 1)
+			return;
+		for (i = 0; i < e.rec_rec_lines && i < 64; i = i + 1)
+		{
+			l = bufstr_get(e.rec_rec_buf, i);
+			if (l == "begin")
+				break;
+			if (substring(l, 0, 6) == "nonce ")
+			{
+				e.rec_rec_nonce = strzone(substring(l, 6, 32));
+				break;
+			}
+		}
+	}
+
+	if (e.rec_rec_nonce == "")
+		return;
+	stuffcmd(e, sprintf("rec_nonce %s\n", e.rec_rec_nonce));
+};
+
+/*
+  The client asking for the number it should already have.  `cmd rec_nonce_ask`.
+
+  It exists because a stuffcmd is fire-and-forget and there is one case where it
+  reliably misses: a `retry` is a map_restart, so the republish above happens
+  while that client is still loading and has no CSQC registered to receive it.
+  Measured -- p416rewind.cfg's R3 failed exactly there before this existed.
+
+  IT DRAWS NOTHING AND GRANTS NOTHING.  A number already in force, to the client
+  already running the run, with no flag touched: the answer still has to come
+  back through SV_RecNack.  Silent when there is nothing to send, on that
+  function's rule -- a client that asks at the wrong moment is not a fault.
+*/
+void(entity e) SV_RecNonceAsk =
+{
+	if (!SV_RecLive(e))
+		return;
+	if (e.rec_rec_nonce == "")
+		return;
+	stuffcmd(e, sprintf("rec_nonce %s\n", e.rec_rec_nonce));
+};
+
+/*
   BUILD 87 (v9): the three state tracks the engine publishes after each move --
   `pm` (the pin changed), `pe` (the physent list changed), `portal` (the mover
   crossed a linked_portal_door).  Each is written on CHANGE and bound to <row>,
@@ -3538,6 +3836,11 @@ void(entity e) SV_RecOpen =
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
 	e.rec_mc_badrow = -1;
 	e.rec_mc_sup = 0;                   // Patch 405
+	if (e.rec_rec_nonce != "")          // Patch 416: the last run's, freed here
+	{
+		strunzone(e.rec_rec_nonce);
+		e.rec_rec_nonce = "";
+	}
 	e.rec_rec_buf = -1;
 	e.rec_rec_fh = -1;
 	e.rec_rec_stream = FALSE;
@@ -3713,6 +4016,10 @@ void(entity e) SV_RecOpen =
 		e.rec_rec_rid = strzone(sprintf("%s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"),
 		                                e.run_t_slot));
 	SV_RecPut(e, strcat("runid ", e.rec_rec_rid));
+
+	// Patch 416: after `runid`, which it hashes.  The header's nonce is session
+	// one's; a resume writes its own into the body.  See SV_RecNonce.
+	SV_RecNonce(e, FALSE);
 
 	/*
 	  BUILD 73: WHICH BYTES OF THE MAP THIS RUN'S PHYSICS ACTUALLY RAN ON.
@@ -4141,6 +4448,12 @@ void(entity e) SV_RecDiscard =
 	if (e.rec_rec_rid != "")
 		strunzone(e.rec_rec_rid);
 	e.rec_rec_rid = "";                 // an unrecorded next run posts no runid
+	// Patch 416: beside its sibling.  A client edict is recycled without being
+	// cleared, so a player who drops mid-run would otherwise leave a zoned
+	// nonce held on that slot until somebody else's run opened.
+	if (e.rec_rec_nonce != "")
+		strunzone(e.rec_rec_nonce);
+	e.rec_rec_nonce = "";
 };
 
 /*
@@ -4814,6 +5127,7 @@ float(entity e, string path, float mark, float serial,
 				{
 					SV_RecRestore(e, mark, samples, padn, cps);
 					SV_RecGenPush(e, mark);
+					SV_RecNoncePublish(e, FALSE);   // Patch 416: same file
 					dprint(sprintf("timer: load warm, cut to %s bytes\n", itos(b)));
 					return TRUE;
 				}
@@ -4861,6 +5175,7 @@ float(entity e, string path, float mark, float serial,
 	SV_RecRestore(e, mark, samples, padn, cps);
 	SV_RecGenReset(e);
 	e.rec_rec_serial = SV_RecNextSerial();
+	SV_RecNoncePublish(e, TRUE);        // Patch 416: a streamed cold load keeps none
 	rec_rewind_cold = TRUE;
 	return TRUE;
 };
@@ -5073,6 +5388,7 @@ float(entity e, string path, float mark, float serial,
 		e.rec_rec_leg   = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 		e.run_t_flags   = e.run_t_flags | TF_RECORDING;
 		SV_RecRecount(e);            // build 87
+		SV_RecNoncePublish(e, FALSE);   // Patch 416: same file, same nonce, tell it again
 		return TRUE;
 	}
 
@@ -5169,6 +5485,9 @@ float(entity e, string path, float mark, float serial,
 	e.rec_rec_lastbc = e.run_boardcount;
 
 	e.run_t_flags = e.run_t_flags | TF_RECORDING;
+	// Patch 416: a different lineage -- adopt the nonce this buffer's header
+	// states, because it is no longer the one we drew.  See SV_RecNoncePublish.
+	SV_RecNoncePublish(e, TRUE);
 	rec_rewind_cold = TRUE;         // Patch 364: the caller writes the `pause`
 	return TRUE;
 };

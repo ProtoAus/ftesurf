@@ -628,8 +628,14 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	// is true RIGHT NOW -- a hold, and a cancelled run still on screen -- and no
 	// file can assert one.  Save while parked and the flag would otherwise
 	// travel to whoever loads that state later.
+	//
+	// Patch 416 adds TF_NONCE to exactly that list, and it is the strongest case
+	// of the three: the bit says THIS client, on THIS connection, answered THIS
+	// session's number.  A file cannot assert any of the three, and a save taken
+	// in the round trip before the answer landed would otherwise clear a bit the
+	// client had already earned.
 	fputs(f, sprintf("flags %d\n",
-	                 e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED))));
+	                 e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED | TF_NONCE))));
 	fputs(f, sprintf("pb %d\n", e.run_t_pb));
 	fputs(f, sprintf("dirty %d\n", e.run_t_dirty));
 	/*
@@ -1028,7 +1034,16 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  maintain anyway, but a state file that carries it is still lying, and it
 	  would be a stopped clock the moment the mirror ever became authoritative.
 	*/
-	e.run_t_flags = flg - (flg & (TF_RECORDING | TF_FROZEN | TF_STOPPED));
+	/*
+	  Patch 416: TF_NONCE joins the three, from the other side.  A pre-416 save,
+	  or one taken before the answer's round trip landed, carries the bit clear
+	  and would otherwise CLEAR one the client has already earned -- and a save
+	  from another run would hand this one an answer it never gave.  So the file
+	  decides nothing about it and the live value stands, until a rewind takes it
+	  down deliberately (SV_RecNoncePublish, which runs after this).
+	*/
+	e.run_t_flags = (flg - (flg & (TF_RECORDING | TF_FROZEN | TF_STOPPED | TF_NONCE)))
+	                | (e.run_t_flags & TF_NONCE);
 
 	/*
 	  Prefer the unrounded clock; fall back to the rounded one for a save file

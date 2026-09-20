@@ -1305,6 +1305,111 @@ def case_spec_below_v9_is_unknown():
                "a spec record in a v8 file stays an unknown-record note")
 
 
+# Patch 416.  32 lowercase hex, and deliberately not a round number or a
+# repeating pattern: a fixture whose value would still parse after a truncation
+# tests the truncation less than it looks like it does.
+NONCE = "1bf8d0a2e3c94f6712ab34cd56ef7890"
+
+
+def case_nonce_header():
+    """THE KEY IS ADDITIVE AND ITS SHAPE IS EXACT.  Patch 416.
+
+    The shape arm is the one that matters: the failure this will actually have
+    is a half-applied patch writing an empty or truncated key, which reads to
+    every later consumer as a run that simply had no nonce."""
+    b = insert_before(build(), "begin", "nonce " + NONCE)
+    ok_clean(b, "a v9 file with a nonce header key passes with 0 faults")
+    _, n = run(b)
+    check(not n, "...and emits no notes")
+    if n:
+        print("        %s" % n)
+
+    # THE CONTROL, and it is the whole reason absence may not be a finding:
+    # every recording written before Patch 416 is this file.
+    f, n = run(build())
+    check(not f and not n, "no nonce key at all is neither a fault nor a note")
+
+    faults_with(insert_before(build(), "begin", "nonce " + NONCE[:31]),
+                "not 32 lowercase hex", "a 31-digit nonce is a fault")
+    faults_with(insert_before(build(), "begin", "nonce " + NONCE.upper()),
+                "not 32 lowercase hex", "an uppercase nonce is a fault")
+    faults_with(insert_before(build(), "begin", "nonce"),
+                "not 32 lowercase hex", "an empty nonce key is a fault")
+    notes_with(insert_before(build(ver=8), "begin", "nonce " + NONCE),
+               "is not part of v8",
+               "the key in a v8 file is a note: v9 is where it was added")
+
+
+def case_nonce_record():
+    """The resumed session's own nonce, in the body.
+
+    IT SITS INSIDE THE OPEN PAUSE, which for a sample or an `in` row is a fault
+    -- those say something moved.  This says a client attached, which is exactly
+    what happens between the park and the first move of the new session."""
+    b = insert_before(build(**V10), "session", "nonce 3 " + NONCE)
+    ok_clean(b, "a body nonce between the pause and its session passes clean")
+    _, n = run(b)
+    check(not n, "...and emits no notes: a resume re-issues by design")
+    if n:
+        print("        %s" % n)
+
+    faults_with(insert_before(build(**V10), "session", "nonce 3 " + NONCE[:31]),
+                "not 32 lowercase hex", "a short nonce record is a fault")
+    faults_with(insert_before(build(**V10), "session", "nonce " + NONCE),
+                "takes <mt> <hex32>", "a nonce record without <mt> is a fault")
+    faults_with(insert_before(build(**V10), "session", "nonce x " + NONCE),
+                "takes <mt> <hex32>", "a non-integer <mt> is a fault")
+
+    # A NOTE AND NOT A FAULT.  The writer only reaches the body form from a
+    # resume, so a `nonce` written where no pause is open -- here, after the
+    # `session` that closed it -- is a writer that has drifted from its grammar.
+    # It is still a file a reader can use, which is what keeps it a note.
+    #
+    # THE FIRST CUT OF THIS ARM TESTED THE WRONG THING: it put the record in a
+    # file with no pause at all, which the v10 gate now makes an unknown record
+    # -- so it passed while saying nothing about position.  Review caught the
+    # predicate; this catches it staying fixed.
+    notes_with(insert_before(build(**V10), "end", "nonce 3 " + NONCE),
+               "outside an open 'pause'",
+               "a body nonce after its session closed the pause is a note")
+
+    notes_with(insert_before(build(), "end", "nonce 3 " + NONCE),
+               "unknown record 'nonce'",
+               "a nonce record in a v9 file stays an unknown-record note: the "
+               "record can only come from a resume, and a resume makes it v10")
+
+
+def case_nonce_flag():
+    """The answer bit against the number it answers.  ONE WAY ONLY.
+
+    Patch 416.  A file carrying TF_NONCE must state a nonce; a file stating one
+    need not carry the bit, and that asymmetry is the whole design -- every
+    recording written before 416 states nothing and answers nothing, and a
+    client that simply did not answer is not a finding."""
+    b = head(build(), "flags", str(131072))
+    faults_with(b, "states no nonce",
+                "TF_NONCE with no nonce anywhere is a fault")
+
+    ok_clean(insert_before(head(build(), "flags", str(131072)), "begin",
+                           "nonce " + NONCE),
+             "TF_NONCE with a header nonce passes clean")
+
+    # The bit answered by a BODY record, which is what a resumed session writes.
+    ok_clean(insert_before(head(build(**V10), "flags", str(131072 + 16384)),
+                           "session", "nonce 3 " + NONCE),
+             "TF_NONCE answered by a body nonce alone passes clean")
+
+    # THE CONVERSE, and it may never become a fault.
+    ok_clean(insert_before(build(), "begin", "nonce " + NONCE),
+             "a nonce with the bit clear is not a finding")
+
+    # The version gate: a v5 file takes its flags from a stat and has no header
+    # key to state (a lifted stage, or cl_lobbytime.qc's client-side writer), so
+    # the pair cannot be checked there.
+    ok_clean(head(build(ver=5), "flags", str(131072)),
+             "TF_NONCE in a v5 file is not checked against a key it cannot have")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -1340,7 +1445,8 @@ def main():
                case_spec_clean, case_spec_malformed, case_spec_alternation,
                case_spec_nothing_inside, case_spec_edges_agree,
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
-               case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown):
+               case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
+               case_nonce_header, case_nonce_record, case_nonce_flag):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):
             continue

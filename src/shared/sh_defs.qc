@@ -1534,6 +1534,23 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_NOCOUNTS 65536
 
+/*
+  Patch 416: the client answered the run's nonce (`cmd rec_nack`, SV_RecNack).
+
+  MARKER ONLY, like TF_MULTISESSION and TF_SPEC: not a class, not in TF_UNCERT,
+  not in surfd's style_of/certifiable, and NOT NAMED BY FS_CertWhy -- nothing is
+  refused for its absence, which is the whole of why it may exist.  Every client
+  older than this patch is silent here and demoting those would be the mapcrc
+  skew window again, which TF_NOCOUNTS's note above describes.
+
+  IT IS THE POSITIVE HALF OF A DISTINCTION THE EVIDENCE CHAIN COULD NOT DRAW.
+  Set, it says a client answered a number it could not have known in advance.
+  Absent, it says either "too old to be asked" or "asked and did not answer" --
+  which stay the same silence until a later patch gives the answer a payload.
+  See SV_RecNonce in sv_timer.qc for the rest of the argument.
+*/
+#define TF_NONCE   131072
+
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
                      | TF_NOCOUNTS)
 

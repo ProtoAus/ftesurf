@@ -87,6 +87,14 @@ float rec_rp_ms;                 // this recording is Multi-Session: no sidecars
 float rec_rp_wasghost;
 float rec_rp_full;               // said once that this run hit the cap
 
+// Patch 416: the run nonce the server last handed this client, zoned, and
+// whether a raw input journal is open to write it into.  See Rec_Nonce; the
+// server's half is SV_RecNonce in sv_timer.qc.
+string rec_rp_nonce;
+float  rec_rp_hidopen;
+float  rec_rp_recat;             // cltime the current recording began at
+float  rec_rp_asked;             // this run has already asked for its nonce
+
 /*
   SAVE STATES: the client's half of the mark.  Build 17.
 
@@ -1031,6 +1039,128 @@ void() Rec_HidBegin =
 	if (!Rec_HidOK())
 		return;
 	localcmd("in_journal_begin\n");
+	rec_rp_hidopen = TRUE;
+
+	/*
+	  PATCH 416: THE NONCE, IF ONE IS ALREADY HELD -- and this line came back
+	  after the arm below measured what removing it cost.
+
+	  It was removed because it could only ever write a STALE value: with the
+	  nonce held across runs, a second run on one map opened its journal with
+	  the first run's number in hand (p416twice.cfg's control: two notes, the
+	  first belonging to another recording).  What made it stale was the holding,
+	  not the writing -- and the run-end edge in Rec_ViewFrame now clears it, so
+	  anything held here was issued for THIS run and nothing else.
+
+	  Without it a retry loses the note outright, which is measured rather than
+	  argued: p416rewind.cfg's R3 failed twice.  A retry is a map_restart, the
+	  server re-publishes into a client that is still loading, and the stuffcmd
+	  is executed in the new VM's first command-buffer pass -- before the first
+	  CSQC_UpdateView, so before this function.  Rec_Nonce's own note is gated on
+	  the journal being open and correctly does not fire.  So the two together
+	  cover both orders and neither covers both alone.
+	*/
+	if (rec_rp_nonce != "")
+		localcmd(sprintf("in_journal_note nonce %s\n", rec_rp_nonce));
+};
+
+/*
+  PATCH 416: WHERE THE NONCE NOTE IS WRITTEN, AND IT TOOK TWO ARMS TO PLACE IT.
+
+  The first cut wrote it only in Rec_HidBegin, reasoning that the server's
+  stuffcmd arrives on the packet that starts the run and is executed before
+  CSQC_UpdateView gets there.  THE ENGINE'S FRAME ORDER IS THE OTHER WAY ROUND
+  and three reviews said so: Host_Frame runs Cbuf_Execute (cl_main.c:7607)
+  BEFORE CL_ReadPackets (:7639, :7705) and before SCR_UpdateScreen (:7743), so a
+  stuffcmd parsed this frame waits for the NEXT frame's command buffer.  At a
+  normal run start the note therefore belongs to Rec_Nonce, one pass later, with
+  the journal already open -- and the patch's own capture shows it: the note in
+  data/p416_S.hid sits AFTER `begin`, not before it.
+
+  The second cut removed Rec_HidBegin's note entirely, and p416rewind.cfg then
+  failed twice: after a RETRY the order inverts again.  The retry restarts the
+  map, the server re-publishes into a client that is still loading, and the
+  stuffcmd lands in the new VM's first command-buffer pass -- before its first
+  UpdateView, so before the journal exists.  Rec_Nonce's note is gated on the
+  journal being open and correctly stays silent.
+
+  So both write it, each covering the order the other cannot, and the thing that
+  makes that safe is neither of them: the run-end edge clears the held nonce, so
+  a value present at Rec_HidBegin can only be this run's.
+*/
+
+/*
+  PATCH 416: THE SERVER'S RUN NONCE, ARRIVING.
+
+  `rec_nonce <hex>`, stuffed by the server when a run opens (SV_RecNonce) and
+  registered as a CSQC command so it never reaches the console as an unknown
+  word.  Two things happen with it and neither is optional:
+
+    THE ANSWER.  `cmd rec_nack <hex>` goes straight back, and that is what sets
+    TF_NONCE on the run.  It claims nothing about this client except that it was
+    here, running this build, at that moment -- which is the point.  Every other
+    report this file sends (`rechid`, `inprof`) is the client describing itself;
+    this is the one thing it cannot describe, because the number did not exist
+    until the server picked it.
+
+    THE NOTE, into the raw input journal, where the engine stamps it at the
+    STREAM POSITION rather than the wall clock.  See Rec_HidBegin for why the
+    common case is written there instead of here.
+
+  IGNORED WHEN IT IS THE ONE WE ALREADY HOLD.  A stuffcmd is something a SERVER
+  chooses to send, and each call here writes to the command buffer twice, so a
+  repeat is dropped rather than obeyed -- a server that repeated itself could
+  otherwise turn this into a stream of `cmd` traffic out of our netchan.  A
+  DIFFERENT nonce is always obeyed: that is a resume, and ignoring it would
+  leave the second half of a Multi-Session run bound to the first half's number.
+*/
+void(string n) Rec_Nonce =
+{
+	local float i, c;
+
+	/*
+	  EXACTLY 32 LOWERCASE HEX, CHECKED BEFORE THE STRING GOES ANYWHERE NEAR THE
+	  COMMAND BUFFER.  This value arrives from a SERVER and leaves through two
+	  localcmds, and Cbuf splits on `;` -- so an unchecked argument is a server
+	  string being re-emitted as commands.  It gains an attacker nothing today
+	  (a stuffcmd already runs at a HIGHER restriction level than a localcmd, so
+	  the laundering loses privilege rather than gaining it), which is exactly
+	  why it is worth closing while it is still cheap.  The shape is the one
+	  SV_RecNonce writes; anything else is not a nonce.
+	*/
+	if (strlen(n) != 32)
+		return;
+	for (i = 0; i < 32; i = i + 1)
+	{
+		c = str2chr(n, i);
+		if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+			return;
+	}
+
+	/*
+	  THE ANSWER IS SENT EVERY TIME, INCLUDING FOR A NONCE WE ALREADY HOLD.
+
+	  The first cut skipped a repeat outright, to stop a server turning this into
+	  a stream of `cmd` traffic.  That guard bought nothing -- a server that
+	  wanted the traffic would alternate two values, and it can stuff `cmd`
+	  itself anyway -- and it broke the case it was most needed for: after a
+	  save-load the server re-publishes the SAME nonce (SV_RecNoncePublish),
+	  having taken the bit down, and a client that stayed quiet would leave the
+	  run permanently unanswered.
+
+	  The note and the allocation are still skipped, so a repeat costs one
+	  command and nothing else.
+	*/
+	if (rec_rp_nonce != n)
+	{
+		if (rec_rp_nonce != "")
+			strunzone(rec_rp_nonce);
+		rec_rp_nonce = strzone(n);
+
+		if (rec_rp_hidopen)
+			localcmd(sprintf("in_journal_note nonce %s\n", n));
+	}
+	localcmd(sprintf("cmd rec_nack %s\n", n));
 };
 
 /*
@@ -1053,6 +1183,20 @@ void() Rec_HidBegin =
 void() Rec_HidEnd =
 {
 	local float tag, leg;
+
+	/*
+	  PATCH 416, AND BOTH LINES ARE ABOVE THE Rec_HidOK TEST ON PURPOSE.
+
+	  The latch first: turning `rec_hid 0` mid-run makes that test fail, and a
+	  latch left standing would then claim a journal that no longer exists, for
+	  every later run on the map -- Rec_HidBegin early-returns on the same test,
+	  so nothing would ever set it again either.
+
+	  The nonce is cleared at the RUN-END EDGE instead of here -- see
+	  Rec_ViewFrame -- because this function is not called on a Multi-Session
+	  end, and a number that outlived its run is the whole defect.
+	*/
+	rec_rp_hidopen = FALSE;
 
 	if (!Rec_HidOK())
 		return;
@@ -1396,6 +1540,30 @@ void() Rec_ViewFrame =
 				Rec_ViewBegin();
 				Rec_HidBegin();
 			}
+			rec_rp_recat = time;    // Patch 416: when to give up waiting
+			rec_rp_asked = FALSE;
+		}
+
+		/*
+		  PATCH 416: ASK FOR THE NONCE WHEN ONE WAS DUE AND DID NOT ARRIVE.
+
+		  A stuffcmd is fire-and-forget, and there is one case where it reliably
+		  misses: a `retry` is a map_restart, so the server re-publishes
+		  (SV_RecNoncePublish) at the instant this client is still loading and
+		  has no CSQC to register `rec_nonce` yet.  Measured -- p416rewind.cfg's
+		  R3 failed on exactly that, with the post-retry journal carrying no
+		  note while the run went on.
+
+		  ASKED BY THE CLIENT AND NOT RE-SENT BY THE SERVER, because only this
+		  end knows when it is ready, and the alternative is a readiness gate on
+		  the server guessing at it.  One second in, once per run: at a normal
+		  start the stuffcmd has landed long before, so this costs nothing on the
+		  path it is not for.
+		*/
+		if (!rec_rp_asked && rec_rp_nonce == "" && time - rec_rp_recat > 1)
+		{
+			rec_rp_asked = TRUE;
+			localcmd("cmd rec_nonce_ask\n");
 		}
 
 		/*
@@ -1459,6 +1627,20 @@ void() Rec_ViewFrame =
 			Rec_HidEnd();
 		}
 		rec_rp_ms = FALSE;
+
+		/*
+		  Patch 416: the run's nonce dies with the run, on BOTH branches.
+
+		  Held past the end it is the value the next run on this map would
+		  inherit -- into its journal note, and into an ack for a number its
+		  server never issued.  Here rather than in Rec_HidEnd because the
+		  Multi-Session branch above does not call that at all, and a parked run
+		  is exactly the case where the next session's client is a different
+		  one.
+		*/
+		if (rec_rp_nonce != "")
+			strunzone(rec_rp_nonce);
+		rec_rp_nonce = "";
 	}
 
 	rec_rp_wasrec = rec;
@@ -1553,6 +1735,19 @@ void() Rec_ViewInit =
 	  -- correctly marked in that run's own .view header.
 	*/
 	registercvar("rec_hid", "1");
+
+	/*
+	  Patch 416: the server's run nonce arrives as a stuffcmd.  Registered so it
+	  is dispatched to CSQC_ConsoleCommand rather than printed as an unknown
+	  word.  The two resets are the VM's, not a run's -- a map load ends any run
+	  this VM was holding -- and they are written out rather than left to the
+	  initialiser for the reason rec_rp_hidsent's neighbour documents.
+	*/
+	registercommand("rec_nonce");
+	rec_rp_nonce   = "";
+	rec_rp_hidopen = FALSE;
+	rec_rp_asked   = FALSE;
+	rec_rp_recat   = 0;
 
 	/*
 	  Read once per VM rather than per run: CSQC_Init runs at every map load, so

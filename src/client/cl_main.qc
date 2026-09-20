@@ -1808,6 +1808,18 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	}
 
+	/*
+	  Patch 416: the server's run nonce.  Not a command a player has any use for
+	  -- it is a stuffcmd, and it is here rather than in the engine because the
+	  two things done with it (the answer and the journal note) are this VM's.
+	  See Rec_Nonce.
+	*/
+	if (argv(0) == "rec_nonce")
+	{
+		Rec_Nonce(argv(1));
+		return TRUE;
+	}
+
 	if (argv(0) == "saveloc")
 	{
 		// `saveloc release` is the manual way out of a hold, and it exists
