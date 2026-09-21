@@ -729,7 +729,7 @@ def replays_bound(conn):
     index_evidence indexed it -- so "a recording of the run" is decided when it
     was filed, never by whether the disk still has it (review round 5: a
     missing file un-hid a rejected run's stage times).  Backfilled once, from
-    the disk as it is now."""
+    the disk as it is now: a file whose header describes the row."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
     if "bound" in cols:
         return
@@ -740,9 +740,15 @@ def replays_bound(conn):
             raise
         return                                # a racing process backfills
     conn.execute("UPDATE replays SET bound = 1 WHERE kind = 'evidence'")
-    for row in conn.execute("SELECT id, map_dir, track, leg, leaf, kind FROM replays"
-                            " WHERE kind = 'run'").fetchall():
-        if replay_file(row)[0] is not None:
+    for row in conn.execute("SELECT id, map, map_dir, track, leg, leaf, kind, runid,"
+                            " flags, tickrate FROM replays WHERE kind = 'run'").fetchall():
+        meta = _rec_meta(replay_file(row)[0] or "")
+        if meta is None:
+            continue
+        hdr = dict(meta[0])
+        if row[7] in ("", "-"):
+            hdr.pop("runid", None)
+        if not _rec_disagrees(hdr, row[1], row[3], row[4], row[7], row[8], row[9]):
             conn.execute("UPDATE replays SET bound = 1 WHERE id = ?", (row[0],))
     conn.commit()
 
@@ -1971,7 +1977,7 @@ _PARENT_SQL = ("(SELECT p.id FROM replays p WHERE r.leg > 0 AND r.replay_id = 0"
                " AND p.map = r.map AND p.track = r.track AND p.leg = 0"
                " AND p.player = r.player"
                " AND NOT " + _REJECTED_SQL +
-               " ORDER BY p.kind <> 'run', p.id DESC LIMIT 1)")
+               " ORDER BY p.bound DESC, p.kind <> 'run', p.id DESC LIMIT 1)")
 
 
 def public_state(verdict, decision):
@@ -2083,9 +2089,9 @@ def restand(db, rid):
         if not rejected and (best is None or best["millis"] >= cur["millis"]):
             return "kept"
     if best is not None:
-        if cur is not None and cur["replay_id"] == 0 and cur["leg"] > 0:
-            # A stage time with no recording has no history to rebuild: set it
-            # aside, as a restore does, so a later reject gives it back (425).
+        if cur is not None and cur["replay_id"] == 0:
+            # A time with no recording has no history to rebuild: set it aside,
+            # as a restore does, so a later reject gives it back (425).
             _stage_move(db, cur, cur["tier"] + "^" + (
                 best["runid"] if best["runid"] not in ("", "-") else "r%d" % best["id"]))
         db.execute(_UPSERT_RUN, (
@@ -2205,7 +2211,7 @@ def restage(db, rid, park_only=False):
     # with what a restore set aside (review round 4).
     rep = db.execute("SELECT map, track, leg, tier, style, player, kind"
                      " FROM replays WHERE id = ?", (rid,)).fetchone()
-    if rep is not None and rep["kind"] == "run" and rep["leg"] > 0 and rep["tier"] in TIERS:
+    if rep is not None and rep["kind"] == "run" and rep["tier"] in TIERS:
         _stage_refill(db, rep, rep["tier"])
     run = _stage_run(db, rid)
     if run is None:
@@ -2571,10 +2577,6 @@ def submit_run():
     db = get_db()
     try:
         with db:
-            # The write lock before the first read: the checks below (a reject
-            # standing, the row held) must still be true at the write (round 5).
-            if not db.in_transaction:
-                db.execute("BEGIN IMMEDIATE")
             # THE LEDGER ROW GOES IN FIRST, ABOVE THE IMPROVEMENT TEST, and the
             # ordering is the entire fix rather than a tidiness preference.
             #
@@ -2710,8 +2712,18 @@ def submit_run():
             # A stage time of a run a reject stands on goes straight to that
             # run's hidden slot, never over the player's live one -- a retried
             # POST, or a resumed run whose evidence was rejected (round 4).
-            if leg > 0 and not rid and runid and _run_rejected(
-                    db, (mapname, track, player, runid)):
+            hidden = False
+            if leg > 0 and not rid and runid:
+                # The check and its write under one lock (review round 5), let
+                # go when nothing is hidden: the cap counts below must not
+                # scan under it (round 6).
+                began = not db.in_transaction
+                if began:
+                    db.execute("BEGIN IMMEDIATE")
+                hidden = _run_rejected(db, (mapname, track, player, runid))
+                if began and not hidden:
+                    db.commit()
+            if hidden:
                 ptier = tier + "@" + runid
                 hid = db.execute(
                     "SELECT millis, submitted FROM runs WHERE map=? AND track=?"
@@ -3081,7 +3093,7 @@ def index_evidence(conn, now=None, dry_run=False):
                 " WHERE r.leg > 0 AND r.replay_id = 0 AND r.runid = ? AND r.map = ?"
                 "   AND NOT EXISTS (SELECT 1 FROM replays p WHERE p.runid = r.runid"
                 "        AND p.map = r.map AND p.track = r.track"
-                "        AND p.player = r.player AND p.leg = 0)"
+                "        AND p.player = r.player AND p.leg = 0 AND p.bound = 1)"
                 " GROUP BY r.track, r.player ORDER BY r.track, r.player",
                 (runid, key)).fetchall()
             if not refs:

@@ -653,6 +653,48 @@ def case_restand_sets_aside():
     check("E15 rejecting it again gives the player's 500 back", stage(m), (500, "S"))
 
 
+def case_round6():
+    """E16: a file-less leg-0 row naming R neither blocks R's evidence nor takes
+    its stage row's link; a leafless main time comes back on a re-reject; the
+    backfill needs a header that describes the row"""
+    m = fresh(admin_pw=PW)
+    submit(m, leg=2, ticks=454)
+    fake = submit(m, ticks=9999, rec=leaf(9999, "kap"))["rep"]   # no file behind it
+    check("E16 control: the fake leg-0 row is filed, unbound",
+          q(m, "SELECT bound FROM replays WHERE id = ?", (fake,)), [(0,)])
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    got = m.index_evidence(conn)
+    eid = evid(m, R)
+    check("E16 R's evidence is still indexed", (got["indexed"], eid > 0), (1, True))
+    check("E16 ...and the stage row's run is the evidence, not the fake",
+          by_player(m, 2)["kap"].get("run"), eid)
+
+    m = fresh(admin_pw=PW)
+    lf = leaf(4000, "kap")
+    put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace("end 8262", "end 4000"))
+    rid = submit(m, ticks=4000, rec=lf)["rep"]
+    c, csrf = admin_client(m)
+    review(m, c, csrf, rid, "reject")
+    submit(m, ticks=4500, runid="Rmain")                          # leafless main time
+    check("E16 control: the leafless main time stands", "kap" in by_player(m, 0), True)
+    review(m, c, csrf, rid, "clear")
+    review(m, c, csrf, rid, "reject")
+    check("E16 a leafless main time comes back on a re-reject",
+          by_player(m, 0).get("kap", {}).get("ms"), 67500)
+
+    m = fresh()
+    put_run(m, leaf(4100, "kap"), evbody("Rh").replace("abandon 8262\n", ""))
+    submit(m, ticks=4100, rec=leaf(4100, "kap"), runid="Rh")
+    put_run(m, leaf(4100, "kap"), evbody("Rother").replace("abandon 8262\n", ""))
+    conn = m.connect()
+    with conn:
+        conn.execute("ALTER TABLE replays DROP COLUMN bound")
+    m.replays_bound(conn)
+    check("E16 backfill: a file whose header names another run is not bound",
+          q(m, "SELECT runid, bound FROM replays"), [("Rh", 0)])
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -889,6 +931,7 @@ def main():
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
+                 case_round6,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
