@@ -3979,8 +3979,10 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  something a stranger can put on an operator's console.
 	*/
 	// Patch 426: the held run is the last one that ended, so it is this
-	// receipt's -- if the receipt signs its tick count.  Copies, because the
-	// hold is released before the open below.
+	// receipt's -- if the receipt signs its tick count.  That turns a ticks
+	// disagreement into a refusal (join_ticks cannot fire on a held receipt):
+	// the answer when it cannot tell which run a receipt is for.  Copies,
+	// because the hold is released before the open below.
 	rid = strcat(e.rec_end_rid);
 	nonce = strcat(e.rec_end_nonce);
 	svt = e.rec_end_ticks;
@@ -4099,6 +4101,28 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  not take the file leaves the client free to send this again for the rest
 	  of the run, one failed open each time, at whatever rate it likes.
 	*/
+	/*
+	  BESIDE THE EVIDENCE AND NOT IN A DIRECTORY OF ITS OWN, so that
+	  SV_EvidenceSweep's `run_evidence_days` reaps it on the same clock as the
+	  recording it attests.  The first cut wrote data/receipts/, flat, shared by
+	  12 lobbies, swept by nothing at all.
+	*/
+	path = sprintf("data/evidence/%s/%s.rcpt", mapname, rid);
+
+	// Patch 426: THE FIRST RECEIPT OF A RUNID WINS, as the latch made it before
+	// the hold.  A cold save-load keeps a finished run's runid (Patch 426
+	// review: a later run's receipt rewrote it as a nonce FAULT).
+	if (e.rec_end_rid != "")
+	{
+		fh = fopen(path, FILE_READ);
+		if (fh >= 0)
+		{
+			fclose(fh);
+			dprint(sprintf("timer: receipt refused -- %s already has one\n", rid));
+			return;
+		}
+	}
+
 	if (e.rec_end_rid != "")
 	{
 		if (rid == e.rec_rec_rid)       // a finish: it is the live run's receipt too
@@ -4108,13 +4132,6 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	else
 		e.rec_rec_rcpt = TRUE;
 
-	/*
-	  BESIDE THE EVIDENCE AND NOT IN A DIRECTORY OF ITS OWN, so that
-	  SV_EvidenceSweep's `run_evidence_days` reaps it on the same clock as the
-	  recording it attests.  The first cut wrote data/receipts/, flat, shared by
-	  12 lobbies, swept by nothing at all.
-	*/
-	path = sprintf("data/evidence/%s/%s.rcpt", mapname, rid);
 	fh = fopen(path, FILE_WRITE);
 	if (fh < 0)
 	{
@@ -4946,11 +4963,13 @@ void(entity e) SV_RecDiscard =
 		e.rec_rec_ticks = 0;
 		e.rec_rec_saved = FALSE;
 		e.rec_rec_bytes = -1;
-		SV_RecEndHold(e, (e.run_t_flags & TF_NONCE) ? e.rec_rec_rid : "",
+		SV_RecEndHold(e, (e.run_t_flags & TF_NONCE && !e.rec_rec_rcpt) ? e.rec_rec_rid : "",
 		              e.rec_rec_nonce, 0);
 	}
-	else
-		SV_RecEndHold(e, "", "", 0);    // Patch 426: a later end than the held one
+	// Patch 426: an unkept end signs 0, as a held abandon does, so it clears
+	// one; a held finish (its stamp, or -1) cannot be mistaken for it.
+	else if (e.rec_end_ticks == 0)
+		SV_RecEndHold(e, "", "", 0);
 
 	if (live)
 	{
@@ -5372,7 +5391,8 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING);
 		e.rec_rec_ticks = stamp;
 		e.rec_rec_tag = tag;
-		SV_RecEndHold(e, (flags & TF_NONCE) ? e.rec_rec_rid : "", e.rec_rec_nonce, stamp);
+		SV_RecEndHold(e, (flags & TF_NONCE && !e.rec_rec_rcpt) ? e.rec_rec_rid : "",
+		              e.rec_rec_nonce, stamp);
 		return;
 	}
 
@@ -5420,7 +5440,8 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// this same tag.  See STAT_FS_RUNTAG.
 	e.rec_rec_ticks = stamp;
 	e.rec_rec_tag = tag;
-	SV_RecEndHold(e, (flags & TF_NONCE) ? e.rec_rec_rid : "", e.rec_rec_nonce, stamp);
+	SV_RecEndHold(e, (flags & TF_NONCE && !e.rec_rec_rcpt) ? e.rec_rec_rid : "",
+	              e.rec_rec_nonce, stamp);
 };
 
 /*
