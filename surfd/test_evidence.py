@@ -178,8 +178,8 @@ def case_index_and_serve():
     row = q(m, "SELECT map, map_dir, track, leg, leaf, tier, style, checked, kind,"
                " runid, player, name, ticks, millis, node, bytes FROM replays"
                " WHERE kind = 'evidence'")
-    check("E1 ...a leg-0 evidence row, map_dir as on disk, off every board",
-          row, [("surf_aser", "surf_Aser", 0, 0, R + ".rec", "", "", 1, "evidence",
+    check("E1 ...a leg-0 evidence row, map_dir as on disk, off every board, queued",
+          row, [("surf_aser", "surf_Aser", 0, 0, R + ".rec", "", "", 0, "evidence",
                  R, "kap", "Kap", 8262, 123930, "p27510", len(body))])
     eid = evid(m, R)
     keep = os.path.join(m.KEEP_DIR, "surf_Aser", R + ".rec")
@@ -287,8 +287,36 @@ def case_keep_is_not_evidence():
     check("E4b the orphan pass leaves the lobby's unindexed file", os.path.exists(lone), True)
 
 
+def admin_client(m):
+    c = m.app.test_client()
+    page = c.get("/admin/login").get_data(as_text=True)
+    csrf = page.split('name="csrf" value="')[1].split('"')[0]
+    check("control: admin login", c.post("/admin/login", data={
+        "csrf": csrf, "password": PW}).status_code, 302)
+    page = c.get("/admin/runs").get_data(as_text=True)
+    return c, page.split('name="csrf" value="')[1].split('"')[0]
+
+
+def review(m, c, csrf, rid, action):
+    sub = q(m, "SELECT submitted FROM replays WHERE id = ?", (rid,))[0][0]
+    r = c.post("/admin/api/review", headers={"Sec-Fetch-Site": "same-origin"},
+               data={"rid": str(rid), "action": action, "submitted": str(sub),
+                     "csrf": csrf})
+    return r.status_code, (r.get_json() or {}).get("ok"), (r.get_json() or {}).get("message", "")
+
+
+def stage(m, player="kap"):
+    """kap's leg-2 row as the board shows it: (ticks, runid) or None."""
+    row = by_player(m, 2).get(player)
+    if row is None:
+        return None
+    return (row["ticks"], q(m, "SELECT runid FROM runs WHERE leg = 2 AND player = ?"
+                               " AND tier = 'ranked'", (player,))[0][0])
+
+
 def case_exclusion():
-    """E5: an evidence row is never a run to verify, stand or review"""
+    """E5: stage evidence is verified, listed and reviewed; a reject hides the
+    stage times its run set, and a clear restores them (Patch 425)"""
     m = fresh(admin_pw=PW)
     sweep = importlib.import_module("sweep")
     submit(m, leg=2, ticks=454)
@@ -298,14 +326,9 @@ def case_exclusion():
     eid = evid(m, R)
     zed = submit(m, player="zed", name="Zed", ticks=5000, runid="Rz",
                  rec=leaf(5000, "zed"))["rep"]
-    with conn:
-        conn.execute("UPDATE replays SET checked = 0 WHERE id = ?", (eid,))
-        conn.execute("INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine,"
-                     " progs, at) VALUES (?, 'PASS', 'x', 1, 'e', 'p', ?)",
-                     (eid, int(time.time()) + 5))
     ids = [r["id"] for r in sweep.pending(conn, 100)]
-    check("E5 sweep.pending never lists it, even at checked 0", eid in ids, False)
-    check("E5 control: a run replay at checked 0 is pending", zed in ids, True)
+    check("E5 sweep.pending lists the evidence row as indexed", eid in ids, True)
+    check("E5 control: ...and the run", zed in ids, True)
     before = q(m, "SELECT * FROM runs ORDER BY map, leg, player")
     with conn:
         res = m.restand(conn, eid)
@@ -313,40 +336,109 @@ def case_exclusion():
           (res, q(m, "SELECT * FROM runs ORDER BY map, leg, player") == before),
           ("none", True))
 
-    c = m.app.test_client()
-    page = c.get("/admin/login").get_data(as_text=True)
-    csrf = page.split('name="csrf" value="')[1].split('"')[0]
-    check("E5 control: admin login", c.post("/admin/login", data={
-        "csrf": csrf, "password": PW}).status_code, 302)
-    page = c.get("/admin/runs").get_data(as_text=True)
-    csrf = page.split('name="csrf" value="')[1].split('"')[0]
-    listed = [x["id"] for x in c.get("/admin/api/runs",
-                                     query_string={"state": "all"}).get_json()["rows"]]
-    check("E5 the admin run list excludes it", eid in listed, False)
-    check("E5 control: ...and lists the run", zed in listed, True)
+    c, csrf = admin_client(m)
+    rows = {x["id"]: x for x in c.get("/admin/api/runs",
+                                      query_string={"state": "all"}).get_json()["rows"]}
+    check("E5 the admin run list holds it, as stage evidence backing a stage time",
+          (rows.get(eid, {}).get("kind"), rows.get(eid, {}).get("standing")),
+          ("evidence", True))
+    check("E5 control: ...and lists the run", zed in rows, True)
     check("E5 the admin path route reads it from SURFD_KEEP",
           c.get("/admin/api/run/%d/path" % eid).status_code, 200)
+    det = c.get("/admin/api/run/%d" % eid).get_json()
+    check("E5 the run page counts the stage time it backs",
+          (det["standing"]["stages"], det["standing"]["stages_hidden"]), (1, 0))
 
-    def snap():
-        return (q(m, "SELECT * FROM reviews"), q(m, "SELECT * FROM runs ORDER BY player, leg"),
-                q(m, "SELECT id, checked, recheck_at FROM replays ORDER BY id"))
-    before = snap()
-    sub = q(m, "SELECT submitted FROM replays WHERE id = ?", (eid,))[0][0]
-    for action in ("approve", "reject", "recheck"):
-        r = c.post("/admin/api/review", headers={"Sec-Fetch-Site": "same-origin"},
-                   data={"rid": str(eid), "action": action, "submitted": str(sub),
-                         "csrf": csrf})
-        check("E5 admin %s of it is refused" % action,
-              (r.status_code, (r.get_json() or {}).get("ok")), (400, False))
-    check("E5 ...and the database is unchanged", snap(), before)
-    r = c.post("/admin/api/review", headers={"Sec-Fetch-Site": "same-origin"},
-               data={"rid": str(zed), "action": "recheck", "submitted": str(
-                   q(m, "SELECT submitted FROM replays WHERE id = ?", (zed,))[0][0]),
-                     "csrf": csrf})
-    check("E5 control: the same request for the run succeeds", r.status_code, 200)
+    check("E5 approve: accepted", review(m, c, csrf, eid, "approve")[:2], (200, True))
+    check("E5 ...and the stage time stands", stage(m), (454, R))
+    code, ok, msg = review(m, c, csrf, eid, "reject")
+    check("E5 reject: accepted, and says what it hid", (code, ok, "1 hidden" in msg),
+          (200, True, True))
+    check("E5 ...the stage time is off the board", stage(m), None)
+    check("E5 ...parked, not deleted",
+          q(m, "SELECT tier, ticks, runid FROM runs WHERE leg = 2 AND player = 'kap'"),
+          [("ranked@%d" % eid, 454, R)])
+    det = c.get("/admin/api/run/%d" % eid).get_json()
+    check("E5 ...and the run page says so",
+          (det["standing"]["stages"], det["standing"]["stages_hidden"]), (0, 1))
+    check("E5 gc keeps the evidence while a parked row names it",
+          (m.gc_evidence(conn), evid(m, R)), (0, eid))
+
+    # Meanwhile the player's next stage time takes the live slot.
+    submit(m, leg=2, ticks=500, runid="R4")
+    check("E5 a slower time meanwhile takes the slot", stage(m), (500, "R4"))
+    check("E5 clear: accepted", review(m, c, csrf, eid, "clear")[:2], (200, True))
+    check("E5 ...the better (parked) time is back, the slower one gone",
+          (stage(m), q(m, "SELECT COUNT(*) FROM runs WHERE leg = 2 AND player = 'kap'")),
+          ((454, R), [(1,)]))
+
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=400, runid="R5")
+    check("E5 control: a faster time meanwhile", stage(m), (400, "R5"))
+    check("E5 approve lapses the reject", review(m, c, csrf, eid, "approve")[:2], (200, True))
+    check("E5 ...and the faster live time keeps the slot, the parked one dropped",
+          (stage(m), q(m, "SELECT COUNT(*) FROM runs WHERE leg = 2 AND player = 'kap'")),
+          ((400, "R5"), [(1,)]))
+
+    check("E5 recheck: accepted", review(m, c, csrf, eid, "recheck")[:2], (200, True))
+    check("E5 ...and queued", q(m, "SELECT checked FROM replays WHERE id = ?", (eid,)),
+          [(0,)])
     b = by_player(m, 2)["kap"]
-    check("E5 the stage row's ver is 0 despite a PASS on its parent",
-          (b.get("run"), b["ver"]), (eid, 0))
+    check("E5 a stage row still carries no badge of its own", b["ver"], 0)
+
+
+def case_run_reject_hides_stages():
+    """E5b: rejecting a finished run hides its stage times too; its leaf re-filed
+    by another run restores them"""
+    m = fresh(admin_pw=PW)
+    lf = leaf(4000, "kap")
+    put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace(
+        "end 8262", "end 4000").replace("tickrate 0.015\n", "tickrate 0.015\n"))
+    submit(m, leg=2, ticks=454)
+    rid = submit(m, ticks=4000, rec=lf)["rep"]
+    check("E5b control: the run is filed with its recording", rid > 0, True)
+    c, csrf = admin_client(m)
+    check("E5b control: its stage time stands", stage(m), (454, R))
+    code, ok, msg = review(m, c, csrf, rid, "reject")
+    check("E5b reject the run: its main row and its stage time are off the boards",
+          (ok, "kap" in by_player(m, 0), stage(m)), (True, False, None))
+    check("E5b clear: both back", (review(m, c, csrf, rid, "clear")[1],
+                                   "kap" in by_player(m, 0), stage(m)), (True, True, (454, R)))
+    review(m, c, csrf, rid, "reject")
+    submit(m, ticks=4000, rec=lf)
+    check("E5b control: an identical re-post leaves it hidden", stage(m), None)
+    # The same leaf filed again by another run (an exact tie): new evidence.
+    put_run(m, lf, evbody("R9").replace("abandon 8262\n", "").replace("end 8262", "end 4000"))
+    again = submit(m, ticks=4000, rec=lf, runid="R9")
+    check("E5b control: the re-filed leaf is the same replay row", again["rep"], rid)
+    check("E5b ...which now names another run: the old run's stage time is restored",
+          stage(m), (454, R))
+    check("E5b ...and nothing is left parked",
+          q(m, "SELECT COUNT(*) FROM runs WHERE tier LIKE '%@%'"), [(0,)])
+
+
+def case_recorded_stage_stands_in():
+    """E5c: while a stage time is hidden, the player's recorded run of that leg
+    stands in its place (restand's rule); a clear gives the slot back"""
+    m = fresh(admin_pw=PW)
+    sl = leaf(600, "kap")
+    path = os.path.join(m.RUNS_DIR, "surf_Aser", m.leg_dir(0, 2), sl)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="\n") as fh:
+        fh.write(evbody("Rs", leg=2))
+    srep = submit(m, leg=2, ticks=600, rec=sl, runid="Rs")["rep"]
+    check("E5c control: a recorded stage run of leg 2 stands", stage(m), (600, "Rs"))
+    submit(m, leg=2, ticks=454)                       # the abandoned run's post
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    check("E5c control: the faster stage post took the slot", stage(m), (454, R))
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    check("E5c reject: the recorded run stands in, with its replay",
+          (stage(m), by_player(m, 2)["kap"]["rep"]), ((600, ""), srep))
+    review(m, c, csrf, eid, "clear")
+    check("E5c clear: the better stage time has its slot back", stage(m), (454, R))
 
 
 def case_public():
@@ -550,7 +642,9 @@ def case_name_from_file():
 
 def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
-                 case_keep_is_not_evidence, case_exclusion, case_public,
+                 case_keep_is_not_evidence, case_exclusion,
+                 case_run_reject_hides_stages, case_recorded_stage_stands_in,
+                 case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_name_from_file):
         print("\n--- %s" % case.__doc__)

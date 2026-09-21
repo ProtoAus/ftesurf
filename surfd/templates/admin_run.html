@@ -193,14 +193,20 @@ function renderRun(j) {
   const r = j.run;
   document.getElementById("title").textContent = "#" + r.id;
   document.getElementById("public").replaceChildren(pill(j.public, PUBLIC_CLS[j.public]));
-  document.getElementById("standing").textContent = j.standing.on_board
-    ? "#" + j.standing.rank + " of " + j.standing.of : "not on the board";
+  const st = j.standing, stages = [];
+  if (st.stages) stages.push(st.stages + " stage time" + (st.stages === 1 ? "" : "s") + " on the boards");
+  if (st.stages_hidden) stages.push(st.stages_hidden + " hidden by the reject");
+  document.getElementById("standing").textContent =
+    (st.on_board ? "#" + st.rank + " of " + st.of
+                 : r.kind === "evidence" ? "stage evidence" : "not on the board") +
+    (stages.length ? " \u2014 " + stages.join(", ") : "");
 
   const dl = document.getElementById("details");
   dl.replaceChildren();
   dlRow(dl, "map", r.map_dir === r.map ? r.map : r.map_dir + " (key " + r.map + ")");
   dlRow(dl, "leg", legLabel(r) + " (" + r.legdir + ")");
-  dlRow(dl, "board", r.tier + " / " + r.style);
+  dlRow(dl, "board", r.kind === "evidence" ? "none: the recording behind stage times"
+                                             : r.tier + " / " + r.style);
   dlRow(dl, "name", r.name);
   dlRow(dl, "player", span("mono", r.player));
   dlRow(dl, "time", fmtMs(r.millis) + " \u2014 " + r.ticks + " ticks at " + r.tickrate + " Hz");

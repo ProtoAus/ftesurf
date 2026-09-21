@@ -108,7 +108,8 @@ function runRow(r) {
   tr.dataset.rid = r.id;
   const cells = [
     el("td", "num mono", r.id), el("td", "", r.map_dir), el("td", "", legLabel(r)),
-    el("td", "", r.tier + " " + r.style), el("td", "", r.name),
+    el("td", "", r.kind === "evidence" ? "stage evidence" : r.tier + " " + r.style),
+    el("td", "", r.name),
     el("td", "num mono", fmtMs(r.ms)), el("td", "", fmtDate(r.submitted))];
   const v = el("td"); v.appendChild(pill(r.verdict, VERDICT_CLS[r.verdict]));
   if (r.error) v.append(" ", pill("ERROR", VERDICT_CLS.ERROR));
@@ -116,7 +117,8 @@ function runRow(r) {
   if (r.key_flag) v.append(" ", pill("key " + r.key_flag, r.key_flag === "rejected" ? "down" : "warn"));
   const d = el("td"); d.appendChild(pill(r.decision, DECISION_CLS[r.decision]));
   const p = el("td"); p.appendChild(pill(r.public, PUBLIC_CLS[r.public]));
-  const s = el("td", r.standing ? "" : "muted", r.standing ? "on board" : "-");
+  const s = el("td", r.standing ? "" : "muted",
+               r.standing ? (r.kind === "evidence" ? "stage times" : "on board") : "-");
   tr.append(...cells, v, d, p, s);
   return tr;
 }

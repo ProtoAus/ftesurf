@@ -158,7 +158,7 @@ REC = ("FTESURF-REC 9\nmap surf_kitsune\ntickrate 0.01\nmovetickrate 0.01\n"
 REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
                 "/admin/api/run/<int:rid>", "/admin/api/run/<int:rid>/path",
                 "/admin/api/review", "/admin/api/keydecision"}
-ROW_KEYS = {"id", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
+ROW_KEYS = {"id", "kind", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
             "name", "ms", "submitted", "checked", "recheck_at", "verdict",
             "error", "pending", "decision", "public", "standing",
             "key_pub", "key_decision", "key_flag", "first_pub", "first_rid",
@@ -427,7 +427,8 @@ def review_section(pw_hash, pw):
            "replay online %d" % hal])
     check("...the file, standing and review",
           (d["run"]["file"], d["standing"], d["review"]["note"], d["public"]),
-          (True, {"on_board": True, "rank": 2, "of": 4}, "looked fine", "verified"))
+          (True, {"on_board": True, "rank": 2, "of": 4, "stages": 0, "stages_hidden": 0},
+           "looked fine", "verified"))
     check("control: the public board never carries the reason",
           "SENTINEL" in m.app.test_client().get(
               "/api/board?map=surf_kitsune").get_data(as_text=True), False)
@@ -679,9 +680,19 @@ def review_section(pw_hash, pw):
                          " 'ranked', 'clean', 'kfe', 'Kfe', 100, 100, 1000, 0, 'p27510', 1,"
                          " '20260921-100009-0', 'evidence')")
             e1 = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            # Stage evidence from a signer, with no receipt: an abandoned run
+            # can end in a disconnect, so "unsigned" is not judged (Patch 425).
+            conn.execute("INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
+                         " player, name, ticks, tickrate, millis, flags, node, submitted,"
+                         " runid, kind) VALUES ('surf_kitsune', 'surf_kitsune', 0, 0, 'ev2.rec',"
+                         " '', '', 'kfa', 'Kfa', 100, 100, 1000, 0, 'p27510', ?,"
+                         " '20260921-100099-0', 'evidence')", (sub(a4),))
+            e2 = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     finally:
         conn.close()
-    add_receipt("20260921-100009-0", K1, signed_at=1)
+    # Signed after every run above, so K1 stays kfa's: evidence counts as a
+    # signing (Patch 425) and is judged `shared` like a run.
+    add_receipt("20260921-100009-0", K1, signed_at=int(clock.now) + 200)
     board_before = board()        # a5 is a faster run, so it moved the board
     wm = sub(a4) + adm.KEY_MARGIN
     watermark(wm)
@@ -695,21 +706,26 @@ def review_section(pw_hash, pw):
           [flag(d1), flag(d2)], ["new", ""])
     check("...unsigned after signing and inside the watermark; after it, not yet",
           [flag(a4), flag(g2), flag(a5), flag(g1)], ["unsigned", "unsigned", "", ""])
-    check("...stage evidence gets no key verdict", key(e1), None)
+    check("...stage evidence is judged: K1 was kfa's first", flag(e1), "shared")
+    check("...but never unsigned, and says why",
+          (flag(e2), key(e2)["why"]),
+          ("", "not judged: stage evidence (a run that ends in a disconnect or"
+               " a map change cannot be signed)"))
     check("'new' names the first key and the run that set it",
           (key(a2)["first_pub"], key(a2)["first_rid"]), (K1, a1))
     check("'shared' names the key's first player and run",
           (key(b1)["first_player"], key(b1)["first_player_rid"]), ("kfa", a1))
-    check("the Key flags list holds exactly those six",
-          sorted(ids(state="keys")), sorted([a2, a3, b1, d1, a4, g2]))
+    check("the Key flags list holds exactly those seven",
+          sorted(ids(state="keys")), sorted([a2, a3, b1, d1, a4, g2, e1]))
     check("...counts them, and says how far receipts are read",
           (listing(state="all")["counts"]["keys"], listing(state="keys")["receipts_through"]),
-          (6, wm))
+          (7, wm))
 
     check("key decision: a forged token is refused", keyact(a2, "accept", K2, "forged") != 200, True)
     check("...a stale key is 409", keyact(a2, "accept", K1), 409)
     check("...a stale submission is 409", keyact(a2, "accept", K2, submitted=sub(a2) - 1), 409)
-    check("...stage evidence is 400", keyact(e1, "accept", ""), 400)
+    check("...stage evidence is decided like a run: a stale key is 409",
+          keyact(e1, "accept", ""), 409)
     check("...an unknown action is 400", keyact(a2, "bless", K2), 400)
     check("control: none of those changed a flag", [flag(a2), flag(b1)], ["new", "shared"])
 
@@ -743,7 +759,7 @@ def review_section(pw_hash, pw):
     check("...and the player's first key moves to the next one",
           (key(a3)["first_pub"], key(a3)["first_rid"], flag(a3)), (K2, a2, "new"))
     check("...so the list holds these",
-          sorted(ids(state="keys")), sorted([a1, a3, d1, g1, g2, a5, a6]))
+          sorted(ids(state="keys")), sorted([a1, a3, d1, g1, g2, a5, a6, e1]))
     check("clear it", keyact(a1, "clear", K1), 200)
     check("...and first key wins again", [flag(a1), flag(b1)], ["", "shared"])
     # Not judged: no runid (no receipt can exist), and a stale receipt whose
@@ -799,6 +815,32 @@ def review_section(pw_hash, pw):
     check("decisions move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
           [detail(x)["public"] for x in seeded], public_before)
+
+    # A signed abandoned run is a signing (Patch 425): kfh's first key, and its
+    # "has signed before", come from stage evidence.
+    K8, K9 = "88" * 32, "99" * 32
+    clock.now += 5
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
+                         " player, name, ticks, tickrate, millis, flags, node, submitted,"
+                         " runid, kind) VALUES ('surf_kitsune', 'surf_kitsune', 0, 0, 'ev3.rec',"
+                         " '', '', 'kfh', 'Kfh', 100, 100, 1000, 0, 'p27510', ?,"
+                         " '20260921-100017-0', 'evidence')", (int(clock.now),))
+    finally:
+        conn.close()
+    add_receipt("20260921-100017-0", K8)
+    clock.now += 5
+    h1 = seed_run("kfh", 880, "20260921-100018-0")      # no receipt
+    clock.now += 5
+    h2 = seed_run("kfh", 875, "20260921-100019-0")
+    add_receipt("20260921-100019-0", K9)
+    watermark(sub(h2) + adm.KEY_MARGIN)
+    check("a signed abandoned run counts as a signing: kfh's next run with none is unsigned",
+          flag(h1), "unsigned")
+    check("...and sets kfh's first key: the later run's key is new",
+          (flag(h2), key(h2)["first_pub"]), ("new", K8))
 
     # Speed: the firsts are derived tables, not per-row subqueries (12.7 s at
     # 10k receipts before).  6000 signed runs over 600 players and 700 keys.

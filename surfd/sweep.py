@@ -7,6 +7,7 @@ asks the timer's own zone scan where it finishes.  This runs it over the
 `replays` ledger and records one verdict per attempt:
 
     PASS    every sample reproduces and the zones finish the run at its tick
+            (stage evidence of an abandoned run: reproduces to its abandon)
     HOLD    something disagrees -- a reason for a human, never an accusation
     REFUSE  out of scope for v1 (old format, resumed, other map ...)
     ERROR   the verifier printed no verdict; retried up to MAX_ERRORS times
@@ -31,6 +32,7 @@ would be answering them in a cron job.
 """
 
 import argparse
+import filecmp
 import glob
 import hashlib
 import logging
@@ -86,7 +88,7 @@ def pending(conn, limit):
     # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
         """SELECT r.id, r.map_dir, r.track, r.leg, r.leaf, r.kind FROM replays r
-           WHERE r.checked = 0 AND r.kind = 'run'
+           WHERE r.checked = 0 AND r.kind IN ('run', 'evidence')
              AND (SELECT COUNT(*) FROM verdicts v
                   WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
                     AND v.at >= MAX(r.submitted, r.recheck_at)) < ?
@@ -97,19 +99,50 @@ def pending(conn, limit):
 def relpath(row):
     """The file as pm_verify names it (game-filesystem relative), or None.
 
-    surfd.replay_file makes the checks /api/replay makes before it serves.
-    Only a kind 'run' file lives under RUNS_DIR (schema 6)."""
-    if "kind" in row.keys() and row["kind"] != "run":
+    surfd.replay_file makes the checks /api/replay makes before it serves.  A
+    kind 'evidence' row's kept copy is under SURFD_KEEP, outside the game tree
+    pm_verify reads (Patch 425), so it names the lobby's copy -- the same file
+    while the lobby keeps it (a hard link; compared, in case KEEP is a copy)."""
+    kept = surfd.replay_file(row)[0]
+    if kept is None:
         return None
-    if surfd.replay_file(row)[0] is None:
-        return None
-    sub = os.path.join(row["map_dir"], surfd.leg_dir(row["track"], row["leg"]),
-                       row["leaf"])
-    root = os.path.realpath(surfd.RUNS_DIR)
+    gamedir = os.path.realpath(os.path.join(GAME, "ftesurf"))
+    if "kind" in row.keys() and row["kind"] == "evidence":
+        root = os.path.realpath(surfd.EVIDENCE_DIR)
+        sub = os.path.join(row["map_dir"], row["leaf"])
+        if not root.startswith(gamedir + os.sep):
+            return None
+        try:
+            if not filecmp.cmp(kept, os.path.join(root, sub), shallow=False):
+                return None
+        except OSError:
+            return None
+    else:
+        root = os.path.realpath(surfd.RUNS_DIR)
+        sub = os.path.join(row["map_dir"], surfd.leg_dir(row["track"], row["leg"]),
+                           row["leaf"])
     # pm_verify opens files through the game filesystem, i.e. relative to the
     # gamedir; RUNS_DIR is normally <gamedir>/data/runs.
-    base = os.path.relpath(root, os.path.realpath(os.path.join(GAME, "ftesurf")))
+    base = os.path.relpath(root, gamedir)
     return (base + "/" + sub).replace(os.sep, "/")
+
+
+# pm_verify's reason when every earlier check passed and the zones never end
+# the run (sv_ccmds.c, the verdict chain): on a finished run a finding, on an
+# abandoned one the expected answer.  Exact, so a reworded verifier holds.
+NO_FINISH = "no finish: the zones never end this run"
+
+
+def abandoned_pass(row, verdict, reason):
+    """(verdict, reason, ticks) for an abandoned evidence file whose replay
+    reproduced to the abandon, else None.  pm_verify does not read `abandon`."""
+    if verdict != "HOLD" or reason != NO_FINISH or row["kind"] != "evidence":
+        return None
+    meta = surfd._rec_meta(surfd.replay_file(row)[0] or "")
+    if meta is None or not meta[2] or meta[1] < 0:
+        return None
+    return ("PASS", "abandoned at tick %d; the replay reproduces to there"
+            " (pm_verify: %s)" % (meta[1], NO_FINISH), meta[1])
 
 
 def parse(lines):
@@ -164,8 +197,9 @@ def record(conn, rid, verdict, reason, ticks, engine, progs, t0):
                  " AND submitted <= ? AND recheck_at <= ?", (t0, rid, t0, t0))
 
 
-def sweep(conn, limit, runner=run_verifier, now=None):
+def sweep(conn, limit, runner=None, now=None):
     """Verify up to `limit` unchecked replays.  -> {verdict: count}."""
+    runner = runner or run_verifier
     ensure_schema(conn)
     # Every verdict is stamped t0, taken before pending() reads the rows, so a
     # tie landing mid-run is newer (not current: at < submitted).  The -1 covers
@@ -178,19 +212,21 @@ def sweep(conn, limit, runner=run_verifier, now=None):
     for row in pending(conn, limit):
         path = relpath(row)
         if path is None:
+            why = ("evidence file missing, or not under the game tree the verifier reads"
+                   if row["kind"] == "evidence" else "file missing or unusable name")
             with conn:
-                record(conn, row["id"], "REFUSE", "file missing or unusable name",
-                       -1, engine, progs, t0)
+                record(conn, row["id"], "REFUSE", why, -1, engine, progs, t0)
             counts["REFUSE"] = counts.get("REFUSE", 0) + 1
             continue
-        bymap.setdefault(row["map_dir"], []).append((row["id"], path))
+        bymap.setdefault(row["map_dir"], []).append((row, path))
 
     for map_dir, items in sorted(bymap.items()):
         verdicts = parse(runner(map_dir, [p for _, p in items]))
         with conn:
-            for rid, path in items:
+            for row, path in items:
                 v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
-                record(conn, rid, v, reason, ticks, engine, progs, t0)
+                v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
+                record(conn, row["id"], v, reason, ticks, engine, progs, t0)
                 counts[v] = counts.get(v, 0) + 1
     return counts
 
@@ -348,8 +384,9 @@ def bind_key(conn, runid, pub, t0):
     """
     if not pub:
         return
-    row = conn.execute("SELECT player FROM replays WHERE runid = ? AND kind = 'run'"
-                       " AND player <> '' LIMIT 1", (runid,)).fetchone()
+    row = conn.execute("SELECT player FROM replays WHERE runid = ?"
+                       " AND kind IN ('run', 'evidence') AND player <> ''"
+                       " ORDER BY kind = 'evidence' LIMIT 1", (runid,)).fetchone()
     if not row:
         return          # nothing on a board names this run; there is no player yet
     player = row[0]
@@ -368,7 +405,8 @@ def bind_key(conn, runid, pub, t0):
                SELECT COUNT(DISTINCT rc.runid) FROM receipts rc
                 WHERE rc.pub = pubkeys.pub AND EXISTS (
                       SELECT 1 FROM replays rp WHERE rp.runid = rc.runid
-                        AND rp.kind = 'run' AND rp.player = pubkeys.player))
+                        AND rp.kind IN ('run', 'evidence')
+                        AND rp.player = pubkeys.player))
             WHERE pub = ? AND player = ?""", (t0, pub, player))
 
 
@@ -378,6 +416,7 @@ def evidence_step(conn):
     -> (rows indexed, rows dropped)."""
     try:
         added = surfd.index_evidence(conn)["indexed"]
+        surfd.requeue_evidence(conn)
         return added, surfd.gc_evidence(conn)
     except Exception as exc:
         print("sweep: evidence step failed: %r" % exc, file=sys.stderr)

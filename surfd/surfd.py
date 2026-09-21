@@ -2064,6 +2064,89 @@ def restand(db, rid):
     return "none"
 
 
+# Patch 425: A REJECT HIDES THE STAGE TIMES ITS RUN SET (Lex, 2026-09-21).  A
+# stage row (leg > 0, no recording of its own) set by replay R's run is parked
+# in tier "<tier>@<R>", which no board query reads (every one filters tier),
+# while a reject on R is current, and restored when it lapses.  A stage row has
+# no history to re-derive from, so parking keeps it; the player's next time
+# meanwhile takes the live slot, and on restore the better one stays.
+def _stage_move(db, row, tier):
+    """Move runs row `row` to `tier`.  A row already holding that slot stays
+    only if it is better (BOARD_ORDER); the loser is deleted.  -> 1 if moved."""
+    key = (row["map"], row["track"], row["leg"])
+    who = (row["style"], row["player"])
+    have = db.execute("SELECT millis, submitted FROM runs WHERE map=? AND track=?"
+                      " AND leg=? AND tier=? AND style=? AND player=?",
+                      key + (tier,) + who).fetchone()
+    if have is not None:
+        if (have["millis"], have["submitted"]) <= (row["millis"], row["submitted"]):
+            db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
+                       " AND tier=? AND style=? AND player=?",
+                       key + (row["tier"],) + who)
+            return 0
+        db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
+                   " AND tier=? AND style=? AND player=?", key + (tier,) + who)
+    db.execute("UPDATE runs SET tier = ? WHERE map=? AND track=? AND leg=?"
+               " AND tier=? AND style=? AND player=?",
+               (tier,) + key + (row["tier"],) + who)
+    return 1
+
+
+def restage(db, rid):
+    """Park or restore the stage rows replay `rid`'s run set, to match whether
+    a reject on it is current.  The caller's transaction.  -> (parked, restored).
+
+    Call it after anything that changes that: a review, or submit_run re-filing
+    a held leaf (a later `submitted` lapses a reject; a new runid is another
+    run's).  A parked slot is re-derived from the player's recorded runs of
+    that leg, if any (restand's rule)."""
+    tag = "@%d" % rid
+    rep = db.execute("SELECT map, track, player, runid FROM replays WHERE id = ?",
+                     (rid,)).fetchone()
+    rejected = (rep is not None and rep["runid"] not in ("", "-")
+                and db.execute("SELECT 1 FROM replays p WHERE p.id = ? AND "
+                               + _REJECTED_SQL, (rid,)).fetchone() is not None)
+    mine = tuple(rep) if rejected else None
+    restored = 0
+    for row in db.execute("SELECT * FROM runs WHERE substr(tier, -?) = ?",
+                          (len(tag), tag)).fetchall():
+        if (row["map"], row["track"], row["player"], row["runid"]) != mine:
+            restored += _stage_move(db, row, row["tier"][:-len(tag)])
+    parked = 0
+    if rejected:
+        for row in db.execute(
+                "SELECT * FROM runs WHERE map = ? AND track = ? AND leg > 0"
+                " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
+                mine + TIERS).fetchall():
+            if _stage_move(db, row, row["tier"] + tag):
+                parked += 1
+                rec = db.execute(
+                    "SELECT id FROM replays WHERE map=? AND track=? AND leg=?"
+                    " AND tier=? AND style=? AND player=? AND kind = 'run' LIMIT 1",
+                    (row["map"], row["track"], row["leg"], row["tier"],
+                     row["style"], row["player"])).fetchone()
+                if rec is not None:
+                    restand(db, rec["id"])
+    return parked, restored
+
+
+def stage_counts(db, rid):
+    """(shown, hidden): the stage rows replay `rid`'s run set on the boards, and
+    the ones a reject on it has parked."""
+    rep = db.execute("SELECT map, track, player, runid FROM replays WHERE id = ?",
+                     (rid,)).fetchone()
+    if rep is None or rep["runid"] in ("", "-"):
+        return 0, 0
+    tag = "@%d" % rid
+    shown = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE map = ? AND track = ? AND leg > 0"
+        " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
+        tuple(rep) + TIERS).fetchone()[0]
+    hidden = db.execute("SELECT COUNT(*) FROM runs WHERE substr(tier, -?) = ?",
+                        (len(tag), tag)).fetchone()[0]
+    return shown, hidden
+
+
 @app.post("/api/run")
 def submit_run():
     now = int(time.time())
@@ -2407,6 +2490,10 @@ def submit_run():
                         " WHERE map=? AND track=? AND leg=? AND leaf=?",
                         (mapname, track, leg, leaf),
                     ).fetchone()[0]
+                    # A held leaf re-filed may lapse a reject (a later
+                    # `submitted`) or now name another run (a new runid).
+                    if have is not None:
+                        restage(db, rid)
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
                     # index being full is not a reason to refuse somebody a
@@ -2731,9 +2818,9 @@ def index_evidence(conn, now=None, dry_run=False):
     """Index each EVIDENCE_DIR file that a leafless stage row's run left and no
     replay stands for, as a kind='evidence' leg-0 row kept under KEEP_DIR.
 
-    tier/style '' and checked 1 keep the row off every board query and the
-    verifier.  -> {"indexed", "bad", "deferred", "files"}; a dry run writes
-    nothing and counts what it would index."""
+    tier/style '' keep the row off every board query; checked 0 queues it for
+    the verifier (Patch 425).  -> {"indexed", "bad", "deferred", "files"}; a
+    dry run writes nothing and counts what it would index."""
     now = int(time.time()) if now is None else now
     out = {"indexed": 0, "bad": 0, "deferred": 0, "files": []}
     try:
@@ -2813,7 +2900,7 @@ def index_evidence(conn, now=None, dry_run=False):
                     "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
                     " style, player, name, ticks, tickrate, millis, flags, node,"
                     " submitted, bytes, truncated, seen, checked, runid, kind)"
-                    " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,1,?,'evidence')"
+                    " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,0,?,'evidence')"
                     " ON CONFLICT(map, track, leg, leaf) DO NOTHING",
                     (key, d, track, leaf, ref["player"],
                      _rec_name(hdr, ref["name"]), ticks,
@@ -2825,6 +2912,16 @@ def index_evidence(conn, now=None, dry_run=False):
                 out["indexed"] += 1
                 out["files"].append("%s/%s" % (d, leaf))
     return out
+
+
+def requeue_evidence(conn):
+    """Queue for the verifier the evidence rows indexed before Patch 425, which
+    wrote checked 1 and never attempted one (seen -1).  -> rows queued."""
+    with conn:
+        return conn.execute(
+            "UPDATE replays SET checked = 0 WHERE kind = 'evidence'"
+            " AND checked = 1 AND seen = -1 AND NOT EXISTS"
+            " (SELECT 1 FROM verdicts v WHERE v.replay_id = replays.id)").rowcount
 
 
 def _lobbies_file(path):
@@ -3199,6 +3296,7 @@ def _register_admin():
         bp = build_blueprint(app, log, connect, LOBBY_TTL,
                              client_identity=client_identity, disk=disk_status,
                              runs=dict(replay_file=replay_file, restand=restand,
+                                       restage=restage, stage_counts=stage_counts,
                                        public_state=public_state,
                                        rank_of=rank_of, leg_dir=leg_dir,
                                        max_errors=VERIFY_MAX_ERRORS))

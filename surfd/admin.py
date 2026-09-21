@@ -167,8 +167,10 @@ _ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
 # a rejected signing, so a reject never waives unsigned runs.  Not judged, and
 # key_for says which: runs with no runid ('' or '-'), segmented runs (a cold
 # save-load keeps the runid and clears the nonce, so an honest one can have no
-# receipt), and a pre-8 receipt whose signature is unknown until re-read (`ru`,
-# stale = 1; --reread-receipts marks 2 and keeps what was known).
+# receipt), stage evidence (Patch 425: a run that ends in a disconnect or a map
+# change cannot be signed -- `new`/`shared` still apply), and a pre-8 receipt
+# whose signature is unknown until re-read (`ru`, stale = 1; --reread-receipts
+# marks 2 and keeps what was known).
 #   The firsts are derived tables computed once per query: per-row subqueries
 # took 12.7 s at 10k receipts.  Admin-only: VER_SQL and every public surface
 # ignore all of it.
@@ -176,17 +178,20 @@ KEY_MARGIN = 300          # s between a run's submit and its .rcpt landing
 KEY_UNJUDGED_FLAGS = 136  # surfd TF_SEGMENT | TF_SHADOW: the segmented board
 _KEY_CAND = """SELECT r.runid, r.pub, q.player, r.signed_at, q.id AS rid
       FROM receipts r
-      JOIN replays q ON q.runid = r.runid AND q.kind = 'run' AND q.player <> ''
+      JOIN replays q ON q.runid = r.runid AND q.kind IN ('run', 'evidence')
+       AND q.player <> ''
       LEFT JOIN pubkeys d ON d.pub = r.pub AND d.player = q.player
      WHERE r.sig = 1 AND r.pub <> '' AND COALESCE(d.decision, '') <> 'reject'"""
 _KEY_FIRST = """(SELECT * FROM (SELECT pub, player, signed_at, rid, ROW_NUMBER()
        OVER (PARTITION BY %s ORDER BY signed_at, runid) AS n
        FROM (""" + _KEY_CAND + """)) WHERE n = 1)"""
 _KEY_SIGNED = """(SELECT q.player, MIN(r.signed_at) AS signed_at FROM receipts r
-       JOIN replays q ON q.runid = r.runid AND q.kind = 'run' AND q.player <> ''
+       JOIN replays q ON q.runid = r.runid AND q.kind IN ('run', 'evidence')
+        AND q.player <> ''
       WHERE r.sig = 1 AND r.pub <> '' GROUP BY q.player)"""
 _KEY_JOIN = """
-  LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> '' AND p.kind = 'run'
+  LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> ''
+        AND p.kind IN ('run', 'evidence')
         AND p.player <> '' AND rc.sig = 1 AND rc.pub <> ''
   LEFT JOIN receipts ru ON ru.runid = p.runid AND ru.stale = 1 AND ru.sig = 0
   LEFT JOIN pubkeys kd ON kd.pub = COALESCE(rc.pub, '') AND kd.player = p.player
@@ -198,11 +203,12 @@ _KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
        fk.pub AS first_pub, fk.rid AS first_rid, fs.signed_at AS first_signed_at,
        CASE WHEN ru.runid IS NULL THEN 0 ELSE 1 END AS sig_unknown,
        fp.player AS first_player, fp.rid AS first_player_rid,
-       CASE WHEN p.kind <> 'run' OR p.player = '' THEN ''
+       CASE WHEN p.kind NOT IN ('run', 'evidence') OR p.player = '' THEN ''
             WHEN rc.pub IS NULL THEN
                  CASE WHEN fs.signed_at IS NULL OR p.submitted <= fs.signed_at
                            OR p.submitted > ? THEN ''
                       WHEN p.runid IN ('', '-') OR ru.runid IS NOT NULL
+                           OR p.kind = 'evidence'
                            OR (p.flags & """ + str(KEY_UNJUDGED_FLAGS) + """) <> 0 THEN ''
                       WHEN kd.decision = 'accept' AND p.submitted <= kd.decided_at THEN ''
                       WHEN kd.decision = 'reject' THEN 'rejected'
@@ -243,13 +249,14 @@ def key_bound(conn):
 
 
 def key_for(conn, rid):
-    """One board run's first-key verdict, from the list's own SQL; None for
-    stage evidence or without the schema-8 tables."""
+    """One replay's first-key verdict, from the list's own SQL; None without
+    the schema-8 tables."""
     if not key_tables(conn):
         return None
     k = conn.execute("SELECT " + _KEY_COLS + ", p.submitted AS run_submitted,"
-                     " p.runid AS run_runid, p.flags AS run_flags FROM replays p" +
-                     _KEY_JOIN + " WHERE p.id = ? AND p.kind = 'run'",
+                     " p.runid AS run_runid, p.flags AS run_flags,"
+                     " p.kind AS run_kind FROM replays p" + _KEY_JOIN +
+                     " WHERE p.id = ? AND p.kind IN ('run', 'evidence')",
                      (key_bound(conn), rid)).fetchone()
     if k is None:
         return None
@@ -270,6 +277,9 @@ def unsigned_why(k):
         return "not judged: the run has no runid, so no receipt can exist"
     if k["run_flags"] & KEY_UNJUDGED_FLAGS:
         return "not judged: a segmented run (a save-load can clear its nonce)"
+    if k["run_kind"] == "evidence":
+        return ("not judged: stage evidence (a run that ends in a disconnect or"
+                " a map change cannot be signed)")
     if k["sig_unknown"]:
         return "not judged: its receipt is waiting to be read again"
     if k["run_submitted"] <= k["first_signed_at"]:
@@ -287,12 +297,17 @@ def unsigned_why(k):
 # attempt printed no verdict.  The ? is the ERROR cap.
 def _runs_base(keys):
     return """
-SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
+SELECT p.id, p.kind, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
        p.millis AS ms, p.submitted, p.checked, p.recheck_at, v.verdict,
        COALESCE(e.verdict = 'ERROR', 0) AS error,
        p.checked = 0 AND """ + _ERRORS_SQL + """ < ? AS pending,
        CASE WHEN w.at >= p.submitted THEN w.decision END AS decision,
-       EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id) AS standing,
+       CASE WHEN p.kind = 'run'
+            THEN EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id)
+            ELSE EXISTS (SELECT 1 FROM runs r WHERE r.map = p.map
+                   AND r.track = p.track AND r.leg > 0 AND r.replay_id = 0
+                   AND r.player = p.player AND r.runid = p.runid
+                   AND r.tier IN ('ranked', 'community')) END AS standing,
        """ + (_KEY_COLS if keys else _NO_KEY_COLS) + """
   FROM replays p
   LEFT JOIN (SELECT v.replay_id, MAX(v.id) AS eid,
@@ -303,7 +318,7 @@ SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
   LEFT JOIN verdicts v ON v.id = lv.vid
   LEFT JOIN verdicts e ON e.id = lv.eid
   LEFT JOIN reviews w ON w.replay_id = p.id""" + (_KEY_JOIN if keys else "") + """
- WHERE p.kind = 'run'"""
+ WHERE p.kind IN ('run', 'evidence')"""
 
 # pending = what the next sweep would pick: checked 0 and under the ERROR cap.
 RUN_STATES = {
@@ -919,8 +934,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
     fallback is the old behaviour: the socket peer, always believed.
 
     `runs` is surfd's replay helpers, injected for the same reason: a dict of
-    replay_file, restand, public_state, rank_of and leg_dir. Without it the
-    run-review routes are not registered.
+    replay_file, restand, restage, stage_counts, public_state, rank_of and
+    leg_dir. Without it the run-review routes are not registered.
 
     `disk` is surfd.disk_status (Patch 423); /api/state carries its answer.
     """
@@ -1389,6 +1404,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
     if runs is not None:
         replay_file = runs["replay_file"]
         restand = runs["restand"]
+        restage = runs["restage"]
+        stage_counts = runs["stage_counts"]
         public_state = runs["public_state"]
         rank_of = runs["rank_of"]
         leg_dir = runs["leg_dir"]
@@ -1472,6 +1489,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     "       player FROM runs WHERE replay_id = ?"
                     " ORDER BY tier LIMIT 1", (rid,)).fetchone()
                 rank, of = rank_of(conn, *stand) if stand else (0, 0)
+                shown, hidden = stage_counts(conn, rid)
                 rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
                                    else "")
                 key = key_for(conn, rid)
@@ -1490,7 +1508,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "ok": True, "run": run,
                 "public": public_state(latest["verdict"] if latest else None,
                                        decision),
-                "standing": {"on_board": stand is not None, "rank": rank, "of": of},
+                "standing": {"on_board": stand is not None, "rank": rank, "of": of,
+                             "stages": shown, "stages_hidden": hidden},
                 "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
@@ -1545,9 +1564,6 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                                        " WHERE id = ?", (rid,)).fetchone()
                     if row is None:
                         raise AdminError("no such replay: %d" % rid)
-                    if row[1] != "run":
-                        raise AdminError("replay %d is stage evidence, not a run"
-                                         " -- nothing to review" % rid)
                     if row[0] != int(shown):
                         raise RunChanged("the run changed -- reload")
                     if action == "recheck":
@@ -1569,6 +1585,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                                 " note = excluded.note, at = excluded.at",
                                 (rid, action, note, max(now - 5, row[0])))
                         result = "board row " + restand(conn, rid)
+                        parked, restored = restage(conn, rid)
+                        if parked or restored:
+                            result += ", stage times %d hidden, %d restored" % (
+                                parked, restored)
             except sqlite3.Error as exc:
                 log.exception("admin review of replay %d failed: %s", rid, exc)
                 raise AdminError("storage error")
@@ -1613,8 +1633,6 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                         " AND rc.sig = 1 AND rc.pub <> '' WHERE p.id = ?", (rid,)).fetchone()
                     if row is None:
                         raise AdminError("no such replay: %d" % rid)
-                    if row[0] != "run":
-                        raise AdminError("replay %d is stage evidence, not a run" % rid)
                     player, pub = row[1], row[2]
                     if not player:
                         raise AdminError("replay %d names no player" % rid)

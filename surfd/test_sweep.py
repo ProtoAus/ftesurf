@@ -693,28 +693,108 @@ def case_command_line():
 EVR = "20260918-142825-0-p27510"
 
 
-def case_evidence_not_pending():
+def add_evidence(conn, runid, body, lobby=True, keep=True, checked=0, seen=-1):
+    """A kind 'evidence' row: its kept copy under SURFD_KEEP and the lobby's
+    under SURFD_EVIDENCE (the one pm_verify reads), as index_evidence leaves."""
+    import surfd
+    rid = conn.execute(
+        "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+        " name, ticks, tickrate, millis, flags, node, submitted, checked, seen, runid,"
+        " kind) VALUES ('surf_aser', 'surf_aser', 0, 0, ?, '', '', 'p', 'n', 8262,"
+        " 66.666667, 123930, 0, 'p27510', 1, ?, ?, ?, 'evidence')",
+        (runid + ".rec", checked, seen, runid)).lastrowid
+    conn.commit()
+    for root, want in ((surfd.EVIDENCE_DIR, lobby), (surfd.KEEP_DIR, keep)):
+        if want:
+            d = os.path.join(root, "surf_aser")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, runid + ".rec"), "w", newline="\n") as fh:
+                fh.write(body if want is True else want)
+    return rid
+
+
+def evbody(runid, abandoned=True):
+    return ("FTESURF-REC 9\nmap surf_aser\ntrack 0\nleg 0\ntickrate 0.015\n"
+            "runid %s\nflags 0\nbegin\n0.0000 0 0 0 0 0 0 0 0 1\n%s"
+            "end 8262 8519 256 0 8262 4 1 0 1 0\n"
+            % (runid, "abandon 8262\n" if abandoned else ""))
+
+
+def case_evidence_verified():
+    # Patch 425: stage evidence is verified like a run.  pm_verify does not read
+    # `abandon`, so an abandoned file whose replay reproduced HOLDs "no finish";
+    # the sweep records that one reason, on that one kind of file, as a PASS.
     surfd, sweep, runs = fresh()
     conn = surfd.connect()
-    ev = conn.execute(
-        "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
-        " name, ticks, tickrate, millis, flags, node, submitted, checked, runid, kind)"
-        " VALUES ('bhop_eazy', 'bhop_eazy', 0, 0, ?, '', '', 'p', 'n', 662, 100,"
-        " 6620, 0, 'p27510', 1, 0, ?, 'evidence')", (EVR + ".rec", EVR)).lastrowid
-    conn.commit()
     run = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
-    check("an evidence row at checked 0 is not pending; the run is",
-          [r["id"] for r in sweep.pending(conn, 20)], [run])
+    R = ["20260918-1428%02d-0-p27510" % i for i in range(7)]
+    ab = add_evidence(conn, R[0], evbody(R[0]))
+    fin = add_evidence(conn, R[1], evbody(R[1], abandoned=False))
+    div = add_evidence(conn, R[2], evbody(R[2]))
+    gone = add_evidence(conn, R[3], evbody(R[3]), lobby=False)
+    other = add_evidence(conn, R[4], evbody(R[4]), lobby=evbody(R[4]) + "x 1\n")
+    check("the run and every evidence row are pending",
+          sorted(r["id"] for r in sweep.pending(conn, 20)),
+          sorted([run, ab, fin, div, gone, other]))
+    check("an evidence row names the LOBBY's copy, game-filesystem relative",
+          sweep.relpath(conn.execute("SELECT * FROM replays WHERE id = ?", (ab,)).fetchone()),
+          "data/evidence/surf_aser/%s.rec" % R[0])
     calls = []
 
     def runner(map_dir, paths):
-        calls.append(paths)
-        return ["VERIFY %s PASS ticks 662 rows 1" % p for p in paths]
+        calls.append((map_dir, paths))
+        out = []
+        for p in paths:
+            if R[2] in p:
+                out.append("VERIFY %s HOLD state: 3 packet(s) differ, first at row 1" % p)
+            elif "evidence" in p:
+                out.append("VERIFY %s HOLD %s" % (p, sweep.NO_FINISH))
+            else:
+                out.append("VERIFY %s PASS ticks 662 rows 1" % p)
+        return out
 
     sweep.sweep(conn, 20, runner=runner)
-    check("...and the sweep verifies only the run, recording nothing for it",
-          (calls, latest(conn, ev)),
-          ([["data/runs/bhop_eazy/main/0000662_p-2c8f36b6_run.rec"]], None))
+    check("an abandoned file that reproduced to its abandon: PASS at the abandon tick",
+          tuple(latest(conn, ab)),
+          ("PASS", "abandoned at tick 8262; the replay reproduces to there"
+                   " (pm_verify: %s)" % sweep.NO_FINISH, 8262))
+    check("control: a finished evidence file that never finishes stays HOLD",
+          tuple(latest(conn, fin))[:2], ("HOLD", sweep.NO_FINISH))
+    check("control: an abandoned file that diverged stays HOLD",
+          tuple(latest(conn, div))[0], "HOLD")
+    check("no lobby copy: REFUSE, and it says why",
+          tuple(latest(conn, gone))[:2],
+          ("REFUSE", "evidence file missing, or not under the game tree the verifier reads"))
+    check("a lobby copy that is not the kept file: REFUSE",
+          tuple(latest(conn, other))[0], "REFUSE")
+    check("control: the run still verified", tuple(latest(conn, run))[0], "PASS")
+    check("one verifier per map, the evidence beside it",
+          sorted(m for m, _ in calls), ["bhop_eazy", "surf_aser"])
+
+    real = surfd.EVIDENCE_DIR
+    surfd.EVIDENCE_DIR = tempfile.mkdtemp(prefix="elsewhere-")
+    try:
+        check("an evidence dir outside the game tree names nothing",
+              sweep.relpath(conn.execute("SELECT * FROM replays WHERE id = ?",
+                                         (ab,)).fetchone()), None)
+    finally:
+        surfd.EVIDENCE_DIR = real
+
+    # Rows indexed before Patch 425 (checked 1, never attempted) are queued once.
+    old = add_evidence(conn, R[5], evbody(R[5]), checked=1, seen=-1)
+    tried = add_evidence(conn, R[6], evbody(R[6]), checked=1, seen=5)
+    conn.execute(          # the stage row it backs; gc drops the unreferenced rest
+        "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+        " tickrate, millis, flags, node, runid, submitted, replay_id)"
+        " VALUES ('surf_aser', 0, 2, 'ranked', 'clean', 'p', 'n', 454, 66.666667,"
+        " 6810, 0, 'p27510', ?, 1, 0)", (R[5],))
+    conn.commit()
+    sweep.evidence_step(conn)
+    check("the evidence step requeues only the never-attempted pre-425 row",
+          [r["id"] for r in sweep.pending(conn, 20)], [old])
+    check("control: requeue is idempotent once it has a verdict",
+          (sweep.sweep(conn, 20, runner=runner).get("PASS"), surfd.requeue_evidence(conn)),
+          (1, 0))
 
 
 def case_main_evidence():
@@ -734,6 +814,9 @@ def case_main_evidence():
                  "runid %s\nflags 0\nbegin\n0.0000 0 0 0 0 0 0 0 0 1\n"
                  "abandon 8262\nend 8262 8519 256 0 8262 4 1 0 1 0\n" % EVR)
     os.utime(path, (1, 1))
+    # The cron's verifier: the abandoned file reproduces to its abandon.
+    sweep.run_verifier = lambda m, paths: [
+        "VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths]
 
     def cron(*argv):
         out = io.StringIO()
@@ -747,8 +830,8 @@ def case_main_evidence():
     n = lambda: conn.execute("SELECT COUNT(*) FROM replays WHERE kind = 'evidence'").fetchone()[0]
     check("...and writes nothing", n(), 0)
     rc, text = cron()
-    check("main: the cron line reports what it indexed",
-          (rc, text.rstrip().endswith("nothing to verify evidence +1 -0"), n()), (0, True, 1))
+    check("main: the cron line reports what it indexed, and verifies it",
+          (rc, text.rstrip().endswith("PASS 1 evidence +1 -0"), n()), (0, True, 1))
     check("control: a second run adds nothing and says nothing of it",
           "evidence" in cron()[1], False)
     conn.execute("DELETE FROM runs")
@@ -805,7 +888,7 @@ def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
                  case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
                  case_mid_run_tie, case_mid_run_recheck, case_command_line,
-                 case_evidence_not_pending, case_main_evidence,
+                 case_evidence_verified, case_main_evidence,
                  case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,

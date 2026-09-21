@@ -611,16 +611,23 @@ Before verifying, each sweep:
      the header (runid, map, track, leg 0), hard-links it to
      `SURFD_KEEP/<map_dir>/<runid>.rec` (default `data/evidence` under
      `SURFD_HOME`; a copy if the link is refused) and adds a `replays` row with
-     `kind='evidence'`, tier and style `''` and `checked=1`, so it is on no
-     board, in no review list and never verified. A file named by more than one
+     `kind='evidence'`, tier and style `''` (on no board) and `checked=0`, so
+     the verifier takes it like a run (Patch 425). A file named by more than one
      player's stage rows is bad (logged, not indexed). A file with no `end`
      line (only a newline-terminated one counts: an unterminated last line is a
      torn write) younger than 10 minutes waits for the next sweep; an
      unreadable one skips only itself.
-  2. `gc_evidence`: deletes each evidence row no leafless stage row references
+  2. `requeue_evidence`: rows indexed before Patch 425 (`checked=1`, never
+     attempted) are queued once.
+  3. `gc_evidence`: deletes each evidence row no leafless stage row references
      any more (the check is inside the DELETE), then its kept file; kept files
      with no row, older than an hour, go too. Nothing under `SURFD_EVIDENCE` is
      ever unlinked, whatever `SURFD_KEEP` resolves to.
+
+pm_verify reads the lobby's copy (the kept one is outside the game tree), and
+REFUSEs when it is gone or differs. It does not read `abandon`: an abandoned
+file whose replay reproduced HOLDs "no finish", and the sweep records exactly
+that reason on an abandoned file as PASS at the abandon tick.
 
 The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
 the kept file byte-exact, like any other replay. The log line gains
@@ -670,13 +677,17 @@ The list shows each replay's latest current non-ERROR verdict (what the badge
 reads), an ERROR flag for a last attempt that printed nothing, the review and
 whether the run stands on a board. The queue is current HOLDs with no review;
 pending is what the next sweep picks (`checked=0`, under the ERROR cap).
-Evidence rows (schema 6) are not runs: the list omits them and every review
-action refuses them (400).
+Evidence rows (schema 6) are listed as stage evidence and reviewed like runs
+(Patch 425); their key flags are `new`/`shared` only, never `unsigned`.
 
 Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
 and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call
 `restand()`, which rewrites that player's board row from their best
-non-rejected replay, so public reads need no hidden filter. A review counts only
+non-rejected replay, so public reads need no hidden filter, and `restage()`:
+a current reject parks the stage rows its run set (leg > 0, rep 0, same
+runid/map/track/player) in tier `<tier>@<rid>`, which no board reads, and
+restores them when it lapses -- the better of a parked and a live row keeps the
+slot. A review counts only
 while it is at or after the replay's `submitted`; the page posts the
 `submitted` it showed, and a replay resubmitted since answers 409 ("the run
 changed -- reload").
