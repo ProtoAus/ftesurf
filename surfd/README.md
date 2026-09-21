@@ -632,6 +632,10 @@ file whose replay reproduced HOLDs "no finish", or "a cancel zone is crossed" on
 its last input row when a cancel zone ended it, and the sweep records exactly
 those on an abandoned file as PASS at the abandon tick.
 
+A run's file must also describe the row a PASS would badge (map, track, leg,
+runid, flags, tickrate): a row filed while its file was absent was bound to
+nothing, so a mismatch is HOLD.
+
 pm_verify vouches for the trajectory, never for a stage row's number, so every
 verdict (run or evidence) also checks the stage rows of that run against the
 recording's `stagepost <seg> <dur>` records (leg = seg + 1) and its tickrate: a
@@ -695,9 +699,10 @@ Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
 and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call
 `restand()`, which rewrites that player's board row from their best
 non-rejected replay, so public reads need no hidden filter, and `restage()`:
-while a reject on a recording of a run (a replay of it whose file is there -- a
-file-less row naming the runid does not count) is current, the run's stage
-rows (leg > 0,
+while a reject on a recording of a run (a replay filed against its file,
+`replays.bound` -- a file-less row naming the runid does not count, and a file
+that goes missing later changes nothing) is current, the run's stage rows
+(leg > 0,
 rep 0, same runid/map/track/player) are parked in tier `<tier>@<runid>`, which
 no board reads; when none is, they are restored -- the better of a parked and a
 live row keeps the slot, the other set aside as `<tier>^<runid>` until the run

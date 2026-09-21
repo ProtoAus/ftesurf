@@ -269,7 +269,7 @@ def review_section(pw_hash, pw):
     slow, _ = submit("eve", 5000)
     fast, _ = submit("eve", 4000)
     hal, hal_path = submit("hal", 4500, write=True)
-    pat, _ = submit("pat", 4600)
+    pat, _ = submit("pat", 4600, write=True)   # its ties below re-file this file
     err, _ = submit("err", 4700)
     T = int(clock.now)
     record(hal, "HOLD", T, reason="SENTINEL-REASON")

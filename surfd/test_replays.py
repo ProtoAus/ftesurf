@@ -356,6 +356,11 @@ same = leaf(4108)
 # Two runs, so two runids (SV_RecOpen stamps wallclock + slot); an identical
 # re-post of one run may not rename its row (Patch 424).
 submit(m, ticks=4108, rec=same, node="p27510", runid="r-first")
+sdir = os.path.join(m.RUNS_DIR, "surf_test", "main")     # the second run's file
+os.makedirs(sdir, exist_ok=True)
+with open(os.path.join(sdir, same), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write("FTESURF-REC 9\nmap surf_test\ntrack 0\nleg 0\nrunid r-second\n"
+             "tickrate 0.015\nbegin\nend 4108 0 0 0 0 0 0 0 0 0 1\n")
 submit(m, ticks=4108, name="Alice2", rec=same, node="p27540", runid="r-second")
 
 check("one file, one row", len(rows(m, "SELECT 1 FROM replays")), 1)

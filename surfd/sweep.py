@@ -87,7 +87,8 @@ def pending(conn, limit):
     # Only ERRORs since the last submission or re-check count against the cap,
     # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
-        """SELECT r.id, r.map_dir, r.track, r.leg, r.leaf, r.kind FROM replays r
+        """SELECT r.id, r.map, r.map_dir, r.track, r.leg, r.leaf, r.kind, r.runid,
+                  r.flags, r.tickrate FROM replays r
            WHERE r.checked = 0 AND r.kind IN ('run', 'evidence')
              AND (SELECT COUNT(*) FROM verdicts v
                   WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
@@ -153,6 +154,27 @@ def abandoned_pass(row, verdict, reason):
         return None
     return ("PASS", "abandoned at tick %d; %s (pm_verify: %s)" % (meta[1], how, reason),
             meta[1])
+
+
+def row_check(row, verdict, reason):
+    """(verdict, reason): a run's file must describe the row a PASS would badge
+    -- a row filed while its file was absent was bound to nothing (Patch 425
+    review round 5).  A mismatch is HOLD; evidence rows were checked when
+    indexed."""
+    if row["kind"] != "run":
+        return verdict, reason
+    meta = surfd._rec_meta(surfd.replay_file(row)[0] or "")
+    if meta is None:
+        return verdict, reason
+    hdr = dict(meta[0])
+    if row["runid"] in ("", "-"):
+        hdr.pop("runid", None)            # sent none (a TF_SHADOW continuation)
+    bad = surfd._rec_disagrees(hdr, row["map"], row["track"], row["leg"],
+                               row["runid"], row["flags"], row["tickrate"])
+    if not bad:
+        return verdict, reason
+    return "HOLD", "the file does not describe this row: %s (pm_verify %s%s)" % (
+        bad, verdict, ": " + reason if reason else "")
 
 
 def stage_check(conn, row, verdict, reason):
@@ -248,6 +270,7 @@ def sweep(conn, limit, runner=None, now=None):
                 v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
                 v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
                 if v != "ERROR":
+                    v, reason = row_check(row, v, reason)
                     v, reason = stage_check(conn, row, v, reason)
                 record(conn, row["id"], v, reason, ticks, engine, progs, t0)
                 counts[v] = counts.get(v, 0) + 1

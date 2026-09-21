@@ -96,6 +96,12 @@ def fresh(key="testkey", seed_v1=False, seed=None):
     os.environ["SURFD_HOME"] = home
     os.environ["SURFD_DB"] = db
     os.environ["SURFD_ENV"] = os.path.join(home, "surfd.env")
+    # The run tree too, or section 19's recordings land in the default -- the
+    # LIVE lobbies' data/runs on the Pi (they did, 2026-09-20/21: surf_test).
+    os.environ["SURFD_RUNS"] = os.path.join(home, "runs")
+    os.makedirs(os.environ["SURFD_RUNS"], exist_ok=True)
+    for k in ("SURFD_EVIDENCE", "SURFD_KEEP"):
+        os.environ.pop(k, None)
     os.environ.pop("SURFD_PUBLIC_HOST", None)
     os.environ.pop("SURFD_TRUSTED", None)
     sys.modules.pop("surfd", None)
@@ -1178,6 +1184,17 @@ def run(mod, player, ticks, rec=True, **kw):
                   tickrate=100, **kw)
 
 
+def tie_rec(mod, player, ticks, runid):
+    """The file a second run leaves under the same leaf (an exact tie writes it
+    before it files): a held replay changes only against its file (425)."""
+    d = os.path.join(mod.RUNS_DIR, "surf_test", "main")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, leaf(ticks, player)), "w", encoding="utf-8",
+              newline="\n") as fh:
+        fh.write("FTESURF-REC 9\nmap surf_test\ntrack 0\nleg 0\nrunid %s\n"
+                 "tickrate 0.01\nbegin\nend %d 0 0 0 0 0 0 0 0 0 1\n" % (runid, ticks))
+
+
 def add_verdict(mod, rid, verdict, at, reason="r"):
     conn = sqlite3.connect(mod._test_db)
     conn.execute("INSERT INTO verdicts (replay_id, verdict, reason, ticks,"
@@ -1261,6 +1278,7 @@ clock.now += 60
 # stamps wallclock+slot).  That is what makes it new evidence rather than the
 # same row re-posted -- section 19 (c) pins the other half, that an identical
 # re-post must NOT move `submitted` and void the verdict under it.
+tie_rec(m, "cur", 5100, "r-cur-2")
 r = run(m, "cur", 5100, runid="r-cur-2")
 check("an exact-tie resubmission reuses the replay row", r["rep"], c)
 check("...and the older PASS no longer counts", rows_by_player(m)["cur"]["ver"], 0)
@@ -1339,6 +1357,7 @@ rid = run(m5, "tie", 3000)["rep"]
 review(m5, rid, "reject", int(clock.now) + 5)
 check("control: the rejected run is off the board", "tie" in rows_by_player(m5), False)
 clock.now += 60
+tie_rec(m5, "tie", 3000, "r-tie-2")
 r = run(m5, "tie", 3000, runid="r-tie-2")    # a second run, so its own runid
 check("an exact tie after the reject stores on the same replay row",
       (r["stored"], r["rep"]), (True, rid))
@@ -1967,6 +1986,12 @@ submit(m, player="vic", name="Vic", ticks=700, tickrate=100, rec=vleaf,
 check("(e) with the file gone, a changed recbytes does not lapse the reject",
       q(m, "SELECT r.decision, r.at >= p.submitted FROM reviews r JOIN replays p"
            " ON p.id = r.replay_id WHERE p.id = ?", (vrep,)), [("reject", 1)])
+clock.now += 10
+submit(m, player="vic", name="EVIL", ticks=700, tickrate=10000, rec=vleaf,
+       runid="Rother")
+check("(e) with the file gone, another runid rewrites nothing on the held row",
+      q(m, "SELECT runid, name, tickrate, millis FROM replays WHERE id=?", (vrep,)),
+      [("rv", "Vic", 100.0, 7000)])
 check("(e) runs_run indexes the per-run stage lookups",
       "runs_run" in [r[1] for r in q(m, "PRAGMA index_list(runs)")], True)
 

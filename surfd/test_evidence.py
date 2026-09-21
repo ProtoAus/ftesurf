@@ -603,6 +603,56 @@ def case_round4():
           stage(m), (500, "S"))
 
 
+def case_bound():
+    """E14: "a recording of the run" is decided when it was filed (replays.bound),
+    not by the disk now; the column is backfilled on an older database"""
+    m = fresh(admin_pw=PW)
+    sweep = importlib.import_module("sweep")
+    lf = leaf(4000, "kap")
+    path = put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace(
+        "end 8262", "end 4000"))
+    submit(m, leg=2, ticks=454)
+    rid = submit(m, ticks=4000, rec=lf)["rep"]
+    c, csrf = admin_client(m)
+    review(m, c, csrf, rid, "reject")
+    check("E14 control: the rejected run's stage time is hidden", stage(m), None)
+    os.unlink(path)                        # the recording goes missing later
+    sweep.evidence_step(m.connect())
+    check("E14 ...and stays hidden when its file is gone", stage(m), None)
+    check("E14 ...the replay still reads as filed against its file",
+          q(m, "SELECT bound FROM replays WHERE id = ?", (rid,)), [(1,)])
+
+    m = fresh()
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    m.index_evidence(conn)
+    live = put_run(m, leaf(4100, "kap"), evbody("Rb").replace("abandon 8262\n", ""))
+    submit(m, ticks=4100, rec=leaf(4100, "kap"), runid="Rb")
+    submit(m, player="zed", ticks=4200, rec=leaf(4200, "zed"), runid="Rz")   # no file
+    with conn:
+        conn.execute("ALTER TABLE replays DROP COLUMN bound")
+    m.replays_bound(conn)
+    check("E14 backfill: evidence and a run whose file is there are bound, not the rest",
+          q(m, "SELECT kind, runid, bound FROM replays ORDER BY id"),
+          [("evidence", R, 1), ("run", "Rb", 1), ("run", "Rz", 0)])
+
+
+def case_restand_sets_aside():
+    """E15: re-standing a recorded stage run over the player's interim time sets
+    that time aside, and a later reject gives it back (round 5, older)"""
+    m = fresh(admin_pw=PW)
+    x = stage_run(m, 450, "Rx")
+    c, csrf = admin_client(m)
+    review(m, c, csrf, x, "reject")
+    check("E15 control: the rejected recording's slot is empty", stage(m), None)
+    submit(m, leg=2, ticks=500, runid="S")
+    review(m, c, csrf, x, "clear")
+    check("E15 clearing it re-stands the 450", stage(m), (450, ""))
+    review(m, c, csrf, x, "reject")
+    check("E15 rejecting it again gives the player's 500 back", stage(m), (500, "S"))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -801,9 +851,9 @@ def case_siblings_and_old_rejects():
     with conn:
         rid = conn.execute(
             "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
-            " name, ticks, tickrate, millis, flags, node, submitted, runid, kind)"
+            " name, ticks, tickrate, millis, flags, node, submitted, runid, kind, bound)"
             " VALUES ('surf_aser', 'surf_Aser', 0, 0, ?, 'ranked', 'clean', 'kap',"
-            " 'Kap', 9000, 66.666667, 135000, 0, 'p27510', 1, ?, 'run')",
+            " 'Kap', 9000, 66.666667, 135000, 0, 'p27510', 1, ?, 'run', 1)",
             (sib, R)).lastrowid
     c, csrf = admin_client(m)
     review(m, c, csrf, eid, "reject")
@@ -838,7 +888,7 @@ def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
-                 case_set_aside, case_round4,
+                 case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

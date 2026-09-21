@@ -723,6 +723,30 @@ CREATE TABLE IF NOT EXISTS sweepmeta (
 """
 
 
+def replays_bound(conn):
+    """Patch 425, IDEMPOTENT and run by every migrate(): replays.bound is 1 when
+    the row was filed against its file -- submit_run bound the header, or
+    index_evidence indexed it -- so "a recording of the run" is decided when it
+    was filed, never by whether the disk still has it (review round 5: a
+    missing file un-hid a rejected run's stage times).  Backfilled once, from
+    the disk as it is now."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
+    if "bound" in cols:
+        return
+    try:
+        conn.execute("ALTER TABLE replays ADD COLUMN bound INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc):
+            raise
+        return                                # a racing process backfills
+    conn.execute("UPDATE replays SET bound = 1 WHERE kind = 'evidence'")
+    for row in conn.execute("SELECT id, map_dir, track, leg, leaf, kind FROM replays"
+                            " WHERE kind = 'run'").fetchall():
+        if replay_file(row)[0] is not None:
+            conn.execute("UPDATE replays SET bound = 1 WHERE id = ?", (row[0],))
+    conn.commit()
+
+
 def receipts_v8(conn):
     """Schema 8 (Patch 422), IDEMPOTENT and run by every migrate(): it also
     repairs a database an earlier cut stamped 8 without the receipts columns
@@ -1076,6 +1100,7 @@ def migrate():
         conn.execute("CREATE INDEX IF NOT EXISTS runs_run"
                      " ON runs (map, track, player, runid)")
         conn.commit()
+        replays_bound(conn)
         if version < 8:
             conn.execute("PRAGMA user_version=8")
             conn.commit()
@@ -2043,7 +2068,7 @@ def restand(db, rid):
     key = (rep["map"], rep["track"], rep["leg"], rep["tier"], rep["style"],
            rep["player"])
     cur = db.execute(
-        "SELECT replay_id, millis FROM runs WHERE map=? AND track=? AND leg=?"
+        "SELECT * FROM runs WHERE map=? AND track=? AND leg=?"
         " AND tier=? AND style=? AND player=?", key).fetchone()
     best = db.execute(
         "SELECT p.* FROM replays p WHERE p.map=? AND p.track=? AND p.leg=?"
@@ -2058,6 +2083,11 @@ def restand(db, rid):
         if not rejected and (best is None or best["millis"] >= cur["millis"]):
             return "kept"
     if best is not None:
+        if cur is not None and cur["replay_id"] == 0 and cur["leg"] > 0:
+            # A stage time with no recording has no history to rebuild: set it
+            # aside, as a restore does, so a later reject gives it back (425).
+            _stage_move(db, cur, cur["tier"] + "^" + (
+                best["runid"] if best["runid"] not in ("", "-") else "r%d" % best["id"]))
         db.execute(_UPSERT_RUN, (
             best["map"], best["track"], best["leg"], best["tier"], best["style"],
             best["player"], best["name"], best["ticks"], best["tickrate"],
@@ -2118,13 +2148,13 @@ def _stage_run(db, rid):
 
 def _run_rejected(db, run):
     """True when a current reject stands on a RECORDING of the run: a replay of
-    it whose file is there.  A file-less row naming the runid is anyone's to
-    post with the key, and rejecting it must not hide the run's honest stage
-    times (review round 4)."""
-    return any(replay_file(p)[0] is not None for p in db.execute(
-        "SELECT p.map_dir, p.track, p.leg, p.leaf, p.kind FROM replays p"
-        " WHERE p.map = ? AND p.track = ? AND p.player = ? AND p.runid = ? AND "
-        + _REJECTED_SQL, run).fetchall())
+    it filed against its file (replays.bound).  A file-less row naming the runid
+    is anyone's to post with the key, and rejecting it must not hide the run's
+    honest stage times (review round 4); whether the file is on disk NOW is no
+    answer either (round 5)."""
+    return db.execute("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ?"
+                      " AND p.player = ? AND p.runid = ? AND p.bound = 1 AND "
+                      + _REJECTED_SQL, run).fetchone() is not None
 
 
 def _stage_refill(db, row, base):
@@ -2164,7 +2194,7 @@ def _stage_refill(db, row, base):
         restand(db, rec["id"])
 
 
-def restage(db, rid):
+def restage(db, rid, park_only=False):
     """Park or restore the stage rows of replay `rid`'s run, to match whether a
     reject on any replay of that run is current.  The caller's transaction.
     -> (parked, restored).  A parked slot is refilled (_stage_refill).
@@ -2190,7 +2220,7 @@ def restage(db, rid):
             base = row["tier"]
             parked += _stage_move(db, row, base + tag)
             _stage_refill(db, row, base)       # moved or beaten, the slot is empty
-    else:
+    elif not park_only:
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND player = ?"
                 " AND runid = ? AND tier IN (?, ?)",
@@ -2212,9 +2242,11 @@ def restage_rejected(conn):
     with conn:
         if not conn.in_transaction:
             conn.execute("BEGIN IMMEDIATE")
-        for r in conn.execute("SELECT p.id FROM replays p WHERE p.runid NOT IN"
-                              " ('', '-') AND " + _REJECTED_SQL).fetchall():
-            n += restage(conn, r["id"])[0]
+        for r in conn.execute(
+                "SELECT p.id FROM reviews w JOIN replays p ON p.id = w.replay_id"
+                " WHERE w.decision = 'reject' AND w.at >= p.submitted"
+                " AND p.runid NOT IN ('', '-')").fetchall():
+            n += restage(conn, r["id"], park_only=True)[0]
     return n
 
 
@@ -2539,6 +2571,10 @@ def submit_run():
     db = get_db()
     try:
         with db:
+            # The write lock before the first read: the checks below (a reject
+            # standing, the row held) must still be true at the write (round 5).
+            if not db.in_transaction:
+                db.execute("BEGIN IMMEDIATE")
             # THE LEDGER ROW GOES IN FIRST, ABOVE THE IMPROVEMENT TEST, and the
             # ordering is the entire fix rather than a tidiness preference.
             #
@@ -2569,24 +2605,29 @@ def submit_run():
                 # leaf stolen before the patch stayed stolen.  The file check
                 # above is the binding; this is just the ledger.
             if leaf:
-                if have is not None and fileless:
-                    # A size off the wire is no evidence: it must not make a
-                    # held row's evidence "changed" and lapse its reviews.
-                    recbytes = have["bytes"]
                 if have is None:
                     nrep = db.execute(
                         "SELECT COUNT(*) FROM replays WHERE kind = 'run'"
                     ).fetchone()[0]
                 else:
                     nrep = 0          # an upsert of a row we already hold
-                if have is not None or nrep < MAX_REPLAYS:
+                if have is not None and fileless:
+                    # NOTHING changes a held replay without its file: with no
+                    # header to bind them, a runid or a recbytes off the wire
+                    # lapsed its reviews and relabelled it (reviews 4, 5).  An
+                    # honest re-filing (an exact tie) writes the file first.
+                    log.warning("rec leaf %r is replay %d, and its file cannot"
+                                " be read; the row is left as it is", leaf,
+                                have["id"])
+                elif have is not None or nrep < MAX_REPLAYS:
                     db.execute(
                         """
                         INSERT INTO replays (map, map_dir, track, leg, leaf,
                                              tier, style, player, name, ticks,
                                              tickrate, millis, flags, node,
-                                             submitted, bytes, truncated, runid)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                             submitted, bytes, truncated, runid,
+                                             bound)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
                             tier      = excluded.tier,
@@ -2601,6 +2642,7 @@ def submit_run():
                             bytes     = excluded.bytes,
                             truncated = excluded.truncated,
                             runid     = excluded.runid,
+                            bound     = excluded.bound,
                             submitted = excluded.submitted,
                             seen      = -1,
                             checked   = 0
@@ -2621,7 +2663,7 @@ def submit_run():
                         # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
-                         now, recbytes, rectrunc, runid or "-"),
+                         now, recbytes, rectrunc, runid or "-", 0 if fileless else 1),
                     )
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
@@ -3091,8 +3133,8 @@ def index_evidence(conn, now=None, dry_run=False):
                 n = conn.execute(
                     "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
                     " style, player, name, ticks, tickrate, millis, flags, node,"
-                    " submitted, bytes, truncated, seen, checked, runid, kind)"
-                    " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,0,?,'evidence')"
+                    " submitted, bytes, truncated, seen, checked, runid, kind, bound)"
+                    " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,0,?,'evidence',1)"
                     " ON CONFLICT(map, track, leg, leaf) DO NOTHING",
                     (key, d, track, leaf, ref["player"], ref["name"], ticks,
                      1.0 / spt, int(round(ticks * spt * 1000.0)), flags,

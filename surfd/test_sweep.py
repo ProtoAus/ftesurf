@@ -850,6 +850,35 @@ def case_stage_binding():
           "leg 2 454 ticks at 9000/s" in tuple(latest(conn, fast))[1], True)
 
 
+def case_row_check():
+    # Patch 425 review round 5: a run's file must describe the row a PASS badges
+    # -- a row filed while its file was absent was bound to nothing.
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    ok = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    bad = add_replay(conn, runs, "bhop_eazy", "0000663_p-2c8f36b6_run.rec")
+    shadow = add_replay(conn, runs, "bhop_eazy", "0000664_p-2c8f36b6_run.rec")
+    for rid_, leaf_, runid, hdr in (
+            (ok, "0000662_p-2c8f36b6_run.rec", "rA", "rA"),
+            (bad, "0000663_p-2c8f36b6_run.rec", "rA", "rB"),
+            (shadow, "0000664_p-2c8f36b6_run.rec", "-", "rC")):
+        conn.execute("UPDATE replays SET runid = ?, tickrate = 100 WHERE id = ?",
+                     (runid, rid_))
+        with open(os.path.join(runs, "bhop_eazy", "main", leaf_), "w", newline="\n") as fh:
+            fh.write("FTESURF-REC 9\nmap bhop_eazy\ntrack 0\nleg 0\nrunid %s\n"
+                     "tickrate 0.01\nflags 0\nbegin\n" % hdr)
+    conn.commit()
+    sweep.sweep(conn, 20, runner=lambda m, paths: [
+        "VERIFY %s PASS ticks 662 rows 1" % p for p in paths])
+    check("a file that describes the row: PASS", tuple(latest(conn, ok))[0], "PASS")
+    check("a file whose runid is another run's: HOLD, saying so",
+          tuple(latest(conn, bad))[:2],
+          ("HOLD", "the file does not describe this row: runid 'rB' != 'rA'"
+                   " (pm_verify PASS: ticks 662 rows 1)"))
+    check("control: a row that sent no runid (a continuation) is not held for it",
+          tuple(latest(conn, shadow))[0], "PASS")
+
+
 def case_main_evidence():
     surfd, sweep, runs = fresh()
     conn = surfd.connect()
@@ -941,7 +970,8 @@ def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
                  case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
                  case_mid_run_tie, case_mid_run_recheck, case_command_line,
-                 case_evidence_verified, case_stage_binding, case_main_evidence,
+                 case_evidence_verified, case_stage_binding, case_row_check,
+                 case_main_evidence,
                  case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,
