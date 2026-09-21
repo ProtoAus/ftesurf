@@ -231,7 +231,8 @@ def bump_end(lines, field, delta=1):
     return lines
 
 
-def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1):
+def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
+             dense_hi=1.0, nan_at=None, shift=0):
     """A sidecar that agrees with `lines`, optionally rotated over a window.
 
     BUILT FROM THE RECORDING'S OWN ROWS, which is the only way an arm for this
@@ -246,6 +247,15 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1):
     to say about a tick that held exactly one.  `dense` writes that many frames
     per tick instead, which is what a client above the mover rate produces and
     what takes the one-frame rule's coverage to nothing.
+
+    `shift` moves the whole tick column, which is what a PING does to a real
+    sidecar: the column is a server stat the client reads out of the last
+    snapshot it got, so on a connection it LAGS the recording by the round trip
+    and reads LOWER -- a negative shift.  `dense_lo`/`dense_hi` put the extra frames over a WINDOW rather than the
+    whole file, which is the shape a forger wants: leave the honest stretch at
+    one frame a tick so the rule arms on it, and pad the stretch you are lying
+    about so it is never examined.  `nan_at` puts a NaN in one row's tick
+    column -- the same file, one token different.
     """
     rows = [l.split() for l in lines if l.startswith("in ")]
     ticks = [int(f[2]) - HORIZON for f in rows]
@@ -260,10 +270,13 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1):
         yaw = float(f[8])
         if lo * n <= i < hi * n:
             yaw = ((yaw + rot) + 180.0) % 360.0 - 180.0
-        for k in range(dense):
-            out.append("%.4f %d %d %.2f %.2f 0"
-                       % (10.0 + (tk + k / float(dense)) * TICK,
-                          1000 + tk, tk, float(f[7]), yaw))
+        d = dense if dense_lo * n <= i < dense_hi * n else 1
+        for k in range(d):
+            col = "nan" if (nan_at is not None and i == nan_at and k == 0) \
+                else "%d" % (tk + shift)
+            out.append("%.4f %d %s %.2f %.2f 0"
+                       % (10.0 + (tk + k / float(d)) * TICK,
+                          1000 + tk, col, float(f[7]), yaw))
     return out
 
 
@@ -1478,9 +1491,10 @@ def case_angle_blind_is_said_out_loud():
     L = build()                         # sweep 0: the camera is nailed down
     f, n = run(L, view=view_for(L))
     check(not f, "a still run with a matching sidecar is not a fault")
-    check(any("could not discriminate" in x for x in n),
-          "...and the checker says the comparison was blind, not that it passed")
-    if not any("could not discriminate" in x for x in n):
+    check(any("down to a flat" in x for x in n),
+          "...and the checker says what the sweep rule is reduced to (a flat "
+          "3 deg cut), not that it passed")
+    if not any("down to a flat" in x for x in n):
         print("        notes=%s" % n)
 
 
@@ -1530,7 +1544,7 @@ def case_angle_one_frame_rule_reaches_a_still_camera():
     L = build(packets=400)              # sweep 0: the camera is nailed down
     clean, n = run(L, view=view_for(L))
     check(not clean, "a still run with its own sidecar is still not a fault")
-    check(any("one-frame rule did" in x for x in n),
+    check(any("one-frame rule is what discriminated" in x for x in n),
           "...and the checker names which rule did the discriminating")
     f, _ = run(L, view=view_for(L, rot=0.5))
     check(any("the sidecar is not this recording's" in x for x in f),
@@ -1560,10 +1574,283 @@ def case_angle_one_frame_rule_says_when_it_is_thin():
     f, n = run(L, view=view_for(L, rot=0.5, dense=3))
     check(not f, "three frames a tick leaves nothing for the one-frame rule "
                  "and it does not guess")
-    check(any("the sweep rule alone" in x for x in n),
+    check(any("what is left is the sweep rule" in x for x in n),
           "...and it says the pair is being judged by the loose rule only")
-    if not any("the sweep rule alone" in x for x in n):
+    if not any("what is left is the sweep rule" in x for x in n):
         print("        notes=%s" % n)
+
+
+def case_angle_one_frame_rule_cannot_be_armed_on_a_slice():
+    """THE DISARM A REVIEWER FOUND, AND IT IS THE INTERESTING ONE.
+
+    `len(solo)` counts ticks that held one frame IN THE .view, and the .view is
+    the attacker's file.  So a count alone is a number they set: keep enough
+    honest one-frame ticks to satisfy it, put two frames on every tick you lie
+    about, and the rule arms, looks only at the honest ones, and prints the
+    cleanest line it can produce while most of the sidecar is never examined.
+    Measured before the fix: 150 solo of 334 joined, the other 184 two degrees
+    out, verdict `ok`, no fault, NO NOTE.  The fix is that coverage is a
+    fraction and the fraction arms the rule.
+    """
+    L = build(sweep=128, packets=400)
+    f, n = run(L, view=view_for(L, rot=2.0, lo=0.3, dense=2, dense_lo=0.3))
+    check(not any("the sidecar is not this recording's" in x for x in f),
+          "the padded ticks are still not examined -- that part is physics")
+    check(any("held one rendered frame" in x and "under the" in x
+              and "it needs" in x for x in n),
+          "...but the pair no longer passes quietly: the coverage is said, and "
+          "the note names the gate that bit")
+    if not any("it needs" in x for x in n):
+        print("        notes=%s" % n)
+    # CONTROL: the same lie WITHOUT the padding is caught, so the arm is about
+    # the padding and not about 2 degrees being too small to see.
+    f2, _ = run(L, view=view_for(L, rot=2.0, lo=0.45))
+    check(any("the sidecar is not this recording's" in x for x in f2),
+          "CONTROL: the same 2 deg lie with one frame a tick is caught")
+
+
+def case_angle_nan_is_a_fault_not_a_skip():
+    """NOT COMPARABLE IS NOT A PASS.  `nan` parses as a float, survives the
+    numeric check, and then raises inside the tick join -- which rcptcheck
+    catches as "the cross-check did not run", leaving the receipt VALID and the
+    review page with no angle verdict at all.  One token, in a file the client
+    writes and signs, suppressing the whole comparison."""
+    L = build(sweep=128, packets=400)
+    f, _ = run(L, view=view_for(L, rot=5.0, nan_at=3))
+    check(any("not a finite number" in x for x in f),
+          "a NaN in the tick column is a fault of its own")
+    check(any("does not describe this recording" in x
+              or "the sidecar is not this recording's" in x for x in f),
+          "...and the rest of the sidecar is still compared, not abandoned")
+    if not f:
+        print("        NO FAULT")
+
+
+def with_ghost(lines, a, b):
+    """Declare a ghost window over run ticks [a, b] in an existing fixture.
+
+    A HELPER RATHER THAN A build() ARGUMENT because the two records and the
+    flag bit are all it takes, and threading a parameter through the builder
+    for one arm is how build() got fifteen of them.
+    """
+    out = []
+    for l in lines:
+        if l.startswith("flags "):
+            out.append("flags %d" % (int(l.split()[1]) | 64))      # TF_GHOST
+            continue
+        if l.startswith("end "):
+            out.append("ghost 1 %d" % a)
+            out.append("ghost 0 %d" % b)
+        out.append(l)
+    return out
+
+
+def view_for_samples(lines, rot=0.0):
+    """A sidecar built from the SAMPLE rows, for a file with no `in` records.
+
+    check_rec falls back to that stream whenever a recording carries no inputs,
+    and the fallback's angles are .v_angle at every version -- which is the
+    thing the tight rule must not be pointed at.
+    """
+    out = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"]
+    for l in lines:
+        tok = l.split()
+        if len(tok) < 9:
+            continue
+        try:
+            st = float(tok[0])
+        except ValueError:
+            continue        # a record line, not a sample
+        if st < 0:
+            continue
+        tk = int(round(st / TICK))
+        yaw = ((float(tok[8]) + rot) + 180.0) % 360.0 - 180.0
+        out.append("%.4f %d %d %.2f %.2f 0"
+                   % (10.0 + st, 1000 + tk, tk, float(tok[7]), yaw))
+    return out
+
+
+def case_angle_omission_does_not_read_as_cover():
+    """THE CHEAPER DISARM, AND THE ONE A COUNT OR A RATIO OVER `joined` MISSES.
+
+    Coverage was `len(solo) / joined` and `joined` only counts moves the
+    sidecar put a frame on -- so DELETING frames shrank both sides and the
+    ratio stayed at 100%.  Measured by a reviewer on p417/s with the middle 40%
+    of the sidecar removed: `399 of 399 joined ticks held one frame (100%)`,
+    verdict ok, no note, for a file describing 60% of the run.  The denominator
+    is now the RECORDING's move count, which the client does not write.
+    """
+    L = build(sweep=128, packets=400)
+    full = view_for(L)
+    head, body = full[:4], full[4:]
+    thin = head + body[:int(0.45 * len(body))]      # the rest simply not there
+    f, n = run(L, view=thin)
+    check(not any("the sidecar is not this recording's" in x for x in f),
+          "the missing stretch is not examined -- that part is physics")
+    check(any("it needs" in x for x in n),
+          "...but dropping frames no longer reads as full cover")
+    if not any("it needs" in x for x in n):
+        print("        notes=%s" % n)
+
+
+def case_angle_tight_rule_abstains_where_the_epoch_moves():
+    """A RESUME, A RETRY, A PAUSE OR A SESSION MOVES THE TICK EPOCH.
+
+    The join is `view.ticks == in.mt - instart`, but the sidecar's column is
+    STAT_FS_TIMERTICKS, which subtracts frozen ticks and carries restored ones
+    (SV_TickCounted).  After one of those records the header's `instart` no
+    longer describes the epoch, and a mis-joined row is an arbitrary angle
+    difference -- which the loose rule survives and a 0.05 deg rule does not.
+    NOT MEASURED ON A REAL PAIR: no v9 file in the corpus has one, so this
+    abstains on a mechanism read out of the recorder rather than on data.
+    """
+    L = build(sweep=128, packets=400)
+    good, _ = run(L, view=view_for(L, rot=0.5))
+    check(any("the sidecar is not this recording's" in x for x in good),
+          "CONTROL: without a resume the 0.5 deg lie is caught")
+    R = [l for l in L]
+    R.insert(next(i for i, l in enumerate(R) if l.startswith("in ")),
+             "resume 20260101-000000-0")
+    f, n = run(R, view=view_for(R, rot=0.5))
+    check(not any("the sidecar is not this recording's" in x for x in f),
+          "a recording carrying a resume is not judged by the tight rule")
+    check(any("resume" in x and "tight" in x for x in n),
+          "...and the note says that is why")
+    if not any("resume" in x and "tight" in x for x in n):
+        print("        notes=%s" % n)
+
+
+def case_angle_tight_rule_is_keyed_on_the_source_not_the_version():
+    """THE EXEMPTION HAS TO FOLLOW THE ANGLES, NOT THE VERSION NUMBER.
+
+    check_rec falls back to the `samples` stream whenever a file carries no
+    `in` rows, and SV_RecOpen allows that at ANY version -- so a v9 file of
+    that shape would have armed a 0.05 deg cut against .v_angle, which
+    SV_RunCmd leaves stale under fixangle.  Measured by a reviewer with only
+    the version gate lifted: 11 honest pre-v9 pairs fault, worst 176.19 deg.
+    """
+    L = build(sweep=128, packets=400, inputs=False)
+    clean, _ = run(L, view=view_for_samples(L))
+    check(not clean, "CONTROL: the samples-built sidecar pairs cleanly")
+    if clean:
+        print("        got: %s" % clean)
+    f, n = run(L, view=view_for_samples(L, rot=0.5))
+    check(not any("the sidecar is not this recording's" in x for x in f),
+          "a v9 file with no `in` rows is not judged by the tight rule")
+    check(any("samples" in x for x in n),
+          "...and the note names the stream it fell back to")
+    if not any("samples" in x for x in n):
+        print("        notes=%s  faults=%s" % (n, f))
+
+
+def run_inproc(lines, view):
+    """The same pair, checked IN THIS PROCESS, so a case can reach into
+    reccheck's constants.  run() shells out, which is right for everything else
+    -- it tests the tool a user invokes -- but it means a monkeypatch here does
+    nothing, and the first cut of the control below `passed` while measuring
+    the ordinary behaviour it was supposed to be the control for.
+    """
+    import reccheck as rc
+    d = tempfile.mkdtemp(prefix="reccheck_i")
+    try:
+        p = os.path.join(d, "t.rec")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        v = os.path.splitext(p)[0] + ".view"
+        with open(v, "w", encoding="utf-8") as f:
+            f.write("\n".join(view) + "\n")
+        return rc.check_view(v, rc.check_rec(p)).faults
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def case_angle_lag_is_recovered():
+    """THE CHECK DID NOT WORK OVER A NETWORK, AND EVERY LOBBY CLIENT IS REMOTE.
+
+    The sidecar's join column is STAT_FS_TIMERTICKS -- a server stat read out
+    of the last snapshot -- while the recording stamps `in.mt` when the server
+    ran the move, so the two are separated by the round trip.  Measured with
+    `cl_delay_packets 30` against a control run minutes apart on the same
+    route: an HONEST pair read 30.2 deg max, 49.6% of one-frame ticks past cut
+    and 19.9% of joined moves past the sweep cut, BOTH RULES FAULTING A CLEAN
+    RUN.  The control read 0.008 deg.
+    """
+    L = build(sweep=128, packets=400)
+    f, _ = run(L, view=view_for(L, shift=-3))
+    check(not f, "a sidecar three ticks behind the recording is not a fault")
+    if f:
+        print("        got: %s" % f)
+    # CONTROL: the shift has to be REAL, or the arm is about nothing.  Without
+    # the search this same pair faults.
+    L2 = build(sweep=128, packets=400)
+    import reccheck as _rc
+    keep = _rc.ANG_LAG_MAX, _rc.ANG_LAG_BACK
+    _rc.ANG_LAG_MAX = _rc.ANG_LAG_BACK = 0
+    try:
+        f2 = run_inproc(L2, view_for(L2, shift=-3))
+    finally:
+        _rc.ANG_LAG_MAX, _rc.ANG_LAG_BACK = keep
+    check(any("the sidecar is not this recording's" in x for x in f2),
+          "CONTROL: with the search switched off the same pair faults")
+    check(not run_inproc(L2, view_for(L2, shift=-3)),
+          "...and with it back on, in the same process, it does not")
+
+
+def case_angle_lag_does_not_rescue_a_lie():
+    """AND THE SEARCH MUST NOT BE A SECOND CHANCE.  Fifteen offsets is fifteen
+    opportunities to fit, so the arm that matters is the one where none of them
+    helps: a rotated sidecar is wrong at every offset and has to stay wrong."""
+    L = build(sweep=128, packets=400)
+    f, _ = run(L, view=view_for(L, rot=0.5, shift=-3))
+    check(any("the sidecar is not this recording's" in x for x in f),
+          "a rotated sidecar is not rescued by the offset search")
+    if not f:
+        print("        NO FAULT")
+
+
+def case_angle_lag_is_not_invented_on_a_still_camera():
+    """A TIE IS NOT A MEASUREMENT.  A camera that never turned agrees equally
+    well at every offset -- the same degeneracy that made a corpus of
+    nailed-down fixtures agree with each other's sidecars -- so the search has
+    to come back with zero rather than pick one and call it a ping."""
+    L = build(packets=400)                  # sweep 0
+    f, n = run(L, view=view_for(L))
+    check(not f, "a still pair is still not a fault")
+    check(not any("ticks (" in x and "next best offset" in x for x in n),
+          "...and no lag is claimed for it")
+
+
+def case_angle_ghost_is_not_a_fault():
+    """THE FALSE FAULT A REVIEWER FOUND BEFORE THIS SHIPPED ANYWHERE.
+
+    Across a ghost the two files disagree BY DESIGN and the sidecar's own
+    writer says so (cl_replay.qc:1730): Ghost_InputFrame pins input_angles to
+    the body's frozen aim while Rec_ViewSample keeps writing the flying camera.
+    TF_GHOST is not a taint -- reccheck.py:336, "a ghosted run is still a run"
+    -- so without an exemption a 0.6 s detach in a 60 s run is a FAULT on an
+    honest recording, which is the patch being worse than no patch.
+
+    The window comes from the .rec and never from the .view: a forger who could
+    declare his own would exempt the whole run with two lines.
+    """
+    L = with_ghost(build(packets=400), 120, 260)
+    f, _ = run(L, view=view_for(L, rot=90.0, lo=0.30, hi=0.65))
+    check(not f, "a sidecar that disagrees only inside a declared ghost window "
+                 "draws no fault")
+    if f:
+        print("        got: %s" % f)
+    # CONTROL: the same disagreement one window over IS a fault, so the arm is
+    # about the ghost and not about the rotation being invisible.
+    f2, _ = run(L, view=view_for(L, rot=90.0, lo=0.70, hi=0.95))
+    check(any("the sidecar is not this recording's" in x for x in f2),
+          "CONTROL: the same 90 deg lie outside the window is still caught")
+    # AND THE .view CANNOT DECLARE ONE.  Same lie, no ghost in the recording.
+    L2 = build(packets=400)
+    f3, _ = run(L2, view=["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin",
+                          "ghost 1 0.0 120", "ghost 0 0.0 260"]
+                + view_for(L2, rot=90.0, lo=0.30, hi=0.65)[4:])
+    check(any("the sidecar is not this recording's" in x for x in f3),
+          "a ghost the SIDECAR declares exempts nothing")
 
 
 def case_angle_splice():
@@ -1629,6 +1916,15 @@ def main():
                case_angle_one_frame_rule_reaches_a_still_camera,
                case_angle_one_frame_rule_needs_v9,
                case_angle_one_frame_rule_says_when_it_is_thin,
+               case_angle_one_frame_rule_cannot_be_armed_on_a_slice,
+               case_angle_nan_is_a_fault_not_a_skip,
+               case_angle_ghost_is_not_a_fault,
+               case_angle_lag_is_recovered,
+               case_angle_lag_does_not_rescue_a_lie,
+               case_angle_lag_is_not_invented_on_a_still_camera,
+               case_angle_omission_does_not_read_as_cover,
+               case_angle_tight_rule_abstains_where_the_epoch_moves,
+               case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):

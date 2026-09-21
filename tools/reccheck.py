@@ -439,6 +439,8 @@ class Report:
         # The angle stream: (ticks, yaw, pitch, instart, source) or None.  Only
         # check_rec fills it, and only angle_join reads it.
         self.angles = None
+        self.angle_ghosts = []
+        self.angle_epoch = []
 
     def fault(self, msg):
         self.faults.append(msg)
@@ -2445,6 +2447,29 @@ def check_rec(path, verbose=False):
     # set -- measured on ahop_coast's saves as 21 rows of 1725, the recording
     # pinned at yaw 109.2 for three seconds while the sidecar swept through it.
     # That is a burst, and ANG_HOLD is set an order of magnitude above it.
+    # WHAT THE ANGLE JOIN MUST NOT JUDGE, carried beside the stream it judges.
+    #
+    # GHOST WINDOWS, because across one the two files disagree BY DESIGN and the
+    # sidecar's own writer says so (cl_replay.qc:1730): Ghost_InputFrame pins
+    # input_angles to the body's frozen aim while Rec_ViewSample keeps writing
+    # the flying camera.  TF_GHOST is not a taint -- a ghosted run is still a
+    # run -- so without this a 0.6 s detach in a 60 s run is a FAULT on an
+    # honest recording.  The .rec's windows and not the .view's: these have to
+    # be the server's, or a forger declares one ghost over the whole run.
+    #
+    # AND THE RECORDS THAT MOVE THE TICK EPOCH.  The join is
+    # `view.ticks == in.mt - instart`, but the sidecar's column is
+    # STAT_FS_TIMERTICKS, which subtracts frozen ticks and carries restored ones
+    # (SV_TickCounted, sv_timer.qc:10607).  A resume, a retry, a pause or a v10
+    # session moves that epoch and the header's `instart` no longer describes
+    # it; a mis-joined row is an arbitrary angle difference, which the loose
+    # rule survives and a 0.05 deg rule does not.  No v9 pair in the corpus has
+    # one, so this is abstention on a mechanism read out of the source rather
+    # than a measurement -- which is the honest way round.
+    r.angle_ghosts = list(ghost_windows)
+    r.angle_epoch = [k for k, v in (("resume", resumes), ("retry", retries),
+                                    ("pause", pauses), ("session", sessions))
+                     if v]
     if len(ang_mt):
         r.angles = (ang_mt, ang_yaw, ang_pit, in_start or 0,
                     "in rows" if ver >= 9 else "in rows (.v_angle, pre-v9)", ver)
@@ -2560,6 +2585,66 @@ ANG_SOLO = 0.05          # degrees; honest worst over the v9 corpus is 0.0104
 ANG_SOLO_MIN = 100       # fewer one-frame ticks than this and it only reports
 ANG_SOLO_HOLD = 1.0      # per cent of them past ANG_SOLO that is a fault
 
+# AND THE COVERAGE IS PART OF THE VERDICT, NOT A FOOTNOTE.  `len(solo)` counts
+# ticks that held one frame IN THE .view -- a file the client writes.  A count
+# alone is therefore something an attacker sets: keep ANG_SOLO_MIN honest
+# one-frame ticks, put two frames on every tick you lie about, and the rule
+# arms, examines only the honest ones and prints its cleanest possible line
+# while most of the sidecar is never looked at.  Measured in review: 150 solo
+# ticks of 334 joined, the other 184 two degrees out, verdict `ok` with no
+# note.  So arm on the FRACTION as well, and print it either way.
+#
+# AND NO THRESHOLD FIXES IT, WHICH IS WHY THIS IS NOT ONE.  A gate at 25% was
+# tried and a 45%-coverage forgery walks straight over it; the attacker simply
+# stands above whatever number is written here.  An unexamined tick is
+# unexamined and no statistic over the examined ones recovers it.  So coverage
+# does not gate the FAULT -- a disagreement on 100 ticks is a finding however
+# few they are -- it gates the CLEAN VERDICT.  A pair the rule did not cover
+# reads BLIND rather than OK, and the note says how much it missed.  The
+# property that buys is modest and worth stating plainly: a forger can still
+# hide ticks from the tight rule, but not quietly, because hiding them is what
+# takes their own review page from OK to BLIND.
+#
+# 75% because that is the middle of the empty band, and the band is what makes
+# the number safe rather than the number itself.  Honest v9 coverage measured
+# against the recording's own move count: 97-100% at or below the mover rate
+# (one usercmd per rendered frame), 89.9% at 110 fps, then nothing at all until
+# 50% at 150 fps and 0.3% at 250.  A first cut at 90% sat ON 110 fps -- a very
+# ordinary framerate -- and made that verdict flip between runs; 75 clears it
+# and still costs a forger three quarters of the run.  Above ~120 fps a client
+# legitimately reads PARTIAL COVER and its angles read BLIND, which is the
+# honest answer rather than a cost to engineer away.
+ANG_SOLO_COVER = 75.0    # per cent of the recording's own moves that held one frame
+
+# ---- AND THE JOIN HAS TO SURVIVE A PING -----------------------------------
+#
+# `view.ticks` is STAT_FS_TIMERTICKS, a server stat the client reads out of the
+# last snapshot it received; `in.mt` is stamped when the server ran the move.
+# The two are separated by the round trip, so on a real connection the sidecar's
+# idea of the run clock is a few ticks behind the recording's and a join at
+# offset zero pairs the wrong rows.  MEASURED with cl_delay_packets 30 against
+# a control run minutes apart on the same route: honest pair, max deviation
+# 30.2 deg, 49.6% of one-frame ticks past 0.05 and 19.9% of joined moves past
+# the sweep cut -- BOTH RULES FAULTING A CLEAN RUN.  Control: 0.008 deg, 0%.
+# Every lobby client is remote, so shipping the check without this would have
+# flagged honest players and nothing else.
+#
+# THE OFFSET IS RECOVERABLE BECAUSE IT IS SHARP, which is the only reason
+# searching for it is not curve-fitting.  At 30 ms the right offset (+3 ticks,
+# exactly the delay) scores 0.2% of moves past 0.05 deg and every other offset
+# in the window scores about 49%; at 0 ms the right offset is 0 and scores
+# 0.0% against 48.8%.  So the search either finds one candidate by a wide
+# margin or it finds nothing, and ANG_LAG_EDGE is what says which.  A tie --
+# which is what a still camera gives, since every offset agrees equally well --
+# is NOT a lag measurement and falls back to zero.
+#
+# It does not help a forger: the window is 15 offsets and a fabricated sidecar
+# has to match to 0.05 deg at one of them, which still means holding the run's
+# real usercmd angles.  The offset found is reported so a reader can see it.
+ANG_LAG_MAX = 12         # ticks searched forward; 120 ms at a 100 Hz mover
+ANG_LAG_BACK = 2         # and a couple back, for a clock that reads ahead
+ANG_LAG_EDGE = 4.0       # the winner must beat the runner-up by this factor
+
 
 def angdelta(a, b):
     """Shortest signed distance between two angles, as a magnitude."""
@@ -2573,6 +2658,16 @@ def angle_join(r, rec, frames):
         return
     mts, yaws, pits, instart, source, ver = series
 
+    # THE TIGHT RULE IS KEYED ON THE ANGLE SOURCE, NOT THE FILE VERSION, and
+    # the difference is not academic: check_rec falls back to `samples`
+    # (.v_angle) whenever a file carries no `in` rows, which SV_RecOpen allows
+    # at ANY version.  A v9 file of that shape would have armed a 0.05 deg cut
+    # against the stale-under-fixangle stream the exemption exists for.
+    # Measured by a reviewer over the corpus with only the version gate lifted:
+    # 11 honest pre-v9 pairs fault, worst 176.19 deg.
+    tight = source == "in rows" and not rec.angle_epoch
+    gw = list(rec.angle_ghosts)
+
     # BY TICK AND NOT BY ORDER.  An index join drifts permanently at the first
     # split move -- surf_trance has three of them, and pairing the k-th row with
     # the k-th frame group took its p99 from 0.64 deg to 18.2.  The tick is the
@@ -2581,7 +2676,47 @@ def angle_join(r, rec, frames):
     for f in frames:
         byt.setdefault(int(f[2]), []).append(f)
 
-    joined = uncovered = past = 0
+    endtick = rec.info.get("ticks")
+
+    def score(off):
+        """Moves past the tight cut at this offset -> (per cent, joined)."""
+        j = bad = 0
+        for i in range(len(mts)):
+            tk = mts[i] - instart - off
+            if tk < 0 or (endtick is not None and tk > endtick):
+                continue
+            if any(a <= tk and (b is None or tk <= b) for a, b in gw):
+                continue
+            g = byt.get(tk)
+            if not g:
+                continue
+            j += 1
+            if max(min(angdelta(yaws[i], f[4]) for f in g),
+                   min(angdelta(pits[i], f[3]) for f in g)) > ANG_SOLO:
+                bad += 1
+        return (100.0 * bad / j if j else 100.0), j
+
+    # ZERO FIRST AND TIES GO TO ZERO.  A still camera agrees equally at every
+    # offset, so a search that took the numerically smallest would pick one at
+    # random and call it a ping -- the same degeneracy that made a whole corpus
+    # of nailed-down fixtures agree with each other's sidecars.
+    cand = [(score(o)[0], o) for o in
+            [0] + list(range(1, ANG_LAG_MAX + 1))
+            + list(range(-1, -ANG_LAG_BACK - 1, -1))]
+    bestsc, lag = min(cand, key=lambda c: (c[0], abs(c[1])))
+    runner = min((s for s, o in cand if o != lag), default=100.0)
+    if lag and not (bestsc * ANG_LAG_EDGE <= runner):
+        lag = 0                     # not identified: do not invent a ping
+    if lag:
+        try:
+            ms = " (%.0f ms)" % (lag * 1000.0 * float(rec.info.get("tickrate")))
+        except (TypeError, ValueError):
+            ms = ""
+        r.info["angle_lag"] = ("%+d ticks%s, %.2f%% past %g deg there against "
+                               "%.2f%% at the next best offset"
+                               % (lag, ms, bestsc, ANG_SOLO, runner))
+
+    joined = uncovered = past = ghosted = prestart = postend = 0
     stretch = longest = 0
     worst = 0.0
     travel = 0.0
@@ -2594,7 +2729,27 @@ def angle_join(r, rec, frames):
         sp = 0.0 if pp is None else angdelta(p, pp)
         py, pp = y, p
         travel += sy + sp
-        g = byt.get(mts[i] - instart)
+        tk = mts[i] - instart - lag
+        if endtick is not None and tk > endtick:
+            # AND A MOVE AFTER THE CLOCK STOPPED CANNOT BE COVERED EITHER.  The
+            # trailer's tick count is the run's end and the recorder pads past
+            # it; the sidecar stops at the run, so these have no frame by
+            # construction too.  Both ends come from the RECORDING, which is
+            # the half of the pair the client does not write.
+            postend += 1
+            continue
+        if tk < 0:
+            # A MOVE BEFORE THE CLOCK STARTED CANNOT BE COVERED.  The recorder
+            # keeps a pre-start pad of `in` rows and the sidecar's column is the
+            # RUN clock, so these have no frame by construction -- counting them
+            # against coverage charged an honest pair for the recorder's own
+            # padding (16% of a fixture here, 0.2% of a real run).
+            prestart += 1
+            continue
+        if any(a <= tk and (b is None or tk <= b) for a, b in gw):
+            ghosted += 1
+            continue
+        g = byt.get(tk)
         if not g:
             # NORMAL, NOT A FINDING: the sidecar is one line per RENDERED frame,
             # so a client drawing below the tick rate leaves ticks with no frame
@@ -2624,27 +2779,52 @@ def angle_join(r, rec, frames):
     devs.sort()
     frac = 100.0 * past / joined
     r.info["angle_source"] = "%s, %d moves" % (source, len(mts))
-    r.info["angle_joined"] = ("%d of %d moves had a frame at their tick (%d did not)"
-                              % (joined, len(mts), uncovered))
+    r.info["angle_joined"] = ("%d of %d moves had a frame at their tick (%d did "
+                              "not%s)"
+                              % (joined, len(mts), uncovered,
+                                 "".join(x for x in (
+                                     ", %d inside a ghost window" % ghosted
+                                     if ghosted else "",
+                                     ", %d before the clock started" % prestart
+                                     if prestart else "",
+                                     ", %d after it stopped" % postend
+                                     if postend else ""))))
     r.info["angle_dev"] = ("p50 %.3f p99 %.3f max %.3f deg"
                            % (devs[len(devs) // 2],
                               devs[min(len(devs) - 1, int(0.99 * len(devs)))],
                               devs[-1]))
     # ---- the one-frame rule, which does not need the camera to have moved --
-    armed = ver >= 9 and len(solo) >= ANG_SOLO_MIN
-    if ver >= 9:
-        # PRINTED EVEN AT ZERO, because the coverage IS the verdict here: a
-        # client rendering several frames per tick leaves almost none of these
-        # (250 fps against a 100 Hz mover left 5 of 1740), and a reader who
-        # sees no line cannot tell that from a line saying nothing was wrong.
+    # AGAINST THE RECORDING'S OWN MOVE COUNT, not against `joined`.  Dividing
+    # by `joined` made the fraction invariant to DELETION: drop the frames for
+    # the stretch you lied about and both sides of the ratio shrink together,
+    # so a sidecar describing 37.5% of a run reported 100% cover and `ok`.
+    # Measured by a reviewer on p417/s with the middle 40% of frames removed.
+    # `len(mts)` is the server's count of usercmds and is not the client's to
+    # choose.  Honest cover on the v9 corpus: 89.9% at 110 fps, 97-100% at or
+    # below the mover rate, 50% at 150 fps, 0.3% at 250.
+    comparable = max(1, len(mts) - ghosted - prestart - postend)
+    cover = 100.0 * len(solo) / comparable
+    # TWO QUESTIONS, NOT ONE.  `judged` is whether there are enough one-frame
+    # ticks to make a finding on; `covered` is whether they are enough of the
+    # run to CLEAR it.  Folding them together is what let a sidecar that padded
+    # 55% of its ticks print the cleanest line the rule can produce.
+    judged = tight and len(solo) >= ANG_SOLO_MIN
+    covered = judged and cover >= ANG_SOLO_COVER
+    if tight:
+        # THE COVERAGE IS PRINTED FIRST AND ALWAYS, INCLUDING AT ZERO.  What
+        # this rule examined is as much the answer as what it found, and the
+        # first cut of this line said "150 ticks held one frame, 0 past 0.05"
+        # for a sidecar that was two degrees out on the 184 it did not mention.
         sbad = sum(1 for d in solo if d > ANG_SOLO)
         sfrac = 100.0 * sbad / len(solo) if solo else 0.0
-        r.info["angle_solo"] = ("%d ticks held one frame, %d past %g deg "
-                                "(%.2f%%, worst %.4f)%s"
-                                % (len(solo), sbad, ANG_SOLO, sfrac,
-                                   max(solo) if solo else 0.0,
-                                   "" if armed else " -- TOO FEW TO JUDGE"))
-        if armed and sfrac > ANG_SOLO_HOLD:
+        r.info["angle_solo"] = ("%d of %d moves held one frame (%.0f%%), "
+                                "%d past %g deg (%.2f%%, worst %.4f)%s"
+                                % (len(solo), comparable, cover, sbad, ANG_SOLO,
+                                   sfrac, max(solo) if solo else 0.0,
+                                   "" if covered else
+                                   (" -- PARTIAL COVER" if judged
+                                    else " -- NOT ENOUGH TO JUDGE")))
+        if judged and sfrac > ANG_SOLO_HOLD:
             # KEPT UNDER ~150 CHARACTERS ON PURPOSE.  rcptcheck wraps this in
             # another 130 and surfd stores the result in `receipts.reason`
             # truncated at 300, so the first draft's explanatory tail was cut
@@ -2654,11 +2834,24 @@ def angle_join(r, rec, frames):
                     "worst %.2f (honest worst measured: 0.0104)"
                     % (sfrac, len(solo), ANG_SOLO, max(solo)))
 
-    if ver >= 9 and not armed and travel >= ANG_BLIND:
-        r.note("only %d ticks held exactly one rendered frame, under the %d the "
-               "tight rule needs -- this pair is judged by the sweep rule alone, "
-               "which is blind to a lie smaller than the tick's own sweep"
-               % (len(solo), ANG_SOLO_MIN))
+    if not covered:
+        # NO LONGER GATED ON THE RUN HAVING SWEPT, and it NAMES WHICH GATE BIT.
+        # The first cut printed "34 of 34 (100%), under the 90%/100 the tight
+        # rule needs", which is not under 90% -- it was the count that failed.
+        if not tight:
+            why = ("this recording's angles are %s, which the tight rule cannot "
+                   "use" % (source if not rec.angle_epoch else
+                            "joined across a %s" % "/".join(rec.angle_epoch)))
+        elif len(solo) < ANG_SOLO_MIN:
+            why = ("only %d moves held one rendered frame, under the %d it needs"
+                   % (len(solo), ANG_SOLO_MIN))
+        else:
+            why = ("%d of %d moves held one rendered frame (%.0f%%), under the "
+                   "%g%% it needs" % (len(solo), comparable, cover,
+                                      ANG_SOLO_COVER))
+        r.note("the tight angle rule did not judge this pair: %s -- what is "
+               "left is the sweep rule, which is blind to a lie smaller than "
+               "the tick's own sweep" % why)
 
     if travel < ANG_BLIND:
         # SAID AS LOUDLY AS A FAULT WOULD BE, AND NO LONGER A RETURN.  The
@@ -2668,20 +2861,35 @@ def angle_join(r, rec, frames):
         # it used to be treated as a hole in the check: the early return here
         # suppressed the other two, which need no sweep at all.  Re-measured
         # over 351 pairs, evaluating them changes no honest verdict.
-        r.info["angle_off"] = ("BLIND to the sweep rule -- the camera swept "
-                               "%.1f deg in this run, so there is nothing to "
-                               "scale a disagreement against" % travel)
-        if armed:
-            r.note("the sweep rule could not discriminate (%.1f deg of total "
-                   "sweep, under the %g needed); the one-frame rule did, over "
-                   "%d ticks" % (travel, ANG_BLIND, len(solo)))
+        # AND IT IS NOT "NOTHING".  n = max(dy / max(sy, 1.0), ...), so a
+        # camera that never turned takes the 1.0 floor and the sweep rule
+        # degenerates into a flat ANG_CUT-DEGREE ABSOLUTE cut -- coarse, but a
+        # real check, and not version-gated.  The first cut of this branch said
+        # the rule "could not discriminate" in reports where that same rule
+        # raised the fault; measured floor on a still pair, +3 deg missed and
+        # +5 deg caught, which is a 3 degree rule exactly.
+        r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep, "
+                               "longest run %d (worst %.1fx, %.0f deg swept -- "
+                               "so the statistic takes its 1.0 floor and this is "
+                               "a flat %g deg cut, BLIND to anything smaller)"
+                               % (frac, ANG_CUT, longest, worst, travel, ANG_CUT))
+        if covered:
+            r.note("the sweep rule is down to a flat %g deg cut on this pair "
+                   "(%.1f deg of total sweep); the one-frame rule is what "
+                   "discriminated, over %d moves" % (ANG_CUT, travel, len(solo)))
         else:
-            r.note("the angle cross-check could not discriminate: %.1f deg of "
-                   "total sweep, under the %g needed" % (travel, ANG_BLIND))
+            r.note("the angle cross-check is down to a flat %g deg cut: %.1f "
+                   "deg of total sweep, under the %g the sweep rule needs to "
+                   "scale against" % (ANG_CUT, travel, ANG_BLIND))
     else:
         r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep, "
                                "longest run %d (worst %.1fx, %.0f deg swept)"
                                % (frac, ANG_CUT, longest, worst, travel))
+    # BOTH RULES MAY FIRE ON ONE PAIR AND THAT IS KEPT DELIBERATELY.  A
+    # reviewer read the two faults as one finding said twice; suppressing the
+    # sweep one lost the thing it alone says -- that the disagreement is a
+    # CONTIGUOUS BLOCK -- and made the splice arm below stop discriminating.
+    # Two independent rules agreeing is more evidence, not less.
     if frac > ANG_HOLD:
         r.fault("the sidecar does not describe this recording: %.1f%% of %d "
                 "joined moves are past %gx the tick's own sweep, against at "
@@ -2781,9 +2989,22 @@ def check_view(path, rec_report=None):
             r.fault("line %d has %d columns, expected 6" % (lineno + 1, len(tok)))
             continue
         try:
-            frames.append([float(x) for x in tok])
+            row = [float(x) for x in tok]
         except ValueError:
             r.fault("line %d has a non-numeric column" % (lineno + 1))
+            continue
+        # NaN AND inf PARSE AS FLOATS AND THEN POISON THE JOIN.  `int(f[2])` on
+        # a NaN tick raises, rcptcheck catches that as "the cross-check did not
+        # run", and the receipt comes back VALID with no angles verdict at all
+        # -- one token, in a file the client writes and signs, and the whole
+        # comparison is suppressed rather than failed.  Found in review.
+        if any(x != x or x in (float("inf"), float("-inf")) for x in row):
+            r.fault("line %d has a column that is not a finite number -- a "
+                    "sidecar cannot be compared against a recording with NaN "
+                    "or inf in it, and being uncomparable is not a pass"
+                    % (lineno + 1))
+            continue
+        frames.append(row)
 
     if not frames:
         r.fault("no frames")
@@ -2871,10 +3092,33 @@ def tamper_view(path):
     if "angle_off" not in base.info:
         print("%s: nothing joined, so there is nothing to control" % view)
         return 1
+    def measured(v):
+        """BOTH RULES' NUMBERS, EVERY ROW.  The first cut printed `angle_off`
+        alone, which on a still pair is a constant sentence about the sweep
+        rule's floor -- so sixteen rows, four of them CAUGHT, carried one
+        identical string and the number that produced the verdict appeared
+        nowhere.  A sensitivity table whose measurement does not move is not
+        one."""
+        off = v.info.get("angle_off", "no join")
+        m = re.match(r"([0-9.]+)% of joined moves past [0-9.]+x[^,]*, "
+                     r"longest run (\d+) \(worst ([0-9.]+)x", off)
+        sweep = ("sweep %s%% worst %sx run %s%s"
+                 % (m.group(1), m.group(3), m.group(2),
+                    " FLAT" if "flat" in off else "")
+                 if m else "sweep n/a")
+        solo = v.info.get("angle_solo", "")
+        s = re.search(r"\((\d+)%\), \d+ past [0-9.]+ deg \(([0-9.]+)%, "
+                      r"worst ([0-9.]+)\)(.*)$", solo)
+        if s:
+            solo = ("| one-frame %s%% of cover %s%% worst %s%s"
+                    % (s.group(2), s.group(1), s.group(3),
+                       " " + s.group(4).strip(" -") if s.group(4).strip(" -") else ""))
+        else:
+            solo = "| one-frame n/a"
+        return "%-34s %s" % (sweep, solo)
+
     print("%s" % view)
-    print("  clean          %s" % base.info["angle_off"])
-    if "angle_solo" in base.info:
-        print("  one-frame      %s" % base.info["angle_solo"])
+    print("  clean          %s" % measured(base))
 
     with open(view, "r", encoding="utf-8", errors="replace") as fh:
         lines = [l.rstrip("\n").rstrip("\r") for l in fh]
@@ -2890,7 +3134,6 @@ def tamper_view(path):
             v = check_view(tmp, rec)
         finally:
             os.unlink(tmp)
-        off = v.info.get("angle_off", "no join")
         # THE THREE RULES BY NAME.  A control that matched only the two strings
         # it was written against reported `missed` for every rotation the
         # one-frame rule caught, the first time this ran after that rule
@@ -2899,9 +3142,8 @@ def tamper_view(path):
                      or "does not match its sidecar" in m
                      or "the sidecar is not this recording's" in m
                      for m in v.faults)
-        if off.startswith("BLIND") and "angle_solo" in v.info:
-            off = v.info["angle_solo"]
-        print("  %-14s %s   %s" % (what, "CAUGHT  " if caught else "missed  ", off))
+        print("  %-14s %s   %s" % (what, "CAUGHT  " if caught else "missed  ",
+                                   measured(v)))
         return caught
 
     def rotated(deg, lo=0.0, hi=1.0):
@@ -2931,8 +3173,17 @@ def tamper_view(path):
     # run is -- 250 moves is 2.5% of surf_kitsune and 14% of a 30-second run.
     print("  caught when the disagreement is over %g%% of the joined moves, or "
           "longer than %d consecutive ones, or over %g deg on more than %g%% of "
-          "the ticks that held one frame" % (ANG_HOLD, ANG_RUN, ANG_SOLO,
+          "the moves that held one frame" % (ANG_HOLD, ANG_RUN, ANG_SOLO,
                                              ANG_SOLO_HOLD))
+    # AND THE RULE THAT USUALLY SET THE FLOOR ABOVE, which the first version of
+    # this line left out: on a pair whose camera barely moved the sweep
+    # statistic takes its 1.0 floor and becomes a flat ANG_CUT-degree absolute
+    # cut, so a table showing 5 deg as the floor was showing THAT rule and
+    # naming three others.
+    if "flat" in base.info.get("angle_off", ""):
+        print("  -- and on this pair the sweep rule is a flat %g deg cut, which "
+              "is what set any floor above that none of the three explains"
+              % ANG_CUT)
     return 0
 
 
@@ -3187,8 +3438,8 @@ def emit(r, verbose):
                   # including BLIND, because "nothing disagreed" and "nothing
                   # could have disagreed" are different facts and a reader
                   # deciding what a run is worth needs both.
-                  "angle_source", "angle_joined", "angle_dev", "angle_solo",
-                  "angle_off"):
+                  "angle_source", "angle_joined", "angle_lag", "angle_dev",
+                  "angle_solo", "angle_off"):
             if k in r.info:
                 v = r.info[k]
                 print("       %-14s %s" % (k, ("%.3f" % v) if isinstance(v, float) else v))

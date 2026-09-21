@@ -253,7 +253,7 @@ def case_receipt_reread():
           conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
 
 
-def angle_pair(runid, mapname="bhop_eazy", rot=0.0, still=True):
+def angle_pair(runid, rot=0.0, still=True):
     """A .rec and the sidecar that goes with it, from reccheck's own fixtures.
 
     BUILT BY tools/test_reccheck.py AND NOT HERE.  That file assembles the .rec
@@ -301,7 +301,7 @@ def case_receipt_angles_reach_the_database():
     conn = surfd.connect()
     old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
 
-    rec, view = angle_pair("20260921-000070-0")
+    rec, view = angle_pair("20260921-000070-0")   # view_for's map is bhop_eazy
     rc = with_rec(surfd, sweep, "20260921-000070-0", rec)
     try:
         make_receipt(surfd.EVIDENCE_DIR, "20260921-000070-0",
@@ -323,6 +323,21 @@ def case_receipt_angles_reach_the_database():
         check("a 0.5 deg rotation is a fault in the evidence", (n, bad), (1, 1))
         got = receipts(conn)["20260921-000071-0"]
         check("...and the database says so in both columns",
+              (got[0], got[2]), ("FAULT", "FAULT"))
+        # AND A SIDECAR THAT CANNOT BE READ AT ALL IS NOT A PASS.  A .view with
+        # no usable frames used to leave the cross-check unrun, the verdict
+        # empty and the receipt VALID -- the review page drew no angles pill,
+        # which reads as "nothing to say" rather than "this file is broken".
+        rec3, _v3 = angle_pair("20260921-000072-0")
+        with_rec(surfd, sweep, "20260921-000072-0", rec3)
+        make_receipt(surfd.EVIDENCE_DIR, "20260921-000072-0",
+                     view=b"\n".join([b"FTESURF-VIEW 2", b"map bhop_eazy",
+                                      b"hid 1", b"begin", b""]),
+                     age=old)
+        n, bad = sweep.receipt_step(conn)
+        check("an unreadable sidecar is a fault in the evidence", (n, bad), (1, 1))
+        got = receipts(conn)["20260921-000072-0"]
+        check("...and the verdict is not left empty",
               (got[0], got[2]), ("FAULT", "FAULT"))
     finally:
         rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")

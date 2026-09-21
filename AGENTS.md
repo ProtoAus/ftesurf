@@ -623,6 +623,20 @@ bannered as superseded.)
   `surf_demise/main/cheat` really do pair a recording with another run's
   sidecar. `reccheck.py --tamper-view <f.rec>` re-measures the sensitivity on
   any pair, and it is the only honest way to quote one.
+- THE ANGLE JOIN HAS TO SURVIVE A PING, AND FOR ONE COMMIT IT DID NOT. The
+  `.view`'s join column is `STAT_FS_TIMERTICKS`, a server stat the client reads
+  out of its last snapshot; `in.mt` is stamped when the server ran the move. On
+  a connection they differ by the round trip. MEASURED, `cl_delay_packets 30`
+  against a control run minutes apart on the same route: the HONEST pair read
+  max 30.2 deg, 49.6% of one-frame ticks past cut and 19.9% of joined moves
+  past the sweep cut -- both rules faulting a clean run -- where the control
+  read 0.008 deg and 0%. EVERY LOBBY CLIENT IS REMOTE, so the corpus that
+  calibrated the cuts (all same-machine) could not see this at all.
+  `angle_join` now searches -2..+12 ticks and reports `angle_lag`. It is not
+  curve-fitting because the winner is sharp: at 30 ms the right offset (+3,
+  exactly the delay) scores 0.23% past 0.05 deg and every other offset ~49%. A
+  TIE IS NOT A LAG -- a still camera agrees equally everywhere -- so ties fall
+  back to zero rather than inventing a ping.
 - THREE RULES, AND THE TIGHT ONE IS THE ONE-FRAME RULE. A tick that held
   exactly ONE rendered frame has nothing to choose between: the usercmd was
   built from that frame, so the two files carry the same number and the only
@@ -630,16 +644,35 @@ bannered as superseded.)
   honest v9 pairs and 11,592 such ticks the worst is 0.0104 deg, so the cut is
   0.05 deg -- against 3x the tick's sweep for the other two rules. It does NOT
   need the camera to have moved, which is why BLIND is no longer an early
-  return.
-  ITS COVERAGE IS THE CLIENT'S FRAMERATE and that is the real limit: at or
-  below the mover rate essentially every joined tick is a one-frame tick (1735
-  of 1739 at `cl_maxfps 100`), at 250 fps only 5 of 1740 are, and reccheck then
-  says `TOO FEW TO JUDGE` instead of passing quietly. A CHEATER CHOOSES THAT
-  NUMBER, so treat the tight rule as covering mistakes and lazy forgeries, not
-  a determined one. Sensitivity, measured: on a still-camera pair the smallest whole-run
-  rotation caught went from nothing at all to 0.1 deg and a 2% splice from
-  missed to caught; on the swept 100 fps pair it went 5 deg to 0.05. On a 250
-  fps pair it is still 5 deg.
+  return. On a still camera the sweep rule is not blind either: the normaliser
+  takes its 1.0 floor and becomes a flat 3-degree absolute cut.
+  IT ABSTAINS MORE THAN IT JUDGES, AND EVERY ABSTENTION IS LOAD-BEARING.
+  A GHOST WINDOW is a legitimate disagreement -- `Ghost_InputFrame` pins
+  `input_angles` to the body's frozen aim while `Rec_ViewSample` keeps writing
+  the flying camera, and `cl_replay.qc:1730` says so -- so ghosted ticks are
+  exempt, from the `.rec`'s windows and never the `.view`'s. A RESUME, RETRY,
+  PAUSE or SESSION moves the tick epoch out from under the join, so the tight
+  rule abstains on the whole file. And the gate is the ANGLE SOURCE, not the
+  version: `check_rec` falls back to `samples` (`.v_angle`) for any file with
+  no `in` rows, at any version, and pointing a 0.05 deg cut at that stream
+  faults 11 honest pre-v9 pairs (worst 176 deg).
+  ITS COVERAGE IS A LINE COUNT IN THE ATTACKER'S OWN FILE, which is the whole
+  limit on it. A one-frame tick is a tick with one frame IN THE `.view`:
+  emitting two lines per tick disarms the rule, and so does deleting frames
+  (which is why coverage is measured against the RECORDING's move count, not
+  against how many the sidecar chose to cover). A gate on the count alone is a
+  number the forger stands above, so COVERAGE GATES THE CLEAN VERDICT, NOT THE
+  FAULT: a pair under 75% cover reads `PARTIAL COVER` and `BLIND`, never `OK`.
+  What that buys is modest and worth saying as such -- a forger can still hide
+  ticks, but not quietly, because hiding them is what turns their own review
+  page from OK to BLIND. Honest cover is bimodal (97-100% at or below the mover
+  rate, 89.9% at 110 fps, then nothing until 50% at 150 and 0.3% at 250), and
+  75 is the middle of that empty band rather than a number with an argument.
+  AND NOT COMPARABLE IS NOT A PASS. A `nan` in the tick column parses as a
+  float and raised inside the join, which came back as "the cross-check did not
+  run" with the receipt still VALID -- one token, in a file the client signs.
+  A non-finite column is its own fault now, and a sidecar too broken to join at
+  all makes the RECEIPT read FAULT instead of leaving the verdict empty.
 - EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA, because every
   416-419 fixture drives its route with `setpos` and `noclip`. That is what a
   lobby records too, so the one-frame rule is the one that does the work there;

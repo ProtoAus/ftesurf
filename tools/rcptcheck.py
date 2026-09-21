@@ -363,6 +363,18 @@ def join_angles(r, want):
 
     off = v.info.get("angle_off")
     if off is None:
+        # NOT COMPARABLE IS NOT A PASS.  If the sidecar is unreadable enough
+        # that no join happened at all -- no frames, a tick past the end of the
+        # recording, a clock that runs backwards -- then the file this receipt
+        # COMMITS TO is broken, and reporting "no angle stream" leaves the
+        # receipt VALID with an empty verdict.  The subject is the sidecar.
+        if v.faults:
+            r.angles = "FAULT"
+            r.angles_detail = v.faults[0]
+            r.fault("the signature is over this .view and the .view hashes to "
+                    "the digest that was signed, but the .view cannot be read "
+                    "against the recording at all: %s" % v.faults[0])
+            return
         r.note("the recording carries no angle stream to check the sidecar against")
         return
     solo = v.info.get("angle_solo", "")
@@ -374,7 +386,13 @@ def join_angles(r, want):
     # has a still camera, so reporting BLIND whenever the sweep rule abstained
     # would put that word on the whole board while the one-frame rule was
     # quietly doing the work.  Ask whether ANY rule had something to say.
-    blind = off.startswith("BLIND") and (not solo or "TOO FEW TO JUDGE" in solo)
+    # A v9 PAIR THE TIGHT RULE DID NOT REACH IS NOT `OK`.  `solo` is present
+    # exactly when the recording is v9, and the sweep rule's own blindness is a
+    # separate question from the tight rule's coverage: a SWEPT run whose
+    # sidecar pads every tick used to come back a plain OK here, with nothing
+    # examined at 0.05 deg and the loose rule's documented hole wide open.
+    blind = (("NOT ENOUGH TO JUDGE" in solo or "PARTIAL COVER" in solo)
+             if solo else off.startswith("BLIND"))
     r.angles = "FAULT" if bad else ("BLIND" if blind else "OK")
     if bad:
         # SAID IN FULL, because the three facts TOGETHER are the finding and any

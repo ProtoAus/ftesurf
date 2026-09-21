@@ -152,6 +152,13 @@ def main():
     ap.add_argument("--only", help="comma-separated variant names")
     ap.add_argument("--wait", type=float, default=150.0,
                     help="seconds to allow one client run")
+    ap.add_argument("--extra", action="append", default=[], metavar="CVAR=VALUE",
+                    help="another +set for the client; repeatable.  The reason "
+                         "this exists: every pair the angle cuts were measured "
+                         "on is same-machine, and the .view's join column is a "
+                         "STAT that arrives at snapshot rate and lags, so "
+                         "`--extra cl_delay_packets=30` is the falsifier for "
+                         "the one configuration the numbers never saw.")
     args = ap.parse_args()
 
     want = VARIANTS
@@ -183,8 +190,10 @@ def main():
             cl = subprocess.Popen(
                 [CLEXE, "+set", "cl_maxfps", str(fps),
                  "+set", "cl_yawspeed", str(yaw),
-                 "+set", "cl_pitchspeed", str(pitch),
-                 "+exec", "cfg/test/p421corp.cfg"],
+                 "+set", "cl_pitchspeed", str(pitch)]
+                + [a for kv in args.extra
+                   for a in ("+set",) + tuple(kv.split("=", 1))]
+                + ["+exec", "cfg/test/p421corp.cfg"],
                 cwd=ROOT, startupinfo=minimized())
             try:
                 cl.wait(timeout=args.wait)
