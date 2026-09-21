@@ -70,6 +70,41 @@ KEEP_DIR = os.environ.get("SURFD_KEEP", os.path.join(DATA_DIR, "evidence"))
 EVIDENCE_SETTLE = 600    # s; a file with no `end` younger than this may be mid-write
 KEEP_ORPHAN_AGE = 3600   # s; a kept file with no row older than this is removed
 
+# Patch 423: warn before the data drive fills.  run_evidence_days is 0 since
+# 2026-09-21 (Lex: keep everything, warn me), so nothing else bounds data/.
+DISK_WARN_GB = 20
+DISK_WARN_FRAC = 0.10
+
+
+def tree_bytes(path):
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def disk_status():
+    """The drive holding RUNS_DIR.  `warn` below max(DISK_WARN_GB, DISK_WARN_FRAC
+    of the drive); the data/ subtrees are sized only while warning, so the
+    admin's poll stays one statfs."""
+    probe = os.path.normpath(RUNS_DIR)
+    while not os.path.isdir(probe) and os.path.dirname(probe) != probe:
+        probe = os.path.dirname(probe)
+    u = shutil.disk_usage(probe)
+    floor = max(DISK_WARN_GB * 2 ** 30, DISK_WARN_FRAC * u.total)
+    out = {"path": probe, "total": u.total, "free": u.free,
+           "used_pct": round(100.0 * u.used / max(1, u.used + u.free), 1),   # df's Use%
+           "floor": int(floor), "warn": u.free < floor, "sizes": {}}
+    if out["warn"]:
+        data = os.path.dirname(os.path.normpath(RUNS_DIR))
+        for name in ("runs", "evidence", "resume", "parts"):
+            out["sizes"][name] = tree_bytes(os.path.join(data, name))
+    return out
+
 # A replay is ~1 MB where a board page is ~4 KB, so it gets its own bucket and
 # a much smaller cap.  This is the first route that can move real bandwidth off
 # a home upstream link, and the limiter is the only thing standing between the
@@ -3109,7 +3144,7 @@ def _register_admin():
         # duplicate that drifts silently until the two disagree about who a
         # caller is.  One definition, injected.
         bp = build_blueprint(app, log, connect, LOBBY_TTL,
-                             client_identity=client_identity,
+                             client_identity=client_identity, disk=disk_status,
                              runs=dict(replay_file=replay_file, restand=restand,
                                        public_state=public_state,
                                        rank_of=rank_of, leg_dir=leg_dir,

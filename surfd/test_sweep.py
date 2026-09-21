@@ -649,6 +649,41 @@ def case_main_evidence():
           (cron()[1].rstrip().endswith("evidence +0 -1"), n()), (True, 0))
 
 
+def case_disk_note():
+    # Patch 423.  The note goes BEFORE the sweep line, which stays last: other
+    # cases (and anyone tailing the log) read the last line.
+    surfd, sweep, runs = fresh()
+
+    def cron():
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            sweep.main([])
+        return out.getvalue().rstrip().splitlines()
+
+    def boom():
+        raise OSError("gone")
+
+    low = {"warn": True, "free": 5 * 2 ** 30, "total": 100 * 2 ** 30, "used_pct": 95.0,
+           "path": "/srv/nvme", "floor": 20 * 2 ** 30, "sizes": {}}
+    real = surfd.disk_status
+    try:
+        surfd.disk_status = lambda: {"warn": False}
+        lines = cron()
+        check("disk fine: the sweep line alone", (len(lines), "DISK" in lines[-1]), (1, False))
+        surfd.disk_status = lambda: low
+        lines = cron()
+        check("disk low: a DISK LOW line, then the sweep line",
+              (len(lines), "DISK LOW 5.0 GB free of 100.0 GB (95% used)" in lines[0],
+               lines[-1].endswith("sweep: nothing to verify")), (2, True, True))
+        surfd.disk_status = boom
+        check("an unreadable drive says so", "disk check failed" in cron()[0], True)
+    finally:
+        surfd.disk_status = real
+    d = surfd.disk_status()
+    check("control: the real check answers on this box",
+          sorted(d), ["floor", "free", "path", "sizes", "total", "used_pct", "warn"])
+
+
 def case_quiet_import():
     # Must run first: surfd's logger outlives re-imports within this process.
     surfd, _, _ = fresh()
@@ -667,7 +702,8 @@ def main():
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,
                  case_receipt_angles_reach_the_database,
-                 case_receipt_step_never_takes_the_sweep_down):
+                 case_receipt_step_never_takes_the_sweep_down,
+                 case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

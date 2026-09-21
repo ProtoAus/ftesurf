@@ -759,6 +759,34 @@ def main():
     check("session reaches the panel", c.get("/admin/").status_code, 200)
     check("session reaches the api", c.get("/admin/api/state").status_code, 200)
 
+    # Patch 423: the data drive, at each side of max(20 GB, 10%).
+    import collections
+    usage = collections.namedtuple("usage", "total used free")
+    check("state carries the data drive",
+          sorted(c.get("/admin/api/state").get_json().get("disk", {})),
+          ["floor", "free", "path", "sizes", "total", "used_pct", "warn"])
+
+    def unreadable(_path):
+        raise OSError("gone")
+
+    real_du = m.shutil.disk_usage
+    try:
+        for label, tot, free, want in (
+                ("half free on 100 GB: quiet", 100, 50, False),
+                ("15 GB free on 100 GB: under the 20 GB floor", 100, 15, True),
+                ("60 GB free on 1000 GB: under 10%", 1000, 60, True),
+                ("150 GB free on 1000 GB: quiet", 1000, 150, False)):
+            m.shutil.disk_usage = lambda _p, t=tot, f=free: usage(
+                t * 2 ** 30, (t - f) * 2 ** 30, f * 2 ** 30)
+            d = c.get("/admin/api/state").get_json()["disk"]
+            check("disk: " + label + ", sized only when warning",
+                  (d["warn"], bool(d["sizes"])), (want, want))
+        m.shutil.disk_usage = unreadable
+        check("disk: an unreadable drive says so",
+              "error" in c.get("/admin/api/state").get_json()["disk"], True)
+    finally:
+        m.shutil.disk_usage = real_du
+
     # CSRF is enforced on controls too, not just on login.
     check("control without CSRF -> 400",
           c.post("/admin/api/say", data={"tier": "1", "text": "hi"}).status_code, 400)

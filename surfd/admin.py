@@ -828,7 +828,7 @@ def tail_file(path, lines=LOG_TAIL_LINES):
 # --------------------------------------------------------------------------
 
 def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
-                    runs=None):
+                    runs=None, disk=None):
     """Create and configure the /admin blueprint, or return None if disabled.
 
     `app` is configured here rather than by the caller because the cookie
@@ -844,6 +844,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
     `runs` is surfd's replay helpers, injected for the same reason: a dict of
     replay_file, restand, public_state, rank_of and leg_dir. Without it the
     run-review routes are not registered.
+
+    `disk` is surfd.disk_status (Patch 423); /api/state carries its answer.
     """
     admin_hash = setting("SURFD_ADMIN_HASH")
     if not admin_hash:
@@ -1117,6 +1119,11 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 snap["map"] = beat["map"]
             if not snap.get("hostname") and beat:
                 snap["hostname"] = beat["name"]
+        if disk is not None:
+            try:
+                out["disk"] = disk()
+            except Exception as exc:
+                out["disk"] = {"error": str(exc)[:200]}
         return jsonify(out)
 
     @bp.get("/api/logs")

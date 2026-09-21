@@ -31,6 +31,7 @@
   </div>
   {% endif %}
 
+  <div id="disk"></div>
   <div class="grid" id="lobbies"></div>
 
   <div class="card" style="margin-top:1rem">
@@ -180,6 +181,24 @@ function directoryRow(d) {
     <td>${d.players}/${d.max}</td><td>${esc(d.addr)}</td><td>${live}</td></tr>`;
 }
 
+// Patch 423: the data drive.  Evidence is kept forever since run_evidence_days 0.
+function gb(n) { return (n / 1073741824).toFixed(1) + " GB"; }
+function renderDisk(d) {
+  const box = document.getElementById("disk");
+  if (!d) { box.innerHTML = ""; return; }
+  if (d.error) {
+    box.innerHTML = `<p class="note">Data drive: could not be read (${esc(d.error)}).</p>`;
+    return;
+  }
+  const line = `${gb(d.free)} free of ${gb(d.total)} (${d.used_pct}% used) on ${esc(d.path)}`;
+  if (!d.warn) { box.innerHTML = `<p class="note">Data drive: ${line}.</p>`; return; }
+  const sizes = Object.entries(d.sizes || {}).map(([k, v]) => `${esc(k)} ${gb(v)}`).join(", ");
+  box.innerHTML = `<div class="card" style="margin-bottom:1rem;border-color:#6b2b30;background:#2a1a1c">
+    <strong>The data drive is filling up: ${line}.</strong>
+    <p class="note">This warns under ${gb(d.floor)}. Run evidence is never deleted
+    (run_evidence_days 0); data/ holds ${sizes || "-"}.</p></div>`;
+}
+
 async function refresh() {
   let j;
   try {
@@ -193,6 +212,7 @@ async function refresh() {
   tb.innerHTML = j.directory.length
     ? j.directory.map(directoryRow).join("")
     : `<tr><td colspan="6" class="empty">no rows</td></tr>`;
+  renderDisk(j.disk);
   document.getElementById("clock").textContent =
     new Date(j.t * 1000).toLocaleTimeString();
 }

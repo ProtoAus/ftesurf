@@ -374,8 +374,26 @@ def main(argv=None):
         # and the sweep log is where somebody looks.
         if rbad:
             line += " (%d WITH FAULTS)" % rbad
-    print("%s sweep: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), line))
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    note = disk_note()
+    if note:
+        print("%s sweep: %s" % (stamp, note))     # before the sweep line, which stays last
+    print("%s sweep: %s" % (stamp, line))
     return 0
+
+
+def disk_note():
+    """Patch 423: one line while the data drive is low, '' otherwise.  A check
+    that cannot read the drive says so rather than staying quiet."""
+    try:
+        d = surfd.disk_status()
+    except Exception as exc:
+        return "disk check failed: %r" % exc
+    if not d["warn"]:
+        return ""
+    return ("DISK LOW %.1f GB free of %.1f GB (%.0f%% used) on %s, warns under %.1f GB"
+            % (d["free"] / 2 ** 30, d["total"] / 2 ** 30, d["used_pct"], d["path"],
+               d["floor"] / 2 ** 30))
 
 
 if __name__ == "__main__":
