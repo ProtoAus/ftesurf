@@ -743,11 +743,14 @@ def replays_bound(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS replays_unassessed ON replays (id)"
                  " WHERE bound = -1")
     conn.execute("UPDATE replays SET bound = 1 WHERE bound = -1 AND kind = 'evidence'")
-    for row in conn.execute("SELECT id, map, map_dir, track, leg, leaf, kind, runid,"
-                            " flags, tickrate FROM replays WHERE bound = -1").fetchall():
-        got = _bound_now(row)
-        if got >= 0:
-            conn.execute("UPDATE replays SET bound = ? WHERE id = ?", (got, row[0]))
+    conn.commit()
+    # The files are read with no transaction open: rows no header can be read
+    # for stay -1 and are read again at every import (review round 11).
+    todo = conn.execute("SELECT id, map, map_dir, track, leg, leaf, kind, runid,"
+                        " flags, tickrate FROM replays WHERE bound = -1").fetchall()
+    got = [(b, row[0]) for row in todo for b in (_bound_now(row),) if b >= 0]
+    if got:
+        conn.executemany("UPDATE replays SET bound = ? WHERE id = ? AND bound = -1", got)
     conn.commit()
 
 
@@ -2838,14 +2841,17 @@ def submit_run():
                     # behind it, leaves the old run's alone.
                     if new and not fileless and have["runid"] == rep["runid"]:
                         restage(db, rid)
-                    # A board row whose board or time is no longer this
-                    # recording's does not have it behind it: a tie re-filed on
-                    # another board (review round 3), a file-less filing with a
-                    # shaved rate re-filed by the real post (round 10).
-                    if new:
-                        db.execute("UPDATE runs SET replay_id = 0 WHERE replay_id = ?"
-                                   " AND NOT (tier = ? AND style = ? AND millis = ?)",
-                                   (rid, tier, style, millis))
+                    # A live board row whose board, time or player is no longer
+                    # this recording's does not have it behind it: a tie re-filed
+                    # on another board (review round 3), a file-less filing with
+                    # a shaved rate re-filed by the real post (round 10).  A
+                    # set-aside copy is the refill's, which rebuilds it from the
+                    # replay.  On every post, not only a re-file: `submitted`
+                    # cannot tell one in the same second (round 11).
+                    db.execute("UPDATE runs SET replay_id = 0 WHERE replay_id = ?"
+                               " AND tier IN (?, ?) AND NOT (tier = ? AND style = ?"
+                               " AND millis = ? AND player = ?)",
+                               (rid,) + TIERS + (tier, style, millis, player))
 
             pkey = (mapname, track, leg, tier, style, player)
             prev = db.execute(_PREV_SQL, pkey).fetchone()

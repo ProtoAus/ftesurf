@@ -1182,6 +1182,93 @@ def case_round11():
           ([(-1,)], [(1,)]))
 
 
+def case_round12():
+    """E23: a re-file leaves a set-aside recorded copy to the refill; migrate reads
+    files outside the write lock; the unlink is by player too"""
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+    srep = stage_run(m, 600, "Rs")
+    submit(m, leg=2, ticks=454)                          # R's stage post
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    review(m, c, csrf, eid, "reject")
+    review(m, c, csrf, eid, "clear")                    # the recorded 600 set aside
+    time.sleep(1.1)
+    sl = leaf(600, "kap")
+    with open(os.path.join(m.RUNS_DIR, "surf_Aser", m.leg_dir(0, 2), sl), "w",
+              newline="\n") as fh:
+        fh.write(evbody("Rt", leg=2) + "\n")            # an exact tie, a new file
+    submit(m, leg=2, ticks=600, rec=sl, runid="Rt")
+    review(m, c, csrf, eid, "reject")
+    _pass(m, srep)
+    row = by_player(m, 2)["kap"]
+    check("E23 after a tie re-filed its leaf, the set-aside recorded 600 comes back"
+          " with its recording", (row["ticks"], row["rep"], row["ver"]), (600, srep, 1))
+    review(m, c, csrf, srep, "reject")
+    check("E23 ...and a reject of that recording takes it off the board",
+          "kap" in by_player(m, 2), False)
+
+    m = fresh()
+    lf = leaf(4100, "kap")
+    put_run(m, lf, evbody("Rw1").replace("abandon 8262\n", ""))
+    submit(m, ticks=4100, rec=lf, runid="Rw1")
+    conn = m.connect()
+    with conn:
+        conn.execute("UPDATE replays SET bound = -1")
+    seen = []
+    real_bound = m._bound_now
+
+    def probe(row):
+        x = sqlite3.connect(m.DB_PATH, timeout=0)
+        try:
+            x.execute("BEGIN IMMEDIATE")
+            x.rollback()
+            seen.append(None)
+        except sqlite3.OperationalError as exc:
+            seen.append(str(exc))
+        finally:
+            x.close()
+        return real_bound(row)
+    m._bound_now = probe
+    try:
+        m.replays_bound(conn)
+    finally:
+        m._bound_now = real_bound
+    check("E23 migrate reads a row's file with the write lock free",
+          (seen, q(m, "SELECT bound FROM replays")), ([None], [(1,)]))
+
+    # A digest-less leaf: player Q's row, then P re-files it with a new file.
+    m = fresh()
+    dl = "0004400_run.rec"
+    put_run(m, dl, evbody("Rq1").replace("abandon 8262\n", ""))
+    qrep = submit(m, player="qqq", name="Qqq", ticks=4400, rec=dl, runid="Rq1")["rep"]
+    time.sleep(1.1)
+    put_run(m, dl, evbody("Rp1").replace("abandon 8262\n", "") + "x 1\n")
+    submit(m, player="ppp", name="Ppp", ticks=4400, rec=dl, runid="Rp1")
+    _pass(m, qrep)
+    check("E23 a digest-less leaf re-filed by another player unlinks the first one's row",
+          by_player(m, 0)["qqq"]["rep"], 0)
+
+    # The shaved file-less filing and the lobby's post in the same second.
+    real = time.time
+    t0 = int(real()) + 0.1
+    time.time = lambda: t0
+    try:
+        m = fresh()
+        lf = leaf(4600, "kap")
+        body = evbody("Rs2").replace("abandon 8262\n", "")
+        submit(m, ticks=4600, rec=lf, runid="Rs2", tickrate="70", recbytes=len(body))
+        put_run(m, lf, body)
+        rid = submit(m, ticks=4600, rec=lf, runid="Rs2")["rep"]
+    finally:
+        time.time = real
+    _pass(m, rid)
+    row = by_player(m, 0)["kap"]
+    check("E23 ...in the same second as the real post, the shaved time loses the badge too",
+          (row["ms"] < 69000, row["rep"], row["ver"]), (True, 0, 0))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -1419,7 +1506,7 @@ def main():
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_round6, case_round7, case_round8, case_stage_post_lock,
-                 case_round9, case_round10, case_round11,
+                 case_round9, case_round10, case_round11, case_round12,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
