@@ -1824,7 +1824,6 @@ float   run_t_evul;
 .string rec_end_rid;
 .string rec_end_nonce;
 .float  rec_end_ticks;              // svticks: the RUNTICKS the client saw at the end
-.float  rec_end_at;                 // `time` it was held (a load's own hold: this frame)
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3963,7 +3962,6 @@ void(entity e, string rid, string nonce, float ticks) SV_RecEndHold =
 		e.rec_end_rid = strzone(rid);
 		e.rec_end_nonce = strzone(nonce);
 		e.rec_end_ticks = ticks;
-		e.rec_end_at = time;
 	}
 };
 

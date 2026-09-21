@@ -846,6 +846,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float az, ez, am, cz, pa, cmx;
 	local float rpit, ryaw, rduck;
 	local float wasrec;             // Patch 426: recording when the rewind began
+	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
 
 	f = fopen(SL_StatePath(id), FILE_READ);
@@ -941,8 +942,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 	// Patch 360: a run that posted stages keeps its recording as it stands, before
 	// the restore below rewrites its clock and flags and the rewind drops it.
+	drid = "";
 	if (e.rec_rec_posts > 0)
+	{
+		drid = strcat(e.rec_rec_rid);
 		SV_RecDiscard(e);
+	}
 
 	/*
 	  Place the player, retry only.  Same shape as SV_SaveLocPlace, including
@@ -1222,11 +1227,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		return TRUE;
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
 	{
-		// Patch 426: a kept abandon THIS load held (SV_RecDiscard above, this
-		// frame) never ends for the client -- recording resumed in the same
-		// frame -- so its receipt cannot come; a later failed rewind must not
-		// hand it one.  An earlier abandon's hold is signable and stays.
-		if (e.rec_end_rid != "" && e.rec_end_ticks == 0 && e.rec_end_at == time)
+		// Patch 426: a kept abandon THIS load held (the Patch 360 discard above)
+		// never ends for the client -- recording resumed in the same frame -- so
+		// its receipt cannot come; a later failed rewind must not hand it one.
+		// An earlier abandon's hold is signable and stays.  Told apart by runid:
+		// `time` is shared by every packet in one physics step (round 7).
+		if (drid != "" && e.rec_end_rid == drid && e.rec_end_ticks == 0)
 			SV_RecEndHold(e, "", "", 0);
 		/*
 		  A DIFFERENT RECORD FOR A RETRY, and not merely for tidiness.
