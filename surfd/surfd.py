@@ -728,29 +728,37 @@ def replays_bound(conn):
     the row was filed against its file -- submit_run bound the header, or
     index_evidence indexed it -- so "a recording of the run" is decided when it
     was filed, never by whether the disk still has it (review round 5: a
-    missing file un-hid a rejected run's stage times).  Backfilled once, from
-    the disk as it is now: a file whose header describes the row."""
+    missing file un-hid a rejected run's stage times).  -1 is "not assessed":
+    a row the column predates, or one a writer that does not know it inserted
+    (a rollback, an old worker mid-reload).  Every migrate resolves those from
+    the disk as it is then: a file whose header describes the row (round 6)."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
-    if "bound" in cols:
-        return
-    try:
-        conn.execute("ALTER TABLE replays ADD COLUMN bound INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError as exc:
-        if "duplicate column" not in str(exc):
-            raise
-        return                                # a racing process backfills
-    conn.execute("UPDATE replays SET bound = 1 WHERE kind = 'evidence'")
+    if "bound" not in cols:
+        try:
+            conn.execute("ALTER TABLE replays ADD COLUMN bound INTEGER NOT NULL"
+                         " DEFAULT -1")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc):
+                raise
+    conn.execute("CREATE INDEX IF NOT EXISTS replays_unassessed ON replays (id)"
+                 " WHERE bound = -1")
+    conn.execute("UPDATE replays SET bound = 1 WHERE bound = -1 AND kind = 'evidence'")
     for row in conn.execute("SELECT id, map, map_dir, track, leg, leaf, kind, runid,"
-                            " flags, tickrate FROM replays WHERE kind = 'run'").fetchall():
-        meta = _rec_meta(replay_file(row)[0] or "")
-        if meta is None:
-            continue
-        hdr = dict(meta[0])
-        if row[7] in ("", "-"):
-            hdr.pop("runid", None)
-        if not _rec_disagrees(hdr, row[1], row[3], row[4], row[7], row[8], row[9]):
-            conn.execute("UPDATE replays SET bound = 1 WHERE id = ?", (row[0],))
+                            " flags, tickrate FROM replays WHERE bound = -1").fetchall():
+        conn.execute("UPDATE replays SET bound = ? WHERE id = ?",
+                     (_bound_now(row), row[0]))
     conn.commit()
+
+
+def _bound_now(row):
+    """1 when row's file is on disk and its header describes the row, else 0."""
+    meta = _rec_meta(replay_file(row)[0] or "")
+    if meta is None:
+        return 0
+    hdr = dict(meta[0])
+    if row[7] in ("", "-"):
+        hdr.pop("runid", None)
+    return 0 if _rec_disagrees(hdr, row[1], row[3], row[4], row[7], row[8], row[9]) else 1
 
 
 def receipts_v8(conn):
@@ -2234,7 +2242,13 @@ def restage(db, rid, park_only=False):
             base = row["tier"][:-len(tag)]
             live = _stage_slot(db, row, base)
             if live is not None and ((live["millis"], live["submitted"])
-                                     > (row["millis"], row["submitted"])):
+                                     <= (row["millis"], row["submitted"])):
+                # The live time is better: R's, cleared, waits aside for it
+                # (review round 6 -- it was deleted, so a later reject of the
+                # live run left the slot empty).
+                _stage_move(db, row, base + sup)
+                continue
+            if live is not None:
                 _stage_move(db, live, base + sup)
             restored += _stage_move(db, row, base)
     return parked, restored
@@ -2537,8 +2551,13 @@ def submit_run():
         else:
             fsize = meta[3]
             fileless = False
-            bad = _rec_disagrees(meta[0], mapname, track, leg, runid, flags,
-                                 tickrate)
+            # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
+            # from the run it was cut from, header and all) compares none -- it
+            # dropped every such leaf since 06a5a01 (review round 6).
+            hdr = dict(meta[0])
+            if not runid:
+                hdr.pop("runid", None)
+            bad = _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
@@ -2613,11 +2632,14 @@ def submit_run():
                     ).fetchone()[0]
                 else:
                     nrep = 0          # an upsert of a row we already hold
-                if have is not None and fileless:
+                if have is not None and (fileless or (
+                        not runid and have["runid"] not in ("", "-"))):
                     # NOTHING changes a held replay without its file: with no
                     # header to bind them, a runid or a recbytes off the wire
                     # lapsed its reviews and relabelled it (reviews 4, 5).  An
                     # honest re-filing (an exact tie) writes the file first.
+                    # Nor does a post with no runid re-file a run's leaf: that
+                    # compare is skipped above for continuations (round 6).
                     log.warning("rec leaf %r is replay %d, and its file cannot"
                                 " be read; the row is left as it is", leaf,
                                 have["id"])
@@ -2675,13 +2697,15 @@ def submit_run():
                                 MAX_REPLAYS, leaf)
                 rep = db.execute(
                     "SELECT id, name, tier, style, flags, tickrate, millis,"
-                    " runid, submitted FROM replays"
+                    " runid, submitted, player FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
-                if rep is not None:
+                if rep is not None and rep["player"] == player:
                     # The board row is the replay's: its name, board, flags
-                    # and time, as filed with its evidence.
+                    # and time, as filed with its evidence -- when it is this
+                    # player's (a held digest-less leaf it did not change is
+                    # someone else's, round 6).
                     rid = rep["id"]
                     name, tier, style, flags = (rep["name"], rep["tier"],
                                                 rep["style"], rep["flags"])

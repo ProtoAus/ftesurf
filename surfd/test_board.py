@@ -1992,6 +1992,21 @@ submit(m, player="vic", name="EVIL", ticks=700, tickrate=10000, rec=vleaf,
 check("(e) with the file gone, another runid rewrites nothing on the held row",
       q(m, "SELECT runid, name, tickrate, millis FROM replays WHERE id=?", (vrep,)),
       [("rv", "Vic", 100.0, 7000)])
+# A digest-less leaf (s<slot>, or none) binds no player: with its file gone, a
+# re-post by another player must not stand on the owner's replay and badge.
+clock.now += 10
+dl = "0000720_run.rec"
+wrec(m, "surf_test", 0, 0, dl, "Owner", "rdl", ticks=720)
+drep = submit(m, player="owner", name="Owner", ticks=720, tickrate=100, rec=dl,
+              runid="rdl")["rep"]
+add_verdict(m, drep, "PASS", int(clock.now) + 1)
+os.unlink(os.path.join(m.RUNS_DIR, "surf_test", "main", dl))
+clock.now += 10
+evil = submit(m, player="evil", name="Evil", ticks=720, tickrate=100, rec=dl,
+              runid="rdl")
+check("(e) a file-less re-post of another player's digest-less leaf stands on nothing of theirs",
+      (evil.get("rep"), rows_by_player(m)["evil"]["name"], rows_by_player(m)["evil"]["ver"]),
+      (0, "Evil", 0))
 check("(e) runs_run indexes the per-run stage lookups",
       "runs_run" in [r[1] for r in q(m, "PRAGMA index_list(runs)")], True)
 

@@ -381,9 +381,10 @@ def case_exclusion():
     submit(m, leg=2, ticks=400, runid="R5")
     check("E5 control: a faster time meanwhile", stage(m), (400, "R5"))
     check("E5 approve lapses the reject", review(m, c, csrf, eid, "approve")[:2], (200, True))
-    check("E5 ...and the faster live time keeps the slot, the parked one dropped",
-          (stage(m), q(m, "SELECT COUNT(*) FROM runs WHERE leg = 2 AND player = 'kap'")),
-          ((400, "R5"), [(1,)]))
+    check("E5 ...and the faster live time keeps the slot, the cleared one set aside",
+          (stage(m), q(m, "SELECT tier, ticks FROM runs WHERE leg = 2 AND player = 'kap'"
+                          " AND tier <> 'ranked'")),
+          ((400, "R5"), [("ranked^" + R, 454)]))
 
     check("E5 recheck: accepted", review(m, c, csrf, eid, "recheck")[:2], (200, True))
     check("E5 ...and queued", q(m, "SELECT checked FROM replays WHERE id = ?", (eid,)),
@@ -631,6 +632,7 @@ def case_bound():
     submit(m, ticks=4100, rec=leaf(4100, "kap"), runid="Rb")
     submit(m, player="zed", ticks=4200, rec=leaf(4200, "zed"), runid="Rz")   # no file
     with conn:
+        conn.execute("DROP INDEX IF EXISTS replays_unassessed")
         conn.execute("ALTER TABLE replays DROP COLUMN bound")
     m.replays_bound(conn)
     check("E14 backfill: evidence and a run whose file is there are bound, not the rest",
@@ -689,10 +691,61 @@ def case_round6():
     put_run(m, leaf(4100, "kap"), evbody("Rother").replace("abandon 8262\n", ""))
     conn = m.connect()
     with conn:
+        conn.execute("DROP INDEX IF EXISTS replays_unassessed")
         conn.execute("ALTER TABLE replays DROP COLUMN bound")
     m.replays_bound(conn)
     check("E16 backfill: a file whose header names another run is not bound",
           q(m, "SELECT runid, bound FROM replays"), [("Rh", 0)])
+
+
+def case_round7():
+    """E17: a cleared time that loses to the live one waits aside for it; an
+    unassessed bound resolves; a continuation keeps its recording"""
+    m = fresh(admin_pw=PW)
+    submit(m, leg=2, ticks=457)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    m.index_evidence(conn)
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=406, runid=R3)
+    put_ev(m, R3 + ".rec", evbody(R3), age=3600)
+    m.index_evidence(conn)
+    e3 = evid(m, R3)
+    review(m, c, csrf, eid, "clear")
+    check("E17 control: the live 406 keeps the slot over R's cleared 457",
+          stage(m), (406, R3))
+    review(m, c, csrf, e3, "reject")
+    check("E17 rejecting the 406's run gives the slot to R's 457", stage(m), (457, R))
+
+    m = fresh()
+    lf = leaf(4100, "kap")
+    put_run(m, lf, evbody("Rb").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4100, rec=lf, runid="Rb")["rep"]
+    conn = m.connect()
+    with conn:                         # an interrupted backfill, or an old writer
+        conn.execute("UPDATE replays SET bound = -1")
+    m.replays_bound(conn)
+    check("E17 an unassessed row is resolved by the next migrate",
+          q(m, "SELECT bound FROM replays WHERE id = ?", (rid,)), [(1,)])
+
+    # A TF_SHADOW continuation: the lobby sends no runid, its file's header names
+    # the run it was cut from.  It keeps its recording, filed as '-'.
+    m = fresh()
+    sh = leaf(4200, "kap").replace("_run.rec", "_shadow.rec")
+    put_run(m, sh, evbody("Rcut").replace("abandon 8262\n", ""))
+    got = submit(m, ticks=4200, rec=sh, runid=None)
+    check("E17 a continuation with its file on disk keeps its recording",
+          (got["rep"] > 0, q(m, "SELECT runid, bound FROM replays WHERE id = ?",
+                              (got["rep"],))), (True, [("-", 1)]))
+    lf2 = leaf(4300, "kap")
+    put_run(m, lf2, evbody("Rkeep").replace("abandon 8262\n", ""))
+    keep = submit(m, ticks=4300, rec=lf2, runid="Rkeep")["rep"]
+    submit(m, ticks=4300, rec=lf2, runid=None, name="Other")
+    check("E17 ...but a post with no runid cannot re-file a run's leaf",
+          q(m, "SELECT runid, name FROM replays WHERE id = ?", (keep,)),
+          [("Rkeep", "Kap")])
 
 
 def case_public():
@@ -931,7 +984,7 @@ def main():
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
-                 case_round6,
+                 case_round6, case_round7,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
