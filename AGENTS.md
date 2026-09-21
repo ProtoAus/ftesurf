@@ -802,10 +802,24 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   Makefile tests `-d .git`, a file in a worktree): set `$env:SVN_VERSION =
   git-<rev-list --count + 29>-<describe --long --always>` and `$env:SVN_DATE`
   before `build.ps1 -Engine -Full -FteRoot <worktree>`.
+  SET THEM FOR THE MAIN CHECKOUT TOO WHEN CUTTING A RELEASE. The Makefile stamps
+  with `git describe --dirty` run under msys2, which sees the CRLF working copy
+  as modified and writes `-dirty` even when Windows `git status` is clean --
+  release gate L2 then refuses the drop ("names no clean commit"). `$env:SVN_DATE`
+  MUST HAVE NO SPACES (`%cs`, i.e. `2026-09-21`): it reaches CFLAGS unquoted, and
+  `Sep 21 2026` makes the compiler treat `21` and `2026` as linker inputs.
 - RELEASE: `release.ps1 -Bump patch -Linux dist\<drop> -FteRoot <worktree>`. The
   Linux drop and ftesurf64.exe must come from the same engine commit (gate L2);
   build.ps1 recompiles the progs from `src`, so copy the lobby-deployed .dat back
-  in before releasing.
+  in before releasing. `ENGINE.txt`'s pin block is a gate too -- bump `commit`,
+  `patch` and `qcbuild` with the engine or the run stops there.
+  STEP 18 (the page scp) FAILS ON WINDOWS: `"$pageDir\*"` does not glob, so the
+  run throws AFTER both archives are uploaded. That is the documented
+  unre-runnable state -- do not re-run it. `scp dist\site-<v>\<each file>` to the
+  Pi's `ftesurf-site/.incoming/<v>/` and `sh publish.sh <v>` there, then check
+  https://proto.bar/ftesurf/version.json.
+- ONLY THE LOBBY PORTS ARE FORWARDED. A one-off server on a spare port is
+  reachable from the LAN address (192.168.1.102), not from 180.150.62.57.
 - TEST RIG: WSL `Debian` is a runtime-only player machine (user `surf`;
   `tools/linux/rig-setup.sh`), driven by `rig-install.sh` / `rig-run.sh` /
   `rig-steam.sh` / `rig-sv.sh`. Case tests need ext4 (`/home/surf/fakesteam`,

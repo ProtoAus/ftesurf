@@ -48,6 +48,12 @@ chatty.
   knob, then the window closed early) before it reproduced anything. The
   cheapest proof of a fix is the same arm against a build with the fix compiled
   out.
+- AND WHEN AN ARM FALSIFIES YOUR PREDICTION, ask whether the ARM was sound
+  before you write the conclusion. Patch 419's said "two servers, same second,
+  same offset"; they differed, and the first draft concluded the attack did not
+  exist. A reviewer checked the premise instead and found the seeds really were
+  shared -- what the arm had not controlled was draw POSITION. Name the
+  uncontrolled variable, and the verdict is "not demonstrated", not "safe".
 - Report what the measurement said, including when it contradicts what you
   predicted. A falsified prediction is a result, not a setback.
 - Changes to the recorder, the verifier or anything that writes evidence get an
