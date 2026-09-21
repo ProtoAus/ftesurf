@@ -164,13 +164,16 @@ _ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
 # only runs submitted before the decision: anyone can play unsigned as P's
 # public guid.  'reject' says K is not P's: flagged, and out of "first", so P's
 # next key takes the slot (the impostor case).  "Has signed before" still counts
-# a rejected signing, so a reject never waives unsigned runs.  Not judged: runs
-# with no runid ('' or '-' -- no receipt can exist) and a stale receipt whose
-# signature is unknown until re-read (`ru`).
+# a rejected signing, so a reject never waives unsigned runs.  Not judged, and
+# key_for says which: runs with no runid ('' or '-'), segmented runs (a cold
+# save-load keeps the runid and clears the nonce, so an honest one can have no
+# receipt), and a pre-8 receipt whose signature is unknown until re-read (`ru`,
+# stale = 1; --reread-receipts marks 2 and keeps what was known).
 #   The firsts are derived tables computed once per query: per-row subqueries
 # took 12.7 s at 10k receipts.  Admin-only: VER_SQL and every public surface
 # ignore all of it.
 KEY_MARGIN = 300          # s between a run's submit and its .rcpt landing
+KEY_UNJUDGED_FLAGS = 136  # surfd TF_SEGMENT | TF_SHADOW: the segmented board
 _KEY_CAND = """SELECT r.runid, r.pub, q.player, r.signed_at, q.id AS rid
       FROM receipts r
       JOIN replays q ON q.runid = r.runid AND q.kind = 'run' AND q.player <> ''
@@ -192,13 +195,15 @@ _KEY_JOIN = """
   LEFT JOIN """ + _KEY_SIGNED + """ fs ON fs.player = p.player"""
 # One placeholder: receipts_through - KEY_MARGIN.
 _KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
-       fk.pub AS first_pub, fk.rid AS first_rid,
+       fk.pub AS first_pub, fk.rid AS first_rid, fs.signed_at AS first_signed_at,
+       CASE WHEN ru.runid IS NULL THEN 0 ELSE 1 END AS sig_unknown,
        fp.player AS first_player, fp.rid AS first_player_rid,
        CASE WHEN p.kind <> 'run' OR p.player = '' THEN ''
             WHEN rc.pub IS NULL THEN
                  CASE WHEN fs.signed_at IS NULL OR p.submitted <= fs.signed_at
                            OR p.submitted > ? THEN ''
-                      WHEN p.runid IN ('', '-') OR ru.runid IS NOT NULL THEN ''
+                      WHEN p.runid IN ('', '-') OR ru.runid IS NOT NULL
+                           OR (p.flags & """ + str(KEY_UNJUDGED_FLAGS) + """) <> 0 THEN ''
                       WHEN kd.decision = 'accept' AND p.submitted <= kd.decided_at THEN ''
                       WHEN kd.decision = 'reject' THEN 'rejected'
                       ELSE 'unsigned' END
@@ -208,8 +213,8 @@ _KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
                       CASE WHEN p.player IS NOT fp.player THEN 'shared' ELSE '' END)
        END AS key_flag"""
 _NO_KEY_COLS = ("NULL AS key_pub, '' AS key_decision, NULL AS first_pub,"
-                " NULL AS first_rid, NULL AS first_player, NULL AS first_player_rid,"
-                " '' AS key_flag")
+                " NULL AS first_rid, NULL AS first_signed_at, 0 AS sig_unknown,"
+                " NULL AS first_player, NULL AS first_player_rid, '' AS key_flag")
 KEY_ACTIONS = ("accept", "reject", "clear")
 
 
@@ -242,13 +247,39 @@ def key_for(conn, rid):
     stage evidence or without the schema-8 tables."""
     if not key_tables(conn):
         return None
-    k = conn.execute("SELECT " + _KEY_COLS + " FROM replays p" + _KEY_JOIN +
-                     " WHERE p.id = ? AND p.kind = 'run'", (key_bound(conn), rid)).fetchone()
+    k = conn.execute("SELECT " + _KEY_COLS + ", p.submitted AS run_submitted,"
+                     " p.runid AS run_runid, p.flags AS run_flags FROM replays p" +
+                     _KEY_JOIN + " WHERE p.id = ? AND p.kind = 'run'",
+                     (key_bound(conn), rid)).fetchone()
     if k is None:
         return None
     out = dict(k)
     out["receipts_through"] = receipts_through(conn)
+    out["why"] = unsigned_why(out)
     return out
+
+
+def unsigned_why(k):
+    """Why a run with no signed receipt carries no flag: "not judged" must not
+    read as "checked and fine".  '' for a signed or flagged run."""
+    if k["key_pub"] is not None or k["key_flag"]:
+        return ""
+    if k["first_signed_at"] is None:
+        return "this player has never signed a run"
+    if k["run_runid"] in ("", "-"):
+        return "not judged: the run has no runid, so no receipt can exist"
+    if k["run_flags"] & KEY_UNJUDGED_FLAGS:
+        return "not judged: a segmented run (a save-load can clear its nonce)"
+    if k["sig_unknown"]:
+        return "not judged: its receipt is waiting to be read again"
+    if k["run_submitted"] <= k["first_signed_at"]:
+        return "set before this player first signed"
+    through = k["receipts_through"]
+    if not through or k["run_submitted"] > through - KEY_MARGIN:
+        return "not judged yet: newer than the receipts read so far"
+    if k["key_decision"] == "accept":
+        return "accepted"
+    return ""
 
 
 # One row per replay with its latest CURRENT (at >= submitted) review and

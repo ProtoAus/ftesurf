@@ -245,8 +245,8 @@ def case_receipt_reread():
     check("stored the signature bit and the file's mtime as signed_at",
           tuple(conn.execute("SELECT sig, signed_at FROM receipts").fetchone()), (1, int(old)))
     # MARKED, NOT DELETED: between the mark and the re-read the row is there.
-    check("marking keeps the row, stale", (sweep.mark_receipts_stale(conn),
-          tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone())), (1, (1, 1)))
+    check("marking keeps the row, stale 2 (its sig is known)", (sweep.mark_receipts_stale(conn),
+          tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone())), (1, (1, 2)))
     sweep.receipt_step(conn)
     check("...and the next read clears it",
           tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone()), (1, 0))
@@ -293,9 +293,34 @@ def case_receipt_watermark():
     got = sweep.receipt_step(conn, limit=1, now=T + 60)
     stale = dict(conn.execute("SELECT runid, stale FROM receipts").fetchall())
     check("one slot: the fresh receipt is read before the stale ones (which sort first)",
-          (got[0], stale.get("20260921-000051-0"), stale.get("20260921-000050-0")), (1, 0, 1))
+          (got[0], stale.get("20260921-000051-0"), stale.get("20260921-000050-0")), (1, 0, 2))
     check("...and a pass that read every fresh file moves the watermark",
           wm(), T + 60 - surfd.EVIDENCE_SETTLE)
+
+    # A receipt that vanishes between the listing and the read is skipped, not
+    # stored as a FAULT that nothing would ever read again.
+    path, _pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000054-0", mapname="vanish", age=old)
+    keep = open(path, "rb").read()
+    real_read = sweep.read_receipt
+
+    def vanishing(p):
+        if p == path:
+            os.remove(p)
+        return real_read(p)
+
+    sweep.read_receipt = vanishing
+    try:
+        sweep.receipt_step(conn, now=T + 90)
+    finally:
+        sweep.read_receipt = real_read
+    row = lambda: conn.execute("SELECT verdict, sig FROM receipts"
+                               " WHERE runid = '20260921-000054-0'").fetchone()
+    check("a receipt gone mid-pass is not stored", row(), None)
+    with open(path, "wb") as fh:
+        fh.write(keep)
+    os.utime(path, (old, old))
+    sweep.receipt_step(conn, now=T + 100)
+    check("...and is read, signed, once it is back", tuple(row() or ()), ("VALID", 1))
 
     # A file dated the epoch stores signed_at 1: 0 is receipts_v8's "pre-8 row"
     # and would be re-marked stale on every start.

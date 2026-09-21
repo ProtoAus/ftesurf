@@ -162,7 +162,7 @@ ROW_KEYS = {"id", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
             "name", "ms", "submitted", "checked", "recheck_at", "verdict",
             "error", "pending", "decision", "public", "standing",
             "key_pub", "key_decision", "key_flag", "first_pub", "first_rid",
-            "first_player", "first_player_rid"}
+            "first_player", "first_player_rid", "first_signed_at", "sig_unknown"}
 
 
 def rec_leaf(ticks, player):
@@ -764,6 +764,8 @@ def review_section(pw_hash, pw):
     watermark(sub(a8) + adm.KEY_MARGIN)
     check("a run with no runid, and one with an unread stale receipt, are not judged",
           [flag(a7), flag(a8)], ["", ""])
+    check("...and say so rather than looking cleared",
+          ("no runid" in key(a7)["why"], "read again" in key(a8)["why"]), (True, True))
     sql_exec = m.connect()
     try:
         with sql_exec:
@@ -771,6 +773,29 @@ def review_section(pw_hash, pw):
     finally:
         sql_exec.close()
     check("...and once re-read with no verified signature, it is unsigned", flag(a8), "unsigned")
+    sql_exec = m.connect()
+    try:
+        with sql_exec:
+            sql_exec.execute("UPDATE receipts SET stale = 2 WHERE runid = '20260921-100014-0'")
+    finally:
+        sql_exec.close()
+    check("...and --reread-receipts (stale 2) keeps judging on the known signature",
+          flag(a8), "unsigned")
+    clock.now += 5
+    a9 = seed_run("kfa", 890, "20260921-100015-0")
+    a10 = seed_run("kfa", 885, "20260921-100016-0")
+    board_before = board()
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("UPDATE replays SET flags = 128 WHERE id = ?", (a9,))
+    finally:
+        conn.close()
+    watermark(sub(a9) + adm.KEY_MARGIN)
+    check("a segmented run is not judged (a save-load can clear its nonce), and says so",
+          (flag(a9), "segmented" in key(a9)["why"]), ("", True))
+    check("...while a clean one past the watermark is 'not judged yet'",
+          (flag(a10), "not judged yet" in key(a10)["why"]), ("", True))
     check("decisions move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
           [detail(x)["public"] for x in seeded], public_before)

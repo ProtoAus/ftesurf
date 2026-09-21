@@ -314,7 +314,8 @@ function renderKey(j) {
   const short = pub => String(pub).slice(0, 8) + "\u2026";
   put("state", k.key_flag ? pill("key " + k.key_flag, k.key_flag === "rejected" ? "down" : "warn")
              : k.key_decision === "accept" ? pill("accepted", "up")
-             : k.key_pub ? pill("first key", "up") : el("span", "muted", "unsigned"));
+             : k.key_pub ? pill("first key", "up")
+             : el("span", "muted", "unsigned" + (k.why ? " \u2014 " + k.why : "")));
   if (k.key_pub) put("this run's key", span("mono", short(k.key_pub)));
   if (k.first_pub && k.first_pub !== k.key_pub)
     put("player's first key", frag(span("mono", short(k.first_pub)), " \u2014 set by ", runLink(k.first_rid)));

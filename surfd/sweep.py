@@ -268,7 +268,7 @@ def receipt_step(conn, limit=200, now=None):
                     pass
         fresh.sort()
         todo = [(m, f, True) for m, f in fresh] + \
-               [(None, f, False) for f in files if rows.get(name(f)) == 1]
+               [(None, f, False) for f in files if rows.get(name(f)) in (1, 2)]
         n = bad = 0
         through = cutoff
         for mtime, path, is_fresh in todo:
@@ -285,7 +285,9 @@ def receipt_step(conn, limit=200, now=None):
                     through = min(through, int(mtime) - 1)
                 continue
             got = read_receipt(path)
-            if got is None:
+            # Gone since the listing: rcptcheck reports "cannot read" as a FAULT,
+            # and a stored row is never read again -- skip it, as a failed stat is.
+            if got is None or not os.path.exists(path):
                 continue
             verdict, pub, mapname, angles, reason, sig = got
             # signed_at is the file's mtime: the lobby writes it at the run's
@@ -324,7 +326,9 @@ def mark_receipts_stale(conn):
     is untouched -- re-reading the same files must not count a run twice."""
     with conn:
         conn.executescript(surfd.RECEIPTS_SQL)
-        return conn.execute("UPDATE receipts SET stale = 1").rowcount
+        # 2, not receipts_v8's 1: the row's sig is KNOWN, so admin keeps
+        # judging on it until the re-read replaces it.
+        return conn.execute("UPDATE receipts SET stale = 2").rowcount
 
 
 def bind_key(conn, runid, pub, t0):
