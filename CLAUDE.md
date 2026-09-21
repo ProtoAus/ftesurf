@@ -59,7 +59,10 @@ chatty.
   false faults on honest runs, all one shape, all found by reviewers and none
   by the suite. The fix is never a better threshold, it is the third answer.
   Before shipping a check, ask what it says when it cannot see, and make sure
-  that is not "guilty".
+  that is not "guilty". ABSENCE IS THE SAME TRAP: Patch 422's first cut read
+  "no receipt" as "unsigned", and on the day the receipt step failed for three
+  hours that would have flagged every signer. A missing record is evidence
+  only once something shows the reader got that far (the receipts watermark).
 - AND A WHOLE CORPUS CAN BE THE ARM THAT CANNOT FAIL. 339 .rec/.view pairs
   agreed about angles and not one of them measured anything: every v9 fixture
   drives its route with setpos and noclip, so the camera never turns. Before
@@ -94,4 +97,5 @@ chatty.
   finding was a 4 MiB -> 8 KB cap left in the working copy to measure something
   else, and in Patch 421 two reviewers had the verifier rewritten under them
   mid-read, so their line numbers were stale and one had to redo the work.
-  Commit, then review, then fix -- not all three at once.
+  Commit, then review, then fix -- not all three at once. To keep working while
+  they read, fix in a `git worktree` on a side branch and fast-forward after.

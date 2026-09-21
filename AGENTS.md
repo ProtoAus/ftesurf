@@ -268,8 +268,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   first command nothing re-armed it (`SV_BaseVelocityFrame`). A body can be doing
   1800 u/s with `.velocity` EXACTLY ZERO — measured, and the recording's `seed`
   says `0 0 0` because that is honest. Effective horizontal speed is
-  `.velocity + (1 + run_bv_tick * 0.5) * .run_basevel`. `run_stagecap` has read
-  the wrong one since P360 and logs `launch 0 ... cap 290` at 1809 u/s.
+  `.velocity + (1 + run_bv_tick * 0.5) * .run_basevel`. `run_stagecap` read the
+  wrong one until P407/P411 (`launch 0 ... cap 290` at 1809 u/s); it is 0 since
+  2026-09-21 (Lex: boosters count, speed does not matter).
 - Client→server: `cmd sl_*`-style registered command strings.
   Server→client: `stuffcmd` (e.g. `set cl_saveroot`), stats, sprint, csqc
   entity fields. MIRRORS SPLIT BY TYPE: floats ride a stuffed `set` read with
@@ -684,7 +685,8 @@ bannered as superseded.)
   tree once a day, stamped in `localinfo fs_evswept`. SET THAT ON EXACTLY ONE
   PROCESS: the tree is shared by twelve lobbies, so a whole-tree sweep imposes
   that process's `run_evidence_days` on all of them. Before that, `run_evidence_days` only ever applied to maps that
-  were in rotation. The stamp is localinfo because an SSQC global is reset by
+  were in rotation. It is 0 (keep everything) since 2026-09-21, so both sweeps
+  are no-ops until it is raised; Patch 423 warns when the drive fills. The stamp is localinfo because an SSQC global is reset by
   the map load and a cvar the gamecode creates is purged with the progs -- both
   were tried and both silently swept at every init (`cfg/test/p418sweep.cfg`).
 - A SERVERINFO KEY IS PUBLISHED AT MAP INIT, so a cvar it is derived from must be
@@ -727,7 +729,10 @@ bannered as superseded.)
   with the 31 `hl2_*.vpk` copied in, the Pi's pm_dettest equals Windows. Prove
   any content change the same way (`cfg/test/p386det.cfg`, a spare port).
 - Restart: sudoers is per-unit only — loop `sudo -n systemctl restart ftesurf@$i`
-  for i in 1..12.
+  for i in 1..12. After copying a cfg, restart and READ THE VALUE BACK rather
+  than trusting the file: from `/srv/nvme/surfd`, `rcon.Rcon("127.0.0.1", port,
+  pw).execute([cvar])` with `pw` read from `surfd.env` inside the script and
+  never printed (loopback only, 8 packets per 30 s per port).
 - Deploy server progs with `./build.ps1 -Pi` (refuses while players are
   connected, scp's both .new files, hash-verifies on the Pi, swaps in ONE ssh
   command keeping `.prev`, restarts every active lobby); menu.dat stays local.
@@ -792,7 +797,7 @@ bannered as superseded.)
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
 
-  `sweep.py`'s receipt step (schema 7: `receipts`, `pubkeys`) imports
+  `sweep.py`'s receipt step (schema 7/8: `receipts`, `pubkeys`, `sweepmeta`) imports
   `rcptcheck`/`reccheck`/`ed25519` from `<SURFD_GAME>/tools` (`SURFD_TOOLS`),
   and the import is INSIDE the function on purpose: a host without them must
   keep running the verification it has run since Patch 349. Deploy those three
