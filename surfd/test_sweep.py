@@ -242,13 +242,22 @@ def case_receipt_reread():
     sweep.receipt_step(conn)
     check("read once", conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
 
+    check("stored the signature bit and the file's mtime as signed_at",
+          tuple(conn.execute("SELECT sig, signed_at FROM receipts").fetchone()), (1, int(old)))
+    # MARKED, NOT DELETED: between the mark and the re-read the row is there.
+    check("marking keeps the row, stale", (sweep.mark_receipts_stale(conn),
+          tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone())), (1, (1, 1)))
+    sweep.receipt_step(conn)
+    check("...and the next read clears it",
+          tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone()), (1, 0))
+
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         sweep.main(["--reread-receipts", "--limit", "0"])
-    check("the flag says how many it forgot", "forgot 1 receipt" in out.getvalue(), True)
+    check("the flag says how many it marked", "marked 1 receipt" in out.getvalue(), True)
     conn2 = surfd.connect()
     check("...and read them again in the same pass",
-          conn2.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+          tuple(conn2.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone()), (1, 0))
     check("CONTROL: the key sighting was NOT counted twice",
           conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
 

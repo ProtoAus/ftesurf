@@ -74,6 +74,8 @@ KEEP_ORPHAN_AGE = 3600   # s; a kept file with no row older than this is removed
 # 2026-09-21 (Lex: keep everything, warn me), so nothing else bounds data/.
 DISK_WARN_GB = 20
 DISK_WARN_FRAC = 0.10
+DISK_SIZES_TTL = 600     # s; the data/ walk is cached, the fleet page polls every 10 s
+_disk_sizes = {"at": 0.0, "sizes": {}}
 
 
 def tree_bytes(path):
@@ -89,8 +91,8 @@ def tree_bytes(path):
 
 def disk_status():
     """The drive holding RUNS_DIR.  `warn` below max(DISK_WARN_GB, DISK_WARN_FRAC
-    of the drive); the data/ subtrees are sized only while warning, so the
-    admin's poll stays one statfs."""
+    of the drive); the data/ subtrees are sized only while warning, and at most
+    every DISK_SIZES_TTL, so the admin's poll stays one statfs."""
     probe = os.path.normpath(RUNS_DIR)
     while not os.path.isdir(probe) and os.path.dirname(probe) != probe:
         probe = os.path.dirname(probe)
@@ -100,9 +102,13 @@ def disk_status():
            "used_pct": round(100.0 * u.used / max(1, u.used + u.free), 1),   # df's Use%
            "floor": int(floor), "warn": u.free < floor, "sizes": {}}
     if out["warn"]:
-        data = os.path.dirname(os.path.normpath(RUNS_DIR))
-        for name in ("runs", "evidence", "resume", "parts"):
-            out["sizes"][name] = tree_bytes(os.path.join(data, name))
+        now = time.time()
+        if now - _disk_sizes["at"] >= DISK_SIZES_TTL or not _disk_sizes["sizes"]:
+            data = os.path.dirname(os.path.normpath(RUNS_DIR))
+            _disk_sizes["sizes"] = {name: tree_bytes(os.path.join(data, name))
+                                    for name in ("runs", "evidence", "resume", "parts")}
+            _disk_sizes["at"] = now
+        out["sizes"] = dict(_disk_sizes["sizes"])
     return out
 
 # A replay is ~1 MB where a board page is ~4 KB, so it gets its own bucket and
@@ -684,13 +690,16 @@ CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
 # answering it by itself.  See the owner's review pages.
 RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS receipts (
-    runid    TEXT PRIMARY KEY,
-    map      TEXT    NOT NULL DEFAULT '',
-    pub      TEXT    NOT NULL DEFAULT '',
-    verdict  TEXT    NOT NULL,
-    angles   TEXT    NOT NULL DEFAULT '',
-    reason   TEXT    NOT NULL DEFAULT '',
-    at       INTEGER NOT NULL
+    runid     TEXT PRIMARY KEY,
+    map       TEXT    NOT NULL DEFAULT '',
+    pub       TEXT    NOT NULL DEFAULT '',
+    verdict   TEXT    NOT NULL,
+    angles    TEXT    NOT NULL DEFAULT '',
+    reason    TEXT    NOT NULL DEFAULT '',
+    at        INTEGER NOT NULL,
+    sig       INTEGER NOT NULL DEFAULT 0,
+    signed_at INTEGER NOT NULL DEFAULT 0,
+    stale     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS receipts_pub ON receipts (pub, at);
 
@@ -1017,20 +1026,34 @@ def migrate():
             version = 7
 
         if version < 8:
-            # SCHEMA 8 (Patch 422): the owner's word on a (key, player) pair --
-            # '' undecided (first key wins), 'accept' or 'reject'.  admin.py
-            # reads it; VER_SQL and every public surface do not.  Additive, so
+            # SCHEMA 8 (Patch 422), first key wins.  pubkeys: the owner's word
+            # on a (key, player) pair -- '' undecided, 'accept' or 'reject'.
+            # receipts: `sig` 1 when the signature verified (a FAULT can still
+            # be signed), `signed_at` the .rcpt's mtime (a resumed run keeps
+            # session one's runid, so runid does not order signings), `stale`
+            # marks a --reread-receipts row still to be read again.  admin.py
+            # reads them; VER_SQL and every public surface do not.  Additive, so
             # a schema-7 surfd reads the same database.  ALTER races like step 6.
             conn.executescript(RECEIPTS_SQL)
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(pubkeys)")}
-            for col, ddl in (("decision", "decision TEXT NOT NULL DEFAULT ''"),
-                             ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0")):
-                if col not in cols:
-                    try:
-                        conn.execute("ALTER TABLE pubkeys ADD COLUMN " + ddl)
-                    except sqlite3.OperationalError as exc:
-                        if "duplicate column" not in str(exc):
-                            raise
+            for table, adds in (
+                    ("pubkeys", (("decision", "decision TEXT NOT NULL DEFAULT ''"),
+                                 ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0"))),
+                    ("receipts", (("sig", "sig INTEGER NOT NULL DEFAULT 0"),
+                                  ("signed_at", "signed_at INTEGER NOT NULL DEFAULT 0"),
+                                  ("stale", "stale INTEGER NOT NULL DEFAULT 0")))):
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+                for col, ddl in adds:
+                    if col not in cols:
+                        try:
+                            conn.execute("ALTER TABLE %s ADD COLUMN %s" % (table, ddl))
+                        except sqlite3.OperationalError as exc:
+                            if "duplicate column" not in str(exc):
+                                raise
+            # Rows read before 8: VALID implies a verified signature; a FAULT's
+            # is unknown and stays 0 until --reread-receipts.  The read time is
+            # the best signing time they have.
+            conn.execute("UPDATE receipts SET sig = 1 WHERE verdict = 'VALID' AND sig = 0")
+            conn.execute("UPDATE receipts SET signed_at = at WHERE signed_at = 0")
             conn.execute("PRAGMA user_version=8")
             conn.commit()
             version = 8

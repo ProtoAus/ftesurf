@@ -47,7 +47,7 @@ const LABEL = {queue: "Queue", hold: "Hold", pass: "Pass", refuse: "Refuse",
   keys: "Key flags", all: "All"};
 const TITLE = {queue: "HOLD with no review", error: "the latest attempt printed no verdict",
   pending: "the next sweep verifies it (no verdict since the last submission or re-check, under the ERROR cap)",
-  keys: "signed with a key that is not the player's first, or whose first player is someone else (Patch 422)"};
+  keys: "first key wins: another key for the player, a key that first signed for someone else, or unsigned after signing (Patch 422)"};
 const VERDICT_CLS = {PASS: "up", HOLD: "warn", ERROR: "down"};
 const DECISION_CLS = {approve: "up", reject: "down"};
 const PUBLIC_CLS = {verified: "up", hidden: "down"};

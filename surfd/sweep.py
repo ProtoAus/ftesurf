@@ -196,7 +196,9 @@ def sweep(conn, limit, runner=run_verifier, now=None):
 
 
 def read_receipt(path):
-    """One receipt, fully joined.  -> (verdict, pub, map, angles, reason) or None.
+    """One receipt, fully joined.
+    -> (verdict, pub, map, angles, reason, sig) or None; `sig` is 1 when the
+    signature verified, which a FAULT for any other reason can still have.
 
     IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
     the verification it has always run.  This step is an addition to the sweep,
@@ -217,7 +219,7 @@ def read_receipt(path):
     verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
     reason = r.faults[0] if r.faults else ""
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
-            r.angles, reason[:300])
+            r.angles, reason[:300], 1 if r.ok is True else 0)
 
 
 def receipt_step(conn, limit=200, now=None):
@@ -241,7 +243,10 @@ def receipt_step(conn, limit=200, now=None):
         # passed is a run that never kept one.  What DOES go stale is the
         # thresholds -- reccheck's are measured, and measuring them again will
         # move them -- so an operator can say so with --reread-receipts.
-        seen = {row[0] for row in conn.execute("SELECT runid FROM receipts")}
+        # A --reread-receipts row stays (stale = 1) until read again, so the
+        # admin's first-key flags never see a half-read table (Patch 422).
+        seen = {row[0] for row in conn.execute(
+            "SELECT runid FROM receipts WHERE stale = 0")}
         # THE SAME SETTLE WINDOW THE EVIDENCE INDEX USES, and for the same
         # reason one level along: the receipt is written at the run's end edge
         # and the upload it commits to arrives AFTERWARDS, so a receipt read the
@@ -256,20 +261,23 @@ def receipt_step(conn, limit=200, now=None):
             if runid in seen or n >= limit:
                 continue
             try:
-                if os.path.getmtime(path) > cutoff:
-                    continue
+                mtime = os.path.getmtime(path)
             except OSError:
+                continue
+            if mtime > cutoff:
                 continue
             got = read_receipt(path)
             if got is None:
                 continue
-            verdict, pub, mapname, angles, reason = got
+            verdict, pub, mapname, angles, reason, sig = got
+            # signed_at is the file's mtime: the lobby writes it at the run's
+            # end, and a resumed run's runid is its FIRST session's.
             with conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO receipts"
-                    " (runid, map, pub, verdict, angles, reason, at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (runid, mapname, pub, verdict, angles, reason, t0))
+                    " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                    (runid, mapname, pub, verdict, angles, reason, t0, sig, int(mtime)))
                 bind_key(conn, runid, pub, t0)
             n += 1
             bad += verdict != "VALID"
@@ -277,6 +285,16 @@ def receipt_step(conn, limit=200, now=None):
     except Exception as exc:
         print("sweep: receipt step failed: %r" % exc, file=sys.stderr)
         return 0, 0
+
+
+def mark_receipts_stale(conn):
+    """--reread-receipts.  MARKED, NOT DELETED: the rows stay until each is
+    read again (200 a pass), so admin never judges first keys from a partial
+    table, and a row whose .rcpt is gone keeps its last verdict.  `pubkeys`
+    is untouched -- re-reading the same files must not count a run twice."""
+    with conn:
+        conn.executescript(surfd.RECEIPTS_SQL)
+        return conn.execute("UPDATE receipts SET stale = 1").rowcount
 
 
 def bind_key(conn, runid, pub, t0):
@@ -346,7 +364,8 @@ def main(argv=None):
         for row in pending(conn, args.limit):
             print(row["id"], row["map_dir"], relpath(row))
         print("evidence:", surfd.index_evidence(conn, dry_run=True))
-        done = {row[0] for row in conn.execute("SELECT runid FROM receipts")} \
+        done = {row[0] for row in conn.execute(
+            "SELECT runid FROM receipts WHERE stale = 0")} \
             if conn.execute("SELECT name FROM sqlite_master WHERE type='table'"
                             " AND name='receipts'").fetchone() else set()
         todo = [p for p in sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR,
@@ -355,12 +374,8 @@ def main(argv=None):
         print("receipts: %d unread" % len(todo))
         return 0
     if args.reread_receipts:
-        # The receipt rows only; `pubkeys` is a record of what was SEEN and
-        # re-reading the same files would count every run a second time.
-        with conn:
-            conn.executescript(surfd.RECEIPTS_SQL)
-            n = conn.execute("DELETE FROM receipts").rowcount
-        print("sweep: forgot %d receipt verdict(s); they will be read again" % n)
+        n = mark_receipts_stale(conn)
+        print("sweep: marked %d receipt verdict(s) to read again" % n)
     added, dropped = evidence_step(conn)
     rcpts, rbad = receipt_step(conn)
     counts = sweep(conn, args.limit)

@@ -161,7 +161,8 @@ REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
 ROW_KEYS = {"id", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
             "name", "ms", "submitted", "checked", "recheck_at", "verdict",
             "error", "pending", "decision", "public", "standing",
-            "key_pub", "key_decision", "key_flag"}
+            "key_pub", "key_decision", "key_flag", "first_pub", "first_rid",
+            "first_player", "first_player_rid"}
 
 
 def rec_leaf(ticks, player):
@@ -586,7 +587,7 @@ def review_section(pw_hash, pw):
             check("the %s script parses" % name, ok, True)
 
     # -- 9g3. Patch 422: first key wins, flagged in the admin only ------------
-    K1, K2, K3 = "11" * 32, "22" * 32, "33" * 32
+    K1, K2, K3, K4, K5, K6 = ("%d%d" % (i, i) * 32 for i in range(1, 7))
 
     def seed_run(player, ticks, runid):
         rid, _p = submit(player, ticks)
@@ -598,19 +599,25 @@ def review_section(pw_hash, pw):
             conn.close()
         return rid
 
-    def add_receipt(runid, pub, verdict="VALID"):
+    def add_receipt(runid, pub, verdict="VALID", sig=1, signed_at=None):
+        # signed_at defaults to the run's own submission, as on a lobby.
         conn = m.connect()
         try:
             with conn:
-                conn.execute("INSERT INTO receipts (runid, map, pub, verdict, angles,"
-                             " reason, at) VALUES (?, 'surf_kitsune', ?, ?, 'OK', '',"
-                             " 100)", (runid, pub, verdict))
+                if signed_at is None:
+                    signed_at = conn.execute("SELECT submitted FROM replays WHERE runid = ?",
+                                             (runid,)).fetchone()[0]
+                conn.execute("INSERT INTO receipts (runid, map, pub, verdict, angles, reason,"
+                             " at, sig, signed_at) VALUES (?, 'surf_kitsune', ?, ?, 'OK', '',"
+                             " 100, ?, ?)", (runid, pub, verdict, sig, signed_at))
         finally:
             conn.close()
 
+    def key(rid):
+        return detail(rid)["key"]
+
     def flag(rid):
-        rc = detail(rid)["receipt"]
-        return None if rc is None else rc["flag"]
+        return key(rid)["key_flag"]
 
     def keyact(rid, action, pub, token=None):
         r = c.post("/admin/api/keydecision", data={
@@ -618,53 +625,124 @@ def review_section(pw_hash, pw):
             "csrf": csrf if token is None else token})
         return r.status_code
 
-    # Real runids are wallclock-first, so lowest runid = first.  a0 is the
-    # EARLIEST and FAULT: if a FAULT receipt could set a first key, a1 would
-    # read "new".
-    seeds = [("kfa", 990, "20260921-100000-0", K3, "FAULT"),
-             ("kfa", 980, "20260921-100001-0", K1, "VALID"),
-             ("kfa", 970, "20260921-100002-0", K2, "VALID"),
-             ("kfb", 960, "20260921-100003-0", K1, "VALID"),
-             ("kfc", 950, "20260921-100004-0", None, None)]
-    a0, a1, a2, b1, c1 = [seed_run(who, t, run) for who, t, run, _k, _v in seeds]
-    check("control: five distinct replay rows", len({a0, a1, a2, b1, c1}), 5)
+    # a0 is the EARLIEST and a FAULT with no verified signature: if it counted,
+    # a1 would read "new".  d1 has the earliest runid but was signed LAST -- a
+    # resumed run keeps session one's runid -- so d2's key is kfd's first.
+    a0 = seed_run("kfa", 990, "20260921-100000-0")
+    a1 = seed_run("kfa", 980, "20260921-100001-0")
+    a2 = seed_run("kfa", 970, "20260921-100002-0")
+    a3 = seed_run("kfa", 965, "20260921-100003-0")
+    b1 = seed_run("kfb", 960, "20260921-100004-0")
+    c1 = seed_run("kfc", 950, "20260921-100005-0")
+    d1 = seed_run("kfd", 945, "20260921-090000-0")
+    d2 = seed_run("kfd", 940, "20260921-100006-0")
+    a4 = seed_run("kfa", 930, "20260921-100007-0")
+    runs10 = [a0, a1, a2, a3, b1, c1, d1, d2, a4]
+    check("control: nine distinct replay rows", len(set(runs10)), 9)
     board_before = board()
-    public_before = [detail(x)["public"] for x in (a0, a1, a2, b1, c1)]
-    for _who, _t, run, key, verdict in seeds:
-        if key:
-            add_receipt(run, key, verdict)
-    check("flags: first key, FAULT, new key, shared key, no receipt",
-          [flag(a1), flag(a0), flag(a2), flag(b1), flag(c1)],
-          ["", "", "new", "shared", None])
-    check("...'new' names the player's first key", detail(a2)["receipt"]["first_pub"], K1)
-    check("...'shared' names the key's first player",
-          detail(b1)["receipt"]["first_player"], "kfa")
-    check("the Key flags list holds exactly those two",
-          sorted(ids(state="keys")), sorted([a2, b1]))
-    check("...and counts them", listing(state="all")["counts"]["keys"], 2)
-    check("no public surface moves: the board", board(), board_before)
+    public_before = [detail(x)["public"] for x in runs10]
+    add_receipt("20260921-100000-0", K3, "FAULT", sig=0)
+    add_receipt("20260921-100001-0", K1)
+    add_receipt("20260921-100002-0", K2)
+    add_receipt("20260921-100003-0", K4, "FAULT", sig=1)
+    add_receipt("20260921-100004-0", K1)
+    add_receipt("20260921-090000-0", K5, signed_at=int(clock.now) + 100)
+    add_receipt("20260921-100006-0", K6)
+    check("inside the grace an unsigned run is not flagged yet", flag(a4), "")
+    check("receipts move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
-          [detail(x)["public"] for x in (a0, a1, a2, b1, c1)], public_before)
+          [detail(x)["public"] for x in runs10], public_before)
+    clock.now += 2 * adm.KEY_GRACE
+    login(c, pw)                  # two hours on, the admin session has expired
+    csrf = c.get("/admin/runs").get_data(as_text=True).split(
+        'name="csrf" value="')[1].split('"')[0]
+    a5 = seed_run("kfa", 920, "20260921-100008-0")
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
+                         " player, name, ticks, tickrate, millis, flags, node, submitted,"
+                         " runid, kind) VALUES ('surf_kitsune', 'surf_kitsune', 0, 2, 'ev.rec',"
+                         " 'ranked', 'clean', 'kfe', 'Kfe', 100, 100, 1000, 0, 'p27510', 1,"
+                         " '20260921-100009-0', 'evidence')")
+            e1 = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    finally:
+        conn.close()
+    add_receipt("20260921-100009-0", K1, signed_at=1)
+    board_before = board()        # a5 is a faster run, so it moved the board
+
+    check("flags: unsigned FAULT, first, new, signed FAULT, shared, never signed",
+          [flag(a0), flag(a1), flag(a2), flag(a3), flag(b1), flag(c1)],
+          ["", "", "new", "new", "shared", ""])
+    check("...ordered by signing, not runid: the resumed run is the new key",
+          [flag(d1), flag(d2)], ["new", ""])
+    check("...unsigned after signing, past the grace; a fresh one is not",
+          [flag(a4), flag(a5)], ["unsigned", ""])
+    check("...stage evidence gets no key verdict", (flag(e1), key(e1)["key_pub"]), ("", None))
+    check("'new' names the first key and the run that set it",
+          (key(a2)["first_pub"], key(a2)["first_rid"]), (K1, a1))
+    check("'shared' names the key's first player and run",
+          (key(b1)["first_player"], key(b1)["first_player_rid"]), ("kfa", a1))
+    check("the Key flags list holds exactly those five",
+          sorted(ids(state="keys")), sorted([a2, a3, b1, d1, a4]))
+    check("...and counts them", listing(state="all")["counts"]["keys"], 5)
 
     check("key decision: a forged token is refused", keyact(a2, "accept", K2, "forged") != 200, True)
     check("...a stale key is 409", keyact(a2, "accept", K1), 409)
-    check("...a run with no valid receipt is 400", keyact(c1, "accept", ""), 400)
+    check("...stage evidence is 400", keyact(e1, "accept", ""), 400)
     check("...an unknown action is 400", keyact(a2, "bless", K2), 400)
     check("control: none of those changed a flag", [flag(a2), flag(b1)], ["new", "shared"])
 
     check("accept the new key", keyact(a2, "accept", K2), 200)
     check("...clears its flag and records the decision",
-          (flag(a2), detail(a2)["receipt"]["decision"]), ("", "accept"))
+          (flag(a2), key(a2)["key_decision"]), ("", "accept"))
     check("...creating the pair the sweeper had not bound yet",
           sql("SELECT decision FROM pubkeys WHERE pub = ? AND player = 'kfa'", (K2,)),
           [("accept",)])
-    check("reject the first key", keyact(a1, "reject", K1), 200)
+    check("accept unsigned runs for kfa", keyact(a4, "accept", ""), 200)
+    check("...clears the unsigned flag", flag(a4), "")
+    check("...and the empty key is not listed as one the player signed with",
+          "" in [k["pub"] for k in detail(a1)["receipt"]["keys"]], False)
+    check("reject the first key (the impostor case)", keyact(a1, "reject", K1), 200)
     check("...flags it, and the key's next player becomes its first",
           [flag(a1), flag(b1), flag(a2)], ["rejected", "", ""])
-    check("...so the list holds only the rejected pair", ids(state="keys"), [a1])
+    check("...and the player's first key moves to the next one",
+          (key(a3)["first_pub"], key(a3)["first_rid"], flag(a3)), (K2, a2, "new"))
+    check("...so the list holds the rejected pair and the rest",
+          sorted(ids(state="keys")), sorted([a1, a3, d1]))
     check("clear it", keyact(a1, "clear", K1), 200)
-    check("...and first key wins again", [flag(a1), flag(b1), flag(a2)], ["", "shared", ""])
-    check("the board still has not moved", board(), board_before)
+    check("...and first key wins again", [flag(a1), flag(b1)], ["", "shared"])
+    check("decisions move no public surface: the board", board(), board_before)
+    check("...nor any run's public state",
+          [detail(x)["public"] for x in runs10], public_before)
+
+    # Speed: the firsts are derived tables, not per-row subqueries (12.7 s at
+    # 10k receipts before).  6000 signed runs over 600 players and 700 keys.
+    import random
+    import time as walltime
+    rnd = random.Random(422)
+    conn = m.connect()
+    try:
+        with conn:
+            conn.executemany(
+                "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+                " name, ticks, tickrate, millis, flags, node, submitted, runid, kind)"
+                " VALUES ('surf_perf', 'surf_perf', 0, 0, ?, 'ranked', 'clean', ?, 'P',"
+                " 100, 100, 1000, 0, 'p27510', ?, ?, 'run')",
+                [("perf%05d.rec" % i, "pl%d" % rnd.randrange(600), i, "20260922-%06d-0" % i)
+                 for i in range(6000)])
+            conn.executemany(
+                "INSERT INTO receipts (runid, map, pub, verdict, at, sig, signed_at)"
+                " VALUES (?, 'surf_perf', ?, 'VALID', 1, 1, ?)",
+                [("20260922-%06d-0" % i, "%064x" % rnd.randrange(700), i) for i in range(6000)])
+    finally:
+        conn.close()
+    t0 = walltime.perf_counter()
+    got = listing(state="keys")
+    spent = walltime.perf_counter() - t0
+    print("     (the Key flags list over 6000 signed runs took %.2f s)" % spent)
+    check("6000 signed runs: the Key flags list answers in under 1.5 s",
+          (got.get("code"), spent < 1.5), (None, True))
 
     # -- 9h. runs=None registers no review routes -----------------------------
     import flask

@@ -1752,11 +1752,14 @@ def seed_v7(path, rows=True):
     dst = sqlite3.connect(path)
     src.backup(dst)
     src.close()
-    dst.execute("ALTER TABLE pubkeys DROP COLUMN decision")
-    dst.execute("ALTER TABLE pubkeys DROP COLUMN decided_at")
+    for table, col in (("pubkeys", "decision"), ("pubkeys", "decided_at"),
+                       ("receipts", "sig"), ("receipts", "signed_at"), ("receipts", "stale")):
+        dst.execute("ALTER TABLE %s DROP COLUMN %s" % (table, col))
     if rows:
         dst.execute("INSERT INTO pubkeys (pub, player, first_at, last_at, runs)"
                     " VALUES ('k', 'p', 1, 2, 3)")
+        dst.execute("INSERT INTO receipts (runid, pub, verdict, at) VALUES"
+                    " ('r1', 'k', 'VALID', 50), ('r2', 'k', 'FAULT', 60)")
     dst.execute("PRAGMA user_version=7")
     dst.commit()
     dst.close()
@@ -1785,6 +1788,9 @@ conn = sqlite3.connect(v7)
 check("(h) ...keeping the pair, undecided",
       conn.execute("SELECT pub, player, runs, decision, decided_at FROM pubkeys").fetchall(),
       [("k", "p", 3, "", 0)])
+check("(h) ...and backfilling receipts: VALID is signed, a FAULT unknown, signed_at = at",
+      conn.execute("SELECT runid, sig, signed_at, stale FROM receipts ORDER BY runid").fetchall(),
+      [("r1", 1, 50, 0), ("r2", 0, 60, 0)])
 conn.close()
 
 race7 = os.path.join(m._test_home, "race7.db")

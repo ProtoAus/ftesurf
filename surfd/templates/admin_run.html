@@ -82,10 +82,18 @@
     <dl id="rcpt"></dl>
     <p class="note">The signature says a key made the statement and the digest says the
       file beside it is the one the statement was about; neither says the player is
-      honest. First key wins: a key seen under two names, or a name seen under two keys,
-      is flagged here and nowhere else &mdash; a shared machine and a reinstall both look
-      like this. Accept clears the flag; Reject keeps it and stops the pair counting as
-      anyone's first key.</p>
+      honest. What the key means for this player is in the Key card.</p>
+  </div>
+
+  <div class="card" id="keycard" hidden>
+    <h2>Key</h2>
+    <dl id="keyinfo"></dl>
+    <p class="note">First key wins: a player's first signing key is theirs. <b>new</b> is
+      another key for this player, <b>shared</b> a key that first signed for someone else,
+      <b>unsigned</b> a run with no signed receipt from a player who has signed before.
+      A shared machine and a reinstall look the same as an impostor, so this is shown here
+      and nowhere else. Accept clears the flag; Reject keeps it and stops the pair counting
+      as anyone's first &mdash; reject an impostor's key on the run that set it.</p>
   </div>
 
   <div class="card">
@@ -260,30 +268,8 @@ function renderRun(j) {
           el("span", "reason", c.keys.length + " keys: "
              + c.keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + said(k) + ")").join(", ")));
     }
-    // Patch 422: first key wins, and the owner's word on this run's pair.
-    if (c.verdict === "VALID" && c.pub) {
-      const why = [];
-      if (/new/.test(c.flag) && c.first_pub)
-        why.push("the player's first key is " + String(c.first_pub).slice(0, 8) + "\u2026");
-      if (/shared/.test(c.flag) && c.first_player)
-        why.push("this key first signed for " + c.first_player);
-      const st = c.flag ? pill("key " + c.flag, c.flag === "rejected" ? "down" : "warn")
-                        : pill(c.decision === "accept" ? "accepted" : "first key", "up");
-      put("first key wins", frag(st, why.length ? " \u2014 " + why.join("; ") : ""));
-      const row = el("div", "row");
-      for (const [act, label] of [["accept", "Accept key for this player"],
-                                  ["reject", "Reject key"], ["clear", "Clear decision"]]) {
-        if (act === c.decision || (act === "clear" && !c.decision)) continue;
-        const b = el("button", act === "reject" ? "danger" : "", label);
-        b.addEventListener("click", async () => {
-          if (await post("/admin/api/keydecision", {rid: String(RID), action: act, pub: c.pub}))
-            loadRun();
-        });
-        row.append(b);
-      }
-      put("decision", row);
-    }
   }
+  renderKey(j);
 
   const dlink = document.getElementById("download");
   dlink.href = j.download;
@@ -308,6 +294,42 @@ function renderRun(j) {
     ? "The lobby map control takes lowercase names only; this map is " + r.map_dir + "."
     : (!HAVE_RCON ? "SURFD_RCON_PASSWORD is not configured, so lobby controls are unavailable."
                   : "Changes the chosen lobby's map now; players on it move with it.");
+}
+
+// Patch 422: first key wins, and the owner's word on this run's (key, player) pair.
+function runLink(id) {
+  const a = el("a", "", "#" + id);
+  a.href = "/admin/run/" + id;
+  return a;
+}
+function renderKey(j) {
+  const k = j.key, card = document.getElementById("keycard"), dl = document.getElementById("keyinfo");
+  dl.replaceChildren();
+  card.hidden = !(k && (k.key_pub || k.key_flag || k.first_pub));
+  if (card.hidden) return;
+  const put = (name, node) => { dl.append(el("dt", "", name)); const d = el("dd"); d.append(node); dl.append(d); };
+  const short = pub => String(pub).slice(0, 8) + "\u2026";
+  put("state", k.key_flag ? pill("key " + k.key_flag, k.key_flag === "rejected" ? "down" : "warn")
+             : k.key_decision === "accept" ? pill("accepted", "up")
+             : k.key_pub ? pill("first key", "up") : el("span", "muted", "unsigned"));
+  if (k.key_pub) put("this run's key", span("mono", short(k.key_pub)));
+  if (k.first_pub && k.first_pub !== k.key_pub)
+    put("player's first key", frag(span("mono", short(k.first_pub)), " \u2014 set by ", runLink(k.first_rid)));
+  if (k.key_pub && k.first_player && k.first_player !== j.run.player)
+    put("key first signed for", frag(span("mono", k.first_player), " \u2014 ", runLink(k.first_player_rid)));
+  if (!(k.key_pub || k.key_flag || k.key_decision)) return;
+  const pub = k.key_pub || "";
+  const row = el("div", "row");
+  for (const [act, label] of [["accept", pub ? "Accept key for this player" : "Accept unsigned runs for this player"],
+                              ["reject", "Reject"], ["clear", "Clear decision"]]) {
+    if (act === k.key_decision || (act === "clear" && !k.key_decision)) continue;
+    const b = el("button", act === "reject" ? "danger" : "", label);
+    b.addEventListener("click", async () => {
+      if (await post("/admin/api/keydecision", {rid: String(RID), action: act, pub})) loadRun();
+    });
+    row.append(b);
+  }
+  put("decision", row);
 }
 
 async function copy(input) {
