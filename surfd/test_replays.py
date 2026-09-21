@@ -482,11 +482,14 @@ check("...reporting rep 0", body["rows"][0]["rep"], 0)
 print("\n--- 11. the 2 -> 3 migration adds and does not rebuild -------------")
 
 m = fresh()
-check("a fresh database is stamped schema 6", user_version(m), 6)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
+# See the note on the same pair in test_join.py: compare the upgrade path to
+# where a fresh database lands, not to a number that has to be edited in three
+# suites every time the schema moves.
+fresh_at = user_version(m)
+check("a fresh database is stamped at SCHEMA_VERSION", fresh_at, m.SCHEMA_VERSION)
 
 m = fresh(seed_v2=True)
-check("a schema-2 database upgrades to 6", user_version(m), 6)
+check("a schema-2 database upgrades the whole way", user_version(m), fresh_at)
 check("...keeping the board rows it already held",
       [r["player"] for r in rows(m, "SELECT player FROM runs")], ["old"])
 check("...defaulting them to no replay",

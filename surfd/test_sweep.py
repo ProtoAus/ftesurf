@@ -59,6 +59,234 @@ def add_replay(conn, runs, map_dir, leaf, track=0, leg=0, make_file=True):
     return cur.lastrowid
 
 
+TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "tools")
+
+
+def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
+                 view=b"FTESURF-VIEW 2\n", tamper=False, age=None):
+    """A GENUINELY SIGNED receipt, with the sidecar it commits to.
+
+    Signed here rather than copied from data/, because a fixture copied off this
+    disk stops being a test of the format the moment the writer changes and
+    nobody re-copies it -- and because a suite that cannot MAKE a valid
+    signature cannot make an invalid one either, which is the arm that matters.
+    """
+    import hashlib
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    import ed25519
+
+    d = os.path.join(evdir, mapname)
+    os.makedirs(d, exist_ok=True)
+    vp = os.path.join(d, runid + ".view")
+    with open(vp, "wb") as fh:
+        fh.write(view)
+    signed = [("server", "127.0.0.1:27696"),
+              ("nonce", "d6c6820bca16750c77166d96dcf02787"),
+              ("ticks", "-1"),
+              ("hid", "- 0 0"),
+              ("view", hashlib.sha256(view).hexdigest())]
+    first = "FTESURF-RCPT 1"
+    msg = (first + "\n" + "".join("%s %s\n" % kv for kv in signed)).encode("utf-8")
+    pub = ed25519.publickey(seed)
+    sig = ed25519.sign(seed, msg)
+    if tamper:
+        # One bit of the signed BODY, leaving the signature as it was: the
+        # receipt still parses and still names this run, and only the
+        # cryptography can tell.
+        signed[0] = ("server", "127.0.0.1:27697")
+    body = [first, "map " + mapname, "runid " + runid, "owner ^3T^7",
+            "svticks -1", "svport 27696",
+            "pub " + pub.hex(), "sig " + sig.hex()]
+    body += ["signed %s %s" % kv for kv in signed]
+    rp = os.path.join(d, runid + ".rcpt")
+    with open(rp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(body) + "\n")
+    if age is not None:
+        os.utime(rp, (age, age))
+        os.utime(vp, (age, age))
+    return rp, pub.hex()
+
+
+def receipts(conn):
+    return {r[0]: (r[1], r[2], r[3]) for r in
+            conn.execute("SELECT runid, verdict, pub, angles FROM receipts")}
+
+
+def case_receipt_valid_and_once():
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    _p, pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000001-0", age=old)
+    n, bad = sweep.receipt_step(conn)
+    check("a settled receipt is read", (n, bad), (1, 0))
+    got = receipts(conn)
+    check("stored VALID under its runid", got["20260921-000001-0"][0], "VALID")
+    check("the signing key is stored", got["20260921-000001-0"][1], pub)
+    check("no recording here, so no angle verdict is invented",
+          got["20260921-000001-0"][2], "")
+    check("CONTROL: a second pass re-reads nothing", sweep.receipt_step(conn), (0, 0))
+
+
+def case_receipt_fault():
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000002-0", tamper=True, age=old)
+    n, bad = sweep.receipt_step(conn)
+    check("a tampered receipt is read and counted bad", (n, bad), (1, 1))
+    row = conn.execute("SELECT verdict, reason FROM receipts").fetchone()
+    check("stored FAULT", row[0], "FAULT")
+    check("with a reason a human can read", "SIGNATURE DOES NOT VERIFY" in row[1], True)
+
+
+def case_receipt_settle():
+    """A RECEIPT IS WRITTEN BEFORE THE UPLOAD IT COMMITS TO ARRIVES.  Reading it
+    the instant it appears records "no .view on this host" for a file in
+    flight, and the row is INSERT OR REPLACE'd by runid, so that wrong answer
+    would then be the one nothing ever revisits."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000003-0")      # mtime = now
+    check("a receipt younger than the settle window is left alone",
+          sweep.receipt_step(conn), (0, 0))
+    check("CONTROL: and read once it has settled",
+          sweep.receipt_step(conn, now=int(time.time()) + 2 * surfd.EVIDENCE_SETTLE),
+          (1, 0))
+
+
+def case_receipt_key_binding():
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+
+    def bound():
+        return sorted(tuple(r) for r in
+                      conn.execute("SELECT pub, player, runs FROM pubkeys"))
+
+    # run 1: a key nobody has seen, on a board row belonging to 'alice'
+    a = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = ?, player = 'alice' WHERE id = ?",
+                 ("20260921-000010-0", a))
+    conn.commit()
+    _p, pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000010-0", age=old)
+    sweep.receipt_step(conn)
+    check("trust on first use binds the key to the player", bound(), [(pub, "alice", 1)])
+
+    # run 2: same key, same player
+    b = add_replay(conn, runs, "bhop_eazy", "0000663_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = ?, player = 'alice' WHERE id = ?",
+                 ("20260921-000011-0", b))
+    conn.commit()
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000011-0", age=old)
+    sweep.receipt_step(conn)
+    check("a second run under the same key counts, it does not duplicate",
+          bound(), [(pub, "alice", 2)])
+
+    # run 3: SAME KEY, DIFFERENT PLAYER -- recorded as a second pair, not
+    # resolved.  A shared machine does this and so does a borrowed account.
+    c = add_replay(conn, runs, "bhop_eazy", "0000664_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = ?, player = 'bob' WHERE id = ?",
+                 ("20260921-000012-0", c))
+    conn.commit()
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000012-0", age=old)
+    sweep.receipt_step(conn)
+    check("one key signing for two players is two rows, and no verdict",
+          bound(), sorted([(pub, "alice", 2), (pub, "bob", 1)]))
+
+    # run 4: same player, a DIFFERENT key -- a reinstall looks like this.
+    d = add_replay(conn, runs, "bhop_eazy", "0000665_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = ?, player = 'alice' WHERE id = ?",
+                 ("20260921-000013-0", d))
+    conn.commit()
+    _p, pub2 = make_receipt(surfd.EVIDENCE_DIR, "20260921-000013-0",
+                            seed=b"\x02" * 32, age=old)
+    sweep.receipt_step(conn)
+    check("one player with two keys is two rows too",
+          sorted(r for r in bound() if r[1] == "alice"),
+          sorted([(pub, "alice", 2), (pub2, "alice", 1)]))
+
+
+def case_receipt_unbound_is_not_a_fault():
+    """A receipt for a run no board row names binds nothing and is still read.
+    Most receipts on a lobby are exactly this: an abandoned run."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000020-0", age=old)
+    check("read", sweep.receipt_step(conn), (1, 0))
+    check("nothing bound", conn.execute("SELECT COUNT(*) FROM pubkeys").fetchone()[0], 0)
+
+
+def case_receipt_reread():
+    """--reread-receipts forgets the VERDICTS and keeps the KEY SIGHTINGS.
+
+    The distinction is the whole reason the flag is not a DELETE FROM both
+    tables: re-reading the same files would count every run's key a second
+    time, so a player's `runs` would double every time the checker changed."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = ?, player = 'alice' WHERE id = ?",
+                 ("20260921-000040-0", rid))
+    conn.commit()
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000040-0", age=old)
+    sweep.receipt_step(conn)
+    check("read once", conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        sweep.main(["--reread-receipts", "--limit", "0"])
+    check("the flag says how many it forgot", "forgot 1 receipt" in out.getvalue(), True)
+    conn2 = surfd.connect()
+    check("...and read them again in the same pass",
+          conn2.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+    check("CONTROL: the key sighting was NOT counted twice",
+          conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
+
+
+def case_receipt_step_never_takes_the_sweep_down():
+    """THE ARM THE WHOLE ADDITION RESTS ON.  This step imports three files that
+    live outside surfd; on a host where they are not deployed the verification
+    that has run every five minutes since Patch 349 must carry on unchanged."""
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000030-0", age=old)
+    # AND THE FIRST CUT OF THIS ARM COULD NOT FAIL.  Pointing sweep.TOOLS at an
+    # empty directory changes nothing once an earlier case in the same process
+    # has imported rcptcheck: the import is served from sys.modules and the step
+    # reported (1, 0) -- a pass that measured the opposite of what it claimed.
+    # The deployment being modelled is an interpreter that has never seen these
+    # modules, so the arm has to make one.
+    sweep.TOOLS = os.path.join(os.environ["SURFD_HOME"], "no-tools-here")
+    saved = {m: sys.modules.pop(m) for m in ("rcptcheck", "reccheck", "ed25519")
+             if m in sys.modules}
+    savedpath = list(sys.path)
+    sys.path[:] = [p for p in sys.path if os.path.abspath(p) != os.path.abspath(TOOLS)]
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            got = sweep.receipt_step(conn)
+    finally:
+        sys.path[:] = savedpath
+        sys.modules.update(saved)
+    check("no tools: the step reports nothing read", got, (0, 0))
+    check("...and says why, on stderr", "receipt step failed" in err.getvalue(), True)
+    rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
+    sweep.sweep(conn, 20, runner=lambda m, p:
+                ["VERIFY %s PASS ticks 662 rows 634" % q for q in p], now=99)
+    check("CONTROL: the verdict sweep is untouched", latest(conn, rid)[0], "PASS")
+
+
 def latest(conn, rid):
     return conn.execute("SELECT verdict, reason, ticks FROM verdicts WHERE replay_id = ?"
                         " ORDER BY id DESC LIMIT 1", (rid,)).fetchone()
@@ -328,7 +556,11 @@ def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
                  case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
                  case_mid_run_tie, case_mid_run_recheck, case_command_line,
-                 case_evidence_not_pending, case_main_evidence):
+                 case_evidence_not_pending, case_main_evidence,
+                 case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
+                 case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
+                 case_receipt_reread,
+                 case_receipt_step_never_takes_the_sweep_down):
         print("%s:" % case.__name__)
         try:
             case()

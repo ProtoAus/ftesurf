@@ -19,11 +19,19 @@ ERROR) exists; the owner's re-check sets checked = 0 and replays.recheck_at.
 
 Run from the proto user's crontab under flock.  One verifier process per map,
 at idle CPU and IO priority, first in line for the OOM killer (the Pi is
-shared).  Each run first does surfd's schema-6 evidence upkeep (evidence_step).
+shared).  Each run first does surfd's schema-6 evidence upkeep (evidence_step)
+and reads any run receipts it has not read yet (receipt_step).
 Usage:  python3 sweep.py [--limit N] [--dry-run]
+
+THE RECEIPT STEP IS STORE-ONLY AND SO IS THIS WHOLE FILE.  It writes `receipts`
+and `pubkeys` (schema 7) and moves no badge: nothing in surfd.VER_SQL reads
+them.  What a signature is worth, and what a second key under one player's name
+means, are policy questions -- a sweeper that started demoting runs on its own
+would be answering them in a cron job.
 """
 
 import argparse
+import glob
 import hashlib
 import logging
 import os
@@ -45,6 +53,10 @@ GAME = os.environ.get("SURFD_GAME", "/srv/nvme/ftesurf-server/game")
 ENGINE = os.environ.get("SURFD_VERIFIER", os.path.join(GAME, "fteqw-svarm64"))
 PROGS = os.path.join(GAME, "ftesurf", "qwprogs.dat")
 PORT = int(os.environ.get("SURFD_VERIFY_PORT", "27698"))
+# rcptcheck/reccheck/ed25519.  Deployed beside the game rather than beside
+# surfd, because they are the tree's readers for the tree's own formats and the
+# game directory is what gets updated when a format changes.
+TOOLS = os.environ.get("SURFD_TOOLS", os.path.join(GAME, "tools"))
 MAP_TIMEOUT = 900        # seconds for one verifier process (all of one map's files)
 MAX_ERRORS = surfd.VERIFY_MAX_ERRORS
 
@@ -183,6 +195,130 @@ def sweep(conn, limit, runner=run_verifier, now=None):
     return counts
 
 
+def read_receipt(path):
+    """One receipt, fully joined.  -> (verdict, pub, map, angles, reason) or None.
+
+    IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
+    the verification it has always run.  This step is an addition to the sweep,
+    never a precondition for it: the first version imported at module scope and
+    would have taken every lobby's verdict sweep down with it on any box where
+    game/tools was not there yet, which is every box until the day it is.
+    """
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    import rcptcheck
+
+    r = rcptcheck.read(path)
+    rcptcheck.join_rec(r)
+    rcptcheck.join_ticks(r)
+    rcptcheck.join_hid(r)
+    rcptcheck.join_uploaded(r, {})
+    rcptcheck.join_angles(r, {})
+    verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
+    reason = r.faults[0] if r.faults else ""
+    return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
+            r.angles, reason[:300])
+
+
+def receipt_step(conn, limit=200, now=None):
+    """Read every receipt not read yet, store the verdict, bind the key.
+
+    -> (read, faults).  A fault here is a fault in the EVIDENCE, not in this
+    step; a fault in this step is printed and returns (0, 0).
+    """
+    t0 = int(time.time()) if now is None else now
+    try:
+        conn.executescript(surfd.RECEIPTS_SQL)
+        # A RECEIPT IS READ ONCE AND THE ROW OUTLIVES THE FILE, which is the
+        # point: `run_evidence_days` reaps the .rcpt and the verdict stays.  It
+        # also means this set only grows -- about 200 bytes a run, so a year of
+        # the current fleet is tens of MB, and a GC for it would be a policy
+        # about how long a verdict is worth keeping that nobody has asked for.
+        #
+        # Nothing re-reads on its own, and that is deliberate rather than
+        # missing: the two files a receipt joins to are both written at the
+        # run's end edge, so a .rec that is not there once the settle window has
+        # passed is a run that never kept one.  What DOES go stale is the
+        # thresholds -- reccheck's are measured, and measuring them again will
+        # move them -- so an operator can say so with --reread-receipts.
+        seen = {row[0] for row in conn.execute("SELECT runid FROM receipts")}
+        # THE SAME SETTLE WINDOW THE EVIDENCE INDEX USES, and for the same
+        # reason one level along: the receipt is written at the run's end edge
+        # and the upload it commits to arrives AFTERWARDS, so a receipt read the
+        # instant it appears records "no .view on this host" for a file that is
+        # on its way.  Ten minutes is far past the 25 s a two-minute sidecar
+        # takes at 30 ms RTT.
+        cutoff = t0 - surfd.EVIDENCE_SETTLE
+        files = sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR, "*", "*.rcpt")))
+        n = bad = 0
+        for path in files:
+            runid = os.path.basename(path)[:-5]
+            if runid in seen or n >= limit:
+                continue
+            try:
+                if os.path.getmtime(path) > cutoff:
+                    continue
+            except OSError:
+                continue
+            got = read_receipt(path)
+            if got is None:
+                continue
+            verdict, pub, mapname, angles, reason = got
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO receipts"
+                    " (runid, map, pub, verdict, angles, reason, at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (runid, mapname, pub, verdict, angles, reason, t0))
+                bind_key(conn, runid, pub, t0)
+            n += 1
+            bad += verdict != "VALID"
+        return n, bad
+    except Exception as exc:
+        print("sweep: receipt step failed: %r" % exc, file=sys.stderr)
+        return 0, 0
+
+
+def bind_key(conn, runid, pub, t0):
+    """Trust on first use, and NOTHING ELSE.
+
+    The row is a (key, player) PAIR.  A key that signs for two players and a
+    player who signs with two keys both become two rows, which is the whole
+    point: `fskey` is a local file nobody backs up, so a reinstall legitimately
+    makes a second key, and a shared machine legitimately makes a second player.
+    A schema that stored "the" key per player would answer both questions by
+    throwing away what was needed to ask them.
+
+    `first_at`/`last_at` are when this pair was OBSERVED by this job, not when
+    the runs were made -- a re-read moves `last_at`.  The run's own time is in
+    `receipts.at` and on the board row.
+    """
+    if not pub:
+        return
+    row = conn.execute("SELECT player FROM replays WHERE runid = ? AND kind = 'run'"
+                       " AND player <> '' LIMIT 1", (runid,)).fetchone()
+    if not row:
+        return          # nothing on a board names this run; there is no player yet
+    player = row[0]
+    conn.execute("INSERT OR IGNORE INTO pubkeys (pub, player, first_at, last_at, runs)"
+                 " VALUES (?, ?, ?, ?, 0)", (pub, player, t0, t0))
+    # `runs` IS RECOUNTED AND NEVER INCREMENTED, which is not a style choice:
+    # the first cut did `runs = runs + 1` and --reread-receipts then counted
+    # every run a second time -- the test's own control caught it saying 2 where
+    # the comment beside the flag claimed 1.  A counter that is bumped by an
+    # EVENT is wrong whenever the event can repeat; the quantity wanted is how
+    # many distinct runs this pair has, and `receipts` already holds them.
+    # It also self-heals: a run whose board row arrived after its receipt was
+    # read is counted by the next run the same pair makes.
+    conn.execute(
+        """UPDATE pubkeys SET last_at = ?, runs = (
+               SELECT COUNT(DISTINCT rc.runid) FROM receipts rc
+                WHERE rc.pub = pubkeys.pub AND EXISTS (
+                      SELECT 1 FROM replays rp WHERE rp.runid = rc.runid
+                        AND rp.kind = 'run' AND rp.player = pubkeys.player))
+            WHERE pub = ? AND player = ?""", (t0, pub, player))
+
+
 def evidence_step(conn):
     """surfd schema 6's upkeep: index and GC the evidence behind stage rows.
     A fault is reported and never stops the verification.
@@ -200,6 +336,9 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true",
                     help="list what would be verified or indexed and exit")
+    ap.add_argument("--reread-receipts", action="store_true",
+                    help="forget every stored receipt verdict so the next pass "
+                         "reads them again (after a checker change)")
     args = ap.parse_args(argv)
     conn = surfd.connect()
     ensure_schema(conn)
@@ -207,12 +346,34 @@ def main(argv=None):
         for row in pending(conn, args.limit):
             print(row["id"], row["map_dir"], relpath(row))
         print("evidence:", surfd.index_evidence(conn, dry_run=True))
+        done = {row[0] for row in conn.execute("SELECT runid FROM receipts")} \
+            if conn.execute("SELECT name FROM sqlite_master WHERE type='table'"
+                            " AND name='receipts'").fetchone() else set()
+        todo = [p for p in sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR,
+                                                         "*", "*.rcpt")))
+                if os.path.basename(p)[:-5] not in done]
+        print("receipts: %d unread" % len(todo))
         return 0
+    if args.reread_receipts:
+        # The receipt rows only; `pubkeys` is a record of what was SEEN and
+        # re-reading the same files would count every run a second time.
+        with conn:
+            conn.executescript(surfd.RECEIPTS_SQL)
+            n = conn.execute("DELETE FROM receipts").rowcount
+        print("sweep: forgot %d receipt verdict(s); they will be read again" % n)
     added, dropped = evidence_step(conn)
+    rcpts, rbad = receipt_step(conn)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:
         line += " evidence +%d -%d" % (added, dropped)
+    if rcpts:
+        line += " receipts %d" % rcpts
+        # PRINTED WHEN IT IS NOT ZERO, not only under a flag: a receipt that
+        # does not check out is the one line in this job worth a human reading,
+        # and the sweep log is where somebody looks.
+        if rbad:
+            line += " (%d WITH FAULTS)" % rbad
     print("%s sweep: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), line))
     return 0
 

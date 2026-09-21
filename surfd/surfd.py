@@ -280,7 +280,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 # --------------------------------------------------------------------------
@@ -635,6 +635,41 @@ CREATE TABLE IF NOT EXISTS verdicts (
 );
 CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
 """
+# One row per run receipt the sweeper has read (schema 7, sweep.py writes it).
+# Idempotent for the same reason VERDICTS_SQL is: sweep.ensure_schema runs it.
+#
+# KEYED ON THE RUNID AND NOT ON A REPLAY ROW.  A receipt is written by the
+# server for a RUN; whether that run also became a board row, a stage row, a
+# shadow or nothing at all is a separate question with a separate answer, and a
+# foreign key here would force one of them at the moment the file is read.
+#
+# STORE-ONLY, exactly like `verdicts`.  Nothing in VER_SQL reads this table and
+# the VERIFIED badge does not move because of it: what a receipt is worth is a
+# policy question, and a sweeper that quietly started demoting runs would be
+# answering it by itself.  See the owner's review pages.
+RECEIPTS_SQL = """
+CREATE TABLE IF NOT EXISTS receipts (
+    runid    TEXT PRIMARY KEY,
+    map      TEXT    NOT NULL DEFAULT '',
+    pub      TEXT    NOT NULL DEFAULT '',
+    verdict  TEXT    NOT NULL,
+    angles   TEXT    NOT NULL DEFAULT '',
+    reason   TEXT    NOT NULL DEFAULT '',
+    at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS receipts_pub ON receipts (pub, at);
+
+CREATE TABLE IF NOT EXISTS pubkeys (
+    pub      TEXT    NOT NULL,
+    player   TEXT    NOT NULL,
+    first_at INTEGER NOT NULL,
+    last_at  INTEGER NOT NULL,
+    runs     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (pub, player)
+);
+CREATE INDEX IF NOT EXISTS pubkeys_player ON pubkeys (player, pub);
+"""
+
 # ERRORs since the last submission or re-check before sweep.pending() gives up;
 # the admin's "pending" list uses the same cap.
 VERIFY_MAX_ERRORS = 3
@@ -925,6 +960,24 @@ def migrate():
             conn.execute("PRAGMA user_version=6")
             conn.commit()
             version = 6
+
+        if version < 7:
+            # SCHEMA 7: what the receipt chain said, and which public key signed
+            # under which player name.  Two ADDITIVE tables and no column
+            # touched, so a rollback to a schema-6 surfd reads the same database
+            # and simply never looks at them.
+            #
+            # THE KEY TABLE RECORDS PAIRS AND DECIDES NOTHING.  Trust on first
+            # use is a policy, and the two questions it raises -- a key that
+            # signs for two players, a player who signs with two keys -- have
+            # ordinary innocent answers (a shared machine; a reinstall, since
+            # `fskey` is a local file nobody backs up).  A schema that stored
+            # "the" key per player would have answered both by losing the
+            # evidence for them.
+            conn.executescript(RECEIPTS_SQL)
+            conn.execute("PRAGMA user_version=7")
+            conn.commit()
+            version = 7
 
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)

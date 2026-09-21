@@ -448,11 +448,17 @@ check("CONTROL: the heartbeat has its own bucket and is untouched",
 print("\n--- 7. the 3 -> 4 migration ----------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 6", user_version(m), 6)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
+# AGAINST SCHEMA_VERSION AND NOT A LITERAL.  These two lines held the number 6
+# and schema 7 broke this suite, which is about lobby assignments and knows
+# nothing about receipts.  What the arm is for is that an UPGRADE PATH lands
+# where a FRESH database lands -- a step that forgets to stamp its own version
+# is the bug -- and a literal tests the constant instead, which is the one thing
+# here that cannot be wrong.
+fresh_at = user_version(m)
+check("a fresh database is stamped at SCHEMA_VERSION", fresh_at, m.SCHEMA_VERSION)
 
 m = fresh(seed_v3=True)
-check("a schema-3 database upgrades to 6", user_version(m), 6)
+check("a schema-3 database upgrades the whole way", user_version(m), fresh_at)
 conn = sqlite3.connect(m._test_db)
 kept = [r[0] for r in conn.execute("SELECT map FROM lobbies")]
 cols = [r[1] for r in conn.execute("PRAGMA table_info(assignments)")]

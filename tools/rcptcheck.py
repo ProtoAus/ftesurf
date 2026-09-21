@@ -65,6 +65,12 @@ class Receipt(object):
         self.msg = b""
         self.ok = None
         self.recpath = None         # the .rec join_rec found, for join_angles
+        # join_angles' result as a word: "" (not checked), OK, BLIND or FAULT,
+        # with the measurement beside it.  A CALLER MUST NOT HAVE TO MATCH ON
+        # THE WORDING OF A NOTE -- sweep.py stores this, and a note is prose
+        # that gets reworded.
+        self.angles = ""
+        self.angles_detail = ""
 
     def fault(self, m):
         self.faults.append(m)
@@ -359,7 +365,10 @@ def join_angles(r, want):
     if off is None:
         r.note("the recording carries no angle stream to check the sidecar against")
         return
-    bad = [m for m in v.faults if "does not describe this recording" in m]
+    r.angles_detail = off
+    bad = [m for m in v.faults if "does not describe this recording" in m
+           or "does not match its sidecar" in m]
+    r.angles = "FAULT" if bad else ("BLIND" if off.startswith("BLIND") else "OK")
     if bad:
         # SAID IN FULL, because the three facts TOGETHER are the finding and any
         # one of them alone reads as something milder.
