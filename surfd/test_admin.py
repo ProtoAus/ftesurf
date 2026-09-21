@@ -631,9 +631,10 @@ def review_section(pw_hash, pw):
     def flag(rid):
         return key(rid)["key_flag"]
 
-    def keyact(rid, action, pub, token=None):
+    def keyact(rid, action, pub, token=None, submitted=None):
         r = c.post("/admin/api/keydecision", data={
             "rid": str(rid), "action": action, "pub": pub,
+            "submitted": str(sub(rid) if submitted is None else submitted),
             "csrf": csrf if token is None else token})
         return r.status_code
 
@@ -707,6 +708,7 @@ def review_section(pw_hash, pw):
 
     check("key decision: a forged token is refused", keyact(a2, "accept", K2, "forged") != 200, True)
     check("...a stale key is 409", keyact(a2, "accept", K1), 409)
+    check("...a stale submission is 409", keyact(a2, "accept", K2, submitted=sub(a2) - 1), 409)
     check("...stage evidence is 400", keyact(e1, "accept", ""), 400)
     check("...an unknown action is 400", keyact(a2, "bless", K2), 400)
     check("control: none of those changed a flag", [flag(a2), flag(b1)], ["new", "shared"])
@@ -718,7 +720,10 @@ def review_section(pw_hash, pw):
           sql("SELECT decision FROM pubkeys WHERE pub = ? AND player = 'kfa'", (K2,)),
           [("accept",)])
     check("accept kfa's unsigned runs", keyact(a4, "accept", ""), 200)
-    check("...clears them", [flag(a4), flag(a5)], ["", ""])
+    check("...clears the one the owner could see", flag(a4), "")
+    check("...and dates the decision at the watermark's bound, not now",
+          sql("SELECT decided_at FROM pubkeys WHERE pub = '' AND player = 'kfa'"),
+          [(wm - adm.KEY_MARGIN,)])
     check("...and the empty key is not listed as one the player signed with",
           "" in [k["pub"] for k in detail(a1)["receipt"]["keys"]], False)
     check("accepts move no public surface", board(), board_before)
@@ -726,8 +731,8 @@ def review_section(pw_hash, pw):
     a6 = seed_run("kfa", 905, "20260921-100012-0")
     board_before = board()        # a6 is faster again
     watermark(sub(a6) + adm.KEY_MARGIN)
-    check("...but not a later one: the guid is public, anyone can play unsigned as kfa",
-          [flag(a6), flag(a4)], ["unsigned", ""])
+    check("...but not a later one, nor one still in flight when the owner clicked",
+          [flag(a6), flag(a5), flag(a4)], ["unsigned", "unsigned", ""])
     check("'not this player's key' on kfg's only key", keyact(g1, "reject", K7), 200)
     check("...flags it, and kfg's unsigned run stays flagged: a rejected signing is a signing",
           [flag(g1), flag(g2)], ["rejected", "unsigned"])
@@ -738,9 +743,34 @@ def review_section(pw_hash, pw):
     check("...and the player's first key moves to the next one",
           (key(a3)["first_pub"], key(a3)["first_rid"], flag(a3)), (K2, a2, "new"))
     check("...so the list holds these",
-          sorted(ids(state="keys")), sorted([a1, a3, d1, g1, g2, a6]))
+          sorted(ids(state="keys")), sorted([a1, a3, d1, g1, g2, a5, a6]))
     check("clear it", keyact(a1, "clear", K1), 200)
     check("...and first key wins again", [flag(a1), flag(b1)], ["", "shared"])
+    # Not judged: no runid (no receipt can exist), and a stale receipt whose
+    # signature is unknown until it is read again (a pre-8 FAULT row).
+    clock.now += 5
+    a7 = seed_run("kfa", 900, "20260921-100013-0")
+    a8 = seed_run("kfa", 895, "20260921-100014-0")
+    board_before = board()
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("UPDATE replays SET runid = '-' WHERE id = ?", (a7,))
+            conn.execute("INSERT INTO receipts (runid, map, pub, verdict, at, sig, signed_at,"
+                         " stale) VALUES ('20260921-100014-0', 'surf_kitsune', ?, 'FAULT',"
+                         " 100, 0, ?, 1)", (K2, sub(a8)))
+    finally:
+        conn.close()
+    watermark(sub(a8) + adm.KEY_MARGIN)
+    check("a run with no runid, and one with an unread stale receipt, are not judged",
+          [flag(a7), flag(a8)], ["", ""])
+    sql_exec = m.connect()
+    try:
+        with sql_exec:
+            sql_exec.execute("UPDATE receipts SET stale = 0 WHERE runid = '20260921-100014-0'")
+    finally:
+        sql_exec.close()
+    check("...and once re-read with no verified signature, it is unsigned", flag(a8), "unsigned")
     check("decisions move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
           [detail(x)["public"] for x in seeded], public_before)

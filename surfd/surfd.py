@@ -751,8 +751,11 @@ def receipts_v8(conn):
                     if "duplicate column" not in str(exc):
                         raise
     # No signed_at = written by a pre-8 sweep: read it again (a FAULT's sig is
-    # unknown), and until then order it by when it was read.
-    conn.execute("UPDATE receipts SET stale = 1 WHERE signed_at = 0")
+    # unknown), and until then order it by when it was read.  Such rows mean a
+    # schema-7 sweep ran since the watermark was set -- its --reread-receipts
+    # DELETEs -- so the watermark is void until the next complete pass.
+    if conn.execute("UPDATE receipts SET stale = 1 WHERE signed_at = 0").rowcount:
+        conn.execute("DELETE FROM sweepmeta WHERE k = 'receipts_through'")
     conn.execute("UPDATE receipts SET sig = 1 WHERE verdict = 'VALID' AND sig = 0")
     conn.execute("UPDATE receipts SET signed_at = at WHERE signed_at = 0")
     conn.commit()

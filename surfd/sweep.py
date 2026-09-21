@@ -251,24 +251,38 @@ def receipt_step(conn, limit=200, now=None):
         # on its way.  Ten minutes is far past the 25 s a two-minute sidecar
         # takes at 30 ms RTT.
         cutoff = t0 - surfd.EVIDENCE_SETTLE
+        # glob answers [] for a directory that is missing or unreadable, which
+        # would pass for a complete pass and move the watermark; listdir raises.
+        os.listdir(surfd.EVIDENCE_DIR)
         files = sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR, "*", "*.rcpt")))
-        # Never-read files first: a --reread-receipts backlog (stale = 1, kept
-        # until replaced) must not hold back a new run's receipt.
+        # Never-read files first and OLDEST first, so a pass that runs out of
+        # room still covers everything older than what it left; then the
+        # --reread-receipts backlog (stale = 1, kept until replaced).
         name = lambda f: os.path.basename(f)[:-5]
-        todo = ([f for f in files if name(f) not in rows] +
-                [f for f in files if rows.get(name(f)) == 1])
+        fresh = []
+        for f in files:
+            if name(f) not in rows:
+                try:
+                    fresh.append((os.path.getmtime(f), f))
+                except OSError:
+                    pass
+        fresh.sort()
+        todo = [(m, f, True) for m, f in fresh] + \
+               [(None, f, False) for f in files if rows.get(name(f)) == 1]
         n = bad = 0
-        fresh_cut = False
-        for path in todo:
+        through = cutoff
+        for mtime, path, is_fresh in todo:
             runid = name(path)
-            if n >= limit:
-                fresh_cut = fresh_cut or runid not in rows
-                continue
-            try:
-                mtime = os.path.getmtime(path)
-            except OSError:
-                continue
+            if mtime is None:
+                try:
+                    mtime = os.path.getmtime(path)
+                except OSError:
+                    continue
             if mtime > cutoff:
+                continue
+            if n >= limit:
+                if is_fresh:
+                    through = min(through, int(mtime) - 1)
                 continue
             got = read_receipt(path)
             if got is None:
@@ -281,20 +295,22 @@ def receipt_step(conn, limit=200, now=None):
                     "INSERT OR REPLACE INTO receipts"
                     " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                    (runid, mapname, pub, verdict, angles, reason, t0, sig, int(mtime)))
+                    (runid, mapname, pub, verdict, angles, reason, t0, sig,
+                     max(1, int(mtime))))     # 0 means "pre-8 row" to receipts_v8
                 bind_key(conn, runid, pub, t0)
             n += 1
             bad += verdict != "VALID"
-        # THE WATERMARK.  Every never-read receipt up to `cutoff` is now in the
-        # table, so a board run submitted well before it with no signed receipt
-        # has none.  A pass cut short, or one that raised, does not move it:
-        # admin's "unsigned" then pauses instead of reading "not read yet" as
-        # "not signed" -- the three hours this step failed on 2026-09-21 would
-        # otherwise have flagged every signer's runs.
-        if not fresh_cut:
-            with conn:
-                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
-                             " VALUES ('receipts_through', ?)", (cutoff,))
+        # THE WATERMARK.  Every never-read receipt with an mtime up to `through`
+        # is now in the table -- `cutoff`, or just short of the oldest one this
+        # pass had no room for -- so a board run submitted well before it with
+        # no signed receipt has none.  A pass that raised writes nothing, and
+        # admin's "unsigned" pauses rather than reading "not read yet" as "not
+        # signed" (the three hours this step failed on 2026-09-21 would have
+        # flagged every signer's runs).  A flood only slows it: 200 a pass,
+        # oldest first.
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                         " VALUES ('receipts_through', ?)", (through,))
         return n, bad
     except Exception as exc:
         print("sweep: receipt step failed: %r" % exc, file=sys.stderr)

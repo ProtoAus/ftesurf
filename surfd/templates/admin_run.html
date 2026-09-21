@@ -329,10 +329,15 @@ function renderKey(j) {
   for (const [act, label] of [["accept", pub ? "Accept key for this player" : "Accept these unsigned runs"],
                               ["reject", pub ? "Not this player's key" : "Reject"],
                               ["clear", "Clear decision"]]) {
-    if (act === k.key_decision || (act === "clear" && !k.key_decision)) continue;
+    // An accepted ('', P) covers only runs before it, so a later unsigned run
+    // still needs its Accept.
+    const covered = act === k.key_decision && !(pub === "" && k.key_flag === "unsigned");
+    if (covered || (act === "clear" && !k.key_decision)) continue;
     const b = el("button", act === "reject" ? "danger" : "", label);
     b.addEventListener("click", async () => {
-      if (await post("/admin/api/keydecision", {rid: String(RID), action: act, pub})) loadRun();
+      if (await post("/admin/api/keydecision",
+                     {rid: String(RID), action: act, pub, submitted: String(j.run.submitted)}))
+        loadRun();
     });
     row.append(b);
   }

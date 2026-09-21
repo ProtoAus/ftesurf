@@ -164,7 +164,9 @@ _ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
 # only runs submitted before the decision: anyone can play unsigned as P's
 # public guid.  'reject' says K is not P's: flagged, and out of "first", so P's
 # next key takes the slot (the impostor case).  "Has signed before" still counts
-# a rejected signing, so a reject never waives unsigned runs.
+# a rejected signing, so a reject never waives unsigned runs.  Not judged: runs
+# with no runid ('' or '-' -- no receipt can exist) and a stale receipt whose
+# signature is unknown until re-read (`ru`).
 #   The firsts are derived tables computed once per query: per-row subqueries
 # took 12.7 s at 10k receipts.  Admin-only: VER_SQL and every public surface
 # ignore all of it.
@@ -183,6 +185,7 @@ _KEY_SIGNED = """(SELECT q.player, MIN(r.signed_at) AS signed_at FROM receipts r
 _KEY_JOIN = """
   LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> '' AND p.kind = 'run'
         AND p.player <> '' AND rc.sig = 1 AND rc.pub <> ''
+  LEFT JOIN receipts ru ON ru.runid = p.runid AND ru.stale = 1 AND ru.sig = 0
   LEFT JOIN pubkeys kd ON kd.pub = COALESCE(rc.pub, '') AND kd.player = p.player
   LEFT JOIN """ + _KEY_FIRST % "player" + """ fk ON fk.player = p.player
   LEFT JOIN """ + _KEY_FIRST % "pub" + """ fp ON fp.pub = rc.pub
@@ -195,6 +198,7 @@ _KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
             WHEN rc.pub IS NULL THEN
                  CASE WHEN fs.signed_at IS NULL OR p.submitted <= fs.signed_at
                            OR p.submitted > ? THEN ''
+                      WHEN p.runid IN ('', '-') OR ru.runid IS NOT NULL THEN ''
                       WHEN kd.decision = 'accept' AND p.submitted <= kd.decided_at THEN ''
                       WHEN kd.decision = 'reject' THEN 'rejected'
                       ELSE 'unsigned' END
@@ -1550,8 +1554,9 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
         @control
         def key_decision():
             # Patch 422.  The pair is the run's own (signed receipt's key, or ''
-            # for none, and the replay's player), read here; the form's `pub` is
-            # only compared, so a resubmission since the page loaded is refused.
+            # for none, and the replay's player), read here; the form's `pub`
+            # and `submitted` are only compared, so a resubmission since the
+            # page loaded is refused (409).
             raw = request.form.get("rid", "").strip()
             if not RID_TEXT.match(raw):
                 raise AdminError("rid must be a replay id")
@@ -1560,6 +1565,9 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             if action not in KEY_ACTIONS:
                 raise AdminError("unknown action %r" % action[:32])
             shown = request.form.get("pub", "").strip()
+            shown_sub = request.form.get("submitted", "").strip()
+            if not RID_TEXT.match(shown_sub):
+                raise AdminError("submitted must be the run's submitted time")
             now = int(time.time())
             conn = db_connect()
             try:
@@ -1568,7 +1576,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     if not key_tables(conn):
                         raise AdminError("no schema-8 key tables on this database yet")
                     row = conn.execute(
-                        "SELECT p.kind, p.player, COALESCE(rc.pub, '') FROM replays p"
+                        "SELECT p.kind, p.player, COALESCE(rc.pub, ''), p.submitted"
+                        " FROM replays p"
                         " LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> ''"
                         " AND rc.sig = 1 AND rc.pub <> '' WHERE p.id = ?", (rid,)).fetchone()
                     if row is None:
@@ -1578,14 +1587,17 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     player, pub = row[1], row[2]
                     if not player:
                         raise AdminError("replay %d names no player" % rid)
-                    if pub != shown:
-                        raise RunChanged("the run's key changed -- reload")
+                    if pub != shown or row[3] != int(shown_sub):
+                        raise RunChanged("the run changed -- reload")
+                    # ('', player) waives only what the owner could see: runs
+                    # the watermark had covered, never ones still in flight.
+                    decided = now if pub else min(now, key_bound(conn))
                     conn.execute("INSERT OR IGNORE INTO pubkeys (pub, player,"
                                  " first_at, last_at, runs) VALUES (?, ?, ?, ?, 0)",
                                  (pub, player, now, now))
                     conn.execute("UPDATE pubkeys SET decision = ?, decided_at = ?"
                                  " WHERE pub = ? AND player = ?",
-                                 ("" if action == "clear" else action, now, pub, player))
+                                 ("" if action == "clear" else action, decided, pub, player))
             except sqlite3.Error as exc:
                 log.exception("admin key decision on replay %d failed: %s", rid, exc)
                 raise AdminError("storage error")

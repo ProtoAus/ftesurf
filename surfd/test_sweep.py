@@ -275,20 +275,58 @@ def case_receipt_watermark():
         row = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()
         return row[0] if row else None
 
+    # Path order and age order disagree: "aaa" is the NEWER file.
     make_receipt(surfd.EVIDENCE_DIR, "20260921-000050-0", mapname="aaa_first", age=old)
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000049-0", mapname="zzz_older", age=old - 50)
     check("no pass yet: no watermark", wm(), None)
     sweep.receipt_step(conn, limit=0, now=T)
-    check("a pass cut short by the limit leaves it", wm(), None)
+    check("a pass with no room stops just short of the oldest unread receipt",
+          wm(), old - 51)
+    sweep.receipt_step(conn, limit=1, now=T)
+    got = {r[0] for r in conn.execute("SELECT runid FROM receipts")}
+    check("one slot: the OLDEST never-read receipt goes first, whatever its path",
+          (got, wm()), ({"20260921-000049-0"}, old - 1))
     sweep.receipt_step(conn, now=T)
     check("a complete pass sets it to the cutoff", wm(), T - surfd.EVIDENCE_SETTLE)
     sweep.mark_receipts_stale(conn)
     make_receipt(surfd.EVIDENCE_DIR, "20260921-000051-0", mapname="zzz_last", age=old)
     got = sweep.receipt_step(conn, limit=1, now=T + 60)
     stale = dict(conn.execute("SELECT runid, stale FROM receipts").fetchall())
-    check("one slot: the fresh receipt is read before the stale one (which sorts first)",
+    check("one slot: the fresh receipt is read before the stale ones (which sort first)",
           (got[0], stale.get("20260921-000051-0"), stale.get("20260921-000050-0")), (1, 0, 1))
     check("...and a pass that read every fresh file moves the watermark",
           wm(), T + 60 - surfd.EVIDENCE_SETTLE)
+
+    # A file dated the epoch stores signed_at 1: 0 is receipts_v8's "pre-8 row"
+    # and would be re-marked stale on every start.
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000052-0", mapname="epoch", age=0)
+    sweep.receipt_step(conn, now=T + 120)
+    surfd.receipts_v8(conn)
+    check("an mtime of 0 stores signed_at 1 and is not re-marked stale",
+          tuple(conn.execute("SELECT signed_at, stale FROM receipts"
+                             " WHERE runid = '20260921-000052-0'").fetchone()), (1, 0))
+
+    # A row a schema-7 sweep wrote (signed_at 0) voids the watermark.
+    before = wm()
+    conn.execute("INSERT INTO receipts (runid, map, pub, verdict, at) VALUES"
+                 " ('20260921-000053-0', 'm', 'k', 'VALID', 5)")
+    conn.commit()
+    surfd.receipts_v8(conn)
+    check("a pre-8 row voids the watermark", (before is not None, wm()), (True, None))
+
+    # A missing evidence directory is not a complete pass.
+    sweep.receipt_step(conn, now=T + 180)
+    real = surfd.EVIDENCE_DIR
+    surfd.EVIDENCE_DIR = os.path.join(os.environ["SURFD_HOME"], "no-such-evidence")
+    before = wm()
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            got = sweep.receipt_step(conn, now=T + 240)
+    finally:
+        surfd.EVIDENCE_DIR = real
+    check("a missing evidence directory: nothing read, said, watermark unmoved",
+          (got, "receipt step failed" in err.getvalue(), wm()), ((0, 0), True, before))
 
 
 def angle_pair(runid, rot=0.0, still=True, ver=9):
