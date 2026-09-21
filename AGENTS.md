@@ -621,18 +621,41 @@ bannered as superseded.)
   1.71 in a flick). Cuts from the corpus: 339 pairs, 337 at <=1.22% of moves
   past 3x, two at 82.8% and 98.8% -- `surf_garden/main/cheat` and
   `surf_demise/main/cheat` really do pair a recording with another run's
-  sidecar. It finds a WRONG FILE, not a small lie: 2 deg is missed, 3 is caught,
-  and `reccheck.py --tamper-view <f.rec>` re-measures that on any pair.
+  sidecar. `reccheck.py --tamper-view <f.rec>` re-measures the sensitivity on
+  any pair, and it is the only honest way to quote one.
+- THREE RULES, AND THE TIGHT ONE IS THE ONE-FRAME RULE. A tick that held
+  exactly ONE rendered frame has nothing to choose between: the usercmd was
+  built from that frame, so the two files carry the same number and the only
+  gap left is the `.view`'s `%.2f` print plus the 16-bit wire quantum. Over 21
+  honest v9 pairs and 11,592 such ticks the worst is 0.0104 deg, so the cut is
+  0.05 deg -- against 3x the tick's sweep for the other two rules. It does NOT
+  need the camera to have moved, which is why BLIND is no longer an early
+  return.
+  ITS COVERAGE IS THE CLIENT'S FRAMERATE and that is the real limit: at or
+  below the mover rate essentially every joined tick is a one-frame tick (1735
+  of 1739 at `cl_maxfps 100`), at 250 fps only 5 of 1740 are, and reccheck then
+  says `TOO FEW TO JUDGE` instead of passing quietly. A CHEATER CHOOSES THAT
+  NUMBER, so treat the tight rule as covering mistakes and lazy forgeries, not
+  a determined one. Sensitivity, measured: on a still-camera pair the smallest whole-run
+  rotation caught went from nothing at all to 0.1 deg and a 2% splice from
+  missed to caught; on the swept 100 fps pair it went 5 deg to 0.05. On a 250
+  fps pair it is still 5 deg.
 - EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA, because every
-  416-419 fixture drives its route with `setpos` and `noclip`. So a corpus run
-  measures nothing about angles and reccheck says `BLIND` rather than `ok` --
-  which is the honest answer and the one to expect. To make a pair that is not
-  blind: `cl_yawspeed` + `+left`/`+right`/`+lookup` INSIDE the run, then a
-  `setpos` with the route's own angles to put the heading back (p420live.cfg).
-  Measured there: v9 `in` angles are `input_angles`, i.e. SHORT2ANGLE of the
-  short the client sent, so the residual is 0.007 deg max over 1257 deg of
-  sweep -- the thresholds above come from v6-v8 `.v_angle` files and are ~400x
-  looser than v9 needs.
+  416-419 fixture drives its route with `setpos` and `noclip`. That is what a
+  lobby records too, so the one-frame rule is the one that does the work there;
+  the sweep rule reports `BLIND` and that is the honest answer. To make a pair
+  that is not blind: `cl_yawspeed` + `+left`/`+right`/`+lookup` INSIDE the run,
+  then a `setpos` with the route's own angles to put the heading back
+  (p420live.cfg); `tools/p421corp.py` drives a whole batch of them.
+- AND DO NOT BELIEVE A THRESHOLD MEASURED AT ONE FRAMERATE. This file said for
+  a day that the v9 cuts were ~400x looser than needed, from p420live's single
+  run at `cl_maxfps 100`. At or below the mover rate the client builds one
+  usercmd per rendered frame, so the residual is the quantum BY CONSTRUCTION;
+  above it the usercmd samples between frames and it is not. Across 12 runs
+  from 30 to 500 fps and 25 to 2000 deg/s the worst normalised move is 1.49 --
+  worse than the whole pre-v9 corpus's 1.24, at the same cut of 3. The cut
+  stays. `cl_netfps` is not an axis to vary either: `Net_MatchTicrate`
+  (cl_main.qc:108) overwrites it with 1/pm_ticrate on every map load.
 - AN ABANDONED RUN KEEPS NO `.rec` UNLESS IT POSTED A STAGE.
   `SV_RecKeepEvidence` returns early on `rec_rec_posts <= 0`, so a main-leg run
   that is walked away from leaves a `.rcpt` and a `.view` and nothing to join

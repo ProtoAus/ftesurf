@@ -231,7 +231,7 @@ def bump_end(lines, field, delta=1):
     return lines
 
 
-def view_for(lines, rot=0.0, lo=0.0, hi=1.0):
+def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1):
     """A sidecar that agrees with `lines`, optionally rotated over a window.
 
     BUILT FROM THE RECORDING'S OWN ROWS, which is the only way an arm for this
@@ -240,9 +240,12 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0):
     written at %.2f exactly as Rec_ViewSample does, so the residual the checker
     sees here is the same print rounding it sees on a real pair.
 
-    ONE FRAME PER MOVE AND NOT MORE.  A real client renders several frames per
-    tick and the checker takes the best of them; one frame per tick is the
-    WORST case for it, so an arm that passes here passes on a real file.
+    ONE FRAME PER MOVE by default, which is the WORST case for the sweep rule
+    -- a real client renders several per tick and the checker takes the best of
+    them -- and the BEST case for the one-frame rule, which only has something
+    to say about a tick that held exactly one.  `dense` writes that many frames
+    per tick instead, which is what a client above the mover rate produces and
+    what takes the one-frame rule's coverage to nothing.
     """
     rows = [l.split() for l in lines if l.startswith("in ")]
     ticks = [int(f[2]) - HORIZON for f in rows]
@@ -257,8 +260,10 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0):
         yaw = float(f[8])
         if lo * n <= i < hi * n:
             yaw = ((yaw + rot) + 180.0) % 360.0 - 180.0
-        out.append("%.4f %d %d %.2f %.2f 0"
-                   % (10.0 + tk * TICK, 1000 + tk, tk, float(f[7]), yaw))
+        for k in range(dense):
+            out.append("%.4f %d %d %.2f %.2f 0"
+                       % (10.0 + (tk + k / float(dense)) * TICK,
+                          1000 + tk, tk, float(f[7]), yaw))
     return out
 
 
@@ -1490,16 +1495,75 @@ def case_angle_rotated():
         print("        got: %s" % (f or "NO FAULT"))
 
 
-def case_angle_small_rotation_is_not_claimed():
-    """AND THE HOLE, STATED AS AN ARM.  The statistic is normalised by the
-    tick's sweep, so a lie smaller than it is invisible.  Written down as a
-    passing test rather than a sentence in a comment, so that a later change
-    that closes it fails here and has to say so."""
-    L = build(sweep=128)
+def case_angle_one_frame_rule():
+    """THE HOLE THE SWEEP RULE LEAVES, AND WHAT CLOSES IT.
+
+    Normalising by the tick's own sweep makes a lie smaller than that sweep
+    invisible -- 0.5 deg against 0.70 deg a move is 0.71x, and the cut is 3.
+    A tick that held exactly one rendered frame does not need the normalisation
+    at all: the usercmd was built from that frame, so the two files carry the
+    same number and the difference is the print rounding plus the wire quantum.
+
+    THIS ARM USED TO ASSERT THE OPPOSITE and passed after the rule existed,
+    because it matched one fault STRING rather than the verdict -- the new rule
+    words its finding differently.  Assert the verdict.
+    """
+    L = build(sweep=128, packets=400)
+    clean, _ = run(L, view=view_for(L))
+    check(not clean, "400 moves and a matching sidecar is still clean")
     f, _ = run(L, view=view_for(L, rot=0.5))
-    check(not any("does not describe this recording" in x for x in f),
-          "a 0.5 deg rotation is NOT caught -- this check finds a wrong file, "
-          "not a small lie")
+    check(any("the sidecar is not this recording's" in x for x in f),
+          "a 0.5 deg rotation is caught on the ticks that held one frame")
+    if not f:
+        print("        NO FAULT")
+
+
+def case_angle_one_frame_rule_reaches_a_still_camera():
+    """AND IT WORKS WHERE THE SWEEP RULE CANNOT WORK AT ALL.
+
+    build()'s default camera never turns, which is every 416-419 fixture and
+    nearly every run the fleet records.  The sweep rule has nothing to divide
+    by and says BLIND; the one-frame rule does not care whether anything moved.
+    Before this existed the checker returned early on BLIND and a sidecar from
+    another still run at another heading drew no finding of any kind.
+    """
+    L = build(packets=400)              # sweep 0: the camera is nailed down
+    clean, n = run(L, view=view_for(L))
+    check(not clean, "a still run with its own sidecar is still not a fault")
+    check(any("one-frame rule did" in x for x in n),
+          "...and the checker names which rule did the discriminating")
+    f, _ = run(L, view=view_for(L, rot=0.5))
+    check(any("the sidecar is not this recording's" in x for x in f),
+          "a 0.5 deg rotation IS caught on a camera that never turned")
+    if not f:
+        print("        NO FAULT")
+
+
+def case_angle_one_frame_rule_needs_v9():
+    """AND THE EXEMPTION IS LOAD-BEARING.  Below v9 the `in` row carries
+    .v_angle, which SV_RunCmd leaves stale while fixangle is set: ahop_coast's
+    saves put honest one-frame ticks 176 deg out.  Applying a 0.05 deg cut to
+    those files would fault the corpus, not a cheat."""
+    L = build(sweep=128, packets=400, ver=7)
+    f, _ = run(L, view=view_for(L, rot=0.5))
+    check(not f, "the same rotation is NOT claimed on a pre-v9 recording")
+    if f:
+        print("        got: %s" % f)
+
+
+def case_angle_one_frame_rule_says_when_it_is_thin():
+    """A FAST CLIENT TAKES THE RULE'S COVERAGE AWAY, and the checker has to say
+    that rather than report a quiet pass.  Three frames a tick is what 250 fps
+    against a 100 Hz mover looks like; on the real pair it left 5 one-frame
+    ticks of 1740, and 5 samples is not a verdict."""
+    L = build(sweep=128, packets=400)
+    f, n = run(L, view=view_for(L, rot=0.5, dense=3))
+    check(not f, "three frames a tick leaves nothing for the one-frame rule "
+                 "and it does not guess")
+    check(any("the sweep rule alone" in x for x in n),
+          "...and it says the pair is being judged by the loose rule only")
+    if not any("the sweep rule alone" in x for x in n):
+        print("        notes=%s" % n)
 
 
 def case_angle_splice():
@@ -1561,7 +1625,10 @@ def main():
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
                case_nonce_header, case_nonce_record, case_nonce_flag,
                case_angle_control, case_angle_blind_is_said_out_loud,
-               case_angle_rotated, case_angle_small_rotation_is_not_claimed,
+               case_angle_rotated, case_angle_one_frame_rule,
+               case_angle_one_frame_rule_reaches_a_still_camera,
+               case_angle_one_frame_rule_needs_v9,
+               case_angle_one_frame_rule_says_when_it_is_thin,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):

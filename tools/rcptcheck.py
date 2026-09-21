@@ -365,18 +365,28 @@ def join_angles(r, want):
     if off is None:
         r.note("the recording carries no angle stream to check the sidecar against")
         return
-    r.angles_detail = off
+    solo = v.info.get("angle_solo", "")
+    r.angles_detail = off if not solo else "%s; %s" % (off, solo)
     bad = [m for m in v.faults if "does not describe this recording" in m
-           or "does not match its sidecar" in m]
-    r.angles = "FAULT" if bad else ("BLIND" if off.startswith("BLIND") else "OK")
+           or "does not match its sidecar" in m
+           or "the sidecar is not this recording's" in m]
+    # BLIND IS ABOUT THE SWEEP RULE ONLY.  Nearly every run the fleet records
+    # has a still camera, so reporting BLIND whenever the sweep rule abstained
+    # would put that word on the whole board while the one-frame rule was
+    # quietly doing the work.  Ask whether ANY rule had something to say.
+    blind = off.startswith("BLIND") and (not solo or "TOO FEW TO JUDGE" in solo)
+    r.angles = "FAULT" if bad else ("BLIND" if blind else "OK")
     if bad:
         # SAID IN FULL, because the three facts TOGETHER are the finding and any
         # one of them alone reads as something milder.
         r.fault("the signature is over this .view, the .view hashes to the "
                 "digest that was signed, AND the .view does not describe this "
                 "recording: %s" % bad[0].split(": ", 1)[-1])
+    elif r.angles == "BLIND":
+        r.note("angles: %s" % r.angles_detail)
     elif off.startswith("BLIND"):
-        r.note("angles: %s" % off)
+        r.note("the sidecar's angles are the recording's angles on every tick "
+               "that held one frame -- %s" % solo)
     else:
         r.note("the sidecar's angles are the recording's angles -- %s" % off)
 

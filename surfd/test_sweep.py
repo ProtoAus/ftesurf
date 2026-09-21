@@ -253,6 +253,81 @@ def case_receipt_reread():
           conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
 
 
+def angle_pair(runid, mapname="bhop_eazy", rot=0.0, still=True):
+    """A .rec and the sidecar that goes with it, from reccheck's own fixtures.
+
+    BUILT BY tools/test_reccheck.py AND NOT HERE.  That file assembles the .rec
+    grammar from the block comment over SV_RecOpen, and a second writer in this
+    tree is a second thing to keep in step with the recorder -- the same reason
+    read_receipt imports rcptcheck instead of re-parsing a receipt.
+
+    `still` is the default because it is what the fleet records: every run on a
+    lobby is driven with the camera where the player left it, and a still camera
+    is exactly the case the sweep rule cannot judge.
+    """
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    import test_reccheck as fx
+    lines = fx.build(packets=400, sweep=0.0 if still else 128)
+    lines = [("runid " + runid) if l.startswith("runid ") else l for l in lines]
+    return "\n".join(lines) + "\n", "\n".join(fx.view_for(lines, rot=rot)) + "\n"
+
+
+def with_rec(surfd, sweep, runid, rec, mapname="bhop_eazy"):
+    """Put the recording where rcptcheck looks for it, and point it there."""
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    import rcptcheck
+    game = os.path.join(os.environ["SURFD_HOME"], "game")
+    d = os.path.join(game, "data", "evidence", mapname)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, runid + ".rec"), "w", encoding="utf-8") as fh:
+        fh.write(rec)
+    rcptcheck.GAME = game
+    return rcptcheck
+
+
+def case_receipt_angles_reach_the_database():
+    """THE COLUMN THE REVIEW PAGE PRINTS, WITH A RECORDING TO JOIN TO.
+
+    Every other receipt arm here has nothing on disk to check the sidecar
+    against, so `angles` comes back "" and the whole cross-check is untested
+    from this side.  Patch 421 is what makes the answer interesting on a lobby's
+    files: before it, a still camera meant the sweep rule had nothing to scale
+    and the verdict was BLIND whatever the sidecar said.
+    """
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+
+    rec, view = angle_pair("20260921-000070-0")
+    rc = with_rec(surfd, sweep, "20260921-000070-0", rec)
+    try:
+        make_receipt(surfd.EVIDENCE_DIR, "20260921-000070-0",
+                     view=view.encode("utf-8"), age=old)
+        n, bad = sweep.receipt_step(conn)
+        check("the receipt is read", (n, bad), (1, 0))
+        got = receipts(conn)["20260921-000070-0"]
+        check("a still camera with its own sidecar reads OK, not BLIND",
+              (got[0], got[2]), ("VALID", "OK"))
+
+        # AND THE SAME PAIR WITH THE SIDECAR TURNED HALF A DEGREE.  Separate
+        # runid, because a receipt is read once by design and re-reading it is
+        # a different arm.
+        rec2, view2 = angle_pair("20260921-000071-0", rot=0.5)
+        with_rec(surfd, sweep, "20260921-000071-0", rec2)
+        make_receipt(surfd.EVIDENCE_DIR, "20260921-000071-0",
+                     view=view2.encode("utf-8"), age=old)
+        n, bad = sweep.receipt_step(conn)
+        check("a 0.5 deg rotation is a fault in the evidence", (n, bad), (1, 1))
+        got = receipts(conn)["20260921-000071-0"]
+        check("...and the database says so in both columns",
+              (got[0], got[2]), ("FAULT", "FAULT"))
+    finally:
+        rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
+
+
 def case_receipt_step_never_takes_the_sweep_down():
     """THE ARM THE WHOLE ADDITION RESTS ON.  This step imports three files that
     live outside surfd; on a host where they are not deployed the verification
@@ -560,6 +635,7 @@ def main():
                  case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,
+                 case_receipt_angles_reach_the_database,
                  case_receipt_step_never_takes_the_sweep_down):
         print("%s:" % case.__name__)
         try:
