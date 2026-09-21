@@ -751,8 +751,6 @@ void() Results_Frame =
 
 	state = getstatf(STAT_FS_TIMERSTATE);
 	tag   = getstatf(STAT_FS_RUNTAG);
-	if (tag == RT_EVIDENCE)             // Patch 426: an abandon, not a finish
-		tag = RT_NONE;
 
 	/*
 	  BUILD 57, STAGE T: the finish counter, latched here -- above everything that

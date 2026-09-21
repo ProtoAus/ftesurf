@@ -1824,7 +1824,7 @@ float   run_t_evul;
 .string rec_end_rid;
 .string rec_end_nonce;
 .float  rec_end_ticks;              // svticks: the RUNTICKS the client saw at the end
-.float  rec_end_at;                 // `time` it ended: a receipt is due in a round trip
+.float  rec_end_at;                 // `time` it was held (a load's own hold: this frame)
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3988,15 +3988,6 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	rid = strcat(e.rec_end_rid);
 	nonce = strcat(e.rec_end_nonce);
 	svt = e.rec_end_ticks;
-	// ...and within 30 s: a client that sits on its receipt must not commit to
-	// digests of evidence long after the run (review round 3).
-	if (rid != "" && time - e.rec_end_at > 30)
-	{
-		dprint(sprintf("timer: receipt refused -- %s ended %d s ago\n", rid,
-		               time - e.rec_end_at));
-		SV_RecEndHold(e, "", "", 0);
-		return;
-	}
 	if (rid != "" && ticks != sprintf("%d", svt))
 	{
 		dprint(sprintf("timer: receipt refused -- it signs ticks %s and the run "
@@ -4136,9 +4127,7 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 
 	if (e.rec_end_rid != "")
 	{
-		// A finish: the live run's receipt too -- unless a new run already
-		// records under the same runid (a stage run under a second long).
-		if (rid == e.rec_rec_rid && !(e.run_t_flags & TF_RECORDING))
+		if (rid == e.rec_rec_rid)       // a finish: it is the live run's receipt too
 			e.rec_rec_rcpt = TRUE;
 		SV_RecEndHold(e, "", "", 0);
 	}
@@ -4970,9 +4959,12 @@ void(entity e) SV_RecDiscard =
 		if (!e.rec_rec_stream)
 			buf_del(e.rec_rec_buf);
 		live = FALSE;
-		// Patch 426: kept, so the client keeps its sidecar (the run's leg
-		// stands) and the receipt it signs next is held for.
-		e.rec_rec_tag = RT_EVIDENCE;
+		// Patch 426: kept, so the receipt the client signs next is held for.
+		// No sidecar is asked for (RT_NONE, leg 0, as before): an abandon's
+		// upload would hold the engine's one upload slot while the next
+		// finish's sidecar was refused (review round 4).
+		e.rec_rec_leg = 0;
+		e.rec_rec_tag = RT_NONE;
 		e.rec_rec_ticks = 0;
 		e.rec_rec_saved = FALSE;
 		e.rec_rec_bytes = -1;

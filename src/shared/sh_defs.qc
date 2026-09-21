@@ -941,10 +941,6 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   distribution of them would be a folder of empty files.
 */
 #define RT_LOBBY     6
-// Patch 426: abandoned and kept as EVIDENCE (SV_RecKeepEvidence), under
-// data/evidence/, not data/runs/: a remote client stages and offers its sidecar
-// for it, and never writes one locally.  No word, not archived.
-#define RT_EVIDENCE  7
 
 /*
   THE RECORDING TERMS, build 22.
