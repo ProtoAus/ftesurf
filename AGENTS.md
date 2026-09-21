@@ -679,6 +679,9 @@ bannered as superseded.)
   that is walked away from leaves a `.rcpt` and a `.view` and nothing to join
   them to. 37 of this tree's 38 receipts are that shape; "no recording to check
   against" is normal, not a fault.
+  Since Patch 426 a KEPT abandon (one that posted a stage) takes its receipt:
+  the server holds the run that ended (`rec_end_*`) until a receipt signing its
+  ticks arrives. Its receipt asks no upload and names no `.view` (RT_NONE).
 - EVIDENCE RETENTION REACHES EVERY MAP, NOT THE LOADED ONE (Patch 418, after
   review). `SV_EvidenceSweep` globs the current map's directory at every map
   init and, where `run_evidence_sweepall 1` is set, the whole `data/evidence/`
@@ -836,7 +839,21 @@ bannered as superseded.)
   BUMPING `SCHEMA_VERSION` BREAKS ANY SUITE THAT PINS THE LITERAL. 6 -> 7 broke
   test_join and test_replays, which know nothing about receipts; they compare
   the upgrade path to where a fresh database lands now. Do the same in a new
-  one. test_board went unbumped for a day; it has one `HEAD_SCHEMA` now. And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
+  one. test_board went unbumped for a day; it has one `HEAD_SCHEMA` now.
+
+  Patches 424/425 (no schema bump; `replays_bound()` runs on every migrate):
+  - `replays.bound` is 1 when the replay was filed against its file (header
+    matches runid, map, track, leg, flags, tickrate). -1 means "not assessed"
+    and is resolved from the disk by the next migrate, i.e. the next cron sweep.
+    A reject hides the stage times of every bound replay's run.
+  - Tiers ending `@<runid>` are a rejected run's hidden stage times, and
+    `^<runid>` a time waiting behind a better one; neither reaches a public
+    board. Reviews move them. Do not delete them by hand: a clear gives them
+    back.
+  - Before 425, test_board wrote `.rec` files into the DEFAULT `SURFD_RUNS`, the
+    live run tree. It sets its own temp dir now. Point every suite at one.
+
+  And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
   `<SURFD_HOME>/surfd.db` -- a stray empty file at the second path has existed
   since 2026-09-21 and is not it.
 
