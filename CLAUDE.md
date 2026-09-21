@@ -78,5 +78,8 @@ chatty.
   round 2's length clamp covered one of the two exits that read that length,
   turning a sign-extension bug into a one-packet server hang. Stop when a round
   finds nothing, not when you are tired of rounds.
-  Review a CLEAN tree: one round's headline finding was a 4 MiB -> 8 KB cap left
-  in the working copy to measure something else.
+  Review a CLEAN tree, AND HOLD IT STILL WHILE THEY READ: one round's headline
+  finding was a 4 MiB -> 8 KB cap left in the working copy to measure something
+  else, and in Patch 421 two reviewers had the verifier rewritten under them
+  mid-read, so their line numbers were stale and one had to redo the work.
+  Commit, then review, then fix -- not all three at once.
