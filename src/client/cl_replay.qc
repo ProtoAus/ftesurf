@@ -910,6 +910,14 @@ void() Rec_ViewEnd =
 		return;
 	}
 
+	// Patch 426: evidence has no local recording to sit beside -- it is only
+	// ever staged and offered, above.
+	if (tag == RT_EVIDENCE)
+	{
+		Rec_ViewDrop();
+		return;
+	}
+
 	// A run that began and ended inside one rendered frame.  The header alone
 	// is not a sidecar; writing it would leave a file that a reader has to
 	// special-case for nothing.

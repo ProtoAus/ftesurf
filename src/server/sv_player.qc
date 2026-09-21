@@ -303,6 +303,7 @@ void() ClientConnect =
 	*/
 	SV_CSQCForget(self);
 	SV_MsConnect(self);                 // edicts are recycled: no offer, no key
+	SV_RecAbHold(self, "", "");         // Patch 426: ...and no held receipt
 	self.pb_dwatch = world;             // Patch 383: edicts are recycled
 	SV_SpecForget(self);                // Patch 382: ...and no hold, no target
 
@@ -332,6 +333,7 @@ void() ClientDisconnect =
 	// the rest of the session.
 	SV_TimerIdle(self);
 	SV_TimerReleaseSlot(self);
+	SV_RecAbHold(self, "", "");         // Patch 426: nobody is left to sign it
 
 	/*
 	  Patch 270, Stage 2.  Beside SV_TimerReleaseSlot because it is the same

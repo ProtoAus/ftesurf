@@ -1813,6 +1813,14 @@ string  run_nonce_seed;             // per-boot, zoned; the seed under all of th
 // never told about -- the key is sent once and the cvar can move afterwards.
 float   run_t_evul;
 .float  rec_rec_rcpt;               // Patch 417: this run's receipt is written
+// Patch 426: the id and nonce of a run the lobby kept as EVIDENCE, held for its
+// receipt -- SV_RecDiscard drops the live ones in the frame the run stops, a
+// round trip before the client's signature lands (p426cl.cfg measured
+// `receipt refused -- no run id or no nonce` on both abandons).  Held only
+// while that abandon is the last run to END: every other end, a connect and a
+// disconnect clear it, so a late receipt can only be this run's.
+.string rec_ab_rid;
+.string rec_ab_nonce;
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3936,11 +3944,27 @@ float(string s, float n) SV_RecIsHex =
 	return TRUE;
 };
 
+// Patch 426: hold (or, with "", clear) the kept abandon's id and nonce.
+void(entity e, string rid, string nonce) SV_RecAbHold =
+{
+	if (e.rec_ab_rid != "")
+		strunzone(e.rec_ab_rid);
+	if (e.rec_ab_nonce != "")
+		strunzone(e.rec_ab_nonce);
+	e.rec_ab_rid = "";
+	e.rec_ab_nonce = "";
+	if (rid != "" && nonce != "")
+	{
+		e.rec_ab_rid = strzone(rid);
+		e.rec_ab_nonce = strzone(nonce);
+	}
+};
+
 void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
      string view, string sig, string svname) SV_RecRcpt =
 {
-	local float fh;
-	local string path, who;
+	local float fh, svt;
+	local string path, who, rid, nonce;
 
 	/*
 	  EVERY REFUSAL SAYS WHY, under developer.  A receipt that silently does not
@@ -3949,6 +3973,13 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  dprint rather than a print: it is client-driven, so it may not be
 	  something a stranger can put on an operator's console.
 	*/
+	// Patch 426: a held abandon is the last run that ended, so it is this
+	// receipt's.  Copies, because the hold is released before the open below.
+	rid = strcat(e.rec_ab_rid);
+	nonce = strcat(e.rec_ab_nonce);
+	svt = 0;                            // SV_RecDiscard's RUNTICKS, which the client signed
+	if (rid == "")
+	{
 	if (e.rec_rec_rid == "" || e.rec_rec_nonce == "")
 	{
 		dprint("timer: receipt refused -- no run id or no nonce\n");
@@ -3978,6 +4009,10 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	{
 		dprint("timer: receipt refused -- this run already has one\n");
 		return;
+	}
+	rid = e.rec_rec_rid;
+	nonce = e.rec_rec_nonce;
+	svt = e.rec_rec_ticks;
 	}
 	// Named one by one rather than as one test: "malformed field" cost a harness
 	// run on the question of WHICH, and a refusal a reader cannot act on is a
@@ -4052,7 +4087,10 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  not take the file leaves the client free to send this again for the rest
 	  of the run, one failed open each time, at whatever rate it likes.
 	*/
-	e.rec_rec_rcpt = TRUE;
+	if (e.rec_ab_rid != "")
+		SV_RecAbHold(e, "", "");
+	else
+		e.rec_rec_rcpt = TRUE;
 
 	/*
 	  BESIDE THE EVIDENCE AND NOT IN A DIRECTORY OF ITS OWN, so that
@@ -4060,7 +4098,7 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  recording it attests.  The first cut wrote data/receipts/, flat, shared by
 	  12 lobbies, swept by nothing at all.
 	*/
-	path = sprintf("data/evidence/%s/%s.rcpt", mapname, e.rec_rec_rid);
+	path = sprintf("data/evidence/%s/%s.rcpt", mapname, rid);
 	fh = fopen(path, FILE_WRITE);
 	if (fh < 0)
 	{
@@ -4091,14 +4129,14 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	*/
 	fputs(fh, sprintf("FTESURF-RCPT 1\n"));
 	fputs(fh, sprintf("map %s\n", mapname));
-	fputs(fh, sprintf("runid %s\n", e.rec_rec_rid));
+	fputs(fh, sprintf("runid %s\n", rid));
 	fputs(fh, sprintf("owner %s\n", who));
-	fputs(fh, sprintf("svticks %d\n", e.rec_rec_ticks));
+	fputs(fh, sprintf("svticks %d\n", svt));
 	fputs(fh, sprintf("svport %s\n", cvar_string("sv_port")));
 	fputs(fh, sprintf("pub %s\n", pub));
 	fputs(fh, sprintf("sig %s\n", sig));
 	fputs(fh, sprintf("signed server %s\n", svname));
-	fputs(fh, sprintf("signed nonce %s\n", e.rec_rec_nonce));
+	fputs(fh, sprintf("signed nonce %s\n", nonce));
 	fputs(fh, sprintf("signed ticks %s\n", ticks));
 	fputs(fh, sprintf("signed hid %s %s %s\n", hid, hidlen, kept));
 	fputs(fh, sprintf("signed view %s\n", view));
@@ -4119,7 +4157,7 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  or nothing at all.  That asymmetry is the whole security argument and it
 	  lives in engine/client/cl_receipt.c.
 	*/
-	if (run_t_evul && e.rec_rec_nonce != "")
+	if (run_t_evul && nonce != "")
 	{
 		/*
 		  BOTH FILES IN ONE REQUEST, IN THE ORDER THE CLIENT ARMED THEM.  The
@@ -4141,14 +4179,13 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 		*/
 		if (view != "-" && hid != "-" && kept == "1" && run_t_evul >= 2)
 			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.view data/evidence/%s/%s.hid\n",
-			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid,
-			                 mapname, e.rec_rec_rid));
+			                 num_for_edict(e), nonce, mapname, rid, mapname, rid));
 		else if (view != "-")
 			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.view\n",
-			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid));
+			                 num_for_edict(e), nonce, mapname, rid));
 		else if (hid != "-" && kept == "1" && run_t_evul >= 2)
 			localcmd(sprintf("sv_recupload %g %s data/evidence/%s/%s.hid\n",
-			                 num_for_edict(e), e.rec_rec_nonce, mapname, e.rec_rec_rid));
+			                 num_for_edict(e), nonce, mapname, rid));
 	}
 };
 
@@ -4887,12 +4924,16 @@ void(entity e) SV_RecDiscard =
 		if (!e.rec_rec_stream)
 			buf_del(e.rec_rec_buf);
 		live = FALSE;
-		e.rec_rec_leg = 0;
-		e.rec_rec_tag = RT_NONE;
+		// Patch 426: kept, so the client keeps its sidecar (the run's leg
+		// stands) and the receipt it signs next is held for.
+		e.rec_rec_tag = RT_EVIDENCE;
 		e.rec_rec_ticks = 0;
 		e.rec_rec_saved = FALSE;
 		e.rec_rec_bytes = -1;
+		SV_RecAbHold(e, (e.run_t_flags & TF_NONCE) ? e.rec_rec_rid : "", e.rec_rec_nonce);
 	}
+	else
+		SV_RecAbHold(e, "", "");        // Patch 426: a later end than the held one
 
 	if (live)
 	{
@@ -5077,6 +5118,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 
 	if (!SV_RecLive(e))
 		return;
+	SV_RecAbHold(e, "", "");            // Patch 426: a later end than the held one
 
 	/*
 	  Patch 405: the counts off switch, on the OPERATOR's line -- `cmd timer`
