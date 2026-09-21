@@ -2044,6 +2044,18 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
     return rows
 
 
+_PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg=?"
+             " AND tier=? AND style=? AND player=?")
+
+
+def _runs_full(db, leg):
+    """True when the board table holds its cap of main (leg 0) or stage rows."""
+    if leg == 0:
+        return db.execute("SELECT COUNT(*) FROM runs WHERE leg=0").fetchone()[0] >= MAX_RUNS
+    return (db.execute("SELECT COUNT(*) FROM runs WHERE leg>0").fetchone()[0]
+            >= MAX_STAGE_RUNS)
+
+
 _UPSERT_RUN = """
     INSERT INTO runs (map, track, leg, tier, style, player, name,
                       ticks, tickrate, millis, flags, node, runid,
@@ -2100,8 +2112,7 @@ def restand(db, rid):
         if cur is not None and cur["replay_id"] == 0:
             # A time with no recording has no history to rebuild: set it aside,
             # as a restore does, so a later reject gives it back (425).
-            _stage_move(db, cur, cur["tier"] + "^" + (
-                best["runid"] if best["runid"] not in ("", "-") else "r%d" % best["id"]))
+            _stage_move(db, cur, cur["tier"] + _aside(cur))
         db.execute(_UPSERT_RUN, (
             best["map"], best["track"], best["leg"], best["tier"], best["style"],
             best["player"], best["name"], best["ticks"], best["tickrate"],
@@ -2121,7 +2132,7 @@ def restand(db, rid):
 # while a reject on any replay of R is current, and restored when none is.  A
 # stage row has no history to re-derive from, so nothing is deleted that is not
 # beaten: the player's next time takes the live slot meanwhile, and a restore
-# sets it aside as "<tier>^<R>" (superseded by R) until R is parked again.  Only
+# sets it aside as "<tier>^<its own runid>" until the live one goes.  Only
 # a lapse on a replay that still names R restores R's rows: a leaf re-filed by
 # another run (an exact tie) leaves them hidden.
 def _stage_slot(db, row, tier):
@@ -2129,6 +2140,16 @@ def _stage_slot(db, row, tier):
                       " AND tier=? AND style=? AND player=?",
                       (row["map"], row["track"], row["leg"], tier, row["style"],
                        row["player"])).fetchone()
+
+
+def _aside(row):
+    """The set-aside tag of runs row `row`: its OWN run, so two runs' rows never
+    share a slot and a collision drops only the same run's slower time (review
+    round 7 -- keyed on the run that displaced it, one run's restore deleted
+    another's honest time)."""
+    if row["replay_id"] > 0:
+        return "^r%d" % row["replay_id"]
+    return "^" + (row["runid"] if row["runid"] not in ("", "-") else "-")
 
 
 def _stage_move(db, row, tier):
@@ -2224,7 +2245,7 @@ def restage(db, rid, park_only=False):
     run = _stage_run(db, rid)
     if run is None:
         return 0, 0
-    tag, sup = "@" + run[3], "^" + run[3]      # parked by R; set aside by R
+    tag = "@" + run[3]
     parked = restored = 0
     if _run_rejected(db, run):
         for row in db.execute(
@@ -2246,10 +2267,10 @@ def restage(db, rid, park_only=False):
                 # The live time is better: R's, cleared, waits aside for it
                 # (review round 6 -- it was deleted, so a later reject of the
                 # live run left the slot empty).
-                _stage_move(db, row, base + sup)
+                _stage_move(db, row, base + _aside(row))
                 continue
             if live is not None:
-                _stage_move(db, live, base + sup)
+                _stage_move(db, live, base + _aside(live))
             restored += _stage_move(db, row, base)
     return parked, restored
 
@@ -2521,6 +2542,7 @@ def submit_run():
     # strip this fix claimed to have closed, still a one-field operation.
     fsize = None
     fileless = bool(leaf)
+    hdr_runid = ""
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -2551,6 +2573,7 @@ def submit_run():
         else:
             fsize = meta[3]
             fileless = False
+            hdr_runid = meta[0].get("runid", "")
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -2632,14 +2655,11 @@ def submit_run():
                     ).fetchone()[0]
                 else:
                     nrep = 0          # an upsert of a row we already hold
-                if have is not None and (fileless or (
-                        not runid and have["runid"] not in ("", "-"))):
+                if have is not None and fileless:
                     # NOTHING changes a held replay without its file: with no
                     # header to bind them, a runid or a recbytes off the wire
                     # lapsed its reviews and relabelled it (reviews 4, 5).  An
                     # honest re-filing (an exact tie) writes the file first.
-                    # Nor does a post with no runid re-file a run's leaf: that
-                    # compare is skipped above for continuations (round 6).
                     log.warning("rec leaf %r is replay %d, and its file cannot"
                                 " be read; the row is left as it is", leaf,
                                 have["id"])
@@ -2678,16 +2698,23 @@ def submit_run():
                         -- either: a same-evidence re-post that could rewrite
                         -- the name, board, rate or map_dir relabelled,
                         -- re-boarded or shaved a verified replay (reviews).
-                        WHERE NOT (replays.player = excluded.player
-                                   AND replays.runid  = excluded.runid
+                        -- The runid is the post's, so it alone is new evidence
+                        -- only when the header proves the file another run's:
+                        -- a '' or '-' row re-posted naming its header's runid
+                        -- lapsed its reviews (review round 7).
+                        WHERE excluded.bound = 1
+                          AND NOT (replays.player = excluded.player
                                    AND replays.ticks  = excluded.ticks
-                                   AND replays.bytes  = excluded.bytes)
+                                   AND replays.bytes  = excluded.bytes
+                                   AND NOT (? <> '' AND replays.runid <> ?
+                                            AND replays.runid NOT IN ('', '-')))
                         """,
                         # '-' when none was sent (a TF_SHADOW continuation),
                         # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
-                         now, recbytes, rectrunc, runid or "-", 0 if fileless else 1),
+                         now, recbytes, rectrunc, runid or "-", 0 if fileless else 1,
+                         hdr_runid, hdr_runid),
                     )
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
@@ -2724,29 +2751,25 @@ def submit_run():
                                    " AND NOT (tier = ? AND style = ?)",
                                    (rid, tier, style))
 
-            prev = db.execute(
-                """
-                SELECT millis, submitted FROM runs
-                 WHERE map=? AND track=? AND leg=? AND tier=? AND style=?
-                   AND player=?
-                """,
-                (mapname, track, leg, tier, style, player),
-            ).fetchone()
+            pkey = (mapname, track, leg, tier, style, player)
+            prev = db.execute(_PREV_SQL, pkey).fetchone()
+            full = None
 
             # A stage time of a run a reject stands on goes straight to that
             # run's hidden slot, never over the player's live one -- a retried
             # POST, or a resumed run whose evidence was rejected (round 4).
             hidden = False
             if leg > 0 and not rid and runid:
-                # The check and its write under one lock (review round 5), let
-                # go when nothing is hidden: the cap counts below must not
-                # scan under it (round 6).
-                began = not db.in_transaction
-                if began:
+                # The check and every write after it under one lock (reviews
+                # 5, 7: a reject landing between them stood the time live, and
+                # a refill it made was overwritten).  The cap count scans the
+                # table, so it runs first (round 6).
+                if not db.in_transaction:
+                    if prev is None:
+                        full = _runs_full(db, leg)
                     db.execute("BEGIN IMMEDIATE")
+                    prev = db.execute(_PREV_SQL, pkey).fetchone()
                 hidden = _run_rejected(db, (mapname, track, player, runid))
-                if began and not hidden:
-                    db.commit()
             if hidden:
                 ptier = tier + "@" + runid
                 hid = db.execute(
@@ -2779,17 +2802,9 @@ def submit_run():
                                 "prevms": best})
 
             if prev is None:
-                if leg == 0:
-                    total = db.execute(
-                        "SELECT COUNT(*) FROM runs WHERE leg=0").fetchone()[0]
-                    cap = MAX_RUNS
-                else:
-                    total = db.execute(
-                        "SELECT COUNT(*) FROM runs WHERE leg>0").fetchone()[0]
-                    cap = MAX_STAGE_RUNS
-                if total >= cap:
+                if full if full is not None else _runs_full(db, leg):
                     log.warning("run cap %d reached (leg %d), refusing %s",
-                                cap, leg, src)
+                                MAX_RUNS if leg == 0 else MAX_STAGE_RUNS, leg, src)
                     return fail(429, "run limit reached")
             elif prev["millis"] <= millis:
                 # NOT an error, and not silence either: the client asked to

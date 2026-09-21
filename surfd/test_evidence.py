@@ -372,7 +372,7 @@ def case_exclusion():
     check("E5 ...the better (parked) time is back, the slower one set aside",
           (stage(m), q(m, "SELECT tier, ticks FROM runs WHERE leg = 2 AND player = 'kap'"
                           " AND tier <> 'ranked'")),
-          ((454, R), [("ranked^" + R, 500)]))
+          ((454, R), [("ranked^R4", 500)]))
     review(m, c, csrf, eid, "reject")
     check("E5 re-rejecting gives the set-aside time its slot back", stage(m), (500, "R4"))
     review(m, c, csrf, eid, "clear")
@@ -502,7 +502,7 @@ def case_set_aside():
     review(m, c, csrf, eid, "clear")
     check("E5d control: R restored, the recorded 600 set aside",
           (stage(m), q(m, "SELECT tier FROM runs WHERE replay_id = ?", (srep,))),
-          ((454, R), [("ranked^" + R,)]))
+          ((454, R), [("ranked^r%d" % srep,)]))
     check("E5d ...and the admin does not call the set-aside row standing",
           c.get("/admin/api/run/%d" % srep).get_json()["standing"]["on_board"], False)
     review(m, c, csrf, srep, "reject")
@@ -748,6 +748,184 @@ def case_round7():
           [("Rkeep", "Kap")])
 
 
+def _pass(m, rid):
+    conn = sqlite3.connect(m.DB_PATH)
+    with conn:
+        conn.execute("INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine,"
+                     " progs, at) VALUES (?, 'PASS', '', 0, 'e', 'p', ?)",
+                     (rid, int(time.time())))
+        conn.execute("UPDATE replays SET checked = 1 WHERE id = ?", (rid,))
+    conn.close()
+
+
+def _reject_current(m, rid):
+    return q(m, "SELECT COUNT(*) FROM reviews w JOIN replays p ON p.id = w.replay_id"
+                " WHERE p.id = ? AND w.decision = 'reject' AND w.at >= p.submitted",
+             (rid,))[0][0]
+
+
+def case_round8():
+    """E18: set-aside rows of different runs never share a slot; a re-post of the
+    same file changes nothing whatever runid it names; new bytes re-file"""
+    real = time.time
+    off = [0.0]
+    time.time = lambda: real() + off[0]
+    try:
+        m = fresh(admin_pw=PW)
+        conn = m.connect()
+        c, csrf = admin_client(m)
+        P, Q, S = ("20260918-150001-0-p27510", "20260918-150002-0-p27510",
+                   "20260918-150003-0-p27510")
+
+        def ev(run):
+            put_ev(m, run + ".rec", evbody(run), age=3600)
+            m.index_evidence(conn)
+            return evid(m, run)
+
+        def step(*act):
+            act[0](*act[1:])
+            off[0] += 2
+        submit(m, leg=2, ticks=440, runid=P); eP = ev(P); off[0] += 2
+        step(review, m, c, csrf, eP, "reject")
+        submit(m, leg=2, ticks=430, runid=Q); eQ = ev(Q); off[0] += 2
+        step(review, m, c, csrf, eQ, "reject")
+        submit(m, leg=2, ticks=450, runid=S); off[0] += 2      # S is never rejected
+        for rid, act in ((eQ, "clear"), (eP, "clear"), (eQ, "reject"), (eQ, "clear"),
+                         (eP, "reject")):
+            step(review, m, c, csrf, rid, act)
+        check("E18 control: Q's 430 stands while P is rejected", stage(m), (430, Q))
+        step(review, m, c, csrf, eQ, "reject")
+        check("E18 with P and Q rejected, S's never-rejected 450 stands", stage(m), (450, S))
+    finally:
+        time.time = real
+
+    # A continuation's leaf ('-') and a pre-schema-6 one (''): a re-post of the
+    # same file, naming the header's runid or none, lapses nothing.
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+    for held in ("-", ""):
+        sh = leaf(4200 + len(held), "kap")
+        put_run(m, sh, evbody("Rcut").replace("abandon 8262\n", ""))
+        rid = submit(m, ticks=4200 + len(held), rec=sh, runid=None)["rep"]
+        conn = sqlite3.connect(m.DB_PATH)
+        with conn:
+            conn.execute("UPDATE replays SET runid = ? WHERE id = ?", (held, rid))
+        conn.close()
+        _pass(m, rid)
+        review(m, c, csrf, rid, "reject")
+        time.sleep(1.1)
+        for rn in ("Rcut", None):
+            submit(m, ticks=4200 + len(held), rec=sh, runid=rn, name="EVIL",
+                   tier="community")
+        check("E18 a re-post of a %r row's file lapses nothing and relabels nothing"
+              % held, (q(m, "SELECT runid, name, tier FROM replays WHERE id = ?", (rid,)),
+                       _reject_current(m, rid)), ([(held, "Kap", "ranked")], 1))
+
+    # New bytes under a run's leaf re-file it, runid or none; the same bytes
+    # under another run's header (an exact tie) re-file too.
+    m = fresh()
+    lf = leaf(4400, "kap")
+    put_run(m, lf, evbody("Rwarm").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4400, rec=lf, runid="Rwarm")["rep"]
+    _pass(m, rid)
+    time.sleep(1.1)
+    path = put_run(m, lf, evbody("Rwarm").replace("abandon 8262\n", "") + "x 1\n")
+    submit(m, ticks=4400, rec=lf, runid=None, name="Kap2")
+    check("E18 new bytes with no runid re-file the leaf, unverified",
+          (q(m, "SELECT runid, bytes, checked, name FROM replays WHERE id = ?", (rid,)),
+           by_player(m, 0)["kap"]["ver"]),
+          ([("-", os.path.getsize(path), 0, "Kap2")], 0))
+    lf = leaf(4500, "kap")
+    put_run(m, lf, evbody("R11111").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4500, rec=lf, runid="R11111")["rep"]
+    _pass(m, rid)
+    time.sleep(1.1)
+    put_run(m, lf, evbody("R22222").replace("abandon 8262\n", ""))
+    submit(m, ticks=4500, rec=lf, runid="R22222")
+    check("E18 the same bytes under another run's header re-file the leaf",
+          q(m, "SELECT runid, checked FROM replays WHERE id = ?", (rid,)), [("R22222", 0)])
+
+
+def _inject(m, marker, act):
+    """Run act() on its own connection when submit_run's SQL first matches marker;
+    -> the OperationalError it raised, or None."""
+    state = {"fired": False, "err": None}
+
+    class Conn(sqlite3.Connection):
+        def execute(self, sql, *a):
+            if not state["fired"] and marker in sql:
+                state["fired"] = True
+                try:
+                    act()
+                except sqlite3.OperationalError as exc:
+                    state["err"] = str(exc)
+            return super().execute(sql, *a)
+
+    real = sqlite3.connect
+    m.sqlite3.connect = lambda *a, **k: real(*a, **dict(k, factory=Conn))
+    return state, real
+
+
+def case_stage_post_lock():
+    """E19: an admin reject cannot land between a stage post's hidden check and
+    its write"""
+    for marker in ("COUNT(*) FROM runs WHERE leg>0", "INSERT INTO runs"):
+        m = fresh(admin_pw=PW)
+        conn = m.connect()
+        submit(m, leg=2, ticks=454)
+        put_ev(m, R + ".rec", evbody(R), age=3600)
+        m.index_evidence(conn)
+        eid = evid(m, R)
+
+        def reject():
+            x = sqlite3.connect(m.DB_PATH, timeout=0.5, factory=sqlite3.Connection)
+            x.row_factory = sqlite3.Row
+            with x:
+                x.execute("BEGIN IMMEDIATE")
+                x.execute("INSERT INTO reviews (replay_id, decision, note, at)"
+                          " VALUES (?, 'reject', '', ?)", (eid, 2 ** 31))
+                m.restand(x, eid)
+                m.restage(x, eid)
+            x.close()
+        state, real = _inject(m, marker, reject)
+        try:
+            submit(m, leg=3, ticks=300)
+        finally:
+            m.sqlite3.connect = real
+        landed = state["fired"] and state["err"] is None
+        public = "kap" in by_player(m, 3)
+        check("E19 a reject at %r: fired, and R's stage time is not public while R is"
+              " rejected" % marker.split()[0], (state["fired"], landed and public),
+              (True, False))
+
+    # A reject landing just before the lock parks R's 454: another run's slower
+    # 480 is compared with the empty slot, not with the 454 read before it.
+    m = fresh(admin_pw=PW)
+    conn = m.connect()
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(conn)
+    eid = evid(m, R)
+
+    def reject():
+        x = sqlite3.connect(m.DB_PATH, timeout=0.5, factory=sqlite3.Connection)
+        x.row_factory = sqlite3.Row
+        with x:
+            x.execute("BEGIN IMMEDIATE")
+            x.execute("INSERT INTO reviews (replay_id, decision, note, at)"
+                      " VALUES (?, 'reject', '', ?)", (eid, 2 ** 31))
+            m.restand(x, eid)
+            m.restage(x, eid)
+        x.close()
+    state, real = _inject(m, "BEGIN IMMEDIATE", reject)
+    try:
+        submit(m, leg=2, ticks=480, runid=R3)
+    finally:
+        m.sqlite3.connect = real
+    check("E19 a reject just before the lock: the other run's 480 takes the slot",
+          (state["fired"], state["err"], stage(m)), (True, None, (480, R3)))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -984,7 +1162,7 @@ def main():
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
-                 case_round6, case_round7,
+                 case_round6, case_round7, case_round8, case_stage_post_lock,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

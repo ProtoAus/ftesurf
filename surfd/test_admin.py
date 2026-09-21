@@ -188,18 +188,21 @@ def review_section(pw_hash, pw):
         # that happened to tie", i.e. new evidence, and since 2026-09-20 that is
         # what decides whether `submitted` moves and lapses the verdict under
         # it -- an identical re-post is a no-op it must not be able to ride.
+        # A tie is a new FILE, its header naming its run: the same file posted
+        # under another runid is that re-post (review round 7).
         leaf = rec_leaf(ticks, player)
-        j = m.app.test_client().post("/api/run", data={
-            "key": "testkey", "map": "surf_kitsune", "track": "0", "leg": "0",
-            "player": player, "name": player.capitalize(), "ticks": str(ticks),
-            "tickrate": "100", "flags": "0", "node": "p27510", "rec": leaf,
-            "runid": "r-%s-%d" % (player, clock.now)},
-            environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+        runid = "r-%s-%d" % (player, clock.now)
         path = os.path.join(m.RUNS_DIR, "surf_kitsune", "main", leaf)
         if write:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", newline="\n") as fh:
-                fh.write(REC)
+                fh.write(REC.replace("begin\n", "runid %s\nbegin\n" % runid))
+        j = m.app.test_client().post("/api/run", data={
+            "key": "testkey", "map": "surf_kitsune", "track": "0", "leg": "0",
+            "player": player, "name": player.capitalize(), "ticks": str(ticks),
+            "tickrate": "100", "flags": "0", "node": "p27510", "rec": leaf,
+            "runid": runid},
+            environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
         clock.now += 1
         return j["rep"], path
 
@@ -438,7 +441,7 @@ def review_section(pw_hash, pw):
           c.get("/admin/api/run/999999").status_code, 404)
     shown = detail(pat)["run"]["submitted"]       # the page loads...
     clock.now += 60
-    submit("pat", 4600)                           # exact tie: same row, new bytes
+    submit("pat", 4600, write=True)               # exact tie: same row, new file
     d = detail(pat)
     check("after an exact-tie resubmission the old PASS is not current",
           [v["current"] for v in d["verdicts"]], [False])
@@ -455,7 +458,7 @@ def review_section(pw_hash, pw):
     j = act(pat, "approve")
     check("control: from a reloaded page -> ok, verified",
           (j["code"], detail(pat)["public"]), (200, "verified"))
-    submit("pat", 4600)                           # a tie in the approval's own second
+    submit("pat", 4600, write=True)               # a tie in the approval's own second
     check("a tie in the same second as the approval lapses it",
           (detail(pat)["review"]["current"], board()["pat"]["ver"]), (False, 0))
 
