@@ -45,10 +45,11 @@
 const STATES = {{ states | tojson }};
 const LABEL = {queue: "Queue", hold: "Hold", pass: "Pass", refuse: "Refuse",
   error: "Error", pending: "Pending", approved: "Approved", rejected: "Rejected",
-  keys: "Key flags", all: "All"};
+  keys: "Key flags", stages: "Stage rows", all: "All"};
 const TITLE = {queue: "HOLD with no review", error: "the latest attempt printed no verdict",
   pending: "the next sweep verifies it (no verdict since the last submission or re-check, under the ERROR cap)",
-  keys: "first key wins: another key for the player, a key that first signed for someone else, or unsigned after signing (Patch 422)"};
+  keys: "first key wins: another key for the player, a key that first signed for someone else, or unsigned after signing (Patch 422)",
+  stages: "a stage row of this run that its recording did not post (Patch 425)"};
 const VERDICT_CLS = {PASS: "up", HOLD: "warn", ERROR: "down"};
 const DECISION_CLS = {approve: "up", reject: "down"};
 const PUBLIC_CLS = {verified: "up", hidden: "down"};
@@ -115,6 +116,7 @@ function runRow(r) {
   if (r.error) v.append(" ", pill("ERROR", VERDICT_CLS.ERROR));
   if (r.pending) v.append(" ", pill("pending", "info"));
   if (r.key_flag) v.append(" ", pill("key " + r.key_flag, r.key_flag === "rejected" ? "down" : "warn"));
+  if (r.stage_note) v.append(" ", pill("stage rows", "warn"));
   const d = el("td"); d.appendChild(pill(r.decision, DECISION_CLS[r.decision]));
   const p = el("td"); p.appendChild(pill(r.public, PUBLIC_CLS[r.public]));
   const s = el("td", r.standing ? "" : "muted",

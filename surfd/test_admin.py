@@ -158,7 +158,8 @@ REC = ("FTESURF-REC 9\nmap surf_kitsune\ntickrate 0.01\nmovetickrate 0.01\n"
 REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
                 "/admin/api/run/<int:rid>", "/admin/api/run/<int:rid>/path",
                 "/admin/api/review", "/admin/api/keydecision"}
-ROW_KEYS = {"id", "kind", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
+ROW_KEYS = {"id", "kind", "stage_note", "map", "map_dir", "track", "leg", "legdir",
+            "tier", "style",
             "name", "ms", "submitted", "checked", "recheck_at", "verdict",
             "error", "pending", "decision", "public", "standing",
             "key_pub", "key_decision", "key_flag", "first_pub", "first_rid",
@@ -297,7 +298,7 @@ def review_section(pw_hash, pw):
     check("counts per state",
           j["counts"], {"queue": 1, "hold": 1, "pass": 1, "refuse": 0, "error": 1,
                         "pending": 2, "approved": 0, "rejected": 0, "keys": 0,
-                        "all": 5})
+                        "stages": 0, "all": 5})
     check("row keys", set(j["rows"][0]), ROW_KEYS)
     check("the HOLD row", {k: j["rows"][0][k] for k in
                            ("verdict", "decision", "public", "standing", "legdir")},

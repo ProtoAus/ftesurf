@@ -368,9 +368,13 @@ def case_exclusion():
     submit(m, leg=2, ticks=500, runid="R4")
     check("E5 a slower time meanwhile takes the slot", stage(m), (500, "R4"))
     check("E5 clear: accepted", review(m, c, csrf, eid, "clear")[:2], (200, True))
-    check("E5 ...the better (parked) time is back, the slower one gone",
-          (stage(m), q(m, "SELECT COUNT(*) FROM runs WHERE leg = 2 AND player = 'kap'")),
-          ((454, R), [(1,)]))
+    check("E5 ...the better (parked) time is back, the slower one set aside",
+          (stage(m), q(m, "SELECT tier, ticks FROM runs WHERE leg = 2 AND player = 'kap'"
+                          " AND tier <> 'ranked'")),
+          ((454, R), [("ranked^" + R, 500)]))
+    review(m, c, csrf, eid, "reject")
+    check("E5 re-rejecting gives the set-aside time its slot back", stage(m), (500, "R4"))
+    review(m, c, csrf, eid, "clear")
 
     review(m, c, csrf, eid, "reject")
     submit(m, leg=2, ticks=400, runid="R5")
@@ -409,8 +413,9 @@ def case_run_reject_hides_stages():
     check("E5b control: an identical re-post leaves it hidden", stage(m), None)
     # The same run's evidence re-filed (the file changed) after the reject: it
     # lapses (reviews count only at or after `submitted`), so the time is back.
-    with sqlite3.connect(m.DB_PATH) as db:           # the reject was 10 s ago
+    with sqlite3.connect(m.DB_PATH) as db:  # filed, and rejected, 10 s ago
         db.execute("UPDATE reviews SET at = at - 10 WHERE replay_id = ?", (rid,))
+        db.execute("UPDATE replays SET submitted = submitted - 10 WHERE id = ?", (rid,))
     put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace(
         "end 8262", "end 4000") + "x 1\n")
     submit(m, ticks=4000, rec=lf)
@@ -424,6 +429,24 @@ def case_run_reject_hides_stages():
     check("E5b ...and the rejected run's stage time stays hidden",
           (stage(m), q(m, "SELECT tier FROM runs WHERE leg = 2 AND player = 'kap'")),
           (None, [("ranked@" + R,)]))
+    # A key holder then names R on a leaf with no file behind it, twice (the
+    # second is a re-post of a held leaf): a replay of R with no reject, but no
+    # new evidence of the run the reject stands on.
+    for _ in range(2):
+        submit(m, ticks=4001, rec=leaf(4001, "kap"), runid=R)
+    check("E5b ...a file-less leaf naming R does not bring it back",
+          (stage(m), q(m, "SELECT tier FROM runs WHERE leg = 2 AND player = 'kap'")),
+          (None, [("ranked@" + R,)]))
+
+    # A stale snapshot (the slot's row changed under it) moves nothing.
+    conn = m.connect()
+    snap = conn.execute("SELECT * FROM runs WHERE leg = 2 AND player = 'kap'").fetchone()
+    with conn:
+        conn.execute("UPDATE runs SET runid = 'Rother' WHERE leg = 2 AND player = 'kap'")
+        moved = m._stage_move(conn, snap, "ranked")
+    check("E5b _stage_move of a stale snapshot moves nothing",
+          (moved, q(m, "SELECT tier, runid FROM runs WHERE leg = 2 AND player = 'kap'")),
+          (0, [("ranked@" + R, "Rother")]))
 
 
 def case_recorded_stage_stands_in():

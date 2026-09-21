@@ -157,14 +157,12 @@ def abandoned_pass(row, verdict, reason):
 
 def stage_check(conn, row, verdict, reason):
     """(verdict, reason) with the stage rows of the replay's run checked against
-    the recording's `stagepost` records (Patch 425 review: pm_verify vouches for
-    the trajectory, never for a stage row's number).  A mismatch is HOLD."""
+    the recording's `stagepost` records (pm_verify vouches for the trajectory,
+    never for a stage row's number).  A mismatch is NOTED, never a verdict: a
+    stage row is anyone's to post with the key, and it must not be able to take
+    an honest recording's badge (Patch 425 review round 2)."""
     why = surfd.stage_binding(conn, row["id"], surfd.replay_file(row)[0])
-    if not why:
-        return verdict, reason
-    if verdict == "HOLD":
-        return "HOLD", "%s; %s" % (reason, why)
-    return "HOLD", "%s (pm_verify %s%s)" % (why, verdict, ": " + reason if reason else "")
+    return verdict, ("%s; %s" % (reason, why) if reason else why) if why else reason
 
 
 def parse(lines):

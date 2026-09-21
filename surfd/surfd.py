@@ -1923,7 +1923,9 @@ VER_SQL = """CASE WHEN r.replay_id > 0 AND EXISTS (
                AND w.decision = 'approve' AND w.at >= p.submitted)
       OR (SELECT v.verdict FROM verdicts v WHERE v.replay_id = p.id
            AND v.at >= p.submitted AND v.verdict <> 'ERROR'
-           ORDER BY v.id DESC LIMIT 1) = 'PASS'))
+           ORDER BY v.id DESC LIMIT 1) = 'PASS')
+      AND NOT EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id
+               AND w.decision = 'reject' AND w.at >= p.submitted))
   THEN 1 ELSE 0 END"""
 
 # True when replays row `p` carries a current reject.
@@ -2068,30 +2070,36 @@ def restand(db, rid):
 # stage row (leg > 0, no recording of its own) of run R is parked in tier
 # "<tier>@<R's runid>", which no board query reads (every one filters tier),
 # while a reject on any replay of R is current, and restored when none is.  A
-# stage row has no history to re-derive from, so parking keeps it; the player's
-# next time meanwhile takes the live slot, and on restore the better one stays.
-# Only a lapse on a replay that still names R restores R's rows: a leaf re-filed
-# by another run (an exact tie) leaves them hidden (Patch 425 review).
+# stage row has no history to re-derive from, so nothing is deleted that is not
+# beaten: the player's next time takes the live slot meanwhile, and a restore
+# sets it aside as "<tier>^<R>" (superseded by R) until R is parked again.  Only
+# a lapse on a replay that still names R restores R's rows: a leaf re-filed by
+# another run (an exact tie) leaves them hidden.
+def _stage_slot(db, row, tier):
+    return db.execute("SELECT * FROM runs WHERE map=? AND track=? AND leg=?"
+                      " AND tier=? AND style=? AND player=?",
+                      (row["map"], row["track"], row["leg"], tier, row["style"],
+                       row["player"])).fetchone()
+
+
 def _stage_move(db, row, tier):
-    """Move runs row `row` to `tier`.  A row already holding that slot stays
-    only if it is better (BOARD_ORDER); the loser is deleted.  -> 1 if moved."""
+    """Move runs row `row` (a snapshot; still its runid) to `tier`.  A row
+    already holding that slot stays only if it is better (BOARD_ORDER); the
+    loser is deleted.  -> 1 if moved."""
     key = (row["map"], row["track"], row["leg"])
     who = (row["style"], row["player"])
-    have = db.execute("SELECT millis, submitted FROM runs WHERE map=? AND track=?"
-                      " AND leg=? AND tier=? AND style=? AND player=?",
-                      key + (tier,) + who).fetchone()
+    have = _stage_slot(db, row, tier)
     if have is not None:
         if (have["millis"], have["submitted"]) <= (row["millis"], row["submitted"]):
             db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
-                       " AND tier=? AND style=? AND player=?",
-                       key + (row["tier"],) + who)
+                       " AND tier=? AND style=? AND player=? AND runid=?",
+                       key + (row["tier"],) + who + (row["runid"],))
             return 0
         db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
                    " AND tier=? AND style=? AND player=?", key + (tier,) + who)
-    db.execute("UPDATE runs SET tier = ? WHERE map=? AND track=? AND leg=?"
-               " AND tier=? AND style=? AND player=?",
-               (tier,) + key + (row["tier"],) + who)
-    return 1
+    return db.execute("UPDATE runs SET tier = ? WHERE map=? AND track=? AND leg=?"
+                      " AND tier=? AND style=? AND player=? AND runid=?",
+                      (tier,) + key + (row["tier"],) + who + (row["runid"],)).rowcount
 
 
 def _stage_run(db, rid):
@@ -2103,32 +2111,44 @@ def _stage_run(db, rid):
     return tuple(rep)
 
 
+def _run_rejected(db, run):
+    return db.execute("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ?"
+                      " AND p.player = ? AND p.runid = ? AND " + _REJECTED_SQL,
+                      run).fetchone() is not None
+
+
 def restage(db, rid):
     """Park or restore the stage rows of replay `rid`'s run, to match whether a
     reject on any replay of that run is current.  The caller's transaction.
-    -> (parked, restored).  A parked slot is re-derived from the player's
-    recorded runs of that leg, if any (restand's rule).
+    -> (parked, restored).  A parked slot takes back what R's restore set aside,
+    else the player's recorded runs of that leg (restand's rule).
 
-    Call it after anything that changes that: a review, or submit_run re-filing
-    a held leaf."""
+    Call it after anything that changes that: a review, or submit_run filing
+    new evidence of the same run."""
     run = _stage_run(db, rid)
     if run is None:
         return 0, 0
-    tag = "@" + run[3]
+    tag, sup = "@" + run[3], "^" + run[3]
     parked = restored = 0
-    if db.execute("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ?"
-                  " AND p.player = ? AND p.runid = ? AND " + _REJECTED_SQL,
-                  run).fetchone() is not None:
+    if _run_rejected(db, run):
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND leg > 0"
                 " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
                 run + TIERS).fetchall():
-            if _stage_move(db, row, row["tier"] + tag):
-                parked += 1
+            base = row["tier"]
+            if not _stage_move(db, row, base + tag):
+                continue
+            parked += 1
+            back = _stage_slot(db, row, base + sup)
+            if back is not None:
+                other = (back["map"], back["track"], back["player"], back["runid"])
+                _stage_move(db, back, base + ("@" + back["runid"]
+                                              if _run_rejected(db, other) else ""))
+            if _stage_slot(db, row, base) is None:
                 rec = db.execute(
                     "SELECT id FROM replays WHERE map=? AND track=? AND leg=?"
                     " AND tier=? AND style=? AND player=? AND kind = 'run' LIMIT 1",
-                    (row["map"], row["track"], row["leg"], row["tier"],
+                    (row["map"], row["track"], row["leg"], base,
                      row["style"], row["player"])).fetchone()
                 if rec is not None:
                     restand(db, rec["id"])
@@ -2137,16 +2157,23 @@ def restage(db, rid):
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND player = ?"
                 " AND runid = ? AND tier IN (?, ?)",
                 run + tuple(t + tag for t in TIERS)).fetchall():
-            restored += _stage_move(db, row, row["tier"][:-len(tag)])
+            base = row["tier"][:-len(tag)]
+            live = _stage_slot(db, row, base)
+            if live is not None and ((live["millis"], live["submitted"])
+                                     > (row["millis"], row["submitted"])):
+                _stage_move(db, live, base + sup)
+            restored += _stage_move(db, row, base)
     return parked, restored
 
 
 def restage_rejected(conn):
     """Park the stage rows of every run a current reject stands on: the rejects
-    from before Patch 425, and anything posted since.  Never restores.
-    -> rows parked."""
+    from before Patch 425, and anything posted since.  Never restores.  Under
+    the write lock, as the admin and submit paths are.  -> rows parked."""
     n = 0
     with conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         for r in conn.execute("SELECT p.id FROM replays p WHERE p.runid NOT IN"
                               " ('', '-') AND " + _REJECTED_SQL).fetchall():
             n += restage(conn, r["id"])[0]
@@ -2186,22 +2213,25 @@ def _stageposts(path):
 
 def stage_binding(db, rid, path):
     """"" when every stage row of replay `rid`'s run matches a `stagepost` in its
-    recording, else why not.  "" also when that cannot be measured: no runid, an
+    recording (ticks, and the tickrate its time is computed at), else why not.  "" also when that cannot be measured: no runid, an
     unreadable file, or a file that posts none (a recorder before Patch 360).
     A PASS alone vouches for the trajectory, never for a stage row's number."""
     run = _stage_run(db, rid)
     if run is None or not path:
         return ""
-    rows = db.execute("SELECT leg, ticks FROM runs WHERE map = ? AND track = ?"
-                      " AND leg > 0 AND replay_id = 0 AND player = ? AND runid = ?"
-                      " ORDER BY leg", run).fetchall()
+    rows = db.execute("SELECT leg, ticks, tickrate FROM runs WHERE map = ?"
+                      " AND track = ? AND leg > 0 AND replay_id = 0 AND player = ?"
+                      " AND runid = ? ORDER BY leg", run).fetchall()
     if not rows:
         return ""
     posts = _stageposts(path)
     if not posts:
         return ""
-    bad = ["leg %d %d ticks" % (r["leg"], r["ticks"]) for r in rows
-           if (r["leg"], r["ticks"]) not in posts]
+    meta = _rec_meta(path)
+    hdr = meta[0] if meta else {}
+    bad = ["leg %d %d ticks at %g/s" % (r["leg"], r["ticks"], r["tickrate"])
+           for r in rows if (r["leg"], r["ticks"]) not in posts
+           or _rec_tickrate_disagrees(hdr, r["tickrate"])]
     return ("stage rows not posted in this recording: " + ", ".join(bad[:6])
             if bad else "")
 
@@ -2471,7 +2501,7 @@ def submit_run():
             have = None
             if leaf:
                 have = db.execute(
-                    "SELECT id, player FROM replays"
+                    "SELECT id, player, runid, submitted FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
@@ -2499,12 +2529,17 @@ def submit_run():
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
-                            tier      = excluded.tier,
+                            tier      = CASE WHEN replays.player = excluded.player
+                                             AND replays.runid  = excluded.runid
+                                             AND replays.ticks  = excluded.ticks
+                                             AND replays.bytes  = excluded.bytes
+                                        THEN replays.tier ELSE excluded.tier END,
                             style     = excluded.style,
                             player    = excluded.player,
-                            -- Patch 424: the name it was first filed under,
-                            -- so a re-post of the same evidence cannot
-                            -- relabel it (the `owner` check did that).
+                            -- Patch 424: the name and board it was first
+                            -- filed under, so a re-post of the same evidence
+                            -- cannot relabel or move it (the `owner` check
+                            -- did the first).
                             name      = CASE WHEN replays.player = excluded.player
                                              AND replays.runid  = excluded.runid
                                              AND replays.ticks  = excluded.ticks
@@ -2549,14 +2584,16 @@ def submit_run():
                          player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-"),
                     )
-                    rid, name = db.execute(
-                        "SELECT id, name FROM replays"
+                    rid, name, tier, moved = db.execute(
+                        "SELECT id, name, tier, submitted FROM replays"
                         " WHERE map=? AND track=? AND leg=? AND leaf=?",
                         (mapname, track, leg, leaf),
                     ).fetchone()
-                    # The board row wears the replay's name (above), and a
-                    # re-filed leaf may lapse a reject on this run.
-                    if have is not None:
+                    # The board row wears the replay's name and board (above).
+                    # New evidence of the SAME run lapses a reject on it; a
+                    # leaf re-filed by another run leaves the old run's alone.
+                    if (have is not None and moved != have["submitted"]
+                            and have["runid"] == (runid or "-")):
                         restage(db, rid)
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
@@ -2573,6 +2610,17 @@ def submit_run():
                 """,
                 (mapname, track, leg, tier, style, player),
             ).fetchone()
+
+            # A rejected recording never takes a board row back: a re-post of
+            # it (a key holder's) is filed and answered, not stood.
+            if rid and db.execute("SELECT 1 FROM replays p WHERE p.id = ? AND "
+                                  + _REJECTED_SQL, (rid,)).fetchone():
+                log.warning("run from %s names rejected replay %d; not stood",
+                            src, rid)
+                best = prev["millis"] if prev is not None else 0
+                return jsonify({"ok": True, "stored": False, "best": best,
+                                "rank": 0, "of": 0, "rep": rid, "tier": tier,
+                                "prevms": best})
 
             if prev is None:
                 if leg == 0:
@@ -2828,11 +2876,11 @@ def _rec_tickrate_disagrees(hdr, tickrate):
     if period <= 0:
         return ""
     want = 1.0 / period
-    # %g keeps six significant digits of the period (<= 5e-6 relative) and the
-    # lobby sends %.4f of the rate; the live corpus's worst is 5e-7.  The old
-    # bound, max(0.5 Hz, 0.1%), let a re-post shave 0.75% off a verified time
-    # and keep the badge (Patch 424 review).
-    if abs(want - tickrate) > want * 2e-5:
+    # The lobby sends %.4f of the rate and %g keeps six significant digits of
+    # the period: 3.3e-5 Hz on the live corpus, <= 2e-4 for 60/75/90/144/240 Hz.
+    # max(0.5 Hz, 0.1%) let a re-post shave 0.75% off a verified time and keep
+    # the badge; 2e-5 relative still 2 ms of a 120 s run (Patch 424 reviews).
+    if abs(want - tickrate) > 0.0003:
         return "tickrate %s (= %.4f/s) != %.4f/s" % (raw, want, tickrate)
     return ""
 

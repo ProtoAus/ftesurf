@@ -1720,6 +1720,37 @@ new = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
              rec=alice_leaf, runid="r1")
 check("(i) a board row a re-post creates wears the replay's name",
       (new.get("rep"), rows_by_player(m)["alice"]["name"]), (arep, "Alice"))
+clock.now += 10
+cmty = submit(m, player="alice", name="Alice", ticks=700, tickrate=100,
+              rec=alice_leaf, runid="r1", tier="community")
+check("(i) a re-post asking for another tier keeps the replay's board",
+      (q(m, "SELECT tier FROM replays WHERE id=?", (arep,)),
+       sorted(rows_by_player(m, tier="community"))), ([("ranked",)], []))
+clock.now += 10
+fifth = submit(m, player="rena", name="Rena", ticks=640, tickrate=66.6679,
+               rec=rleaf3, runid="rr3")
+check("(i) 66.6679/s against a 0.015 period (1.2 mHz off) is refused",
+      fifth.get("rep"), 0)
+
+# A rejected recording never takes a board row back, and never wears the badge.
+clock.now += 10
+review(m, arep, "reject", int(clock.now))
+check("(j) control: the reject took alice's row off the board",
+      "alice" in rows_by_player(m), False)
+clock.now += 10
+back = submit(m, player="alice", name="Alice", ticks=700, tickrate=100,
+              rec=alice_leaf, runid="r1")
+check("(j) an identical re-post of a rejected replay is not stood",
+      (back.get("stored"), "alice" in rows_by_player(m)), (False, False))
+db = sqlite3.connect(m._test_db)
+db.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+           " tickrate, millis, flags, node, runid, submitted, replay_id)"
+           " VALUES ('surf_test', 0, 0, 'ranked', 'clean', 'alice', 'Alice', 700,"
+           " 100, 7000, 0, 'p1', 'r1', ?, ?)", (int(clock.now), arep))
+db.commit()
+db.close()
+check("(j) a board row that names a rejected replay wears no badge (VER_SQL)",
+      rows_by_player(m)["alice"]["ver"], 0)
 
 # The header's map is the name as loaded, the board key is lowercased: until
 # 424 the compare was exact and every leaf on a map with capitals dropped.

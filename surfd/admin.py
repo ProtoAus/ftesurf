@@ -300,6 +300,8 @@ def _runs_base(keys):
 SELECT p.id, p.kind, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
        p.millis AS ms, p.submitted, p.checked, p.recheck_at, v.verdict,
        COALESCE(e.verdict = 'ERROR', 0) AS error,
+       COALESCE(v.reason LIKE '%stage rows not posted in this recording%', 0)
+           AS stage_note,
        p.checked = 0 AND """ + _ERRORS_SQL + """ < ? AS pending,
        CASE WHEN w.at >= p.submitted THEN w.decision END AS decision,
        CASE WHEN p.kind = 'run'
@@ -331,6 +333,7 @@ RUN_STATES = {
     "approved": "x.decision = 'approve'",
     "rejected": "x.decision = 'reject'",
     "keys": "x.key_flag <> ''",
+    "stages": "x.stage_note",
     "all": "1",
 }
 
@@ -1413,7 +1416,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
 
         def run_row(row):
             out = dict(row)
-            for k in ("standing", "error", "pending"):
+            for k in ("standing", "error", "pending", "stage_note"):
                 out[k] = bool(out[k])
             out["legdir"] = leg_dir(row["track"], row["leg"])
             out["public"] = public_state(row["verdict"], row["decision"])

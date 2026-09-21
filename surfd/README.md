@@ -634,9 +634,11 @@ those on an abandoned file as PASS at the abandon tick.
 
 pm_verify vouches for the trajectory, never for a stage row's number, so every
 verdict (run or evidence) also checks the stage rows of that run against the
-recording's `stagepost <seg> <dur>` records (leg = seg + 1): one it did not post
-makes the verdict HOLD. A recording that posts none (before Patch 360) cannot
-be checked and is not held for it.
+recording's `stagepost <seg> <dur>` records (leg = seg + 1) and its tickrate: a
+row it did not post is NOTED in the verdict's reason ("Stage rows" in the
+admin list), never a verdict of its own -- a stage row is anyone's to post with
+the key, and must not take an honest recording's badge. A recording that posts
+none (before Patch 360) cannot be checked.
 
 The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
 the kept file byte-exact, like any other replay. The log line gains
@@ -696,9 +698,12 @@ non-rejected replay, so public reads need no hidden filter, and `restage()`:
 while a reject on any replay of a run is current, the run's stage rows (leg > 0,
 rep 0, same runid/map/track/player) are parked in tier `<tier>@<runid>`, which
 no board reads; when none is, they are restored -- the better of a parked and a
-live row keeps the slot, and a parked slot is re-derived from the player's
-recorded runs of that leg. A leaf re-filed by another run (an exact tie) leaves
-the old run's rows hidden. A review counts only
+live row keeps the slot, the other set aside as `<tier>^<runid>` until the run
+is parked again; a parked slot is also re-derived from the player's recorded
+runs of that leg. Only new evidence of the same run (or an admin action)
+restores: a leaf re-filed by another run (an exact tie) leaves the old run's
+rows hidden. A rejected replay never takes a board row back from a re-post and
+never wears the badge (VER_SQL). A review counts only
 while it is at or after the replay's `submitted`; the page posts the
 `submitted` it showed, and a replay resubmitted since answers 409 ("the run
 changed -- reload").
