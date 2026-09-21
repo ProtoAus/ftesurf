@@ -14,7 +14,16 @@ makes every JOIN it can against the rest of the evidence: the .rec header this
 receipt names (by runid), the two tick counts, the server it was signed on, and
 THE UPLOADED FILES SITTING BESIDE IT, which it hashes and holds against the
 digests that were signed.  That last one is the point of the exercise: it is
-how "what arrived is what was committed to" stops being a claim. It does not
+how "what arrived is what was committed to" stops being a claim.
+
+AND THEN A THIRD QUESTION, WHICH THE FIRST TWO DO NOT REACH.  A valid signature
+says a key made the statement.  A matching digest says the file beside it is the
+file the statement was about.  Neither says the file has anything to do with the
+run: a sidecar from a different run hashes perfectly well.  So the angles in the
+.view are held against the angles in the .rec (reccheck.angle_join), which is
+the failure Patch 418's review found live -- one run's journal filed beside
+another run's angles -- and which is present twice in this tree's own corpus on
+recordings nobody ever signed.  It does not
 decide anything about a player.  A valid signature means the holder of that key
 made that statement; it does not mean the statement is true, and no threat class
 above a casual one is touched by it.  That sentence is in the engine source too.
@@ -55,6 +64,7 @@ class Receipt(object):
         self.first = ""             # the version line, verbatim
         self.msg = b""
         self.ok = None
+        self.recpath = None         # the .rec join_rec found, for join_angles
 
     def fault(self, m):
         self.faults.append(m)
@@ -180,6 +190,7 @@ def join_rec(r):
         if head.get("runid") != runid:
             continue
         r.note("joined %s" % os.path.relpath(path, GAME))
+        r.recpath = path
         want = signed_get(r, "nonce")
 
         # A FILE CAN STATE MORE THAN ONE NONCE AND THE RECEIPT SIGNS THE LAST.
@@ -321,6 +332,46 @@ def join_uploaded(r, want):
         check_file(r, key, path, sibling=True)
 
 
+def join_angles(r, want):
+    """Does the .view the digest names describe the .rec the runid names?
+
+    IMPORTED LAZILY AND WRAPPED, because this is the one check here that depends
+    on another tool: reccheck owns both grammars and re-parsing them in this
+    file would give the tree a second reader to keep in step.  A receipt whose
+    angles could not be checked still reports everything else it knows -- the
+    alternative is a verifier that returns nothing about a file because one of
+    its five questions could not be asked.
+    """
+    if not r.recpath:
+        return
+    view = want.get("view") or (os.path.splitext(r.path)[0] + ".view")
+    if not os.path.exists(view):
+        return
+    try:
+        import reccheck
+        rec = reccheck.check_rec(r.recpath)
+        v = reccheck.check_view(view, rec)
+    except Exception as exc:
+        r.note("the angle cross-check did not run (%r)" % exc)
+        return
+
+    off = v.info.get("angle_off")
+    if off is None:
+        r.note("the recording carries no angle stream to check the sidecar against")
+        return
+    bad = [m for m in v.faults if "does not describe this recording" in m]
+    if bad:
+        # SAID IN FULL, because the three facts TOGETHER are the finding and any
+        # one of them alone reads as something milder.
+        r.fault("the signature is over this .view, the .view hashes to the "
+                "digest that was signed, AND the .view does not describe this "
+                "recording: %s" % bad[0].split(": ", 1)[-1])
+    elif off.startswith("BLIND"):
+        r.note("angles: %s" % off)
+    else:
+        r.note("the sidecar's angles are the recording's angles -- %s" % off)
+
+
 def check_file(r, key, path, sibling=False):
     """Hash a file the caller points at and hold it against what was signed.
 
@@ -451,6 +502,10 @@ def main(argv):
             if key != "server":
                 check_file(r, key, path)
         join_uploaded(r, want)
+        # AFTER join_uploaded, not before: "this file matches the digest and
+        # still is not this run" is a different sentence from "some file here
+        # is not this run", and the order is what makes the first one sayable.
+        join_angles(r, want)
         report(r, verbose)
         if r.faults:
             bad += 1

@@ -57,13 +57,15 @@ TICK = 0.01
 HORIZON = 606           # run_movetick when the recording opened
 PAD = 4                 # pre-start padding samples, t < 0
 PACKETS = 40
+# One 16-bit wire quantum, the unit `sweep` counts in (protocol.h:1496).
+QUANTUM = 360.0 / 65536.0
 # v9: a pin with an exponent-form value, as %.9g prints one.
 PIN = "pmsrcver=1 gravity=800 maxspeed=320 ticrate=0.00999999978 bounce=1e-05"
 
 
 def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
           rides=(), inend=True, pmpin=True, seed=True, pms=(), pes=(),
-          portals=(), sessions=()):
+          portals=(), sessions=(), sweep=0.0, packets=None):
     """-> list of lines.  A finished, well-formed recording, v9 by default.
 
     BUILD 87 (v9): `pmpin`/`seed` default on (off below v9); a `warp` may carry a
@@ -133,14 +135,20 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
         L.append(sample(-(PAD - i) * TICK))
 
     mt, carry, n_in, n_sess = HORIZON, 0.003, 0, 0
-    for pk in range(PACKETS):
+    np_ = PACKETS if packets is None else packets
+    for pk in range(np_):
         if inputs:
+            # `sweep` turns the camera, in whole 16-bit quanta so the
+            # off-grid arm above stays clean: the angle cross-check divides by
+            # the tick's own sweep, so a fixture that never turns is BLIND and
+            # cannot tell a matching sidecar from any other.
+            yaw = 90.0 + n_in * sweep * QUANTUM
             if v9:
-                L.append("in %d %d %.9g 0 0 0 0.0000 90.0000 0.0000 0 0" %
-                         (pk, mt, carry))
+                L.append("in %d %d %.9g 0 0 0 0.0000 %.4f 0.0000 0 0" %
+                         (pk, mt, carry, yaw))
             else:
-                L.append("in %d %d %.5f 0 0 0 0.0000 90.0000 0.0000 0" %
-                         (pk, mt, carry))
+                L.append("in %d %d %.5f 0 0 0 0.0000 %.4f 0.0000 0" %
+                         (pk, mt, carry, yaw))
             n_in += 1
             carry += 0.016 - TICK * (2 if carry + 0.016 >= 2 * TICK else 1)
             mt += 2 if carry < 0.003 else 1
@@ -186,7 +194,7 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
     if ver >= 8 and inend and inputs:
         L.append(("inend %d %.9g" if v9 else "inend %d %.5f") % (mt, carry))
 
-    tail = [PACKETS, PAD + PACKETS, PAD, 0]
+    tail = [np_, PAD + np_, PAD, 0]
     if ver >= 6:
         tail.append(n_in)            # <inputs>, build 82
     if ver >= 7:
@@ -223,13 +231,47 @@ def bump_end(lines, field, delta=1):
     return lines
 
 
-def run(lines, name="t.rec"):
+def view_for(lines, rot=0.0, lo=0.0, hi=1.0):
+    """A sidecar that agrees with `lines`, optionally rotated over a window.
+
+    BUILT FROM THE RECORDING'S OWN ROWS, which is the only way an arm for this
+    check can be honest: the thing under test is whether the two files describe
+    one run, so the control has to be a sidecar that genuinely does.  Frames are
+    written at %.2f exactly as Rec_ViewSample does, so the residual the checker
+    sees here is the same print rounding it sees on a real pair.
+
+    ONE FRAME PER MOVE AND NOT MORE.  A real client renders several frames per
+    tick and the checker takes the best of them; one frame per tick is the
+    WORST case for it, so an arm that passes here passes on a real file.
+    """
+    rows = [l.split() for l in lines if l.startswith("in ")]
+    ticks = [int(f[2]) - HORIZON for f in rows]
+    # The trailer's tick count is the sidecar's ceiling: check_view faults a
+    # .view that runs past the recording, and that is a different finding.
+    end = [l.split() for l in lines if l.startswith("end ")]
+    top = int(end[0][1]) if end else max(ticks)
+    keep = [(tk, f) for tk, f in zip(ticks, rows) if 0 <= tk <= top]
+    out = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"]
+    n = len(keep)
+    for i, (tk, f) in enumerate(keep):
+        yaw = float(f[8])
+        if lo * n <= i < hi * n:
+            yaw = ((yaw + rot) + 180.0) % 360.0 - 180.0
+        out.append("%.4f %d %d %.2f %.2f 0"
+                   % (10.0 + tk * TICK, 1000 + tk, tk, float(f[7]), yaw))
+    return out
+
+
+def run(lines, name="t.rec", view=None):
     """-> (faults, notes) as reccheck.py reports them."""
     d = tempfile.mkdtemp(prefix="reccheck_t")
     try:
         p = os.path.join(d, name)
         with open(p, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
+        if view is not None:
+            with open(os.path.splitext(p)[0] + ".view", "w", encoding="utf-8") as f:
+                f.write("\n".join(view) + "\n")
         out = subprocess.run([sys.executable, RECCHECK, "-v", p],
                              capture_output=True, text=True).stdout
         faults = [l.strip()[2:] for l in out.splitlines()
@@ -1410,6 +1452,77 @@ def case_nonce_flag():
              "TF_NONCE in a v5 file is not checked against a key it cannot have")
 
 
+def case_angle_control():
+    """THE PAIR THAT MUST PASS.  Everything below is a mutation of this one, so
+    a fault here would make every arm under it unreadable."""
+    L = build(sweep=128)                # 0.70 deg a move, 28 deg over the run
+    f, n = run(L, view=view_for(L))
+    check(not f, "a sidecar built from the recording's own rows passes clean")
+    if f:
+        print("        %s" % f)
+    check(any("0.00% of joined moves" in x for x in n)
+          or not any("BLIND" in x for x in n),
+          "...and the check says it actually compared something")
+
+
+def case_angle_blind_is_said_out_loud():
+    """A FIXTURE THAT CANNOT FAIL MUST SAY SO.  build()'s default camera never
+    turns, and a still run agrees with every other still run to 0.003 deg --
+    three files in data/ are in exactly that state.  Reporting that as a pass
+    is how a check that discriminates nothing gets believed."""
+    L = build()                         # sweep 0: the camera is nailed down
+    f, n = run(L, view=view_for(L))
+    check(not f, "a still run with a matching sidecar is not a fault")
+    check(any("could not discriminate" in x for x in n),
+          "...and the checker says the comparison was blind, not that it passed")
+    if not any("could not discriminate" in x for x in n):
+        print("        notes=%s" % n)
+
+
+def case_angle_rotated():
+    """The whole sidecar turned. 5 deg against a 0.70 deg/move sweep is 7x the
+    tick's own travel; 2 deg would be under the cut and is not claimed."""
+    L = build(sweep=128)
+    f, _ = run(L, view=view_for(L, rot=5.0))
+    check(any("does not describe this recording" in x for x in f),
+          "a sidecar rotated 5 deg is caught")
+    if not any("does not describe this recording" in x for x in f):
+        print("        got: %s" % (f or "NO FAULT"))
+
+
+def case_angle_small_rotation_is_not_claimed():
+    """AND THE HOLE, STATED AS AN ARM.  The statistic is normalised by the
+    tick's sweep, so a lie smaller than it is invisible.  Written down as a
+    passing test rather than a sentence in a comment, so that a later change
+    that closes it fails here and has to say so."""
+    L = build(sweep=128)
+    f, _ = run(L, view=view_for(L, rot=0.5))
+    check(not any("does not describe this recording" in x for x in f),
+          "a 0.5 deg rotation is NOT caught -- this check finds a wrong file, "
+          "not a small lie")
+
+
+def case_angle_splice():
+    """A CONTIGUOUS BLOCK FROM SOMEWHERE ELSE, which the fraction rule alone
+    misses: --tamper-view put a tenth of surf_kitsune 90 deg out and scored
+    9.98%, under a 10% cut.  The run-length rule is what catches it."""
+    L = build(sweep=128, packets=900)
+    f, _ = run(L, view=view_for(L, rot=90.0, lo=0.3, hi=0.75))
+    check(any("does not match its sidecar" in x or
+              "does not describe this recording" in x for x in f),
+          "a spliced stretch is caught")
+    if not f:
+        print("        NO FAULT")
+
+
+def case_angle_no_sidecar_is_silent():
+    """A .rec with no .view beside it must say nothing about angles at all."""
+    L = build(sweep=128)
+    f, n = run(L)
+    check(not f and not any("angle" in x for x in n),
+          "a recording with no sidecar draws no angle finding")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -1446,7 +1559,10 @@ def main():
                case_spec_nothing_inside, case_spec_edges_agree,
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
-               case_nonce_header, case_nonce_record, case_nonce_flag):
+               case_nonce_header, case_nonce_record, case_nonce_flag,
+               case_angle_control, case_angle_blind_is_said_out_loud,
+               case_angle_rotated, case_angle_small_rotation_is_not_claimed,
+               case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):
             continue

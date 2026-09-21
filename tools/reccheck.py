@@ -47,6 +47,7 @@ Usage:
 """
 
 import argparse
+import array
 import glob
 import math
 import os
@@ -435,6 +436,9 @@ class Report:
         self.faults = []
         self.notes = []
         self.info = {}
+        # The angle stream: (ticks, yaw, pitch, instart, source) or None.  Only
+        # check_rec fills it, and only angle_join reads it.
+        self.angles = None
 
     def fault(self, msg):
         self.faults.append(msg)
@@ -854,6 +858,15 @@ def check_rec(path, verbose=False):
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
+    # The angle stream the sidecar is held against.  ARRAYS, per the
+    # warning on the `in` branch below: three of them cost 12 bytes a row where
+    # a list of tuples costs about 80.  They are still the small half -- the
+    # `samples` list beside them holds every sample's whole float list -- but
+    # the cheap structure is the one to pick when the expensive one is already
+    # there.
+    ang_mt = array.array("i")
+    ang_yaw = array.array("f")
+    ang_pit = array.array("f")
     seeds = []              # (lineno, args) -- v9
     zseeds = []             # (lineno, args, rows so far) -- v9, build 88
     pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
@@ -993,6 +1006,9 @@ def check_rec(path, verbose=False):
                 continue
 
             inrows += 1
+            ang_mt.append(mt)
+            ang_pit.append(ang[0])
+            ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
@@ -2421,8 +2437,177 @@ def check_rec(path, verbose=False):
             elif rate < nominal * 0.5:
                 r.note("sample rate %.1f/s is well under the tick rate %.1f/s "
                        "-- heavy packet loss, or a stall" % (rate, nominal))
+    # ---- the angle stream, for the .view join --------------------------
+    #
+    # `in` rows when the file has them: <mt> is an exact tick where a sample's
+    # has to come back through t/tickrate, and there are more of them.  Below v9
+    # BOTH columns are .v_angle, which SV_RunCmd leaves stale while fixangle is
+    # set -- measured on ahop_coast's saves as 21 rows of 1725, the recording
+    # pinned at yaw 109.2 for three seconds while the sidecar swept through it.
+    # That is a burst, and ANG_HOLD is set an order of magnitude above it.
+    if len(ang_mt):
+        r.angles = (ang_mt, ang_yaw, ang_pit, in_start or 0,
+                    "in rows" if ver >= 9 else "in rows (.v_angle, pre-v9)")
+    elif samples:
+        mts = array.array("i")
+        yaw = array.array("f")
+        pit = array.array("f")
+        for st, sv in samples:
+            if st < 0:
+                continue        # the pre-start padding has no run tick
+            mts.append(int(round(st / tickrate)))
+            pit.append(sv[7])
+            yaw.append(sv[8])
+        if len(mts):
+            r.angles = (mts, yaw, pit, 0, "samples (.v_angle)")
+
     r.info["span"] = (samples[0][0], samples[-1][0])
     return r
+
+
+# ---------------------------------------------------------------------------
+#  THE SIDECAR AGAINST THE RECORDING (2026-09-21)
+#
+#  Both files claim to describe one run and nothing checked that they did.  The
+#  .rec holds the angles the MOVER was handed; the .view holds the angles the
+#  screen was DRAWN at.  On an honest run the first is a resampling of the
+#  second, so a move's angle has to sit within a fraction of one tick's sweep of
+#  a frame rendered at that tick.
+#
+#  THE STATISTIC IS NORMALISED BY THAT SWEEP, because the raw residual is not a
+#  constant: measured across the corpus it is 0.003 deg while the view is still
+#  -- the 16-bit wire quantum (0.0055) plus the sidecar's own %.2f -- and rises
+#  in proportion to how fast the camera is turning, because the usercmd is
+#  sampled between two frames and not at one.  Banded on surf_kitsune: still
+#  p99 0.013, slow 0.16, fast 0.62, flick 1.71.  Divided by the tick's own
+#  sweep those collapse to one number, p99 0.21 on every honest run measured.
+#
+#  THE THRESHOLDS ARE THE CORPUS, not a choice.  339 .rec/.view pairs on this
+#  disk, 2026-09-21: 337 of them put at most 1.22% of joined moves past a
+#  normalised 3.0, and the two that do not put 82.8% and 98.8% there.  A cut at
+#  10% sits eight times above the worst honest file and eight times below the
+#  better of the two bad ones.  (Both bad ones are real and predate this check:
+#  surf_garden/main/cheat and surf_demise/main/cheat carry a sidecar that does
+#  not describe their recording.)
+#
+#  WHAT IT IS NOT.  A .view is written by the client, so this cannot be evidence
+#  against somebody who edits one -- Patch 417's receipt commits to the file's
+#  digest, and the key is the player's own.  What it does prove is that a
+#  sidecar and a recording belong to the same run, which is the failure Patch
+#  418's review found live (run A's journal beside run B's angles), and it does
+#  it without trusting either file's name.
+# ---------------------------------------------------------------------------
+
+# Degrees of combined travel below which the check cannot discriminate: a run
+# whose camera never swept agrees with every other such run to 0.003 deg.  14 of
+# the 339 pairs are in that state.
+ANG_BLIND = 10.0
+ANG_CUT = 3.0            # normalised residual; the worst honest row reaches 1.24
+ANG_HOLD = 5.0           # per cent of joined moves past ANG_CUT that is a fault
+
+# AND A SECOND RULE, BECAUSE A FRACTION CANNOT SEE A SPLICE.  --tamper-view put
+# a tenth of surf_kitsune's sidecar 90 degrees out and the fraction came to
+# 9.98%, which slipped under a 10% cut by two hundredths of a point.  A splice
+# is CONSECUTIVE where an honest disagreement is scattered: measured over the
+# same 339 pairs the longest honest run of past-cut moves is 122 (surf_4am's
+# sample join, a pre-v9 .v_angle burst) and the next worst is 20, while a 2%
+# splice already makes 199 and a 5% one 498.  250 is twice the honest maximum
+# and catches a spliced segment from about 2.5% of a run upward.
+ANG_RUN = 250
+
+
+def angdelta(a, b):
+    """Shortest signed distance between two angles, as a magnitude."""
+    return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+def angle_join(r, rec, frames):
+    """Hold the .view's frames against the .rec's angle stream.  Fills r.info."""
+    series = getattr(rec, "angles", None)
+    if not series:
+        return
+    mts, yaws, pits, instart, source = series
+
+    # BY TICK AND NOT BY ORDER.  An index join drifts permanently at the first
+    # split move -- surf_trance has three of them, and pairing the k-th row with
+    # the k-th frame group took its p99 from 0.64 deg to 18.2.  The tick is the
+    # one column both files carry, and a join on it resynchronises.
+    byt = {}
+    for f in frames:
+        byt.setdefault(int(f[2]), []).append(f)
+
+    joined = uncovered = past = 0
+    stretch = longest = 0
+    worst = 0.0
+    travel = 0.0
+    devs = []
+    py = pp = None
+    for i in range(len(mts)):
+        y, p = yaws[i], pits[i]
+        sy = 0.0 if py is None else angdelta(y, py)
+        sp = 0.0 if pp is None else angdelta(p, pp)
+        py, pp = y, p
+        travel += sy + sp
+        g = byt.get(mts[i] - instart)
+        if not g:
+            # NORMAL, NOT A FINDING: the sidecar is one line per RENDERED frame,
+            # so a client drawing below the tick rate leaves ticks with no frame
+            # at all.  bhop_eazy/main/cheat has 545 frames against 814 moves.
+            uncovered += 1
+            continue
+        joined += 1
+        dy = min(angdelta(y, f[4]) for f in g)
+        dp = min(angdelta(p, f[3]) for f in g)
+        # The floor keeps a still camera from dividing 0.003 by 0.0001.
+        n = max(dy / max(sy, 1.0), dp / max(sp, 1.0))
+        devs.append(max(dy, dp))
+        worst = max(worst, n)
+        if n > ANG_CUT:
+            past += 1
+            stretch += 1
+            longest = max(longest, stretch)
+        else:
+            stretch = 0
+    if not joined:
+        r.note("no frame shares a tick with any move in the recording -- "
+               "nothing to compare")
+        return
+
+    devs.sort()
+    frac = 100.0 * past / joined
+    r.info["angle_source"] = "%s, %d moves" % (source, len(mts))
+    r.info["angle_joined"] = ("%d of %d moves had a frame at their tick (%d did not)"
+                              % (joined, len(mts), uncovered))
+    r.info["angle_dev"] = ("p50 %.3f p99 %.3f max %.3f deg"
+                           % (devs[len(devs) // 2],
+                              devs[min(len(devs) - 1, int(0.99 * len(devs)))],
+                              devs[-1]))
+    if travel < ANG_BLIND:
+        # SAID AS LOUDLY AS A FAULT WOULD BE.  An arm that passes because its
+        # condition never occurred proves nothing, and on these files it is the
+        # whole verdict: p416_S, p417/s and p385/s all agree to 0.003 deg with
+        # each other's sidecars.
+        r.info["angle_off"] = ("BLIND -- the camera swept %.1f deg in this run, "
+                               "so no sidecar could have disagreed" % travel)
+        r.note("the angle cross-check could not discriminate: %.1f deg of total "
+               "sweep, under the %g needed" % (travel, ANG_BLIND))
+        return
+    r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep, "
+                           "longest run %d (worst %.1fx, %.0f deg swept)"
+                           % (frac, ANG_CUT, longest, worst, travel))
+    if frac > ANG_HOLD:
+        r.fault("the sidecar does not describe this recording: %.1f%% of %d "
+                "joined moves are past %gx the tick's own sweep, against at "
+                "most 1.22%% on every honest pair measured -- the two files "
+                "name one run and hold two" % (frac, joined, ANG_CUT))
+    elif longest > ANG_RUN:
+        # SEPARATE SENTENCE, SEPARATE FINDING.  This one says the disagreement
+        # is a CONTIGUOUS BLOCK, which a whole-file mismatch and an honest
+        # fixangle burst are both not; it is the shape a spliced segment has.
+        r.fault("a stretch of this recording does not match its sidecar: %d "
+                "consecutive joined moves past %gx the tick's own sweep "
+                "(%.2f%% of the run overall), against a longest honest run of "
+                "122 across the corpus" % (longest, ANG_CUT, frac))
 
 
 def check_view(path, rec_report=None):
@@ -2569,7 +2754,88 @@ def check_view(path, rec_report=None):
         if vmax > rec_report.info["ticks"]:
             r.fault("sidecar reaches tick %g, the recording ends at %d"
                     % (vmax, rec_report.info["ticks"]))
+    if rec_report is not None:
+        angle_join(r, rec_report, frames)
     return r
+
+
+def tamper_view(path):
+    """THE NEGATIVE CONTROL, and the honest statement of what this check misses.
+
+    A checker that never fires passes every clean pair in the corpus, so the
+    question is not "does it pass?" but "what does it take to make it fail?".
+    This rotates a real sidecar by a known amount and reports the verdict at
+    each, which turns ANG_CUT from a number somebody picked into a sensitivity
+    anybody can re-measure.
+
+    IT ALSO SHOWS THE HOLE.  The statistic is normalised by the tick's own
+    sweep, so a lie told DURING A FLICK is divided by a large number: at 13
+    deg/tick a two-degree nudge is 0.15x and invisible.  This check finds a
+    sidecar that belongs to another run.  It does not find a small one.
+    """
+    rec = check_rec(path)
+    view = os.path.splitext(path)[0] + ".view"
+    if not os.path.exists(view):
+        print("%s has no .view beside it" % path)
+        return 1
+    base = check_view(view, rec)
+    if "angle_off" not in base.info:
+        print("%s: nothing joined, so there is nothing to control" % view)
+        return 1
+    print("%s" % view)
+    print("  clean          %s" % base.info["angle_off"])
+    if base.info["angle_off"].startswith("BLIND"):
+        print("  -- and a blind pair cannot be tampered into a finding either")
+        return 1
+
+    with open(view, "r", encoding="utf-8", errors="replace") as fh:
+        lines = [l.rstrip("\n").rstrip("\r") for l in fh]
+    head = lines[:lines.index("begin") + 1]
+    body = lines[lines.index("begin") + 1:]
+
+    def rerun(rows, what):
+        import tempfile
+        fd, tmp = tempfile.mkstemp(suffix=".view")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(head + rows) + "\n")
+            v = check_view(tmp, rec)
+        finally:
+            os.unlink(tmp)
+        off = v.info.get("angle_off", "no join")
+        caught = any("does not describe this recording" in m
+                     or "does not match its sidecar" in m for m in v.faults)
+        print("  %-14s %s   %s" % (what, "CAUGHT  " if caught else "missed  ", off))
+        return caught
+
+    def rotated(deg, lo=0.0, hi=1.0):
+        out = []
+        n = len(body)
+        for i, ln in enumerate(body):
+            tok = ln.split()
+            if len(tok) == 6 and lo * n <= i < hi * n:
+                tok[4] = "%.2f" % (((float(tok[4]) + deg) + 180.0) % 360.0 - 180.0)
+                ln = " ".join(tok)
+            out.append(ln)
+        return out
+
+    floor = None
+    for deg in (0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 45.0, 90.0):
+        if rerun(rotated(deg), "yaw +%g deg" % deg) and floor is None:
+            floor = deg
+    # The spliced-segment case: a tenth of the run from somewhere else.
+    for w in (0.02, 0.05, 0.10):
+        rerun(rotated(90.0, 0.45, 0.45 + w), "%g%% spliced" % (w * 100))
+    print("  smallest whole-run rotation caught: %s"
+          % ("%g deg" % floor if floor else "none of those tried"))
+    # THE SENTENCE A READER WOULD OTHERWISE HAVE TO INFER FROM THREE ROWS, and
+    # would infer wrongly: the splice rows above are windows chosen to sit near
+    # the boundary, not a claim that 5% splices are missed in general.  The rule
+    # is a fraction OR a run length, and which one bites depends on how long the
+    # run is -- 250 moves is 2.5% of surf_kitsune and 14% of a 30-second run.
+    print("  caught when the disagreement is over %g%% of the joined moves or "
+          "longer than %d consecutive ones" % (ANG_HOLD, ANG_RUN))
+    return 0
 
 
 def ramp_report(path):
@@ -2817,7 +3083,13 @@ def emit(r, verbose):
                   # went unanswered are different facts.
                   "nonce", "renonce",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
-                  "fps", "usercmds", "frames_per_cmd"):
+                  "fps", "usercmds", "frames_per_cmd",
+                  # Added in the same edit as angle_join, per the rule four
+                  # paragraphs up.  `angle_off` prints on every joined pair
+                  # including BLIND, because "nothing disagreed" and "nothing
+                  # could have disagreed" are different facts and a reader
+                  # deciding what a run is worth needs both.
+                  "angle_source", "angle_joined", "angle_dev", "angle_off"):
             if k in r.info:
                 v = r.info[k]
                 print("       %-14s %s" % (k, ("%.3f" % v) if isinstance(v, float) else v))
@@ -2837,7 +3109,15 @@ def main():
     # the one answer it exists to give.  See ramp_report.
     ap.add_argument("--ramps", action="store_true",
                     help="per-ride ramp contact and plane analysis (v4 only)")
+    ap.add_argument("--tamper-view", action="store_true",
+                    help="rotate a .rec's sidecar by known amounts and report "
+                         "what the angle cross-check catches")
     a = ap.parse_args()
+
+    if a.tamper_view:
+        if not a.files:
+            raise SystemExit("--tamper-view needs a .rec whose .view is beside it")
+        return max(tamper_view(p) for p in a.files)
 
     if a.ramps:
         if not a.files:
