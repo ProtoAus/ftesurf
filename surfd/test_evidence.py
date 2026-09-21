@@ -532,11 +532,27 @@ def case_keep_same_gc():
           os.path.exists(lone), True)
 
 
+def case_name_from_file():
+    """E12: an evidence row wears the name its file recorded (Patch 424)"""
+    m = fresh()
+    submit(m, name="Renamed", leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    check("E12 the evidence row takes the header's owner, not the stage row's name",
+          q(m, "SELECT name FROM replays WHERE kind = 'evidence'"), [("Kap",)])
+    m = fresh()
+    submit(m, name="Renamed", leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R).replace("owner Kap\n", "owner \n"), age=3600)
+    m.index_evidence(m.connect())
+    check("E12 an empty owner falls back to the stage row's name",
+          q(m, "SELECT name FROM replays WHERE kind = 'evidence'"), [("Renamed",)])
+
+
 def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
                  case_keep_is_not_evidence, case_exclusion, case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
-                 case_torn_ticks, case_keep_same_gc):
+                 case_torn_ticks, case_keep_same_gc, case_name_from_file):
         print("\n--- %s" % case.__doc__)
         try:
             case()

@@ -2255,6 +2255,7 @@ def submit_run():
     # ELSE arm and voided the row's PASS and any owner approval -- the badge
     # strip this fix claimed to have closed, still a one-field operation.
     fsize = None
+    rec_name = name
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -2272,12 +2273,13 @@ def submit_run():
                         " indexing it unverified", leaf, why or "unreadable", src)
         else:
             fsize = meta[3]
-            bad = _rec_disagrees(meta[0], mapname, track, leg, name, runid,
-                                 tickrate)
+            bad = _rec_disagrees(meta[0], mapname, track, leg, runid, tickrate)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
                 leaf = ""
+            else:
+                rec_name = _rec_name(meta[0], name)
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -2397,7 +2399,7 @@ def submit_run():
                         # '-' when none was sent (a TF_SHADOW continuation),
                         # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
-                         player, name, ticks, tickrate, millis, flags, node,
+                         player, rec_name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-"),
                     )
                     rid = db.execute(
@@ -2680,7 +2682,7 @@ def _rec_tickrate_disagrees(hdr, tickrate):
     return ""
 
 
-def _rec_disagrees(hdr, mapname, track, leg, name, runid, tickrate=0):
+def _rec_disagrees(hdr, mapname, track, leg, runid, tickrate=0):
     """"" when a .rec header can be the run being filed, else why not.
 
     Compares only keys the file actually carries, so a recorder older than a
@@ -2688,9 +2690,10 @@ def _rec_disagrees(hdr, mapname, track, leg, name, runid, tickrate=0):
     `leg` in b57.  Used by submit_run to bind a claimed leaf to its file; the
     evidence path makes the same comparison inline in index_evidence.
 
-    `owner` is the run's netname and so is `name`, but Lobby_SubmitRun
-    substitutes "player" for an EMPTY netname while SV_RecOpen writes the
-    unsubstituted one -- so an empty on either side is not a disagreement.
+    Not `owner` (Patch 424): it is the netname at SV_RecOpen and the submit's
+    `name` is the one at the finish, so a rename mid-run or across a resume
+    dropped an honest leaf.  The run is bound by runid and the player by the
+    leaf's digest; the replay row takes its name from the file (_rec_name).
     """
     def differs(key, want):
         got = (hdr.get(key) or "").strip()
@@ -2698,8 +2701,14 @@ def _rec_disagrees(hdr, mapname, track, leg, name, runid, tickrate=0):
 
     return (differs("map", mapname) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
-            or (name and differs("owner", name))
             or _rec_tickrate_disagrees(hdr, tickrate) or "")
+
+
+def _rec_name(hdr, fallback):
+    """The name a recording's replays row wears: the header's `owner`, so a
+    submit cannot relabel a file (the check `owner` used to be), else the
+    submitted one -- SV_RecOpen writes an empty netname unsubstituted."""
+    return clean_text(hdr.get("owner")) or fallback
 
 
 def _keep_file(src, dst):
@@ -2804,7 +2813,8 @@ def index_evidence(conn, now=None, dry_run=False):
                     " submitted, bytes, truncated, seen, checked, runid, kind)"
                     " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,1,?,'evidence')"
                     " ON CONFLICT(map, track, leg, leaf) DO NOTHING",
-                    (key, d, track, leaf, ref["player"], ref["name"], ticks,
+                    (key, d, track, leaf, ref["player"],
+                     _rec_name(hdr, ref["name"]), ticks,
                      1.0 / spt, int(round(ticks * spt * 1000.0)), flags,
                      "p" + port.group(1) if port else "?", int(mtime), size,
                      runid)).rowcount

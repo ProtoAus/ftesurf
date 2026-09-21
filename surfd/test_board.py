@@ -1567,8 +1567,9 @@ print("\n--- 19. a leaf is a claim on a file, not just a description -------")
 # These cases therefore attack as the victim, which is the case that fix missed.
 #
 # The binding is now the FILE: submit_run opens the .rec and compares its header
-# (map/track/leg/runid/owner) with the row being filed.  So these arms write real
-# files under RUNS_DIR, which the rest of the suite does not.
+# (map/track/leg/runid) with the row being filed, and the replay row wears the
+# header's `owner` (Patch 424).  So these arms write real files under RUNS_DIR,
+# which the rest of the suite does not.
 
 
 def wrec(mod, mapname, track, leg, leafname, owner, runid, ticks=700):
@@ -1599,12 +1600,13 @@ a_before = q(m, "SELECT player, name, submitted, checked FROM replays WHERE id=?
              (arep,))
 
 # THE ATTACK THE FIRST FIX MISSED: assert the victim's `player` (it is public),
-# and put your own name on the row.  Both of the old rules passed this.
+# and put your own name on the row.  Both of the old rules passed this.  Since
+# Patch 424 the leaf binds (the runid matches) and the row keeps the FILE's name.
 clock.now += 10
 steal = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
                rec=alice_leaf)
-check("(b) naming alice's file under a different name gets no replay",
-      steal.get("rep"), 0)
+check("(b) naming alice's file under a different name is a re-post of her row",
+      steal.get("rep"), arep)
 check("(b) ...and her row is untouched: player, name, submitted, checked",
       q(m, "SELECT player, name, submitted, checked FROM replays WHERE id=?",
         (arep,)), a_before)
@@ -1654,6 +1656,44 @@ check("(f) a leaf whose digest is another player's is dropped", dig.get("rep"), 
 check("(f) ...alice's row still hers",
       q(m, "SELECT player, name FROM replays WHERE id=?", (arep,)),
       [(a_before[0][0], a_before[0][1])])
+
+# Patch 424: A RENAME MID-RUN IS THE SAME RUN.  The header's `owner` is the
+# netname at SV_RecOpen, the submit's `name` the one at the finish; comparing
+# them took an honest ranked run off verification.  The board row shows the new
+# name, the replay row the recorded one.
+clock.now += 10
+rleaf = leaf(690, "rena")
+wrec(m, "surf_test", 0, 0, rleaf, "OldName", "rr")
+ren = submit(m, player="rena", name="NewName", ticks=690, tickrate=100,
+             rec=rleaf, runid="rr")
+check("(g) a rename mid-run keeps the recording", ren.get("rep", 0) > 0, True)
+check("(g) ...the replay row wears the name the file recorded",
+      q(m, "SELECT player, name FROM replays WHERE id=?", (ren.get("rep", 0),)),
+      [("rena", "OldName")])
+add_verdict(m, ren.get("rep", 0), "PASS", int(clock.now) + 1)
+row = rows_by_player(m)["rena"]
+check("(g) ...the board row shows the new name, and it verifies",
+      (row["name"], row["ver"]), ("NewName", 1))
+
+# Control: the runid still binds -- the same rename with another run's id drops.
+clock.now += 10
+rleaf2 = leaf(680, "rena")
+wrec(m, "surf_test", 0, 0, rleaf2, "OldName", "rr2")
+ren2 = submit(m, player="rena", name="NewName", ticks=680, tickrate=100,
+              rec=rleaf2, runid="rr-other")
+check("(g) control: a runid the file contradicts still drops the leaf",
+      ren2.get("rep"), 0)
+
+# An empty recorded owner (SV_RecOpen writes the netname unsubstituted) falls
+# back to the submitted name rather than filing a nameless row.
+clock.now += 10
+eleaf = leaf(670, "noname")
+wrec(m, "surf_test", 0, 0, eleaf, "", "re")
+emp = submit(m, player="noname", name="player", ticks=670, tickrate=100,
+             rec=eleaf, runid="re")
+check("(g) an empty recorded owner takes the submitted name",
+      q(m, "SELECT name FROM replays WHERE id=?", (emp.get("rep", 0),)),
+      [("player",)])
 
 # --------------------------------------------------------------------------
 print("\n--- 20. the published TIME and the badge, bound to the file -------")
