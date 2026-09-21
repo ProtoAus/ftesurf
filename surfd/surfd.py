@@ -745,8 +745,9 @@ def replays_bound(conn):
     conn.execute("UPDATE replays SET bound = 1 WHERE bound = -1 AND kind = 'evidence'")
     for row in conn.execute("SELECT id, map, map_dir, track, leg, leaf, kind, runid,"
                             " flags, tickrate FROM replays WHERE bound = -1").fetchall():
-        conn.execute("UPDATE replays SET bound = ? WHERE id = ?",
-                     (_bound_now(row), row[0]))
+        got = _bound_now(row)
+        if got >= 0:
+            conn.execute("UPDATE replays SET bound = ? WHERE id = ?", (got, row[0]))
     conn.commit()
 
 
@@ -815,10 +816,13 @@ def _file_sha(path, want):
 
 
 def _bound_now(row):
-    """1 when row's file is on disk and its header describes the row, else 0."""
+    """1 when row's file is on disk and its header describes the row, 0 when the
+    header does not; -1 (still unassessed, the next migrate retries) when no
+    header can be read -- a run tree not mounted yet must not unbind every row
+    for good (review round 10)."""
     meta = _rec_meta(replay_file(row)[0] or "")
     if meta is None:
-        return 0
+        return -1
     hdr = dict(meta[0])
     if row[7] in ("", "-"):
         hdr.pop("runid", None)
@@ -2782,9 +2786,12 @@ def submit_run():
                         -- another run's (round 7: a '' or '-' row re-posted
                         -- naming its header's runid lapsed its reviews).  A
                         -- row filed without its file binds on its first post
-                        -- with one (round 9).
+                        -- with one (round 9) -- this code's file-less filing
+                        -- only, not a row a migrate found without its file
+                        -- (round 10).
                         WHERE excluded.bound = 1
-                          AND NOT (replays.bound <> 0
+                          AND NOT (NOT (replays.bound = 0
+                                        AND replays.sha_at = replays.submitted)
                                    AND replays.player = excluded.player
                                    AND replays.ticks  = excluded.ticks
                                    AND replays.bytes  = excluded.bytes
@@ -2831,12 +2838,14 @@ def submit_run():
                     # behind it, leaves the old run's alone.
                     if new and not fileless and have["runid"] == rep["runid"]:
                         restage(db, rid)
-                    # A tie re-filed on another board: the old board's row no
-                    # longer has this recording behind it (review round 3).
-                    if new and (have["tier"], have["style"]) != (tier, style):
+                    # A board row whose board or time is no longer this
+                    # recording's does not have it behind it: a tie re-filed on
+                    # another board (review round 3), a file-less filing with a
+                    # shaved rate re-filed by the real post (round 10).
+                    if new:
                         db.execute("UPDATE runs SET replay_id = 0 WHERE replay_id = ?"
-                                   " AND NOT (tier = ? AND style = ?)",
-                                   (rid, tier, style))
+                                   " AND NOT (tier = ? AND style = ? AND millis = ?)",
+                                   (rid, tier, style, millis))
 
             pkey = (mapname, track, leg, tier, style, player)
             prev = db.execute(_PREV_SQL, pkey).fetchone()

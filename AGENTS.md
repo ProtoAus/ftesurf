@@ -844,7 +844,10 @@ bannered as superseded.)
   Patches 424/425 (no schema bump; `replays_bound()` runs on every migrate):
   - `replays.bound` is 1 when the replay was filed against its file (header
     matches runid, map, track, leg, flags, tickrate). -1 means "not assessed"
-    and is resolved from the disk by the next migrate, i.e. the next cron sweep.
+    and is resolved from the disk by the next migrate, i.e. the next cron sweep;
+    a row whose file cannot be read stays -1 until it can. After a deploy, check
+    that the live rows came out 1: `SELECT kind, bound, COUNT(*) FROM replays
+    GROUP BY 1, 2`.
     A reject hides the stage times of every bound replay's run.
   - Tiers ending `@<runid>` are a rejected run's hidden stage times, and
     `^<runid>` a time waiting behind a better one; neither reaches a public

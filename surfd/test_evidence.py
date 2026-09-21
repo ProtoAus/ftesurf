@@ -635,9 +635,10 @@ def case_bound():
         conn.execute("DROP INDEX IF EXISTS replays_unassessed")
         conn.execute("ALTER TABLE replays DROP COLUMN bound")
     m.replays_bound(conn)
-    check("E14 backfill: evidence and a run whose file is there are bound, not the rest",
+    check("E14 backfill: evidence and a run whose file is there are bound; one with no"
+          " file is left unassessed",
           q(m, "SELECT kind, runid, bound FROM replays ORDER BY id"),
-          [("evidence", R, 1), ("run", "Rb", 1), ("run", "Rz", 0)])
+          [("evidence", R, 1), ("run", "Rb", 1), ("run", "Rz", -1)])
 
 
 def case_restand_sets_aside():
@@ -1124,6 +1125,63 @@ def case_round10():
     check("E21 ...its first post with the file binds it", got, [(1, 64)])
 
 
+def case_round11():
+    """E22: only this code's file-less filing re-files on its first file; a board
+    row a re-file leaves with another time loses the recording's badge"""
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+    lf = leaf(5300, "kap")
+    put_run(m, lf, evbody("Rl1").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=5300, rec=lf, runid="Rl1")["rep"]
+    conn = sqlite3.connect(m.DB_PATH)
+    with conn:                      # a legacy row a migrate found without its file
+        conn.execute("UPDATE replays SET bound = 0, sha = '', sha_at = 0 WHERE id = ?",
+                     (rid,))
+    conn.close()
+    _pass(m, rid)
+    review(m, c, csrf, rid, "approve")
+    time.sleep(1.1)
+    submit(m, ticks=5300, rec=lf, runid="Rl1", name="Again")
+    check("E22 a legacy bound-0 row re-posted with its file lapses nothing",
+          (q(m, "SELECT name FROM replays WHERE id = ?", (rid,)),
+           c.get("/admin/api/run/%d" % rid).get_json()["review"]["current"]),
+          ([("Kap",)], True))
+
+    # A key holder files the leaf before the lobby writes it, at a shaved rate.
+    m = fresh()
+    lf = leaf(4600, "kap")
+    body = evbody("Rs1").replace("abandon 8262\n", "")
+    shaved = submit(m, ticks=4600, rec=lf, runid="Rs1", tickrate="70",
+                    recbytes=len(body))
+    time.sleep(1.1)
+    put_run(m, lf, body)
+    rid = submit(m, ticks=4600, rec=lf, runid="Rs1")["rep"]
+    _pass(m, rid)
+    row = by_player(m, 0)["kap"]
+    check("E22 control: the real post re-filed the replay at the real rate",
+          (shaved["rep"] == rid, q(m, "SELECT millis FROM replays WHERE id = ?", (rid,))),
+          (True, [(69000,)]))
+    check("E22 ...and the shaved board time no longer wears its badge",
+          (row["ms"] < 69000, row["rep"], row["ver"]), (True, 0, 0))
+
+    # A migrate that cannot read a row's file leaves it unassessed.
+    m = fresh()
+    lf = leaf(4100, "kap")
+    path = put_run(m, lf, evbody("Rm1").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4100, rec=lf, runid="Rm1")["rep"]
+    conn = m.connect()
+    with conn:
+        conn.execute("UPDATE replays SET bound = -1")
+    os.rename(path, path + ".away")
+    m.replays_bound(conn)
+    got = q(m, "SELECT bound FROM replays WHERE id = ?", (rid,))
+    os.rename(path + ".away", path)
+    m.replays_bound(conn)
+    check("E22 a migrate that finds no file leaves the row unassessed; the next binds it",
+          (got, q(m, "SELECT bound FROM replays WHERE id = ?", (rid,))),
+          ([(-1,)], [(1,)]))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -1361,7 +1419,7 @@ def main():
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_round6, case_round7, case_round8, case_stage_post_lock,
-                 case_round9, case_round10,
+                 case_round9, case_round10, case_round11,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
