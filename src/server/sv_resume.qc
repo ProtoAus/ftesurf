@@ -681,6 +681,7 @@ void(entity e) SV_MsRecAttach =
 		return;
 	e.rec_rec_posts = ms_posts;
 	e.rec_rec_tag = RT_NONE;
+	e.rec_rec_rcpt = FALSE;             // Patch 426: a parked run was never signed
 	e.rec_rec_ticks = 0;
 	e.rec_rec_saved = FALSE;
 	e.rec_rec_bytes = -1;

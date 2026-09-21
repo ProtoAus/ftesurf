@@ -1220,6 +1220,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		return TRUE;
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
 	{
+		// Patch 426: a kept abandon this load held (SV_RecDiscard above) never
+		// ends for the client -- recording resumed in the same frame -- so its
+		// receipt cannot come; a later failed rewind must not hand it one.
+		if (e.rec_end_rid != "" && e.rec_end_ticks == 0)
+			SV_RecEndHold(e, "", "", 0);
 		/*
 		  A DIFFERENT RECORD FOR A RETRY, and not merely for tidiness.
 

@@ -1824,6 +1824,7 @@ float   run_t_evul;
 .string rec_end_rid;
 .string rec_end_nonce;
 .float  rec_end_ticks;              // svticks: the RUNTICKS the client saw at the end
+.float  rec_end_at;                 // `time` it ended: a receipt is due in a round trip
 
 /*
   The reserved `flags` line, in one place and at a FIXED WIDTH.
@@ -3962,6 +3963,7 @@ void(entity e, string rid, string nonce, float ticks) SV_RecEndHold =
 		e.rec_end_rid = strzone(rid);
 		e.rec_end_nonce = strzone(nonce);
 		e.rec_end_ticks = ticks;
+		e.rec_end_at = time;
 	}
 };
 
@@ -3986,6 +3988,15 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	rid = strcat(e.rec_end_rid);
 	nonce = strcat(e.rec_end_nonce);
 	svt = e.rec_end_ticks;
+	// ...and within 30 s: a client that sits on its receipt must not commit to
+	// digests of evidence long after the run (review round 3).
+	if (rid != "" && time - e.rec_end_at > 30)
+	{
+		dprint(sprintf("timer: receipt refused -- %s ended %d s ago\n", rid,
+		               time - e.rec_end_at));
+		SV_RecEndHold(e, "", "", 0);
+		return;
+	}
 	if (rid != "" && ticks != sprintf("%d", svt))
 	{
 		dprint(sprintf("timer: receipt refused -- it signs ticks %s and the run "
@@ -4125,7 +4136,9 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 
 	if (e.rec_end_rid != "")
 	{
-		if (rid == e.rec_rec_rid)       // a finish: it is the live run's receipt too
+		// A finish: the live run's receipt too -- unless a new run already
+		// records under the same runid (a stage run under a second long).
+		if (rid == e.rec_rec_rid && !(e.run_t_flags & TF_RECORDING))
 			e.rec_rec_rcpt = TRUE;
 		SV_RecEndHold(e, "", "", 0);
 	}
