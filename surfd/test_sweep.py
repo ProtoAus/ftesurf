@@ -247,6 +247,11 @@ def case_receipt_reread():
     # MARKED, NOT DELETED: between the mark and the re-read the row is there.
     check("marking keeps the row, stale 2 (its sig is known)", (sweep.mark_receipts_stale(conn),
           tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone())), (1, (1, 2)))
+    conn.execute("UPDATE receipts SET stale = 1")      # as receipts_v8 leaves a pre-8 row
+    conn.commit()
+    check("...but a pre-8 row (stale 1, sig unknown) stays 1",
+          (sweep.mark_receipts_stale(conn),
+           conn.execute("SELECT MAX(stale) FROM receipts").fetchone()[0]), (0, 1))
     sweep.receipt_step(conn)
     check("...and the next read clears it",
           tuple(conn.execute("SELECT COUNT(*), MAX(stale) FROM receipts").fetchone()), (1, 0))

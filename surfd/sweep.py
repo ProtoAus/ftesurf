@@ -327,8 +327,9 @@ def mark_receipts_stale(conn):
     with conn:
         conn.executescript(surfd.RECEIPTS_SQL)
         # 2, not receipts_v8's 1: the row's sig is KNOWN, so admin keeps
-        # judging on it until the re-read replaces it.
-        return conn.execute("UPDATE receipts SET stale = 2").rowcount
+        # judging on it until the re-read replaces it.  A row already at 1
+        # stays there -- its sig is still unknown.
+        return conn.execute("UPDATE receipts SET stale = 2 WHERE stale = 0").rowcount
 
 
 def bind_key(conn, runid, pub, t0):

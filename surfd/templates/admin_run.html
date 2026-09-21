@@ -308,7 +308,7 @@ function runLink(id) {
 function renderKey(j) {
   const k = j.key, card = document.getElementById("keycard"), dl = document.getElementById("keyinfo");
   dl.replaceChildren();
-  card.hidden = !(k && (k.key_pub || k.key_flag || k.first_pub));
+  card.hidden = !(k && (k.key_pub || k.key_flag || k.first_pub || k.why || k.key_decision));
   if (card.hidden) return;
   const put = (name, node) => { dl.append(el("dt", "", name)); const d = el("dd"); d.append(node); dl.append(d); };
   const short = pub => String(pub).slice(0, 8) + "\u2026";
