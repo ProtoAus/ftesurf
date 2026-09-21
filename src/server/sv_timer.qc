@@ -4121,6 +4121,8 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 		{
 			fclose(fh);
 			dprint(sprintf("timer: receipt refused -- %s already has one\n", rid));
+			if (rid == e.rec_rec_rid)       // or the live path would write it (round 6)
+				e.rec_rec_rcpt = TRUE;
 			SV_RecEndHold(e, "", "", 0);    // it can never be written
 			return;
 		}

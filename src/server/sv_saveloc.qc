@@ -845,6 +845,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
 	local float az, ez, am, cz, pa, cmx;
 	local float rpit, ryaw, rduck;
+	local float wasrec;             // Patch 426: recording when the rewind began
 	local vector rorg, rvel;
 
 	f = fopen(SL_StatePath(id), FILE_READ);
@@ -1042,6 +1043,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  decides nothing about it and the live value stands, until a rewind takes it
 	  down deliberately (SV_RecNoncePublish, which runs after this).
 	*/
+	wasrec = e.run_t_flags & TF_RECORDING;
 	e.run_t_flags = (flg - (flg & (TF_RECORDING | TF_FROZEN | TF_STOPPED | TF_NONCE)))
 	                | (e.run_t_flags & TF_NONCE);
 
@@ -1313,8 +1315,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		// Patch 426: recording stopped with nothing live to discard, so no end
 		// handler cleared the hold -- and the client signs this edge with the
 		// RUNTICKS it now sees.  A hold with those ticks would take that
-		// receipt as its own (review round 5).
-		if (e.rec_end_rid != "" && e.rec_end_ticks == e.rec_rec_ticks)
+		// receipt as its own (review round 5).  Only if it WAS recording: a
+		// save with no recording (mark 0, any START-box save) fails here on
+		// every load, and the held finish or this load's kept abandon is still
+		// owed its receipt (round 6).
+		if (wasrec && e.rec_end_rid != "" && e.rec_end_ticks == e.rec_rec_ticks)
 			SV_RecEndHold(e, "", "", 0);
 	}
 
