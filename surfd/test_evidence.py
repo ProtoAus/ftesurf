@@ -969,6 +969,23 @@ def case_round9():
           (q(m, "SELECT runid, name FROM replays WHERE id = ?", (rid,)),
            _reject_current(m, rid)), ([("-", "Kap")], 1))
 
+    # A re-post of an unchanged file does not read it again; a rewrite does.
+    reads = []
+    real_read = m._sha_read
+    m._sha_read = lambda fh: reads.append(1) or real_read(fh)
+    lf = leaf(4800, "kap")
+    path = put_run(m, lf, evbody("Rbig").replace("abandon 8262\n", ""))
+    for _ in range(3):
+        submit(m, ticks=4800, rec=lf, runid="Rbig")
+    n_same = len(reads)
+    time.sleep(0.05)
+    put_run(m, lf, evbody("Rbi2").replace("abandon 8262\n", ""))
+    os.utime(path, None)
+    submit(m, ticks=4800, rec=lf, runid="Rbi2")
+    m._sha_read = real_read
+    check("E20 three posts of one file hash it once; a rewrite hashes again",
+          (n_same, len(reads)), (1, 2))
+
     real = time.time
     off = [0.0]
     time.time = lambda: real() + off[0]
@@ -1022,6 +1039,89 @@ def case_round9():
         m.sqlite3.connect = real_connect
     check("E20 a stage time that does not improve is ranked outside the write lock",
           (state["fired"], state["err"], got.get("stored")), (True, None, False))
+
+
+def case_round10():
+    """E21: a digest that cannot be taken, or is taken of another file than the
+    header, is unknown -- never "a new file"; a digest an old writer left
+    behind is ignored; a row filed without its file binds on its first post
+    with one"""
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+
+    def reject_filed(ticks, rn):
+        lf = leaf(ticks, "kap")
+        put_run(m, lf, evbody(rn).replace("abandon 8262\n", ""))
+        rid = submit(m, ticks=ticks, rec=lf, runid=rn)["rep"]
+        review(m, c, csrf, rid, "reject")
+        time.sleep(1.1)
+        return lf, rid
+
+    lf, rid = reject_filed(4900, "Rh1")
+    real_read = m._sha_read
+
+    def fail(fh):
+        raise OSError("EIO")
+    m._sha_read = fail
+    m._SHA_CACHE.clear()
+    try:
+        submit(m, ticks=4900, rec=lf, runid="Rh1", name="EVIL")
+    finally:
+        m._sha_read = real_read
+    check("E21 a re-post whose digest cannot be taken lapses nothing",
+          (q(m, "SELECT name FROM replays WHERE id = ?", (rid,)), _reject_current(m, rid)),
+          ([("Kap",)], 1))
+
+    # The header is read from one file and the digest would be of the next (a
+    # tie that kept the byte count lands between the two reads).
+    lf, rid = reject_filed(5000, "Rx1")
+    real_meta = m._rec_meta
+
+    def crossed(path):
+        got = real_meta(path)
+        time.sleep(0.05)
+        put_run(m, lf, evbody("Rx2").replace("abandon 8262\n", ""))
+        os.utime(path, None)
+        return got
+    m._rec_meta = crossed
+    try:
+        submit(m, ticks=5000, rec=lf, runid="Rx1")
+    finally:
+        m._rec_meta = real_meta
+    check("E21 control: the crossed post lapses nothing",
+          (q(m, "SELECT runid FROM replays WHERE id = ?", (rid,)), _reject_current(m, rid)),
+          ([("Rx1",)], 1))
+    time.sleep(1.1)
+    submit(m, ticks=5000, rec=lf, runid="Rx2")
+    check("E21 ...and the new file's own post re-files the leaf under its run",
+          q(m, "SELECT runid FROM replays WHERE id = ?", (rid,)), [("Rx2",)])
+
+    # An old writer re-files a tie without touching sha/sha_at.
+    lf, rid = reject_filed(5100, "Ro1")
+    put_run(m, lf, evbody("Ro2").replace("abandon 8262\n", ""))
+    conn = sqlite3.connect(m.DB_PATH)
+    with conn:
+        conn.execute("UPDATE replays SET runid = 'Ro2', submitted = submitted + 1"
+                     " WHERE id = ?", (rid,))
+    conn.close()
+    review(m, c, csrf, rid, "reject")
+    time.sleep(1.1)
+    submit(m, ticks=5100, rec=lf, runid="Ro2", name="EVIL")
+    check("E21 a digest an old writer left stale is ignored: the re-post lapses nothing",
+          (q(m, "SELECT name FROM replays WHERE id = ?", (rid,)), _reject_current(m, rid)),
+          ([("Kap",)], 1))
+
+    # Filed before its file existed, with the file's own byte count off the wire.
+    lf = leaf(5200, "kap")
+    body = evbody("Rf1").replace("abandon 8262\n", "")
+    rid = submit(m, ticks=5200, rec=lf, runid="Rf1", recbytes=len(body))["rep"]
+    check("E21 control: filed without its file, unbound",
+          q(m, "SELECT bound, sha FROM replays WHERE id = ?", (rid,)), [(0, "")])
+    time.sleep(1.1)
+    put_run(m, lf, body)
+    submit(m, ticks=5200, rec=lf, runid="Rf1")
+    got = q(m, "SELECT bound, length(sha) FROM replays WHERE id = ?", (rid,))
+    check("E21 ...its first post with the file binds it", got, [(1, 64)])
 
 
 def case_public():
@@ -1261,7 +1361,7 @@ def main():
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_round6, case_round7, case_round8, case_stage_post_lock,
-                 case_round9,
+                 case_round9, case_round10,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

@@ -753,28 +753,65 @@ def replays_bound(conn):
 def replays_sha(conn):
     """Patch 424, IDEMPOTENT: replays.sha is the sha256 of the file a replay was
     filed from, so a re-post of the same file is told from an honest tie whose
-    new file kept the byte count (review round 8).  '' where the column
-    predates the row, and for a file-less filing; never backfilled from the
-    disk, which may hold a newer file by now."""
+    new file kept the byte count (review round 8).  '' where unknown: the column
+    predates the row, a file-less filing, a hash that could not be taken; never
+    backfilled from the disk, which may hold a newer file by now.  sha_at is
+    the `submitted` it was taken at, so a writer that knows neither column (a
+    rollback, an old worker in a HUP) leaves it stale and ignored (round 9)."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
-    if "sha" not in cols:
-        try:
-            conn.execute("ALTER TABLE replays ADD COLUMN sha TEXT NOT NULL DEFAULT ''")
-        except sqlite3.OperationalError as exc:
-            if "duplicate column" not in str(exc):
-                raise
+    for col, decl in (("sha", "TEXT NOT NULL DEFAULT ''"),
+                      ("sha_at", "INTEGER NOT NULL DEFAULT 0")):
+        if col not in cols:
+            try:
+                conn.execute("ALTER TABLE replays ADD COLUMN %s %s" % (col, decl))
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):
+                    raise
     conn.commit()
 
 
-def _file_sha(path):
+# (path, inode, size, mtime_ns) -> sha256.  Every trusted post names a file, and
+# a streamed run's can be hundreds of MB: a re-post of an unchanged file costs a
+# stat, not a read (review round 9).  A lobby rewrite moves mtime or the inode.
+_SHA_CACHE = {}
+_SHA_CACHE_MAX = 4096
+
+
+def _stat_key(path, st):
+    return (path, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def _sha_read(fh):
     h = hashlib.sha256()
+    for chunk in iter(lambda: fh.read(1 << 20), b""):
+        h.update(chunk)
+    return h.hexdigest()
+
+
+def _file_sha(path, want):
+    """sha256 of `path` while it is still the file stat'd as `want` -- the one
+    whose header was just read -- else '': unknown, never "another file"
+    (review round 9: a failed or crossed read lapsed a reject)."""
+    if want is None:
+        return ""
     try:
+        if _stat_key(path, os.stat(path)) != want:
+            return ""
+        got = _SHA_CACHE.get(want)
+        if got is not None:
+            return got
         with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
+            if _stat_key(path, os.fstat(fh.fileno())) != want:
+                return ""
+            sha = _sha_read(fh)
+            if _stat_key(path, os.fstat(fh.fileno())) != want:
+                return ""
     except OSError:
         return ""
-    return h.hexdigest()
+    if len(_SHA_CACHE) >= _SHA_CACHE_MAX:
+        _SHA_CACHE.clear()
+    _SHA_CACHE[want] = sha
+    return sha
 
 
 def _bound_now(row):
@@ -2588,6 +2625,12 @@ def submit_run():
                                          "leg": leg, "leaf": leaf, "kind": "run"})
                 if path is not None:
                     map_dir = held["map_dir"]
+        key0 = None
+        if path:
+            try:
+                key0 = _stat_key(path, os.stat(path))
+            except OSError:
+                pass
         meta = _rec_meta(path) if path else None
         if meta is None:
             # KEPT, NOT DROPPED, and the reasoning is about what the attack is
@@ -2604,7 +2647,7 @@ def submit_run():
             fsize = meta[3]
             fileless = False
             hdr_runid = meta[0].get("runid", "")
-            fsha = _file_sha(path)
+            fsha = _file_sha(path, key0)
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -2701,8 +2744,8 @@ def submit_run():
                                              tier, style, player, name, ticks,
                                              tickrate, millis, flags, node,
                                              submitted, bytes, truncated, runid,
-                                             bound, sha)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                             bound, sha, sha_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
                             tier      = excluded.tier,
@@ -2719,6 +2762,7 @@ def submit_run():
                             runid     = excluded.runid,
                             bound     = excluded.bound,
                             sha       = excluded.sha,
+                            sha_at    = excluded.sha_at,
                             submitted = excluded.submitted,
                             seen      = -1,
                             checked   = 0
@@ -2730,17 +2774,23 @@ def submit_run():
                         -- either: a same-evidence re-post that could rewrite
                         -- the name, board, rate or map_dir relabelled,
                         -- re-boarded or shaved a verified replay (reviews).
-                        -- The file is the one filed when its sha256 is (round
-                        -- 8: an honest tie can keep the byte count).  A row
-                        -- filed before the column: the runid, being the post's,
-                        -- is new evidence only when the header proves the file
+                        -- The file is the one filed when both digests are
+                        -- known and the stored one is this filing's (rounds
+                        -- 8, 9: an honest tie can keep the byte count).
+                        -- Otherwise the runid, being the post's, is new
+                        -- evidence only when the header proves the file
                         -- another run's (round 7: a '' or '-' row re-posted
-                        -- naming its header's runid lapsed its reviews).
+                        -- naming its header's runid lapsed its reviews).  A
+                        -- row filed without its file binds on its first post
+                        -- with one (round 9).
                         WHERE excluded.bound = 1
-                          AND NOT (replays.player = excluded.player
+                          AND NOT (replays.bound <> 0
+                                   AND replays.player = excluded.player
                                    AND replays.ticks  = excluded.ticks
                                    AND replays.bytes  = excluded.bytes
                                    AND CASE WHEN replays.sha <> ''
+                                                 AND replays.sha_at = replays.submitted
+                                                 AND excluded.sha <> ''
                                        THEN replays.sha = excluded.sha
                                        ELSE NOT (? <> '' AND replays.runid <> ?
                                                  AND replays.runid NOT IN ('', '-'))
@@ -2751,7 +2801,7 @@ def submit_run():
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-", 0 if fileless else 1,
-                         fsha, hdr_runid, hdr_runid),
+                         fsha, now, hdr_runid, hdr_runid),
                     )
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an

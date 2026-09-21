@@ -706,7 +706,7 @@ that goes missing later changes nothing) is current, the run's stage rows
 rep 0, same runid/map/track/player) are parked in tier `<tier>@<runid>`, which
 no board reads; when none is, they are restored -- the better of a parked and a
 live row keeps the slot, the other set aside as `<tier>^<its own runid>`
-(`^r<id>` for a recorded row, `^-` for one with no runid) until the slot
+(`^r<id>` for a recorded row, `^-<submitted>` for one with no runid) until the slot
 empties; a parked slot is also re-derived from the player's recorded
 runs of that leg. Only new evidence of the same run (or an admin action)
 restores: a leaf re-filed by another run (an exact tie, or a continuation
