@@ -926,6 +926,104 @@ def case_stage_post_lock():
           (state["fired"], state["err"], stage(m)), (True, None, (480, R3)))
 
 
+def case_round9():
+    """E20: the file is its sha256 -- an honest tie that kept the byte count
+    re-files, the same file never does; runid-less set-aside rows are one per
+    post; the not-improved answer is ranked outside the lock"""
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+    lf = leaf(4600, "kap")
+    put_run(m, lf, evbody("Rcut").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4600, rec=lf, runid=None)["rep"]       # a continuation
+    _pass(m, rid)
+    review(m, c, csrf, rid, "approve")
+    time.sleep(1.1)
+    path = put_run(m, lf, evbody("Rti2").replace("abandon 8262\n", ""))
+    check("E20 control: the tie's file keeps the byte count",
+          q(m, "SELECT bytes FROM replays WHERE id = ?", (rid,))[0][0],
+          os.path.getsize(path))
+    submit(m, ticks=4600, rec=lf, runid="Rti2")
+    check("E20 an honest tie of a '-' replay with the same byte count re-files it",
+          (q(m, "SELECT runid, checked FROM replays WHERE id = ?", (rid,)),
+           by_player(m, 0)["kap"]["ver"]), ([("Rti2", 0)], 0))
+    review(m, c, csrf, rid, "approve")
+    time.sleep(1.1)
+    submit(m, ticks=4600, rec=lf, runid="Rti2", name="Again")
+    check("E20 ...and a re-post of the tie's own file then changes nothing",
+          (q(m, "SELECT name FROM replays WHERE id = ?", (rid,)),
+           c.get("/admin/api/run/%d" % rid).get_json()["review"]["current"]),
+          ([("Kap",)], True))
+
+    # A row filed before the column keeps round 7's rule.
+    lf = leaf(4700, "kap")
+    put_run(m, lf, evbody("Rold").replace("abandon 8262\n", ""))
+    rid = submit(m, ticks=4700, rec=lf, runid=None)["rep"]
+    conn = sqlite3.connect(m.DB_PATH)
+    with conn:
+        conn.execute("UPDATE replays SET sha = '' WHERE id = ?", (rid,))
+    conn.close()
+    review(m, c, csrf, rid, "reject")
+    time.sleep(1.1)
+    submit(m, ticks=4700, rec=lf, runid="Rold", name="EVIL")
+    check("E20 a pre-sha '-' row re-posted naming its header's runid is unchanged",
+          (q(m, "SELECT runid, name FROM replays WHERE id = ?", (rid,)),
+           _reject_current(m, rid)), ([("-", "Kap")], 1))
+
+    real = time.time
+    off = [0.0]
+    time.time = lambda: real() + off[0]
+    try:
+        m = fresh(admin_pw=PW)
+        conn = m.connect()
+        c, csrf = admin_client(m)
+        Q, R2_, P, U = ("20260918-150001-0-p27510", "20260918-150002-0-p27510",
+                        "20260918-150003-0-p27510", "20260918-150004-0-p27510")
+
+        def ev(run):
+            put_ev(m, run + ".rec", evbody(run), age=3600)
+            m.index_evidence(conn)
+            return evid(m, run)
+
+        def step(fn, *a, **k):
+            got = fn(*a, **k)
+            off[0] += 2
+            return got
+        step(submit, m, leg=2, ticks=450, runid=Q); eQ = ev(Q)
+        step(review, m, c, csrf, eQ, "reject")
+        step(submit, m, leg=2, ticks=460, runid=R2_); eR = ev(R2_)
+        step(review, m, c, csrf, eR, "reject")
+        step(submit, m, leg=2, ticks=500, runid=None)             # S2
+        step(review, m, c, csrf, eR, "clear")                     # S2 aside
+        step(submit, m, leg=2, ticks=455, runid=None)             # S1 beats R
+        step(review, m, c, csrf, eQ, "clear")                     # S1 aside
+        step(submit, m, leg=2, ticks=440, runid=P); eP = ev(P)
+        step(review, m, c, csrf, eP, "reject")                    # S1 back
+        step(submit, m, leg=2, ticks=445, runid=U); eU = ev(U)    # over S1
+        step(review, m, c, csrf, eU, "reject")
+        check("E20 two runid-less times set aside are both kept: the 500 is back",
+              stage(m), (500, ""))
+    finally:
+        time.time = real
+
+    m = fresh()
+    submit(m, leg=2, ticks=400, runid=R3)
+
+    def probe():
+        x = sqlite3.connect(m.DB_PATH, timeout=0.2, factory=sqlite3.Connection)
+        try:
+            x.execute("BEGIN IMMEDIATE")
+            x.rollback()
+        finally:
+            x.close()
+    state, real_connect = _inject(m, "COUNT(*) FROM runs\n", probe)
+    try:
+        got = submit(m, leg=2, ticks=480, runid=R3)
+    finally:
+        m.sqlite3.connect = real_connect
+    check("E20 a stage time that does not improve is ranked outside the write lock",
+          (state["fired"], state["err"], got.get("stored")), (True, None, False))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -1163,6 +1261,7 @@ def main():
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_round6, case_round7, case_round8, case_stage_post_lock,
+                 case_round9,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

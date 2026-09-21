@@ -750,6 +750,33 @@ def replays_bound(conn):
     conn.commit()
 
 
+def replays_sha(conn):
+    """Patch 424, IDEMPOTENT: replays.sha is the sha256 of the file a replay was
+    filed from, so a re-post of the same file is told from an honest tie whose
+    new file kept the byte count (review round 8).  '' where the column
+    predates the row, and for a file-less filing; never backfilled from the
+    disk, which may hold a newer file by now."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")}
+    if "sha" not in cols:
+        try:
+            conn.execute("ALTER TABLE replays ADD COLUMN sha TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc):
+                raise
+    conn.commit()
+
+
+def _file_sha(path):
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
 def _bound_now(row):
     """1 when row's file is on disk and its header describes the row, else 0."""
     meta = _rec_meta(replay_file(row)[0] or "")
@@ -1115,6 +1142,7 @@ def migrate():
                      " ON runs (map, track, player, runid)")
         conn.commit()
         replays_bound(conn)
+        replays_sha(conn)
         if version < 8:
             conn.execute("PRAGMA user_version=8")
             conn.commit()
@@ -2149,7 +2177,9 @@ def _aside(row):
     another's honest time)."""
     if row["replay_id"] > 0:
         return "^r%d" % row["replay_id"]
-    return "^" + (row["runid"] if row["runid"] not in ("", "-") else "-")
+    if row["runid"] in ("", "-"):
+        return "^-%d" % row["submitted"]       # one per post (review round 8)
+    return "^" + row["runid"]
 
 
 def _stage_move(db, row, tier):
@@ -2542,7 +2572,7 @@ def submit_run():
     # strip this fix claimed to have closed, still a one-field operation.
     fsize = None
     fileless = bool(leaf)
-    hdr_runid = ""
+    hdr_runid = fsha = ""
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -2574,6 +2604,7 @@ def submit_run():
             fsize = meta[3]
             fileless = False
             hdr_runid = meta[0].get("runid", "")
+            fsha = _file_sha(path)
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -2670,8 +2701,8 @@ def submit_run():
                                              tier, style, player, name, ticks,
                                              tickrate, millis, flags, node,
                                              submitted, bytes, truncated, runid,
-                                             bound)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                             bound, sha)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
                             tier      = excluded.tier,
@@ -2687,6 +2718,7 @@ def submit_run():
                             truncated = excluded.truncated,
                             runid     = excluded.runid,
                             bound     = excluded.bound,
+                            sha       = excluded.sha,
                             submitted = excluded.submitted,
                             seen      = -1,
                             checked   = 0
@@ -2698,23 +2730,28 @@ def submit_run():
                         -- either: a same-evidence re-post that could rewrite
                         -- the name, board, rate or map_dir relabelled,
                         -- re-boarded or shaved a verified replay (reviews).
-                        -- The runid is the post's, so it alone is new evidence
-                        -- only when the header proves the file another run's:
-                        -- a '' or '-' row re-posted naming its header's runid
-                        -- lapsed its reviews (review round 7).
+                        -- The file is the one filed when its sha256 is (round
+                        -- 8: an honest tie can keep the byte count).  A row
+                        -- filed before the column: the runid, being the post's,
+                        -- is new evidence only when the header proves the file
+                        -- another run's (round 7: a '' or '-' row re-posted
+                        -- naming its header's runid lapsed its reviews).
                         WHERE excluded.bound = 1
                           AND NOT (replays.player = excluded.player
                                    AND replays.ticks  = excluded.ticks
                                    AND replays.bytes  = excluded.bytes
-                                   AND NOT (? <> '' AND replays.runid <> ?
-                                            AND replays.runid NOT IN ('', '-')))
+                                   AND CASE WHEN replays.sha <> ''
+                                       THEN replays.sha = excluded.sha
+                                       ELSE NOT (? <> '' AND replays.runid <> ?
+                                                 AND replays.runid NOT IN ('', '-'))
+                                       END)
                         """,
                         # '-' when none was sent (a TF_SHADOW continuation),
                         # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-", 0 if fileless else 1,
-                         hdr_runid, hdr_runid),
+                         fsha, hdr_runid, hdr_runid),
                     )
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
@@ -2793,6 +2830,8 @@ def submit_run():
                                   + _REJECTED_SQL, (rid,)).fetchone():
                 log.warning("run from %s names rejected replay %d; not stood",
                             src, rid)
+                if db.in_transaction:
+                    db.commit()               # rank_of scans: not under the lock
                 best = prev["millis"] if prev is not None else 0
                 rank, of = (rank_of(db, mapname, track, leg, tier, style,
                                     prev["millis"], prev["submitted"], player)
@@ -2815,6 +2854,8 @@ def submit_run():
                 # is where they stand on this board, which did not move.  A
                 # slower run that still says "#3 of 17" is the correct answer
                 # and the delta beside it already says the time got worse.
+                if db.in_transaction:
+                    db.commit()               # rank_of scans: not under the lock
                 rank, of = rank_of(db, mapname, track, leg, tier, style,
                                    prev["millis"], prev["submitted"], player)
                 # `tier` is the board the run landed on AFTER demotion; `prevms`

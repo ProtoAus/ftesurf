@@ -709,9 +709,10 @@ live row keeps the slot, the other set aside as `<tier>^<its own runid>`
 (`^r<id>` for a recorded row, `^-` for one with no runid) until the slot
 empties; a parked slot is also re-derived from the player's recorded
 runs of that leg. Only new evidence of the same run (or an admin action)
-restores: a leaf re-filed by another run (an exact tie) leaves the old run's
-rows hidden, and a stage time posted later under a hidden run goes straight to
-its hidden slot. A rejected replay never takes a board row back from a re-post
+restores: a leaf re-filed by another run (an exact tie, or a continuation
+posted with no runid) leaves the old run's rows hidden -- and once no replay
+names that run, no clear reaches them -- and a stage time posted later under a
+hidden run goes straight to its hidden slot. A rejected replay never takes a board row back from a re-post
 and never wears the badge (VER_SQL). A review counts only
 while it is at or after the replay's `submitted`; the page posts the
 `submitted` it showed, and a replay resubmitted since answers 409 ("the run
