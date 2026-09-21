@@ -127,22 +127,32 @@ def relpath(row):
     return (base + "/" + sub).replace(os.sep, "/")
 
 
-# pm_verify's reason when every earlier check passed and the zones never end
-# the run (sv_ccmds.c, the verdict chain): on a finished run a finding, on an
-# abandoned one the expected answer.  Exact, so a reworded verifier holds.
+# pm_verify's reasons when every earlier check in its verdict chain passed
+# (sv_ccmds.c): on a finished run findings, on an abandoned one the expected
+# answer -- the zones never end it, or it was abandoned BY a cancel zone, which
+# the replay crosses on the file's last input row (measured, p426cl.cfg).
+# Exact, so a reworded verifier holds.
 NO_FINISH = "no finish: the zones never end this run"
+CANCEL_RE = re.compile(r"^a cancel zone is crossed at row (\d+)$")
 
 
 def abandoned_pass(row, verdict, reason):
     """(verdict, reason, ticks) for an abandoned evidence file whose replay
     reproduced to the abandon, else None.  pm_verify does not read `abandon`."""
-    if verdict != "HOLD" or reason != NO_FINISH or row["kind"] != "evidence":
+    if verdict != "HOLD" or row["kind"] != "evidence":
         return None
     meta = surfd._rec_meta(surfd.replay_file(row)[0] or "")
     if meta is None or not meta[2] or meta[1] < 0:
         return None
-    return ("PASS", "abandoned at tick %d; the replay reproduces to there"
-            " (pm_verify: %s)" % (meta[1], NO_FINISH), meta[1])
+    cancel = CANCEL_RE.match(reason)
+    if reason == NO_FINISH:
+        how = "the replay reproduces to there"
+    elif cancel and meta[5] > 0 and int(cancel.group(1)) == meta[5] - 1:
+        how = "by the cancel zone its replay crosses on the last row"
+    else:
+        return None
+    return ("PASS", "abandoned at tick %d; %s (pm_verify: %s)" % (meta[1], how, reason),
+            meta[1])
 
 
 def parse(lines):

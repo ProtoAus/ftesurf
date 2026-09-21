@@ -626,8 +626,9 @@ Before verifying, each sweep:
 
 pm_verify reads the lobby's copy (the kept one is outside the game tree), and
 REFUSEs when it is gone or differs. It does not read `abandon`: an abandoned
-file whose replay reproduced HOLDs "no finish", and the sweep records exactly
-that reason on an abandoned file as PASS at the abandon tick.
+file whose replay reproduced HOLDs "no finish", or "a cancel zone is crossed" on
+its last input row when a cancel zone ended it, and the sweep records exactly
+those on an abandoned file as PASS at the abandon tick.
 
 The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
 the kept file byte-exact, like any other replay. The log line gains

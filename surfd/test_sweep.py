@@ -727,15 +727,17 @@ def case_evidence_verified():
     surfd, sweep, runs = fresh()
     conn = surfd.connect()
     run = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
-    R = ["20260918-1428%02d-0-p27510" % i for i in range(7)]
+    R = ["20260918-1428%02d-0-p27510" % i for i in range(9)]
     ab = add_evidence(conn, R[0], evbody(R[0]))
     fin = add_evidence(conn, R[1], evbody(R[1], abandoned=False))
     div = add_evidence(conn, R[2], evbody(R[2]))
     gone = add_evidence(conn, R[3], evbody(R[3]), lobby=False)
     other = add_evidence(conn, R[4], evbody(R[4]), lobby=evbody(R[4]) + "x 1\n")
+    cxl = add_evidence(conn, R[7], evbody(R[7]))       # abandoned BY a cancel zone
+    cxe = add_evidence(conn, R[8], evbody(R[8]))       # crosses one before its end
     check("the run and every evidence row are pending",
           sorted(r["id"] for r in sweep.pending(conn, 20)),
-          sorted([run, ab, fin, div, gone, other]))
+          sorted([run, ab, fin, div, gone, other, cxl, cxe]))
     check("an evidence row names the LOBBY's copy, game-filesystem relative",
           sweep.relpath(conn.execute("SELECT * FROM replays WHERE id = ?", (ab,)).fetchone()),
           "data/evidence/surf_aser/%s.rec" % R[0])
@@ -747,6 +749,10 @@ def case_evidence_verified():
         for p in paths:
             if R[2] in p:
                 out.append("VERIFY %s HOLD state: 3 packet(s) differ, first at row 1" % p)
+            elif R[7] in p:        # evbody's trailer counts 8262 input rows
+                out.append("VERIFY %s HOLD a cancel zone is crossed at row 8261" % p)
+            elif R[8] in p:
+                out.append("VERIFY %s HOLD a cancel zone is crossed at row 8000" % p)
             elif "evidence" in p:
                 out.append("VERIFY %s HOLD %s" % (p, sweep.NO_FINISH))
             else:
@@ -762,6 +768,12 @@ def case_evidence_verified():
           tuple(latest(conn, fin))[:2], ("HOLD", sweep.NO_FINISH))
     check("control: an abandoned file that diverged stays HOLD",
           tuple(latest(conn, div))[0], "HOLD")
+    check("abandoned by a cancel zone on its last row: PASS",
+          tuple(latest(conn, cxl))[:2],
+          ("PASS", "abandoned at tick 8262; by the cancel zone its replay crosses on"
+                   " the last row (pm_verify: a cancel zone is crossed at row 8261)"))
+    check("control: a cancel zone crossed before the file ends stays HOLD",
+          tuple(latest(conn, cxe))[0], "HOLD")
     check("no lobby copy: REFUSE, and it says why",
           tuple(latest(conn, gone))[:2],
           ("REFUSE", "evidence file missing, or not under the game tree the verifier reads"))

@@ -2701,7 +2701,8 @@ _REC_TAIL = 16384        # both writers put `abandon`/`end` in the last lines
 
 
 def _rec_meta(path):
-    """``(header, end_ticks or -1, abandoned, size, mtime)`` of a .rec, or None.
+    """``(header, end_ticks or -1, abandoned, size, mtime, in_rows or -1)`` of a
+    .rec, or None; in_rows is the `end` trailer's 5th field.
 
     The header is read to `begin` (64 lines at most), first spelling of a key
     wins; `end`/`abandon` come from whole lines in the last _REC_TAIL bytes.
@@ -2725,17 +2726,19 @@ def _rec_meta(path):
             tail = fh.read().decode("utf-8", "replace").split("\n")[:-1]
         if st.st_size > _REC_TAIL:
             tail = tail[1:]                       # a partial first line
-        end, abandoned = -1, False
+        end, abandoned, rows = -1, False, -1
         for line in tail:
             if line.startswith("end "):
                 words = line.split()
                 end = strict_int(words[1] if len(words) > 1 else None, 0, MAX_TICKS)
                 end = -1 if end is None else end
+                rows = strict_int(words[5] if len(words) > 5 else None, 0, MAX_TICKS)
+                rows = -1 if rows is None or end < 0 else rows
             elif line.startswith("abandon "):
                 abandoned = True
     except (OSError, ValueError, IndexError):
         return None
-    return hdr, end, abandoned, st.st_size, st.st_mtime
+    return hdr, end, abandoned, st.st_size, st.st_mtime, rows
 
 
 def _rec_tickrate_disagrees(hdr, tickrate):
@@ -2876,7 +2879,7 @@ def index_evidence(conn, now=None, dry_run=False):
                             hdr.get("leg"))
                 out["bad"] += 1
                 continue
-            _hdr, end, _abandoned, size, mtime = meta
+            _hdr, end, _abandoned, size, mtime, _rows = meta
             if end < 0 and now - mtime < EVIDENCE_SETTLE:
                 out["deferred"] += 1      # the non-stream writer may be mid-file
                 continue
