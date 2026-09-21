@@ -263,6 +263,19 @@
 float(string src, string dst) frename = #0:frename;
 float(string fname) fremove         = #0:fremove;
 
+/*
+  Patch 419 (engine): the OS entropy the master-server challenge code already
+  uses, reached by NAME so no builtin number is claimed.  QuakeC `random()` is
+  `(rand()&0x7fff)/32768` from a once-seeded `rand()`, and TWO things here need
+  better: the per-run nonce, and the randomized start -- whose offset this file
+  PUBLISHES to four decimals in every header, a step of 4/32768 at
+  `run_startjitter 2`, so each printed value names its own draw to within one
+  count.  Engines before 419 lack both builtins; checkbuiltin gates every call
+  and the callers fall back to random() rather than failing a run.
+*/
+string(float bytes) fs_randomhex = #0:fs_randomhex;
+float() fs_randomf               = #0:fs_randomf;
+
 // Patch 375 (engine): a byte range onto a file, or onto an open FILE_WRITESTREAM.
 // Engines before 375 lack both; checkbuiltin gates every call.
 int(string src, int ofs, int len, string dst, float append) fcopyrange = #0:fcopyrange;
@@ -393,6 +406,97 @@ float  run_t_rearmstops;
   bisection.  A lobby pins it; see cfg/lobby/lobby.cfg.
 */
 float  run_t_startjit;
+float  run_t_osrand;        // -1 unknown, 0 random(), 1 the OS.  Latched per map.
+float  run_t_osrsaid;       // ...and whether the DEGRADED case has been said yet
+
+/*
+  Patch 419: a float in [0,1) from the OS, or `random()` if this engine has no
+  such builtin or the OS refused.
+
+  THE BAD NEWS IS SAID LOUDLY AND THE GOOD NEWS QUIETLY, once per map each: the
+  healthy branch is a dprint because a working server does not need telling,
+  and the DEGRADED branch is a print because "the start jitter is
+  unpredictable" stops being true and nobody should have to read the binary to
+  discover it.  The case that matters most is new progs on an engine older than
+  419 -- checkbuiltin is false, every draw silently falls back, and that is the
+  rollout this print exists for.
+*/
+float() SV_Rand01 =
+{
+	local float r;
+
+	if (checkbuiltin(fs_randomf))
+	{
+		r = fs_randomf();
+		if (r >= 0)
+		{
+			if (run_t_osrand != 1)
+			{
+				run_t_osrand = 1;
+				dprint("timer: randomness from the OS (Patch 419)\n");
+			}
+			return r;
+		}
+	}
+	/*
+	  SAID ONCE, ON ITS OWN LATCH.  Two mistakes lived here, both found by
+	  review.  The first: `run_t_osrand` is a progs global, so it loads as 0 --
+	  the same value this branch used to set -- and the `!= 0` test therefore
+	  never fired on the case the print exists for.  A server with no builtin at
+	  all ran the whole map on random() and said NOTHING, while the healthy path
+	  announced itself.  The latch starts at -1 now (SV_TimerMapInit).
+	  The second: one variable cannot latch both messages.  Sys_RandomBytes
+	  opens /dev/urandom per call (sv_sys_unix.c), so a refusal is intermittent
+	  rather than sticky, and a flag that flips both ways would print on every
+	  transition -- up to eight draws per start attempt, per player, unrated.
+	*/
+	run_t_osrand = 0;
+	if (!run_t_osrsaid)
+	{
+		run_t_osrsaid = TRUE;
+		print("timer: NO OS RANDOMNESS -- the start jitter and the run nonce are "
+		      "drawn from random(), whose published offsets each name their own "
+		      "draw.  Patch 419 is not in force on this engine.\n");
+	}
+	else
+		dprint("timer: OS randomness refused again\n");
+	return random();
+};
+
+/*
+  `bytes` of OS entropy as hex, or the same shape built from SV_Rand01 when the
+  engine cannot.  The fallback is not silent (SV_Rand01 says so once) and is
+  still worth having for the nonce, which mixes it with wall clock, uptime,
+  runid and guid.
+*/
+string(float bytes) SV_RandHex =
+{
+	local string s;
+	local float i;
+
+	/*
+	  BOUNDED HERE, BECAUSE THE TWO PATHS DISAGREED OUTSIDE 1..64.  The builtin
+	  clamps to that range and the loop below did not, so a caller asking for 65
+	  would have been given 128 hex characters by one path and 130 by the other
+	  -- the OS path SHORT, silently.  Both live callers ask for 32 and 16; this
+	  is the check SV_RecNonce already applies to the digest one line later, on
+	  the value that feeds it.
+	*/
+	bytes = bound(1, rint(bytes), 64);
+	if (checkbuiltin(fs_randomhex))
+	{
+		s = fs_randomhex(bytes);
+		if (strlen(s) == bytes * 2)
+			return s;
+	}
+	s = "";
+	/*floor(x*256) and not rint(x*255): rint puts half the weight on 0 and on
+	  255 and full weight on the 254 between them.  SV_Rand01 is strictly below
+	  1 on both branches, so floor cannot reach 256.*/
+	for (i = 0; i < bytes; i = i + 1)
+		s = strcat(s, sprintf("%02x", floor(SV_Rand01() * 256)));
+	return s;
+};
 
 /*
   BUILD 21: run_rearmhop, cached per map.
@@ -2398,8 +2502,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             under a smaller rule, and those are different runs.
 
                             IT IS RECORDED BECAUSE IT CANNOT BE RE-DERIVED.
-                            random() is unseeded everywhere in this tree, so the
-                            number exists once, on one machine, at one instant.
+                            Patch 419 draws it from the OS (Sys_RandomBytes), so
+                            the number exists once, on one machine, at one
+                            instant -- and on an engine older than 419 it comes
+                            from an unseeded random(), which is the same
+                            conclusion for a weaker reason.
                             This is the same sentence `warp` is about, one step
                             earlier in the run.
     flags <n>               TF_* as they stood AT THE FINISH -- see below
@@ -3543,15 +3650,19 @@ void(entity e) SV_RecSession =
   rand() is seeded once from time(0) at COM_Init (common.c:6861), so enough
   observed draws recover the stream.
 
-  So: this is a nonce a determined attacker can predict, and it is worth having
-  anyway -- prediction buys them nothing here, because the server sends them the
-  number regardless.  What the same leak DOES buy is `startjit` itself, which
-  exists precisely so a run cannot be replayed from a known start.  That is a
-  pre-existing hole this patch found rather than made, and it is written down
-  here because a later patch that leans on either one needs to know.
+  So: this WAS a nonce a determined attacker could predict.  The first version
+  of this paragraph then said prediction buys them nothing, because the server
+  sends them the number regardless -- and a reviewer of Patch 419 pointed out
+  that this is true of the nonce's FIRST property only.  Its second is a LOWER
+  BOUND ON WHEN THE EVIDENCE WAS MADE, which is what Patch 418's upload leans
+  on: a client that can predict tomorrow's nonce can build the journal early
+  and the bound is gone.  What the same leak also bought was `startjit` itself,
+  which exists precisely so a run cannot be replayed from a known start.
 
-  The upgrade for both is an engine patch exposing Sys_RandomBytes to this VM
-  (it is already there: sys_linux.c, sys_win.c, used for master challenges).
+  PATCH 419 CLOSES BOTH.  `SV_RandHex(16)` is 128 bits of OS entropy per nonce,
+  so every other input above -- including `guid`, which is client userinfo and
+  unsanitised -- is irrelevant to predicting it.  On an engine older than 419
+  the fallback is the old mix, and SV_Rand01 says so at normal verbosity.
   Done this way so the whole patch ships with a progs deploy, which is routine,
   instead of an engine one, which is not.
 
@@ -3594,15 +3705,16 @@ void(entity e, float body) SV_RecNonce =
 	*/
 	if (strlen(run_nonce_seed) < 32)
 		run_nonce_seed = strzone(digest_hex("SHA256",
-		                         sprintf("%s|%g|%g|%g|%g|%g|%s",
+		                         sprintf("%s|%g|%s|%g|%g|%s",
 		                                 strftime(TRUE, "%Y%m%d-%H%M%S"), time,
-		                                 random(), random(), random(), random(),
+		                                 SV_RandHex(32), SV_Rand01(), SV_Rand01(),
 		                                 cvar_string("sv_port"))));
 
-	n = strtolower(digest_hex("SHA256", sprintf("%s|%s|%s|%g|%g|%g",
+	n = strtolower(digest_hex("SHA256", sprintf("%s|%s|%s|%g|%g|%s",
 	                                            run_nonce_seed, e.rec_rec_rid,
 	                                            infokey(e, "guid"),
-	                                            e.run_movetick, time, random())));
+	                                            e.run_movetick, time,
+	                                            SV_RandHex(16))));
 	/*
 	  CHECKED AND NOT ASSUMED, on FS_GuidId's precedent (sh_defs.qc): an engine
 	  whose digest_hex is absent or refuses "SHA256" returns "", and a run whose
@@ -4485,6 +4597,9 @@ void(entity e) SV_RecOpen =
 	  is +-2; four decimals is 0.0001 u, well under the sample's own %.2f floor,
 	  and it is a fixed width a reader can rely on.
 	*/
+	if (run_t_startjit > 0)
+		dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", run_t_startjit,
+		               e.run_t_jitter_x, e.run_t_jitter_y));
 	if (run_t_startjit > 0)
 		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", run_t_startjit,
 		                     e.run_t_jitter_x, e.run_t_jitter_y,
@@ -11160,8 +11275,9 @@ void(entity e, float z) SV_TimerEvent =
   nowhere to go -- which is a different fact from the rule being off, and the
   header keeps them different.
 
-  RECORDED, NEVER RE-DERIVED.  random() is unseeded here and everywhere in this
-  tree, so this number exists once.  See .run_t_jitter.
+  RECORDED, NEVER RE-DERIVED.  Patch 419 draws it from the OS, so this number
+  exists once and nothing can recompute it; before 419 the same held for the
+  weaker reason that random() is unseeded.  See .run_t_jitter.
 ==============================================================================
 */
 float(entity e) SV_RunStartJitter =
@@ -11193,14 +11309,31 @@ float(entity e) SV_RunStartJitter =
 		tries = tries + 1;
 
 		/*
+		  WHICH END IS OPEN DEPENDS ON THE BRANCH, and both are legal offsets.
 		  random() is documented in sv_defs.qc as able to return exactly 1.0, so
-		  this is a CLOSED interval [-mag, +mag] on both axes rather than the
-		  half-open one the arithmetic looks like.  That is stated rather than
-		  clamped: an endpoint is a legal offset and clamping it would bias the
-		  two extremes by one ulp for no reason.  z is left at 0 -- see the rule.
+		  the fallback gives a CLOSED interval [-mag, +mag]; Patch 419's
+		  fs_randomf is [0,1), so the OS branch gives [-mag, +mag) -- the
+		  attainable endpoint moved from the top to the bottom.  Stated rather
+		  than clamped either way: an endpoint is a legal offset and clamping it
+		  would bias an extreme by one ulp for no reason.  z is left at 0.
 		*/
-		off_x = (random() - 0.5) * 2 * mag;
-		off_y = (random() - 0.5) * 2 * mag;
+		/*
+		  PATCH 419: the OS, not random().  This offset is written to the header
+		  at four decimals and applied to the player's own body, so every draw is
+		  published; the rule exists so a run cannot be planned against a known
+		  start, and a draw a reader can name is not that.
+
+		  IT DOES NOT MAKE THE RULE WHOLE, and the review that asked for this
+		  sentence is right.  The accepted offset is uniform only CONDITIONED on
+		  the tests below -- and on the point mass at exactly (0,0) when all
+		  tries fail, which the header states as `startjit <u> 0 0 0`.  The
+		  geometry is the player's choice: stand where the loop cannot succeed
+		  and the start is exactly known on every run.  Entropy cannot fix a
+		  conditioned distribution; only the candidate rule can, and that is not
+		  this patch.
+		*/
+		off_x = (SV_Rand01() - 0.5) * 2 * mag;
+		off_y = (SV_Rand01() - 0.5) * 2 * mag;
 		off_z = 0;
 		cand  = base + off;
 
@@ -12881,6 +13014,8 @@ void() SV_TimerMapInit =
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
 	run_t_startjit    = cvar("run_startjitter");   // build 83
+	run_t_osrand      = -1;      // Patch 419: "not yet determined", which the
+	run_t_osrsaid     = FALSE;   // declaration promises and nothing else assigned
 
 	SV_PBLoad();
 
