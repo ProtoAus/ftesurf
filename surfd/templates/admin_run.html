@@ -92,8 +92,11 @@
       another key for this player, <b>shared</b> a key that first signed for someone else,
       <b>unsigned</b> a run with no signed receipt from a player who has signed before.
       A shared machine and a reinstall look the same as an impostor, so this is shown here
-      and nowhere else. Accept clears the flag; Reject keeps it and stops the pair counting
-      as anyone's first &mdash; reject an impostor's key on the run that set it.</p>
+      and nowhere else. Accepting a key clears it for good; accepting unsigned runs covers
+      only those submitted so far. &ldquo;Not this player's key&rdquo; keeps the flag and
+      hands the first-key slot to the player's next key &mdash; use it on an impostor's key,
+      at the run that set it. Whether a player cheats is the run review's call, not this
+      card's.</p>
   </div>
 
   <div class="card">
@@ -317,11 +320,15 @@ function renderKey(j) {
     put("player's first key", frag(span("mono", short(k.first_pub)), " \u2014 set by ", runLink(k.first_rid)));
   if (k.key_pub && k.first_player && k.first_player !== j.run.player)
     put("key first signed for", frag(span("mono", k.first_player), " \u2014 ", runLink(k.first_player_rid)));
+  if (!k.key_pub)
+    put("receipts read through", k.receipts_through ? fmtDate(k.receipts_through)
+        : el("span", "muted", "no complete pass yet \u2014 unsigned runs are not judged"));
   if (!(k.key_pub || k.key_flag || k.key_decision)) return;
   const pub = k.key_pub || "";
   const row = el("div", "row");
-  for (const [act, label] of [["accept", pub ? "Accept key for this player" : "Accept unsigned runs for this player"],
-                              ["reject", "Reject"], ["clear", "Clear decision"]]) {
+  for (const [act, label] of [["accept", pub ? "Accept key for this player" : "Accept these unsigned runs"],
+                              ["reject", pub ? "Not this player's key" : "Reject"],
+                              ["clear", "Clear decision"]]) {
     if (act === k.key_decision || (act === "clear" && !k.key_decision)) continue;
     const b = el("button", act === "reject" ? "danger" : "", label);
     b.addEventListener("click", async () => {

@@ -22,6 +22,7 @@
   <div class="card">
     <h2>Runs <span class="muted" style="font-weight:400" id="summary"></span></h2>
     <div class="tabs" id="chips" style="margin-top:.6rem"></div>
+    <p class="note" id="rcptnote"></p>
     <div class="row" style="margin-bottom:.6rem">
       <input type="text" id="q" placeholder="map, name or replay id"
              maxlength="64" spellcheck="false" autocomplete="off">
@@ -143,6 +144,23 @@ async function load(append) {
   document.getElementById("more").hidden = j.rows.length < j.limit;
   document.getElementById("summary").textContent =
     "\u2014 " + (j.counts.all || 0) + " replays, " + (j.counts.queue || 0) + " to review";
+  renderThrough(j.receipts_through, j.now);
+}
+
+// Patch 422: "unsigned" is judged only up to the sweeper's last complete receipt
+// pass, so a stalled receipt step pauses it -- and says so here.
+function renderThrough(through, now) {
+  const n = document.getElementById("rcptnote");
+  n.className = "note";
+  if (!through) {
+    n.textContent = "No complete receipt pass yet: unsigned runs are not judged.";
+  } else if (now - through > 3600) {
+    n.className = "note bad";
+    n.textContent = "The receipt step has not completed a pass since " + fmtDate(through) +
+      ": runs after that are not judged unsigned. Check sweep.log for \"receipt step failed\".";
+  } else {
+    n.textContent = "Receipts read through " + fmtDate(through) + ".";
+  }
 }
 
 document.getElementById("chips").addEventListener("click", ev => {

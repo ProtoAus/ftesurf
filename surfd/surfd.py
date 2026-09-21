@@ -714,7 +714,48 @@ CREATE TABLE IF NOT EXISTS pubkeys (
     PRIMARY KEY (pub, player)
 );
 CREATE INDEX IF NOT EXISTS pubkeys_player ON pubkeys (player, pub);
+
+CREATE TABLE IF NOT EXISTS sweepmeta (
+    k TEXT PRIMARY KEY,
+    v INTEGER NOT NULL
+);
 """
+
+
+def receipts_v8(conn):
+    """Schema 8 (Patch 422), IDEMPOTENT and run by every migrate(): it also
+    repairs a database an earlier cut stamped 8 without the receipts columns
+    (c97b430), and rows a rolled-back schema-7 sweep wrote since.
+
+    pubkeys.decision: the owner's word on a (key, player) pair -- '' (first key
+    wins), 'accept' or 'reject'.  receipts.sig: 1 when the signature verified
+    (a FAULT can still be signed); signed_at: the .rcpt's mtime (a resumed run
+    keeps session one's runid, so runid does not order signings); stale: to be
+    read again.  sweepmeta.receipts_through: see sweep.receipt_step.  admin.py
+    reads them; VER_SQL and every public surface do not.  Additive, so a
+    schema-7 surfd reads the same file.  The ALTERs race like step 6.
+    """
+    conn.executescript(RECEIPTS_SQL)
+    for table, adds in (
+            ("pubkeys", (("decision", "decision TEXT NOT NULL DEFAULT ''"),
+                         ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0"))),
+            ("receipts", (("sig", "sig INTEGER NOT NULL DEFAULT 0"),
+                          ("signed_at", "signed_at INTEGER NOT NULL DEFAULT 0"),
+                          ("stale", "stale INTEGER NOT NULL DEFAULT 0")))):
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+        for col, ddl in adds:
+            if col not in cols:
+                try:
+                    conn.execute("ALTER TABLE %s ADD COLUMN %s" % (table, ddl))
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc):
+                        raise
+    # No signed_at = written by a pre-8 sweep: read it again (a FAULT's sig is
+    # unknown), and until then order it by when it was read.
+    conn.execute("UPDATE receipts SET stale = 1 WHERE signed_at = 0")
+    conn.execute("UPDATE receipts SET sig = 1 WHERE verdict = 'VALID' AND sig = 0")
+    conn.execute("UPDATE receipts SET signed_at = at WHERE signed_at = 0")
+    conn.commit()
 
 # ERRORs since the last submission or re-check before sweep.pending() gives up;
 # the admin's "pending" list uses the same cap.
@@ -1025,35 +1066,9 @@ def migrate():
             conn.commit()
             version = 7
 
+        # Schema 8 is a repair as much as a step: receipts_v8 runs every time.
+        receipts_v8(conn)
         if version < 8:
-            # SCHEMA 8 (Patch 422), first key wins.  pubkeys: the owner's word
-            # on a (key, player) pair -- '' undecided, 'accept' or 'reject'.
-            # receipts: `sig` 1 when the signature verified (a FAULT can still
-            # be signed), `signed_at` the .rcpt's mtime (a resumed run keeps
-            # session one's runid, so runid does not order signings), `stale`
-            # marks a --reread-receipts row still to be read again.  admin.py
-            # reads them; VER_SQL and every public surface do not.  Additive, so
-            # a schema-7 surfd reads the same database.  ALTER races like step 6.
-            conn.executescript(RECEIPTS_SQL)
-            for table, adds in (
-                    ("pubkeys", (("decision", "decision TEXT NOT NULL DEFAULT ''"),
-                                 ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0"))),
-                    ("receipts", (("sig", "sig INTEGER NOT NULL DEFAULT 0"),
-                                  ("signed_at", "signed_at INTEGER NOT NULL DEFAULT 0"),
-                                  ("stale", "stale INTEGER NOT NULL DEFAULT 0")))):
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
-                for col, ddl in adds:
-                    if col not in cols:
-                        try:
-                            conn.execute("ALTER TABLE %s ADD COLUMN %s" % (table, ddl))
-                        except sqlite3.OperationalError as exc:
-                            if "duplicate column" not in str(exc):
-                                raise
-            # Rows read before 8: VALID implies a verified signature; a FAULT's
-            # is unknown and stays 0 until --reread-receipts.  The read time is
-            # the best signing time they have.
-            conn.execute("UPDATE receipts SET sig = 1 WHERE verdict = 'VALID' AND sig = 0")
-            conn.execute("UPDATE receipts SET signed_at = at WHERE signed_at = 0")
             conn.execute("PRAGMA user_version=8")
             conn.commit()
             version = 8

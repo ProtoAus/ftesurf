@@ -154,16 +154,21 @@ _ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
 
 # Patch 422, FIRST KEY WINS (Lex, until real accounts).  For a board run by
 # player P whose receipt's signature verified with key K: "new" when K is not
-# P's first key, "shared" when P is not K's first player.  A run with no signed
-# receipt, submitted after P first signed and older than KEY_GRACE (its receipt
-# had time to arrive), is "unsigned" -- not signing must not read as clean.
-# The owner's 'accept' on (K, P) -- ('', P) for unsigned -- clears it; 'reject'
-# flags it and drops the pair out of "first".  First = earliest signed_at (the
-# .rcpt's mtime; a resumed run keeps session one's runid), then runid.  A FAULT
-# counts when its signature verified (`sig`).  The firsts are derived tables
-# computed once per query: per-row subqueries took 12.7 s at 10k receipts.
-# Admin-only: VER_SQL and every public surface ignore all of it.
-KEY_GRACE = 3600
+# P's first key, "shared" when P is not K's first player.  "unsigned": no
+# signed receipt, from a player who has signed before, and submitted before the
+# sweeper's watermark (sweepmeta.receipts_through) less KEY_MARGIN -- so "not
+# read yet" (a stalled receipt step) never reads as "not signed".
+#   First = earliest signed_at (the .rcpt's mtime; a resumed run keeps session
+# one's runid), then runid; a FAULT counts when its signature verified (`sig`).
+#   'accept' on (K, P) clears K for good -- K is a secret.  On ('', P) it clears
+# only runs submitted before the decision: anyone can play unsigned as P's
+# public guid.  'reject' says K is not P's: flagged, and out of "first", so P's
+# next key takes the slot (the impostor case).  "Has signed before" still counts
+# a rejected signing, so a reject never waives unsigned runs.
+#   The firsts are derived tables computed once per query: per-row subqueries
+# took 12.7 s at 10k receipts.  Admin-only: VER_SQL and every public surface
+# ignore all of it.
+KEY_MARGIN = 300          # s between a run's submit and its .rcpt landing
 _KEY_CAND = """SELECT r.runid, r.pub, q.player, r.signed_at, q.id AS rid
       FROM receipts r
       JOIN replays q ON q.runid = r.runid AND q.kind = 'run' AND q.player <> ''
@@ -172,21 +177,25 @@ _KEY_CAND = """SELECT r.runid, r.pub, q.player, r.signed_at, q.id AS rid
 _KEY_FIRST = """(SELECT * FROM (SELECT pub, player, signed_at, rid, ROW_NUMBER()
        OVER (PARTITION BY %s ORDER BY signed_at, runid) AS n
        FROM (""" + _KEY_CAND + """)) WHERE n = 1)"""
+_KEY_SIGNED = """(SELECT q.player, MIN(r.signed_at) AS signed_at FROM receipts r
+       JOIN replays q ON q.runid = r.runid AND q.kind = 'run' AND q.player <> ''
+      WHERE r.sig = 1 AND r.pub <> '' GROUP BY q.player)"""
 _KEY_JOIN = """
   LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> '' AND p.kind = 'run'
         AND p.player <> '' AND rc.sig = 1 AND rc.pub <> ''
   LEFT JOIN pubkeys kd ON kd.pub = COALESCE(rc.pub, '') AND kd.player = p.player
   LEFT JOIN """ + _KEY_FIRST % "player" + """ fk ON fk.player = p.player
-  LEFT JOIN """ + _KEY_FIRST % "pub" + """ fp ON fp.pub = rc.pub"""
-# One placeholder: the grace cutoff, now - KEY_GRACE.
+  LEFT JOIN """ + _KEY_FIRST % "pub" + """ fp ON fp.pub = rc.pub
+  LEFT JOIN """ + _KEY_SIGNED + """ fs ON fs.player = p.player"""
+# One placeholder: receipts_through - KEY_MARGIN.
 _KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
        fk.pub AS first_pub, fk.rid AS first_rid,
        fp.player AS first_player, fp.rid AS first_player_rid,
        CASE WHEN p.kind <> 'run' OR p.player = '' THEN ''
             WHEN rc.pub IS NULL THEN
-                 CASE WHEN fk.pub IS NULL OR p.submitted <= fk.signed_at
+                 CASE WHEN fs.signed_at IS NULL OR p.submitted <= fs.signed_at
                            OR p.submitted > ? THEN ''
-                      WHEN kd.decision = 'accept' THEN ''
+                      WHEN kd.decision = 'accept' AND p.submitted <= kd.decided_at THEN ''
                       WHEN kd.decision = 'reject' THEN 'rejected'
                       ELSE 'unsigned' END
             WHEN kd.decision = 'accept' THEN ''
@@ -201,24 +210,41 @@ KEY_ACTIONS = ("accept", "reject", "clear")
 
 
 def key_tables(conn):
-    """True when schema-8 `receipts` and `pubkeys` exist (see receipt_for)."""
+    """True when schema-8 `receipts`, `pubkeys` and `sweepmeta` exist (see
+    receipt_for)."""
     have = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table'"
-        " AND name IN ('receipts', 'pubkeys')")}
-    if have != {"receipts", "pubkeys"}:
+        " AND name IN ('receipts', 'pubkeys', 'sweepmeta')")}
+    if have != {"receipts", "pubkeys", "sweepmeta"}:
         return False
     cols = lambda t: {r[1] for r in conn.execute("PRAGMA table_info(%s)" % t)}
     return "decision" in cols("pubkeys") and "sig" in cols("receipts")
 
 
+def receipts_through(conn):
+    """The sweeper's watermark (0 = no complete receipt pass yet)."""
+    row = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()
+    return int(row[0]) if row else 0
+
+
+def key_bound(conn):
+    """The unsigned rule's placeholder: runs submitted after this are not judged."""
+    through = receipts_through(conn)
+    return through - KEY_MARGIN if through else -1
+
+
 def key_for(conn, rid):
-    """One replay's first-key verdict, from the list's own SQL; None without
-    the schema-8 tables."""
+    """One board run's first-key verdict, from the list's own SQL; None for
+    stage evidence or without the schema-8 tables."""
     if not key_tables(conn):
         return None
     k = conn.execute("SELECT " + _KEY_COLS + " FROM replays p" + _KEY_JOIN +
-                     " WHERE p.id = ?", (int(time.time()) - KEY_GRACE, rid)).fetchone()
-    return dict(k) if k else None
+                     " WHERE p.id = ? AND p.kind = 'run'", (key_bound(conn), rid)).fetchone()
+    if k is None:
+        return None
+    out = dict(k)
+    out["receipts_through"] = receipts_through(conn)
+    return out
 
 
 # One row per replay with its latest CURRENT (at >= submitted) review and
@@ -308,7 +334,7 @@ def clean_note(raw):
 def list_runs(conn, state, q, offset, max_errors):
     """(counts, rows) for the review list; `counts` honours `q` but not `state`."""
     keys = key_tables(conn)
-    where, args = "1", [max_errors] + ([int(time.time()) - KEY_GRACE] if keys else [])
+    where, args = "1", [max_errors] + ([key_bound(conn)] if keys else [])
     if q:
         like = "%" + re.sub(r"([\\%_])", r"\\\1", q) + "%"
         where = "(x.map LIKE ? ESCAPE '\\' OR x.name LIKE ? ESCAPE '\\' OR x.id = ?)"
@@ -1372,6 +1398,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             conn = db_connect()
             try:
                 counts, rows = list_runs(conn, state, q, offset, max_errors)
+                through = receipts_through(conn) if key_tables(conn) else 0
             except sqlite3.Error as exc:
                 log.exception("admin runs db error: %s", exc)
                 return jsonify({"ok": False, "error": "storage error"}), 500
@@ -1379,6 +1406,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 conn.close()
             return jsonify({"ok": True, "state": state, "q": q, "offset": offset,
                             "limit": RUNS_PAGE, "counts": counts,
+                            "receipts_through": through, "now": int(time.time()),
                             "rows": [run_row(r) for r in rows]})
 
         @bp.get("/api/run/<int:rid>")

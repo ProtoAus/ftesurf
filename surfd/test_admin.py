@@ -587,7 +587,7 @@ def review_section(pw_hash, pw):
             check("the %s script parses" % name, ok, True)
 
     # -- 9g3. Patch 422: first key wins, flagged in the admin only ------------
-    K1, K2, K3, K4, K5, K6 = ("%d%d" % (i, i) * 32 for i in range(1, 7))
+    K1, K2, K3, K4, K5, K6, K7 = ("%d%d" % (i, i) * 32 for i in range(1, 8))
 
     def seed_run(player, ticks, runid):
         rid, _p = submit(player, ticks)
@@ -613,6 +613,18 @@ def review_section(pw_hash, pw):
         finally:
             conn.close()
 
+    def watermark(v):
+        conn = m.connect()
+        try:
+            with conn:
+                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                             " VALUES ('receipts_through', ?)", (v,))
+        finally:
+            conn.close()
+
+    def sub(rid):
+        return sql("SELECT submitted FROM replays WHERE id = ?", (rid,))[0][0]
+
     def key(rid):
         return detail(rid)["key"]
 
@@ -636,11 +648,13 @@ def review_section(pw_hash, pw):
     c1 = seed_run("kfc", 950, "20260921-100005-0")
     d1 = seed_run("kfd", 945, "20260921-090000-0")
     d2 = seed_run("kfd", 940, "20260921-100006-0")
+    g1 = seed_run("kfg", 935, "20260921-100010-0")
+    g2 = seed_run("kfg", 932, "20260921-100011-0")
     a4 = seed_run("kfa", 930, "20260921-100007-0")
-    runs10 = [a0, a1, a2, a3, b1, c1, d1, d2, a4]
-    check("control: nine distinct replay rows", len(set(runs10)), 9)
+    seeded = [a0, a1, a2, a3, b1, c1, d1, d2, g1, g2, a4]
+    check("control: eleven distinct replay rows", len(set(seeded)), 11)
     board_before = board()
-    public_before = [detail(x)["public"] for x in runs10]
+    public_before = [detail(x)["public"] for x in seeded]
     add_receipt("20260921-100000-0", K3, "FAULT", sig=0)
     add_receipt("20260921-100001-0", K1)
     add_receipt("20260921-100002-0", K2)
@@ -648,14 +662,12 @@ def review_section(pw_hash, pw):
     add_receipt("20260921-100004-0", K1)
     add_receipt("20260921-090000-0", K5, signed_at=int(clock.now) + 100)
     add_receipt("20260921-100006-0", K6)
-    check("inside the grace an unsigned run is not flagged yet", flag(a4), "")
+    add_receipt("20260921-100010-0", K7)
+    check("no complete receipt pass yet: nothing is judged unsigned",
+          (flag(a4), flag(g2), listing(state="keys")["receipts_through"]), ("", "", 0))
     check("receipts move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
-          [detail(x)["public"] for x in runs10], public_before)
-    clock.now += 2 * adm.KEY_GRACE
-    login(c, pw)                  # two hours on, the admin session has expired
-    csrf = c.get("/admin/runs").get_data(as_text=True).split(
-        'name="csrf" value="')[1].split('"')[0]
+          [detail(x)["public"] for x in seeded], public_before)
     a5 = seed_run("kfa", 920, "20260921-100008-0")
     conn = m.connect()
     try:
@@ -670,22 +682,28 @@ def review_section(pw_hash, pw):
         conn.close()
     add_receipt("20260921-100009-0", K1, signed_at=1)
     board_before = board()        # a5 is a faster run, so it moved the board
+    wm = sub(a4) + adm.KEY_MARGIN
+    watermark(wm)
+    check("control: a5 was submitted after the watermark's bound, g2 before it",
+          (sub(a5) > wm - adm.KEY_MARGIN, sub(g2) <= wm - adm.KEY_MARGIN), (True, True))
 
     check("flags: unsigned FAULT, first, new, signed FAULT, shared, never signed",
           [flag(a0), flag(a1), flag(a2), flag(a3), flag(b1), flag(c1)],
           ["", "", "new", "new", "shared", ""])
     check("...ordered by signing, not runid: the resumed run is the new key",
           [flag(d1), flag(d2)], ["new", ""])
-    check("...unsigned after signing, past the grace; a fresh one is not",
-          [flag(a4), flag(a5)], ["unsigned", ""])
-    check("...stage evidence gets no key verdict", (flag(e1), key(e1)["key_pub"]), ("", None))
+    check("...unsigned after signing and inside the watermark; after it, not yet",
+          [flag(a4), flag(g2), flag(a5), flag(g1)], ["unsigned", "unsigned", "", ""])
+    check("...stage evidence gets no key verdict", key(e1), None)
     check("'new' names the first key and the run that set it",
           (key(a2)["first_pub"], key(a2)["first_rid"]), (K1, a1))
     check("'shared' names the key's first player and run",
           (key(b1)["first_player"], key(b1)["first_player_rid"]), ("kfa", a1))
-    check("the Key flags list holds exactly those five",
-          sorted(ids(state="keys")), sorted([a2, a3, b1, d1, a4]))
-    check("...and counts them", listing(state="all")["counts"]["keys"], 5)
+    check("the Key flags list holds exactly those six",
+          sorted(ids(state="keys")), sorted([a2, a3, b1, d1, a4, g2]))
+    check("...counts them, and says how far receipts are read",
+          (listing(state="all")["counts"]["keys"], listing(state="keys")["receipts_through"]),
+          (6, wm))
 
     check("key decision: a forged token is refused", keyact(a2, "accept", K2, "forged") != 200, True)
     check("...a stale key is 409", keyact(a2, "accept", K1), 409)
@@ -699,22 +717,33 @@ def review_section(pw_hash, pw):
     check("...creating the pair the sweeper had not bound yet",
           sql("SELECT decision FROM pubkeys WHERE pub = ? AND player = 'kfa'", (K2,)),
           [("accept",)])
-    check("accept unsigned runs for kfa", keyact(a4, "accept", ""), 200)
-    check("...clears the unsigned flag", flag(a4), "")
+    check("accept kfa's unsigned runs", keyact(a4, "accept", ""), 200)
+    check("...clears them", [flag(a4), flag(a5)], ["", ""])
     check("...and the empty key is not listed as one the player signed with",
           "" in [k["pub"] for k in detail(a1)["receipt"]["keys"]], False)
-    check("reject the first key (the impostor case)", keyact(a1, "reject", K1), 200)
+    check("accepts move no public surface", board(), board_before)
+    clock.now += 5
+    a6 = seed_run("kfa", 905, "20260921-100012-0")
+    board_before = board()        # a6 is faster again
+    watermark(sub(a6) + adm.KEY_MARGIN)
+    check("...but not a later one: the guid is public, anyone can play unsigned as kfa",
+          [flag(a6), flag(a4)], ["unsigned", ""])
+    check("'not this player's key' on kfg's only key", keyact(g1, "reject", K7), 200)
+    check("...flags it, and kfg's unsigned run stays flagged: a rejected signing is a signing",
+          [flag(g1), flag(g2)], ["rejected", "unsigned"])
+    check("'not this player's key' on kfa's first key (the impostor case)",
+          keyact(a1, "reject", K1), 200)
     check("...flags it, and the key's next player becomes its first",
           [flag(a1), flag(b1), flag(a2)], ["rejected", "", ""])
     check("...and the player's first key moves to the next one",
           (key(a3)["first_pub"], key(a3)["first_rid"], flag(a3)), (K2, a2, "new"))
-    check("...so the list holds the rejected pair and the rest",
-          sorted(ids(state="keys")), sorted([a1, a3, d1]))
+    check("...so the list holds these",
+          sorted(ids(state="keys")), sorted([a1, a3, d1, g1, g2, a6]))
     check("clear it", keyact(a1, "clear", K1), 200)
     check("...and first key wins again", [flag(a1), flag(b1)], ["", "shared"])
     check("decisions move no public surface: the board", board(), board_before)
     check("...nor any run's public state",
-          [detail(x)["public"] for x in runs10], public_before)
+          [detail(x)["public"] for x in seeded], public_before)
 
     # Speed: the firsts are derived tables, not per-row subqueries (12.7 s at
     # 10k receipts before).  6000 signed runs over 600 players and 700 keys.

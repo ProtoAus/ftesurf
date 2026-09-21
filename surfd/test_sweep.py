@@ -262,6 +262,35 @@ def case_receipt_reread():
           conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
 
 
+def case_receipt_watermark():
+    """Patch 422: the watermark moves only once every never-read receipt up to
+    the cutoff is in the table, and fresh receipts are read before stale ones."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    T = int(time.time())
+    old = T - 2 * surfd.EVIDENCE_SETTLE
+
+    def wm():
+        row = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()
+        return row[0] if row else None
+
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000050-0", mapname="aaa_first", age=old)
+    check("no pass yet: no watermark", wm(), None)
+    sweep.receipt_step(conn, limit=0, now=T)
+    check("a pass cut short by the limit leaves it", wm(), None)
+    sweep.receipt_step(conn, now=T)
+    check("a complete pass sets it to the cutoff", wm(), T - surfd.EVIDENCE_SETTLE)
+    sweep.mark_receipts_stale(conn)
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000051-0", mapname="zzz_last", age=old)
+    got = sweep.receipt_step(conn, limit=1, now=T + 60)
+    stale = dict(conn.execute("SELECT runid, stale FROM receipts").fetchall())
+    check("one slot: the fresh receipt is read before the stale one (which sorts first)",
+          (got[0], stale.get("20260921-000051-0"), stale.get("20260921-000050-0")), (1, 0, 1))
+    check("...and a pass that read every fresh file moves the watermark",
+          wm(), T + 60 - surfd.EVIDENCE_SETTLE)
+
+
 def angle_pair(runid, rot=0.0, still=True, ver=9):
     """A .rec and the sidecar that goes with it, from reccheck's own fixtures.
 
@@ -396,6 +425,8 @@ def case_receipt_step_never_takes_the_sweep_down():
         sys.modules.update(saved)
     check("no tools: the step reports nothing read", got, (0, 0))
     check("...and says why, on stderr", "receipt step failed" in err.getvalue(), True)
+    check("...and the watermark does not move (admin's unsigned pauses)",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta").fetchone()[0], 0)
     rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
     sweep.sweep(conn, 20, runner=lambda m, p:
                 ["VERIFY %s PASS ticks 662 rows 634" % q for q in p], now=99)
@@ -712,7 +743,7 @@ def main():
                  case_receipt_reread,
                  case_receipt_angles_reach_the_database,
                  case_receipt_step_never_takes_the_sweep_down,
-                 case_disk_note):
+                 case_receipt_watermark, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

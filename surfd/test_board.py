@@ -1155,7 +1155,12 @@ both = sum(1 for k in range(20)
            if sum(1 for r, s in steps if r == k and "migrated 4 -> " in s) == 2)
 print("     (both threads ran step 5 in %d of 20 rounds)" % both)
 check("two threads migrating one v4 file, 20 rounds: no error", errors, [])
-check("control: in some round both threads really ran step 5", both > 0, True)
+# Real overlap is luck, and a round-2 reviewer saw this fail at HEAD and its
+# parent alike; the RacingConn arm above is the deterministic race.
+if both:
+    check("control: in some round both threads really ran step 5", both > 0, True)
+else:
+    print("skip threads never overlapped in step 5 this run -- see the RacingConn arm")
 
 # --------------------------------------------------------------------------
 print("\n--- 15. the VERIFIED flag (`ver`) ---------------------------------")
@@ -1544,7 +1549,10 @@ both = sum(1 for k in range(20)
            if sum(1 for r, s in steps if r == k and "migrated 5 -> " in s) == 2)
 print("     (both threads ran step 6 in %d of 20 rounds)" % both)
 check("(g) two threads migrating one v5 file, 20 rounds: no error", errors, [])
-check("(g) control: in some round both threads really ran step 6", both > 0, True)
+if both:
+    check("(g) control: in some round both threads really ran step 6", both > 0, True)
+else:
+    print("skip (g) threads never overlapped in step 6 this run -- see the RacingConn arm")
 
 # --------------------------------------------------------------------------
 print("\n--- 19. a leaf is a claim on a file, not just a description -------")
@@ -1747,20 +1755,25 @@ print("\n--- (h) schema 8: the owner's word on a (key, player) pair -----------"
 # Patch 422.  A v7 database is a v8 one with the two columns dropped.
 
 
-def seed_v7(path, rows=True):
+def seed_v7(path, rows=True, first_cut=False):
+    """first_cut: what c97b430 left -- stamped 8, pubkeys.decision present, none
+    of the receipts columns."""
     src = sqlite3.connect(m._test_db)
     dst = sqlite3.connect(path)
     src.backup(dst)
     src.close()
-    for table, col in (("pubkeys", "decision"), ("pubkeys", "decided_at"),
-                       ("receipts", "sig"), ("receipts", "signed_at"), ("receipts", "stale")):
+    drops = [("receipts", "sig"), ("receipts", "signed_at"), ("receipts", "stale")]
+    if not first_cut:
+        drops += [("pubkeys", "decision"), ("pubkeys", "decided_at")]
+    for table, col in drops:
         dst.execute("ALTER TABLE %s DROP COLUMN %s" % (table, col))
+    dst.execute("DROP TABLE sweepmeta")
     if rows:
         dst.execute("INSERT INTO pubkeys (pub, player, first_at, last_at, runs)"
                     " VALUES ('k', 'p', 1, 2, 3)")
         dst.execute("INSERT INTO receipts (runid, pub, verdict, at) VALUES"
                     " ('r1', 'k', 'VALID', 50), ('r2', 'k', 'FAULT', 60)")
-    dst.execute("PRAGMA user_version=7")
+    dst.execute("PRAGMA user_version=%d" % (8 if first_cut else 7))
     dst.commit()
     dst.close()
 
@@ -1788,9 +1801,25 @@ conn = sqlite3.connect(v7)
 check("(h) ...keeping the pair, undecided",
       conn.execute("SELECT pub, player, runs, decision, decided_at FROM pubkeys").fetchall(),
       [("k", "p", 3, "", 0)])
-check("(h) ...and backfilling receipts: VALID is signed, a FAULT unknown, signed_at = at",
+check("(h) ...backfilling receipts (VALID signed, FAULT unknown, signed_at = at)"
+      " and marking them to be read again",
       conn.execute("SELECT runid, sig, signed_at, stale FROM receipts ORDER BY runid").fetchall(),
-      [("r1", 1, 50, 0), ("r2", 0, 60, 0)])
+      [("r1", 1, 50, 1), ("r2", 0, 60, 1)])
+check("(h) ...and creating sweepmeta",
+      conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'sweepmeta'").fetchone()[0], 1)
+conn.close()
+
+cut = os.path.join(m._test_home, "firstcut.db")
+seed_v7(cut, first_cut=True)
+check("(h) control: the first cut's database is stamped 8 without receipts.sig",
+      (objects(cut)[2], "sig" in [r[1] for r in sqlite3.connect(cut).execute(
+          "PRAGMA table_info(receipts)")]), (8, False))
+check("(h) a database the first cut stamped 8 migrates", migrate_file(m, cut), "ok")
+conn = sqlite3.connect(cut)
+check("(h) ...and is repaired: the receipts columns and sweepmeta exist",
+      ({"sig", "signed_at", "stale"} <= {r[1] for r in conn.execute("PRAGMA table_info(receipts)")},
+       conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'sweepmeta'").fetchone()[0]),
+      (True, 1))
 conn.close()
 
 race7 = os.path.join(m._test_home, "race7.db")

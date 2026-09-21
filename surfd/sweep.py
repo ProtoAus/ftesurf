@@ -243,10 +243,7 @@ def receipt_step(conn, limit=200, now=None):
         # passed is a run that never kept one.  What DOES go stale is the
         # thresholds -- reccheck's are measured, and measuring them again will
         # move them -- so an operator can say so with --reread-receipts.
-        # A --reread-receipts row stays (stale = 1) until read again, so the
-        # admin's first-key flags never see a half-read table (Patch 422).
-        seen = {row[0] for row in conn.execute(
-            "SELECT runid FROM receipts WHERE stale = 0")}
+        rows = {r[0]: r[1] for r in conn.execute("SELECT runid, stale FROM receipts")}
         # THE SAME SETTLE WINDOW THE EVIDENCE INDEX USES, and for the same
         # reason one level along: the receipt is written at the run's end edge
         # and the upload it commits to arrives AFTERWARDS, so a receipt read the
@@ -255,10 +252,17 @@ def receipt_step(conn, limit=200, now=None):
         # takes at 30 ms RTT.
         cutoff = t0 - surfd.EVIDENCE_SETTLE
         files = sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR, "*", "*.rcpt")))
+        # Never-read files first: a --reread-receipts backlog (stale = 1, kept
+        # until replaced) must not hold back a new run's receipt.
+        name = lambda f: os.path.basename(f)[:-5]
+        todo = ([f for f in files if name(f) not in rows] +
+                [f for f in files if rows.get(name(f)) == 1])
         n = bad = 0
-        for path in files:
-            runid = os.path.basename(path)[:-5]
-            if runid in seen or n >= limit:
+        fresh_cut = False
+        for path in todo:
+            runid = name(path)
+            if n >= limit:
+                fresh_cut = fresh_cut or runid not in rows
                 continue
             try:
                 mtime = os.path.getmtime(path)
@@ -281,6 +285,16 @@ def receipt_step(conn, limit=200, now=None):
                 bind_key(conn, runid, pub, t0)
             n += 1
             bad += verdict != "VALID"
+        # THE WATERMARK.  Every never-read receipt up to `cutoff` is now in the
+        # table, so a board run submitted well before it with no signed receipt
+        # has none.  A pass cut short, or one that raised, does not move it:
+        # admin's "unsigned" then pauses instead of reading "not read yet" as
+        # "not signed" -- the three hours this step failed on 2026-09-21 would
+        # otherwise have flagged every signer's runs.
+        if not fresh_cut:
+            with conn:
+                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                             " VALUES ('receipts_through', ?)", (cutoff,))
         return n, bad
     except Exception as exc:
         print("sweep: receipt step failed: %r" % exc, file=sys.stderr)
@@ -372,6 +386,11 @@ def main(argv=None):
                                                          "*", "*.rcpt")))
                 if os.path.basename(p)[:-5] not in done]
         print("receipts: %d unread" % len(todo))
+        through = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'")\
+            .fetchone() if conn.execute("SELECT name FROM sqlite_master WHERE type='table'"
+                                        " AND name='sweepmeta'").fetchone() else None
+        print("receipts read through: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S",
+              time.localtime(through[0])) if through else "never"))
         return 0
     if args.reread_receipts:
         n = mark_receipts_stale(conn)
