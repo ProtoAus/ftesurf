@@ -353,8 +353,10 @@ print("\n--- 6. the same filename twice UPSERTS, never duplicates -----------")
 
 m = fresh()
 same = leaf(4108)
-submit(m, ticks=4108, rec=same, node="p27510")
-submit(m, ticks=4108, name="Alice2", rec=same, node="p27540")
+# Two runs, so two runids (SV_RecOpen stamps wallclock + slot); an identical
+# re-post of one run may not rename its row (Patch 424).
+submit(m, ticks=4108, rec=same, node="p27510", runid="r-first")
+submit(m, ticks=4108, name="Alice2", rec=same, node="p27540", runid="r-second")
 
 check("one file, one row", len(rows(m, "SELECT 1 FROM replays")), 1)
 r = one(m, "SELECT node, name FROM replays")

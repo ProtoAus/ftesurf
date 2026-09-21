@@ -1567,20 +1567,20 @@ print("\n--- 19. a leaf is a claim on a file, not just a description -------")
 # These cases therefore attack as the victim, which is the case that fix missed.
 #
 # The binding is now the FILE: submit_run opens the .rec and compares its header
-# (map/track/leg/runid) with the row being filed, and the replay row wears the
-# header's `owner` (Patch 424).  So these arms write real files under RUNS_DIR,
-# which the rest of the suite does not.
+# (map/track/leg/runid/flags) with the row being filed, and a re-post of the same
+# evidence cannot rename its replay row (Patch 424).  So these arms write real
+# files under RUNS_DIR, which the rest of the suite does not.
 
 
-def wrec(mod, mapname, track, leg, leafname, owner, runid, ticks=700):
+def wrec(mod, mapname, track, leg, leafname, owner, runid, ticks=700, flags=0):
     """Write a minimal but honest .rec where replay_file() will look for it."""
     d = os.path.join(mod.RUNS_DIR, mapname, mod.leg_dir(track, leg))
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, leafname)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("FTESURF-REC 9\nmap %s\ntrack %d\nleg %d\nowner %s\nrunid %s\n"
-                 "tickrate 0.01\nclock counted\nbegin\n"
-                 % (mapname, track, leg, owner, runid))
+                 "tickrate 0.01\nclock counted\nflags %-10d\nbegin\n"
+                 % (mapname, track, leg, owner, runid, flags))
         fh.write("end %d 0 0 0 0 0 0 0 0 0 1\n" % ticks)
     return path
 
@@ -1601,7 +1601,7 @@ a_before = q(m, "SELECT player, name, submitted, checked FROM replays WHERE id=?
 
 # THE ATTACK THE FIRST FIX MISSED: assert the victim's `player` (it is public),
 # and put your own name on the row.  Both of the old rules passed this.  Since
-# Patch 424 the leaf binds (the runid matches) and the row keeps the FILE's name.
+# Patch 424 the leaf binds (the runid matches) and the row keeps its own name.
 clock.now += 10
 steal = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
                rec=alice_leaf)
@@ -1667,9 +1667,9 @@ wrec(m, "surf_test", 0, 0, rleaf, "OldName", "rr")
 ren = submit(m, player="rena", name="NewName", ticks=690, tickrate=100,
              rec=rleaf, runid="rr")
 check("(g) a rename mid-run keeps the recording", ren.get("rep", 0) > 0, True)
-check("(g) ...the replay row wears the name the file recorded",
+check("(g) ...the replay row wears the name it was filed under",
       q(m, "SELECT player, name FROM replays WHERE id=?", (ren.get("rep", 0),)),
-      [("rena", "OldName")])
+      [("rena", "NewName")])
 add_verdict(m, ren.get("rep", 0), "PASS", int(clock.now) + 1)
 row = rows_by_player(m)["rena"]
 check("(g) ...the board row shows the new name, and it verifies",
@@ -1684,16 +1684,42 @@ ren2 = submit(m, player="rena", name="NewName", ticks=680, tickrate=100,
 check("(g) control: a runid the file contradicts still drops the leaf",
       ren2.get("rep"), 0)
 
-# An empty recorded owner (SV_RecOpen writes the netname unsubstituted) falls
-# back to the submitted name rather than filing a nameless row.
+# The Patch 424 review: with `owner` unchecked, a re-post could still choose
+# the BOARD (flags), shave the time (a tickrate inside the old 0.5 Hz slack) or
+# land a new board row under its own name beside the victim's badge.
 clock.now += 10
-eleaf = leaf(670, "noname")
-wrec(m, "surf_test", 0, 0, eleaf, "", "re")
-emp = submit(m, player="noname", name="player", ticks=670, tickrate=100,
-             rec=eleaf, runid="re")
-check("(g) an empty recorded owner takes the submitted name",
-      q(m, "SELECT name FROM replays WHERE id=?", (emp.get("rep", 0),)),
-      [("player",)])
+seg = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
+             rec=alice_leaf, runid="r1", flags=128)
+check("(i) a re-post under other flags (another board) drops the leaf",
+      seg.get("rep"), 0)
+check("(i) ...and alice's replay row keeps its board",
+      q(m, "SELECT style, flags FROM replays WHERE id=?", (arep,)),
+      [("clean", 0)])
+clock.now += 10
+shave = submit(m, player="alice", name="Alice", ticks=700, tickrate=100.4,
+               rec=alice_leaf, runid="r1")
+check("(i) a tickrate 0.4% off the file's drops the leaf", shave.get("rep"), 0)
+clock.now += 10
+rleaf3 = leaf(640, "rena")
+wrec(m, "surf_test", 0, 0, rleaf3, "Rena", "rr3", flags=0)
+path3 = os.path.join(m.RUNS_DIR, "surf_test", "main", rleaf3)
+with open(path3, encoding="utf-8") as fh:
+    body3 = fh.read().replace("tickrate 0.01\n", "tickrate 0.015\n")
+with open(path3, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(body3)
+fmt = submit(m, player="rena", name="Rena", ticks=640, tickrate=66.6667,
+             rec=rleaf3, runid="rr3")
+check("(i) control: the lobby's %.4f of a 0.015 period still binds",
+      fmt.get("rep", 0) > 0, True)
+db = sqlite3.connect(m._test_db)
+db.execute("DELETE FROM runs WHERE player = 'alice'")
+db.commit()
+db.close()
+clock.now += 10
+new = submit(m, player="alice", name="MALLORY", ticks=700, tickrate=100,
+             rec=alice_leaf, runid="r1")
+check("(i) a board row a re-post creates wears the replay's name",
+      (new.get("rep"), rows_by_player(m)["alice"]["name"]), (arep, "Alice"))
 
 # The header's map is the name as loaded, the board key is lowercased: until
 # 424 the compare was exact and every leaf on a map with capitals dropped.

@@ -618,7 +618,9 @@ Before verifying, each sweep:
      torn write) younger than 10 minutes waits for the next sweep; an
      unreadable one skips only itself.
   2. `requeue_evidence`: rows indexed before Patch 425 (`checked=1`, never
-     attempted) are queued once.
+     attempted) are queued once; `restage_rejected` parks the stage rows of
+     every run a current reject stands on (rejects from before Patch 425, and
+     anything posted since).
   3. `gc_evidence`: deletes each evidence row no leafless stage row references
      any more (the check is inside the DELETE), then its kept file; kept files
      with no row, older than an hour, go too. Nothing under `SURFD_EVIDENCE` is
@@ -629,6 +631,12 @@ REFUSEs when it is gone or differs. It does not read `abandon`: an abandoned
 file whose replay reproduced HOLDs "no finish", or "a cancel zone is crossed" on
 its last input row when a cancel zone ended it, and the sweep records exactly
 those on an abandoned file as PASS at the abandon tick.
+
+pm_verify vouches for the trajectory, never for a stage row's number, so every
+verdict (run or evidence) also checks the stage rows of that run against the
+recording's `stagepost <seg> <dur>` records (leg = seg + 1): one it did not post
+makes the verdict HOLD. A recording that posts none (before Patch 360) cannot
+be checked and is not held for it.
 
 The link is what outlives the lobby's 30-day sweep: `/api/replay/<id>` serves
 the kept file byte-exact, like any other replay. The log line gains
@@ -685,10 +693,12 @@ Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
 and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call
 `restand()`, which rewrites that player's board row from their best
 non-rejected replay, so public reads need no hidden filter, and `restage()`:
-a current reject parks the stage rows its run set (leg > 0, rep 0, same
-runid/map/track/player) in tier `<tier>@<rid>`, which no board reads, and
-restores them when it lapses -- the better of a parked and a live row keeps the
-slot. A review counts only
+while a reject on any replay of a run is current, the run's stage rows (leg > 0,
+rep 0, same runid/map/track/player) are parked in tier `<tier>@<runid>`, which
+no board reads; when none is, they are restored -- the better of a parked and a
+live row keeps the slot, and a parked slot is re-derived from the player's
+recorded runs of that leg. A leaf re-filed by another run (an exact tie) leaves
+the old run's rows hidden. A review counts only
 while it is at or after the replay's `submitted`; the page posts the
 `submitted` it showed, and a replay resubmitted since answers 409 ("the run
 changed -- reload").

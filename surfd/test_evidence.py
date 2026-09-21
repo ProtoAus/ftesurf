@@ -357,7 +357,7 @@ def case_exclusion():
     check("E5 ...the stage time is off the board", stage(m), None)
     check("E5 ...parked, not deleted",
           q(m, "SELECT tier, ticks, runid FROM runs WHERE leg = 2 AND player = 'kap'"),
-          [("ranked@%d" % eid, 454, R)])
+          [("ranked@" + R, 454, R)])
     det = c.get("/admin/api/run/%d" % eid).get_json()
     check("E5 ...and the run page says so",
           (det["standing"]["stages"], det["standing"]["stages_hidden"]), (0, 1))
@@ -389,7 +389,7 @@ def case_exclusion():
 
 def case_run_reject_hides_stages():
     """E5b: rejecting a finished run hides its stage times too; its leaf re-filed
-    by another run restores them"""
+    by another run (an exact tie) does not bring them back"""
     m = fresh(admin_pw=PW)
     lf = leaf(4000, "kap")
     put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace(
@@ -407,14 +407,23 @@ def case_run_reject_hides_stages():
     review(m, c, csrf, rid, "reject")
     submit(m, ticks=4000, rec=lf)
     check("E5b control: an identical re-post leaves it hidden", stage(m), None)
+    # The same run's evidence re-filed (the file changed) after the reject: it
+    # lapses (reviews count only at or after `submitted`), so the time is back.
+    with sqlite3.connect(m.DB_PATH) as db:           # the reject was 10 s ago
+        db.execute("UPDATE reviews SET at = at - 10 WHERE replay_id = ?", (rid,))
+    put_run(m, lf, evbody(R).replace("abandon 8262\n", "").replace(
+        "end 8262", "end 4000") + "x 1\n")
+    submit(m, ticks=4000, rec=lf)
+    check("E5b the same run re-filed with new evidence lapses the reject: back",
+          stage(m), (454, R))
+    review(m, c, csrf, rid, "reject")
     # The same leaf filed again by another run (an exact tie): new evidence.
     put_run(m, lf, evbody("R9").replace("abandon 8262\n", "").replace("end 8262", "end 4000"))
     again = submit(m, ticks=4000, rec=lf, runid="R9")
     check("E5b control: the re-filed leaf is the same replay row", again["rep"], rid)
-    check("E5b ...which now names another run: the old run's stage time is restored",
-          stage(m), (454, R))
-    check("E5b ...and nothing is left parked",
-          q(m, "SELECT COUNT(*) FROM runs WHERE tier LIKE '%@%'"), [(0,)])
+    check("E5b ...and the rejected run's stage time stays hidden",
+          (stage(m), q(m, "SELECT tier FROM runs WHERE leg = 2 AND player = 'kap'")),
+          (None, [("ranked@" + R,)]))
 
 
 def case_recorded_stage_stands_in():
@@ -624,20 +633,38 @@ def case_keep_same_gc():
           os.path.exists(lone), True)
 
 
-def case_name_from_file():
-    """E12: an evidence row wears the name its file recorded (Patch 424)"""
-    m = fresh()
-    submit(m, name="Renamed", leg=2, ticks=454)
+def case_siblings_and_old_rejects():
+    """E13: two replays of one run hide its stage times until neither reject
+    stands; a reject from before Patch 425 is applied by the sweeper's step"""
+    m = fresh(admin_pw=PW)
+    sweep = importlib.import_module("sweep")
+    submit(m, leg=2, ticks=454)
     put_ev(m, R + ".rec", evbody(R), age=3600)
-    m.index_evidence(m.connect())
-    check("E12 the evidence row takes the header's owner, not the stage row's name",
-          q(m, "SELECT name FROM replays WHERE kind = 'evidence'"), [("Kap",)])
-    m = fresh()
-    submit(m, name="Renamed", leg=2, ticks=454)
-    put_ev(m, R + ".rec", evbody(R).replace("owner Kap\n", "owner \n"), age=3600)
-    m.index_evidence(m.connect())
-    check("E12 an empty owner falls back to the stage row's name",
-          q(m, "SELECT name FROM replays WHERE kind = 'evidence'"), [("Renamed",)])
+    conn = m.connect()
+    m.index_evidence(conn)
+    eid = evid(m, R)
+    with conn:                       # a kept run of the same runid (a sibling)
+        rid = conn.execute(
+            "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+            " name, ticks, tickrate, millis, flags, node, submitted, runid, kind)"
+            " VALUES ('surf_aser', 'surf_Aser', 0, 0, 'x.rec', 'ranked', 'clean', 'kap',"
+            " 'Kap', 9000, 66.666667, 135000, 0, 'p27510', 1, ?, 'run')", (R,)).lastrowid
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    review(m, c, csrf, rid, "reject")
+    check("E13 control: both rejected, the stage time hidden", stage(m), None)
+    review(m, c, csrf, eid, "clear")
+    check("E13 clearing one sibling keeps it hidden while the other stands",
+          stage(m), None)
+    review(m, c, csrf, rid, "clear")
+    check("E13 ...and clearing both restores it", stage(m), (454, R))
+
+    with conn:                       # a reject stored before Patch 425
+        conn.execute("INSERT INTO reviews (replay_id, decision, note, at)"
+                     " VALUES (?, 'reject', '', ?)", (eid, int(time.time())))
+    check("E13 control: a bare reject hides nothing yet", stage(m), (454, R))
+    sweep.evidence_step(conn)
+    check("E13 the sweeper's evidence step applies it", stage(m), None)
 
 
 def main():
@@ -646,7 +673,7 @@ def main():
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
-                 case_torn_ticks, case_keep_same_gc, case_name_from_file):
+                 case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
         print("\n--- %s" % case.__doc__)
         try:
             case()

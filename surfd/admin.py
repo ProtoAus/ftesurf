@@ -1489,7 +1489,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     "       player FROM runs WHERE replay_id = ?"
                     " ORDER BY tier LIMIT 1", (rid,)).fetchone()
                 rank, of = rank_of(conn, *stand) if stand else (0, 0)
-                shown, hidden = stage_counts(conn, rid)
+                stages = stage_counts(conn, rid)
                 rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
                                    else "")
                 key = key_for(conn, rid)
@@ -1509,7 +1509,9 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "public": public_state(latest["verdict"] if latest else None,
                                        decision),
                 "standing": {"on_board": stand is not None, "rank": rank, "of": of,
-                             "stages": shown, "stages_hidden": hidden},
+                             "stages": stages[0] if stages else 0,
+                             "stages_hidden": stages[1] if stages else 0,
+                             "stages_linked": stages is not None},
                 "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,

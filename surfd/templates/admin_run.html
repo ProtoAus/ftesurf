@@ -196,6 +196,7 @@ function renderRun(j) {
   const st = j.standing, stages = [];
   if (st.stages) stages.push(st.stages + " stage time" + (st.stages === 1 ? "" : "s") + " on the boards");
   if (st.stages_hidden) stages.push(st.stages_hidden + " hidden by the reject");
+  if (!st.stages_linked) stages.push("no runid, so its stage times cannot be linked or hidden");
   document.getElementById("standing").textContent =
     (st.on_board ? "#" + st.rank + " of " + st.of
                  : r.kind === "evidence" ? "stage evidence" : "not on the board") +

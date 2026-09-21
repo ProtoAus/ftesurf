@@ -427,7 +427,8 @@ def review_section(pw_hash, pw):
            "replay online %d" % hal])
     check("...the file, standing and review",
           (d["run"]["file"], d["standing"], d["review"]["note"], d["public"]),
-          (True, {"on_board": True, "rank": 2, "of": 4, "stages": 0, "stages_hidden": 0},
+          (True, {"on_board": True, "rank": 2, "of": 4, "stages": 0, "stages_hidden": 0,
+                  "stages_linked": True},
            "looked fine", "verified"))
     check("control: the public board never carries the reason",
           "SENTINEL" in m.app.test_client().get(

@@ -795,11 +795,12 @@ def case_evidence_verified():
     # Rows indexed before Patch 425 (checked 1, never attempted) are queued once.
     old = add_evidence(conn, R[5], evbody(R[5]), checked=1, seen=-1)
     tried = add_evidence(conn, R[6], evbody(R[6]), checked=1, seen=5)
-    conn.execute(          # the stage row it backs; gc drops the unreferenced rest
-        "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
-        " tickrate, millis, flags, node, runid, submitted, replay_id)"
-        " VALUES ('surf_aser', 0, 2, 'ranked', 'clean', 'p', 'n', 454, 66.666667,"
-        " 6810, 0, 'p27510', ?, 1, 0)", (R[5],))
+    for leg, rid_ in ((2, R[5]), (3, R[6])):   # stage rows, so gc keeps both
+        conn.execute(
+            "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+            " tickrate, millis, flags, node, runid, submitted, replay_id)"
+            " VALUES ('surf_aser', 0, ?, 'ranked', 'clean', 'p', 'n', 454, 66.666667,"
+            " 6810, 0, 'p27510', ?, 1, 0)", (leg, rid_))
     conn.commit()
     sweep.evidence_step(conn)
     check("the evidence step requeues only the never-attempted pre-425 row",
@@ -807,6 +808,36 @@ def case_evidence_verified():
     check("control: requeue is idempotent once it has a verdict",
           (sweep.sweep(conn, 20, runner=runner).get("PASS"), surfd.requeue_evidence(conn)),
           (1, 0))
+
+
+def case_stage_binding():
+    # Patch 425 review: a PASS vouches for the trajectory; a stage row's number
+    # must also be one the recording posted (`stagepost <seg> <dur>`, leg seg+1).
+    surfd, sweep, runs = fresh()
+    conn = surfd.connect()
+    R = ["20260918-1429%02d-0-p27510" % i for i in range(3)]
+    posted = lambda rid_: evbody(rid_).replace("begin\n", "begin\nstagepost 1 454 268\n")
+    good = add_evidence(conn, R[0], posted(R[0]))
+    bad = add_evidence(conn, R[1], posted(R[1]))
+    old = add_evidence(conn, R[2], evbody(R[2]))       # posts nothing: pre-360
+    for i, (rid_, ticks) in enumerate(((R[0], 454), (R[1], 400), (R[2], 400))):
+        conn.execute("UPDATE replays SET player = ? WHERE runid = ?", ("p%d" % i, rid_))
+        conn.execute(
+            "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+            " tickrate, millis, flags, node, runid, submitted, replay_id)"
+            " VALUES ('surf_aser', 0, 2, 'ranked', 'clean', ?, 'n', ?, 66.666667,"
+            " 6810, 0, 'p27510', ?, 1, 0)", ("p%d" % i, ticks, rid_))
+    conn.commit()
+    runner = lambda m, paths: ["VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths]
+    sweep.sweep(conn, 20, runner=runner)
+    check("a stage row the recording posted: PASS", tuple(latest(conn, good))[0], "PASS")
+    check("a stage row it did not post: HOLD, naming it",
+          tuple(latest(conn, bad))[:2],
+          ("HOLD", "stage rows not posted in this recording: leg 2 400 ticks"
+                   " (pm_verify PASS: abandoned at tick 8262; the replay reproduces to"
+                   " there (pm_verify: %s))" % sweep.NO_FINISH))
+    check("a recording that posts none cannot be checked: PASS stands",
+          tuple(latest(conn, old))[0], "PASS")
 
 
 def case_main_evidence():
@@ -900,7 +931,7 @@ def main():
     for case in (case_quiet_import, case_parse, case_pass_and_group, case_missing_and_bad_names,
                  case_error_retry_cap, case_schema_owned_by_surfd, case_error_window,
                  case_mid_run_tie, case_mid_run_recheck, case_command_line,
-                 case_evidence_verified, case_main_evidence,
+                 case_evidence_verified, case_stage_binding, case_main_evidence,
                  case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,

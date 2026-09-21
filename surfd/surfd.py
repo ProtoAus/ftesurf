@@ -2065,11 +2065,13 @@ def restand(db, rid):
 
 
 # Patch 425: A REJECT HIDES THE STAGE TIMES ITS RUN SET (Lex, 2026-09-21).  A
-# stage row (leg > 0, no recording of its own) set by replay R's run is parked
-# in tier "<tier>@<R>", which no board query reads (every one filters tier),
-# while a reject on R is current, and restored when it lapses.  A stage row has
-# no history to re-derive from, so parking keeps it; the player's next time
-# meanwhile takes the live slot, and on restore the better one stays.
+# stage row (leg > 0, no recording of its own) of run R is parked in tier
+# "<tier>@<R's runid>", which no board query reads (every one filters tier),
+# while a reject on any replay of R is current, and restored when none is.  A
+# stage row has no history to re-derive from, so parking keeps it; the player's
+# next time meanwhile takes the live slot, and on restore the better one stays.
+# Only a lapse on a replay that still names R restores R's rows: a leaf re-filed
+# by another run (an exact tie) leaves them hidden (Patch 425 review).
 def _stage_move(db, row, tier):
     """Move runs row `row` to `tier`.  A row already holding that slot stays
     only if it is better (BOARD_ORDER); the loser is deleted.  -> 1 if moved."""
@@ -2092,32 +2094,35 @@ def _stage_move(db, row, tier):
     return 1
 
 
-def restage(db, rid):
-    """Park or restore the stage rows replay `rid`'s run set, to match whether
-    a reject on it is current.  The caller's transaction.  -> (parked, restored).
-
-    Call it after anything that changes that: a review, or submit_run re-filing
-    a held leaf (a later `submitted` lapses a reject; a new runid is another
-    run's).  A parked slot is re-derived from the player's recorded runs of
-    that leg, if any (restand's rule)."""
-    tag = "@%d" % rid
+def _stage_run(db, rid):
+    """(map, track, player, runid) of replay `rid`'s run, or None (no runid)."""
     rep = db.execute("SELECT map, track, player, runid FROM replays WHERE id = ?",
                      (rid,)).fetchone()
-    rejected = (rep is not None and rep["runid"] not in ("", "-")
-                and db.execute("SELECT 1 FROM replays p WHERE p.id = ? AND "
-                               + _REJECTED_SQL, (rid,)).fetchone() is not None)
-    mine = tuple(rep) if rejected else None
-    restored = 0
-    for row in db.execute("SELECT * FROM runs WHERE substr(tier, -?) = ?",
-                          (len(tag), tag)).fetchall():
-        if (row["map"], row["track"], row["player"], row["runid"]) != mine:
-            restored += _stage_move(db, row, row["tier"][:-len(tag)])
-    parked = 0
-    if rejected:
+    if rep is None or rep["runid"] in ("", "-"):
+        return None
+    return tuple(rep)
+
+
+def restage(db, rid):
+    """Park or restore the stage rows of replay `rid`'s run, to match whether a
+    reject on any replay of that run is current.  The caller's transaction.
+    -> (parked, restored).  A parked slot is re-derived from the player's
+    recorded runs of that leg, if any (restand's rule).
+
+    Call it after anything that changes that: a review, or submit_run re-filing
+    a held leaf."""
+    run = _stage_run(db, rid)
+    if run is None:
+        return 0, 0
+    tag = "@" + run[3]
+    parked = restored = 0
+    if db.execute("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ?"
+                  " AND p.player = ? AND p.runid = ? AND " + _REJECTED_SQL,
+                  run).fetchone() is not None:
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND leg > 0"
                 " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
-                mine + TIERS).fetchall():
+                run + TIERS).fetchall():
             if _stage_move(db, row, row["tier"] + tag):
                 parked += 1
                 rec = db.execute(
@@ -2127,24 +2132,78 @@ def restage(db, rid):
                      row["style"], row["player"])).fetchone()
                 if rec is not None:
                     restand(db, rec["id"])
+    else:
+        for row in db.execute(
+                "SELECT * FROM runs WHERE map = ? AND track = ? AND player = ?"
+                " AND runid = ? AND tier IN (?, ?)",
+                run + tuple(t + tag for t in TIERS)).fetchall():
+            restored += _stage_move(db, row, row["tier"][:-len(tag)])
     return parked, restored
 
 
+def restage_rejected(conn):
+    """Park the stage rows of every run a current reject stands on: the rejects
+    from before Patch 425, and anything posted since.  Never restores.
+    -> rows parked."""
+    n = 0
+    with conn:
+        for r in conn.execute("SELECT p.id FROM replays p WHERE p.runid NOT IN"
+                              " ('', '-') AND " + _REJECTED_SQL).fetchall():
+            n += restage(conn, r["id"])[0]
+    return n
+
+
 def stage_counts(db, rid):
-    """(shown, hidden): the stage rows replay `rid`'s run set on the boards, and
-    the ones a reject on it has parked."""
-    rep = db.execute("SELECT map, track, player, runid FROM replays WHERE id = ?",
-                     (rid,)).fetchone()
-    if rep is None or rep["runid"] in ("", "-"):
-        return 0, 0
-    tag = "@%d" % rid
-    shown = db.execute(
-        "SELECT COUNT(*) FROM runs WHERE map = ? AND track = ? AND leg > 0"
-        " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
-        tuple(rep) + TIERS).fetchone()[0]
-    hidden = db.execute("SELECT COUNT(*) FROM runs WHERE substr(tier, -?) = ?",
-                        (len(tag), tag)).fetchone()[0]
-    return shown, hidden
+    """(shown, hidden) stage rows of replay `rid`'s run, or None when it has no
+    runid (its stage rows cannot be told apart)."""
+    run = _stage_run(db, rid)
+    if run is None:
+        return None
+    tags = tuple(t + "@" + run[3] for t in TIERS)
+    q = ("SELECT COUNT(*) FROM runs WHERE map = ? AND track = ? AND leg > 0"
+         " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)")
+    return (db.execute(q, run + TIERS).fetchone()[0],
+            db.execute(q, run + tags).fetchone()[0])
+
+
+def _stageposts(path):
+    """{(leg, ticks)} the recording's `stagepost <seg> <dur> ...` records posted
+    (leg = seg + 1), or None when it could not be read."""
+    out = set()
+    try:
+        with open(path, "rb") as fh:
+            for line in fh:
+                if line.startswith(b"stagepost "):
+                    w = line.split()
+                    seg = strict_int(w[1].decode() if len(w) > 1 else None, 0, MAX_LEG)
+                    dur = strict_int(w[2].decode() if len(w) > 2 else None, 0, MAX_TICKS)
+                    if seg is not None and dur is not None:
+                        out.add((seg + 1, dur))
+    except (OSError, UnicodeDecodeError):
+        return None
+    return out
+
+
+def stage_binding(db, rid, path):
+    """"" when every stage row of replay `rid`'s run matches a `stagepost` in its
+    recording, else why not.  "" also when that cannot be measured: no runid, an
+    unreadable file, or a file that posts none (a recorder before Patch 360).
+    A PASS alone vouches for the trajectory, never for a stage row's number."""
+    run = _stage_run(db, rid)
+    if run is None or not path:
+        return ""
+    rows = db.execute("SELECT leg, ticks FROM runs WHERE map = ? AND track = ?"
+                      " AND leg > 0 AND replay_id = 0 AND player = ? AND runid = ?"
+                      " ORDER BY leg", run).fetchall()
+    if not rows:
+        return ""
+    posts = _stageposts(path)
+    if not posts:
+        return ""
+    bad = ["leg %d %d ticks" % (r["leg"], r["ticks"]) for r in rows
+           if (r["leg"], r["ticks"]) not in posts]
+    return ("stage rows not posted in this recording: " + ", ".join(bad[:6])
+            if bad else "")
 
 
 @app.post("/api/run")
@@ -2338,7 +2397,6 @@ def submit_run():
     # ELSE arm and voided the row's PASS and any owner approval -- the badge
     # strip this fix claimed to have closed, still a one-field operation.
     fsize = None
-    rec_name = name
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -2356,13 +2414,12 @@ def submit_run():
                         " indexing it unverified", leaf, why or "unreadable", src)
         else:
             fsize = meta[3]
-            bad = _rec_disagrees(meta[0], mapname, track, leg, runid, tickrate)
+            bad = _rec_disagrees(meta[0], mapname, track, leg, runid, flags,
+                                 tickrate)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
                 leaf = ""
-            else:
-                rec_name = _rec_name(meta[0], name)
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -2445,7 +2502,14 @@ def submit_run():
                             tier      = excluded.tier,
                             style     = excluded.style,
                             player    = excluded.player,
-                            name      = excluded.name,
+                            -- Patch 424: the name it was first filed under,
+                            -- so a re-post of the same evidence cannot
+                            -- relabel it (the `owner` check did that).
+                            name      = CASE WHEN replays.player = excluded.player
+                                             AND replays.runid  = excluded.runid
+                                             AND replays.ticks  = excluded.ticks
+                                             AND replays.bytes  = excluded.bytes
+                                        THEN replays.name ELSE excluded.name END,
                             ticks     = excluded.ticks,
                             tickrate  = excluded.tickrate,
                             millis    = excluded.millis,
@@ -2482,16 +2546,16 @@ def submit_run():
                         # '-' when none was sent (a TF_SHADOW continuation),
                         # so no new row reads as a pre-schema-6 ''.
                         (mapname, map_dir, track, leg, leaf, tier, style,
-                         player, rec_name, ticks, tickrate, millis, flags, node,
+                         player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-"),
                     )
-                    rid = db.execute(
-                        "SELECT id FROM replays"
+                    rid, name = db.execute(
+                        "SELECT id, name FROM replays"
                         " WHERE map=? AND track=? AND leg=? AND leaf=?",
                         (mapname, track, leg, leaf),
-                    ).fetchone()[0]
-                    # A held leaf re-filed may lapse a reject (a later
-                    # `submitted`) or now name another run (a new runid).
+                    ).fetchone()
+                    # The board row wears the replay's name (above), and a
+                    # re-filed leaf may lapse a reject on this run.
                     if have is not None:
                         restage(db, rid)
                 else:
@@ -2764,15 +2828,16 @@ def _rec_tickrate_disagrees(hdr, tickrate):
     if period <= 0:
         return ""
     want = 1.0 / period
-    # Generous: %g gives six significant digits and pm_ticrate is not always a
-    # round reciprocal (0.0078125 -> 128).  This is here to refuse 100 vs 10000,
-    # not to police the sixth decimal.
-    if abs(want - tickrate) > max(0.5, want * 0.001):
+    # %g keeps six significant digits of the period (<= 5e-6 relative) and the
+    # lobby sends %.4f of the rate; the live corpus's worst is 5e-7.  The old
+    # bound, max(0.5 Hz, 0.1%), let a re-post shave 0.75% off a verified time
+    # and keep the badge (Patch 424 review).
+    if abs(want - tickrate) > want * 2e-5:
         return "tickrate %s (= %.4f/s) != %.4f/s" % (raw, want, tickrate)
     return ""
 
 
-def _rec_disagrees(hdr, mapname, track, leg, runid, tickrate=0):
+def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
     """"" when a .rec header can be the run being filed, else why not.
 
     Compares only keys the file actually carries, so a recorder older than a
@@ -2783,7 +2848,9 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, tickrate=0):
     Not `owner` (Patch 424): it is the netname at SV_RecOpen and the submit's
     `name` is the one at the finish, so a rename mid-run or across a resume
     dropped an honest leaf.  The run is bound by runid and the player by the
-    leaf's digest; the replay row takes its name from the file (_rec_name).
+    leaf's digest; a re-post cannot rename the replay row (submit_run).  `flags`
+    is the board a run stands on, so an unbound one let a re-post move a verified
+    replay to another board (the lobby sends the header's value: 42 of 42 live).
     """
     def differs(key, want, fold=str):
         got = fold((hdr.get(key) or "").strip())
@@ -2793,14 +2860,8 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, tickrate=0):
     # header has the name as loaded -- surf_Aser dropped every leaf until 424.
     return (differs("map", mapname, str.lower) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
+            or differs("flags", flags, lambda v: (v.split() or [""])[0])
             or _rec_tickrate_disagrees(hdr, tickrate) or "")
-
-
-def _rec_name(hdr, fallback):
-    """The name a recording's replays row wears: the header's `owner`, so a
-    submit cannot relabel a file (the check `owner` used to be), else the
-    submitted one -- SV_RecOpen writes an empty netname unsubstituted."""
-    return clean_text(hdr.get("owner")) or fallback
 
 
 def _keep_file(src, dst):
@@ -2905,8 +2966,7 @@ def index_evidence(conn, now=None, dry_run=False):
                     " submitted, bytes, truncated, seen, checked, runid, kind)"
                     " VALUES (?,?,?,0,?,'','',?,?,?,?,?,?,?,?,?,0,-1,0,?,'evidence')"
                     " ON CONFLICT(map, track, leg, leaf) DO NOTHING",
-                    (key, d, track, leaf, ref["player"],
-                     _rec_name(hdr, ref["name"]), ticks,
+                    (key, d, track, leaf, ref["player"], ref["name"], ticks,
                      1.0 / spt, int(round(ticks * spt * 1000.0)), flags,
                      "p" + port.group(1) if port else "?", int(mtime), size,
                      runid)).rowcount

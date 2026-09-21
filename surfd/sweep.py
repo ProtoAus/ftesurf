@@ -155,6 +155,18 @@ def abandoned_pass(row, verdict, reason):
             meta[1])
 
 
+def stage_check(conn, row, verdict, reason):
+    """(verdict, reason) with the stage rows of the replay's run checked against
+    the recording's `stagepost` records (Patch 425 review: pm_verify vouches for
+    the trajectory, never for a stage row's number).  A mismatch is HOLD."""
+    why = surfd.stage_binding(conn, row["id"], surfd.replay_file(row)[0])
+    if not why:
+        return verdict, reason
+    if verdict == "HOLD":
+        return "HOLD", "%s; %s" % (reason, why)
+    return "HOLD", "%s (pm_verify %s%s)" % (why, verdict, ": " + reason if reason else "")
+
+
 def parse(lines):
     """VERIFY lines -> {path: (verdict, reason, ticks)}."""
     out = {}
@@ -224,9 +236,10 @@ def sweep(conn, limit, runner=None, now=None):
         if path is None:
             why = ("evidence file missing, or not under the game tree the verifier reads"
                    if row["kind"] == "evidence" else "file missing or unusable name")
+            v, why = stage_check(conn, row, "REFUSE", why)
             with conn:
-                record(conn, row["id"], "REFUSE", why, -1, engine, progs, t0)
-            counts["REFUSE"] = counts.get("REFUSE", 0) + 1
+                record(conn, row["id"], v, why, -1, engine, progs, t0)
+            counts[v] = counts.get(v, 0) + 1
             continue
         bymap.setdefault(row["map_dir"], []).append((row, path))
 
@@ -236,6 +249,8 @@ def sweep(conn, limit, runner=None, now=None):
             for row, path in items:
                 v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
                 v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
+                if v != "ERROR":
+                    v, reason = stage_check(conn, row, v, reason)
                 record(conn, row["id"], v, reason, ticks, engine, progs, t0)
                 counts[v] = counts.get(v, 0) + 1
     return counts
@@ -427,6 +442,7 @@ def evidence_step(conn):
     try:
         added = surfd.index_evidence(conn)["indexed"]
         surfd.requeue_evidence(conn)
+        surfd.restage_rejected(conn)
         return added, surfd.gc_evidence(conn)
     except Exception as exc:
         print("sweep: evidence step failed: %r" % exc, file=sys.stderr)
