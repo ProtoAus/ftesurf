@@ -187,6 +187,45 @@ RUN_STATES = {
 }
 
 
+def receipt_for(conn, rid, runid):
+    """The run's receipt verdict and what else its key has signed, or None.
+
+    GUARDED ON THE TABLE EXISTING rather than on a schema number.  This page is
+    served by whatever surfd is running, and sweep.py is what creates these two
+    tables the first time it runs -- so there is a window, on any box, where the
+    admin is newer than the database.  The surrounding handler turns a
+    sqlite3.Error into a 500, which would take the whole review page down over a
+    panel that is not there yet.
+    """
+    if not runid:
+        return None
+    have = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+        " AND name IN ('receipts', 'pubkeys')")}
+    if "receipts" not in have:
+        return None
+    rc = conn.execute("SELECT runid, map, pub, verdict, angles, reason, at"
+                      " FROM receipts WHERE runid = ?", (runid,)).fetchone()
+    if rc is None:
+        return None
+    out = dict(rc)
+    out["players"], out["keys"] = [], []
+    if "pubkeys" in have and rc["pub"]:
+        # BOTH DIRECTIONS, AND NEITHER IS AN ACCUSATION.  A key that has signed
+        # for two players is a shared machine as often as anything else, and a
+        # player with two keys is a reinstall -- `fskey` is a local file nobody
+        # backs up.  Shown because the owner cannot ask the question without
+        # them, and left undecided because the data does not decide it.
+        out["players"] = [dict(k) for k in conn.execute(
+            "SELECT player, runs, first_at, last_at FROM pubkeys"
+            " WHERE pub = ? ORDER BY player", (rc["pub"],)).fetchall()]
+        out["keys"] = [dict(k) for k in conn.execute(
+            "SELECT pub, runs FROM pubkeys WHERE player ="
+            " (SELECT player FROM replays WHERE id = ?) ORDER BY pub",
+            (rid,)).fetchall()]
+    return out
+
+
 def clean_note(raw):
     text = " ".join(NOTE_JUNK.sub(" ", raw or "").split())
     return text[:NOTE_MAX].strip()
@@ -1288,6 +1327,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     "       player FROM runs WHERE replay_id = ?"
                     " ORDER BY tier LIMIT 1", (rid,)).fetchone()
                 rank, of = rank_of(conn, *stand) if stand else (0, 0)
+                rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
+                                   else "")
             except sqlite3.Error as exc:
                 log.exception("admin run %d db error: %s", rid, exc)
                 return jsonify({"ok": False, "error": "storage error"}), 500
@@ -1304,7 +1345,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "public": public_state(latest["verdict"] if latest else None,
                                        decision),
                 "standing": {"on_board": stand is not None, "rank": rank, "of": of},
-                "review": review, "verdicts": verdicts,
+                "review": review, "verdicts": verdicts, "receipt": rcpt,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
                           "replay online %d" % rid],

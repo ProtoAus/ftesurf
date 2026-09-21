@@ -494,6 +494,62 @@ def review_section(pw_hash, pw):
     finally:
         adm.recplot.parse = real_parse
 
+    # -- 9g2. the receipt panel ----------------------------------------------
+    #
+    # THE FIRST ARM IS THAT THE PAGE STILL WORKS WITHOUT THE TABLES.  sweep.py
+    # creates them the first time it runs, so on any box there is a window where
+    # the admin is newer than the database -- and the handler turns a
+    # sqlite3.Error into a 500, which would take the whole review page down over
+    # a panel that is not there yet.
+    rid_r, _p = submit("rcpt", 700)
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("DROP TABLE IF EXISTS receipts")
+            conn.execute("DROP TABLE IF EXISTS pubkeys")
+    finally:
+        conn.close()
+    d = detail(rid_r)
+    check("no receipts table: the review page still answers", d["ok"], True)
+    check("...and says there is no receipt", d["receipt"], None)
+
+    conn = m.connect()
+    try:
+        with conn:
+            conn.executescript(m.RECEIPTS_SQL)
+    finally:
+        conn.close()
+    check("tables back, still no row for this run", detail(rid_r)["receipt"], None)
+
+    runid = sql("SELECT runid FROM replays WHERE id = ?", (rid_r,))[0][0]
+    check("control: the replay row carries a runid to join on", bool(runid), True)
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("INSERT INTO receipts (runid, map, pub, verdict, angles,"
+                         " reason, at) VALUES (?, 'surf_kitsune', ?, 'VALID',"
+                         " 'OK', '', 100)", (runid, "ab" * 32))
+            for who, n in (("rcpt", 3), ("someone_else", 1)):
+                conn.execute("INSERT INTO pubkeys (pub, player, first_at, last_at,"
+                             " runs) VALUES (?, ?, 1, 2, ?)", ("ab" * 32, who, n))
+            conn.execute("INSERT INTO pubkeys (pub, player, first_at, last_at,"
+                         " runs) VALUES (?, 'rcpt', 1, 2, 1)", ("cd" * 32,))
+    finally:
+        conn.close()
+    d = detail(rid_r)["receipt"]
+    check("the verdict reaches the page", (d["verdict"], d["angles"]), ("VALID", "OK"))
+    check("both names this key has signed for, with their counts",
+          sorted((p["player"], p["runs"]) for p in d["players"]),
+          [("rcpt", 3), ("someone_else", 1)])
+    check("and both keys this player has signed with",
+          sorted(k["pub"][:2] for k in d["keys"]), ["ab", "cd"])
+    # THE PAGE ITSELF, not only the JSON behind it: a payload nobody renders is
+    # the same defect one layer down from the table nobody read.
+    page = c.get("/admin/run/%d" % rid_r)
+    body = page.get_data(as_text=True)
+    check("the run page renders", page.status_code, 200)
+    check("...and carries the receipt card", 'id="rcptcard"' in body, True)
+
     # -- 9h. runs=None registers no review routes -----------------------------
     import flask
     app = flask.Flask("standalone")
