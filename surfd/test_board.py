@@ -1867,6 +1867,96 @@ check("(b) an approval survives a re-post with a wrong recbytes",
       rows_by_player(m2)["bob"]["ver"], 1)
 
 # --------------------------------------------------------------------------
+print("\n--- 21. a re-post changes nothing its evidence did not (review round 3)")
+# The header bindings run only when the file opens.  On the Pi's ext4 a map
+# spelling in other capitals does not, so a re-post skipped them all, kept its
+# PASS as "the same evidence" and rewrote the replay's rate and board; with a
+# changed recbytes it moved `submitted` and lapsed reviews.  cased() is ext4.
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+T = int(clock.now)
+vleaf = leaf(700, "vic")
+wrec(m, "surf_test", 0, 0, vleaf, "Vic", "rv")
+vrep = submit(m, player="vic", name="Vic", ticks=700, tickrate=100,
+              rec=vleaf, runid="rv")["rep"]
+add_verdict(m, vrep, "PASS", T + 1)
+held = "SELECT map_dir, tickrate, millis, flags, submitted, checked FROM replays WHERE id=?"
+before = q(m, held, (vrep,))
+real = m.replay_file
+
+
+def cased(row):
+    if row["map_dir"] != "surf_test":
+        return None, "missing"
+    return real(row)
+
+
+clock.now += 10
+submit(m, player="vic", name="Vic", ticks=700, tickrate=100.0002, rec=vleaf,
+       runid="rv")
+check("(b) a same-evidence re-post inside the rate bound keeps the stored rate",
+      (q(m, held, (vrep,)), rows_by_player(m)["vic"]["ms"]), (before, 7000))
+clock.now += 10
+lleaf = leaf(100000, "lng")                # long enough for 4e-4 Hz to be ms
+wrec(m, "surf_test", 0, 0, lleaf, "Lng", "rl", ticks=100000)
+submit(m, player="lng", name="Lng", ticks=100000, tickrate=100, rec=lleaf, runid="rl")
+clock.now += 10
+submit(m, player="lng", name="Lng", ticks=100000, tickrate=100.0004, rec=lleaf,
+       runid="rl")
+check("(b) ...so the board keeps the stored time of a long run (4 ms otherwise)",
+      (rows_by_player(m)["lng"]["ms"], rows_by_player(m)["lng"]["ver"]), (1000000, 0))
+m.replay_file = cased
+clock.now += 10
+submit(m, map="SURF_TEST", player="vic", name="Vic", ticks=700, tickrate=100,
+       rec=vleaf, runid="rv", recbytes=12345)
+check("(a) another spelling binds through the one it was filed under: nothing moves",
+      q(m, held, (vrep,)), before)
+check("(a) ...and the board keeps the verified 7000 ms",
+      (rows_by_player(m)["vic"]["ms"], rows_by_player(m)["vic"]["ver"]), (7000, 1))
+clock.now += 10
+submit(m, map="SURF_TEST", player="vic", name="Vic", ticks=700, tickrate=1000,
+       rec=vleaf, runid="rv")
+check("(a) ...and its header still binds: a rate it contradicts drops the leaf",
+      q(m, held, (vrep,)), before)
+check("(a) boundary (section 20): the faster fake stands with no badge",
+      (rows_by_player(m)["vic"]["ms"], rows_by_player(m)["vic"]["ver"]), (700, 0))
+m.replay_file = real
+
+# 96 Hz written from a period with more digits than %g keeps (0.0104166667).
+clock.now += 10
+hleaf = leaf(960, "hz")
+p96 = wrec(m, "surf_test", 0, 0, hleaf, "Hz", "r96")
+with open(p96, encoding="utf-8") as fh:
+    b96 = fh.read().replace("tickrate 0.01\n", "tickrate 0.0104167\n")
+with open(p96, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(b96)
+h96 = submit(m, player="hz", name="Hz", ticks=960, tickrate=96.0, rec=hleaf,
+             runid="r96")
+check("(c) the lobby's 96.0000 against a %g period of 0.0104167 binds",
+      h96.get("rep", 0) > 0, True)
+
+# An exact tie filed on another board (a certification bit: community) by a
+# new run: the ranked row no longer has that recording behind it.
+clock.now += 10
+tleaf = leaf(710, "tie")
+wrec(m, "surf_test", 0, 0, tleaf, "Tie", "rt1")
+t1 = submit(m, player="tie", name="Tie", ticks=710, tickrate=100, rec=tleaf,
+            runid="rt1")["rep"]
+clock.now += 10
+wrec(m, "surf_test", 0, 0, tleaf, "Tie", "rt2", flags=512)
+t2 = submit(m, player="tie", name="Tie", ticks=710, tickrate=100, rec=tleaf,
+            runid="rt2", flags=512)
+check("(d) control: the tie re-files the same replay row, on community",
+      (t2.get("rep"), q(m, "SELECT tier FROM replays WHERE id=?", (t1,))),
+      (t1, [("community",)]))
+check("(d) ...and the ranked row no longer points at it",
+      q(m, "SELECT tier, replay_id FROM runs WHERE player='tie' ORDER BY tier"),
+      [("community", t1), ("ranked", 0)])
+
+
+# --------------------------------------------------------------------------
 print("\n--- (h) schema 8: the owner's word on a (key, player) pair -----------")
 # Patch 422.  A v7 database is a v8 one with the two columns dropped.
 

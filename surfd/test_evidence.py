@@ -89,10 +89,11 @@ def fresh(admin_pw=None, keep=None):
 
 
 def submit(m, player="kap", name="Kap", leg=0, ticks=4000, runid=R, rec=None,
-           addr="127.0.0.1"):
+           addr="127.0.0.1", **extra):
     form = {"key": "testkey", "map": "surf_Aser", "track": "0", "leg": str(leg),
             "player": player, "name": name, "ticks": str(ticks),
             "tickrate": "66.666667", "flags": "0", "node": "p27510"}
+    form.update({k: str(v) for k, v in extra.items()})
     if runid is not None:                        # None: the lobby sent none
         form["runid"] = runid
     if rec:
@@ -432,8 +433,11 @@ def case_run_reject_hides_stages():
     # A key holder then names R on a leaf with no file behind it, twice (the
     # second is a re-post of a held leaf): a replay of R with no reject, but no
     # new evidence of the run the reject stands on.
-    for _ in range(2):
-        submit(m, ticks=4001, rec=leaf(4001, "kap"), runid=R)
+    submit(m, ticks=4001, rec=leaf(4001, "kap"), runid=R)
+    with sqlite3.connect(m.DB_PATH) as db:       # filed 10 s ago, so the next moves it
+        db.execute("UPDATE replays SET submitted = submitted - 10 WHERE leaf = ?",
+                   (leaf(4001, "kap"),))
+    submit(m, ticks=4001, rec=leaf(4001, "kap"), runid=R, recbytes=12345)
     check("E5b ...a file-less leaf naming R does not bring it back",
           (stage(m), q(m, "SELECT tier FROM runs WHERE leg = 2 AND player = 'kap'")),
           (None, [("ranked@" + R,)]))
@@ -471,6 +475,71 @@ def case_recorded_stage_stands_in():
           (stage(m), by_player(m, 2)["kap"]["rep"]), ((600, ""), srep))
     review(m, c, csrf, eid, "clear")
     check("E5c clear: the better stage time has its slot back", stage(m), (454, R))
+
+
+def stage_run(m, ticks, runid):
+    """A recorded stage run of leg 2 (its own leaf) -> its replay id."""
+    sl = leaf(ticks, "kap")
+    path = os.path.join(m.RUNS_DIR, "surf_Aser", m.leg_dir(0, 2), sl)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="\n") as fh:
+        fh.write(evbody(runid, leg=2))
+    return submit(m, leg=2, ticks=ticks, rec=sl, runid=runid)["rep"]
+
+
+def case_set_aside():
+    """E5d: a set-aside time comes back judged by its own run, a recorded one by
+    its own replay (restand), a better recording competes, and none is stranded"""
+    m = fresh(admin_pw=PW)
+    srep = stage_run(m, 600, "Rs")
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    review(m, c, csrf, eid, "clear")
+    check("E5d control: R restored, the recorded 600 set aside",
+          (stage(m), q(m, "SELECT tier FROM runs WHERE replay_id = ?", (srep,))),
+          ((454, R), [("ranked^" + R,)]))
+    check("E5d ...and the admin does not call the set-aside row standing",
+          c.get("/admin/api/run/%d" % srep).get_json()["standing"]["on_board"], False)
+    review(m, c, csrf, srep, "reject")
+    review(m, c, csrf, eid, "reject")
+    check("E5d a set-aside recorded run that was rejected does not come back",
+          stage(m), None)
+
+    m = fresh(admin_pw=PW)
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=500, runid="S")
+    review(m, c, csrf, eid, "clear")
+    stage_run(m, 480, "Rr")          # not stood: 454 beats it
+    check("E5d control: 454 stands over the recorded 480", stage(m), (454, R))
+    review(m, c, csrf, eid, "reject")
+    check("E5d re-rejecting: the set-aside 500 comes back, and the recorded 480 beats it",
+          stage(m), (480, ""))
+
+    m = fresh(admin_pw=PW)
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=500, runid="X")
+    review(m, c, csrf, eid, "clear")
+    submit(m, leg=2, ticks=400, runid=R3)     # a later run beats R's time
+    put_ev(m, R3 + ".rec", evbody(R3), age=3600)
+    m.index_evidence(m.connect())
+    e3 = evid(m, R3)
+    review(m, c, csrf, e3, "reject")
+    check("E5d rejecting that later run gives back what R's restore set aside",
+          stage(m), (500, "X"))
 
 
 def case_public():
@@ -694,6 +763,7 @@ def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
+                 case_set_aside,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

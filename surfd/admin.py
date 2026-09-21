@@ -305,7 +305,8 @@ SELECT p.id, p.kind, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
        p.checked = 0 AND """ + _ERRORS_SQL + """ < ? AS pending,
        CASE WHEN w.at >= p.submitted THEN w.decision END AS decision,
        CASE WHEN p.kind = 'run'
-            THEN EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id)
+            THEN EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id
+                   AND r.tier IN ('ranked', 'community'))
             ELSE EXISTS (SELECT 1 FROM runs r WHERE r.map = p.map
                    AND r.track = p.track AND r.leg > 0 AND r.replay_id = 0
                    AND r.player = p.player AND r.runid = p.runid
@@ -1490,6 +1491,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 stand = conn.execute(
                     "SELECT map, track, leg, tier, style, millis, submitted,"
                     "       player FROM runs WHERE replay_id = ?"
+                    " AND tier IN ('ranked', 'community')"
                     " ORDER BY tier LIMIT 1", (rid,)).fetchone()
                 rank, of = rank_of(conn, *stand) if stand else (0, 0)
                 stages = stage_counts(conn, rid)
@@ -1514,6 +1516,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "standing": {"on_board": stand is not None, "rank": rank, "of": of,
                              "stages": stages[0] if stages else 0,
                              "stages_hidden": stages[1] if stages else 0,
+                             "stages_aside": stages[2] if stages else 0,
                              "stages_linked": stages is not None},
                 "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
                 "download": "/api/replay/%d" % rid,
