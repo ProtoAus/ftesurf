@@ -232,12 +232,12 @@ function renderRun(j) {
   const RCPT_CLS = {VALID: "up", FAULT: "down"};
   const ANG_CLS = {OK: "up", BLIND: "warn", FAULT: "down"};
   const card = document.getElementById("rcptcard");
-  const dl = document.getElementById("rcpt");
-  dl.replaceChildren();
+  const rdl = document.getElementById("rcpt");
+  rdl.replaceChildren();
   card.hidden = !j.receipt;
   if (j.receipt) {
     const c = j.receipt;
-    const put = (k, node) => { dl.append(el("dt", "", k)); const d = el("dd"); d.append(node); dl.append(d); };
+    const put = (k, node) => { rdl.append(el("dt", "", k)); const d = el("dd"); d.append(node); rdl.append(d); };
     put("signature", pill(c.verdict, RCPT_CLS[c.verdict]));
     // "not checked" and "checked and agreed" are different facts, and so is
     // "checked and could not have disagreed" -- see reccheck's BLIND.

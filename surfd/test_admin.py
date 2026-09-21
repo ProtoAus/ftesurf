@@ -47,6 +47,28 @@ def check_true(label, got):
     check(label, bool(got), True)
 
 
+def js_parses(template):
+    """True/False from `node --check` on a template's inline scripts, or None
+    when node is not on PATH -- reported as a skip, never as a pass."""
+    import re
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        return None
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "templates", template), encoding="utf-8") as f:
+        src = f.read()
+    js = "\n".join(re.sub(r"\{\{.*?\}\}", "null", re.sub(r"\{%.*?%\}", "", b))
+                   for b in re.findall(r"<script>(.*?)</script>", src, re.S))
+    fd, path = tempfile.mkstemp(suffix=".js")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(js)
+        return subprocess.run([node, "--check", path], capture_output=True).returncode == 0
+    finally:
+        os.unlink(path)
+
+
 HOMES = []
 
 
@@ -549,6 +571,14 @@ def review_section(pw_hash, pw):
     body = page.get_data(as_text=True)
     check("the run page renders", page.status_code, 200)
     check("...and carries the receipt card", 'id="rcptcard"' in body, True)
+    # AND ITS SCRIPT PARSES.  f19d477 redeclared `const dl` in renderRun; the
+    # check above passed while the browser discarded the page's whole script.
+    for name in ("admin.html", "admin_runs.html", "admin_run.html"):
+        ok = js_parses(name)
+        if ok is None:
+            print("skip %-62s %s" % ("the %s script parses" % name, "no node on PATH"))
+        else:
+            check("the %s script parses" % name, ok, True)
 
     # -- 9h. runs=None registers no review routes -----------------------------
     import flask
