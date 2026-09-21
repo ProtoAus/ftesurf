@@ -2695,11 +2695,13 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, tickrate=0):
     dropped an honest leaf.  The run is bound by runid and the player by the
     leaf's digest; the replay row takes its name from the file (_rec_name).
     """
-    def differs(key, want):
-        got = (hdr.get(key) or "").strip()
+    def differs(key, want, fold=str):
+        got = fold((hdr.get(key) or "").strip())
         return got and str(want) != got and "%s %r != %r" % (key, got, str(want))
 
-    return (differs("map", mapname) or differs("track", track)
+    # `map` folds case: mapname is the board key (clean_map lowercases) and the
+    # header has the name as loaded -- surf_Aser dropped every leaf until 424.
+    return (differs("map", mapname, str.lower) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
             or _rec_tickrate_disagrees(hdr, tickrate) or "")
 

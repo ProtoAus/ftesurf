@@ -1695,6 +1695,25 @@ check("(g) an empty recorded owner takes the submitted name",
       q(m, "SELECT name FROM replays WHERE id=?", (emp.get("rep", 0),)),
       [("player",)])
 
+# The header's map is the name as loaded, the board key is lowercased: until
+# 424 the compare was exact and every leaf on a map with capitals dropped.
+clock.now += 10
+cleaf = leaf(660, "caps")
+wrec(m, "surf_Aser", 0, 0, cleaf, "Caps", "rc")
+cap = submit(m, map="surf_Aser", player="caps", name="Caps", ticks=660,
+             tickrate=100, rec=cleaf, runid="rc")
+check("(h) a map with capitals keeps its recording", cap.get("rep", 0) > 0, True)
+clock.now += 10
+oleaf = leaf(650, "caps")
+p = wrec(m, "surf_Aser", 0, 0, oleaf, "Caps", "ro")
+with open(p, encoding="utf-8") as fh:
+    body = fh.read().replace("map surf_Aser\n", "map surf_Bser\n")
+with open(p, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(body)
+oth = submit(m, map="surf_Aser", player="caps", name="Caps", ticks=650,
+             tickrate=100, rec=oleaf, runid="ro")
+check("(h) control: a header naming another map still drops", oth.get("rep"), 0)
+
 # --------------------------------------------------------------------------
 print("\n--- 20. the published TIME and the badge, bound to the file -------")
 
