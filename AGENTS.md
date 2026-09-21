@@ -849,10 +849,19 @@ bannered as superseded.)
     that the live rows came out 1: `SELECT kind, bound, COUNT(*) FROM replays
     GROUP BY 1, 2`.
     A reject hides the stage times of every bound replay's run.
+  - `replays.sha` is the file's sha256 at filing and `sha_at` the `submitted`
+    it belongs to. A re-post is new evidence only if player, ticks, bytes or a
+    known, current sha differ; an unknown sha ('') falls back to "the header
+    names another run". `_file_sha` hashes only the file whose header was just
+    read, and caches by (path, inode, size, mtime_ns).
   - Tiers ending `@<runid>` are a rejected run's hidden stage times, and
-    `^<runid>` a time waiting behind a better one; neither reaches a public
-    board. Reviews move them. Do not delete them by hand: a clear gives them
-    back.
+    `^<its own runid>` (`^r<id>` recorded, `^-<submitted>` no runid) a time
+    waiting behind a better one; neither reaches a public board. Reviews move
+    them. Do not delete them by hand: a clear gives them back.
+  - Patch 426's arms: `cfg/test/p426{cl,bcl,ccl,dcl}.cfg` against `p426sv.cfg`
+    and the stub `b65stub.py cert 8131`. p426dcl needs `+set sv_mintic 0.1`
+    on the server to make its same-physics-step race frequent (1 in 21 at the
+    default step).
   - Before 425, test_board wrote `.rec` files into the DEFAULT `SURFD_RUNS`, the
     live run tree. It sets its own temp dir now. Point every suite at one.
 

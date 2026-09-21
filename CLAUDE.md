@@ -63,6 +63,9 @@ chatty.
   "no receipt" as "unsigned", and on the day the receipt step failed for three
   hours that would have flagged every signer. A missing record is evidence
   only once something shows the reader got that far (the receipts watermark).
+  Patch 424 hit it twice more: a file hash that could not be taken read as
+  "a different file" and lapsed a reject, and a migrate that could not see a
+  file marked the row unbound for good.
 - AND A WHOLE CORPUS CAN BE THE ARM THAT CANNOT FAIL. 339 .rec/.view pairs
   agreed about angles and not one of them measured anything: every v9 fixture
   drives its route with setpos and noclip, so the camera never turns. Before
