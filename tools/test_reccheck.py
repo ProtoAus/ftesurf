@@ -251,7 +251,11 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
     `shift` moves the whole tick column, which is what a PING does to a real
     sidecar: the column is a server stat the client reads out of the last
     snapshot it got, so on a connection it LAGS the recording by the round trip
-    and reads LOWER -- a negative shift.  `dense_lo`/`dense_hi` put the extra frames over a WINDOW rather than the
+    and reads LOWER -- a negative shift.  CLAMPED AT ZERO, because that is the
+    honest shape: `SV_TimerTicks` never returns a negative, so a lagging client
+    pins its clock at 0 until the first post-gate snapshot arrives rather than
+    counting backwards.  A sidecar that does count backwards is a forgery and
+    reccheck faults it as one.  `dense_lo`/`dense_hi` put the extra frames over a WINDOW rather than the
     whole file, which is the shape a forger wants: leave the honest stretch at
     one frame a tick so the rule arms on it, and pad the stretch you are lying
     about so it is never examined.  `nan_at` puts a NaN in one row's tick
@@ -273,7 +277,7 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
         d = dense if dense_lo * n <= i < dense_hi * n else 1
         for k in range(d):
             col = "nan" if (nan_at is not None and i == nan_at and k == 0) \
-                else "%d" % (tk + shift)
+                else "%d" % max(0, tk + shift)
             out.append("%.4f %d %s %.2f %.2f 0"
                        % (10.0 + (tk + k / float(d)) * TICK,
                           1000 + tk, col, float(f[7]), yaw))
@@ -1853,6 +1857,75 @@ def case_angle_ghost_is_not_a_fault():
           "a ghost the SIDECAR declares exempts nothing")
 
 
+def case_angle_negative_run_clock_is_a_fault():
+    """`SV_TimerTicks` RETURNS A COUNT OR ZERO, NEVER A NEGATIVE, so a sidecar
+    whose run clock counts backwards did not get it from the server.  It is the
+    cheapest form of the head amnesty: put the rows you lied about at a tick
+    below the start and they fall out of range, taking the lie with them."""
+    L = build(sweep=128, packets=400)
+    f, _ = run(L, view=view_for(L, rot=90.0, lo=0.0, hi=0.05, shift=-12))
+    check(not any("never negative" in x for x in f),
+          "CONTROL: a sidecar clamped at zero, as a real one is, draws no "
+          "negative-clock fault")
+    v = view_for(L, rot=90.0, lo=0.0, hi=0.05)
+    head, body = v[:4], v[4:]
+    body = [" ".join([t[0], t[1], "-3"] + t[3:]) for t in (l.split() for l in body)]
+    f2, _ = run(L, view=head + body)
+    check(any("never negative" in x for x in f2),
+          "a negative run clock in the sidecar is a fault")
+    if not any("never negative" in x for x in f2):
+        print("        got: %s" % f2)
+
+
+def case_angle_head_amnesty_costs_coverage():
+    """THE AMNESTY A REVIEWER FOUND, REDUCED TO WHAT IS INTRINSIC.
+
+    Deciding `tk < 0` on the SHIFTED tick dropped the moves a forger had buried
+    from the comparison AND from the coverage denominator, so a 90 degree lie
+    over the first 2% of a run went from a fault at 2.10% past cut to `ok,
+    0.00%, worst 0.0050` -- no numeric trace anywhere.  The range is decided on
+    the recording's own tick now.  The moves still cannot be CHECKED, because
+    the sidecar does not describe them, but they are counted.
+    """
+    L = build(sweep=128, packets=400)
+    clean, n = run(L, view=view_for(L, shift=-12))
+    check(not clean, "an honest sidecar 12 ticks behind is still not a fault")
+    # The moves the shift hides are UNCOVERED, not absent: they stay in the
+    # count the coverage figure divides by.
+    import reccheck as _rc
+    d = tempfile.mkdtemp(prefix="reccheck_a")
+    try:
+        p = os.path.join(d, "t.rec")
+        open(p, "w", encoding="utf-8").write("\n".join(L) + "\n")
+        vp = os.path.splitext(p)[0] + ".view"
+        open(vp, "w", encoding="utf-8").write(
+            "\n".join(view_for(L, shift=-12)) + "\n")
+        info = _rc.check_view(vp, _rc.check_rec(p)).info
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    check("did not" in info.get("angle_joined", ""),
+          "the buried moves are reported as uncovered rather than vanishing")
+    check("no frame under it" in info.get("angle_lag", ""),
+          "...and the offset, and what it hides, is on the report")
+    if "no frame under it" not in info.get("angle_lag", ""):
+        print("        angle_lag=%r" % info.get("angle_lag"))
+
+
+def case_angle_lag_is_not_claimed_when_the_winner_is_bad():
+    """A RATIO HAS NO OPINION ABOUT THE WINNER BEING BAD.  At a wrong offset
+    the runner-up is naturally 70-85%, so a 4x margin is nearly free, and the
+    corpus accepted offsets whose own score was 15-20% past cut.  The winner has
+    to align, not merely align least badly."""
+    L = build(sweep=128, packets=400)
+    f, n = run(L, view=view_for(L, rot=90.0, lo=0.25, hi=0.9, shift=-3))
+    check(not any("-3 ticks" in x or "+3 ticks" in x for x in n),
+          "no offset is claimed for a sidecar that is wrong at all of them")
+    check(any("lines these two files up" in x for x in n),
+          "...and the checker says the search found nothing, not nothing at all")
+    if not any("lines these two files up" in x for x in n):
+        print("        notes=%s" % n)
+
+
 def case_angle_splice():
     """A CONTIGUOUS BLOCK FROM SOMEWHERE ELSE, which the fraction rule alone
     misses: --tamper-view put a tenth of surf_kitsune 90 deg out and scored
@@ -1922,6 +1995,9 @@ def main():
                case_angle_lag_is_recovered,
                case_angle_lag_does_not_rescue_a_lie,
                case_angle_lag_is_not_invented_on_a_still_camera,
+               case_angle_negative_run_clock_is_a_fault,
+               case_angle_head_amnesty_costs_coverage,
+               case_angle_lag_is_not_claimed_when_the_winner_is_bad,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,

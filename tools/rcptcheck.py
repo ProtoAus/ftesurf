@@ -391,8 +391,11 @@ def join_angles(r, want):
     # separate question from the tight rule's coverage: a SWEPT run whose
     # sidecar pads every tick used to come back a plain OK here, with nothing
     # examined at 0.05 deg and the loose rule's documented hole wide open.
-    blind = (("NOT ENOUGH TO JUDGE" in solo or "PARTIAL COVER" in solo)
-             if solo else off.startswith("BLIND"))
+    # ASKED AS A KEY.  This used to sniff `angle_off` for a "BLIND" prefix,
+    # and when reccheck reworded that line the branch went dead: every pair the
+    # tight rule never judged -- which is most of them -- came back a confident
+    # OK.  reccheck now says which rule decided, in one word.
+    blind = v.info.get("angle_rule", "sweep-only") != "tight"
     r.angles = "FAULT" if bad else ("BLIND" if blind else "OK")
     if bad:
         # SAID IN FULL, because the three facts TOGETHER are the finding and any

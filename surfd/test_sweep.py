@@ -253,7 +253,7 @@ def case_receipt_reread():
           conn2.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
 
 
-def angle_pair(runid, rot=0.0, still=True):
+def angle_pair(runid, rot=0.0, still=True, ver=9):
     """A .rec and the sidecar that goes with it, from reccheck's own fixtures.
 
     BUILT BY tools/test_reccheck.py AND NOT HERE.  That file assembles the .rec
@@ -268,7 +268,7 @@ def angle_pair(runid, rot=0.0, still=True):
     if TOOLS not in sys.path:
         sys.path.insert(0, TOOLS)
     import test_reccheck as fx
-    lines = fx.build(packets=400, sweep=0.0 if still else 128)
+    lines = fx.build(packets=400, sweep=0.0 if still else 128, ver=ver)
     lines = [("runid " + runid) if l.startswith("runid ") else l for l in lines]
     return "\n".join(lines) + "\n", "\n".join(fx.view_for(lines, rot=rot)) + "\n"
 
@@ -339,6 +339,22 @@ def case_receipt_angles_reach_the_database():
         got = receipts(conn)["20260921-000072-0"]
         check("...and the verdict is not left empty",
               (got[0], got[2]), ("FAULT", "FAULT"))
+
+        # AND A PAIR NO TIGHT RULE JUDGED IS `BLIND`, NOT `OK`.  rcptcheck used
+        # to reach that by sniffing a "BLIND" prefix off reccheck's `angle_off`
+        # line; reccheck reworded the line and the branch went dead, so every
+        # pre-v9 pair -- which is 329 of the 336 in this tree -- reported a
+        # confident OK.  A pre-v9 recording is the shape that proves it: its
+        # `in` angles are .v_angle and the tight rule is forbidden to judge them.
+        rec4, view4 = angle_pair("20260921-000073-0", ver=7)
+        with_rec(surfd, sweep, "20260921-000073-0", rec4)
+        make_receipt(surfd.EVIDENCE_DIR, "20260921-000073-0",
+                     view=view4.encode("utf-8"), age=old)
+        n, bad = sweep.receipt_step(conn)
+        check("a pre-v9 pair is read without a fault", (n, bad), (1, 0))
+        got = receipts(conn)["20260921-000073-0"]
+        check("...and its angle verdict is BLIND, not a confident OK",
+              (got[0], got[2]), ("VALID", "BLIND"))
     finally:
         rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
 
