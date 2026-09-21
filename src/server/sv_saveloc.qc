@@ -1308,7 +1308,15 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		}
 	}
 	else
+	{
 		SV_RecDiscard(e);
+		// Patch 426: recording stopped with nothing live to discard, so no end
+		// handler cleared the hold -- and the client signs this edge with the
+		// RUNTICKS it now sees.  A hold with those ticks would take that
+		// receipt as its own (review round 5).
+		if (e.rec_end_rid != "" && e.rec_end_ticks == e.rec_rec_ticks)
+			SV_RecEndHold(e, "", "", 0);
+	}
 
 	return TRUE;
 };

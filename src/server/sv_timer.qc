@@ -3970,7 +3970,7 @@ void(entity e, string rid, string nonce, float ticks) SV_RecEndHold =
 void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
      string view, string sig, string svname) SV_RecRcpt =
 {
-	local float fh, svt;
+	local float fh, svt, noup;
 	local string path, who, rid, nonce;
 
 	/*
@@ -4121,10 +4121,14 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 		{
 			fclose(fh);
 			dprint(sprintf("timer: receipt refused -- %s already has one\n", rid));
+			SV_RecEndHold(e, "", "", 0);    // it can never be written
 			return;
 		}
 	}
 
+	// An abandon's receipt asks for no evidence (review round 4/5): its upload
+	// would hold the client's one upload slot while a finish's was refused.
+	noup = (e.rec_end_rid != "" && svt == 0);
 	if (e.rec_end_rid != "")
 	{
 		if (rid == e.rec_rec_rid)       // a finish: it is the live run's receipt too
@@ -4192,7 +4196,7 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	  or nothing at all.  That asymmetry is the whole security argument and it
 	  lives in engine/client/cl_receipt.c.
 	*/
-	if (run_t_evul && nonce != "")
+	if (run_t_evul && nonce != "" && !noup)
 	{
 		/*
 		  BOTH FILES IN ONE REQUEST, IN THE ORDER THE CLIENT ARMED THEM.  The
