@@ -42,12 +42,24 @@ chatty.
   AGENTS.md. Verified work that is still only on this disk is not finished.
 - Prefer measuring to reasoning. This codebase has a long history of the right
   answer and the wrong answer being the same bytes; when a claim can be checked
-  against a real file or a live run, check it.
+  against a real file or a live run, check it. THAT INCLUDES CLAIMS ABOUT WHAT
+  IS DEPLOYED: a note in this repo saying a file was never copied up is not
+  evidence. On 2026-09-21 four of them had been live for three hours and the
+  receipt step was failing on every cron tick. Look at the host.
 - An arm that passes because its condition never occurred proves nothing. Show
   it discriminates: two cuts of `p418race.cfg` measured nothing (wrong forcing
   knob, then the window closed early) before it reproduced anything. The
   cheapest proof of a fix is the same arm against a build with the fix compiled
   out.
+- A CHECK THAT CANNOT MEASURE MUST SAY SO, AND NEEDS A THIRD VERDICT TO SAY IT
+  IN. Patch 421's angle check had two -- the files match, or the sidecar is not
+  this recording's -- so every way of failing to MEASURE came out as the same
+  maximum-severity accusation a forgery gets: a ping past the search window, a
+  tick epoch the join could not follow, a clock that stepped mid-run. Three
+  false faults on honest runs, all one shape, all found by reviewers and none
+  by the suite. The fix is never a better threshold, it is the third answer.
+  Before shipping a check, ask what it says when it cannot see, and make sure
+  that is not "guilty".
 - AND A WHOLE CORPUS CAN BE THE ARM THAT CANNOT FAIL. 339 .rec/.view pairs
   agreed about angles and not one of them measured anything: every v9 fixture
   drives its route with setpos and noclip, so the camera never turns. Before

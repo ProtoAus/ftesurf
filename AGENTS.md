@@ -614,105 +614,65 @@ bannered as superseded.)
   round trips. Collecting journals from a public lobby needs a transport that is
   not the netchan.
 - THE SIDECAR IS CHECKED AGAINST THE RECORDING, not just hashed. `reccheck`
-  joins `.view` to `.rec` BY TICK (`view.ticks` == `in.mt` - `instart`, best
-  frame in that tick) and compares angles; `rcptcheck` reaches it by RUNID, so
-  one command covers signature, digest and content. The residual is normalised
-  by the tick's own sweep because the raw one is not constant (0.013 deg still,
-  1.71 in a flick). Cuts from the corpus: 339 pairs, 337 at <=1.22% of moves
-  past 3x, two at 82.8% and 98.8% -- `surf_garden/main/cheat` and
-  `surf_demise/main/cheat` really do pair a recording with another run's
-  sidecar. `reccheck.py --tamper-view <f.rec>` re-measures the sensitivity on
-  any pair, and it is the only honest way to quote one.
-- THE ANGLE JOIN HAS TO SURVIVE A PING, AND FOR ONE COMMIT IT DID NOT. The
-  `.view`'s join column is `STAT_FS_TIMERTICKS`, a server stat the client reads
-  out of its last snapshot; `in.mt` is stamped when the server ran the move. On
-  a connection they differ by the round trip. MEASURED, `cl_delay_packets 30`
-  against a control run minutes apart on the same route: the HONEST pair read
-  max 30.2 deg, 49.6% of one-frame ticks past cut and 19.9% of joined moves
-  past the sweep cut -- both rules faulting a clean run -- where the control
-  read 0.008 deg and 0%. EVERY LOBBY CLIENT IS REMOTE, so the corpus that
-  calibrated the cuts (all same-machine) could not see this at all.
-  THE OFFSET IS READ OFF THE FILES, NOT SEARCHED FOR IN A WINDOW. A window
-  has an edge and the edge convicts: at 12 ticks of lag an honest pair was
-  clean and at 13 it drew both faults, and widening 12 to 25 only moved the
-  cliff to 26. The score is also a DELTA FUNCTION -- 0.00% at the true offset,
-  ~50% one tick either side -- so a coarse scan over a wider range steps
-  straight over it. Instead every frame is indexed by its printed angles, each
-  sampled move looks its own angles up, and the tick differences vote. The
-  votes only NOMINATE; `score()` decides, because a run that turns more than
-  once round scatters votes over spurious offsets. Measured on a real pair:
-  clean at every lag from 0 to 400 ticks (4 seconds), 99% of moves naming the
-  offset. A still camera has one angle key, proposes everything and is
-  correctly not identified; a sidecar from another run proposes noise.
-  AND THE ABSTENTION COVERS THE RULES THAT CONVICT. `tight` gated the 0.05 deg
-  rule and nothing else, so on a file whose tick epoch the join key cannot
-  follow -- a park/resume, a retry -- the two SWEEP rules ran on the same
-  disowned join and delivered the same verdict a forgery gets: measured, 12.0%
-  of joined moves past cut at a +50 horizon and 20.1% at +250, on an honest
-  pair with its `.view` untouched. A recording that DECLARES its epoch moved is
-  telling us the join key is not valid across it.
-  STILL OPEN AND DEMONSTRATED: a save-lock hold (`sl_hold`, or opening a replay
-  mid-attempt) keeps the mover counting while neither writer runs, and the held
-  ticks come off the run clock and stay in `in.<mt>` with NO record in the file
-  -- SV_RecPause is only reached on a cold rewind. 33-41% of one-frame ticks
-  past cut, cover reading 100%, full confidence, honest recording. The run is
-  kept (SV_TimerFreeze marks it practice, which is RT_LAST, not RT_NONE), so it
-  reaches the board. A vote histogram with two modes is the signature and a
-  detector for it was written and REMOVED for not working: it gated the sweep
-  rules only, not the tight one, and could not be shown to fire. Do not treat
-  an angle fault on a run that may have been held as a finding.
-- THREE RULES, AND THE TIGHT ONE IS THE ONE-FRAME RULE. A tick that held
-  exactly ONE rendered frame has nothing to choose between: the usercmd was
-  built from that frame, so the two files carry the same number and the only
-  gap left is the `.view`'s `%.2f` print plus the 16-bit wire quantum. Over 21
-  honest v9 pairs and 11,592 such ticks the worst is 0.0104 deg, so the cut is
-  0.05 deg -- against 3x the tick's sweep for the other two rules. It does NOT
-  need the camera to have moved, which is why BLIND is no longer an early
-  return. On a still camera the sweep rule is not blind either: the normaliser
-  takes its 1.0 floor and becomes a flat 3-degree absolute cut.
-  IT ABSTAINS MORE THAN IT JUDGES, AND EVERY ABSTENTION IS LOAD-BEARING.
-  A GHOST WINDOW is a legitimate disagreement -- `Ghost_InputFrame` pins
-  `input_angles` to the body's frozen aim while `Rec_ViewSample` keeps writing
-  the flying camera, and `cl_replay.qc:1730` says so -- so ghosted ticks are
-  exempt, from the `.rec`'s windows and never the `.view`'s. A RESUME, RETRY,
-  PAUSE or SESSION moves the tick epoch out from under the join, so the tight
-  rule abstains on the whole file. And the gate is the ANGLE SOURCE, not the
-  version: `check_rec` falls back to `samples` (`.v_angle`) for any file with
-  no `in` rows, at any version, and pointing a 0.05 deg cut at that stream
-  faults 11 honest pre-v9 pairs (worst 176 deg).
-  ITS COVERAGE IS A LINE COUNT IN THE ATTACKER'S OWN FILE, which is the whole
-  limit on it. A one-frame tick is a tick with one frame IN THE `.view`:
-  emitting two lines per tick disarms the rule, and so does deleting frames
-  (which is why coverage is measured against the RECORDING's move count, not
-  against how many the sidecar chose to cover). A gate on the count alone is a
-  number the forger stands above, so COVERAGE GATES THE CLEAN VERDICT, NOT THE
-  FAULT: a pair under 75% cover reads `PARTIAL COVER` and `BLIND`, never `OK`.
-  What that buys is modest and worth saying as such -- a forger can still hide
-  ticks, but not quietly, because hiding them is what turns their own review
-  page from OK to BLIND. Honest cover is bimodal (97-100% at or below the mover
-  rate, 89.9% at 110 fps, then nothing until 50% at 150 and 0.3% at 250), and
-  75 is the middle of that empty band rather than a number with an argument.
-  AND NOT COMPARABLE IS NOT A PASS. A `nan` in the tick column parses as a
-  float and raised inside the join, which came back as "the cross-check did not
-  run" with the receipt still VALID -- one token, in a file the client signs.
-  A non-finite column is its own fault now, and a sidecar too broken to join at
-  all makes the RECEIPT read FAULT instead of leaving the verdict empty.
-- EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA, because every
-  416-419 fixture drives its route with `setpos` and `noclip`. That is what a
-  lobby records too, so the one-frame rule is the one that does the work there;
-  the sweep rule reports `BLIND` and that is the honest answer. To make a pair
-  that is not blind: `cl_yawspeed` + `+left`/`+right`/`+lookup` INSIDE the run,
-  then a `setpos` with the route's own angles to put the heading back
-  (p420live.cfg); `tools/p421corp.py` drives a whole batch of them.
-- AND DO NOT BELIEVE A THRESHOLD MEASURED AT ONE FRAMERATE. This file said for
-  a day that the v9 cuts were ~400x looser than needed, from p420live's single
-  run at `cl_maxfps 100`. At or below the mover rate the client builds one
-  usercmd per rendered frame, so the residual is the quantum BY CONSTRUCTION;
-  above it the usercmd samples between frames and it is not. Across 12 runs
-  from 30 to 500 fps and 25 to 2000 deg/s the worst normalised move is 1.49 --
-  worse than the whole pre-v9 corpus's 1.24, at the same cut of 3. The cut
-  stays. `cl_netfps` is not an axis to vary either: `Net_MatchTicrate`
-  (cl_main.qc:108) overwrites it with 1/pm_ticrate on every map load.
+  joins the `.view`'s frames to the `.rec`'s `in` rows by run tick and compares
+  angles; `rcptcheck` reaches it by RUNID, so one command covers signature,
+  digest and content. THREE RULES, and `reccheck.py --tamper-view <f.rec>`
+  re-measures the sensitivity of all three on any pair -- the only honest way
+  to quote one:
+  - ONE-FRAME (v9 only, `ANG_SOLO` 0.05 deg): a tick that held exactly ONE
+    rendered frame must agree to the `%.2f` print plus the wire quantum,
+    because the usercmd was built from that frame. The tight rule, and the
+    only one that discriminates on a camera that never turned.
+  - SWEEP (`ANG_CUT` 3x the tick's own sweep, on over `ANG_HOLD` 5% of moves).
+  - RUN LENGTH (`ANG_RUN` 250 consecutive), which is what sees a splice.
+  Cut from 339 pre-v9 pairs plus 21 honest v9 ones. The real findings are
+  `surf_garden/main/cheat` and `surf_demise/main/cheat`, which do pair a
+  recording with another run's sidecar.
+- THE JOIN HAS AN OFFSET AND IT IS NOT OPTIONAL. The `.view`'s tick column is
+  `STAT_FS_TIMERTICKS`, a server stat read out of the client's last snapshot,
+  so on a connection it lags `in.mt` by the round trip. AT 30 ms AN HONEST PAIR
+  FAILED BOTH SWEEP RULES -- and every lobby client is remote while every file
+  that calibrated the cuts is same-machine. The offset is READ OFF THE FILES
+  (frames indexed by their printed angles, moves vote on the tick difference),
+  never searched inside a window: a window has an edge and the edge convicts.
+  Reported as `angle_lag`.
+- IT ABSTAINS MORE THAN IT JUDGES, AND EVERY ABSTENTION IS LOAD-BEARING --
+  each of these was a false fault on an honest run before it existed:
+  - a GHOST window is a legitimate disagreement between exactly these two files
+    and `cl_replay.qc:1730` says so. Exempt from the `.rec`'s windows, NEVER
+    the `.view`'s, or a forger declares one ghost over his whole run.
+  - a resume/retry/pause/session moves the tick epoch: no angle rule judges
+    that file, including the two that convict.
+  - the tight rule is gated on the ANGLE SOURCE (`in rows`), not the file
+    version: `check_rec` falls back to `.v_angle` samples for any file with no
+    `in` rows, at any version, and 0.05 deg against that stream faults 11
+    honest pre-v9 pairs.
+  - under `ANG_SOLO_COVER` 75% cover it reads `PARTIAL COVER` and surfd stores
+    `BLIND`, never `OK`. Coverage is a line count in the attacker's own file,
+    so it gates the CLEAN verdict and not the fault: hiding ticks costs a
+    forger his `OK`, which is all it buys and is worth saying as such.
+  - a non-finite column is its own fault, and a sidecar too broken to join at
+    all makes the RECEIPT read FAULT rather than leaving the verdict empty.
+  STILL OPEN AND DEMONSTRATED: a save-lock hold moves the same epoch and writes
+  NO record of it (`SV_RecPause` is only reached on a cold rewind), so an
+  honest held run is still convicted -- 33-41% of one-frame ticks past cut,
+  cover reading 100%. The run is kept (`SV_TimerFreeze` marks it practice,
+  which is `RT_LAST`, not `RT_NONE`), so it reaches the board. DO NOT TREAT AN
+  ANGLE FAULT ON A RUN THAT MAY HAVE BEEN HELD AS A FINDING.
+- EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA (every 416-419
+  fixture drives its route with `setpos` and `noclip`) and so does nearly every
+  lobby run, which is why the one-frame rule is the one that works there and
+  the sweep rule honestly reports `BLIND`. To make a swept pair: `cl_yawspeed`
+  + `+left`/`+right` INSIDE the run, then a `setpos` to restore the heading
+  (`p420live.cfg`); `tools/p421corp.py` drives a batch of them.
+  AND DO NOT SET A THRESHOLD FROM ONE FRAMERATE. This file claimed for a day
+  that the v9 cuts were ~400x looser than needed, from a single run at
+  `cl_maxfps 100` -- at or below the mover rate the client builds one usercmd
+  per rendered frame, so the two files carry the SAME NUMBER by construction.
+  Across 30-500 fps the worst honest move is 1.49 against a cut of 3, so the
+  cut stays. `cl_netfps` is not an axis either: `Net_MatchTicrate`
+  (`cl_main.qc:108`) pins it to `1/pm_ticrate` on every map load.
+  Every measurement behind the above is in the anti-cheat plan, not here.
 - AN ABANDONED RUN KEEPS NO `.rec` UNLESS IT POSTED A STAGE.
   `SV_RecKeepEvidence` returns early on `rec_rec_posts <= 0`, so a main-leg run
   that is walked away from leaves a `.rcpt` and a `.view` and nothing to join
