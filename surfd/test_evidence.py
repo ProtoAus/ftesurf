@@ -1269,6 +1269,55 @@ def case_round12():
           (row["ms"] < 69000, row["rep"], row["ver"]), (True, 0, 0))
 
 
+def case_round13():
+    """E24: a set-aside recorded copy whose replay moved board competes as a plain
+    time; a header tickrate no recorder writes is never a crash"""
+    m = fresh(admin_pw=PW)
+    c, csrf = admin_client(m)
+    stage_run(m, 600, "Rs")
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    review(m, c, csrf, eid, "reject")
+    review(m, c, csrf, eid, "clear")                    # the recorded 600 set aside
+    time.sleep(1.1)
+    sl = leaf(600, "kap")
+    with open(os.path.join(m.RUNS_DIR, "surf_Aser", m.leg_dir(0, 2), sl), "w",
+              newline="\n") as fh:
+        fh.write(evbody("Ru", leg=2).replace("flags 0 ", "flags 2048") + "\n")
+    submit(m, leg=2, ticks=600, rec=sl, runid="Ru", flags=2048)    # re-filed community
+    review(m, c, csrf, eid, "reject")
+    row = by_player(m, 2).get("kap")
+    check("E24 a set-aside copy whose replay moved board comes back as a plain time",
+          row and (row["ticks"], row["rep"]), (600, 0))
+
+    for raw in ("inf", "nan", "1e-200", "1e-320", "-inf"):
+        try:
+            got = m._rec_tickrate_disagrees({"tickrate": raw}, 100.0)
+        except Exception as exc:                        # noqa: BLE001
+            got = repr(exc)
+        check("E24 header tickrate %s: no crash, not measured" % raw, got, "")
+    m = fresh()
+    lf = leaf(4100, "kap")
+    put_run(m, lf, evbody("Ri1").replace("abandon 8262\n", "")
+            .replace("tickrate 0.015", "tickrate 1e-200"))
+    conn = sqlite3.connect(m.DB_PATH)
+    with conn:
+        conn.execute(
+            "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+            " name, ticks, tickrate, millis, flags, node, submitted, runid, kind, bound)"
+            " VALUES ('surf_aser','surf_Aser',0,0,?,'ranked','clean','kap','Kap',4100,"
+            "66.6667,61500,0,'p',1,'Ri1','run',-1)", (lf,))
+    conn.close()
+    try:
+        m.replays_bound(m.connect())
+        got = q(m, "SELECT bound FROM replays")
+    except Exception as exc:                            # noqa: BLE001
+        got = repr(exc)
+    check("E24 migrate over a file with such a header does not raise", got, [(1,)])
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -1507,6 +1556,7 @@ def main():
                  case_set_aside, case_round4, case_bound, case_restand_sets_aside,
                  case_round6, case_round7, case_round8, case_stage_post_lock,
                  case_round9, case_round10, case_round11, case_round12,
+                 case_round13,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):

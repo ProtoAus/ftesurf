@@ -2845,13 +2845,16 @@ def submit_run():
                     # this recording's does not have it behind it: a tie re-filed
                     # on another board (review round 3), a file-less filing with
                     # a shaved rate re-filed by the real post (round 10).  A
-                    # set-aside copy is the refill's, which rebuilds it from the
-                    # replay.  On every post, not only a re-file: `submitted`
-                    # cannot tell one in the same second (round 11).
+                    # set-aside copy of the same board is the refill's, which
+                    # rebuilds it from the replay (round 11); one whose replay
+                    # moved competes as a plain time (round 12).  On every post,
+                    # not only a re-file: `submitted` cannot tell one in the same
+                    # second (round 11).
                     db.execute("UPDATE runs SET replay_id = 0 WHERE replay_id = ?"
-                               " AND tier IN (?, ?) AND NOT (tier = ? AND style = ?"
+                               " AND NOT ((tier = ? OR tier = ?) AND style = ?"
                                " AND millis = ? AND player = ?)",
-                               (rid,) + TIERS + (tier, style, millis, player))
+                               (rid, tier, "%s^r%d" % (tier, rid), style, millis,
+                                player))
 
             pkey = (mapname, track, leg, tier, style, player)
             prev = db.execute(_PREV_SQL, pkey).fetchone()
@@ -3150,16 +3153,22 @@ def _rec_tickrate_disagrees(hdr, tickrate):
         period = float(raw)
     except ValueError:
         return ""                      # unparseable on disk is not the row's fault
-    if period <= 0:
+    if not math.isfinite(period) or period <= 0:
+        return ""                      # inf/nan: no recorder writes it (round 12)
+    try:
+        want = 1.0 / period
+        slack = (0.5 * 10.0 ** (math.floor(math.log10(period)) - 5)
+                 / (period * period) + 1e-4)
+    except (OverflowError, ValueError, ZeroDivisionError):
+        return ""                      # a period too small to square: the same
+    if not (math.isfinite(want) and math.isfinite(slack)):
         return ""
-    want = 1.0 / period
     # %g keeps six significant digits of the period, so the header's rate is
     # good to half the sixth digit / period^2; the lobby's %.4f and float32 add
     # 1e-4.  0.015 -> 3.2e-4 Hz; honest 3.3e-5 live.  max(0.5 Hz, 0.1%) let a
     # re-post shave 0.75% off a verified time; a flat 3e-4 dropped 96 Hz set as
     # 0.0104166667 (Patch 424 reviews).
-    step = 0.5 * 10.0 ** (math.floor(math.log10(period)) - 5)
-    if abs(want - tickrate) > step / (period * period) + 1e-4:
+    if abs(want - tickrate) > slack:
         return "tickrate %s (= %.4f/s) != %.4f/s" % (raw, want, tickrate)
     return ""
 
