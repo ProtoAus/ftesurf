@@ -1,0 +1,105 @@
+{
+ "formatVersion": 1,
+ "maxVelocity": 10000,
+ "tracks": {
+  "main": {
+   "stagesEndAtStageStarts": true,
+   "zones": {
+    "segments": [
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -14150
+           ],
+           [
+            -11240,
+            -14150
+           ],
+           [
+            -11240,
+            -14288
+           ],
+           [
+            -11800,
+            -14288
+           ]
+          ],
+          "bottom": 15360,
+          "height": 256
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": false,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -11800,
+            -13284
+           ],
+           [
+            -11240,
+            -13284
+           ],
+           [
+            -11240,
+            -13300
+           ],
+           [
+            -11800,
+            -13300
+           ]
+          ],
+          "bottom": 15360,
+          "height": 256
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "end": {
+     "regions": [
+      {
+       "points": [
+        [
+         -11800,
+         -12800
+        ],
+        [
+         -11240,
+         -12800
+        ],
+        [
+         -11240,
+         -12950
+        ],
+        [
+         -11800,
+         -12950
+        ]
+       ],
+       "bottom": 15360,
+       "height": 256
+      }
+     ]
+    }
+   }
+  }
+ }
+}
