@@ -82,8 +82,10 @@
     <dl id="rcpt"></dl>
     <p class="note">The signature says a key made the statement and the digest says the
       file beside it is the one the statement was about; neither says the player is
-      honest. A key seen under two names, or a name seen under two keys, is recorded
-      and nothing more &mdash; a shared machine and a reinstall both look like this.</p>
+      honest. First key wins: a key seen under two names, or a name seen under two keys,
+      is flagged here and nowhere else &mdash; a shared machine and a reinstall both look
+      like this. Accept clears the flag; Reject keeps it and stops the pair counting as
+      anyone's first key.</p>
   </div>
 
   <div class="card">
@@ -248,14 +250,38 @@ function renderRun(j) {
     put("key", key);
     if (c.reason) put("reason", el("span", "reason", c.reason));
     put("read", el("span", "nowrap", fmtDate(c.at)));
+    const said = x => x.decision ? ", " + x.decision + "ed" : "";
     if (c.players && c.players.length > 1) {
       put("this key has signed for",
-          el("span", "reason", c.players.map(p => p.player + " (" + p.runs + ")").join(", ")));
+          el("span", "reason", c.players.map(p => p.player + " (" + p.runs + said(p) + ")").join(", ")));
     }
     if (c.keys && c.keys.length > 1) {
       put("this player has signed with",
           el("span", "reason", c.keys.length + " keys: "
-             + c.keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + ")").join(", ")));
+             + c.keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + said(k) + ")").join(", ")));
+    }
+    // Patch 422: first key wins, and the owner's word on this run's pair.
+    if (c.verdict === "VALID" && c.pub) {
+      const why = [];
+      if (/new/.test(c.flag) && c.first_pub)
+        why.push("the player's first key is " + String(c.first_pub).slice(0, 8) + "\u2026");
+      if (/shared/.test(c.flag) && c.first_player)
+        why.push("this key first signed for " + c.first_player);
+      const st = c.flag ? pill("key " + c.flag, c.flag === "rejected" ? "down" : "warn")
+                        : pill(c.decision === "accept" ? "accepted" : "first key", "up");
+      put("first key wins", frag(st, why.length ? " \u2014 " + why.join("; ") : ""));
+      const row = el("div", "row");
+      for (const [act, label] of [["accept", "Accept key for this player"],
+                                  ["reject", "Reject key"], ["clear", "Clear decision"]]) {
+        if (act === c.decision || (act === "clear" && !c.decision)) continue;
+        const b = el("button", act === "reject" ? "danger" : "", label);
+        b.addEventListener("click", async () => {
+          if (await post("/admin/api/keydecision", {rid: String(RID), action: act, pub: c.pub}))
+            loadRun();
+        });
+        row.append(b);
+      }
+      put("decision", row);
     }
   }
 

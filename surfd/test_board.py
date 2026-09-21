@@ -173,15 +173,19 @@ def user_version(mod):
 
 
 # --------------------------------------------------------------------------
+# Pinned as a literal so a schema bump is a conscious act: bump this with
+# surfd.SCHEMA_VERSION (6 -> 7 went unbumped here for a day).
+HEAD_SCHEMA = 8
+
 print("\n--- 1. schema -----------------------------------------------------")
 
 m = fresh()
-check("a fresh database is stamped schema 6", user_version(m), 6)
-check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, 6)
+check("a fresh database is stamped the head schema", user_version(m), HEAD_SCHEMA)
+check("...and SCHEMA_VERSION agrees", m.SCHEMA_VERSION, HEAD_SCHEMA)
 check("an empty board answers with an empty row list", names(board(m)), [])
 
 m = fresh(seed_v1=True)
-check("a schema-1 database upgrades to 6", user_version(m), 6)
+check("a schema-1 database upgrades to the head", user_version(m), HEAD_SCHEMA)
 conn = sqlite3.connect(m._test_db)
 kept = conn.execute("SELECT map FROM lobbies").fetchall()
 conn.close()
@@ -1026,7 +1030,7 @@ def objects(path):
 
 
 m = fresh(seed=seed_v4)
-check("a v4 database upgrades to 6", user_version(m), 6)
+check("a v4 database upgrades to the head", user_version(m), HEAD_SCHEMA)
 check("...keeping sweep's verdict row",
       q(m, "SELECT replay_id, verdict, reason, at FROM verdicts"),
       [(1, "REFUSE", "an old format", 1700000100)])
@@ -1053,7 +1057,7 @@ try:
 except Exception as exc:                     # the failure being tested for
     rerun = repr(exc)
 check("re-running step 5 over a finished step 5 does not raise", rerun, "ok")
-check("...and stamps 6 again", user_version(m), 6)
+check("...and stamps the head again", user_version(m), HEAD_SCHEMA)
 
 
 class RacingConn(object):
@@ -1106,8 +1110,8 @@ check("another process adding recheck_at between the check and the ALTER",
       migrate_file(m, race_db, racing), "ok")
 check("...really raced (control)", any(rc.raced for rc in seen), True)
 names_, cols, ver = objects(race_db)
-check("...leaves one recheck_at, reviews, and schema 6",
-      (cols.count("recheck_at"), "reviews" in names_, ver), (1, True, 6))
+check("...leaves one recheck_at, reviews, and the head schema",
+      (cols.count("recheck_at"), "reviews" in names_, ver), (1, True, HEAD_SCHEMA))
 conn = sqlite3.connect(race_db)
 try:
     conn.execute("ALTER TABLE replays ADD COLUMN recheck_at INTEGER")
@@ -1142,7 +1146,7 @@ try:
         for t in threads:
             t.join()
         names_, cols, ver = objects(path)
-        if (cols.count("recheck_at"), "reviews" in names_, ver) != (1, True, 6):
+        if (cols.count("recheck_at"), "reviews" in names_, ver) != (1, True, HEAD_SCHEMA):
             errors.append("round %d: %r" % (n, (cols.count("recheck_at"), ver)))
 finally:
     m.DB_PATH = real_path
@@ -1470,7 +1474,7 @@ def seed_v5(path):
 
 m = fresh(seed=seed_v5)
 names_, cols, ver = objects(m._test_db)
-check("(g) a v5 database upgrades to 6", ver, 6)
+check("(g) a v5 database upgrades to the head", ver, HEAD_SCHEMA)
 check("(g) ...gaining replays.runid, kind and the replays_runid index",
       (cols.count("runid"), cols.count("kind"), "replays_runid" in names_),
       (1, 1, True))
@@ -1496,8 +1500,8 @@ check("(g) another process adding runid between the check and the ALTER",
       migrate_file(m, race5, racing5), "ok")
 check("(g) ...really raced (control)", any(rc.raced for rc in seen5), True)
 names_, cols, ver = objects(race5)
-check("(g) ...leaves one runid, one kind, and schema 6",
-      (cols.count("runid"), cols.count("kind"), ver), (1, 1, 6))
+check("(g) ...leaves one runid, one kind, and the head schema",
+      (cols.count("runid"), cols.count("kind"), ver), (1, 1, HEAD_SCHEMA))
 conn = sqlite3.connect(race5)
 try:
     conn.execute("ALTER TABLE replays ADD COLUMN runid TEXT")
@@ -1531,13 +1535,13 @@ try:
         for t in threads:
             t.join()
         names_, cols, ver = objects(path)
-        if (cols.count("runid"), cols.count("kind"), ver) != (1, 1, 6):
+        if (cols.count("runid"), cols.count("kind"), ver) != (1, 1, HEAD_SCHEMA):
             errors.append("round %d: %r" % (n, (cols.count("runid"), ver)))
 finally:
     m.DB_PATH = real_path
     del m.log.info
 both = sum(1 for k in range(20)
-           if sum(1 for r, s in steps if r == k and "5 -> 6" in s) == 2)
+           if sum(1 for r, s in steps if r == k and "migrated 5 -> " in s) == 2)
 print("     (both threads ran step 6 in %d of 20 rounds)" % both)
 check("(g) two threads migrating one v5 file, 20 rounds: no error", errors, [])
 check("(g) control: in some round both threads really ran step 6", both > 0, True)
@@ -1737,6 +1741,107 @@ submit(m2, player="bob", name="Bob", ticks=700, tickrate=100, rec=bleaf,
        runid="rb", recbytes=12345)
 check("(b) an approval survives a re-post with a wrong recbytes",
       rows_by_player(m2)["bob"]["ver"], 1)
+
+# --------------------------------------------------------------------------
+print("\n--- (h) schema 8: the owner's word on a (key, player) pair -----------")
+# Patch 422.  A v7 database is a v8 one with the two columns dropped.
+
+
+def seed_v7(path, rows=True):
+    src = sqlite3.connect(m._test_db)
+    dst = sqlite3.connect(path)
+    src.backup(dst)
+    src.close()
+    dst.execute("ALTER TABLE pubkeys DROP COLUMN decision")
+    dst.execute("ALTER TABLE pubkeys DROP COLUMN decided_at")
+    if rows:
+        dst.execute("INSERT INTO pubkeys (pub, player, first_at, last_at, runs)"
+                    " VALUES ('k', 'p', 1, 2, 3)")
+    dst.execute("PRAGMA user_version=7")
+    dst.commit()
+    dst.close()
+
+
+def pubkey_cols(path):
+    conn = sqlite3.connect(path)
+    try:
+        return [r[1] for r in conn.execute("PRAGMA table_info(pubkeys)")]
+    finally:
+        conn.close()
+
+
+m = fresh()
+v7 = os.path.join(m._test_home, "v7.db")
+seed_v7(v7)
+check("(h) control: the seed is a schema-7 pubkeys",
+      pubkey_cols(v7), ["pub", "player", "first_at", "last_at", "runs"])
+check("(h) a v7 database migrates", migrate_file(m, v7), "ok")
+names_, cols, ver = objects(v7)
+check("(h) ...to the head schema", ver, HEAD_SCHEMA)
+check("(h) ...gaining decision and decided_at once each",
+      [c for c in pubkey_cols(v7) if c in ("decision", "decided_at")],
+      ["decision", "decided_at"])
+conn = sqlite3.connect(v7)
+check("(h) ...keeping the pair, undecided",
+      conn.execute("SELECT pub, player, runs, decision, decided_at FROM pubkeys").fetchall(),
+      [("k", "p", 3, "", 0)])
+conn.close()
+
+race7 = os.path.join(m._test_home, "race7.db")
+seed_v7(race7)
+seen7 = []
+
+
+def racing7(real):
+    rc = RacingConn(real, race7, "ADD COLUMN decision")
+    seen7.append(rc)
+    return rc
+
+
+check("(h) another process adding decision between the check and the ALTER",
+      migrate_file(m, race7, racing7), "ok")
+check("(h) ...really raced (control)", any(rc.raced for rc in seen7), True)
+check("(h) ...leaves one decision column and the head schema",
+      (pubkey_cols(race7).count("decision"), objects(race7)[2]), (1, HEAD_SCHEMA))
+
+errors = []
+steps = []
+real_path = m.DB_PATH
+m.log.info = lambda msg, *a, **k: steps.append((n, msg % a))
+try:
+    for n in range(40):
+        path = os.path.join(m._test_home, "thr7_%d.db" % n)
+        seed_v7(path, rows=False)
+        m.DB_PATH = path
+        gate = threading.Barrier(2)
+
+        def worker(gate=gate):
+            try:
+                gate.wait()
+                m.migrate()
+            except Exception as exc:
+                errors.append(repr(exc))
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        got = (pubkey_cols(path).count("decision"), objects(path)[2])
+        if got != (1, HEAD_SCHEMA):
+            errors.append("round %d: %r" % (n, got))
+finally:
+    m.DB_PATH = real_path
+    del m.log.info
+both = sum(1 for k in range(40)
+           if sum(1 for r, s in steps if r == k and "migrated 7 -> " in s) == 2)
+print("     (both threads ran step 8 in %d of 40 rounds)" % both)
+check("(h) two threads migrating one v7 file, 40 rounds: no error", errors, [])
+# Step 8 is two ALTERs, so real overlap is luck (0 of 40 in two of three runs);
+# the RacingConn arm above is the deterministic race.  Say so, do not fail.
+if both:
+    check("(h) control: in some round both threads really ran step 8", both > 0, True)
+else:
+    print("skip (h) threads never overlapped in step 8 this run -- see the RacingConn arm")
 
 # --------------------------------------------------------------------------
 print("")

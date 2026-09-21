@@ -280,7 +280,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 # --------------------------------------------------------------------------
@@ -660,11 +660,13 @@ CREATE TABLE IF NOT EXISTS receipts (
 CREATE INDEX IF NOT EXISTS receipts_pub ON receipts (pub, at);
 
 CREATE TABLE IF NOT EXISTS pubkeys (
-    pub      TEXT    NOT NULL,
-    player   TEXT    NOT NULL,
-    first_at INTEGER NOT NULL,
-    last_at  INTEGER NOT NULL,
-    runs     INTEGER NOT NULL DEFAULT 0,
+    pub        TEXT    NOT NULL,
+    player     TEXT    NOT NULL,
+    first_at   INTEGER NOT NULL,
+    last_at    INTEGER NOT NULL,
+    runs       INTEGER NOT NULL DEFAULT 0,
+    decision   TEXT    NOT NULL DEFAULT '',
+    decided_at INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (pub, player)
 );
 CREATE INDEX IF NOT EXISTS pubkeys_player ON pubkeys (player, pub);
@@ -978,6 +980,25 @@ def migrate():
             conn.execute("PRAGMA user_version=7")
             conn.commit()
             version = 7
+
+        if version < 8:
+            # SCHEMA 8 (Patch 422): the owner's word on a (key, player) pair --
+            # '' undecided (first key wins), 'accept' or 'reject'.  admin.py
+            # reads it; VER_SQL and every public surface do not.  Additive, so
+            # a schema-7 surfd reads the same database.  ALTER races like step 6.
+            conn.executescript(RECEIPTS_SQL)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(pubkeys)")}
+            for col, ddl in (("decision", "decision TEXT NOT NULL DEFAULT ''"),
+                             ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0")):
+                if col not in cols:
+                    try:
+                        conn.execute("ALTER TABLE pubkeys ADD COLUMN " + ddl)
+                    except sqlite3.OperationalError as exc:
+                        if "duplicate column" not in str(exc):
+                            raise
+            conn.execute("PRAGMA user_version=8")
+            conn.commit()
+            version = 8
 
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)

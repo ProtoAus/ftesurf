@@ -157,10 +157,11 @@ REC = ("FTESURF-REC 9\nmap surf_kitsune\ntickrate 0.01\nmovetickrate 0.01\n"
 
 REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
                 "/admin/api/run/<int:rid>", "/admin/api/run/<int:rid>/path",
-                "/admin/api/review"}
+                "/admin/api/review", "/admin/api/keydecision"}
 ROW_KEYS = {"id", "map", "map_dir", "track", "leg", "legdir", "tier", "style",
             "name", "ms", "submitted", "checked", "recheck_at", "verdict",
-            "error", "pending", "decision", "public", "standing"}
+            "error", "pending", "decision", "public", "standing",
+            "key_pub", "key_decision", "key_flag"}
 
 
 def rec_leaf(ticks, player):
@@ -294,7 +295,8 @@ def review_section(pw_hash, pw):
           [x["id"] for x in j["rows"]], [hal])
     check("counts per state",
           j["counts"], {"queue": 1, "hold": 1, "pass": 1, "refuse": 0, "error": 1,
-                        "pending": 2, "approved": 0, "rejected": 0, "all": 5})
+                        "pending": 2, "approved": 0, "rejected": 0, "keys": 0,
+                        "all": 5})
     check("row keys", set(j["rows"][0]), ROW_KEYS)
     check("the HOLD row", {k: j["rows"][0][k] for k in
                            ("verdict", "decision", "public", "standing", "legdir")},
@@ -534,6 +536,9 @@ def review_section(pw_hash, pw):
     d = detail(rid_r)
     check("no receipts table: the review page still answers", d["ok"], True)
     check("...and says there is no receipt", d["receipt"], None)
+    lj = listing(state="keys")
+    check("...and the runs list answers with no key flags",
+          (lj.get("code"), lj["counts"]["keys"], lj["rows"]), (None, 0, []))
 
     conn = m.connect()
     try:
@@ -579,6 +584,87 @@ def review_section(pw_hash, pw):
             print("skip %-62s %s" % ("the %s script parses" % name, "no node on PATH"))
         else:
             check("the %s script parses" % name, ok, True)
+
+    # -- 9g3. Patch 422: first key wins, flagged in the admin only ------------
+    K1, K2, K3 = "11" * 32, "22" * 32, "33" * 32
+
+    def seed_run(player, ticks, runid):
+        rid, _p = submit(player, ticks)
+        conn = m.connect()
+        try:
+            with conn:
+                conn.execute("UPDATE replays SET runid = ? WHERE id = ?", (runid, rid))
+        finally:
+            conn.close()
+        return rid
+
+    def add_receipt(runid, pub, verdict="VALID"):
+        conn = m.connect()
+        try:
+            with conn:
+                conn.execute("INSERT INTO receipts (runid, map, pub, verdict, angles,"
+                             " reason, at) VALUES (?, 'surf_kitsune', ?, ?, 'OK', '',"
+                             " 100)", (runid, pub, verdict))
+        finally:
+            conn.close()
+
+    def flag(rid):
+        rc = detail(rid)["receipt"]
+        return None if rc is None else rc["flag"]
+
+    def keyact(rid, action, pub, token=None):
+        r = c.post("/admin/api/keydecision", data={
+            "rid": str(rid), "action": action, "pub": pub,
+            "csrf": csrf if token is None else token})
+        return r.status_code
+
+    # Real runids are wallclock-first, so lowest runid = first.  a0 is the
+    # EARLIEST and FAULT: if a FAULT receipt could set a first key, a1 would
+    # read "new".
+    seeds = [("kfa", 990, "20260921-100000-0", K3, "FAULT"),
+             ("kfa", 980, "20260921-100001-0", K1, "VALID"),
+             ("kfa", 970, "20260921-100002-0", K2, "VALID"),
+             ("kfb", 960, "20260921-100003-0", K1, "VALID"),
+             ("kfc", 950, "20260921-100004-0", None, None)]
+    a0, a1, a2, b1, c1 = [seed_run(who, t, run) for who, t, run, _k, _v in seeds]
+    check("control: five distinct replay rows", len({a0, a1, a2, b1, c1}), 5)
+    board_before = board()
+    public_before = [detail(x)["public"] for x in (a0, a1, a2, b1, c1)]
+    for _who, _t, run, key, verdict in seeds:
+        if key:
+            add_receipt(run, key, verdict)
+    check("flags: first key, FAULT, new key, shared key, no receipt",
+          [flag(a1), flag(a0), flag(a2), flag(b1), flag(c1)],
+          ["", "", "new", "shared", None])
+    check("...'new' names the player's first key", detail(a2)["receipt"]["first_pub"], K1)
+    check("...'shared' names the key's first player",
+          detail(b1)["receipt"]["first_player"], "kfa")
+    check("the Key flags list holds exactly those two",
+          sorted(ids(state="keys")), sorted([a2, b1]))
+    check("...and counts them", listing(state="all")["counts"]["keys"], 2)
+    check("no public surface moves: the board", board(), board_before)
+    check("...nor any run's public state",
+          [detail(x)["public"] for x in (a0, a1, a2, b1, c1)], public_before)
+
+    check("key decision: a forged token is refused", keyact(a2, "accept", K2, "forged") != 200, True)
+    check("...a stale key is 409", keyact(a2, "accept", K1), 409)
+    check("...a run with no valid receipt is 400", keyact(c1, "accept", ""), 400)
+    check("...an unknown action is 400", keyact(a2, "bless", K2), 400)
+    check("control: none of those changed a flag", [flag(a2), flag(b1)], ["new", "shared"])
+
+    check("accept the new key", keyact(a2, "accept", K2), 200)
+    check("...clears its flag and records the decision",
+          (flag(a2), detail(a2)["receipt"]["decision"]), ("", "accept"))
+    check("...creating the pair the sweeper had not bound yet",
+          sql("SELECT decision FROM pubkeys WHERE pub = ? AND player = 'kfa'", (K2,)),
+          [("accept",)])
+    check("reject the first key", keyact(a1, "reject", K1), 200)
+    check("...flags it, and the key's next player becomes its first",
+          [flag(a1), flag(b1), flag(a2)], ["rejected", "", ""])
+    check("...so the list holds only the rejected pair", ids(state="keys"), [a1])
+    check("clear it", keyact(a1, "clear", K1), 200)
+    check("...and first key wins again", [flag(a1), flag(b1), flag(a2)], ["", "shared", ""])
+    check("the board still has not moved", board(), board_before)
 
     # -- 9h. runs=None registers no review routes -----------------------------
     import flask

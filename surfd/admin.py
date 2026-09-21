@@ -152,16 +152,63 @@ NOTE_JUNK = re.compile("[\x00-\x1f\x7f-\x9f\u200e\u200f\u2028\u2029"
 _ERRORS_SQL = """(SELECT COUNT(*) FROM verdicts n WHERE n.replay_id = p.id
     AND n.verdict = 'ERROR' AND n.at >= MAX(p.submitted, p.recheck_at))"""
 
+# Patch 422, FIRST KEY WINS (Lex, until real accounts).  A run whose VALID
+# receipt names key K for player P is flagged "new" when K is not P's first
+# key and "shared" when P is not K's first player; the owner's 'accept' clears
+# it and 'reject' flags the pair and drops it out of "first".  First = lowest
+# runid, which the lobby writes and which sorts by time -- receipts.at is when
+# the sweeper READ the file.  FAULT receipts never set a first key: their key
+# claim may be unsigned.  Admin-only: VER_SQL and the public board ignore it.
+# `p` is the replays row, `rc` its VALID receipt.
+_KEY_JOIN = """
+  LEFT JOIN receipts rc ON rc.runid = p.runid AND p.runid <> ''
+        AND p.player <> '' AND rc.verdict = 'VALID' AND rc.pub <> ''
+  LEFT JOIN pubkeys kd ON kd.pub = rc.pub AND kd.player = p.player"""
+_FIRST_PUB = """(SELECT r2.pub FROM receipts r2
+      JOIN replays q2 ON q2.runid = r2.runid AND q2.kind = 'run'
+      LEFT JOIN pubkeys d2 ON d2.pub = r2.pub AND d2.player = q2.player
+     WHERE q2.player = p.player AND r2.verdict = 'VALID' AND r2.pub <> ''
+       AND COALESCE(d2.decision, '') <> 'reject'
+     ORDER BY r2.runid LIMIT 1)"""
+_FIRST_PLAYER = """(SELECT q3.player FROM receipts r3
+      JOIN replays q3 ON q3.runid = r3.runid AND q3.kind = 'run'
+      LEFT JOIN pubkeys d3 ON d3.pub = r3.pub AND d3.player = q3.player
+     WHERE r3.pub = rc.pub AND r3.verdict = 'VALID' AND q3.player <> ''
+       AND COALESCE(d3.decision, '') <> 'reject'
+     ORDER BY r3.runid LIMIT 1)"""
+_KEY_COLS = """rc.pub AS key_pub, COALESCE(kd.decision, '') AS key_decision,
+       CASE WHEN rc.pub IS NULL OR kd.decision = 'accept' THEN ''
+            WHEN kd.decision = 'reject' THEN 'rejected'
+            ELSE TRIM(CASE WHEN rc.pub IS NOT """ + _FIRST_PUB + """
+                           THEN 'new' ELSE '' END || ' ' ||
+                      CASE WHEN p.player IS NOT """ + _FIRST_PLAYER + """
+                           THEN 'shared' ELSE '' END)
+       END AS key_flag"""
+_NO_KEY_COLS = "NULL AS key_pub, '' AS key_decision, '' AS key_flag"
+KEY_ACTIONS = ("accept", "reject", "clear")
+
+
+def key_tables(conn):
+    """True when `receipts` and a schema-8 `pubkeys` exist (see receipt_for)."""
+    have = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+        " AND name IN ('receipts', 'pubkeys')")}
+    return have == {"receipts", "pubkeys"} and "decision" in {
+        r[1] for r in conn.execute("PRAGMA table_info(pubkeys)")}
+
+
 # One row per replay with its latest CURRENT (at >= submitted) review and
 # non-ERROR verdict, the pair surfd.VER_SQL reads; `error` = the latest current
 # attempt printed no verdict.  The ? is the ERROR cap.
-_RUNS_BASE = """
+def _runs_base(keys):
+    return """
 SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
        p.millis AS ms, p.submitted, p.checked, p.recheck_at, v.verdict,
        COALESCE(e.verdict = 'ERROR', 0) AS error,
        p.checked = 0 AND """ + _ERRORS_SQL + """ < ? AS pending,
        CASE WHEN w.at >= p.submitted THEN w.decision END AS decision,
-       EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id) AS standing
+       EXISTS (SELECT 1 FROM runs r WHERE r.replay_id = p.id) AS standing,
+       """ + (_KEY_COLS if keys else _NO_KEY_COLS) + """
   FROM replays p
   LEFT JOIN (SELECT v.replay_id, MAX(v.id) AS eid,
                     MAX(CASE WHEN v.verdict <> 'ERROR' THEN v.id END) AS vid
@@ -170,7 +217,7 @@ SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
          ON lv.replay_id = p.id
   LEFT JOIN verdicts v ON v.id = lv.vid
   LEFT JOIN verdicts e ON e.id = lv.eid
-  LEFT JOIN reviews w ON w.replay_id = p.id
+  LEFT JOIN reviews w ON w.replay_id = p.id""" + (_KEY_JOIN if keys else "") + """
  WHERE p.kind = 'run'"""
 
 # pending = what the next sweep would pick: checked 0 and under the ERROR cap.
@@ -183,6 +230,7 @@ RUN_STATES = {
     "pending": "x.pending",
     "approved": "x.decision = 'approve'",
     "rejected": "x.decision = 'reject'",
+    "keys": "x.key_flag <> ''",
     "all": "1",
 }
 
@@ -210,17 +258,28 @@ def receipt_for(conn, rid, runid):
         return None
     out = dict(rc)
     out["players"], out["keys"] = [], []
+    out["flag"], out["decision"], out["first_pub"], out["first_player"] = "", "", None, None
+    keys = key_tables(conn)
+    if keys:
+        k = conn.execute(
+            "SELECT " + _KEY_COLS + ", " + _FIRST_PUB + " AS first_pub, "
+            + _FIRST_PLAYER + " AS first_player, p.player AS player"
+            " FROM replays p" + _KEY_JOIN + " WHERE p.id = ?", (rid,)).fetchone()
+        if k is not None:
+            out["flag"], out["decision"] = k["key_flag"], k["key_decision"]
+            out["first_pub"], out["first_player"] = k["first_pub"], k["first_player"]
+            out["player"] = k["player"]
     if "pubkeys" in have and rc["pub"]:
         # BOTH DIRECTIONS, AND NEITHER IS AN ACCUSATION.  A key that has signed
         # for two players is a shared machine as often as anything else, and a
         # player with two keys is a reinstall -- `fskey` is a local file nobody
-        # backs up.  Shown because the owner cannot ask the question without
-        # them, and left undecided because the data does not decide it.
+        # backs up.  The flag above is first-key-wins; these are what the owner
+        # needs to accept or reject it.
         out["players"] = [dict(k) for k in conn.execute(
-            "SELECT player, runs, first_at, last_at FROM pubkeys"
-            " WHERE pub = ? ORDER BY player", (rc["pub"],)).fetchall()]
+            "SELECT player, runs, first_at, last_at" + (", decision" if keys else "")
+            + " FROM pubkeys WHERE pub = ? ORDER BY player", (rc["pub"],)).fetchall()]
         out["keys"] = [dict(k) for k in conn.execute(
-            "SELECT pub, runs FROM pubkeys WHERE player ="
+            "SELECT pub, runs" + (", decision" if keys else "") + " FROM pubkeys WHERE player ="
             " (SELECT player FROM replays WHERE id = ?) ORDER BY pub",
             (rid,)).fetchall()]
     return out
@@ -238,7 +297,7 @@ def list_runs(conn, state, q, offset, max_errors):
         like = "%" + re.sub(r"([\\%_])", r"\\\1", q) + "%"
         where = "(x.map LIKE ? ESCAPE '\\' OR x.name LIKE ? ESCAPE '\\' OR x.id = ?)"
         args += [like, like, int(q) if RID_TEXT.match(q) else -1]
-    base = " FROM (" + _RUNS_BASE + ") x WHERE " + where
+    base = " FROM (" + _runs_base(key_tables(conn)) + ") x WHERE " + where
     counts = conn.execute(
         "SELECT " + ", ".join('COUNT(CASE WHEN %s THEN 1 END) AS "%s"' % (sql, name)
                               for name, sql in RUN_STATES.items()) + base,
@@ -1434,6 +1493,57 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "approve": "approved", "reject": "rejected",
                 "clear": "review cleared", "recheck": "re-check queued",
             }[action], result)
+
+        @bp.post("/api/keydecision")
+        @control
+        def key_decision():
+            # Patch 422.  The pair is the run's own (VALID receipt's key, the
+            # replay's player), read here; the form's `pub` is only compared,
+            # so a resubmission between page load and click is refused.
+            raw = request.form.get("rid", "").strip()
+            if not RID_TEXT.match(raw):
+                raise AdminError("rid must be a replay id")
+            rid = int(raw)
+            action = request.form.get("action", "")
+            if action not in KEY_ACTIONS:
+                raise AdminError("unknown action %r" % action[:32])
+            shown = request.form.get("pub", "").strip()
+            now = int(time.time())
+            conn = db_connect()
+            try:
+                with conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    if not key_tables(conn):
+                        raise AdminError("no schema-8 key tables on this database yet")
+                    row = conn.execute(
+                        "SELECT p.kind, p.player, rc.pub FROM replays p" + _KEY_JOIN +
+                        " WHERE p.id = ?", (rid,)).fetchone()
+                    if row is None:
+                        raise AdminError("no such replay: %d" % rid)
+                    if row[0] != "run":
+                        raise AdminError("replay %d is stage evidence, not a run" % rid)
+                    player, pub = row[1], row[2]
+                    if not pub:
+                        raise AdminError("replay %d has no valid signed receipt, so"
+                                         " there is no key to decide on" % rid)
+                    if pub != shown:
+                        raise RunChanged("the run's key changed -- reload")
+                    conn.execute("INSERT OR IGNORE INTO pubkeys (pub, player,"
+                                 " first_at, last_at, runs) VALUES (?, ?, ?, ?, 0)",
+                                 (pub, player, now, now))
+                    conn.execute("UPDATE pubkeys SET decision = ?, decided_at = ?"
+                                 " WHERE pub = ? AND player = ?",
+                                 ("" if action == "clear" else action, now, pub, player))
+            except sqlite3.Error as exc:
+                log.exception("admin key decision on replay %d failed: %s", rid, exc)
+                raise AdminError("storage error")
+            finally:
+                conn.close()
+            log.info("admin: key %s %s for player %s (replay %d, from %s)",
+                     pub[:16], action, player, rid, client_ip())
+            return "key %s… %s for this player" % (pub[:12], {
+                "accept": "accepted", "reject": "rejected",
+                "clear": "decision cleared"}[action])
 
     @bp.after_request
     def harden(resp):
