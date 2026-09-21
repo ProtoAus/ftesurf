@@ -48,6 +48,14 @@ chatty.
   knob, then the window closed early) before it reproduced anything. The
   cheapest proof of a fix is the same arm against a build with the fix compiled
   out.
+- AND A WHOLE CORPUS CAN BE THE ARM THAT CANNOT FAIL. 339 .rec/.view pairs
+  agreed about angles and not one of them measured anything: every v9 fixture
+  drives its route with setpos and noclip, so the camera never turns. Before
+  trusting agreement at scale, ask what the files VARY in -- if it is not the
+  dimension under test, the sample size is decoration. Same shape one level
+  down: an arm for "the tool is not installed" passed while proving nothing,
+  because an earlier case in the same process had already imported it and
+  sys.modules served the import. Make the condition, do not just point at it.
 - AND WHEN AN ARM FALSIFIES YOUR PREDICTION, ask whether the ARM was sound
   before you write the conclusion. Patch 419's said "two servers, same second,
   same offset"; they differed, and the first draft concluded the attack did not

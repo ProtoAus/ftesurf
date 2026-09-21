@@ -613,6 +613,31 @@ bannered as superseded.)
   4 MiB cap refuses any journal past ~38 s of run, and one that fits is 17,000
   round trips. Collecting journals from a public lobby needs a transport that is
   not the netchan.
+- THE SIDECAR IS CHECKED AGAINST THE RECORDING, not just hashed. `reccheck`
+  joins `.view` to `.rec` BY TICK (`view.ticks` == `in.mt` - `instart`, best
+  frame in that tick) and compares angles; `rcptcheck` reaches it by RUNID, so
+  one command covers signature, digest and content. The residual is normalised
+  by the tick's own sweep because the raw one is not constant (0.013 deg still,
+  1.71 in a flick). Cuts from the corpus: 339 pairs, 337 at <=1.22% of moves
+  past 3x, two at 82.8% and 98.8% -- `surf_garden/main/cheat` and
+  `surf_demise/main/cheat` really do pair a recording with another run's
+  sidecar. It finds a WRONG FILE, not a small lie: 2 deg is missed, 3 is caught,
+  and `reccheck.py --tamper-view <f.rec>` re-measures that on any pair.
+- EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA, because every
+  416-419 fixture drives its route with `setpos` and `noclip`. So a corpus run
+  measures nothing about angles and reccheck says `BLIND` rather than `ok` --
+  which is the honest answer and the one to expect. To make a pair that is not
+  blind: `cl_yawspeed` + `+left`/`+right`/`+lookup` INSIDE the run, then a
+  `setpos` with the route's own angles to put the heading back (p420live.cfg).
+  Measured there: v9 `in` angles are `input_angles`, i.e. SHORT2ANGLE of the
+  short the client sent, so the residual is 0.007 deg max over 1257 deg of
+  sweep -- the thresholds above come from v6-v8 `.v_angle` files and are ~400x
+  looser than v9 needs.
+- AN ABANDONED RUN KEEPS NO `.rec` UNLESS IT POSTED A STAGE.
+  `SV_RecKeepEvidence` returns early on `rec_rec_posts <= 0`, so a main-leg run
+  that is walked away from leaves a `.rcpt` and a `.view` and nothing to join
+  them to. 37 of this tree's 38 receipts are that shape; "no recording to check
+  against" is normal, not a fault.
 - EVIDENCE RETENTION REACHES EVERY MAP, NOT THE LOADED ONE (Patch 418, after
   review). `SV_EvidenceSweep` globs the current map's directory at every map
   init and, where `run_evidence_sweepall 1` is set, the whole `data/evidence/`
@@ -625,6 +650,10 @@ bannered as superseded.)
 - A SERVERINFO KEY IS PUBLISHED AT MAP INIT, so a cvar it is derived from must be
   set BEFORE the map loads: `+set run_evidence_ul 2` on the command line, not
   `set` inside the `+exec` cfg. Cost a harness run.
+- `surfd/test_admin.py` FAILS TWO ARMS AT HEAD on this box (the rcon
+  amplification-guard message and "three snapshots cost no more packets than
+  one") -- real UDP sockets, reproducible, and nothing to do with your change.
+  Baseline before chasing: restore the file from HEAD and run it.
 - TWO-PROCESS HARNESS TRAPS, one run each: a RUNNING dedicated server holds
   `C:\FTEQuake\fteqwsv64.exe`, so `build.ps1`'s deploy fails with "being used by
   another process" and the next arm measures the PREVIOUS binary -- kill it
@@ -722,6 +751,20 @@ bannered as superseded.)
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
+
+  `sweep.py`'s receipt step (schema 7: `receipts`, `pubkeys`) imports
+  `rcptcheck`/`reccheck`/`ed25519` from `<SURFD_GAME>/tools` (`SURFD_TOOLS`),
+  and the import is INSIDE the function on purpose: a host without them must
+  keep running the verification it has run since Patch 349. Deploy those three
+  beside the game, not beside surfd. Both new tables are store-only -- nothing
+  in `VER_SQL` reads them and no badge moves.
+
+  BUMPING `SCHEMA_VERSION` BREAKS ANY SUITE THAT PINS THE LITERAL. 6 -> 7 broke
+  test_join and test_replays, which know nothing about receipts; they compare
+  the upgrade path to where a fresh database lands now. Do the same in a new
+  one. And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
+  `<SURFD_HOME>/surfd.db` -- a stray empty file at the second path has existed
+  since 2026-09-21 and is not it.
 
 ## Chat and `say` — the contract, and it changed in 342
 
