@@ -812,10 +812,26 @@ bannered as superseded.)
   PID and the lobbies are untouched. Copy under `flock /tmp/surfd-sweep.lock`
   with `install` + `mv` so no cron import can see a half-written file.
 
+  Schema 8 (Patch 422, first key wins) is admin-only too. Three things an
+  operator must know:
+  - `receipts_v8()` runs on EVERY migrate() -- a repair, not a step. It marks
+    rows a pre-8 sweep wrote (`signed_at = 0`) stale = 1 (signature unknown,
+    not judged) and voids the watermark. `--reread-receipts` marks stale = 2:
+    the signature is known and is still judged until the re-read replaces it.
+  - "unsigned" is judged only below `sweepmeta.receipts_through` (the last
+    complete receipt pass) less 300 s, so a stalled receipt step pauses it
+    instead of flagging every signer. The admin runs page says so in red after
+    an hour: that note, not the flag count, is how a broken step shows now.
+  - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
+    one that never ran). The Pi has no node and prints a skip, so run it on
+    Windows after editing a template. On Windows its `amplification guard` and
+    `three snapshots` rcon checks fail (UDP to a closed port resets instead of
+    timing out); they pass on the Pi.
+
   BUMPING `SCHEMA_VERSION` BREAKS ANY SUITE THAT PINS THE LITERAL. 6 -> 7 broke
   test_join and test_replays, which know nothing about receipts; they compare
   the upgrade path to where a fresh database lands now. Do the same in a new
-  one. And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
+  one. test_board went unbumped for a day; it has one `HEAD_SCHEMA` now. And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
   `<SURFD_HOME>/surfd.db` -- a stray empty file at the second path has existed
   since 2026-09-21 and is not it.
 
