@@ -695,15 +695,18 @@ Actions: approve (shows VERIFIED), reject (hides the run; reversible), clear,
 and re-check (`checked=0`, `recheck_at`). Approve, reject and clear call
 `restand()`, which rewrites that player's board row from their best
 non-rejected replay, so public reads need no hidden filter, and `restage()`:
-while a reject on any replay of a run is current, the run's stage rows (leg > 0,
+while a reject on a recording of a run (a replay of it whose file is there -- a
+file-less row naming the runid does not count) is current, the run's stage
+rows (leg > 0,
 rep 0, same runid/map/track/player) are parked in tier `<tier>@<runid>`, which
 no board reads; when none is, they are restored -- the better of a parked and a
 live row keeps the slot, the other set aside as `<tier>^<runid>` until the run
 is parked again; a parked slot is also re-derived from the player's recorded
 runs of that leg. Only new evidence of the same run (or an admin action)
 restores: a leaf re-filed by another run (an exact tie) leaves the old run's
-rows hidden. A rejected replay never takes a board row back from a re-post and
-never wears the badge (VER_SQL). A review counts only
+rows hidden, and a stage time posted later under a hidden run goes straight to
+its hidden slot. A rejected replay never takes a board row back from a re-post
+and never wears the badge (VER_SQL). A review counts only
 while it is at or after the replay's `submitted`; the page posts the
 `submitted` it showed, and a replay resubmitted since answers 409 ("the run
 changed -- reload").

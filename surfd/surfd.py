@@ -1072,6 +1072,10 @@ def migrate():
 
         # Schema 8 is a repair as much as a step: receipts_v8 runs every time.
         receipts_v8(conn)
+        # Patch 425: restage's lookups are by run; runs_board would scan the map.
+        conn.execute("CREATE INDEX IF NOT EXISTS runs_run"
+                     " ON runs (map, track, player, runid)")
+        conn.commit()
         if version < 8:
             conn.execute("PRAGMA user_version=8")
             conn.commit()
@@ -2113,32 +2117,44 @@ def _stage_run(db, rid):
 
 
 def _run_rejected(db, run):
-    return db.execute("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ?"
-                      " AND p.player = ? AND p.runid = ? AND " + _REJECTED_SQL,
-                      run).fetchone() is not None
+    """True when a current reject stands on a RECORDING of the run: a replay of
+    it whose file is there.  A file-less row naming the runid is anyone's to
+    post with the key, and rejecting it must not hide the run's honest stage
+    times (review round 4)."""
+    return any(replay_file(p)[0] is not None for p in db.execute(
+        "SELECT p.map_dir, p.track, p.leg, p.leaf, p.kind FROM replays p"
+        " WHERE p.map = ? AND p.track = ? AND p.player = ? AND p.runid = ? AND "
+        + _REJECTED_SQL, run).fetchall())
 
 
 def _stage_refill(db, row, base):
-    """The slot `row` just left on `base`: give back the best time a restore set
-    aside there (any run's -- judged by its own run, or for a recorded row by
-    its own replay, through restand), then let the player's recorded runs of
-    that leg compete (restand's rule)."""
+    """The slot of `row` on `base` (map/track/leg/style/player): the best time
+    a restore set aside there competes for it (any run's, judged by its own
+    run; a recorded copy is dropped, restand rebuilds it from its replay), a
+    recorded row it beats gives way, and the player's recorded runs of that
+    leg compete last (restand's rule)."""
+    key = (row["map"], row["track"], row["leg"])
+    who = (row["style"], row["player"])
     for back in db.execute(
             "SELECT * FROM runs WHERE map=? AND track=? AND leg=? AND style=?"
             " AND player=? AND tier LIKE ? ORDER BY millis, submitted",
-            (row["map"], row["track"], row["leg"], row["style"], row["player"],
-             base + "^%")).fetchall():
-        if _stage_slot(db, row, base) is not None:
-            break
+            key + who + (base + "^%",)).fetchall():
         if back["replay_id"] > 0:
             db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
-                       " AND style=? AND player=?",
-                       (back["map"], back["track"], back["leg"], back["tier"],
-                        back["style"], back["player"]))
+                       " AND style=? AND player=?", key + (back["tier"],) + who)
             continue
         brun = (back["map"], back["track"], back["player"], back["runid"])
-        hide = back["runid"] not in ("", "-") and _run_rejected(db, brun)
-        _stage_move(db, back, base + ("@" + back["runid"] if hide else ""))
+        if back["runid"] not in ("", "-") and _run_rejected(db, brun):
+            _stage_move(db, back, base + "@" + back["runid"])
+            continue
+        live = _stage_slot(db, row, base)
+        if live is not None:
+            if not (live["replay_id"] > 0 and (back["millis"], back["submitted"])
+                    < (live["millis"], live["submitted"])):
+                break
+            db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
+                       " AND style=? AND player=?", key + (base,) + who)
+        _stage_move(db, back, base)
     rec = db.execute(
         "SELECT id FROM replays WHERE map=? AND track=? AND leg=? AND tier=?"
         " AND style=? AND player=? AND kind = 'run' LIMIT 1",
@@ -2155,6 +2171,12 @@ def restage(db, rid):
 
     Call it after anything that changes that: a review, or submit_run filing
     new evidence of the same run."""
+    # A recorded stage run's own slot: what a review of it left there competes
+    # with what a restore set aside (review round 4).
+    rep = db.execute("SELECT map, track, leg, tier, style, player, kind"
+                     " FROM replays WHERE id = ?", (rid,)).fetchone()
+    if rep is not None and rep["kind"] == "run" and rep["leg"] > 0 and rep["tier"] in TIERS:
+        _stage_refill(db, rep, rep["tier"])
     run = _stage_run(db, rid)
     if run is None:
         return 0, 0
@@ -2166,10 +2188,8 @@ def restage(db, rid):
                 " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
                 run + TIERS).fetchall():
             base = row["tier"]
-            if not _stage_move(db, row, base + tag):
-                continue
-            parked += 1
-            _stage_refill(db, row, base)
+            parked += _stage_move(db, row, base + tag)
+            _stage_refill(db, row, base)       # moved or beaten, the slot is empty
     else:
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND player = ?"
@@ -2536,7 +2556,8 @@ def submit_run():
             have = None
             if leaf:
                 have = db.execute(
-                    "SELECT id, player, runid, submitted, tier, style FROM replays"
+                    "SELECT id, player, runid, submitted, tier, style, bytes"
+                    " FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
@@ -2548,6 +2569,10 @@ def submit_run():
                 # leaf stolen before the patch stayed stolen.  The file check
                 # above is the binding; this is just the ledger.
             if leaf:
+                if have is not None and fileless:
+                    # A size off the wire is no evidence: it must not make a
+                    # held row's evidence "changed" and lapse its reviews.
+                    recbytes = have["bytes"]
                 if have is None:
                     nrep = db.execute(
                         "SELECT COUNT(*) FROM replays WHERE kind = 'run'"
@@ -2639,6 +2664,27 @@ def submit_run():
                 """,
                 (mapname, track, leg, tier, style, player),
             ).fetchone()
+
+            # A stage time of a run a reject stands on goes straight to that
+            # run's hidden slot, never over the player's live one -- a retried
+            # POST, or a resumed run whose evidence was rejected (round 4).
+            if leg > 0 and not rid and runid and _run_rejected(
+                    db, (mapname, track, player, runid)):
+                ptier = tier + "@" + runid
+                hid = db.execute(
+                    "SELECT millis, submitted FROM runs WHERE map=? AND track=?"
+                    " AND leg=? AND tier=? AND style=? AND player=?",
+                    (mapname, track, leg, ptier, style, player)).fetchone()
+                if hid is None or millis < hid["millis"]:
+                    db.execute(_UPSERT_RUN, (mapname, track, leg, ptier, style, player,
+                                             name, ticks, tickrate, millis, flags,
+                                             node, runid, now, 0))
+                log.info("run from %s is a stage of rejected run %s; hidden",
+                         src, runid)
+                best = prev["millis"] if prev is not None else 0
+                return jsonify({"ok": True, "stored": False, "best": best,
+                                "rank": 0, "of": 0, "rep": 0, "tier": tier,
+                                "prevms": best})
 
             # A rejected recording never takes a board row back: a re-post of
             # it (a key holder's) is filed and answered, not stood.

@@ -1956,6 +1956,21 @@ check("(d) ...and the ranked row no longer points at it",
       [("community", t1), ("ranked", 0)])
 
 
+# A size off the wire is no evidence: with the file gone, a re-post naming a
+# rejected replay with another recbytes must not lapse the reject (round 4).
+clock.now += 10
+review(m, vrep, "reject", int(clock.now))
+os.unlink(os.path.join(m.RUNS_DIR, "surf_test", "main", vleaf))
+clock.now += 10
+submit(m, player="vic", name="Vic", ticks=700, tickrate=100, rec=vleaf,
+       runid="rv", recbytes=99)
+check("(e) with the file gone, a changed recbytes does not lapse the reject",
+      q(m, "SELECT r.decision, r.at >= p.submitted FROM reviews r JOIN replays p"
+           " ON p.id = r.replay_id WHERE p.id = ?", (vrep,)), [("reject", 1)])
+check("(e) runs_run indexes the per-run stage lookups",
+      "runs_run" in [r[1] for r in q(m, "PRAGMA index_list(runs)")], True)
+
+
 # --------------------------------------------------------------------------
 print("\n--- (h) schema 8: the owner's word on a (key, player) pair -----------")
 # Patch 422.  A v7 database is a v8 one with the two columns dropped.

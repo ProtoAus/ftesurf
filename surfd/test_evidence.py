@@ -542,6 +542,67 @@ def case_set_aside():
           stage(m), (500, "X"))
 
 
+def case_round4():
+    """E5e: a stage post of a rejected run goes to its hidden slot; a park the
+    hidden copy beats still refills; a recorded stage run's reject brings back
+    what a restore set aside"""
+    m = fresh(admin_pw=PW)
+    sweep = importlib.import_module("sweep")
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    m.index_evidence(conn)
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=500, runid="S")
+    check("E5e control: the player's 500 holds the slot", stage(m), (500, "S"))
+    back = submit(m, leg=2, ticks=440)               # R's stage, posted again
+    check("E5e a post of the rejected run leaves the live slot alone",
+          (back["stored"], stage(m)), (False, (500, "S")))
+    check("E5e ...and lands in R's hidden slot, the better one kept",
+          q(m, "SELECT ticks FROM runs WHERE leg = 2 AND tier = ?", ("ranked@" + R,)),
+          [(440,)])
+    sweep.evidence_step(conn)
+    check("E5e ...and the sweep leaves the player's 500", stage(m), (500, "S"))
+
+    # A live row of R that its hidden copy beats (posted while the reject was
+    # not yet applied): parking drops it, and the slot still refills.
+    m = fresh(admin_pw=PW)
+    srep = stage_run(m, 600, "Rs")
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    conn = m.connect()
+    m.index_evidence(conn)
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    with conn:                        # R's slower post beside its hidden 454
+        conn.execute("UPDATE runs SET ticks = 470, millis = 7050, runid = ?,"
+                     " replay_id = 0 WHERE leg = 2 AND tier = 'ranked'", (R,))
+    sweep.evidence_step(conn)
+    check("E5e a park its hidden copy beats still refills (the recorded 600)",
+          (stage(m), by_player(m, 2)["kap"]["rep"]), ((600, ""), srep))
+
+    # A restore sets a time aside; a recorded stage run then replaces R's time
+    # and is rejected: the set-aside time competes for the slot.
+    m = fresh(admin_pw=PW)
+    submit(m, leg=2, ticks=454)
+    put_ev(m, R + ".rec", evbody(R), age=3600)
+    m.index_evidence(m.connect())
+    eid = evid(m, R)
+    c, csrf = admin_client(m)
+    review(m, c, csrf, eid, "reject")
+    submit(m, leg=2, ticks=500, runid="S")
+    review(m, c, csrf, eid, "clear")
+    rec = stage_run(m, 450, "Rq")
+    stage_run(m, 700, "Rw")                          # recorded, slower: not stood
+    check("E5e control: the recorded 450 took the slot", stage(m), (450, "Rq"))
+    review(m, c, csrf, rec, "reject")
+    check("E5e rejecting it gives the slot to the set-aside 500, not the recorded 700",
+          stage(m), (500, "S"))
+
+
 def case_public():
     """E6: public bodies carry `run` and nothing private"""
     m = fresh()
@@ -735,12 +796,15 @@ def case_siblings_and_old_rejects():
     conn = m.connect()
     m.index_evidence(conn)
     eid = evid(m, R)
-    with conn:                       # a kept run of the same runid (a sibling)
+    sib = leaf(9000, "kap")          # a kept run of the same runid (a sibling)
+    put_run(m, sib, evbody(R).replace("abandon 8262\n", ""))
+    with conn:
         rid = conn.execute(
             "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
             " name, ticks, tickrate, millis, flags, node, submitted, runid, kind)"
-            " VALUES ('surf_aser', 'surf_Aser', 0, 0, 'x.rec', 'ranked', 'clean', 'kap',"
-            " 'Kap', 9000, 66.666667, 135000, 0, 'p27510', 1, ?, 'run')", (R,)).lastrowid
+            " VALUES ('surf_aser', 'surf_Aser', 0, 0, ?, 'ranked', 'clean', 'kap',"
+            " 'Kap', 9000, 66.666667, 135000, 0, 'p27510', 1, ?, 'run')",
+            (sib, R)).lastrowid
     c, csrf = admin_client(m)
     review(m, c, csrf, eid, "reject")
     review(m, c, csrf, rid, "reject")
@@ -757,13 +821,24 @@ def case_siblings_and_old_rejects():
     check("E13 control: a bare reject hides nothing yet", stage(m), (454, R))
     sweep.evidence_step(conn)
     check("E13 the sweeper's evidence step applies it", stage(m), None)
+    with conn:
+        conn.execute("DELETE FROM reviews")
+    review(m, c, csrf, eid, "clear")
+    check("E13 control: back after the clear", stage(m), (454, R))
+
+    # A file-less row naming R (anyone's to post with the key) is no recording
+    # of R: rejecting it must not hide R's honest stage time (round 4).
+    fake = submit(m, ticks=4050, rec=leaf(4050, "kap"), runid=R)["rep"]
+    code, ok, msg = review(m, c, csrf, fake, "reject")
+    check("E13 rejecting a file-less row naming R leaves R's stage time",
+          (ok, stage(m)), (True, (454, R)))
 
 
 def main():
     for case in (case_index_and_serve, case_what_is_not_indexed, case_gc,
                  case_keep_is_not_evidence, case_exclusion,
                  case_run_reject_hides_stages, case_recorded_stage_stands_in,
-                 case_set_aside,
+                 case_set_aside, case_round4,
                  case_public,
                  case_no_header_runid, case_runid_trust, case_torn_index,
                  case_torn_ticks, case_keep_same_gc, case_siblings_and_old_rejects):
