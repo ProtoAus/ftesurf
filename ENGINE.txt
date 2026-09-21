@@ -13,11 +13,29 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   3d1e00c3e65e8b85119c8a4a5af546afb124b141
+commit   a72183e6b90a68cad43eb26b579f6309afdd4ffa
 tag      patch-266
-patch    415
-qcbuild  83
-date     2026-09-20
+patch    419
+qcbuild  88
+date     2026-09-21
+
+# PATCH 419: the server VM gets the OS entropy the master-server code already had --
+# `fs_randomhex` and `fs_randomf` over Sys_RandomBytes, registered by name.  The run nonce
+# and the randomized start stop coming from a stream whose draws the recording publishes.
+# Server.  cfg/test/p419a.cfg + p419b.cfg.
+
+# PATCH 418: a run's evidence leaves the player's machine.  The client stages its .view/.hid
+# under the run nonce and ARMS them; the server asks after the signed receipt lands
+# (`sv_recupload <ent> <nonce> <path> [path2]`, stuffing `rec_ul_send <nonce> <kind>`) and
+# files them beside the recording.  Client + server.  cfg/test/p418*.cfg.
+
+# PATCH 417: an Ed25519 key that never leaves the player's machine, and a receipt no other
+# server can wear -- the client signs (server, nonce, ticks, sha256 of its .hid and .view) at
+# the run-end edge.  Client.  cfg/test/p417*.cfg.
+
+# PATCH 416: the server picks a number a client cannot know and asks for it back -- the
+# per-run nonce in the .rec header, TF_NONCE when the client echoes it.  Server + client.
+# cfg/test/p416*.cfg.
 
 # PATCH 397: `status` while connected to an FTE QW server (a lobby) prints the server's
 # answer, not "Server is not running".  Client.  cfg/test/p397e.cfg.
