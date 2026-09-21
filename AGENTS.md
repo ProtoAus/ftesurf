@@ -839,6 +839,19 @@ bannered as superseded.)
   beside the game, not beside surfd. Both new tables are store-only -- nothing
   in `VER_SQL` reads them and no badge moves.
 
+  DEPLOY surfd/ AND tools/ IN THE SAME PASS, and check the sweep log after. On
+  2026-09-21 the surfd half went up alone and the receipt step failed on every
+  cron tick for three hours with `AttributeError("'Receipt' object has no
+  attribute 'angles'")` -- a new `sweep.py` calling a `rcptcheck.py` that
+  predated the function. The try/except held (the Patch 349 verdict sweep ran
+  on the same line, every time) and `receipts` simply stayed at 0 rows, which
+  is exactly why it is easy to miss: nothing is down, nothing is loud. Read
+  `/srv/nvme/surfd/logs/sweep.log` for `receipt step failed`, and
+  `sweep.py --dry-run` for the unread count.
+  A tools-only deploy needs NO `kill -HUP`: surfd does not import them, so the
+  PID and the lobbies are untouched. Copy under `flock /tmp/surfd-sweep.lock`
+  with `install` + `mv` so no cron import can see a half-written file.
+
   BUMPING `SCHEMA_VERSION` BREAKS ANY SUITE THAT PINS THE LITERAL. 6 -> 7 broke
   test_join and test_replays, which know nothing about receipts; they compare
   the upgrade path to where a fresh database lands now. Do the same in a new
