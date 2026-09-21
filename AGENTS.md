@@ -632,11 +632,35 @@ bannered as superseded.)
   past the sweep cut -- both rules faulting a clean run -- where the control
   read 0.008 deg and 0%. EVERY LOBBY CLIENT IS REMOTE, so the corpus that
   calibrated the cuts (all same-machine) could not see this at all.
-  `angle_join` now searches -2..+12 ticks and reports `angle_lag`. It is not
-  curve-fitting because the winner is sharp: at 30 ms the right offset (+3,
-  exactly the delay) scores 0.23% past 0.05 deg and every other offset ~49%. A
-  TIE IS NOT A LAG -- a still camera agrees equally everywhere -- so ties fall
-  back to zero rather than inventing a ping.
+  THE OFFSET IS READ OFF THE FILES, NOT SEARCHED FOR IN A WINDOW. A window
+  has an edge and the edge convicts: at 12 ticks of lag an honest pair was
+  clean and at 13 it drew both faults, and widening 12 to 25 only moved the
+  cliff to 26. The score is also a DELTA FUNCTION -- 0.00% at the true offset,
+  ~50% one tick either side -- so a coarse scan over a wider range steps
+  straight over it. Instead every frame is indexed by its printed angles, each
+  sampled move looks its own angles up, and the tick differences vote. The
+  votes only NOMINATE; `score()` decides, because a run that turns more than
+  once round scatters votes over spurious offsets. Measured on a real pair:
+  clean at every lag from 0 to 400 ticks (4 seconds), 99% of moves naming the
+  offset. A still camera has one angle key, proposes everything and is
+  correctly not identified; a sidecar from another run proposes noise.
+  AND THE ABSTENTION COVERS THE RULES THAT CONVICT. `tight` gated the 0.05 deg
+  rule and nothing else, so on a file whose tick epoch the join key cannot
+  follow -- a park/resume, a retry -- the two SWEEP rules ran on the same
+  disowned join and delivered the same verdict a forgery gets: measured, 12.0%
+  of joined moves past cut at a +50 horizon and 20.1% at +250, on an honest
+  pair with its `.view` untouched. A recording that DECLARES its epoch moved is
+  telling us the join key is not valid across it.
+  STILL OPEN AND DEMONSTRATED: a save-lock hold (`sl_hold`, or opening a replay
+  mid-attempt) keeps the mover counting while neither writer runs, and the held
+  ticks come off the run clock and stay in `in.<mt>` with NO record in the file
+  -- SV_RecPause is only reached on a cold rewind. 33-41% of one-frame ticks
+  past cut, cover reading 100%, full confidence, honest recording. The run is
+  kept (SV_TimerFreeze marks it practice, which is RT_LAST, not RT_NONE), so it
+  reaches the board. A vote histogram with two modes is the signature and a
+  detector for it was written and REMOVED for not working: it gated the sweep
+  rules only, not the tight one, and could not be shown to fire. Do not treat
+  an angle fault on a run that may have been held as a finding.
 - THREE RULES, AND THE TIGHT ONE IS THE ONE-FRAME RULE. A tick that held
   exactly ONE rendered frame has nothing to choose between: the usercmd was
   built from that frame, so the two files carry the same number and the only

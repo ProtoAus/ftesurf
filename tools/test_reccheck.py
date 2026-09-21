@@ -1788,16 +1788,35 @@ def case_angle_lag_is_recovered():
     # the search this same pair faults.
     L2 = build(sweep=128, packets=400)
     import reccheck as _rc
-    keep = _rc.ANG_LAG_MAX, _rc.ANG_LAG_BACK
-    _rc.ANG_LAG_MAX = _rc.ANG_LAG_BACK = 0
+    keep = _rc.ANG_LAG_FLOOR
+    _rc.ANG_LAG_FLOOR = -1.0            # no offset can ever be accepted
     try:
         f2 = run_inproc(L2, view_for(L2, shift=-3))
     finally:
-        _rc.ANG_LAG_MAX, _rc.ANG_LAG_BACK = keep
+        _rc.ANG_LAG_FLOOR = keep
     check(any("the sidecar is not this recording's" in x for x in f2),
           "CONTROL: with the search switched off the same pair faults")
     check(not run_inproc(L2, view_for(L2, shift=-3)),
           "...and with it back on, in the same process, it does not")
+
+
+def case_angle_lag_has_no_window():
+    """THE CLIFF A REVIEWER MEASURED, REMOVED RATHER THAN MOVED.
+
+    The offset used to be searched over a fixed window, so at 12 ticks of lag
+    an honest pair was clean and at 13 it drew both faults -- and widening the
+    window only moved the edge.  Worse, the score is a delta function (0.00% at
+    the true offset, ~50% one tick away), so a coarse scan over a wider range
+    steps straight over it.  The offset is read off the files now: every frame
+    is indexed by its printed angles and the moves vote.  There is no range.
+    """
+    L = build(sweep=128, packets=1200)
+    for shift in (13, 40, 120):
+        f, _ = run(L, view=view_for(L, shift=-shift))
+        check(not f, "a sidecar %d ticks behind the recording is not a fault"
+                     % shift)
+        if f:
+            print("        got: %s" % f[:1])
 
 
 def case_angle_lag_does_not_rescue_a_lie():
@@ -1993,6 +2012,7 @@ def main():
                case_angle_nan_is_a_fault_not_a_skip,
                case_angle_ghost_is_not_a_fault,
                case_angle_lag_is_recovered,
+               case_angle_lag_has_no_window,
                case_angle_lag_does_not_rescue_a_lie,
                case_angle_lag_is_not_invented_on_a_still_camera,
                case_angle_negative_run_clock_is_a_fault,

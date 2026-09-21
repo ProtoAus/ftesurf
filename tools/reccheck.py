@@ -2641,11 +2641,21 @@ ANG_SOLO_COVER = 75.0    # per cent of the recording's own moves that held one f
 # It does not help a forger: the window is 15 offsets and a fabricated sidecar
 # has to match to 0.05 deg at one of them, which still means holding the run's
 # real usercmd angles.  The offset found is reported so a reader can see it.
-ANG_LAG_MAX = 25         # ticks searched forward; 250 ms at a 100 Hz mover
-ANG_LAG_BACK = 2         # and a couple back, for a clock that reads ahead
 ANG_LAG_EDGE = 4.0       # the winner must beat the runner-up by this factor
 ANG_LAG_SEP = 1.0        # ...by this many points as well, since 0 x 4 <= 0
 ANG_LAG_FLOOR = 2.0      # ...and must itself align, not merely align least badly
+ANG_LAG_MIN = 50         # ...on at least this many joined moves
+# THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
+# Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
+# it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
+# Worse, the score is a DELTA FUNCTION -- 0.00% at the true offset and ~50% one
+# tick either side -- so a coarse scan over a wider range steps straight over
+# it.  So the offset is not searched at all now: it is READ OFF THE FILES.
+# Every frame is indexed by its printed angles, each sampled move looks its own
+# angles up, and the tick differences are counted.  An honest pair names one
+# offset with an overwhelming majority; a still camera names all of them and is
+# correctly not identified; a sidecar from another run names none.  There is no
+# range and nothing to fall off.
 
 # THREE CONDITIONS AND NOT ONE, because a ratio alone is two kinds of useless.
 # `0.0 * 4.0 <= 0.0` is true, so a file where a dozen offsets all score zero had
@@ -2699,16 +2709,11 @@ def angle_join(r, rec, frames):
 
     endtick = rec.info.get("ticks")
 
-    # ON A SAMPLE, because the search was 52% of the paired check when it ran
-    # on every move -- 3.7 s of a 6.6 s file, measured on bhop_monster_jam's
-    # 127,342 moves.  The separation it is looking for is two orders of
-    # magnitude (0.23% against 48.6%), so a few thousand moves settle it as
-    # well as all of them, and the winner is re-measured in full below anyway.
     stride = max(1, len(mts) // 4000)
     idx = range(0, len(mts), stride)
 
     def score(off):
-        """Moves past the tight cut at this offset, as a per cent."""
+        """Moves past the tight cut at this offset -> (per cent, joined)."""
         j = bad = 0
         for i in idx:
             tk = mts[i] - instart - off
@@ -2723,44 +2728,94 @@ def angle_join(r, rec, frames):
             if max(min(angdelta(yaws[i], f[4]) for f in g),
                    min(angdelta(pits[i], f[3]) for f in g)) > ANG_SOLO:
                 bad += 1
-        return 100.0 * bad / j if j else 100.0
+        return (100.0 * bad / j if j else 100.0), j
 
-    cand = [(score(o), o) for o in
-            [0] + list(range(1, ANG_LAG_MAX + 1))
-            + list(range(-1, -ANG_LAG_BACK - 1, -1))]
-    bestsc, lag = min(cand, key=lambda c: (c[0], abs(c[1])))
-    runner = min((s for s, o in cand if o != lag), default=100.0)
-    if lag and not (bestsc <= ANG_LAG_FLOOR
-                    and runner - bestsc >= ANG_LAG_SEP
-                    and bestsc * ANG_LAG_EDGE <= runner):
-        lag = 0                     # not identified: do not invent a ping
+    # THE OFFSET, READ OFF THE FILES RATHER THAN SEARCHED FOR.  A frame's two
+    # angle columns are printed at %.2f, so they are a key: index the frames by
+    # them, look each sampled move's own angles up, and every hit proposes one
+    # tick difference.  The true offset gets a vote from nearly every move; a
+    # still camera has one key and proposes everything, so nothing wins; a
+    # sidecar from another run proposes noise.
+    # THE KEY IS THE PRINTED ANGLE IN HUNDREDTHS, AND IT IS ASKED WITH A
+    # NEIGHBOUR EITHER SIDE.  The first cut keyed on round(x, 2) against a
+    # column that had been through `%.2f`, which are not the same rounding --
+    # only 128 of 1200 moves matched anything at all and the winner was a
+    # spurious offset from the sweep wrapping past 360.  The two files also
+    # differ by up to one 16-bit wire quantum (0.0055 deg), which is enough to
+    # land either side of a hundredth, so a hit is looked for in the 3x3 around
+    # the move's own angles.
+    votes = {}
+    byang = {}
+    for f in frames:
+        byang.setdefault((int(round(f[3] * 100.0)), int(round(f[4] * 100.0)),
+                          ), []).append(int(f[2]))
+    seen = 0
+    for i in idx:
+        kp, ky = int(round(pits[i] * 100.0)), int(round(yaws[i] * 100.0))
+        hits = []
+        for dp in (0, -1, 1):
+            for dy in (0, -1, 1):
+                h = byang.get((kp + dp, ky + dy))
+                if h:
+                    hits.extend(h)
+                if len(hits) > 8:
+                    break
+            if len(hits) > 8:
+                break
+        if not hits or len(hits) > 8:
+            continue            # no match, or an angle so common it says nothing
+        seen += 1
+        for tk in set(hits):
+            o = mts[i] - instart - tk
+            votes[o] = votes.get(o, 0) + 1
+    lag, bestsc, runner, top = 0, 100.0, 100.0, 0
+    if votes and seen:
+        # THE VOTES ONLY NOMINATE; score() DECIDES.  A run that revisits an
+        # angle -- any run that turns more than once round -- scatters votes
+        # over spurious offsets, and a gate on the winner's SHARE rejected a
+        # true offset that held 22% of a wrapped fixture's votes.  The share is
+        # reported because it is informative, and it is not a gate: the proof
+        # is that the offset scores at the wire quantum and the others do not.
+        cands = sorted(votes.items(), key=lambda kv: (-kv[1], abs(kv[0])))[:6]
+        if 0 not in dict(cands):
+            cands.append((0, votes.get(0, 0)))
+        scored = [(score(o), o, n) for o, n in cands]
+        (bestsc, j), lag, top = min(scored, key=lambda s: (s[0][0], abs(s[1])))
+        runner = min([sc for (sc, _j), oo, _n in scored if oo != lag] or [100.0])
+        if lag and not (bestsc <= ANG_LAG_FLOOR and j >= ANG_LAG_MIN
+                        and runner - bestsc >= ANG_LAG_SEP
+                        and bestsc * ANG_LAG_EDGE <= runner):
+            lag, bestsc = 0, score(0)[0]
+    else:
+        bestsc = score(0)[0]
     try:
         ms = " (%.0f ms)" % (lag * 1000.0 * float(rec.info.get("tickrate")))
     except (TypeError, ValueError):
         ms = ""
-    # REPORTED WHETHER OR NOT ONE WAS FOUND.  Saying nothing when no offset
-    # aligned made "the true lag is zero" and "nothing in the window aligned
-    # these files at all" print identically, and the second is the interesting
-    # one: over about 130 ms of ping the old window ran out and an honest pair
-    # read as a forgery with no diagnostic saying so.
-    r.info["angle_lag"] = ("%+d ticks%s, %.2f%% past %g deg there against %.2f%% "
-                           "at the next best offset (searched %+d..%+d)%s"
-                           % (lag, ms, score(lag) if lag != cand[0][1] else bestsc,
-                              ANG_SOLO, runner, -ANG_LAG_BACK, ANG_LAG_MAX,
+    r.info["angle_lag"] = ("%+d ticks%s, %.2f%% past %g deg there, named by "
+                           "%.0f%% of sampled moves%s"
+                           % (lag, ms, bestsc, ANG_SOLO,
+                              100.0 * top / seen if seen else 0.0,
                               "; the first %d moves have no frame under it" % lag
                               if lag > 0 else ""))
-    # AND THAT LAST CLAUSE IS THE RESIDUE, WHICH IS INTRINSIC AND NOT A BUG.
-    # A sidecar that lags by N ticks has nothing to say about the run's first N,
-    # and no arithmetic recovers what it does not contain -- an honest high-ping
-    # client and a forger shifting his clock to bury the start line produce the
-    # same shape.  What review fixed is that those moves are no longer erased
-    # from the coverage denominator as well, so the hiding shows up as a lower
-    # cover figure instead of leaving no trace; what is left is visible here.
     if not lag and bestsc > ANG_LAG_FLOOR:
-        r.note("no tick offset in %+d..%+d lines these two files up -- the best "
-               "scored %.1f%% of sampled moves past %g deg. Either the sidecar "
-               "is not this recording's, or the round trip is longer than the "
-               "window" % (-ANG_LAG_BACK, ANG_LAG_MAX, bestsc, ANG_SOLO))
+        # THE DIAGNOSTIC THAT USED TO BE MISSING.  When nothing lines the two
+        # files up, "judged at offset zero" and "no offset exists" printed
+        # identically, and the second is the one a reader needs: it is either a
+        # sidecar from another run or a clock this join cannot follow.
+        r.note("no tick offset lines these two files up -- the best scores "
+               "%.1f%% of sampled moves past %g deg, and the offset the frames "
+               "themselves name got %.0f%% of the votes. Either the sidecar is "
+               "not this recording's, or its clock stepped somewhere this join "
+               "cannot follow" % (bestsc, ANG_SOLO,
+                                  100.0 * top / seen if seen else 0.0))
+
+    # THE RESIDUE OF A LAG IS INTRINSIC AND NOT A BUG.  A sidecar that lags by N
+    # ticks has nothing to say about the run's first N, and no arithmetic
+    # recovers what it does not contain -- an honest high-ping client and a
+    # forger shifting his clock to bury the start line produce the same shape.
+    # What review fixed is that those moves are no longer erased from the
+    # coverage denominator too, so the hiding shows as a lower cover figure.
 
     joined = uncovered = past = ghosted = prestart = postend = 0
     stretch = longest = 0
@@ -2954,7 +3009,22 @@ def angle_join(r, rec, frames):
     # sweep one lost the thing it alone says -- that the disagreement is a
     # CONTIGUOUS BLOCK -- and made the splice arm below stop discriminating.
     # Two independent rules agreeing is more evidence, not less.
-    if frac > ANG_HOLD:
+    # THE ABSTENTION COVERS THE RULES THAT CONVICT, NOT JUST THE TIGHT ONE.
+    # `tight` gated the 0.05 deg rule and nothing else, so on a file whose tick
+    # epoch the join key does not honour -- a park/resume, a retry -- the two
+    # SWEEP rules ran on the same disowned join and delivered the same
+    # maximum-severity verdict.  Demonstrated by a reviewer on a real pair with
+    # its .view untouched and its .rec re-based exactly as SV_RecPause does it:
+    # 12.0% of joined moves past cut at a +50 horizon, 20.1% and a run of 289 at
+    # +250, both faults, both on an honest pair.  A recording that DECLARES its
+    # epoch moved is telling us the join key is not valid across it; the right
+    # answer is to say so, not to convict on it.
+    if rec.angle_epoch:
+        r.note("this recording declares a %s, which restarts the mover counter "
+               "the join keys on -- the sidecar's clock is the RUN clock and "
+               "the two do not stay in step across it, so no angle rule judges "
+               "this pair" % "/".join(rec.angle_epoch))
+    elif frac > ANG_HOLD:
         r.fault("the sidecar does not describe this recording: %.1f%% of %d "
                 "joined moves are past %gx the tick's own sweep, against at "
                 "most 1.22%% on every honest pair measured -- the two files "
