@@ -124,6 +124,7 @@ __pycache__/
 # describe.
 !/AGENTS.md
 !/CLAUDE.md
+!/BACKLOG.md
 !/ENGINE.txt
 !/VERSION
 !/default.fmf

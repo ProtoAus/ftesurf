@@ -189,6 +189,8 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Conventions
 
+- OPEN BUGS AND FOLLOW-UPS LIVE IN `BACKLOG.md`. Add what you find and do not
+  fix (with a file:function and a falsifier); delete it in the fixing commit.
 - QC style: `type() Name =\n{ … };`, `local` declarations first, tabs,
   ALL_CAPS defines, module-prefixed globals (`ui_`, `lb_`, `lj_`, `rec_sl_`).
 - THIS TREE USUALLY CARRIES MORE THAN ONE WORKSTREAM UNCOMMITTED. Before
@@ -1006,6 +1008,12 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   tests under it. Each rule closed a clean-run path in review: `cfg/test/
   p428hold.cfg` is the arm, and the open older holes are under Patch 428's Known.
 - Two clients writing the same `log_name` interleave confusingly.
+- TIME QC WITH DEVELOPER LOGGING OFF. `developer 1` + `log_developer 1` writes a
+  `qcfopen(...)` line per QC fopen: 999 small reads measured 4.8 s against
+  0.24 s without. `+set pr_enable_profiling 1` on the server, then
+  `profile_ssqc` (over rcon from the harness client) gives per-function times.
+- `cmd viewpos` is answered BEFORE spawn (`setpos 0 0 0`), so it proves nothing
+  about a join; the server log's `said> server: <name> joined` does.
 - A leftover test process (`ftesurf64*.exe`, `fteqwsv64.exe`) holds
   `fteplug_hl2_x64.dll`, so build.ps1's deploy aborts part-way and `C:\FTEQuake`
   keeps a stale server. Check `Get-Process ftesurf*,fteqw*` before `-Engine`.
@@ -1048,14 +1056,19 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   hand-started test server on another port is unreachable from outside — run
   that arm locally and say so in the entry.
 - A player's guid is the `qkey` in the install ROOT, so two clients from one
-  install are ONE player to the server. Any per-player test (save rows, board
-  attribution) needs a second install; read both guids out of the lobby log as
-  the control before believing the result.
+  install are ONE player to the server. For a second player run the same exe
+  with `-homedir <dir>` holding its own random `qkey` (FS_ROOT reads it there;
+  its logs land in `<dir>/ftesurf/logs`) -- `p428slota/b`. Read both guids out
+  of the server log as the control before believing the result.
 - fteqcc: `arr[i]_x` does not compile ("Cannot cast from vector to float") —
   copy to a local vector first; sprintf takes ≤ 8 args (warns above, and DROPS
   the ninth silently); a lone `;` branch warns Q205 — use a comment-only block;
   big fixed arrays blow the globals/strings budget (4096 rows forced a 32-bit
-  target — size them to the library).
+  target — size them to the library). qwprogs is the 16-bit target and was at
+  64547 of 65535 globals before Patch 428 moved the save columns into
+  `memalloc` (`float *p = memalloc(n * sizeof(float))`, indexed as an array;
+  the heap resets with the globals at every map load) -- check numglobals in
+  the .dat header before adding an array.
 - fteqcc parses `x = a && b` as `(x = a) && b`: assignment binds tighter than
   `&&` and `||` (measured: `t = !first && FALSE` gave 1). Wrap the whole
   right-hand side, `x = (a && b);`, as the tree mostly does. Still unwrapped in
