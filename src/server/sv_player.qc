@@ -1044,6 +1044,7 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "sl_last")    { SV_SaveLocLast(self);                       return; }
 	if (c == "sl_list")    { SV_SaveLocList(self, stof(argv(1)));        return; }
 	if (c == "sl_goto")    { SV_SaveLocLoad(self, stof(argv(1)));        return; }
+	if (c == "sl_replay")  { SV_SaveLocReplay(self, stof(argv(1)));      return; }
 
 	// The client half of `retry`.  The engine's own command offers itself to
 	// CSQC first (Patch 185); CSQC writes its sidecar and then forwards here.

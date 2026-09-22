@@ -15,7 +15,7 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
 tag      patch-266
-patch    437
+patch    438
 qcbuild  88
 date     2026-09-23
 

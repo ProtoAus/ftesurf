@@ -71,6 +71,7 @@
 */
 float rec_rp_view;               // strbuf, or 0
 float rec_rp_lines;
+float rec_rp_t0;                 // Patch 438: the cold read's start, gettime(1)
 float rec_rp_wasrec;             // TF_RECORDING as of last frame
 float rec_rp_ms;                 // this recording is Multi-Session: no sidecars
 
@@ -1460,10 +1461,12 @@ void(float id) Rec_ViewSaved =
   camera that is stale for the first half is strictly better than one that is
   absent for the second.
 */
+// Patch 438: cl_watch.qc's file reader, which compiles after this file.
+float(string path, float buf) Watch_BufLoad;
+
 void(float id) Rec_ViewLoaded =
 {
 	local float buf;
-
 	// See Rec_ViewSaved.  Slot 0 is the retry point, and for it the cold branch
 	// below is the ONLY one that can ever run: a map restart shuts this VM down
 	// (CSQC_Shutdown in CLQW_ParseServerData), so rec_rp_mark is all zeroes by
@@ -1484,12 +1487,41 @@ void(float id) Rec_ViewLoaded =
 	buf = buf_create_ex("string", 0);
 	if (buf < 1)
 		return;
+	rec_rp_t0 = gettime(1);              // Patch 438: the arm's own number
 
-	if (!buf_loadfile(Rec_SavePath(id), buf))
+	/*
+	  Patch 438: FILE_READ + fgets, NOT buf_loadfile.
+
+	  buf_loadfile splits with VFS_GETS, one VFS_READ per byte, and Windows maps
+	  only files up to 5 MB (fs_win32.c:480) -- above that every byte is a
+	  ReadFile, which measured 12.9 s for surf_rookie's 6.7 MB .rec and ~2 s per
+	  MB for a journal.  This is the evidence code's reload of the sidecar after a
+	  save-state rewind, and it is the one place left in the progs that read a
+	  recording that way (Patch 431 moved the viewer's, Scores_TrailerTicks takes
+	  the last 16 KB).  A sidecar is 2.93 KB per second of run, so a five-minute
+	  attempt is ~880 KB and a long one crosses the cap; the stall is in the
+	  client's frame, during a load.
+
+	  Watch_BufLoad is the speller Patch 431 already measured (34 ms where
+	  buf_loadfile took 13.4 s on the same bytes) and it is the same shape: a line
+	  buffer of the whole file, blank lines included, size from buf_getsize.
+	  cl_replay.qc compiles BEFORE cl_watch.qc, so the prototype is here.
+	*/
+	if (!Watch_BufLoad(Rec_SavePath(id), buf))
 	{
 		buf_del(buf);
 		return;
 	}
+
+	/*
+	  Patch 438: THE ARM'S OWN NUMBER.  A cold reload of a sidecar over Windows'
+	  5 MB mapping cap is the thing this patch exists to make cheap, and the only
+	  honest way to say so is to print the cost of the read that happened, for the
+	  file that was read.  cfg/test/p438view.cfg drives it.
+	*/
+	print(sprintf("p438 cold reload took %.0f ms for %g lines (%s)\n",
+	              (gettime(1) - rec_rp_t0) * 1000, buf_getsize(buf),
+	              Rec_SavePath(id)));
 
 	if (rec_rp_view >= 1)
 		buf_del(rec_rp_view);

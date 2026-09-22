@@ -47,12 +47,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **A 999-row delete-all takes ~5 s** (~3.5 ms per row on the Pi: FS_Remove
   re-walks every search path to update the name hash). It sweeps 2 rows a frame
   and is harmless, just slow. Engine fs.c FS_RebuildFSHash_Update.
-- **A save-state rewind reloads the `.view` with buf_loadfile** (cl_replay.qc,
-  the reattach after a rewind): VFS_GETS reads a byte per VFS_READ and Windows
-  maps only files up to 5 MB (fs_win32.c:480), so a sidecar past 5 MB (~28 min of
-  run at 2.93 KB/s) stalls ~2 s per MB.  Evidence code: Watch_BufLoad's fgets
-  form drops every `\r` where VFS_GETS drops one, so swapping it needs its own
-  review.  The engine fix (a buffered VFS_GETS) helps every caller.  Patch 431.
 
 ## Features / releases
 

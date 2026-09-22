@@ -272,6 +272,9 @@ float(float r) SL_RowSpeed =
 // and a respawn both have to be able to let go of one.
 void(entity e) SV_SaveLocRelease;
 
+// Patch 438: the event funnel, forward-declared because sl_replay sits above it.
+void(entity e, float op, float id) SV_SaveLocEvent;
+
 // Build 24, and forward-declared for the same reason: a map reset has to let go
 // of a watch too, and it happens three hundred lines above the definition.
 void(entity e) SV_WatchRelease;
@@ -586,6 +589,33 @@ float(entity e) SV_SaveLocRate =
 	}
 	e.rec_sl_tok = e.rec_sl_tok - 1;
 	return TRUE;
+};
+
+// Patch 428: the player sweeping block blk with a delete-all, or world.  Any
+void(entity e, float n) SV_SaveLocReplay =
+{
+	/*
+	  Patch 438: `sl_replay <n>` -- a LOAD EVENT WITH NO SAVE BEHIND IT.
+
+	  The client's sidecar reload (Rec_ViewLoaded) is gated on a save/load event
+	  it is allowed to act on, and the only way to produce one is a real save --
+	  which puts the file where the server's own save root says, not where a
+	  harness can put a 6 MB one.  This fires the event for an absolute slot and
+	  nothing else: no placement, no clock, no row, no state file read.  It is a
+	  harness handle for the evidence code's own reader, charged like any other
+	  sl_ command so it cannot be spammed, and it cannot launder a run because it
+	  cannot move one.
+	*/
+	if (!SV_SaveLocRate(e))
+		return;
+	if (n < FS_RETRY_SLOT || n > FS_MAXSAVES)
+	{
+		sprint(e, PRINT_HIGH, sprintf("^3save: %g is not a slot\n", n));
+		return;
+	}
+	e.rec_sl_ack = e.rec_sl_ack + 1;      // counted like every list command
+	SV_SaveLocEvent(e, SLOP_LOADED, n);
+	sprint(e, PRINT_HIGH, sprintf("save: replay event for slot %g\n", n));
 };
 
 // Patch 428: the player sweeping block blk with a delete-all, or world.  Any
