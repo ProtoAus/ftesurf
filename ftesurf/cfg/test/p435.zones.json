@@ -1,0 +1,269 @@
+{
+ "dataTimestamp": 1727538791396,
+ "formatVersion": 1,
+ "tracks": {
+  "main": {
+   "zones": {
+    "segments": [
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": true,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -480,
+            -480
+           ],
+           [
+            -480,
+            -224
+           ],
+           [
+            -224,
+            -224
+           ],
+           [
+            -224,
+            -480
+           ]
+          ],
+          "bottom": 48.0,
+          "height": 160,
+          "teleDestPos": [
+           -336,
+           -352,
+           64.03125
+          ],
+          "teleDestYaw": 0
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": true,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            2720,
+            640
+           ],
+           [
+            2720,
+            384
+           ],
+           [
+            2528,
+            384
+           ],
+           [
+            2528,
+            640
+           ]
+          ],
+          "bottom": 64.03125,
+          "height": 160,
+          "teleDestPos": [
+           2624,
+           520,
+           64.03121948242188
+          ],
+          "teleDestYaw": 0
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": true,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -480,
+            -1856
+           ],
+           [
+            -480,
+            -1600
+           ],
+           [
+            -288,
+            -1600
+           ],
+           [
+            -288,
+            -1856
+           ]
+          ],
+          "bottom": 64.03125,
+          "height": 160,
+          "teleDestPos": [
+           -376,
+           -1728,
+           64.03125
+          ],
+          "teleDestYaw": 0
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": true,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            2720,
+            -736
+           ],
+           [
+            2720,
+            -992
+           ],
+           [
+            2528,
+            -992
+           ],
+           [
+            2528,
+            -736
+           ]
+          ],
+          "bottom": 63.537841796875,
+          "height": 160,
+          "teleDestPos": [
+           2616,
+           -864,
+           64.03126525878906
+          ],
+          "teleDestYaw": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "end": {
+     "regions": [
+      {
+       "points": [
+        [
+         2720,
+         -1600
+        ],
+        [
+         2720,
+         -1856
+        ],
+        [
+         2560,
+         -1856
+        ],
+        [
+         2560,
+         -1600
+        ]
+       ],
+       "bottom": 64.03123474121094,
+       "height": 160
+      }
+     ]
+    }
+   },
+   "stagesEndAtStageStarts": true
+  },
+  "bonuses": [
+   {
+    "zones": {
+     "segments": [
+      {
+       "limitStartGroundSpeed": true,
+       "checkpointsRequired": true,
+       "checkpointsOrdered": true,
+       "checkpoints": [
+        {
+         "regions": [
+          {
+           "points": [
+            [
+             -2208,
+             -1856
+            ],
+            [
+             -2208,
+             -1600
+            ],
+            [
+             -2016,
+             -1600
+            ],
+            [
+             -2016,
+             -1856
+            ]
+           ],
+           "bottom": 64.03125,
+           "height": 160,
+           "teleDestPos": [
+            -2112,
+            -1720,
+            64.03126525878906
+           ],
+           "teleDestYaw": 0
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "end": {
+      "regions": [
+       {
+        "points": [
+         [
+          -2208,
+          -992
+         ],
+         [
+          -2208,
+          -736
+         ],
+         [
+          -2016,
+          -736
+         ],
+         [
+          -2016,
+          -992
+         ]
+        ],
+        "bottom": 64.03125762939453,
+        "height": 160
+       }
+      ]
+     }
+    },
+    "defragModifiers": 0
+   }
+  ]
+ }
+}

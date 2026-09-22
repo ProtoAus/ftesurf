@@ -7,13 +7,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
-- **Patch 415's start-box prespeed hole is wider than its essay says.** Loading
-  an idle/armed save that carries speed in a start box re-arms it (Build 47) with
-  the save's speed. The essay claims 37 of 48 regions fail safe on `%.4f`
-  rounding; a hop beats that (first scan sets the latch -1, the hop lifts the
-  point into the zone, SV_TimerArm clears the load's taint). Falsifier:
-  bhop_eazy, armed save with speed, load, `+jump`, `cmd timer` -> `armed,
-  practice 0`. sv_saveloc.qc SV_SaveLocLoad (the Build 47 gate). Patch 428 review.
+- **A prespeed start-box load still arms CLEAN on the 6 regions where `%.4f`
+  rounding hides the zone** -- Patch 435 answered the velocity where Build 47's
+  gate can fire (`tools/census/startdest.py`: 29 of 35 shipped regions with an
+  authored teleDestPos), and on the other 6 -- 3 maps, bhop_eazy,
+  kz_bkz_goldbhop_v2, surf_friday -- SV_ZoneStartAt answers -1, so neither the
+  gate nor Patch 435's row-speed condition is reached. THERE THE HOP IS THE
+  ROUTE, and only on a non-bhop mode: `cfg/test/p435mode.cfg`
+  (`python tools/p435pre.py --arm mode`) measures a prespeed load + `+jump` with
+  `sv_gamemode surf` arming at z 106.9 against a slab bottom of 64.03125 and
+  reading `arm zone 0`, `practice 0`, `class: clean`. `cfg/test/p435hop.cfg`
+  (`--arm shipped`) measures the same gesture in bhop mode NOT laundering: the
+  jump starts the run from the restored ARMED state and SV_TimerTryArm's
+  `run_t_bhopjump` branch refuses to arm an attempt already RUNNING. The backlog
+  entry this replaces claimed the hop beat the rounding everywhere; that is now
+  measured false on bhop maps and true on the rest. The fix has to answer the
+  velocity where the gate cannot see it: either zero the inherited speed at a
+  start-box placement under a TOLERANT box test (body AND the hold's
+  `rec_sl_holdvel`, or the release hands it straight back), or a load-scoped mark
+  SV_TimerArm refuses to launder while it stands -- cleared by the body being
+  slow, NOT while `rec_sl_hold`, and never at SV_TimerArm itself, because on a
+  surf map flying into a start box arms you clean at speed by design (Patch 415's
+  essay) and a speed test there would taint every honest re-entry.
+  sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad.
+  Patch 435.
 - **A FINISHED save in the next stage's box keeps it as its pending arm**, so
   leaving the box after a load is a clean stage run at the saved speed, reusable.
   SV_SaveWriteState writes `pendarm`, SV_SaveApplyState restores it. Patch 428 review.

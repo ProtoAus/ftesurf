@@ -165,6 +165,24 @@ float  rec_sl_quiet;
 #define SL_TOKRATE  20           // list commands a second, burst and sustained
 #define SL_DEMOTED  -1           // rec_sl_tick of a demoted save: never "clock stopped" to `!r`
 #define SL_RECKEEP  24           // lobby saves that keep their recording copy (SV_SaveLocCreate)
+/*
+  Patch 435: the horizontal speed under which a start-box load still arms.
+  state.txt writes `velocity %.4f`, so a body at rest reads back at most 0.00005
+  a component, and friction leaves a grounded one below sv_stopspeed -- 1 u/s is
+  above both and below any prespeed worth carrying into a run.
+*/
+#define SL_ARM_SPEED 1
+
+// Patch 435: what a row carries horizontally, which is the speed its load hands
+// back (SV_SaveLocPlace writes rec_sl_vel[r] into the body, and a hold hands the
+// same vector back on release).  Read off the ROW and not off e.velocity, which
+// a load taken while parked has already zeroed.
+float(float r) SL_RowSpeed =
+{
+	local vector v;
+	v = rec_sl_vel[r];
+	return vlen([v_x, v_y, 0]);
+};
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
 .float rec_sl_ack;               // Patch 430: STAT_FS_SLACK, SV_ParseClientCommand
@@ -2292,9 +2310,19 @@ void(entity e, float n) SV_SaveLocLoad =
 	  three quarters.  The velocity has to be answered first; until then this stays
 	  broken in the direction that fails safe.  It is why `!r` (Patch 415) takes the
 	  save's ORIGIN through SV_ZoneMove instead of loading it at all.
+
+	  PATCH 435 ANSWERS THE VELOCITY, so the rounding is no longer what decides.
+	  The gate asks the ROW what it carries: a save with speed on it does not force
+	  the edge, keeps the load's TF_SEGMENT|TF_PRACTICE, and leaving the box starts
+	  a practice run at the speed you saved with -- which is what a stitched
+	  attempt is for.  A save at rest arms exactly as before.  That is the answer
+	  the 37 regions already gave by accident, now given by all of them on purpose,
+	  and it is why the rounding is still not worth closing: a gate that fails to
+	  fire is no longer an injection, it is a practice run.
 	*/
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
+	if (SL_RowSpeed(r) < SL_ARM_SPEED)
 		e.run_t_azone = -1;
 
 	/*

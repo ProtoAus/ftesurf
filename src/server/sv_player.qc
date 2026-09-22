@@ -1107,6 +1107,21 @@ void(string cmd) SV_ParseClientCommand =
 		       sprintf("setpos %.1f %.1f %.1f %.1f %.1f %.1f\n",
 		               self.origin_x, self.origin_y, self.origin_z,
 		               self.v_angle_x, self.v_angle_y, self.v_angle_z));
+		/*
+		  Patch 435: AND THE VELOCITY, on its own line so the one above still
+		  pastes back into setpos unchanged.
+
+		  The server's own word for the body's speed, which is the only place
+		  a harness can read one: the recorder's samples carry it but only after
+		  a close, the hold publishes the SAVE's rather than the body's, and the
+		  client's is a prediction.  A save that hands speed back has to be
+		  measurable at the body, or "the load injected a prespeed" is a claim
+		  about code rather than a measurement.
+		*/
+		sprint(self, PRINT_HIGH,
+		       sprintf("velocity %.4f %.4f %.4f  horizontal %.4f\n",
+		               self.velocity_x, self.velocity_y, self.velocity_z,
+		               vlen([self.velocity_x, self.velocity_y, 0])));
 		return;
 	}
 

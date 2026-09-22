@@ -1,0 +1,36 @@
+FTESURF-SAVE 1
+map bhop_eazy
+seq 2
+created 20260923-120000
+origin -420.0000 -352.0000 64.0312
+velocity 250.0000 0.0000 0.0000
+angles 0.0000 0.0000
+duck 0
+state 1
+track 0
+startseg 0
+stagerun 0
+seg 0
+segs 4
+ticks 0
+elapsed 0.000000
+clock counted
+split 0
+delta 0
+flags 0
+pb 0
+dirty 0
+cheat 0
+azone 0
+evzone -1
+armzone 0
+cpzone -1
+pendarm -1
+cpmax 0
+fromsave 0
+reclines 0
+recsamples 0
+recpad 0
+reccp 0
+recserial 0
+recgen -1
