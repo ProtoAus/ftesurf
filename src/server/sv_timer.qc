@@ -8487,9 +8487,9 @@ void(entity e) SV_TimerThaw =
   The final `run_t_frzat = 0` gives a property worth having: a run that STARTS
   while you are parked pins at the tick it started on -- 0:00.015, since the
   maintain runs before the zone logic that calls SV_TimerStart and so cannot
-  latch until the tick after -- and stays there until you let go.  That is
-  reachable: a save's arm latch is restored verbatim, but you are placed at the
-  save's origin, which may be outside the box you were armed in.
+  latch until the tick after -- and stays there until you let go.  [Patch 428:
+  no longer reachable under a save-lock hold, which runs no zone tests; the run
+  starts on the release packet.  A replay pin still can.]
 */
 void(entity e) SV_TimerFreezeFrame =
 {

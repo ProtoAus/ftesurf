@@ -703,15 +703,15 @@ void() PlayerPostThink =
 
 	/*
 	  BUILD 43: pack the stage state for the wire.  HERE and not at the bottom of
-	  SV_TimerFrame, which has three early returns -- no zone file, ghosting, and
-	  the freeze block above the zone guard -- and the state is most interesting
-	  on exactly those ticks.  See SV_StageStat.
+	  SV_TimerFrame, which has early returns -- no zone file, a resume, ghosting,
+	  a save-lock hold (Patch 428) -- and the state is most interesting on exactly
+	  those ticks.  See SV_StageStat.
 	*/
 	SV_StageStat(self);
 
-	// Pinned at a save-lock while the load key is held.  After the timer, so
-	// the zone scan sees where the move actually left you and the pin is the
-	// last word on the origin.
+	// Pinned at a save-lock while the load key is held.  After the timer, so the
+	// pin is the last word on the origin (the timer runs no zone test under a
+	// hold since Patch 428: a mover's shift of the body is not a place visited).
 	SV_SaveLocHoldFrame(self);
 
 	// The save list is global (it is on disk, under the map) and clientstat

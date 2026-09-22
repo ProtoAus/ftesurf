@@ -216,6 +216,7 @@ float  rec_sl_quiet;
   under the hold.
 */
 // .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
+.float rec_wt_hold;              // the replay pin (see WATCHING below); here for SV_SaveLocHold
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release
 
@@ -2374,6 +2375,10 @@ void(entity e, float down) SV_SaveLocHold =
 		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
 		return;
 	}
+	// Patch 428 review round 7: the replay pin and the ghost refuse a hold, and
+	// a hold now refuses them -- "the two can never be on at once" (SV_WatchHold).
+	if (e.rec_wt_hold || e.rec_gh_on)
+		return;
 	if (SL_Sweeper(SL_Blk(e)))          // Patch 428: its row is about to go
 		return;
 	if (!SV_SaveLocAllowed(e, TRUE))
@@ -2476,7 +2481,6 @@ void(entity e, float down) SV_SaveLocHold =
   (CSQC_Input_Frame), so nothing can move between the command being sent and it
   arriving.  This is the half that stops gravity and the movers.
 */
-.float rec_wt_hold;
 .float rec_wt_holdmove;
 
 /*
@@ -3222,6 +3226,10 @@ void(entity e) SV_SaveLocHoldFrame =
 		SV_SaveLocPlace(e, e.rec_sl_holdrow);
 
 	e.velocity = '0 0 0';
+	// Patch 428 review round 7: and no push carrier -- the re-place clears one
+	// only when the body drifted, and a push armed on the last held command
+	// cashed out into the release packet, before any start clamp.
+	SV_ClearCarrier(e);
 
 	// Re-asserted every tick for the same reason the origin above is: the LIST
 	// can move under a stationary hold (a delete slides every later row down by
