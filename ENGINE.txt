@@ -13,11 +13,15 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   a72183e6b90a68cad43eb26b579f6309afdd4ffa
+commit   45174b9d419f21fa5edceb473d9ef292cda18840
 tag      patch-266
-patch    426
+patch    427
 qcbuild  88
 date     2026-09-22
+
+# PATCH 427: a sound name with a space no longer stalls the join -- the client quotes
+# `download`, and the server rejoins an old client's split name.  Client + server;
+# the server half alone unsticks every current client.  cfg/test/p427*.cfg.
 
 # PATCH 419: the server VM gets the OS entropy the master-server code already had --
 # `fs_randomhex` and `fs_randomf` over Sys_RandomBytes, registered by name.  The run nonce
