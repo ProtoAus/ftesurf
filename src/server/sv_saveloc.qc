@@ -1451,7 +1451,26 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	}
 	else
 	{
-		SV_RecDiscard(e);
+		/*
+		  Patch 434: AND A RUN THAT LOST ITS RECORDING IS OVER.
+
+		  The clock was resumed above, so until now a failed rewind left a
+		  RUNNING attempt with no buffer and no stream behind it: it kept
+		  counting, it kept posting splits and stages, and its finish filed a
+		  time with nothing for pm_verify to replay and no `warp` or `resume`
+		  row to explain the gap.  A run whose evidence could not be restored
+		  is not a run any more.
+
+		  SV_TimerVoid is the funnel every other abort uses -- it keeps the
+		  restored time on screen greyed rather than snapping it to zero, and
+		  its SV_TimerIdle does the discard, so this branch must not do it too
+		  (a second SV_RecDiscard would re-run the Patch 426 hold logic below
+		  against a run that has already ended).
+		*/
+		if (st == TS_RUNNING)
+			SV_TimerVoid(e, "the save's recording could not be restored");
+		else
+			SV_RecDiscard(e);
 		// Patch 426: recording stopped with nothing live to discard, so no end
 		// handler cleared the hold -- and the client signs this edge with the
 		// RUNTICKS it now sees.  A hold with those ticks would take that

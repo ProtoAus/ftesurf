@@ -15,9 +15,9 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
 tag      patch-266
-patch    433
+patch    434
 qcbuild  88
-date     2026-09-22
+date     2026-09-23
 
 # PATCH 430 (mod-side): the load key draws the save a round trip early (render only;
 # STAT_FS_SLORG/SLANG/SLACK, cl_slpredict).  cfg/test/p430cl.cfg.

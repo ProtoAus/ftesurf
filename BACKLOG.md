@@ -17,11 +17,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **A FINISHED save in the next stage's box keeps it as its pending arm**, so
   leaving the box after a load is a clean stage run at the saved speed, reusable.
   SV_SaveWriteState writes `pendarm`, SV_SaveApplyState restores it. Patch 428 review.
-- **A running save whose rewind fails still resumes its clock, recording
-  dropped** -- a stream prefix over SV_RecSnapshot's 256 MB cap, or a failed copy
-  step. The fix is to end the run in SV_SaveApplyState's failed-rewind branch,
-  which is Patch 426's -- give it its own patch and run p426ccl/p426cl/p426dcl.
-  Patch 428 review.
 - **Map triggers still touch a held (save-lock) body.** The engine skips touches
   only for `run_pmhold`; a func_bhop dwell fires OnActivate and writes a `bhop`
   warp record, push-once triggers are spent for everyone. The timer ignores it
