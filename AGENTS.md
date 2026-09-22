@@ -996,6 +996,15 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   for the next reader.
 - Deleting save dirs behind a running server does NOT clear its in-memory list;
   it rescans on map change/lobby flip/restart. Delete-all is `sl_delall`.
+- SAVE-LOCKS SINCE PATCH 428 (sv_saveloc.qc): 999 a player a map, in memalloc'd
+  columns (qwprogs sits at ~40k of 65535 globals -- do not grow them back into
+  arrays). A lobby block is fresh only for the guid it was scanned for
+  (SL_Fresh); only the newest 24 lobby saves keep their run -- older ones are
+  DEMOTED to a position at rest; `sl_delall` sweeps 2 rows a server frame;
+  20 `sl_` commands a second. A hold needs a load of that save in the same
+  frame at its spot, a zone move releases it, and SV_TimerFrame runs no zone
+  tests under it. Each rule closed a clean-run path in review: `cfg/test/
+  p428hold.cfg` is the arm, and the open older holes are under Patch 428's Known.
 - Two clients writing the same `log_name` interleave confusingly.
 - A leftover test process (`ftesurf64*.exe`, `fteqwsv64.exe`) holds
   `fteplug_hl2_x64.dll`, so build.ps1's deploy aborts part-way and `C:\FTEQuake`
