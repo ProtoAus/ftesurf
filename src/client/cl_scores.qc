@@ -906,7 +906,10 @@ vector() Scores_BoardNoteCol =
 #define SBX_DATE   (SBX_REP   + SBW_REP)
 #define SBX_KIND   (SBX_DATE  + SBW_DATE)
 #define SBX_TAG    (SBX_KIND  + SBW_KIND)
-#define SBX_END    (SBX_TAG   + SBW_TAG)
+// Patch 433: the `line` tick right of `why`, dropped first when the window narrows.
+#define SBW_LINE    5
+#define SBX_LINE   (SBX_TAG   + SBW_TAG)
+#define SBX_END    (SBX_LINE  + SBW_LINE)
 
 // The advance of the mono face, per em.  Measured out of GoogleMed.ttf's hmtx
 // in build 21 rather than trusted from its `post` table, which claims
@@ -973,6 +976,285 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 	Scores_Text([pos_x + rec_sb_cw, pos_y + (sz_y - rec_sb_szrow) * 0.5],
 	            rec_sb_szrow, label, on ? SBC_TEXT : SBC_DIM, 1);
 	return sui_is_released(id);
+};
+
+/*
+===========================================================================
+  Patch 433: board lines -- a row's run drawn in the world while you play, from
+  the `line` column.  Up to SB_LNMAX at once in run-line slots 1.. (cl_lines.qc),
+  built over frames by Watch_LineJob*.  An online row's file comes through the
+  one replay fetch, after any watch the board asked for; a stage row played out
+  of its run (Patch 395) draws only that stage.
+===========================================================================
+*/
+#define SB_LNMAX   8
+#define SBL_FREE   0
+#define SBL_FETCH  1                  // waiting for its download
+#define SBL_QUEUE  2                  // the file is here, waiting for the builder
+#define SBL_BUILD  3
+#define SBL_ON     4
+#define SBL_FAIL   5
+
+string sb_ln_key[SB_LNMAX];           // strzoned; "l:<path>" or "r<rep>:<leg>"
+string sb_ln_path[SB_LNMAX];          // strzoned; an online one's once it is cached
+string sb_ln_hint[SB_LNMAX];          // strzoned; an online one's cache folder
+float  sb_ln_rep[SB_LNMAX];
+float  sb_ln_leg[SB_LNMAX];
+float  sb_ln_st[SB_LNMAX];
+float  sb_ln_fetch;                   // the line the replay fetch is for, + 1
+float  rec_sb_lnpick;                 // a row's box clicked this frame, row + 1
+
+// The current tab's row as a line key, "" when nothing is behind it.
+string(float row) Scores_LineKey =
+{
+	if (Scores_IsOnline())
+	{
+		if (Online_RowRep(row) < 1)
+			return "";
+		return sprintf("r%g:%g", Online_RowRep(row), Online_RowLeg(row));
+	}
+	if (row < 0 || row >= rec_sb_rown || rec_sb_rowtag[row] == RT_LOBBY)
+		return "";
+	return strcat("l:", bufstr_get(rec_sb_bpath, row));
+};
+
+float(string key) Scores_LineFind =
+{
+	local float i;
+
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] != SBL_FREE)
+		if (!strcmp(sb_ln_key[i], key))
+			return i;
+	return -1;
+};
+
+void(float i) Scores_LineFree =
+{
+	if (wt_lj_phase)
+	if (wt_lj_slot == i + 1)
+		Watch_LineJobStop();
+	if (sb_ln_fetch == i + 1)
+		sb_ln_fetch = 0;
+	Line_Clear(i + 1);
+	if (sb_ln_key[i])  strunzone(sb_ln_key[i]);
+	if (sb_ln_path[i]) strunzone(sb_ln_path[i]);
+	if (sb_ln_hint[i]) strunzone(sb_ln_hint[i]);
+	sb_ln_key[i] = sb_ln_path[i] = sb_ln_hint[i] = __NULL__;
+	sb_ln_st[i] = SBL_FREE;
+};
+
+void(float row) Scores_LineToggle =
+{
+	local string key, s;
+	local float i;
+
+	key = Scores_LineKey(row);
+	if (key == "")
+	{
+		print("^3scores:^7 no recording behind that row -- no line to draw.\n");
+		return;
+	}
+	i = Scores_LineFind(key);
+	if (i >= 0)
+	{
+		Scores_LineFree(i);
+		print(sprintf("scores: line %g off\n", i + 1));
+		return;
+	}
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_FREE)
+			break;
+	if (i >= SB_LNMAX)
+	{
+		print(sprintf("^3scores:^7 %g lines at most -- untick one first.\n", SB_LNMAX));
+		return;
+	}
+	sb_ln_key[i] = strzone(key);
+	sb_ln_rep[i] = 0;
+	sb_ln_leg[i] = 0;
+	sb_ln_st[i]  = SBL_QUEUE;
+	if (Scores_IsOnline())
+	{
+		// Online_ReplayFetchRow's folder: the row's leg, or its run's for a `run`.
+		sb_ln_rep[i] = Online_RowRep(row);
+		sb_ln_leg[i] = Online_RowLeg(row);
+		s = "";
+		if (ob_have_zoned)
+			s = Online_CacheDir(ob_have_map, ob_have_track,
+			                    (sb_ln_leg[i] > 0) ? 0 : ob_have_leg);
+		sb_ln_hint[i] = strzone(s);
+		s = Online_ReplayFind(sb_ln_rep[i], s);
+		if (s == "")
+			sb_ln_st[i] = SBL_FETCH;
+		else
+			sb_ln_path[i] = strzone(s);
+	}
+	else
+		sb_ln_path[i] = strzone(bufstr_get(rec_sb_bpath, row));
+	print(sprintf("scores: line %g on: %s\n", i + 1, key));
+};
+
+/*
+  Every frame, board open or not: one builder step, and the download of a line
+  waiting for its file -- only while no watch is waiting on the same fetch.
+*/
+void() Scores_LinesFrame =
+{
+	local float i, k;
+
+	if (wt_lj_phase)
+	{
+		k = Watch_LineJobStep();
+		if (k)
+		{
+			i = wt_lj_slot - 1;
+			sb_ln_st[i] = (k > 0) ? SBL_ON : SBL_FAIL;
+			print(sprintf("scores: line %g %s (%g points, %g teleports)\n", i + 1,
+			              (k > 0) ? "drawn" : "failed", ln_n[i + 1], ln_bkn[i + 1]));
+		}
+	}
+	else
+		for (i = 0; i < SB_LNMAX; i = i + 1)
+			if (sb_ln_st[i] == SBL_QUEUE)
+			{
+				sb_ln_st[i] = Watch_LineJobStart(i + 1, sb_ln_path[i], sb_ln_leg[i])
+				              ? SBL_BUILD : SBL_FAIL;
+				break;
+			}
+
+	if (sb_ln_fetch)
+	{
+		i = sb_ln_fetch - 1;
+		Online_ReplayPoll();
+		if (Online_ReplayRep() != sb_ln_rep[i])
+			sb_ln_fetch = 0;                    // a watch took the fetch: ask again
+		else if (Online_ReplayState() == ORS_READY)
+		{
+			sb_ln_path[i] = strzone(Online_ReplayFile());
+			sb_ln_st[i] = SBL_QUEUE;
+			sb_ln_fetch = 0;
+			if (!rec_sb_wantrep)
+				Online_ReplayClear();
+		}
+		else if (Online_ReplayState() != ORS_FETCH)
+		{
+			sb_ln_st[i] = SBL_FAIL;
+			sb_ln_fetch = 0;
+			print(sprintf("^3scores:^7 line %g: the download failed (%g).\n", i + 1,
+			              Online_ReplayCode()));
+			if (!rec_sb_wantrep)
+				Online_ReplayClear();
+		}
+		return;
+	}
+	if (rec_sb_wantrep || Online_ReplayState() == ORS_FETCH)
+		return;
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_FETCH)
+		{
+			if (Online_ReplayFetchIn(sb_ln_rep[i], sb_ln_hint[i]))
+				sb_ln_fetch = i + 1;
+			else
+			{
+				sb_ln_st[i] = SBL_FAIL;
+				print(sprintf("^3scores:^7 line %g: could not ask for it -- check lobby_dir.\n",
+				              i + 1));
+			}
+			break;
+		}
+};
+
+float() Scores_LinesOn =
+{
+	local float i;
+
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_ON)
+			return TRUE;
+	return FALSE;
+};
+
+// Before renderscene, when no replay's Watch_Path does it: pin the projection
+// the 2D pass will use (see Watch_Path).
+void() Scores_LinesPin =
+{
+	if (!Scores_LinesOn())
+		return;
+	makevectors(getproperty(VF_ANGLES));
+	project(getproperty(VF_ORIGIN) + v_forward * 256);
+};
+
+// After renderscene, beside the replay's path.
+void() Scores_LinesDraw =
+{
+	local float i;
+
+	if (!Scores_LinesOn())
+		return;
+	Line_ViewFrame();
+	Line_StatsReset();
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_ON)
+			Line_Draw(i + 1, 99999999, '0 0 0', 1, 0.85);
+};
+
+// `scores lines`: the table.
+void() Scores_LinesStatus =
+{
+	local float i;
+	local string w;
+
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+	{
+		if (sb_ln_st[i] == SBL_FREE)
+			continue;
+		w = "failed";
+		if (sb_ln_st[i] == SBL_FETCH)      w = "fetching";
+		else if (sb_ln_st[i] == SBL_QUEUE) w = "queued";
+		else if (sb_ln_st[i] == SBL_BUILD) w = "building";
+		else if (sb_ln_st[i] == SBL_ON)    w = "drawn";
+		print(sprintf("  line %g %s  %s  %g pts (%g shown) ", i + 1, w, sb_ln_key[i],
+		              ln_n[i + 1], ln_on[i + 1] ? (ln_ib[i + 1] - ln_ia[i + 1] + 1) : 0),
+		      sprintf("%g tele  t %.4f..%.4f  speed %.0f..%.0f\n", ln_bkn[i + 1],
+		              ln_t[(i + 1) * LN_CAP + ln_ia[i + 1]], ln_t[(i + 1) * LN_CAP + ln_ib[i + 1]],
+		              ln_lo[i + 1], ln_hi[i + 1]));
+	}
+	w = "";
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_ON)
+			w = strcat(w, "*");
+	print(sprintf("  lines: %g drawn, %g segments last frame\n", strlen(w), ln_nseg));
+};
+
+// A row's `line` box: empty, a tick when drawn, amber while it loads, red if it
+// failed.  Registered after the row, so a click here is the box's and not a watch.
+void(vector lp, float idx) Scores_LineCell =
+{
+	local string key, id;
+	local float i, st, bs;
+	local vector bp;
+
+	if (rec_sb_cols <= SBX_LINE)
+		return;
+	key = Scores_LineKey(idx);
+	if (key == "")
+		return;
+	i  = Scores_LineFind(key);
+	st = (i >= 0) ? sb_ln_st[i] : SBL_FREE;
+	bs = floor(Font_Px(rec_sb_szrow) * 0.75);
+	bp = [lp_x + Scores_ColX(SBX_LINE) + rec_sb_cw * 0.5, lp_y + floor((rec_sb_rowh - bs) * 0.5)];
+	id = strcat("sb_ln", ftos(idx));
+	sui_action_element(bp - '3 3 0', [bs + 6, bs + 6], id, sui_noop);
+	sui_border_box(bp, [bs, bs], 1, sui_is_hovered(id) ? SBC_TEXT : SBC_DIM, 0.9, 0);
+	if (st == SBL_ON)
+		Scores_Tick(bp + [bs * 0.1, 0], bs, SBC_GOOD, 0.95);
+	else if (st == SBL_FAIL)
+		sui_fill(bp + [bs * 0.3, bs * 0.3], [bs * 0.4, bs * 0.4], SBC_BAD, 0.9, 0);
+	else if (st != SBL_FREE)
+		sui_fill(bp + [bs * 0.3, bs * 0.3], [bs * 0.4, bs * 0.4], SBC_WARN, 0.9, 0);
+	if (sui_is_released(id))
+		rec_sb_lnpick = idx + 1;
 };
 
 /*
@@ -1235,6 +1517,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
 				            "old clock", SBC_DIM, on ? 0.7 : 0.25);
 		}
+		Scores_LineCell(lp, idx);           // Patch 433
 	}
 	sui_list_view_end();
 
@@ -1565,6 +1848,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
 				            s, SBC_WARN, 0.85);
 		}
+		Scores_LineCell(lp, idx);           // Patch 433
 	}
 	sui_list_view_end();
 
@@ -1993,6 +2277,7 @@ void(vector scr) Scores_Draw =
 	  eventually let two tabs disagree about how wide the same table is.
 	*/
 	rec_sb_cols = SBX_END;
+	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_LINE;   // Patch 433
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_TAG;
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_DATE;
 
@@ -2040,6 +2325,8 @@ void(vector scr) Scores_Draw =
 	if (rec_sb_cols > SBX_TAG)
 	if (Scores_IsOnline())
 		Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
+	if (rec_sb_cols > SBX_LINE)
+		Scores_Text([rp_x + Scores_ColX(SBX_LINE), rp_y], rec_sb_szhead, "line", SBC_DIM, 1);
 
 	/*
 	  The tick this map's server is actually running, which is what every LOCAL
@@ -2155,6 +2442,14 @@ void(vector scr) Scores_Draw =
 
 	if (Scores_SpecHandOff())
 		return;
+
+	// Patch 433: a `line` box, on the frame boundary like the row picks below.
+	if (rec_sb_lnpick)
+	{
+		Scores_LineToggle(rec_sb_lnpick - 1);
+		rec_sb_lnpick = 0;
+		return;
+	}
 
 	/*
 	  THE HAND-OFF, AFTER sui_end AND AFTER THE LOOP.
@@ -2451,6 +2746,26 @@ float(string cmd) Scores_ConsoleCommand =
 				pl_specpick = sp_s + 1;
 		}
 		// Patch 395: an online-list row click (0-based), taken by the next draw.
+		// Patch 433: `line <row>` (0-based, this tab) toggles its line; `lines`
+		// prints them, `lines clear` drops them all.
+		else if (argv(1) == "line")
+		{
+			Scores_Refresh();
+			Scores_LineToggle(stof(argv(2)));
+			return TRUE;
+		}
+		else if (argv(1) == "lines")
+		{
+			if (argv(2) == "clear")
+			{
+				local float li;
+				for (li = 0; li < SB_LNMAX; li = li + 1)
+					if (sb_ln_st[li] != SBL_FREE)
+						Scores_LineFree(li);
+			}
+			Scores_LinesStatus();
+			return TRUE;
+		}
 		else if (argv(1) == "olpick")
 		{
 			rec_sb_olpick = stof(argv(2)) + 1;

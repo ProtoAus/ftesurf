@@ -450,6 +450,8 @@ STUB_BOARDS = {
     ('surf_aura', 2): [(1, 'Kap', 624, 0, 18), (2, 'Nobody', 700, 0, 0)],
     ('surf_aura', 3): [(1, 'Proto', 804, 0, 990044)],
     ('surf_beginner', 5): [(1, 'Proto', 259, 0, 990042)],
+    # p433line: stage 4 of a run the cache does not hold (a copy of 18).
+    ('surf_aura', 4): [(1, 'Kap', 800, 0, 990018)],
 }
 
 

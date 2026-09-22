@@ -633,50 +633,66 @@ void() Watch_TablesReset =
   its velocity, and an unknown kind is left to Interp_Fit.  `ride` vetoes the
   kinematic test while its carrier moves the body (surf_trance's boosters).
 */
-void(string s) Watch_ScanRecord =
+// Patch 433: what a record says about the sample pair it sits in, as bits, so the
+// scan and a board line's build (Watch_LineJobStep) classify alike.
+#define WTR_FORCE   1           // the body moved: a snap
+#define WTR_VETO    2           // only its velocity: no kinematic snap
+#define WTR_REWIND  4           // a restart: no duck slide spans it
+#define WTR_RIDE    8           // a `ride`: RIDEON says whether its carrier is armed
+#define WTR_RIDEON 16
+
+float(string s) Watch_RecordBits =
 {
 	local float c, n;
 	local string k, kind;
 
 	c = str2chr(s, 0);
 	if (c != 119 && c != 112 && c != 114)       // 'w' 'p' 'r'
-		return;
+		return 0;
 	n = tokenize(s);
 	k = argv(0);
 	if (k == "warp")
 	{
 		if (n < 4)
-			return;
+			return 0;
 		kind = argv(3);
 		if (FS_IsSample(kind))                  // v9: argv(3) is the <row>
 		if (n >= 5)
 			kind = argv(4);
 		if (kind == "tele" || kind == "telerel" || kind == "bhop" || kind == "zone")
-			rec_wt_sfrc = TRUE;
-		else if (kind == "speed" || kind == "push" || kind == "lift")
-			rec_wt_sveto = TRUE;
-		return;
+			return WTR_FORCE;
+		if (kind == "speed" || kind == "push" || kind == "lift")
+			return WTR_VETO;
+		return 0;
 	}
 	if (k == "portal")
-	{
-		rec_wt_sfrc = TRUE;
-		return;
-	}
+		return WTR_FORCE;
 	if (k == "restart" || k == "resume" || k == "retry")
-	{
-		rec_wt_sfrc   = TRUE;
-		rec_wt_sdkrst = TRUE;
-		return;
-	}
+		return WTR_FORCE | WTR_REWIND;
 	if (k == "ride")
 	if (n >= 7)
 	{
-		rec_wt_sveto = TRUE;
-		rec_wt_sride = FALSE;
 		if (argv(3) == "arm")
 		if (stof(argv(4)) != 0 || stof(argv(5)) != 0 || stof(argv(6)) != 0)
-			rec_wt_sride = TRUE;
+			return WTR_VETO | WTR_RIDE | WTR_RIDEON;
+		return WTR_VETO | WTR_RIDE;
 	}
+	return 0;
+};
+
+void(string s) Watch_ScanRecord =
+{
+	local float k;
+
+	k = Watch_RecordBits(s);
+	if (k & WTR_FORCE)
+		rec_wt_sfrc = TRUE;
+	if (k & WTR_VETO)
+		rec_wt_sveto = TRUE;
+	if (k & WTR_REWIND)
+		rec_wt_sdkrst = TRUE;
+	if (k & WTR_RIDE)
+		rec_wt_sride = (k & WTR_RIDEON) ? TRUE : FALSE;
 };
 
 void(float ts, float te, float u0, float rate) Watch_DuckSeg =
@@ -1532,6 +1548,225 @@ void(float ra, float rb) Watch_ScanRange =
 	if (rec_wt_idover > 0)
 		print(sprintf("^3replay: %g still stretch(es) past the %g cap were dropped; "
 		              "the bar stops marking them\n", rec_wt_idover, WT_IDLEMAX));
+};
+
+/*
+  Patch 433: a board line, a run line built from a file over frames (the board's
+  `line` column; cl_scores.qc).  Pass one reads the header and, when a stage row
+  asked for its stage out of the run's file (leg > 0 and the file is not that
+  leg's), finds the stage's window as Watch_WindowFind does; pass two adds every
+  sample in the window, broken where Watch_ScanPair would snap.  Another file's
+  handle, not rec_wt_rec: a replay open meanwhile is untouched.
+*/
+#define WT_LJ_PASS1 6000        // lines a frame: pass one only looks at a line's first byte
+#define WT_LJ_PASS2 2500        // pass two tokenizes the window's samples
+
+float  wt_lj_fh;                // the file, open while wt_lj_phase is not 0
+float  wt_lj_slot, wt_lj_leg, wt_lj_phase;    // phase 1 records, 2 samples, 0 idle
+float  wt_lj_hdr;               // still in the header
+float  wt_lj_tick, wt_lj_fleg, wt_lj_seg;
+float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
+float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
+float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
+vector wt_lj_po, wt_lj_pv;
+
+void() Watch_LineJobStop =
+{
+	if (wt_lj_phase)
+		fclose(wt_lj_fh);
+	wt_lj_phase = 0;
+};
+
+// The window pass two keeps, and on into pass two.  FALSE: no window for the stage.
+float() Watch_LineJobWindow =
+{
+	wt_lj_ta = 0;                   // a whole file from its clock's start: no pad
+	wt_lj_tb = 99999999;
+	if (wt_lj_tick <= 0)
+		wt_lj_tick = PM_TICK;
+	if (wt_lj_fleg < 0)
+		wt_lj_fleg = FS_LegOf(wt_lj_seg, wt_lj_seg > 0);
+	if (wt_lj_leg > 0)
+	if (wt_lj_leg != wt_lj_fleg)
+	{
+		if (wt_lj_pa < 0)
+		{
+			wt_lj_pa = (wt_lj_leg > 1) ? wt_lj_sa : 0;
+			wt_lj_pb = (wt_lj_sb >= 0) ? wt_lj_sb : wt_lj_end;
+		}
+		if (wt_lj_pa < 0 || wt_lj_pb <= wt_lj_pa)
+		{
+			print(sprintf("scores: no window for stage %g in that run\n", wt_lj_leg));
+			return FALSE;
+		}
+		wt_lj_ta = wt_lj_pa * wt_lj_tick;
+		wt_lj_tb = wt_lj_pb * wt_lj_tick;
+	}
+	wt_lj_phase = 2;
+	wt_lj_c = 0;
+	wt_lj_frc = wt_lj_veto = wt_lj_ride = FALSE;
+	return TRUE;
+};
+
+float(float slot, string path, float leg) Watch_LineJobStart =
+{
+	Watch_LineJobStop();
+	wt_lj_fh = fopen(path, FILE_READ);
+	if (wt_lj_fh < 0)
+		return FALSE;
+	wt_lj_slot  = slot;
+	wt_lj_leg   = leg;
+	wt_lj_phase = 1;
+	wt_lj_hdr   = TRUE;
+	wt_lj_tick  = 0;
+	wt_lj_fleg  = -1;
+	wt_lj_seg   = 0;
+	wt_lj_wseg  = -1;
+	wt_lj_pa = wt_lj_pb = wt_lj_sa = wt_lj_sb = wt_lj_end = -1;
+	Line_Begin(slot);
+	return TRUE;
+};
+
+// One frame of the job: 0 working, 1 built, -1 failed (nothing to draw).
+float() Watch_LineJobStep =
+{
+	local float i, n, c, k, t, dt, brk, seg;
+	local string s;
+	local vector o, v;
+
+	if (wt_lj_phase == 0)
+		return -1;
+	for (i = 0; i < ((wt_lj_phase == 1) ? WT_LJ_PASS1 : WT_LJ_PASS2); i = i + 1)
+	{
+		s = fgets(wt_lj_fh);
+		if (s == "")
+		if (fseek(wt_lj_fh) >= fsize(wt_lj_fh))
+		{
+			if (wt_lj_phase == 1)
+			{
+				// The window: the stage's own record pair, else the `stage` records.
+				if (!Watch_LineJobWindow())
+				{
+					Watch_LineJobStop();
+					return -1;
+				}
+				fseek(wt_lj_fh, 0);
+				wt_lj_hdr = TRUE;
+				return 0;
+			}
+			Line_End(wt_lj_slot);
+			Line_Range(wt_lj_slot, wt_lj_ta, wt_lj_tb, wt_lj_ta);
+			Watch_LineJobStop();
+			return ln_on[wt_lj_slot] ? 1 : -1;
+		}
+
+		c = str2chr(s, 0);
+		if (wt_lj_hdr)
+		{
+			if (substring(s, 0, 5) == "begin")
+			{
+				wt_lj_hdr = FALSE;
+				// No stage asked for, or the file is that stage's own: no pass one.
+				if (wt_lj_phase == 1)
+				if (wt_lj_leg <= 0 || wt_lj_leg == ((wt_lj_fleg >= 0) ? wt_lj_fleg
+				                                    : FS_LegOf(wt_lj_seg, wt_lj_seg > 0)))
+					Watch_LineJobWindow();
+			}
+			else if (wt_lj_phase == 1)
+			{
+				n = tokenize(s);
+				if (argv(0) == "tickrate")  wt_lj_tick = stof(argv(1));
+				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
+				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
+			}
+			continue;
+		}
+
+		if (wt_lj_phase == 1)
+		{
+			// Watch_Scan's pass one for one stage: `stagepost` then the closing
+			// `stage`/`end`, and the `stage` records around it for an old file.
+			if (c != 115 && c != 101)           // 's' 'e'
+				continue;
+			n = tokenize(s);
+			seg = wt_lj_leg - 1;
+			if (argv(0) == "stagepost")
+			{
+				wt_lj_wseg = (n >= 3) ? stof(argv(1)) : -1;
+				wt_lj_wdur = stof(argv(2));
+				continue;
+			}
+			k = -1;
+			if (argv(0) == "end")
+			{
+				k = stof(argv(1));
+				wt_lj_end = k;
+			}
+			else if (argv(0) == "stage")
+			if (n >= 3)
+			{
+				k = stof(argv(2));
+				if (stof(argv(1)) == seg)
+					wt_lj_sa = k;
+				if (stof(argv(1)) == seg + 1)
+				if (wt_lj_sb < 0)
+					wt_lj_sb = k;
+			}
+			if (k >= 0)
+			if (wt_lj_wseg >= 0)
+			{
+				if (wt_lj_wseg == seg)
+				{
+					wt_lj_pa = k - wt_lj_wdur;
+					wt_lj_pb = k;
+				}
+				wt_lj_wseg = -1;
+			}
+			continue;
+		}
+
+		// Pass two.  A record marks the pair it sits in (Watch_RecordBits).
+		if (c != 45 && (c < 48 || c > 57))
+		{
+			k = Watch_RecordBits(s);
+			if (k & WTR_FORCE) wt_lj_frc  = TRUE;
+			if (k & WTR_VETO)  wt_lj_veto = TRUE;
+			if (k & WTR_RIDE)  wt_lj_ride = (k & WTR_RIDEON) ? TRUE : FALSE;
+			continue;
+		}
+		t = stof(s);
+		if (t < wt_lj_ta)
+		{
+			wt_lj_frc = wt_lj_veto = FALSE;
+			continue;
+		}
+		tokenize(s);
+		o = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
+		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+		brk = FALSE;
+		if (wt_lj_c > 0)
+		{
+			dt = t - wt_lj_pt;
+			if (wt_lj_frc)
+				brk = TRUE;
+			else if (dt > 0)
+			if (!wt_lj_veto && !wt_lj_ride)
+			if (Interp_Fit(wt_lj_po, wt_lj_pv, o, v, dt) == INTERP_SNAP)
+				brk = TRUE;
+		}
+		Line_Add(wt_lj_slot, o, vlen([v_x, v_y, 0]), t, brk);
+		wt_lj_c  = wt_lj_c + 1;
+		wt_lj_pt = t;
+		wt_lj_po = o;
+		wt_lj_pv = v;
+		wt_lj_frc = wt_lj_veto = FALSE;
+		if (t > wt_lj_tb)
+		{
+			fseek(wt_lj_fh, fsize(wt_lj_fh));   // the window is closed: finish
+			continue;
+		}
+	}
+	return 0;
 };
 
 // Patch 432: the run line shows the cut; its colours span the stage itself (the
