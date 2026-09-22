@@ -31,9 +31,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   essay) and a speed test there would taint every honest re-entry.
   sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad.
   Patch 435.
-- **A FINISHED save in the next stage's box keeps it as its pending arm**, so
-  leaving the box after a load is a clean stage run at the saved speed, reusable.
-  SV_SaveWriteState writes `pendarm`, SV_SaveApplyState restores it. Patch 428 review.
 - **Map triggers still touch a held (save-lock) body.** The engine skips touches
   only for `run_pmhold`; a func_bhop dwell fires OnActivate and writes a `bhop`
   warp record, push-once triggers are spent for everyone. The timer ignores it

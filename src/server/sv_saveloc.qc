@@ -820,6 +820,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
 	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
 	fputs(f, sprintf("cpzone %d\n", e.run_t_cpzone));
+	// Patch 436: written, and the loader drops it -- see the `pendarm` key in
+	// SV_SaveApplyState.  Keeping the line costs nothing and keeps the file's
+	// shape stable for an older build that still restores it.
 	fputs(f, sprintf("pendarm %d\n", e.run_t_pendarm));
 	/*
 	  BUILD 19: the checkpoint high-water mark, which is a latch in exactly the
@@ -995,7 +998,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
-	local float az, ez, am, cz, pa, cmx;
+	local float az, ez, am, cz, cmx;
 	local float rpit, ryaw, rduck;
 	local float wasrec;             // Patch 426: recording when the rewind began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
@@ -1012,7 +1015,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	cht = 0;                        // a pre-44 save file knows nothing about it
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
-	az = ez = am = cz = pa = -1;
+	az = ez = am = cz = -1;
 	cmx = 0;                        // a pre-19 save file has reached no checkpoint
 	rpit = ryaw = rduck = 0;
 	rorg = e.origin;                // a file with no origin leaves you where you are
@@ -1051,7 +1054,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
 		if (k == "armzone")    { am = stof(argv(1)); continue; }
 		if (k == "cpzone")     { cz = stof(argv(1)); continue; }
-		if (k == "pendarm")    { pa = stof(argv(1)); continue; }
+		/*
+		  Patch 436: `pendarm` is READ AND DROPPED, deliberately -- an unknown key
+		  would be skipped anyway, but a key the writer still writes and the reader
+		  silently ignores is exactly the drift the grammar block exists to prevent,
+		  so it is named here.  A pending arm is an arm that has not happened, and
+		  SV_TimerArm zeroes run_t_flags when it does: see the restore below.
+		*/
+		if (k == "pendarm")    { continue; }
 		if (k == "cpmax")      { cmx = stof(argv(1)); continue; }
 
 		if (k == "fromsave")   { rfrom = stof(argv(1)); continue; }
@@ -1165,7 +1175,24 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	e.run_t_evzone   = ez;
 	e.run_t_armzone  = am;
 	e.run_t_cpzone   = cz;
-	e.run_t_pendarm  = pa;
+	/*
+	  Patch 436: A PENDARM IS NOT A LATCH, IT IS AN ARM THAT HAS NOT HAPPENED.
+
+	  SV_TimerFrame's FINISHED branch waits for the body to LEAVE run_t_pendarm's
+	  box and then calls SV_TimerArm, which zeroes run_t_flags -- so a save taken
+	  after a stage finish, in the next stage's box, restored that pending arm and
+	  handed the player a CLEAN stage run at whatever speed the save carried, as
+	  often as they liked: load, step out, run.  The legitimate handover is
+	  reached by CROSSING the finish, not by being placed in the next box, and the
+	  placement is the only thing this restore adds.
+
+	  Not the speed, and not the flags: the restored TF_SEGMENT|TF_PRACTICE is the
+	  honest class for a stitched attempt and SV_TimerArm clearing it is what every
+	  arm does.  The pending arm is the part the file cannot be allowed to decide,
+	  and dropping it costs nothing -- leaving the box starts no run, and walking
+	  back through the stage's start arms it the ordinary way.
+	*/
+	e.run_t_pendarm  = -1;
 	e.run_t_cpmax    = cmx;
 
 	/*
