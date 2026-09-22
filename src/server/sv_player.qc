@@ -774,7 +774,20 @@ void(string cmd) SV_ParseClientCommand =
 	// Patch 430: counted before anything can refuse it -- the client draws a load
 	// early only while every sl_ command it sent has been run.
 	if (substring(c, 0, 3) == "sl_")
+	{
 		self.rec_sl_ack = self.rec_sl_ack + 1;
+		// Patch 428: the hold's release always lands.  Everything else is a
+		// player's (a QW spectator runs no ClientConnect or PutClientInServer),
+		// and all but the hold's press pay SV_SaveLocRate's one charge.
+		if (c != "sl_holdoff")
+		{
+			if (self.classname != "player")
+				return;
+			if (c != "sl_hold")
+			if (!SV_SaveLocRate(self))
+				return;
+		}
+	}
 
 	if (c == "noclip")
 	{

@@ -543,6 +543,29 @@ void(entity e, float blk) SV_SaveLocScanFor =
 	rec_sl_owner[blk] = strzone(infokey(e, "guid"));
 };
 
+/*
+  Patch 428: a bucket of SL_TOKRATE sl_ commands, refilled at that rate --
+  ONE CHARGE A COMMAND, from SV_ParseClientCommand (review round 2: charged in
+  SV_SaveLocBegin, 3/4/5/6 paid twice, Step's Begin and Load's).  At 999 saves a
+  burst of sl_save or sl_del in one packet is seconds of disk work in one frame.
+*/
+float(entity e) SV_SaveLocRate =
+{
+	e.rec_sl_tok  = min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE);
+	e.rec_sl_tokt = time;
+	if (e.rec_sl_tok < 1)
+	{
+		if (time - e.rec_sl_toksay > 1)
+		{
+			sprint(e, PRINT_HIGH, "^3save: slow down\n");
+			e.rec_sl_toksay = time;
+		}
+		return FALSE;
+	}
+	e.rec_sl_tok = e.rec_sl_tok - 1;
+	return TRUE;
+};
+
 // Patch 428: the player sweeping block blk with a delete-all, or world.  Any
 // player's: block 0 is shared, so a save by anyone on it mid-sweep would be the
 // next row the sweep deletes.
@@ -567,27 +590,6 @@ float(entity e, float quiet) SV_SaveLocBegin =
 
 	if (!SV_SaveLocAllowed(e, quiet))
 		return FALSE;
-
-	/*
-	  Patch 428 r1: a bucket of SL_TOKRATE commands, refilled at that rate.  At 999
-	  saves a burst of sl_save or sl_del in one packet is seconds of disk work in
-	  one frame; a hand on the keys never gets near it.
-	*/
-	if (!quiet)
-	{
-		e.rec_sl_tok  = min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE);
-		e.rec_sl_tokt = time;
-		if (e.rec_sl_tok < 1)
-		{
-			if (time - e.rec_sl_toksay > 1)
-			{
-				sprint(e, PRINT_HIGH, "^3save: slow down\n");
-				e.rec_sl_toksay = time;
-			}
-			return FALSE;
-		}
-		e.rec_sl_tok = e.rec_sl_tok - 1;
-	}
 
 	// Patch 428: nothing joins or moves the list while a delete-all sweeps it
 	// from the end -- a save taken now would be the next row it deletes.
@@ -1545,6 +1547,8 @@ void(float blk) SV_SaveLocScanBlk =
 	cap  = SL_Cap(blk);
 	n    = 0;
 	rec_sl_ns[blk] = 1;
+	rec_sl_nb[blk] = 0;             // Patch 428 r2: an early return below must not
+	rec_sl_scanlob[blk] = 0;        // leave the old rows fresh for a new owner
 
 	/*
 	  PATCH 333 -- THE GATE MOVED INTO THE CALLERS, and became a question about
@@ -1716,6 +1720,22 @@ void(entity e) SV_SaveLocSync =
 	}
 
 	blk = SL_Blk(e);
+	/*
+	  Patch 428 r2: SAVES OFF FOR THIS PLAYER (lobby_nosaveloc, no guid): nothing
+	  scanned and nothing published.  The root there is the SHARED folder, and a
+	  block filled from it stayed fresh for its guid after the operator turned
+	  saves back on -- every sl_ command then spelled that player's own folder
+	  with the shared list's folder numbers.
+	*/
+	if (!SV_SaveLocAllowed(e, TRUE))
+	{
+		e.rec_sl_count = 0;
+		e.rec_sl_index = 0;
+		e.rec_sl_savetick = 0;
+		e.rec_sl_curorg = '0 0 0';
+		e.rec_sl_curang = '0 0 0';
+		return;
+	}
 	if (!SL_Fresh(e, blk))
 	{
 		SV_SaveRootFor(e);
@@ -1812,6 +1832,48 @@ float(float base, float cnt) SV_SaveFreeID =
 };
 
 /*
+  Patch 428: IN A LOBBY ONLY THE NEWEST SL_RECKEEP SAVES KEEP THEIR RUN.
+  Every save of a streaming run queues a copy of the stream so far
+  (SV_RecSnapshot): 999 are ~1.4 GB of one minute's run on the shared disk, and
+  a queue that size is one SV_RecCopyFlush stall.  The save SL_RECKEEP back
+  keeps its place and loses its run: the copy goes, and state.txt is rewritten
+  as a position with an idle timer, so a load is a teleport that ends the run.
+  Review round 2: round 1 only removed the copy, and a cold load of that save
+  then resumed its clock with the recording dropped -- a segmented finish
+  whose evidence the player had chosen to lose.  Block 0 is a player's own
+  machine and always had 999 whole saves.
+*/
+void(float row) SV_SaveDemote =
+{
+	local filestream f;
+	local float id;
+	local vector o, v;
+
+	id = rec_sl_id[row];
+	SV_RecCopyDrop(SL_RecPath(id));
+	fremove(SL_RecPath(id));
+
+	f = fopen(SL_StatePath(id), FILE_WRITE);
+	if (f < 0)
+		return;
+	o = rec_sl_org[row];
+	v = rec_sl_vel[row];
+	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
+	fputs(f, sprintf("map %s\n", mapname));
+	fputs(f, sprintf("seq %d\n", rec_sl_seq[row]));
+	fputs(f, sprintf("origin %.4f %.4f %.4f\n", o_x, o_y, o_z));
+	fputs(f, sprintf("velocity %.4f %.4f %.4f\n", v_x, v_y, v_z));
+	fputs(f, sprintf("angles %.4f %.4f\n", rec_sl_pit[row], rec_sl_yaw[row]));
+	fputs(f, sprintf("duck %d\n", rec_sl_duck[row] ? 1 : 0));
+	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
+	fclose(f);
+
+	rec_sl_tick[row] = 0;
+	rec_sl_seg [row] = 0;
+	rec_sl_cps [row] = 0;
+};
+
+/*
   Create.  Appended, and the new one becomes current -- so `1` then `2` with
   the menu closed is always "save here, put me back here", which is the whole
   point of the two-key form.
@@ -1876,20 +1938,9 @@ void(entity e) SV_SaveLocCreate =
 	rec_sl_seq[row] = seq;
 	rec_sl_nb[blk] = cnt + 1;
 
-	/*
-	  Patch 428 r1: IN A LOBBY ONLY THE NEWEST SL_RECKEEP KEEP THEIR RECORDING.
-	  Every save of a streaming run queues a copy of the stream so far
-	  (SV_RecSnapshot), so 999 saves are ~1.4 GB of one minute's run on the shared
-	  disk, and a pending queue that size is one SV_RecCopyFlush stall.  The row
-	  SL_RECKEEP back loses its copy (and a queued one); loading it later is the
-	  documented "no prefix" path -- the run goes on unrecorded.  Block 0 is a
-	  player's own machine and always had 999.
-	*/
+	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run.
 	if (blk > 0 && cnt >= SL_RECKEEP)
-	{
-		SV_RecCopyDrop(SL_RecPath(rec_sl_id[base + cnt - SL_RECKEEP]));
-		fremove(SL_RecPath(rec_sl_id[base + cnt - SL_RECKEEP]));
-	}
+		SV_SaveDemote(base + cnt - SL_RECKEEP);
 
 	e.rec_sl_index = cnt + 1;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
@@ -1968,6 +2019,9 @@ void(entity e, float n) SV_SaveLocLoad =
 {
 	local float r, id, blk, base, cnt;
 	local filestream f;
+	local string k;
+	local float kn, fseq, fticks;
+	local vector forg;
 
 	/*
 	  PATCH 333 -- load goes through the same gate as create: in a lobby the row
@@ -2006,6 +2060,10 @@ void(entity e, float n) SV_SaveLocLoad =
 	  is this fopen, and it ran after SV_SaveLocPlace: a teleport that marked
 	  nothing -- reachable with two connections on one guid, one deleting the
 	  files under the other's list.
+	  Round 2: and the file must still BE the row.  The placement is the row, the
+	  run state is the file; the other connection saving into this folder number
+	  paired one save's position with another's clock.  Refused, not rescanned: a
+	  rescan on every refusal would be a stall a player can order at 20/s.
 	*/
 	f = fopen(SL_StatePath(id), FILE_READ);
 	if (f < 0)
@@ -2013,7 +2071,25 @@ void(entity e, float n) SV_SaveLocLoad =
 		sprint(e, PRINT_HIGH, "^3save: the state file could not be read\n");
 		return;
 	}
+	fseq = -1;
+	fticks = 0;
+	forg = '0 0 0';
+	while ((k = fgets(f)) != "")
+	{
+		kn = tokenize(k);
+		if (kn < 2)
+			continue;
+		k = argv(0);
+		if (k == "seq")    { fseq = stof(argv(1)); continue; }
+		if (k == "ticks")  { fticks = stof(argv(1)); continue; }
+		if (k == "origin") { if (kn >= 4) forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
+	}
 	fclose(f);
+	if (fseq != rec_sl_seq[r] || fticks != rec_sl_tick[r] || vlen(forg - rec_sl_org[r]) > 0.01)
+	{
+		sprint(e, PRINT_HIGH, "^3save: that save changed on disk -- rejoin or change map to reread the list\n");
+		return;
+	}
 
 	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
 	SV_SaveLocPlace(e, r);
@@ -2220,12 +2296,25 @@ void(entity e, float down) SV_SaveLocHold =
 	}
 	if (SL_Sweeper(SL_Blk(e)))          // Patch 428: its row is about to go
 		return;
+	if (!SV_SaveLocAllowed(e, TRUE))
+		return;
 
 	if (rec_sl_nb[SL_Blk(e)] <= 0)
 	{
 		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
 	}
+
+	/*
+	  Patch 428 r2: ONLY WHERE A LOAD PUT YOU.  `2` sends sl_load then sl_hold, and
+	  a hold re-places its player at the row every tick it drifts -- so a load
+	  refused (the bucket, a missing or changed state file, a resume) became a
+	  teleport with no state applied, and a bare `cmd sl_hold` always was one.
+	*/
+	if (e.rec_sl_index < 1 || e.rec_sl_index > rec_sl_nb[SL_Blk(e)])
+		return;
+	if (vlen(e.origin - rec_sl_org[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1]) > 1)
+		return;
 
 	e.rec_sl_hold    = TRUE;
 	e.rec_sl_holdrow = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
@@ -3319,25 +3408,39 @@ void(entity e) SV_SaveLocDeleteAllStep =
 };
 
 // Patch 428: StartFrame.  ONE batch a server frame, whoever is sweeping --
-// two sweeps at once would each cost the frame SL_DELBATCH (review round 1).
+// two sweeps at once would each cost the frame SL_DELBATCH (review round 1) --
+// and the sweeps take turns in entnum order after the last one served (round 2:
+// lowest-first let low slots hold a higher slot's list refused).
+float sl_sweeplast;
+
 void() SV_SaveLocFrame =
 {
-	local entity p;
+	local entity p, first, next;
 
 	SV_SaveLocAlloc();
+	first = next = world;
 	p = world;
 	while ((p = find(p, classname, "player")))
 	{
 		if (!p.rec_sl_delall)
 			continue;
 		if (clienttype(p) != CLIENTTYPE_REAL && clienttype(p) != CLIENTTYPE_BOT)
-			p.rec_sl_delall = 0;        // left mid-sweep: a departed edict keeps its classname
-		else
 		{
-			SV_SaveLocDeleteAllStep(p);
-			return;
+			p.rec_sl_delall = 0;        // left mid-sweep: a departed edict keeps its classname
+			continue;
 		}
+		if (!first)
+			first = p;
+		if (!next)
+		if (num_for_edict(p) > sl_sweeplast)
+			next = p;
 	}
+	if (!next)
+		next = first;
+	if (!next)
+		return;
+	sl_sweeplast = num_for_edict(next);
+	SV_SaveLocDeleteAllStep(next);
 };
 
 /*
