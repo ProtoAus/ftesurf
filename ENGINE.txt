@@ -15,9 +15,12 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
 tag      patch-266
-patch    428
+patch    429
 qcbuild  88
 date     2026-09-22
+
+# PATCH 429 (mod-side): the watched player sees who is watching -- *specby (watchers'
+# entnums) and a "Spec:" box, hud_specby.  cfg/test/p429*.cfg.
 
 # PATCH 428 (mod-side): 999 saves a player in a lobby -- the save columns are memalloc'd,
 # delete-all sweeps a batch a frame, and ClientConnect clears the slot's block.

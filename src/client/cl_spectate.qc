@@ -60,6 +60,9 @@ void() Spec_RegisterCvars =
 	registercommand("spec_trace");
 	registercvar("spec_dist", "110", CVAR_ARCHIVE);     // third person, units
 	registercvar("spec_notrace", "0");                  // harness control: no pull-in
+	registercvar("hud_specby",   "1",    CVAR_ARCHIVE); // Patch 429: who is watching you
+	registercvar("hud_specby_x", "0.99", CVAR_ARCHIVE);
+	registercvar("hud_specby_y", "0.18", CVAR_ARCHIVE);
 };
 
 void(string s) Spec_Flash =
@@ -676,6 +679,74 @@ float(float evtype, float scanx, float chary, float devid) Spec_InputEvent =
 };
 
 // The banner, and the countdown's digit.  From the HUD pass, after the timer.
+/*
+  Patch 429: the players watching YOU, from the server's `*specby` on your own
+  slot (watchers' entnums, Pose_SpecBy).  Right-anchored under the map info.
+  Not while you watch someone or a replay -- the HUD is theirs then.
+*/
+void(vector scr) Spec_DrawWatchers =
+{
+	local string s, nm;
+	local float i, j, n, sz, lh, bw, tw, slot;
+	local vector p, bp;
+
+	if (!cvar("hud_specby") || spc_stat != 0 || rec_wt_on)
+		return;
+	s = getplayerkeyvalue(player_localnum, "*specby");
+	if (s == "")
+		return;
+
+	Font_Set(ui_font_ui);
+	sz = Font_Px(8 * ui_cv_scale);
+	lh = sz * 1.3;
+	p  = [scr_x * cvar("hud_specby_x"), scr_y * cvar("hud_specby_y"), 0];
+	bp = p;
+
+	// The box first, so the text lands on it: measure, then draw.
+	bw = stringwidth("Spec:", TRUE, [sz, sz]);
+	n = 0;
+	for (i = 0; i < strlen(s); i = j + 1)
+	{
+		j = strstrofs(s, " ", i);
+		if (j < 0)
+			j = strlen(s);
+		nm = getplayerkeyvalue(stof(substring(s, i, j - i)) - 1, "name");
+		if (nm == "")
+			continue;
+		tw = stringwidth(nm, TRUE, [sz, sz]);
+		if (tw > bw)
+			bw = tw;
+		n = n + 1;
+	}
+	if (n == 0)
+	{
+		Font_Reset();
+		return;
+	}
+	drawfill([p_x - bw - sz * 0.5, p_y - sz * 0.25, 0], [bw + sz, lh * (n + 1) + sz * 0.2, 0],
+	         '0 0 0', 0.45, 0);
+
+	HUD_TextR(p, "Spec:", sz, '0.45 0.85 1', 0.95);
+	p_y = p_y + lh;
+	for (i = 0; i < strlen(s); i = j + 1)
+	{
+		j = strstrofs(s, " ", i);
+		if (j < 0)
+			j = strlen(s);
+		slot = stof(substring(s, i, j - i)) - 1;
+		nm = getplayerkeyvalue(slot, "name");
+		if (nm == "")
+			continue;
+		if (strstrofs(nm, "^", 0) < 0)
+			nm = strcat("^", Chat_ColourOf(slot), nm, "^7");
+		HUD_TextR(p, nm, sz, '1 1 1', 0.95);
+		p_y = p_y + lh;
+	}
+	Font_Reset();
+
+	HUD_Rect("specby", [bp_x - bw, bp_y, 0], [bw, p_y - bp_y, 0], bp);
+};
+
 void(vector scr) Spec_Draw =
 {
 	local vector p;

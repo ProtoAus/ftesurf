@@ -1637,6 +1637,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Timer_Draw(scr);
 		Timer_DrawResumeOffer(scr);   // Multi-Session; draws whatever hud_timer says
 		Spec_Draw(scr);               // Patch 385: the banner and the countdown
+		Spec_DrawWatchers(scr);       // Patch 429: who is watching you
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);

@@ -125,7 +125,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 20                // 19 rows since Patch 390's mouse; one spare
+#define HE_MAX 24                // 20 rows since Patch 429's specby; four spare
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -325,6 +325,9 @@ void() HE_BuildTable =
 	HE_Hide();
 	HE_Add("mapinfo", "Map info",   "hud_mapinfo_x", "hud_mapinfo_y", "hud_mapinfo",  0, HEA_RT,   96,  56);
 	HE_Text("hud_mapinfo_size",  "12 16 20 24",  8);     // UI; 16 today
+	HE_Hide();
+	// Patch 429: its switch is a row of the Spectate pane.
+	HE_Add("specby",  "Spectators", "hud_specby_x",  "hud_specby_y",  "hud_specby",   0, HEA_RT,   60,  32);
 	HE_Hide();
 
 	/*
@@ -587,6 +590,8 @@ string(string id, float row) HE_OptDef =
 	{
 		if (row == 0) return "spec_dist|Distance|c|70 110 160 240|70;110;160;240"
 		                     "|How far the third-person camera sits from the player you watch. Walls pull it in.";
+		if (row == 1) return "hud_specby|Who's watching|t||"
+		                     "|List the players spectating you, under the map info.";
 		return "";
 	}
 
@@ -1774,6 +1779,7 @@ void(float r) HE_Default =
 	if (id == "gfx")     localcmd("seta hud_gfx_x 0.018\nseta hud_gfx_y 0.10\n");
 	if (id == "vote")    localcmd("seta hud_vote_x 0.018\nseta hud_vote_y 0.30\n");
 	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.99\nseta hud_mapinfo_y 0.02\n");
+	if (id == "specby")  localcmd("seta hud_specby_x 0.99\nseta hud_specby_y 0.18\n");
 
 	/*
 	  BUILD 65.  boarding's pair is the -1 SENTINEL and not a coordinate, exactly as

@@ -177,6 +177,7 @@ void() StartFrame =
 	// lobby off has to put player collision back the way it was.
 	Lobby_Frame();
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
+	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
 	SV_SaveLocFrame();              // Patch 428: delete-all sweeps
 

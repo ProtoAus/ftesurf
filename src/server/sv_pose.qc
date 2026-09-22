@@ -436,6 +436,46 @@ void() Pose_Frame =
 	pb_capticks = c;
 };
 
+/*
+  Patch 429: who is watching each player, as the watchers' entnums on the
+  watched player's `*specby` (star keys reach every client; the HUD draws the
+  names).  pb_watch only -- a countdown has none yet and pose_watch is a
+  developer's.  Compared against the live key, so a recycled slot cannot keep a
+  stale one.  4 Hz: it changes when someone starts or stops watching.
+*/
+float pb_specby_next;
+
+void() Pose_SpecBy =
+{
+	local entity p, w;
+	local string s;
+
+	if (time < pb_specby_next)
+		return;
+	pb_specby_next = time + 0.25;
+
+	p = find(world, classname, "player");
+	while (p)
+	{
+		s = "";
+		if (lobby_on && lobby_avatars && p.pb_specn > 0)
+		{
+			w = find(world, classname, "player");
+			while (w)
+			{
+				if (w.pb_watch == p && w != p)
+				if (clienttype(w) == CLIENTTYPE_REAL || clienttype(w) == CLIENTTYPE_BOT)
+					s = (s == "") ? ftos(num_for_edict(w)) : strcat(s, " ", ftos(num_for_edict(w)));
+				w = find(w, classname, "player");
+			}
+		}
+		if (clienttype(p) == CLIENTTYPE_REAL || clienttype(p) == CLIENTTYPE_BOT)
+		if (strcmp(s, infokey(p, "*specby")))
+			forceinfokey(p, "*specby", s);
+		p = find(p, classname, "player");
+	}
+};
+
 // Client commands: `pose_stats [reset]`, and (developer) `pose_watch <n>`:
 // n = entnum of the player to receive SPEC for, -1 the first other player, 0 off.
 float(entity e, string c) Pose_Command =
