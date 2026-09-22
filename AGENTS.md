@@ -1117,5 +1117,13 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `+showscores` and pinned by MOUSE2 — which is also `+jump`, so jumping while
   peeking pinned it by accident and the release did not clear the pin. When a
   state machine grows a second entry, walk every exit.
+- WORK SPREAD PER PACKET IS NOT SPREAD. SV_ReadPackets drains the socket in one
+  loop, so a batch in PlayerPostThink that costs about a packet interval runs
+  back to back until done -- Patch 428's first delete-all sweep stalled the
+  server as long as the one-call version, with no `took over a second` line.
+  Spread server work from StartFrame, and measure it by a command answered
+  mid-way, not by that warning.
+- lobby.cfg sets `rcon_password ""`: a test server that execs it and needs rcon
+  sets the password AFTER the exec (a `+set` loses; the log says `Bad rcon`).
 - Build and verify (headless run + logs/screenshots, or Pi journal) before
   declaring any task complete.

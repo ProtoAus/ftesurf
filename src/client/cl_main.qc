@@ -1836,7 +1836,7 @@ float(string cmd) CSQC_ConsoleCommand =
 
 		// Patch 391: the load gate as this client sees it.
 		print(sprintf("saveloc: locked %g refkey %g\n", SaveLoc_RunLocked(), rec_sl_refkey));
-		localcmd("cmd sl_list\n");
+		localcmd(sprintf("cmd sl_list %g\n", stof(argv(1))));     // Patch 428: from row n
 		return TRUE;
 	}
 

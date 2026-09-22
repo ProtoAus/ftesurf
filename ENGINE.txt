@@ -15,9 +15,13 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
 tag      patch-266
-patch    427
+patch    428
 qcbuild  88
 date     2026-09-22
+
+# PATCH 428 (mod-side): 999 saves a player in a lobby -- the save columns are memalloc'd,
+# delete-all sweeps a batch a frame, and ClientConnect clears the slot's block.
+# cfg/test/p428*.cfg.
 
 # PATCH 427: a sound name with a space no longer stalls the join -- the client quotes
 # `download`, and the server rejoins an old client's split name.  Client + server;

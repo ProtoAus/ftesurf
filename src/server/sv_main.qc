@@ -178,6 +178,7 @@ void() StartFrame =
 	Lobby_Frame();
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
+	SV_SaveLocFrame();              // Patch 428: delete-all sweeps
 
 	/*
 	  AFTER Lobby_Frame, and it has to be a separate call rather than the last
