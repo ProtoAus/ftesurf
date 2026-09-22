@@ -1001,6 +1001,15 @@ string sb_ln_hint[SB_LNMAX];          // strzoned; an online one's cache folder
 float  sb_ln_rep[SB_LNMAX];
 float  sb_ln_leg[SB_LNMAX];
 float  sb_ln_st[SB_LNMAX];
+/*
+  Patch 437: a line's leg, added to the row's.  The board passes 0 for every LOCAL
+  row (a local board has no leg column to derive one from), so a stage window is
+  unreachable through the board alone -- and this is the harness handle that
+  reaches it (`+set sb_ln_lineleg 1`).  It exists because cfg/test/p437win.cfg
+  needs to ask the builder for a stage of an old file, not because a player can:
+  nothing binds it and no menu writes it.
+*/
+float  sb_ln_llegread;           // Patch 437: the handle, mirrored per frame below
 float  sb_ln_fetch;                   // the line the replay fetch is for, + 1
 float  rec_sb_lnpick;                 // a row's box clicked this frame, row + 1
 
@@ -1105,6 +1114,11 @@ void() Scores_LinesFrame =
 {
 	local float i, k;
 
+	// Patch 437: the harness handle, mirrored per frame.  Read here rather than at
+	// the call site because a line job is queued from this frame and the value has
+	// to be the one asked for, not one a previous frame latched.
+	sb_ln_llegread = cvar("sb_ln_lineleg");
+
 	if (wt_lj_phase)
 	{
 		k = Watch_LineJobStep();
@@ -1120,7 +1134,8 @@ void() Scores_LinesFrame =
 		for (i = 0; i < SB_LNMAX; i = i + 1)
 			if (sb_ln_st[i] == SBL_QUEUE)
 			{
-				sb_ln_st[i] = Watch_LineJobStart(i + 1, sb_ln_path[i], sb_ln_leg[i])
+				sb_ln_st[i] = Watch_LineJobStart(i + 1, sb_ln_path[i],
+			                                 sb_ln_leg[i] + sb_ln_llegread)
 				              ? SBL_BUILD : SBL_FAIL;
 				break;
 			}
@@ -3092,6 +3107,8 @@ void() Scores_RegisterCvars =
 	  worse than not trying.
 	*/
 	registercommand("scores");
+	// Patch 437: the harness handle, mirrored per frame below.
+	registercvar("sb_ln_lineleg", "0");
 
 	rec_sb_legbuilt = -1;
 	rec_sb_legzoned = FALSE;

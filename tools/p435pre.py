@@ -94,7 +94,7 @@ def sections(path):
         lines = fh.read().splitlines()
     out, cur = {}, None
     for line in lines:
-        m = re.search(r"(?:----|====) ([A-Z][A-Z0-9]{0,3}) ", line)
+        m = re.search(r"(?:----|====) ([A-Za-z][A-Za-z0-9]{0,3}) ", line)
         if m:
             cur = m.group(1)
             out.setdefault(cur, [])

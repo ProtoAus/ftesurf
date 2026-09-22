@@ -1571,6 +1571,10 @@ float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 vector wt_lj_po, wt_lj_pv;
 
+// Patch 437: Watch_LineJobWindow asks the replay's own window finder when pass
+// one found no `stagepost`, so the two spellings cannot drift again.
+float(float seg) Watch_WindowFind;
+
 void() Watch_LineJobStop =
 {
 	if (wt_lj_phase)
@@ -1579,8 +1583,20 @@ void() Watch_LineJobStop =
 };
 
 // The window pass two keeps, and on into pass two.  FALSE: no window for the stage.
+//
+// Patch 437: and the FALLBACK IS THE SAME SPELLING THE REPLAY USES, which it was
+// not.  This one took the LAST `stage seg` record where Watch_WindowFind takes the
+// one BEFORE the first `stage seg+1`.  The two agree whenever the file carries a
+// `stagepost` for the stage, and a board row's run always does -- so the difference
+// was reachable only through an old file opened another way, where the board drew
+// a line to the run's last stage record and the replay drew one to the next
+// boundary.  Watch_WindowFind is the authority: it is the one the bar, the seeks
+// and playback are cut to, so a board line that disagrees with the replay it is
+// standing in for is the wrong one of the two.
 float() Watch_LineJobWindow =
 {
+	local float a, b;
+
 	wt_lj_ta = 0;                   // a whole file from its clock's start: no pad
 	wt_lj_tb = 99999999;
 	if (wt_lj_tick <= 0)
@@ -1592,8 +1608,28 @@ float() Watch_LineJobWindow =
 	{
 		if (wt_lj_pa < 0)
 		{
-			wt_lj_pa = (wt_lj_leg > 1) ? wt_lj_sa : 0;
-			wt_lj_pb = (wt_lj_sb >= 0) ? wt_lj_sb : wt_lj_end;
+			/*
+			  Pass one read the `stagepost` pair into pa/pb.  Without it, ask
+			  Watch_WindowFind -- it scans the SAME `stage` records pass one saw,
+			  out of rec_wt_ev* (a stale table would be a worse bug than the one
+			  this replaces, so pass one clears it first), and answers in the
+			  rec_wt_wina/winb pair, which is ticks in both spellings.
+			*/
+			a = (Watch_WindowFind(wt_lj_leg - 1)) ? rec_wt_wina : -1;
+			b = rec_wt_winb;
+			if (a >= 0 && b > a)
+			{
+				wt_lj_pa = a;
+				wt_lj_pb = b;
+			}
+			else
+			{
+				// Watch_WindowFind printed its own "no window" line, which says
+				// `replay:` and names the stage; this one says whose board row it
+				// was, and a player clicking a row needs both.
+				wt_lj_pa = (wt_lj_leg > 1) ? wt_lj_sa : 0;
+				wt_lj_pb = (wt_lj_sb >= 0) ? wt_lj_sb : wt_lj_end;
+			}
 		}
 		if (wt_lj_pa < 0 || wt_lj_pb <= wt_lj_pa)
 		{
@@ -1624,6 +1660,11 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_seg   = 0;
 	wt_lj_wseg  = -1;
 	wt_lj_pa = wt_lj_pb = wt_lj_sa = wt_lj_sb = wt_lj_end = -1;
+	// Patch 437: Watch_WindowFind's fallback reads rec_wt_ev*, and a line job
+	// opens ANOTHER file -- so a stale event table from a replay opened earlier
+	// would answer for this one.  Pass one below fills it again.
+	rec_wt_evn = 0;
+	rec_wt_endticks = 0;
 	Line_Begin(slot);
 	return TRUE;
 };
@@ -1702,6 +1743,11 @@ float() Watch_LineJobStep =
 			{
 				k = stof(argv(1));
 				wt_lj_end = k;
+				// Patch 437: `end <ticks> <samples> <pad> <cps>` is the trailer, and
+				// rec_wt_endticks is what Watch_WindowFind's seg-0 fallback ends a
+				// window at.  This job reads ANOTHER file, so the replay's own
+				// number would be the wrong one.
+				rec_wt_endticks = k;
 			}
 			else if (argv(0) == "stage")
 			if (n >= 3)
@@ -1712,6 +1758,20 @@ float() Watch_LineJobStep =
 				if (stof(argv(1)) == seg + 1)
 				if (wt_lj_sb < 0)
 					wt_lj_sb = k;
+				/*
+				  Patch 437: AND THE EVENT TABLE Watch_WindowFind's fallback reads,
+				  filled here because pass one is the only place this job sees the
+				  `stage` records.  Every stage event, not just the asked-for pair:
+				  the finder walks seg and seg+1 itself, and a table holding only
+				  this leg's two would answer "no window" for any other.
+				*/
+				if (rec_wt_evn < WT_EVMAX)
+				{
+					rec_wt_evkind[rec_wt_evn] = SPK_STAGE;
+					rec_wt_evseg [rec_wt_evn] = stof(argv(1));
+					rec_wt_evtick[rec_wt_evn] = k;
+					rec_wt_evn = rec_wt_evn + 1;
+				}
 			}
 			if (k >= 0)
 			if (wt_lj_wseg >= 0)
