@@ -319,63 +319,12 @@ float  rec_wt_bline;                  // ...and the line it started on
 float  rec_wt_wina, rec_wt_winb;      // the window in ticks, and how it was found
 string rec_wt_winhow;
 
-/*
-===========================================================================
-  THE PATH, AND WHY IT IS A CURVE AND NOT A POLYLINE.
-
-  The first cut kept every Nth sample with N chosen from the sample count, drew
-  a two-vertex R_BeginPolygon between each pair, and called the result a line.
-  It read as a chain of separate fat blobs, and there were two independent
-  reasons for that:
-
-  1. THE CHORDS WERE NINETY UNITS LONG.  1024 points over a 5,982-sample run is
-     a stride of six, and at 1000 u/s six ticks is ninety units.  A polyline
-     with a corner every ninety units is a visibly faceted line, and the comment
-     above it claimed a decimation "by distance and by angle change" that the
-     code did not actually do.
-
-  2. THE WIDTH JUMPED AT EVERY JOINT.  The ribbon width was computed once per
-     SEGMENT from that segment's midpoint distance, so two adjacent quads had
-     two different widths and did not share an edge -- a staircase of mismatched
-     parallelograms, which is exactly what a slug looks like.
-
-  So it is now built in two steps at load:
-
-    CONTROL POINTS, chosen by distance AND by angle -- a point wherever the path
-    has turned more than about four degrees, or gone WT_CTL_MAXD units without
-    turning.  That is the rule the old comment promised, and it is the right one
-    here: a surf run is long straight arcs joined by tight transitions, so a
-    fixed stride spends its budget on the straights and starves the corners.
-
-    THE CURVE, a Catmull-Rom spline THROUGH those controls.  Catmull-Rom passes
-    exactly through every control point rather than near it, which is the whole
-    reason to use it here: the drawn line goes through the recorded positions and
-    is smooth between them, instead of cutting across them like a Bezier would.
-
-  The spline is what makes the budget work.  The same 2048 drawn points that
-  bought a faceted 90-unit polyline buy a C1-continuous curve at 45 units, and
-  the corners are gone because the curve has none.
-===========================================================================
-*/
-#define WT_CTLMAX   1024        // control points: the recorded turns
-#define WT_PATHMAX  2048        // drawn curve points: what the strip is made of
-
-// A turn worth a control point.  cos(4.4 degrees); below this the path is
-// straight enough that the spline reproduces it from the neighbours anyway.
-#define WT_CTL_ANG  0.997
-// ...and one every this far regardless, so a dead-straight kilometre still has
-// enough controls for the width taper to follow the distance.
-#define WT_CTL_MAXD 192
-
-vector rec_wt_cpos[WT_CTLMAX];
-float  rec_wt_cspd[WT_CTLMAX];
-float  rec_wt_ctick[WT_CTLMAX];
-float  rec_wt_cn;
-
-vector rec_wt_ppos[WT_PATHMAX];
-float  rec_wt_pspd[WT_PATHMAX];
-float  rec_wt_ptick[WT_PATHMAX];
-float  rec_wt_pn;
+// Patch 432: the path is slot 0 of the run lines (cl_lines.qc), every sample of
+// the built range.  It replaced 1024 control points and a 2048-point spline, which
+// on a long run chose a control every 34 samples (~0.5 s) and drew a vague line.
+float  rec_wt_snlast;            // Watch_ScanPair's last verdict: 1 record, 2 kinematic
+float  rec_wt_cnt;               // samples the last Watch_ScanRange walked
+float  rec_wt_bench;             // `replay bench <n>`: the next draw runs n times
 
 /*
   What the screen-space drawer did on the last rendered frame, for `replay
@@ -399,14 +348,6 @@ vector rec_wt_p2axu;             // ...and 64 units UP
 vector rec_wt_p2min;             // screen bbox of every quad actually emitted
 vector rec_wt_p2max;
 float  rec_wt_p2wild;            // segments dropped for absurd screen coordinates
-
-/*
-  How far outside the viewport a projected vertex may be before its segment is
-  thrown away.  Four screens' worth at 1080p, which is comfortably more than any
-  segment that has a visible part needs and far less than the six figures a
-  near-plane stub produces.  See the essay at the test itself.
-*/
-#define WT_P2GUARD 8192
 
 /*
 ===========================================================================
@@ -634,7 +575,7 @@ void() Watch_Free =
 	rec_wt_rec  = 0;
 	rec_wt_view = 0;
 	rec_wt_recn = rec_wt_viewn = 0;
-	rec_wt_pn   = 0;
+	Line_Clear(0);
 	rec_wt_evn  = 0;
 	rec_wt_on   = FALSE;
 	rec_wt_wincut = FALSE;          // Patch 395: no window survives the file
@@ -765,6 +706,7 @@ void(float t, vector o, vector v, float fl, float key) Watch_ScanPair =
 
 	if (rec_wt_sride)
 		rec_wt_sveto = TRUE;
+	rec_wt_snlast = 0;
 	dt = t - rec_wt_spt;
 	if (dt > 0)
 	{
@@ -783,6 +725,7 @@ void(float t, vector o, vector v, float fl, float key) Watch_ScanPair =
 			else
 				snap = 2;
 		}
+		rec_wt_snlast = snap;
 		if (snap)
 		{
 			if (snap == 1) rec_wt_snrec = rec_wt_snrec + 1;
@@ -1427,9 +1370,7 @@ void() Watch_Scan =
 */
 void(float ra, float rb) Watch_ScanRange =
 {
-	local float i, k, c, cnt, nextp, want, lastc;
-	local float cstride, d, turn;
-	local vector lastdir, step;
+	local float i, k, c;
 	local string s;
 	local vector o;
 	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
@@ -1460,38 +1401,9 @@ void(float ra, float rb) Watch_ScanRange =
 	if (ra <= rec_wt_t0)
 		rec_wt_bline = rec_wt_rec0;
 
-	// The samples it will walk, for the control stride: the whole file's count
-	// when it is the whole file, as before.
-	cnt = rec_wt_nsamp - k * rec_wt_ixstep;
-	for (i = k; i < rec_wt_ixn; i = i + 1)
-		if (rec_wt_ixt[i] > rb)
-		{
-			cnt = (i - k) * rec_wt_ixstep + 1;
-			break;
-		}
-
-	/*
-	  THE PATH IS TOKENIZED IN FULL NOW, and that is a deliberate change of cost.
-
-	  The old stride let this pass skip most lines with a str2chr; a control point
-	  chosen by ANGLE cannot be, because the angle is only knowable from the
-	  position, so every sample has to be read.  That is one extra tokenize per
-	  sample at load -- about six thousand on your run, once -- bought against a
-	  line that no longer has a corner in it every ninety units.
-
-	  The fallback stride survives for the pathological case: if a run turns so
-	  often that it fills WT_CTLMAX, `cstride` starts skipping samples so the tail
-	  of the run still gets controls rather than the line simply stopping.
-	*/
-	cstride = ceil(cnt / (WT_CTLMAX - 2));
-	if (cstride < 1)
-		cstride = 1;
-
-	rec_wt_cn  = 0;
-	c         = 0;                  // sample ordinal, from the range's first
-	lastc     = FALSE;
-	nextp     = 0;
-	lastdir   = '0 0 0';
+	rec_wt_cnt = 0;
+	c = 0;                          // sample ordinal, from the range's first
+	Line_Begin(0);
 
 	/*
 	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
@@ -1525,57 +1437,9 @@ void(float ra, float rb) Watch_ScanRange =
 		fl  = stof(argv(WT_C_FLAGS));
 		key = stof(argv(WT_C_KEYS));
 
-		/*
-		  A CONTROL POINT, by angle or by distance.
-
-		  The first and the last are unconditional -- a spline needs its ends --
-		  and everything between is kept only when it says something the
-		  neighbours do not: the direction has turned by more than WT_CTL_ANG, or
-		  WT_CTL_MAXD units have gone by without a turn.
-
-		  `dir` is the step from the LAST KEPT control, not from the previous
-		  sample, which is what makes this measure the turn of the drawn line
-		  rather than the per-tick jitter of the recorded one.
-		*/
 		o_x = stof(argv(WT_C_ORG + 0));
 		o_y = stof(argv(WT_C_ORG + 1));
 		o_z = stof(argv(WT_C_ORG + 2));
-
-		want = FALSE;
-		if (c == 0)                     want = TRUE;
-		else if (c >= nextp)
-		if (rec_wt_cn > 0)               // c == 0 above guarantees this, but the
-		{                               // array read below must not depend on it
-			step = o - rec_wt_cpos[rec_wt_cn - 1];
-			d    = vlen(step);
-			if (d >= WT_CTL_MAXD)
-				want = TRUE;
-			else if (d > 1)
-			if (lastdir != '0 0 0')
-			{
-				// vector * vector is the dot product, but it needs a float lvalue
-				// to land in -- fteqcc will not infer the type through a compare.
-				turn = normalize(step) * lastdir;
-				if (turn < WT_CTL_ANG)
-					want = TRUE;
-			}
-		}
-
-		if (want)
-		if (rec_wt_cn < WT_CTLMAX)
-		{
-			if (rec_wt_cn > 0)
-			if (o != rec_wt_cpos[rec_wt_cn - 1])
-				lastdir = normalize(o - rec_wt_cpos[rec_wt_cn - 1]);
-
-			rec_wt_cpos[rec_wt_cn]  = o;
-			rec_wt_cspd[rec_wt_cn]  = vlen([stof(argv(WT_C_VEL + 0)),
-			                              stof(argv(WT_C_VEL + 1)), 0]);
-			rec_wt_ctick[rec_wt_cn] = stof(argv(WT_C_T)) / rec_wt_tickrate;
-			rec_wt_cn = rec_wt_cn + 1;
-			nextp = c + cstride;
-		}
-		lastc = want;
 
 		/*
 		  ---- DEAD AIR, and it is a state machine of one bit ----------------
@@ -1627,6 +1491,8 @@ void(float ra, float rb) Watch_ScanRange =
 
 		if (c > 0)
 			Watch_ScanPair(t, o, v, fl, key);
+		// Patch 432: the run line, broken where the pair snapped (a teleport).
+		Line_Add(0, o, spd, t, (c > 0) ? rec_wt_snlast : 0);
 		rec_wt_spt    = t;
 		rec_wt_spo    = o;
 		rec_wt_spv    = v;
@@ -1641,16 +1507,8 @@ void(float ra, float rb) Watch_ScanRange =
 			break;                  // the sample that closes the last interval
 	}
 
-	// The last sample is a control, as the first is: a spline needs its ends.
-	if (c > 0)
-	if (!lastc)
-	if (rec_wt_cn < WT_CTLMAX)
-	{
-		rec_wt_cpos[rec_wt_cn]  = rec_wt_spo;
-		rec_wt_cspd[rec_wt_cn]  = vlen([rec_wt_spv_x, rec_wt_spv_y, 0]);
-		rec_wt_ctick[rec_wt_cn] = rec_wt_spt / rec_wt_tickrate;
-		rec_wt_cn = rec_wt_cn + 1;
-	}
+	Line_End(0);
+	rec_wt_cnt = c;
 
 	/*
 	  A run that ENDS parked still ends parked, and the file's last sample is
@@ -1676,322 +1534,11 @@ void(float ra, float rb) Watch_ScanRange =
 		              "the bar stops marking them\n", rec_wt_idover, WT_IDLEMAX));
 };
 
-/*
-===========================================================================
-  The curve
-
-  Catmull-Rom through the control points, evaluated once at load into the
-  drawn-point table.  Once, and not per frame, for the same reason the segment
-  column is built once: a scrub is a user action but a frame is three
-  milliseconds, and three thousand spline evaluations do not fit in one.
-
-  CATMULL-ROM RATHER THAN A BEZIER OR A B-SPLINE, and the reason is the whole
-  requirement.  It INTERPOLATES: the curve passes exactly through every control
-  point.  A B-spline only approaches them, which on a surf line means the drawn
-  path would be smooth and in the wrong place -- visibly missing the ramp the
-  run was actually on, which is worse than faceted and right.
-
-      p(t) = 0.5 * ( 2*P1
-                   + (P2 - P0) * t
-                   + (2*P0 - 5*P1 + 4*P2 - P3) * t^2
-                   + (3*P1 - P0 - 3*P2 + P3) * t^3 )
-
-  The ends REFLECT the neighbour rather than duplicating the endpoint.
-  Duplication makes the first and last spans flatten out, because the phantom
-  point sits on top of the real one and the tangent there goes to zero;
-  reflection keeps the tangent the interior curve already has.
-===========================================================================
-*/
-vector(vector p0, vector p1, vector p2, vector p3, float t) Watch_Spline =
+// Patch 432: the run line shows the cut; its colours span the stage itself (the
+// lead-in and the pre-start pad left out).
+void() Watch_LineRange =
 {
-	local float t2, t3;
-
-	t2 = t * t;
-	t3 = t2 * t;
-
-	return 0.5 * ((2 * p1)
-	            + (p2 - p0) * t
-	            + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
-	            + (3 * p1 - p0 - 3 * p2 + p3) * t3);
-};
-
-/*
-  What a given step would COST, in drawn points.
-
-  Count only: no spline evaluation and no array writes, because where the points
-  land has no bearing on how many of them there are.  That is what makes the
-  refinement in Watch_BuildCurve affordable -- it asks this question at most
-  three times at load, over at most 1022 spans, against a scan pass that already
-  tokenizes four thousand lines.
-
-  It must stay a mirror of the emit loop's own arithmetic, ceil and both clamps
-  included.  If they drift, the refinement stops being safe and the table can
-  overrun again -- which is the bug it exists to have fixed.
-*/
-float(float step) Watch_CurveCost =
-{
-	local float i, n, sub, len;
-
-	n = 0;
-	for (i = 0; i < rec_wt_cn - 1; i = i + 1)
-	{
-		len = vlen(rec_wt_cpos[i + 1] - rec_wt_cpos[i]);
-		sub = ceil(len / step);
-		if (sub < 1)  sub = 1;
-		if (sub > 16) sub = 16;
-		n = n + sub;
-	}
-
-	return n + 1;                   // + the final control point, appended below
-};
-
-void() Watch_BuildCurve =
-{
-	local float i, j, sub, len, total, step, f;
-	local float spans, budget, full, used, cst, trial, lo, hi;
-	local vector p0, p1, p2, p3;
-
-	rec_wt_pn = 0;
-	if (rec_wt_cn < 2)
-	{
-		// One control point or none: there is no span to subdivide, so the
-		// "curve" is whatever was recorded, copied straight across.
-		for (i = 0; i < rec_wt_cn; i = i + 1)
-		{
-			rec_wt_ppos[i]  = rec_wt_cpos[i];
-			rec_wt_pspd[i]  = rec_wt_cspd[i];
-			rec_wt_ptick[i] = rec_wt_ctick[i];
-		}
-		rec_wt_pn = rec_wt_cn;
-		return;
-	}
-
-	/*
-	  THE STEP IS DERIVED FROM THE PATH'S OWN LENGTH, not fixed.
-
-	  A fixed subdivision count per span would spend the same budget on a
-	  four-unit span as on a two-hundred-unit one, so a run with many short
-	  controls -- a twitchy section, or a bhop -- would exhaust WT_PATHMAX and
-	  simply stop drawing partway through, which looks exactly like a bug.
-	  Measuring the total length first and dividing fills the table once however
-	  long the run is, and the floor stops a short run being chopped into
-	  microsegments that cost draw calls and show nothing.
-
-	  BUILD 43 -- IT DID NOT FILL THE TABLE ONCE.  IT OVERRAN IT, AND THE
-	  OVERRUN ATE THE END OF EVERY LONG RUN.
-
-	  The paragraph above was written as if the budget arithmetic were exact, and
-	  the loop below spends `ceil(len / step)` per span.  Ceil is not free: it
-	  costs up to one whole extra point PER SPAN, so the real spend is not
-	  total/step but
-
-	      sum(ceil(len_i / step))  ==  total/step + (up to one per span)
-	                               ==  (WT_PATHMAX - 2) + rec_wt_cn
-
-	  against a table of WT_PATHMAX.  Any run with more than a couple of controls
-	  overspends, and the tail is what is lost -- silently, because the guard
-	  below used to break only the inner loop.
-
-	  MEASURED, not reasoned about: simulating this exact function over all 57
-	  .rec files on disk, TWELVE truncate.  surf_fiellu/main/0003991_pb.rec --
-	  the file the report came from -- has cn 757 and total 153432, saturates at
-	  pn == 2048, and draws 86.6% of its path.  The rest land between 82.6% and
-	  96.1%, which is why the same build looks fine on most files and stops
-	  "at the last 10%" on some.
-
-	  THE FIX IS TO RESERVE THE ROUNDING, and it is exact rather than generous.
-	  Each span costs at most len_i/step + 1, so reserving one point per span up
-	  front bounds the total at the budget:
-
-	      total/step + spans  ==  (budget - spans) + spans  ==  budget
-
-	  Two points are then still spare -- one for the final control point the loop
-	  never emits, one so the >= guard below can never be the thing that ends the
-	  curve.  A path that reaches the guard now is a bug in this arithmetic, not
-	  a long run.
-	*/
-	total = 0;
-	for (i = 0; i < rec_wt_cn - 1; i = i + 1)
-		total = total + vlen(rec_wt_cpos[i + 1] - rec_wt_cpos[i]);
-
-	spans  = rec_wt_cn - 1;
-	budget = WT_PATHMAX - 2;
-
-	/*
-	  Cannot fire at the current caps -- WT_CTLMAX is 1024, so spans is at most
-	  1022 against a budget of 2046 -- but the divisor must not be allowed to
-	  reach zero on the word of a constant somewhere else in the file.  A step of
-	  `total` gives one point per span, which is the honest answer when there is
-	  no budget left to subdivide with.
-	*/
-	if (spans >= budget)
-		step = total;
-	else
-		step = total / (budget - spans);
-
-	if (step < 12)
-		step = 12;
-
-	/*
-	  ...AND THEN SPEND THE SLACK, because the reservation above is a WORST case
-	  and the worst case is not what happens.
-
-	  Reserving a whole point per span assumes every ceil rounds all the way up;
-	  on real spans it rounds up by half a point on average, so the conservative
-	  step leaves about a fifth of the table unused.  Measured on the twelve
-	  files that used to truncate: surf_fiellu spent 1583 of 2048 at a step of
-	  118.9, where the essay above sets the design intent at roughly 45 units
-	  between drawn points.  Shipping that would have traded a line that stops
-	  early for a line that is faceted everywhere -- the exact fault the spline
-	  was introduced to fix, moved rather than removed.
-
-	  BISECTED, AND NOT SCALED IN PROPORTION, and the difference is not academic.
-	  Cost is a sum of ceils, so it does not fall smoothly as the step shrinks --
-	  it sits flat and then jumps, because a step crossing under a span's length
-	  moves that whole span from one point to two at once.  With 757 controls
-	  most spans are shorter than the safe step, so they all cross within a few
-	  units of each other.  A single proportional guess lands past that cliff and
-	  is rejected whole: measured, it left surf_fiellu and surf_utopia's PB at
-	  exactly the conservative step while helping every other file.  Bisection
-	  between the step that is known to fit and the guess that does not finds the
-	  edge instead of stepping over it.
-
-	  The invariant is that `hi` has ALWAYS been counted and found to fit, so
-	  whatever the loop exits with has been proved rather than assumed.  The emit
-	  loop's own guard stays where it is regardless -- a refinement that has to
-	  be trusted is a refinement that can be wrong.
-
-	  Six passes puts the answer within 2% of the true edge, over at most 1022
-	  spans of one vlen each, once per replay opened.
-	*/
-	hi   = step;                                // counted below, always fits
-	used = Watch_CurveCost(hi);
-
-	for (i = 0; i < 5; i = i + 1)
-	{
-		if (used >= budget)
-			break;
-
-		// Where the budget would land if cost fell smoothly.  It does not, but
-		// it is the right direction and it is one multiply.
-		lo = hi * used / budget;
-		if (lo < 12)
-			lo = 12;
-		if (lo >= hi)
-			break;
-
-		cst = Watch_CurveCost(lo);
-		if (cst <= budget)
-		{
-			// It fits.  Take it and go again from there -- one proportional
-			// step is not enough on a file whose spans are mostly shorter than
-			// the step, where each pass only recovers part of the slack.
-			hi   = lo;
-			used = cst;
-			continue;
-		}
-
-		/*
-		  lo does not fit, so the cliff is between the two.  Find its edge and
-		  stop: past here the sequence has converged and further passes would
-		  bisect an interval smaller than one point's worth of step.
-		*/
-		for (j = 0; j < 5; j = j + 1)
-		{
-			trial = (lo + hi) * 0.5;
-			if (trial >= hi)
-				break;
-			if (Watch_CurveCost(trial) <= budget)
-				hi = trial;
-			else
-				lo = trial;
-		}
-		break;
-	}
-
-	step = hi;
-
-	full = FALSE;
-	for (i = 0; i < rec_wt_cn - 1; i = i + 1)
-	{
-		/*
-		  BUILD 43.  The guard inside the subdivision loop below breaks only
-		  ITSELF -- that is what `break` does in QuakeC as in C -- so before this
-		  test existed the outer loop kept walking every remaining span, entered
-		  the inner loop, re-tripped the guard and emitted nothing, all the way
-		  to the end of the file.  The curve simply stopped mid-run and the last
-		  control point was dropped too, because the append below is conditional
-		  on the same full table.
-		*/
-		if (full)
-			break;
-
-		// Reflected ends; see the essay above.
-		p0 = (i > 0) ? rec_wt_cpos[i - 1]
-		             : (2 * rec_wt_cpos[0] - rec_wt_cpos[1]);
-		p1 = rec_wt_cpos[i];
-		p2 = rec_wt_cpos[i + 1];
-		p3 = (i + 2 < rec_wt_cn) ? rec_wt_cpos[i + 2]
-		                        : (2 * rec_wt_cpos[rec_wt_cn - 1]
-		                           - rec_wt_cpos[rec_wt_cn - 2]);
-
-		len = vlen(p2 - p1);
-		sub = ceil(len / step);
-		if (sub < 1)  sub = 1;
-		if (sub > 16) sub = 16;
-
-		/*
-		  j runs from 0 INCLUSIVE and stops before sub, so each span emits its
-		  own start and the NEXT span emits the shared joint -- one copy of every
-		  point rather than two.  That matters: a duplicated point is a
-		  zero-length segment, and a zero-length segment has no direction for the
-		  strip below to mitre against.
-		*/
-		for (j = 0; j < sub; j = j + 1)
-		{
-			if (rec_wt_pn >= WT_PATHMAX)
-			{
-				full = TRUE;
-				break;
-			}
-
-			f = j / sub;
-			rec_wt_ppos[rec_wt_pn] = Watch_Spline(p0, p1, p2, p3, f);
-
-			// Speed and the run clock are linear along the span.  They drive the
-			// colour and the played/ahead split, and interpolating them the same
-			// way the position is keeps both on the curve instead of stepping at
-			// the joints.
-			rec_wt_pspd[rec_wt_pn]  = rec_wt_cspd[i]
-			                      + (rec_wt_cspd[i + 1] - rec_wt_cspd[i]) * f;
-			rec_wt_ptick[rec_wt_pn] = rec_wt_ctick[i]
-			                      + (rec_wt_ctick[i + 1] - rec_wt_ctick[i]) * f;
-			rec_wt_pn = rec_wt_pn + 1;
-		}
-	}
-
-	// The last control point, which the loop above never emits because every
-	// span stops one short of its end.  The test survives the build-43 fix as a
-	// bounds check and not as a policy: the reservation above leaves two points
-	// spare, so this can no longer be the reason the curve ends short.
-	if (rec_wt_pn < WT_PATHMAX)
-	{
-		rec_wt_ppos[rec_wt_pn]  = rec_wt_cpos[rec_wt_cn - 1];
-		rec_wt_pspd[rec_wt_pn]  = rec_wt_cspd[rec_wt_cn - 1];
-		rec_wt_ptick[rec_wt_pn] = rec_wt_ctick[rec_wt_cn - 1];
-		rec_wt_pn = rec_wt_pn + 1;
-	}
-
-	/*
-	  REPORTED, NOT SILENT, for the reason the board cap is (:1274-1276): a curve
-	  that ends early looks exactly like a run that ended early, and the whole of
-	  build 42's version of this bug was that nothing said so.  After the
-	  reservation above this cannot fire; if it ever does, the arithmetic is
-	  wrong and the number that proves it is right here.
-	*/
-	if (full)
-		print(sprintf("^3replay: path filled the %g-point table at %g controls; "
-		              "the drawn line ends early\n", WT_PATHMAX, rec_wt_cn));
+	Line_Range(0, rec_wt_vt0, rec_wt_vt1, rec_wt_wincut ? rec_wt_wint0 : 0);
 };
 
 /*
@@ -3073,61 +2620,26 @@ void() Watch_Sample =
 };
 
 /*
-  The path, as world-space lines.
-
-  Zone_Line is the primitive the zone markers have used since build 9, and it is
-  called from the same place for the same reason: R_BeginPolygon queues into the
-  scene and the default shader is depth-tested, so a path behind a wall is
-  correctly hidden by the wall.  Drawn before renderscene, never after.
-
-  The part already played is drawn bright and the part ahead dim, so the line
-  reads as a position rather than as decoration.
-*/
-/*
 ===========================================================================
-  THE STRIP, AND WHY IT IS ONE STRIP AND NOT A ROW OF QUADS.
+  The path.  Patch 432: slot 0 of the run lines (cl_lines.qc), every sample of
+  the built range, broken at teleports.
 
-  Zone_Line is a two-vertex R_BeginPolygon, which the driver draws as GL_LINES at
-  whatever width it feels like -- and every modern GL driver clamps that to one
-  pixel.  A one-pixel line at 0.22 alpha over a lit surf map is not visible from
-  the seat, which was half of "the paths are quite thin and faint".
+    hud_watch_path_mode 2   screen space, after renderscene (the default): a
+                            1 px anti-aliased strip that shows through walls.
+    hud_watch_path_mode 1   build 26's world ribbon, queued before renderscene
+                            and depth-tested; mitred, its width a fixed angle
+                            (hud_watch_path_width at 512 u, _scale 0 for world).
 
-  The other half was the fix for it.  The first cut drew a camera-facing quad per
-  segment and took the width from THAT SEGMENT'S midpoint distance -- so two
-  adjacent quads had two different widths, did not share an edge, and did not
-  even share a facing plane.  The result is a staircase of mismatched
-  parallelograms with a notch at every joint, which is what a slug looks like.
-
-  A ribbon has to be a STRIP: every vertex computed once, and both quads that
-  touch it built from the same vertex.  Three things follow, and all three are
-  what stops it looking segmented:
-
-  MITRED SIDES.  The side vector at a vertex is perpendicular to the AVERAGE of
-  the directions coming in and going out, not to either one of them.  That is
-  what makes the outer edge continuous around a bend instead of stepping.
-
-  PER-VERTEX WIDTH.  Distance is measured at the vertex, so the taper is smooth
-  along the ribbon rather than constant-per-segment.  Scaling with distance at
-  all is deliberate and is the opposite choice from Zone_Quad's: a zone box is
-  geometry and reading its true size is the point, while a path is an ANNOTATION
-  and wants the same thickness on screen wherever it is.  hud_watch_path_scale 0
-  turns it off for a constant world width.
-
-  PER-VERTEX COLOUR AND ALPHA.  R_PolygonVertex takes both per vertex, so the
-  speed gradient and the played/ahead split are interpolated across each quad by
-  the rasteriser instead of changing in steps.  The playhead becomes a soft edge
-  that slides along the line rather than a segment that pops.
+  An untextured 2D polygon's shader has no `cull` line and so culls one winding
+  (r_2d.c, gl_shader.c); every 2D polygon here is TWOSIDED, and
+  hud_watch_path_probe 1-5 draws the five primitives that diagnosed it (4, the
+  old winding without the flag, must not draw).  `replay status` prints what
+  the last frame drew.
 ===========================================================================
 */
 
-/*
-  The side offset at one vertex: half the width, perpendicular to both the
-  averaged direction and the line of sight.
-
-  `prev` and `next` are the neighbouring points; either may equal `p` at the
-  ends, and the average then degenerates to the one real direction, which is the
-  correct answer for an endpoint.
-*/
+// The side offset at one vertex: half the width, perpendicular to both the
+// averaged direction and the line of sight.
 vector(vector prev, vector p, vector next, vector eye, float wid) Watch_Side =
 {
 	local vector din, dout, dir, look;
@@ -3152,16 +2664,7 @@ vector(vector prev, vector p, vector next, vector eye, float wid) Watch_Side =
 	return normalize(crossproduct(dir, normalize(look))) * (wid * 0.5);
 };
 
-/*
-  The width at one vertex.
-
-  Scaled so a ribbon at 512 units is exactly hud_watch_path_width wide, which
-  makes it a fixed ANGULAR size -- the line a thousand units ahead reads the same
-  as the one under your feet.  Clamped at both ends: the floor keeps it visible
-  when the camera is almost on top of the path (which it is, constantly -- the
-  camera rides this line), and the ceiling stops a distant stretch becoming a
-  wall across the view.
-*/
+// The ribbon's width at one vertex (a fixed angle, clamped near and far).
 float(vector p, vector eye, float base, float scaled) Watch_Wid =
 {
 	local float w;
@@ -3175,94 +2678,6 @@ float(vector p, vector eye, float base, float scaled) Watch_Wid =
 	return w;
 };
 
-// Blue slow, cyan through green, hot at the top -- the speedometer's own sense
-// of direction, so the two agree at a glance.
-vector(float speed) Watch_SpeedColor =
-{
-	local float sp;
-	sp = speed / 1500;
-	if (sp > 1) sp = 1;
-	if (sp < 0) sp = 0;
-	return '0.25 0.45 1.00' + (sp * '0.60 0.45 -0.85');
-};
-
-/*
-===========================================================================
-  WHICH DRAWER.  Build 43.
-
-  "Make demolines 2d lines, they look so much better then the wavy slug like
-   lines we have now.  I had a 3d world matrix to screenspace ones that looks
-   pretty good as a injectable on momentum mod, can we have something similar
-   that's low effect / low cpu expense if we need to print hundreads of runs at
-   once?"
-
-    0   off
-    1   the world-space ribbon.  Build 26's, unchanged, depth-tested.
-    2   screen-space.  DEFAULT from build 45.
-
-  ---- WHY MODE 2 DREW NOTHING FOR TWO BUILDS ------------------------------
-
-  It was wound backwards, and every quad was backface-culled.
-
-  Build 43 established, correctly and by measurement, that project() was stable
-  and right, that the drawer ran and emitted 900-1800 quads a frame with a
-  screen bbox over the viewport, that a fixed magenta square through the
-  IDENTICAL four calls in the IDENTICAL place in the frame rendered, and that
-  the path's own quads did not.  Every one of those is still true.  The
-  conclusion drawn from them -- "so it is not the primitive, not the call site,
-  not the matrices and not the clip; what is left is that the quads are thin and
-  that there are eighteen hundred of them" -- is where it went wrong, and the
-  error is worth naming because it is not a slip in reasoning.  It is a list of
-  differences that was taken to be complete when it was not.  IDENTICAL CALLS
-  ARE NOT IDENTICAL ARGUMENTS: the probe's four vertices go round the square one
-  way and the path's four go round the quad the other, and nothing about the
-  call sites shows it.  Thin-versus-fat and one-versus-many were the two
-  differences that were easy to see, so they were the two that got listed.
-
-  The mechanism, and it is entirely ordinary once it is stated.  An untextured
-  2D polygon gets shader_draw_fill_trans (pr_csqc.c:1633), whose shader text
-  carries no `cull` line (r_2d.c:328-338), and a shader with no cull line
-  defaults to SHADER_CULL_FRONT (gl_shader.c:8288) rather than to twosided.  So
-  the 2D pass culls, the winding decides which way, and the perpendicular's sign
-  decides the winding.  `side = (-dy, dx)` gives one, `(dy, -dx)` the other; the
-  quad sits symmetrically about the line either way, which is exactly why the
-  sign looks arbitrary and gets picked by coin-flip.
-
-  THE ANSWER WAS ALREADY WRITTEN DOWN IN THIS TREE, in cl_defs.qc's build-40
-  note on the R_BeginPolygon flags: "TWOSIDED matters for any closed shape you
-  can stand inside -- without it the batch is single-sided and back faces
-  disappear."  That note was written about a 3D box and read as being about 3D
-  boxes.  It is about any polygon whose winding you have not checked.
-
-  hud_watch_path_probe 4 and 5 keep the finding falsifiable: 4 is the probe
-  square wound the path's old way and MUST NOT DRAW; 5 is the same square with
-  the cull disabled and must.  `replay status` prints mode, quads, clipped, wild
-  and the first coordinate, so none of the rest has to be rediscovered.
-
-  ONE THING FOUND ON THE WAY AND NOT FIXED, because it is not this bug and not
-  reachable from here: CSQC_PolyFlush's 2D branch ends with
-  `cl_numstrisidx = csqc_poly_origvert` (pr_csqc.c:1619), assigning a VERTEX
-  offset to an INDEX counter where every neighbouring line uses origidx.  It is
-  harmless whenever the two counters happen to agree -- which is every frame
-  whose 2D polygons are the first scene tris of the frame, i.e. all of ours --
-  and it corrupts the index array of a following batch when they do not.  It is
-  an engine bug in a shared tree; logged, not patched.
-
-  ONE THING MODE 2 GIVES UP EVEN WHEN IT WORKS, said plainly because three
-  separate essays in this codebase went out of their way to preserve it: IT
-  DRAWS THROUGH WALLS.  Mode 1 queues into the scene before renderscene and the
-  default shader is depth-tested, so a path behind a wall is correctly hidden by
-  the wall (cl_main.qc's draw-order note, the strip essay below, and
-  cl_zones.qc:28-31).  A screen-space line is drawn after the scene and cannot be
-  occluded by it without a traceline per point, which would cap the whole thing
-  at a few hundred points and foreclose the many-runs case outright.
-
-  BOTH ARE KEPT AND NOTHING IS DELETED, so the two are one cvar apart and an
-  A/B is free.  hud_watch_path stays the master on/off switch so existing
-  configs and binds keep meaning what they meant.
-
-===========================================================================
-*/
 float() Watch_PathMode =
 {
 	local float m;
@@ -3280,44 +2695,25 @@ float() Watch_PathMode =
 
 void() Watch_Path =
 {
-	local float i, wid, ahead, scaled, near;
-	local float a0, a1;
-	local vector eye, c0, c1, s0, s1, p0, p1;
-	local vector pin;
+	local float i, j, k, ib, st, wid, ahead, scaled, a0, a1, brk;
+	local vector eye, c0, c1, s0, s1, p0, p1, pin;
 
 	if (!cvar("hud_watch_path"))
 		return;
-	if (rec_wt_pn < 2)
+	if (!ln_on[0])
 		return;
 
 	if (Watch_PathMode() != 1)
 	{
 		/*
-		  Mode 2 draws in the 2D pass, after renderscene -- but it still wants
-		  ONE projection taken from here, and this is the only place in the frame
-		  that can take it.
-
-		  cs_buildmatricies is lazy: it rebuilds when clearscene or any
-		  setproperty sets its flag, and caches otherwise.  renderscene
-		  temporarily rewrites r_refdef.vrect for renderscale and portals, so a
-		  projection whose FIRST call of the frame happens after renderscene is a
-		  projection against a viewport that may not be the one the scene used.
-		  Taking one throwaway here, at the same point in the frame the ribbon
-		  would have been queued, pins the matrix to the refdef the scene is
-		  about to be drawn with.  One matrix multiply, and it removes a class of
-		  bug that would have shown up only under vid_framebuffer or a portal.
+		  Mode 2 draws after renderscene, but its projection is pinned here:
+		  cs_buildmatricies is lazy and renderscene rewrites r_refdef.vrect (render
+		  scale, portals), so the first project() of the frame must come before it.
+		  The probe 256 u ahead lands mid-screen if the matrix is the scene's;
+		  Watch_Path2D takes it again after, and `replay status` prints both.
 		*/
 		if (Watch_PathMode() == 2)
 		{
-			/*
-			  A FIXED PROBE, not just a pin.  256 units straight ahead of the
-			  camera projects to the centre of the screen if the matrices
-			  describe the view the scene is drawn with.  Watch_Path2D takes the
-			  same probe after renderscene and `replay status` prints both: if
-			  they disagree, something between here and there has moved the view
-			  out from under the projection, and every path coordinate is being
-			  computed against the wrong camera.
-			*/
 			makevectors(getproperty(VF_ANGLES));
 			pin = getproperty(VF_ORIGIN) + v_forward * 256;
 			rec_wt_p2pre = project(pin);
@@ -3325,248 +2721,54 @@ void() Watch_Path =
 		return;
 	}
 
-	/*
-	  The eye the strip faces, and it is the REPLAY camera rather than the local
-	  player -- who is frozen somewhere else entirely.  getproperty(VF_ORIGIN) is
-	  right for both, because Watch_Camera has already written it this frame:
-	  CSQC_UpdateView runs it before Zone_Draw and this, deliberately, and that
-	  ordering is what makes the ribbon face the viewer.
-	*/
-	eye = getproperty(VF_ORIGIN);
-
+	// Mode 1: every st-th point (about 2000 drawn), a ring per quad (a fan), each
+	// vertex computed once and shared by the two quads beside it.
+	eye    = getproperty(VF_ORIGIN);
 	wid    = cvar("hud_watch_path_width");
 	ahead  = cvar("hud_watch_path_ahead");
 	scaled = cvar("hud_watch_path_scale");
-
-	/*
-	  THE SKIP AT THE CAMERA, and it is not cosmetic.
-
-	  The camera rides this line, so the part of it the playhead is on passes
-	  through the eye -- and a camera-facing quad centred on the viewpoint has no
-	  facing plane at all (the look vector is zero-length) and would be drawn as a
-	  smear across the middle of the screen.  Everything inside this radius is
-	  skipped, which also stops the ribbon obscuring the thing you opened the
-	  replay to look at.
-	*/
-	near = 48;
-
-	// Vertex 0 is computed outside the loop and every later vertex is carried
-	// forward from the previous iteration, so each is built exactly once and the
-	// two quads that share it share it exactly.
-	p0 = rec_wt_ppos[0];
-	s0 = Watch_Side(p0, p0, rec_wt_ppos[1], eye,
-	                Watch_Wid(p0, eye, wid, scaled));
-	c0 = Watch_SpeedColor(rec_wt_pspd[0]);
-	a0 = (rec_wt_ptick[0] <= rec_wt_ticks) ? 1.0 : 0.5;
-
-	for (i = 0; i < rec_wt_pn - 1; i = i + 1)
+	Line_ViewFrame();
+	i  = ln_ia[0];
+	ib = ln_ib[0];
+	st = max(1, ceil((ib - i) / 2000));
+	p0 = ln_pos[i];
+	c0 = ln_col[i];
+	a0 = (ln_t[i] <= rec_wt_time) ? 1 : 0.5;
+	s0 = Watch_Side(p0, p0, ln_pos[min(i + st, ib)], eye, Watch_Wid(p0, eye, wid, scaled));
+	while (i < ib)
 	{
-		p1 = rec_wt_ppos[i + 1];
-		s1 = Watch_Side(rec_wt_ppos[i],
-		                p1,
-		                (i + 2 < rec_wt_pn) ? rec_wt_ppos[i + 2] : p1,
-		                eye, Watch_Wid(p1, eye, wid, scaled));
-		c1 = Watch_SpeedColor(rec_wt_pspd[i + 1]);
-
-		/*
-		  0.5 for the part ahead, not the 0.22 the first cut used.  It has to be
-		  dimmer than the part behind -- that is what makes the line read as a
-		  position rather than as decoration -- but it also has to be VISIBLE,
-		  and a quarter alpha over a bright ramp is not.  The contrast is carried
-		  by the past being fully opaque.
-		*/
-		a1 = (rec_wt_ptick[i + 1] <= rec_wt_ticks) ? 1.0 : 0.5;
-
-		if ((!ahead && a1 < 1 && a0 < 1)
-		 || rec_wt_ptick[i + 1] * rec_wt_tickrate < rec_wt_vt0     // Patch 431
-		 || rec_wt_ptick[i] * rec_wt_tickrate > rec_wt_vt1)
+		j = min(i + st, ib);
+		brk = FALSE;
+		for (k = i + 1; k <= j; k = k + 1)
+			if (ln_brk[k])
+				brk = TRUE;
+		p1 = ln_pos[j];
+		s1 = Watch_Side(p0, p1, ln_pos[min(j + st, ib)], eye, Watch_Wid(p1, eye, wid, scaled));
+		c1 = ln_col[j];
+		a1 = (ln_t[j] <= rec_wt_time) ? 1 : 0.5;
+		// A teleport, the part ahead when it is off, a degenerate side, or the eye
+		// inside 48 u (a quad with no facing plane smears across the screen).
+		if (!brk)
+		if (ahead || a0 >= 1 || a1 >= 1)
+		if (s0 != '0 0 0' && s1 != '0 0 0')
+		if (vlen(p0 - eye) >= 48 && vlen(p1 - eye) >= 48)
 		{
-			p0 = p1;  s0 = s1;  c0 = c1;  a0 = a1;
-			continue;
+			R_BeginPolygon("");
+			R_PolygonVertex(p0 - s0, '0 0 0', c0, a0);
+			R_PolygonVertex(p0 + s0, '0 0 0', c0, a0);
+			R_PolygonVertex(p1 + s1, '0 0 0', c1, a1);
+			R_PolygonVertex(p1 - s1, '0 0 0', c1, a1);
+			R_EndPolygon();
 		}
-
-		if (s0 == '0 0 0' || s1 == '0 0 0'
-		 || vlen(p0 - eye) < near || vlen(p1 - eye) < near)
-		{
-			p0 = p1;  s0 = s1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-
-		/*
-		  ONE QUAD, FOUR VERTICES, EACH WITH ITS OWN COLOUR AND ALPHA.  The two
-		  on the left edge are this vertex's, the two on the right are the next
-		  one's, and the next iteration reuses them verbatim -- so there is no
-		  seam to see because there is no seam.
-
-		  Wound as a ring (left, right, right, left) rather than as a triangle
-		  strip's zig-zag: R_PolygonVertex builds a fan, and a zig-zag order would
-		  fold the quad into a bowtie.
-		*/
-		R_BeginPolygon("");
-		R_PolygonVertex(p0 - s0, '0 0 0', c0, a0);
-		R_PolygonVertex(p0 + s0, '0 0 0', c0, a0);
-		R_PolygonVertex(p1 + s1, '0 0 0', c1, a1);
-		R_PolygonVertex(p1 - s1, '0 0 0', c1, a1);
-		R_EndPolygon();
-
 		p0 = p1;  s0 = s1;  c0 = c1;  a0 = a1;
+		i = j;
 	}
 };
 
-/*
-===========================================================================
-  THE PATH IN SCREEN SPACE.  Build 43, and the default.
-
-  WHY IT IS CHEAPER AS WELL AS BETTER-LOOKING.  The ribbon above costs about
-  fifteen builtin calls a segment -- five normalize, one crossproduct, three
-  vlen and six draw -- because a world-space quad that must face the camera and
-  hold a constant ANGULAR width has to be rebuilt from the eye every frame.
-  Project first and all of that goes away: the perpendicular is two negations,
-  the width is a literal pixel count, and there is nothing to face.  About eight
-  calls a segment, and every one of them cheaper.
-
-  AND MEASURED, build 45, because the paragraph above is an argument and the
-  report asked for "low effect / low cpu expense".  cfg/test/b45perf.cfg:
-  surf_rise, the same paused camera, developer 0, no frame cap, the three modes
-  interleaved four times rather than run in three blocks.  Frame times, medians
-  of four:
-
-      mode 0  off       4.65 ms
-      mode 2  screen    5.21 ms       the drawer costs 0.56 ms
-      mode 1  ribbon    7.39 ms       the drawer costs 2.75 ms
-
-  The ribbon is about five times the cost of the line.  Two things keep that
-  from being a clean per-segment number and both are worth stating rather than
-  rounding off.  The control DRIFTED, 3.63 ms on the first sample to 5.00 ms on
-  the last, so the arm-minus-control figures are the shakiest thing on the page;
-  what is solid is mode1-minus-mode2 measured inside each round, which came out
-  2.48, 1.92, 2.14 and 2.05 ms with no overlap between the arms at all.  And the
-  two modes were not asked for the same number of quads: at that camera mode 2
-  emitted 926 of the curve's 2021 spans, the rest going to the near clip and the
-  guard band, while mode 1's emitted count is not instrumented.  So this is the
-  cost of the FEATURE at a representative camera, which is the question, and not
-  a normalised cost per segment, which is not.
-
-  `project` (#311) transforms by the same matrix the scene was drawn with and
-  returns coordinates in r_refdef.vrect -- which after clearscene is the full
-  virtual screen, i.e. the exact space every HUD panel already lays out in.  So
-  there is no scaling step and no viewport arithmetic here at all.  Nothing else
-  in this codebase had ever called it.
-
-  ---- THE RESCALED-VIEWPORT GUARD, WHICH IS DELIBERATELY NOT HERE -----------
-
-  The plan prescribed one: compare VF_SCREENVSIZE against VF_SIZE and fall back
-  to mode 1 if they disagree.  It is not written, for two reasons, and the first
-  is that AS STATED IT WOULD FIRE ON A CASE THAT IS ALREADY CORRECT.  project()
-  ends with out[0]*r_refdef.vrect.width + r_refdef.vrect.x (pr_csqc.c:2096-2097)
-  -- it carries the viewport's OFFSET as well as its size -- so a 3D viewport
-  merely smaller than the screen projects correctly and needs no fallback.  A
-  guard keyed on "the two sizes differ" would switch drawers on those frames.
-
-  The second is that the real hazard was measurable and was measured.
-  cfg/test/b45scale.cfg drives r_renderscale, which is the knob that rewrites
-  r_refdef.vrect.width to vid.fbvwidth*scale (gl_backend.c:6058-6059) and is
-  therefore the one that could put project's output in a different space from
-  the 2D pass.  At r_renderscale 2 the frame cost went from 86.6 to 20.0 fps, so
-  the arm certainly took effect, and the probe still projected to 960,600 of a
-  1920x1200 screen -- exactly half, which is where dead-ahead lands only if the
-  two spaces still agree -- with the line unmoved on the geometry.  The pin
-  projection taken before renderscene (see Watch_Path, and it predates this) is
-  what makes that true.
-
-  ONE ARM OF THAT TEST PROVED NOTHING AND IS NOT BEING COUNTED: vid_conwidth and
-  vid_conheight are inert without a vid_restart, and VF_SCREENVSIZE still read
-  1920x1200 after they were set, so the "virtual screen fixed independently of
-  the physical one" case is UNTESTED rather than passed.  If the line is ever
-  reported misplaced, that is the first thing to try and this is the note that
-  says so.
-
-  ---- CLIPPING, WHICH IS THE PART THAT IS EASY TO GET WRONG ----------------
-
-  A polyline in screen space MUST be clipped at the near plane, not culled.
-  Culling a segment because one end is behind you leaves the line stopping short
-  of the screen edge wherever the path passes the camera -- and the camera rides
-  this line constantly, so that is not a corner case, it is most frames.
-
-  The clip is one dot product per vertex and no builtin: d = (p - eye) . forward
-  is the distance along the view axis, and a segment with one end short of NEAR
-  is shortened to the crossing rather than dropped.  Exact for a perspective
-  near plane, because the plane is perpendicular to that axis by construction.
-
-  NEAR IS 8 AND THE ENGINE'S IS 4, deliberately.  project() divides by w with no
-  zero guard (pr_csqc.c:2075-2077), so a point ON the eye plane returns a NaN
-  into QC and a NaN vertex is a polygon smeared across the whole screen.  The
-  dot-product clip runs FIRST and keeps every projected point comfortably clear
-  of that; the z test below is belt to those braces, not the mechanism.
-
-  ---- AND WHY THERE IS NO MITRE ---------------------------------------------
-
-  The ribbon needs one because its width varies per vertex with distance, so two
-  adjacent quads built independently do not share an edge -- that mismatch is
-  what "wavy slug like lines" was describing.  In screen space the width is the
-  SAME NUMBER at every vertex, so the only artefact left at a joint is the wedge
-  on the outside of a turn, whose size is (width/2)*tan(theta/2).  The curve is
-  a C1-continuous spline, so theta is small; at the default three pixels the
-  wedge is comfortably under one.  If a much thicker line is ever wanted this is
-  the first thing that will show, and a per-vertex 2D mitre is the fix -- it is
-  left out because it would be code carrying no visible weight today.
-
-  BUILD 45 PUT THAT QUESTION AT 8 PIXELS -- which could not be asked at all
-  until the line drew -- and the wedge IS there by then.  b45line's 8px arm is
-  smooth along every sweeping curve on surf_rise, and at the one tight elbow in
-  frame it shows an obvious notch on the OUTSIDE of the turn, several pixels of
-  it, exactly the (width/2)*tan(theta/2) the paragraph above predicts.  The same
-  elbow at the default 3 px shows nothing.
-
-  So the threshold is somewhere between 3 and 8, the default is comfortably
-  under it, and "a per-vertex 2D mitre is the fix" stops being hypothetical the
-  moment anyone raises hud_watch_path_px far.  That is the trigger to write it;
-  it is still not worth writing now.
-
-  ---- ON "HUNDREDS OF RUNS AT ONCE", WHICH IS NOT BUILT ---------------------
-
-  The report asked for two things and this drawer answers one of them.  The
-  obstacle to the second is NOT the rendering any more; it is that there is no
-  multi-run data model at all.  One set of rec_wt_* globals, one rec_wt_on, one
-  live strbuf and one cursor -- a second run has nowhere to be.  That is a
-  data-model change (a flat point pool with per-run first/count, and no per-run
-  strbuf) at least as large as this drawing change was, and doing half of it
-  here would leave a drawer that takes N runs and a loader that cannot supply
-  them.
-
-  What this build leaves ready, so the next one does not have to rediscover it:
-
-    - the emit is already ONE batch and one draw call for however many quads go
-      through it, because consecutive R_BeginPolygon calls sharing a shader and
-      flags do not flush between each other.  N runs stay one draw call.
-    - draw rec_wt_cpos[] instead of rec_wt_ppos[] and the per-run cost drops by
-      about two thirds at a glance you would have to look hard to see: the
-      control points are ~750 against the curve's ~2000, and they are already
-      chosen where the path actually turns.  That is the first lever and it
-      needs no new data.
-    - addtrisoup_simple (cl_defs.qc:1451) takes a whole vertex/index soup in ONE
-      builtin, against this loop's eight per segment.  That is the second lever,
-      and it is worth reaching for only once the pool exists, because it wants
-      the points laid out contiguously anyway.
-
-  Watch_Path2D deliberately does not take the arrays as parameters, which the
-  plan asked for: QuakeC has no array parameter and no way to pass a global
-  array by reference, so "take them as parameters" is not a thing that can be
-  written here.  The pool version will index one flat array with an offset,
-  which is the same refactor arriving from the other side.
-===========================================================================
-*/
-/*
-  What the screen-space drawer did on the last rendered frame, for `replay
-  status`.  Three numbers, because when this drew nothing at all there was no
-  way to tell "not called" from "called and clipped everything" from "drawn
-  off-screen" -- and those want three different fixes.
-*/
 void() Watch_Path2D =
 {
-	local float i, wid, ahead, near, t;
-	local float d0, d1, a0, a1, len;
-	local vector eye, fwd, p0, p1, w0, w1, q0, q1, dir, side, c0, c1;
+	local float t;
+	local vector eye, fwd, q0;
 
 	rec_wt_p2n    = 0;
 	rec_wt_p2clip = 0;
@@ -3576,71 +2778,21 @@ void() Watch_Path2D =
 		return;
 	if (Watch_PathMode() != 2)
 		return;
-	if (rec_wt_pn < 2)
+	if (!ln_on[0])
 		return;
 
-	/*
-	  The replay camera, and the same getproperty the ribbon uses for the same
-	  reason: Watch_Camera has already written it this frame.  makevectors here
-	  rather than per segment -- it writes three globals and the view does not
-	  change between segments.
-	*/
+	// The other half of the probe (see Watch_Path), and two off-axis points: a
+	// centre probe cannot fail, 64 u right and up must land right and above it.
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
-
-	// The other half of the probe; see Watch_Path.  Same point, same frame, one
-	// renderscene apart.
 	rec_wt_p2post = project(eye + fwd * 256);
-
-	/*
-	  AND THE AXES, because a centre-of-screen probe cannot fail.  Any projection
-	  matrix, however wrong, sends the point dead ahead of the eye to the middle
-	  of the viewport -- so "pre and post both read 960,600" proved the matrix was
-	  STABLE and proved nothing whatever about it being RIGHT.
-
-	  These two are off-axis: 256 ahead and 64 to the right must land right of
-	  centre and at the same height; 256 ahead and 64 up must land above centre
-	  and at the same x.  If either comes back mirrored, swapped, or scaled
-	  absurdly, that is the projection and not this drawer.
-	*/
 	rec_wt_p2axr = project(eye + fwd * 256 + v_right * 64);
 	rec_wt_p2axu = project(eye + fwd * 256 + v_up * 64);
 
-	/*
-	  A KNOWN-GOOD QUAD, on demand.  hud_watch_path_probe 1 draws one 200x200
-	  magenta square at the centre of the screen through EXACTLY the calls the
-	  path uses -- same shader, same flags, same 2D mode, same winding.  If the
-	  square appears and the path does not, the 2D polygon path works and the
-	  fault is in the path's own geometry; if neither appears, the fault is in
-	  these four calls or in what flushes them.  That is a distinction no
-	  screenshot of a missing line can make, and it is two builds' worth of
-	  guessing avoided the next time this happens.
-	*/
-	/*
-	  WHICH 2D PRIMITIVE ACTUALLY DRAWS FROM HERE.  Five probes, all at literal
-	  screen coordinates, all magenta, so one run answers the question a missing
-	  line cannot:
-
-	    1  R_BeginPolygon(..., TRUE) -- the arbitrary-quad path this drawer wants
-	    2  drawline                  -- one draw call per line, no per-vertex colour
-	    3  drawfill                  -- axis-aligned only, but known to work
-	    4  probe 1 WOUND BACKWARDS   -- the build-43 bug, kept.  MUST NOT DRAW.
-	    5  probe 4 plus TWOSIDED     -- the same backwards square, uncullable
-
-	  3 is the control: if even that does not appear, the fault is that nothing
-	  drawn from this point in the frame is visible, and the primitive is not the
-	  question at all.
-
-	  4 AND 5 ARE THE PAIR THAT DIAGNOSED THIS, and they stay in because the
-	  thing they prove is invisible in every other way.  1 and 4 are the same
-	  square at the same coordinates through the same four calls, differing only
-	  in the order the four vertices are given; 1 draws and 4 does not, which is
-	  culling and can be nothing else.  5 is 4 with the cull turned off, and it
-	  draws.  If a future change makes 4 appear, this build's shader is no longer
-	  single-sided and the winding rule below has stopped mattering -- which is
-	  worth knowing and is not otherwise discoverable.
-	*/
+	// hud_watch_path_probe: 1 a quad through the path's calls, 2 drawline, 3 drawfill
+	// (the control), 4 the quad wound backwards (must NOT draw), 5 that with TWOSIDED.
+	// A literal centre: a getproperty() scaled implicitly casts and lands at 0,0.
 	t = cvar("hud_watch_path_probe");
 	if (t == 1)
 	{
@@ -3680,202 +2832,30 @@ void() Watch_Path2D =
 		R_EndPolygon();
 	}
 
-	// Read once.  At one run the four cvar() calls the ribbon does per frame are
-	// noise; the moment this draws more than one run they are not, and the
-	// Zone_ReadCvars pattern exists for exactly that.
-	wid = cvar("hud_watch_path_px");
-	if (wid <= 0)
-		wid = 3;
-	ahead = cvar("hud_watch_path_ahead");
-	near  = 8;
+	ln_frames = ln_frames + 1;
+	Line_ViewFrame();
+	Line_StatsReset();
+	Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
 
-	p0 = rec_wt_ppos[0];
-	d0 = (p0 - eye) * fwd;
-	c0 = Watch_SpeedColor(rec_wt_pspd[0]);
-	a0 = (rec_wt_ptick[0] <= rec_wt_ticks) ? 1.0 : 0.5;
-
-	for (i = 0; i < rec_wt_pn - 1; i = i + 1)
+	// `replay bench <n>`: the draw n more times in this frame, unprofiled (gettime(1)
+	// counts whole ms, so n draws make the resolution 1/n ms).
+	if (rec_wt_bench > 0)
 	{
-		p1 = rec_wt_ppos[i + 1];
-		d1 = (p1 - eye) * fwd;
-		c1 = Watch_SpeedColor(rec_wt_pspd[i + 1]);
-		a1 = (rec_wt_ptick[i + 1] <= rec_wt_ticks) ? 1.0 : 0.5;
-
-		// The part still ahead of the playhead, if it is not wanted.  Same test
-		// and same meaning as the ribbon's.  Patch 431: and outside the cut.
-		if ((!ahead && a1 < 1 && a0 < 1)
-		 || rec_wt_ptick[i + 1] * rec_wt_tickrate < rec_wt_vt0
-		 || rec_wt_ptick[i] * rec_wt_tickrate > rec_wt_vt1)
-		{
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-
-		w0 = p0;
-		w1 = p1;
-
-		if (d0 < near)
-		if (d1 < near)
-		{
-			// Both behind, or both inside the near plane: there is no visible
-			// part of this segment to shorten to.
-			rec_wt_p2clip = rec_wt_p2clip + 1;
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-
-		/*
-		  One end short: move it to where the segment crosses the plane.  The
-		  colour and alpha are NOT interpolated to the crossing -- the clipped
-		  stub is a fraction of one already-short spline span, and carrying the
-		  endpoint's own values there is invisible against paying for two more
-		  lerps on the frames this fires.
-		*/
-		if (d0 < near)
-		{
-			t  = (near - d0) / (d1 - d0);
-			w0 = p0 + (p1 - p0) * t;
-		}
-		else if (d1 < near)
-		{
-			t  = (near - d1) / (d0 - d1);
-			w1 = p1 + (p0 - p1) * t;
-		}
-
-		q0 = project(w0);
-		q1 = project(w1);
-
-		// Belt to the clip's braces: project negates the returned z for a point
-		// behind the eye plane, so anything under -1 is behind us or inside the
-		// engine's own near plane.  The clip above should have made this
-		// unreachable; if it ever fires, the clip is wrong and this stops it
-		// becoming a smear across the middle of the screen.
-		if (q0_z < -1)
-		{
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-		if (q1_z < -1)
-		{
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-
-		/*
-		  FLATTEN, and this is not tidiness -- it is the difference between the
-		  line drawing and not drawing at all.
-
-		  project() returns the NDC depth in z, which for anything in front of
-		  the camera is a number approaching 1.  A 2D polygon's vertices are
-		  screen coordinates on a plane, and handing one a z of 0.99 puts it
-		  outside the 2D pass's clip volume: the whole path silently disappears
-		  while every mode switch and every cvar still reads correct, which is
-		  exactly how this was found.  Zero both BEFORE the direction is taken,
-		  so the perpendicular is a genuine 2D perpendicular as well.
-		*/
-		q0_z = 0;
-		q1_z = 0;
-
-		/*
-		  A GUARD BAND, and it is not belt and braces -- without it the whole
-		  batch drew nothing.
-
-		  The near-plane clip is geometrically right and produces, for a segment
-		  passing close beside the camera, a stub whose far end is a few units
-		  ahead and a thousand units to the side.  That projects honestly to a
-		  screen x in the hundreds of thousands, and a quad a hundred thousand
-		  pixels wide does not merely draw off-screen: it takes the rest of the
-		  2D batch with it, so the visible part of the path vanishes as well.
-
-		  Measured: 1828 quads emitted, bbox -124342..1568, and nothing on
-		  screen -- while a fixed magenta square through the identical four calls
-		  in the identical place rendered perfectly.  That pair is what says the
-		  fault is the coordinates and not the primitive, and it took three
-		  builds to ask the question that way round.
-
-		  Dropping the segment rather than clipping it in 2D is the cheap answer
-		  and costs almost nothing visible: a segment this extreme is one the
-		  camera is practically inside, and the next point along the curve is a
-		  few units further on and back inside the band.  A parametric 2D clip
-		  would keep that sliver at the very edge of the frame; not worth it.
-		*/
-		if (q0_x < -WT_P2GUARD || q0_x > WT_P2GUARD
-		 || q0_y < -WT_P2GUARD || q0_y > WT_P2GUARD
-		 || q1_x < -WT_P2GUARD || q1_x > WT_P2GUARD
-		 || q1_y < -WT_P2GUARD || q1_y > WT_P2GUARD)
-		{
-			rec_wt_p2wild = rec_wt_p2wild + 1;
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;
-		}
-
-		/*
-		  THE 2D PERPENDICULAR, AND ITS SIGN IS THE WHOLE BUG.  Build 45.
-
-		  (dy, -dx) and not (-dy, dx), and the difference between the two is not
-		  which side of the line the quad sits on -- it is symmetric about the
-		  line either way -- it is the WINDING ORDER of the four vertices that
-		  come out of it.  The other sign wound every quad the opposite way round
-		  from every other 2D quad in the engine, and single-sided is the default,
-		  so the entire path was backface-culled.  See the essay above.
-		*/
-		dir   = q1 - q0;
-		dir_z = 0;
-		len   = vlen(dir);
-		if (len < 0.001)
-		{
-			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
-			continue;                       // a sub-pixel segment has no direction
-		}
-		dir  = dir * (1 / len);
-		side = [dir_y, 0 - dir_x, 0] * (wid * 0.5);
-
-		/*
-		  TRUE for the third argument is 2D mode: the polygon is drawn at
-		  EndPolygon rather than queued for renderscene.  Consecutive polygons
-		  sharing a shader and flags do NOT flush between them, so the whole path
-		  is still one draw call -- which is the property that makes this the
-		  shape to extend to many runs later.
-
-		  DRAWFLAG_TWOSIDED, and it is belt to the sign's braces rather than the
-		  fix.  The winding above is correct on its own and this flag is not
-		  needed to make the line appear; it is here because the sign of a 2D
-		  perpendicular is a coin-flip that nothing in the code makes obvious, a
-		  future mitre or a multi-run pool could easily emit the other way, and
-		  the failure mode when that happens is the feature silently vanishing
-		  rather than looking wrong.  With the flag, a sign error is a non-event.
-		  Costs one bit in the batch key; the path is its own batch either way.
-
-		  Wound as a ring, not a zig-zag, for the reason the ribbon states:
-		  R_PolygonVertex builds a fan and a zig-zag folds the quad into a bowtie.
-		*/
-		R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
-		R_PolygonVertex(q0 - side, '0 0 0', c0, a0);
-		R_PolygonVertex(q0 + side, '0 0 0', c0, a0);
-		R_PolygonVertex(q1 + side, '0 0 0', c1, a1);
-		R_PolygonVertex(q1 - side, '0 0 0', c1, a1);
-		R_EndPolygon();
-
-		/*
-		  The screen bbox of what was actually emitted.  This is the number that
-		  separates "the geometry is wrong" from "the geometry is right and the
-		  batch is not reaching the screen": if the bbox spans the viewport, the
-		  quads are where the ribbon's curve is and the fault is downstream.
-		*/
-		if (rec_wt_p2n == 0)
-		{
-			rec_wt_p2first = q0;
-			rec_wt_p2min   = q0;
-			rec_wt_p2max   = q0;
-		}
-		if (q0_x < rec_wt_p2min_x) rec_wt_p2min_x = q0_x;
-		if (q0_y < rec_wt_p2min_y) rec_wt_p2min_y = q0_y;
-		if (q0_x > rec_wt_p2max_x) rec_wt_p2max_x = q0_x;
-		if (q0_y > rec_wt_p2max_y) rec_wt_p2max_y = q0_y;
-		rec_wt_p2n = rec_wt_p2n + 1;
-
-		p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
+		q0_x = gettime(1);
+		for (t = 0; t < rec_wt_bench; t = t + 1)
+			Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
+		q0_y = (gettime(1) - q0_x) * 1000;
+		print(sprintf("replay: bench %g draws %.0f ms = %.3f ms each (%g pts, %g segs)\n",
+		              rec_wt_bench, q0_y, q0_y / rec_wt_bench, ln_npt / (rec_wt_bench + 1),
+		              ln_nseg / (rec_wt_bench + 1)));
+		rec_wt_bench = 0;
 	}
+	rec_wt_p2n     = ln_nseg;
+	rec_wt_p2clip  = ln_nclip;
+	rec_wt_p2wild  = ln_nwild;
+	rec_wt_p2first = ln_first;
+	rec_wt_p2min   = ln_bbmin;
+	rec_wt_p2max   = ln_bbmax;
 };
 
 // The camera origin; `replay trace` prints this, so it is what was drawn.
@@ -4070,7 +3050,7 @@ float(string path) Watch_Open =
 	// scrub and a frame are cheap: the drawn curve and the segment column are
 	// tables by the time anything asks for them.  Patch 431: over the cut only.
 	Watch_ScanRange(rec_wt_vt0, rec_wt_vt1);
-	Watch_BuildCurve();
+	Watch_LineRange();
 	Watch_BuildSeq();
 	rec_wt_loadms = (gettime(1) - rec_wt_loadms) * 1000;
 	print(sprintf("replay: opened in %.0f ms (view map %.0f ms)\n",
@@ -4184,11 +3164,11 @@ void(float on) Watch_SetCut =
 	{
 		ms = gettime(1);
 		Watch_ScanRange(rec_wt_vt0, rec_wt_vt1);
-		Watch_BuildCurve();
 		Watch_BuildSeq();
 		print(sprintf("replay: built %.4f..%.4f in %.0f ms\n", rec_wt_vt0, rec_wt_vt1,
 		              (gettime(1) - ms) * 1000));
 	}
+	Watch_LineRange();
 	Watch_Seek(rec_wt_time);
 };
 
@@ -4882,8 +3862,8 @@ void(vector scr) Watch_Info =
 	                      rec_wt_sqshown, rec_wt_bdn_n));                     y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "path",
-	              sprintf("%g ctl  %g curve  %g ev",
-	                      rec_wt_cn, rec_wt_pn, rec_wt_evn));
+	              sprintf("%g pts  %g tele  %g ev",
+	                      ln_n[0], ln_bkn[0], rec_wt_evn));
 
 	Font_Reset();
 };
@@ -5197,8 +4177,9 @@ void() Watch_Status =
 	print(sprintf("  ang %.2f %.2f  keys %g  ground %g  duck %g  flags %g\n",
 	              rec_wt_pitch, rec_wt_yaw, rec_wt_keys,
 	              rec_wt_onground, rec_wt_ducked, rec_wt_flags));
-	print(sprintf("  view %g lines (%g index)  path %g ctl -> %g curve  events %g\n",
-	              rec_wt_viewn, rec_wt_vxn, rec_wt_cn, rec_wt_pn, rec_wt_evn));
+	print(sprintf("  view %g lines (%g index)  path %g of %g samples, %g shown, %g tele  events %g\n",
+	              rec_wt_viewn, rec_wt_vxn, ln_n[0], rec_wt_cnt,
+	              ln_ib[0] - ln_ia[0] + 1, ln_bkn[0], rec_wt_evn));
 	// Build 43.  A SECOND print rather than six more fields on the one above --
 	// fteqcc caps varargs at 8 including the format and drops the ninth silently.
 	// `curve` reaching exactly WT_PATHMAX is the build-42 truncation bug; `still`
@@ -5214,9 +4195,11 @@ void() Watch_Status =
 	  ate everything, and quads high with `first` outside the screen means it
 	  drew somewhere you cannot see.  Guessing between those cost a build.
 	*/
-	print(sprintf("  path mode %g  2d %g quad(s)  clipped %g  wild %g  first %.0f,%.0f\n",
+	print(sprintf("  path mode %g  2d %g seg(s)  clipped %g  wild %g  first %.0f,%.0f\n",
 	              Watch_PathMode(), rec_wt_p2n, rec_wt_p2clip, rec_wt_p2wild,
 	              rec_wt_p2first_x, rec_wt_p2first_y));
+	print(sprintf("  path %g pts projected  %g draws  speed %.0f..%.0f  colour %g\n",
+	              ln_npt, ln_frames, ln_slo, ln_shi, ln_cmode));   // Patch 432
 	// The probe: 256 units dead ahead, projected either side of renderscene.
 	// Both should read the centre of the screen and they should agree.
 	sv = getproperty(VF_SCREENVSIZE);
@@ -5410,6 +4393,12 @@ float(string cmd) Watch_ConsoleCommand =
 			Watch_StageWindow(stof(argv(2)) - 1);
 		return TRUE;
 	}
+	// Patch 432: `bench <n>`, the path's draw timed (Watch_Path2D).
+	if (a == "bench")
+	{
+		rec_wt_bench = max(1, stof(argv(2)));
+		return TRUE;
+	}
 	// Patch 431: `cut 0|1`, the chrome's "whole run" / "stage N only".
 	if (a == "cut")
 	{
@@ -5599,10 +4588,12 @@ void() Watch_RegisterCvars =
 	  a reinterpretation of it, because the two are not the same quantity: the
 	  ribbon's 6 is world units at a 512-unit reference distance, and this one is
 	  pixels.  Sharing the name would have silently made every existing config a
-	  six-pixel line, and 3 is what a crisp one wants.
+	  six-pixel line.  Patch 432: 1, anti-aliased (cl_lines.qc).
 	*/
 	registercvar("hud_watch_path_mode", "2", CVAR_ARCHIVE);
-	registercvar("hud_watch_path_px", "3", CVAR_ARCHIVE);
+	registercvar("hud_watch_path_px", "1", CVAR_ARCHIVE);
+	registercvar("hud_watch_path_color", "0", CVAR_ARCHIVE);   // 0 speed, 1 gain/loss
+	registercvar("hud_watch_path_far", "6000", CVAR_ARCHIVE);  // fade out by here, 0 never
 	registercvar("hud_watch_path_probe", "0");
 
 	registercvar("hud_watch_idle_speed", "20", CVAR_ARCHIVE);

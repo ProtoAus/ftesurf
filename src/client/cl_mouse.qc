@@ -286,20 +286,13 @@ void(vector scr) MPad_Geom =
 	               floor(sz_y / ui_mp_px_y + 0.5) * ui_mp_px_y, 0];
 };
 
-// One trail stroke a -> b in screen units, t thick, colour/alpha ca/la at a and
-// cb/lb at b.  Queued 2D polygons: MPad_Draw's drawresetcliparea flushes them
-// under the clip.
+// One trail stroke a -> b in screen units, colour/alpha ca/la at a and cb/lb at
+// b, at the width MPad_Draw set (Line_Width).  Patch 432: anti-aliased, edges
+// fading over a pixel (cl_lines.qc).  Queued 2D polygons: MPad_Draw's
+// drawresetcliparea flushes them under the clip.
 void(vector a, vector b, float t, vector ca, float la, vector cb, float lb) MPad_Stroke =
 {
-	local vector n;
-
-	n = normalize([a_y - b_y, b_x - a_x, 0]) * (t * 0.5);
-	R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
-	R_PolygonVertex(a + n, '0 0 0', ca, la);
-	R_PolygonVertex(b + n, '0 0 0', cb, lb);
-	R_PolygonVertex(b - n, '0 0 0', cb, lb);
-	R_PolygonVertex(a - n, '0 0 0', ca, la);
-	R_EndPolygon();
+	Line_Seg2D(a, b, ca, la, cb, lb);
 };
 
 vector(float st) MPad_Colour = { return st ? MPC_STRAFE : MPC_TURN; };
@@ -354,6 +347,8 @@ void(vector scr) MPad_Draw =
 	drawsetcliparea(o_x + px, o_y + py, wh_x - 2 * px, wh_y - 2 * py);
 	life = MPad_Life();
 	t = max(px, ui_cv_scale);
+	Line_PxFrame();
+	Line_Width(t / px);
 	if (life > 0)
 	{
 		// Not yet sampled: from the newest sample's colour to this frame's.

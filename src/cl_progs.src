@@ -90,6 +90,9 @@ client/cl_gfx.qc
 client/cl_vote.qc
 client/cl_replay.qc
 client/cl_zones.qc
+// Patch 432: the run lines.  Before cl_watch.qc (the replay is slot 0) and
+// cl_mouse.qc (the trail's anti-aliased segment).
+client/cl_lines.qc
 // AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,
 // which calls into it from CSQC_UpdateView and CSQC_InputEvent.
 client/cl_watch.qc
