@@ -147,6 +147,9 @@ float  rec_sl_quiet;
 .float rec_sl_count;             // networked mirror of the caller's block; SV_SaveLocSync
 .float rec_sl_index;             // 1-based cursor; 0 when the list is empty
 .float rec_sl_delall;            // Patch 428: a delete-all sweeping; rows deleted + 1
+.vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
+.vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
+.float rec_sl_ack;               // Patch 430: STAT_FS_SLACK, SV_ParseClientCommand
 
 // The save/load event stream, for the client's half of the recording.  See
 // STAT_FS_SLSEQ in shared/sh_defs.qc.
@@ -1664,9 +1667,17 @@ void(entity e) SV_SaveLocSync =
 		e.rec_sl_index = 1;
 
 	e.rec_sl_savetick = 0;
+	e.rec_sl_curorg = '0 0 0';
+	e.rec_sl_curang = '0 0 0';
 	if (e.rec_sl_index >= 1)
 		if (e.rec_sl_index <= cnt)
+		{
 			e.rec_sl_savetick = rec_sl_tick[base + e.rec_sl_index - 1];
+			e.rec_sl_curorg = rec_sl_org[base + e.rec_sl_index - 1];
+			e.rec_sl_curang = [rec_sl_pit[base + e.rec_sl_index - 1],
+			                   rec_sl_yaw[base + e.rec_sl_index - 1],
+			                   rec_sl_duck[base + e.rec_sl_index - 1] ? 1 : 0];
+		}
 };
 
 // One save/load event out to the client.  See STAT_FS_SLSEQ.

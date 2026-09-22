@@ -385,6 +385,9 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STATOWNER,      EV_FLOAT, run_statowner);      // Patch 361
 	clientstat(STAT_FS_MSSESSION,      EV_FLOAT, run_ms_sessions);    // Multi-Session
 	clientstat(STAT_FS_SPEC,           EV_FLOAT, run_sp_stat);        // Patch 382
+	clientstat(STAT_FS_SLORG,          EV_VECTOR, rec_sl_curorg);     // Patch 430
+	clientstat(STAT_FS_SLANG,          EV_VECTOR, rec_sl_curang);
+	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 
 	/*
 	  BUILD 48: the personal best this run was measured AGAINST.

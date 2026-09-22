@@ -772,6 +772,11 @@ void(string cmd) SV_ParseClientCommand =
 	cmdargc = tokenize(cmd);
 	c = argv(0);
 
+	// Patch 430: counted before anything can refuse it -- the client draws a load
+	// early only while every sl_ command it sent has been run.
+	if (substring(c, 0, 3) == "sl_")
+		self.rec_sl_ack = self.rec_sl_ack + 1;
+
 	if (c == "noclip")
 	{
 		if (self.movetype == MOVETYPE_NOCLIP)

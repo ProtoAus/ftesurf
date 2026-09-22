@@ -208,9 +208,108 @@ void() SaveLoc_RegisterCvars =
 	// key you like without editing this file, and so it can be driven from a
 	// config.
 	registercommand("saveloc_menu");
+
+	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
 };
 
-void(string c) SaveLoc_Cmd = { localcmd(strcat("cmd ", c, "\n")); };
+/*
+  Patch 430: THE LOAD KEY DRAWN A ROUND TRIP EARLY.  The list is the server's,
+  so `2` used to show nothing until the reply -- the whole RTT, spent still
+  moving at the old spot.  The server publishes the cursor row (STAT_FS_SLORG,
+  STAT_FS_SLANG) and counts the sl_ commands it has run (STAT_FS_SLACK); when
+  every one sent is counted the row is current, and the camera is put there
+  on the press until the count covers the load.  RENDER ONLY (VF_ORIGIN,
+  VF_ANGLES): the usercmd, the prediction and the .view sidecar
+  (VF_CL_VIEWANGLES) are exactly what they were.  A refused load snaps back
+  when its count arrives.
+*/
+float  rec_sl_sent;              // sl_ commands sent, resynced up to STAT_FS_SLACK
+float  rec_sl_pv_on;             // the camera is at the save
+float  rec_sl_pv_ack;            // ...until STAT_FS_SLACK reaches this
+float  rec_sl_pv_t0;
+vector rec_sl_pv_org;
+vector rec_sl_pv_ang;            // pitch, yaw, ducked
+float  rec_sl_pv_ackat;          // cltime the count covered the load; 0 = not yet
+
+#define SL_PV_TIMEOUT 1.5        // a lost reply cannot pin the camera
+#define SL_PV_SETTLE  0.15       // count in, body not: a refused load
+#define SL_PV_ARRIVED 8          // units, eye to eye (duck smoothing, the %.4f save)
+
+void(string c) SaveLoc_Cmd =
+{
+	if (substring(c, 0, 3) == "sl_")
+		rec_sl_sent = rec_sl_sent + 1;
+	localcmd(strcat("cmd ", c, "\n"));
+};
+
+// Before the press's own commands are counted.
+void() SaveLoc_PredictLoad =
+{
+	local float ack;
+	local vector o;
+
+	rec_sl_pv_on = FALSE;
+	if (!cvar("cl_slpredict"))
+		return;
+	ack = getstatf(STAT_FS_SLACK);
+	if (ack > rec_sl_sent)
+		rec_sl_sent = ack;          // console commands, or a slot's earlier count
+	if (rec_sl_sent != ack)
+		return;                     // a list command is in flight: the row may be stale
+	if (!LT_StatsAreMine() || Spec_Active() || rec_wt_on || rec_gh_on)
+		return;
+	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
+		return;
+	o = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+	if (o == '0 0 0')
+		return;                     // a server before Patch 430
+	rec_sl_pv_org = o;
+	rec_sl_pv_ang = [getstatf(STAT_FS_SLANG), getstatf(STAT_FS_SLANG + 1), getstatf(STAT_FS_SLANG + 2)];
+	rec_sl_pv_t0  = cltime;
+	rec_sl_pv_ackat = 0;
+	rec_sl_pv_on  = TRUE;
+};
+
+// CSQC_UpdateView, after clearscene and the spectate camera.
+void() SaveLoc_Camera =
+{
+	local float vh;
+	local vector vo, eye;
+
+	if (!rec_sl_pv_on)
+		return;
+	if (cltime - rec_sl_pv_t0 > SL_PV_TIMEOUT || Spec_Active() || rec_wt_on)
+	{
+		rec_sl_pv_on = FALSE;
+		return;
+	}
+	vh = serverkeyfloat(rec_sl_pv_ang_z ? "pm_duckviewheight" : "pm_viewheight");
+	if (vh <= 0)
+	{
+		vo = rec_sl_pv_ang_z ? PM_DUCK_VIEW_OFS : PM_VIEW_OFS;
+		vh = vo_z;
+	}
+	eye = rec_sl_pv_org + [0, 0, vh];
+
+	/*
+	  The count lands a frame or two BEFORE the body does (measured: 20 ms back
+	  at the old spot in the first p430 run), so it ends the override only once
+	  the predicted eye (Ghost_Frame's capture) is there -- or SL_PV_SETTLE
+	  after it, which is a refused load whose body is never coming.
+	*/
+	if (getstatf(STAT_FS_SLACK) >= rec_sl_pv_ack)
+	{
+		if (!rec_sl_pv_ackat)
+			rec_sl_pv_ackat = cltime;
+		if (vlen(rec_gh_bodyorg - eye) < SL_PV_ARRIVED || cltime - rec_sl_pv_ackat > SL_PV_SETTLE)
+		{
+			rec_sl_pv_on = FALSE;
+			return;
+		}
+	}
+	setproperty(VF_ORIGIN, eye);
+	setproperty(VF_ANGLES, [rec_sl_pv_ang_x, rec_sl_pv_ang_y, 0]);
+};
 
 void() SaveLoc_Release =
 {
@@ -339,8 +438,10 @@ void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; 
 */
 void(float scan) SaveLoc_LoadKey =
 {
+	SaveLoc_PredictLoad();              // Patch 430
 	SaveLoc_Cmd("sl_load");
 	SaveLoc_Cmd("sl_hold");
+	rec_sl_pv_ack = rec_sl_sent;
 	rec_sl_holding  = TRUE;
 	rec_sl_holdkey  = scan;
 	rec_sl_holdseen = cltime;

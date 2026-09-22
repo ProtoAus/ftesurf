@@ -470,6 +470,10 @@
 #define STAT_FS_MSSESSION      101  // `session`s in the running run (Multi-Session); 0 = one session
 #define STAT_FS_STATOWNER      102  // entity number of the player these stats describe; 0 = older server.  Patch 361
 #define STAT_FS_SPEC           103  // 0 off; n>0 watching entnum n (slot n-1); -3..-1 countdown, whole seconds left.  Patch 382
+// Patch 430: what the load key is about to do, so the client can draw it a round trip early.
+#define STAT_FS_SLORG          104  // + 105, 106 -- the cursor save's origin
+#define STAT_FS_SLANG          107  // + 108, 109 -- its pitch, yaw, and 1 if ducked
+#define STAT_FS_SLACK          110  // sl_* commands the server has run for this player
 
 /*
   The personal best this run was measured against, latched before the PB table

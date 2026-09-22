@@ -1427,6 +1427,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Patch 385: the spectate camera, after the bodies it reads and before
 	// everything below that reads VF_ORIGIN.
 	Spec_Frame();
+	SaveLoc_Camera();               // Patch 430: a load drawn before its reply
 
 	/*
 	  The map's 3D skybox, if it has one.  See cl_decals.qc for where the
@@ -1830,14 +1831,14 @@ float(string cmd) CSQC_ConsoleCommand =
 		if (argv(1) == "release")
 		{
 			SaveLoc_Release();
-			localcmd("cmd sl_holdoff\n");
+			SaveLoc_Cmd("sl_holdoff");         // Patch 430: counted
 			print("saveloc: hold released\n");
 			return TRUE;
 		}
 
 		// Patch 391: the load gate as this client sees it.
 		print(sprintf("saveloc: locked %g refkey %g\n", SaveLoc_RunLocked(), rec_sl_refkey));
-		localcmd(sprintf("cmd sl_list %g\n", stof(argv(1))));     // Patch 428: from row n
+		SaveLoc_Cmd(sprintf("sl_list %g", stof(argv(1))));        // Patch 428: from row n
 		return TRUE;
 	}
 
