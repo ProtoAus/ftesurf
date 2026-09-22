@@ -2006,8 +2006,10 @@ void(entity e) SV_SaveLocCreate =
 	rec_sl_seq[row] = seq;
 	rec_sl_nb[blk] = cnt + 1;
 
-	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run.
+	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run -- not
+	// the one being held (round 5: its release speed went to 0 under the hand).
 	if (blk > 0 && cnt >= SL_RECKEEP)
+	if (!(e.rec_sl_hold && e.rec_sl_holdrow == base + cnt - SL_RECKEEP))
 		SV_SaveDemote(base + cnt - SL_RECKEEP);
 
 	e.rec_sl_index = cnt + 1;
@@ -2350,6 +2352,7 @@ void(entity e, float down) SV_SaveLocHold =
 {
 	local float row;
 
+	SV_SaveLocAlloc();
 	if (!down)
 	{
 		SV_SaveLocRelease(e);

@@ -849,6 +849,8 @@ void() SV_EntInfo =
   authoring noise and is deliberately levelled (see SV_ZoneDest), but a SAVE's
   pitch is what the player set up with and 0 is a legitimate value of it.
 */
+void(entity e) SV_SaveLocRelease;      // sv_saveloc.qc
+
 void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	SV_ZoneMoveAt =
 {
@@ -858,6 +860,15 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 
 	// Patch 382: first -- SV_TimerTeleported below can write `restart` or void.
 	SV_SpecRelease(self, "zone");
+	/*
+	  Patch 428 review round 5, and older than 428: a save-lock HOLD too.  Left
+	  live, the move re-armed a fresh attempt under it -- SV_TimerArm clears the
+	  load's taint, and MOVETYPE_NONE reads as not noclipping -- the hold put the
+	  player back at the save, and its release handed that attempt the save's
+	  speed: `!m; !s 3` while holding 2 was a clean stage run at any saved speed.
+	  Released first; the move below zeroes the velocity the release hands back.
+	*/
+	SV_SaveLocRelease(self);
 
 	/*
 	  NOT CALLED AT ALL when the caller brought its own point.  SV_ZoneDest is a

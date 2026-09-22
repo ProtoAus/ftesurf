@@ -237,15 +237,34 @@ float  rec_sl_holdackat;
 #define SL_PV_SETTLE  0.15       // count in, body not: a refused load
 #define SL_PV_ARRIVED 8          // units, eye to eye (duck smoothing, the %.4f save)
 
+/*
+  Up to the server's count, on every send (review round 4: resynced only when
+  predicting, a typed `cmd sl_` left it behind and the refused-hold check let go
+  of a hold the server had started).  Round 5: only from our own stats (an engine
+  spectator gets its target's), and DOWN when the server's count restarted -- an
+  observe/join on the same map clears the edict and CSQC's count stayed ahead.
+*/
+float rec_sl_ackseen;
+
+void() SaveLoc_Resync =
+{
+	local float ack;
+
+	if (!LT_StatsAreMine())
+		return;
+	ack = getstatf(STAT_FS_SLACK);
+	if (ack < rec_sl_ackseen)
+		rec_sl_sent = ack;
+	if (ack > rec_sl_sent)
+		rec_sl_sent = ack;
+	rec_sl_ackseen = ack;
+};
+
 void(string c) SaveLoc_Cmd =
 {
 	if (substring(c, 0, 3) == "sl_")
 	{
-		// Resynced on every send, not only when predicting (review round 4: with
-		// cl_slpredict 0 a typed `cmd sl_` left the count behind, and the hold's
-		// refusal check released a hold the server had started).
-		if (getstatf(STAT_FS_SLACK) > rec_sl_sent)
-			rec_sl_sent = getstatf(STAT_FS_SLACK);
+		SaveLoc_Resync();
 		rec_sl_sent = rec_sl_sent + 1;
 	}
 	localcmd(strcat("cmd ", c, "\n"));
@@ -260,9 +279,8 @@ void() SaveLoc_PredictLoad =
 	rec_sl_pv_on = FALSE;
 	if (!cvar("cl_slpredict"))
 		return;
+	SaveLoc_Resync();
 	ack = getstatf(STAT_FS_SLACK);
-	if (ack > rec_sl_sent)
-		rec_sl_sent = ack;          // console commands, or a slot's earlier count
 	if (rec_sl_sent != ack)
 		return;                     // a list command is in flight: the row may be stale
 	if (!LT_StatsAreMine() || Spec_Active() || rec_wt_on || rec_gh_on)
