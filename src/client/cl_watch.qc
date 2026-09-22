@@ -325,6 +325,7 @@ string rec_wt_winhow;
 float  rec_wt_snlast;            // Watch_ScanPair's last verdict: 1 record, 2 kinematic
 float  rec_wt_cnt;               // samples the last Watch_ScanRange walked
 float  rec_wt_bench;             // `replay bench <n>`: the next draw runs n times
+float  rec_wt_p2pts;             // points the last Watch_Path2D projected
 
 /*
   What the screen-space drawer did on the last rendered frame, for `replay
@@ -2965,6 +2966,8 @@ void() Watch_Path =
 	Line_ViewFrame();
 	i  = ln_ia[0];
 	ib = ln_ib[0];
+	if (ib <= i)
+		return;
 	st = max(1, ceil((ib - i) / 2000));
 	p0 = ln_pos[i];
 	c0 = ln_col[i];
@@ -3074,8 +3077,10 @@ void() Watch_Path2D =
 
 	// `replay bench <n>`: the draw n more times in this frame, unprofiled (gettime(1)
 	// counts whole ms, so n draws make the resolution 1/n ms).
+	rec_wt_p2pts = ln_npt;
 	if (rec_wt_bench > 0)
 	{
+		rec_wt_bench = min(rec_wt_bench, floor(1000000 / max(1, ln_npt)));
 		q0_x = gettime(1);
 		for (t = 0; t < rec_wt_bench; t = t + 1)
 			Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
@@ -4434,7 +4439,7 @@ void() Watch_Status =
 	              Watch_PathMode(), rec_wt_p2n, rec_wt_p2clip, rec_wt_p2wild,
 	              rec_wt_p2first_x, rec_wt_p2first_y));
 	print(sprintf("  path %g pts projected  %g draws  speed %.0f..%.0f  colour %g\n",
-	              ln_npt, ln_frames, ln_slo, ln_shi, ln_cmode));   // Patch 432
+	              rec_wt_p2pts, ln_frames, ln_slo, ln_shi, ln_cmode));   // Patch 432
 	// The probe: 256 units dead ahead, projected either side of renderscene.
 	// Both should read the centre of the screen and they should agree.
 	sv = getproperty(VF_SCREENVSIZE);
@@ -4539,7 +4544,7 @@ void(float n, float dt) Watch_Trace =
 	for (i = 0; i < n; i = i + 1)
 	{
 		rec_wt_time = t0 + i * dt;
-		if (rec_wt_time > rec_wt_t1)
+		if (rec_wt_time > rec_wt_vt1)
 			break;
 		Watch_Sample();
 		e = Watch_Eye();
@@ -4637,7 +4642,10 @@ float(string cmd) Watch_ConsoleCommand =
 	// Patch 431: `cut 0|1`, the chrome's "whole run" / "stage N only".
 	if (a == "cut")
 	{
-		Watch_SetCut(stof(argv(2)));
+		if (!rec_wt_open)
+			print("replay: nothing loaded\n");
+		else
+			Watch_SetCut(stof(argv(2)));
 		return TRUE;
 	}
 

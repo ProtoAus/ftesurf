@@ -62,6 +62,7 @@ vector ln_eye, ln_fwd, ln_rt, ln_up;
 float  ln_tx, ln_ty, ln_kx, ln_ky;           // tan(fov/2), and the sphere slack
 float  ln_tolk;                  // units of error a unit of distance allows
 float  ln_far, ln_fadek;          // hud_watch_path_far, and 1 / its fade's length
+float  ln_cfade;                 // the last sphere tested reaches into the fade
 float  ln_px;                   // one physical pixel, virtual units
 float  ln_hw, ln_cw, ln_pk;     // outer / full-alpha half widths, peak alpha
 float  ln_slo, ln_shi, ln_sinv, ln_cmode;
@@ -142,7 +143,10 @@ void(float s, vector o, float spd, float t, float brk) Line_Add =
 			ln_pos[b + i] = ln_pos[j];
 			ln_spd[b + i] = ln_spd[j];
 			ln_t[b + i]   = ln_t[j];
-			ln_brk[b + i] = (ln_brk[j] || (i > 0 && ln_brk[j - 1]));
+			ln_brk[b + i] = ln_brk[j];
+			if (i > 0)
+			if (ln_brk[j - 1])
+				ln_brk[b + i] = TRUE;
 		}
 		if (ln_brk[b + LN_CAP - 1])
 			ln_pbrk[s] = TRUE;
@@ -419,6 +423,10 @@ void(vector q, vector c, float a) Line_Q =
 	local float l, k;
 
 	ln_npt = ln_npt + 1;
+	if (q_x < ln_bbmin_x) ln_bbmin_x = q_x;
+	if (q_y < ln_bbmin_y) ln_bbmin_y = q_y;
+	if (q_x > ln_bbmax_x) ln_bbmax_x = q_x;
+	if (q_y > ln_bbmax_y) ln_bbmax_y = q_y;
 	if (ln_rn > 0)
 	{
 		d = q - ln_rq1;
@@ -575,7 +583,9 @@ float(vector cen, float rad) Line_Sphere =
 	if (x < 0) x = 0 - x;
 	if (x - z * ln_ty > rad * ln_ky)
 		return -1;
-	x = vlen(r) - rad;
+	x = vlen(r);
+	ln_cfade = (ln_far > 0 && x + rad > ln_far * 0.66);   // parts of it fade
+	x = x - rad;
 	if (x < 0)
 		return 0;
 	if (ln_far > 0)
@@ -614,9 +624,10 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 	d = (p - ln_eye) * ln_fwd;
 	c = ln_col[b + i];
 	a = ((ln_t[b + i] <= tplay) ? 1 : ahead) * ln_da;
-	if (ln_fadek > 0)
-	if (d > ln_far * 0.66)
-		a = a * bound(0, (ln_far - d) * ln_fadek, 1);
+	// The fade is by distance, as the cull is (review: by depth it cut hard at
+	// the screen's sides); only a chunk reaching into it pays the vlen.
+	if (ln_cfade)
+		a = a * bound(0, (ln_far - vlen(p - ln_eye)) * ln_fadek, 1);
 
 	if (!ln_hp)
 	{
@@ -637,6 +648,7 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 				ln_hp = FALSE;
 				return;
 			}
+			st = 0;                 // no curve back over the playhead (review)
 		}
 
 		// A long segment on screen: Catmull-Rom through the neighbours (none across
@@ -666,8 +678,10 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 		{
 			pm = (ln_pi > 0 && !ln_brk[b + ln_pi]) ? ln_pos[b + ln_pi - 1]
 			                                       : 2 * ln_pp - p;
-			pn = (i + 1 < ln_dn && !ln_brk[b + i + 1])
-			     ? ln_pos[b + i + 1] : 2 * p - ln_pp;
+			pn = 2 * p - ln_pp;
+			if (i + 1 < ln_dn)
+			if (!ln_brk[b + i + 1])
+				pn = ln_pos[b + i + 1];
 			for (j = 1; j < sub; j = j + 1)
 			{
 				f = j / sub;
@@ -680,6 +694,11 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 			}
 		}
 		Line_Q(q1, c, a);
+	}
+	else if (ahead <= 0 && ln_t[b + i] > tplay)
+	{
+		Line_RunEnd();              // ahead 0: nothing past the playhead
+		ln_nclip = ln_nclip + 1;
 	}
 	else if (ln_pd >= LN_NEAR)
 	{
@@ -762,7 +781,7 @@ void(vector w, vector c, float al) Line_Square =
 */
 void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 {
-	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge;
+	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1;
 	local vector p0, p1;
 
 	if (!ln_on[s])
@@ -849,13 +868,19 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		p0 = ln_pos[b + j - 1];
 		p1 = ln_pos[b + j];
 		al = ((ln_t[b + j] <= tplay) ? 1 : ahead) * alpha;
+		d0 = d1 = al;
 		if (ln_fadek > 0)
-			al = al * bound(0, (ln_far - vlen(p1 - ln_eye)) * ln_fadek, 1);
-		if (al <= 0)
+		{
+			d0 = al * bound(0, (ln_far - vlen(p0 - ln_eye)) * ln_fadek, 1);
+			d1 = al * bound(0, (ln_far - vlen(p1 - ln_eye)) * ln_fadek, 1);
+		}
+		if (d0 <= 0 && d1 <= 0)
 			continue;
-		Line_Dash(p0, p1, '0.85 0.88 0.95', 0.35 * al);
-		Line_Square(p0, ln_col[b + j - 1], al);
-		Line_Square(p1, ln_col[b + j], al);
+		Line_Dash(p0, p1, '0.85 0.88 0.95', 0.35 * max(d0, d1));
+		if (d0 > 0)
+			Line_Square(p0, ln_col[b + j - 1], d0);
+		if (d1 > 0)
+			Line_Square(p1, ln_col[b + j], d1);
 	}
 };
 

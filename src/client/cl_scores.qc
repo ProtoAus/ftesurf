@@ -1013,7 +1013,9 @@ string(float row) Scores_LineKey =
 			return "";
 		return sprintf("r%g:%g", Online_RowRep(row), Online_RowLeg(row));
 	}
-	if (row < 0 || row >= rec_sb_rown || rec_sb_rowtag[row] == RT_LOBBY)
+	if (row < 0 || row >= rec_sb_rown)
+		return "";
+	if (rec_sb_rowtag[row] == RT_LOBBY)          // nested: || does not short-circuit
 		return "";
 	return strcat("l:", bufstr_get(rec_sb_bpath, row));
 };
@@ -1214,8 +1216,13 @@ void() Scores_LinesStatus =
 		else if (sb_ln_st[i] == SBL_QUEUE) w = "queued";
 		else if (sb_ln_st[i] == SBL_BUILD) w = "building";
 		else if (sb_ln_st[i] == SBL_ON)    w = "drawn";
+		if (!ln_on[i + 1])
+		{
+			print(sprintf("  line %g %s  %s\n", i + 1, w, sb_ln_key[i]));
+			continue;
+		}
 		print(sprintf("  line %g %s  %s  %g pts (%g shown) ", i + 1, w, sb_ln_key[i],
-		              ln_n[i + 1], ln_on[i + 1] ? (ln_ib[i + 1] - ln_ia[i + 1] + 1) : 0),
+		              ln_n[i + 1], ln_ib[i + 1] - ln_ia[i + 1] + 1),
 		      sprintf("%g tele  t %.4f..%.4f  speed %.0f..%.0f\n", ln_bkn[i + 1],
 		              ln_t[(i + 1) * LN_CAP + ln_ia[i + 1]], ln_t[(i + 1) * LN_CAP + ln_ib[i + 1]],
 		              ln_lo[i + 1], ln_hi[i + 1]));

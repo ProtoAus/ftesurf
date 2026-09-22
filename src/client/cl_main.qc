@@ -1501,8 +1501,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
-	if (!rec_wt_on)
-		Scores_LinesPin();          // ...and their projection
+	Scores_LinesPin();              // ...and their projection (Watch_Path pins only in mode 2)
 
 	renderscene();
 

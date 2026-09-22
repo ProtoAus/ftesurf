@@ -57,6 +57,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Cosmetic / low
 
+- A board line's stage window (cl_watch.qc Watch_LineJobWindow) differs from the
+  replay's (Watch_WindowFind) on a file with no `stagepost` for the stage: it takes
+  the LAST `stage seg` record where the replay takes the one before the first
+  `stage seg+1`.  Rows with Online_RowLeg > 0 always have one; only old files
+  opened another way can differ.  Patch 433 review.
+- The replay line's alpha ramps from 1 to the `ahead` alpha across the one sample
+  segment after the playhead instead of stepping (cl_lines.qc Line_Feed).
+- cl_chat.qc Chat_Draw says its shadow is "like the rest of the HUD's text"; no
+  other HUD text is shadowed (HUD_Text draws plain).  The shadow costs ~1.5 us a
+  row (a second drawstring, measured 2.0 -> 3.5 us for 62 chars).
+
 - `Server permissions deny downloading file "package/maps/<map>.bsp"` on joins:
   the server advertises the map's BSP as a package and SV_AllowDownload refuses
   non-pk3 packages. The advertising side was not traced.
