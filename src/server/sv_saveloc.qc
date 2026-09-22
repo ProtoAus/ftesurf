@@ -159,8 +159,8 @@ float  rec_sl_quiet;
 .float rec_sl_tok;               // Patch 428: SV_SaveLocBegin's bucket...
 .float rec_sl_tokt;              // ...the time it was last filled...
 .float rec_sl_toksay;            // ...and the last "slow down"
-.float rec_sl_loadt;             // Patch 428 r3: time of the last load that placed...
-.float rec_sl_loadrow;           // ...and its row; SV_SaveLocHold needs both
+.float rec_sl_loadrow;           // Patch 428: with rec_sl_loadt (sv_timer.qc), the load
+.float rec_sl_loadseq;           // a hold may follow -- its row and its save
 
 #define SL_TOKRATE  20           // list commands a second, burst and sustained
 #define SL_DEMOTED  -1           // rec_sl_tick of a demoted save: never "clock stopped" to `!r`
@@ -1907,13 +1907,20 @@ void(float row) SV_SaveDemote =
 	  leaves a file the load pre-check refuses, not a clock with no copy behind it.
 	*/
 	id = rec_sl_id[row];
+	if (rec_sl_tick[row] <= 0)
+		return;                         // no run to take (idle, armed, or already demoted)
 	if (!SV_SaveReadIdent(id) || !SV_SaveRowIs(row))
 		return;
-	if (sl_fticks == SL_DEMOTED)
-		return;                         // already (a row can pass the mark twice after deletes)
 	rec_sl_tick[row] = SL_DEMOTED;
 	rec_sl_seg [row] = 0;
 	rec_sl_cps [row] = 0;
+	/*
+	  Review round 4: and its SPEED.  A demoted load is an idle timer; its latches
+	  come from a zone scan at the %.4f origin, which on a floor-bottom start box
+	  lies a hair below the zone -- the first hop into it armed, with the saved
+	  speed.  A position at rest has no speed to carry into a start.
+	*/
+	rec_sl_vel[row] = '0 0 0';
 
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f < 0)
@@ -1924,7 +1931,7 @@ void(float row) SV_SaveDemote =
 	fputs(f, sprintf("map %s\n", mapname));
 	fputs(f, sprintf("seq %d\n", rec_sl_seq[row]));
 	fputs(f, sprintf("origin %.4f %.4f %.4f\n", o_x, o_y, o_z));
-	fputs(f, sprintf("velocity %.4f %.4f %.4f\n", v_x, v_y, v_z));
+	fputs(f, "velocity 0 0 0\n");
 	fputs(f, sprintf("angles %.4f %.4f\n", rec_sl_pit[row], rec_sl_yaw[row]));
 	fputs(f, sprintf("duck %d\n", rec_sl_duck[row] ? 1 : 0));
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
@@ -2139,6 +2146,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	SV_SaveLocPlace(e, r);
 	e.rec_sl_loadt   = time;            // Patch 428 r3: the load a hold may follow
 	e.rec_sl_loadrow = r;
+	e.rec_sl_loadseq = rec_sl_seq[r];
 
 	/*
 	  BUILD 39 -- "I DID NOT LAND HERE, I WAS PUT HERE", and this was the one
@@ -2340,6 +2348,8 @@ void(entity e) SV_SaveLocRelease =
 */
 void(entity e, float down) SV_SaveLocHold =
 {
+	local float row;
+
 	if (!down)
 	{
 		SV_SaveLocRelease(e);
@@ -2367,14 +2377,20 @@ void(entity e, float down) SV_SaveLocHold =
 	}
 
 	/*
-	  Patch 428 r2/r3: ONLY AFTER A LOAD OF THIS ROW, IN THIS FRAME.  `2` sends
-	  sl_load then sl_hold in one reliable message, so a real press always finds
-	  its load here.  Without it the hold's re-place was a teleport with no state
-	  applied (a refused load, a bare `cmd sl_hold`), and standing on the save --
-	  round 2's test -- still handed a running attempt the save's velocity at the
-	  release.
+	  Patch 428 r2-r4: ONLY RIGHT AFTER A LOAD OF THIS SAVE.  `2` sends sl_load
+	  then sl_hold in one reliable message, so a real press always passes.  Every
+	  part was a hole on its own: without the load, the hold's re-place and the
+	  release's saved velocity were a teleport and a free speed; without the SEQ,
+	  a delete in between slid another save under the loaded row; without the
+	  ORIGIN (and SV_TimerWarped voiding rec_sl_loadt), a respawn in between put
+	  the hold's arm edge on a fresh idle timer -- a clean run from any save.
 	*/
-	if (e.rec_sl_loadt != time || e.rec_sl_loadrow != SL_Base(SL_Blk(e)) + e.rec_sl_index - 1)
+	if (e.rec_sl_index < 1 || e.rec_sl_index > rec_sl_nb[SL_Blk(e)])
+		return;
+	row = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
+	if (e.rec_sl_loadt != time || e.rec_sl_loadrow != row || e.rec_sl_loadseq != rec_sl_seq[row])
+		return;
+	if (vlen(e.origin - rec_sl_org[row]) > 1)
 		return;
 
 	e.rec_sl_hold    = TRUE;

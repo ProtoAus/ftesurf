@@ -8744,9 +8744,15 @@ void(entity e, string why) SV_TimerVoid =
   segment from wherever you were to wherever you are and fire every stage and
   end zone on the line between them.
 */
+// Patch 428: the last save-lock load that placed this player (sv_saveloc.qc sets
+// it after its own placement).  Any later placement -- respawn, `!r`, a teleport
+// -- comes through here and voids it, so a hold cannot follow one (review round 4).
+.float rec_sl_loadt;
+
 void(entity e) SV_TimerWarped =
 {
 	e.run_t_lastorg = e.origin;
+	e.rec_sl_loadt = 0;
 
 	/*
 	  The padding ring is the APPROACH, and you did not approach.

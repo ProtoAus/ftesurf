@@ -240,7 +240,14 @@ float  rec_sl_holdackat;
 void(string c) SaveLoc_Cmd =
 {
 	if (substring(c, 0, 3) == "sl_")
+	{
+		// Resynced on every send, not only when predicting (review round 4: with
+		// cl_slpredict 0 a typed `cmd sl_` left the count behind, and the hold's
+		// refusal check released a hold the server had started).
+		if (getstatf(STAT_FS_SLACK) > rec_sl_sent)
+			rec_sl_sent = getstatf(STAT_FS_SLACK);
 		rec_sl_sent = rec_sl_sent + 1;
+	}
 	localcmd(strcat("cmd ", c, "\n"));
 };
 
