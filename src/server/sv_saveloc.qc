@@ -159,8 +159,11 @@ float  rec_sl_quiet;
 .float rec_sl_tok;               // Patch 428: SV_SaveLocBegin's bucket...
 .float rec_sl_tokt;              // ...the time it was last filled...
 .float rec_sl_toksay;            // ...and the last "slow down"
+.float rec_sl_loadt;             // Patch 428 r3: time of the last load that placed...
+.float rec_sl_loadrow;           // ...and its row; SV_SaveLocHold needs both
 
 #define SL_TOKRATE  20           // list commands a second, burst and sustained
+#define SL_DEMOTED  -1           // rec_sl_tick of a demoted save: never "clock stopped" to `!r`
 #define SL_RECKEEP  24           // lobby saves that keep their recording copy (SV_SaveLocCreate)
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
@@ -860,7 +863,7 @@ float(float id, float row) SV_SaveReadLight =
 {
 	local filestream f;
 	local string k;
-	local float n, seq;
+	local float n, seq, dem;
 	local vector v;
 
 	f = fopen(SL_StatePath(id), FILE_READ);
@@ -868,6 +871,7 @@ float(float id, float row) SV_SaveReadLight =
 		return -1;
 
 	seq = -1;
+	dem = FALSE;
 
 	rec_sl_org [row] = '0 0 0';
 	rec_sl_vel [row] = '0 0 0';
@@ -895,6 +899,7 @@ float(float id, float row) SV_SaveReadLight =
 		if (k == "seg")      { rec_sl_seg [row] = stof(argv(1)); continue; }
 		if (k == "reccp")    { rec_sl_cps [row] = stof(argv(1)); continue; }
 		if (k == "duck")     { rec_sl_duck[row] = stof(argv(1)); continue; }
+		if (k == "demoted")  { dem = TRUE; continue; }     // Patch 428
 
 		if (k == "origin")
 		{
@@ -926,6 +931,8 @@ float(float id, float row) SV_SaveReadLight =
 		// anything else: skipped, by the grammar's own rule
 	}
 	fclose(f);
+	if (dem)
+		rec_sl_tick[row] = SL_DEMOTED;
 
 	/*
 	  A file with no `seq` is not one of ours -- or is one of ours that was
@@ -1843,15 +1850,70 @@ float(float base, float cnt) SV_SaveFreeID =
   whose evidence the player had chosen to lose.  Block 0 is a player's own
   machine and always had 999 whole saves.
 */
+// Patch 428: what a state file says it is -- seq, run clock (SL_DEMOTED for a
+// demoted file) and origin, the columns SV_SaveReadLight filled the row from.
+float  sl_fseq, sl_fticks;
+vector sl_forg;
+
+float(float id) SV_SaveReadIdent =
+{
+	local filestream f;
+	local string k;
+	local float n, dem;
+
+	f = fopen(SL_StatePath(id), FILE_READ);
+	if (f < 0)
+		return FALSE;
+	sl_fseq = -1;
+	sl_fticks = 0;
+	sl_forg = '0 0 0';
+	dem = FALSE;
+	while ((k = fgets(f)) != "")
+	{
+		n = tokenize(k);
+		if (n < 2)
+			continue;
+		k = argv(0);
+		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
+		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
+		if (k == "demoted") { dem = TRUE; continue; }
+		if (k == "origin")  { if (n >= 4) sl_forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
+	}
+	fclose(f);
+	if (dem)
+		sl_fticks = SL_DEMOTED;
+	return TRUE;
+};
+
+// ...and whether that is still row r.
+float(float r) SV_SaveRowIs =
+{
+	if (sl_fseq != rec_sl_seq[r] || sl_fticks != rec_sl_tick[r])
+		return FALSE;
+	return vlen(sl_forg - rec_sl_org[r]) <= 0.01;
+};
+
 void(float row) SV_SaveDemote =
 {
 	local filestream f;
 	local float id;
 	local vector o, v;
 
+	/*
+	  Review round 3: the file must still BE this row -- with two connections on
+	  one guid the other may have deleted it (the rewrite would bring it back) or
+	  saved a newer one into the number (it would be overwritten).  And the row is
+	  marked before the rewrite, the copy removed after it: a rewrite that fails
+	  leaves a file the load pre-check refuses, not a clock with no copy behind it.
+	*/
 	id = rec_sl_id[row];
-	SV_RecCopyDrop(SL_RecPath(id));
-	fremove(SL_RecPath(id));
+	if (!SV_SaveReadIdent(id) || !SV_SaveRowIs(row))
+		return;
+	if (sl_fticks == SL_DEMOTED)
+		return;                         // already (a row can pass the mark twice after deletes)
+	rec_sl_tick[row] = SL_DEMOTED;
+	rec_sl_seg [row] = 0;
+	rec_sl_cps [row] = 0;
 
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f < 0)
@@ -1868,9 +1930,8 @@ void(float row) SV_SaveDemote =
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 
-	rec_sl_tick[row] = 0;
-	rec_sl_seg [row] = 0;
-	rec_sl_cps [row] = 0;
+	SV_RecCopyDrop(SL_RecPath(id));
+	fremove(SL_RecPath(id));
 };
 
 /*
@@ -2017,11 +2078,7 @@ void(entity e, float r) SV_SaveLocPlace =
 
 void(entity e, float n) SV_SaveLocLoad =
 {
-	local float r, id, blk, base, cnt;
-	local filestream f;
-	local string k;
-	local float kn, fseq, fticks;
-	local vector forg;
+	local float r, id, blk, base, cnt, dem;
 
 	/*
 	  PATCH 333 -- load goes through the same gate as create: in a lobby the row
@@ -2065,34 +2122,23 @@ void(entity e, float n) SV_SaveLocLoad =
 	  paired one save's position with another's clock.  Refused, not rescanned: a
 	  rescan on every refusal would be a stall a player can order at 20/s.
 	*/
-	f = fopen(SL_StatePath(id), FILE_READ);
-	if (f < 0)
+	if (!SV_SaveReadIdent(id))
 	{
 		sprint(e, PRINT_HIGH, "^3save: the state file could not be read\n");
 		return;
 	}
-	fseq = -1;
-	fticks = 0;
-	forg = '0 0 0';
-	while ((k = fgets(f)) != "")
+	if (!SV_SaveRowIs(r))
 	{
-		kn = tokenize(k);
-		if (kn < 2)
-			continue;
-		k = argv(0);
-		if (k == "seq")    { fseq = stof(argv(1)); continue; }
-		if (k == "ticks")  { fticks = stof(argv(1)); continue; }
-		if (k == "origin") { if (kn >= 4) forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
-	}
-	fclose(f);
-	if (fseq != rec_sl_seq[r] || fticks != rec_sl_tick[r] || vlen(forg - rec_sl_org[r]) > 0.01)
-	{
-		sprint(e, PRINT_HIGH, "^3save: that save changed on disk -- rejoin or change map to reread the list\n");
+		// Not "rejoin": a rejoin on the same guid keeps the list (SL_Fresh).
+		sprint(e, PRINT_HIGH, "^3save: that save changed on disk -- the list rereads at the next map\n");
 		return;
 	}
+	dem = (sl_fticks == SL_DEMOTED);
 
 	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
 	SV_SaveLocPlace(e, r);
+	e.rec_sl_loadt   = time;            // Patch 428 r3: the load a hold may follow
+	e.rec_sl_loadrow = r;
 
 	/*
 	  BUILD 39 -- "I DID NOT LAND HERE, I WAS PUT HERE", and this was the one
@@ -2215,6 +2261,21 @@ void(entity e, float n) SV_SaveLocLoad =
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
 		e.run_t_azone = -1;
 
+	/*
+	  Patch 428 r3: A DEMOTED SAVE ARMS NOTHING.  It restores an idle timer with
+	  every latch -1, so in a start or stage box the next tick was an arm edge --
+	  SV_TimerArm clears the load's taint -- and leaving the box started a CLEAN
+	  run at the saved speed.  The latches are those of where it put you, so a run
+	  starts only by leaving and entering a box, as anywhere else.
+	*/
+	if (dem)
+	{
+		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+		e.run_t_azone  = zs_az;
+		e.run_t_evzone = zs_ez;
+		e.run_t_cpzone = zs_cp;
+	}
+
 	// fixangle only on the one-shot load.  The hold re-places the origin every
 	// tick but must NOT keep stamping the view angles, or you could not look
 	// around while parked.
@@ -2306,14 +2367,14 @@ void(entity e, float down) SV_SaveLocHold =
 	}
 
 	/*
-	  Patch 428 r2: ONLY WHERE A LOAD PUT YOU.  `2` sends sl_load then sl_hold, and
-	  a hold re-places its player at the row every tick it drifts -- so a load
-	  refused (the bucket, a missing or changed state file, a resume) became a
-	  teleport with no state applied, and a bare `cmd sl_hold` always was one.
+	  Patch 428 r2/r3: ONLY AFTER A LOAD OF THIS ROW, IN THIS FRAME.  `2` sends
+	  sl_load then sl_hold in one reliable message, so a real press always finds
+	  its load here.  Without it the hold's re-place was a teleport with no state
+	  applied (a refused load, a bare `cmd sl_hold`), and standing on the save --
+	  round 2's test -- still handed a running attempt the save's velocity at the
+	  release.
 	*/
-	if (e.rec_sl_index < 1 || e.rec_sl_index > rec_sl_nb[SL_Blk(e)])
-		return;
-	if (vlen(e.origin - rec_sl_org[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1]) > 1)
+	if (e.rec_sl_loadt != time || e.rec_sl_loadrow != SL_Base(SL_Blk(e)) + e.rec_sl_index - 1)
 		return;
 
 	e.rec_sl_hold    = TRUE;

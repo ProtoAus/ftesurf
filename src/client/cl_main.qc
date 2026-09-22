@@ -1837,7 +1837,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		}
 
 		// Patch 391: the load gate as this client sees it.
-		print(sprintf("saveloc: locked %g refkey %g\n", SaveLoc_RunLocked(), rec_sl_refkey));
+		print(sprintf("saveloc: locked %g refkey %g hold %g\n", SaveLoc_RunLocked(), rec_sl_refkey,
+		              getstatf(STAT_FS_HOLD)));      // Patch 428 r3: the server's side of a hold
 		SaveLoc_Cmd(sprintf("sl_list %g", stof(argv(1))));        // Patch 428: from row n
 		return TRUE;
 	}

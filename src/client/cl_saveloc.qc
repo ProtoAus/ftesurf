@@ -230,6 +230,8 @@ float  rec_sl_pv_t0;
 vector rec_sl_pv_org;
 vector rec_sl_pv_ang;            // pitch, yaw, ducked
 float  rec_sl_pv_ackat;          // cltime the count covered the load; 0 = not yet
+float  rec_sl_holdack;           // Patch 428 r3: the count that covers the hold's press
+float  rec_sl_holdackat;
 
 #define SL_PV_TIMEOUT 1.5        // a lost reply cannot pin the camera
 #define SL_PV_SETTLE  0.15       // count in, body not: a refused load
@@ -442,6 +444,8 @@ void(float scan) SaveLoc_LoadKey =
 	SaveLoc_Cmd("sl_load");
 	SaveLoc_Cmd("sl_hold");
 	rec_sl_pv_ack = rec_sl_sent;
+	rec_sl_holdack = rec_sl_sent;       // Patch 428 r3
+	rec_sl_holdackat = 0;
 	rec_sl_holding  = TRUE;
 	rec_sl_holdkey  = scan;
 	rec_sl_holdseen = cltime;
@@ -453,6 +457,19 @@ void() SaveLoc_HoldFrame =
 {
 	if (!rec_sl_holding)
 		return;
+
+	// Patch 428 r3: a refused load takes its hold with it now, so once the count
+	// covers the press and no hold came (STAT_FS_HOLD), stop pinning the view.
+	if (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack)
+	{
+		if (!rec_sl_holdackat)
+			rec_sl_holdackat = cltime;
+		if (!getstatf(STAT_FS_HOLD) && cltime - rec_sl_holdackat > SL_PV_SETTLE * 2)
+		{
+			SaveLoc_Release();
+			return;
+		}
+	}
 	if (!rec_sl_holdrep)
 		return;                 // nothing has repeated, so silence proves nothing
 	if (cltime - rec_sl_holdseen > SL_HOLD_DEADMAN)
