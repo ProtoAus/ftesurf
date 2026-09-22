@@ -215,7 +215,7 @@ float  rec_sl_quiet;
   deleting an earlier save while holding would otherwise slide the list out from
   under the hold.
 */
-.float rec_sl_hold;
+// .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release
 
@@ -1967,6 +1967,14 @@ void(entity e) SV_SaveLocCreate =
 		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
 		return;
 	}
+	// Patch 428 review round 6: a held body is the save's, not a new place --
+	// and a save taken under a hold could pass the demotion mark while it was
+	// held (hold, step, save... kept rows out of it for good).
+	if (e.rec_sl_hold)
+	{
+		sprint(e, PRINT_HIGH, "^3save: let go of the load key first\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -2006,10 +2014,8 @@ void(entity e) SV_SaveLocCreate =
 	rec_sl_seq[row] = seq;
 	rec_sl_nb[blk] = cnt + 1;
 
-	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run -- not
-	// the one being held (round 5: its release speed went to 0 under the hand).
+	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run.
 	if (blk > 0 && cnt >= SL_RECKEEP)
-	if (!(e.rec_sl_hold && e.rec_sl_holdrow == base + cnt - SL_RECKEEP))
 		SV_SaveDemote(base + cnt - SL_RECKEEP);
 
 	e.rec_sl_index = cnt + 1;

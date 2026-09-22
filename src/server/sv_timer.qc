@@ -8748,6 +8748,8 @@ void(entity e, string why) SV_TimerVoid =
 // it after its own placement).  Any later placement -- respawn, `!r`, a teleport
 // -- comes through here and voids it, so a hold cannot follow one (review round 4).
 .float rec_sl_loadt;
+// The save-lock hold (sv_saveloc.qc owns it), declared here for SV_TimerFrame.
+.float rec_sl_hold;
 
 void(entity e) SV_TimerWarped =
 {
@@ -12355,6 +12357,23 @@ void(entity e) SV_TimerFrame =
 	  what the body did while unattended, which is precisely what a verifier
 	  needs to see between the two `ghost` markers.
 	*/
+	/*
+	  Patch 428 review round 6 (older than 428): A SAVE-LOCK HOLD RUNS NO ZONE
+	  TESTS EITHER.  The body is the save's until the release, but a map mover can
+	  shift it between here and SV_SaveLocHoldFrame's re-place -- a func_bhop dwell
+	  teleport fires on a MOVETYPE_NONE body -- and this scan then armed a clean
+	  attempt (or failed and reopened a stage, clearing its taint) under the hold,
+	  whose release handed it the save's speed.  The recorder and the swept test's
+	  far end run as they do below; the re-place resets the far end to the save.
+	  An edge the hold hid is seen on the first packet after the release.
+	*/
+	if (e.rec_sl_hold)
+	{
+		SV_TimerRecFrame(e);
+		e.run_t_lastorg = e.origin;
+		return;
+	}
+
 	if (e.rec_gh_on)
 	{
 		/*
