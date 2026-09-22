@@ -415,43 +415,41 @@ void(float r, string path) Scores_ReadHeader =
   for, which since build 45 is `last.rec` AND `cheat.rec` rather than the one
   file this comment used to name.
 
-  Every other name carries its tick count, so this runs at most twice per leg.  It
-  costs a buf_loadfile of the whole file, which is what Watch_Open already does
-  for a replay and is affordable for one row; the alternative is a row reading
-  "--:--.---" for the attempt you most recently made, which is the one you are
-  most likely to want to watch.
+  Every other name carries its tick count, so this runs at most twice per leg.
 
-  Scanned BACKWARDS from the end, bounded: the trailer is `end` followed by one
-  `split` per completed segment, so `end` is near the bottom but is not the last
-  line.  64 is well past FS_MAXSPLITS.
+  The trailer is `end` followed by one `split` per completed segment, so `end` is
+  near the bottom but is not the last line.  Patch 431: only the last 16 KB is
+  read (the last `end` in it wins); buf_loadfile of a recording over 5 MB took
+  12.9 s (see Watch_BufLoad).
 */
 float(string path) Scores_TrailerTicks =
 {
-	local float buf, n, i, t;
+	local float fh, n, t;
 	local string s;
 
-	buf = buf_create_ex("string", 0);
-	if (buf < 1)
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
 		return 0;
-	if (!buf_loadfile(path, buf))
-	{
-		buf_del(buf);
-		return 0;
-	}
-
-	n = buf_getsize(buf);
+	n = fsize(fh);
 	t = 0;
-	for (i = n - 1; i >= 0 && i > n - 64; i = i - 1)
+	if (n > 16384)
 	{
-		s = bufstr_get(buf, i);
-		if (substring(s, 0, 4) != "end ")
-			continue;
-		tokenize(s);
-		t = stof(argv(1));
-		break;
+		fseek(fh, n - 16384);
+		fgets(fh);                  // the partial line the seek landed in
 	}
-
-	buf_del(buf);
+	while (1)
+	{
+		s = fgets(fh);
+		if (s == "")
+		if (fseek(fh) >= n)
+			break;
+		if (substring(s, 0, 4) == "end ")
+		{
+			tokenize(s);
+			t = stof(argv(1));
+		}
+	}
+	fclose(fh);
 	return t;
 };
 
@@ -1698,9 +1696,8 @@ void(float pick) Scores_OnlineHandOff =
 	rec_sb_wantrep = 0;
 	rec_sb_wantleg = 0;
 	Scores_Close();
-	if (Watch_Open(path))
-	if (leg > 0)
-		Watch_StageWindow(leg - 1);
+	rec_wt_wantleg = leg;           // Patch 431: cut to the stage as it opens
+	Watch_Open(path);
 	Online_ReplayClear();
 };
 

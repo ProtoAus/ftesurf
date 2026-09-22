@@ -309,7 +309,15 @@ float  rec_wt_pw1[WT_STGMAX];
 float  rec_wt_abandon;                // an `abandon` record: no finish row
 float  rec_wt_winseg;                 // the window's seg, -1 none
 float  rec_wt_wint0, rec_wt_wint1;    // its start and stop, run seconds
-float  rec_wt_stopon;                 // the one pause at wint1 is still armed
+// Patch 431: what the bar, seeks and playback cover -- the file, or the window
+// from 1 s before its start (rec_wt_wincut).
+float  rec_wt_vt0, rec_wt_vt1;
+float  rec_wt_wincut;
+float  rec_wt_wantleg;                // the stage (leg) to cut to as the file opens, 0 none
+float  rec_wt_bt0, rec_wt_bt1;        // what Watch_ScanRange last built
+float  rec_wt_bline;                  // ...and the line it started on
+float  rec_wt_wina, rec_wt_winb;      // the window in ticks, and how it was found
+string rec_wt_winhow;
 
 /*
 ===========================================================================
@@ -629,12 +637,40 @@ void() Watch_Free =
 	rec_wt_pn   = 0;
 	rec_wt_evn  = 0;
 	rec_wt_on   = FALSE;
-	rec_wt_stopon = FALSE;          // Patch 395: no window survives the file
+	rec_wt_wincut = FALSE;          // Patch 395: no window survives the file
 	rec_wt_winseg = -1;
 	// a `replay trace frames` still counting would print into the next file
 	if (rec_wt_trfn > 0)
 		print("wtfe\n");
 	rec_wt_trfn = 0;
+};
+
+/*
+  Patch 431: a file into a line buffer.  buf_loadfile splits with VFS_GETS, one
+  VFS_READ per byte, and Windows maps only files up to 5 MB (fs_win32.c:480): a
+  bigger one is a ReadFile per byte, 12.9 s for surf_rookie's 6.7 MB .rec.
+  FILE_READ reads the file whole on the first fgets and splits it in memory
+  (34 ms there).  An empty line is a blank line until the offset reaches the end.
+*/
+float(string path, float buf) Watch_BufLoad =
+{
+	local float fh, n;
+	local string l;
+
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return FALSE;
+	n = fsize(fh);
+	while (1)
+	{
+		l = fgets(fh);
+		if (l == "")
+		if (fseek(fh) >= n)
+			break;
+		bufstr_add(buf, l, TRUE);
+	}
+	fclose(fh);
+	return TRUE;
 };
 
 // ---- Patch 378: the interpolation tables, built inside Watch_Scan's pass two ----
@@ -953,26 +989,16 @@ void() Watch_ViewMap =
 };
 
 /*
-  One pass to count and to collect the records, a second to build the index and
-  the path.
-
-  Two passes rather than one because the stride both tables want is a function of
-  the sample count, and the sample count is not known until the file has been
-  walked.  The first pass costs a bufstr_get and a str2chr per line and tokenizes
-  only the records; the second tokenizes only the strided samples.  On your
-  surf_aesthetic run that is about six thousand cheap steps and a thousand
-  tokenize calls, once, at load.
+  Pass one counts the samples and collects the records; a second walk builds the
+  seek index (every ixstep-th sample, one stof each) and reads t0, t1 and the
+  sample width.  Patch 431: the per-sample tables moved to Watch_ScanRange, which
+  a stage opened from the board runs over its window only.
 */
 void() Watch_Scan =
 {
-	local float i, n, c, ver, nextix, nextp, want;
-	local float cstride, d, turn;
-	local vector lastdir, step;
+	local float i, n, c, ver, nextix;
 	local string s;
-	local vector o;
-	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
-	local vector v;
-	local float fl, key, vp, vq;
+	local float vp, vq;
 	local float wpseg, wpdur, wpend;
 
 	rec_wt_rec0     = 0;
@@ -1070,18 +1096,47 @@ void() Watch_Scan =
 	rec_wt_abandon = FALSE;
 	wpseg = -1;
 	wpdur = 0;
+	rec_wt_bdn_n  = 0;
+	rec_wt_bdover = 0;
 	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
-		if (Watch_IsSample(s))
+		c = str2chr(s, 0);
+		if (c == 45 || (c >= 48 && c <= 57))        // FS_IsSample, inline
 		{
 			rec_wt_nsamp = rec_wt_nsamp + 1;
 			continue;
 		}
+		// Patch 431: `in`, `inend` and `mc` are two thirds of a v9 file; nothing
+		// here reads them.
+		if (c == 105 || c == 109)
+			continue;
 
 		n = tokenize(s);
 		if (n < 2)
 			continue;
+
+		/*
+		  The boards share this walk but not WT_EVMAX: they are bounded only by
+		  the map's ramps, and a shared cap would let a board-heavy run push the
+		  stages out of the split list.  Overflow is reported (Watch_BuildSeq).
+		*/
+		if (argv(0) == "board")
+		{
+			if (n < 9)
+				continue;
+			if (rec_wt_bdn_n >= WT_BDMAX)
+			{
+				rec_wt_bdover = rec_wt_bdover + 1;
+				continue;
+			}
+			rec_wt_bdt[rec_wt_bdn_n] = stof(argv(1));
+			rec_wt_bdc[rec_wt_bdn_n] = stof(argv(2));
+			rec_wt_bdn[rec_wt_bdn_n] = [stof(argv(3)), stof(argv(4)), stof(argv(5))];
+			rec_wt_bdv[rec_wt_bdn_n] = [stof(argv(6)), stof(argv(7)), stof(argv(8))];
+			rec_wt_bdn_n = rec_wt_bdn_n + 1;
+			continue;
+		}
 
 		/*
 		  Patch 395: `stagepost <seg> <dur>` is written just before the `stage`
@@ -1160,276 +1215,50 @@ void() Watch_Scan =
 		}
 	}
 
-	/*
-	  A SECOND SWEEP FOR THE BOARDS, and it is separate because the cap is.
-
-	  Stage and checkpoint records share WT_EVMAX with each other and are bounded
-	  by the zone file (24 splits, 24 checkpoints); boards are bounded by nothing
-	  but how many ramps the map has, so `rec_wt_evn >= WT_EVMAX` guarding both
-	  would let a board-heavy run silently push the stages out of the split list.
-	  Two tables, two caps, one extra pass over lines that are already in memory.
-	*/
-	rec_wt_bdn_n  = 0;
-	rec_wt_bdover = 0;
-	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
-	{
-		s = bufstr_get(rec_wt_rec, i);
-		if (Watch_IsSample(s))
-			continue;
-		if (substring(s, 0, 6) != "board ")
-			continue;
-
-		n = tokenize(s);
-		if (n < 9)
-			continue;
-		if (rec_wt_bdn_n >= WT_BDMAX)
-		{
-			rec_wt_bdover = rec_wt_bdover + 1;
-			continue;
-		}
-
-		rec_wt_bdt[rec_wt_bdn_n] = stof(argv(1));
-		rec_wt_bdc[rec_wt_bdn_n] = stof(argv(2));
-		rec_wt_bdn[rec_wt_bdn_n] = [stof(argv(3)), stof(argv(4)), stof(argv(5))];
-		rec_wt_bdv[rec_wt_bdn_n] = [stof(argv(6)), stof(argv(7)), stof(argv(8))];
-		rec_wt_bdn_n = rec_wt_bdn_n + 1;
-	}
-
-	// ---- pass two: the index and the path's control points ----------------
-	//
-	// Explicit "next wanted ordinal" counters rather than a modulo.  QuakeC has
-	// no % of its own -- fteqcc synthesises one -- and the whole load path
-	// depending on a synthesised operator over a float is not a bet worth taking
-	// when two adds do the same job and read more plainly.
+	// ---- the seek index, t0 and t1 -----------------------------------------
 	rec_wt_ixstep = ceil(rec_wt_nsamp / (WT_IDX - 1));
 	if (rec_wt_ixstep < 1)
 		rec_wt_ixstep = 1;
-
-	/*
-	  THE PATH IS TOKENIZED IN FULL NOW, and that is a deliberate change of cost.
-
-	  The old stride let this pass skip most lines with a str2chr; a control point
-	  chosen by ANGLE cannot be, because the angle is only knowable from the
-	  position, so every sample has to be read.  That is one extra tokenize per
-	  sample at load -- about six thousand on your run, once -- bought against a
-	  line that no longer has a corner in it every ninety units.
-
-	  The fallback stride survives for the pathological case: if a run turns so
-	  often that it fills WT_CTLMAX, `cstride` starts skipping samples so the tail
-	  of the run still gets controls rather than the line simply stopping.
-	*/
-	cstride = ceil(rec_wt_nsamp / (WT_CTLMAX - 2));
-	if (cstride < 1)
-		cstride = 1;
-
 	rec_wt_ixn = 0;
-	rec_wt_cn  = 0;
-	c         = 0;                  // sample ordinal
 	rec_wt_t0  = 0;
 	rec_wt_t1  = 0;
-	nextix    = 0;
-	nextp     = 0;
-	lastdir   = '0 0 0';
-
-	/*
-	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
-	  same defaults; the fallbacks are here because a cvar read before its
-	  registercvar returns "" and a zero speed threshold would mark nothing while
-	  looking like it was working.
-	*/
-	rec_wt_idn    = 0;
-	rec_wt_idover = 0;
-	idon         = FALSE;
-	idfrom       = 0;
-	idlim        = cvar("hud_watch_idle_speed");
-	if (idlim <= 0) idlim = 20;
-	idmin        = cvar("hud_watch_idle_time");
-	if (idmin <= 0) idmin = 0.5;
-	idpad        = cvar("hud_watch_idle_pad");
-
-	Watch_TablesReset();
+	rec_wt_v4  = FALSE;
+	nextix = 0;
+	n = 0;                          // sample ordinal
 	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
-		if (!Watch_IsSample(s))
-		{
-			Watch_ScanRecord(s);
+		c = str2chr(s, 0);
+		if (c != 45 && (c < 48 || c > 57))
 			continue;
-		}
-
-		n = tokenize(s);
-		v   = [stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)),
-		       stof(argv(WT_C_VEL + 2))];
-		fl  = stof(argv(WT_C_FLAGS));
-		key = stof(argv(WT_C_KEYS));
-
-		if (c == 0)
+		if (n == 0)
 		{
-			rec_wt_t0 = stof(argv(WT_C_T));
+			rec_wt_t0 = stof(s);    // atof stops at the space: the `t` column
 
 			/*
-			  v4 is decided by the SAMPLE and not by the header key alone.
-
-			  The header says what the writer believed; the column count says
-			  what is actually there.  Both are required because they can
-			  disagree in a way that matters: a v3 prefix resumed under a v4
-			  build writes a v4 header over samples that have thirteen
-			  columns, and reading argv(14) of those returns "" -- stof("") is
-			  0, and a zero normal handed to the strafe bar is a target of
-			  exactly nothing, drawn as confidently as a measured one.
+			  v4 is decided by the SAMPLE and not by the header key alone.  A v3
+			  prefix resumed under a v4 build writes a v4 header over thirteen-
+			  column samples, and argv(14) of those is "" -- a zero normal the
+			  strafe bar would draw as confidently as a measured one.
 			*/
-			rec_wt_v4 = (ver >= 4 && n >= WT_C_V4N);
+			rec_wt_v4 = (ver >= 4 && tokenize(s) >= WT_C_V4N);
 		}
-		if (c == rec_wt_nsamp - 1)
-			rec_wt_t1 = stof(argv(WT_C_T));
-
-		if (c == nextix)
+		if (n == rec_wt_nsamp - 1)
+			rec_wt_t1 = stof(s);
+		if (n == nextix)
 		{
-			nextix = c + rec_wt_ixstep;
+			nextix = n + rec_wt_ixstep;
 			if (rec_wt_ixn < WT_IDX)
 			{
 				rec_wt_ixline[rec_wt_ixn] = i;
-				rec_wt_ixt[rec_wt_ixn]    = stof(argv(WT_C_T));
+				rec_wt_ixt[rec_wt_ixn]    = stof(s);
 				rec_wt_ixn = rec_wt_ixn + 1;
 			}
 		}
-
-		/*
-		  A CONTROL POINT, by angle or by distance.
-
-		  The first and the last are unconditional -- a spline needs its ends --
-		  and everything between is kept only when it says something the
-		  neighbours do not: the direction has turned by more than WT_CTL_ANG, or
-		  WT_CTL_MAXD units have gone by without a turn.
-
-		  `dir` is the step from the LAST KEPT control, not from the previous
-		  sample, which is what makes this measure the turn of the drawn line
-		  rather than the per-tick jitter of the recorded one.
-		*/
-		o_x = stof(argv(WT_C_ORG + 0));
-		o_y = stof(argv(WT_C_ORG + 1));
-		o_z = stof(argv(WT_C_ORG + 2));
-
-		want = FALSE;
-		if (c == 0)                     want = TRUE;
-		else if (c == rec_wt_nsamp - 1)  want = TRUE;
-		else if (c >= nextp)
-		if (rec_wt_cn > 0)               // c == 0 above guarantees this, but the
-		{                               // array read below must not depend on it
-			step = o - rec_wt_cpos[rec_wt_cn - 1];
-			d    = vlen(step);
-			if (d >= WT_CTL_MAXD)
-				want = TRUE;
-			else if (d > 1)
-			if (lastdir != '0 0 0')
-			{
-				// vector * vector is the dot product, but it needs a float lvalue
-				// to land in -- fteqcc will not infer the type through a compare.
-				turn = normalize(step) * lastdir;
-				if (turn < WT_CTL_ANG)
-					want = TRUE;
-			}
-		}
-
-		if (want)
-		if (rec_wt_cn < WT_CTLMAX)
-		{
-			if (rec_wt_cn > 0)
-			if (o != rec_wt_cpos[rec_wt_cn - 1])
-				lastdir = normalize(o - rec_wt_cpos[rec_wt_cn - 1]);
-
-			rec_wt_cpos[rec_wt_cn]  = o;
-			rec_wt_cspd[rec_wt_cn]  = vlen([stof(argv(WT_C_VEL + 0)),
-			                              stof(argv(WT_C_VEL + 1)), 0]);
-			rec_wt_ctick[rec_wt_cn] = stof(argv(WT_C_T)) / rec_wt_tickrate;
-			rec_wt_cn = rec_wt_cn + 1;
-			nextp = c + cstride;
-		}
-
-		/*
-		  ---- DEAD AIR, and it is a state machine of one bit ----------------
-
-		  A stretch OPENS on the first slow sample and CLOSES on the first fast
-		  one, and is only kept if it lasted.  Closing on the fast sample rather
-		  than on the last slow one is deliberate: the run resumed somewhere
-		  between those two ticks, and a mark that stops at the last slow sample
-		  leaves a tick-wide gap of unmarked standing still at the end of every
-		  stretch.  Half a tick long, and wrong in the direction that under-
-		  reports, which is the one worth avoiding.
-
-		  The `t >= 0` half is nested rather than &&'d out of habit rather than
-		  necessity -- there is no array index here -- but the file's rule is
-		  worth keeping uniform, and the two conditions read as the two separate
-		  questions they are.
-		*/
-		t   = stof(argv(WT_C_T));
-		spd = vlen([stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)), 0]);
-
-		idnow = FALSE;
-		if (spd < idlim)
-		if (idpad || t >= 0)
-			idnow = TRUE;
-
-		if (idnow)
-		{
-			if (!idon)
-			{
-				idon   = TRUE;
-				idfrom = t;
-			}
-		}
-		else if (idon)
-		{
-			idon = FALSE;
-			if (t - idfrom >= idmin)
-			{
-				if (rec_wt_idn < WT_IDLEMAX)
-				{
-					rec_wt_idt0[rec_wt_idn] = idfrom;
-					rec_wt_idt1[rec_wt_idn] = t;
-					rec_wt_idn = rec_wt_idn + 1;
-				}
-				else
-					rec_wt_idover = rec_wt_idover + 1;
-			}
-		}
-
-		if (c > 0)
-			Watch_ScanPair(t, o, v, fl, key);
-		rec_wt_spt    = t;
-		rec_wt_spo    = o;
-		rec_wt_spv    = v;
-		rec_wt_spfl   = fl;
-		rec_wt_spkey  = key;
-		rec_wt_sfrc   = FALSE;
-		rec_wt_sveto  = FALSE;
-		rec_wt_sdkrst = FALSE;
-
-		c = c + 1;
+		n = n + 1;
 	}
-
-	/*
-	  A run that ENDS parked still ends parked, and the file's last sample is
-	  where it ends.  Without this a player who crossed the line and stood there
-	  -- or a `last.rec` from an attempt that was simply abandoned -- would have
-	  its final stretch dropped, which is the one stretch most likely to be long.
-	*/
-	if (idon)
-	if (rec_wt_t1 - idfrom >= idmin)
-	{
-		if (rec_wt_idn < WT_IDLEMAX)
-		{
-			rec_wt_idt0[rec_wt_idn] = idfrom;
-			rec_wt_idt1[rec_wt_idn] = rec_wt_t1;
-			rec_wt_idn = rec_wt_idn + 1;
-		}
-		else
-			rec_wt_idover = rec_wt_idover + 1;
-	}
-
-	if (rec_wt_idover > 0)
-		print(sprintf("^3replay: %g still stretch(es) past the %g cap were dropped; "
-		              "the bar stops marking them\n", rec_wt_idover, WT_IDLEMAX));
+	rec_wt_bt0 = 0;
+	rec_wt_bt1 = -1;                // nothing built yet: Watch_ScanRange
 
 	// ---- the .view's index -----------------------------------------------
 	rec_wt_view0  = 0;
@@ -1585,6 +1414,266 @@ void() Watch_Scan =
 	if (ver > 10)
 		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 10; "
 		              "reading it anyway\n", rec_wt_path, ver));
+};
+
+/*
+  Patch 431: the per-sample tables over [ra, rb] -- the path's control points, the
+  dead air, and the snap and duck tables Watch_Sample interpolates with (the
+  former pass two of Watch_Scan).  Watch_Open runs it over the whole file, or over
+  a stage's cut when the board asked for one (rec_wt_wantseg); Watch_SetCut
+  rebuilds for the whole file when the cut is lifted.  The walk starts at the last
+  sample at or before ra and ends on the first past rb, which closes the last
+  interval.
+*/
+void(float ra, float rb) Watch_ScanRange =
+{
+	local float i, k, c, cnt, nextp, want, lastc;
+	local float cstride, d, turn;
+	local vector lastdir, step;
+	local string s;
+	local vector o;
+	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
+	local vector v;
+	local float fl, key;
+
+	rec_wt_bt0 = ra;
+	rec_wt_bt1 = rb;
+
+	// The index entry at or before ra, then its last sample at or before ra.
+	k = 0;
+	for (i = 0; i < rec_wt_ixn; i = i + 1)
+		if (rec_wt_ixt[i] <= ra)
+			k = i;
+	rec_wt_bline = (rec_wt_ixn > 0) ? rec_wt_ixline[k] : rec_wt_rec0;
+	for (i = rec_wt_bline + 1; i < rec_wt_recn; i = i + 1)
+	{
+		s = bufstr_get(rec_wt_rec, i);
+		if (!Watch_IsSample(s))
+			continue;
+		if (stof(s) > ra)
+			break;
+		rec_wt_bline = i;
+	}
+	// The whole file starts where it always did, so a `ride` ahead of the first
+	// sample still opens.  A cut misses one armed before its start: the carrier
+	// then vetoes nothing until its next record (only the kinematic snap test).
+	if (ra <= rec_wt_t0)
+		rec_wt_bline = rec_wt_rec0;
+
+	// The samples it will walk, for the control stride: the whole file's count
+	// when it is the whole file, as before.
+	cnt = rec_wt_nsamp - k * rec_wt_ixstep;
+	for (i = k; i < rec_wt_ixn; i = i + 1)
+		if (rec_wt_ixt[i] > rb)
+		{
+			cnt = (i - k) * rec_wt_ixstep + 1;
+			break;
+		}
+
+	/*
+	  THE PATH IS TOKENIZED IN FULL NOW, and that is a deliberate change of cost.
+
+	  The old stride let this pass skip most lines with a str2chr; a control point
+	  chosen by ANGLE cannot be, because the angle is only knowable from the
+	  position, so every sample has to be read.  That is one extra tokenize per
+	  sample at load -- about six thousand on your run, once -- bought against a
+	  line that no longer has a corner in it every ninety units.
+
+	  The fallback stride survives for the pathological case: if a run turns so
+	  often that it fills WT_CTLMAX, `cstride` starts skipping samples so the tail
+	  of the run still gets controls rather than the line simply stopping.
+	*/
+	cstride = ceil(cnt / (WT_CTLMAX - 2));
+	if (cstride < 1)
+		cstride = 1;
+
+	rec_wt_cn  = 0;
+	c         = 0;                  // sample ordinal, from the range's first
+	lastc     = FALSE;
+	nextp     = 0;
+	lastdir   = '0 0 0';
+
+	/*
+	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
+	  same defaults; the fallbacks are here because a cvar read before its
+	  registercvar returns "" and a zero speed threshold would mark nothing while
+	  looking like it was working.
+	*/
+	rec_wt_idn    = 0;
+	rec_wt_idover = 0;
+	idon         = FALSE;
+	idfrom       = 0;
+	idlim        = cvar("hud_watch_idle_speed");
+	if (idlim <= 0) idlim = 20;
+	idmin        = cvar("hud_watch_idle_time");
+	if (idmin <= 0) idmin = 0.5;
+	idpad        = cvar("hud_watch_idle_pad");
+
+	Watch_TablesReset();
+	for (i = rec_wt_bline; i < rec_wt_recn; i = i + 1)
+	{
+		s = bufstr_get(rec_wt_rec, i);
+		if (!Watch_IsSample(s))
+		{
+			Watch_ScanRecord(s);
+			continue;
+		}
+
+		tokenize(s);
+		v   = [stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)),
+		       stof(argv(WT_C_VEL + 2))];
+		fl  = stof(argv(WT_C_FLAGS));
+		key = stof(argv(WT_C_KEYS));
+
+		/*
+		  A CONTROL POINT, by angle or by distance.
+
+		  The first and the last are unconditional -- a spline needs its ends --
+		  and everything between is kept only when it says something the
+		  neighbours do not: the direction has turned by more than WT_CTL_ANG, or
+		  WT_CTL_MAXD units have gone by without a turn.
+
+		  `dir` is the step from the LAST KEPT control, not from the previous
+		  sample, which is what makes this measure the turn of the drawn line
+		  rather than the per-tick jitter of the recorded one.
+		*/
+		o_x = stof(argv(WT_C_ORG + 0));
+		o_y = stof(argv(WT_C_ORG + 1));
+		o_z = stof(argv(WT_C_ORG + 2));
+
+		want = FALSE;
+		if (c == 0)                     want = TRUE;
+		else if (c >= nextp)
+		if (rec_wt_cn > 0)               // c == 0 above guarantees this, but the
+		{                               // array read below must not depend on it
+			step = o - rec_wt_cpos[rec_wt_cn - 1];
+			d    = vlen(step);
+			if (d >= WT_CTL_MAXD)
+				want = TRUE;
+			else if (d > 1)
+			if (lastdir != '0 0 0')
+			{
+				// vector * vector is the dot product, but it needs a float lvalue
+				// to land in -- fteqcc will not infer the type through a compare.
+				turn = normalize(step) * lastdir;
+				if (turn < WT_CTL_ANG)
+					want = TRUE;
+			}
+		}
+
+		if (want)
+		if (rec_wt_cn < WT_CTLMAX)
+		{
+			if (rec_wt_cn > 0)
+			if (o != rec_wt_cpos[rec_wt_cn - 1])
+				lastdir = normalize(o - rec_wt_cpos[rec_wt_cn - 1]);
+
+			rec_wt_cpos[rec_wt_cn]  = o;
+			rec_wt_cspd[rec_wt_cn]  = vlen([stof(argv(WT_C_VEL + 0)),
+			                              stof(argv(WT_C_VEL + 1)), 0]);
+			rec_wt_ctick[rec_wt_cn] = stof(argv(WT_C_T)) / rec_wt_tickrate;
+			rec_wt_cn = rec_wt_cn + 1;
+			nextp = c + cstride;
+		}
+		lastc = want;
+
+		/*
+		  ---- DEAD AIR, and it is a state machine of one bit ----------------
+
+		  A stretch OPENS on the first slow sample and CLOSES on the first fast
+		  one, and is only kept if it lasted.  Closing on the fast sample rather
+		  than on the last slow one is deliberate: the run resumed somewhere
+		  between those two ticks, and a mark that stops at the last slow sample
+		  leaves a tick-wide gap of unmarked standing still at the end of every
+		  stretch.  Half a tick long, and wrong in the direction that under-
+		  reports, which is the one worth avoiding.
+
+		  The `t >= 0` half is nested rather than &&'d out of habit rather than
+		  necessity -- there is no array index here -- but the file's rule is
+		  worth keeping uniform, and the two conditions read as the two separate
+		  questions they are.
+		*/
+		t   = stof(argv(WT_C_T));
+		spd = vlen([stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)), 0]);
+
+		idnow = FALSE;
+		if (spd < idlim)
+		if (idpad || t >= 0)
+			idnow = TRUE;
+
+		if (idnow)
+		{
+			if (!idon)
+			{
+				idon   = TRUE;
+				idfrom = t;
+			}
+		}
+		else if (idon)
+		{
+			idon = FALSE;
+			if (t - idfrom >= idmin)
+			{
+				if (rec_wt_idn < WT_IDLEMAX)
+				{
+					rec_wt_idt0[rec_wt_idn] = idfrom;
+					rec_wt_idt1[rec_wt_idn] = t;
+					rec_wt_idn = rec_wt_idn + 1;
+				}
+				else
+					rec_wt_idover = rec_wt_idover + 1;
+			}
+		}
+
+		if (c > 0)
+			Watch_ScanPair(t, o, v, fl, key);
+		rec_wt_spt    = t;
+		rec_wt_spo    = o;
+		rec_wt_spv    = v;
+		rec_wt_spfl   = fl;
+		rec_wt_spkey  = key;
+		rec_wt_sfrc   = FALSE;
+		rec_wt_sveto  = FALSE;
+		rec_wt_sdkrst = FALSE;
+
+		c = c + 1;
+		if (t > rb)
+			break;                  // the sample that closes the last interval
+	}
+
+	// The last sample is a control, as the first is: a spline needs its ends.
+	if (c > 0)
+	if (!lastc)
+	if (rec_wt_cn < WT_CTLMAX)
+	{
+		rec_wt_cpos[rec_wt_cn]  = rec_wt_spo;
+		rec_wt_cspd[rec_wt_cn]  = vlen([rec_wt_spv_x, rec_wt_spv_y, 0]);
+		rec_wt_ctick[rec_wt_cn] = rec_wt_spt / rec_wt_tickrate;
+		rec_wt_cn = rec_wt_cn + 1;
+	}
+
+	/*
+	  A run that ENDS parked still ends parked, and the file's last sample is
+	  where it ends.  Without this a player who crossed the line and stood there
+	  -- or a `last.rec` from an attempt that was simply abandoned -- would have
+	  its final stretch dropped, which is the one stretch most likely to be long.
+	*/
+	if (idon)
+	if (rec_wt_spt - idfrom >= idmin)
+	{
+		if (rec_wt_idn < WT_IDLEMAX)
+		{
+			rec_wt_idt0[rec_wt_idn] = idfrom;
+			rec_wt_idt1[rec_wt_idn] = rec_wt_spt;
+			rec_wt_idn = rec_wt_idn + 1;
+		}
+		else
+			rec_wt_idover = rec_wt_idover + 1;
+	}
+
+	if (rec_wt_idover > 0)
+		print(sprintf("^3replay: %g still stretch(es) past the %g cap were dropped; "
+		              "the bar stops marking them\n", rec_wt_idover, WT_IDLEMAX));
 };
 
 /*
@@ -2401,7 +2490,7 @@ void() Watch_SeqRestore =
 */
 void() Watch_BuildSeq =
 {
-	local float i, fl, n;
+	local float i, fl, n, t;
 	local vector org, vel;
 	local string s;
 
@@ -2417,15 +2506,30 @@ void() Watch_BuildSeq =
 	rec_wt_build   = TRUE;
 	board_ov_seq  = 0;
 	board_ov_bnorm = board_ov_bvel = '0 0 0';
-	board_ov_now  = rec_wt_t0;
-	board_now     = rec_wt_t0;
+	board_ov_now  = rec_wt_bt0;
+	board_now     = rec_wt_bt0;
+
+	// Patch 431: over Watch_ScanRange's range.  A cut takes the board in force at
+	// its first sample from the table (its record may be lines before).
+	if (rec_wt_bt0 > rec_wt_t0)
+	{
+		t = stof(bufstr_get(rec_wt_rec, rec_wt_bline));
+		for (i = 0; i < rec_wt_bdn_n; i = i + 1)
+		{
+			if (rec_wt_bdt[i] >= t)
+				break;
+			board_ov_seq   = rec_wt_bdc[i];
+			board_ov_bnorm = rec_wt_bdn[i];
+			board_ov_bvel  = rec_wt_bdv[i];
+		}
+	}
 
 	// Board_ResetRun and NOT Board_Clear: the latter also invalidates the
 	// save-lock snapshot, which belongs to the player's own save and has nothing
 	// to do with the file being read.  See the split in cl_board.qc.
 	Board_ResetRun();
 
-	for (i = rec_wt_rec0; i < rec_wt_recn; i = i + 1)
+	for (i = rec_wt_bline; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
 
@@ -2463,6 +2567,8 @@ void() Watch_BuildSeq =
 			rec_wt_sqbuildtick = 0;
 
 		Board_Frame(org, vel, (fl & WT_F_ONGROUND) ? TRUE : FALSE);
+		if (board_ov_now > rec_wt_bt1)
+			break;                  // Patch 431: the sample that closes the range
 	}
 
 	rec_wt_build = FALSE;
@@ -2650,8 +2756,8 @@ void() Watch_BoardApply =
 
 void(float t) Watch_Seek =
 {
-	if (t < rec_wt_t0) t = rec_wt_t0;
-	if (t > rec_wt_t1) t = rec_wt_t1;
+	if (t < rec_wt_vt0) t = rec_wt_vt0;
+	if (t > rec_wt_vt1) t = rec_wt_vt1;
 	rec_wt_time = t;
 
 	// A seek can go either way, so every cursor is invalidated rather than
@@ -3271,9 +3377,9 @@ void() Watch_Path =
 		*/
 		a1 = (rec_wt_ptick[i + 1] <= rec_wt_ticks) ? 1.0 : 0.5;
 
-		if (!ahead)
-		if (a1 < 1)
-		if (a0 < 1)
+		if ((!ahead && a1 < 1 && a0 < 1)
+		 || rec_wt_ptick[i + 1] * rec_wt_tickrate < rec_wt_vt0     // Patch 431
+		 || rec_wt_ptick[i] * rec_wt_tickrate > rec_wt_vt1)
 		{
 			p0 = p1;  s0 = s1;  c0 = c1;  a0 = a1;
 			continue;
@@ -3596,10 +3702,10 @@ void() Watch_Path2D =
 		a1 = (rec_wt_ptick[i + 1] <= rec_wt_ticks) ? 1.0 : 0.5;
 
 		// The part still ahead of the playhead, if it is not wanted.  Same test
-		// and same meaning as the ribbon's.
-		if (!ahead)
-		if (a1 < 1)
-		if (a0 < 1)
+		// and same meaning as the ribbon's.  Patch 431: and outside the cut.
+		if ((!ahead && a1 < 1 && a0 < 1)
+		 || rec_wt_ptick[i + 1] * rec_wt_tickrate < rec_wt_vt0
+		 || rec_wt_ptick[i] * rec_wt_tickrate > rec_wt_vt1)
 		{
 			p0 = p1;  d0 = d1;  c0 = c1;  a0 = a1;
 			continue;
@@ -3854,10 +3960,15 @@ void() Watch_Stop =
   shared/sh_defs.qc.  A missing sidecar is not fatal: the .rec's own angle
   columns are a coarser camera and a partial replay beats a refused one.
 */
+float(float seg) Watch_WindowFind;     // Patch 431, below
+
 float(string path) Watch_Open =
 {
-	local float buf;
+	local float buf, leg;
 	local string vp;
+
+	leg = rec_wt_wantleg;           // Patch 431: taken whatever happens below
+	rec_wt_wantleg = 0;
 
 	// Patch 385: the server refuses the pin under spectate (a pending one too), and
 	// both would own the camera.
@@ -3882,7 +3993,7 @@ float(string path) Watch_Open =
 		print("replay: buf_create failed\n");
 		return FALSE;
 	}
-	if (!buf_loadfile(path, buf))
+	if (!Watch_BufLoad(path, buf))
 	{
 		buf_del(buf);
 		print(sprintf("replay: cannot read %s\n", path));
@@ -3900,7 +4011,7 @@ float(string path) Watch_Open =
 		buf = buf_create_ex("string", 0);
 	if (buf >= 1)
 	{
-		if (buf_loadfile(vp, buf))
+		if (Watch_BufLoad(vp, buf))
 		{
 			rec_wt_view  = buf;
 			rec_wt_viewn = buf_getsize(buf);
@@ -3942,6 +4053,11 @@ float(string path) Watch_Open =
 		              rec_wt_map, serverkey("map")));
 
 	rec_wt_segs   = Watch_TrackSegs(rec_wt_track);
+	rec_wt_vt0    = rec_wt_t0;
+	rec_wt_vt1    = rec_wt_t1;
+	rec_wt_winseg = -1;
+	if (leg > 0)
+		Watch_WindowFind(leg - 1);
 	rec_wt_rate   = 1;
 	rec_wt_slider = 0.5;
 	rec_wt_paused = FALSE;
@@ -3950,9 +4066,10 @@ float(string path) Watch_Open =
 	rec_wt_clkerr   = 0;
 	rec_wt_open   = TRUE;
 
-	// The two passes that cost anything at load, and between them the reason both
-	// a scrub and a frame are cheap: the drawn curve and the segment column are
-	// tables by the time anything asks for them.
+	// The passes that cost anything at load, and between them the reason both a
+	// scrub and a frame are cheap: the drawn curve and the segment column are
+	// tables by the time anything asks for them.  Patch 431: over the cut only.
+	Watch_ScanRange(rec_wt_vt0, rec_wt_vt1);
 	Watch_BuildCurve();
 	Watch_BuildSeq();
 	rec_wt_loadms = (gettime(1) - rec_wt_loadms) * 1000;
@@ -3964,7 +4081,11 @@ float(string path) Watch_Open =
 		      "pre-clip velocity, so the strafe bar, the board panel and the "
 		      "segment column stay off.  Runs recorded from build 24 carry them.\n");
 
-	Watch_Seek(rec_wt_t0);
+	Watch_Seek(rec_wt_vt0);
+	if (rec_wt_winseg >= 0)
+		print(sprintf("replay: stage %g window %.4f..%.4f s from %.4f (ticks %g..%g, %s)\n",
+		              rec_wt_winseg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time,
+		              rec_wt_wina, rec_wt_winb, rec_wt_winhow));
 
 	// Pin the player.  MOVETYPE_NONE maps to PM_NONE, which is what stops the
 	// CLIENT predicting as well as the server moving -- build 11's finding.  The
@@ -3990,28 +4111,26 @@ float(string path) Watch_Open =
 };
 
 /*
-  Patch 395: play stage `seg` (0-based) of the open file -- from its start less
-  1 s, pausing ONCE at its end (Watch_Frame).  The window is the `stagepost`
-  table from Watch_Scan, else the `stage` records around seg.
+  Patch 395: stage `seg` (0-based) of the open file.  The window is the
+  `stagepost` table from Watch_Scan, else the `stage` records around seg.
+  Patch 431: found here and cut to (Watch_SetCut); Watch_Open calls it before
+  anything per-sample is built, so a board row builds only its stage.
 */
-float(float seg) Watch_StageWindow =
+float(float seg) Watch_WindowFind =
 {
 	local float a, b, i;
-	local string how;
 
-	rec_wt_stopon = FALSE;
 	rec_wt_winseg = -1;
-	if (!rec_wt_open)
-		return FALSE;
+	rec_wt_wincut = FALSE;
 	a = b = -1;
-	how = "stagepost";
+	rec_wt_winhow = "stagepost";
 	if (seg >= 0 && seg < WT_STGMAX)
 	{
 		a = rec_wt_pw0[seg];
 		b = rec_wt_pw1[seg];
 		if (a < 0)
 		{
-			how = "stage records";
+			rec_wt_winhow = "stage records";
 			a = (seg > 0) ? -1 : 0;
 			b = rec_wt_endticks;
 			for (i = 0; i < rec_wt_evn; i = i + 1)
@@ -4034,13 +4153,61 @@ float(float seg) Watch_StageWindow =
 		return FALSE;
 	}
 	rec_wt_winseg = seg;
+	rec_wt_wina   = a;
+	rec_wt_winb   = b;
 	rec_wt_wint0  = a * rec_wt_tickrate;
 	rec_wt_wint1  = min(b * rec_wt_tickrate, rec_wt_t1);
-	rec_wt_stopon = TRUE;
-	Watch_Seek(max(rec_wt_t0, rec_wt_wint0 - 1));
+	rec_wt_wincut = TRUE;
+	rec_wt_vt0    = max(rec_wt_t0, rec_wt_wint0 - 1);
+	rec_wt_vt1    = rec_wt_wint1;
+	return TRUE;
+};
+
+/*
+  Patch 431: the bar, seeks and playback cut to the window (from 1 s before its
+  start), or the whole file back -- rebuilding the per-sample tables when what
+  was built does not cover it.  Playback pauses at the cut's end.
+*/
+void(float on) Watch_SetCut =
+{
+	local float ms;
+
+	rec_wt_wincut = (on && rec_wt_winseg >= 0);
+	rec_wt_vt0 = rec_wt_t0;
+	rec_wt_vt1 = rec_wt_t1;
+	if (rec_wt_wincut)
+	{
+		rec_wt_vt0 = max(rec_wt_t0, rec_wt_wint0 - 1);
+		rec_wt_vt1 = rec_wt_wint1;
+	}
+	if (rec_wt_vt0 < rec_wt_bt0 || rec_wt_vt1 > rec_wt_bt1)
+	{
+		ms = gettime(1);
+		Watch_ScanRange(rec_wt_vt0, rec_wt_vt1);
+		Watch_BuildCurve();
+		Watch_BuildSeq();
+		print(sprintf("replay: built %.4f..%.4f in %.0f ms\n", rec_wt_vt0, rec_wt_vt1,
+		              (gettime(1) - ms) * 1000));
+	}
+	Watch_Seek(rec_wt_time);
+};
+
+// Patch 395: play stage `seg` from its start less 1 s, pausing at its end.
+float(float seg) Watch_StageWindow =
+{
+	if (!rec_wt_open)
+		return FALSE;
+	if (!Watch_WindowFind(seg))
+	{
+		Watch_SetCut(FALSE);
+		return FALSE;
+	}
+	Watch_SetCut(TRUE);
+	Watch_Seek(rec_wt_vt0);
 	rec_wt_paused = FALSE;
 	print(sprintf("replay: stage %g window %.4f..%.4f s from %.4f (ticks %g..%g, %s)\n",
-	              seg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time, a, b, how));
+	              seg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time, rec_wt_wina,
+	              rec_wt_winb, rec_wt_winhow));
 	return TRUE;
 };
 
@@ -4051,7 +4218,7 @@ float(float seg) Watch_StageWindow =
 */
 void(float v) Watch_ScrubTo =
 {
-	Watch_Seek(rec_wt_t0 + v * (rec_wt_t1 - rec_wt_t0));
+	Watch_Seek(rec_wt_vt0 + v * (rec_wt_vt1 - rec_wt_vt0));
 };
 
 /*
@@ -4177,6 +4344,17 @@ void(vector scr) Watch_Chrome =
 	                 Time_TickString(rec_wt_ticks, rec_wt_tickrate),
 	                 Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_rate, rec_wt_paused ? "  paused" : "");
+	// Patch 431: a cut reads in the stage's own time (negative in the lead-in).
+	if (rec_wt_wincut)
+	{
+		stitle = sprintf("%s   stage %g", s, rec_wt_winseg + 1);
+		sclock = sprintf("%s / %s   %.2fx%s",
+		                 Time_TickString((rec_wt_time - rec_wt_wint0) / rec_wt_tickrate,
+		                                 rec_wt_tickrate),
+		                 Time_TickString((rec_wt_wint1 - rec_wt_wint0) / rec_wt_tickrate,
+		                                 rec_wt_tickrate),
+		                 rec_wt_rate, rec_wt_paused ? "  paused" : "");
+	}
 
 	wtitle = stringwidth(stitle, TRUE, [small, small]);
 	wclock = stringwidth(sclock, TRUE, [small, small]);
@@ -4255,8 +4433,8 @@ void(vector scr) Watch_Chrome =
 	if (sw < 80 * wsc) sw = 80 * wsc;
 	if (sw > 220 * wsc) sw = 220 * wsc;
 
-	sp = (rec_wt_t1 > rec_wt_t0)
-	   ? (rec_wt_time - rec_wt_t0) / (rec_wt_t1 - rec_wt_t0) : 0;
+	sp = (rec_wt_vt1 > rec_wt_vt0)
+	   ? (rec_wt_time - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0) : 0;
 
 	bw = w - pad * 2 - sw - gap * 2;      // the scrub bar's own width
 	th = floor(6 * wsc);                  // the track's own thickness
@@ -4288,9 +4466,11 @@ void(vector scr) Watch_Chrome =
 	  where the run's own clock begins -- and it is no longer competing with the
 	  thing you grab.
 	*/
-	if (rec_wt_t0 < 0)
-	if (rec_wt_t1 > rec_wt_t0)
-		sui_fill([p_x + pad + bw * (-rec_wt_t0 / (rec_wt_t1 - rec_wt_t0)) - kw * 0.5,
+	// Patch 431: in a cut the mark is the stage's start.
+	xa = rec_wt_wincut ? rec_wt_wint0 : 0;
+	if (rec_wt_vt0 < xa)
+	if (rec_wt_vt1 > xa)
+		sui_fill([p_x + pad + bw * ((xa - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0)) - kw * 0.5,
 		          y + (small + 4) * 0.5 + th * 0.5 + 1],
 		         [kw * 0.5, floor(3 * wsc)], '1.00 0.82 0.20', 0.9, 0);
 
@@ -4311,11 +4491,13 @@ void(vector scr) Watch_Chrome =
 	  one compare.  Clamped to the track at both ends because a stretch that runs
 	  to the last sample would otherwise put half a pixel past the right edge.
 	*/
-	if (rec_wt_t1 > rec_wt_t0)
+	if (rec_wt_vt1 > rec_wt_vt0)
 	for (i = 0; i < rec_wt_idn; i = i + 1)
 	{
-		xa = bw * (rec_wt_idt0[i] - rec_wt_t0) / (rec_wt_t1 - rec_wt_t0);
-		xb = bw * (rec_wt_idt1[i] - rec_wt_t0) / (rec_wt_t1 - rec_wt_t0);
+		if (rec_wt_idt1[i] < rec_wt_vt0 || rec_wt_idt0[i] > rec_wt_vt1)
+			continue;                   // Patch 431: outside the cut
+		xa = bw * (rec_wt_idt0[i] - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0);
+		xb = bw * (rec_wt_idt1[i] - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0);
 		xa = bound(0, xa, bw);
 		xb = bound(0, xb, bw);
 		// Never thinner than a pixel: a two-tick park is a real fact about the
@@ -4413,6 +4595,21 @@ void(vector scr) Watch_Chrome =
 
 	if (sui_is_released("wt_skip"))
 		localcmd(skon ? "hud_watch_skipidle 0\n" : "hud_watch_skipidle 1\n");
+
+	// Patch 431: a stage window's cut, and the way back to the whole run.
+	if (rec_wt_winseg >= 0)
+	{
+		s = rec_wt_wincut ? "whole run" : sprintf("stage %g only", rec_wt_winseg + 1);
+		xb = stringwidth(s, TRUE, [tiny, tiny]) + pad;
+		skx = skx - gap - xb;
+		skw = skw + gap + xb;
+		sui_action_element([skx, y - 2], [xb, tiny + 4], "wt_cut", sui_noop);
+		if (sui_is_hovered("wt_cut"))
+			sui_fill([skx, y - 2], [xb, tiny + 4], '0.16 0.20 0.26', 1, 0);
+		drawstring([skx + pad * 0.5, y], s, [tiny, tiny], '0.55 0.75 0.95', 1, 0);
+		if (sui_is_released("wt_cut"))
+			Watch_SetCut(!rec_wt_wincut);
+	}
 
 	s = "space pause   arrows seek 5s   drag to scrub   hud_watch_info 1   esc close";
 	// Build 34: measured like everything else on the panel now.  This ladder was
@@ -4778,9 +4975,9 @@ void() Watch_Frame =
 	{
 		was = rec_wt_time;
 		rec_wt_time = rec_wt_time + dt * rec_wt_rate;
-		if (rec_wt_time >= rec_wt_t1)
+		if (rec_wt_time >= rec_wt_vt1)
 		{
-			rec_wt_time   = rec_wt_t1;
+			rec_wt_time   = rec_wt_vt1;
 			rec_wt_paused = TRUE;        // hold on the last frame rather than
 		}                               // snapping back to your own body
 
@@ -4825,14 +5022,14 @@ void() Watch_Frame =
 			}
 		}
 
-		// Patch 395: a stage window's end, once, on a playback crossing (after
-		// the idle skip, so a skip over it counts; a seek or scrub does not).
-		if (rec_wt_stopon)
-		if (was < rec_wt_wint1)
-		if (rec_wt_time >= rec_wt_wint1)
+		// Patch 395: a stage window's end, on a playback crossing (after the idle
+		// skip, so a skip over it counts; a seek or scrub does not).  Patch 431:
+		// the cut ends there, so the pause above has already happened.
+		if (rec_wt_wincut)
+		if (was < rec_wt_vt1)
+		if (rec_wt_time >= rec_wt_vt1)
 		{
-			rec_wt_stopon = FALSE;
-			Watch_Seek(rec_wt_wint1);
+			Watch_Seek(rec_wt_vt1);
 			rec_wt_paused = TRUE;
 			print(sprintf("replay: stage %g window end %.4f -- paused\n",
 			              rec_wt_winseg + 1, rec_wt_time));
@@ -4990,9 +5187,10 @@ void() Watch_Status =
 	              rec_wt_time, rec_wt_t0, rec_wt_t1, rec_wt_ticks,
 	              rec_wt_rate, rec_wt_paused));
 	// Patch 395.  Stage 0 = no window; finrow = the finish row is in the list.
-	print(sprintf("  window stage %g  %.4f..%.4f  armed %g  abandoned %g  state %g  finrow %g\n",
-	              rec_wt_winseg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_stopon,
+	print(sprintf("  window stage %g  %.4f..%.4f  cut %g  abandoned %g  state %g  finrow %g\n",
+	              rec_wt_winseg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_wincut,
 	              rec_wt_abandon, rec_wt_state, rec_wt_evfin));
+	print(sprintf("  view %.4f..%.4f\n", rec_wt_vt0, rec_wt_vt1));   // Patch 431
 	print(sprintf("  org %.2f %.2f %.2f  vel %.2f %.2f %.2f\n",
 	              rec_wt_org_x, rec_wt_org_y, rec_wt_org_z,
 	              rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z));
@@ -5179,7 +5377,7 @@ float(string cmd) Watch_ConsoleCommand =
 		// `end` rather than a number, because the last sample's t is in the file
 		// and a config cannot know it -- and the end is the position the whole
 		// reader is most worth checking at.
-		Watch_Seek((argv(2) == "end") ? rec_wt_t1 : stof(argv(2)));
+		Watch_Seek((argv(2) == "end") ? rec_wt_vt1 : stof(argv(2)));
 		Watch_Sample();
 		return TRUE;
 	}
@@ -5212,6 +5410,12 @@ float(string cmd) Watch_ConsoleCommand =
 			Watch_StageWindow(stof(argv(2)) - 1);
 		return TRUE;
 	}
+	// Patch 431: `cut 0|1`, the chrome's "whole run" / "stage N only".
+	if (a == "cut")
+	{
+		Watch_SetCut(stof(argv(2)));
+		return TRUE;
+	}
 
 	track = 0;
 	leg   = 0;
@@ -5229,6 +5433,8 @@ float(string cmd) Watch_ConsoleCommand =
 			              argv(2), argv(2)));
 			return TRUE;
 		}
+		// Patch 431: `online <id> <leg>` opens cut to that stage, as a board row does.
+		rec_wt_wantleg = stof(argv(3));
 	}
 	/*
 	  The word IS the tag, so there is no list here to keep in step -- build 45
