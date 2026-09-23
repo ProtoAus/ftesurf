@@ -51,6 +51,27 @@ chatty.
   knob, then the window closed early) before it reproduced anything. The
   cheapest proof of a fix is the same arm against a build with the fix compiled
   out.
+- **AND READ THE ARM'S OWN NUMBERS BEFORE BELIEVING ITS VERDICT.** Four arms in
+  one session printed a green line while measuring nothing: a `+set` of a plain
+  QC global (reads 0, so the handled path never ran), a scratch dir outside the
+  gamedir (`fopen` returns -1 with no error line), stringcmds sent before the
+  server spawned the client (dropped from both logs), and a `sl_hold` with an
+  empty cursor (returns without a word). Each one produced output that looked
+  like a result. The rule that catches all four: **the subject must print its own
+  action** — a dprint, a latch carrying its authored number, or a state line that
+  can only exist if the gesture landed — and the driver must grade THAT, not the
+  downstream consequence.
+- A CONTROL BUILD IS NOT `git checkout` WHEN THE TREE ALREADY HAS THE PATCH. If
+  the working tree holds five commits of work, checking a file out reverts one
+  patch, not the batch, and the "control" still contains the other four. Build it
+  from a `git worktree` at the pre-batch commit with `-NoDeploy`, copy its .dat
+  in, and prove which build ran by hash (`tools/p439smoke.py`'s cfg header has
+  the recipe, including the hash that showed the worktree really was pre-patch).
+- A DRIVER'S CLEANUP IS PART OF THE ARM. Two leaks survived a green run because
+  the cleanup was written from an assumption instead of a listing: a save the run
+  wrote into the SERVER's save root (not the scratch `cl_saveroot`), and an
+  `except OSError: pass` that hid a removal which never happened. List the tree
+  after the run, and never swallow an error in cleanup.
 - A CHECK THAT CANNOT MEASURE MUST SAY SO, AND NEEDS A THIRD VERDICT TO SAY IT
   IN. Patch 421's angle check had two -- the files match, or the sidecar is not
   this recording's -- so every way of failing to MEASURE came out as the same

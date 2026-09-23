@@ -72,6 +72,33 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   page. A run that fails after its upload cannot be re-run (each pack stamps a
   new `built` time, so the md5 no longer matches R2): scp `dist\site-<v>\*` to
   the Pi's `ftesurf-site/.incoming/<v>/` and run `publish.sh <v>`, or bump.
+  - **IT HARD-FAILS ON "no \"Build NN: ...\" commit subject in the last 200
+    commits"** (`$qcBuild` is derived from a commit subject, and Build 88 is 228
+    commits back). That is a real blocker, not a warning: cut nothing until a
+    `Build NN:` commit exists, or teach the script to read ENGINE.txt's
+    `qcbuild`. MEASURED 2026-09-23, which is why 0.1.13 was not published.
+  - A QC-ONLY BATCH ALSO CANNOT BE PUBLISHED AS-IS. Gate L2 compares the
+    installed engine with the Linux drop and requires one engine commit; the
+    shipped 0.1.12 exe carries stamp `git-6891-patch-266-102-ga72183e6b`, so its
+    `engine.commit` should be `a72183e6b` (Patch 419) -- but ENGINE.txt pins
+    `45174b9d4` (Patch 427) while `patch` says 438, i.e. **the pin block is
+    already inconsistent and cannot be read as "the commit this binary is"**.
+    Rebuilding `-Engine` from the pin yields a DIFFERENT exe (measured
+    `279841f7…` against the receipt's `1950288f…`) and the receipt's
+    `engine.commit` is only accepted when it names the binary, so
+    `-AllowEngineSkew` is not a way through either. Reconcile the pin first: it
+    must name the commit the SHIPPED binary was built from, not the last
+    ENGINE_PATCHES entry.
+  - `menu.dat` is in the ship set and its hash differs from 0.1.12's receipt
+    (`46ab6af4` now, `d8fe56aa` shipped) although `src/menu/` is unchanged since
+    Patch 350 and fteqcc output is path-dependent -- so gate 1 would call the
+    tree dirty. Reproduce it from a clean `git worktree` before publishing, the
+    same way the progs are.
+  - `-NoDeploy` on a worktree build leaves the .dat in the WORKTREE's `ftesurf/`,
+    never in `C:\FTESurf` -- copy them in, and copy the shipped pair back after.
+    That is also how a control build is made when this tree's source already holds
+    the patch (`tools/p439smoke.py`'s cfg header records the recipe and the hash
+    that proved it).
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).
@@ -89,7 +116,12 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - AN ARM NEEDS A CONTROL BUILD AND A DETECTOR PROVEN TO HAVE FIRED. "Not flagged"
   is also what a subject that never fired prints, so an arm with no pre-change
   build beside it measures nothing — p411push printed a textbook flip on a pad
-  that never armed. Prove the subject ACTED before believing any verdict: its own
+  that never armed. AND THE CONTROL IS NOT `git checkout -- <file>` ONCE THE TREE
+  HOLDS A BATCH: that reverts one patch and leaves the others in, so the
+  "control" still contains the fix. Build it from a `git worktree` at the
+  pre-batch commit with `-NoDeploy`, copy its .dat in, and prove which build ran
+  by hash (recipe and the hash that proved it: `cfg/test/p439smoke.cfg`'s RESULT
+  block). Prove the subject ACTED before believing any verdict: its own
   dprint, or a latch carrying its authored number (p412speed used `tkspd 2060`,
   the pad's own horizontalspeed). Expect the pre-registered detector to be the
   wrong one and say so when it is. Control recipe — NOT `git stash`, which would
@@ -111,8 +143,18 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - DRIVING A RUN: the clock starts when you LEAVE THE START BOX. `+jump` hops in
   place (~80 u in 4 s on a bhop map) and never starts it; `+forward` walks at
   `sv_maxspeed` (260 in `default.cfg` — the move values are 450 precisely so
-  they cap nothing) and clears the box in about a second. `timer` prints the
-  client latches, `cmd timer` the server's.
+  they cap nothing) and clears the box in about a second — BUT NOT ALWAYS, AND A
+  JUMP IS THE WRONG GESTURE: on surf_4am a straight `+forward` from `zone_goto`
+  STOPS 32 u inside the region (y 96 against a boundary at 64) so no run ever
+  starts and there is no sidecar; `run_rearmhop 1` re-arms on the FIRST jump out
+  ("start re-armed -- one jump out of the start"); the start rule refuses the
+  second ("hopped start -- one jump out of the start, or walk out"); and `+right`
+  alone only TURNS. Walk out, then prove the run with `cmd timer` reading
+  `running / recording 1` before anything depends on it, and read the body with
+  `cmd viewpos` — since Patch 435 it also prints `velocity … horizontal N`, the
+  ONLY server-side speed read there is (the hold publishes the SAVE's, the
+  recorder's samples exist only after a close, the client's is a prediction).
+  `timer` prints the client latches, `cmd timer` the server's.
 - MEASURING A DRAW: with no console dump, take two screenshots with exactly one
   variable changed between them and diff the numbers — a frozen column beside a
   live readout that moved is a measurement, one picture is not.
@@ -177,6 +219,33 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   harness arms kill only processes whose ExecutablePath is under `C:\FTESurf`,
   `C:\FTEQuake` or `engine\release`. Agent PowerShell cannot `Remove-Item`
   under `C:\FTESurf`, and logs append: give each run a fresh `log_name`.
+- A HARNESS HANDLE IS A REGISTERED CVAR, NOT A QC GLOBAL. `+set foo 1` creates a
+  CVAR; a bare `float foo;` in QC is invisible to it, reads 0, and nothing says
+  so — the arm then exercises the unhandled path and passes by never happening.
+  `registercvar` it and read it with `cvar()`, and set it AFTER the map, because
+  registercvar resets a value set earlier (the `cl_trigdebug` trap). Related, and
+  why Patch 438 needed a new command: the server STUFFS `set cl_saveroot
+  "data/saves/<map>"` on every `sl_` command, so a client-side save root cannot be
+  overridden at all — `sl_replay <slot>` fires the load event with no save behind
+  it (no placement, no clock, no row) for exactly that reason.
+- A HARNESS SCRATCH PATH MUST BE INSIDE THE GAMEDIR. `FS_LoadFile` locates with
+  `FS_GAME`, so `%TEMP%` or the install root opens nothing and `fopen(FILE_READ)`
+  returns -1 with NO "Access denied" line — which reads as a reader bug and is a
+  path bug. Cost a whole arm.
+- STRINGCMDS SENT BEFORE THE SERVER HAS SPAWNED THE CLIENT VANISH from both logs
+  with no error anywhere. A map with downloads (bhop_arcane: ~7 s of models)
+  needs a wait for `spawn`, not a fixed guess, and the failure looks exactly like
+  "the command did nothing". `sl_hold` is the same shape one level down: it needs
+  `sl_goto <n>` first (the cursor is the LAST row after a rescan, and with no row
+  under it the hold returns without a word) and must share a frame with its
+  `sl_load`.
+- `sprintf` DROPS ITS NINTH ARGUMENT and only warns, so a nine-specifier debug
+  print reports the EIGHTH value under the NINTH label. A print that lies is worse
+  than no print: this one sent a hunt after a value that was correct. Same cost,
+  different shape — a line inserted between a braceless `if (x)` and its body
+  REBINDS the body, so the gate looks dead while the print runs unconditionally.
+  Instrument by copying the file aside and restoring it; never clean debug lines
+  with a line-filter script (one such edit left an `if` with no body behind).
 - A smoothness gate needs the subject's own motion measured first. Patch 383's
   owner walking circles varies its speed 4.3% by itself, so `speed CV < 2%` was
   falsified by the owner, not the renderer. Compare the render with the sampled
@@ -1032,7 +1101,13 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   cross-lobby test starts the second server after the first one's write.
 - Agent shells: a Bash heredoc collapses `\\` to `\`, so an inline edit script
   that must match QC's literal `\n` fails or writes a real newline. Write such
-  scripts with the file tool, or build the backslash with `chr(92)`.
+  scripts with the file tool, or build the backslash with `chr(92)`. AND CHECK THE
+  RESULT: `chr(92)+'n'` inside a `python -c "…"` string lands in the file as the
+  literal text `' + NL + '`, which fteqcc rejects ("newline inside quote") or --
+  worse -- compiles into a print that never fires. It cost four builds in one
+  session. The reliable shape is a `python - <<'PYEOF'` heredoc that writes the
+  file with `chr(92)` only where a real backslash-n is wanted, then `grep -n` the
+  line back before building.
 - Engine cvar `timeout` (default 65 s) is the dead-client drop; lobbies set 30.
 - Unregistered cvar set by bare name in a cfg is "Unknown command" — `set` it.
 - Engine `sv.active` is never assigned anywhere — every `if (sv.active)` is dead
