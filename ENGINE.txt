@@ -14,13 +14,16 @@
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
-# ^ NOT the shipped binary's commit.  ftesurf64.exe carries the stamp
-#   git-6891-patch-266-102-ga72183e6b (Patch 419).  This line is the pin the
-#   ENGINE_PATCHES.md work is written against; release.ps1 only compares it with a
-#   binary when -Linux is passed (gate L2), and then it wants the LINUX drop's
-#   commit -- see AGENTS.md's release section.  `patch` below tracks
-#   ENGINE_PATCHES.md and moves with every entry, including mod-side-only ones, so
-#   the two lines are NOT the same clock.
+# ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
+#   commit a shipped binary was built from -- those drift, deliberately: patches
+#   420-438 are all mod-side, so the engine source moved without any binary
+#   needing to.  ftesurf64.exe carries its own stamp
+#   (git-6891-patch-266-102-ga72183e6b = Patch 419) and the Linux drop's
+#   BUILDINFO.txt carries its commit; release.ps1 compares THOSE two when -Linux
+#   is passed (gate L2), and only warns about a mismatch with this line.  `patch`
+#   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
+#   are not the same clock.  See AGENTS.md's release section before "fixing" this
+#   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-266
 patch    438
 qcbuild  89

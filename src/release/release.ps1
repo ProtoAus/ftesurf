@@ -1687,7 +1687,17 @@ refusing to deploy a page for an archive that is not published.
         & scp @sshOpts -q (Join-Path $RelDir $f) "${PiHost}:$SiteRoot/$f"
         if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
     }
-    & scp @sshOpts -q -r "$pageDir\*" "${PiHost}:$SiteRoot/.incoming/$Ver/"
+    # NOT "$pageDir\*": scp does not glob, and on Windows the literal string is
+    # passed through, so the copy fails with `stat local "...\*": No such file or
+    # directory` -- AFTER both archives are already uploaded, which is the
+    # documented unre-runnable state.  Enumerate the files and copy each one; the
+    # page dir is rendered by this script and is five files.
+    $pageFiles = @(Get-ChildItem -LiteralPath $pageDir -File | ForEach-Object { $_.FullName })
+    if (-not $pageFiles.Count) { Fail "no page files in $pageDir" }
+    foreach ($pf in $pageFiles) {
+        & scp @sshOpts -q -LiteralPath $pf "${PiHost}:$SiteRoot/.incoming/$Ver/$([IO.Path]::GetFileName($pf))"
+        if ($LASTEXITCODE -ne 0) { Fail "scp $([IO.Path]::GetFileName($pf)) failed" }
+    }
     if ($LASTEXITCODE -ne 0) { Fail 'scp of the page failed' }
     & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/publish.sh' '$SiteRoot/install.sh' && sh '$SiteRoot/publish.sh' '$Ver'" 2>&1 | ForEach-Object { Info $_ }
     if ($LASTEXITCODE -ne 0) { Fail 'publish.sh failed on the Pi' }
