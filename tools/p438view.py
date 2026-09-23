@@ -85,6 +85,12 @@ def generate(mb):
     return size, n + 4
 
 
+def extra_dir():
+    """Where the run's own write-back can land: the server resolves cl_saveroot to
+    the same scratch name the cfg sets, under data/."""
+    return os.path.join(GAMEDIR, "data", RELROOT)
+
+
 def cleanup_saves():
     """The cfg's R2 save lands in the SERVER's save root (data/saves/surf_4am),
     which the scratch cl_saveroot does not move -- one new slot per run, with a
@@ -212,6 +218,7 @@ def main():
     cleanup_saves()
     if not a.keep:
         shutil.rmtree(SCRATCH, ignore_errors=True)
+        shutil.rmtree(extra_dir(), ignore_errors=True)
     return 0 if ok else 1
 
 
