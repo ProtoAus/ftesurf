@@ -15,13 +15,19 @@ repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
 commit   45174b9d419f21fa5edceb473d9ef292cda18840
 # ^ NOT the shipped binary's commit.  ftesurf64.exe carries the stamp
-#   git-6891-patch-266-102-ga72183e6b (Patch 419), and release.ps1's gate L2 reads
-#   this line as "the commit this binary is" -- see AGENTS.md's release section.
-#   `patch` below tracks ENGINE_PATCHES.md and moves with every entry, including
-#   mod-side-only ones, so the two lines are NOT the same clock.
+#   git-6891-patch-266-102-ga72183e6b (Patch 419).  This line is the pin the
+#   ENGINE_PATCHES.md work is written against; release.ps1 only compares it with a
+#   binary when -Linux is passed (gate L2), and then it wants the LINUX drop's
+#   commit -- see AGENTS.md's release section.  `patch` below tracks
+#   ENGINE_PATCHES.md and moves with every entry, including mod-side-only ones, so
+#   the two lines are NOT the same clock.
 tag      patch-266
 patch    438
-qcbuild  88
+qcbuild  89
+#   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
+#     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
+#     commit in range -- the number is the operator's to state, the log is only
+#     where it used to be read from.
 date     2026-09-23
 
 # PATCH 430 (mod-side): the load key draws the save a round trip early (render only;

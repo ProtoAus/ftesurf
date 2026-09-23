@@ -72,33 +72,42 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   page. A run that fails after its upload cannot be re-run (each pack stamps a
   new `built` time, so the md5 no longer matches R2): scp `dist\site-<v>\*` to
   the Pi's `ftesurf-site/.incoming/<v>/` and run `publish.sh <v>`, or bump.
-  - **IT HARD-FAILS ON "no \"Build NN: ...\" commit subject in the last 200
-    commits"** (`$qcBuild` is derived from a commit subject, and Build 88 is 228
-    commits back). That is a real blocker, not a warning: cut nothing until a
-    `Build NN:` commit exists, or teach the script to read ENGINE.txt's
-    `qcbuild`. MEASURED 2026-09-23, which is why 0.1.13 was not published.
-  - A QC-ONLY BATCH ALSO CANNOT BE PUBLISHED AS-IS. Gate L2 compares the
-    installed engine with the Linux drop and requires one engine commit; the
-    shipped 0.1.12 exe carries stamp `git-6891-patch-266-102-ga72183e6b`, so its
-    `engine.commit` should be `a72183e6b` (Patch 419) -- but ENGINE.txt pins
-    `45174b9d4` (Patch 427) while `patch` says 438, i.e. **the pin block is
-    already inconsistent and cannot be read as "the commit this binary is"**.
-    Rebuilding `-Engine` from the pin yields a DIFFERENT exe (measured
-    `279841f7…` against the receipt's `1950288f…`) and the receipt's
-    `engine.commit` is only accepted when it names the binary, so
-    `-AllowEngineSkew` is not a way through either. Reconcile the pin first: it
-    must name the commit the SHIPPED binary was built from, not the last
-    ENGINE_PATCHES entry.
-  - `menu.dat` is in the ship set and its hash differs from 0.1.12's receipt
-    (`46ab6af4` now, `d8fe56aa` shipped) although `src/menu/` is unchanged since
-    Patch 350 and fteqcc output is path-dependent -- so gate 1 would call the
-    tree dirty. Reproduce it from a clean `git worktree` before publishing, the
-    same way the progs are.
+  - THE QC BUILD NUMBER: `-BuildNumber <n>`. The script derives it from a
+    `Build NN:` commit subject and HARD-FAILS when the last one is more than 200
+    commits back (Build 88 was 228). It now takes the number explicitly, because
+    the authority is the operator, not the log -- AGENTS.md's "only on the user's
+    Build NN commit" is about WHO decides, and `-BuildNumber` is that person
+    typing it. It still has to agree with ENGINE.txt's `qcbuild` (a Warn, not a
+    Fail, as before). Build 89 = Patches 434-438.
+    THE SWITCH IS NOT NAMED `-QcBuild`, and that cost an hour: PowerShell variable
+    names are case-insensitive, so `$qcBuild = $null` and a `$QcBuild` parameter
+    are ONE variable -- the switch bound 89, that line reset it to 0, and the run
+    died 45 lines later on "You cannot call a method on a null-valued expression"
+    with no mention of the switch. `grep -in` both spellings before adding a
+    parameter.
+  - **GATE L2 IS A `-Linux` GATE, NOT A GENERAL ONE** (`if ($Linux) { … }`, and
+    its hard failures are BUILDINFO/soname checks). So a QC-only batch needs no
+    engine work at all: omit `-Linux` and the receipt carries `linux: null`.
+    Earlier note here claimed L2 blocked a QC-only release; that was reading the
+    gate's comment rather than its scope.
+  - WHAT REMAINS TRUE about the engine identity, and it is a receipt question not
+    a gate: without `-Linux` nothing records which engine commit the shipped exe
+    came from. ENGINE.txt's `commit` line is NOT that (it pins `45174b9d4` =
+    Patch 427 while the 0.1.12 exe carries stamp
+    `git-6891-patch-266-102-ga72183e6b` = Patch 419), so do not "reconcile" a
+    release by rebuilding `-Engine` from the pin: it yields a DIFFERENT exe
+    (measured `279841f7…` against 0.1.12's `1950288f…`) and nothing would record
+    the swap. Read the stamp out of the binary if you need the commit.
+  - `menu.dat`'s hash is path-dependent (fteqcc), so it will differ from an older
+    receipt with `src/menu/` untouched -- measured `46ab6af4` against 0.1.12's
+    `d8fe56aa`. That is not dirt: gate 1 compares the ship set against GIT, and
+    it passes clean. Reproduce it from a clean `git worktree` anyway if you want
+    the archive to match a from-scratch clone.
   - `-NoDeploy` on a worktree build leaves the .dat in the WORKTREE's `ftesurf/`,
     never in `C:\FTESurf` -- copy them in, and copy the shipped pair back after.
     That is also how a control build is made when this tree's source already holds
-    the patch (`tools/p439smoke.py`'s cfg header records the recipe and the hash
-    that proved it).
+    the patch (`cfg/test/p439smoke.cfg`'s RESULT block records the recipe and the
+    hash that proved which build ran).
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).

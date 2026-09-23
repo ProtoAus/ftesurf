@@ -79,6 +79,7 @@ param(
     [string] $Bump,
 
     [switch] $Build,          # run src\build.ps1 -Engine first
+    [int]    $BuildNumber,    # the QC build to ship, when no commit states one
     [switch] $DryRun,         # stage, pack and verify; publish nothing
     [switch] $SetupSite,      # push the Pi-side files, print the sudo line, stop
     [switch] $SkipUpload,
@@ -499,7 +500,30 @@ foreach ($line in (& git -C $SurfDir log -200 --pretty=format:'%H %s')) {
 # The throw is the load-bearing half. An unmatched -match leaves $null, which
 # interpolates to "" and ships a receipt reading "QC build " that uploads and
 # renders perfectly.
-if ($null -eq $qcBuild) { Fail 'no "Build NN: ..." commit subject in the last 200 commits; cannot derive the QC build number' }
+if ($null -eq $qcBuild) {
+    # -BuildNumber N: the operator IS the Build NN commit.  AGENTS.md says the
+    # number moves only on the user's own "Build NN" commit, and the script used to
+    # read that as "there must be one in git history" -- which fails outright once
+    # the last such commit is more than 200 back, blocking a release for a
+    # formality nobody owed.  An explicit number is the same authority by a shorter
+    # path, and it still has to agree with ENGINE.txt's `qcbuild` pin (the drift
+    # check below compares them).
+    #
+    # THE PARAMETER IS NOT NAMED -QcBuild, AND THAT IS NOT TASTE.  PowerShell
+    # variable names are case-insensitive, so `$QcBuild = $null` and the parameter
+    # are ONE variable: naming the switch -QcBuild made that line reset the bound
+    # argument to 0, and the run then failed with "You cannot call a method on a
+    # null-valued expression" 45 lines later with no mention of the switch.  A
+    # parameter may never differ from a local only by case -- `grep -in` both
+    # spellings before adding one.
+    if ($BuildNumber -gt 0) {
+        $qcBuild = $BuildNumber
+        $qcCommit = $GitHead
+        Info "QC build $qcBuild from -BuildNumber (no `"Build NN:`" commit in range)"
+    } else {
+        Fail 'no "Build NN: ..." commit subject in the last 200 commits; cannot derive the QC build number.  Pass -BuildNumber <n> (it must match ENGINE.txt) or make the commit.'
+    }
+}
 
 # Engine patch: max over the changelog headings.  The lookahead is load-bearing.
 # A looser `Patch *(\d+)(?: *[-] *(\d+))?` returns 34909, from
