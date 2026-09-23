@@ -327,7 +327,10 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   `registercvar`, a row in `cl_hudedit.qc`'s `HE_OptDef` (rows must stay
   contiguous — the first `""` ends the pane, and `HE_ResetAll` walks them, so an
   omitted row is a cvar the reset button cannot recover), and a `set` line in
-  `default.cfg`.
+  `default.cfg`.  A chip in hud_edit's FIXED block instead -- a setting that
+  belongs to no element, like Patch 440's `hud_font_outline` -- wants a
+  `HE_FIXEDROWS` bump and a `HE_ResetCvar` line in `HE_ResetAll`, or the panel's
+  height and its reset button both miss it.
 
 ## Boundaries and interfaces
 
@@ -1258,3 +1261,25 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   sets the password AFTER the exec (a `+set` loses; the log says `Bad rcon`).
 - Build and verify (headless run + logs/screenshots, or Pi journal) before
   declaring any task complete.
+- THE ENGINE'S FONT OUTLINE IS A BAKE, NOT A DRAW FLAG.  `outline=N` in loadfont's
+  sizes string and `r_font_postprocess_outline` are read at slot definition for
+  EVERY slot in the process -- they re-bake the console and menu fonts too -- so
+  neither can be a HUD switch.  Patch 440 draws its ring instead (eight copies of
+  the string one pixel out in each direction, under the body, in HUD_TextDraw,
+  gated on `ui_font_cur == ui_font_mono`).  And ftefont is PREMULTIPLIED
+  (`blendfunc gl_one gl_one_minus_src_alpha`, rgbgen vertex): the requested rgb
+  reaches the framebuffer UNSCALED by the requested alpha, so an outline or
+  shadow colour must be DARK -- a light grey at half alpha is a bright smear, not
+  a shadow.  A second baked slot for one face doubles its cells in the four-plane
+  glyph atlas every font in the process shares; a draw-side ring allocates none.
+- PIXEL-DIFF HARNESS RECIPE (`cfg/test/p440font.cfg`, `tools/p440font.py`): still
+  the camera with `sv_gravity 0` BEFORE the map; pick a map whose textures
+  actually mount -- surf_kitsune's skyroom does not and a missing sky FLASHES
+  between frames (the floor read 239133 changed pixels; surf_rookie's is exactly
+  0); `con_notifytime 0`, because notify lines move AND, with notify on screen
+  plus extra drawstring passes plus a busy HUD, unrelated glyphs tint to the
+  console's ^7 white (BACKLOG, engine-side); park control regions off the sky
+  (clouds move); a control region must not contain the feature's own widget (its
+  chip has to change -- grade the panel's element rows, not the panel); and take
+  the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
+  against it, never the whole frame (the fps counter always moves).
