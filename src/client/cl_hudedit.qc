@@ -138,8 +138,12 @@ void() HE_ResetAll;             // build 66, and the same story
   beside it used to be `scale` -- which is gone -- and pairing it with `reset all`
   instead would put the panel's most destructive button next to the one pressed
   at the end of every session.
+
+  PATCH 440: five.  The text-effect chip is a row of its own because it is a
+  font-wide setting with no partner -- it belongs to no element, so it cannot go
+  in a pane, and pairing it with `reset all` would put a look next to a nuke.
 */
-#define HE_FIXEDROWS 4
+#define HE_FIXEDROWS 5
 
 string he_id[HE_MAX];
 string he_label[HE_MAX];
@@ -1662,6 +1666,31 @@ void(vector scr) HUD_EditDraw =
 	y = y + rowh;
 
 	/*
+	  PATCH 440 -- THE GOOGLE FACE'S OUTLINE AND SHADOW, one chip cycling three
+	  states.  Full width, in the fixed block rather than in a pane, because it is
+	  a property of a FONT and every block drawn in Google Sans Code answers to it:
+	  splits, segments, the clock's subtext, map info, the strafe and board numbers.
+	  Putting it in one of those panes would say it belongs to that one.
+
+	  `shadow` is the state that costs: it is a second drawstring per mono string.
+	  The cycle goes through `outline` on the way to it so the cheaper look is one
+	  click from the expensive one rather than behind a cvar name.
+	*/
+	mode = cvar("hud_font_outline");
+	if (mode <= FX_PLAIN)        s = "text plain";
+	else if (mode == FX_OUTLINE) s = "text outline";
+	else                         s = "text shadow";
+	if (HE_Chip("he_fontfx", [x, y, 0], [w, rowh - 2 * psc, 0], s, mode > FX_PLAIN, psc,
+	            "Dark outline around the text drawn in the Google face, and a grey drop shadow behind it. plain is the old look; outline skips the second pass."))
+	{
+		if (mode <= FX_PLAIN)        localcmd("seta hud_font_outline 1\n");
+		else if (mode == FX_OUTLINE) localcmd("seta hud_font_outline 2\n");
+		else                         localcmd("seta hud_font_outline 0\n");
+		ui_he_dirty = TRUE;
+	}
+	y = y + rowh;
+
+	/*
 	  BUILD 66 -- THE CROSSHAIR IS ONE CHIP.
 
 	  "Remove the crosshair button and replace it with a single cycling button
@@ -1856,7 +1885,7 @@ void() HE_ResetAll =
 			HE_ResetCvar(Gfx_Field(HE_OptDef(he_id[i], j), 0, "|"));
 	}
 
-	// The fixed block's own four, which belong to no element.  hud_scale is here
+	// The fixed block's own five, which belong to no element.  hud_scale is here
 	// even though build 66 took its chip away: it is still what every panel sizes
 	// itself from, so a value typed at the console is exactly the kind of "really
 	// bad" this button is for.
@@ -1864,6 +1893,7 @@ void() HE_ResetAll =
 	HE_ResetCvar("hud_round");
 	HE_ResetCvar("hud_scale");
 	HE_ResetCvar("hud_crosshair");
+	HE_ResetCvar("hud_font_outline");       // Patch 440: the text effect's chip
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");
@@ -1960,6 +1990,16 @@ void() HUD_EditStatus =
 	print(sprintf("  hud_update %g   hud_round %g   hud_scale %g   hud_crosshair %g\n",
 	              cvar("hud_update"), cvar("hud_round"), cvar("hud_scale"),
 	              cvar("hud_crosshair")));
+
+	/*
+	  Patch 440.  The state is printed WITH the cvar so a harness log says which
+	  look the shots were taken under; `plain` is the one that must draw exactly
+	  what every build before this one drew.
+	*/
+	print(sprintf("  hud_font_outline %g (%s)\n",
+	              cvar("hud_font_outline"),
+	              (cvar("hud_font_outline") <= FX_PLAIN) ? "plain"
+	                : ((cvar("hud_font_outline") == FX_OUTLINE) ? "outline" : "outline+shadow")));
 
 	/*
 	  THE MEASURED LATCH RATE, and it is here because it is the one thing in this

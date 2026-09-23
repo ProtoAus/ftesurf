@@ -38,6 +38,33 @@ float ui_font_mono;             // Google Sans Code -- the left-hand number colu
 float ui_font_ready;            // all three loaded; false = something is on the bitmap
 
 /*
+  PATCH 440 -- WHY THERE IS NO OUTLINED SLOT HERE.
+
+  The engine's outline is a per-font-slot BAKE, not a draw flag: `outline=N` in
+  loadfont's size list (pr_menu.c:299) reaches Font_LoadGlyphData, which dilates
+  the glyph's alpha over an N-px disc and grows the cell by N on every side
+  (gl_font.c:903-973), the ring keeping the plane's BORDERCOLOUR (rgb 0) so it is
+  dark whatever colour the caller asks for.  r_font_postprocess_outline is the
+  same bake from a cvar, read at slot definition for ALL slots -- it re-bakes the
+  console and menu fonts too, so it is not a HUD switch either.
+
+  A second slot for this face ("fsmonoo", same ladder plus outline=1) was built
+  and rejected.  Not because the bake looked wrong -- it looked right -- but
+  because the engine's outline is read at slot definition and applies to every
+  slot in the process (r_font_postprocess_outline re-bakes the console and menu
+  fonts too), and a second slot doubles this face's cells in the four 1024x1024
+  planes every font in the process shares.  While measuring that cut, the
+  speedometer's Bebas zero drew at the console's ^7 white in the outlined states;
+  the same dim then appeared with the draw-side ring, and disappeared when the
+  console notify was switched off -- so it is a notify x font-batch interaction
+  (BACKLOG.md), not an atlas fault, and the first reading of it as atlas
+  corruption is withdrawn here as well as in the arm's RESULT block.
+  HUD_TextDraw's ring re-draws the cells that already exist and allocates
+  nothing, which is the whole of its runtime cost -- and the reason the cvar's
+  third state is the one to think about before turning on.
+*/
+
+/*
   The size ladders.
 
   Only sizes that are actually drawn belong here: each one is a separate

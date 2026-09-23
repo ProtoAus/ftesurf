@@ -36,6 +36,30 @@ float  ui_cv_srates, ui_cv_swhy, ui_cv_sbest;   // build 66: the bar's text bloc
 vector ui_cv_speedpos, ui_cv_keyspos, ui_cv_debugpos, ui_cv_strafepos;
 
 /*
+  PATCH 440 -- THE GOOGLE FACE'S OUTLINE AND DROP SHADOW.  `hud_font_outline`.
+
+  THREE STATES on one cvar, because it is one feature and the third is the second
+  plus a pass:
+
+      FX_PLAIN    the plain bake -- every build before this one.
+      FX_OUTLINE  the outlined bake: the engine dilates the glyph's alpha by
+                  FONT_MONO_OUTLINE px and the ring it adds is dark (sh_font.qc).
+      FX_SHADOW   that, plus a second copy of the string offset down-right in
+                  dark grey at partial alpha, drawn BEHIND the real one.
+
+  Read per frame with the other mirrors and not per string: HUD_Text runs a couple
+  of hundred times a frame and cvar() is a hash lookup each time.  HUD_ReadCvars
+  is at the top of HUD_Draw and every panel that draws mono text is called after
+  it (cl_main.qc's HUD stack) -- the same assumption cl_scores.qc's rec_sb_*
+  layout already makes of ui_cv_scale.
+*/
+#define FX_PLAIN    0
+#define FX_OUTLINE  1
+#define FX_SHADOW   2
+float  ui_cv_fontfx;
+vector fx_ring_off[8];          // the ring's 8-neighbourhood, filled at register
+
+/*
 ===========================================================================
   BUILD 31 -- THE LAYOUT REGISTRY.
 
@@ -674,6 +698,13 @@ void() HUD_ReadCvars =
 {
 	ui_cv_scale     = cvar("hud_scale");        if (!ui_cv_scale) ui_cv_scale = 2;
 
+	// Patch 440: out-of-range clamps to the shipped default, not to 0 -- a typo at
+	// the console should not silently take the HUD back to a pre-440 look while the
+	// editor's chip still reads as lit.
+	ui_cv_fontfx    = cvar("hud_font_outline");
+	if (ui_cv_fontfx < FX_PLAIN || ui_cv_fontfx > FX_SHADOW)
+		ui_cv_fontfx = FX_SHADOW;
+
 	ui_cv_speed     = cvar("hud_speed");
 	ui_cv_energy    = cvar("hud_energy");
 	ui_cv_energyref = cvar("hud_energy_ref");
@@ -761,6 +792,27 @@ void() HUD_RegisterCvars =
 	registercvar("hud_energy_dbg",  "0");
 	registercvar("hud_debug_size",    "0", CVAR_ARCHIVE);
 	registercvar("hud_mapinfo_size",  "0", CVAR_ARCHIVE);
+	/*
+	  Patch 440: the Google face's outline, and its shadow.  2 ships both; 0 is
+	  what every earlier build drew.  Archived because it is a look picked in
+	  hud_edit and expected to survive a quit.  The matching chip is in
+	  cl_hudedit.qc's fixed block -- it belongs to no one element.
+	*/
+	registercvar("hud_font_outline", "2", CVAR_ARCHIVE);
+
+	/*
+	  The ring's eight offsets, filled once rather than spelled at every call.
+	  Here and not at CSQC_Init because this is where the cvar they serve is
+	  registered, and HUD_RegisterCvars runs from CSQC_Init before anything draws.
+	*/
+	fx_ring_off[0] = [-1,  0, 0];
+	fx_ring_off[1] = [ 1,  0, 0];
+	fx_ring_off[2] = [ 0, -1, 0];
+	fx_ring_off[3] = [ 0,  1, 0];
+	fx_ring_off[4] = [-1, -1, 0];
+	fx_ring_off[5] = [ 1, -1, 0];
+	fx_ring_off[6] = [-1,  1, 0];
+	fx_ring_off[7] = [ 1,  1, 0];
 	/*
 	  Build 39.  All four default on and all four exist to be turned OFF: the
 	  numbers they change are numbers you have been reading for months, so there
@@ -1237,25 +1289,99 @@ void() HUD_RegisterCvars =
   the font was actually rendered at, whatever hud_scale is set to -- including
   the 9*scale = 18px cells, which were resampling off the 16 and 20 bakes and
   were the one visibly soft thing on the HUD.
+
+  Patch 440 moved the drawstring itself into HUD_TextDraw below, so the outline
+  and the shadow are one edit rather than a pass over 200 call sites.
 */
+/*
+  THE OUTLINE AND THE SHADOW, and the only place either is drawn.
+
+  GATED ON THE FACE, not on the element.  "The google font" in this tree is
+  gfx/fonts/GoogleMed.ttf (cl_watch.qc's own words for it), and ui_font_cur is
+  whatever Font_Set last selected -- so every block that draws in it answers to
+  the cvar and nothing else does: Roboto's labels, Bebas's clock, the console and
+  the editor's own chips are untouched.  The TAB board is untouched too, and that
+  is a budget decision rather than an oversight: its rows go through sui_text
+  (cl_scores.qc's Scores_Text) because they are inside a list view's transform,
+  and it is the largest text surface in the tree.
+
+  THE RING IS EIGHT COPIES OF THE STRING, ONE PIXEL OUT IN EACH DIRECTION, drawn
+  before the body in near-black.  Not a second font slot: the engine's own outline
+  is a bake read at slot definition for every slot in the process, and a second
+  slot for this face would double its cells in the four-plane glyph atlas every
+  font shares (sh_font.qc's Patch 440 essay).  Re-drawing the cells that already
+  exist allocates nothing.  Eight passes is the 8-neighbourhood, i.e. a true 1 px
+  ring; four would leave the diagonals thin.
+
+  THE COST IS THE WHOLE ARGUMENT ABOUT THIS FEATURE.  At `shadow` a mono string is
+  ten drawstring calls instead of one.  The mono blocks are the small ones -- map
+  info, the clock's subtext, splits, segments, the strafe and board numbers, a few
+  tens of short strings a frame -- and the ring is off at `plain`, so the price is
+  paid only by whoever asks for the look.  What it must never do is reach a face
+  this gate does not name, which is what the two control regions in
+  cfg/test/p440font.cfg watch.
+
+  THE ADVANCES ARE UNTOUCHED by all of this: the copies are whole-pixel offsets of
+  the same string at the same size, so the centred and right-aligned helpers keep
+  the layout they measure with stringwidth.  Nothing moves; the glyphs get heavier.
+
+  THE SHADOW IS DARK GREY RATHER THAN LIGHT, and the blend is why.  ftefont is
+  premultiplied -- `blendfunc gl_one gl_one_minus_src_alpha` with rgbgen/alphagen
+  vertex (gl_font.c:493-511) -- so the requested rgb reaches the framebuffer
+  UNSCALED by the requested alpha: a light grey at half alpha is a bright smear,
+  not a shadow.  The offset is a whole pixel for the same reason the atlas is
+  NEAREST-filtered (default.cfg's r_font_linear 0): a fractional one draws a
+  second, differently-aliased copy of the glyph 1.4 px away.
+*/
+#define FX_SHAD_OFF   0.09      // of the glyph size: 1 px at 8-16, 2 at 20-24, 3 at 32
+#define FX_SHAD_RGB   '0.13 0.14 0.16'
+#define FX_SHAD_A     0.65
+#define FX_RING_RGB   '0.05 0.06 0.07'
+#define FX_RING_A     0.9
+
+void(vector pos, string s, float sz, vector rgb, float a) HUD_TextDraw =
+{
+	local float i, d;
+
+	if (ui_cv_fontfx > FX_PLAIN)
+	if (ui_font_cur == ui_font_mono)
+	if (a > 0)
+	{
+		if (ui_cv_fontfx >= FX_SHADOW)
+		{
+			// At least 2 px: the ring already owns the 1 px neighbourhood, so a
+			// 1 px shadow hides entirely under it and the third state draws nine
+			// passes to look like the second (measured: 117 changed pixels in the
+			// subject region against the ring's 2224).
+			d = max(2, floor(sz * FX_SHAD_OFF + 0.5));
+			drawstring(pos + [d, d, 0], s, [sz, sz], FX_SHAD_RGB, a * FX_SHAD_A, 0);
+		}
+		for (i = 0; i < 8; i = i + 1)
+			drawstring(pos + fx_ring_off[i], s, [sz, sz], FX_RING_RGB, a * FX_RING_A, 0);
+		drawstring(pos, s, [sz, sz], rgb, a, 0);
+		return;
+	}
+	drawstring(pos, s, [sz, sz], rgb, a, 0);
+};
+
 void(vector pos, string s, float sz, vector rgb, float a) HUD_Text =
 {
 	sz = Font_Px(sz);
-	drawstring(pos, s, [sz, sz], rgb, a, 0);
+	HUD_TextDraw(pos, s, sz, rgb, a);
 };
 
 void(vector pos, string s, float sz, vector rgb, float a) HUD_TextC =
 {
 	sz = Font_Px(sz);
 	pos_x = pos_x - stringwidth(s, TRUE, [sz, sz]) * 0.5;
-	drawstring(pos, s, [sz, sz], rgb, a, 0);
+	HUD_TextDraw(pos, s, sz, rgb, a);
 };
 
 void(vector pos, string s, float sz, vector rgb, float a) HUD_TextR =
 {
 	sz = Font_Px(sz);
 	pos_x = pos_x - stringwidth(s, TRUE, [sz, sz]);
-	drawstring(pos, s, [sz, sz], rgb, a, 0);
+	HUD_TextDraw(pos, s, sz, rgb, a);
 };
 
 /*
