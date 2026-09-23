@@ -1019,10 +1019,28 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - BUILD: `pwsh -NoProfile -File tools\linux\build-linux.ps1 -Commit <engine sha>
   -ExpectSonames -OutName linux-build-<x>` builds in a Debian bullseye chroot
   inside WSL `Ubuntu-22.04` (made once by `tools/linux/chroot-setup.sh`), from a
-  fresh clone, offline, from `tarballs.sha256`. Output `dist\<OutName>\` with
+  fresh clone, offline, from `tarballs.sha256`. `-Commit` defaults to ENGINE.txt's
+  pin, which is the right answer for a release. Output `dist\<OutName>\` with
   BUILDINFO.txt; `gates.sh` G1-G10 must all PASS (libc/libm only, glibc <= 2.31,
   zstd in the plugin -- Momentum's VTF 7.6 -- versioned sonames, clean stamp).
-  `makelibs` runs at -j1: its two-target rules race under -j.
+  `makelibs` runs at -j1: its two-target rules race under -j. Takes ~90 s when the
+  chroot and its clone are warm.
+- A WINDOWS EXE'S STAMP IS BAKED INTO OBJECTS, AND THEY DO NOT REBUILD WHEN
+  `SVN_VERSION` CHANGES. 0.1.12 shipped an exe carrying TWO stamps
+  (`ga72183e6b` from a .rc object, `g2b685797b-dirty` from a later sv_user.c), so
+  nothing could say which commit it was and gate L2 refused to publish a Linux
+  drop beside it. To re-stamp: find the objects that still hold the old string
+  (`grep -rl` over `engine/release/**/*.o`), delete them, `touch client/sys_win.c
+  common/common.c server/sv_user.c`, and rebuild with
+  `SVN_VERSION=git-<count>-<describe> SVN_DATE=2026-09-23` passed ON MAKE'S
+  COMMAND LINE (build.ps1's `$env:` does not reach it). Then read the stamps back
+  out of the binary -- do not trust the build having run.
+- TWO MSYS2 BUILD TRAPS, both environment rather than code: `make` inherits
+  `TMP=/tmp`, and Windows gcc then dies with `Cannot create temporary file in
+  C:\WINDOWS\: Permission denied` -- pass `TMP="C:\msys64\tmp"
+  TEMP="C:\msys64\tmp"`. And an agent bash's `/tmp` is
+  `C:\Users\Lex\AppData\Local\Temp`, NOT `/c/msys64/tmp`, so a scratch file
+  written by one is invisible to the other.
 - Call `wsl.exe -d <distro> --exec ...` from PowerShell. Git Bash rewrites
   /mnt/c paths, and without `--exec` the login shell expands `$vars`.
 - A Windows exe built from a `git worktree` carries NO revision stamp (the
@@ -1035,16 +1053,23 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   release gate L2 then refuses the drop ("names no clean commit"). `$env:SVN_DATE`
   MUST HAVE NO SPACES (`%cs`, i.e. `2026-09-21`): it reaches CFLAGS unquoted, and
   `Sep 21 2026` makes the compiler treat `21` and `2026` as linker inputs.
-- RELEASE: `release.ps1 -Bump patch -Linux dist\<drop> -FteRoot <worktree>`. The
-  Linux drop and ftesurf64.exe must come from the same engine commit (gate L2);
-  build.ps1 recompiles the progs from `src`, so copy the lobby-deployed .dat back
-  in before releasing. `ENGINE.txt`'s pin block is a gate too -- bump `commit`,
-  `patch` and `qcbuild` with the engine or the run stops there.
-  STEP 18 (the page scp) FAILS ON WINDOWS: `"$pageDir\*"` does not glob, so the
-  run throws AFTER both archives are uploaded. That is the documented
-  unre-runnable state -- do not re-run it. `scp dist\site-<v>\<each file>` to the
-  Pi's `ftesurf-site/.incoming/<v>/` and `sh publish.sh <v>` there, then check
-  https://proto.bar/ftesurf/version.json.
+- RELEASE: `release.ps1 -Bump patch -BuildNumber <n> -Linux dist\<drop>`.
+  `-BuildNumber` is REQUIRED unless a `Build NN:` commit is inside the last 200
+  (the script derives the number from a subject and hard-fails without it; Build
+  88 was 228 back). The Linux drop and ftesurf64.exe must come from the same
+  engine commit (gate L2); build.ps1 recompiles the progs from `src`, so copy the
+  lobby-deployed .dat back in before releasing. `ENGINE.txt`'s pin block is a gate
+  too -- bump `commit`, `patch` and `qcbuild` with the engine or the run stops
+  there.
+  - STEP 18 USED TO FAIL ON WINDOWS and is fixed (6aaeebb): `scp -r "$pageDir\*"`
+    passes the literal `*`, so the page never went up and the run threw AFTER both
+    archives were uploaded -- the documented unre-runnable state, hit again on
+    0.1.13, whose page was therefore deployed by hand: `scp dist\site-<v>\<each
+    file>` to the Pi's `ftesurf-site/.incoming/<v>/`, the three site scripts
+    beside them, then `sh publish.sh <v>` there. Check
+    https://proto.bar/ftesurf/version.json afterwards, and download both archives
+    back and compare bytes/md5/sha256 against the receipt -- the script's own
+    "origin: size and md5 match" is the uploader's word, not the reader's.
 - ONLY THE LOBBY PORTS ARE FORWARDED. A one-off server on a spare port is
   reachable from the LAN address (192.168.1.102), not from 180.150.62.57.
 - TEST RIG: WSL `Debian` is a runtime-only player machine (user `surf`;
