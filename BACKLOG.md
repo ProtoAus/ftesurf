@@ -32,9 +32,21 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad.
   Patch 435.
 - **Map triggers still touch a held (save-lock) body.** The engine skips touches
-  only for `run_pmhold`; a func_bhop dwell fires OnActivate and writes a `bhop`
-  warp record, push-once triggers are spent for everyone. The timer ignores it
-  since Patch 428 round 6, the side effects remain. Patch 428 review.
+  only for `run_pmhold`; push-once triggers are spent for everyone, and every
+  other trigger that writes velocity does so into a body nobody is steering. The
+  timer ignores it since Patch 428 round 6, the side effects remain.
+  MEASURED AND PARTLY CLOSED: the func_bhop dwell the entry named does NOT fire
+  on a held body (a save-lock hold is MOVETYPE_NONE, the mover runs PM_NONE for
+  it, PM_NONE clears FL_ONGROUND and nothing writes .groundentity again, so
+  SV_BhopFrame reads `ground 0` on every held frame and the dwell never arms --
+  `cfg/test/p439cl.cfg`'s route measured it, and the one-shot print it needed is
+  `bhop frame first: ground 0 isbhop 0 movetype 0 slheld 1`). The half that is
+  still open is the triggers a HELD body is already touching, and the
+  push-once spend: those need the engine's `run_pmhold`-style skip to cover a
+  save-lock hold too, which is an engine change.
+  sv_entities.qc SV_BhopFrame, engine sv_user.c:8097 (MOVETYPE_NONE -> PM_NONE),
+  sv_user.c:8887 (.groundentity written only when pmove.onground).
+  Patch 428 review.
 
 ## Performance
 
