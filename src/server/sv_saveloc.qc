@@ -182,18 +182,27 @@ float  rec_sl_quiet;
 // feeds asks whether the save was taken AT REST.  A body mid-JUMP inside a start box
 // has vz +302 and no horizontal speed at all, so it read as at rest: the gate fired
 // and the load armed a CLEAN attempt.  The hop dwell does not catch it either, and
-// NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` IS a pure
-// velocity edge (SV_TimerJumpWatch's `jumped`) and a restored +302 satisfies it -- which is why
-// the arm reads `running` one frame after the load on a start-on-jump map.  What
-// kept run_t_hopped clear was that EVERY load set run_t_startok, with the whole hop
-// block behind `if (!e.run_t_startok)` (SV_TimerJumpWatch).  A reviewer caught the
-// wrong mechanism, and PATCH 443 then fixed the mechanism: a non-RUNNING restore no
-// longer settles the start, so the block does run.  The verdict is still clear here,
-// now for a reason worth knowing -- the DWELL.  The body was standing before the
-// load, so run_t_groundsec is old, `dwell < want` is false, and a restored rise is
-// not read as a hop.  The paragraph above only ever reasoned about a
-// GROUNDED body: friction is horizontal, and so was the test.  Measured both ways,
-// cfg/test/p442jump.cfg, including that a REAL save taken standing still arms.
+// NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` is a pure
+// velocity edge, and a restored +302 satisfies it -- which is why the arm reads
+// `running` one frame after the load on a start-on-jump map.  What kept run_t_hopped
+// clear was that EVERY load set run_t_startok, with the whole hop block behind
+// `if (!e.run_t_startok)` (SV_TimerJumpWatch).  A reviewer caught the wrong mechanism.
+//
+// ROUND 5 CORRECTED WHAT CAME NEXT, and the correction is the point of re-reading a
+// comment against the code it describes.  This said "PATCH 443 then fixed the
+// mechanism: a non-RUNNING restore no longer settles the start, so the block does
+// run".  IT DOES NOT.  That half of 443 was WITHDRAWN in round 4 and the line below
+// is still `e.run_t_startok = TRUE;` -- so every load settles the start exactly as
+// build 19 left it, and the hop block is still skipped for a restored arm.
+//
+// The verdict is still clear here, and now for TWO reasons worth knowing.  The DWELL:
+// the body was standing before the load, so run_t_groundsec is old, `dwell < want` is
+// false, and a restored rise is not read as a hop.  The paragraph above only ever
+// reasoned about a GROUNDED body -- friction is horizontal, and so was the test.  And
+// PATCH 445: the taint is no longer forgivable by an arm, so a load that forces one
+// can no longer launder a hop the player already earned before the load.  Measured
+// both ways, cfg/test/p442jump.cfg (a real save taken standing still arms) and
+// cfg/test/p445hop.cfg's L section (the forced arm keeps the taint).
 float(float r) SL_RowSpeed =
 {
 	local vector v;
@@ -228,7 +237,7 @@ float(float r) SL_RowSpeed =
   corner of a ledge is standing.  Round 1 implemented the first trace only and would
   have refused an honest row on a ledge corner, a stair nose or a beam -- two
   reviewers found it independently.  What is STILL not the mover's: it declines a
-  func_slide plane (pm_source.c:2119) and Patch 176 can refuse a landing outright,
+  func_slide plane (PMSrc_SlideAllowsJumpNow, pm_source.c:2102) and Patch 176 can refuse a landing outright,
   both of which this grants.  Those are the fail-open direction.
 
   THE HULL IS THE ROW'S, not e.maxs: SV_SaveLocPlace only sets run_forceduck and the
@@ -255,6 +264,22 @@ float(float r) SL_RowSpeed =
   The mover does ground you on another player; this refuses to, because the mover is
   answering "can I stand here now" and this is answering "was this row standing".
 
+  ROUND 5 NAMES TWO THINGS THIS PARAGRAPH RELIED ON SILENTLY.
+    - THE CONTENT MASK COMES OFF `e`, NOT OFF THE FLAGS.  tracebox's mask is chosen
+  from the passed entity's own solidity, and it is right here only because a player is
+  SOLID_SLIDEBOX.  Nothing in the call says so, so a future caller that hands this a
+  non-player entity -- or a build that changes what a player is -- gets a different
+  mask and a different answer with no diagnostic.  The probe takes `e` for the hull;
+  that it also selects the mask is a second job the signature does not admit to.
+    - SOLID_PORTAL IS IN, AND IT IS NOT NEUTRAL.  MOVE_NOMONSTERS keeps SOLID_BSP and
+  SOLID_PORTAL and drops SLIDEBOX, BBOX, CORPSE and every SOLID_ISTRIGGER including
+  BSPTRIGGER and LADDER.  World_PortalCSG can DELETE the world's floor hit for a trace
+  inside a portal's CSG volume, so a row standing on real floor there reads frac 1.000
+  and is refused -- a false refuse, conservative like the rest, but a fourth way for
+  this probe to answer "no" while meaning "could not see".  Both are BACKLOG.md
+  entries; neither is changed here, because the probe's two-verdict return is the thing
+  that wants fixing and that is its own patch.
+
   startsolid IS A REFUSAL, and it took three rounds to get there.  Round 1 started the
   trace a unit UP -- so that a grounded row whose `%.4f` origin lands epsilon inside
   the floor read as a plane rather than as an overlap -- and answered startsolid as
@@ -264,7 +289,7 @@ float(float r) SL_RowSpeed =
   (pm_source.c:2211).  ROUND 3: READ IN CONTEXT THAT LINE SAYS THE OPPOSITE.  It is
   inside the `else` of `fraction == 1 || normal[2] < standable`, i.e. it is only
   reached when a standable plane WAS found; and a startsolid trace never gets there,
-  because Q1BSP_RecursiveHullCheck sets startsolid and writes NO plane (q1bsp.c:901),
+  because Q1BSP_RecursiveHullCheck sets startsolid and writes NO plane (q1bsp.c:903),
   so normal[2] is 0, 0 < 0.7, and the mover takes its airborne arm.  startsolid means
   AIRBORNE to the mover on both paths.
   "A MOVER THAT CLOSED OVER A SAVE", the first reason round 2 gave for the fail-open,
@@ -322,6 +347,7 @@ float(entity e, float r) SL_RowGrounded =
 {
 	local vector o, mn, mx, dn, qn, qx;
 	local float d, sn, ok, q, hx, hy, emb, hz;
+	local float qd;                     // Patch 445 r5: the quadrant switch, three-valued
 
 	q  = 0;                             // locals are not zero-initialised (fteqcc)
 	o  = rec_sl_org[r];
@@ -348,6 +374,29 @@ float(entity e, float r) SL_RowGrounded =
 	sn = cvar("pm_standablenormal");
 	if (sn <= 0)
 		sn = 0.7;                       // PMSRC_STANDABLE_DEFAULT
+	/*
+	  ROUND 5: THE THIRD CVAR GETS A FALLBACK TOO, and it needs a THIRD VERDICT to do
+	  it, which is why it is three lines rather than one.
+
+	  The asymmetry was in this very block: `d` and `sn` above both fall back to the
+	  engine's constant, and pm_groundquadrants was read inline at the retry below with
+	  none -- so a missing cvar silently ran a DIFFERENT RULE from the mover, skipping a
+	  retry the mover performs and refusing a row the mover would ground.  Conservative,
+	  so not an exploit, but this probe's whole job is to reproduce the mover exactly.
+
+	  `if (!qd) qd = 1` IS THE WRONG FIX AND WAS THE FIRST ONE WRITTEN.  The two above
+	  can use `<= 0` because zero is not a meaningful distance or normal.  This one is a
+	  BOOLEAN with three states -- absent, deliberately 0, deliberately 1 -- and cvar()
+	  collapses the first two into the same float.  Overriding it would break the one
+	  thing the switch exists for, which its own engine description names: taking the
+	  quadrant retry out of the picture while bisecting something else.
+	  cvar_string() == "" separates absent from off.  1 is the engine's own default
+	  (CVARFD, sv_phys.c:130), not a guess.
+	*/
+	if (cvar_string("pm_groundquadrants") == "")
+		qd = 1;
+	else
+		qd = cvar("pm_groundquadrants");
 	dn = o - [0, 0, d];                 // the mover's own reach, pm_source.c:2017
 
 	tracebox(o, mn, mx, dn, MOVE_NOMONSTERS, e);
@@ -373,7 +422,8 @@ float(entity e, float r) SL_RowGrounded =
 
 	/*
 	  The mover's quadrant retry, and the sub-boxes are ITS sub-boxes: half the hull
-	  in x and in y, one per corner, first standable plane wins (pm_source.c:2047).
+	  in x and in y, one per corner, first standable plane wins (PMSrc_CategorizePosition's
+	  quadrant loop, pm_source.c:2066, standable test :2077).
 	  Only when the full hull found nothing standable, which is also when the mover
 	  runs it.
 
@@ -387,7 +437,7 @@ float(entity e, float r) SL_RowGrounded =
 	  whole footprint.  Probe and mover agree, which is the property being kept.
 	*/
 	if (!ok)
-	if (cvar("pm_groundquadrants"))
+	if (qd)                             // see the third-verdict read above
 	{
 		hx = (mx_x - mn_x) * 0.5;
 		hy = (mx_y - mn_y) * 0.5;
@@ -457,7 +507,7 @@ float(entity e, float r) SL_RowGrounded =
 
   And the objection the old comment raised against it is simply not true of the
   Source pmove.  PM_NONE zeroes the move inputs, runs CategorizePosition and
-  returns (pm_source.c:1701-1705) -- it never reaches PMSrc_Duck, so
+  returns (PMSrc_StandHeight / PMSrc_DuckHeight, pm_source.c:1698 and :1703) -- it never reaches PMSrc_Duck, so
   pmove.ducked is untouched and PMSrc_ApplyHull keeps rebuilding the hull the
   save asked for.  Angles are applied outside pmove, so you can still look
   around while parked, which is most of the point.
@@ -1122,9 +1172,19 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  is practice by construction and re-derives its own class, and taking this bit
 	  from a file the player can hold would let one save mark another attempt.
 
-	  Additive like every key here -- an older save reads 0, an older build skips
-	  the key -- so no version bump.  Patch 445 raises the grammar to 37 keys; the
-	  reference list is in cfg/test/p443air.txt.
+	  Additive like every key here -- an older save reads 0, an older build skips the
+	  key -- so no version bump.  Patch 445 takes this writer to 37 keys plus the
+	  FTESURF magic (counted, not estimated); cfg/test/p443air.txt is a whole file to
+	  read one against.
+
+	  COUNTING THEM TURNED UP THE WRITE-ONLY SET, and it is worth the two lines because
+	  one member is a BACKLOG entry: `clock`, `created` and `map` are written and NO
+	  READER EVER MATCHES THEM.  The first two are deliberate and say so at their own
+	  fputs -- they are for the human reading the file.  `map` IS NOT: a save is keyed by
+	  map NAME alone, nothing checks the BSP behind the name, and `infokey(world,
+	  "*mapcrc")` already exists in this tree with the third verdict done right (see
+	  SV_MapForeign, sv_timer.qc).  That is the same shape as this key's own bug -- a
+	  field the format could carry and does not -- and it is the next one to close.
 	*/
 	fputs(f, sprintf("hopped %d\n", e.run_t_hopped));
 	// Which save this attempt was already resumed from, if any.  Only `retry`
@@ -1572,17 +1632,29 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 	  WHY IT IS NOT HERE.  Turning the rule on buys nothing while two other doors stand
 	  open, and it costs an honest player a taint:
-	    - `run_t_hopped` IS NOT IN THE SAVE FORMAT, so a `retry` launders a hopped start
-	  by itself.  The cheaper gesture is to chain BEFORE the retry -- correctly marked,
-	  then forgiven by the restart -- so the chain this would have judged is not the one
-	  anybody needs.
+	    - ~~`run_t_hopped` IS NOT IN THE SAVE FORMAT~~ -- CLOSED BY PATCH 445, which
+	  added the `hopped` key and restores it on retry.  Struck rather than deleted
+	  because the other two reasons are what this block turns on and a reader has to
+	  know which of the three moved.  It was the cheapest of the three: chain BEFORE the
+	  retry, be marked correctly, be forgiven by the restart.
 	    - the retry placement restores `velocity` through no gate at all, so the speed a
 	  chain built survives the restart and the player can simply LEAVE the box with it.
 	  No post-retry hop is required, which is what makes judging that hop worthless.
+	  STILL OPEN, and it is now the FIRST thing to close: with 445 in, this is the only
+	  one of the three that still makes judging a restored arm pointless.
 	    - and the dwell the rule grades is BLIND for the first 0.25 s after a placement
 	  into a fresh edict, because map_restart re-initialises run_t_groundsec.  A player
 	  holding +jump across the restart -- pm_autobunny fires it on the first grounded
 	  tick -- is accused of the one gesture the rule exists to permit.
+	  ROUND 5 CORRECTED WHAT THIS ONE IS.  It was written as a reason the WITHDRAWN
+	  half was unsafe, i.e. a hazard the withdrawal avoided.  A reviewer showed the
+	  blindness is reachable through the KEPT half as well: run_t_groundsec is zero
+	  after any placement into a fresh edict, and nothing about the withdrawal changes
+	  that -- the rule simply happens to be off for a restored arm, so today the blind
+	  dwell decides nothing rather than deciding wrongly.  It is therefore a LIVE
+	  defect sitting one `startok` away from mattering, not a bullet dodged, and it has
+	  its own BACKLOG.md entry on that footing.  The withdrawal stands; the reason it
+	  was given for does not.
 	  Both doors are BACKLOG.md entries, and this belongs behind them: the retry point
 	  has to carry the start state and gate the velocity before judging a restored arm
 	  means anything.
@@ -2761,7 +2833,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	  clock.
 
 	  WHAT THIS DOES NOT DO, so nobody assumes it later: it does not close the
-	  double-jump hole.  PMSrc_Tick calls CategorizePosition (pm_source.c:2732)
+	  double-jump hole.  PMSrc_Tick calls CategorizePosition (pm_source.c:3593 and :3598)
 	  BEFORE FullWalkMove, and that re-derives onground from a fresh trace and
 	  overwrites whatever sv_user.c:7944 loaded out of this flag.  The jump is
 	  Patch 241's problem and Patch 241 solves it.  This is about the QC's own
@@ -2825,11 +2897,24 @@ void(entity e, float n) SV_SaveLocLoad =
 	  SV_TimerArm -- the ONLY thing that launders an attempt -- never runs.
 
 	  SO THIS FORCES THE EDGE AND LETS THE EXISTING MACHINE DO THE REST.
-	  SV_TimerArm already zeroes run_t_flags, run_t_said, run_t_hopped and
-	  run_t_fromsave, and RE-DERIVES run_t_dirty and run_t_cheat from the live
-	  state -- so a player who is actually noclipping or has sv_cheats on stays
-	  tainted, which is correct and is why reusing the arm beats writing a
-	  parallel clear that would have to remember all six fields.
+	  SV_TimerArm zeroes run_t_flags, run_t_said and run_t_fromsave, and RE-DERIVES
+	  run_t_dirty and run_t_cheat from the live state -- so a player who is actually
+	  noclipping or has sv_cheats on stays tainted, which is correct.
+
+	  ROUND 5 CORRECTED THIS PARAGRAPH TWICE, and the corrections point the same way.
+	    - IT LISTED run_t_hopped.  PATCH 445 TOOK THAT CLEAR OUT: an arm is reachable
+	  from map data (21 seam maps, 66 velocity-keeping teleports) and a clear that
+	  keeps your speed is the whole exploit.  So the forced edge no longer launders a
+	  hopped start, which is a narrowing of this gate and not a change to it.
+	    - IT SAID "all six fields", arguing that reusing the arm beats a parallel
+	  clear.  SV_TimerArm WRITES 46 DISTINCT FIELDS (counted over its body, 25
+	  run_t_*, 12 run_st_*, the rest), so the sentence understates the borrowed
+	  machinery by forty.  The conclusion still holds -- a parallel clear would drift
+	  -- but for the OPPOSITE reason to the one given: the arm is reused because
+	  restating any part of it is unmaintainable, not because the part is small.  That
+	  is also the honest shape of the overreach BACKLOG.md records against this gate:
+	  a load at rest in a start box runs all 46, and only five of them are what the
+	  gate is for.
 
 	  TS_RUNNING is excluded: a save taken mid-run that happens to sit inside a
 	  start box is still a resumed run and still owes its TF_SHADOW.  Nothing is
@@ -2882,6 +2967,31 @@ void(entity e, float n) SV_SaveLocLoad =
 	// back.  You start that run by leaving the box and entering it, as anywhere.
 	// Patch 443: AT REST IS TWO QUESTIONS, and the second one is SL_RowGrounded's
 	// essay -- a body hanging in the slab is as still as one standing in it.
+	/*
+	  ROUND 5: THIS IS A LATCH, NOT AN EDGE, AND ITS LIFETIME IS UNBOUNDED.
+
+	  Every essay above this line describes the arm landing on the NEXT tick, and on
+	  a bare `sl_load` it does.  THE REAL KEYSTROKE IS NOT A BARE sl_load:
+	  cl_saveloc.qc sends `sl_load` and `sl_hold` back to back on one press, and the
+	  hold re-places the origin every tick with MOVETYPE_NONE.  So `run_t_azone = -1`
+	  is written here and then SITS THERE -- through the whole hold, however long the
+	  player keeps the key down -- and the arm fires on the tick after the RELEASE,
+	  when SV_SaveLocRelease has handed the saved velocity back.  The five conditions
+	  above were all evaluated at LOAD time against a body at rest; the arm they
+	  authorise happens at an unknown later time against a body that is moving.
+
+	  Nothing here has been changed on that account, because narrowing it is Patch
+	  435's gate rather than 443's probe and it wants its own patch (BACKLOG.md).  It
+	  is written down because the four paragraphs above assert a one-tick window that
+	  the shipping client does not produce, and a reviewer who trusts them will
+	  reason about the wrong body.
+
+	  AND THE LANDMINE BESIDE IT: SV_RecDiscard runs unconditionally on this path, so
+	  the recording is already gone by the time the deferred arm launders the taint.
+	  An arm that clears TF_RECORDING for a buffer that no longer exists is consistent
+	  only by accident of ordering -- see the `wasrec` read above, which exists for
+	  exactly this hazard one function up.
+	*/
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
