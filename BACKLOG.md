@@ -61,10 +61,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `rec_watch` is a plain client stringcmd with no check that a replay is even open
   (sv_player.qc:945). So `cmd rec_watch 1; cmd sl_save; cmd rec_watch 0` on ONE bind,
   pressed while airborne, writes `velocity 0.0000 0.0000 0.0000` beside a mid-air
-  origin: Patch 435's speed gate is defeated outright and the only thing left between
-  that row and a clean arm at any height inside a start slab is Patch 443's
-  SL_RowGrounded. One line, the same refusal `rec_sl_hold` already has; `SV_GhostSet`
-  needs nothing (:3085 says why). Found by the Patch 443 review, cheater lens.
+  origin: Patch 435's speed gate reads that row as at rest.
+  WHAT IT IS ACTUALLY WORTH, checked after the review ranked it first, because the
+  review read round 1 of Patch 443 and the answer changed under it: the airborne half
+  is now refused by SL_RowGrounded, so the row buys a clean arm only where the placed
+  body is also STANDING on something inside a start slab -- which is a position the
+  player could have walked to. What is left is not free height, it is a row that LIES:
+  `state.txt` asserts velocity 0 for a body that was moving, so the row's own evidence
+  is false, `sl_list` prints it as `0 u/s standing`, and Patch 435's gate is being
+  answered by the pin rather than by the save. Still worth the one line -- the same
+  refusal `rec_sl_hold` already has, and `SV_GhostSet` needs nothing (:3085 says why) --
+  and worth an arm, because "the gate that stops it is a DIFFERENT patch's" is the kind
+  of load-bearing accident this file exists to write down. Patch 443 review, cheater
+  lens, with the worth re-derived here.
 - **`SV_TimerFrame`'s no-zone-tests guard misses the replay pin too.** It guards
   `e.rec_sl_hold` (sv_timer.qc:12370) and `e.rec_gh_on` (:12377) and not
   `rec_wt_hold`, so the occupancy scan can produce an ARM EDGE on a body frozen by
