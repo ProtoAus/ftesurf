@@ -45,21 +45,45 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   longer be told a rising body is at rest, and `sl_list` no longer prints such a
   row as `0 u/s standing`. A load carrying speed still hands that speed back, as
   a segmented run, so the placement answer above is still the open item.
-  sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad,
-  SL_RowSpeed. Patch 435, part-closed by 442.
-- **EVERY LOAD AND EVERY RETRY TURNS THE HOPPED-START RULE OFF, and on the retry
-  path the run stays CLEAN.** `SV_SaveApplyState` sets `e.run_t_startok = TRUE`
-  unconditionally (sv_saveloc.qc:1287) and the whole Build 19/20/21 start rule --
-  the settle, the dwell, the `hopped start` verdict, `run_t_hopped` -- lives behind
-  `if (!e.run_t_startok)` (sv_timer.qc:9986). Only SV_TimerArm clears it again
-  (sv_timer.qc:10509). A LOAD is practice, so there it costs nothing; a RETRY
-  restores `run_t_flags`/`dirty`/`cheat` verbatim and calls no SV_TimerStitched, so
-  the attempt is clean and rankable with the rule off until something re-arms it.
-  Gesture, alone on a server with `rec_retry 1` (the default): stand ARMED and clean
-  in the start box, `retry`, and after the restart bhop-chain inside the box before
-  leaving. On a leave-the-box map that is an unbounded chain for free; on a
-  start-on-jump map it is the first launch. One keypress, no cheats, no cvars.
-  Found by the review of Patch 441 round 2, in code neither 441 nor 442 touches.
+  AND PATCH 443 CLOSED THE GROUND HALF, also not the same as closing this: the gate
+  now asks whether the row was standing on anything (SL_RowGrounded, the mover's own
+  probe plus its quadrant retry), so a body hanging at rest inside the slab no longer
+  arms clean. All three gate on the ROW; none of them answers the question this entry
+  asks, which is what the PLACEMENT should do with a speed the gate has decided not to
+  launder. sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad,
+  SL_RowSpeed, SL_RowGrounded. Patch 435, part-closed by 442 and 443.
+- **`sl_save` IS NOT REFUSED UNDER THE REPLAY PIN, so an at-rest row can be
+  manufactured anywhere in mid-air.** `SV_SaveLocCreate` refuses a save under
+  `run_pmhold` (spectate, sv_saveloc.qc:2354) and under `rec_sl_hold` (the save-lock
+  hold, :2362, Patch 428 round 6) and NOT under `rec_wt_hold` -- and the replay pin is
+  the same freeze: `SV_WatchHold` sets MOVETYPE_NONE and zeroes velocity (:3051-3055),
+  which that function's own table states beside the save-lock hold's identical line.
+  `rec_watch` is a plain client stringcmd with no check that a replay is even open
+  (sv_player.qc:945). So `cmd rec_watch 1; cmd sl_save; cmd rec_watch 0` on ONE bind,
+  pressed while airborne, writes `velocity 0.0000 0.0000 0.0000` beside a mid-air
+  origin: Patch 435's speed gate is defeated outright and the only thing left between
+  that row and a clean arm at any height inside a start slab is Patch 443's
+  SL_RowGrounded. One line, the same refusal `rec_sl_hold` already has; `SV_GhostSet`
+  needs nothing (:3085 says why). Found by the Patch 443 review, cheater lens.
+- **`SV_TimerFrame`'s no-zone-tests guard misses the replay pin too.** It guards
+  `e.rec_sl_hold` (sv_timer.qc:12370) and `e.rec_gh_on` (:12377) and not
+  `rec_wt_hold`, so the occupancy scan can produce an ARM EDGE on a body frozen by
+  `rec_watch` -- SV_TimerArm, which zeroes run_t_flags. The Patch 428 round 6 comment
+  at that site applies verbatim, one pin over: fall into a start box, pin on the entry
+  packet, hang there with the clock frozen for as long as you like, unpin and fall from
+  rest. `SV_WatchRelease` (sv_saveloc.qc:3004-3020) restores only the movetype and
+  never hands velocity back, unlike SV_SaveLocRelease, so this is worth the hang
+  rather than a speed. Same review.
+- **The hopped-start rule's forgiveness is PRICED, not free, and one box re-entry
+  launders it completely.** `run_rearmhop` takes `run_t_hopped` back after 0.25 s of
+  ground dwell (sv_timer.qc:10141), which at `sv_friction 4` costs about a third of the
+  chain's speed -- so a chain re-arms clean at some speed rather than none. And leaving
+  the start box and re-entering it calls SV_TimerArm (:11691 -> :10373), which zeroes
+  run_t_flags, run_t_hopped and run_t_jumps and touches `.velocity` not at all:
+  chain to speed, step out, step back in, walk out clean and fast.
+  SV_SaveLocPickInZone's own essay already names the re-entry arm ("on a surf map
+  re-entering one while running ARMS you outright"). Pre-existing and independent of
+  saves, and it bounds what Patch 443's startok half buys. Same review.
 - **The retry placement is a second copy of the start-box velocity restore, with no
   gate on it at all.** `SV_SaveApplyState`'s retry branch places the body from the
   file's `origin`/`velocity` (sv_saveloc.qc:1194-1210) and restores the flags
@@ -68,29 +92,25 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   which has exactly one caller: the SV_SaveLocLoad gate. So: re-enter your own start
   box while RUNNING (with `run_rearmstops 1` SV_TimerTryArm re-arms without zeroing
   velocity), `retry` there, and the restart hands back ARMED + clean + that velocity,
-  up to `sv_maxvelocity`. Prespeed injection into a clean armed attempt, repeatable,
-  and with the entry above the hop rule is off too. Its only brake is that `retry`
-  refuses with more than one player on the lobby. Patch 441 review.
-- **The start-box gate asks about SPEED and never about SUPPORT, so a save taken
-  AIRBORNE with |v| < 1 still arms clean.** Patch 442 made SL_RowSpeed read all
-  three components, which closes the mid-jump case, but the row carries no ground
-  state and SV_SaveLocLoad clears FL_ONGROUND for every load (sv_saveloc.qc:2374) --
-  so a body hanging in mid-air inside the slab satisfies the test as well as one
-  standing on the floor. Deterministic ways to be off the ground under 1 u/s: WATER
-  (`sv_waterfriction`/`watersinkspeed` decay velocity continuously through 1 at any
-  height), a LADDER (`pm_ladders 1`: release the keys and velocity is zero), a jump
-  into a low ceiling (the clip removes vz in one move), and a tuned apex frame (the
-  per-move step is gravity x the usercmd's msec, which the client's framerate
-  chooses). What it buys is the fall -- up to the slab's height, 160 u on bhop_eazy
-  and up to 189 u of authored destination elsewhere -- free, because the clock does
-  not start until the hull leaves the box. WORSE, it defeats the accident that
-  protects most maps: Patch 415's `%.4f` rounding puts a GROUNDED placed body 5e-5
-  below the slab on 6 of 35 authored regions, but an airborne row's z is genuinely
-  inside it. The fix wants a support test at the placement (a downward tracebox at
-  the placed origin), not another threshold. And note the other direction is
-  untested: a save taken floating in water reads ~60 u/s and the gate correctly
-  refuses it, but nothing measures that. sv_saveloc.qc SL_RowSpeed and the gate in
-  SV_SaveLocLoad. Patch 442 review.
+  up to `sv_maxvelocity`. Prespeed injection into a clean armed attempt, repeatable.
+  Its only brake is that `retry` refuses with more than one player on the lobby.
+  Patch 441 review. STILL OPEN AFTER PATCH 443, and narrower by one clause: that patch
+  turned the hopped-start rule back on for the restored ARM, so the chain the entry
+  above describes is judged now -- but this entry is about the VELOCITY the placement
+  hands back, which no gate on the retry path reads at all. The rule does not speak to
+  a player who never jumps.
+- **SL_RowGrounded's three residuals, and one of them is that a refusal leaves no
+  artifact.** Patch 443 closed the airborne-row hole (the gate asked about SPEED and
+  never about SUPPORT); what it does NOT do is the mover's last two steps. The probe
+  grants a `func_slide` plane, which CategorizePosition demotes (engine
+  pm_source.c:2119), and it grants a landing Patch 176 can refuse outright (:2131) --
+  both fail-open, so they are a cheater's lens rather than a player's. Against that, an
+  honest save wedged at rest on a ramp too steep to stand on keeps its taint, and the
+  refusal is recorded ONLY in a dprint: nothing in `run_t_flags`, nothing in the save
+  event stream, so a player who loses a rank to it leaves nothing a reviewer can read
+  and the HUD shows `segmented` with no reason. A one-line `sprint` when the gate
+  refuses on support alone would close the last one. sv_saveloc.qc SL_RowGrounded.
+  Patch 443 review.
 - **`sl_replay`'s taint does not survive the next arm, and it has no resume guard.**
   Patch 441 round 2 added SV_TimerPractice at the gesture so the command's safety is
   local rather than inherited from the cheatwatch blocks. It covers the attempt in
