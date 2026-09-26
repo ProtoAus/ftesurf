@@ -652,6 +652,8 @@ void(string rows, float n, float cut, vector p, float sz, float lh, float a, flo
 		t = substring(rows, s, e - s);
 		if (cut && r == n - 1)
 			t = Chat_Cut(t, maxw, sz);
+		// The offset black pass is the shadow, and it is the whole of its cost:
+		// ~1.5 us a row, measured 2.0 -> 3.5 us for 62 chars.
 		drawstring([p_x + 1, p_y + lh * r + 1], t, [sz, sz], '0 0 0', a * 0.6, 0);
 		drawstring([p_x, p_y + lh * r], t, [sz, sz], '1 1 1', a, 0);
 		if (r == 0)
@@ -780,8 +782,10 @@ void(vector scr) Chat_Draw =
 		chat_ordy[i] = yb;
 		if (a <= 0)
 			continue;
-		// Shadowed like the rest of the HUD's text: readable over both a dark
-		// leaf and a white skybox.
+		// Shadowed so a row stays readable over both a dark leaf and a white
+		// skybox.  NOT "like the rest of the HUD's text", which this said until
+		// Patch 443: HUD_Text drew plain when it was written, and Patch 440's ring
+		// and shadow for the mono face are opt-in (hud_font_outline).
 		Chat_DrawRows(chat_wrap[j], n, chat_wrapn[j] > n, [x, yb], sz, lh, a, maxw);
 		chat_ordy[i] = chat_dr_y0;
 	}
