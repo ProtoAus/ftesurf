@@ -324,13 +324,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   re-opens it). The fix wants the refusal BEFORE the placement, which is what r1
   set out to do, and an arm that produces the race. sv_saveloc.qc SV_SaveLocLoad,
   cl_replay.qc Rec_ViewLoaded. Patch 441 review.
-- **The client's sidecar write-back has no reliable arm.** p438view's R2 is
-  supposed to write rec_rp_view back out through Rec_ViewSaved and it only
-  happens on SOME runs -- three of four, and a run from a clean tree wrote one
-  while another did not, so the condition is not known. Until it is, nothing
-  grades the write half of the sidecar reader: the driver reports NOT MEASURED.
-  cl_replay.qc Rec_ViewSaved, cfg/test/p438view.cfg R2, tools/p438view.py
-  writeback(). Patch 441.
 ## Cosmetic / low
 
 - The replay line's alpha ramps from 1 to the `ahead` alpha across the one sample
