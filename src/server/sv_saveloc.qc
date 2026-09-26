@@ -1168,14 +1168,18 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  restart.  Nothing in the rule could see that, because the bit the rule reads
 	  did not cross the file.
 
-	  Only `retry` reads it back, exactly as `cheat` above.  A LOAD must not: a load
-	  is practice by construction and re-derives its own class, and taking this bit
-	  from a file the player can hold would let one save mark another attempt.
+	  Read back on the `retry` path, exactly as `cheat` above -- and ROUND 6 corrected
+	  what that path IS: `if (retry)` is also true for the Multi-Session resume, which
+	  passes 2.  A LOAD must not read it: a load is practice by construction and
+	  re-derives its own class, and taking this bit from a file the player can hold
+	  would let one save mark another attempt.  See the raise-only restore below.
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
 	  key -- so no version bump.  Patch 445 takes this writer to 37 keys plus the
-	  FTESURF magic (counted, not estimated); cfg/test/p443air.txt is a whole file to
-	  read one against.
+	  FTESURF magic (counted, not estimated).  cfg/test/p443air.txt is a whole file to
+	  read one against, and is DELIBERATELY LEFT AS A PRE-445 EXAMPLE -- 36 lines, no
+	  `hopped` -- so the air arm keeps exercising the additive read.  Round 6 flagged
+	  the mismatch; this is the answer to it rather than a fixture edit.
 
 	  COUNTING THEM TURNED UP THE WRITE-ONLY SET, and it is worth the two lines because
 	  one member is a BACKLOG entry: `clock`, `created` and `map` are written and NO
@@ -1813,8 +1817,24 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  SV_RetryApply's own comment for a different reason.  Checked in the code,
 		  not inferred; cfg/test/p445hop.cfg's R arm measures it, because an
 		  ordering that holds today is a landmine and not an invariant.
+
+		  ROUND 6: IT RAISES AND NEVER LOWERS, and `if (retry)` is why.
+
+		  That test is TRUE for the Multi-Session resume as well, which passes 2
+		  (sv_resume.qc) -- all three reviewers found it independently, and the
+		  comment above still says "only `retry`".  A plain `= hop` therefore gave
+		  a FOURTH clear that is on nobody's list: chain in the box to earn the
+		  taint, then `!resume`, and the parked file's 0 overwrites it.  Not an
+		  exploit (SV_MsAccept zeroes the velocity and the apply restores the
+		  PARKED velocity, so no chain speed survives) but it is a clear reached by
+		  a gesture whose premise is not "nothing happened", and the whole design
+		  turns on the clear list being short and true.
+		  The raise-only form costs nothing on the retry path -- the point is
+		  written at the instant the key is pressed, so `hop` already equals the
+		  live bit there -- and closes the resume path without a second branch.
 		*/
-		e.run_t_hopped = hop;
+		if (hop)
+			e.run_t_hopped = TRUE;
 	}
 	else
 	{

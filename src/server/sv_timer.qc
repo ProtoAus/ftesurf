@@ -1542,11 +1542,14 @@ float() SV_RecEnabled =
 
   So the clear now hangs off SV_TimerForgiveHop, and the discriminator it is
   written against is checkable rather than argued: every caller zeroes the
-  velocity in the same breath.  `!r`/`!m`/`!s`/`!b` reach SV_ZoneMoveAt, which
-  sets `self.velocity = '0 0 0'` two lines from the forgiveness; a respawn brings
-  a fresh body; a map change takes the map the speed was built in.  None of the
-  three can carry a chain's speed past the clear, which is what makes them safe to
-  forgive and SV_TimerArm unsafe.
+  velocity in the same breath.  `!r`/`!m`/`!s`/`!b`/zone_goto reach SV_ZoneMoveAt,
+  which sets `self.velocity = '0 0 0'` and clears the push carrier TWENTY-FOUR LINES
+  ABOVE the forgiveness (round 6 corrected this: it read "two lines from", and two
+  reviewers found the direction wrong as well as the distance); the ground dwell
+  zeroes it at its own call site; a respawn brings a fresh body that
+  PutClientInServer has already zeroed.  THREE callers, and none can carry a
+  chain's speed past the clear -- which is what makes them safe to forgive and
+  SV_TimerArm unsafe.
 
   AND THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the second half of why this
   shape works where the count did not.  SV_ZoneChatCommand is reached only from
@@ -8819,10 +8822,28 @@ void(entity e, string why) SV_TimerVoid =
   PATCH 445: THE ONE CLEAR OF run_t_hopped, and it is a function so that the list
   of callers is the rule.
 
-  Three callers, and each one zeroes or abandons the velocity in the same breath:
-  SV_ZoneMoveAt (the `!r`/`!m`/`!s`/`!b` gesture, `self.velocity = '0 0 0'` two
-  lines below the call), SV_TimerSpawn (a fresh body), SV_TimerMapInit (a new map).
-  The full argument is on the field.
+  ROUND 6 CORRECTED THE LIST, WHICH IS THE WHOLE SAFETY ARGUMENT, so the count is
+  stated exactly: THREE callers.  Two reviewers independently found that the first
+  version of this comment said three and grep gave four -- SV_ZoneMoveAt, the
+  ground-dwell re-arm, SV_TimerSpawn and SV_TimerMapInit -- and that the dwell one
+  zeroed nothing, so the invariant this function exists to hold was false at any
+  `run_rearmhop 1`.  Both defects are fixed rather than re-documented:
+
+    - the DWELL call site now zeroes the velocity itself, which is honest and
+      nearly free: it fires only after 0.25 s of ground contact, by which point
+      friction has taken most of the speed anyway.  See it in SV_TimerJumpWatch.
+    - SV_TimerMapInit's call is GONE because it was DEAD, not because it was
+      unsafe.  SV_SpawnServer runs PR_Deinit and re-allocates every client edict
+      blank, and `classname = "player"` is assigned only inside PutClientInServer
+      (sv_player.qc), which runs after the zone load -- so that loop's
+      find(classname, "player") matches nothing on a map change and the whole body
+      is unreachable.  BACKLOG.md carries the loop itself, which is pre-existing.
+
+  So: SV_ZoneMoveAt (the `!r`/`!m`/`!s`/`!b`/zone_goto gesture -- `self.velocity =
+  '0 0 0'` and SV_ClearCarrier are 24 lines ABOVE the call, not below), the ground
+  dwell (which now zeroes here), and SV_TimerSpawn (a fresh body, and
+  PutClientInServer zeroes velocity and basevelocity before this runs).  The full
+  argument is on the field.
 
   NOT SV_TimerIdle, which is where build 21 put it.  Idle is the shared funnel --
   SV_TimerVoid above reaches it, and SV_TimerVoid is reached from a CANCEL ZONE
@@ -8833,6 +8854,20 @@ void(entity e, string why) SV_TimerVoid =
   print its own action, and four arms in one session graded a downstream
   consequence and measured nothing.  `why` is the gesture, so an arm can assert
   WHICH clear fired rather than that the flag ended up zero.
+
+  KNOWN HOLE IN THE REMEDY, AND IT IS NOT FIXED HERE ON PURPOSE.  A player who
+  presses `!r` WHILE STILL HOLDING +jump is cleared here and re-tagged within a
+  tick or two: pm_autobunny re-jumps on the first grounded tick, QC therefore never
+  observes FL_ONGROUND, run_t_groundsec stays 0, and the dwell reads 0 -- which the
+  rule reads as "a jump already taken".  So the one escape this design offers does
+  not hold for a held key.  It is the blind dwell BACKLOG.md already carries, and
+  445 is what gives it teeth, because the false tag used to die at the next arm.
+  NOT PATCHED IN THIS ROUND BECAUSE TWO FIXES FOR THAT BLINDNESS HAVE ALREADY
+  FAILED REVIEW -- P443 round 2's one-shot flag (SV_TimerArm both cleared it and
+  shared the blindness it existed for) and round 3's `run_t_jumps <= 1` (every event
+  that zeroes the count is a fresh forgiveness, and an arm is one of them).  A third
+  attempt written in a hurry is how that pattern continues; it belongs at the
+  placement that blinded the dwell, with its own arm.
 */
 void(entity e, string why) SV_TimerForgiveHop =
 {
@@ -10189,8 +10224,20 @@ float(entity e) SV_TimerJumpWatch =
 			{
 				/*
 				  Guarded on both taints so a bhop chain says this once rather
-				  than once per hop -- and says it AGAIN after a re-arm, which is
-				  right: a second fluffed start is a second thing to report.
+				  than once per hop.
+
+				  BUILD 21 SAID IT AGAIN AFTER A RE-ARM; PATCH 445 BROKE THAT AND
+				  ROUND 6 IS FIXING IT.  The old comment here read "and says it
+				  AGAIN after a re-arm, which is right: a second fluffed start is
+				  a second thing to report" -- true while SV_TimerArm cleared the
+				  taint, because the clear re-opened this guard.  445 took that
+				  clear away, so `run_t_hopped` stays TRUE for the rest of the map
+				  and THIS BLOCK NEVER RUNS AGAIN.  Two reviewers found it
+				  independently: a player who missed one chat line had no way left
+				  to discover they were tagged, and every later attempt was thrown
+				  away with only SV_TimerClassSay's bare `practice run` word.
+				  A sticky rule the player cannot see is a worse defect than the
+				  laundering it closed, so the reminder below is not optional.
 				*/
 				if (!e.run_t_dirty && !e.run_t_hopped)
 				{
@@ -10210,6 +10257,22 @@ float(entity e) SV_TimerJumpWatch =
 							       "              ^7press ^2!r^7 to re-arm the start\n");
 					}
 				}
+				/*
+				  ROUND 6: AND THE REMINDER, on every later fluffed start.
+
+				  Separate from the block above rather than folded into it, because
+				  the two say different things: that one announces a taint that has
+				  just been earned, this one tells a player who is ALREADY tagged
+				  that the tag is still standing and what lifts it.  Gated on
+				  `run_t_hopped` being already set, so it is exactly the case the
+				  guard above now excludes, and on TS_ARMED so it cannot fire at a
+				  hop taken out on the course (that goes to SV_TimerPractice).
+				  run_t_said is not used: it is cleared by the arm, and the point of
+				  this line is that it survives arms.
+				*/
+				else if (e.run_t_hopped && e.run_t_state == TS_ARMED)
+					sprint(e, PRINT_HIGH,
+					       "^3still a hopped start^7 -- press ^2!r^7 to re-arm, or walk out\n");
 
 				/*
 				  BUILD 21: WHICH TAINT, AND THE SPLIT IS THE WHOLE FEATURE.
@@ -10225,11 +10288,30 @@ float(entity e) SV_TimerJumpWatch =
 				  out there: the clock has been counting since you left the box,
 				  so "stand still and jump" could only mean restarting it from
 				  wherever you happen to be standing.  See the run_rearmhop essay.
+
+				  ROUND 6: THE SET PRINTS TOO, and the asymmetry it fixes was the
+				  finding.  SV_TimerForgiveHop dprints the clear; this printed
+				  nothing, so an operator reading a server log could see a taint
+				  lifted and never see one raised, and an arm could only grade the
+				  clear.  It also covers the SILENT SET a reviewer found: when
+				  run_t_dirty is already up the sprint block above is skipped
+				  (`sl_replay`, or noclip in the box then noclip off) and the
+				  player is told nothing at all -- this is then the only record
+				  that it happened.  dprint, so it costs nothing in production;
+				  BACKLOG carries that `developer` is never set on the fleet, which
+				  is the same gap as the probe's.
 				*/
 				if (e.run_t_state == TS_RUNNING)
 					SV_TimerPractice(e);
 				else
+				{
+					if (!e.run_t_hopped)
+						dprint(sprintf("hop: %s tagged a hopped start "
+						               "(dwell %.2f of %.2f, jumps %g, dirty %g)\n",
+						               e.netname, dwell, want, e.run_t_jumps,
+						               e.run_t_dirty ? 1 : 0));
 					e.run_t_hopped = TRUE;   // TS_ARMED; the outer test says so
+				}
 			}
 		}
 
@@ -10272,7 +10354,25 @@ float(entity e) SV_TimerJumpWatch =
 		*/
 		if (run_t_rearmhop && e.run_t_hopped && e.run_t_state == TS_ARMED)
 			if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
+			{
+				/*
+				  ROUND 6: THE ZERO IS HERE SO THE FUNCTION'S INVARIANT IS TRUE.
+				  Two reviewers found that this was the fourth caller of
+				  SV_TimerForgiveHop and the only one that did not zero the
+				  velocity -- so "every caller zeroes it" was false at
+				  `run_rearmhop 1`, and the caller list is the whole safety
+				  argument.  Fixed at the site rather than in the function,
+				  because the finish and the gesture must NOT be zeroed here
+				  (they already are, or must not be).
+				  It costs almost nothing: this fires only after `want` seconds
+				  of unbroken ground contact, and sv_friction 4 has already
+				  taken most of the speed by then.  What it buys is that the
+				  invariant is a fact instead of a claim about a default.
+				*/
+				e.velocity = '0 0 0';
+				SV_ClearCarrier(e);
 				SV_TimerForgiveHop(e, "the ground dwell (run_rearmhop 1)");
+			}
 	}
 
 	// The two phase clocks, written last so the dwell computed above is this
@@ -13314,9 +13414,23 @@ void() SV_TimerMapInit =
 		p.rec_rec_saved = FALSE;
 		p.rec_rec_bytes = -1;
 		SV_TimerIdle(p);
-		// Patch 445, the other half of SV_TimerSpawn's call: a new map takes the
-		// start box the chain was built in, so nothing survives to launder.
-		SV_TimerForgiveHop(p, "a map change");
+		/*
+		  ROUND 6 REMOVED A `SV_TimerForgiveHop(p, "a map change")` FROM HERE
+		  BECAUSE IT WAS DEAD, and the reason is this loop's own premise.
+
+		  SV_SpawnServer runs PR_Deinit and re-allocates every client edict blank,
+		  and `classname = "player"` is assigned in exactly one place --
+		  PutClientInServer (sv_player.qc) -- which runs AFTER the zone load this
+		  function hangs off.  So on a map change or map_restart the find() above
+		  matches nothing and this whole body is unreachable; the comment at the
+		  top of the loop about the player entity outliving a map change is legacy
+		  (the engine's preserveplayers path needs a ClientReEnter global, which
+		  this progs does not define).  The taint needs no clear here anyway: the
+		  edict is re-allocated blank, so the field starts at 0.
+		  A dead call that ASSERTS coverage is worse than no call, which is why it
+		  went rather than being left harmlessly in place.  BACKLOG.md carries the
+		  loop, which is pre-existing and older than Patch 445.
+		*/
 	}
 
 	// Save-locks are per map by definition -- an origin from the last one is

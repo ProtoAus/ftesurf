@@ -1,8 +1,10 @@
 """Togglable SOLID_BSP brushes whose box reaches a START zone.
 
 Patch 443 round 5, lens B's fail-open.  SL_RowGrounded traces the world as it is
-at LOAD time; the save records nothing about the world at WRITE time (see the
-36-key grammar in cfg/test/p443air.txt).  The essay covers the EMBEDDED twin --
+at LOAD time; the save records nothing about the world at WRITE time (see the save
+grammar over SV_SaveWriteState -- 37 keys plus the magic since Patch 445 added
+`hopped`; cfg/test/p443air.txt is a PRE-445 example of one, 36 lines).  The essay
+covers the EMBEDDED twin --
 at rest inside a disabled brush, the Enable fires, the load refuses it -- but the
 version one unit HIGHER grants instead:
 

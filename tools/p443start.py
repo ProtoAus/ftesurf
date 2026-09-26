@@ -49,8 +49,12 @@ two drivers interleaving is a loud refusal rather than a lost fixture.
 
 Exit status 0 when every pre-registered prediction in the cfg's header held.
 
-RESULT, hop445 (2026-09-27, both sides exit 0; qwprogs 76D668572F532173 fixed /
-8E16FDF3946871C0 control from a worktree at 46afc22).  The control side forgave the
+RESULT, hop445 (2026-09-27, both sides exit 0, SIX sections after round 6 added J2;
+qwprogs 1F000116DB26CD5A fixed / 8E16FDF3946871C0 control from a worktree at 46afc22.
+csprogs is BYTE-IDENTICAL on both sides, which is the right reading and a small proof
+of its own: Patch 445 touches no client or shared source.  The build was checked
+deterministic in place -- two builds of the same tree, same hash -- so a qwprogs
+difference is a code difference.)  The control side forgave the
 hopped start THREE ways in one run -- a forced arm edge from the Build 47 gate, a
 `retry`, and a writer that never emitted the key -- and the fixed side forgave it once,
 at the `!r`.  Two of my predictions were falsified getting there and both are written
@@ -235,9 +239,19 @@ FIELDS = {
     # action -- an arm that reads only the field cannot tell a `!r` clear from a clear
     # that should not have happened at all.
     "forgivesay": r"hopped-start taint cleared by a reset gesture",
+    # ROUND 6.  The reminder on a SECOND fluffed start, which Patch 445 had silently
+    # removed: the `hopped start` block is guarded on `!hopped`, so once the taint is
+    # permanent it never runs again and the player is never told the tag is standing.
+    "hopr2":      r"(still a hopped start)",
+    # And the SET's own dprint, added for the same symmetry the clear already had --
+    # an operator could see a taint lifted and never see one raised, and an arm could
+    # only ever grade the clear.  Also the only record of the SILENT set (when
+    # run_t_dirty is already up the sprint block is skipped entirely).
+    "hopset":     r"tagged a hopped start \(dwell",
 }
 
-PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay", "hopr", "forgivesay")
+PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay", "hopr", "forgivesay",
+            "hopr2", "hopset")
 # Fields graded by HOW MANY times the line appears, not by a captured value.  `gracen`
 # is how p443grace proves its gesture was ONE jump: on the shipped zones an arm edge
 # lands after the jump and zeroes run_t_jumps, so the report's own count reads 0 and
@@ -379,6 +393,12 @@ ARMS = {
          # untouched by this patch, so a chain that does not taint means the gesture
          # did not land and every section below is void rather than green.
          "J":  {"hopped": "1", "hopsay": "present", "hopr": "present",
+                "hopset": "present", "state": "armed"},
+         # ROUND 6: the taint is already up, so the `hopped start` block is skipped --
+         # the reminder is the only thing that can tell the player the tag stands.
+         # `hopsay` ABSENT here is the premise that the guard really did skip, so a
+         # present `hopr2` is a measurement of the new branch and not of the old one.
+         "J2": {"hopped": "1", "hopsay": "absent", "hopr2": "present",
                 "state": "armed"},
          # THE PATCH.  The Build 47 gate forces an arm edge; the arm no longer forgives.
          #
@@ -408,7 +428,11 @@ ARMS = {
          # THE PATCH MUST LEAVE A WAY OUT.  Without this section a change that deleted
          # every clear would read identically at J/L/R and be worse than no patch.
          "G":  {"hopped": "0", "forgivesay": "present"}},
-        {"445": {"J": {"hopr": "absent"},          # the line does not exist pre-445
+        {"445": {"J": {"hopr": "absent", "hopset": "absent"},   # neither line exists pre-445
+                 # Pre-445 the taint is equally sticky at run_rearmhop 0 (no arm
+                 # intervenes here), so `hopped 1` is the same -- what is missing is
+                 # the branch that tells the player.
+                 "J2": {"hopr2": "absent"},
                  # SV_TimerArm's clear is still there, so the forced arm takes the
                  # taint with the flags -- the reading Patch 435 shipped.  `jumps`,
                  # `support` and the absent dprint are the SAME on both sides: they are
@@ -420,6 +444,8 @@ ARMS = {
                  "G": {"forgivesay": "absent"}}},
         {"C":  ("dwell", "ground", "class", "practice", "azone"),
          "J":  ("startok", "ground", "air", "jumps", "azone", "class", "practice"),
+         "J2": ("startok", "ground", "air", "jumps", "azone", "class", "practice",
+                "hopsay", "rearmhop"),
          "L":  ("azone", "armedfrom", "startok", "row", "evslot", "rearmhop",
                 "class", "practice"),
          "W":  ("azone", "startok", "jumps", "class", "practice", "evslot"),

@@ -764,11 +764,19 @@ void() worldspawn =
 	*/
 
 	/*
-	  A fluffed start can be taken back by stopping.  Build 21.
+	  A fluffed start can be taken back by stopping.  Build 21, OFF SINCE PATCH 445.
 
-	  Hop out of the box and the attempt is marked practice, and until now the
-	  only way back was to physically re-enter the start zone -- SV_TimerArm is
-	  the one place the taint is cleared.  With this on, standing on the ground
+	  PATCH 445 CHANGED BOTH THIS CVAR'S DEFAULT AND THE PARAGRAPH BELOW, which
+	  round 6 found still describing build 21 in a block the file's own header calls
+	  the place someone looks for a server cvar.  The shipped rule now: a hopped
+	  start stays tagged until the player presses `!r` (or its siblings, or
+	  respawns), and AN ARM FORGIVES NOTHING -- SV_TimerArm is reachable from
+	  ordinary map data, which is what made it the wrong place for a forgiveness.
+	  This cvar DEFAULTS TO 0 and restores the extra dwell forgiveness when set.
+
+	  Hop out of the box and the attempt is marked practice, and before build 21 the
+	  only way back was to physically re-enter the start zone -- SV_TimerArm was
+	  then the one place the taint was cleared.  With this on, standing on the ground
 	  for run_prestrafe_time forgives it while you are still ARMED, so the next
 	  jump is judged as a fresh initial jump.  It is the same dwell that decides
 	  whether the client releases +forward, so the rule stays one number.
