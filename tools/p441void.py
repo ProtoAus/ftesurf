@@ -141,6 +141,11 @@ FIELDS = {
     # saying `mark` is 0, and for the reason p441retryw.cfg stages.  Without it that
     # arm would be measuring p441retry's case over again.
     "cannotwrite": r"(timer: cannot write .*run\.rec)",
+    # PATCH 444's own line, and it is what turns this arm from a negative into a
+    # positive: SV_RecWritePrefix re-opens the path it just wrote and says so when
+    # there is nothing there.  Graded PRESENT on a 444+ build and ABSENT on either
+    # control, both of which predate it.
+    "prefixgone": r"(timer: prefix .*run\.rec did not land)",
 }
 
 # arm -> (cfg, log, stage the zones override, EXPECT post-fix, CONTROL overrides,
@@ -242,9 +247,11 @@ ARMS = {
         "cfg/test/p441retryw.cfg", "p441retryw.log", False,
         {"C1": {"state": "running", "recording": "1"},
          "C2": {"state": "running", "recording": "1"},
-         "S":  {"cannotwrite": "absent", "cancel": "present",
+         "S":  {"cannotwrite": "absent", "prefixgone": "present",
+                "cancel": "present",
                 "retrysay": "back where you were", "state": "idle"}},
-        {"S":  {"cannotwrite": "absent", "cancel": "present",
+        {"S":  {"cannotwrite": "absent", "prefixgone": "absent",
+                "cancel": "present",
                 "retrysay": "back where you were", "state": "idle",
                 "practice": None, "class": None}},
         {"S": ("clock", "practice", "class", "buffer")},
@@ -403,7 +410,7 @@ def agrees(got, want):
     return got == want
 
 
-PRESENCE = ("cancel", "stitched", "cannotwrite")     # graded present/absent, not by value
+PRESENCE = ("cancel", "stitched", "cannotwrite", "prefixgone")     # graded present/absent, not by value
 
 
 def read(txt, name):
