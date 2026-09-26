@@ -267,21 +267,41 @@ float(float r) SL_RowSpeed =
   because Q1BSP_RecursiveHullCheck sets startsolid and writes NO plane (q1bsp.c:901),
   so normal[2] is 0, 0 < 0.7, and the mover takes its airborne arm.  startsolid means
   AIRBORNE to the mover on both paths.
-  AND THE TWO REASONS FOR THE FAIL-OPEN WERE BOTH WRONG.  "A mover that closed over a
-  save" cannot happen in this build: every brush entity spawns frozen and nothing moves
+  "A MOVER THAT CLOSED OVER A SAVE", the first reason round 2 gave for the fail-open,
+  cannot happen in this build: every brush entity spawns frozen and nothing moves
   (sv_entities.qc, SV_SpawnDoor's "STILL NOTHING MOVES", SV_SpawnPassableBrush, the
-  SOLID_BSP catch-all, and `ltime` held at 0).  And the rounding never needed it: a
-  physics-legal body is held DIST_EPSILON = 0.03125 off every plane it collided with
-  (q1bsp.c:739), while `origin %.4f` quantises to 0.00005 -- 625 times smaller -- so a
-  grounded row's stored origin CANNOT land inside the floor.  The P reading in
-  cfg/test/p443air.cfg is that arithmetic measured: `solid 0 frac 0.000`.  So the
-  branch was dead code for its own purpose and live only as a way in.
-  IT IS ALSO WHAT THE REST OF THE TREE DOES.  All three sibling probes treat the pair
-  as a refusal -- SV_ZoneDest (sv_zones.qc), SV_SaveLocPickInZone below, and the
-  `stuck` diagnostic -- and round 2's comment cited that consistency while breaking it.
-  The one live route to an embedded row is SV_IOEnable (sv_entities.qc), which flips a
-  brush entity SOLID_NOT -> SOLID_BSP at runtime: save at rest inside a disabled brush
-  in a start slab, fire the Enable, load.  Refusing is the answer there too.
+  SOLID_BSP catch-all, and `ltime` held at 0).  The one live route to an embedded row is
+  SV_IOEnable, which flips a brush entity SOLID_NOT -> SOLID_BSP at runtime: be at rest
+  inside a disabled brush in a start slab, have the Enable fire, load.  That is a
+  cheater's gesture AND an honest player's accident, since a map's own logic_timer or
+  another player's trigger can fire it -- and refusing is the right answer to both,
+  because the row is not evidence of standing either way.
+
+  ROUND 2'S SECOND REASON WAS AN ARITHMETIC ARGUMENT AND IT IS WITHDRAWN, not merely
+  corrected, because a reviewer showed the measurement cannot carry it.  The argument
+  was: a physics-legal body is held DIST_EPSILON 0.03125 off every plane it collided
+  with, `origin %.4f` quantises to 0.00005, so a grounded row cannot land inside the
+  floor.  Two holes.  DIST_EPSILON is a per-clip-plane back-off, not a property of
+  bodies: Patch 177's own comment in pm_source.c says "one tick's worth of clipping
+  leaves you a fraction of a unit inside it often enough to matter", which is why
+  PMSrc_CheckStuck exists -- and CheckStuck is SKIPPED for PM_NONE, i.e. for the
+  save-lock hold and the resume park, the two states a save is most likely taken in.
+  And `frac 0.000` cannot show the margin anyway, because com_bih.c clamps a negative
+  fraction to 0, so 0.000 is compatible with any clearance up to DIST_EPSILON.
+  WHAT STANDS IS THE MEASUREMENT, not the arithmetic: on this map's floor a grounded
+  row reads `emb 0` with a standable plane at fraction 0 and still arms, run after run
+  (cfg/test/p443air.cfg's P), and a row 4 units INTO that floor reads `emb 1` and is
+  refused (its E).  The branch is measured in both directions now, which round 3
+  shipped without -- both of its rows read `emb 0`, so the flip it made never fired.
+
+  NOT "WHAT THE REST OF THE TREE DOES", which round 2 and round 3 both claimed and
+  neither checked.  SV_ZoneDest and SV_SaveLocPickInZone LIFT ONE UNIT AND RETEST before
+  refusing, and then fall back to a usable point: the tree's convention is
+  repair-then-refuse.  This probe is the odd one out ON PURPOSE, and the reason is the
+  question each is asking.  Those two are choosing a PLACE TO PUT the body, so repairing
+  the point is part of the job.  This one is asking whether a ROW WAS STANDING, and
+  lifting it would answer about a position the player was never at -- which is exactly
+  what round 1's lift did, and how it certified a body under a ceiling.
 
   AND THE REACH IS THE MOVER'S, d AND NOT d + 1.  Round 2 spent an extra unit "the
   lift used to buy", but round 1's sweep ENDED at o - d; the lift was at the start.
@@ -301,12 +321,26 @@ float(float r) SL_RowSpeed =
 float(entity e, float r) SL_RowGrounded =
 {
 	local vector o, mn, mx, dn, qn, qx;
-	local float d, sn, ok, q, hx, hy;
+	local float d, sn, ok, q, hx, hy, emb, hz;
 
 	q  = 0;                             // locals are not zero-initialised (fteqcc)
 	o  = rec_sl_org[r];
+	/*
+	  THE LIVE HULL, not the sh_defs constants.  The engine builds its own from
+	  pm_standheight and pm_duckheight (sv_phys.c's SV_SetSourceMoveVars), so a server
+	  that moves either one would have this probe tracing a box TALLER than the player
+	  -- and every honest row under a low ceiling would read startsolid and be refused,
+	  wholesale.  Round 3 hardcoded them and a reviewer priced it: zero likelihood at
+	  the shipped default, total blast radius if touched.  The x/y half is not a cvar.
+	*/
 	mn = PM_HULL_MINS;
 	mx = rec_sl_duck[r] ? PM_DUCK_MAXS : PM_HULL_MAXS;
+	// The constant is the fallback and the cvar overrides it, which is the engine's own
+	// order (it clamps rather than merely defaulting).  A vector #define cannot be
+	// suffixed with _z in fteqcc, so the height is written into mx rather than read out.
+	hz = rec_sl_duck[r] ? cvar("pm_duckheight") : cvar("pm_standheight");
+	if (hz > 0)
+		mx_z = hz;
 
 	d = cvar("pm_groundtracedist");
 	if (d <= 0)
@@ -317,16 +351,23 @@ float(entity e, float r) SL_RowGrounded =
 	dn = o - [0, 0, d];                 // the mover's own reach, pm_source.c:2017
 
 	tracebox(o, mn, mx, dn, MOVE_NOMONSTERS, e);
-	// allsolid with startsolid clear is not constructible in this engine (every BIH
-	// site that keeps one sets the other), but all three sibling probes in this tree
-	// test the pair -- sv_zones.qc SV_ZoneDest, SV_SaveLocPickInZone, sv_entities.qc
-	// -- and a probe that spells it differently is the drift these essays are about.
-	// REFUSED, not certified: see the essay.  Falling through to the quadrant retry
-	// below is also what the mover does with a startsolid trace, since its own gate is
-	// `fraction == 1 || normal[2] < standable` and a startsolid trace has no plane.
-	ok = FALSE;
-	if (!trace_startsolid)
-	if (!trace_allsolid)
+	/*
+	  EMBEDDED IS A REFUSAL, and `emb` is kept because it is the only thing that tells
+	  a refused row apart from an airborne one in the log: the quadrant retry below
+	  overwrites the trace globals, so by the time the dprint runs they may be a
+	  sub-box's.  Round 3 printed those and lost the distinction.
+
+	  allsolid is tested beside startsolid for two reasons now.  The tree's other
+	  probes test the pair; and a NaN row origin produces exactly that combination --
+	  World_TransformedTrace initialises allsolid TRUE and its NaN bail returns before
+	  anything clears it, with startsolid left clear -- so round 2's `startsolid ||
+	  allsolid` as CONTACT armed a NaN row clean.  The loader never sanitises
+	  (SV_SaveOriginSane has one caller, the `!r` picker), so this is the only thing
+	  standing there; BACKLOG.md carries the missing call.
+	*/
+	emb = (trace_startsolid || trace_allsolid);
+	ok  = FALSE;
+	if (!emb)
 	if (trace_fraction < 1)
 		ok = (trace_plane_normal_z >= sn);
 
@@ -334,8 +375,16 @@ float(entity e, float r) SL_RowGrounded =
 	  The mover's quadrant retry, and the sub-boxes are ITS sub-boxes: half the hull
 	  in x and in y, one per corner, first standable plane wins (pm_source.c:2047).
 	  Only when the full hull found nothing standable, which is also when the mover
-	  runs it -- so the cost is one trace on the ordinary row and five on a row that
-	  is about to be refused.
+	  runs it.
+
+	  IT RUNS ON THE EMBEDDED PATH TOO, and that is the mover's behaviour rather than a
+	  softening of the refusal: CategorizePosition's gate is `fraction == 1 ||
+	  normal[2] < standable`, a startsolid trace carries no plane, and its loop takes
+	  the first standable sub-box as `best` -- so the engine also grounds a body whose
+	  full hull is startsolid when a corner finds floor.  The consequence, named because
+	  it bounds what this gate refuses: a body embedded in something narrower than half
+	  the hull has a clear quadrant, so the refusal only holds for a solid covering the
+	  whole footprint.  Probe and mover agree, which is the property being kept.
 	*/
 	if (!ok)
 	if (cvar("pm_groundquadrants"))
@@ -349,9 +398,6 @@ float(entity e, float r) SL_RowGrounded =
 			if (q & 1)  qn_x = qn_x + hx;  else  qx_x = qx_x - hx;
 			if (q & 2)  qn_y = qn_y + hy;  else  qx_y = qx_y - hy;
 			tracebox(o, qn, qx, dn, MOVE_NOMONSTERS, e);
-			// The same pair as the full hull, for the same reason: a startsolid
-			// sub-box writes no plane, so it would fail the normal test anyway --
-			// but a probe that tests it in one place and not the other is the drift.
 			if (!trace_startsolid)
 			if (!trace_allsolid)
 			if (trace_fraction < 1)
@@ -361,18 +407,16 @@ float(entity e, float r) SL_RowGrounded =
 	}
 
 	/*
-	  The subject saying what it decided and what it saw, which is what an arm can
-	  grade: without it, a row this refuses and a row it never reached read the same
-	  in the log.  The numbers are the LAST trace's, so where quadrants ran they are
-	  the deciding quadrant's rather than the full hull's.
+	  The subject saying what it decided and what it saw.  `emb` is the FULL HULL's
+	  answer and the rest is the deciding trace's, which is the pair an arm needs: a
+	  row refused for being embedded and one refused for hanging in the air are
+	  different findings and used to print the same line.
 
 	  TWO LINES, because seven of the eight varargs slots is as close to the cap as
-	  this tree goes and fteqcc drops the ninth SILENTLY (sv_timer.qc's `timer` report
-	  says so where it split for the same reason).  The second line only exists when
-	  the quadrants ran, which is also the only time its number means anything.
+	  this tree goes and fteqcc drops the ninth SILENTLY.
 	*/
-	dprint(sprintf("save: row %g support %g at z %.4f (solid %g frac %.3f nz %.3f)\n",
-	               r, ok, o_z, trace_startsolid, trace_fraction, trace_plane_normal_z));
+	dprint(sprintf("save: row %g support %g at z %.4f (emb %g frac %.3f nz %.3f)\n",
+	               r, ok, o_z, emb, trace_fraction, trace_plane_normal_z));
 	if (q > 0)
 		dprint(sprintf("save: row %g quadrants %g of 4\n", r, q));
 	return ok;
@@ -1489,59 +1533,47 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  in which a hop could mark it practice.  Saying so outright is cheaper than
 	  reasoning about that window.
 
-	  PATCH 443: A RESTORED RUN, NOT A RESTORED ARM -- and build 19's sentence is
-	  the test, so it is now written as one.  `st` is the restored state: TS_RUNNING
-	  is the case the paragraph above describes and keeps its answer, and the
-	  0.4-second window it is worried about is still closed.  TS_ARMED and TS_IDLE
-	  are not restored runs at all -- the start has NOT happened, it is the next
-	  thing that will -- and settling it here switched the whole build 19/20/21
-	  rule off for that attempt, since the block is behind `if (!run_t_startok)`
-	  (SV_TimerJumpWatch) and only SV_TimerArm clears it again.
-	  WHAT THAT COST, and it is why this is a ranking fix and not tidying: a
-	  `retry` restores run_t_flags, dirty and cheat verbatim and calls no
-	  SV_TimerStitched, so a clean ARMED attempt comes back clean and RANKABLE --
-	  with the hop rule off, an unbounded bhop chain inside the start box was free.
-	  One keypress, no cheats, no cvars.  A load is practice and paid nothing.
-	  AND THE AIR PHASE WITH IT, WHICH IS BUILD 20'S FINDING AT A SECOND
-	  PLACEMENT.  run_t_airsec survives a restore carrying the timestamp of the
-	  fall that preceded it, and the settle reads `now - airsec >= run_t_settle`
-	  -- so clearing startok without clearing this would hand it straight back on
-	  the next airborne tick.  Zero rather than now, and it heals itself: the
-	  phase-clock writer re-stamps it (sv_timer.qc, the `if (ong)` pair at the
-	  bottom of SV_TimerJumpWatch).  run_t_groundsec is deliberately left, for
-	  the reason SV_TimerArm gives for leaving it: zero there reads as dwell 0,
-	  i.e. a hop, and it would flag the most ordinary start there is.
-	  GATED ON run_t_startstrict BECAUSE SV_TimerArm'S OWN airsec CLEAR IS
-	  -- one rule, one spelling, since a placement that cleared more than the arm
-	  does is the drift this file keeps writing essays about.  The residual is
-	  named rather than left to be found: at `run_starthop_strict 0` an AIRBORNE
-	  non-RUNNING restore settles on its stale air phase and this half is inert.
-	  A GROUNDED one is not, at either setting -- airsec is 0 on the ground, so the
-	  airborne branch cannot fire, and the other two need TS_RUNNING or a ramp.
-	  NOT A NEW REQUIREMENT ON THE PLAYER.  A start-box load AT REST already ends
-	  up here -- the Patch 435 gate forces the arm edge, SV_TimerArm runs one tick
-	  later and clears startok itself -- so this makes the other placements agree
-	  with the one that already did, rather than inventing a rule for them.
+	  PATCH 443 TRIED TO MAKE THIS A TEST AND WITHDREW IT, in round 4, after three
+	  review rounds.  The attempt and the reason are worth more than the change was.
+
+	  THE ATTEMPT.  `st` is the restored state, so TS_RUNNING keeps build 19's answer
+	  while TS_ARMED and TS_IDLE do not -- the start has NOT happened, it is the next
+	  thing that will -- and settling it here switches the whole build 19/20/21 rule off
+	  for that attempt.  BACKLOG.md's entry was written on that reading: a `retry`
+	  restores flags, dirty and cheat verbatim and calls no SV_TimerStitched, so the
+	  attempt comes back clean and RANKABLE with the hop rule off, and an autohop chain
+	  inside the start box is free for one keypress.
+
+	  WHY IT IS NOT HERE.  Turning the rule on buys nothing while two other doors stand
+	  open, and it costs an honest player a taint:
+	    - `run_t_hopped` IS NOT IN THE SAVE FORMAT, so a `retry` launders a hopped start
+	  by itself.  The cheaper gesture is to chain BEFORE the retry -- correctly marked,
+	  then forgiven by the restart -- so the chain this would have judged is not the one
+	  anybody needs.
+	    - the retry placement restores `velocity` through no gate at all, so the speed a
+	  chain built survives the restart and the player can simply LEAVE the box with it.
+	  No post-retry hop is required, which is what makes judging that hop worthless.
+	    - and the dwell the rule grades is BLIND for the first 0.25 s after a placement
+	  into a fresh edict, because map_restart re-initialises run_t_groundsec.  A player
+	  holding +jump across the restart -- pm_autobunny fires it on the first grounded
+	  tick -- is accused of the one gesture the rule exists to permit.
+	  Both doors are BACKLOG.md entries, and this belongs behind them: the retry point
+	  has to carry the start state and gate the velocity before judging a restored arm
+	  means anything.
+
+	  TWO FIXES FOR THE BLINDNESS WERE TRIED AND BOTH FAILED, which is the part to read
+	  before trying a third.  Round 2 forgave the first jump after a placement with a
+	  one-shot flag -- and SV_TimerArm both cleared that flag and shared the blindness it
+	  existed for, so the event that made it necessary un-set it.  Round 3 replaced the
+	  flag with `run_t_jumps <= 1`, the rule's own "more than one jump" sentence -- and
+	  every event that zeroes that count is a fresh forgiveness, including an ARM, and
+	  SV_TimerArm is reachable from ordinary map data: 21 shipped maps have two abutting
+	  start regions whose seam re-arms silently on every crossing, and 66 have a
+	  velocity-keeping teleport landing inside a start region.  Both are BACKLOG.md
+	  entries now.  A forgiveness hung on anything SV_TimerArm touches is a forgiveness
+	  the map hands out.
 	*/
-	if (st == TS_RUNNING)
-		e.run_t_startok = TRUE;
-	else
-	{
-		e.run_t_startok = FALSE;
-		if (run_t_startstrict)
-			e.run_t_airsec = 0;
-		/*
-		  AND THE HALF ROUND 1 OWED IS NOT HERE, which is worth a line because this is
-		  where rounds 2 and 3 both looked first.  Clearing startok switches the rule
-		  on over a dwell this placement has just blinded -- `retry` re-initialises the
-		  progs, so run_t_groundsec begins at the restart however long the player had
-		  been standing -- and the FIRST jump, the one the rule exists to permit, was
-		  accused.  Round 2 answered it with a one-shot flag set here; round 3 found
-		  that SV_TimerArm both cleared that flag and shared the blindness, and
-		  replaced it with the rule reading run_t_jumps, which needs nothing from this
-		  function.  The whole argument is over that field in sv_timer.qc.
-		*/
-	}
+	e.run_t_startok  = TRUE;
 
 	/*
 	  TF_RECORDING and TF_FROZEN are NOT restored from the file.

@@ -354,13 +354,12 @@ float  run_t_settle;
   into the box.
 
   0 is build 19 byte-for-byte, so the pair is a real bisection.
-  [PATCH 443: no longer quite -- sv_saveloc.qc's restore clears run_t_startok for a
-  non-RUNNING state at EITHER setting and only the airsec half is gated on this, so
-  at 0 a grounded restored ARM now waits for an air phase plus run_t_settle instead
-  of being settled outright.  The pair still bisects the rule's TWO LINES; it no
-  longer bisects the whole of build 19.  And "nothing outside SV_TimerJumpWatch
-  writes that field" now has a second writer, the same restore.  Both corrected here
-  rather than rewritten, because the paragraph is the reason the switch exists.]
+  [PATCH 443 briefly made both of those sentences false -- its restore cleared
+  run_t_startok for a non-RUNNING state, gated the airsec half on this switch, and so
+  became a second writer of a field this paragraph says has one.  Round 4 withdrew that
+  change (see sv_saveloc.qc's withdrawn startok block for why), so both sentences are
+  true again.  Recorded rather than deleted, because the next reader to try it will
+  arrive at this paragraph first and should know it has been tried.]
 */
 float  run_t_startstrict;
 
@@ -1389,40 +1388,36 @@ float() SV_RecEnabled =
 .float  run_t_lastvz;
 .float  run_t_startok;
 /*
-  Jumps since the arm -- and from PATCH 443 ROUND 3 THE RULE READS IT, which the two
-  sentences this replaces said it did not ("Diagnostic only -- the rule is the dwell,
-  not the count").  It is still the answer to "how many jumps did it think I took",
-  which is the first question anyone asks of a rule that just marked their run
-  practice.
+  Jumps since the arm.  DIAGNOSTIC ONLY -- the rule is the dwell, not the count -- but
+  "how many jumps did it think I took" is the first question anyone asks of a rule that
+  just marked their run practice, and it has no other answer.
 
-  WHY THE COUNT AND NOT THE DWELL, for the FIRST jump.  run_starthop's own line in
-  default.cfg is "Leaving the start on MORE THAN ONE jump makes the run practice", so
-  one jump is legal by definition and the dwell was only ever a proxy for "this is not
-  your first one" -- a landing leaves a dwell of about zero, so a short dwell means a
-  jump you have already taken.  The proxy fails wherever the ground phase is BLIND:
-    - after a `retry`, because map_restart re-initialises the progs and
-      run_t_groundsec begins at the restart however long the player had been standing.
-      Round 1 of this patch cleared run_t_startok there and so switched the rule on
-      over that blind dwell, which ACCUSED the one jump out of the start.  Measured,
-      cfg/test/p443grace.cfg: the same single jump reads `hopped 0` before the retry
-      and `hopped 1` after it, with `phase: ground 4.70` becoming 0.80 across it.
-    - after ANY arm, because SV_TimerArm deliberately does not reset run_t_groundsec
-      and "every ordinary route to a start zone follows a fall" (build 20's essay
-      below); under pm_autobunny with the button held, QC never observes FL_ONGROUND
-      at all, so the field stays 0 and the dwell reads 0 for good.
-  Round 2 answered the first of those with a one-shot flag a placement set and
-  SV_TimerArm cleared -- and a reviewer showed the arm can hand the rule the very
-  blind reading the flag existed for, having just cleared it: on the 37 of 48 shipped
-  start regions where the restored origin lands below the slab, the first drift back
-  in is an arm edge about a second after the restore.  So the flag was un-set by the
-  same event that made it necessary, and the only arm measuring it staged a zones
-  override that stopped that edge from happening.
+  PATCH 443 ROUND 3 MADE THE RULE READ IT AND ROUND 4 TOOK THAT BACK.  Worth the lines
+  because the reasoning looks sound and is not.  run_starthop's own description is
+  "Leaving the start on MORE THAN ONE jump makes the run practice", so one jump is legal
+  by definition and the dwell is only a proxy for "this is not your first one" -- a
+  landing leaves a dwell of about zero, so a short dwell means a jump already taken.
+  The proxy is BLIND wherever run_t_groundsec is 0, which is after every `retry` (the
+  progs are re-initialised) and after every arm (SV_TimerArm deliberately does not reset
+  it, and under pm_autobunny with the button held QC never observes FL_ONGROUND at all).
+  `run_t_jumps <= 1` looked like the sentence itself.
 
-  THE COUNT HAS NEITHER PROBLEM, because it is the rule's own sentence rather than a
-  proxy for it: SV_TimerArm and the run_rearmhop forgiveness both zero it, which is
-  exactly when the dwell goes blind, and a fresh edict starts at 0.  It reads 1 at the
-  first jump (the increment above the settle block runs first), so `<= 1` is "the
-  first jump of this attempt" and needs no state of its own.
+  WHAT IT ACTUALLY IS: a forgiveness handed out by every event that zeroes the count --
+  and SV_TimerArm is one of them, reachable from ordinary map data rather than from a
+  gesture.  Measured on the shipped corpus by the round-4 review: 21 maps have two
+  abutting or overlapping start regions whose seam re-arms silently on every crossing
+  (the occupancy scan is a POINT test while the start test is the HULL, and the arm
+  scan runs after the start test in the same packet), and 66 maps have a
+  velocity-keeping trigger_teleport landing inside a start region.  On those, every hop
+  of a chain reads as "the first jump" and none is ever judged.  Two more reasons the
+  count cannot be the rule: a ramp-clipped hop suppresses `jumped` so it is neither
+  counted nor judged, and `run_pushed` does NOT suppress the increment, so a pad clip
+  in the start box burns an honest player's allowance instead.  All four are in
+  BACKLOG.md.
+
+  So the count stays diagnostic, and the dwell's blindness is left to be fixed where it
+  is caused -- at the placement that blinded it, by carrying the start state across a
+  retry point.  See sv_saveloc.qc's withdrawn startok block.
 */
 .float  run_t_jumps;
 
@@ -10116,18 +10111,7 @@ float(entity e) SV_TimerJumpWatch =
 		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
 		{
-			/*
-			  PATCH 443 ROUND 3: THE FIRST JUMP OF AN ATTEMPT IS THE ONE THE RULE
-			  PERMITS, so it is not judged on a dwell that may be blind.  See
-			  run_t_jumps, which is where the whole argument is; `<= 1` because the
-			  increment above the settle block has already counted this jump.
-			  The dprint is how an arm grades it rather than inferring it from a
-			  silence, and it is edge-triggered like the verdict below.
-			*/
-			if (e.run_t_jumps <= 1)
-				dprint(sprintf("timer: first jump not judged, dwell %.2f of %.2f\n",
-				               dwell, want));
-			else if (dwell < want)
+			if (dwell < want)
 			{
 				/*
 				  Guarded on both taints so a bhop chain says this once rather
@@ -10558,18 +10542,13 @@ void(entity e, float z) SV_TimerArm =
 	  you do while standing in the box.
 	*/
 	e.run_t_startok  = FALSE;
-	// Patch 443 round 3: this zero is now load-bearing rather than cosmetic -- it is
-	// what makes the next jump "the first jump of the attempt" and so unjudged, which
-	// is right for the same reason the run_t_groundsec line below gives: an arm's own
-	// dwell is blind whenever the body was never seen on the ground.
 	e.run_t_jumps    = 0;
 
 	/*
 	  BUILD 20: AND THE AIR PHASE, WHICH BUILD 19 FORGOT.
 
 	  This one line is why the whole rule shipped inert.  run_t_airsec is written
-	  in two places -- these phase clocks and, since Patch 443, sv_saveloc.qc's
-	  restore, which clears it for exactly the reason below -- so it survives
+	  in exactly one place -- SV_TimerJumpWatch's phase clocks -- so it survives
 	  the arm carrying the timestamp of whatever fall preceded it.  Every ordinary
 	  route to a start zone follows a fall: `!r`, `!s`, `!b`, zone_goto, a map
 	  fall-off teleport.  The next tick then read `time - run_t_airsec` as three or

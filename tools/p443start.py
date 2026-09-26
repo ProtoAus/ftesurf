@@ -73,7 +73,13 @@ CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
 # p443 name: it is exactly the grounded at-rest row this arm needs for its positive
 # control, and a second copy of a fixture is a second thing to keep in step.
 STAGED = {
-    "air": (("save901", "p435rest.txt"), ("save904", "p443air.txt")),
+    # Row 3 is the EMBEDDED row: the same save 4 units BELOW the floor, i.e. inside
+    # the world brush.  Round 3 flipped startsolid from certify to refuse and shipped
+    # with no fixture in which that branch fires at all -- both existing rows read
+    # `emb 0` -- which a reviewer named as the same trap one level up.  z 60.0000
+    # against a floor surface at 64.03125, still inside the override's slab [48, 208].
+    "air": (("save901", "p435rest.txt"), ("save904", "p443air.txt"),
+            ("save905", "p443solid.txt")),
     "hop": (),
     "grace": (),
 }
@@ -142,9 +148,13 @@ FIELDS = {
     # caller's block and a lobby's is not 0 -- so `row` is reported instead.
     "support":   r"save: row -?\d+ support (\d)",
     "row":       r"save: row (-?\d+) support",
-    "solid":     r"support \d at z -?[\d.]+ \(solid (\d)",
-    "frac":      r"\(solid \d frac ([\d.]+)",
-    "nz":        r"frac [\d.]+ nz (-?[\d.]+)",
+    # Round 4 renamed this: it is the FULL HULL's embedded answer, captured before
+    # the quadrant retry overwrites the trace globals.  Round 3 printed the last
+    # trace's startsolid, so a row refused for being embedded and one refused for
+    # hanging in the air printed the same line.
+    "emb":       r"support \d at z -?[\d.]+ \(emb (\d)",
+    "frac":      r"\(emb \d frac ([\d.]+)",
+    "nz":        r"frac -?[\d.]+ nz (-?[\d.]+)",
     "z":         r"support \d at z (-?[\d.]+)",
     # Which row actually loaded.  `sl_goto <n>` CLAMPS (`if (n > cnt) n = cnt` in
     # SV_SaveLocLoad), so an arm that asks for row 2 and gets row 1 would grade every
@@ -171,19 +181,24 @@ COUNTED = ("gracen",)
 ARMS = {
     "hop": (
         "cfg/test/p443hop.cfg", "p443hop.log",
+        # ROUND 4 TURNED THIS ARM INTO A GUARD.  The startok change it was written for
+        # is WITHDRAWN (see the cfg), so S reads `startok 1` on every build -- build 19's
+        # answer -- and the chain at J1 is deliberately NOT judged.  Nothing here
+        # discriminates a build any more; what it does is go RED if anyone re-introduces
+        # the change without the two BACKLOG prerequisites, which is worth more than a
+        # measurement of a decision already taken.
         {"C":  {"startrule": "start on leave", "starthop": "1",
                 "state": "armed", "startok": "0", "hopped": "0"},
          "S":  {"retrysay": "back where you were", "state": "armed",
-                "startok": "0"},
-         "J1": {"hopsay": "present", "hopped": "1", "state": "armed"},
+                "startok": "1"},
+         "J1": {"hopsay": "absent", "hopped": "0", "state": "armed"},
          # The taint must be FORGIVABLE: the message is the discriminator, since the
          # field reads 0 on both builds once the re-arm has run (and on the control it
          # was never 1).  A `hopped 1` here on the fixed build is the patch having
          # made a permanent accusation, which is the cfg's FALSIFIED IF.
-         "J2": {"rearmsay": "present", "hopped": "0", "state": "armed"}},
-        {"S":  {"startok": "1"},
-         "J1": {"hopsay": "absent", "hopped": "0"},
-         "J2": {"rearmsay": "absent"}},
+         # Nothing to forgive, so no re-arm line either.
+         "J2": {"rearmsay": "absent", "hopped": "0", "state": "armed"}},
+        {"443": {}},
         {"C":  ("dwell", "ground", "class", "practice"),
          "S":  ("azone", "armedfrom", "hopped", "ground", "class", "practice"),
          "J1": ("startok", "ground", "air", "azone", "class", "practice"),
@@ -212,11 +227,15 @@ ARMS = {
          # after the restore and SV_TimerArm zeroes run_t_hopped -- measured, round 2 --
          # and `hopped` then reads 0 on BOTH builds however the verdict went.  A line
          # in the log cannot be taken back.
-         "G2": {"gracen": "1", "hopsay": "absent", "gracesay": "present"}},
-        # THE CONTROL IS PATCH 443 ROUND 1 (245dbfc), the build that accused -- not
-        # pre-443, which has the rule switched off entirely and so cannot accuse or
-        # forgive.  An earlier round as the control is p441void's `twice` shape.
-        {"G2": {"hopsay": "present", "gracesay": "absent", "gracen": "0"}},
+         # Round 4: the forgiveness is gone with the change it existed for, and the
+         # property this arm now guards is that the single jump is STILL not accused --
+         # which it is not, because the rule is off for a restored arm again.
+         "G2": {"gracen": "0", "hopsay": "absent", "gracesay": "absent"}},
+        # NOTHING IS OVERRIDDEN FOR THE CONTROL, and that is the point of a guard: the
+        # honest single jump after a retry is not accused on the pre-443 build EITHER,
+        # because the rule is off for a restored arm there too.  Round 1 was the only
+        # build that accused, and it is the one this arm's RESULT block records.
+        {"443": {}},
         {"C":  ("hopped", "dwell", "ground"),
          "C1": ("ground", "air", "startok", "class", "practice", "dwell"),
          "C2": ("state", "ground", "hopped", "dwell"),
@@ -226,20 +245,36 @@ ARMS = {
     ),
     "air": (
         "cfg/test/p443air.cfg", "p443air.log",
-        {"S": {"evslot": "904", "support": "0", "solid": "0", "frac": "1.000",
+        {"S": {"evslot": "904", "support": "0", "emb": "0", "frac": "1.000",
                "state": "armed", "azone": "0", "armedfrom": "0",
                "class": "segmented", "practice": "1"},
          "P": {"evslot": "901", "support": "1", "class": "clean",
-               "practice": "0"}},
+               "practice": "0"},
+         # E, ROUND 4: the embedded row.  `emb 1` is the branch round 3 changed and
+         # never fired, and the refusal is what it now produces.
+         "E": {"evslot": "905", "support": "0", "emb": "1",
+               "class": "segmented", "practice": "1"}},
         # The control has no SL_RowGrounded at all, so every field that reads its
         # dprint is dropped there rather than predicted -- and `support` being
         # absent is itself the proof the two logs came from different progs.
-        {"S": {"support": None, "solid": None, "frac": None,
-               "class": "clean", "practice": "0"},
-         "P": {"support": None}},
+        # TWO CONTROL GENERATIONS, and one flag could not say it -- tools/p437win.py hit
+        # the same wall and its --pre is this shape.  S and P moved in Patch 443 itself,
+        # so their control is PRE-443 (89f5f7a), which has no probe at all.  E moved in
+        # ROUND 4, and its control is ROUND 2 (614c698) -- the build that CERTIFIED
+        # startsolid as contact.  Running E against pre-443 would grade the flip against
+        # a build that laundered for a different reason entirely.
+        {"443": {"S": {"support": None, "emb": None, "frac": None,
+                       "class": "clean", "practice": "0"},
+                 "P": {"support": None},
+                 "E": None},
+         "r2":  {"S": None, "P": None,
+                 "E": {"support": None, "emb": None,
+                       "class": "clean", "practice": "0"}}},
         {"S": ("row", "z", "nz", "stitched", "azone", "armedfrom", "startok"),
-         "P": ("row", "z", "nz", "solid", "frac", "azone", "armedfrom",
-               "support", "state")},
+         "P": ("row", "z", "nz", "emb", "frac", "azone", "armedfrom",
+               "support", "state"),
+         "E": ("row", "z", "nz", "frac", "azone", "armedfrom", "state",
+               "stitched")},
     ),
 }
 
@@ -350,12 +385,20 @@ def read(txt, name):
     return m.group(1) if m else "<absent>"
 
 
-def grade(log, control, arm):
+def grade(log, control, arm, pre="443"):
     ok = True
-    _, _, expect, ctl, report = ARMS[arm]
+    _, _, expect, ctlgen, report = ARMS[arm]
     want = {t: dict(v) for t, v in expect.items()}
     if control:
-        for t, over in ctl.items():
+        gen = ctlgen.get(pre)
+        if gen is None:
+            raise SystemExit("arm %s has no --pre %s control" % (arm, pre))
+        for t, over in gen.items():
+            # None = this section is not predicted for this control generation, so it is
+            # dropped rather than graded against another generation's numbers.
+            if over is None:
+                want.pop(t, None)
+                continue
             want.setdefault(t, {})
             for k, v in over.items():
                 if v is None:
@@ -396,7 +439,9 @@ def grade(log, control, arm):
     # on the pre-443 build, so a --control log containing its dprint is a log written
     # by the wrong progs -- the one failure the hashes are also there to catch, said
     # twice because copying a .dat back is a manual step.
-    if control:
+    # ONLY for the pre-443 generation: round 2 legitimately HAS the dprint, so this
+    # check would fire on a correct control run of the `r2` generation.
+    if control and pre == "443":
         with open(log, "r", errors="replace") as fh:
             if re.search(r"save: row -?\d+ support", fh.read()):
                 print("  THE CONTROL LOG CONTAINS SL_RowGrounded's dprint -- it was"
@@ -411,6 +456,11 @@ def main():
     ap.add_argument("--exe", default="ftesurf64.exe")
     ap.add_argument("--control", action="store_true",
                     help="grade against the PRE-fix predictions")
+    ap.add_argument("--pre", choices=("443", "r2"), default="443",
+                    help="WHICH generation the control build predates: 443 (HEAD before "
+                         "the patch) or r2 (this patch's own round 2, the build that "
+                         "certified startsolid).  One flag could not say it -- see the "
+                         "air arm's control table.")
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--side", choices=("fixed", "control"), default=None,
@@ -427,7 +477,7 @@ def main():
             log = log + "." + a.side
         if not os.path.exists(log):
             raise SystemExit("no log at %s" % log)
-        return 0 if grade(log, a.control, a.arm) else 1
+        return 0 if grade(log, a.control, a.arm, a.pre) else 1
 
     for _, src in STAGED[a.arm]:
         if not os.path.exists(os.path.join(CFGDIR, src)):
@@ -457,8 +507,8 @@ def main():
     print("the staged tree at exit (%d file(s)):" % len(left))
     for line in left:
         print(line)
-    good = grade(log, a.control, a.arm)
-    side = "control" if a.control else "fixed"
+    good = grade(log, a.control, a.arm, a.pre)
+    side = ("control." + a.pre) if a.control else "fixed"
     shutil.copyfile(log, log + "." + side)
     with open(log + "." + side + ".hash", "w") as fh:
         for d, h in ran:
