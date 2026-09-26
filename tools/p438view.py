@@ -154,10 +154,11 @@ def writeback():
     is that the written file is byte-identical to ONE of the two the client read --
     a spelling that dropped, merged or blanked a line matches neither.
 
-    WHETHER ONE IS WRITTEN AT ALL IS NOT STABLE ACROSS RUNS: measured twice, the
-    sidecar appeared only on the run that started with an earlier run's
-    `data/p438view/save<n>/seq.txt` still on disk, and not on the one that began
-    clean.  Which is the other reason this cannot be a pass/fail line.
+    WHETHER ONE IS WRITTEN AT ALL IS NOT STABLE ACROSS RUNS: over four runs it
+    appeared three times and not the fourth, and the cause is NOT established -- a
+    first guess that a leftover `data/p438view/save<n>/seq.txt` from the previous run
+    was what enabled it is wrong, because a run from a clean tree wrote one too.
+    Which is the other reason this cannot be a pass/fail line.
     """
     skip = set(os.path.abspath(p) for p in
                (VIEW, os.path.join(SMALL, "run.view")))
