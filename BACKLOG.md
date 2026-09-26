@@ -123,7 +123,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   the pause can rank. The size trigger (`run_resume_recmb` 512 MB) is out of
   reach; the live route is the copy-failure branch. Same absence decision as
   Patch 441's, resolved the other way, in code 441's own reasoning covers.
-  sv_resume.qc:531-537,573. Patch 441 review.
+  AND THE BUFFER PATH HAS ITS OWN: `SV_MsRecAttach`'s `if (!ok) return;` after
+  SV_RecRewind leaves a restored TS_RUNNING run with no recorder and no void, since
+  SV_SaveApplyState returns at `retry == 2` before the branch Patches 434 and 441
+  guard. `run_ms_norec` is the only thing standing there. Named by the fourth
+  review round. sv_resume.qc:531-537, 573, 678. Patch 441 review.
 - **At `run_zone_hull 2` + `run_zone_hull_live 1`, Patch 441's latch re-scan uses
   the PRE-load hull.** It passes `SV_RunHullMaxs(e)`, i.e. `e.maxs`, but
   SV_SaveLocPlace only sets `run_forceduck` -- the engine applies it in the next
