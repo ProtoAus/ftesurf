@@ -1518,8 +1518,13 @@ void(float id) Rec_ViewLoaded =
 	  5 MB mapping cap is the thing this patch exists to make cheap, and the only
 	  honest way to say so is to print the cost of the read that happened, for the
 	  file that was read.  cfg/test/p438view.cfg drives it.
+
+	  Patch 441: dprint, not print.  This is a per-load diagnostic on a path every
+	  save-state rewind takes, so at developer 0 it was console spam in a player's
+	  game; the arm sets `developer 1` and `log_developer 1` (p438view.cfg:106) and
+	  reads it exactly as before.
 	*/
-	print(sprintf("p438 cold reload took %.0f ms for %g lines (%s)\n",
+	dprint(sprintf("p438 cold reload took %.0f ms for %g lines (%s)\n",
 	              (gettime(1) - rec_rp_t0) * 1000, buf_getsize(buf),
 	              Rec_SavePath(id)));
 

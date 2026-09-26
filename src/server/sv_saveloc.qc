@@ -605,7 +605,23 @@ void(entity e, float n) SV_SaveLocReplay =
 	  harness handle for the evidence code's own reader, charged like any other
 	  sl_ command so it cannot be spammed, and it cannot launder a run because it
 	  cannot move one.
+
+	  PATCH 441: AND IT NEEDS sv_cheats, because it does not have to move a run to
+	  damage one.  The event it fires is the one Rec_ViewLoaded acts on, and that
+	  either TRUNCATES the live sidecar to this slot's remembered mark or REPLACES
+	  the buffer from the slot's file (cl_replay.qc:1478-1533) -- so ungated, any
+	  client could drop its own angle evidence mid-run, repeatedly, without ever
+	  taking a save.  The lobbies run this progs with rec_enable 1.
+	  cvar() and NOT SV_CheatsOn(), which answers FALSE whenever run_cheatwatch is
+	  0 and would refuse the arm this exists for.  Every configuration where the
+	  command now works is one where the run does not rank: cheatwatch 1 taints it
+	  through SV_CheatLevel, cheatwatch 0 makes every run practice (default.cfg:427).
 	*/
+	if (!cvar("sv_cheats"))
+	{
+		sprint(e, PRINT_HIGH, "^3save: sl_replay needs sv_cheats 1\n");
+		return;
+	}
 	if (!SV_SaveLocRate(e))
 		return;
 	if (n < FS_RETRY_SLOT || n > FS_MAXSAVES)
@@ -1019,6 +1035,11 @@ float(float id, float row) SV_SaveReadLight =
   deliberately outside the list, so it has no row.  Hence the four position keys
   below, which the loader has always skipped.
 */
+// Patch 441: this call cancelled the run (a failed rewind under a RUNNING save),
+// which means SV_TimerVoid cleared the occupancy latches and the taint the load
+// wrote is no longer on a run.  Both callers read it; set on every call.
+float sl_voided;
+
 float(entity e, float id, float retry) SV_SaveApplyState =
 {
 	local filestream f;
@@ -1034,6 +1055,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
 
+	sl_voided = FALSE;
 	f = fopen(SL_StatePath(id), FILE_READ);
 	if (f < 0)
 		return FALSE;
@@ -1541,9 +1563,41 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  its SV_TimerIdle does the discard, so this branch must not do it too
 		  (a second SV_RecDiscard would re-run the Patch 426 hold logic below
 		  against a run that has already ended).
+
+		  PATCH 441 -- TWO CORRECTIONS.
+
+		  ONLY WHERE THE SERVER RECORDS AT ALL: SV_RecEnabled(), not the state
+		  alone.  With rec_enable 0 or lobby_norec 1 the rewind fails on EVERY load
+		  of a running save, and the run it cancelled never had evidence to lose --
+		  it was unverifiable by the operator's own configuration before the load.
+		  Cancelling it is the absence trap: a check that cannot see answering
+		  "guilty".
+		  SV_RecEnabled() AND NOT `wasrec`, which was this fix's first cut and is
+		  wrong in the other direction: after one failed load the run is no longer
+		  recording, so a SECOND load of the same row would have found wasrec clear
+		  and let a RUNNING attempt continue with no recorder behind it -- exactly
+		  what Patch 434 exists to stop, and reachable because `sl_goto <n>` is
+		  itself a load (sv_player.qc:1046).  Measured: p441void.log's first cut,
+		  `timer: running` with `recorder: buffer -1` after the pair.
+
+		  AND THE LATCHES GO BACK, because SV_TimerVoid clears all four
+		  (sv_timer.qc:8735, so a `!r` into the box you are standing in re-arms).
+		  Here that left an IDLE timer in the save's start box with azone -1: the
+		  next tick is an arm edge, SV_TimerArm clears the load's taint, and leaving
+		  the box starts a CLEAN run at the saved speed -- the hole Patch 428 r3
+		  closed for a demoted save, reopened through the void.  A scan and not the
+		  az/ez/cz this file restored, because a demoted save's are all -1 (r3's own
+		  finding).  armzone stays -1: a cancelled run has no zone it armed in.
 		*/
-		if (st == TS_RUNNING)
+		if (st == TS_RUNNING && SV_RecEnabled())
+		{
 			SV_TimerVoid(e, "the save's recording could not be restored");
+			sl_voided = TRUE;
+			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+			e.run_t_azone  = zs_az;
+			e.run_t_evzone = zs_ez;
+			e.run_t_cpzone = zs_cp;
+		}
 		else
 			SV_RecDiscard(e);
 		// Patch 426: recording stopped with nothing live to discard, so no end
@@ -2377,6 +2431,12 @@ void(entity e, float n) SV_SaveLocLoad =
 	  and it is why the rounding is still not worth closing: a gate that fails to
 	  fire is no longer an injection, it is a practice run.
 	*/
+	// Patch 441: NOT AFTER A VOID.  The state is non-RUNNING here because the load
+	// just cancelled the run, not because it restored an idle save, and this gate
+	// exists to arm a RESTORED save at rest -- forcing the edge would undo the
+	// latches SV_SaveApplyState put back and hand the taint-clearing arm straight
+	// back.  You start that run by leaving the box and entering it, as anywhere.
+	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
 	if (SL_RowSpeed(r) < SL_ARM_SPEED)

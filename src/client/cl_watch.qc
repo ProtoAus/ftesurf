@@ -1571,9 +1571,60 @@ float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 vector wt_lj_po, wt_lj_pv;
 
-// Patch 437: Watch_LineJobWindow asks the replay's own window finder when pass
-// one found no `stagepost`, so the two spellings cannot drift again.
-float(float seg) Watch_WindowFind;
+// Patch 441: THE JOB'S OWN `stage` table and finish tick.  Patch 437 filled the
+// REPLAY's (rec_wt_ev*, rec_wt_endticks) instead and cleared it at every job
+// start, so opening a board line while watching a replay wiped that replay's
+// splits and its finish -- the duration in the title, the playhead clamp
+// (:2865) and the FINISH row (:2191) all read those two.  Stage events only: the
+// fallback below looks at nothing else.
+float  wt_lj_evseg[WT_EVMAX];
+float  wt_lj_evtick[WT_EVMAX];
+float  wt_lj_evn;
+float  wt_lj_endt;              // the job file's `end` ticks
+
+/*
+  Patch 441: the `stage` records fallback, over the table the CALLER names -- src
+  0 the open replay's, 1 the line job's.  One spelling, which is what Patch 437
+  wanted, without the two sharing scratch: it called Watch_WindowFind, and that
+  function's job is to SET the replay's cut (rec_wt_wincut/vt0/vt1), so asking it
+  about another file retargeted the replay the board row was standing in for.
+  Answers in wt_ws_a/wt_ws_b -- the zs_* idiom, so the question writes nothing.
+  a is -1 when seg's own record is missing (seg 0 starts at 0); b falls back to
+  the file's finish.
+*/
+float  wt_ws_a, wt_ws_b;
+
+void(float seg, float src) Watch_StageSpan =
+{
+	local float i, n, sg, tk;
+
+	sg = tk = 0;                    // fteqcc cannot see that the branch below always assigns
+	wt_ws_a = (seg > 0) ? -1 : 0;
+	wt_ws_b = src ? wt_lj_endt : rec_wt_endticks;
+	n       = src ? wt_lj_evn  : rec_wt_evn;
+	for (i = 0; i < n; i = i + 1)
+	{
+		if (src)
+		{
+			sg = wt_lj_evseg[i];
+			tk = wt_lj_evtick[i];
+		}
+		else
+		{
+			if (rec_wt_evkind[i] != SPK_STAGE)
+				continue;
+			sg = rec_wt_evseg[i];
+			tk = rec_wt_evtick[i];
+		}
+		if (sg == seg)
+			wt_ws_a = tk;
+		if (sg == seg + 1)
+		{
+			wt_ws_b = tk;
+			return;
+		}
+	}
+};
 
 void() Watch_LineJobStop =
 {
@@ -1609,14 +1660,15 @@ float() Watch_LineJobWindow =
 		if (wt_lj_pa < 0)
 		{
 			/*
-			  Pass one read the `stagepost` pair into pa/pb.  Without it, ask
-			  Watch_WindowFind -- it scans the SAME `stage` records pass one saw,
-			  out of rec_wt_ev* (a stale table would be a worse bug than the one
-			  this replaces, so pass one clears it first), and answers in the
-			  rec_wt_wina/winb pair, which is ticks in both spellings.
+			  Pass one read the `stagepost` pair into pa/pb.  Without it, the
+			  `stage` records -- through the same Watch_StageSpan the replay's
+			  finder uses, over THIS file's table (Patch 441; Patch 437 borrowed
+			  the replay's own and its window state with it).  Ticks in both
+			  spellings.
 			*/
-			a = (Watch_WindowFind(wt_lj_leg - 1)) ? rec_wt_wina : -1;
-			b = rec_wt_winb;
+			Watch_StageSpan(wt_lj_leg - 1, 1);
+			a = wt_ws_a;
+			b = wt_ws_b;
 			if (a >= 0 && b > a)
 			{
 				wt_lj_pa = a;
@@ -1624,9 +1676,6 @@ float() Watch_LineJobWindow =
 			}
 			else
 			{
-				// Watch_WindowFind printed its own "no window" line, which says
-				// `replay:` and names the stage; this one says whose board row it
-				// was, and a player clicking a row needs both.
 				wt_lj_pa = (wt_lj_leg > 1) ? wt_lj_sa : 0;
 				wt_lj_pb = (wt_lj_sb >= 0) ? wt_lj_sb : wt_lj_end;
 			}
@@ -1660,11 +1709,11 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_seg   = 0;
 	wt_lj_wseg  = -1;
 	wt_lj_pa = wt_lj_pb = wt_lj_sa = wt_lj_sb = wt_lj_end = -1;
-	// Patch 437: Watch_WindowFind's fallback reads rec_wt_ev*, and a line job
-	// opens ANOTHER file -- so a stale event table from a replay opened earlier
-	// would answer for this one.  Pass one below fills it again.
-	rec_wt_evn = 0;
-	rec_wt_endticks = 0;
+	// Patch 441: the JOB's table, cleared for this file.  Patch 437 cleared the
+	// replay's here instead, which is why a board line stole the splits and the
+	// finish of a replay that was already open.
+	wt_lj_evn  = 0;
+	wt_lj_endt = 0;
 	Line_Begin(slot);
 	return TRUE;
 };
@@ -1743,11 +1792,10 @@ float() Watch_LineJobStep =
 			{
 				k = stof(argv(1));
 				wt_lj_end = k;
-				// Patch 437: `end <ticks> <samples> <pad> <cps>` is the trailer, and
-				// rec_wt_endticks is what Watch_WindowFind's seg-0 fallback ends a
-				// window at.  This job reads ANOTHER file, so the replay's own
-				// number would be the wrong one.
-				rec_wt_endticks = k;
+				// `end <ticks> <samples> <pad> <cps>` is the trailer, and a seg-0
+				// window ends at it (Watch_StageSpan).  Patch 441: into the job's
+				// own, not the open replay's finish tick.
+				wt_lj_endt = k;
 			}
 			else if (argv(0) == "stage")
 			if (n >= 3)
@@ -1759,18 +1807,18 @@ float() Watch_LineJobStep =
 				if (wt_lj_sb < 0)
 					wt_lj_sb = k;
 				/*
-				  Patch 437: AND THE EVENT TABLE Watch_WindowFind's fallback reads,
-				  filled here because pass one is the only place this job sees the
-				  `stage` records.  Every stage event, not just the asked-for pair:
-				  the finder walks seg and seg+1 itself, and a table holding only
-				  this leg's two would answer "no window" for any other.
+				  AND THE EVENT TABLE Watch_StageSpan reads, filled here because
+				  pass one is the only place this job sees the `stage` records.
+				  Every stage event, not just the asked-for pair: the finder walks
+				  seg and seg+1 itself, and a table holding only this leg's two
+				  would answer "no window" for any other.
+				  Patch 441: the job's table (src 1), not the replay's.
 				*/
-				if (rec_wt_evn < WT_EVMAX)
+				if (wt_lj_evn < WT_EVMAX)
 				{
-					rec_wt_evkind[rec_wt_evn] = SPK_STAGE;
-					rec_wt_evseg [rec_wt_evn] = stof(argv(1));
-					rec_wt_evtick[rec_wt_evn] = k;
-					rec_wt_evn = rec_wt_evn + 1;
+					wt_lj_evseg [wt_lj_evn] = stof(argv(1));
+					wt_lj_evtick[wt_lj_evn] = k;
+					wt_lj_evn = wt_lj_evn + 1;
 				}
 			}
 			if (k >= 0)
@@ -3398,7 +3446,7 @@ float(string path) Watch_Open =
 */
 float(float seg) Watch_WindowFind =
 {
-	local float a, b, i;
+	local float a, b;
 
 	rec_wt_winseg = -1;
 	rec_wt_wincut = FALSE;
@@ -3411,20 +3459,10 @@ float(float seg) Watch_WindowFind =
 		if (a < 0)
 		{
 			rec_wt_winhow = "stage records";
-			a = (seg > 0) ? -1 : 0;
-			b = rec_wt_endticks;
-			for (i = 0; i < rec_wt_evn; i = i + 1)
-			{
-				if (rec_wt_evkind[i] != SPK_STAGE)
-					continue;
-				if (rec_wt_evseg[i] == seg)
-					a = rec_wt_evtick[i];
-				if (rec_wt_evseg[i] == seg + 1)
-				{
-					b = rec_wt_evtick[i];
-					break;
-				}
-			}
+			// Patch 441: the one spelling, shared with the board's line job.
+			Watch_StageSpan(seg, 0);
+			a = wt_ws_a;
+			b = wt_ws_b;
 		}
 	}
 	if (a < 0 || b <= a)

@@ -11,10 +11,15 @@ main/0000437_p437win_run.rec (437 ticks, tag p437win), runs the cfg, grades the
 two windows against each other, and removes the copy.  data/runs is a shared
 fixture: the copy is removed even when the run throws.
 
-    python tools/p437win.py [--exe ftesurf64.exe] [--control] [--grade-only]
+    python tools/p437win.py [--exe ftesurf64.exe] [--pre 437|441] [--grade-only]
 
---control grades the PRE-fix numbers: copy cl_watch.qc aside, `git checkout --`
-it, build, run this with --control, copy back, rebuild, run again.
+--pre says which PATCH the build under test predates, because this cfg now holds
+arms from two of them: 437 moved the board line's window (W2/W5b) and 441 stopped
+the line job from working inside the OPEN replay's event table and cut (W6).  A
+single --control meant both at once and graded one arm against the wrong
+generation; it survives as an alias for --pre 437.  Build a control in a worktree
+at the commit before the patch (NOT `git checkout --` of one file: this tree holds
+more than one patch at a time), copy its csprogs.dat in, and run with --pre.
 
 Exit status 0 when every pre-registered prediction in the cfg header held.
 """
@@ -128,9 +133,28 @@ def winof(txt):
     return (ms[-1][0], ms[-1][1]) if ms else ("<absent>", "<absent>")
 
 
-def grade(log, control, lineleg=1):
+def statusof(txt):
+    """(end, window, cut, view, events) out of one `replay status` block -- the five
+    fields of the OPEN replay that a board line's job must not touch."""
+    def f(pat):
+        m = re.search(pat, txt or "")
+        return m.group(1) if m else "<absent>"
+    return (f(r"end (\d+)"),
+            f(r"window stage (\S+  [\d.]+\.\.[\d.]+)"),
+            f(r"cut (\d)"),
+            f(r"view (-?[\d.]+\.\.-?[\d.]+)"),
+            f(r"events (\d+)"))
+
+
+def grade(log, pre, lineleg=1):
+    """`pre` is the PATCH the build under this run predates: 437 (no line-job
+    window at all), 441 (437's shared spelling, but the job works in the replay's
+    own event table and cut), or 0 for the current build.  One flag could not say
+    it -- W2/W5b moved in 437 and W6 moved in 441, so a --control meaning both
+    graded one of the two against the wrong generation."""
     ok = True
     s = sections(log)
+    control = (pre == 437)
     want = CONTROL_W if control else FIXED_W
     asked = lineleg or 0
     # sb_ln_lineleg is added to EVERY row's leg, so a main row asks for leg 1 of a
@@ -147,7 +171,8 @@ def grade(log, control, lineleg=1):
                                      "ok" if good else "MISMATCH, want %s" % exp))
 
     print("observables (%s), %s predictions:"
-          % (os.path.basename(log), "PRE-FIX" if control else "POST-FIX"))
+          % (os.path.basename(log),
+             "PRE-%d" % pre if pre else "POST-FIX"))
     w1 = s.get("W1", "")
     say("W1 the board resolved the fixture",
         "yes" if "0000437_p437win_run.rec" in w1 else "no", "yes")
@@ -194,15 +219,36 @@ def grade(log, control, lineleg=1):
     say("W4 the replay's window, asked twice",
         "%s..%s" % ((m4.group(1), m4.group(2)) if m4 else ("<absent>", "<absent>")),
         "%d..%d" % (LEG1_A, LEG1_B))
+    # W6 (Patch 441): the OPEN replay's own state, before and after a line job is
+    # started under it.  An IDENTITY, not a number -- the job reads another file and
+    # must leave the replay alone.
+    a, b = statusof(s.get("W6a")), statusof(s.get("W6b"))
+    read = a[0] != "<absent>" and b[0] != "<absent>"
+    if not read:
+        say("W6 the replay's state, read twice", "<absent>", "two status blocks", False)
+    elif pre == 441:
+        say("W6 a line job under the open replay",
+            "unchanged" if a == b else "CHANGED %s -> %s" % (a, b),
+            "CHANGED (the wipe must reproduce)", a != b)
+    else:
+        say("W6 a line job under the open replay",
+            "unchanged" if a == b else "CHANGED %s -> %s" % (a, b), "unchanged", a == b)
     txt = open(log, "r", errors="replace").read()
-    say("no QC error", "yes" if not re.search(r"QC (error|Error)|QuakeC error", txt)
-        else "yes -- see log", "yes")
+    # PATCH 441: `QC (error|Error)` matches nothing the engine prints -- 0 hits over
+    # all 1550 logs in ftesurf/logs.  PR_StackTrace's frame line is what a QC fault
+    # leaves (pr_exec.c:436), and it hits the 9 logs that hold one.
+    fault = re.search(r"runaway loop error|PR_ExecuteProgram:|<NO STACK>|<NO FUNCTION>"
+                      r"|[a-z_]+\.qc:[0-9]+: \w", txt)
+    say("no QC fault", "yes" if not fault else "no: %s" % fault.group(0), "yes")
     return ok
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default="ftesurf64.exe")
+    ap.add_argument("--pre", type=int, default=0, choices=(0, 437, 441),
+                    help="the patch the build under test predates: 437 grades the "
+                         "whole-file line, 441 grades W6's wipe")
     ap.add_argument("--control", action="store_true",
                     help="grade against the PRE-fix predictions")
     ap.add_argument("--lineleg", type=int, default=1,
@@ -214,11 +260,12 @@ def main():
     ap.add_argument("--grade-only", action="store_true",
                     help="grade the log already on disk; stage and run nothing")
     a = ap.parse_args()
+    pre = a.pre or (437 if a.control else 0)
 
     if a.grade_only:
         if not os.path.exists(LOG):
             raise SystemExit("no log at %s" % LOG)
-        return 0 if grade(LOG, a.control, a.lineleg) else 1
+        return 0 if grade(LOG, pre, a.lineleg) else 1
 
     stage()
     try:
@@ -228,7 +275,7 @@ def main():
     print("ran %s for %.0f s (sb_ln_lineleg %d)" % (a.exe, secs, a.lineleg))
     if not os.path.exists(LOG):
         raise SystemExit("no log at %s -- was the cwd C:\\FTESurf?" % LOG)
-    return 0 if grade(LOG, a.control, a.lineleg) else 1
+    return 0 if grade(LOG, pre, a.lineleg) else 1
 
 
 if __name__ == "__main__":
