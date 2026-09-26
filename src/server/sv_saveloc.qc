@@ -233,8 +233,19 @@ float(float r) SL_RowSpeed =
 
   THE HULL IS THE ROW'S, not e.maxs: SV_SaveLocPlace only sets run_forceduck and the
   engine applies it in the NEXT pmove, so e.maxs here is the hull the player had
-  before the load.  A pre-duck save file reads duck 0, i.e. the taller hull, which can
-  only add contact.
+  before the load.  A pre-duck save file reads duck 0, i.e. the TALLER hull at a
+  possibly ducked body's origin, which is more likely to be startsolid -- and since
+  round 3 that is the REFUSAL, so the degradation is safe.  (Round 2 called it "can
+  only add contact", which was the fail-open direction and the wrong reassurance.)
+  Unreachable today either way: `duck` is written from PMF_DUCKED and SV_SaveReadLight
+  resets the row, so the bit is never stale.
+
+  ONE GATE, TWO HULLS, and it is a note rather than a change: the line above this call
+  asks SV_ZoneStartAt, which uses PM_HULL_MAXS unconditionally at the shipped
+  `run_zone_hull_live 0`.  So the gate asks "is this row in a start box" with a 62-tall
+  hull and "was it standing" with the row's own, which may be 45.  A ducked row up to
+  17 u below a slab's bottom is inside it by the first question.  Changing the zone
+  side would move a shipped default that Patch 441's own re-scan note is about.
 
   MOVE_NOMONSTERS, AND IT IS A SECURITY CHOICE.  A plain trace hits SOLID_SLIDEBOX,
   so ANOTHER PLAYER's axial hull answers with nz 1.000 -- indistinguishable from a
@@ -244,17 +255,38 @@ float(float r) SL_RowSpeed =
   The mover does ground you on another player; this refuses to, because the mover is
   answering "can I stand here now" and this is answering "was this row standing".
 
-  NOT startsolid AS CONTACT, which was round 1's own hole.  The trace used to start a
-  unit UP, to read a grounded row whose `%.4f` origin lands epsilon inside the floor
-  as a plane rather than as startsolid -- and that lift exposed the sliver ABOVE the
-  head, so anything solid within a unit of the ceiling answered "standing", in mid-air,
-  at any height.  The mover's own answer is the opposite one: `pmove.onground =
-  !pm.startsolid` (pm_source.c:2211).  So the trace starts AT the row's origin and
-  reaches d + 1 below it: a body epsilon inside the floor is startsolid there and
-  counts, one under a ceiling is not startsolid and is judged on what is below it, and
-  the extra unit of reach is what the lift used to buy.  A body genuinely embedded in
-  something still counts -- contact by any reading, and the honest gesture Build 47
-  exists for must not break on a mover that closed over a save.
+  startsolid IS A REFUSAL, and it took three rounds to get there.  Round 1 started the
+  trace a unit UP -- so that a grounded row whose `%.4f` origin lands epsilon inside
+  the floor read as a plane rather than as an overlap -- and answered startsolid as
+  CONTACT.  That lift exposed the sliver ABOVE the head, so anything solid within a
+  unit of a ceiling certified a body in mid-air at any height.  Round 2 dropped the
+  lift and kept the polarity, citing `pmove.onground = !pm.startsolid`
+  (pm_source.c:2211).  ROUND 3: READ IN CONTEXT THAT LINE SAYS THE OPPOSITE.  It is
+  inside the `else` of `fraction == 1 || normal[2] < standable`, i.e. it is only
+  reached when a standable plane WAS found; and a startsolid trace never gets there,
+  because Q1BSP_RecursiveHullCheck sets startsolid and writes NO plane (q1bsp.c:901),
+  so normal[2] is 0, 0 < 0.7, and the mover takes its airborne arm.  startsolid means
+  AIRBORNE to the mover on both paths.
+  AND THE TWO REASONS FOR THE FAIL-OPEN WERE BOTH WRONG.  "A mover that closed over a
+  save" cannot happen in this build: every brush entity spawns frozen and nothing moves
+  (sv_entities.qc, SV_SpawnDoor's "STILL NOTHING MOVES", SV_SpawnPassableBrush, the
+  SOLID_BSP catch-all, and `ltime` held at 0).  And the rounding never needed it: a
+  physics-legal body is held DIST_EPSILON = 0.03125 off every plane it collided with
+  (q1bsp.c:739), while `origin %.4f` quantises to 0.00005 -- 625 times smaller -- so a
+  grounded row's stored origin CANNOT land inside the floor.  The P reading in
+  cfg/test/p443air.cfg is that arithmetic measured: `solid 0 frac 0.000`.  So the
+  branch was dead code for its own purpose and live only as a way in.
+  IT IS ALSO WHAT THE REST OF THE TREE DOES.  All three sibling probes treat the pair
+  as a refusal -- SV_ZoneDest (sv_zones.qc), SV_SaveLocPickInZone below, and the
+  `stuck` diagnostic -- and round 2's comment cited that consistency while breaking it.
+  The one live route to an embedded row is SV_IOEnable (sv_entities.qc), which flips a
+  brush entity SOLID_NOT -> SOLID_BSP at runtime: save at rest inside a disabled brush
+  in a start slab, fire the Enable, load.  Refusing is the answer there too.
+
+  AND THE REACH IS THE MOVER'S, d AND NOT d + 1.  Round 2 spent an extra unit "the
+  lift used to buy", but round 1's sweep ENDED at o - d; the lift was at the start.
+  CategorizePosition probes exactly `point[2] -= GroundTraceDist()` (pm_source.c:2017),
+  which at default.cfg's `pm_groundtracedist 1` is one unit, not two.
 
   THE FAIL DIRECTION IS A PRACTICE RUN, NEVER AN ACCUSATION: a row this refuses keeps
   the load's TF_SEGMENT|TF_PRACTICE, which is what a stitched attempt is.  Residuals,
@@ -282,15 +314,19 @@ float(entity e, float r) SL_RowGrounded =
 	sn = cvar("pm_standablenormal");
 	if (sn <= 0)
 		sn = 0.7;                       // PMSRC_STANDABLE_DEFAULT
-	dn = o - [0, 0, d + 1];             // the unit round 1 spent on the lift
+	dn = o - [0, 0, d];                 // the mover's own reach, pm_source.c:2017
 
 	tracebox(o, mn, mx, dn, MOVE_NOMONSTERS, e);
 	// allsolid with startsolid clear is not constructible in this engine (every BIH
 	// site that keeps one sets the other), but all three sibling probes in this tree
 	// test the pair -- sv_zones.qc SV_ZoneDest, SV_SaveLocPickInZone, sv_entities.qc
 	// -- and a probe that spells it differently is the drift these essays are about.
-	ok = (trace_startsolid || trace_allsolid);
-	if (!ok)
+	// REFUSED, not certified: see the essay.  Falling through to the quadrant retry
+	// below is also what the mover does with a startsolid trace, since its own gate is
+	// `fraction == 1 || normal[2] < standable` and a startsolid trace has no plane.
+	ok = FALSE;
+	if (!trace_startsolid)
+	if (!trace_allsolid)
 	if (trace_fraction < 1)
 		ok = (trace_plane_normal_z >= sn);
 
@@ -313,6 +349,11 @@ float(entity e, float r) SL_RowGrounded =
 			if (q & 1)  qn_x = qn_x + hx;  else  qx_x = qx_x - hx;
 			if (q & 2)  qn_y = qn_y + hy;  else  qx_y = qx_y - hy;
 			tracebox(o, qn, qx, dn, MOVE_NOMONSTERS, e);
+			// The same pair as the full hull, for the same reason: a startsolid
+			// sub-box writes no plane, so it would fail the normal test anyway --
+			// but a probe that tests it in one place and not the other is the drift.
+			if (!trace_startsolid)
+			if (!trace_allsolid)
 			if (trace_fraction < 1)
 			if (trace_plane_normal_z >= sn)
 				ok = TRUE;
@@ -1489,20 +1530,16 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (run_t_startstrict)
 			e.run_t_airsec = 0;
 		/*
-		  ROUND 2, AND IT IS THE HALF ROUND 1 OWED.  Clearing startok switches the
-		  rule on over a dwell this placement has just blinded: `retry` re-initialises
-		  the progs, so run_t_groundsec begins at the restart however long the player
-		  had been standing before it, and the FIRST jump -- the one the rule exists
-		  to permit -- was accused.  Measured, cfg/test/p443grace.cfg: the same single
-		  jump reads `hopped 0` before the retry and `hopped 1` after, with the ground
-		  phase falling from 4.70 to 0.80 across it.  Found by an independent review of
-		  round 1, which traced it; the arm then confirmed it.
-		  So one jump per placement goes unjudged and the next one does not, which is
-		  the distinction between the honest gesture and the chain.  See
-		  run_t_startgrace in sv_timer.qc for why that is the narrow answer and build
-		  19's settled start was the wide one.
+		  AND THE HALF ROUND 1 OWED IS NOT HERE, which is worth a line because this is
+		  where rounds 2 and 3 both looked first.  Clearing startok switches the rule
+		  on over a dwell this placement has just blinded -- `retry` re-initialises the
+		  progs, so run_t_groundsec begins at the restart however long the player had
+		  been standing -- and the FIRST jump, the one the rule exists to permit, was
+		  accused.  Round 2 answered it with a one-shot flag set here; round 3 found
+		  that SV_TimerArm both cleared that flag and shared the blindness, and
+		  replaced it with the rule reading run_t_jumps, which needs nothing from this
+		  function.  The whole argument is over that field in sv_timer.qc.
 		*/
-		e.run_t_startgrace = TRUE;
 	}
 
 	/*

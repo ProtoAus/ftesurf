@@ -1389,31 +1389,41 @@ float() SV_RecEnabled =
 .float  run_t_lastvz;
 .float  run_t_startok;
 /*
-  PATCH 443 ROUND 2: ONE JUMP THIS RULE MAY NOT JUDGE, because it cannot see.
+  Jumps since the arm -- and from PATCH 443 ROUND 3 THE RULE READS IT, which the two
+  sentences this replaces said it did not ("Diagnostic only -- the rule is the dwell,
+  not the count").  It is still the answer to "how many jumps did it think I took",
+  which is the first question anyone asks of a rule that just marked their run
+  practice.
 
-  The dwell the rule grades is `SV_ClockSec(e) - run_t_groundsec`, and across a
-  `retry` the progs are re-initialised -- so the restored attempt's ground phase
-  begins at the restart however long the player had been standing before it.  Round 1
-  cleared run_t_startok for a restored ARM (correct: the start has not happened) and
-  thereby switched the rule on over that blind dwell, which accused the ONE jump out
-  of the start that the rule exists to permit.  MEASURED, cfg/test/p443grace.cfg: the
-  same single jump reads `hopped 0` before the retry and `hopped 1` after it, with
-  `phase: ground 4.70` becoming 0.80 across the restart.
+  WHY THE COUNT AND NOT THE DWELL, for the FIRST jump.  run_starthop's own line in
+  default.cfg is "Leaving the start on MORE THAN ONE jump makes the run practice", so
+  one jump is legal by definition and the dwell was only ever a proxy for "this is not
+  your first one" -- a landing leaves a dwell of about zero, so a short dwell means a
+  jump you have already taken.  The proxy fails wherever the ground phase is BLIND:
+    - after a `retry`, because map_restart re-initialises the progs and
+      run_t_groundsec begins at the restart however long the player had been standing.
+      Round 1 of this patch cleared run_t_startok there and so switched the rule on
+      over that blind dwell, which ACCUSED the one jump out of the start.  Measured,
+      cfg/test/p443grace.cfg: the same single jump reads `hopped 0` before the retry
+      and `hopped 1` after it, with `phase: ground 4.70` becoming 0.80 across it.
+    - after ANY arm, because SV_TimerArm deliberately does not reset run_t_groundsec
+      and "every ordinary route to a start zone follows a fall" (build 20's essay
+      below); under pm_autobunny with the button held, QC never observes FL_ONGROUND
+      at all, so the field stays 0 and the dwell reads 0 for good.
+  Round 2 answered the first of those with a one-shot flag a placement set and
+  SV_TimerArm cleared -- and a reviewer showed the arm can hand the rule the very
+  blind reading the flag existed for, having just cleared it: on the 37 of 48 shipped
+  start regions where the restored origin lands below the slab, the first drift back
+  in is an arm edge about a second after the restore.  So the flag was un-set by the
+  same event that made it necessary, and the only arm measuring it staged a zones
+  override that stopped that edge from happening.
 
-  So the first jump after a placement is not judged, and the second one is -- which is
-  the whole distinction between the honest gesture and the chain the patch is for.  It
-  is spent on that jump whatever the verdict would have been, so exactly one jump per
-  placement goes unjudged; a placement also restores position AND velocity, so the hop
-  it buys cannot be accumulated by repeating the gesture.
-
-  Build 19 answered the same problem by settling the start outright, which is what
-  round 1 removed.  This is the narrower answer: "I cannot see" spelled as one
-  forgiveness rather than as a rule switched off for the whole attempt.
+  THE COUNT HAS NEITHER PROBLEM, because it is the rule's own sentence rather than a
+  proxy for it: SV_TimerArm and the run_rearmhop forgiveness both zero it, which is
+  exactly when the dwell goes blind, and a fresh edict starts at 0.  It reads 1 at the
+  first jump (the increment above the settle block runs first), so `<= 1` is "the
+  first jump of this attempt" and needs no state of its own.
 */
-.float  run_t_startgrace;
-// Jumps since the arm.  Diagnostic only -- the rule is the dwell, not the count
-// -- but "how many jumps did it think I took" is the first question anyone asks
-// of a rule that just marked their run practice, and it has no other answer.
 .float  run_t_jumps;
 
 /*
@@ -10107,19 +10117,16 @@ float(entity e) SV_TimerJumpWatch =
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
 		{
 			/*
-			  PATCH 443 ROUND 2: the one jump this rule may not judge.  See
-			  run_t_startgrace, which a placement sets and only this line and
-			  SV_TimerArm clear.  ABOVE the dwell test and spent whatever the
-			  verdict would have been, so it is exactly one jump per placement --
-			  and the dprint is how an arm can see it was spent rather than
-			  inferring it from a silence.
+			  PATCH 443 ROUND 3: THE FIRST JUMP OF AN ATTEMPT IS THE ONE THE RULE
+			  PERMITS, so it is not judged on a dwell that may be blind.  See
+			  run_t_jumps, which is where the whole argument is; `<= 1` because the
+			  increment above the settle block has already counted this jump.
+			  The dprint is how an arm grades it rather than inferring it from a
+			  silence, and it is edge-triggered like the verdict below.
 			*/
-			if (e.run_t_startgrace)
-			{
-				e.run_t_startgrace = FALSE;
-				dprint(sprintf("timer: start grace spent, dwell %.2f of %.2f\n",
+			if (e.run_t_jumps <= 1)
+				dprint(sprintf("timer: first jump not judged, dwell %.2f of %.2f\n",
 				               dwell, want));
-			}
 			else if (dwell < want)
 			{
 				/*
@@ -10551,12 +10558,11 @@ void(entity e, float z) SV_TimerArm =
 	  you do while standing in the box.
 	*/
 	e.run_t_startok  = FALSE;
+	// Patch 443 round 3: this zero is now load-bearing rather than cosmetic -- it is
+	// what makes the next jump "the first jump of the attempt" and so unjudged, which
+	// is right for the same reason the run_t_groundsec line below gives: an arm's own
+	// dwell is blind whenever the body was never seen on the ground.
 	e.run_t_jumps    = 0;
-	// Patch 443 round 2: an arm is not a placement.  It keeps run_t_groundsec (see
-	// below), so the dwell it hands the rule is a real observation and there is
-	// nothing to forgive -- and a grace left over from an earlier placement would
-	// buy a free hop out of this start.
-	e.run_t_startgrace = FALSE;
 
 	/*
 	  BUILD 20: AND THE AIR PHASE, WHICH BUILD 19 FORGOT.

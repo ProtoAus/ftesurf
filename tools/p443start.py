@@ -81,11 +81,18 @@ STAGED = {
 # start slab has its bottom AT the floor and `origin %.4f` puts a placed body 0.00005
 # below it (Patch 415), so without the override a RESTORED body reads `arm zone -1` and
 # the first drift back into the slab is an ARM EDGE -- SV_TimerArm, which zeroes
-# run_t_hopped and run_t_jumps.  Measured: p443grace's accusation fired and was then
-# taken back by that edge one second later, so the latch could not be graded at the
-# report and the run stayed clean.  With the override the restored azone matches the
-# scan, there is no edge, and the taint stays where the patch put it.
-ZONED = ("air", "grace")
+# run_t_hopped and run_t_jumps.
+#
+# `grace` IS NOT IN THIS LIST ANY MORE, and that is round 3's correction rather than a
+# tidy-up.  Round 2 staged the override here so the latch would survive to be read --
+# and a reviewer pointed out that the override is exactly what stops the arm edge, so
+# the fix was being measured only in the configuration where SV_TimerArm cannot reach
+# it, while the SHIPPED configuration (37 of 48 authored start regions) went unmeasured.
+# That is CLAUDE.md's "an arm that passes because its condition never occurred", one
+# level up: the arm had removed the variable that decides whether the fix fires.  The
+# grace arm now runs on the shipped zones WITH that edge, and grades the MESSAGE, which
+# an arm edge cannot take back out of the log.
+ZONED = ("air",)
 
 # `hop` MUST NOT run on bhop map rules.  cfg/lobby/mode_bhop.cfg:131 sets
 # run_starthop 0 -- hopping out of the start is the sport there -- and
@@ -99,9 +106,9 @@ EXTRA = {"hop": ["+set", "sv_gamemode", "surf"],
 
 HOPSAY = r"hopped start\^?7? -- one jump out of the start"
 REARMSAY = r"start re-armed\^?7? -- one jump out of the start"
-# Round 2's own print: the grace being SPENT, which is the subject saying it
-# forgave a jump rather than an arm inferring it from a silence.
-GRACESAY = r"timer: start grace spent, dwell ([\d.]+) of"
+# Round 3's own print: the rule saying it did not judge the first jump of the attempt,
+# rather than an arm inferring the forgiveness from a silence.
+GRACESAY = r"timer: first jump not judged, dwell ([\d.]+) of"
 
 # One regex each, and every one reads a line the SUBJECT printed about its own
 # state: `cmd timer`'s report, SV_RetryApply's own last word, SL_RowGrounded's
@@ -148,10 +155,17 @@ FIELDS = {
     "hopsay":    HOPSAY,
     "rearmsay":  REARMSAY,
     "gracesay":  GRACESAY,
+    "gracen":    GRACESAY,
     "stitched":  r"(segmented run -- this run will not be saved)",
 }
 
 PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay")
+# Fields graded by HOW MANY times the line appears, not by a captured value.  `gracen`
+# is how p443grace proves its gesture was ONE jump: on the shipped zones an arm edge
+# lands after the jump and zeroes run_t_jumps, so the report's own count reads 0 and
+# cannot be the premise -- but the rule prints once per jump it declines to judge, and
+# two of those lines would be two jumps.
+COUNTED = ("gracen",)
 
 # arm -> (cfg, log, EXPECT post-fix, CONTROL overrides, REPORT-only fields)
 ARMS = {
@@ -193,16 +207,22 @@ ARMS = {
          # graded at G instead, where the restart has re-latched it.
          "C1": {"jumps": "1", "hopped": "0", "hopsay": "absent", "state": "armed"},
          "G":  {"dwell": "30.00", "jumps": "0", "state": "armed"},
-         "G2": {"jumps": "1", "hopped": "0", "hopsay": "absent",
-                "gracesay": "present"}},
-        # The control has no grace at all, so its line is graded ABSENT there -- which
-        # is also proof the two logs came from different progs.
-        {"G2": {"hopped": "0", "hopsay": "absent", "gracesay": "absent"}},
+         # THE MESSAGE IS THE DISCRIMINATOR, not the latch.  On the shipped zones the
+         # restored azone mismatches the scan, so an arm edge lands about a second
+         # after the restore and SV_TimerArm zeroes run_t_hopped -- measured, round 2 --
+         # and `hopped` then reads 0 on BOTH builds however the verdict went.  A line
+         # in the log cannot be taken back.
+         "G2": {"gracen": "1", "hopsay": "absent", "gracesay": "present"}},
+        # THE CONTROL IS PATCH 443 ROUND 1 (245dbfc), the build that accused -- not
+        # pre-443, which has the rule switched off entirely and so cannot accuse or
+        # forgive.  An earlier round as the control is p441void's `twice` shape.
+        {"G2": {"hopsay": "present", "gracesay": "absent", "gracen": "0"}},
         {"C":  ("hopped", "dwell", "ground"),
          "C1": ("ground", "air", "startok", "class", "practice", "dwell"),
          "C2": ("state", "ground", "hopped", "dwell"),
          "G":  ("startok", "ground", "air", "class", "practice", "azone", "hopped"),
-         "G2": ("state", "startok", "ground", "air", "class", "practice", "azone")},
+         "G2": ("state", "startok", "ground", "air", "class", "practice", "azone",
+                "hopped", "jumps")},
     ),
     "air": (
         "cfg/test/p443air.cfg", "p443air.log",
@@ -322,6 +342,8 @@ def read(txt, name):
     """THE FIRST match (re.search).  Every pattern above is anchored rather than
     relying on that, because a convention holding a field up is how `class:` came to
     match `stage class:`."""
+    if name in COUNTED:
+        return str(len(re.findall(FIELDS[name], txt)))
     if name in PRESENCE:
         return "present" if re.search(FIELDS[name], txt) else "absent"
     m = re.search(FIELDS[name], txt, re.M)
