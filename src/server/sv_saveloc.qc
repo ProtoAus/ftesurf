@@ -185,7 +185,7 @@ float  rec_sl_quiet;
 // NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` IS a pure
 // velocity edge (sv_timer.qc:9835) and a restored +302 satisfies it -- which is why
 // the arm reads `running` one frame after the load on a start-on-jump map.  What
-// keeps run_t_hopped clear is that every load sets run_t_startok (SV_SaveApplyState, `e.run_t_startok = TRUE`), and the
+// keeps run_t_hopped clear is that every load sets run_t_startok (SV_SaveApplyState sets it for every load it can read), and the
 // whole hop block is behind `if (!e.run_t_startok)` (sv_timer.qc:9986).  A reviewer
 // caught the wrong mechanism; BACKLOG.md carries the startok half, which is bigger
 // than this patch.  The paragraph above only ever reasoned about a
@@ -1614,11 +1614,19 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  its SV_TimerIdle does the discard, so this branch must not do it too
 		  (a second SV_RecDiscard would re-run the Patch 426 hold logic below
 		  against a run that has already ended).
+		  [Patch 441 round 5: that parenthetical is not true of the code as it stands,
+		  and a reviewer reported the consequence as certain.  SV_RecDiscard's keep and
+		  its `else if (e.rec_end_ticks == 0)` both sit under `if (live)`, and the
+		  handles it tests are set to -1 OUTSIDE that block (sv_timer.qc:5015-5016), so
+		  a second call sees SV_RecLive FALSE and runs neither SV_RecEndHold.  The
+		  single-discard rule stands on its own merits; the hazard named here does not
+		  exist.  Left in place with this note rather than deleted, because the reason
+		  the branch is written this way is still worth reading.]
 
 		  PATCH 441 -- TWO CORRECTIONS, the first of which took three rounds.
 
 		  ONLY A RUN WHOSE EVIDENCE WAS EXPECTED:
-		      SV_RecEnabled() || hadrec || (retry && mark > 0)
+		      SV_RecEnabled() || hadrec || (retry && (flg & TF_RECORDING))
 		  -- four rounds for three clauses.  The question is whether this leaves a RUNNING
 		  attempt without evidence it was supposed to have, and each clause answers one
 		  part of "supposed to":
@@ -1627,18 +1635,33 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		    hadrec -- this run held a recorder when the LOAD began, captured above the
 		  Patch 360 discard, which is the whole point of it being a second variable.  The
 		  load took evidence away even if the operator has since switched recording off.
-		    retry && mark > 0 -- ON THE RETRY PATH ONLY, and it is this run's own prefix.
-		  A retry writes state.txt and the prefix moments before the map_restart, and
-		  `mark` is `reclines`, which SV_RecWritePrefix returns only AFTER buf_writefile
-		  and fclose (sv_timer.qc:5562): a receipt for a file that existed, not a claim.
-		  The clause is here because the restart is the one place the other two go blind --
-		  the progs are re-initialised, so `hadrec` is structurally 0, which is why the
-		  arming flag has to travel in a cvar (:4116) -- and SV_RetryApply then fremoves
-		  that prefix.  Without it, `rec_enable 0` under a recorded CLEAN run plus one
-		  `retry` left a clean, rankable, RUNNING attempt with no recording and no message
-		  of any kind.  NOT on the load path: `mark` is some earlier session's prefix
-		  there, and reading it as this run's expectation is how round 2 put the absence
-		  trap back.
+		    retry && (flg & TF_RECORDING) -- ON THE RETRY PATH ONLY, and it is the RUN's own
+		  bit, out of the file.  SV_SaveWriteState masks only TF_FROZEN|TF_STOPPED|TF_NONCE
+		  out of the flags word it writes, so TF_RECORDING survives into `state.txt`, and
+		  `flg` still holds it here -- the live flags are assigned from `flg` MINUS that bit
+		  further down, which is the only reason it looked unavailable.  The clause is here
+		  because the restart is the one place the other two go blind: the progs are
+		  re-initialised, so `hadrec` is structurally 0 (which is why the arming flag has to
+		  travel in a cvar, `cvar_set("rec_retry_armed", ...)` in SV_RetryPoint), and
+		  SV_RecEnabled() is 0 if the operator has just switched recording off.  Without it,
+		  `rec_enable 0` under a recorded CLEAN run plus one `retry` left a clean, rankable,
+		  RUNNING attempt with no recording and no message of any kind.
+		    NOT `mark > 0`, which was round 4's first cut: `mark` is `reclines`, i.e. whether
+		  a prefix FILE got written, and it is 0 when the write failed with the recorder
+		  still live (sv_timer.qc:5556) -- so it missed exactly the state it was added for.
+		  It is also not a receipt at all on a streamed save, where SV_RecWritePrefix routes
+		  to SV_RecSnapshot and returns a positive count for a copy it has only QUEUED
+		  (sv_timer.qc:5547, 2046).  NOT on the load path either, for either spelling: there
+		  the file is some earlier session's, and reading it as this run's expectation is how
+		  round 2 put the absence trap back.
+		  AND THE TRADE CLAUSE 1 MAKES, said out loud because a reviewer had to ask:
+		  on a server that records, a RUNNING attempt reaching this branch with NO
+		  recorder is cancelled even if it never had one -- e.g. a run armed while
+		  rec_enable was 0, after the operator turns it on.  That is deliberate.  The
+		  invariant Patch 434 states is about the ATTEMPT's state, not its history: on a
+		  server whose ranking is backed by recordings, a run with none does not file a
+		  time.  The absence trap is the other configuration -- a server that records
+		  nothing -- and there clause 1 is false and nothing is cancelled.
 		  With all three clear, nothing was lost and nothing was expected: the run was
 		  already unverifiable by the operator's own configuration before the load arrived,
 		  and cancelling THAT is the absence trap -- a check that cannot see answering
@@ -1676,7 +1699,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  az/ez/cz this file restored, because a demoted save's are all -1 (r3's own
 		  finding).  armzone stays -1: a cancelled run has no zone it armed in.
 		*/
-		if (st == TS_RUNNING && (SV_RecEnabled() || hadrec || (retry && mark > 0)))
+		if (st == TS_RUNNING && (SV_RecEnabled() || hadrec || (retry && (flg & TF_RECORDING))))
 		{
 			SV_TimerVoid(e, "the save's recording could not be restored");
 			sl_voided = TRUE;

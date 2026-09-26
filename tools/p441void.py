@@ -18,8 +18,9 @@ restored afterwards, including when the run throws.  The zones override is
 REMOVED either way: left behind it shadows the shipped zones for every later run
 on this map.  Pass --keep to leave the staged saves (never the zones).
 
-    python tools/p441void.py --arm rest|fast|norec [--exe ftesurf64.exe]
-                             [--control] [--grade-only] [--keep]
+    python tools/p441void.py --arm rest|fast|norec|twice|mid|retry
+                             [--exe ftesurf64.exe] [--control] [--keep]
+                             [--grade-only [--side fixed|control]]
 
 --control grades the PRE-fix predictions.  The control build is a worktree at the
 commit before Patch 441, NOT `git checkout --` of one file (this tree holds more
@@ -37,11 +38,13 @@ measured the same build twice and proves nothing.
 
 Exit status 0 when every pre-registered prediction in the cfg's header held.
 
-RESULT (2026-09-26, round 3: five arms x both sides, exit 0 every time.  The fixed
-build is qwprogs B4D995701EAA1761; the control is a DIFFERENT build per arm, which
+RESULT (2026-09-26, round 4: six arms here plus p442jump in p435pre.py, both sides
+each, exit 0 every time.  The fixed
+build is qwprogs 3096B6F5468BEE3A; the control is a DIFFERENT build per arm, which
 is the point -- 830A76438E00EFA4 (pre-441, 3ab4195) for rest/fast/norec,
 3786B7D1D3341D4B (441 as first committed) for mid, and 8B84B5CE71C058E8 (this tree
-with the predicate cut to `hadrec` alone) for twice.  Both runs' logs are kept per
+with the predicate cut to `hadrec` alone) for twice, and 63AF428049260231 (441 round
+3, the cut that stopped covering the retry path) for retry.  Both runs' logs are kept per
 arm as <log>.fixed and <log>.control, with a .hash beside each naming the build
 that wrote it, so every number in every RESULT block can be read back off disk --
 in THIS working tree.  ftesurf/logs is gitignored (.gitignore:216), so a fresh
@@ -193,7 +196,7 @@ ARMS = {
     # first void has taken the recorder down (`hadrec` false) and only the server's
     # own answer is left.  Its control is the fix COMPILED OUT -- the predicate cut
     # to `hadrec` alone -- because no earlier commit isolates this.  Between this and
-    # `mid`, each clause of `SV_RecEnabled() || hadrec` is shown to be load-bearing;
+    # `mid`, each clause of `SV_RecEnabled() || hadrec || (retry && (flg & TF_RECORDING))` is shown to be load-bearing;
     # before them, either half could have been deleted with every arm still green.
     "twice": (
         "cfg/test/p441twice.cfg", "p441twice.log", False,
@@ -287,7 +290,7 @@ def restore(keep):
         # left the shared fixture REPLACED by these fixtures and the real one parked:
         # p415reset, p428hold, p434rew and p435pre all read that directory, and the
         # next p435pre run would have parked p441's fixtures as if they were real.
-        kept = SAVES + ".kept"
+        kept = SAVES + ".kept.p441"
         if os.path.isdir(kept):
             shutil.rmtree(kept)
         shutil.copytree(SAVES, kept)
@@ -442,9 +445,14 @@ def main():
         if not os.path.exists(os.path.join(CFGDIR, src)):
             raise SystemExit("no fixture: %s" % src)
     # Which build is about to run.  A --control run whose qwprogs hash matches the
-    # fixed one's has measured the same bytes twice.
-    for d in ("qwprogs.dat", "csprogs.dat"):
-        print("%-12s %s" % (d, sha(os.path.join(GAMEDIR, d))))
+    # fixed one's has measured the same bytes twice.  TAKEN ONCE, HERE: the sidecar
+    # below used to re-read the files after the run, so a rebuild while the arm ran
+    # (this repo has more than one live session) could have named a build that did
+    # not write the log.
+    ran = [(d, sha(os.path.join(GAMEDIR, d))) for d in ("qwprogs.dat", "csprogs.dat")]
+    for d, h in ran:
+        print("%-12s %s" % (d, h))
+    cleanup_ok = True
     stage(zones)
     try:
         secs = run(a.exe, a.timeout, cfg, log)
@@ -457,6 +465,7 @@ def main():
         try:
             restore(a.keep)
         except OSError as exc:
+            cleanup_ok = False
             print("CLEANUP FAILED, the shared fixture may still be parked at %s: %s"
                   % (os.path.relpath(PARK, ROOT), exc))
     print("ran %s on %s for %.0f s" % (a.exe, cfg, secs))
@@ -479,10 +488,13 @@ def main():
     # so the one number every RESULT block quotes -- which build wrote these lines --
     # was the one thing the kept logs could not check.
     with open(keep + ".hash", "w") as fh:
-        for d in ("qwprogs.dat", "csprogs.dat"):
-            fh.write("%-12s %s\n" % (d, sha(os.path.join(GAMEDIR, d))))
+        for d, h in ran:
+            fh.write("%-12s %s\n" % (d, h))
     print("%s log kept at %s (+ .hash)" % (side[1:], os.path.relpath(keep, ROOT)))
-    return 0 if grade(log, a.control, a.arm) else 1
+    # A CLEANUP FAILURE IS A FAILED RUN.  It used to print and exit 0, which leaves
+    # the shared fixture replaced by these fixtures while the exit status says all is
+    # well -- and only two of the five drivers that park that directory check for it.
+    return 0 if (grade(log, a.control, a.arm) and cleanup_ok) else 1
 
 
 if __name__ == "__main__":

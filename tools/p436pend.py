@@ -32,7 +32,11 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAMEDIR = os.path.join(ROOT, "ftesurf")
 SAVES = os.path.join(GAMEDIR, "data", "saves", "bhop_eazy")
-PARK = SAVES + ".p436park"
+# ONE PARK NAME ACROSS EVERY DRIVER THAT PARKS THIS DIRECTORY (p434rew,
+# p435pre, p436pend, p439smoke, p441void).  Each used its own and refused only
+# on its own, so interleaving two of them rmtree'd the real tree and put the
+# other's fixtures in its place.  A shared name makes the second one refuse.
+PARK = SAVES + ".savepark"
 FIXTURE = os.path.join(GAMEDIR, "cfg", "test", "p436state.txt")
 SLOT = "save901"
 CFG = "cfg/test/p436pend.cfg"

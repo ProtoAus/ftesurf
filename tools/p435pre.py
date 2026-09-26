@@ -96,7 +96,7 @@ def restore(keep):
     if keep:
         # A COPY -- see the note in p441void.py's restore(): returning here left the
         # SHARED save directory replaced by fixtures and the real tree parked.
-        kept = SAVES + ".kept"
+        kept = SAVES + ".kept.p435"
         if os.path.isdir(kept):
             shutil.rmtree(kept)
         shutil.copytree(SAVES, kept)
@@ -442,8 +442,11 @@ def main():
     for _, src in SAVES_STAGED + ARM_SAVES.get(a.arm, ()):
         if not os.path.exists(os.path.join(CFGDIR, src)):
             raise SystemExit("no fixture: %s" % src)
-    for d in ("qwprogs.dat", "csprogs.dat"):
-        print("%-12s %s" % (d, sha(os.path.join(GAMEDIR, d))))
+    # Taken once, before the run -- see the note in p441void.py.
+    ran = [(d, sha(os.path.join(GAMEDIR, d))) for d in ("qwprogs.dat", "csprogs.dat")]
+    for d, h in ran:
+        print("%-12s %s" % (d, h))
+    cleanup_ok = True
     stage(zones, a.arm)
     left = []
     try:
@@ -455,6 +458,7 @@ def main():
         try:
             restore(a.keep)
         except OSError as exc:
+            cleanup_ok = False
             print("CLEANUP FAILED, the shared fixture may still be parked at %s: %s"
                   % (os.path.relpath(PARK, ROOT), exc))
     print("ran %s (%s) for %.0f s" % (a.exe, cfg, secs))
@@ -477,10 +481,11 @@ def main():
     # the one number a RESULT block quotes that the kept log could not check was
     # which build wrote it.
     with open(keep + ".hash", "w") as fh:
-        for d in ("qwprogs.dat", "csprogs.dat"):
-            fh.write("%-12s %s\n" % (d, sha(os.path.join(GAMEDIR, d))))
+        for d, h in ran:
+            fh.write("%-12s %s\n" % (d, h))
     print("%s log kept at %s (+ .hash)" % (side[1:], os.path.relpath(keep, ROOT)))
-    return 0 if grade(log, a.control, a.arm) else 1
+    # A cleanup failure is a failed run -- see p441void.py.
+    return 0 if (grade(log, a.control, a.arm) and cleanup_ok) else 1
 
 
 if __name__ == "__main__":
