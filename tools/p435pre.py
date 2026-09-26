@@ -38,16 +38,20 @@ ZONES_SRC = os.path.join(CFGDIR, "p435.zones.json")
 
 # tag -> the fixtures it needs staged
 SAVES_STAGED = (("save901", "p435rest.txt"), ("save902", "p435speed.txt"))
+# Patch 442 added an arm to this gate's driver, and its fixture is staged ONLY for
+# that arm: a third row would change what `sl_list` and the cursor commands see in
+# the three arms written before it.
+ARM_SAVES = {"jump": (("save903", "p442jump.txt"),)}
 
 
-def stage(zones):
+def stage(zones, arm="pre"):
     if os.path.isdir(PARK):
         raise SystemExit("refusing: %s already exists (a previous run did not restore)" % PARK)
     if not zones and os.path.exists(ZONES):
         raise SystemExit("refusing: %s already exists -- it shadows the shipped zones" % ZONES)
     if os.path.isdir(SAVES):
         os.rename(SAVES, PARK)
-    for slot, src in SAVES_STAGED:
+    for slot, src in SAVES_STAGED + ARM_SAVES.get(arm, ()):
         d = os.path.join(SAVES, slot)
         os.makedirs(d)
         shutil.copyfile(os.path.join(CFGDIR, src), os.path.join(d, "state.txt"))
@@ -110,6 +114,10 @@ PATS = {
     "class": r"class: (\w+) \(seg",
     "armzone": r"arm zone (-?\d+) \(armed from (-?\d+)\)",
     "horizontal": r"horizontal (-?[\d.]+)",
+    # Patch 442: the z component of `cmd viewpos`'s velocity line.  `horizontal`
+    # cannot see it, which is the defect that arm measures, and "is a grounded body
+    # really at rest in z" is the number the fix rests on.
+    "velz": r"velocity -?[\d.]+ -?[\d.]+ (-?[\d.]+)\s+horizontal",
     # viewpos answers `setpos x y z pitch yaw roll` on the line above it.
     "z": r"setpos (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)",
 }
@@ -187,8 +195,38 @@ REPORT_MODE = {"ML": ("horizontal",),
 # body 5e-5 below (64.0312 against 64.03125).
 SLAB_BOTTOM = 64.03125
 
+# Patch 442: the same gate, asked about a save taken MID-JUMP.  SL_RowSpeed measured
+# horizontal speed only, so vz +302 read as at rest and the gate laundered it.  R is
+# the regression control and it is the point of the arm: a REAL save taken standing,
+# whose velocity the engine wrote rather than a fixture, must still arm CLEAN.
+EXPECT_JUMP = {
+    # `running` and not `armed`, measured: bhop_eazy starts ON JUMP, so the restored
+    # velocity lifting the body off the ground IS the start.  The laundering is
+    # therefore instant -- the player does not have to walk out to collect it.
+    # armzone is NOT graded here and the prediction that it would be (-1 on the
+    # control, 0 on the fixed build) was measured wrong: the gate's -1 lasts one
+    # tick, and the next scan writes the box back before `cmd timer` can be asked.
+    # Both builds read 0/0 at J1.  What discriminates is the CLASS.
+    "J1": {"state": "running", "practice": "1", "class": "segmented"},
+    "J2": {"state": "running", "practice": "1", "class": "segmented"},
+    "J3": {"state": "running", "practice": "1", "class": "segmented"},
+    "R0": {"state": "armed", "velz": "atrest"},
+    "R2": {"state": "running", "practice": "0", "class": "clean"},
+}
+CONTROL_JUMP = {
+    "J1": {"practice": "0", "class": "clean"},
+    "J2": {"practice": "0", "class": "clean"},
+    "J3": {"practice": "0", "class": "clean"},
+}
+REPORT_JUMP = {"J1": ("horizontal", "velz", "armzone"), "J3": ("armzone",),
+               "R1": ("state", "practice", "class")}
+# arm -> the overrides that make the PRE-fix build's predictions.  Keyed, because
+# two arms now have a control build and each moves different fields.
+CONTROLS = {"pre": CONTROL, "jump": CONTROL_JUMP}
+
 ARMS = {
     "pre": ("cfg/test/p435pre.cfg", "p435pre.log", True, EXPECT, {}),
+    "jump": ("cfg/test/p442jump.cfg", "p442jump.log", True, EXPECT_JUMP, REPORT_JUMP),
     "shipped": ("cfg/test/p435hop.cfg", "p435hop.log", False, EXPECT_SHIP, REPORT_SHIP),
     "mode": ("cfg/test/p435mode.cfg", "p435mode.log", False, EXPECT_MODE, REPORT_MODE),
 }
@@ -199,11 +237,12 @@ def grade(log, control, arm="pre"):
     s = sections(log)
     cfgname, logname, zones, expect, report = ARMS[arm]
     want = {k: dict(v) for k, v in expect.items()}
-    if arm == "pre" and control:
-        for tag, over in CONTROL.items():
-            want[tag] = dict(want[tag], **over)
+    if control:
+        for tag, over in CONTROLS.get(arm, {}).items():
+            want[tag] = dict(want.get(tag, {}), **over)
     print("observables (%s), %s predictions:"
-          % (os.path.basename(log), "PRE-FIX" if control and arm == "pre" else "POST-FIX"))
+          % (os.path.basename(log),
+             "PRE-FIX" if control and arm in CONTROLS else "POST-FIX"))
     for tag in sorted(set(list(want) + list(report))):
         txt = s.get(tag)
         if txt is None:
@@ -230,6 +269,15 @@ def grade(log, control, arm="pre"):
                 except ValueError:
                     good = False
                 exp = "above the slab bottom %g" % SLAB_BOTTOM
+            elif exp == "atrest":
+                # Patch 442: |v| under SL_ARM_SPEED, asked of the component the old
+                # test could not see.  This is the engine's own number for a grounded
+                # body, and if it is not under 1 the 3D test is the wrong shape.
+                try:
+                    good = abs(float(got)) < 1.0
+                except ValueError:
+                    good = False
+                exp = "|z| < 1 (SL_ARM_SPEED)"
             elif exp == "bled":
                 # The row's 250 u/s, bled by ground friction since the release
                 # (147 measured at 120 ms).  C1 is the arm that quotes it exactly.
@@ -319,10 +367,10 @@ def main():
             raise SystemExit("no log at %s" % log)
         return 0 if grade(log, a.control, a.arm) else 1
 
-    for _, src in SAVES_STAGED:
+    for _, src in SAVES_STAGED + ARM_SAVES.get(a.arm, ()):
         if not os.path.exists(os.path.join(CFGDIR, src)):
             raise SystemExit("no fixture: %s" % src)
-    stage(zones)
+    stage(zones, a.arm)
     try:
         secs = run(a.exe, a.timeout, cfg, log,
                    ["+set", "sv_gamemode", "surf"] if a.arm == "mode" else [])

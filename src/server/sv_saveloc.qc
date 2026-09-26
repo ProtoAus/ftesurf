@@ -173,15 +173,25 @@ float  rec_sl_quiet;
 */
 #define SL_ARM_SPEED 1
 
-// Patch 435: what a row carries horizontally, which is the speed its load hands
-// back (SV_SaveLocPlace writes rec_sl_vel[r] into the body, and a hold hands the
-// same vector back on release).  Read off the ROW and not off e.velocity, which
-// a load taken while parked has already zeroed.
+// Patch 435: what a row carries, which is the speed its load hands back
+// (SV_SaveLocPlace writes rec_sl_vel[r] into the body, and a hold hands the same
+// vector back on release).  Read off the ROW and not off e.velocity, which a load
+// taken while parked has already zeroed.
+//
+// PATCH 442: ALL THREE COMPONENTS.  This was `vlen([v_x, v_y, 0])`, and the gate it
+// feeds asks whether the save was taken AT REST.  A body mid-JUMP inside a start box
+// has vz +302 and no horizontal speed at all, so it read as at rest: the gate fired,
+// the load armed a CLEAN attempt already rising out of the box, and the start's hop
+// dwell was bypassed with it -- SV_TimerJumpWatch needs a jumped EDGE, which a
+// restored velocity never produces, so run_t_hopped stays clear and there is nothing
+// for SV_TimerStart to consume.  The paragraph above only ever reasoned about a
+// GROUNDED body: friction is horizontal, and so was the test.  Measured both ways,
+// cfg/test/p442jump.cfg, including that a REAL save taken standing still arms.
 float(float r) SL_RowSpeed =
 {
 	local vector v;
 	v = rec_sl_vel[r];
-	return vlen([v_x, v_y, 0]);
+	return vlen(v);
 };
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
@@ -3948,8 +3958,11 @@ void(entity e, float from) SV_SaveLocList =
 		       sprintf("  %s%2g^7 slot %s  %6.0f %6.0f %6.0f  ",
 		               (i + 1 == e.rec_sl_index) ? "^2" : "^7", i + 1,
 		               SL_NN(rec_sl_id[base + i]), o_x, o_y, o_z),
+		       // Patch 442: the whole vector, like the gate -- a row carrying a
+		       // jump's +302 printed "0 u/s  standing", which is how the vertical
+		       // half of SL_RowSpeed stayed hidden from anyone reading their list.
 		       sprintf("%4.0f u/s  yaw %4.0f  %s  ",
-		               vlen([v_x, v_y, 0]), rec_sl_yaw[base + i],
+		               vlen(v), rec_sl_yaw[base + i],
 		               rec_sl_duck[base + i] ? "ducked" : "standing"),
 		       sprintf("%s  stage %g  %g cp\n",
 		               (rec_sl_tick[base + i] > 0) ? SV_TimerString(rec_sl_tick[base + i]) : "--",
