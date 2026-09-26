@@ -1868,6 +1868,48 @@ void(entity t, float on) SV_IOEnable =
 
   bhop_arcane's six Commands are all `say Secret N Found` and all run.
 */
+
+/*
+  PATCH 446: AND THE ALLOW-LIST BELOW WAS NOT A BARRIER, BECAUSE Cbuf SPLITS LINES.
+
+  The gate tests the FIRST space-delimited token and then hands the WHOLE string to
+  localcmd, and Cbuf_ExecuteLevel terminates a command at an unquoted `;` (engine
+  common/cmd.c:495 and :654).  So
+
+      server,Command,echo x;set run_starthop 0
+
+  passed the allow-list and then ran the second command.  RESTRICT_INSECURE is 30
+  against a default rcon_level of 20, so anything registered without an explicit
+  restriction executes.  `run_starthop` is read live every packet, which means one
+  map could switch the whole hopped-start rule off for everyone -- with nobody's
+  velocity zeroed, i.e. exactly the class Patch 445 exists to eliminate, arriving
+  through the door 445's own essays cite as the reason its design is safe.
+  Found by two independent reviewers in 445's round 6.  A quote is refused on the
+  same footing: it flips Cbuf's quote tracking, which is what decides whether a
+  later `;` separates.
+
+  REFUSING OUTRIGHT COSTS NOTHING, AND THAT IS MEASURED RATHER THAN HOPED.
+  tools/census/iocmd.py over all 1316 shipped bsps: 216 maps carry a Command output,
+  737 rows, of which 101 are allow-listed.  THREE rows anywhere in the corpus carry a
+  terminator and NONE of those three is allow-listed, and ZERO rows contain a quote --
+  so this refusal changes the behaviour of no shipped map.  The self-check in that
+  census proves the filter can fire: it parsed 12 distinct verbs including
+  sv_airaccelerate (38 rows) and sv_maxvelocity (51), all of which the allow-list
+  already refused.
+
+  Separate function, and the four tests are sequential ifs rather than one `||`,
+  because fteqcc's `||` evaluates both sides -- harmless for four strstrofs, but the
+  file's rule is nested ifs and one spelling of a rule this sharp is the point.
+*/
+float(string s) SV_IOCmdInjects =
+{
+	if (strstrofs(s, ";",  0) >= 0)  return TRUE;
+	if (strstrofs(s, "\n", 0) >= 0)  return TRUE;
+	if (strstrofs(s, "\r", 0) >= 0)  return TRUE;
+	if (strstrofs(s, "\"", 0) >= 0)  return TRUE;
+	return FALSE;
+};
+
 void(string cmd) SV_IOCommand =
 {
 	local string w;
@@ -1875,6 +1917,21 @@ void(string cmd) SV_IOCommand =
 
 	sp = strstrofs(cmd, " ", 0);
 	w = (sp < 0) ? cmd : substring(cmd, 0, sp);
+
+	/*
+	  BEFORE THE ALLOW-LIST, not after, and it is refused by its own name in the
+	  census rather than folded into "blocked command": a `say` that is refused for
+	  carrying a `;` is a different event from a `sv_airaccelerate` refused for its
+	  verb, and an operator reading the census has to be able to tell them apart --
+	  the first is someone probing, the second is an ordinary map.
+	*/
+	if (SV_IOCmdInjects(cmd))
+	{
+		if (SV_CensusAdd(strcat("injecting command ", w)))
+			dprint(sprintf("^1entity I/O: REFUSED map command '%s' -- it carries a "
+			               "command separator or quote\n", cmd));
+		return;
+	}
 
 	if (w == "say" || w == "echo" || w == "print")
 	{
