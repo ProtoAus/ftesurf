@@ -199,6 +199,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   second reason word at the SV_TimerVoid call, and it touches what seven arms grade,
   which is why it is here rather than done. sv_saveloc.qc, the failed-rewind branch.
   Patch 441 review, round 5.
+  THE SPLIT IS THE PREDICATE'S OWN CLAUSES, and the ARM ALREADY EXISTS -- both traced
+  2026-09-26 so the work is a rewrite and not an investigation. `hadrec` or
+  `retry && (flg & TF_RECORDING)` means a recorder really was there, so "could not be
+  restored" is true; `SV_RecEnabled()` ALONE means the server records and this attempt
+  never held one, which is the false case. Compute it once into a local and the void
+  picks its word from that -- and the predicate becomes readable, which it is not now.
+  cfg/test/p441twice.cfg's S2 is exactly the false case and already grades the string:
+  measured, it prints `run cancelled (the save's recording could not be restored)`
+  beside `recording 0` on an attempt restored a moment earlier that never held a
+  recorder in this session. Nine cfgs and three drivers quote the string
+  (p434rew.py, p439smoke.py, p441void.py's CANCEL), so the mechanical half is updating
+  them to match either word and grading WHICH one at S2.
 - **`sl_list` prints the row speed as `%4.0f`, so the arming boundary is invisible.**
   A row carrying 0.6 u/s prints `1 u/s` and arms; one carrying 1.4 prints `1 u/s`
   and does not (SL_ARM_SPEED is 1). Patch 442 widened this column to the whole
