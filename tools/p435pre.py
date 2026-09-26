@@ -157,10 +157,20 @@ CONTROL = {
 # nothing here arms clean -- at rest OR with speed, hop or not.
 EXPECT_SHIP = {
     "H1": {"practice": "1", "class": "segmented", "armzone": "-1/0"},
-    "H3": {"practice": "1", "class": "segmented"},
+    # PATCH 441: THE CFG'S OWN PREDICTION, which is `practice 0` / `clean` -- H3 is
+    # the CONTROL (the at-rest save, loaded and jumped), and p435hop.cfg's
+    # `FALSIFIED IF ... H3 is tainted` says a tainted H3 means the hop arms nothing
+    # on this map, so H2 cannot show a launder either way.  This table used to carry
+    # `practice 1, segmented` here -- the failed reading, entered as the expectation
+    # -- so the arm printed all-ok with its control down, and "the hop does not
+    # launder in bhop mode" was written up out of it and into BACKLOG.md.  It is
+    # graded as predicted now, and verdict() below says NOT DEMONSTRATED instead.
+    "H3": {"practice": "0", "class": "clean"},
 }
 # H2/M1 are the measurements, not predictions: both answers are pre-registered in
-# the cfg headers and which one lands decides whether Patch 435 is complete.
+# the cfg headers and which one lands decides whether Patch 435 is complete.  They
+# are reported here and then RESOLVED by verdict(), which is the only place either
+# arm produces a conclusion.
 REPORT_SHIP = {"H2": ("practice", "class", "armzone", "state", "horizontal")}
 # --mode forces sv_gamemode surf, so the observable that the mode TOOK is the
 # start rule in `cmd timer`'s first line.
@@ -238,6 +248,52 @@ def grade(log, control, arm="pre"):
             ok = ok and good
             print("  %-4s %-11s %-24s %s"
                   % (tag, key, got, "ok" if good else "MISMATCH, want %s" % exp))
+    return verdict(arm, s, ok)
+
+
+def verdict(arm, s, ok):
+    """THE THIRD ANSWER, for the two arms that have one.
+
+    `shipped` and `mode` each pre-register BOTH of their subject's possible
+    readings, so the subject cannot be graded against one of them -- and each has a
+    control whose failure means the subject measured nothing at all.  That is three
+    outcomes, and a driver with two exit states had to mislabel one of them: it
+    graded the control against the reading that falsifies the arm and reported the
+    subject without a verdict (Patch 441).  So the conclusion is drawn here, once,
+    and "the control failed" is one of the things it can say."""
+    if arm == "shipped":
+        h2, h3 = s.get("H2"), s.get("H3")
+        if h2 is None or h3 is None:
+            print("VERDICT: NOT DEMONSTRATED -- H%s is absent from the log"
+                  % ("2" if h2 is None else "3"))
+            return False
+        p3, c3 = get(h3, "practice", -1), get(h3, "class", -1)
+        if (p3, c3) != ("0", "clean"):
+            print("VERDICT: NOT DEMONSTRATED -- H3, the CONTROL, reads practice %s "
+                  "class %s.  p435hop.cfg's own FALSIFIED IF: with H3 tainted the "
+                  "hop arms nothing on this map, so H2 says nothing about a launder."
+                  % (p3, c3))
+            return False
+        p2, c2 = get(h2, "practice", -1), get(h2, "class", -1)
+        print("VERDICT: against a clean H3, the hop %s the load's taint in bhop mode "
+              "(H2 practice %s, class %s)"
+              % ("LAUNDERS" if p2 == "0" else "does NOT launder", p2, c2))
+        return ok
+    if arm == "mode":
+        m1 = s.get("M1")
+        if m1 is None:
+            print("VERDICT: NOT DEMONSTRATED -- M1 is absent from the log")
+            return False
+        if not ok:
+            print("VERDICT: NOT DEMONSTRATED -- a control in this arm MISMATCHED "
+                  "above, so M1's reading is not about the launder")
+            return False
+        p1, c1 = get(m1, "practice", -1), get(m1, "class", -1)
+        print("VERDICT: in surf mode the prespeed load + jump %s (M1 practice %s, "
+              "class %s, arm zone %s)"
+              % ("ARMS CLEAN -- the launder reproduces" if p1 == "0"
+                 else "stays tainted", p1, c1, get(m1, "armzone", -1)))
+        return ok
     return ok
 
 
