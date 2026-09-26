@@ -304,16 +304,24 @@ def main():
 
     size, lines = generate(a.mb)
     before = slots_now()
-    secs = run(a.exe, a.timeout)
-    print("ran %s for %.0f s" % (a.exe, secs))
-    if not os.path.exists(LOG):
-        raise SystemExit("no log at %s -- was the cwd C:\\FTESurf?" % LOG)
-    ok = grade(LOG, a.control, size, lines, a.budget)
-    ok = writeback() and ok
-    cleanup_saves(before)
-    if not a.keep:
-        rmtree_loud(SCRATCH)
-        rmtree_loud(extra_dir())
+    # PATCH 441: IN A try/finally.  generate() puts a 6 MB scratch tree inside the
+    # GAMEDIR and the run leaves a save slot in a shared one, and both were removed
+    # by straight-line code after grade() -- so a timeout, a missing log or any raise
+    # in between left them where the next arm on this map would read them.  This is
+    # the one driver in tools/ that was shaped that way; the others already staged
+    # inside a try.  writeback() reads the scratch, so it stays above the cleanup.
+    try:
+        secs = run(a.exe, a.timeout)
+        print("ran %s for %.0f s" % (a.exe, secs))
+        if not os.path.exists(LOG):
+            raise SystemExit("no log at %s -- was the cwd C:\\FTESurf?" % LOG)
+        ok = grade(LOG, a.control, size, lines, a.budget)
+        ok = writeback() and ok
+    finally:
+        cleanup_saves(before)
+        if not a.keep:
+            rmtree_loud(SCRATCH)
+            rmtree_loud(extra_dir())
     return 0 if ok else 1
 
 
