@@ -155,10 +155,17 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   they cap nothing) and clears the box in about a second — BUT NOT ALWAYS, AND A
   JUMP IS THE WRONG GESTURE: on surf_4am a straight `+forward` from `zone_goto`
   STOPS 32 u inside the region (y 96 against a boundary at 64) so no run ever
-  starts and there is no sidecar; `run_rearmhop 1` re-arms on the FIRST jump out
-  ("start re-armed -- one jump out of the start"); the start rule refuses the
-  second ("hopped start -- one jump out of the start, or walk out"); and `+right`
-  alone only TURNS. Walk out, then prove the run with `cmd timer` reading
+  starts and there is no sidecar; the start rule refuses a chain ("hopped start --
+  one jump out of the start, or walk out"); and `+right` alone only TURNS.
+  SINCE PATCH 445 THAT TAG IS STICKY AND ONLY `!r` TAKES IT BACK — which is the
+  thing to know when an arm reads `hopped 1` three sections after the jump that
+  earned it. `run_rearmhop` (build 21's extra forgiveness: stand
+  `run_prestrafe_time` grounded and the tag lifts) **now defaults to 0**, and an
+  ARM no longer forgives either, so nothing a harness does incidentally will clear
+  it. The three clears are the `!r`/`!m`/`!s`/`!b` gesture, a respawn and a map
+  change — all of which zero the velocity, which is why they are safe. A `retry`
+  does NOT clear it any more: `hopped` is in the save format. Walk out, then prove
+  the run with `cmd timer` reading
   `running / recording 1` before anything depends on it, and read the body with
   `cmd viewpos` — since Patch 435 it also prints `velocity … horizontal N`, the
   ONLY server-side speed read there is (the hold publishes the SAVE's, the
@@ -485,6 +492,35 @@ bannered as superseded.)
   consistent across all three. Taint bits demote and never accuse:
   `TF_CHEAT/NOJOURNAL/NORULESET/NOPROFILE/NOMAP/NOCLOCK` in `sh_defs.qc`,
   consumed by surfd's `certifiable()`.
+- A FORGIVENESS HUNG ON ANYTHING `SV_TimerArm` TOUCHES IS A FORGIVENESS THE MAP
+  HANDS OUT. `SV_TimerArm` is reachable from ordinary map DATA, not only from a
+  gesture: 21 shipped maps have two abutting start regions whose seam re-arms on
+  every crossing, and 66 have a velocity-keeping `trigger_teleport` landing inside
+  a START region (both measured over the 1316-bsp corpus). Three attempts at the
+  hopped-start rule died on this before Patch 445, which is why the rule now hangs
+  its clear on a short, named list of callers instead of on a state change.
+- AND THE TEST THAT SETTLED IT IS "DOES THE CLEAR KEEP YOUR SPEED". A taint on a
+  pre-start attempt is only worth laundering if the prespeed the chain built
+  survives the laundering, so a clear paired with `velocity = '0 0 0'` cannot be an
+  exploit however reachable it is, and a clear that leaves the speed on is one
+  however narrow. That is checkable, where "is this reachable from map data" needs
+  a corpus census every time. Patch 445's three callers each zero or abandon the
+  velocity; `SV_TimerArm` does not, and that was the whole bug.
+- MAP ENTITY I/O CANNOT BECOME A CLIENT COMMAND, and that is what makes `!r` usable
+  as a rule. `SV_IOCommand`'s allow-list is exactly `say`/`echo`/`print`
+  (sv_entities.qc) and it runs them through `localcmd()` on the SERVER console, so a
+  map can make the server talk but cannot reach `ClientCommand` — which is the only
+  path to `SV_ZoneChatCommand`. Verify that allow-list before hanging any new rule
+  on a chat gesture; it is the single load-bearing fact under this one.
+- THE SAVE FILE IS AN UNTRUSTED INPUT TO THE RUN, and `state.txt` is plain text in
+  the player's own `data/saves` tree. Every taint bit the format carries — or fails
+  to carry — is a laundering channel: `run_t_hopped` was missing until Patch 445, so
+  one `retry` forgave a marked chain for free. The grammar is additive (a key-match
+  loop with defaults), so adding a field costs one line at each end and no version
+  bump. STILL MISSING and in BACKLOG: any check on the BSP behind the map NAME
+  (`map` is written and no reader matches it, while `infokey(world, "*mapcrc")`
+  already exists with a correct third verdict), the mover state, and the five
+  movevars the `SL_RowGrounded` probe judges a row with.
 - THE `.rec` GRAMMAR BLOCK over `SV_RecOpen` (sv_timer.qc) IS AUTHORITATIVE,
   currently FTESURF-REC 10 when the file holds a `pause` (retry, cold load,
   Multi-Session) and 9 otherwise. pm_recsim and pm_verify replay a v10

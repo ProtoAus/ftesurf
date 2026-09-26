@@ -107,6 +107,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   an arm -- or the hull test both sides. `sv_zones.qc`'s "SV_TimerArm is idempotent
   while armed" is the comment that stopped being true. sv_timer.qc SV_TimerArm,
   SV_TimerTryArm, the occupancy scan. Patch 443 review, round 4, cheater lens.
+  **PATCH 445 TOOK THE HOPPED-START HALF OUT OF THIS**, which is the half that was worth
+  anything to a cheater: the arm no longer clears `run_t_hopped`, so a chain looping
+  across a seam stays tagged and only `!r` (velocity zeroed) forgives it. The silent
+  re-arm itself is UNCHANGED and still zeroes `run_t_flags` and `run_t_jumps`, so this
+  entry stays open on its own terms -- the seam is still a re-arm nobody asked for.
 - **66 maps' own velocity-keeping teleports land inside a START region, which re-arms
   at whatever speed you arrive with.** `trigger_teleport_touch` with `VelocityMode`
   absent or 0 KEEPS velocity (a plain CS:S map has no such key), strips FL_ONGROUND,
@@ -120,16 +125,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   surf_wahey 6. Gesture: chain to speed anywhere, take the map's own reset teleport,
   arrive in the start box at full speed ARMED and laundered, leave. No cvars, no
   restriction on other players. Same review.
-- **A `retry` LAUNDERS a hopped start, because `run_t_hopped` is not in the save
-  format.** SV_SaveWriteState writes no `hopped` key, so a chain inside the start box
-  that has been correctly marked is forgiven for free by one keypress -- and the retry
-  also restores the velocity the chain built (the entry below). That pair is the
-  cheapest version of the prespeed attack and it needs no post-retry hop at all, which
-  is why turning the hop rule back on for a restored ARM buys nothing while it stands.
-  Recorded by the round-4 review of Patch 443, which is the reason that patch's startok
-  half was withdrawn. The fix is either the velocity gate in the entry below or
-  carrying the start state across the point; the format is additive, so a `hopped` key
-  costs a line at each end. sv_saveloc.qc SV_SaveWriteState / SV_SaveApplyState.
+  **PATCH 445 NARROWED THIS THE SAME WAY** and it matters more here, because a teleport
+  is the one path that carries the speed AND used to carry the forgiveness: the arm no
+  longer clears `run_t_hopped`, so a chain built before the teleport is still tagged on
+  arrival. What survives untouched is everything else -- the velocity, the stripped
+  FL_ONGROUND, the emptied padding ring and the `run_t_flags` zeroing -- so a player who
+  builds speed WITHOUT hopping (a ramp clip, a push) still arrives clean and fast. The
+  entry stands; only the hop-chain variant of it is closed.
 - **A ramp-clipped hop is neither counted nor judged.** `run_rampcontact` suppresses
   `jumped` in SV_TimerJumpWatch, so a hop whose rise came from a ramp clip never
   reaches the hopped-start test AND never increments `run_t_jumps`. On a start box with
@@ -137,16 +139,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   clips the rule cannot see. Pre-existing and independent of saves; found while
   checking whether a count-based rule could replace the dwell, which it cannot for this
   reason among others. sv_timer.qc SV_TimerJumpWatch, the `jumped` edge. Same review.
-- **The hopped-start rule's forgiveness is PRICED, not free, and one box re-entry
-  launders it completely.** `run_rearmhop` takes `run_t_hopped` back after 0.25 s of
-  ground dwell (sv_timer.qc:10141), which at `sv_friction 4` costs about a third of the
-  chain's speed -- so a chain re-arms clean at some speed rather than none. And leaving
-  the start box and re-entering it calls SV_TimerArm (:11691 -> :10373), which zeroes
-  run_t_flags, run_t_hopped and run_t_jumps and touches `.velocity` not at all:
-  chain to speed, step out, step back in, walk out clean and fast.
-  SV_SaveLocPickInZone's own essay already names the re-entry arm ("on a surf map
-  re-entering one while running ARMS you outright"). Pre-existing and independent of
-  saves, and it bounds what Patch 443's startok half buys. Same review.
+- **A box re-entry still launders `run_t_flags`, though no longer the hopped start.**
+  FIXED IN PART BY PATCH 445, and what remains is narrower than the entry it replaces.
+  Leaving the start box and re-entering it calls SV_TimerArm (SV_TimerTryArm ->
+  SV_TimerArm), which touches `.velocity` not at all -- so "chain to speed, step out,
+  step back in, walk out fast" still works. What it no longer does is come out CLEAN:
+  445 took `run_t_hopped` out of the arm's clear list, so the hop taint survives a
+  re-entry and only `!r` (which zeroes velocity) takes it back. `run_t_flags` is still
+  zeroed, so any TF_PRACTICE from another source is still laundered by the same edge --
+  that is the 46-field overreach entry below rather than a hopped-start bug.
+  SV_SaveLocPickInZone's own essay names the re-entry arm ("on a surf map re-entering
+  one while running ARMS you outright"). Patch 443 round-4 review; narrowed by 445.
 - **The retry placement is a second copy of the start-box velocity restore, with no
   gate on it at all.** `SV_SaveApplyState`'s retry branch places the body from the
   file's `origin`/`velocity` (sv_saveloc.qc:1194-1210) and restores the flags
@@ -157,11 +160,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   velocity), `retry` there, and the restart hands back ARMED + clean + that velocity,
   up to `sv_maxvelocity`. Prespeed injection into a clean armed attempt, repeatable.
   Its only brake is that `retry` refuses with more than one player on the lobby.
-  Patch 441 review. STILL OPEN AFTER PATCH 443, and narrower by one clause: that patch
-  turned the hopped-start rule back on for the restored ARM, so the chain the entry
-  above describes is judged now -- but this entry is about the VELOCITY the placement
-  hands back, which no gate on the retry path reads at all. The rule does not speak to
-  a player who never jumps.
+  Patch 441 review. **STILL OPEN, AND IT IS NOW THE FIRST THING TO CLOSE IN THIS
+  FAMILY.** The previous version of this line said Patch 443 "turned the hopped-start
+  rule back on for the restored ARM, so the chain the entry above describes is judged
+  now" -- FALSE, round 4 withdrew that half and `SV_SaveApplyState` still sets
+  `run_t_startok = TRUE` for every restore. Patch 445 then closed the OTHER two
+  prerequisites the withdrawal named (the save format carries `hopped`, and an arm no
+  longer forgives), which leaves this entry as the single remaining reason judging a
+  restored arm is pointless: the velocity the placement hands back is read by no gate
+  on the retry path at all, and the rule does not speak to a player who never jumps.
 - **SL_RowGrounded's three residuals, and one of them is that a refusal leaves no
   artifact.** Patch 443 closed the airborne-row hole (the gate asked about SPEED and
   never about SUPPORT); what it does NOT do is the mover's last two steps. The probe
@@ -173,6 +180,35 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   event stream, so a player who loses a rank to it leaves nothing a reviewer can read
   and the HUD shows `segmented` with no reason. A one-line `sprint` when the gate
   refuses on support alone would close the last one. sv_saveloc.qc SL_RowGrounded.
+  (Both engine citations above had drifted and are corrected in the source: the
+  func_slide demotion is `pm_source.c:2102`, not :2119.)
+- **AND IN PRODUCTION THAT dprint DOES NOT EXIST, so neither a refusal nor a GRANT is
+  observable on the fleet.** `dprint` prints only when `developer` is set and
+  `default.cfg` never sets it, so SL_RowGrounded's one and only record of what it
+  decided is absent on all twelve lobbies. The same two-valued return also GRANTS the
+  laundering, so every "cannot see" that resolves TRUE is an unlogged grant of a clean
+  rankable attempt. This is the worst of the probe's residuals because it defeats the
+  remedy for all the others -- you cannot audit a check whose output is compiled out by
+  configuration. A `SV_CensusAdd`-style counter, or the `sprint` the entry above wants,
+  would make it readable; the third verdict below is the real fix. Patch 443 round 5,
+  lens B. sv_saveloc.qc SL_RowGrounded's dprint.
+- **SL_RowGrounded has TWO verdicts where CLAUDE.md requires THREE, and this is the
+  entry the rest of its family reduces to.** Embedded, a NaN row origin, a
+  `SOLID_BSPTRIGGER` support, a floor deleted by `World_PortalCSG`, a brush disabled
+  since the save was taken, and every moved movevar all collapse to the same `FALSE`.
+  The repo's own lesson (Patch 421's angle check, 422's absent receipt, 424 twice) is
+  that the fix is never a better threshold, it is the third answer -- here "the row
+  cannot be judged", which must neither grant nor refuse. Note the polarity differs
+  from 421's: this check's two-valued failure GRANTS rather than accuses, so the cost
+  is a laundered run instead of a false fault. Patch 443 round 5, lens B.
+- **`MOVE_NOMONSTERS` includes `SOLID_PORTAL`, and `World_PortalCSG` can delete the
+  world's floor hit.** A row standing on real floor inside a portal's CSG volume reads
+  `frac 1.000` and is refused -- a false refuse, conservative, but a distinct fourth
+  way for the probe to mean "could not see" while saying "no". Also: the trace's content
+  mask is selected from the passed entity's own solidity, so the call is correct only
+  because a player is `SOLID_SLIDEBOX`; nothing in the signature says so, and a future
+  caller handing it a non-player entity gets a different mask with no diagnostic. Both
+  named in the source now. Patch 443 round 5, lens B. sv_saveloc.qc SL_RowGrounded.
   Patch 443 review.
   THE func_slide ONE IS CONFIRMED FROM THE ENGINE SIDE, and it is worth knowing that
   someone already thought about it: engine world.c's forced-contents path deliberately
@@ -188,6 +224,85 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   under `developer`, so a rank KEPT because the rule declined to judge leaves no
   artifact either -- the mirror image of the refusal above. The `phase:` line in
   `cmd timer` has three free varargs slots and is where both belong.
+- **The Build 47 gate's forced edge is a LATCH OF UNBOUNDED LIFETIME, not an edge, and
+  the arm it authorises happens to a DIFFERENT BODY.** `run_t_azone = -1` is written
+  after five conditions evaluated at load time against a body at rest. On a bare
+  `sl_load` the arm lands next tick, which is what four paragraphs of the gate's essay
+  describe. THE SHIPPING CLIENT DOES NOT SEND A BARE `sl_load`: `cl_saveloc.qc` sends
+  `sl_load` and `sl_hold` together on one keypress, the hold re-places the origin every
+  tick under `MOVETYPE_NONE`, so the latch sits there for as long as the key is held and
+  the arm fires on the tick after the RELEASE -- after `SV_SaveLocRelease` has handed the
+  saved velocity back. So the gate certifies "at rest, in a start box, standing" and
+  then launders an attempt belonging to a moving body an arbitrary time later. Patch 435
+  is where this wants fixing, not 443: the gate should re-ask at the moment it acts, or
+  refuse to survive a hold. Patch 443 round 5, lens C. sv_saveloc.qc SV_SaveLocLoad.
+- **The gate's `!= TS_RUNNING` admits `TS_FINISHED`, so loading a finished save in a
+  start box ARMS OVER THE RESULT.** `SV_SaveApplyState` treats FINISHED deliberately and
+  says so -- "there is nothing left to continue, only a result to look at" -- and the
+  Build 47 gate one function later does not: its state test excludes only TS_RUNNING, so
+  a restored FINISHED state passes, the edge is forced, and SV_TimerArm re-arms, taking
+  `run_t_startseg`, `run_t_state` and the rest with it. The finishing time the save was
+  taken to keep is replaced by a fresh armed attempt. The `run_t_bhopjump` branch in
+  SV_TimerTryArm guards `TS_RUNNING || TS_FINISHED` together, which is what the gate's
+  test should have matched. TRACED IN CODE, NOT MEASURED -- no arm loads a FINISHED save
+  at a start box today, and that is the first thing to build. Patch 443 round 5.
+- **The gate borrows 46 fields to clear five.** Its essay said "all six fields" and
+  argued that reusing SV_TimerArm beats a parallel clear because the part is small.
+  SV_TimerArm writes **46 distinct fields** (counted over its body: 25 `run_t_*`, 12
+  `run_st_*`, the rest), so a load at rest in a start box runs all of them and only
+  about five are what the gate is for. The conclusion still holds -- a parallel clear
+  would drift -- but for the opposite reason, and the overreach is real: the arm also
+  resets the stage machine, the checkpoint high-water mark, the PB lookup and the tick
+  counters for a gesture whose whole claim is that you have not started yet. A narrow
+  `SV_TimerLaunderStartLoad` that names its five is the shape; it needs the drift risk
+  answered, which is why this is an entry and not a patch. Patch 443 round 5, lens C.
+- **`SV_RecDiscard` has already thrown the recording away before the deferred arm clears
+  `TF_RECORDING` for it.** Both run on the load path, in that order, so the arm clears a
+  flag describing a buffer that no longer exists. Consistent today only by accident of
+  ordering -- and `SV_SaveApplyState` already reads `wasrec` one function up precisely
+  because this hazard bites there. An invariant that holds by ordering is a landmine:
+  anything that moves the arm earlier, or the discard later, leaves the HUD claiming a
+  recording with no buffer. Named at the gate now. Patch 443 round 5, lens C.
+- **A togglable `SOLID_BSP` brush whose box reaches a start zone is a FAIL-OPEN, and no
+  shipped map has one.** `SL_RowGrounded` traces the world as it is at LOAD time and the
+  save records nothing about the world at WRITE time, so: hover one unit above where a
+  `StartDisabled` brush's top face will be, inside a start slab, save at the apex, let
+  the map's own button fire the `Enable`, load. The probe finds `nz 1.000` at `frac ~0`,
+  grants, and the forced arm launders. MEASURED over the shipped corpus
+  (`tools/census/togglesolid.py`, 1316 bsps, 535 zoned): **grade 3 (contained) is ZERO**,
+  and the single grade-2 row is the AABB trap in person -- `surf_hourglass`'s skybox
+  shell, whose box spans the whole map while its faces are ~16000 u away. The
+  enabled-by-IO path is a real zero and not a dead branch: 184 maps carry an
+  Enable/Disable/Toggle output and 88 brush entities are named by one, none reaching a
+  start. So the mechanism is sound and has no instance to exploit today; it stays here
+  because nothing stops a future map adding one. Patch 443 round 5, lens B.
+- **A save is keyed by map NAME, and the `map` key it writes is never read.** Counted
+  over `SV_SaveWriteState`: 37 keys plus the FTESURF magic, of which `clock`, `created`
+  and `map` are written and matched by no reader. The first two are deliberate and say so
+  at their own `fputs`. `map` is not: nothing checks the BSP behind the name, there is no
+  mover state and no movevar snapshot, and `state.txt` is plain text in the player's own
+  `data/saves` tree. `infokey(world, "*mapcrc")` **already exists in this tree with the
+  third verdict done correctly** (SV_MapForeign, sv_timer.qc), so the fix needs no map
+  cooperation and no format bump -- the grammar is additive. Same family as the `hopped`
+  key Patch 445 added, and the next one to close. Patch 443 round 5, lens B.
+- **The probe's five movevars are pinned within an install but NOT across the save's
+  write -> read boundary.** All five are in `pms_lockedmovevars` under
+  `pm_lockmovement 1`, so they are genuinely locked live -- but the canonical value is
+  whatever `default.cfg` said at boot, and a save is explicitly designed to outlive
+  installs. A `state.txt` written under the 72/54 hull FTESurf shipped up to build 40 is
+  probed today with 62/45, and the row is judged by a rule the mover that wrote it never
+  ran. The save would have to carry the five, which is the same "the format is missing a
+  field" shape as the two entries above. Patch 443 round 5, lens B.
+- **The dwell the hopped-start rule grades is BLIND after any placement into a fresh
+  edict, and this is a LIVE defect rather than one the withdrawal avoided.**
+  `run_t_groundsec` is 0 after a `retry` (the progs are re-initialised) and after an arm
+  (SV_TimerArm deliberately does not reset it), and under `pm_autobunny` with the button
+  held QC never observes `FL_ONGROUND` at all -- so the dwell reads 0, which means "a
+  jump already taken". It was recorded as a reason Patch 443's withdrawn half was
+  unsafe; round 5 showed it is reachable through the KEPT half too. Today it decides
+  nothing only because the rule is off for a restored arm, so it sits one `startok` away
+  from accusing an honest player of the one gesture the rule exists to permit. Fix it
+  where it is caused -- at the placement -- not by widening the rule. Patch 443 round 5.
 - **The save-state LOADER never calls `SV_SaveOriginSane`, and a NaN origin passes
   every zone test.** Only the `!r` picker validates (sv_saveloc.qc SV_SaveLocPickInZone);
   `SV_SaveLocPlace` does `setorigin(e, rec_sl_org[r])` on whatever the row holds, and
