@@ -1127,7 +1127,7 @@ def check_rec(path, verbose=False):
             # A save made right after a `spec 0` puts its rewind mark there, and
             # the rows after a warm rewind run on from the live counter: only >=
             # holds.  A cold one's `pause` came first and took the check
-            # (SV_SaveApplyState, sv_saveloc.qc:1111).
+            # (SV_SaveApplyState).
             spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
         elif kind == "retry":
             # Build 18.  The MAP was restarted underneath the run -- `retry` --
@@ -2450,7 +2450,7 @@ def check_rec(path, verbose=False):
     # WHAT THE ANGLE JOIN MUST NOT JUDGE, carried beside the stream it judges.
     #
     # GHOST WINDOWS, because across one the two files disagree BY DESIGN and the
-    # sidecar's own writer says so (cl_replay.qc:1730): Ghost_InputFrame pins
+    # sidecar's own writer says so (Rec_ViewPut's caller): Ghost_InputFrame pins
     # input_angles to the body's frozen aim while Rec_ViewSample keeps writing
     # the flying camera.  TF_GHOST is not a taint -- a ghosted run is still a
     # run -- so without this a 0.6 s detach in a 60 s run is a FAULT on an
@@ -2460,7 +2460,7 @@ def check_rec(path, verbose=False):
     # AND THE RECORDS THAT MOVE THE TICK EPOCH.  The join is
     # `view.ticks == in.mt - instart`, but the sidecar's column is
     # STAT_FS_TIMERTICKS, which subtracts frozen ticks and carries restored ones
-    # (SV_TickCounted, sv_timer.qc:10607).  A resume, a retry, a pause or a v10
+    # (SV_TickCounted).  A resume, a retry, a pause or a v10
     # session moves that epoch and the header's `instart` no longer describes
     # it; a mis-joined row is an arbitrary angle difference, which the loose
     # rule survives and a 0.05 deg rule does not.  No v9 pair in the corpus has

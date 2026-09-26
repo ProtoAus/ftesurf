@@ -123,7 +123,7 @@ FIELDS = {
     "rowspeed":  r"slot 902(?:\s+-?\d+){3}\s+(\d+) u/s",
     # THE POSITIVE CONTROL FOR `cancel: absent`, and exactly what it is worth --
     # the first draft of this comment overstated it.  The line comes from
-    # SV_TimerClassSay (sv_timer.qc:8940) by way of SV_TimerPractice, behind two
+    # SV_TimerClassSay by way of SV_TimerPractice, behind two
     # guards: the run must be RUNNING, and the class must be an UPGRADE, so it
     # prints once.  It is therefore NOT unconditional and NOT independent of C1's
     # premise -- a second load, or a load into a run already announced segmented,
