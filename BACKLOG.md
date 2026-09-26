@@ -308,25 +308,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   grades the write half of the sidecar reader: the driver reports NOT MEASURED.
   cl_replay.qc Rec_ViewSaved, cfg/test/p438view.cfg R2, tools/p438view.py
   writeback(). Patch 441.
-- **p437win's W6 only covers a line job reading the SAME bytes as the open
-  replay.** The arm proves the job leaves the replay's `end/window/cut/view/
-  events` alone, but both files are copies of one recording, so a job whose file
-  has different `stage` ticks -- or no `end` record, which would leave a
-  borrowed finish tick at 0 -- is not covered. A second fixture with different
-  boundaries would close it. cl_watch.qc Watch_StageSpan / Watch_LineJobStart.
-  Patch 441.
-  AND THE SECOND FIXTURE HAS TO BE SMALL, which is the part that makes this more
-  than a copy-and-edit: on cheat.rec (20290 samples) the job's pass one never
-  reaches the `stage` records at all -- WT_LJ_PASS1 is 6000 lines a frame and the
-  filter is the line's first byte, which every sample row fails -- so it falls back
-  and refuses a window, and a file with different boundaries would read exactly
-  like one with the same boundaries. p437win.py's own header measured that. So the
-  fixture wants ~3000 samples with its own `stage` records inside that reach, no
-  `end`, and a `_pb` tag (a local board cannot line an RT_LOBBY row -- Scores_LineKey
-  returns "" for one, which is what W5a grades). Then the control's re-cut lands on
-  the OTHER file's numbers, which is a reading W6 cannot produce. Traced 2026-09-26
-  while closing Patch 443; not built.
-
 ## Cosmetic / low
 
 - The replay line's alpha ramps from 1 to the `ahead` alpha across the one sample

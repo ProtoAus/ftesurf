@@ -39,6 +39,20 @@ FIXTURE = os.path.join(MAPDIR, "0000437_p437win_run.rec")
 # The stage-1 board row resolves its own directory, so the fixture goes there too.
 STAGEDIR = os.path.join(GAMEDIR, "data", "runs", "surf_4am", "stage_1")
 STAGEL = os.path.join(STAGEDIR, "0000483_p437win_pb.rec")
+# PATCH 443: the second fixture BACKLOG asked for, and the part that entry did not
+# carry -- it has to be SMALL.  On cheat.rec (20290 samples) the job's pass one never
+# reaches the `stage` records at all: WT_LJ_PASS1 is 6000 lines a frame and the filter
+# is the line's first byte, which every sample row fails, so the job falls back and
+# refuses a window and a file with DIFFERENT boundaries reads exactly like one with the
+# same boundaries.  3000 samples puts its records inside that reach, and `stage 1 900`
+# against cheat.rec's `stage 1 483` makes the two spellings answer differently: leg 1's
+# span is [0, 900] = 0.0000..13.5000 here and 0.0000..7.2450 there.  No `end` record
+# either, which is the other half of the entry -- the job's own wt_lj_endt then stays 0.
+SMALL = os.path.join(STAGEDIR, "0000900_p443win_pb.rec")
+SMALL_SAMPLES = 3000
+SMALL_STAGE = ((1, 900), (2, 1800))         # (segment, tick), in file order
+SMALL_WIN = (0.0, 900 * 0.015)              # 0.0000..13.5000, what W7's job must find
+
 CFG = "cfg/test/p437win.cfg"
 LOG = os.path.join(GAMEDIR, "logs", "p437win.log")
 
@@ -68,8 +82,44 @@ CONTROL_W = MAIN_W
 STAGE1_ROW = "no recording behind that row"
 
 
+def generate_small():
+    """The small fixture, built from cheat.rec's OWN header and its own sample lines --
+    a synthetic route would be a second thing to keep in step with the format, and the
+    reason this arm uses a real recording in the first place is that the board resolves
+    real files.  Only three things change: fewer samples, different `stage` ticks, and
+    no `end` record."""
+    head, samples = [], []
+    with open(SRC, "r", errors="replace") as fh:
+        for line in fh:
+            if not head or head[-1].strip() != "begin":
+                head.append(line)
+                continue
+            # A sample row starts with its time; records start with a letter.
+            if line[:1].isalpha():
+                continue                    # drop cheat.rec's own stage/end records
+            samples.append(line)
+            if len(samples) >= SMALL_SAMPLES:
+                break
+    if head[-1].strip() != "begin":
+        raise SystemExit("%s has no `begin` line -- the format changed" % SRC)
+    if len(samples) < SMALL_SAMPLES:
+        raise SystemExit("%s holds only %d samples" % (SRC, len(samples)))
+    at = {}
+    for seg, tick in SMALL_STAGE:
+        at.setdefault(min(tick + 4, SMALL_SAMPLES - 1), []).append(
+            "stage %d %d%s" % (seg, tick, "\n"))
+    os.makedirs(STAGEDIR, exist_ok=True)
+    with open(SMALL, "w", newline="") as fh:
+        fh.writelines(head)
+        for i, line in enumerate(samples):
+            fh.write(line)
+            for rec in at.get(i, ()):
+                fh.write(rec)
+    return sum(1 for _ in open(SMALL, errors="replace"))
+
+
 def stage():
-    for d in (FIXTURE, STAGEL):
+    for d in (FIXTURE, STAGEL, SMALL):
         if os.path.exists(d):
             raise SystemExit("refusing: %s already exists (a previous run did not "
                              "restore)" % d)
@@ -77,13 +127,17 @@ def stage():
         raise SystemExit("no source recording: %s" % SRC)
     shutil.copyfile(SRC, FIXTURE)
     shutil.copyfile(SRC, STAGEL)
+    n = generate_small()
+    print("generated %s (%d lines, stage %s, no end record)"
+          % (os.path.relpath(SMALL, ROOT), n,
+             " ".join("%d@%d" % (sg, tk) for sg, tk in SMALL_STAGE)))
 
 
 def restore(keep):
     if keep:
-        print("--keep: fixtures left at %s and %s" % (FIXTURE, STAGEL))
+        print("--keep: fixtures left at %s, %s and %s" % (FIXTURE, STAGEL, SMALL))
         return
-    for d in (FIXTURE, STAGEL):
+    for d in (FIXTURE, STAGEL, SMALL):
         if os.path.exists(d):
             os.remove(d)
 
@@ -233,6 +287,29 @@ def grade(log, pre, lineleg=1):
     else:
         say("W6 a line job under the open replay",
             "unchanged" if a == b else "CHANGED %s -> %s" % (a, b), "unchanged", a == b)
+    # W7 (Patch 443): the SAME identity, with the job reading a file whose boundaries
+    # differ from the open replay's -- which is what W6 cannot show, both of its files
+    # being copies of one recording.  The job's window is graded too, because a job
+    # that found NO window would leave the replay alone for a reason that is not the
+    # fix: it is the reading the BACKLOG entry's own "it has to be small" is about.
+    say("W7 the row resolved the second fixture",
+        "yes" if "0000900_p443win_pb.rec" in s.get("W7b", "") else "no", "yes")
+    w7 = winof(s.get("W7b"))
+    say("W7 the second file's line window", "%s..%s" % w7,
+        "~%.4f..%.4f" % SMALL_WIN,
+        lambda txt: w7[0] != "<absent>" and abs(float(w7[0]) - SMALL_WIN[0]) < 1e-3
+        and abs(float(w7[1]) - SMALL_WIN[1]) < TICK)
+    a7, b7 = statusof(s.get("W7a")), statusof(s.get("W7b"))
+    if a7[0] == "<absent>" or b7[0] == "<absent>":
+        say("W7 the replay's state, read twice", "<absent>", "two status blocks", False)
+    elif pre == 441:
+        say("W7 a job on a DIFFERENT file under the replay",
+            "unchanged" if a7 == b7 else "CHANGED %s -> %s" % (a7, b7),
+            "CHANGED (the wipe must reproduce)", a7 != b7)
+    else:
+        say("W7 a job on a DIFFERENT file under the replay",
+            "unchanged" if a7 == b7 else "CHANGED %s -> %s" % (a7, b7),
+            "unchanged", a7 == b7)
     txt = open(log, "r", errors="replace").read()
     # PATCH 441: `QC (error|Error)` matches nothing the engine prints -- 0 hits over
     # all 1550 logs in ftesurf/logs.  PR_StackTrace's frame line is what a QC fault
