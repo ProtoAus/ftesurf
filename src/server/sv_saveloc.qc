@@ -185,10 +185,13 @@ float  rec_sl_quiet;
 // NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` IS a pure
 // velocity edge (sv_timer.qc:9835) and a restored +302 satisfies it -- which is why
 // the arm reads `running` one frame after the load on a start-on-jump map.  What
-// keeps run_t_hopped clear is that every load sets run_t_startok (SV_SaveApplyState sets it for every load it can read), and the
-// whole hop block is behind `if (!e.run_t_startok)` (sv_timer.qc:9986).  A reviewer
-// caught the wrong mechanism; BACKLOG.md carries the startok half, which is bigger
-// than this patch.  The paragraph above only ever reasoned about a
+// kept run_t_hopped clear was that EVERY load set run_t_startok, with the whole hop
+// block behind `if (!e.run_t_startok)` (sv_timer.qc:9986).  A reviewer caught the
+// wrong mechanism, and PATCH 443 then fixed the mechanism: a non-RUNNING restore no
+// longer settles the start, so the block does run.  The verdict is still clear here,
+// now for a reason worth knowing -- the DWELL.  The body was standing before the
+// load, so run_t_groundsec is old, `dwell < want` is false, and a restored rise is
+// not read as a hop.  The paragraph above only ever reasoned about a
 // GROUNDED body: friction is horizontal, and so was the test.  Measured both ways,
 // cfg/test/p442jump.cfg, including that a REAL save taken standing still arms.
 float(float r) SL_RowSpeed =
@@ -196,6 +199,78 @@ float(float r) SL_RowSpeed =
 	local vector v;
 	v = rec_sl_vel[r];
 	return vlen(v);
+};
+
+/*
+  PATCH 443: ...AND IT HAS TO BE STANDING ON SOMETHING.
+
+  The gate SL_RowSpeed feeds asks whether the save was taken AT REST, and 442 made
+  that question cover all three components.  A row carries no GROUND state at all,
+  though, and SV_SaveLocLoad clears FL_ONGROUND for every load -- so a body hanging
+  in mid-air inside the start slab satisfied "at rest" exactly as well as one
+  standing on the floor, and the load armed it CLEAN.  What that buys is the fall:
+  up to the slab's height, 160 u on bhop_eazy and up to 189 u of authored
+  destination elsewhere, free, because the clock does not start until the hull
+  leaves the box.  Deterministic ways to be off the ground under 1 u/s are in
+  BACKLOG.md's entry -- water, a ladder, a jump into a low ceiling, a tuned apex.
+
+  WORSE, IT DEFEATED THE ACCIDENT THAT PROTECTS MOST MAPS.  Patch 415's `%.4f`
+  rounding puts a GROUNDED placed body 0.00005 below the slab on 6 of 35 authored
+  regions, where no scan can see it; an airborne row's z is genuinely inside it.
+
+  THE ENGINE'S OWN PROBE, NOT A NEW ONE.  pm_groundtracedist and
+  pm_standablenormal are what CategorizePosition uses (engine pm_source.c,
+  PMSrc_GroundTraceDist / PMSrc_Standable), with the engine's own fallbacks for
+  when the cvars are unset, so this cannot drift from what the mover means by
+  standing on a surface.  The hull is built from the ROW's duck bit rather than
+  e.maxs: SV_SaveLocPlace only sets run_forceduck and the engine applies it in the
+  NEXT pmove, so e.maxs here is the hull the player had before the load.
+
+  FROM ONE UNIT UP, which is the only part that is not the mover's spelling, and
+  it is the rounding again: a grounded save's rounded origin can land epsilon
+  INSIDE the floor, and a trace that starts there reads startsolid instead of a
+  plane.  Starting above it reads the floor as a plane in both cases.  Deeper than
+  a unit is a body embedded in something, which is contact by any reading and gets
+  the fail-open answer -- the honest gesture Build 47 exists for must not break.
+
+  THE FAIL DIRECTION IS A PRACTICE RUN, NEVER AN ACCUSATION: a row this refuses
+  keeps the load's TF_SEGMENT|TF_PRACTICE, which is what a stitched attempt is.
+  The residual, stated rather than left to be found: an honest save wedged at rest
+  on a ramp too steep to stand on keeps its taint.  Rare -- start boxes sit on flat
+  platforms, and the census's authored destinations are at the floor -- and it
+  costs a player a rank, not a reputation.
+*/
+float(entity e, float r) SL_RowGrounded =
+{
+	local vector o, mn, mx;
+	local float d, sn, ok;
+
+	o  = rec_sl_org[r];
+	mn = PM_HULL_MINS;
+	mx = rec_sl_duck[r] ? PM_DUCK_MAXS : PM_HULL_MAXS;
+
+	d = cvar("pm_groundtracedist");
+	if (d <= 0)
+		d = 2;                          // PMSRC_GROUND_TRACE_DIST
+	sn = cvar("pm_standablenormal");
+	if (sn <= 0)
+		sn = 0.7;                       // PMSRC_STANDABLE_DEFAULT
+
+	tracebox(o + '0 0 1', mn, mx, o - [0, 0, d], FALSE, e);
+	if (trace_startsolid)
+		ok = TRUE;
+	else if (trace_fraction == 1)
+		ok = FALSE;
+	else
+		ok = (trace_plane_normal_z >= sn);
+
+	// The subject saying what it decided and what it saw, which is what an arm can
+	// grade: without it, a row this refuses and a row it never reached read the same
+	// in the log, and a fixture accidentally EMBEDDED in a ceiling would take the
+	// startsolid branch and pass an arm written to measure the airborne one.
+	dprint(sprintf("save: row %g support %g at z %.4f (solid %g frac %.3f nz %.3f)\n",
+	               r, ok, o_z, trace_startsolid, trace_fraction, trace_plane_normal_z));
+	return ok;
 };
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
@@ -1307,8 +1382,49 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  this false would put a 0.4-second window at the far end of a two-minute run
 	  in which a hop could mark it practice.  Saying so outright is cheaper than
 	  reasoning about that window.
+
+	  PATCH 443: A RESTORED RUN, NOT A RESTORED ARM -- and build 19's sentence is
+	  the test, so it is now written as one.  `st` is the restored state: TS_RUNNING
+	  is the case the paragraph above describes and keeps its answer, and the
+	  0.4-second window it is worried about is still closed.  TS_ARMED and TS_IDLE
+	  are not restored runs at all -- the start has NOT happened, it is the next
+	  thing that will -- and settling it here switched the whole build 19/20/21
+	  rule off for that attempt, since the block is behind `if (!run_t_startok)`
+	  (sv_timer.qc:9986) and only SV_TimerArm clears it again (:10509).
+	  WHAT THAT COST, and it is why this is a ranking fix and not tidying: a
+	  `retry` restores run_t_flags, dirty and cheat verbatim and calls no
+	  SV_TimerStitched, so a clean ARMED attempt comes back clean and RANKABLE --
+	  with the hop rule off, an unbounded bhop chain inside the start box was free.
+	  One keypress, no cheats, no cvars.  A load is practice and paid nothing.
+	  AND THE AIR PHASE WITH IT, WHICH IS BUILD 20'S FINDING AT A SECOND
+	  PLACEMENT.  run_t_airsec survives a restore carrying the timestamp of the
+	  fall that preceded it, and the settle reads `now - airsec >= run_t_settle`
+	  -- so clearing startok without clearing this would hand it straight back on
+	  the next airborne tick.  Zero rather than now, and it heals itself: the
+	  phase-clock writer re-stamps it (sv_timer.qc, the `if (ong)` pair at the
+	  bottom of SV_TimerJumpWatch).  run_t_groundsec is deliberately left, for
+	  the reason SV_TimerArm gives for leaving it: zero there reads as dwell 0,
+	  i.e. a hop, and it would flag the most ordinary start there is.
+	  GATED ON run_t_startstrict BECAUSE SV_TimerArm'S CLEAR IS (sv_timer.qc:10539)
+	  -- one rule, one spelling, since a placement that cleared more than the arm
+	  does is the drift this file keeps writing essays about.  The residual is
+	  named rather than left to be found: at `run_starthop_strict 0` an AIRBORNE
+	  non-RUNNING restore settles on its stale air phase and this half is inert.
+	  A GROUNDED one is not, at either setting -- airsec is 0 on the ground, so the
+	  airborne branch cannot fire, and the other two need TS_RUNNING or a ramp.
+	  NOT A NEW REQUIREMENT ON THE PLAYER.  A start-box load AT REST already ends
+	  up here -- the Patch 435 gate forces the arm edge, SV_TimerArm runs one tick
+	  later and clears startok itself -- so this makes the other placements agree
+	  with the one that already did, rather than inventing a rule for them.
 	*/
-	e.run_t_startok  = TRUE;
+	if (st == TS_RUNNING)
+		e.run_t_startok = TRUE;
+	else
+	{
+		e.run_t_startok = FALSE;
+		if (run_t_startstrict)
+			e.run_t_airsec = 0;
+	}
 
 	/*
 	  TF_RECORDING and TF_FROZEN are NOT restored from the file.
@@ -2560,10 +2676,13 @@ void(entity e, float n) SV_SaveLocLoad =
 	// exists to arm a RESTORED save at rest -- forcing the edge would undo the
 	// latches SV_SaveApplyState put back and hand the taint-clearing arm straight
 	// back.  You start that run by leaving the box and entering it, as anywhere.
+	// Patch 443: AT REST IS TWO QUESTIONS, and the second one is SL_RowGrounded's
+	// essay -- a body hanging in the slab is as still as one standing in it.
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
 	if (SL_RowSpeed(r) < SL_ARM_SPEED)
+	if (SL_RowGrounded(e, r))
 		e.run_t_azone = -1;
 
 	/*
