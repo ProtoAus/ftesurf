@@ -240,7 +240,23 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   recording from where it is; it just does not rejoin the saved prefix". Patch
   434's branch then discards that recording (fclose + fremove of the part file)
   and Patch 441 voids the run with it. One of the two is wrong and the difference
-  is a cancelled lobby run, live since the 434-438 deploy. MEASURABLE LOCALLY:
+  is a cancelled lobby run.
+  HOW LIVE, NARROWED BY READING (2026-09-26, while closing Patch 443; the entry
+  said "live since the 434-438 deploy" and that is wider than the code allows).
+  The BUILD 66 refusal is reached only when the save carried NO stream snapshot --
+  `sb = rs_bytes` is 0, i.e. no `recbytes` key -- because a save WITH one goes to
+  SV_RecRewindStream instead. SV_RecSnapshot returns 0 in five cases, and four are
+  not live: no file handle, nothing recorded yet, `!checkbuiltin(fcopyrange)` (this
+  fork HAS it, engine pr_cmds.c:12471), a part file over FS_RECCOPY_MAX (256 MB,
+  out of reach like the Multi-Session 512 MB trigger), and a failed buf_create. So
+  on a healthy lobby a mid-run save always carries a snapshot. What IS reachable is
+  a save written by a PRE-375 build, which has no `recbytes` key at all, and a
+  snapshot skipped for one of those five reasons. ALSO CHECKED AND SOUND: the
+  queued-copy race the Patch 441 comment implies ("a positive count for a copy it
+  has only QUEUED") cannot reach a load -- SV_RecRewindStream calls SV_RecCopyFlush
+  before it reads anything (sv_timer.qc:5706). The arm is still worth building, for
+  the pre-375 save and to settle which of the two behaviours is right.
+  MEASURABLE LOCALLY:
   `rec_stream 1` forces streaming off a lobby (sv_timer.qc SV_RecStreams), so an
   arm can drive it on a listen server -- which is also what makes this a to-do
   rather than a guess. Both reviewers of Patch 441 named it independently.
@@ -270,17 +286,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   borrowed finish tick at 0 -- is not covered. A second fixture with different
   boundaries would close it. cl_watch.qc Watch_StageSpan / Watch_LineJobStart.
   Patch 441.
+  AND THE SECOND FIXTURE HAS TO BE SMALL, which is the part that makes this more
+  than a copy-and-edit: on cheat.rec (20290 samples) the job's pass one never
+  reaches the `stage` records at all -- WT_LJ_PASS1 is 6000 lines a frame and the
+  filter is the line's first byte, which every sample row fails -- so it falls back
+  and refuses a window, and a file with different boundaries would read exactly
+  like one with the same boundaries. p437win.py's own header measured that. So the
+  fixture wants ~3000 samples with its own `stage` records inside that reach, no
+  `end`, and a `_pb` tag (a local board cannot line an RT_LOBBY row -- Scores_LineKey
+  returns "" for one, which is what W5a grades). Then the control's re-cut lands on
+  the OTHER file's numbers, which is a reading W6 cannot produce. Traced 2026-09-26
+  while closing Patch 443; not built.
 
 ## Cosmetic / low
 
 - The replay line's alpha ramps from 1 to the `ahead` alpha across the one sample
   segment after the playhead instead of stepping (cl_lines.qc Line_Feed).
-- cl_chat.qc Chat_Draw says its shadow is "like the rest of the HUD's text"; no
-  other HUD text was shadowed when that was written (HUD_Text drew plain).
-  Patch 440 gave the mono face an optional ring and shadow of its own, so the
-  sentence is history rather than a contrast; the cost note stands.
-  The shadow costs ~1.5 us a row (a second drawstring, measured 2.0 -> 3.5 us for
-  62 chars).
 
 - **Console notify on screen tints unrelated HUD text to the console's ^7 white
   when that text is drawn in extra passes.** engine/gl/gl_font.c's font batch
