@@ -83,6 +83,60 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   rest. `SV_WatchRelease` (sv_saveloc.qc:3004-3020) restores only the movetype and
   never hands velocity back, unlike SV_SaveLocRelease, so this is worth the hang
   rather than a speed. Same review.
+- **CROSSING THE SEAM BETWEEN TWO ADJACENT START REGIONS RE-ARMS SILENTLY, and 21
+  shipped maps have such a seam.** `SV_ZoneOcc` is a POINT test at the shipped
+  `run_zone_hull 1` while the start test `SV_ZoneIn` is the HULL, and the arm scan runs
+  AFTER the start test in the same packet -- so on two abutting or overlapping arm-able
+  regions, crossing the boundary flips `run_t_azone`, SV_TimerTryArm fires (its bhop
+  guard needs TS_RUNNING/TS_FINISHED, so it does not stop this), SV_TimerArm zeroes
+  `run_t_flags`, `run_t_hopped` and `run_t_jumps` and re-derives dirty from the current
+  movetype -- and the clock CANNOT start, because the start test used the old armzone
+  whose hull the body is still inside. Nothing is printed: SV_TimerClassSay needs
+  TS_RUNNING. So a bhop chain that loops across a seam has its hopped-start taint
+  cleared on every crossing. MEASURED over the 537 shipped zone files by simulating
+  `az` and Zone_BoxInside: at least 21 maps, of which 15 are START/START on the same
+  track and segment (surf_blackheart, surf_bossfight, surf_christmas t2, surf_dragon,
+  surf_ecosystem, surf_edge t1, surf_lament, surf_legends, surf_nesquik t6,
+  surf_polytron, surf_quartus, surf_sippysip t1, surf_tequila, surf_twilight,
+  surf_year3000), plus cross-track surf_gradient, surf_leet_xl_beta7z_swg,
+  surf_sodacity and STAGE seams on surf_420 s3, surf_classics2 and surf_lt_omnific s6.
+  surf_tequila's main start is four trapezoids tiling one frame, sharing three diagonal
+  seams; a crossing keeps the hull straddling for 32 units, which is two packets below
+  ~1000 u/s. The fix wants the arm scan to refuse a re-arm that changes nothing a
+  player did -- an `az` flip between two regions of the same track and segment is not
+  an arm -- or the hull test both sides. `sv_zones.qc`'s "SV_TimerArm is idempotent
+  while armed" is the comment that stopped being true. sv_timer.qc SV_TimerArm,
+  SV_TimerTryArm, the occupancy scan. Patch 443 review, round 4, cheater lens.
+- **66 maps' own velocity-keeping teleports land inside a START region, which re-arms
+  at whatever speed you arrive with.** `trigger_teleport_touch` with `VelocityMode`
+  absent or 0 KEEPS velocity (a plain CS:S map has no such key), strips FL_ONGROUND,
+  and calls SV_TimerWarped, which empties the 3.8 s pre-start padding ring -- the only
+  trace of the approach that would have reached the `.rec`. Arriving from outside, the
+  next scan is an `az` edge, so SV_TimerArm launders as in the entry above. MEASURED
+  over 535 zoned BSPs (52,879 trigger_teleport entities): 66 maps have at least one
+  velocity-keeping non-landmark teleport whose destination lies inside a START region
+  -- surf_pantheon 197, bhop_4tele 257, surf_suburbia 204, surf_valpect 90,
+  surf_tibet 69, surf_dynasty 60, surf_ambient 34, surf_ecosystem 17, surf_gradient 19,
+  surf_wahey 6. Gesture: chain to speed anywhere, take the map's own reset teleport,
+  arrive in the start box at full speed ARMED and laundered, leave. No cvars, no
+  restriction on other players. Same review.
+- **A `retry` LAUNDERS a hopped start, because `run_t_hopped` is not in the save
+  format.** SV_SaveWriteState writes no `hopped` key, so a chain inside the start box
+  that has been correctly marked is forgiven for free by one keypress -- and the retry
+  also restores the velocity the chain built (the entry below). That pair is the
+  cheapest version of the prespeed attack and it needs no post-retry hop at all, which
+  is why turning the hop rule back on for a restored ARM buys nothing while it stands.
+  Recorded by the round-4 review of Patch 443, which is the reason that patch's startok
+  half was withdrawn. The fix is either the velocity gate in the entry below or
+  carrying the start state across the point; the format is additive, so a `hopped` key
+  costs a line at each end. sv_saveloc.qc SV_SaveWriteState / SV_SaveApplyState.
+- **A ramp-clipped hop is neither counted nor judged.** `run_rampcontact` suppresses
+  `jumped` in SV_TimerJumpWatch, so a hop whose rise came from a ramp clip never
+  reaches the hopped-start test AND never increments `run_t_jumps`. On a start box with
+  a ramp in it -- which is the shape of a surf start -- a player can build speed with
+  clips the rule cannot see. Pre-existing and independent of saves; found while
+  checking whether a count-based rule could replace the dwell, which it cannot for this
+  reason among others. sv_timer.qc SV_TimerJumpWatch, the `jumped` edge. Same review.
 - **The hopped-start rule's forgiveness is PRICED, not free, and one box re-entry
   launders it completely.** `run_rearmhop` takes `run_t_hopped` back after 0.25 s of
   ground dwell (sv_timer.qc:10141), which at `sv_friction 4` costs about a third of the
