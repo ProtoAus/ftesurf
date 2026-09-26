@@ -5,7 +5,9 @@ p439smoke.py -- driver for cfg/test/p439smoke.cfg: the smoke test that Patches
 
 Each patch has its own arm (p434rew, p435pre, p436pend); this one stages a single
 fixture that has all three of their properties at once -- TS_RUNNING, carrying
-320 u/s, inside a STAGE box, with `pendarm 2` owed and no recording prefix -- and
+at rest (the `velocity 320` an earlier draft of the fixture carried was a race, not
+a subject -- see the cfg's note), inside a STAGE box, with `pendarm 2` owed and no
+recording prefix -- and
 grades the one read that says whether they interact correctly.
 
 ftesurf/data/saves/bhop_eazy IS A SHARED FIXTURE (p415reset, p428hold, p434rew,
@@ -59,7 +61,16 @@ FIXED = {
     "S1": {"cancelled": "run cancelled (the save's recording could not be restored)",
            "state": "idle", "clock": "0:00.000", "stopped": "0:05.000",
            "recording": "0", "buffer": "-1"},
-    "S2": {"state": "armed", "stagerun": "1", "clock": "0:05.000"},
+    # PATCH 441 MOVED THIS ONE, and the reading it replaces was the defect.  Up to
+    # 440 S2 read `armed  stagerun 1  practice 0  class: clean`: the void cleared the
+    # occupancy latches, the next scan took that as an arm edge against the STAGE box
+    # the body was standing in, and SV_TimerArm handed back a clean stage attempt --
+    # the same hole p441void measures at a START box, one box type over.  This file
+    # had it written down as the prediction ("it is not a clean run either", which
+    # `practice 0  class: clean` on an ARMED attempt is not entitled to say).  With
+    # the latches put back there is no edge: `idle`, `stagerun 0`, and the stage run
+    # starts when the player leaves the box and enters it, as anywhere else.
+    "S2": {"state": "idle", "stagerun": "0", "clock": "0:05.000"},
     "S3": {"origin": "2624.0 512.0 64.0"},
 }
 CONTROL = {
@@ -68,16 +79,47 @@ CONTROL = {
     "S2": {"state": "finished", "practice": "1", "class": "segmented"},
     "S3": {"origin": "2624.0 512.0 64.0"},
 }
+# REPORTED, not graded, and named here so a reader is not left thinking they were
+# checked: on an IDLE report `practice` and `class` are the idle defaults (0/clean),
+# which say nothing about a run.  They were simply ABSENT from the FIXED table while
+# CONTROL graded them, which reads as "checked on both builds" (Patch 441).
+REPORT = {"S1": ("practice", "class"), "S2": ("practice", "class", "state")}
 # S2 is where the two builds part, and the line that grades the composition:
 # the control build sits in FINISHED with the pendarm still owed and spends it into
 # a CLEAN stage run (practice 0) at the next scan; the fixed build drops the
 # pendarm, so the re-arm is a fresh ARMED one from the stage box the body stands in
 # and the stopped clock it inherits reads practice 0 too -- but it never passed
 # through FINISHED-with-a-pendarm, and S1's void is what proves the recorder side.
+# PATCH 441: AND IT IS CHECKED NOW.  This table was written and never read -- dead
+# code in the one place the arm's own rule ("show it discriminates") is expressed.
+# verdict() asserts the pair differs and prints which side this run is on.
 DISCRIMINATOR = {
     "control": ("S2", "state", "finished"),
-    "fixed": ("S2", "state", "armed"),
+    "fixed": ("S2", "state", "idle"),
 }
+
+
+def verdict(s, control, get):
+    """The discriminating field, stated.  An arm whose two builds answer the same
+    thing has measured the fixture, not the patch."""
+    tag, key, want = DISCRIMINATOR["control" if control else "fixed"]
+    other = DISCRIMINATOR["fixed" if control else "control"][2]
+    txt = s.get(tag)
+    if txt is None:
+        print("VERDICT: NOT DEMONSTRATED -- section %s is absent" % tag)
+        return False
+    got = get(txt, key)
+    if want == other:
+        print("VERDICT: NOT DEMONSTRATED -- both builds predict %s %s == %s, so this "
+              "arm cannot tell them apart" % (tag, key, want))
+        return False
+    if got != want:
+        print("VERDICT: NOT DEMONSTRATED -- %s %s reads %s; this build's side of the "
+              "discriminator is %s (the other is %s)" % (tag, key, got, want, other))
+        return False
+    print("VERDICT: %s build -- %s %s is %s, against %s on the other side"
+          % ("control" if control else "fixed", tag, key, got, other))
+    return True
 
 
 def stage():
@@ -169,7 +211,11 @@ def grade(log, control):
             ok = ok and good
             print("  %-3s %-11s %-46s %s"
                   % (tag, key, got, "ok" if good else "MISMATCH, want %s" % exp))
-    return ok
+        for key in REPORT.get(tag, ()):
+            if key not in want[tag]:
+                print("  %-3s %-11s %-46s (reported, not graded)"
+                      % (tag, key, get(txt, key)))
+    return verdict(s, control, get) and ok
 
 
 def main():
