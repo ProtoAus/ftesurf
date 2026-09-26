@@ -38,8 +38,42 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   slow, NOT while `rec_sl_hold`, and never at SV_TimerArm itself, because on a
   surf map flying into a start box arms you clean at speed by design (Patch 415's
   essay) and a speed test there would taint every honest re-entry.
-  sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad.
-  Patch 435.
+  PATCH 442 CLOSED THE VERTICAL HALF of the gate's blindness, which is not the
+  same as closing this: SL_RowSpeed measured horizontal speed only, so a save
+  taken MID-JUMP inside a start box (vz +302, nothing horizontal) read as at rest
+  and laundered -- measured both ways, `cfg/test/p442jump.cfg`. The gate can no
+  longer be told a rising body is at rest, and `sl_list` no longer prints such a
+  row as `0 u/s standing`. A load carrying speed still hands that speed back, as
+  a segmented run, so the placement answer above is still the open item.
+  sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad,
+  SL_RowSpeed. Patch 435, part-closed by 442.
+- **The void's "leave the box and enter it" is satisfiable by the velocity the
+  same load restores.** Patch 441 re-scans the occupancy latches after a failed
+  rewind so a cancelled run does not come back armed; the remedy assumes the
+  player has to travel. A save taken just OUTSIDE a start box with its velocity
+  pointed in gives `zs_az = -1` at the re-scan and an arm edge on the next tick as
+  the body coasts in -- a clean arm, then the clock starts on the way out at the
+  saved speed. Reachable without any void at all (load a non-RUNNING save outside
+  the box), so it is not new, but the patch's stated remedy is weaker than "you
+  must walk". sv_saveloc.qc SV_SaveApplyState's void branch. Patch 441 review.
+- **The Multi-Session resume continues a RUNNING run with no recorder, under a
+  flag that is not a taint.** `SV_SaveApplyState` returns at `if (retry == 2)`
+  BEFORE the failed-rewind branch Patch 434/441 guard, and `run_ms_norec` leaves
+  the attempt running while marking it only TF_MULTISESSION -- which sh_defs.qc
+  and surfd both state is not a class, not in FS_RunClass or TF_UNCERT, and not
+  read by surfd's `style_of`/`certifiable`. So a clean run whose `.rec` stops at
+  the pause can rank. The size trigger (`run_resume_recmb` 512 MB) is out of
+  reach; the live route is the copy-failure branch. Same absence decision as
+  Patch 441's, resolved the other way, in code 441's own reasoning covers.
+  sv_resume.qc:531-537,573. Patch 441 review.
+- **At `run_zone_hull 2` + `run_zone_hull_live 1`, Patch 441's latch re-scan uses
+  the PRE-load hull.** It passes `SV_RunHullMaxs(e)`, i.e. `e.maxs`, but
+  SV_SaveLocPlace only sets `run_forceduck` -- the engine applies it in the next
+  pmove -- so the re-scanned latch and the next tick's scan can disagree by the
+  17-unit stand/duck difference, which is an arm edge, which is the laundering
+  back. Inert at the shipped defaults (occupancy is a point test there and the
+  hull arguments are ignored), so this is a note against those two cvars being
+  turned on, not a live hole. sv_saveloc.qc SV_SaveApplyState. Patch 441 review.
 - **Map triggers still touch a held (save-lock) body.** The engine skips touches
   only for `run_pmhold`; push-once triggers are spent for everyone, and every
   other trigger that writes velocity does so into a body nobody is steering. The
@@ -87,13 +121,31 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Harness coverage
 
-- **A failed rewind on a LOBBY is untested.** Patch 434's void and Patch 441's
-  latch re-scan are measured only on a listen server (`p434rew.cfg`,
-  `p441void.cfg`), where the recording is buffered in QC strings, so the cold
-  path fails for want of a prefix on disk. A lobby STREAMS, and there it is
-  SV_RecSnapshot's buffer that fails -- the same branch and the same FALSE with a
-  different reason. Nothing in cfg/test drives a streamed run at all.
-  sv_saveloc.qc SV_SaveApplyState (the `SV_RecRewind` else branch). Patch 441.
+- **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
+  ABOUT IT.** Patch 434's void and Patch 441's latch re-scan are measured only on
+  a listen server (`p434rew.cfg`, `p441void.cfg`), where the recording is
+  buffered in QC strings. A lobby STREAMS, and there SV_RecRewind refuses at
+  `if (e.rec_rec_stream) return FALSE` (sv_timer.qc:5967) whenever the save
+  carried no snapshot -- whose own BUILD 66 comment says "the run carries on
+  recording from where it is; it just does not rejoin the saved prefix". Patch
+  434's branch then discards that recording (fclose + fremove of the part file)
+  and Patch 441 voids the run with it. One of the two is wrong and the difference
+  is a cancelled lobby run, live since the 434-438 deploy. MEASURABLE LOCALLY:
+  `rec_stream 1` forces streaming off a lobby (sv_timer.qc SV_RecStreams), so an
+  arm can drive it on a listen server -- which is also what makes this a to-do
+  rather than a guess. Both reviewers of Patch 441 named it independently.
+  sv_saveloc.qc SV_SaveApplyState (the `SV_RecRewind` else branch),
+  sv_timer.qc:5546 SV_RecWritePrefix / SV_RecSnapshot. Patch 441.
+- **A load the server REFUSED still tells the client to reload its sidecar.**
+  SV_SaveLocLoad prints `save: the state file could not be read` and falls
+  through: the body has already been placed, no rewind was attempted, and
+  `SV_SaveLocEvent(e, SLOP_LOADED, id)` is still sent. The client then truncates
+  its live `.view` to that slot's remembered mark, so the sidecar gets a hole
+  with no `resume` record in the `.rec` to explain the jump. Reachable through
+  the TOCTOU Patch 428 r1 documents (the identity check reads the file, the apply
+  re-opens it). The fix wants the refusal BEFORE the placement, which is what r1
+  set out to do, and an arm that produces the race. sv_saveloc.qc SV_SaveLocLoad,
+  cl_replay.qc Rec_ViewLoaded. Patch 441 review.
 - **The client's sidecar write-back has no reliable arm.** p438view's R2 is
   supposed to write rec_rp_view back out through Rec_ViewSaved and it only
   happens on SOME runs -- three of four, and a run from a clean tree wrote one
