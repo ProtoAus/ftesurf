@@ -152,6 +152,10 @@ void() SV_TimerMapInit;
 void(entity e, float z) SV_TimerArm;
 void(entity e) SV_TimerWarped;
 float(entity e, float n) SV_TimerTeleported;
+// Patch 445: and the hopped-start taint's one clear.  It lives in sv_timer.qc with
+// the field, and it is called from HERE because this is the function that zeroes the
+// velocity -- which is the property that makes the forgiveness safe to hand out.
+void(entity e, string why) SV_TimerForgiveHop;
 
 void() SV_ZoneLoad =
 {
@@ -904,6 +908,27 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	// Patch 400: and the push carrier, as Momentum's restart does.  Kept, `!r`
 	// inside a trigger_push launched you out of the start at the push's speed.
 	SV_ClearCarrier(self);
+
+	/*
+	  PATCH 445: AND THE HOPPED-START TAINT, on the two lines above rather than on
+	  a position test.
+
+	      "just tagged as hopped until !r"
+
+	  This is the only clear a player can ask for, and it is placed here -- after
+	  the velocity zero and the carrier clear, not before -- because those two
+	  lines ARE the argument for it.  A clear that leaves the chain's speed on the
+	  player is the whole exploit (see the field in sv_timer.qc, and the 21 seam
+	  maps and 66 velocity-keeping teleports the round-4 census counted); a clear
+	  that follows `velocity = '0 0 0'` cannot be one.
+
+	  Every caller of this function is a gesture the player made: SV_ZoneMove and
+	  SV_ZoneMoveAt are reached from SV_ZoneChatCommand (`!r`/`!m`/`!s`/`!b`, and
+	  their zone_reset/zone_restart twins) and from zone_goto.  All of them arrive
+	  through ClientCommand, which map entity I/O cannot reach -- SV_IOCommand's
+	  allow-list is say/echo/print and it runs them on the SERVER console.
+	*/
+	SV_TimerForgiveHop(self, "a reset gesture (!r/!m/!s/!b/zone_goto)");
 
 	// You did not travel here.  Without this the next tick's swept zone test
 	// runs a segment from wherever you were to the destination and fires every

@@ -1107,6 +1107,26 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  and no format bump -- the same property the `fromsave` key relied on.
 	*/
 	fputs(f, sprintf("cheat %d\n", e.run_t_cheat));
+	/*
+	  PATCH 445: the hopped-start taint, and it is here because its ABSENCE was a
+	  laundering channel rather than an omission.
+
+	  BACKLOG.md carried it, and Patch 443 round 4 named it as the first of three
+	  reasons the startok half was withdrawn: `retry` re-initialises the progs, so
+	  run_t_hopped came back 0 from the QC default and the cheap gesture was to
+	  chain BEFORE the retry -- be marked correctly, then be forgiven by the
+	  restart.  Nothing in the rule could see that, because the bit the rule reads
+	  did not cross the file.
+
+	  Only `retry` reads it back, exactly as `cheat` above.  A LOAD must not: a load
+	  is practice by construction and re-derives its own class, and taking this bit
+	  from a file the player can hold would let one save mark another attempt.
+
+	  Additive like every key here -- an older save reads 0, an older build skips
+	  the key -- so no version bump.  Patch 445 raises the grammar to 37 keys; the
+	  reference list is in cfg/test/p443air.txt.
+	*/
+	fputs(f, sprintf("hopped %d\n", e.run_t_hopped));
 	// Which save this attempt was already resumed from, if any.  Only `retry`
 	// reads it back -- a load overwrites it with its own slot -- but without it
 	// a retry of a shadow run restores TF_SHADOW from `flags` and then reports
@@ -1309,6 +1329,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
+	local float hop;                // Patch 445, the hopped-start taint
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
 	local float az, ez, am, cz, cmx;
 	local float rpit, ryaw, rduck;
@@ -1327,6 +1348,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	ticks = elapsed = haveelapsed = mark = samples = padn = cps = serial = 0;
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
+	// Patch 445.  A pre-445 file reads 0, which is the pre-445 BEHAVIOUR rather
+	// than merely a safe value: before this key existed a retry always came back
+	// unhopped.  Explicit because fteqcc does not zero locals.
+	hop = 0;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
 	az = ez = am = cz = -1;
@@ -1363,6 +1388,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "pb")         { pbv = stof(argv(1)); continue; }
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
+		if (k == "hopped")     { hop = stof(argv(1)); continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1689,6 +1715,34 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		// and the per-stage copy for the same reason run_st_dirty takes one.
 		e.run_t_cheat  = cht;
 		e.run_st_cheat = cht;
+
+		/*
+		  PATCH 445: AND THE HOPPED-START TAINT, which is the whole reason the key
+		  was added -- `retry` re-initialises the progs, so without this line the
+		  bit comes back 0 from the QC default and the restart forgives a chain
+		  nobody judged.
+
+		  It is restored rather than re-derived because a retry is the one gesture
+		  whose premise is that nothing happened: the map reset around a player who
+		  did not move, so the attempt's taints are still the attempt's.  No
+		  per-stage copy, because there is no run_st_hopped -- the hop rule is about
+		  the start of the RUN and the stage machine has no equivalent.
+
+		  A retry does NOT zero the velocity (that is BACKLOG's second withdrawal
+		  reason and still open), so this line is a restore and never a clear: the
+		  one thing that must not happen here is a retry handing the bit back as 0.
+
+		  IT DEPENDS ON AN ORDERING, so the ordering is named rather than assumed.
+		  A retry runs map_restart, and BOTH of Patch 445's lifecycle clears fire
+		  during it: SV_TimerMapInit's loop (the zones load two physics frames
+		  before any client is put in) and SV_TimerSpawn (sv_player.qc, inside
+		  PutClientInServer).  This line survives them because SV_RetryApply is
+		  called at the END of PutClientInServer -- after both -- which is stated in
+		  SV_RetryApply's own comment for a different reason.  Checked in the code,
+		  not inferred; cfg/test/p445hop.cfg's R arm measures it, because an
+		  ordering that holds today is a landmine and not an invariant.
+		*/
+		e.run_t_hopped = hop;
 	}
 	else
 	{

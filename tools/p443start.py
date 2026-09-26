@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
 """
-p443start.py -- driver for cfg/test/p443hop.cfg and cfg/test/p443air.cfg
-(Patch 443: a restored ARM is not a settled START, and "at rest" in a start box
-also has to mean "standing on something").
+p443start.py -- driver for the start-rule arms: cfg/test/p443hop.cfg,
+p443grace.cfg, p443air.cfg (Patch 443: a restored ARM is not a settled START, and
+"at rest" in a start box also has to mean "standing on something") and
+cfg/test/p445hop.cfg (Patch 445: a hopped start stays tagged until the player asks
+for it back).
 
-TWO DEFECTS, TWO ARMS, ONE CONTROL BUILD.  Both fixes are new in Patch 443, so the
-control for both arms is HEAD before it -- one worktree, not two:
+EACH ARM NAMES ITS OWN CONTROL GENERATION, because they do not share one -- see the
+air arm's table and `--pre`.  The recipe is the same shape every time:
 
-    git worktree add ../ctl443 89f5f7a
-    cp src/fteqcc64.exe ../ctl443/src/ && pwsh -NoProfile -File ../ctl443/src/build.ps1
-    cp ftesurf/qwprogs.dat ftesurf/csprogs.dat <scratch>/443fixed/      # keep the fix
-    cp ../ctl443/ftesurf/qwprogs.dat ../ctl443/ftesurf/csprogs.dat ftesurf/
-    python tools/p443start.py --arm hop --control                       # then copy back
+    git worktree add ../ctl445 <HEAD before the patch>
+    cp src/fteqcc64.exe ../ctl445/src/ && pwsh -NoProfile -File ../ctl445/src/build.ps1
+    cp ftesurf/qwprogs.dat ftesurf/csprogs.dat <scratch>/fixed/         # keep the fix
+    cp ../ctl445/ftesurf/qwprogs.dat ../ctl445/ftesurf/csprogs.dat ftesurf/
+    python tools/p443start.py --arm hop445 --control --pre 445          # then copy back
 
-    python tools/p443start.py --arm hop|air [--exe ftesurf64.exe] [--control]
-                              [--keep] [--grade-only [--side fixed|control]]
+    python tools/p443start.py --arm hop|grace|air|hop445 [--exe ftesurf64.exe]
+                              [--control [--pre 443|r2|445]] [--keep]
+                              [--grade-only [--side fixed|control]]
+
+THE 443 ARMS ARE GUARDS, `hop445` IS A DISCRIMINATOR.  Round 4 withdrew the change
+`hop` and `grace` were written for, so they now read identically on every build and
+exist to go red if it returns; `hop445` reads differently on the two sides in three
+of its five sections.  Two fields in `grace` are DEAD (`gracen`, `gracesay`) and are
+labelled at their entry rather than removed -- round 5's finding.
 
 WHAT EACH ARM MEASURES is in its cfg's header, including the pre-registered
 predictions and the FALSIFIED IF.  In one line each: `hop` retries from a clean
@@ -40,7 +49,16 @@ two drivers interleaving is a loud refusal rather than a lost fixture.
 
 Exit status 0 when every pre-registered prediction in the cfg's header held.
 
-RESULT (2026-09-26, both arms, both sides, exit 0 every time; qwprogs
+RESULT, hop445 (2026-09-27, both sides exit 0; qwprogs 76D668572F532173 fixed /
+8E16FDF3946871C0 control from a worktree at 46afc22).  The control side forgave the
+hopped start THREE ways in one run -- a forced arm edge from the Build 47 gate, a
+`retry`, and a writer that never emitted the key -- and the fixed side forgave it once,
+at the `!r`.  Two of my predictions were falsified getting there and both are written
+up in p445hop.cfg at L: an arm staged without the zones override read the prediction
+while the gate never fired, and `class segmented` was an inference from a taint chain
+that runs at the START rather than at the report.
+
+RESULT, hop/air (2026-09-26, both arms, both sides, exit 0 every time; qwprogs
 88E5939564887CAD fixed / 3096B6F5468BEE3A control, the latter byte-identical to the
 pair deployed on the twelve lobbies).  Each cfg carries its own numbers; in one line,
 the control side settled a start that had not happened (`start: ok 1` after a retry,
@@ -53,6 +71,7 @@ blind chain taints the CONTROL too through a mechanism the arm does not control 
 that last one withdrew a whole section rather than being explained away.
 """
 import argparse
+import glob
 import hashlib
 import os
 import re
@@ -82,6 +101,11 @@ STAGED = {
             ("save905", "p443solid.txt")),
     "hop": (),
     "grace": (),
+    # Patch 445 reuses the same grounded at-rest row, for a different reason: it is
+    # the row the Build 47 gate ACCEPTS, so loading it forces the arm edge whose
+    # clear this patch removed.  p443air uses it as a positive control; here it is
+    # the subject.
+    "hop445": (("save901", "p435rest.txt"),),
 }
 # Arms that need the start slab to be VISIBLE to the zone test.  bhop_eazy's shipped
 # start slab has its bottom AT the floor and `origin %.4f` puts a placed body 0.00005
@@ -98,7 +122,18 @@ STAGED = {
 # level up: the arm had removed the variable that decides whether the fix fires.  The
 # grace arm now runs on the shipped zones WITH that edge, and grades the MESSAGE, which
 # an arm edge cannot take back out of the log.
-ZONED = ("air",)
+ZONED = ("air", "hop445")
+# `hop445` IS IN THAT LIST AFTER A FALSIFIED FIRST RUN, and the reason is worth its
+# lines because the arm looked green.  Run 1 staged no override, and its L section read
+# `hopped 1` with `class segmented practice 1` -- which is the prediction, and it
+# measured nothing: the Build 47 gate needs `SV_ZoneStartAt(e, e.origin) >= 0`, the
+# placed body sits 0.00005 BELOW the shipped slab (Patch 415), so the gate never fired,
+# no SV_TimerArm ran, and the taint survived an arm that did not happen.  A laundered
+# load reads `class clean practice 0` (p443air's P section, same row, WITH the
+# override); `segmented`/`1` is the fingerprint of a gate that was never reached.
+# The note below about the override SUPPRESSING an arm edge is about the grace arm's
+# DRIFT edge, which is a different mechanism -- and suppressing it is what this arm
+# wants, so the gate's forced edge is the only one in the run.
 
 # `hop` MUST NOT run on bhop map rules.  cfg/lobby/mode_bhop.cfg:131 sets
 # run_starthop 0 -- hopping out of the start is the sport there -- and
@@ -108,7 +143,25 @@ ZONED = ("air",)
 # leave-the-box rather than start-on-jump.  Same override tools/p435pre.py --arm mode
 # uses, and the cfg grades `start on leave` and `starthop 1` to prove it took.
 EXTRA = {"hop": ["+set", "sv_gamemode", "surf"],
-         "grace": ["+set", "sv_gamemode", "surf"]}
+         "grace": ["+set", "sv_gamemode", "surf"],
+         "hop445": ["+set", "sv_gamemode", "surf"]}
+
+# WHAT THE GESTURE WROTE, read off the file instead of inferred from a field.
+# arm -> (path under SAVES, pattern, fixed, control).  `retry` writes its point into
+# FS_RETRY_SLOT (save000) under the parked root, so this is measurable for exactly as
+# long as the run's tree survives -- which is why main() reads it before restore().
+# It is the format half of Patch 445 isolated from the arm half: the R section's
+# `hopped` field could in principle read 1 because the arm stopped clearing rather
+# than because the key crossed the file, and this tells the two apart.
+# A GLOB, and `retry`'s own slot is NOT the file to read -- measured.  The first cut
+# looked for save000/state.txt and found only seq.txt beside it, because SV_RetryApply
+# CONSUMES the point (its own docstring says so) and removes the file it read.  So the
+# arm takes an ordinary `sl_save` while the taint is up and this greps whatever state
+# files the run left.  The staged fixture (p435rest.txt) predates the key, so any
+# `hopped` line found was written by the build under test.
+ARTEFACT = {
+    "hop445": ("save*/state.txt", r"^hopped (\d)$", "1", "<absent>"),
+}
 
 HOPSAY = r"hopped start\^?7? -- one jump out of the start"
 REARMSAY = r"start re-armed\^?7? -- one jump out of the start"
@@ -167,9 +220,24 @@ FIELDS = {
     "gracesay":  GRACESAY,
     "gracen":    GRACESAY,
     "stitched":  r"(segmented run -- this run will not be saved)",
+    # PATCH 445.  `rearmhop` is a PREMISE of the hop445 arm rather than a result: with
+    # the dwell forgiveness live, the ground between two hops could take the taint back
+    # and every section below would be measuring the dwell.  It comes off the same
+    # `start:` line the rest do.
+    "rearmhop":  r"start:.* rearmhop (\d)",
+    # The line that tells the player what clears a taint that is now sticky.  Only the
+    # fixed build prints it, so it is also a cheap proof the two logs came from
+    # different progs -- the job `support` does in the air arm.
+    "hopr":      r"(press .{0,3}!r.{0,3} to re-arm the start)",
+    # SV_TimerForgiveHop's own dprint, and it names the GESTURE.  Graded as presence
+    # with the gesture pinned in the pattern, because "the flag ended up 0" is a
+    # downstream consequence and CLAUDE.md's rule is that the subject prints its own
+    # action -- an arm that reads only the field cannot tell a `!r` clear from a clear
+    # that should not have happened at all.
+    "forgivesay": r"hopped-start taint cleared by a reset gesture",
 }
 
-PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay")
+PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay", "hopr", "forgivesay")
 # Fields graded by HOW MANY times the line appears, not by a captured value.  `gracen`
 # is how p443grace proves its gesture was ONE jump: on the shipped zones an arm edge
 # lands after the jump and zeroes run_t_jumps, so the report's own count reads 0 and
@@ -221,7 +289,20 @@ ARMS = {
          # the player has stood 3.2 s, which satisfies 3.0 as well as 0.25.  `dwell` is
          # graded at G instead, where the restart has re-latched it.
          "C1": {"jumps": "1", "hopped": "0", "hopsay": "absent", "state": "armed"},
-         "G":  {"dwell": "30.00", "jumps": "0", "state": "armed"},
+         # ROUND 5 TOOK `jumps` OUT OF G'S GRADED SET, because it is RACY and the
+         # guard could go red on an unmodified build.  On the shipped zones the arm
+         # edge lands about a second after the restore, and whether `cmd timer` is
+         # serviced before or after it decides the reading.  Measured, from this arm's
+         # own log one second apart:
+         #     start: ok 1  dwell 30.00  ground 0.84   arm zone -1 (armed from 0)
+         #     start: ok 0  dwell 30.00  ground 0.13   arm zone  0 (armed from 0)
+         # `jumps` flips 1 -> 0 across that same edge (SV_TimerArm zeroes it), so
+         # grading it here was grading the scheduler.  It is REPORTED instead, and the
+         # property the section actually guards is graded as a MESSAGE at G2 -- which
+         # is the cfg's own argument for why a line in the log beats a latch.
+         # `dwell` is kept: it is the forcing knob, re-latched by the restart, and the
+         # arm edge does not touch it.
+         "G":  {"dwell": "30.00", "state": "armed"},
          # THE MESSAGE IS THE DISCRIMINATOR, not the latch.  On the shipped zones the
          # restored azone mismatches the scan, so an arm edge lands about a second
          # after the restore and SV_TimerArm zeroes run_t_hopped -- measured, round 2 --
@@ -230,6 +311,16 @@ ARMS = {
          # Round 4: the forgiveness is gone with the change it existed for, and the
          # property this arm now guards is that the single jump is STILL not accused --
          # which it is not, because the rule is off for a restored arm again.
+         #
+         # ROUND 5: `gracen` AND `gracesay` ARE DEAD FIELDS AND ARE LABELLED AS SUCH
+         # rather than quietly kept.  Both read the same regex, and it matches `timer:
+         # first jump not judged`, which round 4 deleted -- `grep -rn "first jump not
+         # judged" src/` returns nothing on any build in the tree.  So they cannot read
+         # anything but "absent" and "0" whatever the progs do, which is precisely the
+         # arm-that-cannot-fail this repo keeps re-finding, one level up in the driver.
+         # KEPT ANYWAY, and the distinction is the point: they are TRIPWIRES for the
+         # withdrawn change returning, not measurements of this build. `hopsay` is the
+         # one field here that a build could move, so it is the section's real content.
          "G2": {"gracen": "0", "hopsay": "absent", "gracesay": "absent"}},
         # NOTHING IS OVERRIDDEN FOR THE CONTROL, and that is the point of a guard: the
         # honest single jump after a retry is not accused on the pre-443 build EITHER,
@@ -239,7 +330,8 @@ ARMS = {
         {"C":  ("hopped", "dwell", "ground"),
          "C1": ("ground", "air", "startok", "class", "practice", "dwell"),
          "C2": ("state", "ground", "hopped", "dwell"),
-         "G":  ("startok", "ground", "air", "class", "practice", "azone", "hopped"),
+         "G":  ("startok", "ground", "air", "class", "practice", "azone", "hopped",
+                "jumps"),
          "G2": ("state", "startok", "ground", "air", "class", "practice", "azone",
                 "hopped", "jumps")},
     ),
@@ -276,6 +368,66 @@ ARMS = {
          "E": ("row", "z", "nz", "frac", "azone", "armedfrom", "state",
                "stitched")},
     ),
+    # PATCH 445: a hopped start stays tagged until the player asks for it back.  Unlike
+    # the two arms above this one DISCRIMINATES -- three sections read differently on
+    # the two builds -- so its control is HEAD before 445 (`--pre 445`).
+    "hop445": (
+        "cfg/test/p445hop.cfg", "p445hop.log",
+        {"C":  {"startrule": "start on leave", "starthop": "1", "state": "armed",
+                "startok": "0", "hopped": "0", "rearmhop": "0"},
+         # BOTH BUILDS, and it is the arm's own positive control: build 21's SET is
+         # untouched by this patch, so a chain that does not taint means the gesture
+         # did not land and every section below is void rather than green.
+         "J":  {"hopped": "1", "hopsay": "present", "hopr": "present",
+                "state": "armed"},
+         # THE PATCH.  The Build 47 gate forces an arm edge; the arm no longer forgives.
+         #
+         # A PREDICTION OF MINE WAS FALSIFIED HERE AND THE CORRECTION IS THE GRADED SET.
+         # Run 2 predicted `class segmented`, reasoning that SV_TimerStart's taint chain
+         # reads `run_t_dirty || run_t_hopped`.  It read `clean`.  The chain is right and
+         # the INFERENCE was wrong: that chain runs when the CLOCK STARTS, and the report's
+         # `class:` is `FS_RunClass(e.run_t_flags)` alone (sv_timer.qc's class print).  A
+         # hopped start is deliberately NOT a class -- the field's own essay says so -- so
+         # while TS_ARMED it cannot appear there, and `class`/`practice` are no evidence
+         # about this taint either way.  Both are reported now, neither is graded.
+         #
+         # WHAT PROVES THE ARM RAN IS `jumps`.  It read 2 at J and 0 here, and the only
+         # two writers of that zero are SV_TimerArm and SV_TimerForgiveHop -- so the
+         # third graded field rules the second one out: `forgivesay` must be ABSENT in
+         # this section.  The arm ran, the forgiveness did not, the taint stands.  Three
+         # readings the subject printed itself, which is what the field could not give.
+         # (`practice 0` is worthless as that premise: it was already 0 at J.)
+         "L":  {"hopped": "1", "state": "armed", "jumps": "0",
+                "forgivesay": "absent", "support": "1"},
+         # The taint is still up here, which is what makes the artefact worth reading.
+         "W":  {"hopped": "1", "state": "armed"},
+         # The save format.  Graded here AND on the artefact `retry` wrote (ARTEFACT),
+         # because this field alone cannot separate "the key crossed the file" from
+         # "the arm stopped clearing".
+         "R":  {"retrysay": "back where you were", "hopped": "1", "state": "armed"},
+         # THE PATCH MUST LEAVE A WAY OUT.  Without this section a change that deleted
+         # every clear would read identically at J/L/R and be worse than no patch.
+         "G":  {"hopped": "0", "forgivesay": "present"}},
+        {"445": {"J": {"hopr": "absent"},          # the line does not exist pre-445
+                 # SV_TimerArm's clear is still there, so the forced arm takes the
+                 # taint with the flags -- the reading Patch 435 shipped.  `jumps`,
+                 # `support` and the absent dprint are the SAME on both sides: they are
+                 # the premises (the gate fired, the arm ran, nothing forgave), and
+                 # `hopped` is the one field the patch moves.
+                 "L": {"hopped": "0"},
+                 "W": {"hopped": "0"},             # nothing left to write
+                 "R": {"hopped": "0"},             # and `retry` launders it by itself
+                 "G": {"forgivesay": "absent"}}},
+        {"C":  ("dwell", "ground", "class", "practice", "azone"),
+         "J":  ("startok", "ground", "air", "jumps", "azone", "class", "practice"),
+         "L":  ("azone", "armedfrom", "startok", "row", "evslot", "rearmhop",
+                "class", "practice"),
+         "W":  ("azone", "startok", "jumps", "class", "practice", "evslot"),
+         "R":  ("azone", "armedfrom", "startok", "jumps", "ground", "class",
+                "practice"),
+         "G":  ("state", "azone", "armedfrom", "startok", "jumps", "ground",
+                "class", "practice")},
+    ),
 }
 
 
@@ -301,6 +453,34 @@ def stage(arm):
     if arm in ZONED:
         os.makedirs(os.path.dirname(ZONES), exist_ok=True)
         shutil.copyfile(os.path.join(CFGDIR, "p435.zones.json"), ZONES)
+
+
+def artefact(arm, control):
+    """Grade the FILE the gesture wrote.  Returns (ok, line) or (True, None).
+
+    Read before restore() throws the staged tree away.  A field in a log says what
+    the progs believed; this says what crossed the disk, and for a save-format change
+    those are two different claims -- the one that matters outlives the process.
+    """
+    spec = ARTEFACT.get(arm)
+    if spec is None:
+        return True, None
+    rel, pat, fixed, ctl = spec
+    want = ctl if control else fixed
+    hits = sorted(glob.glob(os.path.join(SAVES, *rel.split("/"))))
+    if not hits:
+        return False, "  ART  %s -- NO STATE FILE AT ALL, the gesture wrote nothing" % rel
+    got, where = "<absent>", "%d file(s)" % len(hits)
+    for p in hits:
+        with open(p, "r", errors="replace") as fh:
+            m = re.search(pat, fh.read(), re.M)
+        if m:
+            got, where = m.group(1), os.path.basename(os.path.dirname(p))
+            break
+    return (got == want,
+            "  ART  %-10s %-14s %s (%s)"
+            % ("hopped key", got, "ok" if got == want else "MISMATCH, want %s" % want,
+               where))
 
 
 def listing(where):
@@ -456,15 +636,20 @@ def main():
     ap.add_argument("--exe", default="ftesurf64.exe")
     ap.add_argument("--control", action="store_true",
                     help="grade against the PRE-fix predictions")
-    ap.add_argument("--pre", choices=("443", "r2"), default="443",
+    ap.add_argument("--pre", choices=("443", "r2", "445"), default="443",
                     help="WHICH generation the control build predates: 443 (HEAD before "
-                         "the patch) or r2 (this patch's own round 2, the build that "
-                         "certified startsolid).  One flag could not say it -- see the "
-                         "air arm's control table.")
+                         "that patch), r2 (443's own round 2, the build that certified "
+                         "startsolid) or 445 (HEAD before the hopped-start clear moved). "
+                         "One flag could not say it -- see the air arm's control table.")
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--keep", action="store_true")
-    ap.add_argument("--side", choices=("fixed", "control"), default=None,
-                    help="with --grade-only, read <log>.fixed or <log>.control")
+    # NOT a choices= list.  A kept control log is named `<log>.control.<pre>` -- the
+    # generation is part of the name, by the same table --pre exists for -- so
+    # `--side control` never named a real file and `--side control.445` was rejected as
+    # an invalid choice.  Free text, and the open() below is the check.
+    ap.add_argument("--side", default=None,
+                    help="with --grade-only, the suffix of the kept log to read: "
+                         "`fixed`, or `control.<pre>` as the run wrote it")
     ap.add_argument("--grade-only", action="store_true",
                     help="grade the log already on disk; stage and run nothing")
     a = ap.parse_args()
@@ -489,10 +674,16 @@ def main():
     for d, h in ran:
         print("%-12s %s" % (d, h))
     cleanup_ok = True
+    # Set before the try: a raise inside it would otherwise leave these unbound and the
+    # NameError below would replace whatever actually went wrong -- the same masking the
+    # `finally` in restore() is written to avoid.
+    art_ok, art_line = True, None
     stage(a.arm)
     try:
         secs = run(a.exe, a.timeout, cfg, log, EXTRA.get(a.arm, ()))
         left = listing(SAVES)
+        # BEFORE restore(), which is the only window in which the written file exists.
+        art_ok, art_line = artefact(a.arm, a.control)
     finally:
         # LOUD, BUT NOT MASKING: a raise from restore() inside `finally` would
         # replace whatever run() raised, which is how a cleanup failure hides the
@@ -508,6 +699,9 @@ def main():
     for line in left:
         print(line)
     good = grade(log, a.control, a.arm, a.pre)
+    if art_line:
+        print(art_line)
+        good = good and art_ok
     side = ("control." + a.pre) if a.control else "fixed"
     shutil.copyfile(log, log + "." + side)
     with open(log + "." + side + ".hash", "w") as fh:

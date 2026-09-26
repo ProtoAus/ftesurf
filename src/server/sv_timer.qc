@@ -1523,10 +1523,43 @@ float() SV_RecEnabled =
   marks the run practice exactly as before; nothing downstream of the start can
   tell which of the two it was, and nothing downstream needs to.
 
-  Cleared by SV_TimerArm with the rest of the attempt, and by the re-arm in
-  SV_TimerJumpWatch.  Only ever SET while the clock is not yet running: a hop
-  after the run has started goes straight to SV_TimerPractice, which is
-  irreversible on purpose -- see the scope note there.
+  Only ever SET while the clock is not yet running: a hop after the run has started
+  goes straight to SV_TimerPractice, which is irreversible on purpose -- see the
+  scope note there.
+
+  PATCH 445: WHO MAY CLEAR IT, AND THE ANSWER IS A VELOCITY ZERO.
+
+      "One 'easy' method might be to just tagged as hopped until !r"
+
+  Build 21 had three clears -- SV_TimerArm, the dwell re-arm, and SV_TimerIdle --
+  and the first of those is why the rule never bit.  A CLEAR THAT KEEPS YOUR SPEED
+  IS THE ENTIRE EXPLOIT: the taint is only worth laundering if the prespeed the
+  chain built survives the laundering.  Measured on the shipped corpus (round-4
+  review, 1316 bsps): 21 maps have two abutting start regions whose seam re-arms
+  silently on every crossing, and 66 have a velocity-keeping trigger_teleport
+  landing inside a start region.  On those, SV_TimerArm handed the forgiveness out
+  as map DATA, mid-chain, with the speed intact.
+
+  So the clear now hangs off SV_TimerForgiveHop, and the discriminator it is
+  written against is checkable rather than argued: every caller zeroes the
+  velocity in the same breath.  `!r`/`!m`/`!s`/`!b` reach SV_ZoneMoveAt, which
+  sets `self.velocity = '0 0 0'` two lines from the forgiveness; a respawn brings
+  a fresh body; a map change takes the map the speed was built in.  None of the
+  three can carry a chain's speed past the clear, which is what makes them safe to
+  forgive and SV_TimerArm unsafe.
+
+  AND THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the second half of why this
+  shape works where the count did not.  SV_ZoneChatCommand is reached only from
+  ClientCommand -- a client stringcmd -- and map entity I/O cannot become one:
+  SV_IOCommand's allow-list is exactly say/echo/print and it runs them through
+  localcmd() on the SERVER console (sv_entities.qc).  A map can make the server
+  talk; it cannot make a player press `!r`.
+
+  run_rearmhop keeps the build-21 dwell forgiveness as an operator knob and now
+  DEFAULTS TO 0.  It was never a speed path -- 0.25 s of ground friction with
+  sv_maxspeed 260 leaves the box at walking pace -- but two clears is how a rule
+  this sharp drifts, and it made the taint so cheap to shed that it never reached
+  a start.  See the block in SV_TimerJumpWatch.
 */
 .float  run_t_hopped;
 
@@ -8681,12 +8714,23 @@ void(entity e) SV_TimerIdle =
 	e.run_t_cpticks  = 0;
 	e.run_t_cpdelta  = 0;
 
-	// Build 21.  Tearing the attempt down takes its forgivable taint with it.
-	// Both the set and the clear are TS_ARMED-gated so this cannot be reached
-	// with it still set today -- it is here because this function's job is to
-	// leave nothing behind, and a taint bit that outlives its attempt is the
-	// exact shape of the bug run_t_dirty's own essay was written about.
-	e.run_t_hopped   = 0;
+	/*
+	  run_t_hopped IS DELIBERATELY NOT CLEARED HERE.  Build 21 cleared it; Patch
+	  445 moved the clear to SV_TimerForgiveHop and did not give this function a
+	  call to it.
+
+	  This is the one place the "leave nothing behind" rule above is wrong, and it
+	  is wrong because of who can reach it: SV_TimerVoid funnels into here, and a
+	  CANCEL ZONE calls SV_TimerVoid (SV_TimerFrame).  Cancel zones are map data,
+	  so clearing here is the same defect as clearing in SV_TimerArm -- the map
+	  hands out the forgiveness.  The sibling taints stay because none of them is
+	  forgivable by gesture: run_t_dirty is re-derived from the movetype at the
+	  arm, run_t_said is a statement about this teardown's own messages.
+
+	  A parked run (sv_resume.qc) depends on it too: the park writes the state and
+	  idles, and `hopped` is in the save format now, so the resume must find the
+	  bit where it left it.
+	*/
 
 	// Build 44, and for the same reason again.  run_t_said is a statement about
 	// what the line above was told to say, so it goes with it -- an attempt torn
@@ -8769,6 +8813,36 @@ void(entity e, string why) SV_TimerVoid =
 	// counts as ENTERING it.  Without this a `!r` into the start you were
 	// already standing in would leave az unchanged and never re-arm.
 	e.run_t_azone = e.run_t_evzone = e.run_t_armzone = e.run_t_cpzone = -1;
+};
+
+/*
+  PATCH 445: THE ONE CLEAR OF run_t_hopped, and it is a function so that the list
+  of callers is the rule.
+
+  Three callers, and each one zeroes or abandons the velocity in the same breath:
+  SV_ZoneMoveAt (the `!r`/`!m`/`!s`/`!b` gesture, `self.velocity = '0 0 0'` two
+  lines below the call), SV_TimerSpawn (a fresh body), SV_TimerMapInit (a new map).
+  The full argument is on the field.
+
+  NOT SV_TimerIdle, which is where build 21 put it.  Idle is the shared funnel --
+  SV_TimerVoid above reaches it, and SV_TimerVoid is reached from a CANCEL ZONE
+  (SV_TimerFrame), which is map data.  A cancel zone beside a start box would have
+  handed out the same forgiveness SV_TimerArm used to.
+
+  It prints, and that is not decoration: CLAUDE.md's rule is that the subject must
+  print its own action, and four arms in one session graded a downstream
+  consequence and measured nothing.  `why` is the gesture, so an arm can assert
+  WHICH clear fired rather than that the flag ended up zero.
+*/
+void(entity e, string why) SV_TimerForgiveHop =
+{
+	if (!e.run_t_hopped)
+		return;
+
+	e.run_t_hopped = FALSE;
+	e.run_t_jumps  = 0;
+	dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
+	sprint(e, PRINT_HIGH, "^2start re-armed^7 -- the hopped start is forgiven\n");
 };
 
 /*
@@ -10122,9 +10196,19 @@ float(entity e) SV_TimerJumpWatch =
 				{
 					sprint(e, PRINT_HIGH,
 					       "^3hopped start^7 -- one jump out of the start, or walk out\n");
-					if (run_t_rearmhop && e.run_t_state == TS_ARMED)
-						sprint(e, PRINT_HIGH,
-						       "              ^7stop and stand still to re-arm the start\n");
+					// Patch 445: name the gesture that clears it, because the
+					// taint is sticky now and the player has to be told what
+					// takes it back.  run_rearmhop 0 is the shipped default, so
+					// this is the line nearly everyone sees.
+					if (e.run_t_state == TS_ARMED)
+					{
+						if (run_t_rearmhop)
+							sprint(e, PRINT_HIGH,
+							       "              ^7stop and stand still, or ^2!r^7, to re-arm the start\n");
+						else
+							sprint(e, PRINT_HIGH,
+							       "              ^7press ^2!r^7 to re-arm the start\n");
+					}
 				}
 
 				/*
@@ -10150,37 +10234,45 @@ float(entity e) SV_TimerJumpWatch =
 		}
 
 		/*
-		  THE RE-ARM.  Build 21.
+		  THE DWELL RE-ARM.  Build 21, and PATCH 445 TURNED IT OFF BY DEFAULT.
 
 		  Stop bhopping, stand for the same dwell that makes a jump an initial
 		  jump, and the fluffed start is taken back: the next jump is judged from
 		  a clean slate.
 
+		  WHY IT IS NO LONGER THE DEFAULT, and it is not because it laundered
+		  speed -- it does not.  0.25 s grounded under sv_friction 4 costs about
+		  63% of the horizontal speed, and ground acceleration is capped at
+		  sv_maxspeed 260, so a player who satisfies this dwell leaves the box at
+		  walking pace.  It is off for two other reasons:
+
+		    - TWO CLEARS IS HOW A RULE THIS SHARP DRIFTS.  Build 21 shipped three
+		      and one of them (SV_TimerArm) was the hole; the rule is legible only
+		      while the answer to "what takes the taint back" is one gesture.
+		    - IT MADE THE TAINT TOO CHEAP TO MATTER.  0.25 s is three or four
+		      ticks.  Any pause at all sheds it, so the mark almost never survived
+		      to reach a start, which is most of why the build 19/20/21 rule has
+		      never caught anything.
+
+		  Kept rather than deleted because it is a genuine forgiveness an operator
+		  may want back, and because `run_rearmhop 0/1` is the control arm
+		  cfg/test/b21a.cfg is built from -- deleting the knob would delete the
+		  only positive control the dwell path has.
+
 		  It deliberately does NOT set run_t_startok.  That would settle the start
 		  while you are still standing in the box, which is the hole build 20
 		  closed -- the point is to reopen the window, not to close it early.
 
-		  run_t_jumps goes back to zero with it so the `timer` report describes
-		  the attempt you are actually about to make.  It is a diagnostic counter
-		  and nothing reads it for a decision, but a re-armed start that still
-		  says `jumps 5` is a report that lies about the thing it exists to show.
-
 		  TS_ARMED is the scope guard, and it is the state whose own definition
-		  is "standing in the zone the run will start from" -- so the guard IS
-		  the answer the user chose, spelled in the state machine rather than in
-		  a position test.  The clock has not started, so there is no time to
-		  rewind and no distance to skip.  run_t_groundsec > 0 carries the autohop
-		  case for free, exactly as it does in the hop test above: a hop the
-		  server never saw grounded reads a dwell of zero and re-arms nothing.
+		  is "standing in the zone the run will start from".  The clock has not
+		  started, so there is no time to rewind and no distance to skip.
+		  run_t_groundsec > 0 carries the autohop case for free, exactly as it
+		  does in the hop test above: a hop the server never saw grounded reads a
+		  dwell of zero and re-arms nothing.
 		*/
 		if (run_t_rearmhop && e.run_t_hopped && e.run_t_state == TS_ARMED)
 			if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
-			{
-				e.run_t_hopped = FALSE;
-				e.run_t_jumps  = 0;
-				sprint(e, PRINT_HIGH,
-				       "^2start re-armed^7 -- one jump out of the start\n");
-			}
+				SV_TimerForgiveHop(e, "the ground dwell (run_rearmhop 1)");
 	}
 
 	// The two phase clocks, written last so the dwell computed above is this
@@ -10611,11 +10703,26 @@ void(entity e, float z) SV_TimerArm =
 	// With run_t_flags, because it is a statement about what those said.
 	e.run_t_said = 0;
 
-	// Build 21.  Unconditional where the line above is not, and the asymmetry is
-	// the point: "are you noclipping right now" is a live question, "did you hop
-	// out of a start box you have just this moment re-entered" is not.  Arriving
-	// here IS the re-arm, so it clears the forgivable taint outright.
-	e.run_t_hopped = FALSE;
+	/*
+	  PATCH 445 REMOVED `e.run_t_hopped = FALSE` FROM HERE, and this is the whole
+	  patch.  Build 21's argument was the asymmetry with the line above -- "are you
+	  noclipping right now" is a live question, "did you hop out of a box you have
+	  just re-entered" is not -- and it is sound about a player who walked back in.
+	  It is wrong about who else arrives here.
+
+	  AN ARM IS NOT A GESTURE.  SV_TimerArm is reachable from ordinary map data, and
+	  the round-4 census measured how often: of 1316 shipped bsps, 21 have two
+	  abutting start regions whose seam re-arms on every crossing (the occupancy
+	  scan is a POINT test, the start test is the HULL, and the arm scan runs after
+	  it in the same packet) and 66 have a velocity-keeping trigger_teleport landing
+	  inside a start region.  On those maps every hop of a chain was forgiven the
+	  instant it happened, WITH THE SPEED STILL ON -- which is the only form of
+	  laundering that is worth anything.
+
+	  The clear lives in SV_TimerForgiveHop now, whose callers all zero the
+	  velocity.  A player who genuinely walked back into the box gets there with
+	  `!r`, which is one keypress and the most-pressed key in the game.
+	*/
 
 	// Arming begins a new attempt, so it is no longer a continuation of one.
 	// TF_SHADOW goes with run_t_flags above; this is the half that lives outside.
@@ -12908,6 +13015,11 @@ void(entity e) SV_TimerSpawn =
 	e.rec_pad_len  = 0;
 	SV_TimerWarped(e);
 	SV_TimerIdle(e);
+	// Patch 445: SV_TimerIdle no longer clears the hopped-start taint (see its
+	// essay), so the two lifecycle events that SHOULD clear it ask for it by name.
+	// A respawn is a fresh body at a spawn point with no velocity, so there is no
+	// chain's speed for the forgiveness to carry.
+	SV_TimerForgiveHop(e, "a respawn");
 };
 
 // Called once per map, from the same deferred point the zones load at.
@@ -13075,7 +13187,10 @@ void() SV_TimerMapInit =
 
 	registercvar("run_starthop_strict", "1");
 	registercvar("run_rearmstops", "1");
-	registercvar("run_rearmhop", "1");           // build 21, and see the trap above
+	// Patch 445: 0, and the default moved in default.cfg/defaultuser.cfg with it.
+	// `!r` is the shipped clear now; this is the build-21 dwell forgiveness kept as
+	// an operator knob and as cfg/test/b21a.cfg's control arm.
+	registercvar("run_rearmhop", "0");           // build 21, and see the trap above
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
 	registercvar("run_stagefail", "1");          // build 43, and see the trap above
@@ -13199,6 +13314,9 @@ void() SV_TimerMapInit =
 		p.rec_rec_saved = FALSE;
 		p.rec_rec_bytes = -1;
 		SV_TimerIdle(p);
+		// Patch 445, the other half of SV_TimerSpawn's call: a new map takes the
+		// start box the chain was built in, so nothing survives to launder.
+		SV_TimerForgiveHop(p, "a map change");
 	}
 
 	// Save-locks are per map by definition -- an origin from the last one is
