@@ -1692,13 +1692,19 @@ refusing to deploy a page for an archive that is not published.
     # directory` -- AFTER both archives are already uploaded, which is the
     # documented unre-runnable state.  Enumerate the files and copy each one; the
     # page dir is rendered by this script and is five files.
+    # AND `-LiteralPath` IS NOT AN scp FLAG.  The first fix for the glob passed it
+    # to scp, which answers `scp: unknown option -- L` and exits 1 -- so step 18
+    # failed on the ONE run it was written for, at the same point and after the
+    # same unre-runnable uploads.  It is a PowerShell parameter name, and scp is a
+    # native exe: the shape that works is the one the loop above already uses, a
+    # bare path argument.  Verified against the Pi, not reasoned about.
     $pageFiles = @(Get-ChildItem -LiteralPath $pageDir -File | ForEach-Object { $_.FullName })
     if (-not $pageFiles.Count) { Fail "no page files in $pageDir" }
     foreach ($pf in $pageFiles) {
-        & scp @sshOpts -q -LiteralPath $pf "${PiHost}:$SiteRoot/.incoming/$Ver/$([IO.Path]::GetFileName($pf))"
-        if ($LASTEXITCODE -ne 0) { Fail "scp $([IO.Path]::GetFileName($pf)) failed" }
+        $pfName = [IO.Path]::GetFileName($pf)
+        & scp @sshOpts -q $pf "${PiHost}:$SiteRoot/.incoming/$Ver/$pfName"
+        if ($LASTEXITCODE -ne 0) { Fail "scp $pfName failed" }
     }
-    if ($LASTEXITCODE -ne 0) { Fail 'scp of the page failed' }
     & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/publish.sh' '$SiteRoot/install.sh' && sh '$SiteRoot/publish.sh' '$Ver'" 2>&1 | ForEach-Object { Info $_ }
     if ($LASTEXITCODE -ne 0) { Fail 'publish.sh failed on the Pi' }
 

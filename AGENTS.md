@@ -1058,13 +1058,21 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `Sep 21 2026` makes the compiler treat `21` and `2026` as linker inputs.
 - RELEASE: `release.ps1 -Bump patch -BuildNumber <n> -Linux dist\<drop>`.
   `-BuildNumber` is REQUIRED unless a `Build NN:` commit is inside the last 200
-  (the script derives the number from a subject and hard-fails without it; Build
-  88 was 228 back). The Linux drop and ftesurf64.exe must come from the same
+  (the script derives the number from a subject and hard-fails without it; the
+  last one, `QC build 88` f4b5051, is 224 back as of Patch 441 -- re-measure with
+  `git rev-list --count HEAD ^f4b5051` rather than trusting a number here, and
+  note it was 219 when this line was written, not the 228 it claimed). The Linux drop and ftesurf64.exe must come from the same
   engine commit (gate L2); build.ps1 recompiles the progs from `src`, so copy the
   lobby-deployed .dat back in before releasing. `ENGINE.txt`'s pin block is a gate
   too -- bump `commit`, `patch` and `qcbuild` with the engine or the run stops
   there.
-  - STEP 18 USED TO FAIL ON WINDOWS and is fixed (6aaeebb): `scp -r "$pageDir\*"`
+  - STEP 18 USED TO FAIL ON WINDOWS. The fix in 6aaeebb did NOT work and was
+    never run: it passed `-LiteralPath` to scp, which is a PowerShell parameter
+    name, and a native exe answers `scp: unknown option -- L` and exits 1 -- the
+    same failure at the same point, after the same unre-runnable uploads. Fixed
+    for real in Patch 441 (a bare path argument, the shape the loop above it
+    already used), and that shape was run against the Pi rather than reasoned
+    about. The original defect: `scp -r "$pageDir\*"`
     passes the literal `*`, so the page never went up and the run threw AFTER both
     archives were uploaded -- the documented unre-runnable state, hit again on
     0.1.13, whose page was therefore deployed by hand: `scp dist\site-<v>\<each
