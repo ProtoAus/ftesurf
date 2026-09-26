@@ -17,7 +17,7 @@ elapsed 5.000000
 clock counted
 split 0
 delta 0
-flags 0
+flags 2
 pb 0
 dirty 0
 cheat 0

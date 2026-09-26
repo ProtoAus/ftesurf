@@ -86,6 +86,12 @@ SAVES_STAGED = (("save901", "p441rest.txt"), ("save902", "p441fast.txt"),
 
 CANCEL = r"run cancelled \(the save's recording could not be restored\)"
 
+# arm -> a path staged as a DIRECTORY so that a write to it must fail.  save000/run.rec
+# is what SL_RecPath(FS_RETRY_SLOT) spells, so SV_RecWritePrefix's fopen(FILE_WRITE)
+# cannot open it: the retry point gets `reclines 0` while the run keeps TF_RECORDING,
+# which is the one state that tells `mark > 0` and `flg & TF_RECORDING` apart.
+BLOCK = {"retryw": os.path.join("save000", "run.rec")}
+
 # How each graded field is read out of one `==== TAG` section of the log.  One
 # regex each, and every one of them is a line the SUBJECT printed about its own
 # state -- `cmd timer`'s report, or the void's own cancel line.
@@ -131,6 +137,10 @@ FIELDS = {
     # state is still RUNNING, `back where you were` when it is not.  It also proves
     # the retry LANDED, which `rec_retry 0` or a second player would prevent.
     "retrysay":  r"retry.{0,4} -- (run restored at|back where you were)",
+    # SV_RecWritePrefix's own dprint when the prefix cannot be opened -- the subject
+    # saying `mark` is 0, and for the reason p441retryw.cfg stages.  Without it that
+    # arm would be measuring p441retry's case over again.
+    "cannotwrite": r"(timer: cannot write .*run\.rec)",
 }
 
 # arm -> (cfg, log, stage the zones override, EXPECT post-fix, CONTROL overrides,
@@ -196,8 +206,10 @@ ARMS = {
     # first void has taken the recorder down (`hadrec` false) and only the server's
     # own answer is left.  Its control is the fix COMPILED OUT -- the predicate cut
     # to `hadrec` alone -- because no earlier commit isolates this.  Between this and
-    # `mid`, each clause of `SV_RecEnabled() || hadrec || (retry && (flg & TF_RECORDING))` is shown to be load-bearing;
-    # before them, either half could have been deleted with every arm still green.
+    # `mid`, clauses 1 and 2 are each shown to be load-bearing.  `retry` shows a third
+    # clause is needed at all; `retryw` shows WHICH third clause, being the only arm
+    # where `mark > 0` and `flg & TF_RECORDING` disagree.  Before them, a half could
+    # have been deleted with every arm still green.
     "twice": (
         "cfg/test/p441twice.cfg", "p441twice.log", False,
         {"C1": {"state": "running", "recording": "1"},
@@ -213,6 +225,29 @@ ARMS = {
         {"S2": {"cancel": "absent", "state": "running", "clock": ">5.0",
                 "buffer": "-1"}},
         {"S1": ("buffer",), "S2": ("buffer", "practice", "class")},
+    ),
+    # Round 6.  WRITTEN TO TELL ROUND 4 AND ROUND 5 APART -- and it does not, which is
+    # the finding.  The plan was a retry whose PREFIX WRITE FAILS with the recorder
+    # live, giving `reclines 0` beside a flags word that still carries TF_RECORDING.
+    # MEASURED INSTEAD: the write cannot be made to fail from QC.  PF_fopen allocates
+    # a memory buffer for the write modes (engine pr_bgcmd.c, PF_fopen's FILE_WRITE
+    # case) and the bytes go out at fclose, so `fopen` returns a handle even with a
+    # DIRECTORY sitting on the path, SV_RecWritePrefix returns its line count, and
+    # `reclines` is positive while no prefix file exists at all.  Both spellings
+    # therefore void here.  What the arm does establish is that second fact, which is
+    # worth having on its own: `reclines > 0` is not evidence the prefix is on disk.
+    # `cannotwrite` is graded ABSENT for exactly that reason -- it is the dprint QC
+    # would print if it could see the failure, and it cannot.
+    "retryw": (
+        "cfg/test/p441retryw.cfg", "p441retryw.log", False,
+        {"C1": {"state": "running", "recording": "1"},
+         "C2": {"state": "running", "recording": "1"},
+         "S":  {"cannotwrite": "absent", "cancel": "present",
+                "retrysay": "back where you were", "state": "idle"}},
+        {"S":  {"cannotwrite": "absent", "cancel": "present",
+                "retrysay": "back where you were", "state": "idle",
+                "practice": None, "class": None}},
+        {"S": ("clock", "practice", "class", "buffer")},
     ),
     # Round 4.  THE RETRY PATH, where the other two clauses are structurally blind:
     # map_restart re-initialises the progs (so `hadrec` is 0) and the operator has
@@ -252,7 +287,7 @@ def sha(path):
     return h.hexdigest().upper()[:16]
 
 
-def stage(zones):
+def stage(zones, arm=""):
     if os.path.isdir(PARK):
         raise SystemExit("refusing: %s already exists (a previous run did not restore)" % PARK)
     if os.path.exists(ZONES):
@@ -263,6 +298,8 @@ def stage(zones):
         d = os.path.join(SAVES, slot)
         os.makedirs(d)
         shutil.copyfile(os.path.join(CFGDIR, src), os.path.join(d, "state.txt"))
+    if arm in BLOCK:
+        os.makedirs(os.path.join(SAVES, BLOCK[arm]))
     if zones:
         os.makedirs(os.path.dirname(ZONES), exist_ok=True)
         shutil.copyfile(os.path.join(CFGDIR, "p435.zones.json"), ZONES)
@@ -366,7 +403,7 @@ def agrees(got, want):
     return got == want
 
 
-PRESENCE = ("cancel", "stitched")     # graded present/absent, not by value
+PRESENCE = ("cancel", "stitched", "cannotwrite")     # graded present/absent, not by value
 
 
 def read(txt, name):
@@ -453,10 +490,19 @@ def main():
     for d, h in ran:
         print("%-12s %s" % (d, h))
     cleanup_ok = True
-    stage(zones)
+    stage(zones, a.arm)
     try:
         secs = run(a.exe, a.timeout, cfg, log)
         left = listing(SAVES)
+        # THE BLOCKER IS PART OF THE ARM.  If the run turned it into a file, the write
+        # landed after all and everything the cfg concludes about `reclines` is wrong.
+        if a.arm in BLOCK:
+            b = os.path.join(SAVES, BLOCK[a.arm])
+            blocked = os.path.isdir(b)
+            print("the staged blocker at %s is still a directory: %s"
+                  % (os.path.relpath(b, ROOT), blocked))
+            if not blocked:
+                cleanup_ok = False   # fails the run, like any other broken premise
     finally:
         # LOUD, BUT NOT MASKING.  A raise from restore() inside `finally` replaces
         # whatever run() raised, which is how a cleanup failure hides the fault that

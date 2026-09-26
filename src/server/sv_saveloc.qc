@@ -1639,21 +1639,31 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  bit, out of the file.  SV_SaveWriteState masks only TF_FROZEN|TF_STOPPED|TF_NONCE
 		  out of the flags word it writes, so TF_RECORDING survives into `state.txt`, and
 		  `flg` still holds it here -- the live flags are assigned from `flg` MINUS that bit
-		  further down, which is the only reason it looked unavailable.  The clause is here
+		  far ABOVE this branch, which is the only reason it looked unavailable.  The clause is here
 		  because the restart is the one place the other two go blind: the progs are
 		  re-initialised, so `hadrec` is structurally 0 (which is why the arming flag has to
 		  travel in a cvar, `cvar_set("rec_retry_armed", ...)` in SV_RetryPoint), and
 		  SV_RecEnabled() is 0 if the operator has just switched recording off.  Without it,
 		  `rec_enable 0` under a recorded CLEAN run plus one `retry` left a clean, rankable,
 		  RUNNING attempt with no recording and no message of any kind.
-		    NOT `mark > 0`, which was round 4's first cut: `mark` is `reclines`, i.e. whether
-		  a prefix FILE got written, and it is 0 when the write failed with the recorder
-		  still live (sv_timer.qc:5556) -- so it missed exactly the state it was added for.
-		  It is also not a receipt at all on a streamed save, where SV_RecWritePrefix routes
-		  to SV_RecSnapshot and returns a positive count for a copy it has only QUEUED
-		  (sv_timer.qc:5547, 2046).  NOT on the load path either, for either spelling: there
-		  the file is some earlier session's, and reading it as this run's expectation is how
-		  round 2 put the absence trap back.
+		    NOT `mark > 0`, which was round 4's cut.  `mark` is `reclines`, what
+		  SV_RecWritePrefix returned, and the first argument for swapping it out -- that it
+		  reads 0 when the write fails with the recorder live (sv_timer.qc:5556) -- IS WRONG.
+		  cfg/test/p441retryw.cfg staged a DIRECTORY on that path and the write could not be
+		  seen to fail at all: the engine's PF_fopen allocates a memory buffer for the write
+		  modes and the bytes go out at fclose, so `fopen` returns a handle, the count comes
+		  back positive, and `reclines` lands in the file with NO prefix on disk.  Same shape
+		  on a streamed save, where SV_RecWritePrefix routes to SV_RecSnapshot and returns a
+		  positive count for a copy it has only QUEUED (sv_timer.qc:5547, 2046).
+		    SO THE HONEST STATE OF THE SWAP: no arm distinguishes the two spellings, and on
+		  the evidence available none can -- they agree on every reachable retry path.
+		  `flg & TF_RECORDING` is kept for WHICH FACT it names, the run's own recorder rather
+		  than the return of a write QC cannot check, and not because a measurement moved.
+		  Anyone minded to simplify it back should know that is the whole of the argument.
+		    NOT on the load path either, for either spelling: there the file is not
+		  necessarily this run's -- a slot written mid-run and loaded ten seconds later is the
+		  same session -- and reading it as this run's expectation is how round 2 put the
+		  absence trap back.
 		  AND THE TRADE CLAUSE 1 MAKES, said out loud because a reviewer had to ask:
 		  on a server that records, a RUNNING attempt reaching this branch with NO
 		  recorder is cancelled even if it never had one -- e.g. a run armed while
@@ -1662,10 +1672,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  server whose ranking is backed by recordings, a run with none does not file a
 		  time.  The absence trap is the other configuration -- a server that records
 		  nothing -- and there clause 1 is false and nothing is cancelled.
-		  With all three clear, nothing was lost and nothing was expected: the run was
-		  already unverifiable by the operator's own configuration before the load arrived,
-		  and cancelling THAT is the absence trap -- a check that cannot see answering
-		  "guilty".  Patch 434 did exactly that.
+		  With all three clear, nothing was lost and nothing was expected -- ALMOST, and
+		  the exception is in BACKLOG.md rather than here only because it is not this
+		  branch's to fix: SV_RetryPoint ignores SV_RecDestream's return, so a failed
+		  destream discards a live recording and then writes a retry point with the bit
+		  clear and `reclines 0`, which all three clauses read as innocence.  Otherwise the
+		  run was already unverifiable by the operator's own configuration before the load
+		  arrived, and cancelling THAT is the absence trap -- a check that cannot see
+		  answering "guilty".  Patch 434 did exactly that.
 
 		  THREE WRONG PREDICATES CAME BEFORE THIS ONE.  Each is worth its lines because
 		  each looks right, and all three were caught by review rather than by me:
