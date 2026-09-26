@@ -132,6 +132,19 @@ def cleanup_saves(before):
             print("cleanup: cannot remove %s: %s" % (slot, exc))
 
 
+def wrote_line():
+    """(lines, path) from Rec_ViewSaved's own print, or None.  The LAST one: R2 is
+    the only save in the cfg, but a driver that took the first would read a
+    different run's leftovers if the log were ever appended to."""
+    m = None
+    with open(LOG, "r", errors="replace") as fh:
+        for line in fh:
+            g = re.search(r"replay: view prefix (\d+) lines -> (\S+)", line)
+            if g:
+                m = (int(g.group(1)), g.group(2))
+    return m
+
+
 def writeback():
     """R2's write-back -- and A THIRD ANSWER FOR "there was nothing to compare".
 
@@ -154,11 +167,32 @@ def writeback():
     is that the written file is byte-identical to ONE of the two the client read --
     a spelling that dropped, merged or blanked a line matches neither.
 
-    WHETHER ONE IS WRITTEN AT ALL IS NOT STABLE ACROSS RUNS: over four runs it
-    appeared three times and not the fourth, and the cause is NOT established -- a
-    first guess that a leftover `data/p438view/save<n>/seq.txt` from the previous run
-    was what enabled it is wrong, because a run from a clean tree wrote one too.
-    Which is the other reason this cannot be a pass/fail line.
+    PATCH 443 ESTABLISHED BOTH HALVES OF THE INTERMITTENCY, and neither was the
+    cause guessed here.  The fix is in the cfg and in what this function grades.
+
+    WHY NO FILE APPEARED.  R2 began with `cmd sl_goto 901`, and `sl_goto` is ITSELF
+    a load -- unlike R1/R1b's `sl_replay`, which only emits the event.  A load runs
+    SV_SaveApplyState, these fixtures have no run.rec behind them, so the rewind
+    fails and Patch 441 VOIDS the running run; the recording ends and the client
+    frees the sidecar buffer the write-back needs.  Measured, against the dprint
+    Patch 443 added inside Rec_ViewSaved for exactly this question:
+        replay: no view prefix for 12 (buf 0 lines 0)
+    -- two lines after a load had put 54 lines into that buffer.  The load is gone
+    from the cfg and a file appears every run.
+
+    WHY BYTE-EQUALITY IS THE WRONG TEST ANYWAY.  rec_rp_view is ONE buffer: the live
+    sidecar appends to the same strbuf a load fills, so what a later save writes back
+    is the loaded prefix PLUS whatever the live run added since, and Rec_ViewTrim
+    keeps all of it (a live line's tick is <= the save's own tick, so the walk-back
+    breaks on the first comparison).  Measured across three runs of the corrected
+    gesture: 1640, 1640, 7955 bytes -- the 7955 is 54 fixture lines plus ~161 live
+    ones, and it is CORRECT behaviour that the old test called a failure.
+
+    SO THIS GRADES THE SUBJECT'S OWN NUMBER.  Rec_ViewSaved prints the line count it
+    wrote and the path it wrote to; the file must exist at that path, hold exactly
+    that many lines, and BEGIN with the sidecar the client last read -- which is
+    the round trip the arm always wanted, minus the assumption that nothing else
+    was appended to the buffer in between.
     """
     skip = set(os.path.abspath(p) for p in
                (VIEW, os.path.join(SMALL, "run.view")))
@@ -169,18 +203,38 @@ def writeback():
                 p = os.path.join(dirpath, f)
                 if f.endswith(".view") and os.path.abspath(p) not in skip:
                     found.append(p)
+    said = wrote_line()
     if not found:
-        print("write-back: NOT MEASURED -- the client wrote no .view under %s or %s"
-              % (os.path.relpath(SCRATCH, ROOT), os.path.relpath(extra_dir(), ROOT)))
-        return True
+        # Still a third answer, but now it is a FAILURE rather than NOT MEASURED:
+        # the cause is known, so an absent file is the arm reporting a defect.
+        print("write-back: NO FILE under %s or %s -- the client said: %s"
+              % (os.path.relpath(SCRATCH, ROOT), os.path.relpath(extra_dir(), ROOT),
+                 said or "nothing at all (no Rec_ViewSaved dprint in the log)"))
+        return False
+    if not said:
+        print("write-back: a file exists but the client printed no line for it -- "
+              "the dprint and the write disagree")
+        return False
+    n, path = said
     ok = True
+    head = EXPECTED_SMALL.splitlines(True)
     for p in sorted(found):
         b = open(p, "rb").read()
-        which = ("the 6 MB sidecar (slot 901)" if b == EXPECTED else
-                 "the 1.6 KB sidecar (slot 902, the last load)" if b == EXPECTED_SMALL
-                 else "NEITHER of the two files the client read")
-        print("write-back %s (%d bytes): %s" % (os.path.relpath(p, ROOT), len(b), which))
-        ok = ok and b in (EXPECTED, EXPECTED_SMALL)
+        lines = b.splitlines(True)
+        # The path the client printed is gamedir-relative with forward slashes.
+        onpath = os.path.abspath(p).replace("\\", "/").endswith(path)
+        good = (len(lines) == n and lines[:len(head)] == head and onpath)
+        print("write-back %s (%d bytes, %d lines): client said %d lines -> %s%s"
+              % (os.path.relpath(p, ROOT), len(b), len(lines), n, path,
+                 "" if good else "  MISMATCH"))
+        if len(lines) != n:
+            print("    the file holds %d lines and the client claims %d" % (len(lines), n))
+        if lines[:len(head)] != head:
+            print("    it does not BEGIN with the %d-line sidecar the client last read"
+                  % len(head))
+        if not onpath:
+            print("    it is not at the path the client printed")
+        ok = ok and good
     return ok
 
 

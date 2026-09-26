@@ -1426,15 +1426,32 @@ void(float id) Rec_ViewSaved =
 
 	rec_rp_mark[id] = 0;
 
-	// Nothing to keep.  A save taken outside a run is the ordinary case for
-	// this, not a failure -- there is no recording open to take a prefix of.
+	/*
+	  Nothing to keep.  A save taken outside a run is the ordinary case for this,
+	  not a failure -- there is no recording open to take a prefix of.
+
+	  PATCH 443 SAYS WHICH OF THE THREE IT WAS.  Every way of not writing was
+	  silent, so a harness could see that no sidecar appeared and not whether the
+	  buffer was empty, the trim took everything, or the write itself failed --
+	  and p438view's R2 wrote a file on three runs of four with the difference
+	  unexplained for two patches (BACKLOG.md).  One dprint per SAVE event, which
+	  is a player keypress, not a per-frame cost.
+	*/
 	if (rec_rp_view < 1 || rec_rp_lines <= FS_VIEWHEAD)
+	{
+		dprint(sprintf("replay: no view prefix for %g (buf %g lines %g)\n",
+		               id, rec_rp_view, rec_rp_lines));
 		return;
+	}
 
 	// Back to the instant the SERVER saved at, not the frame we noticed on.
 	lines = Rec_ViewTrim(rec_rp_lines);
 	if (lines <= FS_VIEWHEAD)
+	{
+		dprint(sprintf("replay: view trim left nothing for %g (%g of %g, saveticks %g)\n",
+		               id, lines, rec_rp_lines, getstatf(STAT_FS_SAVETICKS)));
 		return;
+	}
 
 	fh = fopen(Rec_SavePath(id), FILE_WRITE);
 	if (fh < 0)
@@ -1447,6 +1464,10 @@ void(float id) Rec_ViewSaved =
 	// rather than `used`.  See server/sv_timer.qc.
 	buf_writefile(fh, rec_rp_view, 0, lines);
 	fclose(fh);
+	// Patch 443: and the one that DID write says where, because the path is
+	// cl_saveroot-relative and the server's own save root is a different tree --
+	// which is the other half of why R2 could not be graded.
+	dprint(sprintf("replay: view prefix %g lines -> %s\n", lines, Rec_SavePath(id)));
 
 	// The mark is the TRIMMED length, so a warm rewind lands where the file
 	// does.  Marking the untrimmed one would put the two back out of step on
