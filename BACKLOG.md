@@ -111,6 +111,42 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Needs a stream -- a lobby, or `rec_stream 1` on a listen server, which is what
   would make it measurable. sv_saveloc.qc SV_RetryPoint, sv_timer.qc:5573.
   Patch 441 review, round 4.
+- **`reclines` IS NOT EVIDENCE THE PREFIX FILE EXISTS, and nothing that reads it
+  knows.** SV_RecWritePrefix returns its line count after `fopen`+`buf_writefile`+
+  `fclose`, and QC cannot see any of those fail: the engine's PF_fopen allocates a
+  MEMORY BUFFER for the write modes and the bytes leave at fclose, unchecked. Proved
+  by staging a DIRECTORY on the retry slot's `run.rec` path -- the log shows the
+  `fopen` succeeding, no `timer: cannot write` line, the directory still a directory
+  at exit, and `reclines` positive in the state file with no prefix anywhere
+  (`cfg/test/p441retryw.cfg`). So `SV_RecWritePrefix`'s `if (fh < 0)` branch is
+  effectively unreachable for a filesystem fault, and every reader that treats
+  `reclines > 0` as "there is a file" is trusting a count written before the bytes
+  left the process -- Patch 426's reasoning about mark-0 saves, a verifier pairing a
+  state file with a recording, and any future predicate tempted by `mark`. The fix
+  wants the writer to confirm the file (a `fsize` of the path after fclose, or a
+  `recbytes` it checks) before it reports a count. sv_timer.qc SV_RecWritePrefix,
+  engine PF_fopen. Patch 441 round 6.
+- **TF_RECORDING can be left set with no recorder behind it.**
+  SV_RecRewindStream's two cold-failure exits destroy the old recorder and return
+  FALSE without clearing the bit, and SV_RecClose early-returns on `!SV_RecLive`
+  without clearing it either. Inside SV_SaveApplyState both arms discard, so it is
+  always reconciled there -- but SV_MsRecAttach's buffer branch returns without a
+  discard, leaving a RUNNING run with the bit set and no recorder, and a later
+  `retry` then writes that stale bit into its state file where Patch 441's third
+  clause reads it. The void is still right in substance there (evidence really was
+  lost, a session earlier), so this is "right for the wrong reason" rather than a
+  false accusation -- but the bit is being trusted as a fact about now.
+  sv_timer.qc SV_RecRewindStream, SV_RecClose; sv_resume.qc SV_MsRecAttach.
+  Patch 441 review, round 5.
+- **The cancel message names the wrong reason for a run that never had a recording.**
+  Patch 441's clause 1 cancels a RUNNING attempt with no recorder on a server that
+  records -- deliberately, and even when the run never had one (armed while
+  rec_enable was 0, the operator turns it on, the player loads). The player then
+  reads `run cancelled (the save's recording could not be restored)`, which asserts
+  something false: there was none to restore. One string, two causes. The fix is a
+  second reason word at the SV_TimerVoid call, and it touches what seven arms grade,
+  which is why it is here rather than done. sv_saveloc.qc, the failed-rewind branch.
+  Patch 441 review, round 5.
 - **`sl_list` prints the row speed as `%4.0f`, so the arming boundary is invisible.**
   A row carrying 0.6 u/s prints `1 u/s` and arms; one carrying 1.4 prints `1 u/s`
   and does not (SL_ARM_SPEED is 1). Patch 442 widened this column to the whole
