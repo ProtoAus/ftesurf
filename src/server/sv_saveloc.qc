@@ -183,10 +183,10 @@ float  rec_sl_quiet;
 // has vz +302 and no horizontal speed at all, so it read as at rest: the gate fired
 // and the load armed a CLEAN attempt.  The hop dwell does not catch it either, and
 // NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` IS a pure
-// velocity edge (sv_timer.qc:9835) and a restored +302 satisfies it -- which is why
+// velocity edge (SV_TimerJumpWatch's `jumped`) and a restored +302 satisfies it -- which is why
 // the arm reads `running` one frame after the load on a start-on-jump map.  What
 // kept run_t_hopped clear was that EVERY load set run_t_startok, with the whole hop
-// block behind `if (!e.run_t_startok)` (sv_timer.qc:9986).  A reviewer caught the
+// block behind `if (!e.run_t_startok)` (SV_TimerJumpWatch).  A reviewer caught the
 // wrong mechanism, and PATCH 443 then fixed the mechanism: a non-RUNNING restore no
 // longer settles the start, so the block does run.  The verdict is still clear here,
 // now for a reason worth knowing -- the DWELL.  The body was standing before the
@@ -838,7 +838,8 @@ void(entity e, float n) SV_SaveLocReplay =
 	  taint at the gesture is one line that does not depend on them.
 	  WHAT IT DOES NOT DO, because the first draft of this paragraph claimed it did:
 	  survive the next arm.  SV_TimerArm re-derives the class from the level
-	  (sv_timer.qc:10566) and the retry/Multi-Session restores put the saved flags
+	  (SV_TimerArm, which re-derives run_t_dirty from the movetype) and the
+	  retry/Multi-Session restores put the saved flags
 	  back, so `sl_replay` then `!r` clears it.  That is the scope every other taint
 	  has; it is not a guarantee about the player's next attempt.  BACKLOG.md carries
 	  the rest, including that this function has no run_ms_phase refusal.
@@ -1374,7 +1375,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	/*
 	  Patch 441 round 3: DID THIS RUN HOLD A RECORDER WHEN THE LOAD BEGAN, taken
 	  HERE and not at the rewind.  The Patch 360 discard below clears TF_RECORDING
-	  (SV_RecDiscard does it unconditionally, sv_timer.qc:5034), so `wasrec` -- read
+	  (SV_RecDiscard does it unconditionally), so `wasrec` -- read
 	  far below, where Patch 426 wants it -- "recording when the rewind began" --
 	  answers FALSE for every run that has posted a stage.  The failed-rewind branch
 	  was asking that question of `wasrec` and so could not see a recorder this very
@@ -1495,7 +1496,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  are not restored runs at all -- the start has NOT happened, it is the next
 	  thing that will -- and settling it here switched the whole build 19/20/21
 	  rule off for that attempt, since the block is behind `if (!run_t_startok)`
-	  (sv_timer.qc:9986) and only SV_TimerArm clears it again (:10509).
+	  (SV_TimerJumpWatch) and only SV_TimerArm clears it again.
 	  WHAT THAT COST, and it is why this is a ranking fix and not tidying: a
 	  `retry` restores run_t_flags, dirty and cheat verbatim and calls no
 	  SV_TimerStitched, so a clean ARMED attempt comes back clean and RANKABLE --
@@ -1510,7 +1511,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  bottom of SV_TimerJumpWatch).  run_t_groundsec is deliberately left, for
 	  the reason SV_TimerArm gives for leaving it: zero there reads as dwell 0,
 	  i.e. a hop, and it would flag the most ordinary start there is.
-	  GATED ON run_t_startstrict BECAUSE SV_TimerArm'S CLEAR IS (sv_timer.qc:10539)
+	  GATED ON run_t_startstrict BECAUSE SV_TimerArm'S OWN airsec CLEAR IS
 	  -- one rule, one spelling, since a placement that cleared more than the arm
 	  does is the drift this file keeps writing essays about.  The residual is
 	  named rather than left to be found: at `run_starthop_strict 0` an AIRBORNE
@@ -1849,7 +1850,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  [Patch 441 round 5: that parenthetical is not true of the code as it stands,
 		  and a reviewer reported the consequence as certain.  SV_RecDiscard's keep and
 		  its `else if (e.rec_end_ticks == 0)` both sit under `if (live)`, and the
-		  handles it tests are set to -1 OUTSIDE that block (sv_timer.qc:5015-5016), so
+		  handles it tests are set to -1 OUTSIDE that block (SV_RecDiscard's tail), so
 		  a second call sees SV_RecLive FALSE and runs neither SV_RecEndHold.  The
 		  single-discard rule stands on its own merits; the hazard named here does not
 		  exist.  Left in place with this note rather than deleted, because the reason
@@ -1880,13 +1881,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  RUNNING attempt with no recording and no message of any kind.
 		    NOT `mark > 0`, which was round 4's cut.  `mark` is `reclines`, what
 		  SV_RecWritePrefix returned, and the first argument for swapping it out -- that it
-		  reads 0 when the write fails with the recorder live (sv_timer.qc:5556) -- IS WRONG.
+		  reads 0 when the write fails with the recorder live -- IS WRONG.
 		  cfg/test/p441retryw.cfg staged a DIRECTORY on that path and the write could not be
 		  seen to fail at all: the engine's PF_fopen allocates a memory buffer for the write
 		  modes and the bytes go out at fclose, so `fopen` returns a handle, the count comes
 		  back positive, and `reclines` lands in the file with NO prefix on disk.  Same shape
 		  on a streamed save, where SV_RecWritePrefix routes to SV_RecSnapshot and returns a
-		  positive count for a copy it has only QUEUED (sv_timer.qc:5547, 2046).
+		  positive count for a copy it has only QUEUED (SV_RecWritePrefix's stream
+		  branch, SV_RecSnapshot).
 		    SO THE HONEST STATE OF THE SWAP: no arm distinguishes the two spellings, and on
 		  the evidence available none can -- they agree on every reachable retry path.
 		  `flg & TF_RECORDING` is kept for WHICH FACT it names, the run's own recorder rather
@@ -1916,13 +1918,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  THREE WRONG PREDICATES CAME BEFORE THIS ONE.  Each is worth its lines because
 		  each looks right, and all three were caught by review rather than by me:
 		  `SV_RecEnabled()` ALONE -- it asks about the SERVER NOW, not this run.
-		  rec_enable is read at SV_RecOpen (sv_timer.qc:4410) and nowhere per sample, so a
+		  rec_enable is read at SV_RecOpen and nowhere per sample, so a
 		  live recorder survives `rec_enable 0`; SV_RecRewind then refuses on its own copy
-		  of that test (sv_timer.qc:5988) and this branch skipped the void while
+		  of that test (SV_RecRewind's own SV_RecEnabled check) and this branch skipped the void while
 		  SV_RecDiscard threw the recording away.  Measured, cfg/test/p441mid.cfg:
 		  `timer: running` at 0:06.600 with `recorder: buffer -1`.
 		  `wasrec` ALONE -- it is captured BELOW the Patch 360 discard, which
-		  clears TF_RECORDING (sv_timer.qc:5034), so it reads FALSE for every run that has
+		  clears TF_RECORDING, so it reads FALSE for every run that has
 		  posted a stage.  And after one failed load the run is not recording either, so a
 		  SECOND load of the same row let a RUNNING attempt carry on with no recorder --
 		  `sl_goto <n>` being itself a load (sv_player.qc:1046), the pair is one keypress
@@ -1930,14 +1932,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		    `mark > 0 || wasrec` ON EVERY PATH -- `mark` is then a receipt for SOME run's
 		  prefix, and reading it as THIS run's expectation cancelled an honest run loading an
 		  old save on a server with rec_enable 0: the absence trap, put back.  (`reclines 0`
-		  is ambiguous the other way too, "no recorder" or "the prefix write failed"
-		  (sv_timer.qc:5556), so it is no evidence of innocence either.)
+		  is ambiguous the other way too, "no recorder" or "the prefix write failed",
+		  so it is no evidence of innocence either.)
 		    AND `mark` DROPPED ENTIRELY, which is what round 3 did -- that regressed the retry
 		  path the round before had been covering by accident.  The fourth round's job was to
 		  separate the two cases instead of choosing between them.
 
 		  AND THE LATCHES GO BACK, because SV_TimerVoid clears all four
-		  (sv_timer.qc:8736, so a `!r` into the box you are standing in re-arms).
+		  (SV_TimerVoid -> SV_TimerIdle, so a `!r` into the box you are standing in re-arms).
 		  Here that left an IDLE timer in the save's start box with azone -1: the
 		  next tick is an arm edge, SV_TimerArm clears the load's taint, and leaving
 		  the box starts a CLEAN run at the saved speed -- the hole Patch 428 r3
@@ -2683,7 +2685,7 @@ void(entity e, float n) SV_SaveLocLoad =
 
 	  HERE AND NOT IN SV_SaveLocPlace, which is where it was first written and
 	  which would have been wrong: SV_SaveLocHoldFrame re-calls Place every tick
-	  the origin has drifted (:1517), so the clear would land mid-park and flicker
+	  the origin has drifted, so the clear would land mid-park and flicker
 	  the ground flag under a frozen player who is demonstrably standing still.
 	  Loading is the event; re-pinning is not.
 	*/
@@ -3047,7 +3049,8 @@ void(entity e, float down) SV_SaveLocHold =
   right -- two state machines sharing one flag means every future edit to either
   has to be correct for both.  This is not that: it is a RESOURCE with one owner
   at a time, and the ownership is already enforced.  A watch refuses under a
-  save-lock hold (:1391) and a ghost refuses under a watch (SV_GhostSet), so the
+  save-lock hold (SV_SaveLocCreate's own refusal) and a ghost refuses under a
+  watch (SV_GhostSet), so the
   two callers can never both hold it.  If that ever stops being true this needs
   splitting -- and the reason it would need splitting is written here so the
   next person does not have to derive it.
