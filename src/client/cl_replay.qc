@@ -671,6 +671,15 @@ void() Rec_ViewBegin =
 	// must open with a `ghost 1`, and clearing this here is what makes the
 	// ordinary edge test produce one on the first recorded frame.
 	rec_rp_wasghost = FALSE;
+	// Patch 441: free the one that is standing, or it leaks.  Rec_ViewDrop clears
+	// the handle (:768), so on the ordinary path there is nothing here -- but
+	// Rec_ViewLoaded's COLD branch allocates a buffer after a drop (the server
+	// voided the run and then sent the load event), and the next run's begin
+	// overwrote that handle with a fresh one.  One sidecar's worth of strings per
+	// failed load, and on a streaming lobby every save-state load of a running save
+	// is a failed rewind (sv_timer.qc:5966).
+	if (rec_rp_view >= 1)
+		buf_del(rec_rp_view);
 	rec_rp_view  = buf_create_ex("string", 0);
 	if (rec_rp_view < 1)
 	{

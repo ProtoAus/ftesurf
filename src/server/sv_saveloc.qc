@@ -622,14 +622,29 @@ void(entity e, float n) SV_SaveLocReplay =
 		sprint(e, PRINT_HIGH, "^3save: sl_replay needs sv_cheats 1\n");
 		return;
 	}
-	if (!SV_SaveLocRate(e))
-		return;
 	if (n < FS_RETRY_SLOT || n > FS_MAXSAVES)
 	{
 		sprint(e, PRINT_HIGH, sprintf("^3save: %g is not a slot\n", n));
 		return;
 	}
-	e.rec_sl_ack = e.rec_sl_ack + 1;      // counted like every list command
+	/*
+	  Patch 441 round 2: THE CHARGE AND THE ACK ARE THE DISPATCHER'S, and this
+	  function was doing both a second time.  SV_ParseClientCommand counts every
+	  `sl_` command and pays SV_SaveLocRate's one charge before dispatch
+	  (sv_player.qc:775-788) -- which is what Patch 428's review round 2 centralised
+	  after 3/4/5/6 paid twice -- so the local `SV_SaveLocRate(e)` was a second
+	  token off the bucket and `rec_sl_ack + 1` a second ack, and the ack is what
+	  Patch 430's early draw compares against what the client sent.  Both gone.
+	  The refusal above is therefore throttled without being charged here.
+
+	  AND THE RUN IS PRACTICE FROM HERE.  The gate argues that no configuration
+	  lets this command work on a ranking run (cheatwatch 1 taints, cheatwatch 0
+	  makes every run practice) -- but that safety is entirely INHERITED from two
+	  distant blocks, and a later edit to either re-opens this silently.  A taint
+	  at the gesture makes it local: using the evidence code's own harness handle
+	  on your own live run is a practice run, by this line, wherever the cvars sit.
+	*/
+	SV_TimerPractice(e);
 	SV_SaveLocEvent(e, SLOP_LOADED, n);
 	sprint(e, PRINT_HIGH, sprintf("save: replay event for slot %g\n", n));
 };
@@ -1037,7 +1052,9 @@ float(float id, float row) SV_SaveReadLight =
 */
 // Patch 441: this call cancelled the run (a failed rewind under a RUNNING save),
 // which means SV_TimerVoid cleared the occupancy latches and the taint the load
-// wrote is no longer on a run.  Both callers read it; set on every call.
+// wrote is no longer on a run.  Set on EVERY call (above the fopen, so a failed
+// read cannot leave a stale TRUE) and read by SV_SaveLocLoad's arm gate -- the one
+// reader, the other two callers (SV_RetryApply, SV_MsApply) ask nothing of it.
 float sl_voided;
 
 float(entity e, float id, float retry) SV_SaveApplyState =
@@ -1566,19 +1583,32 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 		  PATCH 441 -- TWO CORRECTIONS.
 
-		  ONLY WHERE THE SERVER RECORDS AT ALL: SV_RecEnabled(), not the state
-		  alone.  With rec_enable 0 or lobby_norec 1 the rewind fails on EVERY load
-		  of a running save, and the run it cancelled never had evidence to lose --
-		  it was unverifiable by the operator's own configuration before the load.
-		  Cancelling it is the absence trap: a check that cannot see answering
-		  "guilty".
-		  SV_RecEnabled() AND NOT `wasrec`, which was this fix's first cut and is
-		  wrong in the other direction: after one failed load the run is no longer
-		  recording, so a SECOND load of the same row would have found wasrec clear
-		  and let a RUNNING attempt continue with no recorder behind it -- exactly
-		  what Patch 434 exists to stop, and reachable because `sl_goto <n>` is
-		  itself a load (sv_player.qc:1046).  Measured: p441void.log's first cut,
-		  `timer: running` with `recorder: buffer -1` after the pair.
+		  ONLY A RUN WHOSE EVIDENCE WAS EXPECTED TO EXIST: `mark > 0 || wasrec`.
+		  `mark` is this save's own `reclines` -- how many recorded lines stood
+		  behind it when it was taken -- and `wasrec` is whether the live run holds
+		  a recorder right now.  Either one means a recording was expected here, so
+		  a load that cannot restore one has taken evidence away.  With both clear
+		  nothing was lost: a save written with no recorder carries `reclines 0`
+		  (SV_RecWritePrefix returns 0 on an empty rec_rec_buf, sv_timer.qc:5549),
+		  and a run that is not recording was already unverifiable before the load,
+		  by the operator's own configuration.  Cancelling THAT is the absence trap
+		  -- a check that cannot see answering "guilty".
+
+		  TWO WRONG PREDICATES CAME BEFORE THIS ONE, both measured, and each is
+		  worth its lines because each looks right:
+		    `wasrec` ALONE -- after one failed load the run is no longer recording,
+		  so a SECOND load of the same row let a RUNNING attempt carry on with no
+		  recorder, which is what Patch 434 exists to stop; and `sl_goto <n>` is
+		  itself a load (sv_player.qc:1046), so the pair is one keypress apart.
+		    `SV_RecEnabled()` ALONE -- it asks about the SERVER NOW, not this run.
+		  rec_enable is read at SV_RecOpen (sv_timer.qc:4410) and nowhere per
+		  sample, so a live recorder survives `rec_enable 0`; SV_RecRewind then
+		  refuses on its own copy of that test (sv_timer.qc:5988) and this branch
+		  skipped the void while SV_RecDiscard threw the recording away.  Measured
+		  (cfg/test/p441mid.cfg): `timer: running` at 0:06.600 with `recorder:
+		  buffer -1`.  On the RETRY path the run is restored CLEAN and rankable, so
+		  there it would have filed a board time with no .rec and no .view and said
+		  nothing at all.  Both cuts were caught by the review round, not by me.
 
 		  AND THE LATCHES GO BACK, because SV_TimerVoid clears all four
 		  (sv_timer.qc:8735, so a `!r` into the box you are standing in re-arms).
@@ -1589,7 +1619,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  az/ez/cz this file restored, because a demoted save's are all -1 (r3's own
 		  finding).  armzone stays -1: a cancelled run has no zone it armed in.
 		*/
-		if (st == TS_RUNNING && SV_RecEnabled())
+		if (st == TS_RUNNING && (mark > 0 || wasrec))
 		{
 			SV_TimerVoid(e, "the save's recording could not be restored");
 			sl_voided = TRUE;

@@ -65,9 +65,11 @@ PARK = SAVES + ".p441park"
 ZONES = os.path.join(GAMEDIR, "maps", "zones", "local", "bhop_eazy.json")
 CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
 
-# slot -> the fixture staged into it.  Both, for every arm, so the row numbers
-# are the same in all three logs (the sort is by `seq`).
-SAVES_STAGED = (("save901", "p441rest.txt"), ("save902", "p441fast.txt"))
+# slot -> the fixture staged into it.  All three, for every arm, so the row numbers
+# are the same in every log (the sort is by `seq`): 1 = 901 at rest, 2 = 902 with
+# 400 u/s, 3 = 903 with NO recording behind it (`reclines 0`).
+SAVES_STAGED = (("save901", "p441rest.txt"), ("save902", "p441fast.txt"),
+                ("save903", "p441none.txt"))
 
 CANCEL = r"run cancelled \(the save's recording could not be restored\)"
 
@@ -83,15 +85,38 @@ FIELDS = {
     "azone":     r"arm zone (-?\d+) \(armed from",
     "armedfrom": r"arm zone -?\d+ \(armed from (-?\d+)\)",
     "stopped":   r"stopped (\d)",
+    "buffer":    r"recorder: buffer (-?\d+)",
+    # WHICH ROW ACTUALLY LOADED.  `sl_goto <n>` CLAMPS (`if (n > cnt) n = cnt`,
+    # sv_saveloc.qc:2276), so an arm that asks for row 2 and gets row 1 -- one
+    # fixture missing, one scan short -- would grade every other field identically
+    # and pass while measuring the other arm's case.  This is the slot id in the
+    # load event the client read (cl_board.qc:1923), i.e. the one that landed.
+    "evslot":    r"seq: event seq \d+ op \d+ id (\d+)",
+    # The fixture's own row, out of `sl_list`: row 2 is the 400 u/s one, and the
+    # list prints the speed, so "the save with speed" is checked and not assumed.
+    "rowspeed":  r"slot 902(?:\s+-?\d+){3}\s+(\d+) u/s",
+    # THE POSITIVE CONTROL FOR `cancel: absent`.  SV_TimerStitched prints this on
+    # every completed load, before the rewind and whatever the void does, so it
+    # fires on both builds -- which is what makes an ABSENT cancel line mean "no
+    # void" rather than "the log stopped carrying server prints" or "the regex
+    # stopped matching".  An absence is evidence only once something shows the
+    # reader got that far.
+    "stitched":  r"(segmented run -- this run will not be saved)",
 }
 
 # arm -> (cfg, log, stage the zones override, EXPECT post-fix, CONTROL overrides,
 #         REPORT-only fields)
 ARMS = {
+    # `clock` and `stopped` are graded on the fixed build and DROPPED for the
+    # control (the None below) because the control reads the same 0:05.000 and
+    # `stopped 1` beside `timer: armed` -- they are the void's own doing on both
+    # builds.  What discriminates the rest arm is `state` (idle vs armed) and
+    # `armedfrom` (-1 vs 0); the cfg header says which is which.
     "rest": (
         "cfg/test/p441void.cfg", "p441void.log", True,
         {"C1": {"state": "running", "recording": "1"},
-         "S":  {"cancel": "present", "state": "idle", "azone": "0",
+         "S":  {"cancel": "present", "stitched": "present", "evslot": "901",
+                "state": "idle", "azone": "0",
                 "armedfrom": "-1", "clock": "0:05.000", "stopped": "1"}},
         {"S":  {"cancel": "present", "state": "armed", "azone": "0",
                 "armedfrom": "0", "class": "clean", "practice": "0",
@@ -100,8 +125,13 @@ ARMS = {
     ),
     "fast": (
         "cfg/test/p441fast.cfg", "p441fast.log", True,
-        {"C1": {"state": "running", "recording": "1"},
-         "S":  {"cancel": "present", "state": "idle", "azone": "0"},
+        # C0 grades the FIXTURE: row 2 is the one carrying 400 u/s, read out of
+        # `sl_list`.  S grades which row the load landed on.  Without those two the
+        # arm could be measuring the at-rest save through a clamped `sl_goto`.
+        {"C0": {"rowspeed": "400"},
+         "C1": {"state": "running", "recording": "1"},
+         "S":  {"cancel": "present", "stitched": "present", "evslot": "902",
+                "state": "idle", "azone": "0"},
          "S2": {"state": "idle", "azone": "-1"}},
         {"S":  {"state": "armed", "class": "clean", "practice": "0"},
          "S2": {"state": "running", "class": "clean", "practice": "0",
@@ -110,15 +140,32 @@ ARMS = {
     ),
     "norec": (
         "cfg/test/p441norec.cfg", "p441norec.log", False,
+        # Row 3 (slot 903) is the realistic shape of a save taken while nothing was
+        # recording: `reclines 0`, which is what SV_RecWritePrefix writes with an
+        # empty buffer.  The first cut of this arm used the 500-line fixture, which
+        # no server with rec_enable 0 could ever have produced.
         # The clock is graded as an INEQUALITY: an uncancelled run keeps counting,
         # so the exact value is the driver's own latency.  5.000 is what a STOPPED
         # clock holds, which is what the control build answers with.
         {"C1": {"state": "running", "recording": "0"},
-         "S":  {"cancel": "absent", "state": "running", "clock": ">5.0",
+         "S":  {"cancel": "absent", "stitched": "present", "evslot": "903",
+                "state": "running", "clock": ">5.0",
                 "recording": "0", "class": "segmented", "practice": "1"}},
         {"S":  {"cancel": "present", "state": "idle", "stopped": "1",
                 "clock": "=5.0", "class": None, "practice": None}},
         {"S": ("azone", "stopped")},
+    ),
+    # Round 2, and its control is Patch 441's OWN first commit (20f25a1), not a
+    # pre-441 build: a pre-441 build voids here too, for the reason the cfg gives.
+    "mid": (
+        "cfg/test/p441mid.cfg", "p441mid.log", False,
+        {"C1": {"state": "running", "recording": "1"},
+         "C2": {"state": "running", "recording": "1"},
+         "S":  {"cancel": "present", "stitched": "present", "evslot": "901",
+                "state": "idle", "clock": "=5.0", "stopped": "1"}},
+        {"S":  {"cancel": "absent", "state": "running", "clock": ">5.0",
+                "buffer": "-1", "stopped": None}},
+        {"S": ("buffer", "practice", "class")},
     ),
 }
 
@@ -227,9 +274,14 @@ def agrees(got, want):
     return got == want
 
 
+PRESENCE = ("cancel", "stitched")     # graded present/absent, not by value
+
+
 def read(txt, name):
     if name == "cancel":
         return "present" if re.search(CANCEL, txt) else "absent"
+    if name in PRESENCE:
+        return "present" if re.search(FIELDS[name], txt) else "absent"
     m = re.search(FIELDS[name], txt, re.M)
     return m.group(1) if m else "<absent>"
 
