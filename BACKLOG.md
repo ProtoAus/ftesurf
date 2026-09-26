@@ -120,6 +120,29 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and the HUD shows `segmented` with no reason. A one-line `sprint` when the gate
   refuses on support alone would close the last one. sv_saveloc.qc SL_RowGrounded.
   Patch 443 review.
+  THE func_slide ONE IS CONFIRMED FROM THE ENGINE SIDE, and it is worth knowing that
+  someone already thought about it: engine world.c's forced-contents path deliberately
+  excludes slide skins so that "every server-side trace (QC traceline/tracebox, THE
+  SAVE-LOC FLOOR PROBE, run_eyeinfo)" does not fall through a slide brush -- so the
+  probe is MEANT to hit it. The mover then declines a slide plane as ground
+  (pm_source.c:2119), which this does not, so a flat slide (nz 1.0, no acceleration
+  along it) or any `disablegravity` slide is a genuine at-rest airborne position the
+  probe certifies. `func_slide` is `func_brush` -> SOLID_BSP and `pm_slide 1` ships.
+  The height is normally reachable anyway, so the payoff is small; it is the one case
+  where "at rest, probe says standing, mover says airborne" is constructible today.
+  ALSO INVISIBLE THE OTHER WAY, from round 3: the first-jump forgiveness prints only
+  under `developer`, so a rank KEPT because the rule declined to judge leaves no
+  artifact either -- the mirror image of the refusal above. The `phase:` line in
+  `cmd timer` has three free varargs slots and is where both belong.
+- **The save-state LOADER never calls `SV_SaveOriginSane`, and a NaN origin passes
+  every zone test.** Only the `!r` picker validates (sv_saveloc.qc SV_SaveLocPickInZone);
+  `SV_SaveLocPlace` does `setorigin(e, rec_sl_org[r])` on whatever the row holds, and
+  that function's own essay says a NaN satisfies every comparison a zone test makes.
+  Patch 443's SL_RowGrounded is now a SECOND consumer of that unvalidated vector -- a
+  tracebox from a NaN origin answers nothing useful. Gated by file ownership (a lobby's
+  save root is server-side, and a listen server's times do not reach the public board),
+  so it is hardening rather than a live hole; the fix is one call at the placement, the
+  same one the picker already makes. Patch 443 review, round 3.
 - **`sl_replay`'s taint does not survive the next arm, and it has no resume guard.**
   Patch 441 round 2 added SV_TimerPractice at the gesture so the command's safety is
   local rather than inherited from the cheatwatch blocks. It covers the attempt in
