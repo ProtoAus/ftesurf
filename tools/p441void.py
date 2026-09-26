@@ -38,12 +38,15 @@ measured the same build twice and proves nothing.
 Exit status 0 when every pre-registered prediction in the cfg's header held.
 
 RESULT (2026-09-26, round 3: five arms x both sides, exit 0 every time.  The fixed
-build is qwprogs 63AF428049260231; the control is a DIFFERENT build per arm, which
+build is qwprogs B4D995701EAA1761; the control is a DIFFERENT build per arm, which
 is the point -- 830A76438E00EFA4 (pre-441, 3ab4195) for rest/fast/norec,
 3786B7D1D3341D4B (441 as first committed) for mid, and 8B84B5CE71C058E8 (this tree
 with the predicate cut to `hadrec` alone) for twice.  Both runs' logs are kept per
-arm as <log>.fixed and <log>.control, so every number in every RESULT block can be
-read back off disk.  Each cfg carries its own; in one line: the control side
+arm as <log>.fixed and <log>.control, with a .hash beside each naming the build
+that wrote it, so every number in every RESULT block can be read back off disk --
+in THIS working tree.  ftesurf/logs is gitignored (.gitignore:216), so a fresh
+clone has the cfgs' quoted numbers and not the logs they came from; re-run both
+sides to rebuild them.  Each cfg carries its own; in one line: the control side
 answered `armed` to a cancelled run (rest), started a recorded clean run at the
 save's 400 u/s (fast), cancelled honest runs under rec_enable 0 including an old
 save that merely CLAIMED a recording (norec), let a RUNNING attempt carry on with
@@ -64,7 +67,11 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAMEDIR = os.path.join(ROOT, "ftesurf")
 SAVES = os.path.join(GAMEDIR, "data", "saves", "bhop_eazy")
-PARK = SAVES + ".p441park"
+# ONE PARK NAME, SHARED WITH tools/p435pre.py ON PURPOSE.  Each driver used to
+# park this shared directory under its own name and refuse only on its own, so
+# interleaving the two rmtree'd the real fixture and put nothing back.  A single
+# name turns that into a loud refusal.
+PARK = SAVES + ".savepark"
 ZONES = os.path.join(GAMEDIR, "maps", "zones", "local", "bhop_eazy.json")
 CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
 
@@ -84,13 +91,18 @@ FIELDS = {
     "clock":     r"\s(\d+:\d\d\.\d+)\s+pb",
     "practice":  r"practice (\d)",
     "recording": r"recording (\d)",
-    "class":     r"class: (\w+)",
+    # ANCHORED on `(seg`, as p435pre.py does: bare `class: (\w+)` also matches the
+    # report's `stage class: stitch N` two lines down, and every graded section has
+    # both.  It read correctly only because this driver takes the FIRST match and
+    # the run class prints above the stage class -- a convention holding a field up.
+    "class":     r"class: (\w+) \(seg",
     "azone":     r"arm zone (-?\d+) \(armed from",
     "armedfrom": r"arm zone -?\d+ \(armed from (-?\d+)\)",
     "stopped":   r"stopped (\d)",
     "buffer":    r"recorder: buffer (-?\d+)",
-    # WHICH ROW ACTUALLY LOADED.  `sl_goto <n>` CLAMPS (`if (n > cnt) n = cnt`,
-    # sv_saveloc.qc:2337), so an arm that asks for row 2 and gets row 1 -- one
+    # WHICH ROW ACTUALLY LOADED.  `sl_goto <n>` CLAMPS (`if (n > cnt) n = cnt` in
+    # SV_SaveLocLoad -- cited by name because the line has moved twice under two
+    # reviews), so an arm that asks for row 2 and gets row 1 -- one
     # fixture missing, one scan short -- would grade every other field identically
     # and pass while measuring the other arm's case.  This is the slot id in the
     # load event the client read (cl_board.qc:1923), i.e. the one that landed.
@@ -111,6 +123,11 @@ FIELDS = {
     # cannot be the log having stopped carrying server prints, because this came
     # through the same channel.
     "stitched":  r"(segmented run -- this run will not be saved)",
+    # SV_RetryApply's own last word, and the only subject-printed line that says
+    # which way the retry path went: `run restored at <clock>` when the restored
+    # state is still RUNNING, `back where you were` when it is not.  It also proves
+    # the retry LANDED, which `rec_retry 0` or a second player would prevent.
+    "retrysay":  r"retry.{0,4} -- (run restored at|back where you were)",
 }
 
 # arm -> (cfg, log, stage the zones override, EXPECT post-fix, CONTROL overrides,
@@ -181,12 +198,33 @@ ARMS = {
     "twice": (
         "cfg/test/p441twice.cfg", "p441twice.log", False,
         {"C1": {"state": "running", "recording": "1"},
-         "S1": {"cancel": "present", "state": "idle", "clock": "=5.0"},
+         # S1's `recording 0` IS the premise of S2 -- it is what makes `hadrec`
+         # false at the second load -- so it is graded rather than assumed, the way
+         # p441mid.cfg grades its C2.  (It reads 0 on both builds: on the control
+         # because the first void discarded too.  It is a premise, not a
+         # discriminator, and the cfg says which fields are which.)
+         "S1": {"cancel": "present", "state": "idle", "clock": "=5.0",
+                "recording": "0"},
          "S2": {"cancel": "present", "state": "idle", "clock": "=5.0",
                 "recording": "0", "evslot": "901"}},
         {"S2": {"cancel": "absent", "state": "running", "clock": ">5.0",
                 "buffer": "-1"}},
         {"S1": ("buffer",), "S2": ("buffer", "practice", "class")},
+    ),
+    # Round 4.  THE RETRY PATH, where the other two clauses are structurally blind:
+    # map_restart re-initialises the progs (so `hadrec` is 0) and the operator has
+    # just switched recording off (so SV_RecEnabled() is 0).  Its control is round 3
+    # itself, 58ef286, which is the first cut that failed to void here.
+    "retry": (
+        "cfg/test/p441retry.cfg", "p441retry.log", False,
+        {"C1": {"state": "running", "recording": "1"},
+         "C2": {"state": "running", "recording": "1"},
+         "S":  {"cancel": "present", "retrysay": "back where you were",
+                "state": "idle"}},
+        {"S":  {"cancel": "absent", "retrysay": "run restored at",
+                "state": "running", "practice": "0", "class": "clean",
+                "buffer": "-1"}},
+        {"S": ("clock", "practice", "class", "buffer", "recording")},
     ),
     # Round 2, and its control is Patch 441's OWN first commit (20f25a1), not a
     # pre-441 build: a pre-441 build voids here too, for the reason the cfg gives.
@@ -245,8 +283,16 @@ def restore(keep):
     if os.path.exists(ZONES):
         os.remove(ZONES)
     if keep:
-        print("--keep: staged saves left at %s (the zones override is always removed)" % SAVES)
-        return
+        # A COPY, and the real tree goes back.  `--keep` used to return here, which
+        # left the shared fixture REPLACED by these fixtures and the real one parked:
+        # p415reset, p428hold, p434rew and p435pre all read that directory, and the
+        # next p435pre run would have parked p441's fixtures as if they were real.
+        kept = SAVES + ".kept"
+        if os.path.isdir(kept):
+            shutil.rmtree(kept)
+        shutil.copytree(SAVES, kept)
+        print("--keep: staged copy at %s (the real tree is restored below)"
+              % os.path.relpath(kept, ROOT))
     if os.path.isdir(SAVES):
         shutil.rmtree(SAVES)
     if os.path.isdir(PARK):
@@ -321,6 +367,9 @@ PRESENCE = ("cancel", "stitched")     # graded present/absent, not by value
 
 
 def read(txt, name):
+    """THE FIRST match, always (re.search).  tools/p435pre.py takes the LAST, and
+    both conventions are load-bearing where a pattern can hit twice -- which is why
+    the patterns above are anchored rather than left to the convention."""
     if name == "cancel":
         return "present" if re.search(CANCEL, txt) else "absent"
     if name in PRESENCE:
@@ -370,6 +419,11 @@ def main():
                     help="grade against the PRE-fix predictions")
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--keep", action="store_true")
+    # THE KEPT COPIES ARE RE-GRADABLE.  --grade-only only ever looked at the base
+    # log name, so the .fixed/.control copies this driver writes could not be
+    # re-read by the tool that wrote them -- an audit had to import the module.
+    ap.add_argument("--side", choices=("fixed", "control"), default=None,
+                    help="with --grade-only, read <log>.fixed or <log>.control")
     ap.add_argument("--grade-only", action="store_true",
                     help="grade the log already on disk; stage and run nothing")
     a = ap.parse_args()
@@ -378,6 +432,8 @@ def main():
     log = os.path.join(GAMEDIR, "logs", logname)
 
     if a.grade_only:
+        if a.side:
+            log = log + "." + a.side
         if not os.path.exists(log):
             raise SystemExit("no log at %s" % log)
         return 0 if grade(log, a.control, a.arm) else 1
@@ -394,7 +450,15 @@ def main():
         secs = run(a.exe, a.timeout, cfg, log)
         left = listing(SAVES)
     finally:
-        restore(a.keep)
+        # LOUD, BUT NOT MASKING.  A raise from restore() inside `finally` replaces
+        # whatever run() raised, which is how a cleanup failure hides the fault that
+        # caused it.  The print is the loud part CLAUDE.md asks for; the parked tree
+        # is named so the next run's refusal is actionable.
+        try:
+            restore(a.keep)
+        except OSError as exc:
+            print("CLEANUP FAILED, the shared fixture may still be parked at %s: %s"
+                  % (os.path.relpath(PARK, ROOT), exc))
     print("ran %s on %s for %.0f s" % (a.exe, cfg, secs))
     print("the staged tree at exit (%d file(s)):" % len(left))
     for line in left:
@@ -408,10 +472,16 @@ def main():
     # BOTH SIDES SURVIVE.  Keeping only the control's copy was half a fix: the
     # control run then overwrote the FIXED log, so whichever side ran last was the
     # only one on disk and a RESULT block's other half could not be checked.
-    if True:
-        keep = log + (".control" if a.control else ".fixed")
-        shutil.copyfile(log, keep)
-        print("control log kept at %s" % os.path.relpath(keep, ROOT))
+    side = ".control" if a.control else ".fixed"
+    keep = log + side
+    shutil.copyfile(log, keep)
+    # AND THE BUILD'S IDENTITY BESIDE IT.  The hashes were printed to stdout only,
+    # so the one number every RESULT block quotes -- which build wrote these lines --
+    # was the one thing the kept logs could not check.
+    with open(keep + ".hash", "w") as fh:
+        for d in ("qwprogs.dat", "csprogs.dat"):
+            fh.write("%-12s %s\n" % (d, sha(os.path.join(GAMEDIR, d))))
+    print("%s log kept at %s (+ .hash)" % (side[1:], os.path.relpath(keep, ROOT)))
     return 0 if grade(log, a.control, a.arm) else 1
 
 

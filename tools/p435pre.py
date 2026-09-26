@@ -32,7 +32,8 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAMEDIR = os.path.join(ROOT, "ftesurf")
 SAVES = os.path.join(GAMEDIR, "data", "saves", "bhop_eazy")
-PARK = SAVES + ".p435park"
+# Shared with tools/p441void.py -- see the note there.
+PARK = SAVES + ".savepark"
 ZONES = os.path.join(GAMEDIR, "maps", "zones", "local", "bhop_eazy.json")
 CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
 ZONES_SRC = os.path.join(CFGDIR, "p435.zones.json")
@@ -93,8 +94,14 @@ def restore(keep):
     if os.path.exists(ZONES):
         os.remove(ZONES)
     if keep:
-        print("--keep: staged saves left at %s (the zones fixture is always removed)" % SAVES)
-        return
+        # A COPY -- see the note in p441void.py's restore(): returning here left the
+        # SHARED save directory replaced by fixtures and the real tree parked.
+        kept = SAVES + ".kept"
+        if os.path.isdir(kept):
+            shutil.rmtree(kept)
+        shutil.copytree(SAVES, kept)
+        print("--keep: staged copy at %s (the real tree is restored below)"
+              % os.path.relpath(kept, ROOT))
     if os.path.isdir(SAVES):
         shutil.rmtree(SAVES)
     if os.path.isdir(PARK):
@@ -414,6 +421,11 @@ def main():
                          "measured in bhop mode. mode: the same, sv_gamemode surf.")
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--keep", action="store_true")
+    # THE KEPT COPIES ARE RE-GRADABLE.  --grade-only only ever looked at the base
+    # log name, so the .fixed/.control copies this driver writes could not be
+    # re-read by the tool that wrote them -- an audit had to import the module.
+    ap.add_argument("--side", choices=("fixed", "control"), default=None,
+                    help="with --grade-only, read <log>.fixed or <log>.control")
     ap.add_argument("--grade-only", action="store_true",
                     help="grade the log already on disk; stage and run nothing")
     a = ap.parse_args()
@@ -421,6 +433,8 @@ def main():
     cfg, logname, zones, _, _ = ARMS[a.arm]
     log = os.path.join(GAMEDIR, "logs", logname)
     if a.grade_only:
+        if a.side:
+            log = log + "." + a.side
         if not os.path.exists(log):
             raise SystemExit("no log at %s" % log)
         return 0 if grade(log, a.control, a.arm) else 1
@@ -437,7 +451,12 @@ def main():
                    ["+set", "sv_gamemode", "surf"] if a.arm == "mode" else [])
         left = listing(SAVES)
     finally:
-        restore(a.keep)
+        # Loud, but not masking -- see the note in p441void.py's main().
+        try:
+            restore(a.keep)
+        except OSError as exc:
+            print("CLEANUP FAILED, the shared fixture may still be parked at %s: %s"
+                  % (os.path.relpath(PARK, ROOT), exc))
     print("ran %s (%s) for %.0f s" % (a.exe, cfg, secs))
     print("the staged tree at exit (%d file(s)):" % len(left))
     for line in left:
@@ -451,10 +470,16 @@ def main():
     # BOTH SIDES SURVIVE.  Keeping only the control's copy was half a fix: the
     # control run then overwrote the FIXED log, so whichever side ran last was the
     # only one on disk and a RESULT block's other half could not be checked.
-    if True:
-        keep = log + (".control" if a.control else ".fixed")
-        shutil.copyfile(log, keep)
-        print("control log kept at %s" % os.path.relpath(keep, ROOT))
+    side = ".control" if a.control else ".fixed"
+    keep = log + side
+    shutil.copyfile(log, keep)
+    # AND THE BUILD'S IDENTITY BESIDE IT: the hashes were printed to stdout only, so
+    # the one number a RESULT block quotes that the kept log could not check was
+    # which build wrote it.
+    with open(keep + ".hash", "w") as fh:
+        for d in ("qwprogs.dat", "csprogs.dat"):
+            fh.write("%-12s %s\n" % (d, sha(os.path.join(GAMEDIR, d))))
+    print("%s log kept at %s (+ .hash)" % (side[1:], os.path.relpath(keep, ROOT)))
     return 0 if grade(log, a.control, a.arm) else 1
 
 

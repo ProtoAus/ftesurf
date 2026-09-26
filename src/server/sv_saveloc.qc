@@ -185,7 +185,7 @@ float  rec_sl_quiet;
 // NOT for the reason this comment first gave: SV_TimerJumpWatch's `jumped` IS a pure
 // velocity edge (sv_timer.qc:9835) and a restored +302 satisfies it -- which is why
 // the arm reads `running` one frame after the load on a start-on-jump map.  What
-// keeps run_t_hopped clear is that every load sets run_t_startok (:1287), and the
+// keeps run_t_hopped clear is that every load sets run_t_startok (SV_SaveApplyState, `e.run_t_startok = TRUE`), and the
 // whole hop block is behind `if (!e.run_t_startok)` (sv_timer.qc:9986).  A reviewer
 // caught the wrong mechanism; BACKLOG.md carries the startok half, which is bigger
 // than this patch.  The paragraph above only ever reasoned about a
@@ -1195,7 +1195,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  Patch 441 round 3: DID THIS RUN HOLD A RECORDER WHEN THE LOAD BEGAN, taken
 	  HERE and not at the rewind.  The Patch 360 discard below clears TF_RECORDING
 	  (SV_RecDiscard does it unconditionally, sv_timer.qc:5034), so `wasrec` -- read
-	  122 lines down, where Patch 426 wants it, "recording when the rewind began" --
+	  far below, where Patch 426 wants it -- "recording when the rewind began" --
 	  answers FALSE for every run that has posted a stage.  The failed-rewind branch
 	  was asking that question of `wasrec` and so could not see a recorder this very
 	  function had just thrown away: one stage boundary plus a `reclines 0` save was
@@ -1617,18 +1617,31 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 		  PATCH 441 -- TWO CORRECTIONS, the first of which took three rounds.
 
-		  ONLY A RUN WHOSE EVIDENCE WAS EXPECTED: `SV_RecEnabled() || hadrec`, and it
-		  took three rounds to get to two clauses.  The question is whether this leaves a
-		  RUNNING attempt without evidence it was supposed to have, and each clause is one
-		  half of "supposed to":
+		  ONLY A RUN WHOSE EVIDENCE WAS EXPECTED:
+		      SV_RecEnabled() || hadrec || (retry && mark > 0)
+		  -- four rounds for three clauses.  The question is whether this leaves a RUNNING
+		  attempt without evidence it was supposed to have, and each clause answers one
+		  part of "supposed to":
 		    SV_RecEnabled() -- the server writes .rec files at all, so a run with none is
 		  anomalous whatever this run's own history is.
 		    hadrec -- this run held a recorder when the LOAD began, captured above the
 		  Patch 360 discard, which is the whole point of it being a second variable.  The
 		  load took evidence away even if the operator has since switched recording off.
-		  With both clear, nothing was lost and nothing was expected: the run was already
-		  unverifiable by the operator's own configuration before the load arrived, and
-		  cancelling THAT is the absence trap -- a check that cannot see answering
+		    retry && mark > 0 -- ON THE RETRY PATH ONLY, and it is this run's own prefix.
+		  A retry writes state.txt and the prefix moments before the map_restart, and
+		  `mark` is `reclines`, which SV_RecWritePrefix returns only AFTER buf_writefile
+		  and fclose (sv_timer.qc:5562): a receipt for a file that existed, not a claim.
+		  The clause is here because the restart is the one place the other two go blind --
+		  the progs are re-initialised, so `hadrec` is structurally 0, which is why the
+		  arming flag has to travel in a cvar (:4116) -- and SV_RetryApply then fremoves
+		  that prefix.  Without it, `rec_enable 0` under a recorded CLEAN run plus one
+		  `retry` left a clean, rankable, RUNNING attempt with no recording and no message
+		  of any kind.  NOT on the load path: `mark` is some earlier session's prefix
+		  there, and reading it as this run's expectation is how round 2 put the absence
+		  trap back.
+		  With all three clear, nothing was lost and nothing was expected: the run was
+		  already unverifiable by the operator's own configuration before the load arrived,
+		  and cancelling THAT is the absence trap -- a check that cannot see answering
 		  "guilty".  Patch 434 did exactly that.
 
 		  THREE WRONG PREDICATES CAME BEFORE THIS ONE.  Each is worth its lines because
@@ -1639,19 +1652,20 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  of that test (sv_timer.qc:5988) and this branch skipped the void while
 		  SV_RecDiscard threw the recording away.  Measured, cfg/test/p441mid.cfg:
 		  `timer: running` at 0:06.600 with `recorder: buffer -1`.
-		  `wasrec` ALONE -- it is captured 122 lines below the Patch 360 discard, which
+		  `wasrec` ALONE -- it is captured BELOW the Patch 360 discard, which
 		  clears TF_RECORDING (sv_timer.qc:5034), so it reads FALSE for every run that has
 		  posted a stage.  And after one failed load the run is not recording either, so a
 		  SECOND load of the same row let a RUNNING attempt carry on with no recorder --
 		  `sl_goto <n>` being itself a load (sv_player.qc:1046), the pair is one keypress
 		  apart.  cfg/test/p441twice.cfg is that arm.
-		  `mark > 0 || wasrec` -- `mark` is the SAVE's claim (`reclines`) about a past
-		  state, not a fact about this run, and it is wrong both ways: an old save taken
-		  while recording, loaded later on a server with rec_enable 0, was cancelled
-		  although nothing was ever recorded (the absence trap, put back), and `reclines 0`
-		  means EITHER "no recorder" OR "the prefix write failed" (sv_timer.qc:5556),
-		  which are opposite answers to this question.  `mark` is out of the predicate;
-		  SV_RecRewind is welcome to go on distrusting it.
+		    `mark > 0 || wasrec` ON EVERY PATH -- `mark` is then a receipt for SOME run's
+		  prefix, and reading it as THIS run's expectation cancelled an honest run loading an
+		  old save on a server with rec_enable 0: the absence trap, put back.  (`reclines 0`
+		  is ambiguous the other way too, "no recorder" or "the prefix write failed"
+		  (sv_timer.qc:5556), so it is no evidence of innocence either.)
+		    AND `mark` DROPPED ENTIRELY, which is what round 3 did -- that regressed the retry
+		  path the round before had been covering by accident.  The fourth round's job was to
+		  separate the two cases instead of choosing between them.
 
 		  AND THE LATCHES GO BACK, because SV_TimerVoid clears all four
 		  (sv_timer.qc:8736, so a `!r` into the box you are standing in re-arms).
@@ -1662,7 +1676,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  az/ez/cz this file restored, because a demoted save's are all -1 (r3's own
 		  finding).  armzone stays -1: a cancelled run has no zone it armed in.
 		*/
-		if (st == TS_RUNNING && (SV_RecEnabled() || hadrec))
+		if (st == TS_RUNNING && (SV_RecEnabled() || hadrec || (retry && mark > 0)))
 		{
 			SV_TimerVoid(e, "the save's recording could not be restored");
 			sl_voided = TRUE;
