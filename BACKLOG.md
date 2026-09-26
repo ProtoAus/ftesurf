@@ -17,11 +17,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (`python tools/p435pre.py --arm mode`) measures a prespeed load + `+jump` with
   `sv_gamemode surf` arming at z 106.9 against a slab bottom of 64.03125 and
   reading `arm zone 0`, `practice 0`, `class: clean`. `cfg/test/p435hop.cfg`
-  (`--arm shipped`) measures the same gesture in bhop mode NOT laundering: the
-  jump starts the run from the restored ARMED state and SV_TimerTryArm's
-  `run_t_bhopjump` branch refuses to arm an attempt already RUNNING. The backlog
-  entry this replaces claimed the hop beat the rounding everywhere; that is now
-  measured false on bhop maps and true on the rest. The fix has to answer the
+  (`--arm shipped`) tried to measure the same gesture in bhop mode and DID NOT
+  DEMONSTRATE it: its own control (H3, the at-rest save loaded and jumped) came
+  back tainted, which is verbatim that cfg's `FALSIFIED IF`, because on
+  bhop_eazy's shipped zones no start-box load arms clean at all -- the rounding
+  above. So on a bhop-mode map the question is OPEN. The mechanism that would
+  answer it is readable in the code (SV_TimerTryArm's `run_t_bhopjump` branch
+  refuses to arm an attempt already RUNNING, so the jump starts the run from the
+  restored ARMED state instead of arming it) but it is not measured, and the
+  entry this replaces claimed the hop beat the rounding EVERYWHERE, which is
+  false only for the surf-mode half. A SOUND ARM is p435hop's gestures in bhop
+  mode with `cfg/test/p435.zones.json` staged so the control can arm clean -- the
+  same fixture p435pre and p441void use -- or one of the 6 exposed regions'
+  own maps. `tools/p435pre.py --arm shipped` now exits 1 with NOT DEMONSTRATED
+  rather than grading H3 against the failed reading (Patch 441). The fix has to answer the
   velocity where the gate cannot see it: either zero the inherited speed at a
   start-box placement under a TOLERANT box test (body AND the hold's
   `rec_sl_holdvel`, or the release hands it straight back), or a load-scoped mark
@@ -35,12 +44,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   only for `run_pmhold`; push-once triggers are spent for everyone, and every
   other trigger that writes velocity does so into a body nobody is steering. The
   timer ignores it since Patch 428 round 6, the side effects remain.
-  MEASURED AND PARTLY CLOSED: the func_bhop dwell the entry named does NOT fire
-  on a held body (a save-lock hold is MOVETYPE_NONE, the mover runs PM_NONE for
-  it, PM_NONE clears FL_ONGROUND and nothing writes .groundentity again, so
-  SV_BhopFrame reads `ground 0` on every held frame and the dwell never arms --
-  `cfg/test/p439cl.cfg`'s route measured it, and the one-shot print it needed is
-  `bhop frame first: ground 0 isbhop 0 movetype 0 slheld 1`). The half that is
+  PARTLY CLOSED BY READING, NOT BY A MEASUREMENT ON DISK: the func_bhop dwell
+  the entry named should not fire on a held body (a save-lock hold is
+  MOVETYPE_NONE, the mover runs PM_NONE for it, PM_NONE clears FL_ONGROUND and
+  nothing writes .groundentity again, so SV_BhopFrame reads `ground 0` on every
+  held frame and the dwell never arms). That chain is checkable in the sources
+  cited below. THE MEASUREMENT IS NOT REPRODUCIBLE, though, and the entry said it
+  was: the one-shot print it quotes (`bhop frame first: ground 0 isbhop 0
+  movetype 0 slheld 1`) exists nowhere in `src/` -- it was instrumentation that
+  did not survive the patch -- and the only instance of that print anywhere in
+  ftesurf/logs reads `movetype 3 slheld 0` (p439svAO.log:143), i.e. an unheld
+  walking body, not a held one. To close it for real: put the dprint back in
+  SV_BhopFrame behind `developer`, drive p439cl.cfg's route, and grade the line. The half that is
   still open is the triggers a HELD body is already touching, and the
   push-once spend: those need the engine's `run_pmhold`-style skip to cover a
   save-lock hold too, which is an engine change.
@@ -69,6 +84,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   one server step and their target row is not published; the release after a
   hold still waits a round trip for the server's unfreeze (the second `prederr`
   line on each load).
+
+## Harness coverage
+
+- **A failed rewind on a LOBBY is untested.** Patch 434's void and Patch 441's
+  latch re-scan are measured only on a listen server (`p434rew.cfg`,
+  `p441void.cfg`), where the recording is buffered in QC strings, so the cold
+  path fails for want of a prefix on disk. A lobby STREAMS, and there it is
+  SV_RecSnapshot's buffer that fails -- the same branch and the same FALSE with a
+  different reason. Nothing in cfg/test drives a streamed run at all.
+  sv_saveloc.qc SV_SaveApplyState (the `SV_RecRewind` else branch). Patch 441.
+- **The client's sidecar write-back has no reliable arm.** p438view's R2 is
+  supposed to write rec_rp_view back out through Rec_ViewSaved and it only
+  happens on SOME runs -- three of four, and a run from a clean tree wrote one
+  while another did not, so the condition is not known. Until it is, nothing
+  grades the write half of the sidecar reader: the driver reports NOT MEASURED.
+  cl_replay.qc Rec_ViewSaved, cfg/test/p438view.cfg R2, tools/p438view.py
+  writeback(). Patch 441.
+- **p437win's W6 only covers a line job reading the SAME bytes as the open
+  replay.** The arm proves the job leaves the replay's `end/window/cut/view/
+  events` alone, but both files are copies of one recording, so a job whose file
+  has different `stage` ticks -- or no `end` record, which would leave a
+  borrowed finish tick at 0 -- is not covered. A second fixture with different
+  boundaries would close it. cl_watch.qc Watch_StageSpan / Watch_LineJobStart.
+  Patch 441.
 
 ## Cosmetic / low
 
