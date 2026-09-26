@@ -218,33 +218,60 @@ float(float r) SL_RowSpeed =
   rounding puts a GROUNDED placed body 0.00005 below the slab on 6 of 35 authored
   regions, where no scan can see it; an airborne row's z is genuinely inside it.
 
-  THE ENGINE'S OWN PROBE, NOT A NEW ONE.  pm_groundtracedist and
-  pm_standablenormal are what CategorizePosition uses (engine pm_source.c,
-  PMSrc_GroundTraceDist / PMSrc_Standable), with the engine's own fallbacks for
-  when the cvars are unset, so this cannot drift from what the mover means by
-  standing on a surface.  The hull is built from the ROW's duck bit rather than
-  e.maxs: SV_SaveLocPlace only sets run_forceduck and the engine applies it in the
-  NEXT pmove, so e.maxs here is the hull the player had before the load.
+  THE ENGINE'S OWN PROBE, as far as a QC trace can be, AND ROUND 2 SAYS WHERE IT IS
+  NOT.  pm_groundtracedist and pm_standablenormal are the numbers CategorizePosition
+  uses (engine pm_source.c, PMSrc_GroundTraceDist / PMSrc_Standable), read from the
+  server with the engine's own fallbacks -- note default.cfg:47 sets the distance to
+  1, so the fallback of 2 is not what a configured server uses.  The QUADRANT RETRY is
+  the mover's too (pm_source.c:2043, pm_groundquadrants, default 1): when the full
+  hull finds nothing standable it retests four sub-boxes, because standing on the
+  corner of a ledge is standing.  Round 1 implemented the first trace only and would
+  have refused an honest row on a ledge corner, a stair nose or a beam -- two
+  reviewers found it independently.  What is STILL not the mover's: it declines a
+  func_slide plane (pm_source.c:2119) and Patch 176 can refuse a landing outright,
+  both of which this grants.  Those are the fail-open direction.
 
-  FROM ONE UNIT UP, which is the only part that is not the mover's spelling, and
-  it is the rounding again: a grounded save's rounded origin can land epsilon
-  INSIDE the floor, and a trace that starts there reads startsolid instead of a
-  plane.  Starting above it reads the floor as a plane in both cases.  Deeper than
-  a unit is a body embedded in something, which is contact by any reading and gets
-  the fail-open answer -- the honest gesture Build 47 exists for must not break.
+  THE HULL IS THE ROW'S, not e.maxs: SV_SaveLocPlace only sets run_forceduck and the
+  engine applies it in the NEXT pmove, so e.maxs here is the hull the player had
+  before the load.  A pre-duck save file reads duck 0, i.e. the taller hull, which can
+  only add contact.
 
-  THE FAIL DIRECTION IS A PRACTICE RUN, NEVER AN ACCUSATION: a row this refuses
-  keeps the load's TF_SEGMENT|TF_PRACTICE, which is what a stitched attempt is.
-  The residual, stated rather than left to be found: an honest save wedged at rest
-  on a ramp too steep to stand on keeps its taint.  Rare -- start boxes sit on flat
-  platforms, and the census's authored destinations are at the floor -- and it
-  costs a player a rank, not a reputation.
+  MOVE_NOMONSTERS, AND IT IS A SECURITY CHOICE.  A plain trace hits SOLID_SLIDEBOX,
+  so ANOTHER PLAYER's axial hull answers with nz 1.000 -- indistinguishable from a
+  floor -- and an accomplice standing under a manufactured row would certify it, up to
+  his own height plus a jump above his footing.  MOVE_NOMONSTERS drops non-BSP
+  entities and keeps func_door, func_plat and func_train, which are legitimate ground.
+  The mover does ground you on another player; this refuses to, because the mover is
+  answering "can I stand here now" and this is answering "was this row standing".
+
+  NOT startsolid AS CONTACT, which was round 1's own hole.  The trace used to start a
+  unit UP, to read a grounded row whose `%.4f` origin lands epsilon inside the floor
+  as a plane rather than as startsolid -- and that lift exposed the sliver ABOVE the
+  head, so anything solid within a unit of the ceiling answered "standing", in mid-air,
+  at any height.  The mover's own answer is the opposite one: `pmove.onground =
+  !pm.startsolid` (pm_source.c:2211).  So the trace starts AT the row's origin and
+  reaches d + 1 below it: a body epsilon inside the floor is startsolid there and
+  counts, one under a ceiling is not startsolid and is judged on what is below it, and
+  the extra unit of reach is what the lift used to buy.  A body genuinely embedded in
+  something still counts -- contact by any reading, and the honest gesture Build 47
+  exists for must not break on a mover that closed over a save.
+
+  THE FAIL DIRECTION IS A PRACTICE RUN, NEVER AN ACCUSATION: a row this refuses keeps
+  the load's TF_SEGMENT|TF_PRACTICE, which is what a stitched attempt is.  Residuals,
+  stated rather than left to be found: an honest save wedged at rest on a ramp too
+  steep to stand on, or on a func_slide, keeps its taint; and the refusal is recorded
+  only in the dprint below, so a player who loses a rank to it leaves no artifact.
+  WHAT IS NOT A RESIDUAL, corrected from round 1's list: a save on a LADDER or in
+  WATER cannot be certified by them, because SOLID_LADDER and trigger volumes are
+  skipped by every trace (engine world.c, SOLID_ISTRIGGER) and water brushes are not
+  solid to one.  Those two were named as holes and are shut.
 */
 float(entity e, float r) SL_RowGrounded =
 {
-	local vector o, mn, mx;
-	local float d, sn, ok;
+	local vector o, mn, mx, dn, qn, qx;
+	local float d, sn, ok, q, hx, hy;
 
+	q  = 0;                             // locals are not zero-initialised (fteqcc)
 	o  = rec_sl_org[r];
 	mn = PM_HULL_MINS;
 	mx = rec_sl_duck[r] ? PM_DUCK_MAXS : PM_HULL_MAXS;
@@ -255,21 +282,58 @@ float(entity e, float r) SL_RowGrounded =
 	sn = cvar("pm_standablenormal");
 	if (sn <= 0)
 		sn = 0.7;                       // PMSRC_STANDABLE_DEFAULT
+	dn = o - [0, 0, d + 1];             // the unit round 1 spent on the lift
 
-	tracebox(o + '0 0 1', mn, mx, o - [0, 0, d], FALSE, e);
-	if (trace_startsolid)
-		ok = TRUE;
-	else if (trace_fraction == 1)
-		ok = FALSE;
-	else
+	tracebox(o, mn, mx, dn, MOVE_NOMONSTERS, e);
+	// allsolid with startsolid clear is not constructible in this engine (every BIH
+	// site that keeps one sets the other), but all three sibling probes in this tree
+	// test the pair -- sv_zones.qc SV_ZoneDest, SV_SaveLocPickInZone, sv_entities.qc
+	// -- and a probe that spells it differently is the drift these essays are about.
+	ok = (trace_startsolid || trace_allsolid);
+	if (!ok)
+	if (trace_fraction < 1)
 		ok = (trace_plane_normal_z >= sn);
 
-	// The subject saying what it decided and what it saw, which is what an arm can
-	// grade: without it, a row this refuses and a row it never reached read the same
-	// in the log, and a fixture accidentally EMBEDDED in a ceiling would take the
-	// startsolid branch and pass an arm written to measure the airborne one.
+	/*
+	  The mover's quadrant retry, and the sub-boxes are ITS sub-boxes: half the hull
+	  in x and in y, one per corner, first standable plane wins (pm_source.c:2047).
+	  Only when the full hull found nothing standable, which is also when the mover
+	  runs it -- so the cost is one trace on the ordinary row and five on a row that
+	  is about to be refused.
+	*/
+	if (!ok)
+	if (cvar("pm_groundquadrants"))
+	{
+		hx = (mx_x - mn_x) * 0.5;
+		hy = (mx_y - mn_y) * 0.5;
+		for (q = 0; q < 4 && !ok; q = q + 1)
+		{
+			qn = mn;
+			qx = mx;
+			if (q & 1)  qn_x = qn_x + hx;  else  qx_x = qx_x - hx;
+			if (q & 2)  qn_y = qn_y + hy;  else  qx_y = qx_y - hy;
+			tracebox(o, qn, qx, dn, MOVE_NOMONSTERS, e);
+			if (trace_fraction < 1)
+			if (trace_plane_normal_z >= sn)
+				ok = TRUE;
+		}
+	}
+
+	/*
+	  The subject saying what it decided and what it saw, which is what an arm can
+	  grade: without it, a row this refuses and a row it never reached read the same
+	  in the log.  The numbers are the LAST trace's, so where quadrants ran they are
+	  the deciding quadrant's rather than the full hull's.
+
+	  TWO LINES, because seven of the eight varargs slots is as close to the cap as
+	  this tree goes and fteqcc drops the ninth SILENTLY (sv_timer.qc's `timer` report
+	  says so where it split for the same reason).  The second line only exists when
+	  the quadrants ran, which is also the only time its number means anything.
+	*/
 	dprint(sprintf("save: row %g support %g at z %.4f (solid %g frac %.3f nz %.3f)\n",
 	               r, ok, o_z, trace_startsolid, trace_fraction, trace_plane_normal_z));
+	if (q > 0)
+		dprint(sprintf("save: row %g quadrants %g of 4\n", r, q));
 	return ok;
 };
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
@@ -1424,6 +1488,21 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		e.run_t_startok = FALSE;
 		if (run_t_startstrict)
 			e.run_t_airsec = 0;
+		/*
+		  ROUND 2, AND IT IS THE HALF ROUND 1 OWED.  Clearing startok switches the
+		  rule on over a dwell this placement has just blinded: `retry` re-initialises
+		  the progs, so run_t_groundsec begins at the restart however long the player
+		  had been standing before it, and the FIRST jump -- the one the rule exists
+		  to permit -- was accused.  Measured, cfg/test/p443grace.cfg: the same single
+		  jump reads `hopped 0` before the retry and `hopped 1` after, with the ground
+		  phase falling from 4.70 to 0.80 across it.  Found by an independent review of
+		  round 1, which traced it; the arm then confirmed it.
+		  So one jump per placement goes unjudged and the next one does not, which is
+		  the distinction between the honest gesture and the chain.  See
+		  run_t_startgrace in sv_timer.qc for why that is the narrow answer and build
+		  19's settled start was the wide one.
+		*/
+		e.run_t_startgrace = TRUE;
 	}
 
 	/*

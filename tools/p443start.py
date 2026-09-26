@@ -75,8 +75,17 @@ CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
 STAGED = {
     "air": (("save901", "p435rest.txt"), ("save904", "p443air.txt")),
     "hop": (),
+    "grace": (),
 }
-ZONED = ("air",)                    # arms that need the start slab to be visible
+# Arms that need the start slab to be VISIBLE to the zone test.  bhop_eazy's shipped
+# start slab has its bottom AT the floor and `origin %.4f` puts a placed body 0.00005
+# below it (Patch 415), so without the override a RESTORED body reads `arm zone -1` and
+# the first drift back into the slab is an ARM EDGE -- SV_TimerArm, which zeroes
+# run_t_hopped and run_t_jumps.  Measured: p443grace's accusation fired and was then
+# taken back by that edge one second later, so the latch could not be graded at the
+# report and the run stayed clean.  With the override the restored azone matches the
+# scan, there is no edge, and the taint stays where the patch put it.
+ZONED = ("air", "grace")
 
 # `hop` MUST NOT run on bhop map rules.  cfg/lobby/mode_bhop.cfg:131 sets
 # run_starthop 0 -- hopping out of the start is the sport there -- and
@@ -85,10 +94,14 @@ ZONED = ("air",)                    # arms that need the start slab to be visibl
 # configuration where it is ON is the default (surf) ruleset, which is also
 # leave-the-box rather than start-on-jump.  Same override tools/p435pre.py --arm mode
 # uses, and the cfg grades `start on leave` and `starthop 1` to prove it took.
-EXTRA = {"hop": ["+set", "sv_gamemode", "surf"]}
+EXTRA = {"hop": ["+set", "sv_gamemode", "surf"],
+         "grace": ["+set", "sv_gamemode", "surf"]}
 
 HOPSAY = r"hopped start\^?7? -- one jump out of the start"
 REARMSAY = r"start re-armed\^?7? -- one jump out of the start"
+# Round 2's own print: the grace being SPENT, which is the subject saying it
+# forgave a jump rather than an arm inferring it from a silence.
+GRACESAY = r"timer: start grace spent, dwell ([\d.]+) of"
 
 # One regex each, and every one reads a line the SUBJECT printed about its own
 # state: `cmd timer`'s report, SV_RetryApply's own last word, SL_RowGrounded's
@@ -112,6 +125,10 @@ FIELDS = {
     "azone":     r"arm zone (-?\d+) \(armed from",
     "armedfrom": r"arm zone -?\d+ \(armed from (-?\d+)\)",
     "ground":    r"phase: ground (\d+\.\d+)",
+    # HOW MANY JUMPS THE GESTURE PRODUCED.  p443grace's subject is ONE jump; two is
+    # the chain p443hop already measures and a different arm's question, and zero is
+    # a button that never landed.  Graded, not reported, for that reason.
+    "jumps":     r"jumps (\d+)",
     "air":       r"phase: ground \d+\.\d+  air (\d+\.\d+)",
     # SL_RowGrounded's dprint, the subject's own verdict and the three numbers it
     # decided from.  The row index is NOT pinned in the pattern -- SL_Base is the
@@ -130,10 +147,11 @@ FIELDS = {
     "retrysay":  r"retry.{0,4} -- (run restored at|back where you were)",
     "hopsay":    HOPSAY,
     "rearmsay":  REARMSAY,
+    "gracesay":  GRACESAY,
     "stitched":  r"(segmented run -- this run will not be saved)",
 }
 
-PRESENCE = ("hopsay", "rearmsay", "stitched")
+PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay")
 
 # arm -> (cfg, log, EXPECT post-fix, CONTROL overrides, REPORT-only fields)
 ARMS = {
@@ -156,6 +174,35 @@ ARMS = {
          "S":  ("azone", "armedfrom", "hopped", "ground", "class", "practice"),
          "J1": ("startok", "ground", "air", "azone", "class", "practice"),
          "J2": ("startok", "ground", "air", "azone", "class", "practice")},
+    ),
+    # Round 2's arm, and it exists because a REVIEWER'S TRACE IS NOT A MEASUREMENT.
+    # The review of round 1 reported that the startok half accuses the honest single
+    # jump out of the start after a retry, because map_restart leaves run_t_groundsec
+    # 0 and the dwell reads 0.  This grades that gesture: +jump held across the
+    # retry, released before a second hop can land.
+    "grace": (
+        "cfg/test/p443grace.cfg", "p443grace.log",
+        {"C":  {"startrule": "start on leave", "starthop": "1",
+                "state": "armed", "startok": "0"},
+         # C1 IS THE ARGUMENT: the same gesture, legal, on the same build in the same
+         # run.  `dwell 3.00` proves the forcing knob took; without it an accusation
+         # at G could be the threshold rather than the restart.
+         # C1 runs at the SHIPPED 0.25 threshold, because run_t_dwell is latched at
+         # map init and the cvar is set after it -- and the control still holds, since
+         # the player has stood 3.2 s, which satisfies 3.0 as well as 0.25.  `dwell` is
+         # graded at G instead, where the restart has re-latched it.
+         "C1": {"jumps": "1", "hopped": "0", "hopsay": "absent", "state": "armed"},
+         "G":  {"dwell": "30.00", "jumps": "0", "state": "armed"},
+         "G2": {"jumps": "1", "hopped": "0", "hopsay": "absent",
+                "gracesay": "present"}},
+        # The control has no grace at all, so its line is graded ABSENT there -- which
+        # is also proof the two logs came from different progs.
+        {"G2": {"hopped": "0", "hopsay": "absent", "gracesay": "absent"}},
+        {"C":  ("hopped", "dwell", "ground"),
+         "C1": ("ground", "air", "startok", "class", "practice", "dwell"),
+         "C2": ("state", "ground", "hopped", "dwell"),
+         "G":  ("startok", "ground", "air", "class", "practice", "azone", "hopped"),
+         "G2": ("state", "startok", "ground", "air", "class", "practice", "azone")},
     ),
     "air": (
         "cfg/test/p443air.cfg", "p443air.log",

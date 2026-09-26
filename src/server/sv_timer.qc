@@ -354,6 +354,13 @@ float  run_t_settle;
   into the box.
 
   0 is build 19 byte-for-byte, so the pair is a real bisection.
+  [PATCH 443: no longer quite -- sv_saveloc.qc's restore clears run_t_startok for a
+  non-RUNNING state at EITHER setting and only the airsec half is gated on this, so
+  at 0 a grounded restored ARM now waits for an air phase plus run_t_settle instead
+  of being settled outright.  The pair still bisects the rule's TWO LINES; it no
+  longer bisects the whole of build 19.  And "nothing outside SV_TimerJumpWatch
+  writes that field" now has a second writer, the same restore.  Both corrected here
+  rather than rewritten, because the paragraph is the reason the switch exists.]
 */
 float  run_t_startstrict;
 
@@ -1381,6 +1388,29 @@ float() SV_RecEnabled =
 .float  run_t_airsec;             // SV_ClockSec this air phase began;    0 = grounded
 .float  run_t_lastvz;
 .float  run_t_startok;
+/*
+  PATCH 443 ROUND 2: ONE JUMP THIS RULE MAY NOT JUDGE, because it cannot see.
+
+  The dwell the rule grades is `SV_ClockSec(e) - run_t_groundsec`, and across a
+  `retry` the progs are re-initialised -- so the restored attempt's ground phase
+  begins at the restart however long the player had been standing before it.  Round 1
+  cleared run_t_startok for a restored ARM (correct: the start has not happened) and
+  thereby switched the rule on over that blind dwell, which accused the ONE jump out
+  of the start that the rule exists to permit.  MEASURED, cfg/test/p443grace.cfg: the
+  same single jump reads `hopped 0` before the retry and `hopped 1` after it, with
+  `phase: ground 4.70` becoming 0.80 across the restart.
+
+  So the first jump after a placement is not judged, and the second one is -- which is
+  the whole distinction between the honest gesture and the chain the patch is for.  It
+  is spent on that jump whatever the verdict would have been, so exactly one jump per
+  placement goes unjudged; a placement also restores position AND velocity, so the hop
+  it buys cannot be accumulated by repeating the gesture.
+
+  Build 19 answered the same problem by settling the start outright, which is what
+  round 1 removed.  This is the narrower answer: "I cannot see" spelled as one
+  forgiveness rather than as a rule switched off for the whole attempt.
+*/
+.float  run_t_startgrace;
 // Jumps since the arm.  Diagnostic only -- the rule is the dwell, not the count
 // -- but "how many jumps did it think I took" is the first question anyone asks
 // of a rule that just marked their run practice, and it has no other answer.
@@ -10076,7 +10106,21 @@ float(entity e) SV_TimerJumpWatch =
 		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
 		{
-			if (dwell < want)
+			/*
+			  PATCH 443 ROUND 2: the one jump this rule may not judge.  See
+			  run_t_startgrace, which a placement sets and only this line and
+			  SV_TimerArm clear.  ABOVE the dwell test and spent whatever the
+			  verdict would have been, so it is exactly one jump per placement --
+			  and the dprint is how an arm can see it was spent rather than
+			  inferring it from a silence.
+			*/
+			if (e.run_t_startgrace)
+			{
+				e.run_t_startgrace = FALSE;
+				dprint(sprintf("timer: start grace spent, dwell %.2f of %.2f\n",
+				               dwell, want));
+			}
+			else if (dwell < want)
 			{
 				/*
 				  Guarded on both taints so a bhop chain says this once rather
@@ -10508,12 +10552,18 @@ void(entity e, float z) SV_TimerArm =
 	*/
 	e.run_t_startok  = FALSE;
 	e.run_t_jumps    = 0;
+	// Patch 443 round 2: an arm is not a placement.  It keeps run_t_groundsec (see
+	// below), so the dwell it hands the rule is a real observation and there is
+	// nothing to forgive -- and a grace left over from an earlier placement would
+	// buy a free hop out of this start.
+	e.run_t_startgrace = FALSE;
 
 	/*
 	  BUILD 20: AND THE AIR PHASE, WHICH BUILD 19 FORGOT.
 
 	  This one line is why the whole rule shipped inert.  run_t_airsec is written
-	  in exactly one place -- SV_TimerJumpWatch's phase clocks -- so it survives
+	  in two places -- these phase clocks and, since Patch 443, sv_saveloc.qc's
+	  restore, which clears it for exactly the reason below -- so it survives
 	  the arm carrying the timestamp of whatever fall preceded it.  Every ordinary
 	  route to a start zone follows a fall: `!r`, `!s`, `!b`, zone_goto, a map
 	  fall-off teleport.  The next tick then read `time - run_t_airsec` as three or
