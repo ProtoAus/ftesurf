@@ -37,17 +37,20 @@ measured the same build twice and proves nothing.
 
 Exit status 0 when every pre-registered prediction in the cfg's header held.
 
-RESULT (2026-09-26, all three arms x both builds, exit 0 every time.  qwprogs
-3786B7D1D3341D4B fixed / 830A76438E00EFA4 control, the control built in a
-worktree at 3ab4195.)  Each cfg's header carries its own numbers; in one line:
-the control build answered `armed / class: clean / practice 0` to a cancelled
-run (rest), started a recorded clean run at the save's 400 u/s once the body left
-the box (fast), and cancelled an honest run on a server with rec_enable 0
-(norec).  The fixed build answered idle-with-the-latch-back, idle, and
-running-uncancelled.  Two predictions of mine were falsified on the way and are
-written up where they were made: 400 u/s does not coast out of a 196-unit box
-against ground friction, and an uncancelled clock keeps counting (so norec's
-clock is graded as an inequality).
+RESULT (2026-09-26, round 3: five arms x both sides, exit 0 every time.  The fixed
+build is qwprogs 63AF428049260231; the control is a DIFFERENT build per arm, which
+is the point -- 830A76438E00EFA4 (pre-441, 3ab4195) for rest/fast/norec,
+3786B7D1D3341D4B (441 as first committed) for mid, and 8B84B5CE71C058E8 (this tree
+with the predicate cut to `hadrec` alone) for twice.  Both runs' logs are kept per
+arm as <log>.fixed and <log>.control, so every number in every RESULT block can be
+read back off disk.  Each cfg carries its own; in one line: the control side
+answered `armed` to a cancelled run (rest), started a recorded clean run at the
+save's 400 u/s (fast), cancelled honest runs under rec_enable 0 including an old
+save that merely CLAIMED a recording (norec), let a RUNNING attempt carry on with
+its recorder discarded (mid, and twice with the clause compiled out).  Predictions
+of mine falsified along the way, each written up where it was made: 400 u/s does
+not coast out of a 196-unit box against friction; an uncancelled clock keeps
+counting; and `practice`/`class` do not discriminate the rest arm at all.
 """
 import argparse
 import hashlib
@@ -87,20 +90,26 @@ FIELDS = {
     "stopped":   r"stopped (\d)",
     "buffer":    r"recorder: buffer (-?\d+)",
     # WHICH ROW ACTUALLY LOADED.  `sl_goto <n>` CLAMPS (`if (n > cnt) n = cnt`,
-    # sv_saveloc.qc:2276), so an arm that asks for row 2 and gets row 1 -- one
+    # sv_saveloc.qc:2337), so an arm that asks for row 2 and gets row 1 -- one
     # fixture missing, one scan short -- would grade every other field identically
     # and pass while measuring the other arm's case.  This is the slot id in the
     # load event the client read (cl_board.qc:1923), i.e. the one that landed.
-    "evslot":    r"seq: event seq \d+ op \d+ id (\d+)",
+    # `op 2` is the LOAD; a section whose first event is a save (op 1) would
+    # otherwise hand back the wrong slot.
+    "evslot":    r"seq: event seq \d+ op 2 id (\d+)",
     # The fixture's own row, out of `sl_list`: row 2 is the 400 u/s one, and the
     # list prints the speed, so "the save with speed" is checked and not assumed.
     "rowspeed":  r"slot 902(?:\s+-?\d+){3}\s+(\d+) u/s",
-    # THE POSITIVE CONTROL FOR `cancel: absent`.  SV_TimerStitched prints this on
-    # every completed load, before the rewind and whatever the void does, so it
-    # fires on both builds -- which is what makes an ABSENT cancel line mean "no
-    # void" rather than "the log stopped carrying server prints" or "the regex
-    # stopped matching".  An absence is evidence only once something shows the
-    # reader got that far.
+    # THE POSITIVE CONTROL FOR `cancel: absent`, and exactly what it is worth --
+    # the first draft of this comment overstated it.  The line comes from
+    # SV_TimerClassSay (sv_timer.qc:8940) by way of SV_TimerPractice, behind two
+    # guards: the run must be RUNNING, and the class must be an UPGRADE, so it
+    # prints once.  It is therefore NOT unconditional and NOT independent of C1's
+    # premise -- a second load, or a load into a run already announced segmented,
+    # prints nothing and this reads `absent`.  It fails safe (an arm expecting
+    # `present` goes red), and what it does buy is real: an absent CANCEL line
+    # cannot be the log having stopped carrying server prints, because this came
+    # through the same channel.
     "stitched":  r"(segmented run -- this run will not be saved)",
 }
 
@@ -150,10 +159,34 @@ ARMS = {
         {"C1": {"state": "running", "recording": "0"},
          "S":  {"cancel": "absent", "stitched": "present", "evslot": "903",
                 "state": "running", "clock": ">5.0",
-                "recording": "0", "class": "segmented", "practice": "1"}},
+                "recording": "0", "class": "segmented", "practice": "1"},
+         # S2 is the OLD save (row 1, `reclines 500`) on the same no-recording
+         # server.  Round 2's `mark > 0` cancelled here and not at S; round 3 asks
+         # the server and the run, so both must read the same.  `stitched` is not
+         # expected twice -- SV_TimerClassSay prints once per class upgrade.
+         "S2": {"cancel": "absent", "evslot": "901", "state": "running",
+                "clock": ">5.0", "recording": "0", "class": "segmented"}},
         {"S":  {"cancel": "present", "state": "idle", "stopped": "1",
-                "clock": "=5.0", "class": None, "practice": None}},
-        {"S": ("azone", "stopped")},
+                "clock": "=5.0", "class": None, "practice": None},
+         "S2": {"cancel": "present", "state": "idle", "clock": "=5.0",
+                "class": None}},
+        {"S": ("azone", "stopped"), "S2": ("practice", "stopped")},
+    ),
+    # Round 3.  THE ARM FOR THE OTHER CLAUSE: the second load of one row, where the
+    # first void has taken the recorder down (`hadrec` false) and only the server's
+    # own answer is left.  Its control is the fix COMPILED OUT -- the predicate cut
+    # to `hadrec` alone -- because no earlier commit isolates this.  Between this and
+    # `mid`, each clause of `SV_RecEnabled() || hadrec` is shown to be load-bearing;
+    # before them, either half could have been deleted with every arm still green.
+    "twice": (
+        "cfg/test/p441twice.cfg", "p441twice.log", False,
+        {"C1": {"state": "running", "recording": "1"},
+         "S1": {"cancel": "present", "state": "idle", "clock": "=5.0"},
+         "S2": {"cancel": "present", "state": "idle", "clock": "=5.0",
+                "recording": "0", "evslot": "901"}},
+        {"S2": {"cancel": "absent", "state": "running", "clock": ">5.0",
+                "buffer": "-1"}},
+        {"S1": ("buffer",), "S2": ("buffer", "practice", "class")},
     ),
     # Round 2, and its control is Patch 441's OWN first commit (20f25a1), not a
     # pre-441 build: a pre-441 build voids here too, for the reason the cfg gives.
@@ -239,7 +272,14 @@ def run(exe, timeout, cfg, log):
 
 def sections(path):
     """{tag: text} from the cfg's own `==== TAG ` echoes, so an earlier arm's
-    report cannot be read for a later one."""
+    report cannot be read for a later one.
+
+    AND `---- ` ECHOES ARE DROPPED RATHER THAN APPENDED.  p441void.cfg's reminder
+    line reads `---- CONTROL: armed, class clean, practice 0.  FIXED: idle, arm
+    zone 0 ----`; it sits inside section S and BEFORE `cmd timer`'s report, so
+    `practice (\\d)` matched the cfg's own words and the control table's graded
+    `practice 0` was satisfied by the harness telling itself the answer.  An echo
+    is never a measurement."""
     with open(path, "r", errors="replace") as fh:
         txt = fh.read()
     out, cur = {}, None
@@ -248,7 +288,10 @@ def sections(path):
         if m:
             cur = m.group(1)
             out[cur] = []
-        elif cur:
+            continue
+        if "---- " in line:
+            continue
+        if cur:
             out[cur].append(line)
     return {k: "\n".join(v) for k, v in out.items()}
 
@@ -358,6 +401,17 @@ def main():
         print(line)
     if not os.path.exists(log):
         raise SystemExit("no log at %s -- was the cwd C:\\FTESurf?" % log)
+    # KEEP THE CONTROL RUN'S LOG.  One filename per arm, deleted at every run
+    # start, meant the control numbers quoted in every RESULT block were
+    # unverifiable from disk the moment the fixed side ran again (an audit of
+    # these arms found that, and it was right).
+    # BOTH SIDES SURVIVE.  Keeping only the control's copy was half a fix: the
+    # control run then overwrote the FIXED log, so whichever side ran last was the
+    # only one on disk and a RESULT block's other half could not be checked.
+    if True:
+        keep = log + (".control" if a.control else ".fixed")
+        shutil.copyfile(log, keep)
+        print("control log kept at %s" % os.path.relpath(keep, ROOT))
     return 0 if grade(log, a.control, a.arm) else 1
 
 

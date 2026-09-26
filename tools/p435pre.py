@@ -21,6 +21,7 @@ checkout --` it, build, run this with --control, copy back, rebuild, run again.
 Exit status 0 when every pre-registered prediction in the cfg header held.
 """
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -44,10 +45,38 @@ SAVES_STAGED = (("save901", "p435rest.txt"), ("save902", "p435speed.txt"))
 ARM_SAVES = {"jump": (("save903", "p442jump.txt"),)}
 
 
+def sha(path):
+    """Which build ran.  A --control run whose hash equals the fixed one's has
+    measured the same bytes twice and proves nothing (p441void.py's rule; this
+    driver's arms were hashed by hand until Patch 442's review asked why)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for blk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(blk)
+    return h.hexdigest().upper()[:16]
+
+
+def listing(where):
+    """What the run left behind.  p442jump's R arm is the first arm in this driver
+    that WRITES into the staged tree (`cmd sl_save`), so what it leaves is part of
+    the arm rather than an assumption."""
+    out = []
+    for dirpath, dirnames, files in os.walk(where):
+        dirnames.sort()
+        for f in sorted(files):
+            q = os.path.join(dirpath, f)
+            out.append("    %s  %d bytes" % (os.path.relpath(q, ROOT), os.path.getsize(q)))
+    return out
+
+
 def stage(zones, arm="pre"):
     if os.path.isdir(PARK):
         raise SystemExit("refusing: %s already exists (a previous run did not restore)" % PARK)
-    if not zones and os.path.exists(ZONES):
+    # UNCONDITIONAL.  This used to be `if not zones and ...`, so the two arms that
+    # STAGE a zones override would overwrite one already sitting there and then
+    # remove it in restore() -- deleting a file this harness never owned.  A park
+    # would be better still; refusing is enough and is what p441void.py does.
+    if os.path.exists(ZONES):
         raise SystemExit("refusing: %s already exists -- it shadows the shipped zones" % ZONES)
     if os.path.isdir(SAVES):
         os.rename(SAVES, PARK)
@@ -118,6 +147,24 @@ PATS = {
     # cannot see it, which is the defect that arm measures, and "is a grounded body
     # really at rest in z" is the number the fix rests on.
     "velz": r"velocity -?[\d.]+ -?[\d.]+ (-?[\d.]+)\s+horizontal",
+    # Patch 442 round 2 of review: three reads that were in the log and ungraded.
+    # `slab` is the zones override showing itself -- without it SV_ZoneStartAt
+    # answers -1, the gate cannot fire on EITHER build, and the fixed side passes
+    # green while measuring nothing (this cfg says so in its own header).
+    # TRACK 0, SEG 0.  The first cut matched any `start` row and grade() reads the
+    # LAST occurrence, so it answered with the BONUS track's start (zone 5, bottom
+    # 64) and reported the override as absent while the log said `48..208` two
+    # lines above.  bhop_eazy has 7 zones and two of them are starts.
+    "slab":     r"start\s+0\s+0\s+\d+\s+([\d.]+)\.\.[\d.]+",
+    # The fixture's own row out of `sl_list`, which is also the Patch 442 display
+    # change: 302 where the horizontal-only spelling printed 0.
+    "jumprow":  r"\s3 slot 903(?:\s+-?\d+){3}\s+(\d+) u/s",
+    # The REAL save's row (row 4, the slot id is the server's to pick).  This is
+    # the row SL_RowSpeed reads, and the FALSIFIED IF that had no check.
+    "realrow":  r"\s4 slot \S+(?:\s+-?\d+){3}\s+(\d+) u/s",
+    # Which row the load landed on: `sl_goto`/`sl_last` CLAMP, so an arm that asks
+    # for row 3 and gets row 2 would grade the other fixture.  op 2 is the load.
+    "evslot":   r"seq: event seq \d+ op 2 id (\d+)",
     # viewpos answers `setpos x y z pitch yaw roll` on the line above it.
     "z": r"setpos (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)",
 }
@@ -200,6 +247,11 @@ SLAB_BOTTOM = 64.03125
 # the regression control and it is the point of the arm: a REAL save taken standing,
 # whose velocity the engine wrote rather than a fixture, must still arm CLEAN.
 EXPECT_JUMP = {
+    # Z: the zones override TOOK, and the fixture is the one this arm names.  Without
+    # the override SV_ZoneStartAt answers -1, the gate cannot fire on either build,
+    # and the FIXED side passes green while measuring nothing.  `jumprow` is also the
+    # Patch 442 display change: 302 where the horizontal spelling printed 0.
+    "Z":  {"slab": "48", "jumprow": "302"},
     # `running` and not `armed`, measured: bhop_eazy starts ON JUMP, so the restored
     # velocity lifting the body off the ground IS the start.  The laundering is
     # therefore instant -- the player does not have to walk out to collect it.
@@ -207,13 +259,19 @@ EXPECT_JUMP = {
     # control, 0 on the fixed build) was measured wrong: the gate's -1 lasts one
     # tick, and the next scan writes the box back before `cmd timer` can be asked.
     # Both builds read 0/0 at J1.  What discriminates is the CLASS.
+    # evslot in J and not J1: the load happens at `cmd sl_goto 3`, which is BEFORE
+    # the `---- J1` echo, so the event line belongs to the J section.
+    "J":  {"evslot": "903"},
     "J1": {"state": "running", "practice": "1", "class": "segmented"},
     "J2": {"state": "running", "practice": "1", "class": "segmented"},
     "J3": {"state": "running", "practice": "1", "class": "segmented"},
-    "R0": {"state": "armed", "velz": "atrest"},
+    # R0's `realrow` is the FALSIFIED IF that had no check: the REAL save's row, as
+    # SL_RowSpeed reads it.  velz is the body before the save; this is the row after.
+    "R0": {"state": "armed", "velz": "atrest", "realrow": "0"},
     "R2": {"state": "running", "practice": "0", "class": "clean"},
 }
 CONTROL_JUMP = {
+    "Z":  {"jumprow": "0"},
     "J1": {"practice": "0", "class": "clean"},
     "J2": {"practice": "0", "class": "clean"},
     "J3": {"practice": "0", "class": "clean"},
@@ -370,15 +428,33 @@ def main():
     for _, src in SAVES_STAGED + ARM_SAVES.get(a.arm, ()):
         if not os.path.exists(os.path.join(CFGDIR, src)):
             raise SystemExit("no fixture: %s" % src)
+    for d in ("qwprogs.dat", "csprogs.dat"):
+        print("%-12s %s" % (d, sha(os.path.join(GAMEDIR, d))))
     stage(zones, a.arm)
+    left = []
     try:
         secs = run(a.exe, a.timeout, cfg, log,
                    ["+set", "sv_gamemode", "surf"] if a.arm == "mode" else [])
+        left = listing(SAVES)
     finally:
         restore(a.keep)
     print("ran %s (%s) for %.0f s" % (a.exe, cfg, secs))
+    print("the staged tree at exit (%d file(s)):" % len(left))
+    for line in left:
+        print(line)
     if not os.path.exists(log):
         raise SystemExit("no log at %s -- was the cwd C:\\FTESurf?" % log)
+    # KEEP THE CONTROL RUN'S LOG.  One filename per arm, deleted at every run
+    # start, meant the control numbers quoted in every RESULT block were
+    # unverifiable from disk the moment the fixed side ran again (an audit of
+    # these arms found that, and it was right).
+    # BOTH SIDES SURVIVE.  Keeping only the control's copy was half a fix: the
+    # control run then overwrote the FIXED log, so whichever side ran last was the
+    # only one on disk and a RESULT block's other half could not be checked.
+    if True:
+        keep = log + (".control" if a.control else ".fixed")
+        shutil.copyfile(log, keep)
+        print("control log kept at %s" % os.path.relpath(keep, ROOT))
     return 0 if grade(log, a.control, a.arm) else 1
 
 
