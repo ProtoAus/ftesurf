@@ -162,10 +162,15 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   earned it. `run_rearmhop` (build 21's extra forgiveness: stand
   `run_prestrafe_time` grounded and the tag lifts) **now defaults to 0**, and an
   ARM no longer forgives either, so nothing a harness does incidentally will clear
-  it. The three clears are the `!r`/`!m`/`!s`/`!b` gesture, a respawn and a map
-  change — all of which zero the velocity, which is why they are safe. A `retry`
-  does NOT clear it any more: `hopped` is in the save format. Walk out, then prove
-  the run with `cmd timer` reading
+  it. The three clears are the `!r`/`!m`/`!s`/`!b`/**`zone_goto`** gesture (all reach
+  `SV_ZoneMoveAt`, and `zone_goto` is the warp this file tells harnesses to use, so
+  a harness DOES clear it incidentally — round 6's correction), the ground dwell at
+  `run_rearmhop 1`, and a respawn. All three zero the velocity, which is why they are
+  safe. A `retry` does NOT clear it: `hopped` is in the save format, restored
+  raise-only. **The tag survives a finish, a cancel zone and a map teleport**, so an
+  arm can read `hopped 1` many sections after the jump that earned it; there is a
+  chat reminder on each later fluffed start but nothing on the HUD. Walk out, then
+  prove the run with `cmd timer` reading
   `running / recording 1` before anything depends on it, and read the body with
   `cmd viewpos` — since Patch 435 it also prints `velocity … horizontal N`, the
   ONLY server-side speed read there is (the hold publishes the SAVE's, the
@@ -506,12 +511,23 @@ bannered as superseded.)
   however narrow. That is checkable, where "is this reachable from map data" needs
   a corpus census every time. Patch 445's three callers each zero or abandon the
   velocity; `SV_TimerArm` does not, and that was the whole bug.
-- MAP ENTITY I/O CANNOT BECOME A CLIENT COMMAND, and that is what makes `!r` usable
-  as a rule. `SV_IOCommand`'s allow-list is exactly `say`/`echo`/`print`
-  (sv_entities.qc) and it runs them through `localcmd()` on the SERVER console, so a
-  map can make the server talk but cannot reach `ClientCommand` — which is the only
-  path to `SV_ZoneChatCommand`. Verify that allow-list before hanging any new rule
-  on a chat gesture; it is the single load-bearing fact under this one.
+- ON A DEDICATED SERVER MAP ENTITY I/O CANNOT BECOME A CLIENT COMMAND, and that is
+  what makes `!r` usable as a rule. `SV_IOCommand` runs a map's `Command` through
+  `localcmd()`, i.e. the SERVER console, and `ClientCommand` is the only path to
+  `SV_ZoneChatCommand`. **THE DEDICATED QUALIFIER IS LOAD-BEARING AND WAS MISSING
+  HERE UNTIL PATCH 445's ROUND 6:** the server's own `say` is registered only
+  `if (isDedicated)` (engine `server/sv_ccmds.c`), so on a LISTEN server
+  `localcmd("say !r\n")` runs the client's `CL_Say_f`, forwards as that player's chat,
+  and does reach the gesture. It buys nothing (the forced `!r` zeroes velocity and
+  voids the run, and a listen server cannot submit to the board) but the absolute
+  form of the claim is false.
+- AND THE `say`/`echo`/`print` ALLOW-LIST IS NOT ITSELF A BARRIER. `SV_IOCommand`
+  checks the first token and passes the WHOLE string to `localcmd`, and `Cbuf` splits
+  on an unquoted `;` — so `echo x;set run_starthop 0` passes the gate and runs both.
+  `run_starthop` is read live every packet, so one poisoned map switches the whole
+  hopped-start rule off. BACKLOG carries it. Do not hang a new rule on "the map can
+  only say things"; hang it on where the command ENTERS (client stringcmd vs console),
+  which is the fact that actually holds.
 - THE SAVE FILE IS AN UNTRUSTED INPUT TO THE RUN, and `state.txt` is plain text in
   the player's own `data/saves` tree. Every taint bit the format carries — or fails
   to carry — is a laundering channel: `run_t_hopped` was missing until Patch 445, so

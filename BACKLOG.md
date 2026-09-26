@@ -7,6 +7,105 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **`SV_IOCommand`'s allow-list does not bound what a map runs: `Cbuf` splits on an
+  unquoted `;`.** The gate tests only the FIRST space-delimited token and then hands the
+  **whole** string to `localcmd` (`sv_entities.qc` SV_IOCommand), and `Cbuf_ExecuteLevel`
+  terminates a command at an unquoted `;` (engine `common/cmd.c:495` and `:654`). So a
+  map output `server,Command,echo x;set run_starthop 0` passes the allow-list and then
+  runs the second command. `RESTRICT_INSECURE` is 30 against a default `rcon_level` of
+  20, so any command registered without an explicit restriction executes. **This is the
+  door the gate's own essay exists to shut** — its comment names bhop_futile's
+  `sv_airaccelerate 150` as the reason — and it is open. `run_starthop` is read LIVE
+  every packet (`sv_timer.qc`, the hop block's own gate), so one poisoned map switches
+  the whole hopped-start rule off for everyone with nobody's velocity zeroed: exactly
+  the "the map hands out the forgiveness with the speed still on" class Patch 445 exists
+  to eliminate, arriving through the door 445 cites as the reason its design is safe.
+  Found independently by two lenses in Patch 445's round 6. MECHANISM CONFIRMED IN CODE,
+  NOT MEASURED. Two things to do: split on `;` (or quote) in SV_IOCommand, and a census
+  over the corpus for `;` in a `Command` parameter — `tools/census/` has the bsplib.
+- **And on a LISTEN server, map I/O can reach `ClientCommand` after all.** The server's
+  own `say` is registered only `if (isDedicated)` (engine `server/sv_ccmds.c`), so on a
+  listen server `localcmd("say !r\n")` runs the CLIENT's `CL_Say_f`, which forwards as
+  that player's chat and reaches `SV_ZoneChatCommand`. Combined with the `;` hole above
+  it does not even need `say` as the first word. **This falsifies the absolute claim**
+  that map data cannot press `!r`, which AGENTS.md and Patch 445's own essays stated —
+  both are corrected to the narrower true fact (`localcmd` cannot reach `ClientCommand`
+  on a DEDICATED server, which is what the lobbies are). It buys a cheater nothing: the
+  forced `!r` zeroes velocity and voids the run, and a listen server cannot submit to the
+  board at all. It is a grief vector on a server the victim operates. Round 6, lens B.
+- **THE CHEAPEST PRESPEED ROUTE IS UNTOUCHED BY THE HOPPED-START RULE, and the entry
+  below over-claimed what Patch 445 narrowed.** The taint block is gated on
+  `!run_t_startok`, and `run_t_startok` latches ~1 s after leaving the box or on the
+  first ramp contact while RUNNING. After that no hop is judged at all, and a hop taken
+  while RUNNING goes to `SV_TimerPractice`, whose three writes are ALL cleared by
+  `SV_TimerArm`. So: leave the box cleanly, touch a ramp, bhop to any speed **outside**
+  the box, re-enter the box (on a surf map `run_t_bhopjump` is FALSE so the arm is
+  immediate and has no velocity gate), leave. `run_t_hopped` is never set, the arm
+  launders the rest, and the run is clean, ranked and at full prespeed. Patch 445 raises
+  the price of the in-box jump route to "`!r` and lose all your speed", which makes this
+  one comparatively cheaper. Round 6, lens B; CONFIRMED in code, not measured. **Test:**
+  drive it and read `cmd timer`'s `hopped 0` + `class: clean` after the second start.
+- **Scope, stated because it bounds every entry in this family: the whole hopped-start
+  rule is INERT on bhop-mode maps.** `cfg/lobby/mode_bhop.cfg` sets `run_starthop 0` —
+  hopping out of the start is the sport there — and `SV_TimerMapInit` applies it from the
+  map's own metadata, including on a listen server. That is roughly half the roster, and
+  it means Patch 445 changes nothing for those maps. Round 6, lens B.
+- **A hopped-start tag now outlives the RUN, with no message and no record.** Patch 445
+  removed `SV_TimerIdle`'s clear and added none at the finish (`SV_TimerFinish` is not
+  among `SV_TimerIdle`'s five callers). So: finish a hopped run, walk back into the box,
+  run again → practice. A cancel zone or a fall-off `trigger_teleport` voids through
+  `SV_TimerVoid` → `SV_TimerIdle` and the tag stands — and on the 66 maps whose own reset
+  teleport IS that path, the honest population is the same population the exploit was
+  priced on. Stage 1 is then silently refused from the stage board on every later attempt
+  (`SV_StageQualifies` reads the run's `TF_PRACTICE`, and the HUD's `stage clean` label
+  is `seg > 0` gated). Round 6, lens C. A CLEAR AT THE FINISH LOOKS SAFE and is the
+  likely fix — a completed run cannot carry chain speed back to the box — but it must not
+  zero velocity there (players coast past the line), so it needs its own argument and its
+  own arm rather than a bolt-on.
+- **Nothing on the client knows about the tag.** No `STAT_FS_*` carries `run_t_hopped`;
+  the HUD's taint word comes from `STAT_FS_TIMERFLAGS` alone and `TF_PRACTICE` is not set
+  until `SV_TimerStart`, so a player standing ARMED with the tag up reads `ready`. Round
+  6 added a chat reminder on each later fluffed start, which is a mitigation and not a
+  fix: the state is still invisible between attempts. A stat bit, or the `phase:` line's
+  free varargs slots, is the shape. Round 6, lenses A and C.
+- **The `.rec` records no trace of the hopped start, and the tag can now predate the
+  recording by minutes.** There is no hopped/jumps/reason key anywhere in the grammar,
+  the taint chain runs BEFORE `SV_RecOpen` by design, and the pre-start pad ring is 256
+  samples ≈ 3.84 s. Under build 21 the tag could not outlive its arm, so residual
+  `TF_PRACTICE` implied "the hop happened in this attempt"; it now means "at some point
+  since the last `!r`, respawn or map change". **A reviewer at `/admin/runs` can see a
+  practice-residual run whose recording contains no jump anywhere**, with nothing in the
+  evidence supporting the class — which is CLAUDE.md's "a check that cannot measure must
+  say so" and the file says nothing. An additive `.rec` record at the set costs no version
+  bump. Round 6, lenses B and C. Also stale on the same account: `cl_timer.qc` and
+  `sh_defs.qc` both claim bare practice has "exactly one live cause", and bare
+  `TF_PRACTICE` is filed under the `stitched` chip, so the browser labels a hopped start
+  "a save state was used".
+- **A false hopped tag is no longer self-limiting, and there are more ways to earn one
+  than the rule's comments admit.** The trigger is a `velocity_z` edge with a dwell test,
+  and the dwell reads 0 whenever `run_t_groundsec` is 0 — which `pm_autobunny` guarantees
+  for a held jump. Pre-445 a false tag healed at the next arm or after 0.25 s grounded;
+  now it kills every subsequent run on the map until `!r`. **And `!r` itself does not
+  reliably clear it: pressing it while still holding +jump re-tags within a tick**, so
+  the one remedy fails for the gesture most likely to have caused the problem. Unmarked
+  or under-marked upward-velocity writers found while checking this, all reachable while
+  ARMED in a start box: `trigger_teleport` VelocityMode 3 (marks nothing and strips
+  FL_ONGROUND without `run_pushlift`), `trigger_push` SF_PUSH_ONCE (the upward clip lands
+  on the next command, after `run_pushed` is cleared), `trigger_setspeed` (marks only
+  when `vel_z > 140`), Patch 409's stated residual, and a plain standable slope
+  deflecting horizontal speed upward with no pad involved. Round 6, lens B. This is the
+  blind-dwell entry below with teeth; fix it at the placement, and note that two earlier
+  attempts at it failed review.
+- **`SV_TimerMapInit`'s per-player loop is dead code.** `find(p, classname, "player")`
+  matches nothing on a map change or `map_restart`: `SV_SpawnServer` runs `PR_Deinit` and
+  re-allocates every client edict blank, and `classname = "player"` is assigned only
+  inside `PutClientInServer`, which runs after the zone load the loop hangs off. So the
+  `SV_TimerIdle(p)` and recorder resets in it never run. Harmless today (the edict is
+  blank anyway) but the loop's comment asserts the opposite — "the player entity outlives
+  a map change on a listen server" — and Patch 445 added a call into it on that premise
+  before round 6 removed it. Pre-existing. The engine's `preserveplayers` path needs a
+  `ClientReEnter` global this progs does not define. Round 6, lens A.
+
 - **A prespeed start-box load still arms CLEAN on the 6 regions where `%.4f`
   rounding hides the zone** -- Patch 435 answered the velocity where Build 47's
   gate can fire (`tools/census/startdest.py`: 29 of 35 shipped regions with an
@@ -150,6 +249,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   that is the 46-field overreach entry below rather than a hopped-start bug.
   SV_SaveLocPickInZone's own essay names the re-entry arm ("on a surf map re-entering
   one while running ARMS you outright"). Patch 443 round-4 review; narrowed by 445.
+  **ROUND 6 CORRECTED THE NARROWING CLAIM IN THIS ENTRY, WHICH WAS OVER-STATED.** It is
+  true only when the chain happens INSIDE the box while ARMED. Done outside the box --
+  which is where anyone builds real speed, and which `run_t_startok` makes unjudgeable
+  after about a second -- `run_t_hopped` is never set at all, and the re-entry still
+  launders everything. See the "cheapest prespeed route" entry at the top of this
+  section: that is the gesture people actually use, and 445 does not touch it.
 - **The retry placement is a second copy of the start-box velocity restore, with no
   gate on it at all.** `SV_SaveApplyState`'s retry branch places the body from the
   file's `origin`/`velocity` (sv_saveloc.qc:1194-1210) and restores the flags
