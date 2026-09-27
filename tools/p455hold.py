@@ -243,7 +243,15 @@ def main():
         if os.path.exists(LOG):
             os.remove(LOG)
         flags = 0x08000000 if os.name == "nt" else 0
+        # FORCE THE GAMEMODE, as tools/p448fin.py:80 does, and the first run is why.
+        # bhop_eazy's own mode is `bhop`, where the start rule is `start on jump` and
+        # run_starthop is off -- so the tag can never be earned, `hopped` read 0 at every
+        # section, no forgiveness was ever armed, and H0 reported "no 455 refusal line
+        # anywhere: this build predates the reason codes" on a build that has them.
+        # The arm was right to refuse a verdict; it was looking at a server that could not
+        # produce the condition.  `SERVERINFO: gamemode=bhop` in the log is the tell.
         p = subprocess.Popen([os.path.join(ROOT, a.exe), "-WindowStyle", "Minimized",
+                              "+set", "sv_gamemode", "surf",
                               "+exec", CFG], cwd=ROOT, creationflags=flags,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         t0 = time.time()
