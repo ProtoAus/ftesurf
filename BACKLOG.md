@@ -631,6 +631,31 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   sv_user.c:8887 (.groundentity written only when pmove.onground).
   Patch 428 review.
 
+- **`SV_TrigPending`'s touch-bitfield clause goes blind above edict 32, and the fleet is
+  configured at exactly 32.** `bit` is built only for `n < 32` and left 0 otherwise, so
+  `(vbsp_touch_in | vbsp_touch_seen | vbsp_touch_out) & bit` tests `x & 0` and silently
+  never fires (sv_entities.qc, `SV_TrigPending`). The `vbsp_touch_who` and `vbsp_iodelay`
+  clauses still work, so the predicate DEGRADES rather than dying -- and the iodelay clause
+  is the one covering the 0.06-0.09 s OnEndTouch window. `cfg/lobby/lobby.cfg` sets
+  `sv_playerslots 32`: client edicts are 1..32, so `n` is 0..31 and every player is inside
+  the mask today with EXACTLY zero headroom. Raise that for one event and player 33 loses
+  the touch half of the test. It became a ranking concern in Patch 455, which made a
+  forgiveness depend on the predicate; before that it only gated spectate entry. Fix is
+  either a second word for 32..63 or a per-entity scan instead of a mask; the cheap
+  mitigation is a refusal to raise `sv_playerslots` past 32 without doing the first.
+  Found by a reviewer on 455 round 3, verified against the source and the cfg.
+
+- **`run_t_hopsaid` IS ONE LATCH FOR TWO REMINDERS, and every site that clears it has to
+  choose which one it is wrong about.** It suppresses both the hopped-start reminder and the
+  `run_t_dirty` reminder. The ZONE_END arm deliberately leaves it alone, because clearing it
+  re-opened a message about a taint the finish does not forgive (see the field's own
+  comment); `SV_TimerForgiveHop` clears it, because that IS a forgiveness; and Patch 455's
+  take clears it for the same reason as ForgiveHop. So the tree is self-consistent only
+  because each site reasoned separately, and the next site will have to as well. The real
+  fix is two latches -- the two reminders are about different taints and should not share a
+  bit. Small, and it wants its own patch rather than being folded into a gate change. Cited
+  by 455's take-site comment, which is why this entry exists.
+
 ## Performance
 
 - **A 999-save rescan is synchronous: 157 ms on the Pi** (profile_ssqc,
@@ -716,6 +741,26 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   cl_entview.qc:1288-1294 documents the same hazard from a case that DID reach
   QC; what is missing is a way to make the condition. cl_lines.qc `Line_ProjPt`.
   Patch 449.
+- **The one-frame angle rule in `reccheck.py` convicts honest low-frame-rate players, and
+  `tools/p456solo.py` is the arm for it.** ANG_SOLO faults a pair when too many ticks that
+  held exactly ONE rendered frame disagree with the recording by over a flat 0.05 deg. That
+  population is selected for having no minimum to take: a tick is scored as the MINIMUM over
+  its frames, so a 4-frame tick picks its best of four and a solo tick cannot. Deny the
+  ordinary ticks the same advantage and they come out WORSE than the ticks the rule convicts
+  on -- 67.7% past cut against 45.8%. And coverage is `solo/comparable`, so a LOW frame rate
+  RAISES it, and coverage is what promotes the verdict to `tight`: decimating an honest
+  sidecar to one frame per tick (49 fps, nothing rewritten) makes the shipped rule answer
+  `angle_rule tight` and "the sidecar is not this recording's" at 67.6%. The candidate fix is
+  physics rather than a threshold -- a frame is drawn INSIDE the tick, so it cannot differ
+  from that tick's angle by more than the tick's own sweep, and `dev > k*max(sweep, ANG_SOLO)`
+  at k=1 clears honest 196 fps (0.6%) and honest 49 fps (0.1%) while still faulting a
+  substituted sidecar (99.7%). With the floor at ANG_SOLO a still camera reduces to exactly
+  the shipped rule, so the still-camera teeth the sweep rule is blind to are kept. NOT
+  APPLIED: it is a verifier change and wants its own review round. The 2026-09-21 surf_4am
+  FAULT was adjudicated a false positive on this basis and its `pubkeys.decision` is
+  deliberately unset, so the fixed rule re-derives the verdict instead of inheriting a
+  hand-cleared row.
+
 ## Cosmetic / low
 - **The run line's air-control grade is measured against THIS server's movement
   settings, not the recording's.** `Line_Movevars` reads `pm_ticrate`,
