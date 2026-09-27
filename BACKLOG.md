@@ -20,9 +20,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (`dcd166259`, 2026-09-18) and is untouched by Patch 463; found by that patch's
   control-flow reviewer as out of scope. Needs its own round -- it is the
   verifier.
-- **`pm_verify`'s zone pin includes the SOURCE DIRECTORY, so moving a byte-identical
+- **FIXED IN CODE, STILL GATED ON A DEPLOY, AND THE ALREADY-REFUSED ROWS DO NOT
+  REPAIR THEMSELVES.** Engine Patch 463 (`0022cd190`) compares the fields instead
+  of the path, so the 543 zone mirrors are unblocked as soon as the fleet runs it.
+  Two things that are NOT done and do not happen by themselves:
+  (1) `build.ps1 -Pi` restarts all 12 lobbies, so the deploy is the user's call;
+  (2) deploying repairs nothing retroactively. `surfd/sweep.py:236-238` sets
+  `checked = 1` on any non-ERROR verdict and `pending()` (`:86-96`) selects
+  `checked = 0`, so a REFUSE is terminal. Every run already refused for this
+  reason keeps its REFUSE until somebody issues the per-run `recheck`
+  (`surfd/admin.py:1577-1579`), one at a time through the admin UI. **There is no
+  bulk re-check in this tree**, and writing one is the missing half of this fix.
+  Found by Patch 463's evidence reviewer.
+- ~~**`pm_verify`'s zone pin includes the SOURCE DIRECTORY, so moving a byte-identical
   zone table from `online/` to `local/` refuses every existing recording for that
-  map.** `sv_ccmds.c:5264` builds `zbuf = "<zonesrc> <zonecrc> <zonerule>"` and
+  map.**~~ Fixed by Patch 463; kept for the measurement, which is the reason the
+  mirror was held. `sv_ccmds.c:5264` built `zbuf = "<zonesrc> <zonecrc> <zonerule>"` and
   `strcmp`s it against `SV_VerifyZonePin`'s answer; a mismatch sets
   `refuse = "a different zone table or rule"` and returns before replaying a tick
   (`:5267-5271`). But `zonecrc` is already a hash of the BUILT table -- type,
