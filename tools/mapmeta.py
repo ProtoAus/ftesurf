@@ -495,6 +495,20 @@ def installed_maps(dirs=MAPDIRS):
     return out
 
 
+def strip_one_suffix(name):
+    """One suffix, or `name` unchanged.  The single step `strip_suffix` repeats."""
+    cut = name.rsplit("_", 1)
+    if len(cut) != 2 or not cut[0]:
+        return name
+    head, tail = cut
+    if tail in ALIAS_SUFFIXES:
+        return head
+    # _v2 / _b3 / _r2 and friends: one letter then digits, nothing else.
+    if len(tail) > 1 and tail[0] in "vbr" and tail[1:].isdigit():
+        return head
+    return name
+
+
 def strip_suffix(name):
     """`surf_aircontrol_ksf` -> `surf_aircontrol`; unchanged if nothing stripped.
 
@@ -502,18 +516,53 @@ def strip_suffix(name):
     `_v2`/`_b3`/`_r2` counts as one, spelled numerically rather than listed.
     """
     while True:
-        cut = name.rsplit("_", 1)
-        if len(cut) != 2 or not cut[0]:
+        head = strip_one_suffix(name)
+        if head == name:
             return name
-        head, tail = cut
-        if tail in ALIAS_SUFFIXES:
-            name = head
-            continue
-        # _v2 / _b3 / _r2 and friends: one letter then digits, nothing else.
-        if (len(tail) > 1 and tail[0] in "vbr" and tail[1:].isdigit()):
-            name = head
-            continue
-        return name
+        name = head
+
+
+def variant_canonical(name, installed):
+    """The installed map `name` is a port OF, or None.
+
+    STOPS AT THE FIRST INSTALLED ANCESTOR, one suffix at a time, which is not the
+    same thing as `strip_suffix` and the difference is load-bearing.  The maximal
+    strip is right for ALIASING a tier (a row either matches or it does not), and
+    wrong for GROUPING two installed maps, because it strips past a real map:
+
+        surf_mom_fix -> surf_mom -> surf        `mom` is this map's NAME, and
+                                               `surf` is a gamemode, not a map
+
+    Grouping on the maximal strip put surf_mom, surf_mom_fix and surf_nyx in one
+    group keyed `surf` -- three unrelated maps -- and lost the one real pair in it.
+    `alias_rows` never hit that only because it requires the stripped name to match
+    an existing row; here that requirement IS the rule.  Measured over the 1316
+    installed maps: 72 groups, every one a pair, no false positives, and
+    surf_mom/surf_mom_fix correctly paired while surf_nyx stays a singleton.
+    """
+    s = name
+    while True:
+        t = strip_one_suffix(s)
+        if t == s:
+            return None                 # no installed ancestor: its own version
+        if t in installed:
+            return t
+        s = t
+
+
+def variant_groups(installed):
+    """-> {canonical: [ports]}, both lowercased, for maps installed here.
+
+    A group is one map and the other builds of it, which is what the browser
+    needs to offer a version switch.  Maps whose only sibling is not installed are
+    not a group -- there is nothing to switch to.
+    """
+    out = {}
+    for nm in sorted(installed):
+        c = variant_canonical(nm, installed)
+        if c:
+            out.setdefault(c, []).append(nm)
+    return out
 
 
 def alias_rows(metas, stats, report=False):
@@ -755,7 +804,27 @@ def keep_atlas(metas, out):
     return kept
 
 
-def write(metas, out):
+def mounted_maps(momentum):
+    """Every map name the ENGINE can load, lowercased.
+
+    MAPDIRS deliberately does not list the Momentum install -- and Momentum is the
+    FIRST mount in ftesurf/fs_addons.txt, 1316 maps of it.  So `installed_maps()`
+    sees 1165 of roughly 2200 and misses the mount that wins.  That is fine for the
+    alias pass it was written for (Momentum's own maps already have real leaderboard
+    rows and need no alias) and wrong for variant grouping, where the whole question
+    is which builds of a map are loadable.  Kept separate rather than widening
+    MAPDIRS, because that would change which tiers get aliased and that deserves its
+    own measurement.  See BACKLOG.
+    """
+    out = set(installed_maps())
+    d = os.path.join(momentum, "maps") if momentum else None
+    if d and os.path.isdir(d):
+        for p in glob.glob(os.path.join(d, "*.bsp")):
+            out.add(os.path.splitext(os.path.basename(p))[0].lower())
+    return out
+
+
+def write(metas, out, momentum=None):
     os.makedirs(os.path.dirname(out), exist_ok=True)
     kept = keep_atlas(metas, out)
     if kept:
@@ -777,8 +846,22 @@ def write(metas, out):
                 "suffix (surf_x_ksf\n")
         f.write("#       from surf_x); over = mapmeta_override.txt.  "
                 "See maps.ts:getTier().\n")
+        f.write("# variant <canonical> <port> -- two INSTALLED builds of one map, "
+                "for the browser's\n")
+        f.write("#       version switch.  Additive: the menu's reader skips any "
+                "line whose first\n")
+        f.write("#       token is not `meta` (m_main.qc:1253), so an older build "
+                "ignores these.\n")
         for m in rows:
             f.write(m.line() + "\n")
+        groups = variant_groups(mounted_maps(momentum))
+        nvar = 0
+        for canon, ports in sorted(groups.items()):
+            for p in ports:
+                f.write("variant %s %s\n" % (canon, p))
+                nvar += 1
+        if nvar:
+            print("  %d variant row(s) in %d group(s)" % (nvar, len(groups)))
     return len(rows)
 
 
@@ -856,7 +939,7 @@ def main():
         print("\n--report: nothing written.  Run without it to write %s" % a.out)
         return
 
-    n = write(metas, a.out)
+    n = write(metas, a.out, a.momentum)
     print("\nwrote %s  (%d maps)" % (a.out, n))
 
 

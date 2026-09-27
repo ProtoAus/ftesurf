@@ -751,6 +751,33 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Features / releases
 
+- **`tools/mapmeta.py`'s `MAPDIRS` omits the Momentum install -- the FIRST and
+  largest mount -- so the tier alias pass has never considered most of the
+  library.** `ftesurf/fs_addons.txt` mounts `Momentum Mod Playtest/momentum`,
+  then cstrike, then hl2, earlier winning. `MAPDIRS` (`mapmeta.py:159-163`) lists
+  only `ftesurf/maps` (4 BSPs), cstrike (1084) and hl2 (79), so
+  `installed_maps()` returns **1165 of the 1419 names the engine can load** and
+  every one of Momentum's 1316 is invisible to `alias_rows()`. Harmless for the
+  case it was written for (Momentum's own maps carry real leaderboard rows and
+  need no alias) and wrong for anything asking "which builds of this map can be
+  loaded". Patch 463's variant work needed the real set and added
+  `mounted_maps(momentum)` beside it rather than widening `MAPDIRS`, because
+  widening it changes which tiers get aliased and that deserves its own
+  measurement. Do that measurement, then collapse the two.
+- **Re-running `tools/mapmeta.py` LOSES DATA, measured 2026-09-28.** A
+  regeneration over an existing `ftesurf/data/mapmeta.txt` dropped the
+  `surf_strike` row entirely -- tier 5, `sugg`, thumbnail
+  `b0a5f058-ca96-4f9c-a75a-543efaf3c326`, and the map is installed in BOTH the
+  Momentum and cstrike mounts -- and blanked page/cell on 8 rows that still
+  exist: `bhop_aperture_kinetic_lab`, `bhop_arcturus`, `bhop_cooksassistant`,
+  `bhop_greenbox`, `bhop_greybox`, `bhop_peribox`, `bhop_tealbox`,
+  `df_maroonbox`. So `keep_atlas` does not carry forward everything it should,
+  and something in `build()` is not stable across runs. 2271 meta rows before,
+  2294 after, 1 lost. The run that found this was reverted from its backup rather
+  than shipped, so the table on disk is the pre-run one -- which means the
+  `variant` rows `write()` now emits are NOT in it yet, and generating them needs
+  this fixed first. The module docstring already warns that `--report` used to
+  mutate its input; this is the same class one level down.
 - **Patch 427's client half is not in a release.** Clients quote `download`;
   until players update, the lobbies' server half is what lets them join maps
   with spaced sound names. Ships with the next `release.ps1 -Bump patch`.
