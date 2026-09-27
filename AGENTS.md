@@ -497,6 +497,28 @@ the document. (It was in `C:/Users/Lex/.claude/plans/` until 2026-09-18 under a
 generated slug — tool-managed, unbacked, and the only copy. That one is now
 bannered as superseded.)
 
+- **A CLEAR IS ONLY SAFE IF THE ILLEGITIMATE SPEED CANNOT SURVIVE IT — AND "I HAVE
+  ENUMERATED EVERY PLACE THE SPEED COULD BE" IS NOT A WAY TO ESTABLISH THAT.** Most
+  clears in the taint design satisfy the rule by ZEROING the velocity, which is
+  checkable. The one that cannot — the finish, because players coast past the line —
+  went through Patch 454 and six rounds of 455 trying to satisfy it by listing the
+  places speed can hide: the push carrier, the carrier's vertical component, a pending
+  trigger output. **Three consecutive review rounds found a defect in the previous
+  round's fix, every one of them a term missing from the list**, because completeness
+  is not a checkable property and "as far as I can trace" is the only honest answer
+  anyone can give about it.
+  What replaced it is a LATENCY BOUND, which is checkable against measured numbers: the
+  clear waits until the body has read clear for an unbroken interval, on the argument
+  that whatever was committed would have ARRIVED by then. It is stronger than waiting,
+  because the carrier cash-out runs in `PlayerPreThink` — inside `SV_RunCmd`, before
+  `PlayerPostThink` where the gate lives — so a pending carrier does not merely arrive,
+  it becomes `.velocity`, which the gate already measures. Sized from the longest
+  latency the tree has measured: an `OnEndTouch` at 0.06–0.09 s (four to six packets),
+  a carrier at one command. **It needs BOTH an elapsed-time and an observed-read bound**
+  — a read count alone is bought by bursting packets, and elapsed time alone credits a
+  gap in which nothing was observed, which is the completeness argument again one level
+  down. If you add a term to a gate like this, ask first whether the gate should stop
+  depending on the list being finished.
 - Three recordings of one run, joined by filename through `FS_RunPath`: `.rec`
   (server, `sv_timer.qc`), `.view` (CSQC per-frame angles, `cl_replay.qc`),
   `.hid` (engine raw-input journal, `in_generic.c`). A forgery has to be
