@@ -27,13 +27,24 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and `togglesolid.py` saw 184 maps with an Enable/Disable/Toggle output where the sound
   parse sees 226 — and that second one **overturned its own published conclusion** (grade
   3 went from 0 to 1). `parse_ents_pairs`/`read_pairs` now exist beside it and both tools
-  use them, but **the other censuses in that directory have not been re-checked**:
-  `pushcensus.py`, `sscensus.py`, `startdest.py`, `onjumpstart.py`, `pushtilt.py`,
-  `ssd1.py`, `sscount.py`. Any of them that reads an `On*` key is suspect, and the
-  numbers from them are quoted in source comments and BACKLOG entries across the tree.
-  A second, independent bug travels with it: those tools split the I/O record on `,`,
-  and VBSP >= v25 uses 0x1B ESC — `sv_entities.qc` picks the separator per value, the
-  tools did not, and 144 of 1438 rows on 34 maps were invisible. Round 7, lens B.
+  use them. A second, independent bug travels with it: those tools split the I/O record
+  on `,`, and VBSP >= v25 uses 0x1B ESC — `sv_entities.qc` picks the separator per value,
+  the tools did not, and 144 of 1438 rows on 34 maps were invisible. Round 7, lens B.
+  **THE REST OF THE DIRECTORY WAS THEN CHECKED AND IS CLEAN, so what remains is one
+  file.** `onjumpstart.py` has neither bug — it builds its own pair list
+  (`[v for k, v in kv if k == 'OnJump']`) and regex-searches the value for
+  `basevelocity` instead of splitting it, so a separator it never uses cannot mislead
+  it. `pushcensus.py`, `pushtilt.py`, `sscensus.py`, `sscount.py`, `ssd1.py` and
+  `startdest.py` read only single-valued keys (classname, model, origin, spawnflags),
+  for which a dict is the correct shape. `onjumpstart.py`'s remaining fragility was
+  measured rather than left as a suspicion: it matches `k == 'OnJump'` case-SENSITIVELY
+  and without a trim, where VBSP guarantees neither, so a differently-cased key would
+  have been skipped and under-counted its "ZERO overlapping a start zone" result in the
+  reassuring direction. **Scanned the raw entity lumps of all 1316 bsps: 1381 `OnJump`
+  keys and EVERY ONE is spelled exactly `OnJump`** — no case variants, no leading space.
+  So the match is sound on this corpus and the whole directory is now accounted for.
+  Nothing is open here; the entry stays as the record of what was checked and how,
+  because the next census written in this directory needs to know both bugs existed.
 - **And on a LISTEN server, map I/O can reach `ClientCommand` after all — and it can
   destroy data, not just grief.** The server's own `say` is registered only
   `if (isDedicated)` (engine `server/sv_ccmds.c`), so on a listen server
