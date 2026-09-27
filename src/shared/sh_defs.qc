@@ -2741,7 +2741,7 @@ float(string w) FS_TagFromName =
 
   Named here rather than in the reader because the server names them by
   construction and a reader guessing at bit order is how a replay ends up
-  crouching in the wrong places.  Patch 447 moved them out of cl_watch.qc for
+  crouching in the wrong places.  Patch 449 moved them out of cl_watch.qc for
   the same reason FS_IsSample moved in build 24: a second reader needs them,
   and cl_lines.qc compiles BEFORE cl_watch.qc (cl_progs.src).
 */

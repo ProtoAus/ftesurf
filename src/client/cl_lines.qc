@@ -35,14 +35,14 @@
 #define LN_SUBPX   16           // virtual px: a longer segment is subdivided
 
 /*
-  THE MARKS.  Patch 447.
+  THE MARKS.  Patch 449.
 
   Where the run touched down, left the ramp, hopped, and where a segmented run
   was stitched.  They are the EDGES of Board_KindOf (cl_board.qc), the same
   three-state contact function the Segments column is built from, with none of
   that column's row-level debounce -- so every segment row boundary is a mark,
   and a bounce too short to become a row is a mark with no row.  That
-  containment is the invariant p447mark grades; a second detector written here
+  containment is the invariant p449mark grades; a second detector written here
   would drift from the column and the two would disagree about one run.
 
   A mark carries its own position and velocity rather than a point index, which
@@ -64,6 +64,20 @@
 #define LN_E_APEX    4          // vz turned over
 #define LN_E_TROUGH  5          // vz turned back up
 #define LN_E_STITCH  6          // a save state was loaded here: resume/retry
+#define LN_E_BREAK   7          // a teleport: the marks' own record of a break
+
+/*
+  WHY A BREAK IS IN THE MARK TABLE when the teleport pass already draws it.
+
+  It is not drawn from here -- Line_Draw's teleport pass owns the squares and
+  the dashes.  It is here because it is the one thing a mark depends on that
+  the table did not carry: a break suppresses the contact edge across it, and
+  ln_bk cannot say where, because the past-the-cap halving moves a dropped
+  sample's break onto the next kept point (up to a sample late, measured on
+  bhop_monster_jam save010: 127437 samples, 8 marks out of phase).  So the
+  table records the breaks the CLASSIFIER saw, and tools/p449mark.py grades
+  against those instead of against a list that has been through decimation.
+*/
 
 vector *ln_pos;
 float  *ln_spd;
@@ -87,6 +101,7 @@ vector *ln_ep;
 float  *ln_evh;                 // horizontal speed there, u/s
 float  *ln_e2;                  // v . v, 3D: the energy term, minus the height
 float  *ln_ez;                  // vz, signed
+float  *ln_ei;                  // the sample it came from, counted by this slot
 
 float  ln_n[LN_SLOTS];
 float  ln_bkn[LN_SLOTS];
@@ -106,6 +121,7 @@ float  ln_rlast[LN_SLOTS];
 float  ln_gjmp[LN_SLOTS];       // +jump seen anywhere in the ground phase
 float  ln_pvz[LN_SLOTS];
 float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
+float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
 
 // per frame
 vector ln_eye, ln_fwd, ln_rt, ln_up;
@@ -160,6 +176,11 @@ void() Line_Alloc =
 	ln_evh  = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_e2   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_ez   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	// The ordinal is the mark's identity.  Two samples can share a `t` (a file
+	// records one per packet, and a held clock repeats it -- both bhop fixtures
+	// carry such a pair), so time does not identify a sample and a reader that
+	// keys on it mis-assigns the mark.  +147 KB.
+	ln_ei   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 };
 
 void(float s) Line_Clear =
@@ -171,6 +192,7 @@ void(float s) Line_Clear =
 	ln_evn[s] = 0;
 	ln_evcut[s] = FALSE;
 	ln_evdrop[s] = 0;
+	ln_nsamp[s] = 0;
 };
 
 void(float s) Line_Begin =
@@ -219,6 +241,7 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 				if (ln_ek[b + i] != LN_E_TROUGH)
 				{
 					ln_ek[b + j]  = ln_ek[b + i];
+					ln_ei[b + j]  = ln_ei[b + i];
 					ln_es[b + j]  = ln_es[b + i];
 					ln_et[b + j]  = ln_et[b + i];
 					ln_ep[b + j]  = ln_ep[b + i];
@@ -243,6 +266,7 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 	ln_evh[b + n] = vlen([v_x, v_y, 0]);
 	ln_e2[b + n]  = v * v;
 	ln_ez[b + n]  = v_z;
+	ln_ei[b + n]  = ln_nsamp[s];
 	ln_evn[s] = n + 1;
 };
 
@@ -324,10 +348,11 @@ void(float s, vector v, float fl, float t) Line_Seed =
 {
 	Line_Was(s, Line_Contact(s, v, fl, t), v, fl);
 	ln_vzmax[s] = 0;
+	ln_nsamp[s] = 0;                // the window's first sample is ordinal 0
 };
 
 /*
-  One sample, classified, then handed to Line_Add.  Patch 447.
+  One sample, classified, then handed to Line_Add.  Patch 449.
 
   It runs ABOVE Line_Add's decimation return on purpose: once a slot has halved
   or is striding, half the samples never reach the point array, and a hop
@@ -344,6 +369,8 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Li
 
 	k = Line_Contact(s, v, fl, t);
 
+	if (brk)
+		Line_Ev(s, LN_E_BREAK, 0, t, o, v);
 	if (stitch)
 		Line_Ev(s, LN_E_STITCH, 0, t, o, v);
 
@@ -383,6 +410,7 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Li
 	}
 
 	Line_Was(s, k, v, fl);
+	ln_nsamp[s] = ln_nsamp[s] + 1;
 	Line_Add(s, o, vlen([v_x, v_y, 0]), t, brk);
 };
 

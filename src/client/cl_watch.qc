@@ -524,7 +524,7 @@ float  rec_wt_svheld;            // a snapshot is out; Watch_Stop must restore i
 #define WT_C_V4N   17           // a v4 sample has at least this many columns
 
 // SV_RecFlags' bits (WT_F_ONGROUND/DUCKED/JUMP/ATTACK/RAMP) moved to
-// shared/sh_defs.qc in Patch 447: cl_lines.qc classifies contact from them and
+// shared/sh_defs.qc in Patch 449: cl_lines.qc classifies contact from them and
 // compiles before this file.
 
 // The .view sample columns.
@@ -638,7 +638,7 @@ void() Watch_TablesReset =
 #define WTR_REWIND  4           // a restart: no duck slide spans it
 #define WTR_RIDE    8           // a `ride`: RIDEON says whether its carrier is armed
 #define WTR_RIDEON 16
-#define WTR_STITCH 32           // Patch 447: a save state was loaded here
+#define WTR_STITCH 32           // Patch 449: a save state was loaded here
 
 float(string s) Watch_RecordBits =
 {
@@ -667,7 +667,7 @@ float(string s) Watch_RecordBits =
 	if (k == "portal")
 		return WTR_FORCE;
 	// `restart` is a STAGE restart and is not a stitch: what makes a run
-	// segmented is a save state coming back, which is resume/retry (Patch 447).
+	// segmented is a save state coming back, which is resume/retry (Patch 449).
 	if (k == "restart")
 		return WTR_FORCE | WTR_REWIND;
 	if (k == "resume" || k == "retry")
@@ -1513,7 +1513,7 @@ void(float ra, float rb) Watch_ScanRange =
 		if (c > 0)
 			Watch_ScanPair(t, o, v, fl, key);
 		// Patch 432: the run line, broken where the pair snapped (a teleport).
-		// Patch 447: and classified -- contact, hops, peaks, save-state stitches.
+		// Patch 449: and classified -- contact, hops, peaks, save-state stitches.
 		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch);
 		rec_wt_spt    = t;
 		rec_wt_spo    = o;
@@ -1860,7 +1860,7 @@ float() Watch_LineJobStep =
 		if (t < wt_lj_ta)
 		{
 			wt_lj_frc = wt_lj_veto = wt_lj_stitch = FALSE;
-			// Patch 447: the last sample before the window is kept to seed the
+			// Patch 449: the last sample before the window is kept to seed the
 			// contact state with (Line_Seed).  Only the last half second is
 			// tokenized for it -- it is a few dozen lines, against every sample
 			// of the run before the stage asked for.
@@ -4552,7 +4552,7 @@ void() Watch_Status =
 	// fteqcc caps varargs at 8 including the format and drops the ninth silently.
 	// `curve` reaching exactly WT_PATHMAX is the build-42 truncation bug; `still`
 	// is what the red on the bar is drawn from and what skip would jump.
-	// Patch 447.  `cut` means the peaks were dropped as a class to make room and
+	// Patch 449.  `cut` means the peaks were dropped as a class to make room and
 	// `dropped` that marks were lost past the cap even so -- both are the line
 	// saying what it cannot show, which no count of what it drew would.
 	print(sprintf("  marks %g%s%s  (cap %g)\n", ln_evn[0],
@@ -4698,6 +4698,8 @@ float(string cmd) Watch_ConsoleCommand =
 {
 	local string a, p;
 	local float track, leg, nv;
+	local float i, b, sl;   // the marks and seq dumps (Patch 449)
+	local vector ep;        // an array element is not swizzleable
 
 	tokenize(cmd);
 	if (argv(0) != "replay")
@@ -4724,36 +4726,46 @@ float(string cmd) Watch_ConsoleCommand =
 		return TRUE;
 	}
 	/*
-	  Patch 447: the marks, as the draw pass reads them.
+	  Patch 449: the marks, as the draw pass reads them.
 
 	  Ten values a row, so two sprintfs -- fteqcc caps a varargs call at eight
 	  and drops the rest silently.  `lnk` is the break list beside them because
-	  a stitch sits on a break and tools/p447mark.py consumes the break set
+	  a stitch sits on a break and tools/p449mark.py consumes the break set
 	  rather than re-deriving Interp_Fit's verdicts (see its header).
 	*/
 	if (a == "marks")
 	{
-		local float s, i, b;
-		local vector ep;                    // an array element is not swizzleable
-
-		s = stof(argv(2));                  // slot, default 0 (the replay)
-		b = s * LN_EVCAP;
-		print(sprintf("lnmb %g %g %g %g %.4f %.4f %s\n", s, ln_evn[s], ln_evcut[s],
-		              ln_evdrop[s], ln_n[s] ? ln_t[s * LN_CAP] : 0,
-		              ln_n[s] ? ln_t[s * LN_CAP + ln_n[s] - 1] : 0, rec_wt_path));
-		for (i = 0; i < ln_bkn[s]; i = i + 1)
-			print(sprintf("lnk %g %.4f\n", ln_bk[s * LN_BKCAP + i],
-			              ln_t[s * LN_CAP + ln_bk[s * LN_BKCAP + i]]));
-		for (i = 0; i < ln_evn[s]; i = i + 1)
+		sl = stof(argv(2));                  // slot, default 0 (the replay)
+		b = sl * LN_EVCAP;
+		print(sprintf("lnmb %g %g %g %g %.4f %.4f %s\n", sl, ln_evn[sl], ln_evcut[sl],
+		              ln_evdrop[sl], ln_n[sl] ? ln_t[sl * LN_CAP] : 0,
+		              ln_n[sl] ? ln_t[sl * LN_CAP + ln_n[sl] - 1] : 0, rec_wt_path));
+		for (i = 0; i < ln_bkn[sl]; i = i + 1)
+			print(sprintf("lnk %g %.4f\n", ln_bk[sl * LN_BKCAP + i],
+			              ln_t[sl * LN_CAP + ln_bk[sl * LN_BKCAP + i]]));
+		for (i = 0; i < ln_evn[sl]; i = i + 1)
 		{
 			ep = ln_ep[b + i];
 			print(sprintf("lnm %g %g %g %.4f %s\n", i, ln_ek[b + i], ln_es[b + i],
 			              ln_et[b + i],
-			              sprintf("%.2f %.2f %.2f %.2f %.4f %.2f",
+			              sprintf("%g %.2f %.2f %.2f %.2f %.4f %.2f", ln_ei[b + i],
 			                      ep_x, ep_y, ep_z,
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i])));
 		}
-		print(sprintf("lnme %g\n", ln_evn[s]));
+		print(sprintf("lnme %g\n", ln_evn[sl]));
+		return TRUE;
+	}
+	// Patch 449: the Segments column's own rows, for the containment check --
+	// every row boundary must be a mark.  The reverse does not hold: a contact
+	// under SEG_MINTIME is a mark with no row, which is the point.
+	if (a == "seq")
+	{
+		print(sprintf("lnsb %g %g\n", rec_wt_sqn, rec_wt_tickrate));
+		for (i = 0; i < rec_wt_sqn; i = i + 1)
+			print(sprintf("lns %g %g %g %g %.4f %.2f\n", i, rec_wt_sqkind[i],
+			              rec_wt_sqsub[i], rec_wt_sqtick[i], rec_wt_sqdur[i],
+			              rec_wt_sqde[i]));
+		print(sprintf("lnse %g\n", rec_wt_sqn));
 		return TRUE;
 	}
 	if (a == "pause")  { rec_wt_paused = TRUE;  return TRUE; }

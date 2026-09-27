@@ -281,7 +281,7 @@ float  ramp_bridged;
 float  ramp_rawlast;
 
 /*
-  The hold's PREDICATE, with no state of its own.  Patch 447.
+  The hold's PREDICATE, with no state of its own.  Patch 449.
 
   cl_lines.qc runs this machine over a recording to find where the ride started
   and ended, and it must not touch ramp_on/ramp_lastc -- those belong to the
@@ -342,7 +342,7 @@ float(float raw, float now) Board_RampHold =
 };
 
 /*
-  Ground, ramp or air, and the ONE place it is spelled.  Patch 447.
+  Ground, ramp or air, and the ONE place it is spelled.  Patch 449.
 
   The run line's marks are this function's EDGES (cl_lines.qc Line_Contact), so
   a second copy of these three lines would let the line and the Segments column
