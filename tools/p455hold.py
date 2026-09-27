@@ -42,6 +42,10 @@ PARKED = SAVES + ".parked-p455hold"
 # than on a clause of the reasoning: round 6 reworded the reasoning and an arm
 # anchored on it read "absent" on a build where the branch had demonstrably run.
 HELD = r"is held, so the forgiveness is NOT measured"
+# Patch 455's hold dprint (ce6edee): the row, the speed parked, the movetype
+# returned.  It is what separates "took and parked 260" from "took and parked
+# nothing" -- a distinction that was invisible, and wrong here for three runs.
+HOLDTOOK = r"hold: took on row (\d+), parking ([\d.]+) u/s"
 # Round 8 split the old "still moving" into three codes with three lines, which
 # is what makes H6 anchorable at all -- before it, an over-cap refusal straight
 # after an airborne one was swallowed by the said-once latch.
@@ -174,15 +178,29 @@ def grade():
     # from "the hold never landed".  When reason 1 fires it is moot: the gate
     # read one of run_pmhold / rec_sl_hold / MOVETYPE_NONE as true, and this arm
     # drives none of the others, so the refusal IS the hold landing.
+    took = re.search(HOLDTOOK, sec.get("H", "")) or re.search(HOLDTOOK, whole)
     held_seen = re.search(HELD, sec.get("H", ""))
     pos = re.findall(VIEWPOS, sec.get("H", ""))
     asked = len(re.findall(r"Client command: viewpos", sec.get("H", "")))
-    if held_seen:
+    if took:
+        parked = float(took.group(2))
+        frozen = True
+        # The speed is graded, not just the fact of the hold: a hold parking
+        # 0.000 makes H3 vacuous (it refuses a body that was already still) and
+        # makes H6 impossible (nothing to be over the cap with).
+        verdict("H2 hold landed", "PASS" if parked > 100 else "FAIL",
+                "took on row %s parking %.3f u/s%s"
+                % (took.group(1), parked,
+                   "" if parked > 100 else
+                   " -- a hold that parks nothing refuses a body that was "
+                   "already still, so H3 proves less than it looks and H6 "
+                   "cannot fire at all. The save was taken stationary."))
+    elif held_seen:
         frozen = True
         verdict("H2 hold landed", "PASS",
-                "not required this run: reason 1 fired, which is the gate "
-                "reading a hold flag set -- the independent check is only "
-                "needed when the refusal is absent")
+                "reason 1 fired, which is the gate reading a hold flag set. "
+                "No `hold: took` line, so this build predates ce6edee and the "
+                "PARKED SPEED is unknown -- H3 may be refusing a still body")
     elif len(pos) >= 2:
         a, b = pos[0], pos[1]
         frozen = all(abs(float(x) - float(y)) < 0.5 for x, y in zip(a, b))
