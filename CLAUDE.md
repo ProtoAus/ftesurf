@@ -41,6 +41,12 @@ chatty.
   with no colon. Count every line matching the word, case-insensitively, rather
   than a format you assumed. `build.ps1` itself is fine — it uses a bare
   substring — so this was a hand-rolled check going wrong beside a correct one.
+  THE SAME DAY, THE SAME SHAPE, IN THE OTHER DIRECTION: a `%.0f` dprint reading
+  "260 u/s ... cap 260" was quoted as "it passes on an exact boundary equality",
+  which the line cannot say — it bounds the value to [259.5, 260.0] and nothing
+  more, and the argument built on top of it was about a margin of thousandths.
+  A printed number's PRECISION bounds the claim you may make from it; read the
+  format specifier before you quote the value.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
