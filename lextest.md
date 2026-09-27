@@ -54,9 +54,10 @@ I want it.
 Both of these are the other session's work, not mine, and both are blocked on a
 human playing rather than a script walking.
 
-**2a. Finish a run FAST, and check it is refused.** Patch 454 forgives a hopped
-start only when you come to rest — grounded, at or below `sv_maxspeed`. Every
-headless gesture walks, so the branch that says NO has never once been
+**2a. Finish fast, then come to rest — and watch WHEN the tag dies.** Patch 454
+forgives a hopped start only once you come to rest: grounded, at or below
+`sv_maxspeed`. Every headless gesture walks, so the branch that says NO — the
+one that holds the tag up while you are still fast — has never once been
 exercised. It needs a finish above `sv_maxspeed` on a map whose END sits within
 64 units of its own START:
 
