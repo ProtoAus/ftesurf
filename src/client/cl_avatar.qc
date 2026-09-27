@@ -34,9 +34,9 @@
   (VF_VIEWPORT + VF_DRAWWORLD 0, which also fullbrights it -- the stage sits
   at z 65536 where no map has light).  The body is a CSQC entity dressed
   exactly like your avatar: the belt overlay off your two colours
-  (Patch 457) and glowmod off your fx mask.  It renders AFTER the panel's 2D
-  fill and BEFORE its border, so the frame sits over the scene's edge, and the
-  backdrop under it is drawn first because renderscene does not clear.
+  (Patch 457) and glowmod off your fx mask.  It stands beside the panel with no
+  backdrop and no frame -- renderscene does not clear, so the rect shows the
+  main view behind the body; that is the look Lex asked for.
 
   IT CANNOT SHOW THE TRAIL OR THE MOTES, and this paragraph used to claim it
   did -- "it oscillates so the trail is a ribbon and not a dot".  P_DrawParticles
@@ -714,7 +714,23 @@ void(vector rpos, vector rsz) Av_Preview =
 	av_prev_org = org;
 
 	cam  = org + [120, -120, 44];
-	look = vectoangles(org + '0 0 32' - cam);
+	/*
+	  THE PITCH IS NEGATED, AND THAT IS WHY THE BODY SAT LOW IN THE FRAME.
+
+	  vectoangles returns "+x=UP" -- the engine's own builtin description says so
+	  (pr_cmds.c:11490) -- and VF_ANGLES takes view angles, where positive pitch
+	  is DOWN.  So this aimed the camera 4.05 degrees UP when it meant 4.05 down,
+	  an 8.1 degree error, and the body hung below the middle of its viewport.
+	  Measured before the fix: 64 px low in a 364 px rect.  Predicted from the
+	  geometry: 170 units of camera distance x tan(8.1 deg) = 24.2 world units,
+	  at the 2.73 px per unit the body was drawn at = 66 px.  The two agreeing is
+	  what says this is the cause and not merely a cure.
+
+	  This is the only vectoangles in the client, so there was nothing to compare
+	  it against -- cl_watch builds its pitch and yaw directly.
+	*/
+	look = vectoangles(org + '0 0 31' - cam);
+	look_x = -look_x;
 
 	clearscene();
 	setproperty(VF_VIEWPORT, rpos, rsz);
@@ -740,7 +756,7 @@ void(vector scr) Av_Draw =
 {
 	local vector p, sz;
 	local float i, x, y, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint;
-	local float barh, fw, fh, pvw, pvx, pvh, slh, stop;
+	local float barh, fw, fh, pvw, pvx, pvy, pvh, slh, stop;
 	local float segs, lit, stripw, striph;      // the trail strip, below
 	local vector tv, bv;                        // the two halves, as 0..255
 	local float rqttl, rqtsz, rqhnt;            // the sizes ASKED for, pre-snap
@@ -1145,22 +1161,36 @@ void(vector scr) Av_Draw =
 	  it for: a panel dragged low used to push the model's feet off the display.
 	*/
 	pvh = ceil(pvw * 1.5);
-	if (pvh > scr_y - 8 - p_y)
-		pvh = scr_y - 8 - p_y;
+	if (pvh > sz_y)
+		pvh = sz_y;
 	if (pvh < tsz * 6)
 		pvh = tsz * 6;
 	/*
-	  A BACKDROP FIRST, because the stage has no world to draw: VF_DRAWWORLD 0
-	  renders the body and nothing else, and renderscene does not clear the colour
-	  buffer, so the viewport showed whatever the MAIN view had already drawn
-	  there -- a body floating over live map geometry, measured in p457av's control
-	  shot.  Darker than the panel so the frame reads as a window and not as more
-	  panel.  It has to be laid down before the scene, or it paints over the body.
+	  CENTRED ON THE PANEL, not anchored to its top.  While the rect had a frame
+	  around it the anchor was the thing that read as deliberate; with the frame
+	  gone it just left the body floating up by the panel's first few rows, a
+	  third of the way down a 640-unit panel.  Clamped to the screen afterwards,
+	  which is what Patch 341 put the clamp here for -- a panel dragged low must
+	  not push the model's feet off the display.
 	*/
-	sui_fill([pvx, p_y], [pvw, pvh], '0.02 0.02 0.03', 1, 0);
-	Av_Preview([pvx, p_y], [pvw, pvh]);
-	sui_border_box([pvx, p_y], [pvw, pvh], 1,
-	               '0.28 0.30 0.36', 0.9, 0);
+	pvy = p_y + ceil((sz_y - pvh) * 0.5);
+	if (pvy < 4)
+		pvy = 4;
+	if (pvy + pvh > scr_y - 4)
+		pvy = scr_y - 4 - pvh;
+	/*
+	  NO BACKDROP AND NO FRAME: the body stands beside the panel, not in a box.
+
+	  Both existed and both are deliberately gone.  VF_DRAWWORLD 0 draws the body
+	  and nothing else and renderscene does not clear the colour buffer, so this
+	  rect shows whatever the MAIN view already drew there -- which is why a fill
+	  was added in the first place.  Lex's call after seeing it framed: "remove
+	  the window behind the player display".  So the trade is stated rather than
+	  hidden: the body now reads against live map geometry, which is busier than
+	  a flat fill, and the rect is invisible so nothing marks where it clips.
+	  Put the two lines back if it ever reads badly on a bright map.
+	*/
+	Av_Preview([pvx, pvy], [pvw, pvh]);
 
 	sui_border_box(p, sz, 1, '0.28 0.30 0.36', 1, 0);
 	Font_Reset();
