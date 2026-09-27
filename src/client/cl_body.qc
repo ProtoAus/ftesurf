@@ -176,10 +176,17 @@ float() Body_Predraw =
 		rgb = self.pb_rgb * (1 / 255);
 	else
 		rgb = Av_PaletteRGB(self.pb_lc);
-	if (self.pb_lf & PBL_COLOUR)
-		self.colormod = Body_Q32(Av_ColourModRGB(rgb));
-	else
-		self.colormod = '0 0 0';
+	/*
+	  PATCH 457: the body's colour is the shirt/pants OVERLAY, fetched by the
+	  renderer from this player's topcolor/bottomcolor userinfo through
+	  .colormap (pr_csqc.c:881).  colormod would multiply it -- the shader adds
+	  the overlay first and applies colormod after (defaultskin.glsl:317, :398) --
+	  so it stays at the identity sentinel, which is '0 0 0' and not black.
+	  pb_slot is already the owner's slot + 1, which is exactly what colormap
+	  wants; 0 would fall through to TOP_DEFAULT and paint a brown shirt.
+	*/
+	self.colormod = '0 0 0';
+	self.colormap = self.pb_slot;
 	if (self.pb_lf & PBL_GLOW)
 		self.glowmod = Body_Q32(Av_GlowModRGB(rgb));
 	else

@@ -441,6 +441,7 @@ def write_luma_tga(width=256, height=256, lo=0.42, hi=0.58):
         c = 255 if on else 0
         band += bytes((c, c, c)) * width          # TGA is BGR; grey is symmetric
 
+
     hdr = struct.pack("<BBBHHBHHHHBB",
                       0,      # no image id
                       0,      # no colour map
@@ -451,6 +452,79 @@ def write_luma_tga(width=256, height=256, lo=0.42, hi=0.58):
                       24,     # bits per pixel
                       0)      # descriptor: bottom-left origin
     return bytes(hdr) + bytes(band) + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
+
+
+# The base skin, and PATCH 457 MADE IT DARK ON PURPOSE.
+#
+# It used to be a flat green (130, 236, 83) and the body's colour was .colormod,
+# a MULTIPLY, with Lobby_ColourMod dividing the wanted colour by that green to
+# cancel it out.  That works for one colour and cannot do two, because colormod
+# is one value for the whole entity.
+#
+# Top/bottom colour is the engine's shirt/pants overlay, and the overlay is
+# ADDITIVE over the diffuse:
+#
+#     col = texture2D(s_diffuse, tc);
+#     col.rgb += uc.rgb * e_uppercolour * uc.a;      defaultskin.glsl:317-323
+#     col.rgb += lc.rgb * e_lowercolour * lc.a;
+#     col *= light * e_colourident;                  :398, colormod is HERE
+#
+# So the diffuse is the FLOOR the chosen colours are added to, and a bright base
+# washes them out -- a red shirt over the old green measured as pink.  colormod
+# multiplies the overlays too, so it cannot be used to darken the base without
+# darkening the colour with it.  The base therefore has to be dark in the FILE.
+#
+# 16 rather than 0: a player who picks black is then a dark silhouette rather
+# than a hole in the world, and 16/255 = 0.063 is small enough not to visibly
+# desaturate anything else.
+SKIN_GREY = 16
+
+
+def write_skin_tga(width=256, height=256, grey=SKIN_GREY):
+    """models/player.tga -- the flat dark base the overlays are added to."""
+    rows = bytes((grey, grey, grey)) * width * height
+    hdr = struct.pack("<BBBHHBHHHHBB",
+                      0, 0, 2, 0, 0, 0, 0, 0,
+                      width, height,
+                      24,     # bits per pixel
+                      0)      # descriptor: bottom-left origin
+    return bytes(hdr) + rows + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
+
+
+def write_half_tga(upper, width=256, height=256):
+    """models/player_shirt.tga / _pants.tga -- one half of the side band.
+
+    The engine finds these by name off the diffuse (gl_shader.c:6979 probes
+    "%s_shirt.tga") and turns the UPPERLOWER permutation on when either loads
+    (gl_backend.c:4446).  .colormap = slot+1 is what makes the renderer fetch
+    that player's topcolor/bottomcolor for them.
+
+    WHY THE CUT IS EXACT.  build_faces lays v as HEIGHT on the side band, and
+    inverted -- v = 1.0 at the feet, 0.0 at the crown -- so v is a linear
+    function of world Z there and any constant-v cut is a perfectly horizontal
+    seam.  write_luma_tga already relies on this for the waist belt.  The two
+    end caps do NOT share the convention (their v comes from Y-in-footprint),
+    so a pure-v mask splits each tiny sole and crown cap down the middle; they
+    are visible only from directly below or above.
+
+    WHY 32 bpp.  The shader reads the mask's ALPHA (`uc.a`), so a 24 bpp file --
+    which is what write_luma_tga writes, because glowmod's mask is read from
+    RGB -- would have alpha 1 everywhere and put BOTH tints over the whole body.
+    RGB is white so that uc.rgb * e_uppercolour is the chosen colour unchanged.
+    """
+    rows = bytearray()
+    for y in range(height):
+        # Descriptor 8 below is bottom-left origin, so row 0 is the image BOTTOM.
+        v = 1.0 - (y + 0.5) / height
+        on = (v < 0.5) if upper else (v >= 0.5)
+        rows += bytes((255, 255, 255, 255 if on else 0)) * width   # BGRA
+
+    hdr = struct.pack("<BBBHHBHHHHBB",
+                      0, 0, 2, 0, 0, 0, 0, 0,
+                      width, height,
+                      32,     # bits per pixel
+                      8)      # descriptor: 8-bit alpha, bottom-left origin
+    return bytes(hdr) + bytes(rows) + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
 
 
 def hull_from_sh_defs(path=None):
@@ -694,6 +768,24 @@ def main():
     with open(luma, "wb") as f:
         f.write(data)
     print("wrote %s (%d bytes, waist band for .glowmod)" % (luma, len(data)))
+
+    # Patch 457: the base skin and the two overlay masks, cut against the same
+    # UVs as the luma band and written here for the same reason -- a mask that
+    # lives anywhere else drifts away from the model it is a mask of.
+    skin = os.path.join(models, "player.tga")
+    data = write_skin_tga()
+    with open(skin, "wb") as f:
+        f.write(data)
+    print("wrote %s (%d bytes, flat grey %d -- the floor the overlays add to)"
+          % (skin, len(data), SKIN_GREY))
+
+    for name, upper in (("player_shirt.tga", True), ("player_pants.tga", False)):
+        path = os.path.join(models, name)
+        data = write_half_tga(upper)
+        with open(path, "wb") as f:
+            f.write(data)
+        print("wrote %s (%d bytes, %s half, alpha-masked)"
+              % (path, len(data), "upper" if upper else "lower"))
 
     return 0
 

@@ -33,12 +33,18 @@
   THE PREVIEW.  A second renderscene into a viewport rect beside the panel
   (VF_VIEWPORT + VF_DRAWWORLD 0, which also fullbrights it -- the stage sits
   at z 65536 where no map has light).  The body is a CSQC entity dressed
-  exactly like your avatar -- colormod off the palette, glowmod, trail and
-  motes off your fx mask -- and it oscillates so the trail is a ribbon and
-  not a dot.  It renders AFTER the panel's 2D fill and BEFORE its border, so
-  the frame sits over the scene's edge.  The main view never sees the stage:
-  it is above every frustum the game camera has, and the particles it emits
-  are born after this frame's main renderscene already ran.
+  exactly like your avatar: the shirt/pants overlay off your two halves
+  (Patch 457) and glowmod off your fx mask.  It renders AFTER the panel's 2D
+  fill and BEFORE its border, so the frame sits over the scene's edge, and the
+  backdrop under it is drawn first because renderscene does not clear.
+
+  IT CANNOT SHOW THE TRAIL OR THE MOTES, and this paragraph used to claim it
+  did -- "it oscillates so the trail is a ribbon and not a dot".  P_DrawParticles
+  is inside `if (!(r_refdef.flags & RDF_NOWORLDMODEL))` (r_surf.c:4014) and
+  VF_DRAWWORLD 0 sets exactly that flag, so the two effects made of particles
+  are the two this preview is structurally unable to draw.  The oscillation was
+  animating a ribbon nothing was drawing.  The trail STRIP lower down the panel
+  is the answer: a 2D representation of colour and length, labelled as one.
 
   GHOST MODE dresses the replay stand-in (cl_ghost.qc's rec_gh_body) through
   Av_GhostDress, called from Ghost_DrawBody: the same colormod/glowmod and
@@ -71,6 +77,8 @@ float av_drag;                  // title bar held
 vector av_dragofs;
 float av_namefocus;
 float av_saidsz;                // the type-scale line is said once per open
+string av_tbsent;               // last topcolor/bottomcolor pushed; see Av_PushHalves
+float av_half;                  // which half the sliders edit: 0 top, 1 bottom
 string av_name_text;
 float av_name_caret;
 float av_mote_acc;                // mote rate integrator, see Av_Dress
@@ -130,27 +138,17 @@ string(float i) Av_ColourName =
 };
 
 /*
-  The palette as colormod wants it: divided by the green skin, clamped to the
-  wire range (sv_ents.c packs byte = qc * 32, so 7.96875 is the ceiling), and
-  floored off the all-zero identity sentinel -- the same three moves
-  Lobby_ColourMod makes, mirrored because a CSQC entity's colormod is set
-  here and not by the server.
+  PATCH 457 REMOVED Av_ColourMod AND Av_ColourModRGB, and the note is worth more
+  than the code was.  They divided the wanted colour by the green skin so that
+  .colormod -- a MULTIPLY -- cancelled the texture and left the body the colour
+  you asked for.  That is exactly one colour per entity and so could never carry
+  two halves, and the shirt/pants overlay is added BEFORE colormod in the shader
+  (defaultskin.glsl:317-323, then :398), so a colormod left behind would have
+  multiplied the new colours by the old trick.  models/player.tga is a dark grey
+  floor now and every body sets colormod to the identity sentinel.
+  Av_GlowModRGB below survives untouched: glowmod tints the luma belt, which is
+  still a multiply and still one colour.
 */
-vector(float i) Av_ColourMod =
-{
-	local vector v;
-
-	v = Av_PaletteRGB(i);
-	v_x = v_x / 0.50980;
-	v_y = v_y / 0.92549;
-	v_z = v_z / 0.32549;
-	if (v_x > 7.96) v_x = 7.96;
-	if (v_y > 7.96) v_y = 7.96;
-	if (v_z > 7.96) v_z = 7.96;
-	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
-		v_x = 0.032;
-	return v;
-};
 
 /*
   PATCH 341: THE RGB HALF OF THE COLOUR STORY.
@@ -225,22 +223,6 @@ vector(float slot) Av_WornRGB =
 	return Av_PaletteRGB(stof(getplayerkeyvalue(slot, "lc")));
 };
 
-vector(vector rgb) Av_ColourModRGB =
-{
-	local vector v;
-
-	v = rgb;
-	v_x = v_x / 0.50980;
-	v_y = v_y / 0.92549;
-	v_z = v_z / 0.32549;
-	if (v_x > 7.96) v_x = 7.96;
-	if (v_y > 7.96) v_y = 7.96;
-	if (v_z > 7.96) v_z = 7.96;
-	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
-		v_x = 0.032;
-	return v;
-};
-
 vector(vector rgb) Av_GlowModRGB =
 {
 	local vector v;
@@ -258,6 +240,71 @@ vector(vector rgb) Av_GlowModRGB =
   one of the twelve for its particles, which are generated per entry and cannot
   be tinted per entity.
 */
+/*
+  PATCH 457: THE TWO HALVES, CLIENT SIDE.
+
+  `lobbytop` / `lobbybot` are the ask, each falling back one step -- bottom to
+  top, top to the worn body colour -- so a player who never touches them wears
+  one colour exactly as before.
+
+  THE MIRROR INTO topcolor/bottomcolor IS DONE HERE AND NOT ONLY BY THE SERVER,
+  because the server's 1 Hz resolve runs only on a lobby.  Off one -- a listen
+  server, every offline session, every headless arm -- nothing would publish
+  them and the renderer would fall back to an UNSET topcolor, which is palette
+  range 0 and reads as near-white over the dark skin.  Pushed on change only,
+  against a latch, because this is reached from a per-frame draw.
+*/
+string(float v) Av_Hex2 =
+{
+	local string d;
+
+	d = "0123456789abcdef";
+	v = bound(0, floor(v + 0.5), 255);
+	return strcat(substring(d, floor(v / 16), 1), substring(d, v & 15, 1));
+};
+
+string(vector rgb) Av_HexRGB =
+{
+	return strcat("0x", Av_Hex2(rgb_x * 255), Av_Hex2(rgb_y * 255),
+	              Av_Hex2(rgb_z * 255));
+};
+
+vector() Av_MyTop =
+{
+	local vector v;
+
+	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbytop"));
+	if (v_x >= 0)
+		return v / 255;
+	return Av_MyRGB();
+};
+
+vector() Av_MyBot =
+{
+	local vector v;
+
+	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbybot"));
+	if (v_x >= 0)
+		return v / 255;
+	return Av_MyTop();
+};
+
+void() Av_PushHalves =
+{
+	local string s, t, b;
+
+	t = Av_HexRGB(Av_MyTop());
+	b = Av_HexRGB(Av_MyBot());
+	s = strcat(t, " ", b);
+	if (s == av_tbsent)
+		return;
+	if (av_tbsent)
+		strunzone(av_tbsent);
+	av_tbsent = strzone(s);
+	localcmd(strcat("setinfo topcolor ", t, "\n"));
+	localcmd(strcat("setinfo bottomcolor ", b, "\n"));
+};
+
 float(vector rgb) Av_NearestColour =
 {
 	local float i, best, bi, d;
@@ -311,17 +358,22 @@ void(string id, vector pos, vector sz, float maxv, float val, string label,
 	                  val, cb);
 };
 
+// PATCH 457: the sliders move ONE HALF of the body, whichever av_half selects.
 void() Av_SendRGB =
 {
-	localcmd(sprintf("setinfo lobbyrgb \"%g %g %g\"\n",
+	localcmd(sprintf("setinfo %s \"%g %g %g\"\n",
+	                 av_half ? "lobbybot" : "lobbytop",
 	                 floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5),
 	                 floor(av_rgb_z + 0.5)));
 };
 
-// A palette pick is a palette pick: the custom triple goes away with it.
+// A palette pick is a palette pick: the custom triple goes away with it, and so
+// do both halves, so the whole body follows the swatch that was just clicked.
 void() Av_ClearRGB =
 {
 	localcmd("setinfo lobbyrgb \"\"\n");
+	localcmd("setinfo lobbytop \"\"\n");
+	localcmd("setinfo lobbybot \"\"\n");
 	av_rgb = Av_MyRGB() * 255;
 };
 
@@ -456,7 +508,8 @@ void() Av_Open =
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
 	// ...and the sliders from what is actually worn, custom or palette.
-	av_rgb = Av_MyRGB() * 255;
+	av_rgb = Av_MyTop() * 255;
+	av_half = 0;
 	UI_CursorClaim(UIC_AVATAR);
 };
 
@@ -493,7 +546,16 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 	local vector rgb;
 
 	rgb = Av_MyRGB();
-	g.colormod = Av_ColourModRGB(rgb);
+	/*
+	  PATCH 457: the colour is the shirt/pants overlay, which the renderer
+	  fetches from this player's own topcolor/bottomcolor through .colormap.
+	  colormod is left at the identity sentinel because the shader applies it
+	  AFTER adding the overlay (defaultskin.glsl:317, :398) and would otherwise
+	  multiply the chosen colours by it.
+	*/
+	g.colormod = '0 0 0';
+	g.colormap = player_localnum + 1;
+	Av_PushHalves();
 
 	m = Av_MyInfo("lobbyfx");
 
@@ -660,7 +722,8 @@ void(vector scr) Av_Draw =
 	local float i, x, y, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint;
 	local float barh, fw, fh, pvw, pvx, pvh, slh, stop;
 	local float segs, lit, stripw, striph;      // the trail strip, below
-	local string nm, hash, s, rgbstr;
+	local vector tv, bv;                        // the two halves, as 0..255
+	local string nm, hash, s, rgbstr, botstr;
 
 	// The board is the older modal and draws over this; see Av_Open.
 	if (!av_open || rec_sb_open)
@@ -849,6 +912,42 @@ void(vector scr) Av_Draw =
 	y = y + sw + 4;                 // row 2's bottom, before the sliders
 
 	/*
+	  PATCH 457: WHICH HALF THE SLIDERS EDIT.
+
+	  The body is two independently coloured halves now (the engine's shirt and
+	  pants overlay, driven by topcolor/bottomcolor through .colormap), so the
+	  three sliders below need to say which one they are moving.  "match" clears
+	  the bottom, which makes it follow the top -- that is the fallback chain in
+	  Av_MyBot, and it is what "one colour" means here.
+
+	  The SWATCHES above stay whole-body: a palette pick clears both halves as
+	  well as lobbyrgb, because a quick colour pick meaning "half of me" would
+	  surprise everybody.
+	*/
+	botstr = getplayerkeyvalue(player_localnum, "lobbybot");
+	x = sz_x - pad * 2;
+	if (Av_Chip("av_htop", [p_x + pad, y], [x * 0.34, tsz * 1.6], "top",
+	            av_half == 0))
+	{
+		av_half = 0;
+		av_rgb = Av_MyTop() * 255;
+	}
+	if (Av_Chip("av_hbot", [p_x + pad + x * 0.35, y], [x * 0.34, tsz * 1.6],
+	            "bottom", av_half == 1))
+	{
+		av_half = 1;
+		av_rgb = Av_MyBot() * 255;
+	}
+	if (Av_Chip("av_hmatch", [p_x + pad + x * 0.70, y], [x * 0.30, tsz * 1.6],
+	            "match", botstr == ""))
+	{
+		localcmd("setinfo lobbybot \"\"\n");
+		av_half = 0;
+		av_rgb = Av_MyTop() * 255;
+	}
+	y = y + tsz * 1.6 + 4;
+
+	/*
 	  PATCH 341: THE RGB SLIDERS, under the swatches rather than instead of
 	  them.  The swatches are the twelve hues the particles exist in; the
 	  sliders are the exact body colour, which colormod carries fine and the
@@ -875,14 +974,26 @@ void(vector scr) Av_Draw =
 	          "b", ftos(floor(av_rgb_z + 0.5)), Av_SetB, 255);
 	y = y + slh + 4;
 
-	if (rgbstr != "")
-		s = sprintf("wearing: %g %g %g custom -- particles: %s",
-		            floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5),
-		            floor(av_rgb_z + 0.5), Av_ColourName(eff));
+	/*
+	  PATCH 457: the line describes the BODY, which is two halves now, and names
+	  the particle colour separately because that one is still a palette entry --
+	  the trail and mote blocks are generated per colour and cannot be tinted.
+	*/
+	tv = Av_MyTop() * 255;
+	bv = Av_MyBot() * 255;
+	if (botstr != "")
+		s = sprintf("top %g %g %g / bottom %g %g %g -- particles: %s",
+		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
+		            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5),
+		            Av_ColourName(eff));
+	else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbytop") != "")
+		s = sprintf("body %g %g %g -- particles: %s",
+		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
+		            Av_ColourName(eff));
 	else if (got >= 1 && got <= AV_COLOURS)
-		s = sprintf("wearing: %s  (%g/12 taken)", Av_ColourName(got), got);
+		s = sprintf("body %s  (%g/12 taken)", Av_ColourName(got), got);
 	else
-		s = "wearing: server's pick";
+		s = "body: server's pick";
 	sui_text([p_x + pad, y], [hint, hint], Chat_Fit(s, sz_x - pad * 2, hint),
 	         '0.55 0.55 0.58', 1, 0);
 	y = y + hint + pad;

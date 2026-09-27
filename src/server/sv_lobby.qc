@@ -88,6 +88,8 @@
 .float   lobby_fx;
 .float   lobby_trailc;
 .float   lobby_trailn;           // PATCH 457: resolved trail length stop, 0..3
+.vector  lobby_top;             // PATCH 457: worn upper-half rgb, 0..1
+.vector  lobby_bot;             // ...and lower.  Published as topcolor/bottomcolor.
 .float   lobby_csent;
 .vector  lobby_rgb;              // PATCH 341: worn RGB 0..1, custom or palette echo
 .float   lobby_custom;           // PATCH 341: lobbyrgb was valid; not a palette entry
@@ -409,26 +411,26 @@ vector(float i) Lobby_PaletteRGB =
   division is 0.10/0.325 = 0.31, which is byte 9 -- but the floor below makes
   it impossible rather than merely unlikely.
 */
-vector(float i) Lobby_ColourMod =
-{
-	local vector v;
+/*
+  PATCH 457 REMOVED Lobby_ColourMod AND Lobby_ColourModRGB.  The essay above is
+  kept because it is the record of WHY the skin used to be green and what the
+  division was for -- but the body's colour is the shirt/pants overlay now, and
+  none of it is live.
 
-	v = Lobby_PaletteRGB(i);
-	v_x = v_x / LOBBY_SKINBASE_R;
-	v_y = v_y / LOBBY_SKINBASE_G;
-	v_z = v_z / LOBBY_SKINBASE_B;
+  Why it had to go rather than sit beside the new path: .colormod is ONE value
+  for a whole entity, so it can never carry two halves, and the overlay is added
+  BEFORE colormod in the shader (defaultskin.glsl:317-323, then :398).  A
+  colormod left on would have multiplied both chosen colours by the old
+  green-cancelling triple -- measured, before this was understood: a red top and
+  a blue bottom came out pink over purple.  models/player.tga is a flat dark
+  grey now (tools/mkplayermodel.py, SKIN_GREY) and every body sets colormod to
+  the identity sentinel.  Lobby_GlowMod survives: glowmod tints the luma belt,
+  which is still a multiply and still one colour.
 
-	if (v_x > 7.96) v_x = 7.96;
-	if (v_y > 7.96) v_y = 7.96;
-	if (v_z > 7.96) v_z = 7.96;
-
-	// One channel above the quantisation floor, so the triple can never read
-	// as the engine's "no colormod set" sentinel.
-	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
-		v_x = 0.032;
-
-	return v;
-};
+  MEASURED EQUIVALENT FOR THE ONE-COLOUR CASE, so this is not a look change:
+  the same worn triple rendered (137,21,107) through colormod and (144,30,115)
+  through the overlay -- the new path is a shade BRIGHTER, not darker.
+*/
 
 /*
   PATCH 341: THE SAME TWO MODS FROM AN ARBITRARY RGB, and the nearest palette
@@ -479,6 +481,49 @@ vector(string s) Lobby_ParseRGB =
 	return v;
 };
 
+/*
+  PATCH 457: THE BODY'S TWO HALVES, AND WHY THEY RIDE THE ENGINE'S OWN KEYS.
+
+  `setinfo lobbytop "r g b"` and `setinfo lobbybot "r g b"` (0..255 ints, the
+  same grammar lobbyrgb already uses) are resolved once a second and published
+  as the ENGINE's `topcolor` / `bottomcolor` userinfo in its 24-bit form.  Any
+  value >= 16 is read as 0xRRGGBB rather than a palette range
+  (R_FetchPlayerColour, gl_backend.c:1116), the engine's own menu writes exactly
+  that form (m_multi.c:163), and the two clamps to 13 that would have destroyed
+  it are commented out in cl_parse.c -- so full RGB is reachable without an
+  engine change.
+
+  USERINFO RATHER THAN A STAT OR A POSE BYTE because it is relayed to every
+  client for free and the renderer fetches it per entity through .colormap:
+  pr_csqc.c:881 for a CSQC body, cl_ents.c:6096 for an engine one.  The body's
+  colour therefore costs no stat, no delta bit and no pose-stream byte, and it
+  reaches a client with no CSQC at all.
+
+  IT REPLACES .colormod FOR THE BODY.  colormod is one value for a whole entity
+  and so can never carry two halves; the overlay is added BEFORE colormod in the
+  shader (defaultskin.glsl:317-323, then :398), so leaving a colormod on would
+  multiply the chosen colours by it.  Every body now sets colormod to the
+  identity sentinel and models/player.tga is a dark grey floor instead of the
+  green the divide in Lobby_ColourMod was cancelling.
+*/
+string(float v) Lobby_Hex2 =
+{
+	local string d;
+
+	// Built by hand rather than with %02x: this string is parsed by strtoul in
+	// the engine and a sprintf width flag that silently did nothing would be a
+	// colour that is wrong by a factor of 16 with nothing saying so.
+	d = "0123456789abcdef";
+	v = bound(0, floor(v + 0.5), 255);
+	return strcat(substring(d, floor(v / 16), 1), substring(d, v & 15, 1));
+};
+
+string(vector rgb) Lobby_HexRGB =
+{
+	return strcat("0x", Lobby_Hex2(rgb_x * 255),
+	              Lobby_Hex2(rgb_y * 255), Lobby_Hex2(rgb_z * 255));
+};
+
 float(vector rgb) Lobby_NearestColour =
 {
 	local float i, best, bi, d;
@@ -497,22 +542,6 @@ float(vector rgb) Lobby_NearestColour =
 		}
 	}
 	return bi;
-};
-
-vector(vector rgb) Lobby_ColourModRGB =
-{
-	local vector v;
-
-	v = rgb;
-	v_x = v_x / LOBBY_SKINBASE_R;
-	v_y = v_y / LOBBY_SKINBASE_G;
-	v_z = v_z / LOBBY_SKINBASE_B;
-	if (v_x > 7.96) v_x = 7.96;
-	if (v_y > 7.96) v_y = 7.96;
-	if (v_z > 7.96) v_z = 7.96;
-	if (v_x < 0.032 && v_y < 0.032 && v_z < 0.032)
-		v_x = 0.032;
-	return v;
 };
 
 vector(vector rgb) Lobby_GlowModRGB =
@@ -658,21 +687,31 @@ float(entity p) Lobby_ColourFor =
   feature, and it has to be the identity value rather than '1 1 1' so that the
   field is not even flagged as changed.
 */
+/*
+  PATCH 457: THE COLOUR IS THE SHIRT/PANTS OVERLAY NOW, not colormod, so this
+  function's whole job is to point the avatar at its owner's userinfo.
+
+  colormod stays at the identity sentinel -- '0 0 0' is 1.0 and NOT black,
+  sv_ents.c:3931-3933 substitutes 32,32,32 when all three are zero -- because
+  the shader adds the overlay BEFORE applying colormod (defaultskin.glsl:317-323
+  then :398), so any colormod left here would multiply the chosen colours by it.
+  A player with a red top and a blue bottom under the old green-cancelling
+  colormod measured as pink over purple, which is how this was found.
+
+  .colormap = num_for_edict(p) is slot+1, which is what makes the renderer fetch
+  THIS player's topcolor/bottomcolor.  It is set even when lobby_colors is off:
+  colormap 0 would fall through to TOP_DEFAULT/BOTTOM_DEFAULT (palette ranges 1
+  and 6, render.h:24-25), i.e. an unexplained brown shirt on every body.  With
+  colours off the 1 Hz loop publishes FS_AVPLAIN instead.
+*/
 void(entity av, entity p) Lobby_ApplyColour =
 {
-	if (!lobby_colors)
-	{
-		av.colormod = '0 0 0';
-		return;
-	}
+	av.colormod = '0 0 0';
 
 	if (!p.lobby_colour)
 		p.lobby_colour = Lobby_ColourFor(p);
 
-	if (p.lobby_custom)
-		av.colormod = Lobby_ColourModRGB(p.lobby_rgb);
-	else
-		av.colormod = Lobby_ColourMod(p.lobby_colour);
+	av.colormap = num_for_edict(p);
 };
 
 /*
@@ -738,6 +777,10 @@ void(entity av, entity p) Lobby_ApplyColour =
   counted separately by lobby_av_fxmax, which counts emitters.
 */
 #define FS_AVTRAILN   4
+
+// What a body wears when lobby_av_colors is off.  Mid grey, not black: the skin
+// under the overlay is 16/255 and the overlay is all the light a body has.
+#define FS_AVPLAIN    '0.55 0.55 0.55'
 
 /*
   The glow colour.
@@ -1348,6 +1391,7 @@ void() Lobby_Frame =
 {
 	local entity av, nx, p;
 	local float  nfx, want, tc, tn;
+	local vector tv, bv;
 	local vector rgbv;
 
 	/*
@@ -1592,6 +1636,45 @@ void() Lobby_Frame =
 				p.lobby_trailn = tn;
 			else
 				p.lobby_trailn = 0;
+
+			/*
+			  PATCH 457: the two halves.  Each falls back one step -- bottom to
+			  top, top to the resolved body colour -- so a player who has never
+			  opened the customizer wears one colour, exactly as before, and a
+			  player who set only the top gets a matching bottom rather than a
+			  default the engine picked (TOP_DEFAULT is palette range 1, which
+			  over a dark skin would read as an unexplained brown).
+			*/
+			if (lobby_colors)
+			{
+				tv = Lobby_ParseRGB(infokey(p, "lobbytop"));
+				if (tv_x < 0)
+					tv = p.lobby_rgb;
+				bv = Lobby_ParseRGB(infokey(p, "lobbybot"));
+				if (bv_x < 0)
+					bv = tv;
+			}
+			else
+			{
+				/*
+				  lobby_av_colors 0 is the falsifier for the whole colour
+				  feature and it has to reach the OVERLAY now, not colormod.
+				  A plain grey rather than black: the skin under it is 16/255
+				  and the overlay is all the light a body has, so publishing
+				  zero would make every player a silhouette instead of
+				  uncoloured.
+				*/
+				tv = FS_AVPLAIN;
+				bv = FS_AVPLAIN;
+			}
+			p.lobby_top = tv;
+			p.lobby_bot = bv;
+
+			// Unchanged writes are detected engine-side and cost no broadcast,
+			// so the unconditional 1 Hz call is the cheap one -- the same note
+			// the `tc` publish below carries.
+			forceinfokey(p, "topcolor",    Lobby_HexRGB(tv));
+			forceinfokey(p, "bottomcolor", Lobby_HexRGB(bv));
 
 			/*
 			  PATCH 340: PUBLISH THE COLOUR, two keys and one stuffcmd.
