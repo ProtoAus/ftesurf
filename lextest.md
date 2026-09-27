@@ -138,6 +138,46 @@ the START while running should re-arm and cancel, so no time can ever be set.
 ftesurf-a1 has taken this one and is driving `agtricks` itself — if you happen
 to load one of those maps, whether a time can be set at all is the question.
 
+## 2c. The prop collision report — one live check I could not make
+
+You asked whether the two sides use the right collision meshes for props. Two
+findings are in BACKLOG.md with the code paths; this is the part that needs a
+human on a real map, because nothing headless watches a player rubber-band.
+
+**`surf_spacemonkeys` is the map to try** — 174 of its solid props carry a
+`modelscale` whose x16 is not a whole number, which is the most of any map in the
+library (then `surf_angelinaaa` 131, `surf_diet_mountain_dew` 130,
+`surf_sinner_ksf` 112, `surf_angelina` 101). On those props the client predicts
+against a slightly SMALLER prop than the server moves you against — 1.3750
+against 1.4000 on a `modelscale 1.4` — and the client's version is the one that
+matches what is drawn. So the thing to look for is being stopped a unit or two
+SHORT of a prop you can see, then released.
+
+Walk into the scaled props and watch for a stutter at the surface. `cl_nopred 1`
+is the discriminator: it turns client prediction off, so if the stutter goes away
+and is replaced by plain lag, the disagreement is the prediction and not the prop.
+
+**A `modelscale 1.0` prop cannot show this** — the numbers only diverge when
+x16 has a fraction — so a prop that behaves is not a counter-example unless you
+know its scale. That is the one thing to be careful of in reporting it.
+
+## 2d. Props you walk straight through are probably CORRECT
+
+Worth knowing before you file it: a static prop whose model ships no `.phy`
+collision file is deliberately non-solid, because Source does not collide with it
+either (Patch 262). That is **34,514 of 110,959 solid props across 380 maps** —
+on `surf_garden`, 383 of 420 of them, every shrub and cypress. So "this prop has
+no collision" is usually the intended answer.
+
+The inconsistency I did NOT resolve, and it is worth an eye if you notice it: the
+same model spawned as a `prop_dynamic` instead of a static prop falls back to
+colliding against its **visible mesh** (`mod_hl2.c:1494-1503` takes the render
+mesh when there is no usable hull, and never consults the no-`.phy` rule, which
+lives in the static-prop loader). So one fence can be walk-through and an
+identical fence solid at triangle precision, on the same map, by classname alone.
+Both sides agree with each other, so this is not the client/server split above —
+just a thing that will read as a bug and is not the one I found.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:
