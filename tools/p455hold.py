@@ -42,7 +42,7 @@ PARKED = SAVES + ".parked-p455hold"
 # than on a clause of the reasoning: round 6 reworded the reasoning and an arm
 # anchored on it read "absent" on a build where the branch had demonstrably run.
 HELD = r"is held, so the forgiveness is NOT measured"
-MOVING = r"NOT taken -- still moving: ([\d.]+) u/s against cap ([\d.]+)"
+MOVING = r"NOT taken -- still moving: ([\d.]+) u/s against cap ([\d.]+), ground (\d)"
 PENDING = r"NOT taken -- a trigger action is pending"
 SETTLING = r"NOT taken -- at rest but settling: ([\d.]+) s of ([\d.]+), (\d+) clear reads of (\d+)"
 TAKEN = r"hopped-start taint cleared -- "
@@ -235,12 +235,37 @@ def grade():
                 "the take came BEFORE the hold -- the window closed early and "
                 "H3 measured nothing")
 
+    # -- H6 the ABOVE-CAP clause, which had never refused anything -----------
+    #
+    # Reason 2 is three clauses with one voice -- !ong, evz > 0 and speed > cap
+    # -- and the latch says a reason once, so an above-cap refusal straight
+    # after an airborne one is silent.  Section M puts reason 1 between them by
+    # releasing out of the hold, and grades on `ground 1` with the speed over
+    # the cap, which is the only way to tell the clauses apart in a log.
+    over = [m for m in re.finditer(MOVING, sec.get("M", ""))
+            if m.group(3) == "1" and float(m.group(1)) > float(m.group(2))]
+    if over:
+        m = over[0]
+        verdict("H6 above cap", "PASS",
+                "%s u/s against cap %s with ground 1 -- the speed clause, "
+                "refusing for the first time" % (m.group(1), m.group(2)))
+    elif re.search(r"Unknown command|sv_maxspeed", sec.get("M", "")) is None:
+        verdict("H6 above cap", "NOT DEMONSTRATED",
+                "no refusal in M at all: the cap change did not reach the "
+                "server, so the clause was never offered the chance")
+    else:
+        verdict("H6 above cap", "NOT DEMONSTRATED",
+                "the cap moved and no grounded over-cap refusal followed. "
+                "Either the release did not hand the speed back, or reason 2 "
+                "was already the last said and the latch swallowed it -- the "
+                "clause has no voice of its own")
+
     # the incidental one, reported and never graded (p448fin's own finding)
     mv = re.search(MOVING, whole)
     out.append("%-17s %-3s %s" % ("reported", "--",
                "still-moving refusal %s%s"
                % ("seen" if mv else "not seen",
-                  " at %s u/s against %s" % mv.groups() if mv else
+                  " at %s u/s against %s (ground %s)" % mv.groups() if mv else
                   " (incidental: it needs an airborne packet to be observed "
                   "between the arm and the take, and that varies between runs "
                   "of the same build)")))
