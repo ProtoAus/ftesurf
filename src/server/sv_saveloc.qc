@@ -1955,7 +1955,15 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  live bit there -- and closes the resume path without a second branch.
 		*/
 		if (hop)
+		{
 			e.run_t_hopped = TRUE;
+			// Patch 455: this is the OTHER writer of run_t_hopped, and 454's
+			// "a new tag invalidates the pending forgiveness" invariant covered
+			// only sv_timer.qc's.  A tag restored from a different attempt must
+			// not be spendable on this session's armed finish.
+			e.run_t_finfgv = FALSE;
+			e.run_t_fgvsaid = 0;
+		}
 	}
 	else
 	{

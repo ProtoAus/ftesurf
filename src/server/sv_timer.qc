@@ -1725,9 +1725,12 @@ float() SV_RecEnabled =
   chain's speed on it -- which is the class Patch 445 exists to eliminate.
 
   So the finish sets this instead of clearing, and the clear happens when the player is
-  grounded at or below sv_maxspeed.  A grounded body at that speed can reach the start box
-  no faster than one that walked there, so there is no prespeed left for the tag to
-  protect against and forgiving costs nothing.  That is the same discriminator every other
+  grounded at or below the MOVER's cap (.maxspeed).  A grounded body at that speed can reach
+  the start box no faster than one that walked there -- the engine's own measured ceiling for
+  a grounded prestrafe is 1.1129 x maxspeed, 289.34 at 260 (pm_source.c:4696), so the bound
+  is conservative by 29 u/s.  Patch 455 corrected this paragraph: it used to say ground
+  acceleration is capped at maxspeed, which is not true (PMSrc_Accelerate bounds only the
+  projection onto wishdir), and the conclusion needed the ceiling instead.  That is the same discriminator every other
   clear in this design uses -- "the clear cannot carry the speed" -- restored rather than
   argued around, because the finish is the one caller that cannot zero the velocity
   (players coast past the line).
@@ -1738,6 +1741,10 @@ float() SV_RecEnabled =
   before the next run began has expired.
 */
 .float  run_t_finfgv;
+
+// Patch 455: said-once latch for the refusal above, because the take runs every
+// packet and a hold lasts as long as the key is down.  Cleared with the tag.
+.float  run_t_fgvsaid;
 
 /*
   The run clock is stopped.  Build 18.
@@ -10181,6 +10188,98 @@ float(entity e) SV_TimerJumpWatch =
 
 	  The last one is what makes a no-jump start legal without a special case.
 	*/
+	/*
+	  PATCH 455: TAKE THE FORGIVENESS A FINISH ARMED, once there is no prespeed left
+	  to launder.  Round 9 rewrote this; 454's version was four defects in twelve
+	  lines and every one of them was found by a reviewer rather than by an arm.
+
+	  IT LIVES HERE, ABOVE THE START BUSINESS, because 454 put it inside
+	  `if (!e.run_t_startok)` under a comment claiming "no state test".  That block is
+	  entered only between an SV_TimerArm and the settle, so the take was confined to
+	  the start box -- where prespeed is worth the most -- and on a bhop-category map
+	  the launch commit sets startok in the same packet, so it could never fire at all
+	  and the tag rode into every later run as practice.
+
+	  THE CAP IS `.maxspeed`, NOT THE CVAR.  That is the value the server networks and
+	  the mover is handed (sv_player.qc:386), and it carries run_speedmod -- a map with
+	  a modifier below 1 made the cvar looser than the mover's real cap.
+
+	  WHY THE CAP IS THE RIGHT BOUND, stated correctly this time.  Ground acceleration
+	  is NOT capped at maxspeed: PMSrc_Accelerate bounds only the projection onto
+	  wishdir (pm_source.c:685) and friction alone decays a grounded body above it.
+	  What bounds this is the engine's own measured ceiling for a grounded prestrafe,
+	  1.1129 x maxspeed = 289.34 at 260 (pm_source.c:4696).  So a body at or below 260
+	  reaches the start box no faster than one that walked, with 29 u/s to spare.  The
+	  bound is conservative, not tight, and 454's essay claimed a mechanism that is
+	  untrue.
+
+	  EFFECTIVE speed, and the RIGHT field.  454 wrote `e.run_basevelocity`, which is
+	  the engine's read-and-clear window for one command (sv_entities.qc:954) and is
+	  zeroed at sv_user.c:8563 BEFORE the move -- and this function runs from
+	  PlayerPostThink, so the term was identically zero and the gate was bare
+	  `.velocity`.  Which is the very bug 454 quoted Patch 403's essay about.  The
+	  spelling below is the one the other two readers in this file use (7596, 7745).
+
+	  A HELD BODY IS NOT MEASURED AT ALL.  sl_hold zeroes `.velocity` and the carrier
+	  and hands the speed back on release, so measuring a held body forgives at 0 u/s
+	  and the speed arrives afterwards.  sv_saveloc.qc:3140 already writes this lesson
+	  down and Patch 435 answered it by measuring the ROW; there is no row here, so the
+	  answer is to refuse.  The polarity matters: this check GRANTS, so when it cannot
+	  see it must not grant.
+
+	  vz > 0 REFUSES TOO.  trigger_setspeed writes `.velocity` after the move and never
+	  strips FL_ONGROUND, so a vertical SET leaves a grounded body about to launch --
+	  and `hv_z = 0` drops exactly that component.  The engine zeroes velocity[2] on a
+	  grounded walk tick, so this costs honest play nothing.
+	*/
+	if (e.run_t_finfgv && e.run_t_hopped)
+	{
+		local vector hv;
+		local float  cap, held;
+
+		// MOVETYPE_NONE is the test that matters and it is the general one: every
+		// freeze in this tree is that movetype (the save-loc hold at
+		// sv_saveloc.qc:3318, the replay pin at :3371), so it covers pins this
+		// function has never heard of.  rec_wt_hold is NOT named here because it is
+		// declared in sv_saveloc.qc, which compiles after this file -- and naming it
+		// would buy nothing over the movetype.
+		held = e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE;
+		hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
+		hv_z = 0;
+		cap = e.maxspeed;
+		if (cap <= 0)
+			cap = cvar("sv_maxspeed");
+		if (cap <= 0)
+			cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
+
+		if (held)
+		{
+			// Once per hold, not once per tick: this runs every packet.
+			if (!e.run_t_fgvsaid)
+			{
+				e.run_t_fgvsaid = TRUE;
+				dprint(sprintf("hop: %s is held, so the finish's forgiveness is NOT "
+				               "measured -- a hold reads 0 u/s and gives the speed "
+				               "back on release (see sv_saveloc.qc:3140)\n",
+				               e.netname));
+			}
+		}
+		else if (ong && vz <= 0 && vlen(hv) <= cap)
+		{
+			dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish armed "
+			               "it and %.0f u/s is at or below the mover's cap %.0f, so "
+			               "there is no prespeed to launder\n",
+			               e.netname, vlen(hv), cap));
+			sprint(e, PRINT_HIGH,
+			       "^2start re-armed^7 -- the hopped start died with that run\n");
+			e.run_t_hopped  = FALSE;
+			e.run_t_jumps   = 0;
+			e.run_t_finfgv  = FALSE;
+			e.run_t_hopsaid = 0;
+			e.run_t_fgvsaid = 0;
+		}
+	}
+
 	// Everything below is start business, so once the start is settled this
 	// function is two flag tests and the phase clocks.
 	if (!e.run_t_startok)
@@ -10442,50 +10541,6 @@ float(entity e) SV_TimerJumpWatch =
 		  does in the hop test above: a hop the server never saw grounded reads a
 		  dwell of zero and re-arms nothing.
 		*/
-		/*
-		  PATCH 454: TAKE THE FORGIVENESS A FINISH ARMED, once there is no prespeed
-		  left to launder.
-
-		  Ground acceleration is capped at sv_maxspeed, so a grounded body at or below
-		  it reaches the start box no faster than one that walked there.  At that point
-		  the tag protects against nothing and clearing it cannot carry speed -- which
-		  is the discriminator every other clear in this design satisfies by zeroing
-		  the velocity, reached here by waiting instead, because a finish cannot zero
-		  it (players coast past the line).
-
-		  EFFECTIVE horizontal speed, not `.velocity`: this file's Patch 403 essay
-		  records that `.velocity` reads ZERO while a push carrier holds the speed,
-		  which is how run_stagecap came to miss 1809 u/s.  So the carrier is added in
-		  and the z component dropped -- falling does not carry you out of a box.
-
-		  No state test: the forgiveness belongs to a run that has ENDED, so it is
-		  taken wherever the player happens to be, including mid-course.  What bounds
-		  it is the speed, not the place.
-		*/
-		if (e.run_t_finfgv && e.run_t_hopped && ong)
-		{
-			local vector hv;
-			local float  cap;
-			hv = e.velocity + e.run_basevelocity;
-			hv_z = 0;
-			cap = cvar("sv_maxspeed");
-			if (cap <= 0)
-				cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
-			if (vlen(hv) <= cap)
-			{
-				dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish "
-				               "armed it and %.0f u/s is at or below sv_maxspeed "
-				               "%.0f, so there is no prespeed to launder\n",
-				               e.netname, vlen(hv), cap));
-				sprint(e, PRINT_HIGH,
-				       "^2start re-armed^7 -- the hopped start died with that run\n");
-				e.run_t_hopped  = FALSE;
-				e.run_t_jumps   = 0;
-				e.run_t_finfgv  = FALSE;
-				e.run_t_hopsaid = 0;
-			}
-		}
-
 		if (run_t_rearmhop && e.run_t_hopped && e.run_t_state == TS_ARMED)
 			if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
 			{
@@ -11751,7 +11806,7 @@ void(entity e, float z) SV_TimerEvent =
 		if (e.run_t_hopped)
 		{
 			dprint(sprintf("hop: %s finished with the tag up -- forgiveness armed, "
-			               "taken when grounded at or below sv_maxspeed\n",
+			               "taken when grounded and at rest under the mover's cap\n",
 			               e.netname));
 			e.run_t_finfgv = TRUE;
 		}
