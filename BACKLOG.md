@@ -87,18 +87,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   hopping out of the start is the sport there — and `SV_TimerMapInit` applies it from the
   map's own metadata, including on a listen server. That is roughly half the roster, and
   it means Patch 445 changes nothing for those maps. Round 6, lens B.
-- **A hopped-start tag now outlives the RUN, with no message and no record.** Patch 445
-  removed `SV_TimerIdle`'s clear and added none at the finish (`SV_TimerFinish` is not
-  among `SV_TimerIdle`'s five callers). So: finish a hopped run, walk back into the box,
-  run again → practice. A cancel zone or a fall-off `trigger_teleport` voids through
-  `SV_TimerVoid` → `SV_TimerIdle` and the tag stands — and on the 66 maps whose own reset
-  teleport IS that path, the honest population is the same population the exploit was
-  priced on. Stage 1 is then silently refused from the stage board on every later attempt
-  (`SV_StageQualifies` reads the run's `TF_PRACTICE`, and the HUD's `stage clean` label
-  is `seg > 0` gated). Round 6, lens C. A CLEAR AT THE FINISH LOOKS SAFE and is the
-  likely fix — a completed run cannot carry chain speed back to the box — but it must not
-  zero velocity there (players coast past the line), so it needs its own argument and its
-  own arm rather than a bolt-on.
+- **A hopped-start tag survives a VOID, though no longer a finish.** Patch 448 fixed the
+  finish half: `SV_TimerFinish` now clears the tag at its own last line, so the tainted
+  run keeps its mark and the next attempt starts clean (measured both sides,
+  `cfg/test/p448fin.cfg` — the control finishes two runs marked, the fixed build one).
+  **WHAT REMAINS IS THE VOID PATH.** A cancel zone or a fall-off `trigger_teleport` goes
+  through `SV_TimerVoid` → `SV_TimerIdle`, which deliberately does not clear (it is
+  map-reachable, which is the whole reason 445 took the clear out of there) — so an
+  attempt abandoned rather than finished still carries the tag into the next one. On the
+  66 maps whose own reset teleport IS that path, that is the honest population.
+  Unlike the finish, a void has no "you traversed the map" argument available: a cancel
+  zone can sit next to a start box, so clearing there could carry a chain's speed. The
+  shape that would work is a clear gated on the void having moved the player somewhere a
+  chain's speed cannot survive, which is a harder predicate than 448 needed and wants its
+  own patch. Round 6 lens C; finish half closed by 448.
 - **Nothing on the client knows about the tag.** No `STAT_FS_*` carries `run_t_hopped`;
   the HUD's taint word comes from `STAT_FS_TIMERFLAGS` alone and `TF_PRACTICE` is not set
   until `SV_TimerStart`, so a player standing ARMED with the tag up reads `ready`. Round
