@@ -83,7 +83,14 @@ which is the easier run — a wrong "easier" sends you to the harder map.)
 What to watch for, and the ORDER matters: finish fast with a hopped start
 tagged, and at the moment of the finish the forgiveness should NOT be taken —
 the tag stays up. Then coast to a stop. Once you are standing still it SHOULD be
-taken, and you should see `start re-armed -- the hopped start died with that run`.
+taken, and you should see a `start re-armed` line. WHICH line depends on the
+build, so check both before reporting it missing:
+
+- live today (Patch 454): `start re-armed -- the hopped start died with that run`
+- after 455 ships: `start re-armed -- the hopped start was forgiven once you settled`
+
+The wording changed deliberately — "came to rest" was an overclaim on a gate
+that admits a grounded body at 259 u/s under a 260 cap.
 
 So a tag that dies a few seconds after you stop is correct, not a bug. The defect
 to report is the tag dying while you are still moving fast, because that is the
@@ -91,12 +98,38 @@ one that hands the next run a clean slate with the speed still on it.
 
 **2a-note. Two holes were found in that gate while you were away**, both by
 ftesurf-a1's reviewers, both fixed before anything shipped: a jump pad's
-vertical carrier could clear the tag and then launch you (2004 such outputs
-across 298 of 1310 shipped maps), and a pad whose impulse arrives four to six
+vertical carrier could clear the tag and then launch you (1259 outputs carry a
+vertical component, out of 2029 across 297 of 1316 shipped maps — measured by
+`tools/census/basevel.py`, after the first figure quoted here turned out not to
+reproduce), and a pad whose impulse arrives four to six
 packets after you step off it could do the same with the speed in neither field
 the gate was reading. I reviewed that gate and said the first one was covered.
 It was not — I had confused two similarly-named fields — so if you want one
 thing to poke at on a real map, a jump pad near a finish is it.
+
+**2a-coming. What changes when Patch 455 ships, and one part will look like a
+bug.** NOT LIVE YET — the fleet runs the older gate — so this is here to be read
+before you meet it, not to be tested today. ftesurf-a1's constants as of its
+round 8:
+
+| | |
+|---|---|
+| wait | 0.25 s of the body reading clear before the tag dies |
+| observations | 8 of them inside that wait, one per move packet received |
+| gap | 0.1 s — a longer gap between two observations restarts the wait |
+
+**The gap is the one you will notice.** A client sending fewer than about ten
+packets a second can never finish the wait, so the hopped-start tag STAYS UP and
+your next runs record as practice until you press `!r`. That is deliberate:
+without the gap the wait can be banked — send seven clear packets, stop, and
+both limits sit pre-paid indefinitely — which makes the whole thing decoration.
+But on a bad connection it is indistinguishable from the tag being stuck. `!r`
+is the escape, with the known caveat that `!r` with jump held re-tags you within
+a tick or two (that one is in BACKLOG).
+
+Two smaller differences from the gate you have now: the message wording changes
+(see 2a above), and it arrives about a quarter second after you stop rather than
+instantly — invisible next to coasting to a halt, but not nothing.
 
 **2b. Four tracks may be impossible to set a time on.** `agtricks` main,
 `surf_flyin_fortress` main, `surf_ethereal` b1 and `surf_quirky` b9 each have an
