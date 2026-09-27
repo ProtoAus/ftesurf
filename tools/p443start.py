@@ -171,7 +171,18 @@ ARTEFACT = {
 }
 
 HOPSAY = r"hopped start\^?7? -- one jump out of the start"
-REARMSAY = r"start re-armed\^?7? -- one jump out of the start"
+# THE PREFIX ON PURPOSE, AND IT USED TO BE A DEAD REGEX.  This was
+# `start re-armed\^?7? -- one jump out of the start` -- HOPSAY's tail with a different
+# prefix, matching no string this tree has ever printed, so its one assertion
+# ("J2": rearmsay absent) read `absent` against every build including one where a
+# re-arm fired.  Found by a Patch 454 reviewer, not by the suite.
+#
+# The only thing graded on it is an ABSENCE -- "nothing to forgive, so no re-arm line
+# either" -- and for that the prefix is the stronger test: it covers every re-arm
+# variant, of which there are now two (`-- the hopped start is forgiven` from
+# SV_TimerForgiveHop, and Patch 454's `-- the hopped start died with that run`).  A
+# tail-specific regex is how this broke, and a third variant would break it again.
+REARMSAY = r"start re-armed"
 # Round 3's own print: the rule saying it did not judge the first jump of the attempt,
 # rather than an arm inferring the forgiveness from a silence.
 GRACESAY = r"timer: first jump not judged, dwell ([\d.]+) of"
