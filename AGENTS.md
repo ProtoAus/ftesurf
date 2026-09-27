@@ -908,6 +908,25 @@ bannered as superseded.)
   empty until 2026-09-20 (bhop_monster_jam collided 2142 of 6048 prop faces);
   with the 31 `hl2_*.vpk` copied in, the Pi's pm_dettest equals Windows. Prove
   any content change the same way (`cfg/test/p386det.cfg`, a spare port).
+- **TWELVE SSH CONNECTIONS IN A ROW LOOKS LIKE A FLOOD TO sshd, AND A DEPLOY CAN
+  END WITH THE FILES LIVE AND SOME LOBBIES STILL ON THE OLD PROGS.** Measured
+  2026-09-27: `ftesurf@7`, `@10`, `@11`, `@12` all returned
+  `Connection closed by port 22` during one `-Pi`. `build.ps1` reported it and
+  threw, which is correct — but by then the swap had already happened, so the
+  fleet was split: eight lobbies on the new build, four on the old. **Read the
+  host after every deploy rather than trusting the "all 12 restarted" line**, and
+  restart the stragglers one at a time. If this recurs, space the restarts or reuse
+  one ssh connection (`-o ControlMaster`) instead of twelve.
+- **THE GIT INDEX IS SHARED BETWEEN CONCURRENT SESSIONS, AND `git commit` COMMITS
+  THE INDEX — NOT YOUR PATHSPEC.** This bit both sessions on 2026-09-27 in both
+  directions: a `git add -A` swept the other session's uncommitted client work into
+  two of my commits, and later my staged server work landed inside *their* commit,
+  so my own commit message described changes that were not in it. Staging explicit
+  paths does NOT fix it, because the hazard is the window between your `add` and
+  your `commit`. **Use `git commit -- <paths>`**, which commits only those paths
+  whatever else is staged, and read `git diff --cached --name-only` immediately
+  before committing. The code survives either way; what breaks is the record, and a
+  commit message describing work that is not in the commit is worse than no message.
 - Restart: sudoers is per-unit only — loop `sudo -n systemctl restart ftesurf@$i`
   for i in 1..12. After copying a cfg, restart and READ THE VALUE BACK rather
   than trusting the file: from `/srv/nvme/surfd`, `rcon.Rcon("127.0.0.1", port,
