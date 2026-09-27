@@ -99,7 +99,21 @@ FIELDS = {
     # prints the old `finsay`, and a pre-448 build prints none of the three.
     "finsay":    r"(cleared by the finish it marked)",
     "armsay":    r"(forgiveness armed, taken when grounded)",
-    "takesay":   r"(there is no prespeed to launder)",
+    # MATCHED ON THE EVENT, NOT THE EXPLANATION.  This was
+    # `there is no prespeed to launder`, a clause of the take's reasoning, and Patch 455
+    # round 6 reworded the reasoning -- so the arm read `takesay absent` on a build where
+    # the take had demonstrably fired (`hopped 0`, `cleanfin yes`). Anchor on the thing
+    # that happened; the sentence explaining it is not a stable interface.
+    "takesay":   r"(hopped-start taint cleared -- )",
+    # PATCH 455 ROUND 6's TWO REFUSALS, and `settlesay` is the one that matters: it is the
+    # only evidence the DWELL RAN rather than merely being compiled in. A build with
+    # FS_FGVDWELL 0 goes straight from `movesay` to `takesay` and never emits it.
+    "movesay":   r"NOT taken -- still moving: ",
+    "settlesay": r"NOT taken -- at rest but settling: ",
+    # The streak the take actually satisfied, from the gate's own numbers rather than from
+    # the log's clock -- stamps are whole seconds and 219 lines of one run share one, so a
+    # timestamp comparison would pass with the dwell removed.
+    "dwelt":     r"at rest for ([\d.]+) s over (\d+) clear reads",
     # THE RUN COUNTERS, and they are the arm's real content after the first run taught
     # me what this fixture actually does.  The end zone TELEPORTS THE PLAYER BACK to the
     # start box, and `+forward` is still held -- so the section produces TWO runs, not
@@ -108,7 +122,7 @@ FIELDS = {
     "nfin":      r"finish: ",
     "nprac":     r"finish: [^\n]*PRACTICE",
 }
-PRESENCE = ("hopsay", "finsay", "armsay", "takesay")
+PRESENCE = ("hopsay", "finsay", "armsay", "takesay", "movesay", "settlesay")
 # Counted, not matched: `cleanfin` below is derived from the pair.
 COUNTED = ("nfin", "nprac")
 
@@ -124,33 +138,50 @@ EXPECT = {
     # 454 ARMED rather than cleared (`armsay`), and because a walk is at or below
     # sv_maxspeed the forgiveness is TAKEN in the same section (`takesay`, `hopped 0`).
     # `finsay` must be ABSENT: its presence would mean the 448 clear is still in.
+    # `settlesay` present is the DWELL'S OWN EVIDENCE: Patch 455 round 6 refuses at rest
+    # until the streak is long enough, and a build with FS_FGVDWELL 0 goes straight from
+    # `movesay` to `takesay` without ever emitting it.  Grading the take alone cannot tell
+    # a dwelling build from a non-dwelling one.
     "F": {"state": "finished", "nprac": "1", "hopped": "0",
-          "armsay": "present", "takesay": "present", "finsay": "absent"},
+          "armsay": "present", "takesay": "present", "finsay": "absent",
+          "movesay": "present", "settlesay": "present"},
     "A": {"hopped": "0"},
 }
 CONTROL = {
     # The tag never clears, so BOTH runs are practice and no run finishes un-marked,
     # and none of the three finish lines exists on that build.
     "F": {"nprac": "2", "hopped": "1", "finsay": "absent",
-          "armsay": "absent", "takesay": "absent"},
+          "armsay": "absent", "takesay": "absent",
+          "movesay": "absent", "settlesay": "absent"},
     "A": {"hopped": "1"},
 }
 # ---------------------------------------------------------------------------
 #  WHAT THIS ARM DOES NOT MEASURE, AND IT IS THE HALF THAT DECIDES PATCH 454.
 #
-#  454's gate is "grounded AND effective horizontal speed <= sv_maxspeed".  Every
-#  gesture available headlessly walks at or below sv_maxspeed -- ground acceleration is
-#  capped there -- so `takesay` firing proves only that the YES branch works.  THE
-#  REFUSAL HAS NEVER BEEN EXERCISED: nothing here finishes a run at more than 260 u/s,
-#  which is the whole case 454 was written for (a surf finisher crossing an END 16 units
-#  from the start box with a chain's speed still on).
+#  454's gate is "grounded AND effective horizontal speed <= the cap".  This fixture
+#  WALKS out with +forward, so it crosses at or under the cap and `takesay` firing
+#  proves only that the YES branch works.  THE REFUSAL IS NOT EXERCISED HERE.
 #
-#  That is this repo's own "an arm that passes because its condition never occurred",
-#  and naming it is the honest verdict rather than calling the arm complete.  What it
-#  would take: a real run on one of the twelve tracks tools/census/endnearstart.py
-#  lists -- surf_summer main and surf_bikini_bottom b1 are the obvious two -- finishing
-#  fast, then reading `cmd timer`'s `hopped` before coming to rest.  It needs a human
-#  playing, so it is owed rather than written.
+#  BUT THE REASON THIS COMMENT USED TO GIVE WAS FALSE, and the false reason is what kept
+#  the arm from being finished.  It said "every gesture available headlessly walks at or
+#  below sv_maxspeed -- ground acceleration is capped there".  Ground acceleration is NOT
+#  capped there: PMSrc_Accelerate bounds only the projection onto wishdir
+#  (pm_source.c:685), and the engine's own self-test puts the grounded prestrafe ceiling
+#  at 1.1129 x maxspeed = 289.34 at 260 (pm_source.c:4696).  So a chain leaving the box
+#  with +jump still held should cross ABOVE the cap, and a headless gesture can reach the
+#  refusal after all.  Found while fixing Patch 455, by a reviewer who checked the
+#  premise rather than the conclusion.
+#
+#  ALSO NOT DRIVABLE UNTIL 455 ROUND 2, for a second reason that is a defect rather than
+#  a limit: the refusal is SILENT.  454 and 455 print a line when the forgiveness is
+#  TAKEN and nothing when it is withheld for speed, so "refused" and "the branch never
+#  ran" are the same log.  That is this repo's own rule -- the subject must print its own
+#  action and the driver must grade THAT -- so round 2 gives the refusal its own
+#  said-once line carrying the reason, and the arm for it is written against that.
+#
+#  What still needs a human either way: a finish on a REAL track whose END sits near its
+#  own START (tools/census/endnearstart.py lists twelve), because the fixture's 64-unit
+#  gap is synthetic and the maps are the case 454 was written for.
 # ---------------------------------------------------------------------------
 REPORT = {
     "C": ("class", "practice", "azone", "jumps"),

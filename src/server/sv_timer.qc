@@ -97,6 +97,15 @@
   Clamped because sv_gravity is a cvar anyone can set to 1.
 */
 #define FS_JUMPIMPULSE 268.3281572999747
+// Patch 455 round 6: the forgiveness is taken only after the gate's terms have read
+// clear for this long, and this many times.  NOT a threshold anyone chose: a carrier
+// pays out on the next movement command, an OnEndTouch fires 0.06-0.09 s after the last
+// touch, so 0.25 s is ~3x the longest pending latency this tree has measured.  Both
+// bounds, because elapsed time alone credits a gap in which nothing was observed and a
+// read count alone can be bought with a burst.  Constants and not cvars: a security
+// dwell that can be turned down is not a dwell.
+#define FS_FGVDWELL    0.25
+#define FS_FGVREADS    8
 #define FS_SETTLEMARGIN 1.5
 #define FS_SETTLEMIN   0.5
 #define FS_SETTLEMAX   4.0
@@ -1551,19 +1560,21 @@ float() SV_RecEnabled =
   can carry a chain's speed past the clear -- which is what makes them safe to forgive
   and SV_TimerArm unsafe.
 
-  AND PATCH 448 ADDED A FOURTH CLEAR THAT IS **NOT** ONE OF THOSE CALLERS, named here
-  because an unlisted clear is the exact defect round 6 had to fix in this very essay.
-  SV_TimerFinish clears the tag at its own last line, WITHOUT zeroing the velocity --
-  players coast past the finish line and stopping them dead would be a worse bug than
-  the one it fixes.  So it cannot honour SV_TimerForgiveHop's contract and deliberately
-  does not call it; its safety rests on a different argument, written out at the site:
-  reaching the end zone means traversing the map, so the speed a finisher holds was
-  built on the course rather than in the box, and getting back to a start costs either
-  an `!r` (velocity zeroed) or the trip.  The route that would carry speed into a start
-  is open with or without it -- the rule never tags a chain taken OUTSIDE the box, since
-  run_t_startok latches about a second after you leave -- so the finish clear hands a
-  cheater nothing new and hands an honest player back the run after next.
-  FOUR CLEARS, THEN: three that zero the velocity, and one that finishes a run first.
+  AND THERE IS A FOURTH CLEAR THAT IS **NOT** ONE OF THOSE CALLERS, named here because
+  an unlisted clear is the exact defect round 6 had to fix in this very essay.  It is
+  NOT the finish: Patch 448 cleared there, and Patch 454 stopped, because
+  tools/census/endnearstart.py measured twelve shipped tracks whose END sits within 64
+  units of their own START -- four overlapping -- so "getting back to a start costs the
+  trip" was false where it mattered most.  The finish ARMS run_t_finfgv instead, and the
+  fourth clear is the gate in SV_TimerJumpWatch that takes it.
+
+  That gate cannot zero the velocity either, for 448's reason: players coast past the
+  finish line and stopping them dead would be a worse bug.  So it does not call
+  SV_TimerForgiveHop, and it satisfies the contract's PURPOSE by a different route --
+  it waits until there is nothing to zero, and requires the wait to have lasted
+  (FS_FGVDWELL).  Patch 455 round 6, after three rounds in which the previous round's
+  fix was defeated by a hiding place nobody had enumerated.
+  FOUR CLEARS, THEN: three that zero the velocity, and one that waits for it to be zero.
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -1747,11 +1758,45 @@ float() SV_RecEnabled =
 // pending, 0 nothing said.  A code and not a bool so a fast crossing that slows to
 // rest says both in order -- round 3, after every refusal but a hold turned out to
 // print nothing at all and so be indistinguishable from the gate never running.
-// Cleared at all FOUR sites that end a pending forgiveness, which round 1 got wrong:
-// the grant, the tag raise, SV_TimerStart's expiry, and SV_TimerForgiveHop.  Missing
-// two of them left it set for the life of the map on the ordinary path -- arm, never
-// take it, start another run -- so no refusal printed twice.
+// Cleared through SV_HopFgvClear below, with everything else the forgiveness owns.
+// Round 6 stopped trying to LIST the clear sites here: round 3's list was wrong in both
+// count and membership -- it named SV_TimerForgiveHop, which clears the tag and not
+// this, and omitted sv_saveloc's restored-tag raise.  Round 1 really had missed two
+// sites, which left the latch set for the life of the map on the ordinary path (arm,
+// never take it, start another run) so no refusal printed twice.  A list of sites is
+// the thing this patch kept getting wrong; a function is not.
 .float  run_t_fgvsaid;
+
+// Patch 455 round 6: the clear streak the take now requires.  `run_t_fgvok` is the
+// SERVER time it began (0 = none) and `run_t_fgvn` the reads observed in it.
+//
+// SERVER time, where run_rearmhop's neighbouring dwell uses the run clock, and the
+// difference is the subject rather than an inconsistency: that dwell decides a verdict
+// ABOUT the player's own command stream, so it must be a function of that stream; this
+// one waits for the SERVER to finish doing something TO the player, so it must be a
+// function of server time.  Same word, opposite subjects.
+.float  run_t_fgvok;
+.float  run_t_fgvn;
+
+/*
+  EVERYTHING THE PENDING FORGIVENESS OWNS, ENDED IN ONE PLACE.
+
+  Four separate defects in this patch were one shape -- a latch outliving the thing it
+  described.  run_t_finfgv missed sv_saveloc's tag raise; run_t_fgvsaid was cleared at
+  two of the four sites that end a forgiveness; and the streak survived the arm, which
+  would have let every forgiveness after the first grant on its first packet with no
+  symptom but the absence of the protection.  So the invariant is stated once and made
+  structural: BORN AT THE FINISH, DIES WITH THE TAG, and any site that ends one ends all
+  of them.  Reading four declarations checks that; "did I clear it everywhere" can only
+  be checked by finding everywhere.
+*/
+void(entity e) SV_HopFgvClear =
+{
+	e.run_t_finfgv  = FALSE;
+	e.run_t_fgvsaid = 0;
+	e.run_t_fgvok   = 0;
+	e.run_t_fgvn    = 0;
+};
 
 /*
   The run clock is stopped.  Build 18.
@@ -8945,10 +8990,8 @@ void(entity e, string why) SV_TimerForgiveHop =
 
 	e.run_t_hopped  = FALSE;
 	e.run_t_jumps   = 0;
-	// 455 round 3: the latch clears at the PRINCIPAL clear too.  It was cleared at
-	// two of the four sites that end a forgiveness and not at this one, so "cleared
-	// with the tag" was a claim the code did not keep.
-	e.run_t_fgvsaid = 0;
+	// 455 round 6: the PRINCIPAL clear ends the whole group, like every other site.
+	SV_HopFgvClear(e);
 	e.run_t_hopsaid = 0;          // round 7: told afresh if it happens again
 	dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
 	sprint(e, PRINT_HIGH, "^2start re-armed^7 -- the hopped start is forgiven\n");
@@ -10223,7 +10266,11 @@ float(entity e) SV_TimerJumpWatch =
 	  zeroed at sv_user.c:8563 BEFORE the move -- and this function runs from
 	  PlayerPostThink, so the term was identically zero and the gate was bare
 	  `.velocity`.  Which is the very bug 454 quoted Patch 403's essay about.  The
-	  spelling below is the one the other two readers in this file use (7596, 7745).
+	  spelling below is SV_StageTakeoff's and SV_StageLaunch's; SV_StartCapClamp uses
+	  the same scale as `k` on the horizontal only, and sv_entities.qc's
+	  SV_BaseVelocityFrame is the cash-out all three are modelled on.  Cited by
+	  FUNCTION because the line numbers this used to carry (7596, 7745) were off by 14
+	  and pointed at prose -- AGENTS.md's own pitfall entry, written the same day.
 
 	  A HELD BODY IS NOT MEASURED AT ALL.  sl_hold zeroes `.velocity` and the carrier
 	  and hands the speed back on release, so measuring a held body forgives at 0 u/s
@@ -10240,7 +10287,7 @@ float(entity e) SV_TimerJumpWatch =
 	if (e.run_t_finfgv && e.run_t_hopped)
 	{
 		local vector hv;
-		local float  cap, evz, why;
+		local float  cap, why;
 
 		/*
 		  455 ROUND 3: BOTH AXES CARRY THE CARRIER, and round 1 computed the vertical
@@ -10252,7 +10299,10 @@ float(entity e) SV_TimerJumpWatch =
 		  (sv_entities.qc:1195 -- draining it made a vertical boost "vanish entirely").
 		  So the Z waits for the next command's cash-out while ong is true and
 		  `.velocity_z` reads 0, because pm_source zeroes velocity[2] at the end of
-		  every grounded tick.  2004 such outputs across 298 of 1310 shipped maps.
+		  every grounded tick.  2029 such outputs over 297 of the 1316 shipped maps,
+		  1259 of them with a NON-ZERO Z, 798 carried by OnEndTouch
+		  (tools/census/basevel.py).  Round 3 said "2004 across 298 of 1310" here,
+		  taken from a review and never regenerated, and it does not reproduce.
 
 		  The argument for leaving Z out was about the OTHER field.  StartGravity does
 		  spend the carrier's Z -- of `run_basevelocity`, the engine's read-and-clear
@@ -10261,7 +10311,27 @@ float(entity e) SV_TimerJumpWatch =
 		*/
 		hv  = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 		hv_z = 0;
-		evz = e.velocity_z + (1 + run_bv_tick * 0.5) * e.run_basevel_z;
+		/*
+		  455 ROUND 5: THE TWO VERTICAL TERMS ARE TESTED SEPARATELY, NOT SUMMED.
+		  Round 3 summed them, and `.velocity_z` is what the body HAS while
+		  run_basevel_z is what it is OWED -- so a fall cancelled a pending launch:
+		  -200 against a carrier of +150 nets -49, which did not refuse, and the
+		  carrier paid out next command anyway.  vlen() cannot do this to the
+		  horizontal term because there are no signs to cancel, so it was specific to
+		  the axis round 3 added.
+
+		  AND THE SUM IS GONE ENTIRELY, not kept for the message: a second reviewer
+		  showed the cash-out scale is wrong for an ARMED carrier by a factor of ~67.
+		  `(1 + run_bv_tick * 0.5)` is the UNARMED cash-out (the AddOutput case this
+		  term was written for); for an armed carrier -- trigger_push_touch, the only
+		  writer of run_basevel_armed -- the engine never cashes Z out at all, it
+		  spends it as an acceleration, `velocity[2] += basevelocity[2] * frametime`.
+		  So a negative armed Z made the sum ~67x too negative and masked a real
+		  grounded rise.  Testing the terms separately makes the scale irrelevant on
+		  this axis, and a number that is 67x wrong in one configuration has no
+		  business in a diagnostic either.  The message prints the carrier VECTOR and
+		  its armed flag instead, which is what a reader needs to know.
+		*/
 		cap = e.maxspeed;               // the mover's, not the cvar's: sv_player.qc:386
 		if (cap <= 0)
 			cap = cvar("sv_maxspeed");
@@ -10288,12 +10358,59 @@ float(entity e) SV_TimerJumpWatch =
 		*/
 		if (e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE)
 			why = 1;
-		else if (!ong || evz > 0 || vlen(hv) > cap)
+		else if (!ong || e.velocity_z > 0 || e.run_basevel_z > 0 || vlen(hv) > cap)
 			why = 2;
-		else if (SV_TrigPending(e))
-			why = 3;
 		else
 			why = 0;
+
+		/*
+		  455 ROUND 6: AND THE CLEAR READS HAVE TO PERSIST.  See FS_FGVDWELL.  A real
+		  refusal breaks the streak; a clear read extends it; and until it is long
+		  enough the answer is reason 4, which is a DIFFERENT refusal from reason 2 --
+		  calling an at-rest body "still moving" would be a lie, and reason 4 is also
+		  the only observable that proves the dwell RAN rather than that it exists,
+		  because a build with FS_FGVDWELL 0 goes straight from 2 to the take.
+
+		  SV_TrigPending IS ASKED HERE, LAST, AND NOT PER PACKET.  Round 3 put it in
+		  the chain above, where it ran on every packet the cheap tests passed -- and
+		  its own header says "one edict walk, per entry request only".  A player at
+		  rest inside any trigger carrying an output holds that state indefinitely, so
+		  round 3 turned a per-request walk into ~3600 field reads per packet at up to
+		  77 Hz on the densest shipped map, for as long as the cheater cared to stand
+		  there.  Asked after the dwell instead, it runs at most once per FS_FGVDWELL,
+		  and a pending action resets the streak so the next ask is a dwell away.
+
+		  AND THE DWELL IS WHY THIS TEST NO LONGER HAS TO BE COMPLETE.  A reviewer
+		  found two pending writes SV_TrigPending cannot see -- an output held by a
+		  mover mid-travel (.vbsp_mv_act is the activator, not the target) and a
+		  name-addressed write after `AddOutput targetname` has renamed the player.
+		  Neither is demonstrated on the shipped corpus, and neither needs to be: both
+		  land in `.velocity` when they fire, which is inside the window the streak
+		  has to survive.  That is the whole reason the dwell exists.
+		*/
+		if (!why)
+		{
+			if (!e.run_t_fgvok)
+			{
+				e.run_t_fgvok = time;
+				e.run_t_fgvn  = 1;
+			}
+			else
+				e.run_t_fgvn = e.run_t_fgvn + 1;
+
+			if ((time - e.run_t_fgvok) < FS_FGVDWELL || e.run_t_fgvn < FS_FGVREADS)
+				why = 4;
+			else if (SV_TrigPending(e))
+				why = 3;
+		}
+
+		// Reason 4 IS the streak in progress, so it alone does not break it.
+		if (why)
+		if (why != 4)
+		{
+			e.run_t_fgvok = 0;
+			e.run_t_fgvn  = 0;
+		}
 
 		if (why && e.run_t_fgvsaid != why)
 		{
@@ -10303,35 +10420,53 @@ float(entity e) SV_TimerJumpWatch =
 				               "-- a hold reads 0 u/s and gives the speed back on "
 				               "release (sv_saveloc.qc:3140)\n", e.netname));
 			else if (why == 2)
+				// REPORTS THE CARRIER, not just the sum, because a refusal driven by
+				// the carrier read identically to one driven by `.velocity` and an
+				// arm for the carrier case could not tell them apart.  `armed`
+				// matters: for an ARMED carrier the engine spends Z as an
+				// acceleration (~0.015x) rather than cashing it out (~1.0075x), so
+				// the sum `evz` is ~67x wrong there -- which is exactly why nothing
+				// decides on it.  Seven varargs; the 9th would be dropped silently.
 				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- still "
-				               "moving: %.3f u/s against cap %.3f, ground %g, "
-				               "effective vz %.3f\n",
-				               e.netname, vlen(hv), cap, ong, evz));
-			else
+				               "moving: %.3f u/s against cap %.3f, ground %g, vz "
+				               "%.3f, carrier %s armed %g\n",
+				               e.netname, vlen(hv), cap, (ong != 0), e.velocity_z,
+				               vtos(e.run_basevel), e.run_basevel_armed));
+			else if (why == 3)
 				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- a "
 				               "trigger action is pending (SV_TrigPending %g); it "
 				               "would act on a body this gate has already read\n",
 				               e.netname, SV_TrigPending(e)));
+			else
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- at "
+				               "rest but settling: %.3f s of %.3f, %g clear reads "
+				               "of %g\n", e.netname, time - e.run_t_fgvok,
+				               FS_FGVDWELL, e.run_t_fgvn, FS_FGVREADS));
 		}
 
 		if (!why)
 		{
-			dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish armed "
-			               "it and %.3f u/s is at or below the mover's cap %.3f with "
-			               "no carrier and nothing pending, so there is no prespeed "
-			               "to launder\n", e.netname, vlen(hv), cap));
+			// PRINTS THE STREAK IT SATISFIED, because the log cannot see the dwell:
+			// stamps are whole seconds and 219 lines of one arm's log share one, so
+			// an arm asserting "the take came FS_FGVDWELL after the last refusal"
+			// from timestamps would pass with the dwell compiled out.  These are the
+			// numbers the gate computed and USED.
+			dprint(sprintf("hop: %s's hopped-start taint cleared -- %.3f u/s is at or "
+			               "below the mover's cap %.3f, no upward carrier and nothing "
+			               "pending, at rest for %.3f s over %g clear reads\n",
+			               e.netname, vlen(hv), cap, time - e.run_t_fgvok,
+			               e.run_t_fgvn));
 			sprint(e, PRINT_HIGH,
 			       "^2start re-armed^7 -- the hopped start was forgiven once you "
 			       "came to rest\n");
 			e.run_t_hopped  = FALSE;
 			e.run_t_jumps   = 0;
-			e.run_t_finfgv  = FALSE;
 			// run_t_hopsaid is SHARED with the run_t_dirty reminder, and the ZONE_END
 			// arm deliberately leaves it (see the field).  Cleared HERE because this
 			// site forgives where the arm does not -- matching SV_TimerForgiveHop.
 			// The conflation itself is the real defect and is in BACKLOG.
 			e.run_t_hopsaid = 0;
-			e.run_t_fgvsaid = 0;
+			SV_HopFgvClear(e);      // finfgv, fgvsaid and the streak, together
 		}
 	}
 
@@ -10565,8 +10700,7 @@ float(entity e) SV_TimerJumpWatch =
 					// Patch 454: one bit cannot tell two attempts' tags apart, so a
 					// fresh tag drops any forgiveness a finish armed -- otherwise
 					// coming to rest would forgive THIS one.
-					e.run_t_finfgv = FALSE;
-					e.run_t_fgvsaid = 0;    // 455 round 3: and the latch with it
+					SV_HopFgvClear(e);
 				}
 			}
 		}
@@ -11699,26 +11833,22 @@ void(entity e, float ticks) SV_TimerFinish =
 	  finished run keeps its mark and only the NEXT attempt starts clean.  Clearing it
 	  anywhere above this line could launder the run being recorded.
 
-	  AND IT DOES NOT ZERO THE VELOCITY, unlike SV_TimerForgiveHop's other callers.
-	  Players coast past the finish line and stopping them dead would be a worse bug
-	  than the one this fixes, so the velocity-zero invariant does not hold here and
-	  this call needs its own argument:
+	  AND IT NO LONGER CLEARS ANYTHING.  Patch 448 cleared the tag here on the argument
+	  that a finisher's speed was built on the course and that getting back to a start
+	  costs an `!r` or the trip.  tools/census/endnearstart.py measured the trip:
+	  TWELVE shipped tracks put the END within 64 units of their own START and four
+	  overlap it outright, so the argument was false exactly where a cheater would go
+	  looking.  IT IS LEFT WRITTEN DOWN RATHER THAN DELETED because it reads persuasive
+	  and someone will reach for it again.
 
-	    A FINISH CANNOT CARRY A CHAIN'S SPEED BACK TO THE START BOX.  Reaching the end
-	    zone means traversing the map, so whatever speed the player has at this instant
-	    is speed built out on the course, not in the box -- and to start again they must
-	    get back to the start, which costs either an `!r` (velocity zeroed) or the trip.
-	    The route that WOULD carry speed in -- build it outside the box, re-enter, leave
-	    -- is wide open with or without this line, because the rule never tags a chain
-	    taken outside the box at all (run_t_startok latches about a second after you
-	    leave).  That is BACKLOG's "cheapest prespeed route" entry and it is untouched
-	    here: this line hands a cheater nothing they do not already have, and hands an
-	    honest player back the run after next.
-
-	  Deliberately NOT routed through SV_TimerForgiveHop: that function's contract is
-	  "every caller zeroes the velocity", which round 6 had to fix once already after
-	  it drifted.  A caller that cannot honour it does not belong on the list, so the
-	  two lines are written out here with the exception stated instead.
+	  Patch 454 made this site ARM run_t_finfgv, and Patch 455's gate in
+	  SV_TimerJumpWatch takes it -- once the body has read clear for FS_FGVDWELL of
+	  server time over FS_FGVREADS observations.  That gate does not zero the velocity
+	  either, so it still cannot honour SV_TimerForgiveHop's "every caller zeroes"
+	  contract; what it does instead is wait until there is nothing to zero, which is
+	  the contract's purpose rather than its letter.  The reason it waits rather than
+	  enumerating the places speed can hide is that three consecutive review rounds
+	  defeated the enumeration.
 	*/
 };
 
@@ -11875,6 +12005,12 @@ void(entity e, float z) SV_TimerEvent =
 			dprint(sprintf("hop: %s finished with the tag up -- forgiveness armed, "
 			               "taken when grounded and at rest under the mover's cap\n",
 			               e.netname));
+			// THE STREAK IS BORN HERE, and forgetting this was the defect that
+			// would have shipped: nothing else zeroes it on the arm, so a streak
+			// left over from an earlier forgiveness satisfied the dwell instantly
+			// and every forgiveness after the first granted on its first packet --
+			// with no symptom at all except the protection being absent.
+			SV_HopFgvClear(e);
 			e.run_t_finfgv = TRUE;
 		}
 		return;
@@ -12173,8 +12309,7 @@ void(entity e) SV_TimerStart =
 	// Patch 454: a forgiveness a finish armed, that the player never came to rest to
 	// take, has EXPIRED -- this run has begun and the forgiveness belonged to the last
 	// one.  After the taint chain above, so it cannot change what this run is.
-	e.run_t_finfgv = FALSE;
-	e.run_t_fgvsaid = 0;            // 455 round 3: and the latch with it
+	SV_HopFgvClear(e);
 
 	// Build 58: before SV_RecOpen for the same reason the latches above are --
 	// so the recording's header is written with the run already flagged.  It is

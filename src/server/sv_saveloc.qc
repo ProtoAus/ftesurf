@@ -1961,8 +1961,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			// "a new tag invalidates the pending forgiveness" invariant covered
 			// only sv_timer.qc's.  A tag restored from a different attempt must
 			// not be spendable on this session's armed finish.
-			e.run_t_finfgv = FALSE;
-			e.run_t_fgvsaid = 0;
+			SV_HopFgvClear(e);
 		}
 	}
 	else
