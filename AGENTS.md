@@ -190,6 +190,14 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 - MOUSE: `spectate look <dx> <dy>` pushes one IE_MOUSEDELTA through the input
   chain; `mousepad` counts the deltas it saw. Real ones can reach a starting
   harness window, so a mouse arm checks that count before it counts.
+  **IT DOES NOT AIM, and this line used to read as though it did.** Measured
+  2026-09-27: `spectate look 800 0` twice, 500 ms apart, gave `took 0` and
+  `aim 0 0 0` both times — CSQC declines the event and the engine applies no
+  synthetic delta to the view. It delivers an EVENT, which is all a mouse arm
+  needs; it does not turn the player. **To turn a headless player, use the
+  keyboard:** `+left`/`+right` aim at exactly `cl_yawspeed` (measured:
+  `+left` 700 ms at 210 gave `aim 0 148.05 0`). Someone read this bullet as
+  "a mouse delta through the chain, therefore it aims" and built on it.
 - Client-vs-server (prediction) tests need a REAL socket, not a listen server:
   run `C:\FTEQuake\fteqwsv64.exe +set sv_port <p> +exec cfg/test/<sv>` from
   `C:\FTESurf` (`ftesurf64.exe -dedicated` crashes after prop lighting), with
@@ -507,9 +515,25 @@ bannered as superseded.)
   round's fix, every one of them a term missing from the list**, because completeness
   is not a checkable property and "as far as I can trace" is the only honest answer
   anyone can give about it.
-  What replaced it is a LATENCY BOUND, which is checkable against measured numbers: the
-  clear waits until the body has read clear for an unbroken interval, on the argument
-  that whatever was committed would have ARRIVED by then. It is stronger than waiting,
+  What replaced it is a LATENCY BOUND — **but it does NOT dominate the enumeration, and
+  the first draft of this entry said it did.** Measured after the fact: `vbsp_io_delay`
+  is a bare `stof` with no clamp (`sv_entities.qc`, the only writer), and the shipped
+  corpus carries 249 delayed outputs on 39 maps that reach a player through an input
+  this QC implements — including a **0.5 s** `AddOutput basevelocity` on
+  `surf_aquaflow`, which has an online zone file and is therefore a timed map. That is
+  twice the dwell, in the wrong direction. What protects that map is the enumeration's
+  `vbsp_iodelay` clause, so the two are COMPLEMENTARY: the bound covers the short and
+  the unenumerated, the enumeration covers the long. Do not delete either on the
+  strength of the other.
+  The bound itself is that the clear waits until the body has read clear for an unbroken
+  interval, on the argument that whatever was committed would have ARRIVED by then.
+  **AND AN UNBROKEN INTERVAL HAS TO BE INTERLOCKED, NOT ANDed.** Requiring
+  `elapsed >= D` AND `reads >= N` is bankable: send N-1 clear packets at a low
+  `cl_netfps` (a client cvar the server cannot refuse), stop, and the streak sits one
+  read short with both bounds pre-paid for as long as you like — then commit the pending
+  write inside the Nth packet's usercmds, which run before the gate, and the required
+  latency is 0. The streak must break when too long passes between OBSERVATIONS, which
+  is what makes the interval an observation window rather than a span. It is stronger than waiting,
   because the carrier cash-out runs in `PlayerPreThink` — inside `SV_RunCmd`, before
   `PlayerPostThink` where the gate lives — so a pending carrier does not merely arrive,
   it becomes `.velocity`, which the gate already measures. Sized from the longest
