@@ -67,9 +67,16 @@ exercised. It needs a finish above `sv_maxspeed` on a map whose END sits within
 (ftesurf-a1 measured the leg counts and gaps and deliberately did NOT guess
 which is the easier run — a wrong "easier" sends you to the harder map.)
 
-What to watch for: finish fast with a hopped start tagged, and the forgiveness
-should NOT be taken. If it is taken, the tag dies and the next run comes out
-clean when it should not.
+What to watch for, and the ORDER matters: finish fast with a hopped start
+tagged, and at the moment of the finish the forgiveness should NOT be taken —
+the tag stays up. Then coast to a stop. Once you are standing still it SHOULD be
+taken, and you should see `start re-armed -- the hopped start died with that run`.
+
+So a tag that dies a few seconds after you stop is correct, not a bug. The defect
+to report is the tag dying while you are still moving fast, because that is the
+one that hands the next run a clean slate with the speed still on it. On a surf
+map finishing above 260 u/s is the normal case, so the interesting part is not
+the fast finish — it is whether anything clears the tag before you come to rest.
 
 **2b. Four tracks may be impossible to set a time on.** `agtricks` main,
 `surf_flyin_fortress` main, `surf_ethereal` b1 and `surf_quirky` b9 each have an
