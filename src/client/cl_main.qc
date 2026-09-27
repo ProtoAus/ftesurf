@@ -281,6 +281,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Font_Init();
 	HUD_RegisterCvars();
 	Zone_RegisterCvars();
+	Line_RegisterCvars();       // Patch 449: the run line's marks and window
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
 	Gfx_RegisterCvars();
@@ -1590,7 +1591,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		*/
 		if (rec_wt_on)
 			Watch_Path2D();
-		Scores_LinesDraw();         // Patch 433: the board's ticked lines
+		Scores_LinesDraw();
+	Line_FrameEnd();            // Patch 449: the marks' trace closes here         // Patch 433: the board's ticked lines
 
 		/*
 		  Build 54.  The inspector's labels, and they are here for exactly the

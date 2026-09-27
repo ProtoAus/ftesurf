@@ -57,6 +57,7 @@
 */
 #define LN_EVCAP   4096         // marks a slot holds; past it, peaks go first
 #define LN_EVZMIN  40           // u/s of |vz| a peak needs: 2.5 ticks of gravity
+#define LN_CELLS   4096         // declutter cells; 64 x 36 at the default gap
 
 #define LN_E_LAND    1          // touched ground or ramp
 #define LN_E_LEAVE   2          // left it without jumping (a ramp exit, an edge)
@@ -123,6 +124,21 @@ float  ln_pvz[LN_SLOTS];
 float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
 float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
 
+// The window: the stretch of RUN TIME shown around the playhead, set by the
+// caller.  Never inferred from tplay -- a board line is drawn with tplay
+// 99999999 as a "no playhead" sentinel (cl_scores.qc), and a window derived
+// from that shows nothing at all.
+float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
+
+// The marks' own frame state: the cvars, read once, and the declutter grid.
+float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
+float  ln_mkpx, ln_mkgap, ln_wpx;
+float  *ln_cell;                // a cell's last claiming frame
+float  ln_cellgen, ln_cellnx, ln_cellny;
+vector ln_qmk;                  // Line_ProjPt's answer (a second return)
+float  ln_nmk;                  // marks drawn, this Line_Draw
+float  ln_trmk;                 // `replay marktrace`: frames left to print
+
 // per frame
 vector ln_eye, ln_fwd, ln_rt, ln_up;
 float  ln_tx, ln_ty, ln_kx, ln_ky;           // tan(fov/2), and the sphere slack
@@ -181,6 +197,7 @@ void() Line_Alloc =
 	// carry such a pair), so time does not identify a sample and a reader that
 	// keys on it mis-assigns the mark.  +147 KB.
 	ln_ei   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_cell = memalloc(sizeof(float) * LN_CELLS);
 };
 
 void(float s) Line_Clear =
@@ -521,6 +538,54 @@ void(float s) Line_End =
 	ln_gen = ln_gen + 1;
 };
 
+/*
+  SHOW ONLY [ta, tb] OF RUN TIME, wherever the camera is.
+
+  The distance cull answers "is it near me"; this answers "is it near where I
+  am WATCHING", which is the question a replay actually asks.  It composes with
+  the shown range by intersection -- a stage cut always wins and the window can
+  only narrow it -- and with `ahead 0`, which clamps afterwards as it always did.
+
+  ln_winon is set by the caller and never derived from tplay: a board line is
+  drawn with tplay 99999999 to mean "no playhead", and `if (tplay < 99999)`,
+  the obvious shortcut, makes every board line draw nothing.  p449win W5.
+*/
+void(float ta, float tb) Line_Window =
+{
+	ln_winon = TRUE;
+	ln_wina  = ta;
+	ln_winb  = tb;
+	// Faded over a sixth of the span at each end: a line that stops dead reads
+	// as a break in the recording rather than as the edge of a window.
+	ln_winka = (tb > ta) ? 6 / (tb - ta) : 0;
+	ln_winkb = ln_winka;
+};
+
+void() Line_WindowOff =
+{
+	ln_winon = FALSE;
+};
+
+// The first mark at or after t.  The list is appended in sample order, so it is
+// sorted by construction.
+float(float s, float t) Line_EvFind =
+{
+	local float b, lo, hi, m;
+
+	b = s * LN_EVCAP;
+	lo = 0;
+	hi = ln_evn[s];
+	while (lo < hi)
+	{
+		m = floor((lo + hi) * 0.5);
+		if (ln_et[b + m] < t)
+			lo = m + 1;
+		else
+			hi = m;
+	}
+	return lo;
+};
+
 // The first point at or after t (binary search on the run clock).
 float(float s, float t) Line_Find =
 {
@@ -792,6 +857,22 @@ void() Line_ViewFrame =
 	ln_far  = cvar("hud_watch_path_far");
 	ln_fadek = (ln_far > 0) ? 3 / ln_far : 0;       // fades over its last third
 	ln_cmode = cvar("hud_watch_path_color");
+	// The marks, read once a frame beside the rest.  ln_wpx is the line's own
+	// width, kept so the glyph pass can put it back: Line_Width writes globals
+	// every emitter reads, and Scores_LinesDraw calls Line_Draw eight times.
+	ln_wpx      = cvar("hud_watch_path_px");
+	ln_mkon     = cvar("hud_lines_marks");
+	ln_mkland   = cvar("hud_lines_land");
+	ln_mkleave  = cvar("hud_lines_leave");
+	ln_mkjump   = cvar("hud_lines_jump");
+	ln_mkstitch = cvar("hud_lines_stitch");
+	ln_mkpx     = cvar("hud_lines_size");   if (ln_mkpx < 1) ln_mkpx = 4;
+	ln_mkgap    = cvar("hud_lines_gap");    if (ln_mkgap < 4) ln_mkgap = 40;
+	ln_mkgap    = ln_mkgap * ln_px;
+	fov = getproperty(VF_SCREENVSIZE);
+	ln_cellnx = min(64, floor(fov_x / ln_mkgap) + 1);
+	ln_cellny = min(LN_CELLS / max(1, ln_cellnx), floor(fov_y / ln_mkgap) + 1);
+	ln_cellgen = ln_cellgen + 1;
 	ln_slo = 99999;
 	ln_shi = 0;
 	for (s = 0; s < LN_SLOTS; s = s + 1)
@@ -880,6 +961,9 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 	// the screen's sides); only a chunk reaching into it pays the vlen.
 	if (ln_cfade)
 		a = a * bound(0, (ln_far - vlen(p - ln_eye)) * ln_fadek, 1);
+	if (ln_winon)
+		a = a * bound(0, min((ln_t[b + i] - ln_wina) * ln_winka,
+		                     (ln_winb - ln_t[b + i]) * ln_winkb), 1);
 
 	if (!ln_hp)
 	{
@@ -1027,6 +1111,153 @@ void(vector w, vector c, float al) Line_Square =
 };
 
 /*
+  A world point onto the screen, or FALSE.  The dot product runs BEFORE
+  project(), which divides by w with no zero guard (pr_csqc.c) -- a point on
+  the eye plane otherwise returns a NaN that reaches drawfill and drawstring.
+  cl_entview.qc:1288-1294 is the same guard for the same reason.
+*/
+float(vector w) Line_ProjPt =
+{
+	if ((w - ln_eye) * ln_fwd < LN_NEAR)
+		return FALSE;
+	ln_qmk = project(w);
+	if (ln_qmk_z < -1 || fabs(ln_qmk_x) > LN_GUARD || fabs(ln_qmk_y) > LN_GUARD)
+		return FALSE;
+	ln_qmk_z = 0;
+	ln_qmk = [floor(ln_qmk_x / ln_px + 0.5) * ln_px,
+	          floor(ln_qmk_y / ln_px + 0.5) * ln_px, 0];
+	return TRUE;
+};
+
+/*
+  One screen cell a mark, at most.  A generation stamp rather than a clear: the
+  grid is 4096 floats and zeroing it per frame would cost more than the marks.
+
+  This is what bounds the pass: 300 hops inside twenty screen pixels draw one
+  chevron, not 300, and the cost follows what is READABLE rather than what is
+  in range.  A numeric cap would instead keep the first N in time order, which
+  is not the N you are looking at.
+*/
+float(vector q) Line_Claim =
+{
+	local float cx, cy, i;
+
+	cx = floor(q_x / ln_mkgap);
+	cy = floor(q_y / ln_mkgap);
+	if (cx < 0 || cy < 0 || cx >= ln_cellnx || cy >= ln_cellny)
+		return FALSE;                   // off screen: not drawn, not claimed
+	i = cy * ln_cellnx + cx;
+	if (i < 0 || i >= LN_CELLS)
+		return FALSE;
+	if (ln_cell[i] == ln_cellgen)
+		return FALSE;
+	ln_cell[i] = ln_cellgen;
+	return TRUE;
+};
+
+// n chevrons, stacked upwards, apex up (+1) or down (-1).  Polygons and not
+// drawstring("A"): whether the bundled font covers U+039B and whether
+// utf8_enable is on are two questions nobody should answer to see a mark.
+void(vector q, float up, float n, vector c, float al) Line_Chev =
+{
+	local float w, h, i, pass, a;
+	local vector a2, col;
+
+	w = ln_mkpx * ln_px;
+	h = w;
+	/*
+	  Two passes, a dark wider stroke under the colour -- the border
+	  Line_Square already draws, for the reason p449shot_on showed: a white
+	  take-off chevron against surf_aesthetic's sky is invisible, and the trace
+	  said twelve of them had drawn in the frame I could not find them in.
+	*/
+	for (pass = 0; pass < 2; pass = pass + 1)
+	{
+		Line_Width(ln_mkpx * 0.5 + (pass ? 0 : 2));
+		col = pass ? c : '0 0 0';
+		a   = pass ? al : al * 0.6;
+		for (i = 0; i < n; i = i + 1)
+		{
+			a2 = q - [0, up * (h + i * (h + ln_px)), 0];
+			Line_Seg2D(a2 - [w, 0 - up * h, 0], a2, col, a, col, a);
+			Line_Seg2D(a2, a2 + [w, up * h, 0], col, a, col, a);
+		}
+	}
+};
+
+// The stitch: two bars, the dark edge Line_Square draws.  A save state came
+// back here, so the run either side of it was not flown in one go.
+void(vector q, vector c, float al) Line_Bars =
+{
+	local float w, h;
+
+	w = ln_px;
+	h = ln_mkpx * ln_px * 1.5;
+	drawfill(q - [w * 3 + ln_px, h + ln_px], [2 * w + 2 * ln_px, 2 * h + 2 * ln_px],
+	         '0 0 0', al * 0.7, 0);
+	drawfill(q + [w, 0 - h - ln_px, 0], [2 * w + 2 * ln_px, 2 * h + 2 * ln_px],
+	         '0 0 0', al * 0.7, 0);
+	drawfill(q - [w * 3, h], [2 * w, 2 * h], c, al, 0);
+	drawfill(q + [w * 2, 0 - h, 0], [2 * w, 2 * h], c, al, 0);
+};
+
+/*
+  The marks over the drawn stretch, after the teleport pass so a stitch's bars
+  sit over its dashes.  Walked from the mark list rather than from the points:
+  the LOD stride skips points, and a mark on a skipped one must still draw.
+*/
+void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
+{
+	local float b, n, e, k, al, t0, t1;
+	local vector p, c;
+
+	if (!ln_mkon)
+		return;
+	b = s * LN_CAP;
+	n = s * LN_EVCAP;
+	t0 = ln_t[b + ia];
+	t1 = ln_t[b + ib];
+	for (e = Line_EvFind(s, t0); e < ln_evn[s]; e = e + 1)
+	{
+		if (ln_et[n + e] > t1)
+			break;
+		if (ahead <= 0)
+		if (ln_et[n + e] > tplay)
+			break;
+		k = ln_ek[n + e];
+		c = '1 1 1';                    // fteqcc cannot see the chain covers it
+		if (k == LN_E_LAND)   { if (!ln_mkland)   continue; c = '1.00 0.62 0.20'; }
+		else if (k == LN_E_LEAVE)  { if (!ln_mkleave)  continue; c = '0.92 0.95 1.00'; }
+		else if (k == LN_E_JUMP)   { if (!ln_mkjump)   continue; c = '0.35 0.85 1.00'; }
+		else if (k == LN_E_STITCH) { if (!ln_mkstitch) continue; c = '0.72 0.74 0.78'; }
+		else
+			continue;                   // peaks carry a number, not a glyph
+		p = ln_ep[n + e];
+		al = ((ln_et[n + e] <= tplay) ? 1 : ahead) * alpha;
+		if (ln_fadek > 0)
+			al = al * bound(0, (ln_far - vlen(p - ln_eye)) * ln_fadek, 1);
+		if (ln_winon)
+			al = al * bound(0, min((ln_et[n + e] - ln_wina) * ln_winka,
+			                       (ln_winb - ln_et[n + e]) * ln_winkb), 1);
+		if (al <= 0)
+			continue;
+		if (!Line_ProjPt(p))
+			continue;
+		if (!Line_Claim(ln_qmk))
+			continue;
+		if (k == LN_E_STITCH)
+			Line_Bars(ln_qmk, c, al);
+		else
+			Line_Chev(ln_qmk, (k == LN_E_LAND) ? -1 : 1,
+			          (k == LN_E_JUMP) ? 2 : 1, c, al);
+		ln_nmk = ln_nmk + 1;
+		if (ln_trmk > 0)
+			print(sprintf("lndm %g %g %.4f %.1f %.1f %.2f\n", s, k, ln_et[n + e],
+			              ln_qmk_x, ln_qmk_y, al));
+	}
+};
+
+/*
   Slot s over its shown range.  tplay: points after it draw at `ahead` (0 stops
   the line at the playhead, which phead marks); a board line passes a tplay past
   its end.  alpha scales the whole line.
@@ -1041,6 +1272,12 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	b  = s * LN_CAP;
 	ia = ln_ia[s];
 	ib = ln_ib[s];
+	// The window narrows the shown range; the cut it was set inside still wins.
+	if (ln_winon)
+	{
+		ia = max(ia, Line_Find(s, ln_wina));
+		ib = min(ib, Line_Find(s, ln_winb + 0.0001) - 1);
+	}
 	if (ib <= ia)
 		return;
 	if (ahead <= 0)
@@ -1134,6 +1371,58 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		if (d1 > 0)
 			Line_Square(p1, ln_col[b + j], d1);
 	}
+
+	// Patch 449.  The glyph stroke is its own width, and the line's is put back
+	// before the next slot is drawn.
+	Line_Width(ln_mkpx * 0.5);
+	ln_nmk = 0;
+	Line_Marks(s, ia, ib, tplay, ahead, alpha);
+	Line_Width(ln_wpx);
+
+	// Two prints and not one: fteqcc caps a varargs call at eight and drops
+	// the rest silently.  Every number here was computed by the pass above.
+	if (ln_trmk > 0)
+	{
+		print(sprintf("lnd %g %.4f %g %.4f %.4f\n", s, tplay, ln_winon,
+		              ln_wina, ln_winb));
+		print(sprintf("lnd2 %g %g %g %g %g %g\n", s, ia, ib, ln_npt, ln_nseg,
+		              ln_nmk));
+	}
+};
+
+// The frame's marks are done: cl_main calls this after the board lines, which
+// are drawn after the replay's.
+void() Line_FrameEnd =
+{
+	if (ln_trmk > 0)
+	{
+		print("lnde\n");
+		ln_trmk = ln_trmk - 1;
+	}
+};
+
+/*
+  THE LINE'S OWN CVARS.  Patch 449.
+
+  Registered here rather than in cl_watch.qc's block, where the hud_watch_path_*
+  family lives, because this file owns them -- but they keep that family's
+  CVAR_ARCHIVE and its shipped `set` lines in default.cfg, and nothing is
+  renamed: hud_watch_path_far is still how far the lines are visible.
+
+  The window defaults OFF.  It changes what an existing player sees, and a
+  display change nobody asked for is a bug report.
+*/
+void() Line_RegisterCvars =
+{
+	registercvar("hud_lines_marks",  "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_land",   "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_leave",  "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_jump",   "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
+	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
+	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
 };
 
 void() Line_StatsReset =

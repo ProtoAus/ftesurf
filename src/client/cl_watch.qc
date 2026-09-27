@@ -3143,7 +3143,7 @@ void() Watch_Path =
 
 void() Watch_Path2D =
 {
-	local float t;
+	local float t, wb, wf;
 	local vector eye, fwd, q0;
 
 	rec_wt_p2n    = 0;
@@ -3211,6 +3211,15 @@ void() Watch_Path2D =
 	ln_frames = ln_frames + 1;
 	Line_ViewFrame();
 	Line_StatsReset();
+	// Patch 449: the window, around where you are WATCHING.  Set here and not
+	// inside Line_Draw, which cannot tell a playhead from a board line's
+	// "no playhead" sentinel.
+	wb = cvar("hud_lines_win");
+	wf = cvar("hud_lines_winf");
+	if (wb > 0 || wf > 0)
+		Line_Window(rec_wt_time - wb, rec_wt_time + wf);
+	else
+		Line_WindowOff();
 	Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
 
 	// `replay bench <n>`: the draw n more times in this frame, unprofiled (gettime(1)
@@ -4753,6 +4762,20 @@ float(string cmd) Watch_ConsoleCommand =
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i])));
 		}
 		print(sprintf("lnme %g\n", ln_evn[sl]));
+		return TRUE;
+	}
+	/*
+	  Patch 449: what the marks actually DREW, for the next n frames.
+
+	  The counters and the coordinates come from inside the glyph emitter, not
+	  from a second walk of the table: an arm that re-derived them would grade
+	  its own arithmetic rather than the pass, and would still print a green
+	  line if the pass drew nothing.
+	*/
+	if (a == "marktrace")
+	{
+		ln_trmk = stof(argv(2));
+		print(sprintf("lndb %g %s\n", ln_trmk, rec_wt_path));
 		return TRUE;
 	}
 	// Patch 449: the Segments column's own rows, for the containment check --

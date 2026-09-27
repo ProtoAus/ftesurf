@@ -1211,6 +1211,9 @@ void() Scores_LinesDraw =
 		return;
 	Line_ViewFrame();
 	Line_StatsReset();
+	// Patch 449: a board line has no playhead, so no window.  Never inferred
+	// from the 99999999 below -- that sentinel minus a window is the whole line.
+	Line_WindowOff();
 	for (i = 0; i < SB_LNMAX; i = i + 1)
 		if (sb_ln_st[i] == SBL_ON)
 			Line_Draw(i + 1, 99999999, '0 0 0', 1, 0.85);
@@ -2774,6 +2777,35 @@ float(string cmd) Scores_ConsoleCommand =
 		{
 			Scores_Refresh();
 			Scores_LineToggle(stof(argv(2)));
+			return TRUE;
+		}
+		/*
+		  Patch 449's harness handle: a board line from a path, queued the way a
+		  row queues one, so the job, the seeding and Scores_LinesDraw are the
+		  real ones.  A headless client has no board rows behind it (every row
+		  reads "no recording behind that row"), and two arms need a second slot
+		  -- the window must not narrow a line with no playhead, and the same
+		  file in two slots must mark identically.
+		*/
+		else if (argv(1) == "lineat")
+		{
+			local float ls;
+
+			ls = stof(argv(2));
+			if (ls < 1 || ls > SB_LNMAX)
+			{
+				print(sprintf("scores lineat <1..%g> <path> [leg]\n", SB_LNMAX));
+				return TRUE;
+			}
+			ls = ls - 1;
+			if (sb_ln_st[ls] != SBL_FREE)
+				Scores_LineFree(ls);
+			sb_ln_key[ls]  = strzone(sprintf("at%g", ls));
+			sb_ln_path[ls] = strzone(argv(3));
+			sb_ln_rep[ls]  = 0;
+			sb_ln_leg[ls]  = stof(argv(4));
+			sb_ln_st[ls]   = SBL_QUEUE;
+			print(sprintf("scores: line %g queued: %s\n", ls + 1, argv(3)));
 			return TRUE;
 		}
 		else if (argv(1) == "lines")

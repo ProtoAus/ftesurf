@@ -302,6 +302,10 @@ void() HE_BuildTable =
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
 	// Patch 385: listed for its options only -- the banner sits where it sits.
 	HE_Add("spectate","Spectate",   "",              "",              "",             0, HEA_CT,    0,   0);
+	// Patch 449: likewise -- the run line sits where the run went.  Its master
+	// switch is the existing hud_watch_path, so that cvar keeps working and the
+	// pane gets a toggle without a second name for the same thing.
+	HE_Add("lines",   "Run lines",  "",              "",              "hud_watch_path", 1, HEA_CT,  0,   0);
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	/*
@@ -599,6 +603,43 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	/*
+	  Patch 449.  The run line: which marks it puts on the path, how far it is
+	  visible, and how much of it is shown around where you are watching.
+
+	  hud_watch_path_far / _px / _color are the EXISTING cvars, given rows here
+	  rather than renamed: an archived config keeps working and there is one
+	  name for "how far the lines are visible", not two.
+	*/
+	if (id == "lines")
+	{
+		if (row == 0) return "hud_lines_marks|Marks|t||"
+		                     "|Where the run touched down, left the ramp, hopped, or was stitched from a save.";
+		if (row == 1) return "hud_lines_land|Touchdowns|t||"
+		                     "|A V where the run met ground or a ramp.";
+		if (row == 2) return "hud_lines_leave|Take-offs|t||"
+		                     "|A chevron where it left one without jumping -- a ramp exit, or walking off.";
+		if (row == 3) return "hud_lines_jump|Jumps|t||"
+		                     "|A double chevron where the jump button was down: a hop, not a slide off.";
+		if (row == 4) return "hud_lines_stitch|Save stitches|t||"
+		                     "|Two bars where a segmented run loaded a save. The run either side was not flown in one go.";
+		if (row == 5) return "hud_lines_size|Mark size|c|3 4 6 8|small;normal;large;huge"
+		                     "|Pixels across, before the screen scale.";
+		if (row == 6) return "hud_lines_gap|Spacing|c|24 40 64 96|tight;normal;loose;sparse"
+		                     "|Least pixels between two marks. Closer ones are dropped rather than overprinted.";
+		if (row == 7) return "hud_lines_win|Shown behind|c|0 3 6 12 30|all;3s;6s;12s;30s"
+		                     "|Seconds of the run before the playhead to draw. all = the whole line, as before.";
+		if (row == 8) return "hud_lines_winf|Shown ahead|c|0 1 2 5|none;1s;2s;5s"
+		                     "|Seconds after it. Only applies while a replay is playing; a board line is never windowed.";
+		if (row == 9) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000"
+		                     "|Units of distance. The line fades out over its last third.";
+		if (row == 10) return "hud_watch_path_color|Colour by|c|0 1|speed;gain"
+		                      "|Speed: red slow to green fast, over the shown range. Gain: green gaining, red losing.";
+		if (row == 11) return "hud_watch_path_ahead|Draw the future|t||"
+		                      "|The part of the run past the playhead, at half brightness.";
+		return "";
+	}
+
 	if (id == "mouse")
 	{
 		if (row == 0) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
@@ -633,6 +674,7 @@ string(string id) HE_Tip =
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
+	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
 	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
 };
