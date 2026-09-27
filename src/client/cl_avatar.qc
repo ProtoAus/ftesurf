@@ -33,7 +33,7 @@
   THE PREVIEW.  A second renderscene into a viewport rect beside the panel
   (VF_VIEWPORT + VF_DRAWWORLD 0, which also fullbrights it -- the stage sits
   at z 65536 where no map has light).  The body is a CSQC entity dressed
-  exactly like your avatar: the plus-cross overlay off your two colours
+  exactly like your avatar: the belt overlay off your two colours
   (Patch 457) and glowmod off your fx mask.  It renders AFTER the panel's 2D
   fill and BEFORE its border, so the frame sits over the scene's edge, and the
   backdrop under it is drawn first because renderscene does not clear.
@@ -78,7 +78,7 @@ vector av_dragofs;
 float av_namefocus;
 float av_saidsz;                // the type-scale line is said once per open
 string av_tbsent;               // last topcolor/bottomcolor pushed; see Av_PushHalves
-float av_half;                  // which part the sliders edit: 0 cross, 1 body
+float av_half;                  // which part the sliders edit: 0 belt, 1 body
 string av_name_text;
 float av_name_caret;
 float av_mote_acc;                // mote rate integrator, see Av_Dress
@@ -721,7 +721,17 @@ void(vector rpos, vector rsz) Av_Preview =
 	setproperty(VF_DRAWWORLD, 0);
 	setproperty(VF_ORIGIN, cam);
 	setproperty(VF_ANGLES, look);
-	setproperty(VF_FOV, [50, 50, 0]);
+	/*
+	  VF_AFOV, NOT VF_FOV, AND THAT IS THE STRETCH FIX.  VF_FOV sets fovx and
+	  fovy outright, and this passed [50, 50] -- equal angles into a viewport
+	  nearly twice as tall as it is wide, so a unit of world height covered the
+	  same angle as a unit of width while spanning far more pixels, and the body
+	  came out stretched vertically.  AFOV hands the engine ONE angle and it
+	  derives both from the viewport rect (V_CalcAFov, view.c:1344).
+	  cl_defs.qc:714 says as much on VF_FOV's own declaration: "consider using
+	  afov instead".
+	*/
+	setproperty(VF_AFOV, 50);
 	addentity(av_prev);
 	renderscene();
 };
@@ -962,7 +972,7 @@ void(vector scr) Av_Draw =
 	*/
 	markstr = getplayerkeyvalue(player_localnum, "lobbymark");
 	x = sz_x - pad * 2;
-	if (Av_Chip("av_hmark", [p_x + pad, y], [x * 0.34, tsz * 1.6], "cross",
+	if (Av_Chip("av_hmark", [p_x + pad, y], [x * 0.34, tsz * 1.6], "belt",
 	            av_half == 0))
 	{
 		av_half = 0;
@@ -1023,7 +1033,7 @@ void(vector scr) Av_Draw =
 	tv = Av_MyMark() * 255;
 	bv = Av_MyBody() * 255;
 	if (markstr != "")
-		s = sprintf("cross %g %g %g / body %g %g %g -- particles: %s",
+		s = sprintf("belt %g %g %g / body %g %g %g -- particles: %s",
 		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
 		            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5),
 		            Av_ColourName(eff));
@@ -1125,15 +1135,16 @@ void(vector scr) Av_Draw =
 
 	// ---- the preview, in its own viewport beside the panel ---------------
 	/*
-	  PATCH 341: THE VIEWPORT IS CLAMPED TO THE SCREEN.  It is anchored to the
-	  panel's top and takes 72% of the panel's (now taller) height, so a panel
-	  dragged low -- or a short window -- used to push the model's feet under
-	  the bottom of the display, which is exactly what "the player model is off
-	  the bottom of the window" reported.  The camera also sits further back
-	  and wider (fov 50 at ~170 units) so the body floats inside the frame
-	  with margin instead of touching all four edges.
+	  THE VIEWPORT'S HEIGHT COMES FROM ITS OWN WIDTH, not from the panel's.
+
+	  It was 72% of the panel height, which was tolerable while the panel was
+	  480 units tall and became "weirdly tall" at 640 -- a 248-wide frame 460
+	  tall, nearly 1:2.  A portrait frame half again as tall as it is wide holds
+	  a standing body with margin and stops tracking a number it has nothing to
+	  do with.  Still clamped to the screen below, which is what Patch 341 added
+	  it for: a panel dragged low used to push the model's feet off the display.
 	*/
-	pvh = ceil(sz_y * 0.72);
+	pvh = ceil(pvw * 1.5);
 	if (pvh > scr_y - 8 - p_y)
 		pvh = scr_y - 8 - p_y;
 	if (pvh < tsz * 6)

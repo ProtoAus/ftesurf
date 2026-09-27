@@ -412,7 +412,7 @@ def geometry(info):
 
 # ---------------------------------------------------------------------------
 
-def write_luma_tga(width=256, height=256, lo=0.42, hi=0.58):
+def write_luma_tga(width=256, height=256, lo=None, hi=None):
     """A fullbright mask for models/player: black, with one white band.
 
     Dropping models/player_luma.tga beside models/player.tga is all it takes to
@@ -434,6 +434,8 @@ def write_luma_tga(width=256, height=256, lo=0.42, hi=0.58):
     placement independent of the orientation: waist height either way.  Move it
     once someone has actually looked at it.
     """
+    if lo is None: lo = BELT_LO
+    if hi is None: hi = BELT_HI
     band = bytearray()
     for y in range(height):
         v = (y + 0.5) / height
@@ -491,54 +493,31 @@ def write_skin_tga(width=256, height=256, grey=SKIN_GREY):
     return bytes(hdr) + rows + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
 
 
-# The plus-cross the two colours paint: a waist band all the way round, crossed
-# by a vertical bar centred on each of the five side faces.  Lex picked this over
-# a plain top/bottom split after seeing both rendered.
+# THE BELT.  One band, defined once, used by BOTH the glow mask (write_luma_tga)
+# and the colour mask (write_half_tga) -- so the lit belt and the coloured belt
+# are the same rows of the same texture by construction and cannot drift apart.
 #
-# BAND_HALF is in v (height); BAR_FRAC is a share of the face the bar sits on,
-# not of the whole wrap, because the pentagon's sides are NOT equal lengths.
-CROSS_BAND_HALF = 0.11
-CROSS_BAR_FRAC  = 0.12
+# This is the pattern the model has always had, and it is the pattern being
+# coloured.  A plus-cross was tried first -- this band crossed by a vertical bar
+# on each face -- and Lex's verdict was that the body already had a marking and
+# the bars were a second one on top of it: "I was happy with the older pattern,
+# but with the older pattern using the new mask."  So the bars are gone and the
+# belt is what the two colours split.
+BELT_LO = 0.42
+BELT_HI = 0.58
 
 
-def face_spans():
-    """[(u0, u1), ...] for the five side faces.
-
-    build_faces runs u along the perimeter by cumulative EDGE LENGTH, so the
-    faces have unequal u-spans and a bar "centred on each face" cannot be placed
-    at i/5.  Derived from FOOTPRINT here the same way it is derived there, so
-    the mask and the mesh cannot disagree about where a face is.
-    """
-    n = len(FOOTPRINT)
-    lengths, perim = [], 0.0
-    for i in range(n):
-        a, b = FOOTPRINT[i], FOOTPRINT[(i + 1) % n]
-        seg = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
-        lengths.append(seg)
-        perim += seg
-
-    spans, run = [], 0.0
-    for i in range(n):
-        u0 = run / perim
-        run += lengths[i]
-        spans.append((u0, run / perim))
-    return spans
-
-
-def in_cross(u, v, spans):
-    """Is this texel part of the plus?"""
-    if abs(v - 0.5) <= CROSS_BAND_HALF:
-        return True
-    for u0, u1 in spans:
-        if abs(u - (u0 + u1) * 0.5) <= (u1 - u0) * CROSS_BAR_FRAC:
-            return True
-    return False
+def in_belt(v):
+    """v is HEIGHT on the side band.  Symmetric about 0.5, so which way up v
+    runs does not matter -- see write_luma_tga's note on that."""
+    return BELT_LO <= v <= BELT_HI
 
 
 def write_half_tga(upper, width=256, height=256):
-    """models/player_shirt.tga / _pants.tga -- the cross, and everything else.
+    """models/player_shirt.tga / _pants.tga -- the belt, and everything else.
 
-    `upper` (the SHIRT overlay, driven by topcolor) is the cross; the pants
+    `upper` (the SHIRT overlay, driven by topcolor) is the BELT -- the same band
+    write_luma_tga lights, by way of the shared BELT_LO/BELT_HI -- and the pants
     overlay is its exact complement, so the two together cover the body and
     every texel is painted by one colour or the other.
 
@@ -560,16 +539,12 @@ def write_half_tga(upper, width=256, height=256):
     RGB -- would have alpha 1 everywhere and put BOTH tints over the whole body.
     RGB is white so that uc.rgb * e_uppercolour is the chosen colour unchanged.
     """
-    spans = face_spans()
     rows = bytearray()
     for y in range(height):
-        # Descriptor 8 below is bottom-left origin, so row 0 is the image BOTTOM.
-        v = 1.0 - (y + 0.5) / height
-        for x in range(width):
-            on = in_cross((x + 0.5) / width, v, spans)
-            if not upper:
-                on = not on
-            rows += bytes((255, 255, 255, 255 if on else 0))       # BGRA
+        on = in_belt((y + 0.5) / height)
+        if not upper:
+            on = not on
+        rows += bytes((255, 255, 255, 255 if on else 0)) * width   # BGRA
 
     hdr = struct.pack("<BBBHHBHHHHBB",
                       0, 0, 2, 0, 0, 0, 0, 0,
@@ -837,7 +812,7 @@ def main():
         with open(path, "wb") as f:
             f.write(data)
         print("wrote %s (%d bytes, %s, alpha-masked)"
-              % (path, len(data), "the cross" if upper else "everything else"))
+              % (path, len(data), "the belt" if upper else "everything else"))
 
     return 0
 
