@@ -1425,6 +1425,7 @@ void(float ra, float rb) Watch_ScanRange =
 	rec_wt_cnt = 0;
 	c = 0;                          // sample ordinal, from the range's first
 	Line_Begin(0);
+	Line_Tick(0, rec_wt_tickrate);
 
 	/*
 	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
@@ -1727,6 +1728,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_stitch = FALSE;
 	wt_lj_qhave  = FALSE;
 	Line_Begin(slot);
+	Line_Tick(slot, wt_lj_tick);
 	return TRUE;
 };
 
@@ -4780,6 +4782,30 @@ float(string cmd) Watch_ConsoleCommand =
 	{
 		ln_trmk = stof(argv(2));
 		print(sprintf("lndb %g %s\n", ln_trmk, rec_wt_path));
+		return TRUE;
+	}
+	/*
+	  Patch 452: the colour every nth point came out, as the strip reads it.
+
+	  Sampled rather than dumped whole -- 5321 points is a log nobody reads --
+	  and taken from ln_col itself, which is what the emitter hands to
+	  R_PolygonVertex, so a mode that computed the right number and stored it
+	  in the wrong place still fails.
+	*/
+	if (a == "colours")
+	{
+		sl = stof(argv(2));
+		track = stof(argv(3));
+		if (track < 1)
+			track = 64;
+		print(sprintf("lncb %g %g %g %g\n", sl, ln_cmode, ln_n[sl], track));
+		for (i = 0; i < ln_n[sl]; i = i + track)
+		{
+			ep = ln_col[sl * LN_CAP + i];
+			print(sprintf("lnc %g %.4f %.3f %.3f %.3f\n", i,
+			              ln_t[sl * LN_CAP + i], ep_x, ep_y, ep_z));
+		}
+		print(sprintf("lnce %g\n", ln_cmode));
 		return TRUE;
 	}
 	// Patch 449: the Segments column's own rows, for the containment check --

@@ -86,6 +86,7 @@ float  *ln_spd;
 float  *ln_t;
 float  *ln_brk;                 // 1: no segment from the previous point (a teleport)
 float  *ln_gain;
+float  *ln_vz;                  // Patch 452: the third term of the energy
 vector *ln_col;                 // the colour, redone when the range or mode moves
 float  *ln_cerr;                // per chunk and level 1..LN_LEVELS: the error, units
 vector *ln_cc;                  // per chunk: centre, radius, holds a break
@@ -124,6 +125,7 @@ float  ln_gjmp[LN_SLOTS];       // +jump seen anywhere in the ground phase
 float  ln_pvz[LN_SLOTS];
 float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
 float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
+float  ln_tick[LN_SLOTS];       // the recording's own tick, for the ceiling
 
 // The window: the stretch of RUN TIME shown around the playhead, set by the
 // caller.  Never inferred from tplay -- a board line is drawn with tplay
@@ -206,6 +208,11 @@ void() Line_Alloc =
 	ln_t    = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_brk  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_gain = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
+	// +2.25 MiB, and the only per-point array the marks and the numbers did
+	// not need: energy is z + |v|^2/2g and ln_spd is the HORIZONTAL speed, so
+	// without this the colour would be energy with the vertical left out --
+	// wrong exactly where a surf line is interesting.
+	ln_vz   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_col  = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP);
 	ln_cerr = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK * LN_LEVELS);
 	ln_cc   = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP / LN_CHUNK);
@@ -244,6 +251,14 @@ void(float s) Line_Clear =
 	ln_nsamp[s] = 0;
 };
 
+// The recording's own tick.  The energy colour divides by the most energy air
+// strafing can add in one (Strafe_PowerCeiling), and that is per tick -- a file
+// recorded at a different rate would otherwise read as a different player.
+void(float s, float tick) Line_Tick =
+{
+	ln_tick[s] = (tick > 0) ? tick : 0.015;
+};
+
 void(float s) Line_Begin =
 {
 	Line_Alloc();
@@ -251,6 +266,7 @@ void(float s) Line_Begin =
 	ln_step[s] = 1;
 	ln_skip[s] = 0;
 	ln_pbrk[s] = FALSE;
+	ln_tick[s] = 0.015;
 	ln_pkind[s] = -1;               // unknown, not "in the air": the first sample
 	ln_ron[s]   = FALSE;            // of a board line's window must mark nothing
 	ln_rlast[s] = 0;
@@ -320,7 +336,7 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
-void(float s, vector o, float spd, float t, float brk) Line_Add =
+void(float s, vector o, float spd, float vz, float t, float brk) Line_Add =
 {
 	local float b, n, i, j;
 
@@ -341,6 +357,7 @@ void(float s, vector o, float spd, float t, float brk) Line_Add =
 			j = b + 2 * i;
 			ln_pos[b + i] = ln_pos[j];
 			ln_spd[b + i] = ln_spd[j];
+			ln_vz[b + i]  = ln_vz[j];
 			ln_t[b + i]   = ln_t[j];
 			ln_brk[b + i] = ln_brk[j];
 			if (i > 0)
@@ -355,6 +372,7 @@ void(float s, vector o, float spd, float t, float brk) Line_Add =
 	ln_skip[s] = ln_step[s] - 1;
 	ln_pos[b + n] = o;
 	ln_spd[b + n] = spd;
+	ln_vz[b + n]  = vz;
 	ln_t[b + n]   = t;
 	ln_brk[b + n] = (n > 0 && ln_pbrk[s]);
 	ln_pbrk[s] = FALSE;
@@ -475,7 +493,7 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Li
 		ln_v20[s] = v * v;
 	}
 	ln_nsamp[s] = ln_nsamp[s] + 1;
-	Line_Add(s, o, vlen([v_x, v_y, 0]), t, brk);
+	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, t, brk);
 };
 
 // The tables drawing needs: chunk spheres, the break list, the gain.
@@ -879,6 +897,114 @@ vector(float i) Line_Col =
 	return '1.00 0.90 0.22' + ('-0.70 0.10 0.13' * ((f - 0.5) * 2));
 };
 
+/*
+  CONTACT: ground, ramp or air, as a colour rather than a glyph.
+
+  Taken from the MARKS, which are the edges of exactly this function, so the
+  colour and the chevrons cannot disagree -- and no per-point kind has to be
+  stored to do it.  A phase runs from one contact mark to the next, and a
+  mark's sub-code carries the pair it crossed (from * 4 + to).
+*/
+void(float s) Line_ColContact =
+{
+	local float b, e, n, i, k, upto, sub;
+	local vector c;
+
+	b = s * LN_CAP;
+	n = s * LN_EVCAP;
+	// Before the first contact mark the run was in that mark's `from` state.
+	k = -1;
+	for (e = 0; e < ln_evn[s]; e = e + 1)
+		if (ln_ek[n + e] <= LN_E_JUMP)
+		{
+			k = floor(ln_es[n + e] / 4);
+			break;
+		}
+	e = 0;
+	i = 0;
+	while (i < ln_n[s])
+	{
+		// The next contact mark closes this phase.
+		upto = ln_n[s];
+		while (e < ln_evn[s])
+		{
+			if (ln_ek[n + e] <= LN_E_JUMP)
+			{
+				upto = Line_Find(s, ln_et[n + e]);
+				break;
+			}
+			e = e + 1;
+		}
+		if (k == SEG_NONE)      c = '1.00 0.62 0.20';    // ground, the V's colour
+		else if (k == SEG_RAMP) c = '0.35 0.85 1.00';    // riding a plane
+		else if (k == SEG_AIR)  c = '0.85 0.88 0.95';    // neither
+		else                    c = '0.45 0.45 0.50';    // before the first mark
+		while (i < upto && i < ln_n[s])
+		{
+			ln_col[b + i] = c;
+			i = i + 1;
+		}
+		if (e >= ln_evn[s])
+		{
+			while (i < ln_n[s])
+			{
+				ln_col[b + i] = c;
+				i = i + 1;
+			}
+			return;
+		}
+		sub = ln_es[n + e];
+		k = sub - floor(sub / 4) * 4;
+		e = e + 1;
+	}
+};
+
+/*
+  ENERGY GAINED OR LOST, against the most air strafing can add.
+
+  E = z + |v|^2/2g (Strafe_Energy), differenced over the same two-samples-each-
+  side window the speed gain uses, and divided by Strafe_PowerCeiling -- the
+  denominator the live strafe gauge already normalises by, so full green here
+  and a full gauge there mean the same thing.  Speed and energy are NOT the
+  same colour: a surfer trading height for speed reads green on gain and flat
+  here, which is the point of having both.
+*/
+void(float s) Line_ColEnergy =
+{
+	local float b, i, j0, j1, dt, f, p, e0, e1;
+	local vector o;
+
+	b = s * LN_CAP;
+	p = Strafe_PowerCeiling(30, ln_grav, ln_tick[s]);
+	if (p <= 0)
+		p = 37.5;
+	for (i = 0; i < ln_n[s]; i = i + 1)
+	{
+		j0 = j1 = i;
+		for (dt = 0; dt < 2; dt = dt + 1)
+		{
+			if (j0 > 0)
+			if (!ln_brk[b + j0])
+				j0 = j0 - 1;
+			if (j1 + 1 < ln_n[s])
+			if (!ln_brk[b + j1 + 1])
+				j1 = j1 + 1;
+		}
+		dt = ln_t[b + j1] - ln_t[b + j0];
+		o = ln_pos[b + j0];
+		e0 = o_z + (ln_spd[b + j0] * ln_spd[b + j0]
+		            + ln_vz[b + j0] * ln_vz[b + j0]) / (2 * ln_grav);
+		o = ln_pos[b + j1];
+		e1 = o_z + (ln_spd[b + j1] * ln_spd[b + j1]
+		            + ln_vz[b + j1] * ln_vz[b + j1]) / (2 * ln_grav);
+		f = (dt > 0) ? bound(-1, ((e1 - e0) / dt) / p, 1) : 0;
+		if (f >= 0)
+			ln_col[b + i] = '0.85 0.85 0.85' + ('-0.55 0.15 -0.45' * f);
+		else
+			ln_col[b + i] = '0.85 0.85 0.85' + ('0.15 -0.60 -0.60' * (0 - f));
+	}
+};
+
 // ---- per frame ------------------------------------------------------------------
 
 // The view the lines are projected against, and the shared colour range.
@@ -949,8 +1075,18 @@ void() Line_ViewFrame =
 	{
 		for (s = 0; s < LN_SLOTS; s = s + 1)
 			if (ln_on[s])
-				for (i = s * LN_CAP; i < s * LN_CAP + ln_n[s]; i = i + 1)
-					ln_col[i] = Line_Col(i);
+			{
+				// Two of the modes are whole-slot walks rather than per-point
+				// functions: contact reads the mark list, and energy needs a
+				// window either side of the point.
+				if (ln_cmode == 2)
+					Line_ColContact(s);
+				else if (ln_cmode == 3)
+					Line_ColEnergy(s);
+				else
+					for (i = s * LN_CAP; i < s * LN_CAP + ln_n[s]; i = i + 1)
+						ln_col[i] = Line_Col(i);
+			}
 		ln_cgen = ln_gen;
 		ln_cslo = ln_slo;
 		ln_cshi = ln_shi;
