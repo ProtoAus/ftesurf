@@ -439,15 +439,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   The other grade-2 row is still the AABB trap in person -- `surf_hourglass`'s skybox
   shell, box spanning the whole map with its faces ~16000 u away. Patch 443 round 5,
   lens B; census corrected in round 7.
-- **A save is keyed by map NAME, and the `map` key it writes is never read.** Counted
-  over `SV_SaveWriteState`: 37 keys plus the FTESURF magic, of which `clock`, `created`
-  and `map` are written and matched by no reader. The first two are deliberate and say so
-  at their own `fputs`. `map` is not: nothing checks the BSP behind the name, there is no
-  mover state and no movevar snapshot, and `state.txt` is plain text in the player's own
-  `data/saves` tree. `infokey(world, "*mapcrc")` **already exists in this tree with the
-  third verdict done correctly** (SV_MapForeign, sv_timer.qc), so the fix needs no map
-  cooperation and no format bump -- the grammar is additive. Same family as the `hopped`
-  key Patch 445 added, and the next one to close. Patch 443 round 5, lens B.
+- **The save still carries no MOVER STATE and no MOVEVAR SNAPSHOT, though it now proves
+  its BSP.** Patch 450 added `mapcrc` from `infokey(world, "*mapcrc")` and made the Build
+  47 arm gate require a positive match, with three verdicts (no crc / wrong crc / proved)
+  and a different message for each — measured both sides, `cfg/test/p450map.cfg`: the
+  control laundered a save from a different bsp, the fixed build refuses it and still
+  accepts a save taken on this install. **`map` stays write-only on purpose now**: the crc
+  subsumes it, and one rule spelled twice is how they drift.
+  **WHAT IS STILL MISSING FROM THE FORMAT:** the state of every mover at write time (a
+  door or platform the row was standing on may be elsewhere now — the same family as the
+  togglable-brush entry above), and the five movevars `SL_RowGrounded` judges a row with,
+  which are pinned within an install but not across the write→read boundary a save is
+  designed to cross. The crc closes the "different bytes under the same name" case; it
+  says nothing about the same bytes in a different STATE.
 - **The probe's five movevars are pinned within an install but NOT across the save's
   write -> read boundary.** All five are in `pms_lockedmovevars` under
   `pm_lockmovement 1`, so they are genuinely locked live -- but the canonical value is
