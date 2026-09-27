@@ -852,60 +852,83 @@ void(entity p) SV_TrigStamp =
 // (OnEndTouch fires 0.06-0.09 s after the last touch, SV_TriggerEndThink), 2 while
 // an output delayed with p as activator is pending; either would act on the held
 // body.  One edict walk, per entry request only.
+// 455 round 10: how far ahead a scheduled output still counts as "about to act on the body
+// this gate just read".  vbsp_io_delay is unclamped and an iodelay edict is spawned for ANY
+// delayed output, including inputs this QC does not implement -- 444 of 1316 shipped maps
+// carry one longer than the dwell, worst surf_ardon at 2500 s on a SetParent.  Without a
+// horizon that is a 41-minute silent refusal of an honest player.  5 s covers every shipped
+// delayed output that can change a player's speed (surf_aquaflow 0.5 and 0.3, surf_stitched
+// 0.3) with an order of magnitude to spare.  THE TRADE: a map author could schedule a carrier
+// beyond it.  Against that sits denying honest players on a third of the corpus, which is not
+// a close call.
+#define FS_FGVPEND     5.0
+
 /*
-  PATCH 455 ROUND 8: THE SAME WALK, ASKING ONLY WHAT IS PENDING.
+  PATCH 455 ROUND 10: THE SAME WALK, ASKING ONLY WHAT IS PENDING.
 
-  SV_TrigPending below answers "would anything act on this body", and its two occupancy
-  clauses are right for its own caller -- the spectate entry gate refuses to park a body
-  that is standing in a trigger at all.  They are wrong for the hopped-start forgiveness,
-  where they made a player at rest inside ANY output-bearing trigger loop refused-then-
-  settling forever, silently, with no output left to fire.  On a bhop map the blocks ARE
-  triggers with outputs, so that is reachable by construction.
+  SV_TrigPending below answers "would anything act on this body", and its occupancy clauses are
+  right for its own caller -- the spectate entry gate refuses to park a body standing in a
+  trigger at all.  They are wrong for the hopped-start forgiveness, where they made a player at
+  rest inside ANY output-bearing trigger loop refused-then-settling forever, silently, with no
+  output left to fire.  On a bhop map the blocks ARE triggers with outputs.
 
-  Read from the field essays rather than the names:
+  TWO CLAUSES, AND ROUND 10 REMOVED THE TWO ROUND 8 GOT WRONG.  Round 8 claimed to have read
+  the field essays rather than the names; it had read the essays rather than the WRITERS, which
+  is a different thing and the reason both mistakes look reasonable:
 
-    vbsp_touch_who   KEEP   "synthesised end-touch"; its sweep FIRES OnEndTouch at them
-    vbsp_touch_out   KEEP   "absent for one window, not yet ended" -- the 0.06-0.09 s gap
-    vbsp_iodelay     KEEP   a scheduled output whose .enemy is this player
-    vbsp_mv_act      KEEP   a func_button's arrival output, aimed at this player
-    vbsp_touch_in    DROP   "confirmed inside as of the last sweep"
-    vbsp_touch_seen  DROP   "has touched since the last sweep"
+    vbsp_touch_out   KEEP.  Set only for a bit that was inside and NOT seen during the window
+                     just ended (:3710), and a re-touch clears it -- so a player standing still
+                     is `seen` every window and this stays 0.  That is what makes the narrowing
+                     work.  Genuinely "has left, end-touch not yet fired".
+    vbsp_iodelay     KEEP, bounded by FS_FGVPEND.  A scheduled output whose .enemy is this
+                     player.
+    vbsp_touch_who   GONE.  Occupancy, not pending: `vbsp_touch_when` is restamped on EVERY
+                     touch (:3833) and the sweep clears `who` only after 0.05 s (:3745), and
+                     touches dispatch every usercmd even for a motionless body.  It is
+                     in|seen|out in one field -- the thing round 8 said it dropped.  Inert
+                     under vbsp_mp 1, but it made the narrowing a NO-OP under vbsp_mp 0, which
+                     this file documents as the A/B control.
+    vbsp_mv_act      GONE, and it was the worst defect in the patch.  An activator latch with
+                     four writers and NO CLEAR anywhere; write-only for doors, which fire their
+                     outputs inline and arm no think.  Walk through one door trigger and it
+                     holds you for the rest of the map -- 347 of 1316 maps, including
+                     bhop_mom_training_beta, which AGENTS.md mandates for playtests of this
+                     subsystem.  Round 8 justified it with "zero shipped maps aim an arrival
+                     output at !activator with a speed write", which is true and asks the wrong
+                     question: there is exactly one such output, surf_interference's
+                     +use-reachable button with a 4 s travel, and it writes the player's ORIGIN.
+                     A pending teleport is not what this gate bounds.
+    vbsp_touch_in    GONE (round 8).  "confirmed inside as of the last sweep".
+    vbsp_touch_seen  GONE (round 8).  "has touched since the last sweep".
 
-  A SEPARATE FUNCTION RATHER THAN A FLAG ON THAT ONE, because `SV_TrigPending(p) == 2` was
-  the obvious one-character version and does not work: that loop returns on the FIRST
-  match, so occupancy on any earlier edict masks a later iodelay -- which is exactly the
-  combination that matters.
+  A SEPARATE FUNCTION rather than a flag on that one, because `SV_TrigPending(p) == 2` was the
+  obvious one-character version and does not work: that loop returns on the FIRST match, so
+  occupancy on any earlier edict masks a later iodelay -- exactly the combination that matters.
 
-  vbsp_mv_act IS NEW COVERAGE, not a narrowing.  SV_MoverArm parks a func_button's arrival
-  on the mover's own think and the only link back to the player is that field, which
-  SV_TrigPending never tested.  Zero shipped maps aim an arrival output at `!activator`
-  with a speed write today; one map file would have been a complete bypass, and the walk
-  is already being made.
+  THE BIT COMES FROM SV_TouchBit, which exists in its own words "so the two callers cannot
+  disagree about the bound".  Round 8 made a fourth hand-rolled copy of that arithmetic and
+  dropped its vbsp_mp gate with it.
 
-  THE MASK CAVEAT APPLIES HERE TOO: `bit` is 0 for an edict index of 32 or more, so the
-  vbsp_touch_out clause silently stops looking above that. cfg/lobby/lobby.cfg sets
-  sv_playerslots 32, which is exactly zero headroom.  In BACKLOG.
+  ONE CAVEAT ROUND 8 OVERSTATED: the 32-bit mask is NOT reachable.  sv_playerslots sets
+  sv.allocated_client_slots outright (engine sv_init.c), so 32 means 32 client edicts in total
+  and num_for_edict(p)-1 is 0..31 for every connected client.  Nothing in the tree sets it
+  higher.  The inherited essay above claiming MAX_CLIENTS is 40 with room above the playing
+  slots is false against this engine, where it is 255 and maxspectators is consulted only when
+  sv_playerslots is empty.
 */
 float(entity p) SV_TrigActing =
 {
 	local entity t;
-	local float  n;
 	local int    bit;
 
-	n = num_for_edict(p) - 1;
-	bit = 0;
-	if (n >= 0 && n < 32)
-		bit = (int)1 << (int)n;
+	bit = SV_TouchBit(p);
 	for (t = nextent(world); t; t = nextent(t))
 	{
-		if (t.vbsp_touch_who == p)
-			return 1;
 		if (t.vbsp_touch_out & bit)
 			return 1;
-		if (t.vbsp_mv_act == p)
-			return 3;
 		if (t.enemy == p)
 		if (t.classname == "vbsp_iodelay")
+		if ((t.nextthink - time) <= FS_FGVPEND)
 			return 2;
 	}
 	return 0;

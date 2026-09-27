@@ -10299,7 +10299,7 @@ float(entity e) SV_TimerJumpWatch =
 	if (e.run_t_finfgv && e.run_t_hopped)
 	{
 		local vector hv;
-		local float  cap, why;
+		local float  cap, why, acting;
 
 		/*
 		  455 ROUND 3: BOTH AXES CARRY THE CARRIER, and round 1 computed the vertical
@@ -10321,6 +10321,12 @@ float(entity e) SV_TimerJumpWatch =
 		  window.  `run_basevel` is a different field with a different lifetime, and
 		  checking the citation is not the same as checking that it applies.
 		*/
+		// EXPLICITLY, because locals are not zero-initialised here and fteqcc was right
+		// to complain: `acting` is assigned only inside the streak branch, and while
+		// why == 3 is reachable ONLY from there, that is an invariant the compiler
+		// cannot see -- and an invariant only the author can see is the one that breaks
+		// when someone adds a fifth reason code.
+		acting = 0;
 		hv  = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 		hv_z = 0;
 		/*
@@ -10405,9 +10411,11 @@ float(entity e) SV_TimerJumpWatch =
 		  the chain above, where it ran on every packet the cheap tests passed -- and
 		  its own header says "one edict walk, per entry request only".  A player at
 		  rest inside any trigger carrying an output holds that state indefinitely, so
-		  round 3 turned a per-request walk into ~3600 field reads per packet at up to
-		  77 Hz on the densest shipped map, for as long as the cheater cared to stand
-		  there.  Asked after the dwell instead, it runs at most once per FS_FGVDWELL,
+		  round 3 turned a per-request walk into a per-packet one at up to 77 Hz on the
+		  densest shipped map, for as long as the cheater cared to stand there.  Round 8
+		  put the cost at "~3600 field reads per packet"; round 9 measured it LOW by
+		  5-7x -- ~4500 live edicts on bhop_miku_v2 at 4-6 reads each is 18-27k per walk.
+		  Round 3 was worse than the comment that recorded it.  Asked after the dwell instead, it runs at most once per FS_FGVDWELL,
 		  and a pending action resets the streak so the next ask is a dwell away.
 
 		  AND THE DWELL IS WHY THIS TEST NO LONGER HAS TO BE COMPLETE.  A reviewer
@@ -10442,8 +10450,16 @@ float(entity e) SV_TimerJumpWatch =
 
 			if ((time - e.run_t_fgvok) < FS_FGVDWELL || e.run_t_fgvn < FS_FGVREADS)
 				why = 4;
-			else if (SV_TrigActing(e))
-				why = 3;
+			else
+			{
+				// LATCHED, so the refusal can say WHICH pending thing it saw without a
+				// second walk.  Round 9: brand-new code with one real subject in 1316
+				// maps shipped with nothing that could observe it fired, which is the
+				// defect this same patch fixed for reason 2 two rounds earlier.
+				acting = SV_TrigActing(e);
+				if (acting)
+					why = 3;
+			}
 		}
 
 		// Reason 4 IS the streak in progress, so it alone does not break it.
@@ -10499,8 +10515,10 @@ float(entity e) SV_TimerJumpWatch =
 				// varargs eagerly, so the old second call paid an edict walk even with
 				// `developer 0`, and printed a number that had decided nothing.
 				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- an "
-				               "action aimed at this player is pending; it would act "
-				               "on a body this gate has already read\n", e.netname));
+				               "action aimed at this player is pending (%g: 1 an "
+				               "end-touch not yet fired, 2 a scheduled output); it "
+				               "would act on a body this gate has already read\n",
+				               e.netname, acting));
 			else
 				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- at "
 				               "rest but settling: %.3f s of %.3f, %g clear reads "
