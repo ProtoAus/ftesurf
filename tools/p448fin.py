@@ -93,7 +93,13 @@ FIELDS = {
     "hopsay":    r"hopped start\^?7? -- one jump out of the start",
     # SV_TimerFinish's own line.  The subject printing its own action, which is what
     # CLAUDE.md asks for -- "the field ended up 0" is a downstream consequence.
+    # PATCH 454 SPLIT THIS IN TWO, and the pair is the measurement: 448 cleared at the
+    # finish, 454 ARMS a forgiveness there and TAKES it once the player is grounded at
+    # or below sv_maxspeed.  So a 454 build prints `armsay` then `takesay`, a 448 build
+    # prints the old `finsay`, and a pre-448 build prints none of the three.
     "finsay":    r"(cleared by the finish it marked)",
+    "armsay":    r"(forgiveness armed, taken when grounded)",
+    "takesay":   r"(there is no prespeed to launder)",
     # THE RUN COUNTERS, and they are the arm's real content after the first run taught
     # me what this fixture actually does.  The end zone TELEPORTS THE PLAYER BACK to the
     # start box, and `+forward` is still held -- so the section produces TWO runs, not
@@ -102,7 +108,7 @@ FIELDS = {
     "nfin":      r"finish: ",
     "nprac":     r"finish: [^\n]*PRACTICE",
 }
-PRESENCE = ("hopsay", "finsay")
+PRESENCE = ("hopsay", "finsay", "armsay", "takesay")
 # Counted, not matched: `cleanfin` below is derived from the pair.
 COUNTED = ("nfin", "nprac")
 
@@ -114,14 +120,38 @@ EXPECT = {
     # tainted run kept its mark.  `hopped` and the derived clean finish are the
     # measurement.  `class` is NOT graded here: it reads the state AFTER the second run,
     # which my first prediction got wrong (see the docstring).
-    "F": {"state": "finished", "nprac": "1", "hopped": "0", "finsay": "present"},
+    # F: the finish happened (`finished`), the tainted run kept its mark (`nprac 1`),
+    # 454 ARMED rather than cleared (`armsay`), and because a walk is at or below
+    # sv_maxspeed the forgiveness is TAKEN in the same section (`takesay`, `hopped 0`).
+    # `finsay` must be ABSENT: its presence would mean the 448 clear is still in.
+    "F": {"state": "finished", "nprac": "1", "hopped": "0",
+          "armsay": "present", "takesay": "present", "finsay": "absent"},
     "A": {"hopped": "0"},
 }
 CONTROL = {
-    # The tag never clears, so BOTH runs are practice and no run finishes un-marked.
-    "F": {"nprac": "2", "hopped": "1", "finsay": "absent"},
+    # The tag never clears, so BOTH runs are practice and no run finishes un-marked,
+    # and none of the three finish lines exists on that build.
+    "F": {"nprac": "2", "hopped": "1", "finsay": "absent",
+          "armsay": "absent", "takesay": "absent"},
     "A": {"hopped": "1"},
 }
+# ---------------------------------------------------------------------------
+#  WHAT THIS ARM DOES NOT MEASURE, AND IT IS THE HALF THAT DECIDES PATCH 454.
+#
+#  454's gate is "grounded AND effective horizontal speed <= sv_maxspeed".  Every
+#  gesture available headlessly walks at or below sv_maxspeed -- ground acceleration is
+#  capped there -- so `takesay` firing proves only that the YES branch works.  THE
+#  REFUSAL HAS NEVER BEEN EXERCISED: nothing here finishes a run at more than 260 u/s,
+#  which is the whole case 454 was written for (a surf finisher crossing an END 16 units
+#  from the start box with a chain's speed still on).
+#
+#  That is this repo's own "an arm that passes because its condition never occurred",
+#  and naming it is the honest verdict rather than calling the arm complete.  What it
+#  would take: a real run on one of the twelve tracks tools/census/endnearstart.py
+#  lists -- surf_summer main and surf_bikini_bottom b1 are the obvious two -- finishing
+#  fast, then reading `cmd timer`'s `hopped` before coming to rest.  It needs a human
+#  playing, so it is owed rather than written.
+# ---------------------------------------------------------------------------
 REPORT = {
     "C": ("class", "practice", "azone", "jumps"),
     "J": ("startok", "jumps", "azone", "class", "practice"),

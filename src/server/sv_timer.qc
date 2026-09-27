@@ -1715,6 +1715,31 @@ float() SV_RecEnabled =
 .float  run_t_hopsaid;
 
 /*
+  PATCH 454: A FINISH ARMED A FORGIVENESS THAT HAS NOT BEEN TAKEN YET.
+
+  Patch 448 cleared the hopped-start tag at a ZONE_END finish outright, on the argument
+  that getting back to a start costs an `!r` or the trip.  tools/census/endnearstart.py
+  measured the trip: TWELVE of 1732 shipped tracks put the END within 64 units of their
+  own START exactly, four of them overlapping, surf_summer's 11-segment main at 64.  So on
+  those the argument was nearly free and the clear could hand back a clean run with a
+  chain's speed on it -- which is the class Patch 445 exists to eliminate.
+
+  So the finish sets this instead of clearing, and the clear happens when the player is
+  grounded at or below sv_maxspeed.  A grounded body at that speed can reach the start box
+  no faster than one that walked there, so there is no prespeed left for the tag to
+  protect against and forgiving costs nothing.  That is the same discriminator every other
+  clear in this design uses -- "the clear cannot carry the speed" -- restored rather than
+  argued around, because the finish is the one caller that cannot zero the velocity
+  (players coast past the line).
+
+  INVALIDATED BY A NEW TAG, because one bit cannot tell two attempts' tags apart: earn a
+  fresh hopped start before coming to rest and the pending forgiveness is dropped, or it
+  would forgive the new one.  Also dropped at SV_TimerStart -- a forgiveness not taken
+  before the next run began has expired.
+*/
+.float  run_t_finfgv;
+
+/*
   The run clock is stopped.  Build 18.
 
   run_t_freeze is the REQUEST -- something wants the clock held, and today that is
@@ -10372,6 +10397,10 @@ float(entity e) SV_TimerJumpWatch =
 						               e.netname, dwell, want, e.run_t_jumps,
 						               e.run_t_dirty ? 1 : 0));
 					e.run_t_hopped = TRUE;   // TS_ARMED; the outer test says so
+					// Patch 454: one bit cannot tell two attempts' tags apart, so a
+					// fresh tag drops any forgiveness a finish armed -- otherwise
+					// coming to rest would forgive THIS one.
+					e.run_t_finfgv = FALSE;
 				}
 			}
 		}
@@ -10413,6 +10442,50 @@ float(entity e) SV_TimerJumpWatch =
 		  does in the hop test above: a hop the server never saw grounded reads a
 		  dwell of zero and re-arms nothing.
 		*/
+		/*
+		  PATCH 454: TAKE THE FORGIVENESS A FINISH ARMED, once there is no prespeed
+		  left to launder.
+
+		  Ground acceleration is capped at sv_maxspeed, so a grounded body at or below
+		  it reaches the start box no faster than one that walked there.  At that point
+		  the tag protects against nothing and clearing it cannot carry speed -- which
+		  is the discriminator every other clear in this design satisfies by zeroing
+		  the velocity, reached here by waiting instead, because a finish cannot zero
+		  it (players coast past the line).
+
+		  EFFECTIVE horizontal speed, not `.velocity`: this file's Patch 403 essay
+		  records that `.velocity` reads ZERO while a push carrier holds the speed,
+		  which is how run_stagecap came to miss 1809 u/s.  So the carrier is added in
+		  and the z component dropped -- falling does not carry you out of a box.
+
+		  No state test: the forgiveness belongs to a run that has ENDED, so it is
+		  taken wherever the player happens to be, including mid-course.  What bounds
+		  it is the speed, not the place.
+		*/
+		if (e.run_t_finfgv && e.run_t_hopped && ong)
+		{
+			local vector hv;
+			local float  cap;
+			hv = e.velocity + e.run_basevelocity;
+			hv_z = 0;
+			cap = cvar("sv_maxspeed");
+			if (cap <= 0)
+				cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
+			if (vlen(hv) <= cap)
+			{
+				dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish "
+				               "armed it and %.0f u/s is at or below sv_maxspeed "
+				               "%.0f, so there is no prespeed to launder\n",
+				               e.netname, vlen(hv), cap));
+				sprint(e, PRINT_HIGH,
+				       "^2start re-armed^7 -- the hopped start died with that run\n");
+				e.run_t_hopped  = FALSE;
+				e.run_t_jumps   = 0;
+				e.run_t_finfgv  = FALSE;
+				e.run_t_hopsaid = 0;
+			}
+		}
+
 		if (run_t_rearmhop && e.run_t_hopped && e.run_t_state == TS_ARMED)
 			if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
 			{
@@ -11668,12 +11741,19 @@ void(entity e, float z) SV_TimerEvent =
 		  for the run_t_dirty reminder as well, so clearing it re-opened a message
 		  about a taint this finish does not forgive.
 		*/
+		/*
+		  PATCH 454 MADE THIS AN ARM RATHER THAN A CLEAR.  448 cleared here; the
+		  census in endnearstart.py showed the trip back to a start is 0 to 64 units
+		  on twelve shipped tracks, so clearing outright could hand the next run a
+		  chain's speed.  The forgiveness is taken when the player comes to rest --
+		  see the field, and SV_TimerJumpWatch where it is taken.
+		*/
 		if (e.run_t_hopped)
 		{
-			dprint(sprintf("hop: %s's hopped-start taint cleared by the finish "
-			               "it marked\n", e.netname));
-			e.run_t_hopped = FALSE;
-			e.run_t_jumps  = 0;
+			dprint(sprintf("hop: %s finished with the tag up -- forgiveness armed, "
+			               "taken when grounded at or below sv_maxspeed\n",
+			               e.netname));
+			e.run_t_finfgv = TRUE;
 		}
 		return;
 	}
@@ -11967,6 +12047,11 @@ void(entity e) SV_TimerStart =
 		SV_TimerCheat(e);
 	else if (e.run_t_dirty || e.run_t_hopped)
 		SV_TimerPractice(e);
+
+	// Patch 454: a forgiveness a finish armed, that the player never came to rest to
+	// take, has EXPIRED -- this run has begun and the forgiveness belonged to the last
+	// one.  After the taint chain above, so it cannot change what this run is.
+	e.run_t_finfgv = FALSE;
 
 	// Build 58: before SV_RecOpen for the same reason the latches above are --
 	// so the recording's header is written with the run already flagged.  It is
