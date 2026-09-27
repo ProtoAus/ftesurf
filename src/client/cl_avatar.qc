@@ -337,7 +337,10 @@ void(string id, vector pos, vector sz, float maxv, float val, string label,
 {
 	local float lw, vw, tw, kw, lab;
 
-	lab = Font_Px(5 * ui_cv_scale);
+	// 6, not 5: 5 * hud_scale 2 is 10, which ties between rungs 8 and 12 and
+	// Font_Px breaks ties downward -- so every slider label and value used to
+	// come out at 8 while the panel around them was 12.  See Av_Draw.
+	lab = Font_Px(6 * ui_cv_scale);
 	lw  = ceil(lab * 5.5);
 	vw  = ceil(lab * 5.5);
 	tw  = sz_x - lw - vw;
@@ -723,6 +726,7 @@ void(vector scr) Av_Draw =
 	local float barh, fw, fh, pvw, pvx, pvh, slh, stop;
 	local float segs, lit, stripw, striph;      // the trail strip, below
 	local vector tv, bv;                        // the two halves, as 0..255
+	local float rqttl, rqtsz, rqhnt;            // the sizes ASKED for, pre-snap
 	local string nm, hash, s, rgbstr, botstr;
 
 	// The board is the older modal and draws over this; see Av_Open.
@@ -745,10 +749,22 @@ void(vector scr) Av_Draw =
 	  comment describes never ran.  cl_hud.qc:2741 is the same bug in the sequence
 	  block, with the same one-line fix.
 	*/
+	/*
+	  THE THREE ASKS ARE RUNGS OF THE UI LADDER AT hud_scale 2, ON PURPOSE:
+	  20 / 16 / 12 against "8 12 16 20 24 28 32".  They used to be 16/12/10, and
+	  the 10 was the problem -- it is EXACTLY equidistant from 8 and 12, and
+	  Font_Px breaks the tie with a strict `<` that keeps the first rung it saw,
+	  so the hint text and every slider label silently came out at 8.  Nobody
+	  chose 8; a tie did.  12 is the floor now and nothing here asks for a size
+	  the ladder has to move.
+	*/
 	Font_Set(ui_font_ui);
-	ttl  = Font_Px(8 * ui_cv_scale);
-	tsz  = Font_Px(6 * ui_cv_scale);
-	hint = Font_Px(5 * ui_cv_scale);
+	rqttl = 10 * ui_cv_scale;
+	rqtsz =  8 * ui_cv_scale;
+	rqhnt =  6 * ui_cv_scale;
+	ttl  = Font_Px(rqttl);
+	tsz  = Font_Px(rqtsz);
+	hint = Font_Px(rqhnt);
 
 	/*
 	  ONCE PER OPEN, so the fix above is answerable from a LOG and not only from
@@ -767,6 +783,18 @@ void(vector scr) Av_Draw =
 		av_saidsz = TRUE;
 		dprint(sprintf("hud_player: face %g, snapped %g/%g/%g at hud_scale %g\n",
 		               ui_font_ui, ttl, tsz, hint, ui_cv_scale));
+		/*
+		  AND SAY SO WHEN A SIZE HAD TO MOVE.  Font_Px snapping is invisible --
+		  it returns a number and nothing records that the number is not the one
+		  asked for -- so an off-ladder constant added later reads as a soft
+		  block with no cause.  A second print rather than more arguments:
+		  fteqcc drops the ninth parameter of a varargs call silently, which is
+		  a bug this same patch fixed one file over.
+		*/
+		if (ttl != rqttl || tsz != rqtsz || hint != rqhnt)
+			dprint(sprintf("hud_player: asked %g/%g/%g -- OFF THE LADDER, so at "
+			               "least one block is a resample\n",
+			               rqttl, rqtsz, rqhnt));
 	}
 
 	pad = ceil(tsz * 1.0);
@@ -1057,7 +1085,9 @@ void(vector scr) Av_Draw =
 	striph = ceil(tsz * 0.6);
 	if (fx & AV_FX_TRAIL)
 	{
-		segs = 30;
+		// One segment per ~4 px of panel rather than a fixed 30: at 30 the
+		// blocks were wide enough for the alpha steps to read as banding.
+		segs = ceil((sz_x - pad * 2) / 4);
 		stripw = (sz_x - pad * 2) / segs;
 		lit = segs * (Av_TrailLen() + 1) / AV_TRAILN;
 		for (i = 0; i < lit; i = i + 1)

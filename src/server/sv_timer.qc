@@ -4624,6 +4624,28 @@ void(entity e) SV_RecOpen =
 	*/
 	SV_RecPut(e, sprintf("movetickrate %g", e.run_movetickrate));
 	/*
+	  WHICH PROP-GEOMETRY RULE THE COLLISION WORLD OF THIS RUN WAS BUILT UNDER.
+	  ADDITIVE, by the header's own rule above; absent means rule 0.
+
+	  This exists for ONE reader, the `pe` digest check, and it exists so that
+	  check can say "not comparable" instead of "differs".  SV_PhysentDigest
+	  hashes pe->scale (sv_user.c:292-318), and SV_SpawnProp now quantises a
+	  prop's scale to the 1/16 the wire can carry -- so on the 97 maps that have
+	  a fractionally-scaled prop, a run recorded before that change rebuilds to a
+	  DIFFERENT digest on a build that has it.  Nothing is wrong with either the
+	  file or the replay; the geometry definition moved underneath them.
+
+	  Without this key that reads out as `VERIFY ... HOLD physents: N row(s)
+	  differ` on honest runs, which is this codebase's oldest trap -- a check
+	  that cannot measure reporting the maximum-severity answer.  The engine
+	  compares regardless and DOWNGRADES the mismatch when the file predates the
+	  rule, so the count is still visible and the accusation is not made.
+
+	    0 / absent  prop scale as the map wrote it (pre-fix)
+	    1           prop scale floored to 1/16, matching the wire and the client
+	*/
+	SV_RecPut(e, "proprule 1");
+	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
 	  A word rather than the version number, even though version 5 already

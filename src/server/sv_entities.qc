@@ -4907,14 +4907,40 @@ void(float defsolid) SV_SpawnProp =
 	  the same field, at the wrong COLLISION size too (world.c:1399 for the
 	  hull path, :1414 for the per-triangle one).
 
-	  SSQC quantises .scale to 1/16 and saturates just under 16
-	  (sv_defs.qc:401), so clamp rather than let it wrap.
+	  QUANTISED HERE, TO THE 1/16 THE WIRE CAN CARRY, and the comment this
+	  replaces is why it was not: it said "SSQC quantises .scale to 1/16", which
+	  the docs do say (sv_defs.qc:401) and the engine does NOT do.  Nothing
+	  clamps the field on write, so one number reached four readers three ways:
+
+	    wire -> client pmove   bound(1, scale*16, 255) as a BYTE (sv_ents.c:3953,
+	                           protocol.h:1434), /16 on arrival (cl_ents.c:7791)
+	                           = trunc(scale*16)/16
+	    renderer               the same byte (cl_ents.c:6122)
+	    server pmove           bound(1, scale*16, 255)/16.0 with NO truncation
+	                           (sv_user.c:7747)
+	    World_Move             the raw float (world.c:1405, :1420, :1428)
+
+	  So `modelscale 1.4` predicted as 1.3750 on the client and moved the player
+	  against 1.4000 on the server -- and since the renderer uses the wire value
+	  too, the authoritative collision stuck out past the drawn model.  Measured
+	  population: 1970 solid props across 97 maps, worst surf_spacemonkeys at
+	  174 (tools/census/propsolid.py).
+
+	  floor, not rint, because the wire truncates -- `(qbyte)(scale*16)`.  And
+	  max(1, ...) mirrors its `bound(1, ...)` floor: 26 props in the library
+	  write a scale below 1/16, and a plain floor sends those to 0, which both
+	  sv_ents.c:3950 and sv_user.c:7744 read as `!scale` and substitute 1 -- a
+	  100x prop instead of a small one.
 	*/
 	sc = self.modelscale;
 	if (sc <= 0)
 		sc = 1;
 	if (sc > 15.9)
 		sc = 15.9;
+	sc = floor(sc * 16);
+	if (sc < 1)
+		sc = 1;
+	sc = sc / 16;
 	self.scale = sc;
 
 	/*
