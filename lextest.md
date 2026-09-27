@@ -49,17 +49,23 @@ disagree about one moment. If you find a stretch where the line says green and
 the bar says otherwise while you sit on that frame, that is a real finding and
 I want it.
 
-## 2. Two things a headless test cannot do (from ftesurf-a1's Patch 454)
+## 2. Things a headless test cannot do (from ftesurf-a1's Patches 454/455)
 
-Both of these are the other session's work, not mine, and both are blocked on a
-human playing rather than a script walking.
+These are the other session's work, not mine. The list SHRANK while you were
+away, and the reason is worth a line: the first version of this section said the
+refusal "has never once been exercised", and that turned out to be wrong. It had
+been firing on every run of the existing test all along — silently, because that
+branch printed nothing. A branch with no voice looks exactly like a branch with
+no traffic. It prints its reason now, and a script covers most of what this
+section used to ask you for.
 
-**2a. Finish fast, then come to rest — and watch WHEN the tag dies.** Patch 454
-forgives a hopped start only once you come to rest: grounded, at or below
-`sv_maxspeed`. Every headless gesture walks, so the branch that says NO — the
-one that holds the tag up while you are still fast — has never once been
-exercised. It needs a finish above `sv_maxspeed` on a map whose END sits within
-64 units of its own START:
+**2a. Finish ABOVE the speed cap on a real track.** Patch 455 holds the hopped-
+start tag up until you come to rest: grounded, at or below the mover's cap, and
+not about to be launched. A script can now drive the airborne refusal, the take,
+and (in principle) the held refusal. What it still cannot do is cross a real
+END above the cap, because the test fixture's runs are nine ticks long on a bhop
+map and cross at 244-260 u/s. So the one that wants you is a fast finish on a
+track whose END sits within 64 units of its own START:
 
 - `surf_bikini_bottom` **b1** — a bonus, one leg, 16 u gap. Far less track to
   cover.
@@ -75,9 +81,16 @@ taken, and you should see `start re-armed -- the hopped start died with that run
 
 So a tag that dies a few seconds after you stop is correct, not a bug. The defect
 to report is the tag dying while you are still moving fast, because that is the
-one that hands the next run a clean slate with the speed still on it. On a surf
-map finishing above 260 u/s is the normal case, so the interesting part is not
-the fast finish — it is whether anything clears the tag before you come to rest.
+one that hands the next run a clean slate with the speed still on it.
+
+**2a-note. Two holes were found in that gate while you were away**, both by
+ftesurf-a1's reviewers, both fixed before anything shipped: a jump pad's
+vertical carrier could clear the tag and then launch you (2004 such outputs
+across 298 of 1310 shipped maps), and a pad whose impulse arrives four to six
+packets after you step off it could do the same with the speed in neither field
+the gate was reading. I reviewed that gate and said the first one was covered.
+It was not — I had confused two similarly-named fields — so if you want one
+thing to poke at on a real map, a jump pad near a finish is it.
 
 **2b. Four tracks may be impossible to set a time on.** `agtricks` main,
 `surf_flyin_fortress` main, `surf_ethereal` b1 and `surf_quirky` b9 each have an

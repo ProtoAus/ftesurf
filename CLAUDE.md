@@ -47,6 +47,19 @@ chatty.
   more, and the argument built on top of it was about a margin of thousandths.
   A printed number's PRECISION bounds the claim you may make from it; read the
   format specifier before you quote the value.
+- A FAILED SEARCH IS NOT A PROOF, AND SAYING SO OUT LOUD IS NOT ENOUGH. Patch
+  455's gate added a carrier to its horizontal test and left the vertical one
+  reading bare `.velocity_z`. I went looking for the jump-pad case that gap
+  implies, did not manage to build one, found a comment that appeared to explain
+  why, and reported it as covered — in the same message that said I had gone
+  looking and failed. The author then wrote four sentences of comment crediting
+  the reasoning, and the hole was real: the comment I quoted was about
+  `run_basevelocity`, the engine's read-and-clear window, and the gate reads
+  `run_basevel`, the mod's latched carrier, which deliberately does NOT drain its
+  Z. Two fields, similar names, adjacent in the same declaration block, opposite
+  lifetimes. "I could not build it" and "it cannot be built" are different
+  findings and only one of them licenses a comment; when the difference matters,
+  trace the FIELD rather than the nearest essay that mentions it.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
