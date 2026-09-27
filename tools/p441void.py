@@ -63,6 +63,10 @@ import hashlib
 import os
 import re
 import shutil
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import mapcrc                     # Patch 450: fixtures must prove their bsp
 import subprocess
 import sys
 import time
@@ -294,10 +298,24 @@ def stage(zones, arm=""):
         raise SystemExit("refusing: %s already exists -- it shadows the shipped zones" % ZONES)
     if os.path.isdir(SAVES):
         os.rename(SAVES, PARK)
+    _crc = mapcrc.get("bhop_eazy")
+    if not _crc:
+        raise SystemExit("could not obtain bhop_eazy's *mapcrc -- the Patch 450 arm gate "
+                         "would refuse every staged row and the sections that grade it "
+                         "would measure nothing (see tools/mapcrc.py)")
     for slot, src in SAVES_STAGED:
         d = os.path.join(SAVES, slot)
         os.makedirs(d)
-        shutil.copyfile(os.path.join(CFGDIR, src), os.path.join(d, "state.txt"))
+        dst = os.path.join(d, "state.txt")
+        shutil.copyfile(os.path.join(CFGDIR, src), dst)
+        # PATCH 450 MADE THIS NECESSARY, and round 8 caught that this arm was missed.
+        # The Build 47 gate now requires a save to prove which bsp it came from, and
+        # these fixtures are hand-authored with no `mapcrc` -- so without a stamp the
+        # gate refuses them and the sections that grade it ARMING CLEAN go red.  For
+        # this arm that includes its declared CONTROL, which turns a real measurement
+        # into `NOT DEMONSTRATED`.  The COPY is stamped, never cfg/test/: a literal crc
+        # would be wrong on every other machine.
+        mapcrc.stamp(dst, _crc)
     if arm in BLOCK:
         os.makedirs(os.path.join(SAVES, BLOCK[arm]))
     if zones:
