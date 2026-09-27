@@ -807,6 +807,25 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `tools/p453q.py` says the same in its header, because it is handed the
   settings for the same reason. cl_lines.qc `Line_Movevars`, `Line_Grade`.
   Patch 453.
+  ONE of the nine is already in hand and unused: `Line_Tick` (cl_lines.qc:274)
+  is handed the recording's own `movetickrate` and the energy ceiling divides by
+  it, while `Line_Grade` two hundred lines later uses the LIVE `ln_mv_tick` for
+  the same file. Whichever way that is resolved, the two should read one number.
+  AND THE MISSING-KEY CASE IS INDISTINGUISHABLE FROM AN ANSWER. `ln_mv_airaccel`
+  (:282) and `airaccel` (cl_hud.qc:3932) are the only two movevar reads in either
+  file with no `<= 0` fallback -- their seven neighbours all have one and
+  cl_board.qc:2345 falls back to 150. Absent key gives airaccel 0, so
+  `Strafe_CapBinds` returns false and both the bar and the line go to "the cap
+  does not bind" -- the third verdict this codebase keeps having to learn, since
+  that is also the legitimate answer for a server genuinely running a low rate.
+  A fallback of 150 is the WRONG repair (it invents the number the CapBinds
+  comment exists to respect); the refusal should name which of the two it is.
+  Note the trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
+  the first frame whenever `sv_airaccelerate` is non-zero, and nothing sets it to
+  zero. Value 150 vs bhop's 1000 grade IDENTICALLY -- both saturate the 30 u/s
+  cap, per mode_bhop.cfg:75-116 -- which is why the fallback has never been felt.
+  Found by ftesurf-a1 reading cl_hud.qc for Patch 462; the cl_lines.qc half and
+  the rest of this paragraph are from checking it.
 - **A hop whose ground contact falls between two packets has no mark**, and
   cannot have one. Samples are one per packet (43-65/s measured against a 66.67
   Hz tick) and a bhop's ground contact is one tick, so the touch is simply
