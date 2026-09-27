@@ -294,6 +294,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Chat_RegisterCvars();
 	Av_RegisterCvars();
 	Players_RegisterCvars();
+	Trn_RegisterCvars();            // Patch 462: the strafe trainer
 	// The online board's two console handles.  No cvars of its own: the
 	// directory URL is lobby_dir, which the menu progs already own and archive.
 	Online_RegisterCommands();
@@ -978,6 +979,19 @@ void() CSQC_Input_Frame =
 
 	SaveLoc_InputFrame();
 	PreStrafe_InputFrame();
+
+	/*
+	  Patch 462: the strafe trainer's one sample per outgoing command.  LAST,
+	  and after PreStrafe_InputFrame rather than before it, so what it reads is
+	  the usercmd as it will actually leave -- when the prestrafe assist drops
+	  +forward, the trainer grades the cmd the server runs and not the key the
+	  hand is on.  Purely an observer: it writes none of the input_* globals.
+
+	  Below the three early returns above on purpose.  A replay, a spectated
+	  player and a ghost are all "not the player strafing", and each of those
+	  branches returning before this is what keeps their frames out of the ring.
+	*/
+	Trn_InputFrame();
 };
 
 /*
@@ -1542,6 +1556,12 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		HUD_Draw(scr);
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
 		NM_Draw(scr);
+		// Patch 462.  AFTER HUD_Draw, which is where ui_cv_scale is read and
+		// where the layout registry is emptied, and well before HUD_EditDraw,
+		// which consumes the rect this publishes.  It claims no cursor and
+		// draws with drawfill/HUD_Text only, so it has no ordering relationship
+		// with any of the panels below.
+		Trn_Draw(scr);
 
 		/*
 		  BUILD 65 -- the Boarding window.

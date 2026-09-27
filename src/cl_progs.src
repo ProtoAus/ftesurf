@@ -70,6 +70,17 @@ client/cl_soundscape.qc
 // CSQC_ConsoleCommand.
 client/cl_triggers.qc
 client/cl_hud.qc
+// Patch 462: the strafe trainer.  AFTER cl_hud.qc for HUD_Text/HUD_TextR,
+// HUD_Size, HUD_Rect, HUD_QualityColor/HUD_GainColor and ui_cv_scale, and after
+// cl_keys.qc for rec_wt_on.  Its maths is sh_strafe.qc's and its yaw wrap is
+// sh_interp.qc's Interp_Arc, both of which are above sui_sys.qc already.
+//
+// It must sit BEFORE cl_hudedit.qc, which lists it as a draggable element, and
+// before cl_main.qc, which calls Trn_RegisterCvars from CSQC_Init, Trn_Draw from
+// the 2D stack and Trn_InputFrame from CSQC_Input_Frame.  Nothing below this
+// line is needed by it, so immediately after cl_hud.qc satisfies everything --
+// the same slot cl_netmon.qc documents for the same reason.
+client/cl_trainer.qc
 // AFTER cl_hud.qc, which owns HUD_Text/HUD_TextR, ui_cv_scale and ui_font_ui.
 // Patch 270: the lobby network monitor -- the on-screen replacement for
 // counting `cl_shownet 3` lines by eye.  It needs nothing from anything below.

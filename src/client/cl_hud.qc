@@ -102,7 +102,17 @@ vector fx_ring_off[8];          // the ring's 8-neighbourhood, filled at registe
 // records what happened the last time only one of the two was raised.  16 rather
 // than exactly 15 because a registration that overflows is dropped SILENTLY, and a
 // spare row is cheaper than finding that out from a panel that will not list.
-#define HUDE_MAX 20              // Patch 361: with HE_MAX (the banner)
+/*
+  PATCH 462: 20 -> 24, TO MATCH HE_MAX, because the trainer took the last spare.
+
+  The two are a pair and the note at :99 above is the record of what happens when
+  only one of them is raised -- an element that simply does not exist as far as
+  the editor is concerned, with no error and no warning.  The trainer's HUD_Rect
+  is the 19th of 20 here while cl_hudedit.qc still had three rows free, so the
+  next panel anybody adds would have overflowed THIS one silently while its
+  editor row worked fine. Same number as HE_MAX now, so the pair cannot drift.
+*/
+#define HUDE_MAX 24
 string hude_id[HUDE_MAX];
 vector hude_pos[HUDE_MAX];      // top-left of what was drawn, pixels
 vector hude_size[HUDE_MAX];     // pixels

@@ -292,6 +292,12 @@ void() HE_BuildTable =
 	HE_Text("hud_seq_size",      "12 14 16 20",  8);     // mono; 16 today
 	HE_Add("strafe",  "Strafe bar", "hud_strafe_x",  "hud_strafe_y",  "hud_strafe",   0, HEA_CT,  260,  40);
 	HE_Text("hud_strafe_size",   "16 20 24 28", 10);     // mono from build 65; 20 today
+	// Patch 462.  Beside the strafe bar because it grades the same quantity, and
+	// among the LISTED rows rather than after the hidden block -- see he_listed:
+	// the list loop skips hidden rows, so the two orders only agree while the
+	// listed ones stay contiguous at the top.
+	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 180, 141);
+	HE_Text("hud_trainer_size",  "8 12 16 20",   8);     // UI; 16 at hud_scale 2
 	HE_Add("board",   "Board",      "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
 	HE_Text("hud_board_size",    "16 20 24 28", 10);     // mono from build 65; 20 today
 	HE_Add("boarding","Boarding",   "hud_boarding_x","hud_boarding_y","hud_boarding", 0, HEA_CT,  150,  44);
@@ -659,6 +665,15 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "trainer")
+	{
+		if (row == 0) return "hud_trainer_trace|Rate trace|t||"
+		                     "|The per-tick graph under the timeline: turn rate against ideal, centre is right, up is too fast.";
+		if (row == 1) return "hud_trainer_rows|Detail rows|c|0 3 6|none;3;6"
+		                     "|How many strafes get a numbered row. The timeline already shows them all.";
+		return "";
+	}
+
 	if (id == "mouse")
 	{
 		if (row == 0) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
@@ -688,6 +703,7 @@ string(string id) HE_Tip =
 	if (id == "splits")   return "Checkpoint times against your best, as you pass each one.";
 	if (id == "seq")      return "One row per segment of flight: what each was worth.";
 	if (id == "strafe")   return "How close your turn rate is to the ideal one, right now.";
+	if (id == "trainer")  return "The last jump, strafe by strafe: how each was graded and whether the key swap matched the flick.";
 	if (id == "board")    return "How well the last ramp contact went.";
 	if (id == "boarding") return "What you entered and left the last ramp with.";
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
@@ -1860,6 +1876,7 @@ void(float r) HE_Default =
 	if (id == "splits")  localcmd("seta hud_splits_x 0.045\nseta hud_splits_y 0.20\n");
 	if (id == "seq")     localcmd("seta hud_seq_x -0.25\nseta hud_seq_y 0.5\n");
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
+	if (id == "trainer") localcmd("seta hud_trainer_x 0.28\nseta hud_trainer_y 0.27\n");
 	if (id == "board")   localcmd("seta hud_board_x -1\nseta hud_board_y -1\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.68\n");
 	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
