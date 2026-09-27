@@ -60,6 +60,13 @@ chatty.
   lifetimes. "I could not build it" and "it cannot be built" are different
   findings and only one of them licenses a comment; when the difference matters,
   trace the FIELD rather than the nearest essay that mentions it.
+  AND THE SEARCH ITSELF CAN BE THE THING THAT LIED. `git log -S` takes a LITERAL
+  string, not a regex, so `-S 'sc = floor(sc \* 16)'` searches for a backslash and
+  finds nothing. That empty output was read as "this line is in no commit" while
+  the line was plainly in the working file, and the contradiction went unexamined
+  for a whole message -- a peer had to point out that the commit it was really in
+  was theirs. `-G` is the regex form. When a search comes back empty on something
+  you can SEE, suspect the search before the conclusion.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
