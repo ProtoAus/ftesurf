@@ -3315,6 +3315,14 @@ void(entity e, float down) SV_SaveLocHold =
 	e.rec_sl_holdmove = e.movetype;
 
 	e.movetype = MOVETYPE_NONE;
+	// BEFORE the zero, because the speed being PARKED is the interesting number and a
+	// line printed after it always reads 0.  Every refusal above says why it refused
+	// and this path said nothing, so no arm could tell a hold that took from one that
+	// was declined -- b30a proves it with a SCREENSHOT and p455hold reached for the
+	// client-side `viewpos`, whose output never reaches the server log at all.
+	dprint(sprintf("hold: took on row %g, parking %.3f u/s, movetype %g back on "
+	               "release\n", e.rec_sl_holdrow, vlen(e.velocity),
+	               e.rec_sl_holdmove));
 	e.velocity = '0 0 0';
 
 	// ...and the same number published, before the first snapshot of the hold
