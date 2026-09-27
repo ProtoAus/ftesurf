@@ -860,6 +860,38 @@ bannered as superseded.)
 
 ## Pi operations (public lobbies)
 
+- **THIS FLEET IS A DEVELOPMENT FLEET AND THE OWNER WANTS CHANGES DEPLOYED.**
+  Standing instruction from the operator, 2026-09-27, in their words: *"we are in
+  development and I WANT changes to be deployed or else I can't test it. You will
+  not be affecting any players because I don't have any."* So `build.ps1 -Pi` is
+  the normal end of a piece of work, not an escalation to ask about: build to 0 new
+  warnings, run the falsifier, commit, deploy, then verify on the host. Do not sit
+  on a tested patch waiting for permission — an undeployed patch cannot be tested
+  by the person who asked for it, which is the whole point of the fleet.
+  The things that still warrant a word first are the ones that are NOT "deploy a
+  tested build": destroying data (the evidence tree, the board database, a save
+  root), anything that cannot be rolled back, and shipping ANOTHER SESSION'S
+  uncommitted work — `-Pi` pushes both progs, so it carries whatever is in the tree.
+  `qwprogs.dat.prev` and `csprogs.dat.prev` are kept by the deploy, so an ordinary
+  progs deploy is one copy away from reversible; say so rather than hedging.
+- **Credentials are the operator's to rotate and they have asked for it to be done
+  when needed.** `rcon_password` and `lobby_master_key` live in
+  `game/ftesurf/cfg/lobby_local.cfg` (NOT in this repo) and are SHARED with surfd's
+  `surfd.env` as `SURFD_RCON_PASSWORD` and `SURFD_KEY` — prove that by hash before
+  touching either, and rotate both sides in one pass or the board starts refusing
+  heartbeats with `bad key`. Back up with the tree's `.bak-prerotate-<stamp>`
+  convention, chmod 600, and never print a value into a log, a commit or a chat
+  line. `SURFD_ADMIN_SECRET` is surfd-only. `sv_guidkey` is a different kind of
+  thing: rotating it RE-DERIVES EVERY CLIENT GUID and orphans the identity binding
+  on existing runs, so it is a data decision and wants asking.
+- **surfd is NOT a systemd unit** — the unit file next to it says so in its own
+  header. It is gunicorn started by `/srv/nvme/surfd/run.sh` as `proto`, so it
+  needs no sudo. `stop.sh` only works if `surfd.pid` exists, and on 2026-09-27 it
+  did not: `run.sh` then started a second gunicorn that could not bind 8084, wrote
+  a pidfile anyway and exited, leaving the OLD process serving. Kill the real
+  master by pid (`ps -eo pid,ppid,lstart,cmd | grep surfd:app`, the one with
+  ppid 1), wait for the port to free, then `run.sh` — and confirm ONE master and
+  one worker afterwards rather than trusting the "started" line.
 - 12 lobbies, systemd `ftesurf@1..12`, basedir `/srv/nvme/ftesurf-server/game`;
   lobby cfgs sourced from this repo's `ftesurf/cfg/lobby/` — edit here, scp there.
 - Server CONTENT is hand-copied beside the engine: `game/{momentum (maps only),
