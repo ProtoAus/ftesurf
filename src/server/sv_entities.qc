@@ -1889,13 +1889,25 @@ void(entity t, float on) SV_IOEnable =
   later `;` separates.
 
   REFUSING OUTRIGHT COSTS NOTHING, AND THAT IS MEASURED RATHER THAN HOPED.
-  tools/census/iocmd.py over all 1316 shipped bsps: 216 maps carry a Command output,
-  737 rows, of which 101 are allow-listed.  THREE rows anywhere in the corpus carry a
-  terminator and NONE of those three is allow-listed, and ZERO rows contain a quote --
-  so this refusal changes the behaviour of no shipped map.  The self-check in that
-  census proves the filter can fire: it parsed 12 distinct verbs including
-  sv_airaccelerate (38 rows) and sv_maxvelocity (51), all of which the allow-list
-  already refused.
+  tools/census/iocmd.py over all 1316 shipped bsps: 301 maps carry a Command output,
+  1438 rows, of which 194 are allow-listed AS THE GATE SEES THE VERB (201 under a
+  strip+lowercase matcher -- the gate does neither, so 194 is the number to quote).
+  THIRTEEN rows anywhere in the corpus carry a terminator and NONE of the thirteen is
+  allow-listed; ZERO contain a quote and ZERO contain `$` or `%`.  So this refusal
+  changes the behaviour of no shipped map.
+
+  THOSE NUMBERS ARE ROUND 7'S, AND THE FIRST SET WAS ROUGHLY HALF.  The census was
+  blind twice over -- it took a dict from bsplib.parse_ents, which keeps only the LAST
+  value of a repeated key (Source entities repeat output keys routinely: 450 rows lost),
+  and it assumed a comma separator when VBSP >= v25 uses 0x1B ESC and the reader eight
+  hundred lines below THIS one picks the separator per value (144 rows on 34 maps
+  invisible, including bhop_arcane, the map this essay names as the allow-list's
+  legitimate customer).  A parser that cannot see a class of row is the same defect as
+  a filter that never fires, and the self-check was scoped to the same blind spot so it
+  could not notice.  The CONCLUSION survived the re-census unchanged; every number in
+  it did not.  The verb histogram now reads sv_airaccelerate 141, sv_maxvelocity 114,
+  sv_cheats 25 -- all already refused on the verb, which is the allow-list doing the
+  half it could always do.
 
   Separate function, and the four tests are sequential ifs rather than one `||`,
   because fteqcc's `||` evaluates both sides -- harmless for four strstrofs, but the
@@ -1907,6 +1919,21 @@ float(string s) SV_IOCmdInjects =
 	if (strstrofs(s, "\n", 0) >= 0)  return TRUE;
 	if (strstrofs(s, "\r", 0) >= 0)  return TRUE;
 	if (strstrofs(s, "\"", 0) >= 0)  return TRUE;
+	/*
+	  `$` IS A SECOND CLASS AND IS REFUSED ON CHEAP-INSURANCE GROUNDS, not because it
+	  can start a command -- it cannot.  Cmd_ExpandCvar interpolates `$cvar` AFTER the
+	  Cbuf split, so it never becomes a second command; what it can do is READ a cvar
+	  into the allow-listed text, and the expansion gate admits any cvar whose
+	  restriction is <= the exec level.  At localcmd's RESTRICT_INSECURE (30) that
+	  includes `rcon_password` (restriction 29), and the CVAR_NOUNSAFEEXPAND guard beside
+	  it tests Cmd_IsInsecure() against an exec level that is still 0 at expansion time.
+	  So `server,Command,say $rcon_password` reads as expanding and broadcasting.
+	  READ IN THE ENGINE, NOT MEASURED IN A RUN -- round 7, lens A, and it is recorded
+	  that way rather than as a demonstrated bypass.  It is refused anyway because the
+	  census prices the refusal at ZERO: 0 of 1438 shipped Command rows contain `$` or
+	  `%`.  Blocking an unproven read for nothing is a better trade than leaving it.
+	*/
+	if (strstrofs(s, "$",  0) >= 0)  return TRUE;
 	return FALSE;
 };
 
@@ -1918,23 +1945,29 @@ void(string cmd) SV_IOCommand =
 	sp = strstrofs(cmd, " ", 0);
 	w = (sp < 0) ? cmd : substring(cmd, 0, sp);
 
-	/*
-	  BEFORE THE ALLOW-LIST, not after, and it is refused by its own name in the
-	  census rather than folded into "blocked command": a `say` that is refused for
-	  carrying a `;` is a different event from a `sv_airaccelerate` refused for its
-	  verb, and an operator reading the census has to be able to tell them apart --
-	  the first is someone probing, the second is an ordinary map.
-	*/
-	if (SV_IOCmdInjects(cmd))
-	{
-		if (SV_CensusAdd(strcat("injecting command ", w)))
-			dprint(sprintf("^1entity I/O: REFUSED map command '%s' -- it carries a "
-			               "command separator or quote\n", cmd));
-		return;
-	}
-
 	if (w == "say" || w == "echo" || w == "print")
 	{
+		/*
+		  INSIDE THE ALLOW-LIST, AND ROUND 7 MOVED IT HERE.  The first cut tested this
+		  BEFORE the verb, which made the separate census key say the opposite of what
+		  it was for.  The key exists so an operator can tell a `say` refused for
+		  carrying a separator (someone probing) from a `sv_airaccelerate` refused for
+		  its verb (an ordinary map) -- and measured over the corpus, ALL 13 rows that
+		  carry a terminator begin `sv_cheats`/`sv_airaccelerate`/`sv_maxvelocity`, i.e.
+		  every hit an operator would ever have seen on shipped content was the ordinary
+		  case filed under the probing name.  Execution was identical either way (both
+		  paths refuse); it was the census and the reason text that were inverted.
+		  Now only a verb the gate would have ADMITTED can reach this.
+		*/
+		if (SV_IOCmdInjects(cmd))
+		{
+			if (SV_CensusAdd(strcat("injecting command ", w)))
+				dprint(sprintf("^1entity I/O: REFUSED map command '%s' -- an "
+				               "allow-listed verb carrying a command separator, "
+				               "quote or $\n", cmd));
+			return;
+		}
+
 		localcmd(strcat(cmd, "\n"));
 		return;
 	}

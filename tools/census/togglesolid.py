@@ -29,24 +29,43 @@ only CONTAINED survives the AABB problem.  None of them proves the top face is
 reachable, or that the Enable is reachable without the map's cooperation -- a hit
 here is a candidate for a live check, not a finding.
 
-RESULT 2026-09-26, 1316 BSPs, 0 unreadable, 535 zoned, 0 without a start:
+RESULT -- SUPERSEDED, AND BY THIS FILE'S OWN BUG.  Read both.
 
-    NO SHIPPED MAP CARRIES ONE.  Grade 3 (contained) is ZERO.  Grade 2 has a
-    single row and it is the AABB trap in person: surf_hourglass's `func_brush`
-    `dynamic_flatsky`, StartDisabled 1, whose box is
-    (-16128,-16128,-1536)..(16256,16128,9472) -- 32384 x 32256 x 11008, i.e. the
-    whole map.  It is a skybox shell, so its AABB contains the start zone at
-    z 800..1200 by construction while its faces are ~16000 u away.  There is no
-    surface at the start to stand on.
+  2026-09-26 (WRONG, kept because the correction is the lesson): "NO SHIPPED MAP
+  CARRIES ONE.  Grade 3 (contained) is ZERO ... 184 maps carry an
+  Enable/Disable/Toggle output and 88 brush entities are named by one, and none of
+  those 88 reaches a start zone."
 
-    THE ENABLED-BY-IO PATH IS A REAL ZERO, NOT A DEAD BRANCH -- the self-check
-    the run prints exists because this file would otherwise be a filter that
-    never fired: 184 maps carry an Enable/Disable/Toggle output and 88 brush
-    entities are named by one, and none of those 88 reaches a start zone.
+  That run used a DICT for the output scan and assumed a COMMA separator.  Both are
+  wrong (see enable_targets), and both under-count -- which made the census read more
+  reassuring than the corpus warranted.  Round 7 found the same two bugs in
+  tools/census/iocmd.py; this file had them too.
 
-So the fail-open is sound in MECHANISM and has no instance to exploit today.  It
-stays a BACKLOG entry rather than a patch because nothing stops a future map from
-adding one, and because the same hole is reachable by hand with no map at all:
+RESULT 2026-09-27, 1316 BSPs, 0 unreadable, 535 zoned, 0 without a start, sound parse:
+
+    GRADE 3 IS 1, NOT 0.  **surf_legends**, `func_brush` named `health_small3`,
+    reached by an Enable/Disable/Toggle output, box CONTAINED in a start zone,
+    overlap volume 4608.  So the fail-open has a shipped CANDIDATE and the earlier
+    "no instance" claim is withdrawn.
+
+    IT IS A CANDIDATE AND NOT YET A FINDING, on this file's own terms: containment
+    survives the AABB problem but still does not show that the brush's top face sits
+    at a standable height inside the slab, nor that the Enable is reachable without
+    the map's cooperation, nor that a save can be taken at rest above it.  Those are
+    a live check on surf_legends, which is the next step and has not been done.
+
+    Grade 2's other row is the AABB trap in person and still is: surf_hourglass's
+    `func_brush` `dynamic_flatsky`, StartDisabled 1, box
+    (-16128,-16128,-1536)..(16256,16128,9472) -- the whole map.  A skybox shell, so
+    its AABB contains the start zone at z 800..1200 by construction while its faces
+    are ~16000 u away.  Nothing to stand on.
+
+    SELF-CHECK, sound: 226 maps carry an Enable/Disable/Toggle output (was 184), 276
+    brush entities are named by one (was 88), and ONE of them reaches a start zone.
+
+So the fail-open is sound in MECHANISM and now has one instance worth checking.  It
+stays a BACKLOG entry rather than a patch because the same hole is reachable by hand
+with no map at all:
 `state.txt` is plain text in the player's own data/saves tree, and the save is
 keyed by map NAME only -- the `map` key is written (SV_SaveWriteState) and NEITHER
 READER EVER LOOKS AT IT, so a different .bsp under the same name is not noticed.
@@ -154,19 +173,32 @@ def truthy(v):
     return str(v).strip() not in ("", "0", "false", "False")
 
 
-def enable_targets(ents):
+ESC = ""
+
+
+def enable_targets(pairs):
     """Names any entity output aims an Enable/Disable at.
 
-    Source entity I/O is `target,Input,param,delay,times` in the VALUE of an
-    On* key, so this is a substring test on values rather than a key whitelist --
-    the key names are per-class (OnTrigger, OnPressed, OnTimer, OnMapSpawn...).
+    Source entity I/O is `target,Input,param,delay,times` in the VALUE of an On* key,
+    so this is a test on values rather than a key whitelist -- the key names are
+    per-class (OnTrigger, OnPressed, OnTimer, OnMapSpawn...).
+
+    TAKES PAIRS, NOT A DICT, AND THE SEPARATOR IS CHOSEN PER VALUE.  Both corrections
+    are round 7's, found when the same two bugs were found in tools/census/iocmd.py:
+    bsplib.parse_ents keeps only the LAST value of a repeated key and Source entities
+    repeat output keys routinely, and VBSP >= v25 separates the record with 0x1B ESC
+    (which is what sv_entities.qc's own reader picks per value).  Measured on the zoned
+    corpus: the dict-and-comma version saw 184 maps and 366 target names, the sound one
+    sees 226 and 860.  Under-counting HERE makes the census read more reassuring than
+    the corpus warrants, which is the direction that matters.
     """
     out = set()
-    for e in ents:
-        for k, v in e.items():
-            if not isinstance(v, str) or ',' not in v:
+    for ent in pairs:
+        for k, v in ent:
+            sep = ESC if ESC in v else ','
+            if sep not in v:
                 continue
-            parts = v.split(',')
+            parts = v.split(sep)
             if len(parts) < 2:
                 continue
             inp = parts[1].strip().lower()
@@ -190,7 +222,11 @@ def main():
 
     for name in sorted(bsps):
         try:
-            ents, models = bsplib.read(bsps[name])
+            pairs, models = bsplib.read_pairs(bsps[name])
+            # Dicts for the single-valued reads (classname, model, origin,
+            # StartDisabled) -- the right shape for those -- and PAIRS for the output
+            # scan, which is the one that repeats keys.
+            ents = None if pairs is None else [{k: v for k, v in e} for e in pairs]
         except Exception:
             st['unreadable'] += 1
             continue
@@ -210,7 +246,7 @@ def main():
             st['nostart'] += 1
             continue
 
-        io = enable_targets(ents)
+        io = enable_targets(pairs)
         if io:
             st['io_any_maps'] += 1
         hit_sd = hit_io = False

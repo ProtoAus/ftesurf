@@ -925,8 +925,11 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	  Every caller of this function is a gesture the player made: SV_ZoneMove and
 	  SV_ZoneMoveAt are reached from SV_ZoneChatCommand (`!r`/`!m`/`!s`/`!b`, and
 	  their zone_reset/zone_restart twins) and from zone_goto.  All of them arrive
-	  through ClientCommand, which map entity I/O cannot reach -- SV_IOCommand's
-	  allow-list is say/echo/print and it runs them on the SERVER console.
+	  through ClientCommand, which map entity I/O cannot reach ON A DEDICATED SERVER --
+	  SV_IOCommand runs a map's command on the SERVER console, whose `say` exists only
+	  when isDedicated.  Round 6 corrected this sentence: on a LISTEN server the
+	  client's own CL_Say_f runs instead and a map CAN reach the gesture.  See the
+	  run_t_hopped field essay in sv_timer.qc and BACKLOG.md.
 	*/
 	SV_TimerForgiveHop(self, "a reset gesture (!r/!m/!s/!b/zone_goto)");
 

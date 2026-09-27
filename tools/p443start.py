@@ -251,13 +251,17 @@ FIELDS = {
 }
 
 PRESENCE = ("hopsay", "rearmsay", "stitched", "gracesay", "hopr", "forgivesay",
-            "hopr2", "hopset")
+            "hopset")
 # Fields graded by HOW MANY times the line appears, not by a captured value.  `gracen`
 # is how p443grace proves its gesture was ONE jump: on the shipped zones an arm edge
 # lands after the jump and zeroes run_t_jumps, so the report's own count reads 0 and
 # cannot be the premise -- but the rule prints once per jump it declines to judge, and
 # two of those lines would be two jumps.
-COUNTED = ("gracen",)
+COUNTED = ("gracen", "hopr2")
+# `hopr2` IS COUNTED AND NOT A PRESENCE, and that is round 7's correction.  Round 6
+# added the reminder and graded it present/absent -- which cannot tell ONE line from
+# THIRTY, and it was printing once per HOP: three lines in 2.3 s of held +jump in this
+# arm's own log.  The fix is a once-per-attempt latch, so the number is the measurement.
 
 # arm -> (cfg, log, EXPECT post-fix, CONTROL overrides, REPORT-only fields)
 ARMS = {
@@ -393,12 +397,19 @@ ARMS = {
          # untouched by this patch, so a chain that does not taint means the gesture
          # did not land and every section below is void rather than green.
          "J":  {"hopped": "1", "hopsay": "present", "hopr": "present",
-                "hopset": "present", "state": "armed"},
+                "hopset": "present", "state": "armed",
+                # EXACTLY ONE reminder for the whole chain.  The taint is set on the
+                # first judged hop and every later hop in the same attempt re-enters
+                # the block, so this is where round 6's spam showed up.
+                "hopr2": "1"},
          # ROUND 6: the taint is already up, so the `hopped start` block is skipped --
          # the reminder is the only thing that can tell the player the tag stands.
          # `hopsay` ABSENT here is the premise that the guard really did skip, so a
          # present `hopr2` is a measurement of the new branch and not of the old one.
-         "J2": {"hopped": "1", "hopsay": "absent", "hopr2": "present",
+         # And ZERO more in the second burst: no arm intervened, so the latch must
+         # still be held.  This section is what proves the latch rather than the
+         # message -- a build without it reads 3 or more here.
+         "J2": {"hopped": "1", "hopsay": "absent", "hopr2": "0",
                 "state": "armed"},
          # THE PATCH.  The Build 47 gate forces an arm edge; the arm no longer forgives.
          #
@@ -428,11 +439,11 @@ ARMS = {
          # THE PATCH MUST LEAVE A WAY OUT.  Without this section a change that deleted
          # every clear would read identically at J/L/R and be worse than no patch.
          "G":  {"hopped": "0", "forgivesay": "present"}},
-        {"445": {"J": {"hopr": "absent", "hopset": "absent"},   # neither line exists pre-445
+        {"445": {"J": {"hopr": "absent", "hopset": "absent", "hopr2": "0"},  # none exist pre-445
                  # Pre-445 the taint is equally sticky at run_rearmhop 0 (no arm
                  # intervenes here), so `hopped 1` is the same -- what is missing is
                  # the branch that tells the player.
-                 "J2": {"hopr2": "absent"},
+                 "J2": {"hopr2": "0"},
                  # SV_TimerArm's clear is still there, so the forced arm takes the
                  # taint with the flags -- the reading Patch 435 shipped.  `jumps`,
                  # `support` and the absent dprint are the SAME on both sides: they are

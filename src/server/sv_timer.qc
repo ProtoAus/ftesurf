@@ -1551,12 +1551,19 @@ float() SV_RecEnabled =
   chain's speed past the clear -- which is what makes them safe to forgive and
   SV_TimerArm unsafe.
 
-  AND THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the second half of why this
-  shape works where the count did not.  SV_ZoneChatCommand is reached only from
-  ClientCommand -- a client stringcmd -- and map entity I/O cannot become one:
-  SV_IOCommand's allow-list is exactly say/echo/print and it runs them through
-  localcmd() on the SERVER console (sv_entities.qc).  A map can make the server
-  talk; it cannot make a player press `!r`.
+  AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
+  second half of why this shape works where the count did not.  SV_ZoneChatCommand is
+  reached only from ClientCommand -- a client stringcmd -- and map entity I/O runs
+  through localcmd(), i.e. the SERVER console (sv_entities.qc).
+
+  THE DEDICATED QUALIFIER IS LOAD-BEARING AND THIS ESSAY SAID "cannot" WITHOUT IT.
+  Round 6 found that the server's own `say` is registered only `if (isDedicated)`, so
+  on a LISTEN server localcmd("say !r") runs the CLIENT's CL_Say_f and forwards as that
+  player's chat -- which does reach the gesture.  It buys a cheater nothing (the forced
+  `!r` zeroes velocity and voids the run, and a listen server cannot submit to the
+  board) but `say !discard` on the same path destroys a parked Multi-Session run, so it
+  is not harmless either.  BACKLOG.md carries it.  The lobbies are dedicated, which is
+  why the rule stands where it matters.
 
   run_rearmhop keeps the build-21 dwell forgiveness as an operator knob and now
   DEFAULTS TO 0.  It was never a speed path -- 0.25 s of ground friction with
@@ -1683,6 +1690,13 @@ float() SV_RecEnabled =
   begins.  See SV_TimerClassSay.
 */
 .float  run_t_said;
+// Round 7: the hopped-start reminder's once-per-ATTEMPT latch.  NOT folded into
+// run_t_said, which is a TIMESTAMP that SV_TimerClassSay rate-limits on, not a bit
+// field.  Cleared by SV_TimerArm beside it and by SV_TimerForgiveHop, so a fresh
+// attempt earns a fresh reminder and a chain inside one attempt does not.  It exists
+// because round 6's reminder printed on every hop: three lines in 2.3 s of held +jump
+// in the arm's own log, ~30 for a warm-up.
+.float  run_t_hopsaid;
 
 /*
   The run clock is stopped.  Build 18.
@@ -8874,8 +8888,9 @@ void(entity e, string why) SV_TimerForgiveHop =
 	if (!e.run_t_hopped)
 		return;
 
-	e.run_t_hopped = FALSE;
-	e.run_t_jumps  = 0;
+	e.run_t_hopped  = FALSE;
+	e.run_t_jumps   = 0;
+	e.run_t_hopsaid = 0;          // round 7: told afresh if it happens again
 	dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
 	sprint(e, PRINT_HIGH, "^2start re-armed^7 -- the hopped start is forgiven\n");
 };
@@ -10258,21 +10273,51 @@ float(entity e) SV_TimerJumpWatch =
 					}
 				}
 				/*
-				  ROUND 6: AND THE REMINDER, on every later fluffed start.
+				  ROUND 6 ADDED A REMINDER HERE AND ROUND 7 FIXED IT THREE TIMES.
+				  Kept in full because every one of the three was found by reading
+				  the arm's own log rather than the code.
 
-				  Separate from the block above rather than folded into it, because
-				  the two say different things: that one announces a taint that has
-				  just been earned, this one tells a player who is ALREADY tagged
-				  that the tag is still standing and what lifts it.  Gated on
-				  `run_t_hopped` being already set, so it is exactly the case the
-				  guard above now excludes, and on TS_ARMED so it cannot fire at a
-				  hop taken out on the course (that goes to SV_TimerPractice).
-				  run_t_said is not used: it is cleared by the arm, and the point of
-				  this line is that it survives arms.
+				  1  IT PRINTED ONCE PER HOP, NOT ONCE PER ATTEMPT.  This block sits
+				     inside a per-packet jump EDGE, and while TS_ARMED run_t_startok
+				     can never become TRUE (run_starthop_strict 1 means every settle
+				     arm needs TS_RUNNING) -- so a player bhopping in the box gets a
+				     line per hop.  Measured in cfg/test/p445hop.log: THREE lines in
+				     2.3 s of held +jump, and ~30 for a 30 s warm-up.  run_t_hopsaid
+				     is the latch, cleared by SV_TimerArm beside run_t_said, so the
+				     cadence is once per ATTEMPT: a fresh arm earns a fresh reminder,
+				     a chain inside one attempt does not.
+				  2  IT OFFERED A REMEDY THAT IS NOT ONE.  It said "press !r to
+				     re-arm, or walk out".  Walking out does NOT clear the tag --
+				     SV_TimerStart consumes (dirty || hopped) and the run becomes
+				     practice -- so one of the two options presented as a way out
+				     silently threw the attempt away.  Only `!r` is offered now.
+				  3  THE SILENT CASE IS COVERED BY THE THIRD ARM BELOW.  With
+				     run_t_dirty already up and run_t_hopped still clear, NEITHER the
+				     announce above nor this reminder ran, so the FIRST tag could be
+				     earned in total silence (noclip in the box then off, or
+				     sl_replay).  The dprint at the set is not enough: `developer` is
+				     never set on the fleet.
 				*/
-				else if (e.run_t_hopped && e.run_t_state == TS_ARMED)
+				else if (e.run_t_hopped && e.run_t_state == TS_ARMED && !e.run_t_hopsaid)
+				{
 					sprint(e, PRINT_HIGH,
-					       "^3still a hopped start^7 -- press ^2!r^7 to re-arm, or walk out\n");
+					       "^3still a hopped start^7 -- press ^2!r^7 to re-arm the start\n");
+					e.run_t_hopsaid = TRUE;
+				}
+				/*
+				  Round 7: the tag being earned while ALREADY dirty.  Same latch, and
+				  the wording differs because the player's run is doomed for two
+				  reasons at once and `!r` fixes only one of them -- it re-arms the
+				  start, and the noclip taint is re-derived from the movetype at that
+				  arm, so in practice a clean `!r` does clear both.  Said once.
+				*/
+				else if (e.run_t_dirty && e.run_t_state == TS_ARMED && !e.run_t_hopsaid)
+				{
+					sprint(e, PRINT_HIGH,
+					       "^3hopped start^7 -- and this attempt was already marked; "
+					       "^2!r^7 resets both\n");
+					e.run_t_hopsaid = TRUE;
+				}
 
 				/*
 				  BUILD 21: WHICH TAINT, AND THE SPLIT IS THE WHOLE FEATURE.
@@ -10802,6 +10847,11 @@ void(entity e, float z) SV_TimerArm =
 	// A new attempt has been told nothing yet, so it can be told everything.
 	// With run_t_flags, because it is a statement about what those said.
 	e.run_t_said = 0;
+	// Round 7, and the same sentence: the hopped-start reminder is a statement about
+	// what THIS attempt has been told.  The taint itself deliberately survives (see
+	// the field); only the reminder's latch resets, so a player who arms again while
+	// still tagged is told again, once.
+	e.run_t_hopsaid = 0;
 
 	/*
 	  PATCH 445 REMOVED `e.run_t_hopped = FALSE` FROM HERE, and this is the whole
@@ -13116,9 +13166,14 @@ void(entity e) SV_TimerSpawn =
 	SV_TimerWarped(e);
 	SV_TimerIdle(e);
 	// Patch 445: SV_TimerIdle no longer clears the hopped-start taint (see its
-	// essay), so the two lifecycle events that SHOULD clear it ask for it by name.
-	// A respawn is a fresh body at a spawn point with no velocity, so there is no
-	// chain's speed for the forgiveness to carry.
+	// essay), so the lifecycle event that SHOULD clear it asks for it by name.
+	// A respawn is a fresh body at a spawn point with no velocity -- PutClientInServer
+	// has already zeroed velocity and the carrier trio above this call -- so there is
+	// no chain's speed for the forgiveness to carry.
+	// ROUND 7: "the two lifecycle events" is what this said, and round 6 had already
+	// deleted the other one (SV_TimerMapInit's was dead code).  A caller list that IS
+	// the safety argument has to match its callers, which is the defect round 6 existed
+	// to fix -- found here again one commit later.
 	SV_TimerForgiveHop(e, "a respawn");
 };
 

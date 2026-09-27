@@ -9,9 +9,12 @@ terminates a line at an unquoted `;`).
 
 THE ARM DRIVES THE REAL ENTITY-I/O PATH, and it has to MAKE its own condition.  No
 shipped map carries an allow-listed Command with a `;` in it -- tools/census/iocmd.py
-counted 737 Command rows over all 1316 bsps and found three with a terminator, none
+counted 1438 Command rows over all 1316 bsps and found THIRTEEN with a terminator, none
 of them allow-listed -- so pointing at the corpus would be pointing at a filter that
 never fires.  CLAUDE.md: make the condition, do not just point at it.
+(Those counts are round 7's.  The first published pair was 737/3: the census took a
+dict that dropped repeated entity keys, and assumed a comma separator where VBSP >= v25
+uses 0x1B ESC.  The conclusion held; the numbers were roughly half.)
 
 HOW THE FIXTURE IS MADE, and why it is not a compiled map.  bhop_futile's logic_auto
 already fires `server,Command,sv_airaccelerate 150` at map spawn -- the row the gate's
@@ -37,8 +40,11 @@ simply stop being referenced.  Nothing else in the header moves.
   on a PRE-446 build   Cbuf splits the line, the echo runs AND the `set` runs ->
                        `p446hit` reads 1.  That is the injection, demonstrated rather
                        than argued.
-  on a FIXED build     SV_IOCmdInjects refuses before the allow-list -> the refusal
-                       line is in the log and `p446hit` is still 0.
+  on a FIXED build     SV_IOCmdInjects refuses -> the refusal line is in the log and
+                       `p446hit` is still 0.  (Round 7 moved that test INSIDE the
+                       allow-list, so only a verb the gate would have admitted can
+                       reach it -- the census key was otherwise filed under "probing"
+                       for every ordinary map in the corpus.)
 
 The fixture is written to ftesurf/maps/ (gitignored) under its own name, never over a
 Steam file, and removed afterwards.  It carries no zone data, which is deliberate:
@@ -54,8 +60,8 @@ identically to one that refused, which is the arm-whose-condition-never-occurs t
 level up.  `cvarread` is the third verdict beside them: it proves the payload witness
 was readable, so `payload absent` cannot quietly mean "could not see".
 
-RESULT 2026-09-27, both sides exit 0.  qwprogs EF68B621610C64C1 fixed /
-1F000116DB26CD5A control (a worktree at bb4fe45, HEAD before the patch).
+RESULT 2026-09-27, both sides exit 0, re-run after round 7.  qwprogs AB1F10EBDD196A3E
+fixed / 1F000116DB26CD5A control (a worktree at bb4fe45, HEAD before the patch).
 
   CONTROL  fired present, `p446hit` reads 1, no refusal line.  THE INJECTION IS
            DEMONSTRATED: a map's allow-listed `echo` carried a `set` past the gate and
@@ -66,7 +72,7 @@ RESULT 2026-09-27, both sides exit 0.  qwprogs EF68B621610C64C1 fixed /
 One prediction of mine was falsified and is written up where it was made: I expected
 `fired` present on both sides.  Refusing outright discards the legitimate half too, so
 a future map writing `say Secret 1; well done` prints nothing -- free only because the
-census measured zero allow-listed rows carrying a `;` across 1316 shipped bsps.  And
+census measured zero allow-listed rows carrying a `;` across all 1438 shipped rows.  And
 the defect bit this arm's OWN cfg first: an `echo ==== ... fixture; its logic_auto ...`
 line was split by Cbuf and the run logged `Unknown command "its"`.
 """
@@ -111,7 +117,11 @@ FIELDS = {
     # same reason: the refusal line contains both tokens.
     "fired":    rb"P446FIRED",
     "payload":  rb'"p446hit" is "1"',
-    "injsay":   rb"REFUSED map command .* command separator or quote",
+    # Anchored on the DISTINCTIVE half only.  The full sentence was matched at first and
+    # round 7 broke it by rewording the dprint (it gained `or $`) -- the arm went red on
+    # a build whose refusal was working, which is the right failure for a check that
+    # grades the subject's own print, but the pattern should not be that brittle.
+    "injsay":   rb"REFUSED map command",
     "blocked":  rb"refused map command .* only say/echo/print",
     # Proof the cvar was readable at all.  Without it, `payload absent` could mean
     # "could not see" rather than "did not run" -- CLAUDE.md's third verdict, in the

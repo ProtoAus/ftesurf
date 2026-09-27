@@ -7,32 +7,47 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
-- **`SV_IOCommand`'s allow-list does not bound what a map runs: `Cbuf` splits on an
-  unquoted `;`.** The gate tests only the FIRST space-delimited token and then hands the
-  **whole** string to `localcmd` (`sv_entities.qc` SV_IOCommand), and `Cbuf_ExecuteLevel`
-  terminates a command at an unquoted `;` (engine `common/cmd.c:495` and `:654`). So a
-  map output `server,Command,echo x;set run_starthop 0` passes the allow-list and then
-  runs the second command. `RESTRICT_INSECURE` is 30 against a default `rcon_level` of
-  20, so any command registered without an explicit restriction executes. **This is the
-  door the gate's own essay exists to shut** — its comment names bhop_futile's
-  `sv_airaccelerate 150` as the reason — and it is open. `run_starthop` is read LIVE
-  every packet (`sv_timer.qc`, the hop block's own gate), so one poisoned map switches
-  the whole hopped-start rule off for everyone with nobody's velocity zeroed: exactly
-  the "the map hands out the forgiveness with the speed still on" class Patch 445 exists
-  to eliminate, arriving through the door 445 cites as the reason its design is safe.
-  Found independently by two lenses in Patch 445's round 6. MECHANISM CONFIRMED IN CODE,
-  NOT MEASURED. Two things to do: split on `;` (or quote) in SV_IOCommand, and a census
-  over the corpus for `;` in a `Command` parameter — `tools/census/` has the bsplib.
-- **And on a LISTEN server, map I/O can reach `ClientCommand` after all.** The server's
-  own `say` is registered only `if (isDedicated)` (engine `server/sv_ccmds.c`), so on a
-  listen server `localcmd("say !r\n")` runs the CLIENT's `CL_Say_f`, which forwards as
-  that player's chat and reaches `SV_ZoneChatCommand`. Combined with the `;` hole above
-  it does not even need `say` as the first word. **This falsifies the absolute claim**
-  that map data cannot press `!r`, which AGENTS.md and Patch 445's own essays stated —
-  both are corrected to the narrower true fact (`localcmd` cannot reach `ClientCommand`
-  on a DEDICATED server, which is what the lobbies are). It buys a cheater nothing: the
-  forced `!r` zeroes velocity and voids the run, and a listen server cannot submit to the
-  board at all. It is a grief vector on a server the victim operates. Round 6, lens B.
+- **A map's allow-listed console command could still READ a cvar out through `$`, and
+  that half is refused on an unverified read.** `Cmd_ExpandCvar` interpolates `$cvar`
+  into the text AFTER the Cbuf split, so it can never start a second command — Patch 446
+  closed that class. What it can do is expand a cvar into an allow-listed `say`, and the
+  expansion gate admits any cvar whose restriction is <= the exec level; at `localcmd`'s
+  `RESTRICT_INSECURE` (30) that includes `rcon_password` (restriction 29), with the
+  `CVAR_NOUNSAFEEXPAND` guard testing an exec level that is still 0 at expansion time.
+  **READ IN THE ENGINE, NOT MEASURED IN A RUN** — nobody has driven
+  `server,Command,say $rcon_password` and watched. Patch 446 refuses `$` anyway because
+  the census prices it at zero (0 of 1438 shipped rows contain `$` or `%`), so this entry
+  is the *verification* that is owed, not an open hole: build the fixture, confirm
+  whether a pre-446 build broadcasts the password, and if it does this was a secret
+  disclosure and the lobby keys want rotating. Round 7, lens A.
+- **`tools/census/bsplib.py`'s `parse_ents` returns a dict, so every census that counts
+  entity OUTPUTS has been under-counting.** A dict keeps only the LAST value of a
+  repeated key and Source entities repeat output keys routinely. Round 7 measured the
+  damage on two tools: `iocmd.py` saw 737 `Command` rows where the sound parse sees 1438,
+  and `togglesolid.py` saw 184 maps with an Enable/Disable/Toggle output where the sound
+  parse sees 226 — and that second one **overturned its own published conclusion** (grade
+  3 went from 0 to 1). `parse_ents_pairs`/`read_pairs` now exist beside it and both tools
+  use them, but **the other censuses in that directory have not been re-checked**:
+  `pushcensus.py`, `sscensus.py`, `startdest.py`, `onjumpstart.py`, `pushtilt.py`,
+  `ssd1.py`, `sscount.py`. Any of them that reads an `On*` key is suspect, and the
+  numbers from them are quoted in source comments and BACKLOG entries across the tree.
+  A second, independent bug travels with it: those tools split the I/O record on `,`,
+  and VBSP >= v25 uses 0x1B ESC — `sv_entities.qc` picks the separator per value, the
+  tools did not, and 144 of 1438 rows on 34 maps were invisible. Round 7, lens B.
+- **And on a LISTEN server, map I/O can reach `ClientCommand` after all — and it can
+  destroy data, not just grief.** The server's own `say` is registered only
+  `if (isDedicated)` (engine `server/sv_ccmds.c`), so on a listen server
+  `localcmd("say !r\n")` runs the CLIENT's `CL_Say_f`, which forwards as that player's
+  chat and reaches `SV_ZoneChatCommand`. **This falsifies the absolute claim** that map
+  data cannot press `!r`, which AGENTS.md and Patch 445's own essays stated; all are
+  corrected to the narrower true fact (`localcmd` cannot reach `ClientCommand` on a
+  DEDICATED server, which is what the lobbies are). PATCH 446 DOES NOT NARROW THIS: a
+  bare `say !…` needs no separator, so it still passes. `!r` itself buys a cheater
+  nothing (the forced reset zeroes velocity and voids the run, and a listen server cannot
+  submit to the board), but the bang table in `sv_player.qc` also holds **`!discard`,
+  which destroys the player's parked Multi-Session run**, and `!rtv`/`!extend`, which
+  cast the local player's vote. That is data loss on a server the victim operates.
+  Round 6 lens B; extended in round 7.
 - **THE CHEAPEST PRESPEED ROUTE IS UNTOUCHED BY THE HOPPED-START RULE, and the entry
   below over-claimed what Patch 445 narrowed.** The taint block is gated on
   `!run_t_startok`, and `run_t_startok` latches ~1 s after leaving the box or on the
@@ -368,19 +383,29 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   because this hazard bites there. An invariant that holds by ordering is a landmine:
   anything that moves the arm earlier, or the discard later, leaves the HUD claiming a
   recording with no buffer. Named at the gate now. Patch 443 round 5, lens C.
-- **A togglable `SOLID_BSP` brush whose box reaches a start zone is a FAIL-OPEN, and no
-  shipped map has one.** `SL_RowGrounded` traces the world as it is at LOAD time and the
-  save records nothing about the world at WRITE time, so: hover one unit above where a
-  `StartDisabled` brush's top face will be, inside a start slab, save at the apex, let
-  the map's own button fire the `Enable`, load. The probe finds `nz 1.000` at `frac ~0`,
-  grants, and the forced arm launders. MEASURED over the shipped corpus
-  (`tools/census/togglesolid.py`, 1316 bsps, 535 zoned): **grade 3 (contained) is ZERO**,
-  and the single grade-2 row is the AABB trap in person -- `surf_hourglass`'s skybox
-  shell, whose box spans the whole map while its faces are ~16000 u away. The
-  enabled-by-IO path is a real zero and not a dead branch: 184 maps carry an
-  Enable/Disable/Toggle output and 88 brush entities are named by one, none reaching a
-  start. So the mechanism is sound and has no instance to exploit today; it stays here
-  because nothing stops a future map adding one. Patch 443 round 5, lens B.
+- **A togglable `SOLID_BSP` brush whose box reaches a start zone is a FAIL-OPEN, and
+  ONE SHIPPED MAP IS A CANDIDATE.** `SL_RowGrounded` traces the world as it is at LOAD
+  time and the save records nothing about the world at WRITE time, so: hover one unit
+  above where a disabled brush's top face will be, inside a start slab, save at the
+  apex, let the map's own button fire the `Enable`, load. The probe finds `nz 1.000` at
+  `frac ~0`, grants, and the forced arm launders.
+  **THE "NO SHIPPED MAP HAS ONE" CLAIM THIS ENTRY CARRIED IS WITHDRAWN.** It came from
+  `tools/census/togglesolid.py`, and round 7 found that tool had the same two parser
+  bugs as `iocmd.py`: it took a dict from `bsplib.parse_ents` (which keeps only the LAST
+  value of a repeated key, and Source entities repeat output keys routinely) and assumed
+  a comma separator where VBSP >= v25 uses 0x1B ESC. Both under-count, i.e. both made
+  the census read more reassuring than the corpus warranted. Sound re-run, same 1316
+  bsps / 535 zoned: **grade 3 (contained) is 1** -- `surf_legends`, `func_brush` named
+  `health_small3`, reached by an Enable/Disable/Toggle output, contained in a start zone,
+  overlap volume 4608. The self-check moved with it: 226 maps carry such an output (was
+  184) and 276 brush entities are named by one (was 88).
+  IT IS A CANDIDATE, NOT A FINDING: containment survives the AABB problem but does not
+  show the brush's top face sits at a standable height inside the slab, that the Enable
+  is reachable without the map's cooperation, or that a save can be taken at rest above
+  it. **The next step is a live check on surf_legends** and it has not been done.
+  The other grade-2 row is still the AABB trap in person -- `surf_hourglass`'s skybox
+  shell, box spanning the whole map with its faces ~16000 u away. Patch 443 round 5,
+  lens B; census corrected in round 7.
 - **A save is keyed by map NAME, and the `map` key it writes is never read.** Counted
   over `SV_SaveWriteState`: 37 keys plus the FTESURF magic, of which `clock`, `created`
   and `map` are written and matched by no reader. The first two are deliberate and say so

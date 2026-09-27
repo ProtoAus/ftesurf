@@ -521,13 +521,17 @@ bannered as superseded.)
   and does reach the gesture. It buys nothing (the forced `!r` zeroes velocity and
   voids the run, and a listen server cannot submit to the board) but the absolute
   form of the claim is false.
-- AND THE `say`/`echo`/`print` ALLOW-LIST IS NOT ITSELF A BARRIER. `SV_IOCommand`
-  checks the first token and passes the WHOLE string to `localcmd`, and `Cbuf` splits
-  on an unquoted `;` — so `echo x;set run_starthop 0` passes the gate and runs both.
-  `run_starthop` is read live every packet, so one poisoned map switches the whole
-  hopped-start rule off. BACKLOG carries it. Do not hang a new rule on "the map can
-  only say things"; hang it on where the command ENTERS (client stringcmd vs console),
-  which is the fact that actually holds.
+- THE `say`/`echo`/`print` ALLOW-LIST WAS NOT ITSELF A BARRIER, and Patch 446 is what
+  made it one. `SV_IOCommand` checked the first token and passed the WHOLE string to
+  `localcmd`, and `Cbuf` splits on an unquoted `;` — so `echo x;set run_starthop 0`
+  passed the gate and ran both, at a restriction level that admits anything registered
+  without an explicit one. `run_starthop` is read live every packet, so one poisoned map
+  switched the whole hopped-start rule off; `run_evidence_days` would have made the next
+  sweep delete recordings. 446 refuses `;`, CR, LF, `"` and `$` for an allow-listed verb
+  (measured free: 0 of 1438 shipped Command rows carry any of them).
+  THE LESSON OUTLIVES THE FIX: do not hang a new rule on "the map can only say things".
+  Hang it on where the command ENTERS — client stringcmd versus console — which is a
+  property of two code paths rather than a list of permitted words.
 - THE SAVE FILE IS AN UNTRUSTED INPUT TO THE RUN, and `state.txt` is plain text in
   the player's own `data/saves` tree. Every taint bit the format carries — or fails
   to carry — is a laundering channel: `run_t_hopped` was missing until Patch 445, so
