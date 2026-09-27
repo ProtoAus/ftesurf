@@ -105,7 +105,7 @@
 entity pb_list;
 float  pb_tick;             // pm_ticrate
 float  pb_ftime, pb_fdt;
-float  pb_cv_delay, pb_cv_extrap, pb_cv_hermite, pb_cv_raw;
+float  pb_cv_delay, pb_cv_extrap, pb_cv_hermite, pb_cv_raw, pb_cv_fx;
 float  pb_tr_slot, pb_tr_n, pb_tr_dc;
 entity pb_tr_ent;
 
@@ -125,6 +125,7 @@ void() Body_ReadCvars =
 	pb_cv_extrap  = cvar("cl_body_extrap");
 	pb_cv_hermite = cvar("cl_body_hermite");
 	pb_cv_raw     = cvar("cl_body_raw");
+	pb_cv_fx      = cvar("cl_avfx");
 };
 
 void() Body_RegisterCvars =
@@ -133,6 +134,16 @@ void() Body_RegisterCvars =
 	registercvar("cl_body_extrap",  "0.03");
 	registercvar("cl_body_hermite", "1");
 	registercvar("cl_body_raw",     "0");       // debug: newest sample, no interpolation
+	/*
+	  PATCH 457: OTHER PLAYERS' PARTICLES, YOUR CHOICE.  The server's
+	  lobby_av_fxmax cap is gone -- it silently took effects away from
+	  whoever joined late to protect a particle budget that was never close
+	  -- so the clutter question belongs to the person looking at it rather
+	  than to the server.  0 hides every other player's trail and motes.
+	  Not the glow: that is one texture fetch on a model already drawn and
+	  spawns nothing.  Your OWN trail is cl_trailself, separately.
+	*/
+	registercvar("cl_avfx",         "1", CVAR_ARCHIVE);
 	registercommand("body_stats");
 	registercommand("body_trace");
 	Body_ReadCvars();
@@ -192,8 +203,21 @@ float() Body_Predraw =
 	else
 		self.glowmod = Body_Q32('0.032 0.032 0.032');
 
+	/*
+	  PATCH 457: cl_avfx 0 hides other players' PARTICLES for this viewer only.
+	  It replaces the server's lobby_av_fxmax cap, which answered the clutter
+	  question for everybody at once and in join order.  The glow above is not
+	  gated: it spawns nothing.
+
+	  BOTH BOOKKEEPERS STILL RUN WHILE IT IS OFF, and that is the whole care
+	  here.  pb_trail keeps following the body, or switching the cvar back on
+	  would emit one segment spanning wherever that player has been since;
+	  pb_motacc is cleared rather than left to accumulate, or it would come back
+	  as a burst of however many motes the off period was worth.
+	*/
 	if (self.pb_lf & PBL_TRAIL)
 	{
+		if (pb_cv_fx)
 		if (self.pb_trailok && !self.pb_snap)
 			trailparticles(self.pb_fxtrail, self, self.pb_trail, org);
 		self.pb_trail   = org;
@@ -201,13 +225,18 @@ float() Body_Predraw =
 	}
 	if (self.pb_lf & PBL_MOTES)
 	{
-		// A count, not a rate: integrated at 6/s as Av_Dress does.
-		self.pb_motacc = self.pb_motacc + 6 * pb_fdt;
-		n = floor(self.pb_motacc);
-		if (n >= 1)
+		if (!pb_cv_fx)
+			self.pb_motacc = 0;
+		else
 		{
-			self.pb_motacc = self.pb_motacc - n;
-			pointparticles(self.pb_fxmote, org + '0 0 32', '0 0 0', n);
+			// A count, not a rate: integrated at 6/s as Av_Dress does.
+			self.pb_motacc = self.pb_motacc + 6 * pb_fdt;
+			n = floor(self.pb_motacc);
+			if (n >= 1)
+			{
+				self.pb_motacc = self.pb_motacc - n;
+				pointparticles(self.pb_fxmote, org + '0 0 32', '0 0 0', n);
+			}
 		}
 	}
 	return PREDRAW_AUTOADD;

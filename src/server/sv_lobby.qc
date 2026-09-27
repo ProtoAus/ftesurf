@@ -1440,7 +1440,7 @@ void() Lobby_Frame =
 	registercvar("lobby_av_self",   "0");
 	registercvar("lobby_av_colors", "1");
 	registercvar("lobby_av_fx",     "1");
-	registercvar("lobby_av_fxmax",  "8");
+	registercvar("lobby_av_fxmax",  "-1");    // Patch 457: <0 = no cap, 0 = none
 	/*
 	  BUILD 64: the board probe, registered here so it EXISTS at 0 rather than
 	  being auto-created by the first cvar() read.  registercvar declines a name
@@ -1457,13 +1457,28 @@ void() Lobby_Frame =
 	lobby_colors    = cvar("lobby_av_colors");
 	lobby_fxon      = cvar("lobby_av_fx");
 
-	// The ceiling on how many players may carry particles at once.  Read with
-	// a floor of 0 rather than a <= 0 clamp to a default, because 0 is a real
-	// setting here -- "allow effects, but let nobody actually have them" is how
-	// you take the particles away without taking the switch away.
+	/*
+	  The ceiling on how many players may carry particles at once.
+
+	  PATCH 457: NEGATIVE MEANS NO CAP, AND THAT IS THE DEFAULT.  It was 8, and
+	  8 was conservative rather than measured.  A moving player holds about 56
+	  trail particles and 13 motes WHATEVER length stop they wear -- mkavatarfx
+	  scales `step` with `die`, so the live count is the ratio and not either
+	  alone -- which puts even 255 players, this engine's MAX_CLIENTS, at ~18k
+	  against r_part_maxparticles' 65536, shared with vbsp_emit_budget's 2000.
+	  The cap was costing honest players their effects, silently and in join
+	  order, to protect a budget that was never close to it.
+
+	  0 KEEPS ITS OLD MEANING and is deliberately not recycled as "unlimited",
+	  which is the usual convention: 0 is the only way to take the particles
+	  away while LEAVING THE GLOW, and lobby_av_fx 0 cannot do that because it
+	  is the master switch for all three.  So the floor-clamp to 0 had to go
+	  with the default, or -1 would have meant "nobody" instead of "everybody".
+
+	  The player's own off switch is cl_avfx, client side, because whether you
+	  want to LOOK at other people's particles is not the server's business.
+	*/
 	lobby_fxmax = cvar("lobby_av_fxmax");
-	if (lobby_fxmax < 0)
-		lobby_fxmax = 0;
 
 	lobby_rate = cvar("lobby_av_rate");
 	if (lobby_rate <= 0)
@@ -1609,7 +1624,8 @@ void() Lobby_Frame =
 
 				// Particles are what the cap is about.  Subtraction rather
 				// than a complement because QC has no reliable bitwise not.
-				if (nfx >= lobby_fxmax)
+				// The >= 0 test is the no-cap case: see lobby_fxmax's read.
+				if (lobby_fxmax >= 0 && nfx >= lobby_fxmax)
 					want = want - (want & (FS_AVFX_TRAIL | FS_AVFX_MOTES));
 				else if (want & (FS_AVFX_TRAIL | FS_AVFX_MOTES))
 					nfx = nfx + 1;
