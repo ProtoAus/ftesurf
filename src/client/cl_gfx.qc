@@ -507,6 +507,33 @@ string(float row) Gfx_Inert =
 	if (cv == "vbsp_emit" && !em_any)
 		return "map has none";
 
+	/*
+	  THE TWO COLLISION ROWS ARE NOT THE PLAYER'S TO TURN OFF.  A surf map needs
+	  its prop collision to be playable, and a client that disables it predicts a
+	  world the server is not running -- so both cvars are CVAR_CHEAT in the plugin
+	  now (mod_vbsp.c) and the engine latches them to their defaults, 1 and 1,
+	  whenever it is connected without cheats (cvar.c:940).  Collision on, and not
+	  switchable from here.
+
+	  The ROWS STAY, at 19 and 20, rather than being deleted: the block above row 27
+	  states the rule that these are addressed BY NUMBER -- `gfx_menu cycle N` takes
+	  one and ui_gfx_page remembers a position across builds -- so removing two
+	  would move every row below them under someone's cursor.  Saying "needs
+	  sv_cheats" on the row is also the honest answer, and it is exactly what this
+	  function exists for: without it the row would accept a keypress, redraw the
+	  value the engine snapped back, and read as broken.
+
+	  `*cheats` is the engine's OWN published signal, the same serverinfo key
+	  cl_main.c:3246 reads to set cls.allow_cheats -- not a reimplementation of the
+	  rule.  The local sv_cheats is checked too because a listen server allows
+	  cheats from its own cvar (and at one slot allows them regardless), so reading
+	  only the key would grey the row out for the person hosting.
+	*/
+	if (cv == "hl2_propcollision" || cv == "hl2_dispcollision")
+		if (serverkey("*cheats") != "on")
+		if (!cvar("sv_cheats"))
+			return "needs sv_cheats";
+
 	return "";
 };
 

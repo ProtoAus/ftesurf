@@ -655,54 +655,39 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   fix is two latches -- the two reminders are about different taints and should not share a
   bit. Small, and it wants its own patch rather than being folded into a gate change. Cited
   by 455's take-site comment, which is why this entry exists.
-- **A scaled prop collides at a DIFFERENT SIZE on the client than on the server, and the
-  server is the outlier. 1970 solid props across 97 maps.** `.scale` is a plain QC float
-  and nothing clamps it on write, so the same number reaches three readers three ways:
-  the wire sends `bound(1, scale*16, 255)` as a **qbyte** (`sv_ents.c:3953`,
-  `protocol.h:1434`) and the client divides by 16 (`cl_ents.c:7791`), giving
-  `trunc(scale*16)/16`; the server's own pmove writes
-  `bound(1, scale*16, 255)/16.0` with **no truncation** (`sv_user.c:7747`); and
-  `World_Move` uses the raw float (`world.c:1405`, `:1420`, `:1428`). So on
-  `modelscale 1.4` the client predicts against 1.3750 and the server moves the player
-  against 1.4000. The renderer also uses the wire value (`cl_ents.c:6122`), so the
-  client's prediction matches what is DRAWN and the server's collision sticks out past
-  the model -- a player is stopped short of a surface they can see, and released when the
-  server's reconcile arrives. `AddEntityToPmove`'s comment says it deliberately uses "the
-  value the CLIENT DECODES"; it takes the right expression and omits the integer
-  truncation that makes it that value.
-  **MEASURED** (`tools/census/propsolid.py`, 1316 maps): 34058 props carry a
-  `modelscale`; 4026 have one whose x16 is not whole; **1970 of those are solid** and the
-  other 2056 cannot be felt. Worst: surf_spacemonkeys 174, surf_angelinaaa 131,
-  surf_diet_mountain_dew 130, surf_sinner_ksf 112, surf_angelina 101. The commonest
-  offenders are the ordinary decimals a mapper types -- 1.4, 1.2, 1.8, 1.3, 0.8 -- plus 790
-  props above `SV_SpawnProp`'s 15.9 clamp, whose x16 is 254.4. Deltas 0.0125-0.05 in
-  scale, so a few units on a large prop.
-  **THE FIX IS ONE LINE AND IT IS NOT FREE TO SHIP.** Quantising in `SV_SpawnProp`
-  (`sc = max(1, floor(sc*16)) / 16`, mirroring the wire's `bound` floor -- 26 props write a
-  scale below 1/16 and plain `floor` would send them to 0, which the engine reads as
-  `!scale` and substitutes 1) makes all four readers agree with no engine change. But it
-  moves collision geometry on 97 maps, so it can change what routes are possible and
-  therefore existing times; and `SV_PhysentDigest` hashes `pe->scale`
-  (`sv_user.c:292-318`), so every `pe` row recorded on those maps before the change
-  mismatches on replay afterwards. That is the "a mismatch read as guilt" trap -- the
-  digest needs a version or a tolerance in the same patch, not after it.
-  **NOT MEASURED LIVE.** This is read from the four call sites and a key census; no run
-  has yet been made to watch a player rubber-band on a named prop. `surf_spacemonkeys`
-  with `sv_prop_collision 1` is the place to look.
-- **`hl2_propcollision` decides which collision mesh a prop model gets, is read at model
-  LOAD, is per-process, and is NOT synchronised between client and server** -- unlike
-  `sv_prop_collision`, which is `CVAR_SERVERINFO` for exactly this reason. It is
-  `CVAR_MAPLATCH` with no serverinfo flag (`mod_vbsp.c:11731`), consumed in
-  `mod_hl2.c:1494-1503` to pick what `BIH_BuildAlias` builds `NativeTrace` from, and it
-  is offered in the client's **graphics** menu as "Prop collide: None/VPhysics/Bbox/Mesh"
-  (`cl_gfx.qc:359`, marked `*` so it archives). A player who changes it predicts against a
-  different shape than the server traces -- `None` means they walk into every prop and the
-  server pushes them back out. Neither `default.cfg` nor `defaultuser.cfg` sets it, so
-  both sides currently sit on the plugin default 1 and a stock install agrees; the hazard
-  is a player who touched the menu, and a listen server cannot reproduce it because one
-  process shares the cvar. Same shape for `hl2_propcollision_nophy` (default 0, no menu
-  row) and `hl2_dispcollision`. Cheapest fix is to make it serverinfo, or to pin it in
-  both configs and drop the menu row.
+- **A plugin's cvar flags are still masked down to CVAR_ARCHIVE for everything except
+  CVAR_CHEAT and CVAR_SEMICHEAT.** Patch 460 widened `Plug_Cvar_GetNVFDG`'s `flags&1` to
+  the restrictive flags only, because those can nothing but refuse a change. Still
+  discarded, in the hl2 plugin alone: **`CVAR_SHADERSYSTEM` 25 times, `CVAR_MAPLATCH` 14,
+  `CVAR_NOSAVE` 6, `CVAR_RENDERERLATCH` once.** So 14 cvars that say they latch to a map
+  load do not, and 25 that say a change flushes shaders do not. `mod_hl2.c:1480` reasons
+  at length about `hl2_propcollision` being MAPLATCH and it never was; `cl_gfx.qc`'s `*`
+  "needs a reload" convention is the mod compensating for that on its own side.
+  **Why it was not done in 460:** a MAPLATCH set stops updating the cvar's value until a
+  reload, so every menu row over one would redraw the number the user did not choose --
+  the exact confusion `Gfx_Inert` exists to prevent. It needs its own patch and its own
+  pass over those 39 rows, not a line in a collision fix. `engine/common/plugin.c`,
+  `PLUG_CVAR_FLAGS`.
+- **`sv_prop_collision` is still a client-side desync vector, and it cannot be fixed the
+  way the hl2 cvars were.** It picks the collision SHAPE at trace time -- mesh, convex
+  hull or box -- and `pmovetst.c:402` reads it with `Cvar_Get("sv_prop_collision", "2",
+  CVAR_SERVERINFO, ...)` on BOTH sides, so the client traces against its own local value.
+  The comment there says "cvar is synced to the client, so both sides pick the same mode"
+  and **that is not true**: there is no generic serverinfo-to-cvar path in this engine.
+  `CL_CheckServerInfo` reads named keys one at a time into `movevars` (`cl_main.c:3310+`),
+  and `sv_prop_collision` is not one of them. Today both sides agree only because
+  `default.cfg` and `defaultuser.cfg` both say 1.
+  `CVAR_CHEAT` is NOT the fix here: it force-sets to the REGISTRATION default, which is 2,
+  and FTESurf wants 1 (mode 2 has no Source hulls and falls back to a box). A `set` in a
+  config does not change a default -- `CVAR_CONFIGDEFAULT` is defined and nothing ever
+  assigns it -- and the engine is shared with nettest, which wants the 2.
+  **The fix is `movevars`**, the mechanism this engine already uses for every other
+  "the client must use the server's value" case (`pm_slide`, `pm_maxvelocity`, and the
+  note at `cl_main.c:3327` about `sv_maxvelocity` desyncing by construction until it
+  became serverinfo). Add the mode to `movevars`, set it server-side from the cvar and
+  client-side from serverinfo, and read `movevars` in `pmovetst.c` -- then the client's own
+  cvar cannot affect its prediction at all, which is stronger than a cheat latch.
+  Not measured live: no run has yet been made with the two sides deliberately disagreeing.
 
 ## Performance
 
