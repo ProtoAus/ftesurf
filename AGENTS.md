@@ -1280,7 +1280,21 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   two of them in sv_timer.qc. Cite QC by FUNCTION NAME; keep line numbers for
   `pm_source.c` and other engine files this repo never edits. Cite a measurement to
   a committed script (`tools/census/`), never to a scratch path that will not exist
-  for the next reader.
+  for the next reader. AND AN ENGINE LINE NUMBER IS NOT SAFE EITHER JUST BECAUSE WE
+  DO NOT EDIT THAT FILE: Patch 455 cited `pm_source.c:4696` for the prestrafe
+  ceiling and that line is a single `{` — the essay is at `4679-4698` and the
+  binding statement at `5001`. Open the line before you cite it.
+- WHICH DIAGNOSTIC PRINTS ROUND, because a rounded readout bounds the claim you may
+  make from it and this tree has several. Audited 2026-09-27: 53 `%.0f` sites in
+  `src/`, of which these print a speed-like value where the precision can mislead —
+  `cl_hud.qc` `Strafe_EquivSpeed`'s `%.0fu/s`, `cl_scores.qc`'s `speed %.0f..%.0f`
+  band, `cl_watch.qc`'s `replay colours` speed range, and `sv_entities.qc`'s
+  `basevel: OnJump ... vz %.0f`. The one that cost something was a speed printed at
+  `%.0f` beside the cap it was being compared against: "260 u/s is at or below the
+  cap 260" reads as a boundary equality and means only `[259.5, 260.0]`. The real
+  margin was 6.6 u/s, and the crossing speed varied 243.9 to ~260 between runs — so
+  a fixed boundary was inferred from a rounded number twice. A dprint costs nothing
+  at `%.3f`; use it wherever the number is about to be compared to a limit.
 - Deleting save dirs behind a running server does NOT clear its in-memory list;
   it rescans on map change/lobby flip/restart. Delete-all is `sl_delall`.
 - SAVE-LOCKS SINCE PATCH 428 (sv_saveloc.qc): 999 a player a map, in memalloc'd
