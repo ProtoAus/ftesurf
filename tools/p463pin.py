@@ -34,6 +34,35 @@ MOM = os.environ.get("MOMENTUM_DIR",
                      r"C:\Program Files (x86)\Steam\steamapps\common\Momentum Mod Playtest\momentum")
 DONOR = os.path.join(MOM, "maps", "zones", "online", "bhop_eazy.json")
 
+DATA = os.path.join(GAMEDIR, "data")
+SUBJECT = os.path.join(DATA, "b88fin.rec")
+
+# Round 2.  One header edit each, derived from b88fin.rec, to reach the returns
+# the first cut never ran.  `expect` is (verdict, substring) and the substring is
+# matched EXACTLY against the reason, not loosely -- "zone table" also occurs in
+# "a zone table on one side only", so a loose match would grade green if a real
+# difference quietly degraded into a cannot-compare.
+DERIVED = [
+    ("p463_nosrc",    b"zonesrc online\n", b"",
+     ("PASS", None),
+     "the source is not compared, so deleting it changes nothing"),
+    ("p463_rule",     b"zonerule 1 1 0", b"zonerule 1 1 1",
+     ("REFUSE", "the same zones under different zone rules"),
+     "same boxes, different rules -- its own verdict, not the table's"),
+    ("p463_nocrc",    b"zonecrc c50cfd70\n", b"",
+     ("REFUSE", "the file states no zone table"),
+     "a file with no crc must refuse, never accept"),
+    ("p463_norule",   b"zonerule 1 1 0\n", b"",
+     ("REFUSE", "the file states no zone table"),
+     "same, through the rule"),
+    ("p463_rule4",    b"zonerule 1 1 0", b"zonerule 1 1 0 1",
+     ("REFUSE", "an unreadable zonerule"),
+     "a fourth rule term must not be swallowed on the file side"),
+    ("p463_rulejunk", b"zonerule 1 1 0", b"zonerule 1 1 x",
+     ("REFUSE", "an unreadable zonerule"),
+     "garbage is unreadable, not zero"),
+]
+
 TS = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 ZLINE = re.compile(r"^zones\(sv\): (\d+) on bhop_eazy \(([^)]*)\) crc (\S+)")
 VLINE = re.compile(r"^VERIFY (\S+) (PASS|HOLD|REFUSE)\s*(.*)$")
@@ -48,6 +77,33 @@ def verdict(name, state, detail):
                             name, detail))
     if state == "FAIL":
         rc = 1
+
+
+def derive():
+    """Write the six one-edit fixtures.  Bytes in, bytes out: the header is LF
+    and the tail is binary, so nothing here may go through text mode."""
+    if not os.path.exists(SUBJECT):
+        raise SystemExit("no subject at %s" % SUBJECT)
+    raw = open(SUBJECT, "rb").read()
+    made = []
+    for name, find, repl, _, _ in DERIVED:
+        dst = os.path.join(DATA, name + ".rec")
+        if os.path.exists(dst):
+            for p in made:
+                os.remove(p)
+            raise SystemExit("refusing: %s already exists" % os.path.relpath(dst, ROOT))
+        # Bound the edit to the header: these strings must not be matched in the
+        # binary tail, and the header is the first couple of KiB.
+        head, tail = raw[:2048], raw[2048:]
+        if head.count(find) != 1:
+            for p in made:
+                os.remove(p)
+            raise SystemExit("%s: %r occurs %d time(s) in the header, expected 1"
+                             % (name, find, head.count(find)))
+        open(dst, "wb").write(head.replace(find, repl) + tail)
+        made.append(dst)
+    print("derived %d fixture(s) from %s" % (len(made), os.path.basename(SUBJECT)))
+    return made
 
 
 def run(exe, timeout, tag):
@@ -103,6 +159,7 @@ def main():
                          "and will not overwrite it" % os.path.relpath(MIRROR, ROOT))
 
     os.makedirs(LOCAL, exist_ok=True)
+    made = derive()
     try:
         print("run 1/2: no mirror (live source should be maps/zones/online)")
         plain = run(a.exe, a.timeout, "online")
@@ -121,6 +178,18 @@ def main():
             else:
                 os.remove(MIRROR)
                 print("mirror removed")
+        left = [p for p in made if os.path.exists(p)]
+        if a.keep:
+            print("--keep: %d derived fixture(s) left in ftesurf/data" % len(left))
+        else:
+            for p in left:
+                os.remove(p)
+            still = [p for p in made if os.path.exists(p)]
+            print("derived fixtures removed (%d), still present: %d"
+                  % (len(left), len(still)))
+            if still:
+                print("  WARNING: could not remove %s"
+                      % ", ".join(os.path.basename(p) for p in still))
 
     print()
     print("p463pin -- the zone pin ignores the source directory")
@@ -149,15 +218,42 @@ def main():
             verdict("P2 b88fin %s" % tag, "PASS" if v[0] == "PASS" else "FAIL",
                     "%s %s" % (v[0], v[1]))
 
-    # P3: the pin still catches a wrong table, and names it.
+    # P3: the pin still catches a wrong table, and names it.  EXACT match --
+    # "zone table" as a substring also matches "a zone table on one side only",
+    # so a loose test stays green if a real difference degrades into a
+    # cannot-compare.  Its evidence reviewer found that looseness.
     for tag, d in (("online", plain), ("local", mirror)):
         v = d["verify"].get("data/p349_zcrc.rec")
         if v is None:
             verdict("P3 zcrc %s" % tag, "ND", "no VERIFY line for the control")
         else:
-            ok = (v[0] == "REFUSE" and "zone table" in v[1] and "or rule" not in v[1])
+            ok = (v[0] == "REFUSE" and v[1] == "a different zone table")
             verdict("P3 zcrc %s" % tag, "PASS" if ok else "FAIL",
                     "%s %s" % (v[0], v[1]))
+
+    # P5: the branches the first cut never ran.
+    for name, _, _, (wantv, wantr), why in DERIVED:
+        v = plain["verify"].get("data/%s.rec" % name)
+        if v is None:
+            verdict("P5 %s" % name, "ND", "no VERIFY line -- fixture missing?")
+            continue
+        ok = (v[0] == wantv and (wantr is None or v[1] == wantr))
+        verdict("P5 %s" % name, "PASS" if ok else "FAIL",
+                "%s %s%s" % (v[0], v[1], "" if ok else "   want %s %r" % (wantv, wantr)))
+
+    # P6: the accept path must SAY it compared something.  Without this a PASS is
+    # indistinguishable from a PASS that skipped the zone check -- which is how
+    # the round-1 fail-open would have looked in a log.
+    matched = [p for p in mirror["pins"] + plain["pins"] if p.startswith("matched:")]
+    verdict("P6 accept path states the match", "PASS" if matched else "FAIL",
+            matched[0] if matched else "no `zone pin  matched:` line in either run")
+
+    # Declared unexercised: these need the LIVE pin to be wrong, which no header
+    # edit can do.  Named rather than left silent, because an untested branch that
+    # nobody has written down reads exactly like a tested one.
+    verdict("P7 live-side branches", "ND",
+            "`this server cannot state its own zone pin`, `too long to read` and "
+            "`cannot read N fields` need a doctored SV_VerifyZonePin, not a header edit")
 
     # P4: the diagnostic separates the fields.
     pins = mirror["pins"] + plain["pins"]

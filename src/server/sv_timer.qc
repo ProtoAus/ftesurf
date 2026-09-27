@@ -2601,7 +2601,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the body as `nonce <mt> <hex32>` -- see SV_RecNonce
     mapcrc <hex>            v4 key, build 73: the BSP THIS SERVER loaded
     zonesrc local|online|bsp  build 81.  WHICH OF THE THREE zone sources built
-                            the table this run was timed against
+                            the table this run was timed against.  INFORMATIONAL
+                            AND NOT VERIFIED, since engine Patch 463: it is a
+                            directory name, the same table serves from any of
+                            them, and `zonecrc` is what pins the table.  pm_verify
+                            prints it and does not compare it.  Do not add it to
+                            a check -- comparing it refused every recording of
+                            any map whose zone file had been edited, which is the
+                            bug that patch fixed
     zonecrc <hex>           build 81.  8 hex of sha256 over the BUILT table --
                             not over the JSON file, so the BSP path's one-unit
                             deflation hashes differently from a JSON of the same
