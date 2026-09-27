@@ -1035,7 +1035,17 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 
 	  EMPTY IS A LEGAL VALUE and the reader must not fold it in with a mismatch: the
 	  engine leaves the key unset when it cannot hash the bsp, so this can legitimately
-	  write `mapcrc` with nothing after it.  See SL_MapSame.
+	  write `mapcrc` with nothing after it.  The comparison is the brace block below
+	  SV_SaveApplyState's fclose.
+
+	  ROUND 8 CORRECTED THIS LINE TWICE OVER.  It said "See SL_MapSame" -- a function
+	  that does not exist and never did; I named it in two comments and wrote neither.
+	  And the reader reaches the empty state by a DIFFERENT route than the one the next
+	  paragraph used to describe: the key loop bails on `if (n < 2) continue`, so a
+	  `mapcrc` line with nothing after it tokenizes to ONE token and the `mapcrc` test is
+	  never reached -- `fcrc` simply keeps its "" default.  The three-way verdict is
+	  right either way, but by omission rather than by a comparison, and a comment that
+	  describes a path the code does not take is how the next reader is misled.
 	*/
 	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
 	fputs(f, sprintf("seq %d\n", seq));
@@ -1189,7 +1199,13 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  would let one save mark another attempt.  See the raise-only restore below.
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
-	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's `mapcrc` makes it 38, plus the
+	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's
+	  `mapcrc` makes it 38 in THIS FUNCTION'S OWN fputs calls -- but ROUND 8 caught that
+	  as an undercount of the FILE: the last statement here is SV_RecSaveKeys, which
+	  writes up to 8 more (recgen, recrid, recbytes, recstream, recrows, recstate,
+	  recsess, reclast), every one of them matched by this same reader through
+	  SV_RecKeyRead.  So a state.txt carries up to 46 keys and the
+	  "counted, not estimated" claim was counting the wrong scope.  Plus the
 	  FTESURF magic (counted, not estimated).  cfg/test/p443air.txt is a whole file to
 	  read one against, and is DELIBERATELY LEFT AS A PRE-445 EXAMPLE -- 36 lines, no
 	  `hopped` -- so the air arm keeps exercising the additive read.  Round 6 flagged
@@ -1510,9 +1526,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
-		// Patch 450.  argv(1) is "" when the writer emitted an empty crc, which is a
-		// legal state the engine produces -- SL_MapSame tells that apart from a
-		// mismatch, because one is "cannot tell" and the other is "no".
+		// Patch 450, and ROUND 8 corrected what this said.  It claimed argv(1) is ""
+		// when the writer emitted an empty crc.  THIS LINE IS NEVER REACHED IN THAT
+		// CASE: the loop's own `if (n < 2) continue` above bails first, because
+		// "mapcrc" with nothing after it tokenizes to one token.  So `fcrc` keeps its
+		// "" default and the empty state arrives by omission rather than through here.
+		// The distinction between "cannot tell" and "no" is made by the comparison
+		// block below the fclose, not by this read.
 		if (k == "mapcrc")     { fcrc = argv(1); continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
@@ -1587,15 +1607,23 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	{
 		local string wcrc;
 		wcrc = infokey(world, "*mapcrc");
-		if (fcrc != "" && wcrc != "" && fcrc == wcrc)
+		// strcmp, not `==`: AGENTS.md reserves `==` for a literal, and both of these
+		// are dynamic strings.  It works on this engine (SV_MapForeign does the same)
+		// but this is the GRANT side, where a silent false negative prints the
+		// maximum-severity "DIFFERENT bsp" line at an honest player.  Round 8.
+		if (fcrc != "" && wcrc != "" && strcmp(fcrc, wcrc) == 0)
 			sl_mapsame = TRUE;
+		// "WOULD BE refused", not "is", and round 8 caught the difference: this block
+		// runs on EVERY SV_SaveApplyState call, and only the load caller has an arm gate
+		// -- `retry` and the Multi-Session resume have none.  The old wording asserted a
+		// consequence for two callers that do not have one.
 		else if (fcrc != "" && wcrc != "")
 			dprint(sprintf("save: slot %g was taken on a DIFFERENT bsp (file %s, "
-			               "this map %s) -- the start-box arm is refused\n",
+			               "this map %s) -- a start-box arm would be refused\n",
 			               id, fcrc, wcrc));
 		else
 			dprint(sprintf("save: slot %g cannot prove which bsp it came from "
-			               "(file '%s', this map '%s') -- the start-box arm is "
+			               "(file '%s', this map '%s') -- a start-box arm would be "
 			               "refused; re-save to fix it\n", id, fcrc, wcrc));
 	}
 
@@ -2707,11 +2735,27 @@ void(float row) SV_SaveDemote =
 	v = rec_sl_vel[row];
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
-	// Patch 450, and the DEMOTE writer needs it as much as the main one: a demoted save
-	// with no `mapcrc` would read as unverifiable and lose the arm gate, which would be a
-	// regression introduced by this patch rather than a refusal it intended.  Same key,
-	// same source, written here so the two writers cannot drift.
-	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
+	/*
+	  ROUND 8 REMOVED A `mapcrc` WRITE FROM HERE, and the reason it was added was false.
+
+	  Patch 450 wrote one, justified as "a demoted save with no mapcrc would lose the arm
+	  gate".  IT CANNOT: `dem` is latched, and the Patch 428-r3 block a few lines below
+	  the gate overwrites `e.run_t_azone` with `zs_az` from a fresh zone scan -- so for a
+	  demoted row the gate is a no-op in both directions, with or without a crc.
+
+	  WHAT THE LINE ACTUALLY DID WAS MANUFACTURE THE PROOF THE GATE DEMANDS.  A demote
+	  rewrites the row from in-memory state that came out of the OLD file, on whatever
+	  bsp that save was taken on, and SV_SaveDemote's integrity checks compare the file
+	  against that same in-memory row -- neither can see a bsp change.  So stamping the
+	  LIVE crc here said "this row is provably from this map" about a row that is not
+	  known to be.  Reached whenever a new save pushes an old row past SL_RECKEEP, so
+	  "update the map, then take a few more saves" re-stamped the old ones.
+	  Inert today ONLY because of the azone overwrite below the gate.  A patch that moves
+	  the gate, or stops the demote path overwriting azone, would turn it into exactly
+	  the bypass 450 was written to close -- so it goes now rather than waiting to be
+	  load-bearing.  A demoted save reading "cannot prove its map" is the honest answer
+	  and costs nothing.
+	*/
 	fputs(f, sprintf("seq %d\n", rec_sl_seq[row]));
 	fputs(f, sprintf("origin %.4f %.4f %.4f\n", o_x, o_y, o_z));
 	fputs(f, "velocity 0 0 0\n");

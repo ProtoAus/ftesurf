@@ -1706,7 +1706,9 @@ float() SV_RecEnabled =
 .float  run_t_said;
 // Round 7: the hopped-start reminder's once-per-ATTEMPT latch.  NOT folded into
 // run_t_said, which is a TIMESTAMP that SV_TimerClassSay rate-limits on, not a bit
-// field.  Cleared by SV_TimerArm beside it and by SV_TimerForgiveHop, so a fresh
+// field.  Cleared by SV_TimerArm beside it and by SV_TimerForgiveHop -- and NOT by the
+// ZONE_END finish clear, which leaves it alone deliberately (the next arm clears it,
+// and it is the shared latch for the run_t_dirty reminder too).  So a fresh
 // attempt earns a fresh reminder and a chain inside one attempt does not.  It exists
 // because round 6's reminder printed on every hop: three lines in 2.3 s of held +jump
 // in the arm's own log, ~30 for a warm-up.
@@ -8847,7 +8849,7 @@ void(entity e, string why) SV_TimerVoid =
 };
 
 /*
-  PATCH 445: THE ONE CLEAR OF run_t_hopped, and it is a function so that the list
+  PATCH 445: THE PRINCIPAL CLEAR OF run_t_hopped, and it is a function so that the list
   of callers is the rule.
 
   ROUND 6 CORRECTED THE LIST, WHICH IS THE WHOLE SAFETY ARGUMENT, so the count is
@@ -11523,14 +11525,6 @@ void(entity e, float ticks) SV_TimerFinish =
 	  it drifted.  A caller that cannot honour it does not belong on the list, so the
 	  two lines are written out here with the exception stated instead.
 	*/
-	if (e.run_t_hopped)
-	{
-		dprint(sprintf("hop: %s's hopped-start taint cleared by the finish it marked\n",
-		               e.netname));
-		e.run_t_hopped  = FALSE;
-		e.run_t_jumps   = 0;
-		e.run_t_hopsaid = 0;
-	}
 };
 
 void(entity e, float seg, float ticks) SV_TimerSplit =
@@ -11642,6 +11636,45 @@ void(entity e, float z) SV_TimerEvent =
 	if (ty == ZONE_END)
 	{
 		SV_TimerFinish(e, ticks);
+
+		/*
+		  PATCH 448, AND ROUND 8 MOVED THIS OUT OF SV_TimerFinish's BODY TO HERE.
+
+		  The hopped-start tag dies with the run it described -- but only at a
+		  ZONE_END finish, because that is the only one of SV_TimerFinish's two
+		  callers whose safety argument holds.  The argument is: reaching the end
+		  zone means traversing the map, so a finisher's speed was built on the
+		  course rather than in the start box, and to start again they must get back
+		  to a start, which costs either an `!r` (velocity zeroed) or the trip.
+
+		  IT IS FALSE AT THE OTHER CALLER.  A stage run finishing on its next
+		  boundary sets `run_t_pendarm` a few lines below and hands the NEXT stage
+		  run over inside one continuous motion -- no gesture, no trip back, and no
+		  velocity zero anywhere in the handover.  With the clear in the function
+		  body, a hopped start on a staged map tainted only the stage it happened in
+		  and every later stage of the same chain came out clean and rankable, with
+		  how much box-built speed survived decided by the LENGTH OF STAGE N, i.e. by
+		  map data.  That is the "forgiveness the map hands out" shape Patch 445
+		  exists to eliminate, reintroduced by 448 one patch later.
+		  Reachable from the box rather than only mid-map, too: `!s 1` makes a
+		  ZONE_START arm a stage run.
+
+		  THE ARM COULD NOT HAVE CAUGHT IT: cfg/test/p448.zones.json had one segment,
+		  so only this call site was ever exercised.  cfg/test/p448stage.cfg is the
+		  section that covers the other one.
+
+		  run_t_hopsaid is deliberately NOT cleared here.  SV_TimerArm clears it on
+		  the next arm, so clearing it now buys nothing -- and it is the shared latch
+		  for the run_t_dirty reminder as well, so clearing it re-opened a message
+		  about a taint this finish does not forgive.
+		*/
+		if (e.run_t_hopped)
+		{
+			dprint(sprintf("hop: %s's hopped-start taint cleared by the finish "
+			               "it marked\n", e.netname));
+			e.run_t_hopped = FALSE;
+			e.run_t_jumps  = 0;
+		}
 		return;
 	}
 

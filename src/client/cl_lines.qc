@@ -1756,9 +1756,10 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
-	// Patch 451: the numbers.  Off by default -- the marks are furniture, the
-	// numbers are a thing you turn on to read a run.
-	registercvar("hud_lines_nums",    "0", CVAR_ARCHIVE);
+	// Patch 451: the numbers.  ON by default (Lex, asked when they were off):
+	// a line you have to switch on twice is a line most people never see.
+	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run.
+	registercvar("hud_lines_nums",    "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_energy",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_vz",      "0", CVAR_ARCHIVE);

@@ -162,14 +162,20 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   earned it. `run_rearmhop` (build 21's extra forgiveness: stand
   `run_prestrafe_time` grounded and the tag lifts) **now defaults to 0**, and an
   ARM no longer forgives either, so nothing a harness does incidentally will clear
-  it. The three clears are the `!r`/`!m`/`!s`/`!b`/**`zone_goto`** gesture (all reach
+  it. The clears are the `!r`/`!m`/`!s`/`!b`/**`zone_goto`** gesture (all reach
   `SV_ZoneMoveAt`, and `zone_goto` is the warp this file tells harnesses to use, so
   a harness DOES clear it incidentally — round 6's correction), the ground dwell at
   `run_rearmhop 1`, and a respawn. All three zero the velocity, which is why they are
   safe. A `retry` does NOT clear it: `hopped` is in the save format, restored
-  raise-only. **The tag survives a finish, a cancel zone and a map teleport**, so an
-  arm can read `hopped 1` many sections after the jump that earned it; there is a
-  chat reminder on each later fluffed start but nothing on the HUD. Walk out, then
+  raise-only. **Patch 448 added a fourth: crossing a ZONE_END** — the tag dies with
+  the run it described, so the next attempt starts clean. That one does NOT zero the
+  velocity (players coast past the line) and carries its own argument at the call
+  site; round 8 found it had to live at the ZONE_END site rather than inside
+  `SV_TimerFinish`, because that function's other caller is a stage boundary that
+  hands the next stage over at speed. **The tag still survives a cancel zone, a map
+  teleport and a stage-boundary finish**, so an arm can read `hopped 1` many sections
+  after the jump that earned it; there is a chat reminder on each later fluffed start
+  but nothing on the HUD. Walk out, then
   prove the run with `cmd timer` reading
   `running / recording 1` before anything depends on it, and read the body with
   `cmd viewpos` — since Patch 435 it also prints `velocity … horizontal N`, the
