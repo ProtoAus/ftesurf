@@ -59,13 +59,19 @@ branch printed nothing. A branch with no voice looks exactly like a branch with
 no traffic. It prints its reason now, and a script covers most of what this
 section used to ask you for.
 
-**2a. Finish ABOVE the speed cap on a real track.** Patch 455 holds the hopped-
-start tag up until you come to rest: grounded, at or below the mover's cap, and
-not about to be launched. A script can now drive the airborne refusal, the take,
-and (in principle) the held refusal. What it still cannot do is cross a real
-END above the cap, because the test fixture's runs are nine ticks long on a bhop
-map and cross at 244-260 u/s. So the one that wants you is a fast finish on a
-track whose END sits within 64 units of its own START:
+**2a. Finish fast on a real track.** This item has shrunk twice while you were
+away and what is left is genuinely yours.
+
+A script now drives all of it but one: `cfg/test/p455hold.cfg` earns the tag,
+crosses the line, freezes the body mid-flight and watches the gate refuse for
+each reason in turn — not grounded, held, still settling — before it finally
+lets the tag die. It even drives the too-fast refusal, but by moving the CAP
+down under a body doing 260 rather than by making the body go faster. That
+proves the branch works. It does NOT prove a player can reach it in play, and
+that difference is the whole reason this item survives: the fixture's runs are
+nine ticks long on a bhop map and cross at 244-260 u/s, so nothing headless has
+ever crossed a real finish line above the cap. That wants a human, on a track
+whose END sits within 64 units of its own START:
 
 - `surf_bikini_bottom` **b1** — a bonus, one leg, 16 u gap. Far less track to
   cover.

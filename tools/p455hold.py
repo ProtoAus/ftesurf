@@ -52,6 +52,10 @@ PENDING = r"NOT taken -- an action aimed at this player is pending"
 SETTLING = r"NOT taken -- at rest but settling: ([\d.]+) s of ([\d.]+), (\d+) clear reads of (\d+)"
 TAKEN = r"hopped-start taint cleared -- "
 DWELT = r"at rest for ([\d.]+) s over (\d+) clear reads"
+# Round 8b: a refusal that breaks a PROGRESSED streak says what it broke, so a
+# failure to take is diagnosable.  Absent when the streak never progressed --
+# which is itself the other diagnosis.
+BROKE = r"clear streak broke at ([\d.]+) s over (\d+) reads, reason (\d)"
 HOPPED = r"hopped\s+(\d)"
 VIEWPOS = r"(?:viewpos|Position)\D*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)"
 
@@ -224,6 +228,20 @@ def grade():
                 "at rest %.3f s over %d reads (floor %.2f / %d)%s"
                 % (el, rd, DWELL_MIN, READS_MIN,
                    "" if ok else " -- under the floor, so the dwell did not run"))
+    # 8b's diagnostic, reported either way: it separates "got to N and something
+    # broke it" from "never got past 1", which used to be one silent outcome.
+    br = re.findall(BROKE, whole)
+    if br:
+        out.append("%-17s %-3s %s" % ("reported", "--",
+                   "streak broken %d time(s), furthest %s s over %s reads "
+                   "(reason %s)" % (len(br), max(br, key=lambda x: float(x[0]))[0],
+                                    max(br, key=lambda x: int(x[1]))[1],
+                                    br[-1][2])))
+    else:
+        out.append("%-17s %-3s %s" % ("reported", "--",
+                   "no streak-break line: either nothing broke a progressed "
+                   "streak, or this build predates 8b"))
+
     verdict("H4b settling", "PASS" if s else "NOT DEMONSTRATED",
             "reason 4 seen after the release" if s else
             "no settling refusal: with the dwell compiled out that branch is "
