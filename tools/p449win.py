@@ -31,7 +31,7 @@ def parse(path):
         if cur is None:
             continue
         f = line.split()
-        if line == "lnde":
+        if line.startswith("lnde"):
             cur["frame"] += 1           # marktrace traces n frames; grade one
         elif line.startswith("lnd ") and len(f) >= 6:
             cur["slots"].setdefault(int(float(f[1])), {}).update(

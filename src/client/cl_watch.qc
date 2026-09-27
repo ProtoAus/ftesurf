@@ -4757,10 +4757,14 @@ float(string cmd) Watch_ConsoleCommand =
 			ep = ln_ep[b + i];
 			print(sprintf("lnm %g %g %g %.4f %s\n", i, ln_ek[b + i], ln_es[b + i],
 			              ln_et[b + i],
-			              sprintf("%g %.2f %.2f %.2f %.2f %.4f %.2f", ln_ei[b + i],
+			              sprintf("%g %.2f %.2f %.2f %.4f %.4f %.4f", ln_ei[b + i],
 			                      ep_x, ep_y, ep_z,
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i])));
 		}
+		// The energy zero this slot's labels are measured from, said out loud:
+		// a grader that took it from the same place the code did could not
+		// catch the code taking it from the wrong sample.
+		print(sprintf("lnmz %g %.4f %.4f\n", sl, ln_z0[sl], ln_v20[sl]));
 		print(sprintf("lnme %g\n", ln_evn[sl]));
 		return TRUE;
 	}

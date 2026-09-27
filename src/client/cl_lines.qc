@@ -58,6 +58,7 @@
 #define LN_EVCAP   4096         // marks a slot holds; past it, peaks go first
 #define LN_EVZMIN  40           // u/s of |vz| a peak needs: 2.5 ticks of gravity
 #define LN_CELLS   4096         // declutter cells; 64 x 36 at the default gap
+#define LN_LABMAX  128          // labels queued for the end of the frame
 
 #define LN_E_LAND    1          // touched ground or ramp
 #define LN_E_LEAVE   2          // left it without jumping (a ramp exit, an edge)
@@ -133,7 +134,37 @@ float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 // The marks' own frame state: the cvars, read once, and the declutter grid.
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
 float  ln_mkpx, ln_mkgap, ln_wpx;
+
+// The numbers (Patch 450), read once a frame.  ln_grav is the reader's, not one
+// baked in at load: the same file watched on a different sv_gravity is a
+// different run and the energy has to say so.
+float  ln_numon, ln_numspeed, ln_numenergy, ln_numvz, ln_numdelta, ln_numtime;
+float  ln_numref, ln_numsize, ln_grav, ln_units;
+float  ln_z0[LN_SLOTS], ln_v20[LN_SLOTS];       // the slot's first sample: z, v.v
+float  ln_nlab;                 // labels queued, this Line_Draw
+float  ln_labover;              // ...and the ones past LN_LABMAX
+
+/*
+  THE LABELS ARE QUEUED AND DRAWN AT THE END OF THE FRAME, not where they are
+  worked out.
+
+  Measured, not assumed: text drawn from inside Line_Draw does not appear at
+  all.  The pass runs inside a stream of R_BeginPolygon batches, which the
+  engine defers until a later 2D call flushes them, and a drawstring issued
+  between two of them produced nothing -- including a fixed test string at a
+  fixed position, which is how this was pinned down rather than guessed.  The
+  counters said thirteen labels had drawn and the screenshot had none.
+
+  Ev_Labels (cl_entview.qc) has the same shape for the same reason, and the
+  slot for it in cl_main is already there.
+*/
+vector ln_lab_p[LN_LABMAX];
+vector ln_lab_c[LN_LABMAX];
+float  ln_lab_a[LN_LABMAX];
+string ln_lab_t[LN_LABMAX];
+float  ln_lab_n;
 float  *ln_cell;                // a cell's last claiming frame
+float  *ln_lcell;               // and the labels' own grid, see Line_Claim
 float  ln_cellgen, ln_cellnx, ln_cellny;
 vector ln_qmk;                  // Line_ProjPt's answer (a second return)
 float  ln_nmk;                  // marks drawn, this Line_Draw
@@ -198,6 +229,7 @@ void() Line_Alloc =
 	// keys on it mis-assigns the mark.  +147 KB.
 	ln_ei   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_cell = memalloc(sizeof(float) * LN_CELLS);
+	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
 };
 
 void(float s) Line_Clear =
@@ -427,6 +459,11 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Li
 	}
 
 	Line_Was(s, k, v, fl);
+	if (!ln_nsamp[s])
+	{
+		ln_z0[s]  = o_z;        // the run's own start, one choice of energy zero
+		ln_v20[s] = v * v;
+	}
 	ln_nsamp[s] = ln_nsamp[s] + 1;
 	Line_Add(s, o, vlen([v_x, v_y, 0]), t, brk);
 };
@@ -869,6 +906,20 @@ void() Line_ViewFrame =
 	ln_mkpx     = cvar("hud_lines_size");   if (ln_mkpx < 1) ln_mkpx = 4;
 	ln_mkgap    = cvar("hud_lines_gap");    if (ln_mkgap < 4) ln_mkgap = 40;
 	ln_mkgap    = ln_mkgap * ln_px;
+	ln_numon     = cvar("hud_lines_nums");
+	ln_numspeed  = cvar("hud_lines_speed");
+	ln_numenergy = cvar("hud_lines_energy");
+	ln_numvz     = cvar("hud_lines_vz");
+	ln_numdelta  = cvar("hud_lines_delta");
+	ln_numtime   = cvar("hud_lines_time");
+	ln_numref    = cvar("hud_lines_ref");
+	ln_numsize   = cvar("hud_lines_numsize");  if (ln_numsize < 6) ln_numsize = 12;
+	// Board_Frame's seq_units is not refreshed while a replay is up, so the
+	// label reads the cvar itself: two readers of one cvar, not two answers.
+	ln_units     = cvar("hud_seq_units");
+	ln_grav      = serverkeyfloat("sv_gravity");
+	if (ln_grav < 1)
+		ln_grav = 800;
 	fov = getproperty(VF_SCREENVSIZE);
 	ln_cellnx = min(64, floor(fov_x / ln_mkgap) + 1);
 	ln_cellny = min(LN_CELLS / max(1, ln_cellnx), floor(fov_y / ln_mkgap) + 1);
@@ -1138,20 +1189,62 @@ float(vector w) Line_ProjPt =
   in range.  A numeric cap would instead keep the first N in time order, which
   is not the N you are looking at.
 */
-float(vector q) Line_Claim =
+float(vector q) Line_CellOf =
 {
 	local float cx, cy, i;
 
 	cx = floor(q_x / ln_mkgap);
 	cy = floor(q_y / ln_mkgap);
 	if (cx < 0 || cy < 0 || cx >= ln_cellnx || cy >= ln_cellny)
-		return FALSE;                   // off screen: not drawn, not claimed
+		return -1;                      // off screen: not drawn, not claimed
 	i = cy * ln_cellnx + cx;
-	if (i < 0 || i >= LN_CELLS)
+	return (i < 0 || i >= LN_CELLS) ? -1 : i;
+};
+
+float(vector q, float lab) Line_Claim =
+{
+	local float i;
+
+	i = Line_CellOf(q);
+	if (i < 0)
 		return FALSE;
+	// Labels claim their OWN grid.  Sharing one, a label lost every cell its
+	// own glyph had just taken -- at gap 240 that was every number on screen
+	// (p450num N6: 9 marks, 0 labels), which is not thinning, it is off.
+	if (lab)
+	{
+		if (ln_lcell[i] == ln_cellgen)
+			return FALSE;
+		ln_lcell[i] = ln_cellgen;
+		return TRUE;
+	}
 	if (ln_cell[i] == ln_cellgen)
 		return FALSE;
 	ln_cell[i] = ln_cellgen;
+	return TRUE;
+};
+
+/*
+  A label's whole span, claimed in ONE go.
+
+  Its two ends can fall in the same cell, and claiming them one after the other
+  made the label lose to ITSELF: at gap 240 that was every number on screen
+  (p450num N6, 9 marks and 0 labels).  So: test both, then take both.
+*/
+float(vector lp, float lw) Line_ClaimSpan =
+{
+	local float i0, i1;
+
+	i0 = Line_CellOf(lp);
+	i1 = Line_CellOf(lp + [lw, 0, 0]);
+	if (i0 < 0 && i1 < 0)
+		return FALSE;
+	if (i0 >= 0 && ln_lcell[i0] == ln_cellgen)
+		return FALSE;
+	if (i1 >= 0 && ln_lcell[i1] == ln_cellgen)
+		return FALSE;
+	if (i0 >= 0) ln_lcell[i0] = ln_cellgen;
+	if (i1 >= 0) ln_lcell[i1] = ln_cellgen;
 	return TRUE;
 };
 
@@ -1202,14 +1295,61 @@ void(vector q, vector c, float al) Line_Bars =
 };
 
 /*
+  ONE MARK'S NUMBERS, as a single string.
+
+  One sprintf and one HUD_Text, never one per number: at hud_font_outline
+  shadow HUD_TextDraw issues ten drawstrings for a string (cl_hud.qc:1342), so
+  three calls a label would be thirty draws.
+
+  The energy zero is a choice and it is the reader's: hud_lines_ref 0 takes the
+  HUD's own (HUD_EnergyRef, what the split list measures from, so the two
+  agree), 1 takes the RUN's first sample, which is self-contained and
+  comparable between two recordings of the same map -- the reason it is the
+  default on a line, where the watching player's anchor means nothing.
+*/
+string(float s, float e) Line_Label =
+{
+	local float b, ev, en, ref, de;
+	local vector ep;                // an array element is not swizzleable
+	local string t;
+
+	b = s * LN_EVCAP;
+	t = "";
+	ev = ln_evh[b + e];
+	// E = z + |v|^2 / 2g, Strafe_Energy evaluated from what the mark carries.
+	ep = ln_ep[b + e];
+	en = ep_z + ln_e2[b + e] / (2 * ln_grav);
+	ref = ln_numref ? (ln_z0[s] + ln_v20[s] / (2 * ln_grav)) : HUD_EnergyRef();
+
+	if (ln_numspeed)
+		t = sprintf("%.0f", ev);
+	if (ln_numenergy)
+		t = strcat(t, (t != "") ? " " : "", HUD_SeqAbsTight(en - ref, ln_grav, ln_units));
+	if (ln_numvz)
+		t = strcat(t, (t != "") ? " " : "", sprintf("%+.0fz", ln_ez[b + e]));
+	if (ln_numdelta)
+	if (e > 0)
+	{
+		ep = ln_ep[b + e - 1];
+		de = en - (ep_z + ln_e2[b + e - 1] / (2 * ln_grav));
+		t = strcat(t, (t != "") ? " " : "",
+		           HUD_SeqDelTight(de, Strafe_EquivSpeed(de, ln_grav), ln_units));
+	}
+	if (ln_numtime)
+		t = strcat(t, (t != "") ? " " : "", sprintf("%.2fs", ln_et[b + e]));
+	return t;
+};
+
+/*
   The marks over the drawn stretch, after the teleport pass so a stitch's bars
   sit over its dashes.  Walked from the mark list rather than from the points:
   the LOD stride skips points, and a mark on a skipped one must still draw.
 */
 void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
 {
-	local float b, n, e, k, al, t0, t1;
-	local vector p, c;
+	local float b, n, e, k, al, t0, t1, lw;
+	local vector p, c, q, lp;
+	local string lab;
 
 	if (!ln_mkon)
 		return;
@@ -1230,8 +1370,17 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		else if (k == LN_E_LEAVE)  { if (!ln_mkleave)  continue; c = '0.92 0.95 1.00'; }
 		else if (k == LN_E_JUMP)   { if (!ln_mkjump)   continue; c = '0.35 0.85 1.00'; }
 		else if (k == LN_E_STITCH) { if (!ln_mkstitch) continue; c = '0.72 0.74 0.78'; }
+		else if (k == LN_E_APEX || k == LN_E_TROUGH)
+		{
+			// A peak is where vz turned over.  It gets no chevron -- there is
+			// no contact to mark -- so it appears only when the numbers are on
+			// and it is the number that is the point (hud_lines_nums 2).
+			if (ln_numon < 2)
+				continue;
+			c = '0.75 0.80 0.95';
+		}
 		else
-			continue;                   // peaks carry a number, not a glyph
+			continue;                   // a break: the teleport pass owns it
 		p = ln_ep[n + e];
 		al = ((ln_et[n + e] <= tplay) ? 1 : ahead) * alpha;
 		if (ln_fadek > 0)
@@ -1243,17 +1392,50 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			continue;
 		if (!Line_ProjPt(p))
 			continue;
-		if (!Line_Claim(ln_qmk))
+		if (!Line_Claim(ln_qmk, FALSE))
 			continue;
+		q = ln_qmk;
 		if (k == LN_E_STITCH)
-			Line_Bars(ln_qmk, c, al);
+			Line_Bars(q, c, al);
+		else if (k == LN_E_APEX || k == LN_E_TROUGH)
+			Line_Square(p, c, al * 0.8);    // a peak is a dot: the number is the point
 		else
-			Line_Chev(ln_qmk, (k == LN_E_LAND) ? -1 : 1,
+			Line_Chev(q, (k == LN_E_LAND) ? -1 : 1,
 			          (k == LN_E_JUMP) ? 2 : 1, c, al);
 		ln_nmk = ln_nmk + 1;
+
+		// The label claims its OWN cells -- the numbers are wider than the
+		// glyph, so a mark can keep its chevron and lose its number rather
+		// than the pair of them overprinting a neighbour.
+		lab = "";
+		if (ln_numon)
+		{
+			lab = Line_Label(s, e);
+			if (lab != "")
+			{
+				lp = q + [6 * ln_px, 0 - (ln_numsize + 4) * ln_px, 0];
+				lw = stringwidth(lab, FALSE, [ln_numsize, ln_numsize]);
+				if (Line_ClaimSpan(lp, lw))
+				{
+					if (ln_lab_n < LN_LABMAX)
+					{
+						ln_lab_p[ln_lab_n] = lp;
+						ln_lab_t[ln_lab_n] = lab;
+						ln_lab_c[ln_lab_n] = c;
+						ln_lab_a[ln_lab_n] = al;
+						ln_lab_n = ln_lab_n + 1;
+						ln_nlab = ln_nlab + 1;
+					}
+					else
+						ln_labover = ln_labover + 1;
+				}
+				else
+					lab = "";
+			}
+		}
 		if (ln_trmk > 0)
-			print(sprintf("lndm %g %g %.4f %.1f %.1f %.2f\n", s, k, ln_et[n + e],
-			              ln_qmk_x, ln_qmk_y, al));
+			print(sprintf("lndm %g %g %.4f %.1f %.1f %s\n", s, k, ln_et[n + e],
+			              q_x, q_y, (lab != "") ? strcat("\"", lab, "\"") : "-"));
 	}
 };
 
@@ -1375,7 +1557,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	// Patch 449.  The glyph stroke is its own width, and the line's is put back
 	// before the next slot is drawn.
 	Line_Width(ln_mkpx * 0.5);
-	ln_nmk = 0;
+	ln_nmk = ln_nlab = 0;
 	Line_Marks(s, ia, ib, tplay, ahead, alpha);
 	Line_Width(ln_wpx);
 
@@ -1387,6 +1569,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		              ln_wina, ln_winb));
 		print(sprintf("lnd2 %g %g %g %g %g %g\n", s, ia, ib, ln_npt, ln_nseg,
 		              ln_nmk));
+		print(sprintf("lnd3 %g %g\n", s, ln_nlab));
 	}
 };
 
@@ -1394,11 +1577,17 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 // are drawn after the replay's.
 void() Line_FrameEnd =
 {
+	local float i;
+
+	for (i = 0; i < ln_lab_n; i = i + 1)
+		HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_numsize, ln_lab_c[i], ln_lab_a[i]);
 	if (ln_trmk > 0)
 	{
-		print("lnde\n");
+		print(sprintf("lnde %g %g\n", ln_lab_n, ln_labover));
 		ln_trmk = ln_trmk - 1;
 	}
+	ln_lab_n = 0;
+	ln_labover = 0;
 };
 
 /*
@@ -1421,6 +1610,16 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
+	// Patch 450: the numbers.  Off by default -- the marks are furniture, the
+	// numbers are a thing you turn on to read a run.
+	registercvar("hud_lines_nums",    "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_speed",   "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_energy",  "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_vz",      "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_delta",   "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_time",    "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_ref",     "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_numsize","12", CVAR_ARCHIVE);
 	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
 };

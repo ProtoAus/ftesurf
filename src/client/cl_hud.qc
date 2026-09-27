@@ -2633,6 +2633,30 @@ string(float de, float gain) HUD_SeqDelCol =
 	return sprintf("%+5.0fe ", de);
 };
 
+/*
+  The same two columns with the field padding taken out.  Patch 450: the run
+  line's marks carry these numbers too, and a label is not a column -- but it
+  must READ the same, so the unit choice stays here rather than becoming a
+  fifth copy of the ternary out in cl_lines.qc.
+
+  THE UNIT IS A PARAMETER HERE AND A GLOBAL ABOVE, and that is the fix for a
+  real defect rather than a style choice: seq_units is cached by Board_Frame,
+  which does not run while a replay is up, so a line label that read it kept
+  whatever unit was in force before the replay opened.  hud_seq_units 0
+  visibly changed nothing (p450num N4).  The caller reads the cvar.
+*/
+string(float e, float grav, float units) HUD_SeqAbsTight =
+{
+	if (units == 0) return sprintf("%.0fu/s", Strafe_EquivSpeed(e, grav));
+	return sprintf("%.0fe", e);
+};
+
+string(float de, float gain, float units) HUD_SeqDelTight =
+{
+	if (units == 0) return sprintf("%+.0fu/s", gain);
+	return sprintf("%+.0fe", de);
+};
+
 void(vector scr) HUD_DrawSeq =
 {
 	local float i, sz, lh, a, rows, first, pct, pw, bw, bt;

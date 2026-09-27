@@ -637,6 +637,25 @@ string(string id, float row) HE_OptDef =
 		                      "|Speed: red slow to green fast, over the shown range. Gain: green gaining, red losing.";
 		if (row == 11) return "hud_watch_path_ahead|Draw the future|t||"
 		                      "|The part of the run past the playhead, at half brightness.";
+		// Patch 450: the numbers on those marks.
+		if (row == 12) return "hud_lines_nums|Numbers|c|0 1 2|off;on marks;+ peaks"
+		                      "|Speed and energy at each mark. `+ peaks` adds them where the run stopped rising or falling.";
+		if (row == 13) return "hud_lines_speed|Speed|t||"
+		                      "|Horizontal speed there, u/s -- the same number the speedometer shows.";
+		if (row == 14) return "hud_lines_energy|Energy|t||"
+		                      "|What it had left to spend: height plus speed, in whichever unit the segment column is in.";
+		if (row == 15) return "hud_lines_ref|Measured from|c|0 1|the HUD's zero;the run's start"
+		                      "|The run's start is self-contained and compares two recordings of a map. The HUD's zero matches the split list.";
+		if (row == 16) return "hud_lines_delta|Change|t||"
+		                      "|How much that mark gained or lost since the one before it.";
+		if (row == 17) return "hud_lines_vz|Vertical|t||"
+		                      "|Up or down speed at the mark, signed. Useful at peaks.";
+		if (row == 18) return "hud_lines_time|Run clock|t||"
+		                      "|When it happened, in seconds into the run.";
+		if (row == 19) return "hud_lines_numsize|Number size|c|10 12 14 18|small;normal;large;huge"
+		                      "|Text height for the labels.";
+		if (row == 20) return "hud_seq_units|Units|c|0 1 2|u/s;energy;both"
+		                      "|Shared with the segment column, so the line and the panel never disagree.";
 		return "";
 	}
 
