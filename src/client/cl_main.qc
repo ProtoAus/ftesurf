@@ -1592,7 +1592,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (rec_wt_on)
 			Watch_Path2D();
 		Scores_LinesDraw();     // Patch 433: the board's ticked lines
-		// Patch 450: the marks' labels, queued by both passes above.  Text drawn
+		// Patch 451: the marks' labels, queued by both passes above.  Text drawn
 		// inside them does not appear at all -- they are a stream of deferred
 		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
 		// and for the same reason.

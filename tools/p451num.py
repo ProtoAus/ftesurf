@@ -1,4 +1,4 @@
-"""p450num.py -- grade Patch 450's numbers on the run line's marks.
+"""p451num.py -- grade Patch 451's numbers on the run line's marks.
 
 The subject prints the string it handed to HUD_Text as the last field of each
 lndm line.  This rebuilds that string from the MARK TABLE the same frame was
@@ -10,7 +10,7 @@ a stale unit, still prints plausible numbers.  N4 caught exactly that -- the
 energy column would not change unit, because seq_units is cached by a function
 that does not run while a replay is up.
 
-  python tools/p450num.py [ftesurf/logs/p450num.log]
+  python tools/p451num.py [ftesurf/logs/p451num.log]
 """
 import math
 import re
@@ -50,7 +50,7 @@ def parse(path):
     recpath = None
     for raw in open(path, "r", errors="replace"):
         line = re.sub(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ", "", raw.rstrip("\n"))
-        m = re.search(r"=== p450num (\S+)", line)
+        m = re.search(r"=== p451num (\S+)", line)
         if m:
             cur = {"label": m.group(1), "marks": [], "frame": 0, "slots": {}}
             blocks.append(cur)
@@ -84,10 +84,10 @@ def parse(path):
 
 
 def main():
-    log = sys.argv[1] if len(sys.argv) > 1 else "ftesurf/logs/p450num.log"
+    log = sys.argv[1] if len(sys.argv) > 1 else "ftesurf/logs/p451num.log"
     blocks, marks, said, recpath = parse(log)
     if not blocks or not marks:
-        print("FAIL no p450num blocks or no mark table in %s" % log)
+        print("FAIL no p451num blocks or no mark table in %s" % log)
         return 1
 
     # hud_lines_ref 1's zero: the run's own first sample, from the FILE

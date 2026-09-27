@@ -637,7 +637,7 @@ string(string id, float row) HE_OptDef =
 		                      "|Speed: red slow to green fast, over the shown range. Gain: green gaining, red losing.";
 		if (row == 11) return "hud_watch_path_ahead|Draw the future|t||"
 		                      "|The part of the run past the playhead, at half brightness.";
-		// Patch 450: the numbers on those marks.
+		// Patch 451: the numbers on those marks.
 		if (row == 12) return "hud_lines_nums|Numbers|c|0 1 2|off;on marks;+ peaks"
 		                      "|Speed and energy at each mark. `+ peaks` adds them where the run stopped rising or falling.";
 		if (row == 13) return "hud_lines_speed|Speed|t||"

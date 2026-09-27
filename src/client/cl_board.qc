@@ -287,6 +287,16 @@ float  ramp_rawlast;
   and ended, and it must not touch ramp_on/ramp_lastc -- those belong to the
   live board.  So the caller passes its own two variables and updates them from
   the answer; RAMP_GAP, the ordering and the `now >= last` guard exist once.
+
+  THE `raw` BRANCH IS DEAD AT ONE CALL SITE AND LIVE AT THE OTHER, which is why
+  the function has a shape neither caller fully uses.  Board_RampHold returns on
+  raw before it gets here, so raw is always FALSE by then; Line_Contact passes
+  raw straight through and needs it.  Neither is wrong and it is not dead code
+  (review, Patch 449).
+
+  It contains no assignments, deliberately: that is what makes a second caller
+  structurally unable to disturb the live board, rather than merely trusted not
+  to.
 */
 float(float raw, float on, float last, float now) Board_RampHeld =
 {

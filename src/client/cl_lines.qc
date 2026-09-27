@@ -135,7 +135,7 @@ float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
 float  ln_mkpx, ln_mkgap, ln_wpx;
 
-// The numbers (Patch 450), read once a frame.  ln_grav is the reader's, not one
+// The numbers (Patch 451), read once a frame.  ln_grav is the reader's, not one
 // baked in at load: the same file watched on a different sv_gravity is a
 // different run and the energy has to say so.
 float  ln_numon, ln_numspeed, ln_numenergy, ln_numvz, ln_numdelta, ln_numtime;
@@ -361,9 +361,19 @@ void(float s, vector o, float spd, float t, float brk) Line_Add =
 	ln_n[s] = n + 1;
 };
 
-// This sample's contact kind, with the slot's own ramp hold moved on.  It does
-// NOT touch ln_pkind: the mark is the edge between two samples, so the caller
-// owns what the previous one was.
+/*
+  This sample's contact kind, with the slot's own ramp hold moved on.  It does
+  NOT touch ln_pkind: the mark is the edge between two samples, so the caller
+  owns what the previous one was.
+
+  THE BRIDGED-GAP COUNTERS ARE DELIBERATELY NOT REPLICATED.  Board_RampHold
+  also keeps ramp_raw/ramp_rawlast and counts ramp_drops/ramp_bridged on a
+  gap's trailing edge; this has no equivalent and therefore cannot answer "how
+  many gaps were bridged".  It does not need to -- the line wants kind EDGES,
+  not a count -- but do not "fix" the omission: those counters belong to the
+  live board, and `replay status`'s `ramp gaps bridged` is the board's number,
+  not this one's (review, Patch 449).
+*/
 float(float s, vector v, float fl, float t) Line_Contact =
 {
 	local float raw, held;
@@ -1210,7 +1220,7 @@ float(vector q, float lab) Line_Claim =
 		return FALSE;
 	// Labels claim their OWN grid.  Sharing one, a label lost every cell its
 	// own glyph had just taken -- at gap 240 that was every number on screen
-	// (p450num N6: 9 marks, 0 labels), which is not thinning, it is off.
+	// (p451num N6: 9 marks, 0 labels), which is not thinning, it is off.
 	if (lab)
 	{
 		if (ln_lcell[i] == ln_cellgen)
@@ -1229,7 +1239,7 @@ float(vector q, float lab) Line_Claim =
 
   Its two ends can fall in the same cell, and claiming them one after the other
   made the label lose to ITSELF: at gap 240 that was every number on screen
-  (p450num N6, 9 marks and 0 labels).  So: test both, then take both.
+  (p451num N6, 9 marks and 0 labels).  So: test both, then take both.
 */
 float(vector lp, float lw) Line_ClaimSpan =
 {
@@ -1610,7 +1620,7 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
-	// Patch 450: the numbers.  Off by default -- the marks are furniture, the
+	// Patch 451: the numbers.  Off by default -- the marks are furniture, the
 	// numbers are a thing you turn on to read a run.
 	registercvar("hud_lines_nums",    "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_speed",   "1", CVAR_ARCHIVE);

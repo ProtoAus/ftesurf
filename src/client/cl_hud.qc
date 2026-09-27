@@ -2634,7 +2634,7 @@ string(float de, float gain) HUD_SeqDelCol =
 };
 
 /*
-  The same two columns with the field padding taken out.  Patch 450: the run
+  The same two columns with the field padding taken out.  Patch 451: the run
   line's marks carry these numbers too, and a label is not a column -- but it
   must READ the same, so the unit choice stays here rather than becoming a
   fifth copy of the ternary out in cl_lines.qc.
@@ -2643,7 +2643,7 @@ string(float de, float gain) HUD_SeqDelCol =
   real defect rather than a style choice: seq_units is cached by Board_Frame,
   which does not run while a replay is up, so a line label that read it kept
   whatever unit was in force before the replay opened.  hud_seq_units 0
-  visibly changed nothing (p450num N4).  The caller reads the cvar.
+  visibly changed nothing (p451num N4).  The caller reads the cvar.
 */
 string(float e, float grav, float units) HUD_SeqAbsTight =
 {
