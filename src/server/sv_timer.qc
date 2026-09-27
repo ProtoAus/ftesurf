@@ -1742,8 +1742,15 @@ float() SV_RecEnabled =
 */
 .float  run_t_finfgv;
 
-// Patch 455: said-once latch for the refusal above, because the take runs every
-// packet and a hold lasts as long as the key is down.  Cleared with the tag.
+// Patch 455: WHICH refusal was last said, because the take runs every packet and a
+// hold lasts as long as the key is down.  1 held, 2 still moving, 3 a trigger action
+// pending, 0 nothing said.  A code and not a bool so a fast crossing that slows to
+// rest says both in order -- round 3, after every refusal but a hold turned out to
+// print nothing at all and so be indistinguishable from the gate never running.
+// Cleared at all FOUR sites that end a pending forgiveness, which round 1 got wrong:
+// the grant, the tag raise, SV_TimerStart's expiry, and SV_TimerForgiveHop.  Missing
+// two of them left it set for the life of the map on the ordinary path -- arm, never
+// take it, start another run -- so no refusal printed twice.
 .float  run_t_fgvsaid;
 
 /*
@@ -8938,6 +8945,10 @@ void(entity e, string why) SV_TimerForgiveHop =
 
 	e.run_t_hopped  = FALSE;
 	e.run_t_jumps   = 0;
+	// 455 round 3: the latch clears at the PRINCIPAL clear too.  It was cleared at
+	// two of the four sites that end a forgiveness and not at this one, so "cleared
+	// with the tag" was a claim the code did not keep.
+	e.run_t_fgvsaid = 0;
 	e.run_t_hopsaid = 0;          // round 7: told afresh if it happens again
 	dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
 	sprint(e, PRINT_HIGH, "^2start re-armed^7 -- the hopped start is forgiven\n");
@@ -10178,17 +10189,6 @@ float(entity e) SV_TimerJumpWatch =
 	SV_RampWatch(e);
 
 	/*
-	  Settle the start.  Any ONE of three, and they are three because the
-	  question "is the launch over" has three honest answers:
-
-	    airborne for FS_STARTSETTLE   you left, and you are still leaving
-	    riding a ramp                 you are past the platform entirely, and it
-	                                  also stops an early ramp being read as a hop
-	    grounded for the dwell        you walked out and are simply walking
-
-	  The last one is what makes a no-jump start legal without a special case.
-	*/
-	/*
 	  PATCH 455: TAKE THE FORGIVENESS A FINISH ARMED, once there is no prespeed left
 	  to launder.  Round 9 rewrote this; 454's version was four defects in twelve
 	  lines and every one of them was found by a reviewer rather than by an arm.
@@ -10204,14 +10204,19 @@ float(entity e) SV_TimerJumpWatch =
 	  the mover is handed (sv_player.qc:386), and it carries run_speedmod -- a map with
 	  a modifier below 1 made the cvar looser than the mover's real cap.
 
-	  WHY THE CAP IS THE RIGHT BOUND, stated correctly this time.  Ground acceleration
-	  is NOT capped at maxspeed: PMSrc_Accelerate bounds only the projection onto
-	  wishdir (pm_source.c:685) and friction alone decays a grounded body above it.
-	  What bounds this is the engine's own measured ceiling for a grounded prestrafe,
-	  1.1129 x maxspeed = 289.34 at 260 (pm_source.c:4696).  So a body at or below 260
-	  reaches the start box no faster than one that walked, with 29 u/s to spare.  The
-	  bound is conservative, not tight, and 454's essay claimed a mechanism that is
-	  untrue.
+	  WHY THE CAP IS THE RIGHT BOUND, and round 3 fixed the citation too.  Ground
+	  acceleration is NOT capped at maxspeed: PMSrc_Accelerate bounds only the
+	  projection onto wishdir (pm_source.c:685) and friction alone decays a grounded
+	  body above it.  What bounds this is the grounded-prestrafe ceiling the engine's
+	  self-test computes -- ratio 1.112862, giving 289.3443 at 260
+	  (pm_source.c:4679-4698).  It is an analytic fixed point over Friction and
+	  Accelerate with onground forced, reachable only through pm_selftest, so it is not
+	  a measurement of play and 455 round 1 oversold it as one.  And the engine's
+	  binding statement is tighter still: prestrafe is min(cl_sidespeed, sv_maxspeed) x
+	  the ratio (pm_source.c:5001), so the real bound is at or below the figure used
+	  here.  Either way a body at or below the cap reaches the start box no faster than
+	  one that walked, with ~29 u/s to spare, and 454's essay claimed a mechanism that
+	  is simply untrue.
 
 	  EFFECTIVE speed, and the RIGHT field.  454 wrote `e.run_basevelocity`, which is
 	  the engine's read-and-clear window for one command (sv_entities.qc:954) and is
@@ -10235,46 +10240,96 @@ float(entity e) SV_TimerJumpWatch =
 	if (e.run_t_finfgv && e.run_t_hopped)
 	{
 		local vector hv;
-		local float  cap, held;
+		local float  cap, evz, why;
 
-		// MOVETYPE_NONE is the test that matters and it is the general one: every
-		// freeze in this tree is that movetype (the save-loc hold at
-		// sv_saveloc.qc:3318, the replay pin at :3371), so it covers pins this
-		// function has never heard of.  rec_wt_hold is NOT named here because it is
-		// declared in sv_saveloc.qc, which compiles after this file -- and naming it
-		// would buy nothing over the movetype.
-		held = e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE;
-		hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
+		/*
+		  455 ROUND 3: BOTH AXES CARRY THE CARRIER, and round 1 computed the vertical
+		  and then threw it away.  `hv_z = 0` deleted the only number that would have
+		  refused, and the test beside it read bare `.velocity_z`, which structurally
+		  cannot hold a pending impulse: `AddOutput basevelocity` writes all three
+		  components into run_basevel (sv_entities.qc:1793), never sets
+		  run_basevel_armed, and run_basevel_z is deliberately NOT drained post-move
+		  (sv_entities.qc:1195 -- draining it made a vertical boost "vanish entirely").
+		  So the Z waits for the next command's cash-out while ong is true and
+		  `.velocity_z` reads 0, because pm_source zeroes velocity[2] at the end of
+		  every grounded tick.  2004 such outputs across 298 of 1310 shipped maps.
+
+		  The argument for leaving Z out was about the OTHER field.  StartGravity does
+		  spend the carrier's Z -- of `run_basevelocity`, the engine's read-and-clear
+		  window.  `run_basevel` is a different field with a different lifetime, and
+		  checking the citation is not the same as checking that it applies.
+		*/
+		hv  = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 		hv_z = 0;
-		cap = e.maxspeed;
+		evz = e.velocity_z + (1 + run_bv_tick * 0.5) * e.run_basevel_z;
+		cap = e.maxspeed;               // the mover's, not the cvar's: sv_player.qc:386
 		if (cap <= 0)
 			cap = cvar("sv_maxspeed");
 		if (cap <= 0)
-			cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
+			cap = PM_RUN_SPEED;     // sh_defs.qc; unreachable for a spawned player
 
-		if (held)
+		/*
+		  WHY, AND IT IS A CODE SO THE REFUSAL CAN SAY WHICH: 1 held, 2 still moving,
+		  3 a trigger action is pending, 0 take it.  Round 1 printed only on a hold and
+		  on the grant, so every other refusal was silent and indistinguishable from
+		  the gate never running -- which is the one thing an arm for this cannot tell
+		  apart by itself.
+
+		  ORDER IS COST.  SV_TrigPending walks the edicts, so it is asked LAST, only on
+		  the packet where everything cheap would already have granted.
+
+		  `e.run_pmhold` IS UNREACHABLE HERE and is kept as a statement of intent:
+		  PlayerPostThink returns under it (sv_player.qc:664) before SV_TimerFrame, so
+		  a spectate hold never reaches this line.  Said out loud because an arm driven
+		  through `spectate` would print nothing and prove nothing.  MOVETYPE_NONE is
+		  the general test -- every freeze in this tree is that movetype, including the
+		  replay pin and the resume park -- and rec_wt_hold is not named because it is
+		  declared in sv_saveloc.qc, which compiles after this file.
+		*/
+		if (e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE)
+			why = 1;
+		else if (!ong || evz > 0 || vlen(hv) > cap)
+			why = 2;
+		else if (SV_TrigPending(e))
+			why = 3;
+		else
+			why = 0;
+
+		if (why && e.run_t_fgvsaid != why)
 		{
-			// Once per hold, not once per tick: this runs every packet.
-			if (!e.run_t_fgvsaid)
-			{
-				e.run_t_fgvsaid = TRUE;
-				dprint(sprintf("hop: %s is held, so the finish's forgiveness is NOT "
-				               "measured -- a hold reads 0 u/s and gives the speed "
-				               "back on release (see sv_saveloc.qc:3140)\n",
-				               e.netname));
-			}
+			e.run_t_fgvsaid = why;
+			if (why == 1)
+				dprint(sprintf("hop: %s is held, so the forgiveness is NOT measured "
+				               "-- a hold reads 0 u/s and gives the speed back on "
+				               "release (sv_saveloc.qc:3140)\n", e.netname));
+			else if (why == 2)
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- still "
+				               "moving: %.3f u/s against cap %.3f, ground %g, "
+				               "effective vz %.3f\n",
+				               e.netname, vlen(hv), cap, ong, evz));
+			else
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- a "
+				               "trigger action is pending (SV_TrigPending %g); it "
+				               "would act on a body this gate has already read\n",
+				               e.netname, SV_TrigPending(e)));
 		}
-		else if (ong && vz <= 0 && vlen(hv) <= cap)
+
+		if (!why)
 		{
 			dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish armed "
-			               "it and %.0f u/s is at or below the mover's cap %.0f, so "
-			               "there is no prespeed to launder\n",
-			               e.netname, vlen(hv), cap));
+			               "it and %.3f u/s is at or below the mover's cap %.3f with "
+			               "no carrier and nothing pending, so there is no prespeed "
+			               "to launder\n", e.netname, vlen(hv), cap));
 			sprint(e, PRINT_HIGH,
-			       "^2start re-armed^7 -- the hopped start died with that run\n");
+			       "^2start re-armed^7 -- the hopped start was forgiven once you "
+			       "came to rest\n");
 			e.run_t_hopped  = FALSE;
 			e.run_t_jumps   = 0;
 			e.run_t_finfgv  = FALSE;
+			// run_t_hopsaid is SHARED with the run_t_dirty reminder, and the ZONE_END
+			// arm deliberately leaves it (see the field).  Cleared HERE because this
+			// site forgives where the arm does not -- matching SV_TimerForgiveHop.
+			// The conflation itself is the real defect and is in BACKLOG.
 			e.run_t_hopsaid = 0;
 			e.run_t_fgvsaid = 0;
 		}
@@ -10282,6 +10337,17 @@ float(entity e) SV_TimerJumpWatch =
 
 	// Everything below is start business, so once the start is settled this
 	// function is two flag tests and the phase clocks.
+	/*
+	  Settle the start.  Any ONE of three, and they are three because the
+	  question "is the launch over" has three honest answers:
+
+	    airborne for FS_STARTSETTLE   you left, and you are still leaving
+	    riding a ramp                 you are past the platform entirely, and it
+	                                  also stops an early ramp being read as a hop
+	    grounded for the dwell        you walked out and are simply walking
+
+	  The last one is what makes a no-jump start legal without a special case.
+	*/
 	if (!e.run_t_startok)
 	{
 		/*
@@ -10500,6 +10566,7 @@ float(entity e) SV_TimerJumpWatch =
 					// fresh tag drops any forgiveness a finish armed -- otherwise
 					// coming to rest would forgive THIS one.
 					e.run_t_finfgv = FALSE;
+					e.run_t_fgvsaid = 0;    // 455 round 3: and the latch with it
 				}
 			}
 		}
@@ -12107,6 +12174,7 @@ void(entity e) SV_TimerStart =
 	// take, has EXPIRED -- this run has begun and the forgiveness belonged to the last
 	// one.  After the taint chain above, so it cannot change what this run is.
 	e.run_t_finfgv = FALSE;
+	e.run_t_fgvsaid = 0;            // 455 round 3: and the latch with it
 
 	// Build 58: before SV_RecOpen for the same reason the latches above are --
 	// so the recording's header is written with the run already flagged.  It is
