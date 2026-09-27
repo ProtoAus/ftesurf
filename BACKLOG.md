@@ -7,6 +7,21 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **A HOST-SIDE INABILITY TO VERIFY IS RECORDED PERMANENTLY AGAINST THE PLAYER'S
+  RUN.** `pm_verify` answers PASS / HOLD / REFUSE, and REFUSE is documented as
+  "cannot say, never a judgement on the run" -- but `surfd/sweep.py:236-238` sets
+  `checked = 1` on any non-ERROR verdict while `pending()` (`:86-96`) selects
+  `checked = 0`, so **a REFUSE is terminal**. The only retryable outcome is
+  ERROR, which the engine cannot emit: it is produced solely by `sweep.py:270`'s
+  "no VERIFY line" fallback. So verdicts that are genuinely about THIS HOST --
+  Patch 463's `this server cannot state its own zone pin` and `this server's zone
+  pin is too long to read`, and anything else describing the verifier rather than
+  the run -- stick to the run for good, one admin click each to undo
+  (`admin.py:1577`). Two things are needed: a verdict class `sweep` will retry,
+  and a bulk re-check (there is none in this tree, which is also what makes
+  Patch 463's fix prospective-only). This is the Patch 421/422 third-verdict
+  shape one level out: the word is right and the plumbing collapses it.
+  Found by Patch 463's evidence reviewer.
 - **`pm_verify` reads a QC return value through a `globalvars_t *` fetched BEFORE the
   call that produces it.** `sv_ccmds.c:5365` takes `pr_globals = PR_globals(...)`,
   `:5369` runs `PR_ExecuteProgram(svprogfuncs, fpin)`, and `:5370` reads
