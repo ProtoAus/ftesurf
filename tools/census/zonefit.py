@@ -61,8 +61,14 @@ GAMEMAPS = os.path.join(ROOT, "ftesurf", "maps")
 SAMEPT = 1.0
 
 
+# Where a donor's zone file is looked up, in order.  A caller that is about to
+# WRITE into ZLOCAL must pin this to the Momentum install first -- otherwise a
+# second run reads back its own copies and the check stops being independent.
+SEARCH = [ZLOCAL, ZONLINE]
+
+
 def zonepath(name):
-    for d in (ZLOCAL, ZONLINE):
+    for d in SEARCH:
         p = os.path.join(d, name + ".json")
         if os.path.exists(p):
             return p

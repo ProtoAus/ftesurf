@@ -7,6 +7,28 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **`pm_verify`'s zone pin includes the SOURCE DIRECTORY, so moving a byte-identical
+  zone table from `online/` to `local/` refuses every existing recording for that
+  map.** `sv_ccmds.c:5264` builds `zbuf = "<zonesrc> <zonecrc> <zonerule>"` and
+  `strcmp`s it against `SV_VerifyZonePin`'s answer; a mismatch sets
+  `refuse = "a different zone table or rule"` and returns before replaying a tick
+  (`:5267-5271`). But `zonecrc` is already a hash of the BUILT table -- type,
+  track, seg, cp, z-band and every point at `%.3f` (`Zone_Hash`, sh_zones.qc:264)
+  -- so the table is pinned twice and the second pin is a PATH. Two directories
+  holding the same bytes are the same table, and saying otherwise is a false
+  refusal on an honest run: the maximum-severity verdict for a file that is
+  correct. Same shape as Patch 421's two-verdict angle check.
+  THIS IS LOAD-BEARING FOR THE ZONE WORK. `tools/zoneinstall.py` can donate a
+  zone file to the 66 builds that have none (done -- none of them could be timed
+  before, so no recording exists to invalidate; measured, 0 of 66 carry BSP timer
+  triggers), but it CANNOT mirror the other 543 maps into the editable folder
+  until this is fixed, because every one of them currently records
+  `zonesrc online` and 265 local recordings plus the fleet's corpus would stop
+  verifying. Fix: compare `zonecrc` and `zonerule`, report `zonesrc` alongside as
+  information. Touches the verifier, so it needs the independent review AGENTS.md
+  requires before deploy. Note `local` already occurs in the wild -- Momentum's
+  own install ships 14 files in its `zones/local`, which FTE's VFS resolves on
+  that same path.
 - **CONFIRMED BY MEASUREMENT: a pre-446 map could have made the server broadcast
   `rcon_password`. THE FLEET'S RCON KEY SHOULD BE ROTATED — an operator action, not a
   code one.** `Cmd_ExpandCvar` interpolates `$cvar` into the text AFTER the Cbuf split,

@@ -62,6 +62,24 @@ def verdict(name, state, detail):
         rc = 1
 
 
+def installed_by_tool(target, donor):
+    """True when tools/zoneinstall.py put exactly this donation here.
+
+    Once the donations are installed the arm's subject already exists, and the
+    honest thing is to grade THAT rather than to shadow it with a second copy --
+    the installed tree is what a player loads.  Any other pre-existing file is
+    still refused, because overwriting somebody's edit to measure something is
+    how a driver's cleanup becomes a data-loss bug."""
+    man = os.path.join(GAMEDIR, "maps", "zones", "manifest.txt")
+    if not os.path.exists(man):
+        return False
+    for ln in open(man, encoding="utf-8"):
+        f = ln.split()
+        if len(f) >= 3 and f[0] == target and f[1] == "donation" and f[2] == donor:
+            return True
+    return False
+
+
 def stage(mutate):
     """Refuse rather than overwrite: a left-behind local file shadows the shipped
     zones for every later run in this tree, silently."""
@@ -70,10 +88,17 @@ def stage(mutate):
     for donor, target in PAIRS:
         dst = os.path.join(LOCAL, target + ".json")
         if os.path.exists(dst):
+            if not mutate and installed_by_tool(target, donor):
+                print("in place  %-34s (installed, grading it as found)"
+                      % os.path.relpath(dst, ROOT))
+                continue
             for p in wrote:
                 os.remove(p)
-            raise SystemExit("refusing: %s already exists -- it shadows the shipped zones"
-                             % os.path.relpath(dst, ROOT))
+            raise SystemExit("refusing: %s already exists -- it shadows the shipped "
+                             "zones%s" % (os.path.relpath(dst, ROOT),
+                                          " (--mutate needs a clean tree: run "
+                                          "`python tools/zoneinstall.py --donations-only` "
+                                          "to see what is installed)" if mutate else ""))
         # Z4 sends every target the FIRST pair's donor, so two of the three crcs
         # must differ.  Not a random file: a real zone file for a real map, which
         # is the mistake a copy script would actually make.
@@ -96,10 +121,24 @@ def unstage(wrote, keep):
             continue
         if os.path.exists(p):
             os.remove(p)
-    left = sorted(os.listdir(LOCAL)) if os.path.isdir(LOCAL) else []
-    print("maps/zones/local after the run: %s" % (", ".join(left) if left else "(empty)"))
-    if left and not keep:
-        print("  WARNING: files remain that this driver did not stage")
+    # List the tree, but count only what the manifest does NOT account for -- once
+    # zoneinstall.py has run, 66 files legitimately live here and naming them all
+    # every run buries the one line that would matter.
+    left = sorted(f[:-5] for f in os.listdir(LOCAL)
+                  if f.lower().endswith(".json")) if os.path.isdir(LOCAL) else []
+    known = set()
+    man = os.path.join(GAMEDIR, "maps", "zones", "manifest.txt")
+    if os.path.exists(man):
+        for ln in open(man, encoding="utf-8"):
+            f = ln.split()
+            if len(f) >= 2 and not ln.startswith("#"):
+                known.add(f[0])
+    stray = [n for n in left if n not in known]
+    print("maps/zones/local after the run: %d file(s), %d in the manifest, %d stray"
+          % (len(left), len(left) - len(stray), len(stray)))
+    if stray and not keep:
+        print("  WARNING: not staged by this driver and not in the manifest: %s"
+              % ", ".join(stray))
 
 
 def parse():
