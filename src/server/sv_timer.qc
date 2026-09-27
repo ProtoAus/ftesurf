@@ -10450,8 +10450,22 @@ float(entity e) SV_TimerJumpWatch =
 		if (why)
 		if (why != 4)
 		{
-			e.run_t_fgvok = 0;
-			e.run_t_fgvn  = 0;
+			/*
+			  455 ROUND 8B: SAY WHAT WAS BROKEN, when there was something to break.
+			  The reason-4 line fires only on the transition INTO 4, so it always reads
+			  `0.000 s / 1 read` and a run that ends without taking left no record of
+			  how close the streak got.  An arm failed on exactly that and neither its
+			  author nor I could tell from the log whether it had reached seven reads or
+			  never passed one.  `fgvn > 1` keeps it quiet through an ordinary chain,
+			  where every landing is a streak of one.
+			*/
+			if (e.run_t_fgvn > 1)
+				dprint(sprintf("hop: %s's clear streak broke at %.3f s over %g reads, "
+				               "reason %g\n", e.netname, time - e.run_t_fgvok,
+				               e.run_t_fgvn, why));
+			e.run_t_fgvok   = 0;
+			e.run_t_fgvn    = 0;
+			e.run_t_fgvlast = 0;      // all three, or the invariant is a slogan
 		}
 
 		if (why && e.run_t_fgvsaid != why)
