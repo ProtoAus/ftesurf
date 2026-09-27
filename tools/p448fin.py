@@ -105,9 +105,19 @@ FIELDS = {
     # the take had demonstrably fired (`hopped 0`, `cleanfin yes`). Anchor on the thing
     # that happened; the sentence explaining it is not a stable interface.
     "takesay":   r"(hopped-start taint cleared -- )",
-    # PATCH 455 ROUND 6's TWO REFUSALS, and `settlesay` is the one that matters: it is the
-    # only evidence the DWELL RAN rather than merely being compiled in. A build with
-    # FS_FGVDWELL 0 goes straight from `movesay` to `takesay` and never emits it.
+    # PATCH 455 ROUND 6's TWO REFUSALS.  `settlesay` is the STRUCTURAL discriminator and
+    # is graded; `movesay` is REPORTED, NOT GRADED, and the mutation run is why.
+    #
+    # With FS_FGVDWELL 0 and FS_FGVREADS 0 the `why = 4` branch is unreachable --
+    # `(time - fgvok) < 0` is false because time >= fgvok, and `fgvn < 0` is false because
+    # fgvn >= 1 -- so `settlesay` CANNOT appear on a build with the dwell removed. That is
+    # a property of the code, not of the run.
+    #
+    # `movesay` went absent on the mutant too, and I nearly graded it on the strength of
+    # that. It only appears if an AIRBORNE packet happens to be observed between the arm
+    # and the take, which varies between runs of the same build -- so grading it would put
+    # a false red in the arm on an honest run. Absence of `movesay` is not evidence of
+    # anything; absence of `settlesay` is.
     "movesay":   r"NOT taken -- still moving: ",
     "settlesay": r"NOT taken -- at rest but settling: ",
     # The streak the take actually satisfied, from the gate's own numbers rather than from
@@ -144,15 +154,14 @@ EXPECT = {
     # a dwelling build from a non-dwelling one.
     "F": {"state": "finished", "nprac": "1", "hopped": "0",
           "armsay": "present", "takesay": "present", "finsay": "absent",
-          "movesay": "present", "settlesay": "present"},
+          "settlesay": "present"},
     "A": {"hopped": "0"},
 }
 CONTROL = {
     # The tag never clears, so BOTH runs are practice and no run finishes un-marked,
     # and none of the three finish lines exists on that build.
     "F": {"nprac": "2", "hopped": "1", "finsay": "absent",
-          "armsay": "absent", "takesay": "absent",
-          "movesay": "absent", "settlesay": "absent"},
+          "armsay": "absent", "takesay": "absent", "settlesay": "absent"},
     "A": {"hopped": "1"},
 }
 # ---------------------------------------------------------------------------
@@ -186,7 +195,7 @@ CONTROL = {
 REPORT = {
     "C": ("class", "practice", "azone", "jumps"),
     "J": ("startok", "jumps", "azone", "class", "practice"),
-    "F": ("startok", "jumps", "azone", "practice", "class", "nfin"),
+    "F": ("startok", "jumps", "azone", "practice", "class", "nfin", "movesay"),
     "A": ("state", "startok", "jumps", "azone", "class", "practice", "rearmhop"),
 }
 
