@@ -87,10 +87,34 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   hopping out of the start is the sport there — and `SV_TimerMapInit` applies it from the
   map's own metadata, including on a listen server. That is roughly half the roster, and
   it means Patch 445 changes nothing for those maps. Round 6, lens B.
+- **FOUR SHIPPED TRACKS HAVE AN END REGION THAT OVERLAPS THEIR OWN START, so a finish
+  there should read as a CANCEL and the track cannot be completed at all.** MEASURED by
+  `tools/census/endnearstart.py` over all 537 zone files: `agtricks` main,
+  `surf_flyin_fortress` main, `surf_ethereal` b1 and `surf_quirky` b9 have an END whose
+  prism is identical to or nested inside their segment-0 START, both polygons
+  axis-aligned so the figure is exact (flyin_fortress' END is the same rectangle 0.011 u
+  shorter; agtricks' is a 128x128 END inside an 1856x704 START). A fifth,
+  `surf_pools` b2, is an AABB artefact — its rotated polygons do not actually overlap.
+  MECHANISM, read but NOT run: in `SV_TimerFrame` the occupancy step runs BEFORE the
+  event dispatch, so re-entering the START while `TS_RUNNING` reaches `SV_TimerTryArm`,
+  and `run_rearmstops 1` (the shipped default) re-arms and prints "run cancelled (back in
+  the start)". The dispatch then finds the state is no longer `TS_RUNNING` and
+  `SV_TimerEvent` returns. FTESurf also ignores an END's `filtername` — nothing in `src/`
+  reads that key — so the region loads unfiltered even where the mapper meant it not to.
+  A map-caused denial: on those tracks no time can ever be set. Found by Patch 448's
+  round 8 while checking whether the finish clear was reachable there; it is not, which is
+  incidentally good for 448 and bad for the player. **Next step is to drive one of the
+  four and read whether the cancel line appears** — the geometry and the control flow are
+  established, the live behaviour is not.
 - **A hopped-start tag survives a VOID, though no longer a finish.** Patch 448 fixed the
-  finish half: `SV_TimerFinish` now clears the tag at its own last line, so the tainted
-  run keeps its mark and the next attempt starts clean (measured both sides,
-  `cfg/test/p448fin.cfg` — the control finishes two runs marked, the fixed build one).
+  finish half and **Patch 454 fixed 448's argument**: the finish no longer clears the tag
+  outright — it ARMS a forgiveness that is taken once the player is grounded at or below
+  `sv_maxspeed`, because `endnearstart.py` measured 12 shipped tracks whose END sits within
+  64 u of their own START (4 overlapping, `surf_summer` main at 64) where 448's "the trip
+  costs something" was false. So the clear cannot carry speed whatever the geometry.
+  **The above-`sv_maxspeed` refusal is UNMEASURED** — every headless gesture walks at or
+  below it, so the arm only ever exercises the YES branch. It needs a human finishing fast
+  on one of those tracks, and `tools/p448fin.py` says so in block capitals.
   **WHAT REMAINS IS THE VOID PATH.** A cancel zone or a fall-off `trigger_teleport` goes
   through `SV_TimerVoid` → `SV_TimerIdle`, which deliberately does not clear (it is
   map-reachable, which is the whole reason 445 took the clear out of there) — so an
