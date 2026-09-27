@@ -46,7 +46,15 @@
 #define PBL_TRAIL   2       // lobby_fx after the lobby_av_fxmax cap
 #define PBL_MOTES   4
 #define PBL_GLOW    8
-#define PBL_LONG    16
+/*
+  PATCH 457: the trail LENGTH stop, 0..3, as a two-bit field.  It was one bit
+  ("long"), and one bit can only ever offer two lengths.  16 and 64 rather than a
+  contiguous pair because 16 was already PBL_LONG and 64 was the spare -- so a
+  client at stop 1 puts the same bit on the wire that a 340 client put there for
+  "long".  No byte was added: the LOOK message is the same 8 B it always was.
+*/
+#define PBL_LEN0    16
+#define PBL_LEN1    64
 #define PBL_CUSTOM  32      // worn rgb is a lobbyrgb triple, not palette lc
 
 #define POSE_KEEPALIVE 0.5
@@ -288,7 +296,8 @@ void(entity av, entity p) Pose_Look =
 	if (p.lobby_fx & FS_AVFX_TRAIL)     lf = lf | PBL_TRAIL;
 	if (p.lobby_fx & FS_AVFX_MOTES)     lf = lf | PBL_MOTES;
 	if (p.lobby_fx & FS_AVFX_GLOW)      lf = lf | PBL_GLOW;
-	if (p.lobby_fx & FS_AVFX_TRAILONG)  lf = lf | PBL_LONG;
+	if (p.lobby_trailn & 1)             lf = lf | PBL_LEN0;
+	if (p.lobby_trailn & 2)             lf = lf | PBL_LEN1;
 	if (p.lobby_custom)                 lf = lf | PBL_CUSTOM;
 
 	tc = p.lobby_trailc;

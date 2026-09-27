@@ -52,7 +52,14 @@ float av_open;                  // the customizer is up
 #define AV_FX_TRAIL    1
 #define AV_FX_MOTES    2
 #define AV_FX_GLOW     4
-#define AV_FX_TRAILONG 8
+/*
+  PATCH 457: bit 8 was "long trail" and is unassigned now -- the trail's LENGTH
+  is `setinfo lobbylen <0..3>`, its own key beside `lobbytrail`'s colour, because
+  one bit can only ever offer two lengths.  Four stops, and they all cost the
+  same: tools/mkavatarfx.py scales `step` with `die`, so live particles per
+  player is mean(die)/step x speed and depends on the ratio, not on either alone.
+*/
+#define AV_TRAILN 4
 
 #define AV_COLOURS 12
 
@@ -322,16 +329,44 @@ void(float v) Av_SetR = { av_rgb_x = v; Av_SendRGB(); };
 void(float v) Av_SetG = { av_rgb_y = v; Av_SendRGB(); };
 void(float v) Av_SetB = { av_rgb_z = v; Av_SendRGB(); };
 
+// The stop's name, matching tools/mkavatarfx.py's TRAIL_STOPS so the panel and
+// the generated blocks call the same ribbon the same thing.
+string(float n) Av_TrailLenName =
+{
+	if (n <= 0) return "short";
+	if (n == 1) return "medium";
+	if (n == 2) return "long";
+	return "longest";
+};
+
+// What the trail length is set to, clamped.  Unset is 0, the ribbon this game
+// drew before there was a choice.
+float() Av_TrailLen =
+{
+	local float n;
+
+	n = Av_MyInfo("lobbylen");
+	if (n < 0 || n > AV_TRAILN - 1)
+		n = 0;
+	return n;
+};
+
+/*
+  One slider for the trail: 0 is off, 1..AV_TRAILN are the length stops.  The
+  length is written only when the trail is ON, so switching it off and back on
+  returns the ribbon you had rather than the shortest one.
+*/
 void(float v) Av_FxTrail =
 {
 	local float fx;
 
 	fx = Av_MyInfo("lobbyfx");
-	fx = fx - (fx & (AV_FX_TRAIL | AV_FX_TRAILONG));
+	fx = fx - (fx & AV_FX_TRAIL);
 	if (v >= 1)
+	{
 		fx = fx + AV_FX_TRAIL;
-	if (v >= 2)
-		fx = fx + AV_FX_TRAILONG;
+		Av_SetInfo("lobbylen", v - 1);
+	}
 	Av_SetInfo("lobbyfx", fx);
 };
 
@@ -485,10 +520,8 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 
 	if (m & AV_FX_TRAIL)
 	{
-		if (m & AV_FX_TRAILONG)
-			slot = particleeffectnum(sprintf("ftesurf_avtrailL_%g", tc));
-		else
-			slot = particleeffectnum(sprintf("ftesurf_avtrail_%g", tc));
+		slot = particleeffectnum(sprintf("ftesurf_avtrail%g_%g",
+		                                 Av_TrailLen() + 1, tc));
 		if (prevfeet != '0 0 0')
 			trailparticles(slot, g, prevfeet, feet);
 	}
@@ -626,6 +659,7 @@ void(vector scr) Av_Draw =
 	local vector p, sz;
 	local float i, x, y, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint;
 	local float barh, fw, fh, pvw, pvx, pvh, slh, stop;
+	local float segs, lit, stripw, striph;      // the trail strip, below
 	local string nm, hash, s, rgbstr;
 
 	// The board is the older modal and draws over this; see Av_Open.
@@ -858,10 +892,10 @@ void(vector scr) Av_Draw =
 	y = y + tsz + 4;
 
 	fx = Av_MyInfo("lobbyfx");
-	stop = (fx & AV_FX_TRAIL) ? ((fx & AV_FX_TRAILONG) ? 2 : 1) : 0;
-	Av_Slider("av_fx1", [p_x + pad, y], [sz_x - pad * 2, slh], 2, stop,
-	          "trail", stop == 0 ? "off" : (stop == 1 ? "trail" : "long"),
-	          Av_FxTrail, 2);
+	stop = (fx & AV_FX_TRAIL) ? Av_TrailLen() + 1 : 0;
+	Av_Slider("av_fx1", [p_x + pad, y], [sz_x - pad * 2, slh], AV_TRAILN, stop,
+	          "trail", stop == 0 ? "off" : Av_TrailLenName(stop - 1),
+	          Av_FxTrail, AV_TRAILN);
 	y = y + slh + 2;
 	Av_Slider("av_fx2", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
 	          (fx & AV_FX_MOTES) ? 1 : 0, "motes",
@@ -893,6 +927,37 @@ void(vector scr) Av_Draw =
 	            [sw * 3, tsz * 1.6], "match", askt == 0))
 		Av_SetInfo("lobbytrail", 0);
 	y = y + sw * 0.7 + 4;
+
+	/*
+	  THE TRAIL STRIP, AND IT EXISTS BECAUSE THE 3D PREVIEW CANNOT SHOW ONE.
+	  P_DrawParticles is inside `if (!(r_refdef.flags & RDF_NOWORLDMODEL))`
+	  (r_surf.c:4014) and the stage renders with VF_DRAWWORLD 0, which sets
+	  exactly that flag -- so the panel built to preview your effects could never
+	  draw the two that are made of particles, and the body oscillates to animate
+	  a ribbon nothing was drawing.  Measured, not inferred: p457av's shots have
+	  lobbyfx 3 set and no particle anywhere in the viewport.
+
+	  A REPRESENTATION, NOT A RENDER, and the panel says "to scale" rather than
+	  pretending otherwise: the colour is the one the blocks are generated in and
+	  the drawn length is the stop's share of the longest, which is the pair you
+	  are actually choosing between.  Bright at the left, where the body would
+	  be, fading out along the tail the way the real alphadelta does.
+	*/
+	striph = ceil(tsz * 0.6);
+	if (fx & AV_FX_TRAIL)
+	{
+		segs = 30;
+		stripw = (sz_x - pad * 2) / segs;
+		lit = segs * (Av_TrailLen() + 1) / AV_TRAILN;
+		for (i = 0; i < lit; i = i + 1)
+			sui_fill([p_x + pad + i * stripw, y], [stripw + 1, striph],
+			         Av_PaletteRGB(askt >= 1 ? askt : eff),
+			         (1 - i / lit) * 0.85, 0);
+	}
+	else
+		sui_fill([p_x + pad, y + striph * 0.5], [sz_x - pad * 2, 1],
+		         '0.18 0.18 0.22', 1, 0);
+	y = y + striph + 4;
 
 	/*
 	  PATCH 341: THE FOOTER WRAPS.  It used to be two fixed lines written for a

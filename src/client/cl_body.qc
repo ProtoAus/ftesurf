@@ -38,7 +38,10 @@
 #define PBL_TRAIL   2
 #define PBL_MOTES   4
 #define PBL_GLOW    8
-#define PBL_LONG    16
+// PATCH 457: two bits, not one -- the trail length stop 0..3.  The pairing with
+// 64 rather than 32 is explained where the message is written (sv_pose.qc).
+#define PBL_LEN0    16
+#define PBL_LEN1    64
 #define PBL_CUSTOM  32
 
 // Body_Pose's answer.
@@ -326,7 +329,7 @@ float() Body_R24 =
 
 void(entity b) Body_ReadLook =
 {
-	local float s, lf, lc, tc, r, g, bl, a;
+	local float s, lf, lc, tc, r, g, bl, a, n;
 	local entity o;
 
 	s  = readbyte();
@@ -353,10 +356,10 @@ void(entity b) Body_ReadLook =
 	b.pb_fxmote  = 0;
 	if (lf & PBL_TRAIL)
 	{
-		if (lf & PBL_LONG)
-			b.pb_fxtrail = particleeffectnum(sprintf("ftesurf_avtrailL_%g", tc));
-		else
-			b.pb_fxtrail = particleeffectnum(sprintf("ftesurf_avtrail_%g", tc));
+		// Stop 0..3 out of the two-bit field, +1 for the block names, which are
+		// 1-based because ftesurf_avtrail0_ reads like "no trail".
+		n = ((lf & PBL_LEN0) ? 1 : 0) + ((lf & PBL_LEN1) ? 2 : 0);
+		b.pb_fxtrail = particleeffectnum(sprintf("ftesurf_avtrail%g_%g", n + 1, tc));
 	}
 	if (lf & PBL_MOTES)
 		b.pb_fxmote = particleeffectnum(sprintf("ftesurf_avmote_%g", lc));
