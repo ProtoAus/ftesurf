@@ -1547,9 +1547,23 @@ float() SV_RecEnabled =
   ABOVE the forgiveness (round 6 corrected this: it read "two lines from", and two
   reviewers found the direction wrong as well as the distance); the ground dwell
   zeroes it at its own call site; a respawn brings a fresh body that
-  PutClientInServer has already zeroed.  THREE callers, and none can carry a
-  chain's speed past the clear -- which is what makes them safe to forgive and
-  SV_TimerArm unsafe.
+  PutClientInServer has already zeroed.  THREE callers of SV_TimerForgiveHop, and none
+  can carry a chain's speed past the clear -- which is what makes them safe to forgive
+  and SV_TimerArm unsafe.
+
+  AND PATCH 448 ADDED A FOURTH CLEAR THAT IS **NOT** ONE OF THOSE CALLERS, named here
+  because an unlisted clear is the exact defect round 6 had to fix in this very essay.
+  SV_TimerFinish clears the tag at its own last line, WITHOUT zeroing the velocity --
+  players coast past the finish line and stopping them dead would be a worse bug than
+  the one it fixes.  So it cannot honour SV_TimerForgiveHop's contract and deliberately
+  does not call it; its safety rests on a different argument, written out at the site:
+  reaching the end zone means traversing the map, so the speed a finisher holds was
+  built on the course rather than in the box, and getting back to a start costs either
+  an `!r` (velocity zeroed) or the trip.  The route that would carry speed into a start
+  is open with or without it -- the rule never tags a chain taken OUTSIDE the box, since
+  run_t_startok latches about a second after you leave -- so the finish clear hands a
+  cheater nothing new and hands an honest player back the run after next.
+  FOUR CLEARS, THEN: three that zero the velocity, and one that finishes a run first.
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -11470,6 +11484,53 @@ void(entity e, float ticks) SV_TimerFinish =
 
 	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
 	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
+
+	/*
+	  PATCH 448: THE HOPPED-START TAG DIES WITH THE RUN IT DESCRIBED.
+
+	  Patch 445 made the tag sticky and removed SV_TimerIdle's clear, and a reviewer
+	  found that it therefore outlived the RUN: finish a hopped run, walk back into the
+	  box, run again -- practice, with no message.  Worse on the 66 maps whose own reset
+	  teleport is the void path, because there the honest population is the same
+	  population the exploit was priced on.  The tag is a statement about ONE attempt's
+	  start; carrying it into the next attempt is a second punishment for one mistake.
+
+	  LAST IN THIS FUNCTION, AND THAT IS THE WHOLE SAFETY ARGUMENT FOR THE ORDERING.
+	  Everything that reads this run's class has already run -- SV_StageClose, the PB
+	  writes, SV_RecClose, Lobby_SubmitRun above.  The tag itself was consumed far
+	  earlier, at SV_TimerStart, which folded it into run_t_flags as TF_PRACTICE; so the
+	  finished run keeps its mark and only the NEXT attempt starts clean.  Clearing it
+	  anywhere above this line could launder the run being recorded.
+
+	  AND IT DOES NOT ZERO THE VELOCITY, unlike SV_TimerForgiveHop's other callers.
+	  Players coast past the finish line and stopping them dead would be a worse bug
+	  than the one this fixes, so the velocity-zero invariant does not hold here and
+	  this call needs its own argument:
+
+	    A FINISH CANNOT CARRY A CHAIN'S SPEED BACK TO THE START BOX.  Reaching the end
+	    zone means traversing the map, so whatever speed the player has at this instant
+	    is speed built out on the course, not in the box -- and to start again they must
+	    get back to the start, which costs either an `!r` (velocity zeroed) or the trip.
+	    The route that WOULD carry speed in -- build it outside the box, re-enter, leave
+	    -- is wide open with or without this line, because the rule never tags a chain
+	    taken outside the box at all (run_t_startok latches about a second after you
+	    leave).  That is BACKLOG's "cheapest prespeed route" entry and it is untouched
+	    here: this line hands a cheater nothing they do not already have, and hands an
+	    honest player back the run after next.
+
+	  Deliberately NOT routed through SV_TimerForgiveHop: that function's contract is
+	  "every caller zeroes the velocity", which round 6 had to fix once already after
+	  it drifted.  A caller that cannot honour it does not belong on the list, so the
+	  two lines are written out here with the exception stated instead.
+	*/
+	if (e.run_t_hopped)
+	{
+		dprint(sprintf("hop: %s's hopped-start taint cleared by the finish it marked\n",
+		               e.netname));
+		e.run_t_hopped  = FALSE;
+		e.run_t_jumps   = 0;
+		e.run_t_hopsaid = 0;
+	}
 };
 
 void(entity e, float seg, float ticks) SV_TimerSplit =
