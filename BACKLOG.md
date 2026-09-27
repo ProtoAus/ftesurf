@@ -208,12 +208,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   whose hull the body is still inside. Nothing is printed: SV_TimerClassSay needs
   TS_RUNNING. So a bhop chain that loops across a seam has its hopped-start taint
   cleared on every crossing. MEASURED over the 537 shipped zone files by simulating
-  `az` and Zone_BoxInside: at least 21 maps, of which 15 are START/START on the same
-  track and segment (surf_blackheart, surf_bossfight, surf_christmas t2, surf_dragon,
-  surf_ecosystem, surf_edge t1, surf_lament, surf_legends, surf_nesquik t6,
-  surf_polytron, surf_quartus, surf_sippysip t1, surf_tequila, surf_twilight,
-  surf_year3000), plus cross-track surf_gradient, surf_leet_xl_beta7z_swg,
-  surf_sodacity and STAGE seams on surf_420 s3, surf_classics2 and surf_lt_omnific s6.
+  `az` and Zone_BoxInside: **21 maps** with a same-(track, segment) pair.
+  **RE-MEASURED BY A COMMITTED TOOL IN ROUND 7** -- `tools/census/startrearm.py`, an
+  independent census written because this number was quoted in deployed source and had
+  no tool behind it. The 21 reproduces EXACTLY. The sub-count in this entry did not:
+  it said 15 START/START and **it is 18** -- all fifteen named are real, and it missed
+  df_cavernish, surf_gradient and surf_lt_omnific. Full split: 18 START/START, 5
+  STAGE/STAGE, overlapping on the 2 maps that have both (21 = 18 + 5 - 2), plus 10
+  further maps that touch only ACROSS legs (30 maps with any touching pair, 57 pairs).
+  surf_gradient has all three kinds, which is why the old bucketing undercounted.
   surf_tequila's main start is four trapezoids tiling one frame, sharing three diagonal
   seams; a crossing keeps the hull straddling for 32 units, which is two packets below
   ~1000 u/s. The fix wants the arm scan to refuse a re-arm that changes nothing a
@@ -233,7 +236,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   trace of the approach that would have reached the `.rec`. Arriving from outside, the
   next scan is an `az` edge, so SV_TimerArm launders as in the entry above. MEASURED
   over 535 zoned BSPs (52,879 trigger_teleport entities): 66 maps have at least one
-  velocity-keeping non-landmark teleport whose destination lies inside a START region
+  velocity-keeping non-landmark teleport whose destination lies inside a START region.
+  **RE-MEASURED BY `tools/census/startrearm.py` IN ROUND 7 and reproduces exactly**,
+  including the 52,879: of those, 455 are landmark, 46,229 have a VelocityMode set, 6,195
+  are velocity-keeping candidates, 148 have an unresolvable destination, and 1,616 land
+  inside a START region across those 66 maps. The 46,229 exclusions are why the answer is
+  66 and not 500 -- most shipped teleports DO set a mode, so this number tracks a mapper
+  convention and wants re-running when the corpus changes
   -- surf_pantheon 197, bhop_4tele 257, surf_suburbia 204, surf_valpect 90,
   surf_tibet 69, surf_dynasty 60, surf_ambient 34, surf_ecosystem 17, surf_gradient 19,
   surf_wahey 6. Gesture: chain to speed anywhere, take the map's own reset teleport,

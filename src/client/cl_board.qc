@@ -280,6 +280,29 @@ float  ramp_bridged;
 */
 float  ramp_rawlast;
 
+/*
+  The hold's PREDICATE, with no state of its own.  Patch 447.
+
+  cl_lines.qc runs this machine over a recording to find where the ride started
+  and ended, and it must not touch ramp_on/ramp_lastc -- those belong to the
+  live board.  So the caller passes its own two variables and updates them from
+  the answer; RAMP_GAP, the ordering and the `now >= last` guard exist once.
+*/
+float(float raw, float on, float last, float now) Board_RampHeld =
+{
+	if (raw)
+		return TRUE;
+
+	// Nested, not `&&`: this file's rule.  No array read here, but the next
+	// person to add a term will not know that.
+	if (on)
+	if (last > 0)
+	if (now >= last)
+	if (now - last <= RAMP_GAP)
+		return TRUE;
+	return FALSE;
+};
+
 float(float raw, float now) Board_RampHold =
 {
 	/*
@@ -308,12 +331,7 @@ float(float raw, float now) Board_RampHold =
 		return TRUE;
 	}
 
-	// Nested, not `&&`: this file's rule.  No array read here, but the next
-	// person to add a term will not know that.
-	if (ramp_on)
-	if (ramp_lastc > 0)
-	if (now >= ramp_lastc)
-	if (now - ramp_lastc <= RAMP_GAP)
+	if (Board_RampHeld(raw, ramp_on, ramp_lastc, now))
 		return TRUE;
 
 	// The ride is genuinely over; the next one counts its own gaps.
@@ -321,6 +339,23 @@ float(float raw, float now) Board_RampHold =
 		ramp_drops = 0;
 	ramp_on = FALSE;
 	return FALSE;
+};
+
+/*
+  Ground, ramp or air, and the ONE place it is spelled.  Patch 447.
+
+  The run line's marks are this function's EDGES (cl_lines.qc Line_Contact), so
+  a second copy of these three lines would let the line and the Segments column
+  disagree about the same run in the same frame.  onground beats riding: a ramp
+  you are standing on is ground.
+*/
+float(float onground, float riding) Board_KindOf =
+{
+	if (onground)
+		return SEG_NONE;
+	if (riding)
+		return SEG_RAMP;
+	return SEG_AIR;
 };
 
 float  seg_kind;            // the segment currently open
@@ -2610,9 +2645,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 		seg_valid = FALSE;
 	seg_org = org;
 
-	if (onground)    kind = SEG_NONE;
-	else if (riding) kind = SEG_RAMP;
-	else             kind = SEG_AIR;
+	kind = Board_KindOf(onground, riding);
 
 	// Build 88: the launch point, sampled while it still exists.  See seg_ground_e
 	// -- the open block below reads the LAST of these, which is the frame before
