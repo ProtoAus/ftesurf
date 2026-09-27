@@ -2583,6 +2583,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     clock counted|sampled   v5, build 76.  Which clock produced every time in
                             this file.  Absent means sampled, which is what every
                             file before build 76 meant
+    proprule <n>            which prop-geometry rule built this run's collision
+                            world.  Absent or 0 = prop scale as the map wrote it;
+                            1 = floored to the 1/16 the wire carries, so the
+                            client and the server agree.  Read by ONE consumer,
+                            the `pe` digest check, which downgrades a mismatch to
+                            "not comparable" when the file predates the rule
+                            rather than reporting it as a difference
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     nonce <hex32>           Patch 416.  The 128 bits the server picked when this

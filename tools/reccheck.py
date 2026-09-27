@@ -281,7 +281,17 @@ HEAD_V8 = HEAD_V7
 #           and on one whose engine has no SHA256, which is why its absence is
 #           not a finding.  A LATER SESSION'S is a `nonce <mt> <hex>` RECORD in
 #           the body, not a second header key -- see the body checks.
-HEAD_V9 = HEAD_V8 | {"pmpin", "nonce"}
+#   proprule
+#           which prop-geometry rule built this run's collision world.  Additive
+#           on the `leg`/`mapcrc` precedent, so legal in v9 and v10 alike, and
+#           absent on every file written before it -- which is the STATE THAT
+#           MATTERS, not an omission: absent means "prop scale as the map wrote
+#           it", and the engine's `pe` digest check reads exactly that to
+#           downgrade a digest mismatch to "not comparable" rather than report a
+#           difference it is not entitled to claim.  Shape only here: this tool
+#           does not know what geometry the server built, so a value it does not
+#           recognise is a note, not a fault.
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule"}
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9

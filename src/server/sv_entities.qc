@@ -4492,6 +4492,9 @@ void() env_smokestack                   = { remove(self); };
      of number that looks plausible and is wrong.
 */
 float vbsp_prop_n, vbsp_prop_solid_n, vbsp_prop_scaled_n, vbsp_prop_dropped_n;
+// Props whose modelscale was not on the 1/16 grid the wire carries, so the spawn
+// floored it.  Same map-change trap as every counter here -- reset below.
+float vbsp_prop_requant_n;
 // Build 34: props whose bounds came back empty from setmodel.  Should be 0 now
 // that worldspawn sets sv_gameplayfix_setmodelsize_qw; a non-zero count means
 // either that cvar_set stopped working or the model genuinely failed to load,
@@ -4517,6 +4520,7 @@ entity vbsp_lpd_reporter;	// Patch 207: deferred count, see linked_portal_door_r
 void() SV_EntityReset =
 {
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
+	vbsp_prop_requant_n = 0;
 	vbsp_prop_nobox_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
@@ -4665,6 +4669,12 @@ void() SV_EntityReport =
 	// non-zero here means props are ghosts -- see worldspawn's setmodelsize_qw.
 	if (vbsp_prop_nobox_n)
 		print(sprintf(", ^1%g with NO BOUNDS^7", vbsp_prop_nobox_n));
+	// The population whose collision SIZE the client and the server disagreed about
+	// before SV_SpawnProp floored the scale.  Printed only when non-zero, and it is
+	// the falsifier for that floor: tools/census/propsolid.py asks the same question
+	// of the BSP's entity lump, so the two numbers must match per map.
+	if (vbsp_prop_requant_n)
+		print(sprintf(", %g requantised", vbsp_prop_requant_n));
 	print("\n");
 
 	if (vbsp_water_n)
@@ -4868,7 +4878,7 @@ void() SV_IOReport =
 
 void(float defsolid) SV_SpawnProp =
 {
-	local float srcsolid, sc;
+	local float srcsolid, sc, raw;
 
 	// A prop with no model is nothing to draw and nothing to hit.  A prop
 	// carrying a BRUSH model ('*N') is a mapper error -- studio props do not
@@ -4937,10 +4947,30 @@ void(float defsolid) SV_SpawnProp =
 		sc = 1;
 	if (sc > 15.9)
 		sc = 15.9;
+	raw = sc;
 	sc = floor(sc * 16);
 	if (sc < 1)
 		sc = 1;
 	sc = sc / 16;
+	/*
+	  COUNTED AND NAMED, because the quantisation is otherwise invisible: a prop at
+	  the right size and a prop at the wrong size look identical, which is how this
+	  survived.  Two readouts, and they answer different questions.
+
+	  The COUNT on the `props:` line is the population whose collision size the two
+	  sides disagreed about, and it is graded against tools/census/propsolid.py --
+	  an independent reader of the same question out of the BSP's entity lump.
+
+	  The dprint is what proves the floor RAN rather than merely being counted: the
+	  count is derived from `raw`, so deleting the floor leaves it identical.  The
+	  pair `<raw> -> <scale>` is the arithmetic itself, checkable per prop, and the
+	  grader requires scale == floor(raw*16)/16 on every line.
+	*/
+	if (raw != sc)
+	{
+		vbsp_prop_requant_n = vbsp_prop_requant_n + 1;
+		dprint(sprintf("propscale %.6f -> %.6f %s\n", raw, sc, self.model));
+	}
 	self.scale = sc;
 
 	/*

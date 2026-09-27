@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   45174b9d419f21fa5edceb473d9ef292cda18840
+commit   65d937ba674d481d79a988b310213e71368df3b6
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,13 @@ commit   45174b9d419f21fa5edceb473d9ef292cda18840
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-266
-patch    442
+patch    458
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-09-23
+date     2026-09-27
 
 # PATCH 430 (mod-side): the load key draws the save a round trip early (render only;
 # STAT_FS_SLORG/SLANG/SLACK, cl_slpredict).  cfg/test/p430cl.cfg.
