@@ -138,19 +138,30 @@ CONTROL = {
 # ---------------------------------------------------------------------------
 #  WHAT THIS ARM DOES NOT MEASURE, AND IT IS THE HALF THAT DECIDES PATCH 454.
 #
-#  454's gate is "grounded AND effective horizontal speed <= sv_maxspeed".  Every
-#  gesture available headlessly walks at or below sv_maxspeed -- ground acceleration is
-#  capped there -- so `takesay` firing proves only that the YES branch works.  THE
-#  REFUSAL HAS NEVER BEEN EXERCISED: nothing here finishes a run at more than 260 u/s,
-#  which is the whole case 454 was written for (a surf finisher crossing an END 16 units
-#  from the start box with a chain's speed still on).
+#  454's gate is "grounded AND effective horizontal speed <= the cap".  This fixture
+#  WALKS out with +forward, so it crosses at or under the cap and `takesay` firing
+#  proves only that the YES branch works.  THE REFUSAL IS NOT EXERCISED HERE.
 #
-#  That is this repo's own "an arm that passes because its condition never occurred",
-#  and naming it is the honest verdict rather than calling the arm complete.  What it
-#  would take: a real run on one of the twelve tracks tools/census/endnearstart.py
-#  lists -- surf_summer main and surf_bikini_bottom b1 are the obvious two -- finishing
-#  fast, then reading `cmd timer`'s `hopped` before coming to rest.  It needs a human
-#  playing, so it is owed rather than written.
+#  BUT THE REASON THIS COMMENT USED TO GIVE WAS FALSE, and the false reason is what kept
+#  the arm from being finished.  It said "every gesture available headlessly walks at or
+#  below sv_maxspeed -- ground acceleration is capped there".  Ground acceleration is NOT
+#  capped there: PMSrc_Accelerate bounds only the projection onto wishdir
+#  (pm_source.c:685), and the engine's own self-test puts the grounded prestrafe ceiling
+#  at 1.1129 x maxspeed = 289.34 at 260 (pm_source.c:4696).  So a chain leaving the box
+#  with +jump still held should cross ABOVE the cap, and a headless gesture can reach the
+#  refusal after all.  Found while fixing Patch 455, by a reviewer who checked the
+#  premise rather than the conclusion.
+#
+#  ALSO NOT DRIVABLE UNTIL 455 ROUND 2, for a second reason that is a defect rather than
+#  a limit: the refusal is SILENT.  454 and 455 print a line when the forgiveness is
+#  TAKEN and nothing when it is withheld for speed, so "refused" and "the branch never
+#  ran" are the same log.  That is this repo's own rule -- the subject must print its own
+#  action and the driver must grade THAT -- so round 2 gives the refusal its own
+#  said-once line carrying the reason, and the arm for it is written against that.
+#
+#  What still needs a human either way: a finish on a REAL track whose END sits near its
+#  own START (tools/census/endnearstart.py lists twelve), because the fixture's 64-unit
+#  gap is synthetic and the maps are the case 454 was written for.
 # ---------------------------------------------------------------------------
 REPORT = {
     "C": ("class", "practice", "azone", "jumps"),
