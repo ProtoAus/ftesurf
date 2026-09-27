@@ -266,6 +266,7 @@ def cleanfin(txt):
 
 
 def grade(control):
+    undemo = False
     want = {t: dict(v) for t, v in EXPECT.items()}
     if control:
         for t, over in CONTROL.items():
@@ -290,13 +291,32 @@ def grade(control):
             if k not in want.get(tag, {}):
                 print("  %-3s %-10s %-12s (reported, not graded)" % (tag, k, read(txt, k)))
     ftxt = s.get("F") or ""
+    # CLEANFIN HAS A PREMISE AND IT WAS NOT BEING CHECKED.  The whole claim is "the
+    # tainted run finishes marked and the NEXT one finishes clean", which needs TWO
+    # finishes in the section -- and this fixture does not reliably produce two. It
+    # depends on the end zone teleporting the player back with +forward still held, and
+    # on 2026-09-27 a round-8 run produced ONE finish and the check read `no` as though
+    # the patch had regressed. The gate was fine that run (`takesay` present, cleared at
+    # 0.264 s over 19 reads); the section simply never ran twice.
+    #
+    # So a one-finish run is NOT DEMONSTRATED, not a failure. Same distinction
+    # ftesurf-e0's p455hold draws, and the same reason: a check that goes red on harness
+    # variance spends the trust that makes a red mean something.
+    nfin = len(re.findall(FIELDS["nfin"], ftxt))
     got = cleanfin(ftxt)
     wantclean = not control
-    good = (got == wantclean)
-    ok = ok and good
-    print("  F   %-10s %-12s %s"
-          % ("cleanfin", "yes" if got else "no",
-             "ok" if good else "MISMATCH, want %s" % ("yes" if wantclean else "no")))
+    if nfin < 2:
+        undemo = True
+        print("  F   %-10s %-12s NOT DEMONSTRATED -- only %d finish(es) in F, and the"
+              % ("cleanfin", "yes" if got else "no", nfin))
+        print("        claim needs two (the tainted one, then the next). The fixture's")
+        print("        second run did not complete; this says nothing about the patch.")
+    else:
+        good = (got == wantclean)
+        ok = ok and good
+        print("  F   %-10s %-12s %s"
+              % ("cleanfin", "yes" if got else "no",
+                 "ok" if good else "MISMATCH, want %s" % ("yes" if wantclean else "no")))
     print("        (derived: a finish that is not a PRACTICE finish.  On the fixed build")
     print("         the tainted run finishes marked and the NEXT one finishes clean; on")
     print("         the control the tag survives and both are marked.)")
@@ -308,6 +328,16 @@ def grade(control):
         print("  UNKNOWN COMMAND(S): %s -- the gesture did not land"
               % ", ".join(sorted(set(unknown))))
         ok = False
+    if ok and undemo:
+        # A third verdict, and it exits 0 like a pass because nothing is WRONG -- but it
+        # says so, because "green" and "green except the headline claim was not tested"
+        # are different facts and a caller that cannot tell them apart will report the
+        # second as the first.
+        print()
+        print("VERDICT: PASS, EXCEPT NOT DEMONSTRATED -- every graded check held, but the")
+        print("derived claim above could not be tested on this run.  Re-run it; if the")
+        print("second finish keeps going missing, the fixture's route wants looking at,")
+        print("not the patch.")
     return ok
 
 

@@ -690,7 +690,9 @@ void() PlayerPostThink =
 	SV_UseFrame(self);
 
 	/*
-	  The timer, the zone scan and the recorder, once per usercmd.
+	  The timer, the zone scan and the recorder, once per received move PACKET
+	// (not per usercmd -- see this file's own PlayerPostThink note above and
+	// SV_TimerFrame's call site; PostThink is outside the per-usercmd loop).
 
 	  Here rather than in StartFrame because this is the ONLY hook that runs
 	  after the move with the post-move origin, and because a recording sampled

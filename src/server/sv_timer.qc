@@ -106,6 +106,13 @@
 // dwell that can be turned down is not a dwell.
 #define FS_FGVDWELL    0.25
 #define FS_FGVREADS    8
+// 455 round 8: and no two of those reads may be further apart than this.  Without it the
+// streak is a SPAN and not an observation window: 7 clear packets at a low cl_netfps leave
+// both bounds pre-paid indefinitely, and the write is then committed inside the 8th
+// packet's usercmds, which run before this gate.  0.1 s is ~10 packets/s; a client slower
+// than that cannot complete the dwell and keeps the tag, with `!r` as the escape.  That
+// cost is deliberate and is the cheaper side of the trade.
+#define FS_FGVGAP      0.1
 #define FS_SETTLEMARGIN 1.5
 #define FS_SETTLEMIN   0.5
 #define FS_SETTLEMAX   4.0
@@ -552,7 +559,10 @@ float  run_t_rearmhop;
   map in, and `sv_gamemode none` can opt a bhop-named map out.  bhop-hl1 loads
   the same bhop category ruleset and gets the same timer rule.
 
-  Cached once per map because SV_TimerJumpWatch is per-player, per-usercmd.
+  Cached once per map because SV_TimerJumpWatch runs per-player, per received move
+  PACKET -- not per usercmd, which this line used to say.  PlayerPostThink is
+  called from SV_PostRunCmd, outside the per-usercmd loop (the engine says so at
+  sv_user.c, and this file says so again at SV_TimerFrame's own call site).
 */
 float  run_t_bhopjump;
 
@@ -1777,6 +1787,7 @@ float() SV_RecEnabled =
 // function of server time.  Same word, opposite subjects.
 .float  run_t_fgvok;
 .float  run_t_fgvn;
+.float  run_t_fgvlast;          // 455 round 8: server time of the last clear read
 
 /*
   EVERYTHING THE PENDING FORGIVENESS OWNS, ENDED IN ONE PLACE.
@@ -1796,6 +1807,7 @@ void(entity e) SV_HopFgvClear =
 	e.run_t_fgvsaid = 0;
 	e.run_t_fgvok   = 0;
 	e.run_t_fgvn    = 0;
+	e.run_t_fgvlast = 0;
 };
 
 /*
@@ -1874,7 +1886,7 @@ void(entity e) SV_HopFgvClear =
   Every other column of an `in` row describes one usercmd.  But the run's start
   and finish are not decided per usercmd: SV_TimerFrame runs from
   PlayerPostThink, which the engine calls ONCE PER PACKET (see the essay at
-  SV_TimerElapsed and [[fte-postthink-is-per-packet]]), so a zone crossing is
+  SV_TimerElapsed, and PostThink runs once per PACKET), so a zone crossing is
   tested against the position the LAST command of a packet left you in, and the
   stored tick is latched there.  A verifier that re-ran the commands and tested
   zones after each one would land on a different tick from the one in the file,
@@ -10356,10 +10368,24 @@ float(entity e) SV_TimerJumpWatch =
 		  replay pin and the resume park -- and rec_wt_hold is not named because it is
 		  declared in sv_saveloc.qc, which compiles after this file.
 		*/
+		/*
+		  455 ROUND 8 SPLIT REASON 2 INTO THREE, because they shared one voice and the
+		  latch says a reason once -- so an over-cap refusal straight after an airborne
+		  one printed NOTHING, and this patch's whole complaint about 454 was a branch
+		  with no voice looking like a branch with no traffic.  It is also why the speed
+		  clause had never been observed: every reason-2 line in the arm's log reads
+		  `ground 0`, so what had been firing all along was the airborne clause wearing
+		  the over-cap clause's message.  Found by ftesurf-e0 while building an arm
+		  section for the clause that could not speak.
+		*/
 		if (e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE)
 			why = 1;
-		else if (!ong || e.velocity_z > 0 || e.run_basevel_z > 0 || vlen(hv) > cap)
+		else if (!ong)
 			why = 2;
+		else if (e.velocity_z > 0 || e.run_basevel_z > 0)
+			why = 5;
+		else if (vlen(hv) > cap)
+			why = 6;
 		else
 			why = 0;
 
@@ -10368,8 +10394,12 @@ float(entity e) SV_TimerJumpWatch =
 		  refusal breaks the streak; a clear read extends it; and until it is long
 		  enough the answer is reason 4, which is a DIFFERENT refusal from reason 2 --
 		  calling an at-rest body "still moving" would be a lie, and reason 4 is also
-		  the only observable that proves the dwell RAN rather than that it exists,
-		  because a build with FS_FGVDWELL 0 goes straight from 2 to the take.
+		  the only observable that proves ONE OF THE BOUNDS is live.  Round 6 claimed
+		  more than that -- "a build with FS_FGVDWELL 0 goes straight from 2 to the
+		  take" -- and it is false: with FS_FGVREADS still 8, `fgvn < 8` keeps reason 4
+		  alive, so settling still prints.  Only BOTH constants at 0 make reason 4
+		  unreachable, which is what tools/p448fin.py grades against.  Nothing today
+		  separates a build with the time bound from one with only the read bound.
 
 		  SV_TrigPending IS ASKED HERE, LAST, AND NOT PER PACKET.  Round 3 put it in
 		  the chain above, where it ran on every packet the cheap tests passed -- and
@@ -10390,17 +10420,29 @@ float(entity e) SV_TimerJumpWatch =
 		*/
 		if (!why)
 		{
-			if (!e.run_t_fgvok)
+			/*
+			  455 ROUND 8: THE STREAK IS INTERLOCKED, NOT ANDed.  Round 6 required
+			  `elapsed >= FS_FGVDWELL` and `reads >= FS_FGVREADS` and nothing tied
+			  them together, so the streak could be BANKED: seven clear packets at a
+			  low cl_netfps, then stop, and both bounds sit pre-paid for as long as
+			  the player likes -- then the pending write is committed inside the
+			  eighth packet's usercmds, which run before this gate, and the required
+			  latency is zero.  A gap longer than FS_FGVGAP now restarts the streak,
+			  which is what makes the interval an OBSERVATION window rather than a
+			  span between two observations.
+			*/
+			if (!e.run_t_fgvok || (time - e.run_t_fgvlast) > FS_FGVGAP)
 			{
 				e.run_t_fgvok = time;
 				e.run_t_fgvn  = 1;
 			}
 			else
 				e.run_t_fgvn = e.run_t_fgvn + 1;
+			e.run_t_fgvlast = time;
 
 			if ((time - e.run_t_fgvok) < FS_FGVDWELL || e.run_t_fgvn < FS_FGVREADS)
 				why = 4;
-			else if (SV_TrigPending(e))
+			else if (SV_TrigActing(e))
 				why = 3;
 		}
 
@@ -10419,24 +10461,32 @@ float(entity e) SV_TimerJumpWatch =
 				dprint(sprintf("hop: %s is held, so the forgiveness is NOT measured "
 				               "-- a hold reads 0 u/s and gives the speed back on "
 				               "release (sv_saveloc.qc:3140)\n", e.netname));
+			// ONE LINE PER CLAUSE.  `armed` matters on the carrier ones: for an
+			// ARMED carrier the engine spends Z as an acceleration (~0.015x) rather
+			// than cashing it out (~1.0075x), so no sum of the two is printed --
+			// round 5 deleted it for being ~67x wrong in that configuration.
 			else if (why == 2)
-				// REPORTS THE CARRIER, not just the sum, because a refusal driven by
-				// the carrier read identically to one driven by `.velocity` and an
-				// arm for the carrier case could not tell them apart.  `armed`
-				// matters: for an ARMED carrier the engine spends Z as an
-				// acceleration (~0.015x) rather than cashing it out (~1.0075x), so
-				// the sum `evz` is ~67x wrong there -- which is exactly why nothing
-				// decides on it.  Seven varargs; the 9th would be dropped silently.
-				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- still "
-				               "moving: %.3f u/s against cap %.3f, ground %g, vz "
-				               "%.3f, carrier %s armed %g\n",
-				               e.netname, vlen(hv), cap, (ong != 0), e.velocity_z,
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- not "
+				               "grounded: %.3f u/s, vz %.3f, carrier %s armed %g\n",
+				               e.netname, vlen(hv), e.velocity_z,
 				               vtos(e.run_basevel), e.run_basevel_armed));
+			else if (why == 5)
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- rising: "
+				               "vz %.3f, carrier vz %.3f armed %g -- a grounded body "
+				               "with an upward component is about to launch\n",
+				               e.netname, e.velocity_z, e.run_basevel_z,
+				               e.run_basevel_armed));
+			else if (why == 6)
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- over the "
+				               "cap: %.3f u/s against the mover's %.3f, grounded and "
+				               "level\n", e.netname, vlen(hv), cap));
 			else if (why == 3)
-				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- a "
-				               "trigger action is pending (SV_TrigPending %g); it "
-				               "would act on a body this gate has already read\n",
-				               e.netname, SV_TrigPending(e)));
+				// One walk, not two: the value came from the test above.  QC evaluates
+				// varargs eagerly, so the old second call paid an edict walk even with
+				// `developer 0`, and printed a number that had decided nothing.
+				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- an "
+				               "action aimed at this player is pending; it would act "
+				               "on a body this gate has already read\n", e.netname));
 			else
 				dprint(sprintf("hop: %s's forgiveness is armed and NOT taken -- at "
 				               "rest but settling: %.3f s of %.3f, %g clear reads "
@@ -10456,9 +10506,12 @@ float(entity e) SV_TimerJumpWatch =
 			               "pending, at rest for %.3f s over %g clear reads\n",
 			               e.netname, vlen(hv), cap, time - e.run_t_fgvok,
 			               e.run_t_fgvn));
+			// "SETTLED", not "at rest": the gate admits a grounded body at 259 u/s
+			// under a 260 cap, and saying "at rest" is the same class of overclaim as
+			// the four this patch has already had to fix.
 			sprint(e, PRINT_HIGH,
 			       "^2start re-armed^7 -- the hopped start was forgiven once you "
-			       "came to rest\n");
+			       "settled\n");
 			e.run_t_hopped  = FALSE;
 			e.run_t_jumps   = 0;
 			// run_t_hopsaid is SHARED with the run_t_dirty reminder, and the ZONE_END

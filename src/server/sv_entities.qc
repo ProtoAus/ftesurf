@@ -852,6 +852,65 @@ void(entity p) SV_TrigStamp =
 // (OnEndTouch fires 0.06-0.09 s after the last touch, SV_TriggerEndThink), 2 while
 // an output delayed with p as activator is pending; either would act on the held
 // body.  One edict walk, per entry request only.
+/*
+  PATCH 455 ROUND 8: THE SAME WALK, ASKING ONLY WHAT IS PENDING.
+
+  SV_TrigPending below answers "would anything act on this body", and its two occupancy
+  clauses are right for its own caller -- the spectate entry gate refuses to park a body
+  that is standing in a trigger at all.  They are wrong for the hopped-start forgiveness,
+  where they made a player at rest inside ANY output-bearing trigger loop refused-then-
+  settling forever, silently, with no output left to fire.  On a bhop map the blocks ARE
+  triggers with outputs, so that is reachable by construction.
+
+  Read from the field essays rather than the names:
+
+    vbsp_touch_who   KEEP   "synthesised end-touch"; its sweep FIRES OnEndTouch at them
+    vbsp_touch_out   KEEP   "absent for one window, not yet ended" -- the 0.06-0.09 s gap
+    vbsp_iodelay     KEEP   a scheduled output whose .enemy is this player
+    vbsp_mv_act      KEEP   a func_button's arrival output, aimed at this player
+    vbsp_touch_in    DROP   "confirmed inside as of the last sweep"
+    vbsp_touch_seen  DROP   "has touched since the last sweep"
+
+  A SEPARATE FUNCTION RATHER THAN A FLAG ON THAT ONE, because `SV_TrigPending(p) == 2` was
+  the obvious one-character version and does not work: that loop returns on the FIRST
+  match, so occupancy on any earlier edict masks a later iodelay -- which is exactly the
+  combination that matters.
+
+  vbsp_mv_act IS NEW COVERAGE, not a narrowing.  SV_MoverArm parks a func_button's arrival
+  on the mover's own think and the only link back to the player is that field, which
+  SV_TrigPending never tested.  Zero shipped maps aim an arrival output at `!activator`
+  with a speed write today; one map file would have been a complete bypass, and the walk
+  is already being made.
+
+  THE MASK CAVEAT APPLIES HERE TOO: `bit` is 0 for an edict index of 32 or more, so the
+  vbsp_touch_out clause silently stops looking above that. cfg/lobby/lobby.cfg sets
+  sv_playerslots 32, which is exactly zero headroom.  In BACKLOG.
+*/
+float(entity p) SV_TrigActing =
+{
+	local entity t;
+	local float  n;
+	local int    bit;
+
+	n = num_for_edict(p) - 1;
+	bit = 0;
+	if (n >= 0 && n < 32)
+		bit = (int)1 << (int)n;
+	for (t = nextent(world); t; t = nextent(t))
+	{
+		if (t.vbsp_touch_who == p)
+			return 1;
+		if (t.vbsp_touch_out & bit)
+			return 1;
+		if (t.vbsp_mv_act == p)
+			return 3;
+		if (t.enemy == p)
+		if (t.classname == "vbsp_iodelay")
+			return 2;
+	}
+	return 0;
+};
+
 float(entity p) SV_TrigPending =
 {
 	local entity t;
