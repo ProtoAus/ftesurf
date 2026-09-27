@@ -34,6 +34,37 @@
 #define LN_PXERR   1.0          // physical px a stride may be off the samples
 #define LN_SUBPX   16           // virtual px: a longer segment is subdivided
 
+/*
+  THE MARKS.  Patch 447.
+
+  Where the run touched down, left the ramp, hopped, and where a segmented run
+  was stitched.  They are the EDGES of Board_KindOf (cl_board.qc), the same
+  three-state contact function the Segments column is built from, with none of
+  that column's row-level debounce -- so every segment row boundary is a mark,
+  and a bounce too short to become a row is a mark with no row.  That
+  containment is the invariant p447mark grades; a second detector written here
+  would drift from the column and the two would disagree about one run.
+
+  A mark carries its own position and velocity rather than a point index, which
+  is what makes it survive both decimations (the build-time ln_skip stride and
+  the past-the-cap halving) with no index fixup at all.
+
+  MEASURED, AND NOT WORKED AROUND: samples are one per PACKET (43-65/s against
+  a nominal 66.67), and a bhop's ground contact is one tick.  A perfect hop's
+  contact can fall between two packets and be absent from the file, so the line
+  misses those hops -- and so does the Segments column, from the same samples,
+  identically.  Do not interpolate hops the file does not contain.
+*/
+#define LN_EVCAP   4096         // marks a slot holds; past it, peaks go first
+#define LN_EVZMIN  40           // u/s of |vz| a peak needs: 2.5 ticks of gravity
+
+#define LN_E_LAND    1          // touched ground or ramp
+#define LN_E_LEAVE   2          // left it without jumping (a ramp exit, an edge)
+#define LN_E_JUMP    3          // left the ground with the jump button down
+#define LN_E_APEX    4          // vz turned over
+#define LN_E_TROUGH  5          // vz turned back up
+#define LN_E_STITCH  6          // a save state was loaded here: resume/retry
+
 vector *ln_pos;
 float  *ln_spd;
 float  *ln_t;
@@ -48,6 +79,15 @@ vector *ln_gc;                  // per group of LN_GROUP chunks: centre, radius
 float  *ln_gr;
 float  *ln_bk;                  // break indices, LN_BKCAP a slot
 
+// The marks: one entry each, position and velocity carried, never an index.
+float  *ln_ek;                  // LN_E_*
+float  *ln_es;                  // the contact pair it came from, from * 4 + to
+float  *ln_et;                  // the run clock it landed on
+vector *ln_ep;
+float  *ln_evh;                 // horizontal speed there, u/s
+float  *ln_e2;                  // v . v, 3D: the energy term, minus the height
+float  *ln_ez;                  // vz, signed
+
 float  ln_n[LN_SLOTS];
 float  ln_bkn[LN_SLOTS];
 float  ln_step[LN_SLOTS];       // build decimation: keep every step-th sample
@@ -56,6 +96,16 @@ float  ln_pbrk[LN_SLOTS];       // a break carried from a dropped sample
 float  ln_on[LN_SLOTS];
 float  ln_ia[LN_SLOTS], ln_ib[LN_SLOTS];     // the shown index range
 float  ln_lo[LN_SLOTS], ln_hi[LN_SLOTS];     // its speed range
+
+float  ln_evn[LN_SLOTS];        // marks held
+float  ln_evcut[LN_SLOTS];      // the peaks were dropped to make room
+float  ln_evdrop[LN_SLOTS];     // marks lost past the cap even so
+float  ln_pkind[LN_SLOTS];      // the contact kind of the last sample, -1 unknown
+float  ln_ron[LN_SLOTS];        // the ramp hold's two variables, this slot's own
+float  ln_rlast[LN_SLOTS];
+float  ln_gjmp[LN_SLOTS];       // +jump seen anywhere in the ground phase
+float  ln_pvz[LN_SLOTS];
+float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
 
 // per frame
 vector ln_eye, ln_fwd, ln_rt, ln_up;
@@ -101,6 +151,15 @@ void() Line_Alloc =
 	ln_gc   = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP);
 	ln_gr   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP);
 	ln_bk   = memalloc(sizeof(float) * LN_SLOTS * LN_BKCAP);
+	// 1.28 MiB for every slot's marks, against 2.25 MiB for ONE more per-point
+	// float array.  Nothing about a mark is per point, which is the argument.
+	ln_ek   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_es   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_et   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_ep   = memalloc(sizeof(vector) * LN_SLOTS * LN_EVCAP);
+	ln_evh  = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_e2   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_ez   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 };
 
 void(float s) Line_Clear =
@@ -109,6 +168,9 @@ void(float s) Line_Clear =
 	ln_n[s]  = 0;
 	ln_bkn[s] = 0;
 	ln_ia[s] = ln_ib[s] = 0;
+	ln_evn[s] = 0;
+	ln_evcut[s] = FALSE;
+	ln_evdrop[s] = 0;
 };
 
 void(float s) Line_Begin =
@@ -118,6 +180,70 @@ void(float s) Line_Begin =
 	ln_step[s] = 1;
 	ln_skip[s] = 0;
 	ln_pbrk[s] = FALSE;
+	ln_pkind[s] = -1;               // unknown, not "in the air": the first sample
+	ln_ron[s]   = FALSE;            // of a board line's window must mark nothing
+	ln_rlast[s] = 0;
+	ln_gjmp[s]  = FALSE;
+	ln_pvz[s]   = 0;
+	ln_vzmax[s] = 0;
+};
+
+/*
+  One mark.  Full is handled in two stages rather than by truncating:
+
+    1. the peaks go, as a class, in one pass.  They are dense, derived, and
+       carry no glyph, and a line that keeps every hop and says the peaks went
+       beats one that shows 600 of 1200 hops and says nothing.
+    2. past that it stops and counts, which Line_End and `replay status` print.
+
+  Halving, the way the point array does, is the wrong answer here: it would
+  drop every other hop.
+*/
+void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
+{
+	local float b, n, i, j;
+
+	if (ln_evcut[s])
+	if (k == LN_E_APEX || k == LN_E_TROUGH)
+		return;
+
+	b = s * LN_EVCAP;
+	n = ln_evn[s];
+	if (n >= LN_EVCAP)
+	{
+		if (!ln_evcut[s])
+		{
+			j = 0;
+			for (i = 0; i < n; i = i + 1)
+				if (ln_ek[b + i] != LN_E_APEX)
+				if (ln_ek[b + i] != LN_E_TROUGH)
+				{
+					ln_ek[b + j]  = ln_ek[b + i];
+					ln_es[b + j]  = ln_es[b + i];
+					ln_et[b + j]  = ln_et[b + i];
+					ln_ep[b + j]  = ln_ep[b + i];
+					ln_evh[b + j] = ln_evh[b + i];
+					ln_e2[b + j]  = ln_e2[b + i];
+					ln_ez[b + j]  = ln_ez[b + i];
+					j = j + 1;
+				}
+			ln_evn[s] = n = j;
+			ln_evcut[s] = TRUE;
+		}
+		if (n >= LN_EVCAP)
+		{
+			ln_evdrop[s] = ln_evdrop[s] + 1;
+			return;
+		}
+	}
+	ln_ek[b + n]  = k;
+	ln_es[b + n]  = sub;
+	ln_et[b + n]  = t;
+	ln_ep[b + n]  = o;
+	ln_evh[b + n] = vlen([v_x, v_y, 0]);
+	ln_e2[b + n]  = v * v;
+	ln_ez[b + n]  = v_z;
+	ln_evn[s] = n + 1;
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
@@ -160,6 +286,104 @@ void(float s, vector o, float spd, float t, float brk) Line_Add =
 	ln_brk[b + n] = (n > 0 && ln_pbrk[s]);
 	ln_pbrk[s] = FALSE;
 	ln_n[s] = n + 1;
+};
+
+// This sample's contact kind, with the slot's own ramp hold moved on.  It does
+// NOT touch ln_pkind: the mark is the edge between two samples, so the caller
+// owns what the previous one was.
+float(float s, vector v, float fl, float t) Line_Contact =
+{
+	local float raw, held;
+
+	raw  = fl & WT_F_RAMP;
+	held = Board_RampHeld(raw, ln_ron[s], ln_rlast[s], t);
+	if (raw)
+		ln_rlast[s] = t;
+	ln_ron[s] = held;
+	return Board_KindOf(fl & WT_F_ONGROUND, held);
+};
+
+// What a sample leaves behind for the next one to be compared against.
+void(float s, float k, vector v, float fl) Line_Was =
+{
+	ln_pkind[s] = k;
+	ln_pvz[s]   = v_z;
+	ln_gjmp[s]  = (k == SEG_NONE) ? (ln_gjmp[s] || (fl & WT_F_JUMP)) : FALSE;
+};
+
+/*
+  A sample BEFORE the shown window: its state only, no point and no mark.
+
+  Slot 0's scan starts one sample early (rec_wt_bline) so its first shown point
+  has a predecessor; a board line's job skips straight to its window and had
+  none, which made the two mark the same run differently at its first contact.
+  Exactly ONE sample seeds, in both -- a longer history would warm this slot's
+  ramp hold while slot 0 starts it cold, and they would disagree again.
+*/
+void(float s, vector v, float fl, float t) Line_Seed =
+{
+	Line_Was(s, Line_Contact(s, v, fl, t), v, fl);
+	ln_vzmax[s] = 0;
+};
+
+/*
+  One sample, classified, then handed to Line_Add.  Patch 447.
+
+  It runs ABOVE Line_Add's decimation return on purpose: once a slot has halved
+  or is striding, half the samples never reach the point array, and a hop
+  landing on one of them would vanish.  Same reason ln_pbrk is set up there.
+
+  `stitch`: this sample is where a save state was loaded (a resume/retry record
+  sits in the interval before it).  It is marked whatever the contact did --
+  a load also moves the body, so brk is set here too and the contact edge across
+  it is suppressed as meaningless.
+*/
+void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Line_Point =
+{
+	local float k;
+
+	k = Line_Contact(s, v, fl, t);
+
+	if (stitch)
+		Line_Ev(s, LN_E_STITCH, 0, t, o, v);
+
+	if (brk || ln_pkind[s] < 0)
+		ln_vzmax[s] = 0;            // the body moved, or nothing is known yet
+	else if (k != ln_pkind[s])
+	{
+		if (k == SEG_NONE || k == SEG_RAMP)
+			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, v);
+		else if (ln_pkind[s] == SEG_RAMP)
+			// ALWAYS a leave, never a hop: +jump held through a whole surf would
+			// otherwise put a double chevron on every ramp exit.
+			Line_Ev(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, t, o, v);
+		else
+			Line_Ev(s, ln_gjmp[s] ? LN_E_JUMP : LN_E_LEAVE,
+			        ln_pkind[s] * 4 + k, t, o, v);
+		ln_vzmax[s] = 0;            // a takeoff is not a trough
+	}
+	else if (k == SEG_AIR)
+	{
+		// The gate is the debounce: vz noise around zero would otherwise fire
+		// hundreds of reversals a second on a slow slide.
+		ln_vzmax[s] = max(ln_vzmax[s], fabs(v_z));
+		if (ln_vzmax[s] >= LN_EVZMIN)
+		{
+			if (ln_pvz[s] > 0 && v_z <= 0)
+			{
+				Line_Ev(s, LN_E_APEX, 0, t, o, v);
+				ln_vzmax[s] = 0;
+			}
+			else if (ln_pvz[s] <= 0 && v_z > 0)
+			{
+				Line_Ev(s, LN_E_TROUGH, 0, t, o, v);
+				ln_vzmax[s] = 0;
+			}
+		}
+	}
+
+	Line_Was(s, k, v, fl);
+	Line_Add(s, o, vlen([v_x, v_y, 0]), t, brk);
 };
 
 // The tables drawing needs: chunk spheres, the break list, the gain.

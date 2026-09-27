@@ -154,16 +154,22 @@ def sha(path):
     return h.hexdigest().upper()[:16]
 
 
-def stage():
+def stage(new=None, fixture=None):
     """Copy the source map, patch its Command parameter, relocate the entity lump.
+
+    `new` and `fixture` are parameters so a sibling arm can reuse this with a different
+    payload (tools/p447dollar.py does, for the cvar-expansion question).  Defaults are
+    this arm's own, so the call in main() is unchanged.
 
     Refuses loudly rather than guessing at every step: a needle that is absent or
     doubled means the source map is not the one this arm was written against, and
     every reading below would be void.
     """
-    if os.path.exists(FIXTURE):
+    new = NEW if new is None else new
+    fixture = FIXTURE if fixture is None else fixture
+    if os.path.exists(fixture):
         raise SystemExit("refusing: %s already exists (a previous run did not clean up)"
-                         % os.path.relpath(FIXTURE, ROOT))
+                         % os.path.relpath(fixture, ROOT))
     if not os.path.exists(SRC_BSP):
         raise SystemExit("no source map at %s (set MOMENTUM_DIR)" % SRC_BSP)
     # NO LENGTH ASSERT.  The first cut had one, because it patched bytes in place; the
@@ -189,7 +195,7 @@ def stage():
     if n != 1:
         raise SystemExit("the needle %r appears %d times in the entity lump -- "
                          "expected exactly 1" % (OLD.decode(), n))
-    ents = ents.replace(OLD, NEW)
+    ents = ents.replace(OLD, new)
 
     # Append the plain text and repoint the lump.  VBSP lumps are absolute and need
     # not be contiguous, so the old compressed bytes just stop being referenced.
@@ -199,32 +205,33 @@ def stage():
     blob[hdr:hdr + 16] = struct.pack("<iiii", newoff, len(ents), ver, 0)
 
     os.makedirs(MAPSDIR, exist_ok=True)
-    with open(FIXTURE, "wb") as fh:
+    with open(fixture, "wb") as fh:
         fh.write(blob)
 
     # Read it back through the same reader the census uses: if bsplib cannot parse the
     # result, the engine will not either, and a silent bad fixture would grade as a
     # clean refusal on both builds.
-    check, _ = bsplib.read(FIXTURE)
+    check, _ = bsplib.read(fixture)
     got = [e for e in (check or []) if any(
-        isinstance(v, str) and NEW.decode() in v for v in e.values())]
+        isinstance(v, str) and new.decode() in v for v in e.values())]
     if len(got) != 1:
         raise SystemExit("re-read of the fixture found %d entities carrying the "
                          "payload -- expected 1" % len(got))
     print("fixture %s  %d bytes  (entity lump %d -> %d bytes, relocated to %d, "
-          "uncompressed)" % (os.path.relpath(FIXTURE, ROOT), len(blob), ln,
+          "uncompressed)" % (os.path.relpath(fixture, ROOT), len(blob), ln,
                              len(ents), newoff))
-    print("          %r -> %r  in %s" % (OLD.decode(), NEW.decode(),
+    print("          %r -> %r  in %s" % (OLD.decode(), new.decode(),
                                          got[0].get("classname", "?")))
 
 
-def restore(keep):
+def restore(keep, fixture=None):
     """No `except: pass` -- a removal that did not happen must be loud."""
-    if keep and os.path.exists(FIXTURE):
-        print("--keep: fixture left at %s" % os.path.relpath(FIXTURE, ROOT))
+    fixture = FIXTURE if fixture is None else fixture
+    if keep and os.path.exists(fixture):
+        print("--keep: fixture left at %s" % os.path.relpath(fixture, ROOT))
         return
-    if os.path.exists(FIXTURE):
-        os.remove(FIXTURE)
+    if os.path.exists(fixture):
+        os.remove(fixture)
         print("fixture removed")
 
 

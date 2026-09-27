@@ -2737,6 +2737,21 @@ float(string w) FS_TagFromName =
 };
 
 /*
+  A .rec SAMPLE'S FLAG BITS -- SV_RecFlags' `fl` column.
+
+  Named here rather than in the reader because the server names them by
+  construction and a reader guessing at bit order is how a replay ends up
+  crouching in the wrong places.  Patch 447 moved them out of cl_watch.qc for
+  the same reason FS_IsSample moved in build 24: a second reader needs them,
+  and cl_lines.qc compiles BEFORE cl_watch.qc (cl_progs.src).
+*/
+#define WT_F_ONGROUND  1
+#define WT_F_DUCKED    2
+#define WT_F_JUMP      4
+#define WT_F_ATTACK    8
+#define WT_F_RAMP     16        // v4: the move clipped a ramp plane this tick
+
+/*
   IS THIS .rec LINE A SAMPLE OR A RECORD?
 
   A sample begins with its own timestamp, so with a digit or with a minus; every

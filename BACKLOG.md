@@ -7,19 +7,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
-- **A map's allow-listed console command could still READ a cvar out through `$`, and
-  that half is refused on an unverified read.** `Cmd_ExpandCvar` interpolates `$cvar`
-  into the text AFTER the Cbuf split, so it can never start a second command — Patch 446
-  closed that class. What it can do is expand a cvar into an allow-listed `say`, and the
-  expansion gate admits any cvar whose restriction is <= the exec level; at `localcmd`'s
-  `RESTRICT_INSECURE` (30) that includes `rcon_password` (restriction 29), with the
-  `CVAR_NOUNSAFEEXPAND` guard testing an exec level that is still 0 at expansion time.
-  **READ IN THE ENGINE, NOT MEASURED IN A RUN** — nobody has driven
-  `server,Command,say $rcon_password` and watched. Patch 446 refuses `$` anyway because
-  the census prices it at zero (0 of 1438 shipped rows contain `$` or `%`), so this entry
-  is the *verification* that is owed, not an open hole: build the fixture, confirm
-  whether a pre-446 build broadcasts the password, and if it does this was a secret
-  disclosure and the lobby keys want rotating. Round 7, lens A.
+- **CONFIRMED BY MEASUREMENT: a pre-446 map could have made the server broadcast
+  `rcon_password`. THE FLEET'S RCON KEY SHOULD BE ROTATED — an operator action, not a
+  code one.** `Cmd_ExpandCvar` interpolates `$cvar` into the text AFTER the Cbuf split,
+  so it can never start a second command (Patch 446 closed that class separately); what
+  it does is expand a cvar INTO an allow-listed `say`. Round 7 read this in the engine
+  and could not close it. `tools/p447dollar.py` + `cfg/test/p447dollar.cfg` now do, with
+  two canaries so the real secret is never involved: a no-flags cvar and
+  `rcon_password` holding `CANARY447RCON`. **On the pre-446 control BOTH EXPANDED** —
+  so expansion happens at that exec level and the `CVAR_NOUNSAFEEXPAND` guard does NOT
+  bite, because it tests `Cmd_IsInsecure()` against an exec level that is still 0 when
+  the expansion runs. On a 446 build the command is refused and the question cannot be
+  asked. qwprogs AB1F10EBDD196A3E fixed / 1F000116DB26CD5A control.
+  **IMPACT:** the fleet has a real 48-character `rcon_password` in
+  `game/ftesurf/cfg/lobby_local.cfg` (checked as a length, never printed), mtime
+  2026-09-12, so there was a live secret behind the door. The door closed on the fleet
+  at 2026-09-27 00:29:40 UTC when 446 deployed.
+  **MEASURED MITIGATION:** 0 of 1438 shipped `Command` rows contain `$` or `%`
+  (`tools/census/iocmd.py`), so nothing in the installed corpus exploited it — a crafted
+  map would have had to be installed on the server first, which is not something a player
+  can do. So this is "a live secret was reachable by a map for an unknown window" and not
+  "the password leaked".
+  **WHAT IS STILL OPEN HERE IS NOT CODE.** Rotating the key is the operator's call and no
+  tool in this repo touches credentials. Worth doing on the reasoning that the window
+  cannot be bounded from below: `lobby_local.cfg` predates every build in this series.
 - **`tools/census/bsplib.py`'s `parse_ents` returns a dict, so every census that counts
   entity OUTPUTS has been under-counting.** A dict keeps only the LAST value of a
   repeated key and Source entities repeat output keys routinely. Round 7 measured the

@@ -206,6 +206,7 @@ float  rec_wt_sfrc;
 float  rec_wt_sveto;
 float  rec_wt_sride;             // a non-zero `ride arm` is open
 float  rec_wt_sdkrst;
+float  rec_wt_sstitch;           // a save state came back in this interval
 float  rec_wt_sphase;            // 1 = a ground duck is sliding down
 float  rec_wt_spress;
 
@@ -522,14 +523,9 @@ float  rec_wt_svheld;            // a snapshot is out; Watch_Stop must restore i
 #define WT_C_NORM  14           // +15, +16 -- v4, the plane under you
 #define WT_C_V4N   17           // a v4 sample has at least this many columns
 
-// SV_RecFlags' bits.  Named here because the server names them by construction
-// rather than by constant, and a reader guessing at bit order is how a replay
-// ends up crouching in the wrong places.
-#define WT_F_ONGROUND  1
-#define WT_F_DUCKED    2
-#define WT_F_JUMP      4
-#define WT_F_ATTACK    8
-#define WT_F_RAMP     16        // v4: the move clipped a ramp plane this tick
+// SV_RecFlags' bits (WT_F_ONGROUND/DUCKED/JUMP/ATTACK/RAMP) moved to
+// shared/sh_defs.qc in Patch 447: cl_lines.qc classifies contact from them and
+// compiles before this file.
 
 // The .view sample columns.
 #define WT_V_CLTIME 0
@@ -623,6 +619,7 @@ void() Watch_TablesReset =
 	rec_wt_nfit0 = rec_wt_nfit1 = rec_wt_nfit2 = rec_wt_nveto = 0;
 	rec_wt_dkn = rec_wt_dkover = rec_wt_dkfix = 0;
 	rec_wt_sfrc = rec_wt_sveto = rec_wt_sride = rec_wt_sdkrst = FALSE;
+	rec_wt_sstitch = FALSE;
 	rec_wt_sphase = 0;
 	rec_wt_spress = 0;
 };
@@ -641,6 +638,7 @@ void() Watch_TablesReset =
 #define WTR_REWIND  4           // a restart: no duck slide spans it
 #define WTR_RIDE    8           // a `ride`: RIDEON says whether its carrier is armed
 #define WTR_RIDEON 16
+#define WTR_STITCH 32           // Patch 447: a save state was loaded here
 
 float(string s) Watch_RecordBits =
 {
@@ -668,8 +666,12 @@ float(string s) Watch_RecordBits =
 	}
 	if (k == "portal")
 		return WTR_FORCE;
-	if (k == "restart" || k == "resume" || k == "retry")
+	// `restart` is a STAGE restart and is not a stitch: what makes a run
+	// segmented is a save state coming back, which is resume/retry (Patch 447).
+	if (k == "restart")
 		return WTR_FORCE | WTR_REWIND;
+	if (k == "resume" || k == "retry")
+		return WTR_FORCE | WTR_REWIND | WTR_STITCH;
 	if (k == "ride")
 	if (n >= 7)
 	{
@@ -694,6 +696,8 @@ void(string s) Watch_ScanRecord =
 		rec_wt_sdkrst = TRUE;
 	if (k & WTR_RIDE)
 		rec_wt_sride = (k & WTR_RIDEON) ? TRUE : FALSE;
+	if (k & WTR_STITCH)
+		rec_wt_sstitch = TRUE;
 };
 
 void(float ts, float te, float u0, float rate) Watch_DuckSeg =
@@ -1509,7 +1513,8 @@ void(float ra, float rb) Watch_ScanRange =
 		if (c > 0)
 			Watch_ScanPair(t, o, v, fl, key);
 		// Patch 432: the run line, broken where the pair snapped (a teleport).
-		Line_Add(0, o, spd, t, (c > 0) ? rec_wt_snlast : 0);
+		// Patch 447: and classified -- contact, hops, peaks, save-state stitches.
+		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch);
 		rec_wt_spt    = t;
 		rec_wt_spo    = o;
 		rec_wt_spv    = v;
@@ -1518,6 +1523,7 @@ void(float ra, float rb) Watch_ScanRange =
 		rec_wt_sfrc   = FALSE;
 		rec_wt_sveto  = FALSE;
 		rec_wt_sdkrst = FALSE;
+		rec_wt_sstitch = FALSE;
 
 		c = c + 1;
 		if (t > rb)
@@ -1569,6 +1575,9 @@ float  wt_lj_tick, wt_lj_fleg, wt_lj_seg;
 float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
+float  wt_lj_stitch;             // a save state came back in this interval
+vector wt_lj_qv;                 // the sample before the window: Line_Seed's
+float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave;
 vector wt_lj_po, wt_lj_pv;
 
 // Patch 441: THE JOB'S OWN `stage` table and finish tick.  Patch 437 filled the
@@ -1690,7 +1699,8 @@ float() Watch_LineJobWindow =
 	}
 	wt_lj_phase = 2;
 	wt_lj_c = 0;
-	wt_lj_frc = wt_lj_veto = wt_lj_ride = FALSE;
+	wt_lj_frc = wt_lj_veto = wt_lj_ride = wt_lj_stitch = FALSE;
+	wt_lj_qhave = FALSE;
 	return TRUE;
 };
 
@@ -1714,6 +1724,8 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	// finish of a replay that was already open.
 	wt_lj_evn  = 0;
 	wt_lj_endt = 0;
+	wt_lj_stitch = FALSE;
+	wt_lj_qhave  = FALSE;
 	Line_Begin(slot);
 	return TRUE;
 };
@@ -1721,7 +1733,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 // One frame of the job: 0 working, 1 built, -1 failed (nothing to draw).
 float() Watch_LineJobStep =
 {
-	local float i, n, c, k, t, dt, brk, seg;
+	local float i, n, c, k, t, dt, brk, seg, fl;
 	local string s;
 	local vector o, v;
 
@@ -1841,17 +1853,32 @@ float() Watch_LineJobStep =
 			if (k & WTR_FORCE) wt_lj_frc  = TRUE;
 			if (k & WTR_VETO)  wt_lj_veto = TRUE;
 			if (k & WTR_RIDE)  wt_lj_ride = (k & WTR_RIDEON) ? TRUE : FALSE;
+			if (k & WTR_STITCH) wt_lj_stitch = TRUE;
 			continue;
 		}
 		t = stof(s);
 		if (t < wt_lj_ta)
 		{
-			wt_lj_frc = wt_lj_veto = FALSE;
+			wt_lj_frc = wt_lj_veto = wt_lj_stitch = FALSE;
+			// Patch 447: the last sample before the window is kept to seed the
+			// contact state with (Line_Seed).  Only the last half second is
+			// tokenized for it -- it is a few dozen lines, against every sample
+			// of the run before the stage asked for.
+			if (t >= wt_lj_ta - 0.5)
+			{
+				tokenize(s);
+				wt_lj_qv = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
+				            stof(argv(WT_C_VEL + 2))];
+				wt_lj_qfl = stof(argv(WT_C_FLAGS));
+				wt_lj_qt  = t;
+				wt_lj_qhave = TRUE;
+			}
 			continue;
 		}
 		tokenize(s);
 		o = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+		fl = stof(argv(WT_C_FLAGS));
 		brk = FALSE;
 		if (wt_lj_c > 0)
 		{
@@ -1863,12 +1890,15 @@ float() Watch_LineJobStep =
 			if (Interp_Fit(wt_lj_po, wt_lj_pv, o, v, dt) == INTERP_SNAP)
 				brk = TRUE;
 		}
-		Line_Add(wt_lj_slot, o, vlen([v_x, v_y, 0]), t, brk);
+		if (wt_lj_c == 0)
+		if (wt_lj_qhave)
+			Line_Seed(wt_lj_slot, wt_lj_qv, wt_lj_qfl, wt_lj_qt);
+		Line_Point(wt_lj_slot, o, v, fl, t, brk, wt_lj_stitch);
 		wt_lj_c  = wt_lj_c + 1;
 		wt_lj_pt = t;
 		wt_lj_po = o;
 		wt_lj_pv = v;
-		wt_lj_frc = wt_lj_veto = FALSE;
+		wt_lj_frc = wt_lj_veto = wt_lj_stitch = FALSE;
 		if (t > wt_lj_tb)
 		{
 			fseek(wt_lj_fh, fsize(wt_lj_fh));   // the window is closed: finish
@@ -4522,6 +4552,13 @@ void() Watch_Status =
 	// fteqcc caps varargs at 8 including the format and drops the ninth silently.
 	// `curve` reaching exactly WT_PATHMAX is the build-42 truncation bug; `still`
 	// is what the red on the bar is drawn from and what skip would jump.
+	// Patch 447.  `cut` means the peaks were dropped as a class to make room and
+	// `dropped` that marks were lost past the cap even so -- both are the line
+	// saying what it cannot show, which no count of what it drew would.
+	print(sprintf("  marks %g%s%s  (cap %g)\n", ln_evn[0],
+	              ln_evcut[0] ? ", peaks cut" : "",
+	              (ln_evdrop[0] > 0) ? sprintf(", %g dropped", ln_evdrop[0]) : "",
+	              LN_EVCAP));
 	print(sprintf("  still %g stretch(es)%s  skip %g\n",
 	              rec_wt_idn,
 	              (rec_wt_idover > 0) ? sprintf(" (+%g dropped)", rec_wt_idover) : "",
@@ -4684,6 +4721,39 @@ float(string cmd) Watch_ConsoleCommand =
 	if (a == "status")
 	{
 		Watch_Status();
+		return TRUE;
+	}
+	/*
+	  Patch 447: the marks, as the draw pass reads them.
+
+	  Ten values a row, so two sprintfs -- fteqcc caps a varargs call at eight
+	  and drops the rest silently.  `lnk` is the break list beside them because
+	  a stitch sits on a break and tools/p447mark.py consumes the break set
+	  rather than re-deriving Interp_Fit's verdicts (see its header).
+	*/
+	if (a == "marks")
+	{
+		local float s, i, b;
+		local vector ep;                    // an array element is not swizzleable
+
+		s = stof(argv(2));                  // slot, default 0 (the replay)
+		b = s * LN_EVCAP;
+		print(sprintf("lnmb %g %g %g %g %.4f %.4f %s\n", s, ln_evn[s], ln_evcut[s],
+		              ln_evdrop[s], ln_n[s] ? ln_t[s * LN_CAP] : 0,
+		              ln_n[s] ? ln_t[s * LN_CAP + ln_n[s] - 1] : 0, rec_wt_path));
+		for (i = 0; i < ln_bkn[s]; i = i + 1)
+			print(sprintf("lnk %g %.4f\n", ln_bk[s * LN_BKCAP + i],
+			              ln_t[s * LN_CAP + ln_bk[s * LN_BKCAP + i]]));
+		for (i = 0; i < ln_evn[s]; i = i + 1)
+		{
+			ep = ln_ep[b + i];
+			print(sprintf("lnm %g %g %g %.4f %s\n", i, ln_ek[b + i], ln_es[b + i],
+			              ln_et[b + i],
+			              sprintf("%.2f %.2f %.2f %.2f %.4f %.2f",
+			                      ep_x, ep_y, ep_z,
+			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i])));
+		}
+		print(sprintf("lnme %g\n", ln_evn[s]));
 		return TRUE;
 	}
 	if (a == "pause")  { rec_wt_paused = TRUE;  return TRUE; }
