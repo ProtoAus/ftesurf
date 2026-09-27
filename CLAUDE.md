@@ -35,6 +35,12 @@ chatty.
 
 ## Working style here
 
+- A FILTER THAT DECIDES WHICH OF YOUR FAILURES TO SHOW YOU is part of the test.
+  Patch 453 shipped at three warnings instead of one because the build output
+  was grepped for `warning:`, and fteqcc spells some of them `warning Q302:`,
+  with no colon. Count every line matching the word, case-insensitively, rather
+  than a format you assumed. `build.ps1` itself is fine — it uses a bare
+  substring — so this was a hand-rolled check going wrong beside a correct one.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
@@ -61,6 +67,13 @@ chatty.
   action** — a dprint, a latch carrying its authored number, or a state line that
   can only exist if the gesture landed — and the driver must grade THAT, not the
   downstream consequence.
+  AND A COUNTER OF INTENT IS NOT EVIDENCE OF INK. Patch 451's labels reported
+  thirteen drawn, printed each one's text and screen position, and passed a
+  grader that checked those strings against the file — while nothing was on
+  screen at all, because text issued inside a stream of deferred polygon batches
+  never flushes. Every number was the subject's own, and every one described
+  what it MEANT to draw. When the output is pixels, something has to look at the
+  pixels.
 - A CONTROL BUILD IS NOT `git checkout` WHEN THE TREE ALREADY HAS THE PATCH. If
   the working tree holds five commits of work, checking a file out reverts one
   patch, not the batch, and the "control" still contains the other four. Build it
@@ -95,6 +108,11 @@ chatty.
   down: an arm for "the tool is not installed" passed while proving nothing,
   because an earlier case in the same process had already imported it and
   sys.modules served the import. Make the condition, do not just point at it.
+  AND A SAMPLE IS A CORPUS TOO. Patch 453's arm read every 16th point and passed
+  a build with the yaw-wrap handling deleted, because the fixture crosses 180
+  degrees six times in 5321 samples and a sparse dump never landed on one; at
+  stride 1 it fails with exactly six wrong points. Ask what fraction of the
+  samples the term under test can even appear in.
 - AND WHEN AN ARM FALSIFIES YOUR PREDICTION, ask whether the ARM was sound
   before you write the conclusion. Patch 419's said "two servers, same second,
   same offset"; they differed, and the first draft concluded the attack did not

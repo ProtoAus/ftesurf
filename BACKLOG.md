@@ -696,7 +696,48 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   re-opens it). The fix wants the refusal BEFORE the placement, which is what r1
   set out to do, and an arm that produces the race. sv_saveloc.qc SV_SaveLocLoad,
   cl_replay.qc Rec_ViewLoaded. Patch 441 review.
+- **THE RUN LINE'S MARK CAP HAS NEVER FIRED, so its degradation policy is
+  written and unexercised.** `LN_EVCAP` is 4096 a slot and the two-stage policy
+  (drop the apex/trough class whole, then stop and count, both reported by
+  `Line_End` and `replay status`) is what a long bhop run is supposed to meet.
+  The biggest fixture available produces 2158 marks: `bhop_monster_jam`
+  save010, 127437 samples, which is already nearly twice the POINT cap and
+  exercises the halving. So the cap path is reached by no arm. Either find a
+  recording past ~4000 marks or run `p449mark.cfg` against a build with
+  `LN_EVCAP` lowered and the hash recorded, which is the p439smoke recipe.
+  cl_lines.qc `Line_Ev`. Patch 449.
+- **The run line's near-plane guard cannot be falsified by the harness, and it
+  is kept anyway.** Removing the dot-product test before `project()` in
+  `Line_ProjPt` changes nothing measurable -- 158 glyphs either way, no NaN --
+  because `q_z < -1` already rejects everything behind the camera, so the dot
+  test's unique contribution is the `w == 0` knife edge exactly, which a sampled
+  run does not land on. A cut that parks the camera ON a mark (p449win W3,
+  t=41.1440) did not produce it either. The guard stays because
+  cl_entview.qc:1288-1294 documents the same hazard from a case that DID reach
+  QC; what is missing is a way to make the condition. cl_lines.qc `Line_ProjPt`.
+  Patch 449.
 ## Cosmetic / low
+- **The run line's air-control grade is measured against THIS server's movement
+  settings, not the recording's.** `Line_Movevars` reads `pm_ticrate`,
+  `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`, `pm_maxairspeed`,
+  `sv_gravity`, `sv_friction`, `sv_stopspeed` and `pm_duckspeed` from the server
+  the client is on, which is what the strafe bar does for a replay too -- so the
+  two agree, and on a foreign recording they are wrong together. The v9 header
+  carries a `pmpin` block of 70 movevars and NOTHING in `src/` reads it; that is
+  where the file's own settings would come from. Until then a recording made on
+  a differently-configured server is graded against local numbers, silently.
+  `tools/p453q.py` says the same in its header, because it is handed the
+  settings for the same reason. cl_lines.qc `Line_Movevars`, `Line_Grade`.
+  Patch 453.
+- **A hop whose ground contact falls between two packets has no mark**, and
+  cannot have one. Samples are one per packet (43-65/s measured against a 66.67
+  Hz tick) and a bhop's ground contact is one tick, so the touch is simply
+  absent from the file. The Segments column misses the same hops from the same
+  samples, which is why the containment invariant still holds exactly -- but a
+  reader counting chevrons on a bhop line is undercounting, and the number is
+  not small: `bhop_monster_jam` main has 438 landings marked for 330 jumps.
+  Interpolating them would be inventing contacts the file does not record, so
+  this is a documented limit rather than a defect. cl_lines.qc header. Patch 449.
 
 - The replay line's alpha ramps from 1 to the `ahead` alpha across the one sample
   segment after the playhead instead of stepping (cl_lines.qc Line_Feed).

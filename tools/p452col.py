@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import p449mark                                     # noqa: E402  (the shared rule)
 
 GRAV = 800.0
-AIRCAP = 30.0
+AIRCAP = 30.0                        # only until lnmv says otherwise
 GROUND, AIR, RAMP = 0, 1, 2
 CONTACT_RGB = {GROUND: (1.00, 0.62, 0.20), RAMP: (0.35, 0.85, 1.00),
                AIR: (0.85, 0.88, 0.95), -1: (0.45, 0.45, 0.50)}
@@ -65,7 +65,7 @@ def contact_kinds(rows):
 
 
 def parse(path):
-    blocks, cur, recpath, brk = [], None, None, set()
+    blocks, cur, recpath, brk, mv = [], None, None, set(), {}
     for raw in open(path, "r", errors="replace"):
         line = re.sub(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ", "", raw.rstrip("\n"))
         m = re.search(r"=== p452col (\S+) (\S+)", line)
@@ -74,7 +74,12 @@ def parse(path):
             blocks.append(cur)
             continue
         f = line.split()
-        if line.startswith("lnmb ") and len(f) >= 8:
+        if line.startswith("lnmv ") and len(f) >= 7:
+            # the settings the client graded against -- aircap and gravity are
+            # in the energy ramp's denominator, so the grader takes the client's
+            # rather than assuming the defaults
+            mv["aircap"], mv["gravity"] = float(f[5]), float(f[6])
+        elif line.startswith("lnmb ") and len(f) >= 8:
             recpath = f[7]
         elif cur is not None and line.startswith("lncb ") and len(f) >= 5:
             cur["cmode"] = int(float(f[2]))
@@ -83,7 +88,7 @@ def parse(path):
         elif cur is not None and line.startswith("lnc ") and len(f) >= 6:
             cur["pts"].append((int(float(f[1])), float(f[2]),
                                (float(f[3]), float(f[4]), float(f[5]))))
-    return blocks, recpath, brk
+    return blocks, recpath, brk, mv
 
 
 def near(a, b, tol=0.02):
@@ -92,7 +97,7 @@ def near(a, b, tol=0.02):
 
 def main():
     log = sys.argv[1] if len(sys.argv) > 1 else "ftesurf/logs/p452col.log"
-    blocks, recpath, brk = parse(log)
+    blocks, recpath, brk, mv = parse(log)
     if not blocks or not recpath:
         print("FAIL no p452col blocks or no mark dump in %s" % log)
         return 1
@@ -141,7 +146,7 @@ def main():
         check("C2", False, "no energy cut")
     else:
         pts = b[-1]["pts"]
-        p = ceiling(AIRCAP, GRAV, tick)
+        p = ceiling(mv.get("aircap", AIRCAP), mv.get("gravity", GRAV), tick)
         wrong, graded = [], 0
         for i, t, rgb in pts:
             if i >= len(rows):

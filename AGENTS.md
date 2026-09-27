@@ -864,6 +864,64 @@ bannered as superseded.)
   mid-run leaves a slot there that the next run on that map is offered: clean it
   with the rest of the test data, or `set run_resume 0`.
 
+## The run line (Patches 432, 449-453)
+
+- **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space
+  strip, slot 0 the open replay and 1-8 the board's ticked lines. On it:
+  `V` where the run touched ground or a ramp, a chevron where it left one, a
+  DOUBLE chevron where the jump button was down, and two grey bars where a
+  SEGMENTED run loaded a save (`resume`/`retry`, not `restart` -- a stage
+  restart is not a save state coming back). Numbers at those marks and at the
+  peaks where vz turns over. Four colourings beyond speed: gain, contact,
+  energy, air control.
+- **THE MARKS ARE THE EDGES OF `Board_KindOf`**, the same three-state contact
+  function the Segments column is built from (`cl_board.qc`), with none of that
+  column's row-level debounce. So every segment row boundary is a mark, and a
+  contact too short to become a row is a mark with no row -- both directions are
+  graded by `tools/p449mark.py`, and the second count is registered per fixture
+  rather than asserted to be zero. Do not write a second detector; extend
+  `Board_KindOf` and both follow.
+- **Marks carry their own position, never a point index**, which is what makes
+  them survive the two decimations (the build-time stride and the past-the-cap
+  halving) with no fixup. A mark is identified by its SAMPLE ORDINAL and never
+  by its time: both bhop fixtures repeat a timestamp, because a file records one
+  sample per packet and a held clock repeats it, so keying on `t` mis-assigns.
+- **MEASURED AND NOT ENGINEERED AROUND:** samples are one per packet (43-65/s
+  against a 66.67 Hz tick) and a bhop's ground contact is one tick, so a perfect
+  hop's contact can fall between two packets and be absent from the file. The
+  line misses those hops -- and so does the Segments column, from the same
+  samples, identically. Do not interpolate hops the file does not contain.
+- **Cvars.** `hud_lines_marks|land|leave|jump|stitch|size|gap`,
+  `hud_lines_nums|speed|energy|ref|delta|vz|time|numsize`, and
+  `hud_lines_win|winf` (seconds of run time behind and ahead of the playhead; 0
+  = the whole line). The colouring, the visible distance, the width and the
+  through-walls mode stay on the EXISTING `hud_watch_path_*` names -- nothing was
+  renamed, so archived configs keep working. All of it is one `hud_edit` pane
+  ("Run lines", 21 rows, tooltips), plus `set` lines in both shipped configs.
+- **Reading it back.** `replay marks [slot]` dumps the mark table as the draw
+  pass reads it (`lnmb`/`lnm`/`lnmz`), `replay seq` the Segments rows for the
+  containment check, `replay colours <slot> <stride>` dumps `ln_col` itself plus
+  the movement settings a grade was measured against, and `replay marktrace <n>`
+  prints what the next n frames actually DREW -- counts, window, ia/ib, and each
+  glyph's screen position and label text. Graded by `tools/p449mark.py`,
+  `p449win.py`, `p451num.py`, `p452col.py`, `p453q.py` against the `.rec` itself.
+  `scores lineat <slot> <path>` is the harness handle for a board line: a
+  headless client has no board rows behind it, and every `scores line N` answers
+  "no recording behind that row".
+- **A COUNTER OF INTENT IS NOT EVIDENCE OF INK.** Text drawn from inside
+  `Line_Draw` does not appear at all -- the pass is a stream of `R_BeginPolygon`
+  batches the engine defers until a later 2D call flushes them, and a
+  `drawstring` between two of them draws nothing. The labels are queued and
+  drawn from `cl_main.qc` beside `Ev_Labels`, which has the same shape for the
+  same reason. While this was broken every counter, the trace and the graded
+  label text were green; only a screenshot disagreed.
+- **The air-control grade is the strafe bar's own**, regime for regime
+  (`cl_hud.qc`'s `HUD_DrawStrafe`), so the line and the bar cannot grade one
+  moment two ways -- including its several NO ANSWER cases, drawn grey rather
+  than red. It reads the movement settings from THIS server, as the bar does for
+  a replay: a recording made elsewhere is graded against local settings, and the
+  v9 header's `pmpin` block is where a future patch would get the file's own.
+
 ## Pi operations (public lobbies)
 
 - **THIS FLEET IS A DEVELOPMENT FLEET AND THE OWNER WANTS CHANGES DEPLOYED.**

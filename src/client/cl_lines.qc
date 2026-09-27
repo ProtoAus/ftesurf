@@ -1109,7 +1109,10 @@ void(float s) Line_ColEnergy =
 	local vector o;
 
 	b = s * LN_CAP;
-	p = Strafe_PowerCeiling(30, ln_grav, ln_tick[s]);
+	// pm_maxairspeed, not a literal 30: the grade in Line_Grade reads the
+	// server's, and two air caps in one file is how the line would come to
+	// disagree with itself on a server that changed it.
+	p = Strafe_PowerCeiling(ln_mv_aircap, ln_grav, ln_tick[s]);
 	if (p <= 0)
 		p = 37.5;
 	for (i = 0; i < ln_n[s]; i = i + 1)
