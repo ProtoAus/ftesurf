@@ -1,0 +1,269 @@
+"""p455hold.py -- grade the hold refusal Patch 455 added and no arm has driven.
+
+Runs cfg/test/p455hold.cfg and reads ftesurf/logs/p455hold.log.  Requires Patch
+455 rounds 5+6 (the reason codes); on an earlier build every check reports NOT
+DEMONSTRATED rather than failing, because an arm that goes red on a build which
+predates its subject teaches nobody anything.
+
+THE THREE VERDICTS ARE THE POINT.  "No held refusal" has two meanings -- the
+branch is broken, or a premise never held -- and they want different answers.
+So each premise is graded from evidence that does NOT come from the gate:
+
+  the tag survived the load   `cmd timer`'s own hopped field
+  the hold landed             two viewpos lines under +forward, identical
+  the window stayed open      no take before the release
+
+Only when all three hold does an absent refusal mean the branch is wrong.
+
+  python tools/p455hold.py              run it, then grade
+  python tools/p455hold.py --grade-only grade the log that is already there
+
+It parks ftesurf/data/saves/bhop_eazy while it runs, because this arm writes a
+save there and p448fin's fixture lives in the same directory.  --keep leaves the
+staged files in place for inspection.
+"""
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GAMEDIR = os.path.join(ROOT, "ftesurf")
+CFGDIR = os.path.join(GAMEDIR, "cfg", "test")
+CFG = "test/p455hold.cfg"
+ZONES = os.path.join(GAMEDIR, "maps", "zones", "local", "bhop_eazy.json")
+SAVES = os.path.join(GAMEDIR, "data", "saves", "bhop_eazy")
+LOG = os.path.join(GAMEDIR, "logs", "p455hold.log")
+PARKED = SAVES + ".parked-p455hold"
+
+# Patch 455's gate, final spellings (rounds 5+6).  Anchored on the EVENT rather
+# than on a clause of the reasoning: round 6 reworded the reasoning and an arm
+# anchored on it read "absent" on a build where the branch had demonstrably run.
+HELD = r"is held, so the forgiveness is NOT measured"
+MOVING = r"NOT taken -- still moving: ([\d.]+) u/s against cap ([\d.]+)"
+PENDING = r"NOT taken -- a trigger action is pending"
+SETTLING = r"NOT taken -- at rest but settling: ([\d.]+) s of ([\d.]+), (\d+) clear reads of (\d+)"
+TAKEN = r"hopped-start taint cleared -- "
+DWELT = r"at rest for ([\d.]+) s over (\d+) clear reads"
+HOPPED = r"hopped\s+(\d)"
+VIEWPOS = r"(?:viewpos|Position)\D*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)"
+
+DWELL_MIN = 0.25
+READS_MIN = 8
+
+
+def sha(path):
+    import hashlib
+    if not os.path.exists(path):
+        return "<missing>"
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:16].upper()
+
+
+def stage():
+    """The fixture's zones, and this arm's save directory out of the way."""
+    if not os.path.exists(os.path.join(CFGDIR, "p448.zones.json")):
+        raise SystemExit("p448.zones.json is missing -- this arm shares p448fin's "
+                         "fixture geometry and cannot build its own")
+    os.makedirs(os.path.dirname(ZONES), exist_ok=True)
+    if os.path.exists(ZONES):
+        shutil.copyfile(ZONES, ZONES + ".parked-p455hold")
+    shutil.copyfile(os.path.join(CFGDIR, "p448.zones.json"), ZONES)
+    if os.path.exists(PARKED):
+        raise SystemExit("%s already exists -- a previous run did not restore. "
+                         "Move it back by hand rather than letting this one "
+                         "overwrite a fixture." % os.path.relpath(PARKED, ROOT))
+    if os.path.exists(SAVES):
+        os.rename(SAVES, PARKED)
+    print("staged zones; parked %s" % os.path.relpath(SAVES, ROOT))
+
+
+def restore(keep):
+    if keep:
+        print("--keep: staged files left in place")
+        return
+    if os.path.exists(SAVES):
+        shutil.rmtree(SAVES, ignore_errors=True)
+    if os.path.exists(PARKED):
+        os.rename(PARKED, SAVES)
+    if os.path.exists(ZONES + ".parked-p455hold"):
+        shutil.move(ZONES + ".parked-p455hold", ZONES)
+    elif os.path.exists(ZONES):
+        os.remove(ZONES)
+    print("restored the save directory and the zones override")
+
+
+def sections(path):
+    out, cur = {}, None
+    with open(path, "r", errors="replace") as fh:
+        for line in fh:
+            m = re.search(r"==== (\S+)\b", line)
+            if m:
+                cur = m.group(1)
+                out[cur] = []
+                continue
+            if cur:
+                out[cur].append(line.rstrip("\n"))
+    return {k: "\n".join(v) for k, v in out.items()}
+
+
+def grade():
+    if not os.path.exists(LOG):
+        print("FAIL no log at %s -- the run produced nothing" % LOG)
+        return False
+    sec = sections(LOG)
+    whole = "\n".join(sec.values())
+    out, bad, undemo = [], 0, 0
+
+    def verdict(name, state, detail):
+        nonlocal bad, undemo
+        if state == "FAIL":
+            bad += 1
+        elif state == "NOT DEMONSTRATED":
+            undemo += 1
+        out.append("%-17s %-3s %s" % (state, name, detail))
+
+    # -- is this even a Patch 455 build? ------------------------------------
+    if not re.search(r"forgiveness is armed and NOT taken|" + HELD, whole):
+        verdict("H0 reason codes", "NOT DEMONSTRATED",
+                "no 455 refusal line anywhere: this build predates the reason "
+                "codes, so nothing below can be judged")
+        print("\n".join(out))
+        return None
+
+    # -- H1 the tag's premise, measured at three points ----------------------
+    at_save = re.search(HOPPED, sec.get("S", ""))
+    at_tag = re.search(HOPPED, sec.get("C", ""))
+    at_load = re.search(HOPPED, sec.get("H", ""))
+    trio = tuple(m.group(1) if m else "?" for m in (at_save, at_tag, at_load))
+    if trio == ("0", "1", "1"):
+        verdict("H1 tag premise", "PASS",
+                "hopped 0 at the save, 1 after the chain, 1 after the load -- "
+                "the load's raise-only path measured, not traced")
+    else:
+        verdict("H1 tag premise", "NOT DEMONSTRATED",
+                "hopped reads %s/%s/%s at save/chain/load; wanted 0/1/1. A 0 at "
+                "the load means the load cleared the tag and the gate never ran"
+                % trio)
+
+    # -- H2 the hold landed, proven without the gate -------------------------
+    pos = re.findall(VIEWPOS, sec.get("H", ""))
+    if len(pos) < 2:
+        verdict("H2 hold landed", "NOT DEMONSTRATED",
+                "%d viewpos lines in the hold section, need 2" % len(pos))
+        frozen = False
+    else:
+        a, b = pos[0], pos[1]
+        frozen = all(abs(float(x) - float(y)) < 0.5 for x, y in zip(a, b))
+        verdict("H2 hold landed", "PASS" if frozen else "NOT DEMONSTRATED",
+                "origin %s -> %s under +forward%s"
+                % (" ".join(a), " ".join(b),
+                   "" if frozen else " -- it MOVED, so sl_hold did not take"))
+
+    # -- H3 the branch itself -------------------------------------------------
+    held = re.search(HELD, sec.get("H", ""))
+    if held:
+        verdict("H3 held refusal", "PASS",
+                "reason 1 fired while the body was frozen")
+    elif not frozen or trio != ("0", "1", "1"):
+        verdict("H3 held refusal", "NOT DEMONSTRATED",
+                "absent, but a premise above did not hold -- fix the premise "
+                "before reading this as a defect")
+    else:
+        verdict("H3 held refusal", "FAIL",
+                "every premise held and the gate did not refuse: finfgv, the "
+                "tag and the hold were all up and the branch stayed silent")
+
+    # -- H4 the dwell, after the release ---------------------------------------
+    rel = sec.get("R", "")
+    s = re.search(SETTLING, rel)
+    t = re.search(DWELT, rel) or re.search(DWELT, whole)
+    if not re.search(TAKEN, whole):
+        verdict("H4 take", "FAIL", "the forgiveness was never taken at all")
+    elif not t:
+        verdict("H4 take", "NOT DEMONSTRATED",
+                "taken, but without the streak numbers -- a pre-dwell build")
+    else:
+        el, rd = float(t.group(1)), int(t.group(2))
+        ok = el >= DWELL_MIN and rd >= READS_MIN
+        verdict("H4 take", "PASS" if ok else "FAIL",
+                "at rest %.3f s over %d reads (floor %.2f / %d)%s"
+                % (el, rd, DWELL_MIN, READS_MIN,
+                   "" if ok else " -- under the floor, so the dwell did not run"))
+    verdict("H4b settling", "PASS" if s else "NOT DEMONSTRATED",
+            "reason 4 seen after the release" if s else
+            "no settling refusal: with the dwell compiled out that branch is "
+            "unreachable, so this is the dwell's own discriminator")
+
+    # -- H5 order ---------------------------------------------------------------
+    ih = whole.find("is held, so the forgiveness")
+    it = whole.find("hopped-start taint cleared")
+    if ih < 0 or it < 0:
+        verdict("H5 order", "NOT DEMONSTRATED", "one of the two lines is absent")
+    else:
+        verdict("H5 order", "PASS" if ih < it else "FAIL",
+                "held before taken" if ih < it else
+                "the take came BEFORE the hold -- the window closed early and "
+                "H3 measured nothing")
+
+    # the incidental one, reported and never graded (p448fin's own finding)
+    mv = re.search(MOVING, whole)
+    out.append("%-17s %-3s %s" % ("reported", "--",
+               "still-moving refusal %s%s"
+               % ("seen" if mv else "not seen",
+                  " at %s u/s against %s" % mv.groups() if mv else
+                  " (incidental: it needs an airborne packet to be observed "
+                  "between the arm and the take, and that varies between runs "
+                  "of the same build)")))
+
+    print("\n".join(out))
+    print("%d check(s): %d failed, %d not demonstrated"
+          % (len(out) - 1, bad, undemo))
+    return bad == 0 and undemo == 0
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--exe", default="ftesurf64.exe")
+    ap.add_argument("--timeout", type=float, default=180)
+    ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--grade-only", action="store_true")
+    a = ap.parse_args()
+
+    if a.grade_only:
+        return 0 if grade() else 1
+
+    ran = [(d, sha(os.path.join(GAMEDIR, d))) for d in ("qwprogs.dat", "csprogs.dat")]
+    for d, h in ran:
+        print("%-12s %s" % (d, h))
+    stage()
+    try:
+        if os.path.exists(LOG):
+            os.remove(LOG)
+        flags = 0x08000000 if os.name == "nt" else 0
+        p = subprocess.Popen([os.path.join(ROOT, a.exe), "-WindowStyle", "Minimized",
+                              "+exec", CFG], cwd=ROOT, creationflags=flags,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < a.timeout:
+            time.sleep(1)
+        if p.poll() is None:
+            p.kill()
+            raise SystemExit("the run did not exit in %g s -- killed" % a.timeout)
+        secs = time.time() - t0
+    finally:
+        restore(a.keep)
+    print("ran %s on %s for %.0f s" % (a.exe, CFG, secs))
+    good = grade()
+    if os.path.exists(LOG):
+        shutil.copyfile(LOG, LOG + ".kept")
+        with open(LOG + ".kept.hash", "w") as fh:
+            for d, h in ran:
+                fh.write("%s %s\n" % (d, h))
+    return 0 if good else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
