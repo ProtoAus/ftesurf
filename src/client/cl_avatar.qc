@@ -33,7 +33,7 @@
   THE PREVIEW.  A second renderscene into a viewport rect beside the panel
   (VF_VIEWPORT + VF_DRAWWORLD 0, which also fullbrights it -- the stage sits
   at z 65536 where no map has light).  The body is a CSQC entity dressed
-  exactly like your avatar: the shirt/pants overlay off your two halves
+  exactly like your avatar: the plus-cross overlay off your two colours
   (Patch 457) and glowmod off your fx mask.  It renders AFTER the panel's 2D
   fill and BEFORE its border, so the frame sits over the scene's edge, and the
   backdrop under it is drawn first because renderscene does not clear.
@@ -78,7 +78,7 @@ vector av_dragofs;
 float av_namefocus;
 float av_saidsz;                // the type-scale line is said once per open
 string av_tbsent;               // last topcolor/bottomcolor pushed; see Av_PushHalves
-float av_half;                  // which half the sliders edit: 0 top, 1 bottom
+float av_half;                  // which part the sliders edit: 0 cross, 1 body
 string av_name_text;
 float av_name_caret;
 float av_mote_acc;                // mote rate integrator, see Av_Dress
@@ -243,9 +243,9 @@ vector(vector rgb) Av_GlowModRGB =
 /*
   PATCH 457: THE TWO HALVES, CLIENT SIDE.
 
-  `lobbytop` / `lobbybot` are the ask, each falling back one step -- bottom to
-  top, top to the worn body colour -- so a player who never touches them wears
-  one colour exactly as before.
+  `lobbymark` paints the plus-cross and `lobbybody` paints everything else, each
+  falling back one step -- mark to body, body to the worn colour -- so a player
+  who never touches them wears one colour and no visible cross at all.
 
   THE MIRROR INTO topcolor/bottomcolor IS DONE HERE AND NOT ONLY BY THE SERVER,
   because the server's 1 Hz resolve runs only on a lobby.  Off one -- a listen
@@ -269,32 +269,39 @@ string(vector rgb) Av_HexRGB =
 	              Av_Hex2(rgb_z * 255));
 };
 
-vector() Av_MyTop =
+// Everything that is not the cross.  Falls back to the worn body colour.
+vector() Av_MyBody =
 {
 	local vector v;
 
-	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbytop"));
+	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbybody"));
 	if (v_x >= 0)
 		return v / 255;
 	return Av_MyRGB();
 };
 
-vector() Av_MyBot =
+/*
+  The cross, and it falls back to the BODY rather than the other way round: with
+  lobbymark unset the cross is painted the colour of the body it sits on and is
+  therefore invisible, which is what makes "never opened the customizer" mean
+  one plain colour instead of a pattern nobody chose.
+*/
+vector() Av_MyMark =
 {
 	local vector v;
 
-	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbybot"));
+	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lobbymark"));
 	if (v_x >= 0)
 		return v / 255;
-	return Av_MyTop();
+	return Av_MyBody();
 };
 
 void() Av_PushHalves =
 {
 	local string s, t, b;
 
-	t = Av_HexRGB(Av_MyTop());
-	b = Av_HexRGB(Av_MyBot());
+	t = Av_HexRGB(Av_MyMark());
+	b = Av_HexRGB(Av_MyBody());
 	s = strcat(t, " ", b);
 	if (s == av_tbsent)
 		return;
@@ -365,7 +372,7 @@ void(string id, vector pos, vector sz, float maxv, float val, string label,
 void() Av_SendRGB =
 {
 	localcmd(sprintf("setinfo %s \"%g %g %g\"\n",
-	                 av_half ? "lobbybot" : "lobbytop",
+	                 av_half ? "lobbybody" : "lobbymark",
 	                 floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5),
 	                 floor(av_rgb_z + 0.5)));
 };
@@ -375,8 +382,8 @@ void() Av_SendRGB =
 void() Av_ClearRGB =
 {
 	localcmd("setinfo lobbyrgb \"\"\n");
-	localcmd("setinfo lobbytop \"\"\n");
-	localcmd("setinfo lobbybot \"\"\n");
+	localcmd("setinfo lobbymark \"\"\n");
+	localcmd("setinfo lobbybody \"\"\n");
 	av_rgb = Av_MyRGB() * 255;
 };
 
@@ -511,7 +518,7 @@ void() Av_Open =
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
 	// ...and the sliders from what is actually worn, custom or palette.
-	av_rgb = Av_MyTop() * 255;
+	av_rgb = Av_MyMark() * 255;
 	av_half = 0;
 	UI_CursorClaim(UIC_AVATAR);
 };
@@ -727,7 +734,7 @@ void(vector scr) Av_Draw =
 	local float segs, lit, stripw, striph;      // the trail strip, below
 	local vector tv, bv;                        // the two halves, as 0..255
 	local float rqttl, rqtsz, rqhnt;            // the sizes ASKED for, pre-snap
-	local string nm, hash, s, rgbstr, botstr;
+	local string nm, hash, s, rgbstr, markstr;
 
 	// The board is the older modal and draws over this; see Av_Open.
 	if (!av_open || rec_sb_open)
@@ -940,38 +947,44 @@ void(vector scr) Av_Draw =
 	y = y + sw + 4;                 // row 2's bottom, before the sliders
 
 	/*
-	  PATCH 457: WHICH HALF THE SLIDERS EDIT.
+	  PATCH 457: WHICH PART THE SLIDERS EDIT.
 
-	  The body is two independently coloured halves now (the engine's shirt and
-	  pants overlay, driven by topcolor/bottomcolor through .colormap), so the
-	  three sliders below need to say which one they are moving.  "match" clears
-	  the bottom, which makes it follow the top -- that is the fallback chain in
-	  Av_MyBot, and it is what "one colour" means here.
+	  The body wears a plus-cross and the two are coloured independently (the
+	  engine's shirt and pants overlay, driven by topcolor/bottomcolor through
+	  .colormap), so the three sliders below need to say which part they are
+	  moving.  "plain" clears the MARK, which makes the cross take the body's own
+	  colour and vanish -- that is the fallback chain in Av_MyMark, and it is what
+	  "one colour" means here.
 
-	  The SWATCHES above stay whole-body: a palette pick clears both halves as
-	  well as lobbyrgb, because a quick colour pick meaning "half of me" would
-	  surprise everybody.
+	  The SWATCHES above stay whole-body: a palette pick clears both parts as
+	  well as lobbyrgb, because a quick colour pick meaning "the cross only"
+	  would surprise everybody.
 	*/
-	botstr = getplayerkeyvalue(player_localnum, "lobbybot");
+	markstr = getplayerkeyvalue(player_localnum, "lobbymark");
 	x = sz_x - pad * 2;
-	if (Av_Chip("av_htop", [p_x + pad, y], [x * 0.34, tsz * 1.6], "top",
+	if (Av_Chip("av_hmark", [p_x + pad, y], [x * 0.34, tsz * 1.6], "cross",
 	            av_half == 0))
 	{
 		av_half = 0;
-		av_rgb = Av_MyTop() * 255;
+		av_rgb = Av_MyMark() * 255;
 	}
-	if (Av_Chip("av_hbot", [p_x + pad + x * 0.35, y], [x * 0.34, tsz * 1.6],
-	            "bottom", av_half == 1))
+	if (Av_Chip("av_hbody", [p_x + pad + x * 0.35, y], [x * 0.34, tsz * 1.6],
+	            "body", av_half == 1))
 	{
 		av_half = 1;
-		av_rgb = Av_MyBot() * 255;
+		av_rgb = Av_MyBody() * 255;
 	}
-	if (Av_Chip("av_hmatch", [p_x + pad + x * 0.70, y], [x * 0.30, tsz * 1.6],
-	            "match", botstr == ""))
+	/*
+	  "plain" clears the MARK, not the body: an unset mark takes the body's own
+	  colour and the cross disappears, which is the one-colour look.  Clearing
+	  the body instead would have left the cross standing on a default.
+	*/
+	if (Av_Chip("av_hplain", [p_x + pad + x * 0.70, y], [x * 0.30, tsz * 1.6],
+	            "plain", markstr == ""))
 	{
-		localcmd("setinfo lobbybot \"\"\n");
-		av_half = 0;
-		av_rgb = Av_MyTop() * 255;
+		localcmd("setinfo lobbymark \"\"\n");
+		av_half = 1;
+		av_rgb = Av_MyBody() * 255;
 	}
 	y = y + tsz * 1.6 + 4;
 
@@ -1007,14 +1020,14 @@ void(vector scr) Av_Draw =
 	  the particle colour separately because that one is still a palette entry --
 	  the trail and mote blocks are generated per colour and cannot be tinted.
 	*/
-	tv = Av_MyTop() * 255;
-	bv = Av_MyBot() * 255;
-	if (botstr != "")
-		s = sprintf("top %g %g %g / bottom %g %g %g -- particles: %s",
+	tv = Av_MyMark() * 255;
+	bv = Av_MyBody() * 255;
+	if (markstr != "")
+		s = sprintf("cross %g %g %g / body %g %g %g -- particles: %s",
 		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
 		            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5),
 		            Av_ColourName(eff));
-	else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbytop") != "")
+	else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbybody") != "")
 		s = sprintf("body %g %g %g -- particles: %s",
 		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
 		            Av_ColourName(eff));

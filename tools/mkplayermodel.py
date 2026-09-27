@@ -491,33 +491,85 @@ def write_skin_tga(width=256, height=256, grey=SKIN_GREY):
     return bytes(hdr) + rows + b"\x00"*8 + b"TRUEVISION-XFILE.\x00"
 
 
+# The plus-cross the two colours paint: a waist band all the way round, crossed
+# by a vertical bar centred on each of the five side faces.  Lex picked this over
+# a plain top/bottom split after seeing both rendered.
+#
+# BAND_HALF is in v (height); BAR_FRAC is a share of the face the bar sits on,
+# not of the whole wrap, because the pentagon's sides are NOT equal lengths.
+CROSS_BAND_HALF = 0.11
+CROSS_BAR_FRAC  = 0.12
+
+
+def face_spans():
+    """[(u0, u1), ...] for the five side faces.
+
+    build_faces runs u along the perimeter by cumulative EDGE LENGTH, so the
+    faces have unequal u-spans and a bar "centred on each face" cannot be placed
+    at i/5.  Derived from FOOTPRINT here the same way it is derived there, so
+    the mask and the mesh cannot disagree about where a face is.
+    """
+    n = len(FOOTPRINT)
+    lengths, perim = [], 0.0
+    for i in range(n):
+        a, b = FOOTPRINT[i], FOOTPRINT[(i + 1) % n]
+        seg = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
+        lengths.append(seg)
+        perim += seg
+
+    spans, run = [], 0.0
+    for i in range(n):
+        u0 = run / perim
+        run += lengths[i]
+        spans.append((u0, run / perim))
+    return spans
+
+
+def in_cross(u, v, spans):
+    """Is this texel part of the plus?"""
+    if abs(v - 0.5) <= CROSS_BAND_HALF:
+        return True
+    for u0, u1 in spans:
+        if abs(u - (u0 + u1) * 0.5) <= (u1 - u0) * CROSS_BAR_FRAC:
+            return True
+    return False
+
+
 def write_half_tga(upper, width=256, height=256):
-    """models/player_shirt.tga / _pants.tga -- one half of the side band.
+    """models/player_shirt.tga / _pants.tga -- the cross, and everything else.
+
+    `upper` (the SHIRT overlay, driven by topcolor) is the cross; the pants
+    overlay is its exact complement, so the two together cover the body and
+    every texel is painted by one colour or the other.
 
     The engine finds these by name off the diffuse (gl_shader.c:6979 probes
     "%s_shirt.tga") and turns the UPPERLOWER permutation on when either loads
     (gl_backend.c:4446).  .colormap = slot+1 is what makes the renderer fetch
     that player's topcolor/bottomcolor for them.
 
-    WHY THE CUT IS EXACT.  build_faces lays v as HEIGHT on the side band, and
+    WHY THE BAND IS EXACT.  build_faces lays v as HEIGHT on the side band, and
     inverted -- v = 1.0 at the feet, 0.0 at the crown -- so v is a linear
-    function of world Z there and any constant-v cut is a perfectly horizontal
-    seam.  write_luma_tga already relies on this for the waist belt.  The two
-    end caps do NOT share the convention (their v comes from Y-in-footprint),
-    so a pure-v mask splits each tiny sole and crown cap down the middle; they
-    are visible only from directly below or above.
+    function of world Z there and a constant-v cut is a perfectly horizontal
+    seam.  write_luma_tga already relies on this for the glow belt.  The two
+    end caps do NOT share the convention (their v comes from Y-in-footprint) and
+    they overlap the side band in UV, so the pattern lands on them arbitrarily;
+    they are visible only from directly below or above.
 
     WHY 32 bpp.  The shader reads the mask's ALPHA (`uc.a`), so a 24 bpp file --
     which is what write_luma_tga writes, because glowmod's mask is read from
     RGB -- would have alpha 1 everywhere and put BOTH tints over the whole body.
     RGB is white so that uc.rgb * e_uppercolour is the chosen colour unchanged.
     """
+    spans = face_spans()
     rows = bytearray()
     for y in range(height):
         # Descriptor 8 below is bottom-left origin, so row 0 is the image BOTTOM.
         v = 1.0 - (y + 0.5) / height
-        on = (v < 0.5) if upper else (v >= 0.5)
-        rows += bytes((255, 255, 255, 255 if on else 0)) * width   # BGRA
+        for x in range(width):
+            on = in_cross((x + 0.5) / width, v, spans)
+            if not upper:
+                on = not on
+            rows += bytes((255, 255, 255, 255 if on else 0))       # BGRA
 
     hdr = struct.pack("<BBBHHBHHHHBB",
                       0, 0, 2, 0, 0, 0, 0, 0,
@@ -784,8 +836,8 @@ def main():
         data = write_half_tga(upper)
         with open(path, "wb") as f:
             f.write(data)
-        print("wrote %s (%d bytes, %s half, alpha-masked)"
-              % (path, len(data), "upper" if upper else "lower"))
+        print("wrote %s (%d bytes, %s, alpha-masked)"
+              % (path, len(data), "the cross" if upper else "everything else"))
 
     return 0
 

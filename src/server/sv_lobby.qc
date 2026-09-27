@@ -88,8 +88,8 @@
 .float   lobby_fx;
 .float   lobby_trailc;
 .float   lobby_trailn;           // PATCH 457: resolved trail length stop, 0..3
-.vector  lobby_top;             // PATCH 457: worn upper-half rgb, 0..1
-.vector  lobby_bot;             // ...and lower.  Published as topcolor/bottomcolor.
+.vector  lobby_top;             // PATCH 457: the cross's rgb, 0..1
+.vector  lobby_bot;             // ...and the body's.  Published as topcolor/bottomcolor.
 .float   lobby_csent;
 .vector  lobby_rgb;              // PATCH 341: worn RGB 0..1, custom or palette echo
 .float   lobby_custom;           // PATCH 341: lobbyrgb was valid; not a palette entry
@@ -482,11 +482,17 @@ vector(string s) Lobby_ParseRGB =
 };
 
 /*
-  PATCH 457: THE BODY'S TWO HALVES, AND WHY THEY RIDE THE ENGINE'S OWN KEYS.
+  PATCH 457: THE BODY'S TWO COLOURS, AND WHY THEY RIDE THE ENGINE'S OWN KEYS.
 
-  `setinfo lobbytop "r g b"` and `setinfo lobbybot "r g b"` (0..255 ints, the
-  same grammar lobbyrgb already uses) are resolved once a second and published
-  as the ENGINE's `topcolor` / `bottomcolor` userinfo in its 24-bit form.  Any
+  The body wears a PLUS-CROSS -- a waist band all the way round, crossed by a
+  vertical bar centred on each of the five faces (tools/mkplayermodel.py cuts
+  the mask; Lex chose the shape over a plain top/bottom split after seeing both
+  rendered).  `setinfo lobbymark "r g b"` paints the cross and
+  `setinfo lobbybody "r g b"` paints everything else (0..255 ints, the same
+  grammar lobbyrgb already uses).  They are resolved once a second and published
+  as the ENGINE's `topcolor` / `bottomcolor` userinfo in its 24-bit form -- the
+  shirt overlay is the cross and the pants overlay is its exact complement, so
+  those two names are the transport and not the meaning.  Any
   value >= 16 is read as 0xRRGGBB rather than a palette range
   (R_FetchPlayerColour, gl_backend.c:1116), the engine's own menu writes exactly
   that form (m_multi.c:163), and the two clamps to 13 that would have destroyed
@@ -1647,12 +1653,20 @@ void() Lobby_Frame =
 			*/
 			if (lobby_colors)
 			{
-				tv = Lobby_ParseRGB(infokey(p, "lobbytop"));
-				if (tv_x < 0)
-					tv = p.lobby_rgb;
-				bv = Lobby_ParseRGB(infokey(p, "lobbybot"));
+				/*
+				  THE FALLBACK RUNS MARK -> BODY -> resolved colour, in that
+				  order, so that a player who has never opened the customizer
+				  wears ONE colour and no cross at all: with lobbymark unset the
+				  cross is painted the same colour as the body it sits on and is
+				  invisible.  Falling the other way would have made the default
+				  body take the mark's colour, i.e. a pattern nobody asked for.
+				*/
+				bv = Lobby_ParseRGB(infokey(p, "lobbybody"));
 				if (bv_x < 0)
-					bv = tv;
+					bv = p.lobby_rgb;
+				tv = Lobby_ParseRGB(infokey(p, "lobbymark"));
+				if (tv_x < 0)
+					tv = bv;
 			}
 			else
 			{
