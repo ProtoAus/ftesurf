@@ -52,15 +52,40 @@ DERIVED = [
     ("p463_nocrc",    b"zonecrc c50cfd70\n", b"",
      ("REFUSE", "the file states no zone table"),
      "a file with no crc must refuse, never accept"),
+    # Round 4 changed this expectation and the change is the point: round 2
+    # answered both the missing-crc and the missing-rule case with "the file
+    # states no zone table", and a file that states a table and omits the RULE
+    # does state a table.  Round 1 got the cause right by falling through to
+    # sscanf; round 2 lost it; this names it.
     ("p463_norule",   b"zonerule 1 1 0\n", b"",
-     ("REFUSE", "the file states no zone table"),
-     "same, through the rule"),
+     ("REFUSE", "the file states no zone rule"),
+     "a missing rule is not a missing table"),
     ("p463_rule4",    b"zonerule 1 1 0", b"zonerule 1 1 0 1",
      ("REFUSE", "an unreadable zonerule"),
      "a fourth rule term must not be swallowed on the file side"),
     ("p463_rulejunk", b"zonerule 1 1 0", b"zonerule 1 1 x",
      ("REFUSE", "an unreadable zonerule"),
      "garbage is unreadable, not zero"),
+    # Round 4.  The ship-blocker: under round 2 this ACCEPTED, because the file
+    # side went through sscanf("%d") -- which truncates 4294967297 to 1 -- while
+    # the live side range-rejected.  Worse than the accept, the evidence line
+    # then printed `rule file 1 1 0`, so a PASS misreported the file's own bytes
+    # and tools/reccheck.py's isdigit() test passed it too.  Both independent
+    # readers fooled by one input, in the same direction.
+    ("p463_rulebig",  b"zonerule 1 1 0", b"zonerule 4294967297 1 0",
+     ("REFUSE", "an unreadable zonerule"),
+     "an out-of-range rule must not truncate into a match"),
+    # Round 4.  The file side was never trimmed, so one trailing space refused a
+    # BYTE-IDENTICAL table as "a different zone table" -- this patch's own bug
+    # class, one field over.  One splitter serves all three fields now.
+    ("p463_crcpad",   b"zonecrc c50cfd70\n", b"zonecrc c50cfd70 \n",
+     ("PASS", None),
+     "trailing whitespace on the crc is not a different table"),
+    # Round 4.  sprintf("%d") never emits '+', and reccheck.py faults it, so
+    # accepting it would put the two readers back into disagreement.
+    ("p463_ruleplus", b"zonerule 1 1 0", b"zonerule +1 1 0",
+     ("REFUSE", "an unreadable zonerule"),
+     "'+' is rejected, to agree with the other reader of this header"),
 ]
 
 TS = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")

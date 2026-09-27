@@ -1435,6 +1435,35 @@ float(string path, float src) Zone_LoadJson =
 		              "%g zones loaded, some regions skipped\n",
 		              path, ZONE_MAX, ZONE_MAX_POINTS, zone_count));
 
+	/*
+	  A FILE THAT YIELDED NO ZONES IS NOT A ZONE FILE, AND SAYING OTHERWISE IS A
+	  TRAP AIMED AT maps/zones/local/.
+
+	  This returned TRUE unconditionally.  Zone_Clear() has already run by then,
+	  so valid JSON that adds nothing -- a `tracks` key deleted or misspelled,
+	  which is what a hand-edit gets wrong -- wiped the table, reported success,
+	  and SV_ZoneLoad therefore did NOT fall back to online/ or to the BSP.  The
+	  map goes silently untimeable: zone_count 0, so Zone_Hash returns early,
+	  zone_crc stays "", and under engine Patch 463 every recording of that map
+	  refuses because this server cannot state its own pin.
+
+	  Falling through is safe precisely because Zone_Clear() already ran: the next
+	  source loads into an empty table.  So a bad local file costs you your edit,
+	  not the map.
+
+	  `ok` is ALSO returned, and it is dead today -- Zone_AddRegion has no FALSE
+	  path at all (a degenerate region and a cap hit both return TRUE and keep
+	  loading), so Zone_AddRegionArray and Zone_AddTrack cannot fail.  Returned
+	  rather than deleted so that adding a real failure later is not silently
+	  discarded a third time.  Found by engine Patch 463's evidence reviewer.
+	*/
+	if (!ok || zone_count <= 0)
+	{
+		print(sprintf("^1zones: %s loaded no zones -- ignoring it and trying the "
+		              "next source\n", path));
+		return FALSE;
+	}
+
 	zone_source = src;
 	return TRUE;
 };

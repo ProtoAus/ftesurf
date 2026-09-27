@@ -702,19 +702,29 @@ def check_rec(path, verbose=False):
     zhave = [k for k, v in (("zonesrc", zsrc), ("zonecrc", zcrc),
                             ("zonerule", zrul)) if v is not None]
 
-    if zhave and len(zhave) != 3:
-        # ALL THREE OR NONE.  The server writes them inside one `if`, so a file
-        # with some of them did not come from a server this tool understands --
-        # and a partial pin is worse than none, because a reader that finds
-        # zonecrc will believe the run is pinned while the rule that decides the
-        # crossing is unstated.
+    if zcrc is not None and zrul is not None and zsrc is None:
+        # A NOTE, NOT A FAULT, SINCE ENGINE PATCH 463.  `zonesrc` names the
+        # DIRECTORY the table came from; the grammar block (sv_timer.qc) now
+        # states it is informational and unverified, and pm_verify deliberately
+        # accepts a pin without it so a future writer that drops the field needs
+        # no coordination with the engine.  Faulting here would put the two
+        # readers of this header back into disagreement -- on the very fixture
+        # Patch 463's arm calls its core claim (p463_nosrc).  What still faults
+        # below is a missing crc or rule: those decide the crossing.
+        r.note("no zonesrc, but zonecrc and zonerule are present -- informational "
+               "field, absent; the pin is still usable")
+        zsrc = None
+    elif zhave and len(zhave) != 3:
+        # A partial pin is worse than none, because a reader that finds zonecrc
+        # will believe the run is pinned while the rule that decides the crossing
+        # is unstated.
         r.fault("zone pin is partial: %s present, %s missing -- the writer emits "
-                "all three together or none"
+                "all three together, and crc and rule are what pin the run"
                 % (", ".join(zhave),
                    ", ".join(k for k in ("zonesrc", "zonecrc", "zonerule")
                              if k not in zhave)))
-    elif zhave:
-        if zsrc not in ZONE_SRCS:
+    if zcrc is not None and zrul is not None:
+        if zsrc is not None and zsrc not in ZONE_SRCS:
             r.fault("zonesrc %r is not one of %s" % (zsrc, "/".join(ZONE_SRCS)))
         if not re.fullmatch(r"[0-9a-f]{8}", zcrc or ""):
             r.fault("zonecrc %r is not 8 lowercase hex digits" % zcrc)
