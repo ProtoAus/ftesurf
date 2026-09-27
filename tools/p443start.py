@@ -84,6 +84,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mapcrc
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAMEDIR = os.path.join(ROOT, "ftesurf")
 SAVES = os.path.join(GAMEDIR, "data", "saves", "bhop_eazy")
@@ -483,10 +486,26 @@ def stage(arm):
         raise SystemExit("refusing: %s already exists -- it shadows the shipped zones" % ZONES)
     if os.path.isdir(SAVES):
         os.rename(SAVES, PARK)
+    crc = mapcrc.get("bhop_eazy")
+    if not crc:
+        raise SystemExit("could not obtain bhop_eazy's *mapcrc -- the arm gate would "
+                         "refuse every staged row and the sections below would measure "
+                         "nothing (see tools/mapcrc.py)")
     for slot, src in STAGED[arm]:
         d = os.path.join(SAVES, slot)
         os.makedirs(d)
-        shutil.copyfile(os.path.join(CFGDIR, src), os.path.join(d, "state.txt"))
+        dst = os.path.join(d, "state.txt")
+        shutil.copyfile(os.path.join(CFGDIR, src), dst)
+        # PATCH 450 MADE THIS NECESSARY.  The gate now requires a save to prove which bsp
+        # it came from, and these fixtures are hand-authored with no `mapcrc` -- so
+        # without a stamp the gate refuses them, no forced arm happens, and every section
+        # that exists to measure what the ARM does would measure nothing instead.  That is
+        # the arm-whose-condition-never-occurs trap, introduced by a later patch into an
+        # earlier patch's arm, which is exactly why it is stamped rather than ignored.
+        # The COPY is stamped, never the source: a literal crc in cfg/test/ would be wrong
+        # on every other machine.
+        mapcrc.stamp(dst, crc)
+    print("stamped %d staged row(s) with bhop_eazy *mapcrc %s" % (len(STAGED[arm]), crc))
     if arm in ZONED:
         os.makedirs(os.path.dirname(ZONES), exist_ok=True)
         shutil.copyfile(os.path.join(CFGDIR, "p435.zones.json"), ZONES)

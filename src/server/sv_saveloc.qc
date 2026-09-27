@@ -1024,6 +1024,20 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
+	/*
+	  PATCH 450: WHICH BSP, not just which NAME.  `map` has been written since this
+	  format existed and NO READER EVER LOOKED AT IT -- round 7 counted it as one of
+	  three write-only keys -- so a different .bsp under the same name went unnoticed.
+	  The zone JSON is keyed by name too, so the coordinates a save calls "the start box"
+	  are the same on both files; only the GEOMETRY differs, which is exactly what
+	  SL_RowGrounded traces.  `infokey(world, "*mapcrc")` already exists in this tree
+	  with its third verdict done right, at SV_MapForeign.
+
+	  EMPTY IS A LEGAL VALUE and the reader must not fold it in with a mismatch: the
+	  engine leaves the key unset when it cannot hash the bsp, so this can legitimately
+	  write `mapcrc` with nothing after it.  See SL_MapSame.
+	*/
+	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
 	fputs(f, sprintf("seq %d\n", seq));
 	fputs(f, sprintf("created %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
 
@@ -1175,20 +1189,26 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  would let one save mark another attempt.  See the raise-only restore below.
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
-	  key -- so no version bump.  Patch 445 takes this writer to 37 keys plus the
+	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's `mapcrc` makes it 38, plus the
 	  FTESURF magic (counted, not estimated).  cfg/test/p443air.txt is a whole file to
 	  read one against, and is DELIBERATELY LEFT AS A PRE-445 EXAMPLE -- 36 lines, no
 	  `hopped` -- so the air arm keeps exercising the additive read.  Round 6 flagged
 	  the mismatch; this is the answer to it rather than a fixture edit.
 
-	  COUNTING THEM TURNED UP THE WRITE-ONLY SET, and it is worth the two lines because
-	  one member is a BACKLOG entry: `clock`, `created` and `map` are written and NO
-	  READER EVER MATCHES THEM.  The first two are deliberate and say so at their own
-	  fputs -- they are for the human reading the file.  `map` IS NOT: a save is keyed by
-	  map NAME alone, nothing checks the BSP behind the name, and `infokey(world,
-	  "*mapcrc")` already exists in this tree with the third verdict done right (see
-	  SV_MapForeign, sv_timer.qc).  That is the same shape as this key's own bug -- a
-	  field the format could carry and does not -- and it is the next one to close.
+	  COUNTING THEM TURNED UP THE WRITE-ONLY SET: `clock`, `created` and `map` are written
+	  and no reader matches them.  The first two are deliberate and say so at their own
+	  fputs -- they are for the human reading the file.
+
+	  `map` WAS A REAL GAP AND PATCH 450 CLOSED IT, though not by reading `map`.  A save
+	  was keyed by map NAME alone with nothing checking the bsp behind it, so a different
+	  .bsp under the same name went unnoticed -- and the zone JSON is keyed by name too,
+	  so the coordinates a save calls "the start box" are identical on both files while
+	  the brushes SL_RowGrounded traces are not.  450 added `mapcrc` from
+	  `infokey(world, "*mapcrc")`, which is strictly stronger: the name says what the map
+	  was called, the crc says which bytes it was.  `map` stays write-only on purpose --
+	  reading it back would add a check the crc already subsumes, and one rule spelled
+	  twice is how they drift -- and stays WRITTEN because a human reads this file and a
+	  bare hash is not a map name.
 	*/
 	fputs(f, sprintf("hopped %d\n", e.run_t_hopped));
 	// Which save this attempt was already resumed from, if any.  Only `retry`
@@ -1385,6 +1405,36 @@ float(float id, float row) SV_SaveReadLight =
 // reader, the other two callers (SV_RetryApply, SV_MsApply) ask nothing of it.
 float sl_voided;
 
+/*
+  PATCH 450: DID THIS SAVE COME FROM THE BSP THAT IS LOADED NOW?  Set on every
+  SV_SaveApplyState call beside sl_voided, and read by the same one reader -- the arm
+  gate in SV_SaveLocLoad.
+
+  THE POLARITY IS THE OPPOSITE OF SV_MapForeign'S AND THAT IS THE WHOLE DESIGN.
+  SV_MapForeign answers "should I ACCUSE", so it returns "not foreign" when either crc
+  is missing -- a check that cannot see must not accuse, which is CLAUDE.md's rule and
+  Patch 421's lesson.  This one gates a GRANT: the arm the gate forces LAUNDERS the
+  load's TF_SEGMENT|TF_PRACTICE.  So "cannot tell" must fall the other way, or the
+  blindness becomes the bypass -- which is exactly what round 5 found in SL_RowGrounded,
+  where a two-valued probe's failure granted instead of accusing.  Positive proof only.
+
+  THE COST IS REAL AND IT IS ONE-TIME.  Every save written before this patch has no
+  `mapcrc`, so it cannot prove anything and a start-box load from one stays PRACTICE
+  instead of arming clean -- the pre-Build-47 behaviour.  It heals the moment the player
+  takes a new save, both writers emit the key, and the dprint below says why so it is not
+  a silent degradation.  The alternative -- treat absence as a match so old saves keep
+  working -- was rejected: `state.txt` is plain text in the player's own tree, so anyone
+  wanting the lenient path would simply DELETE the line, and a check a deletion disarms
+  is not a check.
+
+  WHAT IT DOES AND DOES NOT BUY.  On a dedicated lobby a player cannot install a bsp, so
+  this is not a player-reachable attack there -- the same barrier tools/census/iocmd.py
+  measured for map commands.  What it does close is the honest case (a map updated under
+  a save) and the listen-server/self-hosted case, and it stops the gate asserting
+  something about geometry it never checked.
+*/
+float sl_mapsame;
+
 float(entity e, float id, float retry) SV_SaveApplyState =
 {
 	local filestream f;
@@ -1394,6 +1444,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
 	local float hop;                // Patch 445, the hopped-start taint
+	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
 	local float az, ez, am, cz, cmx;
 	local float rpit, ryaw, rduck;
@@ -1403,6 +1454,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local vector rorg, rvel;
 
 	sl_voided = FALSE;
+	// Patch 450: cleared on EVERY call and above the fopen, for the same reason
+	// sl_voided is -- a failed read must not leave a stale TRUE that grants an arm.
+	sl_mapsame = FALSE;
 	f = fopen(SL_StatePath(id), FILE_READ);
 	if (f < 0)
 		return FALSE;
@@ -1416,6 +1470,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// than merely a safe value: before this key existed a retry always came back
 	// unhopped.  Explicit because fteqcc does not zero locals.
 	hop = 0;
+	// Patch 450.  A string local is as un-zeroed as a float one, and this one is
+	// COMPARED rather than summed, so garbage here would be worse than a wrong value.
+	fcrc = "";
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
 	az = ez = am = cz = -1;
@@ -1453,6 +1510,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
+		// Patch 450.  argv(1) is "" when the writer emitted an empty crc, which is a
+		// legal state the engine produces -- SL_MapSame tells that apart from a
+		// mismatch, because one is "cannot tell" and the other is "no".
+		if (k == "mapcrc")     { fcrc = argv(1); continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1505,6 +1566,38 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		}
 	}
 	fclose(f);
+
+	/*
+	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
+	  `fcrc` is final.  Three states, kept three:
+
+	    the file has no crc      -> CANNOT TELL.  A pre-450 save, or one written when the
+	                                engine could not hash the bsp.  NOT proof of sameness.
+	    this server has no crc   -> CANNOT TELL, same answer, and it is not symmetric with
+	                                SV_MapForeign's reading of the same condition on
+	                                purpose: that one decides an accusation, this one
+	                                decides a grant.
+	    both present and equal   -> PROVED.  The only state that sets the flag.
+	    both present, different  -> DISPROVED, and worth saying out loud.
+
+	  The dprint distinguishes the last two, because "the gate did not fire" otherwise
+	  looks identical to a player whichever reason it was, and a start-box load that
+	  quietly stops arming clean is the shape of a bug report nobody can act on.
+	*/
+	{
+		local string wcrc;
+		wcrc = infokey(world, "*mapcrc");
+		if (fcrc != "" && wcrc != "" && fcrc == wcrc)
+			sl_mapsame = TRUE;
+		else if (fcrc != "" && wcrc != "")
+			dprint(sprintf("save: slot %g was taken on a DIFFERENT bsp (file %s, "
+			               "this map %s) -- the start-box arm is refused\n",
+			               id, fcrc, wcrc));
+		else
+			dprint(sprintf("save: slot %g cannot prove which bsp it came from "
+			               "(file '%s', this map '%s') -- the start-box arm is "
+			               "refused; re-save to fix it\n", id, fcrc, wcrc));
+	}
 
 	/*
 	  Patch 441 round 3: DID THIS RUN HOLD A RECORDER WHEN THE LOAD BEGAN, taken
@@ -2614,6 +2707,11 @@ void(float row) SV_SaveDemote =
 	v = rec_sl_vel[row];
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
+	// Patch 450, and the DEMOTE writer needs it as much as the main one: a demoted save
+	// with no `mapcrc` would read as unverifiable and lose the arm gate, which would be a
+	// regression introduced by this patch rather than a refusal it intended.  Same key,
+	// same source, written here so the two writers cannot drift.
+	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
 	fputs(f, sprintf("seq %d\n", rec_sl_seq[row]));
 	fputs(f, sprintf("origin %.4f %.4f %.4f\n", o_x, o_y, o_z));
 	fputs(f, "velocity 0 0 0\n");
@@ -3012,10 +3110,23 @@ void(entity e, float n) SV_SaveLocLoad =
 	  only by accident of ordering -- see the `wasrec` read above, which exists for
 	  exactly this hazard one function up.
 	*/
+	/*
+	  PATCH 450 ADDS `sl_mapsame` AS THE SIXTH CONDITION, and it belongs FIRST in spirit
+	  even though it reads last-but-one here: every condition below it asks a question
+	  about GEOMETRY -- is this point in a start zone, was this row standing on
+	  something -- and none of them is worth asking until the bsp that geometry lives in
+	  is the bsp the save came from.  The zone JSON is keyed by map NAME, so the
+	  coordinates are the same on a different .bsp under the same name and only the
+	  brushes move; SL_RowGrounded would then trace THIS map's world against THAT map's
+	  origin and grant on the strength of it.
+	  Positive proof, not absence of doubt -- see the flag's own essay for why the
+	  polarity is the reverse of SV_MapForeign's.
+	*/
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)
 	if (SL_RowSpeed(r) < SL_ARM_SPEED)
+	if (sl_mapsame)
 	if (SL_RowGrounded(e, r))
 		e.run_t_azone = -1;
 
