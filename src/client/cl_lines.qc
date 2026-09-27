@@ -87,6 +87,7 @@ float  *ln_t;
 float  *ln_brk;                 // 1: no segment from the previous point (a teleport)
 float  *ln_gain;
 float  *ln_vz;                  // Patch 452: the third term of the energy
+float  *ln_q;                   // Patch 453: air-control grade, -1 = no answer
 vector *ln_col;                 // the colour, redone when the range or mode moves
 float  *ln_cerr;                // per chunk and level 1..LN_LEVELS: the error, units
 vector *ln_cc;                  // per chunk: centre, radius, holds a break
@@ -126,6 +127,21 @@ float  ln_pvz[LN_SLOTS];
 float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
 float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
 float  ln_tick[LN_SLOTS];       // the recording's own tick, for the ceiling
+float  ln_pyaw[LN_SLOTS], ln_pt[LN_SLOTS];   // the sample before: yaw, clock
+float  ln_gsince[LN_SLOTS];     // when the current ground phase began
+
+/*
+  THE MOVEMENT SETTINGS THE GRADE IS MEASURED AGAINST.
+
+  Read once per load, from the server this client is on -- which is what the
+  strafe bar does for a replay too (HUD_DrawStrafe, cl_hud.qc), so the line and
+  the bar grade the same moment the same way.  A recording made on a server
+  with different movement settings is therefore graded against THIS one's: that
+  is a real limitation, it is the bar's limitation as well, and the v9 header's
+  `pmpin` block is where a future patch would get the file's own.
+*/
+float  ln_mv_tick, ln_mv_airaccel, ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap;
+float  ln_mv_gravity, ln_mv_gfric, ln_mv_stopspeed, ln_mv_duck, ln_mv_ghold;
 
 // The window: the stretch of RUN TIME shown around the playhead, set by the
 // caller.  Never inferred from tplay -- a board line is drawn with tplay
@@ -213,6 +229,7 @@ void() Line_Alloc =
 	// without this the colour would be energy with the vertical left out --
 	// wrong exactly where a surf line is interesting.
 	ln_vz   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
+	ln_q    = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_col  = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP);
 	ln_cerr = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK * LN_LEVELS);
 	ln_cc   = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP / LN_CHUNK);
@@ -259,9 +276,24 @@ void(float s, float tick) Line_Tick =
 	ln_tick[s] = (tick > 0) ? tick : 0.015;
 };
 
+void() Line_Movevars =
+{
+	ln_mv_tick     = serverkeyfloat("pm_ticrate");        if (ln_mv_tick     <= 0) ln_mv_tick     = PM_TICK;
+	ln_mv_airaccel = serverkeyfloat("sv_airaccelerate");
+	ln_mv_accel    = serverkeyfloat("sv_accelerate");     if (ln_mv_accel    <= 0) ln_mv_accel    = 5;
+	ln_mv_maxspeed = serverkeyfloat("sv_maxspeed");       if (ln_mv_maxspeed <= 0) ln_mv_maxspeed = PM_RUN_SPEED;
+	ln_mv_aircap   = serverkeyfloat("pm_maxairspeed");    if (ln_mv_aircap   <= 0) ln_mv_aircap   = 30;
+	ln_mv_gravity  = serverkeyfloat("sv_gravity");        if (ln_mv_gravity  <  1) ln_mv_gravity  = 800;
+	ln_mv_gfric    = serverkeyfloat("sv_friction");       if (ln_mv_gfric    <  0) ln_mv_gfric    = 4;
+	ln_mv_stopspeed= serverkeyfloat("sv_stopspeed");      if (ln_mv_stopspeed<  0) ln_mv_stopspeed= 75;
+	ln_mv_duck     = serverkeyfloat("pm_duckspeed");
+	ln_mv_ghold    = cvar("hud_strafe_groundhold");
+};
+
 void(float s) Line_Begin =
 {
 	Line_Alloc();
+	Line_Movevars();
 	Line_Clear(s);
 	ln_step[s] = 1;
 	ln_skip[s] = 0;
@@ -273,6 +305,9 @@ void(float s) Line_Begin =
 	ln_gjmp[s]  = FALSE;
 	ln_pvz[s]   = 0;
 	ln_vzmax[s] = 0;
+	ln_pyaw[s]  = 0;
+	ln_pt[s]    = 0;
+	ln_gsince[s] = 0;
 };
 
 /*
@@ -336,7 +371,7 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
-void(float s, vector o, float spd, float vz, float t, float brk) Line_Add =
+void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_Add =
 {
 	local float b, n, i, j;
 
@@ -358,6 +393,7 @@ void(float s, vector o, float spd, float vz, float t, float brk) Line_Add =
 			ln_pos[b + i] = ln_pos[j];
 			ln_spd[b + i] = ln_spd[j];
 			ln_vz[b + i]  = ln_vz[j];
+			ln_q[b + i]   = ln_q[j];
 			ln_t[b + i]   = ln_t[j];
 			ln_brk[b + i] = ln_brk[j];
 			if (i > 0)
@@ -373,10 +409,98 @@ void(float s, vector o, float spd, float vz, float t, float brk) Line_Add =
 	ln_pos[b + n] = o;
 	ln_spd[b + n] = spd;
 	ln_vz[b + n]  = vz;
+	ln_q[b + n]   = q;
 	ln_t[b + n]   = t;
 	ln_brk[b + n] = (n > 0 && ln_pbrk[s]);
 	ln_pbrk[s] = FALSE;
 	ln_n[s] = n + 1;
+};
+
+/*
+  HOW GOOD WAS THE AIR CONTROL AT THIS SAMPLE, on the strafe bar's own terms.
+
+  This is the bar's regime logic (HUD_DrawStrafe, cl_hud.qc), sample by sample
+  instead of frame by frame, and it calls the SAME sh_strafe.qc functions with
+  the same movement settings -- so the line and the bar cannot grade one moment
+  two ways.  The three regimes are not variations of one formula:
+
+    ground   Accelerate has no 30 u/s cap, so the optimum is wishdir nearly
+             ALONG the velocity, and it is evaluated after friction.
+    ramp     the clip couples gravity into the rotating component; on a 53
+             degree face the ideal is 17-55% of the flat one, so the flat
+             figure would overstate the target by up to 6x.
+    air      the flat formula.
+
+  It returns -1 -- NO ANSWER, drawn grey -- rather than a grade wherever the
+  bar refuses one: an air cap that does not bind (a turn rate then grades the
+  server, not the player), a ground target under 10 deg/s where the square-root
+  shoulder makes 1 u/s swing it 15 deg/s, a plane the maths cannot answer for,
+  and the first sample of a slot, which has no previous yaw to turn from.  A
+  colour that says "bad" when it means "cannot tell" is the failure this
+  codebase has paid for more than once.
+*/
+float(float s, vector v, float fl, float t, vector aux) Line_Grade =
+{
+	local float speed, turn, dt, ideal, cscale, gain, fric, wishspeed, vf, ong;
+
+	dt = t - ln_pt[s];
+	if (dt <= 0 || ln_nsamp[s] < 1)
+		return -1;                      // nothing to have turned from
+
+	// Unsigned degrees per second, the short way round the circle.
+	turn = aux_x - ln_pyaw[s];
+	while (turn > 180)  turn = turn - 360;
+	while (turn < -180) turn = turn + 360;
+	turn = fabs(turn) / dt;
+
+	speed = vlen([v_x, v_y, 0]);
+	ong = fl & WT_F_ONGROUND;
+	// A one-tick bhop landing is not a grounded phase -- the bar's own gate.
+	if (ong)
+	if (ln_mv_ghold > 0)
+	if (t - ln_gsince[s] < ln_mv_ghold)
+		ong = FALSE;
+
+	wishspeed = ln_mv_maxspeed;
+	if (ong)
+	if (fl & WT_F_DUCKED)
+	if (ln_mv_duck > 0)
+		wishspeed = ln_mv_maxspeed * ln_mv_duck;
+
+	// Surface friction: airborne and rising, below the non-jump velocity.
+	fric = 1;
+	if (!ong && v_z > 0 && v_z <= PM_NONJUMP_VEL)
+		fric = 0.25;
+
+	cscale = ln_mv_aircap;
+	if (ong)
+	{
+		gain  = Strafe_GroundGain(ln_mv_accel, wishspeed, ln_mv_tick, fric);
+		vf    = Strafe_AfterFriction(speed, ln_mv_gfric, ln_mv_stopspeed, ln_mv_tick);
+		ideal = Strafe_IdealTurnGround(vf, gain, wishspeed, ln_mv_tick);
+		if (ideal <= 10)
+			return -1;                  // the shoulder: not a number to grade on
+	}
+	else if (!Strafe_CapBinds(ln_mv_airaccel, ln_mv_maxspeed, ln_mv_tick, fric,
+	                          ln_mv_aircap))
+		return -1;                      // the cap has slack: this grades the server
+	else
+	{
+		gain = Strafe_AirGain(ln_mv_airaccel, wishspeed, ln_mv_tick, fric,
+		                      ln_mv_aircap);
+		if (aux_y >= 0.05 && aux_y <= PM_STANDABLE && aux_z != 0)
+		{
+			ideal  = Strafe_IdealTurnPlane(speed, ln_mv_tick, gain, ln_mv_gravity,
+			                               aux_y, aux_z);
+			cscale = Strafe_CScale(ln_mv_gravity, ln_mv_tick, aux_y, aux_z,
+			                       ln_mv_aircap);
+			if (ideal <= 0.001)
+				return -1;              // the ramp is doing the turning, not you
+		}
+		else
+			ideal = Strafe_IdealTurn(speed, gain, ln_mv_tick);
+	}
+	return Strafe_Quality(turn, ideal, cscale, ln_mv_aircap);
 };
 
 /*
@@ -421,9 +545,11 @@ void(float s, float k, vector v, float fl) Line_Was =
   Exactly ONE sample seeds, in both -- a longer history would warm this slot's
   ramp hold while slot 0 starts it cold, and they would disagree again.
 */
-void(float s, vector v, float fl, float t) Line_Seed =
+void(float s, vector v, float fl, float t, float yaw) Line_Seed =
 {
 	Line_Was(s, Line_Contact(s, v, fl, t), v, fl);
+	ln_pyaw[s] = yaw;
+	ln_pt[s] = t;
 	ln_vzmax[s] = 0;
 	ln_nsamp[s] = 0;                // the window's first sample is ordinal 0
 };
@@ -440,11 +566,17 @@ void(float s, vector v, float fl, float t) Line_Seed =
   a load also moves the body, so brk is set here too and the contact edge across
   it is suppressed as meaningless.
 */
-void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Line_Point =
+void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
+     vector aux) Line_Point =
 {
-	local float k;
+	local float k, q;
 
+	// aux is [yaw, the plane's z, wishdir . plane] -- one parm slot rather than
+	// three, which is what keeps this call inside fteqcc's eight.
+	q = Line_Grade(s, v, fl, t, aux);
 	k = Line_Contact(s, v, fl, t);
+	if (k == SEG_NONE && ln_pkind[s] != SEG_NONE)
+		ln_gsince[s] = t;               // this ground phase began here
 
 	if (brk)
 		Line_Ev(s, LN_E_BREAK, 0, t, o, v);
@@ -487,13 +619,15 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch) Li
 	}
 
 	Line_Was(s, k, v, fl);
+	ln_pyaw[s] = aux_x;
+	ln_pt[s] = t;
 	if (!ln_nsamp[s])
 	{
 		ln_z0[s]  = o_z;        // the run's own start, one choice of energy zero
 		ln_v20[s] = v * v;
 	}
 	ln_nsamp[s] = ln_nsamp[s] + 1;
-	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, t, brk);
+	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk);
 };
 
 // The tables drawing needs: chunk spheres, the break list, the gain.
@@ -1005,6 +1139,20 @@ void(float s) Line_ColEnergy =
 	}
 };
 
+/*
+  AIR CONTROL, as the strafe bar grades it: green good, red poor, and GREY
+  where there is no answer.  HUD_QualityColor is the bar's own ramp, so a
+  stretch of line and the bar at that moment are the same colour.
+*/
+void(float s) Line_ColQuality =
+{
+	local float b, i;
+
+	b = s * LN_CAP;
+	for (i = 0; i < ln_n[s]; i = i + 1)
+		ln_col[b + i] = HUD_QualityColor(ln_q[b + i]);
+};
+
 // ---- per frame ------------------------------------------------------------------
 
 // The view the lines are projected against, and the shared colour range.
@@ -1083,6 +1231,8 @@ void() Line_ViewFrame =
 					Line_ColContact(s);
 				else if (ln_cmode == 3)
 					Line_ColEnergy(s);
+				else if (ln_cmode == 4)
+					Line_ColQuality(s);
 				else
 					for (i = s * LN_CAP; i < s * LN_CAP + ln_n[s]; i = i + 1)
 						ln_col[i] = Line_Col(i);

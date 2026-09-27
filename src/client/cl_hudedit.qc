@@ -633,8 +633,8 @@ string(string id, float row) HE_OptDef =
 		                     "|Seconds after it. Only applies while a replay is playing; a board line is never windowed.";
 		if (row == 9) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000"
 		                     "|Units of distance. The line fades out over its last third.";
-		if (row == 10) return "hud_watch_path_color|Colour by|c|0 1 2 3|speed;gain;contact;energy"
-		                      "|Speed red-to-green over the shown range; gain in u/s; contact paints ground, ramp and air; energy is what the run gained or lost against the most air strafing can add.";
+		if (row == 10) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control"
+		                      "|Speed red-to-green; gain in u/s; contact paints ground, ramp and air; energy is what was gained or lost against the air-strafe ceiling; air control grades the turn rate the way the strafe bar does, grey where it has no answer.";
 		if (row == 11) return "hud_watch_path_ahead|Draw the future|t||"
 		                      "|The part of the run past the playhead, at half brightness.";
 		// Patch 451: the numbers on those marks.

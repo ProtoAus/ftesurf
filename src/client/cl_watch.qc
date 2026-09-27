@@ -640,6 +640,35 @@ void() Watch_TablesReset =
 #define WTR_RIDEON 16
 #define WTR_STITCH 32           // Patch 449: a save state was loaded here
 
+/*
+  THE WISHDIR, THE WAY AirMove BUILDS IT: the usercmd's forward and side
+  against the .rec's yaw (the angle the server simulated the tick with, not the
+  finer .view one), flattened BEFORE normalising.  input_movevalues is zeroed
+  while a replay is up, so it is rebuilt from the file.
+
+  Patch 453 pulled it out of Watch_Sample: the run line now needs the same
+  vector for every sample of the file, not just the one under the playhead, and
+  a second copy of this would be a second answer to "which way were they
+  pushing" -- which is half of what the air-control grade is measured against.
+*/
+vector(float yaw, float fwdmove, float sidemove) Watch_WishOf =
+{
+	local vector fwd, rgt, w;
+
+	if (fwdmove == 0 && sidemove == 0)
+		return '0 0 0';
+	makevectors([0, yaw, 0]);
+	fwd = v_forward;  fwd_z = 0;
+	rgt = v_right;    rgt_z = 0;
+	if (vlen(fwd) > 0.001) fwd = normalize(fwd);
+	if (vlen(rgt) > 0.001) rgt = normalize(rgt);
+	w = fwd * fwdmove + rgt * sidemove;
+	w_z = 0;
+	if (vlen(w) < 0.001)
+		return '0 0 0';
+	return normalize(w);
+};
+
 float(string s) Watch_RecordBits =
 {
 	local float c, n;
@@ -1395,7 +1424,7 @@ void(float ra, float rb) Watch_ScanRange =
 	local string s;
 	local vector o;
 	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
-	local vector v;
+	local vector v, nrm, wsh;
 	local float fl, key;
 
 	rec_wt_bt0 = ra;
@@ -1515,7 +1544,12 @@ void(float ra, float rb) Watch_ScanRange =
 			Watch_ScanPair(t, o, v, fl, key);
 		// Patch 432: the run line, broken where the pair snapped (a teleport).
 		// Patch 449: and classified -- contact, hops, peaks, save-state stitches.
-		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch);
+		nrm = rec_wt_v4 ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
+		                   stof(argv(WT_C_NORM + 2))] : '0 0 0';
+		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
+		                   stof(argv(WT_C_MOVE + 1)));
+		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch,
+		           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
 		rec_wt_spt    = t;
 		rec_wt_spo    = o;
 		rec_wt_spv    = v;
@@ -1578,7 +1612,7 @@ float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 float  wt_lj_stitch;             // a save state came back in this interval
 vector wt_lj_qv;                 // the sample before the window: Line_Seed's
-float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave;
+float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave, wt_lj_qyaw;
 vector wt_lj_po, wt_lj_pv;
 
 // Patch 441: THE JOB'S OWN `stage` table and finish tick.  Patch 437 filled the
@@ -1737,7 +1771,7 @@ float() Watch_LineJobStep =
 {
 	local float i, n, c, k, t, dt, brk, seg, fl;
 	local string s;
-	local vector o, v;
+	local vector o, v, nrm, wsh;
 
 	if (wt_lj_phase == 0)
 		return -1;
@@ -1872,12 +1906,13 @@ float() Watch_LineJobStep =
 				wt_lj_qv = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 				            stof(argv(WT_C_VEL + 2))];
 				wt_lj_qfl = stof(argv(WT_C_FLAGS));
+				wt_lj_qyaw = stof(argv(WT_C_YAW));
 				wt_lj_qt  = t;
 				wt_lj_qhave = TRUE;
 			}
 			continue;
 		}
-		tokenize(s);
+		n = tokenize(s);
 		o = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
 		fl = stof(argv(WT_C_FLAGS));
@@ -1894,8 +1929,13 @@ float() Watch_LineJobStep =
 		}
 		if (wt_lj_c == 0)
 		if (wt_lj_qhave)
-			Line_Seed(wt_lj_slot, wt_lj_qv, wt_lj_qfl, wt_lj_qt);
-		Line_Point(wt_lj_slot, o, v, fl, t, brk, wt_lj_stitch);
+			Line_Seed(wt_lj_slot, wt_lj_qv, wt_lj_qfl, wt_lj_qt, wt_lj_qyaw);
+		nrm = (n > WT_C_V4N) ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
+		                        stof(argv(WT_C_NORM + 2))] : '0 0 0';
+		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
+		                   stof(argv(WT_C_MOVE + 1)));
+		Line_Point(wt_lj_slot, o, v, fl, t, brk, wt_lj_stitch,
+		           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
 		wt_lj_c  = wt_lj_c + 1;
 		wt_lj_pt = t;
 		wt_lj_po = o;
@@ -2924,20 +2964,7 @@ void() Watch_Sample =
 	*/
 	rec_wt_wish = '0 0 0';
 	if (rec_wt_v4)
-	if (rec_wt_cmv_x != 0 || rec_wt_cmv_y != 0)
-	{
-		makevectors([0, rec_wt_cpa_y, 0]);
-		fwd = v_forward;  fwd_z = 0;
-		rgt = v_right;    rgt_z = 0;
-		if (vlen(fwd) > 0.001) fwd = normalize(fwd);
-		if (vlen(rgt) > 0.001) rgt = normalize(rgt);
-		rec_wt_wish = fwd * rec_wt_cmv_x + rgt * rec_wt_cmv_y;
-		rec_wt_wish_z = 0;
-		if (vlen(rec_wt_wish) < 0.001)
-			rec_wt_wish = '0 0 0';
-		else
-			rec_wt_wish = normalize(rec_wt_wish);
-	}
+		rec_wt_wish = Watch_WishOf(rec_wt_cpa_y, rec_wt_cmv_x, rec_wt_cmv_y);
 
 	// ---- the clock -------------------------------------------------------
 	t = floor(tick);
@@ -4798,12 +4825,21 @@ float(string cmd) Watch_ConsoleCommand =
 		track = stof(argv(3));
 		if (track < 1)
 			track = 64;
+		// Patch 453: the settings the grade was measured against.  The .rec does
+		// not carry them (a v9 `pmpin` block would), so the grader cannot derive
+		// them -- it is handed them, and what it grades is the arithmetic and the
+		// regime choice, which is where the risk is.
+		print(sprintf("lnmv %.5f %g %g %g %g %g\n", ln_mv_tick, ln_mv_airaccel,
+		              ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap, ln_mv_gravity));
+		print(sprintf("lnmv2 %g %g %g %g\n", ln_mv_gfric, ln_mv_stopspeed,
+		              ln_mv_duck, ln_mv_ghold));
 		print(sprintf("lncb %g %g %g %g\n", sl, ln_cmode, ln_n[sl], track));
 		for (i = 0; i < ln_n[sl]; i = i + track)
 		{
 			ep = ln_col[sl * LN_CAP + i];
-			print(sprintf("lnc %g %.4f %.3f %.3f %.3f\n", i,
-			              ln_t[sl * LN_CAP + i], ep_x, ep_y, ep_z));
+			print(sprintf("lnc %g %.4f %.3f %.3f %.3f %.4f\n", i,
+			              ln_t[sl * LN_CAP + i], ep_x, ep_y, ep_z,
+			              ln_q[sl * LN_CAP + i]));
 		}
 		print(sprintf("lnce %g\n", ln_cmode));
 		return TRUE;
