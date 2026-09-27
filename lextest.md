@@ -210,6 +210,71 @@ yourself without me:
 props: 534 spawned (200 solid, 486 scaled), 29 requantised, 3 non-solid (no .phy), 144 bbox->phy
 ```
 
+## 2e. Momentum's zones now reach 66 maps that had no clock at all
+
+You asked for Momentum's zones to be copied over, applied to the CS:S and `_ksf`
+builds, and made editable. The first two are done for 66 maps and are on this disk
+now; the third is held on a deploy. **Nothing is on the fleet.**
+
+**What changed.** The zone loader keys on the bare map name and does not alias, so
+`surf_aircontrol_ksf` had no start, no end and no timer while `surf_aircontrol.json`
+sat installed one directory away. `tools/zoneinstall.py` writes the donor's file as
+`maps/zones/local/<target>.json`, which is all it takes — no QC, no engine. 66 maps
+went from untimeable to timed.
+
+**The list is `ftesurf/maps/zones/manifest.txt`**, and `python tools/zoneinstall.py
+--verify` prints it with a note for any file you have since edited (it will never
+overwrite one of yours).
+
+**What only playing them will tell you.** A zone is an absolute world polygon, so a
+donated file is only right if the two builds share a coordinate frame. I measured
+that (`tools/census/zonefit.py`: start/end polygons inside the target's world, and
+the two worldspawn mins agreeing) and 61 of the 66 were clean on every check. Load a
+few and see whether the start and finish boxes are where the map clearly wants them.
+
+**Five maps I refused, and they are worth a second opinion because a false refusal
+costs you a map.** These share a stem with their donor and measured as different
+maps, so they still have no zones:
+
+| map | why |
+|---|---|
+| `surf_derpis_ksf` | world mins 15,344 units from `surf_derpis` |
+| `surf_sequoia_fix` | world mins differ by 2,368 |
+| `surf_ravine_csgo` | world mins differ by 320 |
+| `bhop_eazy_v2` | 5 start/end regions fall outside the target's world |
+| `surf_lullaby_ksf` | same, 5 regions |
+
+`surf_ravine_csgo` at 320 units is the one I would look at first — that is small
+enough to be a re-origin rather than a different map, and if the layout is really the
+same it could be donated with an offset. The other four look decisive.
+
+**Four that work but whose restart is approximate.** `bhop_arcane_v1`,
+`surf_cinnamon_fix`, `surf_medley_fix` and `surf_minuet_ksf` name an
+`info_teleport_destination` their build does not carry, so `!r` falls back to the
+start polygon's floor centroid instead of the authored spot (`sv_zones.qc:340`, and
+it prints the missing name at `developer 1`). The map times correctly; the respawn
+point may just be a bit off. On about 4% of the library that centroid is outside its
+own polygon, so if one of these four drops you somewhere silly, that is why and it is
+fixable by hand-editing the file.
+
+**`surf_kitsune_mom` is the interesting one.** `surf_kitsune` is the map
+`tools/mapsync.py` uses as its worked example of one name shipping at two builds, and
+it now has a donated zone file under the `_mom` name. If any map is going to show a
+difference between builds, it is that one.
+
+**The other 543 maps are NOT copied, and that is deliberate.** Mirroring every map's
+own zones into the editable folder is what you asked for and it is written and
+verified — but it only becomes safe once the fleet runs engine Patch 463. Before that
+patch, moving a byte-identical zone table from `online/` to `local/` made `pm_verify`
+refuse every existing recording of that map, because the pin compared the directory
+name. Measured, not guessed: on a pre-463 build all five of the existing arm's
+recordings refused with the crc and the rule identical on both sides. So the mirror
+is one `build.ps1 -Pi` behind, and that restarts all 12 lobbies, which is your call.
+
+**One thing to decide.** `ftesurf/` is gitignored, so your edits to those 66 files
+are not in git. If you want them versioned, say so and I will add a negation rule for
+`maps/zones/local/` — worth doing before you spend an evening tuning a start box.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:

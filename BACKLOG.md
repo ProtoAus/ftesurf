@@ -7,6 +7,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **`pm_verify` reads a QC return value through a `globalvars_t *` fetched BEFORE the
+  call that produces it.** `sv_ccmds.c:5365` takes `pr_globals = PR_globals(...)`,
+  `:5369` runs `PR_ExecuteProgram(svprogfuncs, fpin)`, and `:5370` reads
+  `G_INT(OFS_RETURN)` through the pointer from before — while the sibling `else`
+  branch at `:5384` deliberately RE-FETCHES it before use. If the re-fetch exists
+  because the pointer can go stale across `PR_ExecuteProgram` (a progs reload or a
+  realloc of the globals block), then the zone pin is read through a stale pointer
+  and `SV_VerifyZonePin`'s answer is whatever was at that address. If it does not,
+  one of the two is superstition and should say so. Either way the two lines
+  disagree about the same rule, four lines apart. Dates to Patch 349
+  (`dcd166259`, 2026-09-18) and is untouched by Patch 463; found by that patch's
+  control-flow reviewer as out of scope. Needs its own round -- it is the
+  verifier.
 - **`pm_verify`'s zone pin includes the SOURCE DIRECTORY, so moving a byte-identical
   zone table from `online/` to `local/` refuses every existing recording for that
   map.** `sv_ccmds.c:5264` builds `zbuf = "<zonesrc> <zonecrc> <zonerule>"` and
