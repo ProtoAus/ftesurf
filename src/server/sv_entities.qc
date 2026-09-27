@@ -4498,6 +4498,12 @@ float vbsp_prop_requant_n;
 // Props asking for VPhysics collision whose model ships no .phy, so they collide
 // against nothing -- Source's own answer.  See SV_PropHasPhy.
 float vbsp_prop_nophy_n;
+// solid-2 props whose box had to be re-cut so the wire could carry it exactly.
+// See the SOLID_BBOX block in SV_SpawnProp.
+float vbsp_prop_bbox_n;
+// solid-2 props traced against their .phy instead, because the wire cannot carry
+// the asymmetric box Source asks for.  See the promotion in SV_SpawnProp.
+float vbsp_prop_bboxphy_n;
 // Build 34: props whose bounds came back empty from setmodel.  Should be 0 now
 // that worldspawn sets sv_gameplayfix_setmodelsize_qw; a non-zero count means
 // either that cvar_set stopped working or the model genuinely failed to load,
@@ -4525,6 +4531,8 @@ void() SV_EntityReset =
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
 	vbsp_prop_requant_n = 0;
 	vbsp_prop_nophy_n = 0;
+	vbsp_prop_bbox_n = 0;
+	vbsp_prop_bboxphy_n = 0;
 	vbsp_prop_nobox_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
@@ -4684,6 +4692,12 @@ void() SV_EntityReport =
 	// solid props, so the number is expected to be LARGE -- see SV_PropHasPhy.
 	if (vbsp_prop_nophy_n)
 		print(sprintf(", %g non-solid (no .phy)", vbsp_prop_nophy_n));
+	// solid-2 props re-cut to a box the wire reproduces exactly.  146 in the whole
+	// library, 144 of them on surf_lax, so a non-zero here is expected only there.
+	if (vbsp_prop_bboxphy_n)
+		print(sprintf(", %g bbox->phy", vbsp_prop_bboxphy_n));
+	if (vbsp_prop_bbox_n)
+		print(sprintf(", %g box re-cut", vbsp_prop_bbox_n));
 	print("\n");
 
 	if (vbsp_water_n)
@@ -4950,6 +4964,8 @@ float(string mdl) SV_PropHasPhy =
 void(float defsolid) SV_SpawnProp =
 {
 	local float srcsolid, sc, raw;
+	local float h, zlo, zhi;
+	local vector bmin, bmax;
 
 	// A prop with no model is nothing to draw and nothing to hit.  A prop
 	// carrying a BRUSH model ('*N') is a mapper error -- studio props do not
@@ -5093,12 +5109,112 @@ void(float defsolid) SV_SpawnProp =
 
 	self.movetype = MOVETYPE_NONE;
 
+	/*
+	  A solid-2 PROP WITH A .PHY IS TRACED AS ONE, because the wire cannot carry the
+	  box Source asks for and it CAN carry the hull exactly.
+
+	  SOLID_BBOX bounds cross to the client through COM_EncodeSize, which truncates
+	  every extent to a whole unit and forces the box symmetric in x/y (it takes
+	  -mins[0] for both half-widths) -- see the block below for what that does to a
+	  fence.  SOLID_PHYSICS_TRIMESH crosses as ES_SOLID_BSP with no bounds at all:
+	  both sides load the same model and run the same narrowphase on it, so there is
+	  nothing left to quantise and nothing to disagree about.
+
+	  A DELIBERATE DEVIATION FROM SOURCE, stated plainly: Source would collide this
+	  prop against its studio AABB, and this collides it against its VPhysics hull.
+	  That is a smaller, more accurate shape than the box, it is the same data Source
+	  uses for every solid-6 prop on the map, and it is the only option that keeps
+	  the client and the server in agreement -- which was the actual defect.  The
+	  alternative was a 14.7x inflation or a passable fence; both are measured in the
+	  block below.
+	*/
+	if (srcsolid == SRCSOLID_BBOX)
+	if (SV_PropHasPhy(self.model))
+	{
+		srcsolid = SRCSOLID_VPHYSICS;
+		vbsp_prop_bboxphy_n = vbsp_prop_bboxphy_n + 1;
+	}
+
 	if (srcsolid == SRCSOLID_BBOX)
 		self.solid = SOLID_BBOX;
 	else if (srcsolid == SRCSOLID_VPHYSICS)
 		self.solid = SOLID_PHYSICS_TRIMESH;
 	else
 		self.solid = SOLID_NOT;
+
+	/*
+	  A `solid 2` PROP'S BOX HAS TO SURVIVE THE WIRE, or the two sides collide
+	  against different shapes -- the same defect as the scale above, in the other
+	  field.
+
+	  A SOLID_BBOX entity's bounds reach the client through COM_EncodeSize /
+	  COM_DecodeSize (common/common.c:1340-1385), and that encoding does two things
+	  to them.  It TRUNCATES each extent to a whole unit, and it FORCES THE BOX
+	  SYMMETRIC IN X AND Y, taking -mins[0] for both half-widths:
+
+	      maxs[0] = maxs[1] = solid & 255;   mins[0] = mins[1] = -maxs[0];
+
+	  The server's own pmove uses the raw mins/maxs (sv_user.c, the final else in
+	  AddEntityToPmove).  So a prop whose studio bounds are wider in y than in x
+	  arrived at the client as a narrow column while the server kept the wide box --
+	  you walk into its side and the server pushes you out.
+
+	  FIXED BY MAKING THE ENTITY'S BOX ONE THE ENCODING REPRODUCES EXACTLY: integer
+	  extents, symmetric in x/y.  Both sides then hold the identical box because
+	  there is nothing left to quantise.
+
+	  ONLY REACHED WHEN THE MODEL SHIPS NO .PHY, and the promotion above is why --
+	  read it first.  THIS BRANCH WAS MEASURED AND IT IS THE WORSE ANSWER: on
+	  surf_lax all 144 solid-2 props are one model, railingspikedgate.mdl, whose
+	  bounds are 9.65 wide in x and 138.6 long in y.  Symmetrising to the larger
+	  extent turns each railing into a 142 x 142 block -- a 14.7x inflation, 144
+	  times, which would wreck the map; symmetrising to the smaller one turns a
+	  138-unit fence into an 8-unit post and lets players through it.  Neither is a
+	  rounding question, and that is the point: an asymmetric box HAS no faithful
+	  symmetric form, so where the model offers real collision data the promotion
+	  takes it instead and this code does not run.
+
+	  It stays for the case the promotion cannot cover -- Source builds a solid-2
+	  prop's box from the studio bounds with no .phy involved, so a model without one
+	  is still legitimately a box.  Two props in the 1316-map library are in that
+	  branch, one each on bhop_collective and surf_mate.  Rounding is OUTWARD from
+	  the largest extent there: of the two bad answers it is the one that closes gaps
+	  rather than opening them, which for a solid obstacle is the error to prefer.
+
+	  255 is the encoding's ceiling for the horizontal half-width and for -mins[2];
+	  a prop over 510 units wide cannot be expressed and is clamped, which the wire
+	  would have done anyway.
+	*/
+	if (self.solid == SOLID_BBOX)
+	{
+		h = -self.mins_x;
+		if (self.maxs_x > h) h = self.maxs_x;
+		if (-self.mins_y > h) h = -self.mins_y;
+		if (self.maxs_y > h) h = self.maxs_y;
+		h = ceil(h);
+		if (h < 0)   h = 0;
+		if (h > 255) h = 255;
+
+		zlo = ceil(-self.mins_z);
+		if (zlo < 0)   zlo = 0;
+		if (zlo > 255) zlo = 255;
+		zhi = ceil(self.maxs_z);
+
+		// Assigned one component at a time: fteqcc reads `a = b = expr` as a use of
+		// the inner target and warns F302 "potentially uninitialised" on the chain.
+		bmin_x = 0 - h;
+		bmin_y = 0 - h;
+		bmin_z = 0 - zlo;
+		bmax_x = h;
+		bmax_y = h;
+		bmax_z = zhi;
+		if (bmin != self.mins || bmax != self.maxs)
+		{
+			vbsp_prop_bbox_n = vbsp_prop_bbox_n + 1;
+			dprint(sprintf("propbox %s -> %s %s\n", vtos(self.mins), vtos(bmin), self.model));
+		}
+		setsize(self, bmin, bmax);
+	}
 
 	/*
 	  Build 34: relink, because .solid changed AFTER the last link.
