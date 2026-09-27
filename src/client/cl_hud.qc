@@ -2140,9 +2140,18 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		  and the only way to see which one moved it is to print them mid-frame.
 		  Goes to the console, so it lands in log files like every other probe.
 		*/
+		/*
+		  TWO CALLS FOR ONE LINE, because fteqcc drops the ninth parameter of a
+		  varargs call silently and this had nine -- so `nz %g` was formatting an
+		  argument that never arrived.  The build said so ("More than 8 parameters
+		  on varargs function"); the output is byte-identical split this way.
+		*/
 		if (cvar("hud_energy_dbg"))
-			print(sprintf("edbg z %f ref %f e %f erel %f hl %f tick %g hold %g nz %g\n",
-			              org_z, ref, e, erel, ui_hl_e, ui_hl_tick, ehold, nozone));
+		{
+			print(sprintf("edbg z %f ref %f e %f erel %f hl %f ",
+			              org_z, ref, e, erel, ui_hl_e));
+			print(sprintf("tick %g hold %g nz %g\n", ui_hl_tick, ehold, nozone));
+		}
 
 		if (nozone)
 			s = "-- no start zone";

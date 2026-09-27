@@ -63,6 +63,7 @@ float av_my;
 float av_drag;                  // title bar held
 vector av_dragofs;
 float av_namefocus;
+float av_saidsz;                // the type-scale line is said once per open
 string av_name_text;
 float av_name_caret;
 float av_mote_acc;                // mote rate integrator, see Av_Dress
@@ -72,6 +73,7 @@ entity av_prev;                 // the preview body
 vector av_prev_org;             // its origin last frame (trail segment)
 vector av_gh_prev;              // ghost body's feet last frame, same job
 float  av_emit_t;               // last mote emit, for a rate
+float  av_gh_emit_t;            // the ghost body's own; see Av_GhostDress
 
 // The stage the preview body lives on: above every map, below no frustum
 // the game camera owns.
@@ -243,6 +245,33 @@ vector(vector rgb) Av_GlowModRGB =
 };
 
 /*
+  The nearest palette entry to an arbitrary triple: the client half of
+  Lobby_NearestColour (sv_lobby.qc:479), the same squared distance over the same
+  twelve hues.  A custom colour wears itself exactly on the model and has to name
+  one of the twelve for its particles, which are generated per entry and cannot
+  be tinted per entity.
+*/
+float(vector rgb) Av_NearestColour =
+{
+	local float i, best, bi, d;
+	local vector c;
+
+	best = -1;
+	bi   = 1;
+	for (i = 1; i <= AV_COLOURS; i = i + 1)
+	{
+		c = Av_PaletteRGB(i) - rgb;
+		d = c_x * c_x + c_y * c_y + c_z * c_z;
+		if (best < 0 || d < best)
+		{
+			best = d;
+			bi   = i;
+		}
+	}
+	return bi;
+};
+
+/*
   PATCH 341: THE SLIDER.  sui_slidercontrol draws nothing (sui_sys.qc:1152 is
   sui_action_element plus the drag maths), so this is the cl_watch knob look:
   a track, a filled share, a knob, a label at the left and the state at the
@@ -387,6 +416,7 @@ void() Av_Open =
 	if (av_open)
 		return;
 	av_open = TRUE;
+	av_saidsz = FALSE;              // say the type scale again for this open
 	// Seed the name field from the live name so the field is never a lie.
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
@@ -427,10 +457,6 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 	local float c, m, tc, slot, n;
 	local vector rgb;
 
-	c = cvar("cl_pcolour");
-	if (c < 1 || c > AV_COLOURS)
-		return;                       // unresolved: leave the body as it was
-
 	rgb = Av_MyRGB();
 	g.colormod = Av_ColourModRGB(rgb);
 
@@ -440,6 +466,18 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 		g.glowmod = Av_GlowModRGB(rgb);
 	else
 		g.glowmod = '0.032 0.032 0.032';   // off, and expressible: see sv_lobby
+
+	/*
+	  cl_pcolour is the LOBBY's resolved index and it is 0 off one -- a listen
+	  server, or any time before the first 1 Hz pass.  This function used to
+	  RETURN there, so the body stayed undressed with nothing saying why, which
+	  is every offline session and every headless arm.  The worn colour never
+	  needed the server (lobbyrgb is local userinfo); only the particles need an
+	  index, so only they fall back.
+	*/
+	c = cvar("cl_pcolour");
+	if (c < 1 || c > AV_COLOURS)
+		c = Av_NearestColour(rgb);
 
 	tc = Av_MyInfo("lobbytrail");
 	if (tc < 1 || tc > AV_COLOURS)
@@ -463,6 +501,14 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 		  integrated here and spent in whole particles, or at 100 fps every
 		  call would ask for 0.06 of one and get nothing at all.
 		*/
+		/*
+		  dt IS CLAMPED, because it is "since this body last emitted" and a
+		  caller can hand over a stale stamp: Av_GhostDress wrote none at all, so
+		  the first ghost frame after the panel had been shut for five minutes
+		  asked for 6 * 300 motes in one call, and again on the next frame.
+		*/
+		if (dt > 0.1)
+			dt = 0.1;
 		av_mote_acc = av_mote_acc + 6 * dt;
 		n = floor(av_mote_acc);
 		if (n >= 1)
@@ -484,9 +530,16 @@ void(entity g) Av_GhostDress =
 {
 	local float dt;
 
-	dt = time - av_emit_t;
+	/*
+	  ITS OWN STAMP.  This read av_emit_t, which only Av_Preview ever writes, and
+	  wrote nothing back -- so dt was "seconds since the panel was last open" and
+	  grew by a frame every frame.  Av_Dress clamps too; both are wanted, because
+	  the clamp bounds the burst and this makes the rate right.
+	*/
+	dt = time - av_gh_emit_t;
 	if (dt < 0)
 		dt = 0;
+	av_gh_emit_t = time;
 	Av_Dress(g, g.origin, av_gh_prev, dt);
 	av_gh_prev = g.origin;
 };
@@ -571,7 +624,7 @@ void(vector rpos, vector rsz) Av_Preview =
 void(vector scr) Av_Draw =
 {
 	local vector p, sz;
-	local float i, x, y, sw, fx, want, got, askt, pad, tsz, ttl, hint;
+	local float i, x, y, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint;
 	local float barh, fw, fh, pvw, pvx, pvh, slh, stop;
 	local string nm, hash, s, rgbstr;
 
@@ -586,10 +639,38 @@ void(vector scr) Av_Draw =
 	  panel does (Font_Px, cl_hud.qc's essay): raw pixel sizes resample off
 	  the nearest bake and read soft, which is exactly the complaint the
 	  first cut of this panel earned.
+
+	  Font_Set FIRST, AND THAT IS THE FIX: this panel shipped with the closing
+	  Font_Reset (below) and no opener, so it drew in whatever face the previous
+	  drawer left -- FONT_DEFAULT, the 8 px bitmap, because every other panel ends
+	  by resetting.  Font_Px then matched no ladder and handed the request straight
+	  back (sh_font.qc:184), so the sizes were raw as well and the snap this
+	  comment describes never ran.  cl_hud.qc:2741 is the same bug in the sequence
+	  block, with the same one-line fix.
 	*/
+	Font_Set(ui_font_ui);
 	ttl  = Font_Px(8 * ui_cv_scale);
 	tsz  = Font_Px(6 * ui_cv_scale);
 	hint = Font_Px(5 * ui_cv_scale);
+
+	/*
+	  ONCE PER OPEN, so the fix above is answerable from a LOG and not only from
+	  pixels -- this tree has shipped a panel whose every reported number was its
+	  own and correct while nothing was on screen at all.  The face slot proves
+	  the .ttf loaded (0 is the bitmap fallback) and the three sizes prove the
+	  snap ran: at hud_scale 2 a working snap reads 16/12/8, and the unsnapped
+	  request this panel used to draw at read 16/12/10.
+	  AT hud_scale 1 ALL THREE COLLAPSE TO 8, because the UI ladder's lowest rung
+	  is 8 and it steps in fours -- the type hierarchy here exists at scale 2 and
+	  up.  That is a property of the ladder, not of these constants, and it was
+	  hidden for as long as Font_Px was returning the request unchanged.
+	*/
+	if (!av_saidsz)
+	{
+		av_saidsz = TRUE;
+		dprint(sprintf("hud_player: face %g, snapped %g/%g/%g at hud_scale %g\n",
+		               ui_font_ui, ttl, tsz, hint, ui_cv_scale));
+	}
 
 	pad = ceil(tsz * 1.0);
 	sw  = ceil(tsz * 2.2);
@@ -620,22 +701,31 @@ void(vector scr) Av_Draw =
 	*/
 	barh = ttl + pad * 2;
 	sui_action_element([p_x, p_y], [sz_x, barh], "av_drag", sui_noop);
-	if (sui_is_released("av_drag"))
+	/*
+	  sui_is_HELD, not sui_is_released, and that is why the panel could not be
+	  dragged at all.  Release fires on the frame the button goes UP
+	  (sui_sys.qc:345), so the old form armed the drag as the grab ENDED and the
+	  sui_click_held test below cleared it again on the same frame.  The hold list
+	  is latched at mouse-down and never rebuilt from hover (sui_sys.qc:433), so
+	  this stays true when the cursor outruns the bar.
+	*/
+	if (sui_is_held("av_drag"))
 	{
-		av_drag = TRUE;
-		av_dragofs = [av_mx - p_x, av_my - p_y, 0];
+		if (!av_drag)
+		{
+			av_drag = TRUE;
+			av_dragofs = [av_mx - p_x, av_my - p_y, 0];
+		}
 	}
+	else
+		av_drag = FALSE;
+
 	if (av_drag)
 	{
-		if (sui_click_held())
-		{
-			cvar_set("hud_player_x", ftos((av_mx - av_dragofs_x + sz_x * 0.5) / scr_x));
-			cvar_set("hud_player_y", ftos((av_my - av_dragofs_y + sz_y * 0.5) / scr_y));
-			p = [cvar("hud_player_x") * scr_x - sz_x * 0.5,
-			     cvar("hud_player_y") * scr_y - sz_y * 0.5];
-		}
-		else
-			av_drag = FALSE;
+		cvar_set("hud_player_x", ftos((av_mx - av_dragofs_x + sz_x * 0.5) / scr_x));
+		cvar_set("hud_player_y", ftos((av_my - av_dragofs_y + sz_y * 0.5) / scr_y));
+		p = [cvar("hud_player_x") * scr_x - sz_x * 0.5,
+		     cvar("hud_player_y") * scr_y - sz_y * 0.5];
 	}
 
 	// ---- who am I ------------------------------------------------------
@@ -685,6 +775,16 @@ void(vector scr) Av_Draw =
 
 	// ---- colour ---------------------------------------------------------
 	got  = cvar("cl_pcolour");          // the server's answer (float read)
+	/*
+	  ...and the index the PARTICLES will really use, which off a lobby is not the
+	  server's answer at all: Av_Dress falls back to the nearest entry, so a panel
+	  reporting `got` said "particles: plain" while the trail came out rose.  The
+	  swatch marks stay on `got`, because an unlit swatch is honest about there
+	  being no server pick to show.
+	*/
+	eff  = got;
+	if (eff < 1 || eff > AV_COLOURS)
+		eff = Av_NearestColour(Av_MyRGB());
 	want = Av_MyInfo("lobbycolor");     // your ask (0 = auto)
 	rgbstr = getplayerkeyvalue(player_localnum, "lobbyrgb");
 
@@ -744,7 +844,7 @@ void(vector scr) Av_Draw =
 	if (rgbstr != "")
 		s = sprintf("wearing: %g %g %g custom -- particles: %s",
 		            floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5),
-		            floor(av_rgb_z + 0.5), Av_ColourName(got));
+		            floor(av_rgb_z + 0.5), Av_ColourName(eff));
 	else if (got >= 1 && got <= AV_COLOURS)
 		s = sprintf("wearing: %s  (%g/12 taken)", Av_ColourName(got), got);
 	else
@@ -780,7 +880,7 @@ void(vector scr) Av_Draw =
 	for (i = 1; i <= AV_COLOURS; i = i + 1)
 	{
 		if (Av_Swatch(sprintf("av_t%g", i), [x, y], sw * 0.7, i,
-		              askt == i || (askt == 0 && got == i), askt == i))
+		              askt == i || (askt == 0 && eff == i), askt == i))
 			Av_SetInfo("lobbytrail", i);
 		x = x + sw * 0.7 + 4;
 		if (i == 6)
@@ -819,6 +919,15 @@ void(vector scr) Av_Draw =
 		pvh = scr_y - 8 - p_y;
 	if (pvh < tsz * 6)
 		pvh = tsz * 6;
+	/*
+	  A BACKDROP FIRST, because the stage has no world to draw: VF_DRAWWORLD 0
+	  renders the body and nothing else, and renderscene does not clear the colour
+	  buffer, so the viewport showed whatever the MAIN view had already drawn
+	  there -- a body floating over live map geometry, measured in p457av's control
+	  shot.  Darker than the panel so the frame reads as a window and not as more
+	  panel.  It has to be laid down before the scene, or it paints over the body.
+	*/
+	sui_fill([pvx, p_y], [pvw, pvh], '0.02 0.02 0.03', 1, 0);
 	Av_Preview([pvx, p_y], [pvw, pvh]);
 	sui_border_box([pvx, p_y], [pvw, pvh], 1,
 	               '0.28 0.30 0.36', 0.9, 0);

@@ -249,8 +249,12 @@ void(vector feet, float yaw) Ghost_DrawBodyAt =
 	  not a verdict: a player who picked a colour and switched the glow on in
 	  `hud_player` asked to see exactly this body dressed in exactly that, and
 	  "I went ghost mode and saw none of my changes" is the report that ends
-	  here.  Av_GhostDress is a no-op while cl_pcolour is unresolved (0), so a
-	  solo session with no lobby colour keeps every word of the essay above.
+	  here.  IT IS NO LONGER A NO-OP OFF A LOBBY: Av_Dress used to RETURN while
+	  cl_pcolour was unresolved (0) -- which is every solo session -- so the essay
+	  above held there by accident.  It now dresses from `lobbyrgb`, local userinfo
+	  that needs no server, and only the particle INDEX falls back to the nearest
+	  entry.  A session that asked for nothing still keeps the default: Av_MyRGB
+	  with nothing to read is white, and the glow stays off until switched on.
 	*/
 	Av_GhostDress(rec_gh_body);
 
