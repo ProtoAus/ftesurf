@@ -89,6 +89,8 @@ vector av_prev_org;             // its origin last frame (trail segment)
 vector av_gh_prev;              // ghost body's feet last frame, same job
 float  av_emit_t;               // last mote emit, for a rate
 float  av_gh_emit_t;            // the ghost body's own; see Av_GhostDress
+entity av_self;                 // trailstate carrier for Av_SelfTrail; never drawn
+vector av_self_prev;            // ...and its last feet
 
 // The stage the preview body lives on: above every map, below no frustum
 // the game camera owns.
@@ -391,6 +393,25 @@ void(float v) Av_SetR = { av_rgb_x = v; Av_SendRGB(); };
 void(float v) Av_SetG = { av_rgb_y = v; Av_SendRGB(); };
 void(float v) Av_SetB = { av_rgb_z = v; Av_SendRGB(); };
 
+/*
+  Which of the twelve the trail is drawn in: the asked colour when it is in
+  range, else the one the body's particles resolve to.  One copy, because three
+  callers wanted it -- Av_Dress, Av_SelfTrail and the panel's strip -- and the
+  fallback has two steps that are easy to get half right.
+*/
+float() Av_TrailColour =
+{
+	local float tc, c;
+
+	tc = Av_MyInfo("lobbytrail");
+	if (tc >= 1 && tc <= AV_COLOURS)
+		return tc;
+	c = cvar("cl_pcolour");
+	if (c < 1 || c > AV_COLOURS)
+		c = Av_NearestColour(Av_MyRGB());
+	return c;
+};
+
 // The stop's name, matching tools/mkavatarfx.py's TRAIL_STOPS so the panel and
 // the generated blocks call the same ribbon the same thing.
 string(float n) Av_TrailLenName =
@@ -441,6 +462,13 @@ void(float v) Av_FxMotes =
 	if (v >= 1)
 		fx = fx + AV_FX_MOTES;
 	Av_SetInfo("lobbyfx", fx);
+};
+
+// A LOCAL view preference, so it writes a cvar and not a setinfo -- nothing
+// about how anybody else sees you changes with it.
+void(float v) Av_FxSelf =
+{
+	cvar_set("cl_trailself", v >= 1 ? "1" : "0");
 };
 
 void(float v) Av_FxGlow =
@@ -586,9 +614,7 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 	if (c < 1 || c > AV_COLOURS)
 		c = Av_NearestColour(rgb);
 
-	tc = Av_MyInfo("lobbytrail");
-	if (tc < 1 || tc > AV_COLOURS)
-		tc = c;
+	tc = Av_TrailColour();
 
 	if (m & AV_FX_TRAIL)
 	{
@@ -623,6 +649,62 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 			               feet + '0 0 32', '0 0 0', n);
 		}
 	}
+};
+
+/*
+  PATCH 457: YOUR OWN TRAIL, DRAWN LOCALLY.
+
+  The trail everybody ELSE sees is emitted for your AVATAR -- the server's
+  entity through .traileffectnum, or the pose-stream body in cl_body.qc -- and
+  neither of those exists for you: lobby_av_self is 0, so the engine drops your
+  own avatar before it is networked (sv_ents.c:4213) and switching your trail on
+  showed you nothing whatsoever.  The standing advice was "set lobby_av_self 1
+  and use ghost mode", which is a cvar and a mode change to look at a ribbon.
+
+  This emits the same block from your own feet, client side.  It is a LOCAL DRAW
+  and changes nothing anyone else sees -- their copy of your trail is still the
+  server's, from the same generated block, so the two agree by construction.
+
+  rec_gh_bodyfeet is the body's feet whether or not you are ghosting
+  (cl_ghost.qc:411, off VF_ORIGIN before any camera override, and its comment
+  says it is maintained for exactly this kind of reader), which is why this
+  needs no position tracking of its own.
+
+  SKIPPED WHILE GHOSTING, because Av_GhostDress is already emitting on the
+  stand-in at those same feet and two emitters would draw the ribbon twice.
+
+  AND THE 128-UNIT GUARD IS NOT OPTIONAL.  The engine's own trail drops a
+  segment longer than that (cl_ents.c:6332) precisely so a teleport does not
+  draw a line across the map; trailparticles called by hand gets no such test,
+  and without it every telehop on every map would paint one.
+*/
+void() Av_SelfTrail =
+{
+	local vector feet;
+
+	if (!cvar("cl_trailself") || rec_gh_on)
+		return;
+
+	if (!(Av_MyInfo("lobbyfx") & AV_FX_TRAIL))
+	{
+		av_self_prev = '0 0 0';     // so switching it back on does not span the gap
+		return;
+	}
+
+	if (!av_self)
+	{
+		av_self = spawn();
+		av_self.solid = SOLID_NOT;  // never drawn: it is here for the trailstate
+	}
+
+	feet = rec_gh_bodyfeet;
+	if (av_self_prev != '0 0 0')
+	if (vlen(feet - av_self_prev) <= 128)
+		trailparticles(particleeffectnum(sprintf("ftesurf_avtrail%g_%g",
+		                                         Av_TrailLen() + 1,
+		                                         Av_TrailColour())),
+		               av_self, av_self_prev, feet);
+	av_self_prev = feet;
 };
 
 /*
@@ -1082,6 +1164,15 @@ void(vector scr) Av_Draw =
 	Av_Slider("av_fx3", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
 	          (fx & AV_FX_GLOW) ? 1 : 0, "glow",
 	          (fx & AV_FX_GLOW) ? "on" : "off", Av_FxGlow, 1);
+	y = y + slh + 2;
+	/*
+	  The odd one out, and labelled so: every other control here is a setinfo
+	  that changes how OTHER people see you.  This one is a cvar that changes
+	  only what you see, so it says "mine" rather than naming an effect.
+	*/
+	Av_Slider("av_fx4", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
+	          cvar("cl_trailself") ? 1 : 0, "see mine",
+	          cvar("cl_trailself") ? "shown" : "hidden", Av_FxSelf, 1);
 	y = y + slh + pad;
 
 	// ---- trail colour ------------------------------------------------------
@@ -1307,6 +1398,14 @@ void() Av_RegisterCvars =
 	registercvar("cl_pcolour", "0");
 
 	// Panel placement, archived: the drag writes these through cvar_set.
+	/*
+	  PATCH 457: draw your OWN trail as well as everybody else's.  A CLIENT
+	  cvar and not a userinfo key, because it changes nothing about how you
+	  look to anyone -- it is a local view preference, like a crosshair.
+	  Archived, and on by default: a trail you cannot see is one nobody tunes.
+	*/
+	registercvar("cl_trailself", "1", CVAR_ARCHIVE);
+
 	registercvar("hud_player_x", "0.5", CVAR_ARCHIVE);
 	registercvar("hud_player_y", "0.5", CVAR_ARCHIVE);
 };

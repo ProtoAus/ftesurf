@@ -1421,6 +1421,12 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	*/
 	Ghost_Frame();
 
+	// Patch 457: your own trail, which nothing else draws -- lobby_av_self 0
+	// means your avatar is never networked back to you.  Straight after
+	// Ghost_Frame because that is what maintains rec_gh_bodyfeet, and it reads
+	// VF_ORIGIN before any camera override.
+	Av_SelfTrail();
+
 	// Patch 383: the streamed bodies, after the ghost's capture and before the
 	// spectate camera, which reads Body_Pose, and addentities, which draws them.
 	Body_Frame();
