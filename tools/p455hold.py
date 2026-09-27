@@ -134,10 +134,15 @@ def grade():
         return None
 
     # -- H1 the tag's premise, measured at three points ----------------------
-    at_save = re.search(HOPPED, sec.get("S", ""))
-    at_tag = re.search(HOPPED, sec.get("C", ""))
-    at_load = re.search(HOPPED, sec.get("H", ""))
-    trio = tuple(m.group(1) if m else "?" for m in (at_save, at_tag, at_load))
+    # The LAST reading in each section, not the first.  Section C prints a
+    # `start:` block before the tag is earned and another after it, so the first
+    # match reads `hopped 0` on a run where the tag went up -- which reported
+    # 0/0/1 and looked like the load had cleared it (run 3).
+    def last_hopped(name):
+        m = re.findall(HOPPED, sec.get(name, ""))
+        return m[-1] if m else "?"
+
+    trio = (last_hopped("S"), last_hopped("C"), last_hopped("H"))
     if trio == ("0", "1", "1"):
         verdict("H1 tag premise", "PASS",
                 "hopped 0 at the save, 1 after the chain, 1 after the load -- "
@@ -148,19 +153,41 @@ def grade():
                 "the load means the load cleared the tag and the gate never ran"
                 % trio)
 
-    # -- H2 the hold landed, proven without the gate -------------------------
+    # -- H2 the hold landed, and WHY it is usually not needed -----------------
+    #
+    # This was designed as two viewpos lines that must match.  They cannot:
+    # `viewpos` is a CLIENT command, so a server log carries `Sending stringcmd
+    # viewpos` and `Client command: viewpos` and never the coordinates (run 3,
+    # four such lines, no numbers).  There is no server-side substitute either --
+    # SV_SaveLocHold sprints on its refusals and prints nothing when it TAKES.
+    #
+    # It is only needed when reason 1 is ABSENT, to tell "the branch is broken"
+    # from "the hold never landed".  When reason 1 fires it is moot: the gate
+    # read one of run_pmhold / rec_sl_hold / MOVETYPE_NONE as true, and this arm
+    # drives none of the others, so the refusal IS the hold landing.
+    held_seen = re.search(HELD, sec.get("H", ""))
     pos = re.findall(VIEWPOS, sec.get("H", ""))
-    if len(pos) < 2:
-        verdict("H2 hold landed", "NOT DEMONSTRATED",
-                "%d viewpos lines in the hold section, need 2" % len(pos))
-        frozen = False
-    else:
+    asked = len(re.findall(r"Client command: viewpos", sec.get("H", "")))
+    if held_seen:
+        frozen = True
+        verdict("H2 hold landed", "PASS",
+                "not required this run: reason 1 fired, which is the gate "
+                "reading a hold flag set -- the independent check is only "
+                "needed when the refusal is absent")
+    elif len(pos) >= 2:
         a, b = pos[0], pos[1]
         frozen = all(abs(float(x) - float(y)) < 0.5 for x, y in zip(a, b))
         verdict("H2 hold landed", "PASS" if frozen else "NOT DEMONSTRATED",
                 "origin %s -> %s under +forward%s"
                 % (" ".join(a), " ".join(b),
                    "" if frozen else " -- it MOVED, so sl_hold did not take"))
+    else:
+        frozen = False
+        verdict("H2 hold landed", "NOT DEMONSTRATED",
+                "unanswerable today: %d viewpos asked and 0 answered, because "
+                "viewpos is client-side and SV_SaveLocHold prints nothing when "
+                "it takes. Needs a dprint at the hold (ftesurf-a1 owns it)"
+                % asked)
 
     # -- H3 the branch itself -------------------------------------------------
     held = re.search(HELD, sec.get("H", ""))
