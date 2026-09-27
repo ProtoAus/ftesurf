@@ -2847,7 +2847,7 @@ void() Watch_Parse =
 void() Watch_Sample =
 {
 	local float t, tick, i, s, dt, f, db, reseek;
-	local vector fwd, rgt, ang;
+	local vector ang;
 
 	// Inside the interval already parsed: no seek and no tokenize.
 	reseek = TRUE;
