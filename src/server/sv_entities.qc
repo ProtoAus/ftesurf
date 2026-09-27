@@ -4495,6 +4495,9 @@ float vbsp_prop_n, vbsp_prop_solid_n, vbsp_prop_scaled_n, vbsp_prop_dropped_n;
 // Props whose modelscale was not on the 1/16 grid the wire carries, so the spawn
 // floored it.  Same map-change trap as every counter here -- reset below.
 float vbsp_prop_requant_n;
+// Props asking for VPhysics collision whose model ships no .phy, so they collide
+// against nothing -- Source's own answer.  See SV_PropHasPhy.
+float vbsp_prop_nophy_n;
 // Build 34: props whose bounds came back empty from setmodel.  Should be 0 now
 // that worldspawn sets sv_gameplayfix_setmodelsize_qw; a non-zero count means
 // either that cvar_set stopped working or the model genuinely failed to load,
@@ -4521,6 +4524,7 @@ void() SV_EntityReset =
 {
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
 	vbsp_prop_requant_n = 0;
+	vbsp_prop_nophy_n = 0;
 	vbsp_prop_nobox_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
@@ -4675,6 +4679,11 @@ void() SV_EntityReport =
 	// of the BSP's entity lump, so the two numbers must match per map.
 	if (vbsp_prop_requant_n)
 		print(sprintf(", %g requantised", vbsp_prop_requant_n));
+	// Source collides against a prop's .phy or against nothing; this is how many
+	// props have no .phy and so collide against nothing.  A third of the library's
+	// solid props, so the number is expected to be LARGE -- see SV_PropHasPhy.
+	if (vbsp_prop_nophy_n)
+		print(sprintf(", %g non-solid (no .phy)", vbsp_prop_nophy_n));
 	print("\n");
 
 	if (vbsp_water_n)
@@ -4876,6 +4885,68 @@ void() SV_IOReport =
 	}
 };
 
+/*
+  Does this prop's model ship a .phy collision hull?
+
+  SOURCE'S RULE, AND IT IS THE USER'S ASSUMPTION CONFIRMED: a prop that asks for
+  VPhysics collision collides against its model's .phy VCollide, or it does not
+  collide at all.  No $collisionmodel means no vcollide means no entry in the
+  collision list.  The render mesh is NEVER collision geometry in Source.
+
+  The engine already does this for prop_static -- Patch 262, VBSP_ModelHasPhy in
+  mod_vbsp.c:719, 34,514 of 110,959 solid props across 380 maps, 383 of
+  surf_garden's 420.  It could not do it for the props THIS file spawns, and the
+  comment at mod_phy.c:600-620 says exactly why: Mod_PHY_CollisionMesh returns
+  NULL for "no usable hull" and the loader then falls back to the render mesh,
+  and the loader cannot decide otherwise because it sees a MODEL, not a prop --
+  `solid 2` asks for the studio bounding box and needs no .phy at all, so one
+  model shared between a solid-6 and a solid-2 prop has two right answers.  Ten
+  models across eight maps in the library actually are.  Only the prop record can
+  pick, and for these props that record is here.
+
+  Same file test as the plugin's: strip the extension, append .phy, ask the VFS.
+  fopen resolves `models/x.phy` through QC_FixFileName's fallback (the sandbox
+  only hides *.cfg, pr_bgcmd.c), so it reads the VPKs the plugin reads.
+
+  IT CANNOT FAIL SAFE, AND SAYING SO IS THE POINT.  fopen returns -1 for a
+  missing file and for "too many files open" alike, so this function cannot tell
+  "there is no .phy" from "I could not ask" -- and unlike everywhere else in this
+  codebase, the safe-looking answer is not available: a MISSING .phy is the normal
+  case (80 of the 195 distinct paths five maps probe), so treating -1 as "keep it
+  solid" would turn the whole rule off and it would look like it was working.
+
+  So -1 means missing, deliberately, and the exposure is bounded structurally
+  instead: exactly one handle is held and it is closed on the line after it opens,
+  so nothing here can exhaust MAX_QC_FILES on its own.  What makes it checkable is
+  that every probe NAMES ITSELF (the dprint below) and tools/p458phy.py diffs all
+  of them against `flocate`, the engine's own C filesystem search -- 195 of 195
+  agreed, both verdicts represented.  That is the guard: not a fallback, a second
+  reader.
+*/
+float(string mdl) SV_PropHasPhy =
+{
+	local string p;
+	local float  fh;
+
+	// No cache: this runs once per prop at map load, a few hundred times on the
+	// densest map in the library, against precache_model loading every one of
+	// those models synchronously on the same thread.  The plugin caches because
+	// its version runs per STATIC prop, which is thousands.
+	if (strlen(mdl) < 5)
+		return TRUE;
+	p = strcat(substring(mdl, 0, strlen(mdl) - 4), ".phy");
+	fh = fopen(p, FILE_READ);
+	// Named, so the verdict is checkable against a SECOND path to the same fact:
+	// `flocate <p>` is the engine's own filesystem search (fs.c COM_Locate_f) and
+	// answers in C what this answers through a QC builtin.  tools/p458phy.py
+	// generates the flocate cfg from these lines and diffs the two.
+	dprint(sprintf("phyprobe %g %s\n", (fh >= 0) ? 1 : 0, p));
+	if (fh < 0)
+		return FALSE;		// missing -- see the header, this cannot mean anything else
+	fclose(fh);
+	return TRUE;
+};
+
 void(float defsolid) SV_SpawnProp =
 {
 	local float srcsolid, sc, raw;
@@ -4906,6 +4977,32 @@ void(float defsolid) SV_SpawnProp =
 	srcsolid = SV_Key2(self.solid, self.Solid);
 	if (srcsolid == SRCSOLID_NONE)
 		srcsolid = defsolid;
+
+	/*
+	  .PHY OR NOTHING, which is what Source does -- see SV_PropHasPhy.
+
+	  Only under hl2_propcollision 1, and only for a prop asking for VPhysics.
+	  That mirrors the static-prop path's own conditions (mod_vbsp.c:7447) rather
+	  than inventing new ones, and every clause earns its place:
+
+	    mode 0   the plugin already loads no collision for any prop
+	    mode 2   the mapper's global override to the studio bounding box, which
+	             Source builds with no .phy involved
+	    mode 3   the deliberate render-mesh override, build 7's behaviour
+	    SRCSOLID_BBOX  solid 2/3/4 ask for the bounding box, same as mode 2
+	    nophy 1  the escape hatch that restores the render-mesh fallback
+
+	  A cvar read per prop, not per map, because a map load is the only time this
+	  runs and cvar() is a hash lookup.
+	*/
+	if (srcsolid == SRCSOLID_VPHYSICS)
+	if (cvar("hl2_propcollision") == 1)
+	if (!cvar("hl2_propcollision_nophy"))
+	if (!SV_PropHasPhy(self.model))
+	{
+		srcsolid = SRCSOLID_NONE;
+		vbsp_prop_nophy_n = vbsp_prop_nophy_n + 1;
+	}
 
 	precache_model(self.model);
 	setmodel(self, self.model);
