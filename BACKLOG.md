@@ -22,6 +22,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Patch 463's fix prospective-only). This is the Patch 421/422 third-verdict
   shape one level out: the word is right and the plumbing collapses it.
   Found by Patch 463's evidence reviewer.
+  **MEASURED 2026-09-28 AFTER THE DEPLOY: THERE IS NOTHING TO REPAIR, and the
+  claim that there was is withdrawn.** The live board has 72 verdicts -- 49 PASS,
+  21 REFUSE, 1 HOLD, 1 ERROR -- and **0 of the REFUSEs mention zones**. All 21 are
+  unrelated and correct: 10 `a stage restart`, 9 `not exact: no seed or no full
+  pin`, 1 `no input trace`, 1 `a ghost window`. So Patch 463 rescues no historical
+  run, because none was ever refused for the reason it fixes; the deploy notes
+  saying it "helps runs from now on and not the ones it would have rescued"
+  overstated a backlog that does not exist. The DEFECT is still real and still
+  worth fixing -- a host-side verdict sticking permanently to a player's run is
+  wrong whether or not it has happened yet -- but it is not urgent, and a bulk
+  re-check built today would have nothing to chew on. Measured against
+  `/srv/nvme/surfd/data/surfd.db` on the Pi, not inferred.
 - **`pm_verify` reads a QC return value through a `globalvars_t *` fetched BEFORE the
   call that produces it.** `sv_ccmds.c:5365` takes `pr_globals = PR_globals(...)`,
   `:5369` runs `PR_ExecuteProgram(svprogfuncs, fpin)`, and `:5370` reads
