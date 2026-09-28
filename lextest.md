@@ -980,10 +980,21 @@ database, so every number below is one you can click.
 
 ---
 
-## 6. Build 0.1.18 — four things you asked for, and a fourth bug they uncovered
+## 6. Builds 0.1.18 / 0.1.19 — five things you asked for, and one shape
 
-All four came out of one session. Three were the *same root cause* wearing
-different clothes, and that is the interesting part.
+**The current build is 0.1.19** and everything below is in it. I checked that
+by downloading the published archive back and listing it, not by trusting the
+build log: 12 voice icons, 609 zone files including surf_666, 6 thumbnail
+atlases, and zero of the source art or the 1.1 GB of screenshots that must not
+ship. Worth re-checking after any release, because a ship-set regression is
+completely silent — which is the whole point of this section.
+
+**Four separate complaints turned out to be one shape:** something the game
+asks for by name, silently absent, presenting as a broken feature. Three were
+files the release list never named (zones, map screenshots, voice icons). The
+fourth was ftesurf-a1's: a value saved in your own config quietly overriding
+the shipped one, so map downloads could never start. None of them were broken
+logic, and none of them printed anything.
 
 ### The one sentence version
 
@@ -1019,17 +1030,9 @@ whole time.
 
 2.5 MB added — a tenth of what the map thumbnails already cost.
 
-There is also a second half for maps zoned *after* a release: the client now
-asks our own server for a missing zone file. **That half needs one command
-from you** (it edits nginx, which needs a root password I do not have and
-should not have):
-
-```
-ssh proto@180.150.62.57 'sudo install -m 0644 /srv/nvme/surfd/maps.nginx /etc/nginx/snippets/ftesurf-maps.conf && sudo nginx -t && sudo systemctl reload nginx'
-```
-
-Until that runs the game asks once per map, gets a "not found", and stops.
-Harmless — it is the designed miss path — just doing nothing useful.
+There is also a second half for maps zoned *after* a release: the client asks
+our own server for a missing zone file. **You ran the nginx command, so this
+is live and proven** — see the end of this section for the round trip.
 
 ### (4) The error texture behind the create-server menu
 

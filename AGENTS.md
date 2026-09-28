@@ -2208,6 +2208,39 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
 
+### The ship set is an allowlist, and three things it never named -- 2026-09-28
+
+**IF THE GAME NAMES A FILE, SOMETHING IN `$ShipGlobs` OR `$ShipGameFiles` HAS
+TO NAME IT TOO, AND NOTHING CHECKS THAT.** Three separate "it's broken"
+reports in one session were one cause: content referenced by a string literal
+in QC that no ship-set line carried, so the code was correct and the archive
+was empty.
+
+| Referenced from | Missing for | Presented as |
+|---|---|---|
+| `Zone_LoadForMap`, `maps/zones/local/<map>.json` | every release to 0.1.17 | "this map has no zone file, so it has no legs and no times" on all 587 zoned maps |
+| `cl_players.qc:403`, `gfx/thumbnails/speaking_off` | every release ever | an error texture beside EVERY player's name, permanently |
+| `ui_bgprobe`, `gfx/mapshots/<uuid>-<size>.jpg` | every release ever (1.1 GB, never shippable) | a full-screen error texture behind the create panel |
+
+**WHY IT IS INVISIBLE HERE AND FATAL THERE:** the build box has all of it, so
+no amount of local testing reproduces any of the three. The only honest check
+is against the ARCHIVE -- download the published file and list it, which is
+also how each of these was confirmed fixed. `release.ps1` verifies the archive
+matches the STAGE, and the stage matches the allowlist; nothing verifies the
+allowlist matches what the code asks for.
+
+A gate could: sweep the QC for literal asset paths and assert each resolves in
+the ship set. It does not exist; BACKLOG carries it.
+
+**AND A MISS IS NOT A NO-OP.** `drawpic` substitutes
+`R2D_SafeCachePic("no_texture")` and draws it (`pr_menu.c:622-632`), so a
+missing pic is a visible error texture rather than nothing. `drawsubpic`
+(`:688-712`) does not, and `precache_pic` (`:820-861`) never draws at all --
+with flag 512 it returns `""` when an image will not load, which is an
+existence test that does not go through `fopen`. Three builtins, three
+behaviours; a comment that claimed `drawpic` no-ops on a miss is what kept the
+blind fallback in `ui_map_backdrop` alive for as long as it lived.
+
 ### Zone files: what ships, what is fetched, and what the server must never read
 
 - **The library ships now** (`release.ps1` `$ShipGlobs`, 609 files, 2.5 MB). It
