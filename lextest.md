@@ -441,7 +441,7 @@ simulator and a corpus of files. What I would like you to look at:
    spread thin enough to hide under one tick of ceiling per frame) and it is in
    BACKLOG.md; a screenshot would tell me whether it happens in practice.
 
-## 2h. Momentum and KSF runs are on the board now — five things need your eyes
+## 2h. Momentum and KSF runs are LIVE — six things need your eyes
 
 The board went from **172 rows on 36 maps** to **85,768 on 608**: every surf
 and bhop leaderboard Momentum publishes (main, every stage, every bonus, top
@@ -506,6 +506,34 @@ record is 92.565s. All five are gone. **The check only exists because I looked
 at one board by eye** — nothing I had built would have caught them, and I do
 not know what else is in there that a different glance would find. If a time
 ever looks impossible to you, it probably is, and I would like to hear about it.
+
+**f) THE COMBINED VIEW DOES NOT WORK AT REAL SCALE, and I need you to pick the
+fix.** You asked for a separate tier plus a combined view, and the combined view
+is built and correct: all tiers, ranked by time. At test scale that read
+beautifully -- your 7.125s, your Momentum 7.320s, borobongo's 7.635s, one list.
+
+On the live board it is useless. `surf_utopia` main has 271 imported rows and 2
+of ours, and **221 of theirs are faster than your best**, so your row is at rank
+222 while the client only ever fetches the first 64. You would scroll a page of
+strangers and never find yourself. That is not a bug in the merge; it is the
+merge doing exactly what it says on a map where you are not competitive yet.
+
+Three ways out, and it is a question about what "compare" should mean rather
+than one I can measure:
+
+  1. **Cap the foreign rows.** Combined shows the top N imported plus ALL of
+     ours. You see the best few of theirs and every one of yours. Best for
+     "how far off am I", worst if you want to browse their board.
+  2. **Always include your own row.** Keep the merge, but pin the local
+     player's row into the page wherever it really ranks, with the rank shown.
+     Honest about position, needs the client to say who it is -- /api/board
+     currently has no idea who is asking.
+  3. **Page it.** The board fetches one page of 64 and has no offset; adding
+     paging fixes this and every other long board at once, and is the most work.
+
+My instinct is 1 for the combined tab specifically, because the tab exists to
+read one against the other, and 3 separately because the ranked board will hit
+this too one day. But you are the one who will use it.
 
 **One thing I would like you to look at that is not a judgement call:** the
 `why` column on the board. It has been empty by construction since Patch 355 and

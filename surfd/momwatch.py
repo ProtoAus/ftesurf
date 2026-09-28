@@ -33,7 +33,19 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+# In the repo, momfetch lives in ../tools.  On a deployed box everything is
+# copied flat into one directory, so look there too -- and look BESIDE first,
+# because that is the copy that shipped with this one.
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "tools"))
+sys.path.insert(0, HERE)
+
+
+def _momfetch_path():
+    for d in (HERE, os.path.join(os.path.dirname(HERE), "tools")):
+        p = os.path.join(d, "momfetch.py")
+        if os.path.exists(p):
+            return p
+    raise SystemExit("cannot find momfetch.py beside %s or in ../tools" % HERE)
 
 import surfd as S       # noqa: E402
 import momfetch         # noqa: E402
@@ -122,7 +134,7 @@ def main():
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    cmd = [sys.executable, os.path.join(os.path.dirname(HERE), "tools", "momfetch.py"),
+    cmd = [sys.executable, _momfetch_path(),
            "--tracks", a.tracks, "--out", a.boards, "--take", str(a.take),
            "--delay", str(a.delay), "--max", str(a.max), "--refresh", "--go"]
     for n in maps:

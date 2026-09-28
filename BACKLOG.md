@@ -977,6 +977,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Imported runs (Momentum, KSF)
 
+- **THE COMBINED BOARD IS UNUSABLE ON A BUSY MAP.** It merges every tier by
+  time and the client fetches one page of `OB_MAXROW` 64 with NO offset
+  (`Online_Fetch` sends `limit` and never `skip`). On `surf_utopia` main, 221
+  imported rows are faster than this server's best, so a local row lands at
+  rank 222 and is simply not in the page. The merge is correct; the paging is
+  the hole, and it will bite the ranked board too once any map has 65 rows.
+  Found only by testing against the LIVE board -- the local fixture had 2
+  ranked against 1 imported and interleaved perfectly. `lextest.md` 2h(f)
+  puts the three fixes to the operator.
+
 - **The import is being deployed now** (2026-09-28); until this entry says
   otherwise, check the host rather than this file. What ships: the `.rec`
   corpus under the game's `data/momentum`, the surfd code carrying the tier and
