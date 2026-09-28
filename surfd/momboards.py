@@ -57,6 +57,11 @@ if hasattr(sys.stdout, "reconfigure"):
 # surf 0.015 (66.67, exactly ours), bhop 0.01.  Not a guess and not a default.
 TICK = {1: 0.015, 2: 0.01}
 
+# How far under Momentum's own #1 a demo-derived row may sit before it is
+# reported as impossible.  See the block over `api_best`.
+IMPOSSIBLE_RATIO = 0.005
+IMPOSSIBLE_FLOOR_MS = 20.0
+
 
 # The fractional seconds in an ISO timestamp, after the seconds field.
 _FRAC = re.compile(r"(?<=:\d\d)\.(\d+)")
@@ -106,6 +111,74 @@ def load(path):
             return json.load(fh)
     except (OSError, ValueError):
         return None
+
+
+def report_impossible(conn, files, a):
+    """Rows whose demo-derived time beats Momentum's own #1.
+
+    Read-only unless --drop-impossible, so the caller may run it on a dry
+    run.  Returns the list it reported.
+    """
+    # A DEMO-DERIVED TIME THAT BEATS MOMENTUM'S OWN #1 IS NOT A RECORD.
+    # The API answers for the same board, so the two can be compared, and 5 of
+    # 4,743 disagree -- a 0.405 s "run" on a board whose real record is 92.565 s
+    # (a 76-sample fragment), a surf_utopia main at half the world record whose
+    # own header reports a 10,073 u/s peak. Each sits at the TOP of its board.
+    #
+    # THE SLACK IS THE SMALLER OF 0.5% AND IMPOSSIBLE_FLOOR_MS, not the ratio
+    # alone.  Some slack is needed because the two sources round differently
+    # (the API sends seconds as a double, the demo's time comes off its own
+    # header) and a row that ties the record is a row that IS the record.  But
+    # 0.5% was sized against a 0.405 s "run" on a 92.565 s board, and on a 53 s
+    # board it is 268 ms -- wide enough that surf_utopia's public #1 sat 60 ms
+    # under Momentum's own record and passed.  The ratio still governs short
+    # boards, where it is the tighter of the two (18 ms on a 3.7 s record).
+    #
+    # Reported always, removed only on request: deleting somebody's row because
+    # two sources disagree is a judgement, and the number is small enough to
+    # look at.
+    api_best = {}
+    for p in files:
+        doc = load(p)
+        if not doc or not (doc.get("rows") or []):
+            continue
+        tt, tn = doc.get("trackType", 0), doc.get("trackNum", 1)
+        tr, lg = track_leg(tt, tn)
+        mp = S.clean_map(doc.get("map") or "")
+        if mp is None:
+            continue
+        api_best[(mp, tr, lg)] = min(r["time"] for r in doc["rows"]) * 1000.0
+
+    bad = []
+    for r in conn.execute(
+            "SELECT map, track, leg, player, name, millis FROM runs"
+            " WHERE tier=? AND replay_id>0", (S.TIER_MOMENTUM,)):
+        ref = api_best.get((r["map"], r["track"], r["leg"]))
+        if ref is None:
+            continue
+        slack = min(ref * IMPOSSIBLE_RATIO, IMPOSSIBLE_FLOOR_MS)
+        if r["millis"] < ref - slack:
+            bad.append((r["map"], r["track"], r["leg"], r["player"],
+                        r["name"], r["millis"], ref))
+    print("faster than the official #1  %d row(s)"
+          "   (slack: %.1f%% capped at %d ms)"
+          % (len(bad), IMPOSSIBLE_RATIO * 100.0, IMPOSSIBLE_FLOOR_MS))
+    # Sorted by the SIZE OF THE GAP, not the ratio: the rows worth looking at
+    # first are the ones furthest under a record, whatever the board's length.
+    for mp, tr, lg, _pl, nm, ms, ref in sorted(bad, key=lambda b: b[5] - b[6])[:20]:
+        print("   %-26s t%d l%d  %8.3fs vs %8.3fs official  %+8.3fs  %s"
+              % (mp, tr, lg, ms / 1000.0, ref / 1000.0,
+                 (ms - ref) / 1000.0, nm[:18]))
+    if bad and a.drop_impossible:
+        with conn:
+            for mp, tr, lg, pl, _nm, _ms, _ref in bad:
+                conn.execute("DELETE FROM runs WHERE tier=? AND map=? AND track=?"
+                             " AND leg=? AND player=?",
+                             (S.TIER_MOMENTUM, mp, tr, lg, pl))
+        print("dropped %d row(s); their .rec files are untouched on disk" % len(bad))
+    elif bad:
+        print("  (left in place -- pass --drop-impossible to remove them)")
+    return bad
 
 
 def main():
@@ -171,7 +244,9 @@ def main():
         print("run dates         %s .. %s"
               % (time.strftime("%Y-%m-%d", time.gmtime(min(dates))),
                  time.strftime("%Y-%m-%d", time.gmtime(max(dates)))))
+    # Read-only, so the list is visible without changing anything.
     if not a.go:
+        report_impossible(conn, files, a)
         print("\nDRY RUN -- nothing written.  Pass --go.")
         return 0
 
@@ -193,52 +268,7 @@ def main():
             wrote += cur.rowcount
     print("board rows set    %d" % wrote)
 
-    # A DEMO-DERIVED TIME THAT BEATS MOMENTUM'S OWN #1 IS NOT A RECORD.
-    # The API answers for the same board, so the two can be compared, and 5 of
-    # 4,743 disagree -- a 0.405 s "run" on a board whose real record is 92.565 s
-    # (a 76-sample fragment), a surf_utopia main at half the world record whose
-    # own header reports a 10,073 u/s peak. Each sits at the TOP of its board.
-    #
-    # 0.5% of slack, not zero: the two sources round differently (the API sends
-    # seconds as a double, the demo's time comes off its own header), and a row
-    # that ties the record is a row that IS the record.
-    #
-    # Reported always, removed only on request: deleting somebody's row because
-    # two sources disagree is a judgement, and the number is small enough to
-    # look at.
-    api_best = {}
-    for p in files:
-        doc = load(p)
-        if not doc or not (doc.get("rows") or []):
-            continue
-        tt, tn = doc.get("trackType", 0), doc.get("trackNum", 1)
-        tr, lg = track_leg(tt, tn)
-        mp = S.clean_map(doc.get("map") or "")
-        if mp is None:
-            continue
-        api_best[(mp, tr, lg)] = min(r["time"] for r in doc["rows"]) * 1000.0
-
-    bad = []
-    for r in conn.execute(
-            "SELECT map, track, leg, player, name, millis FROM runs"
-            " WHERE tier=? AND replay_id>0", (S.TIER_MOMENTUM,)):
-        ref = api_best.get((r["map"], r["track"], r["leg"]))
-        if ref is not None and r["millis"] < ref * 0.995:
-            bad.append((r["map"], r["track"], r["leg"], r["player"],
-                        r["name"], r["millis"], ref))
-    print("faster than the official #1  %d row(s)" % len(bad))
-    for mp, tr, lg, _pl, nm, ms, ref in sorted(bad, key=lambda b: b[5] / b[6])[:8]:
-        print("   %-26s t%d l%d  %8.3fs vs %8.3fs official   %s"
-              % (mp, tr, lg, ms / 1000.0, ref / 1000.0, nm[:18]))
-    if bad and a.drop_impossible:
-        with conn:
-            for mp, tr, lg, pl, _nm, _ms, _ref in bad:
-                conn.execute("DELETE FROM runs WHERE tier=? AND map=? AND track=?"
-                             " AND leg=? AND player=?",
-                             (S.TIER_MOMENTUM, mp, tr, lg, pl))
-        print("dropped %d row(s); their .rec files are untouched on disk" % len(bad))
-    elif bad:
-        print("  (left in place -- pass --drop-impossible to remove them)")
+    report_impossible(conn, files, a)
 
     if a.link:
         with conn:

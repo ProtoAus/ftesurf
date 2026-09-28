@@ -608,23 +608,26 @@
 
     var st = $('pstats');
     st.textContent = '';
-    var add = function (v, label, title) {
+    var add = function (v, label, title, note) {
       var d = el('div', 'stat');
       d.appendChild(el('span', 'sv', v));
       d.appendChild(el('span', 'sl', label));
+      if (note) { d.appendChild(el('span', 'sn', note)); }
       if (title) { d.title = title; }
       st.appendChild(d);
     };
     add(body.n, body.n === 1 ? 'time' : 'times');
-    // The headline is the CONTESTED count. Most imported stage boards hold one
-    // row -- the only person we have a time for -- and counting those as
-    // records read as 35 where 34 were uncontested. The raw figure is still
-    // here, in the tooltip, because it is not nothing.
-    var wrc = n0(body.wrc);
-    add(wrc, wrc === 1 ? 'record' : 'records',
-        'First on ' + wrc + ' board' + (wrc === 1 ? '' : 's') +
-        ' where somebody else has a time too — ' + n0(body.wr) +
-        ' first places counting boards nobody else is on');
+    // LEAD WITH FIRST PLACES, CAVEAT UNDERNEATH. Most imported stage boards
+    // hold exactly one row -- the only person we have a time for -- so a
+    // profile can be first on 35 boards and contested on none. Leading with
+    // the contested count was true and read as broken: 1,629 times and a big
+    // 0. The sub-line carries the caveat instead of the headline.
+    var wrc = n0(body.wrc), wr = n0(body.wr);
+    add(wr, wr === 1 ? 'first place' : 'first places',
+        wrc + ' of those ' + (wrc === 1 ? 'is' : 'are') +
+        ' on a board where somebody else has a time too; the rest are boards' +
+        ' nobody else is on',
+        wr === 0 ? null : (wrc === wr ? 'all contested' : wrc + ' contested'));
     if (n0(body.top10)) {
       add(body.top10, 'top tens', 'Top ten on a board with more than one time');
     }
