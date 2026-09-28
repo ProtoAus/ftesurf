@@ -210,9 +210,27 @@ strbuf ms_src;
   campaign in Other only by the accident of it being a separate mount.
 */
 strbuf ms_lst;
+/*
+  ms_have / ms_new / ms_dlkb -- build 58, and the reason the list can now hold a
+  map that is not on this disk.
+
+  Every other buffer here came from search_begin, so until now "listed" and
+  "installed" were the same statement and ms_have would have been a column of
+  ones.  ui_dl_load appends the maps data/mapdl.txt offers and this install does
+  not have, with ms_have "0"; they draw a Download button instead of a time.
+
+  ms_dlkb is the size in KiB from the same file rather than from the disk,
+  because for those rows there is no file to ask.  It is what the button prints
+  before the download starts, and the only honest figure available at that point
+  -- the engine reports DLLF_SIZEUNKNOWN until the server answers.
+*/
+strbuf ms_have;
+strbuf ms_new;
+strbuf ms_dlkb;
 strbuf ms_view;
 float  ms_count;                // entries in ms_name
 float  ms_viewcount;            // entries in ms_view
+float  ms_dlcount;              // rows appended by ui_dl_load, for the report
 float  ms_nsrc[SRC_COUNT];      // entries per SRC_*, for the load report
 
 string ms_query;                // live contents of the search field
@@ -1638,16 +1656,105 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
 	           sp, ss, '1 1 1', 1, 0);
 };
 
+/*
+  data/mapdl.txt -- the maps the Pi will hand out, appended to the list as rows
+  this install does not have.  Written by tools/mapscan.py every six hours.
+
+  THE LIST COULD NOT SHOW A MAP YOU DO NOT HAVE, and that is the actual reason
+  the download button did not exist: ui_load_maps builds every row from
+  search_begin, so "in the list" and "on the disk" were the same fact and there
+  was nothing for a button to act on.  This is the other half.
+
+  It is the PI'S inventory, not the catalogue.  1748 maps are catalogued and the
+  Pi serves 1239 of them; offering the other 509 would draw a button that 404s,
+  which is worse than no button.  mapscan.py takes that intersection so this
+  does not have to guess.
+
+  A missing file is not an error and not a warning.  It means downloads are not
+  set up on this install, and the list behaves exactly as it did before.
+*/
+void() ui_dl_load =
+{
+	local filestream fh;
+	local hashtable byname;
+	local string ln, nm, key;
+	local float i, n, row, appended, badged;
+
+	fh = fopen("data/mapdl.txt", FILE_READ);
+	if (fh < 0)
+		return;
+
+	byname = hash_createtab(4096, EV_FLOAT);
+	for (i = 0; i < ms_count; i = i + 1)
+		hash_add(byname, strtolower(bufstr_get(ms_name, i)), i,
+		         HASH_REPLACE | EV_FLOAT);
+
+	appended = 0;
+	badged = 0;
+	while ((ln = fgets(fh)) != "")
+	{
+		n = tokenize(ln);
+		if (n < 8)
+			continue;
+		if (argv(0) != "dl")
+			continue;
+
+		nm = argv(1);
+		key = strtolower(nm);
+		row = hash_get(byname, key, -1, EV_FLOAT);
+
+		if (row >= 0)
+		{
+			// Already on disk.  The only thing this file can still tell us is
+			// whether it turned up recently enough to badge.
+			if (argv(7) == "1")
+			{
+				bufstr_set(ms_new, row, "1");
+				badged = badged + 1;
+			}
+			continue;
+		}
+
+		// A row for a map that is not here.  Every parallel buffer gets an entry
+		// or they desync -- ms_tierv, ms_modev and ms_meta are filled by
+		// ui_meta_load, which runs next and sizes itself from ms_count.
+		bufstr_add(ms_name, nm, TRUE);
+		bufstr_add(ms_src, (argv(3) == "k") ? ftos(SRC_BIT_CSS) : ftos(SRC_BIT_MOM), TRUE);
+		bufstr_add(ms_lst, ui_isgamemode(nm) ? "0" : ftos(SRC_BIT_OTHER), TRUE);
+		bufstr_add(ms_have, "0", TRUE);
+		bufstr_add(ms_new, argv(7), TRUE);
+		bufstr_add(ms_dlkb, argv(5), TRUE);
+		hash_add(byname, key, ms_count, HASH_REPLACE | EV_FLOAT);
+		ms_count = ms_count + 1;
+		appended = appended + 1;
+		if (argv(7) == "1")
+			badged = badged + 1;
+	}
+	fclose(fh);
+	hash_destroytab(byname);
+
+	ms_dlcount = appended;
+	print(sprintf("FTESurf: mapdl offers %g map(s) not installed here, %g new\n",
+	              appended, badged));
+};
+
 void() ui_load_maps =
 {
 	if (ms_name >= 0) buf_del(ms_name);
 	if (ms_src  >= 0) buf_del(ms_src);
 	if (ms_lst  >= 0) buf_del(ms_lst);
+	if (ms_have >= 0) buf_del(ms_have);
+	if (ms_new  >= 0) buf_del(ms_new);
+	if (ms_dlkb >= 0) buf_del(ms_dlkb);
 
 	ms_name  = buf_create();
 	ms_src   = buf_create();
 	ms_lst   = buf_create();
+	ms_have  = buf_create();
+	ms_new   = buf_create();
+	ms_dlkb  = buf_create();
 	ms_count = 0;
+	ms_dlcount = 0;
 
 	/*
 	  SB_FULLPACKAGEPATH makes search_getpackagename return the whole purepath
@@ -1714,6 +1821,11 @@ void() ui_load_maps =
 		// another mount cannot change which list it is in -- only which sources
 		// its label names.  See ms_lst.
 		bufstr_add(ms_lst, ui_isgamemode(nm) ? "0" : ftos(SRC_BIT_OTHER), TRUE);
+		// Everything this loop sees came out of a filesystem search, so it is on
+		// disk by construction.  ui_dl_load is the only thing that adds a "0".
+		bufstr_add(ms_have, "1", TRUE);
+		bufstr_add(ms_new,  "0", TRUE);
+		bufstr_add(ms_dlkb, "0", TRUE);
 		hash_add(seen, key, ms_count, HASH_REPLACE | EV_FLOAT);
 		ms_count++;
 	}
@@ -1818,6 +1930,13 @@ void() ui_load_maps =
 	// ui_cat_load reads what ui_meta_load wrote.  None can fail in a way that
 	// matters: a missing mapmeta.txt costs the metadata columns and files every
 	// map by its name, and no .pb files means no times to show.
+	// BEFORE ui_meta_load, not after: it appends rows to ms_name, and
+	// ui_meta_load builds its byname hash from ms_name and then fills the tier
+	// and gamemode columns.  Run the other way round and every downloadable map
+	// would list as untiered, which is how a real tier 1 and "we have no idea"
+	// come to look identical.
+	ui_dl_load();
+
 	ui_meta_load();
 	ui_cat_load();
 	run_pb_load();
@@ -3909,6 +4028,136 @@ string(string s, float w, vector sz) ui_fit_text =
 #define LOB_COLS     4
 #define LOB_ROWS_MAX 3
 
+// ---------------------------------------------------------------------------
+//  Map downloads.  Needs engine Patch 464 -- `downloadmap` is a menu builtin
+//  there, because menuqc's localcmd runs at RESTRICT_INSECURE and the console
+//  `download` command treats that as a SERVER asking, which refuses a bare map
+//  (cl_download_redirection defaults to 2) and ignores sv_dlURL even when it
+//  does not.  checkbuiltin() is what keeps this file loadable on an older
+//  engine: with no builtin the button simply never draws.
+//
+//  Progress comes from serverkey("dlstate"), which is VM-agnostic in the engine
+//  (PF_cl_serverkey_internal reads cls.download directly), so the menu can read
+//  it without being the csqc.  Its nine fields are, in order:
+//    files-remaining total-size unknown-sizes-flag localname remotename
+//    percent rate received-bytes total-bytes
+// ---------------------------------------------------------------------------
+#define DL_IDLE     0
+#define DL_ACTIVE   1
+#define DL_OK       2
+#define DL_FAIL     3
+
+#define DL_W       92   // the right-hand gutter a Download button occupies
+#define DL_HOLD     6   // seconds a finished/failed row keeps saying so
+
+float  dl_have_bi;      // 1 if the engine has the builtin, -1 unasked
+float  dl_state;
+string dl_name;         // the map we asked for, "" when idle
+float  dl_pct;
+float  dl_rate;         // bytes/sec, the engine's own figure
+float  dl_done;
+float  dl_total;
+float  dl_until;
+
+float() ui_dl_ready =
+{
+	if (dl_have_bi == 0)
+		dl_have_bi = checkbuiltin(downloadmap) ? 1 : -1;
+	return dl_have_bi > 0;
+};
+
+// "1.4 MB/s" / "812 KB/s".  Below a megabyte the round number is the one that
+// moves, and a player watching a bar wants to see it move.
+string(float bps) ui_dl_rate =
+{
+	if (bps >= 1048576)
+		return sprintf("%.1f MB/s", bps / 1048576);
+	return sprintf("%g KB/s", floor(bps / 1024));
+};
+
+string(float kb) ui_dl_size =
+{
+	if (kb >= 1024)
+		return sprintf("%.1f MB", kb / 1024);
+	return sprintf("%g KB", kb);
+};
+
+void(string name) ui_dl_start =
+{
+	if (!ui_dl_ready())
+		return;
+	if (dl_state == DL_ACTIVE)
+		return;                 // the engine does one at a time; so do we
+
+	float r = downloadmap(name);
+	if (r == 1)
+	{
+		dl_name  = name;
+		dl_state = DL_ACTIVE;
+		dl_pct = dl_rate = dl_done = dl_total = 0;
+	}
+	else if (r == 2)
+	{
+		// Already present -- the list is stale rather than the map missing.
+		ui_load_maps();
+		ui_refilter();
+	}
+	else
+	{
+		dl_name  = name;
+		dl_state = DL_FAIL;
+		dl_until = time + DL_HOLD;
+	}
+};
+
+/*
+  Polled from m_draw beside Lob_Poll.
+
+  The finish test asks the FILESYSTEM, not the engine: dlstate goes empty both
+  when a download completed and when it failed, and those must not read the
+  same.  A 404 on the http mirror is not even a failure -- the engine re-queues
+  it over the game netchan (cl_parse.c:719-724) and dlstate stays busy -- so the
+  only thing that settles it is whether the bsp is on disk afterwards.
+*/
+void() Dl_Tick =
+{
+	if (dl_state == DL_OK || dl_state == DL_FAIL)
+	{
+		if (time > dl_until)
+		{
+			dl_state = DL_IDLE;
+			dl_name = "";
+		}
+		return;
+	}
+
+	if (dl_state != DL_ACTIVE)
+		return;
+
+	string s = serverkey("dlstate");
+	if (s == "")
+	{
+		dl_state = ui_file_exists(strcat("maps/", dl_name, ".bsp")) ? DL_OK : DL_FAIL;
+		dl_until = time + DL_HOLD;
+		if (dl_state == DL_OK)
+		{
+			// It is on the disk now, so it is no longer a downloadable row.
+			ui_load_maps();
+			ui_refilter();
+		}
+		return;
+	}
+
+	float n = tokenize(s);
+	if (n < 9)
+		return;                 // queued but not started; keep the last numbers
+
+	dl_pct   = stof(argv(5));
+	dl_rate  = stof(argv(6));
+	dl_done  = stof(argv(7));
+	dl_total = stof(argv(8));
+};
+
 void(vector screensize) screen_create =
 {
 	ui_backdrop(screensize);
@@ -4277,6 +4526,16 @@ void(vector screensize) screen_create =
 			sui_list_view_begin("cs_list", [17, y + 1], [ls_x - 2, ls_y - 2],
 			                    [ls_x - 14, ROW_H], ms_viewcount, ms_scroll, [0, 10]);
 
+			/*
+			  The download gutter is reserved for the WHOLE list or for none of
+			  it, and only when there is something to download -- an install with
+			  no data/mapdl.txt draws exactly the rows it drew before.  Reserving
+			  it per-row instead would move the time column up and down the list
+			  depending on which maps happen to be missing, and the placeholder
+			  time above exists precisely so those widths hold still.
+			*/
+			float dlg = (ms_dlcount > 0 && ui_dl_ready()) ? DL_W : 0;
+
 			vector rp = '0 0 0';
 			for (float idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
 			{
@@ -4359,6 +4618,14 @@ void(vector screensize) screen_create =
 
 				sui_text([rp_x + 126, rp_y + 4], SZ_ROW, bufstr_get(ms_name, real),
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
+
+				// NEW means "a sweep saw this name appear", not "recently
+				// released" and not "we only just noticed it" -- mapscan.py
+				// writes bootstrap rows so the first ever sweep badges nothing.
+				if (bufstr_get(ms_new, real) == "1")
+					sui_text([rp_x + 130 + stringwidth(bufstr_get(ms_name, real),
+					                                   TRUE, SZ_ROW),
+					          rp_y + 4], SZ_ROW, "^2NEW", COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
 				// laid out.  The gamemode is here rather than in a column of its
@@ -4446,7 +4713,7 @@ void(vector screensize) screen_create =
 					mpopt = sprintf("%s%g^9 playing", (mpop > 0) ? "^2" : "^9",
 					                mpop);
 					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
-					sui_text([rp_x + rs_x - 8 - mtw - mpopw,
+					sui_text([rp_x + rs_x - 8 - dlg - mtw - mpopw,
 					          rp_y + 14], SZ_ROW, mpopt, COL_DIM, 1, 0);
 				}
 
@@ -4461,15 +4728,74 @@ void(vector screensize) screen_create =
 				  half that survives.
 				*/
 				sui_text([rp_x + 126, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - 134 - mtw - mpopw, SZ_ROW),
+				         ui_fit_text(sub, rs_x - 134 - dlg - mtw - mpopw, SZ_ROW),
 				         COL_DIM, 1, 0);
 
 				if (mpb != "")
-					sui_text([rp_x + rs_x - 8 - mtw, rp_y + 14], SZ_ROW,
+					sui_text([rp_x + rs_x - 8 - dlg - mtw, rp_y + 14], SZ_ROW,
 					         mtime, COL_TEXT, 1, 0);
 				else
-					sui_text([rp_x + rs_x - 8 - mtw, rp_y + 14], SZ_ROW,
+					sui_text([rp_x + rs_x - 8 - dlg - mtw, rp_y + 14], SZ_ROW,
 					         mtime, COL_DIM, 0.5, 0);
+
+				/*
+				  The download gutter.
+
+				  Registered AFTER the row's own action element, which is what
+				  makes the click land here and not on the row: the hit test
+				  walks _action_elements back to front and sui_is_released only
+				  fires for the topmost id (sui_sys.qc:409-418, 345-348).
+
+				  Four states share the gutter.  A map being downloaded shows the
+				  bar and the rate wherever it is in the list, so scrolling away
+				  from it does not lose the progress; the button is only offered
+				  when nothing is in flight, because the engine serialises
+				  downloads anyway and two buttons that both do nothing is worse
+				  than one that is plainly unavailable.
+				*/
+				if (dlg > 0 && bufstr_get(ms_have, real) == "0")
+				{
+					vector gp = [rp_x + rs_x - 4 - DL_W, rp_y + 8];
+					vector gs = [DL_W - 4, ROW_H - 16];
+					string gid = strcat("cs_dl", ftos(idx));
+					string mnm = bufstr_get(ms_name, real);
+					float  mine = (dl_name == mnm);
+
+					if (mine && dl_state == DL_ACTIVE)
+					{
+						// Track, then fill -- the scrubber idiom from
+						// cl_watch.qc:3867.  The percentage is the engine's, and
+						// it is 0 until the size is known, so the bar can sit at
+						// zero while the rate already reads: that is honest, the
+						// bytes are moving and the total is not yet agreed.
+						sui_fill(gp, [gs_x, 6], COL_PANEL, 1, 0);
+						sui_fill(gp, [gs_x * bound(0, dl_pct / 100, 1), 6],
+						         COL_ACCENT, 1, 0);
+						sui_text([gp_x, gp_y + 10], SZ_ROW,
+						         (dl_rate > 0) ? ui_dl_rate(dl_rate) : "...",
+						         COL_DIM, 1, 0);
+					}
+					else if (mine && dl_state == DL_OK)
+						sui_text([gp_x, gp_y + 4], SZ_ROW, "^2installed", COL_TEXT, 1, 0);
+					else if (mine && dl_state == DL_FAIL)
+						sui_text([gp_x, gp_y + 4], SZ_ROW, "^1failed", COL_TEXT, 1, 0);
+					else if (dl_state == DL_ACTIVE)
+						sui_text([gp_x, gp_y + 4], SZ_ROW, "^9queued", COL_DIM, 0.5, 0);
+					else
+					{
+						sui_action_element(gp, gs, gid, sui_noop);
+						float gh = sui_is_hovered(gid);
+						sui_fill(gp, gs, gh ? COL_ROW_HOVER : COL_PANEL, 1, 0);
+						sui_border_box(gp, gs, 1, COL_BORDER, 1, 0);
+						sui_text([gp_x + 6, gp_y + 2], SZ_ROW, "Download",
+						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
+						sui_text([gp_x + 6, gp_y + 18], SZ_ROW,
+						         ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
+						         COL_DIM, 1, 0);
+						if (sui_is_released(gid))
+							ui_dl_start(mnm);
+					}
+				}
 
 				if (sui_is_released(rid))
 					ms_selected = real;
@@ -4542,6 +4868,7 @@ void() m_init =
 	ms_name = ms_src = ms_lst = -1;
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
+	ms_have = ms_new = ms_dlkb = -1;
 	ms_selected = -1;
 	ms_tier = ms_applied_tier = 0;
 	// The SAVED set is read when the create screen opens, beside its
@@ -4621,6 +4948,13 @@ void(vector screensize) m_draw =
 	// button that did nothing and no message anywhere.  It is a no-op whenever
 	// nothing is pending, which m_close guarantees after an ESC.
 	ui_join_tick();
+
+	// OUTSIDE THE GATE for the same reason again, and here it is load-bearing: a
+	// map download keeps running in the engine after an ESC, and the only thing
+	// that notices it FINISHED is this tick.  Gated, the player would close the
+	// menu on a half-drawn bar, come back to a completed download still reading
+	// as in-flight, and the row would never turn back into a playable map.
+	Dl_Tick();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.

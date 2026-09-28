@@ -43,6 +43,10 @@ server {
     include snippets/surfd.conf;
     include snippets/surfd-admin.conf;
 
+    # Map downloads. A named location list, like everything else here -- the
+    # regex inside matches only <map>.bsp, so this cannot become a catch-all.
+    include snippets/ftesurf-maps.conf;
+
     # Anything not named above does not exist. This is what keeps
     # /api/heartbeat off the internet.
     location / { return 404; }

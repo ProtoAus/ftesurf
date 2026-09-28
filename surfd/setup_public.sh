@@ -101,7 +101,8 @@ command -v certbot >/dev/null 2>&1 || {
 
 install -m 0644 "$HOME_DIR/surfd.nginx"  /etc/nginx/snippets/surfd.conf
 install -m 0644 "$HOME_DIR/admin.nginx"  /etc/nginx/snippets/surfd-admin.conf
-echo "  installed /etc/nginx/snippets/surfd.conf and surfd-admin.conf"
+install -m 0644 "$HOME_DIR/maps.nginx"   /etc/nginx/snippets/ftesurf-maps.conf
+echo "  installed /etc/nginx/snippets/surfd.conf, surfd-admin.conf and ftesurf-maps.conf"
 
 # The rate-limit zones must live in http{}, not in a location -- nginx refuses
 # to start otherwise, which would take every other site on this box down too.
@@ -123,14 +124,33 @@ echo "  installed /etc/nginx/snippets/surfd.conf and surfd-admin.conf"
 # then refuse to start on a vhost referencing a zone nothing declared, taking
 # every other site on this box with it.  That is the failure this idempotence
 # check exists to prevent, so it has to test for all of them.
+# ftesurf_maps is a limit_conn_zone, not a limit_req_zone: map downloads are
+# capped by CONCURRENCY and bytes/sec (snippets/ftesurf-maps.conf), not by
+# request rate -- one request that runs for five minutes is the normal case.
+# surfdjoin WAS MISSING FROM THIS LIST UNTIL 2026-09-28 AND THE LIVE BOX HAD IT.
+# It was added to /etc/nginx/conf.d/surfd-ratelimit.conf by hand and never came
+# back here, so snippets/surfd.conf:206 referenced a zone this script does not
+# declare. The file is REWRITTEN WHOLE whenever any listed zone is absent, so the
+# next run on a fresh box -- or any run that tripped the check -- would have
+# written a file without surfdjoin, and nginx refuses to start when a vhost
+# names an undeclared zone. That is the whole-box outage the paragraph above
+# describes, reached by drift rather than by a missing check.
+#
+# ftesurf_maps is a limit_conn_zone, not a limit_req_zone: map downloads are
+# capped by CONCURRENCY and bytes/sec (snippets/ftesurf-maps.conf), not by
+# request rate -- one request that runs for five minutes is the normal case.
 ZONES='limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
-limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;'
+limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;
+limit_req_zone $binary_remote_addr zone=surfdjoin:4m rate=30r/m;
+limit_conn_zone $binary_remote_addr zone=ftesurf_maps:10m;'
 if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
-   ! grep -qrs "zone=surfdreplay" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
+   ! grep -qrs "zone=surfdreplay" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdjoin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=ftesurf_maps" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
     printf '%s\n' "$ZONES" > /etc/nginx/conf.d/surfd-ratelimit.conf
-    echo "  wrote the surfdlogin + surfdboard + surfdreplay zones in conf.d"
+    echo "  wrote the surfdlogin + surfdboard + surfdreplay + surfdjoin + ftesurf_maps zones in conf.d"
 else
     echo "  rate-limit zones already present"
 fi

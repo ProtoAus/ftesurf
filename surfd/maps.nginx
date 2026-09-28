@@ -1,0 +1,59 @@
+# FTESurf map downloads -- installed as /etc/nginx/snippets/ftesurf-maps.conf
+# and included from play.nginx's TLS server block. The limit_conn zone it uses is
+# declared in setup_public.sh's ZONES block, because limit_conn_zone is only
+# valid in the http context and this file is included inside a server block.
+#
+# TWO URL LAYOUTS, because the engine builds the path two different ways and
+# which one it takes depends on whether the client is connected:
+#
+#   sv_dlURL           -> <base>/<gamedir>/maps/<map>.bsp   (cl_parse.c:1002,
+#                         where <gamedir> is FS_GetGamedir(true), ie "ftesurf")
+#   cl_download_mapsrc -> <base>/<map>.bsp                  (cl_parse.c:1020,
+#                         which strips "maps/" and appends the bare name)
+#
+# The first is what a CONNECTED client uses, because the Pi advertises sv_dlURL
+# in its serverinfo, and it is the path that fixes the original complaint --
+# joining a lobby whose map you do not have. The second is what the MENU uses,
+# with no server in the picture at all. Both must resolve or the button works
+# in one place and not the other, so one regex answers both.
+#
+# The files are served from the momentum mount rather than a copy: that is the
+# directory tools/mapsync.py mirrors into (mapsync.py:PI_MAPS), so what the
+# lobbies play and what this hands out cannot drift apart.
+
+# 1 MB/s, and the cap is per CONNECTION -- that is the trap, and it is already
+# written down one vhost over. nettest-dl.conf records the day a tester pulled
+# 6.20 GB through this box because nothing capped it, and notes that its own
+# limit_rate was multiplied by the eight sockets the launcher opened.
+# The game engine fetches ONE map at a time (CL_SendDownloadStartRequest returns
+# early while cls.download is set), so a single connection is the honest
+# ceiling here -- limit_conn is what holds a client to that rather than
+# trusting it to behave. Two, not one: a retry can briefly overlap a socket the
+# server has not finished closing, and a 503 there reads to the player as a
+# broken download.
+location ~ ^/(?:ftesurf/)?maps/(?<ftemap>[A-Za-z0-9_-]+)\.bsp$ {
+    alias /srv/nvme/ftesurf-server/game/momentum/maps/$ftemap.bsp;
+
+    limit_rate 1m;
+    limit_conn  ftesurf_maps 2;
+
+    # A bsp for a given name is immutable in practice -- a changed map ships as
+    # a changed name -- but not by contract, so revalidation stays cheap rather
+    # than being switched off for a year.
+    add_header Cache-Control "public, max-age=86400";
+    default_type application/octet-stream;
+
+    autoindex off;
+    disable_symlinks if_not_owner;
+
+    # A miss must be a clean 404: the engine reads that as "this one file is not
+    # here" and falls back to the game netchan (cl_parse.c:719-724), whereas
+    # anything else it blames on the server's config and gives up on.
+    error_page 403 = @ftemap_missing;
+}
+
+location @ftemap_missing { return 404; }
+
+# No listing, and no walking up out of the maps directory.
+location = /maps/         { return 404; }
+location = /ftesurf/maps/ { return 404; }

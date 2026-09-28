@@ -373,6 +373,16 @@ void(string,...) localcmd = #13;
 // at use sites and fall back to plain `localcmd` (which silently
 // fails for those cvars — the menu just won't apply them).
 void(string,...) localcmd_local = #0:localcmd_local;
+// Engine extension (engine/client/pr_menu.c:PF_m_downloadmap, Patch 464) —
+// menu-only, and it exists because `localcmd("download ...")` cannot do this
+// job: localcmd runs at RESTRICT_INSECURE, so the console command treats the
+// request as a SERVER asking, which refuses a bare map (cl_download_redirection
+// defaults to 2) and drops DLLF_ALLOWWEB so sv_dlURL is ignored. Takes a BARE
+// map name — the engine composes "maps/<name>.bsp" itself and rejects anything
+// that is not [A-Za-z0-9_-]. Returns 0 refused, 1 started, 2 already present.
+// Optional, like localcmd_local above: feature-detected with checkbuiltin() at
+// the use site, and with an older binary the Download button never draws.
+float(string mapname) downloadmap = #0:downloadmap;
 float(string name) cvar = #14;
 void(string name, string value) cvar_set = #15;
 void(string text) dprint = #16;

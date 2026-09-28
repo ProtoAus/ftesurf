@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""mapscan.py -- the periodic sweep for maps that appeared since last time.
+
+  python tools/mapscan.py            # dry run: say what changed, write nothing
+  python tools/mapscan.py --go       # refresh catalogues, rewrite data/mapdl.txt
+  python tools/mapscan.py --go --no-fetch   # skip the network, just re-derive
+
+Three questions, kept apart because they have different answers:
+
+  what EXISTS      -- maproster.py's catalogue (Momentum's API + KSF's Drive)
+  what the PI HAS  -- the only thing a client can actually be offered
+  what is NEW      -- first seen by a scan, which is not the same as first seen
+
+The last one is why data/mapseen.txt carries an origin per map.  The first run
+has nothing to compare against, so every one of 1748 maps would read as new and
+the badge would mean nothing; those rows are written `bootstrap` and never
+badge.  Only a name that shows up in a LATER sweep is `scan`, and only those are
+New.  A check that cannot measure has to say so rather than guess loudly.
+
+Output is data/mapdl.txt, which the map browser reads to list maps you do not
+have (with a Download button) and to badge the recent ones.  It lists only what
+the Pi serves, because offering a download that 404s is worse than no button.
+"""
+
+import argparse
+import datetime
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+GAME = os.path.join(ROOT, "ftesurf")
+DATA = os.path.join(GAME, "data")
+
+ROSTERFILE = os.path.join(DATA, "maproster.txt")
+SEENFILE = os.path.join(DATA, "mapseen.txt")
+DLFILE = os.path.join(DATA, "mapdl.txt")
+
+PI_HOST = "proto@192.168.1.102"
+PI_MAPS = "/srv/nvme/ftesurf-server/game/momentum/maps"
+
+# How long a map wears the New badge after the sweep that first saw it.
+NEW_DAYS = 14
+
+PY = sys.executable or "python"
+
+
+def sh(cmd, timeout=1800):
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def today():
+    return datetime.date.today().isoformat()
+
+
+def read_roster():
+    """name -> (mode, src, tier).  Absent file is fatal: without it this tool
+    has no idea what exists and would write an empty mapdl.txt over a good one."""
+    if not os.path.exists(ROSTERFILE):
+        sys.exit("no %s -- run tools/maproster.py build first" % ROSTERFILE)
+    out = {}
+    with open(ROSTERFILE, "r", encoding="utf-8", errors="replace") as fh:
+        for ln in fh:
+            f = ln.split()
+            if len(f) < 8 or f[0] != "roster":
+                continue
+            out[f[1]] = (f[2], f[3], f[7])
+    return out
+
+
+def read_seen():
+    """name -> (iso_date, origin).  origin is 'bootstrap' or 'scan'."""
+    out = {}
+    if not os.path.exists(SEENFILE):
+        return out
+    with open(SEENFILE, "r", encoding="utf-8", errors="replace") as fh:
+        for ln in fh:
+            f = ln.split()
+            if len(f) < 4 or f[0] != "seen":
+                continue
+            out[f[1]] = (f[2], f[3])
+    return out
+
+
+def write_seen(seen):
+    tmp = SEENFILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("FTESURF-MAPSEEN 1\n")
+        fh.write("# written by tools/mapscan.py -- do not edit\n")
+        fh.write("# seen <name> <first-iso> <bootstrap|scan>\n")
+        for name in sorted(seen):
+            d, origin = seen[name]
+            fh.write("seen %s %s %s\n" % (name, d, origin))
+    os.replace(tmp, SEENFILE)
+
+
+def pi_inventory(host):
+    """name -> size in bytes, for every bsp the Pi serves.
+
+    One ssh round trip.  `stat -c` rather than ls parsing, because a map name
+    can hold a space and this is the list a download button is drawn from."""
+    rc, out = sh(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host,
+                  "stat -c '%%n %%s' %s/*.bsp 2>/dev/null" % PI_MAPS])
+    if rc != 0:
+        sys.exit("ssh to %s failed (%d):\n%s" % (host, rc, out[:2000]))
+    inv = {}
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        path, _, size = ln.rpartition(" ")
+        if not size.isdigit():
+            continue
+        base = os.path.basename(path)
+        if base.lower().endswith(".bsp"):
+            inv[base[:-4]] = int(size)
+    return inv
+
+
+def cmd_scan(args):
+    if not args.no_fetch:
+        for step in (["fetch"], ["hash"], ["build"]):
+            rc, out = sh([PY, os.path.join(HERE, "maproster.py")] + step)
+            tail = "\n".join(out.strip().splitlines()[-4:])
+            print("  maproster %-6s rc=%d  %s" % (step[0], rc, tail.replace("\n", " | ")))
+            if rc != 0:
+                sys.exit("maproster %s failed" % step[0])
+
+    roster = read_roster()
+    seen = read_seen()
+    bootstrap = not seen
+    inv = pi_inventory(args.host)
+
+    # Catalogued AND on the Pi: the only rows a client can be offered.
+    servable = sorted(n for n in roster if n in inv)
+
+    fresh = []
+    stamp = today()
+    for name in sorted(roster):
+        if name not in seen:
+            seen[name] = (stamp, "bootstrap" if bootstrap else "scan")
+            if not bootstrap:
+                fresh.append(name)
+
+    cutoff = (datetime.date.today() - datetime.timedelta(days=NEW_DAYS)).isoformat()
+    newset = set(n for n, (d, o) in seen.items() if o == "scan" and d >= cutoff)
+
+    print("roster %d, pi serves %d, offerable %d" % (len(roster), len(inv), len(servable)))
+    if bootstrap:
+        print("  first run: %d names recorded as bootstrap -- none badge New" % len(seen))
+    else:
+        print("  new since last sweep: %d" % len(fresh))
+        for n in fresh[:20]:
+            print("    + %s" % n)
+        if len(fresh) > 20:
+            print("    ... and %d more" % (len(fresh) - 20))
+    print("  wearing the New badge (<= %d days): %d" % (NEW_DAYS, len(newset)))
+
+    # Catalogued but NOT on the Pi -- the sync backlog, reported so a growing
+    # gap is visible rather than silently shrinking what the button can offer.
+    missing = [n for n in roster if n not in inv]
+    print("  catalogued but not on the Pi: %d (run tools/mapsync.py)" % len(missing))
+
+    if not args.go:
+        print("\ndry run -- nothing written.  --go to write %s" % os.path.basename(DLFILE))
+        return 0
+
+    tmp = DLFILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("FTESURF-MAPDL 1\n")
+        fh.write("# written by tools/mapscan.py -- do not edit\n")
+        fh.write("# dl <name> <mode> <src> <tier> <kb> <first-iso> <new>\n")
+        for name in servable:
+            mode, src, tier = roster[name]
+            d, _origin = seen[name]
+            fh.write("dl %s %s %s %s %d %s %d\n" % (
+                name, mode, src, tier if tier != "-" else "0",
+                (inv[name] + 1023) // 1024, d, 1 if name in newset else 0))
+    os.replace(tmp, DLFILE)
+    write_seen(seen)
+    print("\nwrote %s (%d rows)" % (DLFILE, len(servable)))
+    print("wrote %s (%d rows)" % (SEENFILE, len(seen)))
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--go", action="store_true", help="actually write")
+    ap.add_argument("--no-fetch", action="store_true",
+                    help="skip the catalogue refresh (no network)")
+    ap.add_argument("--host", default=PI_HOST)
+    args = ap.parse_args()
+    return cmd_scan(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
