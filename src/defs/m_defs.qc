@@ -373,7 +373,7 @@ void(string,...) localcmd = #13;
 // at use sites and fall back to plain `localcmd` (which silently
 // fails for those cvars — the menu just won't apply them).
 void(string,...) localcmd_local = #0:localcmd_local;
-// Engine extension (engine/client/pr_menu.c:PF_m_downloadmap, Patch 464) —
+// Engine extension (engine/client/pr_menu.c:PF_m_downloadmap, Patch 465) —
 // menu-only, and it exists because `localcmd("download ...")` cannot do this
 // job: localcmd runs at RESTRICT_INSECURE, so the console command treats the
 // request as a SERVER asking, which refuses a bare map (cl_download_redirection

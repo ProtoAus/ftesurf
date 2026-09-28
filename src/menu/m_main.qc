@@ -4029,7 +4029,7 @@ string(string s, float w, vector sz) ui_fit_text =
 #define LOB_ROWS_MAX 3
 
 // ---------------------------------------------------------------------------
-//  Map downloads.  Needs engine Patch 464 -- `downloadmap` is a menu builtin
+//  Map downloads.  Needs engine Patch 465 -- `downloadmap` is a menu builtin
 //  there, because menuqc's localcmd runs at RESTRICT_INSECURE and the console
 //  `download` command treats that as a SERVER asking, which refuses a bare map
 //  (cl_download_redirection defaults to 2) and ignores sv_dlURL even when it

@@ -1125,6 +1125,81 @@ bannered as superseded.)
   either alone reports maps missing that are already here: that is
   `unreconciled`, and it never folds into `missing`.
 
+### Map downloads (the button, and where the bytes actually go)
+
+- **HTTP IS THE TRANSPORT AND THE GAME NETCHAN IS THE FALLBACK, and the engine
+  already does that swap on its own.** With `sv_dlURL` set the client rewrites a
+  missing map to `<url>/<gamedir>/maps/<map>.bsp` (`cl_parse.c:1002`); if that
+  fetch fails it re-enqueues the same file over the netchan by itself
+  (`cl_parse.c:719-724`). A broken mirror therefore costs speed, never the
+  download -- do not write fallback logic, it is there.
+- **THE MENU'S OWN DOWNLOADS USE A DIFFERENT URL SHAPE.** `cl_download_mapsrc`
+  takes the BARE name -- `<url>/<map>.bsp`, the "maps/" prefix is stripped
+  (`cl_parse.c:1020`) -- and is only consulted when `sv_dlURL` is empty, which is
+  exactly the disconnected case. Both layouts must resolve or the button works
+  in a lobby and not in the menu; `surfd/maps.nginx` answers both with one regex.
+- **`localcmd("download …")` CANNOT DO THIS AND MUST NOT BE MADE TO.**
+  `PF_localcmd` buffers at `RESTRICT_INSECURE` for every VM, so menuqc is
+  indistinguishable from a server's stuffcmd and the console command takes its
+  server-initiated branch: `cl_download_redirection` defaults to `2`, which
+  allows only `demos/*.mvd` and `package/*.pak` and refuses a bare map. Relaxing
+  that cvar is the tempting fix and the wrong one -- its own description says it
+  lets a server send nearly arbitrary download commands, so it buys one button by
+  weakening the client against every server it joins. Patch 465's `downloadmap`
+  builtin exists for this, takes a bare name, and whitelists `[A-Za-z0-9_-]`.
+- **THE PROGRESS BAR AND THE KB/s NEEDED NO ENGINE WORK.**
+  `serverkey("dlstate")` returns `files-remaining total-size unknown-flag
+  localname remotename percent rate received total`, and
+  `PF_cl_serverkey_internal` reads `cls.download` directly rather than through a
+  VM, so menuqc can ask (`pr_clcmd.c:1433-1447`).
+- **THE RATE CAP IS IN NGINX, NOT IN THE GAME, and `limit_rate` CAPS ONE
+  CONNECTION.** That multiplier is the trap already written into
+  `nettest-dl.conf` from the day a tester pulled 6.20 GB through the Pi with
+  nothing capping it. `sv_maxdrate` caps only the netchan fallback; it defaults
+  to `500000`, so "is it uncapped?" has always been no -- it was half the figure
+  anyone would have asked for, on the slow path only. Both are 1 MB/s now.
+- **THE LIST COULD NOT SHOW A MAP YOU DO NOT HAVE**, and that, not the transport,
+  is why this feature did not exist. `ui_load_maps` builds every row from
+  `search_begin`, so "listed" and "installed" were one fact. `ui_dl_load` reads
+  `data/mapdl.txt` and appends the rest with `ms_have "0"`. It MUST run before
+  `ui_meta_load`, which builds its byname hash from `ms_name` -- the other order
+  leaves every downloadable map untiered, and an untiered map and a tier-1 map
+  look identical in the list.
+- **`data/mapdl.txt` IS THE INTERSECTION OF THE CATALOGUE AND THE PI, not the
+  catalogue.** 1748 maps are catalogued and the Pi serves 1239; offering the
+  other 509 draws a button that 404s. `tools/mapscan.py` takes that intersection
+  and reports the remainder as a sync backlog rather than hiding it.
+- **`NEW` MEANS "A SWEEP SAW THIS NAME APPEAR", not "recently released" and not
+  "we only just noticed".** The first run has nothing to compare against, so
+  every name is written `bootstrap` and none of them badge; only a name that
+  turns up in a LATER sweep is `scan`. Without that split the first run badges
+  the entire library on the day it ships.
+- **THE FINISH TEST ASKS THE FILESYSTEM.** `dlstate` goes empty both when a
+  download completed and when it failed, and a 404 on the mirror is not even a
+  failure -- the engine re-queues over the netchan and `dlstate` stays busy. Only
+  "is the bsp on disk now" settles it. `Dl_Tick` is polled OUTSIDE `m_draw`'s
+  `menu_active` gate for the same family of reason as `ui_join_tick`: the
+  download survives an ESC and nothing else notices it finished.
+- The sweep is a Windows scheduled task (`FTESurf map scan`, PT6H,
+  `tools/mapscan_6h.ps1`) and NOT a Pi cron, because `maproster.py` hashes the
+  build this install would load out of the two Steam installs and those are here.
+  The cost is stated in that file: a sweep missed while the PC is off is missed,
+  not queued.
+
+### `status` CANNOT SEE MOST OF SERVERINFO -- do not read its silence as absence
+
+`SVC_Status` builds serverinfo into a `char infostr[1024]` and `InfoBuf_ToString`
+drops low-priority keys once that fills (`sv_main.c:1253-1256`, which carries its
+own `FIXME` about the limit and a `prioritykeys` list "to make sure we include
+these before we start overflowing"). A `status` probe of a lobby comes back at
+almost exactly 1029 bytes and ENDS ON A CLEAN KEY BOUNDARY, so a truncated reply
+is indistinguishable by eye from a complete one.
+
+This session read `sv_dlURL` as unset from such a probe and started debugging a
+config that was correct. Use rcon for a specific cvar when the question is "did
+this setting take" -- and read the password from `cfg/lobby_local.cfg` inside the
+script rather than passing it as an argument, where `ps` would show it.
+
 ### Preparing the boards (the sweep, and keeping it fresh)
 
 - **Times and demos are separate jobs and the difference is three orders of

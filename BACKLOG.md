@@ -1426,3 +1426,73 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (STAT_FS_SLORG/SLANG, Patch 430) -- no more than the live position it watches.
 - The release packet's ticks count as frozen (SV_TimerFreezeFrame); held runs are
   practice, so no board is affected.
+
+## Map downloads shipped (Patch 465) — 2026-09-28
+
+The survey recorded earlier in this file said the download button, the "New"
+badge and the 6-hourly scan were surveyed and not built. They are built now.
+
+**Engine (Patch 465, client-side, three changes.)** `downloadmap` as a menu
+builtin, because `localcmd` runs at `RESTRICT_INSECURE` and the console
+`download` command therefore treats a menu request as a server's, refusing a bare
+map under `cl_download_redirection 2` and dropping `DLLF_ALLOWWEB`.
+`CL_RequestNextDownload` now starts a `DLLF_TRYWEB` entry while disconnected --
+the queue was drained only while connecting or connected, which is right for the
+netchan and wrong for the menu, and http needs no server because `HTTP_CL_Think`
+runs from the top of `Host_Frame`. And `CL_WebDownloadFinished` re-pumps when
+disconnected, because `CL_DownloadFinished` does not chain and a second queued
+map would otherwise wait forever behind the first.
+
+**The progress bar and the KB/s needed no engine change at all** --
+`serverkey("dlstate")` was already VM-agnostic. Neither did the rate cap:
+`sv_maxdrate` already existed at `500000`, which is the answer to "do we get
+uncapped speeds" -- no, and it was half the figure anyone would ask for, on the
+fallback path only.
+
+**Serving is nginx, not the game and not ftp**, on the vhost that already exists.
+`limit_rate 1m` for the 1 MB/s, `limit_conn` because `limit_rate` caps ONE
+CONNECTION -- the multiplier the `nettest-dl.conf` essay already records from the
+6.20 GB incident.
+
+**The scan** is `tools/mapscan.py` on a PT6H Windows scheduled task. It writes
+`data/mapdl.txt` (the intersection of the catalogue and the Pi's inventory) and
+`data/mapseen.txt` (first-seen, with a `bootstrap` origin so the first sweep
+badges nothing).
+
+### Still open
+
+- **The nginx snippet is not installed.** Sudo on the Pi is scoped to the lobby
+  units, correctly, so this needs the operator. Command is in lextest §2j. Until
+  then `https://play.proto.bar/maps/*.bsp` is a 404 and every download silently
+  takes the netchan path instead -- slower, and working.
+- **Nothing has been downloaded end to end yet.** Every component is measured
+  (builtin present in both binary and `menu.dat` against known-good controls,
+  `sv_dlURL` and `sv_maxdrate` confirmed live by rcon, the sweep runs green) but
+  the first actual transfer has not happened.
+- **509 catalogued maps are not on the Pi** (1748 catalogued, 1315 bsp present,
+  1239 of them on the roster). The button cannot offer those. `tools/mapsync.py`
+  is the fix and it has not been run since the KSF fetch -- the Pi currently has
+  FEWER roster maps than this workstation.
+- **The 76-map gap** between what the Pi serves (1315) and what the roster
+  recognises (1239) is unexplained. Other gamemodes and name mismatches are the
+  likely answer; nobody has checked.
+- `mapmeta.py` regeneration losing rows is still the reason nothing ELSE is on a
+  timer. `mapscan.py` deliberately does not depend on it.
+
+### Two process failures worth keeping
+
+**A patch number was taken and the ledger did not know.** `lextest.md` §2g calls
+its change Patch 464 and that number never reached `ENGINE_PATCHES.md`, so the
+ledger's maximum was 463 while the maximum in USE was 464. Scanning the ledger
+for "the next number" -- the obvious method -- returned a taken one, and this
+work shipped as 464 before being renumbered to 465. `ENGINE_PATCHES.md` now has a
+bookkeeping entry at 464 and the grep that would have caught it.
+
+**A pre-existing nginx drift nearly became a whole-box outage.**
+`setup_public.sh` rewrites the entire rate-limit zone file whenever any zone it
+lists is missing, and the live Pi has a fourth zone, `surfdjoin`, added by hand
+and never brought back to the repo -- used by `snippets/surfd.conf:206`. Adding a
+fifth zone without noticing would have written a file without `surfdjoin`, and
+nginx refuses to start when a vhost names an undeclared zone. That is exactly the
+failure the essay in that file describes, reached by drift rather than by a
+missing check. Fixed in both the list and the guard.

@@ -544,6 +544,80 @@ solid. If a CS:S-built map needs content the Momentum mount does not carry, that
 is where it will show, and it will show as missing textures or props you fall
 through rather than as an error.
 
+## 2j. Map downloads — one command needs your sudo, then it is testable
+
+The Download button, the progress bar and the KB/s readout are built and the
+six-hourly scan is running. **One step is not done and cannot be done from here:
+the nginx config.** Sudo on the Pi is deliberately scoped to the lobby units
+(`systemctl start|stop|restart ftesurf@N`), which is right, and nginx is not in
+that list.
+
+### The command
+
+Paste this into the session with a `!` in front, or run it on the Pi:
+
+```
+scp C:\FTESurf\surfd\maps.nginx proto@192.168.1.102:/tmp/ftesurf-maps.conf
+ssh -t proto@192.168.1.102 '
+  sudo install -m 0644 /tmp/ftesurf-maps.conf /etc/nginx/snippets/ftesurf-maps.conf
+  grep -q ftesurf_maps /etc/nginx/conf.d/surfd-ratelimit.conf ||
+    echo "limit_conn_zone \$binary_remote_addr zone=ftesurf_maps:10m;" |
+    sudo tee -a /etc/nginx/conf.d/surfd-ratelimit.conf
+  grep -q ftesurf-maps /etc/nginx/sites-enabled/play.proto.bar.conf ||
+    sudo sed -i "s|    include snippets/surfd-admin.conf;|&\n    include snippets/ftesurf-maps.conf;|" \
+      /etc/nginx/sites-enabled/play.proto.bar.conf
+  sudo nginx -t && sudo systemctl reload nginx'
+```
+
+`nginx -t` before the reload is the guard that matters — a bad config there takes
+every site on that box down, not just this one, so nothing reloads unless it
+passes.
+
+**Then check it worked**, which also measures the cap:
+
+```
+curl -o NUL -w "%{http_code}  %{speed_download} B/s\n" https://play.proto.bar/maps/surf_utopia.bsp
+```
+
+You want `200` and roughly `1000000`. Right now that URL returns 404, which is
+the correct *before* state and is harmless: the engine reads a 404 as "this one
+file is absent" and falls back to the game netchan, so downloads work either
+way — just at netchan speed.
+
+### What to test in game
+
+Run the client from `C:\FTEQuake` (that is where `-Engine` deployed the new
+binary — the button needs it, older binaries simply do not draw it).
+
+1. **The list is longer.** It now includes maps you do not have: 1239 of them,
+   the ones the Pi can actually serve. They carry a **Download** button on the
+   right with the file size under it.
+2. **Click one.** The button turns into a progress bar with a live KB/s figure.
+   Other rows say `queued` — the engine does one at a time, deliberately.
+3. **Press ESC mid-download.** It should keep going and still say `installed`
+   when you come back; the tick that notices completion runs outside the menu
+   gate on purpose. This is the bit most likely to be wrong, so it is worth
+   doing.
+4. **The row should turn into a normal map** once it lands — the list reloads
+   itself rather than waiting for a restart.
+
+### Two things I could not verify, stated plainly
+
+- **Nothing has actually been downloaded end to end**, because nginx is not
+  configured yet and the netchan path needs a client and a server in the same
+  run. Everything up to that point is measured: the builtin is in the binary and
+  in `menu.dat`, the server really is advertising `sv_dlURL` and
+  `sv_maxdrate 1000000` (checked by rcon, not by `status`, which truncates), and
+  the scan writes its files. The first real download is yours.
+- **`surf_dune` / `surf_fantasy` from §2i are still waiting on you** — unchanged
+  by any of this.
+
+### Done since last time
+
+All 31 KSF maps are now installed — `surf_tycho2`, `surf_weirdcore` and
+`surf_yolo` came down cleanly once you asked. The roster is 1280 installed and
+**0 fetchable**, so the KSF mirror is complete.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:
