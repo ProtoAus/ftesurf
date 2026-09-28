@@ -316,7 +316,21 @@ TIERS = (TIER_RANKED, TIER_COMMUNITY)
 # this one except a local importer with filesystem access; the network path
 # cannot name it. Reading is a different question, which is what TIERS_READ is.
 TIER_MOMENTUM = "momentum"
-TIERS_READ = TIERS + (TIER_MOMENTUM,)
+
+# A READ-ONLY PSEUDO-TIER: ranked and imported interleaved by time, one row per
+# entry, each carrying the tier it really came from.  No row is ever STORED
+# under it -- it names a query, not a class of run, which is why it is absent
+# from both TIERS and the runs table.
+#
+# Merged on the server rather than in the client because the client keeps ONE
+# board in ONE store, overwritten whole (cl_online.qc's ob_* arrays).  Two
+# stores and a draw-time merge would be a second home for the row cache and a
+# second set of staleness rules; one query keeps the existing shape.
+#
+# It is a SEPARATE REQUEST and never a replacement: the ranked board still
+# answers exactly what it answered before, which test_momindex.py pins.
+TIER_COMBINED = "combined"
+TIERS_READ = TIERS + (TIER_MOMENTUM, TIER_COMBINED)
 
 # Run styles -- the client's own vocabulary (sh_defs.qc: FS_RunClass).  Derived
 # here from `flags`, never taken from the submitter; see style_of.
@@ -2110,14 +2124,25 @@ def board_counts(db, mapname, track, leg, style):
 def board_rows(db, mapname, track, leg, tier, style, limit, offset):
     """One board page in BOARD_ORDER, as /api/board's row dicts (`ver` last)."""
     rows = []
+    # The combined board is the same query with the tier test widened and the
+    # row's own tier selected out, so ORDER BY, paging and every column below
+    # stay byte-for-byte the ordinary path.  A second query here would be a
+    # second ranking rule to keep in step with BOARD_ORDER.
+    combined = (tier == TIER_COMBINED)
+    if combined:
+        where, args = ("r.tier IN (?, ?)", (TIER_RANKED, TIER_MOMENTUM))
+    else:
+        where, args = ("r.tier=?", (tier,))
     for i, row in enumerate(db.execute(
             "SELECT r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
-            "       r.submitted, r.replay_id, " + _PARENT_SQL + " AS prun, "
+            "       r.submitted, r.replay_id, r.tier AS rtier, "
+            + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
-            " WHERE r.map=? AND r.track=? AND r.leg=? AND r.tier=? AND r.style=?"
+            " WHERE r.map=? AND r.track=? AND r.leg=? AND " + where
+            + " AND r.style=?"
             " ORDER BY " + BOARD_ORDER + " LIMIT ? OFFSET ?",
-            (mapname, track, leg, tier, style, limit, offset)).fetchall()):
+            (mapname, track, leg) + args + (style, limit, offset)).fetchall()):
         rows.append({
             "r": offset + i + 1,
             "player": row["player"],
@@ -2135,6 +2160,12 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
             "run": row["prun"] or 0,
             "ver": row["ver"],
         })
+        # ONLY on the combined board.  Adding it everywhere would change the
+        # ranked board's bytes, which is the one thing test_momindex.py exists
+        # to forbid -- and on a single-tier board every row's tier is the tier
+        # that was asked for, so it would carry no information anyway.
+        if combined:
+            rows[-1]["tr"] = row["rtier"]
     return rows
 
 

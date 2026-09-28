@@ -50,10 +50,16 @@
      nothing reports.  A strbuf is one handle and bufstr_set overwrites without
      either.
 
-  WHAT THIS DELIBERATELY DOES NOT DO: it never merges tiers.  The board draws
-  OB_TIER only (Patch 355); `board_fetch ... community` still asks for the
-  other tier, but only with the board closed (an open board re-asks for its
-  own).  surfd keeps the tiers apart in its primary key.
+  WHAT THIS DELIBERATELY DOES NOT DO: it never merges tiers ITSELF.  The board
+  draws one tier (Patch 355); `board_fetch ... community` still asks for the
+  other, but only with the board closed (an open board re-asks for its own).
+  surfd keeps the tiers apart in its primary key.
+
+  The imported board adds a fourth tab and a fifth READ tier, OB_TIER_BOTH,
+  which is ranked and imported interleaved -- and that merge happens in SURFD,
+  as one SQL predicate, precisely so the rule above still holds here: this file
+  still asks for one board and still keeps one store, and a combined row is an
+  ordinary row that carries the tier it came from.
 ===========================================================================
 */
 
@@ -72,6 +78,18 @@
   (TIERS), so nothing a lobby says can put a row here.
 */
 #define OB_TIER_MOM "momentum"
+
+/*
+  Both boards at once, interleaved by time, each row carrying the tier it really
+  came from in its `tr` field.  surfd merges it (TIER_COMBINED); nothing is
+  stored under this name and no run belongs to it -- it names a query.
+
+  Merged THERE and not here because this file keeps one board in one store,
+  overwritten whole: two stores and a draw-time merge would be a second home for
+  the row cache and a second set of staleness rules, for a view that is one SQL
+  predicate on the other side.
+*/
+#define OB_TIER_BOTH "combined"
 
 /*
   How long a failed board waits before ONE re-ask, and how long a request may
@@ -205,6 +223,14 @@ float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
   or a run whose recording was refused or never kept.
 */
 float  ob_rep[OB_MAXROW];
+/*
+  Which board this ROW came from, on the combined view: 1 imported, 0 ours.
+  Only the combined board sends `tr` -- on a single-tier board every row's
+  tier is the one that was asked for, so it would carry no information and
+  surfd does not spend the bytes.  A missing child reads 0, which is the
+  right answer everywhere else.
+*/
+float  ob_mom[OB_MAXROW];
 // Patch 395: surfd's `run` -- a stage row's parent replay (its run's leg-0
 // recording or kept evidence) when the row has no `rep` of its own; 0 none.
 float  ob_run[OB_MAXROW];
@@ -508,6 +534,8 @@ void(string body) Online_Parse =
 		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
 		ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
 		ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
+		ob_mom[i]   = !strcmp(json_get_string(json_find_object_child(row, "tr")),
+		                      OB_TIER_MOM);
 
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
@@ -1043,6 +1071,16 @@ void() Online_ReplayStatus =
 	for (i = 0; i < ob_n; i = i + 1)
 		r = sprintf("%s %g", r, ob_run[i]);
 	print(sprintf("^5replay:^7 rows %g runs%s\n", ob_n, r));
+	/*
+	  Which rows are imported, for the same reason as the two above.  On the
+	  combined board this is the ONLY thing separating a mixed board that was
+	  parsed from one that merely arrived: the times interleave either way, and
+	  a build that never read `tr` draws every row as ours and looks right.
+	*/
+	r = "";
+	for (i = 0; i < ob_n; i = i + 1)
+		r = sprintf("%s %g", r, ob_mom[i]);
+	print(sprintf("^5replay:^7 rows %g mom%s\n", ob_n, r));
 };
 
 float() Online_ReplayState  = { return or_state; };
@@ -1318,6 +1356,15 @@ string(float i) Online_WhyString =
 	  shares it (surfd echoes it back, ob_have_tier), and a per-row copy would
 	  be a second home for a fact with one.
 	*/
+	/*
+	  Per ROW first, because the combined board holds both kinds at once and
+	  only the row knows which it is; then the board's own tier, which is what
+	  answers on the single-tier imported board where surfd sends no `tr`.
+	  Doing it in that order means the one-tier case needs no per-row data and
+	  the mixed case cannot mislabel a row.
+	*/
+	if (ob_mom[i])
+		return "momentum";
 	if (ob_have_tier == OB_TIER_MOM)
 		return "momentum";
 	// The words, their order and why they name the hole rather than the
