@@ -60,14 +60,26 @@
     <h2>Path <span class="muted" style="font-weight:400" id="pathinfo"></span></h2>
     <canvas id="path"></canvas>
     <div class="legend" id="pathlegend"></div>
+    <div class="row">
+      <button id="playbtn" disabled>&#9658; Play</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0" step="1"
+             aria-label="Position in the run" disabled>
+      <select id="playrate" aria-label="Playback speed">
+        <option value="0.25">&frac14;&times;</option>
+        <option value="0.5">&frac12;&times;</option>
+        <option value="1" selected>1&times;</option>
+        <option value="2">2&times;</option>
+        <option value="4">4&times;</option>
+      </select>
+    </div>
     <h3>Speed</h3>
     <canvas id="speed"></canvas>
     <div class="legend" id="speedlegend"></div>
     <ul class="note" id="notes"></ul>
   </div>
 
-  <div class="card">
-    <h2>Verdicts</h2>
+  <details class="card" id="verdcard">
+    <summary>Verdicts <span class="sum" id="verdsum"></span></summary>
     <div class="scroll">
       <table id="verdicts"><thead><tr>
         <th class="num">id</th><th>verdict</th><th>at</th><th class="num">ticks</th>
@@ -75,18 +87,18 @@
       </tr></thead><tbody></tbody></table>
     </div>
     <p class="note">Grey rows predate the replay's current submission and no longer count.</p>
-  </div>
+  </details>
 
-  <div class="card" id="rcptcard" hidden>
-    <h2>Receipt</h2>
+  <details class="card" id="rcptcard" hidden>
+    <summary>Receipt <span class="sum" id="rcptsum"></span></summary>
     <dl id="rcpt"></dl>
     <p class="note">The signature says a key made the statement and the digest says the
       file beside it is the one the statement was about; neither says the player is
       honest. What the key means for this player is in the Key card.</p>
-  </div>
+  </details>
 
-  <div class="card" id="keycard" hidden>
-    <h2>Key</h2>
+  <details class="card" id="keycard" hidden>
+    <summary>Key <span class="sum" id="keysum"></span></summary>
     <dl id="keyinfo"></dl>
     <p class="note">First key wins: a player's first signing key is theirs. <b>new</b> is
       another key for this player, <b>shared</b> a key that first signed for someone else,
@@ -97,12 +109,12 @@
       hands the first-key slot to the player's next key &mdash; use it on an impostor's key,
       at the run that set it. Whether a player cheats is the run review's call, not this
       card's.</p>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Recording header</h2>
+  <details class="card" id="headcard">
+    <summary>Recording header <span class="sum" id="headsum"></span></summary>
     <dl id="head"><dt>&nbsp;</dt><dd class="empty">loading&hellip;</dd></dl>
-  </div>
+  </details>
 </main>
 
 <div class="toast" id="toast"></div>
@@ -162,6 +174,15 @@ function dlRow(dl, key, value) {
   dl.appendChild(dd);
 }
 function span(cls, text) { return el("span", cls, text); }
+// A closed disclosure still has to say whether it matters, so its summary
+// carries the state. `flagged` only ever RAISES `open`: loadRun() re-renders
+// after every decision and must not shut a card the operator opened.
+function summarise(id, flagged, ...parts) {
+  const box = document.getElementById(id);
+  box.replaceChildren(...parts.filter(p => p != null)
+    .map(p => p instanceof Node ? p : el("span", "", p)));
+  if (flagged) box.closest("details").open = true;
+}
 function frag(...parts) {
   const f = document.createDocumentFragment();
   for (const p of parts) f.append(p instanceof Node ? p : String(p));
@@ -249,6 +270,17 @@ function renderRun(j) {
     const tr = el("tr"), td = el("td", "empty", "not verified yet");
     td.colSpan = 7; tr.appendChild(td); tb.appendChild(tr);
   }
+  const cur = j.verdicts.filter(v => v.current), stale = j.verdicts.length - cur.length;
+  if (!j.verdicts.length) {
+    summarise("verdsum", false, el("span", "muted", "not verified yet"));
+  } else if (cur.length) {
+    summarise("verdsum", cur[0].verdict !== "PASS",
+              pill(cur[0].verdict, VERDICT_CLS[cur[0].verdict]),
+              cur.length + " current" + (stale ? ", " + stale + " stale" : ""));
+  } else {
+    summarise("verdsum", true, pill(j.verdicts[0].verdict),
+              "lapsed \u2014 all " + stale + " predate this submission");
+  }
 
   const RCPT_CLS = {VALID: "up", FAULT: "down"};
   const ANG_CLS = {OK: "up", BLIND: "warn", FAULT: "down"};
@@ -279,6 +311,13 @@ function renderRun(j) {
           el("span", "reason", c.keys.length + " keys: "
              + c.keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + said(k) + ")").join(", ")));
     }
+    const shared = (c.players || []).length > 1, manykeys = (c.keys || []).length > 1;
+    summarise("rcptsum", c.verdict !== "VALID" || c.angles === "FAULT" || shared,
+              pill(c.verdict, RCPT_CLS[c.verdict]),
+              c.angles ? pill("angles " + c.angles, ANG_CLS[c.angles])
+                       : el("span", "muted", "angles unchecked"),
+              shared ? pill(c.players.length + " players on this key", "warn") : null,
+              manykeys ? pill(c.keys.length + " keys for this player", "info") : null);
   }
   renderKey(j);
 
@@ -313,6 +352,13 @@ function runLink(id) {
   a.href = "/admin/run/" + id;
   return a;
 }
+// The state word the summary and the card's own row both read from.
+function keyState(k) {
+  return k.key_flag ? pill("key " + k.key_flag, k.key_flag === "rejected" ? "down" : "warn")
+       : k.key_decision === "accept" ? pill("accepted", "up")
+       : k.key_pub ? pill("first key", "up")
+       : el("span", "muted", "unsigned" + (k.why ? " \u2014 " + k.why : ""));
+}
 function renderKey(j) {
   const k = j.key, card = document.getElementById("keycard"), dl = document.getElementById("keyinfo");
   dl.replaceChildren();
@@ -320,10 +366,8 @@ function renderKey(j) {
   if (card.hidden) return;
   const put = (name, node) => { dl.append(el("dt", "", name)); const d = el("dd"); d.append(node); dl.append(d); };
   const short = pub => String(pub).slice(0, 8) + "\u2026";
-  put("state", k.key_flag ? pill("key " + k.key_flag, k.key_flag === "rejected" ? "down" : "warn")
-             : k.key_decision === "accept" ? pill("accepted", "up")
-             : k.key_pub ? pill("first key", "up")
-             : el("span", "muted", "unsigned" + (k.why ? " \u2014 " + k.why : "")));
+  put("state", keyState(k));
+  summarise("keysum", !!k.key_flag, keyState(k));
   if (k.key_pub) put("this run's key", span("mono", short(k.key_pub)));
   if (k.first_pub && k.first_pub !== k.key_pub)
     put("player's first key", frag(span("mono", short(k.first_pub)), " \u2014 set by ", runLink(k.first_rid)));
@@ -406,11 +450,58 @@ function dot(g, x, y, r, fill) {
 // A spectate window is one point and one instant (held body, stopped clock).
 function specLabel(m) { return m.held == null ? m.why : m.held + " s " + m.why; }
 
-function drawPath(P) {
+// THE PLAYHEAD is ported from surfd/web/runview.js, the public run view: same
+// cached-bitmap-plus-per-frame-dot shape, same trail length, same binary search.
+// Not the same file -- that one builds its own DOM, reads `t_` rather than `t`,
+// and /board/ serves it under an allowlist and a CSP this route is not under.
+// One difference on purpose: the playhead covers t < 0, because the pre-start
+// prestrafe is a thing an operator is here to look at.
+const TRAIL = 2.2;          // s of run time the bright trail covers
+const DOT_R = 4.6;          // px
+const PRE_TRAIL = "#6b7585";   // trail before the start (the path's own is #4a5260)
+let PLAN = null;            // per-size bitmaps and transforms, both canvases
+const PLAY = {t: 0, playing: false, raf: 0, last: 0, rate: 1};
+
+function offscreen(W, H, dpr) {
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.font = "11px system-ui, sans-serif";
+  return [cv, g];
+}
+// Further than the samples' own speed could carry: a teleport.
+function isJump(P, i) {
+  const dt = Math.abs(P.t[i] - P.t[i - 1]);
+  const d = Math.hypot(P.x[i] - P.x[i - 1], P.y[i] - P.y[i - 1]);
+  return d > Math.max(P.spd[i], P.spd[i - 1]) * dt * 3 + 64;
+}
+// The sample at or before run time t, and how far past it we are.
+function sampleAt(P, t) {
+  const a = P.t, last = a.length - 1;
+  if (last < 0) return {i: 0, j: 0, k: 0};
+  if (t <= a[0]) return {i: 0, j: 0, k: 0};
+  if (t >= a[last]) return {i: last, j: last, k: 0};
+  let lo = 0, hi = last;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] <= t) lo = mid; else hi = mid;
+  }
+  const d = a[hi] - a[lo];
+  return {i: lo, j: hi, k: d > 0 ? (t - a[lo]) / d : 0};
+}
+function tSpan(P) {
+  const n = P.t.length, t0 = n ? P.t[0] : 0;
+  return [t0, n && P.t[n - 1] > t0 ? P.t[n - 1] : t0 + 1];
+}
+function fmtRunT(t) { return (t < 0 ? "-" : "") + fmtMs(Math.abs(t) * 1000); }
+
+function planPath(P) {
   const cv = document.getElementById("path");
   const n = P.x.length;
-  if (!n) return message(cv, "no samples in this recording");
+  if (!n) { message(cv, "no samples in this recording"); return null; }
   const [g, W, H] = sizeCanvas(cv, 0.62, 260);
+  const dpr = window.devicePixelRatio || 1;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const grow = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
   for (let i = 0; i < n; i++) grow(P.x[i], P.y[i]);
@@ -422,103 +513,223 @@ function drawPath(P) {
   let top = 1;
   for (const v of P.spd) top = Math.max(top, v);
 
-  g.lineCap = "round";
-  for (let i = 1; i < n; i++) {
-    const dt = Math.abs(P.t[i] - P.t[i - 1]);
-    const d = Math.hypot(P.x[i] - P.x[i - 1], P.y[i] - P.y[i - 1]);
-    // Further than the samples' own speed could carry: a teleport, drawn faint.
-    const jump = d > Math.max(P.spd[i], P.spd[i - 1]) * dt * 3 + 64;
-    g.setLineDash(jump ? [3, 4] : []);
-    g.lineWidth = jump ? 1 : 2;
-    g.strokeStyle = jump ? "rgba(139,148,162,.4)"
-      : (P.t[i] < 0 ? "#4a5260" : speedColour(P.spd[i] / top));
-    g.beginPath(); g.moveTo(X(P.x[i - 1]), Y(P.y[i - 1])); g.lineTo(X(P.x[i]), Y(P.y[i])); g.stroke();
-  }
-  g.setLineDash([]);
+  // TWO LAYERS, and the split is what keeps the marks legible: the playhead
+  // erases the route ahead of itself out of `line`, and `over` is blitted after
+  // that, so a checkpoint or a warp glyph is never half rubbed out.
+  const [line, lg] = offscreen(W, H, dpr);
+  const [over, og] = offscreen(W, H, dpr);
 
-  g.textAlign = "left";
+  lg.lineCap = "round";
+  for (let i = 1; i < n; i++) {
+    const jump = isJump(P, i);
+    lg.setLineDash(jump ? [3, 4] : []);
+    lg.lineWidth = jump ? 1 : 2;
+    lg.strokeStyle = jump ? "rgba(139,148,162,.4)"
+      : (P.t[i] < 0 ? "#4a5260" : speedColour(P.spd[i] / top));
+    lg.beginPath(); lg.moveTo(X(P.x[i - 1]), Y(P.y[i - 1])); lg.lineTo(X(P.x[i]), Y(P.y[i])); lg.stroke();
+  }
+  lg.setLineDash([]);
+
+  og.textAlign = "left";
   for (const m of P.marks) {
     if (m.x == null || m.y == null) continue;
     const px = X(m.x), py = Y(m.y), c = MARK_COLOUR[m.k] || "#d8dde4";
     if (m.k === "cp") {
-      dot(g, px, py, 3.5, c);
-      g.fillStyle = c; g.fillText(String(m.n), px + 5, py - 4);
+      dot(og, px, py, 3.5, c);
+      og.fillStyle = c; og.fillText(String(m.n), px + 5, py - 4);
     } else if (m.k === "stage" || m.k === "stagestart") {
-      g.beginPath(); g.moveTo(px, py - 5); g.lineTo(px + 5, py); g.lineTo(px, py + 5); g.lineTo(px - 5, py); g.closePath();
-      g.fillStyle = c; g.fill();
-      g.fillText("S" + m.n, px + 6, py - 5);
+      og.beginPath(); og.moveTo(px, py - 5); og.lineTo(px + 5, py); og.lineTo(px, py + 5); og.lineTo(px - 5, py); og.closePath();
+      og.fillStyle = c; og.fill();
+      og.fillText("S" + m.n, px + 6, py - 5);
     } else if (m.k === "warp") {
-      g.strokeStyle = c; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(px - 4, py - 4); g.lineTo(px + 4, py + 4);
-      g.moveTo(px + 4, py - 4); g.lineTo(px - 4, py + 4); g.stroke();
+      og.strokeStyle = c; og.lineWidth = 2;
+      og.beginPath(); og.moveTo(px - 4, py - 4); og.lineTo(px + 4, py + 4);
+      og.moveTo(px + 4, py - 4); og.lineTo(px - 4, py + 4); og.stroke();
     } else if (m.k === "portal") {
-      g.strokeStyle = c; g.lineWidth = 2;
-      g.beginPath(); g.arc(px, py, 5, 0, 2 * Math.PI); g.stroke();
+      og.strokeStyle = c; og.lineWidth = 2;
+      og.beginPath(); og.arc(px, py, 5, 0, 2 * Math.PI); og.stroke();
     } else if (m.k === "spec") {
-      g.strokeStyle = c; g.lineWidth = 2;
-      g.strokeRect(px - 5, py - 5, 10, 10);
-      g.fillStyle = c; g.fillText(specLabel(m), px + 7, py + 4);
+      og.strokeStyle = c; og.lineWidth = 2;
+      og.strokeRect(px - 5, py - 5, 10, 10);
+      og.fillStyle = c; og.fillText(specLabel(m), px + 7, py + 4);
     }
   }
   let si = P.t.findIndex(t => t >= 0);
   if (si < 0) si = 0;
-  dot(g, X(P.x[si]), Y(P.y[si]), 5.5, "#7fe0a0");
-  dot(g, X(P.x[n - 1]), Y(P.y[n - 1]), 5.5, "#ff6b6b");
+  dot(og, X(P.x[si]), Y(P.y[si]), 5.5, "#7fe0a0");
+  dot(og, X(P.x[n - 1]), Y(P.y[n - 1]), 5.5, "#ff6b6b");
 
   // Scale bar, bottom left.
   const unit = niceStep(spanX, 5);
-  g.strokeStyle = "#8b94a2"; g.lineWidth = 1;
-  g.beginPath(); g.moveTo(8, H - 8); g.lineTo(8 + unit * s, H - 8); g.stroke();
-  g.fillStyle = "#8b94a2"; g.fillText(unit + " u", 10, H - 12);
+  og.strokeStyle = "#8b94a2"; og.lineWidth = 1;
+  og.beginPath(); og.moveTo(8, H - 8); og.lineTo(8 + unit * s, H - 8); og.stroke();
+  og.fillStyle = "#8b94a2"; og.fillText(unit + " u", 10, H - 12);
+  return {cv, g, W, H, dpr, X, Y, top, line, over};
 }
 
-function drawSpeed(P) {
+// Speed and clock, top left of the path canvas: the readout that says the
+// playhead moved.
+function playHud(g, spd, t) {
+  const big = Math.round(spd) + " u/s", small = fmtRunT(t);
+  g.textAlign = "left";
+  g.font = "600 16px ui-monospace, Consolas, monospace";
+  let w = g.measureText(big).width;
+  g.font = "11px system-ui, sans-serif";
+  w = Math.max(w, g.measureText(small).width) + 18;
+  g.fillStyle = "rgba(15,17,20,.82)"; g.fillRect(8, 8, w, 42);
+  g.strokeStyle = "#2a2f38"; g.lineWidth = 1; g.strokeRect(8.5, 8.5, w - 1, 41);
+  g.fillStyle = "#e8edf4";
+  g.font = "600 16px ui-monospace, Consolas, monospace";
+  g.fillText(big, 17, 28);
+  g.fillStyle = "#8b94a2";
+  g.font = "11px system-ui, sans-serif";
+  g.fillText(small, 17, 43);
+}
+
+function paintPath(P, p) {
+  const g = p.g, at = sampleAt(P, PLAY.t), n = P.x.length;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, p.cv.width, p.cv.height);
+  g.drawImage(p.line, 0, 0);
+  g.setTransform(p.dpr, 0, 0, p.dpr, 0, 0);
+
+  // Dim the route still to come. Broken at teleports, or the straight line a
+  // jump draws would erase every real segment it happens to cross.
+  g.globalCompositeOperation = "destination-out";
+  g.globalAlpha = 0.62; g.lineWidth = 3.4; g.lineCap = "round";
+  g.beginPath();
+  for (let i = at.j; i < n; i++) {
+    if (i === at.j || isJump(P, i)) g.moveTo(p.X(P.x[i]), p.Y(P.y[i]));
+    else g.lineTo(p.X(P.x[i]), p.Y(P.y[i]));
+  }
+  g.stroke();
+  g.globalCompositeOperation = "source-over";
+  g.globalAlpha = 1;
+
+  // The bright trail: the last TRAIL seconds of run time.
+  g.lineWidth = 3;
+  for (let k = Math.max(1, sampleAt(P, PLAY.t - TRAIL).i + 1); k <= at.i; k++) {
+    if (isJump(P, k)) continue;
+    g.strokeStyle = P.t[k] < 0 ? PRE_TRAIL : speedColour(P.spd[k] / p.top);
+    g.beginPath(); g.moveTo(p.X(P.x[k - 1]), p.Y(P.y[k - 1]));
+    g.lineTo(p.X(P.x[k]), p.Y(P.y[k])); g.stroke();
+  }
+
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.drawImage(p.over, 0, 0);
+  g.setTransform(p.dpr, 0, 0, p.dpr, 0, 0);
+
+  const lerp = (a, b) => a + (b - a) * at.k;
+  const x = lerp(p.X(P.x[at.i]), p.X(P.x[at.j]));
+  const y = lerp(p.Y(P.y[at.i]), p.Y(P.y[at.j]));
+  const spd = lerp(P.spd[at.i], P.spd[at.j]);
+  g.beginPath(); g.arc(x, y, DOT_R + 3.2, 0, 2 * Math.PI);
+  g.fillStyle = "rgba(5,5,8,.72)"; g.fill();
+  g.beginPath(); g.arc(x, y, DOT_R, 0, 2 * Math.PI);
+  g.fillStyle = speedColour(spd / p.top); g.fill();
+  g.lineWidth = 1.6; g.strokeStyle = "#ffffff"; g.stroke();
+  playHud(g, spd, PLAY.t);
+}
+
+function planSpeed(P) {
   const cv = document.getElementById("speed");
   const n = P.t.length;
-  if (!n) return message(cv, "no samples in this recording");
+  if (!n) { message(cv, "no samples in this recording"); return null; }
   const [g, W, H] = sizeCanvas(cv, 0.28, 180);
+  const dpr = window.devicePixelRatio || 1;
   const L = 46, R = 10, T = 10, B = 22;
-  const t0 = P.t[0], t1 = P.t[n - 1] > t0 ? P.t[n - 1] : t0 + 1;
+  const [t0, t1] = tSpan(P);
   let top = Math.max(P.stats.max_speed || 0, 1);
   for (const v of P.spd) top = Math.max(top, v);
   top *= 1.05;
   const X = t => L + (t - t0) / (t1 - t0) * (W - L - R);
   const Y = v => H - B - v / top * (H - T - B);
+  const [bmp, bg] = offscreen(W, H, dpr);
 
-  g.lineWidth = 1; g.strokeStyle = "#262b33"; g.fillStyle = "#8b94a2";
-  g.textAlign = "right";
+  bg.lineWidth = 1; bg.strokeStyle = "#262b33"; bg.fillStyle = "#8b94a2";
+  bg.textAlign = "right";
   const vs = niceStep(top, 4);
   for (let v = 0; v <= top; v += vs) {
-    g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke();
-    g.fillText(String(Math.round(v)), L - 5, Y(v) + 4);
+    bg.beginPath(); bg.moveTo(L, Y(v)); bg.lineTo(W - R, Y(v)); bg.stroke();
+    bg.fillText(String(Math.round(v)), L - 5, Y(v) + 4);
   }
-  g.textAlign = "center";
+  bg.textAlign = "center";
   const ts = niceStep(t1 - t0, 8);
   for (let t = Math.ceil(t0 / ts) * ts; t <= t1; t += ts) {
-    g.fillText(String(Math.round(t * 100) / 100) + "s", X(t), H - 6);
+    bg.fillText(String(Math.round(t * 100) / 100) + "s", X(t), H - 6);
   }
   if (t0 < 0) {
-    g.fillStyle = "rgba(255,255,255,.04)";
-    g.fillRect(X(t0), T, X(Math.min(0, t1)) - X(t0), H - T - B);
+    bg.fillStyle = "rgba(255,255,255,.04)";
+    bg.fillRect(X(t0), T, X(Math.min(0, t1)) - X(t0), H - T - B);
   }
-  g.globalAlpha = 0.6;
+  bg.globalAlpha = 0.6;
   for (const m of P.marks) {
     if (m.t == null || !SPEED_LINES.includes(m.k) || m.t < t0 || m.t > t1) continue;
-    g.strokeStyle = MARK_COLOUR[m.k];
-    g.beginPath(); g.moveTo(X(m.t), T); g.lineTo(X(m.t), H - B); g.stroke();
+    bg.strokeStyle = MARK_COLOUR[m.k];
+    bg.beginPath(); bg.moveTo(X(m.t), T); bg.lineTo(X(m.t), H - B); bg.stroke();
   }
-  g.globalAlpha = 1;
+  bg.globalAlpha = 1;
   if (t0 <= 0 && 0 <= t1) {
-    g.strokeStyle = "#e8edf4"; g.setLineDash([4, 3]);
-    g.beginPath(); g.moveTo(X(0), T); g.lineTo(X(0), H - B); g.stroke();
-    g.setLineDash([]);
+    bg.strokeStyle = "#e8edf4"; bg.setLineDash([4, 3]);
+    bg.beginPath(); bg.moveTo(X(0), T); bg.lineTo(X(0), H - B); bg.stroke();
+    bg.setLineDash([]);
   }
-  g.strokeStyle = "#8fb0ff"; g.lineWidth = 1.5;
-  g.beginPath();
+  bg.strokeStyle = "#8fb0ff"; bg.lineWidth = 1.5;
+  bg.beginPath();
   for (let i = 0; i < n; i++) {
-    if (i) g.lineTo(X(P.t[i]), Y(P.spd[i])); else g.moveTo(X(P.t[i]), Y(P.spd[i]));
+    if (i) bg.lineTo(X(P.t[i]), Y(P.spd[i])); else bg.moveTo(X(P.t[i]), Y(P.spd[i]));
   }
-  g.stroke();
+  bg.stroke();
+  return {cv, g, W, H, dpr, L, R, T, B, t0, t1, X, bmp};
+}
+
+// The trace ahead of the playhead is veiled in the page background rather than
+// restroked, which is one fillRect instead of ~1500 strokes per frame.
+function paintSpeed(p) {
+  const g = p.g, hx = p.X(Math.max(p.t0, Math.min(p.t1, PLAY.t)));
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, p.cv.width, p.cv.height);
+  g.drawImage(p.bmp, 0, 0);
+  g.setTransform(p.dpr, 0, 0, p.dpr, 0, 0);
+  g.fillStyle = "rgba(15,17,20,.62)";
+  g.fillRect(hx, p.T, p.W - p.R - hx, p.H - p.T - p.B);
+  g.strokeStyle = "#ffffff"; g.lineWidth = 1.5; g.setLineDash([]);
+  g.beginPath(); g.moveTo(hx, p.T - 4); g.lineTo(hx, p.H - p.B + 4); g.stroke();
+}
+
+function paint() {
+  if (!PLAN) return;
+  if (PLAN.path) paintPath(PLOT, PLAN.path);
+  if (PLAN.speed) paintSpeed(PLAN.speed);
+}
+function seek(t) {
+  if (!PLOT) return;
+  const [t0, t1] = tSpan(PLOT);
+  PLAY.t = Math.max(t0, Math.min(t1, t));
+  document.getElementById("scrub").value =
+    String(Math.round((PLAY.t - t0) / (t1 - t0) * 1000));
+  paint();
+}
+function pause() {
+  PLAY.playing = false;
+  document.getElementById("playbtn").textContent = "\u25B6 Play";
+  if (PLAY.raf) { cancelAnimationFrame(PLAY.raf); PLAY.raf = 0; }
+}
+function play() {
+  if (PLAY.playing || !PLOT) return;
+  const [t0, t1] = tSpan(PLOT);
+  if (PLAY.t >= t1 - 1e-6) PLAY.t = t0;
+  PLAY.playing = true;
+  PLAY.last = 0;
+  document.getElementById("playbtn").textContent = "\u23F8 Pause";
+  const step = ts => {
+    if (!PLAY.playing) return;
+    if (PLAY.last) seek(PLAY.t + (ts - PLAY.last) / 1000 * PLAY.rate);
+    PLAY.last = ts;
+    if (PLAY.t >= tSpan(PLOT)[1] - 1e-6) { pause(); return; }
+    PLAY.raf = requestAnimationFrame(step);
+  };
+  PLAY.raf = requestAnimationFrame(step);
 }
 
 function legend(id, items) {
@@ -556,6 +767,18 @@ function renderHead(P) {
   const specs = P.marks.filter(m => m.k === "spec");
   if (specs.length) dlRow(dl, "spectate", specs.map(specLabel).join(", "));
   dlRow(dl, "end", P.end ? P.end.map(x => x == null ? "?" : x).join(" ") : "no trailer");
+
+  // Unknown records are shown but do NOT open the card: the format is additive
+  // by design, so a reader meeting a record it does not know is a newer writer,
+  // not a fault. Truncation and a missing trailer are faults.
+  const bad = [];
+  if (P.truncated) bad.push("truncated");
+  if (!P.end) bad.push("no trailer");
+  summarise("headsum", bad.length > 0, el("span", "kv mono", "REC " + P.v),
+            P.head.map || "?",
+            P.n + " samples" + (P.stride > 1 ? " / " + P.stride : ""),
+            ...bad.map(w => pill(w, "warn")),
+            c.unknown ? pill(c.unknown + " unknown records", "info") : null);
 }
 
 async function loadPath() {
@@ -567,13 +790,18 @@ async function loadPath() {
     message(document.getElementById("speed"), "no recording");
     const dl = document.getElementById("head");
     dl.replaceChildren(el("dt", "", "error"), el("dd", "", P.error || "failed"));
+    summarise("headsum", true, pill("unreadable", "down"), P.error || "failed");
     return;
   }
   PLOT = P;
   const st = P.stats;
   info.textContent = "\u2014 " + fmtMs(st.duration * 1000) + ", max " + Math.round(st.max_speed) +
     " u/s, avg " + Math.round(st.avg_speed) + " u/s" + (P.truncated ? ", TRUNCATED" : "");
+  PLAY.t = tSpan(P)[0];           // the first sample, prestrafe included
   draw();
+  const on = P.t.length > 1;
+  document.getElementById("playbtn").disabled = !on;
+  document.getElementById("scrub").disabled = !on;
   const notes = document.getElementById("notes");
   notes.replaceChildren();
   for (const t of P.notes) notes.appendChild(el("li", "", t));
@@ -582,14 +810,16 @@ async function loadPath() {
 
 function draw() {
   if (!PLOT) return;
-  drawPath(PLOT);
-  drawSpeed(PLOT);
+  PLAN = {path: planPath(PLOT), speed: planSpeed(PLOT)};
+  paint();
   legend("pathlegend", [["linear-gradient(90deg," + [0, .25, .5, .75, 1].map(speedColour) + ")",
     "slow to fast"], ["#4a5260", "before the start"], ["#8b94a2", "teleport", true], ["#7fe0a0", "start"],
-    ["#ff6b6b", "end"], [MARK_COLOUR.cp, "checkpoint"], [MARK_COLOUR.stage, "stage"],
+    ["#ff6b6b", "end"], ["#ffffff", "playhead"], [MARK_COLOUR.cp, "checkpoint"],
+    [MARK_COLOUR.stage, "stage"],
     [MARK_COLOUR.warp, "warp (x)"], [MARK_COLOUR.portal, "portal (o)"],
     [MARK_COLOUR.spec, "spectate hold (square)"]]);
-  legend("speedlegend", [["#e8edf4", "t = 0", true], [MARK_COLOUR.cp, "checkpoint"],
+  legend("speedlegend", [["#ffffff", "playhead"], ["#e8edf4", "t = 0", true],
+    [MARK_COLOUR.cp, "checkpoint"],
     [MARK_COLOUR.stage, "stage"], [MARK_COLOUR.split, "split"],
     [MARK_COLOUR.resume, "resume / retry / restart"], [MARK_COLOUR.ghost, "ghost"],
     [MARK_COLOUR.spec, "spectate"]]);
@@ -619,6 +849,27 @@ document.getElementById("send").addEventListener("click", () => {
 });
 let resizing = 0;
 window.addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(draw, 150); });
+
+document.getElementById("playbtn").addEventListener("click",
+  () => { if (PLAY.playing) pause(); else play(); });
+document.getElementById("scrub").addEventListener("input", ev => {
+  if (!PLOT) return;
+  const [t0, t1] = tSpan(PLOT);
+  pause();
+  seek(t0 + Number(ev.target.value) / 1000 * (t1 - t0));
+});
+document.getElementById("playrate").addEventListener("change",
+  ev => { PLAY.rate = Number(ev.target.value); });
+// Seek from the speed chart. Its plot area is inset by the axis gutters, so the
+// click maps through X()'s own L..W-R box, not the element's whole width.
+document.getElementById("speed").addEventListener("click", ev => {
+  const p = PLAN && PLAN.speed;
+  if (!p) return;
+  const r = p.cv.getBoundingClientRect();
+  const px = (ev.clientX - r.left) * (p.W / Math.max(1, r.width));
+  pause();
+  seek(p.t0 + (px - p.L) / Math.max(1, p.W - p.L - p.R) * (p.t1 - p.t0));
+});
 
 const sel = document.getElementById("lobby");
 for (const t of TIERS) {

@@ -24,6 +24,22 @@
   .stack > * + * { margin-top:1rem; }
   .card h2 { margin:0 0 .1rem; font-size:.95rem; display:flex;
              align-items:center; gap:.5rem; flex-wrap:wrap; }
+  /* A collapsed card still has to say whether it matters, so the summary
+     carries state pills; .sum is the row they sit in. */
+  details.card > summary { cursor:pointer; list-style:none; display:flex;
+             align-items:center; gap:.5rem; flex-wrap:wrap; font-size:.95rem;
+             font-weight:600; }
+  details.card > summary::-webkit-details-marker { display:none; }
+  details.card > summary::before { content:""; flex:none; width:.4rem;
+             height:.4rem; border-right:2px solid #8b94a2;
+             border-bottom:2px solid #8b94a2; transform:rotate(-45deg); }
+  details.card[open] > summary::before { transform:rotate(45deg); }
+  details.card:not([open]) { padding:.55rem 1.1rem; }
+  details.card[open] > summary { padding-bottom:.5rem;
+             border-bottom:1px solid #2a2f38; }
+  summary:focus-visible { outline:2px solid #3d6fd1; outline-offset:2px; }
+  .sum { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;
+         font-weight:400; font-size:.8rem; color:#8b94a2; }
   .pill { font-size:.68rem; padding:.12rem .45rem; border-radius:99px;
           border:1px solid #3a4250; color:#9aa4b2; font-weight:600;
           letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; }
@@ -48,6 +64,7 @@
         background:#0f1114; border:1px solid #333a45; border-radius:5px;
         color:#e8edf4; font-size:.83rem; font-family:inherit; }
   select { flex:0 1 auto; }
+  input[type=range] { flex:1 1 10rem; min-width:6rem; accent-color:#3d6fd1; }
   input:focus, select:focus { outline:2px solid #3d6fd1; outline-offset:1px; }
   button, a.button { padding:.35rem .7rem; border:1px solid #3a4250; border-radius:5px;
            background:#242932; color:#d8dde4; font-size:.8rem; cursor:pointer;
