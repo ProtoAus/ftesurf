@@ -232,6 +232,24 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*' }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
+    # THE ZONE LIBRARY, WHICH HAD NEVER SHIPPED.  Every release through 0.1.16
+    # carries zero zone files -- checked, not assumed: `find release/stage-* -path
+    # '*zones*' -name '*.json'` is 0 in all 20 stages.  So a player's install
+    # cannot time or rank ANY of the 587 downloadable maps we hold zones for,
+    # and draws cl_scores.qc:2180 ("this map has no zone file, so it has no legs
+    # and no times") on every one of them.  Reported from a laptop on surf_666,
+    # which is in mapdl.txt and has had a zone file here all along.
+    #
+    # 609 files, 2.66 MB -- a tenth of the thumbnail atlases two lines up.
+    #
+    # local\ AND NOT online\, which looks backwards and is not: online\ resolves
+    # into the Momentum install (tools/zoneinstall.py's header), so on a machine
+    # without Momentum it is not a directory at all. local\ is the only zone path
+    # we control, it is where zoneinstall.py writes, and sh_zones.qc:204-205 has
+    # it winning -- which is also what makes a shipped file overridable by a
+    # local edit.  manifest.txt sits BESIDE local\ rather than in it precisely so
+    # a *.json glob like this one cannot pick it up.
+    @{ Path = 'ftesurf/maps/zones/local'; Filter = '*.json' }
 )
 
 # =============================================================================
