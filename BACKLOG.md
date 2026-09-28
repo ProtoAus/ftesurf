@@ -854,6 +854,126 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   one server step and their target row is not published; the release after a
   hold still waits a round trip for the server's unfreeze (the second `prederr`
   line on each load).
+- **IN-GAME MAP DOWNLOAD, A "NEW" BADGE, AND A 6-HOURLY UPSTREAM SCAN -- asked
+  for 2026-09-28, surveyed and NOT started.** Three decisions were taken with the
+  operator at survey time: the button fetches **from the Pi, which fetches through
+  to Momentum's CDN and keeps its copy** (so the Pi stays the authority on which
+  build is canonical); the scan **polls the Momentum API every 6 hours**; and the
+  KSF Google Drive is **a map source beyond what is on disk** (its share link is
+  still needed -- nothing in this repo or in `wrlines` knows the Drive exists).
+  What follows is the survey, because most of the pipeline is already built and
+  the parts that are missing are not the parts the request names.
+
+  **THE REQUEST'S KSF PREMISE IS INVERTED: EVERY KSF MAP IS ALREADY HERE.** 55
+  `_ksf` BSPs across the Momentum and CS:S mounts, **0 missing**. 26 already run
+  on DONATED zones -- `tools/census/zonefit.py` graded a donor build FIT on frame
+  and destinations, `tools/zoneinstall.py` installed it, and
+  `ftesurf/maps/zones/manifest.txt` records all 26 as `donation` (25 FIT, 1
+  NO-DESTS). Of the 29 unzoned, exactly **2 are recoverable by that same path
+  today** (`surf_derpis_ksf`, `surf_lullaby_ksf` -- their base builds are zoned
+  and installed); the other 27 have no zoned base anywhere on disk. And
+  `ksf.surf`'s API is players and records only (`wr_ksf.h:65,70,74` -- search,
+  bestrecords), with **no map list and no zone data**. So the KSF gap is ZONES,
+  and KSF cannot supply them; a downloader answers a question nobody asked.
+
+  **THE MAP LIST CANNOT SHOW A MAP YOU DO NOT HAVE, AND THAT IS ONE LINE.** The
+  library IS the filesystem: `m_main.qc:1668` is
+  `search_begin("maps/*.bsp", SB_FULLPACKAGEPATH|SB_ALLOWDUPES|SB_NAMESORT)`, and
+  `m_main.qc:1257-1259` throws metadata away for anything unmounted
+  (`continue; // metadata for a map that is not mounted`). That `continue` is what
+  hides **1551 of `data/mapmeta.txt`'s 2271 rows** -- the download button's entire
+  audience. The 639 listed maps with no metadata (`m_main.qc:280`, of 1334 listed)
+  are a DIFFERENT gap: they are visible and untiered, not invisible.
+
+  **THE ROW'S RIGHT EDGE IS FULL -- the button needs space taken, not found.** The
+  PB time is right-aligned at `rp_x + rs_x - 8 - mtw` (`m_main.qc:4402-4414`),
+  reserves its width even when blank (`"--:--.---"`, `:4413`, deliberately so the
+  headcount does not jump while scrolling, `:4394-4400`), widens by a
+  `"^9lobby  ^7"` prefix (`:4409`), and vertically straddles both text bands, which
+  `m_main.qc:4435-4439` says outright: a second right-aligned item "would draw
+  through the time". The two centralised places to buy room are the `mtw`/`mpopw`
+  anchors (`:4414`, `:4448`) plus the `ui_fit_text` budget (`:4464`), or the 36 px
+  tier gutter (`rp_x+90` to `rp_x+126`).
+
+  **THE DOWNLOAD ALREADY FAILS TODAY, WITH A LOGGED LINE** -- see the existing
+  entry on `Server permissions deny downloading file "package/maps/<map>.bsp"`.
+  The fleet sets no `allow_download*` at all and runs engine defaults, which are
+  permissive (`allow_download 1`, `allow_download_maps 1`, `sv_main.c:89,95`), so
+  the refusal is not a policy knob: the server advertises the BSP as a PACKAGE and
+  `SV_AllowDownload` refuses non-pk3 packages. Under that sits the real veto --
+  `SV_LocateDownload` (`sv_user.c:4215-4249`) denies any file in an
+  `SPF_COPYPROTECTED` searchpath, which is what a Steam-mounted `momentum/` is.
+  The engine already carries the opt-out, `sv_allow_download_anything` (nettest
+  Patch 37, `sv_main.c:108`, `sv_user.c:3967-3977`, `:4219-4221`), default 0 and
+  set nowhere here -- and it is a `sv-rel` patch, so it is DEAD in a stale server
+  binary. `sv_dlURL` is `CVAR_SERVERINFO` (`fs.c:330`) and empty everywhere.
+
+  **ZONES ARE NEVER SENT TO A CLIENT, so a downloaded map arrives untimeable** --
+  no `precache_file` anywhere in `src/server/*.qc`. The good news is that
+  `SV_AllowDownload`'s `maps/` gate is a PREFIX, so `maps/zones/online/<map>.json`
+  is already permitted BY NAME under `allow_download_maps 1`, and Patch 463 made
+  the zone pin compare fields rather than the path, so a downloader may write to
+  either `local/` or `online/` without refusing recordings. BSP and zone must
+  travel as an atomic pair for the same reason `mapsync.py:15-21` gives.
+
+  **WHAT IS ALREADY ON THE PI, read from the host 2026-09-28 and not in this
+  repo.** `sites-enabled/` holds `fastdl`, `mom.conf`, `momcdn.conf`,
+  `nettest-dl.conf`, `filebrowsers.conf`, `play.proto.bar.conf`. `fastdl` is real
+  but is SVEN CO-OP's (`:8082`, root `/srv/nvme/Archives/SvenBackup/...`, serving
+  `.bsp` out of `.bsp.gz` with `Content-Encoding: gzip` -- a working recipe worth
+  copying). **`momcdn.proto.bar` terminates TLS and proxies `127.0.0.1:9000`,
+  which is a live MinIO** (`Server: MinIO`, region `us-west-1`). **`mom.proto.bar`
+  serves a clone of the Momentum monorepo at `/root/mom`** with `/api/` proxied to
+  `127.0.0.1:1245`. Do not overstate this: the API on 1245 is **DOWN**, socket.io
+  on 9132 is down, `STORAGE_BUCKET_NAME=momtest` is still the template default and
+  every bucket answers 403 -- it is an unfinished local-dev deployment, not a
+  running CDN. But the hard part (public hostname, cert, object store) exists.
+  Disk: 458 G, **77 G free** (83% used); `mapsync.py`'s `HEADROOM_GB` is 5.
+  Consequence for the chosen design: a self-hosted Momentum API would make the
+  6-hourly poll hit the operator's OWN server, which is a materially different
+  proposition from polling `api.momentum-mod.org`, and is worth settling first.
+
+  **WHAT A DOWNLOAD COSTS, measured on the 1316-BSP install:** 45.0 GB total,
+  median **23.1 MB**, mean 35.0, p90 76.9, max 494.6; 78% exceed 10 MB and 5.9%
+  exceed 100 MB. The Pi serves 12 live lobbies off one home uplink, so
+  concurrency and rate need a ceiling before this is switched on -- `ftesurf.nginx:37-72`
+  already has the shape (`limit_rate_after 512k; limit_rate 2m`).
+
+  **THE "NEW" SIGNAL: DO NOT USE `dataTimestamp`, OR NORMALISE IT FIRST.** Zone
+  files carry one, and it is read by NOTHING today, so this is a prospective trap
+  rather than a live bug. Measured: Momentum's own `zones/online/` is 537 files,
+  524 in milliseconds and **13 in SECONDS** (2.4%); this library's 609 hold 15 such.
+  Read as ms they date to **1970-01**, i.e. a badge or sort keyed on that field
+  ranks them permanently oldest and a "newer than last scan" scanner never fires
+  on them -- the silent direction. A guess that these were the hand-authored files
+  was FALSIFIED: Momentum's own `zones/local/` is 14 files and all 14 are
+  milliseconds, so the inconsistency is UPSTREAM in API-sourced data and will keep
+  arriving. The robust answer needs no upstream date at all: record first-seen
+  ourselves, append-only, on each scan.
+
+  **AND THE TIMER IS BLOCKED ON A KNOWN DEFECT** -- see the entry above on
+  `tools/mapmeta.py` losing rows across a regeneration. A 6-hourly job that
+  regenerates `data/mapmeta.txt` would run a generator already measured to drop a
+  row and blank 8 rows' page/cell, unattended, four times a day. Fix idempotency
+  first; the falsifier is free (run it twice, diff must be empty).
+
+  **STAGING, cheapest and most-blocked first.** (1) make `mapmeta.py`
+  regeneration lossless -- gates everything on a timer. (2) the two recoverable
+  KSF zones, via the existing `zoneinstall.py` path, no new code. (3) emit rows for
+  catalogued-but-absent maps and relax the `m_main.qc:1257` `continue`, so the
+  1551 become visible as unavailable -- the lobby cell's `"^1not installed"`
+  treatment (`m_main.qc:4211-4227`, and the cell is deliberately unclickable in
+  that state, `:4245-4247`) is the precedent. (4) first-seen roster and the New
+  badge; `data/mapmeta.txt` takes both with NO reader change, because the reader
+  skips any line whose first token is not `meta` and guards trailing columns with
+  `n >= 11` (`m_main.qc:1250-1275`). (5) trace and fix the `package/maps/` denial,
+  then serve BSP+zone from the Pi. (6) the button itself -- and note the menu has
+  exactly ONE `URI_Get_Callback` per VM (`m_lobby.qc:885-931`, `responsecode == 0`
+  is success, not 200), so anything new branches inside it; a per-row button
+  registered after the row STEALS the row's hover, because sui walks front to back
+  (`sui_sys.qc:296,347,409`) -- use `sui_hover_index`/`sui_release_index`, and act
+  after `sui_end` or the release fires twice (`cl_scores.qc:1273-1299` is the
+  working precedent). (7) the Drive, once its link exists.
 
 ## Harness coverage
 
