@@ -498,6 +498,52 @@ drops out without touching anything else.
 now carries `momentum` or `ksf` on exactly the rows that are foreign. If that
 column ever shows a word on a ranked row, something is wrong and I want to know.
 
+## 2i. The map roster — two decisions only you can make
+
+There is now one list of every surf and bhop map either catalogue knows about,
+pinned to the exact build this install would load: `ftesurf/data/maproster.txt`,
+1748 maps, 1277 of them installed and hashed. `python tools/maproster.py check
+<map>` explains any single row in English. Nothing about it is deployed and it
+changes no game behaviour — it is a file on disk and a tool that writes it.
+
+**First decision: `surf_dune` and `surf_fantasy` in `ftesurf/maps/`.**
+
+Your gamedir wins the mount, ahead of both Steam installs. Those two files are
+byte-identical to the **CS:S** builds, and they override Momentum's cuts of the
+same maps. So anyone playing either one on this install is on geometry no
+leaderboard knows: 45 imported runs attest to a different `surf_dune` and 5 to a
+different `surf_fantasy`. They are the only two maps out of 1748 whose loaded
+build contradicts the evidence — everything else is either confirmed or has no
+evidence either way.
+
+Deleting those two files makes the roster clean in one step. I have not touched
+them because I cannot tell from here whether they are deliberate fixtures — 
+`poop` and `surf_raqbonus3ramp` beside them clearly are, and have no upstream
+build at all, so they are unaffected either way. If you put those two there on
+purpose, say so and I will record why rather than keep flagging them.
+
+**Second decision: three maps still missing, and whether to spend the bandwidth.**
+
+28 of the 31 KSF maps you did not have are now in your Momentum install.
+`surf_tycho2`, `surf_weirdcore` and `surf_yolo` are not: the fetch was stopped
+partway through the 29th because the machine ran critically low on memory. That
+was not a failure of the download, and re-running picks up exactly those three
+(the roster recomputes what is missing from what is on disk). I have not
+restarted it on my own because memory may still be tight — tell me when it suits.
+
+Worth knowing what that cost: these are big. `surf_expel` is 335 MB unpacked,
+`surf_crank` 216 MB, `surf_starvald` 195 MB. The 28 added roughly 2.5 GB.
+
+**And one thing that is not a decision, just worth your eyes.**
+
+The 28 new maps are CS:S builds sitting in a Momentum mount. That is fine — none
+of them exists in the Momentum install, so nothing is shadowed, and I checked
+that per file rather than assuming it. But they have never been loaded by this
+engine. Pick two or three at random, load them, and see that they come up and are
+solid. If a CS:S-built map needs content the Momentum mount does not carry, that
+is where it will show, and it will show as missing textures or props you fall
+through rather than as an error.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:

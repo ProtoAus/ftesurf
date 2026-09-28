@@ -72,6 +72,24 @@ chatty.
   headless run whose log you actually read).
 - Then commit that feature and push it — see the source-control rule in
   AGENTS.md. Verified work that is still only on this disk is not finished.
+- IF YOU COMPUTE BY HAND A FIGURE THE TOOL ALREADY PRINTS, RECONCILE THEM BEFORE
+  BELIEVING EITHER. On 2026-09-28 `maproster.py` printed "5 maps have more than
+  one published build" and a hand `awk` beside it listed 31, because the awk read
+  `$10` (`avail`) where the column was `$11` (`builds`) -- so it printed the
+  KSF-fetchable set under a heading about contested builds, and every row in it
+  was real. A wrong INDEX over the right data reads exactly like a result. The
+  same session produced the mirror image from a peer: a sweep for "is this build
+  anywhere on disk" that searched two of the three roots, got the right answer,
+  and would have printed the same sentence either way. One read a complete set at
+  the wrong offset, the other an incomplete set correctly; both had the tool's own
+  summary sitting beside them, disagreeing, unread. Neither is caught by looking
+  harder at the output -- only by noticing there are two numbers for one question.
+- AND A SAMPLE THAT IS THIN READS EXACTLY LIKE ONE THAT IS STRONG. The same tool
+  reported `surf_slobs` as a build nobody plays, from ONE demo; against 19
+  attestations it is the most-played build. The finding was not wrong about its
+  evidence, it was wrong about how much evidence that was. Where a verdict rests
+  on a count, CARRY THE COUNT -- a later corpus raising it should read as new
+  evidence, not as the earlier answer having been a lie.
 - Prefer measuring to reasoning. This codebase has a long history of the right
   answer and the wrong answer being the same bytes; when a claim can be checked
   against a real file or a live run, check it. THAT INCLUDES CLAIMS ABOUT WHAT

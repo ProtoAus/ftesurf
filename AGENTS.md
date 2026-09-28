@@ -1067,6 +1067,64 @@ bannered as superseded.)
   level name; it is not a parameter. An arm that fetches a board for a different
   map without changing map first grades the wrong board and looks correct.
 
+### The map roster (which BUILD, not just which name)
+
+- **A MAP NAME DOES NOT IDENTIFY A MAP HERE.** Of the 1062 names present in both
+  the Momentum and CS:S installs, **322 (30.3%) are a different file** -- and a
+  run recorded against the wrong one is demoted `TF_NOMAP` silently. `surf_kitsune`
+  is the worked example (`mapsync.py:47-63`). Anything reasoning about maps by
+  name alone is wrong about a third of the library.
+- `tools/maproster.py` is the answer to "which build": `hash` fills
+  `data/maphash.txt`, `build` writes `data/maproster.txt`, `check <map>` explains
+  one, `fetch` refreshes the KSF sources. 1748 surf/bhop maps, 1277 installed.
+- **IT HASHES ONLY THE BUILD THE ENGINE WOULD LOAD**, resolved by reading
+  `fs_addons.txt`'s mount order rather than assuming it -- 43.7 GB instead of the
+  90 GB both installs hold. First run is at disk speed; after that the cache is
+  keyed on (size, mtime) and a re-run is free, because **a stale cache is silent**.
+- **`ftesurf/maps/` WINS THE MOUNT, ahead of Momentum and cstrike, and two of its
+  four loose BSPs shadow a different upstream build.** `surf_dune` and
+  `surf_fantasy` there are byte-identical to the CS:S cuts and override Momentum's,
+  so every run on either is against geometry no leaderboard knows -- 45 and 5
+  attestations respectively say so. This is the one gotcha a census of the two
+  Steam installs cannot see, and it is why `mount_dirs()` puts the gamedir first.
+- **THE PIN HAS THREE VERDICTS AND `unknown` IS PERMANENT.** `ok` matches the
+  most-attested build, `alt` matches an attested build that is not that one,
+  `other` means builds are attested and ours is none of them, `unknown` means
+  NOTHING attests. `unknown` is 1279 of 1748 and it is not a backlog: no CS:S- or
+  KSF-sourced map has a published digest anywhere. Collapsing it into `other`
+  accuses most of the library on the strength of nobody having said anything.
+- **WHERE ATTESTATIONS COME FROM, and the two sources disagree in LENGTH.** A
+  `.mtv` demo carries the map's SHA1 as 40 UPPERCASE hex at FIXED offset 80
+  (verified on 2888 demos, no exceptions). An imported `.rec`'s `mapbuild` line
+  carries **39**, because a `.wrpath` stores the hash in a 40-BYTE field including
+  its terminator and the last digit is lost; `momimport.py` copies that through.
+  So matching is prefix-aware and a 39 is folded into the 40 it prefixes --
+  without the fold every map carrying both sources reads as contested. The `.rec`
+  corpus is the WIDE source (472 maps) and the demos the exact one (40).
+- **`builds` IS A FLOOR AND `ev` SAYS WHY.** A count of attested builds is what
+  these sources SAW, not what exists -- a wider corpus finds `surf_4am` on three
+  where these find two. `ev` carries the number of attestations so a later corpus
+  raising the count reads as new evidence rather than as the tool having lied.
+  This is not theoretical: `surf_slobs` was reported here as a build nobody plays
+  on the strength of ONE demo, and against 19 it is the most-played one.
+- **THE KSF DRIVE IS PUBLIC -- no API key, no OAuth, no credential, and there
+  should never be one.** `tools/ksffetch.py` mirrors what is missing. 929 maps on
+  the roster sheet, 929 archives, 894 already on disk. **Enumerate with
+  `embeddedfolderview?id=<id>`, NEVER `/drive/folders/<id>`**: the latter embeds
+  only the first 50 entries and paginates the rest by XHR, so a scraper on it sees
+  50 of 466 and looks like it worked.
+- The BSP lands in the **Momentum install's `maps/`** because `mapsync.py` mirrors
+  FROM there to the Pi; anywhere else is a map you can play and cannot host.
+  Archives are RAR5 (7-Zip, not stdlib), hold one bare `.bsp`, and reach 335 MB
+  unpacked -- stream them to disk, do not `.read()` them. Google's large-file
+  interstitial returns HTML, so the magic bytes are checked before the file is
+  believed.
+- The roster and the KSF sheet **disagree on five names** and four of those five
+  are on disk under the DRIVE's spelling (`surf_junglepics_ksf` vs
+  `surf_junglespic_ksf`, `surf_not_so_zen` vs `surf_nsz_fix`, ...). Trusting
+  either alone reports maps missing that are already here: that is
+  `unreconciled`, and it never folds into `missing`.
+
 ### Preparing the boards (the sweep, and keeping it fresh)
 
 - **Times and demos are separate jobs and the difference is three orders of
