@@ -1058,6 +1058,56 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   for the Pi-sourced design over Momentum's CDN: the CDN can only ever answer by
   name, and the name is the thing that is not unique.
 
+  **THE KSF DRIVE, SURVEYED 2026-09-28 -- AND IT IS ALL PUBLIC, SO NO OAUTH AND NO
+  CREDENTIAL IS NEEDED.** Three links from the operator: maps A-K
+  (`17QJ-Wzk9eMHKZqX227HkPCg9_Vmrf9h-`), maps L-Z
+  (`1f3Oe65BngrSxTPKHAt6MEwK0FTsDbUsO`), and a roster spreadsheet
+  (`1oXU6UXGPdgdqRiAjjD_5c1WfI6PY6ML4`). All three answer an anonymous GET.
+
+  **ENUMERATION: use `embeddedfolderview`, NOT the folder page.**
+  `https://drive.google.com/drive/folders/<id>` returns 798 KB of HTML whose
+  `window['_DRIVE_ivd']` blob holds **only the first 50 entries** -- the rest
+  paginate by XHR, so a scraper built on it silently sees 50 of 466 and looks like
+  it worked. `https://drive.google.com/embeddedfolderview?id=<id>#list` returns the
+  COMPLETE listing in one unauthenticated request: 466 + 468 titles, **934
+  distinct names, 927 of them `.rar`**. The roster exports as CSV with
+  `https://docs.google.com/spreadsheets/d/<id>/export?format=csv&gid=1729788986`
+  (23 KB, `Map name,Tier,Type`, workbook tabs `Surf Maps - KSF CSS` / `Sorted by
+  map type` / `Feuille 3`).
+
+  **THE MEASUREMENT: 929 maps on the roster, 929 archives in the Drive, and we
+  already hold 894 of them (96.2%).** Genuinely absent after name reconciliation:
+  **31**, and every one of the 31 is present in the Drive, so the mirror is a
+  bounded one-off rather than an open-ended sync. Roster tiers run 1-8
+  (76/170/262/217/108/56/31/9); types are Staged 496, Linear 404, Staged-Linear
+  28, plus one row whose Type is the literal `c`.
+
+  **THE REAL KSF GAP IS ZONES, AT EVERY SCALE THAT WAS MEASURED.** Of the 929
+  roster maps, **390 have a zone file (42.0%)** and 389 are both playable and
+  timeable; 539 are not. That is the same finding the `_ksf`-suffix census gave
+  and the same one the whole-library census gave -- maps are nearly solved, zones
+  are not, and no KSF endpoint or Drive artifact supplies zone data.
+
+  **A SCANNER NEEDS A THIRD VERDICT FOR NAMES, because the spreadsheet and the
+  Drive disagree on five of them.** `surf_disappointed_fix`/`surf_disappointed`,
+  `surf_junglepics_ksf`/`surf_junglespic_ksf` (a transposition), `surf_not_so_zen`/
+  `surf_nsz_fix` (an abbreviation), `surf_race_final`/`surf_race`,
+  `surf_vestige_fix`/`surf_vestige`. **Four of those five are already on disk under
+  the DRIVE's spelling** -- so a scanner that trusts the roster reports 4 maps
+  missing that are sitting in the library, and one that trusts the Drive reports 5
+  roster entries absent. Neither is a fault; the honest answer is `unreconciled`,
+  counted separately and never folded into `missing`. This is the Patch 421/422
+  third-verdict shape arriving in a new place.
+
+  **PRACTICAL TRAPS FOR THE FETCHER.** Maps are `.rar`, not `.zip` or loose BSP, so
+  an extractor is on the path and a CS:S map archive carries materials and models
+  beside the BSP. The Drive's mime types are INCONSISTENT for identical content --
+  `application/rar`, `application/x-rar` and `application/x-compressed` all appear
+  -- so filter on the name, never the mime. And the spreadsheet is the cheap change
+  signal the 6-hourly scan should actually use: one 23 KB unauthenticated GET,
+  hashed and diffed against the last copy, gives new-map detection without
+  enumerating either folder and without touching anyone's API.
+
 ## Harness coverage
 
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
