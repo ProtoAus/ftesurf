@@ -70,6 +70,14 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+# Player aliases are free Unicode from another game's API, and Windows'
+# default stdout is cp1252 -- so merely PRINTING a name can kill the tool
+# after the work is done.  This has now bitten once on a file write and once
+# on a progress line; "replace" rather than "strict" because a mangled glyph
+# in a console line is not worth losing a sweep over.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 REC_VER = 5      # 17-column samples, and the lowest version whose allowed-key
                  # set covers what can honestly be stated.  v4+ is also what
                  # cl_watch.qc:1237 needs for the strafe/board/segment panels.

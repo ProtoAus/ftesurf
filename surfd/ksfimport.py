@@ -62,10 +62,25 @@ sys.path.insert(0, HERE)
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 
+# Player aliases are free Unicode from another game's API, and Windows'
+# default stdout is cp1252 -- so merely PRINTING a name can kill the tool
+# after the work is done.  This has now bitten once on a file write and once
+# on a progress line; "replace" rather than "strict" because a mangled glyph
+# in a console line is not worth losing a sweep over.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 KSF_BASE = "https://ksf.surf"
 KSF_DELAY_MS = 400         # wrlines' WR_API_DELAY_MS, same host, same reasoning
 KSF_TAKE = 25              # their own cap on bestrecords
 KSF_MAX_DEFAULT = 50       # players per invocation unless --max says otherwise
+
+# Consecutive "that id is not mine" answers before the sweep stops.  The reading
+# that a 500 means an unknown player is INFERRED, so this is the circuit breaker
+# on being wrong about it: a host genuinely refusing answers 500 to everything
+# and trips this within seconds, where the measured yield (a third of ids
+# unknown, scattered) never produces a run this long.
+SKIP_STREAK = 25
 KSF_TIMEOUT = 30
 UA = "FTESurf/0.1 ksfimport (+https://proto.bar/ftesurf)"
 
@@ -90,6 +105,47 @@ def steam64(raw):
     return None
 
 
+def seed_from_boards(board_dir, limit):
+    """SteamID64 -> alias, taken from Momentum's boards, most-seen first.
+
+    KSF serves no map leaderboard, so the only way in is one player at a time --
+    and the players worth asking about are the ones who actually surf.  The
+    Momentum sweep already collected thousands of them with their aliases, so
+    the seed costs no requests of its own.
+
+    RANKED BY APPEARANCE COUNT, not by rank: somebody on forty boards is a
+    surfer, and somebody on one might be a single lucky run.  Measured yield on
+    the twelve most-seen: four had records, four had none, four were not KSF
+    players at all.
+    """
+    import collections
+    import glob
+    seen = collections.Counter()
+    alias = {}
+    for p in glob.glob(os.path.join(board_dir, "*.json")):
+        try:
+            with io.open(p, encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        for r in (doc.get("rows") or []):
+            sid = r.get("steamid") or ""
+            if not sid.isdigit():
+                continue
+            seen[sid] += 1
+            alias.setdefault(sid, S.clean_text(r.get("alias") or "") or sid)
+    # int keys, matching read_seed: the two feed the same loop, and a str here
+    # reaches the cache path's %d and dies three frames later.
+    out = {}
+    for sid, _ in seen.most_common():
+        n = steam64(sid)
+        if n is not None:
+            out[n] = alias[sid]
+        if len(out) >= limit:
+            break
+    return out
+
+
 def read_seed(path):
     """steamid64 -> display name.  `<id>` or `<id> <name...>`, # comments."""
     out = {}
@@ -107,7 +163,24 @@ def read_seed(path):
 
 
 class Refused(Exception):
-    """ksf.surf said no.  Reported and not retried."""
+    """ksf.surf said no to US.  Reported, never retried, stops the run."""
+
+
+class NoSuchPlayer(Exception):
+    """ksf.surf cannot answer for that id -- which is an ANSWER, not a refusal.
+
+    THE THIRD VERDICT, and it had to exist before a sweep could.  Probing twelve
+    SteamID64s taken off Momentum's boards returned five records for four of
+    them, an empty list for four, and **HTTP 500 for the other four**.  A 500
+    here is how this host says "that id is not a player of mine": the same code
+    comes back for a numeric player_id used in the SteamID slot.  That is
+    inferred from behaviour rather than documented, so it is named and bounded
+    rather than assumed -- see SKIP_STREAK.
+
+    Collapsing it into Refused would end a sweep at its first non-KSF player,
+    which on that sample is one id in three.  Collapsing it into "no records"
+    would claim the host answered when it did not.
+    """
 
 
 def fetch(url):
@@ -119,6 +192,12 @@ def fetch(url):
                 raise Refused("HTTP %d" % r.status)
             return r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
+        # 500 is this host's answer for an id it does not know; anything else
+        # (403, 429, 503) is about US and stops the run.  If that reading is
+        # ever wrong the breaker below catches it: a host that is actually
+        # refusing returns 500 to everything, and SKIP_STREAK in a row stops.
+        if e.code == 500:
+            raise NoSuchPlayer("HTTP 500")
         raise Refused("HTTP %d" % e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
@@ -170,7 +249,9 @@ def playable_maps():
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--seed", required=True, help="file of steamid64s, one per line")
+    ap.add_argument("--seed", help="file of steamid64s, one per line")
+    ap.add_argument("--from-boards",
+                    help="seed from tools/momfetch.py's cache instead: the\nplayers already on Momentum's surf boards, most-seen first")
     ap.add_argument("--cache", default=None, help="default <SURFD_HOME>/data/ksf")
     ap.add_argument("--max", type=int, default=KSF_MAX_DEFAULT)
     ap.add_argument("--maps", default=None,
@@ -179,9 +260,15 @@ def main():
     args = ap.parse_args()
 
     cache = args.cache or os.path.join(S.DATA_DIR, "ksf")
-    seed = read_seed(args.seed)
+    if args.from_boards:
+        seed = seed_from_boards(args.from_boards, args.max)
+    elif args.seed:
+        seed = read_seed(args.seed)
+    else:
+        print("give --seed or --from-boards")
+        return 2
     if not seed:
-        print("no usable steamid64 in %s" % args.seed)
+        print("no usable steamid64 in the seed")
         return 2
 
     have = set()
@@ -200,13 +287,26 @@ def main():
           % (len(seed), len(ids), len(have)))
 
     rows, asked, cached, refused, nomap = [], 0, 0, 0, 0
+    notaplayer = streak = 0
     for sid in ids:
         try:
             doc, fresh = records(sid, cache, paced=(asked > 0))
+        except NoSuchPlayer:
+            asked += 1
+            notaplayer += 1
+            streak += 1
+            if streak >= SKIP_STREAK:
+                print("  %d consecutive ids unknown to ksf.surf -- stopping."
+                      "  That is more likely this host refusing than a run of\n"
+                      "  non-players, and the difference is not ours to assume."
+                      % streak)
+                break
+            continue
         except Refused as e:
             print("  refused for %d: %s -- stopping, nothing is retried" % (sid, e))
             refused += 1
             break
+        streak = 0
         asked += 1 if fresh else 0
         cached += 0 if fresh else 1
         for rec in (doc.get("records") or []):
@@ -229,6 +329,7 @@ def main():
             })
 
     print("requests made   %d   (from cache %d)" % (asked, cached))
+    print("not KSF players %d  (HTTP 500: an answer, not a refusal)" % notaplayer)
     print("records kept    %d" % len(rows))
     print("dropped, no bsp %d" % nomap)
     if refused:
