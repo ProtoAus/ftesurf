@@ -43,6 +43,12 @@
 #define ZC_BHOP         "100 0 255"
 #define ZC_OVERBOUNCE   "255 255 0"
 
+// Defined in cl_zonedl.qc, which compiles AFTER cl_online.qc because it needs
+// that file's one request-id counter -- so Zone_LoadForMap, down this file,
+// reaches it the way cl_online.qc reaches Players_AbsorbBoard.
+void(string map) ZoneDL_Want;
+void() ZoneDL_Frame;
+
 float  zone_cv_draw, zone_cv_dist, zone_cv_alpha, zone_cv_bonus;
 float  zone_cv_lines, zone_cv_thickness;
 
@@ -78,6 +84,13 @@ vector(string s) Zone_ParseColor =
 
 void() Zone_RegisterCvars =
 {
+	// Where cl_zonedl.qc fetches a missing zone file from.  OURS, never the
+	// server's sv_dlURL: see that file's header.  Empty turns it off.
+	// The trailing slash is part of the value -- the url is base + map +
+	// ".json" with nothing inserted, so a base without one silently asks for
+	// ".../localsurf_666.json".
+	registercvar("cl_download_zonesrc",
+	             "https://play.proto.bar/ftesurf/maps/zones/local/");
 	registercvar("zone_draw",      "1");
 	/*
 	  BUILD 40: 0, WHICH THIS TEST HAS ALWAYS MEANT AS "NO LIMIT".
@@ -293,12 +306,24 @@ void() Zone_LoadForMap =
 	// local BEFORE online: dropping a file in ftesurf/maps/zones/local/ has to
 	// override Momentum's shipped copy, which is the whole point of the
 	// directory.  (surf_drift is the test: local says 10 regions, online 12.)
+	//
+	// dl/ IS LAST OF THE THREE FILES, and that ordering is the safety property
+	// rather than a preference: it holds what cl_zonedl.qc fetched from our
+	// mirror, and a fetched file must never beat one that shipped or one you
+	// edited.  A bad file there stops mattering the moment a real one arrives.
 	if (Zone_LoadJson(strcat("maps/zones/local/",  map, ".json"), ZSRC_LOCAL))
 		;
 	else if (Zone_LoadJson(strcat("maps/zones/online/", map, ".json"), ZSRC_ONLINE))
 		;
-	else
-		Zone_LoadFromBsp();
+	else if (Zone_LoadJson(strcat("maps/zones/dl/", map, ".json"), ZSRC_DL))
+		;
+	else if (!Zone_LoadFromBsp())
+	{
+		// No file and no brushes.  Either this map genuinely has no zones --
+		// the common case, 1,156 of the 1,743 we hand out -- or it was zoned
+		// after the release this install came from.  One request settles it.
+		ZoneDL_Want(map);
+	}
 
 	/*
 	  BUILD 81: the client hashes its own table too, and the value is NOT written
@@ -427,6 +452,12 @@ void() Zone_Draw =
 {
 	local float z, t, maxdist, dbg, drawn;
 	local vector eye, fwd, d;
+
+	// Before the map test, not after: a fetch that landed has to re-read the
+	// table on a map that has NOT changed, which is the one case that test
+	// cannot see.  Costs a float compare on every frame that has no download
+	// outstanding, which is almost all of them.
+	ZoneDL_Frame();
 
 	if (serverkey("map") != zone_mapname)
 		Zone_LoadForMap();

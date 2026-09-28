@@ -115,6 +115,10 @@
 #define ZSRC_LOCAL        1
 #define ZSRC_ONLINE       2
 #define ZSRC_BSP          3
+// CLIENT ONLY, and appended rather than inserted so the three values the .rec
+// header has always carried keep their numbers.  The server never produces it
+// -- sv_zones.qc does not read maps/zones/dl/ and must not; see cl_zonedl.qc.
+#define ZSRC_DL           4
 
 // Structure-of-arrays rather than entities: the renderer walks all of them
 // every frame and the timer's broad phase will too, so locality matters more
@@ -203,6 +207,7 @@ string(float s) Zone_SourceName =
 {
 	if (s == ZSRC_LOCAL)  return "maps/zones/local";
 	if (s == ZSRC_ONLINE) return "maps/zones/online";
+	if (s == ZSRC_DL)     return "maps/zones/dl";
 	if (s == ZSRC_BSP)    return "bsp entities";
 	return "none";
 };
@@ -213,6 +218,7 @@ string(float s) Zone_SourceTag =
 {
 	if (s == ZSRC_LOCAL)  return "local";
 	if (s == ZSRC_ONLINE) return "online";
+	if (s == ZSRC_DL)     return "dl";
 	if (s == ZSRC_BSP)    return "bsp";
 	return "none";
 };

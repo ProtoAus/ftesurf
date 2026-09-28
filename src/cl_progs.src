@@ -122,6 +122,11 @@ client/cl_watch.qc
 // in csprogs that ever wants uri_get has to branch inside it rather than
 // declare its own -- the same constraint m_lobby.qc documents for the menu.
 client/cl_online.qc
+// AFTER cl_online.qc, and that is the whole reason it is its own file: it
+// takes request ids from Online_NextReq and is branched to from that file's
+// URI_Get_Callback, so it cannot live in cl_zones.qc (line 103, far above).
+// cl_zones.qc forward-declares the one function it calls back into.
+client/cl_zonedl.qc
 // Patch 340, player customization.  Three files, one direction of dependency:
 // cl_chat (the CSQC_Parse_Print hook, the ring, the silence list) needs nothing
 // but sh_font; cl_avatar (the `hud_player` customizer, the palette mirror,

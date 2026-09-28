@@ -138,6 +138,9 @@
 // Patch 340, defined in cl_players.qc (compiled after this file): copy the
 // fresh rows into the room list's own per-hash best-main table.
 void() Players_AbsorbBoard;
+// cl_zonedl.qc, which compiles after this file because it needs Online_NextReq.
+// Returns TRUE when the reply was one of its own -- see URI_Get_Callback.
+float(float reqid, float code, string bdy) ZoneDL_Reply;
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
@@ -1166,6 +1169,14 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		or_state = ORS_READY;
 		return;
 	}
+
+	// THE THIRD CONSUMER.  cl_zonedl.qc takes its ids from Online_NextReq like
+	// everything else here, so the only thing that can tell its replies apart
+	// is this branch; it returns TRUE when the id was one of its own.  It goes
+	// before the board test for the same reason the replay branch does -- the
+	// board test below is a bare inequality and would swallow anything left.
+	if (ZoneDL_Reply(reqid, responsecode, resourcebody))
+		return;
 
 	if (reqid != ob_req)
 		return;                 // a board we have already replaced, or not ours
