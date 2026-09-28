@@ -1,24 +1,29 @@
 <!doctype html>
 <!-- Served by surfd at /board/, proxied from proto.bar/ftesurf/board/.
-     Every URL here is relative: surfd and the browser see different prefixes. -->
+     Every URL here is relative: surfd and the browser see different prefixes.
+     Five views live in this one document, switched by the hash; board.js owns
+     which is visible and runview.js draws the run. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>FTESurf Leaderboard</title>
-<meta name="description" content="Times on every zoned FTESurf map, from the official servers.">
+<meta name="description" content="Times on every zoned FTESurf map, from the official servers, alongside imported Momentum and KSF records.">
 <link rel="stylesheet" href="board.css">
+<script src="runview.js" defer></script>
 <script src="board.js" defer></script>
 </head>
 <body>
 <div class="wrap">
 
-  <nav class="tabs"><a href="../">Download</a> <a href="./" aria-current="page">Leaderboard</a></nav>
+  <nav class="tabs"><a href="../">Download</a> <a href="./" aria-current="page">Leaderboard</a>
+    <a href="#who=">Players</a></nav>
 
   <header class="mast">
     <h1><a class="mark" href="../">FTE<span class="surf">SURF</span></a></h1>
-    <p class="tagline">Times from the official servers, on every zoned map.</p>
+    <p class="tagline">Times from the official servers, on every zoned map &mdash; with
+      imported Momentum and KSF records beside them.</p>
   </header>
 
   <p id="err" class="err" role="alert" hidden></p>
@@ -31,19 +36,25 @@
         <button type="button" class="chip" data-sort="active" aria-pressed="true">Active</button>
         <button type="button" class="chip" data-sort="az" aria-pressed="false">A-Z</button>
         <button type="button" class="chip" data-sort="runs" aria-pressed="false">Most runs</button>
+        <button type="button" class="chip" data-sort="times" aria-pressed="false">Most times</button>
+        <button type="button" class="chip" data-sort="demos" aria-pressed="false">Most demos</button>
+        <button type="button" class="chip" data-sort="tier" aria-pressed="false">By tier</button>
       </div>
     </div>
+    <div id="tiers" class="chips tierrow" role="group" aria-label="Filter by difficulty tier" hidden></div>
     <p id="summary" class="summary">Loading maps&hellip;</p>
     <ul id="maps" class="req"></ul>
   </section>
 
   <section id="map" hidden>
-    <a id="back" class="back" href="#">&larr; All maps</a>
+    <a class="back" href="#">&larr; All maps</a>
     <h2 id="title" class="maptitle"></h2>
+    <div id="srcs" class="tabrow seg" role="group" aria-label="Source"></div>
     <div id="legs" class="tabrow" role="group" aria-label="Track"></div>
     <div class="tabrow">
       <span id="styles" class="seg" role="group" aria-label="Style"></span>
     </div>
+    <p id="mapnote" class="note" hidden></p>
     <p id="empty" class="summary" hidden></p>
     <table id="table" class="runs" hidden>
       <thead><tr><th class="num">#</th><th>Player</th><th class="num">Time</th>
@@ -53,8 +64,62 @@
     <button id="more" class="more" type="button" hidden>Show more</button>
   </section>
 
+  <section id="run" hidden>
+    <a class="back" href="#">&larr; All maps</a>
+    <h2 id="runtitle" class="runtitle"></h2>
+    <p id="runsub" class="runsub"></p>
+    <p id="runwarn" class="note note-imported" hidden></p>
+    <div id="runstats" class="stats"></div>
+    <div id="runcanvas" class="runview"></div>
+    <div id="splitwrap" hidden>
+      <h3 class="minor">Splits</h3>
+      <ul id="runsplits" class="splits"></ul>
+    </div>
+    <details class="drop">
+      <summary>Recording details</summary>
+      <dl id="runhead" class="kv"></dl>
+      <p><a id="rundl" class="button" href="#">Download the .rec</a></p>
+      <p class="note">A <code>.rec</code> is the server&rsquo;s own recording of the
+        run. The game replays it with <code>replay</code>; this page reads the
+        same file.</p>
+    </details>
+  </section>
+
+  <section id="people" hidden>
+    <a class="back" href="#">&larr; All maps</a>
+    <h2 class="maptitle">Players</h2>
+    <div class="tools">
+      <input id="pq" type="search" placeholder="Search players" autocomplete="off"
+             spellcheck="false" aria-label="Search players">
+    </div>
+    <p id="psummary" class="summary"></p>
+    <ul id="people-list" class="req"></ul>
+  </section>
+
+  <section id="player" hidden>
+    <a class="back" href="#who=">&larr; All players</a>
+    <h2 id="ptitle" class="maptitle"></h2>
+    <p id="psub" class="runsub"></p>
+    <div id="pstats" class="stats"></div>
+    <div id="compwrap" hidden>
+      <h3 class="minor">Maps finished, by difficulty</h3>
+      <div id="pcomp" class="comp"></div>
+    </div>
+    <p id="compnote" class="note" hidden></p>
+    <h3 class="minor">Results, best first</h3>
+    <table id="ptable" class="runs" hidden>
+      <thead><tr><th class="num">Place</th><th>Map</th><th class="legcol">Leg</th>
+        <th class="num">Time</th><th class="datecol">Date</th><th></th></tr></thead>
+      <tbody id="prows"></tbody>
+    </table>
+  </section>
+
   <footer>
     <p><span class="vchip">VERIFIED</span> the server re-simulated the recording exactly, or it was reviewed.</p>
+    <p><span class="src src-momentum">MOM</span> <span class="src src-ksf">KSF</span>
+      imported from Momentum Mod and the KSF servers. The times are theirs;
+      imported lines are reconstructed from demos and are lower fidelity than
+      runs recorded here.</p>
     <p><a class="dimlink" href="https://play.proto.bar/admin/runs">Run review</a></p>
   </footer>
 

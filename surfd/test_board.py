@@ -1406,7 +1406,7 @@ c = m.app.test_client()
 bodies = {}
 for path in ("/api/board?map=surf_test", "/board/api/maps",
              "/board/api/map?map=surf_test", "/board/", "/board/board.js",
-             "/board/board.css"):
+             "/board/board.css", "/board/runview.js", "/board/api/players"):
     resp = c.get(path, environ_base={"REMOTE_ADDR": "127.0.0.1"})
     bodies[path] = (resp.status_code, resp.get_data(as_text=True))
 check("every public body answered 200",

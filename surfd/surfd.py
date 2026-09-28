@@ -33,6 +33,8 @@ import time
 
 from flask import Flask, Response, g, jsonify, request, send_file
 
+import recplot          # .rec -> plot data; stdlib only, never raises
+
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
@@ -994,6 +996,17 @@ def migrate():
             # conforming server, but the board must not be the thing that
             # assumes so.  ticks is kept beside it because it is the exact
             # integer the game ranks and names files by (FS_RunStamp).
+            #
+            # `submitted` MEANS "WHEN THE RUN WAS SET", NOT "WHEN WE HEARD".
+            # For a ranked or community row the two are the same instant.  For
+            # an IMPORTED row they are not, and the source's own date wins:
+            # momboards.py takes the API's `created`, ksfimport.py takes KSF's
+            # `date`, and momdates.py backfilled the rows imported before that
+            # (85,085 of them all read their ingest day, which the web board's
+            # Date column shows).  Safe because nothing reads an import's ingest
+            # time -- staleness is per-file mtime and no review exists on an
+            # import -- and it makes BOARD_ORDER's `submitted` tiebreak truer:
+            # on equal times the run set first ranks first.
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS runs (
@@ -3571,7 +3584,8 @@ def replay(rid):
 # a cookie.  Public JSON carries no player id, verdict, reason or review.
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css"}
+WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css",
+             "runview.js": "text/javascript"}
 WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
 WEB_MAPS_TTL = 60        # seconds the serialized maps list is reused
 WEB_PAGE = 50            # rows per /board/api/map call
@@ -3582,6 +3596,10 @@ WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
 # community (demoted) run is never counted or listed here.  A map opens on the
 # first of these with rows, else the first board it has.
 WEB_DEFAULT_BOARDS = ((0, 0, STYLE_CLEAN), (0, 0, STYLE_SEGMENTED))
+# Which tiers a public caller may ask for by name.  `ranked` is still what
+# an absent parameter means, so every link shared before this existed opens
+# the board it opened then.
+WEB_READ_TIERS = (TIER_RANKED, TIER_IMPORTED, TIER_COMBINED)
 
 _web_lock = threading.Lock()
 _web_maps = {"at": None, "body": b""}
@@ -3621,31 +3639,50 @@ def web_asset(name):
 
 
 def _web_maps_body(now):
-    """Every zoned map with a BSP, plus every map with ranked runs, with its
-    main ranked clean WR.  The WR window orders by BOARD_ORDER, so it is always
-    /api/board's row 1."""
+    """Every zoned map with a BSP, every map with ranked runs, and every map we
+    hold imported times for, with its main ranked clean WR.  The WR window
+    orders by BOARD_ORDER, so it is always /api/board's row 1.
+
+    IMPORTED-ONLY MAPS ARE LISTED AND MARKED, not hidden.  We hold times and
+    demos for maps this box has no BSP for, and that is most of the archive --
+    listing them is the difference between 36 maps with something on them and
+    600.  `have` says whether it can actually be loaded here.
+    """
     bsp, zoned = map_index()
     db = get_db()
     stats = {r["map"]: r for r in db.execute(
         "SELECT map, COUNT(*) AS runs, MAX(submitted) AS last"
         "  FROM runs WHERE tier=? GROUP BY map", (TIER_RANKED,)).fetchall()}
+    imp = {r["map"]: r for r in db.execute(
+        "SELECT map, COUNT(*) AS n, SUM(CASE WHEN replay_id > 0 THEN 1 ELSE 0 END)"
+        "       AS reps FROM runs WHERE tier IN (?,?) GROUP BY map",
+        TIERS_IMPORTED).fetchall()}
+    tiers = map_tiers()
     wrs = {r["map"]: r for r in db.execute(
         "SELECT r.map, r.name, r.millis, " + VER_SQL + " AS ver FROM ("
         "  SELECT map, name, millis, replay_id, ROW_NUMBER() OVER"
         "         (PARTITION BY map ORDER BY " + BOARD_ORDER + ") AS k"
         "    FROM runs WHERE track=0 AND leg=0 AND tier=? AND style=?) r"
         " WHERE r.k = 1", (TIER_RANKED, STYLE_CLEAN)).fetchall()}
+    playable = set(bsp) & set(zoned)
     maps = []
-    for key in sorted((set(bsp) & set(zoned)) | set(stats)):
-        st, wr = stats.get(key), wrs.get(key)
-        maps.append({
+    for key in sorted(playable | set(stats) | set(imp)):
+        st, wr, im = stats.get(key), wrs.get(key), imp.get(key)
+        row = {
             "map": bsp.get(key, key),
             "runs": st["runs"] if st else 0,
             "last": st["last"] if st else 0,
+            "imp": im["n"] if im else 0,
+            "reps": im["reps"] if im else 0,
+            "have": 1 if key in playable else 0,
             "wr": ({"name": wr["name"], "ms": wr["millis"], "ver": wr["ver"]}
                    if wr else None),
-        })
-    return json.dumps({"v": 1, "t": now, "maps": maps},
+        }
+        if tiers is not None and key in tiers:
+            row["mt"] = tiers[key]
+        maps.append(row)
+    return json.dumps({"v": 1, "t": now, "tiers": tiers is not None,
+                       "maps": maps},
                       separators=(",", ":")).encode("utf-8")
 
 
@@ -3678,7 +3715,14 @@ def web_map():
     mapname = clean_map(request.args.get("map"))
     if not mapname:
         return fail(400, "bad map")
-    # `tier` is not a parameter: old links that carry one still open ranked.
+    # `tier` IS a parameter now -- but only the three names in WEB_READ_TIERS,
+    # and ANYTHING ELSE STILL FALLS TO RANKED rather than failing.  That is not
+    # laxness about typos: the route shipped ignoring this parameter outright,
+    # so links carrying `tier=community` exist and test_web.py pins that they
+    # open the ranked board.  A 400 here is a 400 on somebody's old bookmark.
+    tier = request.args.get("tier") or TIER_RANKED
+    if tier not in WEB_READ_TIERS:
+        tier = TIER_RANKED
     raw = {k: request.args.get(k, "") for k in ("track", "leg", "style")}
     track = strict_int(raw["track"] or 0, 0, MAX_TRACK)
     leg = strict_int(raw["leg"] or 0, 0, MAX_LEG)
@@ -3692,30 +3736,449 @@ def web_map():
     bsp, zoned = map_index()
     try:
         db = get_db()
+        # The board LIST counts every readable tier per leg, so the leg tabs
+        # can show a stage that only imported times exist for.  `n` is the
+        # ranked count, kept under its old name, and `ni` the imported one.
         boards = [{"track": r["track"], "leg": r["leg"], "style": r["style"],
-                   "n": r["n"]} for r in db.execute(
-            "SELECT track, leg, style, COUNT(*) AS n FROM runs"
-            " WHERE map=? AND tier=? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
-            (mapname, TIER_RANKED)).fetchall()]
+                   "n": r["nr"], "ni": r["nim"]} for r in db.execute(
+            "SELECT track, leg, style,"
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nr,"
+            "       SUM(CASE WHEN tier IN (?,?) THEN 1 ELSE 0 END) AS nim"
+            "  FROM runs WHERE map=? AND tier IN (?,?,?)"
+            " GROUP BY 1, 2, 3 HAVING nr + nim > 0 ORDER BY 1, 2, 3",
+            (TIER_RANKED,) + TIERS_IMPORTED + (mapname, TIER_RANKED)
+            + TIERS_IMPORTED).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
         if not any(raw.values()) and boards:
             have = [(b["track"], b["leg"], b["style"]) for b in boards]
             track, leg, style = next(
                 (d for d in WEB_DEFAULT_BOARDS if d in have), have[0])
-        n = board_counts(db, mapname, track, leg, style)[TIER_RANKED]
-        rows = board_rows(db, mapname, track, leg, TIER_RANKED, style,
+        counts = board_counts(db, mapname, track, leg, style)
+        n = sum(counts[t] for t in TIER_EXPAND.get(tier, (tier,)))
+        rows = board_rows(db, mapname, track, leg, tier, style,
                           WEB_PAGE, offset)
     except sqlite3.Error as exc:
         log.exception("web map db error: %s", exc)
         return fail(500, "storage error")
+    # The handle replaces the id in place: a profile link needs SOMETHING
+    # stable per player, and `player` itself is a credential (see web_handle).
     for row in rows:
+        row["who"] = web_handle(row["player"])
+        row["ext"] = web_ext(row.get("tr", tier), row["player"])
         del row["player"]
-    return _json({"v": 1, "t": now, "map": mapname,
-                  "disp": bsp.get(mapname, mapname), "boards": boards,
-                  "track": track, "leg": leg, "style": style, "n": n,
-                  "offset": offset, "limit": WEB_PAGE, "rows": rows},
-                 "max-age=15")
+    tiers = map_tiers()
+    out = {"v": 1, "t": now, "map": mapname,
+           "disp": bsp.get(mapname, mapname), "boards": boards,
+           "tier": tier, "counts": counts,
+           "track": track, "leg": leg, "style": style, "n": n,
+           "have": 1 if (mapname in bsp and mapname in zoned) else 0,
+           "offset": offset, "limit": WEB_PAGE, "rows": rows}
+    if tiers is not None and mapname in tiers:
+        out["mt"] = tiers[mapname]
+    return _json(out, "max-age=15")
+
+
+# --------------------------------------------------------------------------
+# Public player pages, the run viewer and the difficulty tiers
+# --------------------------------------------------------------------------
+#
+# THE PUBLIC HANDLE IS A HASH, AND THAT IS NOT DECORATION.  `runs.player` is
+# the client's guid -- 32 hex derived from its qkey -- and a client writes its
+# own qkey, so a published guid is a published identity: anyone could file
+# times as that player from a keyed server.  web_map's `del row["player"]` is
+# load-bearing, and a profile page still needs a stable id, so the id is
+# sha256(guid)[:12] and the guid never leaves the process.  128 bits of guid
+# is not walked back from 48 bits of digest.
+#
+# An imported row holds a steamid64 in that same column, which is already
+# public on Momentum's own board, so those rows also carry `steam` -- gated on
+# the tier in ONE place (web_ext), with a test that a ranked row never has it.
+WEB_HANDLE_LEN = 12
+WEB_PEOPLE_TTL = 300     # s the player directory is reused
+WEB_PEOPLE_FLOOR = 30    # s; a miss may not rebuild more often than this
+WEB_SEARCH_MAX = 60      # players one search returns
+WEB_PROFILE_ROWS = 100   # rows on one profile page
+WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
+
+# What a public run page may see of a recording's header.  AN ALLOWLIST AND NOT
+# A BLOCKLIST: `mapcrc`, `zonecrc`, `zonerule`, `nonce` and `pmpin` are the
+# integrity surface, and a blocklist ships the next key that gets added.
+WEB_HEAD_KEYS = ("map", "track", "leg", "startseg", "tickrate", "movetickrate",
+                 "clock", "flags")
+# Kinds whose file a public caller may plot.  `evidence` is deliberately absent.
+WEB_RUN_KINDS = ("run", "momentum")
+# Tiers whose recordings are public.  Community runs are demoted and the web
+# board has never listed them (Patch 355), so their paths stay private too.
+WEB_RUN_TIERS = (TIER_RANKED,) + TIERS_IMPORTED
+
+MOMTRACKS_PATH = os.environ.get("SURFD_MOMTRACKS",
+                                os.path.join(DATA_DIR, "momtracks.tsv"))
+MOMTRACKS_TTL = 900
+
+_people_lock = threading.Lock()
+_people = {"at": -1e9, "by_handle": {}, "list": []}
+_mt_lock = threading.Lock()
+_mt = {"at": -1e9, "tier": None}
+
+# Mirrors board.js `plain()` -- Quake colour codes, so a search for "boro"
+# matches "^1boro".  TWO COPIES OF ONE RULE: the JS strips for display, this
+# strips for matching, and a drift shows up as a search that misses a name the
+# page renders plainly.  Change both.
+_QCOL = re.compile(r"\^(\^|x[0-9A-Fa-f]{3}|&[0-9A-Fa-f-]{2}|[0-9abhmrsu])")
+
+
+def web_plain(name):
+    return _QCOL.sub(lambda m: "^" if m.group(1) == "^" else "", name or "")
+
+
+def web_handle(player):
+    """The public id for one `runs.player` value."""
+    return hashlib.sha256(
+        (player or "").encode("utf-8", "replace")).hexdigest()[:WEB_HANDLE_LEN]
+
+
+def web_ext(tier, player):
+    """The outbound id for an imported row, or None.
+
+    THE ONE PLACE A RAW IDENTITY LEAVES THE PROCESS, so it is one predicate in
+    one function rather than a condition at each call site.  A momentum or ksf
+    row's `player` is a steamid64 that their own leaderboard publishes; a
+    ranked row's is a guid and must never appear.
+    """
+    if tier in TIERS_IMPORTED and player and player.isdigit():
+        return player
+    return None
+
+
+def map_tiers(now=None):
+    """map name -> Momentum's difficulty tier (1-10), or None when the
+    catalogue is not on this box.
+
+    NONE IS NOT AN EMPTY DICT.  A missing TSV means the tier of every map is
+    unknown, and a caller that cannot tell those two apart reports "0 of 64
+    tier-1 maps" for a box that merely has no catalogue.  tools/msml.py --out
+    writes the file; surfd never fetches it.
+    """
+    now = time.monotonic() if now is None else now
+    with _mt_lock:
+        if now - _mt["at"] < MOMTRACKS_TTL:
+            return _mt["tier"]
+    tier = None
+    try:
+        with open(MOMTRACKS_PATH, "r", encoding="utf-8", errors="replace") as fh:
+            tier = {}
+            for line in fh:
+                if line.startswith("#"):
+                    continue
+                f = line.rstrip("\n").split("\t")
+                if len(f) < 3:
+                    continue
+                name = clean_map(f[0])
+                try:
+                    t = int(f[2])
+                except ValueError:
+                    continue
+                # The TSV has one row per BOARD, so a map repeats; every row of
+                # a map carries the same main-track tier.  0 means unrated.
+                if name and 1 <= t <= 20:
+                    tier[name] = t
+    except OSError as exc:
+        log.info("no map difficulty catalogue at %s (%s)", MOMTRACKS_PATH, exc)
+    with _mt_lock:
+        _mt["at"], _mt["tier"] = now, tier
+    return tier
+
+
+def _people_build(db):
+    """(by_handle, list) -- one pass over `runs`, the directory for search and
+    the reverse of web_handle in the same structure."""
+    rows = {}
+    for r in db.execute(
+            "SELECT player, COUNT(*) AS n, COUNT(DISTINCT map) AS maps,"
+            "       MAX(submitted) AS last,"
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ranked,"
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS mom,"
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ksf"
+            "  FROM runs WHERE tier IN (?,?,?) GROUP BY player",
+            (TIER_RANKED, TIER_MOMENTUM, TIER_KSF,
+             TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall():
+        rows[r["player"]] = {"n": r["n"], "maps": r["maps"], "last": r["last"],
+                             "ranked": r["ranked"], "mom": r["mom"],
+                             "ksf": r["ksf"], "name": ""}
+    # The display name is the one filed most recently: `runs.name` is rewritten
+    # every time that player improves, so the newest row holds the name they go
+    # by now.  A window function, so it is one pass and not one query a player.
+    for r in db.execute(
+            "SELECT player, name FROM ("
+            "  SELECT player, name, ROW_NUMBER() OVER (PARTITION BY player"
+            "         ORDER BY submitted DESC, rowid DESC) AS k"
+            "    FROM runs WHERE tier IN (?,?,?)) WHERE k=1",
+            (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall():
+        if r["player"] in rows:
+            rows[r["player"]]["name"] = r["name"]
+
+    by_handle, out = {}, []
+    for player, e in rows.items():
+        h = web_handle(player)
+        by_handle[h] = player
+        e["who"] = h
+        e["key"] = web_plain(e["name"]).lower()
+        e["src"] = ("ranked" if e["ranked"] else
+                    "momentum" if e["mom"] else "ksf")
+        out.append(e)
+    out.sort(key=lambda e: (-e["n"], e["key"]))
+    return by_handle, out
+
+
+def web_people(db, now):
+    """The cached player directory, rebuilt at most every WEB_PEOPLE_TTL."""
+    with _people_lock:
+        at, by_handle, lst = _people["at"], _people["by_handle"], _people["list"]
+    if now - at < WEB_PEOPLE_TTL:
+        return by_handle, lst
+    by_handle, lst = _people_build(db)
+    with _people_lock:
+        _people["at"] = now
+        _people["by_handle"], _people["list"] = by_handle, lst
+    return by_handle, lst
+
+
+def player_of(db, handle, now):
+    """The guid behind a public handle, or None.
+
+    A MISS MAY REBUILD THE DIRECTORY, BUT NOT ON DEMAND.  Any string is a
+    candidate handle, so rebuilding on every miss hands a caller a full table
+    scan per request; below the floor a miss costs one dict lookup.
+    """
+    with _people_lock:
+        at, by_handle = _people["at"], _people["by_handle"]
+    if handle in by_handle and now - at < WEB_PEOPLE_TTL:
+        return by_handle[handle]
+    if now - at < WEB_PEOPLE_FLOOR:
+        return by_handle.get(handle)
+    by_handle, _lst = web_people(db, now)
+    return by_handle.get(handle)
+
+
+def people_reset():
+    """Drop the directory and the difficulty catalogue.  For tests."""
+    with _people_lock:
+        _people["at"], _people["by_handle"], _people["list"] = -1e9, {}, []
+    with _mt_lock:
+        _mt["at"], _mt["tier"] = -1e9, None
+
+
+@app.get("/board/api/players")
+def web_players():
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+    q = web_plain(clean_text(request.args.get("q"), 64) or "").lower()
+    try:
+        _by_handle, people = web_people(get_db(), now)
+    except sqlite3.Error as exc:
+        log.exception("web players db error: %s", exc)
+        return fail(500, "storage error")
+    hits = [e for e in people if not q or q in e["key"]]
+    out = [{"who": e["who"], "name": e["name"], "n": e["n"], "maps": e["maps"],
+            "last": e["last"], "src": e["src"], "ranked": e["ranked"],
+            "mom": e["mom"], "ksf": e["ksf"]}
+           for e in hits[:WEB_SEARCH_MAX]]
+    return _json({"v": 1, "t": now, "q": q, "n": len(hits),
+                  "limit": WEB_SEARCH_MAX, "players": out}, "max-age=30")
+
+
+def _completion(db, player, tiers):
+    """Maps finished per difficulty tier, against what the site holds.
+
+    A MAP IS FINISHED WHEN THE MAIN TRACK IS (track 0, leg 0).  A stage time is
+    not a completion and neither is a bonus, which is the same rule the game's
+    own map list uses to colour a map done.
+
+    `tiers` None (no catalogue) returns None, not an empty table: see map_tiers.
+    """
+    if tiers is None:
+        return None
+    done = {r["map"] for r in db.execute(
+        "SELECT DISTINCT map FROM runs WHERE player=? AND track=0 AND leg=0"
+        " AND tier IN (?,?,?)",
+        (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()}
+    # The denominator is the maps this site actually knows a main board for,
+    # not every map Momentum has rated -- a percentage against maps nobody here
+    # can load is not a completion figure.
+    have = {r["map"] for r in db.execute(
+        "SELECT DISTINCT map FROM runs WHERE track=0 AND leg=0"
+        " AND tier IN (?,?,?)",
+        (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()}
+    bsp, zoned = map_index()
+    have |= (set(bsp) & set(zoned))
+    table = {}
+    for m in have:
+        t = tiers.get(m)
+        if t is None:
+            continue
+        row = table.setdefault(t, {"tier": t, "of": 0, "done": 0})
+        row["of"] += 1
+        if m in done:
+            row["done"] += 1
+    untiered = sum(1 for m in have if m not in tiers)
+    return {"tiers": [table[k] for k in sorted(table)],
+            "untiered": untiered,
+            "done": len(done & have), "of": len(have)}
+
+
+@app.get("/board/api/player/<handle>")
+def web_player(handle):
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+    if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
+        return fail(400, "bad player")
+    offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+    try:
+        db = get_db()
+        player = player_of(db, handle, now)
+        if player is None:
+            return fail(404, "no such player")
+        _by_handle, people = web_people(db, now)
+        me = next((e for e in people if e["who"] == handle), None)
+        if me is None:                       # raced the rebuild; the row is gone
+            return fail(404, "no such player")
+
+        # ONE WINDOW OVER BOARD_ORDER, not a rank query per row: the ordering
+        # string is the same constant /api/board pages with, so the rank shown
+        # here and the rank shown there cannot drift.  rank_of() is the
+        # row-at-a-time form of exactly this and test_web.py compares them.
+        rows = db.execute(
+            "SELECT map, track, leg, tier, style, name, millis, ticks,"
+            "       submitted, replay_id, rk, of FROM ("
+            "  SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.map, r.track,"
+            "           r.leg, r.tier, r.style ORDER BY " + BOARD_ORDER
+            + "        ) AS rk,"
+            "         COUNT(*) OVER (PARTITION BY r.map, r.track, r.leg,"
+            "           r.tier, r.style) AS of"
+            "    FROM runs r JOIN (SELECT DISTINCT map, track, leg, tier, style"
+            "                        FROM runs WHERE player=?) m"
+            "      ON r.map=m.map AND r.track=m.track AND r.leg=m.leg"
+            "     AND r.tier=m.tier AND r.style=m.style"
+            "   WHERE r.tier IN (?,?,?))"
+            # PEOPLE BEATEN, not placing and not board size.  Both of the
+            # obvious orderings were tried against a real profile and both put
+            # nonsense at the top: `rk ASC` led with #1 of 1 (a stage board
+            # nobody else is on -- that profile has 35 of them and 0 contested
+            # firsts), and `of DESC` led with #501 of 501, dead last on the
+            # busiest board.  `of - rk` is how many people the row is ahead of,
+            # which is the thing a reader means by a good result.
+            " WHERE player=? ORDER BY (of - rk) DESC, rk ASC, millis ASC"
+            " LIMIT ? OFFSET ?",
+            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF, player,
+             WEB_PROFILE_ROWS, offset)).fetchall()
+        # A FIRST PLACE ON A BOARD OF ONE IS NOT A RECORD, and on an imported
+        # archive most stage boards have exactly one row -- the only person we
+        # hold a time for.  Counting those made a profile read "35 records"
+        # where 34 of them were boards nobody else is on.  `wr` stays the raw
+        # count; `wrc` is the contested one and is what the page leads with.
+        wr = db.execute(
+            "SELECT SUM(CASE WHEN rk = 1 THEN 1 ELSE 0 END) AS n,"
+            "       SUM(CASE WHEN rk = 1 AND of > 1 THEN 1 ELSE 0 END)"
+            "       AS contested,"
+            "       SUM(CASE WHEN of > 1 THEN 1 ELSE 0 END) AS top10"
+            "  FROM ("
+            "  SELECT r.player, ROW_NUMBER() OVER (PARTITION BY r.map, r.track,"
+            "           r.leg, r.tier, r.style ORDER BY " + BOARD_ORDER
+            + "        ) AS rk,"
+            "         COUNT(*) OVER (PARTITION BY r.map, r.track, r.leg,"
+            "           r.tier, r.style) AS of"
+            "    FROM runs r JOIN (SELECT DISTINCT map, track, leg, tier, style"
+            "                        FROM runs WHERE player=?) m"
+            "      ON r.map=m.map AND r.track=m.track AND r.leg=m.leg"
+            "     AND r.tier=m.tier AND r.style=m.style"
+            "   WHERE r.tier IN (?,?,?))"
+            " WHERE player=? AND rk <= 10",
+            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF, player)).fetchone()
+        comp = _completion(db, player, map_tiers())
+    except sqlite3.Error as exc:
+        log.exception("web player db error: %s", exc)
+        return fail(500, "storage error")
+
+    bsp, _zoned = map_index()
+    out = []
+    for r in rows:
+        out.append({"map": r["map"], "disp": bsp.get(r["map"], r["map"]),
+                    "track": r["track"], "leg": r["leg"], "tr": r["tier"],
+                    "style": r["style"], "name": r["name"], "ms": r["millis"],
+                    "when": r["submitted"], "rep": r["replay_id"] or 0,
+                    "r": r["rk"], "of": r["of"]})
+    return _json({"v": 1, "t": now, "who": handle, "name": me["name"],
+                  "src": me["src"], "n": me["n"], "maps": me["maps"],
+                  "last": me["last"], "wr": (wr["n"] or 0) if wr else 0,
+                  "wrc": (wr["contested"] or 0) if wr else 0,
+                  "top10": (wr["top10"] or 0) if wr else 0,
+                  "by_tier": {"ranked": me["ranked"], "momentum": me["mom"],
+                              "ksf": me["ksf"]},
+                  "ext": web_ext(me["src"], player),
+                  "completion": comp, "offset": offset,
+                  "limit": WEB_PROFILE_ROWS, "rows": out}, "max-age=30")
+
+
+@app.get("/board/api/run/<int:rid>")
+def web_run(rid):
+    """One recording as plot data: the moving dot, the speed trace and the
+    marks, from recplot -- the same parser the admin run page reads.
+
+    WHAT MAKES THIS SAFE TO EXPOSE is that the caller names a `replays` row and
+    surfd decides which file that is (see /api/replay's own note), the kind and
+    tier are checked against allowlists, and only WEB_HEAD_KEYS of the header
+    is serialised.  A rejected run is a 404 here because it is absent from the
+    board: a path nobody can find a row for should not be reachable by id.
+    """
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RUN_MAX, "webrun"):
+        return fail(429, "rate limited")
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT p.id, p.map, p.map_dir, p.track, p.leg, p.leaf, p.kind,"
+            "       p.tier, p.style, p.player, p.name, p.ticks, p.tickrate,"
+            "       p.millis, p.submitted, p.bytes, " + _REJECTED_SQL
+            + " AS rejected FROM replays p WHERE p.id=?", (rid,)).fetchone()
+    except sqlite3.Error as exc:
+        log.exception("web run db error: %s", exc)
+        return fail(500, "storage error")
+    if row is None:
+        return fail(404, "no such run")
+    if (row["kind"] not in WEB_RUN_KINDS or row["tier"] not in WEB_RUN_TIERS
+            or row["rejected"]):
+        return fail(404, "no such run")
+
+    path, why = replay_file(row)
+    if path is None:
+        if why != "missing":
+            log.error("web run %d refused (%s): %r/%r", rid, why,
+                      row["map_dir"], row["leaf"])
+        return fail(404, "no recording on this node")
+    plot = recplot.parse(path)
+    if not plot.get("ok"):
+        log.warning("web run %d unplottable: %s", rid, plot.get("error"))
+        return fail(422, "the recording could not be read")
+
+    bsp, _zoned = map_index()
+    head = {k: plot["head"][k] for k in WEB_HEAD_KEYS if k in plot["head"]}
+    return _json({
+        "v": 1, "t": now, "rid": rid,
+        "map": row["map"], "disp": bsp.get(row["map"], row["map"]),
+        "track": row["track"], "leg": row["leg"], "tr": row["tier"],
+        "style": row["style"], "name": row["name"], "who": web_handle(row["player"]),
+        "ext": web_ext(row["tier"], row["player"]),
+        "ms": row["millis"], "ticks": row["ticks"], "when": row["submitted"],
+        "bytes": row["bytes"],
+        "head": head, "rate": plot["rate"], "n": plot["n"],
+        "stride": plot["stride"], "t_": plot["t"], "x": plot["x"],
+        "y": plot["y"], "z": plot["z"], "spd": plot["spd"],
+        "marks": plot["marks"], "splits": plot["splits"], "end": plot["end"],
+        "stats": plot["stats"], "truncated": plot["truncated"],
+    }, "max-age=300")
 
 
 @app.after_request
