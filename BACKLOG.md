@@ -1173,6 +1173,43 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   anywhere and wants deciding; `poop` and `surf_raqbonus3ramp` are gamedir-only
   with no upstream build and are not affected.
 
+  **THE KSF MIRROR RAN: 28 of the 31 are in, 3 are not.** `tools/ksffetch.py`
+  fetches the archives the roster names and extracts the BSP into the Momentum
+  install's `maps/` -- that dir and not another, because `mapsync.py` mirrors FROM
+  there to the Pi and `fs_addons.txt` mounts it first, so anywhere else is a map
+  you can play and cannot host. `surf_tycho2`, `surf_weirdcore` and `surf_yolo`
+  are still absent: the run was stopped by the harness for host memory pressure
+  partway through the 29th, not by any failure of its own. Re-running fetches only
+  those three, because the roster recomputes `avail` from what is on disk.
+  They are large -- surf_expel 335 MB, surf_crank 216 MB, surf_starvald 195 MB --
+  and the first cut of the fetcher read each whole file into memory before writing
+  it; it streams to disk now, which it should have done from the start.
+
+  **THE PIN GOT 12x WIDER AND IT CHANGED A VERDICT, which is the argument for the
+  `ev` column rather than a footnote to it.** Every one of the 5281 imported
+  `.rec` files carries a `mapbuild` line, so attested builds now cover 472 maps
+  where the `.mtv` demos reached 40: `pin ok` went 37 -> 467. **`surf_slobs` was
+  reported here as a build nobody plays and that was WRONG** -- it rested on a
+  single demo, and against 19 attestations our build is the most-played one. The
+  count of evidence has to travel with the verdict or a thin sample reads exactly
+  like a strong one.
+
+  **THE `.rec` HASH IS 39 CHARACTERS, NOT 40, AND THE TRUNCATION IS UPSTREAM.** A
+  `.wrpath` stores the map hash in a 40-BYTE field including its terminator, so it
+  keeps 39 of the 40 hex digits -- agtricks reads ...4C17940 where the `.mtv` says
+  ...4C17940F -- and `momimport.py` copies that into `mapbuild`. So the wide
+  source is a prefix and the exact one is whole. `maproster.py` matches by prefix
+  and folds the 39 into the 40 where both exist; without that fold every map
+  carrying both sources reads as contested when it is not.
+
+  **AND THE TWO `other` ROWS ARE NOW EXACTLY THE GAMEDIR PAIR**, which is the
+  cleanest statement of the shadowing problem above: `surf_dune` has **45**
+  attestations for a build this install does not load and `surf_fantasy` 5,
+  because `ftesurf/maps/` wins the mount and holds the CS:S cut of both. Nothing
+  else in 1748 maps contradicts the evidence. Deleting those two files resolves
+  both; whether they are deliberate fixtures is still unrecorded and still wants
+  deciding.
+
 ## Harness coverage
 
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE

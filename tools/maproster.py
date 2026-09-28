@@ -109,6 +109,9 @@ UA = "FTESurf-maproster/1.0 (+local surf/bhop map roster)"
 
 MTV_HASH_OFF = 80          # measured over 2888 demos: every one, no exceptions
 MTV_HASH_RE = re.compile(rb"[0-9A-F]{40}")
+# `mapbuild` in an imported .rec is the .wrpath's 39, not the .mtv's 40.
+REC_HASH_RE = re.compile(r"^[0-9A-Fa-f]{39,40}$")
+IMPORTED = os.path.join(DATA, "momentum")
 
 
 def surfbhop(name):
@@ -224,12 +227,36 @@ def cmd_hash(args):
 
 #  ------------------------------------------------- what Momentum publishes
 
-def published_hashes(demodir):
-    """-> {map: Counter(sha1)} from .mtv headers.  A map whose demos disagree
-    keeps every value; the caller decides, and `check` prints the split."""
+def _merge_prefixes(counter):
+    """Fold a 39-char value into the 40-char one it prefixes.
+
+    THE TRUNCATION IS REAL AND IT IS NOT OURS.  A `.wrpath` stores the hash in a
+    40-BYTE field including the terminator, so it keeps 39 of the 40 hex digits
+    and the last is gone -- agtricks reads ...4C17940 where the .mtv says
+    ...4C17940F.  `momimport.py` copies that into every `mapbuild` line, so the
+    wide source is 39 and the exact one is 40.  Without this merge the same
+    build counts as two and every map with both sources reads as contested."""
+    out = collections.Counter()
+    full = [h for h in counter if len(h) == 40]
+    for h, n in counter.items():
+        if len(h) == 39:
+            owner = next((f for f in full if f.startswith(h)), None)
+            out[owner or h] += n
+        else:
+            out[h] += n
+    return out
+
+
+def published_hashes(demodir, recdir):
+    """-> {map: Counter(hash)} of every build anybody attests to.
+
+    TWO SOURCES, because one is exact and the other is wide.  `.mtv` demos carry
+    the full 40 and cover 40 maps here; the imported `.rec` corpus carries
+    `mapbuild` (39, truncated upstream) and covers 472.  A map whose sources
+    disagree keeps every value -- the caller resolves and `check` prints the
+    split, because a majority pick that stays quiet drops builds that hold real
+    times."""
     pub = collections.defaultdict(collections.Counter)
-    if not os.path.isdir(demodir):
-        return pub
     for p in glob.glob(os.path.join(demodir, "*", "*.mtv")):
         try:
             head = open(p, "rb").read(256)
@@ -238,7 +265,25 @@ def published_hashes(demodir):
         m = MTV_HASH_RE.search(head, MTV_HASH_OFF - 8)
         if m:
             pub[os.path.basename(os.path.dirname(p)).lower()][m.group().decode().lower()] += 1
-    return pub
+    for p in glob.glob(os.path.join(recdir, "*", "*", "*.rec")):
+        try:
+            with io.open(p, encoding="utf-8", errors="replace") as fh:
+                for ln in fh:
+                    if ln.startswith("begin"):
+                        break
+                    if ln.startswith("mapbuild "):
+                        f = ln.split()
+                        if len(f) >= 2 and REC_HASH_RE.match(f[1]):
+                            pub[os.path.basename(os.path.dirname(os.path.dirname(p))).lower()][f[1].lower()] += 1
+                        break
+        except OSError:
+            continue
+    return {k: _merge_prefixes(v) for k, v in pub.items()}
+
+
+def attests(published, sha):
+    """Does `published` (40 exact, or 39 truncated) name the build `sha`?"""
+    return published == sha or (len(published) == 39 and sha.startswith(published))
 
 
 #  ------------------------------------------------------------ the catalogues
@@ -276,12 +321,15 @@ def cmd_fetch(args):
         req = urllib.request.Request(KSF_EMBED % fid, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=60) as r:
             html = r.read().decode("utf-8", errors="replace")
-        got = re.findall(r'<div class="flip-entry-title">([^<]+)</div>', html)
+        got = re.findall(r'href="https://drive\.google\.com/file/d/([0-9A-Za-z_\-]+)/view'
+                         r'[^"]*"[^>]*>.*?<div class="flip-entry-title">([^<]+)</div>',
+                         html, re.S)
         print("  folder %s: %d entries" % (fid[:12], len(got)))
-        names |= set(got)
+        names |= {(n.strip(), i) for i, n in got}
     with io.open(KSFDRIVE, "w", encoding="utf-8", newline="\n") as fh:
-        for x in sorted(names):
-            fh.write(x + "\n")
+        fh.write("# written by tools/maproster.py -- <filename>\\t<drive file id>\n")
+        for nm, fid in sorted(names):
+            fh.write("%s\t%s\n" % (nm, fid))
     print("ksf drive listing: %d names -> %s" % (len(names), KSFDRIVE))
     return 0
 
@@ -300,9 +348,10 @@ def read_ksf():
                                   (row.get("Type") or "-").strip() or "-")
     if os.path.exists(KSFDRIVE):
         for ln in io.open(KSFDRIVE, encoding="utf-8", errors="replace"):
-            ln = ln.strip()
-            if ln.lower().endswith((".rar", ".zip")):
-                arch[ln.rsplit(".", 1)[0].strip().lower()] = ln
+            f = ln.rstrip("\n").split("\t")
+            nm = f[0].strip()
+            if nm.lower().endswith((".rar", ".zip")):
+                arch[nm.rsplit(".", 1)[0].strip().lower()] = nm
     return roster, arch
 
 
@@ -313,7 +362,7 @@ def build_rows():
     cache = read_hashcache()
     meta = read_mapmeta()
     ksf, arch = read_ksf()
-    pub = published_hashes(DEMOS)
+    pub = published_hashes(DEMOS, IMPORTED)
 
     names = set(win)
     names |= {n for n in meta if surfbhop(n)}
@@ -335,20 +384,24 @@ def build_rows():
         src = src or "-"
 
         want = pub.get(name)
-        # `builds` is reported even when one value wins overwhelmingly.  A
-        # majority pick that stays quiet drops the minority build without a
-        # word, and those builds have real times on them -- surf_4am's has 20
-        # runs in the import corpus.  So the count travels with the row and the
-        # verdict distinguishes which side of it we are on.
+        # `builds` is reported even when one value wins overwhelmingly, because
+        # a majority pick that stays quiet drops the minority build without a
+        # word and those builds hold real times.  `ev` travels beside it for a
+        # blunter reason: THIS IS A COUNT OF WHAT WAS SEEN, NOT OF WHAT EXISTS.
+        # A wider corpus finds surf_4am on three builds where the sources here
+        # find two, so `builds` is a floor and `ev` says how much evidence it
+        # rests on -- without it, a later corpus raising the number reads as the
+        # tool having been wrong rather than as new evidence.
         builds = str(len(want)) if want else "-"
+        ev = str(sum(want.values())) if want else "-"
         if not want:
-            pin = "unknown"                       # nobody publishes a digest
+            pin = "unknown"                       # nobody attests to any build
         elif sha == "-":
             pin = "unknown"                       # we cannot hash it to compare
-        elif sha == want.most_common(1)[0][0]:
-            pin = "ok"                            # the most-played build
-        elif sha in want:
-            pin = "alt"                           # published, but not the popular cut
+        elif attests(want.most_common(1)[0][0], sha):
+            pin = "ok"                            # the most-attested build
+        elif any(attests(h, sha) for h in want):
+            pin = "alt"                           # attested, but not the popular cut
         else:
             pin = "other"
         stats[pin] += 1
@@ -357,7 +410,7 @@ def build_rows():
         if avail != "-" and w:
             avail = "-"                           # already installed; nothing to fetch
         rows.append((name, mode, src, have, sha, pin,
-                     mtier if mtier != "-" else ktier, ktype, avail, builds))
+                     mtier if mtier != "-" else ktier, ktype, avail, builds, ev))
     return rows, stats, len(win)
 
 
@@ -410,7 +463,7 @@ def cmd_check(args):
     name = args.map.lower()
     win, cache = resolve(), read_hashcache()
     meta, (ksf, arch) = read_mapmeta(), read_ksf()
-    pub = published_hashes(DEMOS)
+    pub = published_hashes(DEMOS, IMPORTED)
     print("map: %s" % name)
     w = win.get(name)
     print("  loaded from : %s" % (("%s  %s" % (w[0], w[1])) if w else "- (not installed)"))
