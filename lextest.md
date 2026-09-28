@@ -380,7 +380,7 @@ What I could establish without a hand on the game, and what I could not:
 
 *Established.* The per-hop maths was already correct. A tick-accurate simulator of
 the engine's own air movement, driving a PERFECT strafe, reads 100.0% through the
-old code -- so build 88's anchoring (launch point on one side, jump energy on the
+old code -- so build 89's anchoring (launch point on one side, jump energy on the
 other) telescopes exactly, and the tickrate was already handled. That part was
 never broken.
 
@@ -410,7 +410,7 @@ strafe read 48.8%; the simulator caught that, not me reading it.
 
 *What it measures.* Across perfect, sloppy, autobunny and boosted flights at two
 tickrates and two frame rates: zero rows over 100%, and the sloppy rows are
-byte-identical to what build 88 printed (78.9% and 69.9%). That last part is the
+byte-identical to what build 89 printed (78.9% and 69.9%). That last part is the
 one I most wanted -- the new term must not be a way to earn credit for strafing
 badly, and it is not.
 
@@ -743,10 +743,10 @@ of that situation first. Left open deliberately rather than guessed at.
 - **`surf_dune` / `surf_fantasy` from §2i** — unchanged by any of this, and
   still the only two of 1748 whose loaded build contradicts the evidence.
 
-## 2k. The map browser, rebuilt (build 88) — six changes, and two judgements
+## 2k. The map browser, rebuilt (build 89) — six changes, and two judgements
 
 You asked for six things. All six are in and measured
-(`python tools/b88browse.py`, PASS). Three of them are judgement calls I made
+(`python tools/b89browse.py`, PASS). Three of them are judgement calls I made
 and you may want differently.
 
 **The download button had run out of room.** It was a flat 92 px and
@@ -824,7 +824,7 @@ Since build 58 every map the browser appended from `data/mapdl.txt` was written
 81 rows away from where its name went, because `bufstr_add` appends at the
 buffer's physical end and the list's row count is smaller than that. It was
 invisible for four builds because the columns it corrupted are all-identical
-down the list. Build 88's tier column was the first one with a second opinion to
+down the list. Build 89's tier column was the first one with a second opinion to
 disagree with — 550 against a possible 469, and 550 − 469 is exactly the 81 rows
 the list drops. Nothing to do on your side; noted because it means map sizes and
 NEW badges on downloadable rows were wrong before today.

@@ -74,7 +74,7 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   the Pi's `ftesurf-site/.incoming/<v>/` and run `publish.sh <v>`, or bump.
   - THE QC BUILD NUMBER: `-BuildNumber <n>`. The script derives it from a
     `Build NN:` commit subject and HARD-FAILS when the last one is more than 200
-    commits back (Build 88 was 228). It now takes the number explicitly, because
+    commits back (Build 89 was 228). It now takes the number explicitly, because
     the authority is the operator, not the log -- AGENTS.md's "only on the user's
     Build NN commit" is about WHO decides, and `-BuildNumber` is that person
     typing it. It still has to agree with ENGINE.txt's `qcbuild` (a Warn, not a
@@ -1293,7 +1293,7 @@ bannered as superseded.)
   The cost is stated in that file: a sweep missed while the PC is off is missed,
   not queued.
 
-### The map browser's parallel buffers (build 88, and a build-58 defect)
+### The map browser's parallel buffers (build 89, and a build-58 defect)
 
 - **`bufstr_add` APPENDS AT THE BUFFER'S PHYSICAL `used`, WHICH IS NOT
   `ms_count`.** `PF_bufstr_add_internal` (`pr_bgcmd.c`) does `index =
@@ -1308,15 +1308,15 @@ bannered as superseded.)
   It survived four builds because the columns it corrupted are UNIFORM over the
   search-derived rows -- `ms_have` is a column of "1", `ms_new` of "0",
   `ms_dlkb` of "0" -- so a displaced write looked exactly like a correct one.
-  Build 88's tier column was the first with an independent count to disagree
+  Build 89's tier column was the first with an independent count to disagree
   with: the engine said 550 KSF tiers where the data files allow 469, and
   550 - 469 = 81 exactly.
   **Write the index (`bufstr_set(buf, ms_count, ...)`) rather than trusting a
   length.** And never size a new parallel buffer from `ms_count` when the ones
   beside it were created before the compaction -- their lengths do not agree
   and nothing warns.
-- **TWO NUMBERS FOR ONE QUESTION IS WHAT FOUND IT.** `tools/b88browse.py`
-  derives all five of build 88's figures from `data/mapmeta.txt`,
+- **TWO NUMBERS FOR ONE QUESTION IS WHAT FOUND IT.** `tools/b89browse.py`
+  derives all five of build 89's figures from `data/mapmeta.txt`,
   `data/mapdl.txt` and `data/mapwr.txt` and compares them to what the engine
   printed. The first cut of the PYTHON side was wrong too -- it tested "mapmeta
   has no row" where the engine tests "no tier is shown", missing 7 rows -- so
@@ -1339,7 +1339,7 @@ bannered as superseded.)
 - **A WRAPPED FILTER STRIP NEEDS MORE PITCH THAN ITS OWN HEIGHT.** The wrap was
   `y + 46`, which is exactly heading (20) + `CHIP_H` (26) -- so the next heading
   started on the pixel the chips above it ended. Invisible while a wrap only
-  happened in a narrow window; build 88's third strip made it the normal case
+  happened in a narrow window; build 89's third strip made it the normal case
   and "library" sat on the tier chips. `STRIP_PITCH` is 52.
 - **`buf_sort` IS NOT THE TOOL FOR ORDERING `ms_view`.** Its key is a string
   prefix, and `ms_view` holds indices as text, where "1000" sorts before "2".
@@ -1742,7 +1742,7 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - RELEASE: `release.ps1 -Bump patch -BuildNumber <n> -Linux dist\<drop>`.
   `-BuildNumber` is REQUIRED unless a `Build NN:` commit is inside the last 200
   (the script derives the number from a subject and hard-fails without it; the
-  last one, `QC build 88` f4b5051, is 224 back as of Patch 441 -- re-measure with
+  last one, `QC build 89` f4b5051, is 224 back as of Patch 441 -- re-measure with
   `git rev-list --count HEAD ^f4b5051` rather than trusting a number here, and
   note it was 219 when this line was written, not the 228 it claimed). The Linux drop and ftesurf64.exe must come from the same
   engine commit (gate L2); build.ps1 recompiles the progs from `src`, so copy the

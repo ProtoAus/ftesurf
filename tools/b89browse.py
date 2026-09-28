@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-b88browse.py -- does the map browser's build-88 work actually do anything?
+b89browse.py -- does the map browser's build-88 work actually do anything?
 
-    python tools/b88browse.py
+    python tools/b89browse.py
 
 FIVE CLAIMS, AND EACH ONE IS CHECKED AGAINST A NUMBER DERIVED A SECOND WAY.
 That is the whole design.  The engine prints what it did; this script works the
@@ -37,8 +37,8 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CFG = "cfg/test/b88browse.cfg"
-LOG = os.path.join(ROOT, "ftesurf", "logs", "b88browse.log")
+CFG = "cfg/test/b89browse.cfg"
+LOG = os.path.join(ROOT, "ftesurf", "logs", "b89browse.log")
 DATA = os.path.join(ROOT, "ftesurf", "data")
 
 OLD_GUTTER = 92          # the flat width build 87 drew the button in
@@ -278,14 +278,14 @@ def grade(exp):
 
 def main():
     exp = expected()
-    print("b88browse: mapmeta %d, mapdl %d, mapwr %d rows on disk"
+    print("b89browse: mapmeta %d, mapdl %d, mapwr %d rows on disk"
           % (len(exp["meta"]), len(exp["dl"]), len(exp["wr"])))
     secs = run("ftesurf64.exe", 180)
-    print("b88browse: the run exited after %.0f s" % secs)
+    print("b89browse: the run exited after %.0f s" % secs)
     ok, notes = grade(exp)
     for n in notes:
         print("  " + n.replace("^1", "").replace("^7", ""))
-    print("b88browse: %s" % ("PASS" if ok else "FAIL"))
+    print("b89browse: %s" % ("PASS" if ok else "FAIL"))
     sys.exit(0 if ok else 1)
 
 

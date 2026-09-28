@@ -334,7 +334,7 @@ strbuf ms_pbv;
 strbuf ms_pblob;
 /*
   The best MAIN-track time anyone is known to have set, in MILLISECONDS, or ""
-  where nothing knows one.  Build 88, from data/mapwr.txt (tools/mapwr.py).
+  where nothing knows one.  Build 89, from data/mapwr.txt (tools/mapwr.py).
 
   MILLISECONDS AND NOT TICKS, which is the one thing about this column that is
   not arbitrary.  Every other time here is a tick count converted with the map's
@@ -393,7 +393,7 @@ float  ms_modes;
 float  ms_applied_modes;
 
 /*
-  Which library the list is showing.  Build 88, asked for as "an option to
+  Which library the list is showing.  Build 89, asked for as "an option to
   switch between Momentum maps and CSS maps for map and download".
 
   0 = both, otherwise the single SRC_BIT_MOM or SRC_BIT_CSS wanted.  ONE value
@@ -515,7 +515,7 @@ float(string id, vector pos, vector size, string label) ui_button =
 
   It was 46, which is exactly the height a strip occupies -- a 20 px gap to
   its heading plus a CHIP_H of 26 -- so the next heading started on the pixel
-  the chips above it ended.  Invisible until build 88 added a third strip and
+  the chips above it ended.  Invisible until build 89 added a third strip and
   made a wrap the normal case rather than the narrow-window one; "library" sat
   on the tier chips.  52 gives the 6 px CHIP_GAP already puts between chips
   horizontally.
@@ -960,7 +960,7 @@ string(float mask) ui_srcname =
 };
 
 /*
-  The library switch's three chips, in strip order.  Build 88.
+  The library switch's three chips, in strip order.  Build 89.
 
   A BIT AND NOT A SRC_* INDEX, because that bit is ANDed straight against
   ms_lst in ui_refilter and 0 is a real answer there -- "do not test this at
@@ -1327,7 +1327,7 @@ string(string f) ui_mapname =
 
   "" for a file written before the column existed, which draws as a plain tier.
 
-  "ksf" (build 88) does NOT come from this file at all -- it is written by the
+  "ksf" (build 89) does NOT come from this file at all -- it is written by the
   fallback at the end of ui_meta_load for a map Momentum has no record of but
   KSF's roster does, and it is here because it shares the row's mark.  462 rows,
   every one of them a map that read untiered before.
@@ -2322,7 +2322,7 @@ void(string filter) ui_maplist_print =
 	              ms_count, mom, css, oth));
 };
 
-// The headless reading of build 88's four changes.  Defined below ui_refilter,
+// The headless reading of build 89's four changes.  Defined below ui_refilter,
 // which it drives; this is the PROTOTYPE, which is how a call ahead of a
 // definition is written here -- see m_close above and Lob_Poll in m_lobby.qc.
 void(string arg) ui_browse_print;
@@ -2459,7 +2459,7 @@ void() ui_refilter =
 };
 
 /*
-  `ui_browse [map]` -- what build 88 actually did, in numbers a config can grade.
+  `ui_browse [map]` -- what build 89 actually did, in numbers a config can grade.
 
   EVERY LINE IS THE SUBJECT'S OWN ACTION, not a consequence of it: the tier
   counts are read back out of ms_tierv after ui_meta_load's fallback ran, the
@@ -5190,7 +5190,7 @@ void(vector screensize) screen_create =
 			  time above exists precisely so those widths hold still.
 			*/
 			/*
-			  ALWAYS RESERVED, since build 88.  It used to appear only when
+			  ALWAYS RESERVED, since build 89.  It used to appear only when
 			  data/mapdl.txt offered something, because a download button was the
 			  only thing that ever went in it; now every row has an action -- Play
 			  where the map is here, Download or Wrong build where it is not -- so
@@ -5286,7 +5286,7 @@ void(vector screensize) screen_create =
 
 				/*
 				  The best time anyone is known to have set, on the NAME's line and
-				  above the player's own below it.  Build 88.
+				  above the player's own below it.  Build 89.
 				
 				  BUILT BEFORE THE NAME IS DRAWN, because this line had nothing to
 				  its right until now: the name was drawn unbounded, and the moment
@@ -5466,7 +5466,7 @@ void(vector screensize) screen_create =
 				  than one that is plainly unavailable.
 				*/
 				/*
-				  AN ACTION COLUMN, NOT A DOWNLOAD GUTTER.  Build 88.
+				  AN ACTION COLUMN, NOT A DOWNLOAD GUTTER.  Build 89.
 
 				  It was reserved for the whole list and drawn on only the rows
 				  that needed a download, so on a complete install it was 127 px

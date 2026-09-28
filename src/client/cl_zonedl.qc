@@ -29,9 +29,15 @@
   box being timed.  What this buys is the DISPLAY -- legs, the board, the zone
   volumes -- for a client whose server already has zones it does not.
 
-  ONE ATTEMPT PER MAP PER SESSION.  A miss is the common case (1,156 of the
-  1,743 downloadable maps genuinely have no zones), so a failure must cost one
-  request and then nothing at all.
+  ONE ATTEMPT PER MAP CHANGE, WHICH IS NOT THE SAME AS ONE PER SESSION, and
+  the weaker claim is the true one: zdl_tried holds only the map last asked
+  about, so a rotation A -> B -> A asks for A twice.  A miss is the common
+  case (1,156 of the 1,743 downloadable maps genuinely have no zones), so what
+  matters is that a failure costs one request and not a stream of them -- and
+  a map load is already the most expensive thing this client does, so one 4 KB
+  GET against it is not worth a table of every name tried.  Stated rather than
+  rounded up because a comment claiming the stronger property is how this
+  repo has been bitten before.
 ===========================================================================
 */
 

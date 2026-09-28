@@ -54,6 +54,51 @@ location ~ ^/(?:ftesurf/)?maps/(?<ftemap>[A-Za-z0-9_-]+)\.bsp$ {
 
 location @ftemap_missing { return 404; }
 
+# ---------------------------------------------------------------------------
+# Zone files.  Build 88, src/client/cl_zonedl.qc.
+#
+# The .bsp rule above is the whole story for GEOMETRY and none of it for
+# TIMING. A run's start and finish are decided by maps/zones/<map>.json, both
+# download paths compose exactly "maps/<name>.bsp", and so nothing has ever
+# fetched one -- a client that lacks it is told the map has no legs and no
+# times (cl_scores.qc:2180). The 609-file library ships with the game now;
+# this rule is for maps zoned after the release an install came from.
+#
+# ONE URL LAYOUT, unlike the bsp: cl_download_zonesrc is a complete base
+# ending in a slash and the client appends "<map>.json", so there is no
+# second shape to match.
+#
+# SERVED FROM ftesurf-site/zones AND NOT FROM THE SERVER'S OWN COPY, which is
+# the opposite of the choice made for maps two rules up and deliberately so.
+# game/ftesurf/maps/zones/local holds 66 files -- only the overrides and
+# donations the lobbies need on top of their Momentum mount, which supplies
+# the other 537 from game/momentum/maps/zones/online. A player has no Momentum
+# mount, so aliasing the server's copy would hand them 66 of the 609 they
+# need. This directory is the same set release.ps1 ships.
+#
+# No limit_conn: these average 4 KB against a 21 MB map and one is fetched per
+# map load, so they must not compete for the bsp's 2-connection budget.
+location ~ ^/ftesurf/maps/zones/local/(?<ftezone>[A-Za-z0-9_-]+)\.json$ {
+    alias /srv/nvme/ftesurf-site/zones/$ftezone.json;
+
+    limit_rate 1m;
+    default_type application/json;
+    add_header Cache-Control "public, max-age=3600";
+
+    autoindex off;
+    disable_symlinks if_not_owner;
+
+    # A MISS IS THE ORDINARY CASE -- 1,156 of the 1,743 maps we hand out
+    # genuinely have no zones -- and cl_zonedl.qc reads any non-zero response
+    # as "nothing here" and stops asking. A 403 out of the alias would be read
+    # the same way, but only because it is also non-zero; make it the honest
+    # 404 rather than rely on that.
+    error_page 403 = @ftezone_missing;
+}
+
+location @ftezone_missing { return 404; }
+
 # No listing, and no walking up out of the maps directory.
 location = /maps/         { return 404; }
 location = /ftesurf/maps/ { return 404; }
+location = /ftesurf/maps/zones/local/ { return 404; }

@@ -779,7 +779,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 ## Features / releases
 
 - **THE MAP BROWSER'S LIBRARY SWITCH FILTERS BY MOUNT, NOT BY CATALOGUE.**
-  Build 88's `both / momentum / cs:s` strip reads `ms_lst`, which is decided by
+  Build 89's `both / momentum / cs:s` strip reads `ms_lst`, which is decided by
   which searchpath the BSP came out of. On this box every map ever fetched was
   written into the Momentum mount, so the measured split is both 1743, momentum
   1739, cs:s 1027 -- the "momentum" chip hides 4 rows. That is correct for what
@@ -797,7 +797,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   booster or an unseen hop is neutral rather than a 400% row. What it bounds is
   the row's OWN energy, which is the right quantity, and the simulator at
   `<scratchpad>/hopsim3.py` shows 0 rows over 100% across perfect, sloppy,
-  autobunny and boosted flights with the sloppy rows byte-identical to build 88.
+  autobunny and boosted flights with the sloppy rows byte-identical to build 89.
   The gap left: the rule fires on the frame the energy arrives, so a push whose
   gain is spread thin enough to stay under one tick of ceiling per frame is
   invisible to it -- measured at 10175 of 17021 impossible ticks under a single
