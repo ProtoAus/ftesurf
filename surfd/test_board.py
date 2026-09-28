@@ -181,7 +181,7 @@ def user_version(mod):
 # --------------------------------------------------------------------------
 # Pinned as a literal so a schema bump is a conscious act: bump this with
 # surfd.SCHEMA_VERSION (6 -> 7 went unbumped here for a day).
-HEAD_SCHEMA = 8
+HEAD_SCHEMA = 9
 
 print("\n--- 1. schema -----------------------------------------------------")
 
