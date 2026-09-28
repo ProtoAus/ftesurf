@@ -193,7 +193,21 @@ def main():
         want &= zones
     if args.only:
         with open(args.only) as fh:
-            want &= {l.strip() for l in fh if l.strip()}
+            named = {l.strip() for l in fh if l.strip()}
+        want &= named
+        # SAY WHEN A NAME MATCHED NOTHING. --only intersects against the local
+        # inventory, so a name absent from --momentum silently vanishes and the
+        # run then prints "nothing to do -- the Pi already has everything
+        # selected", which is an EMPTY selection wearing a satisfied one's
+        # words. Caught trying to push three maps that live on the cstrike and
+        # ftesurf mounts, not Momentum's: all three dropped, all three absent
+        # from the Pi, and the tool reported success.
+        unmatched = sorted(n for n in named if n not in want)
+        if unmatched:
+            print("  --only: %d of %d names are not in %s and were dropped:"
+                  % (len(unmatched), len(named), args.momentum))
+            for n in unmatched[:20]:
+                print("      %s" % n)
 
     # Case-insensitive, because Bhop_Mukiology is capitalised and the Pi's
     # filesystem is case-sensitive while Windows' is not.
