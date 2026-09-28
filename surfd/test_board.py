@@ -309,17 +309,30 @@ check("...and asking does not put it on the ranked board",
 
 b = board(m, tier="ranked")
 check("the response carries every tier's counts",
-      b["counts"], {"ranked": 1, "community": 3, "momentum": 0})
+      b["counts"], {"ranked": 1, "community": 3,
+                    "imported": 0, "momentum": 0, "ksf": 0})
+# `imported` is the SUM of the foreign tiers, so a client draws one tab without
+# doing the addition itself -- and without needing a change when a third source
+# lands.  Pinned separately because a sum that is silently wrong reads as an
+# empty board rather than as an error.
+check("...and `imported` is their sum",
+      b["counts"]["imported"],
+      b["counts"]["momentum"] + b["counts"]["ksf"])
 
 # The imported tier is READABLE but not CLAIMABLE.  /api/board validates against
 # TIERS_READ so a client can ask for it; submit_run still validates against
 # TIERS, so a keyed lobby -- which is trusted enough to write `ranked` -- cannot
 # file a run as somebody else's game.  Only momindex.py, beside the files,
 # writes that tier.
-check("a keyed server may not submit into the imported tier",
-      submit(m, player="faker", flags=0, tier="momentum", ticks=1), "HTTP 400")
+# Every one of them, not just the first: `momentum` and `ksf` are real tiers a
+# local importer writes, and `imported` and `combined` are pseudo-tiers that name
+# a query -- all four are readable and none is claimable, and a test that pinned
+# only one would not notice the next one being added to the wrong tuple.
+for t in ("momentum", "ksf", "imported", "combined"):
+    check("a keyed server may not submit into tier %r" % t,
+          submit(m, player="faker", flags=0, tier=t, ticks=1), "HTTP 400")
 check("...and nothing of it reached the board",
-      board(m, tier="momentum")["counts"]["momentum"], 0)
+      board(m, tier="momentum")["counts"]["imported"], 0)
 
 # The same player, both tiers: a community run must never displace a ranked
 # one, which is what keeping `tier` in the primary key buys.

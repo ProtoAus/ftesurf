@@ -317,10 +317,25 @@ TIERS = (TIER_RANKED, TIER_COMMUNITY)
 # cannot name it. Reading is a different question, which is what TIERS_READ is.
 TIER_MOMENTUM = "momentum"
 
-# A READ-ONLY PSEUDO-TIER: ranked and imported interleaved by time, one row per
-# entry, each carrying the tier it really came from.  No row is ever STORED
-# under it -- it names a query, not a class of run, which is why it is absent
-# from both TIERS and the runs table.
+# Counter-Strike: Source, from the ksf.surf timer network (surfd/ksfimport.py).
+# TIMES ONLY: KSF publishes no replay this project can fetch -- no demo URL, no
+# Source .dem parser, nothing -- so these rows carry no recording and no line,
+# and `rep` is 0 on every one of them.  A KSF run is also timed by KSF's own
+# zones on CS:S physics, so it is a third distinct measurement rather than a
+# variant of the second: `surf_whiteout` on their board is not `surf_whiteout`
+# here, whatever the name says.
+TIER_KSF = "ksf"
+
+# Every tier that came from somewhere other than this game.  One tuple so a
+# reader, a query or a future third source is added in one place rather than in
+# each of the four predicates that need to know.
+TIERS_IMPORTED = (TIER_MOMENTUM, TIER_KSF)
+
+# READ-ONLY PSEUDO-TIERS: they name a QUERY, not a class of run.  No row is ever
+# stored under either, which is why both are absent from TIERS and from the runs
+# table, and why `tr` on each row carries the tier it really came from.
+#   imported  every foreign board at once
+#   combined  ours interleaved with those, for reading one against the other
 #
 # Merged on the server rather than in the client because the client keeps ONE
 # board in ONE store, overwritten whole (cl_online.qc's ob_* arrays).  Two
@@ -329,8 +344,16 @@ TIER_MOMENTUM = "momentum"
 #
 # It is a SEPARATE REQUEST and never a replacement: the ranked board still
 # answers exactly what it answered before, which test_momindex.py pins.
+TIER_IMPORTED = "imported"
 TIER_COMBINED = "combined"
-TIERS_READ = TIERS + (TIER_MOMENTUM, TIER_COMBINED)
+TIERS_READ = TIERS + TIERS_IMPORTED + (TIER_IMPORTED, TIER_COMBINED)
+
+# What each pseudo-tier expands to.  Kept beside the names so the expansion and
+# the name cannot drift; board_rows is the only reader.
+TIER_EXPAND = {
+    TIER_IMPORTED: TIERS_IMPORTED,
+    TIER_COMBINED: (TIER_RANKED,) + TIERS_IMPORTED,
+}
 
 # Run styles -- the client's own vocabulary (sh_defs.qc: FS_RunClass).  Derived
 # here from `flags`, never taken from the submitter; see style_of.
@@ -2111,7 +2134,9 @@ def public_state(verdict, decision):
 
 def board_counts(db, mapname, track, leg, style):
     """Row counts per tier of one board: {"ranked": n, "community": n, ...}."""
-    counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0, TIER_MOMENTUM: 0}
+    counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0}
+    for t in TIERS_IMPORTED:
+        counts[t] = 0
     for row in db.execute(
             "SELECT tier, COUNT(*) AS n FROM runs"
             " WHERE map=? AND track=? AND leg=? AND style=? GROUP BY tier",
@@ -2128,9 +2153,11 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
     # row's own tier selected out, so ORDER BY, paging and every column below
     # stay byte-for-byte the ordinary path.  A second query here would be a
     # second ranking rule to keep in step with BOARD_ORDER.
-    combined = (tier == TIER_COMBINED)
+    expand = TIER_EXPAND.get(tier)
+    combined = expand is not None
     if combined:
-        where, args = ("r.tier IN (?, ?)", (TIER_RANKED, TIER_MOMENTUM))
+        where = "r.tier IN (%s)" % ",".join("?" * len(expand))
+        args = tuple(expand)
     else:
         where, args = ("r.tier=?", (tier,))
     for i, row in enumerate(db.execute(
@@ -3080,13 +3107,16 @@ def board():
             "leg": leg,
             "tier": tier,
             "style": style,
-            "counts": {
-                TIER_RANKED: counts.get(TIER_RANKED, 0),
-                TIER_COMMUNITY: counts.get(TIER_COMMUNITY, 0),
-                # So a client can offer the imported board, or a combined view,
-                # without spending a second request to discover it is empty.
-                TIER_MOMENTUM: counts.get(TIER_MOMENTUM, 0),
-            },
+            # Every tier's count, so a client can offer the imported board, or a
+            # combined view, without spending a second request to discover it is
+            # empty.  `imported` is their sum: the tab is one tab whatever the
+            # sources are, so the number that decides whether to draw it is one
+            # number and not an addition the client has to remember to do.
+            "counts": dict(
+                [(TIER_RANKED, counts.get(TIER_RANKED, 0)),
+                 (TIER_COMMUNITY, counts.get(TIER_COMMUNITY, 0)),
+                 (TIER_IMPORTED, sum(counts.get(t, 0) for t in TIERS_IMPORTED))]
+                + [(t, counts.get(t, 0)) for t in TIERS_IMPORTED]),
             "offset": offset,
             "rows": rows,
         },

@@ -92,6 +92,22 @@
 #define OB_TIER_BOTH "combined"
 
 /*
+  KSF (ksf.surf), Counter-Strike: Source.  TIMES ONLY -- that network publishes
+  no replay this game can fetch, so a ksf row carries no recording, no line and
+  no `watch`; surfd/ksfimport.py records why at length.
+
+  OB_TIER_IMP is every foreign board at once, and it is what the tab asks for:
+  ONE tab whatever the sources are, with each row carrying its own in `tr`.  A
+  third source is then a row value and a word, not a fifth chip.
+*/
+#define OB_TIER_KSF "ksf"
+#define OB_TIER_IMP "imported"
+
+#define OB_SRC_OURS 0
+#define OB_SRC_MOM  1
+#define OB_SRC_KSF  2
+
+/*
   How long a failed board waits before ONE re-ask, and how long a request may
   stay in flight before it is written off.
 
@@ -230,7 +246,7 @@ float  ob_rep[OB_MAXROW];
   surfd does not spend the bytes.  A missing child reads 0, which is the
   right answer everywhere else.
 */
-float  ob_mom[OB_MAXROW];
+float  ob_src[OB_MAXROW];
 // Patch 395: surfd's `run` -- a stage row's parent replay (its run's leg-0
 // recording or kept evidence) when the row has no `rep` of its own; 0 none.
 float  ob_run[OB_MAXROW];
@@ -245,7 +261,7 @@ float  ob_bplayer;         // strbuf: stable player id per row
 // report the other tier without asking for it.
 float  ob_cnt_ranked;
 float  ob_cnt_community;
-float  ob_cnt_momentum;   // the imported board's size; 0 hides its tab
+float  ob_cnt_imported;   // every imported tier's rows summed; 0 hides the tab
 
 void() Online_Status;
 
@@ -322,7 +338,7 @@ void() Online_Clear =
 	  offered for a moment on a map that has no imported runs. That is the
 	  milder of the two failures, and the tab answers honestly when clicked.
 
-	  ob_cnt_momentum = 0;   <- on purpose, see above
+	  ob_cnt_imported = 0;   <- on purpose, see above
 	*/
 	ob_mine = -1;
 	Online_FreeHave();
@@ -475,7 +491,10 @@ void(string body) Online_Parse =
 	// Absent on a surfd older than this feature, and json_get_float answers 0
 	// for a missing child -- which reads as "no imported board", the right
 	// answer against a server that has none.
-	ob_cnt_momentum  = json_get_float(json_find_object_child(counts, "momentum"));
+	// The SUM surfd sends, not momentum's own count: the tab is one tab, and
+	// the number deciding whether to draw it should not be an addition this
+	// side has to remember to redo when a third source lands.
+	ob_cnt_imported  = json_get_float(json_find_object_child(counts, "imported"));
 
 	// The reply's own clock, which the age column is measured against.
 	ob_t = json_get_float(json_find_object_child(root, "t"));
@@ -534,8 +553,9 @@ void(string body) Online_Parse =
 		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
 		ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
 		ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
-		ob_mom[i]   = !strcmp(json_get_string(json_find_object_child(row, "tr")),
-		                      OB_TIER_MOM);
+		s           = json_get_string(json_find_object_child(row, "tr"));
+		ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
+		              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
 
 		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
@@ -1079,8 +1099,8 @@ void() Online_ReplayStatus =
 	*/
 	r = "";
 	for (i = 0; i < ob_n; i = i + 1)
-		r = sprintf("%s %g", r, ob_mom[i]);
-	print(sprintf("^5replay:^7 rows %g mom%s\n", ob_n, r));
+		r = sprintf("%s %g", r, ob_src[i]);
+	print(sprintf("^5replay:^7 rows %g src%s\n", ob_n, r));
 };
 
 float() Online_ReplayState  = { return or_state; };
@@ -1363,10 +1383,10 @@ string(float i) Online_WhyString =
 	  Doing it in that order means the one-tier case needs no per-row data and
 	  the mixed case cannot mislabel a row.
 	*/
-	if (ob_mom[i])
+	if (ob_src[i] == OB_SRC_MOM || ob_have_tier == OB_TIER_MOM)
 		return "momentum";
-	if (ob_have_tier == OB_TIER_MOM)
-		return "momentum";
+	if (ob_src[i] == OB_SRC_KSF || ob_have_tier == OB_TIER_KSF)
+		return "ksf";
 	// The words, their order and why they name the hole rather than the
 	// player: FS_CertWhy (sh_defs.qc), shared with the card and the chat line.
 	return FS_CertWhy(ob_flags[i]);
@@ -1449,8 +1469,8 @@ void() Online_Status =
 	// The momentum count is printed because something DEPENDS on it: it is what
 	// decides whether the imported tab is drawn at all, so an arm that cannot
 	// see it cannot tell a parsed 0 from a key this build never found.
-	print(sprintf("  rows %g   ranked %g   community %g   momentum %g\n",
-	              ob_n, ob_cnt_ranked, ob_cnt_community, ob_cnt_momentum));
+	print(sprintf("  rows %g   ranked %g   community %g   imported %g\n",
+	              ob_n, ob_cnt_ranked, ob_cnt_community, ob_cnt_imported));
 	print(sprintf("  gen %g asked %g  mine %g\n", ob_gen, ob_q_gen, ob_mine));
 
 	/*

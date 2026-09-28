@@ -145,7 +145,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_ONLINE    0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
-#define SB_T_MOMENTUM  3   // the imported board; see OB_TIER_MOM in cl_online.qc
+#define SB_T_MOMENTUM  3   // every imported board; see OB_TIER_IMP in cl_online.qc
 
 float rec_sb_tab;                // SB_T_*
 
@@ -200,10 +200,13 @@ string() Scores_TierOf =
 {
 	if (rec_sb_tab != SB_T_MOMENTUM)
 		return OB_TIER;
-	// The compare toggle, and it is a TIER rather than a fifth tab because the
+	// OB_TIER_IMP and not OB_TIER_MOM: one tab shows every foreign board, each
+	// row saying which it came from, so a third source needs no fifth chip.
+	//
+	// The compare toggle is a TIER rather than a tab of its own because the
 	// question it answers is "against what", not "which board": you are still
 	// looking at the imported times, with yours interleaved for scale.
-	return rec_sb_mixboth ? OB_TIER_BOTH : OB_TIER_MOM;
+	return rec_sb_mixboth ? OB_TIER_BOTH : OB_TIER_IMP;
 };
 
 /*
@@ -2242,15 +2245,15 @@ void(vector scr) Scores_Draw =
 		rec_sb_tabauto = FALSE;
 	}
 	/*
-	  The imported board, drawn only where there is one.  ob_cnt_momentum comes
+	  The imported board, drawn only where there is one.  ob_cnt_imported comes
 	  from the LAST fetch's counts, so the chip appears once any board on this
 	  map has been asked for -- which is the same moment the player could act on
 	  it.  Hiding it when the count is 0 is deliberate: on a map nobody has
 	  imported, a fourth tab that is always empty is worse than no tab.
 	*/
-	if (ob_cnt_momentum > 0 || rec_sb_tab == SB_T_MOMENTUM)
+	if (ob_cnt_imported > 0 || rec_sb_tab == SB_T_MOMENTUM)
 	if (Scores_Chip("sb_t3", [x0 + pad * 4 + chipw * 3, ytabs], [chipw, chiph],
-	                "momentum", rec_sb_tab == SB_T_MOMENTUM))
+	                "imported", rec_sb_tab == SB_T_MOMENTUM))
 	{
 		rec_sb_tab = SB_T_MOMENTUM;
 		rec_sb_tabauto = FALSE;
