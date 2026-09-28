@@ -1180,6 +1180,37 @@ bannered as superseded.)
   "is the bsp on disk now" settles it. `Dl_Tick` is polled OUTSIDE `m_draw`'s
   `menu_active` gate for the same family of reason as `ui_join_tick`: the
   download survives an ESC and nothing else notices it finished.
+- **AN HTTP DOWNLOAD LANDS IN A `.tmp` AND IS RENAMED ONLY WHEN WHOLE** (Patch
+  465). It did not before: `httpclient.c:639-642` opens its localname directly
+  with `"w+b"` and never renames, and `DL_Abort`'s rename arm is gated on
+  `DLLF_BEGUN`, which a web download never sets. So an interrupted transfer left
+  a SHORT .bsp under the real name -- which reads as installed, stops the button
+  offering it, and mismatches mapcrc, i.e. a silent `TF_NOMAP` on every run
+  played on it. The rename lives in `CL_WebDownloadFinished` and not in
+  `DL_Abort` because that arm also does `FS_Remove(dl->dclname)`, and
+  `dclname`/`prefixbytes` are set only on the netchan path.
+- **NAMES IN `data/mapdl.txt` ARE THE PI'S SPELLING, NOT THE CATALOGUE'S.** The
+  catalogues lowercase and the Pi does not; six maps differ by case alone. The
+  name in that file IS the download path, and nginx's `alias` uses the captured
+  name verbatim on a case-sensitive filesystem, so the catalogue's spelling
+  would 404 forever. `mapscan.py` folds case to MATCH and emits what the Pi has.
+- **`cl_download_mapsrc` IS DEAD CONFIGURATION while `sv_dlURL` is set**, because
+  `cl_parse.c:1005` makes it an `else if` on dlURL being empty and `sv_dlURL` is
+  the same cvar (`fs_dlURL`) on a client. Measured, not assumed:
+  `tools/p465dl.py` serves both url shapes and every request arrived at the
+  `sv_dlURL` one. It is kept as the documented fallback, not as the live path.
+- `tools/p465dl.py` is the falsifier for the whole thing, and `ui_dlmap` is the
+  Download button's headless twin the way `ui_join` is the start button's --
+  no cfg in this tree drives a cursor. **Run `--control` too**: it answers 404
+  from the same port with the same config and must reach `failed` with nothing
+  on disk. A subject arm alone can pass on a stale file from the last run.
+- **A STATE SHOWN FOR A FIXED TIME NEEDS A SAMPLE INTERVAL SHORTER THAN THE
+  WINDOW.** `DL_HOLD` is 6 s; an arm polling every 8 s reported `active -> idle`
+  with the map on disk, which reads exactly like a download that never finished.
+  It had finished -- the probe was stepping over the banner.
+- **THE TEST LOG ACCUMULATES.** FTE appends, so a driver that does not delete its
+  log before the run grades the PREVIOUS arm's lines too. The control's first
+  pass showed 12 state samples for 6 calls, opening with the subject's `ok`.
 - The sweep is a Windows scheduled task (`FTESurf map scan`, PT6H,
   `tools/mapscan_6h.ps1`) and NOT a Pi cron, because `maproster.py` hashes the
   build this install would load out of the two Steam installs and those are here.

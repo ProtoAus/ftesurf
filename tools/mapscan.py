@@ -133,19 +133,42 @@ def cmd_scan(args):
     bootstrap = not seen
     inv = pi_inventory(args.host)
 
-    # Catalogued AND on the Pi: the only rows a client can be offered.
-    servable = sorted(n for n in roster if n in inv)
+    # MATCH CASE-INSENSITIVELY, EMIT THE PI'S SPELLING.
+    #
+    # The two catalogues lowercase their names and the Pi does not: six maps
+    # differ by case alone (Bhop_Mukiology, bhop_HaddocK, bhop_HeLL,
+    # bhop_addict_V2, surf_prottos_NightMare, surf_Rebel_Resistance_Revamp).
+    # An exact match drops all six, but the sharper problem is the other
+    # direction -- the Pi runs Linux and nginx's `alias` uses the captured name
+    # verbatim, so a row that said "bhop_haddock" would send every client to a
+    # path that does not exist and 404 forever. The name in this file IS the
+    # download path, so it has to be the name the Pi actually has on disk.
+    #
+    # The menu's own "do we already have this" test is case-insensitive already
+    # (ui_dl_load lowercases into the byname hash, matching the engine's own
+    # search dedup), so a differently-cased local copy is still recognised.
+    roster_lc = {}
+    for n in roster:
+        roster_lc.setdefault(n.lower(), n)
+
+    # Keyed on the Pi's name, because that is what a client will ask for.
+    servable = sorted(n for n in inv if n.lower() in roster_lc)
 
     fresh = []
     stamp = today()
+    # `seen` is keyed the same way, so re-casing a file on the Pi does not read
+    # as a brand new map and light up the New badge for something years old.
+    seen_lc = set(k.lower() for k in seen)
     for name in sorted(roster):
-        if name not in seen:
+        if name.lower() not in seen_lc:
             seen[name] = (stamp, "bootstrap" if bootstrap else "scan")
+            seen_lc.add(name.lower())
             if not bootstrap:
                 fresh.append(name)
 
     cutoff = (datetime.date.today() - datetime.timedelta(days=NEW_DAYS)).isoformat()
-    newset = set(n for n, (d, o) in seen.items() if o == "scan" and d >= cutoff)
+    newset = set(n.lower() for n, (d, o) in seen.items()
+                 if o == "scan" and d >= cutoff)
 
     print("roster %d, pi serves %d, offerable %d" % (len(roster), len(inv), len(servable)))
     if bootstrap:
@@ -173,11 +196,14 @@ def cmd_scan(args):
         fh.write("# written by tools/mapscan.py -- do not edit\n")
         fh.write("# dl <name> <mode> <src> <tier> <kb> <first-iso> <new>\n")
         for name in servable:
-            mode, src, tier = roster[name]
-            d, _origin = seen[name]
+            # name is the PI's spelling; the catalogue row is found by fold.
+            mode, src, tier = roster[roster_lc[name.lower()]]
+            d, _origin = seen.get(name, seen.get(roster_lc[name.lower()],
+                                                 (stamp, "scan")))
             fh.write("dl %s %s %s %s %d %s %d\n" % (
                 name, mode, src, tier if tier != "-" else "0",
-                (inv[name] + 1023) // 1024, d, 1 if name in newset else 0))
+                (inv[name] + 1023) // 1024, d,
+                1 if name.lower() in newset else 0))
     os.replace(tmp, DLFILE)
     write_seen(seen)
     print("\nwrote %s (%d rows)" % (DLFILE, len(servable)))

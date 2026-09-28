@@ -5140,6 +5140,50 @@ float(string cmd) m_consolecommand =
 		return TRUE;
 	}
 
+	/*
+	  ui_dlmap <map> -- THE HEADLESS TWIN OF THE DOWNLOAD BUTTON, the same way
+	  ui_join below is the start button's.  The button is a sui element picked
+	  with the mouse and no cfg in this tree can drive a cursor, so without this
+	  the only falsifiable claim about the whole download path would be "it
+	  compiles".  It calls ui_dl_start, which is exactly what the button calls.
+
+	  `ui_dlmap` WITH NO ARGUMENT REPORTS instead of starting, so a config can
+	  watch the state machine across waits without kicking off a second
+	  download -- the same split ui_join uses and for the same reason.  It also
+	  prints whether the builtin resolved at all, which is the one failure that
+	  looks identical to "nothing happened" from the outside: a #0 with no
+	  :name compiles perfectly and binds to nothing.
+	*/
+	if (argv(0) == "ui_dlmap")
+	{
+		if (argv(1) == "")
+		{
+			// Two prints, not one: fteqcc caps a varargs call at 8 parameters
+			// and the single-line version tripped it (Q302-class warning).
+			print(sprintf("ui_dlmap: builtin %s, state %g (%s), map %S\n",
+			              ui_dl_ready() ? "present" : "MISSING",
+			              dl_state,
+			              (dl_state == DL_IDLE)   ? "idle" :
+			              (dl_state == DL_ACTIVE) ? "active" :
+			              (dl_state == DL_OK)     ? "ok" : "failed",
+			              dl_name));
+			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes\n",
+			              dl_pct, dl_rate, dl_done, dl_total));
+			print(sprintf("ui_dlmap: dlstate %S\n", serverkey("dlstate")));
+			print(sprintf("ui_dlmap: offerable %g, list %g\n",
+			              ms_dlcount, ms_count));
+		}
+		else
+		{
+			print(sprintf("ui_dlmap: asking for %S (have=%s)\n", argv(1),
+			              ui_file_exists(strcat("maps/", argv(1), ".bsp"))
+			                  ? "yes" : "no"));
+			ui_dl_start(argv(1));
+			print(sprintf("ui_dlmap: state %g, map %S\n", dl_state, dl_name));
+		}
+		return TRUE;
+	}
+
 	if (argv(0) == "ui_name")
 	{
 		/*

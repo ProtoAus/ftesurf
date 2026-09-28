@@ -644,18 +644,37 @@ the QC feature-detects the builtin rather than assuming it.
 4. **The row should turn into a normal map** once it lands — the list reloads
    itself rather than waiting for a restart.
 
-### Two things I could not verify, stated plainly
+### A map HAS now been downloaded end to end, and it found three bugs
 
-- **Nothing has actually been downloaded end to end**, because nginx is not
-  configured yet and the netchan path needs a client and a server in the same
-  run. Everything up to that point is measured: the builtin is in the binary and
-  in `menu.dat`, the server really is advertising `sv_dlURL` and
-  `sv_maxdrate 1000000` (checked by rcon, not by `status`, which truncates), and
-  the scan writes its files. The first real download is yours.
+`python tools/p465dl.py` runs the whole path against a throttled local mirror
+and grades it; `--control` reruns it with the mirror answering 404 and requires
+the opposite result. Subject: `idle -> active x8 -> ok x3 -> idle`, 15 of 16
+rate samples non-zero at exactly the throttle, the bsp on disk with a **matching
+sha1**, no leftover temp file. Control: `idle -> failed`, nothing on disk. They
+differ in every graded dimension, which is what makes the pass mean anything.
+
+**The most important thing it found is one you would have hit.** An http
+download interrupted part-way -- you quit, or the wifi drops -- used to leave a
+TRUNCATED .bsp under the real name. That is the worst shape a map can be in: it
+looks installed, the Download button stops offering it, and a short bsp is a
+mapcrc mismatch, which silently demotes every run played on it. Fixed: downloads
+now land in a `.tmp` and are only renamed into place once whole.
+
+It also found that six maps could never have downloaded at all -- the catalogues
+lowercase names and the Pi does not (`bhop_HaddocK`, `Bhop_Mukiology` and four
+more), and Linux paths are case-sensitive, so those rows pointed at files that
+do not exist.
+
+**What is still unexercised is the PI's half** -- the local mirror proved the
+client, nginx is still not installed, so the real server has never served a map.
 - **`surf_dune` / `surf_fantasy` from §2i are still waiting on you** — unchanged
   by any of this.
 
 ### Done since last time
+
+**The Pi got the 32 maps it was missing** -- it is now 1347 bsp, and the browser
+can offer 1277 of them (was 1239). 477 catalogued maps are still not up there,
+but those are ones this workstation does not have either.
 
 All 31 KSF maps are now installed — `surf_tycho2`, `surf_weirdcore` and
 `surf_yolo` came down cleanly once you asked. The roster is 1280 installed and

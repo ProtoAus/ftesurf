@@ -1507,3 +1507,94 @@ fifth zone without noticing would have written a file without `surfdjoin`, and
 nginx refuses to start when a vhost names an undeclared zone. That is exactly the
 failure the essay in that file describes, reached by drift rather than by a
 missing check. Fixed in both the list and the guard.
+
+## Map downloads: measured end to end, and three defects found doing it — 2026-09-28
+
+The previous entry said "nothing has been downloaded end to end yet". That is no
+longer true. `tools/p465dl.py` drives `cfg/test/p465dl.cfg`, which calls
+`ui_dlmap` — the headless twin of the Download button, the way `ui_join` is the
+start button's, and for the identical reason: no cfg in this tree drives a
+cursor.
+
+**SUBJECT** (a throttled local mirror serving a real bsp):
+
+    state sequence: idle -> active x8 -> ok x3 -> idle x4
+    rate samples: 16, non-zero: 15, max 250000 B/s   (exactly the throttle)
+    maps/p465test.bsp afterwards: 4774571 bytes, sha1 matches the source
+    maps/p465test.tmp left behind: False
+    http: 1 served, 0 refused
+
+**CONTROL** (the same mirror, same port, same config, answering 404):
+
+    state sequence: idle -> failed x2 -> idle x13
+    rate samples: 16, non-zero: 0
+    no bsp, no tmp, 0 served, 1 refused
+
+They differ in every graded dimension, which is the only thing that makes the
+subject's pass worth anything.
+
+### Defect 1 — an interrupted http download left a TRUNCATED .bsp under the real name
+
+`httpclient.c:639-642` opens its localname directly with `"w+b"` and never
+renames. The netchan path has always downloaded to `<name>.tmp` and renamed in
+`DL_Abort`'s `QDL_COMPLETED` arm, but that arm is gated on `DLLF_BEGUN`, which a
+web download never sets. So a quit or a dropped link mid-transfer left a short
+`.bsp` at the real path — and that is the worst possible shape for a map: it
+reads as installed, the Download button stops offering it, and a short bsp is a
+mapcrc mismatch, i.e. a silent `TF_NOMAP` on every run played on it.
+
+Found by the test, not by reading: the first throttled run was cut off by the
+arm's own wait budget and left 3,531,250 of 4,774,571 bytes sitting there as
+`p465test.bsp`.
+
+Fixed in Patch 465: the web branch of `CL_SendDownloadStartRequest` fetches to a
+`.tmp`, `CL_WebDownloadFinished` renames on success and removes on failure. The
+rename is done there rather than by handing `DL_Abort` a tempname, because that
+arm also calls `FS_Remove(dl->dclname)` and `dclname`/`prefixbytes` are set only
+on the netchan path — a web qdownload carries `""`.
+
+### Defect 2 — `mapdl.txt` named six maps the Pi could never serve
+
+Both catalogues lowercase their names; the Pi does not. Six maps differ by case
+alone: `Bhop_Mukiology`, `bhop_HaddocK`, `bhop_HeLL`, `bhop_addict_V2`,
+`surf_prottos_NightMare`, `surf_Rebel_Resistance_Revamp`. An exact-case
+intersection dropped all six, but the sharper half is the other direction — the
+Pi runs Linux and nginx's `alias` uses the captured name verbatim, so a row
+reading `bhop_haddock` would have sent every client to a path that does not
+exist and 404'd forever. `mapscan.py` now folds case to MATCH and emits the PI's
+spelling, because the name in that file IS the download path.
+
+### Defect 3 — the grader read a log that accumulated across runs
+
+FTE appends to its log. The control's first pass showed 12 state samples for 6
+calls, opening with the *subject's* `ok`. The driver now deletes the log before
+each run, the way `p438view.py` always did.
+
+### Also settled by measurement rather than assertion
+
+**The engine takes the `sv_dlURL` layout, not `cl_download_mapsrc`.** Both were
+set and the mirror served both shapes; every request arrived at
+`/ftesurf/maps/p465test.bsp`. The reason is in `cl_parse.c:1005` — the
+`cl_download_mapsrc` branch is an `else if` on `dlURL` being EMPTY, and
+`default.cfg` sets `sv_dlURL`, which is the same cvar (`fs_dlURL`) on a client.
+So `cl_download_mapsrc` is currently dead configuration. It is kept because it
+costs nothing and is the documented fallback if `sv_dlURL` is ever cleared, but
+`default.cfg`'s comment claiming the menu uses it was wrong and is corrected.
+
+**`DL_HOLD` is 6 seconds and a probe every 8 stepped over it**, reporting
+`active -> idle` with the map on disk — which reads exactly like a download that
+never finished. It had finished. The arm now polls every 2 s. Worth remembering
+whenever a state is shown for a fixed time: the sample interval has to be
+shorter than the window, or the arm measures the gaps.
+
+### Still open
+
+- **The Pi's nginx snippet is still not installed** — needs a sudo this tooling
+  does not have. Command in lextest §2j. The local mirror proved the client half;
+  the Pi half is unexercised.
+- **477 catalogued maps are still not on the Pi** (down from 509: `mapsync.py`
+  pushed 32 and the Pi is now 1347 bsp, 1277 of them on the roster). The rest are
+  maps this workstation does not have either.
+- The 76-map Pi-vs-roster gap is explained: other gamemodes (`df_`, `ahop_`,
+  `conc_`, `fy_`, `de_`) which the roster excludes by design, plus the six case
+  mismatches above, which are now matched.
