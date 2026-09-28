@@ -1399,8 +1399,11 @@ void() Online_Status =
 		              ob_have_map, ob_have_track, ob_have_leg,
 		              ob_have_tier, ob_have_style));
 
-	print(sprintf("  rows %g   ranked %g   community %g\n",
-	              ob_n, ob_cnt_ranked, ob_cnt_community));
+	// The momentum count is printed because something DEPENDS on it: it is what
+	// decides whether the imported tab is drawn at all, so an arm that cannot
+	// see it cannot tell a parsed 0 from a key this build never found.
+	print(sprintf("  rows %g   ranked %g   community %g   momentum %g\n",
+	              ob_n, ob_cnt_ranked, ob_cnt_community, ob_cnt_momentum));
 	print(sprintf("  gen %g asked %g  mine %g\n", ob_gen, ob_q_gen, ob_mine));
 
 	/*
