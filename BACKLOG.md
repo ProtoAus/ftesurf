@@ -950,6 +950,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   a differently-configured server is graded against local numbers, silently.
   `tools/p453q.py` says the same in its header, because it is handed the
   settings for the same reason. cl_lines.qc `Line_Movevars`, `Line_Grade`.
+  A Momentum import makes this concrete rather than hypothetical: the engine
+  prints `Momentum movement: ... accel 5, airaccel 150, aircap 30, gravity 800`
+  on every one of those maps, so the file's own numbers are known and still not
+  read. tools/momimport.py writes no `pmpin`, for the honesty reason in its
+  header -- the importer did not run that physics either.
+
+- **EVERY BOARD-COMPARISON LINE IS BUILT WITH A ZERO GROUND PLANE, so
+  `hud_watch_path_color 4` is wrong on slots 1-8.** `cl_watch.qc:1933` reads
+  `(n > WT_C_V4N)` where the replay path at `:1237` spells the same test
+  `tokenize(s) >= WT_C_V4N`. `WT_C_V4N` is 17 and a conforming v4+ sample has
+  EXACTLY 17 columns -- measured at 17 across 43, 15947 and 19384 samples in
+  three real files, and `reccheck.py:142`'s `COLUMNS` pins 17 for every version
+  from 4 up, so 18 can never occur and the test is always false. With the plane
+  zeroed, `Line_Grade`'s ramp branch (cl_lines.qc:491-499) never fires and every
+  airborne sample on a board line is graded against the FLAT `Strafe_IdealTurn`,
+  which cl_lines.qc:428-431 says overstates the target by up to 6x on a
+  53-degree face. Contact colouring (mode 2) is unaffected: it reads
+  `fl & WT_F_RAMP`, not the plane.
+  It survived because `cfg/test/p453q.cfg` and `p452col.cfg` only ever issue
+  `replay colours 0 <stride>` -- slot 0, never a board slot. A one-character
+  fix, but it changes behaviour on a shipped colour mode, so it wants its own
+  patch number and an arm that grades slot 1 against slot 0 on the same file.
+  Found 2026-09-28 while mapping the line path for the Momentum import; the
+  import does not cause it and is not blocked by it.
   Patch 453.
   ONE of the nine is already in hand and unused: `Line_Tick` (cl_lines.qc:274)
   is handed the recording's own `movetickrate` and the energy ceiling divides by
