@@ -1752,11 +1752,24 @@ watch**.
 
 ### Still open
 
-- **An imported row's Date is the IMPORT date, not the run's.** Every one of
-  85,085 reads 2026-09-28, which on a leaderboard is simply wrong. The real
-  value was available all along -- each cached board JSON has `created`
-  (`2025-10-20T23:57:20.102Z`). A fix is in flight; until it lands, treat that
-  column as "when we ingested it" for anything not `ranked`.
+- **FIXED, and the residue is 3,795 rows.** The imported Date was our ingest
+  date; `momdates.py` backfilled 81,290 rows and 996 replays on the live DB
+  from the cached `created`, momentum going from 2 distinct dates to 80,843
+  over a year. Verified against the pre-backfill copy: **0 ranked, community
+  or ksf rows moved**. What is left are rows below momfetch's cached top-25 on
+  boards whose own total reaches 26,112 -- they keep the import date, and
+  `momdates` counts them rather than guessing. `momindex` alone cannot date a
+  row: `tools/momimport.py` reads `date_ms` from the .mtv but writes it only to
+  the manifest, never into the `.rec` header.
+- **surf_utopia's public #1 is 0.060 s faster than Momentum's own #1**
+  (53.565 against 53.625, a demo-corpus row with no board entry). The
+  impossible-time check reports **0** because 0.5% slack on a 53 s run is
+  0.268 s and this is 0.11% -- so the row is inside a tolerance chosen when
+  the disagreements being hunted were whole seconds. Now that the imported
+  board is the first thing a visitor sees, the slack is worth revisiting: an
+  absolute floor (say 0.02 s) alongside the ratio would catch this class
+  without touching the rounding case the ratio exists for. Not changed
+  unilaterally -- dropping somebody's row is the operator's call.
 - **`momquality` is still not shown on the web run page.** The in-game viewer
   warns when the ratio exceeds 1.05; the web one does not, and it should.
 - **The maps list is 65 KB** and grows with the archive. Cached 60 s, fine for

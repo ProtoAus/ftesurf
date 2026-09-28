@@ -722,11 +722,21 @@ database, so every number below is one you can click.
   board nobody else in the archive has a time on. The page leads with 0 and
   puts 35 in the tooltip. That is honest and it is also a profile that says
   zero. Tell me if you would rather lead with 35 and footnote the caveat.
-- **(h) Imported dates are the import date and every row reads 2026-09-28.**
-  The real dates exist and a fix is in flight. Worth confirming you want
-  `submitted` to carry the source's own date rather than our ingest time --
-  it changes tie-break order on the board, in the direction of "the earlier
-  run wins", which is the usual convention.
+- **(h) DONE -- imported dates are real now.** 81,290 rows backfilled from
+  Momentum's own `created`; the board reads 2025-10-07, 2026-06-20 and so on
+  instead of one afternoon. Nothing of ours moved (checked row by row against
+  the pre-backfill database: 0 ranked/community/ksf rows changed). ~3,795 rows
+  sit below the cached top-25 and still show the import date; they are counted,
+  not guessed at. Say if you would rather they showed nothing than show a date
+  that is ours.
+- **(l) surf_utopia's #1 on the public board is 0.060 s faster than
+  Momentum's own #1.** It is a demo-corpus row with no matching board entry.
+  The existing "impossible time" check passes it because 0.5% of 53 s is
+  0.268 s. That tolerance was chosen when the bad rows being hunted were a
+  0.405 s "run" against a 92 s record -- it was never meant to cover a tenth
+  of a percent. I have not deleted anything. Your call: tighten the check with
+  an absolute floor, drop that row, or leave it and accept that our top line
+  can disagree with theirs by a hair.
 - **(i) The imported tint is 0.45 on the web line** against 0.55 in the game.
   Look at a MOM run and an OURS run side by side and tell me whether the blue
   reads as "different source" or just as "blue".
