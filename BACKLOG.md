@@ -1646,3 +1646,84 @@ one -- but it is the same fault as the `$10`/`$11` awk that earned the CLAUDE.md
 bullet, three days later and in the same session that cited it. The rule is
 right; what it needs is a habit, and the habit is reading the file's own header
 line before writing the awk rather than after it fails.
+
+## The library is complete, and 0.1.14 could never have shown it — 2026-09-28
+
+Two separate pieces of work that turned out to be one problem.
+
+### What was missing, measured rather than recalled
+
+471 of the roster's 1748 maps were not offerable. The split is the whole story:
+
+    surf   1146 of 1174   97.6%
+    bhop    131 of  574   22.8%
+
+By catalogue: 463 Momentum-only, 4 KSF-only, 1 both, 3 legacy. **KSF was already
+finished** — 931 Drive archives indexed and NOT ONE of them for a map we lacked,
+which is a real check rather than an empty one because the index loaded and every
+entry resolved. The four KSF-only holes (`surf_disappointed_fix`,
+`surf_junglepics_ksf`, `surf_race_final`, `surf_vestige_fix`) are on KSF's
+spreadsheet with no archive behind them and no Momentum publisher either.
+
+`avail` is `-` on all 1748 rows, which nearly got reported as "0 fetchable". It
+is only a finding because `arch` is populated; on an empty index the column reads
+identically. Checked before quoting it.
+
+### Momentum publishes the rest, with a digest
+
+Every `_cache/*.dat` record carries `currentVersion.downloadURL` and `bspHash`.
+The hash is the sha1 of the served file — verified against bhop_landmark2 before
+any of this was written, not assumed — so `tools/mapgrab.py` can fetch and check
+every file against the publisher's own digest.
+
+HEAD'd all 464 rather than sampling: a 14-map sample gave mean 15.0 MB against
+median 6.3 MB, a 2.3x spread on the total, because one map in it was 110 MB. The
+real figure is 7.66 GB, and 12 maps over 100 MB carry 1.5 GB of it.
+
+Result: **463 OK, 1 CURLFAIL** — `surf_solipsism`, whose published URL 404s.
+The HEAD sweep predicted exactly one dead URL and named the same map, so the
+prediction and the outcome agree. Zero `.part` files survived 464 transfers.
+
+    pi 1350 -> 1813 bsp        offerable 1277 -> 1743 of 1748
+    bhop 131 -> 574 of 574     surf 1169 of 1174
+
+Verified end to end on a map fetched an hour earlier: `bhop_pandora` over
+https at 1,041,220 B/s, served sha1 identical to the Pi's on-disk copy.
+
+### Why the user's download had no button at all
+
+Reported as "I just downloaded and it had no map download option. It just
+failed." Two independent faults, and the second is the one worth keeping.
+
+**0.1.14 was cut at 13:33; every map-download commit landed 19:41-20:17.** No
+release had ever contained the feature. "Is the source pushed" and "what did the
+user download" are different questions and only the second one was being asked.
+
+**A rebuild alone would not have fixed it.** `ftesurf/data/mapdl.txt` is ignored
+by `/ftesurf/data/*` and `$ShipGameFiles` is a NAMED list of four data files.
+Without that file `ui_dl_load` reads nothing, every row comes from `search_begin`
+and is already installed, and no row draws a button — the feature compiled in,
+working, and invisible. Proved from the shipped artifact rather than inferred:
+`ui_dlmap`, `downloadmap`, `ui_dl_start` and `mapdl.txt` all absent from
+0.1.14's `menu.dat`, with `checkbuiltin` PRESENT in the same file as the control
+that says the search works.
+
+0.1.15 ships it: 150 files, `mapdl.txt` at 1743 rows, and the published archive
+re-downloaded from dl.proto.bar and checked — sha256 matches, rows present.
+
+### Faults of this leg
+
+- **`mapscan.py` folded case for `servable` and not for the `missing` count 20
+  lines below**, so it printed 477 where the truth was 471 — it counted the same
+  six case-mismatched maps the fold exists to serve. Found only because the
+  number was derived a second way and the two disagreed.
+- **`mapsync --only` reported success on an empty selection.** Three maps on the
+  cstrike/ftesurf mounts were dropped by the intersection against `--momentum`
+  and the run said "nothing to do -- the Pi already has everything selected".
+- **A warning count read an empty pipeline.** `build.ps1` prints via the host
+  stream, so `2>&1 | Select-String warning` returned 0 against a build printing
+  `Done. 0 warnings` three times. Re-run with `*>&1`: 14 lines, 3 matches. Same
+  CLAUDE.md rule, new mechanism — the stream never arrived rather than the
+  spelling not matching.
+- **`echo -n` stripped VERSION's trailing newline.** Caught with `cat -A` before
+  committing. That file crosses into a remote shell in publish.sh.

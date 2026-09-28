@@ -1076,7 +1076,8 @@ bannered as superseded.)
   name alone is wrong about a third of the library.
 - `tools/maproster.py` is the answer to "which build": `hash` fills
   `data/maphash.txt`, `build` writes `data/maproster.txt`, `check <map>` explains
-  one, `fetch` refreshes the KSF sources. 1748 surf/bhop maps, 1277 installed.
+  one, `fetch` refreshes the KSF sources. 1748 surf/bhop maps, 1280 of them on a
+  local mount (`have` != `-`); that is NOT the same number as what the Pi serves.
 - **IT HASHES ONLY THE BUILD THE ENGINE WOULD LOAD**, resolved by reading
   `fs_addons.txt`'s mount order rather than assuming it -- 43.7 GB instead of the
   90 GB both installs hold. First run is at disk speed; after that the cache is
@@ -1166,8 +1167,8 @@ bannered as superseded.)
   leaves every downloadable map untiered, and an untiered map and a tier-1 map
   look identical in the list.
 - **`data/mapdl.txt` IS THE INTERSECTION OF THE CATALOGUE AND THE PI, not the
-  catalogue.** 1748 maps are catalogued and the Pi serves 1239; offering the
-  other 509 draws a button that 404s. `tools/mapscan.py` takes that intersection
+  catalogue.** 1748 maps are catalogued and the Pi serves 1743; offering the
+  other 5 draws a button that 404s. `tools/mapscan.py` takes that intersection
   and reports the remainder as a sync backlog rather than hiding it.
 - **`NEW` MEANS "A SWEEP SAW THIS NAME APPEAR", not "recently released" and not
   "we only just noticed".** The first run has nothing to compare against, so
@@ -1194,6 +1195,37 @@ bannered as superseded.)
   name in that file IS the download path, and nginx's `alias` uses the captured
   name verbatim on a case-sensitive filesystem, so the catalogue's spelling
   would 404 forever. `mapscan.py` folds case to MATCH and emits what the Pi has.
+- **A FEATURE IS NOT SHIPPED UNTIL ITS DATA FILE IS IN `$ShipGameFiles`.** 0.1.15
+  had to be cut because 0.1.14 carried the map-download code and no
+  `data/mapdl.txt` for it to read -- `ftesurf/data/*` is gitignored and the ship
+  set is a NAMED list, so the file existed on the build box and nowhere else.
+  `ui_dl_load` then reads nothing, every row comes from `search_begin` and is
+  already installed, and NO ROW DRAWS A BUTTON. It reads exactly like the
+  feature being broken. When a feature's input is generated rather than
+  authored, adding it to that list is part of the feature, not packaging.
+  The release was also six hours older than the commits -- pushed source is not
+  a shipped build, and "is it pushed" is a different question from "what did
+  the user download".
+- **`tools/mapgrab.py` FETCHES WHAT mapsync CANNOT.** mapsync copies from the
+  local Steam install, so it is silent about maps this workstation does not have
+  either -- 468 of 1748, and 443 of those bhop, which was 131 of 574. Momentum's
+  own `_cache/*.dat` carries every map's `downloadURL` and `bspHash`, so the Pi
+  curls them directly (2.7 MB/s there, against a 40 Mbit uplink here) and checks
+  each against the publisher's digest. 463 of 464 landed; bhop is 574 of 574.
+  `tools/grabtest.py` is the falsifier and must keep passing: good hash installs,
+  BAD HASH INSTALLS NOTHING, dead url installs nothing, an existing file is left
+  byte-identical, and no `.part` survives any case.
+- **`mapsync --only` NAMES WHAT IT DROPPED, and the reason is the bug it hid.**
+  It intersects against `--momentum`, so three maps living on the cstrike and
+  ftesurf mounts vanished from the selection and the run printed "nothing to do
+  -- the Pi already has everything selected". An EMPTY selection wearing a
+  satisfied one's words, on a tool whose whole job is copying files.
+- **`build.ps1` PRINTS THROUGH THE HOST STREAM, so `2>&1 | Select-String` COUNTS
+  NOTHING.** A warning count taken that way returned 0 against a build that
+  prints `Done. 0 warnings` three times -- the filter saw an empty pipeline and
+  would have said 0 with fifty warnings present. Capture with `*>&1`, then count.
+  This is the CLAUDE.md filter rule with a new mechanism: not a spelling that
+  does not match, but a STREAM that never arrives.
 - **`cl_download_mapsrc` IS DEAD CONFIGURATION while `sv_dlURL` is set**, because
   `cl_parse.c:1005` makes it an `else if` on dlURL being empty and `sv_dlURL` is
   the same cvar (`fs_dlURL`) on a client. Measured, not assumed:
