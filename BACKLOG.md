@@ -1023,6 +1023,33 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   rendering change wanting its own patch and a `replay bench` measurement.
   `lextest.md` §2h(a) asks the operator whether it is enough as it stands.
 
+  **AND A MATCHING NAME IS NOT A MATCHING BUILD, FOR 30% OF THE SHARED LIBRARY --
+  which makes the `_ksf` counts above a floor, not a bound.** The import session
+  fetched a real `ksf.surf` bestrecords response and found KSF returns records
+  under PLAIN map names (`{"map_id":580,"mapName":"surf_whiteout"}`), with
+  suffixed and unsuffixed names in the SAME response -- so a KSF record on a plain
+  name was still set on KSF's build under KSF's zones, and counting `_ksf`-named
+  files understates the exposure. Their API reading is theirs and is not verified
+  here (no request was made to ksf.surf from this session). The LOCAL half is, and
+  it generalises the point past KSF: of the **1062 map names present in both the
+  Momentum and CS:S installs, 322 (30.3%) differ in size, i.e. are a different
+  build under the same name** -- and **all 322 are plain-named, zero are
+  `_ksf`**. The suffix convention is exactly where the collision does NOT happen.
+  Divergence is not marginal: `surf_fantasy` is 155 MB against 351 MB,
+  `surf_dune` 21 MB against 156 MB. Method check: `surf_kitsune` reads
+  3,952,402 / 4,418,529, the same pair `mapsync.py:47-63` recorded independently
+  when it found 323 of 1312 Pi BSPs were the wrong build.
+
+  **CONSEQUENCE FOR THE DOWNLOAD BUTTON, and it is a design constraint rather than
+  a caveat: the transfer must be content-addressed, not name-addressed.** "Send me
+  `surf_kitsune`" is ambiguous across a third of the library, and getting it wrong
+  is SILENT -- the client loads, plays, and `TF_NOMAP` demotes the run because
+  mapcrc disagrees. So the button must ask for the build the SERVER holds (its
+  mapcrc or a hash), the Pi must answer with that exact file, and the client must
+  verify what arrived before the run counts. This is also the strongest argument
+  for the Pi-sourced design over Momentum's CDN: the CDN can only ever answer by
+  name, and the name is the thing that is not unique.
+
 ## Harness coverage
 
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
