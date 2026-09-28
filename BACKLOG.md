@@ -972,6 +972,24 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   read BETTER than they were strafed, and a comparison line that flatters the
   ghost is worse than one that is harsh. `Strafe_CapBinds` does depend on tick,
   so the grey gate can flip in principle; between these two modes it does not.
+  WHERE THOSE 140 ACTUALLY ARE, because the import does not dominate them yet:
+  of the 2961 files under `data/momentum` 2910 are 0.015 -- Momentum's surf
+  interval matches ours exactly -- and only 51 are 0.01, so 89 of the 140 are
+  local recordings. The cheap fix needs NO import special case:
+  `tools/momimport.py:255-256` writes the file's own interval into both
+  `tickrate` and `movetickrate`, so `ln_tick[s]` is already correct for all 2961.
+  AND THE NO-ANSWER BRANCH IS PERMANENT, NOT LEGACY. An imported run will never
+  carry `pmpin`: momimport omits it deliberately (`:21` -- the machine that ran
+  that physics was Source, and filling our 70 movevars from anything else would
+  invent a fact). So the third verdict is not a shrinking population of old
+  files, it is the standing state of a whole tier, and it wants to read "not
+  measurable here" rather than "old file".
+  Reported by the import session and NOT verified here -- no `.mtv` survives in
+  this tree -- Momentum's other gamemodes carry their own interval: bhop 0.01,
+  kz 0.0078125, defrag 0.008, across 7486 headers. Neither 0.0078125 nor 0.008
+  appears on any `.rec` yet, so that growth is pending on the 4589 demos still
+  extracting; if they land, their errors are 1.92x and 1.875x, WORSE than bhop's
+  1.5x, so the count and the magnitude both grow.
 
 - **EVERY BOARD-COMPARISON LINE IS BUILT WITH A ZERO GROUND PLANE, so
   `hud_watch_path_color 4` is wrong on slots 1-8.** `cl_watch.qc:1933` reads
