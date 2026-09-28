@@ -200,6 +200,13 @@ $ShipGameFiles = @(
     'ftesurf/data/mapmeta.txt'
     'ftesurf/data/mapmeta_override.txt'
     'ftesurf/data/mapparticles.txt'
+    # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to
+    # append the maps you do NOT have; with no file the list is built purely
+    # from search_begin and every row is already installed, so nothing draws a
+    # button. 0.1.14 shipped exactly that and read as the feature being broken.
+    # NOT mapseen.txt: that is mapscan.py's own state on the build box, and a
+    # shipped copy would make a player's first sweep badge nothing as new.
+    'ftesurf/data/mapdl.txt'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory
