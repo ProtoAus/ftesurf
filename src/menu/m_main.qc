@@ -416,7 +416,13 @@ float  ms_applied_srcf;
 // moves.  "" when nothing is loaded.  See ui_backdrop.
 string ms_bgpic;
 float  ms_bgfor;                // ms_selected the background was loaded for
-float  ms_bgblind;              // warned once that no candidate path resolved
+// ms_bgblind went with the blind fallback it latched: there is nothing left to
+// warn about once "no readable image" is an ordinary answer with a backdrop of
+// its own rather than a guess that might be a build difference.
+// The selected row's atlas cell, read when the selection moves rather than on
+// every frame, for the blurred fallback in ui_bgatlas.  -1 = this map has no
+// thumbnail either, and then the screen gets the flat backdrop and nothing else.
+float  ms_bgpage, ms_bgcell;
 
 // mapmeta.txt column layout, and the atlas geometry tools/mapthumbs.py packs to.
 // These two must agree with the tool; they are stated in its module docstring.
@@ -4262,6 +4268,85 @@ string(string uuid, float scrw) ui_bgpick =
 	return "";
 };
 
+/*
+  THE BACKDROP EVERY MAP HAS: its own atlas thumbnail, blown up and blurred.
+
+  gfx/mapshots is 269 MB at 1280x720 and 876 MB at 1920x1080 against a 33 MB
+  installer, which is why no release has ever carried one and why this screen
+  had nothing to draw for anybody who does not also own Momentum.  gfx/mapthumbs
+  DOES ship -- six 2048x2048 atlases, 28 MB, one 128x72 cell per map -- and the
+  rows beside this already draw from it.  So the picture was distributed all
+  along, at 1/225th of the pixels.
+
+  128x72 to 1920x1080 is a 15x upscale and bilinear at 15x does not read as a
+  photograph, it reads as a grid of soft squares.  A gaussian on top removes the
+  frequency that grid lives at, and what is left reads as a deliberately
+  defocused still rather than as a broken texture.  Zero distributed bytes.
+
+  NINE TAPS, 3x3, offsets in SOURCE TEXELS so the blur is the same strength at
+  every resolution.  Weights are the separable {1,2,1} kernel, and tap i is
+  composited at alpha w_i / (w_0 + .. + w_i), which makes the running result the
+  exact weighted average rather than nine layers of paint: out = out*(1-a) + c*a
+  with a = w_i/W_i telescopes to sum(w*c)/W.  The first tap therefore draws
+  opaque, which is what establishes the base.
+
+  drawsubpic is also the safer builtin here: unlike drawpic it has no
+  R2D_SafeCachePic("no_texture") substitution (pr_menu.c:688-712 against
+  :622-632), so a missing atlas draws nothing rather than an error texture.
+*/
+#define BG_BLUR_TEXELS  1.5
+
+void(vector screensize, float page, float cell) ui_bgatlas =
+{
+	local vector sp, ss, base, sz;
+	local float col, row, d, i, gx, gy, w, acc, scale;
+
+	if (page < 0 || cell < 0)
+		return;
+
+	col = cell - floor(cell / THUMB_COLS) * THUMB_COLS;
+	row = floor(cell / THUMB_COLS);
+
+	// HALF A TEXEL IN FROM EVERY EDGE.  At this magnification bilinear reaches
+	// into the neighbouring cell, and an atlas neighbour is a different map --
+	// so without the inset a thin band of some unrelated surf map runs down the
+	// side of the screen.
+	sp = [(col * THUMB_W + 0.5) / ATLAS_PX, (row * THUMB_H + 0.5) / ATLAS_PX, 0];
+	ss = [(THUMB_W - 1) / ATLAS_PX, (THUMB_H - 1) / ATLAS_PX, 0];
+
+	// Cover, not fit -- the same rule and the same reason as the full-size path
+	// below -- then grow by the blur offset so no shifted tap can pull an empty
+	// edge into view.
+	scale = screensize_x / 1920;
+	if (screensize_y / 1080 > scale)
+		scale = screensize_y / 1080;
+	sz = [1920 * scale, 1080 * scale, 0];
+
+	d = (sz_x / THUMB_W) * BG_BLUR_TEXELS;      // one texel, in screen pixels
+	sz = sz + [d * 2, d * 2, 0];
+	base = [floor((screensize_x - sz_x) * 0.5),
+	        floor((screensize_y - sz_y) * 0.5), 0];
+
+	acc = 0;
+	for (i = 0; i < 9; i = i + 1)
+	{
+		gx = (i - floor(i / 3) * 3) - 1;        // -1, 0, 1
+		gy = floor(i / 3) - 1;
+		w  = (2 - fabs(gx)) * (2 - fabs(gy));   // {1,2,1} x {1,2,1}, sums to 16
+		acc = acc + w;
+		// FULL BRIGHTNESS, unlike the full-size path's 0.7 dim, and the caller
+		// washes this one lighter too.  Measured, not guessed: at the sharp
+		// path's 0.7 tint and 0.4 wash the top-left 500x300 of the frame came
+		// out at mean luma 9.7 of 255 -- a backdrop nobody can see is not a
+		// backdrop.  A blur that has already destroyed every edge cannot
+		// compete with panel text the way a sharp photograph can, so the
+		// dimming the sharp path needs is dimming this one only pays for.
+		sui_subpic([base_x + gx * d, base_y + gy * d], sz,
+		           strcat("gfx/mapthumbs/atlas", ftos(page)),
+		           sp, ss, '1 1 1', w / acc, 0);
+	}
+};
+
 void(vector screensize) ui_map_backdrop =
 {
 	local string uuid, want;
@@ -4277,42 +4362,75 @@ void(vector screensize) ui_map_backdrop =
 		ms_bgfor = ms_selected;
 
 		uuid = "";
+		ms_bgpage = ms_bgcell = -1;
 		if (ms_selected >= 0)
 			if (ms_selected < ms_count)
 				if (tokenize(bufstr_get(ms_meta, ms_selected)) > MT_UUID)
+				{
 					uuid = argv(MT_UUID);
+					// The same row the thumbnail is drawn from, read here so the
+					// atlas fallback below costs no second tokenize per frame.
+					ms_bgpage = (argv(MT_PAGE) == "-") ? -1 : stof(argv(MT_PAGE));
+					ms_bgcell = (argv(MT_CELL) == "-") ? -1 : stof(argv(MT_CELL));
+				}
 
 		if (uuid != "" && uuid != "-")
 		{
-			want = ui_bgpick(uuid, screensize_x);
-
-			// Every probe failed.  Either the map genuinely has no cached image,
-			// or fopen cannot see outside data/ in this build -- and those two
-			// are indistinguishable from here.  Ask for the sharp one blindly,
-			// which is exactly what this did before the chain existed: drawpic
-			// no-ops on a miss, so the cost of being wrong is a flat backdrop.
+			// NO BLIND LAST RESORT.  What stood here asked for
+			// _cache/images/<uuid>-large.jpg after ui_bgprobe had already
+			// established no such file was readable, on the stated grounds that
+			// "drawpic no-ops on a miss, so the cost of being wrong is a flat
+			// backdrop".  THAT IS NOT WHAT drawpic DOES.  PF_CL_drawpic,
+			// pr_menu.c:622-632:
 			//
-			// Say so once, though.  If it is the second cause it applies to every
-			// map, and a silent chain that never fires reads as "these maps have
-			// no picture" rather than as a build difference.
-			if (want == "")
+			//     p = R2D_SafeCachePic(picname);
+			//     if (!p || !R_GetShaderSizes(p, NULL, NULL, false))
+			//         p = R2D_SafePicFromWad(picname);
+			//     if (!p) {
+			//         if (!CL_IsDownloading(picname))
+			//             p = R2D_SafeCachePic("no_texture");
+			//         G_FLOAT(OFS_RETURN) = 0;
+			//     }
+			//     ...
+			//     R2D_Image(... p);       // drawn on every path
+			//
+			// It returns 0 AND substitutes no_texture, then draws it.  So on
+			// every install that has neither gfx/mapshots nor a Momentum
+			// _cache -- which is every shipped install, since release.ps1
+			// carries neither -- this painted a full-screen error texture
+			// behind the panel.  Reported as "we don't distribute them and
+			// show as error".
+			//
+			// The CL_IsDownloading test is why a download in flight shows
+			// nothing: "don't draw it until it has arrived" already exists in
+			// the engine, just not for a file that is never arriving.
+			//
+			// precache_pic is NOT implicated -- PF_CL_precache_pic (:820-861)
+			// only calls R2D_SafeCachePic and never draws -- so the fault was
+			// the draw, and the fix is to keep an unverified path out of
+			// ms_bgpic rather than to stop precaching one.
+			want = ui_bgpick(uuid, screensize_x);
+			if (want != "")
 			{
-				want = sprintf("_cache/images/%s-large.jpg", uuid);
-				if (!ms_bgblind)
-				{
-					ms_bgblind = TRUE;
-					print("^9FTESurf: no readable image found for a selected map; "
-					      "backdrops fall back to asking for -large blind.\n");
-				}
+				ms_bgpic = strzone(want);
+				precache_pic(ms_bgpic);
 			}
-
-			ms_bgpic = strzone(want);
-			precache_pic(ms_bgpic);
 		}
 	}
 
 	if (ms_bgpic == "")
+	{
+		// No full-size image on this machine, which is the normal case. Draw
+		// the thumbnail we DID ship, blurred, and then the same wash -- so the
+		// screen looks the same shape either way and only the sharpness says
+		// which one you got.
+		if (ms_bgpage >= 0)
+		{
+			ui_bgatlas(screensize, ms_bgpage, ms_bgcell);
+			sui_fill('0 0 0', screensize, '0.02 0.02 0.03', 0.25, 0);
+		}
 		return;
+	}
 
 	// Cover, not fit: the image is 16:9 and the screen may not be, and a letterbox
 	// bar behind a menu panel reads as a rendering fault rather than as an aspect
