@@ -1943,3 +1943,54 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   chip has to change -- grade the panel's element rows, not the panel); and take
   the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
   against it, never the whole frame (the fps counter always moves).
+
+### The public web surface (`/board/`) -- what may leave the process
+
+- **A PUBLISHED `runs.player` WOULD BE A PUBLISHED IDENTITY.** That column is
+  the client's guid, 32 hex derived from its qkey, and a client writes its own
+  qkey -- so anyone holding a guid could file times as that player from a keyed
+  server. `web_map`'s `del row["player"]` is load-bearing, not tidiness. The
+  public id is `web_handle()` = sha256(guid)[:12]; 128 bits of guid does not
+  come back out of 48 bits of digest. Never add a route that returns `player`.
+- **The one exception is gated in one function.** `web_ext()` publishes an
+  imported row's steamid64 -- which Momentum's own board publishes -- and
+  returns None for every other tier whatever the value looks like. One
+  predicate, one place, and test_web.py pins that a ranked row never carries it.
+- **The run viewer's header is an ALLOWLIST (`WEB_HEAD_KEYS`).** A `.rec`
+  carries `mapcrc`, `zonecrc`, `zonerule`, `nonce` and `pmpin`; those are the
+  integrity surface and a blocklist ships whatever key is added next. The
+  fixture .rec in test_web.py contains all of them on purpose, so the arm can
+  fail. `evidence` rows, `community` runs and rejected runs are 404 there too.
+- **`tier` on `/board/api/map` falls back, it does not 400.** The route shipped
+  ignoring that parameter, so links carrying `tier=community` exist and
+  test_web.py pins that they open ranked. A 400 there is a 400 on a bookmark.
+- **Two rules are spelled twice and must be changed twice**: the Quake colour
+  strip (`board.js plain()` / `surfd.py web_plain()`), and the no-markup rule
+  that test_board.py's private-word guard enforces by bare substring -- so a
+  COMMENT containing `innerHTML` or `reason` fails the build. Both happened.
+- **A missing map-difficulty catalogue reads as UNKNOWN, never as zero.**
+  `map_tiers()` returns None when `momtracks.tsv` is absent and the page says
+  tiers are unavailable. "0 of 64 tier-1 maps" for a box with no catalogue is a
+  lie about a player, not a low score.
+- **Ranking a profile is not ranking a board.** Two obvious orderings both put
+  nonsense on top of a real profile: by placing it led with #1 of 1 (that
+  profile has 35 such boards and 0 contested firsts), by board size it led with
+  #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
+  first places and `wrc` counts the contested ones; the page leads with `wrc`.
+
+### Keeping the imported boards fresh -- and the one source that is never cronned
+
+- **`momwatch.py` is on the Pi's crontab, every 7 minutes**, `--stale 24
+  --max 40 --delay 1.5 --index`, under `flock`. It reads the `lobbies` table,
+  refreshes only boards that are missing or stale for maps the fleet is on, and
+  on a fresh fleet makes ZERO outbound requests -- verified on the first tick:
+  "live maps 12, boards already fresh 44, boards to refresh 0". 1.5 s rather
+  than the 1.0 s measured tripping Momentum's 429 after 2,164 consecutive
+  requests, because this one runs unattended.
+- **KSF IS DELIBERATELY NOT AUTOMATED AND MUST NOT BE.** `ksfimport.py`'s own
+  politeness contract says "never automatic: every run of this is a person
+  typing it", reasoned against that host in the wrlines reference. Do not cron
+  it; if the operator wants KSF refreshed on a schedule that is their decision
+  to make explicitly, and the docstring should change first.
+- The map roster stays a Windows scheduled task (`FTESurf map scan`, PT6H) for
+  the reason already recorded: it hashes builds that live on this workstation.

@@ -1727,3 +1727,67 @@ re-downloaded from dl.proto.bar and checked — sha256 matches, rows present.
   spelling not matching.
 - **`echo -n` stripped VERSION's trailing newline.** Caught with `cat -A` before
   committing. That file crosses into a remote shell in publish.sh.
+
+## The public leaderboard grows a run viewer, profiles and the imports
+
+`proto.bar/ftesurf/board/` was a table of rank/name/time/gap/date with nothing
+clickable, over 172 ranked rows on 36 maps. It is now five views behind one
+hash route, and the live numbers are **766 maps, 740 with times, 4,791 runs to
+watch**.
+
+- **The run viewer** (`/board/api/run/<rid>`) is `recplot.parse()` -- the same
+  parser the admin page has always used -- rendered by `web/runview.js`: the
+  path coloured by speed, a dot that scrubs and plays with a live u/s readout, a
+  speed strip with split ticks, and `#r=<rid>&at=<seconds>` so a link shares a
+  moment rather than a run. An imported run is tinted with LN_FGNCOL, the same
+  blue the imported line wears in the game, and says in words that its path is
+  reconstructed.
+- **Player profiles and search** (`/board/api/players`, `/board/api/player/<h>`)
+  over ~5,000 people: times, contested records, top tens, maps finished, and
+  completion per Momentum difficulty tier. 380 of our 536 board maps are rated.
+- **The board takes `tier=imported|combined`**, with per-source counts on the
+  tabs and a blue edge on imported rows. THE WEB DOES NOT HAVE THE IN-GAME
+  PAGING HOLE (lextest 2h(f)): it pages with a real offset, so our row at rank
+  222 on surf_utopia is reachable with "Show more".
+
+### Still open
+
+- **An imported row's Date is the IMPORT date, not the run's.** Every one of
+  85,085 reads 2026-09-28, which on a leaderboard is simply wrong. The real
+  value was available all along -- each cached board JSON has `created`
+  (`2025-10-20T23:57:20.102Z`). A fix is in flight; until it lands, treat that
+  column as "when we ingested it" for anything not `ranked`.
+- **`momquality` is still not shown on the web run page.** The in-game viewer
+  warns when the ratio exceeds 1.05; the web one does not, and it should.
+- **The maps list is 65 KB** and grows with the archive. Cached 60 s, fine for
+  now, wrong at 2,000 maps -- it wants server-side paging or a search endpoint.
+- **A profile's rows cap at 100 with an offset the page never uses**, so a
+  player with 1,629 times shows the first 100. The endpoint pages; the UI
+  does not.
+- **Name fragmentation is real and visible**: `boro` / `borobongo` /
+  `BoroBongo` are three guids, and our `Proto` and the Momentum `Proto` are
+  different people as far as this site can tell. Per-install identity is the
+  honest answer and merging by name would be an impostor's gift, but a player
+  who reinstalls does split. There is no fix here without real accounts.
+
+### Faults of this leg
+
+- **`400 bad tier` broke old shared links.** `/board/api/map` shipped ignoring
+  that parameter, and test_web.py pinned that `tier=community` still opens the
+  ranked board. My "a typo should not quietly show a different board" reasoning
+  was right in general and wrong against a contract somebody had already
+  written down. The suite caught it in the first run.
+- **Two profile orderings, both plausible, both nonsense at the top.** By rank:
+  #1 of 1. By board size: #501 of 501, dead last. Neither was found by
+  reasoning -- both were found by rendering a real profile and reading the
+  first row. The fixture now has three boards so it rejects both at once.
+- **"35 records" counted 35 boards nobody else is on.** True and useless. The
+  contested count on that same profile is 0.
+- **A COMMENT failed two builds.** test_board.py greps public bodies for
+  `reason`/`verdict`/`reject`, and test_web.py greps for `innerHTML`; my
+  comments used both words to explain why the code does not. Reworded the
+  prose rather than loosening either grep -- a bare substring is the stronger
+  check and the whole point is that it cannot be talked around.
+- **An unquoted heredoc ate a backtick pair** in a throwaway script, printing
+  `have: command not found`. Sixth occurrence of the documented trap, first
+  in the `<<PY` direction rather than `\n`. Quote the delimiter: `<<'PY'`.

@@ -709,3 +709,42 @@ marktrace 2` (what the next two frames actually drew, including each label's
 text and screen position) all print to the console, and `ftesurf/logs/` keeps
 them with `log_enable 1`. Any one of those plus the recording is enough to
 reproduce a bad line exactly.
+
+## 5. The website, and what I want you to look at
+
+`proto.bar/ftesurf/board/` is live with all of this on it. It reads the real
+database, so every number below is one you can click.
+
+- **The map list** now says 766 maps, 740 with times, 4,791 runs to watch. Tier
+  chips (T1-T10) filter by Momentum's own difficulty rating; 380 of your 536
+  playable maps are rated, the rest say Unrated rather than pretending to be
+  tier 0.
+- **Any row with a demo has a Watch button.** That opens the run: the path
+  coloured by speed, a dot you can play and scrub with the u/s it was carrying
+  at that instant, and a speed strip you can click to seek. Pausing puts the
+  moment in the address bar, so `#r=5&at=31` shares the exact frame.
+- **Player search and profiles.** Click any name. ~5,000 people, times,
+  records, top tens, maps finished, and a completion bar per difficulty tier.
+
+### Judgement calls for you (2h continues)
+
+- **(g) Is "records" the right word for the contested count?** Your Momentum
+  profile has 35 first places and 0 of them contested -- every one is a stage
+  board nobody else in the archive has a time on. The page leads with 0 and
+  puts 35 in the tooltip. That is honest and it is also a profile that says
+  zero. Tell me if you would rather lead with 35 and footnote the caveat.
+- **(h) Imported dates are the import date and every row reads 2026-09-28.**
+  The real dates exist and a fix is in flight. Worth confirming you want
+  `submitted` to carry the source's own date rather than our ingest time --
+  it changes tie-break order on the board, in the direction of "the earlier
+  run wins", which is the usual convention.
+- **(i) The imported tint is 0.45 on the web line** against 0.55 in the game.
+  Look at a MOM run and an OURS run side by side and tell me whether the blue
+  reads as "different source" or just as "blue".
+- **(j) Momentum profiles link out to momentum-mod.org.** Your own guid never
+  leaves the server -- the site's player ids are a hash -- but an imported
+  player's steamid is published, because their own leaderboard publishes it.
+  Say if you would rather it did not.
+- **(k) 740 of 766 maps now have times on a public page**, most of them other
+  people's. You said yes to this; it is worth seeing at full size before it is
+  indexed by anything.
