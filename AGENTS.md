@@ -1067,6 +1067,45 @@ bannered as superseded.)
   level name; it is not a parameter. An arm that fetches a board for a different
   map without changing map first grades the wrong board and looks correct.
 
+### Preparing the boards (the sweep, and keeping it fresh)
+
+- **Times and demos are separate jobs and the difference is three orders of
+  magnitude.** Every surf/bhop board's top 25 is 3,693 requests, about an hour.
+  The DEMOS behind those rows would be ~92,000 files, ~35 GB and a day of
+  sustained traffic. So `tools/momfetch.py` fetches times for everything and
+  demos stay bounded and on demand. Do not casually widen that.
+- **The map catalogue is the one input that cannot be fetched.** `tools/msml.py`
+  reads the game's `momentum/_cache/*.dat` (`MSML`, two u32s, a zlib JSON
+  array) for map ids and each map's track list; there is no endpoint for either.
+  Export it with `--out` and ship the TSV to any box without the game --
+  `momfetch --tracks` reads that instead of `--cache`.
+- **Ask in the map's OWN gamemode.** The catalogue claims a board in nearly
+  every gamemode for nearly every map and almost all are empty (44,676 claimed
+  against 3,693 real). `gm_of()` decides by the name prefix.
+- **1.0 s between requests, not the reference's 400 ms.** That figure was for a
+  person pressing a button; a sweep should cost more, not less. One at a time,
+  capped per invocation, honest User-Agent, and a non-2xx STOPS and is never
+  retried. Every answer is cached, so a re-run is free and an interruption
+  resumes -- which is the property that makes re-running it polite rather than
+  rude.
+- **`surfd/momwatch.py` needs no hook in the game.** surfd already records what
+  every lobby is on, so it reads the `lobbies` table, refreshes the boards of
+  currently-played maps that are missing or stale, and does nothing otherwise.
+  Staleness is per BOARD, so one new stage record does not re-fetch a map's
+  other fifteen boards. Cron it; on an idle fleet it makes zero requests.
+- **A KSF 500 is an ANSWER, not a refusal.** It is how that host says "not a
+  player of mine" -- measured at a third of SteamIDs taken off Momentum's
+  boards. Collapsing it into a refusal ends a sweep at its first non-KSF
+  player. The reading is INFERRED, so `SKIP_STREAK` (25 consecutive) is the
+  breaker on being wrong about it: a host that is really refusing answers 500 to
+  everything and trips it in seconds.
+- **The two imported tiers differ in watchability, by nature.** Momentum rows
+  can carry a replay; KSF rows never can. After a full times sweep most
+  `momentum` rows will also be times-only -- the demo corpus is ~5,000 runs
+  against ~90,000 board rows -- so "imported" will mostly mean "a time", with a
+  minority watchable. `momboards --link` is what joins a fetched time to a demo
+  we already hold for the same run.
+
 ## Pi operations (public lobbies)
 
 - **THIS FLEET IS A DEVELOPMENT FLEET AND THE OWNER WANTS CHANGES DEPLOYED.**
