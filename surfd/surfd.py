@@ -68,6 +68,14 @@ EVIDENCE_DIR = os.environ.get(
     "SURFD_EVIDENCE",
     os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "evidence"))
 KEEP_DIR = os.environ.get("SURFD_KEEP", os.path.join(DATA_DIR, "evidence"))
+
+# Imported Momentum Mod runs: <MOMENTUM_DIR>/<map>/<leg dir>/<leaf>, the same
+# shape as RUNS_DIR so leg_dir() serves both.  A separate root and not a corner
+# of data/runs, because these are not this game's recordings and a sweeper,
+# a backup or a `du` should be able to tell them apart without reading headers.
+MOMENTUM_DIR = os.environ.get(
+    "SURFD_MOMENTUM",
+    os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "momentum"))
 EVIDENCE_SETTLE = 600    # s; a file with no `end` younger than this may be mid-write
 KEEP_ORPHAN_AGE = 3600   # s; a kept file with no row older than this is removed
 
@@ -295,6 +303,20 @@ BOARD_LIMIT_DEF = 50
 TIER_RANKED = "ranked"
 TIER_COMMUNITY = "community"
 TIERS = (TIER_RANKED, TIER_COMMUNITY)
+
+# Runs imported from another game (Momentum Mod), by tools/momimport.py and
+# momindex.py.  A SEPARATE TIER AND NOT A FLAG, for two reasons that are not
+# presentation: `tier` is in the runs primary key, so a player's Momentum time
+# and their FTESurf time on the same map coexist instead of overwriting; and
+# every board query filters on tier, so these rows are invisible to the ranked
+# board by construction rather than by remembering to exclude them.
+#
+# IT IS DELIBERATELY NOT IN `TIERS`.  That tuple is what submit_run will accept
+# over the wire, and a tier there is a tier a lobby can claim. Nothing reaches
+# this one except a local importer with filesystem access; the network path
+# cannot name it. Reading is a different question, which is what TIERS_READ is.
+TIER_MOMENTUM = "momentum"
+TIERS_READ = TIERS + (TIER_MOMENTUM,)
 
 # Run styles -- the client's own vocabulary (sh_defs.qc: FS_RunClass).  Derived
 # here from `flags`, never taken from the submitter; see style_of.
@@ -2074,8 +2096,8 @@ def public_state(verdict, decision):
 
 
 def board_counts(db, mapname, track, leg, style):
-    """Row counts for both tiers of one board: {"ranked": n, "community": n}."""
-    counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0}
+    """Row counts per tier of one board: {"ranked": n, "community": n, ...}."""
+    counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0, TIER_MOMENTUM: 0}
     for row in db.execute(
             "SELECT tier, COUNT(*) AS n FROM runs"
             " WHERE map=? AND track=? AND leg=? AND style=? GROUP BY tier",
@@ -2993,7 +3015,9 @@ def board():
 
     tier = clean_text(request.args.get("tier")) or TIER_RANKED
     style = clean_text(request.args.get("style")) or STYLE_CLEAN
-    if tier not in TIERS:
+    # TIERS_READ, not TIERS: a client may ASK for the imported board, while
+    # submit_run still accepts only TIERS so nothing can claim that tier.
+    if tier not in TIERS_READ:
         return fail(400, "bad tier")
     if style not in STYLES:
         return fail(400, "bad style")
@@ -3028,6 +3052,9 @@ def board():
             "counts": {
                 TIER_RANKED: counts.get(TIER_RANKED, 0),
                 TIER_COMMUNITY: counts.get(TIER_COMMUNITY, 0),
+                # So a client can offer the imported board, or a combined view,
+                # without spending a second request to discover it is empty.
+                TIER_MOMENTUM: counts.get(TIER_MOMENTUM, 0),
             },
             "offset": offset,
             "rows": rows,
@@ -3068,8 +3095,11 @@ def replay_file(row):
     leaf, map_dir = row["leaf"] or "", row["map_dir"] or ""
     if kind == "evidence":
         ok, root, sub = _EVLEAF_OK.match(leaf), KEEP_DIR, (map_dir, leaf)
-    elif kind == "run":
-        ok, root = _LEAF_OK.match(leaf), RUNS_DIR
+    elif kind in ("run", "momentum"):
+        # An imported run's leaf is written to FS_RunLeaf's grammar by
+        # tools/momimport.py, so _LEAF_OK reads both; only the root differs.
+        ok = _LEAF_OK.match(leaf)
+        root = RUNS_DIR if kind == "run" else MOMENTUM_DIR
         sub = (map_dir, leg_dir(row["track"], row["leg"]), leaf)
     else:
         return None, "name"

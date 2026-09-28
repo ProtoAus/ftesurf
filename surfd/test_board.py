@@ -308,8 +308,18 @@ check("...and asking does not put it on the ranked board",
       names(board(m, tier="ranked")), ["ranked1"])
 
 b = board(m, tier="ranked")
-check("the response carries both tiers' counts",
-      b["counts"], {"ranked": 1, "community": 3})
+check("the response carries every tier's counts",
+      b["counts"], {"ranked": 1, "community": 3, "momentum": 0})
+
+# The imported tier is READABLE but not CLAIMABLE.  /api/board validates against
+# TIERS_READ so a client can ask for it; submit_run still validates against
+# TIERS, so a keyed lobby -- which is trusted enough to write `ranked` -- cannot
+# file a run as somebody else's game.  Only momindex.py, beside the files,
+# writes that tier.
+check("a keyed server may not submit into the imported tier",
+      submit(m, player="faker", flags=0, tier="momentum", ticks=1), "HTTP 400")
+check("...and nothing of it reached the board",
+      board(m, tier="momentum")["counts"]["momentum"], 0)
 
 # The same player, both tiers: a community run must never displace a ranked
 # one, which is what keeping `tier` in the primary key buys.
