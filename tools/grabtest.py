@@ -8,14 +8,17 @@ fetcher, and an arm where every case succeeds proves nothing.
 import os
 import subprocess
 import sys
+import tempfile
 
-sys.path.insert(0, r"C:\FTESurf\tools")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mapgrab                                            # noqa: E402
 
 HOST = mapgrab.PI_HOST
 DEST = "/tmp/grabtest/maps"
 WORK = "/tmp/grabtest"
-SC = os.path.dirname(os.path.abspath(__file__))
+# A temp dir, not this one: the two scratch files below are inputs to the run,
+# not source, and writing them beside the tool leaves junk in the repo.
+SC = tempfile.mkdtemp(prefix="grabtest-")
 
 # bhop_landmark2: real url, and its real sha1 (verified by hand earlier).
 URL = "https://cdn.momentum-mod.org/maps/94d3e6ba-5709-403c-a059-8c4ab03fb4f2.bsp"
