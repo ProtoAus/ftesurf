@@ -41,6 +41,11 @@
 #define COL_ROW_HOVER   '0.18 0.20 0.26'
 #define COL_ROW_SEL     '0.10 0.30 0.45'
 #define COL_BORDER      '0.28 0.30 0.36'
+// The action column's Play button.  Green because it is the one control on
+// this screen that starts something, and the only one that is safe on every
+// row it appears on -- COL_ACCENT is already the tier chip and the panel edge.
+#define COL_PLAY        '0.30 0.85 0.45'
+#define COL_PLAY_HOT    '0.12 0.32 0.18'
 
 // ---------------------------------------------------------------------------
 //  Font sizes.  MULTIPLES OF 8, ALWAYS.
@@ -75,6 +80,20 @@
   a 2 px gap.  It was 22 when the row was a tag and a name.
 */
 #define ROW_H           48
+/*
+  The gap between the right-aligned times and whatever is to their right -- the
+  download gutter, or the row's edge where there is none.
+
+  It was a bare 8 at four call sites.  20 because 8 put the times hard against
+  the gutter's border and they read as part of the button ("move the times over
+  to the left slightly"), and because the two numbers now stacked there are the
+  row's answer to "should I play this" and deserve to be their own column.
+*/
+#define ROW_RPAD        20
+// Horizontal padding inside the download button, each side.  Up here with the
+// other layout constants because ui_browse_print reports the gutter and is
+// defined long before the download block.
+#define DL_PAD          6
 
 #define SCREEN_MAIN     0
 #define SCREEN_CREATE   1
@@ -313,6 +332,41 @@ strbuf ms_catv;
 strbuf ms_pbv;
 // "1" where the time in ms_pbv came from lobby.pb, "" where it is a local run.
 strbuf ms_pblob;
+/*
+  The best MAIN-track time anyone is known to have set, in MILLISECONDS, or ""
+  where nothing knows one.  Build 88, from data/mapwr.txt (tools/mapwr.py).
+
+  MILLISECONDS AND NOT TICKS, which is the one thing about this column that is
+  not arbitrary.  Every other time here is a tick count converted with the map's
+  own rate, but these rows come from three archives with three different rates
+  -- 66.6667, 100 and 125 all appear in surfd's `runs` -- so a tick count is not
+  comparable between them and ms is the only field that is.
+
+  586 of the 736 are Momentum's imported leaderboard and 150 are KSF's, so on
+  most rows this is a real world record rather than anything set on this fleet.
+  The provenance is in the file and in the load report, not on the row: "best"
+  is true of all four sources, and a per-row badge would cost the width the
+  times were just given.
+*/
+strbuf ms_wr;
+float  ms_wrcount;
+/*
+  The tier data/mapdl.txt carries, as a string, "0" where it carries none.
+
+  A SECOND TIER SOURCE, because mapmeta.txt is not the only one and reading only
+  it left 462 maps drawn as untiered that we have a tier for.  mapmeta comes
+  from Momentum's cache; maproster.py falls back to KSF's roster where Momentum
+  has no record (`mtier if mtier != "-" else ktier`, maproster.py:413) and
+  mapdl.txt inherits that.  So the 462 KSF-only maps have a real, sourced tier
+  that the browser was throwing away -- measured 2026-09-28, against 128 that
+  genuinely have none.
+
+  Kept in its own buffer rather than written straight into ms_tierv because
+  ui_dl_load runs BEFORE ui_meta_load (it appends rows, which ui_meta_load sizes
+  itself from) and ui_meta_load rebuilds ms_tierv from scratch.  This survives
+  that, and ui_meta_load consults it only where Momentum said nothing.
+*/
+strbuf ms_dltier;
 // The personal-best report last printed, so reopening the screen stays quiet.
 string ms_pbnote;
 // gettime(0) when run_pb_load last ran, for ui_create_open's latch.  0 = never.
@@ -337,6 +391,26 @@ float  ms_applied_tier;
 */
 float  ms_modes;
 float  ms_applied_modes;
+
+/*
+  Which library the list is showing.  Build 88, asked for as "an option to
+  switch between Momentum maps and CSS maps for map and download".
+
+  0 = both, otherwise the single SRC_BIT_MOM or SRC_BIT_CSS wanted.  ONE value
+  and not a set, unlike ms_modes: the question here is "which of the two am I
+  browsing", and the answer "neither" is a list with nothing in it.
+
+  IT READS ms_lst, NOT ms_src -- see ms_lst's own essay.  ms_src is where the
+  file is and would file de_dust2 under Counter-Strike; ms_lst is which of the
+  lists the map belongs to, and a movement map belongs to its source's.
+
+  "and download" is the same switch and not a second one, because the rows a
+  download is offered on live in this same list -- ui_dl_load appends them.  It
+  is what makes them answer this filter at all, and fixing ms_lst for those rows
+  was the work; see there.
+*/
+float  ms_srcf;
+float  ms_applied_srcf;
 
 // The background pic currently held open, so it can be freed when the selection
 // moves.  "" when nothing is loaded.  See ui_backdrop.
@@ -436,6 +510,17 @@ float(string id, vector pos, vector size, string label) ui_button =
 #define CHIP_PAD    16          // horizontal padding, total, inside a chip
 #define CHIP_H      26
 #define CHIP_GAP    6
+/*
+  Vertical pitch when a filter strip WRAPS to its own line.
+
+  It was 46, which is exactly the height a strip occupies -- a 20 px gap to
+  its heading plus a CHIP_H of 26 -- so the next heading started on the pixel
+  the chips above it ended.  Invisible until build 88 added a third strip and
+  made a wrap the normal case rather than the narrow-window one; "library" sat
+  on the tier chips.  52 gives the 6 px CHIP_GAP already puts between chips
+  horizontally.
+*/
+#define STRIP_PITCH 52
 
 /*
   Does a readable file exist at this path?
@@ -875,6 +960,31 @@ string(float mask) ui_srcname =
 };
 
 /*
+  The library switch's three chips, in strip order.  Build 88.
+
+  A BIT AND NOT A SRC_* INDEX, because that bit is ANDed straight against
+  ms_lst in ui_refilter and 0 is a real answer there -- "do not test this at
+  all" -- rather than a missing one.  Two functions over one table of two
+  entries is the shape every other strip on this screen uses (ui_mode_label /
+  ui_mode_id), and the strip is drawn from the same loop.
+*/
+float(float slot) ui_srcf_bit =
+{
+	if (slot == 1) return SRC_BIT_MOM;
+	if (slot == 2) return SRC_BIT_CSS;
+	return 0;
+};
+
+string(float slot) ui_srcf_label =
+{
+	if (slot == 1) return "momentum";
+	if (slot == 2) return "cs:s";
+	return "both";
+};
+
+#define SRCF_NCHIPS 3
+
+/*
   ---------------------------------------------------------------------------
    Gamemodes.
   ---------------------------------------------------------------------------
@@ -1216,6 +1326,11 @@ string(string f) ui_mapname =
   not exist yet.
 
   "" for a file written before the column existed, which draws as a plain tier.
+
+  "ksf" (build 88) does NOT come from this file at all -- it is written by the
+  fallback at the end of ui_meta_load for a map Momentum has no record of but
+  KSF's roster does, and it is here because it shares the row's mark.  462 rows,
+  every one of them a map that read untiered before.
 */
 #define MT_TSRC     6
 
@@ -1303,6 +1418,41 @@ void() ui_meta_load =
 	hash_destroytab(byname);
 
 	/*
+	  THE SECOND TIER SOURCE, and the reason "a lot of maps don't have their
+	  tiers" was true of the browser and not of the data.
+
+	  mapmeta.txt is Momentum's cache and describes only maps Momentum knows.
+	  data/mapdl.txt carries a tier too, and maproster.py fills that from KSF's
+	  roster wherever Momentum has nothing (maproster.py:413) -- so 462 maps had
+	  a real tier sitting in a file this menu already opens, and drew "--".
+	  Measured 2026-09-28: 590 listed maps have no mapmeta row, 462 of them have
+	  a KSF tier, 128 have none from anywhere and still draw "--".
+
+	  ONLY WHERE MOMENTUM SAID NOTHING.  Where both have a tier the loop above
+	  has already written Momentum's, which is the ranking this browser's chips
+	  are numbered for; this never overwrites it.  The row is marked "ksf" rather
+	  than drawn as a plain tier because it is another community's ranking of the
+	  same map and the two scales are not the same scale.
+	*/
+	local float fb;
+	fb = 0;
+	if (ms_dltier >= 0)
+		for (i = 0; i < ms_count; i = i + 1)
+		{
+			if (stof(bufstr_get(ms_tierv, i)) > 0)
+				continue;
+			if (stof(bufstr_get(ms_dltier, i)) <= 0)
+				continue;
+
+			bufstr_set(ms_tierv, i, bufstr_get(ms_dltier, i));
+			// The packed string, rebuilt with the provenance this row now has.
+			// Everything else about it is unknown -- mapmeta has no row at all,
+			// which is why we are here -- so the other six fields stay "-".
+			bufstr_set(ms_meta, i, "- - - - - - ksf");
+			fb = fb + 1;
+		}
+
+	/*
 	  Start the atlas loads NOW rather than on first draw.
 
 	  Texture loads are asynchronous, and a page is only requested when a row
@@ -1318,8 +1468,9 @@ void() ui_meta_load =
 	for (i = 0; i <= maxpage; i = i + 1)
 		precache_pic(strcat("gfx/mapthumbs/atlas", ftos(i)));
 
-	print(sprintf("FTESurf: mapmeta matched %g of %g maps, %g thumbnail page(s)\n",
-	              hit, ms_count, maxpage + 1));
+	print(sprintf("FTESurf: mapmeta matched %g of %g maps, %g thumbnail page(s)"
+	              ", %g tier(s) from KSF's roster\n",
+	              hit, ms_count, maxpage + 1, fb));
 
 	/*
 	  One probe against a file we know we wrote, so that a later "no backdrop"
@@ -1628,6 +1779,73 @@ void() run_pb_load =
 };
 
 /*
+  data/mapwr.txt -> ms_wr: the best known main-track time, in milliseconds.
+
+  Same shape as ui_meta_load, and for the same reason -- the buffer is grown to
+  exactly ms_count before the file is opened, so a row can be missing but never
+  misaligned onto its neighbour.
+
+  A MISSING FILE IS SILENT.  Every other table here says so when it is absent,
+  but this one is optional by design: an install with no mapwr.txt draws the
+  rows it drew before, with no best line, and that is a column not being offered
+  rather than anything being wrong.  Saying "missing" would send people looking
+  for a tool they do not need to run.
+
+  The holder's name is the last field and is NOT read.  It can hold spaces and
+  colour codes, which is why the writer puts it last; the row has no width for
+  it, and tokenize past argv(3) would be paid on every map for nothing.
+*/
+void() ui_wr_load =
+{
+	local filestream fh;
+	local hashtable byname;
+	local string ln;
+	local float i, n, row, hit;
+
+	if (ms_wr >= 0) buf_del(ms_wr);
+	ms_wr = buf_create();
+	ms_wrcount = 0;
+	for (i = 0; i < ms_count; i = i + 1)
+		bufstr_add(ms_wr, "", TRUE);
+
+	fh = fopen("data/mapwr.txt", FILE_READ);
+	if (fh < 0)
+		return;
+
+	byname = hash_createtab(4096, EV_FLOAT);
+	for (i = 0; i < ms_count; i = i + 1)
+		hash_add(byname, strtolower(bufstr_get(ms_name, i)), i,
+		         HASH_REPLACE | EV_FLOAT);
+
+	hit = 0;
+	while ((ln = fgets(fh)) != "")
+	{
+		n = tokenize(ln);
+		if (n < 3)
+			continue;
+		if (argv(0) != "wr")
+			continue;
+
+		row = hash_get(byname, strtolower(argv(1)), -1, EV_FLOAT);
+		if (row < 0)
+			continue;               // a time for a map this install cannot list
+
+		// > 0 and not >= 0: the writer already excludes millis 0, and a zero
+		// here would draw "0:00.000" as though somebody had set it.
+		if (stof(argv(2)) <= 0)
+			continue;
+
+		bufstr_set(ms_wr, row, argv(2));
+		hit = hit + 1;
+	}
+	fclose(fh);
+	hash_destroytab(byname);
+
+	ms_wrcount = hit;
+	print(sprintf("FTESurf: %g map(s) have a best time on record\n", hit));
+};
+
+/*
   One atlas cell, or a placeholder.
 
   page/cell are "-" for the ~750 maps with a thumbnail id whose JPEG was never
@@ -1760,18 +1978,76 @@ void() ui_dl_load =
 					stale = stale + 1;
 				}
 			}
+			// The tier travels whether the map is here or not: an INSTALLED map
+			// Momentum has no record of has the same hole, and this file is the
+			// only place a tier for it exists.  ui_meta_load picks it up.
+			bufstr_set(ms_dltier, row, argv(4));
 			continue;
 		}
 
-		// A row for a map that is not here.  Every parallel buffer gets an entry
-		// or they desync -- ms_tierv, ms_modev and ms_meta are filled by
-		// ui_meta_load, which runs next and sizes itself from ms_count.
-		bufstr_add(ms_name, nm, TRUE);
-		bufstr_add(ms_src, (argv(3) == "k") ? ftos(SRC_BIT_CSS) : ftos(SRC_BIT_MOM), TRUE);
-		bufstr_add(ms_lst, ui_isgamemode(nm) ? "0" : ftos(SRC_BIT_OTHER), TRUE);
-		bufstr_add(ms_have, "0", TRUE);
-		bufstr_add(ms_new, argv(7), TRUE);
-		bufstr_add(ms_dlkb, argv(5), TRUE);
+		/*
+		  A row for a map that is not here.  Every parallel buffer gets an entry
+		  or they desync -- ms_tierv, ms_modev and ms_meta are filled by
+		  ui_meta_load, which runs next and sizes itself from ms_count.
+
+		  ms_lst IS RESOLVED HERE, not left at "0" for the second pass in
+		  ui_load_maps to finish -- that pass has already run by the time this is
+		  called, so a "0" written here was never resolved and stayed 0.  It cost
+		  nothing while nothing read ms_lst for these rows; the source switch
+		  reads it, and with "0" every downloadable map answered neither side of
+		  it and the list went empty.  Same rule the second pass applies: a
+		  movement map is filed under its source's list, anything else under
+		  Other.
+		*/
+		/*
+		  BOTH LETTERS, TESTED SEPARATELY.  mapscan.py writes four values in
+		  this column -- "k", "m", "km" and "-" -- and the old reading was
+		  `== "k" ? CSS : MOM`, which filed all 463 "km" maps as Momentum-only
+		  and all 128 "-" maps as Momentum as well.  That was invisible while the
+		  bit only picked the row's label; the switch turns it into maps missing
+		  from a list they are in.
+		*/
+		local float dbit;
+		dbit = 0;
+		if (strstrofs(argv(3), "k") >= 0) dbit = dbit | SRC_BIT_CSS;
+		if (strstrofs(argv(3), "m") >= 0) dbit = dbit | SRC_BIT_MOM;
+		if (!dbit)
+			dbit = SRC_BIT_OTHER;   // in neither catalogue; ms_lst is never 0
+		/*
+		  bufstr_set AT ms_count, NOT bufstr_add -- and this is a FIX, not a
+		  style preference.  It was bufstr_add from build 58 to 87.
+
+		  bufstr_add appends at the buffer's physical `used`
+		  (PF_bufstr_add_internal, pr_bgcmd.c: `index = strbuflist[bufno].used`),
+		  and ms_count is NOT that.  ui_load_maps' compaction pass moves the rows
+		  it keeps down and then "just moves the count" -- the dropped rows are
+		  still physically in the buffer past ms_count.  81 of them on this
+		  install; the "maps not listed" line above is their count.
+
+		  So every appended row was written 81 slots past the index the hash one
+		  line below recorded for it -- and that hash has always been right.
+		  Name, source, list, size and NEW badge all landed on a row 81 later
+		  than the map they describe, while 81 rows the compaction had dropped
+		  stayed inside the list at the indices the appends should have taken.
+
+		  MEASURED at the tier column, which is the one that had an independent
+		  count to disagree with: the engine reported 550 KSF tiers where the
+		  data files allow 469, and 550 - 469 is 81 exactly.  With bufstr_set the
+		  two agree at 469.  The other columns were wrong in the same way and had
+		  nothing to notice it -- ms_have, ms_new and ms_dlkb are uniform over
+		  the search-derived rows, so a displaced write was invisible.
+
+		  Writing the index rather than trusting a length makes the
+		  parallel-buffer invariant something the code states instead of
+		  something it inherits.
+		*/
+		bufstr_set(ms_name, ms_count, nm);
+		bufstr_set(ms_src, ms_count, ftos(dbit));
+		bufstr_set(ms_lst, ms_count, ui_isgamemode(nm) ? ftos(dbit) : ftos(SRC_BIT_OTHER));
+		bufstr_set(ms_have, ms_count, "0");
+		bufstr_set(ms_new, ms_count, argv(7));
+		bufstr_set(ms_dlkb, ms_count, argv(5));
+		bufstr_set(ms_dltier, ms_count, argv(4));
 		hash_add(byname, key, ms_count, HASH_REPLACE | EV_FLOAT);
 		ms_count = ms_count + 1;
 		appended = appended + 1;
@@ -1983,6 +2259,22 @@ void() ui_load_maps =
 	// ui_cat_load reads what ui_meta_load wrote.  None can fail in a way that
 	// matters: a missing mapmeta.txt costs the metadata columns and files every
 	// map by its name, and no .pb files means no times to show.
+	/*
+	  ms_dltier, created here rather than up with the others because the
+	  compaction above is what settles ms_count.
+
+	  It holds exactly ms_count entries, and so does every index ui_dl_load
+	  writes -- see the bufstr_set block there, which is where this buffer's
+	  first cut went wrong, and where finding out why turned up a build-58 defect.  The
+	  five buffers created BEFORE the search do not: they still carry the rows
+	  the compaction dropped, past ms_count.  Nothing may assume those lengths
+	  agree.
+	*/
+	if (ms_dltier >= 0) buf_del(ms_dltier);
+	ms_dltier = buf_create();
+	for (float t = 0; t < ms_count; t++)
+		bufstr_add(ms_dltier, "0", TRUE);
+
 	// BEFORE ui_meta_load, not after: it appends rows to ms_name, and
 	// ui_meta_load builds its byname hash from ms_name and then fills the tier
 	// and gamemode columns.  Run the other way round and every downloadable map
@@ -1993,6 +2285,7 @@ void() ui_load_maps =
 	ui_meta_load();
 	ui_cat_load();
 	run_pb_load();
+	ui_wr_load();
 };
 
 // Enumerate and report, without opening the menu.  This is the diagnostic for
@@ -2029,9 +2322,37 @@ void(string filter) ui_maplist_print =
 	              ms_count, mom, css, oth));
 };
 
+// The headless reading of build 88's four changes.  Defined below ui_refilter,
+// which it drives; this is the PROTOTYPE, which is how a call ahead of a
+// definition is written here -- see m_close above and Lob_Poll in m_lobby.qc.
+void(string arg) ui_browse_print;
+
 
 // Rebuild ms_view from the query and the two filters.  O(ms_count), but only
 // ever run on a keystroke or a filter change -- never from m_draw's steady state.
+/*
+  A map's place in tier order: tier 1 is 0, tier 10 is 9, and anything nothing
+  knows a tier for is TIER_UNKNOWN -- last, and one bucket rather than ten holes.
+
+  ELEVEN BUCKETS IS THE WHOLE RANGE.  mapmeta.txt's tiers run 1..10 (measured:
+  458 at 1 down to 10 at 10, none outside), but the fallback in ui_meta_load now
+  also writes KSF's, and nothing in this menu constrains what a data file says.
+  An out-of-range tier lands with the untiered rather than off the end of the
+  count array, which is the difference between a map drawn in the wrong place
+  and a stray write.
+*/
+#define TIER_BUCKETS  11
+#define TIER_UNKNOWN  10
+
+float(float row) ui_tier_rank =
+{
+	local float t;
+	t = stof(bufstr_get(ms_tierv, row));
+	if (t >= 1 && t <= TIER_UNKNOWN)
+		return t - 1;
+	return TIER_UNKNOWN;
+};
+
 void() ui_refilter =
 {
 	if (ms_view >= 0) buf_del(ms_view);
@@ -2066,14 +2387,215 @@ void() ui_refilter =
 		if (ms_tier != 0 && stof(bufstr_get(ms_tierv, i)) != ms_tier)
 			continue;
 
+		// The library switch.  ms_lst, not ms_src -- see ms_srcf.
+		if (ms_srcf != 0 && !(stof(bufstr_get(ms_lst, i)) & ms_srcf))
+			continue;
+
 		bufstr_add(ms_view, ftos(i), TRUE);
 		ms_viewcount++;
+	}
+
+	/*
+	  ---- tier order -----------------------------------------------------
+
+	  Tier 1 first, then 2, and everything nothing knows a tier for at the
+	  BOTTOM rather than scattered alphabetically through the middle.  Asked for
+	  as "make sure the map selection is pretty".
+
+	  A COUNTING SORT, and specifically NOT buf_sort (#444).  Two reasons, and
+	  the second is the one that decides it:
+
+	    * the key is not the string.  ms_view holds "417"; sorting those as text
+	      puts 1000 before 2, and sorting them as numbers is not what buf_sort
+	      does either -- it has a sortprefixlen and nothing else.
+	    * within a tier the order must stay the name order the list is already
+	      in, so the sort has to be STABLE, and nothing specifies that buf_sort
+	      is.  The engine's own NAMESORT next door is an explicitly unstable
+	      qsort (pr_bgcmd.c:3592-3598) and this file already carries one fix for
+	      having assumed otherwise.  A counting sort is stable by construction,
+	      which is a property of the algorithm rather than of the engine.
+
+	  Two passes over the FILTERED rows, not over all 2270: on a typed query
+	  that is a handful.  bufstr_set past the end grows the buffer, so ms_view is
+	  written in final position directly and never shuffled.
+	*/
+	if (ms_viewcount > 1)
+	{
+		local strbuf flt;
+		local float k, r, idx;
+		local float tcnt[TIER_BUCKETS], toff[TIER_BUCKETS];
+
+		flt = buf_create();
+		if (flt >= 0)
+		{
+			buf_copy(ms_view, flt);
+
+			for (k = 0; k < TIER_BUCKETS; k++)
+				tcnt[k] = 0;
+			for (k = 0; k < ms_viewcount; k++)
+				tcnt[ui_tier_rank(stof(bufstr_get(flt, k)))] += 1;
+
+			// Running total: rank r starts where every earlier rank ended.
+			toff[0] = 0;
+			for (k = 1; k < TIER_BUCKETS; k++)
+				toff[k] = toff[k - 1] + tcnt[k - 1];
+
+			for (k = 0; k < ms_viewcount; k++)
+			{
+				idx = stof(bufstr_get(flt, k));
+				r   = ui_tier_rank(idx);
+				bufstr_set(ms_view, toff[r], ftos(idx));
+				toff[r] += 1;
+			}
+			buf_del(flt);
+		}
 	}
 
 	ms_applied_query = ms_query;
 	ms_applied_tier  = ms_tier;
 	ms_applied_modes = ms_modes;
+	ms_applied_srcf  = ms_srcf;
 	ms_scroll = '0 0 0';
+};
+
+/*
+  `ui_browse [map]` -- what build 88 actually did, in numbers a config can grade.
+
+  EVERY LINE IS THE SUBJECT'S OWN ACTION, not a consequence of it: the tier
+  counts are read back out of ms_tierv after ui_meta_load's fallback ran, the
+  order line walks the ms_view ui_refilter just built, and the gutter line is
+  the same stringwidth call the row draws with.  An arm that checked the screen
+  instead would pass on a build where all four were compiled out.
+
+  ui_load_maps FIRST, and that is not incidental -- ui_load_maps is lazy, so a
+  reading taken before the browser has opened is a reading of an empty list.
+  That is exactly how p466reget's first cut came to pass while measuring
+  nothing.
+*/
+// Defined with the download block far below; the gutter is one of the four
+// things ui_browse reports, so it needs a prototype up here.
+float() ui_dl_gutter;
+
+void(string arg) ui_browse_print =
+{
+	local float i, r, prev, bad, known, unk, ksf, wr, n0, nm, nc;
+	local float gw, w1, w2;
+
+	ui_load_maps();
+
+	known = unk = ksf = wr = 0;
+	for (i = 0; i < ms_count; i++)
+	{
+		if (stof(bufstr_get(ms_tierv, i)) > 0) known++; else unk++;
+		if (tokenize(bufstr_get(ms_meta, i)) > MT_TSRC)
+			if (argv(MT_TSRC) == "ksf")
+			{
+				// The first few BY NAME.  A count that disagrees with the data
+				// files cannot be argued about from either end -- the rows have
+				// to be nameable before anyone can say which side is wrong.
+				if (ksf < 12)
+					print(sprintf("ui_browse:   ksf %S tier %s\n",
+					              bufstr_get(ms_name, i),
+					              bufstr_get(ms_tierv, i)));
+				ksf++;
+			}
+		if (bufstr_get(ms_wr, i) != "")
+			wr++;
+	}
+	print(sprintf("ui_browse: maps %g -- tiered %g, untiered %g, %g of them "
+	              "from ksf\n", ms_count, known, unk, ksf));
+	print(sprintf("ui_browse: best times %g\n", wr));
+
+	/*
+	  The three settings of the library switch, counted through the real filter
+	  rather than by re-deriving it here.  A count taken any other way would
+	  agree with a broken ui_refilter.
+	*/
+	ms_srcf = 0;            ui_refilter();  n0 = ms_viewcount;
+	ms_srcf = SRC_BIT_MOM;  ui_refilter();  nm = ms_viewcount;
+	ms_srcf = SRC_BIT_CSS;  ui_refilter();  nc = ms_viewcount;
+	ms_srcf = 0;            ui_refilter();
+	print(sprintf("ui_browse: library both %g, momentum %g, cs:s %g\n",
+	              n0, nm, nc));
+
+	// Tier order, walked.  `bad` is the first index that goes backwards, so a
+	// failure names a row instead of just saying no.
+	prev = -1;
+	bad  = -1;
+	for (i = 0; i < ms_viewcount; i++)
+	{
+		r = ui_tier_rank(stof(bufstr_get(ms_view, i)));
+		if (r < prev && bad < 0)
+			bad = i;
+		prev = r;
+	}
+	print(sprintf("ui_browse: view %g, tier order %s\n", ms_viewcount,
+	              (bad < 0) ? "ascending" : sprintf("BROKEN at %g", bad)));
+
+	/*
+	  THE HISTOGRAM IS PART OF THE ORDER CHECK, not decoration.  "Ascending" is
+	  trivially true of a list whose rows are all one rank, so the verdict above
+	  says nothing without the spread beside it -- an arm that passes because
+	  its condition never occurred proves nothing.  Printed as ranks so it lines
+	  up with the sort: rank 0 is tier 1, rank 10 is untiered.
+	*/
+	local string hist;
+	hist = "";
+	for (r = 0; r < TIER_BUCKETS; r++)
+	{
+		local float rn;
+		rn = 0;
+		for (i = 0; i < ms_viewcount; i++)
+			if (ui_tier_rank(stof(bufstr_get(ms_view, i))) == r)
+				rn++;
+		hist = sprintf("%s%s%g", hist, (r == 0) ? "" : " ", rn);
+	}
+	print(sprintf("ui_browse: ranks %s (rank 0 = tier 1, rank %g = untiered)\n",
+	              hist, TIER_UNKNOWN));
+	if (ms_viewcount > 0)
+		print(sprintf("ui_browse: first rank %g, last rank %g\n",
+		              ui_tier_rank(stof(bufstr_get(ms_view, 0))),
+		              ui_tier_rank(stof(bufstr_get(ms_view, ms_viewcount - 1)))));
+
+	/*
+	  The gutter, measured the way the row measures it.  Font_Set first: this
+	  runs from the console between frames, and stringwidth reads `drawfont` --
+	  m_draw sets it every frame, but a reading taken before the first frame
+	  would be of the bitmap font and would silently be the wrong number.
+	*/
+	Font_Set(ui_font_ui);
+	w1 = stringwidth("Wrong build", TRUE, SZ_ROW);
+	w2 = stringwidth("re-get 999.9 MB", TRUE, SZ_ROW);
+	gw = ui_dl_gutter();
+	print(sprintf("ui_browse: gutter %g px (label %g, re-get %g, pad %g)\n",
+	              gw, w1, w2, DL_PAD * 2 + 4));
+
+	// One named map, all the way through, for the cases where a count agrees
+	// and the row is still wrong.
+	if (arg != "")
+	{
+		// Scanned rather than ui_map_index'd: that lives 600 lines below and a
+		// prototype for a diagnostic is not worth the header noise.
+		local string want;
+		want = strtolower(arg);
+		i = ms_count;
+		while (i > 0)
+		{
+			i = i - 1;
+			if (strtolower(bufstr_get(ms_name, i)) == want)
+				break;
+			if (i == 0)
+				i = -1;
+		}
+		if (i < 0)
+			print(sprintf("ui_browse: %S is not listed\n", arg));
+		else
+			print(sprintf("ui_browse: %S tier %s src %s lst %s wr %s pb %s\n",
+			              arg, bufstr_get(ms_tierv, i), bufstr_get(ms_src, i),
+			              bufstr_get(ms_lst, i),
+			              (bufstr_get(ms_wr, i) == "") ? "-" : bufstr_get(ms_wr, i),
+			              (bufstr_get(ms_pbv, i) == "") ? "-" : bufstr_get(ms_pbv, i)));
+	}
 };
 
 string() ui_selected_name =
@@ -4100,7 +4622,6 @@ string(string s, float w, vector sz) ui_fit_text =
 #define DL_OK       2
 #define DL_FAIL     3
 
-#define DL_W       92   // the right-hand gutter a Download button occupies
 #define DL_HOLD     6   // seconds a finished/failed row keeps saying so
 
 float  dl_have_bi;      // 1 if the engine has the builtin, -1 unasked
@@ -4137,6 +4658,34 @@ string(float kb) ui_dl_size =
 	if (kb >= 1024)
 		return sprintf("%.1f MB", kb / 1024);
 	return sprintf("%g KB", kb);
+};
+
+/*
+  How wide the download gutter has to be, MEASURED rather than declared.
+
+  It was a flat 92, and "re-get 149.0 MB" does not fit in 92 px -- the size was
+  cut off on exactly the rows that had most to say, which is what was reported.
+  A character count would not have caught it either: the UI face is Roboto
+  (sh_font.qc), it is proportional, and "Wrong build" and "re-get 999.9 MB" are
+  11 and 15 characters but nothing like 11/15ths of each other in pixels.
+
+  So ask the font.  The two strings below are the widest the gutter ever draws
+  -- the longest label, and the longest size line -- and a face or a size change
+  re-measures instead of re-clipping.  Nothing is cached: it is two stringwidth
+  calls once per frame, against a dozen per row inside the loop it feeds.
+
+  Called only from inside the draw, which is where m_draw has set the UI font;
+  measuring anywhere else would measure whatever font happened to be current.
+*/
+float() ui_dl_gutter =
+{
+	local float w;
+	w = stringwidth("Wrong build", TRUE, SZ_ROW);
+	// 999.9 MB rather than the widest size actually offered: the digits are the
+	// same width in this face, and pinning it to today's largest map would make
+	// the layout depend on the map list.
+	w = max(w, stringwidth("re-get 999.9 MB", TRUE, SZ_ROW));
+	return ceil(w) + DL_PAD * 2 + 4;        // +4: the gutter's own right margin
 };
 
 // `force` re-gets a map we hold the wrong BUILD of.  It cannot touch a Steam
@@ -4293,8 +4842,8 @@ void(vector screensize) screen_create =
 	if (mx + mw > inner + 16)
 	{
 		mx    = 16;
-		mrow  = y + 46;
-		y    += 46;
+		mrow  = y + STRIP_PITCH;
+		y    += STRIP_PITCH;
 	}
 
 	/*
@@ -4325,6 +4874,51 @@ void(vector screensize) screen_create =
 			if (mnew != ms_modes)
 				ui_modes_set(mnew);
 		}
+	}
+
+	/*
+	  ---- the library switch ---------------------------------------------
+
+	  Momentum or Counter-Strike, or both.  Asked for as a switch "for map and
+	  download", and it is one control for both because the downloadable rows
+	  are rows in this same list -- ui_dl_load appends them, and fixing ms_lst
+	  for those rows is what makes them answer this at all.
+
+	  SINGLE-SELECT, unlike the gametype toggles beside it.  "Which library am I
+	  browsing" has three answers and one of them is both; a toggle set would add
+	  a fourth that shows nothing, and the strip next door already needs a rule
+	  forbidding exactly that state.
+
+	  Measured and wrapped the same way the gametype strip is, for the reason in
+	  its essay above: sui_push_frame does not clip, so a strip that overruns
+	  draws off the framebuffer with nothing to say it did.
+	*/
+	// The CHIPS only, exactly as mw above: the heading is drawn 20 px higher
+	// than the strip, so it costs the row no width.
+	float sw = 0;
+	for (f = 0; f < SRCF_NCHIPS; f++)
+		sw += ui_chip_w(ui_srcf_label(f)) + CHIP_GAP;
+
+	float sx   = mx + 18;
+	float srow = mrow;
+	if (sx + sw > inner + 16)
+	{
+		sx    = 16;
+		srow  = mrow + STRIP_PITCH;
+		y    += STRIP_PITCH;
+	}
+
+	sui_text([sx, srow], SZ_LABEL, "library", COL_DIM, 1, 0);
+	for (f = 0; f < SRCF_NCHIPS; f++)
+	{
+		string slbl = ui_srcf_label(f);
+		string scid = strcat("cs_srcf", ftos(f));
+		float  sbit = ui_srcf_bit(f);
+
+		sx += ui_chip([sx, srow + 20], scid, slbl, ms_srcf == sbit) + CHIP_GAP;
+
+		if (sui_is_released(scid))
+			ms_srcf = sbit;
 	}
 	y += 56;
 
@@ -4595,7 +5189,17 @@ void(vector screensize) screen_create =
 			  depending on which maps happen to be missing, and the placeholder
 			  time above exists precisely so those widths hold still.
 			*/
-			float dlg = ((ms_dlcount > 0 || ms_dlstale > 0) && ui_dl_ready()) ? DL_W : 0;
+			/*
+			  ALWAYS RESERVED, since build 88.  It used to appear only when
+			  data/mapdl.txt offered something, because a download button was the
+			  only thing that ever went in it; now every row has an action -- Play
+			  where the map is here, Download or Wrong build where it is not -- so
+			  the column is part of the layout rather than a conditional one.
+
+			  The width is still asked of the font: it has to hold the longest
+			  re-get line, which is far wider than "> Play".
+			*/
+			float dlg = ui_dl_gutter();
 
 			vector rp = '0 0 0';
 			for (float idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
@@ -4671,21 +5275,52 @@ void(vector screensize) screen_create =
 				else if (stof(mtier) > 0 && mtsrc == "sugg")
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
 					         strcat("T", mtier, "?"), COL_DIM, 0.85, 0);
+				else if (stof(mtier) > 0 && mtsrc == "ksf")
+					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
+					         strcat("T", mtier, "k"), COL_DIM, 0.85, 0);
 				else if (stof(mtier) > 0)
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
 					         strcat("T", mtier), COL_ACCENT, 1, 0);
 				else
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW, "--", COL_DIM, 0.6, 0);
 
-				sui_text([rp_x + 126, rp_y + 4], SZ_ROW, bufstr_get(ms_name, real),
+				/*
+				  The best time anyone is known to have set, on the NAME's line and
+				  above the player's own below it.  Build 88.
+				
+				  BUILT BEFORE THE NAME IS DRAWN, because this line had nothing to
+				  its right until now: the name was drawn unbounded, and the moment
+				  something shares the line a long one runs straight under it.
+				
+				  Time_TickString at a rate of 0.001 is not a trick.  ms_wr is in
+				  milliseconds and a millisecond IS a tick of 0.001 s, so this goes
+				  through the one formatter every other time in the game goes
+				  through rather than adding a second rounding rule to keep in step
+				  with it.  See sh_time.qc.
+				*/
+				local string mwr, mnmf;
+				local float  wrw;
+
+				mwr = bufstr_get(ms_wr, real);
+				wrw = 0;
+				if (mwr != "")
+				{
+					mwr = strcat("^9best  ^7", Time_TickString(stof(mwr), 0.001));
+					wrw = stringwidth(mwr, TRUE, SZ_ROW) + 16;
+				}
+
+				mnmf = ui_fit_text(bufstr_get(ms_name, real),
+				                   rs_x - 134 - ROW_RPAD - dlg - wrw, SZ_ROW);
+				sui_text([rp_x + 126, rp_y + 4], SZ_ROW, mnmf,
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
 
 				// NEW means "a sweep saw this name appear", not "recently
 				// released" and not "we only just noticed it" -- mapscan.py
 				// writes bootstrap rows so the first ever sweep badges nothing.
+				// Measured off the FITTED name: against the full one it drew
+				// detached, past the end of a name that had been cut.
 				if (bufstr_get(ms_new, real) == "1")
-					sui_text([rp_x + 130 + stringwidth(bufstr_get(ms_name, real),
-					                                   TRUE, SZ_ROW),
+					sui_text([rp_x + 130 + stringwidth(mnmf, TRUE, SZ_ROW),
 					          rp_y + 4], SZ_ROW, "^2NEW", COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
@@ -4774,8 +5409,8 @@ void(vector screensize) screen_create =
 					mpopt = sprintf("%s%g^9 playing", (mpop > 0) ? "^2" : "^9",
 					                mpop);
 					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
-					sui_text([rp_x + rs_x - 8 - dlg - mtw - mpopw,
-					          rp_y + 14], SZ_ROW, mpopt, COL_DIM, 1, 0);
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw - mpopw,
+					          rp_y + 26], SZ_ROW, mpopt, COL_DIM, 1, 0);
 				}
 
 				/*
@@ -4789,14 +5424,30 @@ void(vector screensize) screen_create =
 				  half that survives.
 				*/
 				sui_text([rp_x + 126, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - 134 - dlg - mtw - mpopw, SZ_ROW),
+				         ui_fit_text(sub, rs_x - 134 - ROW_RPAD - dlg - mtw - mpopw,
+				                     SZ_ROW),
 				         COL_DIM, 1, 0);
 
+				/*
+				  The two times, right-aligned on the row's own two lines: the best
+				  known above, this PC's below, so the pair reads as one comparison
+				  rather than as two unrelated columns.
+				
+				  The player's moved from +14 to +26 to make room.  It used to sit
+				  BETWEEN the lines precisely so the sub line could pass under it;
+				  now it shares that line, which is why the fit above subtracts the
+				  same widths it always did -- that arithmetic was already correct
+				  and merely conservative.
+				*/
+				if (mwr != "")
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - wrw + 16, rp_y + 4],
+					         SZ_ROW, mwr, COL_DIM, 1, 0);
+
 				if (mpb != "")
-					sui_text([rp_x + rs_x - 8 - dlg - mtw, rp_y + 14], SZ_ROW,
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + 26], SZ_ROW,
 					         mtime, COL_TEXT, 1, 0);
 				else
-					sui_text([rp_x + rs_x - 8 - dlg - mtw, rp_y + 14], SZ_ROW,
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + 26], SZ_ROW,
 					         mtime, COL_DIM, 0.5, 0);
 
 				/*
@@ -4814,12 +5465,54 @@ void(vector screensize) screen_create =
 				  downloads anyway and two buttons that both do nothing is worse
 				  than one that is plainly unavailable.
 				*/
-				// "2" is installed-but-wrong-build; it offers a re-get, so the
-				// gutter is drawn for anything that is not a settled "1".
-				if (dlg > 0 && bufstr_get(ms_have, real) != "1")
+				/*
+				  AN ACTION COLUMN, NOT A DOWNLOAD GUTTER.  Build 88.
+
+				  It was reserved for the whole list and drawn on only the rows
+				  that needed a download, so on a complete install it was 127 px
+				  of nothing down every row -- "it looks so empty when no
+				  download button is there".  Now the settled case has the
+				  obvious action in it: Play.
+
+				  ONE COLUMN, ONE QUESTION -- "what can I do with this row" --
+				  and the answer is mutually exclusive by construction, because
+				  ms_have is one value: "1" plays, "2" replaces, "0" fetches.
+				*/
+				if (dlg > 0 && bufstr_get(ms_have, real) == "1")
 				{
-					vector gp = [rp_x + rs_x - 4 - DL_W, rp_y + 8];
-					vector gs = [DL_W - 4, ROW_H - 16];
+					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
+					vector ps = [dlg - 4, ROW_H - 16];
+					string pid = strcat("cs_play", ftos(idx));
+					float  ph;
+
+					sui_action_element(pp, ps, pid, sui_noop);
+					ph = sui_is_hovered(pid);
+					sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
+					sui_border_box(pp, ps, 1, COL_PLAY, 1, 0);
+
+					// Centred rather than two-line: there is no second fact to
+					// say about a map you already have, and an empty lower line
+					// is what this column is being fixed for.
+					sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
+					         ph ? COL_TEXT : COL_PLAY, 1, 0);
+
+					/*
+					  THROUGH ui_launch, not around it.  Selecting first and then
+					  calling the single launch choke point is what keeps the
+					  consent gate and the name gate in front of this button --
+					  a direct ui_launch_local here would walk past both, which
+					  is exactly the refactor ui_launch's own essay warns about.
+					*/
+					if (sui_is_released(pid))
+					{
+						ms_selected = real;
+						ui_launch();
+					}
+				}
+				else if (dlg > 0 && bufstr_get(ms_have, real) != "1")
+				{
+					vector gp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
+					vector gs = [dlg - 4, ROW_H - 16];
 					string gid = strcat("cs_dl", ftos(idx));
 					string mnm = bufstr_get(ms_name, real);
 					float  mine = (dl_name == mnm);
@@ -4854,10 +5547,10 @@ void(vector screensize) screen_create =
 						// A re-get is not the same offer as a download and must
 						// not read like one: this row already has a playable
 						// map, it is just the wrong cut of it.
-						sui_text([gp_x + 6, gp_y + 2], SZ_ROW,
+						sui_text([gp_x + DL_PAD, gp_y + 2], SZ_ROW,
 						         wrong ? "Wrong build" : "Download",
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
-						sui_text([gp_x + 6, gp_y + 18], SZ_ROW,
+						sui_text([gp_x + DL_PAD, gp_y + 18], SZ_ROW,
 						         wrong ? strcat("^3re-get ",
 						                        ui_dl_size(stof(bufstr_get(ms_dlkb, real))))
 						               : ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
@@ -4939,8 +5632,12 @@ void() m_init =
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
+	ms_wr = ms_dltier = -1;
 	ms_selected = -1;
 	ms_tier = ms_applied_tier = 0;
+	// Both libraries, which is the state that lists everything.  Not saved, like
+	// the tier chips it sits beside and unlike the gametype set.
+	ms_srcf = ms_applied_srcf = 0;
 	// The SAVED set is read when the create screen opens, beside its
 	// registercvar (ui_create_open); this only keeps the set from being empty
 	// before then.
@@ -4957,6 +5654,7 @@ void() m_init =
 	setcursormode(TRUE, "", '0 0 0', 1);
 
 	registercommand("ui_maplist");
+	registercommand("ui_browse");
 	registercommand("ui_join");
 
 	localcmd("bind escape togglemenu\n");
@@ -5035,7 +5733,7 @@ void(vector screensize) m_draw =
 	// sui_text_input during the previous frame's draw, so comparing against
 	// the applied copy here is the cheapest place to notice.
 	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
-	    || ms_modes != ms_applied_modes)
+	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf)
 		ui_refilter();
 
 	sui_begin(screensize_x, screensize_y);
@@ -5172,6 +5870,12 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_maplist")
 	{
 		ui_maplist_print(argv(1));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_browse")
+	{
+		ui_browse_print(argv(1));
 		return TRUE;
 	}
 

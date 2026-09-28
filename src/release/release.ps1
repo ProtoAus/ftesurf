@@ -207,6 +207,13 @@ $ShipGameFiles = @(
     # NOT mapseen.txt: that is mapscan.py's own state on the build box, and a
     # shipped copy would make a player's first sweep badge nothing as new.
     'ftesurf/data/mapdl.txt'
+    # The best known main-track time per map, written by tools/mapwr.py out of
+    # surfd's `runs` table.  Without it the browser draws no "best" line at all
+    # -- ui_wr_load is deliberately silent about a missing file, because the
+    # column is optional and a warning would send people looking for a tool they
+    # do not need.  A SNAPSHOT: regenerate before a release, or the archive
+    # ships whatever the board held last time.
+    'ftesurf/data/mapwr.txt'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory

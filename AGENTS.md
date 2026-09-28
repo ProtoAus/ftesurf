@@ -1293,6 +1293,76 @@ bannered as superseded.)
   The cost is stated in that file: a sweep missed while the PC is off is missed,
   not queued.
 
+### The map browser's parallel buffers (build 88, and a build-58 defect)
+
+- **`bufstr_add` APPENDS AT THE BUFFER'S PHYSICAL `used`, WHICH IS NOT
+  `ms_count`.** `PF_bufstr_add_internal` (`pr_bgcmd.c`) does `index =
+  strbuflist[bufno].used` for the append-on-end form. `ui_load_maps`' second
+  pass compacts the list by moving the rows it keeps DOWN and then only moving
+  the count -- its own comment says "just move the count", and the dropped rows
+  stay physically in the buffer past `ms_count` (81 of them on this box; the
+  "maps not listed" line is their count). So from build 58 to 87 every row
+  `ui_dl_load` appended was written 81 slots past the index the hash beside it
+  recorded, and the hash was right. Name, source, list mask, size and NEW badge
+  all landed on a different map's row.
+  It survived four builds because the columns it corrupted are UNIFORM over the
+  search-derived rows -- `ms_have` is a column of "1", `ms_new` of "0",
+  `ms_dlkb` of "0" -- so a displaced write looked exactly like a correct one.
+  Build 88's tier column was the first with an independent count to disagree
+  with: the engine said 550 KSF tiers where the data files allow 469, and
+  550 - 469 = 81 exactly.
+  **Write the index (`bufstr_set(buf, ms_count, ...)`) rather than trusting a
+  length.** And never size a new parallel buffer from `ms_count` when the ones
+  beside it were created before the compaction -- their lengths do not agree
+  and nothing warns.
+- **TWO NUMBERS FOR ONE QUESTION IS WHAT FOUND IT.** `tools/b88browse.py`
+  derives all five of build 88's figures from `data/mapmeta.txt`,
+  `data/mapdl.txt` and `data/mapwr.txt` and compares them to what the engine
+  printed. The first cut of the PYTHON side was wrong too -- it tested "mapmeta
+  has no row" where the engine tests "no tier is shown", missing 7 rows -- so
+  the first disagreement was 88, not 81. A condition stated slightly wrong
+  reads exactly like a bug in the subject; the way through was to make the
+  engine NAME the rows rather than count them.
+- **A SECOND TIER SOURCE EXISTS AND WAS BEING THROWN AWAY.** `mapmeta.txt` is
+  Momentum's cache. `maproster.py:413` falls back to KSF's roster where Momentum
+  has no record (`mtier if mtier != "-" else ktier`) and `mapdl.txt` inherits
+  that, so 462 maps had a real tier in a file the menu already opens and drew
+  "--". `ui_meta_load` now consults `ms_dltier` where `ms_tierv` is 0 and marks
+  the row `ksf`, which draws `T3k`. 469 rows on this box; 128 maps have no tier
+  from anywhere and still draw "--", which is the honest answer for them.
+- **MEASURE A PROPORTIONAL FONT, DO NOT COUNT CHARACTERS.** The download button
+  was a flat `DL_W 92` and "re-get 149.0 MB" was being cut off. The UI face is
+  Roboto (`sh_font.qc`); `ui_dl_gutter` asks `stringwidth` for the widest label
+  and the widest re-get line and returns 127 px. The arm FAILS if the old 92
+  would have been enough -- a fix whose premise is not measured is aimed at a
+  guess.
+- **A WRAPPED FILTER STRIP NEEDS MORE PITCH THAN ITS OWN HEIGHT.** The wrap was
+  `y + 46`, which is exactly heading (20) + `CHIP_H` (26) -- so the next heading
+  started on the pixel the chips above it ended. Invisible while a wrap only
+  happened in a narrow window; build 88's third strip made it the normal case
+  and "library" sat on the tier chips. `STRIP_PITCH` is 52.
+- **`buf_sort` IS NOT THE TOOL FOR ORDERING `ms_view`.** Its key is a string
+  prefix, and `ms_view` holds indices as text, where "1000" sorts before "2".
+  More importantly nothing specifies that it is STABLE, and within a tier the
+  order has to stay the name order -- the engine's own NAMESORT next door is an
+  explicitly unstable qsort. `ui_refilter` uses a counting sort over 11 ranks,
+  which is stable by construction rather than by assumption.
+  A CONSEQUENCE WORTH KNOWING: because appended (downloadable) rows are added
+  to `ms_name` last and the sort is stable, they land at the END of their tier.
+  Installed maps come first within each tier. That is not a bug, but it means a
+  Download button is never on the first screen of a tier.
+- **`data/mapwr.txt` IS A SNAPSHOT, and `tools/mapwr.py` has to be re-run before
+  a release.** It holds the best known main-track time per map, read straight
+  out of surfd's `runs` on the Pi with `MIN(millis)` -- the same row
+  `BOARD_ORDER` ("millis ASC, submitted ASC, player ASC", `surfd.py:2056`) puts
+  first. MILLIS AND NOT TICKS: tickrate is per-run and 66.6667, 100 and 125 all
+  appear in that table, so a tick count is not comparable between rows. 736
+  maps have one; 586 of those are Momentum's imported archive and 150 KSF's, so
+  on nearly every row this is another community's world record rather than
+  anything set here. `ui_wr_load` is deliberately SILENT about a missing file --
+  the column is optional, and a warning would send people looking for a tool
+  they do not need to run.
+
 ### `status` CANNOT SEE MOST OF SERVERINFO -- do not read its silence as absence
 
 `SVC_Status` builds serverinfo into a `char infostr[1024]` and `InfoBuf_ToString`

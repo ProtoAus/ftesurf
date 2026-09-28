@@ -743,6 +743,94 @@ of that situation first. Left open deliberately rather than guessed at.
 - **`surf_dune` / `surf_fantasy` from §2i** — unchanged by any of this, and
   still the only two of 1748 whose loaded build contradicts the evidence.
 
+## 2k. The map browser, rebuilt (build 88) — six changes, and two judgements
+
+You asked for six things. All six are in and measured
+(`python tools/b88browse.py`, PASS). Three of them are judgement calls I made
+and you may want differently.
+
+**The download button had run out of room.** It was a flat 92 px and
+"re-get 149.0 MB" needs 127. The width is now asked of the font rather than
+typed: `ui_dl_gutter` measures the widest label and the widest re-get line and
+returns 127 on this install. The test FAILS if 92 would have been enough, so
+the premise is checked rather than assumed.
+
+**The best known time sits above yours.** New column, from
+`data/mapwr.txt`, which `tools/mapwr.py` reads out of the Pi's board. **736 of
+1833 listed maps have one** — and 586 of those are Momentum's imported
+leaderboard and 150 KSF's, so on nearly every row that number is another
+community's world record rather than anything set here. It is labelled `best`
+and not `WR` for that reason. The rest of the rows show nothing on that line,
+which is honest and is most of them.
+
+- **(n) It is a SNAPSHOT.** Regenerated at release time, not live. Re-running
+  `tools/mapwr.py` takes a few seconds. Live would mean a new public endpoint
+  and a fetch on a screen that currently works with the Pi switched off; say if
+  you want that instead.
+
+**The times moved left** — 20 px of clearance instead of 8 — and both now sit on
+the row's own two lines, best above, yours below.
+
+**Tier order.** Tier 1 first, then 2, and everything nothing knows a tier for
+at the bottom in one block. Within a tier the order is unchanged (alphabetical).
+The old order went backwards 832 times over 2271 rows, which is what it looked
+like.
+
+- **(o) A side effect worth knowing.** Maps you do NOT have are appended to the
+  list last, and the sort is stable, so within each tier the installed maps come
+  first and the downloadable ones follow. A Download button is therefore never
+  on the first screen of a tier. I think that is the right way round — the maps
+  you can play now lead — but it is a choice, not a consequence of anything.
+
+**The missing tiers were not missing.** 462 maps drew `--` while a real tier for
+them sat in `data/mapdl.txt`, which this menu already opens: `maproster.py`
+falls back to KSF's roster wherever Momentum has no record, and nothing read it.
+They now draw `T3k` — the `k` marks a KSF ranking, the way `?` marks a
+suggestion and `~` an inherited one, because KSF's scale and Momentum's are not
+the same scale. **469 rows gained a tier. 128 maps have no tier from anywhere**
+and still draw `--`; that is the honest answer for them and I have not invented
+one.
+
+- **(p) Is `T3k` the right mark?** It is the only two-letter one. If it reads
+  badly beside `T3?` and `T3~` I will change it.
+
+**The library switch** is a new `both / momentum / cs:s` strip under the tier
+chips, and it filters the download offers as well because those are rows in the
+same list.
+
+- **(q) It will look lopsided on THIS box and not on yours.** Here: both 1743,
+  momentum 1739, cs:s 1027 — because every map we have ever fetched went into
+  the Momentum mount, so "momentum" hides almost nothing. On an install that
+  actually has CS:S the two separate properly. If you want the switch to mean
+  "which catalogue is this map in" rather than "which mount is the file in",
+  say so — that is a different question and a different answer.
+
+**A green Play button** now fills the action column on every row you already
+have, which you asked for after seeing it empty. It goes through the same launch
+path the start button does, so the terms and name screens still come first.
+
+### What I could not check
+
+The Play button and the whole layout are in
+`ftesurf/screenshots/ui_menu_create.png` and I have looked at it. **The Download
+and Wrong build buttons are NOT in that shot** — every map on the first screen
+is installed — so their width is verified by measurement (127 px against a
+111 px string) and not by eye. If a size still looks cut off on your machine,
+that is the thing to tell me.
+
+### One defect this turned up, already fixed
+
+Since build 58 every map the browser appended from `data/mapdl.txt` was written
+81 rows away from where its name went, because `bufstr_add` appends at the
+buffer's physical end and the list's row count is smaller than that. It was
+invisible for four builds because the columns it corrupted are all-identical
+down the list. Build 88's tier column was the first one with a second opinion to
+disagree with — 550 against a possible 469, and 550 − 469 is exactly the 81 rows
+the list drops. Nothing to do on your side; noted because it means map sizes and
+NEW badges on downloadable rows were wrong before today.
+
+---
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:
