@@ -1387,6 +1387,48 @@ bannered as superseded.)
   (a failed download is cached per file, so retrying one answers the cache and
   not the question); all three failed. What settled it was printing the cvar
   rather than reasoning about the branch that reads it.
+- **ms_lst IS "WHICH LIBRARY", ms_src IS "WHERE THE FILE IS", AND THE SWITCH
+  WANTS THE FIRST.** Lex, on a laptop: the CS:S list showed about 30 surf maps
+  where `data/mapdl.txt` offers 925 that are KSF-listed (and every one of those
+  925 is surf; 0 are bhop). `ms_lst` was being taken from the MOUNT alone, so on
+  a machine with no cstrike mount every map Momentum also ships read as
+  Momentum-only -- 463 of the offerable maps are in both catalogues. `ui_dl_load`
+  now ORs the catalogue letters (`k`, `m`, `km`) into `ms_lst` for INSTALLED rows
+  as well as appended ones. OR and not replace: a map in the Momentum mount
+  really is available from Momentum, and KSF listing it too is an addition.
+  Measured cs:s 1027 -> 1080 on a box that HAS CS:S, which is small by
+  construction -- the machine without the mount is the one this is for.
+- **A MAP ON DISK WAS BEING OFFERED AS A DOWNLOAD.** `ui_load_maps` drops every
+  map whose only mount is neither Momentum nor CS:S, and THE GAMEDIR IS ONE OF
+  THOSE -- so a map fetched by the Download button landed in `ftesurf/maps/`, was
+  dropped from the search list on the next load, fell through to `ui_dl_load`'s
+  append branch and was offered again with a size beside it. The one thing a
+  Download button must never do is come back after it worked.
+  `surf_raqbonus3ramp` reads `src 1 lst 1` here, which is what that looks like.
+  The append branch now asks the filesystem (`mapfilekb`, or `ui_file_exists` on
+  a pre-466 engine) and writes the same three `ms_have` states the installed
+  branch does, so such a row draws Play or Wrong build instead. `ms_dlcount`
+  counts what the row will DRAW rather than lines read, or "offers 464" would
+  still say 464 after you had downloaded all of them.
+- **THE ACTION COLUMN IS ALWAYS RESERVED, and that is why it holds Play.** The
+  download gutter used to appear only when `data/mapdl.txt` offered something,
+  because a download button was the only thing that ever went in it -- so on a
+  complete install it was 127 px of nothing down every row. Lex: "replace the
+  Download button box with a green play button box so it doesn't look so empty".
+  `ms_have` is one value, so the three states are mutually exclusive by
+  construction: "1" plays, "2" replaces, "0" fetches. Play goes through
+  `ui_launch` and NOT `ui_launch_local`, so the consent gate and the name gate
+  stay in front of it -- a direct call there is exactly the refactor `ui_launch`'s
+  own essay warns about.
+- **THE TWO HARNESSES FOR THIS BROWSER.** `tools/b89browse.py` derives all five
+  of the build-89 figures from the data files and compares them with what the
+  engine printed -- two numbers for one question, which is what caught the
+  build-58 defect. `tools/b89join.py` drives the pre-join fetch against the REAL
+  mirror (a stub would prove the state machine and not the feature) and grades
+  its two NEGATIVE arms as hard as the positive one: a join-check that holds a
+  join it should not have held is a player who cannot join anything, which is a
+  worse bug than the kick it fixes. It also removes the map it downloaded and
+  CHECKS the removal, rather than swallowing the error.
 - **`tokenize` CLOBBERS A CONSOLE COMMAND'S OWN `argv`.** A diagnostic that read
   `argv(1)`, called `ui_load_maps()` and then used `argv(1)` again ran all three
   of its cases against `surf_zor` -- a word out of mapmeta.txt -- and reported

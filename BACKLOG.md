@@ -801,18 +801,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   can answer the question before connecting.
 
 
-- **THE MAP BROWSER'S LIBRARY SWITCH FILTERS BY MOUNT, NOT BY CATALOGUE.**
-  Build 89's `both / momentum / cs:s` strip reads `ms_lst`, which is decided by
-  which searchpath the BSP came out of. On this box every map ever fetched was
-  written into the Momentum mount, so the measured split is both 1743, momentum
-  1739, cs:s 1027 -- the "momentum" chip hides 4 rows. That is correct for what
-  `ms_lst` means and probably not what a player expects the words to mean. The
-  alternative is to OR in the catalogue letters `data/mapdl.txt` already carries
-  (`k`, `m`, `km`) for installed maps too, which would make the switch answer
-  "which catalogue lists this map". Not done because it is a question for Lex,
-  who asked for the switch; recorded in lextest 2k (q).
-
-
 - **A segment's air percentage still reads over 100% when the energy came in
   HORIZONTALLY (Patch 464).** `Seq_Push` divides the row's energy change by
   `seg_emax`, and build 89 made that bound the total: a running high-water mark

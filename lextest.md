@@ -743,11 +743,12 @@ of that situation first. Left open deliberately rather than guessed at.
 - **`surf_dune` / `surf_fantasy` from §2i** — unchanged by any of this, and
   still the only two of 1748 whose loaded build contradicts the evidence.
 
-## 2k. The map browser, rebuilt (build 89) — six changes, and two judgements
+## 2k. The map browser, rebuilt (build 89) — seven changes, four to look at
 
-You asked for six things. All six are in and measured
-(`python tools/b89browse.py`, PASS). Three of them are judgement calls I made
-and you may want differently.
+You asked for six things and then for the Play button. All seven are in and
+measured (`python tools/b89browse.py`, PASS). Four of them are lettered below
+because they are choices I made rather than facts I found, and you may want
+them differently.
 
 **The download button had run out of room.** It was a flat 92 px and
 "re-get 149.0 MB" needs 127. The width is now asked of the font rather than
@@ -798,12 +799,17 @@ one.
 chips, and it filters the download offers as well because those are rows in the
 same list.
 
-- **(q) It will look lopsided on THIS box and not on yours.** Here: both 1743,
-  momentum 1739, cs:s 1027 — because every map we have ever fetched went into
-  the Momentum mount, so "momentum" hides almost nothing. On an install that
-  actually has CS:S the two separate properly. If you want the switch to mean
-  "which catalogue is this map in" rather than "which mount is the file in",
-  say so — that is a different question and a different answer.
+- **(q) It reads the CATALOGUE now, not the mount, and that changed after you
+  reported 30 surf maps in the CS:S list.** It first filtered on which mount
+  supplied the file, which is wrong for exactly the maps the switch exists to
+  separate: 463 of the offerable maps are in both catalogues, and on a machine
+  with no CS:S mount every one Momentum also ships read as Momentum-only. The
+  letters `data/mapdl.txt` already carries are now folded in. Here that moved
+  cs:s 1027 → 1080, which is deliberately small BECAUSE this box has CS:S
+  mounted; your laptop is the case it is for, and it should show something near
+  925 rather than 30. **If it still shows ~30, that is the thing to tell me** —
+  it would mean the count tracks what is installed rather than what the
+  catalogue lists, and I have not proven which of those you were seeing.
 
 **A green Play button** now fills the action column on every row you already
 have, which you asked for after seeing it empty. It goes through the same launch
