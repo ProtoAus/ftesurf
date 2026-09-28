@@ -1114,6 +1114,42 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   hashed and diffed against the last copy, gives new-map detection without
   enumerating either folder and without touching anyone's API.
 
+  **PART OF THIS IS NOW BUILT: `tools/maproster.py` (2026-09-28), the official
+  surf/bhop list pinned by content hash.** Scope narrowed by the operator to surf
+  and bhop, with zones explicitly off this thread (an in-game zone maker is being
+  built instead). It writes `data/maproster.txt` -- **1748 maps, 1174 surf and 574
+  bhop** -- unioning KSF's roster, Momentum's catalogue and what is on disk;
+  1249 installed and hashed, 499 absent, **31 of them fetchable from the KSF
+  Drive**. `pin` came out **ok 37, other 2, unknown 1709**.
+
+  It hashes only the build the ENGINE WOULD LOAD, resolved through
+  `fs_addons.txt`'s mount order rather than assumed -- 1249 files and 43.7 GB
+  instead of the 90 GB both installs hold, and it is also the only build that can
+  ever matter. Regeneration is byte-identical on a re-run (checked), which is the
+  defect the `mapmeta.py` entry above records, avoided by deriving everything from
+  sources and carrying no state forward but the hash cache -- and that cache is
+  keyed on size AND mtime, because a stale one is silent.
+
+  **Momentum's published SHA1 is real and was verified independently: a `.mtv`
+  carries it as 40 UPPERCASE hex at FIXED byte offset 80**, and across the 2888
+  demos in `wrlines_data/demos` 39 of the 40 maps carrying one hash to exactly a
+  local build. 5 of those 40 have demos that DISAGREE with each other
+  (`surf_4am`, `surf_antichamber`, `surf_blackheart`, `surf_pinkcubes`,
+  `surf_tropic`) because Momentum re-released the map and both builds hold times --
+  so "the latest version" is not a thing a hash can answer, and the tool reports
+  the split rather than resolving it silently.
+
+  **AND IT FOUND A LIVE ONE ON ITS FIRST RUN, which hand-checking the two Steam
+  installs had missed: `ftesurf/maps/` WINS THE MOUNT, and two of the four loose
+  BSPs in it shadow a different upstream build.** `surf_dune` (156,409,212 bytes)
+  and `surf_fantasy` (351,547,373) in the gamedir are **byte-identical to the CS:S
+  builds** and override Momentum's 21 MB and 155 MB cuts for everybody on this
+  install. So any run on either map is recorded against geometry Momentum's
+  leaderboards do not know, and `surf_dune` is exactly the `other` verdict the pin
+  is for. Whether those two are deliberate fixtures or leftovers is not recorded
+  anywhere and wants deciding; `poop` and `surf_raqbonus3ramp` are gamedir-only
+  with no upstream build and are not affected.
+
 ## Harness coverage
 
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
