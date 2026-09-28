@@ -2003,3 +2003,48 @@ unchecked: which of them a driver actually launches, versus which are `exec`d
 inside another cfg that already set the guard. Whatever wrote the empty
 `sv_dlURL` here predates 2026-09-28 10:44, so this is not urgent, and guessing
 at it is worse than leaving it written down.
+
+## Full-depth boards are live; five things that fall out of it — 2026-09-29
+
+The boards went from the top 25 of each to a crawl towards every place:
+`momfetch --depth`, `momwatch --want/--backfill`, `momboards` incremental, and
+the Pi's cron at `--depth -1 --want 25 --backfill 15`. Roughly 10 days to full
+depth at ~3,000 requests/day. What that leaves open:
+
+- **NOTHING CAN SHOW A RANK PAST 200.** `surfd.py:300` `BOARD_LIMIT_MAX = 200`.
+  We are now collecting 2.9M times of which ~450k are reachable by any reader, so
+  the other 2.5M are being stored for a feature that does not exist. The feature
+  worth having is "where would I rank" / a name search, which is the only reason
+  full depth beats top-200. Either build it or stop the backfill at `--depth 200`;
+  doing neither means paying for rows nobody can see. Lex chose full depth knowing
+  this.
+- **The `runs` table is heading for ~2.9M rows, about 900 MB.** Measured
+  307 bytes/row against 26 MB at 85,924 rows, and three indexes on `runs`. 65 GB
+  free so it fits, but nobody has measured board query latency at that size --
+  check `/api/board` and `/board/api/map` p95 once the crawl is a few days in, and
+  `VACUUM` has never been run on this database.
+- **momwatch fetches per MAP, so one stale stage board costs ~16 requests.**
+  Staleness is measured per board, then what it hands momfetch is `--map` plus
+  `--refresh`, which re-asks page 1 of every board that map has. The fix is an
+  explicit `--board mapid:gm:tt:tn` selector in momfetch and passing the exact
+  list. Its docstring claimed the opposite until 2026-09-29 and now states the
+  true cost.
+- **`mapwant` is never pruned and has no `served` column.** One row per map so it
+  cannot outgrow the library, and `--want N` reads the N most recent, so a map
+  viewed once long ago quietly stops being considered. That is the intended
+  behaviour and it means the queue is a priority list, not a work list — nothing
+  guarantees a viewed map is ever deepened except the backfill reaching it.
+- **A KSF map-seeded importer, now that the route is located.** `GET
+  https://ksf.surf/maps/<map>` with an `RSC: 1` header returns the board as
+  `text/x-component`. Exactly 10 rows, no paging, `?mode=fw|sw|hsw|bw` works,
+  `?zone=` ignored so **main track only** — stages and bonuses are not reachable.
+  Against ~740 board maps that is ~7,400 times for ~740 requests, against 666 KSF
+  rows held today.
+  **The cost is the parser, and it should be understood before starting:** the data
+  lives in `__next_f` flight chunks, i.e. escaped JSON inside someone else's
+  framework internals, and it will break when they next deploy and break QUIETLY.
+  Anything built on it needs an arm that fails loudly on a shape change rather
+  than importing zero rows and reporting success. **Must stay operator-run**:
+  `ksfimport.py`'s contract is "never automatic: every run of this is a person
+  typing it", and a website button is NOT that — it would make our IP a request
+  generator for anyone who finds the page.

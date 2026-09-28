@@ -1098,3 +1098,105 @@ reading Momentum's copy.
 - **A map you download on joining a lobby.** The zone fetch is proven for a
   map already installed; the join-time case runs the same code but I have not
   driven it.
+
+## 7. The boards are filling in — we had 2.8% of Momentum's times
+
+You asked whether we have the tools to get all the Momentum times, whether we
+can build them up slowly, and whether we keep them updated. We had most of the
+machinery and one character was throwing away 97% of the data.
+
+### What was wrong
+
+`momfetch.py` built every request with `&skip=0`. So `--take 25` was not a
+default, it was a **ceiling** — the tool could not ask for place 26 of anything.
+
+| | |
+|---|---|
+| times we held | **81,290** |
+| times that exist on Momentum | **2,927,709** |
+| coverage | **2.8%** |
+| boards stopped at exactly 25 places | 2,914 of 3,726 |
+
+Momentum's API pages perfectly well. I checked by hand before changing anything:
+ask for `skip=100` and you get ranks 101–200, continuing exactly where the first
+page stopped. Nothing had ever asked it to.
+
+### What happens now
+
+The Pi's cron does three jobs every 7 minutes instead of one:
+
+1. **maps people are on** — boards get refreshed if stale *and* deepened if short
+2. **maps opened on the website** — opening a map's page on the board queues it,
+   and the next tick prepares it
+3. **a background crawl** — 15 pages a tick into whichever boards are shallowest
+
+That third one is the "slowly build it out" you asked for. At ~3,000 requests a
+day it reaches every place on every board in about **10 days**, unattended.
+
+The website queue is deliberately a *queue* and not a fetch: opening a map page
+writes one row in our database, and our cron spends it later on our own
+schedule. A visitor never causes a request to Momentum. That matters because
+otherwise anyone who found the page could spend our rate limit for us.
+
+### One thing worth your decision
+
+**Nothing we serve can display a rank past 200.** That is our own limit
+(`BOARD_LIMIT_MAX`). So of the 2.9M times now being collected, about 450,000 are
+reachable by any reader and the other 2.5M are being stored for a feature that
+doesn't exist yet — "where would I rank", or searching for a friend's name.
+
+You picked full depth knowing that, which is fine. But it's either worth building
+that feature or worth stopping the crawl at 200. Doing neither means paying for
+rows nobody can see. It's in BACKLOG.md either way.
+
+### Five faults I hit doing this, four of which only testing found
+
+I mention these because each one looked like success:
+
+- **`--refresh` made a tick pointless.** Refresh re-reads page 1, and page 1
+  sorts ahead of every deeper page — so a small budget spent itself re-reading
+  ranks 1–25 we already had and gained **zero** rows, while the crawl beside it
+  gained 50 from the same budget.
+- **Refreshing a board would have truncated it.** Replacing page 1 instead of
+  merging looks right, and would have cut every played map's board back to one
+  page **every 7 minutes**.
+- **A wrong row count would have looped forever.** If Momentum's own total is a
+  few high, the crawl asks for a page that doesn't exist, gets nothing, and asks
+  again next tick — for good. Proven by planting a false total and watching it
+  self-correct.
+- **The indexer would have run out of memory.** It re-read all 3,726 files every
+  7 minutes and held every row in memory: fine at 84k rows, about **2.3 GB** at
+  full depth, on a Pi with 1.0 GB free. It's incremental now.
+- **And the incremental check was wrong twice, subtly.** It remembers a
+  timestamp, and no decimal version of a file's timestamp survives a round trip —
+  one file stayed "changed" forever, both times. It would have looked like it
+  worked to anything that didn't demand *zero* files re-read.
+
+### KSF — the route exists, and it isn't an API
+
+You gave me the `ksf.surf/maps/surf_dragonfall` link. That was the missing piece,
+and it explains why two earlier attempts failed: **there is nothing to find in
+their API.** The leaderboard is built on their server and baked into the page, so
+every records endpoint in their site's code is per-player, and searching it
+correctly could never have turned up a per-map one.
+
+The map page URL *is* the route. What it gives:
+
+- **exactly 10 rows**, and no paging at all — asking for more returns the same 10
+- **main track only.** Stage and bonus boards are not reachable this way, even
+  for a map with four stages and seven bonuses
+- the four styles (`fw`/`sw`/`hsw`/`bw`) do work
+
+So it's worth about **7,400 times across ~740 maps**, against the 666 KSF rows we
+hold now. I have **not** built it, on purpose: reading that page means parsing
+their web framework's internal data format, which will break the next time they
+deploy and will break *silently*. That's a maintenance commitment rather than a
+patch, so I want you to say yes to it knowingly. Say the word and I'll build it
+with an alarm that fails loudly on a format change rather than quietly importing
+nothing.
+
+Two things in our own notes turned out to be false and are now corrected: we
+claimed KSF publishes no replay files anywhere (they list filenames), and that a
+KSF run's map build could *never* be checked (they publish the map as a zip, and
+a zip can be hashed). Both conclusions still hold — we still can't watch a KSF
+run — but they were resting on wrong reasons.

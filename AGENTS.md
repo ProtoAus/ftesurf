@@ -2281,6 +2281,87 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
 - **`ZSRC_DL` is appended, not inserted**, so the three values the `.rec` header
   has always carried keep their numbers. The server never emits it.
 
+### The boards are 2.8% of what exists, and one literal was why -- 2026-09-29
+
+- **`momfetch.py` built every URL with `&skip=0`, so `--take 25` was a CEILING and
+  not a default.** Measured against the cache it produced: **81,290 times held of
+  2,927,709** that exist, with 2,914 of 3,726 boards stopped at exactly 25 places.
+  The API pages fine -- `skip=100` returns ranks 101-200, contiguous, probed by
+  hand. Nothing had ever asked it to. `--depth` now exists (`-1` = whole board),
+  the unit of work is a PAGE, and `len(rows)` of the cached file is the cursor, so
+  a sweep resumes with no bookkeeping.
+- **The unit matters because one board can be 262 pages.** surf_kitsune stage 1 is
+  26,112 times -- more than a whole sitting's budget for one board out of 3,726.
+  Pages sort by depth, so every board reaches page 2 before any reaches page 3 and
+  an interrupted deep sweep leaves the corpus EVEN.
+- **What the depth targets cost**, all reconciled against an independent count
+  before anything was fetched:
+
+  | target | times | % | pages | at 1.5 s |
+  |---|---|---|---|---|
+  | held before | 81,290 | 2.8 | -- | -- |
+  | top-100 | 262,942 | 9.0 | 3,671 | 1.5 h |
+  | top-200 | 450,743 | 15.4 | 4,866 | 2.0 h |
+  | everything | 2,927,709 | 100 | 30,058 | 12.5 h |
+
+  `surfd.py`'s `BOARD_LIMIT_MAX = 200` is the deepest rank anything we serve can
+  render, so top-200 is ~100% of what is visible today and full depth is for a
+  rank-lookup feature that does not exist yet. Lex chose full depth anyway, on
+  purpose, via `--backfill`.
+- **THREE MERGE TRAPS, none of which reading found.** (1) `--refresh` at skip=0
+  must MERGE and not replace, because momwatch passes it every 7 minutes and
+  replacing truncates a deep board to one page per tick. (2) A short later page
+  must clamp `total` to what is held, or an off-by-a-few `totalCount` is an
+  INFINITE ASK that a backfill loops on forever. (3) Rows merge by `replayHash`
+  ordered by time, because a board gaining a record mid-paging shifts every rank
+  below it; the API's `rank` is kept but ADVISORY, which is checked rather than
+  assumed -- `momboards.py` never reads it and surfd derives rank from
+  `BOARD_ORDER` at query time.
+- **The cost of merging is that nothing purges a run deleted upstream.** A union
+  never shrinks. Deleting the board's json is the only way and it costs the whole
+  depth. Deliberate trade; stated in the docstring.
+
+### Three things now drive the top-up, and one of them is the website -- 2026-09-29
+
+- **`momwatch.py` knew whether a board was FRESH and had no idea whether it was
+  DEEP**, so a board holding 25 of 322 stayed at 25 forever however many people
+  played the map. It takes `--depth` now, and a board that is fresh but SHORT is
+  work.
+- **`--refresh` made a tight tick pointless, and this is the one line to
+  remember.** Its skip=0 pages sort ahead of every depth page, so with `--max 2`
+  against two thin boards both requests re-read ranks 1-25 already held and the
+  tick gained **0 rows** -- while the backfill beside it gained 50 from the same
+  budget. `--refresh` is now passed only when a board is genuinely STALE.
+- **`--want N` reads surfd's `mapwant` table (schema 9), written by
+  `/board/api/map`.** A QUEUE AND NOT A FETCH: a public unauthenticated GET must
+  never become an outbound request to somebody else's API while the visitor waits.
+  Recorded only AFTER the route's own 404, so a sweep of invented names fills
+  nothing, and one row per map means it cannot outgrow the library. `note_want`
+  never raises -- a board page that 500s over a counter would be the worse bug.
+- **`--backfill N` has its own cap on purpose**, so a busy fleet cannot starve the
+  crawl and a long crawl cannot delay a map somebody is standing on. It needs no
+  state: momfetch already sorts pages by depth, so a backfill is that tool with a
+  small `--max` and no `--map`. **Live on the Pi's crontab** at `--depth -1 --want
+  25 --backfill 15`, which is ~3,000 requests/day and ~10 days to full depth, at
+  roughly a twelfth of the rate that tripped a 429.
+- **`--take` now defaults to 100** in both tools. 25 was the old ceiling and is
+  otherwise four times the requests for the same rows.
+- **momboards had to become incremental first, and that was a prerequisite rather
+  than a tidy-up.** It re-read all 3,726 files and re-upserted every row every 7
+  minutes: 2.0 s and 66 MB at 84k rows, which extrapolates to ~70 s and ~2.3 GB at
+  full depth against a Pi with **1.0 GB available**. Now it reads only files newer
+  than `<boards>/.indexed`, flushes in chunks, and advances the watermark to the
+  highest mtime PROCESSED rather than to `now`.
+- **A WATERMARK MUST BE `st_mtime_ns`.** No decimal spelling of `st_mtime`
+  round-trips: truncated to whole seconds, every file touched in that last second
+  stays dirty; written as `%.6f` it rounds DOWN below the true value and the single
+  newest file stays dirty. Both were measured, each left exactly one file re-read
+  forever, and both would have looked like "incremental works" to any check that
+  did not demand **zero**.
+- **Bumping `SCHEMA_VERSION` still breaks `test_board.py`'s `HEAD_SCHEMA`.** 8 ->
+  9 caught it on three arms that know nothing about a want-queue. The warning
+  further down this file is accurate; heed it.
+
 ### Keeping the imported boards fresh -- and the one source that is never cronned
 
 - **`momwatch.py` is on the Pi's crontab, every 7 minutes**, `--stale 24
@@ -2295,5 +2376,29 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   typing it", reasoned against that host in the wrlines reference. Do not cron
   it; if the operator wants KSF refreshed on a schedule that is their decision
   to make explicitly, and the docstring should change first.
+- **KSF's PER-MAP ROUTE IS LOCATED, AND IT IS NOT AN API -- 2026-09-29.** Two
+  sessions failed to find it for a structural reason: **there is no API route to
+  find.** The board is fetched server-side by a Next.js server component and
+  embedded in the page, so every record endpoint in the client bundle is
+  player-scoped and seventeen JS chunks searched correctly could not have held it.
+  The route is the map page -- `GET https://ksf.surf/maps/<map>`, or the same URL
+  with an `RSC: 1` header for `text/x-component` at ~46 KB instead of 103 KB of
+  HTML. That header is the framework's own convention and not mimicry: the reply
+  carries `vary: rsc`. Measured twice, the second time independently.
+  **It gives exactly 10 rows and no paging** (`?page`, `?offset`, `?limit` all
+  ignored, byte-identical board), `?mode=fw|sw|hsw|bw` works, and **`?zone=` is
+  ignored** so stages and bonuses are unreachable on it. Page URLs take an enum's
+  displayName where the JSON API takes its value (`fw` vs `0`).
+  **Not built.** Parsing it means `__next_f` flight chunks -- escaped JSON in
+  someone else's framework internals that will break on their next deploy and
+  break quietly. That is a maintenance commitment; it is in BACKLOG.md.
+- **Two claims in `ksfimport.py`'s docstring were false and are corrected.** It
+  said "no demo URL in any endpoint found" -- `/api/players/{id}/replays/{map}`
+  returns per-zone `file` names like `replay_css_6201_0_712551_1790101734.rec` (a
+  shavit .rec, no download path located, so "reachable" is still unproven). And it
+  said a KSF row's build "CANNOT BE CHECKED, EVER" -- `/api/files/<map>.zip`
+  answers `{"exists":true}`, and a published archive is a hashable one. Both
+  conclusions stand; their reasons did not. A wrong reason under a right
+  conclusion is the kind of thing this file exists to catch.
 - The map roster stays a Windows scheduled task (`FTESurf map scan`, PT6H) for
   the reason already recorded: it hashes builds that live on this workstation.

@@ -3,20 +3,55 @@
   python surfd/ksfimport.py --seed <file of steamid64s> [--go] [--max N]
 
 TIMES ONLY, AND THAT IS A LIMIT OF THE SOURCE RATHER THAN A CHOICE.  KSF
-publishes no replay this project can reach: there is no demo URL in any endpoint
-found, no Source .dem parser anywhere in this tree or in the wrlines reference,
-and nothing that could turn one into a .rec.  So a KSF row carries no recording,
-no line and no `watch` -- replay_id stays 0 and nothing pretends otherwise.
+publishes no replay this project can USE: no Source .dem parser exists anywhere
+in this tree or in the wrlines reference, and nothing could turn one into a .rec.
+So a KSF row carries no recording, no line and no `watch` -- replay_id stays 0
+and nothing pretends otherwise.
+  CORRECTED 2026-09-29: this used to give as its first reason that "there is no
+  demo URL in any endpoint found", and that is false.
+  `/api/players/{id}/replays/{map}?game=css&mode=0` answers 200 with a per-zone
+  list carrying `recordId`, `time` and a `file` like
+  "replay_css_6201_0_712551_1790101734.rec".  Those are FILENAMES; no download
+  path has been located or tested, so "reachable" is unproven, and it is a shavit
+  .rec unrelated to this project's format.  The conclusion stands and one of its
+  reasons was wrong, which is worth more than the conclusion being right.
 
-PLAYER-SEEDED, NOT MAP-SEEDED, and that is the awkward part.  ksf.surf serves
+PLAYER-SEEDED TODAY; MAP-SEEDED IS NOW POSSIBLE.  ksf.surf serves
 `/api/players/{id}/bestrecords/{n}` and `/api/maps/search/{q}`, both public and
-unauthenticated, but the per-map leaderboard their own site renders is behind a
-route this project has not located: twelve informed guesses over two sessions
-(including every shape their two documented endpoints imply), the page HTML,
-and all seventeen of its JS chunks, all without finding it.  THAT IS "NOT
-LOCATED", NOT "ABSENT" -- their map pages plainly show records, so a route
-exists and this file should be rewritten around it the day someone finds it.
-Until then the only way in is one player at a time, capped at 25 records each.
+unauthenticated, and this file reads the first of those one player at a time,
+capped at 25 records each.
+
+  THE PER-MAP ROUTE IS LOCATED, 2026-09-29, and two sessions missed it for a
+  structural reason rather than bad luck: THERE IS NO API ROUTE TO FIND.  The
+  board is fetched server-side by a Next.js server component and embedded in the
+  page, so every record endpoint in the client bundle is player-scoped and
+  seventeen JS chunks searched correctly could not have held it.  The route is the
+  map page:
+
+      GET https://ksf.surf/maps/<map>           -> 200 text/html, board embedded
+      GET https://ksf.surf/maps/<map>  RSC: 1   -> 200 text/x-component, ~46 KB
+
+  The header form is the framework's own convention and not browser mimicry: the
+  reply carries `vary: rsc`, so the server advertises varying on it.  Measured
+  twice, the second time independently of the session that found it.
+
+  WHAT IT WILL AND WILL NOT GIVE, on surf_dragonfall:
+    * exactly 10 rows, ranks 1-10.  `?page`, `?offset` and `?limit` are ignored
+      -- a byte-identical board comes back.  There is no paging, so 10 is the
+      board, not a page of it.
+    * `?mode=fw|sw|hsw|bw` selects the style and works (hsw came back a different
+      board of one row).  Page URLs take the enum's displayName while the JSON API
+      takes its value: `fw` here, `0` there.
+    * `?zone=` is IGNORED -- the server hardcodes 0.  STAGES AND BONUSES ARE NOT
+      REACHABLE on this route, even for a map with four stages and seven bonuses.
+    * a row carries rank, playerID, name, steamID (STEAM_0:0:x, not a 64), time,
+      completions, date, record_id and file.
+
+  NOT BUILT HERE, deliberately.  Reading it means parsing `__next_f` flight
+  chunks: escaped JSON inside someone else's framework internals, which will break
+  when they next deploy and will break QUIETLY.  That is a maintenance commitment
+  rather than a patch, so it is written down for whoever will own it.  See
+  BACKLOG.md.
 
 POLITENESS, and the rules are the wrlines reference's because its author
 reasoned them out against this same host:
@@ -31,7 +66,13 @@ reasoned them out against this same host:
 Every answer is cached on disk, so a re-run costs nothing and the second import
 of the same seed list makes no requests at all.
 
-AND A KSF ROW'S BUILD CANNOT BE CHECKED, EVER.  A Momentum run is verified
+A KSF ROW'S BUILD IS NOT CHECKED, AND "EVER" WAS TOO STRONG.  This paragraph
+said CANNOT BE CHECKED, EVER until 2026-09-29, when `/api/files/<map>.zip`
+answered `{"exists":true}` and the map page was found to render a
+`/files/<map>.zip` link when it does.  A published archive is a hashable archive,
+so the claim is falsifiable and the honest version is the one below: nothing here
+checks it, and until something downloads and hashes one, a `ksf` row means the
+build is unverified.  Neither download nor hash has been attempted.  A Momentum run is verified
 exactly: its demo carries the map's SHA1, so tools/momimport.py drops the 12.5%
 that name a build this install does not have.  Nothing on the CS:S side
 publishes a per-map digest, and the 322 map names that differ between the two
