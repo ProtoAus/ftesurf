@@ -335,12 +335,20 @@ def build_rows():
         src = src or "-"
 
         want = pub.get(name)
+        # `builds` is reported even when one value wins overwhelmingly.  A
+        # majority pick that stays quiet drops the minority build without a
+        # word, and those builds have real times on them -- surf_4am's has 20
+        # runs in the import corpus.  So the count travels with the row and the
+        # verdict distinguishes which side of it we are on.
+        builds = str(len(want)) if want else "-"
         if not want:
             pin = "unknown"                       # nobody publishes a digest
         elif sha == "-":
             pin = "unknown"                       # we cannot hash it to compare
+        elif sha == want.most_common(1)[0][0]:
+            pin = "ok"                            # the most-played build
         elif sha in want:
-            pin = "ok"
+            pin = "alt"                           # published, but not the popular cut
         else:
             pin = "other"
         stats[pin] += 1
@@ -349,7 +357,7 @@ def build_rows():
         if avail != "-" and w:
             avail = "-"                           # already installed; nothing to fetch
         rows.append((name, mode, src, have, sha, pin,
-                     mtier if mtier != "-" else ktier, ktype, avail))
+                     mtier if mtier != "-" else ktier, ktype, avail, builds))
     return rows, stats, len(win)
 
 
@@ -360,14 +368,18 @@ def cmd_build(args):
         fh.write("FTESURF-MAPROSTER 1\n")
         fh.write("# written by tools/maproster.py -- do not edit\n")
         fh.write("# roster <name> <mode> <src> <have> <sha1> <pin> <tier> "
-                 "<type> <avail>\n")
+                 "<type> <avail> <builds>\n")
         fh.write("# src:   k = on KSF's roster, m = in Momentum's catalogue\n")
         fh.write("# have:  which mount supplies the build the engine loads\n")
-        fh.write("# pin:   ok = matches the SHA1 Momentum publishes in its demos,\n")
-        fh.write("#        other = it publishes one and ours differs,\n")
+        fh.write("# pin:   ok = matches the build most of Momentum's demos use,\n")
+        fh.write("#        alt = matches a PUBLISHED build, but not that one,\n")
+        fh.write("#        other = it publishes one or more and ours is none,\n")
         fh.write("#        unknown = NOTHING publishes a digest.  Permanent for\n")
         fh.write("#        every CS:S- and KSF-sourced map; not a to-do.\n")
         fh.write("# avail: a KSF archive exists for a map we do not have\n")
+        fh.write("# builds: distinct builds Momentum's demos attest to.  >1 means\n")
+        fh.write("#        the map was re-released and both cuts hold times, so\n")
+        fh.write("#        there is no single 'latest' to be on.\n")
         fh.write("# '-' means unknown, and is never the same as 0.\n")
         for r in rows:
             fh.write("roster %s\n" % " ".join(r))
@@ -382,8 +394,12 @@ def cmd_build(args):
              sum(1 for r in rows if r[1] == "bhop")))
     print("  installed %d, hashed %d, absent %d (%d fetchable from KSF)"
           % (have, hashed, len(rows) - have, fetchable))
-    print("  pin: ok %d, other %d, unknown %d"
-          % (stats["ok"], stats["other"], stats["unknown"]))
+    contested = sum(1 for r in rows if r[9] not in ("-", "0", "1"))
+    print("  pin: ok %d, alt %d, other %d, unknown %d"
+          % (stats["ok"], stats["alt"], stats["other"], stats["unknown"]))
+    if contested:
+        print("  %d map(s) have more than one published build -- no single 'latest'"
+              % contested)
     if hashed < have:
         print("  NOTE: %d installed maps are unhashed -- run `hash` first"
               % (have - hashed))
@@ -405,8 +421,10 @@ def cmd_check(args):
     else:
         print("  our sha1    : - (not hashed)")
     if name in pub:
-        for h, n in pub[name].most_common():
-            print("  momentum    : %s  (%d demos)" % (h, n))
+        for i, (h, n) in enumerate(pub[name].most_common()):
+            ours = "  <- ours" if c and h == c[3] else ""
+            print("  momentum    : %s  (%d demos)%s%s"
+                  % (h, n, "  most played" if i == 0 else "", ours))
         if len(pub[name]) > 1:
             print("                ^ demos DISAGREE: this map was re-released and")
             print("                  both builds carry times.  No single 'latest'.")
