@@ -1313,6 +1313,16 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+- A DEPLOY'S PROVENANCE CHECK GOES STALE THE MOMENT YOU FINISH IT, because the
+  other session commits into the same working tree and `-Pi` ships the TREE.
+  On 2026-09-28 I ran `git log <deployed>..HEAD`, cleared all four commits, built
+  and deployed -- and the peer landed a commit in the two minutes in between, so
+  the progs that went to twelve public lobbies were built from a HEAD I had never
+  inspected. It was harmless (BACKLOG.md, a test cfg and a .py -- no QC), and that
+  was luck, not method. Re-read `git log` and `git status` AFTER the build and
+  BEFORE the swap, or build from a `git worktree add <tmp> <sha>` at the exact
+  commit you checked so the artifact cannot move under you. The deploy prints the
+  progs hashes: they are only meaningful against a commit you can name.
 - A CLIENT NEVER SEES AN AUTOBUNNY HOP TOUCH DOWN, so anything keyed on an
   `onground` EDGE silently does not fire during a bhop chain.
   `PMSrc_CheckJumpButton` clears onground on the jump tick itself
