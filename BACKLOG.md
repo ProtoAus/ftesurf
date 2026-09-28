@@ -991,11 +991,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `surfd/ksfimport.py` is player-seeded at 25 records each, which is a poor
   substitute for a map board. Whoever finds it should rewrite that tool around
   it. **Do not find it by brute-forcing their server**; read their client.
-- **877 imported runs are on a build we do not have, and are SKIPPED.** The
-  demo's own map SHA1 says so (see AGENTS.md); their times are real and their
-  paths are not ours to draw. `momimport --other-build` imports them if anyone
-  ever wants the times without the lines -- which would want the line
-  suppressed per run, and nothing does that yet.
+- **877 imported runs are on a build that is NOWHERE ON THIS MACHINE, and are
+  SKIPPED.** The demo's own map SHA1 says so (see AGENTS.md). Searched across
+  all three map roots -- Momentum's 1,316, Counter-Strike: Source's 1,084 and
+  ftesurf's own -- and **0 of the 877 match any build here**, so they are older
+  Momentum cuts since replaced rather than a map we merely mounted from the
+  wrong place. Nothing recovers them but the original BSPs.
+  (The first search of this missed the CS:S install entirely and reported the
+  same answer, which was luck rather than method: a root that is not searched
+  cannot contribute a match. The figure above is from the complete sweep.)
+  It also confirms from the other direction that no Momentum demo was recorded
+  on a CS:S build -- not one hash matched one.
+  Their times are real and their paths are not ours to draw. `momimport
+  --other-build` imports them if anyone ever wants the times without the lines,
+  which would want the line suppressed per run, and nothing does that yet.
 - **80 demos failed extraction outright** (of 735 in the last batch): mostly
   `gave up after 30 s in the chain search`. `wrpath_extract --timeout 0` or a
   larger value would take another pass at them; the extractor records failures
