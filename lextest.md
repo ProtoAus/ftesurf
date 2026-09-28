@@ -144,8 +144,10 @@ You asked for this to be accurate to Source and 100% consistent between client a
 server. It is now, on every path I could find, and all four are verified headlessly
 (`tools/p458prop.py`, `p458phy.py`, `p460lock.py`, `p461box.py` — all green). What a
 machine cannot tell you is whether the maps still PLAY, and two of the four change
-what a map feels like. **Nothing is deployed** — the fleet still runs the old
-behaviour until you say otherwise.
+what a map feels like. **THIS IS LIVE ON ALL 12 LOBBIES as of 2026-09-28** — you
+said not to be scared of restarting them, so engine Patches 458 and 460 and the
+mod-side 459/461 went out together and every lobby restarted with nobody on. The
+prop-collision changes below are what a lobby now does, not a plan.
 
 **The one to check first, because it is the biggest change in the set.** Source
 collides a prop against its `.phy` hull or against nothing at all; it never uses the
@@ -213,8 +215,22 @@ props: 534 spawned (200 solid, 486 scaled), 29 requantised, 3 non-solid (no .phy
 ## 2e. Momentum's zones now reach 66 maps that had no clock at all
 
 You asked for Momentum's zones to be copied over, applied to the CS:S and `_ksf`
-builds, and made editable. The first two are done for 66 maps and are on this disk
-now; the third is held on a deploy. **Nothing is on the fleet.**
+builds, and made editable. **All three are done and the fleet has them** as of
+2026-09-28: 66 donated zone files are on all 12 lobbies and verified loading there
+(`zones(sv): 6 on surf_utopia_njv (maps/zones/local) crc 4260ad9c`, the same crc
+the local arm measured), and 609 files — 543 mirrors plus the 66 — are in
+`maps/zones/local/` on this disk for you to edit.
+
+**The mirrors are LOCAL ONLY, deliberately.** They are byte copies, so they change
+nothing; their whole point is that you can edit them. When you edit one and want it
+live, it is one `scp` to
+`proto@192.168.1.102:/srv/nvme/ftesurf-server/game/ftesurf/maps/zones/local/`.
+Pushing all 543 would have added risk for no behaviour change.
+
+**If you break one while editing, it costs you the edit and not the map.** A zone
+file that parses but yields no zones used to wipe the table, report success and
+block the fallback — so the map went silently untimeable. It now says `loaded no
+zones -- ignoring it and trying the next source` and falls back to Momentum's copy.
 
 **What changed.** The zone loader keys on the bare map name and does not alias, so
 `surf_aircontrol_ksf` had no start, no end and no timer while `surf_aircontrol.json`
