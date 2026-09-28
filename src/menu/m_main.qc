@@ -1988,6 +1988,38 @@ void() ui_dl_load =
 			// Momentum has no record of has the same hole, and this file is the
 			// only place a tier for it exists.  ui_meta_load picks it up.
 			bufstr_set(ms_dltier, row, argv(4));
+
+			/*
+			  AND SO DOES THE LIBRARY, which is the fix for "I see like 30 surf
+			  maps in the CS:S list".
+
+			  ms_lst was taken from the MOUNT alone -- where the file happens to
+			  sit -- and this column is asked "which library is this map in".
+			  Those are different questions for exactly the maps the switch
+			  exists to separate: 463 of the offerable maps are in BOTH
+			  catalogues (`km`), and every one of them that Momentum also ships
+			  read as Momentum-only and disappeared from the CS:S side. The
+			  KSF-only maps you have already downloaded are worse off still --
+			  they land in ftesurf/maps/, which is neither mount, so they answer
+			  neither chip.
+
+			  OR, NOT REPLACE. A map in the Momentum mount really is available
+			  from Momentum; the catalogue adds that KSF lists it too. Both are
+			  true and the row already says "MOM CSS" when they are.
+
+			  ui_isgamemode gates it for the same reason the passes above do: a
+			  catalogue letter must not pull de_dust2 out of Other.
+			*/
+			if (ui_isgamemode(nm))
+			{
+				local float cbit;
+				cbit = 0;
+				if (strstrofs(argv(3), "k") >= 0) cbit = cbit | SRC_BIT_CSS;
+				if (strstrofs(argv(3), "m") >= 0) cbit = cbit | SRC_BIT_MOM;
+				if (cbit)
+					bufstr_set(ms_lst, row,
+					           ftos(stof(bufstr_get(ms_lst, row)) | cbit));
+			}
 			continue;
 		}
 
@@ -2047,16 +2079,49 @@ void() ui_dl_load =
 		  parallel-buffer invariant something the code states instead of
 		  something it inherits.
 		*/
+		/*
+		  NOT IN ms_name DOES NOT MEAN NOT ON DISK, so ask the filesystem.
+
+		  ui_load_maps drops every map whose only mount is neither Momentum nor
+		  CS:S -- and the GAMEDIR is one of those. A map fetched by this very
+		  button lands in ftesurf/maps/, is dropped from the search list on the
+		  next load, falls through to here, and was offered for download again
+		  with a size next to it. The one thing a Download button must never do
+		  is come back after it worked.
+
+		  mapfilekb because it is already the wrong-build check's reader and it
+		  resolves through the mount order; ui_file_exists is the fallback for a
+		  pre-466 engine, which can answer "is it there" but not "how big".
+		  Either way this is one lookup per OFFERED row -- 464 here, not 1833.
+		*/
+		local float hkb;
+		hkb = ui_dl_kb_ready() ? mapfilekb(nm) : 0;
+		if (hkb <= 0)
+			if (ui_file_exists(strcat("maps/", nm, ".bsp")))
+				hkb = -1;               // present; size unknown on this engine
+
 		bufstr_set(ms_name, ms_count, nm);
 		bufstr_set(ms_src, ms_count, ftos(dbit));
 		bufstr_set(ms_lst, ms_count, ui_isgamemode(nm) ? ftos(dbit) : ftos(SRC_BIT_OTHER));
-		bufstr_set(ms_have, ms_count, "0");
+		// "1" have it, "2" have the wrong build, "0" do not have it.  Same three
+		// states the installed branch above writes, decided the same way.
+		bufstr_set(ms_have, ms_count,
+		           (hkb == 0) ? "0"
+		                      : ((hkb > 0 && stof(argv(5)) > 0 && hkb != stof(argv(5)))
+		                         ? "2" : "1"));
 		bufstr_set(ms_new, ms_count, argv(7));
 		bufstr_set(ms_dlkb, ms_count, argv(5));
 		bufstr_set(ms_dltier, ms_count, argv(4));
 		hash_add(byname, key, ms_count, HASH_REPLACE | EV_FLOAT);
 		ms_count = ms_count + 1;
-		appended = appended + 1;
+		// COUNTED BY WHAT THE ROW WILL DRAW, not by "a line was read".  ms_dlcount
+		// is the offer count the report prints and the gutter used to be gated on,
+		// so a row that turned out to be on disk must not inflate it -- that is how
+		// "offers 464" would keep saying 464 after you had downloaded them all.
+		if (hkb == 0)
+			appended = appended + 1;
+		else if (hkb > 0 && stof(argv(5)) > 0 && hkb != stof(argv(5)))
+			stale = stale + 1;
 		if (argv(7) == "1")
 			badged = badged + 1;
 	}
