@@ -3587,6 +3587,14 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css",
              "runview.js": "text/javascript"}
 WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
+# One 960px JPEG per map, built by tools/mapshots_web.py from the 1280x720
+# `medium` in gfx/mapshots and named for the MAP, not for Momentum's uuid --
+# so this process needs no copy of mapmeta.txt to answer a request.
+# 630 of the board's 740 maps have one; the other 110 get no picture and the
+# page is laid out so that reads as "no picture", not as a hole.
+WEB_SHOT_DIR = os.environ.get("SURFD_WEBSHOTS",
+                              os.path.join(DATA_DIR, "webshots"))
+WEB_SHOT_MAX = 240       # shot fetches per RATE_WINDOW per source
 WEB_MAPS_TTL = 60        # seconds the serialized maps list is reused
 WEB_PAGE = 50            # rows per /board/api/map call
 WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -3636,6 +3644,43 @@ def web_asset(name):
     if mimetype is None:
         return fail(404, "not found")
     return _web_file(name, mimetype)
+
+
+@app.get("/board/shot/<name>")
+def web_shot(name):
+    """One map's screenshot, 960 px wide.
+
+    THE NAME IS A BOARD KEY AND NOT A PATH.  clean_map is the same gate the
+    submit path uses: it refuses "..", anything outside _MAPNAME_OK and
+    anything over MAX_MAP_LEN, and what comes back is joined to one fixed
+    directory.  /board/<name> above gets its safety from a filename allowlist;
+    this cannot have one (the set is 630 maps and grows), so it gets it from
+    the same validator that decides what a map may be called in the first
+    place.
+
+    A MISS IS A 404 WITH NO PLACEHOLDER.  110 of the board's maps have no
+    picture, and an "image unavailable" graphic is worse than no image at all
+    -- board.js drops the element when the fetch fails, so those pages lay out
+    as though the hero was never there.  This is the same choice the menu's
+    backdrop should have made and did not (see ui_map_backdrop).
+    """
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_SHOT_MAX, "webshot"):
+        return fail(429, "rate limited")
+    clean = clean_map(name)
+    if clean is None:
+        return fail(404, "not found")
+    try:
+        with open(os.path.join(WEB_SHOT_DIR, clean + ".jpg"), "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return fail(404, "not found")
+    resp = Response(data, status=200, mimetype="image/jpeg")
+    # A map's picture does not change without a redeploy, and a redeploy
+    # changes the bytes, so the etag is what actually ends the conversation.
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    resp.add_etag()
+    return resp.make_conditional(request)
 
 
 def _web_maps_body(now):

@@ -60,7 +60,9 @@ def fresh(admin_hash=None):
     os.environ.update(SURFD_HOME=home, SURFD_DB=os.path.join(home, "test.db"),
                       SURFD_ENV=os.path.join(home, "surfd.env"),
                       SURFD_MAPS=maps, SURFD_ZONES=zones,
-                      SURFD_RUNS=os.path.join(home, "runs"))
+                      SURFD_RUNS=os.path.join(home, "runs"),
+                      SURFD_WEBSHOTS=os.path.join(home, "webshots"))
+    os.makedirs(os.path.join(home, "webshots"))
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_ADMIN_HASH",
               "SURFD_ADMIN_SECRET", "SURFD_ADMIN_INSECURE_COOKIE",
               "SURFD_RCON_PASSWORD", "SURFD_ADMIN_LOBBIES",
@@ -702,6 +704,50 @@ def main():
           (codes.count(200), codes[-1]), (m.WEB_RUN_MAX, 429))
     check("...which does not close the board",
           get(m, "/board/api/maps", ip="198.51.100.9").status_code, 200)
+
+    print("\n--- 6c. the map screenshot ---------------------------------------")
+    # The name in the URL is a board key run through clean_map, and what comes
+    # back is joined to one directory. These arms exist because that is the only
+    # thing standing between a public GET and the filesystem: /board/<name> has
+    # a filename allowlist to fall back on and this route cannot have one.
+    m = fresh()
+    shots = os.environ["SURFD_WEBSHOTS"]
+    with open(os.path.join(shots, "surf_kitsune.jpg"), "wb") as fh:
+        fh.write(b"\xff\xd8\xff\xe0JFIF-not-really")
+    # A file the route must never reach, one directory up from the shot dir.
+    with open(os.path.join(os.path.dirname(shots), "secret.jpg"), "wb") as fh:
+        fh.write(b"NOT-FOR-THE-PUBLIC")
+
+    r = get(m, "/board/shot/surf_kitsune")
+    check("a map with a picture serves it",
+          (r.status_code, r.mimetype), (200, "image/jpeg"))
+    check("...and it is the file on disk",
+          r.get_data(), b"\xff\xd8\xff\xe0JFIF-not-really")
+    check("a map with no picture is 404, with no placeholder",
+          get(m, "/board/shot/surf_lux").status_code, 404)
+
+    # Every one of these is a path clean_map must refuse. The encoded forms
+    # matter separately: Flask decodes %2f before the view ever sees it, so
+    # the string clean_map is handed really can contain a separator.
+    walks = ["../secret", "..%2fsecret", "....//secret",
+             "%2e%2e%2fsecret", "/etc/passwd", "surf_kitsune/../../secret",
+             "..\\secret", "surf_kitsune.jpg"]
+    codes = sorted({get(m, "/board/shot/" + w).status_code for w in walks})
+    check("no traversal reaches a file outside the shot directory",
+          codes, [404])
+    leaked = [w for w in walks
+              if b"NOT-FOR-THE-PUBLIC" in get(m, "/board/shot/" + w).get_data()]
+    check("control: none of them returned the file one level up", leaked, [])
+    check("control: that file really is there and readable",
+          open(os.path.join(os.path.dirname(shots), "secret.jpg"), "rb").read(),
+          b"NOT-FOR-THE-PUBLIC")
+
+    codes = [get(m, "/board/shot/surf_kitsune", ip="198.51.100.7").status_code
+             for _ in range(m.WEB_SHOT_MAX + 1)]
+    check("pictures have their own bucket",
+          (codes.count(200), codes[-1]), (m.WEB_SHOT_MAX, 429))
+    check("...which does not close the board",
+          get(m, "/board/api/maps", ip="198.51.100.7").status_code, 200)
 
     print("\n%d failed" % len(FAILED))
     for f in FAILED:

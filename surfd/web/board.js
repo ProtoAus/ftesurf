@@ -144,6 +144,22 @@
     if (state.run && id !== 'run') { state.run.destroy(); state.run = null; }
   }
 
+  // WHICH TAB IS LIT IS PART OF THE ROUTE.  aria-current was written into
+  // board.html once and never moved, so Leaderboard stayed lit on top of a
+  // profile and Players never lit up at all -- five views, one highlight,
+  // permanently on the wrong one. Download is a different document and is never
+  // current here.
+  function navTab(which) {
+    var as = document.querySelectorAll('.tabs a[data-tab]');
+    Array.prototype.forEach.call(as, function (a) {
+      if (a.getAttribute('data-tab') === which) {
+        a.setAttribute('aria-current', 'page');
+      } else {
+        a.removeAttribute('aria-current');
+      }
+    });
+  }
+
   // ---- map list ----------------------------------------------------------
   var SORTS = {
     active: function (a, b) { return (b.last - a.last) || byName(a, b); },
@@ -390,9 +406,34 @@
     return q + (offset ? '&offset=' + offset : '');
   }
 
+  // THE PICTURE IS LOADED BY A PROBE AND ONLY THEN SHOWN.  Pointing the visible
+  // <img> straight at the URL and hiding it on error shows a broken-image icon
+  // for however long the 404 takes, which is the failure the menu's backdrop
+  // has (ui_map_backdrop draws no_texture on a miss). A detached Image() takes
+  // the hit; on success the element gets the same URL and the browser serves it
+  // from cache, so nothing is fetched twice.
+  function setHero(map) {
+    var img = $('maphero');
+    img.hidden = true;
+    img.removeAttribute('src');
+    if (!map) { return; }
+    var want = String(map);
+    img.setAttribute('data-for', want);
+    var probe = new Image();
+    probe.onload = function () {
+      // Arriving late for a map the reader has already left must not paint
+      // that map's picture over this one.
+      if (img.getAttribute('data-for') !== want) { return; }
+      img.src = probe.src;
+      img.hidden = false;
+    };
+    probe.src = 'shot/' + encodeURIComponent(want);
+  }
+
   function showMap(h) {
     showOnly('map');
     $('title').textContent = h.m;
+    setHero(h.m);
     var seq = ++state.seq;
     get(mapQuery(h, 0)).then(function (body) {
       if (seq !== state.seq) { return; }
@@ -721,6 +762,9 @@
   function route() {
     var h = readHash();
     showError('');
+    // A profile belongs to Players, not to the map it has times on: the only way
+    // to one is through that list, and its back link goes there.
+    navTab((h.p || h.who !== undefined) ? 'people' : 'board');
     if (h.r) { showRun(h.r, h.at); return; }
     if (h.p) { showProfile(h.p); return; }
     if (h.who !== undefined) { showPeople(h.who); return; }

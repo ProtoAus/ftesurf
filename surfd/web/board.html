@@ -17,8 +17,12 @@
 <body>
 <div class="wrap">
 
-  <nav class="tabs"><a href="../">Download</a> <a href="./" aria-current="page">Leaderboard</a>
-    <a href="#who=">Players</a></nav>
+  <!-- data-tab is board.js's hook: which one is current is a function of the
+       hash, not of the markup. The Leaderboard href is a bare fragment so that
+       leaving a profile is a hash change and not a page load. -->
+  <nav class="tabs"><a data-tab="dl" href="../">Download</a>
+    <a data-tab="board" href="#">Leaderboard</a>
+    <a data-tab="people" href="#who=">Players</a></nav>
 
   <header class="mast">
     <h1><a class="mark" href="../">FTE<span class="surf">SURF</span></a></h1>
@@ -49,6 +53,10 @@
   <section id="map" hidden>
     <a class="back" href="#">&larr; All maps</a>
     <h2 id="title" class="maptitle"></h2>
+    <!-- Decorative: the map's name is already the heading above it, so alt
+         stays empty rather than repeating it to a screen reader. board.js
+         removes it entirely for the 110 maps we hold no picture for. -->
+    <img id="maphero" class="hero" alt="" hidden>
     <div id="srcs" class="tabrow seg" role="group" aria-label="Source"></div>
     <div id="legs" class="tabrow" role="group" aria-label="Track"></div>
     <div class="tabrow">

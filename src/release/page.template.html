@@ -78,7 +78,12 @@ body {
   padding: 5px 12px 2px; border: 1px solid var(--row); border-radius: 3px;
 }
 .tabs a:hover { color: var(--text); border-color: var(--border); }
-.tabs a[aria-current="page"] { color: var(--text); background: var(--row); border-color: var(--border); }
+/* Accent edge as well as the lighter box -- board.css carries the same rule and
+   the two navs must not read differently. */
+.tabs a[aria-current="page"] {
+  color: var(--text); background: var(--row); border-color: var(--border);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
 
 /* ---- masthead ---------------------------------------------------------- */
 .mast { margin-bottom: 40px; }
@@ -192,7 +197,12 @@ footer p { margin: 0 0 7px; }
 <body>
 <div class="wrap">
 
-  <nav class="tabs"><a href="./" aria-current="page">Download</a> <a href="board/">Leaderboard</a></nav>
+  <!-- Players was missing here, so the tab existed on the leaderboard and
+       nowhere else: from this page there was no way to reach it at all. The
+       fragment is what board.js routes on. -->
+  <nav class="tabs"><a href="./" aria-current="page">Download</a>
+    <a href="board/">Leaderboard</a>
+    <a href="board/#who=">Players</a></nav>
 
   <header class="mast">
     <h1>FTE<span class="surf">SURF</span></h1>

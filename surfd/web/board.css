@@ -45,7 +45,13 @@ code { font-family: var(--mono); font-size: 0.92em; }
   padding: 5px 12px 2px; border: 1px solid var(--row); border-radius: 3px;
 }
 .tabs a:hover { color: var(--text); border-color: var(--border); }
-.tabs a[aria-current="page"] { color: var(--text); background: var(--row); border-color: var(--border); }
+/* The accent edge, not just the lighter box: at 900px the box alone is a #1C1C24
+   panel on a #050508 page and reads as a hover state rather than as "you are
+   here". inset keeps it inside the 1px border, so nothing reflows. */
+.tabs a[aria-current="page"] {
+  color: var(--text); background: var(--row); border-color: var(--border);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
 .mast { margin-bottom: 28px; }
 h1 {
   font-family: var(--display);
@@ -248,4 +254,23 @@ footer p { margin: 0 0 7px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bar i { transition: none; }
+}
+
+/* ---- the map's own screenshot ------------------------------------------ */
+/* aspect-ratio holds the box before the bytes arrive, so the table below does
+   not jump down when a 46 KB JPEG lands. cover, not contain: every source is
+   16:9 already, and contain would letterbox the handful that are not. */
+/* 21/9 AND NOT THE SOURCE'S 16/9: at the 860px wrap a 16:9 hero is 484px tall
+   and pushes the times off a laptop screen, which inverts what the page is
+   for. cover crops the top and bottom of a shot that is already framed on the
+   middle of the map. */
+.hero {
+  display: block;
+  width: 100%;
+  aspect-ratio: 21 / 9;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  margin: 0 0 16px;
 }
