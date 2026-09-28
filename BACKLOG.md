@@ -955,6 +955,23 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   on every one of those maps, so the file's own numbers are known and still not
   read. tools/momimport.py writes no `pmpin`, for the honesty reason in its
   header -- the importer did not run that physics either.
+  **MEASURED OVER THE WHOLE LIBRARY 2026-09-28, AND IT SPLITS THIS IN TWO.** Of
+  3733 `.rec` files, `tickrate` is present on 3733 -- all of them -- and `pmpin`
+  on 268 (7.2%: v9 243, v10 25; the rest are v5 3107, v4 344, v7 13, v6 1). So
+  "read `pmpin`" repairs 7% of the library and the other 93% still needs the
+  third verdict above; but the TICK half is separable, library-wide, and needs no
+  fallback, because `ln_tick[s]` already holds the file's own rate for every file
+  and `Line_Grade` ignores it in eight places (cl_lines.qc:478-501) while the
+  energy ceiling at :1115 uses it. Magnitude on this fleet, exactly: surf is
+  `pm_ticrate 0.015 / sv_airaccelerate 150`, bhop `0.01 / 1000`, and
+  `k = aa*ws*tick*fric` clears aircap 30 in all four combinations (smallest 146,
+  at fric 0.25), so `gain` clamps to 30 either way and
+  `Strafe_IdealTurn = atan2(gain,speed)*DEG_PER_RAD / tick` differs by the tick
+  ratio ALONE: 1.5x. The direction is the reason to care -- the 140 files
+  recorded at 0.01, watched on a 0.015 lobby, get a target 1.5x too LOW and so
+  read BETTER than they were strafed, and a comparison line that flatters the
+  ghost is worse than one that is harsh. `Strafe_CapBinds` does depend on tick,
+  so the grey gate can flip in principle; between these two modes it does not.
 
 - **EVERY BOARD-COMPARISON LINE IS BUILT WITH A ZERO GROUND PLANE, so
   `hud_watch_path_color 4` is wrong on slots 1-8.** `cl_watch.qc:1933` reads
@@ -968,6 +985,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   which cl_lines.qc:428-431 says overstates the target by up to 6x on a
   53-degree face. Contact colouring (mode 2) is unaffected: it reads
   `fl & WT_F_RAMP`, not the plane.
+  Re-measured independently at scale: 1,538,762 samples across 400 files, every
+  one exactly 17 columns, and `reccheck.py:951` faults on
+  `len(tok) != want_cols` -- so 18 columns are not merely unobserved, they are
+  unrepresentable in a conforming file, and the branch is dead by construction
+  rather than by luck of the sample.
   It survived because `cfg/test/p453q.cfg` and `p452col.cfg` only ever issue
   `replay colours 0 <stride>` -- slot 0, never a board slot. A one-character
   fix, but it changes behaviour on a shipped colour mode, so it wants its own
