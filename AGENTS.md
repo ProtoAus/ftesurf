@@ -1323,6 +1323,18 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   BEFORE the swap, or build from a `git worktree add <tmp> <sha>` at the exact
   commit you checked so the artifact cannot move under you. The deploy prints the
   progs hashes: they are only meaningful against a commit you can name.
+  **AND IT IS NOT ONLY THE DEPLOY -- THE SAME RACE RUNS THROUGH `git push`,**
+  which is how this bullet got written too narrowly and then bit again the same
+  day. Later on 2026-09-28 the peer asked me to push a commit of theirs, I read
+  `git show --stat` on it to confirm it held no client code, and then pushed a
+  chain that by then also contained their phase C client commit -- landed at
+  15:43:25, inside the same command as my own `git commit`. Seven files of QC and
+  cfg went public without either of us choosing the moment. Verifying a payload
+  and then acting on a LATER HEAD is one mistake with two exits; `git push
+  <sha>:main` publishes exactly what you inspected, and a bare `HEAD` publishes
+  whatever arrived while you were reading. On a PUBLIC repo that is not
+  rollbackable by any means you are allowed to use -- never force-push -- so the
+  inspect-then-act gap has to close before the push, not after.
 - A CLIENT NEVER SEES AN AUTOBUNNY HOP TOUCH DOWN, so anything keyed on an
   `onground` EDGE silently does not fire during a bhop chain.
   `PMSrc_CheckJumpButton` clears onground on the jump tick itself
