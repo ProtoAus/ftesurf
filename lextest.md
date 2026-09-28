@@ -747,3 +747,18 @@ database, so every number below is one you can click.
 - **(k) 740 of 766 maps now have times on a public page**, most of them other
   people's. You said yes to this; it is worth seeing at full size before it is
   indexed by anything.
+
+### The admin page, and the prestrafe
+
+- **Your run-review page folds up now.** Verdicts, Receipt, Key and the raw
+  recording header are behind dropdowns, but each one still says its state on
+  the closed line -- `[PASS] 1 current`, `[FIRST KEY]`, `[UNREADABLE] no file
+  on this node` -- and anything flagged opens itself. It also has the same
+  moving dot the public page does. Nothing about approving or rejecting a run
+  changed; that was checked line by line.
+- **(m) The public viewer could not reach the prestrafe and now can.** A
+  recording starts about two to four seconds before the timer does, and the
+  scrubber used to start at 0:00.000 with that span drawn off the edge. It
+  opens at `-0:02.130` on your surf_utopia run, standing still, and the speed
+  strip shades the pre-timer part. Tell me if you would rather it opened at
+  0:00 and treated the prestrafe as an extra you scrub back into.

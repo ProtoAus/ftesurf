@@ -1804,3 +1804,34 @@ watch**.
 - **An unquoted heredoc ate a backtick pair** in a throwaway script, printing
   `have: command not found`. Sixth occurrence of the documented trap, first
   in the `<<PY` direction rather than `\n`. Quote the delimiter: `<<'PY'`.
+
+### The admin run page, and a defect it found in the public one
+
+`admin_run.html` folds Verdicts, Receipt, Key and the recording header behind
+`<details>` (633 -> 884 lines, ~2700 px -> ~1400). The closed summary carries
+the state word, anything flagged starts open, and `summarise()` only ever
+raises `open` so a re-render after a decision cannot shut a card the operator
+opened. `git diff -U0` filtered for `post(|fetch(|csrf|/admin/api|keydecision`
+returns nothing: no review line moved.
+
+Its playhead is a PORT of `web/runview.js` rather than a share. The reasons
+were measured, not assumed: `View.build()` clears its host and builds its own
+canvases, so reuse would REPLACE the admin canvas and lose the forensic layer
+(checkpoint dots, stage diamonds, warp/portal glyphs, spectate labels, dashed
+teleport segments, axes) that runview does not draw at all.
+
+**And it found a real defect in the public viewer by hitting it.** A `.rec`
+starts before the timer does; `runview.js` clamped `seek()` to 0 and mapped the
+speed strip with `X(t) = t/dur*w`, so the prestrafe was unscrubbable and drawn
+off the left edge. Measured: rid 5 opens at -2.130 s, rid 4 at -3.840, 2.8% to
+6.3% of those timelines. Fixed in 933a8d7 -- the timeline now spans t0..t1.
+
+**Dim-ahead is only checkable by measurement.** Neither of us could tell by eye
+whether the erase ran. Mean brightness of drawn pixels in the path canvas:
+66.4 at t0, 101.3 mid, 133.7 at the end (admin: 54.2 / 76.1 / 96.1). Monotonic
+because the erased span shrinks. Use this rather than looking.
+
+**Headless virtual time cannot drive requestAnimationFrame.** A control page
+counting ticks under `--virtual-time-budget=9000` reported 5 ticks over 71 ms
+and a `setTimeout(3000)` that never fired, so a "press play and screenshot" arm
+measures nothing. Hold the parent's `load` event open so real seconds pass.
