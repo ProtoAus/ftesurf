@@ -586,8 +586,9 @@ way — just at netchan speed.
 
 ### What to test in game
 
-Run the client from `C:\FTEQuake` (that is where `-Engine` deployed the new
-binary — the button needs it, older binaries simply do not draw it).
+Launch with `ftesurf.bat` as usual. Both installs were rebuilt at 18:14, and
+the button needs the new binary — an older one simply does not draw it, because
+the QC feature-detects the builtin rather than assuming it.
 
 1. **The list is longer.** It now includes maps you do not have: 1239 of them,
    the ones the Pi can actually serve. They carry a **Download** button on the
