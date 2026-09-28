@@ -183,7 +183,11 @@ def cmd_scan(args):
 
     # Catalogued but NOT on the Pi -- the sync backlog, reported so a growing
     # gap is visible rather than silently shrinking what the button can offer.
-    missing = [n for n in roster if n not in inv]
+    # FOLDED, like `servable` above. An exact match here counts the six
+    # case-mismatched maps as missing -- the very six the fold 20 lines up
+    # exists to serve -- and printed 477 where the truth is 471.
+    inv_lc = set(n.lower() for n in inv)
+    missing = [n for n in roster if n.lower() not in inv_lc]
     print("  catalogued but not on the Pi: %d (run tools/mapsync.py)" % len(missing))
 
     if not args.go:
