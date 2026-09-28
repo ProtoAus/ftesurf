@@ -441,6 +441,63 @@ simulator and a corpus of files. What I would like you to look at:
    spread thin enough to hide under one tick of ceiling per frame) and it is in
    BACKLOG.md; a screenshot would tell me whether it happens in practice.
 
+## 2h. Momentum and KSF runs are on the board now — four things need your eyes
+
+2,961 Momentum Mod runs are converted, watchable and drawing lines, and KSF
+(Counter-Strike: Source) times import too. **None of it is deployed** — it is
+all local until you say otherwise. Everything below is a judgement call I made
+for you and could not settle by measuring.
+
+**a) The blue tint reads as lavender, not as a glow, and I am not sure it is
+enough.** `hud_watch_path_foreign 0.55` pulls an imported line's colour toward
+blue. It composes with `hud_watch_path_color` rather than replacing it, which is
+the part I am confident about — a Momentum line can still be read for speed or
+contact AND say where it came from. But blending red toward blue makes mud
+rather than light, and against `surf_4am`'s orange it is subtle. Compare
+`screenshots/momline_a5_tinted.png` with `_untinted.png`: the difference is
+clear side by side and less obvious in motion. Try `hud_watch_path_foreign 0.8`.
+If it still reads as "slightly odd colour" rather than "someone else's line", a
+real glow is a wider or additive draw pass, not a hue blend, and it wants its
+own patch — say the word.
+
+**b) The replay camera is pointed by a number nobody recorded.** Momentum demos
+contain NO view angles at all — not missing, not lossy, absent — so the camera
+follows the direction of travel instead. On a surf line that is close to what a
+player looks at; through a teleport or a slow section it will not be. You asked
+for it to look as smooth as possible, and this is the part that decides that.
+Watch `replay data/momentum/surf_ruse/main/0018126_doobie-1acfa76f_run.rec` and
+tell me whether it feels like watching a run or like a camera on rails. (No
+`.view` sidecar is written for these, deliberately: that file is mouse evidence
+and a derived angle filed there would be a measurement that never happened.)
+
+**c) You chose "import untouched, flag only" for the 7.6 % with spiky
+velocity — and it costs less than I warned.** 225 of 2,961 files have velocity
+that exceeds the demo's own speed ceiling, up to 24x, because the extractor's
+point array has gaps and a central difference across one divides a longer
+distance by the same two ticks. I expected bright speed spikes on those lines.
+Measured: the line's colour range is mean ± 2 sd clamped into min..max, so an
+outlier never reaches the colour ramp. `surf_4am`'s worst file has a raw peak of
+7,976 u/s against the demo's own 3,130 and the line still colours from 282 to
+3,358. So the spike is real, in the data, in the header as `momquality`, and
+mostly invisible. It WILL show in the live speedometer at that instant. If you
+ever see a replay flash an absurd speed for one frame, that is this and it is
+not a bug in the mover.
+
+**d) Is the KSF tier worth keeping at all?** Honest answer: much less than
+Momentum. 2,961 Momentum runs across 50 maps so far (499 maps available), all
+watchable. KSF gives **times only** — that network publishes no replay anything
+here can fetch — and their per-map leaderboard route is one I could not find, so
+it imports one player at a time, 25 records each. It is real and it works: on
+`surf_garden` the combined board now reads KSF 79.884, Momentum 95.745, ours
+152.115. But a row you cannot watch may be worth less to you than a clean board.
+Seed it from a file of SteamID64s and see; if it reads as clutter, the tier
+drops out without touching anything else.
+
+**One thing I would like you to look at that is not a judgement call:** the
+`why` column on the board. It has been empty by construction since Patch 355 and
+now carries `momentum` or `ksf` on exactly the rows that are foreign. If that
+column ever shows a word on a ranked row, something is wrong and I want to know.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:

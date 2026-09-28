@@ -968,6 +968,83 @@ bannered as superseded.)
   a replay: a recording made elsewhere is graded against local settings, and the
   v9 header's `pmpin` block is where a future patch would get the file's own.
 
+## Imported runs: Momentum Mod and KSF
+
+- **THE TIER IS THE MECHANISM, and it is not decoration.** A foreign run lands
+  in its own `tier` (`momentum`, `ksf`), never in `ranked`. `tier` is in the
+  runs primary key, so one player holds a time in each without either
+  overwriting the other; and every board query filters on `tier`, so imported
+  rows are invisible to the ranked board BY CONSTRUCTION rather than by each
+  future query remembering to exclude them. Patch 425 already used unreadable
+  tier strings as the hiding mechanism -- this is the same trick named.
+  `surfd/test_momindex.py` is the arm: 130 ranked boards' rows and counts
+  identical across importing 2,782 runs, against a COPY OF THE LIVE DATABASE.
+- **READABLE, NOT CLAIMABLE.** `/api/board` validates against `TIERS_READ`;
+  `submit_run` still validates against `TIERS`. A keyed lobby -- trusted enough
+  to write `ranked` -- gets HTTP 400 for `momentum`, `ksf`, `imported` or
+  `combined`. Only a local importer beside the files writes those. Keep it that
+  way: the wire must never be able to name a foreign tier.
+- **`imported` and `combined` are PSEUDO-TIERS: they name a query, not a class
+  of run.** Nothing is stored under either. `TIERS_IMPORTED` is the one tuple
+  the predicates read and `TIER_EXPAND` maps the pseudo names to it, so a third
+  source is one tuple entry, not four edits. Rows on those boards carry `tr`,
+  their real tier; single-tier boards do NOT send it, and the client falls back
+  to the board's own tier (`Online_WhyString`, two levels, in that order).
+- **The pipeline.** `.mtv` (Momentum's container) is never parsed here: its body
+  is a Source entity-delta netstream with no public spec, and the wrlines
+  reference does not decode it either -- it fits a chain of float32 triples with
+  a dynamic program. Read its OUTPUT instead:
+  `wrlines/tests/reference/wrpath_extract.py --all --jobs N --skip-existing`
+  writes `.wrpath`, then `tools/momimport.py` turns those into `.rec` under
+  `data/momentum/<map>/<legdir>/`, then `surfd/momindex.py` indexes them.
+  **Extraction stays on Windows**: that extractor's float arithmetic is
+  bit-pinned to CPython 3.13.9 (`math.dist`, a Neumaier `sum()`), and a
+  last-digit disagreement does not nudge a coordinate, it SELECTS A DIFFERENT
+  CHAIN through the demo. The Pi runs 3.11. `momimport` does no such arithmetic.
+  Extraction is memory-hungry: 8 workers peaked ~2.2 GB and got a background job
+  reaped on a 16 GB box. 3 jobs is the polite figure.
+- **WHAT A MOMENTUM DEMO DOES NOT CONTAIN** -- proven negatives over the whole
+  reference, not failed searches: view angles, buttons, ground contact. So the
+  replay camera is DERIVED from the direction of travel, `fl`/`keys`/movement
+  are 0, and the plane is `0 0 0` (which reccheck requires when neither contact
+  bit is set -- a plane without one is a "stray plane" fault). **Never write a
+  `.view` sidecar for an import**: that file is mouse evidence and a derived
+  angle filed there is a measurement that never happened.
+- **NO `warp` RECORDS ARE SYNTHESISED**, and the grammar forbids it in terms:
+  "A record synthesised by watching for a discontinuity would see the jump and
+  still not know what caused it, which is the entire question." 37 % of these
+  paths teleport; the reader's own kinematic test finds them and reports them as
+  `kin` rather than `rec`, which is the truth about where the knowledge came
+  from. `momline.cfg` A3 grades exactly that: `snaps 0 rec 22 kin`.
+- **The integrity keys are OMITTED, not filled.** `mapcrc`, `zonecrc`,
+  `zonerule`, `nonce`, `pmpin`, `seed` state what the machine that ran the
+  physics loaded, and that machine was Source. `cl_lobbytime.qc:652-681` already
+  makes this argument for a client-written `.rec`. reccheck then reports the
+  file as `zones not stated` / `nonce not stated` / `ruleset unknown` in its own
+  words, and `pm_verify` cannot pass one of these and should not.
+- **Velocity is a central difference of positions and it SPIKES AT COVERAGE
+  GAPS.** 7.6 % of files exceed the demo's own `maxHorizontalSpeed` by >5 %, 44
+  by over 2x; 81 % of those carry no `LOW_CONFIDENCE` flag, because that flag
+  measures coverage, not velocity. The ceiling ships inside every demo, so the
+  check is free: the ratio goes in the header as `momquality`. `Line_Range`'s
+  mean ± 2 sd clamp keeps an outlier out of the colour ramp, so the visible cost
+  is confined to the live speedometer at that instant.
+- **KSF is times only.** No demo URL, no Source `.dem` parser, nothing that
+  could become a `.rec`; `replay_id` is 0 and the board shows no `watch`. Its
+  per-map leaderboard route was NOT LOCATED (twelve guesses, the page HTML and
+  all seventeen JS chunks) -- their site has one, so this is not "absent", and
+  `surfd/ksfimport.py` should be rewritten around it if anyone finds it. Until
+  then it is player-seeded, 25 records each. Politeness is the wrlines
+  reference's: one at a time, 400 ms apart, capped, honest User-Agent, never
+  automatic, a non-2xx reported as a refusal and nothing retried. Answers are
+  cached, so a re-run costs nothing.
+- **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
+  their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
+  so a matching name does not mean the same build, start or end.
+- **`board_fetch` asks for the map the client is ON.** `Online_Fetch` reads the
+  level name; it is not a parameter. An arm that fetches a board for a different
+  map without changing map first grades the wrong board and looks correct.
+
 ## Pi operations (public lobbies)
 
 - **THIS FLEET IS A DEVELOPMENT FLEET AND THE OWNER WANTS CHANGES DEPLOYED.**

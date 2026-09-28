@@ -975,6 +975,54 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   after `sui_end` or the release fires twice (`cl_scores.qc:1273-1299` is the
   working precedent). (7) the Drive, once its link exists.
 
+## Imported runs (Momentum, KSF)
+
+- **NOTHING OF THE IMPORT IS DEPLOYED.** The Pi has no `data/momentum`, no
+  `surfd` change and no progs carrying the tab or the tint. All of it is
+  verified locally and on a copy of the live database. Deploying restarts all 12
+  lobbies and needs the operator's word; `lextest.md` §2h holds the four
+  judgement calls that should be settled first.
+- **KSF's per-map leaderboard route is NOT LOCATED, and that is not the same as
+  absent.** Their map pages render records, so a route exists. Twelve guesses
+  across two rounds (every shape their two documented endpoints imply), the map
+  page HTML, and all seventeen of its JS chunks: the chunks hold typed DTOs
+  (`steam_id`, `map_name`, `records`, `pr`) but no URL, so the base is composed
+  at runtime in a chunk the page does not pull. Until someone finds it,
+  `surfd/ksfimport.py` is player-seeded at 25 records each, which is a poor
+  substitute for a map board. Whoever finds it should rewrite that tool around
+  it. **Do not find it by brute-forcing their server**; read their client.
+- **The imported corpus is partial: 2,961 of ~7,480 demos.** Only the maps
+  wrlines had already extracted are converted. The rest need
+  `wrpath_extract.py --all --skip-existing` (see AGENTS.md; 3 jobs, it is
+  memory-hungry) and then a re-run of `tools/momimport.py` and
+  `surfd/momindex.py`. Both are idempotent and the extractor skips what exists,
+  so this is resumable at any point.
+- **`surf_antichamber` has 5 demos and no zone file** -- the only one of 500
+  demo maps without one. Its runs import and draw, but nothing times that map.
+- **An imported run's air-control and energy colouring is graded against THIS
+  server's movement settings**, like every other foreign recording -- see the
+  `Line_Movevars` entry under Cosmetic. The import makes it concrete: the engine
+  prints Momentum's own constants (`accel 5, airaccel 150, aircap 30, gravity
+  800`) on every one of those maps, so the file's numbers are KNOWN and still
+  not read. `momimport` writes no `pmpin`, deliberately -- it did not run that
+  physics either -- so the "no answer" branch is the PERMANENT state for a whole
+  tier rather than a legacy case that shrinks.
+- **A KSF row's `ticks` is derived, not counted.** KSF reports seconds; the
+  schema wants a tick count, so `ksfimport` divides by the CS:S 0.015 and says
+  so. Anything reading `ticks` off a ksf row is reading a number nobody
+  measured. `millis` is the fact.
+- **`momquality` is written and nothing reads it.** Every imported `.rec`
+  carries `momquality <ratio> <oracle> <lowconf>`, where ratio > 1.05 means the
+  file's velocity exceeds the demo's own ceiling (225 of 2,961, worst 24x). The
+  board does not show it and the line does not dim for it. The operator chose
+  "import untouched, flag only", so the flag exists; making it visible is the
+  half that is not built.
+- **The blue tint is a hue blend, not a glow**, and against a warm map it reads
+  as lavender. `hud_watch_path_foreign` tunes it, but the real answer for
+  "someone else's line" is probably a wider or additive draw pass, which is a
+  rendering change wanting its own patch and a `replay bench` measurement.
+  `lextest.md` §2h(a) asks the operator whether it is enough as it stands.
+
 ## Harness coverage
 
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
