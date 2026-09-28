@@ -275,6 +275,67 @@ is one `build.ps1 -Pi` behind, and that restarts all 12 lobbies, which is your c
 are not in git. If you want them versioned, say so and I will add a negation rule for
 `maps/zones/local/` — worth doing before you spend an evening tuning a start box.
 
+## 2f. The strafe trainer (Patch 462) — nobody has ever used it
+
+`hud_trainer 1`. Off by default. Written 2026-09-28 by ftesurf-a1.
+
+**This is the item on this page that most needs you**, because every other thing
+here was at least driven by a human once. This was driven entirely by a config:
+`+right` turns at exactly `cl_yawspeed`, which is what let an arm author a known
+turn rate and a known key/flick offset. No hand has touched it. It is measured
+but not *used*, and those are different claims.
+
+**What it is.** The last jump, broken into individual strafes. A timeline where
+left strafes sit above the line and right below, a white tick where your mouse
+actually reversed, a per-tick trace of your turn rate against the ideal, and a
+row per strafe with a grade and the key/flick offset in milliseconds. One named
+fault per jump, ranked worst-first.
+
+**The number that is new** is the sync column: `+45` means the key swap landed
+45 ms AFTER the flick (late, red), `-60` means it led the flick (early, amber),
+`0` is green. On the timeline it is the horizontal gap between a band's edge and
+its white tick, so you can see it rather than read it.
+
+**What I would like you to disagree with, because these were my choices:**
+
+| Thing | Why it might be wrong |
+|---|---|
+| `hud_trainer_x 0.28 / _y 0.27` | placed off screenshots to clear the speedometer and the Segments column at `hud_scale 2` on a 2560x1494 buffer. Another scale or aspect may collide. `c` (hud_edit) -> "Strafe trainer" drags it |
+| the S/A/B/C/D/E letters | boundaries are `Strafe_Quality`'s own shape (0.96 is the +-20% band, 0.84 is +-40%), not taste — but whether an "A" *feels* like an A on a real strafe is a human question |
+| `hud_trainer_rows 6` | six rows plus the timeline may be too much to read mid-jump. `hud_trainer_rows 0` is timeline-only and the box shrinks to match |
+| `hud_trainer_trace 1` | the per-tick graph. Turn it off if it reads as noise |
+| the coach line | one sentence, worst fault first: "key fights your turn", then "mouse N% too fast/slow", then "keys N ms late/early". If it keeps telling you something unhelpful, that ranking is one function (`Trn_Coach`) |
+
+**The one to look at hardest.** The trainer and the strafe bar grade the same
+quantity through the same `Strafe_Quality`, so a strafe the bar called good must
+not come out a D here. If you find a jump where the bar sat green and the
+trainer rows say otherwise, that is a real finding and I want it — they are
+supposed to be incapable of disagreeing.
+
+**Known limits, stated up front so they do not read as bugs:**
+
+- **Flat air only.** On a ramp the ideal turn rate is a different function of the
+  plane normal (between 1.8x and 6x away), and that normal is not available at
+  the cadence this samples at. Ramp ticks count toward a strafe's *duration* but
+  not its *grade*, and the coach line says "on a ramp — the bar grades that". So
+  on a surf map the trainer is for the airtime between ramps, and on a bhop map
+  it is for everything. It was built for your bhop description.
+- **The panel lags by your ping.** Speed comes from the server's own velocity
+  stat rather than from prediction, deliberately — prediction jitters by a whole
+  tick and a per-tick speed change is one tick tall. Live steering is the strafe
+  bar's job; this is the review.
+- **"+N u/s" in the header is not the grade.** It is two velocity samples either
+  end of the airtime, so a ramp or a booster is in it as much as your hands are.
+  The grade beside it is the part that is only about your hands.
+- **Both strafe keys held reads the same as neither.** The usercmd carries right
+  minus left, so it is one zero and the trainer does not guess — the strafe just
+  ends and the timeline shows a gap.
+
+**If it looks wrong**, `developer 1; log_developer 1` makes it print a line per
+strafe carrying every number behind the display (`trainer: R dur 345ms graded
+345ms q 0.926 rate 480.0 ideal 412.1 sync +0ms wrong 0ms v 260->294`), which is
+what `cfg/test/p462trn.cfg` grades. Send me that alongside what you saw.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:

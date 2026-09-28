@@ -1511,8 +1511,39 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   shadow colour must be DARK -- a light grey at half alpha is a bright smear, not
   a shadow.  A second baked slot for one face doubles its cells in the four-plane
   glyph atlas every font in the process shares; a draw-side ring allocates none.
+- A `.cfg` HAS NO BLOCK COMMENTS. The config parser knows `//` and nothing else,
+  so every line inside a `/* ... */` goes to the command interpreter. Patch 462
+  wrote its arm that way and the log filled with `Unknown command "AIR"`,
+  `"because"`, `"pms_lockedmovevars"` — the first token of each prose line. That
+  is noise until a line happens to BEGIN with a real cvar, at which point the
+  comment silently sets it: two lines in that file opened `map,` and
+  `hud_trainer_x/y` and were saved only by the punctuation making the token
+  unmatchable. 1013 of the 1016 files in `cfg/test/` use `//` already; the three
+  that did not are `b86b.cfg`, `tint02.cfg` (checked 2026-09-28 — 7 and 13 prose
+  lines apiece, none of which can execute) and p462trn.cfg, now converted. Grade
+  an arm's log for `Unknown command` as well as for its own verdict.
+- A MOVER CVAR CANNOT BE SET FROM AN ARM WITHOUT `sv_cheats 1`, AND THE FAILURE
+  IS SILENT. `sv_gravity`, `sv_airaccelerate`, `sv_maxspeed`, `pm_ticrate`,
+  `sv_friction` and the rest are in `pms_lockedmovevars` under
+  `pm_lockmovement 1`, and the lock cuts BOTH ways (`sv_phys.c:136` says so in
+  the cvar's own help): every one is restored to the game's default AT MAP LOAD,
+  and refused thereafter unless cheats are on. So a `set` above the `map` line is
+  undone by the load, and a bare assignment below it is reverted inside
+  `Cvar_Set` before any tick sees it. The only window is `map` -> `sv_cheats 1`
+  -> the cvar. Read it back with a bare `cvar` line afterwards and treat a
+  `(default)` suffix in the readback as a FAILED SET, not as cosmetic — that
+  suffix is the whole diagnostic and it does not look like an error. Patch 462
+  spent two arm cycles reading `"sv_gravity" is "800" (default)` as noise while
+  every cut measured a body in free fall at `horizontal 0`.
+  The two arms carrying `set sv_gravity 0` (`p440font.cfg:111`, `p457av.cfg:69`,
+  both commented "a still camera") are NOT invalidated by this and were not
+  corrected: neither sends any movement before its shots, and a grounded body
+  with no input is equally still at 800 — their stillness never came from the
+  line. Only an arm that needs gravity to actually CHANGE is affected.
 - PIXEL-DIFF HARNESS RECIPE (`cfg/test/p440font.cfg`, `tools/p440font.py`): still
-  the camera with `sv_gravity 0` BEFORE the map; pick a map whose textures
+  the camera by sending no movement — the `sv_gravity 0` in that file is inert
+  (see the bullet above) and a grounded body needs no help staying put; pick a
+  map whose textures
   actually mount -- surf_kitsune's skyroom does not and a missing sky FLASHES
   between frames (the floor read 239133 changed pixels; surf_rookie's is exactly
   0); `con_notifytime 0`, because notify lines move AND, with notify on screen

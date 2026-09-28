@@ -766,6 +766,24 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Features / releases
 
+- **The strafe trainer grades flat air only, so on a surf map it is blind
+  exactly where the map is (Patch 462).** `hud_trainer` scores each strafe with
+  `Strafe_Quality(rate, Strafe_IdealTurn(...))`, which is the FREE-AIR ideal. On
+  a ramp the ideal is `Strafe_IdealTurnPlane` instead -- a different function of
+  the plane normal, measured in `sh_strafe.qc` at 55.2% of the flat ideal at
+  `wn +0.8` and 16.8% at `-0.8`, so reusing the flat number overstates the target
+  by between 1.8x and 6x. Rather than grade a ramp against the wrong target,
+  `Trn_InputFrame` counts a ramp tick into the strafe's DURATION and not into its
+  grade (`trn_s_gdur` is the divisor) and the coach line says "on a ramp -- the
+  bar grades that". Correct, and it means a surf player's rows are mostly
+  ungraded. The blocker is cadence, not maths: the trainer samples per usercmd in
+  `CSQC_Input_Frame`, and the plane normal there is `STAT_FS_RAMPCONTACT`/
+  `STAT_FS_RAMPNORM`, a snapshot behind, while `HUD_DrawStrafe` also needs the
+  PRE-CLIP velocity to go with it. Either establish that those are good enough at
+  input cadence (measure it -- do not assume, the whole reason speed comes from
+  the stat is that prediction jitters by a tick), or move the per-tick grade to
+  the server where the normal is exact and send the finished per-strafe record.
+  Bhop maps, which is what it was asked for, are unaffected.
 - **`tools/mapmeta.py`'s `MAPDIRS` omits the Momentum install -- the FIRST and
   largest mount -- so the tier alias pass has never considered most of the
   library.** `ftesurf/fs_addons.txt` mounts `Momentum Mod Playtest/momentum`,
