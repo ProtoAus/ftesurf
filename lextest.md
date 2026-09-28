@@ -414,6 +414,19 @@ byte-identical to what build 88 printed (78.9% and 69.9%). That last part is the
 one I most wanted -- the new term must not be a way to earn credit for strafing
 badly, and it is not.
 
+**It is live on all 12 lobbies as of 2026-09-28**, so try it on a real server as
+well as here. The two are different paths: the energy a row is built from arrives
+in a snapshot with your actual ping on it, and the frame-vs-tick slack the new
+rule leans on is exactly the thing a network makes messier. Verified after the
+deploy by reading the host rather than the deploy script's own line -- both progs
+hashes match the local build and all 12 units restarted inside twelve seconds.
+
+One bookkeeping note for whoever next checks the release: 0.1.14 shipped hours
+before this, and its commit records that the progs in the drop were byte-identical
+to the pair on the lobbies. That is no longer true -- the fleet is one patch ahead
+of the download. Nothing is wrong with either, but do not re-quote that line
+without re-hashing.
+
 **NOT established: no human has used any of this.** Everything above is a
 simulator and a corpus of files. What I would like you to look at:
 
