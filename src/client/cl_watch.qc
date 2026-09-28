@@ -126,6 +126,18 @@ string rec_wt_runid;
 // The `foreign` header key: this recording came from another game, so the
 // line is tinted and nothing here pretends it was timed by this server.
 float  rec_wt_foreign;
+/*
+  `momquality <ratio> <ceiling> <lowconf>` on an imported run: how far its
+  velocity exceeds the speed the DEMO ITSELF says the player reached.
+
+  Above 1.0 the file disagrees with its own source, because the extractor
+  differences positions across gaps in a stream that is not dense -- so the
+  POSITIONS are sound and the speed at those points is not.  The run is
+  imported untouched by instruction; this is the flag that makes "untouched
+  and flagged" differ from "untouched".
+*/
+float  rec_wt_momq;             // ratio, 0 = not stated
+float  rec_wt_momceil;          // the demo's own max horizontal speed
 float  rec_wt_pad;
 
 // rec_wt_time is declared in the cl_keys.qc override block with rec_wt_rate: it is
@@ -1011,6 +1023,8 @@ void() Watch_Scan =
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
 	rec_wt_foreign  = FALSE;
+	rec_wt_momq     = 0;
+	rec_wt_momceil  = 0;
 	rec_wt_pad      = 0;
 	rec_wt_vhsrc    = 0;
 
@@ -1042,6 +1056,11 @@ void() Watch_Scan =
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
 		if (argv(0) == "foreign")     rec_wt_foreign  = TRUE;
+		if (argv(0) == "momquality" && n >= 3)
+		{
+			rec_wt_momq    = stof(argv(1));
+			rec_wt_momceil = stof(argv(2));
+		}
 		if (argv(0) == "pmpin")
 		{
 			// The file's own eye heights (sv_user.c:111 pins both by name).
@@ -3456,6 +3475,17 @@ float(string path) Watch_Open =
 		              "the camera will fly through nothing\n",
 		              rec_wt_map, serverkey("map")));
 
+	/*
+	  Said at the open rather than left in the header, because a number
+	  nothing reads is not a flag.  1.05 and not 1.0: the extractor fitted
+	  this chain to that same ceiling, so the two agree to a rounding error
+	  by construction and a tighter bound would report arithmetic.
+	*/
+	if (rec_wt_momq > 1.05)
+		print(sprintf("^3replay: this import peaks %.1fx over the %0.0f u/s the "
+		              "demo itself reports -- its PATH is sound and its speed "
+		              "at the gaps is not\n", rec_wt_momq, rec_wt_momceil));
+
 	rec_wt_segs   = Watch_TrackSegs(rec_wt_track);
 	rec_wt_vt0    = rec_wt_t0;
 	rec_wt_vt1    = rec_wt_t1;
@@ -4626,6 +4656,10 @@ void() Watch_Status =
 	              // re-read of the cvar: an arm that graded the cvar would pass
 	              // against a build where the tint never reached the emitter.
 	              Line_IsForeign(0), ln_dtint));   // Patch 432; foreign: momentum import
+	if (rec_wt_foreign)
+		print(sprintf("  import    momquality %.4f of %.0f u/s%s\n",
+		              rec_wt_momq, rec_wt_momceil,
+		              rec_wt_momq > 1.05 ? "  ^3OVER ITS OWN CEILING^7" : ""));
 	// The probe: 256 units dead ahead, projected either side of renderscene.
 	// Both should read the centre of the screen and they should agree.
 	sv = getproperty(VF_SCREENVSIZE);

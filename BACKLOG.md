@@ -1019,12 +1019,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   schema wants a tick count, so `ksfimport` divides by the CS:S 0.015 and says
   so. Anything reading `ticks` off a ksf row is reading a number nobody
   measured. `millis` is the fact.
-- **`momquality` is written and nothing reads it.** Every imported `.rec`
-  carries `momquality <ratio> <oracle> <lowconf>`, where ratio > 1.05 means the
-  file's velocity exceeds the demo's own ceiling (225 of 2,961, worst 24x). The
-  board does not show it and the line does not dim for it. The operator chose
-  "import untouched, flag only", so the flag exists; making it visible is the
-  half that is not built.
+- **`momquality` is surfaced at the replay, not on the board.** Opening an
+  import whose velocity exceeds the demo's own ceiling prints a `^3` line
+  naming the factor, and `replay status` carries it either way (momline A6
+  grades both halves on one map). What is still missing is the BOARD side: a
+  row that will draw a bad-speed line looks identical to one that will not
+  until you open it. 354 of 5,281 rows are affected.
+- **The two imported tiers make different claims and the board shows one word
+  each.** A `momentum` row is build-verified exactly; a `ksf` row cannot be,
+  because nothing on the CS:S side publishes a per-map digest and the 322
+  divergent map names are all plain-named. `why` says `momentum` or `ksf`, so
+  the information is there for anyone who knows -- but nothing says that one of
+  those words carries a check and the other cannot.
 - **The blue tint is a hue blend, not a glow**, and against a warm map it reads
   as lavender. `hud_watch_path_foreign` tunes it, but the real answer for
   "someone else's line" is probably a wider or additive draw pass, which is a

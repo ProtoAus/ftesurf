@@ -1056,6 +1056,13 @@ bannered as superseded.)
 - **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
   their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
   so a matching name does not mean the same build, start or end.
+- **THE TWO IMPORTED TIERS DO NOT CARRY THE SAME CLAIM, and that asymmetry must
+  not be averaged away.** A Momentum row is build-verified exactly (the demo
+  publishes the map's SHA1). Nothing on the CS:S side publishes a per-map
+  digest, and the 322 divergent names are all plain-named -- which is where KSF
+  records live. So `momentum` means "same build, checked" and `ksf` means
+  "build unknown and unknowable". Anything that presents them as one class of
+  row is overstating the second.
 - **`board_fetch` asks for the map the client is ON.** `Online_Fetch` reads the
   level name; it is not a parameter. An arm that fetches a board for a different
   map without changing map first grades the wrong board and looks correct.

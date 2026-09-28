@@ -31,6 +31,16 @@ reasoned them out against this same host:
 Every answer is cached on disk, so a re-run costs nothing and the second import
 of the same seed list makes no requests at all.
 
+AND A KSF ROW'S BUILD CANNOT BE CHECKED, EVER.  A Momentum run is verified
+exactly: its demo carries the map's SHA1, so tools/momimport.py drops the 12.5%
+that name a build this install does not have.  Nothing on the CS:S side
+publishes a per-map digest, and the 322 map names that differ between the two
+installs are ALL plain-named -- which is precisely where these records live.
+So `momentum` on the board means "same build, checked" and `ksf` means "build
+unknown and unknowable".  Those are different claims wearing the same shape, and
+the asymmetry belongs in front of whoever reads the board rather than averaged
+away.
+
 A KSF TIME IS A THIRD MEASUREMENT, not a variant of the second.  It was set on
 CS:S physics under KSF's own zones, and their `mapName` is the PLAIN name --
 `surf_whiteout`, not `surf_whiteout_ksf` -- so a name that matches ours does not
