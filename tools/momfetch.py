@@ -37,6 +37,45 @@ TRACK NUMBERS COME FROM THE GAME'S OWN CATALOGUE, not from guessing.  There is
 no endpoint that maps a name to an id or lists a map's tracks; `_cache/*.dat`
 is the only source, which tools/msml.py reads.  A board that the catalogue does
 not claim is never asked for.
+
+DEPTH: `--depth`, AND THE UNIT OF WORK IS A PAGE RATHER THAN A BOARD.  Until
+2026-09-29 every URL here carried a literal `&skip=0`, so 25 places was not a
+default but a ceiling -- measured against the cache it built, 81,290 times held
+of 2,927,709 that exist, 2.8%, with 2,914 of 3,726 boards stopped at exactly 25.
+The API pages perfectly well (`skip=100` returns ranks 101-200, contiguous,
+probed by hand before this was written); nothing asked it to.
+
+  --depth 0    ONE page of --take, i.e. exactly what this tool did before.  The
+               default, because a flag that deepens 3,726 boards should be typed
+               rather than inherited.
+  --depth 200  the deepest rank anything we serve can render (surfd.py's
+               BOARD_LIMIT_MAX) -- 5,778 requests, ~2.4 h at 1.5 s
+  --depth -1   every place on every board -- 31,420 requests, ~13 h
+
+THE CACHE IS THE CURSOR.  `skip` is `len(rows)` of the board's own cached file,
+so an interrupted deepening resumes with no bookkeeping, and the 429 that a long
+sweep WILL hit (2,164 consecutive requests, measured) costs nothing but the
+sitting.  This is the same property the original one-page-per-board design had,
+extended rather than replaced.
+
+PAGES ARE SORTED BY DEPTH, so every board reaches page 2 before any board
+reaches page 3.  One `sort`, and it is what stops a sitting disappearing into
+surf_kitsune stage 1 -- 26,112 times, 262 pages, more than an entire sitting's
+budget for one board out of 3,726.  An interrupted deep sweep should leave the
+corpus EVEN, not one map finished and a thousand untouched.
+
+ROWS MERGE BY replayHash AND ARE ORDERED BY TIME.  A board that gains a record
+between two of its pages shifts every rank below it, so appending blind would
+duplicate the boundary row and dropping blind would lose it; identity by hash is
+immune to the shift.  The `rank` field the API sends is kept but is ADVISORY --
+nothing reads it (checked: momboards.py never mentions it, and surfd derives
+rank at query time from BOARD_ORDER), which is what makes a stale one harmless.
+WHAT THIS CANNOT SEE is a run DELETED upstream.  A union never shrinks, and
+--refresh merges too rather than replacing, so nothing in this tool purges a row
+the API has stopped serving -- deleting the board's json is the only way, which
+costs its whole depth.  That is a deliberate trade and the reason is momwatch:
+it passes --refresh every 7 minutes, and a first page that REPLACED would cut
+each played map's board back to one page of rows on every tick.
 """
 import argparse
 import collections
@@ -139,6 +178,52 @@ def board_key(mapid, gm, tt, tn):
     return "%d_g%d_t%d%d" % (mapid, gm, tt, tn)
 
 
+def load_board(path):
+    """A cached board record, or None if there is not a usable one.
+
+    None covers absent, unreadable and half-written alike, and all three get the
+    same answer: ask for the board from skip=0.  That is the self-healing
+    property a deep sweep needs, since it is the one tool here most likely to be
+    killed mid-write -- which is also why write_board goes through os.replace.
+    """
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict) or not isinstance(d.get("rows"), list):
+        return None
+    return d
+
+
+def write_board(path, rec):
+    """.part then os.replace -- atomic, so an interrupted sweep never leaves a
+    truncated JSON where a board used to be.  262 pages of surf_kitsune is a
+    long time to hold a file open and hope."""
+    part = path + ".part"
+    with io.open(part, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(rec, separators=(",", ":")))
+    os.replace(part, path)
+
+
+def merge_rows(old, new):
+    """Union by replayHash, ordered by time.
+
+    See the docstring's ROWS MERGE paragraph for why identity is the hash and
+    not the rank.  A row without a hash cannot be identified, so it is dropped
+    -- parse_board already refuses those on the way in, and this is the second
+    reader that would otherwise have to guess.
+    """
+    by = {}
+    for r in list(old) + list(new):        # new wins: its rank is the fresher one
+        h = r.get("hash")
+        if h:
+            by[h] = r
+    out = list(by.values())
+    out.sort(key=lambda r: (r.get("time", 0.0), r.get("rank") or 0))
+    return out
+
+
 def gm_of(name):
     """A map's own gamemode by the community naming, or None.
 
@@ -193,7 +278,10 @@ def main():
                     help="a TSV from tools/msml.py --out, for a box with no\ngame install: map, mapid, tier, gamemode, trackType, trackNum")
     ap.add_argument("--maps", help="momentum/maps, to skip maps we cannot host")
     ap.add_argument("--out", required=True, help="where board JSON is cached")
-    ap.add_argument("--take", type=int, default=25, help="places per board (max 100)")
+    ap.add_argument("--take", type=int, default=25, help="places per REQUEST (max 100)")
+    ap.add_argument("--depth", type=int, default=0,
+                    help="places to hold per board; 0 means --take only (the\n"
+                         "pre-2026-09-29 behaviour), -1 means the whole board")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds between requests")
     ap.add_argument("--max", type=int, default=100000, help="requests this invocation")
     ap.add_argument("--gamemode", type=int, action="append", default=[],
@@ -240,13 +328,47 @@ def main():
             jobs.append((name, m["id"], gm, tt, tn))
 
     os.makedirs(a.out, exist_ok=True)
-    todo = [j for j in jobs
-            if a.refresh or not os.path.exists(
-                os.path.join(a.out, board_key(j[1], j[2], j[3], j[4]) + ".json"))]
+
+    # A PAGE, not a board -- see the docstring's DEPTH section.  `skip` is read
+    # off the cached rows, so this list is a plan against what is already held.
+    todo = []
+    held = wanted = fresh_boards = 0
+    for (name, mid, gm, tt, tn) in jobs:
+        path = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+        cur = load_board(path)
+        if cur is None:
+            todo.append((0, name, mid, gm, tt, tn))
+            continue
+        fresh_boards += 1
+        have = len(cur["rows"])
+        held += have
+        if cur.get("absent"):
+            # A 404 is cached so a resume does not ask again; only --refresh
+            # reopens the question of whether the board has since appeared.
+            if a.refresh:
+                todo.append((0, name, mid, gm, tt, tn))
+            continue
+        total = cur.get("total") or 0
+        want = total if a.depth < 0 else (min(total, a.depth) if a.depth else
+                                         min(total, take))
+        wanted += want
+        # A set, so --refresh's page 1 and a tail that also starts at 0 are one
+        # request rather than two.  A non-aligned skip is fine and is the normal
+        # case here: the 2,914 boards stopped at 25 resume at skip=25, which
+        # returns ranks 26-125.
+        skips = set(range(have, want, take))
+        if a.refresh:
+            skips.add(0)
+        for s in sorted(skips):
+            todo.append((s, name, mid, gm, tt, tn))
 
     print("boards in scope   %d" % len(jobs))
-    print("already cached    %d" % (len(jobs) - len(todo)))
-    print("to ask for        %d  (cap %d)" % (len(todo), a.max))
+    print("boards cached     %d" % fresh_boards)
+    print("times held        %d" % held)
+    print("times wanted      %d  (--depth %d)" % (wanted, a.depth))
+    print("pages to ask for  %d  (cap %d)" % (len(todo), a.max))
+    # SORTED BY DEPTH so the corpus deepens evenly; the docstring says why.
+    todo.sort(key=lambda j: (j[0], j[1]))
     todo = todo[:a.max]
     if not a.go:
         print("\nat %.1fs each that is %.1f hour(s).  DRY RUN -- pass --go."
@@ -257,11 +379,12 @@ def main():
     gone = streak = 0
     refused = None
     t0 = time.time()
-    for i, (name, mid, gm, tt, tn) in enumerate(todo):
+    got = short = 0
+    for i, (skip, name, mid, gm, tt, tn) in enumerate(todo):
         if asked:
             time.sleep(a.delay)
         url = ("%s/maps/%d/leaderboard?gamemode=%d&trackType=%d&trackNum=%d"
-               "&take=%d&skip=0" % (API, mid, gm, tt, tn, take))
+               "&take=%d&skip=%d" % (API, mid, gm, tt, tn, take, skip))
         try:
             body = get(url)
         except NoSuchBoard:
@@ -274,13 +397,17 @@ def main():
                            "  unpublished maps, and the difference is not ours\n"
                            "  to assume." % streak)
                 break
-            # Cache the absence, so a resume does not ask again.
+            # Cache the absence, so a resume does not ask again.  Only ever on
+            # the FIRST page: a 404 at skip=900 is the board ending, not the
+            # board being absent, and writing absent:True there would throw away
+            # 900 good rows.
+            if skip:
+                continue
             rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                    "trackNum": tn, "total": 0, "fetched": int(time.time()),
                    "absent": True, "rows": []}
-            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
-            with io.open(p, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(json.dumps(rec, separators=(",", ":")))
+            write_board(os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json"),
+                        rec)
             continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
@@ -294,18 +421,40 @@ def main():
             break
         total, data = parse_board(doc)
         if not data:
-            empty += 1
+            # An empty FIRST page is a board the catalogue claims and nobody has
+            # run.  An empty later page is the board ending sooner than its own
+            # totalCount promised -- a different fact, counted separately, and
+            # not a reason to doubt the rows already held.
+            if skip:
+                short += 1
+            else:
+                empty += 1
         rows += len(data)
+        p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+        # ALWAYS merge, including at skip=0.  Replacing on the first page looks
+        # right and truncates a deep board to one page -- and momwatch passes
+        # --refresh on every 7-minute tick, so that would have quietly cut every
+        # played map's board back to `take` rows.
+        cur = load_board(p)
+        merged = merge_rows(cur["rows"], data) if cur else data
+        got += len(merged) - (len(cur["rows"]) if cur else 0)
+
+        # A SHORT LATER PAGE MEANS THE BOARD ENDED, so believe the page over the
+        # board's own totalCount.  Without this an off-by-a-few totalCount is an
+        # INFINITE ASK: want stays above have, the plan keeps generating that
+        # last page, the page keeps returning nothing, and a backfill loops on it
+        # forever.  Clamping is safe because a --refresh re-reads totalCount from
+        # page 1 and restores the real figure, so a transient short page heals.
+        if skip and len(data) < take:
+            total = len(merged)
         rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                "trackNum": tn, "total": total, "fetched": int(time.time()),
-               "rows": data}
-        p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
-        with io.open(p, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(json.dumps(rec, separators=(",", ":")))
+               "rows": merged}
+        write_board(p, rec)
         if (i + 1) % 100 == 0:
             el = time.time() - t0
-            print("  %5d/%d  %6.1f min elapsed  %5d rows  %4d empty  (%s)"
-                  % (i + 1, len(todo), el / 60.0, rows, empty, name))
+            print("  %5d/%d  %6.1f min  %6d new rows  %4d empty  (%s skip %d)"
+                  % (i + 1, len(todo), el / 60.0, got, empty, name, skip))
 
     print()
     print("requests made     %d" % asked)
@@ -316,7 +465,11 @@ def main():
           % empty)
     print("boards absent     %d  (404: in the game's cache, not on the public API)"
           % gone)
-    print("run rows cached   %d" % rows)
+    print("pages short       %d  (a later page came back empty: the board ended\n"
+          "                     sooner than its own totalCount promised)" % short)
+    print("rows seen         %d" % rows)
+    print("rows NEW to cache %d  (the rest were already held: see merge_rows)"
+          % got)
     print("elapsed           %.1f min" % ((time.time() - t0) / 60.0))
     if refused:
         print("\nREFUSED and stopped, nothing retried: %s" % refused)
