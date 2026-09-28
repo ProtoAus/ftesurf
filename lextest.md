@@ -295,6 +295,13 @@ are not in git. If you want them versioned, say so and I will add a negation rul
 
 `hud_trainer 1`. Off by default. Written 2026-09-28 by ftesurf-a1.
 
+**It is live on all 12 lobbies as of 2026-09-28**, so you can try it on a real
+server and not only on this PC -- which is worth doing, because the two are
+genuinely different paths: the speed it grades against is the SERVER's, arriving
+in a snapshot, and on a lobby that snapshot has your actual ping on it. It was
+verified in both configurations before it shipped, but only by a config driving
+known inputs, never by a hand.
+
 **This is the item on this page that most needs you**, because every other thing
 here was at least driven by a human once. This was driven entirely by a config:
 `+right` turns at exactly `cl_yawspeed`, which is what let an arm author a known
