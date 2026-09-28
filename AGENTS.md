@@ -1582,6 +1582,12 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Linux build, test rig and release (Patches 386-389, 0.1.11)
 
+- **BEFORE CUTTING ANYTHING: does the feature you are shipping READ A GENERATED
+  FILE?** If so it has to be named in `$ShipGameFiles` (`release.ps1:192`), which
+  is an allowlist and not a glob. `ftesurf/data/*` is gitignored, so such a file
+  exists on the build box and nowhere else, and the feature ships compiled-in,
+  working and invisible. 0.1.15 exists because 0.1.14 did exactly that with
+  `data/mapdl.txt`. Full account under the map-download section above.
 - BUILD: `pwsh -NoProfile -File tools\linux\build-linux.ps1 -Commit <engine sha>
   -ExpectSonames -OutName linux-build-<x>` builds in a Debian bullseye chroot
   inside WSL `Ubuntu-22.04` (made once by `tools/linux/chroot-setup.sh`), from a

@@ -421,11 +421,11 @@ rule leans on is exactly the thing a network makes messier. Verified after the
 deploy by reading the host rather than the deploy script's own line -- both progs
 hashes match the local build and all 12 units restarted inside twelve seconds.
 
-One bookkeeping note for whoever next checks the release: 0.1.14 shipped hours
-before this, and its commit records that the progs in the drop were byte-identical
-to the pair on the lobbies. That is no longer true -- the fleet is one patch ahead
-of the download. Nothing is wrong with either, but do not re-quote that line
-without re-hashing.
+One bookkeeping note for whoever next checks the release: re-measured when
+0.1.15 was cut, and the drop's SERVER progs are byte-identical to the pair on the
+lobbies again -- csprogs ae498503, qwprogs 8f74c5f9. menu.dat differs, and should:
+it is the client menu and a dedicated server never loads it. Re-hash rather than
+re-quoting this line -- it has now been wrong once in each direction.
 
 **NOT established: no human has used any of this.** Everything above is a
 simulator and a corpus of files. What I would like you to look at:
@@ -544,7 +544,8 @@ column ever shows a word on a ranked row, something is wrong and I want to know.
 
 There is now one list of every surf and bhop map either catalogue knows about,
 pinned to the exact build this install would load: `ftesurf/data/maproster.txt`,
-1748 maps, 1277 of them installed and hashed. `python tools/maproster.py check
+1748 maps, 1280 of them on a local mount and hashed -- which is NOT the number
+the Pi serves (1743), nor the number the browser offers. `python tools/maproster.py check
 <map>` explains any single row in English. Nothing about it is deployed and it
 changes no game behaviour — it is a file on disk and a tool that writes it.
 
@@ -586,101 +587,89 @@ solid. If a CS:S-built map needs content the Momentum mount does not carry, that
 is where it will show, and it will show as missing textures or props you fall
 through rather than as an error.
 
-## 2j. Map downloads — live on the Pi, measured end to end
+## 2j. Map downloads — shipped in 0.1.15, and the library is now complete
 
-The Download button, the progress bar, the KB/s readout and the six-hourly scan
-are built, and as of 2026-09-28 the Pi is serving maps over https with the
-1 MB/s cap in place. You installed the nginx snippet; everything below is the
-measurement after it.
+### Get 0.1.15 first. 0.1.14 cannot show you this feature at all.
 
-### What was measured on the live box
+You downloaded a build and there was no Download button. That was not the
+feature failing — it was never in a release. Two separate faults:
 
-```
-/maps/surf_utopia.bsp          HTTP 206   1,020,745 B/s
-/ftesurf/maps/surf_utopia.bsp  HTTP 206   1,036,246 B/s
-/lobbies.json                  HTTP 200   (the existing API, unaffected)
-/maps/                         HTTP 404   (no directory listing)
-/maps/../../etc/passwd         HTTP 404   (traversal refused)
-```
+1. **0.1.14 was built at 13:33 and the map-download work landed 19:41–20:17.**
+   Six hours later. The source was pushed; no release contained it.
+2. **Rebuilding alone would still have shipped a button-less list.**
+   `data/mapdl.txt` is gitignored, and the release ships a *named* list of data
+   files that did not include it. Without that file the map list is built purely
+   from what is already on your disk, so every row is an installed map and
+   **nothing draws a button**. The feature was compiled in, working, invisible.
 
-Both url layouts resolve, the rate lands within 2-4% of 1 MB/s, and nothing else
-on the box regressed. Then a whole map, to prove it serves the RIGHT bytes and
-not merely some bytes:
+Both fixed. `https://proto.bar/ftesurf` now serves **0.1.15**. If the button is
+missing, check the version before anything else — that is by far the likeliest
+cause, and `data/mapdl.txt` should exist in your install with ~1743 lines.
 
-```
-bhop_1n5an3   2,538,880 B at 1,041,175 B/s
-served sha1   f33756d2f7840d6858132dbdc041b109a37da5a5
-roster sha1   f33756d2f7840d6858132dbdc041b109a37da5a5
-```
+### What you have now
 
-That is the whole chain closed: catalogue -> pinned hash -> Pi inventory ->
-data/mapdl.txt -> nginx -> a client download -> the exact build the roster says.
+    bhop      131 -> 574 of 574     100%
+    surf     1146 -> 1169 of 1174    99.6%
+    offerable 1277 -> 1743 of 1748
 
-### One thing that went wrong, and why it did not matter
+463 maps were pulled from Momentum's CDN straight onto the Pi, each checked
+against the publisher's own sha1 before being installed. The Pi holds 1813 bsp.
 
-The install command I first gave you had a bug: the `sed` replacement escaped
-the `&`, and in sed a bare `&` means "the whole matched line" while `\&` means a
-literal ampersand. So it overwrote your `include snippets/surfd-admin.conf;`
-line with a single `&` character.
+**The five that are left are not a backlog — they cannot be got.** Four are KSF
+names with no archive behind them and no Momentum record (`surf_disappointed_fix`,
+`surf_junglepics_ksf`, `surf_race_final`, `surf_vestige_fix`); the fifth,
+`surf_solipsism`, has a Momentum record whose download URL 404s on their side.
+Nothing to do about any of them from here.
 
-`nginx -t` caught it and nothing reloaded, which is exactly why that check is in
-the command before the reload rather than after it — the live site kept serving
-the old config and the admin login was never actually lost. Repaired in one
-line. Worth remembering if you ever hand-edit that vhost.
+KSF is finished: 931 Drive archives indexed, not one for a map we lack.
 
 ### What to test in game
 
-Launch with `ftesurf.bat` as usual. Both installs were rebuilt at 18:14, and
-the button needs the new binary — an older one simply does not draw it, because
-the QC feature-detects the builtin rather than assuming it.
+Launch `ftesurf.bat` from the 0.1.15 install.
 
-1. **The list is longer.** It now includes maps you do not have: 1239 of them,
-   the ones the Pi can actually serve. They carry a **Download** button on the
-   right with the file size under it.
-2. **Click one.** The button turns into a progress bar with a live KB/s figure.
-   Other rows say `queued` — the engine does one at a time, deliberately.
+1. **The list is much longer** — 1743 maps, the ones the Pi can actually serve.
+   The ones you do not have carry a **Download** button on the right with the
+   file size under it.
+2. **Click one.** The button becomes a progress bar with a live KB/s figure.
+   Other rows say `queued`; the engine does one at a time, deliberately.
 3. **Press ESC mid-download.** It should keep going and still say `installed`
-   when you come back; the tick that notices completion runs outside the menu
-   gate on purpose. This is the bit most likely to be wrong, so it is worth
-   doing.
-4. **The row should turn into a normal map** once it lands — the list reloads
-   itself rather than waiting for a restart.
+   when you come back. The tick that notices completion runs outside the menu
+   gate on purpose. **This is the bit most likely to be wrong and no human has
+   ever done it** — the harness drives `ui_dlmap`, which cannot press ESC.
+4. **The row should become a normal map** once it lands, without a restart.
 
-### A map HAS now been downloaded end to end, and it found three bugs
+Expect roughly 1 MB/s. That is the cap you asked for, applied on the Pi.
 
-`python tools/p465dl.py` runs the whole path against a throttled local mirror
-and grades it; `--control` reruns it with the mirror answering 404 and requires
-the opposite result. Subject: `idle -> active x8 -> ok x3 -> idle`, 15 of 16
-rate samples non-zero at exactly the throttle, the bsp on disk with a **matching
-sha1**, no leftover temp file. Control: `idle -> failed`, nothing on disk. They
-differ in every graded dimension, which is what makes the pass mean anything.
+### Do not expect NEW badges on these 463
 
-**The most important thing it found is one you would have hit.** An http
-download interrupted part-way -- you quit, or the wifi drops -- used to leave a
-TRUNCATED .bsp under the real name. That is the worst shape a map can be in: it
-looks installed, the Download button stops offering it, and a short bsp is a
-mapcrc mismatch, which silently demotes every run played on it. Fixed: downloads
-now land in a `.tmp` and are only renamed into place once whole.
+They will not badge, and that is correct. `NEW` means "a sweep saw this name
+appear in the catalogue", not "recently downloadable". These maps have been in
+the catalogue all along — what changed is that the Pi can now serve them. A
+badge here would mean the opposite of what it says everywhere else.
 
-It also found that six maps could never have downloaded at all -- the catalogues
-lowercase names and the Pi does not (`bhop_HaddocK`, `Bhop_Mukiology` and four
-more), and Linux paths are case-sensitive, so those rows pointed at files that
-do not exist.
+The six-hourly scan is registered and healthy (last run 18:07, result 0, next
+00:07). New Momentum or KSF releases picked up by a future sweep *will* badge.
 
-**What is still unexercised is the PI's half** -- the local mirror proved the
-client, nginx is still not installed, so the real server has never served a map.
-- **`surf_dune` / `surf_fantasy` from §2i are still waiting on you** — unchanged
-  by any of this.
+### What is already proven, so you need not re-check it
 
-### Done since last time
+- **The Pi serves the right bytes.** `bhop_pandora`, fetched an hour before the
+  release, pulled over https at 1,041,220 B/s with a sha1 identical to the Pi's
+  copy. Both url layouts resolve; directory listing and `../` traversal 404.
+- **An interrupted download cannot corrupt a map.** This was a real bug and you
+  would have hit it: a part-way http transfer used to leave a TRUNCATED .bsp
+  under the real name, which looks installed, stops the button offering it, and
+  mismatches mapcrc — silently demoting every run played on it. Downloads now
+  land in a `.tmp` and are renamed only once whole. Same discipline on the Pi
+  side: 464 transfers, zero leftovers.
+- **Six maps could never have downloaded** — the catalogues lowercase names and
+  the Pi does not, and Linux paths are case-sensitive. Now matched by fold.
+- **The published archive is the right one.** Re-downloaded from dl.proto.bar
+  after publishing: sha256 matches and `mapdl.txt` inside carries 1743 rows.
 
-**The Pi got the 32 maps it was missing** -- it is now 1347 bsp, and the browser
-can offer 1277 of them (was 1239). 477 catalogued maps are still not up there,
-but those are ones this workstation does not have either.
+### Still waiting on you
 
-All 31 KSF maps are now installed — `surf_tycho2`, `surf_weirdcore` and
-`surf_yolo` came down cleanly once you asked. The roster is 1280 installed and
-**0 fetchable**, so the KSF mirror is complete.
+- **`surf_dune` / `surf_fantasy` from §2i** — unchanged by any of this, and
+  still the only two of 1748 whose loaded build contradicts the evidence.
 
 ## 3. Known limits of the line, so they do not surprise you
 
