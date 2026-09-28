@@ -2865,6 +2865,42 @@ void(string mapname) ui_launch_local =
 float ui_join_pending;
 
 /*
+  ---------------------------------------------------------------------------
+   The pre-join map check: fetch the server's build BEFORE connecting.
+  ---------------------------------------------------------------------------
+
+  Lex, kicked from a lobby on surf_rookie: "can it just download the latest to
+  the game directory automatically when connecting to a public lobby and there's
+  a disagreement on map files".
+
+  WHY THIS IS THE RIGHT PLACE and not a reaction to the kick.  The kick happens
+  at prespawn -- the server compares the client's BSP checksum against its own
+  (sv_user.c:2305-2320) and drops the client -- so by the time anything is known
+  the connection is gone.  Here we have not connected yet, and data/mapdl.txt is
+  an inventory OF THE PI, so the size in it IS the build the lobby will serve.
+
+  WHAT IT CAN AND CANNOT SEE, stated because the difference bit us the same day:
+  ms_have is "0" when the map is missing and "2" when its size differs, and both
+  are repaired here.  Two builds of the SAME SIZE are indistinguishable to it --
+  measured: the Pi's surf_rookie and this workstation's are byte-identical, so a
+  laptop that disagrees with both is a third build this check may or may not see.
+  Closing that needs the server's own answer, which is the `//kickfile` stufftext
+  the engine currently only prints.
+
+  The connect is PARKED rather than issued, and the menu stays open so the row's
+  own progress bar is the progress bar.  A failed fetch does NOT connect: joining
+  with a map we already know is wrong is the thing this exists to stop.
+*/
+string pj_addr;         // the connect being held, "" when nothing is held
+string pj_map;
+float  pj_until;        // gettime(0) to give up at
+
+// Defined below ui_dl_start, which they drive; these are the prototypes,
+// the way m_close and Lob_Poll are declared ahead of their definitions.
+float(string addr, string mapname) ui_prejoin;
+void() ui_prejoin_tick;
+
+/*
   ui_play_online, READ THROUGH ONE FUNCTION -- build 70, and it is a bug fix.
 
   The essay in ui_launch below is right about the trap and was defeated by a
@@ -3798,6 +3834,14 @@ void() ui_join_tick =
 			              mapname));
 		print(sprintf("^5online:^7 joining %s for %s (%s)\n",
 		              addr, mapname, Lob_JoinWhy()));
+		// Lob_JoinClear frees the strings addr and mapname point at, so it
+		// has to come after ui_prejoin has strzoned its own copies of both.
+		if (ui_prejoin(addr, mapname))
+		{
+			Lob_JoinClear();
+			return;
+		}
+
 		localcmd(sprintf("connect %S\n", addr));
 		ms_query_stale = TRUE;
 		Lob_JoinClear();
@@ -3881,6 +3925,11 @@ void(float i) ui_connect =
 	  connect path they would be changing local server cvars for no reason,
 	  and maxclients in particular would be actively wrong.
 	*/
+	// The map first, when we can see it is missing or the wrong build.
+	// TRUE means the fetch owns the connect and ui_prejoin_tick issues it.
+	if (ui_prejoin(addr, Lob_Map(i)))
+		return;
+
 	localcmd(sprintf("connect %S\n", addr));
 
 	ms_query_stale = TRUE;
@@ -4819,6 +4868,54 @@ float  dl_done;
 float  dl_total;
 float  dl_until;
 
+/*
+  THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
+
+  cfg/default.cfg sets sv_dlURL, and on this box it was EMPTY at runtime
+  anyway -- because ftesurf/ftesurf.cfg, the config the engine writes on
+  quit, holds `sv_dlURL ""` and is exec'd AFTER default.cfg.  A saved empty
+  value silently wins over the shipped one, and then every download fails
+  with no message at all: CL_CheckOrEnqueDownloadFile finds no url, never
+  reaches CL_EnqueDownload, and returns "nothing to wait for", which
+  ui_dl_start can only read as a failure.
+
+  MEASURED, three ways, because the first two explanations were wrong.  It
+  is not the map (bhop_rbs failed and succeeded in different runs), and it
+  is not elapsed time (+2 s, +18 s and +38 s all failed).  The one success
+  in every probe followed a runtime `set sv_dlURL`, and printing the cvar
+  showed "" as shipped and the download starting on the very next line once
+  it was set to the same string it was supposed to already hold.
+
+  The rule is lobby_dir's, one file over (Lob_MigrateDir), for the same
+  reason: repair an EMPTY value, leave somebody's own choice alone and say
+  so, and stamp a generation so it is a one-shot either way.  A player who
+  points this at their own mirror must not have it taken back every launch.
+*/
+#define FS_MAPDL_URL      "https://play.proto.bar"
+#define FS_MAPDL_URL_GEN  1
+
+void() ui_dl_migrate_url =
+{
+	local string cur;
+
+	if (cvar("ui_mapdl_gen") >= FS_MAPDL_URL_GEN)
+		return;
+
+	cur = cvar_string("sv_dlURL");
+	if (cur == "")
+	{
+		localcmd(strcat("seta sv_dlURL \"", FS_MAPDL_URL, "\"\n"));
+		print(strcat("^3FTESurf: sv_dlURL was empty -- map downloads could "
+		             "not have worked.  Set to ", FS_MAPDL_URL, "^7\n"));
+	}
+	else if (cur != FS_MAPDL_URL)
+		print(strcat("^3FTESurf: sv_dlURL is ", cur, "^3 -- leaving it alone. "
+		             "Reset it with: sv_dlURL \"", FS_MAPDL_URL, "\"^7\n"));
+
+	// Stamped whichever branch ran, so this is a one-shot either way.
+	localcmd(strcat("seta ui_mapdl_gen \"", ftos(FS_MAPDL_URL_GEN), "\"\n"));
+};
+
 float() ui_dl_ready =
 {
 	if (dl_have_bi == 0)
@@ -4949,6 +5046,109 @@ void() Dl_Tick =
 	dl_rate  = stof(argv(6));
 	dl_done  = stof(argv(7));
 	dl_total = stof(argv(8));
+};
+
+/*
+  How long a HELD connect waits with NOTHING HAPPENING.  Not a download
+  budget: ui_prejoin_tick pushes this forward on every frame the transfer is
+  alive, so a 150 MB map on a slow line never trips it and a dead one gives
+  up in a minute.  A budget sized for the biggest map would be fifteen
+  minutes of silence after a fetch that died in its first second.
+*/
+#define PJ_STALL  60
+
+void() ui_prejoin_clear =
+{
+	if (pj_addr != "") strunzone(pj_addr);
+	if (pj_map  != "") strunzone(pj_map);
+	pj_addr = pj_map = "";
+	pj_until = 0;
+};
+
+/*
+  TRUE when the connect has been HELD and this owns it now.
+
+  EVERY UNCERTAIN CASE RETURNS FALSE and connects as before.  Refusing to
+  join over a map this cannot judge would be a worse failure than the kick it
+  exists to avoid -- the server is the authority on its own map and gets the
+  last word either way.  See the essay over pj_addr for what it cannot see.
+*/
+float(string addr, string mapname) ui_prejoin =
+{
+	local float row;
+	local string have;
+
+	if (pj_addr != "")
+		return TRUE;            // one is already held; it owns the connect
+	if (!ui_dl_ready())
+		return FALSE;           // no downloadmap builtin: nothing to offer
+
+	row = ui_map_index(mapname);
+	if (row < 0)
+		return FALSE;           // not in the list, so nothing is known of it
+
+	have = bufstr_get(ms_have, row);
+	if (have == "1")
+		return FALSE;           // agrees with the Pi as far as a size can say
+
+	ui_dl_start(mapname, have == "2");
+
+	// ui_dl_start is quiet about declining: it refuses while another transfer
+	// is in flight, and reloads the list when the file turns out to be there
+	// after all.  Both leave this map not downloading, and both mean connect.
+	if (dl_state != DL_ACTIVE || dl_name != mapname)
+		return FALSE;
+
+	pj_addr  = strzone(addr);
+	pj_map   = strzone(mapname);
+	pj_until = gettime(0) + PJ_STALL;
+
+	print(sprintf("^5online:^7 holding the join -- fetching the server's "
+	              "build of %s first (%s)\n", mapname,
+	              (have == "2") ? "yours is a different build"
+	                            : "you do not have this map"));
+	return TRUE;
+};
+
+// Polled from m_draw beside Dl_Tick, which is what moves dl_state.
+void() ui_prejoin_tick =
+{
+	if (pj_addr == "")
+		return;
+
+	if (dl_name == pj_map)
+	{
+		if (dl_state == DL_OK)
+		{
+			print(sprintf("^5online:^7 got it -- connecting to %s\n",
+			              pj_addr));
+			localcmd(sprintf("connect %S\n", pj_addr));
+			ms_query_stale = TRUE;
+			ui_prejoin_clear();
+			m_close();
+			return;
+		}
+		if (dl_state == DL_FAIL)
+		{
+			// NOT connecting anyway.  Joining on a map we have just been told
+			// is the wrong build is the kick this path exists to avoid, and
+			// reaching it the slow way is worse than reaching it at once.
+			print(sprintf("^1online:^7 could not fetch %s -- not connecting. "
+			              "Use the button on its row in the list.\n",
+			              pj_map));
+			ui_prejoin_clear();
+			return;
+		}
+		if (dl_state == DL_ACTIVE)
+			pj_until = gettime(0) + PJ_STALL;      // alive; keep waiting
+	}
+
+	if (gettime(0) > pj_until)
+	{
+		print(sprintf("^1online:^7 the fetch of %s stalled -- not connecting.\n",
+		              pj_map));
+		ui_prejoin_clear();
+	}
 };
 
 void(vector screensize) screen_create =
@@ -5832,12 +6032,23 @@ void() m_init =
 	ms_bgpic = "";
 	ms_bgfor = -2;
 
+	// Declared bare and seeded here, the reason ms_query is: fteqcc folds
+	// an initialised global scalar into a constant and refuses assignment.
+	pj_addr = pj_map = "";
+
 	// Absolute cursor: getmousepos then returns virtual-screen coordinates
 	// rather than a delta (pr_menu.c:1116-1140), which is what sui expects.
 	setcursormode(TRUE, "", '0 0 0', 1);
 
+	// BESIDE ITS READER, not in some other file: cvar() on an unregistered
+	// name auto-creates it as "" and a later registercvar declines to
+	// overwrite, which is the trap this file has lost three features to.
+	registercvar("ui_mapdl_gen", "0", 32);
+	ui_dl_migrate_url();
+
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
+	registercommand("ui_prejoin");
 	registercommand("ui_join");
 
 	localcmd("bind escape togglemenu\n");
@@ -5906,6 +6117,7 @@ void(vector screensize) m_draw =
 	// menu on a half-drawn bar, come back to a completed download still reading
 	// as in-flight, and the row would never turn back into a playable map.
 	Dl_Tick();
+	ui_prejoin_tick();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
@@ -6059,6 +6271,36 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_browse")
 	{
 		ui_browse_print(argv(1));
+		return TRUE;
+	}
+
+	/*
+	  ui_prejoin <map> [addr] -- THE HEADLESS TWIN OF CLICKING A LOBBY, the way
+	  ui_dlmap is the Download button's.  It calls the REAL ui_prejoin rather
+	  than reporting what it would decide: a second copy of the rule would agree
+	  with a broken first one.  The address defaults to a port nothing listens
+	  on, so a held join that completes proves the hold and the hand-off without
+	  putting a test run on a public lobby.
+	*/
+	if (argv(0) == "ui_prejoin")
+	{
+		/*
+		  BOTH ARGUMENTS STRZONED BEFORE ui_load_maps, and this is a bug fix
+		  rather than caution.  argv() hands back a slot tokenize owns, and
+		  ui_load_maps tokenizes every line of three data files -- so by the time
+		  the call below ran, argv(1) was a word out of mapmeta.txt.  The first
+		  cut of this arm ran all three cases against "surf_zor" and reported
+		  held=0 for every one, which looks exactly like a feature that does
+		  nothing.
+		*/
+		local string pjaddr, pjmap;
+		pjmap  = strzone(argv(1));
+		pjaddr = strzone((argv(2) != "") ? argv(2) : "127.0.0.1:27699");
+		ui_load_maps();
+		print(sprintf("ui_prejoin: %S held=%g state=%g name=%S\n", pjmap,
+		              ui_prejoin(pjaddr, pjmap), dl_state, dl_name));
+		strunzone(pjmap);
+		strunzone(pjaddr);
 		return TRUE;
 	}
 
