@@ -22,12 +22,21 @@ is the property that lets a cron run both.
 schema wants a tick count, so this divides by the gamemode's interval (surf
 0.015, bhop 0.01) and says so.  Anything reading `ticks` off one of these rows
 is reading a number nobody counted.
+
+`submitted` IS THE RUN'S OWN DATE, NOT OUR INGEST TIME.  Each API row carries
+`created`, and the web board draws that column, so ingest time made all 85,085
+imported rows read 2026-09-28.  Nothing reads an import's ingest time (no review
+exists on one, staleness is per-file mtime), and BOARD_ORDER's `submitted`
+tiebreak gets MORE correct: on equal times the run set first ranks first.  A row
+whose `created` will not parse falls back to now and is counted, never zeroed.
 """
 import argparse
+import datetime
 import glob
 import io
 import json
 import os
+import re
 import sys
 import time
 
@@ -47,6 +56,39 @@ if hasattr(sys.stdout, "reconfigure"):
 # Momentum's own tick interval per gamemode, measured over 7486 .mtv headers:
 # surf 0.015 (66.67, exactly ours), bhop 0.01.  Not a guess and not a default.
 TICK = {1: 0.015, 2: 0.01}
+
+
+# The fractional seconds in an ISO timestamp, after the seconds field.
+_FRAC = re.compile(r"(?<=:\d\d)\.(\d+)")
+
+
+def created_epoch(raw):
+    """A row's `created` -> unix seconds, or None if it is not a timestamp.
+
+    Not `fromisoformat(raw)`: the Pi runs 3.10, which learned neither the `Z`
+    suffix nor an odd-width fraction until 3.11 -- measured, both raise
+    ValueError there -- so the suffix is swapped and the fraction padded to 6.
+    A naive stamp is read as UTC; all 81,290 rows in the 3,726-file cache are
+    `...Z` with exactly 3 fractional digits, so the rest is for a format drift.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    s = raw.strip()
+    if s[-1] in "Zz":
+        s = s[:-1] + "+00:00"
+    m = _FRAC.search(s)
+    if m:
+        s = s[:m.start(1)] + (m.group(1) + "000000")[:6] + s[m.end(1):]
+    try:
+        dt = datetime.datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    try:
+        return int(dt.timestamp())
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def track_leg(track_type, track_num):
@@ -82,8 +124,9 @@ def main():
     conn = S.connect()
     now = int(time.time())
 
-    seen = boards = empty = skipped = 0
+    seen = boards = empty = skipped = nodate = 0
     rows = []
+    dates = []
     for p in files:
         doc = load(p)
         if not doc:
@@ -110,20 +153,31 @@ def main():
             if not sid.isdigit() or not isinstance(t, (int, float)) or t <= 0:
                 continue
             ms = int(round(t * 1000.0))
+            when = created_epoch(r.get("created"))
+            if when is None:
+                nodate += 1
+                when = now
+            else:
+                dates.append(when)
             rows.append((mp, track, leg, sid,
                          S.clean_text(r.get("alias") or "?") or "?",
-                         int(round(ms / 1000.0 / tick)), 1.0 / tick, ms))
+                         int(round(ms / 1000.0 / tick)), 1.0 / tick, ms, when))
             seen += 1
 
     print("board files       %d  (%d empty, %d unusable)" % (boards, empty, skipped))
     print("leaderboard rows  %d" % seen)
+    print("no usable created %d  (dated with this import's clock instead)" % nodate)
+    if dates:
+        print("run dates         %s .. %s"
+              % (time.strftime("%Y-%m-%d", time.gmtime(min(dates))),
+                 time.strftime("%Y-%m-%d", time.gmtime(max(dates)))))
     if not a.go:
         print("\nDRY RUN -- nothing written.  Pass --go.")
         return 0
 
     wrote = 0
     with conn:
-        for (mp, track, leg, sid, alias, ticks, rate, ms) in rows:
+        for (mp, track, leg, sid, alias, ticks, rate, ms, when) in rows:
             # replay_id is written on INSERT only.  The update list deliberately
             # omits it, so a row momindex gave a recording keeps it.
             cur = conn.execute(
@@ -135,7 +189,7 @@ def main():
                 "   name=excluded.name, submitted=excluded.submitted"
                 " WHERE excluded.millis < runs.millis",
                 (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, sid, alias,
-                 ticks, rate, ms, now))
+                 ticks, rate, ms, when))
             wrote += cur.rowcount
     print("board rows set    %d" % wrote)
 

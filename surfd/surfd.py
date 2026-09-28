@@ -1001,8 +1001,8 @@ def migrate():
             # For a ranked or community row the two are the same instant.  For
             # an IMPORTED row they are not, and the source's own date wins:
             # momboards.py takes the API's `created`, ksfimport.py takes KSF's
-            # `date`, and momdates.py backfilled the rows imported before that
-            # (85,085 of them all read their ingest day, which the web board's
+            # `date`, and momdates.py backfills the rows imported before that
+            # (all 85,085 of them read their ingest day, which the web board's
             # Date column shows).  Safe because nothing reads an import's ingest
             # time -- staleness is per-file mtime and no review exists on an
             # import -- and it makes BOARD_ORDER's `submitted` tiebreak truer:
