@@ -21,7 +21,15 @@
   LAST of the three file sources (cl_zones.qc), so a shipped file or your own
   edit always beats a fetched one.  That ordering is the safety property: if
   the mirror ever serves something wrong, the next release's copy silently
-  takes over again, and `rm -r maps/zones/dl` resets to shipped state.
+  takes over again, and deleting the directory resets to shipped state.
+
+  ON DISK THAT DIRECTORY IS ftesurf/data/maps/zones/dl/, not
+  ftesurf/maps/zones/dl/ -- measured, after this comment first claimed the
+  latter.  QC fopen READS the whole VFS but WRITES into the data/ sandbox, so
+  the same relative path means two different places depending on the verb.
+  Both work here because Zone_LoadJson reads through the same VFS that write
+  landed in; the practical consequence is only that a human clearing these out
+  by hand must go to data/.
 
   CLIENT-SIDE ONLY.  sv_zones.qc does not consult this directory and must not:
   the server's table is what the clock is a function of (see sh_zones.qc's

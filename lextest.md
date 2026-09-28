@@ -1018,9 +1018,30 @@ source art (SVGs and a PowerShell script) and deliberately do not ship.
    It should have legs and times now instead of "no zone file".
 4. **The website tabs**, and click a map to see its picture.
 
+### The zone download works — you ran the command, so I could finally test it
+
+Proven end to end, not reasoned about. I parked surf_rookie's zone file *and*
+Momentum's own copy of it, so the game genuinely had none, and watched the log
+say so and then fix itself:
+
+```
+zones: none for surf_rookie
+zones: 19 on surf_rookie (maps/zones/dl) crc d1eaee84
+```
+
+The second line can only exist if the game asked our server, got the file,
+wrote it and re-read it. The `crc d1eaee84` is the same table Momentum's own
+copy produces, and the downloaded bytes hash identical to both the server's
+copy and the shipped one. The mirror also refuses what it should: no directory
+listing, no path traversal, and a map with no zones gets a clean 404.
+
+Two runs before that one measured nothing, and both said so rather than
+passing quietly — the first never loaded the map at all, the second was still
+reading Momentum's copy.
+
 ### What I could not check
 
 - Nothing on a real laptop — every screenshot above is from this desktop.
-- The zone *download* path has never completed successfully end to end,
-  because the server is not serving them until you run that one command. The
-  miss path is all that has run.
+- **A map you download on joining a lobby.** The zone fetch is proven for a
+  map already installed; the join-time case runs the same code but I have not
+  driven it.

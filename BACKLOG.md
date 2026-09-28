@@ -1916,9 +1916,12 @@ edit.
   operator command. `surfd/maps.nginx` carries it and the 609-file set is
   already at `/srv/nvme/ftesurf-site/zones`. Until it runs, every zone fetch
   404s — the designed miss path, so the client degrades to its old behaviour.
-- **`maps/zones/dl/` is never pruned.** A zone fetched for a map you played
-  once stays forever. Bounded by the library's own size (2.5 MB for all 609)
-  so it is not urgent, but nothing deletes it and nothing ages it out.
+- **`ftesurf/data/maps/zones/dl/` is never pruned.** A zone fetched for a map
+  you played once stays forever. Bounded by the library's own size (2.5 MB for
+  all 609) so it is not urgent, but nothing deletes it and nothing ages it
+  out. Note the `data/` prefix: QC fopen reads the whole VFS but writes into
+  the sandbox, so the relative path in the source names two different places
+  depending on whether it is being read or written.
 - **One attempt per map CHANGE, not per session.** `zdl_tried` holds only the
   last map asked about, so a rotation A -> B -> A asks for A twice. Bounded by
   map loads, which are the most expensive thing the client does, so a table of

@@ -2157,8 +2157,23 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   zone is. A server cannot set a client cvar. Empty switches it off.
 - **`dl/` is tried LAST of the three file sources, and that is the safety
   property rather than a preference.** A fetched file can never beat a shipped
-  one or your own edit, so a bad mirror stops mattering at the next release and
-  `rm -r maps/zones/dl` resets to shipped state.
+  one or your own edit, so a bad mirror stops mattering at the next release.
+- **It lands in `ftesurf/data/maps/zones/dl/`, not `ftesurf/maps/zones/dl/`.**
+  QC fopen READS the whole VFS but WRITES into the `data/` sandbox, so the same
+  relative path means two places depending on the verb. Both halves work
+  because the read goes through the VFS the write landed in; what it costs is
+  that a human clearing these by hand must go to `data/`. Measured, after the
+  first version of this note named the wrong directory.
+- **Proven end to end, once** (`cfg/test/b89zdl.cfg`, 2026-09-28): with BOTH
+  local copies parked -- ours and Momentum's `online/` -- the log reads
+  `zones: none for surf_rookie`, then `zones: 19 on surf_rookie
+  (maps/zones/dl) crc d1eaee84`. The crc is the same one Momentum's own copy
+  produces, and the fetched bytes hash equal to the mirror and to the shipped
+  file. The first run of that arm measured nothing (no `waitms` before `map`,
+  no `waitmap`, so the map never loaded and `zone_reload` came back
+  `Unknown command` because CSQC does not exist without a map); the second
+  named `maps/zones/online` because only OUR copy had been parked, which is
+  the fixture's own stated falsification criterion firing.
 - **`ZSRC_DL` is appended, not inserted**, so the three values the `.rec` header
   has always carried keep their numbers. The server never emits it.
 
