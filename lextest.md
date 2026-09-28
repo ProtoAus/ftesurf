@@ -441,12 +441,16 @@ simulator and a corpus of files. What I would like you to look at:
    spread thin enough to hide under one tick of ceiling per frame) and it is in
    BACKLOG.md; a screenshot would tell me whether it happens in practice.
 
-## 2h. Momentum and KSF runs are on the board now — four things need your eyes
+## 2h. Momentum and KSF runs are on the board now — five things need your eyes
 
-2,961 Momentum Mod runs are converted, watchable and drawing lines, and KSF
-(Counter-Strike: Source) times import too. **None of it is deployed** — it is
-all local until you say otherwise. Everything below is a judgement call I made
-for you and could not settle by measuring.
+The board went from **172 rows on 36 maps** to **85,768 on 608**: every surf
+and bhop leaderboard Momentum publishes (main, every stage, every bonus, top
+25 each), plus 5,281 of your own demos converted so they are watchable, plus
+511 KSF times. 4,791 rows can be watched; the rest are times, which is what a
+leaderboard mostly is.
+
+Everything below is a judgement call I made for you and could not settle by
+measuring.
 
 **a) The blue tint reads as lavender, not as a glow, and I am not sure it is
 enough.** `hud_watch_path_foreign 0.55` pulls an imported line's colour toward
@@ -484,14 +488,24 @@ ever see a replay flash an absurd speed for one frame, that is this and it is
 not a bug in the mover.
 
 **d) Is the KSF tier worth keeping at all?** Honest answer: much less than
-Momentum. 2,961 Momentum runs across 50 maps so far (499 maps available), all
-watchable. KSF gives **times only** — that network publishes no replay anything
+Momentum. 85,085 Momentum rows across 608 maps, 4,791 of them watchable. KSF gives **times only** — that network publishes no replay anything
 here can fetch — and their per-map leaderboard route is one I could not find, so
 it imports one player at a time, 25 records each. It is real and it works: on
 `surf_garden` the combined board now reads KSF 79.884, Momentum 95.745, ours
 152.115. But a row you cannot watch may be worth less to you than a clean board.
 Seed it from a file of SteamID64s and see; if it reads as clutter, the tier
 drops out without touching anything else.
+
+**e) Five wrong records were on the board and I found one of them by eye.**
+`surf_utopia`'s #1 read 26.565s against a #2 of 53.565s. That is not a record,
+it is a broken extraction — the demo's own header reports a 10,073 u/s peak,
+about 3x anything real on surf. Because the API sweep and the demo corpus now
+answer for the same boards, they can be checked against each other: 5 of 4,743
+demo rows beat Momentum's own #1, including a 0.405s "run" where the real
+record is 92.565s. All five are gone. **The check only exists because I looked
+at one board by eye** — nothing I had built would have caught them, and I do
+not know what else is in there that a different glance would find. If a time
+ever looks impossible to you, it probably is, and I would like to hear about it.
 
 **One thing I would like you to look at that is not a judgement call:** the
 `why` column on the board. It has been empty by construction since Patch 355 and

@@ -977,11 +977,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Imported runs (Momentum, KSF)
 
-- **NOTHING OF THE IMPORT IS DEPLOYED.** The Pi has no `data/momentum`, no
-  `surfd` change and no progs carrying the tab or the tint. All of it is
-  verified locally and on a copy of the live database. Deploying restarts all 12
-  lobbies and needs the operator's word; `lextest.md` §2h holds the four
-  judgement calls that should be settled first.
+- **The import is being deployed now** (2026-09-28); until this entry says
+  otherwise, check the host rather than this file. What ships: the `.rec`
+  corpus under the game's `data/momentum`, the surfd code carrying the tier and
+  the pseudo-tiers, the board cache and track table for `momwatch`, and the
+  progs carrying the tab and the tint. `lextest.md` §2h holds the five
+  judgement calls that are still the operator's.
 - **KSF's per-map leaderboard route is NOT LOCATED, and that is not the same as
   absent.** Their map pages render records, so a route exists. Twelve guesses
   across two rounds (every shape their two documented endpoints imply), the map
