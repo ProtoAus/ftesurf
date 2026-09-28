@@ -478,7 +478,7 @@
       onpause: function (t) {
         if (!history.replaceState) { return; }
         history.replaceState(null, '', '#r=' + body.rid +
-          (t > 0.05 ? '&at=' + t.toFixed(2) : ''));
+          (Math.abs(t) > 0.05 ? '&at=' + t.toFixed(2) : ''));
       }
     });
 
@@ -527,7 +527,11 @@
     get('api/run/' + encodeURIComponent(rid)).then(function (body) {
       if (seq !== state.seq) { return; }
       showError('');
-      renderRun(body, Number(at) > 0 ? Number(at) : 0);
+      // undefined, not 0: the viewer opens at t0 (which is negative --
+      // the prestrafe) unless the link actually named a moment.
+      var n = Number(at);
+      renderRun(body, (at !== undefined && at !== '' && isFinite(n))
+                        ? n : undefined);
     }, function (e) {
       if (seq !== state.seq) { return; }
       $('runtitle').textContent = '';

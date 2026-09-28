@@ -67,7 +67,10 @@ window.FSRun = (function () {
     this.d = data;
     this.tint = opts.tint || 0;
     this.onpause = opts.onpause || null;   // told the playhead, for the URL
-    this.start = opts.at > 0 ? opts.at : 0;
+    // `at` may legitimately be negative (the prestrafe), so presence is its own
+    // flag rather than `at > 0`.
+    this.have_at = typeof opts.at === 'number' && isFinite(opts.at);
+    this.start = this.have_at ? opts.at : 0;
     this.t = 0;                 // playhead, run seconds
     this.playing = false;
     this.raf = 0;
@@ -127,7 +130,7 @@ window.FSRun = (function () {
     this.scrub.setAttribute('aria-label', 'Position in the run');
     this.scrub.addEventListener('input', function () {
       self.pause();
-      self.seek(self.dur() * (Number(self.scrub.value) / 1000));
+      self.seek(self.t0() + self.dur() * (Number(self.scrub.value) / 1000));
     });
     bar.appendChild(this.scrub);
 
@@ -154,10 +157,11 @@ window.FSRun = (function () {
     this.speed.addEventListener('click', function (ev) {
       var r = self.speed.getBoundingClientRect();
       self.pause();
-      self.seek(self.dur() * ((ev.clientX - r.left) / Math.max(1, r.width)));
+      self.seek(self.t0() +
+                self.dur() * ((ev.clientX - r.left) / Math.max(1, r.width)));
     });
     this.legendFill();
-    this.seek(this.start);
+    this.seek(this.have_at ? this.start : this.t0());
   };
 
   View.prototype.legendFill = function () {
@@ -173,9 +177,22 @@ window.FSRun = (function () {
     this.legend.appendChild(el('span', 'rv-lk', Math.round(r[1]) + ' u/s'));
   };
 
-  View.prototype.dur = function () {
+  // A .rec STARTS BEFORE THE TIMER DOES.  Run time is negative until the start
+  // zone is crossed -- measured -2.130 s on rid 5, -3.840 s on rid 4, 3.4% and
+  // 5.2% of those timelines.  For surf the entry speed is half the point of
+  // watching, so the playhead spans t0..t1 and not 0..t1.
+  View.prototype.t0 = function () {
     var t = this.d.t_;
-    return t && t.length ? Math.max(0.001, t[t.length - 1]) : 0.001;
+    return t && t.length ? t[0] : 0;
+  };
+
+  View.prototype.t1 = function () {
+    var t = this.d.t_;
+    return t && t.length ? t[t.length - 1] : 0.001;
+  };
+
+  View.prototype.dur = function () {
+    return Math.max(0.001, this.t1() - this.t0());
   };
 
   View.prototype.fit = function (cv, h) {
@@ -297,7 +314,9 @@ window.FSRun = (function () {
     g.stroke();
 
     this.vnum.textContent = String(Math.round(spd));
-    this.clock.textContent = fmt(Math.max(0, this.t) * 1000);
+    // NOT clamped to 0: before the start zone the clock reads negative,
+    // which is the number the game shows too.
+    this.clock.textContent = fmt(this.t * 1000);
     this.drawSpeed(spd);
   };
 
@@ -307,8 +326,8 @@ window.FSRun = (function () {
     var g = box.g, n = d.spd.length, i, hi = 1;
     for (i = 0; i < n; i++) { if (d.spd[i] > hi) { hi = d.spd[i]; } }
     g.clearRect(0, 0, box.w, box.h);
-    var dur = this.dur();
-    var X = function (t) { return (t / dur) * box.w; };
+    var dur = this.dur(), t0 = this.t0();
+    var X = function (t) { return ((t - t0) / dur) * box.w; };
     var Y = function (v) { return box.h - 3 - (v / hi) * (box.h - 8); };
     var r = this.range(), span = Math.max(1e-6, r[1] - r[0]);
     g.lineWidth = 1.4;
@@ -321,6 +340,10 @@ window.FSRun = (function () {
       g.stroke();
     }
     g.globalAlpha = 1;
+    if (t0 < 0) {
+      g.fillStyle = 'rgba(140,140,148,0.13)';
+      g.fillRect(0, 0, X(0), box.h);
+    }
     // Splits, where the file recorded them: thin ticks, no labels at this size.
     g.strokeStyle = 'rgba(140,140,148,0.5)';
     g.lineWidth = 1;
@@ -329,15 +352,16 @@ window.FSRun = (function () {
       var px = Math.round(X(mk.t)) + 0.5;
       g.beginPath(); g.moveTo(px, 2); g.lineTo(px, box.h - 2); g.stroke();
     });
-    var hx = Math.round(X(Math.max(0, this.t))) + 0.5;
+    var hx = Math.round(X(this.t)) + 0.5;
     g.strokeStyle = '#FFFFFF';
     g.lineWidth = 1;
     g.beginPath(); g.moveTo(hx, 0); g.lineTo(hx, box.h); g.stroke();
   };
 
   View.prototype.seek = function (t) {
-    this.t = Math.max(0, Math.min(this.dur(), t));
-    this.scrub.value = String(Math.round((this.t / this.dur()) * 1000));
+    this.t = Math.max(this.t0(), Math.min(this.t1(), t));
+    this.scrub.value =
+      String(Math.round(((this.t - this.t0()) / this.dur()) * 1000));
     this.draw();
   };
 
@@ -347,7 +371,7 @@ window.FSRun = (function () {
 
   View.prototype.play = function () {
     if (this.playing) { return; }
-    if (this.t >= this.dur() - 1e-6) { this.t = 0; }
+    if (this.t >= this.t1() - 1e-6) { this.t = this.t0(); }
     this.playing = true;
     this.btn.textContent = '❚❚ Pause';
     this.last = 0;
@@ -356,7 +380,7 @@ window.FSRun = (function () {
       if (!self.playing) { return; }
       if (self.last) { self.seek(self.t + ((ts - self.last) / 1000) * self.rate); }
       self.last = ts;
-      if (self.t >= self.dur() - 1e-6) { self.pause(); return; }
+      if (self.t >= self.t1() - 1e-6) { self.pause(); return; }
       self.raf = window.requestAnimationFrame(step);
     };
     this.raf = window.requestAnimationFrame(step);
