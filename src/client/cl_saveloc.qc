@@ -209,6 +209,24 @@ void() SaveLoc_RegisterCvars =
 	// config.
 	registercommand("saveloc_menu");
 
+	/*
+	  BUILD 90: every save-lock action as a bindable name -- see SaveLoc_Console
+	  for why these are handled here and not aliased straight onto `cmd sl_*`.
+	  The names are the server's own (sv_player.qc:927-1047); cfg/default.cfg
+	  puts Momentum's spelling on top of them.
+	*/
+	registercommand("sl_save");
+	registercommand("sl_load");
+	registercommand("sl_del");
+	registercommand("sl_delall");
+	registercommand("sl_next");
+	registercommand("sl_prev");
+	registercommand("sl_first");
+	registercommand("sl_last");
+	registercommand("sl_goto");
+	registercommand("+sl_hold");    // the hold pair: bind it and Key_Event sends
+	registercommand("-sl_hold");    // the `-` form on release (keys.c:4199-4203)
+
 	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
 };
 
@@ -690,6 +708,108 @@ float(float scan, float down) SaveLoc_Key =
 
 	if (scan == '7') { SaveLoc_Cmd("sl_del");   return TRUE; }
 	if (scan == '0') { rec_sl_open = FALSE;      return TRUE; }
+
+	return FALSE;
+};
+
+/*
+  THE BINDABLE NAMES.  Build 90.
+
+  Every action here was already a server command (sv_player.qc:927-1047) and
+  none of the names was registered on this side, so `bind p sl_save` answered
+  "Unknown command" -- an unregistered console command never reaches
+  SV_ParseClientCommand, which is the trap the registercommand block above is
+  written about.  cfg/default.cfg aliases Momentum's names onto these; Lex asked
+  for the aliases, and this is what an alias needs to point AT.
+
+  THEY GO THROUGH THE KEY PATH RATHER THAN STRAIGHT TO `cmd`, and that is the
+  whole reason this function exists rather than eleven alias lines. A bare
+  `alias mom_saveloc_nav_next "cmd sl_next"` works and also walks round
+  SaveLoc_RunLocked -- the "no loads mid-run" refusal that stops a stray press
+  ending a clean run. Momentum guards the same gesture
+  (mom_run_safeguard_saveloc_tele), so honouring it is what MATCHES Momentum.
+  `cmd sl_load` stays the deliberate way past it (default.cfg:617 says so).
+
+  THE NAV FOUR ARE REFUSED WHETHER OR NOT THE PANEL IS UP, which the key map
+  cannot do: with the panel down 3-6 are not save-lock keys at all and fall
+  through to the engine's bind table. A bind has no panel state to read, and
+  all four teleport (SV_SaveLocStep), so all four are loads here.
+
+  NOT GATED ON rec_savelock, deliberately. That cvar turns off the whole digit
+  map (SaveLoc_Key returns FALSE and the keys fall through to their binds), and
+  reclaiming the number keys is exactly what somebody binding these wants. If it
+  gated both surfaces, turning the digits off would take the binds with it.
+*/
+float() SaveLoc_Console =
+{
+	local string c;
+
+	c = argv(0);
+
+	// The hold pair, which is Momentum's +mom_saveloc_current. SaveLoc_LoadKey
+	// is called rather than copied: its own header forbids a second copy of the
+	// load+hold pair, and sl_loadlast was what that mistake looked like.
+	if (c == "+sl_hold")
+	{
+		if (SaveLoc_RunLocked())
+			SaveLoc_Refuse(0);
+		else
+			SaveLoc_LoadKey(0);     // 0: no key owns this hold, so the repeat
+		return TRUE;                // deadman stays inert and -sl_hold releases
+	}
+	if (c == "-sl_hold")
+	{
+		if (rec_sl_holding)
+			SaveLoc_Release();      // which sends sl_holdoff itself
+		else
+			SaveLoc_Cmd("sl_holdoff");   // never latched; let the server go anyway
+		return TRUE;
+	}
+
+	if (c == "sl_load" || c == "sl_next" || c == "sl_prev" ||
+	    c == "sl_first" || c == "sl_last" || c == "sl_goto")
+	{
+		if (SaveLoc_RunLocked())
+		{
+			SaveLoc_Refuse(0);      // 0: no scancode to suppress repeats of
+			return TRUE;
+		}
+		if (c == "sl_load")
+			SaveLoc_PredictLoad();  // Patch 430: draw the load at once
+		if (c == "sl_goto")
+			SaveLoc_Cmd(sprintf("sl_goto %g", stof(argv(1))));
+		else
+			SaveLoc_Cmd(c);
+		return TRUE;
+	}
+
+	if (c == "sl_save" || c == "sl_del")
+	{
+		SaveLoc_Cmd(c);
+		return TRUE;
+	}
+
+	/*
+	  ASKS TWICE, like the panel's 8. It is still the only action here with
+	  nothing to undo it, and a bind has even less to show for itself than the
+	  panel did -- which is the argument the header already makes for why 8 is
+	  unreachable with the panel down.
+	*/
+	if (c == "sl_delall")
+	{
+		if (rec_sl_armdel > 0 && cltime - rec_sl_armdel <= FS_SL_ARMTIME)
+		{
+			rec_sl_armdel = 0;
+			SaveLoc_Cmd("sl_delall");
+		}
+		else
+		{
+			rec_sl_armdel = cltime;
+			print(sprintf("^3saveloc:^7 again within %g s to delete EVERY save "
+			              "on this map\n", FS_SL_ARMTIME));
+		}
+		return TRUE;
+	}
 
 	return FALSE;
 };

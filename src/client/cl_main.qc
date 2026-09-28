@@ -1871,9 +1871,14 @@ float(string cmd) CSQC_ConsoleCommand =
 			return TRUE;
 		}
 
-		// Patch 391: the load gate as this client sees it.
-		print(sprintf("saveloc: locked %g refkey %g hold %g\n", SaveLoc_RunLocked(), rec_sl_refkey,
-		              getstatf(STAT_FS_HOLD)));      // Patch 428 r3: the server's side of a hold
+		// Patch 391: the load gate as this client sees it.  BUILD 90 adds
+		// `holding`, the KEY side -- the HUD draws it left of the slash and
+		// nothing PRINTED it, which leaves +sl_hold with no observable at all
+		// in a headless arm, since it latches without a keypress.
+		print(sprintf("saveloc: locked %g refkey %g hold %g holding %g\n",
+		              SaveLoc_RunLocked(), rec_sl_refkey,
+		              getstatf(STAT_FS_HOLD),    // Patch 428 r3: the server's side
+		              rec_sl_holding));
 		SaveLoc_Cmd(sprintf("sl_list %g", stof(argv(1))));        // Patch 428: from row n
 		return TRUE;
 	}
@@ -1883,6 +1888,12 @@ float(string cmd) CSQC_ConsoleCommand =
 		rec_sl_open = !rec_sl_open;
 		return TRUE;
 	}
+
+	// BUILD 90: sl_save / sl_load / the nav four / sl_del / sl_delall and the
+	// +sl_hold pair, as bindable names.  It answers FALSE for anything else, so
+	// this may sit in front of the rest of the chain.
+	if (SaveLoc_Console())
+		return TRUE;
 
 	// BUILD 14: the renderer settings, in words (cl_gfx.qc).
 	// BUILD 33 gave it arguments -- see Gfx_Console.
