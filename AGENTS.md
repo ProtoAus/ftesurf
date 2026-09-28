@@ -1363,6 +1363,35 @@ bannered as superseded.)
   the column is optional, and a warning would send people looking for a tool
   they do not need to run.
 
+- **A SAVED CVAR SHADOWS A SHIPPED ONE, SILENTLY, AND ftesurf.cfg IS READ AFTER
+  default.cfg.** `sv_dlURL` was EMPTY at runtime although `cfg/default.cfg` sets
+  it, because `ftesurf/ftesurf.cfg` -- what the engine writes on quit -- held
+  `sv_dlURL ""`. With no url, `CL_CheckOrEnqueDownloadFile` never reaches
+  `CL_EnqueDownload` and returns "nothing to wait for", which `ui_dl_start` can
+  only read as a failure. NO MESSAGE AT ANY LAYER: the download button simply
+  does nothing. `ui_dl_migrate_url` repairs an empty value and stamps a
+  generation, which is `Lob_MigrateDir`'s rule -- and the reason `lobby_dir` was
+  fine in the same file while `sv_dlURL` was not is precisely that one had a
+  migration and the other did not.
+  WHICH CVARS THIS CAN HAPPEN TO: ftesurf.cfg carries ARCHIVE-flagged ENGINE
+  cvars (measured by ftesurf-e0: six `set` cvars from default.cfg are absent
+  from it, and every line in it is engine-declared with the engine's own
+  description). A QC `registercvar` cvar is not written -- unless someone types
+  `seta` at it, which makes it archived from then on. `seta lobby_dir_gen "1"`
+  is in there, which is also what makes the generation stamp a real one-shot.
+- **TWO WRONG ANSWERS BEFORE THE RIGHT ONE, AND BOTH READ AS RESULTS.** Chasing
+  that empty cvar: (1) "it is `cl_download_mapsrc`" -- three variants differed in
+  the cvar AND in the map, and the map that succeeded under one setting later
+  FAILED under the same one. A confounded arm reads exactly like a finding.
+  (2) "it is elapsed time" -- +2 s, +18 s and +38 s, three different maps
+  (a failed download is cached per file, so retrying one answers the cache and
+  not the question); all three failed. What settled it was printing the cvar
+  rather than reasoning about the branch that reads it.
+- **`tokenize` CLOBBERS A CONSOLE COMMAND'S OWN `argv`.** A diagnostic that read
+  `argv(1)`, called `ui_load_maps()` and then used `argv(1)` again ran all three
+  of its cases against `surf_zor` -- a word out of mapmeta.txt -- and reported
+  the feature doing nothing. `ui_load_maps` tokenizes every line of three data
+  files. strzone the arguments BEFORE any call that can tokenize.
 ### `status` CANNOT SEE MOST OF SERVERINFO -- do not read its silence as absence
 
 `SVC_Status` builds serverinfo into a `char infostr[1024]` and `InfoBuf_ToString`

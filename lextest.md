@@ -831,6 +831,50 @@ NEW badges on downloadable rows were wrong before today.
 
 ---
 
+## 2l. Joining a lobby now fetches the map -- and one download bug behind it
+
+You were kicked from a public lobby on surf_rookie and asked whether it could
+just download the right map when connecting. It does now (0.1.19): clicking a
+lobby, or letting the directory pick one, holds the connect, fetches the
+server's build into `ftesurf/maps/` and then connects. It never touches your
+Steam install -- the file shadows the mount rather than replacing anything.
+
+**The thing worth knowing is why my first test of it failed.** `sv_dlURL` was
+EMPTY at runtime on this box. `cfg/default.cfg` sets it to
+`https://play.proto.bar`; `ftesurf/ftesurf.cfg` -- the config the engine writes
+when it quits -- holds `sv_dlURL ""`, and it is read AFTER default.cfg. The
+saved empty value wins, silently, and then every map download fails with **no
+message at any layer**. On a box in that state the Download button has never
+worked.
+
+Your original report on 0.1.14 was "it had no map download option. It just
+failed." I put that down to the release being stale and the data file not
+shipping, and both of those were true -- but this may well have been the "it
+just failed" half, and I did not find it then. 0.1.19 repairs an empty value on
+launch and leaves a mirror you set yourself alone.
+
+- **(r) surf_rookie may or may not be fixed, and one look tells us which.**
+  Measured: the Pi's copy and this workstation's are byte-identical -- same
+  8,377,611 bytes, same sha1. So your laptop holds a third build. Find
+  surf_rookie in the map list:
+    * **"Wrong build"** -> click it, rejoin, done. The size differs and the
+      check can see it.
+    * **"> Play"** -> your copy is a different build of the SAME SIZE, which no
+      check in the client can see. Tell me, and I will do the engine patch that
+      reads the server's own `//kickfile` message -- it names the exact file --
+      and repairs it automatically. I have not started that, because if the
+      first case is what you have, it buys nothing.
+
+- **(s) Two negative cases matter as much as the positive one.** A join-check
+  that holds a join it should not have held is a player who cannot join
+  anything. So a map you already have, a map nothing has heard of, a transfer
+  already running and a fetch that will not start ALL connect exactly as before.
+  Only a fetch that fails on a map we know is wrong refuses, because arriving at
+  that kick slowly is worse than arriving at it at once. If a join ever hangs on
+  "holding the join", that is the bug to tell me about.
+
+---
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:

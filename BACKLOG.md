@@ -778,6 +778,29 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Features / releases
 
+- **A MAP THAT DISAGREES WITH THE SERVER AT THE SAME SIZE IS STILL A KICK, AND
+  NOTHING CLIENT-SIDE CAN SEE IT.** `ui_prejoin` (build 89) fetches the server's
+  build before connecting when the map is missing or its size differs, which is
+  every case the browser can judge. It cannot judge equality: measured, the Pi's
+  `surf_rookie` and this workstation's are byte-identical -- 8,377,611 bytes,
+  sha1 `1dd30123a38fded6bedad1915390fd01850cee03` -- so a third install that
+  disagrees with both may match on size and sail through.
+  The authoritative answer exists and we throw it away. The server compares BSP
+  model checksums (`sv_user.c:2298-2320`), and on a mismatch it sends
+  `//kickfile "maps/<name>.bsp"` NAMING THE FILE before dropping the client.
+  `cl_parse.c:7660-7670` handles that stufftext by PRINTING it and nothing else.
+  The fix is an engine patch: hand the name to QC (a cvar set in that handler is
+  enough), and the menu can force-download exactly that file and reconnect -- it
+  already has `downloadmap(name, 1)` from Patch 466 and the address it just
+  connected to. Not started: it needs an engine rebuild and a shipped exe, and
+  it should not begin until Lex says whether `surf_rookie` reads "Wrong build"
+  on the laptop, because if it does, the size check already covers that case and
+  this buys nothing for it. lextest 2l (r).
+  Note that the client cannot PREVENT the kick this way, only repair it: the
+  checksum is computed from the loaded BSP, so nothing short of loading the map
+  can answer the question before connecting.
+
+
 - **THE MAP BROWSER'S LIBRARY SWITCH FILTERS BY MOUNT, NOT BY CATALOGUE.**
   Build 89's `both / momentum / cs:s` strip reads `ms_lst`, which is decided by
   which searchpath the BSP came out of. On this box every map ever fetched was
