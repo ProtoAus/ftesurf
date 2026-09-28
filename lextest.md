@@ -586,45 +586,47 @@ solid. If a CS:S-built map needs content the Momentum mount does not carry, that
 is where it will show, and it will show as missing textures or props you fall
 through rather than as an error.
 
-## 2j. Map downloads — one command needs your sudo, then it is testable
+## 2j. Map downloads — live on the Pi, measured end to end
 
-The Download button, the progress bar and the KB/s readout are built and the
-six-hourly scan is running. **One step is not done and cannot be done from here:
-the nginx config.** Sudo on the Pi is deliberately scoped to the lobby units
-(`systemctl start|stop|restart ftesurf@N`), which is right, and nginx is not in
-that list.
+The Download button, the progress bar, the KB/s readout and the six-hourly scan
+are built, and as of 2026-09-28 the Pi is serving maps over https with the
+1 MB/s cap in place. You installed the nginx snippet; everything below is the
+measurement after it.
 
-### The command
-
-Paste this into the session with a `!` in front, or run it on the Pi:
+### What was measured on the live box
 
 ```
-scp C:\FTESurf\surfd\maps.nginx proto@192.168.1.102:/tmp/ftesurf-maps.conf
-ssh -t proto@192.168.1.102 '
-  sudo install -m 0644 /tmp/ftesurf-maps.conf /etc/nginx/snippets/ftesurf-maps.conf
-  grep -q ftesurf_maps /etc/nginx/conf.d/surfd-ratelimit.conf ||
-    echo "limit_conn_zone \$binary_remote_addr zone=ftesurf_maps:10m;" |
-    sudo tee -a /etc/nginx/conf.d/surfd-ratelimit.conf
-  grep -q ftesurf-maps /etc/nginx/sites-enabled/play.proto.bar.conf ||
-    sudo sed -i "s|    include snippets/surfd-admin.conf;|&\n    include snippets/ftesurf-maps.conf;|" \
-      /etc/nginx/sites-enabled/play.proto.bar.conf
-  sudo nginx -t && sudo systemctl reload nginx'
+/maps/surf_utopia.bsp          HTTP 206   1,020,745 B/s
+/ftesurf/maps/surf_utopia.bsp  HTTP 206   1,036,246 B/s
+/lobbies.json                  HTTP 200   (the existing API, unaffected)
+/maps/                         HTTP 404   (no directory listing)
+/maps/../../etc/passwd         HTTP 404   (traversal refused)
 ```
 
-`nginx -t` before the reload is the guard that matters — a bad config there takes
-every site on that box down, not just this one, so nothing reloads unless it
-passes.
-
-**Then check it worked**, which also measures the cap:
+Both url layouts resolve, the rate lands within 2-4% of 1 MB/s, and nothing else
+on the box regressed. Then a whole map, to prove it serves the RIGHT bytes and
+not merely some bytes:
 
 ```
-curl -o NUL -w "%{http_code}  %{speed_download} B/s\n" https://play.proto.bar/maps/surf_utopia.bsp
+bhop_1n5an3   2,538,880 B at 1,041,175 B/s
+served sha1   f33756d2f7840d6858132dbdc041b109a37da5a5
+roster sha1   f33756d2f7840d6858132dbdc041b109a37da5a5
 ```
 
-You want `200` and roughly `1000000`. Right now that URL returns 404, which is
-the correct *before* state and is harmless: the engine reads a 404 as "this one
-file is absent" and falls back to the game netchan, so downloads work either
-way — just at netchan speed.
+That is the whole chain closed: catalogue -> pinned hash -> Pi inventory ->
+data/mapdl.txt -> nginx -> a client download -> the exact build the roster says.
+
+### One thing that went wrong, and why it did not matter
+
+The install command I first gave you had a bug: the `sed` replacement escaped
+the `&`, and in sed a bare `&` means "the whole matched line" while `\&` means a
+literal ampersand. So it overwrote your `include snippets/surfd-admin.conf;`
+line with a single `&` character.
+
+`nginx -t` caught it and nothing reloaded, which is exactly why that check is in
+the command before the reload rather than after it — the live site kept serving
+the old config and the admin login was never actually lost. Repaired in one
+line. Worth remembering if you ever hand-edit that vhost.
 
 ### What to test in game
 

@@ -1598,3 +1598,51 @@ shorter than the window, or the arm measures the gaps.
 - The 76-map Pi-vs-roster gap is explained: other gamemodes (`df_`, `ahop_`,
   `conc_`, `fy_`, `de_`) which the roster excludes by design, plus the six case
   mismatches above, which are now matched.
+
+## Map downloads are live on the Pi — 2026-09-28
+
+The last open item is closed. nginx serves maps from play.proto.bar with
+`limit_rate 1m`, both url layouts resolve, and the content is right:
+
+```
+/maps/surf_utopia.bsp          206   1,020,745 B/s
+/ftesurf/maps/surf_utopia.bsp  206   1,036,246 B/s
+/lobbies.json                  200   (unaffected)
+/maps/                         404   (no listing)
+/maps/../../etc/passwd         404   (traversal refused)
+
+bhop_1n5an3  2,538,880 B at 1,041,175 B/s
+served sha1  f33756d2f7840d6858132dbdc041b109a37da5a5
+roster sha1  f33756d2f7840d6858132dbdc041b109a37da5a5   <- identical
+```
+
+The whole chain is now measured end to end: catalogue -> pinned hash -> Pi
+inventory -> data/mapdl.txt -> nginx -> client download -> the exact build the
+roster named. The rate sits 2-4% over 1 MB/s, which is nginx's burst at the
+start of a connection, not a leak.
+
+### The install command I handed over was wrong, and the guard is why it cost nothing
+
+`sed` was given `\&` in the replacement. A bare `&` there means "the whole
+matched line", which was the intent; `\&` means a LITERAL AMPERSAND. So it
+replaced `include snippets/surfd-admin.conf;` with a single `&` character --
+which is both a syntax error and, had it loaded, the silent removal of the admin
+vhost.
+
+`nginx -t` refused the config and nothing reloaded, so the live box kept serving
+and the admin login was never lost. That check was in the command BEFORE the
+reload for exactly this reason. It is the second time in two days that a
+shell-quoting fault has eaten a load-bearing character in this tree (the
+ENGINE_PATCHES entry that lost its backticked nouns was the first), and the
+standing rule stands: compose escape-bearing text with a file write, not inside
+a shell string. A command that must be pasted into someone else's terminal is
+the one case where that is hard, so it needs the guard instead.
+
+### And a column index, again, immediately after writing the rule about it
+
+Picking a test map from data/mapdl.txt used `$5` where the kb column is `$6`.
+The tell was instant -- an empty candidate list rather than a plausible wrong
+one -- but it is the same fault as the `$10`/`$11` awk that earned the CLAUDE.md
+bullet, three days later and in the same session that cited it. The rule is
+right; what it needs is a habit, and the habit is reading the file's own header
+line before writing the awk rather than after it fails.
