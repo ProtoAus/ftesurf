@@ -1779,6 +1779,30 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+- **`git add <paths> && git commit` COMMITS THE WHOLE INDEX, including what the
+  peer staged before you started.** Staging your files does not unstage theirs.
+  On 2026-09-28 commit 7a3d194, titled as a zone-mirror change, carried the
+  peer's AGENTS.md, BACKLOG.md, lextest.md, m_main.qc and a two-file rename --
+  6 of its 8 files were theirs. `git commit -- <paths>` is mandatory in this
+  tree, and read `--stat` on the result before pushing. (The separate, harder
+  case is a peer's edit INSIDE a file you are also editing, which a pathspec
+  cannot catch; that one needs `git diff --cached`.)
+- **`./src/build.ps1` from the Bash tool silently does nothing** -- no output,
+  exit 0, no build. A measurement taken between two runs used a build that had
+  never happened, reported the previous number, and read as "the change had no
+  effect". Build through the PowerShell tool, and check `menu.dat`'s mtime if
+  the result surprises you.
+- **`build.ps1` writes its warnings with `Write-Host`, so `2>&1` into a
+  variable does not capture them.** A filter counting lines matching /warning/
+  over the captured output returned 0 while the build printed 2 real Q302s.
+  This is CLAUDE.md's filter trap in a new costume: the tool's own
+  `Done. N warnings` line is the count to trust, and it was correct both times.
+- **The staleness gate is doing double duty as a cross-session guard.**
+  `release.ps1` gate 1 scopes its dirty check to the SHIP SET, and `.qc` files
+  are not in it -- only the `.dat` they build. So a peer's uncommitted
+  `m_main.qc` does not trip gate 1; what stops you shipping it is gate 2
+  noticing the source is newer than the progs. Do not rely on gate 1 to tell
+  you whose work you are about to publish; read `git status` yourself.
 - A DEPLOY'S PROVENANCE CHECK GOES STALE THE MOMENT YOU FINISH IT, because the
   other session commits into the same working tree and `-Pi` ships the TREE.
   On 2026-09-28 I ran `git log <deployed>..HEAD`, cleared all four commits, built
@@ -2084,6 +2108,21 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - **`tier` on `/board/api/map` falls back, it does not 400.** The route shipped
   ignoring that parameter, so links carrying `tier=community` exist and
   test_web.py pins that they open ranked. A 400 there is a 400 on a bookmark.
+- **`/board/shot/<name>` gets its safety from `clean_map`, not an allowlist.**
+  Every other `/board/` file route has a fixed filename map; this one cannot
+  (630 maps and growing), so the name goes through the SAME validator that
+  decides what a map may be called on submit -- `..` refused, `_MAPNAME_OK`,
+  `MAX_MAP_LEN` -- and the result is joined to one directory. Images are named
+  for the MAP, not Momentum's uuid, so surfd needs no `mapmeta.txt`; the join
+  happens once in `tools/mapshots_web.py`. A miss is a 404 with no placeholder
+  and `board.js` loads through a detached `Image()` before showing the element,
+  so the 110 maps without one lay out as though the hero was never there.
+  test_web.py section 6c drives eight traversal shapes against a real file one
+  directory up, WITH a control proving that file exists and is readable.
+- **The nav tab is a function of the hash, not of the markup.** `aria-current`
+  was written into board.html once and never moved, so Leaderboard stayed lit
+  on top of a profile and Players never lit at all. `route()` owns it now; a
+  new view must call `navTab()` or it inherits the previous view's highlight.
 - **Two rules are spelled twice and must be changed twice**: the Quake colour
   strip (`board.js plain()` / `surfd.py web_plain()`), and the no-markup rule
   that test_board.py's private-word guard enforces by bare substring -- so a
@@ -2097,6 +2136,31 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   profile has 35 such boards and 0 contested firsts), by board size it led with
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
+
+### Zone files: what ships, what is fetched, and what the server must never read
+
+- **The library ships now** (`release.ps1` `$ShipGlobs`, 609 files, 2.5 MB). It
+  had never shipped before 2026-09-28, so every archive up to 0.1.17 gave a
+  player no zones for any map. `local\` and not `online\`, which looks backwards
+  and is not: `online\` resolves into the Momentum install, so on a machine
+  without Momentum it is not a directory at all. The Pi is the mirror image --
+  its `game/ftesurf/maps/zones/local` holds only 66 overrides because its
+  Momentum mount supplies the other 537, which is why the nginx alias points at
+  `ftesurf-site/zones` (the shipped set) and NOT at the server's own copy.
+- **`cl_zonedl.qc` fetches what a release could not know about.** Client only.
+  `sv_zones.qc` does not read `maps/zones/dl/` and must not: the server's table
+  is what the clock is a function of, and it is not going to come from an HTTP
+  fetch made by the box being timed. What the fetch buys is the DISPLAY.
+- **The URL is a client cvar (`cl_download_zonesrc`), never `sv_dlURL`.** That
+  one arrives in serverinfo and is whatever host you connected to; a zone file
+  from there would be a stranger deciding where this client thinks the start
+  zone is. A server cannot set a client cvar. Empty switches it off.
+- **`dl/` is tried LAST of the three file sources, and that is the safety
+  property rather than a preference.** A fetched file can never beat a shipped
+  one or your own edit, so a bad mirror stops mattering at the next release and
+  `rm -r maps/zones/dl` resets to shipped state.
+- **`ZSRC_DL` is appended, not inserted**, so the three values the `.rec` header
+  has always carried keep their numbers. The server never emits it.
 
 ### Keeping the imported boards fresh -- and the one source that is never cronned
 

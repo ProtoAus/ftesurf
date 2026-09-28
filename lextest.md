@@ -877,11 +877,12 @@ database, so every number below is one you can click.
 
 ### Judgement calls for you (2h continues)
 
-- **(g) Is "records" the right word for the contested count?** Your Momentum
-  profile has 35 first places and 0 of them contested -- every one is a stage
-  board nobody else in the archive has a time on. The page leads with 0 and
-  puts 35 in the tooltip. That is honest and it is also a profile that says
-  zero. Tell me if you would rather lead with 35 and footnote the caveat.
+- **(g) DONE -- the profile leads with 35 now.** You chose "show 35, note it's
+  mostly uncontested", so the big number is first places and a small grey line
+  underneath says how many were against somebody else. Your Momentum profile
+  reads 1,629 times / 35 first places / *0 contested* / 17 top tens; ours reads
+  128 / 109 / *24 contested* / 43. The word "contested" is mine, not standard
+  -- say if you want it to read "0 against others" or "0 head-to-head".
 - **(h) DONE -- imported dates are real now.** 81,290 rows backfilled from
   Momentum's own `created`; the board reads 2025-10-07, 2026-06-20 and so on
   instead of one afternoon. Nothing of ours moved (checked row by row against
@@ -889,14 +890,18 @@ database, so every number below is one you can click.
   sit below the cached top-25 and still show the import date; they are counted,
   not guessed at. Say if you would rather they showed nothing than show a date
   that is ours.
-- **(l) surf_utopia's #1 on the public board is 0.060 s faster than
-  Momentum's own #1.** It is a demo-corpus row with no matching board entry.
-  The existing "impossible time" check passes it because 0.5% of 53 s is
-  0.268 s. That tolerance was chosen when the bad rows being hunted were a
-  0.405 s "run" against a 92 s record -- it was never meant to cover a tenth
-  of a percent. I have not deleted anything. Your call: tighten the check with
-  an absolute floor, drop that row, or leave it and accept that our top line
-  can disagree with theirs by a hair.
+- **(l) DONE, and it found exactly one row.** You chose "tighten the check".
+  The allowance is now whichever is *smaller* -- 0.5%, or 20 milliseconds --
+  so short runs keep the percentage (18 ms on a 3.7 s record, tighter than the
+  floor anyway) and long ones stop getting a quarter of a second of slack.
+  Run across all 3,726 cached boards it flags **one** row:
+
+      surf_utopia  main  53.565s vs 53.625s official  -0.060s  z3nE柊
+
+  So it is one bad demo extraction, not a pattern. **Nothing is deleted** --
+  removing it needs a flag I have not passed, because wiping a row off a
+  public board is not mine to do on my own. Say the word and it is one
+  command; the demo file stays on disk either way.
 - **(i) The imported tint is 0.45 on the web line** against 0.55 in the game.
   Look at a MOM run and an OURS run side by side and tell me whether the blue
   reads as "different source" or just as "blue".
@@ -922,3 +927,100 @@ database, so every number below is one you can click.
   opens at `-0:02.130` on your surf_utopia run, standing still, and the speed
   strip shades the pre-timer part. Tell me if you would rather it opened at
   0:00 and treated the prestrafe as an extra you scrub back into.
+
+---
+
+## 6. Build 0.1.18 — four things you asked for, and a fourth bug they uncovered
+
+All four came out of one session. Three were the *same root cause* wearing
+different clothes, and that is the interesting part.
+
+### The one sentence version
+
+**Three sets of art and data that the game asks for by name have never been in
+a release archive.** Not broken code — the ship list in `release.ps1` simply
+never named them. Every install anyone has ever downloaded was missing all
+three. They are in now.
+
+### (1) The tabs at the top — fixed, already live
+
+Two separate bugs. `Leaderboard` stayed lit no matter which page you were on,
+because which tab is highlighted was written into the HTML once and never
+moved. And the download page had **no Players tab at all**, so from there the
+player list was unreachable. Both fixed; the lit tab now has a blue underline
+so it is obvious.
+
+Nothing to install — refresh `proto.bar/ftesurf`.
+
+### (2) Map screenshots on the site — done, already live
+
+Every map page opens with a picture of the map. 630 of the 740 maps on the
+board have one. The other 110 draw nothing at all — no grey box, no broken
+image icon, the page just starts at the title.
+
+### (3) surf_666 had no zones — and neither did any other map
+
+You reported this on the laptop. It is much bigger than one map: **no release
+has ever contained a single zone file.** I checked all twenty release folders
+on disk; every one has zero. So a fresh install could not time or rank *any*
+of the 587 downloadable maps we hold zones for, and said "no legs and no
+times" on all of them. surf_666's zone file has been sitting in this tree the
+whole time.
+
+2.5 MB added — a tenth of what the map thumbnails already cost.
+
+There is also a second half for maps zoned *after* a release: the client now
+asks our own server for a missing zone file. **That half needs one command
+from you** (it edits nginx, which needs a root password I do not have and
+should not have):
+
+```
+ssh proto@180.150.62.57 'sudo install -m 0644 /srv/nvme/surfd/maps.nginx /etc/nginx/snippets/ftesurf-maps.conf && sudo nginx -t && sudo systemctl reload nginx'
+```
+
+Until that runs the game asks once per map, gets a "not found", and stops.
+Harmless — it is the designed miss path — just doing nothing useful.
+
+### (4) The error texture behind the create-server menu
+
+You said the map screenshots "show as error". The comment in our own code
+claimed a missing image draws nothing. **It was wrong**, and I only found it
+by reading the engine: `drawpic` substitutes the checkerboard `no_texture` and
+draws it anyway.
+
+So now every map gets a backdrop, from the thumbnail atlas **we already
+ship** — blurred, as you asked, which hides that it started life 128x72. Costs
+zero extra download. If a map has a full-size screenshot on your machine
+(because you have Momentum installed) you still get the sharp one; the blur is
+the fallback.
+
+I verified this by hiding both image sources and looking at the actual
+screen — not by reasoning about it. The blur draws, and no error texture.
+
+### (5) The mic and speaker icons — same bug, found because of (4)
+
+You asked for these to be in the build, and checking turned up why they
+mattered: `gfx/thumbnails/` has never shipped either. The player list draws
+one of these beside **every** name with the same `drawpic` as above — and the
+idle state `speaking_off` is always on screen — so a shipped install has been
+drawing a small error texture next to every player, permanently.
+
+12 files, 31.5 KB. The `dark/` and `light/` folders beside them are your
+source art (SVGs and a PowerShell script) and deliberately do not ship.
+
+### What to actually test on the laptop
+
+1. **Create server screen.** Arrow through maps. Every map should have a
+   blurred backdrop. Nothing should ever be a checkerboard.
+2. **Player list** (while connected). The mic icon beside each name should be
+   a mic, not a checkerboard.
+3. **surf_666, or any map you download.** Join it and open the leaderboard.
+   It should have legs and times now instead of "no zone file".
+4. **The website tabs**, and click a map to see its picture.
+
+### What I could not check
+
+- Nothing on a real laptop — every screenshot above is from this desktop.
+- The zone *download* path has never completed successfully end to end,
+  because the server is not serving them until you run that one command. The
+  miss path is all that has run.

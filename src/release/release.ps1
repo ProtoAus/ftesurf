@@ -239,6 +239,19 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*' }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
+    # THE VOICE ICONS, and they have never shipped either -- same root cause as
+    # the zone library below and the same as gfx/mapshots: art referenced by
+    # NAME from code that no ship-set line carried.  cl_players.qc:403 draws one
+    # per row with drawpic, and drawpic substitutes no_texture on a miss and
+    # draws it (pr_menu.c:622-632, measured this session), so every shipped
+    # install has an 18x18 error texture beside every player's name -- always,
+    # because `speaking_off` is the IDLE state and not an event.
+    #
+    # 12 files, 31.5 KB.  Non-recursive by construction, which matters more here
+    # than elsewhere: dark\ and light\ beside them are the SOURCE art -- svg,
+    # Converted_32x32\, and a gemini.ps1 -- and none of that belongs in a
+    # player's install.  The *.png filter is the second line of that defence.
+    @{ Path = 'ftesurf/gfx/thumbnails'; Filter = '*.png' }
     # THE ZONE LIBRARY, WHICH HAD NEVER SHIPPED.  Every release through 0.1.16
     # carries zero zone files -- checked, not assumed: `find release/stage-* -path
     # '*zones*' -name '*.json'` is 0 in all 20 stages.  So a player's install

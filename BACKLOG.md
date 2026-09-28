@@ -1847,3 +1847,93 @@ because the erased span shrinks. Use this rather than looking.
 counting ticks under `--virtual-time-budget=9000` reported 5 ticks over 71 ms
 and a `setTimeout(3000)` that never fired, so a "press play and screenshot" arm
 measures nothing. Hold the parent's `load` event open so real seconds pass.
+
+---
+
+## Three sets of shipped content that were never in a release — 2026-09-28
+
+One root cause, three symptoms, all found from one report ("surf_666 said it
+has no zones"; "the backdrops show as error"). **`release.ps1`'s ship set is a
+named allowlist, and three things the game asks for BY NAME were never named.**
+Nothing was broken in code; the archives simply did not contain the files.
+
+Measured, not assumed: `find release/stage-* -path '*zones*' -name '*.json'`
+is 0 across all 20 stage trees.
+
+| What | Files | Size | Consequence on a shipped install |
+|---|---|---|---|
+| `ftesurf/maps/zones/local/*.json` | 609 | 2.5 MB | no zones for ANY map; `cl_scores.qc:2180` on all 587 downloadable zoned maps |
+| `ftesurf/gfx/thumbnails/*.png` | 12 | 31.5 KB | an error texture beside EVERY player's name, always |
+| `ftesurf/gfx/mapshots` | 5,078 | 1.1 GB | deliberately not shipped — see the backdrop entry below |
+
+### Why the icons were an error texture and not a blank
+
+`drawpic` on a missing pic substitutes `R2D_SafeCachePic("no_texture")` and
+draws it — `pr_menu.c:622-632`, read this session. The 0 it returns is
+advisory and everything ignores it. The QC comment over `ui_map_backdrop`
+claimed the opposite ("drawpic no-ops on a miss, so the cost of being wrong is
+a flat backdrop") and that claim is what kept the blind fallback alive.
+
+`drawsubpic` does NOT do this (`:688-712`), and `precache_pic` never draws at
+all (`:820-861`), so only one of the three builtins has the behaviour. With
+flag 512 (`PRECACHE_PIC_TEST`) `precache_pic` returns `""` when an image will
+not load, which is an existence test that does not go through `fopen`.
+
+`cl_players.qc:403` draws a voice icon per row with `drawpic`, and the idle
+state `speaking_off` is always on screen, so this was not an event — it was
+permanent.
+
+### The backdrop, and why the atlas was the answer
+
+`gfx/mapshots` is 269 MB at 720p and 876 MB at 1080p against a 33 MB
+installer, so it will never ship. `gfx/mapthumbs` already does — six atlases,
+28 MB, one 128x72 cell per map — so the picture was distributed all along at
+1/225th of the pixels. `ui_bgatlas` blows that cell up and gaussian-blurs it:
+nine taps, `{1,2,1}` separable, offsets in SOURCE TEXELS so the blur is
+resolution independent, each composited at `w_i/(sum so far)` so the running
+result is the exact weighted average rather than nine layers of paint.
+
+Tint and wash were measured, not eyeballed: at the sharp path's 0.7 dim and
+0.4 wash the top-left 500x300 of the frame was mean luma **9.7 of 255** — a
+backdrop nobody can see. Full brightness and a 0.25 wash give **14.7** with
+the panel still legible. A blur that has destroyed every edge cannot compete
+with text the way a sharp photograph can.
+
+### Zone downloads (`cl_zonedl.qc`)
+
+Shipping the library fixes installs; it does not fix a map zoned after a
+release, because both download paths compose exactly `maps/<name>.bsp`
+(`PF_m_downloadmap`, and `cl_parse.c:1002`). CSQC now asks
+`cl_download_zonesrc` — a CLIENT cvar, never `sv_dlURL`, which is whatever
+host you connected to — and writes to `maps/zones/dl/`, tried LAST of the
+three file sources so a fetched file can never beat a shipped one or your own
+edit.
+
+### Still open
+
+- **The nginx zone location is not installed.** `/etc/nginx` needs root and
+  `proto`'s NOPASSWD list covers only the `ftesurf@N` units, so this is one
+  operator command. `surfd/maps.nginx` carries it and the 609-file set is
+  already at `/srv/nvme/ftesurf-site/zones`. Until it runs, every zone fetch
+  404s — the designed miss path, so the client degrades to its old behaviour.
+- **`maps/zones/dl/` is never pruned.** A zone fetched for a map you played
+  once stays forever. Bounded by the library's own size (2.5 MB for all 609)
+  so it is not urgent, but nothing deletes it and nothing ages it out.
+- **One attempt per map CHANGE, not per session.** `zdl_tried` holds only the
+  last map asked about, so a rotation A -> B -> A asks for A twice. Bounded by
+  map loads, which are the most expensive thing the client does, so a table of
+  every name tried was judged not worth it. Caught on review by ftesurf-a1
+  when the comment claimed the stronger property.
+- **110 of the board's 740 maps have no web screenshot**, because they have no
+  `thumbuuid` in `mapmeta.txt`. They render with no hero and no gap, which is
+  correct, but they are also the maps a reader is least likely to recognise.
+- **`tools/mapshots_web.py` output is not wired into any deploy.** The 630
+  JPEGs were scp'd by hand to `/srv/nvme/surfd/data/webshots`. A map that
+  joins the board later gets no picture until someone re-runs it.
+- **Maps with no atlas cell get no backdrop either.** `ms_bgpage < 0` draws
+  the flat fill, which is the old behaviour and correct, but it means the
+  "every map has a backdrop" claim is really "every map with a thumbnail".
+- **The half-texel inset in `ui_bgatlas` is predicted, not observed.** It
+  exists because bilinear at 15x reaches into the neighbouring atlas cell and
+  a neighbour is a different map. If a stripe of an unrelated map ever appears
+  down one edge of a backdrop, that inset is where to look.
