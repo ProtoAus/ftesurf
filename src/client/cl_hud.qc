@@ -2537,23 +2537,23 @@ vector(float kind, float launch) HUD_SeqColor =
 	if (kind == SEG_BOARD) return '1.00 0.62 0.34';
 	if (kind == SEG_RAMP) return '0.72 0.74 0.76';  // on a ramp, grey
 	/*
-	  BUILD 86 -- THE AIR FAMILY IS GREEN.
+	  THE AIR FAMILY IS YELLOW.  Build 86 made it mint green; this is build 89.
 
-	      "Make the hud colours of the Jump/Bhop/Air a greenish colour."
+	      "make the bhop segments/air segments a yellow colour, I don't like
+	       the teal? colour it is now"
 
 	  One colour for all three words, because Jump, Bhop and Air are one KIND --
 	  HUD_SeqName picks between them off seq_sub and HUD_SeqColor is not handed
 	  it.  The row colour goes on saying which kind a row is; the word goes on
 	  saying how that air started.
 
-	  MINT RATHER THAN A PURE GREEN, and the three neighbours are the reason.
-	  The launch above is '0.62 1.00 0.62', a PALE yellow-green, and it has to
-	  stay the row that stands out; HUD_QualityColor's top two steps -- the
-	  percentage drawn at the right of this very row -- are '0.30 1.00 0.45' and
-	  '0.70 0.95 0.35'.  Pulling blue up and red down lands clear of all three,
-	  so the column's two signals stay separable at 14 px.
+	  PURE AND BRIGHT rather than a gold, because of the one real collision:
+	  HUD_QualityColor's middle step '1.00 0.85 0.25' is an amber drawn as the
+	  percentage at the right of THIS row, so a gold air row would match its own
+	  65-85%% figure.  Taking green to 0.98 and blue to 0.40 keeps the two apart
+	  at 14 px, and clears the launch's pale green '0.62 1.00 0.62' on red.
 	*/
-	return '0.40 0.90 0.70';                        // in the air, mint green
+	return '1.00 0.98 0.40';                        // in the air, lemon yellow
 };
 
 /*
@@ -5765,10 +5765,15 @@ void(vector scr) HUD_Draw =
 		*/
 		if (!rec_sl_held)
 		{
-			local float rate, ceiling, aircap;
+			local float rate, ceiling, aircap, tick;
 			aircap  = serverkeyfloat("pm_maxairspeed");  if (aircap <= 0) aircap = 30;
+			// The SERVER's tick, not PM_TICK.  The ceiling is ws^2/(2 g tick), so
+			// the compile-time 0.015 read 37.5 on a bhop lobby's pm_ticrate 0.01
+			// where the truth is 56.25 -- ui_eta 1.5x high, and every other
+			// movevar on these lines already comes off the serverinfo.
+			tick    = serverkeyfloat("pm_ticrate");      if (tick   <= 0) tick   = PM_TICK;
 			rate    = HUD_EnergyRate(e, cltime, ui_cv_window);
-			ceiling = Strafe_PowerCeiling(aircap, gravity, PM_TICK);
+			ceiling = Strafe_PowerCeiling(aircap, gravity, tick);
 			ui_eta  = (ceiling > 0.0001) ? (rate / ceiling) : 0;
 		}
 	}

@@ -778,6 +778,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Features / releases
 
+- **A segment's air percentage still reads over 100% when the energy came in
+  HORIZONTALLY (Patch 464).** `Seq_Push` divides the row's energy change by
+  `seg_emax`, and build 89 made that bound the total: a running high-water mark
+  adds any rise the flat-air ceiling cannot explain to the ceiling itself, so a
+  booster or an unseen hop is neutral rather than a 400% row. What it bounds is
+  the row's OWN energy, which is the right quantity, and the simulator at
+  `<scratchpad>/hopsim3.py` shows 0 rows over 100% across perfect, sloppy,
+  autobunny and boosted flights with the sloppy rows byte-identical to build 88.
+  The gap left: the rule fires on the frame the energy arrives, so a push whose
+  gain is spread thin enough to stay under one tick of ceiling per frame is
+  invisible to it -- measured at 10175 of 17021 impossible ticks under a single
+  unit of height across 300 .rec files. Those are individually noise and could
+  sum on a long conveyor. The fix wants the excess attributed per TICK rather
+  than per rendered frame, which means the server, which is where
+  `run_basevelocity` already lives.
+- **Ramp rows are not graded at all, which on a surf map is most of the column.**
+  `seq_pct` is `-1` for `SEG_RAMP` by design -- the flat-air ceiling does not
+  describe a plane, and `Strafe_PlaneBest`/`Strafe_CScale` (which do) are not
+  wired into the segment ceiling. Worth doing, and it is a SEPARATE job from the
+  over-100% work above: walking 300 .rec files tick by tick, the recorder's ramp
+  bit appears on NONE of the 17021 impossible ticks, so a plane-aware ceiling
+  would not have moved a single over-100% row. It would give surf players a
+  number where they currently get a dash. Same blocker as the trainer entry
+  below: the normal and the pre-clip velocity at the right cadence.
 - **The strafe trainer grades flat air only, so on a surf map it is blind
   exactly where the map is (Patch 462).** `hud_trainer` scores each strafe with
   `Strafe_Quality(rate, Strafe_IdealTurn(...))`, which is the FREE-AIR ideal. On

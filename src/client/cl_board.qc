@@ -517,6 +517,30 @@ float  seg_ground_e;        // Strafe_Energy at the last frame onground was true
 float  seg_ground_ok;       // ...and TRUE once that has actually been sampled
 float  seg_laste;           // ...and the previous frame's, for the landing edge
 
+/*
+  BUILD 89 -- WHY seg_emax IS NO LONGER ONLY A CEILING.
+
+  Build 88 seeded it with Board_JumpEnergy when a segment opened off the ground,
+  and named the gap it left: "a bhop chain the client never sees touch down is one
+  air segment with ONE jump term, so its ceiling under-counts the hops it did not
+  see."  hud_seq_hopbreak was meant to keep that rare and does not --
+  CheckJumpButton CLEARS onground on the jump tick (pm_source.c:2991), so a clean
+  autobunny hop has no end-of-tick frame with onground set and the chain is never
+  broken.
+
+  MEASURED, not reasoned.  Walking 300 .rec files tick by tick: 17021 air ticks
+  move the energy further than cap^2/2g, which is the most air strafing can add in
+  a tick and in free air the only thing that can move it at all.  8755 of those
+  carry the recorder's jump bit and 7504 are plain air -- boosters, push triggers
+  and teleports, the largest at 13407 units of height in 0.45 s.  The ramp bit
+  appears on NONE of them, which is what ruled out a plane-aware ceiling: ramp
+  time is already excluded by Board_KindOf, so it was never the cause.
+  Corpus-wide this was 217 distinct rows over 100%, worst 8800%.
+
+  The integration block in Board_Frame now puts that excess in the ceiling.  See
+  the essay there for why it goes on that side of the fraction.
+*/
+
 float  gain_kind;           // the finished segment on screen; SEG_NONE = nothing
 float  gain_speed;          // u/s, signed
 float  gain_de;             // the SAME segment in energy -- build 20, see hud_seq_units
@@ -2334,12 +2358,21 @@ float(float gravity) Board_JumpEnergy =
   computed rather than written down because none of those four numbers is ours:
   a server with a low sv_airaccelerate falls off the cap and the ceiling drops
   with it, and a percentage measured against the wrong ceiling is worse than no
-  percentage at all.  Strafe_PowerCeiling says the same thing for the cap-bound
-  case; this goes through Strafe_AirGain so the un-bound case is right too.
+  percentage at all.
+
+  BUILD 89 -- AND THE UN-BOUND CASE IS NOT a^2.  The old line took
+  Strafe_AirGain (which is min(k, cap)) and squared it, on the reasoning that
+  the cap-bound answer cap^2 generalises.  It does not.  Maximising
+  2g dE = 2ac + a^2 over c with a = min(cap - c, k) puts the optimum at c = 0
+  only while k >= cap; below the cap it moves to c = cap - k and is
+  k(2cap - k), which at k = cap agrees and at k = cap/2 is 1.5x what k^2 says.
+  Unreachable at any shipped tuning -- the crossover is about sv_airaccelerate
+  10 at 0.015 -- so no lobby number moves, but the claim the comment used to
+  make was the wrong way round.
 */
 float(vector vel, float onground, float gravity) Board_AirCeiling =
 {
-	local float airaccel, maxspeed, aircap, tick, fric, a;
+	local float airaccel, maxspeed, aircap, tick, fric, k, best;
 
 	tick     = serverkeyfloat("pm_ticrate");       if (tick     <= 0) tick     = PM_TICK;
 	airaccel = serverkeyfloat("sv_airaccelerate"); if (airaccel <= 0) airaccel = 150;
@@ -2354,8 +2387,17 @@ float(vector vel, float onground, float gravity) Board_AirCeiling =
 	if (!onground && vel_z > 0 && vel_z <= PM_NONJUMP_VEL)
 		fric = 0.25;
 
-	a = Strafe_AirGain(airaccel, maxspeed, tick, fric, aircap);
-	return (a * a) / (2 * gravity * tick);
+	if (gravity < 1)
+		gravity = 1;
+
+	// k UNCLAMPED, because whether it reaches the cap is the whole question --
+	// Strafe_AirGain returns min(k, cap) and would hide it.
+	k = airaccel * maxspeed * tick * fric;
+	best = (k >= aircap) ? (aircap * aircap) : (k * (2 * aircap - k));
+	if (best < 0)
+		best = 0;
+
+	return best / (2 * gravity * tick);
 };
 
 /*
@@ -2682,6 +2724,62 @@ void(vector org, vector vel, float onground) Board_Frame =
 
 	if (seg_kind == SEG_AIR && seg_valid)
 		seg_emax = seg_emax + Board_AirCeiling(vel, onground, gravity) * dt;
+
+	/*
+	  BUILD 89 -- ENERGY THAT ARRIVED TOO FAST TO HAVE BEEN STRAFED FOR IS PUT IN
+	  THE CEILING, which is what stops a row reading over 100%.
+
+	  The line above is the whole of what air strafing can add.  So a frame whose
+	  energy rose by MORE than that did not get the difference from the player's
+	  hands -- in free air nothing else can move the energy at all, since AirMove
+	  flattens wishdir (so AirAccelerate adds nothing vertical) and the engine's
+	  half-step gravity is exactly energy-neutral: dE = 0 per tick, algebraically.
+
+	  Adding the excess to the CEILING rather than subtracting it from the gain is
+	  the choice that matters.  Both make >100% impossible, but this one leaves
+	  seq_de holding the true energy change -- the column still sums to the run,
+	  which is what build 20 put energy in it for -- and makes the row read as the
+	  quality of the STRAFING either side of the impulse, with the impulse itself
+	  neutral.  Subtracting would instead make the row say "you failed to strafe
+	  for a booster", which is not a thing anyone can practise.
+
+	  IT REPLACES A JUMP-SHAPED DETECTOR and is much simpler than one.  The first
+	  cut looked for an upward step in vel_z of about pm_jumpvelocity; across an
+	  autobunny bounce the step is TWICE that (-vj to +vj) while the energy nets
+	  to zero, so the window was the wrong shape for the commonest case.  This
+	  needs no window, no jump velocity and no way to tell a jump from a push.
+
+	  CUMULATIVE, NOT PER FRAME, and the first cut got this wrong in a way the
+	  simulator caught: comparing one frame's rise against one frame's allowance
+	  adds excess on every gain and never gives any back on a loss, so a chain of
+	  jump-then-land-and-lose inflates the ceiling monotonically and a PERFECT
+	  strafe read 48.8%.  Against the running total instead, a later loss simply
+	  brings the total back under the high-water mark and nothing further accrues.
+	  One comparison, self-correcting, and it cannot drift.
+
+	  THE SLACK IS ONE TICK OF CEILING, which is what makes it safe rather than
+	  twitchy.  The client integrates per RENDERED frame while the gain arrives per
+	  TICK, so a frame can legitimately hold one more tick than its own dt accounts
+	  for (pmove_vel lands a tick ahead or not depending on frame phase --
+	  cl_hud.qc:325-338).  One tick covers that exactly; a booster clears it by one
+	  to two orders of magnitude.  Measured: 10175 of the 17021 impossible ticks
+	  are under a single unit of height, i.e. this jitter, and 1605 are over ten.
+
+	  The carry is on both sides because Board_SegmentEnd adds it to both, so the
+	  quantity bounded here is the one that reaches the row.
+	*/
+	if (seg_kind == SEG_AIR && seg_valid)
+	{
+		local float grew, room, slack;
+
+		slack = serverkeyfloat("pm_ticrate");  if (slack <= 0) slack = PM_TICK;
+		slack = Board_AirCeiling(vel, onground, gravity) * slack;
+
+		grew = (e - seg_e0)  + seg_carry_de;
+		room = seg_emax      + seg_carry_emax + slack;
+		if (grew > room)
+			seg_emax = seg_emax + (grew - room);
+	}
 
 	if (kind != seg_kind)
 	{

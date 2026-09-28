@@ -1313,6 +1313,28 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+- A CLIENT NEVER SEES AN AUTOBUNNY HOP TOUCH DOWN, so anything keyed on an
+  `onground` EDGE silently does not fire during a bhop chain.
+  `PMSrc_CheckJumpButton` clears onground on the jump tick itself
+  (`pm_source.c`, see the comment at :2991), and the client only ever observes
+  end-of-tick state, so a clean `pm_autobunny` chain has no frame with onground
+  set at all. `hud_seq_hopbreak` was written to split the segment column per hop
+  on exactly that edge and had never once done so; the column merged whole chains
+  and the energy percentage read over 100% because the ceiling counted one jump
+  for N. Two ticks on the ground is enough to make it visible, which is why an
+  imperfect hop behaves and a good one does not. If you need "a hop happened",
+  take it from the impulse (an upward step in `vel_z`, which gravity and
+  AirAccelerate cannot produce) or from the energy, not from the flag.
+- TO FIND ENERGY A PLAYER CANNOT HAVE EARNED, WALK A `.rec` TICK BY TICK against
+  `cap^2/2g`. `E = z + |v|^2/2g` is EXACTLY conserved by the engine's half-step
+  gravity (`PMSrc_StartGravity`/`FinishGravity`: dE = 0 per tick, algebraically),
+  and AirMove flattens wishdir so AirAccelerate adds nothing vertical -- so in
+  free air the ONLY thing that can move the energy is strafing, bounded by
+  `pm_maxairspeed^2 / 2g` per tick. Any tick over that is a booster, a push, a
+  teleport or a jump, and the recorder's flag word says which. 300 files gave
+  17021 such ticks in 4419 air runs and separated three causes in one pass;
+  `tools/p452col.py`'s `samples()` is the parser and `p449mark` has the flag
+  bits. Far cheaper than reproducing any of it in the game.
 - `pwsh`, never `powershell`.
 - AN ENTITY BOX FROM THE MODELS LUMP IS WHERE A BRUSH CAN BE, NOT WHERE IT IS —
   wrong by a wide margin three times; `tools/census/README.md` has the cases. Grade

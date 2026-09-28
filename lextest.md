@@ -359,6 +359,75 @@ strafe carrying every number behind the display (`trainer: R dur 345ms graded
 345ms q 0.926 rate 480.0 ideal 412.1 sync +0ms wrong 0ms v 260->294`), which is
 what `cfg/test/p462trn.cfg` grades. Send me that alongside what you saw.
 
+## 2g. The segment percentage, and the air rows are yellow now (Patch 464)
+
+Two things changed in the Segments column, one cosmetic and one arithmetic.
+
+**The colour.** Jump / Bhop / Air rows are lemon yellow now instead of the mint
+green, because you did not like the teal. The one real constraint was that the
+percentage at the right of the SAME row is drawn in `HUD_QualityColor`, whose
+65-85% step is an amber -- a gold air row would have matched its own figure -- so
+the yellow is pushed bright and pure (`1.00 0.98 0.40`) to stay clear of it, and
+clear of the launch row's pale green on the red channel. **Tell me if it fights
+with the percentage anyway at your HUD scale**, because that is the thing I chose
+by eye rather than measured, and it is one number to change.
+
+**The percentage.** You were right that over 100% was impossible and the calc was
+off, and you were right about where: *"anchor each energy on the previous hop...
+you can only gain so much per hop."*
+
+What I could establish without a hand on the game, and what I could not:
+
+*Established.* The per-hop maths was already correct. A tick-accurate simulator of
+the engine's own air movement, driving a PERFECT strafe, reads 100.0% through the
+old code -- so build 88's anchoring (launch point on one side, jump energy on the
+other) telescopes exactly, and the tickrate was already handled. That part was
+never broken.
+
+*Established.* Over-100% was real and common -- 217 distinct rows in your 463
+saved `seq.txt` files, worst 8800%, and the median **Jump** row was 125%. Walking
+300 `.rec` files tick by tick found the cause: 17021 air ticks move the energy
+further than air strafing physically can. 8755 of those are jump impulses inside
+an air run, because `pm_autobunny` re-jumps on the same tick it lands so the
+client never sees a hop touch down and `hud_seq_hopbreak` -- which exists to split
+the column per hop -- had never once fired. The other 7504 are boosters, push
+triggers and teleports, the largest at 13407 units of height in 0.45 s.
+
+*Established, and it killed my first theory.* The recorder's RAMP bit appears on
+**none** of those ticks, so the ramp was never the cause. I had told you it was
+and asked you to choose on that basis; the tick-walk said otherwise, so I built
+what the data supported instead. Grading ramp rows is still worth doing and is in
+BACKLOG.md as its own job -- it would give you a number where you currently get a
+dash -- but it would not have moved a single over-100% row.
+
+*The fix.* Any rise the flat-air ceiling cannot explain is added to the ceiling,
+against a running high-water mark. Both sides of the fraction then contain the
+booster or the unseen hop, so it is neutral, the row reads as the quality of the
+strafing either side of it, and `seq_de` still holds the true energy so the column
+still sums to the run. My first cut of this compared one frame at a time and was
+WRONG -- it credited gains and never gave anything back on losses, so a perfect
+strafe read 48.8%; the simulator caught that, not me reading it.
+
+*What it measures.* Across perfect, sloppy, autobunny and boosted flights at two
+tickrates and two frame rates: zero rows over 100%, and the sloppy rows are
+byte-identical to what build 88 printed (78.9% and 69.9%). That last part is the
+one I most wanted -- the new term must not be a way to earn credit for strafing
+badly, and it is not.
+
+**NOT established: no human has used any of this.** Everything above is a
+simulator and a corpus of files. What I would like you to look at:
+
+1. Does a good bhop chain read near 100% now, per hop, rather than one merged row
+   with a silly number? That is the whole change.
+2. Does a bad hop still read low? If a sloppy chain reads 100% the rule is being
+   used as credit and I want to know immediately.
+3. On a map with a booster, the boosted row should read about your strafing
+   quality rather than 400%. It will still not be very informative on a row that
+   is mostly booster -- there is little strafing in it to grade.
+4. Any row still over 100%. There is one known way left (a purely HORIZONTAL push
+   spread thin enough to hide under one tick of ceiling per frame) and it is in
+   BACKLOG.md; a screenshot would tell me whether it happens in practice.
+
 ## 3. Known limits of the line, so they do not surprise you
 
 These are in BACKLOG.md with the detail; the short version:
