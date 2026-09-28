@@ -1221,6 +1221,18 @@ script rather than passing it as an argument, where `ps` would show it.
   retried. Every answer is cached, so a re-run is free and an interruption
   resumes -- which is the property that makes re-running it polite rather than
   rude.
+- **MOMENTUM'S API DOES RATE-LIMIT, AND 1.0 s EVENTUALLY TRIPS IT.** Measured
+  2026-09-28: HTTP 429 after 2,164 consecutive requests in one 61-minute run,
+  ~2,700 across the session. This CONTRADICTS the wrlines reference, which says
+  "No 429 was ever observed and none is mentioned in any file -- the constraint
+  is stated as courtesy and cost-to-the-operator, not as an enforced limit the
+  author ran into." That was true of a tool that never swept; it is not true of
+  one that does. The limit is real and it is theirs to set.
+  THE ANSWER IS TO COME BACK LATER, NOT TO RETRY. momfetch stops on it, caches
+  everything already fetched, and resumes exactly where it left off, so a full
+  sweep is two or three sittings rather than one. Do not lower the delay to
+  "get it done"; do not add a retry. A 429 is the host asking for less, and the
+  only correct reply is less.
 - **`surfd/momwatch.py` needs no hook in the game.** surfd already records what
   every lobby is on, so it reads the `lobbies` table, refreshes the boards of
   currently-played maps that are missing or stale, and does nothing otherwise.
