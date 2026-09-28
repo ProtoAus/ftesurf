@@ -1022,6 +1022,21 @@ bannered as superseded.)
   makes this argument for a client-written `.rec`. reccheck then reports the
   file as `zones not stated` / `nonce not stated` / `ruleset unknown` in its own
   words, and `pm_verify` cannot pass one of these and should not.
+- **THE DEMO NAMES THE BUILD IT WAS RECORDED ON, and it is checkable exactly.**
+  A `.mtv`'s 40-hex `mapHash` is a plain SHA1 of the `.bsp` -- verified on five
+  maps, and the `.wrpath` carries 39 of it at 0x74. So `momimport --maps <dir>`
+  hashes the map once and compares. **877 of 7,040 extracted paths (12.5 %)
+  name a build this install does not have**, concentrated in maps re-released
+  under one name (`surf_simple_v1` alone has 183). Those are SKIPPED by default:
+  the time is real, but a line built from their samples is placed against
+  geometry the player never touched, which is wrong and looks right.
+  `--other-build` imports them anyway and the header records the verdict as
+  `mapbuild <sha> ok|other|nomap`.
+  This is the exact form of the wider hazard: 322 of 1,062 map names shared
+  between the Momentum and CS:S installs are DIFFERENT BUILDS under one name,
+  and all 322 are plain-named -- the `_ksf` suffix marks the cases somebody
+  disambiguated, not the cases that collide. A size comparison is a proxy; the
+  SHA1 is the answer.
 - **Velocity is a central difference of positions and it SPIKES AT COVERAGE
   GAPS.** 7.6 % of files exceed the demo's own `maxHorizontalSpeed` by >5 %, 44
   by over 2x; 81 % of those carry no `LOW_CONFIDENCE` flag, because that flag

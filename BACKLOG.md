@@ -991,12 +991,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `surfd/ksfimport.py` is player-seeded at 25 records each, which is a poor
   substitute for a map board. Whoever finds it should rewrite that tool around
   it. **Do not find it by brute-forcing their server**; read their client.
-- **The imported corpus is partial: 2,961 of ~7,480 demos.** Only the maps
-  wrlines had already extracted are converted. The rest need
-  `wrpath_extract.py --all --skip-existing` (see AGENTS.md; 3 jobs, it is
-  memory-hungry) and then a re-run of `tools/momimport.py` and
-  `surfd/momindex.py`. Both are idempotent and the extractor skips what exists,
-  so this is resumable at any point.
+- **877 imported runs are on a build we do not have, and are SKIPPED.** The
+  demo's own map SHA1 says so (see AGENTS.md); their times are real and their
+  paths are not ours to draw. `momimport --other-build` imports them if anyone
+  ever wants the times without the lines -- which would want the line
+  suppressed per run, and nothing does that yet.
+- **80 demos failed extraction outright** (of 735 in the last batch): mostly
+  `gave up after 30 s in the chain search`. `wrpath_extract --timeout 0` or a
+  larger value would take another pass at them; the extractor records failures
+  so a re-run skips them by default.
+- **The corpus was extracted on CPython 3.10, not the 3.13.9 the extractor is
+  bit-pinned to.** Its own oracle still gates every chain, so the output is
+  valid, but a chain here may differ from the one the wrlines DLL would pick on
+  the same demo. Nothing measured says it does; nothing says it does not. If
+  parity with the DLL ever matters, re-extract on 3.13.9 and compare.
 - **`surf_antichamber` has 5 demos and no zone file** -- the only one of 500
   demo maps without one. Its runs import and draw, but nothing times that map.
 - **An imported run's air-control and energy colouring is graded against THIS

@@ -90,6 +90,39 @@ VRATIO_FLAG = 1.05
 
 SLUG_RE = re.compile(r"[^a-zA-Z0-9]+")
 
+# THE DEMO NAMES THE BUILD IT WAS RECORDED ON, and we can check it exactly.
+# A .mtv's 40-hex mapHash is a plain SHA1 of the .bsp -- verified against five
+# maps, first 20 hex identical on every one -- and the .wrpath carries the first
+# 39 of it at 0x74.  So a run recorded on a different build of the same map is
+# detectable for the cost of hashing the map once.
+#
+# IT IS NOT A CURIOSITY.  Measured over all 7040 extracted paths: 877 of them
+# (12.5%) name a build this install does not have, concentrated in maps that
+# were re-released under one name -- surf_simple_v1 alone has 183. A line drawn
+# from those samples is placed against geometry the player never touched, which
+# is wrong AND LOOKS RIGHT, so they are skipped unless --other-build says
+# otherwise.  The TIME is real; it is the path that does not belong here.
+_sha_cache = {}
+
+
+def map_sha1(mapname, dirs):
+    """SHA1 of <mapname>.bsp from the first dir that has it, or None."""
+    key = mapname.lower()
+    if key in _sha_cache:
+        return _sha_cache[key]
+    val = None
+    for d in dirs:
+        p = os.path.join(d, mapname + ".bsp")
+        if os.path.exists(p):
+            h = hashlib.sha1()
+            with open(p, "rb") as fh:
+                for blk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(blk)
+            val = h.hexdigest().upper()
+            break
+    _sha_cache[key] = val
+    return val
+
 # A Momentum alias is free text and arrives as real Unicode -- the first
 # whole-corpus run died on cp1252 after a single ASCII test file passed.  Files
 # are written UTF-8, and the name itself is stripped of anything that could end
@@ -109,7 +142,8 @@ def clean_name(s):
 class WrPath(object):
     __slots__ = ("map", "player", "steamid64", "run_time", "tick_interval",
                  "date_ms", "gamemode", "track_type", "track_num", "flags",
-                 "src_sha1", "start_index", "start_found", "points", "crc_ok")
+                 "src_sha1", "map_hash", "start_index", "start_found",
+                 "points", "crc_ok")
 
 
 def wr_parse(blob):
@@ -135,6 +169,8 @@ def wr_parse(blob):
     p.date_ms, = struct.unpack_from("<q", blob, 0x2C)
     p.map = blob[0x34:0x74].split(b"\0")[0].decode("utf-8", "replace")
     p.src_sha1 = blob[0x9C:0xC4].split(b"\0")[0].decode("utf-8", "replace")
+    # 39 of the demo's 40-char map SHA1: the build it was RECORDED on.
+    p.map_hash = blob[0x74:0x9C].split(b"\0")[0].decode("utf-8", "replace").upper()
     p.player = blob[0xC4:0xE4].split(b"\0")[0].decode("utf-8", "replace")
     p.start_index, = struct.unpack_from("<I", blob, 0xE8)
     p.start_found = bool(struct.unpack_from("<I", blob, 0xEC)[0] & 1)
@@ -224,7 +260,7 @@ def angles_from_velocity(vx, vy, vz):
 # --------------------------------------------------------------------------
 # conversion
 
-def convert(w, oracle):
+def convert(w, oracle, build="unknown"):
     """Return (text, info).  Writes no file."""
     if len(w.points) < 2:
         raise ValueError("fewer than 2 points")
@@ -262,6 +298,10 @@ def convert(w, oracle):
     # a reader that does not know them and are the hook for the ones that do.
     a("foreign momentum %s %d %d %d %d" % (w.src_sha1, w.gamemode,
                                            w.track_type, w.track_num, w.steamid64))
+    # Which build this run was recorded on, and whether it is the one this
+    # server loads.  `other` means the samples describe geometry that is not
+    # here; the time is still real, the path is not ours to draw.
+    a("mapbuild %s %s" % (w.map_hash or "-", build))
     a("momquality %.4f %.1f %d" % (ratio, oracle or 0.0,
                                    1 if (w.flags & F_LOWCONF) else 0))
     a("flags 0")
@@ -302,12 +342,21 @@ def index_demos(dirs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--paths", required=True, help="wrlines_data/paths root")
+    ap.add_argument("--paths", action="append", required=True,
+                    help="a .wrpath root (repeatable); later roots are deduped "
+                         "against earlier ones by destination leaf")
     ap.add_argument("--demos", action="append", default=[],
                     help="a .mtv root (repeatable); used only for the speed oracle")
     ap.add_argument("--out", required=True, help="destination data/momentum root")
     ap.add_argument("--map", action="append", default=[], help="limit to these maps")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--maps", action="append", default=[],
+                    help="a directory of .bsp to check the recorded build "
+                         "against (repeatable)")
+    ap.add_argument("--other-build", action="store_true",
+                    help="import runs recorded on a DIFFERENT build of the "
+                         "map: their line is drawn against geometry the "
+                         "player never touched")
     ap.add_argument("--go", action="store_true", help="actually write files")
     args = ap.parse_args()
 
@@ -315,10 +364,11 @@ def main():
     keys = sorted(stems)
 
     srcs = []
-    for dp, _, fns in os.walk(args.paths):
-        for f in fns:
-            if f.endswith(".wrpath"):
-                srcs.append(os.path.join(dp, f))
+    for root in args.paths:
+        for dp, _, fns in os.walk(root):
+            for f in fns:
+                if f.endswith(".wrpath"):
+                    srcs.append(os.path.join(dp, f))
     srcs.sort()
     if args.map:
         want = {m.lower() for m in args.map}
@@ -327,6 +377,7 @@ def main():
         srcs = srcs[:args.limit]
 
     rows, bad, noor, flagged = [], [], 0, 0
+    otherbuild = nobsp = 0
     for p in srcs:
         try:
             w = wr_parse(open(p, "rb").read())
@@ -340,8 +391,21 @@ def main():
                 oracle = mtv_oracle(stems[keys[i]])
         if oracle is None:
             noor += 1
+        build = "unknown"
+        if args.maps and w.map_hash:
+            s = map_sha1(w.map, args.maps)
+            if s is None:
+                nobsp += 1
+                build = "nomap"
+            elif s.startswith(w.map_hash):
+                build = "ok"
+            else:
+                build = "other"
+                otherbuild += 1
+                if not args.other_build:
+                    continue
         try:
-            text, info = convert(w, oracle)
+            text, info = convert(w, oracle, build)
         except Exception as e:
             bad.append((p, str(e)))
             continue
@@ -392,6 +456,12 @@ def main():
     print("converted       %d" % len(rows))
     print("deduped away    %d  (same run held twice: the game's own copy and the leaderboard download)" % dropped)
     print("unreadable      %d" % len(bad))
+    print("other build     %d  (%s)"
+          % (otherbuild,
+             "imported anyway" if args.other_build else "SKIPPED -- their "
+             "line would be drawn against geometry the player never touched"))
+    if nobsp:
+        print("no bsp to check %d" % nobsp)
     print("no speed oracle %d  (imported, momquality ratio 0)" % noor)
     print("flagged >%.2fx   %d  (imported untouched)" % (VRATIO_FLAG, flagged))
     for p, e in bad[:8]:
