@@ -587,7 +587,7 @@ solid. If a CS:S-built map needs content the Momentum mount does not carry, that
 is where it will show, and it will show as missing textures or props you fall
 through rather than as an error.
 
-## 2j. Map downloads — shipped in 0.1.15, and the library is now complete
+## 2j. Map downloads — 0.1.16, the library is complete, and wrong builds are fixable
 
 ### Get 0.1.15 first. 0.1.14 cannot show you this feature at all.
 
@@ -602,7 +602,7 @@ feature failing — it was never in a release. Two separate faults:
    from what is already on your disk, so every row is an installed map and
    **nothing draws a button**. The feature was compiled in, working, invisible.
 
-Both fixed. `https://proto.bar/ftesurf` now serves **0.1.15**. If the button is
+Both fixed. `https://proto.bar/ftesurf` now serves **0.1.16**. If the button is
 missing, check the version before anything else — that is by far the likeliest
 cause, and `data/mapdl.txt` should exist in your install with ~1743 lines.
 
@@ -665,6 +665,78 @@ The six-hourly scan is registered and healthy (last run 18:07, result 0, next
   the Pi does not, and Linux paths are case-sensitive. Now matched by fold.
 - **The published archive is the right one.** Re-downloaded from dl.proto.bar
   after publishing: sha256 matches and `mapdl.txt` inside carries 1743 rows.
+
+### The laptop kick, and what 0.1.16 does about it
+
+You loaded surf_666 on a laptop with no CS:S or HL2 and got kicked:
+
+```
+Map model file does not match (maps/surf_666.bsp), 0XC6702B74 != 0X77D2E0BD
+You have been kicked due to the file maps/surf_666.bsp being modfied
+```
+
+and asked whether the map should have downloaded. **It should not have, and it
+did not, and that was correct** — you already had a file called
+`maps/surf_666.bsp`. Nothing to do with the missing CS:S or HL2.
+
+What was actually wrong: your copy is a **different build** from the server's.
+Measured before changing anything —
+
+```
+roster surf_666   sha1 cb5343da…   pin=ok, 53 demo attestations
+this workstation  cb5343da…
+the Pi (server)   cb5343da…        identical, and the pinned build
+your laptop       a third thing
+```
+
+— so the Pi is serving the right cut and your Momentum install is the odd one
+out. The browser had no way to tell you that and no way to replace it, because
+it only ever asked *is there a file of that name*.
+
+**0.1.16 asks about the build instead.** A map whose size does not match the
+server's now draws **Wrong build** with `re-get <size>` under it instead of a
+time. Clicking it downloads the server's build into `ftesurf/maps/`, which wins
+the mount — **your Steam install is never touched or deleted**, it is shadowed.
+If the re-get fails you keep the old map rather than ending up with none.
+
+**What to do on the laptop:** open the map list, find surf_666, and if it says
+Wrong build, click it. Then rejoin. If it does NOT say Wrong build, tell me —
+that means the two builds are the same size and different content, which this
+check cannot see (below), and I will need a different signal.
+
+**The honest limit.** The check compares file size. A size difference is proof
+of a different build; **equal sizes are proof of nothing**, so it under-reports
+and will never accuse a correct install. That is deliberately the safe way
+round, because the action it offers spends your bandwidth.
+
+**It found your two open questions on its own.** On this workstation the count
+comes up 2, and the two are `surf_dune` and `surf_fantasy` — the exact pair 2i
+above has been asking you about. That pair was originally found by hash
+attestation; this found it by file size, from the other end. Two independent
+methods, same two maps, which is the strongest evidence 2i has had. The sizes
+are not marginal: surf_dune is 149 MB here against the Pi's 20.7 MB.
+
+### About CS:S and HL2
+
+You do not need either for downloads to work. But your log says neither is
+installed (`fs_load: steam game "Counter-Strike Source/cstrike" not
+found/installed`), and that will cost you textures on most surf maps. For
+surf_666 specifically the engine reported those 38 materials as supplied by no
+pack at all, so CS:S would not have fixed those particular ones — but it will
+matter broadly. Worth installing when you can.
+
+### One thing I found in your log and have NOT fixed
+
+```
+Downloading https://play.proto.bar/play.proto.bar/sp to maps/dlcache/surf_666.bsp...
+```
+
+That URL is malformed — `<base>/play.proto.bar/sp`. The sound download two lines
+later used the correct shape, so `sv_dlURL` is fine; it is the engine's own
+post-kick map-repair path building a bad remote name. Traced as far as
+`cl_parse.c:1045-1047`, the `package/` branch, and **not** root-caused. It only
+fires once you have already been kicked, so the Wrong build button gets you out
+of that situation first. Left open deliberately rather than guessed at.
 
 ### Still waiting on you
 

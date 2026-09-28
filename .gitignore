@@ -224,6 +224,7 @@ __pycache__/
 # this with the port its throttled mirror picked that run, so a committed copy
 # would be a stale address masquerading as source.
 /ftesurf/cfg/test/p465src.cfg
+/ftesurf/cfg/test/p466src.cfg
 !/ftesurf/data/
 !/ftesurf/gfx/
 !/ftesurf/glsl/

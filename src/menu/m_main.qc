@@ -231,6 +231,7 @@ strbuf ms_view;
 float  ms_count;                // entries in ms_name
 float  ms_viewcount;            // entries in ms_view
 float  ms_dlcount;              // rows appended by ui_dl_load, for the report
+float  ms_dlstale;              // installed rows whose BUILD differs from the Pi's (ms_have "2")
 float  ms_nsrc[SRC_COUNT];      // entries per SRC_*, for the load report
 
 string ms_query;                // live contents of the search field
@@ -1673,12 +1674,28 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
   A missing file is not an error and not a warning.  It means downloads are not
   set up on this install, and the list behaves exactly as it did before.
 */
+// Up here, away from the rest of the download block, because ui_dl_load is its
+// first caller and QuakeC has no forward references.
+//
+// Separate from ui_dl_ready because the two arrived in different patches: a 465
+// binary can download a map it does not have and cannot size one it does, so
+// the wrong-build check has to go quiet on its own rather than take the whole
+// Download button down with it.
+float  dl_have_kb;      // 1 if the engine has mapfilekb (Patch 466), -1 unasked
+
+float() ui_dl_kb_ready =
+{
+	if (dl_have_kb == 0)
+		dl_have_kb = checkbuiltin(mapfilekb) ? 1 : -1;
+	return dl_have_kb > 0;
+};
+
 void() ui_dl_load =
 {
 	local filestream fh;
 	local hashtable byname;
 	local string ln, nm, key;
-	local float i, n, row, appended, badged;
+	local float i, n, row, appended, badged, stale;
 
 	fh = fopen("data/mapdl.txt", FILE_READ);
 	if (fh < 0)
@@ -1691,6 +1708,7 @@ void() ui_dl_load =
 
 	appended = 0;
 	badged = 0;
+	stale = 0;
 	while ((ln = fgets(fh)) != "")
 	{
 		n = tokenize(ln);
@@ -1705,12 +1723,42 @@ void() ui_dl_load =
 
 		if (row >= 0)
 		{
-			// Already on disk.  The only thing this file can still tell us is
-			// whether it turned up recently enough to badge.
+			// Already on disk.  Whether it turned up recently enough to badge.
 			if (argv(7) == "1")
 			{
 				bufstr_set(ms_new, row, "1");
 				badged = badged + 1;
+			}
+
+			/*
+			  HAVING A FILE OF THAT NAME AND HAVING THE RIGHT BUILD ARE DIFFERENT
+			  FACTS, and only the first was ever checked -- so the one case the
+			  Download button could not help with was a WRONG build, which is
+			  exactly what a server kicks you for (mapcrc mismatch, cl_parse.c:
+			  7669 "being modfied").  Reported from a laptop whose Momentum copy
+			  of surf_666 differed from the Pi's.
+
+			  mapfilekb resolves through the MOUNT ORDER.  search_getfilesize
+			  cannot: it answers for whichever duplicate the search listed first
+			  and NAMESORT is explicitly unstable, so with the same map in two
+			  mounts it can describe the copy the engine will NOT load -- which
+			  is precisely the case this is for.
+
+			  A SIZE DIFFERENCE IS CONCLUSIVE PROOF of a different build; equal
+			  sizes prove nothing at all.  So this under-reports by construction
+			  and never accuses a correct install, which is the right way round
+			  for a check whose action is a re-download.
+			*/
+			if (ui_dl_kb_ready())
+			{
+				local float lkb = mapfilekb(nm);
+				local float pkb = stof(argv(5));
+				if (lkb > 0 && pkb > 0 && lkb != pkb)
+				{
+					bufstr_set(ms_have, row, "2");
+					bufstr_set(ms_dlkb, row, argv(5));
+					stale = stale + 1;
+				}
 			}
 			continue;
 		}
@@ -1734,8 +1782,12 @@ void() ui_dl_load =
 	hash_destroytab(byname);
 
 	ms_dlcount = appended;
+	ms_dlstale = stale;
 	print(sprintf("FTESurf: mapdl offers %g map(s) not installed here, %g new\n",
 	              appended, badged));
+	if (stale > 0)
+		print(sprintf("FTESurf: %g installed map(s) are a DIFFERENT BUILD from the server's -- offering a re-get\n",
+		              stale));
 };
 
 void() ui_load_maps =
@@ -1755,6 +1807,7 @@ void() ui_load_maps =
 	ms_dlkb  = buf_create();
 	ms_count = 0;
 	ms_dlcount = 0;
+	ms_dlstale = 0;
 
 	/*
 	  SB_FULLPACKAGEPATH makes search_getpackagename return the whole purepath
@@ -4051,6 +4104,9 @@ string(string s, float w, vector sz) ui_fit_text =
 #define DL_HOLD     6   // seconds a finished/failed row keeps saying so
 
 float  dl_have_bi;      // 1 if the engine has the builtin, -1 unasked
+                        // dl_have_kb and ui_dl_kb_ready live up beside
+                        // ui_dl_load, which is their first caller and runs long
+                        // before this block -- QuakeC has no forward references.
 float  dl_state;
 string dl_name;         // the map we asked for, "" when idle
 float  dl_pct;
@@ -4065,6 +4121,7 @@ float() ui_dl_ready =
 		dl_have_bi = checkbuiltin(downloadmap) ? 1 : -1;
 	return dl_have_bi > 0;
 };
+
 
 // "1.4 MB/s" / "812 KB/s".  Below a megabyte the round number is the one that
 // moves, and a player watching a bar wants to see it move.
@@ -4082,14 +4139,18 @@ string(float kb) ui_dl_size =
 	return sprintf("%g KB", kb);
 };
 
-void(string name) ui_dl_start =
+// `force` re-gets a map we hold the wrong BUILD of.  It cannot touch a Steam
+// install: the download's fsroot is FS_GAMEONLY on this path, so the file lands
+// in ftesurf/maps/ and shadows the lower mount, and Patch 465's .tmp-then-rename
+// means a failed re-get leaves the old build rather than no map at all.
+void(string name, optional float force) ui_dl_start =
 {
 	if (!ui_dl_ready())
 		return;
 	if (dl_state == DL_ACTIVE)
 		return;                 // the engine does one at a time; so do we
 
-	float r = downloadmap(name);
+	float r = downloadmap(name, force);
 	if (r == 1)
 	{
 		dl_name  = name;
@@ -4534,7 +4595,7 @@ void(vector screensize) screen_create =
 			  depending on which maps happen to be missing, and the placeholder
 			  time above exists precisely so those widths hold still.
 			*/
-			float dlg = (ms_dlcount > 0 && ui_dl_ready()) ? DL_W : 0;
+			float dlg = ((ms_dlcount > 0 || ms_dlstale > 0) && ui_dl_ready()) ? DL_W : 0;
 
 			vector rp = '0 0 0';
 			for (float idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
@@ -4753,13 +4814,16 @@ void(vector screensize) screen_create =
 				  downloads anyway and two buttons that both do nothing is worse
 				  than one that is plainly unavailable.
 				*/
-				if (dlg > 0 && bufstr_get(ms_have, real) == "0")
+				// "2" is installed-but-wrong-build; it offers a re-get, so the
+				// gutter is drawn for anything that is not a settled "1".
+				if (dlg > 0 && bufstr_get(ms_have, real) != "1")
 				{
 					vector gp = [rp_x + rs_x - 4 - DL_W, rp_y + 8];
 					vector gs = [DL_W - 4, ROW_H - 16];
 					string gid = strcat("cs_dl", ftos(idx));
 					string mnm = bufstr_get(ms_name, real);
 					float  mine = (dl_name == mnm);
+					float  wrong = (bufstr_get(ms_have, real) == "2");
 
 					if (mine && dl_state == DL_ACTIVE)
 					{
@@ -4787,13 +4851,19 @@ void(vector screensize) screen_create =
 						float gh = sui_is_hovered(gid);
 						sui_fill(gp, gs, gh ? COL_ROW_HOVER : COL_PANEL, 1, 0);
 						sui_border_box(gp, gs, 1, COL_BORDER, 1, 0);
-						sui_text([gp_x + 6, gp_y + 2], SZ_ROW, "Download",
+						// A re-get is not the same offer as a download and must
+						// not read like one: this row already has a playable
+						// map, it is just the wrong cut of it.
+						sui_text([gp_x + 6, gp_y + 2], SZ_ROW,
+						         wrong ? "Wrong build" : "Download",
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
 						sui_text([gp_x + 6, gp_y + 18], SZ_ROW,
-						         ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
+						         wrong ? strcat("^3re-get ",
+						                        ui_dl_size(stof(bufstr_get(ms_dlkb, real))))
+						               : ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
 						         COL_DIM, 1, 0);
 						if (sui_is_released(gid))
-							ui_dl_start(mnm);
+							ui_dl_start(mnm, wrong);
 					}
 				}
 
@@ -5170,15 +5240,22 @@ float(string cmd) m_consolecommand =
 			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes\n",
 			              dl_pct, dl_rate, dl_done, dl_total));
 			print(sprintf("ui_dlmap: dlstate %S\n", serverkey("dlstate")));
-			print(sprintf("ui_dlmap: offerable %g, list %g\n",
-			              ms_dlcount, ms_count));
+			print(sprintf("ui_dlmap: offerable %g, wrongbuild %g, list %g\n",
+			              ms_dlcount, ms_dlstale, ms_count));
 		}
 		else
 		{
-			print(sprintf("ui_dlmap: asking for %S (have=%s)\n", argv(1),
+			// `ui_dlmap <map> force` is the headless twin of the Wrong build
+			// button, the way `ui_dlmap <map>` is the Download one's. localkb
+			// is the engine's mount-resolved answer and -1 means the binary
+			// predates Patch 466.
+			print(sprintf("ui_dlmap: asking for %S (have=%s, localkb=%g, force=%g)\n",
+			              argv(1),
 			              ui_file_exists(strcat("maps/", argv(1), ".bsp"))
-			                  ? "yes" : "no"));
-			ui_dl_start(argv(1));
+			                  ? "yes" : "no",
+			              ui_dl_kb_ready() ? mapfilekb(argv(1)) : -1,
+			              (argv(2) == "force") ? 1 : 0));
+			ui_dl_start(argv(1), (argv(2) == "force") ? 1 : 0);
 			print(sprintf("ui_dlmap: state %g, map %S\n", dl_state, dl_name));
 		}
 		return TRUE;

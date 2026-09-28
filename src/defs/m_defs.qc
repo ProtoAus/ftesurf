@@ -382,7 +382,17 @@ void(string,...) localcmd_local = #0:localcmd_local;
 // that is not [A-Za-z0-9_-]. Returns 0 refused, 1 started, 2 already present.
 // Optional, like localcmd_local above: feature-detected with checkbuiltin() at
 // the use site, and with an older binary the Download button never draws.
-float(string mapname) downloadmap = #0:downloadmap;
+// `force` (Patch 466) re-gets a map we already have a FILE for but the wrong
+// BUILD of. It lands in ftesurf/maps/ and shadows the lower mount; fsroot is
+// FS_GAMEONLY on this path, so it can never touch a Steam install.
+float(string mapname, optional float force) downloadmap = #0:downloadmap;
+// Engine extension (pr_menu.c:PF_m_mapfilekb, Patch 466) — the size in KB of
+// the maps/<name>.bsp the engine would actually LOAD, resolved through the
+// mount order. KB and not bytes because a QC float is exact only to 2^24 and
+// maps here run past 200 MB; it also matches data/mapdl.txt's own column, so
+// the two compare as authored. 0 when absent. Feature-detected separately from
+// downloadmap — a Patch 465 binary has one and not the other.
+float(string mapname) mapfilekb = #0:mapfilekb;
 float(string name) cvar = #14;
 void(string name, string value) cvar_set = #15;
 void(string text) dprint = #16;

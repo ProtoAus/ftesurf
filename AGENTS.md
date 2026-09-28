@@ -1195,6 +1195,50 @@ bannered as superseded.)
   name in that file IS the download path, and nginx's `alias` uses the captured
   name verbatim on a case-sensitive filesystem, so the catalogue's spelling
   would 404 forever. `mapscan.py` folds case to MATCH and emits what the Pi has.
+- **HAVING THE FILE AND HAVING THE RIGHT BUILD ARE DIFFERENT FACTS** (Patch
+  466). Patch 465 asked `COM_FCheckExists`, a question about a NAME, so the one
+  case the Download button could not help with was a WRONG build -- which is
+  exactly what a server kicks you for (mapcrc mismatch, `cl_parse.c:7669`).
+  `ui_dl_load` now compares `mapfilekb(name)` against `data/mapdl.txt`'s kb and
+  marks the row `ms_have "2"`, which draws "Wrong build" and re-gets with
+  `downloadmap(name, 1)`.
+- **THE RE-GET CANNOT TOUCH A STEAM INSTALL, and that was traced rather than
+  assumed.** `DLLF_OVERWRITE` means "ignore any local files" (client.h:609), not
+  "clobber", and this path leaves `fsroot` at `HTTP_CL_Get`'s default
+  `FS_GAMEONLY` -- only `DLLF_NONGAME` forces `FS_ROOT` (`cl_parse.c:810`). So
+  the file lands in `ftesurf/maps/` and SHADOWS the lower mount. Worth the trace:
+  if it had been `FS_ROOT`, the `FS_Remove` beside the rename would have deleted
+  content out of the user's Momentum install.
+- **`mapfilekb` AND NOT `search_getfilesize`.** The first resolves through the
+  MOUNT ORDER (`FS_FLocateFile`); the second answers for whichever duplicate the
+  search listed first, and NAMESORT is an explicitly unstable qsort
+  (`pr_bgcmd.c:3592-3598`), so with the same map in two mounts it can describe
+  the copy the engine will NOT load -- precisely the configuration the check is
+  for. Measured: with a truncated shadow planted, `mapfilekb` reads 483 KB, the
+  shadow, not the 965 KB copy beneath it.
+- **KILOBYTES, NOT BYTES, ACROSS THE QC BOUNDARY.** A QC float is 32-bit and
+  exact only to 2^24; maps here pass 200 MB and surf_666 alone is 21,644,745
+  bytes. KB also matches `data/mapdl.txt`'s own column so the two compare as
+  authored. (And the integer divide has to come first: `(double)(n+1023)/1024`
+  is a ratio, not a ceiling.)
+- **A SIZE DIFFERENCE IS PROOF OF A DIFFERENT BUILD; EQUAL SIZES ARE PROOF OF
+  NOTHING.** The check under-reports by construction and never accuses a correct
+  install, which is the right way round when the action is to spend a player's
+  bandwidth. Two builds of identical size are missed, and that is the documented
+  limit rather than a bug to fix with a tighter threshold.
+- **THE WRONG-BUILD BASELINE ON THIS BOX IS 2, NOT 0.** `surf_dune` and
+  `surf_fantasy` -- the maps lextest 2i asks about -- and `tools/p466reget.py`
+  computes the baseline rather than assuming zero, because a control that
+  expected 0 would have failed for the right reason and been "fixed" the wrong
+  way. That the size check finds exactly the pair the hash-attestation check
+  found is two independent methods agreeing, and is the strongest evidence 2i
+  has.
+- **`ui_load_maps` IS LAZY, so a reading taken at startup is not a reading.** A
+  bare `ui_dlmap` before the browser has opened reports `list 0`, and a
+  `wrongbuild` of 0 from an empty list says nothing about the install. The first
+  cut of p466reget graded exactly that and the control passed while measuring
+  nothing. Any arm that inspects the map list must call `ui_maplist` first, and
+  its grader must discard rows whose `list` is 0.
 - **A FEATURE IS NOT SHIPPED UNTIL ITS DATA FILE IS IN `$ShipGameFiles`.** 0.1.15
   had to be cut because 0.1.14 carried the map-download code and no
   `data/mapdl.txt` for it to read -- `ftesurf/data/*` is gitignored and the ship
