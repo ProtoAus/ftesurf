@@ -66,9 +66,34 @@ UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
 
+# Consecutive 404s before the sweep stops.  See NoSuchBoard: a 404 is about
+# one board, but a host that began refusing everything would answer 404 to
+# everything too, and only the count tells them apart.
+SKIP_STREAK = 40
+
 
 class Refused(Exception):
-    """The host said no.  Reported, never retried."""
+    """The host said no TO US.  Reported, never retried, stops the sweep."""
+
+
+class NoSuchBoard(Exception):
+    """404: that board does not exist.  An ANSWER about one map, not a refusal.
+
+    THIS COST A SWEEP.  The catalogue comes from the game's own `_cache`, which
+    carries submission maps alongside approved ones; the public API does not
+    publish every one of them, and says so with a 404.  The first run of this
+    tool treated that as Refused and stopped at 547 of 3,692 on surf_binx
+    (mapid 2365), having already cached 12,025 perfectly good rows.
+
+    The same fix had been made in surfd/ksfimport.py an hour earlier, for the
+    same shape -- a per-item "no such thing" wearing a status code -- and was
+    not carried across.  Two tools, one author, one afternoon.
+
+    BOUNDED, because the reading is inferred: SKIP_STREAK consecutive 404s
+    stops the sweep, since a host that has started refusing everything looks
+    exactly like a long run of unpublished maps for as long as you do not
+    count.
+    """
 
 
 def get(url):
@@ -80,6 +105,8 @@ def get(url):
                 raise Refused("HTTP %d" % r.status)
             return r.read()
     except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise NoSuchBoard("HTTP 404")
         raise Refused("HTTP %d" % e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
@@ -227,6 +254,7 @@ def main():
         return 0
 
     asked = empty = rows = 0
+    gone = streak = 0
     refused = None
     t0 = time.time()
     for i, (name, mid, gm, tt, tn) in enumerate(todo):
@@ -236,9 +264,28 @@ def main():
                "&take=%d&skip=0" % (API, mid, gm, tt, tn, take))
         try:
             body = get(url)
+        except NoSuchBoard:
+            asked += 1
+            gone += 1
+            streak += 1
+            if streak >= SKIP_STREAK:
+                refused = ("%d boards in a row answered 404 -- stopping. That is\n"
+                           "  more likely the host refusing than a run of\n"
+                           "  unpublished maps, and the difference is not ours\n"
+                           "  to assume." % streak)
+                break
+            # Cache the absence, so a resume does not ask again.
+            rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
+                   "trackNum": tn, "total": 0, "fetched": int(time.time()),
+                   "absent": True, "rows": []}
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            with io.open(p, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(json.dumps(rec, separators=(",", ":")))
+            continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
             break
+        streak = 0
         asked += 1
         try:
             doc = json.loads(body.decode("utf-8", "replace"))
@@ -262,9 +309,13 @@ def main():
 
     print()
     print("requests made     %d" % asked)
-    print("boards with rows  %d" % (asked - empty))
+    # asked counts every answer including the absent ones, so both have to
+    # come off or this line claims rows for a board that 404d.
+    print("boards with rows  %d" % (asked - empty - gone))
     print("boards empty      %d  (the catalogue claims them; nobody has run them)"
           % empty)
+    print("boards absent     %d  (404: in the game's cache, not on the public API)"
+          % gone)
     print("run rows cached   %d" % rows)
     print("elapsed           %.1f min" % ((time.time() - t0) / 60.0))
     if refused:
