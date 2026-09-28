@@ -1005,6 +1005,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Their times are real and their paths are not ours to draw. `momimport
   --other-build` imports them if anyone ever wants the times without the lines,
   which would want the line suppressed per run, and nothing does that yet.
+
+- **SIX MAPS CONTRIBUTE NOTHING BECAUSE EVERY ONE OF THEIR RUNS WAS SKIPPED**:
+  `surf_anubis` (9), `ts_rookie` (23), `surf_intbonus` (2), `surf_simple_v5`
+  (2), `surf_corruption` (1), `surf_shade` (1) -- 38 runs. We hold a build of
+  each that nobody in this demo library ever played. They are not errors and
+  nothing is lost that could be recovered here, but a map that appears in the
+  corpus and yields no rows looks identical to a map that was never imported,
+  and the importer does not say which it is.
+- **A CORPUS-WIDE BUILD COUNT IS A FLOOR, NOT A TOTAL.** 103 of 478 corpus maps
+  have runs on more than one build, and `surf_4am` has **three** attested here
+  (62 runs kept, 20 dropped) against the two a 40-map demo sample found. So a
+  roster column saying `builds=2` means "two seen", and a second corpus can
+  raise it. Anything that resolves a contested map by picking the most-played
+  build should say how many it saw as well as which it chose.
 - **80 demos failed extraction outright** (of 735 in the last batch): mostly
   `gave up after 30 s in the chain search`. `wrpath_extract --timeout 0` or a
   larger value would take another pass at them; the extractor records failures
