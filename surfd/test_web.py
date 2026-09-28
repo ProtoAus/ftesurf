@@ -749,6 +749,47 @@ def main():
     check("...which does not close the board",
           get(m, "/board/api/maps", ip="198.51.100.7").status_code, 200)
 
+    print("\n--- 6d. the map want-queue ---------------------------------------")
+    # A write hung off a public read, which is the only one in this file. What
+    # matters is not that it counts, but that it counts ONLY maps the route has
+    # already agreed exist -- otherwise a stranger picks what our cron asks
+    # somebody else's API about, which is the whole thing the queue exists to
+    # avoid.
+    m = fresh()
+
+    def wants(mod):
+        c = mod.connect()
+        try:
+            return {r["map"]: r["asked"]
+                    for r in c.execute("SELECT map, asked FROM mapwant")}
+        finally:
+            c.close()
+
+    check("a fresh database has an empty queue", wants(m), {})
+    get(m, "/board/api/map?map=bhop_eazy")
+    check("viewing a map queues it", wants(m), {"bhop_eazy": 1})
+    get(m, "/board/api/map?map=bhop_eazy")
+    get(m, "/board/api/map?map=bhop_eazy")
+    check("viewing it again counts rather than duplicating",
+          wants(m), {"bhop_eazy": 3})
+
+    # THE ARM THAT MATTERS. Each of these is refused by the route, so none may
+    # reach the queue -- a 404 that still queued would let anyone fill it.
+    for bad in ("surf_does_not_exist", "../../etc/passwd", "", "%2e%2e",
+                "surf_kitsune.jpg"):
+        get(m, "/board/api/map?map=" + bad)
+    check("a map the route refuses is never queued", wants(m), {"bhop_eazy": 3})
+
+    # And it must not be able to fail the page it hangs off. The table is
+    # dropped from under the live connection, so the INSERT raises for real
+    # rather than being skipped by a flag.
+    c = m.connect()
+    c.execute("DROP TABLE mapwant")
+    c.commit()
+    c.close()
+    check("a broken queue does not break the board",
+          get(m, "/board/api/map?map=bhop_eazy").status_code, 200)
+
     print("\n%d failed" % len(FAILED))
     for f in FAILED:
         print("  " + f)

@@ -383,7 +383,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 # --------------------------------------------------------------------------
@@ -750,6 +750,24 @@ CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
 # the VERIFIED badge does not move because of it: what a receipt is worth is a
 # policy question, and a sweeper that quietly started demoting runs would be
 # answering it by itself.  See the owner's review pages.
+# Maps somebody asked to SEE, so momwatch can deepen their imported boards next
+# tick.  A want-queue and not a fetch: a public unauthenticated GET must never
+# become an outbound request to somebody else's API on our behalf, which is the
+# whole reason the row is recorded here and spent on our own schedule.
+#
+# ONE ROW PER MAP, so this cannot grow past the library (~3,726 boards over ~740
+# named maps) however hard it is hammered -- and web_map only records a map it
+# has already decided exists, so a name-enumeration sweep fills nothing.
+MAPWANT_SQL = """
+CREATE TABLE IF NOT EXISTS mapwant (
+    map    TEXT PRIMARY KEY,
+    asked  INTEGER NOT NULL DEFAULT 0,
+    first  INTEGER NOT NULL,
+    last   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mapwant_last ON mapwant (last);
+"""
+
 RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS receipts (
     runid     TEXT PRIMARY KEY,
@@ -1263,6 +1281,16 @@ def migrate():
             conn.execute("PRAGMA user_version=8")
             conn.commit()
             version = 8
+
+        if version < 9:
+            # SCHEMA 9: the map want-queue.  One ADDITIVE table, no column
+            # touched, so a schema-8 surfd reads this database unchanged and
+            # simply never looks at it -- the same rollback property schema 7
+            # was built for.
+            conn.executescript(MAPWANT_SQL)
+            conn.execute("PRAGMA user_version=9")
+            conn.commit()
+            version = 9
 
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
@@ -3751,6 +3779,32 @@ def web_maps():
     return resp
 
 
+def note_want(db, mapname):
+    """Record that somebody asked to see this map's board.  Never raises.
+
+    This is a write hung off a READ, so a failure must cost the caller nothing:
+    a board page that 500s because a counter could not be incremented would be
+    a worse bug by far than a queue that does not fill.  `except Exception` is
+    deliberate rather than lazy -- there is no failure mode of this statement
+    worth failing a page view over, and the realistic one (a locked database
+    while momboards is indexing) is both expected and self-correcting, since the
+    next viewer records the same want.
+
+    UPSERT needs SQLite 3.24+; the Pi measured 3.40.1 and five other statements
+    here already depend on it.
+    """
+    try:
+        now = int(time.time())
+        db.execute(
+            "INSERT INTO mapwant (map, asked, first, last) VALUES (?, 1, ?, ?)"
+            " ON CONFLICT(map) DO UPDATE SET asked = asked + 1,"
+            "                               last  = excluded.last",
+            (mapname, now, now))
+        db.commit()
+    except Exception:
+        log.debug("mapwant note failed for %s", mapname, exc_info=True)
+
+
 @app.get("/board/api/map")
 def web_map():
     now = int(time.time())
@@ -3795,6 +3849,9 @@ def web_map():
             + TIERS_IMPORTED).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
+        # AFTER the 404, so only a map we have just agreed exists is queued and
+        # a sweep of invented names fills nothing.  See MAPWANT_SQL.
+        note_want(db, mapname)
         if not any(raw.values()) and boards:
             have = [(b["track"], b["leg"], b["style"]) for b in boards]
             track, leg, style = next(
