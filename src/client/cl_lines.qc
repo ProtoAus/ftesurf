@@ -215,6 +215,25 @@ float  ln_hp, ln_pi, ln_pd, ln_pa;
 vector ln_pp, ln_pc;
 float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
 
+/*
+  PROVENANCE, AS A TINT RATHER THAN A COLOUR MODE.  A run imported from another
+  game (tools/momimport.py; the `foreign` key in its .rec header) is drawn with
+  its colour pulled toward blue.
+
+  A TINT AND NOT A SIXTH hud_watch_path_color, which was the obvious shape and
+  is the wrong one: a mode REPLACES the colouring, so an imported line could be
+  identified or it could be read for speed, gain, contact, energy or air
+  control, never both.  Blending composes with all five, so the thing the line
+  is FOR still works and the line still says where it came from.
+
+  Luminance is preserved rather than flattened -- the blend keeps the relative
+  brightness the mode produced -- so a fast stretch of an imported line is still
+  visibly faster than a slow one.
+*/
+float  ln_fgn[LN_SLOTS];        // slot holds a foreign run
+float  ln_dtint;                // the draw's blend strength, 0 = none
+#define LN_FGNCOL  '0.25 0.45 1.00'
+
 void() Line_Alloc =
 {
 	if (ln_pos)
@@ -301,6 +320,7 @@ void(float s) Line_Begin =
 	ln_tick[s] = 0.015;
 	ln_pkind[s] = -1;               // unknown, not "in the air": the first sample
 	ln_ron[s]   = FALSE;            // of a board line's window must mark nothing
+	ln_fgn[s]   = FALSE;            // until the header says otherwise
 	ln_rlast[s] = 0;
 	ln_gjmp[s]  = FALSE;
 	ln_pvz[s]   = 0;
@@ -308,6 +328,26 @@ void(float s) Line_Begin =
 	ln_pyaw[s]  = 0;
 	ln_pt[s]    = 0;
 	ln_gsince[s] = 0;
+};
+
+/*
+  The run in this slot came from another game.  Called by whichever scanner read
+  the header -- the replay's (slot 0) and the board-line job's (slots 1..8) are
+  separate passes over the same grammar, so both have to say it.
+
+  Set AFTER Line_Begin, which clears it: a slot is reused by whatever is drawn
+  there next, and a foreign line leaving its tint behind for the local run that
+  replaces it would be a lie that persists until the map changes.
+*/
+void(float s, float on) Line_Foreign =
+{
+	if (s >= 0 && s < LN_SLOTS)
+		ln_fgn[s] = on ? TRUE : FALSE;
+};
+
+float(float s) Line_IsForeign =
+{
+	return (s >= 0 && s < LN_SLOTS) ? ln_fgn[s] : FALSE;
 };
 
 /*
@@ -1306,6 +1346,8 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 	p = ln_pos[b + i];
 	d = (p - ln_eye) * ln_fwd;
 	c = ln_col[b + i];
+	if (ln_dtint)
+		c = c + (LN_FGNCOL - c) * ln_dtint;
 	a = ((ln_t[b + i] <= tplay) ? 1 : ahead) * ln_da;
 	// The fade is by distance, as the cull is (review: by depth it cut hard at
 	// the screen's sides); only a chunk reaching into it pays the vlen.
@@ -1766,6 +1808,8 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	ln_db = b;
 	ln_dn = ln_n[s];
 	ln_da = alpha;
+	// Read per draw, not per point: the cvar cannot change inside one line.
+	ln_dtint = ln_fgn[s] ? bound(0, cvar("hud_watch_path_foreign"), 1) : 0;
 
 	ln_rn = 0;
 	ln_hp = FALSE;

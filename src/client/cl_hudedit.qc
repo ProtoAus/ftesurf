@@ -662,6 +662,11 @@ string(string id, float row) HE_OptDef =
 		                      "|Text height for the labels.";
 		if (row == 20) return "hud_seq_units|Units|c|0 1 2|u/s;energy;both"
 		                      "|Shared with the segment column, so the line and the panel never disagree.";
+		// Appended rather than inserted beside the other colour row: these must
+		// stay contiguous and HE_ResetAll walks them, so renumbering eighteen
+		// rows to group two would risk the reset button for a tidier list.
+		if (row == 21) return "hud_watch_path_foreign|Imported tint|c|0 0.35 0.55 0.8|off;slight;normal;strong"
+		                      "|Runs imported from Momentum Mod are pulled toward blue. A blend, not a colour mode, so `Colour by` still reads on them.";
 		return "";
 	}
 

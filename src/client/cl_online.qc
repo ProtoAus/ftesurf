@@ -61,6 +61,19 @@
 #define OB_TIER    "ranked"   // the one tier any board draws; community holds demoted runs
 
 /*
+  The imported board (surfd TIER_MOMENTUM).  Runs converted from another game's
+  recordings by tools/momimport.py -- Momentum Mod's own demos, on the same maps
+  and in the same world coordinates, but under Source physics and that game's
+  zones.  A SEPARATE TIER AND NOT A MERGE: those are two different measurements
+  of the same map, and surfd keeps them apart in the runs primary key so one
+  player can hold a time on each without either displacing the other.
+
+  Asking for it is allowed (surfd's TIERS_READ); submitting into it is not
+  (TIERS), so nothing a lobby says can put a row here.
+*/
+#define OB_TIER_MOM "momentum"
+
+/*
   How long a failed board waits before ONE re-ask, and how long a request may
   stay in flight before it is written off.
 
@@ -206,6 +219,7 @@ float  ob_bplayer;         // strbuf: stable player id per row
 // report the other tier without asking for it.
 float  ob_cnt_ranked;
 float  ob_cnt_community;
+float  ob_cnt_momentum;   // the imported board's size; 0 hides its tab
 
 void() Online_Status;
 
@@ -272,6 +286,18 @@ void() Online_Clear =
 	ob_t = 0;
 	ob_cnt_ranked = 0;
 	ob_cnt_community = 0;
+	/*
+	  DELIBERATELY NOT CLEARED HERE, unlike the two above.  This one decides
+	  whether the imported tab is DRAWN, and a reset runs on every leg change --
+	  so clearing it would take the chip off screen for the length of each fetch
+	  and put it back, i.e. flicker on every click down the leg list.  Every
+	  successful parse overwrites it, so the only stale window is between a map
+	  change and the first answer on the new map, where the worst case is a tab
+	  offered for a moment on a map that has no imported runs. That is the
+	  milder of the two failures, and the tab answers honestly when clicked.
+
+	  ob_cnt_momentum = 0;   <- on purpose, see above
+	*/
 	ob_mine = -1;
 	Online_FreeHave();
 };
@@ -420,6 +446,10 @@ void(string body) Online_Parse =
 	counts = json_find_object_child(root, "counts");
 	ob_cnt_ranked    = json_get_float(json_find_object_child(counts, "ranked"));
 	ob_cnt_community = json_get_float(json_find_object_child(counts, "community"));
+	// Absent on a surfd older than this feature, and json_get_float answers 0
+	// for a missing child -- which reads as "no imported board", the right
+	// answer against a server that has none.
+	ob_cnt_momentum  = json_get_float(json_find_object_child(counts, "momentum"));
 
 	// The reply's own clock, which the age column is measured against.
 	ob_t = json_get_float(json_find_object_child(root, "t"));
@@ -1278,6 +1308,18 @@ string(float i) Online_WhyString =
 {
 	if (i < 0 || i >= ob_n)
 		return "";
+	/*
+	  The imported board fills this column, and it is the reason that column is
+	  worth having on a board where it has always been "" by construction.  The
+	  word names where the time came from, not a fault: an imported run has no
+	  TF_UNCERT bit to describe because it was never certified here at all.
+
+	  Read off the board's OWN tier rather than per row: every row of one fetch
+	  shares it (surfd echoes it back, ob_have_tier), and a per-row copy would
+	  be a second home for a fact with one.
+	*/
+	if (ob_have_tier == OB_TIER_MOM)
+		return "momentum";
 	// The words, their order and why they name the hole rather than the
 	// player: FS_CertWhy (sh_defs.qc), shared with the card and the chat line.
 	return FS_CertWhy(ob_flags[i]);

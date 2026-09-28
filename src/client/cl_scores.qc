@@ -126,7 +126,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
   boards, plus this disk's own archive.
 
   PATCH 355: NO TIER CHIP.  surfd's community tier only ever held runs from our
-  own lobbies that certifiable() demoted; the online tabs show OB_TIER (ranked)
+  own lobbies that certifiable() demoted; the ranked tabs show OB_TIER (ranked)
   and a demoted run is told to its player and kept in Local instead.
 
   THE TWO ONLINE TABS ARE ONE REQUEST WITH ONE FIELD CHANGED, which is exactly
@@ -145,6 +145,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_ONLINE    0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
+#define SB_T_MOMENTUM  3   // the imported board; see OB_TIER_MOM in cl_online.qc
 
 float rec_sb_tab;                // SB_T_*
 
@@ -182,6 +183,21 @@ void() Scores_Status;
 */
 float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
 string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "clean"; };
+
+/*
+  The other wire value, and it is a third tab's worth of difference in one
+  string for the same reason StyleOf is: Momentum is a TIER, not a style, so it
+  varies the parameter surfd keeps in the runs primary key beside `style`.
+
+  The imported board is clean-only. Segmented has no meaning for a run this game
+  did not time -- the class comes from our own TF_SEGMENT, which no imported run
+  carries -- so the momentum tab asks for "clean" and StyleOf already answers
+  that for any tab that is not SB_T_SEGMENT.
+*/
+string() Scores_TierOf =
+{
+	return (rec_sb_tab == SB_T_MOMENTUM) ? OB_TIER_MOM : OB_TIER;
+};
 
 /*
   PATCH 357: THE BOARD FOLLOWS A FINISH.  Results_BoardWatch (cl_results.qc)
@@ -801,7 +817,7 @@ void() Scores_Refresh =
 	if (Scores_IsOnline())
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		Online_Need(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		            OB_TIER, Scores_StyleOf());
+		            Scores_TierOf(), Scores_StyleOf());
 };
 
 /*
@@ -1550,7 +1566,8 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 };
 
 /*
-  surfd's board -- OB_TIER, in the style the tab names.
+  surfd's board -- the tier AND the style the tab names (Scores_TierOf,
+  Scores_StyleOf).
 
   IT DRAWS FOUR DIFFERENT KINDS OF NOTHING, and that is most of the function.
 
@@ -1590,7 +1607,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	  there.
 	*/
 	// Shows, not Describes: a refetch of this same board keeps its rows up.
-	if (!Online_Shows(track, leg, OB_TIER, Scores_StyleOf()))
+	if (!Online_Shows(track, leg, Scores_TierOf(), Scores_StyleOf()))
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 
@@ -2217,13 +2234,27 @@ void(vector scr) Scores_Draw =
 		rec_sb_tab = SB_T_LOCAL;
 		rec_sb_tabauto = FALSE;
 	}
+	/*
+	  The imported board, drawn only where there is one.  ob_cnt_momentum comes
+	  from the LAST fetch's counts, so the chip appears once any board on this
+	  map has been asked for -- which is the same moment the player could act on
+	  it.  Hiding it when the count is 0 is deliberate: on a map nobody has
+	  imported, a fourth tab that is always empty is worse than no tab.
+	*/
+	if (ob_cnt_momentum > 0 || rec_sb_tab == SB_T_MOMENTUM)
+	if (Scores_Chip("sb_t3", [x0 + pad * 4 + chipw * 3, ytabs], [chipw, chiph],
+	                "momentum", rec_sb_tab == SB_T_MOMENTUM))
+	{
+		rec_sb_tab = SB_T_MOMENTUM;
+		rec_sb_tabauto = FALSE;
+	}
 
 	if (Scores_IsOnline())
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	if (Scores_Chip("sb_tref", [x0 + w - pad - chipw, ytabs], [chipw, chiph],
 	                "refresh", FALSE))
 		Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		             OB_TIER, Scores_StyleOf());
+		             Scores_TierOf(), Scores_StyleOf());
 
 	yhead = ytabs + chiph + ceil(pad * 0.5);
 
@@ -2386,7 +2417,7 @@ void(vector scr) Scores_Draw =
 		*/
 		if (Online_Shows(rec_sb_legtrack[rec_sb_leg],
 		                 rec_sb_legnum[rec_sb_leg],
-		                 OB_TIER, Scores_StyleOf()))
+		                 Scores_TierOf(), Scores_StyleOf()))
 		{
 			s = sprintf("%g %s time(s) on %s", ob_n,
 			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
@@ -2901,7 +2932,7 @@ float(string cmd) Scores_ConsoleCommand =
 			Scores_Refresh();
 			if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 				Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-				             OB_TIER, Scores_StyleOf());
+				             Scores_TierOf(), Scores_StyleOf());
 		}
 		// `scores` on its own toggles the board, which makes it useless for
 		// asking what the board holds.  This asks without touching anything.
@@ -3043,7 +3074,7 @@ void() Scores_Status =
 	shown = 0;
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		shown = Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		                     OB_TIER, Scores_StyleOf());
+		                     Scores_TierOf(), Scores_StyleOf());
 	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
 	print(sprintf("  follow %g leg %g/%g ticks %g  seek %g wait %g  rank %g\n",
 	              rec_sb_finpend, rec_sb_fintrack, rec_sb_finleg, rec_sb_finticks,

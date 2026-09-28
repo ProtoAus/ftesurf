@@ -123,6 +123,9 @@ float  rec_wt_leg;
   which is exactly the disagreement build 25's stage-slice bug turned out to be.
 */
 string rec_wt_runid;
+// The `foreign` header key: this recording came from another game, so the
+// line is tinted and nothing here pretends it was timed by this server.
+float  rec_wt_foreign;
 float  rec_wt_pad;
 
 // rec_wt_time is declared in the cl_keys.qc override block with rec_wt_rate: it is
@@ -1007,6 +1010,7 @@ void() Watch_Scan =
 	rec_wt_owner    = "";
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
+	rec_wt_foreign  = FALSE;
 	rec_wt_pad      = 0;
 	rec_wt_vhsrc    = 0;
 
@@ -1037,6 +1041,7 @@ void() Watch_Scan =
 		if (argv(0) == "owner")       rec_wt_owner    = argv(1);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
+		if (argv(0) == "foreign")     rec_wt_foreign  = TRUE;
 		if (argv(0) == "pmpin")
 		{
 			// The file's own eye heights (sv_user.c:111 pins both by name).
@@ -1454,6 +1459,7 @@ void(float ra, float rb) Watch_ScanRange =
 	rec_wt_cnt = 0;
 	c = 0;                          // sample ordinal, from the range's first
 	Line_Begin(0);
+	Line_Foreign(0, rec_wt_foreign);
 	Line_Tick(0, rec_wt_tickrate);
 
 	/*
@@ -1817,6 +1823,8 @@ float() Watch_LineJobStep =
 				if (argv(0) == "tickrate")  wt_lj_tick = stof(argv(1));
 				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
 				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
+				// Line_Begin(slot) already cleared this at open, above.
+				if (argv(0) == "foreign")   Line_Foreign(wt_lj_slot, TRUE);
 			}
 			continue;
 		}
@@ -4611,8 +4619,13 @@ void() Watch_Status =
 	print(sprintf("  path mode %g  2d %g seg(s)  clipped %g  wild %g  first %.0f,%.0f\n",
 	              Watch_PathMode(), rec_wt_p2n, rec_wt_p2clip, rec_wt_p2wild,
 	              rec_wt_p2first_x, rec_wt_p2first_y));
-	print(sprintf("  path %g pts projected  %g draws  speed %.0f..%.0f  colour %g\n",
-	              rec_wt_p2pts, ln_frames, ln_slo, ln_shi, ln_cmode));   // Patch 432
+	print(sprintf("  path %g pts projected  %g draws  speed %.0f..%.0f  colour %g"
+	              "  foreign %g tint %.2f\n",
+	              rec_wt_p2pts, ln_frames, ln_slo, ln_shi, ln_cmode,
+	              // The line's OWN state and the blend it last drew with, not a
+	              // re-read of the cvar: an arm that graded the cvar would pass
+	              // against a build where the tint never reached the emitter.
+	              Line_IsForeign(0), ln_dtint));   // Patch 432; foreign: momentum import
 	// The probe: 256 units dead ahead, projected either side of renderscene.
 	// Both should read the centre of the screen and they should agree.
 	sv = getproperty(VF_SCREENVSIZE);
@@ -5105,6 +5118,9 @@ void() Watch_RegisterCvars =
 	registercvar("hud_watch_path_mode", "2", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_px", "1", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_color", "0", CVAR_ARCHIVE);   // 0 speed, 1 gain/loss
+	// How far an imported run's line is pulled toward blue: 0 off, 1 all blue.
+	// A blend, so it composes with hud_watch_path_color rather than replacing it.
+	registercvar("hud_watch_path_foreign", "0.55", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_far", "6000", CVAR_ARCHIVE);  // fade out by here, 0 never
 	registercvar("hud_watch_path_probe", "0");
 
