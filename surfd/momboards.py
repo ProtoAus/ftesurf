@@ -23,6 +23,15 @@ schema wants a tick count, so this divides by the gamemode's interval (surf
 0.015, bhop 0.01) and says so.  Anything reading `ticks` off one of these rows
 is reading a number nobody counted.
 
+INCREMENTAL BY DEFAULT, AND THAT IS NOT AN OPTIMISATION.  This runs from cron
+every 7 minutes and the corpus is heading for 2.9M rows now that momfetch pages;
+measured at 84k rows a full pass is 2.0 s and 66 MB peak, which extrapolates to
+~70 s and ~2.3 GB against a box with 1.0 GB available.  So a run reads only board
+files whose mtime is newer than `<boards>/.indexed`, writes in CHUNK-sized
+batches rather than building one list of everything, and advances the watermark to
+the highest mtime it actually processed.  `--all` does the old full pass and is
+the answer if the watermark and the cache ever disagree.
+
 `submitted` IS THE RUN'S OWN DATE, NOT OUR INGEST TIME.  Each API row carries
 `created`, and the web board draws that column, so ingest time made all 85,085
 imported rows read 2026-09-28.  Nothing reads an import's ingest time (no review
@@ -94,6 +103,34 @@ def created_epoch(raw):
         return int(dt.timestamp())
     except (OverflowError, OSError, ValueError):
         return None
+
+
+CHUNK = 20000            # rows held before a flush; see the loop's comment
+
+
+def flush(conn, rows):
+    """Upsert one chunk of leaderboard rows.  Returns how many landed.
+
+    replay_id is written on INSERT only.  The update list deliberately omits it,
+    so a row momindex gave a recording keeps it.
+    """
+    if not rows:
+        return 0
+    wrote = 0
+    with conn:
+        for (mp, track, leg, sid, alias, ticks, rate, ms, when) in rows:
+            cur = conn.execute(
+                "INSERT INTO runs (map, track, leg, tier, style, player, name,"
+                "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,0,'momapi','',?,0)"
+                " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
+                "   ticks=excluded.ticks, millis=excluded.millis,"
+                "   name=excluded.name, submitted=excluded.submitted"
+                " WHERE excluded.millis < runs.millis",
+                (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, sid, alias,
+                 ticks, rate, ms, when))
+            wrote += cur.rowcount
+    return wrote
 
 
 def track_leg(track_type, track_num):
@@ -185,6 +222,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--boards", required=True, help="momfetch's cache dir")
+    ap.add_argument("--all", action="store_true",
+                    help="re-read every board file, ignoring the .indexed\n"
+                         "watermark, and re-audit every board for impossible\n"
+                         "times.  The default is incremental by file mtime.")
     ap.add_argument("--link", action="store_true",
                     help="join rows to a replay we already hold for that run")
     ap.add_argument("--drop-impossible", action="store_true",
@@ -193,13 +234,54 @@ def main():
     ap.add_argument("--go", action="store_true")
     a = ap.parse_args()
 
-    files = sorted(glob.glob(os.path.join(a.boards, "*.json")))
+    allfiles = sorted(glob.glob(os.path.join(a.boards, "*.json")))
     conn = S.connect()
     now = int(time.time())
 
+    # INCREMENTAL BY FILE MTIME, because this runs from cron every 7 minutes and
+    # the corpus is heading for 2.9M rows.  Measured at 84k rows: 2.0 s wall and
+    # 66 MB peak for a full pass, which extrapolates to ~70 s and ~2.3 GB -- on a
+    # box with 1.0 GB available.  A tick that only reads the dozen boards momwatch
+    # just touched costs neither.
+    #
+    # THE WATERMARK LIVES BESIDE THE CACHE IT DESCRIBES, not in the database, so
+    # deleting the board cache deletes the claim to have indexed it.  --all forces
+    # a full pass and is what to reach for if the two ever disagree.
+    mark = os.path.join(a.boards, ".indexed")
+    since = 0
+    if not a.all:
+        try:
+            with io.open(mark, encoding="utf-8") as fh:
+                since = int(fh.read().strip())
+        except (OSError, ValueError):
+            since = 0
+    files, high = [], since
+    for p in allfiles:
+        try:
+            # NANOSECONDS, AS AN INTEGER.  st_mtime is a float and no decimal
+            # spelling of it round-trips: written back as %.6f it rounds DOWN
+            # below the real value, so the newest file stays permanently newer
+            # than the watermark and is re-read on every run.  Measured twice --
+            # once truncating to whole seconds, once at microseconds -- both left
+            # exactly one file dirty forever.  st_mtime_ns has no such problem.
+            mt = os.stat(p).st_mtime_ns
+        except OSError:
+            continue
+        if mt > since:
+            files.append(p)
+            # The NEW watermark is the highest mtime actually processed, never
+            # `now`: a board written while this was running would otherwise be
+            # stamped as indexed and skipped forever.
+            high = max(high, mt)
+    if since:
+        print("indexed through   %s  (%d of %d files changed since)"
+              % (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(since / 1e9)),
+                 len(files), len(allfiles)))
+
     seen = boards = empty = skipped = nodate = 0
     rows = []
-    dates = []
+    wrote = 0
+    dlo = dhi = None
     for p in files:
         doc = load(p)
         if not doc:
@@ -231,43 +313,53 @@ def main():
                 nodate += 1
                 when = now
             else:
-                dates.append(when)
+                # min/max rather than a list of every date: 2.9M ints is 80 MB
+                # held to print two of them.
+                dlo = when if dlo is None else min(dlo, when)
+                dhi = when if dhi is None else max(dhi, when)
             rows.append((mp, track, leg, sid,
                          S.clean_text(r.get("alias") or "?") or "?",
                          int(round(ms / 1000.0 / tick)), 1.0 / tick, ms, when))
             seen += 1
+        # FLUSHED PER CHUNK, not once at the end.  The whole-corpus list is what
+        # made a full pass cost 2.3 GB; this caps it at CHUNK tuples.  Safe to
+        # write before the count is printed because every statement is an upsert
+        # keyed on (map, track, leg, tier, style, player) -- a partial run leaves
+        # correct rows, just fewer of them, and the watermark is only advanced at
+        # the end so the rest are picked up next tick.
+        if a.go and len(rows) >= CHUNK:
+            wrote += flush(conn, rows)
+            rows = []
 
     print("board files       %d  (%d empty, %d unusable)" % (boards, empty, skipped))
     print("leaderboard rows  %d" % seen)
     print("no usable created %d  (dated with this import's clock instead)" % nodate)
-    if dates:
+    if dlo is not None:
         print("run dates         %s .. %s"
-              % (time.strftime("%Y-%m-%d", time.gmtime(min(dates))),
-                 time.strftime("%Y-%m-%d", time.gmtime(max(dates)))))
+              % (time.strftime("%Y-%m-%d", time.gmtime(dlo)),
+                 time.strftime("%Y-%m-%d", time.gmtime(dhi))))
     # Read-only, so the list is visible without changing anything.
     if not a.go:
         report_impossible(conn, files, a)
         print("\nDRY RUN -- nothing written.  Pass --go.")
         return 0
 
-    wrote = 0
-    with conn:
-        for (mp, track, leg, sid, alias, ticks, rate, ms, when) in rows:
-            # replay_id is written on INSERT only.  The update list deliberately
-            # omits it, so a row momindex gave a recording keeps it.
-            cur = conn.execute(
-                "INSERT INTO runs (map, track, leg, tier, style, player, name,"
-                "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,0,'momapi','',?,0)"
-                " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
-                "   ticks=excluded.ticks, millis=excluded.millis,"
-                "   name=excluded.name, submitted=excluded.submitted"
-                " WHERE excluded.millis < runs.millis",
-                (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, sid, alias,
-                 ticks, rate, ms, when))
-            wrote += cur.rowcount
+    wrote += flush(conn, rows)
     print("board rows set    %d" % wrote)
 
+    # ONLY NOW, and only on --go: a dry run has written nothing and must not
+    # claim to have indexed anything, and a crash above leaves the old mark so
+    # the same files are re-read rather than silently dropped.
+    if a.go and high > since:
+        try:
+            with io.open(mark, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("%d\n" % high)
+        except OSError as e:
+            print("could not write %s (%s) -- next run will re-read everything"
+                  % (mark, e))
+
+    # Only the boards this run actually read.  A board whose file did not change
+    # cannot have become impossible since the last pass; --all re-audits the lot.
     report_impossible(conn, files, a)
 
     if a.link:
