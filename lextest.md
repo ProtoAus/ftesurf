@@ -1294,4 +1294,71 @@ the plunge, and "auto" menu music changes to that world's track.
 
 **Measured here (N100, medium, MAIN):** lattice 86 fps, monolith 74, vessel 101
 (flat panels: lattice 122). The two new worlds raymarch every other tick. Your
-main rig will not notice any of it.
+main rig will not notice any of it. (Superseded by section 10's table.)
+
+---
+
+## 10. Calmer beats, a cool grade, the x-ray films -- what only you can judge
+
+Written 2026-09-30 on the laptop, after your notes on section 9. Built,
+photographed and measured headless; not yet seen on the 360 Hz PC.
+
+**Reactivity.** The full-screen flash used to fire on every onset the engine
+found -- hats included, up to 7 a second on `ftesurf_drive`. Now it, the zoom
+punch and the shaders' beat pulse answer only the big hits: a kick well above
+the track's average bass, or a snare with body in the mids. Replayed over the
+generated tracks (`tools/p468react.py`): 0.4-2 big hits a second where there
+were 1.4-7 flashes, and at your setting the average flash is 4-8x weaker and
+its peak a third. Your config has
+Audio reactivity on **wild**; wild is now what normal used to be, and normal is
+a bit over half of that.
+
+| Where | What changed |
+|---|---|
+| vessel, MUSIC (leaf cells) | The "freakout" was a bug, not taste: the chloroplasts' speed moved with the music, and their position is time x speed, so each change teleported them round their cells. They now stream at a steady pace; only the walls' glow follows the music, and gently |
+| vessel, MAIN (artery) | The heartbeat leads; the bass leans on it and big kicks push it |
+| vessel, PLAY / VISUALS | Plankton rims no longer flicker on hats; the pupil breathes less |
+| monolith | Light shafts swell with the bass, not the mids; corridor rings and panel edges pulse half as hard |
+| lattice, in-game sky | Stars, sparkles and rings on the smoothed treble and the big hits, not every hat |
+
+**The corridor (monolith, VISUALS).** You were right, it was not rendering
+correctly: rays that ran out of steps down the tunnel were painted with the
+open void's daylight haze, a grey wedge at the far end. The tunnel's air is now
+its own dark, so it recedes into black, at every quality.
+
+**Colour grade.** VISUALS -> Colour grade -> natural | cool (cool is the
+default). Display-side: the image cooled and a little desaturated, colours near
+a pure red, green or blue kept and pushed -- the artery goes from orange-red to
+crimson, the leaves from yellow-green to deep green, the monolith's concrete
+blue. Is it strong enough?
+
+**Your x-rays.** In the vessel: PLAY hangs the side view on a lightbox behind
+the plankton, bone lines glowing blue-white on black, a scan line crossing it
+every 9 s, and the metal glowing hardest, pulsing on the big hits; in VISUALS
+the eye is looking at the front view on a lightbox, and you see it mirrored in
+the cornea. They stay on this disk: git-ignored, never in a release (anyone
+else gets a dark void there).
+
+**Bells.** `ftesurf_void`'s glass bells are 8 dB down with a softer strike; by
+ear it had been the loudest track (-20 dB(A), now -26.4, mid-pack). The
+vessel's monitor ping and glass arpeggio are 3 dB down.
+
+**Speed -- the magic sauce is the Menu scene setting.** Your config has it on
+high. On this laptop (MAIN, in-world panels, uncapped):
+
+| Menu scene | lattice | monolith | vessel |
+|---|---|---|---|
+| medium | 144 fps | 84 | 115 |
+| high | 38 | 55 | 75 |
+| ultra (new) | 38 (high already is) | 17-24 | 32 |
+
+Medium looks nearly the same here and is 1.5-4x faster. Ultra is high's
+resolution with the 3D drawn every tick instead of every other: meant for the
+360 Hz PC, and the thing to try there. (Numbers on this laptop move ~30% run to
+run.)
+
+**Decisions only you can make:**
+
+- Is "wild" now the right amount, or is normal enough?
+- Keep the cool grade as the default?
+- Ultra on the PC: smoother flights, or no visible difference?

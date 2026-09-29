@@ -53,7 +53,7 @@ void main(void)
 #define ZERO (min(int(M_TIME.w), 0))
 
 float T;
-vec4  AU, AA;
+vec4  AA;
 float QUAL;
 vec3  SUN, CAM;
 float PA_EXT, PB_EXT;
@@ -365,7 +365,7 @@ float fogAmount(vec3 ro, vec3 rd, float t)
 // Shafts of sun down the void, each placed by where it lands: on the bridge
 // beside the figure, in the forest, the middle of the void, the towers.  Glow
 // from the ray's closest approach to each axis -- closed form, no marching;
-// they swell with the mids.
+// they swell with the bass.
 const vec4 BEAM[4] = vec4[4](vec4(FIGURE + vec3(0.5, 0.0, -1.5), 5.0),
                              vec4(150.0, TERR_Y, 30.0, 9.0),
                              vec4(-20.0, -150.0, 60.0, 12.0),
@@ -390,7 +390,7 @@ float beamGlow(vec3 ro, vec3 rd, float tmax)
 		float flick = 0.75 + 0.25 * sin(T * (0.3 + 0.1 * float(i)) + float(i) * 2.0);
 		g += exp(-h2 / (w * w)) * w / sqrt(den) * flick * above;
 	}
-	return g * (0.011 + 0.008 * AA.y);
+	return g * (0.011 + 0.004 * AA.x);
 }
 
 // Sunlight where a shaft lands.
@@ -494,7 +494,7 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 	{
 		float e = max(abs(pl.x) - PH.x, abs(pl.y) - PH.y);
 		emit = milk_pal(M_LOOK.x + 0.1) * smoothstep(0.025, 0.0, abs(e - 0.03)) * step(-0.05, pl.z)
-		     * (0.6 + 1.2 * AA.w) * abs(PL);
+		     * (0.6 + 0.6 * AA.w) * abs(PL);
 	}
 	else if (inCorr)
 	{
@@ -507,7 +507,7 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 		           * step(abs(sdBox2(vec2(p.y - CORR_Y - 7.25, p.x), vec2(7.25, 5.4))), 0.25);
 		float wave = 0.5 + 0.5 * sin(p.z * 0.06 - T * 2.0);
 		vec3 lc = mix(vec3(1.0, 0.82, 0.55), milk_pal(M_LOOK.x + 0.1), 0.35);
-		emit = lc * (strip * (0.8 + 1.4 * wave) + ring * (0.6 + 2.0 * AA.w) * (0.4 + 0.6 * wave));
+		emit = lc * (strip * (0.8 + 1.4 * wave) + ring * (0.6 + 0.7 * AA.w) * (0.4 + 0.6 * wave));
 	}
 	else if (id < 1.5)
 	{
@@ -585,6 +585,7 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 // A ray 50 m into the walls stops there: the halls are unlit, fogged, and
 // endless -- marching down them was two thirds of this pass's cost.  Id 12 is
 // that darkness.  The corridor is the one bore that is meant to be followed.
+// A miss returns minus the distance reached, for the corridor's dark.
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 {
 	float t = 0.05;
@@ -609,13 +610,12 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 		if (t > tmax)
 			break;
 	}
-	return -1.0;
+	return -t;
 }
 
 void main(void)
 {
 	T = M_TIME.x;
-	AU = M_AUDIO * M_FOCUS.w;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
 	SUN = normalize(vec3(0.32, 1.0, 0.24));
@@ -641,7 +641,7 @@ void main(void)
 	// reflection -- so each is inlined once.
 	vec3 col = vec3(0.0);
 	float mask = 0.0;
-	float t0 = tmax;
+	float t0 = tmax, te = tmax;
 	vec3 o = ro, d = rd;
 	float wgt = 1.0;
 	for (int b = ZERO; b < 2; b++)
@@ -671,6 +671,7 @@ void main(void)
 		if (b == 0)
 		{
 			t0 = (t > 0.0) ? t : tmax;
+			te = abs(t);
 			if (t > 0.0 && id > 9.5 && id < 11.5)
 				mask = (id < 10.5) ? 1.0 : -1.0;
 			// Water reflects: the stream the trees, the platform the towers.
@@ -688,8 +689,27 @@ void main(void)
 	}
 	float t = t0;
 
-	float fog = (t >= tmax) ? 1.0 : fogAmount(ro, rd, t);
-	col = mix(col, fogCol(rd), fog);
+	// The corridor is bored into solid concrete: its air is dark, not the
+	// void's daylit haze, and a ray that runs out of steps down it ends in that
+	// dark -- drawn as haze, it was a grey wedge at the far end.  Squared, so
+	// the near corridor stays clear and the far end is gone by ~120 m.
+	float fog;
+	vec3 pe = ro + rd * min(te, tmax);
+	if (pe.z > 196.0 && abs(pe.x) < 13.0 && pe.y > CORR_Y - 6.0 && pe.y < CORR_Y + 22.0)
+	{
+		float tin = max(0.0, (192.0 - ro.z) / max(rd.z, 1e-3));
+		float dc = max(te - tin, 0.0) * 0.018;
+		float cf = (t < tmax) ? 1.0 - exp(-dc * dc) : 1.0;
+		col = mix(col, vec3(0.004, 0.005, 0.008), cf);
+		float vf = fogAmount(ro, rd, tin);
+		col = mix(col, fogCol(rd), vf);
+		fog = 1.0 - (1.0 - vf) * (1.0 - cf);
+	}
+	else
+	{
+		fog = (t >= tmax) ? 1.0 : fogAmount(ro, rd, t);
+		col = mix(col, fogCol(rd), fog);
+	}
 	col += vec3(1.0, 0.92, 0.78) * beamGlow(ro, rd, t);
 
 	gl_FragColor = vec4(col, mask * (1.0 - fog));

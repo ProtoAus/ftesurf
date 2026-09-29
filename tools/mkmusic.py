@@ -382,7 +382,7 @@ def t_vessel():
         sw = fft_filter(rng.normal(0, 1, int(0.7 * SR)), 120, 1400) * np.sin(np.linspace(0, np.pi, int(0.7 * SR))) ** 2
         mx.add2(at + 0.05, sw * 0.035, np.roll(sw, 400) * 0.035)
         if b % 2 == 0:
-            p = bell(float(hz(93)), 1.2, ratio=1.0, index=0.3, decay=0.35) * 0.08
+            p = bell(float(hz(93)), 1.2, ratio=1.0, index=0.3, decay=0.35) * 0.05
             mx.add(at + beat * 0.5, p, 0.7)
             mx.add(at + beat * 1.0, p * 0.4, 0.3)
     chords = [[57, 64, 67, 71, 72], [53, 60, 64, 67, 69], [50, 57, 60, 64, 65], [52, 59, 62, 64, 68]]
@@ -396,7 +396,7 @@ def t_vessel():
     for i in range(nb // 2, nb):
         for j in range(2):
             m = arp[(i * 2 + j) % len(arp)] + 12
-            mx.add(i * beat + j * beat * 0.5, bell(float(hz(m)), 1.5, 2.0, 1.2, 0.8) * 0.05, 0.3 + 0.4 * j)
+            mx.add(i * beat + j * beat * 0.5, bell(float(hz(m)), 1.5, 2.0, 1.2, 0.8) * 0.035, 0.3 + 0.4 * j)
     reverb(mx, ir(rng, 3.5, 2.6, 1.4, 0.02), 0.4)
     return master(mx, 1.0)
 
@@ -475,8 +475,11 @@ def t_void():
     while at < N / SR - 1:
         for (deg, gap) in motif:
             m = lyd[deg % 7] + 12 * (1 + deg // 7) + 12
-            mx.add(at, bell(float(hz(m)), 5.0, 3.5, 2.0, 2.8) * 0.18, rng.uniform(0.25, 0.75))
-            mx.add(at + 0.37, bell(float(hz(m)), 5.0, 3.5, 2.0, 2.8) * 0.05, rng.uniform(0.2, 0.8))
+            # 2026-09-30: -8 dB and a softer strike.  They were a third of the
+            # track's energy, at 1-3 kHz, and the RMS master is led by the sub,
+            # so this was the loudest track by ear (-20 dB(A) against -23..-28).
+            mx.add(at, bell(float(hz(m)), 5.0, 3.5, 1.5, 2.8) * 0.07, rng.uniform(0.25, 0.75))
+            mx.add(at + 0.37, bell(float(hz(m)), 5.0, 3.5, 1.5, 2.8) * 0.02, rng.uniform(0.2, 0.8))
             at += gap * 0.5
     for k in range(5):
         at = k * 16.0

@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps prev=0 spec=1 ui0=2 ui1=3
+!!samps prev=0 spec=1 ui0=2 ui1=3 xray1=4 xray2=5
 
 // The menu's VESSEL world (src/menu/m_milk.qc, MW_VESSEL): the body, close up,
 // the way a medical drama's camera dives into it.  One variant per station --
@@ -9,8 +9,10 @@
 //
 //   #S0  MAIN   inside an artery: red cells tumbling past, the wall pulsing
 //               with the bass like a heartbeat
-//   #S1  PLAY   darkfield: glass-shelled plankton lit only at their edges
-//   #S2  VIS    an iris, its pupil breathing with the bass, under the cornea
+//   #S1  PLAY   darkfield: glass-shelled plankton lit only at their edges, an
+//               x-ray film on a lightbox far behind them
+//   #S2  VIS    an iris, its pupil breathing with the bass, under the cornea;
+//               the other film is the lightbox mirrored in it
 //   #S3  MUSIC  leaf cells: chloroplasts streaming round each cell's wall
 //
 // Panels are glass slides floating in the scene (milk_panel.h).
@@ -51,11 +53,35 @@ void main(void)
 #endif
 
 float T;
-vec4  AU, AA;
+vec4  AA;
 float QUAL;
 float BEAT;         // heartbeat: a lub-dub envelope, pushed by the bass
 
 float spec(float x) { return texture2D(s_spec, vec2(clamp(x, 0.02, 0.98), 0.25)).r; }
+
+#if defined(S1) || defined(S2)
+// The x-ray films, gfx/env/xray1.png (front) and xray2.png (side): local
+// images, git-ignored and never shipped; without them m_milk.qc binds
+// $blackimage and a film adds nothing.  On a lightbox: bone lines white, the
+// rest near black, the metal glowing, harder on the big hits.  uv 0..1 over the
+// crop (markers and ruler cut off); hot is the metal's centre and half-size in
+// image uv, located by hand.
+vec3 film(sampler2D s, vec2 uv, vec4 crop, vec4 hot)
+{
+	vec2 f = mix(crop.xy, crop.zw, uv);
+	float x = texture2D(s, f).r;
+	float soft = texture2D(s, f, 2.5).r;         // a blurred read: the lines are what stands out of it
+	float halo = texture2D(s, f, 4.5).r;
+	vec2 pd = abs(f - hot.xy) / hot.zw;
+	float onHot = smoothstep(1.15, 0.9, max(pd.x, pd.y));
+	float nearHot = exp(-dot(pd, pd) * 0.35);
+	float v = clamp((x - 0.2) / 0.7, 0.0, 1.0);
+	float bone = v * v * 0.55 + max(x - soft, 0.0) * 3.0;
+	float metal = smoothstep(0.6, 0.85, x) * onHot + smoothstep(0.45, 0.75, halo) * nearHot * 0.5;
+	float edge = smoothstep(0.0, 0.08, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
+	return (vec3(0.55, 0.72, 1.0) * bone + vec3(0.85, 0.95, 1.0) * metal * (0.7 + 0.9 * AA.w + 0.25 * AA.x)) * edge;
+}
+#endif
 
 float sdTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
 float sdCyl(vec3 p, float r, float h) { vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); }
@@ -239,8 +265,8 @@ vec2 regionMap(vec3 p)
 
 #ifdef S3
 // Leaf cells in the plane y = -300: bricks 8 x 3.6 m, walls 3 m high.
-// Chloroplasts stream round each cell's inside wall -- cyclosis -- faster
-// with the mids; each cell's wall glows with its column's band.
+// Chloroplasts stream round each cell's inside wall -- cyclosis; each cell's
+// wall glows with its column's band.
 #define LEAF_Y 0.0
 #define CELL   vec2(8.0, 3.6)
 vec2 cellOf(vec2 xz, out vec2 local)
@@ -255,7 +281,9 @@ float chloroplasts(vec3 p, vec2 local, vec2 c)
 {
 	// Round a superellipse near the wall, 14 of them, the nearest by angle.
 	vec2 hs = CELL * 0.5 - vec2(0.75, 0.6);
-	float speed = (0.25 + 0.5 * hash12(c)) * (0.6 + 0.8 * AA.y);
+	// No audio in the speed: the phase is T * speed, so a speed that moved with
+	// the music jumped every chloroplast by T times the change.
+	float speed = 0.2 + 0.4 * hash12(c);
 	float ang = atan(local.y / hs.y, local.x / hs.x);
 	float n = 14.0;
 	float ph = T * speed + hash12(c + 3.0) * TAU;
@@ -367,7 +395,7 @@ vec3 shade(vec3 pw, vec3 rd, float id, float t)
 				col += panEmit(s_ui1, pl, PH, PL) * 0.4;
 		}
 		float e = max(abs(pl.x) - PH.x, abs(pl.y) - PH.y);
-		col += milk_pal(M_LOOK.x + 0.1) * smoothstep(0.02, 0.0, abs(e - 0.03)) * (0.5 + 1.2 * AA.w) * abs(PL);
+		col += milk_pal(M_LOOK.x + 0.1) * smoothstep(0.02, 0.0, abs(e - 0.03)) * (0.5 + 0.6 * AA.w) * abs(PL);
 		return col;
 	}
 
@@ -404,7 +432,7 @@ vec3 shade(vec3 pw, vec3 rd, float id, float t)
 	vec3 tint = milk_pal(M_LOOK.x + id * 0.13 + n.y * 0.25 + n.x * 0.15);
 	float rim = pow(1.0 - ndv, 2.2);
 	float body = 0.04 + 0.06 * ndv;
-	return tint * (rim * (1.3 + 0.9 * AU.z) + body) + vec3(0.9, 0.95, 1.0) * pow(1.0 - ndv, 8.0) * 0.8;
+	return tint * (rim * (1.3 + 0.2 * AA.z + 0.3 * AA.w) + body) + vec3(0.9, 0.95, 1.0) * pow(1.0 - ndv, 8.0) * 0.8;
 #endif
 
 #ifdef S2
@@ -441,7 +469,7 @@ vec3 shade(vec3 pw, vec3 rd, float id, float t)
 		if (p.y > LEAF_Y - 0.15)
 		{
 			// The wall's top edge: the glowing line the cells are drawn in.
-			return vec3(0.55, 0.95, 0.65) * (0.9 + 1.8 * band) + milk_pal(M_LOOK.x + 0.1) * 0.25 * AA.w;
+			return vec3(0.55, 0.95, 0.65) * (1.0 + 0.6 * band) + milk_pal(M_LOOK.x + 0.1) * 0.15 * AA.w;
 		}
 		if (n.y > 0.5)
 		{
@@ -449,7 +477,7 @@ vec3 shade(vec3 pw, vec3 rd, float id, float t)
 			float v = vnoise(vec3(p.xz * 0.6, T * 0.1));
 			return vec3(0.07, 0.22, 0.16) * (0.6 + 0.8 * v) * dif + vec3(0.15, 0.45, 0.3) * (0.12 + band * 0.25);
 		}
-		return vec3(0.10, 0.30, 0.22) * dif + vec3(0.3, 0.8, 0.5) * fre * (0.3 + 0.8 * band);
+		return vec3(0.10, 0.30, 0.22) * dif + vec3(0.3, 0.8, 0.5) * fre * (0.3 + 0.3 * band);
 	}
 	if (id < 2.5)
 	{
@@ -485,15 +513,15 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 void main(void)
 {
 	T = M_TIME.x;
-	AU = M_AUDIO * M_FOCUS.w;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
 	panInit();
 
-	// A heartbeat: lub-dub at 64 a minute, and the bass pushing it.
+	// A heartbeat: lub-dub at 64 a minute, the bass leaning on it and the big
+	// kicks pushing it.
 	float hb = fract(T * 64.0 / 60.0);
 	BEAT = exp(-hb * 18.0) + 0.6 * exp(-max(hb - 0.18, 0.0) * 22.0) * step(0.18, hb);
-	BEAT = clamp(BEAT * 0.6 + AA.x * 0.5 + AU.x * 0.2, 0.0, 1.5);
+	BEAT = clamp(BEAT * 0.7 + AA.x * 0.2 + M_EVENT.w * M_FOCUS.w * 0.45, 0.0, 1.2);
 
 #ifdef S0
 	WBC = vec3(axisXY(34.0) + vec2(4.6, -2.8), 34.0 - mod(T * 0.6, 20.0));
@@ -511,7 +539,7 @@ void main(void)
 	R5 = rotAxis(vec3(0.7, 0.3, 0.2), T * 0.04);
 #endif
 #ifdef S2
-	PUPIL = 7.0 + 1.6 * sin(T * 0.21) - 1.8 * AA.x;
+	PUPIL = max(4.5, 7.0 + 1.6 * sin(T * 0.21) - 1.0 * AA.x - 0.6 * M_EVENT.w * M_FOCUS.w);
 #endif
 
 	vec2 uv = tc * 2.0 - 1.0;
@@ -549,9 +577,30 @@ void main(void)
 	float fog = 1.0 - exp(-t * fogK());
 	col = mix(col, bgCol(rd), fog);
 
+#ifdef S1
+	// The lightbox, 150 m behind the plankton and turned a little toward them;
+	// a scan line crosses it every 9 s.  Drawn only where nothing is in front.
+	if (t >= tmax)
+	{
+		vec3 FC = ORG + vec3(-58.0, 6.0 + 2.0 * sin(T * 0.05), 150.0);
+		vec3 FN = vec3(0.26, 0.0, -0.966);
+		vec3 FR = vec3(0.966, 0.0, 0.26);
+		float dn = dot(rd, FN);
+		float tf = dot(FC - ro, FN) / min(dn, -1e-3);
+		vec3 q = ro + rd * tf - FC;
+		vec2 fu = vec2(0.5 + dot(q, FR) / 96.0, 0.5 - q.y / 140.0);
+		if (dn < 0.0 && tf > 0.0 && fu == clamp(fu, 0.0, 1.0))
+		{
+			float sl = exp(-pow((fu.y - (fract(T / 9.0) * 1.6 - 0.3)) / 0.02, 2.0));
+			col += film(s_xray2, fu, vec4(0.095, 0.0, 1.0, 0.845), vec4(0.530, 0.575, 0.040, 0.059)) * (0.5 + 0.9 * sl);
+		}
+	}
+#endif
+
 #ifdef S2
-	// The cornea: a clear dome over the iris -- a window's reflection, the
-	// hexagons of its inner cell layer, and a glint that moves with you.
+	// The cornea: a clear dome over the iris -- the lightbox it is looking at
+	// mirrored in it, the hexagons of its inner cell layer, a glint that moves
+	// with you.
 	vec3 IC = IRIS_C + ORG;
 	vec3 cc = IC + vec3(0.0, 0.0, 40.0);
 	vec3 oc = ro - cc;
@@ -566,12 +615,15 @@ void main(void)
 			vec3 n = normalize(hp - cc);
 			float fr = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 4.0);
 			vec3 rr = reflect(rd, n);
-			float win = smoothstep(0.05, 0.0, max(abs(rr.x + 0.35) - 0.12, abs(rr.y - 0.42) - 0.08));
+			vec2 fu = vec2(0.5 - (rr.x + 0.33) / 0.18, 0.5 - (rr.y - 0.40) / 0.31);
+			if (fu == clamp(fu, 0.0, 1.0))
+				col += film(s_xray1, fu, vec4(0.131, 0.0, 1.0, 0.915), vec4(0.544, 0.689, 0.055, 0.088)) * 1.3
+				     + vec3(0.9, 0.95, 1.0) * 0.08;
 			vec2 hx = (hp.xy - IC.xy) * 0.9;
 			vec2 hq = vec2(hx.x * 1.1547, hx.y + hx.x * 0.57735);
 			vec2 hf = fract(hq) - 0.5;
 			float hexl = smoothstep(0.46, 0.5, max(abs(hf.x), abs(hf.y)));
-			col += vec3(0.9, 0.95, 1.0) * win * 2.2 + vec3(0.5, 0.7, 0.9) * fr * 0.35 + vec3(0.3, 0.5, 0.6) * hexl * 0.04;
+			col += vec3(0.5, 0.7, 0.9) * fr * 0.35 + vec3(0.3, 0.5, 0.6) * hexl * 0.04;
 		}
 	}
 	// The red reflex: light coming back out through the pupil.

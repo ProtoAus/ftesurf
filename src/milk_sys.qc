@@ -73,11 +73,21 @@ float  milk_react, milk_quality, milk_kaleido;
 vector milk_offset;             // present-time parallax, uv
 float  milk_inject, milk_knee;  // warp seeding threshold, bloom knee; 0 = the shaders' defaults
 float  milk_scenediv;           // raymarch every Nth tick (0/1 = every tick); the feedback runs every tick
+float  milk_grade;              // the cool colour grade, 0 none .. 1 (milk_common.h, milk_grade())
 
 // Audio, refreshed once per tick.
 float milk_bass, milk_mid, milk_treb, milk_vol;
 float milk_bass_att, milk_mid_att, milk_treb_att, milk_vol_att;
 float milk_beat, milk_beat_bass, milk_beat_treb, milk_rms, milk_live;
+// The big hits only: milk_kick is a bass onset well above the track's own
+// average bass, milk_hit that or a snare (a treble onset with real body in the
+// mids).  Hats and small ticks pulse milk_beat and nothing else; flashes and
+// the shaders' beat pulse (M_AUDIOATT.w) use milk_hit.
+float milk_kick, milk_hit;
+
+// The reactivity cvar (0 off, 1 normal, 2 wild) to the scale everything is
+// multiplied by: "wild" is what "normal" was before 2026-09-30.
+float(float r) Milk_ReactCurve = { return (r <= 1) ? 0.6 * max(r, 0) : min(1.2, 0.6 + 0.4 * (r - 1)); };
 
 void() milk_nosprites = {};
 var void() milk_sprites = milk_nosprites;
@@ -243,6 +253,8 @@ void() Milk_Audio =
 		milk_rms = milk_vis[11];
 		milk_live = 1;
 		snd_visimage(MILK_SPEC, MILK_SPECBANDS);
+		milk_kick = max(milk_kick * 0.86, milk_beat_bass * bound(0, (milk_bass - 1.3) / 0.9, 1));
+		milk_hit = max(milk_hit * 0.86, max(milk_kick, 0.8 * milk_beat_treb * bound(0, (milk_mid - 1.2) / 0.8, 1)));
 		return;
 	}
 	// No audio (old engine, OpenAL, silence): let everything decay to rest so
@@ -250,6 +262,7 @@ void() Milk_Audio =
 	milk_bass *= 0.9;      milk_mid *= 0.9;      milk_treb *= 0.9;      milk_vol *= 0.9;
 	milk_bass_att *= 0.95; milk_mid_att *= 0.95; milk_treb_att *= 0.95; milk_vol_att *= 0.95;
 	milk_beat *= 0.8;      milk_beat_bass *= 0.8; milk_beat_treb *= 0.8;
+	milk_kick *= 0.8;      milk_hit *= 0.8;
 	milk_rms = 0;
 };
 
@@ -266,9 +279,9 @@ void(float i, float x, float y, float z, float w) Milk_U =
 // menu's present and its cursor trace read them back to line up with it.
 void(float scene) Milk_Pack =
 {
-	Milk_U(0, milk_simtime, MILK_STEP, milk_rtsize_x / max(milk_rtsize_y, 1), milk_ticks);
+	Milk_U(0, milk_simtime, milk_grade, milk_rtsize_x / max(milk_rtsize_y, 1), milk_ticks);
 	Milk_U(1, milk_bass, milk_mid, milk_treb, milk_vol);
-	Milk_U(2, milk_bass_att, milk_mid_att, milk_treb_att, milk_beat);
+	Milk_U(2, milk_bass_att, milk_mid_att, milk_treb_att, milk_hit);
 	if (scene)
 	{
 		Milk_U(3, milk_campos_x, milk_campos_y, milk_campos_z, milk_tanfov);
@@ -278,7 +291,7 @@ void(float scene) Milk_Pack =
 	}
 	Milk_U(7, milk_zoom, milk_rot, milk_decay, milk_wobble);
 	Milk_U(8, milk_hue, milk_trails, milk_bloom, milk_exposure);
-	Milk_U(9, milk_flash, milk_liquid, milk_speed, milk_beat_bass);
+	Milk_U(9, milk_flash, milk_liquid, milk_speed, milk_kick);
 	Milk_U(10, milk_focus_x, milk_focus_y, milk_focus_z, milk_react);
 	Milk_U(11, milk_offset_x, milk_offset_y, milk_quality, milk_kaleido);
 	if (scene)

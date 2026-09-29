@@ -20,7 +20,8 @@ float ms_ground, ms_vz, ms_shock;
 
 void() MilkSky_Init =
 {
-	registercvar("milk_sky", "0", CVAR_ARCHIVE);        // the menu registers it first
+	registercvar("milk_sky", "0", CVAR_ARCHIVE);        // the menu registers these first
+	registercvar("milk_grade", "1", CVAR_ARCHIVE);
 	Milk_Init("ms", "milk_skygen", "milk_warp#SKY", "milk_comp#SKY");
 };
 
@@ -65,19 +66,20 @@ void() MilkSky_Frame =
 	}
 
 	milk_speed = bound(0, vlen([pmove_vel_x, pmove_vel_y, 0]) / 3500, 1);
-	milk_react = cvar("milk_react");
+	milk_react = Milk_ReactCurve(cvar("milk_react"));
+	milk_grade = bound(0, cvar("milk_grade"), 1);
 	milk_trails = 0.6 * cvar("milk_trails");
 	milk_focus = [0.5, 0.5, ms_shock];
 	milk_hue = 0.62 + 0.12 * sin(now * 0.021);
-	milk_zoom = 1.005 + 0.03 * milk_speed + 0.012 * milk_beat_bass * milk_react;
+	milk_zoom = 1.005 + 0.03 * milk_speed + 0.008 * milk_kick * milk_react;
 	milk_rot = 0.0015 + 0.005 * milk_speed;
 	milk_decay = 0.93 + 0.03 * milk_speed;
-	milk_wobble = 0.3 + 0.8 * milk_mid_att * milk_react;
+	milk_wobble = 0.3 + 0.45 * milk_bass_att * milk_react;
 	milk_liquid = 0.35;
 	milk_kaleido = 0;
 	milk_bloom = 0.8;
 	milk_exposure = 1.3;
-	milk_flash = milk_beat * milk_react * 0.6;
+	milk_flash = milk_hit * milk_react * 0.6;
 
 	q = bound(1, cvar("milk_quality"), 3);
 	milk_quality = q;

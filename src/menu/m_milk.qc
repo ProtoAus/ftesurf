@@ -97,8 +97,10 @@ float  mm_ntracks, mm_trackscan, mm_autoplayed;
 string mm_playing;
 float  mm_lowpassed;
 float  mm_sfx;
+float  mm_films;                // the vessel's x-ray films found: bit 1 xray1, bit 2 xray2
 
 float  mm_bc_step, mm_bc_t0, mm_bc_consent, mm_bc_frames, mm_bc_w0;
+float  mm_bc_hits, mm_bc_hiton, mm_bc_kickpk;     // the big-hit gate, counted live
 float  mm_art;                  // milk_bootcheck 7: the station being photographed bare, -1 off (MM_Init)
 vector mm_fake;                 // milk_fakemouse, for the harness; x < 0 = the real cursor
 
@@ -743,16 +745,18 @@ void(float now, float dt) MM_Camera =
 	milk_liquid = mm_liq;
 	milk_kaleido = mm_kal;
 
-	// Feedback character: calm when settled, hyperspace in flight.
-	milk_zoom = 1.004 + 0.045 * trav + 0.012 * milk_beat_bass * milk_react;
+	// Feedback character: calm when settled, hyperspace in flight.  The music
+	// moves it on the big hits only (milk_kick, milk_hit), not on every hat.
+	milk_react = Milk_ReactCurve(cvar("milk_react"));
+	milk_grade = bound(0, cvar("milk_grade"), 1);
+	milk_zoom = 1.004 + 0.045 * trav + 0.008 * milk_kick * milk_react;
 	milk_rot = 0.0015 * sin(now * 0.05) - mm_yawv * 0.004;
 	milk_decay = 0.84 + 0.11 * trav;
-	milk_wobble = 0.4 + 0.9 * milk_mid_att * milk_react;
+	milk_wobble = 0.3 + 0.45 * milk_bass_att * milk_react;
 	milk_trails = cvar("milk_trails");
-	milk_react = cvar("milk_react");
 	milk_bloom = 1;
 	milk_exposure = 1.1;
-	milk_flash = milk_beat * milk_react;
+	milk_flash = milk_hit * milk_react;
 	// A daylit world: only its lights may seed the trails and bloom, or the
 	// haze would smear across the whole frame.
 	if (mm_world == MW_MONOLITH)
@@ -824,7 +828,7 @@ void() MM_Sprites =
 		Font_Set(ui_font_display);
 		drawstring(Milk_ToRT(mm_titlecur, mm_screen), "FTESURF",
 		           MM_TITLE_SZ * (milk_rtsize_y / mm_screen_y), Milk_Pal(mm_hue + 0.1),
-		           0.10 + 0.12 * milk_beat * milk_react, 1);
+		           0.10 + 0.12 * milk_hit * milk_react, 1);
 		Font_Set(ui_font_ui);
 	}
 
@@ -832,7 +836,7 @@ void() MM_Sprites =
 	{
 		hp = Milk_ToRT(mm_hlpos, mm_screen);
 		hs = Milk_ToRT(mm_hlsize, mm_screen);
-		Milk_Bar(hp, hs, Milk_Pal(mm_hue + 0.1), 0.22 + 0.35 * milk_beat * milk_react);
+		Milk_Bar(hp, hs, Milk_Pal(mm_hue + 0.1), 0.22 + 0.35 * milk_hit * milk_react);
 	}
 };
 
@@ -921,6 +925,7 @@ void() MM_Init =
 	registercvar("milk_world", "monolith", 32);
 	registercvar("milk_panels", "1", 32);
 	registercvar("milk_sfx", "1", 32);
+	registercvar("milk_grade", "1", 32);
 	registercvar("milk_bootcheck", "0", 0);
 	registercvar("milk_fakemouse", "", 0);
 	registercvar("milk_bcstation", "0", 0);
@@ -931,7 +936,14 @@ void() MM_Init =
 		mm_shuffle = 2;
 	mm_world = MM_WorldWant();
 	Milk_Init("mm", MM_WorldProg(mm_world, MS_MAIN), "milk_warp", "milk_comp");
-	milk_scenemaps = "map $rt:mm_ui0\nmap $rt:mm_ui1\n";
+	// The vessel's x-ray films are local images, never shipped: a black film
+	// without them (milk_vessel.glsl, film()).  "map $clamp:", never
+	// "clampmap": in a program pass only "map" opens the next texture unit
+	// (Shaderpass_DefineMap), so a clampmap overwrote mm_ui1 and left 4-5 empty.
+	mm_films = ui_file_exists("gfx/env/xray1.png") + 2 * ui_file_exists("gfx/env/xray2.png");
+	milk_scenemaps = strzone(sprintf("map $rt:mm_ui0\nmap $rt:mm_ui1\n%s\n%s\n",
+	                         (mm_films & 1) ? "map $clamp:gfx/env/xray1.png" : "map $blackimage",
+	                         (mm_films & 2) ? "map $clamp:gfx/env/xray2.png" : "map $blackimage"));
 	milk_sprites = MM_Sprites;
 	milk_packextra = MM_PanelPack;
 	mm_station = MS_MAIN;
@@ -998,7 +1010,8 @@ void(vector screensize) MM_Frame =
 	if (!mm_dive0)
 		MM_Go(MM_StationFor());
 
-	// Internal height by quality: 360 / 540 / 720, width by aspect.
+	// Internal height by quality: 360 / 540 / 720, width by aspect.  4, ultra,
+	// is high's resolution raymarched every tick (below).
 	q = bound(1, cvar("milk_quality"), 3);
 	h = 180 + q * 180;
 	if (h > screensize_y)
@@ -1008,24 +1021,19 @@ void(vector screensize) MM_Frame =
 	milk_quality = q;
 	// The raymarch is the cost (Patch 467 perf); the monolith's is the dearest,
 	// and its haze hides a softer scene.
-	// The new worlds' raymarches are far dearer than the lattice's (a 12 ms
-	// scene on an N100 at medium), so they also draw only every other tick
-	// -- the feedback still runs every tick, and a slow world does not show it.
 	if (mm_world == MW_LATTICE)
-	{
 		milk_scenescale = (q >= 3) ? 1 : 0.75;
-		milk_scenediv = 1;
-	}
 	else if (mm_world == MW_VESSEL)
-	{
 		milk_scenescale = (q >= 3) ? 0.9 : ((q >= 2) ? 0.7 : 0.55);
-		milk_scenediv = 2;
-	}
 	else
-	{
 		milk_scenescale = (q >= 3) ? 0.8 : ((q >= 2) ? 0.58 : 0.5);
+	// The raymarch runs every other tick (the feedback every tick) except at
+	// ultra, and for the lattice at high.  The monolith at 720p on the N100:
+	// 55 fps every other tick, 17 and 24 (two runs) every tick.
+	if (cvar("milk_quality") >= 4 || (q >= 3 && mm_world == MW_LATTICE))
+		milk_scenediv = 1;
+	else
 		milk_scenediv = 2;
-	}
 
 	MM_PanelPlace(0);
 	MM_PanelPlace(1);
@@ -1153,7 +1161,7 @@ void(vector pos) MM_Title =
 	Font_Set(ui_font_display);
 	for (i = 0; i < 8; i++)
 		drawstring(pos + [cos(i * 0.785) * 3, sin(i * 0.785) * 3], "FTESURF", MM_TITLE_SZ,
-		           acc, 0.16 + 0.10 * milk_beat * milk_react, 1);
+		           acc, 0.16 + 0.10 * milk_hit * milk_react, 1);
 	sui_text(pos, MM_TITLE_SZ, "FTESURF", '0.95 0.97 1', 1, 0);
 	Font_Set(ui_font_ui);
 };
@@ -1293,8 +1301,8 @@ float(float x, float y, float pitch, float labelw) MM_VisualsRows =
 		MM_Seta("milk_world", (hit == 0) ? "lattice" : ((hit == 1) ? "monolith" : ((hit == 2) ? "vessel" : "shuffle")));
 	y += pitch;
 
-	cur = cvar("milk_menu") ? bound(1, cvar("milk_quality"), 3) : 0;
-	hit = MM_ChipRow([x, y], "mv_q", "Menu scene", "off|low|medium|high", cur, labelw);
+	cur = cvar("milk_menu") ? bound(1, cvar("milk_quality"), 4) : 0;
+	hit = MM_ChipRow([x, y], "mv_q", "Menu scene", "off|low|medium|high|ultra", cur, labelw);
 	if (hit == 0)
 		MM_Seta("milk_menu", "0");
 	else if (hit > 0)
@@ -1314,6 +1322,11 @@ float(float x, float y, float pitch, float labelw) MM_VisualsRows =
 	                 cur <= 0 ? 0 : (cur < 0.9 ? 1 : 2), labelw);
 	if (hit >= 0)
 		MM_Seta("milk_trails", (hit == 0) ? "0" : ((hit == 1) ? "0.6" : "1"));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_g", "Colour grade", "natural|cool", cvar("milk_grade") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_grade", ftos(hit));
 	y += pitch;
 
 	cur = cvar("milk_react");
@@ -1572,12 +1585,16 @@ void() MM_BootTick =
 			return;
 		mm_bc_t0 = gettime(0);
 		mm_bc_step = 1;
-		print(sprintf("milk_bootcheck: start, engine audio %s, world %s, panels %g\n",
-		              milk_hasvis ? "yes" : "no", MM_WorldName(mm_world), cvar("milk_panels")));
+		print(sprintf("milk_bootcheck: start, engine audio %s, world %s, panels %g, films %g, grade %g\n",
+		              milk_hasvis ? "yes" : "no", MM_WorldName(mm_world), cvar("milk_panels"), mm_films, milk_grade));
 		return;
 	}
 	t = gettime(0) - mm_bc_t0;
 	mm_bc_frames++;
+	mm_bc_kickpk = max(mm_bc_kickpk, milk_kick);
+	if (milk_hit >= 0.5 && !mm_bc_hiton)
+		mm_bc_hits++;
+	mm_bc_hiton = milk_hit >= 0.5;
 
 	// milk_bootcheck 4: frame rate with the space on, then off, over 5 s each,
 	// at the station milk_bcstation names (0 main, 1 play, 2 visuals, 3 music)
@@ -1606,8 +1623,8 @@ void() MM_BootTick =
 		else if (mm_bc_step == 3 && gettime(0) - mm_bc_w0 > 5)
 		{
 			w = gettime(0) - mm_bc_w0;
-			print(sprintf("milk_bootcheck: perf %s station %g q%g rt %v on  %g fps (%g ms)\n", MM_WorldName(mm_world),
-			              mm_station, milk_quality, milk_rtsize, mm_bc_frames / w, w * 1000 / max(mm_bc_frames, 1)));
+			print(sprintf("milk_bootcheck: perf %s station %g q%g div %g rt %v on  %g fps (%g ms)\n", MM_WorldName(mm_world),
+			              mm_station, cvar("milk_quality"), milk_scenediv, milk_rtsize, mm_bc_frames / w, w * 1000 / max(mm_bc_frames, 1)));
 			cvar_set("milk_menu", "0");
 			mm_bc_w0 = gettime(0);
 			mm_bc_step = 4;
@@ -1686,8 +1703,9 @@ void() MM_BootTick =
 		}
 		else if (mm_bc_step == 6 && t > 1.0 + 4 * 4.5)
 		{
+			// The image list says whether the vessel's films really loaded.
 			ms_consent = mm_bc_consent;
-			localcmd("quit\n");
+			localcmd("r_imagelist\nquit\n");
 			mm_bc_step = 7;
 		}
 		return;
@@ -1789,6 +1807,7 @@ void() MM_BootTick =
 		localcmd("screenshot milk_main\nsnd_visinfo\n");
 		print(sprintf("milk_bootcheck: main, rt %v, %g fps, tick %g ms, audio live %g bass %g\n",
 		              milk_rtsize, mm_bc_frames / t, milk_tickcost * 1000, milk_live, milk_bass));
+		print(sprintf("milk_bootcheck: playing %s\n", mm_playing));
 		MM_BcPanel("main");
 		mm_bc_step = 2;
 	}
@@ -1826,6 +1845,7 @@ void() MM_BootTick =
 		localcmd("screenshot milk_play\n");
 		print(sprintf("milk_bootcheck: done, %g frames in %g s = %g fps, %g ticks, audio live %g\n",
 		              mm_bc_frames, t, mm_bc_frames / t, milk_ticks, milk_live));
+		print(sprintf("milk_bootcheck: big hits %g in %g s, kick peak %g\n", mm_bc_hits, t, mm_bc_kickpk));
 		ms_consent = mm_bc_consent;
 		menu_screen = SCREEN_MAIN;
 		mm_bc_step = 7;

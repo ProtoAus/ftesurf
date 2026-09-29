@@ -34,7 +34,7 @@ void main(void)
 #ifdef FRAGMENT_SHADER
 
 float T;
-vec4  AU, AA;
+vec4  AA;
 mat3  CROT;
 float QUAL;
 float PA_EXT, PB_EXT;          // how far each slab reaches down to the floor
@@ -164,7 +164,7 @@ vec3 skyCol(vec3 rd)
 	{
 		vec3 f = fract(sp) - 0.5;
 		float tw = 0.55 + 0.45 * sin(T * (2.0 + 5.0 * h) + h * 90.0);
-		c += vec3(0.75, 0.82, 1.0) * exp(-dot(f, f) * 55.0) * tw * (0.6 + 0.8 * AU.z * M_FOCUS.w);
+		c += vec3(0.75, 0.82, 1.0) * exp(-dot(f, f) * 55.0) * tw * (0.6 + 0.3 * AA.z);
 	}
 	return c;
 }
@@ -197,7 +197,7 @@ vec3 shadePanel(vec3 p, vec3 rd, vec3 n, bool a)
 		else
 			col += panEmit(s_ui1, l, H, L) * 0.35;
 		float e = max(abs(l.x) - H.x, abs(l.y) - H.y);
-		col += milk_pal(M_LOOK.x + 0.1) * smoothstep(0.03, 0.0, abs(e - 0.045)) * (0.35 + 1.0 * AA.w) * abs(L);
+		col += milk_pal(M_LOOK.x + 0.1) * smoothstep(0.03, 0.0, abs(e - 0.045)) * (0.35 + 0.5 * AA.w) * abs(L);
 	}
 	return col;
 }
@@ -252,8 +252,8 @@ vec3 shadeHit(vec3 p, vec3 rd, float id, bool lite)
 	}
 	else if (id < 4.5)
 	{
-		// Ring: pulses on the beat, colour walks down the tunnel.
-		emit = 2.0 + 3.0 * M_AUDIOATT.w * M_FOCUS.w;
+		// Ring: pulses on the big hits, colour walks down the tunnel.
+		emit = 2.0 + 1.5 * AA.w;
 	}
 	else
 	{
@@ -323,7 +323,6 @@ float poolH(vec2 q)
 void main(void)
 {
 	T = M_TIME.x;
-	AU = M_AUDIO * M_FOCUS.w;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
 	panInit();
@@ -410,8 +409,8 @@ void main(void)
 			vec3 deep = milk_pal(M_LOOK.x + 0.55) * 0.05 + vec3(0.0, 0.02, 0.04);
 			col = mix(deep, refl, 0.6 + 0.4 * fre);
 			float sparkle = pow(max(dot(reflect(rd, n), normalize(vec3(-0.3, 0.9, 0.2))), 0.0), 90.0);
-			col += sparkle * (0.8 + 2.5 * AU.z) * vec3(0.8, 0.9, 1.0);
-			col += milk_pal(M_LOOK.x + 0.9) * smoothstep(13.0, 12.6, pr) * smoothstep(12.2, 12.6, pr) * (0.8 + 2.0 * AA.w);
+			col += sparkle * (0.8 + 0.6 * AA.z) * vec3(0.8, 0.9, 1.0);
+			col += milk_pal(M_LOOK.x + 0.9) * smoothstep(13.0, 12.6, pr) * smoothstep(12.2, 12.6, pr) * (0.8 + 1.0 * AA.w);
 		}
 		else
 		{

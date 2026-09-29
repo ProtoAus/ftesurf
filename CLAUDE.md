@@ -96,6 +96,15 @@ chatty.
   harness was tested (it does not save) and the file held the user's own music
   volume and frame cap, not the harness's -- so it was the user's session, and
   the edit already made to it was reverted from a backup.
+- BEFORE CHANGING WHAT A SETTING COSTS, READ WHAT THE OWNER HAS IT ON.
+  "High is for a fast machine" made `milk_quality 3` raymarch every tick; the
+  owner's `ftesurf.cfg` had chosen high on this laptop, where that took the
+  monolith from 55 to 17-24 fps. Caught by measuring before commit. The fast
+  machine got its own step (`4`, ultra) instead.
+- A HARNESS ON THE OWNER'S LAPTOP SHARES IT WITH THE OWNER. A perf arm asked for
+  MAIN printed `station 1` -- a real click had opened PLAY mid-measure -- with
+  `[focus] window is foreground` beside it. Grep each run's log for focus lines
+  before quoting its number.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).

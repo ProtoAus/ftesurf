@@ -34,7 +34,6 @@ void main(void)
 void main(void)
 {
 	float T = M_TIME.x;
-	vec4 AU = M_AUDIO * M_FOCUS.w;
 	vec4 AA = M_AUDIOATT * M_FOCUS.w;
 	float spd = M_EVENT.z;
 	float hue = M_LOOK.x;
@@ -73,8 +72,8 @@ void main(void)
 	col += milk_pal(hue + 0.30 + u * 0.4) * bar * (0.25 + 1.1 * sv) * (0.6 + 0.4 * smoothstep(top, HOR, r));
 	col += milk_pal(hue + 0.45) * exp(-abs(r - HOR) * 70.0) * (0.25 + 0.9 * AA.x);
 
-	col += milk_pal(hue + 0.05) * exp(-r * r * 70.0) * (0.35 + 1.3 * AA.w + 0.7 * AU.x);
-	col += milk_pal(hue + 0.15) * smoothstep(0.012, 0.0, abs(r - 0.07)) * AA.w * 1.6;
+	col += milk_pal(hue + 0.05) * exp(-r * r * 70.0) * (0.35 + 0.8 * AA.w + 0.3 * AA.x);
+	col += milk_pal(hue + 0.15) * smoothstep(0.012, 0.0, abs(r - 0.07)) * AA.w;
 
 	float lane = hash11(floor(a / TAU * 110.0));
 	float streak = step(0.75, lane) * smoothstep(0.25, 0.8, r) * smoothstep(HOR + 0.02, HOR - 0.05, r)
@@ -90,7 +89,7 @@ void main(void)
 	if (h > 0.986)
 	{
 		vec2 f = fract(sg) - 0.5;
-		col += vec3(0.75, 0.82, 1.0) * exp(-dot(f, f) * 45.0) * (0.35 + 0.35 * sin(T * 3.0 + h * 90.0) + 0.5 * AU.z);
+		col += vec3(0.75, 0.82, 1.0) * exp(-dot(f, f) * 45.0) * (0.35 + 0.35 * sin(T * 3.0 + h * 90.0) + 0.25 * AA.z);
 	}
 
 	gl_FragColor = vec4(col, 1.0);

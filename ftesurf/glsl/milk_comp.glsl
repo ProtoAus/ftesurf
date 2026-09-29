@@ -59,9 +59,9 @@ void main(void)
 
 	// Beat flash: a tint of the station colour, not white, so it reads as
 	// light in the space rather than a camera flash.
-	c += milk_pal(M_LOOK.x + 0.15) * M_EVENT.x * 0.18;
+	c += milk_pal(M_LOOK.x + 0.15) * M_EVENT.x * 0.12;
 
-	c = aces(c * M_LOOK.w);
+	c = milk_grade(aces(c * M_LOOK.w), M_TIME.y);
 
 	// Chromatic fringe toward the edges, vignette, grain.
 	vec2 v = tc - 0.5;

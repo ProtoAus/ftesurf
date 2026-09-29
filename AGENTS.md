@@ -1895,10 +1895,28 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   raster; the camera orbits the panel only while the cursor is off it. The slabs
   are intersected (`panTrace`), never marched: in the SDF they cost the lattice
   4 ms a frame on the N100.
-- `milk_scenediv 2` for the two new worlds: they raymarch every other tick while
-  the feedback runs every tick; the camera and panel slots in `w_user` are only
-  repacked on a raymarch tick, because the present and the cursor trace must
-  match the image that is on screen.
+- `milk_scenediv 2`: every world raymarches every other tick while the feedback
+  runs every tick -- except `milk_quality 4` ("ultra", high's resolution) and the
+  lattice at high, which raymarch every tick. The camera and panel slots in
+  `w_user` are only repacked on a raymarch tick, because the present and the
+  cursor trace must match the image that is on screen.
+- THE BEAT GATES (2026-09-30). `milk_beat` pulses on every engine onset, hats
+  included (7/s on `ftesurf_drive`). The visuals answer `milk_kick` (a bass onset
+  gated by the bass ratio above 1.3) and `milk_hit` (a kick, or a treble onset
+  with the mids above 1.2): `M_AUDIOATT.w` is `milk_hit`, `M_EVENT.w` `milk_kick`,
+  and the flash is `milk_hit`. `Milk_ReactCurve` maps the cvar (0/1/2) to
+  0 / 0.6 / 1.0 -- "wild" is the old "normal". `python tools/p468react.py LOG`
+  replays a `cfg/test/p468react.cfg` trace through the same gates (keep the two in
+  step); the menu tour (`milk_bootcheck 1`) prints `big hits N in T s` from the
+  live QC to check it against.
+- `milk_grade` (VISUALS "Colour grade", `M_TIME.y`): `milk_grade()` in
+  `milk_common.h`, after `aces()` -- the image cooled and a little desaturated,
+  colours near a pure red, green or blue kept and pushed.
+- The vessel's x-ray films: `gfx/env/xray1.png` / `xray2.png`, local images,
+  git-ignored and never shipped. PLAY hangs one behind the plankton, VISUALS
+  mirrors the other in the cornea; without them the maps are `$blackimage`. The
+  harness start line prints `films` (bit 1, bit 2) and the art tour
+  (`milk_bootcheck 7`) ends with `r_imagelist`, which says whether they loaded.
 - Sound: `python tools/mkmusic.py` writes every generated track to
   `ftesurf/music/` (dream -- still `mkmenumusic.py`, byte-identical -- plus
   monolith, vessel, canopy, void, drive) and the menu's effects to
@@ -1955,6 +1973,19 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the real clearance (object to cell edge) as the margin: the monolith's far
   walls were at the 90-step cap in a step-count heat map and well under it after,
   and the lattice's PLAY station went from 29 to 41 fps.
+- **`clampmap` DOES NOT OPEN A TEXTURE UNIT IN A PROGRAM PASS.** Only `map`
+  goes through `Shaderpass_DefineMap`, which starts the next merged pass; a
+  `clampmap` line overwrites the current one. The vessel's films as `clampmap`s
+  replaced `mm_ui1` at unit 3 and left units 4-5 empty (black) -- with no warning,
+  and the log still said `passes 6`. Use `map $clamp:<path>`.
+- **NEVER PUT AUDIO IN A RATE THAT MULTIPLIES TIME.** The leaf cells' phase was
+  `T * speed` with the mids in `speed`, so a 0.5 swing in the mids a minute in
+  moved every chloroplast ~12 radians in one tick -- the "freakout". Audio may
+  scale an amplitude or a brightness; a rate needs a phase accumulated in QC.
+- **A MARCH THAT RUNS OUT OF STEPS IS NOT SKY.** The monolith's corridor drew
+  its step-exhausted rays in the void's haze colour: a grey wedge at the far end
+  of a tunnel bored through rock. `march()` now returns minus the distance
+  reached, and a miss inside the corridor ends in its own dark.
 - **QC `&&` DOES NOT SHORT-CIRCUIT, AND A MISSING `#0:` BUILTIN ABORTS THE WHOLE
   VM.** Patch 467's `if (milk_hasvis && snd_getvis(...))` called `snd_getvis` on an
   engine that lacked it: "Builtin 0:snd_getvis not implemented", menu.dat shut

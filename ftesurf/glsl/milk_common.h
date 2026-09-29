@@ -3,16 +3,16 @@
 // w_user[] is written by src/milk_sys.qc (Milk_Pack) through VF_USERDATA.
 // The slot table here and the MU_* defines there are one contract.
 
-#define M_TIME      w_user[0]   // x sim time  y tick dt  z aspect (w/h)  w tick count
+#define M_TIME      w_user[0]   // x sim time  y colour grade (0..1)  z aspect (w/h)  w tick count
 #define M_AUDIO     w_user[1]   // x bass  y mid  z treb  w vol  (1 = typical for this audio, 0 = silent)
-#define M_AUDIOATT  w_user[2]   // x bass_att  y mid_att  z treb_att  w beat pulse
+#define M_AUDIOATT  w_user[2]   // x bass_att  y mid_att  z treb_att  w big-hit pulse (kick or snare)
 #define M_CAMPOS    w_user[3]   // xyz camera  w tan(fov/2)
 #define M_CAMFWD    w_user[4]   // xyz forward  w travel (0 settled .. 1 mid-flight)
 #define M_CAMRIGHT  w_user[5]   // xyz right  w warp seeding threshold (0 = 0.35)
 #define M_CAMUP     w_user[6]   // xyz up  w bloom knee (0 = 0.35)
 #define M_WARP      w_user[7]   // x zoom/tick  y rot/tick  z decay/tick  w wobble
 #define M_LOOK      w_user[8]   // x hue  y trails  z bloom  w exposure
-#define M_EVENT     w_user[9]   // x flash  y liquid  z speed 0..1  w beat_bass pulse
+#define M_EVENT     w_user[9]   // x flash  y liquid  z speed 0..1  w big-kick pulse
 #define M_FOCUS     w_user[10]  // xy zoom centre (uv)  z highlight  w reactivity
 #define M_EXTRA     w_user[11]  // xy present offset (uv)  z quality  w kaleidoscope segments
 // w_user[12..15] are the menu's panels -- see milk_panel.h.  The sky leaves them 0.
@@ -67,6 +67,26 @@ float smin(float a, float b, float k)
 vec3 milk_pal(float t)
 {
 	return vec3(0.50, 0.46, 0.62) + vec3(0.45, 0.42, 0.40) * cos(TAU * (vec3(1.0, 1.0, 1.0) * t + vec3(0.62, 0.40, 0.18)));
+}
+
+// The cool grade (M_TIME.y): shadows toward blue, the rest cooled and a little
+// desaturated, while colours near a pure red, green or blue keep their
+// saturation and gain some -- secondaries (yellow, cyan, magenta) are muted.
+// Display-referred: after aces().
+vec3 milk_grade(vec3 c, float k)
+{
+	if (k <= 0.0)
+		return c;
+	float l = lum(c);
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	float md = c.r + c.g + c.b - mx - mn;
+	float sat = (mx - mn) / max(mx, 1e-4);
+	float prim = smoothstep(0.3, 0.75, sat) * (1.0 - smoothstep(0.15, 0.55, (md - mn) / max(mx - mn, 1e-4)));
+	vec3 cool = l * vec3(0.80, 0.94, 1.12) + (c - l) * 0.55
+	          + vec3(-0.004, 0.006, 0.022) * (1.0 - smoothstep(0.0, 0.5, l));
+	vec3 pop = l + (c - l) * 1.2;
+	return mix(c, max(mix(cool, pop, prim), 0.0), k);
 }
 
 // ACES fitted (Narkowicz).  The feedback targets are half-float, so the

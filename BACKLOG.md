@@ -2111,6 +2111,20 @@ depth at ~3,000 requests/day. What that leaves open:
 - **THE IRIS FIBRES STRIPE.** 56 radial fibres are near the vessel's scene
   resolution and band visibly in the stills (motion unseen); and the tree
   crowns' 2x2 neighbourhood can clip a crown that reaches two cells over.
+- **THE TRACKS ARE LEVELLED BY RMS, NOT BY EAR.** `master()` normalises RMS, which
+  a sub-bass track satisfies with energy nobody hears -- so `ftesurf_void` was the
+  loudest track by ear (-20.0 dB(A)) until its bells came down 8 dB (now -26.4).
+  The spread is still -22.9 (monolith) to -33.1 dB(A) (dream, which is
+  `mkmenumusic.py`'s own). An A- or K-weighted master would even them; it moves
+  every track, so it is a decision.
+- **ONE HARNESS RUN STALLED 100 s AT START, UNEXPLAINED.** 2026-09-30, a
+  `milk_bootcheck 1` monolith tour: its 6 s step fired at 103 s, beside a
+  `[focus] window is foreground` line. The identical rerun was normal (84 fps)
+  and it has not recurred. A window being dragged blocks the main thread, and
+  someone was at the laptop; not shown.
+- **FRAME RATES ON THE N100 MOVE ~30% RUN TO RUN.** The same arm (monolith,
+  720p, every tick) measured 17 and 24 fps ten minutes apart. Quote the pair,
+  or a control run beside it, not one number.
 - **THE MENU'S MOUSE-LOOK IS UNMEASURED.** A minimized harness has no cursor, so
   the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
   read, never exercised. Falsifier: move the mouse across the main menu and watch
