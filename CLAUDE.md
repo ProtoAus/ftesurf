@@ -67,6 +67,18 @@ chatty.
   for a whole message -- a peer had to point out that the commit it was really in
   was theirs. `-G` is the regex form. When a search comes back empty on something
   you can SEE, suspect the search before the conclusion.
+- IDENTICAL SCREENSHOTS CAN BE THE HARNESS STALLING, NOT THE SUBJECT FREEZING.
+  Patch 467's first station tour gave four frames of the same cube, and "the sim
+  is frozen" was one step from a rewrite of the render path. The log's own
+  timestamps said otherwise: each PNG write blocked the main thread ~2 s, so the
+  camera had not moved when the shots were taken. Two shots of ONE station 6 s
+  apart, diffed (61% of the lattice changed), plus the sim's own tick counter
+  printed beside them, settled it in one run. Suspect the measuring before the
+  measured, and make the subject print its clock.
+- AN A/B THAT MOVES THE CAMERA MEASURES THE CAMERA. The sky's cost was first read
+  as 136.8 against 168.1 fps -- an "on" shot at pitch -25 beside an "off" shot at
+  pitch -60. The matched pair was 150.6 against 168.1. When the cost scales with
+  what is on screen, the view is part of the control.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).

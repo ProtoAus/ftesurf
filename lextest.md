@@ -1200,3 +1200,51 @@ claimed KSF publishes no replay files anywhere (they list filenames), and that a
 KSF run's map build could *never* be checked (they publish the map as a zip, and
 a zip can be hashed). Both conclusions still hold — we still can't watch a KSF
 run — but they were resting on wrong reasons.
+
+---
+
+## 8. The milk visualizer (Patch 467) -- what only you can judge
+
+Written 2026-09-29 on the laptop. Everything below was built and photographed
+headless; none of it has been LOOKED AT by a person moving a mouse, with the
+sound on. Run `ftesurf.bat`.
+
+**What you should see without touching anything.** The main menu sits in a dark
+3D space: a GameCube-style lattice of glowing cubes turning slowly over a
+reflective floor, motes drifting, the tunnel's rings glinting behind it. PLAY /
+VISUALS / MUSIC / QUIT on the left in Bebas. Hovering a row slides it right,
+lights an accent bar, and leaves a glow that smears away when you move off it.
+Changing screen flies the camera: PLAY to the spectrum towers, VISUALS into the
+ring tunnel, MUSIC to the orb pool. The first file in `ftesurf/music/` plays.
+
+**Things a headless run could not do -- try these:**
+
+| Try | What it should do, and the question |
+|---|---|
+| Move the mouse slowly across the main menu | The whole space turns a few degrees after it, eased. Does it feel alive, or seasick? (`MM_Camera`: 16 deg yaw, 8 deg pitch, time constant ~0.3 s) |
+| Hover PLAY, then MUSIC | The camera leans toward where each would fly. Noticeable? Too much? |
+| Play a track you know well, watch the towers and the orbs | Do the beats land ON the beat? The analysis is aligned to DirectSound's play cursor (measured ~95 ms of mix-ahead removed); the Windows audio engine's own delay (~10-30 ms) is not, so visuals may lead slightly |
+| VISUALS: audio reactivity "wild" | You already picked it. Is it too much on a busy track? |
+| VISUALS: in-game sky "visualizer", then surf an open map with music on | Epic, or does it hurt reading the ramps? It is OFF by default for that reason |
+| MUSIC: "muffle game in menu" on, open the menu mid-run | Game audio should low-pass to ~900 Hz over a quarter second and come back when you close it |
+| VISUALS: menu scene high | On this N100 that is ~35 fps in the menu (medium ~145). Your main rig should not notice either |
+
+**Decisions only you can make:**
+
+- **Ship a menu track?** `python tools/mkmenumusic.py` wrote
+  `ftesurf/music/ftesurf_dream.wav` (76.8 s ambient loop, generated, no licence
+  question) -- but it is 13.5 MB of WAV and not in git or the release. Ship it as
+  an OGG, commission a real one, or leave menu music to the player. Taste
+  matters more than bytes here: is the generated one any good?
+- **Music after the menu closes.** It keeps playing into the map (the sky is
+  built to react to it). Stop it on join instead?
+- **Defaults:** scene medium, trails full, reactivity normal, sky OFF, menu
+  music "auto" (first file in `music/`).
+
+**On your main rig:** pull both repos, `build.ps1 -Engine` (the audio analysis is
+engine Patch 467 -- without it the visuals run but ignore the music, and VISUALS
+says so), then run. Nothing reaches the lobbies until a `-Pi` deploy.
+
+**Known limits, so they do not surprise you:** OpenGL only (Vulkan/D3D get the
+old flat backdrop); the OpenAL output skips the software mixer, so no analysis
+there (`s_al_disable 1`); the menu space only runs while you are NOT in a game.

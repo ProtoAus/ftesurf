@@ -112,6 +112,20 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).
 
+- ON A MACHINE WITH ONLY MSYS2 MINGW64 (the holiday laptop, 2026-09-29):
+  `C:\msys64\ucrt64\bin` can exist and be EMPTY, and then every `make` step
+  dies on "command not found". Put `C:\msys64\mingw64\bin;C:\msys64\usr\bin` on
+  PATH and set `C_INCLUDE_PATH=C:\msys64\mingw64\include\opus` (the Makefile's
+  `-I/usr/include/opus` misses the mingw64 package). The plugin link needs
+  `pacman -S zip`; TTF fonts need `mingw-w64-x86_64-freetype` BEFORE the build
+  (without it the Makefile silently adds `-DNO_FREETYPE`, and a later install
+  needs a clean rebuild). `build.ps1 -Engine` then dies at plugins-rel on box3d's
+  missing library -- build `NATIVE_PLUGINS="hl2 cod"` by hand and copy the exe and
+  the hl2 DLL. That build links its libraries dynamically: copy libjpeg, libpng,
+  libopus, libspeex(dsp), libvorbis(file), libogg, zlib1 and the freetype chain
+  beside `ftesurf64.exe` (all git-ignored), and put mingw64\bin on PATH for
+  `fteqcc64.exe` as well.
+
 ## Run and test
 
 - Normal launch: `./ftesurf64.exe` (or `ftesurf.bat`).
@@ -1875,6 +1889,28 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+- **`volume 0` DOES NOT MUTE MUSIC.** Music plays at `musicvolume * mastervolume`
+  (`snd_dma.c:3512`) and `volume` only scales the rest, so a harness that
+  "mutes" with `volume 0` plays its music out loud -- Patch 467's did, with the
+  laptop's owner in the room. And every volume cvar is applied BEFORE the
+  snd_vis tap, so muting music also blinds the analysis. Use a whisper instead:
+  `set musicvolume 0.02` (the analysis is level-normalised), and test WAVs at
+  -40 dBFS (`tools/p467visprobe.py`).
+- **`+lookup` DOES NOTHING IN A MINIMIZED HARNESS.** To aim the camera, use the
+  mod's `cmd setpos <x> <y> <z> <pitch> <yaw> <roll>` (taints the run -- fine for
+  pixels) with coordinates from `cmd viewpos`; `cfg/test/p467pos.cfg` prints a
+  map's spawn that way.
+- **LAUNCHING `ftesurf64.exe` DIRECTLY SKIPS `ftesurf.bat`'S fs_addons SEEDING.**
+  On a fresh clone that means no Steam mounts at all -- "FTESurf: 0 maps" -- and
+  a harness that loads a map finds nothing. Copy `fs_addons.default.txt` to
+  `fs_addons.txt` once, as the .bat does.
+- **A PLAYER'S RUNNING GAME LOCKS `ftesurf64.exe`.** A deploy fails with "being
+  used by another process" while the owner has the game open. Never kill it:
+  wait on that PID (`Wait-Process -Id <pid>`) and copy after it exits.
+- **A 2256x1380 PNG SCREENSHOT BLOCKS THE MAIN THREAD ~2 s.** A timed harness then
+  shoots frames drawn before its own last step took effect -- Patch 467's first
+  tour looked like a frozen sim for exactly that reason. `scr_sshot_type jpg`
+  writes in milliseconds.
 - **QC `&&` DOES NOT SHORT-CIRCUIT, AND A MISSING `#0:` BUILTIN ABORTS THE WHOLE
   VM.** Patch 467's `if (milk_hasvis && snd_getvis(...))` called `snd_getvis` on an
   engine that lacked it: "Builtin 0:snd_getvis not implemented", menu.dat shut

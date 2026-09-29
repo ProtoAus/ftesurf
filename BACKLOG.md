@@ -2070,6 +2070,29 @@ depth at ~3,000 requests/day. What that leaves open:
   (SP_CVAR4F -> `qglUniform3fvARB`). Nothing uses `!!cvar4f` today. Found reading
   the shader system for Patch 467; falsifier: a program with `!!cvar4f` on a vec4
   uniform draws its w as 0 (or raises GL_INVALID_OPERATION).
+- **THE LOBBIES RUN PATCH 467'S CSPROGS ONLY AFTER A `-Pi` DEPLOY.** The visualizer
+  sky lives in csprogs.dat, which a lobby hands its players; nothing was deployed
+  to the Pi from the laptop. Harmless until then (the sky is off by default and
+  the menu is menu.dat, which is always local). Falsifier: join a lobby with
+  `milk_sky 1` and look up -- the map's own sky means the old csprogs.
+- **THE MENU TRACK DOES NOT SHIP.** `tools/mkmenumusic.py` writes a 13.5 MB WAV
+  into `ftesurf/music/`, which is git-ignored and in no `$ShipGlobs` line, so a
+  release has a silent menu (the visuals still run). Shipping it wants an OGG
+  (~1.5 MB; no encoder on the laptop) and a ship-set line -- or leave menu music
+  to whatever the player drops in. A decision, see lextest.md section 8.
+- **THE SKY'S HORIZON SKYLINE HAS NEVER BEEN SEEN.** Every p467sky shot on
+  surf_rookie was taken inside the start room, whose walls hide the horizon ring
+  the spectrum bars stand on; the dome and the zenith were checked, the ring was
+  not. Falsifier: `milk_sky 1` with music playing on an open map, look level.
+- **IN-GAME COSTS ARE SINGLE HUD READINGS.** The sky's ~0.7 ms (150.6 vs 168.1 fps,
+  same view) is one instantaneous fps counter per state, not an average over an
+  interval like the menu's `milk_bootcheck 4`. A proper arm would time a fixed
+  replay with the sky on and off.
+- **SUSPECTED: CSQC 3D POLYGONS CAN BE CORRUPTED BY A 2D FLUSH IN THE SAME FRAME.**
+  `engine/client/pr_csqc.c:1624` sets `cl_numstrisidx = csqc_poly_origvert;` where
+  `origidx` looks intended. Read during Patch 467's engine audit, NOT reproduced.
+  Falsifier: queue a 3D polygon, then draw 2D text before renderscene, and check
+  the 3D polygon's triangles.
 - **THE MENU'S MOUSE-LOOK IS UNMEASURED.** A minimized harness has no cursor, so
   the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
   read, never exercised. Falsifier: move the mouse across the main menu and watch
