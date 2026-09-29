@@ -239,6 +239,10 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*' }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
+    # Patch 467: the 2x1 placeholder that makes `r_skybox milk` register the
+    # skybox_milk script shader -- R_SetSky only takes that branch when an image
+    # of the name loads.  scripts/milk.shader's header has the whole chain.
+    @{ Path = 'ftesurf/gfx/env';        Filter = 'milk.png' }
     # THE VOICE ICONS, and they have never shipped either -- same root cause as
     # the zone library below and the same as gfx/mapshots: art referenced by
     # NAME from code that no ship-set line carried.  cl_players.qc:403 draws one

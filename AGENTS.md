@@ -1848,8 +1848,38 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   profile without IPH_RAW; delete those three lines to lift it). Patch 387's
   entry lists what Linux input evidence cannot see.
 
+## The milk visualizer (Patch 467)
+
+- `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback
+  renderer on render targets: scene -> warp -> sprites -> bloom -> composite, one
+  tick at a FIXED 60 Hz. `src/menu/m_milk.qc` owns the menu's raymarched space
+  (four stations; changing screen flies the camera) and the VISUALS / MUSIC
+  screens; `src/client/cl_milk.qc` the sky (`r_skybox milk`). Shaders are
+  `ftesurf/glsl/milk_*.glsl`; `milk_common.h` is the `w_user[]` slot table and
+  must stay in step with `Milk_Pack`. GL only -- `Milk_Supported()` turns it off on
+  any other renderer (Vulkan's 2D render-target switch is an empty function).
+- Harness: `+set milk_bootcheck 1 +exec test/p467milk.cfg` photographs all four
+  stations and quits; `3` shoots one station twice (diff them: identical = frozen
+  sim); `4` with `test/p467perf.cfg` prints frame rate with the space on, then off.
+  `test/p467sky.cfg` (surf_rookie, setpos-aimed) for the sky, with the map's own
+  sky as the control. Screenshots are JPEG: a 2256x1380 PNG blocks the main thread
+  ~2 s, and the harness steps are timed.
+- Render-target rules that cost time here: configure a target with the 4-arg
+  `setproperty(VF_RT_DESTCOLOUR, ...)` before the first `drawpic` whose material
+  names it; `[shader] name ... prog 0` in the log means the program is on the PASS,
+  not missing; a 2D polygon with a GLSL material falls back to something ugly off GL
+  (MM_Shade drew a black half-screen on Vulkan).
+- The engine half: `snd_getvis` / `snd_visimage` analyse the software mix, and
+  `snd_fx_lowpass` is the menu's "muffle the game". OpenAL output bypasses the
+  mixer entirely, so there is nothing to analyse there.
+
 ## Pitfalls discovered the hard way
 
+- **QC `&&` DOES NOT SHORT-CIRCUIT, AND A MISSING `#0:` BUILTIN ABORTS THE WHOLE
+  VM.** Patch 467's `if (milk_hasvis && snd_getvis(...))` called `snd_getvis` on an
+  engine that lacked it: "Builtin 0:snd_getvis not implemented", menu.dat shut
+  down, and the engine dropped to the stock Quake menu. Gate an optional builtin
+  with `checkbuiltin` and NESTED ifs (`if (a) if (b(...))`), never `&&`.
 - **`git add <paths> && git commit` COMMITS THE WHOLE INDEX, including what the
   peer staged before you started.** Staging your files does not unstage theirs.
   On 2026-09-28 commit 7a3d194, titled as a zone-mirror change, carried the

@@ -120,6 +120,22 @@
 */
 #define SCREEN_NAME     3
 
+// Patch 467: the milk visualizer's screens and the 3D space behind the menu.
+// m_milk.qc compiles AFTER this file (it uses the ui_* widgets defined here),
+// so everything this file calls into it is prototyped here.
+#define SCREEN_VISUALS  4
+#define SCREEN_MUSIC    5
+void() MM_Init;
+float() MM_Active;
+void(vector screensize) MM_Frame;
+void(vector screensize) MM_Backdrop;
+void(vector screensize) MM_ScreenMain;
+void(vector screensize) MM_ScreenVisuals;
+void(vector screensize) MM_ScreenMusic;
+void() MM_Open;
+void() MM_Close;
+void() MM_BootTick;
+
 /*
   Map source, derived from the searchpath a BSP came out of.
 
@@ -4291,6 +4307,11 @@ void() ui_bootcheck_tick =
 */
 void(vector screensize) ui_backdrop =
 {
+	if (MM_Active())
+	{
+		MM_Backdrop(screensize);
+		return;
+	}
 	sui_fill('0 0 0', screensize, '0.02 0.02 0.03',
 	         (clientstate() == 2) ? 0.55 : 1, 0);
 };
@@ -4464,6 +4485,12 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 void(vector screensize) ui_map_backdrop =
 {
 	local string uuid, want;
+
+	// Patch 467: with the 3D space on, the tower field IS the backdrop.  A
+	// full-screen photo over it would bury it, and the nine-tap atlas blur
+	// cannot simply be faded (its taps average through their alphas).
+	if (MM_Active())
+		return;
 
 	if (ms_selected != ms_bgfor)
 	{
@@ -4763,31 +4790,12 @@ void(vector screensize) screen_name =
 	}
 };
 
+// Patch 467: PLAY / VISUALS / MUSIC / QUIT, drawn by m_milk.qc -- PLAY is the
+// old "create server".
 void(vector screensize) screen_main =
 {
 	ui_backdrop(screensize);
-
-	vector p = [floor(screensize_x * 0.5) - 200, floor(screensize_y * 0.5) - 48];
-
-	Font_Set(ui_font_display);
-	sui_text([p_x + 12, p_y - 96], SZ_TITLE, "FTESurf", COL_ACCENT, 1, 0);
-	Font_Set(ui_font_ui);
-	sui_text([p_x + 12, p_y - 44], SZ_LABEL,
-	         "Counter-Strike: Source movement", COL_DIM, 1, 0);
-
-	if (ui_option("mm_create", p, 400, 34, "create server", COL_TEXT))
-	{
-		menu_screen = SCREEN_CREATE;
-		ui_create_open();
-		ui_refilter();
-	}
-
-	if (ui_option("mm_exit", [p_x, p_y + 42], 400, 34, "exit", COL_TEXT))
-		localcmd("quit\n");
-
-	if (clientstate() == 2)
-		sui_text([p_x + 12, p_y + 100], SZ_LABEL,
-		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
+	MM_ScreenMain(screensize);
 };
 
 /*
@@ -6080,6 +6088,9 @@ void() m_init =
 	// "<yaw> <pitch> <yaw2> <pitch2>" for ui_bootcheck 3's two extra in-game
 	// screenshots, taken from the start zone.  Empty uses a sane default.
 	registercvar("ui_bootangles", "", 0);
+
+	MM_Init();
+
 	if (cvar("ui_bootcheck"))
 	{
 		print("^2FTESurf: menu.dat loaded\n");
@@ -6131,6 +6142,12 @@ void(vector screensize) m_draw =
 	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf)
 		ui_refilter();
 
+	// Patch 467.  Before sui_begin: the sim draws into render targets, and
+	// nothing sui sets up (clipping, the hit list) may apply to those passes.
+	if (cvar("milk_bootcheck"))
+		MM_BootTick();
+	MM_Frame(screensize);
+
 	sui_begin(screensize_x, screensize_y);
 
 	// m_init can run before the renderer is up, in which case loadfont
@@ -6167,6 +6184,16 @@ void(vector screensize) m_draw =
 		Lob_Poll();
 		screen_create(screensize);
 	}
+	else if (menu_screen == SCREEN_VISUALS)
+	{
+		ui_backdrop(screensize);
+		MM_ScreenVisuals(screensize);
+	}
+	else if (menu_screen == SCREEN_MUSIC)
+	{
+		ui_backdrop(screensize);
+		MM_ScreenMusic(screensize);
+	}
 	else
 		screen_main(screensize);
 
@@ -6179,6 +6206,7 @@ void() m_open =
 {
 	setkeydest(2);
 	menu_active = TRUE;
+	MM_Open();
 
 	// The list is always open now (there is no ms_open any more), so all this
 	// has to do is make sure there is something in it -- and, since build 57,
@@ -6202,9 +6230,17 @@ void() m_close =
 	  cancel finds nothing pending and returns.
 	*/
 	ui_join_cancel();
+	MM_Close();
 
 	setkeydest(0);
 	menu_active = FALSE;
+};
+
+// A renderer restart destroys every render target (pr_menu.c:3499 looks this
+// up by name); the milk rebuilds its targets on the next frame.
+void() Menu_RendererRestarted =
+{
+	Milk_Invalidate();
 };
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
@@ -6244,7 +6280,8 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				return TRUE;
 			}
 
-			if (menu_screen == SCREEN_CREATE)
+			if (menu_screen == SCREEN_CREATE || menu_screen == SCREEN_VISUALS
+			    || menu_screen == SCREEN_MUSIC)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
 				m_close();          // in a game: ESC returns to it

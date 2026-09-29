@@ -12,6 +12,9 @@ shared/sh_font.qc
 // and CSQC "both".  There is a third module and this is it.
 shared/sh_json.qc
 sui_sys.qc
+// Patch 467: the feedback renderer, shared with csprogs like sui_sys.qc.
+// Needs only engine builtins; m_milk.qc below is its menu owner.
+milk_sys.qc
 
 // BEFORE m_main.qc, and the dependency runs one way: m_lobby.qc holds the
 // public-lobby list and knows nothing about the map picker, while m_main.qc
@@ -19,3 +22,7 @@ sui_sys.qc
 // Putting the drawing here instead would need both of those, which live below.
 menu/m_lobby.qc
 menu/m_main.qc
+// Patch 467: AFTER m_main.qc -- it draws with ui_option/ui_chip/ui_button and
+// reads menu_screen/ms_consent, all defined there; m_main.qc reaches it
+// through the MM_* prototypes beside its SCREEN_* defines.
+menu/m_milk.qc

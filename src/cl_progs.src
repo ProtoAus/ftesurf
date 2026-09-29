@@ -19,6 +19,9 @@ shared/sh_interp.qc
 // beside the printf define at the top of it.  Here rather than lower down
 // because cl_hud.qc and everything after it may draw with it.
 sui_sys.qc
+// Patch 467: the feedback renderer, the same file menu.dat compiles.  Engine
+// builtins only; client/cl_milk.qc (the sky) is its owner here.
+milk_sys.qc
 
 client/cl_board.qc
 client/cl_keys.qc
@@ -199,4 +202,9 @@ client/cl_hudedit.qc
 // register in cl_hud.qc absorbs the overlap), and its two readers, this file and
 // cl_main.qc, both follow.  Move it up only if an earlier file ever needs it.
 client/cl_entview.qc
+// Patch 467: the visualizer sky.  Needs milk_sys.qc (above, beside sui_sys.qc)
+// and the pmove_* globals; cl_main.qc calls MilkSky_Init/_WorldLoaded/_Frame,
+// so it only has to precede that file.  Placed after cl_entview.qc so that
+// file stays "last before cl_main" in every sense its comment relies on.
+client/cl_milk.qc
 client/cl_main.qc

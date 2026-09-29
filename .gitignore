@@ -82,6 +82,8 @@ __pycache__/
 *.cpp
 *.h
 *.hpp
+#  ...except GLSL includes, which are game content (Patch 467's milk shaders).
+!/ftesurf/glsl/*.h
 
 *.vpk
 *.bsp
@@ -251,6 +253,10 @@ __pycache__/
 #  fonts negation below can take effect.  It is not a dead line -- do not delete.
 /ftesurf/gfx/*
 !/ftesurf/gfx/fonts/
+#  Patch 467: the sky placeholder `r_skybox milk` needs (scripts/milk.shader).
+!/ftesurf/gfx/env/
+/ftesurf/gfx/env/*
+!/ftesurf/gfx/env/milk.png
 
 
 #  ftesurf/data/ -- one hand-written file; everything else is generated or

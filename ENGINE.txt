@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   49968c488639187dd1d407092d23d1324948a476
+commit   8a97e3aff2379bc3de5f6282a9e90443f622a19d
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,14 +24,18 @@ commit   49968c488639187dd1d407092d23d1324948a476
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-266
-patch    466
+tag      patch-467
+patch    467
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-09-28
+date     2026-09-29
+
+# PATCH 467: the milk visualizer -- snd_getvis/snd_visimage analyse the software mix and
+# snd_fx_lowpass muffles it (engine); a raymarched 3D menu, a visualizer sky (r_skybox
+# milk) and a menu music player (QC).  GL only.  cfg/test/p467*.cfg.
 
 # PATCH 430 (mod-side): the load key draws the save a round trip early (render only;
 # STAT_FS_SLORG/SLANG/SLACK, cl_slpredict).  cfg/test/p430cl.cfg.

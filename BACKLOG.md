@@ -2048,3 +2048,29 @@ depth at ~3,000 requests/day. What that leaves open:
   `ksfimport.py`'s contract is "never automatic: every run of this is a person
   typing it", and a website button is NOT that — it would make our IP a request
   generator for anyone who finds the page.
+
+## Milk visualizer (Patch 467) -- 2026-09-29
+
+### Still open
+
+- **A STOCK MSYS2 MINGW64 CANNOT BUILD THE ENGINE: `opus.h` IS NOT WHERE THE
+  MAKEFILE LOOKS.** `engine/Makefile:1073` adds `-I/usr/include/opus` (the msys
+  runtime tree); the `mingw-w64-x86_64-opus` package installs it under
+  `/mingw64/include/opus`. Patch 467 was built on the laptop with
+  `C_INCLUDE_PATH=C:\msys64\mingw64\include\opus`. Falsifier: `make m-rel
+  FTE_TARGET=win64` without that variable stops at `snd_dma.c:390`.
+- **A BUILD WITHOUT pkg-config's freetype2 SILENTLY PUTS EVERY TTF ON THE BITMAP
+  FONT.** `engine/Makefile:1102-1107` adds `-DNO_FREETYPE` when pkg-config finds no
+  freetype2, and loadfont then returns FONT_DEFAULT without a word (sh_font.qc's
+  "failure is not fatal"). The laptop's first Patch 467 build did exactly that.
+  `build.ps1` could refuse an exe that neither imports `libfreetype-6.dll` nor
+  links FT_Init_FreeType. Falsifier: build without `mingw-w64-x86_64-freetype`
+  installed, open the menu.
+- **`!!cvar4f` UPLOADS THREE COMPONENTS.** `engine/gl/gl_backend.c:4416-4417`
+  (SP_CVAR4F -> `qglUniform3fvARB`). Nothing uses `!!cvar4f` today. Found reading
+  the shader system for Patch 467; falsifier: a program with `!!cvar4f` on a vec4
+  uniform draws its w as 0 (or raises GL_INVALID_OPERATION).
+- **THE MENU'S MOUSE-LOOK IS UNMEASURED.** A minimized harness has no cursor, so
+  the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
+  read, never exercised. Falsifier: move the mouse across the main menu and watch
+  the cube stay framed, with no snap when the cursor enters the window.

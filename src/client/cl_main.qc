@@ -134,6 +134,7 @@ void() CSQC_WorldLoaded =
 	local float  rf;
 
 	Portal_LoadFromWorld();
+	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived
 
 	// The sprite entities, read from the same lump and for the same reason the
 	// portals are read here rather than from a lazy compare in UpdateView: this
@@ -319,6 +320,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Spec_RegisterCvars();           // Patch 385, spectate
 	MPad_RegisterCvars();           // Patch 390, the mouse pad
 	Ev_Register();                  // build 54, the trigger/entity inspector
+	MilkSky_Init();                 // Patch 467, the visualizer sky
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
 	// from the last map would alias a live buffer.  See Rec_ViewInit.
@@ -1523,6 +1525,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
 	Scores_LinesPin();              // ...and their projection (Watch_Path pins only in mode 2)
+
+	// Patch 467.  The sky's render-target passes, last before the scene that
+	// samples them; Milk_Tick puts VF_RT_DESTCOLOUR back to the screen.
+	MilkSky_Frame();
 
 	renderscene();
 
