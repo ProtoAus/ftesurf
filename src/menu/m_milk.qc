@@ -930,6 +930,7 @@ void() MM_Init =
 	registercvar("milk_fakemouse", "", 0);
 	registercvar("milk_bcstation", "0", 0);
 	registercvar("milk_bcworld", "vessel", 0);
+	registercvar("milk_bcdiv", "0", 0);
 
 	mm_shuffle = floor(random() * 3);
 	if (mm_shuffle > 2)
@@ -1034,6 +1035,8 @@ void(vector screensize) MM_Frame =
 		milk_scenediv = 1;
 	else
 		milk_scenediv = 2;
+	if (cvar("milk_bcdiv") > 0)         // harness: pin it, to time the raymarch alone
+		milk_scenediv = cvar("milk_bcdiv");
 
 	MM_PanelPlace(0);
 	MM_PanelPlace(1);

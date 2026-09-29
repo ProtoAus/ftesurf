@@ -2125,6 +2125,28 @@ depth at ~3,000 requests/day. What that leaves open:
 - **FRAME RATES ON THE N100 MOVE ~30% RUN TO RUN.** The same arm (monolith,
   720p, every tick) measured 17 and 24 fps ten minutes apart. Quote the pair,
   or a control run beside it, not one number.
+- **THE MENU NEVER RENDERS ABOVE 720p.** Even at ultra the targets are 720 high
+  and the scene 80-100% of that, so on a 1440p screen the 3D has 4-6x fewer
+  pixels than the screen, stretched bilinearly. A "native" step (screen height,
+  scene scale 1) is the direct way to push resolution on a fast machine.
+  Unmeasured on one.
+- **FULL RESOLUTION COULD COST LESS: THREE IDEAS, NONE MEASURED HERE.**
+  (1) A cone pre-pass: march at 1/4 resolution to find how far each 4x4 tile's
+  rays can safely travel, and start the full-resolution rays there -- the
+  monolith's void and the vessel's darkfield spend most of their steps crossing
+  empty space. (2) Checkerboard: raymarch half the pixels a tick and reproject
+  the rest; `milk_scenediv 2` is the crude form, and the scene's alpha is taken
+  by the panel mask, so depth needs its own target. (3) FSR 1 (EASU + RCAS) in
+  the present instead of the bilinear stretch, for whatever stays scaled. On the
+  N100, native 2256x1380 is ~10x the monolith's medium scene, which none of
+  these covers alone; on a desktop GPU they may make native affordable.
+- **THE BEAT GATES ARE TUNED ON GENERATED MUSIC ONLY.** `p468react` replayed the
+  six generated tracks. A loud, compressed master has flatter bass ratios, so
+  fewer kicks may clear the 1.3 gate: drop real songs into `ftesurf/music/` and
+  replay them (one `REACT_TRACK` block per song in the cfg).
+- **THE FILMS' CROP AND HOT SPOT ARE LOCATED BY HAND FOR TWO IMAGES.** Another
+  x-ray under the same names gets markers in its crop and the glow in the wrong
+  place.
 - **THE MENU'S MOUSE-LOOK IS UNMEASURED.** A minimized harness has no cursor, so
   the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
   read, never exercised. Falsifier: move the mouse across the main menu and watch

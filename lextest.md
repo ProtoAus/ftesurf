@@ -1361,4 +1361,8 @@ run.)
 
 - Is "wild" now the right amount, or is normal enough?
 - Keep the cool grade as the default?
-- Ultra on the PC: smoother flights, or no visible difference?
+- Ultra on the PC: smoother flights, or no visible difference? If it holds 60+
+  fps there, the next step is rendering above 720p (BACKLOG, "THE MENU NEVER
+  RENDERS ABOVE 720p") -- say if you want it.
+- Your own loud songs, if you have some: do the flashes follow their kicks? The
+  beat gates were tuned on the generated tracks only.

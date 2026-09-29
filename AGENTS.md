@@ -1900,6 +1900,14 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   lattice at high, which raymarch every tick. The camera and panel slots in
   `w_user` are only repacked on a raymarch tick, because the present and the
   cursor trace must match the image that is on screen.
+- Resolutions: the targets are `180 + 180 * quality` high (360 / 540 / 720, by
+  aspect; `MM_Frame`), the scene target a per-world 50-100% of that
+  (`milk_scenescale`), bloom at 1/2 and 1/4, and the present stretches `out` to
+  the screen bilinearly. Only the panels are drawn at screen resolution (the
+  `#PANELS` overlay). The raymarch is the cost. N100, monolith MAIN, a tick a
+  frame: ~19 ms a raymarch at medium (511x313), ~50 at high (942x576), against
+  ~3 ms a frame for everything else the milk does -- `+set milk_bcdiv 1` against
+  `999` (a harness knob pinning the raymarch to every Nth tick), 2026-09-30.
 - THE BEAT GATES (2026-09-30). `milk_beat` pulses on every engine onset, hats
   included (7/s on `ftesurf_drive`). The visuals answer `milk_kick` (a bass onset
   gated by the bass ratio above 1.3) and `milk_hit` (a kick, or a treble onset
