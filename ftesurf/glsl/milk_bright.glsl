@@ -29,11 +29,13 @@ void main(void)
 	c += texture2D(s_scene, tc + vec2( px.x,  px.y)).rgb + texture2D(s_fb, tc + vec2( px.x,  px.y)).rgb * M_LOOK.y;
 	c *= 0.25;
 
-	// Soft knee around 0.6: highlights bloom, the dark body of the scene does not.
+	// Soft knee: highlights bloom, the dark body of the scene does not.  A
+	// daylight world moves the knee up (M_CAMUP.w).
+	float kn = (M_CAMUP.w > 0.0) ? M_CAMUP.w : 0.35;
 	float l = max(c.r, max(c.g, c.b));
-	float k = clamp(l - 0.35, 0.0, 0.5);
+	float k = clamp(l - kn, 0.0, 0.5);
 	k = k * k / 0.5;
-	float w = max(k, l - 0.6) / max(l, 1e-4);
+	float w = max(k, l - kn - 0.25) / max(l, 1e-4);
 	gl_FragColor = vec4(c * w, 1.0);
 }
 #endif

@@ -50,6 +50,7 @@ float(string imagename, float bands) snd_visimage = #0:snd_visimage;
 
 string milk_pre;                // target / material prefix
 string milk_prog_scene, milk_prog_warp, milk_prog_comp;
+string milk_scenemaps;          // extra "map" lines for the scene pass (the menu's panel UIs)
 vector milk_rtsize;             // internal size the targets were made at
 vector milk_scsize;             // the scene target: milk_rtsize * milk_scenescale
 float  milk_scenescale;         // < 1 renders the raymarch smaller; the trails hide it
@@ -70,6 +71,8 @@ float  milk_flash, milk_liquid, milk_speed;
 vector milk_focus;              // xy zoom centre in uv, z highlight / shock radius
 float  milk_react, milk_quality, milk_kaleido;
 vector milk_offset;             // present-time parallax, uv
+float  milk_inject, milk_knee;  // warp seeding threshold, bloom knee; 0 = the shaders' defaults
+float  milk_scenediv;           // raymarch every Nth tick (0/1 = every tick); the feedback runs every tick
 
 // Audio, refreshed once per tick.
 float milk_bass, milk_mid, milk_treb, milk_vol;
@@ -78,6 +81,7 @@ float milk_beat, milk_beat_bass, milk_beat_treb, milk_rms, milk_live;
 
 void() milk_nosprites = {};
 var void() milk_sprites = milk_nosprites;
+var void() milk_packextra = milk_nosprites;     // fills w_user[12..15] before the upload
 
 // GL only, by construction: on Vulkan the 2D render-target switch is an empty
 // function (vk_init.c:4095), so every pass would draw onto the screen instead.
@@ -102,10 +106,38 @@ void(string rt, float fmt, vector size) Milk_Target =
 	setproperty(VF_RT_DESTCOLOUR, rt, fmt, size);
 };
 
+// The scene pass's material for program `prog` and ping-pong parity k.  Named
+// per program because shaderforname never redefines a name it already has.
+string(float k, string prog) Milk_SceneMat =
+{
+	return Milk_N(sprintf("scene%g_%s", k, strreplace("#", "_", prog)));
+};
+
+void() Milk_SceneMats =
+{
+	local float k;
+	for (k = 0; k < 2; k++)
+		Milk_Mat(Milk_SceneMat(k, milk_prog_scene), milk_prog_scene,
+		         sprintf("map $rt:%s\nmap $rt:%s\n%s", Milk_N(strcat("f", ftos(k))), MILK_SPEC, milk_scenemaps));
+};
+
+// Switch the raymarched world.  Materials are made on first use, so a world
+// that is never shown never compiles.
+// Zoned: the menu builds per-station names ("milk_vessel#S2") in temp strings.
+void(string prog) Milk_SetScene =
+{
+	if (!strcmp(prog, milk_prog_scene))
+		return;
+	strunzone(milk_prog_scene);
+	milk_prog_scene = strzone(prog);
+	if (milk_ready)
+		Milk_SceneMats();
+};
+
 void(string pre, string scene, string warp, string comp) Milk_Init =
 {
 	milk_pre = pre;
-	milk_prog_scene = scene;
+	milk_prog_scene = strzone(scene);
 	milk_prog_warp = warp;
 	milk_prog_comp = comp;
 	if (!milk_ud)
@@ -163,11 +195,10 @@ void(vector size) Milk_Configure =
 	drawfill('0 0 0', size, '0 0 0', 1);
 	setproperty(VF_RT_DESTCOLOUR, "");
 
+	Milk_SceneMats();
 	for (k = 0; k < 2; k++)
 	{
 		fk = sprintf("map $rt:%s\n", Milk_N(strcat("f", ftos(k))));
-		Milk_Mat(Milk_N(strcat("scene", ftos(k))), milk_prog_scene,
-		         strcat(fk, sprintf("map $rt:%s\n", MILK_SPEC)));
 		Milk_Mat(Milk_N(strcat("warp", ftos(k))), milk_prog_warp,
 		         strcat(fk, sprintf("map $rt:%s\n", Milk_N("scene"))));
 		Milk_Mat(Milk_N(strcat("bright", ftos(k))), "milk_bright",
@@ -230,20 +261,28 @@ void(float i, float x, float y, float z, float w) Milk_U =
 	milk_ud[i * 4 + 3] = w;
 };
 
-void() Milk_Pack =
+// `scene` FALSE on a tick that reuses the last raymarch: the camera and the
+// owner's slots then keep the values that image was drawn with, because the
+// menu's present and its cursor trace read them back to line up with it.
+void(float scene) Milk_Pack =
 {
 	Milk_U(0, milk_simtime, MILK_STEP, milk_rtsize_x / max(milk_rtsize_y, 1), milk_ticks);
 	Milk_U(1, milk_bass, milk_mid, milk_treb, milk_vol);
 	Milk_U(2, milk_bass_att, milk_mid_att, milk_treb_att, milk_beat);
-	Milk_U(3, milk_campos_x, milk_campos_y, milk_campos_z, milk_tanfov);
-	Milk_U(4, milk_camfwd_x, milk_camfwd_y, milk_camfwd_z, milk_travel);
-	Milk_U(5, milk_camright_x, milk_camright_y, milk_camright_z, 0);
-	Milk_U(6, milk_camup_x, milk_camup_y, milk_camup_z, 0);
+	if (scene)
+	{
+		Milk_U(3, milk_campos_x, milk_campos_y, milk_campos_z, milk_tanfov);
+		Milk_U(4, milk_camfwd_x, milk_camfwd_y, milk_camfwd_z, milk_travel);
+		Milk_U(5, milk_camright_x, milk_camright_y, milk_camright_z, milk_inject);
+		Milk_U(6, milk_camup_x, milk_camup_y, milk_camup_z, milk_knee);
+	}
 	Milk_U(7, milk_zoom, milk_rot, milk_decay, milk_wobble);
 	Milk_U(8, milk_hue, milk_trails, milk_bloom, milk_exposure);
 	Milk_U(9, milk_flash, milk_liquid, milk_speed, milk_beat_bass);
 	Milk_U(10, milk_focus_x, milk_focus_y, milk_focus_z, milk_react);
 	Milk_U(11, milk_offset_x, milk_offset_y, milk_quality, milk_kaleido);
+	if (scene)
+		milk_packextra();
 	setproperty(VF_USERDATA, milk_ud, MILK_UDBYTES);
 };
 
@@ -255,15 +294,20 @@ void(string rt, float fmt, vector size, string mat) Milk_Pass =
 
 void() Milk_Tick =
 {
-	local float k, nk, t0;
+	local float k, nk, t0, scene;
 	local vector s, h, q;
 	local string sk, nks;
 
 	t0 = gettime(1);
 	milk_ticks++;
 	milk_simtime += MILK_STEP;
+	// Spelled out: fteqcc's precedence made `div <= 1 || t - f * div == 0` never
+	// true, and the world silently stopped drawing.
+	scene = TRUE;
+	if (milk_scenediv > 1)
+		scene = (milk_ticks - floor(milk_ticks / milk_scenediv) * milk_scenediv) == 0;
 	Milk_Audio();
-	Milk_Pack();
+	Milk_Pack(scene);
 
 	s = milk_rtsize;
 	h = [floor(s_x / 2), floor(s_y / 2)];
@@ -273,7 +317,8 @@ void() Milk_Tick =
 	sk = ftos(k);
 	nks = ftos(nk);
 
-	Milk_Pass(Milk_N("scene"), MILK_FMT_RGBA16F, milk_scsize, Milk_N(strcat("scene", sk)));
+	if (scene)
+		Milk_Pass(Milk_N("scene"), MILK_FMT_RGBA16F, milk_scsize, Milk_SceneMat(k, milk_prog_scene));
 	Milk_Pass(Milk_N(strcat("f", nks)), MILK_FMT_RGBA16F, s, Milk_N(strcat("warp", sk)));
 	milk_sprites();
 	Milk_Pass(Milk_N("b1a"), MILK_FMT_RGBA16F, h, Milk_N(strcat("bright", nks)));
@@ -329,12 +374,20 @@ vector(vector p, vector screensize) Milk_ToRT =
 	return [p_x * milk_rtsize_x / screensize_x, p_y * milk_rtsize_y / screensize_y];
 };
 
-// The latest out image, full screen; the only per-frame pass.
-void(vector pos, vector size, float alpha) Milk_Present =
+// The latest out image, full screen; the only per-frame pass.  The menu passes
+// its own material, which also draws the panels.  The rest of w_user is still
+// the last tick's, which is what keeps a panel drawn here registered with the
+// slab that tick raymarched.
+void(vector pos, vector size, float alpha, string mat) Milk_PresentMat =
 {
 	Milk_U(11, milk_offset_x, milk_offset_y, milk_quality, milk_kaleido);
 	setproperty(VF_USERDATA, milk_ud, MILK_UDBYTES);
-	drawpic(pos, Milk_N("present"), size, '1 1 1', alpha);
+	drawpic(pos, mat, size, '1 1 1', alpha);
+};
+
+void(vector pos, vector size, float alpha) Milk_Present =
+{
+	Milk_PresentMat(pos, size, alpha, Milk_N("present"));
 };
 
 // A soft additive dot / bar into the target that is currently bound (only

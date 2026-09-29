@@ -79,6 +79,23 @@ chatty.
   as 136.8 against 168.1 fps -- an "on" shot at pitch -25 beside an "off" shot at
   pitch -60. The matched pair was 150.6 against 168.1. When the cost scales with
   what is on screen, the view is part of the control.
+- WHEN A NUMBER THAT WAS RIGHT GOES WRONG, DIFF BEFORE YOU THEORISE. The milk
+  harness printed `audio live 0` in every world for an hour; the explanations
+  tried were the window's focus (`s_inactive 1` was added and changed nothing)
+  and the new tracks. The cause
+  was in the diff: removing a two-line debug print by line count had taken the
+  `Milk_Audio();` under it too, so nothing had fed the visuals since. A delete by
+  count is an edit you have not read -- read it.
+- SKIPPING WORK IS NOT REMOVING IT. On this Intel GPU the monolith ran 40 fps
+  with its object groups skipped by a runtime switch and 72 with them (and their
+  material code) compiled out -- most likely the shader's size setting the
+  register budget for every pixel. A switch that branches round a feature
+  measures the branch, not the feature.
+- BEFORE "FIXING" A USER'S SETTINGS FILE, ESTABLISH WHO WROTE IT. `ftesurf.cfg`
+  gained `milk_panels "0"` mid-session and it looked like a harness leak. The
+  harness was tested (it does not save) and the file held the user's own music
+  volume and frame cap, not the harness's -- so it was the user's session, and
+  the edit already made to it was reverted from a backup.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).

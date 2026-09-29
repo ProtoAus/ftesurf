@@ -156,8 +156,8 @@ def reverb(x, secs=2.4, wet=0.26):
     return x + wet * y
 
 
-def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else "ftesurf/music/ftesurf_dream.wav"
+def main(out=None):
+    out = out or (sys.argv[1] if len(sys.argv) > 1 else "ftesurf/music/ftesurf_dream.wav")
     padL, padR = np.zeros(N), np.zeros(N)
     pads(padL, padR)
     sub(padL, padR)

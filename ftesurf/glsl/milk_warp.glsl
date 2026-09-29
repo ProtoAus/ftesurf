@@ -78,7 +78,9 @@ void main(void)
 	// accumulating to 1/(1-decay) -- 14x at the sky's 0.93.
 	vec3 o = prev + sc * (1.0 - M_WARP.z) * 1.6;
 #else
-	vec3 o = prev + max(sc - 0.35, 0.0) * 0.55;
+	// A daylight world raises the threshold, or its whole sky would smear.
+	float thr = (M_CAMRIGHT.w > 0.0) ? M_CAMRIGHT.w : 0.35;
+	vec3 o = prev + max(sc - thr, 0.0) * 0.55;
 #endif
 	gl_FragColor = vec4(min(o, vec3(8.0)), 1.0);
 }

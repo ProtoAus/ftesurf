@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps prev=0 spec=1
+!!samps prev=0 spec=1 ui0=2 ui1=3
 
 // Patch 467 -- the menu's 3D space, raymarched at the milk internal size.
 //
@@ -11,12 +11,15 @@
 // BSP cannot be drawn.  Each landmark hides behind a bounding volume, so only
 // the ones near a ray cost anything.
 //
-// s_prev is the previous feedback frame (unused here today, bound so the pass
-// can grow a screen-space term without a new material); s_spec is the
-// snd_visimage spectrum (row 0 = bands, row 1 = waveform).
+// s_prev is the previous feedback frame (the pool's liquid normal); s_spec is
+// the snd_visimage spectrum (row 0 = bands, row 1 = waveform); s_ui0/s_ui1 are
+// the menu panels' UI (milk_panel.h) -- black glass monoliths standing on the
+// floor, their faces lit by the UI, reflected in the tiles.  Alpha out is the
+// panel mask milk_present.glsl #PANELS reads.
 
 #include "sys/defs.h"
 #include "glsl/milk_common.h"
+#include "glsl/milk_panel.h"
 
 varying vec2 tc;
 
@@ -34,14 +37,9 @@ float T;
 vec4  AU, AA;
 mat3  CROT;
 float QUAL;
+float PA_EXT, PB_EXT;          // how far each slab reaches down to the floor
 
 float spec(float x) { return texture2D(s_spec, vec2(clamp(x, 0.02, 0.98), 0.25)).r; }
-
-float sdBox(vec3 p, vec3 b)
-{
-	vec3 q = abs(p) - b;
-	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
 
 // ---------------------------------------------------------------- landmarks --
 // Cube lattice: 3x3x3 rounded cubes, spacing breathing with the bass.
@@ -80,10 +78,11 @@ float towersD(vec3 p)
 	vec2 l = q - cell * TW_CELL;
 	float h = towerH(cell);
 	float d = sdBox(vec3(l.x, p.y - h * 0.5, l.y), vec3(0.55, max(h * 0.5, 0.01), 0.55));
-	// A neighbour can be taller than this cell's tower, so never step past
-	// the cell wall: the SDF of one repeated cell is only valid inside it.
+	// A neighbour can be taller than this cell's tower, so never step far past
+	// the cell wall -- but a tower keeps 0.65 u clear of its cell's edge, so
+	// that far past is safe.  At +0.1 rays crawled along every cell boundary.
 	vec2 e = TW_CELL * 0.5 - abs(l);
-	return min(d, min(e.x, e.y) + 0.1);
+	return min(d, min(e.x, e.y) + 0.6);
 }
 
 // Ring tunnel along +z: an open tube, glowing rings every 3 u, twelve ribs.
@@ -181,6 +180,26 @@ vec3 matGlow(float id, vec3 p)
 	if (id < 2.5) return milk_pal(M_LOOK.x + 0.35 + length(p.xz - ST_TOWERS.xz) * 0.01);
 	if (id > 4.5) return milk_pal(M_LOOK.x + 0.9 + atan(p.z - ST_POOL.z, p.x - ST_POOL.x) * 0.08);
 	return milk_pal(M_LOOK.x + 0.72 + (p.z - ST_TUNNEL.z) * 0.015);
+}
+
+// A panel's slab: black glass, the UI on its face, a thin frame of light.
+vec3 shadePanel(vec3 p, vec3 rd, vec3 n, bool a)
+{
+	vec3 l = a ? panLocal(p, PA_C, PA_R, PA_U, PA_N) : panLocal(p, PB_C, PB_R, PB_U, PB_N);
+	vec2 H = a ? PA_H : PB_H;
+	float L = a ? PA_L : PB_L;
+	float fre = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 4.0);
+	vec3 col = vec3(0.004, 0.005, 0.010) + skyCol(reflect(rd, n)) * (0.25 + 0.75 * fre);
+	if (l.z > -0.03)
+	{
+		if (a)
+			col += panEmit(s_ui0, l, H, L) * 0.35;
+		else
+			col += panEmit(s_ui1, l, H, L) * 0.35;
+		float e = max(abs(l.x) - H.x, abs(l.y) - H.y);
+		col += milk_pal(M_LOOK.x + 0.1) * smoothstep(0.03, 0.0, abs(e - 0.045)) * (0.35 + 1.0 * AA.w) * abs(L);
+	}
+	return col;
 }
 
 // Shade an object hit.  `lite` skips the specular and the extra lookups for
@@ -307,6 +326,9 @@ void main(void)
 	AU = M_AUDIO * M_FOCUS.w;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
+	panInit();
+	PA_EXT = max(0.0, (PA_C.y - (PA_H.y + PANEL_RIM) * PA_U.y) / max(PA_U.y, 0.2));
+	PB_EXT = max(0.0, (PB_C.y - (PB_H.y + PANEL_RIM) * PB_U.y) / max(PB_U.y, 0.2));
 
 	float a1 = T * 0.21, a2 = T * 0.13 + 0.6;
 	mat3 ry = mat3(cos(a1), 0.0, -sin(a1), 0.0, 1.0, 0.0, sin(a1), 0.0, cos(a1));
@@ -326,14 +348,24 @@ void main(void)
 	float tf = (rd.y < -1e-4) ? -ro.y / rd.y : 1e5;
 	float tmax = min(tf, 140.0);
 
+	// The panels' slabs are boxes, intersected here; the march stops at them.
+	vec3 pn;
+	float pw;
+	float tp = panTrace(ro, rd, PA_EXT, PB_EXT, pn, pw);
+
 	vec3 glow = vec3(0.0);
 	float id;
-	float t = march(ro, rd, tmax, steps, id, glow);
+	float t = march(ro, rd, min(tmax, tp), steps, id, glow);
 	vec3 col;
+	float mask = 0.0;
 
 	if (t > 0.0)
-	{
 		col = shadeHit(ro + rd * t, rd, id, false);
+	else if (tp < tmax)
+	{
+		t = tp;
+		col = shadePanel(ro + rd * tp, rd, pn, pw > 0.0);
+		mask = pw;
 	}
 	else if (tf < 140.0)
 	{
@@ -364,8 +396,12 @@ void main(void)
 		vec3 rr = reflect(rd, n);
 		float rid;
 		vec3 rglow = vec3(0.0);
-		float rt = march(p + n * 0.02, rr, 70.0, rsteps, rid, rglow);
-		vec3 refl = (rt > 0.0) ? shadeHit(p + rr * rt, rr, rid, true) : skyCol(rr);
+		vec3 rn;
+		float rw;
+		float rtp = panTrace(p + n * 0.02, rr, PA_EXT, PB_EXT, rn, rw);
+		float rt = march(p + n * 0.02, rr, min(70.0, rtp), rsteps, rid, rglow);
+		vec3 refl = (rt > 0.0) ? shadeHit(p + rr * rt, rr, rid, true)
+		          : ((rtp < 70.0) ? shadePanel(p + n * 0.02 + rr * rtp, rr, rn, rw > 0.0) : skyCol(rr));
 		refl += rglow;
 		float fre = 0.04 + 0.96 * pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 5.0);
 
@@ -383,6 +419,9 @@ void main(void)
 			float line = smoothstep(0.03, 0.0, min(g.x, g.y) - 0.005);
 			vec3 base = vec3(0.012, 0.012, 0.022) + line * milk_pal(M_LOOK.x + 0.4) * 0.05;
 			col = mix(base, refl, (0.18 + 0.6 * fre));
+			// The panels' light pooling on the tiles in front of them.
+			col += mix(vec3(0.6, 0.65, 0.8), milk_pal(M_LOOK.x + 0.1), 0.6) * 0.05
+			     * (panSpill(p, PA_C, PA_R, PA_U, PA_N, PA_H, PA_L) + panSpill(p, PB_C, PB_R, PB_U, PB_N, PB_H, PB_L));
 		}
 	}
 	else
@@ -396,6 +435,6 @@ void main(void)
 	col = mix(col, fogCol(rd), fog);
 	col += glow;
 
-	gl_FragColor = vec4(col, 1.0);
+	gl_FragColor = vec4(col, mask * (1.0 - fog));
 }
 #endif

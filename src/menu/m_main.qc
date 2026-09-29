@@ -135,6 +135,8 @@ void(vector screensize) MM_ScreenMusic;
 void() MM_Open;
 void() MM_Close;
 void() MM_BootTick;
+void() MM_Invalidate;
+vector(vector m) MM_MouseToUI;
 
 /*
   Map source, derived from the searchpath a BSP came out of.
@@ -6240,11 +6242,20 @@ void() m_close =
 // up by name); the milk rebuilds its targets on the next frame.
 void() Menu_RendererRestarted =
 {
-	Milk_Invalidate();
+	MM_Invalidate();
 };
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 {
+	// The in-world panels: sui hit-tests in the panel's own pixels, so the
+	// cursor is traced through the 3D camera onto the panel first.  A no-op on
+	// every screen that is not on a panel.
+	if (evtype == IE_MOUSEABS)
+	{
+		vector mp = MM_MouseToUI([scanx, chary]);
+		scanx = mp_x;
+		chary = mp_y;
+	}
 	float used = sui_input_event(evtype, scanx, chary, devid);
 
 	if (evtype == IE_KEYDOWN && !used)

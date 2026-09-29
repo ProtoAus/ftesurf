@@ -53,6 +53,16 @@ milk_shade
 	}
 }
 
+// Wipes a panel's UI target to transparent before the menu draws into it: no
+// blendfunc, so the pass writes alpha 0 instead of blending over last frame.
+milk_clear
+{
+	{
+		program milk_dot#CLEAR
+		map $whiteimage
+	}
+}
+
 // The MUSIC screen's analyser.  milk_spec is a render target milk_sys.qc
 // configures (and the engine fills), so this is only drawn once it exists.
 milk_specview

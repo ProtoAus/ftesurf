@@ -1248,3 +1248,50 @@ says so), then run. Nothing reaches the lobbies until a `-Pi` deploy.
 **Known limits, so they do not surprise you:** OpenGL only (Vulkan/D3D get the
 old flat backdrop); the OpenAL output skips the software mixer, so no analysis
 there (`s_al_disable 1`); the menu space only runs while you are NOT in a game.
+
+---
+
+## 9. The menu worlds, panels in the world, and six tracks -- what only you can judge
+
+Written 2026-09-30 on the laptop. Built, photographed and measured headless;
+nobody has moved a real mouse over it with the sound on. First run
+`python tools/mkmusic.py` once (about four minutes): it writes the tracks and the
+menu's sound effects, which are generated, not in git.
+
+**Your config says `milk_panels "0"`** -- flat panels. That was written by your
+own session at 00:16 (it holds your music volume and frame cap, not the test
+harness's), so it was left alone. VISUALS -> Menu panels -> "in the world" is
+the new thing.
+
+**The worlds (VISUALS -> Menu world):**
+
+| World | MAIN | PLAY | VISUALS | MUSIC |
+|---|---|---|---|---|
+| lattice | the cube lattice | tower field | ring tunnel | orb pool |
+| monolith | a pier over a 400 m void: bridge, a lone figure in a shaft of light, a forest terrace, a waterfall into the abyss | inside that forest (behind the dialog) | a corridor that does not end | PS2 towers of light cubes over flooded concrete |
+| vessel | an artery, red cells tumbling past | darkfield plankton | an iris whose pupil breathes with the bass | leaf cells, chloroplasts streaming |
+
+Changing world dives: the camera plunges on, the scene swaps at the bottom of
+the plunge, and "auto" menu music changes to that world's track.
+
+**Try these:**
+
+| Try | What it should do, and the question |
+|---|---|
+| Hover the menu entries on a panel | The text should be exactly as sharp as before (one texel per pixel at rest). Is it? |
+| Move the mouse off the panel, to the right | The camera orbits round the panel; the world swings behind it. Moving back onto the panel settles it exactly. Too much? Too little? (`MM_Camera`: 30 deg per screen of distance) |
+| Click VISUALS / MUSIC | The panel you leave collapses like a CRT; the next scans on as you arrive |
+| Menu sounds on | Hover ticks, a deep click, whooshes on flights, a boom on a dive. Too loud? |
+| Listen to `ftesurf_monolith` | A generated male choir (formant synthesis) in a long room. Does it read as voices, or as a synth? |
+| `ftesurf_drive` in a run with the visualizer sky | The one track made for surfing (120 BPM) |
+
+**Decisions only you can make:**
+
+- **Default world.** New installs start in `monolith`. Or `shuffle`?
+- **Default panels.** New installs get "in the world"; you have chosen flat.
+- **Ship the audio?** Six tracks and five effects, all generated. OGG and a
+  release line, or leave them to `mkmusic.py`?
+
+**Measured here (N100, medium, MAIN):** lattice 86 fps, monolith 74, vessel 101
+(flat panels: lattice 122). The two new worlds raymarch every other tick. Your
+main rig will not notice any of it.

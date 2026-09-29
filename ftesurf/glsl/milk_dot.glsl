@@ -8,6 +8,7 @@
 //   default  round falloff over texcoords 0..1
 //   #BAR     soft-edged capsule, for the highlight under a menu row
 //   #FLAT    vertex colour as-is -- the menu's readability gradient
+//   #CLEAR   transparent black, unblended -- wipes a panel's UI target
 
 #include "sys/defs.h"
 
@@ -27,6 +28,10 @@ void main(void)
 void main(void)
 {
 	vec2 d = tc * 2.0 - 1.0;
+#ifdef CLEAR
+	gl_FragColor = vec4(0.0);
+	return;
+#endif
 #ifdef FLAT
 	// Plain vertex colour and alpha, for gradients (blendfunc blend).
 	gl_FragColor = vc;

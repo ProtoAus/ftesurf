@@ -8,13 +8,14 @@
 #define M_AUDIOATT  w_user[2]   // x bass_att  y mid_att  z treb_att  w beat pulse
 #define M_CAMPOS    w_user[3]   // xyz camera  w tan(fov/2)
 #define M_CAMFWD    w_user[4]   // xyz forward  w travel (0 settled .. 1 mid-flight)
-#define M_CAMRIGHT  w_user[5]   // xyz right
-#define M_CAMUP     w_user[6]   // xyz up
+#define M_CAMRIGHT  w_user[5]   // xyz right  w warp seeding threshold (0 = 0.35)
+#define M_CAMUP     w_user[6]   // xyz up  w bloom knee (0 = 0.35)
 #define M_WARP      w_user[7]   // x zoom/tick  y rot/tick  z decay/tick  w wobble
 #define M_LOOK      w_user[8]   // x hue  y trails  z bloom  w exposure
 #define M_EVENT     w_user[9]   // x flash  y liquid  z speed 0..1  w beat_bass pulse
 #define M_FOCUS     w_user[10]  // xy zoom centre (uv)  z highlight  w reactivity
-#define M_EXTRA     w_user[11]  // xy present offset (uv)  z quality  w spare
+#define M_EXTRA     w_user[11]  // xy present offset (uv)  z quality  w kaleidoscope segments
+// w_user[12..15] are the menu's panels -- see milk_panel.h.  The sky leaves them 0.
 
 // Station anchors -- mirrored by MS_* in src/menu/m_milk.qc.
 #define ST_CUBE     vec3(0.0, 3.4, 0.0)
@@ -44,6 +45,22 @@ float vnoise(vec3 p)
 
 mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
 float lum(vec3 c)  { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+float sdBox(vec3 p, vec3 b)
+{
+	vec3 q = abs(p) - b;
+	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+float sdBox2(vec2 p, vec2 b)
+{
+	vec2 q = abs(p) - b;
+	return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+}
+float smin(float a, float b, float k)
+{
+	float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+	return mix(b, a, h) - k * h * (1.0 - h);
+}
 
 // The house palette: indigo -> cyan -> violet, with a warm accent at the top.
 // t is a phase; M_LOOK.x rotates it per station.

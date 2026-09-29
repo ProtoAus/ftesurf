@@ -2093,6 +2093,24 @@ depth at ~3,000 requests/day. What that leaves open:
   `origidx` looks intended. Read during Patch 467's engine audit, NOT reproduced.
   Falsifier: queue a 3D polygon, then draw 2D text before renderscene, and check
   the 3D polygon's triangles.
+- **THE NEW TRACKS AND EFFECTS DO NOT SHIP.** `tools/mkmusic.py` writes six
+  tracks (~87 MB of WAV) and five effects into git-ignored folders, so a fresh
+  clone or a release has a silent menu until someone runs it. Shipping wants OGG
+  (no encoder on the laptop) and `$ShipGlobs` lines. A decision; lextest 9.
+- **THE PANELS COST ~3 MS A FRAME ON THE N100 IN THE LATTICE.** In-world 86 fps
+  against flat 122 at medium (MAIN). The slabs left the SDF (107 without them in
+  the scene at all); what remains is the slab's shading and the per-pixel trace,
+  unmeasured separately.
+- **THE MONOLITH'S FOREST IS MOSTLY BEHIND THE PLAY DIALOG.** PLAY is the 2D create
+  screen, so the terrace forest shows at its edges and in flights (and far off
+  from MAIN). Moving the forest to a panel station, or giving PLAY a panel, would
+  show it.
+- **PICKING AND THE ORBIT ARE PROVEN WITH A FAKE CURSOR ONLY.** `milk_bootcheck 5`
+  shows the trace landing on the entry at rest (to 0.002 px) and after an orbit;
+  a real mouse, and dragging the volume slider on a panel, are unexercised.
+- **THE IRIS FIBRES STRIPE.** 56 radial fibres are near the vessel's scene
+  resolution and band visibly in the stills (motion unseen); and the tree
+  crowns' 2x2 neighbourhood can clip a crown that reaches two cells over.
 - **THE MENU'S MOUSE-LOOK IS UNMEASURED.** A minimized harness has no cursor, so
   the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
   read, never exercised. Falsifier: move the mouse across the main menu and watch

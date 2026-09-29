@@ -1883,6 +1883,32 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   names it; `[shader] name ... prog 0` in the log means the program is on the PASS,
   not missing; a 2D polygon with a GLSL material falls back to something ugly off GL
   (MM_Shade drew a black half-screen on Vulkan).
+- THE WORLDS AND THE IN-WORLD PANELS (2026-09-30). `milk_world` picks the menu's
+  space: `lattice` (`glsl/milk_scene.glsl`), `monolith` (`milk_monolith.glsl`, a
+  brutalist void), `vessel` (`milk_vessel.glsl`, one `#S0..#S3` variant per
+  station, swapped halfway through a flight) or `shuffle`. `milk_panels 1` draws
+  MAIN / VISUALS / MUSIC into render targets `mm_ui0/1` that the world raymarches
+  as a slab's face; `milk_present.glsl #PANELS` redraws them crisply over it,
+  gated by the scene target's alpha (+1 slab A, -1 B), and `MM_MouseToUI` traces
+  the cursor back through the camera `milk_ud` holds. At rest a panel is laid out
+  face-on at one texel per pixel (`MM_PanelPlace`), so its text is the font's
+  raster; the camera orbits the panel only while the cursor is off it. The slabs
+  are intersected (`panTrace`), never marched: in the SDF they cost the lattice
+  4 ms a frame on the N100.
+- `milk_scenediv 2` for the two new worlds: they raymarch every other tick while
+  the feedback runs every tick; the camera and panel slots in `w_user` are only
+  repacked on a raymarch tick, because the present and the cursor trace must
+  match the image that is on screen.
+- Sound: `python tools/mkmusic.py` writes every generated track to
+  `ftesurf/music/` (dream -- still `mkmenumusic.py`, byte-identical -- plus
+  monolith, vessel, canopy, void, drive) and the menu's effects to
+  `ftesurf/sound/milk/`. All git-ignored and deterministic; menu music "auto"
+  plays the world's own track. The menu plays effects only if `click.wav` exists.
+- More harness modes (`MM_BootTick`): `4` measures the station `milk_bcstation`
+  names; `5` the panels (a fake cursor via `milk_fakemouse`: pick at rest, orbit,
+  pick again); `7` every station bare -- run with `+set milk_panels 0` AFTER the
+  exec, or the cfg's pin wins; `8` a dive into `milk_bcworld`. The harness cfgs
+  now pin `milk_panels 1`, `milk_sfx 1` and `s_inactive 1`.
 - The engine half: `snd_getvis` / `snd_visimage` analyse the software mix, and
   `snd_fx_lowpass` is the menu's "muffle the game". OpenAL output bypasses the
   mixer entirely, so there is nothing to analyse there.
@@ -1911,6 +1937,24 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   shoots frames drawn before its own last step took effect -- Patch 467's first
   tour looked like a frozen sim for exactly that reason. `scr_sshot_type jpg`
   writes in milliseconds.
+- **FTEQCC'S PRECEDENCE IS NOT C'S FOR `||` AGAINST ARITHMETIC.**
+  `scene = div <= 1 || t - floor(t / div) * div == 0;` was never true, so the
+  monolith drew nothing and measured 142 fps. Parenthesise, or spell it out with
+  an `if`, and never trust a frame rate you have not looked at a frame of.
+- **ON THE N100, SHADER SIZE COSTS AS MUCH AS SHADER WORK.** The monolith with
+  its object groups skipped by a runtime switch ran 40 fps; a build with those
+  groups (and its material code) compiled out ran 72 -- most likely register
+  pressure on every pixel. So measure a feature by compiling it out, not by
+  branching round it; loop from a `ZERO` the compiler cannot see so map() is
+  inlined once per loop (unrolled, the first compile took 12 s); and keep one
+  call site for march and shade (the water reflection is a second pass of the
+  same loop, not a second call).
+- **A CELL-BOUNDARY CLAMP OF `edge + 0.1` MAKES RAYS CRAWL.** Domain-repeated
+  objects clamp the step at the cell edge because a neighbour may be nearer -- but
+  with a tiny margin, every ray grazing a cell boundary takes 0.1 m steps. Use
+  the real clearance (object to cell edge) as the margin: the monolith's far
+  walls were at the 90-step cap in a step-count heat map and well under it after,
+  and the lattice's PLAY station went from 29 to 41 fps.
 - **QC `&&` DOES NOT SHORT-CIRCUIT, AND A MISSING `#0:` BUILTIN ABORTS THE WHOLE
   VM.** Patch 467's `if (milk_hasvis && snd_getvis(...))` called `snd_getvis` on an
   engine that lacked it: "Builtin 0:snd_getvis not implemented", menu.dat shut

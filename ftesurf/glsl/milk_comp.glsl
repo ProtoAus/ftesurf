@@ -25,8 +25,17 @@ void main(void)
 void main(void)
 {
 	float T = M_TIME.x;
-	vec3 s  = texture2D(s_scene, tc).rgb;
+	vec4 sa = texture2D(s_scene, tc);
+	vec3 s  = sa.rgb;
 	vec3 f  = texture2D(s_fb, tc).rgb;
+#ifdef SKY
+	float pm = 0.0;
+#else
+	// A menu panel's face (the scene's alpha, milk_panel.h): the trails are a
+	// screen-space layer, and without this they would paint over the slab
+	// as if it were glass.
+	float pm = clamp(abs(sa.a), 0.0, 1.0);
+#endif
 	vec3 b1 = texture2D(s_b1, tc).rgb;
 	vec3 b2 = texture2D(s_b2, tc).rgb;
 
@@ -46,7 +55,7 @@ void main(void)
 		f = mix(f, lit, liquid);
 	}
 
-	vec3 c = s + f * M_LOOK.y + (b1 * 0.55 + b2 * 0.85) * M_LOOK.z;
+	vec3 c = s + f * M_LOOK.y * (1.0 - 0.85 * pm) + (b1 * 0.55 + b2 * 0.85) * M_LOOK.z * (1.0 - 0.4 * pm);
 
 	// Beat flash: a tint of the station colour, not white, so it reads as
 	// light in the space rather than a camera flash.
@@ -58,8 +67,9 @@ void main(void)
 	vec2 v = tc - 0.5;
 	float r2 = dot(v, v);
 #ifndef SKY
-	c.r = mix(c.r, aces(texture2D(s_scene, tc - v * 0.006).rgb * M_LOOK.w).r, clamp(r2 * 3.0, 0.0, 1.0));
-	c.b = mix(c.b, aces(texture2D(s_scene, tc + v * 0.006).rgb * M_LOOK.w).b, clamp(r2 * 3.0, 0.0, 1.0));
+	float ca = clamp(r2 * 3.0, 0.0, 1.0) * (1.0 - pm);
+	c.r = mix(c.r, aces(texture2D(s_scene, tc - v * 0.006).rgb * M_LOOK.w).r, ca);
+	c.b = mix(c.b, aces(texture2D(s_scene, tc + v * 0.006).rgb * M_LOOK.w).b, ca);
 	c *= 1.0 - r2 * 0.95;
 #endif
 	c += (hash12(tc * 911.0 + fract(T) * 117.0) - 0.5) * 0.018;
