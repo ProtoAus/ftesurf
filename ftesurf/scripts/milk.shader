@@ -43,6 +43,20 @@ milk_bar
 	}
 }
 
+// Kick streaks into the feedback frame (glsl/milk_wave.glsl): milk_spec's
+// waveform row bends each ribbon's line.  Drawn only from a tick, after
+// Milk_Configure has made milk_spec.  Uncull'd: a ribbon's winding is its
+// direction of travel, and the default culled every line and half the comets.
+milk_wave
+{
+	cull none
+	{
+		program milk_wave
+		blendfunc add
+		map $rt:milk_spec
+	}
+}
+
 // The menu's readability gradient: one quad, alpha per vertex.
 milk_shade
 {

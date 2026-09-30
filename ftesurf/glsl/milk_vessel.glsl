@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps prev=0 spec=1 ui0=2 ui1=3 xray1=4 xray2=5
+!!samps prev=0 spec=1 ui0=2 ui1=3 xray1=4 xray2=5 =CONED cone=6
 
 // The menu's VESSEL world (src/menu/m_milk.qc, MW_VESSEL): the body, close up,
 // the way a medical drama's camera dives into it.  One variant per station --
@@ -23,12 +23,12 @@
 #define PANEL_THICK 0.08
 #include "glsl/milk_panel.h"
 
-varying vec2 tc;
+varying vec2 vtc;
 
 #ifdef VERTEX_SHADER
 void main(void)
 {
-	tc = v_texcoord;
+	vtc = v_texcoord;
 	gl_Position = ftetransform();
 }
 #endif
@@ -53,6 +53,7 @@ void main(void)
 #endif
 
 float T;
+float TSTART;           // where the primary ray starts: the coarse pass's answer, or 0
 vec4  AA;
 float QUAL;
 float BEAT;         // heartbeat: a lub-dub envelope, pushed by the bass
@@ -491,7 +492,7 @@ vec3 shade(vec3 pw, vec3 rd, float id, float t)
 
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 {
-	float t = 0.02;
+	float t = max(0.02, TSTART);
 	id = 0.0;
 	for (int i = 0; i < 160; i++)
 	{
@@ -510,8 +511,13 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 	return -1.0;
 }
 
+#ifdef CONE
+#include "glsl/milk_cone.h"
+#endif
+
 void main(void)
 {
+	vec2 tc = milk_tc(vtc);
 	T = M_TIME.x;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
@@ -550,6 +556,11 @@ void main(void)
 
 	int steps = (QUAL >= 3.0) ? 110 : ((QUAL >= 2.0) ? 80 : 56);
 	float tmax = 400.0;
+#ifdef CONE
+	gl_FragColor = vec4(coneMarch(ro, rd, milk_conek(vtc), tmax, 0.0, steps * 2));
+	return;
+#endif
+	TSTART = milk_conestart(tc);
 	// The panels' slabs are boxes, intersected here; the march stops at them.
 	float id, pw;
 	vec3 pn;

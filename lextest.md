@@ -1361,8 +1361,69 @@ run.)
 
 - Is "wild" now the right amount, or is normal enough?
 - Keep the cool grade as the default?
-- Ultra on the PC: smoother flights, or no visible difference? If it holds 60+
-  fps there, the next step is rendering above 720p (BACKLOG, "THE MENU NEVER
-  RENDERS ABOVE 720p") -- say if you want it.
+- Ultra on the PC: smoother flights, or no visible difference? Rendering above
+  720p is now the speed page's "native" (section 11).
 - Your own loud songs, if you have some: do the flashes follow their kicks? The
   beat gates were tuned on the generated tracks only.
+
+---
+
+## 11. Kick streaks, a fractal world, the speed page -- what only you can judge
+
+Written 2026-09-30 on the laptop. Built, photographed and measured headless;
+not yet seen on the PC.
+
+**Kick streaks** (VISUALS -> look -> Kick streaks: off | menu | menu + sky).
+MilkDrop's waves: on each big hit a line is drawn into the trails and the trails
+carry it off -- a kick throws an arc out from the station's landmark (the
+echoes are the "rainbow road"), a snare a comet spiralling round it, and a hard
+kick now and then the classic waveform line across the screen. Each line is bent
+by the music's actual waveform, so at your volume they squiggle with the sound.
+White when thrown, colour as they fly. In the lattice, the vessel (a bit
+softer) and the new fractal world; not the monolith. "menu + sky" adds them to
+the in-game sky, flying from the zenith to the horizon; that choice is the only
+way they reach a map. They cost nothing measurable here.
+
+While doing it I found why some of the trails looked green toward the screen
+edges: the edge colour fringe had been stripping red and blue out of everything
+drawn over the scene. Fixed -- the colours are the real ones now, everywhere.
+
+**The fractal world** (Menu world -> fractal). Four places, each moving slowly
+past a resting camera:
+
+| Station | What |
+|---|---|
+| MAIN | a gothic cathedral (a pseudo-Kleinian fractal), turning slowly round you, sun shafts through the arches |
+| PLAY | the same fractal folded taller: a moonlit hall that mirrors into the distance |
+| VISUALS | a Mandelbulb against a cold star, the light breaking round its rim |
+| MUSIC | down a tunnel of a Menger sponge, drifting; the holes' edges light with the spectrum |
+
+The volumetrics are cheap ones: glow gathered wherever the rays pass close to
+the fractal, fog that brightens toward the light, and light shafts -- the
+brightest light blurred toward its source, so the arches cut dark lanes through
+it. 100-131 fps at medium here, faster than the monolith. Its music is
+`ftesurf_void` (no track of its own yet).
+
+**The speed page** (VISUALS -> speed). Menu scene moved here, beside four new
+switches, all off by default, all the menu's only -- a map is never touched:
+
+- Resolution: by quality | native. Native renders the 3D at your screen's
+  height. Here: 21 fps -- this laptop cannot. For the PC.
+- Upscaler: bilinear | FSR 1. AMD's upscaler instead of the plain stretch:
+  crisper edges and lines. Here it costs ~15 ms an update at 2256x1380 (123 ->
+  38 fps), so not on this laptop; on a desktop GPU it should be cheap.
+- Checkerboard: off | on. The 3D draws half its pixels each time and fills the
+  rest from the last frame: 1.5-1.7x faster here, the same picture at rest,
+  a little softer while the camera flies.
+- Coarse pass: off | on. A small first pass finds how far each block of rays
+  can skip; +19% in the fractal, nothing measurable in the other worlds.
+
+The line under them shows the resolution it renders at and the frame rate, so
+you can judge each switch as you flip it.
+
+**Decisions only you can make:**
+
+- The streaks: too many, too bright, or right? Want them in the monolith too?
+- The fractal stations: any you would swap out?
+- On the PC: native at your setting -- smooth? FSR 1 at high or ultra: worth
+  its cost there? Checkerboard: can you see it?

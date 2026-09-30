@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps scene=0 fb=1 b1=2 b2=3
+!!samps scene=0 fb=1 b1=2 b2=3 sh=4
 
 // Patch 467 -- composite: scene + trails + bloom -> display range.
 //
@@ -56,6 +56,12 @@ void main(void)
 	}
 
 	vec3 c = s + f * M_LOOK.y * (1.0 - 0.85 * pm) + (b1 * 0.55 + b2 * 0.85) * M_LOOK.z * (1.0 - 0.4 * pm);
+#ifndef SKY
+	// Light shafts (milk_shafts.glsl): M_FOCUS.z is their strength, 0 when the
+	// pass did not run.
+	if (M_FOCUS.z > 0.0)
+		c += texture2D(s_sh, tc).rgb * M_FOCUS.z * (1.0 - 0.6 * pm);
+#endif
 
 	// Beat flash: a tint of the station colour, not white, so it reads as
 	// light in the space rather than a camera flash.
@@ -67,9 +73,13 @@ void main(void)
 	vec2 v = tc - 0.5;
 	float r2 = dot(v, v);
 #ifndef SKY
+	// The offset reads move only the scene's share of red and blue: replacing
+	// the channels outright stripped the trails, bloom and streaks out of them
+	// and left those green toward the edges.
 	float ca = clamp(r2 * 3.0, 0.0, 1.0) * (1.0 - pm);
-	c.r = mix(c.r, aces(texture2D(s_scene, tc - v * 0.006).rgb * M_LOOK.w).r, ca);
-	c.b = mix(c.b, aces(texture2D(s_scene, tc + v * 0.006).rgb * M_LOOK.w).b, ca);
+	vec3 s0 = aces(s * M_LOOK.w);
+	c.r += (aces(texture2D(s_scene, tc - v * 0.006).rgb * M_LOOK.w).r - s0.r) * ca;
+	c.b += (aces(texture2D(s_scene, tc + v * 0.006).rgb * M_LOOK.w).b - s0.b) * ca;
 	c *= 1.0 - r2 * 0.95;
 #endif
 	c += (hash12(tc * 911.0 + fract(T) * 117.0) - 0.5) * 0.018;

@@ -13,7 +13,7 @@
 #define M_WARP      w_user[7]   // x zoom/tick  y rot/tick  z decay/tick  w wobble
 #define M_LOOK      w_user[8]   // x hue  y trails  z bloom  w exposure
 #define M_EVENT     w_user[9]   // x flash  y liquid  z speed 0..1  w big-kick pulse
-#define M_FOCUS     w_user[10]  // xy zoom centre (uv)  z highlight  w reactivity
+#define M_FOCUS     w_user[10]  // xy zoom centre (uv)  z sky: landing ring radius, menu: light-shaft strength  w reactivity
 #define M_EXTRA     w_user[11]  // xy present offset (uv)  z quality  w kaleidoscope segments
 // w_user[12..15] are the menu's panels -- see milk_panel.h.  The sky leaves them 0.
 
@@ -95,3 +95,34 @@ vec3 aces(vec3 x)
 {
 	return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
+
+// --- the menu's speed options, as variants of a world's scene pass (milk_sys.qc) ---
+#ifdef FRAGMENT_SHADER
+#ifdef CHECKER
+// Checkerboard: this target is half the scene's width, and texel x of row y is
+// the scene's pixel 2x + ((y + parity) & 1), the parity (M_EVENT.z) flipping
+// every raymarch; glsl/milk_resolve.glsl fills in the other half.  A world's
+// main takes its tc from here.
+vec2 milk_tc(vec2 t)
+{
+	float hw = 1.0 / abs(dFdx(t.x));
+	float y = floor(gl_FragCoord.y);
+	float x = floor(t.x * hw) * 2.0 + mod(y + M_EVENT.z, 2.0);
+	return vec2((x + 0.5) / (2.0 * hw), t.y);
+}
+#else
+vec2 milk_tc(vec2 t) { return t; }
+#endif
+
+#ifdef CONED
+// The coarse pass's answer for this pixel's 4x4 block (glsl/milk_cone.h): how
+// far along its ray nothing can be.  s_cone is the scene material's last map.
+float milk_conestart(vec2 t)
+{
+	vec2 cs = vec2(textureSize(s_cone, 0));
+	return texelFetch(s_cone, ivec2(clamp(floor(t * cs), vec2(0.0), cs - 1.0)), 0).r;
+}
+#else
+float milk_conestart(vec2 t) { return 0.0; }
+#endif
+#endif

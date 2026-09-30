@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps prev=0 spec=1 ui0=2 ui1=3
+!!samps prev=0 spec=1 ui0=2 ui1=3 =CONED cone=6
 
 // The menu's MONOLITH world (src/menu/m_milk.qc, MW_MONOLITH): a void 400 m
 // across inside a megastructure that does not end.  One unit is a metre.
@@ -24,12 +24,12 @@
 #define PANEL_THICK 0.35
 #include "glsl/milk_panel.h"
 
-varying vec2 tc;
+varying vec2 vtc;
 
 #ifdef VERTEX_SHADER
 void main(void)
 {
-	tc = v_texcoord;
+	vtc = v_texcoord;
 	gl_Position = ftetransform();
 }
 #endif
@@ -55,6 +55,7 @@ void main(void)
 float T;
 vec4  AA;
 float QUAL;
+float TSTART;           // where the primary ray starts: the coarse pass's answer, or 0
 vec3  SUN, CAM;
 float PA_EXT, PB_EXT;
 vec3  PANN;             // the traced panel's normal (milk_panel.h's panTrace)
@@ -588,7 +589,7 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 // A miss returns minus the distance reached, for the corridor's dark.
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 {
-	float t = 0.05;
+	float t = max(0.05, TSTART);
 	id = 0.0;
 	for (int i = 0; i < 160; i++)
 	{
@@ -613,8 +614,13 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float id)
 	return -t;
 }
 
+#ifdef CONE
+#include "glsl/milk_cone.h"
+#endif
+
 void main(void)
 {
+	vec2 tc = milk_tc(vtc);
 	T = M_TIME.x;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
@@ -636,6 +642,13 @@ void main(void)
 	int steps  = (QUAL >= 3.0) ? 120 : ((QUAL >= 2.0) ? 90 : 64);
 	int rsteps = (QUAL >= 3.0) ? 40 : ((QUAL >= 2.0) ? 24 : 16);
 	float tmax = 1100.0;
+#ifdef CONE
+	// No further than march() goes: it stops 50 m into the walls (the corridor
+	// aside, which the full pass then follows on its own).
+	vec2 wx = (sign(rd.xz) * (VOID_HALF + 50.0) - ro.xz) / (rd.xz + step(abs(rd.xz), vec2(1e-6)) * 1e-6);
+	gl_FragColor = vec4(coneMarch(ro, rd, milk_conek(vtc), min(tmax, max(min(wx.x, wx.y), 0.0)), 0.0, steps * 2));
+	return;
+#endif
 
 	// One call site for march and shade -- the second pass is the water's
 	// reflection -- so each is inlined once.
@@ -651,6 +664,7 @@ void main(void)
 		vec3 pn;
 		float tb = (b == 0) ? tmax : 400.0;
 		float tp = panTrace(o, d, PA_EXT, PB_EXT, pn, pw);
+		TSTART = (b == 0) ? milk_conestart(tc) : 0.0;
 		float t = march(o, d, min(tb, tp), (b == 0) ? steps : rsteps, id);
 		if (t <= 0.0 && tp < tb)
 		{

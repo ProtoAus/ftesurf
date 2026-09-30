@@ -1,5 +1,5 @@
 !!ver 130 150
-!!samps prev=0 spec=1 ui0=2 ui1=3
+!!samps prev=0 spec=1 ui0=2 ui1=3 =CONED cone=6
 
 // Patch 467 -- the menu's 3D space, raymarched at the milk internal size.
 //
@@ -21,12 +21,12 @@
 #include "glsl/milk_common.h"
 #include "glsl/milk_panel.h"
 
-varying vec2 tc;
+varying vec2 vtc;
 
 #ifdef VERTEX_SHADER
 void main(void)
 {
-	tc = v_texcoord;
+	vtc = v_texcoord;
 	gl_Position = ftetransform();
 }
 #endif
@@ -35,6 +35,7 @@ void main(void)
 
 float T;
 vec4  AA;
+float TSTART;           // where the primary ray starts: the coarse pass's answer, or 0
 mat3  CROT;
 float QUAL;
 float PA_EXT, PB_EXT;          // how far each slab reaches down to the floor
@@ -279,7 +280,7 @@ vec3 shadeHit(vec3 p, vec3 rd, float id, bool lite)
 // closest to: colouring per step cost three cos() on every step.
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float id, inout vec3 glow)
 {
-	float t = 0.02;
+	float t = max(0.02, TSTART);
 	float gw = 0.0;
 	float dmin = 1e5;
 	vec3 pmin = ro;
@@ -320,8 +321,13 @@ float poolH(vec2 q)
 	     + 0.035 * vnoise(vec3(q * 0.9, T * 0.35));
 }
 
+#ifdef CONE
+#include "glsl/milk_cone.h"
+#endif
+
 void main(void)
 {
+	vec2 tc = milk_tc(vtc);
 	T = M_TIME.x;
 	AA = M_AUDIOATT * M_FOCUS.w;
 	QUAL = M_EXTRA.z;
@@ -346,6 +352,12 @@ void main(void)
 	// The floor is a plane, so the march can stop where it would hit it.
 	float tf = (rd.y < -1e-4) ? -ro.y / rd.y : 1e5;
 	float tmax = min(tf, 140.0);
+#ifdef CONE
+	// Stops short of the halo's reach: the march gathers glow there.
+	gl_FragColor = vec4(coneMarch(ro, rd, milk_conek(vtc), tmax, 0.25, steps * 2));
+	return;
+#endif
+	TSTART = milk_conestart(tc);
 
 	// The panels' slabs are boxes, intersected here; the march stops at them.
 	vec3 pn;
@@ -398,6 +410,7 @@ void main(void)
 		vec3 rn;
 		float rw;
 		float rtp = panTrace(p + n * 0.02, rr, PA_EXT, PB_EXT, rn, rw);
+		TSTART = 0.0;
 		float rt = march(p + n * 0.02, rr, min(70.0, rtp), rsteps, rid, rglow);
 		vec3 refl = (rt > 0.0) ? shadeHit(p + rr * rt, rr, rid, true)
 		          : ((rtp < 70.0) ? shadePanel(p + n * 0.02 + rr * rtp, rr, rn, rw > 0.0) : skyCol(rr));

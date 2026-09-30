@@ -2125,21 +2125,30 @@ depth at ~3,000 requests/day. What that leaves open:
 - **FRAME RATES ON THE N100 MOVE ~30% RUN TO RUN.** The same arm (monolith,
   720p, every tick) measured 17 and 24 fps ten minutes apart. Quote the pair,
   or a control run beside it, not one number.
-- **THE MENU NEVER RENDERS ABOVE 720p.** Even at ultra the targets are 720 high
-  and the scene 80-100% of that, so on a 1440p screen the 3D has 4-6x fewer
-  pixels than the screen, stretched bilinearly. A "native" step (screen height,
-  scene scale 1) is the direct way to push resolution on a fast machine.
-  Unmeasured on one.
-- **FULL RESOLUTION COULD COST LESS: THREE IDEAS, NONE MEASURED HERE.**
-  (1) A cone pre-pass: march at 1/4 resolution to find how far each 4x4 tile's
-  rays can safely travel, and start the full-resolution rays there -- the
-  monolith's void and the vessel's darkfield spend most of their steps crossing
-  empty space. (2) Checkerboard: raymarch half the pixels a tick and reproject
-  the rest; `milk_scenediv 2` is the crude form, and the scene's alpha is taken
-  by the panel mask, so depth needs its own target. (3) FSR 1 (EASU + RCAS) in
-  the present instead of the bilinear stretch, for whatever stays scaled. On the
-  N100, native 2256x1380 is ~10x the monolith's medium scene, which none of
-  these covers alone; on a desktop GPU they may make native affordable.
+- **THE SPEED PAGE IS MEASURED ON THE N100 ONLY.** Native, FSR 1, the
+  checkerboard and the coarse pass exist (AGENTS, "THE SPEED PAGE") and are all
+  off by default; nothing here says what they cost on a desktop GPU.
+- **FSR 1 COSTS ~15 ms AN UPDATE ON THE N100 AT 2256x1380** (lattice 123 -> 38
+  fps), more than the scaling saves there. Ours is GLSL 1.30: twelve
+  `texelFetch`es and no fp16, where AMD's gathers; `textureGather` (GLSL 4),
+  EASU without RCAS, or FSR every other tick would each cut it. Unmeasured.
+- **THE COARSE PASS PAYS ONLY IN THE FRACTAL** (+19% at a raymarch a tick).
+  The monolith and the vessel came out within noise (+3%, twice each): their
+  rays pass near something early, where the cone has to stop, and their cost
+  is the stepping near surfaces, which no start distance skips.
+- **THE CHECKERBOARD HALVES DETAIL IN FLIGHT, BY DESIGN.** While `M_CAMFWD.w` is
+  up the resolve fills from the neighbours instead of the last frame: history
+  at an edge passes the neighbourhood clamp and left teeth. At rest it is the
+  full image.
+- **THE STREAKS' WAVEFORM IS 8 BITS OF THE RAW MIX.** At the harness's
+  `musicvolume 0.02` it quantises to a step or two, so the lines come out
+  smooth; at the owner's 0.2 it is ~13 steps and the gain (capped x12) covers
+  it. A waveform row the engine levels itself would take the volume out of it.
+- **THE FRACTAL WORLD HAS NO TRACK OF ITS OWN** -- it plays `ftesurf_void`.
+- **A MANDELBOX WAS TRIED FOR PLAY AND DROPPED.** Seen from outside it read as a
+  lumpy cube at any scale tried (2.0-3.0, -1.5 to -2.6); PLAY is the
+  pseudo-Kleinian with a taller fold box instead. Its interior is the unexplored
+  alternative.
 - **THE BEAT GATES ARE TUNED ON GENERATED MUSIC ONLY.** `p468react` replayed the
   six generated tracks. A loud, compressed master has flatter bass ratios, so
   fewer kicks may clear the 1.3 gate: drop real songs into `ftesurf/music/` and

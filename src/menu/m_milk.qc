@@ -3,7 +3,7 @@
   467, and the worlds and in-world panels after it.
 
   Melee's menu, abstractly: each screen is a place in a space and changing
-  screen flies the camera there.  There are three spaces, each raymarched by
+  screen flies the camera there.  There are four spaces, each raymarched by
   its own shader through milk_sys.qc's feedback pipeline, so none costs a map
   or a server and all run in menu.dat, where a BSP cannot be drawn:
 
@@ -12,6 +12,8 @@
       monolith  glsl/milk_monolith.glsl   the void's balcony, forest terrace,
                                           endless corridor, PS2 towers
       vessel    glsl/milk_vessel.glsl     artery, darkfield, iris, leaf cells
+      fractal   glsl/milk_fractal.glsl    Kleinian cathedral, Mandelbox, Mandelbulb,
+                                          Menger tunnel
 
   milk_world picks one ("shuffle" picks per launch); changing it dives out of
   one world and into the next.
@@ -42,6 +44,7 @@
 #define MW_LATTICE  0
 #define MW_MONOLITH 1
 #define MW_VESSEL   2
+#define MW_FRACTAL  3
 
 #define MM_TRACKS   48
 #define MM_TITLE_SZ '80 80 0'
@@ -89,7 +92,9 @@ vector mm_phalf[2];             // half-size, world units; x 0 = none
 vector mm_ppx[2];               // size in screen pixels = the target's size
 vector mm_prtsize[2];           // size the target was made at
 float  mm_pon[2], mm_pdir[2];   // power 0..1, and which way it is going
-float  mm_uiready, mm_presmat;
+float  mm_uiready, mm_presmat, mm_presmatu;
+float  mm_ftime;                // smoothed frame time, for the speed page
+float  mm_vispage;              // VISUALS: 0 the look, 1 speed
 float  mm_drawpanel;            // TRUE while a screen draws into a panel
 
 string mm_track[MM_TRACKS];
@@ -124,12 +129,14 @@ vector() MM_Mouse =
 	return getmousepos();
 };
 
-// The vessel's stations are separate places, one shader variant each (see
-// glsl/milk_vessel.glsl): a shader holding all four ran at half the speed.
+// The vessel's and the fractal's stations are separate places, one shader
+// variant each (see glsl/milk_vessel.glsl): a shader holding all four ran at
+// half the speed.
 string(float w, float st) MM_WorldProg =
 {
 	if (w == MW_MONOLITH) return "milk_monolith";
 	if (w == MW_VESSEL)   return strcat("milk_vessel#S", ftos(st));
+	if (w == MW_FRACTAL)  return strcat("milk_fractal#S", ftos(st));
 	return "milk_scene";
 };
 
@@ -137,6 +144,7 @@ string(float w) MM_WorldName =
 {
 	if (w == MW_MONOLITH) return "monolith";
 	if (w == MW_VESSEL)   return "vessel";
+	if (w == MW_FRACTAL)  return "fractal";
 	return "lattice";
 };
 
@@ -144,6 +152,7 @@ string(float w) MM_WorldTrack =
 {
 	if (w == MW_MONOLITH) return "ftesurf_monolith";
 	if (w == MW_VESSEL)   return "ftesurf_vessel";
+	if (w == MW_FRACTAL)  return "ftesurf_void";     // the bells and the slow pads: no track of its own
 	return "ftesurf_dream";
 };
 
@@ -154,6 +163,7 @@ float() MM_WorldWant =
 	s = cvar_string("milk_world");
 	if (s == "lattice")  return MW_LATTICE;
 	if (s == "vessel")   return MW_VESSEL;
+	if (s == "fractal")  return MW_FRACTAL;
 	if (s == "shuffle")  return mm_shuffle;
 	return MW_MONOLITH;
 };
@@ -223,6 +233,34 @@ void(float w, float st) MM_PoseW =
 		{
 			mm_ppos = '0 0.4 0';        mm_ptgt = '-22.83 -1.29 97.35';   mm_panchor = '6 3 60';
 			mm_phue = 0.17;  mm_pliq = 0.35; mm_pkal = 0;
+		}
+		return;
+	}
+	if (w == MW_FRACTAL)
+	{
+		// Each anchor is the camera plus 400 m along the place's LIGHT, so the
+		// trails and the shafts come from the light (glsl/milk_fractal.glsl).
+		mm_pdepth = 3.6;
+		mm_wflight = 2.4;  mm_wpull = 3;  mm_wlift = 40;  mm_wdive = 120;
+		if (st == MS_PLAY)
+		{
+			mm_ppos = '800 0 0';        mm_ptgt = '800 0 100';            mm_panchor = '869.5 43.3 391.5';
+			mm_phue = 0.52;  mm_pliq = 0;    mm_pkal = 0;
+		}
+		else if (st == MS_VIS)
+		{
+			mm_ppos = '-800 8 -75';     mm_ptgt = '-828 4 0';             mm_panchor = '-721.2 45.2 315.4';
+			mm_phue = 0.74;  mm_pliq = 0.2;  mm_pkal = 6;
+		}
+		else if (st == MS_MUSIC)
+		{
+			mm_ppos = '0 0 800';        mm_ptgt = '100 0 800';            mm_panchor = '397.2 47.7 800';
+			mm_phue = 0.62;  mm_pliq = 0.4;  mm_pkal = 0;
+		}
+		else
+		{
+			mm_ppos = '0 0 0';          mm_ptgt = '0 8 100';              mm_panchor = '85.6 188.3 342.4';
+			mm_phue = 0.08;  mm_pliq = 0.15; mm_pkal = 0;
 		}
 		return;
 	}
@@ -484,6 +522,7 @@ void() MM_Invalidate =
 	Milk_Invalidate();
 	mm_uiready = FALSE;
 	mm_presmat = FALSE;
+	mm_presmatu = FALSE;
 };
 
 // ---------------------------------------------------------------- sound fx --
@@ -770,6 +809,11 @@ void(float now, float dt) MM_Camera =
 		milk_inject = 0.55;
 		milk_knee = 0.5;
 	}
+	else if (mm_world == MW_FRACTAL)
+	{
+		milk_inject = 0.8;
+		milk_knee = 0.6;
+	}
 	else
 	{
 		milk_inject = 0;
@@ -782,6 +826,21 @@ void(float now, float dt) MM_Camera =
 	fc_y = bound(0.15, fc_y, 0.85);
 	milk_focus_x = fc_x * (1 - trav) + 0.5 * trav;
 	milk_focus_y = fc_y * (1 - trav) + 0.5 * trav;
+
+	// Kick streaks fly out from the same landmark.  Not in the monolith: its
+	// daylight stays calm (the lattice and the vessel were asked for).
+	milk_waves = 0;
+	if ((cvar("milk_streaks") >= 1) && (mm_world != MW_MONOLITH))
+		milk_waves = milk_react * ((mm_world == MW_VESSEL) ? 0.8 : ((mm_world == MW_FRACTAL) ? 0.7 : 1));
+	milk_wavec = [milk_focus_x, milk_focus_y];
+	milk_waver = 0.95;
+	milk_wavetest = cvar("milk_bcwaves");
+	milk_wavekind = cvar("milk_bcwavekind");
+
+	// Light shafts from the same anchor (glsl/milk_shafts.glsl): the fractal's
+	// places are each lit by one light, and the anchor is it.
+	milk_shafts = (mm_world == MW_FRACTAL) ? 1 : 0;
+	milk_focus_z = milk_shafts;
 
 	// Present-time parallax: what the mouse did since the sim last looked.
 	// Never with panels: the present must map exactly what the tick drew.
@@ -926,15 +985,23 @@ void() MM_Init =
 	registercvar("milk_panels", "1", 32);
 	registercvar("milk_sfx", "1", 32);
 	registercvar("milk_grade", "1", 32);
+	registercvar("milk_streaks", "1", 32);     // kick streaks: 0 off, 1 menu, 2 menu and sky
+	registercvar("milk_res", "0", 32);         // the speed page: 1 native resolution
+	registercvar("milk_fsr", "0", 32);         // 1 FSR 1 instead of the bilinear stretch
+	registercvar("milk_checker", "0", 32);     // 1 checkerboard raymarch
+	registercvar("milk_cone", "0", 32);        // 1 the coarse pre-pass
 	registercvar("milk_bootcheck", "0", 0);
 	registercvar("milk_fakemouse", "", 0);
 	registercvar("milk_bcstation", "0", 0);
 	registercvar("milk_bcworld", "vessel", 0);
 	registercvar("milk_bcdiv", "0", 0);
+	registercvar("milk_bcwaves", "0", 0);
+	registercvar("milk_bcwavekind", "-1", 0);
+	registercvar("milk_bcvispage", "0", 0);
 
-	mm_shuffle = floor(random() * 3);
-	if (mm_shuffle > 2)
-		mm_shuffle = 2;
+	mm_shuffle = floor(random() * 4);
+	if (mm_shuffle > 3)
+		mm_shuffle = 3;
 	mm_world = MM_WorldWant();
 	Milk_Init("mm", MM_WorldProg(mm_world, MS_MAIN), "milk_warp", "milk_comp");
 	// The vessel's x-ray films are local images, never shipped: a black film
@@ -1004,6 +1071,8 @@ void(vector screensize) MM_Frame =
 		MM_MusicAuto();
 
 	now = gettime(0);
+	if (now > mm_last && now - mm_last < 0.5)
+		mm_ftime += (now - mm_last - mm_ftime) * 0.05;     // for the speed page's readout
 	dt = bound(0, now - mm_last, 0.1);
 	mm_last = now;
 
@@ -1012,10 +1081,11 @@ void(vector screensize) MM_Frame =
 		MM_Go(MM_StationFor());
 
 	// Internal height by quality: 360 / 540 / 720, width by aspect.  4, ultra,
-	// is high's resolution raymarched every tick (below).
+	// is high's resolution raymarched every tick (below).  milk_res 1,
+	// "native", is the screen's own, the scene at full size too.
 	q = bound(1, cvar("milk_quality"), 3);
 	h = 180 + q * 180;
-	if (h > screensize_y)
+	if (h > screensize_y || cvar("milk_res") >= 1)
 		h = screensize_y;
 	size = [floor(h * screensize_x / screensize_y), h];
 	mm_asp = size_x / size_y;
@@ -1026,8 +1096,20 @@ void(vector screensize) MM_Frame =
 		milk_scenescale = (q >= 3) ? 1 : 0.75;
 	else if (mm_world == MW_VESSEL)
 		milk_scenescale = (q >= 3) ? 0.9 : ((q >= 2) ? 0.7 : 0.55);
+	else if (mm_world == MW_FRACTAL)
+		milk_scenescale = (q >= 3) ? 0.8 : ((q >= 2) ? 0.6 : 0.5);
 	else
 		milk_scenescale = (q >= 3) ? 0.8 : ((q >= 2) ? 0.58 : 0.5);
+	if (cvar("milk_res") >= 1)
+		milk_scenescale = 1;
+	// The speed page's switches (MM_SpeedRows).  FSR only has work to do while
+	// out is smaller than the screen; it outputs past the present's crop, so the
+	// present still maps one texel to a pixel.
+	milk_checker = cvar("milk_checker") >= 1;
+	milk_cone = cvar("milk_cone") >= 1;
+	milk_upsize = '0 0 0';
+	if (cvar("milk_fsr") >= 1 && h < screensize_y * 0.95)
+		milk_upsize = [ceil(screensize_x / MM_CROP), ceil(screensize_y / MM_CROP)];
 	// The raymarch runs every other tick (the feedback every tick) except at
 	// ultra, and for the lattice at high.  The monolith at 720p on the N100:
 	// 55 fps every other tick, 17 and 24 (two runs) every tick.
@@ -1091,7 +1173,14 @@ void(vector screensize) MM_Backdrop =
 			         "map $rt:mm_out\nmap $rt:mm_scene\nmap $rt:mm_ui0\nmap $rt:mm_ui1\n");
 			mm_presmat = TRUE;
 		}
-		Milk_PresentMat('0 0 0', screensize, 1, "mm_presentp");
+		// FSR's output instead of out, made once that target exists.
+		if (milk_cfgup_x > 0 && !mm_presmatu)
+		{
+			Milk_Mat("mm_presentpu", "milk_present#PANELS",
+			         "map $rt:mm_up2\nmap $rt:mm_scene\nmap $rt:mm_ui0\nmap $rt:mm_ui1\n");
+			mm_presmatu = TRUE;
+		}
+		Milk_PresentMat('0 0 0', screensize, 1, (milk_cfgup_x > 0) ? "mm_presentpu" : "mm_presentp");
 		return;
 	}
 	Milk_Present('0 0 0', screensize, 1);
@@ -1290,19 +1379,19 @@ float() MM_WorldCur =
 	s = cvar_string("milk_world");
 	if (s == "lattice")  return 0;
 	if (s == "vessel")   return 2;
-	if (s == "shuffle")  return 3;
+	if (s == "fractal")  return 3;
+	if (s == "shuffle")  return 4;
 	return 1;
 };
 
 // The VISUALS rows, from `y` down; returns where they end.
-float(float x, float y, float pitch, float labelw) MM_VisualsRows =
+// VISUALS, the speed page: what the menu's 3D costs and the switches that
+// trade it.  Every one is the menu's alone -- the in-game sky keeps its own
+// path -- and all off is the menu as it was.
+float(float x, float y, float pitch, float labelw) MM_SpeedRows =
 {
-	local float cur, hit, sky;
-
-	hit = MM_ChipRow([x, y], "mv_w", "Menu world", "lattice|monolith|vessel|shuffle", MM_WorldCur(), labelw);
-	if (hit >= 0)
-		MM_Seta("milk_world", (hit == 0) ? "lattice" : ((hit == 1) ? "monolith" : ((hit == 2) ? "vessel" : "shuffle")));
-	y += pitch;
+	local float cur, hit;
+	local string fsr;
 
 	cur = cvar("milk_menu") ? bound(1, cvar("milk_quality"), 4) : 0;
 	hit = MM_ChipRow([x, y], "mv_q", "Menu scene", "off|low|medium|high|ultra", cur, labelw);
@@ -1313,6 +1402,51 @@ float(float x, float y, float pitch, float labelw) MM_VisualsRows =
 		MM_Seta("milk_menu", "1");
 		MM_Seta("milk_quality", ftos(hit));
 	}
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_res", "Resolution", "by quality|native", cvar("milk_res") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_res", ftos(hit));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_fsr", "Upscaler", "bilinear|FSR 1", cvar("milk_fsr") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_fsr", ftos(hit));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_cb", "Checkerboard", "off|on", cvar("milk_checker") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_checker", ftos(hit));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_cp", "Coarse pass", "off|on", cvar("milk_cone") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_cone", ftos(hit));
+	y += pitch;
+
+	fsr = "";
+	if (milk_cfgup_x > 0)
+		fsr = sprintf("^9, FSR to ^7%gx%g", milk_cfgup_x, milk_cfgup_y);
+	sui_text([x, y + 8], SZ_LABEL, sprintf("^9renders ^7%gx%g^9, the 3D ^7%gx%g%s^9     ^7%g fps",
+	         milk_rtsize_x, milk_rtsize_y, milk_scsize_x, milk_scsize_y, fsr, rint(1 / max(mm_ftime, 0.0005))), COL_DIM, 1, 0);
+	sui_text([x, y + 34], SZ_LABEL, "^9the menu's alone: a map's sky never uses these", COL_DIM, 1, 0);
+	return y + 60;
+};
+
+float(float x, float y, float pitch, float labelw) MM_VisualsRows =
+{
+	local float cur, hit, sky;
+
+	hit = MM_ChipRow([x, y], "mv_pg", "Page", "look|speed", mm_vispage, labelw);
+	if (hit >= 0)
+		mm_vispage = hit;
+	y += pitch;
+	if (mm_vispage == 1)
+		return MM_SpeedRows(x, y, pitch, labelw);
+
+	hit = MM_ChipRow([x, y], "mv_w", "Menu world", "lattice|monolith|vessel|fractal|shuffle", MM_WorldCur(), labelw);
+	if (hit >= 0)
+		MM_Seta("milk_world", (hit == 0) ? "lattice" : ((hit == 1) ? "monolith" : ((hit == 2) ? "vessel" : ((hit == 3) ? "fractal" : "shuffle"))));
 	y += pitch;
 
 	hit = MM_ChipRow([x, y], "mv_p", "Menu panels", "flat|in the world", MM_InWorld() ? 1 : 0, labelw);
@@ -1330,6 +1464,11 @@ float(float x, float y, float pitch, float labelw) MM_VisualsRows =
 	hit = MM_ChipRow([x, y], "mv_g", "Colour grade", "natural|cool", cvar("milk_grade") ? 1 : 0, labelw);
 	if (hit >= 0)
 		MM_Seta("milk_grade", ftos(hit));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_k", "Kick streaks", "off|menu|menu + sky", bound(0, cvar("milk_streaks"), 2), labelw);
+	if (hit >= 0)
+		MM_Seta("milk_streaks", ftos(hit));
 	y += pitch;
 
 	cur = cvar("milk_react");
@@ -1688,6 +1827,71 @@ void() MM_BootTick =
 		return;
 	}
 
+	// milk_bootcheck 10: at the station milk_bcstation names, bare, run each of
+	// milk_bcseq's '|'-separated commands in turn and photograph each 1.5 s
+	// later (milk_seq_<i>) -- a sweep of one value, for tuning a look.
+	if (cvar("milk_bootcheck") == 10)
+	{
+		if (mm_bc_step == 1 && t > 0.5)
+		{
+			mm_art = bound(0, cvar("milk_bcstation"), 3);
+			mm_bc_step = 2;
+			mm_bc_w0 = 3;
+		}
+		else if (mm_bc_step >= 2)
+		{
+			w = floor((mm_bc_step - 2) / 2);
+			if (w >= tokenizebyseparator(cvar_string("milk_bcseq"), "|"))
+			{
+				if (t > mm_bc_w0 + 0.5)
+				{
+					ms_consent = mm_bc_consent;
+					localcmd("quit\n");
+					mm_bc_step = -1;
+				}
+			}
+			else if (((mm_bc_step - 2 - w * 2) == 0) && (t > mm_bc_w0))
+			{
+				localcmd(strcat(argv(w), "\n"));
+				print(sprintf("milk_bootcheck: seq %g: %s\n", w, argv(w)));
+				mm_bc_w0 = t + 1.5;
+				mm_bc_step++;
+			}
+			else if (((mm_bc_step - 2 - w * 2) == 1) && (t > mm_bc_w0))
+			{
+				localcmd(sprintf("screenshot milk_seq_%g\n", w));
+				mm_bc_w0 = t + 0.3;
+				mm_bc_step++;
+			}
+		}
+		return;
+	}
+
+	// milk_bootcheck 9: six shots of the station milk_bcstation names, 0.7 s
+	// apart from 4 s -- with milk_bcwaves throwing kick streaks on a clock.
+	if (cvar("milk_bootcheck") == 9)
+	{
+		if (mm_bc_step == 1 && t > 0.5)
+		{
+			mm_art = bound(0, cvar("milk_bcstation"), 3);
+			mm_bc_step = 2;
+		}
+		else if ((mm_bc_step >= 2) && (mm_bc_step <= 7) && (t > 4 + (mm_bc_step - 2) * 0.7))
+		{
+			print(sprintf("milk_bootcheck: shot %g simtime %g waves %g live %g rms %g\n", mm_bc_step - 1,
+			              milk_simtime, milk_wv_count, milk_waves, milk_rms));
+			localcmd(sprintf("screenshot milk_wave_%s_%g\n", MM_WorldName(mm_world), mm_bc_step - 1));
+			mm_bc_step++;
+		}
+		else if (mm_bc_step == 8 && t > 9)
+		{
+			ms_consent = mm_bc_consent;
+			localcmd("quit\n");
+			mm_bc_step = 9;
+		}
+		return;
+	}
+
 	// milk_bootcheck 7: every station of the world, bare -- no panels, no UI --
 	// 4.5 s apart, for looking at the art.  Run with milk_panels 0.
 	if (cvar("milk_bootcheck") == 7)
@@ -1817,6 +2021,7 @@ void() MM_BootTick =
 	else if (mm_bc_step == 2 && t > 6.5)
 	{
 		menu_screen = SCREEN_VISUALS;
+		mm_vispage = cvar("milk_bcvispage");
 		mm_bc_step = 3;
 	}
 	else if (mm_bc_step == 3 && t > 7.5)

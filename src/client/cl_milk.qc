@@ -22,6 +22,7 @@ void() MilkSky_Init =
 {
 	registercvar("milk_sky", "0", CVAR_ARCHIVE);        // the menu registers these first
 	registercvar("milk_grade", "1", CVAR_ARCHIVE);
+	registercvar("milk_streaks", "1", CVAR_ARCHIVE);
 	Milk_Init("ms", "milk_skygen", "milk_warp#SKY", "milk_comp#SKY");
 };
 
@@ -80,6 +81,12 @@ void() MilkSky_Frame =
 	milk_bloom = 0.8;
 	milk_exposure = 1.3;
 	milk_flash = milk_hit * milk_react * 0.6;
+	// Kick streaks only when asked for the sky too (milk_streaks 2): they fly
+	// from the zenith out to the horizon ring.
+	milk_waves = (cvar("milk_streaks") >= 2) ? milk_react : 0;
+	milk_wavec = '0.5 0.5 0';
+	milk_waver = 0.44;
+	milk_wavetest = cvar("milk_bcwaves");       // harness only (the menu registers it)
 
 	q = bound(1, cvar("milk_quality"), 3);
 	milk_quality = q;

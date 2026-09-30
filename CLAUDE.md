@@ -105,6 +105,14 @@ chatty.
   MAIN printed `station 1` -- a real click had opened PLAY mid-measure -- with
   `[focus] window is foreground` beside it. Grep each run's log for focus lines
   before quoting its number.
+- A COLOUR THAT GOES WRONG ONLY TOWARD THE EDGES IS A POST PASS, NOT A PALETTE.
+  The new streaks and the fractal's glow came out green, and the first fix went
+  into the light's colour, on the theory that the cool grade turns warm light
+  green. The cause was Patch 467's chromatic fringe, which
+  replaced red and blue with the raw scene's toward the edges: nothing bright
+  had been added over the scene out there until now, so it had never shown.
+  When new content looks wrong in a way that depends on where it is on the
+  screen, read every full-screen pass it goes through before its own shader.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).

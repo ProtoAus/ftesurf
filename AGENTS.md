@@ -1886,7 +1886,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - THE WORLDS AND THE IN-WORLD PANELS (2026-09-30). `milk_world` picks the menu's
   space: `lattice` (`glsl/milk_scene.glsl`), `monolith` (`milk_monolith.glsl`, a
   brutalist void), `vessel` (`milk_vessel.glsl`, one `#S0..#S3` variant per
-  station, swapped halfway through a flight) or `shuffle`. `milk_panels 1` draws
+  station, swapped halfway through a flight), `fractal` (`milk_fractal.glsl`,
+  likewise: two pseudo-Kleinian cathedrals, a Mandelbulb, a Menger tunnel) or
+  `shuffle`. `milk_panels 1` draws
   MAIN / VISUALS / MUSIC into render targets `mm_ui0/1` that the world raymarches
   as a slab's face; `milk_present.glsl #PANELS` redraws them crisply over it,
   gated by the scene target's alpha (+1 slab A, -1 B), and `MM_MouseToUI` traces
@@ -1903,11 +1905,52 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - Resolutions: the targets are `180 + 180 * quality` high (360 / 540 / 720, by
   aspect; `MM_Frame`), the scene target a per-world 50-100% of that
   (`milk_scenescale`), bloom at 1/2 and 1/4, and the present stretches `out` to
-  the screen bilinearly. Only the panels are drawn at screen resolution (the
-  `#PANELS` overlay). The raymarch is the cost. N100, monolith MAIN, a tick a
+  the screen bilinearly (or FSR 1's output, below). Only the panels are drawn at
+  screen resolution (the `#PANELS` overlay). The raymarch is the cost. N100, monolith MAIN, a tick a
   frame: ~19 ms a raymarch at medium (511x313), ~50 at high (942x576), against
   ~3 ms a frame for everything else the milk does -- `+set milk_bcdiv 1` against
   `999` (a harness knob pinning the raymarch to every Nth tick), 2026-09-30.
+- THE FRACTAL WORLD (2026-09-30). Each station turns about its resting camera
+  (the bulb about itself), so the camera can rest for the panels while the
+  fractal moves: MAIN and PLAY are Knighty's pseudo-Kleinian with two fold
+  boxes, the camera at a box corner (19 and 15 m from any surface, from a
+  Python port of the DE -- the corners were the roomiest spots in all seven
+  boxes scanned), VIS a
+  power-8 Mandelbulb lit from just behind its rim, MUSIC a Menger slab drifting
+  down its tunnel with the hole edges on the spectrum. The hit tolerance is the
+  pixel's footprint (`PIXA`, from `dFdy(tc)`); 100-131 fps at medium on the
+  N100, in-world panels. Its poses in `MM_PoseW` are the shader's `ORG`s; each
+  anchor is the camera plus 400 m along that station's `LIGHT`, so the trails
+  and the shafts come from the light. It plays `ftesurf_void` on "auto".
+- KICK STREAKS (`milk_streaks`: 0 off, 1 menu, 2 the sky too; VISUALS -> look).
+  `Milk_WaveSpawn` throws a wave on each rise of `milk_hit` (a kick an arc,
+  sometimes the waveform line; a snare a comet), `Milk_WavesDraw` draws each as
+  ribbons INTO the fresh feedback frame after the owner's sprites, and
+  `glsl/milk_wave.glsl` bends each line by `milk_spec`'s waveform row, levelled
+  to the mix's RMS. Lattice 1, vessel 0.8, fractal 0.7, monolith none. Harness:
+  `milk_bcwaves <s>` throws one every s seconds whatever plays (both VMs),
+  `milk_bcwavekind` pins the kind, and `milk_bootcheck 9` shoots six frames.
+- LIGHT SHAFTS: `glsl/milk_shafts.glsl` blurs the scene's brightest light toward
+  `M_FOCUS.xy` into `<p>_b3` at 1/4 size, only while `milk_shafts > 0` (the
+  fractal); the comp adds it at `M_FOCUS.z`, which is the menu's shaft strength
+  and the sky's landing ring.
+- THE SPEED PAGE (VISUALS -> speed): `milk_res 1` renders at the screen's height,
+  scene scale 1; `milk_fsr 1` runs FSR 1 (`glsl/milk_fsr.glsl`, EASU then RCAS)
+  once a tick into `<p>_up`/`_up2`, sized past the present's crop so the present
+  still takes one tap; `milk_checker 1` raymarches a half-width target
+  (`#CHECKER`, parity in `M_EVENT.z`) that `glsl/milk_resolve.glsl` fills out
+  from its neighbours and the last frame (`<p>_scp`); `milk_cone 1` runs the
+  world's `#CONE` variant at 1/4 size (`glsl/milk_cone.h`) and the scene pass
+  (`#CONED`) starts each ray where that says nothing can be. All menu-only and
+  all off by default; the page prints what it renders and the frame rate.
+  N100, medium, a raymarch every tick (`milk_bcdiv 1`), MAIN: monolith 35-38 fps
+  -> checkerboard 57, coarse pass 36-38 (noise); fractal 58 -> 99, 69, both 110.
+  Lattice at normal settings: 123 fps, FSR 38, native 21, native+checkerboard 29.
+- More harness: `milk_bootcheck 10` runs `milk_bcseq`'s '|'-separated commands
+  at the station `milk_bcstation` names, bare, a shot after each -- a sweep for
+  tuning a look. A command with ';' in it goes in an alias in a cfg exec'd
+  first (a ';' on the command line splits the `+set`). `milk_bcvispage 1` opens
+  VISUALS on the speed page in the tour.
 - THE BEAT GATES (2026-09-30). `milk_beat` pulses on every engine onset, hats
   included (7/s on `ftesurf_drive`). The visuals answer `milk_kick` (a bass onset
   gated by the bass ratio above 1.3) and `milk_hit` (a kick, or a treble onset
@@ -1981,6 +2024,17 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the real clearance (object to cell edge) as the margin: the monolith's far
   walls were at the 90-step cap in a step-count heat map and well under it after,
   and the lattice's PLAY station went from 29 to 41 fps.
+- **A 2D POLYGON IS BACK-FACE CULLED.** `R_BeginPolygon(..., TRUE)` with a
+  script material culls by winding, and a ribbon built along its direction of
+  travel winds either way: every waveform line and half the comets were simply
+  not drawn. `cull none` on the material (`milk_wave` in `scripts/milk.shader`).
+- **A HEADER SHARED BY BOTH STAGES CANNOT USE `dFdx` OR `gl_FragCoord` BARE.**
+  `milk_common.h` is compiled into the vertex shader too; the speed options'
+  helpers sit under `#ifdef FRAGMENT_SHADER`, or every world's variant fails with
+  "'dFdx' : function is not known" in a VERTEX shader.
+- **DO NOT WRAP `build.ps1` IN COREUTILS `timeout`.** Under `timeout 280 pwsh
+  ...` fteqcc failed on `sv_progs.src` with no output at all, three times; the
+  same build bare passed.
 - **`clampmap` DOES NOT OPEN A TEXTURE UNIT IN A PROGRAM PASS.** Only `map`
   goes through `Shaderpass_DefineMap`, which starts the next merged pass; a
   `clampmap` line overwrites the current one. The vessel's films as `clampmap`s
