@@ -1384,6 +1384,15 @@ softer) and the new fractal world; not the monolith. "menu + sky" adds them to
 the in-game sky, flying from the zenith to the horizon; that choice is the only
 way they reach a map. They cost nothing measurable here.
 
+They also go BEHIND models now (your question after the first cut): each
+station's streaks fly just behind its centrepiece, so an arc thrown from the
+lattice's cube comes out from behind it, and shows through the gaps between the
+cubes. What counts as a model: the lattice's cubes, towers and orbs (not the
+tunnel or the floor -- they fly over those), the vessel's blood cells,
+plankton and eye (not the artery wall), and in the fractal world the fractal
+itself, so there they fly in the sky behind the arches and the bulb (not in the
+Menger tunnel).
+
 While doing it I found why some of the trails looked green toward the screen
 edges: the edge colour fringe had been stripping red and blue out of everything
 drawn over the scene. Fixed -- the colours are the real ones now, everywhere.
@@ -1424,6 +1433,8 @@ you can judge each switch as you flip it.
 **Decisions only you can make:**
 
 - The streaks: too many, too bright, or right? Want them in the monolith too?
+  Behind the models is right, or should some fly in front (the floor, the
+  tunnel)?
 - The fractal stations: any you would swap out?
 - On the PC: native at your setting -- smooth? FSR 1 at high or ultra: worth
   its cost there? Checkerboard: can you see it?

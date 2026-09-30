@@ -406,6 +406,11 @@ void main(void)
 	vec3 pn;
 	float tp = panTrace(ro, rd, 0.0, 0.0, pn, pw);
 	float t = march(ro, rd, min(tmax, tp), steps, id, glow);
+#ifdef S3
+	bool model = false;             // the tunnel is the place, not a thing in it
+#else
+	bool model = t > 0.0;           // the streaks fly at the light, behind all of it
+#endif
 	if (t <= 0.0 && tp < tmax)
 	{
 		t = tp;
@@ -433,6 +438,6 @@ void main(void)
 	col = mix(col, fc, fog);
 	col += milk_pal(M_LOOK.x + 0.15) * glow * 0.0035 * (0.7 + 0.5 * AA.y);
 
-	gl_FragColor = vec4(col, mask * (1.0 - fog));
+	gl_FragColor = vec4(col, milk_alpha(mask, fog, model, t));
 }
 #endif

@@ -39,17 +39,23 @@ void main(void)
 
 // Each station's place, mirrored by MM_PoseW's MW_VESSEL poses: the regions
 // are modelled about their own origin and moved there.
+// MODEL: which ids the kick streaks hide behind -- the cells, the plankton,
+// the eye; not the artery's wall or the leaf's cell walls.
 #ifdef S0
 #define ORG vec3(0.0, 0.0, 0.0)
+#define MODEL(id) (id > 1.5)
 #endif
 #ifdef S1
 #define ORG vec3(400.0, 0.0, 0.0)
+#define MODEL(id) (id > 0.5)
 #endif
 #ifdef S2
 #define ORG vec3(-400.0, 0.0, 0.0)
+#define MODEL(id) (id > 0.5)
 #endif
 #ifdef S3
 #define ORG vec3(0.0, -300.0, 0.0)
+#define MODEL(id) (id > 1.5)
 #endif
 
 float T;
@@ -566,6 +572,7 @@ void main(void)
 	vec3 pn;
 	float tp = panTrace(ro, rd, 0.0, 0.0, pn, pw);
 	float t = march(ro, rd, min(tmax, tp), steps, id);
+	bool model = t > 0.0 && MODEL(id);
 	if (t <= 0.0 && tp < tmax)
 	{
 		t = tp;
@@ -642,6 +649,6 @@ void main(void)
 		col += vec3(0.6, 0.12, 0.05) * 0.25 * smoothstep(PUPIL, 0.0, length((ro + rd * ((IC.z - ro.z) / max(rd.z, 1e-3))).xy - IC.xy)) * (0.6 + 0.8 * AA.x);
 #endif
 
-	gl_FragColor = vec4(col, mask * (1.0 - fog));
+	gl_FragColor = vec4(col, milk_alpha(mask, fog, model, t));
 }
 #endif

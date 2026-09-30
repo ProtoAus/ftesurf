@@ -281,6 +281,11 @@ void(vector size) Milk_Configure =
 	Milk_Mat(Milk_N("bv2"), "milk_blur#V",    sprintf("map $rt:%s\n", Milk_N("b2b")));
 	Milk_Mat(Milk_N("present"), "milk_present", sprintf("map $rt:%s\n", Milk_N("out")));
 	Milk_Mat(Milk_N("shafts"), "milk_shafts", sprintf("map $rt:%s\n", Milk_N("scene")));
+	// The kick streaks: added, and uncull'd -- a ribbon winds whichever way it
+	// travels, and culling dropped every line and half the comets.  The scene is
+	// read for the models to hide behind, out only for its size.
+	shaderforname(Milk_N("wave"), sprintf("{\ncull none\n{\nprogram milk_wave\nblendfunc add\nmap $rt:%s\nmap $rt:%s\nmap $rt:%s\n}\n}\n",
+	              MILK_SPEC, Milk_N("scene"), Milk_N("out")));
 	if (milk_checker)
 	{
 		Milk_Mat(Milk_N("resolve"), "milk_resolve", sprintf("map $rt:%s\nmap $rt:%s\n", Milk_N("sch"), Milk_N("scp")));
@@ -386,12 +391,14 @@ void(string rt, float fmt, vector size, string mat) Milk_Pass =
 float  milk_waves;              // strength, 0 = off: the owner's switch
 vector milk_wavec;              // centre, target uv: the menu's landmark, the sky's zenith
 float  milk_waver;              // how far an arc flies, in target heights
+float  milk_wavedepth;          // how far from the camera they fly: nearer models hide them; 0 = in front of all
 float  milk_wavetest;           // harness: throw one every this many seconds, music or not...
 float  milk_wavekind;           // ...of this kind, or cycling through them (-1)
 float  milk_wv_t0[MILK_WAVES], milk_wv_kind[MILK_WAVES], milk_wv_str[MILK_WAVES], milk_wv_id[MILK_WAVES];
 float  milk_wv_n, milk_wv_count, milk_wv_last, milk_wv_kick, milk_wv_hit;
 vector milk_rb_p, milk_rb_n, milk_rb_c;         // Milk_RibbonTo's last point
 float  milk_rb_wx, milk_rb_on, milk_rb_hw, milk_rb_vt, milk_rb_amp;
+float  milk_rb_code;            // the waveform's gain in quarters, x1000, riding on the swing
 
 float(float n) Milk_Hash = { n = sin(n * 12.9898 + 4.1414) * 43758.5453; return n - floor(n); };
 
@@ -445,10 +452,10 @@ void(vector p, vector n, float wx, vector c) Milk_RibbonTo =
 {
 	if (milk_rb_on)
 	{
-		R_PolygonVertex(milk_rb_p + milk_rb_n * milk_rb_hw, [milk_rb_wx, milk_rb_vt], milk_rb_c, milk_rb_amp);
-		R_PolygonVertex(p + n * milk_rb_hw, [wx, milk_rb_vt], c, milk_rb_amp);
-		R_PolygonVertex(p - n * milk_rb_hw, [wx, -milk_rb_vt], c, milk_rb_amp);
-		R_PolygonVertex(milk_rb_p - milk_rb_n * milk_rb_hw, [milk_rb_wx, -milk_rb_vt], milk_rb_c, milk_rb_amp);
+		R_PolygonVertex(milk_rb_p + milk_rb_n * milk_rb_hw, [milk_rb_wx, milk_rb_vt], milk_rb_c, milk_rb_code + milk_rb_amp);
+		R_PolygonVertex(p + n * milk_rb_hw, [wx, milk_rb_vt], c, milk_rb_code + milk_rb_amp);
+		R_PolygonVertex(p - n * milk_rb_hw, [wx, -milk_rb_vt], c, milk_rb_code + milk_rb_amp);
+		R_PolygonVertex(milk_rb_p - milk_rb_n * milk_rb_hw, [milk_rb_wx, -milk_rb_vt], milk_rb_c, milk_rb_code + milk_rb_amp);
 		R_EndPolygon();
 	}
 	milk_rb_p = p;
@@ -478,10 +485,12 @@ void() Milk_WavesDraw =
 	H = milk_rtsize_y;
 	th = max(1, 1.25 * H / 540);
 	c = [milk_wavec_x * milk_rtsize_x, milk_wavec_y * H];
-	// The waveform's gain, in quarters, rides in texcoord.x's integer part: it
-	// levels the swing to the mix's RMS, whatever the volume.
-	gc = floor(bound(1, 0.3 / max(milk_rms, 0.002), 12) * 4);
-	R_BeginPolygon("milk_wave", 0, TRUE);
+	// The waveform's gain levels the swing to the mix's RMS, whatever the
+	// volume; it rides in the vertex alpha's thousands.  The depth, whole
+	// metres, rides in texcoord.x's integer part (glsl/milk_wave.glsl).
+	milk_rb_code = floor(bound(1, 0.3 / max(milk_rms, 0.002), 12) * 4) * 1000;
+	gc = floor(bound(0, milk_wavedepth, 8000));
+	R_BeginPolygon(Milk_N("wave"), 0, TRUE);
 	for (i = 0; i < MILK_WAVES; i++)
 	{
 		if (milk_wv_str[i] <= 0)

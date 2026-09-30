@@ -1927,9 +1927,16 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   sometimes the waveform line; a snare a comet), `Milk_WavesDraw` draws each as
   ribbons INTO the fresh feedback frame after the owner's sprites, and
   `glsl/milk_wave.glsl` bends each line by `milk_spec`'s waveform row, levelled
-  to the mix's RMS. Lattice 1, vessel 0.8, fractal 0.7, monolith none. Harness:
-  `milk_bcwaves <s>` throws one every s seconds whatever plays (both VMs),
-  `milk_bcwavekind` pins the kind, and `milk_bootcheck 9` shoots six frames.
+  to the mix's RMS. Lattice 1, vessel 0.8, fractal 0.7, monolith none. They fly
+  at `milk_wavedepth` (the menu: the anchor's distance x1.05 + 2.5 m) and are not
+  drawn where a model is nearer: the scene's alpha is now 2 + the distance for a
+  hit the world calls a model (`milk_alpha` in `milk_common.h`; the lattice's
+  cubes, towers and orbs, the vessel's cells, plankton and eye, the fractal
+  everywhere but the Menger tunnel), a panel's mask as before, else 0 -- read it
+  through `milk_panelmask()`. The test is at draw time, so the echoes already in
+  the trails stay where they were drawn. Harness: `milk_bcwaves <s>` throws one
+  every s seconds whatever plays (both VMs), `milk_bcwavekind` pins the kind, and
+  `milk_bootcheck 9` shoots six frames.
 - LIGHT SHAFTS: `glsl/milk_shafts.glsl` blurs the scene's brightest light toward
   `M_FOCUS.xy` into `<p>_b3` at 1/4 size, only while `milk_shafts > 0` (the
   fractal); the comp adds it at `M_FOCUS.z`, which is the menu's shaft strength
@@ -1950,7 +1957,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   at the station `milk_bcstation` names, bare, a shot after each -- a sweep for
   tuning a look. A command with ';' in it goes in an alias in a cfg exec'd
   first (a ';' on the command line splits the `+set`). `milk_bcvispage 1` opens
-  VISUALS on the speed page in the tour.
+  VISUALS on the speed page in the tour. `p467milk.cfg` and `p467perf.cfg` pin
+  the streaks and the speed page too -- a new setting is the owner's own in every
+  harness run until it is pinned (a tour shot showed their "menu + sky").
 - THE BEAT GATES (2026-09-30). `milk_beat` pulses on every engine onset, hats
   included (7/s on `ftesurf_drive`). The visuals answer `milk_kick` (a bass onset
   gated by the bass ratio above 1.3) and `milk_hit` (a kick, or a treble onset
@@ -2024,6 +2033,11 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   the real clearance (object to cell edge) as the margin: the monolith's far
   walls were at the 90-step cap in a step-count heat map and well under it after,
   and the lattice's PLAY station went from 29 to 41 fps.
+- **THE SCENE TARGET'S ALPHA IS NOT ONLY THE PANEL MASK.** Since the streaks
+  hide behind models it is 2 + a distance on a model's hit; `abs(a)` read as a
+  mask is 1 over every one of them. Every reader goes through `milk_panelmask()`
+  (present, comp, shafts); a world that writes plain `mask * (1 - fog)` (the
+  monolith) still reads right, it just hides no streaks.
 - **A 2D POLYGON IS BACK-FACE CULLED.** `R_BeginPolygon(..., TRUE)` with a
   script material culls by winding, and a ribbon built along its direction of
   travel winds either way: every waveform line and half the comets were simply

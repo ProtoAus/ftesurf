@@ -367,6 +367,9 @@ void main(void)
 	vec3 glow = vec3(0.0);
 	float id;
 	float t = march(ro, rd, min(tmax, tp), steps, id, glow);
+	// What the kick streaks hide behind: the cubes, towers and orbs, not the
+	// tunnel or the floor they fly over.
+	bool model = t > 0.0 && (id < 2.5 || id > 4.5);
 	vec3 col;
 	float mask = 0.0;
 
@@ -447,6 +450,6 @@ void main(void)
 	col = mix(col, fogCol(rd), fog);
 	col += glow;
 
-	gl_FragColor = vec4(col, mask * (1.0 - fog));
+	gl_FragColor = vec4(col, milk_alpha(mask, fog, model, t));
 }
 #endif

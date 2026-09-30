@@ -26,7 +26,7 @@ vec3 lightAt(vec2 p)
 {
 	vec4 s = texture2D(s_scene, p);
 	float l = max(s.r, max(s.g, s.b));
-	return s.rgb * (smoothstep(0.6, 1.6, l) * (1.0 - clamp(abs(s.a) * 4.0, 0.0, 1.0)));
+	return s.rgb * (smoothstep(0.6, 1.6, l) * (1.0 - clamp(abs(milk_panelmask(s.a)) * 4.0, 0.0, 1.0)));
 }
 
 void main(void)

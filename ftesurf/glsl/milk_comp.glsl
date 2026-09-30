@@ -34,7 +34,7 @@ void main(void)
 	// A menu panel's face (the scene's alpha, milk_panel.h): the trails are a
 	// screen-space layer, and without this they would paint over the slab
 	// as if it were glass.
-	float pm = clamp(abs(sa.a), 0.0, 1.0);
+	float pm = clamp(abs(milk_panelmask(sa.a)), 0.0, 1.0);
 #endif
 	vec3 b1 = texture2D(s_b1, tc).rgb;
 	vec3 b2 = texture2D(s_b2, tc).rgb;

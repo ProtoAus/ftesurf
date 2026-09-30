@@ -89,6 +89,19 @@ vec3 milk_grade(vec3 c, float k)
 	return mix(c, max(mix(cool, pop, prim), 0.0), k);
 }
 
+// The scene target's alpha: a panel's face is its mask, -1..1 (milk_panel.h,
+// the present and the comp read it); a model's hit is 2 + its distance, which
+// the kick streaks hide behind (milk_wave.glsl); anything else, 0.  A world
+// decides which of its hits are models -- the lattice's cubes are, its floor
+// and tunnel are not -- and a hit mostly lost in fog is not.
+float milk_alpha(float mask, float fog, bool model, float t)
+{
+	if (mask != 0.0)
+		return mask * (1.0 - fog);
+	return (model && fog < 0.6) ? 2.0 + t : 0.0;
+}
+float milk_panelmask(float a) { return (a < 1.5) ? a : 0.0; }
+
 // ACES fitted (Narkowicz).  The feedback targets are half-float, so the
 // composite is where HDR comes back down to display range.
 vec3 aces(vec3 x)

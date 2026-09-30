@@ -2140,6 +2140,12 @@ depth at ~3,000 requests/day. What that leaves open:
   up the resolve fills from the neighbours instead of the last frame: history
   at an edge passes the neighbourhood clamp and left teeth. At rest it is the
   full image.
+- **THE STREAKS HIDE BEHIND MODELS AT ONE DEPTH, AT DRAW TIME.** Each station's
+  streaks fly at a single distance (its anchor + 5% + 2.5 m), so a model between
+  that and the camera hides them and one behind does not -- a ring does not
+  wrap round the cube, it passes behind it. And the test is made as each line is
+  drawn into the trails: an echo drawn beside the cube stays drawn if the cube
+  turns over it (decay 0.84 a tick, so ~0.2 s). The monolith tags no models.
 - **THE STREAKS' WAVEFORM IS 8 BITS OF THE RAW MIX.** At the harness's
   `musicvolume 0.02` it quantises to a step or two, so the lines come out
   smooth; at the owner's 0.2 it is ~13 steps and the gain (capped x12) covers

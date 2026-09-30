@@ -8,9 +8,10 @@
 //
 // #PANELS (the menu): the in-world panels' UI textures, composited over the
 // slabs the scene raymarched.  The scene target's alpha says which slab face
-// the ray hit first (+1 A, -1 B, scaled by the fog in front of it), so
-// anything standing in front of a panel still hides it, and every other
-// pixel -- most of the screen -- stops after that one extra tap.  At rest a
+// the ray hit first (+1 A, -1 B, scaled by the fog in front of it; a model's
+// distance, 2 and up, is no slab -- milk_common.h, milk_alpha), so anything
+// standing in front of a panel still hides it, and every other pixel -- most
+// of the screen -- stops after that one extra tap.  At rest a
 // panel is laid out face-on at one texel per pixel, texel edges on pixel
 // edges, so the bilinear tap below returns the texel unchanged: the font's own
 // raster.
@@ -68,7 +69,7 @@ void main(void)
 	// Screen height in pixels: tc runs 0..1 down it, and on a full-screen quad
 	// its derivative is the same everywhere, so this is safe to take here.
 	float sh = 1.0 / max(abs(dFdy(tc.y)), 1e-6);
-	float m = texture2D(s_scene, uv).a;
+	float m = milk_panelmask(texture2D(s_scene, uv).a);
 	if (abs(m) > 0.004)
 	{
 		bool a = m > 0.0;

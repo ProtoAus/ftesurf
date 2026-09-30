@@ -249,8 +249,9 @@ void(float w, float st) MM_PoseW =
 		}
 		else if (st == MS_VIS)
 		{
+			// No kaleidoscope: it folded copies of the star over the bulb.
 			mm_ppos = '-800 8 -75';     mm_ptgt = '-828 4 0';             mm_panchor = '-721.2 45.2 315.4';
-			mm_phue = 0.74;  mm_pliq = 0.2;  mm_pkal = 6;
+			mm_phue = 0.74;  mm_pliq = 0.2;  mm_pkal = 0;
 		}
 		else if (st == MS_MUSIC)
 		{
@@ -834,6 +835,8 @@ void(float now, float dt) MM_Camera =
 		milk_waves = milk_react * ((mm_world == MW_VESSEL) ? 0.8 : ((mm_world == MW_FRACTAL) ? 0.7 : 1));
 	milk_wavec = [milk_focus_x, milk_focus_y];
 	milk_waver = 0.95;
+	// ...and fly just behind it, so it and anything nearer hide them.
+	milk_wavedepth = vlen(mm_panchor - milk_campos) * 1.05 + 2.5;
 	milk_wavetest = cvar("milk_bcwaves");
 	milk_wavekind = cvar("milk_bcwavekind");
 
