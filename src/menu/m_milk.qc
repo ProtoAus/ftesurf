@@ -51,7 +51,7 @@
 #define MM_ITEM_SZ  '48 48 0'
 #define MM_ITEM_H   64
 #define MM_TANFOV   0.60
-#define MM_CROP     0.97        // milk_present.glsl's overscan
+#define MM_CROP     0.97        // the share of the milk image the screen shows (MM_Frame's quad)
 #define MM_DIVE     2.4         // seconds for a dive between worlds
 
 float  mm_world, mm_shuffle;
@@ -94,6 +94,9 @@ vector mm_prtsize[2];           // size the target was made at
 float  mm_pon[2], mm_pdir[2];   // power 0..1, and which way it is going
 float  mm_uiready, mm_presmat, mm_presmatu;
 float  mm_ftime;                // smoothed frame time, for the speed page
+float  mm_fpsn, mm_fpst0, mm_fps;   // show_fps over the menu (MM_DrawFps)
+vector mm_quad, mm_quadpos;     // the present's quad: bigger than the screen, hanging off every edge
+float  mm_cropx, mm_cropy;      // the share of the milk image the screen shows, per axis
 float  mm_vispage;              // VISUALS: 0 the look, 1 speed
 float  mm_drawpanel;            // TRUE while a screen draws into a panel
 
@@ -331,13 +334,13 @@ float(float s) MM_PanelW = { local vector h; h = mm_phalf[s]; return h_x; };
   Where slot s's panel stands: face-on to its station's resting camera, over
   an integer pixel rectangle of the screen, at mm_pdepth.  The world size
   follows from one texel per pixel through the present's projection --
-  tan(fov/2) * MM_CROP per half screen height, the milk targets' aspect
-  across -- so it depends on the resolution, and is redone every frame.
+  tan(fov/2) * mm_cropy per half screen height, the milk targets' aspect and
+  mm_cropx across -- so it depends on the resolution, and is redone every frame.
 */
 void(float s) MM_PanelPlace =
 {
 	local vector P, F, R, U, r0, r1, px, h;
-	local float tf, nx, ny, wx, wy;
+	local float nx, ny, wx, wy;
 
 	h = '0 0 0';
 	if (mm_pst[s] >= 0 && mm_pw[s] == mm_world)
@@ -349,15 +352,14 @@ void(float s) MM_PanelPlace =
 			F = normalize(mm_ptgt - mm_ppos);
 			R = normalize(MM_Cross('0 1 0', F));
 			U = MM_Cross(F, R);
-			tf = MM_TANFOV * MM_CROP;
 			r0 = [rint(mm_prect0_x * mm_screen_x), rint(mm_prect0_y * mm_screen_y)];
 			r1 = [rint(mm_prect1_x * mm_screen_x), rint(mm_prect1_y * mm_screen_y)];
 			px = r1 - r0;
-			wx = 2 * mm_pdepth * tf * mm_asp / mm_screen_x;
-			wy = 2 * mm_pdepth * tf / mm_screen_y;
+			wx = 2 * mm_pdepth * MM_TANFOV * mm_cropx * mm_asp / mm_screen_x;
+			wy = 2 * mm_pdepth * MM_TANFOV * mm_cropy / mm_screen_y;
 			h = [px_x * wx * 0.5, px_y * wy * 0.5];
-			nx = ((r0_x + px_x * 0.5) / mm_screen_x * 2 - 1) * MM_CROP;
-			ny = -((r0_y + px_y * 0.5) / mm_screen_y * 2 - 1) * MM_CROP;
+			nx = ((r0_x + px_x * 0.5) / mm_screen_x * 2 - 1) * mm_cropx;
+			ny = -((r0_y + px_y * 0.5) / mm_screen_y * 2 - 1) * mm_cropy;
 			mm_pc[s] = P + (F + R * (nx * mm_asp * MM_TANFOV) + U * (ny * MM_TANFOV)) * mm_pdepth;
 			mm_pang[s] = [atan2(-F_x, -F_z), asin(-F_y), 0];
 			mm_ppx[s] = px;
@@ -435,8 +437,8 @@ vector(vector m) MM_MouseToUI =
 	R = [milk_ud[20], milk_ud[21], milk_ud[22]];
 	U = [milk_ud[24], milk_ud[25], milk_ud[26]];
 	asp = milk_ud[2];
-	nx = (m_x / mm_screen_x * 2 - 1) * MM_CROP + milk_ud[44] * 2;
-	ny = -((m_y / mm_screen_y * 2 - 1) * MM_CROP + milk_ud[45] * 2);
+	nx = (m_x / mm_screen_x * 2 - 1) * mm_cropx + milk_ud[44] * 2;
+	ny = -((m_y / mm_screen_y * 2 - 1) * mm_cropy + milk_ud[45] * 2);
 	rd = F + R * (nx * asp * tf) + U * (ny * tf);
 
 	C = [milk_ud[i], milk_ud[i + 1], milk_ud[i + 2]];
@@ -888,16 +890,16 @@ void() MM_Sprites =
 	if (mm_titlecur_x >= 0)
 	{
 		Font_Set(ui_font_display);
-		drawstring(Milk_ToRT(mm_titlecur, mm_screen), "FTESURF",
-		           MM_TITLE_SZ * (milk_rtsize_y / mm_screen_y), Milk_Pal(mm_hue + 0.1),
+		drawstring(Milk_ToRT(mm_titlecur - mm_quadpos, mm_quad), "FTESURF",
+		           MM_TITLE_SZ * (milk_rtsize_y / mm_quad_y), Milk_Pal(mm_hue + 0.1),
 		           0.10 + 0.12 * milk_hit * milk_react, 1);
 		Font_Set(ui_font_ui);
 	}
 
 	if (mm_hlon)
 	{
-		hp = Milk_ToRT(mm_hlpos, mm_screen);
-		hs = Milk_ToRT(mm_hlsize, mm_screen);
+		hp = Milk_ToRT(mm_hlpos - mm_quadpos, mm_quad);
+		hs = Milk_ToRT(mm_hlsize, mm_quad);
 		Milk_Bar(hp, hs, Milk_Pal(mm_hue + 0.1), 0.22 + 0.35 * milk_hit * milk_react);
 	}
 };
@@ -1041,6 +1043,13 @@ void() MM_Init =
 	}
 };
 
+// The screen plus MM_CROP's margin, in whole pixels and the same on both
+// sides, so a target this size presents texel for pixel.
+vector(vector scr) MM_Overscan =
+{
+	return [scr_x + 2 * rint(scr_x * (0.5 / MM_CROP - 0.5)), scr_y + 2 * rint(scr_y * (0.5 / MM_CROP - 0.5))];
+};
+
 // Before sui_begin every frame: the sim, if the backdrop wants it.
 void(vector screensize) MM_Frame =
 {
@@ -1085,12 +1094,15 @@ void(vector screensize) MM_Frame =
 
 	// Internal height by quality: 360 / 540 / 720, width by aspect.  4, ultra,
 	// is high's resolution raymarched every tick (below).  milk_res 1,
-	// "native", is the screen's own, the scene at full size too.
+	// "native", is the present's own quad (below), texel for pixel, the scene at
+	// full size too.
 	q = bound(1, cvar("milk_quality"), 3);
 	h = 180 + q * 180;
-	if (h > screensize_y || cvar("milk_res") >= 1)
+	if (h > screensize_y)
 		h = screensize_y;
 	size = [floor(h * screensize_x / screensize_y), h];
+	if (cvar("milk_res") >= 1)
+		size = MM_Overscan(screensize);
 	mm_asp = size_x / size_y;
 	milk_quality = q;
 	// The raymarch is the cost (Patch 467 perf); the monolith's is the dearest,
@@ -1111,8 +1123,21 @@ void(vector screensize) MM_Frame =
 	milk_checker = cvar("milk_checker") >= 1;
 	milk_cone = cvar("milk_cone") >= 1;
 	milk_upsize = '0 0 0';
-	if (cvar("milk_fsr") >= 1 && h < screensize_y * 0.95)
-		milk_upsize = [ceil(screensize_x / MM_CROP), ceil(screensize_y / MM_CROP)];
+	if (cvar("milk_fsr") >= 1 && size_y < screensize_y * 0.95)
+		milk_upsize = MM_Overscan(screensize);
+	// The present shows the middle MM_CROP of the milk image -- its edges are
+	// where the warp fades and the parallax slides -- drawn as a quad bigger
+	// than the screen.  An image the quad's own size (native, FSR's) is then
+	// drawn texel for pixel: cropping inside the shader scaled it by 1/0.97.
+	if (cvar("milk_res") >= 1)
+		mm_quad = size;
+	else if (milk_upsize_x > 0)
+		mm_quad = milk_upsize;
+	else
+		mm_quad = [screensize_x / MM_CROP, screensize_y / MM_CROP];
+	mm_quadpos = (screensize - mm_quad) * 0.5;
+	mm_cropx = screensize_x / mm_quad_x;
+	mm_cropy = screensize_y / mm_quad_y;
 	// The raymarch runs every other tick (the feedback every tick) except at
 	// ultra, and for the lattice at high.  The monolith at 720p on the N100:
 	// 55 fps every other tick, 17 and 24 (two runs) every tick.
@@ -1135,6 +1160,29 @@ void(vector screensize) MM_Frame =
 	else if (!mm_dive0 || mm_diveswapped)
 		Milk_SetScene(MM_WorldProg(mm_world, mm_station));
 	Milk_Frame(size, now);
+};
+
+// show_fps over the menu: the engine draws its counter before the menu, whose
+// full-screen backdrop then covers it (cl_screen.c, SCR_DrawTwoDimensional).
+// The same reading -- frames over the last second -- in the same corner, and
+// only while the backdrop is ours: over a live game the engine's shows.
+void(vector screensize) MM_DrawFps =
+{
+	local float now;
+	local string s;
+
+	now = gettime(1);
+	mm_fpsn++;
+	if (now - mm_fpst0 >= 1)
+	{
+		mm_fps = mm_fpsn / (now - mm_fpst0);
+		mm_fpsn = 0;
+		mm_fpst0 = now;
+	}
+	if (!cvar("show_fps") || !MM_Active())
+		return;
+	s = sprintf("%.1f FPS", mm_fps);
+	sui_text([screensize_x - stringwidth(s, TRUE, SZ_LABEL) - 12, 10], SZ_LABEL, s, '1 1 1', 1, 0);
 };
 
 // Readability: darken the left of the screen where the menu column sits.  One
@@ -1183,10 +1231,10 @@ void(vector screensize) MM_Backdrop =
 			         "map $rt:mm_up2\nmap $rt:mm_scene\nmap $rt:mm_ui0\nmap $rt:mm_ui1\n");
 			mm_presmatu = TRUE;
 		}
-		Milk_PresentMat('0 0 0', screensize, 1, (milk_cfgup_x > 0) ? "mm_presentpu" : "mm_presentp");
+		Milk_PresentMat(mm_quadpos, mm_quad, 1, (milk_cfgup_x > 0) ? "mm_presentpu" : "mm_presentp");
 		return;
 	}
-	Milk_Present('0 0 0', screensize, 1);
+	Milk_Present(mm_quadpos, mm_quad, 1);
 };
 
 // ----------------------------------------------------------------- screens --

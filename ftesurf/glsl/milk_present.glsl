@@ -63,11 +63,14 @@ vec3 panelOver(vec3 c, sampler2D ui, vec2 uv, float fp, float lit, float vis)
 
 void main(void)
 {
-	vec2 uv = (tc - 0.5) * 0.97 + 0.5 + M_EXTRA.xy;
+	// The quad is bigger than the screen (m_milk.qc, MM_Frame's crop), so tc
+	// is already the milk image's own uv: no scaling here, and an image the
+	// quad's size is drawn texel for pixel.
+	vec2 uv = tc + M_EXTRA.xy;
 	vec3 c = texture2D(s_src, uv).rgb;
 #ifdef PANELS
-	// Screen height in pixels: tc runs 0..1 down it, and on a full-screen quad
-	// its derivative is the same everywhere, so this is safe to take here.
+	// The quad's height in pixels: tc runs 0..1 down it, and its derivative is
+	// the same everywhere, so this is safe to take here.
 	float sh = 1.0 / max(abs(dFdy(tc.y)), 1e-6);
 	float m = milk_panelmask(texture2D(s_scene, uv).a);
 	if (abs(m) > 0.004)
@@ -92,7 +95,7 @@ void main(void)
 			// is the depth), over world per texel, leaning with the face.
 			float texh = a ? float(textureSize(s_ui0, 0).y) : float(textureSize(s_ui1, 0).y);
 			float lean = max(-dot(normalize(rd), N), 0.25);
-			float fp = t * M_CAMPOS.w * 0.97 * texh / (sh * H.y * lean);
+			float fp = t * M_CAMPOS.w * texh / (sh * H.y * lean);
 			if (a)
 				c = panelOver(c, s_ui0, puv, fp, L, clamp(m, 0.0, 1.0));
 			else

@@ -129,6 +129,7 @@ void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
 void(vector screensize) MM_Backdrop;
+void(vector screensize) MM_DrawFps;
 void(vector screensize) MM_ScreenMain;
 void(vector screensize) MM_ScreenVisuals;
 void(vector screensize) MM_ScreenMusic;
@@ -6199,6 +6200,7 @@ void(vector screensize) m_draw =
 	else
 		screen_main(screensize);
 
+	MM_DrawFps(screensize);
 	sui_menu_nav();
 	Font_Reset();
 	sui_end();

@@ -1413,11 +1413,14 @@ brightest light blurred toward its source, so the arches cut dark lanes through
 it. 100-131 fps at medium here, faster than the monolith. Its music is
 `ftesurf_void` (no track of its own yet).
 
-**The speed page** (VISUALS -> speed). Menu scene moved here, beside four new
-switches, all off by default, all the menu's only -- a map is never touched:
+**The speed page** (VISUALS -> the Page row at the top -> speed). Menu scene
+moved here, beside four new switches, all off by default, all the menu's only
+-- a map is never touched:
 
-- Resolution: by quality | native. Native renders the 3D at your screen's
-  height. Here: 21 fps -- this laptop cannot. For the PC.
+- Resolution: by quality | native. Native renders the 3D at your screen's own
+  resolution, one pixel of it to one pixel of the screen (a first cut still
+  scaled it 3% for the edge overscan; fixed). Here: ~20 fps -- this laptop
+  cannot. For the PC.
 - Upscaler: bilinear | FSR 1. AMD's upscaler instead of the plain stretch:
   crisper edges and lines. Here it costs ~15 ms an update at 2256x1380 (123 ->
   38 fps), so not on this laptop; on a desktop GPU it should be cheap.
@@ -1428,7 +1431,8 @@ switches, all off by default, all the menu's only -- a map is never touched:
   can skip; +19% in the fractal, nothing measurable in the other worlds.
 
 The line under them shows the resolution it renders at and the frame rate, so
-you can judge each switch as you flip it.
+you can judge each switch as you flip it. `show_fps 1` now shows over the menu
+too, top right (the engine's counter was drawn underneath the menu's 3D).
 
 **Decisions only you can make:**
 

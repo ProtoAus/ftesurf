@@ -1905,8 +1905,13 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - Resolutions: the targets are `180 + 180 * quality` high (360 / 540 / 720, by
   aspect; `MM_Frame`), the scene target a per-world 50-100% of that
   (`milk_scenescale`), bloom at 1/2 and 1/4, and the present stretches `out` to
-  the screen bilinearly (or FSR 1's output, below). Only the panels are drawn at
-  screen resolution (the `#PANELS` overlay). The raymarch is the cost. N100, monolith MAIN, a tick a
+  the screen bilinearly (or FSR 1's output, below). The present is a quad
+  `MM_CROP` bigger than the screen, hanging off every edge (`mm_quad`), rather than
+  a crop inside the shader -- which had scaled even a screen-sized image by
+  1/0.97 -- so an image the quad's own size (native, FSR's) lands texel for
+  pixel; the panel maths (`MM_PanelPlace`, `MM_MouseToUI`) take its per-axis crop
+  (`mm_cropx/y`). Only the panels are drawn at screen resolution (the `#PANELS`
+  overlay). The raymarch is the cost. N100, monolith MAIN, a tick a
   frame: ~19 ms a raymarch at medium (511x313), ~50 at high (942x576), against
   ~3 ms a frame for everything else the milk does -- `+set milk_bcdiv 1` against
   `999` (a harness knob pinning the raymarch to every Nth tick), 2026-09-30.
@@ -1941,8 +1946,8 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `M_FOCUS.xy` into `<p>_b3` at 1/4 size, only while `milk_shafts > 0` (the
   fractal); the comp adds it at `M_FOCUS.z`, which is the menu's shaft strength
   and the sky's landing ring.
-- THE SPEED PAGE (VISUALS -> speed): `milk_res 1` renders at the screen's height,
-  scene scale 1; `milk_fsr 1` runs FSR 1 (`glsl/milk_fsr.glsl`, EASU then RCAS)
+- THE SPEED PAGE (VISUALS -> speed): `milk_res 1` renders at the present's quad
+  (`MM_Overscan`: the screen plus an even margin), scene scale 1; `milk_fsr 1` runs FSR 1 (`glsl/milk_fsr.glsl`, EASU then RCAS)
   once a tick into `<p>_up`/`_up2`, sized past the present's crop so the present
   still takes one tap; `milk_checker 1` raymarches a half-width target
   (`#CHECKER`, parity in `M_EVENT.z`) that `glsl/milk_resolve.glsl` fills out
@@ -1953,6 +1958,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   N100, medium, a raymarch every tick (`milk_bcdiv 1`), MAIN: monolith 35-38 fps
   -> checkerboard 57, coarse pass 36-38 (noise); fractal 58 -> 99, 69, both 110.
   Lattice at normal settings: 123 fps, FSR 38, native 21, native+checkerboard 29.
+- `show_fps` over the milk menu is the menu's own (`MM_DrawFps`, drawn last in
+  `m_draw`): the engine draws its counter first, under the menu's full-screen
+  backdrop. Over a live game the engine's still shows.
 - More harness: `milk_bootcheck 10` runs `milk_bcseq`'s '|'-separated commands
   at the station `milk_bcstation` names, bare, a shot after each -- a sweep for
   tuning a look. A command with ';' in it goes in an alias in a cfg exec'd

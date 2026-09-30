@@ -113,6 +113,12 @@ chatty.
   had been added over the scene out there until now, so it had never shown.
   When new content looks wrong in a way that depends on where it is on the
   screen, read every full-screen pass it goes through before its own shader.
+- A "NATIVE" SETTING IS NOT NATIVE UNTIL EVERY RESAMPLE ON THE WAY TO THE SCREEN
+  IS ACCOUNTED FOR. The speed page's native rendered at the screen's size and
+  the present then cropped 3% for its overscan, so the image was magnified by
+  1/0.97 and softened -- shipped and measured without anyone looking at a pixel
+  at 1:1. Crop the geometry, not the texture coordinates, and check the
+  mapping by cropping a screenshot at 1:1 beside the scaled one.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
