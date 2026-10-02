@@ -32,7 +32,10 @@ WHAT IT CHECKS
   * 'synth 1', which makes a file INADMISSIBLE as evidence and is reported that
     way rather than quietly;
   * 'rawinput 0', which means the mouse column is per-frame OS-summed deltas
-    rather than per-report ones, so no timing conclusion may be drawn from it.
+    rather than per-report ones, so no timing conclusion may be drawn from it;
+  * Patch 468's ninth trailer field: handle-less reports ACCEPTED as
+    precision-touchpad motion, which must have a `touchpad` device in the table
+    to claim them.
 
 And, when the .view sidecar is beside it, that the two describe the same run:
 that the .view's `hid` key agrees that a journal was taken, that the movesequence
@@ -118,6 +121,8 @@ HEAD_P301 = {"rawmice", "rawkbds"}
 HEAD_P303 = {"dev"}
 # Patch 307: the injected-click block -- the request, and what it actually got.
 HEAD_P307 = {"nolegacy", "nolegacylive"}
+# Patch 468: precision touchpad digitizer collections bound at raw-input init.
+HEAD_P468 = {"rawpads"}
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -343,7 +348,8 @@ def check_hid(path, verbose=False):
         head[parts[0]] = parts[1] if len(parts) > 1 else ""
         if parts[0] not in HEAD_V1 and parts[0] not in HEAD_P293 \
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
-           and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310:
+           and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
+           and parts[0] not in HEAD_P468:
             r.note("unknown header key %r" % parts[0])
         i += 1
     else:
@@ -508,14 +514,14 @@ def check_hid(path, verbose=False):
                 r.fault("line %d: a second 'end' record" % (lineno + 1))
                 continue
             # end <dt> <abs> <events> <frames> <dropped> <hidden>
-            #                                  [<injected> <unenum>]
+            #                                  [<injected> <unenum> [<legacybtn> [<touchpad>]]]
             # Patch 306 appended the last two. A pre-306 file has 7 tokens and
             # is not faulted for it -- absent is NOT zero, and a reader that
             # treated it as zero would report "no injection seen" about a file
             # that could not see any.
-            if len(tok) not in (7, 9, 10):
+            if len(tok) not in (7, 9, 10, 11):
                 r.fault("line %d: 'end' has %d fields, expected 7 (pre-306), "
-                        "9 (pre-307) or 10" % (lineno + 1, len(tok)))
+                        "9 (pre-307), 10 (pre-468) or 11" % (lineno + 1, len(tok)))
                 continue
             try:
                 dt = int(tok[1])
@@ -766,6 +772,7 @@ def check_hid(path, verbose=False):
         t_injected = trailer[5] if len(trailer) > 5 else None
         t_unenum = trailer[6] if len(trailer) > 6 else None
         t_legacybtn = trailer[7] if len(trailer) > 7 else None
+        t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
         r.info["events"] = t_events
         r.info["frames"] = t_frames
         r.info["dropped"] = t_dropped
@@ -947,6 +954,28 @@ def check_hid(path, verbose=False):
                        "reports exist for those); otherwise this is the shape "
                        "of an injected click. Check the device table above "
                        "before concluding anything." % t_legacybtn)
+
+        # Patch 468: handle-less reports ACCEPTED because a Windows precision
+        # touchpad had reported contact just before each one (the OS synthesises
+        # a touchpad's cursor motion with no device handle, which Patch 306
+        # otherwise rejects). Accepted, so these DID reach the game -- as the
+        # pointer motion of the `touchpad` device in the table. -1: the backend
+        # does not count; absent: the file predates the field.
+        if t_touchpad is not None and t_touchpad >= 0:
+            r.info["touchpad"] = t_touchpad
+            pads = [d for d in devs + devmaps if d[0] == "touchpad"]
+            if t_touchpad and not pads:
+                r.fault("trailer says %d handle-less reports were accepted as "
+                        "touchpad motion but no touchpad is in the device "
+                        "table -- the file is not describing its own hardware"
+                        % t_touchpad)
+            elif t_touchpad:
+                r.note("%d handle-less mouse reports were ACCEPTED as "
+                       "precision-touchpad motion (a digitizer report preceded "
+                       "each within the engine's window). They reached the "
+                       "game as the `touchpad` device's pointer motion. This is "
+                       "the laptop case, not an injection; the injected count "
+                       "above is what was still rejected." % t_touchpad)
 
         if "nolegacylive" in head:
             try:

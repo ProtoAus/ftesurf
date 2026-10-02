@@ -203,7 +203,7 @@ class Journal:
         self.lines.append("g %d %d" % (us, state))
 
     def end(self, us=100, injected=None, unenum=None, legacybtn=None,
-            pre306=False, pre307=False):
+            pre306=False, pre307=False, touchpad=None):
         # the closing devmap table, which is where the attribution check reads
         # its claims from.
         if getattr(self, "devices", None):
@@ -225,9 +225,12 @@ class Journal:
             else:
                 if legacybtn is None:
                     legacybtn = self.legacybtn
-                self.lines.append("end %d %.6f %d %d 0 0 %d %d %d"
-                                  % (us, self.clock, self.events, self.frames,
-                                     injected, unenum, legacybtn))
+                line = ("end %d %.6f %d %d 0 0 %d %d %d"
+                        % (us, self.clock, self.events, self.frames,
+                           injected, unenum, legacybtn))
+                if touchpad is not None:      # Patch 468: the ninth field
+                    line += " %d" % touchpad
+                self.lines.append(line)
         return "\n".join(self.lines) + "\n"
 
 
@@ -1290,6 +1293,72 @@ def case_nonce_note():
     check("nonce" not in r.info, "a journal with no note reports no nonce")
 
 
+PAD = ("touchpad", "unset",
+       "\\\\?\\HID#XXXX0000&Col02#5&173917db&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}")
+
+
+def _padrun(devices, closing, touchpad, dev=1, n=20):
+    j = Journal(devices=devices)
+    j.devices = closing            # the resolved table the trailer carries
+    yaw = 0.0
+    for i in range(n):
+        j.frame(3000 + i)
+        j.mouse(4, 0, dev=dev)
+        yaw += j.k * 4
+        j.view(4, 0, 10.0, yaw)
+    return run(j.end(touchpad=touchpad))
+
+
+def case_touchpad_accepted():
+    """Patch 468: handle-less reports accepted on a precision touchpad's
+    say-so are a trailer field of their own, and the motion is the touchpad's."""
+    r = _padrun([MOUSE0, PAD], [MOUSE0, ("touchpad", "1", PAD[2])], touchpad=20)
+    check(r.ok, "touchpad: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("touchpad") == 20,
+          "touchpad: 20 accepted (got %s)" % r.info.get("touchpad"))
+    check(has_note(r, "ACCEPTED as precision-touchpad motion"),
+          "touchpad: surfaced as a note, never a fault")
+    check(not has_note(r, "no device in the table claims it"),
+          "touchpad: devid 1 is claimed by the touchpad entry")
+
+
+def case_touchpad_without_device():
+    """Accepted touchpad motion with no touchpad in the table is a file that is
+    not describing its own hardware."""
+    r = _padrun([MOUSE0], [MOUSE0], touchpad=5, dev=0)
+    check(has_fault(r, "no touchpad is in the device table"),
+          "touchpad: accepted count with no touchpad device is a fault")
+
+
+def case_touchpad_pre468():
+    """A 10-field trailer predates the field: absent is not zero.  An 11th
+    extra field is a different grammar."""
+    j = Journal(devices=[MOUSE0])
+    j.frame(3000)
+    j.mouse(4, 0)
+    j.view(4, 0, 10.0, j.k * 4)
+    r = run(j.end())
+    check(r.ok and "touchpad" not in r.info,
+          "touchpad: a pre-468 trailer reports nothing about touchpads")
+    j = Journal(devices=[MOUSE0])      # fresh: end() appends a second trailer otherwise
+    j.frame(3000)
+    j.mouse(4, 0)
+    j.view(4, 0, 10.0, j.k * 4)
+    text = j.end(touchpad=0)
+    lines = text.rstrip("\n").split("\n")
+    lines[-1] += " 0"
+    r = run("\n".join(lines) + "\n")
+    check(has_fault(r, "'end' has 12 fields"),
+          "touchpad: a twelfth field is still an unknown grammar")
+
+
+def case_touchpad_backend_silent():
+    """-1 is 'this backend does not count': no claim either way."""
+    r = _padrun([MOUSE0], [MOUSE0], touchpad=-1, dev=0)
+    check(r.ok and "touchpad" not in r.info,
+          "touchpad: -1 makes no claim and raises no fault")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1322,7 +1391,9 @@ def main():
                case_malformed_key_sweep_continues,
                case_wayland_seat_devid0_not_unclaimed,
                case_linux_legacy_path_wording,
-               case_nonce_note):
+               case_nonce_note,
+               case_touchpad_accepted, case_touchpad_without_device,
+               case_touchpad_pre468, case_touchpad_backend_silent):
         print("%s:" % fn.__name__)
         fn()
         print("")
