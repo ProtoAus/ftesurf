@@ -20,8 +20,8 @@ import hidcheck  # noqa: E402
 
 FAILED = []
 # hidcheck faults a journal that drained nothing ("no frame markers"); on the
-# arms whose whole point is that nothing reaches the game, that fault is the
-# expected result and the only one allowed.
+# arms whose whole point is that nothing reaches the game, that is the only
+# fault allowed (allowed, not required: a keypress drains a frame).
 NO_EVENTS = "no frame markers"
 
 
@@ -34,7 +34,7 @@ def check(cond, what):
 def parse(path):
     """-> (header, [dev types], {devmap type: id}, {devid: m}, {devid: +/-}, p sums, trailer)."""
     head, devs, devmaps, m_by_dev, b_by_dev, trailer = {}, [], {}, {}, {}, None
-    psum = [0, 0]
+    psum = [0, 0, 0]
     inbody = False
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -53,9 +53,10 @@ def parse(path):
                 m_by_dev[t[2]] = m_by_dev.get(t[2], 0) + 1
             elif t[0] in ("+", "-") and len(t) >= 4:  # +/- <dt> <dev> <key> [prev]
                 b_by_dev[t[2]] = b_by_dev.get(t[2], 0) + 1
-            elif t[0] == "p" and len(t) >= 4:        # p <dt> <accepted> <digitizer>
+            elif t[0] == "p" and len(t) >= 5:        # p <dt> <accepted> <digitizer> <released>
                 psum[0] += int(t[2])
                 psum[1] += int(t[3])
+                psum[2] += int(t[4])
             elif t[0] == "devmap" and len(t) >= 3:
                 devmaps[t[1]] = t[2]
             elif t[0] == "end":
@@ -81,10 +82,13 @@ def arm(data, letter, events_expected):
     m_pad = m_by_dev.get(paddev, 0) if resolved else 0
     b_pad = b_by_dev.get(paddev, 0) if resolved else 0
     m_other = sum(n for d, n in m_by_dev.items() if d != paddev)
-    print("      rawpads %s  dev-table touchpad %s  devmap touchpad %s  m[pad] %d  buttons[pad] %d  m[other] %d"
+    # +/- on the pad devid are NOT graded: on a laptop whose only raw mouse
+    # collection is the pad's own silent one the pad takes devid 0, which the
+    # legacy click path and the keyboard share.
+    print("      rawpads %s  dev-table touchpad %s  devmap touchpad %s  m[pad] %d  +/-[pad devid] %d  m[other] %d"
           % (head.get("rawpads", "?"), "yes" if "touchpad" in devs else "NO", paddev, m_pad, b_pad, m_other))
-    print("      trailer: injected %d  unenum %d  accepted %d  digitizer %d   'p' records sum: %d %d"
-          % (injected, unenum, accepted, digitizer, psum[0], psum[1]))
+    print("      trailer: injected %d  unenum %d  accepted %d  digitizer %d   'p' records sum: %d %d, released %d"
+          % (injected, unenum, accepted, digitizer, psum[0], psum[1], psum[2]))
     r = hidcheck.check_hid(path)
     for n in r.notes:
         if "touchpad" in n or "REJECTED" in n:
@@ -93,7 +97,7 @@ def arm(data, letter, events_expected):
         check(not r.faults, "hidcheck finds no fault (%s)" % (r.faults[:1] or "none"))
     else:
         other = [f for f in r.faults if NO_EVENTS not in f]
-        check(not other, "hidcheck finds no fault beyond the expected %r (%s)"
+        check(not other, "hidcheck finds no fault beyond the allowed %r (%s)"
               % (NO_EVENTS, other[:1] or "none"))
     check(head.get("rawpads") == "1", "header rawpads 1 (bound)")
     check("touchpad" in devs, "opening dev table lists a touchpad")
@@ -119,8 +123,7 @@ def main():
     B = arm(a.data, "B", events_expected=False)
     if B:
         check(B["digitizer"] > 0, "B: the pad reported (%d digitizer reports)" % B["digitizer"])
-        check(B["m_pad"] == 0 and B["b_pad"] == 0,
-              "B: no event from the touchpad devid (%d motion, %d button)" % (B["m_pad"], B["b_pad"]))
+        check(B["m_pad"] == 0, "B: no motion event from the touchpad devid (%d)" % B["m_pad"])
         check(B["accepted"] == 0, "B: accepted 0 (%d)" % B["accepted"])
         check(B["injected"] > 0, "B: injected > 0 (%d)" % B["injected"])
         if A and A["accepted"]:
@@ -132,7 +135,7 @@ def main():
         check(C["digitizer"] == 0, "C: a resting pad reports nothing (%d)" % C["digitizer"])
         check(C["accepted"] == 0 and C["injected"] == 0,
               "C: nothing accepted, nothing injected (%d, %d)" % (C["accepted"], C["injected"]))
-        check(C["m_pad"] == 0 and C["m_other"] == 0 and C["b_pad"] == 0, "C: no events at all")
+        check(C["m_pad"] == 0 and C["m_other"] == 0, "C: no motion events at all")
 
     print("\n%d prediction(s) failed" % len(FAILED))
     for f in FAILED:

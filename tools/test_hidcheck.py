@@ -64,6 +64,7 @@ class Journal:
         self.legacybtn = 0        # Patch 307: summed by legacypress()
         self.padacc = 0           # Patch 468: summed by pad(), checked by end()
         self.padrep = 0
+        self.padrel = 0
         head = ["FTESURF-HID 1", "map test_identity", "base 100.000000",
                 "rawinput %s" % rawinput, "rawkbd %s" % rawkbd]
         # Patch 387: the grant, omitted unless asked for (no fixture had one).
@@ -172,13 +173,21 @@ class Journal:
         self.injected += injected
         self.unenum += unenum
 
-    def pad(self, accepted, digitizer, us=0):
+    def pad(self, accepted, digitizer, released=0, us=0):
         """Patch 468's 'p' record: handle-less reports accepted as touchpad
-        input, and the digitizer reports that armed the window."""
+        input, the digitizer reports that armed the window, and the releases
+        admitted outside it."""
         self._adv(us)
-        self.lines.append("p %d %d %d" % (us, accepted, digitizer))
+        self.lines.append("p %d %d %d %d" % (us, accepted, digitizer, released))
         self.padacc += accepted
         self.padrep += digitizer
+        self.padrel += released
+
+    def truncate(self, us=0):
+        """The cap was hit: a 'truncated' marker, after which only the closing
+        tables and the trailer follow."""
+        self._adv(us)
+        self.lines.append("truncated %d %.6f" % (us, self.clock))
 
     def key(self, down, scancode, prev=None, us=0, dev=0):
         """A '+'/'-' record.  Patch 309's `prev` is appended unless omitted,
@@ -1422,6 +1431,91 @@ def case_touchpad_three_statements():
           "touchpad: enumerated but not bound is said, not assumed")
 
 
+def _padjournal(pad, cvar=None, rawpads=None, rawkbds=None):
+    kw = {}
+    if cvar is not None:
+        kw["inputcvars"] = [("in_rawinput_touchpad", cvar, "1")]
+    if rawkbds is not None:
+        kw["rawkbds"] = rawkbds
+    j = Journal(devices=[MOUSE0, PAD], **kw)
+    if rawpads is not None:
+        j.lines.insert(j.lines.index("begin"), "rawpads %d" % rawpads)
+    j.devices = pad
+    return j
+
+
+def case_touchpad_round3():
+    """Round 3: the released field and its bound, monotone deltas, both
+    directions on a truncated file, a digitizer total the backend disowns,
+    the legacy note keyed on the cvar in force, and raw mouse buttons
+    attributed to their pointer."""
+    pad = [MOUSE0, ("touchpad", "1", PAD[2])]
+    # a negative delta balances nothing
+    j = _padjournal(pad)
+    j.frame(3000)
+    j.mouse(4, 0, dev=1)
+    j.view(4, 0, 10.0, j.k * 4)
+    j.pad(6, 14)
+    j.pad(-5, -7)
+    r = run(j.end(touchpad=1))
+    check(has_fault(r, "negative delta"), "round 3: a negative 'p' delta is a fault")
+    # truncated: both totals may only be ahead of the records
+    j = _padjournal(pad)
+    yaw = 0.0
+    for i in range(20):
+        j.frame(3000 + i)
+        j.mouse(4, 0, dev=1)
+        yaw += j.k * 4
+        j.view(4, 0, 10.0, yaw)
+        j.pad(1, 7)
+    j.truncate()
+    r = run(j.end(touchpad=25, padreports=100))
+    check(has_fault(r, "trailer says 100 digitizer reports but the 'p' records already hold 140"),
+          "round 3: a truncated file's digitizer total is held to the direction rule")
+    check(not has_fault(r, "touchpad reports accepted"),
+          "round 3: an accepted total ahead of the records is allowed on a truncated file")
+    # a digitizer total the backend disowns beside records that carry one
+    r = _padrun([MOUSE0, PAD], pad, touchpad=20, padreports=-1)
+    check(has_fault(r, "although the trailer says the backend does not count them"),
+          "round 3: digitizer -1 beside 'p' digitizer counts is a fault")
+    # releases are bounded by the pad's own presses
+    for presses, want in ((1, True), (3, False)):
+        j = _padjournal(pad)
+        yaw = 0.0
+        for i in range(3):
+            j.frame(3000 + i)
+            if i < presses:
+                j.key(True, 178, dev=1)       # K_MOUSE1 on the touchpad devid
+                j.key(False, 178, dev=1)
+            j.mouse(4, 0, dev=1)
+            yaw += j.k * 4
+            j.view(4, 0, 10.0, yaw)
+            j.pad(2, 7, released=1)
+        r = run(j.end(touchpad=6))
+        check(has_fault(r, "more releases than presses") == want,
+              "round 3: 3 releases against %d press(es) %s" % (presses, "faults" if want else "passes"))
+        if not want:
+            check(r.info.get("touchpad_releases") == 3 and not has_note(r, "key events carry devid(s) other than 0"),
+                  "round 3: the pad's raw taps on devid 1 are not keyboard events")
+    # the legacy note says what the file in force supports
+    for cvar, rawpads, change, needle in (
+            ("0", 1, None, "Innocent on a machine with a precision touchpad"),
+            ("1", 0, None, "Innocent on a machine with a precision touchpad"),
+            ("1", 1, None, "NOT one on this build"),
+            ("1", 1, "0", "changed mid-journal")):
+        j = _padjournal(pad, cvar=cvar, rawpads=rawpads)
+        j.frame(3000)
+        j.mouse(4, 0, dev=1)
+        j.view(4, 0, 10.0, j.k * 4)
+        j.pad(1, 7)
+        if change is not None:
+            j.cvarchange("in_rawinput_touchpad", change)
+        j.legacypress(2)
+        r = run(j.end(touchpad=1))
+        check(has_note(r, needle),
+              "round 3: legacy note with cvar %s rawpads %d change %s says %r" % (cvar, rawpads, change, needle))
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1457,7 +1551,7 @@ def main():
                case_nonce_note,
                case_touchpad_accepted, case_touchpad_without_device,
                case_touchpad_pre468, case_touchpad_backend_silent,
-               case_touchpad_three_statements):
+               case_touchpad_three_statements, case_touchpad_round3):
         print("%s:" % fn.__name__)
         fn()
         print("")
