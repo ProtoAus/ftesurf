@@ -150,8 +150,12 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   wrong one and say so when it is. Control recipe — NOT `git stash`, which would
   take the other session's files: copy the file aside, `git checkout -- <file>`,
   build, run, copy back, rebuild, and diff the diffstat against the saved one.
-- Test-cfg recipe: `cl_idlefps 0` AND `cl_maxfps 100` (uncapped fps starves
-  async loads); `menu_restart` before any menu-VM command in a `+exec` run
+- Test-cfg recipe: `cfg_save_auto 0` FIRST -- the engine writes ftesurf.cfg on
+  every disconnect and map change (`CL_ClearState`), not only at quit, and a
+  harness's `cl_maxfps 100` then lands in the owner's config (measured: an
+  unguarded jit01 wrote `cl_maxfps "0"` over `"1000"`). `python tools/cfgguard.py`
+  lists any test cfg without it, and exits 1. Then `cl_idlefps 0` AND
+  `cl_maxfps 100` (uncapped fps starves async loads); `menu_restart` before any menu-VM command in a `+exec` run
   (menu.dat loads lazily); `set <cvar> <v>` for cvars not registered yet.
 - The engine's BUILTIN menu is open from boot and `togglemenu` only OPENS;
   `ui_close` is the way back. Until it closes `notmenu=0` skips the whole HUD

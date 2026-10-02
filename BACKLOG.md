@@ -1906,7 +1906,10 @@ edit.
 
 ---
 
-## Two guards this session wanted and neither exists — 2026-09-28
+## A ship-set guard this session wanted, which does not exist yet — 2026-09-28
+
+(Its sibling -- every test cfg turns the config auto-save off -- is
+`tools/cfgguard.py` since 2026-10-03.)
 
 ### A ship-set gate: does the archive contain what the code asks for?
 
@@ -1937,24 +1940,6 @@ need answering before writing it:
 The cheap version that catches the class without solving it: assert that every
 DIRECTORY under `ftesurf/gfx/` appears in `$ShipGlobs` or in a deny list with
 a stated reason. That would have caught two of the three.
-
-### 191 test cfgs do not set `cfg_save_auto 0`
-
-`ftesurf/ftesurf.cfg` is the config the engine writes on quit, it is exec'd
-AFTER `default.cfg`, and a value saved there wins silently — which is how
-`sv_dlURL` came to be `""` on this box and map downloads could never start
-(ftesurf-a1, 0.1.19). Every harness that launches the game must set
-`cfg_save_auto 0` first or it can disable a feature for whoever runs next.
-
-191 of the 1028 cfgs in `ftesurf/cfg/test/` do not contain it: `_quiet.cfg`,
-`b16a`, `b29a`, the b30/b31/b32 families, `b49emit`, the b51 set, `b64guidsv`,
-`b64probe_server`, `b65ranksv`, `build47`, `build65`, `e5rec` and others.
-
-**That count is an upper bound on exposure and NOT a list of culprits** —
-unchecked: which of them a driver actually launches, versus which are `exec`d
-inside another cfg that already set the guard. Whatever wrote the empty
-`sv_dlURL` here predates 2026-09-28 10:44, so this is not urgent, and guessing
-at it is worse than leaving it written down.
 
 ## Full-depth boards are live; five things that fall out of it — 2026-09-29
 
