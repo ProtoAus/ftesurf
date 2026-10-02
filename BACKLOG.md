@@ -1337,17 +1337,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   it is. The trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
   the first frame whenever `sv_airaccelerate` is non-zero. Found by ftesurf-a1
   reading cl_hud.qc for Patch 462.
-- **A replay's Segments column and debug energy readout still use the SERVER's
-  tick (Patch 470's residue).** 470 moved the run line (every slot) and the
-  strafe bar to the recording's tick; `Board_AirCeiling` and the two other
-  `pm_ticrate` reads in cl_board.qc (the ramp-board bite, the air row's slack)
-  and the `ui_eta` ceiling in cl_hud.qc's HUD draw did not move, so a 0.01 file
-  on a 0.015 lobby still has its Segments air percentages computed against a
-  ceiling 1.5x too low. Same one-line override (`if (rec_wt_on) tick =
-  rec_wt_tickrate;`) where the replay feeds them, but the Segments rows are built
-  wholesale at open (`Watch_BuildSeq`), so check `rec_wt_on` is already set there
-  before trusting it. Falsifier: `tools/p470tick.py`'s staged file, `replay seq`
-  under a 0.015 server against the same rows at 0.01.
 - **The replay reads `tickrate`, never `movetickrate`.** The grammar block says a
   reader turning ticks into seconds must prefer `movetickrate` when present and
   non-zero; `Watch_Open` (`rec_wt_tickrate`) and the board-line job read only

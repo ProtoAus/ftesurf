@@ -988,7 +988,11 @@ bannered as superseded.)
   EXCEPT THE TICK: since Patch 470 the line (every slot, `ln_tick`) and the bar
   (`rec_wt_tickrate`) grade a replay at the file's own `tickrate`. A board slot
   gets it in `Watch_LineJobWindow`, after the header -- the job's start is too
-  early. `replay status` prints the bar's `bar tick/ideal/speed/regime`.
+  early. `replay status` prints the bar's `bar tick/ideal/speed/regime`. The
+  Segments column too since Patch 473: `Board_Tick()` (cl_board.qc) is
+  `board_ov_tick` inside Watch_BuildSeq's pass, the server's live. To change a
+  listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
+  reverts a typed `pm_ticrate`.
 
 ## Imported runs: Momentum Mod and KSF
 

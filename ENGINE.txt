@@ -25,13 +25,16 @@ commit   8a97e3aff2379bc3de5f6282a9e90443f622a19d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    472
+patch    473
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-03
+
+# PATCH 473 (mod-side): a replay's Segments column is built at the recording's tick
+# (Board_Tick: board_ov_tick in the build pass).  cfg/test/p473seq.cfg.
 
 # PATCH 472 (mod-side): a save load refuses an origin that is not a place (SV_SaveOriginSane,
 # the `!r` picker's test) before placing the body.  cfg/test/p472org.cfg.

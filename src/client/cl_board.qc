@@ -175,6 +175,20 @@ float  board_ov_seq;        // the board counter as of this sample
 float  board_ov_riding;     // run_rampcontact, the v4 flags bit
 vector board_ov_bnorm;      // the latched arrival plane of the board just taken
 vector board_ov_bvel;       // and its pre-clip velocity
+float  board_ov_tick;       // Patch 473: the recording's tick
+
+// Patch 473: the tick the frames being fed were flown at -- the recording's in a
+// build pass, the server's live.  A 0.01 file on a 0.015 lobby had its air
+// ceiling, its touchdown duration and its row slack measured at the lobby's.
+float() Board_Tick =
+{
+	local float t;
+
+	if (rec_wt_build && board_ov_tick > 0)
+		return board_ov_tick;
+	t = serverkeyfloat("pm_ticrate");
+	return (t > 0) ? t : PM_TICK;
+};
 
 // Defined in cl_watch.qc, which compiles much later.  Seq_Push calls it so the
 // build pass can capture a row at the instant it is pushed -- the ring SCROLLS
@@ -2374,7 +2388,7 @@ float(vector vel, float onground, float gravity) Board_AirCeiling =
 {
 	local float airaccel, maxspeed, aircap, tick, fric, k, best;
 
-	tick     = serverkeyfloat("pm_ticrate");       if (tick     <= 0) tick     = PM_TICK;
+	tick     = Board_Tick();
 	airaccel = serverkeyfloat("sv_airaccelerate"); if (airaccel <= 0) airaccel = 150;
 	maxspeed = serverkeyfloat("sv_maxspeed");      if (maxspeed <= 0) maxspeed = PM_RUN_SPEED;
 	aircap   = serverkeyfloat("pm_maxairspeed");   if (aircap   <= 0) aircap   = 30;
@@ -2456,8 +2470,7 @@ float(float newkind, float e, vector vel, float gravity) Board_SegmentEnd =
 	if (seg_bd_pend)
 	{
 		local float btick;
-		btick = serverkeyfloat("pm_ticrate");
-		if (btick <= 0) btick = PM_TICK;
+		btick = Board_Tick();
 
 		/*
 		  BUILD 65 -- THE TOUCHDOWN ENDS AT THE RAMP'S START, which is seg_e0.
@@ -2772,7 +2785,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 	{
 		local float grew, room, slack;
 
-		slack = serverkeyfloat("pm_ticrate");  if (slack <= 0) slack = PM_TICK;
+		slack = Board_Tick();
 		slack = Board_AirCeiling(vel, onground, gravity) * slack;
 
 		grew = (e - seg_e0)  + seg_carry_de;

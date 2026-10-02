@@ -2498,6 +2498,7 @@ void() Watch_BuildSeq =
 	Watch_SeqSave();
 
 	rec_wt_build   = TRUE;
+	board_ov_tick = rec_wt_tickrate;    // Patch 473
 	board_ov_seq  = 0;
 	board_ov_bnorm = board_ov_bvel = '0 0 0';
 	board_ov_now  = rec_wt_bt0;
@@ -4905,9 +4906,11 @@ float(string cmd) Watch_ConsoleCommand =
 	{
 		print(sprintf("lnsb %g %g\n", rec_wt_sqn, rec_wt_tickrate));
 		for (i = 0; i < rec_wt_sqn; i = i + 1)
-			print(sprintf("lns %g %g %g %g %.4f %.2f\n", i, rec_wt_sqkind[i],
+			// Patch 473: + the row's ceiling and percentage, nested (varargs cap 8).
+			print(sprintf("lns %g %g %g %g %.4f %.2f %s\n", i, rec_wt_sqkind[i],
 			              rec_wt_sqsub[i], rec_wt_sqtick[i], rec_wt_sqdur[i],
-			              rec_wt_sqde[i]));
+			              rec_wt_sqde[i], sprintf("%.3f %.4f", rec_wt_sqemax[i],
+			                                      rec_wt_sqpct[i])));
 		print(sprintf("lnse %g\n", rec_wt_sqn));
 		return TRUE;
 	}
