@@ -1259,16 +1259,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   re-opens it). The fix wants the refusal BEFORE the placement, which is what r1
   set out to do, and an arm that produces the race. sv_saveloc.qc SV_SaveLocLoad,
   cl_replay.qc Rec_ViewLoaded. Patch 441 review.
-- **THE RUN LINE'S MARK CAP HAS NEVER FIRED, so its degradation policy is
-  written and unexercised.** `LN_EVCAP` is 4096 a slot and the two-stage policy
-  (drop the apex/trough class whole, then stop and count, both reported by
-  `Line_End` and `replay status`) is what a long bhop run is supposed to meet.
-  The biggest fixture available produces 2158 marks: `bhop_monster_jam`
-  save010, 127437 samples, which is already nearly twice the POINT cap and
-  exercises the halving. So the cap path is reached by no arm. Either find a
-  recording past ~4000 marks or run `p449mark.cfg` against a build with
-  `LN_EVCAP` lowered and the hash recorded, which is the p439smoke recipe.
-  cl_lines.qc `Line_Ev`. Patch 449.
 - **The run line's near-plane guard cannot be falsified by the harness, and it
   is kept anyway.** Removing the dot-product test before `project()` in
   `Line_ProjPt` changes nothing measurable -- 158 glyphs either way, no NaN --

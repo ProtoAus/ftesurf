@@ -357,7 +357,7 @@ float(float s) Line_IsForeign =
     1. the peaks go, as a class, in one pass.  They are dense, derived, and
        carry no glyph, and a line that keeps every hop and says the peaks went
        beats one that shows 600 of 1200 hops and says nothing.
-    2. past that it stops and counts, which Line_End and `replay status` print.
+    2. past that it stops and counts, which `replay status` prints (slot 0).
 
   Halving, the way the point array does, is the wrong answer here: it would
   drop every other hop.
