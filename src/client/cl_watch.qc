@@ -1957,8 +1957,10 @@ float() Watch_LineJobStep =
 		if (wt_lj_c == 0)
 		if (wt_lj_qhave)
 			Line_Seed(wt_lj_slot, wt_lj_qv, wt_lj_qfl, wt_lj_qt, wt_lj_qyaw);
-		nrm = (n > WT_C_V4N) ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
-		                        stof(argv(WT_C_NORM + 2))] : '0 0 0';
+		// Patch 469: >=, as the replay's scan spells it.  A v4+ sample has exactly
+		// WT_C_V4N columns, so `>` zeroed the plane on every board line.
+		nrm = (n >= WT_C_V4N) ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
+		                         stof(argv(WT_C_NORM + 2))] : '0 0 0';
 		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
 		                   stof(argv(WT_C_MOVE + 1)));
 		Line_Point(wt_lj_slot, o, v, fl, t, brk, wt_lj_stitch,
