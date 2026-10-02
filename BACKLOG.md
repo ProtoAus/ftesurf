@@ -34,19 +34,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   wrong whether or not it has happened yet -- but it is not urgent, and a bulk
   re-check built today would have nothing to chew on. Measured against
   `/srv/nvme/surfd/data/surfd.db` on the Pi, not inferred.
-- **`pm_verify` reads a QC return value through a `globalvars_t *` fetched BEFORE the
-  call that produces it.** `sv_ccmds.c:5365` takes `pr_globals = PR_globals(...)`,
-  `:5369` runs `PR_ExecuteProgram(svprogfuncs, fpin)`, and `:5370` reads
-  `G_INT(OFS_RETURN)` through the pointer from before — while the sibling `else`
-  branch at `:5384` deliberately RE-FETCHES it before use. If the re-fetch exists
-  because the pointer can go stale across `PR_ExecuteProgram` (a progs reload or a
-  realloc of the globals block), then the zone pin is read through a stale pointer
-  and `SV_VerifyZonePin`'s answer is whatever was at that address. If it does not,
-  one of the two is superstition and should say so. Either way the two lines
-  disagree about the same rule, four lines apart. Dates to Patch 349
-  (`dcd166259`, 2026-09-18) and is untouched by Patch 463; found by that patch's
-  control-flow reviewer as out of scope. Needs its own round -- it is the
-  verifier.
 - **FIXED IN CODE, STILL GATED ON A DEPLOY, AND THE ALREADY-REFUSED ROWS DO NOT
   REPAIR THEMSELVES.** Engine Patch 463 (`0022cd190`) compares the fields instead
   of the path, so the 543 zone mirrors are unblocked as soon as the fleet runs it.
