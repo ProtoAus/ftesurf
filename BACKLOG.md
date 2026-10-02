@@ -556,15 +556,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   nothing only because the rule is off for a restored arm, so it sits one `startok` away
   from accusing an honest player of the one gesture the rule exists to permit. Fix it
   where it is caused -- at the placement -- not by widening the rule. Patch 443 round 5.
-- **The save-state LOADER never calls `SV_SaveOriginSane`, and a NaN origin passes
-  every zone test.** Only the `!r` picker validates (sv_saveloc.qc SV_SaveLocPickInZone);
-  `SV_SaveLocPlace` does `setorigin(e, rec_sl_org[r])` on whatever the row holds, and
-  that function's own essay says a NaN satisfies every comparison a zone test makes.
-  Patch 443's SL_RowGrounded is now a SECOND consumer of that unvalidated vector -- a
-  tracebox from a NaN origin answers nothing useful. Gated by file ownership (a lobby's
-  save root is server-side, and a listen server's times do not reach the public board),
-  so it is hardening rather than a live hole; the fix is one call at the placement, the
-  same one the picker already makes. Patch 443 review, round 3.
 - **`sl_replay`'s taint does not survive the next arm, and it has no resume guard.**
   Patch 441 round 2 added SV_TimerPractice at the gesture so the command's safety is
   local rather than inherited from the cheatwatch blocks. It covers the attempt in

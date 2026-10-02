@@ -410,9 +410,9 @@ float(entity e, float r) SL_RowGrounded =
 	  probes test the pair; and a NaN row origin produces exactly that combination --
 	  World_TransformedTrace initialises allsolid TRUE and its NaN bail returns before
 	  anything clears it, with startsolid left clear -- so round 2's `startsolid ||
-	  allsolid` as CONTACT armed a NaN row clean.  The loader never sanitises
-	  (SV_SaveOriginSane has one caller, the `!r` picker), so this is the only thing
-	  standing there; BACKLOG.md carries the missing call.
+	  allsolid` as CONTACT armed a NaN row clean.  Since Patch 472 the loader refuses
+	  such a row before this runs (SV_SaveOriginSane in SV_SaveLocLoad); the
+	  embedded test still stands for any other caller.
 	*/
 	emb = (trace_startsolid || trace_allsolid);
 	ok  = FALSE;
@@ -686,8 +686,10 @@ vector(float z, vector p) SV_SaveZonePoint =
 /*
   Is a coordinate out of a save file a number at all?
 
-  NOTHING VALIDATES rec_sl_org.  `origin` is parsed with stof, so a hand-edited
-  `nan` or `inf` in state.txt becomes one -- and NaN fails EVERY comparison, so
+  The scan does not validate rec_sl_org; this does, for the `!r` picker and (Patch
+  472) the load.  `origin` is parsed with stof, i.e. the C runtime's atof: an
+  overflow (`1e999`) is inf everywhere, and `nan` is NaN on ucrt and glibc but 0
+  on msvcrt (the mingw64 laptop build) -- and NaN fails EVERY comparison, so
   Zone_PointInside's slab test, its AABB reject and Zone_XYInRing's edge tests
   are all false-and-therefore-not-outside.  A NaN origin passes the whole zone
   test and reaches setorigin.  Only reachable where the player owns the file (a
@@ -2953,6 +2955,15 @@ void(entity e, float n) SV_SaveLocLoad =
 
 	r  = base + n - 1;
 	id = rec_sl_id[r];
+
+	// Patch 472: the picker's test, at the load.  SV_SaveRowIs below happened to
+	// refuse a non-number (inf - inf is NaN) as "changed on disk", and placed a
+	// finite origin off every map.
+	if (!SV_SaveOriginSane(rec_sl_org[r]))
+	{
+		sprint(e, PRINT_HIGH, "^3save: that save's position is not a place on any map\n");
+		return;
+	}
 
 	/*
 	  Patch 428 r1: REFUSED BEFORE THE PLACEMENT.  SV_SaveApplyState's only failure
