@@ -2025,11 +2025,19 @@ depth at ~3,000 requests/day. What that leaves open:
   same view) is one instantaneous fps counter per state, not an average over an
   interval like the menu's `milk_bootcheck 4`. A proper arm would time a fixed
   replay with the sky on and off.
-- **SUSPECTED: CSQC 3D POLYGONS CAN BE CORRUPTED BY A 2D FLUSH IN THE SAME FRAME.**
-  `engine/client/pr_csqc.c:1624` sets `cl_numstrisidx = csqc_poly_origvert;` where
-  `origidx` looks intended. Read during Patch 467's engine audit, NOT reproduced.
-  Falsifier: queue a 3D polygon, then draw 2D text before renderscene, and check
-  the 3D polygon's triangles.
+- **CSQC 3D POLYGONS CAN BE CORRUPTED BY A 2D FLUSH IN THE SAME FRAME -- read
+  2026-10-03, still NOT reproduced.** `engine/client/pr_csqc.c` CSQC_PolyFlush's 2D
+  branch rewinds with `cl_numstrisidx = csqc_poly_origvert;` -- the VERTEX origin
+  where the INDEX origin (`csqc_poly_origidx`) is meant. Every fan has at least as
+  many indices as vertices, so the cursor only moves backward, onto index ranges
+  already queued in `cl_stris`. The counters are reset only by `clearscene`
+  (CL_ClearEntityLists), not by `renderscene`, so the ordinary order (clearscene,
+  3D polys, renderscene, then 2D -- the run line is 2D) overwrites indices of
+  triangles that were already drawn and is harmless. It bites when a 2D polygon
+  batch is flushed between queuing a 3D polygon and the renderscene that draws it,
+  or before a SECOND renderscene in one frame. One-line fix (`origidx`), but it is
+  the engine and wants an exe. Falsifier: R_BeginPolygon 3D quad, a 2D
+  R_BeginPolygon quad, renderscene -- the 3D quad's second triangle is wrong.
 - **THE NEW TRACKS AND EFFECTS DO NOT SHIP.** `tools/mkmusic.py` writes six
   tracks (~87 MB of WAV) and five effects into git-ignored folders, so a fresh
   clone or a release has a silent menu until someone runs it. Shipping wants OGG
