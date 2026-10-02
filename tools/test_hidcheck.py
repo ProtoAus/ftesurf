@@ -62,6 +62,8 @@ class Journal:
         self.injected = 0         # Patch 306: summed by rejected(), checked by end()
         self.unenum = 0
         self.legacybtn = 0        # Patch 307: summed by legacypress()
+        self.padacc = 0           # Patch 468: summed by pad(), checked by end()
+        self.padrep = 0
         head = ["FTESURF-HID 1", "map test_identity", "base 100.000000",
                 "rawinput %s" % rawinput, "rawkbd %s" % rawkbd]
         # Patch 387: the grant, omitted unless asked for (no fixture had one).
@@ -170,6 +172,14 @@ class Journal:
         self.injected += injected
         self.unenum += unenum
 
+    def pad(self, accepted, digitizer, us=0):
+        """Patch 468's 'p' record: handle-less reports accepted as touchpad
+        input, and the digitizer reports that armed the window."""
+        self._adv(us)
+        self.lines.append("p %d %d %d" % (us, accepted, digitizer))
+        self.padacc += accepted
+        self.padrep += digitizer
+
     def key(self, down, scancode, prev=None, us=0, dev=0):
         """A '+'/'-' record.  Patch 309's `prev` is appended unless omitted,
         so the pre-309 grammar stays testable."""
@@ -203,7 +213,7 @@ class Journal:
         self.lines.append("g %d %d" % (us, state))
 
     def end(self, us=100, injected=None, unenum=None, legacybtn=None,
-            pre306=False, pre307=False, touchpad=None):
+            pre306=False, pre307=False, touchpad=None, padreports=None):
         # the closing devmap table, which is where the attribution check reads
         # its claims from.
         if getattr(self, "devices", None):
@@ -228,8 +238,10 @@ class Journal:
                 line = ("end %d %.6f %d %d 0 0 %d %d %d"
                         % (us, self.clock, self.events, self.frames,
                            injected, unenum, legacybtn))
-                if touchpad is not None:      # Patch 468: the ninth field
-                    line += " %d" % touchpad
+                if touchpad is not None:      # Patch 468: the ninth and tenth fields
+                    if padreports is None:
+                        padreports = self.padrep
+                    line += " %d %d" % (touchpad, padreports)
                 self.lines.append(line)
         return "\n".join(self.lines) + "\n"
 
@@ -1297,7 +1309,7 @@ PAD = ("touchpad", "unset",
        "\\\\?\\HID#XXXX0000&Col02#5&173917db&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}")
 
 
-def _padrun(devices, closing, touchpad, dev=1, n=20):
+def _padrun(devices, closing, touchpad, dev=1, n=20, records=True, padreports=None):
     j = Journal(devices=devices)
     j.devices = closing            # the resolved table the trailer carries
     yaw = 0.0
@@ -1306,7 +1318,9 @@ def _padrun(devices, closing, touchpad, dev=1, n=20):
         j.mouse(4, 0, dev=dev)
         yaw += j.k * 4
         j.view(4, 0, 10.0, yaw)
-    return run(j.end(touchpad=touchpad))
+        if records:
+            j.pad(1, 7)            # one accepted report, seven digitizer reports
+    return run(j.end(touchpad=touchpad, padreports=padreports))
 
 
 def case_touchpad_accepted():
@@ -1316,8 +1330,14 @@ def case_touchpad_accepted():
     check(r.ok, "touchpad: not a fault (%s)" % (r.faults[:1] or "none"))
     check(r.info.get("touchpad") == 20,
           "touchpad: 20 accepted (got %s)" % r.info.get("touchpad"))
-    check(has_note(r, "ACCEPTED as precision-touchpad motion"),
+    check(r.info.get("touchpad_digitizer_reports") == 140,
+          "touchpad: 140 digitizer reports (got %s)" % r.info.get("touchpad_digitizer_reports"))
+    check(r.info.get("touchpad_events") == 20,
+          "touchpad: 20 pointer events on its devid (got %s)" % r.info.get("touchpad_events"))
+    check(has_note(r, "ACCEPTED as precision-touchpad input"),
           "touchpad: surfaced as a note, never a fault")
+    check(not has_note(r, "not an injection"),
+          "touchpad: the note pronounces no verdict")
     check(not has_note(r, "no device in the table claims it"),
           "touchpad: devid 1 is claimed by the touchpad entry")
 
@@ -1325,7 +1345,7 @@ def case_touchpad_accepted():
 def case_touchpad_without_device():
     """Accepted touchpad motion with no touchpad in the table is a file that is
     not describing its own hardware."""
-    r = _padrun([MOUSE0], [MOUSE0], touchpad=5, dev=0)
+    r = _padrun([MOUSE0], [MOUSE0], touchpad=5, dev=0, records=False)
     check(has_fault(r, "no touchpad is in the device table"),
           "touchpad: accepted count with no touchpad device is a fault")
 
@@ -1348,15 +1368,58 @@ def case_touchpad_pre468():
     lines = text.rstrip("\n").split("\n")
     lines[-1] += " 0"
     r = run("\n".join(lines) + "\n")
-    check(has_fault(r, "'end' has 12 fields"),
-          "touchpad: a twelfth field is still an unknown grammar")
+    check(has_fault(r, "'end' has 13 fields"),
+          "touchpad: a thirteenth field is still an unknown grammar")
 
 
 def case_touchpad_backend_silent():
     """-1 is 'this backend does not count': no claim either way."""
-    r = _padrun([MOUSE0], [MOUSE0], touchpad=-1, dev=0)
+    r = _padrun([MOUSE0], [MOUSE0], touchpad=-1, dev=0, records=False, padreports=-1)
     check(r.ok and "touchpad" not in r.info,
           "touchpad: -1 makes no claim and raises no fault")
+
+
+def case_touchpad_three_statements():
+    """The trailer, the 'p' records and the events on the touchpad's devid are
+    three statements of one quantity, and each disagreement is caught."""
+    pad = [MOUSE0, ("touchpad", "1", PAD[2])]
+    r = _padrun([MOUSE0, PAD], pad, touchpad=25)            # records sum to 20
+    check(has_fault(r, "the 'p' records account for 20"),
+          "touchpad: trailer 25 against 20 in the records is a fault")
+    r = _padrun([MOUSE0, PAD], pad, touchpad=20, padreports=99)
+    check(has_fault(r, "trailer says 99 digitizer reports"),
+          "touchpad: the digitizer total is checked the same way")
+    j = Journal(devices=[MOUSE0, PAD])
+    j.devices = pad
+    yaw = 0.0
+    for i in range(20):                                     # 20 m, 10 accepted
+        j.frame(3000 + i)
+        j.mouse(4, 0, dev=1)
+        yaw += j.k * 4
+        j.view(4, 0, 10.0, yaw)
+        if i % 2:
+            j.pad(1, 7)
+    r = run(j.end(touchpad=10))
+    check(has_fault(r, "20 pointer events carry the touchpad's devid"),
+          "touchpad: more events than accepted reports is a fault")
+    j = Journal(devices=[MOUSE0, PAD])
+    j.devices = pad
+    j.frame(3000)
+    j.mouse(4, 0, dev=1)
+    j.view(4, 0, 10.0, j.k * 4)
+    j.pad(1, 7)
+    r = run(j.end())                                        # a 10-field trailer
+    check(has_fault(r, "mixes two grammars"),
+          "touchpad: 'p' records with no trailer totals is a mixed grammar")
+    j = Journal(devices=[MOUSE0, PAD], rawmice=1)
+    j.lines.insert(j.lines.index("begin"), "rawpads 0")
+    j.devices = pad
+    j.frame(3000)
+    j.mouse(4, 0)
+    j.view(4, 0, 10.0, j.k * 4)
+    r = run(j.end(touchpad=0))
+    check(has_note(r, "header says rawpads 0 (bound) but the opening device table lists 1"),
+          "touchpad: enumerated but not bound is said, not assumed")
 
 
 def main():
@@ -1393,7 +1456,8 @@ def main():
                case_linux_legacy_path_wording,
                case_nonce_note,
                case_touchpad_accepted, case_touchpad_without_device,
-               case_touchpad_pre468, case_touchpad_backend_silent):
+               case_touchpad_pre468, case_touchpad_backend_silent,
+               case_touchpad_three_statements):
         print("%s:" % fn.__name__)
         fn()
         print("")

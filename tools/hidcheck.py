@@ -33,9 +33,10 @@ WHAT IT CHECKS
     way rather than quietly;
   * 'rawinput 0', which means the mouse column is per-frame OS-summed deltas
     rather than per-report ones, so no timing conclusion may be drawn from it;
-  * Patch 468's ninth trailer field: handle-less reports ACCEPTED as
-    precision-touchpad motion, which must have a `touchpad` device in the table
-    to claim them.
+  * Patch 468's 'p' records and the two trailer fields they sum to:
+    handle-less reports ACCEPTED as precision-touchpad input and the digitizer
+    reports that armed the window; the accepted total must cover every pointer
+    event on the touchpad's devid, and a `touchpad` device must be in the table.
 
 And, when the .view sidecar is beside it, that the two describe the same run:
 that the .view's `hid` key agrees that a journal was taken, that the movesequence
@@ -233,6 +234,12 @@ KINDS = {
     # Patch 307: legacy mouse buttons ACCEPTED although raw input -- which was
     # live -- could not corroborate them. Unlike 'i', these DID reach the game.
     "b": 1,     # n
+    # Patch 468: handle-less reports ACCEPTED as precision-touchpad input since
+    # the last such record, and the digitizer reports that armed the window.
+    # An annotation, not an event: an accepted report that carried motion is
+    # its own 'm' on the touchpad's devid, and the digitizer's reports never
+    # become events at all.
+    "p": 2,     # accepted digitizer
     # Patch 307: the effective legacy-suppression state CHANGED to this. The
     # header carries the state at begin; these carry every change after it,
     # because the setting is grab-scoped and therefore not constant over a run.
@@ -476,6 +483,9 @@ def check_hid(path, verbose=False):
     saw_i = False
     legacybtn = 0       # Patch 307: summed from the 'b' records
     saw_b = False
+    padacc = 0          # Patch 468: summed from the 'p' records
+    padrep = 0
+    saw_p = False
     presses = 0         # Patch 309: '+' with prev 0 -- a key actually pressed
     repeats = 0         # Patch 309: '+' with prev 1 -- OS auto-repeat
     orphan_rel = 0      # Patch 309: '-' with prev 0 -- a release with no press
@@ -514,14 +524,14 @@ def check_hid(path, verbose=False):
                 r.fault("line %d: a second 'end' record" % (lineno + 1))
                 continue
             # end <dt> <abs> <events> <frames> <dropped> <hidden>
-            #                                  [<injected> <unenum> [<legacybtn> [<touchpad>]]]
+            #                                  [<injected> <unenum> [<legacybtn> [<touchpad> <padreports>]]]
             # Patch 306 appended the last two. A pre-306 file has 7 tokens and
             # is not faulted for it -- absent is NOT zero, and a reader that
             # treated it as zero would report "no injection seen" about a file
             # that could not see any.
-            if len(tok) not in (7, 9, 10, 11):
+            if len(tok) not in (7, 9, 10, 12):
                 r.fault("line %d: 'end' has %d fields, expected 7 (pre-306), "
-                        "9 (pre-307), 10 (pre-468) or 11" % (lineno + 1, len(tok)))
+                        "9 (pre-307), 10 (pre-468) or 12" % (lineno + 1, len(tok)))
                 continue
             try:
                 dt = int(tok[1])
@@ -693,6 +703,17 @@ def check_hid(path, verbose=False):
                 saw_b = True
             except ValueError:
                 r.fault("line %d: 'b' count is not a number" % (lineno + 1))
+        elif kind == "p":
+            # Patch 468. NOT an event, for the reason on the 'i' branch: what
+            # reached the game is journalled as 'm'/'+'/'-' on the touchpad's
+            # devid; this says how many reports the window let through and how
+            # many digitizer reports armed it.
+            try:
+                padacc += int(tok[2])
+                padrep += int(tok[3])
+                saw_p = True
+            except ValueError:
+                r.fault("line %d: 'p' counts are not numbers" % (lineno + 1))
         elif kind == "c":
             # Patch 310: a render-integrity cvar changed mid-journal.
             nm, val = tok[2], _unquote_pair(" ".join(tok[3:]))[0]
@@ -773,6 +794,7 @@ def check_hid(path, verbose=False):
         t_unenum = trailer[6] if len(trailer) > 6 else None
         t_legacybtn = trailer[7] if len(trailer) > 7 else None
         t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
+        t_padreports = trailer[9] if len(trailer) > 9 else None
         r.info["events"] = t_events
         r.info["frames"] = t_frames
         r.info["dropped"] = t_dropped
@@ -947,35 +969,95 @@ def check_hid(path, verbose=False):
             # count. The Patch 303 device table is what separates the two, and
             # that is a judgement for a reviewer holding both, not for this tool.
             if t_legacybtn:
+                if t_touchpad is not None:
+                    # Patch 468: on this build a precision touchpad's own taps
+                    # arrive through raw input (accepted inside its window) and
+                    # are deduped like any raw press, so the pad no longer
+                    # explains this count.
+                    why = ("Innocent on a non-RIM_TYPEMOUSE pointer with no raw "
+                           "button reports; a precision touchpad is NOT one on "
+                           "this build (its taps are raw presses on the touchpad "
+                           "devid, Patch 468); otherwise this is the shape of an "
+                           "injected click.")
+                else:
+                    why = ("Innocent on a machine with a precision touchpad or a "
+                           "non-RIM_TYPEMOUSE pointer (no raw button reports exist "
+                           "for those); otherwise this is the shape of an injected "
+                           "click.")
                 r.note("%d mouse press(es) were accepted although raw input "
                        "was live and could not corroborate them. These DID "
-                       "reach the game. Innocent on a machine with a precision "
-                       "touchpad or a non-RIM_TYPEMOUSE pointer (no raw button "
-                       "reports exist for those); otherwise this is the shape "
-                       "of an injected click. Check the device table above "
-                       "before concluding anything." % t_legacybtn)
+                       "reach the game. %s Check the device table above "
+                       "before concluding anything." % (t_legacybtn, why))
 
         # Patch 468: handle-less reports ACCEPTED because a Windows precision
-        # touchpad had reported contact just before each one (the OS synthesises
-        # a touchpad's cursor motion with no device handle, which Patch 306
-        # otherwise rejects). Accepted, so these DID reach the game -- as the
-        # pointer motion of the `touchpad` device in the table. -1: the backend
-        # does not count; absent: the file predates the field.
-        if t_touchpad is not None and t_touchpad >= 0:
+        # touchpad had reported contact inside the engine's window (the OS
+        # synthesises a touchpad's cursor motion and clicks with no device
+        # handle, which Patch 306 otherwise rejects). The window is a presence
+        # test -- it cannot tell the pad's own reports from synthesised ones
+        # timed while a finger rests on the pad -- so nothing here is a
+        # verdict. -1: the backend does not count; absent: the file predates
+        # the field. Three statements of one quantity: the trailer, the 'p'
+        # records, and the events on the touchpad's devid (a lower bound: a
+        # tap's button report and a report delivered while the mouse was free
+        # are accepted but produce no 'm').
+        pad_ids = [d[1] for d in devmaps
+                   if d[0] == "touchpad" and d[1].isdigit()]
+        pad_events = sum(devids_used.get(int(i), 0) for i in pad_ids)
+        if t_touchpad is None:
+            if saw_p:
+                r.fault("'p' records are present but the trailer has no "
+                        "touchpad totals -- the file mixes two grammars")
+        elif t_touchpad < 0:
+            if saw_p:
+                r.fault("'p' records are present although the trailer says "
+                        "the backend does not count touchpad reports")
+        else:
             r.info["touchpad"] = t_touchpad
+            if t_padreports is not None and t_padreports >= 0:
+                r.info["touchpad_digitizer_reports"] = t_padreports
             pads = [d for d in devs + devmaps if d[0] == "touchpad"]
             if t_touchpad and not pads:
                 r.fault("trailer says %d handle-less reports were accepted as "
-                        "touchpad motion but no touchpad is in the device "
+                        "touchpad input but no touchpad is in the device "
                         "table -- the file is not describing its own hardware"
                         % t_touchpad)
-            elif t_touchpad:
+            if truncated is None:
+                if t_touchpad != padacc:
+                    r.fault("trailer says %d touchpad reports accepted, the 'p' "
+                            "records account for %d" % (t_touchpad, padacc))
+                if (t_padreports is not None and t_padreports >= 0
+                        and t_padreports != padrep):
+                    r.fault("trailer says %d digitizer reports, the 'p' records "
+                            "account for %d" % (t_padreports, padrep))
+            elif t_touchpad < padacc:
+                r.fault("trailer says %d touchpad reports accepted but the 'p' "
+                        "records already hold %d" % (t_touchpad, padacc))
+            if pad_events > t_touchpad:
+                r.fault("%d pointer events carry the touchpad's devid but the "
+                        "trailer says only %d handle-less reports were accepted"
+                        % (pad_events, t_touchpad))
+            if t_touchpad:
+                r.info["touchpad_events"] = pad_events
                 r.note("%d handle-less mouse reports were ACCEPTED as "
-                       "precision-touchpad motion (a digitizer report preceded "
-                       "each within the engine's window). They reached the "
-                       "game as the `touchpad` device's pointer motion. This is "
-                       "the laptop case, not an injection; the injected count "
-                       "above is what was still rejected." % t_touchpad)
+                       "precision-touchpad input (a digitizer report preceded "
+                       "each inside the engine's window; %d pointer events on "
+                       "the touchpad's devid). Not a REJECTED injection -- while "
+                       "a finger is on the pad the window cannot tell the pad's "
+                       "reports from synthesised ones, so read this beside the "
+                       "device table and the turn statistics, never alone."
+                       % (t_touchpad, pad_events))
+        if "rawpads" in head:
+            try:
+                pads_hdr = int(head["rawpads"])
+            except ValueError:
+                pads_hdr = -1
+            pads_tbl = len([d for d in devs if d[0] == "touchpad"])
+            if pads_hdr >= 0 and pads_hdr != pads_tbl:
+                r.note("header says rawpads %d (bound) but the opening device "
+                       "table lists %d touchpad(s) (enumerated) -- the digitizer "
+                       "registration failed or the device set changed, and "
+                       "handle-less reports were rejected as injected meanwhile."
+                       % (pads_hdr, pads_tbl))
 
         if "nolegacylive" in head:
             try:
