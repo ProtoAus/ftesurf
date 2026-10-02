@@ -1666,11 +1666,11 @@ script rather than passing it as an argument, where `ps` would show it.
   PID and the lobbies are untouched. Copy under `flock /tmp/surfd-sweep.lock`
   with `install` + `mv` so no cron import can see a half-written file.
   READERS BEFORE CLIENTS. Engine Patch 468 journals carry a 12-field `end`,
-  five-field `p` records and a `touchpad` device type; a `hidcheck.py` older
-  than the game repo at fde8420 faults every one of them (as "never closed"
-  before b2ac07a, on every `p` line before fde8420; the length sets are
-  strict on purpose). Deploy tools/ to every host that reads journals before
-  any 468 client exists.
+  five-field `p` records and a `touchpad` device type. A `hidcheck.py` older
+  than efc4627 reads every one of them as "never closed"; efc4627 passes a
+  journal whose pad never fired and faults every `p` line of one that did;
+  fde8420 is the floor (the length sets are strict on purpose). Deploy
+  tools/ to every host that reads journals before any 468 client exists.
 
   Schema 8 (Patch 422, first key wins) is admin-only too. Three things an
   operator must know:

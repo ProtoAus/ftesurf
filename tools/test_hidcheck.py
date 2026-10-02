@@ -62,6 +62,7 @@ class Journal:
         self.injected = 0         # Patch 306: summed by rejected(), checked by end()
         self.unenum = 0
         self.legacybtn = 0        # Patch 307: summed by legacypress()
+        self.hidden = 0           # 'x' records, carried into the trailer
         self.padacc = 0           # Patch 468: summed by pad(), checked by end()
         self.padrep = 0
         self.padrel = 0
@@ -189,6 +190,7 @@ class Journal:
         self._adv(us)
         self.lines.append("x %d %d" % (us, dev))
         self.events += 1
+        self.hidden += 1
 
     def truncate(self, us=0):
         """The cap was hit: a 'truncated' marker, after which only the closing
@@ -251,9 +253,9 @@ class Journal:
             else:
                 if legacybtn is None:
                     legacybtn = self.legacybtn
-                line = ("end %d %.6f %d %d 0 0 %d %d %d"
+                line = ("end %d %.6f %d %d 0 %d %d %d %d"
                         % (us, self.clock, self.events, self.frames,
-                           injected, unenum, legacybtn))
+                           self.hidden, injected, unenum, legacybtn))
                 if touchpad is not None:      # Patch 468: the ninth and tenth fields
                     if padreports is None:
                         padreports = self.padrep
@@ -1493,7 +1495,7 @@ def case_touchpad_round3():
     r = _padrun([MOUSE0, PAD], pad, touchpad=20, padreports=-1)
     check(has_fault(r, "although the trailer says the backend does not count them"),
           "round 3: digitizer -1 beside 'p' digitizer counts is a fault")
-    # releases are bounded by the pad's own presses
+    # releases are compared with the pad's own presses: said, never faulted
     for presses, want in ((1, True), (3, False)):
         j = _padjournal(pad)
         yaw = 0.0
@@ -1561,8 +1563,8 @@ def case_touchpad_round5():
     j.view(4, 0, 10.0, j.k * 4)
     j.pad(1, 7)
     r = run(j.end(touchpad=1))
-    check(not has_note(r, "key events carry devid(s) other than 0"),
-          "round 5: a hidden tap on the touchpad devid draws no keyboard note")
+    check(r.ok and not has_note(r, "key events carry devid(s) other than 0"),
+          "round 5: a hidden tap on the touchpad devid draws no keyboard note and no fault")
     j = _padjournal(pad, rawkbds=0)
     j.frame(3000)
     j.hidden(dev=5)                       # claimed by nothing: still said
@@ -1588,7 +1590,8 @@ def case_touchpad_round5():
           "round 5: wheel keys do not cover releases, and it is said, not faulted")
     # the cvar state over the whole journal
     for cvar, change, needle in (("0", "1", "changed mid-journal"),
-                                 ("1", "1", "NOT one on this build")):
+                                 ("1", "1", "NOT one on this build"),
+                                 ("0.0", "0", "Innocent on a machine with a precision touchpad")):
         j = _padjournal(pad, cvar=cvar, rawpads=1)
         j.frame(3000)
         j.mouse(4, 0, dev=1)

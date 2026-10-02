@@ -240,7 +240,8 @@ KINDS = {
     "b": 1,     # n
     # Patch 468: handle-less reports ACCEPTED as precision-touchpad input since
     # the last such record, the digitizer reports that armed the window, and
-    # the releases admitted outside it (at most the pad's own presses).  An
+    # the releases admitted outside it (at most the accepted count on the
+    # line; compared with the pad's journalled presses, never faulted on).  An
     # annotation, not an event: an accepted report that carried motion is its
     # own 'm' on the touchpad's devid, and the digitizer's reports never
     # become events at all.
@@ -1004,7 +1005,15 @@ def check_hid(path, verbose=False):
                 pad_states = set()
                 for v in [pad_cvar] + [v for n, v in cvar_changes
                                        if n == "in_rawinput_touchpad"]:
-                    pad_states.add("off" if v in (None, "0", "-") else "on")
+                    if v in (None, "-"):
+                        pad_states.add("off")
+                    else:
+                        # the engine gates on the cvar's integer value, so
+                        # "0.0" and a non-number are off like "0"
+                        try:
+                            pad_states.add("off" if float(v) == 0 else "on")
+                        except ValueError:
+                            pad_states.add("off")
                 try:
                     pads_bound = int(head.get("rawpads", "-1"))
                 except ValueError:
@@ -1403,7 +1412,11 @@ def check_hid(path, verbose=False):
                 # Patch 468: an 'x' carries no key, so a hidden tap on the pad
                 # (or a hidden click on a second raw mouse) lands here with its
                 # pointer's devid; a devid the closing table gives to a pointer
-                # device is not a keyboard claiming an identity.
+                # device is not a keyboard claiming an identity.  The same
+                # exclusion covers a '+'/'-' whose key is not in MOUSE_KEYS on a
+                # pointer's devid: the raw path dispatches extra buttons as
+                # K_MOUSE1 + j for j >= 6, which keys.h names K_MWHEELUP and
+                # K_JOY1..3, so a 7-button mouse writes exactly that shape.
                 pointer_ids = set(int(did) for dtype, did, name in devmaps
                                   if dtype in ("mouse", "touchpad") and did.isdigit())
                 if set(devids_key) - {0} - pointer_ids:
