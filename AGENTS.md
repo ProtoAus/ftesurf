@@ -981,6 +981,10 @@ bannered as superseded.)
   than red. It reads the movement settings from THIS server, as the bar does for
   a replay: a recording made elsewhere is graded against local settings, and the
   v9 header's `pmpin` block is where a future patch would get the file's own.
+  EXCEPT THE TICK: since Patch 470 the line (every slot, `ln_tick`) and the bar
+  (`rec_wt_tickrate`) grade a replay at the file's own `tickrate`. A board slot
+  gets it in `Watch_LineJobWindow`, after the header -- the job's start is too
+  early. `replay status` prints the bar's `bar tick/ideal/speed/regime`.
 
 ## Imported runs: Momentum Mod and KSF
 

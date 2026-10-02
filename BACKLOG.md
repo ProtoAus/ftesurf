@@ -1329,75 +1329,58 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Cosmetic / low
 - **The run line's air-control grade is measured against THIS server's movement
-  settings, not the recording's.** `Line_Movevars` reads `pm_ticrate`,
-  `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`, `pm_maxairspeed`,
-  `sv_gravity`, `sv_friction`, `sv_stopspeed` and `pm_duckspeed` from the server
-  the client is on, which is what the strafe bar does for a replay too -- so the
-  two agree, and on a foreign recording they are wrong together. The v9 header
-  carries a `pmpin` block of 70 movevars and NOTHING in `src/` reads it; that is
-  where the file's own settings would come from. Until then a recording made on
-  a differently-configured server is graded against local numbers, silently.
-  `tools/p453q.py` says the same in its header, because it is handed the
-  settings for the same reason. cl_lines.qc `Line_Movevars`, `Line_Grade`.
-  A Momentum import makes this concrete rather than hypothetical: the engine
-  prints `Momentum movement: ... accel 5, airaccel 150, aircap 30, gravity 800`
-  on every one of those maps, so the file's own numbers are known and still not
-  read. tools/momimport.py writes no `pmpin`, for the honesty reason in its
-  header -- the importer did not run that physics either.
-  **MEASURED OVER THE WHOLE LIBRARY 2026-09-28, AND IT SPLITS THIS IN TWO.** Of
-  3733 `.rec` files, `tickrate` is present on 3733 -- all of them -- and `pmpin`
-  on 268 (7.2%: v9 243, v10 25; the rest are v5 3107, v4 344, v7 13, v6 1). So
-  "read `pmpin`" repairs 7% of the library and the other 93% still needs the
-  third verdict above; but the TICK half is separable, library-wide, and needs no
-  fallback, because `ln_tick[s]` already holds the file's own rate for every file
-  and `Line_Grade` ignores it in eight places (cl_lines.qc:478-501) while the
-  energy ceiling at :1115 uses it. Magnitude on this fleet, exactly: surf is
-  `pm_ticrate 0.015 / sv_airaccelerate 150`, bhop `0.01 / 1000`, and
-  `k = aa*ws*tick*fric` clears aircap 30 in all four combinations (smallest 146,
-  at fric 0.25), so `gain` clamps to 30 either way and
-  `Strafe_IdealTurn = atan2(gain,speed)*DEG_PER_RAD / tick` differs by the tick
-  ratio ALONE: 1.5x. The direction is the reason to care -- the 140 files
-  recorded at 0.01, watched on a 0.015 lobby, get a target 1.5x too LOW and so
-  read BETTER than they were strafed, and a comparison line that flatters the
-  ghost is worse than one that is harsh. `Strafe_CapBinds` does depend on tick,
-  so the grey gate can flip in principle; between these two modes it does not.
-  WHERE THOSE 140 ACTUALLY ARE, because the import does not dominate them yet:
-  of the 2961 files under `data/momentum` 2910 are 0.015 -- Momentum's surf
-  interval matches ours exactly -- and only 51 are 0.01, so 89 of the 140 are
-  local recordings. The cheap fix needs NO import special case:
-  `tools/momimport.py:255-256` writes the file's own interval into both
-  `tickrate` and `movetickrate`, so `ln_tick[s]` is already correct for all 2961.
+  settings, not the recording's -- ALL BUT THE TICK, which Patch 470 fixed.**
+  `Line_Movevars` reads `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`,
+  `pm_maxairspeed`, `sv_gravity`, `sv_friction`, `sv_stopspeed` and
+  `pm_duckspeed` from the server the client is on, and so does the strafe bar for
+  a replay -- so the two agree, and on a foreign recording they are wrong
+  together. The v9 header carries a `pmpin` block of 70 movevars and NOTHING in
+  `src/` reads it; that is where the file's own settings would come from. Until
+  then a recording made on a differently-configured server is graded against
+  local numbers, silently. `tools/p453q.py` says the same in its header.
+  cl_lines.qc `Line_Movevars`, `Line_Grade`.
+  A Momentum import makes this concrete: the engine prints `Momentum movement:
+  ... accel 5, airaccel 150, aircap 30, gravity 800` on every one of those maps,
+  so the file's own numbers are known and still not read. tools/momimport.py
+  writes no `pmpin`, for the honesty reason in its header.
+  **MEASURED OVER THE WHOLE LIBRARY 2026-09-28:** of 3733 `.rec` files `tickrate`
+  is on all 3733 and `pmpin` on 268 (7.2%: v9 243, v10 25; the rest v5 3107, v4
+  344, v7 13, v6 1). So "read `pmpin`" repairs 7% of the library and the other
+  93% needs a third verdict. What is left is SMALL on this fleet: with the tick
+  right, surf (`airaccel 150`) and bhop (`1000`) both clear the 30 u/s cap in
+  every combination (`k = aa*ws*tick*fric`, smallest 146 at fric 0.25), so the
+  air grade cannot move between them; the ground grade reads `sv_accelerate`.
   AND THE NO-ANSWER BRANCH IS PERMANENT, NOT LEGACY. An imported run will never
   carry `pmpin`: momimport omits it deliberately (`:21` -- the machine that ran
-  that physics was Source, and filling our 70 movevars from anything else would
-  invent a fact). So the third verdict is not a shrinking population of old
-  files, it is the standing state of a whole tier, and it wants to read "not
-  measurable here" rather than "old file".
-  Reported by the import session and NOT verified here -- no `.mtv` survives in
-  this tree -- Momentum's other gamemodes carry their own interval: bhop 0.01,
-  kz 0.0078125, defrag 0.008, across 7486 headers. Neither 0.0078125 nor 0.008
-  appears on any `.rec` yet, so that growth is pending on the 4589 demos still
-  extracting; if they land, their errors are 1.92x and 1.875x, WORSE than bhop's
-  1.5x, so the count and the magnitude both grow.
-  ONE of the nine is already in hand and unused: `Line_Tick` (cl_lines.qc:274)
-  is handed the recording's own `movetickrate` and the energy ceiling divides by
-  it, while `Line_Grade` two hundred lines later uses the LIVE `ln_mv_tick` for
-  the same file. Whichever way that is resolved, the two should read one number.
+  that physics was Source). So the third verdict is the standing state of a whole
+  tier, and it wants to read "not measurable here" rather than "old file".
   AND THE MISSING-KEY CASE IS INDISTINGUISHABLE FROM AN ANSWER. `ln_mv_airaccel`
-  (:282) and `airaccel` (cl_hud.qc:3932) are the only two movevar reads in either
-  file with no `<= 0` fallback -- their seven neighbours all have one and
-  cl_board.qc:2345 falls back to 150. Absent key gives airaccel 0, so
-  `Strafe_CapBinds` returns false and both the bar and the line go to "the cap
-  does not bind" -- the third verdict this codebase keeps having to learn, since
-  that is also the legitimate answer for a server genuinely running a low rate.
-  A fallback of 150 is the WRONG repair (it invents the number the CapBinds
-  comment exists to respect); the refusal should name which of the two it is.
-  Note the trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
-  the first frame whenever `sv_airaccelerate` is non-zero, and nothing sets it to
-  zero. Value 150 vs bhop's 1000 grade IDENTICALLY -- both saturate the 30 u/s
-  cap, per mode_bhop.cfg:75-116 -- which is why the fallback has never been felt.
-  Found by ftesurf-a1 reading cl_hud.qc for Patch 462; the cl_lines.qc half and
-  the rest of this paragraph are from checking it.
+  (cl_lines.qc `Line_Movevars`) and `airaccel` (cl_hud.qc `HUD_DrawStrafe`) are
+  the only two movevar reads in either file with no `<= 0` fallback --
+  cl_board.qc `Board_AirCeiling` falls back to 150. Absent key gives airaccel 0,
+  so `Strafe_CapBinds` returns false and both the bar and the line go to "the cap
+  does not bind" -- also the legitimate answer for a server genuinely running a
+  low rate. A fallback of 150 is the WRONG repair (it invents the number the
+  CapBinds comment exists to respect); the refusal should name which of the two
+  it is. The trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
+  the first frame whenever `sv_airaccelerate` is non-zero. Found by ftesurf-a1
+  reading cl_hud.qc for Patch 462.
+- **A replay's Segments column and debug energy readout still use the SERVER's
+  tick (Patch 470's residue).** 470 moved the run line (every slot) and the
+  strafe bar to the recording's tick; `Board_AirCeiling` and the two other
+  `pm_ticrate` reads in cl_board.qc (the ramp-board bite, the air row's slack)
+  and the `ui_eta` ceiling in cl_hud.qc's HUD draw did not move, so a 0.01 file
+  on a 0.015 lobby still has its Segments air percentages computed against a
+  ceiling 1.5x too low. Same one-line override (`if (rec_wt_on) tick =
+  rec_wt_tickrate;`) where the replay feeds them, but the Segments rows are built
+  wholesale at open (`Watch_BuildSeq`), so check `rec_wt_on` is already set there
+  before trusting it. Falsifier: `tools/p470tick.py`'s staged file, `replay seq`
+  under a 0.015 server against the same rows at 0.01.
+- **The replay reads `tickrate`, never `movetickrate`.** The grammar block says a
+  reader turning ticks into seconds must prefer `movetickrate` when present and
+  non-zero; `Watch_Open` (`rec_wt_tickrate`) and the board-line job read only
+  `tickrate`. They are written equal and momimport writes both from one value, so
+  nothing has diverged -- but nothing checks either. cl_watch.qc header parse.
 - **A hop whose ground contact falls between two packets has no mark**, and
   cannot have one. Samples are one per packet (43-65/s measured against a 66.67
   Hz tick) and a bhop's ground contact is one tick, so the touch is simply

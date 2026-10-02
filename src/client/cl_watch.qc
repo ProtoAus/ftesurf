@@ -1721,6 +1721,9 @@ float() Watch_LineJobWindow =
 	wt_lj_tb = 99999999;
 	if (wt_lj_tick <= 0)
 		wt_lj_tick = PM_TICK;
+	// Patch 470: here, with the header read and before pass two feeds a point.
+	// At the job's start it handed the slot a tick of 0, i.e. the default.
+	Line_Tick(wt_lj_slot, wt_lj_tick);
 	if (wt_lj_fleg < 0)
 		wt_lj_fleg = FS_LegOf(wt_lj_seg, wt_lj_seg > 0);
 	if (wt_lj_leg > 0)
@@ -1787,7 +1790,6 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_stitch = FALSE;
 	wt_lj_qhave  = FALSE;
 	Line_Begin(slot);
-	Line_Tick(slot, wt_lj_tick);
 	return TRUE;
 };
 
@@ -4692,6 +4694,9 @@ void() Watch_Status =
 	print(sprintf("  seq %g rows (%g shown)  boards %g (at %g)  turn %.0f/s\n",
 	              rec_wt_sqn, rec_wt_sqshown, rec_wt_bdn_n, rec_wt_bdshown,
 	              ui_turnrate));
+	// Patch 470: what the strafe bar last graded with.  Its tick is the file's.
+	print(sprintf("  bar tick %.5f  ideal %.3f  speed %.3f  regime %g\n",
+	              ui_strafe_tick, ui_strafe_ideal, ui_strafe_speed, ui_strafe_regime));
 	// Build 25.  See Watch_BuildSeq: this is the only headless evidence that the
 	// ramp hold does anything, because the column looks the same either way.
 	print(sprintf("  ramp gaps bridged %g  (hold %.2fs, the engine's own board gate)\n",
@@ -4878,7 +4883,7 @@ float(string cmd) Watch_ConsoleCommand =
 		// not carry them (a v9 `pmpin` block would), so the grader cannot derive
 		// them -- it is handed them, and what it grades is the arithmetic and the
 		// regime choice, which is where the risk is.
-		print(sprintf("lnmv %.5f %g %g %g %g %g\n", ln_mv_tick, ln_mv_airaccel,
+		print(sprintf("lnmv %.5f %g %g %g %g %g\n", ln_tick[sl], ln_mv_airaccel,
 		              ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap, ln_mv_gravity));
 		print(sprintf("lnmv2 %g %g %g %g\n", ln_mv_gfric, ln_mv_stopspeed,
 		              ln_mv_duck, ln_mv_ghold));

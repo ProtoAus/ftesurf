@@ -613,6 +613,7 @@ float  ui_ramp_riding;
 // Build 39: which branch HUD_DrawStrafe took and what it fed the plane maths,
 // published for the debug panel.  See the regime block in that function.
 float  ui_strafe_regime, ui_strafe_nz, ui_strafe_wn;
+float  ui_strafe_tick, ui_strafe_ideal, ui_strafe_speed;   // Patch 470: `replay status`
 
 /*
   BUILD 40: what HUD_WishDir was handed and what it made of it.
@@ -3939,6 +3940,10 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 	// bar would grade a correct strafe as a miss.  cl_timer.qc has always read
 	// the serverinfo for the same value; these two now agree.
 	tick      = serverkeyfloat("pm_ticrate");      if (tick      <= 0) tick      = PM_TICK;
+	// Patch 470: a replay was flown at the recording's tick and its line is graded
+	// at it (Line_Grade), so the bar must not grade the same moment at another.
+	if (rec_wt_on)
+		tick = rec_wt_tickrate;
 	airaccel  = serverkeyfloat("sv_airaccelerate");
 	accel     = serverkeyfloat("sv_accelerate");   if (accel     <= 0) accel     = 5;
 	maxspeed  = serverkeyfloat("sv_maxspeed");     if (maxspeed  <= 0) maxspeed  = PM_RUN_SPEED;
@@ -4295,6 +4300,9 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 	ui_strafe_regime = regime;
 	ui_strafe_nz     = nz;
 	ui_strafe_wn     = wn;
+	ui_strafe_tick   = tick;
+	ui_strafe_ideal  = ideal;
+	ui_strafe_speed  = speed;
 
 	// Smoothed with the same time constant as ui_turnrate, so both sides of the
 	// comparison below are measured alike.

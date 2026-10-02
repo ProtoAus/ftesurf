@@ -140,7 +140,7 @@ float  ln_gsince[LN_SLOTS];     // when the current ground phase began
   is a real limitation, it is the bar's limitation as well, and the v9 header's
   `pmpin` block is where a future patch would get the file's own.
 */
-float  ln_mv_tick, ln_mv_airaccel, ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap;
+float  ln_mv_airaccel, ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap;
 float  ln_mv_gravity, ln_mv_gfric, ln_mv_stopspeed, ln_mv_duck, ln_mv_ghold;
 
 // The window: the stretch of RUN TIME shown around the playhead, set by the
@@ -290,6 +290,8 @@ void(float s) Line_Clear =
 // The recording's own tick.  The energy colour divides by the most energy air
 // strafing can add in one (Strafe_PowerCeiling), and that is per tick -- a file
 // recorded at a different rate would otherwise read as a different player.
+// Patch 470: Line_Grade reads it too (it took the live server's, and graded a
+// 0.01 file on a 0.015 lobby against a target 1.5x too low).
 void(float s, float tick) Line_Tick =
 {
 	ln_tick[s] = (tick > 0) ? tick : 0.015;
@@ -297,7 +299,6 @@ void(float s, float tick) Line_Tick =
 
 void() Line_Movevars =
 {
-	ln_mv_tick     = serverkeyfloat("pm_ticrate");        if (ln_mv_tick     <= 0) ln_mv_tick     = PM_TICK;
 	ln_mv_airaccel = serverkeyfloat("sv_airaccelerate");
 	ln_mv_accel    = serverkeyfloat("sv_accelerate");     if (ln_mv_accel    <= 0) ln_mv_accel    = 5;
 	ln_mv_maxspeed = serverkeyfloat("sv_maxspeed");       if (ln_mv_maxspeed <= 0) ln_mv_maxspeed = PM_RUN_SPEED;
@@ -481,8 +482,9 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 */
 float(float s, vector v, float fl, float t, vector aux) Line_Grade =
 {
-	local float speed, turn, dt, ideal, cscale, gain, fric, wishspeed, vf, ong;
+	local float speed, turn, dt, ideal, cscale, gain, fric, wishspeed, vf, ong, tick;
 
+	tick = ln_tick[s];
 	dt = t - ln_pt[s];
 	if (dt <= 0 || ln_nsamp[s] < 1)
 		return -1;                      // nothing to have turned from
@@ -515,30 +517,30 @@ float(float s, vector v, float fl, float t, vector aux) Line_Grade =
 	cscale = ln_mv_aircap;
 	if (ong)
 	{
-		gain  = Strafe_GroundGain(ln_mv_accel, wishspeed, ln_mv_tick, fric);
-		vf    = Strafe_AfterFriction(speed, ln_mv_gfric, ln_mv_stopspeed, ln_mv_tick);
-		ideal = Strafe_IdealTurnGround(vf, gain, wishspeed, ln_mv_tick);
+		gain  = Strafe_GroundGain(ln_mv_accel, wishspeed, tick, fric);
+		vf    = Strafe_AfterFriction(speed, ln_mv_gfric, ln_mv_stopspeed, tick);
+		ideal = Strafe_IdealTurnGround(vf, gain, wishspeed, tick);
 		if (ideal <= 10)
 			return -1;                  // the shoulder: not a number to grade on
 	}
-	else if (!Strafe_CapBinds(ln_mv_airaccel, ln_mv_maxspeed, ln_mv_tick, fric,
+	else if (!Strafe_CapBinds(ln_mv_airaccel, ln_mv_maxspeed, tick, fric,
 	                          ln_mv_aircap))
 		return -1;                      // the cap has slack: this grades the server
 	else
 	{
-		gain = Strafe_AirGain(ln_mv_airaccel, wishspeed, ln_mv_tick, fric,
+		gain = Strafe_AirGain(ln_mv_airaccel, wishspeed, tick, fric,
 		                      ln_mv_aircap);
 		if (aux_y >= 0.05 && aux_y <= PM_STANDABLE && aux_z != 0)
 		{
-			ideal  = Strafe_IdealTurnPlane(speed, ln_mv_tick, gain, ln_mv_gravity,
+			ideal  = Strafe_IdealTurnPlane(speed, tick, gain, ln_mv_gravity,
 			                               aux_y, aux_z);
-			cscale = Strafe_CScale(ln_mv_gravity, ln_mv_tick, aux_y, aux_z,
+			cscale = Strafe_CScale(ln_mv_gravity, tick, aux_y, aux_z,
 			                       ln_mv_aircap);
 			if (ideal <= 0.001)
 				return -1;              // the ramp is doing the turning, not you
 		}
 		else
-			ideal = Strafe_IdealTurn(speed, gain, ln_mv_tick);
+			ideal = Strafe_IdealTurn(speed, gain, tick);
 	}
 	return Strafe_Quality(turn, ideal, cscale, ln_mv_aircap);
 };
