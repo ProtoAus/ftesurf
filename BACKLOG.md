@@ -2008,6 +2008,13 @@ depth at ~3,000 requests/day. What that leaves open:
   surf_rookie was taken inside the start room, whose walls hide the horizon ring
   the spectrum bars stand on; the dome and the zenith were checked, the ring was
   not. Falsifier: `milk_sky 1` with music playing on an open map, look level.
+  TRIED 2026-10-03 on surf_utopia_njv and NOT achieved: its spawn is an enclosed
+  room too, `cmd setpos` 600 u up falls back to the floor within the 3 s wait (the
+  board logs the landing) unless `cmd noclip` follows, and the world model's
+  middle at z 15000 is outside every leaf (`voidvis: cluster -1 ... VOID VIEW`).
+  What it needs is a known open vantage -- a stage start on an outdoor map, from
+  the map's `info_teleport_destination` origins -- with `cmd viewpos` before each
+  shot and the control taken at the SAME pose.
 - **IN-GAME COSTS ARE SINGLE HUD READINGS.** The sky's ~0.7 ms (150.6 vs 168.1 fps,
   same view) is one instantaneous fps counter per state, not an average over an
   interval like the menu's `milk_bootcheck 4`. A proper arm would time a fixed
