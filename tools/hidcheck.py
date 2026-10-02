@@ -159,6 +159,10 @@ PSEUDO_TYPES = {"xtest"}
 NONWIN_KEYBOARDS = {"x11", "wayland"}
 # K_MOUSE1-5, K_MWHEELDOWN/UP, K_MOUSE6-10 (engine client/keys.h).
 MOUSE_KEYS = set(range(178, 185)) | set(range(265, 270))
+# K_MOUSE1..5: the buttons raw input reports flags for and the ones Patch 468's
+# release rule covers.  Wheel keys and K_MOUSE6+ are mouse keys but not presses
+# a release can be held against.
+PAD_BUTTONS = set(range(178, 183))
 
 
 def _unquote_pair(rest):
@@ -720,6 +724,11 @@ def check_hid(path, verbose=False):
                 if dacc < 0 or ddig < 0 or drel < 0:
                     r.fault("line %d: 'p' carries a negative delta; the counters "
                             "are monotone" % (lineno + 1))
+                elif drel > dacc:
+                    # a release-admitted report counts in both, so this cannot
+                    # come from the writer
+                    r.fault("line %d: 'p' releases %d more reports than it accepts"
+                            % (lineno + 1, drel - dacc))
                 padacc += dacc
                 padrep += ddig
                 padrel += drel
@@ -789,7 +798,7 @@ def check_hid(path, verbose=False):
                     # raw mouse's buttons) carries its pointer's devid; it is
                     # neither a keyboard identity nor a motion event.
                     devids_btn[d] = devids_btn.get(d, 0) + 1
-                    if kind == "+":
+                    if kind == "+" and keynum in PAD_BUTTONS:
                         devids_btnplus[d] = devids_btnplus.get(d, 0) + 1
                 elif kind in ("+", "-", "x"):
                     devids_key[d] = devids_key.get(d, 0) + 1
@@ -989,19 +998,24 @@ def check_hid(path, verbose=False):
             if t_legacybtn:
                 pad_cvar = next((v for (n, v, dfl) in inputcvars
                                  if n == "in_rawinput_touchpad"), None)
-                pad_changed = any(n == "in_rawinput_touchpad" for n, v in cvar_changes)
+                # the state over the whole journal: the opening value, then
+                # every 'c' record that set it.  A set-and-set-back to the
+                # same state is not a change of state.
+                pad_states = set()
+                for v in [pad_cvar] + [v for n, v in cvar_changes
+                                       if n == "in_rawinput_touchpad"]:
+                    pad_states.add("off" if v in (None, "0", "-") else "on")
                 try:
                     pads_bound = int(head.get("rawpads", "-1"))
                 except ValueError:
                     pads_bound = -1
-                if (t_touchpad is not None and pads_bound > 0
-                        and pad_cvar not in (None, "0", "-")):
+                if t_touchpad is not None and pads_bound > 0 and "on" in pad_states:
                     # Patch 468: on this build a precision touchpad's own taps
                     # arrive through raw input (accepted inside its window) and
                     # are deduped like any raw press, so the pad no longer
                     # explains this count -- unless the acceptance was turned
                     # off mid-journal, which the 'c' records say.
-                    if pad_changed:
+                    if "off" in pad_states:
                         why = ("A precision touchpad explains only presses made "
                                "while in_rawinput_touchpad was off (it changed "
                                "mid-journal, see the 'c' records; Patch 468); a "
@@ -1036,7 +1050,10 @@ def check_hid(path, verbose=False):
         # bound: a tap's button report, a wheel report and a report delivered
         # while the mouse was free are accepted but produce no 'm').  The
         # released count is the one rule that admits a report outside the
-        # window, so it is at most the pad's own presses.
+        # window.  It is at most the accepted DOWN reports since the process
+        # began, which the file cannot count (a press under a menu is an 'x',
+        # one made unfocused or before the journal began is nothing), so it is
+        # compared with the journalled presses and SAID, never faulted.
         pad_ids = [d[1] for d in devmaps
                    if d[0] == "touchpad" and d[1].isdigit()]
         pad_events = sum(devids_used.get(int(i), 0) for i in pad_ids)
@@ -1078,12 +1095,17 @@ def check_hid(path, verbose=False):
                         and t_padreports < padrep):
                     r.fault("trailer says %d digitizer reports but the 'p' "
                             "records already hold %d" % (t_padreports, padrep))
-            if padrel > pad_presses:
-                r.fault("%d reports were accepted as releases outside the window "
-                        "but the touchpad pressed only %d button(s) -- more "
-                        "releases than presses" % (padrel, pad_presses))
             if padrel:
                 r.info["touchpad_releases"] = padrel
+                if padrel > pad_presses:
+                    r.note("%d report(s) were accepted as releases outside the "
+                           "window against %d journalled press(es) on the touchpad "
+                           "devid. A press made under a menu or the console is an "
+                           "'x' record, one made unfocused or before this journal "
+                           "began is nothing, so the file cannot count them all; a "
+                           "release-admitted report carries no motion and presses "
+                           "nothing, so the gap is a thing to look at, not a "
+                           "finding." % (padrel, pad_presses))
             if pad_events > t_touchpad:
                 r.fault("%d pointer events carry the touchpad's devid but the "
                         "trailer says only %d handle-less reports were accepted"
@@ -1341,7 +1363,14 @@ def check_hid(path, verbose=False):
         if wl_seat and 0 in devids_used:
             r.info["pointer_attribution"] = ("one merged Wayland seat -- every "
                                              "pointer event carries devid 0")
-        for did, n in sorted(devids_used.items()):
+        # Patch 468: raw mouse buttons are pointer events too.  devid 0 among
+        # them is left out: the legacy click path dispatches sysmouse's
+        # constant 0, which names no device -- the keyboard side's rule.
+        pointer_counts = dict(devids_used)
+        for did, n in devids_btn.items():
+            if did != 0:
+                pointer_counts[did] = pointer_counts.get(did, 0) + n
+        for did, n in sorted(pointer_counts.items()):
             if wl_seat and did == 0:
                 continue
             if str(did) not in claimed:
@@ -1354,6 +1383,9 @@ def check_hid(path, verbose=False):
             kbds_live = int(head.get("rawkbds", -1))
         except ValueError:
             kbds_live = -1
+        if devids_btn:
+            r.info["mouse_button_devids"] = ", ".join(
+                "%d(%d)" % (d, n) for d, n in sorted(devids_btn.items()))
         if devids_key:
             r.info["key_devids"] = ", ".join(
                 "%d(%d)" % (d, n) for d, n in sorted(devids_key.items()))
@@ -1368,7 +1400,13 @@ def check_hid(path, verbose=False):
                                "been a real keyboard." % (did, n, kbds_live))
             else:
                 # The legacy path. devid 0 is a constant, not an identity.
-                if set(devids_key) - {0}:
+                # Patch 468: an 'x' carries no key, so a hidden tap on the pad
+                # (or a hidden click on a second raw mouse) lands here with its
+                # pointer's devid; a devid the closing table gives to a pointer
+                # device is not a keyboard claiming an identity.
+                pointer_ids = set(int(did) for dtype, did, name in devmaps
+                                  if dtype in ("mouse", "touchpad") and did.isdigit())
+                if set(devids_key) - {0} - pointer_ids:
                     r.note("key events carry devid(s) other than 0 although raw "
                            "keyboard was not bound -- the legacy path dispatches "
                            "a hardcoded 0, so this file does not match the "
@@ -1907,7 +1945,7 @@ def emit(r, verbose):
                  "synth", "synth_source", "devices", "devices_resolved", "identity",
                  "identity_frames", "identity_violations", "frames_not_governed",
                  "time", "events", "frames", "dropped", "hidden",
-                 "render_cvars", "render_changes", "key_devids", "key_attribution", "pointer_attribution", "key_presses", "key_repeats", "key_repeat_pct",
+                 "render_cvars", "render_changes", "key_devids", "mouse_button_devids", "key_attribution", "pointer_attribution", "key_presses", "key_repeats", "key_repeat_pct",
                  "orphan_releases", "injected", "unenum", "legacy_presses",
                  "legacy_path", "nolegacy_at_start", "nolegacy_changes", "marks",
                  # Patch 416, listed in the same edit as the code that assigns

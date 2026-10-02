@@ -183,6 +183,13 @@ class Journal:
         self.padrep += digitizer
         self.padrel += released
 
+    def hidden(self, dev=0, us=0):
+        """An 'x' record: a key event whose scancode was suppressed because
+        the console or a menu had focus."""
+        self._adv(us)
+        self.lines.append("x %d %d" % (us, dev))
+        self.events += 1
+
     def truncate(self, us=0):
         """The cap was hit: a 'truncated' marker, after which only the closing
         tables and the trailer follow."""
@@ -1459,6 +1466,14 @@ def case_touchpad_round3():
     j.pad(-5, -7)
     r = run(j.end(touchpad=1))
     check(has_fault(r, "negative delta"), "round 3: a negative 'p' delta is a fault")
+    j = _padjournal(pad)
+    j.frame(3000)
+    j.mouse(4, 0, dev=1)
+    j.view(4, 0, 10.0, j.k * 4)
+    j.pad(1, 7, released=2)
+    r = run(j.end(touchpad=1))
+    check(has_fault(r, "releases 1 more reports than it accepts"),
+          "round 5: a 'p' line releasing more than it accepts is a fault")
     # truncated: both totals may only be ahead of the records
     j = _padjournal(pad)
     yaw = 0.0
@@ -1492,8 +1507,8 @@ def case_touchpad_round3():
             j.view(4, 0, 10.0, yaw)
             j.pad(2, 7, released=1)
         r = run(j.end(touchpad=6))
-        check(has_fault(r, "more releases than presses") == want,
-              "round 3: 3 releases against %d press(es) %s" % (presses, "faults" if want else "passes"))
+        check(r.ok and has_note(r, "accepted as releases outside the window against") == want,
+              "round 3: 3 releases against %d press(es) %s, never a fault" % (presses, "is said" if want else "is silent"))
         if not want:
             check(r.info.get("touchpad_releases") == 3 and not has_note(r, "key events carry devid(s) other than 0"),
                   "round 3: the pad's raw taps on devid 1 are not keyboard events")
@@ -1514,6 +1529,76 @@ def case_touchpad_round3():
         r = run(j.end(touchpad=1))
         check(has_note(r, needle),
               "round 3: legacy note with cvar %s rawpads %d change %s says %r" % (cvar, rawpads, change, needle))
+
+
+def case_touchpad_round5():
+    """Round 5: mouse buttons are attributed to their pointer (and devid 0
+    among them is the legacy constant), a hidden tap is not a keyboard, only
+    the five buttons count as presses, and the cvar state is read over the
+    whole journal."""
+    pad = [MOUSE0, ("touchpad", "1", PAD[2])]
+    # a button on a devid nothing claims is said; one on devid 0 is not
+    for dev, want in ((7, True), (0, False)):
+        # a table that claims devid 1 only, so the clicks are the one thing on
+        # their devid; the attribution check needs a table to attribute against
+        j = Journal(devices=[("mouse", "1", MOUSE0[2])])
+        j.frame(3000)
+        j.key(True, 178, dev=dev)
+        j.key(False, 178, dev=dev)
+        j.mouse(4, 0, dev=1)
+        j.view(4, 0, 10.0, j.k * 4)
+        r = run(j.end())
+        check(has_note(r, "devid %d produced 2 pointer events" % dev) == want,
+              "round 5: a mouse button on unclaimed devid %d %s" % (dev, "is said" if want else "is the legacy constant"))
+        if dev == 7:
+            check(r.info.get("mouse_button_devids") == "7(2)",
+                  "round 5: mouse button devids are reported (got %s)" % r.info.get("mouse_button_devids"))
+    # a hidden tap on the pad devid is not a keyboard claiming an identity
+    j = _padjournal(pad, rawkbds=0)
+    j.frame(3000)
+    j.hidden(dev=1)
+    j.mouse(4, 0, dev=1)
+    j.view(4, 0, 10.0, j.k * 4)
+    j.pad(1, 7)
+    r = run(j.end(touchpad=1))
+    check(not has_note(r, "key events carry devid(s) other than 0"),
+          "round 5: a hidden tap on the touchpad devid draws no keyboard note")
+    j = _padjournal(pad, rawkbds=0)
+    j.frame(3000)
+    j.hidden(dev=5)                       # claimed by nothing: still said
+    j.mouse(4, 0, dev=1)
+    j.view(4, 0, 10.0, j.k * 4)
+    j.pad(1, 7)
+    r = run(j.end(touchpad=1))
+    check(has_note(r, "key events carry devid(s) other than 0"),
+          "round 5: a hidden key on an unclaimed devid is still said")
+    # wheel keys are not presses a release can be held against
+    j = _padjournal(pad)
+    yaw = 0.0
+    for i in range(3):
+        j.frame(3000 + i)
+        j.key(True, 184, dev=1)
+        j.key(False, 184, dev=1)
+        j.mouse(4, 0, dev=1)
+        yaw += j.k * 4
+        j.view(4, 0, 10.0, yaw)
+        j.pad(2, 7, released=1)
+    r = run(j.end(touchpad=6))
+    check(r.ok and has_note(r, "against 0 journalled press"),
+          "round 5: wheel keys do not cover releases, and it is said, not faulted")
+    # the cvar state over the whole journal
+    for cvar, change, needle in (("0", "1", "changed mid-journal"),
+                                 ("1", "1", "NOT one on this build")):
+        j = _padjournal(pad, cvar=cvar, rawpads=1)
+        j.frame(3000)
+        j.mouse(4, 0, dev=1)
+        j.view(4, 0, 10.0, j.k * 4)
+        j.pad(1, 7)
+        j.cvarchange("in_rawinput_touchpad", change)
+        j.legacypress(2)
+        r = run(j.end(touchpad=1))
+        check(has_note(r, needle),
+              "round 5: legacy note with cvar %s then set %s says %r" % (cvar, change, needle))
 
 
 def main():
@@ -1551,7 +1636,8 @@ def main():
                case_nonce_note,
                case_touchpad_accepted, case_touchpad_without_device,
                case_touchpad_pre468, case_touchpad_backend_silent,
-               case_touchpad_three_statements, case_touchpad_round3):
+               case_touchpad_three_statements, case_touchpad_round3,
+               case_touchpad_round5):
         print("%s:" % fn.__name__)
         fn()
         print("")
