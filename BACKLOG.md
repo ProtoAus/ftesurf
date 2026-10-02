@@ -646,12 +646,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   recorder in this session. Nine cfgs and three drivers quote the string
   (p434rew.py, p439smoke.py, p441void.py's CANCEL), so the mechanical half is updating
   them to match either word and grading WHICH one at S2.
-- **`sl_list` prints the row speed as `%4.0f`, so the arming boundary is invisible.**
-  A row carrying 0.6 u/s prints `1 u/s` and arms; one carrying 1.4 prints `1 u/s`
-  and does not (SL_ARM_SPEED is 1). Patch 442 widened this column to the whole
-  vector, which is what makes it worth reading at all -- and then it rounds away the
-  one distinction a player would use it for. One decimal, or print the row's arming
-  answer beside it. sv_saveloc.qc SV_SaveLocList. Patch 442 review.
 - **The void's "leave the box and enter it" is satisfiable by the velocity the
   same load restores.** Patch 441 re-scans the occupancy latches after a failed
   rewind so a cancelled run does not come back armed; the remedy assumes the

@@ -124,7 +124,7 @@ FIELDS = {
     "evslot":    r"seq: event seq \d+ op 2 id (\d+)",
     # The fixture's own row, out of `sl_list`: row 2 is the 400 u/s one, and the
     # list prints the speed, so "the save with speed" is checked and not assumed.
-    "rowspeed":  r"slot 902(?:\s+-?\d+){3}\s+(\d+) u/s",
+    "rowspeed":  r"slot 902(?:\s+-?\d+){3}\s+(\d+)(?:\.\d)? u/s",
     # THE POSITIVE CONTROL FOR `cancel: absent`, and exactly what it is worth --
     # the first draft of this comment overstated it.  The line comes from
     # SV_TimerClassSay by way of SV_TimerPractice, behind two

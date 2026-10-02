@@ -183,10 +183,10 @@ PATS = {
     "slab":     r"start\s+0\s+0\s+\d+\s+([\d.]+)\.\.[\d.]+",
     # The fixture's own row out of `sl_list`, which is also the Patch 442 display
     # change: 302 where the horizontal-only spelling printed 0.
-    "jumprow":  r"\s3 slot 903(?:\s+-?\d+){3}\s+(\d+) u/s",
+    "jumprow":  r"\s3 slot 903(?:\s+-?\d+){3}\s+(\d+)(?:\.\d)? u/s",
     # The REAL save's row (row 4, the slot id is the server's to pick).  This is
     # the row SL_RowSpeed reads, and the FALSIFIED IF that had no check.
-    "realrow":  r"\s4 slot \S+(?:\s+-?\d+){3}\s+(\d+) u/s",
+    "realrow":  r"\s4 slot \S+(?:\s+-?\d+){3}\s+(\d+)(?:\.\d)? u/s",
     # Which row the load landed on: `sl_goto`/`sl_last` CLAMP, so an arm that asks
     # for row 3 and gets row 2 would grade the other fixture.  op 2 is the load.
     "evslot":   r"seq: event seq \d+ op 2 id (\d+)",

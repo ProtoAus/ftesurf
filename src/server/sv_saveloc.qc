@@ -4654,8 +4654,11 @@ void(entity e, float from) SV_SaveLocList =
 		       // Patch 442: the whole vector, like the gate -- a row carrying a
 		       // jump's +302 printed "0 u/s  standing", which is how the vertical
 		       // half of SL_RowSpeed stayed hidden from anyone reading their list.
-		       sprintf("%4.0f u/s  yaw %4.0f  %s  ",
-		               vlen(v), rec_sl_yaw[base + i],
+		       // Patch 471: one decimal and the gate's answer -- `%4.0f` printed 0.6
+		       // and 1.4 u/s both as `1`, either side of SL_ARM_SPEED.
+		       sprintf("%6.1f u/s%s  yaw %4.0f  %s  ",
+		               vlen(v), (SL_RowSpeed(base + i) < SL_ARM_SPEED) ? " at rest" : "",
+		               rec_sl_yaw[base + i],
 		               rec_sl_duck[base + i] ? "ducked" : "standing"),
 		       sprintf("%s  stage %g  %g cp\n",
 		               (rec_sl_tick[base + i] > 0) ? SV_TimerString(rec_sl_tick[base + i]) : "--",
