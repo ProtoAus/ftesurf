@@ -62,7 +62,7 @@ class Journal:
         self.injected = 0         # Patch 306: summed by rejected(), checked by end()
         self.unenum = 0
         self.legacybtn = 0        # Patch 307: summed by legacypress()
-        self.hidden = 0           # 'x' records, carried into the trailer
+        self.hidden_n = 0           # 'x' records, carried into the trailer
         self.padacc = 0           # Patch 468: summed by pad(), checked by end()
         self.padrep = 0
         self.padrel = 0
@@ -190,7 +190,7 @@ class Journal:
         self._adv(us)
         self.lines.append("x %d %d" % (us, dev))
         self.events += 1
-        self.hidden += 1
+        self.hidden_n += 1
 
     def truncate(self, us=0):
         """The cap was hit: a 'truncated' marker, after which only the closing
@@ -255,7 +255,7 @@ class Journal:
                     legacybtn = self.legacybtn
                 line = ("end %d %.6f %d %d 0 %d %d %d %d"
                         % (us, self.clock, self.events, self.frames,
-                           self.hidden, injected, unenum, legacybtn))
+                           self.hidden_n, injected, unenum, legacybtn))
                 if touchpad is not None:      # Patch 468: the ninth and tenth fields
                     if padreports is None:
                         padreports = self.padrep
