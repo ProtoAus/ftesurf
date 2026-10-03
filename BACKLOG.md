@@ -7,20 +7,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
-- **GHOST WHILE ARMED DEFERS THE START TO WHEREVER THE GHOST ENDS** (pre-existing,
-  build 30; Patch 477 round-9 integrity review, traced end to end, NOT DRIVEN --
-  next on the list). `SV_GhostSet` (sv_saveloc.qc) checks no timer state, and the
-  ghost branch of SV_TimerFrame returns before the start test, so leaving an armed
-  box under `rec_ghost 1` starts nothing; SV_TimerGhostMark returns early when not
-  running (no TF_GHOST, no `ghost` record); each ghosted tick's SV_TimerWarped
-  empties the lead-in. `rec_ghost 0` far down the course and the next packet's start
-  test starts a CLEAN clock there (SV_StageOpen re-reads the ghost flag as off), an
-  END zone finishes any full-track run, and pm_verify does not check where a run
-  began. An unmodified client: prestrafe to the box edge, ghost, let the body slide
-  the first ramp, unghost at the bottom. Same shape for a finished stage run waiting
-  on its next stage box. Fix: refuse `rec_ghost 1` unless idle or running with no
-  stage handover pending, or drop to idle when a ghost begins armed -- with an arm
-  that drives the exploit first.
 - **A map's player gravity can follow a run out of the area that set it**
   (pre-existing; Patch 477 round-11 integrity review, PLAUSIBLE, map-dependent,
   not driven). `.gravity` written by map I/O (sv_entities.qc) is reset only in

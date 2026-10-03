@@ -12823,6 +12823,18 @@ void() SV_VerifyRestart =
 	vf_evzone = -1;
 };
 
+// Patch 478: a ghost carried an armed body out of its box (SV_TimerFrame).  An
+// armed timer goes idle; a finished one keeps its time and loses the handover.
+// The box is forgotten, so one the body is in at the unghost arms afresh.
+void(entity e) SV_TimerGhostLeft =
+{
+	if (e.run_t_state == TS_ARMED)
+		SV_TimerIdle(e);
+	e.run_t_pendarm = -1;
+	e.run_t_azone = -1;
+	sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the start box as a ghost -- no run; !r to go back\n");
+};
+
 void(entity e) SV_TimerFrame =
 {
 	local float az, ez, cp, cancel;
@@ -12958,6 +12970,41 @@ void(entity e) SV_TimerFrame =
 		  overwrite.
 		*/
 		e.run_st_ghost = TRUE;
+
+		// Patch 478: the tests below never see a body leave a box whose exit
+		// starts a clock, so the packet after the unghost started one, CLEAN,
+		// wherever the ghost had carried it -- a run from its armed box, a stage
+		// run from its handover box, or a held stage (3b, which re-reads the ghost
+		// flag at SV_StageStart).  Leaving as a ghost disarms instead.
+		mn = SV_RunHullMins(e);
+		mx = SV_RunHullMaxs(e);
+		if (e.run_t_state == TS_ARMED)
+		if (e.run_t_armzone >= 0)
+		if (!SV_ZoneIn(e.run_t_armzone, e.origin, mn, mx))
+			SV_TimerGhostLeft(e);
+		if (e.run_t_state == TS_FINISHED)
+		if (e.run_t_pendarm >= 0)
+		if (!SV_ZoneIn(e.run_t_pendarm, e.origin, mn, mx))
+			SV_TimerGhostLeft(e);
+		if (e.run_t_state == TS_RUNNING)
+		if (!e.run_t_stagerun)
+		if (e.run_t_seg > 0)
+		if (e.run_st_seg == e.run_t_seg)
+		if (e.run_st_zseg == e.run_t_seg)
+		if (e.run_st_armed)
+		if (e.run_st_hold)
+		{
+			sz = e.run_st_zone;
+			sin = FALSE;
+			if (sz >= 0)                // nested: a -1 index fails the bounds check
+				sin = SV_ZoneOcc(sz, e.origin, mn, mx);
+			if (!sin)
+			{
+				e.run_st_armed = FALSE;
+				e.run_st_hold = FALSE;
+				sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the stage's box as a ghost -- this stage will not count\n");
+			}
+		}
 
 		SV_TimerRecFrame(e);
 		SV_TimerWarped(e);
