@@ -432,6 +432,13 @@ def main():
     check("R18", ok18, "warped %s, voided %s, still running %s" % (
         "setpos: " in t18, "moved while the rewind held it" in t18, "timer: running on" in t18))
 
+    # R18W (round 16): the pin's warp is written when it zeroes something.  The
+    # first pin lands on a sliding body; let go and taken again in one packet,
+    # the body the release zeroed writes none (a pin blind to it writes two).
+    wp18 = last(r"rec rows: in \d+ warp (\d+)", "R18")
+    check("R18W", wp18 is not None and int(wp18.group(1)) == 1,
+          "pin warps %s (one sliding, one re-pinned still)" % (wp18.group(1) if wp18 else None))
+
     # R18C: a typed `rec_watch 0` under the rewind's pin voids the frozen run.
     st18c = status("R18C")
     t18c = txt("R18C")

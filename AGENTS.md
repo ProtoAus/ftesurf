@@ -666,8 +666,9 @@ bannered as superseded.)
   Both directions are defects: a false accusation taints an honest run, a false
   acquittal ranks a driven one. Say which one a change trades for the other.
 - EVIDENCE BOUNDARY, exactly: `warp` = a direct write of origin or velocity
-  OUTSIDE the mover by a map entity, or the replay/rewind pin's velocity zero
-  (`warp ... pin`, Patch 477). `ride` = the basevelocity carrier handed to
+  OUTSIDE the mover by a map entity, or the zero a replay/rewind pin imposes on
+  a body with speed or a carrier (`warp ... pin`, Patch 477; the hold's
+  per-packet zero and the release's are not written). `ride` = the basevelocity carrier handed to
   the mover (a span: `arm` persists until changed, `pay` is the cash-out). A
   PORTAL crossing (`linked_portal_door`) is committed INSIDE the mover by the
   engine (`PM_PlayerTracePortals`), so no QC site sees it; the engine publishes
@@ -1029,7 +1030,8 @@ bannered as superseded.)
   client's x y z only picks among samples within 0.5 s of its tick. A run start
   wipes the ring; a warp under the rewind marks it over, so the next start does.
 - **STAT_FS_PIN (111) is the rewind's open serial while its pin is held,
-  `-serial` once that open's pin is refused (until the next pin), 0 otherwise** (`rec_watch 1 rw <serial> <state at the open>`). The client closes
+  `-serial` once that open's pin is refused or let go (until the next pin), 0
+  before any** (`rec_watch 1 rw <serial> <state at the open>`). The client closes
   the mode on a release it did not ask for, and latches only its own serial, so
   an earlier open's pin or release in flight is never mistaken for it. The pin
   also carries the state and the run ticks the client saw at the open, and the

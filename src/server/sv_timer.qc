@@ -2948,11 +2948,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                               speed    trigger_setspeed
                               push     trigger_push, the SF_PUSH_ONCE arm
                               pin      the replay/rewind pin taken on a running
-                                       run (Patch 477): velocity and push carrier
-                                       zeroed, origin kept.  Which later rows ran
-                                       pinned is each `in` row's <fl> bit 4 (a
-                                       release is not recorded); pm_verify flies
-                                       them as PM_NORMAL from this state
+                                       run whose body had speed or a carrier
+                                       (Patch 477): both zeroed, origin kept.
+                                       Which later rows ran pinned is each `in`
+                                       row's <fl> bit 4 (a release is not
+                                       recorded); pm_verify flies them as
+                                       PM_NORMAL from this state (BACKLOG)
 
                             A reader must treat an unknown <kind> as a warp it
                             cannot attribute -- NOT as a parse error.  The list
@@ -2972,7 +2973,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             WHAT IT COVERS is a boundary and not a list: every
                             DIRECT WRITE of a player's origin or velocity, outside
                             the mover, by a map entity -- and, since Patch 477,
-                            the replay/rewind pin's velocity zero (`pin`).
+                            the replay/rewind pin's velocity zero (`pin`), at the
+                            pin only: the per-packet hold and the release zero
+                            unrecorded (no row follows a rewind's pin; a replay
+                            pin's thaw is the held-run fault, BACKLOG).
 
                             WHAT IT DOES NOT COVER, named because a gap that is
                             not written down gets rediscovered as a bug:
@@ -6346,7 +6350,8 @@ void(entity e, float t) SV_RecBoard =
   a player's origin or velocity, outside the mover, by a map entity.  That is
   the three teleport classes, func_bhop's teleport, trigger_setspeed, and
   trigger_push's once-pad arm -- and one client-commanded write, the replay/
-  rewind pin's velocity zero (`pin`, Patch 477).
+  rewind pin's velocity zero (`pin`, Patch 477; at the pin only -- see the
+  grammar).
 
   WHAT IT DOES NOT COVER, and this is a measured gap rather than an oversight.
   trigger_push's CONTINUOUS arm -- 4,940 instances across 46.9% of the library --

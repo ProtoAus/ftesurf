@@ -474,7 +474,7 @@
 #define STAT_FS_SLORG          104  // + 105, 106 -- the cursor save's origin
 #define STAT_FS_SLANG          107  // + 108, 109 -- its pitch, yaw, and 1 if ducked
 #define STAT_FS_SLACK          110  // sl_* commands the server has run for this player
-#define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused, else 0
+#define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 
 /*
   The personal best this run was measured against, latched before the PB table

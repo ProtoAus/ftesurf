@@ -50,7 +50,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   excuses the hop. Fix: at those warps, drop the player's pending
   `vbsp_iodelay` and their touch bits, or clear the carrier for a window as
   SV_SaveLocHoldFrame does. Patch 477's load-at-rest forgiveness is skipped
-  while SV_TrigPending is non-zero; `!r` has no such check.
+  while SV_TrigPending is non-zero; `!r` has no such check. A load's hold does
+  not cover it either (477 round-16 integrity review): delayed outputs fire in
+  SV_Physics, after PostThink's SV_SaveLocHoldFrame, so one fired the frame
+  before `sl_holdoff` -- a rewind countdown's release included, which a
+  modified client times -- is cashed out on top of the handed-back speed. That
+  path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
 - **PATCH 455 IS NOT MERGED, AND AGENTS.md TALKS AS IF IT WERE.** Its ten review
   rounds live on the local branch `p455fix` (44b313b, worktree C:/tmp/p455fix);
   neither a4cfe09 nor 44b313b is an ancestor of HEAD at 2026-10-03. AGENTS.md's
@@ -100,6 +105,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   into END by a map warp or noclip) do not, so the grammar's "the closing horizon,
   as `inend`" now disagrees between writers for the same state. Practice runs
   only.
+- **pm_verify flies a pinned row as PM_NORMAL** (Patch 477 round-16 evidence
+  review; traced, not driven). A pin's stringcmd runs before its packet's moves
+  (sv_user.c:9719), so the server moves them PM_NONE, but the freeze latches
+  after them, and pm_verify replays them PM_NORMAL from the `warp ... pin` state.
+  A pinned body still touches triggers: a continuous push re-arms the carrier on
+  the first move and `ride arm` hands it to the next, so a pin packet of two or
+  more moves (43-65 packets/s against 66.67 Hz) flies 15-45 u in the replay for a
+  1000-3000 u/s booster, plus input and gravity (~1 u a move). In a rewind-frozen
+  kept abandon that packet is the file's last, so the final zone scan and the
+  physents checks are taken where the body never was: a HOLD on honest stage
+  evidence (sweep.py passes only `no finish` and a last-row cancel). Fix, engine:
+  fly a row with <fl> bit 4 after a `pin` warp as PM_NONE, until a row without
+  it, in pm_verify and pm_recsim.
 - **A `retry` or a second keep under one runid overwrites
   `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).
 - **The ghost and the replay pin refuse each other one way only**
@@ -113,8 +131,8 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   edict for 0.5 s (qclib/pr_edict.c), so a stringcmd flood ratchets `num_edicts`
   up for the rest of the map and every `nextent` walk pays for it. Patch 477
   round-10 integrity review. Since round 14 a pin on a running run also writes a
-  `warp ... pin` line -- capped at one a packet (round 15), the same order as the
-  `in` rows and as `rec_ghost` pairs already write.
+  `warp ... pin` line -- only when it zeroes some speed or carrier (round 16), so
+  no more often than the moves between pins: the order of the `in` rows.
 - **A spectator's client acts on its tracked player's save events** (QC stats come
   from the tracked player, and Rec_ViewSaveEvents/Seq_SaveEvents run every frame):
   that player's prefixes and segment columns are written into the SPECTATOR's own

@@ -175,6 +175,8 @@ float() Rewind_Open =
 	for (k = 0; k < RW_KEYS; k = k + 1)
 		rw_kst[k] = 0;
 	if (Rewind_HeldBefore('s'))           rw_kst[0] = 2;
+	if (Rewind_HeldBefore(K_ENTER))       rw_kst[1] = 2;    // round 16: its repeat is no go
+	if (Rewind_HeldBefore(K_KP_ENTER))    rw_kst[2] = 2;
 	if (Rewind_HeldBefore(K_LEFTARROW))   rw_kst[3] = 2;
 	if (Rewind_HeldBefore(K_RIGHTARROW))  rw_kst[4] = 2;
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
@@ -383,11 +385,12 @@ void() Rewind_Frame =
 	// The server let go of the pin unasked (a respawn, a lobby flip, a typed
 	// `rec_watch 0`): the body is free under the camera (review round 9).  The
 	// stat is this open's own serial, so a pin or release still in flight from
-	// an earlier open is never mistaken for it (rounds 10-11).
+	// an earlier open is never mistaken for it (rounds 10-11); a refusal and a
+	// release both publish -serial, so one inside a snapshot is seen (14-16).
 	k = getstatf(STAT_FS_PIN);
 	if (k == rw_serial)
 		rw_pinseen = TRUE;
-	else if (rw_pinseen || k == -rw_serial)     // released, or refused (round 14)
+	else if (rw_pinseen || k == -rw_serial)
 	{
 		Rewind_Close();
 		return;
@@ -423,6 +426,8 @@ void() Rewind_Camera =
 	if (!rw_on || rw_cd)
 		return;
 	n = ln_n[tr_live];
+	if (n < 2)                      // round 16: the line restarted under a go in flight
+		return;
 	b = tr_live * LN_CAP;
 	j0 = max(0, floor(rw_i) - 3);
 	j1 = min(n - 1, floor(rw_i) + 3);

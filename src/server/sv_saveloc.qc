@@ -528,8 +528,7 @@ float(entity e, float r) SL_RowGrounded =
 */
 // .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
 .float rec_wt_hold;              // the replay pin (see WATCHING below); here for SV_SaveLocHold
-.float rec_wt_pin;               // Patch 477: STAT_FS_PIN -- the rewind's open serial while its pin is held, -serial once refused, else 0
-.float rw_warpat;                // `time` a `warp ... pin` was last written: one a packet, never across runs
+.float rec_wt_pin;               // Patch 477: STAT_FS_PIN -- the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release
 
@@ -3968,8 +3967,10 @@ void(entity e, vector org) SV_ViewEyeAt =
 void(entity e) SV_WatchRelease =
 {
 	e.rw_pin = FALSE;
-	if (e.rec_wt_pin > 0)           // a refusal (-serial) stands until the next pin
-		e.rec_wt_pin = 0;
+	// Round 16: let go reads as refused, so a pin taken and let go between two
+	// snapshots still closes the client.  Either stands until the next pin.
+	if (e.rec_wt_pin > 0)
+		e.rec_wt_pin = -e.rec_wt_pin;
 	if (!e.rec_wt_hold)
 		return;
 
@@ -4046,6 +4047,8 @@ void(entity e, vector was) SV_RewindWarped =
 
 void(entity e, float on) SV_WatchHold =
 {
+	local float moving;
+
 	if (!on)
 	{
 		// Patch 477 review round 9: a plain `rec_watch 0` of the rewind's pin,
@@ -4078,6 +4081,7 @@ void(entity e, float on) SV_WatchHold =
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
 
+	moving = (e.velocity != '0 0 0' || e.run_basevel != '0 0 0');
 	e.movetype = MOVETYPE_NONE;
 	e.velocity = '0 0 0';
 	SV_ClearCarrier(e);             // round 15: as SV_WatchFrame, or the pinned packet pays it
@@ -4100,19 +4104,18 @@ void(entity e, float on) SV_WatchHold =
 	// so pinning an ARMED timer in its own box made the next honest run
 	// practice.  The freeze in every state: a run that starts under the pin is
 	// frozen at its first tick, and practice (SV_TimerStart; review round 2).
-	// Patch 477 review rounds 14-15: the zeroing is a state imposed from outside
+	// Patch 477 review rounds 14-16: the zeroing is a state imposed from outside
 	// the mover -- recorded, a replay flies the packet the pin lands in from rest,
 	// as the server ran it, not at the speed before it (a finish or a physents box
-	// the body never reached).  Not on a run already frozen (a refused go's
-	// re-pin), and one a packet: rec_watch is not rate-charged.
+	// the body never reached).  Written when it zeroes something, which is what
+	// bounds it (rec_watch is not rate-charged): a body at rest, as at a refused
+	// go's re-pin, writes none.  Not capped by frame or freeze -- a pin, release,
+	// moves and re-pin can share a server frame, and a save-lock release hands
+	// its speed back before run_t_frzon catches up.
 	if (e.run_t_state == TS_RUNNING)
 	{
-		if (!e.run_t_frzon)
-		if (e.rw_warpat != time)    // not rec_rec_pk: it restarts with every recording
-		{
-			e.rw_warpat = time;
+		if (moving)
 			SV_RecWarp(e, "pin");
-		}
 		SV_TimerFreeze(e);
 	}
 	else
