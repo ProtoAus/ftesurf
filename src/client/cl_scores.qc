@@ -1904,6 +1904,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	}
 	sui_list_view_end();
 
+	// Near the end of what is held: ask for the next page (cl_online.qc, PAGING).
+	if (ob_more)
+	if (floor((rec_sb_oscroll_y + rs_y) / rec_sb_rowh) + OB_MOREAHEAD >= ob_n)
+		Online_FetchMore();
+
 	// The pinned own row: rank, the standing time, the name.  Not clickable.
 	if (pinned)
 	{
@@ -2916,8 +2921,16 @@ float(string cmd) Scores_ConsoleCommand =
 		{
 			if (argv(2) == "segmented")  rec_sb_tab = SB_T_SEGMENT;
 			else if (argv(2) == "local") rec_sb_tab = SB_T_LOCAL;
+			else if (argv(2) == "imported") rec_sb_tab = SB_T_MOMENTUM;
 			else                         rec_sb_tab = SB_T_ONLINE;
 			rec_sb_tabauto = FALSE;
+		}
+		// `oscroll <row>`: the online list scrolled to that row, as a wheel would
+		// -- the paging trigger reads the scroll and no config can turn a wheel.
+		else if (argv(1) == "oscroll")
+		{
+			rec_sb_oscroll_y = max(0, stof(argv(2))) * rec_sb_rowh;
+			return TRUE;        // not the shared tail: its Refresh refetches
 		}
 		// Patch 357 test hooks: a certified finish cannot be scripted (noclip needs
 		// sv_cheats, which breaks the ruleset), so these stand in for

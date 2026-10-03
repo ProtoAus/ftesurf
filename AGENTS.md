@@ -108,6 +108,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     That is also how a control build is made when this tree's source already holds
     the patch (`cfg/test/p439smoke.cfg`'s RESULT block records the recipe and the
     hash that proved which build ran).
+- CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT (131,072). Patch 474's ten 1,000-float
+  arrays took it to 131,418 and the build died with `Too many globals`, reported
+  as `Error in client/cl_main.qc on line 0`. Big tables go in `memalloc`'d memory
+  (`cl_lines.qc`, `cl_online.qc` `Online_Alloc`), not in global arrays.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).

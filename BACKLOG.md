@@ -1209,6 +1209,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Harness coverage
 
+- **surf_aquaflow CRASHES THIS PC HEADLESS, on every engine and csprogs tried.**
+  2026-10-03, `cfg/test/p474page.cfg` (minimized, listen server): the log ends at
+  `Loaded Certificate DN` right after the map loads, and `crashaddr.txt` gets an
+  access violation (0xc0000005) at an address far outside the exe. Same with the
+  engine from 2026-09-28 (`ftesurf64.exe.prev`, 315a35f1) and today's (e847d3ae),
+  and with the csprogs live on the lobbies -- so not 467/468 and not Patch 474.
+  The map is the one in the session that needs `steam:Counter-Strike Global
+  Offensive/csgo` mounted; surf_utopia and surf_colin_blaster_69000 load fine.
+  Unmeasured: a windowed launch, and whether a player on this PC hits it.
+  Falsifier: `map surf_aquaflow` headless, then read `crashaddr.txt`'s mtime.
 - **A failed rewind on a LOBBY is untested, AND BUILD 66 AND PATCH 434 DISAGREE
   ABOUT IT.** Patch 434's void and Patch 441's latch re-scan are measured only on
   a listen server (`p434rew.cfg`, `p441void.cfg`), where the recording is

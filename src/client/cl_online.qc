@@ -63,7 +63,9 @@
 ===========================================================================
 */
 
-#define OB_MAXROW  64      // one page; surfd's own cap is 200 and default 50
+#define OB_PAGE    100     // rows one request asks for; surfd's own cap is 200
+#define OB_MAXROW  1000    // rows held: the first page, then more as the list scrolls
+#define OB_MOREAHEAD 20    // ask for the next page this many rows before the end
 #define OB_TIER    "ranked"   // the one tier any board draws; community holds demoted runs
 
 /*
@@ -213,18 +215,18 @@ string ob_have_tier, ob_have_style;
 float  ob_have_zoned;
 
 float  ob_n;
-float  ob_rank[OB_MAXROW];
-float  ob_ticks[OB_MAXROW];
-float  ob_ms[OB_MAXROW];
-float  ob_flags[OB_MAXROW];
+float  *ob_rank;
+float  *ob_ticks;
+float  *ob_ms;
+float  *ob_flags;
 /*
   The row's OWN tickrate, kept rather than assumed.  Time_TickString needs one
   to turn ticks into a duration, and a run set at a different pm_ticrate is
   exactly the case surfd ranks by millis to get right -- formatting it against
   this client's rate would print a time that disagrees with the rank beside it.
 */
-float  ob_rate[OB_MAXROW];
-float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
+float  *ob_rate;
+float  *ob_wrow;           // row `when`: unix seconds, server-side.  See ob_t.
 
 /*
   THE LEDGER ROW BEHIND THIS TIME, or 0 for none.  Build 66.
@@ -241,7 +243,7 @@ float  ob_wrow[OB_MAXROW]; // row `when`: unix seconds, server-side.  See ob_t.
   0 means "nothing to click": a time set before the lobbies recorded anything,
   or a run whose recording was refused or never kept.
 */
-float  ob_rep[OB_MAXROW];
+float  *ob_rep;
 /*
   Which board this ROW came from, on the combined view: 1 imported, 0 ours.
   Only the combined board sends `tr` -- on a single-tier board every row's
@@ -249,22 +251,58 @@ float  ob_rep[OB_MAXROW];
   surfd does not spend the bytes.  A missing child reads 0, which is the
   right answer everywhere else.
 */
-float  ob_src[OB_MAXROW];
+float  *ob_src;
 // Patch 395: surfd's `run` -- a stage row's parent replay (its run's leg-0
 // recording or kept evidence) when the row has no `rep` of its own; 0 none.
-float  ob_run[OB_MAXROW];
+float  *ob_run;
 // Patch 374: surfd's `ver` (VER_SQL: re-simulated PASS or owner-approved).  A
 // surfd without it reads 0, so no mark.
-float  ob_ver[OB_MAXROW];
+float  *ob_ver;
 
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
+
+/*
+  The row store, allocated once.  Ten OB_MAXROW-float GLOBAL arrays took csprogs
+  past fteqcc's global limit (131418 against 131072), so they live in memalloc'd
+  memory like cl_lines.qc's tables.  Nothing reads past ob_n, which is 0 until
+  a parse has called this.
+*/
+void() Online_Alloc =
+{
+	if (ob_rank)
+		return;
+	ob_rank = memalloc(sizeof(float) * OB_MAXROW);
+	ob_ticks = memalloc(sizeof(float) * OB_MAXROW);
+	ob_ms = memalloc(sizeof(float) * OB_MAXROW);
+	ob_flags = memalloc(sizeof(float) * OB_MAXROW);
+	ob_rate = memalloc(sizeof(float) * OB_MAXROW);
+	ob_wrow = memalloc(sizeof(float) * OB_MAXROW);
+	ob_rep = memalloc(sizeof(float) * OB_MAXROW);
+	ob_src = memalloc(sizeof(float) * OB_MAXROW);
+	ob_run = memalloc(sizeof(float) * OB_MAXROW);
+	ob_ver = memalloc(sizeof(float) * OB_MAXROW);
+};
 
 // Both tiers' totals for the queried (map, track, leg, style), so the UI can
 // report the other tier without asking for it.
 float  ob_cnt_ranked;
 float  ob_cnt_community;
 float  ob_cnt_imported;   // every imported tier's rows summed; 0 hides the tab
+
+/*
+  PAGING.  A later page is its own request with its own id and never touches
+  ob_state, because a board that went back to "asking..." on every scroll would
+  be worse than one page.  An append lands only on the board it was asked for
+  (ob_epoch) and only directly after the rows it follows (the reply's `offset`).
+*/
+float  ob_more;            // the last page came back full: there may be more
+float  ob_more_req;        // uri id of the append in flight; 0 = none
+float  ob_more_sent;       // cltime it went out
+float  ob_more_lim;        // rows it asked for
+float  ob_more_wait;       // cltime before which a failed append is not re-asked
+float  ob_epoch;           // bumped whenever the rows are thrown away
+float  ob_more_epoch;      // ob_epoch when the append was asked
 
 void() Online_Status;
 
@@ -344,6 +382,9 @@ void() Online_Clear =
 	  ob_cnt_imported = 0;   <- on purpose, see above
 	*/
 	ob_mine = -1;
+	ob_epoch = ob_epoch + 1;
+	ob_more = FALSE;
+	ob_more_req = 0;            // its reply now matches nothing and is dropped
 	Online_FreeHave();
 };
 
@@ -431,7 +472,8 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	*/
 	url = sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s&limit=%g",
 	              dir, uri_escape(mname), track, leg,
-	              uri_escape(tier), uri_escape(style), OB_MAXROW);
+	              uri_escape(tier), uri_escape(style), OB_PAGE);
+	ob_more_req = 0;            // a new board supersedes any append in flight
 
 	/*
 	  A NEW REQUEST ABANDONS THE OLD ONE rather than queueing behind it.  The
@@ -453,6 +495,58 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	return TRUE;
 };
 
+// One /api/board row into slot i.  Both the first page and appended pages use it.
+void(float i, float row) Online_RowSet =
+{
+	local string s;
+
+	ob_rank[i]  = json_get_float(json_find_object_child(row, "r"));
+	ob_ticks[i] = json_get_float(json_find_object_child(row, "ticks"));
+	ob_ms[i]    = json_get_float(json_find_object_child(row, "ms"));
+	ob_flags[i] = json_get_float(json_find_object_child(row, "flags"));
+	/*
+	  HERTZ, as surfd stores it -- NOT seconds per tick.  Kept in the
+	  server's units and converted at the point of use, so there is exactly
+	  one place that knows about the inversion (Online_Status) rather than
+	  a silent convention spread across the file.
+	*/
+	ob_rate[i]  = json_get_float(json_find_object_child(row, "rate"));
+	if (ob_rate[i] <= 0)
+		ob_rate[i] = 1 / PM_TICK;   // a row with no rate: the shipped one
+
+	ob_wrow[i]  = json_get_float(json_find_object_child(row, "when"));
+
+	/*
+	  A row from a surfd older than schema 3 has no `rep` at all, and
+	  json_get_float of a missing child is 0 -- which is exactly the value
+	  that means "nothing to watch".  So an old board degrades to the
+	  pre-build-66 behaviour with no version check anywhere.
+	*/
+	ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
+	ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
+	ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
+	s           = json_get_string(json_find_object_child(row, "tr"));
+	ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
+	              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
+
+	bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
+	bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
+};
+
+// The local player's row among slots [from, to), or -1.
+float(float from, float to) Online_FindMine =
+{
+	local float i;
+	local string s;
+
+	s = getplayerkeyvalue(player_localnum, "*phash");
+	if (s != "")
+		for (i = from; i < to; i = i + 1)
+			if (!strcmp(FS_GuidId(bufstr_get(ob_bplayer, i)), s))
+				return i;
+	return -1;
+};
+
 /*
   Parse one /api/board body.
 
@@ -467,7 +561,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 */
 void(string body) Online_Parse =
 {
-	local float root, rows, counts, row, n, i;
+	local float root, rows, counts, n, i;
 	local string s;
 
 	root = json_parse(body);
@@ -481,6 +575,7 @@ void(string body) Online_Parse =
 		return;
 	}
 
+	Online_Alloc();
 	if (!ob_bname)
 		ob_bname = buf_create();
 	if (!ob_bplayer)
@@ -524,57 +619,16 @@ void(string body) Online_Parse =
 
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
-	if (n > OB_MAXROW)
-		n = OB_MAXROW;          // asked for OB_MAXROW; believe nothing
+	ob_more = (n >= OB_PAGE);   // a full page: there may be more behind it
+	if (n > OB_PAGE)
+		n = OB_PAGE;            // asked for OB_PAGE; believe nothing
 
 	for (i = 0; i < n; i = i + 1)
-	{
-		row = json_get_child_at_index(rows, i);
-
-		ob_rank[i]  = json_get_float(json_find_object_child(row, "r"));
-		ob_ticks[i] = json_get_float(json_find_object_child(row, "ticks"));
-		ob_ms[i]    = json_get_float(json_find_object_child(row, "ms"));
-		ob_flags[i] = json_get_float(json_find_object_child(row, "flags"));
-		/*
-		  HERTZ, as surfd stores it -- NOT seconds per tick.  Kept in the
-		  server's units and converted at the point of use, so there is exactly
-		  one place that knows about the inversion (Online_Status) rather than
-		  a silent convention spread across the file.
-		*/
-		ob_rate[i]  = json_get_float(json_find_object_child(row, "rate"));
-		if (ob_rate[i] <= 0)
-			ob_rate[i] = 1 / PM_TICK;   // a row with no rate: the shipped one
-
-		ob_wrow[i]  = json_get_float(json_find_object_child(row, "when"));
-
-		/*
-		  A row from a surfd older than schema 3 has no `rep` at all, and
-		  json_get_float of a missing child is 0 -- which is exactly the value
-		  that means "nothing to watch".  So an old board degrades to the
-		  pre-build-66 behaviour with no version check anywhere.
-		*/
-		ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
-		ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
-		ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
-		s           = json_get_string(json_find_object_child(row, "tr"));
-		ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
-		              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
-
-		bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
-		bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
-	}
+		Online_RowSet(i, json_get_child_at_index(rows, i));
 	ob_n = n;
 
 	// The local player's own row, for the board's highlight and seek.
-	ob_mine = -1;
-	s = getplayerkeyvalue(player_localnum, "*phash");
-	if (s != "")
-		for (i = 0; i < n; i = i + 1)
-			if (!strcmp(FS_GuidId(bufstr_get(ob_bplayer, i)), s))
-			{
-				ob_mine = i;
-				break;
-			}
+	ob_mine = Online_FindMine(0, n);
 
 	// OK BEFORE the room list absorbs: Players_AbsorbBoard gates on
 	// Online_Describes, which requires OBS_OK (set after it, it absorbed nothing).
@@ -596,6 +650,81 @@ void(string body) Online_Parse =
 	  PF_memfree).  Freeing a child would hand the allocator an interior
 	  pointer.
 	*/
+	json_free(root);
+};
+
+/*
+  Ask for the page after the stored rows.  The board's own state machine is not
+  touched (see PAGING above), so this may run while the list is on screen.
+  Returns TRUE if a request went out.
+*/
+float() Online_FetchMore =
+{
+	local string dir, url;
+
+	if (!ob_more || ob_more_req || ob_state != OBS_OK || !ob_have_zoned)
+		return FALSE;
+	if (ob_n >= OB_MAXROW || cltime < ob_more_wait)
+		return FALSE;
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return FALSE;
+	dir = cvar_string("lobby_dir");
+	if (dir == "" || strcmp(ob_have_map, serverkey("map")))
+		return FALSE;
+
+	ob_more_lim = min(OB_PAGE, OB_MAXROW - ob_n);
+	// Two sprintfs: the ninth argument of one would be dropped (AGENTS.md).
+	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
+	                     dir, uri_escape(ob_have_map), ob_have_track, ob_have_leg,
+	                     uri_escape(ob_have_tier), uri_escape(ob_have_style)),
+	             sprintf("&limit=%g&offset=%g", ob_more_lim, ob_n));
+	ob_more_req = Online_NextReq();
+	ob_more_epoch = ob_epoch;
+	if (!uri_get(url, ob_more_req))
+	{
+		ob_more_req = 0;
+		ob_more_wait = cltime + OB_RETRY_SECS;
+		return FALSE;
+	}
+	ob_more_sent = cltime;
+	return TRUE;
+};
+
+// The reply to Online_FetchMore.  Appends, or drops a page that no longer fits.
+void(float code, string body) Online_ParseMore =
+{
+	local float root, rows, n, i;
+
+	ob_more_req = 0;
+	if (code)
+	{
+		ob_more_wait = cltime + OB_RETRY_SECS;
+		return;
+	}
+	if (ob_more_epoch != ob_epoch || ob_state != OBS_OK)
+		return;                 // another board has landed since it was asked
+	root = json_parse(body);
+	if (!root)
+	{
+		ob_more_wait = cltime + OB_RETRY_SECS;
+		return;
+	}
+	rows = json_find_object_child(root, "rows");
+	n = json_get_length(rows);
+	if (json_get_float(json_find_object_child(root, "offset")) == ob_n)
+	{
+		ob_more = (n >= ob_more_lim && ob_n + n < OB_MAXROW);
+		if (n > ob_more_lim)
+			n = ob_more_lim;
+		for (i = 0; i < n; i = i + 1)
+			Online_RowSet(ob_n + i, json_get_child_at_index(rows, i));
+		if (ob_mine < 0)
+			ob_mine = Online_FindMine(ob_n, ob_n + n);
+		ob_n = ob_n + n;
+		// Not Players_AbsorbBoard: the room list wants the first page's best
+		// times, and it rescans every row held on each call.
+	}
 	json_free(root);
 };
 
@@ -1178,6 +1307,13 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (ZoneDL_Reply(reqid, responsecode, resourcebody))
 		return;
 
+	if (ob_more_req)
+	if (reqid == ob_more_req)
+	{
+		Online_ParseMore(responsecode, resourcebody);
+		return;
+	}
+
 	if (reqid != ob_req)
 		return;                 // a board we have already replaced, or not ours
 
@@ -1248,6 +1384,13 @@ void() Online_Poll =
 		ob_code  = 0;
 		ob_sent  = 0;
 		ob_retry_at = cltime + OB_RETRY_SECS;
+	}
+	// An append gets the same deadline; its rows stay, only the page is owed.
+	if (ob_more_req)
+	if (cltime - ob_more_sent > OB_DEADLINE)
+	{
+		ob_more_req = 0;
+		ob_more_wait = cltime + OB_RETRY_SECS;
 	}
 };
 
@@ -1483,6 +1626,8 @@ void() Online_Status =
 	print(sprintf("  rows %g   ranked %g   community %g   imported %g\n",
 	              ob_n, ob_cnt_ranked, ob_cnt_community, ob_cnt_imported));
 	print(sprintf("  gen %g asked %g  mine %g\n", ob_gen, ob_q_gen, ob_mine));
+	print(sprintf("  more %g  append %g  held %g of %g\n",
+	              ob_more, ob_more_req != 0, ob_n, OB_MAXROW));
 
 	/*
 	  1/rate, AND THE INVERSION IS THE POINT.  Two different units meet here and
@@ -1560,6 +1705,7 @@ void() Online_RegisterCommands =
 	  directly, which is exactly what the click would have handed it.
 	*/
 	registercommand("board_replay");
+	registercommand("board_more");      // the next page, as a scroll to the end asks
 };
 
 float(string cmd) Online_ConsoleCommand =
@@ -1619,6 +1765,13 @@ float(string cmd) Online_ConsoleCommand =
 		}
 		Online_ReplayFetch(stof(argv(1)));
 		Online_ReplayStatus();
+		return TRUE;
+	}
+
+	if (argv(0) == "board_more")
+	{
+		print(sprintf("^5online board:^7 more %s at %g rows\n",
+		              Online_FetchMore() ? "asked" : "not asked", ob_n));
 		return TRUE;
 	}
 
