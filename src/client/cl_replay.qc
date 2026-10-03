@@ -1668,8 +1668,15 @@ void() Rec_ViewSaveEvents =
 	  in the session leaves seq > 1, and the guard would then silently drop the
 	  single event that matters.
 	*/
+	// Patch 477 review round 9: only when the retry restored a run.  Slot 0 was
+	// written before the server answered, and `retry` under the rewind voids
+	// the run first (SV_RetryPoint): an idle restore holding the dead run's
+	// sidecar would hand it to the next idle save as its prefix.
 	if (op == SLOP_RETRY)
-		Rec_ViewLoaded(FS_RETRY_SLOT);
+	{
+		if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
+			Rec_ViewLoaded(FS_RETRY_SLOT);
+	}
 
 	// One event or a hundred, the newest is the only one that can still be
 	// acted on -- each is a rewind to an absolute mark, so the last wins.
@@ -1681,7 +1688,8 @@ void() Rec_ViewSaveEvents =
 		{
 			// Patch 477 review round 8: not for a demoted row (SAVETICKS -1),
 			// which loads idle -- no run for a prefix to continue, and a stale one
-			// at a reused id would splice into a run begun in this frame.
+			// at a reused id would splice into a run begun in this frame.  The
+			// cursor row's ticks: `sl_replay` (sv_cheats) does not move it.
 			if (getstatf(STAT_FS_SAVETICKS) >= 0)
 				Rec_ViewLoaded(id);
 		}

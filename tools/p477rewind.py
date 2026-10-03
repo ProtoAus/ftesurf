@@ -26,8 +26,8 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R18", "R18B",
-            "R19")
+            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R18", "R18C",
+            "R18D", "R18E", "R18B", "R19")
 
 
 def listing(d):
@@ -410,17 +410,55 @@ def main():
     check("R18", ok18, "warped %s, voided %s, still running %s" % (
         "setpos: " in t18, "moved while the rewind held it" in t18, "timer: running on" in t18))
 
-    # R18B: retry under the rewind ends the run first; the restart restores an
-    # idle body.  Premise: the rewind was open on a running run before the retry.
+    # R18C: a typed `rec_watch 0` under the rewind's pin voids the frozen run.
+    st18c = status("R18C")
+    t18c = txt("R18C")
+    tm18c = last(r"timer: (\w+) on ", "R18C")
+    ok18c = (len(st18c) >= 2 and st18c[0].group(1) == "1" and st18c[-1].group(1) == "0"
+             and "a rewind left without a resume" in t18c
+             and tm18c is not None and tm18c.group(1) != "running")
+    check("R18C", ok18c, "on %s then %s, voided %s, timer %s" % (
+        st18c[0].group(1) if st18c else None, st18c[-1].group(1) if st18c else None,
+        "a rewind left without a resume" in t18c, tm18c.group(1) if tm18c else None))
+
+    # R18D: the same release of an idle rewind frees the body; the client closes.
+    st18d = status("R18D")
+    t18d = txt("R18D")
+    ok18d = (len(st18d) >= 2 and st18d[0].group(1) == "1" and st18d[-1].group(1) == "0"
+             and "a rewind left without a resume" not in t18d)
+    check("R18D", ok18d, "on %s then %s, voided %s" % (
+        st18d[0].group(1) if st18d else None, st18d[-1].group(1) if st18d else None,
+        "a rewind left without a resume" in t18d))
+
+    # R18E: a hop chain's tag survives a fast load and rest in the box.  Premise:
+    # the chain tagged (its own dprint-free line and the first read) and the load
+    # raised -- row 1 is R3's rewind row, which says so as "practice from here".
+    hops18e = [m.group(1) for m in (re.search(r"hopped (\d)", s) for s in sec["R18E"]) if m]
+    t18e = txt("R18E")
+    up18e = "it carries speed" in t18e or "rewind: resumed -- practice from here" in t18e
+    ok18e = (len(hops18e) >= 2 and hops18e[0] == "1" and hops18e[-1] == "1"
+             and "tagged a hopped start" in t18e and up18e)
+    check("R18E", ok18e, "chain tagged %s, hopped %s, the load raised %s, after rest %s" % (
+        "tagged a hopped start" in t18e, hops18e[0] if hops18e else None, up18e,
+        hops18e[-1] if hops18e else None))
+
+    # R18B: retry under the rewind ends the run first, and the restart's own line
+    # says it restored no run; an idle save after it writes no .view prefix.
+    # Premise: the rewind was open on a running run before the retry.
     st18b = status("R18B")
     t18b = txt("R18B")
-    tm18b = last(r"timer: (\w+) on ", "R18B")
+    rr18b = last(r"retry -- (.*)$", "R18B")
+    sv18b = last(r"^save (\d+) \(slot (\d+)\)", "R18B")
+    v18b = ("save%s/run.view" % sv18b.group(2)) in views if sv18b else None
     ok18b = (bool(st18b) and st18b[0].group(1) == "1" and st18b[0].group(7) == "0"
              and "retry during a rewind" in t18b
-             and tm18b is not None and tm18b.group(1) != "running")
-    check("R18B", ok18b, "open before %s at the last resume %s, ended %s, after the restart %s" % (
-        st18b[0].group(1) if st18b else None, st18b[0].group(7) if st18b else None,
-        "retry during a rewind" in t18b, tm18b.group(1) if tm18b else None))
+             and rr18b is not None and "back where you were" in rr18b.group(1)
+             and sv18b is not None and v18b is False)
+    check("R18B", ok18b, "open before %s at the last resume %s, ended %s, restart said %r, "
+          "idle save %s run.view %s" % (
+              st18b[0].group(1) if st18b else None, st18b[0].group(7) if st18b else None,
+              "retry during a rewind" in t18b, rr18b.group(1) if rr18b else None,
+              sv18b.group(2) if sv18b else None, v18b))
 
     # R19: the trigger fires on the pinned body, and the body keeps no speed.
     sets19 = len(re.findall(r"basevel: SET ", txt("R19")))

@@ -55,6 +55,7 @@ float  rw_resgen;               // ...on this line (tr_gen: the two slots altern
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
+float  rw_pinseen;              // STAT_FS_PIN seen since the open (it lands a round trip later)
 
 void() Rewind_RegisterCvars =
 {
@@ -165,7 +166,7 @@ float() Rewind_Open =
 	rw_on  = TRUE;
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
-	rw_ack = rw_cd = rw_dir = rw_leave = 0;
+	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)
 		rw_kst[k] = 0;
@@ -354,6 +355,15 @@ void() Rewind_Frame =
 		}
 	}
 	if (getstatf(STAT_FS_TIMERSTATE) != rw_st0)
+	{
+		Rewind_Close();
+		return;
+	}
+	// The server let go of the pin unasked (a respawn, a lobby flip, a typed
+	// `rec_watch 0`): the body is free under the camera (review round 9).
+	if (getstatf(STAT_FS_PIN))
+		rw_pinseen = TRUE;
+	else if (rw_pinseen)
 	{
 		Rewind_Close();
 		return;

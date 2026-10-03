@@ -2040,7 +2040,17 @@ void() Seq_SaveEvents =
 			  contact reading is still about the surface you are actually on.
 			*/
 			Board_ResetContact();
-			Seq_Read(id);
+			// Patch 477 review round 9: a demoted row (SAVETICKS -1) loads idle,
+			// and a rewind row's id is reused, so a snapshot on it is another
+			// save's -- nothing to put back, as Seq_Read with no file.
+			if (getstatf(STAT_FS_SAVETICKS) < 0)
+			{
+				if (seq_mk_id == id)
+					seq_mk_id = -1;
+				Board_Warped();
+			}
+			else
+				Seq_Read(id);
 		}
 	}
 

@@ -1452,8 +1452,11 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 		down = TRUE;
 	if (up)
 	{
+		// Forgiven by coming to rest after the arm -- only a tag this load
+		// raised: a hop chain's is `!r`'s alone (Patch 445; review round 9).
+		if (!e.run_t_hopped)
+			e.run_t_finfgv = TRUE;
 		e.run_t_hopped = TRUE;
-		e.run_t_finfgv = TRUE;      // forgiven by coming to rest after the arm
 	}
 	else if (down)
 	if (!SV_TrigPending(e))
@@ -4031,7 +4034,9 @@ void(entity e, float on) SV_WatchHold =
 {
 	if (!on)
 	{
-		SV_WatchRelease(e);
+		// Patch 477 review round 9: a plain `rec_watch 0` of the rewind's pin,
+		// the console way out, ends its run as `void` does.
+		SV_WatchLetGo(e, "a rewind left without a resume");
 		return;
 	}
 
