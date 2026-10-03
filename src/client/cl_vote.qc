@@ -184,6 +184,21 @@ float(float scan) Vote_Key =
 	return TRUE;
 };
 
+// Patch 477: would Vote_Key take this press now (ignoring its own repeat
+// latch)?  For a mode that swallows every key the vote leaves to others.
+float(float scan) Vote_Takes =
+{
+	local float s, d;
+
+	s = Vote_Slot(scan);
+	if (s < 0)
+		return FALSE;
+	if (!Vote_Capturing())
+		return FALSE;
+	d = s - 10 * floor(s / 10);
+	return d <= vt_n;
+};
+
 void() Vote_Status =
 {
 	local float i;

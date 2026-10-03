@@ -3322,7 +3322,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
                             counterpart, written at close.  Patch 477: in a file
-                            KEPT WHILE FROZEN (a rewind's or replay's pin; an
+                            KEPT WHILE FROZEN (a pin or a save-lock hold; an
                             `abandon`), the counter latched when the freeze took
                             effect -- the last `in` row's end.  `ride` and
                             `warp` the freeze lets through may carry a <mt>

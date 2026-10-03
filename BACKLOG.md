@@ -159,7 +159,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `rec_watch 0` in a packet carrying the usercmd budget (500 ms, sv_user.c:8179)
   with moves that walk out: the stage starts on a frozen tick, short by the
   packet, and SV_StageQualifies has no pin refusal as it has run_st_sp. The
-  rewind's pin voids at the `!r` instead. Fix: latch the thaw at the release
+  rewind's pin voids at a `!r` that moves the body (one that lands where it
+  stood leaves the frozen run, which every way out of the rewind still ends,
+  and a frozen clock posts no stage). Fix: latch the thaw at the release
   command rather than at PostThink, or a run_st_pin refusal beside run_st_sp.
 - **A `retry` or a second keep under one runid overwrites
   `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).

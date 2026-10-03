@@ -387,17 +387,25 @@ def main():
     check("R13C", bool(st13b) and st13b[0].group(2) == "1" and k13c == ["1"],
           "counting %s, ENTER took %s" % (st13b[0].group(2) if st13b else None, k13c))
 
-    # R13D (round 19): `1` in the countdown saves nothing -- the count `vote key`
-    # prints before it and 600 ms after.  Premise: its press reached the chain.
-    sc13d = [m for m in (re.search(r"vote key: scan (49|1) down (\d) took (\d) .* saves (\d+)", s)
+    # R13D (rounds 19-20): `4` in the countdown deletes nothing -- the count
+    # `vote key` prints before it and 600 ms after.  (`1` could not tell: a save
+    # under the countdown's hold is the server's to refuse.)
+    sc13d = [m for m in (re.search(r"vote key: scan (52|1) down (\d) took (\d) .* saves (\d+)", s)
                          for s in sec["R13B"]) if m]
-    first = [m for m in sc13d if m.group(1) == "49" and m.group(2) == "1"]
+    first = [m for m in sc13d if m.group(1) == "52" and m.group(2) == "1"]
     after = [m for m in sc13d if m.group(1) == "1"]
     check("R13D", bool(st13b) and st13b[0].group(2) == "1" and bool(first) and bool(after)
           and first[0].group(4) == after[-1].group(4),
           "counting %s, saves %s then %s" % (st13b[0].group(2) if st13b else None,
                                              first[0].group(4) if first else None,
                                              after[-1].group(4) if after else None))
+
+    # R13E (round 20): in the countdown S bound to `sl_del` is the mode's, not its
+    # bind's (`took 1`).  Premise: the countdown was on (R13B's status).
+    k13e = [m.group(1) for m in (re.search(r"vote key: scan 115 down 1 took (\d)", s)
+                                 for s in sec["R13B"]) if m]
+    check("R13E", bool(st13b) and st13b[0].group(2) == "1" and k13e == ["1"],
+          "counting %s, S took %s" % (st13b[0].group(2) if st13b else None, k13e))
 
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")

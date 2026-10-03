@@ -356,16 +356,17 @@ void() Rewind_Frame =
 {
 	local float dt, rate, k;
 
-	if (!rw_on)
-		return;
-	dt = cltime - rw_last;
-	rw_last = cltime;
 	// Round 17: a release an earlier handler swallowed (the chat draft's) still
-	// lets go, so a scrub stops and the key's next press is a press.
+	// lets go, so a scrub stops and the key's next press is a press -- closed
+	// too (round 20), as Rewind_AfterTook reads rw_kst then.
 	for (k = 0; k < RW_KEYS; k = k + 1)
 		if (rw_kst[k])
 		if (!rw_kdown[k])
 			rw_kst[k] = 0;
+	if (!rw_on)
+		return;
+	dt = cltime - rw_last;
+	rw_last = cltime;
 	if (rw_dir < 0)
 	if (!rw_kdown[3])
 		rw_dir = 0;
@@ -529,7 +530,7 @@ void(vector scr) Rewind_Draw =
 */
 float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 {
-	local float k, st;
+	local float k, st, slk;
 
 	if (!rw_on)
 		return FALSE;
@@ -563,13 +564,22 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	// The save-lock keys (cl_saveloc.qc, by scancode) and any other key bound to
 	// a save-lock or saveloc command do nothing in the mode: browsing or with a
 	// go in flight a load moves the body from under the cursor and its event
-	// reads as the go's answer; in the countdown it took the hold over and was
-	// let go under it (round 19).  A vote taking keys gets its digits, and S,
-	// ENTER and the arrows stay this mode's whatever they are bound to.
+	// reads as the go's answer; in the countdown a load took the hold over and
+	// a delete let it go (round 19).  A vote gets the digits it takes, nothing
+	// else (round 20).  S, ENTER and the arrows stay this mode's whatever they
+	// are bound to -- but in the countdown, where they only wait to be held for
+	// the release, a saveloc bind on one is swallowed too (round 20).
+	slk = (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0);
 	if (k < 0)
-	if ((scanx >= '0' && scanx <= '9') || scanx == 'z'
-	    || strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0)
-		return !Vote_Capturing();
+	if ((scanx >= '0' && scanx <= '9') || scanx == 'z' || slk)
+		return !Vote_Takes(scanx);
+	if (rw_cd)
+	if (slk)
+	if (k >= 0)
+	{
+		rw_kst[k] = 1;
+		return TRUE;
+	}
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait
@@ -642,7 +652,7 @@ float(float evtype, float scanx) Rewind_AfterTook =
 	if (evtype == IE_KEYDOWN)
 	if (rw_krep)
 		return TRUE;
-	if (evtype == IE_KEYUP || !rw_kdown[k])
+	if (evtype == IE_KEYUP)         // a release swallowed elsewhere: Rewind_Frame
 		rw_kst[k] = 0;
 	return FALSE;
 };
