@@ -1525,15 +1525,25 @@ def case_angle_one_frame_rule():
     THIS ARM USED TO ASSERT THE OPPOSITE and passed after the rule existed,
     because it matched one fault STRING rather than the verdict -- the new rule
     words its finding differently.  Assert the verdict.
+
+    SINCE 2026-10-03 THE CUT IS THE TICK'S OWN TURN, floored at ANG_SOLO: an
+    honest frame sits somewhere inside its tick, so on a turning camera it can
+    differ by up to that turn (surf_4am, adjudicated 2026-09-27).  So the lie
+    here is 2 deg -- above the 0.70 deg turn, under the sweep rule's 3x -- and a
+    0.5 deg one, inside the turn, is no longer this rule's to catch.
     """
     L = build(sweep=128, packets=400)
     clean, _ = run(L, view=view_for(L))
     check(not clean, "400 moves and a matching sidecar is still clean")
-    f, _ = run(L, view=view_for(L, rot=0.5))
+    f, _ = run(L, view=view_for(L, rot=2.0))
     check(any("the sidecar is not this recording's" in x for x in f),
-          "a 0.5 deg rotation is caught on the ticks that held one frame")
+          "a 2 deg rotation is caught on the ticks that held one frame")
     if not f:
         print("        NO FAULT")
+    f, _ = run(L, view=view_for(L, rot=0.5))
+    check(not any("the sidecar is not this recording's" in x for x in f),
+          "THE TRADE: 0.5 deg inside a 0.70 deg/move turn reads as frame "
+          "timing, not as another run's sidecar")
 
 
 def case_angle_one_frame_rule_reaches_a_still_camera():
@@ -1709,13 +1719,13 @@ def case_angle_tight_rule_abstains_where_the_epoch_moves():
     abstains on a mechanism read out of the recorder rather than on data.
     """
     L = build(sweep=128, packets=400)
-    good, _ = run(L, view=view_for(L, rot=0.5))
+    good, _ = run(L, view=view_for(L, rot=2.0))
     check(any("the sidecar is not this recording's" in x for x in good),
-          "CONTROL: without a resume the 0.5 deg lie is caught")
+          "CONTROL: without a resume the 2 deg lie is caught")
     R = [l for l in L]
     R.insert(next(i for i, l in enumerate(R) if l.startswith("in ")),
              "resume 20260101-000000-0")
-    f, n = run(R, view=view_for(R, rot=0.5))
+    f, n = run(R, view=view_for(R, rot=2.0))
     check(not any("the sidecar is not this recording's" in x for x in f),
           "a recording carrying a resume is not judged by the tight rule")
     check(any("resume" in x and "tight" in x for x in n),
