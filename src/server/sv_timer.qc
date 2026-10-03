@@ -12828,7 +12828,6 @@ void() SV_VerifyRestart =
 
 // Patch 478: a ghost carried an armed body out of its box (SV_TimerFrame).  An
 // armed timer goes idle; a finished one keeps its time and loses the handover.
-// The box is forgotten, so one the body is in at the unghost arms afresh.
 void(entity e) SV_TimerGhostLeft =
 {
 	if (e.run_t_state == TS_ARMED)
@@ -12839,7 +12838,28 @@ void(entity e) SV_TimerGhostLeft =
 	else
 		sprint(e, PRINT_HIGH, "^3ghost:^7 your finish stands; the next stage will not start -- your body is out of its box as a ghost\n");
 	e.run_t_pendarm = -1;
-	e.run_t_azone = -1;
+};
+
+// Patch 478 review round 6: the unghost (SV_GhostSet) takes the start latch of
+// where the body stands, so it arms no box.  Nothing judged the ghost's travel --
+// a client that keeps steering bhops a box idle, or armed off a load's settled
+// start -- and an arm here zeroed the taint that speed should carry.  An armed or
+// finished body whose point is in another box has left its own (the scan would
+// have moved the arm there).
+void(entity e) SV_TimerGhostEnd =
+{
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	if (zs_az >= 0)
+	{
+		if (e.run_t_state == TS_ARMED)
+		if (zs_az != e.run_t_armzone)
+			SV_TimerGhostLeft(e);
+		if (e.run_t_state == TS_FINISHED)
+		if (e.run_t_pendarm >= 0)
+		if (zs_az != e.run_t_pendarm)
+			SV_TimerGhostLeft(e);
+	}
+	e.run_t_azone = zs_az;
 };
 
 void(entity e) SV_TimerFrame =

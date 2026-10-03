@@ -5,15 +5,17 @@ where it ends).
 
     python tools/p478ghost.py [--exe ftesurf64.exe] [--grade-only] [--timeout 420]
 
-G3-G5 park runs, retry and resume on surf_dune and bhop_eazy, so those maps'
+G3-G8 save, park, retry and resume on surf_dune and bhop_eazy, so those maps'
 data/saves and data/resume folders are PARKED (renamed) for the run and put
-back, each listing checked.  The folders the game writes (OWN) are listed
-(files AND dirs) before; what the run made there is printed and removed, each
-removal checked, and D passes only if they then list as they did.  Anything
-new elsewhere in data/ is another tool's (another session writes there) and
-is reported, not touched.  The progs hashes, what the run left in the parks
-and D's answer are kept in logs/p478ghost.made.json, which --grade-only reads
-(--made and --log name kept copies).  Exit 0 pass, 1 fail, 2 cannot grade.
+back, each listing checked.  The game's folders for those two maps, and
+data/parts (SCOPE), are listed (files AND dirs) before; what the run made there
+is printed and removed, each removal checked, and D passes only if they then
+list as they did.  Anything new elsewhere in data/ is another tool's or
+another run's (another session works there) and is reported, not touched.
+The progs hashes, what the run left in the parks (each save row's state,
+latch and origin too) and D's answer are kept in logs/p478ghost.made.json,
+which --grade-only reads (--made and --log name kept copies).  Exit 0 pass,
+1 fail, 2 cannot grade.
 """
 import argparse
 import hashlib
@@ -29,15 +31,28 @@ LOG = os.path.join(GAME, "logs", "p478ghost.log")
 MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G2", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
+SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PROGS = {}              # the progs the run was graded on, kept in MADE
-PARKS = [os.path.join(DATA, d, m) for m in ("surf_dune", "bhop_eazy") for d in ("saves", "resume")]
-OWN = ("parts", "runs", "evidence", "resume", "saves")
+MAPS = ("surf_dune", "bhop_eazy")
+PARKS = [os.path.join(DATA, d, m) for m in MAPS for d in ("saves", "resume")]
+# Round 6: only what this arm's maps can write.  Another run of the game, on
+# another map, writes the same folders.
+SCOPE = [os.path.join(d, m) for m in MAPS for d in ("runs", "evidence", "resume", "saves")] + ["parts"]
 
 
-def own(rel):
-    return rel.split(os.sep)[0] in OWN
+def scoped(rel):
+    return any(rel == q or rel.startswith(q + os.sep) for q in SCOPE)
+
+
+def row(path):
+    """A save row's state, latch and origin, as its own file says them."""
+    out = {}
+    for s in open(path, errors="replace"):
+        k, _, v = s.strip().partition(" ")
+        if k in ("state", "azone", "armzone", "origin", "velocity"):
+            out[k] = v
+    return out
 
 
 def tree(d):
@@ -59,7 +74,7 @@ def run(exe, timeout):
                                  % os.path.join(os.path.dirname(p), q))
     orig = tree(DATA)
     kept = {p: tree(p) if os.path.exists(p) else set() for p in PARKS}
-    parked, runcopy = [], {}
+    parked, runcopy, rows = [], {}, {}
     try:
         for p in PARKS:
             if os.path.exists(p):
@@ -72,16 +87,19 @@ def run(exe, timeout):
                         "+exec", "cfg/test/p478ghost.cfg"], cwd=ROOT, timeout=timeout)
     finally:
         made = sorted(tree(DATA) - before) if "before" in locals() else []
-        other = [r for k, r in made if not own(r)]
+        other = [r for k, r in made if not scoped(r)]
         if other:
-            print("data/ new outside the game's folders, left alone: %s" % ", ".join(other))
-        made = [(k, r) for k, r in made if own(r)]
+            print("data/ new outside this arm's maps, left alone: %s" % ", ".join(other))
+        made = [(k, r) for k, r in made if scoped(r)]
         for p in PARKS:
             rel = os.path.relpath(p, DATA)
             if os.path.exists(p):
                 # The run's copy, listed before it goes: G4 grades its slot.
                 runcopy[rel] = sorted(r for k, r in tree(p) if k == "f")
                 print("%s as the run left it: %s" % (rel, ", ".join(runcopy[rel]) or "no files"))
+                for r in runcopy[rel]:
+                    if r.endswith("state.txt"):
+                        rows[os.path.join(rel, r)] = row(os.path.join(p, r))
                 shutil.rmtree(p)
             if p in parked:
                 os.rename(p + ".p478park", p)
@@ -102,10 +120,10 @@ def run(exe, timeout):
                 os.rmdir(p)
             if os.path.exists(p):
                 raise SystemExit("could not remove %s" % p)
-    differs = sorted(r for k, r in tree(DATA) ^ orig if own(r))
+    differs = sorted(r for k, r in tree(DATA) ^ orig if scoped(r))
     with open(MADE, "w") as fh:
-        json.dump({"runcopy": runcopy, "differs": differs, "progs": PROGS}, fh)
-    return runcopy, differs
+        json.dump({"runcopy": runcopy, "rows": rows, "differs": differs, "progs": PROGS}, fh)
+    return runcopy, rows, differs
 
 
 def sections(lines):
@@ -135,11 +153,14 @@ def main():
             print("CANNOT GRADE: %s is missing -- the slot listing and D need a run" % a.made)
             return 2
         m = json.load(open(a.made))
-        runcopy, differs = m["runcopy"], m["differs"]
+        runcopy, rows, differs = m["runcopy"], m.get("rows"), m["differs"]
+        if rows is None:
+            print("CANNOT GRADE: %s predates the rows record G8 reads" % a.made)
+            return 2
         PROGS.clear()
         PROGS.update(m.get("progs", {}))
     else:
-        runcopy, differs = run(a.exe, a.timeout)
+        runcopy, rows, differs = run(a.exe, a.timeout)
     for f in ("csprogs.dat", "qwprogs.dat"):
         print("%s %s" % (f, PROGS.get(f, "not recorded")))
     lines = [STAMP.sub("", l.rstrip("\n")) for l in open(a.log, errors="replace")]
@@ -169,6 +190,9 @@ def main():
 
     def ys(name):
         return [float(m.group(1)) for m in (re.search(r"^setpos \S+ (\S+) \S+ ", s) for s in sec[name]) if m]
+
+    def field(name, pat):
+        return [m.group(1) for m in (re.search(pat, s) for s in sec[name]) if m]
 
     # G1.  Premises: armed in the box; the ghost began there (the not-running
     # line); the body was inside the box at the ghost and outside it later,
@@ -206,6 +230,57 @@ def main():
           "after the unghost %s, after +forward %s class %s prime %s" % (
               st2[0] if st2 else None, st2[1] if len(st2) > 1 else None, cl2[-1] if cl2 else None,
               pr2[-1] if pr2 else None))
+
+    # G8.  Round 5.  Premises: the save row is IDLE, latched -1, mid-air in the
+    # box (its own file, z above the standing 15052), and the live scan armed
+    # the body that fell into the box after it.  Verdict: the load of that row
+    # arms nothing -- idle, where the stale -1 armed it before round 5.
+    t8 = "\n".join(sec["G8"])
+    st8 = states("G8")
+    mid = [r for r, v in rows.items()
+           if v.get("state") == "0" and v.get("azone") == "-1"
+           and len(v.get("origin", "").split()) == 3 and float(v["origin"].split()[2]) > 15100]
+    if not (mid and "setpos:" in t8 and len(st8) == 2 and st8[0] == "armed"):
+        print("CANNOT GRADE G8: rows %s, setpos said %s, states %s" % (rows, "setpos:" in t8, st8))
+        return 2
+    check("G8", st8[1] == "idle", "row %s %s; after the box armed live, the load: %s" % (
+        mid[0], rows[mid[0]], st8[1]))
+
+    # G6.  Round 6.  Premises, from the timer under the ghost: ghosted, the
+    # load's practice, and the gate's arm pending (arm zone -1).  Verdict: after
+    # the unghost the practice stands (the unghost armed no box).  Before round
+    # 6 the unghost's scan armed it: practice 0, start ok 0.
+    def ghostload(name):
+        g, pr, az = field(name, r"^\s*ghost (\d)  ghosted"), field(name, r"\bpractice (\d)\b"), \
+            field(name, r"arm zone (-?\d+) ")
+        return g, pr, az
+
+    g6, pr6, az6 = ghostload("G6")
+    ok6 = field("G6", r"start: ok (\d) ")
+    t6 = "\n".join(sec["G6"])
+    if not (len(g6) == 2 and g6[0] == "1" and len(pr6) == 2 and pr6[0] == "1"
+            and len(az6) == 2 and az6[0] == "-1" and "ghost off" in t6):
+        print("CANNOT GRADE G6: ghost %s, practice %s, arm zone %s, ghost off %s" % (
+            g6, pr6, az6, "ghost off" in t6))
+        return 2
+    check("G6", states("G6")[-1:] == ["armed"] and pr6[1] == "1" and g6[1] == "0",
+          "under the ghost practice %s arm zone %s; after the unghost %s practice %s arm zone %s "
+          "start ok %s" % (pr6[0], az6[0], states("G6")[-1:], pr6[1], az6[1], ok6[-1:]))
+
+    # G7.  Round 6.  The same premise under the ghost, then `retry`: its own
+    # line, and after it the practice stands.  Before round 6's retry line the
+    # point held the gate's -1 and the restore armed the box (practice 0).
+    g7, pr7, az7 = ghostload("G7")
+    t7 = "\n".join(sec["G7"] + sec["G7A"])
+    pr7a = field("G7A", r"\bpractice (\d)\b")
+    if not (g7[:1] == ["1"] and pr7[:1] == ["1"] and az7[:1] == ["-1"]
+            and "retry -- back where you were" in t7):
+        print("CANNOT GRADE G7: ghost %s, practice %s, arm zone %s, retried %s" % (
+            g7, pr7, az7, "retry -- back where you were" in t7))
+        return 2
+    check("G7", states("G7A")[-1:] == ["armed"] and pr7a[-1:] == ["1"],
+          "under the ghost practice %s arm zone %s; after the retry %s practice %s" % (
+              pr7[0], az7[0], states("G7A")[-1:], pr7a[-1:]))
 
     # G3.  Premises: the reload parked G3's own run (a few seconds -- the parks
     # hold nothing older), and the phase began.  Verdict, on the door's own

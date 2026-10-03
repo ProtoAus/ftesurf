@@ -14,6 +14,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   ghost STARTING a clock; a cancel the ghost crosses should still void (a
   swept test of the ghosted ticks' own segments, which SV_TimerWarped already
   keeps one tick long).
+- **The server trusts the client to empty a ghost's moves** (pre-existing; Patch
+  478 round-6 integrity review, code-read). The mod defines no
+  SV_RunClientCommand, so only `cl_ghost.qc`'s Ghost_InputFrame sends empty
+  moves; a modified client steers its ghost with the camera detached. Off the
+  clock nothing is judged or recorded -- since 478 r6 the unghost arms no box, so
+  what that buys is the "cheapest prespeed route" below; on the clock pm_verify
+  HOLDs a ghost window whose rows carry input (Patch 373), and the cancel entry
+  above is the gap. Fix: the engine zeroes a ghost's usercmd while
+  STAT_FS_GHOST is set.
+- **A lobby flip inside a resume phase strands the claim file** (pre-existing;
+  Patch 478 round-6 integrity review, PLAUSIBLE -- needs an operator flip
+  mid-countdown). SV_MsClaimLeaf and SV_MsKey change with Lobby_Active(), so
+  after a flip SV_MsApply's read of the claim fails and SV_MsAbort renames a path
+  that does not exist; the real claim stays, and the next park (`ms_posts 0`)
+  wipes its `run.rec` -- posted-stage evidence lost. The body is safe
+  (SV_MsAbortHere). Fix: latch the claim's path at the accept.
 - **A second connection on one guid can wipe a claimed resume slot** (pre-existing;
   Patch 478 round-4 integrity review, PLAUSIBLE -- whether a lobby admits two
   clients on one guid is unchecked). While A1 holds the claim, A2's `!discard`

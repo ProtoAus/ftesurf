@@ -1012,7 +1012,6 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 {
 	local filestream f;
 	local float i, mark;
-	local float az, ez, cz;
 	local string p;
 
 	p = SL_StatePath(id);
@@ -1255,25 +1254,13 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  next tick sees the box as newly entered and fires the split again -- which
 	  is the difference between "exactly like it was" and "nearly".
 	*/
-	// Patch 478: off the clock under a ghost or in a resume phase no zone test
-	// runs, and the latches are stale -- -1 after the accept's void or a ghost's
-	// disarm, with the body in a box -- so they are where the body stands.  A
-	// retry restores them as written (SV_SaveLocLoad rescans its own loads).
-	az = e.run_t_azone;
-	ez = e.run_t_evzone;
-	cz = e.run_t_cpzone;
-	if (e.run_t_state != TS_RUNNING)
-	if (e.rec_gh_on || e.run_ms_phase)
-	{
-		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
-		az = zs_az;
-		ez = zs_ez;
-		cz = zs_cp;
-	}
-	fputs(f, sprintf("azone %d\n", az));
-	fputs(f, sprintf("evzone %d\n", ez));
+	// Patch 478: stale under a ghost, in a resume phase or behind a setpos in the
+	// same packet -- SV_SaveLocLoad rescans its loads off the clock, and a retry
+	// turns the ghost off before it writes (SV_RetryPoint).
+	fputs(f, sprintf("azone %d\n", e.run_t_azone));
+	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
 	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
-	fputs(f, sprintf("cpzone %d\n", cz));
+	fputs(f, sprintf("cpzone %d\n", e.run_t_cpzone));
 	// Patch 436: written, and the loader drops it -- see the `pendarm` key in
 	// SV_SaveApplyState.  Keeping the line costs nothing and keeps the file's
 	// shape stable for an older build that still restores it.
@@ -3677,10 +3664,10 @@ void(entity e, float n) SV_SaveLocLoad =
 	  polarity is the reverse of SV_MapForeign's.
 	*/
 	// Patch 478: a load off the clock takes the latches of where it put the body,
-	// not the file's.  A row written under a ghost or in a resume phase -- by
-	// this build or an older one -- held -1 with its body in a box, and loading
-	// it armed the box at rest, mid-air, with no grounded test.  The gate below
-	// still grants the one arm a load may take: slow and grounded, in a start box.
+	// not the file's.  A row written under a ghost, in a resume phase or behind a
+	// setpos in the same packet held -1 with its body in a box, and loading it
+	// armed the box at rest, mid-air, with no grounded test.  The gate below still
+	// grants the one arm a load may take: slow and grounded, in a start box.
 	if (e.run_t_state != TS_RUNNING)
 	{
 		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
@@ -4247,6 +4234,7 @@ void(entity e, float on) SV_GhostSet =
 		SV_TimerGhostMark(e, FALSE);
 
 		sprint(e, PRINT_HIGH, "^5ghost off^7 -- back in your body\n");
+		SV_TimerGhostEnd(e);            // Patch 478 review round 6: arms no box
 		return;
 	}
 
@@ -5408,6 +5396,10 @@ void(entity e) SV_RetryPoint =
 	// frozen, the restart thawed it (SV_WatchLetGo).  A replay's is as before.
 	if (e.rw_pin)
 		SV_WatchLetGo(e, "retry during a rewind");
+	// Patch 478 review round 6: and the ghost, as the park does, so the point
+	// holds the unghost's latches (SV_TimerGhostEnd); the restart ends it anyway.
+	if (e.rec_gh_on)
+		SV_GhostSet(e, FALSE);
 
 	// Patch 333: the retry point is a slot like any other, and in a lobby its
 	// folder lives under the player's own root -- same root a load would spell.
