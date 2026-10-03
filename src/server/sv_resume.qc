@@ -500,6 +500,14 @@ void(entity e) SV_MsAccept =
 		sprint(e, PRINT_HIGH, "^5resume:^7 stop spectating first\n");
 		return;
 	}
+	// Patch 478: a retry's restart skips SV_MsAbort (SV_MsShutdown), so a claim
+	// taken now is never given back, the slot is never offered again, and the
+	// next park wipes it -- with a run.rec that may back posted stages.
+	if (rec_retry_sent)
+	{
+		sprint(e, PRINT_HIGH, "^5resume:^7 the map is restarting for a retry\n");
+		return;
+	}
 	SV_MsAdopt(e);
 	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 	{
@@ -872,9 +880,14 @@ void(entity e) SV_MsAbort =
 	frename(claim, SV_MsPath(e, "ms.txt"));
 	SV_WatchRelease(e);                 // Patch 477: a pin taken in the resume phase
 	// Patch 478: the body stays at the park point, so no arm survives the phase
-	// (SV_MsBusy keeps zone moves out of it; this is the backstop).
+	// (SV_MsBusy keeps zone moves out of it; this is the backstop) -- and the
+	// latches are the park point's, as after a demoted load (Patch 428 r3): a
+	// box the body stands in there arms nothing until it is left and entered.
 	SV_TimerIdle(e);
-	e.run_t_azone = -1;
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	e.run_t_azone  = zs_az;
+	e.run_t_evzone = zs_ez;
+	e.run_t_cpzone = zs_cp;
 	e.movetype = MOVETYPE_WALK;
 	e.run_ms_phase = MS_NONE;
 	e.run_ms_offer = FALSE;

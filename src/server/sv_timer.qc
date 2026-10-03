@@ -12832,10 +12832,14 @@ void() SV_VerifyRestart =
 void(entity e) SV_TimerGhostLeft =
 {
 	if (e.run_t_state == TS_ARMED)
+	{
 		SV_TimerIdle(e);
+		sprint(e, PRINT_HIGH, "^3ghost:^7 no run -- your body is out of its start box as a ghost; !r to go back\n");
+	}
+	else
+		sprint(e, PRINT_HIGH, "^3ghost:^7 your finish stands; the next stage will not start -- your body is out of its box as a ghost\n");
 	e.run_t_pendarm = -1;
 	e.run_t_azone = -1;
-	sprint(e, PRINT_HIGH, "^3ghost:^7 no run -- your body is out of its start box as a ghost; !r to go back\n");
 };
 
 void(entity e) SV_TimerFrame =
@@ -13009,8 +13013,9 @@ void(entity e) SV_TimerFrame =
 				e.run_st_armed = FALSE;
 				e.run_st_hold = FALSE;
 				// Not qualifying either: its base is the boundary, a different
-				// measurement from a box exit.  SV_StageOpen reopens it -- a fail
-				// back in the box, or `!r`.
+				// measurement from a box exit (the ramp latch is the lever, so its
+				// close reports a ramp).  SV_StageOpen reopens it -- a fail back in
+				// the box, or `!r`.
 				e.run_st_jump = FALSE;
 				e.run_st_ramp = TRUE;
 				sprint(e, PRINT_HIGH, sprintf("^3ghost:^7 your body left the stage's box as a ghost -- "

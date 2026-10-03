@@ -5337,8 +5337,9 @@ void(entity e) SV_RetryPoint =
 		return;
 	if (rec_retry_sent)
 		return;
-	// Patch 478: as a save, a load and the ghost -- written in the phase, the
-	// point held whatever it found there (SV_MsBusy), and skipped SV_MsAbort.
+	// Patch 478: as a load, the ghost and the rewind's go -- written in the
+	// phase, the point held whatever it found there (SV_MsBusy), and the
+	// restart skipped SV_MsAbort.
 	if (e.run_ms_phase)
 	{
 		sprint(e, PRINT_HIGH, "^3retry: wait for the resume to finish\n");

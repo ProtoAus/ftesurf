@@ -25,6 +25,7 @@ STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("G1", "G2", "G3", "G3P", "G3A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PARKS = [os.path.join(DATA, "saves", "surf_dune"), os.path.join(DATA, "resume", "surf_dune")]
+RUNCOPY = {}            # a park's path -> the files the run left there
 
 
 def tree(d):
@@ -38,8 +39,12 @@ def tree(d):
 
 def run(exe, timeout):
     for p in PARKS:
-        if os.path.exists(p + ".p478park"):
-            raise SystemExit("a previous park is still there: %s -- restore it first" % p)
+        # Ours, or another harness's (p477rewind parks the saves as .p477park):
+        # two drivers restoring one path would delete each other's restores.
+        for q in os.listdir(os.path.dirname(p)) if os.path.isdir(os.path.dirname(p)) else []:
+            if q.startswith(os.path.basename(p) + ".") and q.endswith("park"):
+                raise SystemExit("a park is already there: %s -- another harness, or restore it first"
+                                 % os.path.join(os.path.dirname(p), q))
     orig = tree(DATA)
     had = {p: os.path.exists(p) for p in PARKS}
     kept = {p: tree(p) if had[p] else set() for p in PARKS}
@@ -56,6 +61,10 @@ def run(exe, timeout):
         made = sorted(tree(DATA) - before)
         for p in PARKS:
             if os.path.exists(p):
+                # The run's copy, listed before it goes: G3 grades its slot.
+                RUNCOPY[os.path.relpath(p, DATA)] = sorted(r for k, r in tree(p) if k == "f")
+                print("%s as the run left it: %s" % (os.path.relpath(p, DATA),
+                      ", ".join(RUNCOPY[os.path.relpath(p, DATA)]) or "no files"))
                 shutil.rmtree(p)
             if had[p]:
                 os.rename(p + ".p478park", p)
@@ -156,6 +165,9 @@ def main():
     # the start: `stage fill: prime 1`).
     st2, cl2 = states("G2"), classes("G2")
     t2 = "\n".join(sec["G2"])
+    if not ("ghost -- `ghost` again to go back" in t2 and "ghost off" in t2):
+        print("CANNOT GRADE G2: its ghost on/off lines are missing")
+        return 2
     pr2 = [m.group(1) for m in (re.search(r"stage fill: prime (\d)", s) for s in sec["G2"]) if m]
     check("G2", len(st2) == 2 and st2[0] == "armed" and st2[1] == "running"
           and bool(cl2) and cl2[-1] == "clean" and "as a ghost" not in t2
@@ -173,17 +185,25 @@ def main():
     if not (pk3 and int(pk3.group(1)) == 0 and int(pk3.group(2)) < 30):
         print("CANNOT GRADE G3: no park of G3's own run (%s)" % (pk3.group(0) if pk3 else None))
         return 2
-    st3, cl3 = states("G3A"), classes("G3A")
+    st3, cl3, y3 = states("G3A"), classes("G3A"), ys("G3A")
+    # The slot as the run left it: the door's retry skipped SV_MsAbort, so its
+    # claim stood with no ms.txt beside it -- never offered again.  A resume
+    # that applied leaves neither.
+    slot = RUNCOPY.get(os.path.join("resume", "surf_dune"), [])
+    stranded = (any(f.endswith("ms.claim.txt") for f in slot)
+                and not any(f.endswith("ms.txt") for f in slot))
     ok3 = ("resume: wait for the resume to finish" in t3
            and "retry: wait for the resume to finish" in t3
            and "start of the map" not in t3 and "retry -- back where you were" not in t3
-           and "resume: run resumed at" in t3)
+           and "resume: run resumed at" in t3 and not stranded)
     check("G3", ok3, "park %s; !r refused %s, retry refused %s, warped %s, retried %s, "
-          "resumed %s; after: %s class %s" % (
+          "resumed %s, claim stranded %s; after: %s class %s at y %s" % (
               pk3.group(0).split(" at ")[-1], "resume: wait for the resume to finish" in t3,
               "retry: wait for the resume to finish" in t3, "start of the map" in t3,
               "retry -- back where you were" in t3, "resume: run resumed at" in t3,
-              st3[-1] if st3 else None, cl3[-1] if cl3 else None))
+              stranded if not a.grade_only else "not read",
+              st3[-1] if st3 else None, cl3[-1] if cl3 else None,
+              "%.0f" % y3[-1] if y3 else None))
 
     check("D", not new, "data/ lists as it did" if not new else "data/ differs: %s" % ", ".join(new))
     print("%d check(s) failed" % len(fails))
