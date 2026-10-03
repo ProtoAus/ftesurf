@@ -133,6 +133,10 @@ void() CSQC_WorldLoaded =
 	local string rmap, rname;
 	local float  rf;
 
+	// Build 90: the trail's two slots may still hold the LAST map's run -- the
+	// arenas outlive a map change and only the CSQC globals are zeroed.
+	Trail_Reset();
+
 	Portal_LoadFromWorld();
 
 	// The sprite entities, read from the same lump and for the same reason the
@@ -282,6 +286,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	HUD_RegisterCvars();
 	Zone_RegisterCvars();
 	Line_RegisterCvars();       // Patch 449: the run line's marks and window
+	Trail_RegisterCvars();      // Build 90: the live one, which uses those cvars too
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
 	Gfx_RegisterCvars();
@@ -1386,6 +1391,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	*/
 	Online_MigrateFrame();
 	Watch_Frame();
+	// Build 90: the live line's sampler.  Before clearscene with the other
+	// readers, and it takes at most one sample per command frame.
+	Trail_Frame();
 
 	clearscene();
 
@@ -1523,6 +1531,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
 	Scores_LinesPin();              // ...and their projection (Watch_Path pins only in mode 2)
+	// Build 90: and the live trail's, which cannot lean on the line above --
+	// Scores_LinesPin returns early when the board lines are off.
+	Trail_Pin();
 
 	renderscene();
 
@@ -1618,6 +1629,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (rec_wt_on)
 			Watch_Path2D();
 		Scores_LinesDraw();     // Patch 433: the board's ticked lines
+		Trail_Draw();           // Build 90: and your own run, as it happens
 		// Patch 451: the marks' labels, queued by both passes above.  Text drawn
 		// inside them does not appear at all -- they are a stream of deferred
 		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
@@ -1893,6 +1905,9 @@ float(string cmd) CSQC_ConsoleCommand =
 	// +sl_hold pair, as bindable names.  It answers FALSE for anything else, so
 	// this may sit in front of the rest of the chain.
 	if (SaveLoc_Console())
+		return TRUE;
+
+	if (Trail_Console())        // Build 90: `trail`
 		return TRUE;
 
 	// BUILD 14: the renderer settings, in words (cl_gfx.qc).

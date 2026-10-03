@@ -23,7 +23,10 @@
 ===========================================================================
 */
 
-#define LN_SLOTS   9
+// 0 the replay, 1..8 the board's, 9 and 10 the live trail's pair (cl_trail.qc,
+// build 90 -- two so a finished run can fade while the next one builds over it).
+// 3.25 MiB a slot at LN_CAP, counted off Line_Alloc's own arenas.
+#define LN_SLOTS   11
 #define LN_CAP     65536        // samples a slot holds (16 min at 66 Hz); past it, halved
 #define LN_CHUNK   32
 #define LN_GROUP   16           // chunks a group sphere covers

@@ -107,6 +107,13 @@ client/cl_lines.qc
 // AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,
 // which calls into it from CSQC_UpdateView and CSQC_InputEvent.
 client/cl_watch.qc
+// Build 90: the live run line, slots 9 and 10.  AFTER cl_lines.qc (it feeds
+// Line_Point) and AFTER cl_watch.qc, whose Watch_WishOf it uses to build the
+// same aux vector the replay's own scan builds -- one speller for the wish
+// direction, so the live line and a replay of it grade air control identically.
+// Before cl_main.qc, which calls it from CSQC_Init and four points of
+// CSQC_UpdateView.
+client/cl_trail.qc
 // BEFORE cl_scores.qc, which is the only thing that will read it -- the ONLINE
 // half of the leaderboard: one GET against surfd's /api/board, parsed and kept.
 //
