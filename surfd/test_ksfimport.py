@@ -10,6 +10,7 @@ was written.  surfd is imported against a throwaway home.
 """
 
 import argparse
+import http.client
 import io
 import json
 import os
@@ -35,6 +36,8 @@ HOME = tempfile.mkdtemp(prefix="surfd-ksf-")
 os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, "test.db"))
 import surfd as S        # noqa: E402
 import ksfimport as K    # noqa: E402
+
+REAL_FETCH = K.fetch     # the cases below swap in FakeKSF
 
 STAGED = {"isLinear": False, "cp_count": 2, "b_count": 1}
 LINEAR = {"isLinear": True, "cp_count": 4, "b_count": 0}
@@ -246,10 +249,38 @@ def case_refusal():
           os.path.exists(os.path.join(cache, "maps", "surf_r.json")), False)
 
 
+def case_no_answer():
+    """The real fetch, with urlopen failing the ways 2026-10-03's run saw."""
+    import urllib.request
+    real = urllib.request.urlopen
+    for label, exc in (("a read that timed out", TimeoutError("The read operation timed out")),
+                       ("a connection dropped mid-reply",
+                        http.client.RemoteDisconnected("Remote end closed connection")),
+                       ("a reset", ConnectionResetError(104, "Connection reset by peer"))):
+        calls = []
+
+        def fail(req, timeout=None, exc=exc):
+            calls.append(req.full_url)
+            raise exc
+
+        urllib.request.urlopen = fail
+        try:
+            REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
+            got = "returned"
+        except K.Refused:
+            got = "refused"
+        except Exception as e:      # the crash this case exists for
+            got = type(e).__name__
+        finally:
+            urllib.request.urlopen = real
+        check("%s stops as a refusal" % label, got, "refused")
+        check("...after one attempt", len(calls), 1)
+
+
 def main():
     for case in (case_mapping, case_exact_name, case_paging_and_depth,
                  case_shallowest_first_and_cursor, case_linear_asks_no_stages,
-                 case_write_and_filter, case_refusal):
+                 case_write_and_filter, case_refusal, case_no_answer):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d failed" % len(FAILED))

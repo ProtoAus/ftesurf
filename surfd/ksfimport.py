@@ -77,6 +77,7 @@ cannot even load are dropped rather than stored against a name nobody can open.
 """
 import argparse
 import heapq
+import http.client
 import io
 import json
 import os
@@ -235,6 +236,11 @@ def fetch(url):
         raise Refused("HTTP %d" % e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
+    # No answer at all: a read past KSF_TIMEOUT, a connection dropped mid-reply.
+    # Not a refusal, but stopped like one -- 2026-10-03's run died here with a
+    # traceback after 171 map lookups.
+    except (OSError, http.client.HTTPException) as e:
+        raise Refused("no answer: %s" % (str(e) or type(e).__name__))
 
 
 def records(sid, cache_dir, paced):
