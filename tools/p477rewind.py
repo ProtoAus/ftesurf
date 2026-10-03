@@ -26,7 +26,8 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R18", "R19")
+            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R18", "R18B",
+            "R19")
 
 
 def listing(d):
@@ -54,6 +55,8 @@ def run(exe, timeout):
                 made[rel] = open(os.path.join(SAVES, rel), errors="replace").read()
             elif rel.endswith("run.view"):
                 made.setdefault("_views", []).append(rel)
+            elif rel.endswith("seq.txt"):
+                made.setdefault("_seqs", []).append(rel)
     finally:
         if os.path.exists(SAVES):
             shutil.rmtree(SAVES)
@@ -64,8 +67,9 @@ def run(exe, timeout):
               % ("yes" if after == before else "NO -- LISTINGS DIFFER", len(after), len(before)))
         if after != before:
             raise SystemExit("the saves tree did not come back as it was")
-    print("saves the run made: %s" % (", ".join(sorted(k for k in made if k != "_views")) or "none"))
+    print("saves the run made: %s" % (", ".join(sorted(k for k in made if not k.startswith("_"))) or "none"))
     print("view prefixes: %s" % (", ".join(made.get("_views", [])) or "none"))
+    print("segment columns: %s" % (", ".join(made.get("_seqs", [])) or "none"))
     with open(MADE, "w") as fh:
         json.dump(made, fh)
     return made
@@ -359,15 +363,16 @@ def main():
     check("R14", downs14 == 2 and saves14 == 1,
           "presses taken %d, saves %d" % (downs14, saves14))
 
-    # R13B: the warp took the ring, so the kept line's head cannot be resumed.
+    # R13B: a warp that started no run kept the ring, so the kept line's head
+    # resumes (counting), and the countdown then ends.
     st13b = status("R13B")
     t13b = txt("R13B")
-    ok13b = (len(st13b) >= 2 and st13b[0].group(1) == "1" and st13b[0].group(2) == "0"
-             and "nothing kept at that time" in t13b and "rewind: resumed" not in t13b
+    ok13b = (len(st13b) >= 2 and st13b[0].group(1) == "1" and st13b[0].group(2) == "1"
+             and "rewind: resumed" in t13b and "nothing kept at that time" not in t13b
              and st13b[-1].group(1) == "0")
-    check("R13B", ok13b, "after the go: %s; refused %s, resumed %s, closed after %s" % (
-        st13b[0].group(0) if st13b else None, "nothing kept at that time" in t13b,
-        "rewind: resumed" in t13b, st13b[-1].group(1) if st13b else None))
+    check("R13B", ok13b, "after the go: %s; resumed %s, refused %s, after the count on %s" % (
+        st13b[0].group(0) if st13b else None, "rewind: resumed" in t13b,
+        "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None))
 
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
@@ -385,15 +390,18 @@ def main():
     check("R16", ok16, "refused %s, on %s" % ("close the replay or rewind first" in t16,
                                               st16[-1].group(1) if st16 else None))
 
-    # R17: the S save's slot has no .view prefix; R12's plain running save's does
-    # (the premise: this client writes prefixes in this arm at all).
+    # R17: the S save's slot has no .view prefix and no segment column; R12's
+    # plain running save has both (the premise: this client writes them here).
     views = set(made.get("_views", []))
+    seqs = set(made.get("_seqs", []))
     sv17, _ = answered("R17", 0)
     v17 = ("save%s/run.view" % sv17.group(2)) in views if sv17 else None
     v12 = ("save%s/run.view" % sv12.group(2)) in views if sv12 else None
-    check("R17", sv17 is not None and v17 is False and v12 is True,
-          "S save %s, its run.view %s; R12's save %s, its run.view %s" % (
-              sv17.group(2) if sv17 else None, v17, sv12.group(2) if sv12 else None, v12))
+    q17 = ("save%s/seq.txt" % sv17.group(2)) in seqs if sv17 else None
+    q12 = ("save%s/seq.txt" % sv12.group(2)) in seqs if sv12 else None
+    check("R17", sv17 is not None and v17 is False and v12 is True and q17 is False and q12 is True,
+          "S save %s, its run.view %s seq.txt %s; R12's save %s, its run.view %s seq.txt %s" % (
+              sv17.group(2) if sv17 else None, v17, q17, sv12.group(2) if sv12 else None, v12, q12))
 
     # R18: a replay's pin keeps its run through a warp.  Premise: the setpos landed.
     t18 = txt("R18")
@@ -401,6 +409,18 @@ def main():
             and "timer: running on" in t18)
     check("R18", ok18, "warped %s, voided %s, still running %s" % (
         "setpos: " in t18, "moved while the rewind held it" in t18, "timer: running on" in t18))
+
+    # R18B: retry under the rewind ends the run first; the restart restores an
+    # idle body.  Premise: the rewind was open on a running run before the retry.
+    st18b = status("R18B")
+    t18b = txt("R18B")
+    tm18b = last(r"timer: (\w+) on ", "R18B")
+    ok18b = (bool(st18b) and st18b[0].group(1) == "1" and st18b[0].group(7) == "0"
+             and "retry during a rewind" in t18b
+             and tm18b is not None and tm18b.group(1) != "running")
+    check("R18B", ok18b, "open before %s at the last resume %s, ended %s, after the restart %s" % (
+        st18b[0].group(1) if st18b else None, st18b[0].group(7) if st18b else None,
+        "retry during a rewind" in t18b, tm18b.group(1) if tm18b else None))
 
     # R19: the trigger fires on the pinned body, and the body keeps no speed.
     sets19 = len(re.findall(r"basevel: SET ", txt("R19")))

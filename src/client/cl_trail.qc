@@ -81,6 +81,7 @@ float  tr_tick;                 // the server's pm_ticrate, read per run
 float  tr_lastt;                // the run clock of the last sample, seconds
 vector tr_lastp;                // ...and where it was
 float  tr_settle;               // cltime a clock-back restart may still drop a stale head
+float  tr_gen;                  // Patch 477: lines opened, so a line is told from one two runs back
 // Patch 477: the rewind cursor (cl_rewind.qc sets these).  While it is up the
 // live line is drawn bright to it and dim past it, and no sample is taken.
 float  tr_cur_on;
@@ -145,6 +146,7 @@ void() Trail_Open =
 	Line_Begin(tr_live);
 	Line_Tick(tr_live, tr_tick);
 	tr_settle = cltime + TR_SETTLE;     // Patch 477: a load can start a line from idle too
+	tr_gen    = tr_gen + 1;
 	tr_on     = TRUE;
 	tr_nsamp  = 0;
 	tr_builds = 0;

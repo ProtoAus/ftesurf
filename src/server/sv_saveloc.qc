@@ -571,6 +571,7 @@ void(entity e, float op, float id) SV_SaveLocEvent;
 // Build 24, and forward-declared for the same reason: a map reset has to let go
 // of a watch too, and it happens three hundred lines above the definition.
 void(entity e) SV_WatchRelease;
+void(entity e, string why) SV_WatchLetGo;
 
 // Patch 333: the block machinery, forward-declared because the gate and the
 // scan sit below every consumer that needs to name them.
@@ -2605,7 +2606,7 @@ void(entity e) SV_SaveLocSync =
 		while ((p = find(p, classname, "player")))
 		{
 			SV_SaveLocRelease(p);
-			SV_WatchRelease(p);
+			SV_WatchLetGo(p, "the lobby switched during a rewind");
 			p.rw_goid = 0;              // Patch 477: its row is in the other folder
 			if (p.rec_sl_delall)        // Patch 428: its rows are gone with the block
 			{
@@ -3996,14 +3997,25 @@ void(entity e, string why) SV_WatchVoid =
 		SV_TimerVoid(e, why);
 };
 
+// Patch 477 review round 8: a release the rewind did not ask for (a lobby flip,
+// a Multi-Session park, `retry`) ends its frozen run first, as its own way out
+// does -- a thaw would carry the run past a freeze the .rec never records.
+void(entity e, string why) SV_WatchLetGo =
+{
+	if (e.rw_pin)
+		SV_WatchVoid(e, why);
+	SV_WatchRelease(e);
+};
+
 /*
-  Patch 477 review round 7: after a warp command, never before it -- the leg is
-  decided while the run exists (SV_TimerChatLeg) and a refused warp, which
+  Patch 477 review rounds 7-8: after a warp command, never before it -- the leg
+  is decided while the run exists (SV_TimerChatLeg) and a refused warp, which
   moves nothing, costs nothing.  Under the rewind's pin a warp that moved the
-  body ends its browse: a run still on the clock (a stage restart keeps it) is
-  voided, and the ring goes, so no resume can put the body back where the warp
-  took it from -- a warp out of a start box restarts the run within one packet,
-  and the client sees no state change.  A replay's pin is as it was before 477.
+  body voids a run still on the clock (a stage restart keeps it) and marks the
+  ring's run over: a warp out of a start box starts a new run within one packet,
+  unseen by the client, and SV_RewindSample's start edge then wipes the ring
+  before a resume could put the body back at the old head.  A warp that starts
+  no run keeps the ring, as a finish does.  A replay's pin is as before 477.
 */
 void(entity e, vector was) SV_RewindWarped =
 {
@@ -4011,7 +4023,7 @@ void(entity e, vector was) SV_RewindWarped =
 		return;
 	if (e.origin == was)
 		return;
-	SV_RewindReset(e);
+	e.rw_st = TS_IDLE;
 	SV_WatchVoid(e, "moved while the rewind held it");
 };
 
@@ -5279,6 +5291,10 @@ void(entity e) SV_RetryPoint =
 	*/
 	SV_SpecRelease(e, "retry");         // Patch 382: before the state is written
 	SV_SaveLocRelease(e);
+	// Patch 477 review round 8: and the rewind's pin, its run ended -- written
+	// frozen, the restart thawed it (SV_WatchLetGo).  A replay's is as before.
+	if (e.rw_pin)
+		SV_WatchLetGo(e, "retry during a rewind");
 
 	// Patch 333: the retry point is a slot like any other, and in a lobby its
 	// folder lives under the player's own root -- same root a load would spell.

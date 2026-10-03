@@ -1426,13 +1426,13 @@ void(float id) Rec_ViewSaved =
 
 	rec_rp_mark[id] = 0;
 
-	// Patch 477 review round 7: a rewind's row (SL_DEMOTED, saved off the
+	// Patch 477 review rounds 7-8: a rewind's row (SL_DEMOTED, saved off the
 	// server's ring) is no prefix of the sidecar held here, which Rec_ViewTrim
-	// would keep whole -- a later load could splice the browsed run's camera
-	// into a new one.  A file from an earlier save in this slot goes too.
+	// would keep whole.  Nothing is removed either: this path can be another
+	// save's (a remote server's ids on this disk, a spectator's tracked player),
+	// and the row's own loads skip the sidecar (Rec_ViewSaveEvents).
 	if (getstatf(STAT_FS_SAVETICKS) < 0)
 	{
-		fremove(Rec_SavePath(id));
 		dprint(sprintf("replay: no view prefix for %g (a rewind row)\n", id));
 		return;
 	}
@@ -1678,7 +1678,13 @@ void() Rec_ViewSaveEvents =
 		if (op == SLOP_SAVED)
 			Rec_ViewSaved(id);
 		else if (op == SLOP_LOADED)
-			Rec_ViewLoaded(id);
+		{
+			// Patch 477 review round 8: not for a demoted row (SAVETICKS -1),
+			// which loads idle -- no run for a prefix to continue, and a stale one
+			// at a reused id would splice into a run begun in this frame.
+			if (getstatf(STAT_FS_SAVETICKS) >= 0)
+				Rec_ViewLoaded(id);
+		}
 	}
 
 	/*

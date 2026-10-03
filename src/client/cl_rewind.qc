@@ -51,7 +51,7 @@ float  rw_leave;                // it is the way out of a run on the clock (Rewi
 float  rw_cd;                   // cltime the countdown ends; 0 = not counting
 float  rw_askat;                // cltime a clean run's first press asked; 0 = none
 float  rw_resi;                 // the last resume's cursor, -1 none...
-float  rw_resslot;              // ...on this slot...
+float  rw_resgen;               // ...on this line (tr_gen: the two slots alternate)...
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
@@ -178,7 +178,7 @@ float() Rewind_Open =
 	rw_headp = ln_pos[tr_live * LN_CAP + rw_i];
 	rw_atres = FALSE;
 	if (rw_resi >= 0)               // ...unless that line is the one last resumed from
-	if (tr_live == rw_resslot)
+	if (tr_gen == rw_resgen)
 	if (tr_nsamp == rw_resn)
 	if (rw_resi < ln_n[tr_live])
 	{
@@ -188,7 +188,7 @@ float() Rewind_Open =
 	tr_cur_on = TRUE;
 	Rewind_Cursor();
 	PVS_Forget();
-	localcmd("cmd rec_watch 1 rw\n");   // rw: a warp under it ends the browse (SV_RewindWarped)
+	localcmd("cmd rec_watch 1 rw\n");   // rw: a warp under it ends the frozen run (SV_RewindWarped)
 	return TRUE;
 };
 
@@ -302,7 +302,7 @@ void() Rewind_Answer =
 	rec_sl_holdrep   = FALSE;
 	rec_sl_holdext   = TRUE;
 	rw_resi    = rw_goi;
-	rw_resslot = tr_live;
+	rw_resgen  = tr_gen;
 	rw_resn    = tr_nsamp;
 	rw_ack = 0;
 	tr_cur_on = FALSE;

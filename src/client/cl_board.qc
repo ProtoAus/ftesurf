@@ -2017,8 +2017,16 @@ void() Seq_SaveEvents =
 		Board_ResetContact();
 	else if (seq_slseq != 0 || seq == 1)
 	{
+		// Patch 477 review round 8: a rewind's row (SAVETICKS -1) is the
+		// cursor's moment, not the pinned head this column describes -- no
+		// snapshot or file for it, and no stale snapshot left on its id.
 		if (op == SLOP_SAVED)
-			Seq_Write(id);
+		{
+			if (getstatf(STAT_FS_SAVETICKS) >= 0)
+				Seq_Write(id);
+			else if (seq_mk_id == id)
+				seq_mk_id = -1;
+		}
 		else if (op == SLOP_LOADED)
 		{
 			/*

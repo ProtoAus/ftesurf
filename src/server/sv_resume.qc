@@ -326,6 +326,13 @@ void(entity e, string why) SV_MsPark =
 		fclose(f);
 		return;
 	}
+	// Patch 477 review round 8: a run frozen under the rewind ends instead of
+	// parking (SV_WatchLetGo).
+	if (e.rw_pin)
+	{
+		SV_WatchLetGo(e, "a rewind is not parked");
+		return;
+	}
 
 	SV_SaveLocRelease(e);
 	SV_WatchRelease(e);                 // Patch 477: or its freeze outlives the session
