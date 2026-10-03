@@ -192,8 +192,9 @@ float() Rewind_Open =
 	Rewind_Cursor();
 	PVS_Forget();
 	// rw: a warp under it ends the frozen run (SV_RewindWarped); the serial
-	// comes back as STAT_FS_PIN while this open's pin is held.
-	localcmd(sprintf("cmd rec_watch 1 rw %g\n", rw_serial));
+	// comes back as STAT_FS_PIN while this open's pin is held; rw_st0 lets the
+	// server leave alone a run that started since this asked (round 12).
+	localcmd(sprintf("cmd rec_watch 1 rw %g %g\n", rw_serial, rw_st0));
 	return TRUE;
 };
 
@@ -329,6 +330,7 @@ void() Rewind_HandOver =
 	if (!rw_on)
 		return;
 	localcmd("cmd rec_watch 0 void\n");
+	SaveLoc_Cmd("sl_holdoff");      // as Rewind_Close: a go misread as refused (round 12)
 	rw_on = rw_dir = 0;
 	tr_cur_on = FALSE;
 };
@@ -352,16 +354,6 @@ void() Rewind_Frame =
 		// deadman saw no hold: either way the load is over.
 		if (!rec_sl_holding || cltime >= rw_cd)
 			Rewind_Abandon();       // sl_holdoff: the server hands back the save's velocity
-		return;
-	}
-	if (rec_wt_open)
-	{
-		// A replay opened from the board while browsing: its pin is this one and
-		// its close only thaws, so a run still frozen under it ends here, and the
-		// pin is taken again for the replay (review round 5).
-		localcmd("cmd rec_watch 0 void\ncmd rec_watch 1\n");
-		rw_on = rw_dir = 0;
-		tr_cur_on = FALSE;
 		return;
 	}
 	// Moved under the mode -- `!r`, a zone, a 2-6 load, a finish: what is on

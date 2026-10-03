@@ -3305,9 +3305,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             counterpart, written at close.  Patch 477: in a file
                             KEPT WHILE FROZEN (a rewind's or replay's pin; an
                             `abandon`), the counter latched when the freeze took
-                            effect -- the last `in` row's end -- and records the
-                            freeze let through (`ride`, `restart`, `warp`, `pe`,
-                            `pm`) may carry a <mt> above it.  A frozen park's
+                            effect -- the last `in` row's end.  `ride` and
+                            `warp` the freeze lets through may carry a <mt>
+                            above it; no `pe`, `pm` or `portal` is written while
+                            frozen (round 12).  A frozen park's
                             `pause` and a frozen finish's `inend` still write
                             the live counter (BACKLOG).
 
@@ -4425,6 +4426,11 @@ void(entity e) SV_RecState =
 	if (e.rec_rec_sesspend)
 		return;
 	if (e.run_movetickrate <= 0 || e.run_pmepoch <= 0 || e.rec_rec_in < 1)
+		return;
+	// Patch 477 review round 12: nor while frozen.  No `in` row follows, so a
+	// pe/pm/portal written now binds to the last real row -- a door near a
+	// pinned body read as that move's physents (a HOLD on a kept abandon).
+	if (e.run_t_frzon)
 		return;
 	row = e.rec_rec_in - 1;
 

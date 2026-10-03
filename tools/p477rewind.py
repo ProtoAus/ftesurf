@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18E", "R18B", "R19")
+            "R18D", "R18E", "R18F", "R18B", "R19")
 
 
 def listing(d):
@@ -459,6 +459,20 @@ def main():
     check("R18E", ok18e, "chain tagged %s, hopped %s, the load raised %s, after rest %s" % (
         "tagged a hopped start" in t18e, hops18e[0] if hops18e else None, up18e,
         hops18e[-1] if hops18e else None))
+
+    # R18F: a rewind pin asked from a non-running state on a running run is
+    # refused, and the run stays clean.  Premise: the run was on the clock.
+    t18f = txt("R18F")
+    tm18f = last(r"timer: (\w+) on ", "R18F")
+    pr18f = last(r"\bpractice (\d)\b", "R18F")
+    ok18f = ("your run started -- press again to rewind it" in t18f
+             and "practice run -- this run will not be saved" not in t18f
+             and tm18f is not None and tm18f.group(1) == "running"
+             and pr18f is not None and pr18f.group(1) == "0")
+    check("R18F", ok18f, "refused %s, made practice %s, timer %s, practice %s" % (
+        "your run started -- press again to rewind it" in t18f,
+        "practice run -- this run will not be saved" in t18f,
+        tm18f.group(1) if tm18f else None, pr18f.group(1) if pr18f else None))
 
     # R18B: retry under the rewind ends the run first, and the restart's own line
     # says it restored no run; an idle save after it writes no .view prefix.

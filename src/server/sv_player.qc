@@ -776,7 +776,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid, wrw, wser;
+	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0;
 	local vector was;
 
 	cmdargc = tokenize(cmd);
@@ -1003,9 +1003,23 @@ void(string cmd) SV_ParseClientCommand =
 		won = stof(argv(1));
 		wvoid = (argv(2) == "void");
 		wrw = (argv(2) == "rw");
-		wser = stof(argv(3));
+		wser = rint(stof(argv(3)));
+		wst0 = stof(argv(4));
+		if (!(wser >= 0 && wser < 16777216))   // round 12: a NaN would re-send every frame
+			wser = 0;
 		if (wvoid)
 			SV_WatchVoid(self, "a rewind left without a resume");
+		// Round 12: the client asks before pinning a run on the clock, from a
+		// state a round trip old (<st0>, its TIMERSTATE at the open).  A run that
+		// started or was restored since is left alone; the client's state check
+		// then closes the mode with nothing to end.
+		if (wrw && won)
+		if (self.run_t_state == TS_RUNNING)
+		if (wst0 != TS_RUNNING)
+		{
+			sprint(self, PRINT_HIGH, "^3rewind:^7 your run started -- press again to rewind it\n");
+			return;
+		}
 		SV_WatchHold(self, won);
 		if (wrw)
 		if (self.rec_wt_hold)

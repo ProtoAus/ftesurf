@@ -1027,9 +1027,13 @@ bannered as superseded.)
   samples a slot, one every 2 run ticks, only while running and unheld; the
   client's x y z only picks among samples within 0.5 s of its tick. A run start
   wipes the ring; a warp under the rewind marks it over, so the next start does.
-- **STAT_FS_PIN (111) is the pin's take count while held, 0 when not.** The
-  client closes the mode on a release it did not ask for, and tells a release
-  still in flight from its own new pin by the count.
+- **STAT_FS_PIN (111) is the rewind's open serial while its pin is held, 0
+  when not** (`rec_watch 1 rw <serial> <state at the open>`). The client closes
+  the mode on a release it did not ask for, and latches only its own serial, so
+  an earlier open's pin or release in flight is never mistaken for it. The
+  server refuses to pin a run that started since the client asked.
+- **A replay opened while browsing takes the pin over in the same frame**
+  (Watch_Open calls Rewind_HandOver before its own `rec_watch 1`).
 - **A frozen run's kept-abandon `inend` is the mover tick at the freeze**
   (`run_t_frzmt`), because the `in` rows stop there; pm_verify flies a last row
   to `inend`.
