@@ -1170,6 +1170,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (rw_on)                      // Patch 477
 		if (Rewind_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
+	if (Rewind_AfterTook(evtype, scanx))
+		return TRUE;
 
 	// Patch 385: behind the draft and every panel, ahead of Keys_Edge.  The two
 	// passive overlays below keep ESC first too.  See Spec_InputEvent.

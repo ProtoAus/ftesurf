@@ -88,6 +88,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   server checks is the client's TIMERTICKS: a run cancelled within its first
   round trip and replaced by one that out-ticks it before the pin lands would
   still be taken -- a run serial stat would close that.
+- **A `setpos` on a run that posted a stage makes its kept file unverifiable**
+  (pre-existing; Patch 477 round-19 evidence review, traced). SV_TimerCheat
+  taints the run but the recorder runs on, `setpos` writes no `warp`, and a run
+  that posted a stage is kept as evidence (SV_RecKeepEvidence); surfd indexes it
+  whatever its class and pm_verify HOLDs at the teleport ("packet(s) differ"),
+  which abandoned_pass does not convert -- so the honest stages it backs never
+  show Verified. `setpos` should write a `warp`, or end the recording.
+- **A chat bind other than ENTER's `say` opens a draft in the rewind's
+  countdown** (`messagemode`, `messagemode2`, `chat_open`, `chat_say` on any
+  key; Patch 477 round-19 review): Chat_InputEvent runs ahead of the rewind, and
+  the draft swallows the releases of the keys held for the release, as it does
+  in normal play. Round 18 kept ENTER's default `say` out of it.
 - **A press the engine console took acts on its first auto-repeat in the
   rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
   offered that press, so Rewind_Track (round 17) cannot mark it down; every press
@@ -140,8 +152,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (SV_StageOpen). A replay pin or save-lock hold taken in a ~0-tick packet before
   a boundary and released in a full one across it might open a clean stage short
   by part of that packet. Unread: crossing-tick interpolation, the engine's msec
-  caps, pm_verify's stage-slice checks. Fix direction: a stage opened in the
-  packet that ends a freeze is practice.
+  caps, pm_verify's stage-slice checks. Round 19 found a trigger that fix would
+  miss: a replay pin (`rec_watch 1`, no `rw`) on a staged run, then `!r` --
+  SV_TimerRestartSeg's SV_StageOpen recomputes run_st_dirty from the movetype,
+  and MOVETYPE_NONE reads clean, the pinned body held in the stage box -- then
+  `rec_watch 0` in a packet carrying the usercmd budget (500 ms, sv_user.c:8179)
+  with moves that walk out: the stage starts on a frozen tick, short by the
+  packet, and SV_StageQualifies has no pin refusal as it has run_st_sp. The
+  rewind's pin voids at the `!r` instead. Fix: latch the thaw at the release
+  command rather than at PostThink, or a run_st_pin refusal beside run_st_sp.
 - **A `retry` or a second keep under one runid overwrites
   `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).
 - **The ghost and the replay pin refuse each other one way only**

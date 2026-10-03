@@ -60,6 +60,7 @@ float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took 
 float  rw_krep;                 // ...and the event in hand repeats one already down
 float  rw_pinseen;              // this open's pin seen (STAT_FS_PIN lands a round trip later)
 float  rw_serial;               // this open's number, sent with its pin and published back as STAT_FS_PIN
+float  rw_openat;               // cltime of the open: a pin unseen RW_LOST after it is gone (round 19)
 
 void() Rewind_RegisterCvars =
 {
@@ -181,6 +182,7 @@ float() Rewind_Open =
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
+	rw_openat = cltime;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
@@ -383,9 +385,10 @@ void() Rewind_Frame =
 			Rewind_Abandon();       // sl_holdoff: the server hands back the save's velocity
 		return;
 	}
-	// Moved under the mode -- `!r`, a zone, a 2-6 load, a finish: what is on
-	// screen is not where the body is, so every way out would put it back
-	// there (review round 2).  Our own S save is a SAVED event.
+	// Loaded under the mode (2-6 are refused under the pin; `sl_replay` with
+	// sv_cheats is not): what is on screen is not where the body is (review
+	// round 2).  Our own S save is a SAVED event.  A warp is SV_RewindWarped's
+	// and the state check's below.
 	if (getstatf(STAT_FS_SLSEQ) != rw_seen)
 	{
 		rw_seen = getstatf(STAT_FS_SLSEQ);
@@ -409,6 +412,14 @@ void() Rewind_Frame =
 	if (k == rw_serial)
 		rw_pinseen = TRUE;
 	else if (rw_pinseen || k == -rw_serial)
+	{
+		Rewind_Close();
+		return;
+	}
+	// Round 19: and one that never showed -- an `observe` inside the round trip
+	// clears the edict, so the stat goes straight to 0, neither branch above.
+	if (!rw_pinseen)
+	if ((cltime - rw_openat) > RW_LOST)
 	{
 		Rewind_Close();
 		return;
@@ -549,6 +560,16 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (k >= 0)
 	if (rw_kst[k] || rw_krep)
 		return TRUE;                // a repeat, a key held from before, or one another handler took
+	// The save-lock keys (cl_saveloc.qc, by scancode) and any other key bound to
+	// a save-lock or saveloc command do nothing in the mode: browsing or with a
+	// go in flight a load moves the body from under the cursor and its event
+	// reads as the go's answer; in the countdown it took the hold over and was
+	// let go under it (round 19).  A vote taking keys gets its digits, and S,
+	// ENTER and the arrows stay this mode's whatever they are bound to.
+	if (k < 0)
+	if ((scanx >= '0' && scanx <= '9') || scanx == 'z'
+	    || strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0)
+		return !Vote_Capturing();
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait
@@ -568,14 +589,6 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		}
 		return FALSE;               // the keys the release will find held
 	}
-	// The save-lock keys (cl_saveloc.qc, by scancode) and any key bound to a
-	// save-lock or saveloc command do nothing while browsing or while a go is in
-	// flight: a load here moves the body out from under the cursor, and its
-	// event would be read as the go's answer.  S is this mode's save.
-	if ((scanx >= '0' && scanx <= '9') || scanx == 'z')
-		return TRUE;
-	if (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0)
-		return TRUE;
 	if (k >= 0)
 		rw_kst[k] = 1;
 	if (rw_ack)                     // a go in flight: one round trip
@@ -609,6 +622,28 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		Rewind_Leave();
 		return TRUE;
 	}
+	return FALSE;
+};
+
+// Round 19: a key the mode took is its until let go, also once the mode has
+// closed under it -- ESC closing a rewind, or ESC's go-now -- whose auto-repeat
+// reached the engine's own ESC, the menu, over a body just released.
+float(float evtype, float scanx) Rewind_AfterTook =
+{
+	local float k;
+
+	if (rw_on)
+		return FALSE;
+	k = Rewind_KeyIx(scanx);
+	if (k < 0)
+		return FALSE;
+	if (rw_kst[k] != 1)
+		return FALSE;
+	if (evtype == IE_KEYDOWN)
+	if (rw_krep)
+		return TRUE;
+	if (evtype == IE_KEYUP || !rw_kdown[k])
+		rw_kst[k] = 0;
 	return FALSE;
 };
 

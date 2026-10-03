@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
+            "R18D", "R18J", "R18K", "R18L", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
 
 
 def listing(d):
@@ -387,6 +387,18 @@ def main():
     check("R13C", bool(st13b) and st13b[0].group(2) == "1" and k13c == ["1"],
           "counting %s, ENTER took %s" % (st13b[0].group(2) if st13b else None, k13c))
 
+    # R13D (round 19): `1` in the countdown saves nothing -- the count `vote key`
+    # prints before it and 600 ms after.  Premise: its press reached the chain.
+    sc13d = [m for m in (re.search(r"vote key: scan (49|1) down (\d) took (\d) .* saves (\d+)", s)
+                         for s in sec["R13B"]) if m]
+    first = [m for m in sc13d if m.group(1) == "49" and m.group(2) == "1"]
+    after = [m for m in sc13d if m.group(1) == "1"]
+    check("R13D", bool(st13b) and st13b[0].group(2) == "1" and bool(first) and bool(after)
+          and first[0].group(4) == after[-1].group(4),
+          "counting %s, saves %s then %s" % (st13b[0].group(2) if st13b else None,
+                                             first[0].group(4) if first else None,
+                                             after[-1].group(4) if after else None))
+
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
     t15 = txt("R15")
@@ -475,9 +487,10 @@ def main():
 
     # R18J (rounds 17-18): through the whole input chain, a press the chat draft
     # took repeats into the open rewind without a go, and a scrub whose release
-    # the draft swallowed stops.  Premise: the rewind opened, and the draft took
-    # each press and the release (`took 1` -- a go on the first ENTER would show
-    # as sent/counting, not as a pass).
+    # the draft swallowed stops.  Premise: the rewind opened; the draft took the
+    # first ENTER and the arrow's release, and the rewind's repeat guard the
+    # second ENTER (`took 1` each -- a go on either would show as sent or
+    # counting, not as a pass).
     st18j = status("R18J")
     t18j = txt("R18J")
     tk18j = [m.group(1) for m in (re.search(r"vote key: scan (13 down 1|130 down 0) took 1", s)
@@ -493,6 +506,23 @@ def main():
         st18j[1].group(2) if len(st18j) > 1 else None, st18j[1].group(3) if len(st18j) > 1 else None,
         st18j[2].group(4) if len(st18j) > 2 else None, st18j[3].group(4) if len(st18j) > 3 else None,
         st18j[4].group(4) if len(st18j) > 4 else None))
+
+    # R18K (round 19): ESC's repeat after the rewind it closed is still taken.
+    # Premise: the rewind opened and the first ESC closed it (taken, then on 0).
+    st18k = status("R18K")
+    e18k = [m.group(1) for m in (re.search(r"vote key: scan 27 down 1 took (\d)", s)
+                                 for s in sec["R18K"]) if m]
+    check("R18K", len(st18k) >= 2 and st18k[0].group(1) == "1" and st18k[-1].group(1) == "0"
+          and e18k == ["1", "1"],
+          "open %s then %s, ESC took %s" % (st18k[0].group(1) if st18k else None,
+                                            st18k[-1].group(1) if st18k else None, e18k))
+
+    # R18L (round 19): S bound to a saveloc alias is still the rewind's save.
+    st18l = status("R18L")
+    sv18l, _ = answered("R18L")
+    check("R18L", len(st18l) >= 1 and st18l[0].group(1) == "1" and sv18l is not None,
+          "open %s, the rewind's save %s" % (st18l[0].group(1) if st18l else None,
+                                             sv18l.group(0) if sv18l else None))
 
     # R18E: a hop chain's tag survives a fast load and rest in the box.  Premise:
     # the chain tagged (its own dprint-free line and the first read) and the load
