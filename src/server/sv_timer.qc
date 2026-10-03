@@ -12840,15 +12840,28 @@ void(entity e) SV_TimerGhostLeft =
 	e.run_t_pendarm = -1;
 };
 
-// Patch 478 review round 6: the unghost (SV_GhostSet) takes the start latch of
-// where the body stands, so it arms no box.  Nothing judged the ghost's travel --
-// a client that keeps steering bhops a box idle, or armed off a load's settled
-// start -- and an arm here zeroed the taint that speed should carry.  An armed or
-// finished body whose point is in another box has left its own (the scan would
-// have moved the arm there).
+// Patch 478 review rounds 6-7: the unghost (SV_GhostSet) takes the latches of
+// where the body stands, so it arms no box and fires no split, checkpoint or
+// finish -- nothing judged the ghost's travel (a client can keep steering it),
+// and an arm zeroed the taint its speed should carry.  A body out of its armed or
+// pending box, or with its point in another, has left it (a setpos in the same
+// packet moved it after the ghost branch looked); a START it entered ends a
+// running run as entering one does, arming nothing (on a bhop map: TryArm's reset).
 void(entity e) SV_TimerGhostEnd =
 {
-	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	local vector mn, mx;
+
+	mn = SV_RunHullMins(e);
+	mx = SV_RunHullMaxs(e);
+	if (e.run_t_state == TS_ARMED)
+	if (e.run_t_armzone >= 0)
+	if (!SV_ZoneIn(e.run_t_armzone, e.origin, mn, mx))
+		SV_TimerGhostLeft(e);
+	if (e.run_t_state == TS_FINISHED)
+	if (e.run_t_pendarm >= 0)
+	if (!SV_ZoneIn(e.run_t_pendarm, e.origin, mn, mx))
+		SV_TimerGhostLeft(e);
+	SV_ZoneScan(e.origin, e.origin, mn, mx);
 	if (zs_az >= 0)
 	{
 		if (e.run_t_state == TS_ARMED)
@@ -12858,8 +12871,21 @@ void(entity e) SV_TimerGhostEnd =
 		if (e.run_t_pendarm >= 0)
 		if (zs_az != e.run_t_pendarm)
 			SV_TimerGhostLeft(e);
+		if (zone_type[zs_az] == ZONE_START)
+		if (zs_az != e.run_t_azone)
+		{
+			if (run_t_bhopjump)
+			{
+				if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_FINISHED)
+					SV_TimerTryArm(e, zs_az);
+			}
+			else if (e.run_t_state == TS_RUNNING)
+				SV_TimerVoid(e, "back in the start as a ghost");
+		}
 	}
-	e.run_t_azone = zs_az;
+	e.run_t_azone  = zs_az;
+	e.run_t_evzone = zs_ez;
+	e.run_t_cpzone = zs_cp;
 };
 
 void(entity e) SV_TimerFrame =

@@ -1254,9 +1254,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  next tick sees the box as newly entered and fires the split again -- which
 	  is the difference between "exactly like it was" and "nearly".
 	*/
-	// Patch 478: stale under a ghost, in a resume phase or behind a setpos in the
-	// same packet -- SV_SaveLocLoad rescans its loads off the clock, and a retry
-	// turns the ghost off before it writes (SV_RetryPoint).
+	// Patch 478: stale in a resume phase or behind a setpos in the same packet --
+	// SV_SaveLocLoad rescans its loads (a running one's start latch), a save under
+	// a ghost is refused, and a retry turns the ghost off first (SV_RetryPoint).
 	fputs(f, sprintf("azone %d\n", e.run_t_azone));
 	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
 	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
@@ -2954,6 +2954,14 @@ void(entity e) SV_SaveLocCreate =
 		sprint(e, PRINT_HIGH, "^3save: close the replay or rewind first\n");
 		return;
 	}
+	// Patch 478 review round 7: a ghost's latches are stale (no zone test runs)
+	// and a running row restores them as written -- a body set or steered into a
+	// start box as a ghost re-armed it clean at the load.
+	if (e.rec_gh_on)
+	{
+		sprint(e, PRINT_HIGH, "^3save: turn the ghost off first\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -3424,6 +3432,14 @@ void(entity e, float n) SV_SaveLocLoad =
 		sprint(e, PRINT_HIGH, "^3save: close the replay or rewind first\n");
 		return;
 	}
+	// Patch 478 review round 7: nor under a ghost.  A running row rewinds the
+	// recording below the window's `ghost 1`, and the unghost's `ghost 0` then
+	// stood alone (reccheck faults it).
+	if (e.rec_gh_on)
+	{
+		sprint(e, PRINT_HIGH, "^3save: turn the ghost off first\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -3663,15 +3679,18 @@ void(entity e, float n) SV_SaveLocLoad =
 	  Positive proof, not absence of doubt -- see the flag's own essay for why the
 	  polarity is the reverse of SV_MapForeign's.
 	*/
-	// Patch 478: a load off the clock takes the latches of where it put the body,
-	// not the file's.  A row written under a ghost, in a resume phase or behind a
-	// setpos in the same packet held -1 with its body in a box, and loading it
-	// armed the box at rest, mid-air, with no grounded test.  The gate below still
-	// grants the one arm a load may take: slow and grounded, in a start box.
+	// Patch 478: a load takes the latches of where it put the body, not the
+	// file's.  A row written under a ghost (an older build), in a resume phase or
+	// behind a setpos in the same packet held stale ones with its body in a box,
+	// and loading it armed the box -- off the clock at rest or mid-air with no
+	// grounded test; on it as a START re-entered, which zeroes every taint
+	// (review round 7).  A running row keeps its event latches: a split it fired
+	// must not fire again.  The gate below still grants the one arm a load off
+	// the clock may take: slow and grounded, in a start box.
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	e.run_t_azone = zs_az;
 	if (e.run_t_state != TS_RUNNING)
 	{
-		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
-		e.run_t_azone  = zs_az;
 		e.run_t_evzone = zs_ez;
 		e.run_t_cpzone = zs_cp;
 	}

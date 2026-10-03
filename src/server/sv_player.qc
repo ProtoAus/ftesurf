@@ -1316,6 +1316,12 @@ void(string cmd) SV_ParseClientCommand =
 		  One line either way.  Written down so a later change here is a decision.
 		*/
 		SV_TimerCheat(self);
+		// Patch 478 review round 7 (older than 478): and a finished stage run's
+		// handover, as a load drops it (Patch 436) -- the handover's arm re-read
+		// the class from the live state and started the next stage clean
+		// wherever this put the body.
+		if (self.run_t_state == TS_FINISHED)
+			self.run_t_pendarm = -1;
 
 		was = self.origin;
 		setorigin(self, [stof(argv(1)), stof(argv(2)), stof(argv(3))]);

@@ -31,7 +31,8 @@ LOG = os.path.join(GAME, "logs", "p478ghost.log")
 MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
+SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G12", "G3", "G3P", "G3A", "G4",
+            "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PROGS = {}              # the progs the run was graded on, kept in MADE
 MAPS = ("surf_dune", "bhop_eazy")
@@ -42,7 +43,15 @@ SCOPE = [os.path.join(d, m) for m in MAPS for d in ("runs", "evidence", "resume"
 
 
 def scoped(rel):
-    return any(rel == q or rel.startswith(q + os.sep) for q in SCOPE)
+    # A folder the run made above a SCOPE path (data/evidence itself) is the run's too.
+    return any(rel == q or rel.startswith(q + os.sep) or q.startswith(rel + os.sep) for q in SCOPE)
+
+
+def others():
+    """Round 7: another game process shares data/parts and the logs with this run."""
+    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ftesurf64.exe", "/NH"],
+                       capture_output=True, text=True)
+    return "ftesurf64.exe" in r.stdout
 
 
 def row(path):
@@ -65,6 +74,8 @@ def tree(d):
 
 
 def run(exe, timeout):
+    if others():
+        raise SystemExit("another ftesurf64.exe is running -- it writes data/parts and logs/ too")
     for p in PARKS:
         # Ours, or another harness's (p477rewind parks the saves as .p477park):
         # two drivers restoring one path would delete each other's restores.
@@ -282,6 +293,57 @@ def main():
           "under the ghost practice %s arm zone %s; after the retry %s practice %s" % (
               pr7[0], az7[0], states("G7A")[-1:], pr7a[-1:]))
 
+    # G10.  Round 7.  Premises: the row runs (state 2) with azone -1 at the box's
+    # standing point (its own file), the live scan re-armed the box after it
+    # (armed), and its load resumed the run (its own words).  Verdict: still
+    # running after the load -- before, the stale latch re-armed the START.
+    t10 = "\n".join(sec["G10"])
+    st10 = states("G10")
+    run10 = [r for r, v in rows.items()
+             if v.get("state") == "2" and v.get("azone") == "-1"
+             and len(v.get("origin", "").split()) == 3 and abs(float(v["origin"].split()[1]) - 650) < 1]
+    if not (run10 and "run resumed at" in t10 and len(st10) == 2 and st10[0] == "armed"):
+        print("CANNOT GRADE G10: rows %s, resumed %s, states %s" % (rows, "run resumed at" in t10, st10))
+        return 2
+    check("G10", st10[1] == "running" and "back in the start)" not in t10.split("run resumed at")[-1],
+          "row %s %s; after the load %s" % (run10[0], rows[run10[0]], st10[1]))
+
+    # G9.  Round 7.  A save and a load under a ghost: both refused, in the
+    # server's own words, and neither happened.  Premise: the ghost was on.
+    t9 = "\n".join(sec["G9"])
+    # The server's "ghost off" prints only for a ghost that was on.
+    if "ghost off" not in t9:
+        print("CANNOT GRADE G9: no ghost off line")
+        return 2
+    ref9 = t9.count("save: turn the ghost off first")
+    check("G9", ref9 == 2 and not re.search(r"\bsave \d+ \(slot", t9),
+          "refusals %d, a save made %s" % (ref9, bool(re.search(r"\bsave \d+ \(slot", t9))))
+
+    # G11.  Round 7.  Premises: running before the ghost, the ghost on and off,
+    # and the setpos landed in the box (its own line).  Verdict: the run ended
+    # in the server's words and the box did not arm (idle).
+    t11 = "\n".join(sec["G11"])
+    st11 = states("G11")
+    if not (len(st11) == 2 and st11[0] == "running" and "setpos: -11434 650 15052" in t11
+            and "ghost off" in t11):
+        print("CANNOT GRADE G11: states %s, setpos %s, ghost off %s" % (
+            st11, "setpos: -11434 650 15052" in t11, "ghost off" in t11))
+        return 2
+    check("G11", st11[1] == "idle" and "run cancelled (back in the start as a ghost)" in t11,
+          "after the unghost in the box %s, said %s" % (
+              st11[1], "run cancelled (back in the start as a ghost)" in t11))
+
+    # G12.  Round 7, older than 478.  Premises: the setpos into stage 2's box
+    # finished the stage-1 run with its handover pending (finished, pending arm
+    # >= 0).  Verdict: the setpos out of the box starts no stage-2 run.
+    st12 = states("G12")
+    pa12 = field("G12", r"pending arm (-?\d+),")
+    if not (len(st12) == 2 and st12[0] == "finished" and len(pa12) == 2 and int(pa12[0]) >= 0):
+        print("CANNOT GRADE G12: states %s, pending arm %s" % (st12, pa12))
+        return 2
+    check("G12", st12[1] == "finished", "pending arm %s then %s; after the setpos out of the box %s" % (
+        pa12[0], pa12[1], st12[1]))
+
     # G3.  Premises: the reload parked G3's own run (a few seconds -- the parks
     # hold nothing older), and the phase began.  Verdict, on the door's own
     # consequences: `!r` and `retry` refused, no warp and no retry taken, and
@@ -329,10 +391,14 @@ def main():
     # latches at the spawn in SV_MsAbort, and the box never armed (idle).
     t5 = "\n".join(sec["G5P"])
     st5 = states("G5A")
+    # Round 7: and the kill landed inside the phase -- one after the apply is an
+    # ordinary respawn, which arms the box as well.
     if not ("resume: your run here is paused at" in t5
-            and "resume: wait for the resume to finish" in t5):
-        print("CANNOT GRADE G5: offered %s, phase began %s" % (
-            "resume: your run here is paused at" in t5, "resume: wait for the resume to finish" in t5))
+            and "resume: wait for the resume to finish" in t5
+            and "resume: run resumed at" not in t5 + "\n".join(sec["G5A"])):
+        print("CANNOT GRADE G5: offered %s, phase began %s, resumed %s" % (
+            "resume: your run here is paused at" in t5, "resume: wait for the resume to finish" in t5,
+            "resume: run resumed at" in t5 + "\n".join(sec["G5A"])))
         return 2
     check("G5", bool(st5) and st5[-1] == "armed", "after the kill: %s" % (st5[-1] if st5 else None))
 

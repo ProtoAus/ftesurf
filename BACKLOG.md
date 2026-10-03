@@ -13,7 +13,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   the run is TF_GHOST-marked, and TF_GHOST is not in TF_UNCERT. 478 stops a
   ghost STARTING a clock; a cancel the ghost crosses should still void (a
   swept test of the ghosted ticks' own segments, which SV_TimerWarped already
-  keeps one tick long).
+  keeps one tick long). The same holds for a START the ghost crosses whole:
+  since 478 r7 an unghost inside a START ends the run, but a window that spans
+  the crossing skips its cancel as before.
 - **The server trusts the client to empty a ghost's moves** (pre-existing; Patch
   478 round-6 integrity review, code-read). The mod defines no
   SV_RunClientCommand, so only `cl_ghost.qc`'s Ghost_InputFrame sends empty
@@ -23,6 +25,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   HOLDs a ghost window whose rows carry input (Patch 373), and the cancel entry
   above is the gap. Fix: the engine zeroes a ghost's usercmd while
   STAT_FS_GHOST is set.
+- **A finished stage run's handover box is not policed** (pre-existing; Patch 478
+  round-7 review, code-read). SV_TimerJumpWatch judges a hop only while ARMED or
+  RUNNING, and the FINISHED exit into the next stage sets `startok` (Build 20: a
+  stage run begins in flight) -- so after a stage finish, bhopping inside the
+  next stage's box and leaving starts that stage clean at the chain's speed.
+  Map-dependent; whether a stage start should judge an in-box chain is a
+  decision.
+- **pm_verify's latches are not refreshed at a `ghost 0`** (engine; Patch 478
+  round 7). The live unghost takes the latches of where the body stands
+  (SV_TimerGhostEnd); the verifier's `vf_azone`/`vf_evzone` stay stale across the
+  window, so a ghosted run that ends in START prints "re-enters this track's
+  START" on its PASS (sv_ccmds.c). A note today, not a verdict -- refresh them at
+  the record.
 - **A lobby flip inside a resume phase strands the claim file** (pre-existing;
   Patch 478 round-6 integrity review, PLAUSIBLE -- needs an operator flip
   mid-countdown). SV_MsClaimLeaf and SV_MsKey change with Lobby_Active(), so
@@ -386,7 +401,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   round 8 while checking whether the finish clear was reachable there; it is not, which is
   incidentally good for 448 and bad for the player. **Next step is to drive one of the
   four and read whether the cancel line appears** — the geometry and the control flow are
-  established, the live behaviour is not.
+  established, the live behaviour is not. **CONTESTED (Patch 478 round-7 integrity
+  review, traced, not driven): the opposite.** The END event tests the HULL and fires in
+  the 16-unit band before the arm test, which uses the POINT, sees the START -- so on
+  flyin_fortress main, ethereal b1 and quirky b9 (the END ring is the START ring) an
+  out-and-back FINISHES in a few ticks, clean; agtricks runs in bhop mode, where
+  re-entering START defers rather than cancels, and a jump launched in START landing in
+  the nested END finishes. If that holds it is a ranking hole, not a denial -- drive it
+  first.
 - **A hopped-start tag survives a VOID, though no longer a finish.** Patch 448 fixed the
   finish half and **Patch 454 fixed 448's argument**: the finish no longer clears the tag
   outright — it ARMS a forgiveness that is taken once the player is grounded at or below
