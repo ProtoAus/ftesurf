@@ -1637,6 +1637,12 @@ script rather than passing it as an argument, where `ps` would show it.
   set IN default.cfg: `cvar_lockdefaults` makes a later cfg or rcon unable to
   change them. A lobby's real physics values are in its recordings' `pmpin`
   header.
+  A RULE CHANGE IN `default.cfg` NEEDS THE COPY TOO, and `-Pi`'s output never
+  mentions it: Patch 445's `run_rearmhop 0` was "deployed" 2026-09-27 and the
+  fleet ran `1` until 2026-10-03. Compare the two files' sha256 after a deploy.
+- `rcon.Rcon(...).execute(argv)` runs ONE command, so `execute(["a", "b"])` SETS
+  `a` to "b" -- on 2026-10-03 a two-cvar "read" did exactly that to two lobbies.
+  One cvar name per call.
 - Post-deploy verification is a CLIENT CONNECT, not the journal: `ftesurf@N`
   journals need sudo (sudoers is restart-only) and lobby cfgs write no file
   logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live

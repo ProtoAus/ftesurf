@@ -1964,11 +1964,6 @@ depth at ~3,000 requests/day. What that leaves open:
   (SP_CVAR4F -> `qglUniform3fvARB`). Nothing uses `!!cvar4f` today. Found reading
   the shader system for Patch 467; falsifier: a program with `!!cvar4f` on a vec4
   uniform draws its w as 0 (or raises GL_INVALID_OPERATION).
-- **THE LOBBIES RUN PATCH 467'S CSPROGS ONLY AFTER A `-Pi` DEPLOY.** The visualizer
-  sky lives in csprogs.dat, which a lobby hands its players; nothing was deployed
-  to the Pi from the laptop. Harmless until then (the sky is off by default and
-  the menu is menu.dat, which is always local). Falsifier: join a lobby with
-  `milk_sky 1` and look up -- the map's own sky means the old csprogs.
 - **THE MENU TRACK DOES NOT SHIP.** `tools/mkmenumusic.py` writes a 13.5 MB WAV
   into `ftesurf/music/`, which is git-ignored and in no `$ShipGlobs` line, so a
   release has a silent menu (the visuals still run). Shipping it wants an OGG
