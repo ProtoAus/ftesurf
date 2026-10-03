@@ -16,9 +16,10 @@
   call, and the countdown is the hold, released at zero.  A rewound
   continuation is practice when it carries more than a walk or a jump could
   -- sv_saveloc.qc, SV_SaveLoadTag.  ESC on a run that is on the clock is a resume at the
-  head: you go on from where you were with your speed, and the run's clock
-  ends there (the pin made it practice).  A thaw would carry the run past a
-  freeze the .rec never records -- AGENTS.md, the held-run fault.
+  head: you go on from where you were with your speed (refused, you stop
+  there), and the run's clock ends either way (the pin made it practice).  A
+  thaw would carry the run past a freeze the .rec never records -- AGENTS.md,
+  the held-run fault.
 ===========================================================================
 */
 
@@ -156,8 +157,8 @@ float() Rewind_Open =
 	if (!rw_askat || (cltime - rw_askat) >= RW_ASK)
 	{
 		rw_askat = cltime;
-		print(sprintf("^3rewind:^7 %s again to rewind -- the run on the clock ends here "
-		              "(ESC carries on from where you are)\n", Rewind_Key()));
+		print(sprintf("^3rewind:^7 %s again to rewind -- the run on the clock ends here\n",
+		              Rewind_Key()));
 		return FALSE;
 	}
 	rw_askat = 0;
@@ -187,7 +188,7 @@ float() Rewind_Open =
 	tr_cur_on = TRUE;
 	Rewind_Cursor();
 	PVS_Forget();
-	localcmd("cmd rec_watch 1\n");
+	localcmd("cmd rec_watch 1 rw\n");   // rw: a warp under it ends the browse (SV_RewindWarped)
 	return TRUE;
 };
 
@@ -357,9 +358,17 @@ void() Rewind_Frame =
 		Rewind_Close();
 		return;
 	}
-	if (!tr_on || ln_n[tr_live] < 2 || !tr_cur_on)
+	if (!tr_on || !tr_cur_on)
 	{
 		Rewind_Leave();             // the line went: hud_trail 0
+		return;
+	}
+	// The line started over: a run began under the pin with no state change
+	// seen -- a warp out of a start box restarts it within one packet.  The
+	// head stored at the open is the old run's: resume nothing (round 7).
+	if (ln_n[tr_live] < 2)
+	{
+		Rewind_Close();
 		return;
 	}
 	if (rw_dir)
@@ -438,7 +447,7 @@ void(vector scr) Rewind_Draw =
 		s = "LEFT/RIGHT scrub   too far back: the server keeps the last two minutes";
 	else
 		s = "LEFT/RIGHT scrub   ENTER resume here   S save here";
-	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC carry on from here" : "   ESC back");
+	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
 	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 };
 

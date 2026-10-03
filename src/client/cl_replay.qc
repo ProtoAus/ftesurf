@@ -1426,6 +1426,17 @@ void(float id) Rec_ViewSaved =
 
 	rec_rp_mark[id] = 0;
 
+	// Patch 477 review round 7: a rewind's row (SL_DEMOTED, saved off the
+	// server's ring) is no prefix of the sidecar held here, which Rec_ViewTrim
+	// would keep whole -- a later load could splice the browsed run's camera
+	// into a new one.  A file from an earlier save in this slot goes too.
+	if (getstatf(STAT_FS_SAVETICKS) < 0)
+	{
+		fremove(Rec_SavePath(id));
+		dprint(sprintf("replay: no view prefix for %g (a rewind row)\n", id));
+		return;
+	}
+
 	/*
 	  Nothing to keep.  A save taken outside a run is the ordinary case for this,
 	  not a failure -- there is no recording open to take a prefix of.

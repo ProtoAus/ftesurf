@@ -483,6 +483,7 @@ float(entity e, float r) SL_RowGrounded =
 .float rec_sl_slop;
 .float rw_goid;                 // Patch 477: the last rewind resume's row, which the
 .float rw_goseq;                // next one replaces (SV_RewindDropGo)
+.float rw_pin;                  // the pin is the rewind's (`rec_watch 1 rw`), not a replay's
 .float rec_sl_savetick;          // the cursor slot's stored run clock
 
 /*
@@ -2867,10 +2868,17 @@ void(float base, float cnt) SV_SaveKeepWindow =
 			if (kept > SL_RECKEEP)
 			{
 				SV_SaveDemote(base + i);
-				// Refused (the file changed under the row, which SV_SaveLocLoad
-				// refuses too): marked, so the next save does not read it again.
+				// Refused (the file changed under the row): marked as a demote
+				// leaves it, speed too, so the next save does not read it again --
+				// and a load, which may now match the other connection's demoted
+				// file, hands back no stale speed (round 7).
 				if (rec_sl_tick[base + i] > 0)
+				{
 					rec_sl_tick[base + i] = SL_DEMOTED;
+					rec_sl_seg [base + i] = 0;
+					rec_sl_cps [base + i] = 0;
+					rec_sl_vel [base + i] = '0 0 0';
+				}
 			}
 		}
 };
@@ -3239,6 +3247,8 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		                      "two minutes of the last run are\n");
 		return FALSE;
 	}
+	// At the cap there is no row or id to write into until that row goes, so
+	// here, unlike below, a write that then fails has cost it (round 7).
 	if (full)
 		SV_RewindDropGo(e);
 	cnt  = rec_sl_nb[blk];
@@ -3365,6 +3375,14 @@ void(entity e, float n) SV_SaveLocLoad =
 	if (e.run_ms_phase)
 	{
 		sprint(e, PRINT_HIGH, "^3save: wait for the resume to finish\n");
+		return;
+	}
+	// Patch 477 review round 7: nor under the replay/rewind pin, as a hold is
+	// refused -- the tag would be judged in the pinned run's state and the
+	// rewind's way out then voids it.  A rewind's go lets go of the pin first.
+	if (e.rec_wt_hold)
+	{
+		sprint(e, PRINT_HIGH, "^3save: close the replay or rewind first\n");
 		return;
 	}
 
@@ -3933,6 +3951,7 @@ void(entity e, vector org) SV_ViewEyeAt =
 
 void(entity e) SV_WatchRelease =
 {
+	e.rw_pin = FALSE;
 	if (!e.rec_wt_hold)
 		return;
 
@@ -3945,8 +3964,26 @@ void(entity e) SV_WatchRelease =
 	// zero would leave the player pinned with nothing left holding them.
 	e.movetype = e.rec_wt_holdmove ? e.rec_wt_holdmove : MOVETYPE_WALK;
 	e.rec_wt_holdmove = 0;
+	// Patch 477 review round 7: and at rest, as it was pinned (SV_WatchFrame).
+	e.velocity = '0 0 0';
+	SV_ClearCarrier(e);
 
 	SV_TimerThaw(e);
+};
+
+/*
+  Patch 477 review round 7: per tick, from PlayerPostThink, as
+  SV_SaveLocHoldFrame does for its hold.  MOVETYPE_NONE does not stop a trigger
+  touching the body or a carrier cashing out into it (PlayerPreThink), and
+  PM_NONE keeps that velocity -- so a repeating basevelocity trigger paid a
+  pinned body in the start box once per firing, kept past the release.
+*/
+void(entity e) SV_WatchFrame =
+{
+	if (!e.rec_wt_hold)
+		return;
+	e.velocity = '0 0 0';
+	SV_ClearCarrier(e);
 };
 
 // Patch 477: `rec_watch 0 void` -- the rewind's way out when no resume was
@@ -3957,6 +3994,25 @@ void(entity e, string why) SV_WatchVoid =
 	if (e.rec_wt_hold)
 	if (e.run_t_state == TS_RUNNING)
 		SV_TimerVoid(e, why);
+};
+
+/*
+  Patch 477 review round 7: after a warp command, never before it -- the leg is
+  decided while the run exists (SV_TimerChatLeg) and a refused warp, which
+  moves nothing, costs nothing.  Under the rewind's pin a warp that moved the
+  body ends its browse: a run still on the clock (a stage restart keeps it) is
+  voided, and the ring goes, so no resume can put the body back where the warp
+  took it from -- a warp out of a start box restarts the run within one packet,
+  and the client sees no state change.  A replay's pin is as it was before 477.
+*/
+void(entity e, vector was) SV_RewindWarped =
+{
+	if (!e.rw_pin)
+		return;
+	if (e.origin == was)
+		return;
+	SV_RewindReset(e);
+	SV_WatchVoid(e, "moved while the rewind held it");
 };
 
 void(entity e, float on) SV_WatchHold =
