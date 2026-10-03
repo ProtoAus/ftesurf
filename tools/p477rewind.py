@@ -367,15 +367,17 @@ def main():
     # resumes (counting), and the countdown then ends.
     st13b = status("R13B")
     t13b = txt("R13B")
+    # The countdown is a save-lock hold, so either of Watch_Open's refusals may
+    # be the one that speaks; the go's round trip (no hold yet) is code-read only.
+    rr13b = ("wait for the rewind's resume first" in t13b
+             or "let go of the save-lock key first" in t13b)
     ok13b = (len(st13b) >= 2 and st13b[0].group(1) == "1" and st13b[0].group(2) == "1"
              and "rewind: resumed" in t13b and "nothing kept at that time" not in t13b
-             and st13b[-1].group(1) == "0"
-             and "wait for the rewind's resume first" in t13b)
+             and st13b[-1].group(1) == "0" and rr13b)
     check("R13B", ok13b, "after the go: %s; resumed %s, refused %s, after the count on %s, "
           "replay refused in the count %s" % (
               st13b[0].group(0) if st13b else None, "rewind: resumed" in t13b,
-              "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None,
-              "wait for the rewind's resume first" in t13b))
+              "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None, rr13b))
 
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
