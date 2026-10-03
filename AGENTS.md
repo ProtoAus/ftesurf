@@ -965,7 +965,13 @@ bannered as superseded.)
   = the whole line). The colouring, the visible distance, the width and the
   through-walls mode stay on the EXISTING `hud_watch_path_*` names -- nothing was
   renamed, so archived configs keep working. All of it is one `hud_edit` pane
-  ("Run lines", 21 rows, tooltips), plus `set` lines in both shipped configs.
+  ("Run lines", 25 rows, tooltips), plus `set` lines in both shipped configs.
+- **Your own run, live (Patch 475, `cl_trail.qc`)** fills slots 9 and 10 from
+  `pmove_org`, one sample per command frame, while the run is on the clock. A
+  finished or cancelled run keeps its line; the next run's start swaps the two
+  slots and the old one fades over `hud_trail_fade`. A picture only -- nothing
+  in it is sent or is evidence. `trail` prints both slots and the build cost.
+  Graded by `tools/p475trail.py`, pixels included.
 - **Reading it back.** `replay marks [slot]` dumps the mark table as the draw
   pass reads it (`lnmb`/`lnm`/`lnmz`), `replay seq` the Segments rows for the
   containment check, `replay colours <slot> <stride>` dumps `ln_col` itself plus

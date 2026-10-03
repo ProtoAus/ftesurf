@@ -667,6 +667,13 @@ string(string id, float row) HE_OptDef =
 		// rows to group two would risk the reset button for a tidier list.
 		if (row == 21) return "hud_watch_path_foreign|Imported tint|c|0 0.35 0.55 0.8|off;slight;normal;strong"
 		                      "|Runs imported from Momentum Mod are pulled toward blue. A blend, not a colour mode, so `Colour by` still reads on them.";
+		// Patch 475: your own run, drawn live (cl_trail.qc).
+		if (row == 22) return "hud_trail|Your run, live|t||"
+		                      "|Your own line as you run, with the same marks. It stays when the run ends and fades when the next one starts.";
+		if (row == 23) return "hud_trail_prev|Keep the last run|t||"
+		                      "|The run before this one fades out instead of vanishing when you restart.";
+		if (row == 24) return "hud_trail_fade|Fade time|c|1 2 4 8|1s;2s;4s;8s"
+		                      "|How long the last run takes to fade.";
 		return "";
 	}
 

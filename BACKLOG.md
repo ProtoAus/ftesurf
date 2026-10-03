@@ -1333,6 +1333,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   non-zero; `Watch_Open` (`rec_wt_tickrate`) and the board-line job read only
   `tickrate`. They are written equal and momimport writes both from one value, so
   nothing has diverged -- but nothing checks either. cl_watch.qc header parse.
+- **The live trail draws a teleport as one long segment, not a break.**
+  `cl_trail.qc` feeds `Line_Point` with `brk 0` because it watches a body rather
+  than reading a file, and the grammar block's rule is that a discontinuity found
+  by watching is not a warp record. A map teleport mid-run therefore draws a
+  straight stroke across the map. A break needs a teleport the client is TOLD
+  about (a stat or event from the server's warp site), not one it infers.
+  Falsifier: a run through any `trigger_teleport` with `hud_trail 1`.
 - **A hop whose ground contact falls between two packets has no mark**, and
   cannot have one. Samples are one per packet (43-65/s measured against a 66.67
   Hz tick) and a bhop's ground contact is one tick, so the touch is simply
