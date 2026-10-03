@@ -104,19 +104,25 @@ def main():
         print("CANNOT GRADE G1: states %s, ghost on/off %s/%s, y %s (box edge %d)" % (
             st1, "ghost -- `ghost` again to go back" in t1, "ghost off" in t1, y1, EDGE_Y))
         return 2
-    check("G1", st1[2] != "running" and "left the start box as a ghost" in t1,
+    said1 = "no run -- your body is out of its start box as a ghost" in t1
+    check("G1", st1[1] == "idle" and st1[2] != "running" and said1,
           "armed at y %.0f, ghosted out to y %.0f (state %s), unghosted at y %.0f: %s%s, said %s" % (
               y1[0], y1[1], st1[1], y1[2], st1[2],
               (" class %s at %s" % (cl1[-1], el1[-1])) if st1[2] == "running" and cl1 and el1 else "",
-              "left the start box as a ghost" in t1))
+              said1))
 
-    # G2.  A ghost in the box with the body still keeps the arm; a clean start after.
+    # G2.  A ghost in the box with the body still keeps the arm; a clean start
+    # after, primed for its stage-1 post (the ghost's flag no longer stands into
+    # the start: `stage fill: prime 1`).
     st2, cl2 = states("G2"), classes("G2")
     t2 = "\n".join(sec["G2"])
+    pr2 = [m.group(1) for m in (re.search(r"stage fill: prime (\d)", s) for s in sec["G2"]) if m]
     check("G2", len(st2) == 2 and st2[0] == "armed" and st2[1] == "running"
-          and bool(cl2) and cl2[-1] == "clean" and "left the start box as a ghost" not in t2,
-          "after the unghost %s, after +forward %s class %s" % (
-              st2[0] if st2 else None, st2[1] if len(st2) > 1 else None, cl2[-1] if cl2 else None))
+          and bool(cl2) and cl2[-1] == "clean" and "as a ghost" not in t2
+          and bool(pr2) and pr2[-1] == "1",
+          "after the unghost %s, after +forward %s class %s prime %s" % (
+              st2[0] if st2 else None, st2[1] if len(st2) > 1 else None, cl2[-1] if cl2 else None,
+              pr2[-1] if pr2 else None))
 
     check("D", not new, "data/ left as it was" if not new else "the run left: %s" % ", ".join(new))
     print("%d check(s) failed" % len(fails))

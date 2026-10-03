@@ -7851,9 +7851,12 @@ void(entity e) SV_StageLaunch =
 	else
 		e.run_st_launch = vlen(hv);         // fell or was pushed out: never primed
 
-	// A ghost since the boundary: the exit was judged at the un-ghost, not where
-	// the body left the box (the ghost branch skips the stage block).
-	if (e.run_st_ghost)
+	// Patch 478: a ghost cannot carry the body out of a box and start a clock
+	// (SV_TimerFrame), so every start is an exit its owner made, and a ghost
+	// before it -- standing in the box -- is not this stage's.  It cost stage 1
+	// its post: the flag stood from the ghost until SV_StageOpen, after this.
+	e.run_st_ghost = e.rec_gh_on ? TRUE : FALSE;
+	if (e.run_st_ghost)                 // a clock started under a ghost: none does
 		e.run_st_prime = FALSE;
 
 	if (run_t_stagecap > 0)
@@ -12832,7 +12835,7 @@ void(entity e) SV_TimerGhostLeft =
 		SV_TimerIdle(e);
 	e.run_t_pendarm = -1;
 	e.run_t_azone = -1;
-	sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the start box as a ghost -- no run; !r to go back\n");
+	sprint(e, PRINT_HIGH, "^3ghost:^7 no run -- your body is out of its start box as a ghost; !r to go back\n");
 };
 
 void(entity e) SV_TimerFrame =
@@ -12966,16 +12969,18 @@ void(entity e) SV_TimerFrame =
 		  because this branch is the one a ghosting player actually takes.
 
 		  It does NOT need the RUNNING gate: SV_StageOpen re-reads the level too,
-		  so a ghost outside a run leaves nothing behind that an arm does not
-		  overwrite.
+		  and so, since Patch 478, does SV_StageLaunch -- a ghost outside a run
+		  leaves nothing behind for the start that follows it.
 		*/
 		e.run_st_ghost = TRUE;
 
 		// Patch 478: the tests below never see a body leave a box whose exit
-		// starts a clock, so the packet after the unghost started one, CLEAN,
-		// wherever the ghost had carried it -- a run from its armed box, a stage
-		// run from its handover box, or a held stage (3b, which re-reads the ghost
-		// flag at SV_StageStart).  Leaving as a ghost disarms instead.
+		// starts a clock, so the packet after the unghost started one wherever
+		// the ghost had carried it: a CLEAN run from its armed box (SV_TimerArm
+		// and SV_StageOpen re-read the ghost flag), a stage run from its
+		// handover box, or a held stage's clock (3b) rebased to the unghost, the
+		// ghost's travel untimed and qualifying at run_stageghost 1.  Being out
+		// of the box as a ghost disarms it instead.
 		mn = SV_RunHullMins(e);
 		mx = SV_RunHullMaxs(e);
 		if (e.run_t_state == TS_ARMED)
@@ -13002,7 +13007,11 @@ void(entity e) SV_TimerFrame =
 			{
 				e.run_st_armed = FALSE;
 				e.run_st_hold = FALSE;
-				sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the stage's box as a ghost -- this stage will not count\n");
+				// Not qualifying either: its base is the boundary, a different
+				// measurement from a box exit.  A fail (back in the box) reopens it.
+				e.run_st_jump = FALSE;
+				e.run_st_ramp = TRUE;
+				sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the stage's box as a ghost -- this stage will not count; step back in to restart it\n");
 			}
 		}
 

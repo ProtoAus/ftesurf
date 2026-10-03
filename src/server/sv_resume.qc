@@ -859,6 +859,11 @@ void(entity e) SV_MsAbort =
 	fremove(SV_MsPath(e, "ms.txt"));
 	frename(claim, SV_MsPath(e, "ms.txt"));
 	SV_WatchRelease(e);                 // Patch 477: a pin taken in the resume phase
+	// Patch 478: the body stays at the park point, so no arm survives the phase
+	// -- a `!r` in it armed the leg while SV_MsFrame held the body outside the
+	// box, and the next packet's start test began a CLEAN run there.
+	SV_TimerIdle(e);
+	e.run_t_azone = -1;
 	e.movetype = MOVETYPE_WALK;
 	e.run_ms_phase = MS_NONE;
 	e.run_ms_offer = FALSE;
