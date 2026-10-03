@@ -1410,12 +1410,14 @@ float(float id, float row) SV_SaveReadLight =
   SV_SaveApplyState, on the timer state the load ended in (a RUNNING row voided
   for its recording counts as idle).  RAISED when the load carries more than a
   walk or a jump could -- horizontal speed over sv_maxspeed, Patch 454's line
-  for "no prespeed to launder", or vertical over the jump impulse -- by a load
-  that ends outside a run; or, for a RUNNING load, by the row's own `hopped`.
-  Round 3 speed-tested running loads too; round 5 took it back: on bhop-mode
-  maps a start box entered from RUNNING arms only through the jump commit, so
-  the rest test below never runs and honest save-state practice came out
-  practice until `!r` (the box re-entry it aimed at predates 477 -- BACKLOG).
+  for "no prespeed to launder", or vertical over the jump impulse -- by any
+  IDLE load (every rewind row, and a RUNNING row voided for its recording);
+  by an ARMED, FINISHED or RUNNING load only when it is that fast AND its file
+  says the attempt was hopped (a fast save taken after a rewind load, in the
+  box or on a run, keeps the tag; an honest prestrafe save does not get one).
+  Rounds 3-6: on bhop-mode maps a box entered from anything but IDLE arms only
+  through the jump commit, so the rest test below never runs, and testing
+  those loads on speed alone made honest save practice practice until `!r`.
   A tag a load raised is forgiven by Patch 454's rest test after the arm
   (run_t_finfgv): raised for speed, and arriving at rest is the absence of it.
   FORGIVEN outright by a load that leaves the body at rest outside a run --
@@ -1425,7 +1427,7 @@ float(float id, float row) SV_SaveReadLight =
 */
 void(entity e, float hop, float rwd) SV_SaveLoadTag =
 {
-	local float cap, jv, up, down;
+	local float cap, jv, up, down, fast;
 
 	cap = cvar("sv_maxspeed");
 	if (cap <= 0)
@@ -1433,22 +1435,19 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 	jv = cvar("pm_jumpvelocity");
 	if (jv <= 0)
 		jv = 302;                   // defaultuser.cfg's 301.99
-	up = down = FALSE;
-	if (e.run_t_state == TS_RUNNING)
-	{
-		if (hop)
-			up = TRUE;
-	}
-	else
-	{
-		if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
-			up = TRUE;
-		if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
-			up = TRUE;
-		if (!up)
-		if (vlen(e.velocity) < SL_ARM_SPEED)
-			down = TRUE;
-	}
+	up = down = fast = FALSE;
+	if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
+		fast = TRUE;
+	if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
+		fast = TRUE;
+	if (e.run_t_state == TS_IDLE)
+		up = fast;
+	else if (fast)
+		up = hop;
+	if (!fast)
+	if (e.run_t_state != TS_RUNNING)
+	if (vlen(e.velocity) < SL_ARM_SPEED)
+		down = TRUE;
 	if (up)
 	{
 		e.run_t_hopped = TRUE;
@@ -2866,7 +2865,13 @@ void(float base, float cnt) SV_SaveKeepWindow =
 		{
 			kept = kept + 1;
 			if (kept > SL_RECKEEP)
+			{
 				SV_SaveDemote(base + i);
+				// Refused (the file changed under the row, which SV_SaveLocLoad
+				// refuses too): marked, so the next save does not read it again.
+				if (rec_sl_tick[base + i] > 0)
+					rec_sl_tick[base + i] = SL_DEMOTED;
+			}
 		}
 };
 
@@ -3193,7 +3198,7 @@ void(entity e) SV_RewindDropGo =
 // resume's row (SV_RewindDropGo), which the dispatcher marks once it holds.
 float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateAt =
 {
-	local float id, seq, row, blk, base, cnt;
+	local float id, seq, row, blk, base, cnt, full;
 
 	if (!SV_SaveLocBegin(e, FALSE))
 		return FALSE;
@@ -3214,12 +3219,27 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		sprint(e, PRINT_HIGH, "^3rewind: wait for the resume to finish\n");
 		return FALSE;
 	}
-	// The cheap refusals before the ring's scan (round 5), and at the cap the
-	// last resume's row makes room for this one.
+	// A full list refuses before the ring's scan unless the last resume's row
+	// can make room -- and then only after the scan, so a refusal cannot cost
+	// that row too (rounds 5-6).
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
-	if (go)
-	if (rec_sl_nb[blk] >= SL_Cap(blk))
+	full = (rec_sl_nb[blk] >= SL_Cap(blk));
+	if (full)
+	if (!go || !e.rw_goid)
+	{
+		sprint(e, PRINT_HIGH,
+		       sprintf("^3rewind: the save list is full (%g).  Delete one first.\n",
+		               SL_Cap(blk)));
+		return FALSE;
+	}
+	if (!SV_RewindFind(e, t, near, usenear))
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
+		                      "two minutes of the last run are\n");
+		return FALSE;
+	}
+	if (full)
 		SV_RewindDropGo(e);
 	cnt  = rec_sl_nb[blk];
 	if (cnt >= SL_Cap(blk))
@@ -3233,12 +3253,6 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 	if (id < 1)
 	{
 		sprint(e, PRINT_HIGH, "^3rewind: no free slot number\n");
-		return FALSE;
-	}
-	if (!SV_RewindFind(e, t, near, usenear))
-	{
-		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
-		                      "two minutes of the last run are\n");
 		return FALSE;
 	}
 	seq = rec_sl_ns[blk];
@@ -3938,11 +3952,11 @@ void(entity e) SV_WatchRelease =
 // Patch 477: `rec_watch 0 void` -- the rewind's way out when no resume was
 // made.  A running run under the pin ends here rather than thawing past a
 // freeze the .rec never records (AGENTS.md, the held-run fault).
-void(entity e) SV_WatchVoid =
+void(entity e, string why) SV_WatchVoid =
 {
 	if (e.rec_wt_hold)
 	if (e.run_t_state == TS_RUNNING)
-		SV_TimerVoid(e, "a rewind left without a resume");
+		SV_TimerVoid(e, why);
 };
 
 void(entity e, float on) SV_WatchHold =

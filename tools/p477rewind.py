@@ -337,15 +337,16 @@ def main():
         round(math.hypot(v12[0], v12[1])) if v12 else None, "run resumed" in t12,
         "it carries speed" in t12, hop12.group(1) if hop12 else None))
 
-    # R13: a warp bind closes the mode and ends the frozen run.  Premise: the
-    # handler saw the key and passed it on (its bind would run), open before.
+    # R13: a server-served warp under the rewind ends the frozen run, and the
+    # mode closes.  Premise: open on a running run before; the setpos landed
+    # outside the start box (no "back in the start" cancel instead).
     st13 = status("R13")
     t13 = txt("R13")
-    ok13 = (len(st13) >= 2 and st13[0].group(1) == "1" and "key 114 down -> passed" in t13
-            and st13[-1].group(1) == "0" and "a rewind left without a resume" in t13)
-    check("R13", ok13, "on before %s, key passed %s, on after %s, run ended %s" % (
-        st13[0].group(1) if st13 else None, "key 114 down -> passed" in t13,
-        st13[-1].group(1) if st13 else None, "a rewind left without a resume" in t13))
+    ok13 = (len(st13) >= 2 and st13[0].group(1) == "1" and st13[-1].group(1) == "0"
+            and "moved while the rewind held it" in t13 and "back in the start" not in t13)
+    check("R13", ok13, "on before %s, on after %s, ended at the warp %s, start-box cancel %s" % (
+        st13[0].group(1) if st13 else None, st13[-1].group(1) if st13 else None,
+        "moved while the rewind held it" in t13, "back in the start" in t13))
 
     # R14: a held S saves once.  Premise: the press and the repeat both reached
     # the handler (two "key 115 down" lines), and the first made a save.

@@ -75,22 +75,6 @@ string() Rewind_Key =
 	return strtoupper(k);
 };
 
-// A bind that moves the body: the warps SV_ParseClientCommand and
-// SV_ZoneChatCommand serve.  Pressed while browsing, it closes the mode first
-// (Rewind_InputEvent) -- a stage `!r` keeps the run on the clock and fires no
-// save event, so nothing else here would notice the body was moved.
-float(string b) Rewind_WarpBind =
-{
-	local string w;
-
-	w = substring(b, 0, 6);
-	if (w == "say !r" || w == "say !m" || w == "say !s" || w == "say !b")
-		return TRUE;
-	if (substring(b, 0, 5) == "zone_" || w == "setpos" || b == "kill")
-		return TRUE;
-	return FALSE;
-};
-
 float(float scan) Rewind_KeyIx =
 {
 	if (scan == 's')            return 0;
@@ -165,14 +149,15 @@ float() Rewind_Open =
 		print("^3rewind:^7 not while a replay, ghost, spectate or load is up\n");
 		return FALSE;
 	}
-	// The pin stops the clock, which makes a clean run practice (SV_TimerFreeze):
-	// Patch 391's refusal of a mid-run load, with a second press as the way through.
-	if (SaveLoc_RunLocked())
+	// Every way out of a rewind ends the run on the clock (a resume loads an idle
+	// row, a refusal voids), so any running run asks first -- Patch 391's refusal
+	// of a mid-run load, with a second press as the way through (round 6).
+	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
 	if (!rw_askat || (cltime - rw_askat) >= RW_ASK)
 	{
 		rw_askat = cltime;
-		print(sprintf("^3rewind:^7 %s again to rewind -- this clean run becomes practice\n",
-		              Rewind_Key()));
+		print(sprintf("^3rewind:^7 %s again to rewind -- the run on the clock ends here "
+		              "(ESC carries on from where you are)\n", Rewind_Key()));
 		return FALSE;
 	}
 	rw_askat = 0;
@@ -422,7 +407,7 @@ void(vector scr) Rewind_Draw =
 		if (rw_askat)
 		if ((cltime - rw_askat) < RW_ASK)
 			HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0],
-			          sprintf("%s again to rewind -- this clean run becomes practice",
+			          sprintf("%s again to rewind -- the run on the clock ends here",
 			                  Rewind_Key()),
 			          14 * ui_cv_scale, '1 0.8 0.3', 0.95);
 		return;
@@ -450,9 +435,10 @@ void(vector scr) Rewind_Draw =
 	if (rw_ack)
 		s = "...";
 	else if (Rewind_Old())
-		s = "LEFT/RIGHT scrub   too far back: the server keeps the last two minutes   ESC back";
+		s = "LEFT/RIGHT scrub   too far back: the server keeps the last two minutes";
 	else
-		s = "LEFT/RIGHT scrub   ENTER resume here   S save here   ESC back";
+		s = "LEFT/RIGHT scrub   ENTER resume here   S save here";
+	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC carry on from here" : "   ESC back");
 	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 };
 
@@ -496,13 +482,6 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (k >= 0)
 	if (rw_kst[k])
 		return TRUE;                // a repeat, or a key held from before
-	if (!rw_cd)
-	if (!rw_ack)
-	if (Rewind_WarpBind(getkeybind(scanx)))
-	{
-		Rewind_Close();             // its void is queued ahead of the bind's command
-		return FALSE;
-	}
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait

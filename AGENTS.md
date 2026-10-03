@@ -196,9 +196,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   `SV_TimerFinish`, because that function's other caller is a stage boundary that
   hands the next stage over at speed. **Patch 477 added a fifth and a raise**
   (`SV_SaveLoadTag`): a load that leaves the body at rest outside a run, with no
-  trigger or delayed output still owed to it, forgives; a load faster than a walk
-  or a jump (horizontal over sv_maxspeed, vertical over pm_jumpvelocity) raises
-  it, and that tag is also forgiven by coming to rest after the arm. **The tag still survives a cancel zone, a map
+  trigger or delayed output still owed to it, forgives; an IDLE load faster than
+  a walk or a jump (horizontal over sv_maxspeed, vertical over pm_jumpvelocity)
+  raises it, and an armed, finished or running one only when it is that fast
+  AND its file says hopped -- on bhop-mode maps a box entered from anything but
+  IDLE never runs the rest test that forgives a load's tag after the arm. **The tag still survives a cancel zone, a map
   teleport and a stage-boundary finish**, so an arm can read `hopped 1` many sections
   after the jump that earned it; there is a chat reminder on each later fluffed start
   but nothing on the HUD. Walk out, then

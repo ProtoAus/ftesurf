@@ -333,6 +333,7 @@ void() ClientDisconnect =
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
+	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
 
 	// Close any open .rec before the edict goes: fclose is what actually
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
@@ -774,7 +775,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid;
+	local float  cmdargc, go, pinned, won, wvoid, a1, a2, a3;
 
 	cmdargc = tokenize(cmd);
 	c = argv(0);
@@ -956,8 +957,11 @@ void(string cmd) SV_ParseClientCommand =
 			if (FS_SlopOp(self.rec_sl_slop) == SLOP_LOADED)
 			{
 				SV_SaveLocHold(self, TRUE);
-				self.rw_goid  = rec_sl_id[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
-				self.rw_goseq = rec_sl_seq[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
+				if (SV_RewindAlone(self))   // as the row's own message promised
+				{
+					self.rw_goid  = rec_sl_id[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
+					self.rw_goseq = rec_sl_seq[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
+				}
 			}
 			else if (pinned)
 				SV_WatchHold(self, TRUE);
@@ -988,7 +992,7 @@ void(string cmd) SV_ParseClientCommand =
 		won = stof(argv(1));
 		wvoid = (argv(2) == "void");
 		if (wvoid)
-			SV_WatchVoid(self);
+			SV_WatchVoid(self, "a rewind left without a resume");
 		SV_WatchHold(self, won);
 		return;
 	}
@@ -1125,10 +1129,18 @@ void(string cmd) SV_ParseClientCommand =
 		*/
 		self.run_t_wantstage1 = FALSE;
 
+		// Patch 477: a run frozen under the replay/rewind pin ends before the
+		// warp -- a mid-stage restart keeps the run on the clock, and the rewind
+		// would resume it back to its head (review round 6).  argv first: the
+		// void's recorder path tokenizes.
+		a1 = stof(argv(1));
+		a2 = stof(argv(2));
+		a3 = stof(argv(3));
+		SV_WatchVoid(self, "moved while the rewind held it");
 		// zone_goto <n> [yaw] [pitch] -- the angles are optional and only
 		// applied when given, so an interactive `zone_goto 0` still leaves you
 		// looking wherever you were looking.
-		SV_ZoneGotoAng(stof(argv(1)), stof(argv(2)), stof(argv(3)), cmdargc >= 3);
+		SV_ZoneGotoAng(a1, a2, a3, cmdargc >= 3);
 		return;
 	}
 
@@ -1259,6 +1271,7 @@ void(string cmd) SV_ParseClientCommand =
 		}
 
 		sprint(self, PRINT_HIGH, sprintf("setpos: %v\n", self.origin));
+		SV_WatchVoid(self, "moved while the rewind held it");   // see zone_goto; after the argv
 		return;
 	}
 
@@ -1361,6 +1374,7 @@ void(string cmd) SV_ParseClientCommand =
 			if (alldigits)
 			{
 				n = stof(tail);         // stof("") is 0, which is what !m/!r want
+				SV_WatchVoid(self, "moved while the rewind held it");   // see zone_goto
 				SV_ZoneChatCommand(w, n);
 				return;
 			}
@@ -1389,8 +1403,8 @@ void(string cmd) SV_ParseClientCommand =
 	  ours was unreachable by the obvious route.  Both halves go away with the
 	  rename.
 	*/
-	if (c == "zone_restart") { SV_ZoneChatCommand("!m", 0); return; }
-	if (c == "zone_reset")   { SV_ZoneChatCommand("!r", 0); return; }
+	if (c == "zone_restart") { SV_WatchVoid(self, "moved while the rewind held it"); SV_ZoneChatCommand("!m", 0); return; }
+	if (c == "zone_reset")   { SV_WatchVoid(self, "moved while the rewind held it"); SV_ZoneChatCommand("!r", 0); return; }
 	// Multi-Session.  Not `run_resume`: that is the cvar's name.
 	if (c == "ms_resume")    { SV_MsAccept(self);     return; }
 	if (c == "ms_discard")   { SV_MsDiscardCmd(self); return; }
