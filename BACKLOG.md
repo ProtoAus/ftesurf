@@ -1289,6 +1289,31 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   FAULT was adjudicated a false positive on this basis and its `pubkeys.decision` is
   deliberately unset, so the fixed rule re-derives the verdict instead of inheriting a
   hand-cleared row.
+  **PATCH 476 TRIED THE `max(sweep, ANG_SOLO)` CUT AND WAS REVERTED, 2026-10-03.** Two
+  reviewers, independently, each with a measurement:
+  - the turn is the wrong window: a one-frame tick's frame sits in the turn OUT of the
+    move (row i to i+1), not into it -- all 155 surf_4am solo ticks do. Cut at
+    max(backward, forward) turn: 0/155 honest; keep the first frame of each tick
+    instead of the last and the shipped-backward cut faults honest at 1.05%. Move 0
+    (`py` None) is judged at the floor whatever the camera does.
+  - yaw and pitch must be cut separately: `max(dy,dp)` against `max(sy,sp)` lets a yaw
+    deviation hide under a pitch turn (0.3-0.69 deg drew no fault from any rule).
+  - `score()` in the lag search still uses the flat cut, so with any ping (>= 1 tick)
+    the true offset fails ANG_LAG_FLOOR/EDGE and the join falls to 0 -- the honest
+    pair shifted 2-3 ticks faults at 65-66% under the patch. A turn-aware score alone
+    lets the neighbours pass too; the gates need rethinking with it.
+  - THE TRADE IS A DECISION, NOT A DETAIL: a cut of the tick's own turn also clears
+    deviations that sit inside turning ticks (measured: windows of 2-10% of a run at
+    0.5-1 deg caught 11-15 of 20 vs the flat rule's 20/20). Since a FAULT is admin-only,
+    the likely right shape is a THIRD VERDICT for "deviation inside its own turn" --
+    reported, neither convicted nor cleared -- rather than a wider cut.
+  - fixtures: `view_for` writes every frame exactly on its move's angle, so no test can
+    reproduce the bug. A fixture with frames placed inside the tick's turn is the
+    first thing a retry needs. `p456solo.py` grades against HOLD 5.0; the rule's
+    ANG_SOLO_HOLD has been 1.0 since 70a40ae.
+  Also corrected: the 0.0104 baseline is NOT only from still cameras -- honest p421
+  pairs that swept 1258-5925 deg have one-frame worst 0.0099-0.0101 at or below the
+  mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
 - **The run line's air-control grade is measured against THIS server's movement

@@ -2894,9 +2894,7 @@ def angle_join(r, rec, frames):
         n = max(dy / max(sy, 1.0), dp / max(sp, 1.0))
         devs.append(max(dy, dp))
         if len(g) == 1:
-            # With the tick's own turn: a frame is drawn INSIDE the tick, so it
-            # can be off by up to what the camera swept in it (p456solo.py).
-            solo.append((max(dy, dp), max(sy, sp)))
+            solo.append(max(dy, dp))
         worst = max(worst, n)
         if n > ANG_CUT:
             past += 1
@@ -2948,18 +2946,12 @@ def angle_join(r, rec, frames):
         # this rule examined is as much the answer as what it found, and the
         # first cut of this line said "150 ticks held one frame, 0 past 0.05"
         # for a sidecar that was two degrees out on the 184 it did not mention.
-        # PAST THE TICK'S OWN TURN, FLOORED AT ANG_SOLO.  The flat cut convicted
-        # honest turning players (surf_4am, 2026-09-21: 45.8% at 196 fps, 67.6%
-        # decimated to 49 fps; 0.6% and 0.1% this way, a forged pair 99.7%).  On
-        # a still camera the floor makes it exactly the flat rule.
-        sbad = sum(1 for d, s in solo if d > max(s, ANG_SOLO))
+        sbad = sum(1 for d in solo if d > ANG_SOLO)
         sfrac = 100.0 * sbad / len(solo) if solo else 0.0
-        sworst = max(d for d, _ in solo) if solo else 0.0
         r.info["angle_solo"] = ("%d of %d moves held one frame (%.0f%%), "
-                                "%d past their tick's turn, floor %g deg "
-                                "(%.2f%%, worst %.4f)%s"
+                                "%d past %g deg (%.2f%%, worst %.4f)%s"
                                 % (len(solo), comparable, cover, sbad, ANG_SOLO,
-                                   sfrac, sworst,
+                                   sfrac, max(solo) if solo else 0.0,
                                    "" if covered else
                                    (" -- PARTIAL COVER" if judged
                                     else " -- NOT ENOUGH TO JUDGE")))
@@ -2969,9 +2961,9 @@ def angle_join(r, rec, frames):
             # truncated at 300, so the first draft's explanatory tail was cut
             # off mid-word in the database.  The explanation belongs here.
             r.fault("the sidecar is not this recording's: %.1f%% of %d ticks "
-                    "that held one rendered frame disagree by more than the "
-                    "tick's own turn (floor %g deg), worst %.2f"
-                    % (sfrac, len(solo), ANG_SOLO, sworst))
+                    "that held one rendered frame disagree by over %g deg, "
+                    "worst %.2f (honest worst measured: 0.0104)"
+                    % (sfrac, len(solo), ANG_SOLO, max(solo)))
 
     # THE VERDICT IN ONE WORD, FOR THE CALLER THAT HAS TO STORE ONE.  rcptcheck
     # used to reach this by testing whether `angle_off` started with "BLIND",
@@ -3279,8 +3271,8 @@ def tamper_view(path):
                     " FLAT" if "flat" in off else "")
                  if m else "sweep n/a")
         solo = v.info.get("angle_solo", "")
-        s = re.search(r"\((\d+)%\), \d+ past their tick's turn, floor [0-9.]+ deg "
-                      r"\(([0-9.]+)%, worst ([0-9.]+)\)(.*)$", solo)
+        s = re.search(r"\((\d+)%\), \d+ past [0-9.]+ deg \(([0-9.]+)%, "
+                      r"worst ([0-9.]+)\)(.*)$", solo)
         if s:
             solo = ("| one-frame %s%% of cover %s%% worst %s%s"
                     % (s.group(2), s.group(1), s.group(3),
