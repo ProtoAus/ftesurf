@@ -379,6 +379,14 @@ def main():
               st13b[0].group(0) if st13b else None, "rewind: resumed" in t13b,
               "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None, rr13b))
 
+    # R13C (round 18): ENTER pressed in the countdown is the rewind's, not
+    # `bind enter say`'s -- a draft opened there swallows the releases of the
+    # keys held for the release.  Premise: R13B's countdown was on (its status).
+    k13c = [re.search(r"vote key: scan 13 down 1 took (\d)", s) for s in sec["R13B"]]
+    k13c = [m.group(1) for m in k13c if m]
+    check("R13C", bool(st13b) and st13b[0].group(2) == "1" and k13c == ["1"],
+          "counting %s, ENTER took %s" % (st13b[0].group(2) if st13b else None, k13c))
+
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
     t15 = txt("R15")
@@ -465,17 +473,20 @@ def main():
         "a rewind left without a resume" in t18d,
         pn18d.group(1) if pn18d else None, pn18d.group(2) if pn18d else None))
 
-    # R18J (round 17): a press another handler took repeats into the open rewind
-    # without a go, and a scrub whose release another handler swallowed stops.
-    # Premise: the rewind opened, and the press and the swallowed release reached
-    # the tracker (their own "other" lines).
+    # R18J (rounds 17-18): through the whole input chain, a press the chat draft
+    # took repeats into the open rewind without a go, and a scrub whose release
+    # the draft swallowed stops.  Premise: the rewind opened, and the draft took
+    # each press and the release (`took 1` -- a go on the first ENTER would show
+    # as sent/counting, not as a pass).
     st18j = status("R18J")
     t18j = txt("R18J")
+    tk18j = [m.group(1) for m in (re.search(r"vote key: scan (13 down 1|130 down 0) took 1", s)
+                                  for s in sec["R18J"]) if m]
     ok18j = (len(st18j) >= 5 and st18j[0].group(1) == "1"
-             and "rewind: key 13 down -> other" in t18j and "rewind: key 130 up -> other" in t18j
+             and tk18j.count("13 down 1") == 2 and "130 down 0" in tk18j
              and st18j[1].group(1) == "1" and st18j[1].group(2) == "0" and st18j[1].group(3) == "0"
-             and "rewind: resumed" not in t18j and int(st18j[2].group(4)) >= 20
-             and int(st18j[3].group(4)) >= int(st18j[2].group(4)) - 10
+             and "rewind: resumed" not in t18j and int(st18j[2].group(4)) >= 30
+             and int(st18j[3].group(4)) >= int(st18j[2].group(4)) - 15
              and st18j[3].group(4) == st18j[4].group(4))
     check("R18J", ok18j, "open %s; after the repeat counting %s sent %s; seek at %s, then cursor %s, %s" % (
         st18j[0].group(1) if st18j else None,

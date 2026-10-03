@@ -91,7 +91,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **A press the engine console took acts on its first auto-repeat in the
   rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
   offered that press, so Rewind_Track (round 17) cannot mark it down; every press
-  CSQC is offered -- a bind's, the chat draft's -- is tracked.
+  CSQC is offered -- a bind's, the chat draft's -- is tracked. Its first repeat
+  can be an unasked S save or scrub too. And Rewind_Track keeps one state per
+  key, not per device: with `in_rawinput_keyboard 1` and a second keyboard, a
+  key held through an alt-tab loses its release (the focus-loss release covers
+  device 0), and its next press in the rewind is swallowed once (round-18
+  review, PLAUSIBLE, not tried on hardware).
 - **A resume's row outlives a `retry` or a map change**: `rw_goid` lives on the
   edict, so "the next resume replaces it" is false across either, and the row stays
   in the list as an ordinary (demoted, rewound) save. Patch 477 round-9 review.

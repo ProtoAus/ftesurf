@@ -557,6 +557,15 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 			rw_cd = cltime;
 			return TRUE;
 		}
+		// Round 18: ENTER again would reach `bind enter say` and open the chat
+		// draft, which swallows the releases of the keys held for the release.
+		// A `+` bind on it still passes, as a held key.
+		if (k == 1 || k == 2)
+		if (substring(getkeybind(scanx), 0, 1) != "+")
+		{
+			rw_kst[k] = 1;
+			return TRUE;
+		}
 		return FALSE;               // the keys the release will find held
 	}
 	// The save-lock keys (cl_saveloc.qc, by scancode) and any key bound to a

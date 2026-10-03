@@ -2978,11 +2978,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             carrier (`pin`), at the pin only.  The hold's
                             per-packet zero and the release's are not written:
                             the first comes after the freeze latch, so no row of
-                            a frozen run follows it; a replay pin's thaw is the
+                            a frozen run follows it -- but for the packet a run
+                            STARTS under a pin taken while armed (practice; the
+                            latch is a packet later); a replay pin's thaw is the
                             held-run fault (BACKLOG).
 
                             WHAT IT DOES NOT COVER, named because a gap that is
                             not written down gets rediscovered as a bug:
+                            `setpos` (a cheat-class run, which nothing verifies),
+                            and
                             trigger_push's CONTINUOUS arm -- 4,940 instances
                             across 46.9% of the library -- writes no velocity at
                             all.  It writes .run_basevel, a carrier the engine

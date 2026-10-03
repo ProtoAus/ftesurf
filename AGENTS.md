@@ -1047,8 +1047,11 @@ bannered as superseded.)
   (`run_t_frzmt`), because the `in` rows stop there; pm_verify flies a last row
   to `inend`.
 - Harness: `tools/p477rewind.py` (parks data/saves/surf_dune; its last section
-  changes map to surf_embrace). `rewind key <scan> [up]` feeds the real input
-  handler; `rewind status|seek|step|go|save` drive the rest.
+  changes map to surf_embrace). `vote key <scan> <0|1>` runs a key through the
+  whole input chain (CSQC_InputEvent: Rewind_Track, the chat draft, the rest);
+  `rewind key <scan> [up] [other]` feeds Rewind_Track and this mode's handler
+  only (`other`: a press another handler took); `rewind
+  status|seek|step|go|save` drive the rest.
 
 ## Imported runs: Momentum Mod and KSF
 
