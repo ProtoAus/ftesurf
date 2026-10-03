@@ -12083,6 +12083,11 @@ void(entity e) SV_TimerStart =
 	// velocity is what `seed` states and a replay reproduces it.
 	SV_StartCapClamp(e);
 
+	// Patch 477: a run that starts under a pending freeze -- the replay or
+	// rewind pin taken while not running -- begins with its clock stopped.
+	if (e.run_t_freeze)
+		e.run_t_dirty = TRUE;
+
 	if (e.run_t_cheat)
 		SV_TimerCheat(e);
 	else if (e.run_t_dirty || e.run_t_hopped)

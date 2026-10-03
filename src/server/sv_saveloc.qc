@@ -479,6 +479,8 @@ float(entity e, float r) SL_RowGrounded =
 // STAT_FS_SLSEQ in shared/sh_defs.qc.
 .float rec_sl_slseq;
 .float rec_sl_slop;
+.float rw_goid;                 // Patch 477: the last rewind resume's row, which the
+.float rw_goseq;                // next one replaces (SV_RewindDropGo)
 .float rec_sl_savetick;          // the cursor slot's stored run clock
 
 /*
@@ -1199,9 +1201,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  passes 2.  A LOAD must not read it: a load is practice by construction and
 	  re-derives its own class, and taking this bit from a file the player can hold
 	  would let one save mark another attempt.  See the raise-only restore below.
-	  [Patch 477 reverses that for loads too, raise-only: a save taken after a
-	  rewind load carried the speed and shed the tag.  SV_SaveApplyState's load
-	  branch.]
+	  [Patch 477: a RUNNING load raises from it too, raise-only; any other load
+	  raises on speed instead (SV_SaveLoadTag) -- a save taken after a rewind
+	  load carried the speed and shed the tag.]
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
 	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's
@@ -1399,6 +1401,48 @@ float(float id, float row) SV_SaveReadLight =
 	  it at position zero.
 	*/
 	return seq;
+};
+
+/*
+  Patch 477: what a load does to the hopped-start tag -- raises it, never lowers
+  it.  Called last in SV_SaveApplyState, on the timer state it ended in.  A
+  RUNNING load raises from the file's own `hopped`.  Anything else -- idle,
+  armed, finished, a rewind row, a RUNNING row voided because its recording did
+  not come back -- raises when it carries more horizontal speed than a walk:
+  sv_maxspeed, Patch 454's line for "no prespeed to launder", plus SL_ARM_SPEED.
+  Review round 2: round 1 raised at 1 u/s and on a standing save's `hopped`,
+  which tagged honest walkers and defeated the start-box arm gate.
+*/
+void(entity e, float hop, float rwd) SV_SaveLoadTag =
+{
+	local float cap, up;
+
+	cap = cvar("sv_maxspeed");
+	if (cap <= 0)
+		cap = PM_RUN_SPEED;
+	up = FALSE;
+	if (e.run_t_state == TS_RUNNING)
+	{
+		if (hop)
+			up = TRUE;
+	}
+	else if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
+		up = TRUE;
+	if (up)
+	{
+		e.run_t_hopped = TRUE;
+		e.run_t_finfgv = FALSE;     // a fresh tag drops a pending finish forgiveness
+	}
+	if (rwd)
+	{
+		if (up)
+			sprint(e, PRINT_HIGH, "^3rewind:^7 resumed -- practice from here, ^2!r^7 for a timed run\n");
+		else
+			sprint(e, PRINT_HIGH, "^7rewind: resumed -- no faster than a run, so a start from here counts\n");
+	}
+	else if (up)
+	if (e.run_t_state != TS_RUNNING)
+		sprint(e, PRINT_HIGH, "^3save:^7 it carries speed -- ^2!r^7 before a timed run\n");
 };
 
 /*
@@ -2028,25 +2072,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		*/
 		SV_TimerStitched(e);
 
-		/*
-		  Patch 477: a load RAISES the hopped tag and never lowers it -- from the
-		  file's `hopped`, a rewind row, or any idle row with speed -- so every
-		  run started before a velocity-zeroing forgiveness is practice, and a
-		  save re-taken after the load cannot shed the tag (review round 1: the
-		  rewind's own key was per row).  A fresh tag drops a pending finish
-		  forgiveness, as the hop rule's own tag does (Patch 454).
-		*/
-		if (st != TS_RUNNING)
-		if (vlen(e.velocity) >= SL_ARM_SPEED)
-			hop = TRUE;
-		if (hop || rwd)
-		{
-			e.run_t_hopped = TRUE;
-			e.run_t_finfgv = FALSE;
-		}
-		if (rwd)
-			sprint(e, PRINT_HIGH, "^3rewind:^7 practice from here -- ^2!r^7 for a timed run\n");
-
 		if (st == TS_RUNNING)
 		{
 			e.run_t_flags = e.run_t_flags | TF_SHADOW;
@@ -2301,6 +2326,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			SV_RecEndHold(e, "", "", 0);
 	}
 
+	if (!retry)
+		SV_SaveLoadTag(e, hop, rwd);    // Patch 477: on the state the load ended in
 	return TRUE;
 };
 
@@ -2556,6 +2583,7 @@ void(entity e) SV_SaveLocSync =
 		{
 			SV_SaveLocRelease(p);
 			SV_WatchRelease(p);
+			p.rw_goid = 0;              // Patch 477: its row is in the other folder
 			if (p.rec_sl_delall)        // Patch 428: its rows are gone with the block
 			{
 				sprint(p, PRINT_HIGH, sprintf("^3save: delete-all stopped after %g -- the lobby switched\n",
@@ -2803,7 +2831,8 @@ void(float row) SV_SaveDemote =
 
 // Patch 477: the newest SL_RECKEEP rows WITH a run keep it -- counted, not by
 // position, so a row that never had one (idle, demoted, a rewind) cannot push
-// a real save's run out.  After a create; demotes at most the one row it pushed.
+// a real save's run out.  Every row past the window, not the first: a demote
+// that refuses (file changed on disk) must not stall the rest (review round 2).
 void(float base, float cnt) SV_SaveKeepWindow =
 {
 	local float i, kept;
@@ -2814,10 +2843,7 @@ void(float base, float cnt) SV_SaveKeepWindow =
 		{
 			kept = kept + 1;
 			if (kept > SL_RECKEEP)
-			{
 				SV_SaveDemote(base + i);
-				return;
-			}
 		}
 };
 
@@ -2919,8 +2945,8 @@ void(entity e) SV_SaveLocCreate =
 
   It is the demoted shape -- an idle timer, latches rescanned on load -- with
   the velocity KEPT, which is the one thing a demote refuses to keep (an idle
-  load with speed beside a start box can arm with it).  `rewound 1` answers
-  that: the load raises the sticky hopped-start tag, so every run started
+  load with speed beside a start box can arm with it).  A load faster than a
+  walk raises the sticky hopped-start tag (SV_SaveLoadTag), so a run started
   before a forgiveness is practice (SV_TimerStart), and every forgiveness
   zeroes the velocity or waits for rest (SV_TimerForgiveHop, Patch 454).
 ===========================================================================
@@ -2929,18 +2955,15 @@ void(entity e) SV_SaveLocCreate =
 #define RW_CAP     4000         // samples kept a player: two minutes, 160 KB
 #define RW_STRIDE  10           // ticks, origin, velocity, pitch, yaw, duck
 
-// 32 slots of RW_CAP is 5 MB of the server VM's heap, which on the Pi (not
-// _WIN64) is a fixed 32 MB (initlib.c PR_Configure), and a failed memalloc is
-// SV_Error outside developer (PR_BIError; pr_cmds.c:779).  Beside it: 3140
-// bytes of fields an edict (qwprogs.dat header, 2026-10-03) and 1.85 MB of
-// save rows (FS_SLROWS x 56); the recorder is in engine strbufs.
+// 32 slots of RW_CAP is 5 MB of the server VM's heap.  Measured on the Pi
+// 2026-10-03 (`sv_meminfo` over rcon, all 12 lobbies): 6.8-9.6 MB used of 2 GB
+// reserved -- PR_ReadBytesString gives 64-bit Linux 2 GB for the default
+// pr_ssqc_memsize -1 (pr_bgcmd.c).  A failed memalloc is SV_Error.
 float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_n;                    // samples held
 .float rw_head;                 // next write
 .float rw_last;                 // ticks of the last sample
 .float rw_st;                   // run state at the last call
-.float rw_goid;                 // the last `go`'s row, which the next one replaces
-.float rw_goseq;
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
 
@@ -3036,8 +3059,12 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 			bd = d;
 		}
 		else if (m[i] <= t && t - m[i] <= w)    // past the run is not "the end of it"
-		if (best < 0 || m[i] > m[best])
-			best = i;
+		{
+			if (best < 0)
+				best = i;
+			else if (m[i] > m[best])
+				best = i;
+		}
 	}
 	if (best < 0)
 		return FALSE;
@@ -3080,31 +3107,54 @@ float(entity e, float id, float seq) SV_SaveWriteAt =
 
 void(entity e, float n) SV_SaveLocDeleteRow;
 
-// A resume's row is a means, not a save anyone asked for: the next resume
-// replaces it, so a practice session leaves one behind rather than hundreds.
+/*
+  A resume's row is a means, not a save anyone asked for: the next resume
+  replaces it, so a practice session leaves one behind rather than hundreds.
+  Review round 2: only the row as made -- still a rewind row, and the file
+  still that row (the identity check SV_SaveDemote makes, for a second
+  connection on one guid); a row loaded again since is the player's
+  (SV_SaveLocLoad forgets it); and never in the shared off-lobby list while
+  anyone else is on, whose holds and cursors a delete would move.
+*/
 void(entity e) SV_RewindDropGo =
 {
-	local float base, cnt, i;
+	local float base, cnt, i, r;
+	local entity p;
 
 	if (!e.rw_goid)
 		return;
+	if (SL_Blk(e) == 0)
+	{
+		p = world;
+		while ((p = find(p, classname, "player")))
+			if (p != e)
+			{
+				e.rw_goid = 0;
+				return;
+			}
+	}
 	base = SL_Base(SL_Blk(e));
 	cnt  = rec_sl_nb[SL_Blk(e)];
+	r = -1;
 	for (i = 0; i < cnt; i = i + 1)
 		if (rec_sl_id[base + i] == e.rw_goid)
 		if (rec_sl_seq[base + i] == e.rw_goseq)
-		{
-			rec_sl_quiet = TRUE;
-			SV_SaveLocDeleteRow(e, i + 1);
-			rec_sl_quiet = FALSE;
-			break;
-		}
+			r = base + i;
 	e.rw_goid = 0;
+	if (r < 0)
+		return;
+	if (rec_sl_tick[r] != SL_DEMOTED)
+		return;
+	if (!SV_SaveReadIdent(rec_sl_id[r]) || !SV_SaveRowIs(r))
+		return;
+	rec_sl_quiet = TRUE;
+	SV_SaveLocDeleteRow(e, r - base + 1);
+	rec_sl_quiet = FALSE;
 };
 
 // `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
 // TRUE when the save was made and is the current row; `go` replaces the last
-// go's row (SV_RewindDropGo).
+// resume's row (SV_RewindDropGo), which the dispatcher marks once it holds.
 float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateAt =
 {
 	local float id, seq, row, blk, base, cnt;
@@ -3127,9 +3177,6 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		                      "two minutes of the last run are\n");
 		return FALSE;
 	}
-	if (go)
-		SV_RewindDropGo(e);
-
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
 	cnt  = rec_sl_nb[blk];
@@ -3163,15 +3210,14 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 	}
 	rec_sl_seq[row] = seq;
 	rec_sl_nb[blk] = cnt + 1;      // no run copy, so no SV_SaveKeepWindow: it evicts nothing
-	e.rec_sl_index = cnt + 1;
+	// The last resume's row goes once this one exists, not before: a refusal
+	// after the drop would have cost both (review round 2).
 	if (go)
-	{
-		e.rw_goid  = id;
-		e.rw_goseq = seq;
-	}
+		SV_RewindDropGo(e);
+	e.rec_sl_index = rec_sl_nb[blk];
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s\n",
-	                              cnt + 1, SL_NN(id), SV_TimerString(rw_t),
+	                              e.rec_sl_index, SL_NN(id), SV_TimerString(rw_t),
 	                              floor(vlen([rw_v_x, rw_v_y, 0]))));
 	return TRUE;
 };
@@ -3306,6 +3352,10 @@ void(entity e, float n) SV_SaveLocLoad =
 		return;
 	}
 	dem = (sl_fticks == SL_DEMOTED);
+	if (e.rw_goid)                      // Patch 477: a resume row loaded again is theirs
+	if (id == e.rw_goid)
+	if (rec_sl_seq[r] == e.rw_goseq)
+		e.rw_goid = 0;
 
 	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
 	SV_SaveLocPlace(e, r);
@@ -3888,10 +3938,14 @@ void(entity e, float on) SV_WatchHold =
 	// asks: SV_TimerFreezeFrame does the arithmetic, at a `time` this hook does
 	// not have -- a client command runs at physicstime and a usercmd at sv.time,
 	// which is the build 18 finding.
-	// Patch 477: a RUNNING clock only.  The freeze's taint lives to the next arm,
-	// so pinning an ARMED timer in its own box made the next honest run practice.
+	// Patch 477: the TAINT only on a running clock -- it lives to the next arm,
+	// so pinning an ARMED timer in its own box made the next honest run
+	// practice.  The freeze in every state: a run that starts under the pin is
+	// frozen at its first tick, and practice (SV_TimerStart; review round 2).
 	if (e.run_t_state == TS_RUNNING)
 		SV_TimerFreeze(e);
+	else
+		e.run_t_freeze = TRUE;
 };
 
 /*

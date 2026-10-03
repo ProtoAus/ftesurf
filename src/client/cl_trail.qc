@@ -64,6 +64,8 @@
 #define TR_S1     10
 #define TR_BUILD  16            // samples between Line_End passes
 #define TR_EYEMID 0.5           // of the way between duck and stand view heights
+#define TR_SETTLE 0.5           // Patch 477: seconds after a clock-back restart...
+#define TR_JUMP   128           // ...in which a step this long drops the head (52 u is 3500 u/s)
 
 float  tr_live, tr_prev;        // slot indices, swapped at a run start
 float  tr_on;                   // the live slot holds a run
@@ -77,6 +79,8 @@ float  tr_builds;               // Line_End passes this run
 float  tr_cv, tr_fade;
 float  tr_tick;                 // the server's pm_ticrate, read per run
 float  tr_lastt;                // the run clock of the last sample, seconds
+vector tr_lastp;                // ...and where it was
+float  tr_settle;               // cltime a clock-back restart may still drop a stale head
 // Patch 477: the rewind cursor (cl_rewind.qc sets these).  While it is up the
 // live line is drawn bright to it and dim past it, and no sample is taken.
 float  tr_cur_on;
@@ -208,6 +212,20 @@ void() Trail_Sample =
 	nrm = Trail_Normal();
 	wsh = Watch_WishOf(input_angles_y, input_movevalues_x, input_movevalues_y);
 
+	/*
+	  Patch 477: a load's clock stat can land a frame before its origin, so the
+	  first samples of a clock-back restart sit at the place the load left --
+	  measured in p477rewind R9: point 0 at the wall, 389 u from the server's
+	  nearest sample.  The teleport's step drops them, so the line starts where
+	  the body did.
+	*/
+	if (tr_nsamp && cltime < tr_settle && vlen(o - tr_lastp) > TR_JUMP)
+	{
+		Line_Begin(tr_live);
+		Line_Tick(tr_live, tr_tick);
+		tr_nsamp = tr_since = tr_builds = 0;
+		tr_settle = 0;
+	}
 	if (!tr_nsamp)
 		Line_Seed(tr_live, v, fl, t, input_angles_y);
 
@@ -220,6 +238,7 @@ void() Trail_Sample =
 	Line_Point(tr_live, o, v, fl, t, 0, 0, [input_angles_y, nrm_z, wsh * nrm]);
 
 	tr_lastt = t;
+	tr_lastp = o;
 	tr_nsamp = tr_nsamp + 1;
 	tr_since = tr_since + 1;
 	if (tr_since >= TR_BUILD)
@@ -250,7 +269,10 @@ void() Trail_Frame =
 	// Patch 477: a load that winds the clock back starts the line over, as the
 	// server's rewind ring does -- so every point on it is one the ring holds.
 	else if (st == TS_RUNNING && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
+	{
 		Trail_Open();
+		tr_settle = cltime + TR_SETTLE;
+	}
 	tr_state = st;
 
 	// The fade, and the clear at the end of it.  Run on its own clock rather

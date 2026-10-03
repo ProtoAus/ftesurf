@@ -25,7 +25,8 @@ MADE = os.path.join(GAME, "logs", "p477rewind.saves.json")   # what --grade-only
 SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("R1", "R2", "R3", "R4", "R4B", "R5", "R5B", "R6", "R7", "R8", "R9")
+SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R6", "R7", "R8", "R9", "R10",
+            "R11")
 
 
 def listing(d):
@@ -176,11 +177,20 @@ def main():
     vel = [float(m.group(1)) for m in vel if m]
     moving = [v for v in vel if v > 0.5]
     hop4 = last(r"hopped (\d)", "R4")
-    check("R4", bool(moving) and moving[0] > 50 and hop4 is not None and hop4.group(1) == "1"
-          and "practice from here" in txt("R4"),
-          "readings %s, hopped %s, loaded %s" % ([round(v) for v in vel],
-                                                hop4.group(1) if hop4 else None,
-                                                "practice from here" in txt("R4")))
+    walk4 = "no faster than a run" in txt("R4")
+    check("R4", bool(moving) and moving[0] > 50 and hop4 is not None and hop4.group(1) == "0"
+          and walk4,
+          "readings %s, hopped %s, said walking speed %s" % ([round(v) for v in vel],
+                                                             hop4.group(1) if hop4 else None, walk4))
+
+    # R4C: reopened at that resume, then a resume faster than a walk is practice.
+    st4c = status("R4C")
+    hop4c = last(r"hopped (\d)", "R4C")
+    ok4c = (bool(st4c) and st4c[0].group(7) == "1" and "practice from here" in txt("R4C")
+            and hop4c is not None and hop4c.group(1) == "1")
+    check("R4C", ok4c, "reopened: %s; practice from here %s; hopped %s" % (
+        st4c[0].group(0) if st4c else None, "practice from here" in txt("R4C"),
+        hop4c.group(1) if hop4c else None))
 
     # R4B: a plain save taken off the go, forgiven, loaded -- the tag comes back.
     t4b = txt("R4B")
@@ -191,7 +201,7 @@ def main():
     ok4b = (ps is not None and pf is not None and pv is not None
             and math.hypot(pv[0], pv[1]) > 50 and "hopped 1" in pf
             and "hopped start is forgiven" in t4b
-            and hop4b is not None and hop4b.group(1) == "1")
+            and hop4b is not None and hop4b.group(1) == "1" and "it carries speed" in t4b)
     check("R4B", ok4b, "plain save %s, its speed %s, its hopped %s, forgiven %s, after the load hopped %s"
           % (ps.group(2) if ps else None, round(math.hypot(pv[0], pv[1])) if pv else None,
              ("hopped 1" in pf) if pf else None, "hopped start is forgiven" in t4b,
@@ -253,23 +263,53 @@ def main():
         if f8 and want is not None and got is not None:
             d = math.dist(xyz(at8[0]), vec(f8, "origin") or [1e9] * 3)
             ok8 = (st8[0].group(6) == "1" and abs(want - got) < 1 and "rewound 1" in f8
-                   and d < 64 and "practice from here" in txt("R8")
+                   and d < 64 and "rewind: resumed" in txt("R8")
                    and st8[-1].group(1) == "0"
                    and lst8 is not None and lst8.group(2) == "4")
             said8 += (", origin %.1f u from the cursor; left: resumed %s, closed %s, list %s"
-                      % (d, "practice from here" in txt("R8"), st8[-1].group(1) == "0",
+                      % (d, "rewind: resumed" in txt("R8"), st8[-1].group(1) == "0",
                          lst8.group(0) if lst8 else None))
     check("R8", ok8, said8)
 
     # R9: the line starts over when a load winds the clock back, so its first
-    # point is one the ring holds.
+    # point is one the ring holds -- the save made there is AT the cursor.  "It
+    # was answered" alone cannot tell: a load to under 0.5 s puts the ring's first
+    # sample inside the window of a stale line's t=0 (the no-restart mutant did).
     tr9 = [int(m.group(1)) for m in (re.search(r"trail: run (\d+) samples", s) for s in sec["R9"]) if m]
-    sv9, _ = answered("R9")
-    got9 = clock(sv9.group(3)) if sv9 else None
+    at9 = cursor("R9")
+    sv9, f9 = answered("R9")
+    d9 = (math.dist(xyz(at9[-1]), vec(f9, "origin") or [1e9] * 3)
+          if (at9 and f9) else None)
     ok9 = (len(tr9) >= 2 and tr9[1] < tr9[0] and sv9 is not None
-           and "nothing kept at that time" not in txt("R9") and got9 is not None and got9 > 0.3)
-    check("R9", ok9, "trail samples %s, save at the line's first point: %s"
-          % (tr9, sv9.group(0) if sv9 else "refused or none"))
+           and "nothing kept at that time" not in txt("R9") and d9 is not None and d9 < 64)
+    check("R9", ok9, "trail samples %s, save at the line's first point: %s, %s u from the cursor"
+          % (tr9, sv9.group(0) if sv9 else "refused or none",
+             "%.1f" % d9 if d9 is not None else None))
+
+    # R10: a restart while browsing closes the mode and leaves the body at the start.
+    st10 = status("R10")
+    pos10 = [re.search(r"setpos (\S+) (\S+) (\S+)", s) for s in sec["R10"]]
+    pos10 = [[float(x) for x in m.groups()] for m in pos10 if m]
+    ok10 = (len(st10) >= 2 and st10[0].group(1) == "0" and st10[-1].group(1) == "0"
+            and len(pos10) >= 2 and pos10[-1][1] < 900
+            and math.dist(pos10[0], pos10[-1]) < 64 and "rewind: resumed" not in txt("R10"))
+    check("R10", ok10, "on after %s, positions %s, resumed %s" % (
+        [m.group(1) for m in st10], [[round(c) for c in p] for p in pos10],
+        "rewind: resumed" in txt("R10")))
+
+    # R11: after `kill`, the pin's freeze request is gone and the next run is
+    # clean with a moving clock.
+    t11 = txt("R11")
+    cls11 = last(r"^\s*class: (\w+)", "R11")
+    want11 = last(r"want freeze (\d)", "R11")
+    clk11 = last(r"^\s*(\d+:\d\d\.\d+)\s+pb ", "R11")
+    sec11 = clock(clk11.group(1)) if clk11 else None
+    ok11 = ("timer: running on" in t11 and cls11 is not None and cls11.group(1) == "clean"
+            and want11 is not None and want11.group(1) == "0"
+            and sec11 is not None and sec11 > 1.0)
+    check("R11", ok11, "running %s, class %s, want freeze %s, clock %s s" % (
+        "timer: running on" in t11, cls11.group(1) if cls11 else None,
+        want11.group(1) if want11 else None, sec11))
 
     bad = len(re.findall(r"Unknown command", text))
     frames = len(re.findall(r"\w+\.qc:\d+:", text))

@@ -99,6 +99,10 @@ void() PutClientInServer =
 	// what matters is that the LATCH is off, or the pin would re-freeze this
 	// player on the next tick, at the save, having just respawned.
 	SV_SaveLocRelease(self);
+	// Patch 477 review round 2: and the replay pin.  Left on, its freeze request
+	// outlived the respawn and stopped the NEXT clean run's clock while the body
+	// ran -- `rec_watch 1`, `kill`, run, `rec_watch 0` ranked the shortened time.
+	SV_WatchRelease(self);
 
 	/*
 	  And the ghost, build 30.  Cleared directly rather than through SV_GhostSet
@@ -945,7 +949,11 @@ void(string cmd) SV_ParseClientCommand =
 			SV_WatchRelease(self);
 			SV_SaveLocLoad(self, self.rec_sl_index);
 			if (FS_SlopOp(self.rec_sl_slop) == SLOP_LOADED)
+			{
 				SV_SaveLocHold(self, TRUE);
+				self.rw_goid  = rec_sl_id[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
+				self.rw_goseq = rec_sl_seq[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
+			}
 			else if (pinned)
 				SV_WatchHold(self, TRUE);
 		}

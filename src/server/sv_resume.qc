@@ -328,6 +328,7 @@ void(entity e, string why) SV_MsPark =
 	}
 
 	SV_SaveLocRelease(e);
+	SV_WatchRelease(e);                 // Patch 477: or its freeze outlives the session
 	if (e.rec_gh_on)
 		SV_GhostSet(e, FALSE);
 	// This session's evidence, folded the way a finish folds it.
@@ -513,6 +514,7 @@ void(entity e) SV_MsAccept =
 
 	SV_TimerVoid(e, "resuming the paused run");
 	SV_SaveLocRelease(e);
+	SV_WatchRelease(e);                 // Patch 477: or its freeze stops the resumed clock
 	if (e.rec_gh_on)
 		SV_GhostSet(e, FALSE);
 
@@ -772,6 +774,7 @@ void(entity e) SV_MsApply =
 		return;
 	}
 
+	SV_WatchRelease(e);                 // Patch 477: a pin taken since the accept
 	e.movetype = MOVETYPE_WALK;
 	oldroot = sl_root;
 	sl_root = SV_MsRoot(e);

@@ -8,15 +8,17 @@
   save states during the rewind".
 
   The line is the live trail's (cl_trail.qc).  The body is pinned by the
-  replay's own pin, `rec_watch 1`, which stops a running clock (and only a
-  running one), so the .view sidecar takes no frames while the camera rides the
+  replay's own pin, `rec_watch 1`, which stops the clock (making a running run
+  practice), so the .view sidecar takes no frames while the camera rides the
   cursor (Rec_ViewFrame skips TF_FROZEN).  Resume and save both go through
   `sl_saveat`, which saves from the SERVER's record of the run.  Resume adds
   `go`: the server leaves the pin, loads that save and holds it in the same
   call, and the countdown is the hold, released at zero.  A rewound
-  continuation is practice until a velocity-zeroing reset -- sv_saveloc.qc,
-  REWIND.  Leaving a run that was on the clock is a resume at the head, never
-  a thaw: the .rec says nothing about a freeze (AGENTS.md, the held-run fault).
+  continuation is practice when it carries more than walking speed --
+  sv_saveloc.qc, REWIND.  ESC on a run that is on the clock is a resume at the
+  head: you go on from where you were with your speed, and the run's clock
+  ends there (the pin made it practice).  A thaw would carry the run past a
+  freeze the .rec never records -- AGENTS.md, the held-run fault.
 ===========================================================================
 */
 
@@ -32,7 +34,10 @@
 #define RW_KEYS     6           // the keys rw_kst tracks, Rewind_KeyIx's order
 
 float  rw_on;                   // the mode is up: browsing, sent or counting
-float  rw_run;                  // the run was on the clock when it opened
+float  rw_st0;                  // STAT_FS_TIMERSTATE when it opened
+float  rw_seen;                 // the last STAT_FS_SLSEQ it saw while browsing
+float  rw_headi, rw_headt;      // the head when it opened: the leave's resume point
+vector rw_headp;
 float  rw_i;                    // cursor: a point index in the live trail slot
 float  rw_dir;                  // scrub key held: -1, +1 or 0
 float  rw_dirat;                // cltime it went down
@@ -156,7 +161,8 @@ float() Rewind_Open =
 	}
 	rw_askat = 0;
 	rw_on  = TRUE;
-	rw_run = (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING);
+	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
+	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = 0;
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)
@@ -165,6 +171,9 @@ float() Rewind_Open =
 	if (Rewind_HeldBefore(K_LEFTARROW))   rw_kst[3] = 2;
 	if (Rewind_HeldBefore(K_RIGHTARROW))  rw_kst[4] = 2;
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
+	rw_headi = rw_i;
+	rw_headt = ln_t[tr_live * LN_CAP + rw_i];
+	rw_headp = ln_pos[tr_live * LN_CAP + rw_i];
 	rw_atres = FALSE;
 	if (rw_resi >= 0)               // ...unless that line is the one last resumed from
 	if (tr_live == rw_resslot)
@@ -181,10 +190,11 @@ float() Rewind_Open =
 	return TRUE;
 };
 
-// Back to the body with nothing loaded: the pin lets go.  Only for a run that
-// was not on the clock (Rewind_Leave), so nothing was frozen.  The pin zeroed
-// the velocity (SV_WatchHold), as closing a replay does.  sl_holdoff too: a go
-// whose answer was misread as a refusal must not leave its hold behind.
+// Back to the body with nothing loaded: the pin lets go.  For a run that is
+// not on the clock (Rewind_Leave), or one that ended under the mode
+// (Rewind_Frame).  The pin zeroed the velocity (SV_WatchHold), as closing a
+// replay does.  sl_holdoff too: a go whose answer was misread as a refusal
+// must not leave its hold behind.
 void() Rewind_Close =
 {
 	if (!rw_on || rw_ack || rw_cd)
@@ -237,18 +247,20 @@ void() Rewind_Go =
 	rw_dir = 0;
 };
 
-// ESC, or `rewind` while open.  A run that was on the clock resumes at the
-// head with the speed it had: a thaw would carry on past a freeze the .rec
-// never recorded.  If that resume is refused, the thaw is all that is left.
+// ESC, `rewind` while open, or the line going away.  A run that is on the
+// clock and frozen resumes at the head stored at the open (see the header);
+// decided from the live stats, since a run that began within a round trip of
+// the open was frozen by the pin all the same.  A refused resume thaws.
 void() Rewind_Leave =
 {
-	if (!rw_run)
+	if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING || !(getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN))
 	{
 		Rewind_Close();
 		return;
 	}
-	rw_i = ln_n[tr_live] - 1;
-	Rewind_Cursor();
+	rw_i = rw_headi;
+	tr_cur_t = rw_headt;
+	tr_cur_p = rw_headp;
 	rw_leave = TRUE;
 	Rewind_Go();
 };
@@ -324,9 +336,26 @@ void() Rewind_Frame =
 		tr_cur_on = FALSE;
 		return;
 	}
+	// Moved under the mode -- `!r`, a zone, a 2-6 load, a finish: what is on
+	// screen is not where the body is, so every way out would put it back
+	// there (review round 2).  Our own S save is a SAVED event.
+	if (getstatf(STAT_FS_SLSEQ) != rw_seen)
+	{
+		rw_seen = getstatf(STAT_FS_SLSEQ);
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		{
+			Rewind_Close();
+			return;
+		}
+	}
+	if (getstatf(STAT_FS_TIMERSTATE) != rw_st0)
+	{
+		Rewind_Close();
+		return;
+	}
 	if (!tr_on || ln_n[tr_live] < 2 || !tr_cur_on)
 	{
-		Rewind_Close();             // the line went: a map change, or hud_trail 0
+		Rewind_Leave();             // the line went: hud_trail 0
 		return;
 	}
 	if (rw_dir)
@@ -423,6 +452,10 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		return FALSE;
 	if (evtype == IE_MOUSEDELTA || evtype == IE_MOUSEABS)
 		return !rw_cd;
+	// A key bound to `rewind` stays the toggle, whatever this table would make
+	// of it; its repeats never reach the bind (the engine filters them).
+	if (getkeybind(scanx) == "rewind")
+		return FALSE;
 	k = Rewind_KeyIx(scanx);
 	if (evtype == IE_KEYUP)
 	{
