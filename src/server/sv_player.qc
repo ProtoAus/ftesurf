@@ -1200,6 +1200,8 @@ void(string cmd) SV_ParseClientCommand =
 		  A chat command is then the only thing that sets the leg, which is what
 		  SV_TimerChatLeg exists for.
 		*/
+		if (SV_MsBusy(self))            // Patch 478: refused, so the request stands
+			return;
 		self.run_t_wantstage1 = FALSE;
 
 		// zone_goto <n> [yaw] [pitch] -- the angles are optional and only

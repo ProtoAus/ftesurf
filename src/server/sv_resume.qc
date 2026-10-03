@@ -743,6 +743,8 @@ string(entity e) SV_MsSplitKey =
 	return sprintf("A %d %d%s", e.run_ms_sessions, omit, s);
 };
 
+void(entity e) SV_MsAbortHere;      // Patch 478: below, after SV_MsAbort
+
 void(entity e) SV_MsApply =
 {
 	local string why, oldroot, claim;
@@ -769,7 +771,7 @@ void(entity e) SV_MsApply =
 	claim = SV_MsPath(e, SV_MsClaimLeaf());
 	if (!SV_MsReadMeta(claim))
 	{
-		SV_MsAbort(e);
+		SV_MsAbortHere(e);
 		sprint(e, PRINT_HIGH, "^3resume:^7 the paused run's files are gone\n");
 		return;
 	}
@@ -780,7 +782,7 @@ void(entity e) SV_MsApply =
 		why = "the zones did not load";
 	if (why != "")
 	{
-		SV_MsAbort(e);
+		SV_MsAbortHere(e);
 		SV_MsReadMeta(SV_MsPath(e, "ms.txt"));
 		SV_MsWipe(e, "ms.txt");
 		e.run_ms_offer = FALSE;
@@ -797,7 +799,7 @@ void(entity e) SV_MsApply =
 	sl_root = oldroot;
 	if (!ok || e.run_t_state != TS_RUNNING)
 	{
-		SV_MsAbort(e);
+		SV_MsAbortHere(e);
 		sprint(e, PRINT_HIGH, "^3resume:^7 the paused run could not be applied\n");
 		return;
 	}
@@ -879,19 +881,32 @@ void(entity e) SV_MsAbort =
 	fremove(SV_MsPath(e, "ms.txt"));
 	frename(claim, SV_MsPath(e, "ms.txt"));
 	SV_WatchRelease(e);                 // Patch 477: a pin taken in the resume phase
-	// Patch 478: the body stays at the park point, so no arm survives the phase
-	// (SV_MsBusy keeps zone moves out of it; this is the backstop) -- and the
-	// latches are the park point's, as after a demoted load (Patch 428 r3): a
-	// box the body stands in there arms nothing until it is left and entered.
+	// Patch 478: no arm survives the phase (SV_MsBusy keeps zone moves out of
+	// it; this is the backstop), and the body stands up at rest -- the apply's
+	// last abort comes after SV_SaveApplyState placed the slot's speed.  The
+	// latch is -1, as a respawn's (a `kill` reaches here from SV_MsOffer with
+	// the body at its spawn); SV_MsAbortHere takes the park point's instead.
 	SV_TimerIdle(e);
-	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
-	e.run_t_azone  = zs_az;
-	e.run_t_evzone = zs_ez;
-	e.run_t_cpzone = zs_cp;
+	e.run_t_azone = -1;
+	e.velocity = '0 0 0';
+	SV_ClearCarrier(e);
 	e.movetype = MOVETYPE_WALK;
 	e.run_ms_phase = MS_NONE;
 	e.run_ms_offer = FALSE;
 	SV_MsKeySet(e, "");
+};
+
+// Patch 478: the apply's own aborts, with the body still where the phase held
+// it: its latches are that point's, as after a demoted load (Patch 428 r3), so
+// a box it stands in arms nothing until left and entered -- at -1 a start box
+// there armed CLEAN on the next scan, at rest, with no grounded test.
+void(entity e) SV_MsAbortHere =
+{
+	SV_MsAbort(e);
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	e.run_t_azone  = zs_az;
+	e.run_t_evzone = zs_ez;
+	e.run_t_cpzone = zs_cp;
 };
 
 /*

@@ -1012,6 +1012,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 {
 	local filestream f;
 	local float i, mark;
+	local float az, ez, cz;
 	local string p;
 
 	p = SL_StatePath(id);
@@ -1254,10 +1255,24 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  next tick sees the box as newly entered and fires the split again -- which
 	  is the difference between "exactly like it was" and "nearly".
 	*/
-	fputs(f, sprintf("azone %d\n", e.run_t_azone));
-	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
+	// Patch 478: an IDLE body's latches are where it stands.  A resume phase (the
+	// accept's void) or a ghost's disarm leaves them -1 with the body in a box,
+	// and a load of that row armed the box on its next scan -- at rest, mid-air,
+	// with no grounded test.
+	az = e.run_t_azone;
+	ez = e.run_t_evzone;
+	cz = e.run_t_cpzone;
+	if (e.run_t_state == TS_IDLE)
+	{
+		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+		az = zs_az;
+		ez = zs_ez;
+		cz = zs_cp;
+	}
+	fputs(f, sprintf("azone %d\n", az));
+	fputs(f, sprintf("evzone %d\n", ez));
 	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
-	fputs(f, sprintf("cpzone %d\n", e.run_t_cpzone));
+	fputs(f, sprintf("cpzone %d\n", cz));
 	// Patch 436: written, and the loader drops it -- see the `pendarm` key in
 	// SV_SaveApplyState.  Keeping the line costs nothing and keeps the file's
 	// shape stable for an older build that still restores it.

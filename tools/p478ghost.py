@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """p478ghost.py -- driver and grader for cfg/test/p478ghost.cfg (Patch 478: a
-ghost begun in an armed start box starts no run where it ends).
+ghost, or a Multi-Session resume phase, that leaves a start box starts no run
+where it ends).
 
-    python tools/p478ghost.py [--exe ftesurf64.exe] [--grade-only] [--timeout 300]
+    python tools/p478ghost.py [--exe ftesurf64.exe] [--grade-only] [--timeout 420]
 
-G3 parks a run and retries, so data/saves/surf_dune and data/resume/surf_dune
-are PARKED (renamed) for the run and put back, each listing checked.  The rest
-of data/ is listed (files AND dirs) before; what the run made there is printed
-and removed, each removal checked, and D passes only if the whole tree then
-lists as it did.  Exit 0 pass, 1 fail, 2 cannot grade.
+G3-G5 park runs, retry and resume on surf_dune and bhop_eazy, so those maps'
+data/saves and data/resume folders are PARKED (renamed) for the run and put
+back, each listing checked.  The rest of data/ is listed (files AND dirs)
+before; what the run made there is printed and removed, each removal checked,
+and D passes only if the whole tree then lists as it did.  What the run left
+in the parks and D's answer are kept in logs/p478ghost.made.json, which
+--grade-only needs.  Exit 0 pass, 1 fail, 2 cannot grade.
 """
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -20,12 +24,12 @@ import subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.path.join(ROOT, "ftesurf")
 LOG = os.path.join(GAME, "logs", "p478ghost.log")
+MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G2", "G3", "G3P", "G3A")
+SECTIONS = ("G1", "G2", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
-PARKS = [os.path.join(DATA, "saves", "surf_dune"), os.path.join(DATA, "resume", "surf_dune")]
-RUNCOPY = {}            # a park's path -> the files the run left there
+PARKS = [os.path.join(DATA, d, m) for m in ("surf_dune", "bhop_eazy") for d in ("saves", "resume")]
 
 
 def tree(d):
@@ -46,36 +50,36 @@ def run(exe, timeout):
                 raise SystemExit("a park is already there: %s -- another harness, or restore it first"
                                  % os.path.join(os.path.dirname(p), q))
     orig = tree(DATA)
-    had = {p: os.path.exists(p) for p in PARKS}
-    kept = {p: tree(p) if had[p] else set() for p in PARKS}
-    for p in PARKS:
-        if had[p]:
-            os.rename(p, p + ".p478park")
-    before = tree(DATA)
+    kept = {p: tree(p) if os.path.exists(p) else set() for p in PARKS}
+    parked, runcopy = [], {}
     try:
+        for p in PARKS:
+            if os.path.exists(p):
+                os.rename(p, p + ".p478park")
+                parked.append(p)
+        before = tree(DATA)
         if os.path.exists(LOG):
             os.replace(LOG, LOG + ".prev")
         subprocess.run([os.path.join(ROOT, exe), "-WindowStyle", "Minimized",
                         "+exec", "cfg/test/p478ghost.cfg"], cwd=ROOT, timeout=timeout)
     finally:
-        made = sorted(tree(DATA) - before)
+        made = sorted(tree(DATA) - before) if "before" in locals() else []
         for p in PARKS:
+            rel = os.path.relpath(p, DATA)
             if os.path.exists(p):
-                # The run's copy, listed before it goes: G3 grades its slot.
-                RUNCOPY[os.path.relpath(p, DATA)] = sorted(r for k, r in tree(p) if k == "f")
-                print("%s as the run left it: %s" % (os.path.relpath(p, DATA),
-                      ", ".join(RUNCOPY[os.path.relpath(p, DATA)]) or "no files"))
+                # The run's copy, listed before it goes: G4 grades its slot.
+                runcopy[rel] = sorted(r for k, r in tree(p) if k == "f")
+                print("%s as the run left it: %s" % (rel, ", ".join(runcopy[rel]) or "no files"))
                 shutil.rmtree(p)
-            if had[p]:
+            if p in parked:
                 os.rename(p + ".p478park", p)
             back = tree(p) if os.path.exists(p) else set()
             print("%s restored: %s (%d entries, before %d)" % (
-                os.path.relpath(p, DATA), "yes" if back == kept[p] else "NO -- LISTINGS DIFFER",
-                len(back), len(kept[p])))
+                rel, "yes" if back == kept[p] else "NO -- LISTINGS DIFFER", len(back), len(kept[p])))
             if back != kept[p]:
                 raise SystemExit("%s did not come back as it was" % p)
-        parked = [os.path.relpath(p, DATA) for p in PARKS]
-        rest = [(k, r) for k, r in made if not any(r == q or r.startswith(q + os.sep) for q in parked)]
+        rels = [os.path.relpath(p, DATA) for p in PARKS]
+        rest = [(k, r) for k, r in made if not any(r == q or r.startswith(q + os.sep) for q in rels)]
         print("data/ the run made outside the parks: %s" % (
             ", ".join("%s%s" % (r, "/" if k == "d" else "") for k, r in rest) or "none"))
         for k, r in sorted(rest, key=lambda e: (e[0] == "d", -len(e[1]))):
@@ -86,7 +90,10 @@ def run(exe, timeout):
                 os.rmdir(p)
             if os.path.exists(p):
                 raise SystemExit("could not remove %s" % p)
-    return sorted(r for k, r in tree(DATA) ^ orig)
+    differs = sorted(r for k, r in tree(DATA) ^ orig)
+    with open(MADE, "w") as fh:
+        json.dump({"runcopy": runcopy, "differs": differs}, fh)
+    return runcopy, differs
 
 
 def sections(lines):
@@ -105,12 +112,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default="ftesurf64.exe")
     ap.add_argument("--grade-only", action="store_true")
-    ap.add_argument("--timeout", type=int, default=300)
+    ap.add_argument("--timeout", type=int, default=420)
     a = ap.parse_args()
     for f in ("csprogs.dat", "qwprogs.dat"):
         print("%s %s" % (f, hashlib.sha256(open(os.path.join(GAME, f), "rb").read())
                          .hexdigest()[:16].upper()))
-    new = [] if a.grade_only else run(a.exe, a.timeout)
+    if a.grade_only:
+        if not os.path.exists(MADE):
+            print("CANNOT GRADE: %s is missing -- the slot listing and D need a run" % MADE)
+            return 2
+        m = json.load(open(MADE))
+        runcopy, differs = m["runcopy"], m["differs"]
+    else:
+        runcopy, differs = run(a.exe, a.timeout)
     lines = [STAMP.sub("", l.rstrip("\n")) for l in open(LOG, errors="replace")]
     if "FTESurf CSQC loaded" not in "\n".join(lines):
         print("CANNOT GRADE: CSQC never loaded")
@@ -162,7 +176,7 @@ def main():
 
     # G2.  A ghost in the box with the body still keeps the arm; a clean start
     # after, primed for its stage-1 post (the ghost's flag no longer stands into
-    # the start: `stage fill: prime 1`).
+    # the start: `stage fill: prime 1`).  Premise: its own ghost on and off.
     st2, cl2 = states("G2"), classes("G2")
     t2 = "\n".join(sec["G2"])
     if not ("ghost -- `ghost` again to go back" in t2 and "ghost off" in t2):
@@ -176,36 +190,59 @@ def main():
               st2[0] if st2 else None, st2[1] if len(st2) > 1 else None, cl2[-1] if cl2 else None,
               pr2[-1] if pr2 else None))
 
-    # G3.  Premises: the reload parked G3's own run (a few seconds -- the
-    # parks hold nothing older), and the resume phase began.  Verdict: in the
-    # phase `!r` and `retry` are refused, and the resume applies.  Before 478:
-    # "!r -- start of the map", "retry -- back where you were", then a CLEAN run.
+    # G3.  Premises: the reload parked G3's own run (a few seconds -- the parks
+    # hold nothing older), and the phase began.  Verdict, on the door's own
+    # consequences: `!r` and `retry` refused, no warp and no retry taken, and
+    # the resume applied.  Before 478: "start of the map", "retry -- back where
+    # you were", no resume, and a CLEAN run from the park point.
     t3 = "\n".join(sec["G3P"] + sec["G3A"])
     pk3 = re.search(r"resume: your run here is paused at (\d+):(\d+)\.(\d+)", t3)
     if not (pk3 and int(pk3.group(1)) == 0 and int(pk3.group(2)) < 30):
         print("CANNOT GRADE G3: no park of G3's own run (%s)" % (pk3.group(0) if pk3 else None))
         return 2
     st3, cl3, y3 = states("G3A"), classes("G3A"), ys("G3A")
-    # The slot as the run left it: the door's retry skipped SV_MsAbort, so its
-    # claim stood with no ms.txt beside it -- never offered again.  A resume
-    # that applied leaves neither.
-    slot = RUNCOPY.get(os.path.join("resume", "surf_dune"), [])
-    stranded = (any(f.endswith("ms.claim.txt") for f in slot)
-                and not any(f.endswith("ms.txt") for f in slot))
     ok3 = ("resume: wait for the resume to finish" in t3
            and "retry: wait for the resume to finish" in t3
            and "start of the map" not in t3 and "retry -- back where you were" not in t3
-           and "resume: run resumed at" in t3 and not stranded)
+           and "resume: run resumed at" in t3)
     check("G3", ok3, "park %s; !r refused %s, retry refused %s, warped %s, retried %s, "
-          "resumed %s, claim stranded %s; after: %s class %s at y %s" % (
+          "resumed %s; after: %s class %s at y %s" % (
               pk3.group(0).split(" at ")[-1], "resume: wait for the resume to finish" in t3,
               "retry: wait for the resume to finish" in t3, "start of the map" in t3,
               "retry -- back where you were" in t3, "resume: run resumed at" in t3,
-              stranded if not a.grade_only else "not read",
               st3[-1] if st3 else None, cl3[-1] if cl3 else None,
               "%.0f" % y3[-1] if y3 else None))
 
-    check("D", not new, "data/ lists as it did" if not new else "data/ differs: %s" % ", ".join(new))
+    # G4.  The reverse order: `retry` then `!resume` in one packet.  Premise: a
+    # park was offered first.  Verdict: the accept is refused while the restart
+    # is pending, the slot is offered again after it, and the run leaves it
+    # whole (ms.txt, no claim).  Before 478's round 3 the accept claimed it, the
+    # restart skipped the abort, and the claim stood alone -- never offered.
+    t4 = "\n".join(sec["G4"] + sec["G4A"])
+    offers4 = re.findall(r"resume: your run here is paused at", t4)
+    slot = runcopy.get(os.path.join("resume", "surf_dune"))
+    if not offers4 or slot is None:
+        print("CANNOT GRADE G4: offers %d, slot listed %s" % (len(offers4), slot is not None))
+        return 2
+    claim4 = any(f.endswith("ms.claim.txt") for f in slot)
+    ms4 = any(f.endswith("ms.txt") for f in slot)
+    check("G4", "the map is restarting for a retry" in t4 and len(offers4) >= 2 and ms4 and not claim4,
+          "refused %s, offered %d time(s), slot ms.txt %s claim %s" % (
+              "the map is restarting for a retry" in t4, len(offers4), ms4, claim4))
+
+    # G5.  A `kill` in a resume countdown on bhop_eazy, whose spawns are all in
+    # the start box: the respawn arms that box as any respawn does.  Premise:
+    # G5's own park was offered and accepted.  Round 3 scanned the latches at
+    # the spawn in SV_MsAbort, and the box never armed (idle).
+    t5 = "\n".join(sec["G5P"])
+    st5 = states("G5A")
+    if not ("resume: your run here is paused at" in t5 and "resume: no paused run" not in t5):
+        print("CANNOT GRADE G5: no park of G5's own run was offered")
+        return 2
+    check("G5", bool(st5) and st5[-1] == "armed", "after the kill: %s" % (st5[-1] if st5 else None))
+
+    check("D", not differs, "data/ lists as it did" if not differs
+          else "data/ differs: %s" % ", ".join(differs))
     print("%d check(s) failed" % len(fails))
     return 1 if fails else 0
 

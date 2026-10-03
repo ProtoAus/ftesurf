@@ -14,6 +14,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   ghost STARTING a clock; a cancel the ghost crosses should still void (a
   swept test of the ghosted ticks' own segments, which SV_TimerWarped already
   keeps one tick long).
+- **A second connection on one guid can wipe a claimed resume slot** (pre-existing;
+  Patch 478 round-4 integrity review, PLAUSIBLE -- whether a lobby admits two
+  clients on one guid is unchecked). While A1 holds the claim, A2's `!discard`
+  (SV_MsDiscardOffer) or A2's park on a drop (SV_MsPark) finds no `ms.txt`,
+  leaves ms_posts 0 and SV_MsWipeDir deletes `run.rec` without Patch 360's move
+  to data/evidence -- posted-stage evidence lost, across lobbies (data/resume is
+  shared); A2's park also leaves its state.txt under A1's claim. Fix: any
+  `ms.*.txt` claim file means the slot is busy, in both.
 - **`retry` never reopens the stage in progress** (pre-existing; Patch 478
   round-2 review, code-read). PutClientInServer runs SV_TimerSpawn, whose
   SV_TimerIdle sets `run_st_seg = -1`, before SV_RetryApply, and
