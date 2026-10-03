@@ -2947,6 +2947,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                               bhop     func_bhop's teleport
                               speed    trigger_setspeed
                               push     trigger_push, the SF_PUSH_ONCE arm
+                              pin      the replay/rewind pin on a running run
+                                       (Patch 477): velocity zeroed, origin kept;
+                                       the rows after it are pinned (PM_NONE)
 
                             A reader must treat an unknown <kind> as a warp it
                             cannot attribute -- NOT as a parse error.  The list

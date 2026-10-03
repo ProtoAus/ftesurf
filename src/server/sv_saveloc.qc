@@ -2864,17 +2864,22 @@ void(float row) SV_SaveDemote =
 // finished) keep it -- counted, not by position, so a row that never had one
 // (idle, demoted, a rewind) cannot push a real save's run out.  Every row past the window, not the first: a demote
 // that refuses (file changed on disk) must not stall the rest (review round 2).
+// At most SL_DEMOTEBATCH a call (round 14): several lobbies on one guid can
+// leave a backlog, and each demote is a read, a rewrite and a remove.
+#define SL_DEMOTEBATCH 2
 void(float base, float cnt) SV_SaveKeepWindow =
 {
-	local float i, kept;
+	local float i, kept, done;
 
-	kept = 0;
+	kept = done = 0;
 	for (i = cnt - 1; i >= 0; i = i - 1)
 		if (rec_sl_tick[base + i] > 0)
 		{
 			kept = kept + 1;
 			if (kept > SL_RECKEEP)
+			if (done < SL_DEMOTEBATCH)
 			{
+				done = done + 1;
 				SV_SaveDemote(base + i);
 				// Refused (the file changed under the row): marked as a demote
 				// leaves it, speed too, so the next save does not read it again --
@@ -3080,6 +3085,8 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 
 	s = num_for_edict(e);
 	if (s < 1 || s > FS_MAXPLAYERS || e.rw_n < 1)
+		return FALSE;
+	if (!(t == t))                  // round 14: a NaN tick passes every window test
 		return FALSE;
 	if (!rw_slot[s])                // nested, as array reads are: see SV_SaveLocHoldVel
 		return FALSE;
@@ -3960,11 +3967,11 @@ void(entity e, vector org) SV_ViewEyeAt =
 void(entity e) SV_WatchRelease =
 {
 	e.rw_pin = FALSE;
+	e.rec_wt_pin = 0;
 	if (!e.rec_wt_hold)
 		return;
 
 	e.rec_wt_hold = FALSE;
-	e.rec_wt_pin  = 0;
 	SV_ViewEyeDetach(e);
 
 	// MOVETYPE_NONE is 0, so a stored 0 means "already frozen when this
@@ -4090,8 +4097,15 @@ void(entity e, float on) SV_WatchHold =
 	// so pinning an ARMED timer in its own box made the next honest run
 	// practice.  The freeze in every state: a run that starts under the pin is
 	// frozen at its first tick, and practice (SV_TimerStart; review round 2).
+	// Patch 477 review round 14: the zeroing is a state imposed from outside the
+	// mover -- recorded, a replay flies the packet the pin lands in from rest, as
+	// the server ran it, not at the speed before it (a finish or a physents box
+	// the body never reached).  The rows after it are pinned moves.
 	if (e.run_t_state == TS_RUNNING)
+	{
+		SV_RecWarp(e, "pin");
 		SV_TimerFreeze(e);
+	}
 	else
 		e.run_t_freeze = TRUE;
 };

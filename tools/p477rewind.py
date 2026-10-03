@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18E", "R18F", "R18G", "R18B", "R19")
+            "R18D", "R18E", "R18F", "R18G", "R18H", "R18B", "R19")
 
 
 def listing(d):
@@ -382,11 +382,15 @@ def main():
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
     t15 = txt("R15")
+    # Round 14: the pinned run's record counts include the pin's `warp`.
+    wp15 = last(r"rec rows: in \d+ warp (\d+)", "R15")
     ok15 = ("out of range" in t15 and "moved while the rewind held it" not in t15
-            and bool(st15) and st15[-1].group(1) == "1" and "timer: running on" in t15)
-    check("R15", ok15, "refused %s, voided %s, on %s, still running %s" % (
+            and bool(st15) and st15[-1].group(1) == "1" and "timer: running on" in t15
+            and wp15 is not None and int(wp15.group(1)) >= 1)
+    check("R15", ok15, "refused %s, voided %s, on %s, still running %s, warps %s" % (
         "out of range" in t15, "moved while the rewind held it" in t15,
-        st15[-1].group(1) if st15 else None, "timer: running on" in t15))
+        st15[-1].group(1) if st15 else None, "timer: running on" in t15,
+        wp15.group(1) if wp15 else None))
 
     # R16: a load under the pin is the server's to refuse.
     st16 = status("R16")
@@ -465,12 +469,12 @@ def main():
     t18f = txt("R18F")
     tm18f = last(r"timer: (\w+) on ", "R18F")
     pr18f = last(r"\bpractice (\d)\b", "R18F")
-    ok18f = ("your run started -- press again to rewind it" in t18f
+    ok18f = ("the run changed since you asked" in t18f
              and "practice run -- this run will not be saved" not in t18f
              and tm18f is not None and tm18f.group(1) == "running"
              and pr18f is not None and pr18f.group(1) == "0")
     check("R18F", ok18f, "refused %s, made practice %s, timer %s, practice %s" % (
-        "your run started -- press again to rewind it" in t18f,
+        "the run changed since you asked" in t18f,
         "practice run -- this run will not be saved" in t18f,
         tm18f.group(1) if tm18f else None, pr18f.group(1) if pr18f else None))
 
@@ -479,14 +483,27 @@ def main():
     t18g = txt("R18G")
     tm18g = last(r"timer: (\w+) on ", "R18G")
     pr18g = last(r"\bpractice (\d)\b", "R18G")
-    ok18g = ("your run started -- press again to rewind it" in t18g
+    ok18g = ("the run changed since you asked" in t18g
              and "practice run -- this run will not be saved" not in t18g
              and tm18g is not None and tm18g.group(1) == "running"
              and pr18g is not None and pr18g.group(1) == "0")
     check("R18G", ok18g, "refused %s, made practice %s, timer %s, practice %s" % (
-        "your run started -- press again to rewind it" in t18g,
+        "the run changed since you asked" in t18g,
         "practice run -- this run will not be saved" in t18g,
         tm18g.group(1) if tm18g else None, pr18g.group(1) if pr18g else None))
+
+    # R18H: a save/load count other than the run's -- refused, the run clean.
+    t18h = txt("R18H")
+    tm18h = last(r"timer: (\w+) on ", "R18H")
+    pr18h = last(r"\bpractice (\d)\b", "R18H")
+    ok18h = ("the run changed since you asked" in t18h
+             and "practice run -- this run will not be saved" not in t18h
+             and tm18h is not None and tm18h.group(1) == "running"
+             and pr18h is not None and pr18h.group(1) == "0")
+    check("R18H", ok18h, "refused %s, made practice %s, timer %s, practice %s" % (
+        "the run changed since you asked" in t18h,
+        "practice run -- this run will not be saved" in t18h,
+        tm18h.group(1) if tm18h else None, pr18h.group(1) if pr18h else None))
 
     # R18B: retry under the rewind ends the run first, and the restart's own line
     # says it restored no run; an idle save after it writes no .view prefix.

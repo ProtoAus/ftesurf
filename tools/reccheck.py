@@ -298,7 +298,7 @@ HEAD_V10 = HEAD_V9
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
-WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone")
+WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone", "pin")   # pin: Patch 477, the replay/rewind pin
 
 # The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming

@@ -197,8 +197,11 @@ float() Rewind_Open =
 	// comes back as STAT_FS_PIN while this open's pin is held; the state and the
 	// ticks seen now let the server leave alone a run that started since (rounds
 	// 12-13).
-	localcmd(sprintf("cmd rec_watch 1 rw %g %g %g\n", rw_serial, rw_st0,
-	                 getstatf(STAT_FS_TIMERTICKS)));
+	// %d, not %g: %g keeps six digits, and a run past 10^6 ticks (4 h) rounded up
+	// read as a newer run and was refused (round 14).  SLSEQ: a save or load
+	// landing in the round trip changes the run too.
+	localcmd(sprintf("cmd rec_watch 1 rw %d %d %d %d\n", rw_serial, rw_st0,
+	                 getstatf(STAT_FS_TIMERTICKS), getstatf(STAT_FS_SLSEQ)));
 	return TRUE;
 };
 
@@ -384,7 +387,7 @@ void() Rewind_Frame =
 	k = getstatf(STAT_FS_PIN);
 	if (k == rw_serial)
 		rw_pinseen = TRUE;
-	else if (rw_pinseen)
+	else if (rw_pinseen || k == -rw_serial)     // released, or refused (round 14)
 	{
 		Rewind_Close();
 		return;

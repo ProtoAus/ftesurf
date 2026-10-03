@@ -776,7 +776,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0, wtk;
+	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0, wtk, wsq;
 	local vector was;
 
 	cmdargc = tokenize(cmd);
@@ -1006,21 +1006,25 @@ void(string cmd) SV_ParseClientCommand =
 		wser = rint(stof(argv(3)));
 		wst0 = stof(argv(4));
 		wtk = stof(argv(5));
+		wsq = (cmdargc >= 7) ? stof(argv(6)) : self.rec_sl_slseq;
 		if (!(wser >= 0 && wser < 16777216))   // round 12: a NaN would re-send every frame
 			wser = 0;
 		if (wvoid)
 			SV_WatchVoid(self, "a rewind left without a resume");
-		// Rounds 12-13: the client asks before pinning a run on the clock, from
-		// what it saw a round trip ago -- <st0> its TIMERSTATE and <tk> its
-		// TIMERTICKS at the open.  A run that started, or was restored or wound
-		// back, since is left alone: not RUNNING then, or fewer ticks now than
-		// then (a stage chain or a finish into the box starts the next run in
-		// one frame).  The client's checks then close the mode with nothing to end.
+		// Rounds 12-14: the client asks before pinning a run on the clock, from
+		// what it saw a round trip ago -- its TIMERSTATE, TIMERTICKS and SLSEQ at
+		// the open.  A run that is not that one is left alone: not RUNNING then,
+		// fewer ticks now (a stage chain or a finish into the box starts the next
+		// run in one frame), or a save or load landed since (a later save loads
+		// MORE ticks).  The refusal is published as -<serial>, and the client
+		// closes the mode on it with nothing to end.
 		if (wrw && won)
 		if (self.run_t_state == TS_RUNNING)
-		if (wst0 != TS_RUNNING || SV_TimerTicks(self) < wtk)
+		if (wst0 != TS_RUNNING || SV_TimerTicks(self) < wtk || self.rec_sl_slseq != wsq)
 		{
-			sprint(self, PRINT_HIGH, "^3rewind:^7 your run started -- press again to rewind it\n");
+			if (!self.rec_wt_hold)
+				self.rec_wt_pin = -wser;
+			sprint(self, PRINT_HIGH, "^3rewind:^7 the run changed since you asked -- open the rewind again\n");
 			return;
 		}
 		SV_WatchHold(self, won);
