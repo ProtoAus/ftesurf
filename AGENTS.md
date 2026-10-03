@@ -1470,7 +1470,9 @@ bannered as superseded.)
   `argv(1)`, called `ui_load_maps()` and then used `argv(1)` again ran all three
   of its cases against `surf_zor` -- a word out of mapmeta.txt -- and reported
   the feature doing nothing. `ui_load_maps` tokenizes every line of three data
-  files. strzone the arguments BEFORE any call that can tokenize.
+  files. strzone the arguments BEFORE any call that can tokenize. The server's
+  too: Patch 477's `sl_saveat ... go` lost its `go` to SV_SaveReadLight, which
+  tokenizes the state file it reads back -- read every argv() first.
 ### `status` CANNOT SEE MOST OF SERVERINFO -- do not read its silence as absence
 
 `SVC_Status` builds serverinfo into a `char infostr[1024]` and `InfoBuf_ToString`
@@ -2062,6 +2064,11 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `scene = div <= 1 || t - floor(t / div) * div == 0;` was never true, so the
   monolith drew nothing and measured 142 fps. Parenthesise, or spell it out with
   an `if`, and never trust a frame rate you have not looked at a frame of.
+  MEASURED 2026-10-03 (`fteqcc64 -Fwasm` on a probe): it is the ASSIGNMENT --
+  `r = a || b;` compiles to `STORE_F a, r; OR_F a, b` (`(r = a) || b`), and
+  `r = (a || b);` is one `OR_F`. Conditions parse as in C: `a == b || c != d`,
+  `a && b - c < d`. And neither operator short-circuits (both sides evaluated).
+  Patch 477's `busy = !rw_on || rw_ack || rw_cd;` was this; a reviewer found it.
 - **ON THE N100, SHADER SIZE COSTS AS MUCH AS SHADER WORK.** The monolith with
   its object groups skipped by a runtime switch ran 40 fps; a build with those
   groups (and its material code) compiled out ran 72 -- most likely register

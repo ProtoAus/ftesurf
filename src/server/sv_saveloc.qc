@@ -1199,6 +1199,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  passes 2.  A LOAD must not read it: a load is practice by construction and
 	  re-derives its own class, and taking this bit from a file the player can hold
 	  would let one save mark another attempt.  See the raise-only restore below.
+	  [Patch 477 reverses that for loads too, raise-only: a save taken after a
+	  rewind load carried the speed and shed the tag.  SV_SaveApplyState's load
+	  branch.]
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
 	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's
@@ -1312,8 +1315,8 @@ float(float id, float row) SV_SaveReadLight =
 {
 	local filestream f;
 	local string k;
-	local float n, seq, dem;
-	local vector v;
+	local float n, seq, dem, rwd;
+	local vector v, rwv;
 
 	f = fopen(SL_StatePath(id), FILE_READ);
 	if (f < 0)
@@ -1321,6 +1324,8 @@ float(float id, float row) SV_SaveReadLight =
 
 	seq = -1;
 	dem = FALSE;
+	rwd = FALSE;                    // Patch 477: a rewind row keeps its speed in `rwvel`
+	rwv = '0 0 0';
 
 	rec_sl_org [row] = '0 0 0';
 	rec_sl_vel [row] = '0 0 0';
@@ -1349,6 +1354,8 @@ float(float id, float row) SV_SaveReadLight =
 		if (k == "reccp")    { rec_sl_cps [row] = stof(argv(1)); continue; }
 		if (k == "duck")     { rec_sl_duck[row] = stof(argv(1)); continue; }
 		if (k == "demoted")  { dem = TRUE; continue; }     // Patch 428
+		if (k == "rewound")  { rwd = stof(argv(1)); continue; }
+		if (k == "rwvel")    { if (n >= 4) rwv = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
 
 		if (k == "origin")
 		{
@@ -1382,6 +1389,8 @@ float(float id, float row) SV_SaveReadLight =
 	fclose(f);
 	if (dem)
 		rec_sl_tick[row] = SL_DEMOTED;
+	if (rwd)
+		rec_sl_vel[row] = rwv;
 
 	/*
 	  A file with no `seq` is not one of ours -- or is one of ours that was
@@ -2019,13 +2028,24 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		*/
 		SV_TimerStitched(e);
 
-		// Patch 477: a rewind save keeps the speed a demote zeroes, so the sticky
-		// hopped tag makes every run started before a forgiveness practice.
-		if (rwd)
+		/*
+		  Patch 477: a load RAISES the hopped tag and never lowers it -- from the
+		  file's `hopped`, a rewind row, or any idle row with speed -- so every
+		  run started before a velocity-zeroing forgiveness is practice, and a
+		  save re-taken after the load cannot shed the tag (review round 1: the
+		  rewind's own key was per row).  A fresh tag drops a pending finish
+		  forgiveness, as the hop rule's own tag does (Patch 454).
+		*/
+		if (st != TS_RUNNING)
+		if (vlen(e.velocity) >= SL_ARM_SPEED)
+			hop = TRUE;
+		if (hop || rwd)
 		{
 			e.run_t_hopped = TRUE;
-			sprint(e, PRINT_HIGH, "^3rewind:^7 practice from here -- ^2!r^7 for a timed run\n");
+			e.run_t_finfgv = FALSE;
 		}
+		if (rwd)
+			sprint(e, PRINT_HIGH, "^3rewind:^7 practice from here -- ^2!r^7 for a timed run\n");
 
 		if (st == TS_RUNNING)
 		{
@@ -2781,6 +2801,26 @@ void(float row) SV_SaveDemote =
 	fremove(SL_RecPath(id));
 };
 
+// Patch 477: the newest SL_RECKEEP rows WITH a run keep it -- counted, not by
+// position, so a row that never had one (idle, demoted, a rewind) cannot push
+// a real save's run out.  After a create; demotes at most the one row it pushed.
+void(float base, float cnt) SV_SaveKeepWindow =
+{
+	local float i, kept;
+
+	kept = 0;
+	for (i = cnt - 1; i >= 0; i = i - 1)
+		if (rec_sl_tick[base + i] > 0)
+		{
+			kept = kept + 1;
+			if (kept > SL_RECKEEP)
+			{
+				SV_SaveDemote(base + i);
+				return;
+			}
+		}
+};
+
 /*
   Create.  Appended, and the new one becomes current -- so `1` then `2` with
   the menu closed is always "save here, put me back here", which is the whole
@@ -2855,8 +2895,8 @@ void(entity e) SV_SaveLocCreate =
 	rec_sl_nb[blk] = cnt + 1;
 
 	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run.
-	if (blk > 0 && cnt >= SL_RECKEEP)
-		SV_SaveDemote(base + cnt - SL_RECKEEP);
+	if (blk > 0)
+		SV_SaveKeepWindow(base, cnt + 1);
 
 	e.rec_sl_index = cnt + 1;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
@@ -2899,6 +2939,8 @@ float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_head;                 // next write
 .float rw_last;                 // ticks of the last sample
 .float rw_st;                   // run state at the last call
+.float rw_goid;                 // the last `go`'s row, which the next one replaces
+.float rw_goseq;
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
 
@@ -2924,7 +2966,10 @@ void(entity e) SV_RewindSample =
 		return;
 	t = SV_TimerTicks(e);
 	if (t < e.rw_last)
+	{
 		SV_RewindReset(e);
+		e.rw_st = st;               // or the next packet resets it again as a new run
+	}
 	if (e.rw_n && t - e.rw_last < RW_EVERY)
 		return;
 	s = num_for_edict(e);
@@ -3021,7 +3066,10 @@ float(entity e, float id, float seq) SV_SaveWriteAt =
 	fputs(f, sprintf("seq %d\n", seq));
 	fputs(f, sprintf("created %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
 	fputs(f, sprintf("origin %.4f %.4f %.4f\n", rw_o_x, rw_o_y, rw_o_z));
-	fputs(f, sprintf("velocity %.4f %.4f %.4f\n", rw_v_x, rw_v_y, rw_v_z));
+	// The kept speed under its own key: a build that predates `rewound` reads the
+	// plain demoted shape, at rest, rather than a speed with no taint behind it.
+	fputs(f, "velocity 0 0 0\n");
+	fputs(f, sprintf("rwvel %.4f %.4f %.4f\n", rw_v_x, rw_v_y, rw_v_z));
 	fputs(f, sprintf("angles %.4f %.4f\n", rw_pit, rw_yaw));
 	fputs(f, sprintf("duck %d\n", rw_dk ? 1 : 0));
 	fputs(f, "demoted 1\n");
@@ -3030,9 +3078,34 @@ float(entity e, float id, float seq) SV_SaveWriteAt =
 	return TRUE;
 };
 
+void(entity e, float n) SV_SaveLocDeleteRow;
+
+// A resume's row is a means, not a save anyone asked for: the next resume
+// replaces it, so a practice session leaves one behind rather than hundreds.
+void(entity e) SV_RewindDropGo =
+{
+	local float base, cnt, i;
+
+	if (!e.rw_goid)
+		return;
+	base = SL_Base(SL_Blk(e));
+	cnt  = rec_sl_nb[SL_Blk(e)];
+	for (i = 0; i < cnt; i = i + 1)
+		if (rec_sl_id[base + i] == e.rw_goid)
+		if (rec_sl_seq[base + i] == e.rw_goseq)
+		{
+			rec_sl_quiet = TRUE;
+			SV_SaveLocDeleteRow(e, i + 1);
+			rec_sl_quiet = FALSE;
+			break;
+		}
+	e.rw_goid = 0;
+};
+
 // `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
-// TRUE when the save was made and is the current row.
-float(entity e, float t, vector near, float usenear) SV_SaveLocCreateAt =
+// TRUE when the save was made and is the current row; `go` replaces the last
+// go's row (SV_RewindDropGo).
+float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateAt =
 {
 	local float id, seq, row, blk, base, cnt;
 
@@ -3054,6 +3127,8 @@ float(entity e, float t, vector near, float usenear) SV_SaveLocCreateAt =
 		                      "two minutes of the last run are\n");
 		return FALSE;
 	}
+	if (go)
+		SV_RewindDropGo(e);
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
@@ -3087,10 +3162,13 @@ float(entity e, float t, vector near, float usenear) SV_SaveLocCreateAt =
 		return FALSE;
 	}
 	rec_sl_seq[row] = seq;
-	rec_sl_nb[blk] = cnt + 1;
-	if (blk > 0 && cnt >= SL_RECKEEP)
-		SV_SaveDemote(base + cnt - SL_RECKEEP);
+	rec_sl_nb[blk] = cnt + 1;      // no run copy, so no SV_SaveKeepWindow: it evicts nothing
 	e.rec_sl_index = cnt + 1;
+	if (go)
+	{
+		e.rw_goid  = id;
+		e.rw_goseq = seq;
+	}
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s\n",
 	                              cnt + 1, SL_NN(id), SV_TimerString(rw_t),
@@ -3810,7 +3888,10 @@ void(entity e, float on) SV_WatchHold =
 	// asks: SV_TimerFreezeFrame does the arithmetic, at a `time` this hook does
 	// not have -- a client command runs at physicstime and a usercmd at sv.time,
 	// which is the build 18 finding.
-	SV_TimerFreeze(e);
+	// Patch 477: a RUNNING clock only.  The freeze's taint lives to the next arm,
+	// so pinning an ARMED timer in its own box made the next honest run practice.
+	if (e.run_t_state == TS_RUNNING)
+		SV_TimerFreeze(e);
 };
 
 /*

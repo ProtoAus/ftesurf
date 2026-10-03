@@ -325,6 +325,7 @@ void() ClientDisconnect =
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
 	SV_SpecRelease(self, "drop");
 	SV_RewindReset(self);           // Patch 477: the next player here starts empty
+	self.rw_goid = 0;               // ...and replaces none of this one's rows
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
@@ -937,7 +938,7 @@ void(string cmd) SV_ParseClientCommand =
 		go = (argv(5) == "go");     // before the create: its read-back tokenizes
 		if (SV_SaveLocCreateAt(self, stof(argv(1)),
 		                       [stof(argv(2)), stof(argv(3)), stof(argv(4))],
-		                       cmdargc >= 5))
+		                       cmdargc >= 5, go))
 		if (go)
 		{
 			pinned = self.rec_wt_hold;

@@ -8,13 +8,15 @@
   save states during the rewind".
 
   The line is the live trail's (cl_trail.qc).  The body is pinned by the
-  replay's own pin, `rec_watch 1`: the clock freezes, so the .view sidecar takes
-  no frames while the camera rides the cursor (Rec_ViewFrame skips TF_FROZEN).
-  Resume and save both go through `sl_saveat`, which saves from the SERVER's
-  record of the run.  Resume adds `go`: the server leaves the pin, loads that
-  save and holds it in the same call, and the countdown is the hold, released
-  at zero.  A rewound continuation is practice until a velocity-zeroing reset
-  -- sv_saveloc.qc, REWIND.
+  replay's own pin, `rec_watch 1`, which stops a running clock (and only a
+  running one), so the .view sidecar takes no frames while the camera rides the
+  cursor (Rec_ViewFrame skips TF_FROZEN).  Resume and save both go through
+  `sl_saveat`, which saves from the SERVER's record of the run.  Resume adds
+  `go`: the server leaves the pin, loads that save and holds it in the same
+  call, and the countdown is the hold, released at zero.  A rewound
+  continuation is practice until a velocity-zeroing reset -- sv_saveloc.qc,
+  REWIND.  Leaving a run that was on the clock is a resume at the head, never
+  a thaw: the .rec says nothing about a freeze (AGENTS.md, the held-run fault).
 ===========================================================================
 */
 
@@ -27,8 +29,10 @@
 #define RW_ASK      2           // seconds a clean run's second press has
 #define RW_LOST     5           // seconds a go may go unanswered before the mode gives up
 #define RW_KEPT     7900        // run ticks back the server keeps: RW_CAP x RW_EVERY, less a margin
+#define RW_KEYS     6           // the keys rw_kst tracks, Rewind_KeyIx's order
 
 float  rw_on;                   // the mode is up: browsing, sent or counting
+float  rw_run;                  // the run was on the clock when it opened
 float  rw_i;                    // cursor: a point index in the live trail slot
 float  rw_dir;                  // scrub key held: -1, +1 or 0
 float  rw_dirat;                // cltime it went down
@@ -36,8 +40,15 @@ float  rw_last;                 // cltime of the last Rewind_Frame
 float  rw_ack;                  // a go in flight: the sl_ count that covers it; 0 = none
 float  rw_seq;                  // STAT_FS_SLSEQ when it went
 float  rw_sentat;               // cltime it went
+float  rw_goi;                  // ...and the cursor it went from
+float  rw_leave;                // it is the way out of a run on the clock (Rewind_Leave)
 float  rw_cd;                   // cltime the countdown ends; 0 = not counting
 float  rw_askat;                // cltime a clean run's first press asked; 0 = none
+float  rw_resi;                 // the last resume's cursor, -1 none...
+float  rw_resslot;              // ...on this slot...
+float  rw_resn;                 // ...with this many samples, so the same unchanged line
+float  rw_atres;                // opened there
+float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 
 void() Rewind_RegisterCvars =
 {
@@ -57,6 +68,32 @@ string() Rewind_Key =
 	if (k == "")
 		return "rewind";
 	return strtoupper(k);
+};
+
+float(float scan) Rewind_KeyIx =
+{
+	if (scan == 's')            return 0;
+	if (scan == K_ENTER)        return 1;
+	if (scan == K_KP_ENTER)     return 2;
+	if (scan == K_LEFTARROW)    return 3;
+	if (scan == K_RIGHTARROW)   return 4;
+	if (scan == K_ESCAPE)       return 5;
+	return -1;
+};
+
+// Down when the mode opened, as far as cl_keys.qc saw a bind take it: its
+// repeats are not presses, and its release belongs to that bind.
+float(float scan) Rewind_HeldBefore =
+{
+	local float i;
+
+	for (i = 0; i < FSK_COUNT * FSK_SLOTS; i = i + 1)
+		if (ui_kdown[i] == scan)
+			return TRUE;
+	for (i = 0; i < FSK_SLOTS; i = i + 1)
+		if (ui_klook[i] == scan)
+			return TRUE;
+	return FALSE;
 };
 
 void() Rewind_Cursor =
@@ -82,13 +119,21 @@ float() Rewind_Old =
 	n = ln_n[tr_live];
 	if (n < 1 || tr_tick <= 0)
 		return FALSE;
-	return (ln_t[tr_live * LN_CAP + n - 1] - tr_cur_t) / tr_tick > RW_KEPT;
+	return ((ln_t[tr_live * LN_CAP + n - 1] - tr_cur_t) / tr_tick) > RW_KEPT;
 };
 
 float() Rewind_Open =
 {
+	local float k;
+
 	if (rw_on)
 		return FALSE;
+	if (!cvar("hud_trail"))
+	{
+		print("^3rewind:^7 it rewinds your run's line, and hud_trail is off "
+		      "(hud_edit, Run lines)\n");
+		return FALSE;
+	}
 	if (!tr_on || ln_n[tr_live] < 2)
 	{
 		print("^3rewind:^7 no run to rewind -- start one first\n");
@@ -101,7 +146,8 @@ float() Rewind_Open =
 	}
 	// The pin stops the clock, which makes a clean run practice (SV_TimerFreeze):
 	// Patch 391's refusal of a mid-run load, with a second press as the way through.
-	if (SaveLoc_RunLocked() && !(rw_askat && cltime - rw_askat < RW_ASK))
+	if (SaveLoc_RunLocked())
+	if (!rw_askat || (cltime - rw_askat) >= RW_ASK)
 	{
 		rw_askat = cltime;
 		print(sprintf("^3rewind:^7 %s again to rewind -- this clean run becomes practice\n",
@@ -110,9 +156,24 @@ float() Rewind_Open =
 	}
 	rw_askat = 0;
 	rw_on  = TRUE;
-	rw_ack = rw_cd = rw_dir = 0;
+	rw_run = (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING);
+	rw_ack = rw_cd = rw_dir = rw_leave = 0;
 	rw_last = cltime;
-	rw_i = ln_n[tr_live] - 1;       // the head: where you are now
+	for (k = 0; k < RW_KEYS; k = k + 1)
+		rw_kst[k] = 0;
+	if (Rewind_HeldBefore('s'))           rw_kst[0] = 2;
+	if (Rewind_HeldBefore(K_LEFTARROW))   rw_kst[3] = 2;
+	if (Rewind_HeldBefore(K_RIGHTARROW))  rw_kst[4] = 2;
+	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
+	rw_atres = FALSE;
+	if (rw_resi >= 0)               // ...unless that line is the one last resumed from
+	if (tr_live == rw_resslot)
+	if (tr_nsamp == rw_resn)
+	if (rw_resi < ln_n[tr_live])
+	{
+		rw_i = rw_resi;
+		rw_atres = TRUE;
+	}
 	tr_cur_on = TRUE;
 	Rewind_Cursor();
 	PVS_Forget();
@@ -120,9 +181,10 @@ float() Rewind_Open =
 	return TRUE;
 };
 
-// Back to the body with nothing loaded: the pin and the clock let go and the
-// run carries on, as practice if it was on the clock.  The pin zeroed the
-// velocity (SV_WatchHold), as closing a replay does.
+// Back to the body with nothing loaded: the pin lets go.  Only for a run that
+// was not on the clock (Rewind_Leave), so nothing was frozen.  The pin zeroed
+// the velocity (SV_WatchHold), as closing a replay does.  sl_holdoff too: a go
+// whose answer was misread as a refusal must not leave its hold behind.
 void() Rewind_Close =
 {
 	if (!rw_on || rw_ack || rw_cd)
@@ -131,6 +193,7 @@ void() Rewind_Close =
 	rw_dir = 0;
 	tr_cur_on = FALSE;
 	localcmd("cmd rec_watch 0\n");
+	SaveLoc_Cmd("sl_holdoff");
 };
 
 // Out of the mode whatever the server did: neither command does anything to a
@@ -142,7 +205,8 @@ void() Rewind_Abandon =
 		SaveLoc_Release();          // which sends sl_holdoff itself
 	else
 		SaveLoc_Cmd("sl_holdoff");
-	rw_on = rw_ack = rw_cd = rw_dir = 0;
+	rec_sl_holdext = FALSE;
+	rw_on = rw_ack = rw_cd = rw_dir = rw_leave = 0;
 	tr_cur_on = FALSE;
 };
 
@@ -162,14 +226,31 @@ void() Rewind_Save =
 	SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At()));
 };
 
-// One command; Rewind_Frame reads what came of it from the load event.
+// One command; Rewind_Answer reads what came of it from the load event.
 void() Rewind_Go =
 {
 	rw_seq = getstatf(STAT_FS_SLSEQ);
+	rw_goi = floor(rw_i);
 	SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At(), " go"));
 	rw_ack = rec_sl_sent;
 	rw_sentat = cltime;
 	rw_dir = 0;
+};
+
+// ESC, or `rewind` while open.  A run that was on the clock resumes at the
+// head with the speed it had: a thaw would carry on past a freeze the .rec
+// never recorded.  If that resume is refused, the thaw is all that is left.
+void() Rewind_Leave =
+{
+	if (!rw_run)
+	{
+		Rewind_Close();
+		return;
+	}
+	rw_i = ln_n[tr_live] - 1;
+	Rewind_Cursor();
+	rw_leave = TRUE;
+	Rewind_Go();
 };
 
 /*
@@ -184,13 +265,18 @@ void() Rewind_Answer =
 {
 	if (getstatf(STAT_FS_SLACK) < rw_ack)
 	{
-		if (cltime - rw_sentat > RW_LOST)
+		if ((cltime - rw_sentat) > RW_LOST)
 			Rewind_Abandon();       // the count restarted under it: an observe or a rejoin
 		return;
 	}
 	if (getstatf(STAT_FS_SLSEQ) == rw_seq || FS_SlopOp(getstatf(STAT_FS_SLOP)) != SLOP_LOADED)
 	{
 		rw_ack = 0;
+		if (rw_leave)
+		{
+			rw_leave = FALSE;
+			Rewind_Close();
+		}
 		return;
 	}
 	rec_sl_holdack   = rw_ack;
@@ -199,6 +285,10 @@ void() Rewind_Answer =
 	rec_sl_holdkey   = 0;
 	rec_sl_holdseen  = cltime;
 	rec_sl_holdrep   = FALSE;
+	rec_sl_holdext   = TRUE;
+	rw_resi    = rw_goi;
+	rw_resslot = tr_live;
+	rw_resn    = tr_nsamp;
 	rw_ack = 0;
 	tr_cur_on = FALSE;
 	rw_cd  = cltime + RW_COUNT;
@@ -224,6 +314,14 @@ void() Rewind_Frame =
 		// deadman saw no hold: either way the load is over.
 		if (!rec_sl_holding || cltime >= rw_cd)
 			Rewind_Abandon();       // sl_holdoff: the server hands back the save's velocity
+		return;
+	}
+	if (rec_wt_open)
+	{
+		// A replay opened from the board while browsing: its pin is this one, and
+		// its close lets go of it.  Step aside without a command.
+		rw_on = rw_dir = 0;
+		tr_cur_on = FALSE;
 		return;
 	}
 	if (!tr_on || ln_n[tr_live] < 2 || !tr_cur_on)
@@ -273,7 +371,8 @@ void(vector scr) Rewind_Draw =
 
 	if (!rw_on)
 	{
-		if (rw_askat && cltime - rw_askat < RW_ASK)
+		if (rw_askat)
+		if ((cltime - rw_askat) < RW_ASK)
 			HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0],
 			          sprintf("%s again to rewind -- this clean run becomes practice",
 			                  Rewind_Key()),
@@ -296,6 +395,10 @@ void(vector scr) Rewind_Draw =
 	            floor(ln_spd[tr_live * LN_CAP + floor(rw_i)]));
 	HUD_TextC([scr_x * 0.5, scr_y * 0.12 + 36 * ui_cv_scale, 0], s,
 	          16 * ui_cv_scale, '1 1 1', 0.95);
+	if (rw_atres)
+		HUD_TextC([scr_x * 0.5, scr_y * 0.12 + 56 * ui_cv_scale, 0],
+		          "where you last resumed -- what you did since is not on this line",
+		          11 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	if (rw_ack)
 		s = "...";
 	else if (Rewind_Old())
@@ -305,42 +408,56 @@ void(vector scr) Rewind_Draw =
 	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 };
 
-// In CL_InputChain beside the replay's.  The mouse is swallowed (the view rides
-// the cursor); keys this mode does not use fall through to their binds.
+/*
+  In CL_InputChain beside the replay's.  The mouse is swallowed while browsing
+  (the view rides the cursor).  A key this mode acts on acts on its first
+  press only -- the engine hands CSQC every repeat -- and its release is taken
+  only if its press was; a key that was down before the mode opened keeps its
+  release for its bind.  Everything else falls through.
+*/
 float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 {
+	local float k, st;
+
 	if (!rw_on)
 		return FALSE;
 	if (evtype == IE_MOUSEDELTA || evtype == IE_MOUSEABS)
 		return !rw_cd;
+	k = Rewind_KeyIx(scanx);
 	if (evtype == IE_KEYUP)
 	{
-		if (scanx == K_LEFTARROW || scanx == K_RIGHTARROW)
-		{
+		if (k < 0)
+			return FALSE;
+		st = rw_kst[k];
+		rw_kst[k] = 0;
+		if (st == 1)
+		if (k == 3 || k == 4)
 			rw_dir = 0;
-			return TRUE;
-		}
-		return FALSE;
+		return st == 1;
 	}
 	if (evtype != IE_KEYDOWN)
 		return FALSE;
+	if (k >= 0)
+	if (rw_kst[k])
+		return TRUE;                // a repeat, or a key held from before
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait
 		{
+			rw_kst[k] = 1;
 			rw_cd = cltime;
 			return TRUE;
 		}
-		return FALSE;
+		return FALSE;               // the keys the release will find held
 	}
-	if (rw_ack)                     // a go is in flight: one round trip
-		return scanx == K_ESCAPE || scanx == K_ENTER || scanx == K_KP_ENTER || scanx == 's'
-		    || scanx == K_LEFTARROW || scanx == K_RIGHTARROW;
-	if (scanx == K_LEFTARROW || scanx == K_RIGHTARROW)
+	if (k >= 0)
+		rw_kst[k] = 1;
+	if (rw_ack)                     // a go in flight: one round trip
+		return k >= 0;
+	if (k == 3 || k == 4)
 	{
-		if (!rw_dir)
-			rw_dirat = cltime;
-		rw_dir = (scanx == K_LEFTARROW) ? -1 : 1;
+		rw_dirat = cltime;
+		rw_dir = (k == 3) ? -1 : 1;
 		rw_i = rw_i + rw_dir;
 		Rewind_Cursor();
 		return TRUE;
@@ -351,28 +468,28 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		Rewind_Cursor();
 		return TRUE;
 	}
-	if (scanx == K_ENTER || scanx == K_KP_ENTER)
+	if (k == 1 || k == 2)
 	{
 		Rewind_Go();
 		return TRUE;
 	}
-	if (scanx == 's')
+	if (k == 0)
 	{
 		Rewind_Save();
 		return TRUE;
 	}
-	if (scanx == K_ESCAPE)
+	if (k == 5)
 	{
-		Rewind_Close();
+		Rewind_Leave();
 		return TRUE;
 	}
 	return FALSE;
 };
 
 /*
-  `rewind` toggles.  The rest are harness handles a config can drive:
-  `rewind go|save|status`, `rewind seek <seconds>` (negative: back from the
-  head) and `rewind step <points>`.
+  `rewind` opens, and while open is ESC.  The rest are harness handles a config
+  can drive: `rewind go|save|status`, `rewind seek <seconds>` (negative: back
+  from the head) and `rewind step <points>`.
 */
 float() Rewind_Console =
 {
@@ -382,13 +499,13 @@ float() Rewind_Console =
 	if (argv(0) != "rewind")
 		return FALSE;
 	a = argv(1);
-	busy = !rw_on || rw_ack || rw_cd;
+	busy = (!rw_on || rw_ack || rw_cd);
 	if (a == "")
 	{
-		if (rw_on)
-			Rewind_Close();
-		else
+		if (!rw_on)
 			Rewind_Open();
+		else if (!busy)
+			Rewind_Leave();
 	}
 	else if (a == "go" && !busy)
 		Rewind_Go();
@@ -409,9 +526,9 @@ float() Rewind_Console =
 	}
 	else if (a == "status")
 	{
-		print(sprintf("rewind: on %g counting %g sent %g  cursor %g of %g  kept %g\n",
+		print(sprintf("rewind: on %g counting %g sent %g  cursor %g of %g  kept %g  resume %g\n",
 		              rw_on, rw_cd ? 1 : 0, rw_ack ? 1 : 0, floor(rw_i), ln_n[tr_live],
-		              !Rewind_Old()));
+		              !Rewind_Old(), rw_atres));
 		print(sprintf("rewind: at %s  %s\n", Rewind_At(),
 		              Time_TickString(tr_tick > 0 ? rint(tr_cur_t / tr_tick) : 0, tr_tick)));
 	}
@@ -421,6 +538,8 @@ float() Rewind_Console =
 // A map change: the line is gone and the server has forgotten the pin.
 void() Rewind_Reset =
 {
-	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = 0;
+	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = rw_leave = rw_atres = 0;
+	rw_resi = -1;
+	rec_sl_holdext = FALSE;
 	tr_cur_on = FALSE;
 };

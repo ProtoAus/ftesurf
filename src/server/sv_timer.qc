@@ -10498,6 +10498,10 @@ float(entity e) SV_TimerJumpWatch =
 		  taken wherever the player happens to be, including mid-course.  What bounds
 		  it is the speed, not the place.
 		*/
+		// Patch 477: never under a save-lock hold, whose body reads at rest while
+		// the release hands back the saved velocity.  A load's run_t_startok also
+		// keeps it out today (sv_saveloc.qc), which is not a guard anyone chose.
+		if (!e.rec_sl_hold)
 		if (e.run_t_finfgv && e.run_t_hopped && ong)
 		{
 			local vector hv;
