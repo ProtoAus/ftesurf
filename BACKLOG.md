@@ -988,15 +988,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   the pseudo-tiers, the board cache and track table for `momwatch`, and the
   progs carrying the tab and the tint. `lextest.md` §2h holds the five
   judgement calls that are still the operator's.
-- **KSF's per-map leaderboard route is NOT LOCATED, and that is not the same as
-  absent.** Their map pages render records, so a route exists. Twelve guesses
-  across two rounds (every shape their two documented endpoints imply), the map
-  page HTML, and all seventeen of its JS chunks: the chunks hold typed DTOs
-  (`steam_id`, `map_name`, `records`, `pr`) but no URL, so the base is composed
-  at runtime in a chunk the page does not pull. Until someone finds it,
-  `surfd/ksfimport.py` is player-seeded at 25 records each, which is a poor
-  substitute for a map board. Whoever finds it should rewrite that tool around
-  it. **Do not find it by brute-forcing their server**; read their client.
 - **877 imported runs are on a build that is NOWHERE ON THIS MACHINE, and are
   SKIPPED.** The demo's own map SHA1 says so (see AGENTS.md). Searched across
   all three map roots -- Momentum's 1,316, Counter-Strike: Source's 1,084 and
@@ -1928,21 +1919,6 @@ depth at ~3,000 requests/day. What that leaves open:
   viewed once long ago quietly stops being considered. That is the intended
   behaviour and it means the queue is a priority list, not a work list — nothing
   guarantees a viewed map is ever deepened except the backfill reaching it.
-- **A KSF map-seeded importer, now that the route is located.** `GET
-  https://ksf.surf/maps/<map>` with an `RSC: 1` header returns the board as
-  `text/x-component`. Exactly 10 rows, no paging, `?mode=fw|sw|hsw|bw` works,
-  `?zone=` ignored so **main track only** — stages and bonuses are not reachable.
-  Against ~740 board maps that is ~7,400 times for ~740 requests, against 666 KSF
-  rows held today.
-  **The cost is the parser, and it should be understood before starting:** the data
-  lives in `__next_f` flight chunks, i.e. escaped JSON inside someone else's
-  framework internals, and it will break when they next deploy and break QUIETLY.
-  Anything built on it needs an arm that fails loudly on a shape change rather
-  than importing zero rows and reporting success. **Must stay operator-run**:
-  `ksfimport.py`'s contract is "never automatic: every run of this is a person
-  typing it", and a website button is NOT that — it would make our IP a request
-  generator for anyone who finds the page.
-
 ## Milk visualizer (Patch 467) -- 2026-09-29
 
 ### Still open

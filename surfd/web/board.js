@@ -360,7 +360,12 @@
     var v = {
       map: body.disp, key: body.map, track: body.track, leg: body.leg,
       style: body.style, tier: body.tier || 'ranked',
-      boards: body.boards || [], total: body.n || 0, shown: 0, best: 0
+      boards: body.boards || [], total: body.n || 0, shown: 0, best: 0,
+      // THE SERVER'S PAGE SIZE, NOT OURS.  `more` stops when a page comes back
+      // short, so a PAGE that disagreed with surfd's WEB_PAGE would end the
+      // board early and look like the end of the times: drop WEB_PAGE to 25
+      // and every board would stop at 25 with no error anywhere.
+      page: body.limit || PAGE
     };
     state.view = v;
     document.title = body.disp + ' · FTESurf Leaderboard';
@@ -376,6 +381,7 @@
     v.shown = rows.length;
     $('table').hidden = rows.length === 0;
     $('more').hidden = v.shown >= v.total;
+    pumpMore();
     var empty = $('empty');
     if (rows.length === 0) {
       empty.textContent = 'No ' + v.style + ' times on ' +
@@ -460,11 +466,41 @@
       var rows = body.rows || [];
       appendRows(v, rows);
       v.shown += rows.length;
-      $('more').hidden = rows.length < PAGE || v.shown >= v.total;
+      $('more').hidden = rows.length < v.page || v.shown >= v.total;
+      // A page may not fill a tall window: look again without waiting for a scroll.
+      pumpMore();
     }, function (e) {
       $('more').disabled = false;
       showError(e.message);
     });
+  }
+
+  // Scrolling to the "Show more" button loads the next page; the button stays as
+  // the keyboard path and the fallback without IntersectionObserver.  Bounded by
+  // the board: each page advances the offset and a short one hides the button.
+  var moreObs = null;
+
+  function pumpMore() {
+    if (!moreObs) { return; }
+    // unobserve/observe re-delivers the current state, so a button still on
+    // screen asks again.
+    var b = $('more');
+    moreObs.unobserve(b);
+    if (!b.hidden) { moreObs.observe(b); }
+  }
+
+  function watchMore() {
+    if (typeof window.IntersectionObserver !== 'function') { return; }
+    var b = $('more');
+    moreObs = new window.IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting && !b.hidden && !b.disabled) {
+          more();
+          return;
+        }
+      }
+    }, { rootMargin: '300px 0px' });
+    moreObs.observe(b);
   }
 
   // ---- one run -----------------------------------------------------------
@@ -789,6 +825,7 @@
       });
     });
     $('more').addEventListener('click', more);
+    watchMore();
     $('pq').addEventListener('input', function () {
       var v = $('pq').value.trim();
       window.clearTimeout(tsearch);

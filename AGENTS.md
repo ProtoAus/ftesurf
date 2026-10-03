@@ -1071,14 +1071,15 @@ bannered as superseded.)
   mean ± 2 sd clamp keeps an outlier out of the colour ramp, so the visible cost
   is confined to the live speedometer at that instant.
 - **KSF is times only.** No demo URL, no Source `.dem` parser, nothing that
-  could become a `.rec`; `replay_id` is 0 and the board shows no `watch`. Its
-  per-map leaderboard route was NOT LOCATED (twelve guesses, the page HTML and
-  all seventeen JS chunks) -- their site has one, so this is not "absent", and
-  `surfd/ksfimport.py` should be rewritten around it if anyone finds it. Until
-  then it is player-seeded, 25 records each. Politeness is the wrlines
-  reference's: one at a time, 400 ms apart, capped, honest User-Agent, never
-  automatic, a non-2xx reported as a refusal and nothing retried. Answers are
-  cached, so a re-run costs nothing.
+  could become a `.rec`; `replay_id` is 0 and the board shows no `watch`.
+  `surfd/ksfimport.py --from-maps` pages every board of a map -- main, stages,
+  bonuses -- off KSF's JSON API (its docstring has the routes and the two traps:
+  a linear map's `cp_count` counts checkpoints, and the search is a typeahead).
+  `--seed`/`--from-boards` is the older player-seeded path, main track only.
+  Politeness is the wrlines reference's: one at a time, 400 ms apart, capped,
+  honest User-Agent, never automatic, a non-2xx reported as a refusal and
+  nothing retried. Answers are cached, so a re-run costs nothing.
+  `surfd/test_ksfimport.py` is the arm (no network; six mutants caught).
 - **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
   their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
   so a matching name does not mean the same build, start or end.
@@ -2625,22 +2626,11 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   typing it", reasoned against that host in the wrlines reference. Do not cron
   it; if the operator wants KSF refreshed on a schedule that is their decision
   to make explicitly, and the docstring should change first.
-- **KSF's PER-MAP ROUTE IS LOCATED, AND IT IS NOT AN API -- 2026-09-29.** Two
-  sessions failed to find it for a structural reason: **there is no API route to
-  find.** The board is fetched server-side by a Next.js server component and
-  embedded in the page, so every record endpoint in the client bundle is
-  player-scoped and seventeen JS chunks searched correctly could not have held it.
-  The route is the map page -- `GET https://ksf.surf/maps/<map>`, or the same URL
-  with an `RSC: 1` header for `text/x-component` at ~46 KB instead of 103 KB of
-  HTML. That header is the framework's own convention and not mimicry: the reply
-  carries `vary: rsc`. Measured twice, the second time independently.
-  **It gives exactly 10 rows and no paging** (`?page`, `?offset`, `?limit` all
-  ignored, byte-identical board), `?mode=fw|sw|hsw|bw` works, and **`?zone=` is
-  ignored** so stages and bonuses are unreachable on it. Page URLs take an enum's
-  displayName where the JSON API takes its value (`fw` vs `0`).
-  **Not built.** Parsing it means `__next_f` flight chunks -- escaped JSON in
-  someone else's framework internals that will break on their next deploy and
-  break quietly. That is a maintenance commitment; it is in BACKLOG.md.
+- **KSF's per-map boards ARE a paged JSON API; this file said the opposite for a
+  morning.** On 2026-09-29 the board looked server-embedded in `/maps/<map>` and
+  "there is no API route to find" was written up as structure. The leaderboard is
+  fetched by the browser on `/maps/<map>/records`, a page neither search opened.
+  Routes and traps: `ksfimport.py`'s docstring.
 - **Two claims in `ksfimport.py`'s docstring were false and are corrected.** It
   said "no demo URL in any endpoint found" -- `/api/players/{id}/replays/{map}`
   returns per-zone `file` names like `replay_css_6201_0_712551_1790101734.rec` (a
