@@ -99,8 +99,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   run parked by a drop, rotation or shutdown) and SV_RecClose (a pinned body moved
   into END by a map warp or noclip) do not, so the grammar's "the closing horizon,
   as `inend`" now disagrees between writers for the same state. Practice runs
-  only, and the park HOLDs regardless: the pin's velocity zeroing is not in the
-  file either.
+  only.
 - **A `retry` or a second keep under one runid overwrites
   `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).
 - **The ghost and the replay pin refuse each other one way only**
@@ -113,7 +112,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   spawns the PVS eye (SV_ViewEyeAt) and each `0` frees it, and FTE keeps a freed
   edict for 0.5 s (qclib/pr_edict.c), so a stringcmd flood ratchets `num_edicts`
   up for the rest of the map and every `nextent` walk pays for it. Patch 477
-  round-10 integrity review; 477 does not widen it.
+  round-10 integrity review. Since round 14 a pin on a running run also writes a
+  `warp ... pin` line -- capped at one a packet (round 15), the same order as the
+  `in` rows and as `rec_ghost` pairs already write.
 - **A spectator's client acts on its tracked player's save events** (QC stats come
   from the tracked player, and Rec_ViewSaveEvents/Seq_SaveEvents run every frame):
   that player's prefixes and segment columns are written into the SPECTATOR's own

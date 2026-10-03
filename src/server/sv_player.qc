@@ -943,6 +943,14 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "sl_saveat")
 	{
 		go = (argv(5) == "go");     // before the create: its read-back tokenizes
+		// Round 15: a resume ends the run it lands on, so only from the rewind's
+		// own pin -- one sent behind a refused pin acted on the newer run.
+		if (go)
+		if (!self.rw_pin)
+		{
+			sprint(self, PRINT_HIGH, "^3rewind:^7 not rewinding -- open the rewind again\n");
+			return;
+		}
 		// A resume is a write, a load and maybe a delete: two of the rate's
 		// tokens, not one (review round 4).
 		if (go)
@@ -1015,9 +1023,9 @@ void(string cmd) SV_ParseClientCommand =
 		// what it saw a round trip ago -- its TIMERSTATE, TIMERTICKS and SLSEQ at
 		// the open.  A run that is not that one is left alone: not RUNNING then,
 		// fewer ticks now (a stage chain or a finish into the box starts the next
-		// run in one frame), or a save or load landed since (a later save loads
-		// MORE ticks).  The refusal is published as -<serial>, and the client
-		// closes the mode on it with nothing to end.
+		// run in one frame), or a save/load event since (a load of a later save
+		// has MORE ticks; a save is refused too, harmlessly).  The refusal is
+		// published as -<serial>, and the client closes the mode on it.
 		if (wrw && won)
 		if (self.run_t_state == TS_RUNNING)
 		if (wst0 != TS_RUNNING || SV_TimerTicks(self) < wtk || self.rec_sl_slseq != wsq)
@@ -1029,10 +1037,15 @@ void(string cmd) SV_ParseClientCommand =
 		}
 		SV_WatchHold(self, won);
 		if (wrw)
-		if (self.rec_wt_hold)
+		if (won)
 		{
-			self.rw_pin = TRUE;
-			self.rec_wt_pin = wser;
+			if (self.rec_wt_hold)
+			{
+				self.rw_pin = TRUE;
+				self.rec_wt_pin = wser;
+			}
+			else
+				self.rec_wt_pin = -wser;    // SV_WatchHold refused it (round 15)
 		}
 		return;
 	}

@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18E", "R18F", "R18G", "R18H", "R18B", "R19")
+            "R18D", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
 
 
 def listing(d):
@@ -504,6 +504,16 @@ def main():
         "the run changed since you asked" in t18h,
         "practice run -- this run will not be saved" in t18h,
         tm18h.group(1) if tm18h else None, pr18h.group(1) if pr18h else None))
+
+    # R18I: a go with no rewind pin is refused; the run stays on the clock.
+    t18i = txt("R18I")
+    tm18i = last(r"timer: (\w+) on ", "R18I")
+    ok18i = ("not rewinding -- open the rewind again" in t18i
+             and "rewind: resumed" not in t18i
+             and tm18i is not None and tm18i.group(1) == "running")
+    check("R18I", ok18i, "refused %s, resumed %s, timer %s" % (
+        "not rewinding -- open the rewind again" in t18i, "rewind: resumed" in t18i,
+        tm18i.group(1) if tm18i else None))
 
     # R18B: retry under the rewind ends the run first, and the restart's own line
     # says it restored no run; an idle save after it writes no .view prefix.
