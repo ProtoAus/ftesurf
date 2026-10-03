@@ -12991,6 +12991,7 @@ void(entity e) SV_TimerFrame =
 		if (e.run_t_pendarm >= 0)
 		if (!SV_ZoneIn(e.run_t_pendarm, e.origin, mn, mx))
 			SV_TimerGhostLeft(e);
+		if (run_t_stagearm)             // at 0 a held exit starts nothing: the plane is the base
 		if (e.run_t_state == TS_RUNNING)
 		if (!e.run_t_stagerun)
 		if (e.run_t_seg > 0)
@@ -13008,10 +13009,13 @@ void(entity e) SV_TimerFrame =
 				e.run_st_armed = FALSE;
 				e.run_st_hold = FALSE;
 				// Not qualifying either: its base is the boundary, a different
-				// measurement from a box exit.  A fail (back in the box) reopens it.
+				// measurement from a box exit.  SV_StageOpen reopens it -- a fail
+				// back in the box, or `!r`.
 				e.run_st_jump = FALSE;
 				e.run_st_ramp = TRUE;
-				sprint(e, PRINT_HIGH, "^3ghost:^7 your body left the stage's box as a ghost -- this stage will not count; step back in to restart it\n");
+				sprint(e, PRINT_HIGH, sprintf("^3ghost:^7 your body left the stage's box as a ghost -- "
+				       "this stage will not count; %s to restart it\n",
+				       run_t_stagefail ? "step back in" : "!r"));
 			}
 		}
 

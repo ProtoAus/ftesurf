@@ -4,13 +4,17 @@ ghost begun in an armed start box starts no run where it ends).
 
     python tools/p478ghost.py [--exe ftesurf64.exe] [--grade-only] [--timeout 300]
 
-The arm saves nothing; data/ is listed before and after, and anything the run
-left there is printed and fails the run.  Exit 0 pass, 1 fail, 2 cannot grade.
+G3 parks a run and retries, so data/saves/surf_dune and data/resume/surf_dune
+are PARKED (renamed) for the run and put back, each listing checked.  The rest
+of data/ is listed (files AND dirs) before; what the run made there is printed
+and removed, each removal checked, and D passes only if the whole tree then
+lists as it did.  Exit 0 pass, 1 fail, 2 cannot grade.
 """
 import argparse
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,26 +22,62 @@ GAME = os.path.join(ROOT, "ftesurf")
 LOG = os.path.join(GAME, "logs", "p478ghost.log")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G2")
+SECTIONS = ("G1", "G2", "G3", "G3P", "G3A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
+PARKS = [os.path.join(DATA, "saves", "surf_dune"), os.path.join(DATA, "resume", "surf_dune")]
 
 
-def listing(d):
-    out = []
-    for r, _, fs in os.walk(d):
-        out += [os.path.relpath(os.path.join(r, f), d).replace(os.sep, "/") for f in fs]
-    return set(out)
+def tree(d):
+    """Every file AND directory under d, as (kind, relative path)."""
+    out = set()
+    for r, ds, fs in os.walk(d):
+        out |= {("d", os.path.relpath(os.path.join(r, x), d)) for x in ds}
+        out |= {("f", os.path.relpath(os.path.join(r, x), d)) for x in fs}
+    return out
 
 
 def run(exe, timeout):
-    before = listing(DATA)
-    if os.path.exists(LOG):
-        os.replace(LOG, LOG + ".prev")
-    subprocess.run([os.path.join(ROOT, exe), "-WindowStyle", "Minimized",
-                    "+exec", "cfg/test/p478ghost.cfg"], cwd=ROOT, timeout=timeout)
-    new = sorted(listing(DATA) - before)
-    print("data/ files the run made: %s" % (", ".join(new) or "none"))
-    return new
+    for p in PARKS:
+        if os.path.exists(p + ".p478park"):
+            raise SystemExit("a previous park is still there: %s -- restore it first" % p)
+    orig = tree(DATA)
+    had = {p: os.path.exists(p) for p in PARKS}
+    kept = {p: tree(p) if had[p] else set() for p in PARKS}
+    for p in PARKS:
+        if had[p]:
+            os.rename(p, p + ".p478park")
+    before = tree(DATA)
+    try:
+        if os.path.exists(LOG):
+            os.replace(LOG, LOG + ".prev")
+        subprocess.run([os.path.join(ROOT, exe), "-WindowStyle", "Minimized",
+                        "+exec", "cfg/test/p478ghost.cfg"], cwd=ROOT, timeout=timeout)
+    finally:
+        made = sorted(tree(DATA) - before)
+        for p in PARKS:
+            if os.path.exists(p):
+                shutil.rmtree(p)
+            if had[p]:
+                os.rename(p + ".p478park", p)
+            back = tree(p) if os.path.exists(p) else set()
+            print("%s restored: %s (%d entries, before %d)" % (
+                os.path.relpath(p, DATA), "yes" if back == kept[p] else "NO -- LISTINGS DIFFER",
+                len(back), len(kept[p])))
+            if back != kept[p]:
+                raise SystemExit("%s did not come back as it was" % p)
+        parked = [os.path.relpath(p, DATA) for p in PARKS]
+        rest = [(k, r) for k, r in made if not any(r == q or r.startswith(q + os.sep) for q in parked)]
+        print("data/ the run made outside the parks: %s" % (
+            ", ".join("%s%s" % (r, "/" if k == "d" else "") for k, r in rest) or "none"))
+        for k, r in sorted(rest, key=lambda e: (e[0] == "d", -len(e[1]))):
+            p = os.path.join(DATA, r)
+            if k == "f":
+                os.remove(p)
+            else:
+                os.rmdir(p)
+            if os.path.exists(p):
+                raise SystemExit("could not remove %s" % p)
+    return sorted(r for k, r in tree(DATA) ^ orig)
 
 
 def sections(lines):
@@ -124,7 +164,28 @@ def main():
               st2[0] if st2 else None, st2[1] if len(st2) > 1 else None, cl2[-1] if cl2 else None,
               pr2[-1] if pr2 else None))
 
-    check("D", not new, "data/ left as it was" if not new else "the run left: %s" % ", ".join(new))
+    # G3.  Premises: the reload parked G3's own run (a few seconds -- the
+    # parks hold nothing older), and the resume phase began.  Verdict: in the
+    # phase `!r` and `retry` are refused, and the resume applies.  Before 478:
+    # "!r -- start of the map", "retry -- back where you were", then a CLEAN run.
+    t3 = "\n".join(sec["G3P"] + sec["G3A"])
+    pk3 = re.search(r"resume: your run here is paused at (\d+):(\d+)\.(\d+)", t3)
+    if not (pk3 and int(pk3.group(1)) == 0 and int(pk3.group(2)) < 30):
+        print("CANNOT GRADE G3: no park of G3's own run (%s)" % (pk3.group(0) if pk3 else None))
+        return 2
+    st3, cl3 = states("G3A"), classes("G3A")
+    ok3 = ("resume: wait for the resume to finish" in t3
+           and "retry: wait for the resume to finish" in t3
+           and "start of the map" not in t3 and "retry -- back where you were" not in t3
+           and "resume: run resumed at" in t3)
+    check("G3", ok3, "park %s; !r refused %s, retry refused %s, warped %s, retried %s, "
+          "resumed %s; after: %s class %s" % (
+              pk3.group(0).split(" at ")[-1], "resume: wait for the resume to finish" in t3,
+              "retry: wait for the resume to finish" in t3, "start of the map" in t3,
+              "retry -- back where you were" in t3, "resume: run resumed at" in t3,
+              st3[-1] if st3 else None, cl3[-1] if cl3 else None))
+
+    check("D", not new, "data/ lists as it did" if not new else "data/ differs: %s" % ", ".join(new))
     print("%d check(s) failed" % len(fails))
     return 1 if fails else 0
 

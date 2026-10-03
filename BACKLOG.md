@@ -7,6 +7,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **A ghost skips cancel zones on a running run** (pre-existing; Patch 478 round-2
+  integrity review, code-read). SV_TimerFrame's ghost branch returns before the
+  zone scan, so a body coasting unattended through a cancel zone keeps its run;
+  the run is TF_GHOST-marked, and TF_GHOST is not in TF_UNCERT. 478 stops a
+  ghost STARTING a clock; a cancel the ghost crosses should still void (a
+  swept test of the ghosted ticks' own segments, which SV_TimerWarped already
+  keeps one tick long).
+- **`retry` never reopens the stage in progress** (pre-existing; Patch 478
+  round-2 review, code-read). PutClientInServer runs SV_TimerSpawn, whose
+  SV_TimerIdle sets `run_st_seg = -1`, before SV_RetryApply, and
+  SV_SaveApplyState reopens a stage only `if (e.run_st_seg >= 0)`
+  (sv_saveloc.qc) -- dead on a retry, and on a save-lock load from IDLE or
+  ARMED. No stage is open, and the fail rule is off, until the next boundary.
 - **A map's player gravity can follow a run out of the area that set it**
   (pre-existing; Patch 477 round-11 integrity review, PLAUSIBLE, map-dependent,
   not driven). `.gravity` written by map I/O (sv_entities.qc) is reset only in

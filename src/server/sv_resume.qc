@@ -838,6 +838,18 @@ void(entity e) SV_MsApply =
 	       e.run_ms_norec ? " (unrecorded)" : ""));
 };
 
+// Patch 478: no zone move in a resume phase.  It armed the leg while SV_MsFrame
+// held the body at the park point, and an exit that kept the arm -- an abort,
+// or `retry` (SV_RetryPoint) -- stood the body up there ARMED: the next
+// packet's start test began a CLEAN run.  sv_zones.qc's commands ask first.
+float(entity e) SV_MsBusy =
+{
+	if (!e.run_ms_phase)
+		return FALSE;
+	sprint(e, PRINT_HIGH, "^3resume:^7 wait for the resume to finish\n");
+	return TRUE;
+};
+
 // Give the claim back and stand the player up; the offer stands.
 void(entity e) SV_MsAbort =
 {
@@ -860,8 +872,7 @@ void(entity e) SV_MsAbort =
 	frename(claim, SV_MsPath(e, "ms.txt"));
 	SV_WatchRelease(e);                 // Patch 477: a pin taken in the resume phase
 	// Patch 478: the body stays at the park point, so no arm survives the phase
-	// -- a `!r` in it armed the leg while SV_MsFrame held the body outside the
-	// box, and the next packet's start test began a CLEAN run there.
+	// (SV_MsBusy keeps zone moves out of it; this is the backstop).
 	SV_TimerIdle(e);
 	e.run_t_azone = -1;
 	e.movetype = MOVETYPE_WALK;

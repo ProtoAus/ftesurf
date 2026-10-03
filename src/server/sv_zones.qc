@@ -854,6 +854,7 @@ void() SV_EntInfo =
   pitch is what the player set up with and 0 is a legitimate value of it.
 */
 void(entity e) SV_SaveLocRelease;      // sv_saveloc.qc
+float(entity e) SV_MsBusy;              // sv_resume.qc, Patch 478
 
 void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	SV_ZoneMoveAt =
@@ -1019,6 +1020,8 @@ void(float n, float yaw, float pitch, float setang) SV_ZoneGotoAng =
 {
 	local vector c;
 
+	if (SV_MsBusy(self))
+		return;
 	if (!zone_loaded)
 		SV_ZoneFrame();
 
@@ -1318,6 +1321,8 @@ void(string word, float n) SV_ZoneChatCommand =
 	local vector sorg;              // Patch 415: the save `!r` landed on, if any
 	local float  syaw, spit;
 
+	if (SV_MsBusy(self))
+		return;
 	if (!zone_loaded)
 		SV_ZoneFrame();
 
