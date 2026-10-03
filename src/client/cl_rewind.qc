@@ -56,6 +56,8 @@ float  rw_resgen;               // ...on this line (tr_gen: the two slots altern
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
+float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
+float  rw_krep;                 // ...and the event in hand repeats one already down
 float  rw_pinseen;              // this open's pin seen (STAT_FS_PIN lands a round trip later)
 float  rw_serial;               // this open's number, sent with its pin and published back as STAT_FS_PIN
 
@@ -90,19 +92,28 @@ float(float scan) Rewind_KeyIx =
 	return -1;
 };
 
-// Down when the mode opened, as far as cl_keys.qc saw a bind take it: its
-// repeats are not presses, and its release belongs to that bind.
-float(float scan) Rewind_HeldBefore =
+// Review round 17: every key event, from the top of CSQC_InputEvent, ahead of
+// the whole chain.  A press an earlier handler took (the chat draft's ENTER or
+// ESC) still marks its key down, so its auto-repeat is not a press here; a
+// release one swallowed still lets go (Rewind_Frame).  The engine hands CSQC
+// the up of every down it offered, whatever has focus (keys.c).
+void(float evtype, float scanx) Rewind_Track =
 {
-	local float i;
+	local float k;
 
-	for (i = 0; i < FSK_COUNT * FSK_SLOTS; i = i + 1)
-		if (ui_kdown[i] == scan)
-			return TRUE;
-	for (i = 0; i < FSK_SLOTS; i = i + 1)
-		if (ui_klook[i] == scan)
-			return TRUE;
-	return FALSE;
+	rw_krep = FALSE;
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
+		return;
+	k = Rewind_KeyIx(scanx);
+	if (k < 0)
+		return;
+	if (evtype == IE_KEYDOWN)
+	{
+		rw_krep = rw_kdown[k];
+		rw_kdown[k] = TRUE;
+	}
+	else
+		rw_kdown[k] = FALSE;
 };
 
 void() Rewind_Cursor =
@@ -172,13 +183,8 @@ float() Rewind_Open =
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
-	for (k = 0; k < RW_KEYS; k = k + 1)
-		rw_kst[k] = 0;
-	if (Rewind_HeldBefore('s'))           rw_kst[0] = 2;
-	if (Rewind_HeldBefore(K_ENTER))       rw_kst[1] = 2;    // round 16: its repeat is no go
-	if (Rewind_HeldBefore(K_KP_ENTER))    rw_kst[2] = 2;
-	if (Rewind_HeldBefore(K_LEFTARROW))   rw_kst[3] = 2;
-	if (Rewind_HeldBefore(K_RIGHTARROW))  rw_kst[4] = 2;
+	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
+		rw_kst[k] = rw_kdown[k] ? 2 : 0;
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
 	rw_headi = rw_i;
 	rw_headt = ln_t[tr_live * LN_CAP + rw_i];
@@ -352,6 +358,18 @@ void() Rewind_Frame =
 		return;
 	dt = cltime - rw_last;
 	rw_last = cltime;
+	// Round 17: a release an earlier handler swallowed (the chat draft's) still
+	// lets go, so a scrub stops and the key's next press is a press.
+	for (k = 0; k < RW_KEYS; k = k + 1)
+		if (rw_kst[k])
+		if (!rw_kdown[k])
+			rw_kst[k] = 0;
+	if (rw_dir < 0)
+	if (!rw_kdown[3])
+		rw_dir = 0;
+	if (rw_dir > 0)
+	if (!rw_kdown[4])
+		rw_dir = 0;
 	if (rw_ack)
 	{
 		Rewind_Answer();
@@ -521,7 +539,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		if (k == 3 || k == 4)
 			rw_dir = 0;
 		// A `+` bind's release always reaches it: one held into the mode that
-		// Rewind_HeldBefore could not see would otherwise stick (round 3).
+		// was not seen going down would otherwise stick (round 3).
 		if (substring(getkeybind(scanx), 0, 1) == "+")
 			return FALSE;
 		return st == 1;
@@ -529,8 +547,8 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (evtype != IE_KEYDOWN)
 		return FALSE;
 	if (k >= 0)
-	if (rw_kst[k])
-		return TRUE;                // a repeat, or a key held from before
+	if (rw_kst[k] || rw_krep)
+		return TRUE;                // a repeat, a key held from before, or one another handler took
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait
@@ -593,7 +611,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 float() Rewind_Console =
 {
 	local string a;
-	local float t, busy, k, kup;
+	local float t, busy, k, kup, oth;
 
 	if (argv(0) != "rewind")
 		return FALSE;
@@ -625,12 +643,16 @@ float() Rewind_Console =
 	}
 	else if (a == "key")
 	{
-		// Harness: a key event as CL_InputChain hands it over.  Read first --
-		// what the handler runs must not decide what this prints.
+		// Harness: a key event as CSQC_InputEvent hands it over -- tracked, then
+		// this mode's handler, or not, for `other` (an earlier handler took it).
+		// Read first: what the handler runs must not decide what this prints.
 		t = stof(argv(2));
 		kup = (argv(3) == "up");
-		k = Rewind_InputEvent(kup ? IE_KEYUP : IE_KEYDOWN, t, 0, 0);
-		print(sprintf("rewind: key %g %s -> %s\n", t, kup ? "up" : "down", k ? "taken" : "passed"));
+		oth = (argv(3) == "other" || argv(4) == "other");
+		Rewind_Track(kup ? IE_KEYUP : IE_KEYDOWN, t);
+		k = oth ? 0 : Rewind_InputEvent(kup ? IE_KEYUP : IE_KEYDOWN, t, 0, 0);
+		print(sprintf("rewind: key %g %s -> %s\n", t, kup ? "up" : "down",
+		              oth ? "other" : (k ? "taken" : "passed")));
 	}
 	else if (a == "status")
 	{
@@ -639,6 +661,7 @@ float() Rewind_Console =
 		              !Rewind_Old(), rw_atres));
 		print(sprintf("rewind: at %s  %s\n", Rewind_At(),
 		              Time_TickString(tr_tick > 0 ? rint(tr_cur_t / tr_tick) : 0, tr_tick)));
+		print(sprintf("rewind: pin %g serial %g\n", getstatf(STAT_FS_PIN), rw_serial));
 	}
 	return TRUE;
 };

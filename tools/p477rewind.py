@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
+            "R18D", "R18J", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
 
 
 def listing(d):
@@ -451,13 +451,37 @@ def main():
         "a rewind left without a resume" in t18c, tm18c.group(1) if tm18c else None))
 
     # R18D: the same release of an idle rewind frees the body; the client closes.
+    # Round 16: after it STAT_FS_PIN reads -serial, a release the client sees
+    # even inside one snapshot.
     st18d = status("R18D")
     t18d = txt("R18D")
+    pn18d = last(r"rewind: pin (\S+) serial (\S+)", "R18D")
+    neg18d = (pn18d is not None and float(pn18d.group(2)) > 0
+              and float(pn18d.group(1)) == -float(pn18d.group(2)))
     ok18d = (len(st18d) >= 2 and st18d[0].group(1) == "1" and st18d[-1].group(1) == "0"
-             and "a rewind left without a resume" not in t18d)
-    check("R18D", ok18d, "on %s then %s, voided %s" % (
+             and "a rewind left without a resume" not in t18d and neg18d)
+    check("R18D", ok18d, "on %s then %s, voided %s, after it pin %s serial %s" % (
         st18d[0].group(1) if st18d else None, st18d[-1].group(1) if st18d else None,
-        "a rewind left without a resume" in t18d))
+        "a rewind left without a resume" in t18d,
+        pn18d.group(1) if pn18d else None, pn18d.group(2) if pn18d else None))
+
+    # R18J (round 17): a press another handler took repeats into the open rewind
+    # without a go, and a scrub whose release another handler swallowed stops.
+    # Premise: the rewind opened, and the press and the swallowed release reached
+    # the tracker (their own "other" lines).
+    st18j = status("R18J")
+    t18j = txt("R18J")
+    ok18j = (len(st18j) >= 5 and st18j[0].group(1) == "1"
+             and "rewind: key 13 down -> other" in t18j and "rewind: key 130 up -> other" in t18j
+             and st18j[1].group(1) == "1" and st18j[1].group(2) == "0" and st18j[1].group(3) == "0"
+             and "rewind: resumed" not in t18j and int(st18j[2].group(4)) >= 20
+             and int(st18j[3].group(4)) >= int(st18j[2].group(4)) - 10
+             and st18j[3].group(4) == st18j[4].group(4))
+    check("R18J", ok18j, "open %s; after the repeat counting %s sent %s; seek at %s, then cursor %s, %s" % (
+        st18j[0].group(1) if st18j else None,
+        st18j[1].group(2) if len(st18j) > 1 else None, st18j[1].group(3) if len(st18j) > 1 else None,
+        st18j[2].group(4) if len(st18j) > 2 else None, st18j[3].group(4) if len(st18j) > 3 else None,
+        st18j[4].group(4) if len(st18j) > 4 else None))
 
     # R18E: a hop chain's tag survives a fast load and rest in the box.  Premise:
     # the chain tagged (its own dprint-free line and the first read) and the load

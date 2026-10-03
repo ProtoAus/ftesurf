@@ -88,9 +88,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   server checks is the client's TIMERTICKS: a run cancelled within its first
   round trip and replaced by one that out-ticks it before the pin lands would
   still be taken -- a run serial stat would close that.
-- **A key held into the rewind under an untracked `+` bind** acts on its first
-  auto-repeat (S saves, ENTER resumes): Rewind_HeldBefore sees only the binds
-  cl_keys.qc tracks. Its release does reach the bind. Default binds are safe.
+- **A press the engine console took acts on its first auto-repeat in the
+  rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
+  offered that press, so Rewind_Track (round 17) cannot mark it down; every press
+  CSQC is offered -- a bind's, the chat draft's -- is tracked.
 - **A resume's row outlives a `retry` or a map change**: `rw_goid` lives on the
   edict, so "the next resume replaces it" is false across either, and the row stays
   in the list as an ordinary (demoted, rewound) save. Patch 477 round-9 review.
@@ -111,13 +112,31 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   after them, and pm_verify replays them PM_NORMAL from the `warp ... pin` state.
   A pinned body still touches triggers: a continuous push re-arms the carrier on
   the first move and `ride arm` hands it to the next, so a pin packet of two or
-  more moves (43-65 packets/s against 66.67 Hz) flies 15-45 u in the replay for a
-  1000-3000 u/s booster, plus input and gravity (~1 u a move). In a rewind-frozen
+  more moves (43-65 packets/s against 66.67 Hz) flies 15-45 u a carried move in
+  the replay for a 1000-3000 u/s booster, plus input and gravity (~1 u a move). In a rewind-frozen
   kept abandon that packet is the file's last, so the final zone scan and the
   physents checks are taken where the body never was: a HOLD on honest stage
   evidence (sweep.py passes only `no finish` and a last-row cancel). Fix, engine:
-  fly a row with <fl> bit 4 after a `pin` warp as PM_NONE, until a row without
-  it, in pm_verify and pm_recsim.
+  fly a row with <fl> bit 4 inside a freeze (from a pin or hold to `inend`) as
+  PM_NONE, in pm_verify and pm_recsim -- not keyed on the `pin` warp, which a
+  body at rest does not write (round 16).
+- **A warp writer imposes before SV_RecWarp, so a pending Multi-Session seed is
+  the imposed state** (pre-existing; Patch 477 round-17 evidence review, traced,
+  not driven). SV_RecWarp's SV_RecSession writes the `session` and its seed from
+  the body as the writer left it, but the grammar imposes a floor-window warp ON
+  the seed: a `!r` (`zone`) or a map teleport in the first packet after
+  SV_MsApply makes pm_verify HOLD "session N resumes ...". Round 17 seeds before
+  the pin's zero; the other writers are as they were.
+- **A freeze's release packet counts as frozen whatever its ticks** (pre-existing;
+  Patch 477 round-17 integrity review, PLAUSIBLE, not traced to a posted time).
+  SV_TimerFreezeFrame's zero-drift proof assumes the pin's packet and the
+  release's carry equal ticks, and a modified client picks both; a stage opened
+  inside the release packet re-reads its taint from the live state
+  (SV_StageOpen). A replay pin or save-lock hold taken in a ~0-tick packet before
+  a boundary and released in a full one across it might open a clean stage short
+  by part of that packet. Unread: crossing-tick interpolation, the engine's msec
+  caps, pm_verify's stage-slice checks. Fix direction: a stage opened in the
+  packet that ends a freeze is practice.
 - **A `retry` or a second keep under one runid overwrites
   `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).
 - **The ghost and the replay pin refuse each other one way only**
@@ -131,8 +150,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   edict for 0.5 s (qclib/pr_edict.c), so a stringcmd flood ratchets `num_edicts`
   up for the rest of the map and every `nextent` walk pays for it. Patch 477
   round-10 integrity review. Since round 14 a pin on a running run also writes a
-  `warp ... pin` line -- only when it zeroes some speed or carrier (round 16), so
-  no more often than the moves between pins: the order of the `in` rows.
+  `warp ... pin` line, only when it zeroes some speed or carrier (round 16) --
+  which no move bounds: `sl_load`, then `sl_hold; sl_holdoff; rec_watch 1;
+  rec_watch 0` repeated in one frame hands the save's speed back and zeroes it
+  again each cycle, ~30 to a packet, uncharged (round-17 integrity review).
+  Practice runs only, under the line cap, the order `rec_ghost` pairs already
+  write; one hold per load (`rec_sl_loadt = 0` once taken) would bound it.
 - **A spectator's client acts on its tracked player's save events** (QC stats come
   from the tracked player, and Rec_ViewSaveEvents/Seq_SaveEvents run every frame):
   that player's prefixes and segment columns are written into the SPECTATOR's own

@@ -4082,6 +4082,12 @@ void(entity e, float on) SV_WatchHold =
 	e.rec_wt_holdmove = e.movetype;
 
 	moving = (e.velocity != '0 0 0' || e.run_basevel != '0 0 0');
+	// Round 17: a Multi-Session session still pending is seeded before the zero
+	// -- the grammar imposes a floor-window warp on its seed, and SV_RecWarp's
+	// own call would take it after.
+	if (moving)
+	if (e.run_t_state == TS_RUNNING)
+		SV_RecSession(e);
 	e.movetype = MOVETYPE_NONE;
 	e.velocity = '0 0 0';
 	SV_ClearCarrier(e);             // round 15: as SV_WatchFrame, or the pinned packet pays it
@@ -4107,11 +4113,11 @@ void(entity e, float on) SV_WatchHold =
 	// Patch 477 review rounds 14-16: the zeroing is a state imposed from outside
 	// the mover -- recorded, a replay flies the packet the pin lands in from rest,
 	// as the server ran it, not at the speed before it (a finish or a physents box
-	// the body never reached).  Written when it zeroes something, which is what
-	// bounds it (rec_watch is not rate-charged): a body at rest, as at a refused
-	// go's re-pin, writes none.  Not capped by frame or freeze -- a pin, release,
-	// moves and re-pin can share a server frame, and a save-lock release hands
-	// its speed back before run_t_frzon catches up.
+	// the body never reached).  Written when it zeroes something: a body at rest,
+	// as at a refused go's re-pin, writes none.  Not capped by frame or freeze --
+	// a pin, release, moves and re-pin can share a server frame, and a save-lock
+	// release hands its speed back before run_t_frzon catches up -- so not bound
+	// by moves either (BACKLOG, the rec_watch entry).
 	if (e.run_t_state == TS_RUNNING)
 	{
 		if (moving)

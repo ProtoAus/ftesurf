@@ -2972,11 +2972,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
                             WHAT IT COVERS is a boundary and not a list: every
                             DIRECT WRITE of a player's origin or velocity, outside
-                            the mover, by a map entity -- and, since Patch 477,
-                            the replay/rewind pin's velocity zero (`pin`), at the
-                            pin only: the per-packet hold and the release zero
-                            unrecorded (no row follows a rewind's pin; a replay
-                            pin's thaw is the held-run fault, BACKLOG).
+                            the mover, by a map entity -- and two the client
+                            commands: `zone` (`!r`, zone_goto) and, since Patch
+                            477, the replay/rewind pin's zero of a speed or a
+                            carrier (`pin`), at the pin only.  The hold's
+                            per-packet zero and the release's are not written:
+                            the first comes after the freeze latch, so no row of
+                            a frozen run follows it; a replay pin's thaw is the
+                            held-run fault (BACKLOG).
 
                             WHAT IT DOES NOT COVER, named because a gap that is
                             not written down gets rediscovered as a bug:
@@ -6349,9 +6352,9 @@ void(entity e, float t) SV_RecBoard =
   WHAT IT COVERS, stated as a boundary rather than a list: every DIRECT WRITE of
   a player's origin or velocity, outside the mover, by a map entity.  That is
   the three teleport classes, func_bhop's teleport, trigger_setspeed, and
-  trigger_push's once-pad arm -- and one client-commanded write, the replay/
-  rewind pin's velocity zero (`pin`, Patch 477; at the pin only -- see the
-  grammar).
+  trigger_push's once-pad arm and its lift -- and two client-commanded writes,
+  `zone` (SV_ZoneMove) and the replay/rewind pin's zero (`pin`, Patch 477; see
+  the grammar).
 
   WHAT IT DOES NOT COVER, and this is a measured gap rather than an oversight.
   trigger_push's CONTINUOUS arm -- 4,940 instances across 46.9% of the library --

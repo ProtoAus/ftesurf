@@ -666,9 +666,10 @@ bannered as superseded.)
   Both directions are defects: a false accusation taints an honest run, a false
   acquittal ranks a driven one. Say which one a change trades for the other.
 - EVIDENCE BOUNDARY, exactly: `warp` = a direct write of origin or velocity
-  OUTSIDE the mover by a map entity, or the zero a replay/rewind pin imposes on
-  a body with speed or a carrier (`warp ... pin`, Patch 477; the hold's
-  per-packet zero and the release's are not written). `ride` = the basevelocity carrier handed to
+  OUTSIDE the mover by a map entity, or by two client commands: `zone` (`!r`,
+  zone_goto) and the zero a replay/rewind pin imposes on a body with speed or a
+  carrier (`warp ... pin`, Patch 477; the hold's per-packet zero and the
+  release's are not written). `ride` = the basevelocity carrier handed to
   the mover (a span: `arm` persists until changed, `pay` is the cash-out). A
   PORTAL crossing (`linked_portal_door`) is committed INSIDE the mover by the
   engine (`PM_PlayerTracePortals`), so no QC site sees it; the engine publishes
@@ -1024,7 +1025,10 @@ bannered as superseded.)
   `sl_saveat <ticks> x y z go` (an IDLE row). A refused resume, `rec_watch 0`
   (plain or `void`), a warp the server serves (SV_RewindWarped: AFTER the warp,
   and only if it moved the body), `retry`, a Multi-Session park and a lobby flip
-  void it (SV_WatchLetGo). A replay's pin (no `rw`) behaves as before 477.
+  void it (SV_WatchLetGo). A replay's pin (no `rw`) keeps its run through warps
+  and thaws on release, as before 477; it shares the rest -- speed and carrier
+  held at zero (a `warp ... pin` on a running run), the taint only on a running
+  clock.
 - **The state is the server's, never the client's.** SV_RewindSample keeps 4000
   samples a slot, one every 2 run ticks, only while running and unheld; the
   client's x y z only picks among samples within 0.5 s of its tick. A run start
