@@ -32,15 +32,12 @@
 #define RW_LOST     5           // seconds a go may go unanswered before the mode gives up
 #define RW_KEPT     7900        // run ticks back the server keeps: RW_CAP x RW_EVERY, less a margin
 #define RW_KEYS     6           // the keys rw_kst tracks, Rewind_KeyIx's order
-#define RW_WARP     64          // units the pinned body may move in one frame before it is a warp
 
 float  rw_on;                   // the mode is up: browsing, sent or counting
 float  rw_st0;                  // STAT_FS_TIMERSTATE when it opened
 float  rw_seen;                 // the last STAT_FS_SLSEQ it saw while browsing
 float  rw_headi, rw_headt;      // the head when it opened: the leave's resume point
 vector rw_headp;
-vector rw_body;                 // the pinned body last frame: a jump is a warp under the mode
-float  rw_still;                // ...watched once it has held still under the pin
 float  rw_i;                    // cursor: a point index in the live trail slot
 float  rw_dir;                  // scrub key held: -1, +1 or 0
 float  rw_dirat;                // cltime it went down
@@ -76,6 +73,22 @@ string() Rewind_Key =
 	if (k == "")
 		return "rewind";
 	return strtoupper(k);
+};
+
+// A bind that moves the body: the warps SV_ParseClientCommand and
+// SV_ZoneChatCommand serve.  Pressed while browsing, it closes the mode first
+// (Rewind_InputEvent) -- a stage `!r` keeps the run on the clock and fires no
+// save event, so nothing else here would notice the body was moved.
+float(string b) Rewind_WarpBind =
+{
+	local string w;
+
+	w = substring(b, 0, 6);
+	if (w == "say !r" || w == "say !m" || w == "say !s" || w == "say !b")
+		return TRUE;
+	if (substring(b, 0, 5) == "zone_" || w == "setpos" || b == "kill")
+		return TRUE;
+	return FALSE;
 };
 
 float(float scan) Rewind_KeyIx =
@@ -177,8 +190,6 @@ float() Rewind_Open =
 	rw_headi = rw_i;
 	rw_headt = ln_t[tr_live * LN_CAP + rw_i];
 	rw_headp = ln_pos[tr_live * LN_CAP + rw_i];
-	rw_body = pmove_org;
-	rw_still = FALSE;
 	rw_atres = FALSE;
 	if (rw_resi >= 0)               // ...unless that line is the one last resumed from
 	if (tr_live == rw_resslot)
@@ -216,7 +227,7 @@ void() Rewind_Close =
 // body that is not pinned or held.
 void() Rewind_Abandon =
 {
-	localcmd("cmd rec_watch 0\n");
+	localcmd("cmd rec_watch 0 void\n");
 	if (rec_sl_holding)
 		SaveLoc_Release();          // which sends sl_holdoff itself
 	else
@@ -315,7 +326,7 @@ void() Rewind_Answer =
 // Every frame, with the other per-frame readers.
 void() Rewind_Frame =
 {
-	local float dt, rate, d;
+	local float dt, rate;
 
 	if (!rw_on)
 		return;
@@ -336,8 +347,10 @@ void() Rewind_Frame =
 	}
 	if (rec_wt_open)
 	{
-		// A replay opened from the board while browsing: its pin is this one, and
-		// its close lets go of it.  Step aside without a command.
+		// A replay opened from the board while browsing: its pin is this one and
+		// its close only thaws, so a run still frozen under it ends here, and the
+		// pin is taken again for the replay (review round 5).
+		localcmd("cmd rec_watch 0 void\ncmd rec_watch 1\n");
 		rw_on = rw_dir = 0;
 		tr_cur_on = FALSE;
 		return;
@@ -355,19 +368,6 @@ void() Rewind_Frame =
 		}
 	}
 	if (getstatf(STAT_FS_TIMERSTATE) != rw_st0)
-	{
-		Rewind_Close();
-		return;
-	}
-	// A stage `!r`, a zone_goto or a setpos keeps the run on the clock and fires
-	// no save event, but moves the pinned body.  Watched once it has held still
-	// -- the pin lands a round trip after the open -- and from there a jump in
-	// one frame is a warp (round 4).
-	d = vlen(pmove_org - rw_body);
-	rw_body = pmove_org;
-	if (!rw_still)
-		rw_still = (d < 1);
-	else if (d > RW_WARP)
 	{
 		Rewind_Close();
 		return;
@@ -496,6 +496,13 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (k >= 0)
 	if (rw_kst[k])
 		return TRUE;                // a repeat, or a key held from before
+	if (!rw_cd)
+	if (!rw_ack)
+	if (Rewind_WarpBind(getkeybind(scanx)))
+	{
+		Rewind_Close();             // its void is queued ahead of the bind's command
+		return FALSE;
+	}
 	if (rw_cd)
 	{
 		if (scanx == K_ESCAPE)      // go now rather than wait
@@ -558,7 +565,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 float() Rewind_Console =
 {
 	local string a;
-	local float t, busy;
+	local float t, busy, k, kup;
 
 	if (argv(0) != "rewind")
 		return FALSE;
@@ -587,6 +594,15 @@ float() Rewind_Console =
 	{
 		rw_i = rw_i + stof(argv(2));
 		Rewind_Cursor();
+	}
+	else if (a == "key")
+	{
+		// Harness: a key event as CL_InputChain hands it over.  Read first --
+		// what the handler runs must not decide what this prints.
+		t = stof(argv(2));
+		kup = (argv(3) == "up");
+		k = Rewind_InputEvent(kup ? IE_KEYUP : IE_KEYDOWN, t, 0, 0);
+		print(sprintf("rewind: key %g %s -> %s\n", t, kup ? "up" : "down", k ? "taken" : "passed"));
 	}
 	else if (a == "status")
 	{

@@ -1410,16 +1410,18 @@ float(float id, float row) SV_SaveReadLight =
   SV_SaveApplyState, on the timer state the load ended in (a RUNNING row voided
   for its recording counts as idle).  RAISED when the load carries more than a
   walk or a jump could -- horizontal speed over sv_maxspeed, Patch 454's line
-  for "no prespeed to launder", or vertical over the jump impulse -- in any
-  state, since a running load's run is practice but the box it flies into next
-  arms (review round 3); or by a RUNNING row's own `hopped`.  A tag a load
-  raised is forgiven by Patch 454's rest test after the arm (run_t_finfgv): it
-  was raised for speed, and arriving at rest is the absence of it (round 4: a
-  fast running load otherwise made the honest walk-out after a fail practice).
+  for "no prespeed to launder", or vertical over the jump impulse -- by a load
+  that ends outside a run; or, for a RUNNING load, by the row's own `hopped`.
+  Round 3 speed-tested running loads too; round 5 took it back: on bhop-mode
+  maps a start box entered from RUNNING arms only through the jump commit, so
+  the rest test below never runs and honest save-state practice came out
+  practice until `!r` (the box re-entry it aimed at predates 477 -- BACKLOG).
+  A tag a load raised is forgiven by Patch 454's rest test after the arm
+  (run_t_finfgv): raised for speed, and arriving at rest is the absence of it.
   FORGIVEN outright by a load that leaves the body at rest outside a run --
-  the zeroed velocity every other forgiveness gives -- unless the map still
-  owes the body something (SV_TrigPending: a trigger yet to see it leave, or a
-  delayed output it set off), which could hand speed back next tick (round 4).
+  the zeroed velocity every other forgiveness gives -- and SKIPPED, not
+  retried, while the map still owes the body something (SV_TrigPending: a
+  trigger yet to see it leave, or a delayed output it set off).
 */
 void(entity e, float hop, float rwd) SV_SaveLoadTag =
 {
@@ -1432,17 +1434,21 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 	if (jv <= 0)
 		jv = 302;                   // defaultuser.cfg's 301.99
 	up = down = FALSE;
-	if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
-		up = TRUE;
-	if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
-		up = TRUE;
 	if (e.run_t_state == TS_RUNNING)
 	{
 		if (hop)
 			up = TRUE;
 	}
-	else if (vlen(e.velocity) < SL_ARM_SPEED)
-		down = TRUE;
+	else
+	{
+		if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
+			up = TRUE;
+		if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
+			up = TRUE;
+		if (!up)
+		if (vlen(e.velocity) < SL_ARM_SPEED)
+			down = TRUE;
+	}
 	if (up)
 	{
 		e.run_t_hopped = TRUE;
@@ -3124,6 +3130,22 @@ float(entity e, float id, float seq) SV_SaveWriteAt =
 
 void(entity e, float n) SV_SaveLocDeleteRow;
 
+// A lobby block is the player's own; the shared off-lobby list is theirs only
+// while nobody else is connected (a QW edict keeps its classname after a leave).
+float(entity e) SV_RewindAlone =
+{
+	local entity p;
+
+	if (SL_Blk(e) > 0)
+		return TRUE;
+	p = world;
+	while ((p = find(p, classname, "player")))
+		if (p != e)
+		if (clienttype(p) != CLIENTTYPE_DISCONNECTED)
+			return FALSE;
+	return TRUE;
+};
+
 /*
   A resume's row is a means, not a save anyone asked for: the next resume
   replaces it, so a practice session leaves one behind rather than hundreds.
@@ -3137,20 +3159,13 @@ void(entity e, float n) SV_SaveLocDeleteRow;
 void(entity e) SV_RewindDropGo =
 {
 	local float base, cnt, i, r;
-	local entity p;
 
 	if (!e.rw_goid)
 		return;
-	if (SL_Blk(e) == 0)
+	if (!SV_RewindAlone(e))
 	{
-		p = world;
-		while ((p = find(p, classname, "player")))
-			if (p != e)
-			if (clienttype(p) != CLIENTTYPE_DISCONNECTED)   // a QW edict keeps its classname
-			{
-				e.rw_goid = 0;
-				return;
-			}
+		e.rw_goid = 0;
+		return;
 	}
 	base = SL_Base(SL_Blk(e));
 	cnt  = rec_sl_nb[SL_Blk(e)];
@@ -3192,14 +3207,20 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		sprint(e, PRINT_HIGH, "^3rewind: let go of the load key first\n");
 		return FALSE;
 	}
-	if (!SV_RewindFind(e, t, near, usenear))
+	// The load a go makes would be refused (SV_SaveLocLoad), after the last
+	// resume's row had already made way (review round 5).
+	if (go && e.run_ms_phase)
 	{
-		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
-		                      "two minutes of the last run are\n");
+		sprint(e, PRINT_HIGH, "^3rewind: wait for the resume to finish\n");
 		return FALSE;
 	}
+	// The cheap refusals before the ring's scan (round 5), and at the cap the
+	// last resume's row makes room for this one.
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);
+	if (go)
+	if (rec_sl_nb[blk] >= SL_Cap(blk))
+		SV_RewindDropGo(e);
 	cnt  = rec_sl_nb[blk];
 	if (cnt >= SL_Cap(blk))
 	{
@@ -3212,6 +3233,12 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 	if (id < 1)
 	{
 		sprint(e, PRINT_HIGH, "^3rewind: no free slot number\n");
+		return FALSE;
+	}
+	if (!SV_RewindFind(e, t, near, usenear))
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
+		                      "two minutes of the last run are\n");
 		return FALSE;
 	}
 	seq = rec_sl_ns[blk];
@@ -3240,7 +3267,8 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s%s\n",
 	                              e.rec_sl_index, SL_NN(id), SV_TimerString(rw_t),
 	                              floor(vlen([rw_v_x, rw_v_y, 0])),
-	                              go ? " -- a resume point: the next resume replaces it, S keeps one" : ""));
+	                              (go && SV_RewindAlone(e))
+	                                ? " -- a resume point: the next resume replaces it, S keeps one" : ""));
 	return TRUE;
 };
 

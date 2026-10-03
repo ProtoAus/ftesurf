@@ -26,7 +26,7 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12", "R13")
+            "R10", "R11", "R12", "R13", "R14")
 
 
 def listing(d):
@@ -322,7 +322,7 @@ def main():
         "timer: running on" in t11, cls11.group(1) if cls11 else None,
         want11.group(1) if want11 else None, sec11))
 
-    # R12: a running save with speed tags on load.  Premise: the save WAS of a
+    # R12: a running save with speed does NOT tag on load.  Premise: the save WAS of a
     # running run ("save N (slot ...)  m:ss.fff", not "no run") and fast.
     t12 = txt("R12")
     sv12 = last(r"^save (\d+) \(slot (\d+)\)\s+(\S+)", "R12")
@@ -331,21 +331,29 @@ def main():
     hop12 = last(r"hopped (\d)", "R12")
     ok12 = (sv12 is not None and sv12.group(3) != "no" and v12 is not None
             and math.hypot(v12[0], v12[1]) > 300 and "run resumed" in t12
-            and "it carries speed" in t12 and hop12 is not None and hop12.group(1) == "1")
+            and "it carries speed" not in t12 and hop12 is not None and hop12.group(1) == "0")
     check("R12", ok12, "running save %s at %s, its speed %s, resumed %s, said %s, hopped %s" % (
         sv12.group(1) if sv12 else None, sv12.group(3) if sv12 else None,
         round(math.hypot(v12[0], v12[1])) if v12 else None, "run resumed" in t12,
         "it carries speed" in t12, hop12.group(1) if hop12 else None))
 
-    # R13: a warp under the mode closes it and ends the run.  Premise: it was open
-    # on a running run before the setpos.
+    # R13: a warp bind closes the mode and ends the frozen run.  Premise: the
+    # handler saw the key and passed it on (its bind would run), open before.
     st13 = status("R13")
     t13 = txt("R13")
-    ok13 = (len(st13) >= 2 and st13[0].group(1) == "1" and st13[-1].group(1) == "0"
-            and "timer: running on" not in t13)
-    check("R13", ok13, "on before %s, after %s, still running %s" % (
-        st13[0].group(1) if st13 else None, st13[-1].group(1) if st13 else None,
-        "timer: running on" in t13))
+    ok13 = (len(st13) >= 2 and st13[0].group(1) == "1" and "key 114 down -> passed" in t13
+            and st13[-1].group(1) == "0" and "a rewind left without a resume" in t13)
+    check("R13", ok13, "on before %s, key passed %s, on after %s, run ended %s" % (
+        st13[0].group(1) if st13 else None, "key 114 down -> passed" in t13,
+        st13[-1].group(1) if st13 else None, "a rewind left without a resume" in t13))
+
+    # R14: a held S saves once.  Premise: the press and the repeat both reached
+    # the handler (two "key 115 down" lines), and the first made a save.
+    t14 = txt("R14")
+    saves14 = len(re.findall(r"rewind: save \d+ \(slot", t14))
+    downs14 = len(re.findall(r"rewind: key 115 down -> taken", t14))
+    check("R14", downs14 == 2 and saves14 == 1,
+          "presses taken %d, saves %d" % (downs14, saves14))
 
     bad = len(re.findall(r"Unknown command", text))
     frames = len(re.findall(r"\w+\.qc:\d+:", text))
