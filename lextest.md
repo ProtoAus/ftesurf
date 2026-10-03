@@ -11,6 +11,66 @@ to be wrong.
 
 ---
 
+## 0. Welcome back -- start here (written 2026-10-03)
+
+### What happened while you were away
+
+- **Your PC did not crash.** Windows Update restarted it at 06:59 on 29 Sep and
+  that killed the two Claude sessions you were driving remotely. Nothing was
+  lost: their unfinished work was saved to a branch (`wip/0929-sessions`) and
+  then finished -- see below. To stop it happening again, pause Windows Update
+  before you travel.
+- **The laptop's work is now on this PC and on the lobbies:** the milk
+  visualizer (467), the touchpad fix (468), and the board/replay/save fixes
+  469-473. This PC's engine was rebuilt with 467 and 468.
+- **`run_rearmhop` is finally 0 on the lobbies.** It was meant to be since
+  27 Sep (Patch 445), but the Pi's `default.cfg` was never copied, so the old
+  "stand still in the start and the hop tag lifts" rule stayed live. It is the
+  repo's file now. A fluffed start now costs a `!r`. No message of the day tells
+  players that yet -- your call whether to add one.
+
+### Things to try (all live on the lobbies unless it says otherwise)
+
+1. **Your own run's line (Patch 475).** Start a run on any zoned map. A line
+   follows you with the same marks as a replay line. Fail or `!r`: it stays.
+   Start the next run: the old one fades out over 2 s. Settings are in
+   `hud_edit` -> Run lines (the last three rows). Tell me if it is too busy on
+   by default, or if the fade is the wrong length.
+2. **The in-game board scrolls past 64 (Patch 474).** Open the scoreboard,
+   switch to the imported tab on `surf_utopia` (15,866 times), and scroll down:
+   it loads 100 more each time you get near the bottom, up to 1,000. It should
+   never blank or jump while loading. Past 1,000, the website has the rest.
+3. **The website loads more as you scroll** (proto.bar/ftesurf/board/), with no
+   200 cap -- the "Show more" button is still there as a fallback.
+4. **KSF stage and bonus boards.** The importer can now fetch every board of a
+   map from KSF's real API. A fill of the 289 maps that already had KSF times
+   was started on the Pi at 03:12 UTC on 3 Oct; KSF answers slowly (~7 s a
+   request), so it may still be running. Check: `pgrep -af ksfimport` on the
+   Pi, and `logs/ksfimport-20261003.log` for the summary when it ends. Then a
+   KSF stage tab should have rows on the website. It is never automatic -- every
+   run is someone typing it, and it stops by itself if KSF ever says no.
+5. **Rewind** -- in progress; see BACKLOG/this section's update when it lands.
+
+### Decisions only you can make
+
+- **The touchpad fix (468) and ranked runs.** It lets a laptop touchpad turn the
+  view, which it could not before. The catch, from Fable's own notes: the
+  server cannot tell touchpad movement from mouse movement in a run's
+  recording, and that weakens the injection check for anyone with a precision
+  touchpad. It is in no release yet. My suggestion: keep it out of ranked runs
+  until the run records the touchpad count. Your call.
+- **A message of the day for the restart rule** (above).
+- **The menu music doesn't ship** in releases yet -- ~100 MB of WAV needs
+  converting to OGG (section 8).
+
+### One thing I found and did not fix
+
+- **`surf_aquaflow` crashes this PC** when launched headless, on both the new
+  and the old engine. Try it windowed when you are home; if it crashes for you
+  too, it is in BACKLOG ("surf_aquaflow CRASHES THIS PC HEADLESS").
+
+---
+
 ## 1. The run line, and whether the defaults are right
 
 All of this is live on the fleet now, so it works on a lobby as well as on a
@@ -1173,6 +1233,10 @@ I mention these because each one looked like success:
   worked to anything that didn't demand *zero* files re-read.
 
 ### KSF — the route exists, and it isn't an API
+
+> **WRONG, and superseded by section 0 (2026-10-03).** The same session found an
+> hour later that KSF *does* have a proper paged JSON API, with stage and bonus
+> boards. It is built now; see section 0. The text below is kept as written.
 
 You gave me the `ksf.surf/maps/surf_dragonfall` link. That was the missing piece,
 and it explains why two earlier attempts failed: **there is nothing to find in
