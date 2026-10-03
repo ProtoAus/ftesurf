@@ -1762,6 +1762,7 @@ float() SV_RecEnabled =
 .float  run_t_freeze;
 .float  run_t_frzat;
 .float  run_t_frzon;
+.float  run_t_frzmt, run_t_frzcarry;   // Patch 477: the mover's horizon when it froze (SV_RecKeepEvidence)
 
 /*
   THE RECORDING LIVES IN A STRBUF, not in an open file.  Build 15.
@@ -4969,7 +4970,13 @@ float(entity e) SV_RecKeepEvidence =
 	flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING) - (e.run_t_flags & TF_FROZEN);
 	SV_RecPut(e, sprintf("abandon %d", ticks));
 	SV_RecState(e);
+	// Patch 477 review round 10: a frozen run's last row ends at the freeze, not
+	// after the browse or hold -- pm_verify flies a last row to `inend`, and a
+	// finish latched inside it read the whole pause as ticks (a false HOLD).
 	if (e.run_movetickrate > 0)
+	if (e.run_t_frzon)
+		SV_RecPut(e, sprintf("inend %d %.9g", e.run_t_frzmt, e.run_t_frzcarry));
+	else
 		SV_RecPut(e, sprintf("inend %d %.9g", e.run_movetick, e.run_movecarry));
 	SV_RecTrailer(e, ticks);
 	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
@@ -8722,6 +8729,9 @@ void(entity e) SV_TimerFreezeFrame =
 		{
 			e.run_t_frzon = TRUE;
 			e.run_t_frzat = now - e.run_t_startsec - e.run_t_frzsec;
+			// The last `in` row's end: SV_TimerInFrame writes none from here on.
+			e.run_t_frzmt    = e.run_movetick;
+			e.run_t_frzcarry = e.run_movecarry;
 		}
 		e.run_t_flags = e.run_t_flags | TF_FROZEN;
 		return;
@@ -8966,6 +8976,7 @@ void(entity e, string why) SV_TimerVoid =
 */
 void(entity e, string why) SV_TimerForgiveHop =
 {
+	e.run_t_finfgv = FALSE;         // Patch 477 review round 10: it was this tag's
 	if (!e.run_t_hopped)
 		return;
 

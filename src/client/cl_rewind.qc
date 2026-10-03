@@ -55,7 +55,8 @@ float  rw_resgen;               // ...on this line (tr_gen: the two slots altern
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
-float  rw_pinseen;              // STAT_FS_PIN seen since the open (it lands a round trip later)
+float  rw_pinseen;              // this open's pin seen (STAT_FS_PIN lands a round trip later)
+float  rw_pin0;                 // STAT_FS_PIN at the open: a pin still held then is not this one
 
 void() Rewind_RegisterCvars =
 {
@@ -167,6 +168,7 @@ float() Rewind_Open =
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
+	rw_pin0 = getstatf(STAT_FS_PIN);
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)
 		rw_kst[k] = 0;
@@ -311,9 +313,15 @@ void() Rewind_Answer =
 };
 
 // Every frame, with the other per-frame readers.
+// A go in flight or the countdown: a replay opened now would miss the handover.
+float() Rewind_Busy =
+{
+	return rw_ack || rw_cd;
+};
+
 void() Rewind_Frame =
 {
-	local float dt, rate;
+	local float dt, rate, k;
 
 	if (!rw_on)
 		return;
@@ -360,10 +368,13 @@ void() Rewind_Frame =
 		return;
 	}
 	// The server let go of the pin unasked (a respawn, a lobby flip, a typed
-	// `rec_watch 0`): the body is free under the camera (review round 9).
-	if (getstatf(STAT_FS_PIN))
+	// `rec_watch 0`): the body is free under the camera (review round 9).  The
+	// stat is a take count, so a release still in flight from before this open
+	// is not mistaken for it (round 10).
+	k = getstatf(STAT_FS_PIN);
+	if (k && k != rw_pin0)
 		rw_pinseen = TRUE;
-	else if (rw_pinseen)
+	else if (!k && rw_pinseen)
 	{
 		Rewind_Close();
 		return;

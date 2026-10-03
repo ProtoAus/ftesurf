@@ -528,6 +528,7 @@ float(entity e, float r) SL_RowGrounded =
 */
 // .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
 .float rec_wt_hold;              // the replay pin (see WATCHING below); here for SV_SaveLocHold
+.float rec_wt_pin, rec_wt_pinseq; // Patch 477: STAT_FS_PIN -- this take's count while held, else 0
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release
 
@@ -2040,7 +2041,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  live bit there -- and closes the resume path without a second branch.
 		*/
 		if (hop)
+		{
 			e.run_t_hopped = TRUE;
+			e.run_t_finfgv = FALSE;     // Patch 477 review round 10: `!r`'s, as restored
+		}
 	}
 	else
 	{
@@ -3960,6 +3964,7 @@ void(entity e) SV_WatchRelease =
 		return;
 
 	e.rec_wt_hold = FALSE;
+	e.rec_wt_pin  = 0;
 	SV_ViewEyeDetach(e);
 
 	// MOVETYPE_NONE is 0, so a stored 0 means "already frozen when this
@@ -4063,6 +4068,8 @@ void(entity e, float on) SV_WatchHold =
 
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
+	e.rec_wt_pinseq   = e.rec_wt_pinseq + 1;
+	e.rec_wt_pin      = e.rec_wt_pinseq;
 
 	e.movetype = MOVETYPE_NONE;
 	e.velocity = '0 0 0';

@@ -474,7 +474,7 @@
 #define STAT_FS_SLORG          104  // + 105, 106 -- the cursor save's origin
 #define STAT_FS_SLANG          107  // + 108, 109 -- its pitch, yaw, and 1 if ducked
 #define STAT_FS_SLACK          110  // sl_* commands the server has run for this player
-#define STAT_FS_PIN            111  // Patch 477: the replay/rewind pin is held (rec_wt_hold)
+#define STAT_FS_PIN            111  // Patch 477: the replay/rewind pin's take count while held, 0 when not
 
 /*
   The personal best this run was measured against, latched before the PB table

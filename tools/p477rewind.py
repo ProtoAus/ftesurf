@@ -369,10 +369,13 @@ def main():
     t13b = txt("R13B")
     ok13b = (len(st13b) >= 2 and st13b[0].group(1) == "1" and st13b[0].group(2) == "1"
              and "rewind: resumed" in t13b and "nothing kept at that time" not in t13b
-             and st13b[-1].group(1) == "0")
-    check("R13B", ok13b, "after the go: %s; resumed %s, refused %s, after the count on %s" % (
-        st13b[0].group(0) if st13b else None, "rewind: resumed" in t13b,
-        "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None))
+             and st13b[-1].group(1) == "0"
+             and "wait for the rewind's resume first" in t13b)
+    check("R13B", ok13b, "after the go: %s; resumed %s, refused %s, after the count on %s, "
+          "replay refused in the count %s" % (
+              st13b[0].group(0) if st13b else None, "rewind: resumed" in t13b,
+              "nothing kept at that time" in t13b, st13b[-1].group(1) if st13b else None,
+              "wait for the rewind's resume first" in t13b))
 
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")

@@ -3390,6 +3390,8 @@ void() Watch_Stop =
 */
 float(float seg) Watch_WindowFind;     // Patch 431, below
 
+float() Rewind_Busy;                // cl_rewind.qc compiles after this file
+
 float(string path) Watch_Open =
 {
 	local float buf, leg;
@@ -3403,6 +3405,19 @@ float(string path) Watch_Open =
 	if (Spec_Active())
 	{
 		print("^3replay:^7 stop spectating first\n");
+		return FALSE;
+	}
+	// Patch 477 review round 10: nor under a save-lock hold, which the server's
+	// pin refuses -- the replay would run over a body nobody holds once the hold
+	// lets go.  The rewind hands its pin over only while browsing.
+	if (Rewind_Busy())
+	{
+		print("^3replay:^7 wait for the rewind's resume first\n");
+		return FALSE;
+	}
+	if (rec_sl_holding)
+	{
+		print("^3replay:^7 let go of the save-lock key first\n");
 		return FALSE;
 	}
 
