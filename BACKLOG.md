@@ -7,6 +7,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **`noclip` is open to every player on the lobbies** (pre-existing; Patch 478
+  round-8 integrity review, traced in the engine). The engine's `noclip`
+  (Cmd_Noclip_f) refuses unless SV_MayCheat -- `sv_cheats`, or a one-slot
+  server -- but the mod's SV_ParseClientCommand takes every client command
+  first (PR_KrimzonParseCommand) and its own `noclip` branch toggles with no
+  gate and never hands the command back; its comment calls the branch dead
+  code. Noclip marks the attempt (SV_NoclipWatch), but every arm re-reads only
+  the movetype: noclip to 1000-2000 u/s, off just short of a START or STAGE
+  box, coast through, and the start is CLEAN at that speed. Since 478 r8 the
+  stage handover carries the taint; a box entered from outside still clears
+  it. Fix (Patch 479): hand `noclip` to the engine's gate (clientcommand), and
+  tag noclip let go of faster than a walk as a fast idle load is; AGENTS.md's
+  harness note ("each noclip is processed twice") changes with it.
 - **A ghost skips cancel zones on a running run** (pre-existing; Patch 478 round-2
   integrity review, code-read). SV_TimerFrame's ghost branch returns before the
   zone scan, so a body coasting unattended through a cancel zone keeps its run;
@@ -31,13 +44,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   stage run begins in flight) -- so after a stage finish, bhopping inside the
   next stage's box and leaving starts that stage clean at the chain's speed.
   Map-dependent; whether a stage start should judge an in-box chain is a
-  decision.
-- **pm_verify's latches are not refreshed at a `ghost 0`** (engine; Patch 478
-  round 7). The live unghost takes the latches of where the body stands
-  (SV_TimerGhostEnd); the verifier's `vf_azone`/`vf_evzone` stay stale across the
-  window, so a ghosted run that ends in START prints "re-enters this track's
-  START" on its PASS (sv_ccmds.c). A note today, not a verdict -- refresh them at
-  the record.
+  decision. (The taint no longer launders there: since 478 r8 the handover
+  carries the finished stage's dirty and cheat latches.)
+- **pm_verify's start latch is not refreshed at a `ghost 0`** (engine; Patch 478
+  round 8). The live unghost takes the START latch of where the body stands
+  (SV_TimerGhostEnd) and keeps the event latches, as the verifier does (round 7
+  took both and the verifier HELD a finish at re-attach); a ghosted run that
+  ends in START prints "re-enters this track's START" on its PASS (sv_ccmds.c).
+  A note, not a verdict -- refresh `vf_azone` at the record.
 - **A lobby flip inside a resume phase strands the claim file** (pre-existing;
   Patch 478 round-6 integrity review, PLAUSIBLE -- needs an operator flip
   mid-countdown). SV_MsClaimLeaf and SV_MsKey change with Lobby_Active(), so
@@ -401,14 +415,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   round 8 while checking whether the finish clear was reachable there; it is not, which is
   incidentally good for 448 and bad for the player. **Next step is to drive one of the
   four and read whether the cancel line appears** — the geometry and the control flow are
-  established, the live behaviour is not. **CONTESTED (Patch 478 round-7 integrity
-  review, traced, not driven): the opposite.** The END event tests the HULL and fires in
-  the 16-unit band before the arm test, which uses the POINT, sees the START -- so on
-  flyin_fortress main, ethereal b1 and quirky b9 (the END ring is the START ring) an
-  out-and-back FINISHES in a few ticks, clean; agtricks runs in bhop mode, where
-  re-entering START defers rather than cancels, and a jump launched in START landing in
-  the nested END finishes. If that holds it is a ranking hole, not a denial -- drive it
-  first.
+  established, the live behaviour is not. **DRIVEN 4 Oct on surf_ethereal b1: the
+  cancel.** Patch 478's round-7 integrity review traced a few-tick finish instead (the END
+  tests the hull, the arm the point); two out-and-backs -- one walked from the bonus
+  spawn, one from a setpos 20 u inside the +x edge -- both read "run cancelled (back in
+  the start)" and re-armed, no finish. So the denial stands where the rings are identical.
+  agtricks (bhop mode, a 128x128 END nested in the START, where re-entry defers) is not
+  installed here and is untested.
 - **A hopped-start tag survives a VOID, though no longer a finish.** Patch 448 fixed the
   finish half and **Patch 454 fixed 448's argument**: the finish no longer clears the tag
   outright — it ARMS a forgiveness that is taken once the player is grounded at or below

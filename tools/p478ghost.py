@@ -31,8 +31,8 @@ LOG = os.path.join(GAME, "logs", "p478ghost.log")
 MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G12", "G3", "G3P", "G3A", "G4",
-            "G4A", "G5", "G5P", "G5A")
+SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G13", "G12", "G15", "G16", "G14",
+            "G14A", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PROGS = {}              # the progs the run was graded on, kept in MADE
 MAPS = ("surf_dune", "bhop_eazy")
@@ -59,7 +59,7 @@ def row(path):
     out = {}
     for s in open(path, errors="replace"):
         k, _, v = s.strip().partition(" ")
-        if k in ("state", "azone", "armzone", "origin", "velocity"):
+        if k in ("state", "azone", "evzone", "armzone", "origin", "velocity"):
             out[k] = v
     return out
 
@@ -343,6 +343,57 @@ def main():
         return 2
     check("G12", st12[1] == "finished", "pending arm %s then %s; after the setpos out of the box %s" % (
         pa12[0], pa12[1], st12[1]))
+
+    # G13.  Round 8.  Premises: running at seg 0 before the ghost, the setpos
+    # landed in stage 2's box, the ghost went off.  Verdict: seg 1 after it -- the
+    # split fired at re-attach.
+    t13 = "\n".join(sec["G13"])
+    sg13 = field("G13", r"\bseg (\d+) of \d+")
+    sr13 = field("G13", r"stagerun (\d)")
+    if not (states("G13")[:1] == ["running"] and sg13[:1] == ["0"] and sr13[:1] == ["0"]
+            and "setpos: -11428 -9920 13440" in t13
+            and "ghost off" in t13):
+        print("CANNOT GRADE G13: states %s, segs %s, setpos %s, ghost off %s" % (
+            states("G13"), sg13, "setpos: -11428 -9920 13440" in t13, "ghost off" in t13))
+        return 2
+    check("G13", sg13[-1:] == ["1"], "seg %s before the ghost, %s after the unghost in stage 2's box" % (
+        sg13[0], sg13[-1:]))
+
+    # G15.  Round 8, older than 478.  Premise: the handover happened (running a
+    # stage run from stage 2: startseg 1).  Verdict: it is cheated, as stage 1 was.
+    t15 = "\n".join(sec["G15"])
+    ss15 = field("G15", r"\bstartseg (\d+)\b")
+    cl15 = classes("G15")
+    if not (states("G15")[-1:] == ["running"] and ss15[-1:] == ["1"] and "setpos: -11428 -9920 13600" in t15):
+        print("CANNOT GRADE G15: states %s, startseg %s, setpos %s" % (
+            states("G15"), ss15, "setpos: -11428 -9920 13600" in t15))
+        return 2
+    check("G15", cl15[-1:] == ["cheated"], "after the handover startseg %s class %s" % (ss15[-1:], cl15[-1:]))
+
+    # G16.  Round 8.  Premises: the row runs (state 2) with evzone -1 inside stage
+    # 2's box (its own file: y -9920, z 13440), and its load resumed the run.
+    # Verdict: still the stage-1 run after the load (startseg 0).
+    t16 = "\n".join(sec["G16"])
+    ss16 = field("G16", r"\bstartseg (\d+)\b")
+    run16 = [r for r, v in rows.items()
+             if v.get("state") == "2" and v.get("evzone") == "-1"
+             and len(v.get("origin", "").split()) == 3 and abs(float(v["origin"].split()[1]) + 9920) < 1]
+    if not (run16 and "run resumed at" in t16 and ss16):
+        print("CANNOT GRADE G16: rows %s, resumed %s, startseg %s" % (rows, "run resumed at" in t16, ss16))
+        return 2
+    check("G16", ss16[-1] == "0", "row %s %s; after the load startseg %s" % (run16[0], rows[run16[0]], ss16[-1]))
+
+    # G14.  Round 8.  Premises: running before the ghost, the setpos landed in the
+    # box, the map reloaded (G14A exists, CSQC came up again).  Verdict: no paused
+    # run offered after the reload.
+    t14 = "\n".join(sec["G14"] + sec["G14A"])
+    if not (states("G14")[:1] == ["running"] and "setpos: -11434 650 15052" in t14
+            and "FTESurf CSQC loaded" in "\n".join(sec["G14"])):
+        print("CANNOT GRADE G14: states %s, setpos %s, reloaded %s" % (
+            states("G14"), "setpos: -11434 650 15052" in t14, "FTESurf CSQC loaded" in "\n".join(sec["G14"])))
+        return 2
+    check("G14", "resume: your run here is paused at" not in t14,
+          "offered after the reload %s" % ("resume: your run here is paused at" in t14))
 
     # G3.  Premises: the reload parked G3's own run (a few seconds -- the parks
     # hold nothing older), and the phase began.  Verdict, on the door's own

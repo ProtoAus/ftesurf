@@ -1255,8 +1255,8 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  is the difference between "exactly like it was" and "nearly".
 	*/
 	// Patch 478: stale in a resume phase or behind a setpos in the same packet --
-	// SV_SaveLocLoad rescans its loads (a running one's start latch), a save under
-	// a ghost is refused, and a retry turns the ghost off first (SV_RetryPoint).
+	// SV_SaveLocLoad rescans every load's, a save under a ghost is refused, and a
+	// retry turns the ghost off first (SV_RetryPoint).
 	fputs(f, sprintf("azone %d\n", e.run_t_azone));
 	fputs(f, sprintf("evzone %d\n", e.run_t_evzone));
 	fputs(f, sprintf("armzone %d\n", e.run_t_armzone));
@@ -3274,6 +3274,12 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		sprint(e, PRINT_HIGH, "^3rewind: wait for the resume to finish\n");
 		return FALSE;
 	}
+	// Patch 478 review round 8: nor under a ghost, whose load is refused as well.
+	if (go && e.rec_gh_on)
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: turn the ghost off first\n");
+		return FALSE;
+	}
 	// A full list refuses before the ring's scan unless the last resume's row
 	// can make room -- and then only after the scan, so a refusal cannot cost
 	// that row too (rounds 5-6).
@@ -3679,21 +3685,18 @@ void(entity e, float n) SV_SaveLocLoad =
 	  Positive proof, not absence of doubt -- see the flag's own essay for why the
 	  polarity is the reverse of SV_MapForeign's.
 	*/
-	// Patch 478: a load takes the latches of where it put the body, not the
-	// file's.  A row written under a ghost (an older build), in a resume phase or
-	// behind a setpos in the same packet held stale ones with its body in a box,
-	// and loading it armed the box -- off the clock at rest or mid-air with no
-	// grounded test; on it as a START re-entered, which zeroes every taint
-	// (review round 7).  A running row keeps its event latches: a split it fired
-	// must not fire again.  The gate below still grants the one arm a load off
-	// the clock may take: slow and grounded, in a start box.
+	// Patch 478: a load is a warp and takes the latches of where it put the body.
+	// A row written under a ghost (an older build), in a resume phase or behind a
+	// setpos in the same packet held stale ones with its body in a box: off the
+	// clock its load armed the box with no grounded test; on it a START re-armed
+	// (every taint zeroed) or a stage finished and handed the next one over
+	// (rounds 7-8).  An honest row's are where it stands -- a split re-fires only
+	// for the next stage, a checkpoint only above cpmax.  The gate below still
+	// grants the one arm a load off the clock may take: slow, grounded, in a start.
 	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
-	e.run_t_azone = zs_az;
-	if (e.run_t_state != TS_RUNNING)
-	{
-		e.run_t_evzone = zs_ez;
-		e.run_t_cpzone = zs_cp;
-	}
+	e.run_t_azone  = zs_az;
+	e.run_t_evzone = zs_ez;
+	e.run_t_cpzone = zs_cp;
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)

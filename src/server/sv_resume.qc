@@ -338,6 +338,10 @@ void(entity e, string why) SV_MsPark =
 	SV_WatchRelease(e);                 // Patch 477: or its freeze outlives the session
 	if (e.rec_gh_on)
 		SV_GhostSet(e, FALSE);
+	// Patch 478 review round 8: the unghost can end the run (a START entered as a
+	// ghost) -- its slot would be offered at every connect and refused every time.
+	if (e.run_t_state != TS_RUNNING)
+		return;
 	// This session's evidence, folded the way a finish folds it.
 	SV_TimerJournal(e);
 	SV_TimerRuleset(e, FALSE);
