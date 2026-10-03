@@ -57,6 +57,8 @@ float  rw_resn;                 // ...with this many samples, so the same unchan
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
+#define RW_SWN      8
+float  rw_sw[RW_SWN];           // other keys this mode swallowed, still held: theirs until let go (round 21)
 float  rw_krep;                 // ...and the event in hand repeats one already down
 float  rw_pinseen;              // this open's pin seen (STAT_FS_PIN lands a round trip later)
 float  rw_serial;               // this open's number, sent with its pin and published back as STAT_FS_PIN
@@ -98,6 +100,43 @@ float(float scan) Rewind_KeyIx =
 // ESC) still marks its key down, so its auto-repeat is not a press here; a
 // release one swallowed still lets go (Rewind_Frame).  The engine hands CSQC
 // the up of every down it offered, whatever has focus (keys.c).
+// Round 21: a key outside the table the mode swallowed (a digit, `z`, a
+// save-lock bind) stays swallowed until its release, also once the mode has
+// closed -- its auto-repeat reached the save-lock keys as presses (4 deleted
+// at the rate limit while held).  Scancode 0 is a free slot.
+float(float scanx) Rewind_SwHas =
+{
+	local float i;
+
+	for (i = 0; i < RW_SWN; i = i + 1)
+		if (rw_sw[i] == scanx)
+			return TRUE;
+	return FALSE;
+};
+
+void(float scanx) Rewind_SwSet =
+{
+	local float i;
+
+	if (Rewind_SwHas(scanx))
+		return;
+	for (i = 0; i < RW_SWN; i = i + 1)
+		if (!rw_sw[i])
+		{
+			rw_sw[i] = scanx;
+			return;
+		}
+};
+
+void(float scanx) Rewind_SwClear =
+{
+	local float i;
+
+	for (i = 0; i < RW_SWN; i = i + 1)
+		if (rw_sw[i] == scanx || !scanx)
+			rw_sw[i] = 0;
+};
+
 void(float evtype, float scanx) Rewind_Track =
 {
 	local float k;
@@ -187,6 +226,7 @@ float() Rewind_Open =
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
 		rw_kst[k] = rw_kdown[k] ? 2 : 0;
+	Rewind_SwClear(0);
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
 	rw_headi = rw_i;
 	rw_headt = ln_t[tr_live * LN_CAP + rw_i];
@@ -544,7 +584,10 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (evtype == IE_KEYUP)
 	{
 		if (k < 0)
+		{
+			Rewind_SwClear(scanx);
 			return FALSE;
+		}
 		st = rw_kst[k];
 		rw_kst[k] = 0;
 		if (st == 1)
@@ -569,10 +612,25 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	// else (round 20).  S, ENTER and the arrows stay this mode's whatever they
 	// are bound to -- but in the countdown, where they only wait to be held for
 	// the release, a saveloc bind on one is swallowed too (round 20).
+	// Round 21: browsing, the wheel is the cursor's whatever it is bound to (a
+	// Momentum nav bind is a saveloc one, which the block below would swallow).
+	if (!rw_cd)
+	if (!rw_ack)
+	if (scanx == K_MWHEELDOWN || scanx == K_MWHEELUP)
+	{
+		rw_i = rw_i + ((scanx == K_MWHEELDOWN) ? -10 : 10);
+		Rewind_Cursor();
+		return TRUE;
+	}
 	slk = (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0);
 	if (k < 0)
 	if ((scanx >= '0' && scanx <= '9') || scanx == 'z' || slk)
-		return !Vote_Takes(scanx);
+	{
+		if (Vote_Takes(scanx))
+			return FALSE;
+		Rewind_SwSet(scanx);
+		return TRUE;
+	}
 	if (rw_cd)
 	if (slk)
 	if (k >= 0)
@@ -611,12 +669,6 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		Rewind_Cursor();
 		return TRUE;
 	}
-	if (scanx == K_MWHEELDOWN || scanx == K_MWHEELUP)
-	{
-		rw_i = rw_i + ((scanx == K_MWHEELDOWN) ? -10 : 10);
-		Rewind_Cursor();
-		return TRUE;
-	}
 	if (k == 1 || k == 2)
 	{
 		Rewind_Go();
@@ -635,6 +687,12 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	return FALSE;
 };
 
+// Round 21: up -- browsing, a go in flight or counting down (SaveLoc_Console).
+float() Rewind_Holds =
+{
+	return rw_on;
+};
+
 // Round 19: a key the mode took is its until let go, also once the mode has
 // closed under it -- ESC closing a rewind, or ESC's go-now -- whose auto-repeat
 // reached the engine's own ESC, the menu, over a body just released.
@@ -644,6 +702,15 @@ float(float evtype, float scanx) Rewind_AfterTook =
 
 	if (rw_on)
 		return FALSE;
+	if (Rewind_SwHas(scanx))        // round 21: a swallowed digit's repeats stay swallowed
+	{
+		if (evtype == IE_KEYUP)
+		{
+			Rewind_SwClear(scanx);
+			return FALSE;
+		}
+		return evtype == IE_KEYDOWN;
+	}
 	k = Rewind_KeyIx(scanx);
 	if (k < 0)
 		return FALSE;
@@ -727,4 +794,5 @@ void() Rewind_Reset =
 	rw_resi = -1;
 	rec_sl_holdext = FALSE;
 	tr_cur_on = FALSE;
+	Rewind_SwClear(0);
 };

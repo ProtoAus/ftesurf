@@ -1206,9 +1206,10 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  passes 2.  A LOAD must not read it: a load is practice by construction and
 	  re-derives its own class, and taking this bit from a file the player can hold
 	  would let one save mark another attempt.  See the raise-only restore below.
-	  [Patch 477: a RUNNING load raises from it too, raise-only; any other load
-	  raises on speed instead (SV_SaveLoadTag) -- a save taken after a rewind
-	  load carried the speed and shed the tag.]
+	  [Patch 477: an IDLE load raises the tag on its speed alone; an ARMED,
+	  FINISHED or RUNNING one when it is fast and this key says hopped
+	  (SV_SaveLoadTag) -- a save taken after a rewind load carried the speed and
+	  shed the tag.]
 
 	  Additive like every key here -- an older save reads 0, an older build skips the
 	  key -- so no version bump.  Patch 445 took this writer to 37 keys and Patch 450's
@@ -1454,8 +1455,10 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 	if (up)
 	{
 		// Forgiven by coming to rest after the arm -- only a tag this load
-		// raised: a hop chain's is `!r`'s alone (Patch 445; review round 9).
+		// raised on its speed (an IDLE row): a hop chain's, which another row's
+		// `hopped` carries, is `!r`'s alone (Patch 445; review rounds 9, 21).
 		if (!e.run_t_hopped)
+		if (e.run_t_state == TS_IDLE)
 			e.run_t_finfgv = TRUE;
 		e.run_t_hopped = TRUE;
 	}

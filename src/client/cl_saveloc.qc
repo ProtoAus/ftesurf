@@ -742,11 +742,23 @@ float(float scan, float down) SaveLoc_Key =
   reclaiming the number keys is exactly what somebody binding these wants. If it
   gated both surfaces, turning the digits off would take the binds with it.
 */
+float() Rewind_Holds;                  // cl_rewind.qc, Patch 477
+
 float() SaveLoc_Console =
 {
 	local string c;
 
 	c = argv(0);
+
+	// Patch 477 review round 21: the rewind owns the save-lock while it is up --
+	// a bind or an alias of any of these loaded, deleted or let go under it (the
+	// countdown is its hold).  Its own commands go out through SaveLoc_Cmd.
+	if (substring(c, 0, 3) == "sl_" || c == "+sl_hold" || c == "-sl_hold")
+	if (Rewind_Holds())
+	{
+		print("^3rewind:^7 the save-lock waits for the rewind\n");
+		return TRUE;
+	}
 
 	// The hold pair, which is Momentum's +mom_saveloc_current. SaveLoc_LoadKey
 	// is called rather than copied: its own header forbids a second copy of the

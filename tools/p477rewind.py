@@ -27,7 +27,8 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B", "R19")
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R19")
 
 
 def listing(d):
@@ -531,6 +532,19 @@ def main():
     check("R18L", len(st18l) >= 1 and st18l[0].group(1) == "1" and sv18l is not None,
           "open %s, the rewind's save %s" % (st18l[0].group(1) if st18l else None,
                                              sv18l.group(0) if sv18l else None))
+
+    # R18M (round 21): a typed `sl_del` with the rewind up deletes nothing, and
+    # the client says why; `4` held across the close stays swallowed.  The save
+    # count is read three times (before, after the typed delete, after the
+    # held key's repeat) and must not move.  Premise: the rewind was open.
+    st18m = status("R18M")
+    t18m = txt("R18M")
+    c18m = [m.group(1) for m in (re.search(r"vote key: scan 1 down 0 took \d .* saves (\d+)", s)
+                                 for s in sec["R18M"]) if m]
+    check("R18M", bool(st18m) and st18m[0].group(1) == "1" and len(c18m) == 3
+          and c18m[0] == c18m[1] == c18m[2] and "the save-lock waits for the rewind" in t18m,
+          "open %s, saves %s, said %s" % (st18m[0].group(1) if st18m else None, c18m,
+                                           "the save-lock waits for the rewind" in t18m))
 
     # R18E: a hop chain's tag survives a fast load and rest in the box.  Premise:
     # the chain tagged (its own dprint-free line and the first read) and the load

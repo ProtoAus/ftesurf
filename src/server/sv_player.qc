@@ -403,6 +403,14 @@ void() SetChangeParms = { };
   frame's value; the guard is for the frames before StartFrame has ever run,
   where handing the mover a zero would leave the player unable to move at all.
 */
+// Patch 477 review round 21: a QW spectator can take the replay's PVS eye
+// (`rec_watch 1`) and drop, and the engine calls only this -- without it the eye
+// entity stood orphaned until the map changed, one per cycle.
+void() SpectatorDisconnect =
+{
+	SV_ViewEyeDetach(self);
+};
+
 void() PlayerPreThink =
 {
 	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
