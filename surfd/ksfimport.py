@@ -1,6 +1,7 @@
 """Import Counter-Strike: Source times from the ksf.surf timer network.
 
   python surfd/ksfimport.py --seed <file of steamid64s> [--go] [--max N]
+  python surfd/ksfimport.py --from-maps [--depth -1] [--max N] [--go]
 
 TIMES ONLY, AND THAT IS A LIMIT OF THE SOURCE RATHER THAN A CHOICE.  KSF
 publishes no replay this project can USE: no Source .dem parser exists anywhere
@@ -16,42 +17,44 @@ and nothing pretends otherwise.
   .rec unrelated to this project's format.  The conclusion stands and one of its
   reasons was wrong, which is worth more than the conclusion being right.
 
-PLAYER-SEEDED TODAY; MAP-SEEDED IS NOW POSSIBLE.  ksf.surf serves
-`/api/players/{id}/bestrecords/{n}` and `/api/maps/search/{q}`, both public and
-unauthenticated, and this file reads the first of those one player at a time,
-capped at 25 records each.
+TWO WAYS IN: PLAYER-SEEDED (--seed/--from-boards) AND MAP-SEEDED (--from-maps).
 
-  THE PER-MAP ROUTE IS LOCATED, 2026-09-29, and two sessions missed it for a
-  structural reason rather than bad luck: THERE IS NO API ROUTE TO FIND.  The
-  board is fetched server-side by a Next.js server component and embedded in the
-  page, so every record endpoint in the client bundle is player-scoped and
-  seventeen JS chunks searched correctly could not have held it.  The route is the
-  map page:
+  THE MAP-SEEDED ROUTE IS A PLAIN PAGED JSON API, 2026-09-29.  Everything the
+  three previous notes here said about it was wrong, and the corrections matter
+  more than the conclusion did:
 
-      GET https://ksf.surf/maps/<map>           -> 200 text/html, board embedded
-      GET https://ksf.surf/maps/<map>  RSC: 1   -> 200 text/x-component, ~46 KB
+      GET /api/maps/<map>/records/zone/<zone>/<startRank>?game=css&mode=0
+          -> 200 application/json, a LIST of at most KSF_PAGE rows
+      GET /api/maps/search/<name>
+          -> 200, up to 5 map rows carrying cp_count and b_count
 
-  The header form is the framework's own convention and not browser mimicry: the
-  reply carries `vary: rsc`, so the server advertises varying on it.  Measured
-  twice, the second time independently of the session that found it.
+  WHAT THIS FILE CLAIMED UNTIL TODAY, AND WHY EACH WAS FALSE:
+    * "THERE IS NO API ROUTE TO FIND ... the board is a server component embedded
+      in the page" -- false.  /maps/<map>/records embeds only the WR *history*
+      (13 rows of player/country/steamID/time/date).  The leaderboard is fetched
+      by the browser after load, so it is in no flight chunk and the route is in
+      the bundle after all: module 66683 of the records page chunk builds it.
+      The earlier searches looked at /maps/<map>, which does not mount that
+      component -- a failed search over the wrong page, reported as a proof.
+    * "exactly 10 rows ... there is no paging, so 10 is the board" -- false.  20
+      rows a page, and the last path segment is an arbitrary 1-based START RANK:
+      /1, /11 and /231 all answer 20 rows, and past the end answers [].
+    * "?zone= is IGNORED, stages and bonuses are NOT REACHABLE" -- false.  zone is
+      a PATH segment, not a query parameter.  zone 0 is the main track, 1..cp_count
+      the stages and 31.. the bonuses, and an unknown zone answers [] rather than
+      erroring.
+    * "parsing their framework internals, which will break QUIETLY" -- there is
+      nothing to parse.  This is the site's own JSON, so the fragility argument
+      that kept it unbuilt was an argument about a parser that never needed to
+      exist.
 
-  WHAT IT WILL AND WILL NOT GIVE, on surf_dragonfall:
-    * exactly 10 rows, ranks 1-10.  `?page`, `?offset` and `?limit` are ignored
-      -- a byte-identical board comes back.  There is no paging, so 10 is the
-      board, not a page of it.
-    * `?mode=fw|sw|hsw|bw` selects the style and works (hsw came back a different
-      board of one row).  Page URLs take the enum's displayName while the JSON API
-      takes its value: `fw` here, `0` there.
-    * `?zone=` is IGNORED -- the server hardcodes 0.  STAGES AND BONUSES ARE NOT
-      REACHABLE on this route, even for a map with four stages and seven bonuses.
-    * a row carries rank, playerID, name, steamID (STEAM_0:0:x, not a 64), time,
-      completions, date, record_id and file.
+  A row carries rank, playerID, name, steamID (STEAM_0:Y:Z), country, time,
+  completions, date, date_at, record_id, file, wrDiff and r2Diff.  Richer than
+  Momentum's: a real rank, a full steamID, and the replay's filename.
 
-  NOT BUILT HERE, deliberately.  Reading it means parsing `__next_f` flight
-  chunks: escaped JSON inside someone else's framework internals, which will break
-  when they next deploy and will break QUIETLY.  That is a maintenance commitment
-  rather than a patch, so it is written down for whoever will own it.  See
-  BACKLOG.md.
+  HOW DEEP TO GO IS NOT ANNOUNCED.  No reply carries a total, so a board ends
+  when a page comes back short of KSF_PAGE -- the same terminator momfetch uses
+  for a short later page, and for the same reason.  The cache is the cursor.
 
 POLITENESS, and the rules are the wrlines reference's because its author
 reasoned them out against this same host:
