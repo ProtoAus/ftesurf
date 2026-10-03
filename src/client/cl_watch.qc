@@ -3391,6 +3391,7 @@ void() Watch_Stop =
 float(float seg) Watch_WindowFind;     // Patch 431, below
 
 float() Rewind_Busy;                // cl_rewind.qc compiles after this file
+void() Rewind_HandOver;
 
 float(string path) Watch_Open =
 {
@@ -3544,6 +3545,8 @@ float(string path) Watch_Open =
 	// Pin the player.  MOVETYPE_NONE maps to PM_NONE, which is what stops the
 	// CLIENT predicting as well as the server moving -- build 11's finding.  The
 	// input gate in CSQC_Input_Frame covers the round trip until this lands.
+	// Patch 477: a browsing rewind hands its pin over first, in this frame.
+	Rewind_HandOver();
 	localcmd("cmd rec_watch 1\n");
 	// Build 43: so the first Watch_Camera publishes immediately rather than
 	// waiting out a throttle window seeded by the last replay this session.

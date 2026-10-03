@@ -528,7 +528,7 @@ float(entity e, float r) SL_RowGrounded =
 */
 // .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
 .float rec_wt_hold;              // the replay pin (see WATCHING below); here for SV_SaveLocHold
-.float rec_wt_pin, rec_wt_pinseq; // Patch 477: STAT_FS_PIN -- this take's count while held, else 0
+.float rec_wt_pin;               // Patch 477: STAT_FS_PIN -- the rewind's open serial while its pin is held, else 0
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release
 
@@ -2860,9 +2860,9 @@ void(float row) SV_SaveDemote =
 	fremove(SL_RecPath(id));
 };
 
-// Patch 477: the newest SL_RECKEEP rows WITH a run keep it -- counted, not by
-// position, so a row that never had one (idle, demoted, a rewind) cannot push
-// a real save's run out.  Every row past the window, not the first: a demote
+// Patch 477: the newest SL_RECKEEP rows with a clock (tick > 0: running or
+// finished) keep it -- counted, not by position, so a row that never had one
+// (idle, demoted, a rewind) cannot push a real save's run out.  Every row past the window, not the first: a demote
 // that refuses (file changed on disk) must not stall the rest (review round 2).
 void(float base, float cnt) SV_SaveKeepWindow =
 {
@@ -4068,8 +4068,6 @@ void(entity e, float on) SV_WatchHold =
 
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
-	e.rec_wt_pinseq   = e.rec_wt_pinseq + 1;
-	e.rec_wt_pin      = e.rec_wt_pinseq;
 
 	e.movetype = MOVETYPE_NONE;
 	e.velocity = '0 0 0';

@@ -776,7 +776,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid, wrw;
+	local float  cmdargc, go, pinned, won, wvoid, wrw, wser;
 	local vector was;
 
 	cmdargc = tokenize(cmd);
@@ -955,6 +955,7 @@ void(string cmd) SV_ParseClientCommand =
 		{
 			pinned = self.rec_wt_hold;
 			wrw = self.rw_pin;
+			wser = self.rec_wt_pin;
 			SV_WatchRelease(self);
 			SV_SaveLocLoad(self, self.rec_sl_index);
 			if (FS_SlopOp(self.rec_sl_slop) == SLOP_LOADED)
@@ -970,6 +971,7 @@ void(string cmd) SV_ParseClientCommand =
 			{
 				SV_WatchHold(self, TRUE);
 				self.rw_pin = wrw;
+				self.rec_wt_pin = wser;
 			}
 		}
 		return;
@@ -994,17 +996,23 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "rec_watch")
 	{
 		// Patch 477: `void` ends a pinned running run before the release can thaw
-		// it; `rw` marks the pin the rewind's (SV_RewindWarped).  All read first:
-		// the void's recorder path tokenizes (SV_RecCopyStep).
+		// it; `rw <n>` marks the pin the rewind's (SV_RewindWarped) and publishes
+		// the client's open serial <n> as STAT_FS_PIN, so it can tell this open's
+		// pin from an earlier one still in flight (round 11).  All read first: the
+		// void's recorder path tokenizes (SV_RecCopyStep).
 		won = stof(argv(1));
 		wvoid = (argv(2) == "void");
 		wrw = (argv(2) == "rw");
+		wser = stof(argv(3));
 		if (wvoid)
 			SV_WatchVoid(self, "a rewind left without a resume");
 		SV_WatchHold(self, won);
 		if (wrw)
 		if (self.rec_wt_hold)
+		{
 			self.rw_pin = TRUE;
+			self.rec_wt_pin = wser;
+		}
 		return;
 	}
 

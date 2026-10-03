@@ -3302,7 +3302,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   Then, written at close:
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
-                            counterpart, written at close.
+                            counterpart, written at close.  Patch 477: in a file
+                            KEPT WHILE FROZEN (a rewind's or replay's pin; an
+                            `abandon`), the counter latched when the freeze took
+                            effect -- the last `in` row's end -- and records the
+                            freeze let through (`ride`, `restart`, `warp`, `pe`,
+                            `pm`) may carry a <mt> above it.  A frozen park's
+                            `pause` and a frozen finish's `inend` still write
+                            the live counter (BACKLOG).
 
                             N ROWS GIVE N-1 DURATIONS.  An `in` row states the
                             counter BEFORE its move, so a move's ticks are the
@@ -4971,8 +4978,8 @@ float(entity e) SV_RecKeepEvidence =
 	SV_RecPut(e, sprintf("abandon %d", ticks));
 	SV_RecState(e);
 	// Patch 477 review round 10: a frozen run's last row ends at the freeze, not
-	// after the browse or hold -- pm_verify flies a last row to `inend`, and a
-	// finish latched inside it read the whole pause as ticks (a false HOLD).
+	// after the browse -- pm_verify flies a last row to `inend`, and a finish
+	// latched inside it read the whole pause as ticks (a false HOLD).
 	if (e.run_movetickrate > 0)
 	if (e.run_t_frzon)
 		SV_RecPut(e, sprintf("inend %d %.9g", e.run_t_frzmt, e.run_t_frzcarry));

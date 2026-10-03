@@ -56,7 +56,7 @@ float  rw_resn;                 // ...with this many samples, so the same unchan
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 float  rw_pinseen;              // this open's pin seen (STAT_FS_PIN lands a round trip later)
-float  rw_pin0;                 // STAT_FS_PIN at the open: a pin still held then is not this one
+float  rw_serial;               // this open's number, sent with its pin and published back as STAT_FS_PIN
 
 void() Rewind_RegisterCvars =
 {
@@ -168,7 +168,7 @@ float() Rewind_Open =
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
-	rw_pin0 = getstatf(STAT_FS_PIN);
+	rw_serial = rw_serial + 1;
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)
 		rw_kst[k] = 0;
@@ -191,7 +191,9 @@ float() Rewind_Open =
 	tr_cur_on = TRUE;
 	Rewind_Cursor();
 	PVS_Forget();
-	localcmd("cmd rec_watch 1 rw\n");   // rw: a warp under it ends the frozen run (SV_RewindWarped)
+	// rw: a warp under it ends the frozen run (SV_RewindWarped); the serial
+	// comes back as STAT_FS_PIN while this open's pin is held.
+	localcmd(sprintf("cmd rec_watch 1 rw %g\n", rw_serial));
 	return TRUE;
 };
 
@@ -319,6 +321,18 @@ float() Rewind_Busy =
 	return rw_ack || rw_cd;
 };
 
+// Watch_Open, just before its own pin: browsing, the rewind gives its pin up in
+// the same frame, so no key it would still read can release the replay's
+// (review round 11).  Its run on the clock ends, as every way out does.
+void() Rewind_HandOver =
+{
+	if (!rw_on)
+		return;
+	localcmd("cmd rec_watch 0 void\n");
+	rw_on = rw_dir = 0;
+	tr_cur_on = FALSE;
+};
+
 void() Rewind_Frame =
 {
 	local float dt, rate, k;
@@ -369,12 +383,12 @@ void() Rewind_Frame =
 	}
 	// The server let go of the pin unasked (a respawn, a lobby flip, a typed
 	// `rec_watch 0`): the body is free under the camera (review round 9).  The
-	// stat is a take count, so a release still in flight from before this open
-	// is not mistaken for it (round 10).
+	// stat is this open's own serial, so a pin or release still in flight from
+	// an earlier open is never mistaken for it (rounds 10-11).
 	k = getstatf(STAT_FS_PIN);
-	if (k && k != rw_pin0)
+	if (k == rw_serial)
 		rw_pinseen = TRUE;
-	else if (!k && rw_pinseen)
+	else if (rw_pinseen)
 	{
 		Rewind_Close();
 		return;

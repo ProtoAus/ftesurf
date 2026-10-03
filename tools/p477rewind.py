@@ -26,7 +26,7 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R18", "R18C",
+            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
             "R18D", "R18E", "R18B", "R19")
 
 
@@ -407,6 +407,19 @@ def main():
     check("R17", sv17 is not None and v17 is False and v12 is True and q17 is False and q12 is True,
           "S save %s, its run.view %s seq.txt %s; R12's save %s, its run.view %s seq.txt %s" % (
               sv17.group(2) if sv17 else None, v17, q17, sv12.group(2) if sv12 else None, v12, q12))
+
+    # R17B: a replay opened while browsing takes the pin in the same frame, so a
+    # go on the same line never leaves.  Premise: the rewind was open on a timed
+    # run, and the replay really opened.
+    st17b = status("R17B")
+    t17b = txt("R17B")
+    ok17b = (len(st17b) >= 2 and st17b[0].group(1) == "1" and "replay: opened in" in t17b
+             and "rewind: resumed" not in t17b and st17b[-1].group(1) == "0"
+             and "a rewind left without a resume" in t17b)
+    check("R17B", ok17b, "open %s, replay opened %s, resumed %s, on after %s, run ended %s" % (
+        st17b[0].group(1) if st17b else None, "replay: opened in" in t17b,
+        "rewind: resumed" in t17b, st17b[-1].group(1) if st17b else None,
+        "a rewind left without a resume" in t17b))
 
     # R18: a replay's pin keeps its run through a warp.  Premise: the setpos landed.
     t18 = txt("R18")

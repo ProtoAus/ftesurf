@@ -21,6 +21,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   on its next stage box. Fix: refuse `rec_ghost 1` unless idle or running with no
   stage handover pending, or drop to idle when a ghost begins armed -- with an arm
   that drives the exploit first.
+- **A map's player gravity can follow a run out of the area that set it**
+  (pre-existing; Patch 477 round-11 integrity review, PLAUSIBLE, map-dependent,
+  not driven). `.gravity` written by map I/O (sv_entities.qc) is reset only in
+  PutClientInServer, and nothing at a run's start reads it, so `!r`, a load or a
+  rewind resume out of a low-gravity area can start a run that ranks at that
+  gravity -- on maps that restore gravity with a separate exit trigger rather
+  than the same trigger's OnEndTouch (which still fires after a teleport). Fix:
+  reset `.gravity` (and `run_speedmod`) in SV_ZoneMoveAt and SV_SaveLocPlace, or
+  make any start with a gravity multiplier other than 1 practice.
 - **A RUNNING, ARMED or FINISHED load's speed is policed only by its file's
   `hopped`, and a start box re-entered from it can arm clean** (Patch 436's "load,
   step out, run"; predates 477, and 477 makes no such save). Patch 477 round 3
@@ -74,6 +83,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   9's trade-off): a demoted row's load reads no snapshot or seq.txt, because a
   rewind row's reused id made either another save's. A keep-window demote's file
   really is its own; telling the two apart needs a `rewound` bit on the client.
+- **A frozen park's `pause` and a frozen finish's `inend` still write the live
+  mover counter** (Patch 477 round-11 evidence review). Round 10 made a frozen
+  KEPT abandon's `inend` the counter at the freeze; SV_RecParkLine (a replay-pinned
+  run parked by a drop, rotation or shutdown) and SV_RecClose (a pinned body moved
+  into END by a map warp or noclip) do not, so the grammar's "the closing horizon,
+  as `inend`" now disagrees between writers for the same state. Practice runs
+  only, and the park HOLDs regardless: the pin's velocity zeroing is not in the
+  file either.
+- **A `retry` or a second keep under one runid overwrites
+  `data/evidence/<runid>.rec`** (pre-existing; round-11 evidence review).
+- **The ghost and the replay pin refuse each other one way only**
+  (pre-existing): SV_GhostSet refuses under the pin, SV_WatchHold never refused
+  under the ghost. With 477 a modified client's `sl_saveat ... go` under the
+  ghost loads with no countdown (the hold refuses the ghost); no ranking effect --
+  the idle load is still tagged on speed. A server refusal needs the client's
+  Watch_Open to refuse too, or the replay opens over an unpinned body.
 - **`rec_watch` is not charged by the sl_ rate limiter** (pre-existing). Each `1`
   spawns the PVS eye (SV_ViewEyeAt) and each `0` frees it, and FTE keeps a freed
   edict for 0.5 s (qclib/pr_edict.c), so a stringcmd flood ratchets `num_edicts`
