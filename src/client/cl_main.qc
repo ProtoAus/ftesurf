@@ -136,6 +136,7 @@ void() CSQC_WorldLoaded =
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
 	Trail_Reset();
+	Rewind_Reset();                 // Patch 477: and the rewind on top of it
 
 	Portal_LoadFromWorld();
 	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived
@@ -288,6 +289,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Zone_RegisterCvars();
 	Line_RegisterCvars();       // Patch 449: the run line's marks and window
 	Trail_RegisterCvars();      // Patch 475: the live one, which uses those cvars too
+	Rewind_RegisterCvars();     // Patch 477: `rewind`
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
 	Gfx_RegisterCvars();
@@ -956,6 +958,14 @@ void() CSQC_Input_Frame =
 		input_buttons    = 0;
 		return;
 	}
+	// Patch 477: browsing a rewind, the same.  Not while it counts down: keys
+	// held then are the ones the release hands back, as on a save-lock hold.
+	if (rw_on && !rw_cd)
+	{
+		input_movevalues = '0 0 0';
+		input_buttons    = 0;
+		return;
+	}
 
 	/*
 	  BUILD 30: GHOSTING SENDS AN EMPTY USERCMD, NOT NO USERCMD.
@@ -1156,6 +1166,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 
 	if (rec_wt_open)
 		if (Watch_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+	if (rw_on)                      // Patch 477
+		if (Rewind_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
 	// Patch 385: behind the draft and every panel, ahead of Keys_Edge.  The two
@@ -1396,6 +1409,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Patch 475: the live line's sampler.  Before clearscene with the other
 	// readers, and it takes at most one sample per command frame.
 	Trail_Frame();
+	Rewind_Frame();                 // Patch 477: the cursor and the countdown
 
 	clearscene();
 
@@ -1429,6 +1443,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// refdef.  After clearscene, which resets both properties.
 	if (rec_wt_on)
 		Watch_Camera();
+	Rewind_Camera();                // Patch 477: the cursor's chase view
 
 	/*
 	  BUILD 30: the ghost camera, and the body it left behind.
@@ -1691,6 +1706,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Timer_Draw(scr);
 		Timer_DrawResumeOffer(scr);   // Multi-Session; draws whatever hud_timer says
 		Spec_Draw(scr);               // Patch 385: the banner and the countdown
+		Rewind_Draw(scr);             // Patch 477
 		Spec_DrawWatchers(scr);       // Patch 429: who is watching you
 		Results_DrawToast(scr);
 		SaveLoc_Draw(scr);
@@ -1914,6 +1930,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 
 	if (Trail_Console())        // Patch 475: `trail`
+		return TRUE;
+	if (Rewind_Console())       // Patch 477: `rewind`
 		return TRUE;
 
 	// BUILD 14: the renderer settings, in words (cl_gfx.qc).

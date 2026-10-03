@@ -1462,6 +1462,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
 	local float hop;                // Patch 445, the hopped-start taint
+	local float rwd;                // Patch 477, a rewind save (see REWIND)
 	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
 	local float az, ez, am, cz, cmx;
@@ -1488,6 +1489,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// than merely a safe value: before this key existed a retry always came back
 	// unhopped.  Explicit because fteqcc does not zero locals.
 	hop = 0;
+	rwd = 0;
 	// Patch 450.  A string local is as un-zeroed as a float one, and this one is
 	// COMPARED rather than summed, so garbage here would be worse than a wrong value.
 	fcrc = "";
@@ -1528,6 +1530,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
+		if (k == "rewound")    { rwd = stof(argv(1)); continue; }
 		// Patch 450, and ROUND 8 corrected what this said.  It claimed argv(1) is ""
 		// when the writer emitted an empty crc.  THIS LINE IS NEVER REACHED IN THAT
 		// CASE: the loop's own `if (n < 2) continue` above bails first, because
@@ -2015,6 +2018,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  degrades to exactly the call that was here.
 		*/
 		SV_TimerStitched(e);
+
+		// Patch 477: a rewind save keeps the speed a demote zeroes, so the sticky
+		// hopped tag makes every run started before a forgiveness practice.
+		if (rwd)
+		{
+			e.run_t_hopped = TRUE;
+			sprint(e, PRINT_HIGH, "^3rewind:^7 practice from here -- ^2!r^7 for a timed run\n");
+		}
 
 		if (st == TS_RUNNING)
 		{
@@ -2855,6 +2866,236 @@ void(entity e) SV_SaveLocCreate =
 	                              (e.run_t_state == TS_RUNNING)
 	                                ? SV_TimerString(SV_TimerTicks(e))
 	                                : "no run"));
+};
+
+/*
+===========================================================================
+  REWIND (Patch 477): a save made from the recent past.
+
+  The client scrubs back along its own live line (cl_rewind.qc) and asks for a
+  save at a run tick with `sl_saveat <ticks>`.  The save is made from THIS ring,
+  the server's own record of where the body was, never from a position the
+  client sends.
+
+  It is the demoted shape -- an idle timer, latches rescanned on load -- with
+  the velocity KEPT, which is the one thing a demote refuses to keep (an idle
+  load with speed beside a start box can arm with it).  `rewound 1` answers
+  that: the load raises the sticky hopped-start tag, so every run started
+  before a forgiveness is practice (SV_TimerStart), and every forgiveness
+  zeroes the velocity or waits for rest (SV_TimerForgiveHop, Patch 454).
+===========================================================================
+*/
+#define RW_EVERY   2            // run ticks between samples: ~33 a second at 0.015
+#define RW_CAP     4000         // samples kept a player: two minutes, 160 KB
+#define RW_STRIDE  10           // ticks, origin, velocity, pitch, yaw, duck
+
+// 32 slots of RW_CAP is 5 MB of the server VM's heap, which on the Pi (not
+// _WIN64) is a fixed 32 MB (initlib.c PR_Configure), and a failed memalloc is
+// SV_Error outside developer (PR_BIError; pr_cmds.c:779).  Beside it: 3140
+// bytes of fields an edict (qwprogs.dat header, 2026-10-03) and 1.85 MB of
+// save rows (FS_SLROWS x 56); the recorder is in engine strbufs.
+float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
+.float rw_n;                    // samples held
+.float rw_head;                 // next write
+.float rw_last;                 // ticks of the last sample
+.float rw_st;                   // run state at the last call
+vector rw_o, rw_v;              // SV_RewindFind's answer
+float  rw_pit, rw_yaw, rw_dk, rw_t;
+
+// On disconnect: the next player in the slot starts empty.
+void(entity e) SV_RewindReset =
+{
+	e.rw_n = e.rw_head = e.rw_last = e.rw_st = 0;
+};
+
+// Per packet, after the timer.  A new run, or a clock that went back (a load),
+// starts the ring over -- so it only ever holds one run's ticks.  Spaced by run
+// ticks, not packets, so a client's packet rate cannot shorten what is kept.
+void(entity e) SV_RewindSample =
+{
+	local float s, i, t, st;
+	local float *m;
+
+	st = e.run_t_state;
+	if (st == TS_RUNNING && e.rw_st != TS_RUNNING)
+		SV_RewindReset(e);
+	e.rw_st = st;
+	if (st != TS_RUNNING || e.rec_sl_hold || e.rec_wt_hold)
+		return;
+	t = SV_TimerTicks(e);
+	if (t < e.rw_last)
+		SV_RewindReset(e);
+	if (e.rw_n && t - e.rw_last < RW_EVERY)
+		return;
+	s = num_for_edict(e);
+	if (s < 1 || s > FS_MAXPLAYERS)
+		return;
+	if (!rw_slot[s])
+		rw_slot[s] = memalloc(sizeof(float) * RW_CAP * RW_STRIDE);
+	if (!rw_slot[s])                // PF_memalloc returns 0 under developer
+		return;
+	m = rw_slot[s];
+	i = e.rw_head * RW_STRIDE;
+	m[i]     = t;
+	m[i + 1] = e.origin_x;
+	m[i + 2] = e.origin_y;
+	m[i + 3] = e.origin_z;
+	m[i + 4] = e.velocity_x;
+	m[i + 5] = e.velocity_y;
+	m[i + 6] = e.velocity_z;
+	m[i + 7] = e.v_angle_x;
+	m[i + 8] = e.v_angle_y;
+	m[i + 9] = (e.pmove_flags & PMF_DUCKED) ? 1 : 0;
+	e.rw_head = (e.rw_head + 1) % RW_CAP;
+	if (e.rw_n < RW_CAP)
+		e.rw_n = e.rw_n + 1;
+	e.rw_last = t;
+};
+
+#define RW_NEAR    0.5          // seconds either side of the asked tick a position may pick from
+
+/*
+  Into rw_*: with `near`, the kept sample within RW_NEAR of `t` closest to it --
+  the client's tick stat lags the position it drew by a round trip, so the
+  position says which sample was meant; it never says where the body goes.
+  Without, the latest at or before `t` and within RW_NEAR of it.  FALSE if
+  none qualifies.
+*/
+float(entity e, float t, vector near, float usenear) SV_RewindFind =
+{
+	local float s, k, i, best, d, bd, w;
+	local float *m;
+
+	s = num_for_edict(e);
+	if (s < 1 || s > FS_MAXPLAYERS || e.rw_n < 1)
+		return FALSE;
+	if (!rw_slot[s])                // nested, as array reads are: see SV_SaveLocHoldVel
+		return FALSE;
+	m = rw_slot[s];
+	w = (run_t_tick > 0) ? RW_NEAR / run_t_tick : 33;
+	best = -1;
+	bd = 0;
+	for (k = 0; k < e.rw_n; k = k + 1)
+	{
+		i = ((e.rw_head - 1 - k + RW_CAP) % RW_CAP) * RW_STRIDE;
+		if (usenear)
+		{
+			if (fabs(m[i] - t) > w)
+				continue;
+			d = vlen([m[i + 1], m[i + 2], m[i + 3]] - near);
+			// A tie (a body at rest) goes to the nearer tick.  Nested: m[best].
+			if (best >= 0)
+			if (d > bd || (d == bd && fabs(m[i] - t) >= fabs(m[best] - t)))
+				continue;
+			best = i;
+			bd = d;
+		}
+		else if (m[i] <= t && t - m[i] <= w)    // past the run is not "the end of it"
+		if (best < 0 || m[i] > m[best])
+			best = i;
+	}
+	if (best < 0)
+		return FALSE;
+	rw_t   = m[best];
+	rw_o   = [m[best + 1], m[best + 2], m[best + 3]];
+	rw_v   = [m[best + 4], m[best + 5], m[best + 6]];
+	rw_pit = m[best + 7];
+	rw_yaw = m[best + 8];
+	rw_dk  = m[best + 9];
+	return TRUE;
+};
+
+// The demoted shape plus the kept velocity and `rewound` -- see REWIND.
+float(entity e, float id, float seq) SV_SaveWriteAt =
+{
+	local filestream f;
+
+	f = fopen(SL_StatePath(id), FILE_WRITE);
+	if (f < 0)
+		return FALSE;
+	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
+	fputs(f, sprintf("map %s\n", mapname));
+	// Taken on this map in this process, so the crc is a fact here -- unlike a
+	// demote, which rewrites a row it cannot vouch for.
+	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
+	fputs(f, sprintf("seq %d\n", seq));
+	fputs(f, sprintf("created %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
+	fputs(f, sprintf("origin %.4f %.4f %.4f\n", rw_o_x, rw_o_y, rw_o_z));
+	fputs(f, sprintf("velocity %.4f %.4f %.4f\n", rw_v_x, rw_v_y, rw_v_z));
+	fputs(f, sprintf("angles %.4f %.4f\n", rw_pit, rw_yaw));
+	fputs(f, sprintf("duck %d\n", rw_dk ? 1 : 0));
+	fputs(f, "demoted 1\n");
+	fputs(f, "rewound 1\n");
+	fclose(f);
+	return TRUE;
+};
+
+// `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
+// TRUE when the save was made and is the current row.
+float(entity e, float t, vector near, float usenear) SV_SaveLocCreateAt =
+{
+	local float id, seq, row, blk, base, cnt;
+
+	if (!SV_SaveLocBegin(e, FALSE))
+		return FALSE;
+	if (e.run_pmhold)
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: stop spectating first\n");
+		return FALSE;
+	}
+	if (e.rec_sl_hold)
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: let go of the load key first\n");
+		return FALSE;
+	}
+	if (!SV_RewindFind(e, t, near, usenear))
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
+		                      "two minutes of the last run are\n");
+		return FALSE;
+	}
+
+	blk  = SL_Blk(e);
+	base = SL_Base(blk);
+	cnt  = rec_sl_nb[blk];
+	if (cnt >= SL_Cap(blk))
+	{
+		sprint(e, PRINT_HIGH,
+		       sprintf("^3rewind: the save list is full (%g).  Delete one first.\n",
+		               SL_Cap(blk)));
+		return FALSE;
+	}
+	id = SV_SaveFreeID(base, cnt);
+	if (id < 1)
+	{
+		sprint(e, PRINT_HIGH, "^3rewind: no free slot number\n");
+		return FALSE;
+	}
+	seq = rec_sl_ns[blk];
+	rec_sl_ns[blk] = rec_sl_ns[blk] + 1;
+
+	SV_SaveLocAlloc();
+	if (!SV_SaveWriteAt(e, id, seq))
+	{
+		sprint(e, PRINT_HIGH, "^1rewind: cannot write the save\n");
+		return FALSE;
+	}
+	row = base + cnt;
+	if (SV_SaveReadLight(id, row) < 0)
+	{
+		sprint(e, PRINT_HIGH, "^1rewind: the state file did not come back readable\n");
+		return FALSE;
+	}
+	rec_sl_seq[row] = seq;
+	rec_sl_nb[blk] = cnt + 1;
+	if (blk > 0 && cnt >= SL_RECKEEP)
+		SV_SaveDemote(base + cnt - SL_RECKEEP);
+	e.rec_sl_index = cnt + 1;
+	SV_SaveLocEvent(e, SLOP_SAVED, id);
+	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s\n",
+	                              cnt + 1, SL_NN(id), SV_TimerString(rw_t),
+	                              floor(vlen([rw_v_x, rw_v_y, 0]))));
+	return TRUE;
 };
 
 /*

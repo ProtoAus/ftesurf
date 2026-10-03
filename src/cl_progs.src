@@ -117,6 +117,9 @@ client/cl_watch.qc
 // Before cl_main.qc, which calls it from CSQC_Init and four points of
 // CSQC_UpdateView.
 client/cl_trail.qc
+// Patch 477: rewind.  AFTER cl_trail.qc (its cursor and slots) and the save-lock
+// client (SaveLoc_Cmd and the hold latches); before cl_main.qc, which drives it.
+client/cl_rewind.qc
 // BEFORE cl_scores.qc, which is the only thing that will read it -- the ONLINE
 // half of the leaderboard: one GET against surfd's /api/board, parsed and kept.
 //

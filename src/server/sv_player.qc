@@ -324,6 +324,7 @@ void() ClientDisconnect =
 
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
 	SV_SpecRelease(self, "drop");
+	SV_RewindReset(self);           // Patch 477: the next player here starts empty
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
@@ -709,6 +710,8 @@ void() PlayerPostThink =
 	*/
 	SV_StageStat(self);
 
+	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
+
 	// Pinned at a save-lock while the load key is held.  After the timer, so the
 	// pin is the last word on the origin (the timer runs no zone test under a
 	// hold since Patch 428: a mover's shift of the body is not a place visited).
@@ -766,7 +769,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc;
+	local float  cmdargc, go, pinned;
 
 	cmdargc = tokenize(cmd);
 	c = argv(0);
@@ -925,6 +928,28 @@ void(string cmd) SV_ParseClientCommand =
 	  commands that could disagree with the cursor no longer exists.
 	*/
 	if (c == "sl_save")    { SV_SaveLocCreate(self);                     return; }
+	// Patch 477: `sl_saveat <ticks> [x y z [go]]` -- see REWIND in sv_saveloc.qc.
+	// `go` is off the rewind's pin and onto the save in this one call: a refused
+	// save or load leaves the pin and the run as they were, where a following
+	// `sl_load` would have loaded whatever row was current.
+	if (c == "sl_saveat")
+	{
+		go = (argv(5) == "go");     // before the create: its read-back tokenizes
+		if (SV_SaveLocCreateAt(self, stof(argv(1)),
+		                       [stof(argv(2)), stof(argv(3)), stof(argv(4))],
+		                       cmdargc >= 5))
+		if (go)
+		{
+			pinned = self.rec_wt_hold;
+			SV_WatchRelease(self);
+			SV_SaveLocLoad(self, self.rec_sl_index);
+			if (FS_SlopOp(self.rec_sl_slop) == SLOP_LOADED)
+				SV_SaveLocHold(self, TRUE);
+			else if (pinned)
+				SV_WatchHold(self, TRUE);
+		}
+		return;
+	}
 	if (c == "sl_load")    { SV_SaveLocLoad(self, self.rec_sl_index);     return; }
 
 	/*
