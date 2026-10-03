@@ -1404,44 +1404,58 @@ float(float id, float row) SV_SaveReadLight =
 };
 
 /*
-  Patch 477: what a load does to the hopped-start tag -- raises it, never lowers
-  it.  Called last in SV_SaveApplyState, on the timer state it ended in.  A
-  RUNNING load raises from the file's own `hopped`.  Anything else -- idle,
-  armed, finished, a rewind row, a RUNNING row voided because its recording did
-  not come back -- raises when it carries more horizontal speed than a walk:
-  sv_maxspeed, Patch 454's line for "no prespeed to launder", plus SL_ARM_SPEED.
-  Review round 2: round 1 raised at 1 u/s and on a standing save's `hopped`,
-  which tagged honest walkers and defeated the start-box arm gate.
+  Patch 477: what a load does to the hopped-start tag.  Called last in
+  SV_SaveApplyState, on the timer state the load ended in (a RUNNING row voided
+  for its recording counts as idle).  RAISED when the load carries more than a
+  walk or a jump could -- horizontal speed over sv_maxspeed, Patch 454's line
+  for "no prespeed to launder", or vertical over the jump impulse -- in any
+  state, since a running load's run is practice but the box it flies into next
+  arms (review round 3); or by a RUNNING row's own `hopped`; or while a delayed
+  map output aimed at the body is still pending.  FORGIVEN by a load that leaves
+  the body at rest outside a run: that is the zeroed velocity every other
+  forgiveness gives (SV_TimerForgiveHop), and without it one fast load tagged
+  every start after it (round 3; round 1 raised at 1 u/s and round 2 never
+  lowered).
 */
 void(entity e, float hop, float rwd) SV_SaveLoadTag =
 {
-	local float cap, up;
+	local float cap, jv, up, down;
 
 	cap = cvar("sv_maxspeed");
 	if (cap <= 0)
 		cap = PM_RUN_SPEED;
-	up = FALSE;
+	jv = cvar("pm_jumpvelocity");
+	if (jv <= 0)
+		jv = 302;                   // defaultuser.cfg's 301.99
+	up = down = FALSE;
+	if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
+		up = TRUE;
+	if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
+		up = TRUE;
 	if (e.run_t_state == TS_RUNNING)
 	{
 		if (hop)
 			up = TRUE;
 	}
-	else if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
+	else if (vlen(e.velocity) < SL_ARM_SPEED)
+		down = TRUE;
+	if (SV_TrigPending(e) == 2)
 		up = TRUE;
 	if (up)
 	{
 		e.run_t_hopped = TRUE;
 		e.run_t_finfgv = FALSE;     // a fresh tag drops a pending finish forgiveness
 	}
+	else if (down)
+		SV_TimerForgiveHop(e, "a load at rest");
 	if (rwd)
 	{
-		if (up)
+		if (e.run_t_hopped)
 			sprint(e, PRINT_HIGH, "^3rewind:^7 resumed -- practice from here, ^2!r^7 for a timed run\n");
 		else
-			sprint(e, PRINT_HIGH, "^7rewind: resumed -- no faster than a run, so a start from here counts\n");
+			sprint(e, PRINT_HIGH, "^7rewind: resumed -- no faster than a walk or a jump, so a start from here counts\n");
 	}
 	else if (up)
-	if (e.run_t_state != TS_RUNNING)
 		sprint(e, PRINT_HIGH, "^3save:^7 it carries speed -- ^2!r^7 before a timed run\n");
 };
 
@@ -3110,11 +3124,12 @@ void(entity e, float n) SV_SaveLocDeleteRow;
 /*
   A resume's row is a means, not a save anyone asked for: the next resume
   replaces it, so a practice session leaves one behind rather than hundreds.
-  Review round 2: only the row as made -- still a rewind row, and the file
+  Review rounds 2-3: only the row as made -- still a rewind row, and the file
   still that row (the identity check SV_SaveDemote makes, for a second
-  connection on one guid); a row loaded again since is the player's
-  (SV_SaveLocLoad forgets it); and never in the shared off-lobby list while
-  anyone else is on, whose holds and cursors a delete would move.
+  connection on one guid); never in the shared off-lobby list while anyone else
+  is connected, whose holds and cursors a delete would move.  A row loaded
+  again is replaced all the same: kept, the resume-fail-2-resume loop left one
+  per resume (round 3).  S makes a save that stays.
 */
 void(entity e) SV_RewindDropGo =
 {
@@ -3128,6 +3143,7 @@ void(entity e) SV_RewindDropGo =
 		p = world;
 		while ((p = find(p, classname, "player")))
 			if (p != e)
+			if (clienttype(p) != CLIENTTYPE_DISCONNECTED)   // a QW edict keeps its classname
 			{
 				e.rw_goid = 0;
 				return;
@@ -3352,10 +3368,6 @@ void(entity e, float n) SV_SaveLocLoad =
 		return;
 	}
 	dem = (sl_fticks == SL_DEMOTED);
-	if (e.rw_goid)                      // Patch 477: a resume row loaded again is theirs
-	if (id == e.rw_goid)
-	if (rec_sl_seq[r] == e.rw_goseq)
-		e.rw_goid = 0;
 
 	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
 	SV_SaveLocPlace(e, r);
@@ -3887,6 +3899,16 @@ void(entity e) SV_WatchRelease =
 	e.rec_wt_holdmove = 0;
 
 	SV_TimerThaw(e);
+};
+
+// Patch 477: `rec_watch 0 void` -- the rewind's way out when no resume was
+// made.  A running run under the pin ends here rather than thawing past a
+// freeze the .rec never records (AGENTS.md, the held-run fault).
+void(entity e) SV_WatchVoid =
+{
+	if (e.rec_wt_hold)
+	if (e.run_t_state == TS_RUNNING)
+		SV_TimerVoid(e, "a rewind left without a resume");
 };
 
 void(entity e, float on) SV_WatchHold =

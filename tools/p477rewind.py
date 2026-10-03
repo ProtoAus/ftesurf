@@ -25,8 +25,8 @@ MADE = os.path.join(GAME, "logs", "p477rewind.saves.json")   # what --grade-only
 SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R6", "R7", "R8", "R9", "R10",
-            "R11")
+SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
+            "R10", "R11", "R12")
 
 
 def listing(d):
@@ -177,7 +177,7 @@ def main():
     vel = [float(m.group(1)) for m in vel if m]
     moving = [v for v in vel if v > 0.5]
     hop4 = last(r"hopped (\d)", "R4")
-    walk4 = "no faster than a run" in txt("R4")
+    walk4 = "no faster than a walk" in txt("R4")
     check("R4", bool(moving) and moving[0] > 50 and hop4 is not None and hop4.group(1) == "0"
           and walk4,
           "readings %s, hopped %s, said walking speed %s" % ([round(v) for v in vel],
@@ -224,6 +224,17 @@ def main():
         st5b[0].group(0) if st5b else None, st5b[-1].group(1) if st5b else None,
         pr5b.group(1) if pr5b else None, "again to rewind" in txt("R5B")))
 
+    # R5C: a fast load tags, a load at rest forgives.  Its premise is that the
+    # at-rest save is row 4 -- the save's own line says so, or the arm is unsound.
+    t5c = txt("R5C")
+    sv5c = last(r"^save (\d+) \(slot", "R5C")
+    hops5c = [m.group(1) for m in (re.search(r"hopped (\d)", s) for s in sec["R5C"]) if m]
+    ok5c = (sv5c is not None and sv5c.group(1) == "4" and len(hops5c) >= 2
+            and hops5c[0] == "1" and hops5c[-1] == "0" and "hopped start is forgiven" in t5c)
+    check("R5C", ok5c, "at-rest save %s, hopped after the fast load %s, after the rest load %s, "
+          "forgiven %s" % (sv5c.group(1) if sv5c else None, hops5c[0] if hops5c else None,
+                           hops5c[-1] if hops5c else None, "hopped start is forgiven" in t5c))
+
     check("R6", "nothing kept at that time" in txt("R6"), "out-of-range ask refused")
 
     # R7: a clean run (it asked), the old cursor reads kept 0, its go is refused,
@@ -265,7 +276,7 @@ def main():
             ok8 = (st8[0].group(6) == "1" and abs(want - got) < 1 and "rewound 1" in f8
                    and d < 64 and "rewind: resumed" in txt("R8")
                    and st8[-1].group(1) == "0"
-                   and lst8 is not None and lst8.group(2) == "4")
+                   and lst8 is not None and lst8.group(2) == "5")
             said8 += (", origin %.1f u from the cursor; left: resumed %s, closed %s, list %s"
                       % (d, "rewind: resumed" in txt("R8"), st8[-1].group(1) == "0",
                          lst8.group(0) if lst8 else None))
@@ -310,6 +321,21 @@ def main():
     check("R11", ok11, "running %s, class %s, want freeze %s, clock %s s" % (
         "timer: running on" in t11, cls11.group(1) if cls11 else None,
         want11.group(1) if want11 else None, sec11))
+
+    # R12: a running save with speed tags on load.  Premise: the save WAS of a
+    # running run ("save N (slot ...)  m:ss.fff", not "no run") and fast.
+    t12 = txt("R12")
+    sv12 = last(r"^save (\d+) \(slot (\d+)\)\s+(\S+)", "R12")
+    f12 = made.get("save%s/state.txt" % sv12.group(2)) if sv12 else None
+    v12 = vec(f12, "velocity") if f12 else None
+    hop12 = last(r"hopped (\d)", "R12")
+    ok12 = (sv12 is not None and sv12.group(3) != "no" and v12 is not None
+            and math.hypot(v12[0], v12[1]) > 300 and "run resumed" in t12
+            and "it carries speed" in t12 and hop12 is not None and hop12.group(1) == "1")
+    check("R12", ok12, "running save %s at %s, its speed %s, resumed %s, said %s, hopped %s" % (
+        sv12.group(1) if sv12 else None, sv12.group(3) if sv12 else None,
+        round(math.hypot(v12[0], v12[1])) if v12 else None, "run resumed" in t12,
+        "it carries speed" in t12, hop12.group(1) if hop12 else None))
 
     bad = len(re.findall(r"Unknown command", text))
     frames = len(re.findall(r"\w+\.qc:\d+:", text))

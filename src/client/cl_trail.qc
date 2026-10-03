@@ -144,6 +144,7 @@ void() Trail_Open =
 
 	Line_Begin(tr_live);
 	Line_Tick(tr_live, tr_tick);
+	tr_settle = cltime + TR_SETTLE;     // Patch 477: a load can start a line from idle too
 	tr_on     = TRUE;
 	tr_nsamp  = 0;
 	tr_builds = 0;
@@ -269,10 +270,7 @@ void() Trail_Frame =
 	// Patch 477: a load that winds the clock back starts the line over, as the
 	// server's rewind ring does -- so every point on it is one the ring holds.
 	else if (st == TS_RUNNING && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
-	{
 		Trail_Open();
-		tr_settle = cltime + TR_SETTLE;
-	}
 	tr_state = st;
 
 	// The fade, and the clear at the end of it.  Run on its own clock rather

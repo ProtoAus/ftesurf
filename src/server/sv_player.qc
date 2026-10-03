@@ -976,7 +976,13 @@ void(string cmd) SV_ParseClientCommand =
 	  in flight together, and `rec_watch 0` from the console has to be a way out
 	  if a client ever fails to send its own.
 	*/
-	if (c == "rec_watch")   { SV_WatchHold(self, stof(argv(1)));          return; }
+	if (c == "rec_watch")
+	{
+		if (argv(2) == "void")          // Patch 477: before the release can thaw it
+			SV_WatchVoid(self);
+		SV_WatchHold(self, stof(argv(1)));
+		return;
+	}
 
 	/*
 	  Ghost, build 30.  One verb with an argument, on the `rec_watch` side of the

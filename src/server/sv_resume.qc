@@ -851,6 +851,7 @@ void(entity e) SV_MsAbort =
 	claim = SV_MsPath(e, SV_MsClaimLeaf());
 	fremove(SV_MsPath(e, "ms.txt"));
 	frename(claim, SV_MsPath(e, "ms.txt"));
+	SV_WatchRelease(e);                 // Patch 477: a pin taken in the resume phase
 	e.movetype = MOVETYPE_WALK;
 	e.run_ms_phase = MS_NONE;
 	e.run_ms_offer = FALSE;

@@ -14,8 +14,8 @@
   `sl_saveat`, which saves from the SERVER's record of the run.  Resume adds
   `go`: the server leaves the pin, loads that save and holds it in the same
   call, and the countdown is the hold, released at zero.  A rewound
-  continuation is practice when it carries more than walking speed --
-  sv_saveloc.qc, REWIND.  ESC on a run that is on the clock is a resume at the
+  continuation is practice when it carries more than a walk or a jump could
+  -- sv_saveloc.qc, SV_SaveLoadTag.  ESC on a run that is on the clock is a resume at the
   head: you go on from where you were with your speed, and the run's clock
   ends there (the pin made it practice).  A thaw would carry the run past a
   freeze the .rec never records -- AGENTS.md, the held-run fault.
@@ -190,10 +190,11 @@ float() Rewind_Open =
 	return TRUE;
 };
 
-// Back to the body with nothing loaded: the pin lets go.  For a run that is
-// not on the clock (Rewind_Leave), or one that ended under the mode
-// (Rewind_Frame).  The pin zeroed the velocity (SV_WatchHold), as closing a
-// replay does.  sl_holdoff too: a go whose answer was misread as a refusal
+// Back to the body with nothing loaded: the pin lets go, and a run still on
+// the clock under it ENDS (`void`, SV_WatchVoid) -- a refused resume, or a run
+// that began just as the mode opened -- rather than thawing past a freeze the
+// .rec never records.  The pin zeroed the velocity (SV_WatchHold), as closing
+// a replay does.  sl_holdoff too: a go whose answer was misread as a refusal
 // must not leave its hold behind.
 void() Rewind_Close =
 {
@@ -202,7 +203,7 @@ void() Rewind_Close =
 	rw_on  = FALSE;
 	rw_dir = 0;
 	tr_cur_on = FALSE;
-	localcmd("cmd rec_watch 0\n");
+	localcmd("cmd rec_watch 0 void\n");
 	SaveLoc_Cmd("sl_holdoff");
 };
 
@@ -249,8 +250,7 @@ void() Rewind_Go =
 
 // ESC, `rewind` while open, or the line going away.  A run that is on the
 // clock and frozen resumes at the head stored at the open (see the header);
-// decided from the live stats, since a run that began within a round trip of
-// the open was frozen by the pin all the same.  A refused resume thaws.
+// decided from the live stats.  A refused resume ends the run (Rewind_Close).
 void() Rewind_Leave =
 {
 	if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING || !(getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN))
@@ -466,6 +466,10 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		if (st == 1)
 		if (k == 3 || k == 4)
 			rw_dir = 0;
+		// A `+` bind's release always reaches it: one held into the mode that
+		// Rewind_HeldBefore could not see would otherwise stick (round 3).
+		if (substring(getkeybind(scanx), 0, 1) == "+")
+			return FALSE;
 		return st == 1;
 	}
 	if (evtype != IE_KEYDOWN)
@@ -487,6 +491,10 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		rw_kst[k] = 1;
 	if (rw_ack)                     // a go in flight: one round trip
 		return k >= 0;
+	// The save-lock keys (cl_saveloc.qc) do nothing while browsing: a load here
+	// moves the body out from under the cursor -- S is this mode's save.
+	if ((scanx >= '0' && scanx <= '9') || scanx == 'z')
+		return TRUE;
 	if (k == 3 || k == 4)
 	{
 		rw_dirat = cltime;
