@@ -50,6 +50,7 @@ float  rw_goi;                  // ...and the cursor it went from
 float  rw_leave;                // it is the way out of a run on the clock (Rewind_Leave)
 float  rw_cd;                   // cltime the countdown ends; 0 = not counting
 float  rw_askat;                // cltime a clean run's first press asked; 0 = none
+float  rw_askgen;               // ...on this line (tr_gen): a new run is asked about afresh
 float  rw_resi;                 // the last resume's cursor, -1 none...
 float  rw_resgen;               // ...on this line (tr_gen: the two slots alternate)...
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
@@ -156,9 +157,10 @@ float() Rewind_Open =
 	// row, a refusal voids), so any running run asks first -- Patch 391's refusal
 	// of a mid-run load, with a second press as the way through (round 6).
 	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
-	if (!rw_askat || (cltime - rw_askat) >= RW_ASK)
+	if (!rw_askat || (cltime - rw_askat) >= RW_ASK || rw_askgen != tr_gen)
 	{
 		rw_askat = cltime;
+		rw_askgen = tr_gen;
 		print(sprintf("^3rewind:^7 %s again to rewind -- the run on the clock ends here\n",
 		              Rewind_Key()));
 		return FALSE;
@@ -192,9 +194,11 @@ float() Rewind_Open =
 	Rewind_Cursor();
 	PVS_Forget();
 	// rw: a warp under it ends the frozen run (SV_RewindWarped); the serial
-	// comes back as STAT_FS_PIN while this open's pin is held; rw_st0 lets the
-	// server leave alone a run that started since this asked (round 12).
-	localcmd(sprintf("cmd rec_watch 1 rw %g %g\n", rw_serial, rw_st0));
+	// comes back as STAT_FS_PIN while this open's pin is held; the state and the
+	// ticks seen now let the server leave alone a run that started since (rounds
+	// 12-13).
+	localcmd(sprintf("cmd rec_watch 1 rw %g %g %g\n", rw_serial, rw_st0,
+	                 getstatf(STAT_FS_TIMERTICKS)));
 	return TRUE;
 };
 
@@ -442,6 +446,7 @@ void(vector scr) Rewind_Draw =
 	{
 		if (rw_askat)
 		if ((cltime - rw_askat) < RW_ASK)
+		if (rw_askgen == tr_gen)
 			HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0],
 			          sprintf("%s again to rewind -- the run on the clock ends here",
 			                  Rewind_Key()),

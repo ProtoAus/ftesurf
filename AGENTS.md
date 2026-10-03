@@ -1030,8 +1030,10 @@ bannered as superseded.)
 - **STAT_FS_PIN (111) is the rewind's open serial while its pin is held, 0
   when not** (`rec_watch 1 rw <serial> <state at the open>`). The client closes
   the mode on a release it did not ask for, and latches only its own serial, so
-  an earlier open's pin or release in flight is never mistaken for it. The
-  server refuses to pin a run that started since the client asked.
+  an earlier open's pin or release in flight is never mistaken for it. The pin
+  also carries the state and the run ticks the client saw at the open, and the
+  server refuses to pin a run that is not that one (not RUNNING then, or fewer
+  ticks now); the ask is tied to the trail line, so a new run is asked afresh.
 - **A replay opened while browsing takes the pin over in the same frame**
   (Watch_Open calls Rewind_HandOver before its own `rec_watch 1`).
 - **A frozen run's kept-abandon `inend` is the mover tick at the freeze**

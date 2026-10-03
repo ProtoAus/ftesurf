@@ -73,6 +73,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **`!r` keeps the replay pin** (sv_zones.qc releases only the save-lock hold), so
   a run started after it is frozen at its first tick and practice (Patch 477's
   start taint) until the replay closes. Costs the player, never ranks.
+- **A rewind whose pin the server refuses leaves up to a round trip of dead
+  input** (Patch 477 rounds 12-13). The client zeroes moves and swallows the mouse
+  from the open; when the server refuses the pin (a run that started since the
+  ask), the mode closes only once the client's state or line check sees it, so
+  a fresh clean run can begin with ~1 RTT of no input -- a hop chain's start
+  breaks. Gating input on the pin's serial being seen trades it for an RTT of
+  free movement under the cursor camera in the normal case. The run identity the
+  server checks is the client's TIMERTICKS: a run cancelled within its first
+  round trip and replaced by one that out-ticks it before the pin lands would
+  still be taken -- a run serial stat would close that.
 - **A key held into the rewind under an untracked `+` bind** acts on its first
   auto-repeat (S saves, ENTER resumes): Rewind_HeldBefore sees only the binds
   cl_keys.qc tracks. Its release does reach the bind. Default binds are safe.

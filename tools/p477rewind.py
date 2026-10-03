@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18E", "R18F", "R18B", "R19")
+            "R18D", "R18E", "R18F", "R18G", "R18B", "R19")
 
 
 def listing(d):
@@ -473,6 +473,20 @@ def main():
         "your run started -- press again to rewind it" in t18f,
         "practice run -- this run will not be saved" in t18f,
         tm18f.group(1) if tm18f else None, pr18f.group(1) if pr18f else None))
+
+    # R18G: asked from RUNNING at more ticks than the run has -- another run --
+    # refused, and the run stays clean.  Premise: still R18F's run, on the clock.
+    t18g = txt("R18G")
+    tm18g = last(r"timer: (\w+) on ", "R18G")
+    pr18g = last(r"\bpractice (\d)\b", "R18G")
+    ok18g = ("your run started -- press again to rewind it" in t18g
+             and "practice run -- this run will not be saved" not in t18g
+             and tm18g is not None and tm18g.group(1) == "running"
+             and pr18g is not None and pr18g.group(1) == "0")
+    check("R18G", ok18g, "refused %s, made practice %s, timer %s, practice %s" % (
+        "your run started -- press again to rewind it" in t18g,
+        "practice run -- this run will not be saved" in t18g,
+        tm18g.group(1) if tm18g else None, pr18g.group(1) if pr18g else None))
 
     # R18B: retry under the rewind ends the run first, and the restart's own line
     # says it restored no run; an idle save after it writes no .view prefix.

@@ -776,7 +776,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0;
+	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0, wtk;
 	local vector was;
 
 	cmdargc = tokenize(cmd);
@@ -1005,17 +1005,20 @@ void(string cmd) SV_ParseClientCommand =
 		wrw = (argv(2) == "rw");
 		wser = rint(stof(argv(3)));
 		wst0 = stof(argv(4));
+		wtk = stof(argv(5));
 		if (!(wser >= 0 && wser < 16777216))   // round 12: a NaN would re-send every frame
 			wser = 0;
 		if (wvoid)
 			SV_WatchVoid(self, "a rewind left without a resume");
-		// Round 12: the client asks before pinning a run on the clock, from a
-		// state a round trip old (<st0>, its TIMERSTATE at the open).  A run that
-		// started or was restored since is left alone; the client's state check
-		// then closes the mode with nothing to end.
+		// Rounds 12-13: the client asks before pinning a run on the clock, from
+		// what it saw a round trip ago -- <st0> its TIMERSTATE and <tk> its
+		// TIMERTICKS at the open.  A run that started, or was restored or wound
+		// back, since is left alone: not RUNNING then, or fewer ticks now than
+		// then (a stage chain or a finish into the box starts the next run in
+		// one frame).  The client's checks then close the mode with nothing to end.
 		if (wrw && won)
 		if (self.run_t_state == TS_RUNNING)
-		if (wst0 != TS_RUNNING)
+		if (wst0 != TS_RUNNING || SV_TimerTicks(self) < wtk)
 		{
 			sprint(self, PRINT_HIGH, "^3rewind:^7 your run started -- press again to rewind it\n");
 			return;

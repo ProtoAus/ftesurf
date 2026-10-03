@@ -4427,9 +4427,11 @@ void(entity e) SV_RecState =
 		return;
 	if (e.run_movetickrate <= 0 || e.run_pmepoch <= 0 || e.rec_rec_in < 1)
 		return;
-	// Patch 477 review round 12: nor while frozen.  No `in` row follows, so a
-	// pe/pm/portal written now binds to the last real row -- a door near a
-	// pinned body read as that move's physents (a HOLD on a kept abandon).
+	// Patch 477 review round 12: nor while frozen.  No `in` row is written then,
+	// so a pe/pm/portal written now binds to the last real row -- a door near a
+	// pinned body read as that move's physents (a HOLD on a kept abandon).  The
+	// freeze's own packet writes them here, at PostThink, before the latch; a
+	// thaw's first PreThink binds the net change to the last pre-freeze row.
 	if (e.run_t_frzon)
 		return;
 	row = e.rec_rec_in - 1;
