@@ -1255,14 +1255,15 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  next tick sees the box as newly entered and fires the split again -- which
 	  is the difference between "exactly like it was" and "nearly".
 	*/
-	// Patch 478: an IDLE body's latches are where it stands.  A resume phase (the
-	// accept's void) or a ghost's disarm leaves them -1 with the body in a box,
-	// and a load of that row armed the box on its next scan -- at rest, mid-air,
-	// with no grounded test.
+	// Patch 478: off the clock under a ghost or in a resume phase no zone test
+	// runs, and the latches are stale -- -1 after the accept's void or a ghost's
+	// disarm, with the body in a box -- so they are where the body stands.  A
+	// retry restores them as written (SV_SaveLocLoad rescans its own loads).
 	az = e.run_t_azone;
 	ez = e.run_t_evzone;
 	cz = e.run_t_cpzone;
-	if (e.run_t_state == TS_IDLE)
+	if (e.run_t_state != TS_RUNNING)
+	if (e.rec_gh_on || e.run_ms_phase)
 	{
 		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
 		az = zs_az;
@@ -3675,6 +3676,18 @@ void(entity e, float n) SV_SaveLocLoad =
 	  Positive proof, not absence of doubt -- see the flag's own essay for why the
 	  polarity is the reverse of SV_MapForeign's.
 	*/
+	// Patch 478: a load off the clock takes the latches of where it put the body,
+	// not the file's.  A row written under a ghost or in a resume phase -- by
+	// this build or an older one -- held -1 with its body in a box, and loading
+	// it armed the box at rest, mid-air, with no grounded test.  The gate below
+	// still grants the one arm a load may take: slow and grounded, in a start box.
+	if (e.run_t_state != TS_RUNNING)
+	{
+		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+		e.run_t_azone  = zs_az;
+		e.run_t_evzone = zs_ez;
+		e.run_t_cpzone = zs_cp;
+	}
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
 	if (SV_ZoneStartAt(e, e.origin) >= 0)

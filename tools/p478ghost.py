@@ -7,11 +7,13 @@ where it ends).
 
 G3-G5 park runs, retry and resume on surf_dune and bhop_eazy, so those maps'
 data/saves and data/resume folders are PARKED (renamed) for the run and put
-back, each listing checked.  The rest of data/ is listed (files AND dirs)
-before; what the run made there is printed and removed, each removal checked,
-and D passes only if the whole tree then lists as it did.  What the run left
-in the parks and D's answer are kept in logs/p478ghost.made.json, which
---grade-only needs.  Exit 0 pass, 1 fail, 2 cannot grade.
+back, each listing checked.  The folders the game writes (OWN) are listed
+(files AND dirs) before; what the run made there is printed and removed, each
+removal checked, and D passes only if they then list as they did.  Anything
+new elsewhere in data/ is another tool's (another session writes there) and
+is reported, not touched.  The progs hashes, what the run left in the parks
+and D's answer are kept in logs/p478ghost.made.json, which --grade-only reads
+(--made and --log name kept copies).  Exit 0 pass, 1 fail, 2 cannot grade.
 """
 import argparse
 import hashlib
@@ -29,7 +31,13 @@ DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("G1", "G2", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
+PROGS = {}              # the progs the run was graded on, kept in MADE
 PARKS = [os.path.join(DATA, d, m) for m in ("surf_dune", "bhop_eazy") for d in ("saves", "resume")]
+OWN = ("parts", "runs", "evidence", "resume", "saves")
+
+
+def own(rel):
+    return rel.split(os.sep)[0] in OWN
 
 
 def tree(d):
@@ -64,6 +72,10 @@ def run(exe, timeout):
                         "+exec", "cfg/test/p478ghost.cfg"], cwd=ROOT, timeout=timeout)
     finally:
         made = sorted(tree(DATA) - before) if "before" in locals() else []
+        other = [r for k, r in made if not own(r)]
+        if other:
+            print("data/ new outside the game's folders, left alone: %s" % ", ".join(other))
+        made = [(k, r) for k, r in made if own(r)]
         for p in PARKS:
             rel = os.path.relpath(p, DATA)
             if os.path.exists(p):
@@ -90,9 +102,9 @@ def run(exe, timeout):
                 os.rmdir(p)
             if os.path.exists(p):
                 raise SystemExit("could not remove %s" % p)
-    differs = sorted(r for k, r in tree(DATA) ^ orig)
+    differs = sorted(r for k, r in tree(DATA) ^ orig if own(r))
     with open(MADE, "w") as fh:
-        json.dump({"runcopy": runcopy, "differs": differs}, fh)
+        json.dump({"runcopy": runcopy, "differs": differs, "progs": PROGS}, fh)
     return runcopy, differs
 
 
@@ -113,19 +125,24 @@ def main():
     ap.add_argument("--exe", default="ftesurf64.exe")
     ap.add_argument("--grade-only", action="store_true")
     ap.add_argument("--timeout", type=int, default=420)
+    ap.add_argument("--made", default=MADE)
+    ap.add_argument("--log", default=LOG)
     a = ap.parse_args()
     for f in ("csprogs.dat", "qwprogs.dat"):
-        print("%s %s" % (f, hashlib.sha256(open(os.path.join(GAME, f), "rb").read())
-                         .hexdigest()[:16].upper()))
+        PROGS[f] = hashlib.sha256(open(os.path.join(GAME, f), "rb").read()).hexdigest()[:16].upper()
     if a.grade_only:
-        if not os.path.exists(MADE):
-            print("CANNOT GRADE: %s is missing -- the slot listing and D need a run" % MADE)
+        if not os.path.exists(a.made):
+            print("CANNOT GRADE: %s is missing -- the slot listing and D need a run" % a.made)
             return 2
-        m = json.load(open(MADE))
+        m = json.load(open(a.made))
         runcopy, differs = m["runcopy"], m["differs"]
+        PROGS.clear()
+        PROGS.update(m.get("progs", {}))
     else:
         runcopy, differs = run(a.exe, a.timeout)
-    lines = [STAMP.sub("", l.rstrip("\n")) for l in open(LOG, errors="replace")]
+    for f in ("csprogs.dat", "qwprogs.dat"):
+        print("%s %s" % (f, PROGS.get(f, "not recorded")))
+    lines = [STAMP.sub("", l.rstrip("\n")) for l in open(a.log, errors="replace")]
     if "FTESurf CSQC loaded" not in "\n".join(lines):
         print("CANNOT GRADE: CSQC never loaded")
         return 2
@@ -231,13 +248,16 @@ def main():
               "the map is restarting for a retry" in t4, len(offers4), ms4, claim4))
 
     # G5.  A `kill` in a resume countdown on bhop_eazy, whose spawns are all in
-    # the start box: the respawn arms that box as any respawn does.  Premise:
-    # G5's own park was offered and accepted.  Round 3 scanned the latches at
-    # the spawn in SV_MsAbort, and the box never armed (idle).
+    # the start box: the respawn arms that box as any respawn does.  Premises:
+    # G5's own park was offered, and the phase began (its `!r` refused -- only a
+    # resume phase says "wait for the resume to finish").  Round 3 scanned the
+    # latches at the spawn in SV_MsAbort, and the box never armed (idle).
     t5 = "\n".join(sec["G5P"])
     st5 = states("G5A")
-    if not ("resume: your run here is paused at" in t5 and "resume: no paused run" not in t5):
-        print("CANNOT GRADE G5: no park of G5's own run was offered")
+    if not ("resume: your run here is paused at" in t5
+            and "resume: wait for the resume to finish" in t5):
+        print("CANNOT GRADE G5: offered %s, phase began %s" % (
+            "resume: your run here is paused at" in t5, "resume: wait for the resume to finish" in t5))
         return 2
     check("G5", bool(st5) and st5[-1] == "armed", "after the kill: %s" % (st5[-1] if st5 else None))
 
