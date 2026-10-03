@@ -200,7 +200,9 @@ float  rec_sl_quiet;
 // false, and a restored rise is not read as a hop.  The paragraph above only ever
 // reasoned about a GROUNDED body -- friction is horizontal, and so was the test.  And
 // PATCH 445: the taint is no longer forgivable by an arm, so a load that forces one
-// can no longer launder a hop the player already earned before the load.  Measured
+// can no longer launder a hop the player already earned before the load.  [Patch
+// 477: a load AT REST, outside a run, with nothing pending, does forgive it --
+// SV_SaveLoadTag -- with the zeroed velocity every other forgiveness gives.]  Measured
 // both ways, cfg/test/p442jump.cfg (a real save taken standing still arms) and
 // cfg/test/p445hop.cfg's L section (the forced arm keeps the taint).
 float(float r) SL_RowSpeed =
@@ -1410,12 +1412,14 @@ float(float id, float row) SV_SaveReadLight =
   walk or a jump could -- horizontal speed over sv_maxspeed, Patch 454's line
   for "no prespeed to launder", or vertical over the jump impulse -- in any
   state, since a running load's run is practice but the box it flies into next
-  arms (review round 3); or by a RUNNING row's own `hopped`; or while a delayed
-  map output aimed at the body is still pending.  FORGIVEN by a load that leaves
-  the body at rest outside a run: that is the zeroed velocity every other
-  forgiveness gives (SV_TimerForgiveHop), and without it one fast load tagged
-  every start after it (round 3; round 1 raised at 1 u/s and round 2 never
-  lowered).
+  arms (review round 3); or by a RUNNING row's own `hopped`.  A tag a load
+  raised is forgiven by Patch 454's rest test after the arm (run_t_finfgv): it
+  was raised for speed, and arriving at rest is the absence of it (round 4: a
+  fast running load otherwise made the honest walk-out after a fail practice).
+  FORGIVEN outright by a load that leaves the body at rest outside a run --
+  the zeroed velocity every other forgiveness gives -- unless the map still
+  owes the body something (SV_TrigPending: a trigger yet to see it leave, or a
+  delayed output it set off), which could hand speed back next tick (round 4).
 */
 void(entity e, float hop, float rwd) SV_SaveLoadTag =
 {
@@ -1439,14 +1443,13 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 	}
 	else if (vlen(e.velocity) < SL_ARM_SPEED)
 		down = TRUE;
-	if (SV_TrigPending(e) == 2)
-		up = TRUE;
 	if (up)
 	{
 		e.run_t_hopped = TRUE;
-		e.run_t_finfgv = FALSE;     // a fresh tag drops a pending finish forgiveness
+		e.run_t_finfgv = TRUE;      // forgiven by coming to rest after the arm
 	}
 	else if (down)
+	if (!SV_TrigPending(e))
 		SV_TimerForgiveHop(e, "a load at rest");
 	if (rwd)
 	{
@@ -3163,6 +3166,8 @@ void(entity e) SV_RewindDropGo =
 		return;
 	if (!SV_SaveReadIdent(rec_sl_id[r]) || !SV_SaveRowIs(r))
 		return;
+	sprint(e, PRINT_HIGH, sprintf("^7rewind: save %g, the last resume point, makes way\n",
+	                              r - base + 1));
 	rec_sl_quiet = TRUE;
 	SV_SaveLocDeleteRow(e, r - base + 1);
 	rec_sl_quiet = FALSE;
@@ -3232,9 +3237,10 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		SV_RewindDropGo(e);
 	e.rec_sl_index = rec_sl_nb[blk];
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
-	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s\n",
+	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s%s\n",
 	                              e.rec_sl_index, SL_NN(id), SV_TimerString(rw_t),
-	                              floor(vlen([rw_v_x, rw_v_y, 0]))));
+	                              floor(vlen([rw_v_x, rw_v_y, 0])),
+	                              go ? " -- a resume point: the next resume replaces it, S keeps one" : ""));
 	return TRUE;
 };
 

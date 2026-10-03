@@ -774,7 +774,7 @@ void() PlayerPostThink =
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned;
+	local float  cmdargc, go, pinned, won, wvoid;
 
 	cmdargc = tokenize(cmd);
 	c = argv(0);
@@ -940,6 +940,11 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "sl_saveat")
 	{
 		go = (argv(5) == "go");     // before the create: its read-back tokenizes
+		// A resume is a write, a load and maybe a delete: two of the rate's
+		// tokens, not one (review round 4).
+		if (go)
+		if (!SV_SaveLocRate(self))
+			return;
 		if (SV_SaveLocCreateAt(self, stof(argv(1)),
 		                       [stof(argv(2)), stof(argv(3)), stof(argv(4))],
 		                       cmdargc >= 5, go))
@@ -978,9 +983,13 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_watch")
 	{
-		if (argv(2) == "void")          // Patch 477: before the release can thaw it
+		// Patch 477: `void` ends a pinned running run before the release can thaw
+		// it.  Both read first: the void's recorder path tokenizes (SV_RecCopyStep).
+		won = stof(argv(1));
+		wvoid = (argv(2) == "void");
+		if (wvoid)
 			SV_WatchVoid(self);
-		SV_WatchHold(self, stof(argv(1)));
+		SV_WatchHold(self, won);
 		return;
 	}
 

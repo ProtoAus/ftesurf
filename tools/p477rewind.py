@@ -26,7 +26,7 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12")
+            "R10", "R11", "R12", "R13")
 
 
 def listing(d):
@@ -336,6 +336,16 @@ def main():
         sv12.group(1) if sv12 else None, sv12.group(3) if sv12 else None,
         round(math.hypot(v12[0], v12[1])) if v12 else None, "run resumed" in t12,
         "it carries speed" in t12, hop12.group(1) if hop12 else None))
+
+    # R13: a warp under the mode closes it and ends the run.  Premise: it was open
+    # on a running run before the setpos.
+    st13 = status("R13")
+    t13 = txt("R13")
+    ok13 = (len(st13) >= 2 and st13[0].group(1) == "1" and st13[-1].group(1) == "0"
+            and "timer: running on" not in t13)
+    check("R13", ok13, "on before %s, after %s, still running %s" % (
+        st13[0].group(1) if st13 else None, st13[-1].group(1) if st13 else None,
+        "timer: running on" in t13))
 
     bad = len(re.findall(r"Unknown command", text))
     frames = len(re.findall(r"\w+\.qc:\d+:", text))

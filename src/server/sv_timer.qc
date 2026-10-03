@@ -1564,6 +1564,8 @@ float() SV_RecEnabled =
   run_t_startok latches about a second after you leave -- so the finish clear hands a
   cheater nothing new and hands an honest player back the run after next.
   FOUR CLEARS, THEN: three that zero the velocity, and one that finishes a run first.
+  [Patch 477: five -- a load at rest (SV_SaveLoadTag) -- and a tag a LOAD raised is
+  also taken by this file's rest test after the arm, as a finish's is.]
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -8914,7 +8916,9 @@ void(entity e, string why) SV_TimerVoid =
   of callers is the rule.
 
   ROUND 6 CORRECTED THE LIST, WHICH IS THE WHOLE SAFETY ARGUMENT, so the count is
-  stated exactly: THREE callers.  Two reviewers independently found that the first
+  stated exactly: THREE callers [Patch 477 added a fourth: SV_SaveLoadTag, a load that
+  leaves the body at rest outside a run with nothing pending -- sv_saveloc.qc].  Two
+  reviewers independently found that the first
   version of this comment said three and grep gave four -- SV_ZoneMoveAt, the
   ground-dwell re-arm, SV_TimerSpawn and SV_TimerMapInit -- and that the dwell one
   zeroed nothing, so the invariant this function exists to hold was false at any
