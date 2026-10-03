@@ -42,14 +42,47 @@ to be wrong.
    never blank or jump while loading. Past 1,000, the website has the rest.
 3. **The website loads more as you scroll** (proto.bar/ftesurf/board/), with no
    200 cap -- the "Show more" button is still there as a fallback.
-4. **KSF stage and bonus boards.** The importer can now fetch every board of a
-   map from KSF's real API. A fill of the 289 maps that already had KSF times
-   was started on the Pi at 03:12 UTC on 3 Oct; KSF answers slowly (~7 s a
-   request), so it may still be running. Check: `pgrep -af ksfimport` on the
-   Pi, and `logs/ksfimport-20261003.log` for the summary when it ends. Then a
-   KSF stage tab should have rows on the website. It is never automatic -- every
-   run is someone typing it, and it stops by itself if KSF ever says no.
-5. **Rewind** -- in progress; see BACKLOG/this section's update when it lands.
+4. **KSF stage and bonus boards -- live on the website.** The first fill (03:12
+   UTC, 3 Oct) died at 03:17 on a single 30-second KSF timeout after 171 map
+   lookups -- a reply that never came was an unhandled error. Fixed (`ksfimport`
+   now stops on "no answer" the way it stops on a refusal; commit 6088943, with
+   a test that fails without it) and restarted at 05:02. It ran 2,385 requests
+   and then KSF closed a connection without answering, so it stopped -- politely
+   this time. It fetched 45,000 records over 288 maps and wrote 44,965 (it keeps
+   a faster time already there); the database now holds **25,579 KSF stage rows
+   (158 maps) and 12,376 bonus rows** -- try `surf_1day` stage 2 on the
+   website's KSF tab. 1,771 deeper pages (ranks past
+   ~40) are still wanted: the same command fetches them from where it stopped
+   -- `cd /srv/nvme/surfd && python3 ksfimport.py --from-maps --depth 100 --max
+   7000 --delay 1.0 --go` -- whenever you choose to run it. Never automatic.
+5. **Rewind (Patch 477) -- NOT ON THE LOBBIES YET.** It is in its tenth review
+   round (three fresh reviewers per round; it ships when a round finds
+   nothing), so try it on this PC's build. During or after a run, press **BACKSPACE**.
+   You freeze and the camera follows a cursor on your run's line:
+   - **LEFT / RIGHT** scrub (hold to speed up; the mouse wheel jumps 10 points),
+   - **ENTER** resume there: 3-2-1, then you carry on with the speed and the
+     view you had at that moment,
+   - **S** save a state there (it joins your save list as a normal save),
+   - **ESC** back. On a run that is on the clock it reads "ESC resume where you
+     were": you go on from there with your speed, after the same countdown, and
+     the run's clock ends there. If the server refuses the resume (saves off,
+     a full list) you stop where you were instead.
+   On any run that is on the clock the first BACKSPACE only warns -- every way
+   out of a rewind ends that run, so it says so -- and a second press within
+   2 s opens it. A resume faster than a walk or a jump is practice until `!r`
+   (or until you come to rest in the start box, or load a save that stands
+   still); slower, the next start counts. A hop chain's tag still needs `!r`. The server keeps the last two minutes of a run; further back the
+   help line says so and the server refuses. After a resume, BACKSPACE opens
+   at the point you last resumed from, so you can retry a section; what you
+   did since is not on the line until your next run. `!r`, `!s`, `zone_goto`
+   or `setpos` while rewinding a timed run takes you there, ends the frozen run
+   and closes the rewind (one that is refused, like `!s 9`, changes nothing);
+   `retry` ends it too. The save-lock keys and typed loads do nothing while you
+   browse (S is the rewind's save). Where saves are off (`lobby_nosaveloc`, or no certificate), rewind
+   can look but not resume, and leaving a timed one ends the run.
+   **Try:** a fast ramp, rewind two seconds, ENTER -- does the speed and the
+   direction feel identical to the moment you picked? Is 3 s the right
+   countdown? Is BACKSPACE a good key (it is free in default.cfg)?
 
 ### Decisions only you can make
 
@@ -63,8 +96,52 @@ to be wrong.
 - **The menu music doesn't ship** in releases yet -- ~100 MB of WAV needs
   converting to OGG (section 8).
 
-### One thing I found and did not fix
+### Decisions only you can make (rewind)
 
+- **ESC on a timed run** resumes where you were and ends the run's clock,
+  rather than unfreezing the same run. Unfreezing would leave a pause the
+  angle check cannot see (AGENTS.md's held-run fault) and convict the practice
+  run's evidence. If you want the unfreeze back, that fault needs fixing first
+  (a `pause` record at the thaw -- in BACKLOG).
+- **Loading a moving save with the timer idle now asks for `!r` before a timed
+  start** when it carries more than a walk or a jump could (horizontal over
+  sv_maxspeed, vertical over the jump), and says so ("save: it carries speed
+  -- !r before a timed run"). Two reviewers found that a save taken right after
+  a rewind kept the speed and shed the tag. Saves taken in the box, after a
+  finish or mid-run are tagged only when they are that fast AND the attempt
+  was already hopped -- on bhop maps nothing would otherwise forgive honest
+  save practice (BACKLOG, with the hole that leaves open). Coming to rest in
+  the start box clears the tag, and so does loading a save that stands still.
+- **Patch 455 is not merged.** Its ten review rounds sit on the local branch
+  `p455fix` (worktree C:/tmp/p455fix), but AGENTS.md describes its "latency
+  bound" as if live. It was another session's work, so whether to finish and
+  merge it or retire it is yours -- BACKLOG "PATCH 455 IS NOT MERGED".
+- **Each resume replaces your previous resume's save row**, so practice does
+  not fill the list. S saves are kept, and a resume row you load again is kept.
+
+### Fixed along the way (worth knowing)
+
+- **A leaderboard hole older than this patch:** typing `cmd rec_watch 1` during
+  a run, then `kill`, left the clock's freeze request behind -- the next clean
+  run's clock stopped while you kept moving, and `cmd rec_watch 0` later
+  ranked the shortened time. Respawn and the Multi-Session paths now release
+  the pin, and a run that starts frozen is practice. Graded by
+  `tools/p477rewind.py` R11 (fails without the fix: clock stuck at 0.015).
+- **The same pin kept speed a map paid it.** A body frozen by the replay viewer
+  still touches triggers, and a repeating booster (`OnTrigger` basevelocity,
+  20 in the library) paid it once per firing with no friction -- kept when the
+  replay closed. The pin now holds the body at rest every tick. Graded by R19
+  on surf_embrace.
+
+### Found and not fixed yet
+
+- **A ranking hole older than the rewind -- next on my list.** The round-9
+  integrity review traced it end to end, but I have not driven it yet: turn
+  ghost mode on (`rec_ghost 1`) while armed in the start box, and the run does
+  not start when you leave the box -- it starts, CLEAN, wherever you turn ghost
+  off. A run could skip most of a map. Build 30 code, not Patch 477. It gets its
+  own patch with an arm that drives the exploit first (BACKLOG, top of Ranking
+  integrity).
 - **`surf_aquaflow` crashes this PC** when launched headless, on both the new
   and the old engine. Try it windowed when you are home; if it crashes for you
   too, it is in BACKLOG ("surf_aquaflow CRASHES THIS PC HEADLESS").

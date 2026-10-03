@@ -176,6 +176,15 @@ chatty.
   from a `git worktree` at the pre-batch commit with `-NoDeploy`, copy its .dat
   in, and prove which build ran by hash (`tools/p439smoke.py`'s cfg header has
   the recipe, including the hash that showed the worktree really was pre-patch).
+- A STATE READ AFTER A MAP RESTART CAN BE ANSWERED BEFORE THE SPAWN THAT
+  RESTORES IT. Patch 477's retry arm read `cmd timer` 8 s after `retry` and got
+  `idle` on a mutant whose run WAS restored: the reply came between the reconnect
+  and PutClientInServer's restore. Grade the restore's own line ("run restored"
+  against "back where you were"), not a state read you hope landed after it.
+- WHEN TWO REVIEWERS DISAGREE ABOUT WHAT THE ENGINE DOES, READ THE ENGINE. One
+  said pm_verify flies a frozen run's last row for the whole pause, another that
+  it caps at 8 ticks. Both were half right: the cap bounds the distance, and
+  `inend` still sets the ticks a finish latched in that row reads.
 - A DRIVER'S CLEANUP IS PART OF THE ARM. Two leaks survived a green run because
   the cleanup was written from an assumption instead of a listing: a save the run
   wrote into the SERVER's save root (not the scratch `cl_saveroot`), and an

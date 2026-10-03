@@ -200,7 +200,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   a walk or a jump (horizontal over sv_maxspeed, vertical over pm_jumpvelocity)
   raises it, and an armed, finished or running one only when it is that fast
   AND its file says hopped -- on bhop-mode maps a box entered from anything but
-  IDLE never runs the rest test that forgives a load's tag after the arm. **The tag still survives a cancel zone, a map
+  IDLE never runs the rest test that forgives a load's tag after the arm. That
+  rest-test forgiveness (`run_t_finfgv`) belongs only to a tag the load itself
+  raised: a hop chain's stays `!r`'s, and `!r` or a raise-only restore drops a
+  pending one. **The tag still survives a cancel zone, a map
   teleport and a stage-boundary finish**, so an arm can read `hopped 1` many sections
   after the jump that earned it; there is a chat reminder on each later fluffed start
   but nothing on the HUD. Walk out, then
@@ -1009,6 +1012,30 @@ bannered as superseded.)
   `board_ov_tick` inside Watch_BuildSeq's pass, the server's live. To change a
   listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
   reverts a typed `pm_ticrate`.
+
+## Rewind (Patch 477)
+
+- **The rewind rides the replay's pin, marked as its own: `rec_watch 1 rw`.** A
+  pinned RUNNING run is frozen and practice, and EVERY way out of a rewind ends
+  that run rather than thawing it -- a thaw past an unrecorded freeze convicts its
+  angles (the held-run fault, under Anti-cheat). ENTER and ESC resume through
+  `sl_saveat <ticks> x y z go` (an IDLE row). A refused resume, `rec_watch 0`
+  (plain or `void`), a warp the server serves (SV_RewindWarped: AFTER the warp,
+  and only if it moved the body), `retry`, a Multi-Session park and a lobby flip
+  void it (SV_WatchLetGo). A replay's pin (no `rw`) behaves as before 477.
+- **The state is the server's, never the client's.** SV_RewindSample keeps 4000
+  samples a slot, one every 2 run ticks, only while running and unheld; the
+  client's x y z only picks among samples within 0.5 s of its tick. A run start
+  wipes the ring; a warp under the rewind marks it over, so the next start does.
+- **STAT_FS_PIN (111) is the pin's take count while held, 0 when not.** The
+  client closes the mode on a release it did not ask for, and tells a release
+  still in flight from its own new pin by the count.
+- **A frozen run's kept-abandon `inend` is the mover tick at the freeze**
+  (`run_t_frzmt`), because the `in` rows stop there; pm_verify flies a last row
+  to `inend`.
+- Harness: `tools/p477rewind.py` (parks data/saves/surf_dune; its last section
+  changes map to surf_embrace). `rewind key <scan> [up]` feeds the real input
+  handler; `rewind status|seek|step|go|save` drive the rest.
 
 ## Imported runs: Momentum Mod and KSF
 

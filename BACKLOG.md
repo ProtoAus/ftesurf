@@ -7,6 +7,91 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **GHOST WHILE ARMED DEFERS THE START TO WHEREVER THE GHOST ENDS** (pre-existing,
+  build 30; Patch 477 round-9 integrity review, traced end to end, NOT DRIVEN --
+  next on the list). `SV_GhostSet` (sv_saveloc.qc) checks no timer state, and the
+  ghost branch of SV_TimerFrame returns before the start test, so leaving an armed
+  box under `rec_ghost 1` starts nothing; SV_TimerGhostMark returns early when not
+  running (no TF_GHOST, no `ghost` record); each ghosted tick's SV_TimerWarped
+  empties the lead-in. `rec_ghost 0` far down the course and the next packet's start
+  test starts a CLEAN clock there (SV_StageOpen re-reads the ghost flag as off), an
+  END zone finishes any full-track run, and pm_verify does not check where a run
+  began. An unmodified client: prestrafe to the box edge, ghost, let the body slide
+  the first ramp, unghost at the bottom. Same shape for a finished stage run waiting
+  on its next stage box. Fix: refuse `rec_ghost 1` unless idle or running with no
+  stage handover pending, or drop to idle when a ghost begins armed -- with an arm
+  that drives the exploit first.
+- **A RUNNING, ARMED or FINISHED load's speed is policed only by its file's
+  `hopped`, and a start box re-entered from it can arm clean** (Patch 436's "load,
+  step out, run"; predates 477, and 477 makes no such save). Patch 477 round 3
+  tagged any load faster than a walk, running ones included; round 5 took the
+  running half back, because on bhop-mode maps a start box entered from RUNNING
+  or FINISHED arms only through the jump commit (sv_timer.qc SV_TimerTryArm's
+  deferral), so `startok` stays set, Patch 454's rest test never runs, and
+  honest save-state practice came out practice until `!r`. The real fix needs
+  that deferral to run the rest test -- which is Patch 455 round 1's fix 5, on
+  the unmerged `p455fix` branch (below). Idle loads (every rewind resume
+  included) are still tagged above a walk or a jump.
+- **Speed the map still owes lands in an armed start box after `!r`, a load or a
+  `setpos`** (predates 477; Patch 477 round-5 integrity review, traced, not
+  driven). A pad's OnEndTouch fires ~0.06 s after the body leaves even when it
+  was teleported away, and delayed outputs keep the player as activator;
+  `!activator AddOutput basevelocity` then pays into `.velocity` inside the box
+  after `!r` zeroed it, `run_startcap` is 0 on the lobbies, and `run_pushed`
+  excuses the hop. Fix: at those warps, drop the player's pending
+  `vbsp_iodelay` and their touch bits, or clear the carrier for a window as
+  SV_SaveLocHoldFrame does. Patch 477's load-at-rest forgiveness is skipped
+  while SV_TrigPending is non-zero; `!r` has no such check.
+- **PATCH 455 IS NOT MERGED, AND AGENTS.md TALKS AS IF IT WERE.** Its ten review
+  rounds live on the local branch `p455fix` (44b313b, worktree C:/tmp/p455fix);
+  neither a4cfe09 nor 44b313b is an ancestor of HEAD at 2026-10-03. AGENTS.md's
+  "LATENCY BOUND" paragraph and the gate fixes it describes are not in the
+  shipped Patch 454 block (sv_timer.qc, the finish forgiveness): the carrier
+  term, the vertical carrier and the `.maxspeed` cap are all still the 454
+  versions. Merge or retire it -- Lex's call, since it was another session's.
+- **Patch 454's carrier term reads `run_basevelocity`, which is always zero there.**
+  The finish forgiveness adds `e.run_basevelocity` to `.velocity` to judge "no
+  prespeed to launder", but the engine zeroes that field at the top of every move
+  (sv_user.c:8577-8581) -- the latched carrier is `run_basevel`. So a body riding
+  a push carrier at a low `.velocity` reads as walking. Found by Patch 477's
+  round-1 integrity review; not changed there (it needs its own arm on a push map).
+- **A thaw past an unrecorded freeze is still reachable**, and convicts a practice
+  run's angles (the held-run fault): closing the replay viewer mid-run, `retry`
+  or a Multi-Session park under it, and letting go of a save-lock hold. Patch
+  477's rewind no longer takes it (ESC resumes at the head, a refused resume, a
+  retry, a park or a lobby flip ends the run). The systemic fix is a `pause`
+  record at the thaw, so reccheck abstains.
+- **`!r` keeps the replay pin** (sv_zones.qc releases only the save-lock hold), so
+  a run started after it is frozen at its first tick and practice (Patch 477's
+  start taint) until the replay closes. Costs the player, never ranks.
+- **A key held into the rewind under an untracked `+` bind** acts on its first
+  auto-repeat (S saves, ENTER resumes): Rewind_HeldBefore sees only the binds
+  cl_keys.qc tracks. Its release does reach the bind. Default binds are safe.
+- **A resume's row outlives a `retry` or a map change**: `rw_goid` lives on the
+  edict, so "the next resume replaces it" is false across either, and the row stays
+  in the list as an ordinary (demoted, rewound) save. Patch 477 round-9 review.
+- **A demoted save no longer restores its HUD Segments column** (Patch 477 round
+  9's trade-off): a demoted row's load reads no snapshot or seq.txt, because a
+  rewind row's reused id made either another save's. A keep-window demote's file
+  really is its own; telling the two apart needs a `rewound` bit on the client.
+- **`rec_watch` is not charged by the sl_ rate limiter** (pre-existing). Each `1`
+  spawns the PVS eye (SV_ViewEyeAt) and each `0` frees it, and FTE keeps a freed
+  edict for 0.5 s (qclib/pr_edict.c), so a stringcmd flood ratchets `num_edicts`
+  up for the rest of the map and every `nextent` walk pays for it. Patch 477
+  round-10 integrity review; 477 does not widen it.
+- **A spectator's client acts on its tracked player's save events** (QC stats come
+  from the tracked player, and Rec_ViewSaveEvents/Seq_SaveEvents run every frame):
+  that player's prefixes and segment columns are written into the SPECTATOR's own
+  save tree, over its own saves at those ids -- and a remote non-lobby server's
+  ids land on the client's offline tree the same way. Save events should be
+  ignored unless the stats are this client's own. Patch 477 round 8 review.
+- **`setpos` can arm a start box clean, at rest, in mid-air** (predates 477;
+  Patch 477 round-8 integrity review, traced, not driven). It has no cheat gate and
+  no ground snap; the next packet's occupancy edge arms the attempt, and
+  SV_TimerArm re-derives `run_t_cheat`/`run_t_dirty` from the live state, so the
+  cheat latch does not survive the arm it caused. Worth speed only where a fall
+  can leave the box. Fix: ground-snap a setpos that lands in a start or stage
+  zone, as SV_SaveLocPickInZone does, or keep its cheat latch across that arm.
 - **A HOST-SIDE INABILITY TO VERIFY IS RECORDED PERMANENTLY AGAINST THE PLAYER'S
   RUN.** `pm_verify` answers PASS / HOLD / REFUSE, and REFUSE is documented as
   "cannot say, never a judgement on the run" -- but `surfd/sweep.py:236-238` sets
@@ -304,9 +389,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `rec_watch` -- SV_TimerArm, which zeroes run_t_flags. The Patch 428 round 6 comment
   at that site applies verbatim, one pin over: fall into a start box, pin on the entry
   packet, hang there with the clock frozen for as long as you like, unpin and fall from
-  rest. `SV_WatchRelease` (sv_saveloc.qc:3004-3020) restores only the movetype and
-  never hands velocity back, unlike SV_SaveLocRelease, so this is worth the hang
-  rather than a speed. Same review.
+  rest. Worth the hang rather than a speed only since Patch 477 round 7: before it, a
+  repeating `OnTrigger` basevelocity booster (20 in the library) paid the pinned body
+  once per firing with no friction, and the release kept it -- the pin now zeroes the
+  velocity and the carrier every tick and at the release (SV_WatchFrame). Same review.
 - **CROSSING THE SEAM BETWEEN TWO ADJACENT START REGIONS RE-ARMS SILENTLY, and 21
   shipped maps have such a seam.** `SV_ZoneOcc` is a POINT test at the shipped
   `run_zone_hull 1` while the start test `SV_ZoneIn` is the HULL, and the arm scan runs
@@ -750,6 +836,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Features / releases
 
+- **Rewind v2 -- what Patch 477 left (2026-10-03).** (1) The continuation after a
+  resume is untimed and unrecorded: the server's ring and the client's line take
+  samples only while a run is on the clock, so what you do after a resume cannot
+  be rewound until the next run starts (the mode reopens at the last resume point
+  instead). A TIMED continuation needs the recorder to rewind to a tick it never
+  saved a prefix for -- the ring would have to carry the stage machine, splits and
+  zone latches per sample, or the .rec be cut at a line index found by tick. (2)
+  Rewind inside a replay or a Momentum demo ("continue from any point" of someone
+  else's run): a save built from a client-supplied state, which must be practice
+  by construction and raise the hopped tag whatever its speed.
 - **A MAP THAT DISAGREES WITH THE SERVER AT THE SAME SIZE IS STILL A KICK, AND
   NOTHING CLIENT-SIDE CAN SEE IT.** `ui_prejoin` (build 89) fetches the server's
   build before connecting when the map is missing or its size differs, which is
