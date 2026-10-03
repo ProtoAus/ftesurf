@@ -595,8 +595,11 @@ float(float scan, float down) SaveLoc_Key =
 	if (!down)
 	{
 		// The only release that means anything is the load key's.  Consume it
-		// so it matches the press, which was consumed too.
-		if (rec_sl_holding && scan == rec_sl_holdkey)
+		// so it matches the press, which was consumed too.  Patch 477 round 22:
+		// a holdkey of 0 is no key's (the rewind's countdown, `+sl_hold`), and a
+		// real key reports 0 (the ISO `<>` key, a dead key) -- its tap let the
+		// countdown's body go mid-count.
+		if (rec_sl_holding && rec_sl_holdkey && scan == rec_sl_holdkey)
 		{
 			SaveLoc_Release();
 			return TRUE;
@@ -615,7 +618,7 @@ float(float scan, float down) SaveLoc_Key =
 	// A REPEAT of the key already held.  The engine keeps delivering key-down
 	// while a key is held; the server has already been told once.  Stamping it
 	// here is what arms the deadman -- see rec_sl_holdrep.
-	if (rec_sl_holding && scan == rec_sl_holdkey)
+	if (rec_sl_holding && rec_sl_holdkey && scan == rec_sl_holdkey)
 	{
 		rec_sl_holdseen = cltime;
 		rec_sl_holdrep  = TRUE;

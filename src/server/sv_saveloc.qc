@@ -1454,11 +1454,13 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 		down = TRUE;
 	if (up)
 	{
-		// Forgiven by coming to rest after the arm -- only a tag this load
-		// raised on its speed (an IDLE row): a hop chain's, which another row's
-		// `hopped` carries, is `!r`'s alone (Patch 445; review rounds 9, 21).
-		if (!e.run_t_hopped)
-		if (e.run_t_state == TS_IDLE)
+		// Forgiven by coming to rest after the arm -- only a tag this load raised
+		// on its speed alone.  A hop chain's, which the row's `hopped` carries, is
+		// `!r`'s alone and drops a forgiveness already pending, as a fresh tag
+		// does in SV_TimerJumpWatch (Patch 445, 454; review rounds 9, 21, 22).
+		if (hop)
+			e.run_t_finfgv = FALSE;
+		else if (!e.run_t_hopped)
 			e.run_t_finfgv = TRUE;
 		e.run_t_hopped = TRUE;
 	}

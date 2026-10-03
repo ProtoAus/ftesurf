@@ -103,11 +103,15 @@ float(float scan) Rewind_KeyIx =
 // Round 21: a key outside the table the mode swallowed (a digit, `z`, a
 // save-lock bind) stays swallowed until its release, also once the mode has
 // closed -- its auto-repeat reached the save-lock keys as presses (4 deleted
-// at the rate limit while held).  Scancode 0 is a free slot.
+// at the rate limit while held).  Scancode 0 is a free slot, never a key here:
+// a real key reports 0 too (the ISO `<>` key, a dead key), and its release
+// cleared the whole table (round 22).
 float(float scanx) Rewind_SwHas =
 {
 	local float i;
 
+	if (!scanx)
+		return FALSE;
 	for (i = 0; i < RW_SWN; i = i + 1)
 		if (rw_sw[i] == scanx)
 			return TRUE;
@@ -132,9 +136,19 @@ void(float scanx) Rewind_SwClear =
 {
 	local float i;
 
+	if (!scanx)
+		return;
 	for (i = 0; i < RW_SWN; i = i + 1)
-		if (rw_sw[i] == scanx || !scanx)
+		if (rw_sw[i] == scanx)
 			rw_sw[i] = 0;
+};
+
+void() Rewind_SwReset =
+{
+	local float i;
+
+	for (i = 0; i < RW_SWN; i = i + 1)
+		rw_sw[i] = 0;
 };
 
 void(float evtype, float scanx) Rewind_Track =
@@ -144,6 +158,8 @@ void(float evtype, float scanx) Rewind_Track =
 	rw_krep = FALSE;
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return;
+	if (evtype == IE_KEYUP)         // round 22: whoever takes it -- the chat draft took it
+		Rewind_SwClear(scanx);      // and the next press of that key was swallowed
 	k = Rewind_KeyIx(scanx);
 	if (k < 0)
 		return;
@@ -226,7 +242,7 @@ float() Rewind_Open =
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
 		rw_kst[k] = rw_kdown[k] ? 2 : 0;
-	Rewind_SwClear(0);
+	Rewind_SwReset();
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
 	rw_headi = rw_i;
 	rw_headt = ln_t[tr_live * LN_CAP + rw_i];
@@ -794,5 +810,5 @@ void() Rewind_Reset =
 	rw_resi = -1;
 	rec_sl_holdext = FALSE;
 	tr_cur_on = FALSE;
-	Rewind_SwClear(0);
+	Rewind_SwReset();
 };

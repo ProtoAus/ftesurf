@@ -26,8 +26,8 @@ SAVES = os.path.join(GAME, "data", "saves", "surf_dune")
 PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
-            "R10", "R11", "R12", "R13", "R13B", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -124,6 +124,7 @@ def main():
         return 2
 
     fails = []
+    cannot = []                 # round 22: a premise that did not hold is not a verdict
 
     def check(name, ok, said):
         print("%s %-3s %s" % ("PASS" if ok else "FAIL", name, said))
@@ -408,6 +409,56 @@ def main():
     check("R13E", bool(st13b) and st13b[0].group(2) == "1" and k13e == ["1"],
           "counting %s, S took %s" % (st13b[0].group(2) if st13b else None, k13e))
 
+    # R22A (round 22): a key reporting scancode 0 tapped in the countdown ends
+    # nothing -- 0 is the countdown hold's "no key".  Premise: counting before the
+    # tap, and both halves of the tap went through the whole chain.  Verdict:
+    # still counting after it, and the count then ends in a resume as ever.
+    st22a = status("R22A")
+    t22a = txt("R22A")
+    k22a = [m.group(1) for m in (re.search(r"vote key: scan 0 down (\d) took \d", s)
+                                 for s in sec["R22A"]) if m]
+    ok22a = (len(st22a) >= 3 and st22a[0].group(1) == "1" and st22a[0].group(2) == "1"
+             and k22a == ["1", "0"] and st22a[1].group(1) == "1" and st22a[1].group(2) == "1"
+             and st22a[2].group(1) == "0" and "rewind: resumed" in t22a)
+    check("R22A", ok22a, "counting %s, key 0 %s, then on %s counting %s; after the count on %s, "
+          "resumed %s" % (st22a[0].group(2) if st22a else None, k22a,
+                          st22a[1].group(1) if len(st22a) > 1 else None,
+                          st22a[1].group(2) if len(st22a) > 1 else None,
+                          st22a[2].group(1) if len(st22a) > 2 else None, "rewind: resumed" in t22a))
+
+    # R22B (round 22): `4` held in that countdown stays swallowed once it ends,
+    # the key-0 release between notwithstanding.  Premise: `4` was pressed in the
+    # count, the mode had closed (on 0) before its repeat.  Verdict: the count of
+    # saves `vote key` prints before and after is the same.
+    sc22 = [m for m in (re.search(r"vote key: scan (52|1) down (\d) took (\d) .* saves (\d+)", s)
+                        for s in sec["R22A"]) if m]
+    rd22 = [m.group(4) for m in sc22 if m.group(1) == "1"]
+    fk22 = [m for m in sc22 if m.group(1) == "52" and m.group(2) == "1"]
+    check("R22B", len(st22a) >= 3 and st22a[2].group(1) == "0" and len(fk22) == 2
+          and len(rd22) == 2 and rd22[0] == rd22[1],
+          "4 pressed %d time(s), closed before the repeat %s, saves %s" % (
+              len(fk22), st22a[2].group(1) == "0" if len(st22a) > 2 else None, rd22))
+
+    # R22C (round 22): `1` pressed while browsing, its release taken by a chat
+    # draft; after the close the next `1` saves.  Premises: the mode was open,
+    # took the first `1`, the draft took its release, and the mode then read
+    # closed.  Verdict: one more save, said by the server.
+    st22c = status("R22C")
+    t22c = txt("R22C")
+    k22c = [m.group(1) for m in (re.search(r"vote key: scan 49 (down \d took \d)", s)
+                                 for s in sec["R22C"]) if m]
+    rd22c = [m.group(1) for m in (re.search(r"vote key: scan 1 down 0 took \d .* saves (\d+)", s)
+                                  for s in sec["R22C"]) if m]
+    pre22c = (len(st22c) >= 2 and st22c[0].group(1) == "1" and st22c[1].group(1) == "0"
+              and k22c[:2] == ["down 1 took 1", "down 0 took 1"])
+    sv22c = re.search(r"\bsave (\d+) \(slot \d+\)", t22c)
+    if not pre22c:
+        print("CANNOT GRADE R22C: status %s, `1` %s" % ([m.group(1) for m in st22c], k22c))
+        cannot.append("R22C")
+    else:
+        check("R22C", len(rd22c) == 2 and int(rd22c[1]) == int(rd22c[0]) + 1 and sv22c is not None,
+              "saves %s, the server's save %s" % (rd22c, sv22c.group(0) if sv22c else None))
+
     # R15: a refused warp ends nothing.  Premise: it WAS refused (out of range).
     st15 = status("R15")
     t15 = txt("R15")
@@ -541,10 +592,14 @@ def main():
     t18m = txt("R18M")
     c18m = [m.group(1) for m in (re.search(r"vote key: scan 1 down 0 took \d .* saves (\d+)", s)
                                  for s in sec["R18M"]) if m]
-    check("R18M", bool(st18m) and st18m[0].group(1) == "1" and len(c18m) == 3
+    # Round 22: and the mode had closed before the held key's repeat (on 0) --
+    # inside the mode the repeat is swallowed whatever the fix does.
+    check("R18M", len(st18m) >= 2 and st18m[0].group(1) == "1" and st18m[1].group(1) == "0"
+          and len(c18m) == 3
           and c18m[0] == c18m[1] == c18m[2] and "the save-lock waits for the rewind" in t18m,
-          "open %s, saves %s, said %s" % (st18m[0].group(1) if st18m else None, c18m,
-                                           "the save-lock waits for the rewind" in t18m))
+          "open %s then %s, saves %s, said %s" % (
+              st18m[0].group(1) if st18m else None, st18m[1].group(1) if len(st18m) > 1 else None,
+              c18m, "the save-lock waits for the rewind" in t18m))
 
     # R18E: a hop chain's tag survives a fast load and rest in the box.  Premise:
     # the chain tagged (its own dprint-free line and the first read) and the load
@@ -557,6 +612,25 @@ def main():
     check("R18E", ok18e, "chain tagged %s, hopped %s, the load raised %s, after rest %s" % (
         "tagged a hopped start" in t18e, hops18e[0] if hops18e else None, up18e,
         hops18e[-1] if hops18e else None))
+
+    # R22D (round 22): a hop chain's tag raised by a load drops a forgiveness
+    # already pending.  Premises: the chain tagged the run (hopped 1), `!r`
+    # cleared it (hopped 0), the idle load raised a forgivable tag (R3's rewind
+    # row, "practice from here"), the running row's load raised again ("it
+    # carries speed"), and the rest was in the box (armed).  Verdict: hopped 1.
+    hp22d = [m.group(1) for m in (re.search(r"\bhopped (\d) rearmhop", s) for s in sec["R22D"]) if m]
+    tm22d = [m.group(1) for m in (re.search(r"timer: (\w+) on ", s) for s in sec["R22D"]) if m]
+    t22d = txt("R22D")
+    pre22d = (len(hp22d) == 3 and hp22d[0] == "1" and hp22d[1] == "0" and len(tm22d) == 3
+              and tm22d[0] == "running" and tm22d[2] == "armed"
+              and "rewind: resumed -- practice from here" in t22d and "it carries speed" in t22d)
+    if not pre22d:
+        print("CANNOT GRADE R22D: hopped %s, states %s, idle load raised %s, running load raised %s" % (
+            hp22d, tm22d, "rewind: resumed -- practice from here" in t22d, "it carries speed" in t22d))
+        cannot.append("R22D")
+    else:
+        check("R22D", hp22d[2] == "1", "chain hopped %s, after !r %s, after both loads and rest %s" % (
+            hp22d[0], hp22d[1], hp22d[2]))
 
     # R18F: a rewind pin asked from a non-running state on a running run is
     # refused, and the run stays clean.  Premise: the run was on the clock.
@@ -639,6 +713,9 @@ def main():
     frames = len(re.findall(r"\w+\.qc:\d+:", text))
     check("Q", bad == 0 and frames == 0, "Unknown command %d, QC frames %d" % (bad, frames))
     print("%d check(s) failed" % len(fails))
+    if cannot:
+        print("CANNOT GRADE %s -- exit 2" % ", ".join(cannot))
+        return 2
     return 1 if fails else 0
 
 
