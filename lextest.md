@@ -23,6 +23,15 @@ to be wrong.
 - **The laptop's work is now on this PC and on the lobbies:** the milk
   visualizer (467), the touchpad fix (468), and the board/replay/save fixes
   469-473. This PC's engine was rebuilt with 467 and 468.
+- **0.1.20 is released (3 Oct, 23:21)** -- https://proto.bar/ftesurf. Your milk
+  menu reaches players for the first time (the 3D worlds, panels, the visualizer
+  sky), with everything else since 0.1.19 and 276 fresher map bests in the
+  browser. As you chose: the touchpad fix (468) is held out, there is no menu
+  music, and the rewind is not in it -- it reaches players from the lobbies
+  when its review comes back clean. The archive was downloaded back and its
+  hashes match the receipt; its progs are byte-identical to the lobbies'.
+  Everything is pushed, including the unmerged `p444wip`, `p455fix` and
+  `wip/0929-sessions` branches, which now exist on GitHub as well as here.
 - **`run_rearmhop` is finally 0 on the lobbies.** It was meant to be since
   27 Sep (Patch 445), but the Pi's `default.cfg` was never copied, so the old
   "stand still in the start and the hop tag lifts" rule stayed live. It is the
@@ -86,7 +95,8 @@ to be wrong.
 
 ### Decisions only you can make
 
-- **The touchpad fix (468) and ranked runs.** It lets a laptop touchpad turn the
+- **The touchpad fix (468) and ranked runs** (3 Oct: held out of 0.1.20 -- still
+  open for a later release). It lets a laptop touchpad turn the
   view, which it could not before. The catch, from Fable's own notes: the
   server cannot tell touchpad movement from mouse movement in a run's
   recording, and that weakens the injection check for anyone with a precision
@@ -94,7 +104,12 @@ to be wrong.
   until the run records the touchpad count. Your call.
 - **A message of the day for the restart rule** (above).
 - **The menu music doesn't ship** in releases yet -- ~100 MB of WAV needs
-  converting to OGG (section 8).
+  converting to OGG (section 8). 3 Oct: not in 0.1.20; listen to the generated
+  tracks first, and they can ride the next release.
+- **Patch 444 sits unmerged on `p444wip`** (26 Sep, another session's): the save
+  writer confirms its prefix file exists before reporting a line count
+  (BACKLOG "`reclines` IS NOT EVIDENCE..."). Evidence code, so it needs a review
+  round before it merges -- say if you want it taken through.
 
 ### Decisions only you can make (rewind)
 
