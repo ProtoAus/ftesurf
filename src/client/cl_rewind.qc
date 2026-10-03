@@ -242,7 +242,8 @@ float() Rewind_Open =
 	rw_last = cltime;
 	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
 		rw_kst[k] = rw_kdown[k] ? 2 : 0;
-	Rewind_SwReset();
+	// No reset of the swallowed-key table here (round 23): each entry goes with
+	// its own release (Rewind_Track), and one still held stays swallowed.
 	rw_i = ln_n[tr_live] - 1;       // the head: where the run is now...
 	rw_headi = rw_i;
 	rw_headt = ln_t[tr_live * LN_CAP + rw_i];

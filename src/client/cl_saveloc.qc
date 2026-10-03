@@ -585,8 +585,8 @@ float(float scan, float down) SaveLoc_Key =
 	rec_sl_cv = cvar("rec_savelock");
 	if (!rec_sl_cv)
 	{
-		if (!rec_sl_holdext)        // the rewind's countdown is not a save-lock key's
-			SaveLoc_Release();
+		if (rec_sl_holdkey)         // Patch 477 round 23: a key's hold only -- 0 is the
+			SaveLoc_Release();      // countdown's or `+sl_hold`'s, let go by their own
 		rec_sl_refkey = 0;
 		rec_sl_8held  = 0;
 		return FALSE;

@@ -903,10 +903,13 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		return TRUE;
 	}
 
-	// Typing.  Releases are swallowed silently; presses belong to the draft
-	// except the console's own key, which has to stay reachable.
+	// Typing.  Releases are swallowed silently -- but a `+` bind's, whose stored
+	// release the engine runs only if this passes it: a `+sl_hold` or movement
+	// key held into the draft stuck (Patch 477 round 23).  A key pressed while
+	// typing stored none.  Presses belong to the draft except the console's own
+	// key, which has to stay reachable.
 	if (evtype == IE_KEYUP)
-		return TRUE;
+		return substring(getkeybind(scanx), 0, 1) != "+";
 	if (evtype != IE_KEYDOWN)
 		return TRUE;
 

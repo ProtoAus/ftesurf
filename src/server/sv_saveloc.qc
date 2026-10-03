@@ -2935,6 +2935,15 @@ void(entity e) SV_SaveLocCreate =
 		sprint(e, PRINT_HIGH, "^3save: let go of the load key first\n");
 		return;
 	}
+	// Patch 477 review round 23 (older): nor under the replay or rewind pin, the
+	// same freeze -- its row read at rest wherever the body was, mid-air
+	// included, and a load of it forgave a hop chain's tag.  The rewind's S is
+	// sl_saveat, from its ring.
+	if (e.rec_wt_hold)
+	{
+		sprint(e, PRINT_HIGH, "^3save: close the replay or rewind first\n");
+		return;
+	}
 
 	blk  = SL_Blk(e);
 	base = SL_Base(blk);

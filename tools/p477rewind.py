@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -618,19 +618,74 @@ def main():
     # cleared it (hopped 0), the idle load raised a forgivable tag (R3's rewind
     # row, "practice from here"), the running row's load raised again ("it
     # carries speed"), and the rest was in the box (armed).  Verdict: hopped 1.
+    # Round 23: the running row's own file is the premise (RUNNING, hopped 1,
+    # faster than a walk or a jump), so its raise ("it carries speed") is a
+    # verdict -- the rule under test prints it -- and the rest's conditions are
+    # read (start ok 0, grounded).  R22E shows that rest forgives without it.
     hp22d = [m.group(1) for m in (re.search(r"\bhopped (\d) rearmhop", s) for s in sec["R22D"]) if m]
     tm22d = [m.group(1) for m in (re.search(r"timer: (\w+) on ", s) for s in sec["R22D"]) if m]
+    ok22d = [m.group(1) for m in (re.search(r"start: ok (\d) ", s) for s in sec["R22D"]) if m]
+    gr22d = [float(m.group(1)) for m in (re.search(r"phase: ground ([0-9.]+) ", s) for s in sec["R22D"]) if m]
     t22d = txt("R22D")
-    pre22d = (len(hp22d) == 3 and hp22d[0] == "1" and hp22d[1] == "0" and len(tm22d) == 3
+    sl22d = re.search(r"\bsave \d+ \(slot (\d+)\)", t22d)
+    row22d = made.get("save%s/state.txt" % sl22d.group(1), "") if sl22d else ""
+    v22d = vec(row22d, "velocity")
+    fast22d = bool(v22d) and (math.hypot(v22d[0], v22d[1]) > 270 or abs(v22d[2]) > 310)
+    pre22d = (re.search(r"^state 2$", row22d, re.M) is not None
+              and re.search(r"^hopped 1$", row22d, re.M) is not None and fast22d
+              and len(hp22d) == 3 and hp22d[0] == "1" and hp22d[1] == "0" and len(tm22d) == 3
               and tm22d[0] == "running" and tm22d[2] == "armed"
-              and "rewind: resumed -- practice from here" in t22d and "it carries speed" in t22d)
+              and "rewind: resumed -- practice from here" in t22d)
     if not pre22d:
-        print("CANNOT GRADE R22D: hopped %s, states %s, idle load raised %s, running load raised %s" % (
-            hp22d, tm22d, "rewind: resumed -- practice from here" in t22d, "it carries speed" in t22d))
+        print("CANNOT GRADE R22D: row %s velocity %s, hopped %s, states %s, idle load raised %s" % (
+            sl22d.group(1) if sl22d else None, v22d, hp22d, tm22d,
+            "rewind: resumed -- practice from here" in t22d))
         cannot.append("R22D")
     else:
-        check("R22D", hp22d[2] == "1", "chain hopped %s, after !r %s, after both loads and rest %s" % (
-            hp22d[0], hp22d[1], hp22d[2]))
+        check("R22D", "it carries speed" in t22d and hp22d[2] == "1" and ok22d[-1:] == ["0"]
+              and bool(gr22d) and gr22d[-1] > 0,
+              "row %s at %.0f u/s raised %s; chain hopped %s, after !r %s, after rest %s "
+              "(start ok %s, ground %s)" % (
+                  sl22d.group(1), math.hypot(v22d[0], v22d[1]), "it carries speed" in t22d,
+                  hp22d[0], hp22d[1], hp22d[2], ok22d[-1:], gr22d[-1:]))
+
+    # R22E (round 23): R22D's control -- only the idle load, then the same rest:
+    # forgiven, in the server's words.  Premise: the load raised.
+    hp22e = [m.group(1) for m in (re.search(r"\bhopped (\d) rearmhop", s) for s in sec["R22E"]) if m]
+    t22e = txt("R22E")
+    check("R22E", "rewind: resumed -- practice from here" in t22e and hp22e[-1:] == ["0"]
+          and "the hopped start died with that run" in t22e,
+          "the load raised %s, after rest hopped %s, forgiven %s" % (
+              "rewind: resumed -- practice from here" in t22e, hp22e[-1:],
+              "the hopped start died with that run" in t22e))
+
+    # R23A (round 23): with a draft open a `+` bind's release passes (took 0) and
+    # a plain bind's is taken (took 1).  Premise: the draft was open -- its ESC.
+    k23a = dict((m.group(1), m.group(2)) for m in (
+        re.search(r"vote key: scan (107 down 0|106 down 0|27 down 1) took (\d)", s) for s in sec["R23A"]) if m)
+    check("R23A", k23a.get("27 down 1") == "1" and k23a.get("107 down 0") == "0"
+          and k23a.get("106 down 0") == "1",
+          "ESC took %s; `+` release took %s, plain release took %s" % (
+              k23a.get("27 down 1"), k23a.get("107 down 0"), k23a.get("106 down 0")))
+
+    # R23B (round 23): rec_savelock 0 lets go only of a key's hold.  Premise: the
+    # `+sl_hold` held (holding 1, the server's hold 1).  Verdict: still holding
+    # after another key's press and release, and `-sl_hold` lets go.
+    hd23b = [(m.group(1), m.group(2)) for m in (re.search(r"saveloc: locked \S+ refkey \S+ hold (\S+) holding (\S+)", s)
+                                               for s in sec["R23B"]) if m]
+    if not (len(hd23b) == 3 and hd23b[0] == ("1", "1")):
+        print("CANNOT GRADE R23B: saveloc reads %s" % hd23b)
+        cannot.append("R23B")
+    else:
+        check("R23B", hd23b[1] == ("1", "1") and hd23b[2][1] == "0",
+              "held %s, after another key %s, after -sl_hold %s" % tuple(hd23b))
+
+    # R23C (round 23): sl_save under the replay pin is refused and makes nothing.
+    t23c = txt("R23C")
+    check("R23C", "save: close the replay or rewind first" in t23c
+          and not re.search(r"\bsave \d+ \(slot", t23c),
+          "refused %s, a save made %s" % ("save: close the replay or rewind first" in t23c,
+                                          bool(re.search(r"\bsave \d+ \(slot", t23c))))
 
     # R18F: a rewind pin asked from a non-running state on a running run is
     # refused, and the run stays clean.  Premise: the run was on the clock.
@@ -714,9 +769,9 @@ def main():
     check("Q", bad == 0 and frames == 0, "Unknown command %d, QC frames %d" % (bad, frames))
     print("%d check(s) failed" % len(fails))
     if cannot:
-        print("CANNOT GRADE %s -- exit 2" % ", ".join(cannot))
-        return 2
-    return 1 if fails else 0
+        print("CANNOT GRADE %s" % ", ".join(cannot))
+    # Round 23: a FAIL is the verdict even beside a check that could not grade.
+    return 1 if fails else (2 if cannot else 0)
 
 
 if __name__ == "__main__":

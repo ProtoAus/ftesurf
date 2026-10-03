@@ -97,9 +97,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   show Verified. `setpos` should write a `warp`, or end the recording.
 - **A chat bind other than ENTER's `say` opens a draft in the rewind's
   countdown** (`messagemode`, `messagemode2`, `chat_open`, `chat_say` on any
-  key; Patch 477 round-19 review): Chat_InputEvent runs ahead of the rewind, and
-  the draft swallows the releases of the keys held for the release, as it does
-  in normal play. Round 18 kept ENTER's default `say` out of it.
+  key; Patch 477 round-19 review): Chat_InputEvent runs ahead of the rewind.
+  Since round 23 the draft passes a `+` bind's release, so the keys held for
+  the release no longer stick; the draft itself still opens over the count.
 - **A press the engine console took acts on its first auto-repeat in the
   rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
   offered that press, so Rewind_Track (round 17) cannot mark it down; every press
@@ -464,28 +464,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   asks, which is what the PLACEMENT should do with a speed the gate has decided not to
   launder. sv_timer.qc SV_TimerTryArm / SV_TimerArm, sv_saveloc.qc SV_SaveLocLoad,
   SL_RowSpeed, SL_RowGrounded. Patch 435, part-closed by 442 and 443.
-- **`sl_save` IS NOT REFUSED UNDER THE REPLAY PIN, so an at-rest row can be
-  manufactured anywhere in mid-air.** `SV_SaveLocCreate` refuses a save under
-  `run_pmhold` (spectate, sv_saveloc.qc:2354) and under `rec_sl_hold` (the save-lock
-  hold, :2362, Patch 428 round 6) and NOT under `rec_wt_hold` -- and the replay pin is
-  the same freeze: `SV_WatchHold` sets MOVETYPE_NONE and zeroes velocity (:3051-3055),
-  which that function's own table states beside the save-lock hold's identical line.
-  `rec_watch` is a plain client stringcmd with no check that a replay is even open
-  (sv_player.qc:945). So `cmd rec_watch 1; cmd sl_save; cmd rec_watch 0` on ONE bind,
-  pressed while airborne, writes `velocity 0.0000 0.0000 0.0000` beside a mid-air
-  origin: Patch 435's speed gate reads that row as at rest.
-  WHAT IT IS ACTUALLY WORTH, checked after the review ranked it first, because the
-  review read round 1 of Patch 443 and the answer changed under it: the airborne half
-  is now refused by SL_RowGrounded, so the row buys a clean arm only where the placed
-  body is also STANDING on something inside a start slab -- which is a position the
-  player could have walked to. What is left is not free height, it is a row that LIES:
-  `state.txt` asserts velocity 0 for a body that was moving, so the row's own evidence
-  is false, `sl_list` prints it as `0 u/s standing`, and Patch 435's gate is being
-  answered by the pin rather than by the save. Still worth the one line -- the same
-  refusal `rec_sl_hold` already has, and `SV_GhostSet` needs nothing (:3085 says why) --
-  and worth an arm, because "the gate that stops it is a DIFFERENT patch's" is the kind
-  of load-bearing accident this file exists to write down. Patch 443 review, cheater
-  lens, with the worth re-derived here.
 - **`SV_TimerFrame`'s no-zone-tests guard misses the replay pin too.** It guards
   `e.rec_sl_hold` (sv_timer.qc:12370) and `e.rec_gh_on` (:12377) and not
   `rec_wt_hold`, so the occupancy scan can produce an ARM EDGE on a body frozen by
