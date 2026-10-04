@@ -859,6 +859,8 @@ void() Mlb_TestCommand =
 	}
 	if (a == "retry")
 	{
+		if (!mlb_open)
+			print("^5board:^7 not open\n");
 		Mlb_Retry();
 		return;
 	}

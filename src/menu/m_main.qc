@@ -5831,19 +5831,29 @@ void(string what, string arg) ui_strip_test =
 
 // ROADMAP 9: the picked map's leaderboard, right of the field that names it --
 // not in the footer, where it cost the status strip its Cancel below ~650 px.
-// Dim and deaf with no map picked.
+// Dim and deaf with no map picked.  ui_button's look, but off the keyboard
+// path: `d` or an arrow typed into the field moves sui's cursor (BACKLOG), and
+// it would land here for Enter to open the panel.
 void(vector pos, vector sz, string sel) ui_board_button =
 {
-	if (sel != "")
+	local float hot;
+
+	if (sel == "")
 	{
-		if (ui_button("cs_board", pos, sz, "leaderboard"))
-			Mlb_Open(sel, -1);
+		sui_fill(pos, sz, COL_ROW, 0.5, 0);
+		sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+		sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
+		         "leaderboard", COL_DIM, 0.5, 0);
 		return;
 	}
-	sui_fill(pos, sz, COL_ROW, 0.5, 0);
-	sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+	sui_action_element(pos, sz, "cs_board", sui_noop, TRUE);
+	hot = sui_is_hovered("cs_board");
+	sui_fill(pos, sz, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
+	sui_border_box(pos, sz, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
 	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
-	         COL_DIM, 0.5, 0);
+	         hot ? COL_ACCENT : COL_TEXT, 1, 0);
+	if (sui_is_released("cs_board"))
+		Mlb_Open(sel, -1);
 };
 
 void(vector screensize) screen_create =
