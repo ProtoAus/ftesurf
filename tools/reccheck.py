@@ -2317,6 +2317,22 @@ def check_rec(path, verbose=False):
                                 else "unknown"
 
     # ---- the v3 mask, against the movement it came from --------------------
+    #
+    # WHAT THIS IS NOT, and the reading it invites.  It looks like a
+    # cross-check of two independent facts -- the buttons the client pressed
+    # against the movement it asked for -- and it is not.  The server reads BOTH
+    # out of the one received usercmd, in the same call: engine SV_RunCmd does
+    # SV_SetEntityButtons(sv_player, ucmd->buttons) beside
+    # sv_player->xv->movement[0..2] = ucmd->forwardmove/sidemove/upmove, and
+    # sv_timer.qc's own comment over the writer says so in terms ("They cannot
+    # disagree: both come from the same .movement in the same call").
+    #
+    # So a client that reports movement with NO matching button -- the shape a
+    # strafe optimiser that writes sidemove and leaves buttons alone produces --
+    # passes this, correctly, because the file is internally consistent and
+    # nothing in it can say otherwise.  What this catches is a corrupted or
+    # hand-edited FILE.  The independent ground truth for buttons is the .hid's
+    # +/- scancode events, and the tool that joins them is hidcheck.
     if ver >= 3:
         # 0:t 1..3:org 4..6:vel 7:pit 8:yaw 9:fl 10:keys 11:fwd 12:side 13:up
         for t, v in samples:

@@ -1784,6 +1784,126 @@ def check_identity(r, head, views):
     def yaw_eps(a, b):
         return max(2e-6, max(abs(a), abs(b)) * (2.0 ** -22))
 
+    # ------------------------------------------------------------------
+    # THE PITCH IDENTITY -- the twin of the one below, and it was never checked.
+    # ------------------------------------------------------------------
+    # The engine applies the two axes in the same function with OPPOSITE SIGNS
+    # (in_generic.c IN_MoveMouse):
+    #
+    #     viewanglechange[YAW]   -= m_yaw.value   * mouse_x;
+    #     viewanglechange[PITCH] += m_pitch.value * mouse_y;
+    #
+    # and Patch 305 put the keyboard term for BOTH in the record (kpitch, kyaw),
+    # with the engine's own reason recorded beside it:
+    #
+    #     BOTH AXES, though only yaw is broken today.  cl_pitchspeed defaults 0
+    #     here, so the pitch term is always 0 on this configuration -- but it is
+    #     a cvar, and a reader must not have to know its value to trust the pitch
+    #     column.
+    #
+    # Two bytes a frame were paid for that column and nothing ever read them: a
+    # rewrite that moves pitch alone produced no ghost and no violation, because
+    # both rules were yaw-shaped.  m_pitch is 0.022 in the shipped default.cfg,
+    # i.e. NOT the zero the engine comment assumed, so on this game the axis is
+    # live and a pitch-only rewrite really does move the view.
+    #
+    # WHY IT FAULTS ON ITS OWN RATHER THAN ONLY WHERE YAW IS CLEAN.  If the two
+    # were reported as one verdict, a rewrite that broke BOTH axes would read as
+    # a single yaw fault and the pitch half of the evidence would be invisible.
+    # Independent reporting keeps the pair visible, and the overlap is printed so
+    # a reader can tell the two causes apart: BOTH axes breaking on one frame is
+    # a whole-angle event (a server angle set, or a rewrite of viewangles
+    # themselves), while PITCH ALONE is the narrow case this check exists for and
+    # cannot be a server angle set.
+    #
+    # MEASURED BEFORE THIS WAS WRITTEN, over all 113 journals in the tree
+    # (107 with a usable header, 210,678 governed frames): 18 frames fail the
+    # pitch identity, and ALL 18 also fail yaw -- pitch-only 0.  So this check
+    # adds no new accusation on any honest file we own; it adds coverage.  The 18
+    # are large instantaneous jumps with no input behind them (dpitch -41.8,
+    # -28.1, -49.0 against predictions of ~0.02 deg), i.e. the server angle sets
+    # the yaw rule has faulted on since Patch 293.
+    #
+    # WHY FRAMES ARE SKIPPED INSTEAD OF THE CLAMP BEING MODELLED.  Pitch is
+    # clamped and yaw is not (cl_input.c: `if (vang[PITCH] > cl.maxpitch)
+    # vang[PITCH] = cl.maxpitch`), so at a boundary the recorded dpitch is
+    # whatever the clamp left, and the bound is a SERVERINFO value this file does
+    # not carry: cl_main.c reads minpitch/maxpitch out of cl.serverinfo, the
+    # engine default is -70/+80, and cfg/default.cfg sets -89/+89.  Guessing
+    # wrong is not a small error.  With -70/+80 assumed against files recorded at
+    # +-89 the same sweep produced 910 pitch failures of which 892 were
+    # PITCH-ONLY -- 892 false accusations on one honest PB -- against 18 with the
+    # right bound.  So a frame whose unclamped prediction would leave the widest
+    # envelope either bound can take is NOT GOVERNED and is counted, never
+    # faulted: an unattributable frame is skipped rather than explained.
+    def pitch_eps(a, b):
+        return max(2e-6, max(abs(a), abs(b)) * (2.0 ** -22))
+
+    PITCH_ENV = 89.0
+    kpitch = None
+    if "m_pitch" in head:
+        try:
+            kpitch = float(head["m_pitch"]) * sens * scale
+        except ValueError:
+            kpitch = None
+
+    # VF_STRAFE_Y is not in the `applicable` mask above, and it must not be:
+    # those frames still govern yaw.  It means "counts went to forwardmove, not
+    # pitch" (IN_MoveMouse's strafe_y branch), so it is a pitch-only exclusion.
+    # Measured 0 such frames across the corpus -- nothing here is being rescued by
+    # it today -- but a player with +strafe bound would be accused without it.
+    gov_pitch = [v for v in applicable
+                 if not (v[3] & VF_STRAFE_Y) and v[6] is not None]
+    r.info["identity_pitch_frames"] = max(0, len(gov_pitch) - 1)
+    # Two exclusions, counted rather than silent: the strafe_y frames the mask
+    # above does not exclude, and the frames whose unclamped prediction would
+    # leave the clamp envelope (see PITCH_ENV).  A third thing is not counted
+    # here because it is not an exclusion -- pre-305 files have no kpitch column
+    # at all and simply produce an empty gov_pitch.
+    clamp_skipped = 0
+    if kpitch is not None:
+        for idx in range(1, len(gov_pitch)):
+            c = gov_pitch[idx]
+            if abs(kpitch * c[2] + c[6]) > PITCH_ENV:
+                clamp_skipped += 1
+    r.info["identity_pitch_not_governed"] = (
+        (len(applicable) - len(gov_pitch)) + clamp_skipped)
+
+    pviolations = []
+    pghost = []         # pitch moved with nothing recorded behind it
+    if kpitch is None:
+        r.note("no usable m_pitch in the header -- the PITCH identity is not "
+               "checkable from this file. Only yaw was checked.")
+    elif kpitch == 0:
+        r.note("m_pitch*sensitivity is zero -- no pitch can be produced from "
+               "counts, so the pitch identity is vacuous and was not checked")
+    elif len(gov_pitch) < 2:
+        # A pre-305 file lands here: it has no kpitch column, and ABSENT IS NOT
+        # ZERO, so a pitch residual there is unattributable exactly as a yaw one
+        # is.  No note of its own -- the pre-305 yaw note below already says the
+        # file cannot settle this.
+        pass
+    else:
+        for idx in range(1, len(gov_pitch)):
+            p, c = gov_pitch[idx - 1], gov_pitch[idx]
+            pred = kpitch * c[2] + c[6]
+            if abs(pred) > PITCH_ENV:
+                continue        # the clamp may have truncated it: not governed
+            dpitch = c[4] - p[4]
+            if dpitch > 180.0:
+                dpitch -= 360.0
+            elif dpitch < -180.0:
+                dpitch += 360.0
+            err = abs(dpitch - pred)
+            if err > pitch_eps(p[4], c[4]) + abs(pred) * 1e-6:
+                if c[2] == 0 and c[6] == 0.0:
+                    pghost.append((c[0], dpitch))
+                else:
+                    pviolations.append((c[0], c[2], dpitch, pred, err))
+
+        # Reporting is below the yaw loop: it names the overlap with `violations`,
+        # which does not exist until that loop has run.
+
     # Pre-305 files carry no keyboard term, and ABSENT IS NOT ZERO. Treating a
     # missing column as 0 would re-create the very false positive Patch 305 was
     # written to remove, so those files get a note instead of a fault.
@@ -1809,6 +1929,51 @@ def check_identity(r, head, views):
 
     r.info["identity_frames"] = len(applicable) - 1
     r.info["identity_violations"] = len(violations)
+
+    # The pitch verdict, now that `violations` exists to overlap against.
+    r.info["identity_pitch_violations"] = len(pviolations)
+    if pviolations or pghost:
+        have_kbd_p = all(v[6] is not None for v in gov_pitch)
+        both = len(set(v[0] for v in pviolations)
+                   & set(v[0] for v in violations))
+        if pviolations and not have_kbd_p:
+            r.note("pitch identity unresolved on %d frame(s), and this file "
+                   "CANNOT SETTLE IT: it is pre-305, so the non-mouse pitch "
+                   "change (+lookup/+lookdown, cl_pitchspeed) was never "
+                   "recorded." % len(pviolations))
+        elif pviolations:
+            worst = max(pviolations, key=lambda v: v[4])
+            r.fault("PITCH IDENTITY BROKEN on %d of %d governed frames. The "
+                    "pitch did not come from the counts OR the recorded keyboard "
+                    "term. Worst: line %d, %g counts should give %.6f deg, file "
+                    "says %.6f (off by %.6f).%s"
+                    % (len(pviolations), len(gov_pitch) - 1,
+                       worst[0], worst[1], worst[3], worst[2], worst[4],
+                       ("" if not both else
+                        " %d of these also break the yaw identity, which points "
+                        "at a whole-angle event rather than a pitch-only "
+                        "injection." % both)))
+        elif pghost:
+            # A note and not a fault, matching yaw: a server angle set and an
+            # injected turn look identical from inside this file.
+            r.note("%d frame(s) where the PITCH moved with zero mouse counts AND "
+                   "zero recorded keyboard term (first at line %d). The engine "
+                   "recorded no cause for that motion. A server angle set looks "
+                   "like this and so does an injected turn -- corroborate against "
+                   "the .rec before concluding either." % (len(pghost), pghost[0][0]))
+    elif kpitch not in (None, 0) and len(gov_pitch) >= 2:
+        r.info["identity_pitch"] = ("exact on all %d governed frames "
+                                    "(mouse + recorded keyboard term)"
+                                    % (len(gov_pitch) - 1))
+
+    # Both ghost counts PUBLISHED, not only noted.  A ghost is the shape every
+    # CreateMove-level rewrite makes -- the angle moved with zero device counts
+    # and zero recorded keyboard turn -- and until this the only place its count
+    # existed was inside a note's prose, so no caller could compare it against
+    # anything or aggregate it across a corpus.  A finding that only a human can
+    # read is a finding no gate can use.
+    r.info["identity_ghosts"] = len(ghost)
+    r.info["identity_pitch_ghosts"] = len(pghost)
 
     if ghost and not have_kbd:
         # On a pre-305 file a "ghost" is almost certainly just keyboard turn.

@@ -71,6 +71,15 @@ class Receipt(object):
         # that gets reworded.
         self.angles = ""
         self.angles_detail = ""
+        # The journal's CONTENT verdict, and the same rule about wording: a
+        # caller must not have to match on prose.  "" = not checked, ABSENT =
+        # no journal beside this receipt, OK, or FAULT.  This is NOT the digest
+        # check -- join_uploaded already hashes <runid>.hid against what the
+        # signature committed to.  It is what hidcheck says about the file's own
+        # contents: whether the angles in it could have come from the device
+        # counts it recorded.
+        self.journal = ""
+        self.journal_detail = ""
 
     def fault(self, m):
         self.faults.append(m)
@@ -410,6 +419,73 @@ def join_angles(r, want):
                "that held one frame -- %s" % solo)
     else:
         r.note("the sidecar's angles are the recording's angles -- %s" % off)
+
+
+def join_journal(r):
+    """Run hidcheck over the sibling .hid and hold its verdict.
+
+    WHY THIS IS SEPARATE FROM join_uploaded, WHICH ALREADY LOOKS AT THIS FILE.
+    join_uploaded hashes <runid>.hid against the digest the signature commits
+    to, which answers "is this the journal the client signed".  It cannot answer
+    "could this journal have been produced by a real device", and that is a
+    different question with a different failure: a journal that was written by a
+    tool rather than by a mouse hashes perfectly.
+
+    hidcheck is the only tool in the tree that asks it -- the angle identity
+    (Patch 293/305, both axes since the pitch check), the raw-injection counters
+    (Patch 306/311), the counts join (Patch 312) and the device-provenance table
+    (Patch 303) -- and until this existed it had NO CALLER OUTSIDE tools/ and
+    cfg/test/.  The journal was hash-bound by the receipt and content-checked by
+    nobody.
+
+    A FAULT HERE DOES NOT MOVE THE RECEIPT'S VERDICT, deliberately.  The
+    signature is over the digests and it did verify; what is broken is the file's
+    contents, which is a finding about the RUN and belongs in its own column
+    where a reviewer can weigh it.  Folding it into `verdict` would make a
+    journal-content fault indistinguishable from a signature that did not verify,
+    and would move a badge on the strength of a check whose false-positive rate
+    on journals nobody has collected yet (run_evidence_ul is 1 on the fleet, so
+    the fleet holds ZERO .hid files) has not been measured in the field.
+    """
+    base = os.path.splitext(r.path)[0]
+    path = base + ".hid"
+    if not os.path.exists(path):
+        # Not a fault and not nothing: `run_evidence_ul 1` takes the .view only,
+        # so an absent journal is the normal case on a lobby today.  ABSENT is
+        # the word that says the content question was never asked -- and it gets
+        # a reason too, because "" in the reason column is what an unmigrated row
+        # carries, and a reader must be able to tell "this sweep asked and there
+        # is no journal here" from "no sweep ever asked".
+        r.journal = "ABSENT"
+        r.journal_detail = "no journal beside this receipt"
+        return
+    try:
+        # Lazy and wrapped exactly as join_angles does it: hidcheck lives beside
+        # this file, and the sweep puts this directory on sys.path before it
+        # imports rcptcheck at all.  A host that has rcptcheck but not hidcheck
+        # still reports everything else the receipt knows.
+        import hidcheck
+        h = hidcheck.check_hid(path)
+    except Exception as exc:
+        # A journal too broken to parse is a finding about the file, but this
+        # function must not take the receipt step down with it -- the sweep's own
+        # rule, and the reason its imports are inside functions at all.
+        r.journal = ""
+        r.note("the journal content check did not run (%r)" % exc)
+        return
+    r.journal_detail = (h.info.get("identity") or "")
+    pitch = h.info.get("identity_pitch")
+    if pitch:
+        r.journal_detail = "%s; pitch %s" % (r.journal_detail, pitch)
+    if h.faults:
+        r.journal = "FAULT"
+        r.journal_detail = "%s | %s" % (h.faults[0][:300], r.journal_detail)
+        r.note("the journal beside this receipt does not hold up: %s"
+               % h.faults[0][:300])
+    else:
+        r.journal = "OK"
+        r.note("the journal beside this receipt holds up -- %s"
+               % (r.journal_detail or "no identity to check"))
 
 
 def check_file(r, key, path, sibling=False):

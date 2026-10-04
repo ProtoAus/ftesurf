@@ -356,11 +356,25 @@ def receipt_for(conn, rid, runid):
         " AND name IN ('receipts', 'pubkeys')")}
     if "receipts" not in have:
         return None
+    # The journal columns are added by an idempotent ALTER in receipts_v8, not by
+    # a schema bump, so a database read before any migrate() ran will not have
+    # them.  Selecting a column that is not there raises, and an admin page that
+    # 500s is worse than one that says the journal was not checked -- the same
+    # reasoning key_tables' column probe uses for `decision`.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(receipts)")}
+    extra = (", journal, journal_reason"
+             if "journal" in cols and "journal_reason" in cols else "")
     rc = conn.execute("SELECT runid, map, pub, verdict, angles, reason, at"
-                      " FROM receipts WHERE runid = ?", (runid,)).fetchone()
+                      + extra + " FROM receipts WHERE runid = ?",
+                      (runid,)).fetchone()
     if rc is None:
         return None
     out = dict(rc)
+    # An unmigrated row is "this sweep never asked", which is NOT the same fact
+    # as ABSENT ("it asked, and there is no journal beside this receipt").
+    if "journal" not in out:
+        out["journal"] = ""
+        out["journal_reason"] = ""
     out["players"], out["keys"] = [], []
     keys = key_tables(conn)
     if "pubkeys" in have and rc["pub"]:

@@ -583,6 +583,34 @@ def review_section(pw_hash, pw):
     body = page.get_data(as_text=True)
     check("the run page renders", page.status_code, 200)
     check("...and carries the receipt card", 'id="rcptcard"' in body, True)
+    # THE JOURNAL REACHES THE PAGE.  That INSERT above names no journal column,
+    # which is the compatibility case and not an oversight: the columns are added
+    # by an idempotent ALTER rather than a schema bump, so a database read before
+    # any migrate() ran will not have them, and receipt_for must answer rather
+    # than raise.  "" means "no sweep ever asked" and has to read differently
+    # from ABSENT, which means "it asked, and there is no journal here".
+    check("...and a row with no journal column says NOT CHECKED, not absent",
+          (d["journal"], d["journal_reason"]), ("", ""))
+    check("...and the page offers both wordings", 'not checked by this sweep' in body, True)
+    conn = m.connect()
+    try:
+        with conn:
+            # The columns come from the idempotent ALTER in receipts_v8, not from
+            # RECEIPTS_SQL, so the positive arm has to run the same repair
+            # production runs on every import -- and the arm above, which read a
+            # table that never had them, is the compatibility case.
+            m.receipts_v8(conn)
+            conn.execute("UPDATE receipts SET journal = 'FAULT', journal_reason ="
+                         " 'PITCH IDENTITY BROKEN on 1 of 39 governed frames'"
+                         " WHERE runid = ?", (runid,))
+    finally:
+        conn.close()
+    d2 = detail(rid_r)["receipt"]
+    check("a journal verdict reaches the page beside the signature verdict",
+          (d2["journal"], "PITCH IDENTITY" in d2["journal_reason"]), ("FAULT", True))
+    check("...and the signature verdict did NOT move -- a journal-content fault"
+          " is a finding about the run, not a receipt that failed to verify",
+          d2["verdict"], "VALID")
     # AND ITS SCRIPT PARSES.  f19d477 redeclared `const dl` in renderRun; the
     # check above passed while the browser discarded the page's whole script.
     for name in ("admin.html", "admin_runs.html", "admin_run.html"):

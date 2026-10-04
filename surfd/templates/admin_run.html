@@ -284,6 +284,7 @@ function renderRun(j) {
 
   const RCPT_CLS = {VALID: "up", FAULT: "down"};
   const ANG_CLS = {OK: "up", BLIND: "warn", FAULT: "down"};
+  const JRN_CLS = {OK: "up", FAULT: "down", ABSENT: "muted"};
   const card = document.getElementById("rcptcard");
   const rdl = document.getElementById("rcpt");
   rdl.replaceChildren();
@@ -296,6 +297,16 @@ function renderRun(j) {
     // "checked and could not have disagreed" -- see reccheck's BLIND.
     put("angles", c.angles ? pill(c.angles, ANG_CLS[c.angles])
                            : el("span", "muted", "no recording to check against"));
+    // "NOT CHECKED" AND "NO JOURNAL HERE" ARE DIFFERENT FACTS, and the wording
+    // has to say which: ABSENT is the normal case on a lobby today, because
+    // run_evidence_ul 1 uploads the .view only, so a reader who saw one grey pill
+    // for both would learn nothing about whether the fleet is collecting journals
+    // at all.  A FAULT here does NOT escalate the summary below -- the signature
+    // still verified, and this is a finding about the run's contents, not about
+    // the receipt.
+    put("journal", c.journal ? pill(c.journal, JRN_CLS[c.journal] || "warn")
+                             : el("span", "muted", "not checked by this sweep"));
+    if (c.journal_reason) put("journal says", el("span", "reason", c.journal_reason));
     const key = el("span", "mono", String(c.pub).slice(0, 16) + "\u2026");
     key.title = c.pub;
     put("key", key);

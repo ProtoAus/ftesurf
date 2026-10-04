@@ -64,13 +64,20 @@ TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
-                 view=b"FTESURF-VIEW 2\n", tamper=False, age=None):
+                 view=b"FTESURF-VIEW 2\n", tamper=False, age=None, hid=None):
     """A GENUINELY SIGNED receipt, with the sidecar it commits to.
 
     Signed here rather than copied from data/, because a fixture copied off this
     disk stops being a test of the format the moment the writer changes and
     nobody re-copies it -- and because a suite that cannot MAKE a valid
     signature cannot make an invalid one either, which is the arm that matters.
+
+    `hid` writes a journal beside the receipt AND SIGNS ITS DIGEST, which is not
+    optional: join_uploaded faults a .hid that is on disk under a receipt that
+    commits to none ("a file arrived that this signature does not cover"), so an
+    arm that wants to test the journal's CONTENT has to make the receipt honest
+    about the journal's existence first.  Omitting `hid` keeps the grammar every
+    earlier arm was written against, "- 0 0".
     """
     import hashlib
     if TOOLS not in sys.path:
@@ -82,10 +89,17 @@ def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
     vp = os.path.join(d, runid + ".view")
     with open(vp, "wb") as fh:
         fh.write(view)
+    hp = os.path.join(d, runid + ".hid")
+    if hid is not None:
+        with open(hp, "wb") as fh:
+            fh.write(hid)
+        hidline = "%s %d 1" % (hashlib.sha256(hid).hexdigest(), len(hid))
+    else:
+        hidline = "- 0 0"
     signed = [("server", "127.0.0.1:27696"),
               ("nonce", "d6c6820bca16750c77166d96dcf02787"),
               ("ticks", "-1"),
-              ("hid", "- 0 0"),
+              ("hid", hidline),
               ("view", hashlib.sha256(view).hexdigest())]
     first = "FTESURF-RCPT 1"
     msg = (first + "\n" + "".join("%s %s\n" % kv for kv in signed)).encode("utf-8")
@@ -106,6 +120,8 @@ def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
     if age is not None:
         os.utime(rp, (age, age))
         os.utime(vp, (age, age))
+        if hid is not None:
+            os.utime(hp, (age, age))
     return rp, pub.hex()
 
 
@@ -463,6 +479,124 @@ def case_receipt_angles_reach_the_database():
               (got[0], got[2]), ("VALID", "BLIND"))
     finally:
         rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
+
+
+def _journal_text(break_pitch=False):
+    """A journal hidcheck accepts, made with test_hidcheck's own writer.
+
+    MADE, NOT COPIED, for the reason make_receipt gives: a fixture copied off
+    this disk stops testing the format the moment the writer changes and nobody
+    re-copies it.  The writer is imported rather than reimplemented so this arm
+    cannot drift from the grammar the engine actually emits.
+    """
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    from test_hidcheck import Journal
+    j = Journal()
+    pitch, yaw = 10.0, 90.0
+    for i in range(40):
+        dx, dy = (i % 5) - 2, (i % 3) - 1
+        j.frame(3000 + i)
+        if dx or dy:
+            j.mouse(dx, dy)
+        pitch += j.kp * dy
+        yaw += j.k * dx
+        j.view(dx, dy, pitch, yaw)
+    text = j.end()
+    if break_pitch:
+        # PITCH ONLY, which is the whole subject: yaw stays exactly on its own
+        # identity, so a sweep that checked only yaw would store VALID and this
+        # file would look clean.  12 deg is far outside the float32 tolerance.
+        #
+        # TWO WAYS THIS FIXTURE SILENTLY MEASURED NOTHING, and both are the trap
+        # this tree keeps writing down:
+        #
+        # 1. THE FRAME MUST HAVE COUNTS.  A pitch that moves with zero mouse
+        #    counts and zero keyboard term is a GHOST, not a violation, because
+        #    from inside this file it is indistinguishable from a server angle
+        #    set.  Taking "the first v line with dy 0" produced a note, the
+        #    receipt stayed VALID, and the arm reported the opposite of what it
+        #    claimed.
+        # 2. THE FRAME MUST NOT BE THE FIRST ONE.  check_identity walks
+        #    `applicable` from index 1, so applicable[0] is a reference and is
+        #    never itself judged.  Editing the first 'v' line moved a frame the
+        #    loop never compares, and the fault it produced landed on the SECOND
+        #    frame as a ghost -- one frame away from the edit, which is why the
+        #    note read as though the fixture had worked.
+        #
+        # So: a frame with BOTH counts nonzero, taken from the middle of the
+        # file, where the frame before it and after it are both judged.
+        lines = text.split("\n")
+        seen = 0
+        for idx, ln in enumerate(lines):
+            f = ln.split()
+            if f and f[0] == "v" and len(f) == 9:
+                seen += 1
+                if seen > 2 and float(f[2]) != 0.0 and float(f[3]) != 0.0:
+                    f[5] = "%.6f" % (float(f[5]) + 12.0)
+                    lines[idx] = " ".join(f)
+                    break
+        text = "\n".join(lines)
+    return text
+
+
+def case_receipt_journal_reaches_the_database():
+    """THE JOURNAL'S CONTENTS REACH THE DATABASE, which is Finding A of the
+    Cheats/ triage: hidcheck.py had no caller outside tools/ and cfg/test/, so
+    every input check the tree built -- the angle identity on both axes, the
+    injection counters, the counts join, the device table -- ran only when an
+    operator typed a path.  join_hid checks the DIGEST the signature commits to;
+    this is the file's contents, a different question with a different failure.
+    """
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+
+    def jrn(runid):
+        return conn.execute("SELECT journal, journal_reason FROM receipts"
+                            " WHERE runid = ?", (runid,)).fetchone()
+
+    # --- ABSENT: no journal beside the receipt, and make_receipt signs no
+    # journal digest ("hid - 0 0"), so this is the normal case on a lobby
+    # today -- run_evidence_ul 1 uploads the .view only.
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000081-0", age=old)
+    n, bad = sweep.receipt_step(conn)
+    check("no journal beside it: read, and the receipt is still valid", (n, bad), (1, 0))
+    check("...and the journal column says ABSENT, not OK and not empty",
+          jrn("20260921-000081-0")[0], "ABSENT")
+    check("ABSENT IS NOT THE SAME FACT AS \"NOT CHECKED\": the sweep asked and "
+          "there is no journal here, so it says so rather than leaving the "
+          "column empty", "no journal" in jrn("20260921-000081-0")[1], True)
+
+    # --- FAULT: a journal that does not hold up, beside a receipt whose
+    # signature is perfectly good.  make_receipt signs the journal's digest, so
+    # join_uploaded is satisfied and the ONLY thing wrong with this run is the
+    # content of the journal -- which is exactly the finding this column exists
+    # to carry, and the one no other join can see.
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000082-0", age=old,
+                 hid=_journal_text(break_pitch=True).encode("utf-8"))
+    n, bad = sweep.receipt_step(conn)
+    check("a broken journal: the receipt step reads it", n, 1)
+    check("...and the SIGNATURE VERDICT DOES NOT MOVE -- this is a finding "
+          "about the run's contents, not about the receipt (see "
+          "rcptcheck.join_journal)", bad, 0)
+    got = jrn("20260921-000082-0")
+    check("...and the journal column says FAULT", got[0], "FAULT")
+    check("...naming the pitch identity, i.e. the axis nothing checked before",
+          "PITCH IDENTITY BROKEN" in got[1], True)
+    check("...and the receipt is still VALID in its own column",
+          receipts(conn)["20260921-000082-0"][0], "VALID")
+
+    # --- CONTROL: the same journal unbroken must come back OK.  Without
+    # this, a FAULT above could be the fixture failing to parse at all.
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000083-0", age=old,
+                 hid=_journal_text().encode("utf-8"))
+    n, bad = sweep.receipt_step(conn)
+    check("CONTROL: an honest journal is read with no fault", (n, bad), (1, 0))
+    got = jrn("20260921-000083-0")
+    check("...and the journal column says OK", got[0], "OK")
+    check("...carrying the identity it measured", "exact" in got[1], True)
 
 
 def case_receipt_step_never_takes_the_sweep_down():
@@ -976,6 +1110,7 @@ def main():
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_reread,
                  case_receipt_angles_reach_the_database,
+                 case_receipt_journal_reaches_the_database,
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_disk_note):
         print("%s:" % case.__name__)

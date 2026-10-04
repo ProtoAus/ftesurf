@@ -930,7 +930,20 @@ def receipts_v8(conn):
                          ("decided_at", "decided_at INTEGER NOT NULL DEFAULT 0"))),
             ("receipts", (("sig", "sig INTEGER NOT NULL DEFAULT 0"),
                           ("signed_at", "signed_at INTEGER NOT NULL DEFAULT 0"),
-                          ("stale", "stale INTEGER NOT NULL DEFAULT 0")))):
+                          ("stale", "stale INTEGER NOT NULL DEFAULT 0"),
+                          # The journal's CONTENT verdict ("" not checked,
+                          # ABSENT, OK, FAULT) and the measurement behind it.
+                          # NOT a schema bump: this is one more idempotent ALTER
+                          # in a function that already runs on every migrate(),
+                          # and bumping SCHEMA_VERSION breaks every suite that
+                          # pins the literal (6->7 broke test_join and
+                          # test_replays, which know nothing about receipts).
+                          # Stored, not folded into `verdict` -- see
+                          # rcptcheck.join_journal for why a journal-content
+                          # fault must not read as a signature that failed.
+                          ("journal", "journal TEXT NOT NULL DEFAULT ''"),
+                          ("journal_reason",
+                           "journal_reason TEXT NOT NULL DEFAULT ''")))):
         cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
         for col, ddl in adds:
             if col not in cols:

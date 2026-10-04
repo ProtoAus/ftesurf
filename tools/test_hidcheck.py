@@ -117,6 +117,17 @@ class Journal:
         """degrees of yaw per count, signed as the engine applies it"""
         return -self.myaw * self.sens * self.scale
 
+    @property
+    def kp(self):
+        """degrees of PITCH per count, signed as the engine applies it.
+
+        The sign is the opposite of `k`'s: in_generic.c IN_MoveMouse does
+        `viewanglechange[YAW] -= m_yaw * mouse_x` but
+        `viewanglechange[PITCH] += m_pitch * mouse_y`.  The header m_pitch is a
+        fixed 0.022 in this fixture, matching the shipped default.cfg.
+        """
+        return 0.022 * self.sens * self.scale
+
     def _adv(self, us):
         self.clock += us / 1000000.0
 
@@ -1604,6 +1615,231 @@ def case_touchpad_round5():
               "round 5: legacy note with cvar %s then set %s says %r" % (cvar, change, needle))
 
 
+# ---------------------------------------------------------------------------
+# THE PITCH IDENTITY.  Patch 305 recorded kpitch so a reader would "not have to
+# know cl_pitchspeed's value to trust the pitch column", and m_pitch has been in
+# the header since Patch 293 -- but nothing ever read either, so both rules were
+# yaw-shaped and a rewrite that moved PITCH ALONE produced no ghost and no
+# violation.  These cases are that rewrite.
+#
+# Every number in the design comments was measured over all 113 journals in the
+# tree (107 with a usable header, 210,678 governed frames): 18 frames fail the
+# pitch identity and ALL 18 also fail yaw, i.e. PITCH-ONLY 0.  So the check adds
+# coverage without adding an accusation on any honest file we own.
+# ---------------------------------------------------------------------------
+
+def case_pitch_clean():
+    """A clean run's pitch is exactly m_pitch*sens*scale*dy + kpitch."""
+    j = Journal()
+    pitch = 10.0
+    for i in range(40):
+        dy = (i % 5) - 2
+        j.frame(3000 + i)
+        j.mouse(0, dy)
+        pitch += j.kp * dy
+        j.view(0, dy, pitch, 90.0)
+    r = run(j.end())
+    check(r.ok, "pitch clean: no faults (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("identity_pitch", "").startswith("exact"),
+          "pitch clean: reported exact on all governed frames (got %r)"
+          % r.info.get("identity_pitch"))
+    check(r.info.get("identity_pitch_violations", -1) == 0,
+          "pitch clean: zero violations")
+    check(r.info.get("identity_pitch_frames") == 39,
+          "pitch clean: 39 governed frames (got %s)"
+          % r.info.get("identity_pitch_frames"))
+
+
+def case_pitch_only_rewrite():
+    """THE SUBJECT.  A rewrite that moves pitch and leaves yaw alone.
+
+    This is the case the yaw identity cannot see and the reason the pitch column
+    was recorded at all.  It is also the case a strafe optimiser has no reason to
+    produce -- which is exactly why it must not be the ONLY thing the check can
+    catch, and why case_pitch_and_yaw_rewrite below exists beside it.
+    """
+    j = Journal()
+    pitch = 10.0
+    yaw = 90.0
+    for i in range(40):
+        dy = 3
+        j.frame(3000 + i)
+        j.mouse(0, dy)
+        # the honest term, plus an injected one on the last 10 frames
+        extra = 0.4 if i >= 30 else 0.0
+        pitch += j.kp * dy + extra
+        j.view(0, dy, pitch, yaw)
+    r = run(j.end())
+    check(has_fault(r, "PITCH IDENTITY BROKEN"),
+          "pitch-only rewrite: the pitch identity catches what yaw cannot")
+    check(r.info.get("identity_pitch_violations", 0) == 10,
+          "pitch-only rewrite: exactly the 10 injected frames (got %s)"
+          % r.info.get("identity_pitch_violations"))
+    check(r.info.get("identity_violations", -1) == 0,
+          "pitch-only rewrite: yaw stays CLEAN -- the control that proves this "
+          "subject is only visible to the new check (got %s)"
+          % r.info.get("identity_violations"))
+    check(not has_fault(r, "also break the yaw identity"),
+          "pitch-only rewrite: no overlap claimed, because there is none")
+
+
+def case_pitch_and_yaw_rewrite():
+    """A whole-angle rewrite breaks both, and the overlap must be SAID.
+
+    Independent reporting is the point: if the two axes shared one verdict, this
+    would read as a single yaw fault and the pitch half of the evidence would be
+    invisible.  The overlap sentence is what tells a whole-angle event (a server
+    angle set, or a rewrite of viewangles themselves) from a pitch-only one.
+    """
+    j = Journal()
+    pitch, yaw = 10.0, 90.0
+    for i in range(40):
+        dx, dy = 4, 3
+        j.frame(3000 + i)
+        j.mouse(dx, dy)
+        if i >= 35:
+            pitch += 5.0
+            yaw += 5.0
+        else:
+            pitch += j.kp * dy
+            yaw += j.k * dx
+        j.view(dx, dy, pitch, yaw)
+    r = run(j.end())
+    check(has_fault(r, "PITCH IDENTITY BROKEN"), "both axes: pitch faults")
+    check(has_fault(r, "YAW IDENTITY BROKEN"), "both axes: yaw faults")
+    check(has_fault(r, "5 of these also break the yaw identity"),
+          "both axes: the overlap is counted in the pitch fault (got %s)"
+          % [f for f in r.faults if "PITCH" in f])
+
+
+def case_pitch_keyboard_term():
+    """kpitch is a legitimate cause, so a run held with +lookdown stays clean.
+
+    The Patch 305 failure mode one axis over: without this, the game's own bind
+    would be the accusation.
+    """
+    j = Journal()
+    pitch = 10.0
+    for i in range(30):
+        dy = 2
+        kpt = 0.05
+        j.frame(3000 + i)
+        j.mouse(0, dy)
+        pitch += j.kp * dy + kpt
+        j.view(0, dy, pitch, 90.0, kpitch=kpt)
+    r = run(j.end())
+    check(r.info.get("identity_pitch_violations", -1) == 0,
+          "pitch keyboard term: a +lookdown hold is not a violation")
+    check(r.ok, "pitch keyboard term: no faults (%s)" % (r.faults[:1] or "none"))
+
+
+def case_pitch_ghost_is_a_note():
+    """Pitch moving with no recorded cause is a NOTE, matching yaw: a server
+    angle set and an injected turn look identical from inside this file."""
+    j = Journal()
+    for i in range(30):
+        j.frame(3000 + i)
+        j.view(0, 0, 10.0 + (3.0 if i == 20 else 0.0), 90.0)
+    r = run(j.end())
+    check(not has_fault(r, "PITCH IDENTITY BROKEN"),
+          "pitch ghost: not a fault")
+    check(has_note(r, "PITCH moved with zero mouse counts"),
+          "pitch ghost: is said, as a note")
+
+
+def case_pitch_strafe_y_not_governed():
+    """VF_STRAFE_Y sends the counts to forwardmove, so pitch must not be expected
+    to move.  The flag is deliberately NOT in the yaw mask -- those frames still
+    govern yaw -- so pitch needs its own exclusion."""
+    j = Journal()
+    for i in range(20):
+        j.frame(3000 + i)
+        j.mouse(0, 9)
+        j.view(0, 9, 10.0, 90.0, flags=hidcheck.VF_STRAFE_Y)
+    r = run(j.end())
+    check(not has_fault(r, "PITCH IDENTITY BROKEN"),
+          "strafe_y frames: pitch is not governed, so not accused")
+    check(r.info.get("identity_pitch_frames", -1) == 0,
+          "strafe_y frames: zero governed (got %s)"
+          % r.info.get("identity_pitch_frames"))
+    check(r.info.get("identity_pitch_not_governed", 0) >= 20,
+          "strafe_y frames: the exclusion is COUNTED, not silent (got %s)"
+          % r.info.get("identity_pitch_not_governed"))
+
+
+def case_pitch_clamp_not_governed():
+    """A frame whose prediction would leave the clamp envelope is skipped.
+
+    Pitch is clamped (cl_input.c) and yaw is not, and the bound is a SERVERINFO
+    value the file does not carry: the engine default is -70/+80 while
+    cfg/default.cfg sets -89/+89.  Guessing it is not a small error -- with
+    -70/+80 assumed against a file recorded at +-89, the same sweep produced 910
+    pitch failures of which 892 were PITCH-ONLY, i.e. 892 false accusations on one
+    honest PB.  So the frame is not governed rather than explained.
+    """
+    j = Journal()
+    pitch = 80.0
+    for i in range(20):
+        # 14000 * 0.0066 = 92.4 deg, which leaves the +-89 envelope from a pitch
+        # of 80.  (The first cut of this case used 4000 counts = 26.4 deg and
+        # never came near a boundary, so it "failed" by testing nothing.)
+        dy = 14000 if i == 10 else 0
+        j.frame(3000 + i)
+        if dy:
+            j.mouse(0, dy)
+        want = pitch + j.kp * dy
+        pitch = max(-89.0, min(89.0, want))   # what the engine would record
+        j.view(0, dy, pitch, 90.0)
+    r = run(j.end())
+    check(not has_fault(r, "PITCH IDENTITY BROKEN"),
+          "clamp: a truncated frame is skipped, never accused")
+    check(r.info.get("identity_pitch_not_governed", 0) >= 1,
+          "clamp: and the skip is counted (got %s)"
+          % r.info.get("identity_pitch_not_governed"))
+
+
+def case_pitch_no_m_pitch():
+    """A header with no m_pitch says pitch was not checkable rather than passing
+    it silently -- absent is not zero, and not clean."""
+    j = Journal()
+    pitch = 10.0
+    for i in range(20):
+        dy = 2
+        j.frame(3000 + i)
+        j.mouse(0, dy)
+        pitch += j.kp * dy
+        j.view(0, dy, pitch, 90.0)
+    text = "\n".join(l for l in j.end().split("\n")
+                     if not l.startswith("m_pitch "))
+    r = run(text)
+    check(has_note(r, "no usable m_pitch"),
+          "no m_pitch: says the pitch identity is not checkable")
+    check("identity_pitch" not in r.info,
+          "no m_pitch: and claims no pitch verdict")
+    check(r.info.get("identity", "").startswith("exact"),
+          "no m_pitch: yaw is still checked on its own")
+
+
+def case_pitch_pre305_silent():
+    """A pre-305 file has no kpitch column, so pitch cannot be judged at all and
+    must not be -- the yaw note below already says the file cannot settle this.
+    The fixture's pitch is honest, so a fault here would be a false accusation."""
+    j = Journal()
+    pitch = 10.0
+    for i in range(20):
+        dy = 2
+        j.frame(3000 + i)
+        j.mouse(0, dy)
+        pitch += j.kp * dy
+        j.view_pre305(0, dy, pitch, 90.0)
+    r = run(j.end())
+    check(not has_fault(r, "PITCH IDENTITY BROKEN"),
+          "pre-305: no pitch fault on an honest file")
+    check(r.info.get("identity_pitch_frames", -1) == 0,
+          "pre-305: nothing is governed (got %s)"
+          % r.info.get("identity_pitch_frames"))
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1640,7 +1876,12 @@ def main():
                case_touchpad_accepted, case_touchpad_without_device,
                case_touchpad_pre468, case_touchpad_backend_silent,
                case_touchpad_three_statements, case_touchpad_round3,
-               case_touchpad_round5):
+               case_touchpad_round5,
+               case_pitch_clean, case_pitch_only_rewrite,
+               case_pitch_and_yaw_rewrite, case_pitch_keyboard_term,
+               case_pitch_ghost_is_a_note, case_pitch_strafe_y_not_governed,
+               case_pitch_clamp_not_governed, case_pitch_no_m_pitch,
+               case_pitch_pre305_silent):
         print("%s:" % fn.__name__)
         fn()
         print("")

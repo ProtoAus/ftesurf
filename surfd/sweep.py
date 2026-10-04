@@ -279,8 +279,9 @@ def sweep(conn, limit, runner=None, now=None):
 
 def read_receipt(path):
     """One receipt, fully joined.
-    -> (verdict, pub, map, angles, reason, sig) or None; `sig` is 1 when the
-    signature verified, which a FAULT for any other reason can still have.
+    -> (verdict, pub, map, angles, reason, sig, journal, journal_reason) or None;
+    `sig` is 1 when the signature verified, which a FAULT for any other reason
+    can still have.
 
     IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
     the verification it has always run.  This step is an addition to the sweep,
@@ -298,17 +299,29 @@ def read_receipt(path):
     rcptcheck.join_hid(r)
     rcptcheck.join_uploaded(r, {})
     rcptcheck.join_angles(r, {})
+    # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
+    # tool nobody runs.  join_hid checks the digest the signature commits to and
+    # join_uploaded hashes the sibling file against it, so "is this the journal
+    # the client signed" was answered -- but "could this journal have been
+    # produced by a real device" was asked by hidcheck.py and hidcheck.py HAD NO
+    # CALLER OUTSIDE tools/ AND cfg/test/.  Every input check the tree built
+    # (the angle identity on both axes, the injection counters, the counts join,
+    # the device-provenance table) ran only when an operator typed a path.
+    rcptcheck.join_journal(r)
     verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
     reason = r.faults[0] if r.faults else ""
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
-            r.angles, reason[:300], 1 if r.ok is True else 0)
+            r.angles, reason[:300], 1 if r.ok is True else 0,
+            r.journal, (r.journal_detail or "")[:300])
 
 
 def receipt_step(conn, limit=200, now=None):
     """Read every receipt not read yet, store the verdict, bind the key.
 
     -> (read, faults).  A fault here is a fault in the EVIDENCE, not in this
-    step; a fault in this step is printed and returns (0, 0).
+    step; a fault in this step is printed and returns (0, 0).  `faults` counts
+    the RECEIPT verdict only -- a journal-content fault is stored in its own
+    column and does not move a badge (see rcptcheck.join_journal).
     """
     t0 = int(time.time()) if now is None else now
     try:
@@ -351,7 +364,7 @@ def receipt_step(conn, limit=200, now=None):
         fresh.sort()
         todo = [(m, f, True) for m, f in fresh] + \
                [(None, f, False) for f in files if rows.get(name(f)) in (1, 2)]
-        n = bad = 0
+        n = bad = jfault = 0
         through = cutoff
         for mtime, path, is_fresh in todo:
             runid = name(path)
@@ -371,19 +384,22 @@ def receipt_step(conn, limit=200, now=None):
             # and a stored row is never read again -- skip it, as a failed stat is.
             if got is None or not os.path.exists(path):
                 continue
-            verdict, pub, mapname, angles, reason, sig = got
+            verdict, pub, mapname, angles, reason, sig, journal, jreason = got
             # signed_at is the file's mtime: the lobby writes it at the run's
             # end, and a resumed run's runid is its FIRST session's.
             with conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO receipts"
-                    " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                    " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale,"
+                    "  journal, journal_reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
                     (runid, mapname, pub, verdict, angles, reason, t0, sig,
-                     max(1, int(mtime))))     # 0 means "pre-8 row" to receipts_v8
+                     max(1, int(mtime)),      # 0 means "pre-8 row" to receipts_v8
+                     journal, jreason))
                 bind_key(conn, runid, pub, t0)
             n += 1
             bad += verdict != "VALID"
+            jfault += journal == "FAULT"
         # THE WATERMARK.  Every never-read receipt with an mtime up to `through`
         # is now in the table -- `cutoff`, or just short of the oldest one this
         # pass had no room for -- so a board run submitted well before it with
@@ -395,6 +411,13 @@ def receipt_step(conn, limit=200, now=None):
         with conn:
             conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
                          " VALUES ('receipts_through', ?)", (through,))
+        if jfault:
+            # SAID, because the column it lands in is not on any board and
+            # nothing else would mention it.  A journal that does not hold up is
+            # the finding the whole input-evidence chain exists to produce, and
+            # this is the only place in the cron path that would ever see one.
+            print("sweep: %d receipt(s) have a journal beside them that does not "
+                  "hold up (receipts.journal = FAULT)" % jfault, file=sys.stderr)
         return n, bad
     except Exception as exc:
         print("sweep: receipt step failed: %r" % exc, file=sys.stderr)
