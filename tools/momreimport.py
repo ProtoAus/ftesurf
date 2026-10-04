@@ -24,14 +24,16 @@ WHAT EACH COLUMN NOW SAYS, and where it comes from:
              -- SV_RecFlags' bits.  Never 16: a .mtv records no ramp contact,
              and the plane stays 0 0 0 (BACKLOG: inferring it).
   fwd side up  the move the physics used, from the recorded wishVel on the eye
-             yaw (`moves wishvel`): below the 260 speed cap the wish IS the
-             usercmd (half presses read 225), and at the cap its direction is
-             exact, scaled so the larger component is 450 (cl_forwardspeed /
-             cl_sidespeed, default.cfg).  The 33-prop format records no
-             wishVel; there the physical buttons give it (`moves keys`), the
-             later press of an opposing pair winning, as Momentum's does.  The
-             buttons also stand in on a tick whose wish did not update while
-             the yaw turned, and on a teleport tick and the next.
+             yaw (`moves wishvel`): below the 260 speed cap it is the move as
+             the game applied it (a half press reads 225, a ducked one about a
+             third), and at the cap its direction is exact, scaled so the
+             larger component is 450 (cl_forwardspeed / cl_sidespeed,
+             default.cfg).  Readers use its sign and direction only.  The
+             33-prop format records no wishVel; there the physical buttons
+             give it (`moves keys`), the later press of an opposing pair
+             winning, as Momentum's does.  The buttons also stand in for a
+             non-zero wish that did not update while the yaw turned, and on a
+             teleport tick; a zero wish always stays zero.
   keys       FSI_* from those moves' signs plus jump, duck and attack -- the
              same rule as SV_RecKeys, so reccheck's mask check holds -- and
              +left/+right as FSI_TLEFT/TRIGHT, which a .mtv does record.
@@ -262,30 +264,31 @@ def convert(row, demo, oldpath):
 
     # The 33-prop format records no wishVel on any tick; the others on every one.
     haswish = all(s.wish_x is not None for s in ticks)
-    # The header's own %.6g rate: the float32 interval (0.0099999998) put t
+    # Exactly the header's %.6g rate: the float32 interval (0.0099999998) put t
     # 0.0001 low past tick ~149k.
-    tdt = round(ti, 6)
+    tdt = float("%.6g" % ti)
     keymoves = KeyMoves()
     body = []
     pad = keyed = 0
     prev = None
-    snap_to = -1
     for s in ticks:
         if s.tick - start > want:
             break                       # the demo's stop can trail the frozen timer
         if s.tick < start:
             pad += 1
         km = keymoves(s.buttons or 0)
-        # The wish is not this tick's move in two cases, and the buttons are:
-        # it stops updating while the yaw turns (ladders, water -- 193 ticks on
-        # surf_water-run), and across a teleport the yaw is already the
-        # destination's for the tick and the next.
+        # A NON-ZERO wish is not this tick's move in two cases, and the buttons
+        # are: it stopped updating while the yaw turned (ladders, water -- 193
+        # ticks on surf_water-run), and on a teleport tick it was built on the
+        # yaw before.  A zero wish is the truth either way -- the game applied no
+        # move (an A+D overlap it zeroes, a key it held back) -- and equals the
+        # last zero whatever the yaw, so it is never re-derived: round 3 found
+        # that wrote 4,273 keys the demo's own velocity contradicts.
         use_keys = not haswish
-        if haswish and prev is not None:
-            if math.dist((s.x, s.y, s.z), (prev.x, prev.y, prev.z)) > SNAP:
-                snap_to = s.tick + 1
+        if haswish and prev is not None and (s.wish_x or s.wish_y):
             stale = (s.wish_x, s.wish_y) == (prev.wish_x, prev.wish_y) and s.yaw != prev.yaw
-            use_keys = stale or s.tick <= snap_to
+            snap = math.dist((s.x, s.y, s.z), (prev.x, prev.y, prev.z)) > SNAP
+            use_keys = stale or snap
             keyed += use_keys
         body.append(sample(s, start, tdt, km if use_keys else wish_moves(s)))
         prev = s
