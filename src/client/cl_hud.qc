@@ -1375,9 +1375,10 @@ void(vector pos, string s, float sz, vector rgb, float a) HUD_TextDraw =
 		return;
 	}
 	// Lex, 4 Oct 2026: the clock and the speed (Bebas) take the shadow too --
-	// one pass and no ring, which is eight and too thin at their size.
+	// one pass and no ring, which is eight and too thin at their size.  The run
+	// line's labels are Bebas in their own small slot (sh_font.qc), same shadow.
 	if (ui_cv_fontfx >= FX_SHADOW)
-	if (ui_font_cur == ui_font_display)
+	if (ui_font_cur == ui_font_display || ui_font_cur == ui_font_dispsm)
 	if (a > 0)
 	{
 		d = max(2, floor(sz * FX_SHAD_DISP + 0.5));

@@ -161,6 +161,7 @@ float  ln_mkpx, ln_mkgap, ln_wpx;
 // different run and the energy has to say so.
 float  ln_numon, ln_numspeed, ln_numenergy, ln_numvz, ln_numdelta, ln_numtime;
 float  ln_numref, ln_numsize, ln_grav, ln_units;
+float  ln_labsz;                // the size the labels are measured and drawn at, see Line_Marks
 float  ln_z0[LN_SLOTS], ln_v20[LN_SLOTS];       // the slot's first sample: z, v.v
 float  ln_nlab;                 // labels queued, this Line_Draw
 float  ln_labover;              // ...and the ones past LN_LABMAX
@@ -1693,12 +1694,22 @@ string(float s, float e) Line_Label =
 */
 void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
 {
-	local float b, n, e, k, al, t0, t1, lw;
+	local float b, n, e, k, al, t0, t1, lw, f0;
 	local vector p, c, q, lp;
 	local string lab;
 
 	if (!ln_mkon)
 		return;
+	/*
+	  The labels are Bebas, measured here in the face and at the size
+	  Line_FrameEnd draws them in.  4/3 keeps a digit's ink area: they drew in the
+	  engine's default lhfont (a digit is 10x12 px of its 16 px cell), Bebas's is
+	  0.71x0.33 em -- so numsize 12 -> 16 is 1.5x as tall at 0.6x the width (61 px^2
+	  against 67).  The chips 10/12/14/18 land on 12/16/20/24.
+	*/
+	f0 = ui_font_cur;
+	Font_Set(ui_font_dispsm);
+	ln_labsz = Font_Px(ln_numsize * 4 / 3);
 	b = s * LN_CAP;
 	n = s * LN_EVCAP;
 	t0 = ln_t[b + ia];
@@ -1759,8 +1770,8 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			lab = Line_Label(s, e);
 			if (lab != "")
 			{
-				lp = q + [6 * ln_px, 0 - (ln_numsize + 4) * ln_px, 0];
-				lw = stringwidth(lab, FALSE, [ln_numsize, ln_numsize]);
+				lp = q + [6 * ln_px, 0 - (ln_labsz + 4) * ln_px, 0];
+				lw = stringwidth(lab, FALSE, [ln_labsz, ln_labsz]);
 				if (Line_ClaimSpan(lp, lw))
 				{
 					if (ln_lab_n < LN_LABMAX)
@@ -1783,6 +1794,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			print(sprintf("lndm %g %g %.4f %.1f %.1f %s\n", s, k, ln_et[n + e],
 			              q_x, q_y, (lab != "") ? strcat("\"", lab, "\"") : "-"));
 	}
+	Font_Set(f0);
 };
 
 /*
@@ -1925,10 +1937,16 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 // are drawn after the replay's.
 void() Line_FrameEnd =
 {
-	local float i;
+	local float i, f0;
 
-	for (i = 0; i < ln_lab_n; i = i + 1)
-		HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_numsize, ln_lab_c[i], ln_lab_a[i]);
+	if (ln_lab_n > 0)
+	{
+		f0 = ui_font_cur;
+		Font_Set(ui_font_dispsm);
+		for (i = 0; i < ln_lab_n; i = i + 1)
+			HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_labsz, ln_lab_c[i], ln_lab_a[i]);
+		Font_Set(f0);
+	}
 	if (ln_trmk > 0)
 	{
 		print(sprintf("lnde %g %g\n", ln_lab_n, ln_labover));

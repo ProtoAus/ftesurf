@@ -35,7 +35,8 @@
 float ui_font_ui;               // Roboto           -- labels, rows, readouts
 float ui_font_display;          // Bebas Neue       -- title, the big speed number
 float ui_font_mono;             // Google Sans Code -- the left-hand number columns
-float ui_font_ready;            // all three loaded; false = something is on the bitmap
+float ui_font_dispsm;           // Bebas Neue under 24 px -- the run line's labels
+float ui_font_ready;            // all four loaded; false = something is on the bitmap
 
 /*
   PATCH 440 -- WHY THERE IS NO OUTLINED SLOT HERE.
@@ -76,6 +77,10 @@ float ui_font_ready;            // all three loaded; false = something is on the
 */
 #define FONT_UI_SIZES       "8 12 16 20 24 28 32"
 #define FONT_DISPLAY_SIZES  "24 32 40 48 64 80"
+// Bebas below 24, as a slot of its own: a rung under 24 on the ladder above would
+// re-snap requests that land on 24 today (the 16 px energy line, the 18 px results
+// hero and the 20 px banner title, all at hud_scale 1).
+#define FONT_DISPSM_SIZES   "12 16 20 24"
 
 /*
   BUILD 21 -- THE MONOSPACED FACE, AND WHY ITS LADDER IS DENSER THAN THE OTHERS.
@@ -142,6 +147,7 @@ float ui_lad[32];
 float ui_lad_ui_first,   ui_lad_ui_n;
 float ui_lad_disp_first, ui_lad_disp_n;
 float ui_lad_mono_first, ui_lad_mono_n;
+float ui_lad_dsm_first,  ui_lad_dsm_n;
 float ui_font_cur;              // the slot Font_Set last selected
 
 float(string sizes, float first) Font_ParseLadder =
@@ -181,6 +187,7 @@ float(float want) Font_Px =
 	if (ui_font_display && ui_font_cur == ui_font_display) { first = ui_lad_disp_first; n = ui_lad_disp_n; }
 	else if (ui_font_ui && ui_font_cur == ui_font_ui)      { first = ui_lad_ui_first;   n = ui_lad_ui_n;   }
 	else if (ui_font_mono && ui_font_cur == ui_font_mono)  { first = ui_lad_mono_first; n = ui_lad_mono_n; }
+	else if (ui_font_dispsm && ui_font_cur == ui_font_dispsm) { first = ui_lad_dsm_first; n = ui_lad_dsm_n; }
 	else                                                   return want;
 
 	if (n <= 0)
@@ -208,6 +215,8 @@ void() Font_Init =
 	                           FONT_DISPLAY_SIZES, -1, 0, 0);
 	ui_font_mono    = loadfont("fsmono", "gfx/fonts/GoogleMed.ttf",
 	                           FONT_MONO_SIZES, -1, 0, 0);
+	ui_font_dispsm  = loadfont("fsdispsm", "gfx/fonts/BebasNeueRegular.ttf",
+	                           FONT_DISPSM_SIZES, -1, 0, 0);
 
 	ui_lad_ui_first   = 0;
 	ui_lad_ui_n       = Font_ParseLadder(FONT_UI_SIZES, 0);
@@ -215,11 +224,14 @@ void() Font_Init =
 	ui_lad_disp_n     = Font_ParseLadder(FONT_DISPLAY_SIZES, ui_lad_disp_first);
 	ui_lad_mono_first = ui_lad_disp_first + ui_lad_disp_n;
 	ui_lad_mono_n     = Font_ParseLadder(FONT_MONO_SIZES, ui_lad_mono_first);
+	ui_lad_dsm_first  = ui_lad_mono_first + ui_lad_mono_n;
+	ui_lad_dsm_n      = Font_ParseLadder(FONT_DISPSM_SIZES, ui_lad_dsm_first);
 
-	// 7 + 6 + 11 = 24 rungs against ui_lad[32].  Font_ParseLadder clamps rather
+	// 7 + 6 + 11 + 4 = 28 rungs against ui_lad[32].  Font_ParseLadder clamps rather
 	// than overruns, but a silently truncated ladder is a face that snaps to the
 	// wrong size, so the headroom is worth stating where the ladders are added.
-	ui_font_ready = (ui_font_ui != 0 && ui_font_display != 0 && ui_font_mono != 0);
+	ui_font_ready = (ui_font_ui != 0 && ui_font_display != 0 && ui_font_mono != 0
+	                 && ui_font_dispsm != 0);
 	ui_font_tries = ui_font_tries + 1;
 
 	if (!ui_font_ready && ui_font_tries >= 3)
