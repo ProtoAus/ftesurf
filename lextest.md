@@ -11,7 +11,97 @@ to be wrong.
 
 ---
 
-## 0. Welcome back -- start here (written 2026-10-03)
+## 0. Welcome back -- start here (rewritten 2026-10-04)
+
+### What happened while you were away (3-4 Oct)
+
+- **The rewind (Patch 477) and the ghost fix (478) are live on the lobbies**
+  (4 Oct, 14:46). The rewind went through 27 review rounds and the ghost fix 12
+  (three independent reviewers a round, each with a test arm and a "mutant"
+  build per fix to prove the arm can fail). On 4 Oct you agreed to stop rounds
+  once they find nothing that could rank an unearned run, corrupt a recording
+  or harm the server; small input quirks now go to BACKLOG.md instead.
+- **The timer and the speedometer have the drop shadow** (`hud_font_outline 2`,
+  "text shadow" in hud_edit, the default) -- the clock, the speed, its energy
+  line and the banner's big numbers. Bebas gets the shadow only, no outline.
+- **A paused run of yours may be gone, and I deleted 38 empty folders (both
+  3 Oct).** A test for Patch 478 used `data/resume/surf_dune` and consumed the
+  paused surf_dune run parked there (0:42.945, written around 23-27 Sep --
+  most likely an older test's, but I cannot tell, so assume it may have been
+  yours). It cannot be recovered. The same test's cleanup removed 38 empty
+  folders under `ftesurf/data`; they were recreated from the list it printed.
+  The tests now park and restore the folders they use.
+- **Your map-select and Momentum requests are planned and half built** on the
+  branch `feat-maps-demos` (pushed; not merged, not released) -- see
+  ROADMAP.md there and section 0b below.
+
+### Things to try
+
+1. **Rewind (Patch 477) -- live.** During or after a run, press **BACKSPACE**.
+   You freeze and the camera follows a cursor on your run's line:
+   - **LEFT / RIGHT** scrub (hold to speed up; the mouse wheel jumps 10 points),
+   - **ENTER** resume there: 3-2-1, then you carry on with the speed and the
+     view you had at that moment,
+   - **S** save a state there (it joins your save list as a normal save),
+   - **ESC** back. On a run that is on the clock it reads "ESC resume where you
+     were": you go on from there with your speed, after the same countdown, and
+     the run's clock ends there. If the server refuses the resume (saves off,
+     a full list) you stop where you were instead.
+   On any run that is on the clock the first BACKSPACE only warns -- every way
+   out of a rewind ends that run, so it says so -- and a second press within
+   2 s opens it. A resume faster than a walk or a jump is practice until `!r`
+   (or until you come to rest in the start box); slower, the next start
+   counts. The server keeps the last two minutes of a run. After a resume,
+   BACKSPACE opens at the point you last resumed from. `!r`, `!s`, `zone_goto`
+   or `setpos` while rewinding a timed run takes you there and ends the frozen
+   run; `retry` ends it too. While the rewind is up the save-lock keys and
+   commands wait ("the save-lock waits for the rewind") -- S is the rewind's
+   save -- and a key the rewind took stays its own until you let go of it.
+   Movement keys held through the countdown are handed back when it ends.
+   **Try:** a fast ramp, rewind two seconds, ENTER -- does the speed and the
+   direction feel identical to the moment you picked? Is 3 s the right
+   countdown? Is BACKSPACE a good key (it is free in default.cfg)?
+2. **The drop shadow** on the timer and speed (above): too heavy, too light, or
+   right? The offset is 6% of the text size (3-4 px at the defaults).
+
+### Decisions only you can make
+
+- **Should a stage handover be hop-checked?** (BACKLOG, "A finished stage
+  run's next box is policed only for a body whose point arrives after the
+  finish".) When you finish a stage by entering the next stage's box, the next
+  stage starts as you leave it. If you arrive slowly through a side, the start
+  is hop-checked as before; if you fly, drop or teleport in, it is not (so a
+  player could stop in the box and bhop a chain, then start the stage clean).
+  Checking every handover closes that, but tags an honest land-and-hop on
+  teleport-staged maps, and every chained stage on a bhop map played
+  off-lobby, with a tag only `!r` clears. I left it as it was before.
+- **`noclip` works on the lobbies** for every player (BACKLOG, top of Ranking
+  integrity): the mod's command handler takes it before the engine's cheat
+  gate. Runs are marked when you noclip, but it also lifts the replay pin's
+  freeze. Patch 479 would hand it to the engine's gate (off on the lobbies,
+  on in single-player). Say if you want it.
+- **The four ROADMAP questions** (ROADMAP.md on `feat-maps-demos`): may the Pi
+  fetch more KSF ranks or Momentum demos when a player asks; how a second
+  build of a map (Momentum vs CS:S) is stored and offered; and which screen
+  showed you 25 KSF places.
+
+### Found and not fixed yet
+
+- **Three tracks cannot be finished: their END is their START** (pre-existing,
+  zone data). `surf_ethereal` bonus 1 and `surf_quirky` bonus 9 have an END
+  region identical to the START, `surf_flyin_fortress` main one 0.011 u
+  shorter. Driven on 4 Oct on surf_ethereal b1: walking out of the start and
+  back reads "run cancelled (back in the start)" and re-arms -- no time can
+  ever be set there. The fix is in the zone files (move each END to where the
+  track really ends) -- your call, since it means deciding where they end.
+- **A modified client can steer its ghost** (the server trusts the client to
+  send empty moves while ghosting). Since 478 that cannot start a clean run;
+  the fix is in the engine (BACKLOG).
+- **`surf_aquaflow` crashes this PC** when launched headless (BACKLOG).
+
+---
+
+## 0a. From 3 Oct -- still to try
 
 ### What happened while you were away
 
@@ -64,35 +154,6 @@ to be wrong.
    ~40) are still wanted: the same command fetches them from where it stopped
    -- `cd /srv/nvme/surfd && python3 ksfimport.py --from-maps --depth 100 --max
    7000 --delay 1.0 --go` -- whenever you choose to run it. Never automatic.
-5. **Rewind (Patch 477) -- NOT ON THE LOBBIES YET.** It is in its tenth review
-   round (three fresh reviewers per round; it ships when a round finds
-   nothing), so try it on this PC's build. During or after a run, press **BACKSPACE**.
-   You freeze and the camera follows a cursor on your run's line:
-   - **LEFT / RIGHT** scrub (hold to speed up; the mouse wheel jumps 10 points),
-   - **ENTER** resume there: 3-2-1, then you carry on with the speed and the
-     view you had at that moment,
-   - **S** save a state there (it joins your save list as a normal save),
-   - **ESC** back. On a run that is on the clock it reads "ESC resume where you
-     were": you go on from there with your speed, after the same countdown, and
-     the run's clock ends there. If the server refuses the resume (saves off,
-     a full list) you stop where you were instead.
-   On any run that is on the clock the first BACKSPACE only warns -- every way
-   out of a rewind ends that run, so it says so -- and a second press within
-   2 s opens it. A resume faster than a walk or a jump is practice until `!r`
-   (or until you come to rest in the start box, or load a save that stands
-   still); slower, the next start counts. A hop chain's tag still needs `!r`. The server keeps the last two minutes of a run; further back the
-   help line says so and the server refuses. After a resume, BACKSPACE opens
-   at the point you last resumed from, so you can retry a section; what you
-   did since is not on the line until your next run. `!r`, `!s`, `zone_goto`
-   or `setpos` while rewinding a timed run takes you there, ends the frozen run
-   and closes the rewind (one that is refused, like `!s 9`, changes nothing);
-   `retry` ends it too. The save-lock keys and typed loads do nothing while you
-   browse (S is the rewind's save). Where saves are off (`lobby_nosaveloc`, or no certificate), rewind
-   can look but not resume, and leaving a timed one ends the run.
-   **Try:** a fast ramp, rewind two seconds, ENTER -- does the speed and the
-   direction feel identical to the moment you picked? Is 3 s the right
-   countdown? Is BACKSPACE a good key (it is free in default.cfg)?
-
 ### Decisions only you can make
 
 - **The touchpad fix (468) and ranked runs** (3 Oct: held out of 0.1.20 -- still
@@ -150,13 +211,6 @@ to be wrong.
 
 ### Found and not fixed yet
 
-- **A ranking hole older than the rewind -- next on my list.** The round-9
-  integrity review traced it end to end, but I have not driven it yet: turn
-  ghost mode on (`rec_ghost 1`) while armed in the start box, and the run does
-  not start when you leave the box -- it starts, CLEAN, wherever you turn ghost
-  off. A run could skip most of a map. Build 30 code, not Patch 477. It gets its
-  own patch with an arm that drives the exploit first (BACKLOG, top of Ranking
-  integrity).
 - **`surf_aquaflow` crashes this PC** when launched headless, on both the new
   and the old engine. Try it windowed when you are home; if it crashes for you
   too, it is in BACKLOG ("surf_aquaflow CRASHES THIS PC HEADLESS").
