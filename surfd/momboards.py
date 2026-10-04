@@ -384,10 +384,13 @@ def link_demos(conn):
         if k not in best or (ms, rid) < best[k]:
             best[k] = (ms, rid)
     hits = []
+    # The full unique key, style included, so each probe is a point lookup: both
+    # writers of this tier (flush, momindex) write STYLE_CLEAN and nothing else.
     for (mp, tr, lg, pl), (_ms, rid) in best.items():
         for (rowid,) in conn.execute(
                 "SELECT rowid FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
-                " AND player=? AND replay_id=0", (mp, tr, lg, S.TIER_MOMENTUM, pl)):
+                " AND style=? AND player=? AND replay_id=0",
+                (mp, tr, lg, S.TIER_MOMENTUM, S.STYLE_CLEAN, pl)):
             hits.append((rid, rowid))
     if hits:
         with conn:
