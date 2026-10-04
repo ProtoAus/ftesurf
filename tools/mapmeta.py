@@ -92,7 +92,7 @@ suggestion into the same column unmarked would have the browser assert something
 the data does not.
 
 LAYERING.  Momentum's cache first, its zone files second, a hand-edited override
-file last:
+file third, KSF's roster last:
 
   * The cache is authoritative for tier -- it is the only source that has one.
   * `maps/zones/{online,local}/<map>.json` (524 + 13 files) fills stages and
@@ -107,6 +107,10 @@ file last:
     map, which appears in no other source, gets a tier.  It is also the ONLY answer
     for a map that is in neither .dat and is nobody's port -- an unlisted map nobody
     on this machine has cached cannot be recovered offline at all.
+  * KSF's roster (`data/ksf_roster.csv`, from maproster.py fetch) runs after all of
+    them: its tier goes in column 11 (`ktier`) of every row, and a roster map with no
+    row from anything above gets one with tsrc `ksf`.  Column 2 of every other row
+    is left exactly as the sources above wrote it.
 
 HOW MUCH IS STILL MISSING, measured rather than assumed, because the number is not
 what the tier work suggests.  Of 1163 BSPs actually installed on this machine
@@ -123,6 +127,7 @@ Usage:
     python mapmeta.py                       # write ftesurf/data/mapmeta.txt
     python mapmeta.py --report              # print coverage stats and write NOTHING
     python mapmeta.py --check surf_ace      # dump one map's raw leaderboards
+    python mapmeta.py --gamedir DIR         # another tree's data/, maps/ and zones
 
 `--report` DOES NOT WRITE, and that is deliberate: it used to fall through to
 write(), so "just print the stats" silently regenerated the table -- and because
@@ -134,6 +139,7 @@ that mutates its input is a trap whatever it costs.
 """
 
 import argparse
+import csv
 import glob
 import json
 import os
@@ -144,18 +150,18 @@ from collections import Counter
 
 # ---------------------------------------------------------------------------
 #  Paths.  Absolute by default because both trees are fixed installs on this
-#  machine; --momentum / --out override them for anyone else's.
+#  machine; --momentum / --gamedir / --out override them for anyone else's.
 # ---------------------------------------------------------------------------
 MOMENTUM = r"C:\Program Files (x86)\Steam\steamapps\common\Momentum Mod Playtest\momentum"
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # C:\FTESurf
-OUT = os.path.join(SURFDIR, "ftesurf", "data", "mapmeta.txt")
-OVERRIDE = os.path.join(SURFDIR, "ftesurf", "data", "mapmeta_override.txt")
+GAMEDIR = os.path.join(SURFDIR, "ftesurf")
 
 MSML_MAGIC = b"MSML"
 
 # Where the installed maps are, for the alias pass.  Missing dirs are skipped, so
 # this is safe on a machine with a different set of games mounted.  These mirror
 # ftesurf/fs_addons.txt rather than being a second opinion about what is mounted.
+# main() swaps the first entry for --gamedir's maps/.
 MAPDIRS = (
     os.path.join(SURFDIR, "ftesurf", "maps"),
     r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source\cstrike\maps",
@@ -219,7 +225,12 @@ TS_RANK = "rank"        # a main-style main-track leaderboard on an approved map
 TS_SUGG = "sugg"        # submission.suggestions -- an estimate, not a ranking
 TS_OVER = "over"        # data/mapmeta_override.txt said so
 TS_ALIAS = "alias"      # inherited from the un-suffixed map -- see alias_rows()
+TS_KSF = "ksf"          # KSF's roster, for a map no other source has a row for
 TS_NONE = "-"
+
+# KSF's Type column.  Staged-Linear is staged: Momentum lists 18 of those 28 maps
+# and all 18 are linear 0 with stages (measured 2026-10-04).  Anything else is "-".
+KSF_LINEAR = {"linear": True, "staged": False, "staged-linear": False}
 
 # Port and version suffixes an installed map can carry that the Momentum record
 # does not.  A map is only aliased when the WHOLE name minus one or more of these
@@ -265,7 +276,8 @@ class Meta:
     """One map's row.  `-` for anything genuinely unknown."""
 
     __slots__ = ("name", "tier", "linear", "stages", "bonuses",
-                 "thumb", "mode", "page", "cell", "origin", "tsrc", "status")
+                 "thumb", "mode", "page", "cell", "origin", "tsrc", "status",
+                 "ktier")
 
     def __init__(self, name):
         self.name = name
@@ -280,6 +292,7 @@ class Meta:
         self.origin = ""      # which source(s) filled this in
         self.tsrc = TS_NONE   # where `tier` came from; column 10
         self.status = None    # MapStatus, for the report and the merge rule
+        self.ktier = None     # KSF's tier whatever column 2 says; column 11
 
     def field(self, v):
         if v is None:
@@ -289,17 +302,17 @@ class Meta:
         return str(v)
 
     def line(self):
-        # COLUMN 10 IS APPENDED, NEVER INSERTED.  m_main.qc reads argv(0..9) after
-        # an `if (n < 10) continue` guard, so an old menu.dat reads a new file
-        # correctly and simply does not see the provenance -- the same additive
-        # rule the .rec header follows.
-        return "meta %s %s %s %s %s %s %s %s %s %s" % (
+        # COLUMNS 10 AND 11 ARE APPENDED, NEVER INSERTED.  m_main.qc skips a row
+        # with n < 10 and reads argv(10) only when present; the engine
+        # (SV_MapMetaLookup) stops at column 10.  So an older reader sees exactly
+        # the file it always did -- the same additive rule the .rec header follows.
+        return "meta %s %s %s %s %s %s %s %s %s %s %s" % (
             self.name,
             self.field(self.tier), self.field(self.linear),
             self.field(self.stages), self.field(self.bonuses),
             self.field(self.page), self.field(self.cell),
             self.field(self.thumb), self.field(self.mode),
-            self.tsrc)
+            self.tsrc, self.field(self.ktier))
 
 
 # ---------------------------------------------------------------------------
@@ -465,29 +478,34 @@ def zone_counts(path):
     return stages, len(bonuses)
 
 
+def scan_zone_dir(d, tag, out):
+    """Add (stages, bonuses, tag) to `out` for every readable zone file in `d`."""
+    for p in glob.glob(os.path.join(d, "*.json")):
+        counts = zone_counts(p)
+        if counts is None:
+            continue
+        nm = os.path.splitext(os.path.basename(p))[0]
+        out[nm.lower()] = (counts[0], counts[1], tag)
+    return out
+
+
 def scan_zones(momentum):
     """map name (lowercased) -> (stages, bonuses, which dir it came from)."""
     out = {}
     # local wins over online, matching the mod's own lookup order
     # (src/server/sv_zones.qc:121-126).
     for sub in ("online", "local"):
-        d = os.path.join(momentum, "maps", "zones", sub)
-        for p in glob.glob(os.path.join(d, "*.json")):
-            counts = zone_counts(p)
-            if counts is None:
-                continue
-            nm = os.path.splitext(os.path.basename(p))[0]
-            out[nm.lower()] = (counts[0], counts[1], sub)
+        scan_zone_dir(os.path.join(momentum, "maps", "zones", sub), sub, out)
     return out
 
 
 # ---------------------------------------------------------------------------
 #  Ports -- installed maps that ARE a map Momentum knows, under another name
 # ---------------------------------------------------------------------------
-def installed_maps(dirs=MAPDIRS):
+def installed_maps(dirs=None):
     """Lowercased basenames of every installed .bsp.  Missing dirs are skipped."""
     out = set()
-    for d in dirs:
+    for d in dirs or MAPDIRS:
         if not os.path.isdir(d):
             continue
         for p in glob.glob(os.path.join(d, "*.bsp")):
@@ -654,7 +672,59 @@ def apply_override(meta, t):
 
 
 # ---------------------------------------------------------------------------
-def build(momentum, override_path, report=False):
+#  KSF's roster -- a second tier source, and the only one for KSF-only maps
+# ---------------------------------------------------------------------------
+def read_ksf(path):
+    """data/ksf_roster.csv -> {name: (tier or None, type)}.  Same columns
+    maproster.py's read_ksf() reads."""
+    out = {}
+    if not os.path.exists(path):
+        print("  ! %s not found: every ktier is '-' and no KSF rows are added"
+              % path, file=sys.stderr)
+        return out
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        for row in csv.DictReader(f):
+            nm = (row.get("Map name") or "").strip().lower()
+            if not nm:
+                continue
+            t = (row.get("Tier") or "").strip()
+            out[nm] = (int(t) if t.isdigit() and int(t) > 0 else None,
+                       (row.get("Type") or "").strip())
+    return out
+
+
+def ksf_rows(metas, ksf, zones, stats):
+    """ktier on every row KSF lists, and a row for each roster map with none.
+
+    Runs after every other pass, so it only ever fills a gap: no row another
+    source wrote changes outside column 11.  A KSF row is tsrc `ksf` even with
+    no tier, because that is how maproster.py tells it from Momentum's.
+    """
+    for nm, (tier, typ) in sorted(ksf.items()):
+        meta = metas.get(nm)
+        if meta is not None:
+            meta.ktier = tier
+            stats["ksf-ktier"] += 1
+            continue
+        meta = Meta(nm)
+        meta.tier = meta.ktier = tier
+        meta.tsrc = TS_KSF
+        meta.linear = KSF_LINEAR.get(typ.lower())
+        # The sheet has no mode column, so the name decides; anything but surf_ or
+        # bhop_ stays "-" and the engine falls back to its own prefix table.
+        meta.mode = (GM_SURF if nm.startswith("surf_") else
+                     GM_BHOP if nm.startswith("bhop_") else None)
+        z = zones.get(nm)
+        if z:
+            meta.stages, meta.bonuses = z[0], z[1]
+            stats["ksf-zoned"] += 1
+        meta.origin = "ksf"
+        metas[nm] = meta
+        stats["ksf-only"] += 1
+
+
+# ---------------------------------------------------------------------------
+def build(momentum, override_path, report=False, ksf_path=None, gamedir=GAMEDIR):
     metas = {}          # lowercased name -> Meta
     stats = Counter()
 
@@ -726,6 +796,29 @@ def build(momentum, override_path, report=False):
         apply_override(meta, t)
         stats["override"] += 1
 
+    # Zone counts for a KSF row come from where the timer reads them: this
+    # gamedir's maps/zones/local first, then Momentum's.  (A roster map with a
+    # Momentum zone file already has a zone-only row, so only the first can add.)
+    ksf = read_ksf(ksf_path) if ksf_path else {}
+    kzones = scan_zone_dir(os.path.join(gamedir, "maps", "zones", "local"),
+                           "gamedir", dict(zones))
+    ksf_rows(metas, ksf, kzones, stats)
+    print("  %-24s %5d maps: ktier on %d existing rows, %d rows added "
+          "(%d with zone counts)"
+          % (os.path.basename(ksf_path or "-"), len(ksf), stats["ksf-ktier"],
+             stats["ksf-only"], stats["ksf-zoned"]))
+
+    split = sorted((m for m in metas.values() if m.tier is not None
+                    and m.ktier is not None and m.tier != m.ktier),
+                   key=lambda m: m.name.lower())
+    if split:
+        by = Counter(m.tsrc for m in split).most_common()
+        print("\n  %d rows where column 2 and KSF's tier differ (%s).  Column 2 "
+              "is kept; ktier\n  carries KSF's.  First 10:"
+              % (len(split), ", ".join("%s %d" % kv for kv in by)))
+        for m in split[:10]:
+            print("    %-34s T%s (%s)  KSF T%s" % (m.name, m.tier, m.tsrc, m.ktier))
+
     if disagree:
         print("\n  %d maps where the cache and the zone file disagree on counts."
               % len(disagree))
@@ -781,7 +874,9 @@ def keep_atlas(metas, out):
 
     Reading them back makes a bare `python mapmeta.py` idempotent with respect to
     the atlas.  A row whose thumbnail UUID has CHANGED does not keep its old
-    coordinates -- they point at the previous image.
+    coordinates -- they point at the previous image.  The comparison is on the
+    written text, so a row with no uuid ("-": a KSF picture or a screenshot)
+    keeps its cell too; str(None) never matched it.
     """
     if not os.path.exists(out):
         return 0
@@ -794,7 +889,7 @@ def keep_atlas(metas, out):
             meta = metas.get(t[1].lower())
             if meta is None or meta.page is not None:
                 continue
-            if t[6] == "-" or t[7] == "-" or t[8] != str(meta.thumb):
+            if t[6] == "-" or t[7] == "-" or t[8] != meta.field(meta.thumb):
                 continue
             try:
                 meta.page, meta.cell = int(t[6]), int(t[7])
@@ -835,7 +930,7 @@ def write(metas, out, momentum=None):
         f.write("# written by tools/mapmeta.py -- do not edit, use "
                 "data/mapmeta_override.txt\n")
         f.write("# meta <name> <tier> <linear> <stages> <bonuses> <page> <cell> "
-                "<thumbuuid> <mode> <tsrc>\n")
+                "<thumbuuid> <mode> <tsrc> <ktier>\n")
         f.write("# '-' means unknown, and is not the same as 0.  page/cell are "
                 "filled in by mapthumbs.py.\n")
         f.write("# tsrc: rank = a ranked leaderboard tier; sugg = a SUBMITTER'S "
@@ -844,8 +939,12 @@ def write(metas, out, momentum=None):
                 "rather than a ranking;\n")
         f.write("#       alias = inherited from the same map without its port "
                 "suffix (surf_x_ksf\n")
-        f.write("#       from surf_x); over = mapmeta_override.txt.  "
-                "See maps.ts:getTier().\n")
+        f.write("#       from surf_x); over = mapmeta_override.txt; ksf = KSF's "
+                "roster, for a map\n")
+        f.write("#       nothing else has a row for.  See maps.ts:getTier().\n")
+        f.write("# ktier: KSF's tier (data/ksf_roster.csv), on every row KSF "
+                "lists.  <tier> is\n")
+        f.write("#       unchanged by it, so the two can disagree.\n")
         f.write("# variant <canonical> <port> -- two INSTALLED builds of one map, "
                 "for the browser's\n")
         f.write("#       version switch.  Additive: the menu's reader skips any "
@@ -865,7 +964,7 @@ def write(metas, out, momentum=None):
     return len(rows)
 
 
-def check_one(momentum, name):
+def check_one(momentum, name, ksf):
     """Dump one map's raw leaderboards -- the debugging path for a wrong row."""
     for p in sorted(glob.glob(os.path.join(momentum, "_cache", "*.dat"))):
         for m in read_msml(p):
@@ -908,39 +1007,56 @@ def check_one(momentum, name):
             else:
                 print("submission.suggestions: none (approved map)")
 
-            print("-> %s" % from_cache(m).line())
+            meta = from_cache(m)
+            meta.ktier = ksf.get(name.lower(), (None, ""))[0]
+            print("-> %s" % meta.line())
             return
     print("%s: not in any _cache/*.dat" % name)
+    if name.lower() in ksf:
+        print("KSF's roster: tier %s, type %s" % ksf[name.lower()])
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--momentum", default=MOMENTUM, help="Momentum Mod game dir")
-    ap.add_argument("--out", default=OUT, help="output mapmeta.txt")
-    ap.add_argument("--override", default=OVERRIDE, help="hand-edited override table")
+    ap.add_argument("--gamedir", default=GAMEDIR,
+                    help="the ftesurf/ dir: default home of the three files below, "
+                         "and its maps/ and maps/zones/local/ are read")
+    ap.add_argument("--out", help="output mapmeta.txt (<gamedir>/data/mapmeta.txt)")
+    ap.add_argument("--override",
+                    help="hand-edited override table (<gamedir>/data/mapmeta_override.txt)")
+    ap.add_argument("--ksf", help="KSF's roster (<gamedir>/data/ksf_roster.csv)")
     ap.add_argument("--report", action="store_true",
                     help="print coverage stats and write nothing")
     ap.add_argument("--check", metavar="MAP", help="dump one map's raw leaderboards")
     a = ap.parse_args()
 
+    global MAPDIRS
+    MAPDIRS = (os.path.join(a.gamedir, "maps"),) + MAPDIRS[1:]
+    data = os.path.join(a.gamedir, "data")
+    out = a.out or os.path.join(data, "mapmeta.txt")
+    override = a.override or os.path.join(data, "mapmeta_override.txt")
+    ksf = a.ksf or os.path.join(data, "ksf_roster.csv")
+
     if not os.path.isdir(a.momentum):
         raise SystemExit("Momentum dir not found: %s" % a.momentum)
 
     if a.check:
-        check_one(a.momentum, a.check)
+        check_one(a.momentum, a.check, read_ksf(ksf))
         return
 
     print("reading %s" % a.momentum)
-    metas = build(a.momentum, a.override, report=a.report)
+    metas = build(a.momentum, override, report=a.report, ksf_path=ksf,
+                  gamedir=a.gamedir)
 
     # --report is READ-ONLY.  It used to fall through to write(), so asking for
     # the stats rewrote the table as a side effect -- see the module docstring.
     if a.report:
-        print("\n--report: nothing written.  Run without it to write %s" % a.out)
+        print("\n--report: nothing written.  Run without it to write %s" % out)
         return
 
-    n = write(metas, a.out, a.momentum)
-    print("\nwrote %s  (%d maps)" % (a.out, n))
+    n = write(metas, out, a.momentum)
+    print("\nwrote %s  (%d maps)" % (out, n))
 
 
 if __name__ == "__main__":

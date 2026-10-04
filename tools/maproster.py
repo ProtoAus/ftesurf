@@ -54,13 +54,16 @@ load (1248 files, ~45 GB) at disk speed.  After that the cache is keyed on
 size and mtime are stored beside the value and a moved file is rehashed rather
 than trusted -- the same guard `tools/mapcrc.py` needs for the same reason.
 
-Outputs, both under `ftesurf/data/` and both regenerated from sources with no
-carried-forward state (so a re-run cannot lose rows the way `mapmeta.py` does):
+Outputs, both under `ftesurf/data/` (or --gamedir's) and both regenerated from
+sources with no carried-forward state (so a re-run cannot lose rows the way
+`mapmeta.py` does):
 
     maphash.txt    hash <install> <name> <size> <mtime> <sha1>
     maproster.txt  roster <name> <mode> <src> <have> <sha1> <pin> <tier>
-                          <type> <avail>
+                          <type> <avail> <builds> <ev> <mtier> <ktier>
 
+`tier` is mtier, else ktier -- the one the menu draws; `mtier` (mapmeta.txt
+column 2) and `ktier` (KSF's sheet) are both kept so neither is lost.
 '-' means unknown throughout and is never the same as 0 or as a real value.
 """
 
@@ -112,6 +115,20 @@ MTV_HASH_RE = re.compile(rb"[0-9A-F]{40}")
 # `mapbuild` in an imported .rec is the .wrpath's 39, not the .mtv's 40.
 REC_HASH_RE = re.compile(r"^[0-9A-Fa-f]{39,40}$")
 IMPORTED = os.path.join(DATA, "momentum")
+
+
+def set_paths(gamedir):
+    """Point every file above at `gamedir` instead of this repo's ftesurf/."""
+    global GAME, DATA, HASHFILE, ROSTERFILE, KSFCSV, KSFDRIVE, MAPMETA, ADDONS, IMPORTED
+    GAME = gamedir
+    DATA = os.path.join(GAME, "data")
+    HASHFILE = os.path.join(DATA, "maphash.txt")
+    ROSTERFILE = os.path.join(DATA, "maproster.txt")
+    KSFCSV = os.path.join(DATA, "ksf_roster.csv")
+    KSFDRIVE = os.path.join(DATA, "ksf_drive.txt")
+    MAPMETA = os.path.join(DATA, "mapmeta.txt")
+    ADDONS = os.path.join(GAME, "fs_addons.txt")
+    IMPORTED = os.path.join(DATA, "momentum")
 
 
 def surfbhop(name):
@@ -299,6 +316,11 @@ def read_mapmeta():
         f = ln.split()
         if len(f) < 10:
             continue
+        # tsrc `ksf` rows are mapmeta.py's copy of KSF's sheet, not Momentum's:
+        # read as "m" they label every KSF-only map MOM (465 on 2026-10-04) and
+        # call KSF's tier the mtier.
+        if len(f) > 10 and f[10] == "ksf":
+            continue
         out[f[1].lower()] = (f[2], f[9])
     return out
 
@@ -410,7 +432,8 @@ def build_rows():
         if avail != "-" and w:
             avail = "-"                           # already installed; nothing to fetch
         rows.append((name, mode, src, have, sha, pin,
-                     mtier if mtier != "-" else ktier, ktype, avail, builds, ev))
+                     mtier if mtier != "-" else ktier, ktype, avail, builds, ev,
+                     mtier, ktier))
     return rows, stats, len(win)
 
 
@@ -421,9 +444,11 @@ def cmd_build(args):
         fh.write("FTESURF-MAPROSTER 1\n")
         fh.write("# written by tools/maproster.py -- do not edit\n")
         fh.write("# roster <name> <mode> <src> <have> <sha1> <pin> <tier> "
-                 "<type> <avail> <builds>\n")
+                 "<type> <avail> <builds> <ev> <mtier> <ktier>\n")
         fh.write("# src:   k = on KSF's roster, m = in Momentum's catalogue\n")
         fh.write("# have:  which mount supplies the build the engine loads\n")
+        fh.write("# tier:  mtier, else ktier.  mtier = mapmeta.txt's (Momentum's),\n")
+        fh.write("#        ktier = KSF's sheet; type is KSF's too.\n")
         fh.write("# pin:   ok = matches the build most of Momentum's demos use,\n")
         fh.write("#        alt = matches a PUBLISHED build, but not that one,\n")
         fh.write("#        other = it publishes one or more and ours is none,\n")
@@ -433,6 +458,7 @@ def cmd_build(args):
         fh.write("# builds: distinct builds Momentum's demos attest to.  >1 means\n")
         fh.write("#        the map was re-released and both cuts hold times, so\n")
         fh.write("#        there is no single 'latest' to be on.\n")
+        fh.write("# ev:    how many attestations `builds` rests on.\n")
         fh.write("# '-' means unknown, and is never the same as 0.\n")
         for r in rows:
             fh.write("roster %s\n" % " ".join(r))
@@ -492,23 +518,36 @@ def cmd_check(args):
 
 
 def main():
+    global ROSTERFILE, MAPMETA
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    # On each subcommand, so they go after it: `maproster.py build --gamedir D`.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--gamedir", default=GAME,
+                        help="the ftesurf/ dir every file is read from and written to")
+    common.add_argument("--out", help="maproster.txt to write (<gamedir>/data/)")
+    common.add_argument("--meta", help="mapmeta.txt to read (<gamedir>/data/)")
     sub = ap.add_subparsers(dest="cmd")
-    h = sub.add_parser("hash", help="build/refresh the SHA1 cache")
+    h = sub.add_parser("hash", parents=[common], help="build/refresh the SHA1 cache")
     h.add_argument("--refresh", action="store_true", help="rehash everything")
     h.add_argument("--dry-run", action="store_true", help="say what it would read")
     h.set_defaults(fn=cmd_hash)
-    f = sub.add_parser("fetch", help="refresh the KSF roster and Drive listing")
+    f = sub.add_parser("fetch", parents=[common],
+                       help="refresh the KSF roster and Drive listing")
     f.set_defaults(fn=cmd_fetch)
-    b = sub.add_parser("build", help="write data/maproster.txt")
+    b = sub.add_parser("build", parents=[common], help="write data/maproster.txt")
     b.set_defaults(fn=cmd_build)
-    c = sub.add_parser("check", help="explain one map")
+    c = sub.add_parser("check", parents=[common], help="explain one map")
     c.add_argument("map")
     c.set_defaults(fn=cmd_check)
     a = ap.parse_args()
     if not getattr(a, "fn", None):
         ap.print_help()
         return 2
+    set_paths(a.gamedir)
+    if a.out:
+        ROSTERFILE = a.out
+    if a.meta:
+        MAPMETA = a.meta
     return a.fn(a)
 
 

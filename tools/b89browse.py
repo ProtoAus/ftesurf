@@ -82,6 +82,9 @@ def expected():
 
     ksf = [n for n, t in dl.items()
            if shown_tier(n) == 0 and t[4] not in ("0", "-")]
+    # mapmeta.py's own tsrc `ksf` rows draw the same mark; they have a tier, so
+    # they are never in the list above.
+    ksf += [n for n, t in meta.items() if t[10] == "ksf" and shown_tier(n) > 0]
 
     return {
         "meta": meta,

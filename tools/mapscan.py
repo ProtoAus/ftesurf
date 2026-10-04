@@ -4,6 +4,7 @@
   python tools/mapscan.py            # dry run: say what changed, write nothing
   python tools/mapscan.py --go       # refresh catalogues, rewrite data/mapdl.txt
   python tools/mapscan.py --go --no-fetch   # skip the network, just re-derive
+  python tools/mapscan.py --gamedir DIR ... # another tree's data/ (and maproster's)
 
 Three questions, kept apart because they have different answers:
 
@@ -37,6 +38,16 @@ ROSTERFILE = os.path.join(DATA, "maproster.txt")
 SEENFILE = os.path.join(DATA, "mapseen.txt")
 DLFILE = os.path.join(DATA, "mapdl.txt")
 
+
+def set_paths(gamedir):
+    global GAME, DATA, ROSTERFILE, SEENFILE, DLFILE
+    GAME = gamedir
+    DATA = os.path.join(GAME, "data")
+    ROSTERFILE = os.path.join(DATA, "maproster.txt")
+    SEENFILE = os.path.join(DATA, "mapseen.txt")
+    DLFILE = os.path.join(DATA, "mapdl.txt")
+
+
 PI_HOST = "proto@192.168.1.102"
 PI_MAPS = "/srv/nvme/ftesurf-server/game/momentum/maps"
 
@@ -56,8 +67,9 @@ def today():
 
 
 def read_roster():
-    """name -> (mode, src, tier).  Absent file is fatal: without it this tool
-    has no idea what exists and would write an empty mapdl.txt over a good one."""
+    """name -> (mode, src, tier, mtier, ktier).  Absent file is fatal: without
+    it this tool has no idea what exists and would write an empty mapdl.txt over
+    a good one.  A roster from before mtier/ktier reads them as '-'."""
     if not os.path.exists(ROSTERFILE):
         sys.exit("no %s -- run tools/maproster.py build first" % ROSTERFILE)
     out = {}
@@ -66,7 +78,8 @@ def read_roster():
             f = ln.split()
             if len(f) < 8 or f[0] != "roster":
                 continue
-            out[f[1]] = (f[2], f[3], f[7])
+            mk = (f[12], f[13]) if len(f) >= 14 else ("-", "-")
+            out[f[1]] = (f[2], f[3], f[7]) + mk
     return out
 
 
@@ -122,7 +135,8 @@ def pi_inventory(host):
 def cmd_scan(args):
     if not args.no_fetch:
         for step in (["fetch"], ["hash"], ["build"]):
-            rc, out = sh([PY, os.path.join(HERE, "maproster.py")] + step)
+            rc, out = sh([PY, os.path.join(HERE, "maproster.py")] + step
+                         + ["--gamedir", GAME])
             tail = "\n".join(out.strip().splitlines()[-4:])
             print("  maproster %-6s rc=%d  %s" % (step[0], rc, tail.replace("\n", " | ")))
             if rc != 0:
@@ -198,16 +212,20 @@ def cmd_scan(args):
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("FTESURF-MAPDL 1\n")
         fh.write("# written by tools/mapscan.py -- do not edit\n")
-        fh.write("# dl <name> <mode> <src> <tier> <kb> <first-iso> <new>\n")
+        fh.write("# dl <name> <mode> <src> <tier> <kb> <first-iso> <new> "
+                 "<mtier> <ktier>\n")
+        fh.write("# tier is mtier (Momentum's), else ktier (KSF's); 0 = none.\n")
         for name in servable:
             # name is the PI's spelling; the catalogue row is found by fold.
-            mode, src, tier = roster[roster_lc[name.lower()]]
+            mode, src, tier, mtier, ktier = roster[roster_lc[name.lower()]]
             d, _origin = seen.get(name, seen.get(roster_lc[name.lower()],
                                                  (stamp, "scan")))
-            fh.write("dl %s %s %s %s %d %s %d\n" % (
+            # The pair is APPENDED: the menu reads argv(1..7) after an n < 8 guard.
+            fh.write("dl %s %s %s %s %d %s %d %s %s\n" % (
                 name, mode, src, tier if tier != "-" else "0",
                 (inv[name] + 1023) // 1024, d,
-                1 if name.lower() in newset else 0))
+                1 if name.lower() in newset else 0,
+                mtier if mtier != "-" else "0", ktier if ktier != "-" else "0"))
     os.replace(tmp, DLFILE)
     write_seen(seen)
     print("\nwrote %s (%d rows)" % (DLFILE, len(servable)))
@@ -222,7 +240,11 @@ def main():
     ap.add_argument("--no-fetch", action="store_true",
                     help="skip the catalogue refresh (no network)")
     ap.add_argument("--host", default=PI_HOST)
+    ap.add_argument("--gamedir", default=GAME,
+                    help="the ftesurf/ dir whose data/ is read and written; "
+                         "passed on to maproster.py")
     args = ap.parse_args()
+    set_paths(args.gamedir)
     return cmd_scan(args)
 
 
