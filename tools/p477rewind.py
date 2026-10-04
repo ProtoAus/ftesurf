@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R26A", "R26B", "R26C", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R26A", "R26B", "R27A", "R27B", "R26C", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -786,7 +786,34 @@ def main():
         print("CANNOT GRADE R26B: %s, S %s" % ([m.group(0) for m in st26b], s26b))
         cannot.append("R26B")
     else:
-        check("R26B", s26b[0] == "0", "S with the go in flight took %s" % s26b[0])
+        # Round 27: and its release after the count passes too (-back runs).
+        r26b = [m.group(1) for m in (re.search(r"vote key: scan 115 down 0 took (\d)", s) for s in sec["R26B"]) if m]
+        check("R26B", s26b[0] == "0" and r26b[:1] == ["0"],
+              "S with the go in flight took %s, its release %s" % (s26b[0], r26b[:1]))
+
+    # R27A (round 27): the wheel on messagemode while browsing.  Premises: the
+    # bind, browsing.  Verdict: the cursor moved down and `w` reaches no draft.
+    st27a = status("R27A")
+    w27a = [m.group(1) for m in (re.search(r"vote key: scan 119 down 1 took (\d)", s) for s in sec["R27A"]) if m]
+    if not (re.search(r'"mwheeldown"[^\n]*= "messagemode"', txt("R27A"), re.I) and len(st27a) >= 2
+            and st27a[0].group(1) == "1" and st27a[0].group(2) == "0" and st27a[0].group(3) == "0" and w27a):
+        print("CANNOT GRADE R27A: %s, w %s" % ([m.group(0) for m in st27a], w27a))
+        cannot.append("R27A")
+    else:
+        moved = int(st27a[1].group(4)) < int(st27a[0].group(4))
+        check("R27A", moved and w27a[0] == "0", "cursor %s -> %s, `w` took %s" % (
+            st27a[0].group(4), st27a[1].group(4), w27a[0]))
+
+    # R27B (round 27): S on +sl_hold pressed on the go's own line.  Premises: the
+    # bind, browsing, the go sent.  Verdict: S swallowed (took 1).
+    st27b = status("R27B")
+    s27b = [m.group(1) for m in (re.search(r"vote key: scan 115 down 1 took (\d)", s) for s in sec["R27B"]) if m]
+    if not (re.search(r'"s"[^\n]*= "\+sl_hold"', txt("R27B"), re.I) and len(st27b) >= 2
+            and st27b[0].group(1) == "1" and st27b[0].group(3) == "0" and st27b[1].group(3) == "1" and s27b):
+        print("CANNOT GRADE R27B: %s, S %s" % ([m.group(0) for m in st27b], s27b))
+        cannot.append("R27B")
+    else:
+        check("R27B", s27b[0] == "1", "S on +sl_hold with the go in flight took %s" % s27b[0])
 
     # R26C (round 26): a chat bind on S in the countdown.  Premises: the bind, the
     # count running.  Verdict: the mod's draft took S.
@@ -797,7 +824,11 @@ def main():
         print("CANNOT GRADE R26C: %s, S %s" % ([m.group(0) for m in st26c], s26c))
         cannot.append("R26C")
     else:
-        check("R26C", s26c[0] == "1", "S bound to messagemode in the count took %s" % s26c[0])
+        # Round 27: and its release passed -- the draft's opening key is not one it
+        # took; a swallow by the rewind would take it too.
+        r26c = [m.group(1) for m in (re.search(r"vote key: scan 115 down 0 took (\d)", s) for s in sec["R26C"]) if m]
+        check("R26C", s26c[0] == "1" and r26c[:1] == ["0"],
+              "S bound to messagemode in the count took %s, its release %s" % (s26c[0], r26c[:1]))
 
     # R23C (round 23): sl_save under the replay pin is refused and makes nothing.
     t23c = txt("R23C")

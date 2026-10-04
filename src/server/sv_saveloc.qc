@@ -3970,6 +3970,20 @@ void(entity e, vector org) SV_ViewEyeAt =
 		return;
 	}
 
+	// Patch 477 review round 27 (older than 477): adopt an eye this player
+	// already owns.  The engine's `spawn` clears the field, not the entity, so a
+	// client not yet spawned left one behind per cycle, without end.
+	if (e.rec_vw_eye == world)
+	{
+		e.rec_vw_eye = find(world, classname, "rec_view_eye");
+		while (e.rec_vw_eye != world)
+		{
+			if (e.rec_vw_eye.owner == e)
+				break;
+			e.rec_vw_eye = find(e.rec_vw_eye, classname, "rec_view_eye");
+		}
+		e.view2 = e.rec_vw_eye;
+	}
 	if (e.rec_vw_eye == world)
 	{
 		e.rec_vw_eye = spawn();

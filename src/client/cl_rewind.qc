@@ -84,6 +84,17 @@ string() Rewind_Key =
 	return strtoupper(k);
 };
 
+// Round 27: a bind the browsing gate zeroes until the release (CSQC_Input_Frame
+// clears movement and buttons, not the view's angles).
+float(string b) Rewind_MoveBind =
+{
+	if (b == "+forward" || b == "+back" || b == "+moveleft" || b == "+moveright")
+		return TRUE;
+	if (b == "+jump" || b == "+duck" || b == "+moveup" || b == "+movedown")
+		return TRUE;
+	return FALSE;
+};
+
 float(float scan) Rewind_KeyIx =
 {
 	if (scan == 's')            return 0;
@@ -675,11 +686,13 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		}
 		return FALSE;               // the keys the release will find held
 	}
-	// Round 26: with a go in flight a `+` bind on S or an arrow passes, as in the
-	// countdown -- the release hands back what is held.
+	// Rounds 26-27: with a go in flight a movement bind on S or an arrow passes,
+	// as in the countdown -- the release hands back what is held.  A view turn
+	// or a save-lock bind would act now (a refused go leaves the view turning, a
+	// stored -sl_hold lets go of a later hold), so it is swallowed as before.
 	if (rw_ack)
 	if (k == 0 || k == 3 || k == 4)
-	if (substring(getkeybind(scanx), 0, 1) == "+")
+	if (Rewind_MoveBind(getkeybind(scanx)))
 		return FALSE;
 	if (k >= 0)
 		rw_kst[k] = 1;
@@ -726,6 +739,11 @@ float(float scan) Rewind_Owns =
 
 	if (!rw_on)
 		return FALSE;
+	// Round 27: browsing, the wheel is the cursor's whatever it is bound to.
+	if (!rw_cd)
+	if (!rw_ack)
+	if (scan == K_MWHEELDOWN || scan == K_MWHEELUP)
+		return TRUE;
 	k = Rewind_KeyIx(scan);
 	if (k < 0)
 		return FALSE;

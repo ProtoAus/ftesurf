@@ -85,6 +85,10 @@ entity() SV_SelectSpawnPoint =
 // client can tell whose stats it is being sent (a spectator gets the target's).
 .float run_statowner;
 
+// Patch 477 review round 27: placed in the server -- set at the end of the
+// spawn, cleared at a disconnect (the engine's own `spawn` clears every field).
+.float run_inserver;
+
 void() PutClientInServer =
 {
 	local entity spot;
@@ -113,6 +117,7 @@ void() PutClientInServer =
 	  otherwise have a body the zone tests never look at.
 	*/
 	self.rec_gh_on = FALSE;
+	SV_ViewEyeDetach(self);         // round 27: the ghost's eye goes with it
 
 	/*
 	  BUILD 37 -- everything a map's entity I/O can write onto a PLAYER.
@@ -246,6 +251,7 @@ void() PutClientInServer =
 
 	// Multi-Session: the first spawn after a connect offers a paused run.
 	SV_MsOffer(self);
+	self.run_inserver = TRUE;
 };
 
 /*
@@ -335,6 +341,7 @@ void() ClientDisconnect =
 	SV_MsDisconnect(self);
 	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
 	SV_ViewEyeDetach(self);             // round 26: a ghost's too (the release returns without a pin)
+	self.run_inserver = FALSE;          // round 27
 
 	// Close any open .rec before the edict goes: fclose is what actually
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
@@ -802,6 +809,10 @@ void(string cmd) SV_ParseClientCommand =
 		if (c != "sl_holdoff")
 		{
 			if (self.classname != "player")
+				return;
+			// Round 27: and placed -- a recycled slot reads `player` before its
+			// spawn, whose clear then dropped a stream sl_load had opened.
+			if (!self.run_inserver)
 				return;
 			if (c != "sl_hold")
 			if (!SV_SaveLocRate(self))

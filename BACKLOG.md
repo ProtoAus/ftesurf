@@ -95,13 +95,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   whatever its class and pm_verify HOLDs at the teleport ("packet(s) differ"),
   which abandoned_pass does not convert -- so the honest stages it backs never
   show Verified. `setpos` should write a `warp`, or end the recording.
-- **A key whose press the console or a menu took reads as a fresh press on its
-  first repeat** (engine; Patch 477 round-26 review, CONFIRMED by trace; since
-  round 17). CSQC gets no KEYDOWN while key_dest is not game (keys.c), so
-  neither the rewind's table nor the draft's records the key: ESC held past the
-  repeat delay after closing the console with it reaches the rewind as a leave
-  (a go at the head on a running run). The engine already drops the UP of a key
-  CSQC never saw go down (pr_csqc.c csqckeysdown); it should drop its repeats.
 - **The avatar name field swallows every key-up while it has focus**
   (pre-existing; Patch 477 round-24 review, code-read). Av_InputEvent
   (cl_avatar.qc) returns TRUE for any release, so a `+sl_hold` or movement
@@ -111,15 +104,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   477 round-24 integrity review). The engine takes the guid from the connect
   packet (sv_main.c), and save folders, resume slots and rings key on it;
   whether the lobbies' certificate binds it was not traced.
-- **A press the engine console took acts on its first auto-repeat in the
-  rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
-  offered that press, so Rewind_Track (round 17) cannot mark it down; every press
-  CSQC is offered -- a bind's, the chat draft's -- is tracked. Its first repeat
-  can be an unasked S save or scrub too. And Rewind_Track keeps one state per
+- **A press the engine console or a menu took acts on its first auto-repeat in
+  the rewind** (engine; Patch 477 rounds 18, 26, 27, CONFIRMED by trace). CSQC
+  gets no KEYDOWN while key_dest is not game (keys.c), so neither Rewind_Track
+  nor Chat_Track marks the key down: ESC held past the repeat delay after
+  closing the console with it reaches the rewind as a leave (a go at the head
+  on a running run), and a first repeat can be an unasked S save or scrub. The
+  engine already drops the UP of a key CSQC never saw go down (pr_csqc.c
+  csqckeysdown); it should drop its repeats too. Both tables keep one state per
   key, not per device: with `in_rawinput_keyboard 1` and a second keyboard, a
   key held through an alt-tab loses its release (the focus-loss release covers
-  device 0), and its next press in the rewind is swallowed once (round-18
-  review, PLAUSIBLE, not tried on hardware).
+  device 0) -- its next press in the rewind is swallowed once, and a chat
+  bind's reads as a repeat and opens the engine's prompt (PLAUSIBLE, not tried
+  on hardware).
 - **A resume's row outlives a `retry` or a map change**: `rw_goid` lives on the
   edict, so "the next resume replaces it" is false across either, and the row stays
   in the list as an ordinary (demoted, rewound) save. Patch 477 round-9 review.
