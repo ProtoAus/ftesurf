@@ -250,7 +250,6 @@ vector rec_sl_pv_ang;            // pitch, yaw, ducked
 float  rec_sl_pv_ackat;          // cltime the count covered the load; 0 = not yet
 float  rec_sl_holdack;           // Patch 428 r3: the count that covers the hold's press
 float  rec_sl_holdackat;
-float  rec_sl_holdext;           // Patch 477: a hold cl_rewind.qc owns and lets go of itself
 
 #define SL_PV_TIMEOUT 1.5        // a lost reply cannot pin the camera
 #define SL_PV_SETTLE  0.15       // count in, body not: a refused load

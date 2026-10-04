@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -449,8 +449,11 @@ def main():
                                  for s in sec["R22C"]) if m]
     rd22c = [m.group(1) for m in (re.search(r"vote key: scan 1 down 0 took \d .* saves (\d+)", s)
                                   for s in sec["R22C"]) if m]
+    # Round 24: the draft passes that release now (it did not take the press), so
+    # R22C guards the outcome both round 22's table clear and round 24's draft
+    # rule give, and the release's `took` is no longer a premise.
     pre22c = (len(st22c) >= 2 and st22c[0].group(1) == "1" and st22c[1].group(1) == "0"
-              and k22c[:2] == ["down 1 took 1", "down 0 took 1"])
+              and k22c[:1] == ["down 1 took 1"])
     sv22c = re.search(r"\bsave (\d+) \(slot \d+\)", t22c)
     if not pre22c:
         print("CANNOT GRADE R22C: status %s, `1` %s" % ([m.group(1) for m in st22c], k22c))
@@ -659,26 +662,57 @@ def main():
               "rewind: resumed -- practice from here" in t22e, hp22e[-1:],
               "the hopped start died with that run" in t22e))
 
-    # R23A (round 23): with a draft open a `+` bind's release passes (took 0) and
-    # a plain bind's is taken (took 1).  Premise: the draft was open -- its ESC.
+    # R23A (rounds 23-24): with a draft open the release of a key held into it
+    # passes (took 0); a key pressed while typing is the draft's, press and
+    # release (took 1 each).  Premise: the draft was open -- its ESC.
     k23a = dict((m.group(1), m.group(2)) for m in (
-        re.search(r"vote key: scan (107 down 0|106 down 0|27 down 1) took (\d)", s) for s in sec["R23A"]) if m)
+        re.search(r"vote key: scan (107 down 0|106 down 1|106 down 0|27 down 1) took (\d)", s)
+        for s in sec["R23A"]) if m)
     check("R23A", k23a.get("27 down 1") == "1" and k23a.get("107 down 0") == "0"
-          and k23a.get("106 down 0") == "1",
-          "ESC took %s; `+` release took %s, plain release took %s" % (
-              k23a.get("27 down 1"), k23a.get("107 down 0"), k23a.get("106 down 0")))
+          and k23a.get("106 down 1") == "1" and k23a.get("106 down 0") == "1",
+          "ESC took %s; a held key's release took %s; a typed key took %s, its release %s" % (
+              k23a.get("27 down 1"), k23a.get("107 down 0"), k23a.get("106 down 1"), k23a.get("106 down 0")))
 
     # R23B (round 23): rec_savelock 0 lets go only of a key's hold.  Premise: the
     # `+sl_hold` held (holding 1, the server's hold 1).  Verdict: still holding
     # after another key's press and release, and `-sl_hold` lets go.
     hd23b = [(m.group(1), m.group(2)) for m in (re.search(r"saveloc: locked \S+ refkey \S+ hold (\S+) holding (\S+)", s)
                                                for s in sec["R23B"]) if m]
-    if not (len(hd23b) == 3 and hd23b[0] == ("1", "1")):
-        print("CANNOT GRADE R23B: saveloc reads %s" % hd23b)
+    # Round 24: the other key's press reached SaveLoc_Key's branch (took 0: it
+    # falls through to its bind), and -sl_hold let go on both sides.
+    k23b = [m.group(1) for m in (re.search(r"vote key: scan 107 down 1 took (\d)", s) for s in sec["R23B"]) if m]
+    if not (len(hd23b) == 3 and hd23b[0] == ("1", "1") and k23b == ["0"]):
+        print("CANNOT GRADE R23B: saveloc reads %s, the other key took %s" % (hd23b, k23b))
         cannot.append("R23B")
     else:
-        check("R23B", hd23b[1] == ("1", "1") and hd23b[2][1] == "0",
+        check("R23B", hd23b[1] == ("1", "1") and hd23b[2] == ("0", "0"),
               "held %s, after another key %s, after -sl_hold %s" % tuple(hd23b))
+
+    # R24A (round 24): `2` held into a chat draft is let go by its own release.
+    # Premises: the load key held (holding 1, the server's hold 1), the draft
+    # open (its ESC taken).  Verdict: the hold is gone on both sides after the
+    # release -- `took` cannot tell, the save-lock key takes it either way.
+    hd24a = [(m.group(1), m.group(2)) for m in (re.search(r"saveloc: locked \S+ refkey \S+ hold (\S+) holding (\S+)", s)
+                                               for s in sec["R24A"]) if m]
+    k24a = [m.group(1) for m in (re.search(r"vote key: scan 27 down 1 took (\d)", s) for s in sec["R24A"]) if m]
+    if not (len(hd24a) == 2 and hd24a[0] == ("1", "1") and k24a == ["1"]):
+        print("CANNOT GRADE R24A: saveloc reads %s, the draft's ESC took %s" % (hd24a, k24a))
+        cannot.append("R24A")
+    else:
+        check("R24A", hd24a[1] == ("0", "0"),
+              "held %s; after its release under the draft %s" % (hd24a[0], hd24a[1]))
+
+    # R24B (round 24): a save-lock key the rewind swallows says why -- once for
+    # a press and its repeat.  Premise: the rewind was open, and took the press.
+    st24b = status("R24B")
+    t24b = txt("R24B")
+    k24b = [m.group(1) for m in (re.search(r"vote key: scan 49 down 1 took (\d)", s) for s in sec["R24B"]) if m]
+    if not (st24b[:1] and st24b[0].group(1) == "1" and k24b[:1] == ["1"]):
+        print("CANNOT GRADE R24B: open %s, `1` took %s" % ([m.group(1) for m in st24b], k24b))
+        cannot.append("R24B")
+    else:
+        n24b = t24b.count("rewind: the save-lock waits for the rewind")
+        check("R24B", n24b == 1, "said %d time(s) for a press and its repeat" % n24b)
 
     # R23C (round 23): sl_save under the replay pin is refused and makes nothing.
     t23c = txt("R23C")

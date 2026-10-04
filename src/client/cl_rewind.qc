@@ -298,7 +298,6 @@ void() Rewind_Abandon =
 		SaveLoc_Release();          // which sends sl_holdoff itself
 	else
 		SaveLoc_Cmd("sl_holdoff");
-	rec_sl_holdext = FALSE;
 	rw_on = rw_ack = rw_cd = rw_dir = rw_leave = 0;
 	tr_cur_on = FALSE;
 };
@@ -380,7 +379,6 @@ void() Rewind_Answer =
 	rec_sl_holdkey   = 0;
 	rec_sl_holdseen  = cltime;
 	rec_sl_holdrep   = FALSE;
-	rec_sl_holdext   = TRUE;
 	rw_resi    = rw_goi;
 	rw_resgen  = tr_gen;
 	rw_resn    = tr_nsamp;
@@ -645,6 +643,8 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	{
 		if (Vote_Takes(scanx))
 			return FALSE;
+		if (!Rewind_SwHas(scanx))   // round 24: said once a press, not in silence
+			print("^3rewind:^7 the save-lock waits for the rewind\n");
 		Rewind_SwSet(scanx);
 		return TRUE;
 	}
@@ -653,6 +653,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (k >= 0)
 	{
 		rw_kst[k] = 1;
+		print("^3rewind:^7 the save-lock waits for the rewind\n");
 		return TRUE;
 	}
 	if (rw_cd)
@@ -809,7 +810,6 @@ void() Rewind_Reset =
 {
 	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = rw_leave = rw_atres = 0;
 	rw_resi = -1;
-	rec_sl_holdext = FALSE;
 	tr_cur_on = FALSE;
 	Rewind_SwReset();
 };

@@ -100,6 +100,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   key; Patch 477 round-19 review): Chat_InputEvent runs ahead of the rewind.
   Since round 23 the draft passes a `+` bind's release, so the keys held for
   the release no longer stick; the draft itself still opens over the count.
+- **The avatar name field swallows every key-up while it has focus**
+  (pre-existing; Patch 477 round-24 review, code-read). Av_InputEvent
+  (cl_avatar.qc) returns TRUE for any release, so a `+sl_hold` or movement
+  key held into the field keeps its hold or motion -- the chat draft's
+  round-24 rule (swallow only the releases of presses it took) applies.
+- **Whether a client can claim another player's guid is unchecked** (Patch
+  477 round-24 integrity review). The engine takes the guid from the connect
+  packet (sv_main.c), and save folders, resume slots and rings key on it;
+  whether the lobbies' certificate binds it was not traced.
 - **A press the engine console took acts on its first auto-repeat in the
   rewind** (ESC closing the console, held: the rewind leaves). CSQC is never
   offered that press, so Rewind_Track (round 17) cannot mark it down; every press

@@ -74,6 +74,8 @@ float  chat_ordn;
 // one-line console input, and the box makes room for it -- messages shift up
 // one line (more when the draft wraps) and stay shifted while you type.
 float  chat_typing;
+#define CHAT_KN 8
+float  chat_kd[CHAT_KN];        // presses the draft took, still held (Patch 477 round 24)
 
 // Prototype: Chat_InputEvent submits through it, and it is defined last.
 void(string cmd, string text) Chat_RunSafe;
@@ -887,6 +889,42 @@ void() Chat_RegisterCvars =
   keep working, unchanged, and `say text` typed at the console still takes
   the engine path.
 */
+// Patch 477 rounds 23-24: the draft swallows the release of a press it took,
+// and passes any other -- a key held into it (the save-lock's `2`, a `+sl_hold`
+// or movement bind) would otherwise keep its hold or its motion, since the
+// engine runs a stored release only for an up CSQC passes.  0 is a free slot.
+float(float scanx, float down) Chat_Took =
+{
+	local float i, f;
+
+	f = -1;
+	for (i = 0; i < CHAT_KN; i = i + 1)
+	{
+		if (scanx)
+		if (chat_kd[i] == scanx)
+		{
+			if (!down)
+				chat_kd[i] = 0;
+			return TRUE;
+		}
+		if (!chat_kd[i])
+			f = i;
+	}
+	if (down)
+	if (scanx)
+	if (f >= 0)
+		chat_kd[f] = scanx;
+	return FALSE;
+};
+
+void() Chat_TookReset =
+{
+	local float i;
+
+	for (i = 0; i < CHAT_KN; i = i + 1)
+		chat_kd[i] = 0;
+};
+
 float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 {
 	local string b;
@@ -900,16 +938,14 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 			return FALSE;
 		chat_typing = TRUE;
 		chat_buf    = "";
+		Chat_TookReset();
 		return TRUE;
 	}
 
-	// Typing.  Releases are swallowed silently -- but a `+` bind's, whose stored
-	// release the engine runs only if this passes it: a `+sl_hold` or movement
-	// key held into the draft stuck (Patch 477 round 23).  A key pressed while
-	// typing stored none.  Presses belong to the draft except the console's own
-	// key, which has to stay reachable.
+	// Typing.  Presses belong to the draft except the console's own key, which
+	// has to stay reachable; releases are its own only (Chat_Took).
 	if (evtype == IE_KEYUP)
-		return substring(getkeybind(scanx), 0, 1) != "+";
+		return Chat_Took(scanx, FALSE);
 	if (evtype != IE_KEYDOWN)
 		return TRUE;
 
@@ -918,6 +954,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		chat_typing = FALSE;             // abandon, do not fight the console
 		return FALSE;
 	}
+	Chat_Took(scanx, TRUE);
 
 	if (scanx == K_ENTER)
 	{
@@ -968,6 +1005,7 @@ float(string cmd) Chat_ConsoleCommand =
 		t = substring(t, 0, CHAT_DRAFT_MAX);
 	chat_typing = TRUE;
 	chat_buf    = t;
+	Chat_TookReset();
 	return TRUE;
 };
 
@@ -1002,6 +1040,7 @@ float(string args, float team) CSQC_ChatSay =
 		return FALSE;          // `say <text>` is a send, not a draft
 	chat_typing = TRUE;
 	chat_buf    = "";
+	Chat_TookReset();
 	return TRUE;
 };
 

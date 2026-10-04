@@ -2935,6 +2935,13 @@ void(entity e) SV_SaveLocCreate =
 		sprint(e, PRINT_HIGH, "^3save: let go of the load key first\n");
 		return;
 	}
+	// Patch 477 review round 24: nor in a resume phase, whose body SV_MsFrame
+	// holds at the park point as the pin does (a load is refused there too).
+	if (e.run_ms_phase)
+	{
+		sprint(e, PRINT_HIGH, "^3save: wait for the resume to finish\n");
+		return;
+	}
 	// Patch 477 review round 23 (older): nor under the replay or rewind pin, the
 	// same freeze -- its row read at rest wherever the body was, mid-air
 	// included, and a load of it forgave a hop chain's tag.  The rewind's S is
