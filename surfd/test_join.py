@@ -494,6 +494,44 @@ check("...and carries no separator of any kind",
 
 
 # --------------------------------------------------------------------------
+print("\n--- 9. names reach the game as UTF-8, not \\u escapes ---------------")
+
+# The engine's JSON reader misreads \uXXXX (surfd.game_json says how).  The
+# control puts the old encoder back: the same checks must then fail.
+NAME9 = "Lobby ™ Fløppy ๑ \U0001f600"
+
+
+def names9(mod):
+    mod.app.test_client().post("/api/heartbeat", data={
+        "key": "testkey", "node": "p27510", "map": "surf_lux", "players": "1",
+        "max": "16", "port": "27510", "name": NAME9})
+    lob = mod.app.test_client().get("/lobbies.json").get_data()
+    joined = mod.app.test_client().get(
+        "/api/join?map=surf_lux",
+        environ_overrides={"REMOTE_ADDR": "203.0.113.7"}).get_data()
+    return lob, joined
+
+
+lob, joined = names9(fresh())
+check("/lobbies.json carries the name's UTF-8 bytes", NAME9.encode("utf-8") in lob, True)
+check("...and no \\u escape", b"\\u" in lob, False)
+check("...and parses back to the same name",
+      json.loads(lob)["lobbies"][0]["name"] == NAME9, True)
+check("/api/join's reply carries the name's UTF-8 bytes",
+      NAME9.encode("utf-8") in joined, True)
+check("...and no \\u escape", b"\\u" in joined, False)
+check("...and parses back to the same name", json.loads(joined).get("name") == NAME9, True)
+
+m = fresh()
+m.game_json = lambda p: json.dumps(p, separators=(",", ":"))
+lob, joined = names9(m)
+check("CONTROL: the old encoder escapes the lobby list's name",
+      (NAME9.encode("utf-8") in lob, b"\\u2122" in lob), (False, True))
+check("CONTROL: ...and the join reply's", (NAME9.encode("utf-8") in joined,
+      b"\\u2122" in joined), (False, True))
+
+
+# --------------------------------------------------------------------------
 if FAILED:
     print("\n%d FAILURE(S):" % len(FAILED))
     for line in FAILED:

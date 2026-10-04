@@ -2163,6 +2163,33 @@ else:
     print("skip (h) threads never overlapped in step 8 this run -- see the RacingConn arm")
 
 # --------------------------------------------------------------------------
+print("\n--- 22. a board's names reach the game as UTF-8, not \\u escapes ---")
+
+# The engine's JSON reader misreads \uXXXX (surfd.game_json says how).
+# test_join.py section 9 does /lobbies.json and /api/join.
+NAME22 = "Chriis™ Fløppy ๑ﭥ \U0001f600"
+
+
+def raw_board(mod):
+    check("22 the run under a non-ASCII name is stored",
+          isinstance(submit(mod, player="chriis", name=NAME22), dict), True)
+    return mod.app.test_client().get(
+        "/api/board", query_string={"map": "surf_test"},
+        environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_data()
+
+
+raw = raw_board(fresh())
+check("22 /api/board carries the name's UTF-8 bytes", NAME22.encode("utf-8") in raw, True)
+check("22 ...and no \\u escape", b"\\u" in raw, False)
+check("22 ...and parses back to the same name",
+      [r["name"] for r in json.loads(raw)["rows"]] == [NAME22], True)
+m = fresh()
+m.game_json = lambda p: json.dumps(p, separators=(",", ":"))
+raw = raw_board(m)
+check("22 CONTROL: the old encoder escapes it",
+      (NAME22.encode("utf-8") in raw, b"\\u2122" in raw), (False, True))
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILED" % len(FAILED))

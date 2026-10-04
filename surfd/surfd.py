@@ -1823,6 +1823,14 @@ def live_rows(now):
     ).fetchall()
 
 
+def game_json(payload):
+    """A body the game parses: names as UTF-8, never \\uXXXX.  The engine's
+    reader takes an escape's digits from its OUTPUT buffer (fteqw
+    common/json.c, JSON_ReadBody), so "Chriis\\u2122" drew literally and
+    "Fl\\u00f8ppy" as a wrong glyph; raw bytes are copied as they are."""
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
 @app.get("/lobbies.json")
 def lobbies_json():
     now = int(time.time())
@@ -1842,7 +1850,7 @@ def lobbies_json():
     except sqlite3.Error as exc:
         # The menu must always get parseable JSON with a lobbies array.
         log.exception("lobbies.json db error: %s", exc)
-    body = json.dumps({"v": 1, "t": now, "lobbies": lobbies}, separators=(",", ":"))
+    body = game_json({"v": 1, "t": now, "lobbies": lobbies})
     return Response(body, status=200, mimetype="application/json")
 
 
@@ -1894,7 +1902,7 @@ def lobbies_json():
 
 def _join_reply(status, payload):
     payload.setdefault("v", 1)
-    return Response(json.dumps(payload, separators=(",", ":")),
+    return Response(game_json(payload),
                     status=status, mimetype="application/json")
 
 
@@ -3139,7 +3147,7 @@ def board():
         # rather than as a parse failure three layers away in QC.
         log.exception("board db error: %s", exc)
 
-    body = json.dumps(
+    body = game_json(
         {
             "v": 1,
             "t": now,
@@ -3160,8 +3168,7 @@ def board():
                 + [(t, counts.get(t, 0)) for t in TIERS_IMPORTED]),
             "offset": offset,
             "rows": rows,
-        },
-        separators=(",", ":"),
+        }
     )
     return Response(body, status=200, mimetype="application/json")
 
