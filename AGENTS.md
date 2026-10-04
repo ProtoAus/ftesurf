@@ -1778,6 +1778,50 @@ script rather than passing it as an argument, where `ps` would show it.
      killed a deploy script on 4 Oct, mid-reload). Check the pidfile names a
      live `surfd:app` gunicorn, then `kill -HUP $(cat …/surfd.pid)`.
 
+  **`tools/surfd-deploy.ps1` IS THAT PROCEDURE AS A SCRIPT** (added 2026-10-05):
+  stages from a COMMIT with `git archive`, runs the suite in the stage on the Pi,
+  backs up the db, copies under the flock, reloads, and then -- the step that
+  matters -- **hashes every deployed file on the Pi against `git rev-parse
+  <sha>:<path>`** and fails if any differ. Use it instead of hand-running the
+  above; `-SkipTests` and `-NoReload` exist and should be said out loud if used.
+  FOUR TRAPS IT PAID FOR, all of them the shape "the tool reported success while
+  doing nothing":
+  - **A COPY THAT PRINTS A COUNT IS NOT A COPY THAT COPIED.** Its first run
+    reported `COPIED=49` having installed zero files: a variable that did not
+    expand made every destination an empty string, `install` failed 49 times,
+    `set -e` did not fire inside the loop, and the counter counted iterations.
+    Nothing on the live host changed, /health answered, and the reload "succeeded"
+    by reloading the old code. **Verify by hashing the destination, not by
+    counting the loop.**
+  - **`set -e` WITHOUT `set -u` TURNS A TYPO INTO AN EMPTY STRING.** A
+    `$backupTag` that failed to interpolate inside a here-string did not error;
+    it silently made the backup name and the destination empty. `-u` makes an
+    undefined variable fatal, which is the only thing that converts this class of
+    bug from silent to loud.
+  - **`git ls-tree` PATHS ARE REPO-RELATIVE AND THE PI'S LAYOUT IS NOT.** The
+    files it names are `surfd/recplot.py`; the Pi has `recplot.py` directly in
+    `/srv/nvme/surfd`. Installing under the repo-relative name wrote 49 files into
+    a NESTED `surfd/` that is not a package and is not on the import path -- live
+    files untouched, deploy "successful". (The stage must keep the repo-relative
+    names, because `tools/` has to land beside `surfd/` for the suite.)
+  - **POWERSHELL `-match` IS CASE-INSENSITIVE**, so grading a remote script on an
+    uppercase `FAILED` sentinel matched every suite's own `0 failed` success line
+    and seven passing suites read as a failure. Use `-cmatch`/`-cnotmatch` for
+    sentinels. And `$LASTEXITCODE` READ AFTER A POWERSHELL FUNCTION RETURNED IS
+    STALE -- a function call does not set it, so the check graded an unrelated
+    earlier command; capture it immediately after the native call and pass it out.
+  Also: a function named `Ssh` and the `ssh` executable are ONE name in
+  PowerShell, so `& ssh` inside it recursed until "call depth overflow" -- the
+  release-script `-QcBuild`/`$qcBuild` trap above, in a function name.
+
+  DEPLOYED (the Pi keeps no receipt of its own, so this line is the record; UTC):
+  `2007afc` to /srv/nvme/surfd at 2026-10-04 18:00 -- all 49 files hash-matched
+  the commit, master 2479950 unchanged since 27 Sep, worker re-forked to 425928,
+  `surfd ready` 18:00:26, /health `{"ok":true,"lobbies":12}`, seven suites green
+  in the stage. Backups: `*.pre2007afc-20261005-045845` (34 files it replaced) and
+  `data/surfd.db.bak-2007afc-20261005-045845`. Verified live afterwards: run 749
+  serves `momdemo e9a68559…` and no integrity key.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
