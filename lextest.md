@@ -86,9 +86,15 @@ to be wrong.
   submitted in that window would have been refused and lost. Its link step
   scanned 2.35 million rows inside its write lock (6 s, past surfd's 5 s
   timeout); since 20:31 it reads first and writes only what it finds. In the
-  40 minutes before, 4 of 6 ticks locked the lobbies out (9 errors); the 4
-  ticks after had none. The board write itself is still one transaction, and
+  40 minutes before, 4 of 6 ticks locked the lobbies out (9 errors); the 8
+  ticks after (to 21:21) had none. The board write itself is still one transaction, and
   a much bigger tick could still pass 5 s (BACKLOG).
+- **The Momentum demos have been scanned (ROADMAP 11), a first pass.** All
+  7,177 on this PC (2,218 players, 499 maps; 2,714 of them the WR set) went
+  through it: none was worth a look, and 1,322 were too short to measure. What
+  it looks for, what it cannot see yet and the per-demo report are in your
+  private repo (`FTESurf-private/momscan` and the plan's "Momentum demo scan"),
+  not here.
 - **0.1.22 is out** (https://dl.proto.bar/ftesurf/ftesurf-0.1.22.7z, 38.3 MB,
   4 Oct evening) with the `needs` line and the replay Segments column fix. The
   467 engine again, so players see the `needs` names dim until an engine

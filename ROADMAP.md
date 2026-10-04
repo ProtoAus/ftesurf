@@ -23,7 +23,10 @@ Each item: **Today** (what the code does, with pointers), **Build**, **Unknowns*
   one, from `data/mapdeps.txt` (rebuilt 4 Oct: 560 needs, 419 maps) and engine
   Patch 480's `fs_addonstate`. An engine without 480 (0.1.21's) draws the names
   dim. The filter chip is not built;
-- not started: 4, 5, 8, 11, and the four decisions at the end.
+- 11: a first scan ran over the 7,177 Momentum demos on Lex's PC (4 Oct): none
+  was worth a look, 1,322 too short to measure. Method, limits and the report
+  are in the private repo;
+- not started: 4, 5, 8, and the four decisions at the end.
 
 ---
 
