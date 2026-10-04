@@ -18,6 +18,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   2680-2701) -- so it never reaches the board. Fix: commit momboards' rows in
   small batches (and the link pass incrementally), and let the lobby retry a
   submission surfd refused with a 5xx.
+  THE LINK PASS HALF IS DONE (808756b, live 4 Oct 09:31 UTC): its UPDATE scanned
+  2.35M rows inside the write transaction (6.2 s); it now reads first and
+  writes only the rows it links. STILL OPEN: `flush()` (momboards.py:112-134)
+  sets a tick's board rows in one transaction. The link pass's final review
+  measured, on the PC, 20,000 rows (16,000 landing) holding the lock 1.83 s
+  with a heartbeat beside it waiting 1.49 s, and unchanged rows cheap (20,000 in
+  0.37 s); the Pi ran the old link UPDATE ~4.6x slower than the PC, so a tick
+  that lands ~10k rows could pass 5 s there. Ticks set 1100-1800 rows today.
 - **`noclip` is open to every player on the lobbies** (pre-existing; Patch 478
   round-8 integrity review, traced in the engine). The engine's `noclip`
   (Cmd_Noclip_f) refuses unless SV_MayCheat -- `sv_cheats`, or a one-slot
@@ -1281,6 +1289,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   gravity nor a ramp clip: 210 are the two ladders, and every stretch looked at
   among the other 321 (3 files) was an overlap. Find out which overlaps move
   before choosing a rule.
+- **A rejected Momentum recording stays linked, and the link pass would link it
+  again** (2026-10-04, the link pass's final review). `restand` (surfd.py:2278)
+  re-derives a row only for kind 'run', so a reject on an imported replay
+  leaves its row's `replay_id` on it and `/api/replay` still serves it; and
+  `link_demos` reads no reviews. Fix: skip `_REJECTED_SQL` replays when linking,
+  and clear a momentum row's link when its replay is rejected.
 - **The web run page still calls an imported path "derived"** (board.js:563-566);
   since the re-import it is the demo's own. Key the note on `momdemo`.
 - **momreplay.py has no memory or time bound per demo** (PC-only; every current

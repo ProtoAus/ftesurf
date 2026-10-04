@@ -8,14 +8,22 @@ what to build, in what order, and what needs a decision. Work happens on branch
 Each item: **Today** (what the code does, with pointers), **Build**, **Unknowns**
 (measure before promising), **Size**.
 
-**Status, 4 Oct evening** (the branch is merged into main and live):
+**Status, 4 Oct night** (merged into main and live):
 - done: 2, 10, 1 without the engine's download cancel, 9;
 - 7: both tiers kept end to end, a mapmeta row for every KSF map, KSF's
   pictures (`tools/ksfshots.py`, run once by hand), and a row draws KSF's tier
   under Momentum's ("KSF 2"); the tier chips and the sort still use one;
-- 3: the decoder only (`tools/momreplay.py`, 4598 of 4598 demos); the re-import
-  and the stage fix are not started;
-- not started: 4, 5, 6, 8, 11, and the four decisions at the end.
+- 3: done except ramp contact. `tools/momreimport.py` rewrote 5,260 of the
+  5,281 imported runs from their own demos (angles, velocity, ground, duck,
+  jump, keys and moves; stages numbered as ours), live on the Pi since 4 Oct
+  09:31 UTC. A .mtv records no ramp contact (BACKLOG: infer it), and two key
+  cases are still wrong (BACKLOG, "Two cases the re-import's keys still get
+  wrong"). 20 runs have no demo here and 1 the decoder refuses;
+- 6: a row names the games it needs ("needs TF2 CS:GO"), red where this PC lacks
+  one, from `data/mapdeps.txt` (rebuilt 4 Oct: 560 needs, 419 maps) and engine
+  Patch 480's `fs_addonstate`. An engine without 480 (0.1.21's) draws the names
+  dim. The filter chip is not built;
+- not started: 4, 5, 8, 11, and the four decisions at the end.
 
 ---
 

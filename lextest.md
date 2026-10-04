@@ -57,10 +57,35 @@ to be wrong.
 - **0.1.21 is out** (https://dl.proto.bar/ftesurf/ftesurf-0.1.21.7z, 38.3 MB)
   with everything above and the rewind and ghost fix -- the same engine files
   as 0.1.20, so Patch 468 (touchpad) is still held out for your call.
-- **Momentum demos can be read in full.** `tools/momreplay.py` decodes every
-  tick of a .mtv -- position, velocity, view angles, buttons, ground -- checked
-  on all 4598 local demos. Nothing uses it yet; ROADMAP 3's real buttons and
-  mouse on Momentum lines would be built on it.
+- **Imported Momentum runs are rebuilt from their own demos (ROADMAP 3)** --
+  live on the boards since 4 Oct, 20:31. 5,260 of the 5,281 runs were rewritten
+  from the `.mtv` each came from: the player's real view angles, velocity,
+  ground, duck and jump, and keys from the demo (the move the game recorded, or
+  the buttons where it did not record one). The old files had positions only,
+  so the mouse pad drew the velocity turning, the key display stayed dark, and
+  a mid-air crouch made a fake speed spike. Stage runs no longer read one stage
+  late. The other 21 keep their old body (20 have no demo here, 1 the decoder
+  refuses). Four review rounds; the last one's three findings were fixed or
+  logged. Still wrong, in BACKLOG.md: a key held on a ladder can read "no key"
+  (210 ticks in 2 files), and some A+D overlaps need a closer look. A demo has no
+  ramp contact at all, so "colour by contact" still reads air on these runs.
+- **The map list says which games a map needs (ROADMAP 6).** A row reads
+  "needs TF2 CS:GO": red where this PC lacks the game, plain where it has it.
+  It comes from a fresh `data/mapdeps.txt` (560 needs over 419 maps: CS:GO,
+  TF2, Portal 2, Portal and Momentum's mount folder) and a new engine call
+  (Patch 480). The engine 0.1.21 and 0.1.22 ship cannot answer, so there the
+  names draw dim; this PC's engine can. The filter chip is not built yet.
+- **Engine Patch 481: a server can no longer make your game load or unload
+  content.** Six `fs_` commands (fs_load, fs_useaddons and four more) ran when a
+  server sent them, so a server could mount a folder of your PC into the game
+  or add a Steam library. Now only your own console and configs can run them.
+  Pushed and in this PC's engine; players get it only with an engine release
+  (see the decisions below). I keep the notes on what else a server can make
+  the engine do in your private repo, not in public files.
+- **The Momentum import was locking the database every 7 minutes**, and a run
+  submitted in that window would have been refused and lost. Its link step
+  scanned 2.35 million rows inside its write lock (6 s, past surfd's 5 s
+  timeout); since 20:31 it reads first and writes only what it finds.
 
 ### Things to try
 
@@ -96,6 +121,12 @@ to be wrong.
    look right? Is "full data first" the order you wanted?
 4. **Your Volcano tracks** from the in-game music player: do the menu's
    shaders pulse with them now?
+5. **A Momentum replay.** On surf_4am, leaderboard > Momentum tab, watch a run.
+   Do the key display and the mouse pad look like a player's hands now? (The Pi
+   and this PC both hold the new files.)
+6. **The `needs` line** on a map row: bhop_stref_amazon reads "needs CS:GO
+   Portal 2 MOM mount". Is red-when-missing the right signal, and do you want
+   the filter chip ("only maps I can draw fully")?
 
 ### Decisions only you can make
 
@@ -113,6 +144,11 @@ to be wrong.
   gate. Runs are marked when you noclip, but it also lifts the replay pin's
   freeze. Patch 479 would hand it to the engine's gate (off on the lobbies,
   on in single-player). Say if you want it.
+- **An engine release?** Three engine patches are waiting: 468 (the touchpad,
+  held for you since 3 Oct), 480 (the map list's "do I have this game") and 481
+  (a server cannot load or unload content). 0.1.21 and 0.1.22 reuse the 467
+  engine, so players see the `needs` names dim. Say which of the three ship,
+  and I will cut one.
 - **The four ROADMAP questions** (end of ROADMAP.md): may the Pi
   fetch more KSF ranks or Momentum demos when a player asks; how a second
   build of a map (Momentum vs CS:S) is stored and offered; and which screen
