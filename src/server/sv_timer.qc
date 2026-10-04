@@ -12418,6 +12418,7 @@ void(entity e, float z) SV_TimerTryArm =
 	// -- a re-arm re-read the taint from the level (a carried cheat, noclip let go
 	// of in the box) and the next exit started clean.
 	if (e.run_t_state == TS_ARMED)
+	if (z != e.run_t_armzone)           // the same region is the arm Patch 435's gate grants a load
 	if (SV_ZoneSameBox(z, e.run_t_armzone))
 	{
 		e.run_t_armzone = z;
