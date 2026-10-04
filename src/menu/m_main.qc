@@ -1381,6 +1381,9 @@ string(string f) ui_mapname =
   every one of them a map that read untiered before.
 */
 #define MT_TSRC     6
+// KSF's own tier, mapmeta.txt column 11 (ROADMAP 7), "-" when KSF has none or
+// the file predates it.  Drawn under the chip, never merged into ms_tierv.
+#define MT_KTIER    7
 
 /*
   Runs at the END of ui_load_maps, once ms_count is final.
@@ -1451,10 +1454,12 @@ void() ui_meta_load =
 		// tier -- the same rule the .rec header follows.  tokenize() returns ""
 		// past the end anyway, so this is belt and braces, but the belt is the
 		// documented contract and worth writing down.
-		bufstr_set(ms_meta, row, sprintf("%s %s %s %s %s %s %s",
-		                                 argv(3), argv(4), argv(5),
-		                                 argv(6), argv(7), argv(8),
-		                                 (n >= 11) ? argv(10) : "-"));
+		// strcat for the tail: a builtin takes 8 parameters, and sprintf drops a 9th.
+		bufstr_set(ms_meta, row, strcat(sprintf("%s %s %s %s %s %s ",
+		                                        argv(3), argv(4), argv(5),
+		                                        argv(6), argv(7), argv(8)),
+		                                (n >= 11) ? argv(10) : "-", " ",
+		                                (n >= 12) ? argv(11) : "-"));
 
 		if (argv(6) != "-")
 			if (stof(argv(6)) > maxpage)
@@ -1495,8 +1500,8 @@ void() ui_meta_load =
 			bufstr_set(ms_tierv, i, bufstr_get(ms_dltier, i));
 			// The packed string, rebuilt with the provenance this row now has.
 			// Everything else about it is unknown -- mapmeta has no row at all,
-			// which is why we are here -- so the other six fields stay "-".
-			bufstr_set(ms_meta, i, "- - - - - - ksf");
+			// which is why we are here -- so the other seven fields stay "-".
+			bufstr_set(ms_meta, i, "- - - - - - ksf -");
 			fb = fb + 1;
 		}
 
@@ -6343,12 +6348,12 @@ void(vector screensize) screen_create =
 				  this is a dozen tokenize calls a frame, not 2200.
 				*/
 				local float mn, mpage, mcell, mstages, mbonus, mlinear;
-				local string mtier, mpb, mtsrc, mtime;
+				local string mtier, mpb, mtsrc, mtime, mktier;
 
 				mn = tokenize(bufstr_get(ms_meta, real));
 				mpage = mcell = -1;
 				mstages = mbonus = mlinear = -1;
-				mtsrc = "";
+				mtsrc = mktier = "";
 				if (mn > MT_UUID)
 				{
 					mlinear = (argv(MT_LINEAR) == "-") ? -1 : stof(argv(MT_LINEAR));
@@ -6359,6 +6364,8 @@ void(vector screensize) screen_create =
 				}
 				if (mn > MT_TSRC)
 					mtsrc = argv(MT_TSRC);
+				if (mn > MT_KTIER)
+					mktier = argv(MT_KTIER);
 
 				ui_thumb([rp_x + 3, rp_y + 2], [78, 44], mpage, mcell);
 
@@ -6396,6 +6403,11 @@ void(vector screensize) screen_create =
 					         strcat("T", mtier), COL_ACCENT, 1, 0);
 				else
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW, "--", COL_DIM, 0.6, 0);
+				// KSF's tier under the chip (ROADMAP 7): another community's scale,
+				// so labelled and kept apart.  A ksf row's chip already is KSF's.
+				if (mtsrc != "ksf" && stof(mktier) > 0)
+					sui_text([rp_x + 90, rp_y + 28], '12 12 0',
+					         strcat("KSF ", mktier), COL_DIM, 0.85, 0);
 
 				/*
 				  The best time anyone is known to have set, on the NAME's line and
