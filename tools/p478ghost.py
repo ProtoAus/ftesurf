@@ -31,7 +31,7 @@ LOG = os.path.join(GAME, "logs", "p478ghost.log")
 MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G13", "G12", "G15", "G16", "G17", "G14",
+SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G13", "G12", "G15", "G16", "G17", "G18", "G19", "G14",
             "G14A", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PROGS = {}              # the progs the run was graded on, kept in MADE
@@ -395,13 +395,41 @@ def main():
     t17 = "\n".join(sec["G17"])
     ss17 = field("G17", r"\bstartseg (\d+)\b")
     st17 = states("G17")
+    # Round 11: and clean before the setpos, so `cheated` is the carry's.
     if not (st17[-1:] == ["running"] and ss17[-1:] == ["1"] and "setpos: -11428 -9601 13450" in t17
-            and len(st17) >= 2 and st17[-2] in ("armed", "finished")):
-        print("CANNOT GRADE G17: states %s, startseg %s, setpos %s" % (
-            st17, ss17, "setpos: -11428 -9601 13450" in t17))
+            and len(st17) >= 3 and st17[-2] in ("armed", "finished") and classes("G17")[:1] == ["clean"]):
+        print("CANNOT GRADE G17: states %s, startseg %s, setpos %s, classes %s" % (
+            st17, ss17, "setpos: -11428 -9601 13450" in t17, classes("G17")))
         return 2
     check("G17", st17[-2] == "armed" and classes("G17")[-1:] == ["cheated"],
           "in the box %s; after a side entry startseg %s class %s" % (st17[-2], ss17[-1:], classes("G17")[-1:]))
+
+    # G18.  Round 11.  Premises: the retry restored the run ("run restored"), and
+    # a stage-2 run came of it (running, startseg 1).  Verdict: cheated -- the
+    # restored carry; without it the handover re-reads a clean level.
+    t18 = "\n".join(sec["G18"])
+    ss18 = field("G18", r"\bstartseg (\d+)\b")
+    if not ("run restored at" in t18 and states("G18")[-1:] == ["running"] and ss18[-1:] == ["1"]):
+        print("CANNOT GRADE G18: restored %s, states %s, startseg %s" % (
+            "run restored at" in t18, states("G18"), ss18))
+        return 2
+    check("G18", classes("G18")[-1:] == ["cheated"], "after the retry startseg %s class %s" % (
+        ss18[-1:], classes("G18")[-1:]))
+
+    # G19.  Round 11.  Premise: at the unghost the point stood in stage 2's box
+    # (the viewpos the same packet printed: y in -10224..-9616, z in
+    # 13200..13456).  Verdict: the handover dropped in its own words, and no
+    # stage-2 run followed.
+    t19 = "\n".join(sec["G19"])
+    vp19 = [m for m in (re.search(r"^setpos (\S+) (\S+) (\S+) ", s) for s in sec["G19"]) if m]
+    inbox = bool(vp19) and -10224 <= float(vp19[-1].group(2)) <= -9616 and 13200 <= float(vp19[-1].group(3)) <= 13456
+    if not inbox:
+        print("CANNOT GRADE G19: viewpos %s" % [m.group(0) for m in vp19])
+        return 2
+    check("G19", "reached its box as a ghost" in t19 and states("G19")[-1:] != ["running"],
+          "unghost at y %s z %s; said %s; then %s startseg %s" % (
+              vp19[-1].group(2), vp19[-1].group(3), "reached its box as a ghost" in t19,
+              states("G19")[-1:], field("G19", r"\bstartseg (\d+)\b")[-1:]))
 
     # G14.  Round 8.  Premises: running before the ghost, the setpos landed in the
     # box, the map reloaded (G14A exists, CSQC came up again).  Verdict: no paused

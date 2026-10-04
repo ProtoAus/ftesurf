@@ -1190,6 +1190,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  and no format bump -- the same property the `fromsave` key relied on.
 	*/
 	fputs(f, sprintf("cheat %d\n", e.run_t_cheat));
+	fputs(f, sprintf("handcarry %d\n", e.run_t_handcarry));     // Patch 478 r11: retry and Multi-Session
 	/*
 	  PATCH 445: the hopped-start taint, and it is here because its ABSENCE was a
 	  laundering channel rather than an omission.
@@ -1438,13 +1439,15 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 
 	up = down = FALSE;
 	fast = !SV_TimerNotFast(e);
-	// Patch 478 review round 10: speed no walk or jump could give, put into an
-	// attempt that goes on -- the stage handover carries its segment while it may
-	// still be in the body (SV_TimerHandArm).
-	e.run_t_loadfast = FALSE;
+	// Patch 478 review rounds 10-11: what the load put in this attempt that can
+	// reach the next stage's entry -- a cheated row's position, and speed no walk
+	// or jump could give (SV_TimerHandArm).
+	e.run_t_handcarry = 0;
+	if (e.run_t_flags & TF_CHEAT)
+		e.run_t_handcarry = TF_CHEAT;
 	if (fast)
 	if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_ARMED)
-		e.run_t_loadfast = TRUE;
+		e.run_t_handcarry = e.run_t_handcarry | TF_SEGMENT;
 	if (e.run_t_state == TS_IDLE)
 		up = fast;
 	else if (fast)
@@ -1548,6 +1551,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
+	local float hcy;                // Patch 478 r11, run_t_handcarry
 	local float hop;                // Patch 445, the hopped-start taint
 	local float rwd;                // Patch 477, a rewind save (see REWIND)
 	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
@@ -1572,6 +1576,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	ticks = elapsed = haveelapsed = mark = samples = padn = cps = serial = 0;
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
+	hcy = 0;
 	// Patch 445.  A pre-445 file reads 0, which is the pre-445 BEHAVIOUR rather
 	// than merely a safe value: before this key existed a retry always came back
 	// unhopped.  Explicit because fteqcc does not zero locals.
@@ -1616,6 +1621,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "pb")         { pbv = stof(argv(1)); continue; }
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
+		if (k == "handcarry")  { hcy = stof(argv(1)); continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
 		if (k == "rewound")    { rwd = stof(argv(1)); continue; }
 		// Patch 450, and ROUND 8 corrected what this said.  It claimed argv(1) is ""
@@ -2004,6 +2010,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		// and the per-stage copy for the same reason run_st_dirty takes one.
 		e.run_t_cheat  = cht;
 		e.run_st_cheat = cht;
+		e.run_t_handcarry = hcy;        // Patch 478 r11: a load's own is set in SV_SaveLoadTag
 
 		/*
 		  PATCH 445: AND THE HOPPED-START TAINT, which is the whole reason the key
@@ -4711,6 +4718,7 @@ void(entity e) SV_SpecNudge =
 		return;
 	}
 	SV_TimerCheat(e);
+	e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
 	setorigin(e, e.origin + '0 16 0');
 	dprint(sprintf("spectate: %s nudged to %v\n", e.netname, e.origin));
 };

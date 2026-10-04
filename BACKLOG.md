@@ -43,18 +43,23 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   HOLDs a ghost window whose rows carry input (Patch 373), and the cancel entry
   above is the gap. Fix: the engine zeroes a ghost's usercmd while
   STAT_FS_GHOST is set.
-- **A finished stage run's handover box is not policed for a body that arrives
-  with its point** (pre-existing; Patch 478 rounds 7-10, code-read).
-  SV_TimerJumpWatch judges a hop only while ARMED or RUNNING. A body whose point
-  reaches the next stage's box a packet after the hull fired the finish (a side
-  entry below ~1070 u/s, a rise from below) is armed there by SV_TimerTryArm and
-  hop-checked; one whose point arrives in the finish packet (a drop from above,
-  a teleport, a very fast entry) stays FINISHED until the hull leaves the box,
-  and the handover sets `startok` (Build 20: a stage run begins in flight) -- so
-  a chain bhopped in that box starts the stage clean at its speed. Hop-checking
-  a body that lands there would tag a land-and-hop on teleport-staged maps: a
-  decision. Both arms carry the cheat bit and a fast load's segment
-  (SV_TimerHandArm).
+- **A finished stage run's next box is policed only for a body whose point
+  arrives after the finish -- a decision for Lex** (pre-existing; Patch 478
+  rounds 7-11, code-read). SV_TimerJumpWatch judges a hop only while ARMED or
+  RUNNING. A point that reaches the next box a packet after the hull fired the
+  finish (a slow side entry, a rise from below) is armed there by
+  SV_TimerTryArm and hop-checked, as before 478; a point that arrives in the
+  finish packet -- a drop from above, a teleport, or any entry fast enough for
+  the packet: ~1070 u/s at one move a packet, ~360 at three (`cl_c2spps`), or a
+  ghost held across the boundary -- leaves the body FINISHED until the hull
+  exits, and the handover sets `startok` (Build 20: a stage run begins in
+  flight), so a chain bhopped in that box starts the stage clean at its speed.
+  Both ways cost: hop-checking every handover (say, a body that stands on the
+  ground in the box) closes it, and also tags an honest land-and-hop on
+  teleport-staged maps and every chained stage on a bhop map played off-lobby
+  (the bhop lobby runs `run_starthop 0`) -- with a tag that is sticky to `!r`.
+  The point's arm already does that to slow entries, as it did before 478.
+  Both arms carry what reached the entry one boundary (SV_TimerHandArm).
 - **pm_verify's start latch is not refreshed at a `ghost 0`** (engine; Patch 478
   round 8). The live unghost takes the START latch of where the body stands
   (SV_TimerGhostEnd) and keeps the event latches, as the verifier does (round 7

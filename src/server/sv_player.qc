@@ -658,13 +658,20 @@ void(entity e) SV_NoclipWatch =
 		e.run_st_cheat = TRUE;
 
 	// ---- EDGE: the run-level funnel, once per gesture ------------------
+	// Patch 478 r11: and the gesture's own mark, for the next stage's entry.
 	if (nc)
 	if (e.run_lastmovetype != MOVETYPE_NOCLIP)
+	{
 		SV_TimerCheat(e);
+		e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
+	}
 
 	if (sc)
 	if (!e.run_lastcheats)
+	{
 		SV_TimerCheat(e);
+		e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
+	}
 
 	e.run_lastmovetype = e.movetype;
 	e.run_lastcheats   = sc;
@@ -1316,6 +1323,7 @@ void(string cmd) SV_ParseClientCommand =
 		  One line either way.  Written down so a later change here is a decision.
 		*/
 		SV_TimerCheat(self);
+		self.run_t_handcarry = self.run_t_handcarry | TF_CHEAT;     // Patch 478 r11
 		// Patch 478 review round 7 (older than 478): and a finished stage run's
 		// handover, as a load drops it (Patch 436) -- the handover's arm re-read
 		// the class from the live state and started the next stage clean
