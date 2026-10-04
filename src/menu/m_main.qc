@@ -3017,7 +3017,7 @@ float ui_join_pending;
 #define ST_HOLD 6
 string ui_st_msg;               // strzoned; "" none
 float  ui_st_msgok;             // 1 good, -1 bad, 0 neither
-float  ui_st_msguntil;          // time
+float  ui_st_msgat, ui_st_msguntil;     // time
 float  ui_charge_on, ui_charge;
 float  ui_pulse, ui_pulse_t0;
 
@@ -3033,6 +3033,7 @@ void(string msg, float ok) ui_st_result =
 		strunzone(ui_st_msg);
 	ui_st_msg = strzone(msg);
 	ui_st_msgok = ok;
+	ui_st_msgat = time;
 	ui_st_msguntil = time + ST_HOLD;
 	if (ok)
 		ui_st_pulse(ok);
@@ -5047,6 +5048,7 @@ float  dl_rate;         // bytes/sec, the engine's own figure
 float  dl_done;
 float  dl_total;
 float  dl_until;
+float  dl_t0;           // when it started (time), for the status strip
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -5178,6 +5180,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
+		dl_t0 = time;
 	}
 	else if (r == 2)
 	{
@@ -5538,29 +5541,41 @@ void() ui_status_update =
 		}
 	}
 
+	ui_charge_on = (kind != ST_NONE);
+	if (kind == ST_ASK || kind == ST_WAIT)
+		ui_charge = bound(0, el / max(lim, 1), 1);
+	else if (total > 0)
+		ui_charge = bound(0, pct / 100, 1);
+	else
+		ui_charge = 0;
+
+	// An outcome newer than a running download outranks it for its hold: a held
+	// join cancelled mid-fetch says so, then the fetch's own line comes back.
+	if (kind == ST_DL)
+	if (ui_st_msg)
+	if (time < ui_st_msguntil)
+	if (ui_st_msgat > (ui_stt ? ui_stt_t0 : dl_t0))
+		kind = ST_NONE;
+
 	ui_st_kind   = kind;
 	ui_st_text   = "";
 	ui_st_figs   = "";
 	ui_st_frac   = -1;
 	ui_st_cancel = FALSE;
 	ui_st_col    = COL_TEXT;
-	ui_charge_on = (kind != ST_NONE);
-	ui_charge    = 0;
 
 	if (kind == ST_ASK)
 	{
 		ui_st_text   = sprintf("Finding a server for %s...", map);
 		ui_st_figs   = sprintf("  %g s", floor(el));
 		ui_st_cancel = TRUE;
-		ui_charge    = el / lim;
 	}
 	else if (kind == ST_WAIT)
 	{
 		ui_st_text   = sprintf("%s is switching to %s", addr, map);
 		ui_st_figs   = sprintf(" -- %g s", floor(el));
-		ui_st_frac   = bound(0, el / max(lim, 1), 1);
+		ui_st_frac   = ui_charge;
 		ui_st_cancel = TRUE;
-		ui_charge    = ui_st_frac;
 	}
 	else if (kind == ST_HELD || kind == ST_DL)
 	{
@@ -5570,10 +5585,7 @@ void() ui_status_update =
 			ui_st_text = sprintf("Downloading %s", map);
 		ui_st_figs = strcat(" -- ", ui_dl_figs(pct, done, total, rate));
 		if (total > 0)
-		{
-			ui_st_frac = bound(0, pct / 100, 1);
-			ui_charge  = ui_st_frac;
-		}
+			ui_st_frac = ui_charge;
 		ui_st_cancel = (kind == ST_HELD);
 		if (kind == ST_DL)
 		if (ui_dl_cancel_ready())
@@ -5591,7 +5603,6 @@ void() ui_status_update =
 		else
 			ui_st_col = COL_DIM;
 	}
-	ui_charge = bound(0, ui_charge, 1);
 };
 
 // The space's own light while it is drawn (MM_Camera walks milk_hue with the
