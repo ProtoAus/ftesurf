@@ -31,7 +31,15 @@ HEAD_KEYS = frozenset((
     "zonesrc zonecrc zonerule instart startjit flags pmpin "
     # Patch 416: the run nonce.  Listed so it does not show on the owner's run
     # page as an unknown key -- it is a normal header key, not a finding.
-    "nonce").split())
+    "nonce "
+    # The Momentum demo an import was rewritten from (tools/momreimport.py), a
+    # 40-hex SHA1.  Listed because a key absent here is dropped SILENTLY -- no
+    # note, no unknown counter, which counts body records only -- so surfd's
+    # WEB_HEAD_KEYS selecting it would find nothing and the run page could not
+    # tell a demo-sourced import from one derived from positions.  Safe to
+    # publish: it names a public demo, and surfd's own allowlist is still what
+    # decides what leaves the process.
+    "momdemo").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
 COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
            "spec")     # spec: windows, parsed before the counted fallback

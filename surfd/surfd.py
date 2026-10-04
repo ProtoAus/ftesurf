@@ -3913,8 +3913,15 @@ WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
 # What a public run page may see of a recording's header.  AN ALLOWLIST AND NOT
 # A BLOCKLIST: `mapcrc`, `zonecrc`, `zonerule`, `nonce` and `pmpin` are the
 # integrity surface, and a blocklist ships the next key that gets added.
+# `momdemo` is the one integrity key that is safe to publish and the one the run
+# page needs: a 40-hex SHA1 of the Momentum demo an import was rewritten from.
+# Its presence is what tells the page the path is the demo's own rather than
+# derived from positions (BACKLOG, "The web run page still calls an imported path
+# 'derived'"); 5260 of the 5281 imported runs carry it and the other 21 do not,
+# so a missing key is a real state and not an absent column.  Nothing else in a
+# header may reach the browser: see the security arm in test_web.py 6b.
 WEB_HEAD_KEYS = ("map", "track", "leg", "startseg", "tickrate", "movetickrate",
-                 "clock", "flags")
+                 "clock", "flags", "momdemo")
 # Kinds whose file a public caller may plot.  `evidence` is deliberately absent.
 WEB_RUN_KINDS = ("run", "momentum")
 # Tiers whose recordings are public.  Community runs are demoted and the web

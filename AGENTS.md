@@ -2548,6 +2548,12 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   integrity surface and a blocklist ships whatever key is added next. The
   fixture .rec in test_web.py contains all of them on purpose, so the arm can
   fail. `evidence` rows, `community` runs and rejected runs are 404 there too.
+  **IT IS THE SECOND OF TWO LISTS, and the first one filters silently.**
+  `recplot.HEAD_KEYS` decides which header keys `parse()` returns at all, and an
+  unlisted key yields no note and no counter (the `unknown records` note counts
+  BODY records), so a key added to `WEB_HEAD_KEYS` alone publishes nothing and the
+  symptom is a missing field rather than an error. `momdemo` needed both. Move them
+  together.
 - **`tier` on `/board/api/map` falls back, it does not 400.** The route shipped
   ignoring that parameter, so links carrying `tier=community` exist and
   test_web.py pins that they open ranked. A 400 there is a 400 on a bookmark.

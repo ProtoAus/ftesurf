@@ -561,11 +561,23 @@
 
     // The imported caveat goes next to the line, not in a footnote: the shape
     // is reconstructed from a demo that was never meant to be replayed here.
+    //
+    // KEYED ON `momdemo`, NOT ON "IS IT IMPORTED".  Since the re-import
+    // (tools/momreimport.py) 5260 of the 5281 imported runs are written from their
+    // own demo -- real eye angles, buttons, moves -- so calling every imported path
+    // "derived" understated them, and this line is the only thing on the page that
+    // says where the shape came from.  The 21 that carry no `momdemo` really are
+    // derived from positions and must keep the stronger wording; a KSF row has no
+    // recording at all, so it never reaches this page.
     var warn = $('runwarn');
-    warn.textContent = imported
-      ? 'Reconstructed from an imported demo. The time is the source’s; the '
-        + 'path is derived and lower fidelity than a run recorded here.'
-      : '';
+    var demo = body.head && body.head.momdemo;
+    warn.textContent = !imported ? ''
+      : demo
+        ? 'Imported from Momentum. The time and the path are both the source’s,'
+          + ' read from its own demo — lower fidelity than a run recorded here,'
+          + ' which samples every physics tick.'
+        : 'Reconstructed from an imported demo. The time is the source’s; the '
+          + 'path is derived and lower fidelity than a run recorded here.';
     warn.hidden = !imported;
 
     var dl = $('runhead');

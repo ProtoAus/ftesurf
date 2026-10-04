@@ -132,7 +132,7 @@ instart 1
 startjit 0
 nonce deadbeefdeadbeefdeadbeefdeadbeef
 pmpin trisoup=1 rotboxes=0 portalcsg=1
-flags 0
+%(extra)sflags 0
 begin
 0.0000 100.00 200.00 300.00 250.00 0.00 0.00 0 0 0 0 0 0 0 0 0 0
 0.0150 103.75 200.00 300.00 300.00 40.00 0.00 0 0 0 0 0 0 0 0 0 0
@@ -142,23 +142,27 @@ end 3 1 0 0 0
 """
 
 
-def write_rec(m, kind, mapname, track, leg, name):
+def write_rec(m, kind, mapname, track, leg, name, momdemo=None):
     root = m.RUNS_DIR if kind == "run" else m.MOMENTUM_DIR
     d = os.path.join(root, mapname, m.leg_dir(track, leg))
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, name)
     with open(path, "w") as fh:
-        fh.write(REC_BODY % {"map": mapname, "track": track, "leg": leg})
+        # `momdemo` goes in the header block, before `begin` -- a recplot reader
+        # stops at the body, so appending it to the end of the fixture would put it
+        # where nothing reads it and the arm would silently measure its absence.
+        fh.write(REC_BODY % {"map": mapname, "track": track, "leg": leg,
+                             "extra": "momdemo %s\n" % momdemo if momdemo else ""})
     return path
 
 
-def imported(m, mapname, player, name, ticks, tier):
+def imported(m, mapname, player, name, ticks, tier, momdemo=None):
     """One imported row plus its replay, the way momindex/momboards file them."""
     conn = sqlite3.connect(m._test_db)
     lf = leaf(ticks, player)
     rid = 0
     if tier == "momentum":
-        write_rec(m, "momentum", mapname, 0, 0, lf)
+        write_rec(m, "momentum", mapname, 0, 0, lf, momdemo=momdemo)
         cur = conn.execute(
             "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
             " player, name, ticks, tickrate, millis, flags, node, submitted,"
@@ -673,12 +677,54 @@ def main():
     # THE SECURITY ARM.  The fixture .rec CONTAINS mapcrc, zonecrc, zonerule,
     # nonce and pmpin -- so a head that leaked them would leak them here, and
     # this check fails if the allowlist is ever turned into a blocklist.
-    check("the head carries only WEB_HEAD_KEYS",
-          sorted(r["head"]), sorted(m.WEB_HEAD_KEYS))
+    # ...intersected with what the file actually states: a ranked recording has no
+    # `momdemo` and must not grow an empty one, or the run page's wording branch
+    # would key on a key that is always present.
+    check("the head carries only WEB_HEAD_KEYS, and only the ones the file states",
+          sorted(r["head"]),
+          sorted(k for k in m.WEB_HEAD_KEYS if k in ("map", "track", "leg",
+                                                     "startseg", "tickrate",
+                                                     "movetickrate", "clock",
+                                                     "flags")))
     leaked = [k for k in ("mapcrc", "zonecrc", "zonerule", "nonce", "pmpin",
                           "zonesrc", "instart", "startjit", "owner", "runid")
               if k in json.dumps(r)]
     check("...and no integrity key reaches the browser", leaked, [])
+
+    # `momdemo` IS in WEB_HEAD_KEYS, and these two arms are why that is safe
+    # rather than an oversight: it is the only key the run page needs, it is a
+    # hash of a public demo rather than a secret, and every key that must stay
+    # private is named explicitly in the check above rather than inferred from
+    # the allowlist being short.
+    check("control: a ranked run's file carries no momdemo, so the head has none",
+          "momdemo" in r["head"], False)
+
+    m = fresh()
+    DEMO = "e9a68559a40f01840828fc3dffe01c9a7a4d3fe6"
+    imported(m, "bhop_eazy", "76561198000000009", "FromDemo", 4100,
+             "momentum", momdemo=DEMO)
+    imported(m, "bhop_eazy", "76561198000000010", "FromPos", 4200, "momentum")
+    rows = {x["name"]: x for x in
+            body(get(m, "/board/api/map?map=bhop_eazy&tier=imported"))["rows"]}
+    check("control: both imported rows are on the board",
+          sorted(rows), ["FromDemo", "FromPos"])
+
+    # THE WORDING ARM.  The page used to call every imported path "derived",
+    # which was true of the position-difference import and stopped being true
+    # when tools/momreimport.py rewrote 5260 of the 5281 runs from their own
+    # demos.  `momdemo` is the key that tells them apart, and 21 files really do
+    # lack it -- so both branches are live, not one branch and a dead default.
+    rd = body(get(m, "/board/api/run/%d" % rows["FromDemo"]["rep"]))
+    rp = body(get(m, "/board/api/run/%d" % rows["FromPos"]["rep"]))
+    check("an import written from its own demo publishes the demo hash",
+          rd["head"].get("momdemo"), DEMO)
+    check("...and one derived from positions publishes nothing",
+          "momdemo" in rp["head"], False)
+    check("both still plot, so the page can tell them apart",
+          (rd["n"], rp["n"]), (4, 4))
+    check("neither leaked an integrity key on the way",
+          [k for k in ("mapcrc", "nonce", "pmpin", "zonerule", "runid")
+           if k in json.dumps(rd) + json.dumps(rp)], [])
 
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
     check("a run whose file is gone is 404",

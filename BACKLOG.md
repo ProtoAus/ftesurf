@@ -1395,8 +1395,15 @@ is that an arm ships publicly with its fix, not before it. Copy them in from
   leaves its row's `replay_id` on it and `/api/replay` still serves it; and
   `link_demos` reads no reviews. Fix: skip `_REJECTED_SQL` replays when linking,
   and clear a momentum row's link when its replay is rejected.
-- **The web run page still calls an imported path "derived"** (board.js:563-566);
-  since the re-import it is the demo's own. Key the note on `momdemo`.
+- **A header key `recplot.parse` does not list is DROPPED SILENTLY** (found 5 Oct
+  while closing the run page's "derived" wording). `recplot.HEAD_KEYS` filters the
+  header before `surfd.py`'s `WEB_HEAD_KEYS` ever sees it, and an unlisted key
+  produces no note and no counter -- the `unknown records` note counts BODY records
+  only. So adding a key to `WEB_HEAD_KEYS` alone publishes nothing, and the failure
+  is a missing field, not an error: exactly the shape AGENTS.md warns about for the
+  `.rec` grammar's `r.info` tuple. Both lists move together, and `test_web.py` 6b now
+  pins each side (the demo hash reaches the browser; a ranked run grows no empty
+  one).
 - **momreplay.py has no memory or time bound per demo** (PC-only; every current
   demo decodes or refuses cleanly): zstd's max_output_size is ignored when the
   frame states a size, LZMA trusts the file's own 32-bit size, a zero-width prop
