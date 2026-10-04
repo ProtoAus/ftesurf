@@ -4088,13 +4088,6 @@ void(float i) ui_connect =
 	if (ui_name_gate(2, i))
 		return;
 
-	// ROADMAP 1: a lobby picked by hand replaces a directory ask in flight, but
-	// not a connect already held for a download -- ui_prejoin holds one only,
-	// and an ask's local fallback would leave that one to connect later.
-	ui_join_cancel();
-	if (ui_join_busy())
-		return;
-
 	addr = Lob_Addr(i);
 	if (!ui_addr_ok(addr))
 	{
@@ -4123,6 +4116,14 @@ void(float i) ui_connect =
 	  connect path they would be changing local server cvars for no reason,
 	  and maxclients in particular would be actively wrong.
 	*/
+	// ROADMAP 1: a lobby picked by hand replaces a directory ask in flight, but
+	// not a connect already held for a download -- ui_prejoin holds one only,
+	// and an ask's local fallback would leave that one to connect later.
+	// After the address checks, so a refused click leaves the ask alone.
+	ui_join_cancel();
+	if (ui_join_busy())
+		return;
+
 	// The map first, when we can see it is missing or the wrong build.
 	// TRUE means the fetch owns the connect and ui_prejoin_tick issues it.
 	if (ui_prejoin(addr, Lob_Map(i)))
