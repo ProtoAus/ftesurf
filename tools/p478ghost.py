@@ -387,16 +387,21 @@ def main():
           "row %s %s; after the load startseg %s, %s" % (run16[0], rows[run16[0]], ss16[-1],
                                                          states("G16")[-1:]))
 
-    # G17.  Round 9, older than 478.  Premise: a stage-2 run came of it (running,
-    # startseg 1) after the setpos landed.  Verdict: cheated, as stage 1 was.
+    # G17.  Rounds 9-10, older than 478.  Premises: a stage-2 run came of it
+    # (running, startseg 1) after the setpos landed, and the read 0.65 s in found
+    # the body between the point's entry and the hull's exit (armed or finished,
+    # not idle or already running).  Verdicts: `armed` there -- the point's arm,
+    # hop-checked, took the box -- and cheated at the end, as stage 1 was.
     t17 = "\n".join(sec["G17"])
     ss17 = field("G17", r"\bstartseg (\d+)\b")
-    if not (states("G17")[-1:] == ["running"] and ss17[-1:] == ["1"] and "setpos: -11428 -9601 13450" in t17):
+    st17 = states("G17")
+    if not (st17[-1:] == ["running"] and ss17[-1:] == ["1"] and "setpos: -11428 -9601 13450" in t17
+            and len(st17) >= 2 and st17[-2] in ("armed", "finished")):
         print("CANNOT GRADE G17: states %s, startseg %s, setpos %s" % (
-            states("G17"), ss17, "setpos: -11428 -9601 13450" in t17))
+            st17, ss17, "setpos: -11428 -9601 13450" in t17))
         return 2
-    check("G17", classes("G17")[-1:] == ["cheated"], "after a side entry startseg %s class %s" % (
-        ss17[-1:], classes("G17")[-1:]))
+    check("G17", st17[-2] == "armed" and classes("G17")[-1:] == ["cheated"],
+          "in the box %s; after a side entry startseg %s class %s" % (st17[-2], ss17[-1:], classes("G17")[-1:]))
 
     # G14.  Round 8.  Premises: running before the ghost, the setpos landed in the
     # box, the map reloaded (G14A exists, CSQC came up again).  Verdict: no paused

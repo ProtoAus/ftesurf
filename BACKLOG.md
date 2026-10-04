@@ -43,14 +43,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   HOLDs a ghost window whose rows carry input (Patch 373), and the cancel entry
   above is the gap. Fix: the engine zeroes a ghost's usercmd while
   STAT_FS_GHOST is set.
-- **A finished stage run's handover box is not policed** (pre-existing; Patch 478
-  round-7 review, code-read). SV_TimerJumpWatch judges a hop only while ARMED or
-  RUNNING, and the FINISHED exit into the next stage sets `startok` (Build 20: a
-  stage run begins in flight) -- so after a stage finish, bhopping inside the
-  next stage's box and leaving starts that stage clean at the chain's speed.
-  Map-dependent; whether a stage start should judge an in-box chain is a
-  decision. (The taint no longer launders there: since 478 r8 the handover
-  carries the finished stage's dirty and cheat latches.)
+- **A finished stage run's handover box is not policed for a body that arrives
+  with its point** (pre-existing; Patch 478 rounds 7-10, code-read).
+  SV_TimerJumpWatch judges a hop only while ARMED or RUNNING. A body whose point
+  reaches the next stage's box a packet after the hull fired the finish (a side
+  entry below ~1070 u/s, a rise from below) is armed there by SV_TimerTryArm and
+  hop-checked; one whose point arrives in the finish packet (a drop from above,
+  a teleport, a very fast entry) stays FINISHED until the hull leaves the box,
+  and the handover sets `startok` (Build 20: a stage run begins in flight) -- so
+  a chain bhopped in that box starts the stage clean at its speed. Hop-checking
+  a body that lands there would tag a land-and-hop on teleport-staged maps: a
+  decision. Both arms carry the cheat bit and a fast load's segment
+  (SV_TimerHandArm).
 - **pm_verify's start latch is not refreshed at a `ghost 0`** (engine; Patch 478
   round 8). The live unghost takes the START latch of where the body stands
   (SV_TimerGhostEnd) and keeps the event latches, as the verifier does (round 7

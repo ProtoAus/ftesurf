@@ -782,6 +782,48 @@ float(float z, vector p, vector mins, vector maxs) SV_ZoneOcc =
 	return Zone_PointInside(z, p);
 };
 
+// Patch 478 review round 10: one box, any of its regions -- 31 stage boxes and 35
+// STARTs in the library are several, and crossing an internal seam is not leaving.
+float(float a, float b) SV_ZoneSameBox =
+{
+	if (a < 0 || b < 0)
+		return FALSE;
+	if (a >= zone_count || b >= zone_count)
+		return FALSE;
+	if (zone_type[a] != zone_type[b])
+		return FALSE;
+	if (zone_track[a] != zone_track[b])
+		return FALSE;
+	return zone_seg[a] == zone_seg[b];
+};
+
+float(float z, vector p, vector mins, vector maxs) SV_ZoneInBox =
+{
+	local float i;
+
+	for (i = 0; i < zone_count; i = i + 1)
+		if (SV_ZoneSameBox(i, z))
+		if (SV_ZoneIn(i, p, mins, maxs))
+			return TRUE;
+	return FALSE;
+};
+
+// No faster than a walk or a jump could make it: SV_SaveLoadTag's line.
+float(entity e) SV_TimerNotFast =
+{
+	local float cap, jv;
+
+	cap = cvar("sv_maxspeed");
+	if (cap <= 0)
+		cap = PM_RUN_SPEED;
+	jv = cvar("pm_jumpvelocity");
+	if (jv <= 0)
+		jv = 302;                   // defaultuser.cfg's 301.99
+	if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + 1)
+		return FALSE;
+	return fabs(e.velocity_z) <= jv + 1;
+};
+
 /*
   THE HULL THE RULESET TESTS WITH.  One function, because a rule spelled at ten
   call sites is a rule that will disagree with itself at one of them.
@@ -1496,6 +1538,9 @@ float() SV_RecEnabled =
   the same thing: your stage time stays up while you are still in the box.
 */
 .float  run_t_pendarm;
+// Patch 478 review round 10: a load put more speed in this attempt than a walk or
+// a jump could (SV_SaveLoadTag); cleared once the body is no faster again.
+.float  run_t_loadfast;
 
 /*
   Noclip (or a save-lock load) has touched this attempt, whether or not the clock
@@ -9045,6 +9090,8 @@ void(entity e) SV_TimerWarped =
 {
 	e.run_t_lastorg = e.origin;
 	e.rec_sl_loadt = 0;
+	if (SV_TimerNotFast(e))         // Patch 478 r10: a warp that kept it (a map teleport) does not
+		e.run_t_loadfast = FALSE;
 
 	/*
 	  The padding ring is the APPROACH, and you did not approach.
@@ -12258,6 +12305,33 @@ void(entity e) SV_TimerStart =
   expect.  A stage zone while running is an EVENT (a split), never an arm, or
   a staged map would reset its own run at every boundary.
 */
+/*
+  Patch 478 review rounds 8-10 (older than 478): arm a finished stage run's next
+  box, by the handover or by the point entering it, carrying what reached its
+  entry -- a teleport's cheat (a setpos into or above the boundary, noclip let go
+  of in the box) and, while its speed may still be in the body, a fast load's
+  segment.  Class bits and the load latch, not the dirty latch: a freeze, a
+  replay's pin or a load at rest moves nothing into the next stage.  run_class 0
+  has no finer word than practice, so practice is what it carries.
+*/
+void(entity e, float z) SV_TimerHandArm =
+{
+	local float hflags;
+
+	hflags = e.run_t_flags;
+	SV_TimerArm(e, z);
+	if (hflags & TF_CHEAT)
+	{
+		e.run_t_cheat  = TRUE;
+		e.run_st_cheat = TRUE;
+	}
+	if (e.run_t_loadfast)
+		SV_TimerStitched(e);
+	if (!run_t_runclass)
+	if (hflags & TF_PRACTICE)
+		SV_TimerPractice(e);
+};
+
 void(entity e, float z) SV_TimerTryArm =
 {
 	local float stop, stops;
@@ -12303,17 +12377,16 @@ void(entity e, float z) SV_TimerTryArm =
 			stops = TRUE;
 	}
 
-	// Patch 478 review round 9 (older than 478): a finished stage run's next box
-	// is the handover's to arm, in step 1 as the hull leaves it.  Armed here --
-	// the point arriving a packet after the hull fired the finish, or a seam
-	// region of the same stage -- it dropped the finished stage's taint and Build
-	// 20's settled start.
+	// Patch 478 review rounds 9-10 (older than 478): the point entering a finished
+	// stage run's next box -- a packet after the hull fired the finish, or across
+	// a seam -- arms it as any box arms, hop-checked, and carries what reached it.
 	if (e.run_t_state == TS_FINISHED)
 	if (e.run_t_pendarm >= 0)
-	if (zone_type[z] == ZONE_STAGE)
-	if (zone_track[z] == zone_track[e.run_t_pendarm])
-	if (zone_seg[z] == zone_seg[e.run_t_pendarm])
+	if (SV_ZoneSameBox(z, e.run_t_pendarm))
+	{
+		SV_TimerHandArm(e, z);
 		return;
+	}
 
 	/*
 	  BUILD 57: WALKING INTO A START ENDS A STAGE-1 REQUEST -- you are at the map's
@@ -12868,22 +12941,22 @@ void(entity e) SV_TimerGhostEnd =
 	mx = SV_RunHullMaxs(e);
 	if (e.run_t_state == TS_ARMED)
 	if (e.run_t_armzone >= 0)
-	if (!SV_ZoneIn(e.run_t_armzone, e.origin, mn, mx))
+	if (!SV_ZoneInBox(e.run_t_armzone, e.origin, mn, mx))
 		SV_TimerGhostLeft(e);
 	if (e.run_t_state == TS_FINISHED)
 	if (e.run_t_pendarm >= 0)
-	if (!SV_ZoneIn(e.run_t_pendarm, e.origin, mn, mx))
+	if (!SV_ZoneInBox(e.run_t_pendarm, e.origin, mn, mx))
 		SV_TimerGhostLeft(e);
 	SV_ZoneScan(e.origin, e.origin, mn, mx);
 	if (zs_az >= 0)
 	if (zs_az != e.run_t_azone)         // an entry: a latch the body already had moves nothing
 	{
 		if (e.run_t_state == TS_ARMED)
-		if (zs_az != e.run_t_armzone)
+		if (!SV_ZoneSameBox(zs_az, e.run_t_armzone))
 			SV_TimerGhostLeft(e);
 		if (e.run_t_state == TS_FINISHED)
 		if (e.run_t_pendarm >= 0)
-		if (zs_az != e.run_t_pendarm)
+		if (!SV_ZoneSameBox(zs_az, e.run_t_pendarm))
 			SV_TimerGhostLeft(e);
 		if (zone_type[zs_az] == ZONE_START)
 		{
@@ -12908,7 +12981,6 @@ void(entity e) SV_TimerFrame =
 {
 	local float az, ez, cp, cancel;
 	local float bhopz, bhopstate, bhopdirty, bhopcheat;
-	local float hflags;             // Patch 478 r9: the finished stage's class, for its handover
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
@@ -13052,11 +13124,11 @@ void(entity e) SV_TimerFrame =
 		mx = SV_RunHullMaxs(e);
 		if (e.run_t_state == TS_ARMED)
 		if (e.run_t_armzone >= 0)
-		if (!SV_ZoneIn(e.run_t_armzone, e.origin, mn, mx))
+		if (!SV_ZoneInBox(e.run_t_armzone, e.origin, mn, mx))
 			SV_TimerGhostLeft(e);
 		if (e.run_t_state == TS_FINISHED)
 		if (e.run_t_pendarm >= 0)
-		if (!SV_ZoneIn(e.run_t_pendarm, e.origin, mn, mx))
+		if (!SV_ZoneInBox(e.run_t_pendarm, e.origin, mn, mx))
 			SV_TimerGhostLeft(e);
 		if (run_t_stagearm)             // at 0 a held exit starts nothing: the plane is the base
 		if (e.run_t_state == TS_RUNNING)
@@ -13091,6 +13163,12 @@ void(entity e) SV_TimerFrame =
 		SV_TimerWarped(e);
 		return;
 	}
+
+	// Patch 478 review round 10: standing no faster than a walk, a load's speed is gone.
+	if (e.run_t_loadfast)
+	if (e.flags & FL_ONGROUND)
+	if (SV_TimerNotFast(e))
+		e.run_t_loadfast = FALSE;
 
 	p = e.origin;
 	lastp = e.run_t_lastorg;
@@ -13154,24 +13232,9 @@ void(entity e) SV_TimerFrame =
 	{
 		if (e.run_t_pendarm >= 0)
 		{
-			if (!SV_ZoneIn(e.run_t_pendarm, p, mn, mx))
+			if (!SV_ZoneInBox(e.run_t_pendarm, p, mn, mx))
 			{
-				hflags = e.run_t_flags;
-				SV_TimerArm(e, e.run_t_pendarm);
-				// Patch 478 review rounds 8-9 (older than 478): what reached the next
-				// stage's entry carries into it -- a teleport's cheat (setpos into or
-				// above the boundary, noclip off in the box) and a load's segment (a
-				// shadow or stitched run short of it); the arm re-reads only the
-				// movetype.  The class bits, not the latches: a freeze or a replay's
-				// pin is practice without moving the body, and a bhop map's START
-				// re-entry resets the latches.
-				if (hflags & TF_CHEAT)
-				{
-					e.run_t_cheat  = TRUE;
-					e.run_st_cheat = TRUE;
-				}
-				if (hflags & (TF_SEGMENT | TF_SHADOW))
-					SV_TimerStitched(e);
+				SV_TimerHandArm(e, e.run_t_pendarm);     // Patch 478 rounds 8-10
 
 				/*
 				  BUILD 20: A STAGE RUN'S START IS ALREADY OVER.

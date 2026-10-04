@@ -1434,19 +1434,17 @@ float(float id, float row) SV_SaveReadLight =
 */
 void(entity e, float hop, float rwd) SV_SaveLoadTag =
 {
-	local float cap, jv, up, down, fast;
+	local float up, down, fast;
 
-	cap = cvar("sv_maxspeed");
-	if (cap <= 0)
-		cap = PM_RUN_SPEED;
-	jv = cvar("pm_jumpvelocity");
-	if (jv <= 0)
-		jv = 302;                   // defaultuser.cfg's 301.99
-	up = down = fast = FALSE;
-	if (vlen([e.velocity_x, e.velocity_y, 0]) > cap + SL_ARM_SPEED)
-		fast = TRUE;
-	if (fabs(e.velocity_z) > jv + SL_ARM_SPEED)
-		fast = TRUE;
+	up = down = FALSE;
+	fast = !SV_TimerNotFast(e);
+	// Patch 478 review round 10: speed no walk or jump could give, put into an
+	// attempt that goes on -- the stage handover carries its segment while it may
+	// still be in the body (SV_TimerHandArm).
+	e.run_t_loadfast = FALSE;
+	if (fast)
+	if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_ARMED)
+		e.run_t_loadfast = TRUE;
 	if (e.run_t_state == TS_IDLE)
 		up = fast;
 	else if (fast)
