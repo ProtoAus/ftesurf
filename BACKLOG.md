@@ -1512,6 +1512,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   screen_create's `best` column (m_main.qc, `ms_wr`) and cl_scores.qc's online
   rows; the menu leaderboard (m_board.qc `Mlb_MsString`) splits integer ms
   instead. Fix: an integer path in sh_time.qc, checked against the same model.
+- **A uri_get reply from before `menu_restart` reaches the new menu VM**
+  (pre-existing; ROADMAP 9 review, read in the engine, not driven).
+  `PR_uri_get_callback2` (pr_bgcmd.c) drops a reply only when the VM's
+  `spawncount` moved, and client/pr_menu.c never sets `menu_world.spawncount`.
+  The new VM's `Lob_NextReq` starts again at 1, so a late reply can take a
+  fresh id -- the lobby poll's, a join's or the leaderboard's -- and be parsed
+  as its answer. Fix: bump the spawncount in MP_Init, or seed `lb_nextid` from
+  the clock.
 - **The run line's air-control grade is measured against THIS server's movement
   settings, not the recording's -- ALL BUT THE TICK, which Patch 470 fixed.**
   `Line_Movevars` reads `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`,

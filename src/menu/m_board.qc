@@ -122,11 +122,13 @@ string() Mlb_EmptyLine =
 /*
   One sentence per failure.  Beyond HTTP's: 0 is a transfer that ended with no
   status and no body, -1 a body that is not JSON, -2 no answer by
-  MLB_DEADLINE, -3 uri_get refused to start; 900-905 are the engine's own
-  (http/iweb.h).
+  MLB_DEADLINE, -3 uri_get refused to start, -4 / -5 a next page not asked
+  for (terms, lobby_dir); 900-905 are the engine's own (http/iweb.h).
 */
 string(float code) Mlb_Why =
 {
+	if (code == -5) return "lobby_dir is empty";
+	if (code == -4) return "online play is off";
 	if (code == -3) return "this build refused to send the request";
 	if (code == -2) return sprintf("the leaderboard did not answer within %g s", MLB_DEADLINE);
 	if (code == -1) return "the leaderboard sent something this build cannot read";
@@ -241,18 +243,34 @@ float(float append) Mlb_Fetch =
 	local string dir, url, tier;
 	local float off, lim, id;
 
+	if (!mlb_open)
+		return FALSE;               // no map, and no buffers for a reply
+
 	// Lob_JoinAsk's consent tier: this GET discloses the address as a join does.
+	// A next page refused here fails alone; the rows held stay up.
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
 	{
-		mlb_state = MLBS_OFF;
 		print("^5board:^7 online play is off -- nothing asked\n");
+		if (append)
+		{
+			mlb_mfail = TRUE;
+			mlb_mcode = -4;
+		}
+		else
+			mlb_state = MLBS_OFF;
 		return FALSE;
 	}
 	dir = cvar_string("lobby_dir");
 	if (dir == "")
 	{
-		mlb_state = MLBS_NODIR;
 		print("^5board:^7 lobby_dir is empty -- nothing asked\n");
+		if (append)
+		{
+			mlb_mfail = TRUE;
+			mlb_mcode = -5;
+		}
+		else
+			mlb_state = MLBS_NODIR;
 		return FALSE;
 	}
 
@@ -316,8 +334,13 @@ float() Mlb_More =
 // The retry buttons: a first page that did not land, or the next page.
 void() Mlb_Retry =
 {
+	if (!mlb_open)
+		return;
 	if (mlb_state != MLBS_OK && mlb_state != MLBS_FETCH)
+	{
+		Mlb_ClearRows();        // a first page lands only on an empty list
 		Mlb_Fetch(FALSE);
+	}
 	else if (mlb_mfail)
 	{
 		mlb_mfail = FALSE;
@@ -477,8 +500,9 @@ void(float id, float code, string body, float append) Mlb_Page =
 		Mlb_Row(mlb_n + i, json_get_child_at_index(rows, i));
 	json_free(root);
 
+	// A full page: the server may hold more, even at the cap (the tail says so).
 	mlb_n = mlb_n + n;
-	mlb_more = (n >= lim && mlb_n < MLB_MAXROW);
+	mlb_more = (n >= lim);
 	if (!append)
 	{
 		mlb_state = MLBS_OK;
@@ -594,9 +618,9 @@ void(vector rp, float rw) Mlb_DrawTail =
 	}
 	else if (mlb_mreq || (mlb_more && mlb_n < MLB_MAXROW))
 		sui_text(tp, SZ_ROW, "loading...", COL_DIM, 1, 0);
-	else if (mlb_more)
+	else if (mlb_more && Mlb_TabCount(mlb_tab) > mlb_n)
 		sui_text(tp, SZ_ROW, sprintf("the first %g of %g -- the list stops there",
-		                             MLB_MAXROW, Mlb_TabCount(mlb_tab)), COL_DIM, 1, 0);
+		                             mlb_n, Mlb_TabCount(mlb_tab)), COL_DIM, 1, 0);
 	else
 		sui_text(tp, SZ_ROW, "end of the list", COL_DIM, 1, 0);
 };
@@ -723,7 +747,8 @@ void(vector screensize) Mlb_Draw =
 
 		// ui_board_test's scroll ends where it was sent, or where the rows run out.
 		if (mlb_going)
-		if (mlb_scroll_y >= mlb_goto * MLB_ROW_H || mlb_mfail || (!mlb_more && !mlb_mreq))
+		if (mlb_scroll_y >= mlb_goto * MLB_ROW_H || mlb_mfail
+		    || (!mlb_mreq && (!mlb_more || mlb_n >= MLB_MAXROW)))
 		{
 			mlb_going = FALSE;
 			print(sprintf("^5board:^7 scrolled: top row %g of %g held\n",
@@ -821,6 +846,12 @@ void() Mlb_TestCommand =
 	}
 	if (a == "esc")
 	{
+		// The key's step exists only on the create screen (Menu_InputEvent).
+		if (menu_screen != SCREEN_CREATE)
+		{
+			print("^5board:^7 esc: not on the create screen\n");
+			return;
+		}
 		k = ui_create_esc();
 		print(sprintf("^5board:^7 esc %s\n", (k == 1) ? "closed the leaderboard" :
 		              (k == 2) ? "ended a join" : "left the create screen"));

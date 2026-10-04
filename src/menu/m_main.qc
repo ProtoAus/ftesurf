@@ -5829,26 +5829,21 @@ void(string what, string arg) ui_strip_test =
 	              ui_st_frac, ui_st_cancel, ui_charge, ui_charge_on, ui_pulse));
 };
 
-// ROADMAP 9: the picked map's leaderboard, beside start; dim and deaf with no
-// map picked.  Returns its width.
-float(vector pos, string sel) ui_board_button =
+// ROADMAP 9: the picked map's leaderboard, right of the field that names it --
+// not in the footer, where it cost the status strip its Cancel below ~650 px.
+// Dim and deaf with no map picked.
+void(vector pos, vector sz, string sel) ui_board_button =
 {
-	local float w;
-	local vector sz;
-
-	w  = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
-	sz = [w, 30];
 	if (sel != "")
 	{
 		if (ui_button("cs_board", pos, sz, "leaderboard"))
 			Mlb_Open(sel, -1);
-		return w;
+		return;
 	}
 	sui_fill(pos, sz, COL_ROW, 0.5, 0);
 	sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
-	sui_text([pos_x + 8, pos_y + (30 - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
+	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
 	         COL_DIM, 0.5, 0);
-	return w;
 };
 
 void(vector screensize) screen_create =
@@ -6068,8 +6063,10 @@ void(vector screensize) screen_create =
 			ms_query_stale = FALSE;
 		}
 
-	ui_field_sel("cs_search", [16, y + 20], [inner, 28],
+	float lbw = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
+	ui_field_sel("cs_search", [16, y + 20], [inner - lbw - 8, 28],
 	             ms_query, ms_query_cursor, "search maps...", sel);
+	ui_board_button([16 + inner - lbw, y + 20], [lbw, 28], sel);
 	y += 56;
 
 	/*
@@ -6679,7 +6676,7 @@ void(vector screensize) screen_create =
 		}
 	}
 
-	// ---- start / leaderboard / status / back ---------------------------
+	// ---- start / status / back ----------------------------------------
 	float  busy  = ui_join_busy();
 	string stlbl = busy ? "joining..." : ((sel == "") ? "pick a map" : "start");
 	float  sbw   = max(150, stringwidth(stlbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
@@ -6687,9 +6684,7 @@ void(vector screensize) screen_create =
 	if (!busy)
 		ui_launch();
 
-	float  lbx   = 16 + sbw + 8;
-	float  lbw   = ui_board_button([lbx, by], sel);
-	ui_status_strip([lbx + lbw + 24, by], size_x - 116 - 24 - (lbx + lbw + 24));
+	ui_status_strip([16 + sbw + 24, by], size_x - 116 - 24 - (16 + sbw + 24));
 
 	// ROADMAP 1: leaving ends a join -- one nobody can see must not connect later.
 	// A download keeps going.
