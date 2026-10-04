@@ -31,9 +31,31 @@ to be wrong.
   yours). It cannot be recovered. The same test's cleanup removed 38 empty
   folders under `ftesurf/data`; they were recreated from the list it printed.
   The tests now park and restore the folders they use.
-- **Your map-select and Momentum requests are planned and half built** on the
-  branch `feat-maps-demos` (pushed; not merged, not released) -- see
-  ROADMAP.md there and section 0b below.
+- **Your map-screen requests are live** (4 Oct, 15:40; ROADMAP.md has what is
+  left):
+  - a strip under the map list shows a download or a connect as it happens,
+    with a cancel for the connect (cancelling a download needs engine work);
+  - a **leaderboard** button on the selected map: KSF / Momentum / FTESurf
+    tabs, rank, name, time and date, more as you scroll;
+  - maps with full data (picture, tier, zones, records) sort first;
+  - thickness for the replay, board and your-run lines (hud_edit, Run lines);
+  - the line's numbers are in Bebas and say what they are ("701 u/s  E -28");
+    `hud_lines_names 0` gives the bare numbers back.
+- **KSF maps have pictures, and KSF's tier is kept.** 472 KSF maps had no
+  picture; KSF's own now fill them (fetched once, by hand, 1.5 s apart). All
+  929 KSF maps are in mapmeta.txt with KSF's tier beside Momentum's. The menu
+  still shows one tier (Momentum's, else KSF's) -- both is ROADMAP phase B.
+- **Your music now drives the visuals.** OpenAL mixes outside the engine, so
+  the shaders had nothing to hear. default.cfg now uses the engine's own mixer
+  (`s_al_disable 1`, not saved in your cfg) -- just restart the game.
+- **Names like Chriis™ and FløppyWrist** drew as `™` or a box on the
+  boards: the engine's JSON reader misreads `\u` escapes (an upstream bug), so
+  surfd now sends names as UTF-8 -- live, nothing to update. Thai and emoji
+  still draw as boxes: the UI font has no glyphs for them.
+- **Momentum demos can be read in full.** `tools/momreplay.py` decodes every
+  tick of a .mtv -- position, velocity, view angles, buttons, ground -- checked
+  on all 4598 local demos. Nothing uses it yet; ROADMAP 3's real buttons and
+  mouse on Momentum lines would be built on it.
 
 ### Things to try
 
@@ -63,6 +85,12 @@ to be wrong.
    countdown? Is BACKSPACE a good key (it is free in default.cfg)?
 2. **The drop shadow** on the timer and speed (above): too heavy, too light, or
    right? The offset is 6% of the text size (3-4 px at the defaults).
+3. **The map screen.** Create server, pick a map, press **leaderboard**:
+   surf_kitsune's Momentum tab has 12,624 times. Then start a map you do not
+   have and watch the strip under the list. Do the KSF-only maps' pictures
+   look right? Is "full data first" the order you wanted?
+4. **Your Volcano tracks** from the in-game music player: do the menu's
+   shaders pulse with them now?
 
 ### Decisions only you can make
 
@@ -80,7 +108,7 @@ to be wrong.
   gate. Runs are marked when you noclip, but it also lifts the replay pin's
   freeze. Patch 479 would hand it to the engine's gate (off on the lobbies,
   on in single-player). Say if you want it.
-- **The four ROADMAP questions** (ROADMAP.md on `feat-maps-demos`): may the Pi
+- **The four ROADMAP questions** (end of ROADMAP.md): may the Pi
   fetch more KSF ranks or Momentum demos when a player asks; how a second
   build of a map (Momentum vs CS:S) is stored and offered; and which screen
   showed you 25 KSF places.
@@ -98,6 +126,10 @@ to be wrong.
   send empty moves while ghosting). Since 478 that cannot start a clean run;
   the fix is in the engine (BACKLOG).
 - **`surf_aquaflow` crashes this PC** when launched headless (BACKLOG).
+- **surfd has run outside systemd since 27 Sep**: `surfd.service` is stopped
+  and a `run.sh` instance serves (same DB, same logs). Harmless, but after a
+  reboot the unit is what comes back. AGENTS.md's deploy recipe now reloads
+  through the pidfile.
 
 ---
 
