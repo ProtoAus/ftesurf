@@ -1498,10 +1498,18 @@ void() ui_meta_load =
 				continue;
 
 			bufstr_set(ms_tierv, i, bufstr_get(ms_dltier, i));
-			// The packed string, rebuilt with the provenance this row now has.
-			// Everything else about it is unknown -- mapmeta has no row at all,
-			// which is why we are here -- so the other seven fields stay "-".
-			bufstr_set(ms_meta, i, "- - - - - - ksf -");
+			// Only the provenance changes.  A row with no tier lands here too
+			// (7 today: surf_omnibus's 11 stages, and the cell mapthumbs gives
+			// it), so what mapmeta knew is kept; no row at all is all "-".
+			n = tokenize(bufstr_get(ms_meta, i));
+			if (n > MT_UUID)
+				bufstr_set(ms_meta, i, strcat(sprintf("%s %s %s %s %s %s ksf ",
+				                                      argv(MT_LINEAR), argv(MT_STAGES),
+				                                      argv(MT_BONUS), argv(MT_PAGE),
+				                                      argv(MT_CELL), argv(MT_UUID)),
+				                              (n > MT_KTIER) ? argv(MT_KTIER) : "-"));
+			else
+				bufstr_set(ms_meta, i, "- - - - - - ksf -");
 			fb = fb + 1;
 		}
 
@@ -2809,11 +2817,12 @@ void(string arg) ui_browse_print =
 		if (i < 0)
 			print(sprintf("ui_browse: %S is not listed\n", arg));
 		else
-			print(sprintf("ui_browse: %S tier %s src %s lst %s wr %s pb %s\n",
+			print(sprintf("ui_browse: %S tier %s src %s lst %s wr %s pb %s meta %S\n",
 			              arg, bufstr_get(ms_tierv, i), bufstr_get(ms_src, i),
 			              bufstr_get(ms_lst, i),
 			              (bufstr_get(ms_wr, i) == "") ? "-" : bufstr_get(ms_wr, i),
-			              (bufstr_get(ms_pbv, i) == "") ? "-" : bufstr_get(ms_pbv, i)));
+			              (bufstr_get(ms_pbv, i) == "") ? "-" : bufstr_get(ms_pbv, i),
+			              bufstr_get(ms_meta, i)));
 	}
 };
 
