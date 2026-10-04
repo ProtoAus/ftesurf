@@ -387,15 +387,21 @@ def link_demos(conn):
     # The full unique key, style included, so each probe is a point lookup: both
     # writers of this tier (flush, momindex) write STYLE_CLEAN and nothing else.
     for (mp, tr, lg, pl), (_ms, rid) in best.items():
-        for (rowid,) in conn.execute(
-                "SELECT rowid FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
-                " AND style=? AND player=? AND replay_id=0",
-                (mp, tr, lg, S.TIER_MOMENTUM, S.STYLE_CLEAN, pl)):
-            hits.append((rid, rowid))
-    if hits:
-        with conn:
-            conn.executemany("UPDATE runs SET replay_id=? WHERE rowid=? AND replay_id=0", hits)
-    return len(hits)
+        key = (mp, tr, lg, S.TIER_MOMENTUM, S.STYLE_CLEAN, pl)
+        if conn.execute("SELECT 1 FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
+                        " AND style=? AND player=? AND replay_id=0", key).fetchone():
+            hits.append((rid,) + key + (rid,))
+    if not hits:
+        return 0
+    # The write re-states the key, the empty link and the replay: the read held no
+    # lock, and a rowid could be reused or the replay deleted in between.
+    t0 = conn.total_changes
+    with conn:
+        conn.executemany(
+            "UPDATE runs SET replay_id=? WHERE map=? AND track=? AND leg=? AND tier=?"
+            " AND style=? AND player=? AND replay_id=0"
+            " AND EXISTS (SELECT 1 FROM replays WHERE id=? AND kind='momentum')", hits)
+    return conn.total_changes - t0
 
 
 if __name__ == "__main__":
