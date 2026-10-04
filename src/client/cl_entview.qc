@@ -1358,10 +1358,17 @@ void() Ev_Draw =
 */
 void() Ev_Labels =
 {
-	local float i;
+	local float i, f0;
 
-	for (i = 0; i < ev_lab_n; i = i + 1)
-		HUD_Text(ev_lab_p[i], ev_lab_t[i], 8, ev_lab_c[i], ev_lab_a[i]);
+	// Roboto: these drew in whatever face was current, i.e. the engine's default.
+	if (ev_lab_n > 0)
+	{
+		f0 = ui_font_cur;
+		Font_Set(ui_font_ui);
+		for (i = 0; i < ev_lab_n; i = i + 1)
+			HUD_Text(ev_lab_p[i], ev_lab_t[i], 8, ev_lab_c[i], ev_lab_a[i]);
+		Font_Set(f0);
+	}
 	ev_lab_n = 0;
 };
 

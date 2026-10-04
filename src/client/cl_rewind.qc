@@ -551,10 +551,14 @@ void(vector scr) Rewind_Draw =
 		if (rw_askat)
 		if ((cltime - rw_askat) < RW_ASK)
 		if (rw_askgen == tr_gen)
+		{
+			Font_Set(ui_font_ui);
 			HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0],
 			          sprintf("%s again to rewind -- the run on the clock ends here",
 			                  Rewind_Key()),
 			          14 * ui_cv_scale, '1 0.8 0.3', 0.95);
+			Font_Reset();
+		}
 		return;
 	}
 	Font_Set(ui_font_display);
@@ -567,7 +571,7 @@ void(vector scr) Rewind_Draw =
 	}
 	HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0], "REWIND", 28 * ui_cv_scale,
 	          '0.45 0.85 1', 0.95);
-	Font_Reset();
+	Font_Set(ui_font_ui);           // the readout and the key line; reset at the end
 	tk = (tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0;
 	s = sprintf("%s   %g u/s", Time_TickString(tk, tr_tick),
 	            floor(ln_spd[tr_live * LN_CAP + floor(rw_i)]));
@@ -585,6 +589,7 @@ void(vector scr) Rewind_Draw =
 		s = "LEFT/RIGHT scrub   ENTER resume here   S save here";
 	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
 	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
+	Font_Reset();
 };
 
 /*

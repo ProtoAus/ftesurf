@@ -691,6 +691,9 @@ void(vector scr) Chat_Draw =
 		if (szu <= 0)
 			szu = 8;
 	}
+	// Font_Set before Font_Px: the snap used to run on whatever face the last
+	// drawer left (HUD_DrawSeq's essay is the same bug).
+	Font_Set(ui_font_ui);
 	sz  = Font_Px(szu);
 	lh  = sz * 1.35;
 
@@ -698,8 +701,6 @@ void(vector scr) Chat_Draw =
 	yb   = scr_y * cvar("hud_chat_y");
 	maxw = scr_x * 0.45;
 	chat_dr_bottom = yb;
-
-	Font_Set(ui_font_ui);
 
 	// Wrapped rows are good for one width, size and font.
 	key = [maxw, sz, stringwidth("abcdefghij", TRUE, [sz, sz])];
