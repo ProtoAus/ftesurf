@@ -29,6 +29,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   MEASURED ON THE PI, surfd.log: 9 `database is locked` on 4 of the 6 ticks
   08:56-09:28 UTC with the old link pass; 0 on the 8 ticks 09:35-10:21 after
   it (1095-1212 rows each). Eight ticks is not many -- recount after a day.
+  THE BIG TICKS ARE A BACKFILL'S: momwatch.log holds 200 ticks of 4,000+ rows
+  (max 13,078), all 28-30 Sep, none since 1 Oct. A new batch of boards would
+  bring them back -- batch flush() before widening --want or --backfill.
 - **`noclip` is open to every player on the lobbies** (pre-existing; Patch 478
   round-8 integrity review, traced in the engine). The engine's `noclip`
   (Cmd_Noclip_f) refuses unless SV_MayCheat -- `sv_cheats`, or a one-slot
