@@ -1910,7 +1910,8 @@ void() ui_wr_load =
   data/mapdeps.txt -> ms_deps (ROADMAP 6): the games a map needs beyond the packs
   mounted at boot, as indices into a small spec table whose state comes from
   Patch 480's fs_addonstate -- asked once per spec, at load: 0 not installed,
-  1 installed, 2 mounted, -1 an engine without the builtin.  Optional like
+  1 installed, 2 mounted, -1 cannot tell (an engine without the builtin, or a
+  spec it cannot check).  Optional like
   mapwr.txt: no file, no badges.
 */
 #define DEP_MAX 8
@@ -1960,7 +1961,7 @@ void() ui_deps_load =
 	local filestream fh;
 	local hashtable byname;
 	local string ln, nm, spec, cur, say;
-	local float i, p, row, k, hit;
+	local float i, p, row, k, hit, drop;
 
 	if (ms_deps >= 0) buf_del(ms_deps);
 	ms_deps = buf_create();
@@ -1983,7 +1984,7 @@ void() ui_deps_load =
 		hash_add(byname, strtolower(bufstr_get(ms_name, i)), i,
 		         HASH_REPLACE | EV_FLOAT);
 
-	hit = 0;
+	hit = drop = 0;
 	while ((ln = fgets(fh)) != "")
 	{
 		// "dep <map> <spec>": the spec has spaces ("steam:Team Fortress 2/tf"),
@@ -2002,7 +2003,10 @@ void() ui_deps_load =
 			continue;
 		k = ui_dep_index(spec);
 		if (k < 0)
+		{
+			drop = drop + 1;        // a game past the table: said below, not lost silently
 			continue;
+		}
 		cur = bufstr_get(ms_deps, row);
 		bufstr_set(ms_deps, row, (cur == "") ? ftos(k) : strcat(cur, " ", ftos(k)));
 		hit = hit + 1;
@@ -2014,6 +2018,8 @@ void() ui_deps_load =
 	say = "";
 	for (i = 0; i < dep_n; i = i + 1)
 		say = sprintf("%s %s=%g", say, dep_lbl[i], dep_state[i]);
+	if (drop > 0)
+		say = sprintf("%s  (%g line(s) name a game past the %g-game table)", say, drop, DEP_MAX);
 	print(sprintf("FTESurf: %g map need(s) for an extra game;%s\n", hit, say));
 };
 
