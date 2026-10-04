@@ -606,6 +606,7 @@ float  lj_state;
 float  lj_req;                  // 0 when nothing is outstanding
 float  lj_at;                   // when the ask went out
 float  lj_until;                // LJ_WAIT: give up on the switch after this
+float  lj_wat;                  // LJ_WAIT: when it began (the status strip's bar)
 float  lj_code;                 // last status, for the message
 float  lj_timed;                // can a run on this map even be timed?
 string lj_addr;                 // strzoned
@@ -634,6 +635,7 @@ void() Lob_JoinClear =
 	lj_req   = 0;
 	lj_at    = 0;
 	lj_until = 0;
+	lj_wat   = 0;
 	lj_code  = 0;
 	lj_timed = 0;
 };
@@ -721,6 +723,7 @@ void(float code, string body) Lob_JoinReply =
 	{
 		if (w < 5)          w = 5;
 		if (w > LJ_WAITCAP) w = LJ_WAITCAP;
+		lj_wat   = time;
 		lj_until = time + w;
 		lj_state = LJ_WAIT;
 		print(sprintf("^5online:^7 %s is switching to %s -- waiting for it to "
@@ -872,6 +875,10 @@ float()  Lob_JoinTimed = { return lj_timed; };
 string() Lob_JoinAddr  = { return lj_addr ? lj_addr : ""; };
 string() Lob_JoinMap   = { return lj_map  ? lj_map  : ""; };
 string() Lob_JoinWhy   = { return lj_why  ? lj_why  : ""; };
+// ROADMAP 1's status strip: the ask's start, and the wait's start and end.
+float()  Lob_JoinAt     = { return lj_at; };
+float()  Lob_JoinWaitAt = { return lj_wat; };
+float()  Lob_JoinUntil  = { return lj_until; };
 
 /*
   The one URI_Get_Callback in the menu progs.

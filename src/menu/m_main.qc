@@ -3009,6 +3009,36 @@ void(string mapname) ui_launch_local =
 float ui_join_pending;
 
 /*
+  ROADMAP 1: the status strip's last outcome, held for ST_HOLD seconds after the
+  thing itself is over, and the pulse it gives the PLAY station.  m_milk.qc's
+  MM_Camera reads ui_charge_on/ui_charge (set by ui_status_update every frame)
+  and ui_pulse: +1 a completion, -1 a failure, at ui_pulse_t0 (gettime(0)).
+*/
+#define ST_HOLD 6
+string ui_st_msg;               // strzoned; "" none
+float  ui_st_msgok;             // 1 good, -1 bad, 0 neither
+float  ui_st_msguntil;          // time
+float  ui_charge_on, ui_charge;
+float  ui_pulse, ui_pulse_t0;
+
+void(float kind) ui_st_pulse =
+{
+	ui_pulse = kind;
+	ui_pulse_t0 = gettime(0);
+};
+
+void(string msg, float ok) ui_st_result =
+{
+	if (ui_st_msg)
+		strunzone(ui_st_msg);
+	ui_st_msg = strzone(msg);
+	ui_st_msgok = ok;
+	ui_st_msguntil = time + ST_HOLD;
+	if (ok)
+		ui_st_pulse(ok);
+};
+
+/*
   ---------------------------------------------------------------------------
    The pre-join map check: fetch the server's build BEFORE connecting.
   ---------------------------------------------------------------------------
@@ -3978,6 +4008,8 @@ void() ui_join_tick =
 			              mapname));
 		print(sprintf("^5online:^7 joining %s for %s (%s)\n",
 		              addr, mapname, Lob_JoinWhy()));
+		// Seen only when the connect is held below: a direct one closes the menu.
+		ui_st_pulse(1);
 		// Lob_JoinClear frees the strings addr and mapname point at, so it
 		// has to come after ui_prejoin has strzoned its own copies of both.
 		if (ui_prejoin(addr, mapname))
@@ -4000,11 +4032,18 @@ void() ui_join_tick =
 	  somewhere this build will not connect, or nothing answered at all.
 	*/
 	if (st == LJ_READY)
+	{
 		print(sprintf("^1online:^7 the directory offered %S, which this build "
 		              "will not connect to -- playing locally instead.\n", addr));
+		ui_st_result("No lobby: the directory offered a server this build will "
+		             "not join -- playing locally", -1);
+	}
 	else
+	{
 		print(sprintf("^3online:^7 %s -- playing locally, so this run will not "
 		              "reach the leaderboard.\n", Lob_JoinWhy()));
+		ui_st_result(sprintf("No lobby: %s -- playing locally", Lob_JoinWhy()), -1);
+	}
 
 	// The string is read BEFORE the clear that frees it, which is the ordering
 	// cl_scores.qc's hand-off had to get right for the same reason: mapname
@@ -5059,6 +5098,19 @@ float() ui_dl_ready =
 	return dl_have_bi > 0;
 };
 
+// ROADMAP 1: no engine has this yet.  It stops the transfer in flight and
+// returns 1 if it did; probed like downloadmap, and absent there is no Cancel
+// for a download (a held join's Cancel still drops the join).
+float() downloadcancel = #0:downloadcancel;
+float  dl_have_cancel;          // 1 present, -1 absent, 0 unasked
+
+float() ui_dl_cancel_ready =
+{
+	if (dl_have_cancel == 0)
+		dl_have_cancel = checkbuiltin(downloadcancel) ? 1 : -1;
+	return dl_have_cancel > 0;
+};
+
 
 // "1.4 MB/s" / "812 KB/s".  Below a megabyte the round number is the one that
 // moves, and a player watching a bar wants to see it move.
@@ -5133,6 +5185,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_FAIL;
 		dl_until = time + DL_HOLD;
+		ui_st_result(sprintf("Download of %s failed", name), -1);
 	}
 };
 
@@ -5167,10 +5220,13 @@ void() Dl_Tick =
 		dl_until = time + DL_HOLD;
 		if (dl_state == DL_OK)
 		{
+			ui_st_result(sprintf("Installed %s", dl_name), 1);
 			// It is on the disk now, so it is no longer a downloadable row.
 			ui_load_maps();
 			ui_refilter();
 		}
+		else
+			ui_st_result(sprintf("Download of %s failed", dl_name), -1);
 		return;
 	}
 
@@ -5272,6 +5328,7 @@ void() ui_prejoin_tick =
 			print(sprintf("^1online:^7 could not fetch %s -- not connecting. "
 			              "Use the button on its row in the list.\n",
 			              pj_map));
+			ui_st_result(sprintf("Download of %s failed -- not joining", pj_map), -1);
 			ui_prejoin_clear();
 			return;
 		}
@@ -5283,8 +5340,380 @@ void() ui_prejoin_tick =
 	{
 		print(sprintf("^1online:^7 the fetch of %s stalled -- not connecting.\n",
 		              pj_map));
+		ui_st_result(sprintf("Download of %s stalled -- not joining", pj_map), -1);
 		ui_prejoin_clear();
 	}
+};
+
+/*
+  ROADMAP 1: the status strip (screen_create's footer) and the toast (SCREEN_MAIN)
+  say one line about what is in flight -- a join's ask, the lobby's switch, a
+  connect held for a download, a download -- or the last outcome for ST_HOLD s.
+  ui_status_update fills these once a frame, before MM_Frame.
+*/
+#define ST_NONE     0
+#define ST_ASK      1
+#define ST_WAIT     2
+#define ST_HELD     3
+#define ST_DL       4
+#define ST_RESULT   5
+#define COL_FAIL    '1 0.55 0.35'
+
+float  ui_st_kind;
+string ui_st_text;              // the line, cut from its end to fit
+string ui_st_figs;              // the numbers after it, never cut
+float  ui_st_frac;              // the bar, 0..1; -1 a moving segment
+float  ui_st_cancel;            // draw a Cancel
+vector ui_st_col;
+
+// ui_strip_test's fake state (0 = the real one), when it began, and dl/held's
+// percent: -1 animates, -2 is "size not known yet".
+float  ui_stt, ui_stt_t0, ui_stt_pct;
+#define ST_FAKEMAP    "surf_kitsune"
+#define ST_FAKEADDR   "203.0.113.7:27501"
+#define ST_FAKETOTAL  45613056      // 43.5 MB
+#define ST_FAKERATE   2202010       // 2.1 MB/s
+
+// "42%  18.3 of 43.5 MB  2.1 MB/s  12 s left".  The engine reports 0 for the
+// size and the rate until it knows them, and nothing is estimated before that.
+string(float pct, float done, float total, float rate) ui_dl_figs =
+{
+	local string s;
+	local float secs;
+
+	if (total <= 0)
+	{
+		if (done <= 0)
+			return "starting...";
+		s = sprintf("%.1f MB", done / 1048576);
+	}
+	else
+		s = sprintf("%g%%  %.1f of %.1f MB", floor(pct), done / 1048576, total / 1048576);
+	if (rate <= 0)
+		return s;
+	s = strcat(s, "  ", ui_dl_rate(rate));
+	if (total <= 0)
+		return s;
+	secs = ceil(max(0, total - done) / rate);
+	if (secs < 90)
+		return sprintf("%s  %g s left", s, secs);
+	return sprintf("%s  %g min left", s, ceil(secs / 60));
+};
+
+// Stop the engine's transfer.  The row and the strip drop it at once, so the
+// dlstate it leaves behind is not read as a failure.  TRUE if it stopped.
+float() ui_dl_cancel =
+{
+	if (!ui_dl_cancel_ready())
+		return FALSE;
+	if (!downloadcancel())
+		return FALSE;
+	print(sprintf("^5online:^7 cancelled the download of %s\n", dl_name));
+	ui_st_result(sprintf("Download of %s cancelled", dl_name), 0);
+	dl_state = DL_IDLE;
+	dl_name = "";
+	return TRUE;
+};
+
+// End a join in flight -- the ask, the lobby's switch, or a connect held for a
+// download -- with a word on the strip.  TRUE if there was one.
+float() ui_strip_cancel_join =
+{
+	if (ui_stt == ST_ASK || ui_stt == ST_WAIT || ui_stt == ST_HELD)
+	{
+		ui_stt = 0;
+		ui_st_result("Join cancelled (ui_strip_test)", 0);
+		return TRUE;
+	}
+	if (ui_join_pending)
+	{
+		print("^5online:^7 join cancelled\n");
+		ui_st_result(sprintf("Stopped looking for a server for %s", Lob_JoinMap()), 0);
+		ui_join_cancel();
+		return TRUE;
+	}
+	if (pj_addr == "")
+		return FALSE;
+
+	print(sprintf("^5online:^7 join cancelled -- not connecting to %s\n", pj_addr));
+	ui_st_result(sprintf("Join cancelled -- %s keeps downloading", pj_map), 0);
+	if (dl_state == DL_ACTIVE)
+	if (dl_name == pj_map)
+		ui_dl_cancel();
+	ui_prejoin_clear();
+	return TRUE;
+};
+
+// The strip's Cancel.
+void() ui_status_cancel =
+{
+	if (ui_strip_cancel_join())
+		return;
+	if (ui_stt == ST_DL)
+	{
+		ui_stt = 0;
+		ui_st_result("Download cancelled (ui_strip_test)", 0);
+		return;
+	}
+	ui_dl_cancel();
+};
+
+void() ui_status_update =
+{
+	local float kind, el, lim, pct, done, total, rate, st;
+	local string map, addr;
+
+	kind = ST_NONE;
+	el = lim = pct = done = total = rate = 0;
+	map = addr = "";
+
+	if (ui_stt)
+	{
+		kind = ui_stt;
+		map  = ST_FAKEMAP;
+		addr = ST_FAKEADDR;
+		el   = time - ui_stt_t0;
+		lim  = (kind == ST_ASK) ? LJ_DEADLINE : LJ_WAITCAP;
+		if (ui_stt_pct != -2)
+		{
+			pct   = (ui_stt_pct >= 0) ? ui_stt_pct : min(99, el * 4);
+			total = ST_FAKETOTAL;
+			done  = total * pct / 100;
+			rate  = ST_FAKERATE;
+		}
+	}
+	else if (ui_join_pending)
+	{
+		// LJ_READY and LJ_FAIL never reach here: ui_join_tick settles them first.
+		st = Lob_JoinState();
+		if (st == LJ_ASK)
+		{
+			kind = ST_ASK;
+			map  = Lob_JoinMap();
+			el   = time - Lob_JoinAt();
+			lim  = LJ_DEADLINE;
+		}
+		else if (st == LJ_WAIT)
+		{
+			kind = ST_WAIT;
+			map  = Lob_JoinMap();
+			addr = Lob_JoinAddr();
+			el   = time - Lob_JoinWaitAt();
+			lim  = Lob_JoinUntil() - Lob_JoinWaitAt();
+		}
+	}
+	if (kind == ST_NONE)
+	{
+		if (pj_addr != "")
+		{
+			kind = ST_HELD;
+			map  = pj_map;
+		}
+		else if (dl_state == DL_ACTIVE)
+		{
+			kind = ST_DL;
+			map  = dl_name;
+		}
+		if (kind != ST_NONE)
+		if (dl_state == DL_ACTIVE)
+		if (dl_name == map)
+		{
+			pct   = dl_pct;
+			done  = dl_done;
+			total = dl_total;
+			rate  = dl_rate;
+		}
+	}
+
+	ui_st_kind   = kind;
+	ui_st_text   = "";
+	ui_st_figs   = "";
+	ui_st_frac   = -1;
+	ui_st_cancel = FALSE;
+	ui_st_col    = COL_TEXT;
+	ui_charge_on = (kind != ST_NONE);
+	ui_charge    = 0;
+
+	if (kind == ST_ASK)
+	{
+		ui_st_text   = sprintf("Finding a server for %s...", map);
+		ui_st_figs   = sprintf("  %g s", floor(el));
+		ui_st_cancel = TRUE;
+		ui_charge    = el / lim;
+	}
+	else if (kind == ST_WAIT)
+	{
+		ui_st_text   = sprintf("%s is switching to %s", addr, map);
+		ui_st_figs   = sprintf(" -- %g s", floor(el));
+		ui_st_frac   = bound(0, el / max(lim, 1), 1);
+		ui_st_cancel = TRUE;
+		ui_charge    = ui_st_frac;
+	}
+	else if (kind == ST_HELD || kind == ST_DL)
+	{
+		if (kind == ST_HELD)
+			ui_st_text = sprintf("Downloading %s before joining", map);
+		else
+			ui_st_text = sprintf("Downloading %s", map);
+		ui_st_figs = strcat(" -- ", ui_dl_figs(pct, done, total, rate));
+		if (total > 0)
+		{
+			ui_st_frac = bound(0, pct / 100, 1);
+			ui_charge  = ui_st_frac;
+		}
+		ui_st_cancel = (kind == ST_HELD);
+		if (kind == ST_DL)
+		if (ui_dl_cancel_ready())
+			ui_st_cancel = TRUE;
+	}
+	else if (ui_st_msg)
+	if (time < ui_st_msguntil)
+	{
+		ui_st_kind = ST_RESULT;
+		ui_st_text = ui_st_msg;
+		if (ui_st_msgok > 0)
+			ui_st_col = COL_PLAY;
+		else if (ui_st_msgok < 0)
+			ui_st_col = COL_FAIL;
+		else
+			ui_st_col = COL_DIM;
+	}
+	ui_charge = bound(0, ui_charge, 1);
+};
+
+// The space's own light while it is drawn (MM_Camera walks milk_hue with the
+// charge), else the accent.
+vector() ui_status_barcol =
+{
+	if (MM_Active())
+		return Milk_Pal(milk_hue + 0.1);
+	return COL_ACCENT;
+};
+
+void(vector pos, float w) ui_status_line =
+{
+	local float fw;
+	local string s;
+
+	fw = stringwidth(ui_st_figs, TRUE, SZ_LABEL);
+	s  = ui_fit_text(ui_st_text, max(40, w - fw), SZ_LABEL);
+	sui_text(pos, SZ_LABEL, s, ui_st_col, 1, 0);
+	if (ui_st_figs != "")
+		sui_text([pos_x + stringwidth(s, TRUE, SZ_LABEL), pos_y], SZ_LABEL,
+		         ui_st_figs, COL_DIM, 1, 0);
+};
+
+void(vector pos, float w, float h) ui_status_bar =
+{
+	local float a, x0, x1;
+
+	sui_fill(pos, [w, h], COL_BORDER, 0.5, 0);
+	if (ui_st_kind == ST_RESULT)
+	{
+		// The outcome's colour, fading over its hold.
+		sui_fill(pos, [w, h], ui_st_col, bound(0, (ui_st_msguntil - time) / ST_HOLD, 1), 0);
+		return;
+	}
+	if (ui_st_frac >= 0)
+	{
+		sui_fill(pos, [w * ui_st_frac, h], ui_status_barcol(), 1, 0);
+		return;
+	}
+	// No share to show: a third of the bar sweeping across every 1.4 s.
+	a  = time / 1.4;
+	a  = a - floor(a);
+	x0 = w * (a * 1.3 - 0.3);
+	x1 = min(w, x0 + w * 0.3);
+	x0 = max(0, x0);
+	if (x1 > x0)
+		sui_fill([pos_x + x0, pos_y], [x1 - x0, h], ui_status_barcol(), 1, 0);
+};
+
+// Between the start and back buttons; nothing at all when nothing is in flight.
+void(vector pos, float w) ui_status_strip =
+{
+	local float tw;
+
+	if (ui_st_kind == ST_NONE || w < 160)
+		return;
+	tw = w;
+	if (ui_st_cancel)
+	{
+		tw = w - 100;
+		if (ui_button("cs_cancel", [pos_x + w - 84, pos_y], [84, 30], "cancel"))
+			ui_status_cancel();
+	}
+	ui_status_line([pos_x, pos_y + 2], tw);
+	ui_status_bar([pos_x, pos_y + 24], tw, 3);
+};
+
+/*
+  ui_strip_test <ask|wait|held|dl> [pct|start] -- fakes that state on the strip,
+  the toast and the PLAY station's charge.  Nothing is asked, downloaded or
+  connected.  dl/held run 0-99% over 25 s unless given a percent; "start" is the
+  line before the engine knows the size.
+  ui_strip_test <ok|fail|nolobby> -- that outcome and its pulse.
+  ui_strip_test screen <create|main>, ui_strip_test off.
+*/
+void(string what, string arg) ui_strip_test =
+{
+	local float k;
+
+	k = ST_NONE;
+	if (what == "ask")       k = ST_ASK;
+	else if (what == "wait") k = ST_WAIT;
+	else if (what == "held") k = ST_HELD;
+	else if (what == "dl")   k = ST_DL;
+
+	if (k != ST_NONE)
+	{
+		ui_stt     = k;
+		ui_stt_t0  = time;
+		ui_stt_pct = -1;
+		if (arg == "start")
+			ui_stt_pct = -2;
+		else if (arg != "")
+			ui_stt_pct = bound(0, stof(arg), 100);
+	}
+	else if (what == "ok" || what == "fail" || what == "nolobby")
+	{
+		ui_stt = 0;
+		if (what == "ok")
+			ui_st_result(strcat("Installed ", ST_FAKEMAP), 1);
+		else if (what == "fail")
+			ui_st_result(strcat("Download of ", ST_FAKEMAP, " failed"), -1);
+		else
+			ui_st_result("No lobby: the directory did not answer -- playing locally", -1);
+	}
+	else if (what == "off")
+	{
+		ui_stt = 0;
+		ui_st_msguntil = 0;
+	}
+	else if (what == "screen")
+	{
+		print(sprintf("ui_strip_test: screen %s\n", (arg == "create") ? "create" : "main"));
+		if (arg == "create")
+		{
+			menu_screen = SCREEN_CREATE;
+			ui_create_open();
+			ui_refilter();
+		}
+		else
+			menu_screen = SCREEN_MAIN;
+		return;
+	}
+	else
+	{
+		print("ui_strip_test <ask|wait|held|dl [pct|start]|ok|fail|nolobby|off|screen create|main>\n");
+		return;
+	}
+
+	// The line the strip will draw, from the same function that draws it.
+	ui_status_update();
+	print(sprintf("ui_strip_test: kind %g  %s%s\n", ui_st_kind, ui_st_text, ui_st_figs));
+	print(sprintf("ui_strip_test: bar %g  cancel %g  charge %g on %g  pulse %g\n",
+	              ui_st_frac, ui_st_cancel, ui_charge, ui_charge_on, ui_pulse));
 };
 
 void(vector screensize) screen_create =
@@ -6109,10 +6538,13 @@ void(vector screensize) screen_create =
 		}
 	}
 
-	// ---- start / back -------------------------------------------------
-	if (ui_button("cs_start", [16, by], [150, 30],
-	              sel == "" ? "pick a map" : "start"))
+	// ---- start / status / back ----------------------------------------
+	string slbl = (sel == "") ? "pick a map" : "start";
+	float  sbw  = max(150, stringwidth(slbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
+	if (ui_button("cs_start", [16, by], [150, 30], slbl))
 		ui_launch();
+
+	ui_status_strip([16 + sbw + 24, by], size_x - 116 - 24 - (16 + sbw + 24));
 
 	if (ui_button("cs_back", [size_x - 116, by], [100, 30], "back"))
 		menu_screen = SCREEN_MAIN;
@@ -6211,6 +6643,7 @@ void() m_init =
 	registercommand("ui_browse");
 	registercommand("ui_prejoin");
 	registercommand("ui_join");
+	registercommand("ui_strip_test");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -6295,6 +6728,9 @@ void(vector screensize) m_draw =
 	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf
 	    || ms_showall != ms_applied_showall)
 		ui_refilter();
+
+	// ROADMAP 1: the strip's line, and the charge MM_Frame's camera reads.
+	ui_status_update();
 
 	// Patch 467.  Before sui_begin: the sim draws into render targets, and
 	// nothing sui sets up (clipping, the hit list) may apply to those passes.
@@ -6508,6 +6944,12 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_lobbypop")
 	{
 		ui_lobbypop_print();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_strip_test")
+	{
+		ui_strip_test(argv(1), argv(2));
 		return TRUE;
 	}
 
