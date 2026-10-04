@@ -674,6 +674,13 @@ string(string id, float row) HE_OptDef =
 		                      "|The run before this one fades out instead of vanishing when you restart.";
 		if (row == 24) return "hud_trail_fade|Fade time|c|1 2 4 8|1s;2s;4s;8s"
 		                      "|How long the last run takes to fade.";
+		// Thickness, one row per kind of line (Line_SlotPx).
+		if (row == 25) return "hud_watch_path_px|Replay thickness|c|1 2 3 4|thin;normal;thick;heavy"
+		                      "|Pixels across the replay you are watching. The world ribbon (path mode 1) keeps its own width.";
+		if (row == 26) return "hud_watch_path_px_board|Board thickness|c|-1 1 2 3 4|same as replay;thin;normal;thick;heavy"
+		                      "|The leaderboard runs you tick to show while you play. `same as replay` follows Replay thickness.";
+		if (row == 27) return "hud_watch_path_px_trail|Your run thickness|c|-1 1 2 3 4|same as replay;thin;normal;thick;heavy"
+		                      "|Your own run's line, drawn live. `same as replay` follows Replay thickness.";
 		return "";
 	}
 
