@@ -431,6 +431,21 @@ float  ms_applied_modes;
 float  ms_srcf;
 float  ms_applied_srcf;
 
+/*
+  ROADMAP 10: how complete each map's data is, one DQ_* per row (ui_data_load),
+  which ui_refilter orders by before the tier.  A BARE map is hidden from an
+  empty search unless the "show all" chip is lit (saved as ui_maps_showall).
+*/
+#define DQ_FULL     0           // a picture, a tier, and playable or downloadable
+#define DQ_PICTURE  1           // a picture, short of a tier or a way to play it
+#define DQ_TIER     2           // a tier and no picture
+#define DQ_BARE     3           // neither
+#define DQ_CLASSES  4
+strbuf ms_dataq;
+float  ms_showall;
+float  ms_applied_showall;
+float  ms_nhidden;              // BARE rows the last ui_refilter hid
+
 // The background pic currently held open, so it can be freed when the selection
 // moves.  "" when nothing is loaded.  See ui_backdrop.
 string ms_bgpic;
@@ -2156,6 +2171,63 @@ void() ui_dl_load =
 		              stale));
 };
 
+// Defined with the backdrop and the download block, far below.
+string(string uuid, float scrw) ui_bgpick;
+float() ui_dl_ready;
+
+/*
+  ms_dataq, once per load and after ui_meta_load: the picture test tokenizes
+  ms_meta, which ui_refilter must not do per keystroke.  A picture is the atlas
+  cell the row draws, else a full-size image on disk -- probed only for a row
+  with a thumbnail id and no cell (6 of 2271 mapmeta rows on 2026-10-04).
+*/
+void() ui_data_load =
+{
+	local float i, pic, tier, play, dl, q;
+	local float n[DQ_CLASSES];
+	local string h;
+
+	if (ms_dataq >= 0) buf_del(ms_dataq);
+	ms_dataq = buf_create();
+	dl = ui_dl_ready();
+	for (q = 0; q < DQ_CLASSES; q++)
+		n[q] = 0;
+
+	for (i = 0; i < ms_count; i++)
+	{
+		pic = FALSE;
+		if (tokenize(bufstr_get(ms_meta, i)) > MT_UUID)
+		{
+			if (argv(MT_PAGE) != "-")
+			if (argv(MT_CELL) != "-")
+				pic = TRUE;
+			if (!pic)
+			if (argv(MT_UUID) != "-")
+				pic = (ui_bgpick(argv(MT_UUID), 0) != "");
+		}
+		tier = (stof(bufstr_get(ms_tierv, i)) > 0);
+
+		// "1" here, "2" the wrong build of it; "0" is data/mapdl.txt's offer,
+		// which only an engine with the downloadmap builtin can take up.
+		h = bufstr_get(ms_have, i);
+		play = FALSE;
+		if (h == "1" || h == "2")
+			play = TRUE;
+		else if (h == "0")
+			play = dl;
+
+		if (pic && tier && play) q = DQ_FULL;
+		else if (pic)            q = DQ_PICTURE;
+		else if (tier)           q = DQ_TIER;
+		else                     q = DQ_BARE;
+		bufstr_set(ms_dataq, i, ftos(q));
+		n[q] += 1;
+	}
+	print(sprintf("FTESurf: data -- %g full, %g picture only, %g tier only, %g "
+	              "neither (listed when searched or under show all)\n",
+	              n[DQ_FULL], n[DQ_PICTURE], n[DQ_TIER], n[DQ_BARE]));
+};
+
 void() ui_load_maps =
 {
 	if (ms_name >= 0) buf_del(ms_name);
@@ -2374,6 +2446,7 @@ void() ui_load_maps =
 
 	ui_meta_load();
 	ui_cat_load();
+	ui_data_load();             // reads ms_tierv after ui_meta_load's KSF fallback
 	run_pb_load();
 	ui_wr_load();
 };
@@ -2443,11 +2516,21 @@ float(float row) ui_tier_rank =
 	return TIER_UNKNOWN;
 };
 
+// ROADMAP 10: the list's sort key, the data class (DQ_*) and then the tier.
+#define VIEW_BUCKETS  44        // DQ_CLASSES * TIER_BUCKETS
+
+float(float row) ui_view_rank =
+{
+	return bound(0, stof(bufstr_get(ms_dataq, row)), DQ_CLASSES - 1) * TIER_BUCKETS
+	       + ui_tier_rank(row);
+};
+
 void() ui_refilter =
 {
 	if (ms_view >= 0) buf_del(ms_view);
 	ms_view = buf_create();
 	ms_viewcount = 0;
+	ms_nhidden = 0;
 
 	string q = strtolower(ms_query);
 
@@ -2481,12 +2564,27 @@ void() ui_refilter =
 		if (ms_srcf != 0 && !(stof(bufstr_get(ms_lst, i)) & ms_srcf))
 			continue;
 
+		// ROADMAP 10: neither a picture nor a tier waits behind "show all", but a
+		// search lists every match.  Last, so ms_nhidden counts only rows the
+		// filters above let through.
+		if (q == "")
+		if (!ms_showall)
+		if (stof(bufstr_get(ms_dataq, i)) == DQ_BARE)
+		{
+			ms_nhidden++;
+			continue;
+		}
+
 		bufstr_add(ms_view, ftos(i), TRUE);
 		ms_viewcount++;
 	}
 
 	/*
-	  ---- tier order -----------------------------------------------------
+	  ---- data class, then tier order --------------------------------------
+
+	  ROADMAP 10: full data first, then a picture without the rest, then a tier
+	  without a picture, then neither (ui_view_rank) -- and within each class
+	  the tier order below, so VIEW_BUCKETS rather than TIER_BUCKETS buckets.
 
 	  Tier 1 first, then 2, and everything nothing knows a tier for at the
 	  BOTTOM rather than scattered alphabetically through the middle.  Asked for
@@ -2513,27 +2611,27 @@ void() ui_refilter =
 	{
 		local strbuf flt;
 		local float k, r, idx;
-		local float tcnt[TIER_BUCKETS], toff[TIER_BUCKETS];
+		local float tcnt[VIEW_BUCKETS], toff[VIEW_BUCKETS];
 
 		flt = buf_create();
 		if (flt >= 0)
 		{
 			buf_copy(ms_view, flt);
 
-			for (k = 0; k < TIER_BUCKETS; k++)
+			for (k = 0; k < VIEW_BUCKETS; k++)
 				tcnt[k] = 0;
 			for (k = 0; k < ms_viewcount; k++)
-				tcnt[ui_tier_rank(stof(bufstr_get(flt, k)))] += 1;
+				tcnt[ui_view_rank(stof(bufstr_get(flt, k)))] += 1;
 
 			// Running total: rank r starts where every earlier rank ended.
 			toff[0] = 0;
-			for (k = 1; k < TIER_BUCKETS; k++)
+			for (k = 1; k < VIEW_BUCKETS; k++)
 				toff[k] = toff[k - 1] + tcnt[k - 1];
 
 			for (k = 0; k < ms_viewcount; k++)
 			{
 				idx = stof(bufstr_get(flt, k));
-				r   = ui_tier_rank(idx);
+				r   = ui_view_rank(idx);
 				bufstr_set(ms_view, toff[r], ftos(idx));
 				toff[r] += 1;
 			}
@@ -2545,6 +2643,7 @@ void() ui_refilter =
 	ms_applied_tier  = ms_tier;
 	ms_applied_modes = ms_modes;
 	ms_applied_srcf  = ms_srcf;
+	ms_applied_showall = ms_showall;
 	ms_scroll = '0 0 0';
 };
 
@@ -2569,13 +2668,17 @@ float() ui_dl_gutter;
 void(string arg) ui_browse_print =
 {
 	local float i, r, prev, bad, known, unk, ksf, wr, n0, nm, nc;
-	local float gw, w1, w2;
+	local float gw, w1, w2, wasall;
+	local float dqn[DQ_CLASSES];
 
 	ui_load_maps();
 
 	known = unk = ksf = wr = 0;
+	for (r = 0; r < DQ_CLASSES; r++)
+		dqn[r] = 0;
 	for (i = 0; i < ms_count; i++)
 	{
+		dqn[bound(0, stof(bufstr_get(ms_dataq, i)), DQ_CLASSES - 1)] += 1;
 		if (stof(bufstr_get(ms_tierv, i)) > 0) known++; else unk++;
 		if (tokenize(bufstr_get(ms_meta, i)) > MT_TSRC)
 			if (argv(MT_TSRC) == "ksf")
@@ -2600,7 +2703,12 @@ void(string arg) ui_browse_print =
 	  The three settings of the library switch, counted through the real filter
 	  rather than by re-deriving it here.  A count taken any other way would
 	  agree with a broken ui_refilter.
+
+	  ROADMAP 10: taken with "show all" lit, so they and the order below are of
+	  the whole list, as in build 89; the hidden count is read after them.
 	*/
+	wasall = ms_showall;
+	ms_showall = TRUE;
 	ms_srcf = 0;            ui_refilter();  n0 = ms_viewcount;
 	ms_srcf = SRC_BIT_MOM;  ui_refilter();  nm = ms_viewcount;
 	ms_srcf = SRC_BIT_CSS;  ui_refilter();  nc = ms_viewcount;
@@ -2609,12 +2717,13 @@ void(string arg) ui_browse_print =
 	              n0, nm, nc));
 
 	// Tier order, walked.  `bad` is the first index that goes backwards, so a
-	// failure names a row instead of just saying no.
+	// failure names a row instead of just saying no.  On ui_view_rank since
+	// ROADMAP 10: tier order within each data class, the classes in order.
 	prev = -1;
 	bad  = -1;
 	for (i = 0; i < ms_viewcount; i++)
 	{
-		r = ui_tier_rank(stof(bufstr_get(ms_view, i)));
+		r = ui_view_rank(stof(bufstr_get(ms_view, i)));
 		if (r < prev && bad < 0)
 			bad = i;
 		prev = r;
@@ -2646,6 +2755,13 @@ void(string arg) ui_browse_print =
 		print(sprintf("ui_browse: first rank %g, last rank %g\n",
 		              ui_tier_rank(stof(bufstr_get(ms_view, 0))),
 		              ui_tier_rank(stof(bufstr_get(ms_view, ms_viewcount - 1)))));
+
+	// The chip off, through the real filter, then the player's own setting back.
+	ms_showall = FALSE;     ui_refilter();
+	print(sprintf("ui_browse: data full %g, picture %g, tier %g, bare %g -- "
+	              "show all off hides %g, lists %g\n", dqn[DQ_FULL], dqn[DQ_PICTURE],
+	              dqn[DQ_TIER], dqn[DQ_BARE], ms_nhidden, ms_viewcount));
+	ms_showall = wasall;    ui_refilter();
 
 	/*
 	  The gutter, measured the way the row measures it.  Font_Set first: this
@@ -2749,6 +2865,13 @@ void(float mask) ui_modes_set =
 	localcmd(sprintf("seta ui_maps_modes %g\n", mask));
 };
 
+// ROADMAP 10: the "show all" chip, applied and saved the same way.
+void(float on) ui_showall_set =
+{
+	ms_showall = on;
+	localcmd(sprintf("seta ui_maps_showall %g\n", on));
+};
+
 /*
   Everything that has to happen when the create screen comes up.  Build 57.
 
@@ -2776,6 +2899,8 @@ void() ui_create_open =
 {
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+	registercvar("ui_maps_showall", "0", 32);       // ROADMAP 10, same rules
+	ms_showall = (cvar("ui_maps_showall") != 0);
 
 	if (ms_count == 0)
 	{
@@ -5314,6 +5439,24 @@ void(vector screensize) screen_create =
 		if (sui_is_released(scid))
 			ms_srcf = sbit;
 	}
+
+	// ROADMAP 10: the maps with neither a picture nor a tier, listed in an empty
+	// search only while this is lit.  Wrapped like the strips above, measured on
+	// its heading, which is wider than its chip.
+	string ahd  = "no picture or tier";
+	float  aw   = max(ui_chip_w("show all"), stringwidth(ahd, TRUE, SZ_LABEL));
+	float  ax   = sx + 18;
+	float  arow = srow;
+	if (ax + aw > inner + 16)
+	{
+		ax    = 16;
+		arow  = srow + STRIP_PITCH;
+		y    += STRIP_PITCH;
+	}
+	sui_text([ax, arow], SZ_LABEL, ahd, COL_DIM, 1, 0);
+	ui_chip([ax, arow + 20], "cs_showall", "show all", ms_showall);
+	if (sui_is_released("cs_showall"))
+		ui_showall_set(!ms_showall);
 	y += 56;
 
 	/*
@@ -5332,8 +5475,13 @@ void(vector screensize) screen_create =
 	*/
 	string sel = ui_selected_name();
 
-	sui_text([16, y], SZ_LABEL,
-	         sprintf("map  ^9(%g of %g)", ms_viewcount, ms_count), COL_DIM, 1, 0);
+	string mhd;
+	if (ms_nhidden > 0)
+		mhd = sprintf("map  ^9(%g of %g -- %g more under show all)",
+		              ms_viewcount, ms_count, ms_nhidden);
+	else
+		mhd = sprintf("map  ^9(%g of %g)", ms_viewcount, ms_count);
+	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
 	/*
 	  Consumed HERE, before the field is drawn, so the box comes up empty on the
@@ -6026,7 +6174,9 @@ void() m_init =
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
-	ms_wr = ms_dltier = -1;
+	ms_wr = ms_dltier = ms_dataq = -1;
+	// The saved value is read in ui_create_open, beside its registercvar.
+	ms_showall = ms_applied_showall = 0;
 	ms_selected = -1;
 	ms_tier = ms_applied_tier = 0;
 	// Both libraries, which is the state that lists everything.  Not saved, like
@@ -6142,7 +6292,8 @@ void(vector screensize) m_draw =
 	// sui_text_input during the previous frame's draw, so comparing against
 	// the applied copy here is the cheapest place to notice.
 	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
-	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf)
+	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf
+	    || ms_showall != ms_applied_showall)
 		ui_refilter();
 
 	// Patch 467.  Before sui_begin: the sim draws into render targets, and
