@@ -313,6 +313,14 @@ float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_bad;
 float rec_rp_prof_wasbad;
 
+// Patch 486: the last `injrn` sent, as its parts, and the flag that seeds the
+// first send.  Cached for rec_rp_profseen's exact reason -- every field here has
+// a legal 0 and a legal -1, so no value in the cache can double as "never sent".
+// See Rec_JrnIdentReport.
+float rec_rp_ijsent;
+float rec_rp_ij_have, rec_rp_ij_frames, rec_rp_ij_ghosts;
+float rec_rp_ij_viol, rec_rp_ij_bad, rec_rp_ij_skip;
+
 /*
   THE ACCEPTED VERSION, READ FROM THE RECORD ITSELF and not only from the cvar.
 
@@ -631,6 +639,80 @@ void() Rec_ProfileReport =
 
 	localcmd(sprintf("setinfo inprof \"%g %g %g %g %g %g %g\"\n",
 	                 IP_VERSION, have, raw, filt, acc, bad, grant));
+};
+
+/*
+  TELL THE SERVER WHAT ITS OWN JOURNAL'S IDENTITY CHECK FOUND.  Patch 486,
+  engine Patch 484; this consumer is mod-side Patch 486.  The grammar is IJ_* in sh_defs.qc and is not repeated
+  here.
+
+  WHY THIS EXISTS WHEN inprof ALREADY PUBLISHES THE INPUT STACK.  inprof says
+  what the client is CONFIGURED to do -- raw input on, no filter, no
+  acceleration, a grant that says the enumeration actually bound.  It cannot say
+  what the journal FOUND, because until Patch 484 nothing computed that anywhere
+  the server could reach: the identity lived in hidcheck.py over a `.hid` file,
+  and the fleet collects zero of those (measured 2026-10-05, 19 rcpt / 14 view /
+  4 rec / 0 hid; `run_evidence_ul 1` uploads the .view and not the .hid, and the
+  client's 4 MiB staging cap refuses any journal past ~38 s at 110 KB/s).
+
+  SO THIS IS THE VERDICT TRAVELLING INSTEAD OF THE FILE, which is the second of
+  the two exits BACKLOG item B names and the only one that costs bytes
+  proportional to nothing.
+
+  A SEPARATE EVENT FROM `rechid` AND NOT A WIDENING OF IT, and the reason is
+  bandwidth rather than tidiness.  rechid rides a cache keyed on ONE value that
+  changes essentially never, so it sends once per map load.  These five counters
+  change on any governed frame, so folding them into that event would make it a
+  wire message per frame per player -- which Rec_ProfileReport's own comment
+  calls a bandwidth bug rather than a safety margin.
+
+  IT IS ALSO NOT A setinfo KEY.  There is no diagnostic copy of this one, unlike
+  both of the reports above, and that is deliberate rather than an oversight:
+  a userinfo key exists so `cmd timer` can print what the console CLAIMS beside
+  what the CSQC reported, and the two disagreeing is the signature of a forgery.
+  These counters have nothing to disagree WITH -- the only other source is the
+  `.hid` itself, which the server does not have.  Adding a key would publish six
+  numbers a console can set and no reader that can catch it.
+
+  SENT ON CHANGE FROM THE PER-FRAME DRIVER, for Rec_HidReport's reason.  The
+  cache is seeded by rec_rp_ijsent, which Rec_ViewInit sets to a value no real
+  answer equals, so the first frame after every map load always sends -- which
+  from build 78 is a correctness property rather than an optimisation, because a
+  skipped send reads as "never spoke" and run_t_ijev stays 0.
+
+  -1 IS THE ENGINE'S OWN "NEVER MEASURED" AND IT IS PASSED THROUGH UNCHANGED.
+  The temptation here is to normalise it to 0 before sending, and that would be
+  the exact defect Patch 484's arm A found: an unmeasured state wearing a clean
+  measurement's clothes.  A client that has journalled nothing must be
+  distinguishable from one that journalled and found nothing, and -1 against 0
+  is the only place that distinction survives.
+*/
+void() Rec_JrnIdentReport =
+{
+	local float have, frames, ghosts, viol, bad, skip;
+
+	have   = 0;
+	frames = Rec_InputCvar("in_jrn484_frames",     IJH_IDENT, have);
+	ghosts = Rec_InputCvar("in_jrn484_ghosts",     IJH_IDENT, have);
+	viol   = Rec_InputCvar("in_jrn484_violations", IJH_IDENT, have);
+	bad    = Rec_InputCvar("in_jrn484_badframes",  IJH_IDENT, have);
+	skip   = Rec_InputCvar("in_jrn484_skipped",    IJH_IDENT, have);
+
+	if (rec_rp_ijsent
+	    && frames == rec_rp_ij_frames && ghosts == rec_rp_ij_ghosts
+	    && viol == rec_rp_ij_viol && bad == rec_rp_ij_bad
+	    && skip == rec_rp_ij_skip)
+		return;
+
+	rec_rp_ijsent   = TRUE;
+	rec_rp_ij_have   = have;
+	rec_rp_ij_frames = frames;
+	rec_rp_ij_ghosts = ghosts;
+	rec_rp_ij_viol   = viol;
+	rec_rp_ij_bad    = bad;
+	rec_rp_ij_skip   = skip;
+
+	sendevent("injrn", "ffffff", have, frames, ghosts, viol, bad, skip);
 };
 
 /*
@@ -1745,6 +1827,13 @@ void() Rec_ViewFrame =
 	// Build 72: the same argument, the same place.  See Rec_ProfileReport.
 	Rec_ProfileReport();
 
+	// Patch 486: and the third report, for the same reason in the same place --
+	// the server has to hold it before a run arms, not when one does, or the run
+	// that lost the race is recorded as making no claim when it had just made
+	// one.  It carries its own cache, so this costs nothing on a frame where
+	// nothing moved.  See Rec_JrnIdentReport.
+	Rec_JrnIdentReport();
+
 	flags = getstatf(STAT_FS_TIMERFLAGS);
 	rec = (flags & TF_RECORDING) ? TRUE : FALSE;
 
@@ -2078,6 +2167,19 @@ void() Rec_ViewInit =
 	  lesson one field earlier.  See Rec_ProfileReport.
 	*/
 	rec_rp_profseen = FALSE;
+
+	/*
+	  PATCH 486: AN EXPLICIT "NEVER SENT", AND NOT FALSE.
+
+	  rec_rp_ijsent gates on ITSELF as well as on the five counters, so FALSE
+	  here would work -- but only because the five cached fields also start at 0
+	  and a fresh VM's five CVARS read 0 too on an engine where the journal never
+	  opened.  That is three facts agreeing by coincidence, and the day one of
+	  them moves the first send is silently skipped, which reads as "this client
+	  never spoke" and leaves run_t_ijev at 0 forever.  -1 is a value no real
+	  answer equals, which is rec_rp_hidsent's reason and needs no coincidence.
+	*/
+	rec_rp_ijsent = -1;
 
 	// -1 rather than 0: the stage counter is per-connection and never resets, so
 	// a client joining a session in progress must SEED from whatever it currently

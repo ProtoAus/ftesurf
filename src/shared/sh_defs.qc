@@ -1822,6 +1822,69 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 
 /*
+  THE JOURNAL IDENTITY COUNTERS' GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.  Patch 486,
+  engine Patch 484; this consumer is mod-side Patch 486.
+
+  WHAT IT CARRIES.  Engine Patch 484 computes the .hid's own angle identity --
+  the one that says an angle equals the device counts that produced it -- inside
+  IN_Journal_View, where the counts still exist, and publishes five read-only
+  cvars.  This key puts them on the wire over `sendevent`, and the reason is that
+  THE JOURNAL ITSELF DOES NOT REACH THE SERVER: `run_evidence_ul` is 1 on the
+  fleet (a .view and not a .hid), and the client's 4 MiB staging cap refuses any
+  journal past ~38 s of run at 110 KB/s.  Measured on the live host 2026-10-05:
+  19 receipts, 14 sidecars, 4 recordings, ZERO journals.
+
+      injrn = "<have> <frames> <ghosts> <violations> <badframes> <skipped>"
+
+  SIX FIELDS IS sendevent's CEILING AND THIS IS EXACTLY AT IT, for the reason the
+  CSEv_inprof_ffffff comment states: six floats is the builtin's limit, so the
+  VERSION IS NOT SENT -- it is carried by the function name the engine composes
+  from the argument types.  `CSEv_injrn_ffffff` is a name no older server has,
+  so it answers silence, which is the version check for free and with no way to
+  get it wrong.  A seventh field would need packing into vectors ("vvf" is nine)
+  rather than dropping one.
+
+  WHY THERE IS NO VERSION FIELD AND NO FS_-STYLE FIELD COUNT, UNLIKE inprof.  The
+  userinfo KEY has versions because a reader must select a field count out of a
+  string it cannot otherwise date.  This has no key: there is nothing on the wire
+  to mis-read, because a server that cannot parse the name does not run the
+  handler at all.  Adding a version here would have a writer and no reader, which
+  is the exact criticism run_t_jev's comment makes of itself.
+
+  `have` IS A MASK OF WHICH CVARS EXIST ON THE WRITER, for IPH_*'s reason and not
+  a new one: the five cvars are declared in client/in_generic.c, which compiles
+  into every build but registers nothing on a backend without a journal, and a
+  pre-484 engine does not have them at all.  A reader must not conclude "absent"
+  from a counter that reads -1, and a sentinel cannot do this job because -1 is
+  ALREADY the honest "never measured" the engine itself publishes.  So the mask
+  is separate, and one bit is enough: the five are declared together in one
+  function and none exists without the others.
+
+  THE VALUES ARE THE ENGINE'S OWN AND ARE NOT RE-DERIVED HERE.  -1 means never
+  measured, 0 means measured and clean, and the two are different statements --
+  which is the whole reason Patch 484's arm A failed on its first run and is the
+  finding recorded there.  `frames` counts FRAMES GOVERNED, not axes judged: Part
+  2 of tools/p484ident.py measured that every failing frame fails on BOTH axes
+  (11 pitch, 11 yaw, the same 11 frames), so a per-axis count reports 22 for 11
+  events, and per-frame is the unit a gate thresholds on.
+
+  NOT A GATE, AND THAT IS THE POINT OF THE PATCH RATHER THAN AN OMISSION.  No
+  reader here latches a TF_ bit or demotes a run.  Over 113 journals the honest
+  corpus carries 11 violations on 3 files and every one is a yaw-and-pitch frame
+  on a large instantaneous jump -- the shape a server angle set has, which the
+  yaw rule has faulted on since Patch 293.  A threshold set from 11 events on 3
+  files is a guess; this tree's rule is that a check which faults an honest run
+  is worse than no check.  So the numbers are published where an operator can
+  read them and a fleet can accumulate them, and the gate is BACKLOG item C.
+
+  cl_replay.qc writes it, sv_timer.qc reads it, and neither may spell the field
+  order out for itself -- FS_TagName's lesson, where the server held one copy and
+  the client another and each carried a comment saying the other existed.
+*/
+#define IJ_FIELDS     6   // how many floats the event carries
+#define IJH_IDENT    16   // the five in_jrn484_* cvars exist on this client
+
+/*
   HOW MANY FIELDS A KEY OF THIS VERSION CARRIES.  0 for one this build does not
   know, which the callers turn into "unknown", which stays rankable.
 

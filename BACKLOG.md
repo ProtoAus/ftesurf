@@ -116,6 +116,32 @@ sweep and closed the pitch axis; these are what it could not close.
   `tools/p484ident.py` Part 2, which sweeps all eight (angle, key, count, sign)
   combinations.
 
+- **`f` RECORDS ARE WRITTEN ON ROUGHLY HALF OF ALL JOURNALS, INCLUDING HONEST
+  PBs, and nothing says which half or why.** Census of all 123 `.hid` files in
+  `ftesurf/data/` 2026-10-05: **61 have zero `f` records and 62 have them**, and
+  the empty half is not confined to harness stubs -- it includes `p305_*`,
+  `p385_*` and THREE real gameplay recordings (`0000007_pb.hid`, `0000008_pb.hid`,
+  `0000009_pb.hid`).  An `f` record is the journal's own per-frame device summary,
+  distinct from `v` (the view sample `IN_Journal_View` writes), and every file in
+  the census has `v` rows -- e.g. `p486_B.hid` has 182 `v` and 0 `f`, while
+  `p484_B.hid` from the same harness family has 181 `v` and 678 `f`.  The
+  corresponding `in_journal_end` line reads `0 frames` on the empty side even when
+  the identity counter governed 181 frames, so the two counters do not agree about
+  what a frame is.  **Why it matters:** any check built on `f` silently covers
+  about half the corpus and reports the other half as clean-by-absence, which is
+  the same shape as Patch 484's arm A finding -- an unmeasured state wearing a
+  clean measurement's clothes -- one layer down and not yet caught by anything.
+  Falsifier: the census above, re-runnable as a Counter over the first token of
+  each line; and `grep -c '^f ' <file>` against `grep -c '^v ' <file>`.
+
+- **EVERY JOURNAL NAMES ITSELF `loadworker_3` ON ITS OWN END LINE.** Cosmetic, but
+  it means no journal's end line names the file it wrote, so a harness cannot
+  confirm from the log which file an arm produced.  This is the engine `va()`
+  rotating-buffer trap AGENTS.md already records (FS_Remove restarts the loader
+  threads, whose names come from `va()`, and a download was once saved as
+  `loadworker_3`), reaching `IN_Journal_End`'s print.  Falsifier: every
+  `in_journal_end:` line in every log in `ftesurf/logs/` reads `loadworker_3`.
+
 ## Ranking integrity
 
 - **momwatch's import holds surfd's write lock past its 5 s timeout every 7

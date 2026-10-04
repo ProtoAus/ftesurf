@@ -1767,6 +1767,52 @@ float() SV_RecEnabled =
 .float  run_t_jevhid;     // what Rec_HidOK() answered: 1 journalling, 0 not
 
 /*
+  ...AND WHAT ITS OWN JOURNAL'S IDENTITY CHECK FOUND, over that same channel.
+  Patch 486 (mod-side only; the engine half is Patch 484).
+
+  THE REASON THIS EXISTS IS THAT THE JOURNAL DOES NOT REACH THE SERVER.  Measured
+  on the live host 2026-10-05: 19 receipts, 14 sidecars, 4 recordings, ZERO .hid,
+  both lobby cfgs at `run_evidence_ul 1`.  Raising it to 2 does not help either --
+  at 110 KB/s the client's 4 MiB staging cap refuses any journal past ~38 s of
+  run, and the transport is one <=768-byte chunk per round trip.  So every input
+  check the tree built over the .hid ran only when an operator typed a path at a
+  file that is not there.
+
+  Engine Patch 484 computes the identity where the angles are produced --
+  IN_Journal_CheckIdentity, inside IN_Journal_View -- and publishes five
+  read-only cvars.  These fields carry them over a channel the console cannot
+  write, which is the build-79 argument unchanged: `sendevent` puts
+  clcfte_qcrequest on the wire and a console can produce clc_stringcmd and
+  nothing else.
+
+  run_t_ijev IS A PRESENCE FLAG, for run_t_jev's exact reason and with the same
+  rule: the five counters below ARE MEANINGLESS WHILE IT IS 0, because -1 there
+  means "never measured" and 0 means "measured and clean" and the two must not be
+  confused.  Cleared by SV_CSQCForget, which is the one place and is load-bearing
+  for the edict-recycling reason stated above -- an inherited set of counters is
+  one player's evidence published as another's.
+
+  STORED AND NOT GATED, DELIBERATELY, AND THAT IS THE WHOLE OF THIS PATCH.
+  Nothing here latches a TF_ bit, sets a taint or demotes a run.  The reason is
+  calibration and not caution: over the 113 journals in this tree (210,678
+  governed frames) the honest corpus carries 11 violations on 3 files, and every
+  one of those is a frame where yaw AND pitch broke together on a large
+  instantaneous jump with no input behind it -- the shape a server angle set has,
+  which the yaw rule has faulted on since Patch 293.  A gate set from 11 events
+  on 3 files is a guess, and this tree's rule is that a check which faults an
+  honest run is worse than no check.  So the counters are published where an
+  operator can read them and a fleet can accumulate them; the gate is BACKLOG and
+  needs a corpus, which needs this.
+*/
+.float  run_t_ijev;       // 0 = never reported; non-zero = this client's CSQC has spoken
+.float  run_t_ijhave;     // IJH_* mask: which of the five cvars exist there
+.float  run_t_ijframes;   // in_jrn484_frames
+.float  run_t_ijghosts;   // in_jrn484_ghosts
+.float  run_t_ijviol;     // in_jrn484_violations
+.float  run_t_ijbad;      // in_jrn484_badframes
+.float  run_tijskip;      // in_jrn484_skipped
+
+/*
   The worst class this attempt has been TOLD it is.  Build 44.
 
   A high-water mark and not a mirror of the flags: SV_SaveApplyState restores
@@ -9565,6 +9611,50 @@ void(float hid) CSEv_rechid_f =
 };
 
 /*
+  ...AND WHAT ITS JOURNAL'S OWN IDENTITY CHECK FOUND.  Patch 486, over engine
+  Patch 484's five cvars.  The partner is sendevent("injrn", "ffffff", ...) in
+  cl_replay.qc's
+  Rec_JrnIdentReport, and the spelling is load-bearing in exactly the way
+  CSEv_inprof_ffffff's is: the engine composes "CSEv_" + name + one letter per
+  argument and looks the string up, so nothing on either side of this pairing is
+  checked by a compiler.  Change one and you must change the other.
+
+  SIX ARGUMENTS IS THE BUILTIN'S LIMIT AND THIS IS AT IT, so -- as the inprof
+  comment states -- the version is not sent: it is carried by THIS NAME.  A
+  server without CSEv_injrn_ffffff answers silence, and the failure mode is the
+  safe one in the same direction rechid's is: run_t_ijev stays 0 and every
+  counter reads "never spoke".
+
+  THE PRESENCE FLAG IS SET FROM A LITERAL, NOT FROM THE PAYLOAD, for
+  CSEv_rechid_f's exact reason and with the same bite: `have` is 0 on a
+  pre-484 engine, which is an honest absence, so assigning it to run_t_ijev
+  would make "never spoke" indistinguishable from "spoke and has no such cvars"
+  -- and those two have different meanings even though nothing reads them apart
+  today.
+
+  NO VALIDATION, DELIBERATELY, and for inprof's reason rather than a new one:
+  everything here is stored and printed, nothing is indexed and nothing is
+  compared against a limit yet, so a hostile value can only make an operator's
+  readout wrong.  When a gate is added (BACKLOG item C) this function becomes
+  the place that decides what a hostile value can do, and it must be written
+  then with the demoting direction in mind -- a lie that lowers `violations`
+  should read as a claim this build can check, not as one it cannot.
+
+  `self` IS THE PLAYER: the engine assigns it before the call (sv_user.c:8644).
+*/
+void(float have, float frames, float ghosts, float viol, float bad, float skip)
+	CSEv_injrn_ffffff =
+{
+	self.run_t_ijev     = TRUE;
+	self.run_t_ijhave   = have;
+	self.run_t_ijframes = frames;
+	self.run_t_ijghosts = ghosts;
+	self.run_t_ijviol   = viol;
+	self.run_t_ijbad    = bad;
+	self.run_tijskip    = skip;
+};
+
+/*
   ...and the other half of that, which is the half that is easy to forget.
 
   THE EDICT OUTLIVES THE PLAYER.  The engine hands slot N to whoever connects
@@ -9598,9 +9688,20 @@ void(entity e) SV_CSQCForget =
 	e.run_t_pevacc   = 0;
 	e.run_t_pevbad   = 0;
 	e.run_t_pevgrant = 0;
-
 	e.run_t_jev      = 0;
 	e.run_t_jevhid   = 0;
+	// Patch 486: the third report, cleared in the one place its handler writes.
+	// The rule is stated at this function, not here: EVERY FIELD A CSEv_ HANDLER
+	// IN THIS FILE WRITES IS CLEARED IN THIS FUNCTION, and there is no second
+	// place.  The direction that bites is the cheap one -- an inherited set of
+	// counters is one player's evidence published as the next player's.
+	e.run_t_ijev     = 0;
+	e.run_t_ijhave   = 0;
+	e.run_t_ijframes = 0;
+	e.run_t_ijghosts = 0;
+	e.run_t_ijviol   = 0;
+	e.run_t_ijbad    = 0;
+	e.run_tijskip    = 0;
 };
 
 /*
@@ -14119,6 +14220,44 @@ void(entity e) SV_TimerReport =
 	               e.run_t_jevhid,
 	               (e.run_t_flags & TF_NOJOURNAL) ? 1 : 0,
 	               SV_JournalBroken(e)));
+
+	/*
+	  PATCH 486: WHAT THE JOURNAL'S OWN IDENTITY CHECK FOUND, as the client
+	  reported it over the channel a console cannot write.
+
+	  SEVEN COLUMNS BECAUSE THERE ARE SEVEN FACTS AND NOT FIVE, and the two extra
+	  are the ones that make the other five readable.
+
+	  `said` distinguishes "never spoke" from "spoke", which is the field every
+	  other column in this block is meaningless without: run_t_ijev is 0 on a
+	  pre-484 engine, on a client with no CSQC, and on a slot nobody has connected
+	  to since SV_CSQCForget ran -- three different facts that all read as a row
+	  of zeros.  `have` is the mask that says WHICH cvars exist there, so a row of
+	  -1 against have 0 is an honest absence and a row of -1 against have 16 is a
+	  journal that never opened.
+
+	  -1 IS PRINTED AS -1 AND NEVER AS 0.  That is the whole lesson of Patch 484's
+	  arm A, which found the first cut publishing an unmeasured state wearing a
+	  clean measurement's clothes.  A reader who sees `viol 0` and cannot tell it
+	  from `viol -1` has been told the input was checked on a client that
+	  journalled nothing.
+
+	  NOTHING DECIDES ON THIS LINE, AND NOTHING MAY YET.  No TF_ bit is latched
+	  from these counters anywhere in the tree -- see the IJ_* block in
+	  sh_defs.qc for why a gate set from 11 violations on 3 files out of 113 is a
+	  guess rather than a threshold, and BACKLOG item C for what would make it
+	  one.  Until then this print is the calibration instrument and its only job
+	  is to be honest about what it has not measured.
+	*/
+	sprint(e, PRINT_HIGH,
+	       sprintf("        jrnident: said %g  have %g  frames %g  ghosts %g  viol %g  bad %g  skip %g\n",
+	               e.run_t_ijev,
+	               e.run_t_ijhave,
+	               e.run_t_ijframes,
+	               e.run_t_ijghosts,
+	               e.run_t_ijviol,
+	               e.run_t_ijbad,
+	               e.run_tijskip));
 	/*
 	  BUILD 62: the movement ruleset, as the ENGINE sees it (Patch 313).
 
