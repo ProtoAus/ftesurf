@@ -72,6 +72,12 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   page. A run that fails after its upload cannot be re-run (each pack stamps a
   new `built` time, so the md5 no longer matches R2): scp `dist\site-<v>\*` to
   the Pi's `ftesurf-site/.incoming/<v>/` and run `publish.sh <v>`, or bump.
+  - A RELEASE THAT KEEPS THE LAST ENGINE (0.1.21): `git worktree add --detach`
+    the engine at its pin, copy `release\stage-<prev>\ftesurf64.exe` and the
+    plugin into its `engine\release\` (as `fteqw64.exe`), copy the same pair
+    into the install after backing up the dev pair, run with `-FteRoot` = the
+    worktree, then put the dev pair back. Byte-identical binaries, no rebuild;
+    gate 3 passes and the receipt's patch is the pin's.
   - THE QC BUILD NUMBER: `-BuildNumber <n>`. The script derives it from a
     `Build NN:` commit subject and HARD-FAILS when the last one is more than 200
     commits back (Build 89 was 228). It now takes the number explicitly, because

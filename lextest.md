@@ -54,6 +54,9 @@ to be wrong.
   boards: the engine's JSON reader misreads `\u` escapes (an upstream bug), so
   surfd now sends names as UTF-8 -- live, nothing to update. Thai and emoji
   still draw as boxes: the UI font has no glyphs for them.
+- **0.1.21 is out** (https://dl.proto.bar/ftesurf/ftesurf-0.1.21.7z, 38.3 MB)
+  with everything above and the rewind and ghost fix -- the same engine files
+  as 0.1.20, so Patch 468 (touchpad) is still held out for your call.
 - **Momentum demos can be read in full.** `tools/momreplay.py` decodes every
   tick of a .mtv -- position, velocity, view angles, buttons, ground -- checked
   on all 4598 local demos. Nothing uses it yet; ROADMAP 3's real buttons and
