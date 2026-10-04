@@ -34,7 +34,8 @@ to be wrong.
 - **Your map-screen requests are live** (4 Oct, 15:40; ROADMAP.md has what is
   left):
   - a strip under the map list shows a download or a connect as it happens,
-    with a cancel for the connect (cancelling a download needs engine work);
+    with a cancel for the connect (cancelling a download needs engine work),
+    and the 3D menu's PLAY station charges while one runs;
   - a **leaderboard** button on the selected map: KSF / Momentum / FTESurf
     tabs, rank, name, time and date, more as you scroll;
   - maps with full data (picture, tier, zones, records) sort first;
@@ -43,8 +44,9 @@ to be wrong.
     `hud_lines_names 0` gives the bare numbers back.
 - **KSF maps have pictures, and KSF's tier is kept.** 472 KSF maps had no
   picture; KSF's own now fill them (fetched once, by hand, 1.5 s apart). All
-  929 KSF maps are in mapmeta.txt with KSF's tier beside Momentum's. The menu
-  still shows one tier (Momentum's, else KSF's) -- both is ROADMAP phase B.
+  929 KSF maps are in mapmeta.txt, and a row shows KSF's tier under
+  Momentum's chip ("KSF 2", small and dim). The tier filter and the sort still
+  use one tier (Momentum's, else KSF's).
 - **Your music now drives the visuals.** OpenAL mixes outside the engine, so
   the shaders had nothing to hear. default.cfg now uses the engine's own mixer
   (`s_al_disable 1`, not saved in your cfg) -- just restart the game.
