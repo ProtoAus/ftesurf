@@ -99,6 +99,7 @@ vector mm_quad, mm_quadpos;     // the present's quad: bigger than the screen, h
 float  mm_cropx, mm_cropy;      // the share of the milk image the screen shows, per axis
 float  mm_vispage;              // VISUALS: 0 the look, 1 speed
 float  mm_drawpanel;            // TRUE while a screen draws into a panel
+float  mm_chgon, mm_chg;        // ROADMAP 1, eased: something in flight at PLAY, and its progress
 
 string mm_track[MM_TRACKS];
 float  mm_ntracks, mm_trackscan, mm_autoplayed;
@@ -635,6 +636,7 @@ float(float a, float b, float e) MM_HueLerp =
 void(float now, float dt) MM_Camera =
 {
 	local float f, e, u, trav, k, ty, tp, L, dx, dy, w, a, b, oF, oR, oU, orbit, dive;
+	local float chw, chk, chg, pa, pp;
 	local vector c1, c2, m, fwd, right, up, P, C, F1, R1, F2, U2, o, sway, fc;
 
 	MM_Pose(mm_station);
@@ -777,23 +779,50 @@ void(float now, float dt) MM_Camera =
 		up = MM_Cross(fwd, right);
 	}
 
+	/*
+	  ROADMAP 1: a download or a join in flight charges the PLAY station
+	  (m_main.qc's ui_charge, 0..1): the view narrows, the hue walks and the
+	  trails stream harder with its progress.  Only the milk_* outputs carry it,
+	  never mm_pos/mm_hue, so MM_Go's flight start cannot capture it.  Away from
+	  PLAY it decays as e^-5t and snaps to 0 below 0.002: 1.24 s, inside the
+	  shortest flight (the lattice's 1.7 s), so a landing panel gets MM_TANFOV.
+	*/
+	chw = 0;
+	if (ui_charge_on)
+	if (mm_station == MS_PLAY)
+	if (mm_art < 0)
+		chw = 1;
+	if (chw > mm_chgon)
+		chk = 1.2;              // in over about a second
+	else if (mm_station == MS_PLAY)
+		chk = 1;                // out slowly after a finish, under its pulse
+	else
+		chk = 5;                // out within the flight away
+	mm_chgon += (chw - mm_chgon) * (1 - pow(2.7182818, -dt * chk));
+	mm_chg += (ui_charge - mm_chg) * (1 - pow(2.7182818, -dt * 2));
+	if (!chw && mm_chgon < 0.002)
+		mm_chgon = mm_chg = 0;
+	chg = mm_chgon * (0.15 + 0.85 * bound(0, mm_chg, 1));
+
 	milk_campos = P;
 	milk_camfwd = fwd;
 	milk_camright = right;
 	milk_camup = up;
-	milk_tanfov = MM_TANFOV;
+	// A narrower view rather than a dolly: the lattice's PLAY camera stands
+	// 2.8 u outside the tower disc, and towers grow with the music.
+	milk_tanfov = MM_TANFOV * (1 - 0.18 * chg);
 	milk_travel = trav;
-	milk_hue = mm_hue;
-	milk_liquid = mm_liq;
+	milk_hue = mm_hue + 0.2 * chg;
+	milk_liquid = min(1, mm_liq + 0.25 * chg);
 	milk_kaleido = mm_kal;
 
 	// Feedback character: calm when settled, hyperspace in flight.  The music
 	// moves it on the big hits only (milk_kick, milk_hit), not on every hat.
 	milk_react = Milk_ReactCurve(cvar("milk_react"));
 	milk_grade = bound(0, cvar("milk_grade"), 1);
-	milk_zoom = 1.004 + 0.045 * trav + 0.008 * milk_kick * milk_react;
+	milk_zoom = 1.004 + 0.045 * trav + 0.008 * milk_kick * milk_react + 0.008 * chg;
 	milk_rot = 0.0015 * sin(now * 0.05) - mm_yawv * 0.004;
-	milk_decay = 0.84 + 0.11 * trav;
+	milk_decay = min(0.95, 0.84 + 0.11 * trav + 0.05 * chg);
 	milk_wobble = 0.3 + 0.45 * milk_bass_att * milk_react;
 	milk_trails = cvar("milk_trails");
 	milk_bloom = 1;
@@ -821,6 +850,35 @@ void(float now, float dt) MM_Camera =
 	{
 		milk_inject = 0;
 		milk_knee = 0;
+	}
+
+	// ROADMAP 1: and when it ends, a pulse at PLAY -- a bright burst on a
+	// completion, a dim, cooled, short-trailed dip on a failure.
+	pa = now - ui_pulse_t0;
+	if (ui_pulse != 0)
+	if (mm_station == MS_PLAY)
+	if (mm_art < 0)
+	if (pa >= 0)
+	{
+		if (ui_pulse > 0 && pa < 0.9)
+		{
+			pp = min(1, pa / 0.06) * (1 - pa / 0.9) * (1 - pa / 0.9);
+			milk_flash += 2 * pp;
+			milk_exposure *= 1 + 0.3 * pp;
+			milk_bloom *= 1 + 0.6 * pp;
+			milk_zoom += 0.02 * pp;
+		}
+		else if (ui_pulse < 0 && pa < 1.4)
+		{
+			pp = min(1, pa / 0.12) * pow(1 - pa / 1.4, 1.5);
+			milk_flash *= 1 - pp;
+			milk_exposure *= 1 - 0.35 * pp;
+			milk_bloom *= 1 - 0.6 * pp;
+			milk_trails *= 1 - 0.5 * pp;
+			milk_decay *= 1 - 0.15 * pp;
+			milk_zoom -= 0.004 * pp;
+			milk_grade += (1 - milk_grade) * pp;
+		}
 	}
 
 	// Trails radiate from the landmark, not the middle of the screen.
@@ -879,7 +937,7 @@ void() MM_Sprites =
 			continue;
 		rad = bound(1.5, 0.12 / (s_z * milk_tanfov) * milk_rtsize_y * 0.5, 22);
 		tw = 0.5 + 0.5 * sin(t * (1.3 + h1 * 3.5) + i * 2.1);
-		col = Milk_Pal(mm_hue + h2 * 0.35 + 0.2);
+		col = Milk_Pal(milk_hue + h2 * 0.35 + 0.2);     // milk_hue: ROADMAP 1's charge walks it
 		Milk_Dot([s_x * milk_rtsize_x, s_y * milk_rtsize_y], rad, col,
 		         0.07 + 0.16 * tw * (0.5 + milk_treb_att * milk_react));
 	}
