@@ -131,6 +131,9 @@ __pycache__/
 # and the tests no headless gesture can perform.  Here for the same reason as
 # BACKLOG.md -- an item only one person can close is still an item.
 !/lextest.md
+# The work list of features asked for and not built yet, with what to build and
+# what needs deciding -- BACKLOG.md's sibling for things that are not defects.
+!/ROADMAP.md
 !/ENGINE.txt
 !/VERSION
 !/default.fmf
