@@ -1355,7 +1355,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   naming the factor, and `replay status` carries it either way (momline A6
   grades both halves on one map). What is still missing is the BOARD side: a
   row that will draw a bad-speed line looks identical to one that will not
-  until you open it. 354 of 5,281 rows are affected.
+  until you open it. 354 of 5,281 rows were affected; since the re-import
+  (4 Oct) none is -- every rewritten file reads 1.0000, and the 21 left as they
+  were are under 1.01.
 - **The two imported tiers make different claims and the board shows one word
   each.** A `momentum` row is build-verified exactly; a `ksf` row cannot be,
   because nothing on the CS:S side publishes a per-map digest and the 322

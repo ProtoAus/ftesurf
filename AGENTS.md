@@ -1094,13 +1094,14 @@ bannered as superseded.)
   CHAIN through the demo. The Pi runs 3.11. `momimport` does no such arithmetic.
   Extraction is memory-hungry: 8 workers peaked ~2.2 GB and got a background job
   reaped on a 16 GB box. 3 jobs is the polite figure.
-- **WHAT A MOMENTUM DEMO DOES NOT CONTAIN** -- proven negatives over the whole
-  reference, not failed searches: view angles, buttons, ground contact. So the
-  replay camera is DERIVED from the direction of travel, `fl`/`keys`/movement
-  are 0, and the plane is `0 0 0` (which reccheck requires when neither contact
-  bit is set -- a plane without one is a "stray plane" fault). **Never write a
-  `.view` sidecar for an import**: that file is mouse evidence and a derived
-  angle filed there is a measurement that never happened.
+- **WHAT A .wrpath DOES NOT CONTAIN** (the "proven negatives" here came from
+  grepping wrlines, which never decodes the netstream): view angles, buttons,
+  ground contact. The .mtv has all three -- tools/momreplay.py decodes them, and
+  since 4 Oct tools/momreimport.py writes every import from its demo (5260 of
+  5281): eye angles, fl ground/duck/jump/attack, the move from the recorded
+  wishVel. Still never recorded: ramp contact (bit 16, the plane -- BACKLOG).
+  **Never write a `.view` sidecar for an import**: that file is the client's
+  per-frame evidence, and nothing here was recorded per frame.
 - **NO `warp` RECORDS ARE SYNTHESISED**, and the grammar forbids it in terms:
   "A record synthesised by watching for a discontinuity would see the jump and
   still not know what caused it, which is the entire question." 37 % of these

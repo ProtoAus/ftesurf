@@ -29,7 +29,9 @@ WHAT EACH COLUMN NOW SAYS, and where it comes from:
              exact, scaled so the larger component is 450 (cl_forwardspeed /
              cl_sidespeed, default.cfg).  The 33-prop format records no
              wishVel; there the physical buttons give it (`moves keys`), the
-             later press of an opposing pair winning, as Momentum's does.
+             later press of an opposing pair winning, as Momentum's does.  The
+             buttons also stand in on a tick whose wish did not update while
+             the yaw turned, and on a teleport tick and the next.
   keys       FSI_* from those moves' signs plus jump, duck and attack -- the
              same rule as SV_RecKeys, so reccheck's mask check holds -- and
              +left/+right as FSI_TLEFT/TRIGHT, which a .mtv does record.
@@ -144,6 +146,7 @@ def old_header(path):
 
 
 CAP = 259.5         # |wishVel| at or past this is the 260 speed cap, not the usercmd
+SNAP = 256          # units between ticks that only a teleport covers (the readers' rule)
 
 
 def wish_moves(s):
@@ -259,16 +262,33 @@ def convert(row, demo, oldpath):
 
     # The 33-prop format records no wishVel on any tick; the others on every one.
     haswish = all(s.wish_x is not None for s in ticks)
+    # The header's own %.6g rate: the float32 interval (0.0099999998) put t
+    # 0.0001 low past tick ~149k.
+    tdt = round(ti, 6)
     keymoves = KeyMoves()
     body = []
-    pad = 0
+    pad = keyed = 0
+    prev = None
+    snap_to = -1
     for s in ticks:
         if s.tick - start > want:
             break                       # the demo's stop can trail the frozen timer
         if s.tick < start:
             pad += 1
         km = keymoves(s.buttons or 0)
-        body.append(sample(s, start, ti, wish_moves(s) if haswish else km))
+        # The wish is not this tick's move in two cases, and the buttons are:
+        # it stops updating while the yaw turns (ladders, water -- 193 ticks on
+        # surf_water-run), and across a teleport the yaw is already the
+        # destination's for the tick and the next.
+        use_keys = not haswish
+        if haswish and prev is not None:
+            if math.dist((s.x, s.y, s.z), (prev.x, prev.y, prev.z)) > SNAP:
+                snap_to = s.tick + 1
+            stale = (s.wish_x, s.wish_y) == (prev.wish_x, prev.wish_y) and s.yaw != prev.yaw
+            use_keys = stale or s.tick <= snap_to
+            keyed += use_keys
+        body.append(sample(s, start, tdt, km if use_keys else wish_moves(s)))
+        prev = s
 
     out = []
     for s in fixed_header(old_header(oldpath), leg):
@@ -286,7 +306,7 @@ def convert(row, demo, oldpath):
     out += body
     out.append("end %d %d %d 0" % (want, len(body), pad))
     return "\n".join(out) + "\n", {"samples": len(body), "ratio": ratio, "oracle": oracle,
-                                   "padding": pad, "sha": sha, "wish": haswish}
+                                   "padding": pad, "sha": sha, "wish": haswish, "keyed": keyed}
 
 
 def fixed_header(lines, leg):
@@ -392,8 +412,8 @@ def main():
             if rel in legs:
                 with open(src, encoding="utf-8", newline="") as fh:
                     text = fh.read()
-                head, sep, rest = text.partition("\nbegin\n")
-                new = "\n".join(fixed_header(head.split("\n"), legs[rel])) + sep + rest
+                fhead, sep, rest = text.partition("\nbegin\n")     # not `head`: the manifest's
+                new = "\n".join(fixed_header(fhead.split("\n"), legs[rel])) + sep + rest
                 with open(dst, "w", encoding="utf-8", newline="") as fh:
                     fh.write(new)
                 renum += new != text
@@ -413,8 +433,9 @@ def main():
             fh.write("\t".join(row[c] for c in COLS) + "\n")
     print("wrote %s: %d rewritten, %d kept (%d of them renumbered), manifest.tsv"
           % (a.out, len(done), copied, renum))
-    print("moves from wishVel in %d, from the keys in %d"
-          % (sum(1 for i in done.values() if i["wish"]), sum(1 for i in done.values() if not i["wish"])))
+    print("moves from wishVel in %d, from the keys in %d; %d wish ticks keyed (stale or teleport)"
+          % (sum(1 for i in done.values() if i["wish"]), sum(1 for i in done.values() if not i["wish"]),
+             sum(i["keyed"] for i in done.values())))
     return 0
 
 
