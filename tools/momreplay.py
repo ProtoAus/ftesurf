@@ -510,12 +510,16 @@ def creation_records(sec):
 TickState = collections.namedtuple("TickState", [
     "tick", "x", "y", "z", "pitch", "yaw", "view_x", "view_y", "view_z", "vx", "vy", "vz",
     "flags", "buttons", "land_tick", "jump_tick", "timer_state", "track_type", "track_number",
-    "major", "minor", "run_time"])
+    "major", "minor", "run_time", "wish_x", "wish_y", "wish_z"])
 
 PLAYER_FIELDS = ("m_vecOrigin", "m_vecOrigin[2]", "m_angEyeAngles[0]", "m_angEyeAngles[1]",
                  "m_vecViewOffset[0]", "m_vecViewOffset[1]", "m_vecViewOffset[2]",
                  "m_vecVelocity[0]", "m_vecVelocity[1]", "m_vecVelocity[2]", "m_fFlags",
-                 "m_nPhysicalButtons", "m_iLandTick", "m_iJumpTick")
+                 "m_nPhysicalButtons", "m_iLandTick", "m_iJumpTick",
+                 "wishVel", "wishVel[2]")
+# The move's wish velocity: None where the player's class does not record it (the
+# 33-prop format), as against 0 for "recorded, zero".
+OPTIONAL_FIELDS = ("wishVel", "wishVel[2]")
 
 
 def _signed_angle(a):
@@ -658,11 +662,15 @@ class Replay:
         # a prop missing from the creation record and every update is at its zero default:
         # 2253 of 2313 first appearances in sampled deltas were non-zero, and the 60 zeros
         # were 11-bit angles, where a float change can quantise to the same 0
-        zero = (0.0, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, None, None
+        zero = ((0.0, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, None, None,
+                (0.0, 0.0), 0.0)
+        absent = [i is None and n in OPTIONAL_FIELDS for i, n in zip(pi, PLAYER_FIELDS)]
         for tick, state, _ in self.frames(check):
             st = state.get(self.player_ent, {})
-            g = [st.get((i, None), z) if i is not None else z for i, z in zip(pi, zero)]
+            g = [None if ab else (st.get((i, None), z) if i is not None else z)
+                 for i, z, ab in zip(pi, zero, absent)]
             xy = g[0]
+            wv = g[14]
             pitch, yaw = _signed_angle(g[2]), _signed_angle(g[3])
             tt = tn = maj = mnr = tstate = rt = None
             if tdec is not None:
@@ -686,7 +694,9 @@ class Replay:
                     elif tstate == 3:
                         rt = base + (tstate_tick - base_tick) * ti
             out.append(TickState(tick, xy[0], xy[1], g[1], pitch, yaw, g[4], g[5], g[6], g[7], g[8],
-                                 g[9], g[10], g[11], g[12], g[13], tstate, tt, tn, maj, mnr, rt))
+                                 g[9], g[10], g[11], g[12], g[13], tstate, tt, tn, maj, mnr, rt,
+                                 None if wv is None else wv[0], None if wv is None else wv[1],
+                                 g[15]))
         return out
 
     def _timer_ent(self):

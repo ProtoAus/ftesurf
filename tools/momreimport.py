@@ -16,36 +16,42 @@ Every file it does not rewrite is copied unchanged, so --out is a whole tree.
 WHAT EACH COLUMN NOW SAYS, and where it comes from:
   t          (tick - the timer's start event) * the demo's tick interval; the
              pre-roll before the start is the negative padding, as ours is.
+             No sample past the run's own last tick (start + ticks): most stage
+             demos stop one tick after their timer froze.
   origin, velocity, eye angles   m_vecOrigin, m_vecVelocity, m_angEyeAngles,
              the tick's own values (velocity is post-move, as SV_RecLine's).
   fl         1 m_fFlags FL_ONGROUND, 2 FL_DUCKING, 4 IN_JUMP held, 8 IN_ATTACK
              -- SV_RecFlags' bits.  Never 16: a .mtv records no ramp contact,
-             and the plane stays 0 0 0 (grounded with no plane is a note in
-             reccheck, as standing still is in our own files).
-  fwd side up  DERIVED, and the header says so (`moves keys 450`): Source's
-             keyboard usercmd, cl_forwardspeed/cl_sidespeed 450 (default.cfg)
-             times the key pair, so W+S or A+D together is 0.  A .mtv keeps
-             m_nPhysicalButtons, not the usercmd.  The viewer builds its
-             wishdir from these columns (cl_watch.qc).
+             and the plane stays 0 0 0 (BACKLOG: inferring it).
+  fwd side up  the move the physics used, from the recorded wishVel on the eye
+             yaw (`moves wishvel`): below the 260 speed cap the wish IS the
+             usercmd (half presses read 225), and at the cap its direction is
+             exact, scaled so the larger component is 450 (cl_forwardspeed /
+             cl_sidespeed, default.cfg).  The 33-prop format records no
+             wishVel; there the physical buttons give it (`moves keys`), the
+             later press of an opposing pair winning, as Momentum's does.
   keys       FSI_* from those moves' signs plus jump, duck and attack -- the
              same rule as SV_RecKeys, so reccheck's mask check holds -- and
              +left/+right as FSI_TLEFT/TRIGHT, which a .mtv does record.
 
 THE HEADER is the old file's, line for line, except: `startseg` is leg - 1 on
-a stage run (FTESurf's numbering; momimport wrote leg), `momquality` is the
-decoded peak over the demo's own maxHorizontalSpeed with the extractor's
-low-confidence bit cleared, and two keys go in before `flags`: `moves keys 450`
-and `momdemo <sha1 of the .mtv>`.  `end` keeps the manifest's ticks -- the leaf
-is named after them -- and a demo whose own run time disagrees is refused.
+a stage run (FTESurf's numbering; momimport wrote leg), `clock counted` (t is
+the mover's own tick count now), `momquality` is the decoded peak over the
+demo's own maxHorizontalSpeed with the extractor's low-confidence bit cleared,
+and two keys go in before `flags`: `moves <wishvel|keys> 450` and `momdemo
+<sha1 of the .mtv>`.  `end` keeps the manifest's ticks -- the leaf is named
+after them -- and a demo whose own run time disagrees is refused.
 
-A ROW IS LEFT AS IT WAS, and counted by reason, when its demo is missing or
+A ROW KEEPS ITS OLD BODY, and is counted by reason, when its demo is missing or
 ambiguous, fails to decode, or disagrees with the row on map, track, leg or
-ticks, or has other than one timer start and one stop.
+ticks, or has other than one timer start and one stop.  Its startseg is still
+corrected, so a stage folder holds one numbering.
 """
 import argparse
 import bisect
 import collections
 import hashlib
+import math
 import multiprocessing
 import os
 import shutil
@@ -112,9 +118,13 @@ def find_demo(row, keys, stems, cache):
         ti = h["tick_interval"]
         if not 0.001 <= ti <= 0.1:
             continue
-        if (h["map"].lower() == row["map"].lower()
-                and momimport.track_leg(h["track_type"], h["track_number"]) == (track, leg)
-                and int(round(h["run_time"] / ti)) == want_t):
+        try:                            # a NaN or infinite run time is no fit
+            ok = (h["map"].lower() == row["map"].lower()
+                  and momimport.track_leg(h["track_type"], h["track_number"]) == (track, leg)
+                  and int(round(h["run_time"] / ti)) == want_t)
+        except (ValueError, OverflowError):
+            ok = False
+        if ok:
             fit.append(p)
     # Two copies of one file (the corpus has 135) are one demo.
     if len({hashlib.sha1(open(p, "rb").read()).hexdigest() for p in fit}) == 1:
@@ -133,7 +143,54 @@ def old_header(path):
     raise ValueError("no begin line")
 
 
-def sample(s, start, ti):
+CAP = 259.5         # |wishVel| at or past this is the 260 speed cap, not the usercmd
+
+
+def wish_moves(s):
+    """(fwd, side) from the recorded wishVel on the eye yaw, or None without one.
+    Source's right vector at yaw y is (sin y, -cos y)."""
+    if s.wish_x is None or s.wish_y is None:
+        return None
+    y = math.radians(s.yaw)
+    fm = s.wish_x * math.cos(y) + s.wish_y * math.sin(y)
+    sm = s.wish_x * math.sin(y) - s.wish_y * math.cos(y)
+    mag = math.hypot(fm, sm)
+    # The yaw is stored in 0.176-degree steps, so a pure strafe leaves a sliver on
+    # the other axis (fwd -1 lit BACK on surf_4am b4); a key is never under 3%.
+    dead = max(1.0, 0.03 * mag)
+    fm = 0.0 if abs(fm) < dead else fm
+    sm = 0.0 if abs(sm) < dead else sm
+    if mag >= CAP:
+        big = max(abs(fm), abs(sm))
+        fm, sm = fm * MOVE / big, sm * MOVE / big
+    return int(round(fm)), int(round(sm))
+
+
+class KeyMoves:
+    """(fwd, side) from the physical buttons, for the format with no wishVel: the
+    later press of an opposing pair wins (measured: Momentum's choice on 7539 of
+    7572 A+D overlaps)."""
+
+    def __init__(self):
+        self.down, self.n = {}, 0       # bit -> the press's order
+
+    def __call__(self, b):
+        for bit in (IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT):
+            if not b & bit:
+                self.down.pop(bit, None)
+            elif bit not in self.down:
+                self.n += 1
+                self.down[bit] = self.n
+
+        def axis(pos, neg):
+            p, n = self.down.get(pos), self.down.get(neg)
+            if p and n:
+                return MOVE if p > n else -MOVE
+            return MOVE if p else (-MOVE if n else 0)
+        return axis(IN_FORWARD, IN_BACK), axis(IN_MOVERIGHT, IN_MOVELEFT)
+
+
+def sample(s, start, ti, moves):
     b, f = s.buttons or 0, s.flags or 0
     fl = 0
     if f & FL_ONGROUND:
@@ -144,8 +201,7 @@ def sample(s, start, ti):
         fl += 4
     if b & IN_ATTACK:
         fl += 8
-    fwd = MOVE * (1 if b & IN_FORWARD else 0) - MOVE * (1 if b & IN_BACK else 0)
-    side = MOVE * (1 if b & IN_MOVERIGHT else 0) - MOVE * (1 if b & IN_MOVELEFT else 0)
+    fwd, side = moves
     keys = 0
     if fwd > 0:
         keys += FSI_FWD
@@ -201,27 +257,42 @@ def convert(row, demo, oldpath):
     ratio = (peak / oracle) if oracle else 0.0
     sha = hashlib.sha1(open(demo, "rb").read()).hexdigest()
 
+    # The 33-prop format records no wishVel on any tick; the others on every one.
+    haswish = all(s.wish_x is not None for s in ticks)
+    keymoves = KeyMoves()
+    body = []
+    pad = 0
+    for s in ticks:
+        if s.tick - start > want:
+            break                       # the demo's stop can trail the frozen timer
+        if s.tick < start:
+            pad += 1
+        km = keymoves(s.buttons or 0)
+        body.append(sample(s, start, ti, wish_moves(s) if haswish else km))
+
     out = []
-    for s in old_header(oldpath):
+    for s in fixed_header(old_header(oldpath), leg):
         k = s.split(" ", 1)[0]
-        if k == "startseg":
-            s = "startseg %d" % (leg - 1 if leg > 0 else 0)
-        elif k == "momquality":
+        if k == "momquality":
             s = "momquality %.4f %.1f 0" % (ratio, oracle)
+        elif k == "clock":
+            s = "clock counted"
         elif k == "flags":
-            out.append("moves keys %d" % MOVE)
+            out.append("moves %s %d" % ("wishvel" if haswish else "keys", MOVE))
             out.append("momdemo %s" % sha)
         elif k in ("moves", "momdemo"):
             continue
         out.append(s)
-    pad = 0
-    for s in ticks:
-        if s.tick < start:
-            pad += 1
-        out.append(sample(s, start, ti))
-    out.append("end %d %d %d 0" % (want, len(ticks), pad))
-    return "\n".join(out) + "\n", {"samples": len(ticks), "ratio": ratio, "oracle": oracle,
-                                   "padding": pad, "sha": sha}
+    out += body
+    out.append("end %d %d %d 0" % (want, len(body), pad))
+    return "\n".join(out) + "\n", {"samples": len(body), "ratio": ratio, "oracle": oracle,
+                                   "padding": pad, "sha": sha, "wish": haswish}
+
+
+def fixed_header(lines, leg):
+    """FTESurf's stage numbering, for every row whether or not its body changes."""
+    return ["startseg %d" % (leg - 1 if leg > 0 else 0) if s.split(" ", 1)[0] == "startseg"
+            else s for s in lines]
 
 
 def work(job):
@@ -305,8 +376,11 @@ def main():
         print("dry run: nothing written (--go writes %s)" % a.out)
         return 0
 
-    # The rest of the tree, unchanged; the workers wrote the rewritten leaves.
-    copied = 0
+    # The rest of the tree; the workers wrote the rewritten leaves.  A manifest
+    # row's file keeps its body and takes the startseg fix; anything else is copied.
+    legs = {os.path.join(r["map"], momimport.leg_dir(int(r["track"]), int(r["leg"])), r["leaf"]):
+            int(r["leg"]) for r in rows}
+    copied = renum = 0
     for dp, _, fns in os.walk(a.root):
         for f in fns:
             src = os.path.join(dp, f)
@@ -315,7 +389,16 @@ def main():
                 continue
             dst = os.path.join(a.out, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
+            if rel in legs:
+                with open(src, encoding="utf-8", newline="") as fh:
+                    text = fh.read()
+                head, sep, rest = text.partition("\nbegin\n")
+                new = "\n".join(fixed_header(head.split("\n"), legs[rel])) + sep + rest
+                with open(dst, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(new)
+                renum += new != text
+            else:
+                shutil.copy2(src, dst)
             copied += 1
     with open(os.path.join(a.out, "manifest.tsv"), "w", encoding="utf-8", newline="\n") as fh:
         for s in head:
@@ -328,7 +411,10 @@ def main():
                 row = dict(row, samples=str(info["samples"]), ratio="%.4f" % info["ratio"],
                            oracle="%.1f" % info["oracle"], lowconf="0")
             fh.write("\t".join(row[c] for c in COLS) + "\n")
-    print("wrote %s: %d rewritten, %d copied unchanged, manifest.tsv" % (a.out, len(done), copied))
+    print("wrote %s: %d rewritten, %d kept (%d of them renumbered), manifest.tsv"
+          % (a.out, len(done), copied, renum))
+    print("moves from wishVel in %d, from the keys in %d"
+          % (sum(1 for i in done.values() if i["wish"]), sum(1 for i in done.values() if not i["wish"])))
     return 0
 
 
