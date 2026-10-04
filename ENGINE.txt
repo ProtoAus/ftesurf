@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   06f0967a9e80cde13f1555d34e95b21b5214c536
+commit   ece74b398722a70423d855a834c6aceb966b4584
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,20 @@ commit   06f0967a9e80cde13f1555d34e95b21b5214c536
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    481
+patch    482
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-04
+
+# PATCH 482: the JSON reader decodes \uXXXX from the source, not the destination,
+# and pairs a low surrogate across the whole of U+DC00..U+DFFF (it stopped at DE00,
+# so U+1F600 -- D83D DE00 -- never paired).  Reaches QC's jsondecode, i.e. every
+# name and map title off the web board.  Engine-side; no QC build depends on it, so
+# a client still on the 467 engine draws the old wrong text rather than failing.
+# Host test: C:/FTESurf-private/poc/p483/ (18 cases, four mutants).
 
 # PATCH 481: fs_load, fs_unload, fs_useaddons, fs_steamlibs, fs_cache_clear and
 # fs_indexmaps refuse an insecure caller (a server's stufftext, gamecode's localcmd).

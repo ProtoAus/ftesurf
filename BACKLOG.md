@@ -1762,15 +1762,6 @@ is that an arm ships publicly with its fix, not before it. Copy them in from
   mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
-- **The engine's JSON reader misdecodes every `\uXXXX`** (upstream FTE,
-  2026-10-04). `JSON_ReadBody` (fteqw common/json.c) takes the four digits,
-  and a low surrogate's, from `out[]` -- the destination -- where it means
-  `in[]`, so an escape reaches QC as itself or as a wrong code point: the map
-  screen's board drew "Chriis™" and a box for FløppyWrist's ø. surfd's
-  game bodies are UTF-8 since 202cdb2, which covers every shipped engine. The
-  fix reads `in[0..3]`, and -- since `in += 4` runs before the surrogate test
-  -- the low half's `\u` and digits at `in[0..5]`, not a straight `out`->`in`
-  swap (that reads four too far). It waits for an engine release.
 - **`Time_TickString` is 1-3 ms off on most times past 68 minutes**
   (ROADMAP 9, 2026-10-04; modelled in numpy float32, not driven). QC floats
   are float32 and `ticks * tickrate * 1000` rounds before its `floor(+0.5)`.
