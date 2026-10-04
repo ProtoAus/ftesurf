@@ -106,6 +106,7 @@ def created_epoch(raw):
 
 
 CHUNK = 20000            # rows held before a flush; see the loop's comment
+LINK_SLACK_MS = 20       # a linked recording may be this much faster than its row: a tick, rounded
 
 
 def flush(conn, rows):
@@ -377,30 +378,36 @@ def link_demos(conn):
     the ~5k replays probed by runs' own key, without the write lock, and the
     write is only the rows found -- usually none.
     """
-    best = {}
+    reps = {}
     for rid, mp, tr, lg, pl, ms in conn.execute(
             "SELECT id, map, track, leg, player, millis FROM replays WHERE kind='momentum'"):
-        k = (mp, tr, lg, pl)
-        if k not in best or (ms, rid) < best[k]:
-            best[k] = (ms, rid)
+        reps.setdefault((mp, tr, lg, pl), []).append((ms, rid))
     hits = []
     # The full unique key, style included, so each probe is a point lookup: both
     # writers of this tier (flush, momindex) write STYLE_CLEAN and nothing else.
-    for (mp, tr, lg, pl), (_ms, rid) in best.items():
+    for (mp, tr, lg, pl), lst in reps.items():
         key = (mp, tr, lg, S.TIER_MOMENTUM, S.STYLE_CLEAN, pl)
-        if conn.execute("SELECT 1 FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
-                        " AND style=? AND player=? AND replay_id=0", key).fetchone():
-            hits.append((rid,) + key + (rid,))
+        r = conn.execute("SELECT millis FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
+                         " AND style=? AND player=? AND replay_id=0", key).fetchone()
+        if r is None:
+            continue
+        # The fastest recording that is not faster than the row: a demo dropped as
+        # impossible (0.405 s on a 92 s board, 28 Sep) is the fastest held for its
+        # player, and must not become the watch link of their official time.
+        ok = sorted(x for x in lst if x[0] >= r[0] - LINK_SLACK_MS)
+        if ok:
+            hits.append((ok[0][1],) + key + (ok[0][1],))
     if not hits:
         return 0
-    # The write re-states the key, the empty link and the replay: the read held no
-    # lock, and a rowid could be reused or the replay deleted in between.
+    # The write re-states the key, the empty link and the replay with its time:
+    # the read held no lock, and a rowid could be reused or the replay deleted.
     t0 = conn.total_changes
     with conn:
         conn.executemany(
             "UPDATE runs SET replay_id=? WHERE map=? AND track=? AND leg=? AND tier=?"
             " AND style=? AND player=? AND replay_id=0"
-            " AND EXISTS (SELECT 1 FROM replays WHERE id=? AND kind='momentum')", hits)
+            " AND EXISTS (SELECT 1 FROM replays WHERE id=? AND kind='momentum'"
+            "             AND millis >= runs.millis - %d)" % LINK_SLACK_MS, hits)
     return conn.total_changes - t0
 
 
