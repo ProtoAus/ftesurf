@@ -26,6 +26,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   with a heartbeat beside it waiting 1.49 s, and unchanged rows cheap (20,000 in
   0.37 s); the Pi ran the old link UPDATE ~4.6x slower than the PC, so a tick
   that lands ~10k rows could pass 5 s there. Ticks set 1100-1800 rows today.
+  MEASURED ON THE PI, surfd.log: 9 `database is locked` on 4 of the 6 ticks
+  08:56-09:28 UTC with the old link pass; 0 on the 4 ticks 09:35-09:56 after
+  it (1095-1212 rows each). Four ticks is not many -- recount after a day.
 - **`noclip` is open to every player on the lobbies** (pre-existing; Patch 478
   round-8 integrity review, traced in the engine). The engine's `noclip`
   (Cmd_Noclip_f) refuses unless SV_MayCheat -- `sv_cheats`, or a one-slot

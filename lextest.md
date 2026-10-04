@@ -85,7 +85,14 @@ to be wrong.
 - **The Momentum import was locking the database every 7 minutes**, and a run
   submitted in that window would have been refused and lost. Its link step
   scanned 2.35 million rows inside its write lock (6 s, past surfd's 5 s
-  timeout); since 20:31 it reads first and writes only what it finds.
+  timeout); since 20:31 it reads first and writes only what it finds. In the
+  40 minutes before, 4 of 6 ticks locked the lobbies out (9 errors); the 4
+  ticks after had none. The board write itself is still one transaction, and
+  a much bigger tick could still pass 5 s (BACKLOG).
+- **0.1.22 is out** (https://dl.proto.bar/ftesurf/ftesurf-0.1.22.7z, 38.3 MB,
+  4 Oct evening) with the `needs` line and the replay Segments column fix. The
+  467 engine again, so players see the `needs` names dim until an engine
+  release.
 
 ### Things to try
 
