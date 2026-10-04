@@ -406,6 +406,15 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     body Root cause / Fix / Verified. Say what you could NOT verify.
   - `git push origin HEAD:main`. Never force-push and never rewrite pushed
     history; unpushed local commits are yours to reshape freely.
+    **THE CHECKED-OUT BRANCH IS NOT `main` AND THE LOCAL `main` REF IS STALE.**
+    This tree sits on a session branch (`build57` as of 2026-10-05) that is 563
+    commits AHEAD of the local `main` ref, which still points at `4a87aef`
+    (Patch 343). So `git rev-list --count main..feat-maps-demos` and any other
+    comparison against `main` answers a question about a months-old tree, and
+    `feat-maps-demos` reads as "500 unmerged commits" when it is simply old.
+    Compare against `origin/main`, which is what HEAD:main publishes to, and
+    verify a push with `git merge-base --is-ancestor <sha> origin/main` rather
+    than by reading branch names.
   - `qcbuild` in ENGINE.txt still moves only on the user's own "Build NN" commit;
     the `patch` pin moves with your ENGINE_PATCHES.md entry.
 - Compare two dynamic strings with `strcmp`; `==` only against literals.
