@@ -1246,6 +1246,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Imported runs (Momentum, KSF)
 
+- **A client keeps a replay it fetched forever, so a rewritten import never
+  reaches it** (2026-10-04). `Online_ReplayFind` (cl_online.qc) serves any
+  `data/online/**/*_r<id>.rec` before asking, and that was safe while a row's
+  file never changed; `tools/momreimport.py` rewrites them under the same ids.
+  At the re-import the Momentum copies cached on Lex's PC are moved aside by
+  hand. Fix before a second rewrite: put the file's size or a version in the
+  board row and refetch on a mismatch.
 - **THE COMBINED BOARD IS UNUSABLE ON A BUSY MAP.** It merges every tier by
   time and the client fetches one page of `OB_MAXROW` 64 with NO offset
   (`Online_Fetch` sends `limit` and never `skip`). On `surf_utopia` main, 221
