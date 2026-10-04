@@ -35,8 +35,10 @@ entire question."  The reader's own kinematic snap test finds them from the
 samples (`rec_wt_snkin`, cl_watch.qc:782) and reports them as `kin` rather than
 `rec`, which is the truth about where the knowledge came from.
 
-WHAT A MOMENTUM DEMO DOES NOT CONTAIN -- proven negatives, from a grep of the
-whole reference for the field names, not from a failed search here:
+WHAT A .wrpath DOES NOT CARRY.  The .mtv has all four -- tools/momreplay.py
+decodes them per tick (4598 of 4598 demos, 4 Oct 2026); this file's old "proven
+negatives" came from grepping wrlines, which never decodes the netstream -- but
+the extractor's output this reads has none of them:
   * view angles.  So pitch/yaw are DERIVED from the direction of travel, and no
     .view sidecar is ever written: that file is mouse evidence, and a derived
     angle filed there is a measurement that never happened.
