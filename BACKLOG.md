@@ -59,7 +59,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   teleport-staged maps and every chained stage on a bhop map played off-lobby
   (the bhop lobby runs `run_starthop 0`) -- with a tag that is sticky to `!r`.
   The point's arm already does that to slow entries, as it did before 478.
-  Both arms carry what reached the entry one boundary (SV_TimerHandArm).
+  Both arms carry what reached the entry one boundary (SV_TimerHandArm) --
+  but only while the handover stands: a retry of a FINISHED body, a ghost that
+  leaves the box or enters it, each drops it with the speed kept, and the next
+  entry is a plain arm (round-12 integrity review; no gain beyond the entry
+  below). Fix: arm a stage run's next box (its track, startseg + 1) through
+  SV_TimerHandArm whether or not the handover survived, and let a fast
+  FINISHED load set the segment bit.
 - **pm_verify's start latch is not refreshed at a `ghost 0`** (engine; Patch 478
   round 8). The live unghost takes the START latch of where the body stands
   (SV_TimerGhostEnd) and keeps the event latches, as the verifier does (round 7
