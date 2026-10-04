@@ -399,15 +399,18 @@ def link_demos(conn):
             hits.append((ok[0][1],) + key + (ok[0][1],))
     if not hits:
         return 0
-    # The write re-states the key, the empty link and the replay with its time:
-    # the read held no lock, and a rowid could be reused or the replay deleted.
+    # The write re-states the key, the empty link and the replay with its owner
+    # and time: the read held no lock, a rowid could be reused, the replay deleted,
+    # or re-filed under another player (momindex's upsert sets player).
     t0 = conn.total_changes
     with conn:
         conn.executemany(
             "UPDATE runs SET replay_id=? WHERE map=? AND track=? AND leg=? AND tier=?"
             " AND style=? AND player=? AND replay_id=0"
             " AND EXISTS (SELECT 1 FROM replays WHERE id=? AND kind='momentum'"
-            "             AND millis >= runs.millis - %d)" % LINK_SLACK_MS, hits)
+            "             AND map=runs.map AND track=runs.track AND leg=runs.leg"
+            "             AND player=runs.player AND millis >= runs.millis - %d)"
+            % LINK_SLACK_MS, hits)
     return conn.total_changes - t0
 
 
