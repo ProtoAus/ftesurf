@@ -334,6 +334,7 @@ void() ClientDisconnect =
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
 	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
+	SV_ViewEyeDetach(self);             // round 26: a ghost's too (the release returns without a pin)
 
 	// Close any open .rec before the edict goes: fclose is what actually
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for

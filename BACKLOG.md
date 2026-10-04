@@ -95,11 +95,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   whatever its class and pm_verify HOLDs at the teleport ("packet(s) differ"),
   which abandoned_pass does not convert -- so the honest stages it backs never
   show Verified. `setpos` should write a `warp`, or end the recording.
-- **A chat bind other than ENTER's `say` opens a draft in the rewind's
-  countdown** (`messagemode`, `messagemode2`, `chat_open`, `chat_say` on any
-  key; Patch 477 round-19 review): Chat_InputEvent runs ahead of the rewind.
-  Since round 23 the draft passes a `+` bind's release, so the keys held for
-  the release no longer stick; the draft itself still opens over the count.
+- **A key whose press the console or a menu took reads as a fresh press on its
+  first repeat** (engine; Patch 477 round-26 review, CONFIRMED by trace; since
+  round 17). CSQC gets no KEYDOWN while key_dest is not game (keys.c), so
+  neither the rewind's table nor the draft's records the key: ESC held past the
+  repeat delay after closing the console with it reaches the rewind as a leave
+  (a go at the head on a running run). The engine already drops the UP of a key
+  CSQC never saw go down (pr_csqc.c csqckeysdown); it should drop its repeats.
 - **The avatar name field swallows every key-up while it has focus**
   (pre-existing; Patch 477 round-24 review, code-read). Av_InputEvent
   (cl_avatar.qc) returns TRUE for any release, so a `+sl_hold` or movement

@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R26A", "R26B", "R26C", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -737,10 +737,12 @@ def main():
     # repeat sent.  Verdict: the hold gone on both sides.
     hd25a = [(m.group(1), m.group(2)) for m in (re.search(r"saveloc: locked \S+ refkey \S+ hold (\S+) holding (\S+)", s)
                                                for s in sec["R25A"]) if m]
-    k25a = [m.group(1) for m in (re.search(r"vote key: scan (50 down 1|27 down 1) took \d", s)
+    # Round 26: the draft's ESC taken (`took 1`), as R24A requires -- without a
+    # draft the repeat and release reach the save-lock and pass the verdict too.
+    k25a = [m.group(1) for m in (re.search(r"vote key: scan (50 down 1|27 down 1 took 1)\b", s)
                                  for s in sec["R25A"]) if m]
     if not (len(hd25a) == 2 and hd25a[0] == ("1", "1") and k25a.count("50 down 1") == 2
-            and "27 down 1" in k25a):
+            and "27 down 1 took 1" in k25a):
         print("CANNOT GRADE R25A: saveloc reads %s, keys %s" % (hd25a, k25a))
         cannot.append("R25A")
     else:
@@ -750,13 +752,52 @@ def main():
     # R25B (round 25): `bind enter messagemode` -- ENTER in the rewind is its go.
     # Premise: the rewind was open and browsing.  Verdict: the go went (sent or
     # counting), where a draft would have left it browsing.
+    # Round 26: and the bind in force -- `say` reaches the rewind either way.
     st25b = status("R25B")
-    if not (st25b[:1] and st25b[0].group(1) == "1" and st25b[0].group(2) == "0" and st25b[0].group(3) == "0"):
-        print("CANNOT GRADE R25B: %s" % [m.group(0) for m in st25b])
+    if not (st25b[:1] and st25b[0].group(1) == "1" and st25b[0].group(2) == "0" and st25b[0].group(3) == "0"
+            and re.search(r'"enter"[^\n]*= "messagemode"', txt("R25B"), re.I)):
+        print("CANNOT GRADE R25B: %s, bind %s" % ([m.group(0) for m in st25b],
+                                                  bool(re.search(r'"enter"[^\n]*= "messagemode"', txt("R25B"), re.I))))
         cannot.append("R25B")
     else:
         went = len(st25b) >= 2 and (st25b[1].group(2) == "1" or st25b[1].group(3) == "1")
         check("R25B", went, "after ENTER: %s" % (st25b[1].group(0) if len(st25b) >= 2 else None))
+
+    # R26A (round 26): ENTER bound to messagemode held through the countdown, its
+    # repeat after the close.  Premises: the bind, browsing, closed after the
+    # count, both ENTER downs sent.  Verdict: `w` afterwards reaches no draft.
+    st26a = status("R26A")
+    k26a = [m.group(1) for m in (re.search(r"vote key: scan 13 down 1 took (\d)", s) for s in sec["R26A"]) if m]
+    w26a = [m.group(1) for m in (re.search(r"vote key: scan 119 down 1 took (\d)", s) for s in sec["R26A"]) if m]
+    if not (re.search(r'"enter"[^\n]*= "messagemode"', txt("R26A"), re.I) and len(st26a) >= 2
+            and st26a[0].group(1) == "1" and st26a[0].group(2) == "0" and st26a[1].group(1) == "0"
+            and len(k26a) == 2 and w26a):
+        print("CANNOT GRADE R26A: %s, ENTER %s, w %s" % ([m.group(0) for m in st26a], k26a, w26a))
+        cannot.append("R26A")
+    else:
+        check("R26A", w26a[0] == "0", "after the count, ENTER's repeat and release: `w` took %s" % w26a[0])
+
+    # R26B (round 26): S (`+back`) pressed on the go's own line.  Premises: the
+    # bind, browsing, then the go sent.  Verdict: S's press passed.
+    st26b = status("R26B")
+    s26b = [m.group(1) for m in (re.search(r"vote key: scan 115 down 1 took (\d)", s) for s in sec["R26B"]) if m]
+    if not (re.search(r'"s"[^\n]*= "\+back"', txt("R26B"), re.I) and len(st26b) >= 2
+            and st26b[0].group(1) == "1" and st26b[0].group(3) == "0" and st26b[1].group(3) == "1" and s26b):
+        print("CANNOT GRADE R26B: %s, S %s" % ([m.group(0) for m in st26b], s26b))
+        cannot.append("R26B")
+    else:
+        check("R26B", s26b[0] == "0", "S with the go in flight took %s" % s26b[0])
+
+    # R26C (round 26): a chat bind on S in the countdown.  Premises: the bind, the
+    # count running.  Verdict: the mod's draft took S.
+    st26c = status("R26C")
+    s26c = [m.group(1) for m in (re.search(r"vote key: scan 115 down 1 took (\d)", s) for s in sec["R26C"]) if m]
+    if not (re.search(r'"s"[^\n]*= "messagemode"', txt("R26C"), re.I) and st26c[:1]
+            and st26c[0].group(2) == "1" and s26c):
+        print("CANNOT GRADE R26C: %s, S %s" % ([m.group(0) for m in st26c], s26c))
+        cannot.append("R26C")
+    else:
+        check("R26C", s26c[0] == "1", "S bound to messagemode in the count took %s" % s26c[0])
 
     # R23C (round 23): sl_save under the replay pin is refused and makes nothing.
     t23c = txt("R23C")

@@ -968,13 +968,16 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 	{
 		if (evtype != IE_KEYDOWN)
 			return FALSE;
+		// Round 26: a repeat never opens one -- its press went elsewhere (the
+		// rewind's go, held past the count, then opened a draft over the release).
+		if (chat_rep)
+			return FALSE;
 		b = getkeybind(scanx);
 		if (b != "messagemode" && b != "messagemode2" && b != "chat_say" && b != "chat_open")
 			return FALSE;
-		// Round 25: the rewind's own keys are its own while it is up, whatever
+		// Rounds 25-26: the keys the rewind's phase takes are its own, whatever
 		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
-		if (Rewind_Holds())
-		if (Rewind_KeyIx(scanx) >= 0)
+		if (Rewind_Owns(scanx))
 			return FALSE;
 		chat_typing = TRUE;
 		chat_buf    = "";

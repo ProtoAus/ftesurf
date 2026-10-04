@@ -675,6 +675,12 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		}
 		return FALSE;               // the keys the release will find held
 	}
+	// Round 26: with a go in flight a `+` bind on S or an arrow passes, as in the
+	// countdown -- the release hands back what is held.
+	if (rw_ack)
+	if (k == 0 || k == 3 || k == 4)
+	if (substring(getkeybind(scanx), 0, 1) == "+")
+		return FALSE;
 	if (k >= 0)
 		rw_kst[k] = 1;
 	if (rw_ack)                     // a go in flight: one round trip
@@ -709,6 +715,27 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 float() Rewind_Holds =
 {
 	return rw_on;
+};
+
+// Round 26: the keys the phase takes, for the chat draft to yield -- all six
+// browsing or with a go in flight; counting down, ENTER and ESC (S and the
+// arrows wait there for the release, so a chat bind on one is the draft's).
+float(float scan) Rewind_Owns =
+{
+	local float k;
+
+	if (!rw_on)
+		return FALSE;
+	k = Rewind_KeyIx(scan);
+	if (k < 0)
+		return FALSE;
+	if (rw_cd)
+	{
+		if (k == 1 || k == 2 || k == 5)
+			return TRUE;
+		return FALSE;
+	}
+	return TRUE;
 };
 
 // Round 19: a key the mode took is its until let go, also once the mode has
