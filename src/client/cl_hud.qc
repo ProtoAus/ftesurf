@@ -1310,8 +1310,9 @@ void() HUD_RegisterCvars =
   GATED ON THE FACE, not on the element.  "The google font" in this tree is
   gfx/fonts/GoogleMed.ttf (cl_watch.qc's own words for it), and ui_font_cur is
   whatever Font_Set last selected -- so every block that draws in it answers to
-  the cvar and nothing else does: Roboto's labels, Bebas's clock, the console and
-  the editor's own chips are untouched.  The TAB board is untouched too, and that
+  the cvar and nothing else does: Roboto's labels, the console and the editor's
+  own chips are untouched, and Bebas (the clock, the speed) takes the shadow
+  alone since 4 Oct 2026.  The TAB board is untouched too, and that
   is a budget decision rather than an oversight: its rows go through sui_text
   (cl_scores.qc's Scores_Text) because they are inside a list view's transform,
   and it is the largest text surface in the tree.
@@ -1345,6 +1346,7 @@ void() HUD_RegisterCvars =
   second, differently-aliased copy of the glyph 1.4 px away.
 */
 #define FX_SHAD_OFF   0.09      // of the glyph size: 1 px at 8-16, 2 at 20-24, 3 at 32
+#define FX_SHAD_DISP  0.06      // Bebas: 3 px under a 48 px speed, 4 under a 64 px clock
 #define FX_SHAD_RGB   '0.13 0.14 0.16'
 #define FX_SHAD_A     0.65
 #define FX_RING_RGB   '0.05 0.06 0.07'
@@ -1371,6 +1373,15 @@ void(vector pos, string s, float sz, vector rgb, float a) HUD_TextDraw =
 			drawstring(pos + fx_ring_off[i], s, [sz, sz], FX_RING_RGB, a * FX_RING_A, 0);
 		drawstring(pos, s, [sz, sz], rgb, a, 0);
 		return;
+	}
+	// Lex, 4 Oct 2026: the clock and the speed (Bebas) take the shadow too --
+	// one pass and no ring, which is eight and too thin at their size.
+	if (ui_cv_fontfx >= FX_SHADOW)
+	if (ui_font_cur == ui_font_display)
+	if (a > 0)
+	{
+		d = max(2, floor(sz * FX_SHAD_DISP + 0.5));
+		drawstring(pos + [d, d, 0], s, [sz, sz], FX_SHAD_RGB, a * FX_SHAD_A, 0);
 	}
 	drawstring(pos, s, [sz, sz], rgb, a, 0);
 };

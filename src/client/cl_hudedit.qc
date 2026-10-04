@@ -1770,7 +1770,7 @@ void(vector scr) HUD_EditDraw =
 	else if (mode == FX_OUTLINE) s = "text outline";
 	else                         s = "text shadow";
 	if (HE_Chip("he_fontfx", [x, y, 0], [w, rowh - 2 * psc, 0], s, mode > FX_PLAIN, psc,
-	            "Dark outline around the text drawn in the Google face, and a grey drop shadow behind it. plain is the old look; outline skips the second pass."))
+	            "Dark outline around the text drawn in the Google face, and a grey drop shadow behind it -- the timer and the speed take the shadow too. plain is the old look; outline skips the second pass."))
 	{
 		if (mode <= FX_PLAIN)        localcmd("seta hud_font_outline 1\n");
 		else if (mode == FX_OUTLINE) localcmd("seta hud_font_outline 2\n");

@@ -48,7 +48,10 @@ REGIONS = {
 PAIRS = [
     ("p440_A_a", "p440_A_b", "P2 floor", -1, 200, ["DEBUG"]),
     ("p440_A_b", "p440_B_b", "P3 fx0->1", 500,  50, ["DEBUG", "SPEED"]),
-    ("p440_B_b", "p440_C_b", "P4 fx1->2", 150,  50, ["DEBUG", "SPEED"]),
+    ("p440_B_b", "p440_C_b", "P4 fx1->2", 150,  50, ["DEBUG"]),
+    # 4 Oct 2026: Bebas (the clock, the speed) takes the shadow, not the ring --
+    # SPEED is P3's control and P4b's subject.  A 7th field names the subject.
+    ("p440_B_b", "p440_C_b", "P4b Bebas", 150,  50, [], "SPEED"),
     ("p440_ed0_b", "p440_ed2_b", "P5 panel", 500, 50, ["PANEL"]),
 ]
 
@@ -180,17 +183,19 @@ def grade():
         return cache[name]
 
     print("\nregion diffs (changed pixels, |dchannel| > 8):")
-    for a, b, tag, smin, cmax, controls in PAIRS:
+    for pair in PAIRS:
+        a, b, tag, smin, cmax, controls = pair[:6]
+        subj = pair[6] if len(pair) > 6 else "MAPINFO"
         A, B = im(a), im(b)
         if A.size != B.size:
             print("  %-10s SIZE MISMATCH %s vs %s" % (tag, A.size, B.size))
             ok = False
             continue
-        s = diff_region(A, B, "MAPINFO")
+        s = diff_region(A, B, subj)
         good = s < cmax if smin < 0 else s > smin
         ok = ok and good
-        print("  %-10s MAPINFO(subject) %7d  want %s %5d   %s"
-              % (tag, s, "<" if smin < 0 else ">", cmax if smin < 0 else smin,
+        print("  %-10s %s(subject) %7d  want %s %5d   %s"
+              % (tag, subj, s, "<" if smin < 0 else ">", cmax if smin < 0 else smin,
                  "ok" if good else "FAIL"))
         for c in controls:
             n = diff_region(A, B, c)
