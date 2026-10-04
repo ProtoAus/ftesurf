@@ -1579,6 +1579,34 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
+- **`Time_TickString` is 1-3 ms off on most times past 68 minutes**
+  (ROADMAP 9, 2026-10-04; modelled in numpy float32, not driven). QC floats
+  are float32 and `ticks * tickrate * 1000` rounds before its `floor(+0.5)`.
+  `Time_TickString(ms, 0.001)`: first wrong at 4,096,003 ms, then 9.15M of the
+  16.78M values below 2^24, +1 to +3 ms. `(ticks, 1 / 66.6667)`: first wrong at
+  tick 273,085 (4,096,275 ms), 619k of the first 1.2M ticks, -1 to +3 ms.
+  Momentum boards hold hours-long runs. Readers include
+  screen_create's `best` column (m_main.qc, `ms_wr`) and cl_scores.qc's online
+  rows; the menu leaderboard (m_board.qc `Mlb_MsString`) splits integer ms
+  instead. Fix: an integer path in sh_time.qc, checked against the same model.
+- **Typing w/a/s/d into a menu text field moves sui's keyboard cursor, and
+  Enter clicks wherever it landed** (pre-existing; ROADMAP 9 review, traced,
+  not driven). `sui_menu_nav` (sui_sys.qc, called only from m_draw) reads the
+  movement binds (default.cfg:152-155) from the buffer the focused field types
+  from; `sui_text_input_focused` is meant to stop that, but only
+  `sui_input_dir` reads it and `sui_input_event` drops its result. Enter never
+  reaches the field -- it is sui's confirm, a click at the cursor -- so "surf"
+  + Enter in the map search can click a lobby cell below it (`ui_connect`). The
+  leaderboard button stays off the keyboard path for this. Fix: skip the bound
+  moves in sui_menu_nav while a field is focused, keeping the arrows and pad.
+- **A uri_get reply from before `menu_restart` reaches the new menu VM**
+  (pre-existing; ROADMAP 9 review, read in the engine, not driven).
+  `PR_uri_get_callback2` (pr_bgcmd.c) drops a reply only when the VM's
+  `spawncount` moved, and client/pr_menu.c never sets `menu_world.spawncount`.
+  The new VM's `Lob_NextReq` starts again at 1, so a late reply can take a
+  fresh id -- the lobby poll's, a join's or the leaderboard's -- and be parsed
+  as its answer. Fix: bump the spawncount in MP_Init, or seed `lb_nextid` from
+  the clock.
 - **The run line's air-control grade is measured against THIS server's movement
   settings, not the recording's -- ALL BUT THE TICK, which Patch 470 fixed.**
   `Line_Movevars` reads `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`,

@@ -29,13 +29,17 @@ SOURCE PRECEDENCE, per map:
     _cache/images/<uuid>-small.jpg      Momentum's own, already 480x270
     _cache/images/<uuid>-large.jpg      when only the large one was cached
     gfx/mapshots/<uuid>-small.jpg       fetched from the CDN by tools/mapfetch.py
+    gfx/mapshots/ksf/<map>.jpg          KSF's picture, fetched by tools/ksfshots.py
     ftesurf/screenshots/<map>.<ext>     your own F5 grabs
 
 The third exists because Momentum only caches an image once its own UI has shown you
 that map, which left 751 of 2172 maps with a thumbnail id but no file.  mapfetch.py
 GETs those from the URL the cache record already carries; see its docstring.
 
-The fourth exists because CS:S-only maps are in neither of Momentum's caches -- the
+The fourth is keyed by NAME, not uuid, so it is how a KSF-only map (a `ksf` row in
+mapmeta.txt, with no uuid) gets a picture at all.
+
+The fifth exists because CS:S-only maps are in neither of Momentum's caches -- the
 library has 1084 loose BSPs in cstrike/maps that Momentum has never indexed.  Take a
 screenshot in-game, name it after the map, re-run this, and it gets a thumbnail like
 everything else.
@@ -47,6 +51,7 @@ Usage:
     python mapthumbs.py                 # rebuild the atlases and patch mapmeta.txt
     python mapthumbs.py --report        # also say what resolved and what did not
     python mapthumbs.py --limit 50      # small run, for checking the packing
+    python mapthumbs.py --gamedir DIR   # another tree's mapmeta, atlases and pictures
 """
 
 import argparse
@@ -61,10 +66,11 @@ except ImportError:
 
 MOMENTUM = r"C:\Program Files (x86)\Steam\steamapps\common\Momentum Mod Playtest\momentum"
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # C:\FTESurf
-META = os.path.join(SURFDIR, "ftesurf", "data", "mapmeta.txt")
-ATLASDIR = os.path.join(SURFDIR, "ftesurf", "gfx", "mapthumbs")
-SHOTS = os.path.join(SURFDIR, "ftesurf", "screenshots")
-FETCHED = os.path.join(SURFDIR, "ftesurf", "gfx", "mapshots")   # tools/mapfetch.py
+GAMEDIR = os.path.join(SURFDIR, "ftesurf")
+# The picture sources under the gamedir; main() repoints them at --gamedir.
+SHOTS = os.path.join(GAMEDIR, "screenshots")
+FETCHED = os.path.join(GAMEDIR, "gfx", "mapshots")              # tools/mapfetch.py
+KSFSHOTS = os.path.join(FETCHED, "ksf")                         # tools/ksfshots.py
 
 # 16:9, and an exact divisor of PAGE on the x axis so a cell never straddles a
 # texel boundary the sampler would then have to guess at.
@@ -107,6 +113,9 @@ def source_for(name, uuid, momentum):
             p = os.path.join(FETCHED, uuid + suffix)
             if os.path.exists(p):
                 return p
+    p = os.path.join(KSFSHOTS, name.lower() + ".jpg")
+    if os.path.exists(p):
+        return p
     for ext in SHOT_EXTS:
         p = os.path.join(SHOTS, name + ext)
         if os.path.exists(p):
@@ -168,8 +177,11 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
         if limit and len(resolved) >= limit:
             break
 
-    print("  %d maps with an image, %d have no thumbnail id, %d id but no cached file"
-          % (len(resolved), missing_uuid, missing_file))
+    print("  %d maps with an image (%d of them KSF's), %d have no thumbnail id, "
+          "%d id but no cached file"
+          % (len(resolved),
+             sum(1 for _, s in resolved if os.path.dirname(s) == KSFSHOTS),
+             missing_uuid, missing_file))
 
     npages = (len(resolved) + PER_PAGE - 1) // PER_PAGE
     written = 0
@@ -229,18 +241,28 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--momentum", default=MOMENTUM)
-    ap.add_argument("--meta", default=META)
-    ap.add_argument("--atlasdir", default=ATLASDIR)
+    ap.add_argument("--gamedir", default=GAMEDIR,
+                    help="the ftesurf/ dir: pictures are read from its screenshots/ "
+                         "and gfx/mapshots/, and it holds the two below by default")
+    ap.add_argument("--meta", help="mapmeta.txt to patch (<gamedir>/data/mapmeta.txt)")
+    ap.add_argument("--atlasdir", help="atlas output (<gamedir>/gfx/mapthumbs)")
     ap.add_argument("--limit", type=int, default=0, help="only pack the first N maps")
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args()
 
-    if not os.path.exists(a.meta):
-        raise SystemExit("%s not found -- run mapmeta.py first" % a.meta)
+    global SHOTS, FETCHED, KSFSHOTS
+    SHOTS = os.path.join(a.gamedir, "screenshots")
+    FETCHED = os.path.join(a.gamedir, "gfx", "mapshots")
+    KSFSHOTS = os.path.join(FETCHED, "ksf")
+    meta = a.meta or os.path.join(a.gamedir, "data", "mapmeta.txt")
+    atlasdir = a.atlasdir or os.path.join(a.gamedir, "gfx", "mapthumbs")
+
+    if not os.path.exists(meta):
+        raise SystemExit("%s not found -- run mapmeta.py first" % meta)
 
     print("packing from %s" % os.path.join(a.momentum, "_cache", "images"))
-    n, pages = build(a.momentum, a.meta, a.atlasdir, a.limit, a.report)
-    print("\npacked %d thumbnails, patched %s" % (n, a.meta))
+    n, pages = build(a.momentum, meta, atlasdir, a.limit, a.report)
+    print("\npacked %d thumbnails, patched %s" % (n, meta))
 
 
 if __name__ == "__main__":

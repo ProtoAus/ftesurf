@@ -27,6 +27,8 @@
 // Patch 475 -- two so a finished run can fade while the next one builds over it).
 // 3.25 MiB a slot at LN_CAP, counted off Line_Alloc's own arenas.
 #define LN_SLOTS   11
+#define LN_S_BOARD 1            // the first board slot and the first trail slot,
+#define LN_S_TRAIL 9            // which pick a slot's width (Line_SlotPx)
 #define LN_CAP     65536        // samples a slot holds (16 min at 66 Hz); past it, halved
 #define LN_CHUNK   32
 #define LN_GROUP   16           // chunks a group sphere covers
@@ -154,7 +156,9 @@ float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 
 // The marks' own frame state: the cvars, read once, and the declutter grid.
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
-float  ln_mkpx, ln_mkgap, ln_wpx;
+float  ln_mkpx, ln_mkgap;
+// Line widths, px, read once a frame: the replay's, the board's, your own run's.
+float  ln_wpx, ln_wpxb, ln_wpxt;
 
 // The numbers (Patch 451), read once a frame.  ln_grav is the reader's, not one
 // baked in at load: the same file watched on a different sv_gravity is a
@@ -1211,7 +1215,10 @@ void() Line_ViewFrame =
 	local float s, i;
 
 	Line_PxFrame();
-	Line_Width(cvar("hud_watch_path_px"));
+	ln_wpx  = cvar("hud_watch_path_px");
+	ln_wpxb = cvar("hud_watch_path_px_board");
+	ln_wpxt = cvar("hud_watch_path_px_trail");
+	Line_Width(ln_wpx);
 	ln_eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	ln_fwd = v_forward;
@@ -1227,10 +1234,7 @@ void() Line_ViewFrame =
 	ln_far  = cvar("hud_watch_path_far");
 	ln_fadek = (ln_far > 0) ? 3 / ln_far : 0;       // fades over its last third
 	ln_cmode = cvar("hud_watch_path_color");
-	// The marks, read once a frame beside the rest.  ln_wpx is the line's own
-	// width, kept so the glyph pass can put it back: Line_Width writes globals
-	// every emitter reads, and Scores_LinesDraw calls Line_Draw eight times.
-	ln_wpx      = cvar("hud_watch_path_px");
+	// The marks, read once a frame beside the rest.
 	ln_mkon     = cvar("hud_lines_marks");
 	ln_mkland   = cvar("hud_lines_land");
 	ln_mkleave  = cvar("hud_lines_leave");
@@ -1819,6 +1823,22 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 	Font_Set(f0);
 };
 
+// Slot s's width, px.  The board's and your own run's follow the replay's at -1
+// (the shipped default), so nobody's lines changed when they got their own.
+float(float s) Line_SlotPx =
+{
+	local float w;
+
+	w = -1;
+	if (s >= LN_S_TRAIL)
+		w = ln_wpxt;
+	else if (s >= LN_S_BOARD)
+		w = ln_wpxb;
+	if (w < 0)
+		w = ln_wpx;
+	return w;
+};
+
 /*
   Slot s over its shown range.  tplay: points after it draw at `ahead` (0 stops
   the line at the playhead, which phead marks); a board line passes a tplay past
@@ -1826,7 +1846,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 */
 void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 {
-	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1;
+	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1, wpx;
 	local vector p0, p1;
 
 	if (!ln_on[s])
@@ -1849,6 +1869,10 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	ln_da = alpha;
 	// Read per draw, not per point: the cvar cannot change inside one line.
 	ln_dtint = ln_fgn[s] ? bound(0, cvar("hud_watch_path_foreign"), 1) : 0;
+	// Per slot: Line_Width writes globals every emitter reads, the teleport
+	// dashes below included, and one frame draws up to eleven slots.
+	wpx = Line_SlotPx(s);
+	Line_Width(wpx);
 
 	ln_rn = 0;
 	ln_hp = FALSE;
@@ -1936,12 +1960,11 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 			Line_Square(p1, ln_col[b + j], d1);
 	}
 
-	// Patch 449.  The glyph stroke is its own width, and the line's is put back
-	// before the next slot is drawn.
+	// Patch 449.  The glyph stroke is its own width, and the slot's is put back.
 	Line_Width(ln_mkpx * 0.5);
 	ln_nmk = ln_nlab = 0;
 	Line_Marks(s, ia, ib, tplay, ahead, alpha);
-	Line_Width(ln_wpx);
+	Line_Width(wpx);
 
 	// Two prints and not one: fteqcc caps a varargs call at eight and drops
 	// the rest silently.  Every number here was computed by the pass above.

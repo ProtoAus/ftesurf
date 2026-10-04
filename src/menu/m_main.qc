@@ -139,6 +139,14 @@ void() MM_BootTick;
 void() MM_Invalidate;
 vector(vector m) MM_MouseToUI;
 
+// ROADMAP 9: the selected map's leaderboard panel over SCREEN_CREATE, in
+// m_board.qc (compiled after this file, like m_milk.qc).
+float() Mlb_IsOpen;
+void(string mapname, float t) Mlb_Open;
+void(string why) Mlb_Close;
+void(vector screensize) Mlb_Draw;
+void() Mlb_TestCommand;
+
 /*
   Map source, derived from the searchpath a BSP came out of.
 
@@ -430,6 +438,21 @@ float  ms_applied_modes;
 */
 float  ms_srcf;
 float  ms_applied_srcf;
+
+/*
+  ROADMAP 10: how complete each map's data is, one DQ_* per row (ui_data_load),
+  which ui_refilter orders by before the tier.  A BARE map is hidden from an
+  empty search unless the "show all" chip is lit (saved as ui_maps_showall).
+*/
+#define DQ_FULL     0           // a picture, a tier, and playable or downloadable
+#define DQ_PICTURE  1           // a picture, short of a tier or a way to play it
+#define DQ_TIER     2           // a tier and no picture
+#define DQ_BARE     3           // neither
+#define DQ_CLASSES  4
+strbuf ms_dataq;
+float  ms_showall;
+float  ms_applied_showall;
+float  ms_nhidden;              // BARE rows the last ui_refilter hid
 
 // The background pic currently held open, so it can be freed when the selection
 // moves.  "" when nothing is loaded.  See ui_backdrop.
@@ -2156,6 +2179,63 @@ void() ui_dl_load =
 		              stale));
 };
 
+// Defined with the backdrop and the download block, far below.
+string(string uuid, float scrw) ui_bgpick;
+float() ui_dl_ready;
+
+/*
+  ms_dataq, once per load and after ui_meta_load: the picture test tokenizes
+  ms_meta, which ui_refilter must not do per keystroke.  A picture is the atlas
+  cell the row draws, else a full-size image on disk -- probed only for a row
+  with a thumbnail id and no cell (6 of 2271 mapmeta rows on 2026-10-04).
+*/
+void() ui_data_load =
+{
+	local float i, pic, tier, play, dl, q;
+	local float n[DQ_CLASSES];
+	local string h;
+
+	if (ms_dataq >= 0) buf_del(ms_dataq);
+	ms_dataq = buf_create();
+	dl = ui_dl_ready();
+	for (q = 0; q < DQ_CLASSES; q++)
+		n[q] = 0;
+
+	for (i = 0; i < ms_count; i++)
+	{
+		pic = FALSE;
+		if (tokenize(bufstr_get(ms_meta, i)) > MT_UUID)
+		{
+			if (argv(MT_PAGE) != "-")
+			if (argv(MT_CELL) != "-")
+				pic = TRUE;
+			if (!pic)
+			if (argv(MT_UUID) != "-")
+				pic = (ui_bgpick(argv(MT_UUID), 0) != "");
+		}
+		tier = (stof(bufstr_get(ms_tierv, i)) > 0);
+
+		// "1" here, "2" the wrong build of it; "0" is data/mapdl.txt's offer,
+		// which only an engine with the downloadmap builtin can take up.
+		h = bufstr_get(ms_have, i);
+		play = FALSE;
+		if (h == "1" || h == "2")
+			play = TRUE;
+		else if (h == "0")
+			play = dl;
+
+		if (pic && tier && play) q = DQ_FULL;
+		else if (pic)            q = DQ_PICTURE;
+		else if (tier)           q = DQ_TIER;
+		else                     q = DQ_BARE;
+		bufstr_set(ms_dataq, i, ftos(q));
+		n[q] += 1;
+	}
+	print(sprintf("FTESurf: data -- %g full, %g picture only, %g tier only, %g "
+	              "neither (listed when searched or under show all)\n",
+	              n[DQ_FULL], n[DQ_PICTURE], n[DQ_TIER], n[DQ_BARE]));
+};
+
 void() ui_load_maps =
 {
 	if (ms_name >= 0) buf_del(ms_name);
@@ -2374,6 +2454,7 @@ void() ui_load_maps =
 
 	ui_meta_load();
 	ui_cat_load();
+	ui_data_load();             // reads ms_tierv after ui_meta_load's KSF fallback
 	run_pb_load();
 	ui_wr_load();
 };
@@ -2443,11 +2524,21 @@ float(float row) ui_tier_rank =
 	return TIER_UNKNOWN;
 };
 
+// ROADMAP 10: the list's sort key, the data class (DQ_*) and then the tier.
+#define VIEW_BUCKETS  44        // DQ_CLASSES * TIER_BUCKETS
+
+float(float row) ui_view_rank =
+{
+	return bound(0, stof(bufstr_get(ms_dataq, row)), DQ_CLASSES - 1) * TIER_BUCKETS
+	       + ui_tier_rank(row);
+};
+
 void() ui_refilter =
 {
 	if (ms_view >= 0) buf_del(ms_view);
 	ms_view = buf_create();
 	ms_viewcount = 0;
+	ms_nhidden = 0;
 
 	string q = strtolower(ms_query);
 
@@ -2481,12 +2572,27 @@ void() ui_refilter =
 		if (ms_srcf != 0 && !(stof(bufstr_get(ms_lst, i)) & ms_srcf))
 			continue;
 
+		// ROADMAP 10: neither a picture nor a tier waits behind "show all", but a
+		// search lists every match.  Last, so ms_nhidden counts only rows the
+		// filters above let through.
+		if (q == "")
+		if (!ms_showall)
+		if (stof(bufstr_get(ms_dataq, i)) == DQ_BARE)
+		{
+			ms_nhidden++;
+			continue;
+		}
+
 		bufstr_add(ms_view, ftos(i), TRUE);
 		ms_viewcount++;
 	}
 
 	/*
-	  ---- tier order -----------------------------------------------------
+	  ---- data class, then tier order --------------------------------------
+
+	  ROADMAP 10: full data first, then a picture without the rest, then a tier
+	  without a picture, then neither (ui_view_rank) -- and within each class
+	  the tier order below, so VIEW_BUCKETS rather than TIER_BUCKETS buckets.
 
 	  Tier 1 first, then 2, and everything nothing knows a tier for at the
 	  BOTTOM rather than scattered alphabetically through the middle.  Asked for
@@ -2513,27 +2619,27 @@ void() ui_refilter =
 	{
 		local strbuf flt;
 		local float k, r, idx;
-		local float tcnt[TIER_BUCKETS], toff[TIER_BUCKETS];
+		local float tcnt[VIEW_BUCKETS], toff[VIEW_BUCKETS];
 
 		flt = buf_create();
 		if (flt >= 0)
 		{
 			buf_copy(ms_view, flt);
 
-			for (k = 0; k < TIER_BUCKETS; k++)
+			for (k = 0; k < VIEW_BUCKETS; k++)
 				tcnt[k] = 0;
 			for (k = 0; k < ms_viewcount; k++)
-				tcnt[ui_tier_rank(stof(bufstr_get(flt, k)))] += 1;
+				tcnt[ui_view_rank(stof(bufstr_get(flt, k)))] += 1;
 
 			// Running total: rank r starts where every earlier rank ended.
 			toff[0] = 0;
-			for (k = 1; k < TIER_BUCKETS; k++)
+			for (k = 1; k < VIEW_BUCKETS; k++)
 				toff[k] = toff[k - 1] + tcnt[k - 1];
 
 			for (k = 0; k < ms_viewcount; k++)
 			{
 				idx = stof(bufstr_get(flt, k));
-				r   = ui_tier_rank(idx);
+				r   = ui_view_rank(idx);
 				bufstr_set(ms_view, toff[r], ftos(idx));
 				toff[r] += 1;
 			}
@@ -2545,6 +2651,7 @@ void() ui_refilter =
 	ms_applied_tier  = ms_tier;
 	ms_applied_modes = ms_modes;
 	ms_applied_srcf  = ms_srcf;
+	ms_applied_showall = ms_showall;
 	ms_scroll = '0 0 0';
 };
 
@@ -2569,13 +2676,17 @@ float() ui_dl_gutter;
 void(string arg) ui_browse_print =
 {
 	local float i, r, prev, bad, known, unk, ksf, wr, n0, nm, nc;
-	local float gw, w1, w2;
+	local float gw, w1, w2, wasall;
+	local float dqn[DQ_CLASSES];
 
 	ui_load_maps();
 
 	known = unk = ksf = wr = 0;
+	for (r = 0; r < DQ_CLASSES; r++)
+		dqn[r] = 0;
 	for (i = 0; i < ms_count; i++)
 	{
+		dqn[bound(0, stof(bufstr_get(ms_dataq, i)), DQ_CLASSES - 1)] += 1;
 		if (stof(bufstr_get(ms_tierv, i)) > 0) known++; else unk++;
 		if (tokenize(bufstr_get(ms_meta, i)) > MT_TSRC)
 			if (argv(MT_TSRC) == "ksf")
@@ -2600,7 +2711,12 @@ void(string arg) ui_browse_print =
 	  The three settings of the library switch, counted through the real filter
 	  rather than by re-deriving it here.  A count taken any other way would
 	  agree with a broken ui_refilter.
+
+	  ROADMAP 10: taken with "show all" lit, so they and the order below are of
+	  the whole list, as in build 89; the hidden count is read after them.
 	*/
+	wasall = ms_showall;
+	ms_showall = TRUE;
 	ms_srcf = 0;            ui_refilter();  n0 = ms_viewcount;
 	ms_srcf = SRC_BIT_MOM;  ui_refilter();  nm = ms_viewcount;
 	ms_srcf = SRC_BIT_CSS;  ui_refilter();  nc = ms_viewcount;
@@ -2609,12 +2725,13 @@ void(string arg) ui_browse_print =
 	              n0, nm, nc));
 
 	// Tier order, walked.  `bad` is the first index that goes backwards, so a
-	// failure names a row instead of just saying no.
+	// failure names a row instead of just saying no.  On ui_view_rank since
+	// ROADMAP 10: tier order within each data class, the classes in order.
 	prev = -1;
 	bad  = -1;
 	for (i = 0; i < ms_viewcount; i++)
 	{
-		r = ui_tier_rank(stof(bufstr_get(ms_view, i)));
+		r = ui_view_rank(stof(bufstr_get(ms_view, i)));
 		if (r < prev && bad < 0)
 			bad = i;
 		prev = r;
@@ -2646,6 +2763,13 @@ void(string arg) ui_browse_print =
 		print(sprintf("ui_browse: first rank %g, last rank %g\n",
 		              ui_tier_rank(stof(bufstr_get(ms_view, 0))),
 		              ui_tier_rank(stof(bufstr_get(ms_view, ms_viewcount - 1)))));
+
+	// The chip off, through the real filter, then the player's own setting back.
+	ms_showall = FALSE;     ui_refilter();
+	print(sprintf("ui_browse: data full %g, picture %g, tier %g, bare %g -- "
+	              "show all off hides %g, lists %g\n", dqn[DQ_FULL], dqn[DQ_PICTURE],
+	              dqn[DQ_TIER], dqn[DQ_BARE], ms_nhidden, ms_viewcount));
+	ms_showall = wasall;    ui_refilter();
 
 	/*
 	  The gutter, measured the way the row measures it.  Font_Set first: this
@@ -2749,6 +2873,13 @@ void(float mask) ui_modes_set =
 	localcmd(sprintf("seta ui_maps_modes %g\n", mask));
 };
 
+// ROADMAP 10: the "show all" chip, applied and saved the same way.
+void(float on) ui_showall_set =
+{
+	ms_showall = on;
+	localcmd(sprintf("seta ui_maps_showall %g\n", on));
+};
+
 /*
   Everything that has to happen when the create screen comes up.  Build 57.
 
@@ -2776,6 +2907,8 @@ void() ui_create_open =
 {
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+	registercvar("ui_maps_showall", "0", 32);       // ROADMAP 10, same rules
+	ms_showall = (cvar("ui_maps_showall") != 0);
 
 	if (ms_count == 0)
 	{
@@ -2884,6 +3017,37 @@ void(string mapname) ui_launch_local =
 float ui_join_pending;
 
 /*
+  ROADMAP 1: the status strip's last outcome, held for ST_HOLD seconds after the
+  thing itself is over, and the pulse it gives the PLAY station.  m_milk.qc's
+  MM_Camera reads ui_charge_on/ui_charge (set by ui_status_update every frame)
+  and ui_pulse: +1 a completion, -1 a failure, at ui_pulse_t0 (gettime(0)).
+*/
+#define ST_HOLD 6
+string ui_st_msg;               // strzoned; "" none
+float  ui_st_msgok;             // 1 good, -1 bad, 0 neither
+float  ui_st_msgat, ui_st_msguntil;     // time
+float  ui_charge_on, ui_charge;
+float  ui_pulse, ui_pulse_t0;
+
+void(float kind) ui_st_pulse =
+{
+	ui_pulse = kind;
+	ui_pulse_t0 = gettime(0);
+};
+
+void(string msg, float ok) ui_st_result =
+{
+	if (ui_st_msg)
+		strunzone(ui_st_msg);
+	ui_st_msg = strzone(msg);
+	ui_st_msgok = ok;
+	ui_st_msgat = time;
+	ui_st_msguntil = time + ST_HOLD;
+	if (ok)
+		ui_st_pulse(ok);
+};
+
+/*
   ---------------------------------------------------------------------------
    The pre-join map check: fetch the server's build BEFORE connecting.
   ---------------------------------------------------------------------------
@@ -2918,6 +3082,7 @@ float  pj_until;        // gettime(0) to give up at
 // the way m_close and Lob_Poll are declared ahead of their definitions.
 float(string addr, string mapname) ui_prejoin;
 void() ui_prejoin_tick;
+float() ui_join_busy;           // ROADMAP 1, beside the status strip
 
 /*
   ui_play_online, READ THROUGH ONE FUNCTION -- build 70, and it is a bug fix.
@@ -3079,6 +3244,12 @@ void() ui_launch =
 {
 	string mapname = ui_selected_name();
 	if (mapname == "")
+		return;
+
+	// ROADMAP 1: one join at a time; the status strip's cancel (or ESC) ends it.
+	// The start button and the rows' Play come through here; a lobby cell is
+	// ui_connect, which has its own rule.
+	if (ui_join_busy())
 		return;
 
 	/*
@@ -3853,6 +4024,8 @@ void() ui_join_tick =
 			              mapname));
 		print(sprintf("^5online:^7 joining %s for %s (%s)\n",
 		              addr, mapname, Lob_JoinWhy()));
+		// Seen only when the connect is held below: a direct one closes the menu.
+		ui_st_pulse(1);
 		// Lob_JoinClear frees the strings addr and mapname point at, so it
 		// has to come after ui_prejoin has strzoned its own copies of both.
 		if (ui_prejoin(addr, mapname))
@@ -3875,11 +4048,18 @@ void() ui_join_tick =
 	  somewhere this build will not connect, or nothing answered at all.
 	*/
 	if (st == LJ_READY)
+	{
 		print(sprintf("^1online:^7 the directory offered %S, which this build "
 		              "will not connect to -- playing locally instead.\n", addr));
+		ui_st_result("No lobby: the directory offered a server this build will "
+		             "not join -- playing locally", -1);
+	}
 	else
+	{
 		print(sprintf("^3online:^7 %s -- playing locally, so this run will not "
 		              "reach the leaderboard.\n", Lob_JoinWhy()));
+		ui_st_result(sprintf("No lobby: %s -- playing locally", Lob_JoinWhy()), -1);
+	}
 
 	// The string is read BEFORE the clear that frees it, which is the ordering
 	// cl_scores.qc's hand-off had to get right for the same reason: mapname
@@ -3944,6 +4124,14 @@ void(float i) ui_connect =
 	  connect path they would be changing local server cvars for no reason,
 	  and maxclients in particular would be actively wrong.
 	*/
+	// ROADMAP 1: a lobby picked by hand replaces a directory ask in flight, but
+	// not a connect already held for a download -- ui_prejoin holds one only,
+	// and an ask's local fallback would leave that one to connect later.
+	// After the address checks, so a refused click leaves the ask alone.
+	ui_join_cancel();
+	if (ui_join_busy())
+		return;
+
 	// The map first, when we can see it is missing or the wrong build.
 	// TRUE means the fetch owns the connect and ui_prejoin_tick issues it.
 	if (ui_prejoin(addr, Lob_Map(i)))
@@ -4878,6 +5066,7 @@ float  dl_rate;         // bytes/sec, the engine's own figure
 float  dl_done;
 float  dl_total;
 float  dl_until;
+float  dl_t0;           // when it started (time), for the status strip
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -4932,6 +5121,19 @@ float() ui_dl_ready =
 	if (dl_have_bi == 0)
 		dl_have_bi = checkbuiltin(downloadmap) ? 1 : -1;
 	return dl_have_bi > 0;
+};
+
+// ROADMAP 1: no engine has this yet.  It stops the transfer in flight and
+// returns 1 if it did; probed like downloadmap, and absent there is no Cancel
+// for a download (a held join's Cancel still drops the join).
+float() downloadcancel = #0:downloadcancel;
+float  dl_have_cancel;          // 1 present, -1 absent, 0 unasked
+
+float() ui_dl_cancel_ready =
+{
+	if (dl_have_cancel == 0)
+		dl_have_cancel = checkbuiltin(downloadcancel) ? 1 : -1;
+	return dl_have_cancel > 0;
 };
 
 
@@ -4996,6 +5198,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
+		dl_t0 = time;
 	}
 	else if (r == 2)
 	{
@@ -5008,6 +5211,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_FAIL;
 		dl_until = time + DL_HOLD;
+		ui_st_result(sprintf("Download of %s failed", name), -1);
 	}
 };
 
@@ -5042,10 +5246,13 @@ void() Dl_Tick =
 		dl_until = time + DL_HOLD;
 		if (dl_state == DL_OK)
 		{
+			ui_st_result(sprintf("Installed %s", dl_name), 1);
 			// It is on the disk now, so it is no longer a downloadable row.
 			ui_load_maps();
 			ui_refilter();
 		}
+		else
+			ui_st_result(sprintf("Download of %s failed", dl_name), -1);
 		return;
 	}
 
@@ -5147,6 +5354,7 @@ void() ui_prejoin_tick =
 			print(sprintf("^1online:^7 could not fetch %s -- not connecting. "
 			              "Use the button on its row in the list.\n",
 			              pj_map));
+			ui_st_result(sprintf("Download of %s failed -- not joining", pj_map), -1);
 			ui_prejoin_clear();
 			return;
 		}
@@ -5158,8 +5366,494 @@ void() ui_prejoin_tick =
 	{
 		print(sprintf("^1online:^7 the fetch of %s stalled -- not connecting.\n",
 		              pj_map));
+		ui_st_result(sprintf("Download of %s stalled -- not joining", pj_map), -1);
 		ui_prejoin_clear();
 	}
+};
+
+/*
+  ROADMAP 1: the status strip (screen_create's footer) and the toast (SCREEN_MAIN)
+  say one line about what is in flight -- a join's ask, the lobby's switch, a
+  connect held for a download, a download -- or the last outcome for ST_HOLD s.
+  ui_status_update fills these once a frame, before MM_Frame.
+*/
+#define ST_NONE     0
+#define ST_ASK      1
+#define ST_WAIT     2
+#define ST_HELD     3
+#define ST_DL       4
+#define ST_RESULT   5
+#define COL_FAIL    '1 0.55 0.35'
+
+float  ui_st_kind;
+string ui_st_text;              // the line, cut from its end to fit
+string ui_st_figs;              // the numbers after it, never cut
+float  ui_st_frac;              // the bar, 0..1; -1 a moving segment
+float  ui_st_cancel;            // draw a Cancel
+vector ui_st_col;
+
+// ui_strip_test's fake state (0 = the real one), when it began, and dl/held's
+// percent: -1 animates, -2 is "size not known yet".
+float  ui_stt, ui_stt_t0, ui_stt_pct;
+#define ST_FAKEMAP    "surf_kitsune"
+#define ST_FAKEADDR   "203.0.113.7:27501"
+#define ST_FAKETOTAL  45613056      // 43.5 MB
+#define ST_FAKERATE   2202010       // 2.1 MB/s
+
+// "42%  18.3 of 43.5 MB  2.1 MB/s  12 s left".  The engine reports 0 for the
+// size and the rate until it knows them, and nothing is estimated before that.
+string(float pct, float done, float total, float rate) ui_dl_figs =
+{
+	local string s;
+	local float secs;
+
+	if (total <= 0)
+	{
+		if (done <= 0)
+			return "starting...";
+		s = sprintf("%.1f MB", done / 1048576);
+	}
+	else
+		s = sprintf("%g%%  %.1f of %.1f MB", floor(pct), done / 1048576, total / 1048576);
+	if (rate <= 0)
+		return s;
+	s = strcat(s, "  ", ui_dl_rate(rate));
+	if (total <= 0)
+		return s;
+	secs = ceil(max(0, total - done) / rate);
+	if (secs < 90)
+		return sprintf("%s  %g s left", s, secs);
+	return sprintf("%s  %g min left", s, ceil(secs / 60));
+};
+
+// Stop the engine's transfer.  The row and the strip drop it at once, so the
+// dlstate it leaves behind is not read as a failure.  TRUE if it stopped.
+float() ui_dl_cancel =
+{
+	if (!ui_dl_cancel_ready())
+		return FALSE;
+	if (!downloadcancel())
+		return FALSE;
+	print(sprintf("^5online:^7 cancelled the download of %s\n", dl_name));
+	ui_st_result(sprintf("Download of %s cancelled", dl_name), 0);
+	dl_state = DL_IDLE;
+	dl_name = "";
+	return TRUE;
+};
+
+// End a join in flight -- the ask, the lobby's switch, or a connect held for a
+// download -- with a word on the strip.  TRUE if there was one.  withdl: the
+// held join's download goes too, if the engine can stop it (the Cancel button;
+// ESC and back leave it running).
+float(float withdl) ui_strip_cancel_join =
+{
+	if (ui_stt == ST_ASK || ui_stt == ST_WAIT || ui_stt == ST_HELD)
+	{
+		ui_stt = 0;
+		ui_st_result("Join cancelled (ui_strip_test)", 0);
+		return TRUE;
+	}
+	if (ui_join_pending)
+	{
+		print("^5online:^7 join cancelled\n");
+		ui_st_result(sprintf("Stopped looking for a server for %s", Lob_JoinMap()), 0);
+		ui_join_cancel();
+		return TRUE;
+	}
+	if (pj_addr == "")
+		return FALSE;
+
+	print(sprintf("^5online:^7 join cancelled -- not connecting to %s\n", pj_addr));
+	ui_st_result(sprintf("Join cancelled -- %s keeps downloading", pj_map), 0);
+	if (withdl)
+	if (dl_state == DL_ACTIVE)
+	if (dl_name == pj_map)
+		ui_dl_cancel();
+	ui_prejoin_clear();
+	return TRUE;
+};
+
+// A join in flight, real or ui_strip_test's: start reads "joining..." meanwhile.
+float() ui_join_busy =
+{
+	if (ui_join_pending || pj_addr != "")
+		return TRUE;
+	return (ui_stt == ST_ASK || ui_stt == ST_WAIT || ui_stt == ST_HELD);
+};
+
+// The strip's Cancel.
+void() ui_status_cancel =
+{
+	if (ui_strip_cancel_join(TRUE))
+		return;
+	if (ui_stt == ST_DL)
+	{
+		ui_stt = 0;
+		ui_st_result("Download cancelled (ui_strip_test)", 0);
+		return;
+	}
+	ui_dl_cancel();
+};
+
+void() ui_status_update =
+{
+	local float kind, el, lim, pct, done, total, rate, st;
+	local string map, addr;
+
+	kind = ST_NONE;
+	el = lim = pct = done = total = rate = 0;
+	map = addr = "";
+
+	if (ui_stt)
+	{
+		kind = ui_stt;
+		map  = ST_FAKEMAP;
+		addr = ST_FAKEADDR;
+		el   = time - ui_stt_t0;
+		lim  = (kind == ST_ASK) ? LJ_DEADLINE : LJ_WAITCAP;
+		if (ui_stt_pct != -2)
+		{
+			pct   = (ui_stt_pct >= 0) ? ui_stt_pct : min(99, el * 4);
+			total = ST_FAKETOTAL;
+			done  = total * pct / 100;
+			rate  = ST_FAKERATE;
+		}
+	}
+	else if (ui_join_pending)
+	{
+		// LJ_READY and LJ_FAIL never reach here: ui_join_tick settles them first.
+		st = Lob_JoinState();
+		if (st == LJ_ASK)
+		{
+			kind = ST_ASK;
+			map  = Lob_JoinMap();
+			el   = time - Lob_JoinAt();
+			lim  = LJ_DEADLINE;
+		}
+		else if (st == LJ_WAIT)
+		{
+			kind = ST_WAIT;
+			map  = Lob_JoinMap();
+			addr = Lob_JoinAddr();
+			el   = time - Lob_JoinWaitAt();
+			lim  = Lob_JoinUntil() - Lob_JoinWaitAt();
+		}
+	}
+	if (kind == ST_NONE)
+	{
+		if (pj_addr != "")
+		{
+			kind = ST_HELD;
+			map  = pj_map;
+		}
+		else if (dl_state == DL_ACTIVE)
+		{
+			kind = ST_DL;
+			map  = dl_name;
+		}
+		if (kind != ST_NONE)
+		if (dl_state == DL_ACTIVE)
+		if (dl_name == map)
+		{
+			pct   = dl_pct;
+			done  = dl_done;
+			total = dl_total;
+			rate  = dl_rate;
+		}
+	}
+
+	ui_charge_on = (kind != ST_NONE);
+	if (kind == ST_ASK || kind == ST_WAIT)
+		ui_charge = bound(0, el / max(lim, 1), 1);
+	else if (total > 0)
+		ui_charge = bound(0, pct / 100, 1);
+	else
+		ui_charge = 0;
+
+	// An outcome newer than a running download outranks it for its hold: a held
+	// join cancelled mid-fetch says so, then the fetch's own line comes back.
+	if (kind == ST_DL)
+	if (ui_st_msg)
+	if (time < ui_st_msguntil)
+	if (ui_st_msgat > (ui_stt ? ui_stt_t0 : dl_t0))
+		kind = ST_NONE;
+
+	ui_st_kind   = kind;
+	ui_st_text   = "";
+	ui_st_figs   = "";
+	ui_st_frac   = -1;
+	ui_st_cancel = FALSE;
+	ui_st_col    = COL_TEXT;
+
+	if (kind == ST_ASK)
+	{
+		ui_st_text   = sprintf("Finding a server for %s...", map);
+		ui_st_figs   = sprintf("  %g s", floor(el));
+		ui_st_cancel = TRUE;
+	}
+	else if (kind == ST_WAIT)
+	{
+		ui_st_text   = sprintf("%s is switching to %s", addr, map);
+		ui_st_figs   = sprintf(" -- %g s", floor(el));
+		ui_st_frac   = ui_charge;
+		ui_st_cancel = TRUE;
+	}
+	else if (kind == ST_HELD || kind == ST_DL)
+	{
+		if (kind == ST_HELD)
+			ui_st_text = sprintf("Downloading %s before joining", map);
+		else
+			ui_st_text = sprintf("Downloading %s", map);
+		ui_st_figs = strcat(" -- ", ui_dl_figs(pct, done, total, rate));
+		if (total > 0)
+			ui_st_frac = ui_charge;
+		ui_st_cancel = (kind == ST_HELD);
+		if (kind == ST_DL)
+		if (ui_dl_cancel_ready())
+			ui_st_cancel = TRUE;
+	}
+	else if (ui_st_msg)
+	if (time < ui_st_msguntil)
+	{
+		ui_st_kind = ST_RESULT;
+		ui_st_text = ui_st_msg;
+		if (ui_st_msgok > 0)
+			ui_st_col = COL_PLAY;
+		else if (ui_st_msgok < 0)
+			ui_st_col = COL_FAIL;
+		else
+			ui_st_col = COL_DIM;
+	}
+};
+
+// The space's own light while it is drawn (MM_Camera walks milk_hue with the
+// charge), else the accent.
+vector() ui_status_barcol =
+{
+	if (MM_Active())
+		return Milk_Pal(milk_hue + 0.1);
+	return COL_ACCENT;
+};
+
+void(vector pos, float w) ui_status_line =
+{
+	local float fw;
+	local string s;
+
+	fw = stringwidth(ui_st_figs, TRUE, SZ_LABEL);
+	s  = ui_fit_text(ui_st_text, max(40, w - fw), SZ_LABEL);
+	sui_text(pos, SZ_LABEL, s, ui_st_col, 1, 0);
+	if (ui_st_figs != "")
+		sui_text([pos_x + stringwidth(s, TRUE, SZ_LABEL), pos_y], SZ_LABEL,
+		         ui_st_figs, COL_DIM, 1, 0);
+};
+
+void(vector pos, float w, float h) ui_status_bar =
+{
+	local float a, x0, x1;
+
+	sui_fill(pos, [w, h], COL_BORDER, 0.5, 0);
+	if (ui_st_kind == ST_RESULT)
+	{
+		// The outcome's colour, fading over its hold.
+		sui_fill(pos, [w, h], ui_st_col, bound(0, (ui_st_msguntil - time) / ST_HOLD, 1), 0);
+		return;
+	}
+	if (ui_st_frac >= 0)
+	{
+		sui_fill(pos, [w * ui_st_frac, h], ui_status_barcol(), 1, 0);
+		return;
+	}
+	// No share to show: a third of the bar sweeping across every 1.4 s.
+	a  = time / 1.4;
+	a  = a - floor(a);
+	x0 = w * (a * 1.3 - 0.3);
+	x1 = min(w, x0 + w * 0.3);
+	x0 = max(0, x0);
+	if (x1 > x0)
+		sui_fill([pos_x + x0, pos_y], [x1 - x0, h], ui_status_barcol(), 1, 0);
+};
+
+// Between the start and back buttons; nothing at all when nothing is in flight.
+void(vector pos, float w) ui_status_strip =
+{
+	local float tw;
+
+	if (ui_st_kind == ST_NONE || w < 160)
+		return;
+	tw = w;
+	if (ui_st_cancel)
+	{
+		tw = w - 100;
+		if (ui_button("cs_cancel", [pos_x + w - 84, pos_y], [84, 30], "cancel"))
+			ui_status_cancel();
+	}
+	ui_status_line([pos_x, pos_y + 2], tw);
+	ui_status_bar([pos_x, pos_y + 24], tw, 3);
+};
+
+// SCREEN_MAIN's copy of the strip, without a button, so leaving the create
+// screen does not hide it.  Drawn flat after the in-world panel, above the
+// "move the mouse" hint (MM_ScreenMain) and below the panel at 720p and up.
+void(vector screensize) ui_status_toast =
+{
+	local float w;
+	local vector p;
+
+	if (ui_st_kind == ST_NONE)
+		return;
+	w = stringwidth(ui_st_text, TRUE, SZ_LABEL) + stringwidth(ui_st_figs, TRUE, SZ_LABEL) + 32;
+	w = min(screensize_x - 32, max(360, w));
+	p = [floor((screensize_x - w) * 0.5), screensize_y - 96];
+	sui_fill(p, [w, 44], COL_PANEL, 0.88, 0);
+	sui_border_box(p, [w, 44], 1, COL_BORDER, 1, 0);
+	ui_status_line(p + '16 9 0', w - 32);
+	ui_status_bar(p + '16 32 0', w - 32, 3);
+};
+
+/*
+  ESC on the create screen takes one step a press: the leaderboard panel
+  (ROADMAP 9), then a join in flight, then the screen.  Menu_InputEvent and the
+  two test twins share it.  Returns the step: 1, 2 or 3.
+*/
+float() ui_create_esc =
+{
+	if (Mlb_IsOpen())
+	{
+		Mlb_Close("esc");
+		return 1;
+	}
+	if (ui_strip_cancel_join(FALSE))
+		return 2;
+	menu_screen = SCREEN_MAIN;
+	return 3;
+};
+
+/*
+  ui_strip_test <ask|wait|held|dl> [pct|start] -- fakes that state on the strip,
+  the toast and the PLAY station's charge.  Nothing is asked, downloaded or
+  connected.  dl/held run 0-99% over 25 s unless given a percent; "start" is the
+  line before the engine knows the size.
+  ui_strip_test <ok|fail|nolobby> -- that outcome and its pulse.
+  ui_strip_test <esc|back> -- what that key or button does on the create screen.
+  ui_strip_test screen <create|main>, ui_strip_test off.
+*/
+void(string what, string arg) ui_strip_test =
+{
+	local float k;
+
+	k = ST_NONE;
+	if (what == "ask")       k = ST_ASK;
+	else if (what == "wait") k = ST_WAIT;
+	else if (what == "held") k = ST_HELD;
+	else if (what == "dl")   k = ST_DL;
+
+	if (k != ST_NONE)
+	{
+		// Over a real one, Cancel and ESC would act on what the fake hides.
+		if (ui_join_pending || pj_addr != "" || dl_state == DL_ACTIVE)
+		{
+			print("ui_strip_test: a real join or download is in flight -- not faking over it\n");
+			return;
+		}
+		ui_stt     = k;
+		ui_stt_t0  = time;
+		ui_stt_pct = -1;
+		if (arg == "start")
+			ui_stt_pct = -2;
+		else if (arg != "")
+			ui_stt_pct = bound(0, stof(arg), 100);
+	}
+	else if (what == "ok" || what == "fail" || what == "nolobby")
+	{
+		ui_stt = 0;
+		if (what == "ok")
+			ui_st_result(strcat("Installed ", ST_FAKEMAP), 1);
+		else if (what == "fail")
+			ui_st_result(strcat("Download of ", ST_FAKEMAP, " failed"), -1);
+		else
+			ui_st_result("No lobby: the directory did not answer -- playing locally", -1);
+	}
+	else if (what == "off")
+	{
+		ui_stt = 0;
+		ui_st_msguntil = 0;
+	}
+	else if (what == "esc" || what == "back")
+	{
+		// Menu_InputEvent's ESC (ui_create_esc) and screen_create's back, without
+		// a key or a click.
+		if (menu_screen != SCREEN_CREATE)
+			print("ui_strip_test: not on the create screen\n");
+		else if (what == "esc")
+		{
+			k = ui_create_esc();
+			if (k == 1)
+				print("ui_strip_test: esc closed the leaderboard; still on the create screen\n");
+			else if (k == 2)
+				print("ui_strip_test: esc ended the join; still on the create screen\n");
+			else
+				print("ui_strip_test: esc -- back to main\n");
+		}
+		else
+		{
+			k = ui_strip_cancel_join(FALSE);
+			menu_screen = SCREEN_MAIN;
+			print(sprintf("ui_strip_test: back%s -- back to main\n",
+			              k ? " ended the join" : ""));
+		}
+	}
+	else if (what == "screen")
+	{
+		print(sprintf("ui_strip_test: screen %s\n", (arg == "create") ? "create" : "main"));
+		if (arg == "create")
+		{
+			menu_screen = SCREEN_CREATE;
+			ui_create_open();
+			ui_refilter();
+		}
+		else
+			menu_screen = SCREEN_MAIN;
+		return;
+	}
+	else
+	{
+		print("ui_strip_test <ask|wait|held|dl [pct|start]|ok|fail|nolobby|off|screen create|main>\n");
+		return;
+	}
+
+	// The line the strip will draw, from the same function that draws it.
+	ui_status_update();
+	print(sprintf("ui_strip_test: kind %g  %s%s\n", ui_st_kind, ui_st_text, ui_st_figs));
+	print(sprintf("ui_strip_test: bar %g  cancel %g  charge %g on %g  pulse %g\n",
+	              ui_st_frac, ui_st_cancel, ui_charge, ui_charge_on, ui_pulse));
+};
+
+// ROADMAP 9: the picked map's leaderboard, right of the field that names it --
+// not in the footer, where it cost the status strip its Cancel below ~650 px.
+// Dim and deaf with no map picked.  ui_button's look, but off the keyboard
+// path: `d` or an arrow typed into the field moves sui's cursor (BACKLOG), and
+// it would land here for Enter to open the panel.
+void(vector pos, vector sz, string sel) ui_board_button =
+{
+	local float hot;
+
+	if (sel == "")
+	{
+		sui_fill(pos, sz, COL_ROW, 0.5, 0);
+		sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+		sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
+		         "leaderboard", COL_DIM, 0.5, 0);
+		return;
+	}
+	sui_action_element(pos, sz, "cs_board", sui_noop, TRUE);
+	hot = sui_is_hovered("cs_board");
+	sui_fill(pos, sz, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
+	sui_border_box(pos, sz, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
+	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
+	         hot ? COL_ACCENT : COL_TEXT, 1, 0);
+	if (sui_is_released("cs_board"))
+		Mlb_Open(sel, -1);
 };
 
 void(vector screensize) screen_create =
@@ -5314,6 +6008,24 @@ void(vector screensize) screen_create =
 		if (sui_is_released(scid))
 			ms_srcf = sbit;
 	}
+
+	// ROADMAP 10: the maps with neither a picture nor a tier, listed in an empty
+	// search only while this is lit.  Wrapped like the strips above, measured on
+	// its heading, which is wider than its chip.
+	string ahd  = "no picture or tier";
+	float  aw   = max(ui_chip_w("show all"), stringwidth(ahd, TRUE, SZ_LABEL));
+	float  ax   = sx + 18;
+	float  arow = srow;
+	if (ax + aw > inner + 16)
+	{
+		ax    = 16;
+		arow  = srow + STRIP_PITCH;
+		y    += STRIP_PITCH;
+	}
+	sui_text([ax, arow], SZ_LABEL, ahd, COL_DIM, 1, 0);
+	ui_chip([ax, arow + 20], "cs_showall", "show all", ms_showall);
+	if (sui_is_released("cs_showall"))
+		ui_showall_set(!ms_showall);
 	y += 56;
 
 	/*
@@ -5332,8 +6044,13 @@ void(vector screensize) screen_create =
 	*/
 	string sel = ui_selected_name();
 
-	sui_text([16, y], SZ_LABEL,
-	         sprintf("map  ^9(%g of %g)", ms_viewcount, ms_count), COL_DIM, 1, 0);
+	string mhd;
+	if (ms_nhidden > 0)
+		mhd = sprintf("map  ^9(%g of %g -- %g more under show all)",
+		              ms_viewcount, ms_count, ms_nhidden);
+	else
+		mhd = sprintf("map  ^9(%g of %g)", ms_viewcount, ms_count);
+	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
 	/*
 	  Consumed HERE, before the field is drawn, so the box comes up empty on the
@@ -5356,8 +6073,10 @@ void(vector screensize) screen_create =
 			ms_query_stale = FALSE;
 		}
 
-	ui_field_sel("cs_search", [16, y + 20], [inner, 28],
+	float lbw = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
+	ui_field_sel("cs_search", [16, y + 20], [inner - lbw - 8, 28],
 	             ms_query, ms_query_cursor, "search maps...", sel);
+	ui_board_button([16 + inner - lbw, y + 20], [lbw, 28], sel);
 	y += 56;
 
 	/*
@@ -5877,18 +6596,23 @@ void(vector screensize) screen_create =
 					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
 					vector ps = [dlg - 4, ROW_H - 16];
 					string pid = strcat("cs_play", ftos(idx));
-					float  ph;
+					float  ph, pb;
 
+					// ROADMAP 1: dimmed and deaf while a join is in flight, as
+					// ui_launch refuses one then.
+					pb = ui_join_busy();
 					sui_action_element(pp, ps, pid, sui_noop);
 					ph = sui_is_hovered(pid);
+					if (pb)
+						ph = FALSE;
 					sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
-					sui_border_box(pp, ps, 1, COL_PLAY, 1, 0);
+					sui_border_box(pp, ps, 1, COL_PLAY, pb ? 0.3 : 1, 0);
 
 					// Centred rather than two-line: there is no second fact to
 					// say about a map you already have, and an empty lower line
 					// is what this column is being fixed for.
 					sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
-					         ph ? COL_TEXT : COL_PLAY, 1, 0);
+					         ph ? COL_TEXT : COL_PLAY, pb ? 0.3 : 1, 0);
 
 					/*
 					  THROUGH ui_launch, not around it.  Selecting first and then
@@ -5898,6 +6622,7 @@ void(vector screensize) screen_create =
 					  is exactly the refactor ui_launch's own essay warns about.
 					*/
 					if (sui_is_released(pid))
+					if (!pb)
 					{
 						ms_selected = real;
 						ui_launch();
@@ -5961,13 +6686,23 @@ void(vector screensize) screen_create =
 		}
 	}
 
-	// ---- start / back -------------------------------------------------
-	if (ui_button("cs_start", [16, by], [150, 30],
-	              sel == "" ? "pick a map" : "start"))
+	// ---- start / status / back ----------------------------------------
+	float  busy  = ui_join_busy();
+	string stlbl = busy ? "joining..." : ((sel == "") ? "pick a map" : "start");
+	float  sbw   = max(150, stringwidth(stlbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
+	if (ui_button("cs_start", [16, by], [150, 30], stlbl))
+	if (!busy)
 		ui_launch();
 
+	ui_status_strip([16 + sbw + 24, by], size_x - 116 - 24 - (16 + sbw + 24));
+
+	// ROADMAP 1: leaving ends a join -- one nobody can see must not connect later.
+	// A download keeps going.
 	if (ui_button("cs_back", [size_x - 116, by], [100, 30], "back"))
+	{
+		ui_strip_cancel_join(FALSE);
 		menu_screen = SCREEN_MAIN;
+	}
 
 	sui_pop_frame();
 };
@@ -6026,7 +6761,9 @@ void() m_init =
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
-	ms_wr = ms_dltier = -1;
+	ms_wr = ms_dltier = ms_dataq = -1;
+	// The saved value is read in ui_create_open, beside its registercvar.
+	ms_showall = ms_applied_showall = 0;
 	ms_selected = -1;
 	ms_tier = ms_applied_tier = 0;
 	// Both libraries, which is the state that lists everything.  Not saved, like
@@ -6061,6 +6798,8 @@ void() m_init =
 	registercommand("ui_browse");
 	registercommand("ui_prejoin");
 	registercommand("ui_join");
+	registercommand("ui_strip_test");
+	registercommand("ui_board_test");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -6142,8 +6881,12 @@ void(vector screensize) m_draw =
 	// sui_text_input during the previous frame's draw, so comparing against
 	// the applied copy here is the cheapest place to notice.
 	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
-	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf)
+	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf
+	    || ms_showall != ms_applied_showall)
 		ui_refilter();
+
+	// ROADMAP 1: the strip's line, and the charge MM_Frame's camera reads.
+	ui_status_update();
 
 	// Patch 467.  Before sui_begin: the sim draws into render targets, and
 	// nothing sui sets up (clipping, the hit list) may apply to those passes.
@@ -6171,6 +6914,11 @@ void(vector screensize) m_draw =
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
+	// ROADMAP 9: the leaderboard panel lives only over the create screen.
+	if (menu_screen != SCREEN_CREATE)
+	if (Mlb_IsOpen())
+		Mlb_Close("left the create screen");
+
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_NAME)
@@ -6185,7 +6933,17 @@ void(vector screensize) m_draw =
 		  poll does not depend on where in the layout the rows ended up.
 		*/
 		Lob_Poll();
+		float acts = _action_elements_index;
 		screen_create(screensize);
+
+		// ROADMAP 9: under the panel the screen is drawn but struck from sui's
+		// hit list, or its rows would take hovers, clicks and the wheel (a
+		// scroll view reads any hover, not only the topmost).
+		if (Mlb_IsOpen())
+		{
+			_action_elements_index = acts;
+			Mlb_Draw(screensize);
+		}
 	}
 	else if (menu_screen == SCREEN_VISUALS)
 	{
@@ -6198,7 +6956,10 @@ void(vector screensize) m_draw =
 		MM_ScreenMusic(screensize);
 	}
 	else
+	{
 		screen_main(screensize);
+		ui_status_toast(screensize);
+	}
 
 	MM_DrawFps(screensize);
 	sui_menu_nav();
@@ -6234,6 +6995,7 @@ void() m_close =
 	  cancel finds nothing pending and returns.
 	*/
 	ui_join_cancel();
+	Mlb_Close("menu closed");
 	MM_Close();
 
 	setkeydest(0);
@@ -6293,8 +7055,15 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				return TRUE;
 			}
 
-			if (menu_screen == SCREEN_CREATE || menu_screen == SCREEN_VISUALS
-			    || menu_screen == SCREEN_MUSIC)
+			// ROADMAP 9 and 1: the leaderboard panel, then a join in flight,
+			// then the screen -- one per press (ui_create_esc).
+			if (menu_screen == SCREEN_CREATE)
+			{
+				ui_create_esc();
+				return TRUE;
+			}
+
+			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
 				m_close();          // in a game: ESC returns to it
@@ -6357,6 +7126,19 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_lobbypop")
 	{
 		ui_lobbypop_print();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_strip_test")
+	{
+		ui_strip_test(argv(1), argv(2));
+		return TRUE;
+	}
+
+	// ROADMAP 9: the leaderboard button's twin; m_board.qc has the forms.
+	if (argv(0) == "ui_board_test")
+	{
+		Mlb_TestCommand();
 		return TRUE;
 	}
 

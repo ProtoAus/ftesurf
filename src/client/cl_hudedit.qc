@@ -677,6 +677,13 @@ string(string id, float row) HE_OptDef =
 		// Appended for the reason row 21 gives; it belongs with rows 12-19.
 		if (row == 25) return "hud_lines_names|Number names|t||"
 		                      "|Say what each number is: 701 u/s, E -28, vz +120, dE +12, 1.23 s. Off leaves the bare numbers.";
+		// Thickness, one row per kind of line (Line_SlotPx).
+		if (row == 26) return "hud_watch_path_px|Replay thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px"
+		                      "|Pixels across the replay you are watching. The world ribbon (path mode 1) keeps its own width.";
+		if (row == 27) return "hud_watch_path_px_board|Board thickness|c|-1 1 2 3 4 6|as replay;1 px;2 px;3 px;4 px;6 px"
+		                      "|The leaderboard runs you tick to show while you play. `as replay` follows Replay thickness.";
+		if (row == 28) return "hud_watch_path_px_trail|Your run thickness|c|-1 1 2 3 4 6|as replay;1 px;2 px;3 px;4 px;6 px"
+		                      "|Your own run's line, drawn live. `as replay` follows Replay thickness.";
 		return "";
 	}
 

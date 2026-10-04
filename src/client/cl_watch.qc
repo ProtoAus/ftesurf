@@ -5179,6 +5179,9 @@ void() Watch_RegisterCvars =
 	*/
 	registercvar("hud_watch_path_mode", "2", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_px", "1", CVAR_ARCHIVE);
+	// The board's ticked lines and your own run's; -1 follows hud_watch_path_px.
+	registercvar("hud_watch_path_px_board", "-1", CVAR_ARCHIVE);
+	registercvar("hud_watch_path_px_trail", "-1", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_color", "0", CVAR_ARCHIVE);   // 0 speed, 1 gain/loss
 	// How far an imported run's line is pulled toward blue: 0 off, 1 all blue.
 	// A blend, so it composes with hud_watch_path_color rather than replacing it.

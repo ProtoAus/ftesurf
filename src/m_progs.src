@@ -26,3 +26,7 @@ menu/m_main.qc
 // reads menu_screen/ms_consent, all defined there; m_main.qc reaches it
 // through the MM_* prototypes beside its SCREEN_* defines.
 menu/m_milk.qc
+// ROADMAP 9: after m_main.qc for the same reason (ui_button, ui_chip, the
+// create screen's state); m_main.qc and m_lobby.qc's URI_Get_Callback reach it
+// through the Mlb_* prototypes.
+menu/m_board.qc

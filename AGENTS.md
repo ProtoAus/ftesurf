@@ -1431,8 +1431,9 @@ bannered as superseded.)
   prefix, and `ms_view` holds indices as text, where "1000" sorts before "2".
   More importantly nothing specifies that it is STABLE, and within a tier the
   order has to stay the name order -- the engine's own NAMESORT next door is an
-  explicitly unstable qsort. `ui_refilter` uses a counting sort over 11 ranks,
-  which is stable by construction rather than by assumption.
+  explicitly unstable qsort. `ui_refilter` uses a counting sort over 44 buckets
+  (ROADMAP 10's data class, then the 11 tier ranks), which is stable by
+  construction rather than by assumption.
   A CONSEQUENCE WORTH KNOWING: because appended (downloadable) rows are added
   to `ms_name` last and the sort is stable, they land at the END of their tier.
   Installed maps come first within each tier. That is not a bug, but it means a
