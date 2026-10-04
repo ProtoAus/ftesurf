@@ -451,16 +451,20 @@ float  rec_wt_bdover;            // events the file had that would not fit
   256 rows is about eight times what SEQ_MAX shows, which is what makes scrubbing
   backwards work: the column has to be able to show the twenty-four rows that
   were on screen at any point in the run, not just the last twenty-four.
+  2048 since the Momentum imports carry ground contact: every hop is a row, and
+  a 499 s bhop_benchpressed run needs ~615.  On the heap (Watch_BuildSeq): ten
+  global arrays of 2048 put csprogs past fteqcc's 131072 globals.  Rows past
+  the cap are counted (rec_wt_sqover) and said once, as the board cap's are.
 */
-#define WT_SQMAX 256
-float  rec_wt_sqkind[WT_SQMAX];
-float  rec_wt_sqgain[WT_SQMAX];
-float  rec_wt_sqde  [WT_SQMAX];
-float  rec_wt_sqemax[WT_SQMAX];
-float  rec_wt_sqdur [WT_SQMAX];
-float  rec_wt_sqpct [WT_SQMAX];
-float  rec_wt_sqlau [WT_SQMAX];
-float  rec_wt_sqtick[WT_SQMAX];
+#define WT_SQMAX 2048
+float *rec_wt_sqkind;
+float *rec_wt_sqgain;
+float *rec_wt_sqde;
+float *rec_wt_sqemax;
+float *rec_wt_sqdur;
+float *rec_wt_sqpct;
+float *rec_wt_sqlau;
+float *rec_wt_sqtick;
 /*
   BUILD 86 / PATCH 343 -- THE TWO COLUMNS THE CAPTURE NEVER HAD.
 
@@ -477,9 +481,10 @@ float  rec_wt_sqtick[WT_SQMAX];
   512 floats. The eight columns beside them are 2048 already, and the budget
   note in AGENTS.md is about the 4096-row tables that forced a 32-bit target.
 */
-float  rec_wt_sqeend[WT_SQMAX];
-float  rec_wt_sqsub [WT_SQMAX];
+float *rec_wt_sqeend;
+float *rec_wt_sqsub;
 float  rec_wt_sqn;
+float  rec_wt_sqover;            // rows the cap dropped this build
 float  rec_wt_sqshown;           // rows applied to the live ring right now
 float  rec_wt_sqbuildtick;       // the tick the build pass is currently on
 float  rec_wt_bdshown;           // the board event Board_Compute last ran on
@@ -2381,7 +2386,10 @@ void(float merged) Watch_SeqRow =
 		rec_wt_sqn = rec_wt_sqn - 1;
 
 	if (rec_wt_sqn >= WT_SQMAX)
+	{
+		rec_wt_sqover = rec_wt_sqover + 1;
 		return;
+	}
 
 	rec_wt_sqkind[rec_wt_sqn] = seq_kind[p];
 	rec_wt_sqgain[rec_wt_sqn] = seq_gain[p];
@@ -2489,11 +2497,26 @@ void() Watch_BuildSeq =
 	local string s;
 
 	rec_wt_sqn      = 0;
+	rec_wt_sqover   = 0;
 	rec_wt_sqshown  = -1;
 	rec_wt_bdshown  = -2;            // -1 is "before the first board", a real state
 
 	if (!rec_wt_v4 || rec_wt_rec < 1)
 		return;
+
+	if (!rec_wt_sqkind)
+	{
+		rec_wt_sqkind = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqgain = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqde = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqemax = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqdur = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqpct = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqlau = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqtick = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqeend = memalloc(sizeof(float) * WT_SQMAX);
+		rec_wt_sqsub = memalloc(sizeof(float) * WT_SQMAX);
+	}
 
 	Watch_SeqSave();
 
@@ -2592,6 +2615,9 @@ void() Watch_BuildSeq =
 	if (rec_wt_bdover > 0)
 		print(sprintf("^3replay: %g board record(s) past the %g cap were dropped; "
 		              "the segment column ends early\n", rec_wt_bdover, WT_BDMAX));
+	if (rec_wt_sqover > 0)
+		print(sprintf("^3replay: %g segment row(s) past the %g cap were dropped; "
+		              "the segment column stops there\n", rec_wt_sqover, WT_SQMAX));
 };
 
 /*
