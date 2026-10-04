@@ -2357,6 +2357,18 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   CONTAINMENT (the pad's whole box inside the zone) is the only figure that
   survives — and even that does not prove you can touch the brush. A `cmd viewpos`
   read back after a `setpos`, or a `.rec` row from a real player, beats all three.
+- **A COMPACTED SUMMARY OF A DOCUMENT IS NOT THE DOCUMENT, AND THE CLAIM MOST
+  LIABLE TO BE WRONG IS "THIS SOURCE IS WRONG".** A session resumed from compaction
+  asserted that two of `ENGINE_SECURITY.md`'s citations were bad (`cl_main.c:3725`,
+  `cl_parse.c:4791`) and built a conclusion on it -- that a traced-only list with
+  drifted line numbers is a list nobody can check. The file cites `sv_ccmds.c:3256`
+  and `sv_ccmds.c:3891`, and BOTH ARE EXACT; the invented numbers were the summary's,
+  not the file's. It reached a pushed public commit before anyone opened the file.
+  Two rules follow: never assert a defect in a source you have not just read, and
+  treat a citation carried through compaction as unverified until it is checked.
+  Related and cheaper to remember: the same entry claimed a finding the file had
+  ALREADY stated, so the honest claim was the measurement, not the discovery -- say
+  which of the two you are making.
 - A `file:line` CITATION DIES WHEN ANYTHING ABOVE IT GROWS, in its own file and in
   every file that cites it: one added comment block invalidated ~10 numbers here,
   two of them in sv_timer.qc. Cite QC by FUNCTION NAME; keep line numbers for
@@ -2456,6 +2468,18 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `memalloc` (`float *p = memalloc(n * sizeof(float))`, indexed as an array;
   the heap resets with the globals at every map load) -- check numglobals in
   the .dat header before adding an array.
+- **GATING ONE LEG OF A COMMAND THAT RE-QUEUES TWO IS NOT GATING THE COMMAND.**
+  `SV_MapFrom_f` ends in two `Cbuf_AddText(..., Cmd_ExecLevel)` calls, so both inherit
+  the caller's restriction level: Patch 481's `fs_useaddons` gate refused the first,
+  and the `map "@<argv(1)>/<argv(2)>"` beside it still ran. Measured on the unfixed
+  build, a stuffed `mapfrom ftesurf bhop_eazy` printed `Blocking insecure command:
+  fs_useaddons "ftesurf"` and then **`SpawnServer: bhop_eazy`** -- a remote server
+  made the client HOST a map. It stayed open four patches because the refusal line in
+  the log read as the command having been stopped. WHEN A HANDLER ENDS IN
+  `Cbuf_AddText` OR `localcmd`, GATE THE HANDLER, not the things it queues: the
+  queued commands inherit the level and each one is a separate decision somebody else
+  made. Patch 485 gates `SV_MapFrom_f` itself. The corollary for an arm: a refusal
+  line for command X is not evidence about command Y that X was about to run.
 - **`Cmd_IsInsecure() && !Cmd_FromGamecode()` MEANS THE OPPOSITE OF WHAT IT READS.**
   Both are thresholds over ONE ordered value (`engine/common/cmd.h`): `RESTRICT_LOCAL`
   29 < `RESTRICT_INSECURE` 30 < `RESTRICT_SERVER` 31, `Cmd_IsInsecure()` is `>=30`,
