@@ -32,8 +32,9 @@ WHAT EACH COLUMN NOW SAYS, and where it comes from:
              33-prop format records no wishVel; there the physical buttons
              give it (`moves keys`), the later press of an opposing pair
              winning, as Momentum's does.  The buttons also stand in for a
-             non-zero wish that did not update while the yaw turned, and on a
-             teleport tick; a zero wish always stays zero.
+             non-zero wish that stopped updating (unchanged while the yaw is off
+             the one it was built on), and on a teleport tick; a zero wish
+             always stays zero (BACKLOG: on a ladder it can be frozen too).
   keys       FSI_* from those moves' signs plus jump, duck and attack -- the
              same rule as SV_RecKeys, so reccheck's mask check holds -- and
              +left/+right as FSI_TLEFT/TRIGHT, which a .mtv does record.
@@ -270,25 +271,31 @@ def convert(row, demo, oldpath):
     keymoves = KeyMoves()
     body = []
     pad = keyed = 0
-    prev = None
+    prev = anchor = None
     for s in ticks:
         if s.tick - start > want:
             break                       # the demo's stop can trail the frozen timer
         if s.tick < start:
             pad += 1
         km = keymoves(s.buttons or 0)
+        if prev is None or (s.wish_x, s.wish_y) != (prev.wish_x, prev.wish_y):
+            anchor = s.yaw              # the yaw this wish value was built on
         # A NON-ZERO wish is not this tick's move in two cases, and the buttons
-        # are: it stopped updating while the yaw turned (ladders, water -- 193
-        # ticks on surf_water-run), and on a teleport tick it was built on the
-        # yaw before.  A zero wish is the truth either way -- the game applied no
-        # move (an A+D overlap it zeroes, a key it held back) -- and equals the
-        # last zero whatever the yaw, so it is never re-derived: round 3 found
-        # that wrote 4,273 keys the demo's own velocity contradicts.
+        # are: it stopped updating -- a fresh one turns with the view, so one
+        # unchanged while the yaw is off its anchor is frozen (ladders, water;
+        # 3244 ticks, 761 of them where the view paused a tick and the tick
+        # before's yaw missed it) -- and on a teleport tick it was built on the
+        # yaw before.  A zero wish stays: re-deriving it from the buttons wrote
+        # 4,273 keys the demo's velocity contradicts (round 3).  It is frozen on
+        # a ladder too, and some A+D overlaps move on the later key (BACKLOG).
         use_keys = not haswish
         if haswish and prev is not None and (s.wish_x or s.wish_y):
-            stale = (s.wish_x, s.wish_y) == (prev.wish_x, prev.wish_y) and s.yaw != prev.yaw
-            snap = math.dist((s.x, s.y, s.z), (prev.x, prev.y, prev.z)) > SNAP
-            use_keys = stale or snap
+            stale = (s.wish_x, s.wish_y) == (prev.wish_x, prev.wish_y) and s.yaw != anchor
+            # The parity adds 439 in-run teleports under 256 u; the distance
+            # keeps 85 longer jumps that do not step it.
+            tele = ((s.noint is not None and s.noint != prev.noint)
+                    or math.dist((s.x, s.y, s.z), (prev.x, prev.y, prev.z)) > SNAP)
+            use_keys = stale or tele
             keyed += use_keys
         body.append(sample(s, start, tdt, km if use_keys else wish_moves(s)))
         prev = s

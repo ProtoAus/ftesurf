@@ -510,16 +510,18 @@ def creation_records(sec):
 TickState = collections.namedtuple("TickState", [
     "tick", "x", "y", "z", "pitch", "yaw", "view_x", "view_y", "view_z", "vx", "vy", "vz",
     "flags", "buttons", "land_tick", "jump_tick", "timer_state", "track_type", "track_number",
-    "major", "minor", "run_time", "wish_x", "wish_y", "wish_z"])
+    "major", "minor", "run_time", "wish_x", "wish_y", "wish_z", "noint"])
 
 PLAYER_FIELDS = ("m_vecOrigin", "m_vecOrigin[2]", "m_angEyeAngles[0]", "m_angEyeAngles[1]",
                  "m_vecViewOffset[0]", "m_vecViewOffset[1]", "m_vecViewOffset[2]",
                  "m_vecVelocity[0]", "m_vecVelocity[1]", "m_vecVelocity[2]", "m_fFlags",
                  "m_nPhysicalButtons", "m_iLandTick", "m_iJumpTick",
-                 "wishVel", "wishVel[2]")
-# The move's wish velocity: None where the player's class does not record it (the
-# 33-prop format), as against 0 for "recorded, zero".
-OPTIONAL_FIELDS = ("wishVel", "wishVel[2]")
+                 "wishVel", "wishVel[2]", "m_ubEFNoInterpParity")
+# None where the player's class does not record the prop (the 33-prop format has no
+# wishVel), as against 0 for "recorded, zero".  noint is m_ubEFNoInterpParity, which
+# steps when the server teleports the player: 7555 of the wishvel corpus's 7766
+# in-run steps are jumps the velocity does not cover.
+OPTIONAL_FIELDS = ("wishVel", "wishVel[2]", "m_ubEFNoInterpParity")
 
 
 def _signed_angle(a):
@@ -663,7 +665,7 @@ class Replay:
         # 2253 of 2313 first appearances in sampled deltas were non-zero, and the 60 zeros
         # were 11-bit angles, where a float change can quantise to the same 0
         zero = ((0.0, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, None, None,
-                (0.0, 0.0), 0.0)
+                (0.0, 0.0), 0.0, 0)
         absent = [i is None and n in OPTIONAL_FIELDS for i, n in zip(pi, PLAYER_FIELDS)]
         for tick, state, _ in self.frames(check):
             st = state.get(self.player_ent, {})
@@ -696,7 +698,7 @@ class Replay:
             out.append(TickState(tick, xy[0], xy[1], g[1], pitch, yaw, g[4], g[5], g[6], g[7], g[8],
                                  g[9], g[10], g[11], g[12], g[13], tstate, tt, tn, maj, mnr, rt,
                                  None if wv is None else wv[0], None if wv is None else wv[1],
-                                 g[15]))
+                                 g[15], g[16]))
         return out
 
     def _timer_ent(self):

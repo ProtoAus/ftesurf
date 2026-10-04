@@ -1269,6 +1269,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   main files have stage splits in the demo but no `stage` records, so the
   replay's timer panel shows the starting stage throughout. The split events
   (type 2, major/minor) could be written as `stage` records.
+- **Two cases the re-import's keys still get wrong** (2026-10-04, its review
+  round 4). (1) A zero wish frozen on a ladder: Momentum stops updating wishVel
+  off the air/walk mover. A frozen non-zero wish is caught by its yaw; a zero one
+  cannot be, so 210 in-run ticks in 2 files (surf_leidenfrost main 0005452,
+  surf_simpsons_source stage_8 0000455) read "no key" while W or W+A climbs.
+  Only the velocity tells (airborne, no gravity), and a rule on it must not
+  sweep in (2): A+D overlaps record a zero wish, but on surf_fiellu bonus_4
+  0001753 (run ticks 59-60) the velocity turns along the later key, while on
+  others it is plain gravity. 531 zero-wish keyed airborne ticks are neither
+  gravity nor a ramp clip: 210 are the two ladders, and every stretch looked at
+  among the other 321 (3 files) was an overlap. Find out which overlaps move
+  before choosing a rule.
 - **The web run page still calls an imported path "derived"** (board.js:563-566);
   since the re-import it is the demo's own. Key the note on `momdemo`.
 - **momreplay.py has no memory or time bound per demo** (PC-only; every current
