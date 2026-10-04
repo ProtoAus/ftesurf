@@ -1502,6 +1502,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
+- **`Time_TickString` is 1-3 ms off on most times past 68 minutes**
+  (ROADMAP 9, 2026-10-04; modelled in numpy float32, not driven). QC floats
+  are float32 and `ticks * tickrate * 1000` rounds before its `floor(+0.5)`.
+  `Time_TickString(ms, 0.001)`: first wrong at 4,096,003 ms, then 9.15M of the
+  16.78M values below 2^24, +1 to +3 ms. `(ticks, 1 / 66.6667)`: first wrong at
+  tick 273,085 (4,096,275 ms), 619k of the first 1.2M ticks, -1 to +3 ms.
+  Momentum boards hold hours-long runs. Readers include
+  screen_create's `best` column (m_main.qc, `ms_wr`) and cl_scores.qc's online
+  rows; the menu leaderboard (m_board.qc `Mlb_MsString`) splits integer ms
+  instead. Fix: an integer path in sh_time.qc, checked against the same model.
 - **The run line's air-control grade is measured against THIS server's movement
   settings, not the recording's -- ALL BUT THE TICK, which Patch 470 fixed.**
   `Line_Movevars` reads `sv_airaccelerate`, `sv_accelerate`, `sv_maxspeed`,

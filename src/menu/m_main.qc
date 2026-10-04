@@ -139,6 +139,14 @@ void() MM_BootTick;
 void() MM_Invalidate;
 vector(vector m) MM_MouseToUI;
 
+// ROADMAP 9: the selected map's leaderboard panel over SCREEN_CREATE, in
+// m_board.qc (compiled after this file, like m_milk.qc).
+float() Mlb_IsOpen;
+void(string mapname, float t) Mlb_Open;
+void(string why) Mlb_Close;
+void(vector screensize) Mlb_Draw;
+void() Mlb_TestCommand;
+
 /*
   Map source, derived from the searchpath a BSP came out of.
 
@@ -5704,6 +5712,24 @@ void(vector screensize) ui_status_toast =
 };
 
 /*
+  ESC on the create screen takes one step a press: the leaderboard panel
+  (ROADMAP 9), then a join in flight, then the screen.  Menu_InputEvent and the
+  two test twins share it.  Returns the step: 1, 2 or 3.
+*/
+float() ui_create_esc =
+{
+	if (Mlb_IsOpen())
+	{
+		Mlb_Close("esc");
+		return 1;
+	}
+	if (ui_strip_cancel_join(FALSE))
+		return 2;
+	menu_screen = SCREEN_MAIN;
+	return 3;
+};
+
+/*
   ui_strip_test <ask|wait|held|dl> [pct|start] -- fakes that state on the strip,
   the toast and the PLAY station's charge.  Nothing is asked, downloaded or
   connected.  dl/held run 0-99% over 25 s unless given a percent; "start" is the
@@ -5755,20 +5781,26 @@ void(string what, string arg) ui_strip_test =
 	}
 	else if (what == "esc" || what == "back")
 	{
-		// Menu_InputEvent's ESC and screen_create's back, without a key or a click.
+		// Menu_InputEvent's ESC (ui_create_esc) and screen_create's back, without
+		// a key or a click.
 		if (menu_screen != SCREEN_CREATE)
 			print("ui_strip_test: not on the create screen\n");
+		else if (what == "esc")
+		{
+			k = ui_create_esc();
+			if (k == 1)
+				print("ui_strip_test: esc closed the leaderboard; still on the create screen\n");
+			else if (k == 2)
+				print("ui_strip_test: esc ended the join; still on the create screen\n");
+			else
+				print("ui_strip_test: esc -- back to main\n");
+		}
 		else
 		{
 			k = ui_strip_cancel_join(FALSE);
-			if (k && what == "esc")
-				print("ui_strip_test: esc ended the join; still on the create screen\n");
-			else
-			{
-				menu_screen = SCREEN_MAIN;
-				print(sprintf("ui_strip_test: %s%s -- back to main\n", what,
-				              k ? " ended the join" : ""));
-			}
+			menu_screen = SCREEN_MAIN;
+			print(sprintf("ui_strip_test: back%s -- back to main\n",
+			              k ? " ended the join" : ""));
 		}
 	}
 	else if (what == "screen")
@@ -5795,6 +5827,28 @@ void(string what, string arg) ui_strip_test =
 	print(sprintf("ui_strip_test: kind %g  %s%s\n", ui_st_kind, ui_st_text, ui_st_figs));
 	print(sprintf("ui_strip_test: bar %g  cancel %g  charge %g on %g  pulse %g\n",
 	              ui_st_frac, ui_st_cancel, ui_charge, ui_charge_on, ui_pulse));
+};
+
+// ROADMAP 9: the picked map's leaderboard, beside start; dim and deaf with no
+// map picked.  Returns its width.
+float(vector pos, string sel) ui_board_button =
+{
+	local float w;
+	local vector sz;
+
+	w  = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
+	sz = [w, 30];
+	if (sel != "")
+	{
+		if (ui_button("cs_board", pos, sz, "leaderboard"))
+			Mlb_Open(sel, -1);
+		return w;
+	}
+	sui_fill(pos, sz, COL_ROW, 0.5, 0);
+	sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+	sui_text([pos_x + 8, pos_y + (30 - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
+	         COL_DIM, 0.5, 0);
+	return w;
 };
 
 void(vector screensize) screen_create =
@@ -6625,7 +6679,7 @@ void(vector screensize) screen_create =
 		}
 	}
 
-	// ---- start / status / back ----------------------------------------
+	// ---- start / leaderboard / status / back ---------------------------
 	float  busy  = ui_join_busy();
 	string stlbl = busy ? "joining..." : ((sel == "") ? "pick a map" : "start");
 	float  sbw   = max(150, stringwidth(stlbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
@@ -6633,7 +6687,9 @@ void(vector screensize) screen_create =
 	if (!busy)
 		ui_launch();
 
-	ui_status_strip([16 + sbw + 24, by], size_x - 116 - 24 - (16 + sbw + 24));
+	float  lbx   = 16 + sbw + 8;
+	float  lbw   = ui_board_button([lbx, by], sel);
+	ui_status_strip([lbx + lbw + 24, by], size_x - 116 - 24 - (lbx + lbw + 24));
 
 	// ROADMAP 1: leaving ends a join -- one nobody can see must not connect later.
 	// A download keeps going.
@@ -6738,6 +6794,7 @@ void() m_init =
 	registercommand("ui_prejoin");
 	registercommand("ui_join");
 	registercommand("ui_strip_test");
+	registercommand("ui_board_test");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -6852,6 +6909,11 @@ void(vector screensize) m_draw =
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
+	// ROADMAP 9: the leaderboard panel lives only over the create screen.
+	if (menu_screen != SCREEN_CREATE)
+	if (Mlb_IsOpen())
+		Mlb_Close("left the create screen");
+
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_NAME)
@@ -6866,7 +6928,17 @@ void(vector screensize) m_draw =
 		  poll does not depend on where in the layout the rows ended up.
 		*/
 		Lob_Poll();
+		float acts = _action_elements_index;
 		screen_create(screensize);
+
+		// ROADMAP 9: under the panel the screen is drawn but struck from sui's
+		// hit list, or its rows would take hovers, clicks and the wheel (a
+		// scroll view reads any hover, not only the topmost).
+		if (Mlb_IsOpen())
+		{
+			_action_elements_index = acts;
+			Mlb_Draw(screensize);
+		}
 	}
 	else if (menu_screen == SCREEN_VISUALS)
 	{
@@ -6918,6 +6990,7 @@ void() m_close =
 	  cancel finds nothing pending and returns.
 	*/
 	ui_join_cancel();
+	Mlb_Close("menu closed");
 	MM_Close();
 
 	setkeydest(0);
@@ -6977,14 +7050,15 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				return TRUE;
 			}
 
-			// ROADMAP 1: on the create screen a join in flight goes first and
-			// the screen stays; the next ESC leaves.
+			// ROADMAP 9 and 1: the leaderboard panel, then a join in flight,
+			// then the screen -- one per press (ui_create_esc).
 			if (menu_screen == SCREEN_CREATE)
-			if (ui_strip_cancel_join(FALSE))
+			{
+				ui_create_esc();
 				return TRUE;
+			}
 
-			if (menu_screen == SCREEN_CREATE || menu_screen == SCREEN_VISUALS
-			    || menu_screen == SCREEN_MUSIC)
+			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
 				m_close();          // in a game: ESC returns to it
@@ -7053,6 +7127,13 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_strip_test")
 	{
 		ui_strip_test(argv(1), argv(2));
+		return TRUE;
+	}
+
+	// ROADMAP 9: the leaderboard button's twin; m_board.qc has the forms.
+	if (argv(0) == "ui_board_test")
+	{
+		Mlb_TestCommand();
 		return TRUE;
 	}
 

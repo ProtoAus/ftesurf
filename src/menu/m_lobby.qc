@@ -889,6 +889,10 @@ float()  Lob_JoinUntil  = { return lj_until; };
   an unconditional parse: it is both the stale-reply guard and the "is this
   mine" test that a second caller would need.
 */
+// ROADMAP 9, m_board.qc (compiled later): TRUE when the id was the leaderboard
+// panel's, live or abandoned.
+float(float reqid, float code, string body) Mlb_Reply;
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	/*
@@ -905,6 +909,10 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		Lob_JoinReply(responsecode, resourcebody);
 		return;
 	}
+
+	// Before the poll's test, which is a bare inequality and would swallow it.
+	if (Mlb_Reply(reqid, responsecode, resourcebody))
+		return;
 
 	if (reqid != lb_req)
 		return;                     // a reply to a poll we have already replaced
