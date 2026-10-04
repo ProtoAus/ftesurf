@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   b31da1437
+commit   b5c8b8b38f67de43aa4c312d905aa7e8d80c701b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,23 @@ commit   b31da1437
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    484
+patch    486
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-04
+
+# PATCH 485: gamedir, mapfrom and fs_restart refuse a server's stufftext.  mapfrom
+# was the finding -- it re-queues TWO commands at the caller's level, Patch 481
+# already refused the fs_useaddons leg, and the `map "@<argv(1)>/<argv(2)>"` leg
+# STILL RAN: measured, a stuffed `mapfrom ftesurf bhop_eazy` printed SpawnServer, so
+# a remote server made the client host a map.  fs_restart is a DoS (the mod's own
+# sv_player.qc calls it the most expensive command in the build).  Engine-side, no QC
+# build depends on it, and no QC or shipped cfg calls any of the three.
+# NOTE: this pin's `patch` moved 483 -> 484 -> 485 but 484 has no note here; that
+# entry is the other session's to write (engine b31da1437).
 
 # PATCH 483: saveconfig, setinfoblob and fs_changegame refuse a server's stufftext.
 # The first two had no reachable gate at all (saveconfig's data//cfg/ exemption was
@@ -1627,6 +1637,83 @@ date     2026-10-04
 #        anything shipped.  The cvar name carries the patch number so a future
 #        reader can date it; renaming a published cvar is a compatibility break
 #        and this was the last free moment.
+#
+#   486  MOD-SIDE ONLY, no engine C: src/client/cl_replay.qc,
+#        src/server/sv_timer.qc, src/shared/sh_defs.qc, tools/p486{injrn,mut}.py
+#        and cfg/test/p486{injrn,sv}.cfg.  THE CONSUMER PATCH 484 DELIBERATELY
+#        DID NOT SHIP.  484 published five read-only cvars and stopped there on
+#        the argument that a gate reading a counter nobody has ever seen nonzero
+#        is a gate nobody can calibrate -- but an unconsumed counter reaches
+#        nobody at all, and the reason that matters is measured: THE FLEET HAS
+#        ZERO JOURNALS (19 rcpt, 14 view, 4 rec, 0 hid, both lobby cfgs at
+#        `run_evidence_ul 1`, which uploads the .view and not the .hid; raising it
+#        to 2 does not help, because at 110 KB/s the client's 4 MiB staging cap
+#        refuses any journal past ~38 s of run and the transport is one
+#        <=768-byte chunk per round trip).  So every input check built over the
+#        .hid ran only when an operator typed a path at a file that is not there.
+#        THE VERDICT TRAVELS INSTEAD OF THE FILE, over the channel build 78/79
+#        established: Rec_JrnIdentReport reads the five through Rec_InputCvar and
+#        sends sendevent("injrn", "ffffff", have, frames, ghosts, viol, bad,
+#        skip); sv_timer.qc stores them, clears them in SV_CSQCForget (the one
+#        place, per that function's own rule) and `cmd timer` prints a `jrnident:`
+#        line.  The grammar is written ONCE in sh_defs.qc as IJ_*, because
+#        FS_TagName's lesson is that two copies of a field order is how the ends
+#        drift.
+#        THREE FORKS, each stated so the next reader does not re-litigate it:
+#        SIX FIELDS IS sendevent's CEILING and this is exactly at it, so the
+#        VERSION IS NOT SENT -- it is carried by the function name the engine
+#        composes from the argument types, and a server without
+#        CSEv_injrn_ffffff answers silence, which is the version check for free.
+#        A SEPARATE EVENT and not a widening of `rechid`, because rechid rides a
+#        cache keyed on one value that changes essentially never while these five
+#        change on any governed frame, so folding them in would make it a wire
+#        message per frame per player -- which Rec_ProfileReport's own comment
+#        calls a bandwidth bug rather than a safety margin.  And NO DIAGNOSTIC
+#        setinfo COPY, unlike both reports above: those keys exist so `cmd timer`
+#        can print what the console CLAIMS beside what the CSQC reported, and
+#        these counters have nothing to disagree with, so a key would publish six
+#        numbers a console can set and no reader that can catch it.
+#        -1 IS PASSED THROUGH UNCHANGED AND NEVER NORMALISED TO 0.  Tidying it
+#        would re-introduce one layer up the exact defect 484's arm A caught: an
+#        unmeasured state wearing a clean measurement's clothes.
+#        STILL NOT A GATE.  No reader latches a TF_ bit or demotes a run, because
+#        over the 113 local journals the honest corpus carries 11 violations on 3
+#        files and every one is a yaw-and-pitch frame on a large instantaneous
+#        jump -- the shape a server angle set has.  A threshold from 11 events on
+#        3 files is a guess, and a check that faults an honest run is worse than
+#        no check.  The gate is BACKLOG item C and needs a corpus, which needs
+#        this.
+#        VERIFIED cfg/test/p486injrn.cfg against cfg/test/p486sv.cfg (dedicated,
+#        on the Sep-28 fteqwsv64.exe -- PRE-484 ON PURPOSE, because the consumer
+#        is QC in the two .dat files both processes share): tools/p486injrn.py,
+#        37 checks, 0 failed.  ARM 1 no journal: said 1 have 16 and ALL FIVE -1.
+#        ARM 2 one journal: frames 181, EQUAL to the engine's own
+#        in_jrn484_frames printed three lines later in the same arm, viol 0
+#        ghosts 0.  ARM 3 THE STRONGEST: the log shows `SETINFO Proto: injrn=0
+#        999999 0 0 0 0` and the server's next line reads frames 181 -- the
+#        event's number, not the typed one.  ARM 4 a fresh journal: frames 0
+#        against ARM 2's 181, so the reset propagates, and 0 rather than -1.
+#        THE GRADER IS ITSELF GRADED: tools/p486mut.py mutates the log six ways,
+#        each a defect this patch could really have, and all six are caught with a
+#        named failure against a control that must pass.  ITS FIRST CUT HARD-CODED
+#        `frames 183` AND THE RUN HAD PRODUCED 181, so three mutants mutated
+#        NOTHING and the script reported "3 not caught" while looking like a
+#        grader bug -- a mutant that does not mutate is the same false green as a
+#        grader that does not grade, and silent in the same way.
+#        NOT VERIFIED: nothing here can make `viol` NONZERO, for 484's reason --
+#        a minimized harness cannot fire a WM_INPUT.  This proves the counters are
+#        CARRIED, honest about what they have not measured, and unforgeable from a
+#        console; it does not prove a server can see a violation.
+#        KNOWN AND NOT THIS PATCH'S, found by the census rather than by the arm:
+#        61 of the tree's 123 journals have ZERO `f` records and 62 have them, and
+#        the empty half includes p305_*, p385_* and THREE real gameplay
+#        recordings (0000007_pb, 0000008_pb, 0000009_pb).  Any check built on `f`
+#        silently covers about half the corpus.  BACKLOG, with the census.
+#        NUMBER COLLISION AGAIN, resolved forward: a concurrent session's
+#        committed sv_ccmds.c/fs.c gates hold 485, so this consumer and its five
+#        files were renumbered 485 -> 486 before anything shipped.  Two
+#        collisions in two patches, both found by reading ENGINE_PATCHES.md's
+#        headings BEFORE claiming.
 #
 # Because the tree is shared, the deployed ftesurf64.exe contains all of them.
 # Anyone bisecting a rendering or input change should look at 268 before
