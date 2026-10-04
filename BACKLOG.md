@@ -5,6 +5,117 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Input evidence: built, and still unwired at both ends — 2026-10-05
+
+Found while triaging the fifteen samples in the private `Cheats/` corpus. Ten of
+them are in-process CreateMove rewrites (recorders, TAS with segmented
+checkpoints and re-recording, strafe optimisers with gain/strength/"silent"
+modes) and that layer is the one nothing here has been aimed at: `.rec`, `.view`
+and the engine's own angle accumulator all come to describe the SAME angles, so
+`pm_verify` PASSes (the trajectory is exact — that is the tool's job), the receipt
+signs mutually consistent digests, and `.rec`-vs-`.view` agrees by construction.
+The one artifact that can object is the `.hid`, because `IN_Commands` journals
+each event BEFORE dispatching it. Patch 484 wired the journal's contents into the
+sweep and closed the pitch axis; these are what it could not close.
+
+- **NOTHING CONSUMES THE `in_jrn484_*` COUNTERS.** `client/in_generic.c`,
+  Patch 484. They are published, read-only, and correct — and no QC reads them, no
+  `.rec` header key carries them, and no `pm_verify` rule looks at them. A gate
+  that reads a counter nobody has ever seen nonzero is a gate nobody can
+  calibrate, which is why it stopped there. Falsifier: `grep -rn in_jrn484 src/`
+  returns nothing, and a run's `.rec` header has no identity line. The consumer is
+  the Patch 376 shape — client sends derived counters, progs write a record,
+  `pm_verify` HOLDs — and it is deliberately NOT the `inprof`/`*phash` userinfo
+  path: a star key is what a patched client lies about, while a counter written
+  into the recording pm_verify replays is bound to the evidence it describes.
+
+- **THE FLEET COLLECTS ZERO JOURNALS, so there is no corpus to calibrate
+  against.** Measured on the live host 2026-10-05: `19 rcpt, 14 view, 4 rec, 0
+  hid`, both lobby cfgs at `run_evidence_ul 1`. Raising it to `2` does not work
+  either — at 110 KB/s the client's 4 MiB staging cap refuses any journal past
+  ~38 s of run, and the transport is one ≤768-byte chunk per round trip. Two
+  exits: a transport that is not the netchan (the plan's own open item), or
+  ship the VERDICT instead of the file, which is what 484's counters are for and
+  costs bytes proportional to nothing. Falsifier:
+  `find <basedir>/data/evidence -name '*.hid' | wc -l` on the Pi. Until this
+  moves, everything below is calibrated on local journals only.
+
+- **THE GHOST RULE IS A NOTE, AND NOTHING PERFORMS THE CORROBORATION IT ASKS
+  FOR.** `hidcheck.check_identity`: a frame whose angle moved with zero device
+  counts and zero recorded keyboard turn lands in `ghost`, which is `r.note()`
+  and never `r.fault()` — and its own text says "A server angle set looks like
+  this and so does an injected turn -- corroborate against the .rec before
+  concluding either." No tool does: `reccheck` joins `.rec` to `.view`,
+  `hidcheck.cross_check` joins `.hid` to `.view`, and nothing joins `.hid` ghosts
+  to `.rec`. The two causes DO separate — a `setangles` is discrete, rare,
+  coincident with a `warp` record or a teleport, with the angle unchanged on every
+  tick either side; an injected turn is continuous airborne steering alternating
+  in step with the strafe key, on a run with no `warp` anywhere near it. `.rec`
+  carries all of it (`fl` bit 1, `keys` FSI_LEFT/RIGHT, per-tick yaw). Falsifier:
+  `grep -rn 'identity_ghosts' tools/ surfd/` shows the counter published and read
+  by nothing but the grader. **BLOCKED on the corpus above** — a threshold set
+  without one is a guess, and this tree's rule is that a check which faults an
+  honest run is worse than no check.
+
+- **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean
+  runs.** `surfd/` compares no run's move stream against another's. `replays.sha`
+  is a whole-file sha256 and the re-post rule asks whether "player, ticks, bytes
+  or a known, current sha differ" — but two playbacks of one recording differ in
+  the header `nonce` (fresh 128 bits at every `SV_RecOpen`) and in the
+  `.view`/`.hid` digests, so they differ in bytes and both read as new evidence.
+  The comparison that would catch it is on the `in` move columns only
+  (`<mt> <carry> <movement> <angles>`), normalised for tick epoch — and it is over
+  a file the SERVER wrote, which is the strongest position in the whole evidence
+  chain: no client-side artifact is involved, so there is nothing on the
+  attacker's side to forge. Two design constraints, both from the save machinery
+  rather than from cheaters: start after the last `pause`/load or honest segmented
+  play self-matches, and expect only posted runs (a main-leg abandon keeps no
+  `.rec`). Falsifier: submit the same recording's move stream twice under two
+  runids and watch both file.
+
+- **THE TIMING ASSISTS HAVE NO DETECTOR, AND THE EVENT CLASSIFIER ALREADY
+  EXISTS.** `Edgebug assist`, `Jumpbug assist`, `null strafe`, `Longjump`,
+  `Pixelsurf` produce physics-LEGAL motion, so `pm_verify` PASSes them by design
+  and the energy walk in `tools/p452col.py` finds nothing — no tick exceeds what
+  strafing can produce. Repo-wide grep for
+  `edgebug|jumpbug|null.?cancel|null.?strafe|landing precision|frame.?perfect`
+  returns two hits, both in `cl_board.qc`'s `Board_Frame` comment, which is the
+  Segments/gain DISPLAY and already holds the hard part: it grades the contact
+  event and is calibrated ("the 25 u/s rule alone grades 84% of events perfect,
+  because sustained surfing clips every single tick. The airborne-first gate in
+  the engine is the real filter"). What is missing is the statistic that
+  separates a human from an assist — SUCCESS RATE PER OPPORTUNITY, not per-event
+  perfection — measurable from a kept `.rec` alone (`fl` bit 1 gives ground
+  contact per tick, `vz` the approach), needing no `.hid` and no engine work.
+  Falsifier: no tool in `tools/` prints a per-map or per-player landing success
+  rate. **Blocked on a calibration corpus**, and per the tree's own rule a
+  threshold from one framerate or one map is not a threshold.
+
+- **`reccheck`'s key-mask check is self-referential.** It derives `want` from the
+  `fwd`/`side` columns and compares to the direction bits of `keys`, which reads
+  as a cross-check of two independent facts and is not one: the server reads both
+  out of the one received usercmd (`SV_SetEntityButtons(ucmd->buttons)` beside
+  `xv->movement[] = ucmd->forwardmove/…`), and `sv_timer.qc`'s own comment over
+  the writer says so in terms. A client that reports movement with NO matching
+  button — the shape an optimiser that writes `sidemove` and leaves `buttons`
+  alone produces — passes it, correctly. It catches a corrupted or hand-edited
+  FILE. Now commented as such at the check site; the independent ground truth for
+  buttons is the `.hid`'s `+`/`-` scancode events, and nothing compares them to
+  the `.rec`'s `keys` column either. Falsifier: hand-edit an `in` row's `keys`
+  to contradict its `fwd`/`side` and watch reccheck fault, then hand-edit the
+  `.hid`'s button events to contradict the same row and watch nothing happen.
+
+- **`hidcheck.py`'s OWN SIGN COMMENT IS WRONG.** It says "The sign convention is
+  the OPPOSITE of what it looks like: mouse_x is positive to the right and a
+  positive dx should turn the view RIGHT (increasing yaw), so the identity is
+  `dyaw == +k*dx`, NOT `-k*dx`." Measured over two real PBs, `dyaw == -k*dx`
+  gives 0 violations against 38,744 for `+k*dx`, which is what the engine does at
+  `IN_MoveMouse` (`viewanglechange[YAW] -= m_yaw * mouse_x`). The CHECK was always
+  right; only the comment misleads, and a future reader "fixing" the check to
+  match its own comment would break the tree's flagship input check. Falsifier:
+  `tools/p484ident.py` Part 2, which sweeps all eight (angle, key, count, sign)
+  combinations.
+
 ## Ranking integrity
 
 - **momwatch's import holds surfd's write lock past its 5 s timeout every 7
