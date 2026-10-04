@@ -73,6 +73,82 @@ sweep and closed the pitch axis; these are what it could not close.
   `.rec`). Falsifier: submit the same recording's move stream twice under two
   runids and watch both file.
 
+  **MEASURED 2026-10-05, `tools/census/recsim.py` — the statistic is chosen and
+  the threshold is not, and the reason is the corpus.**  Over 20 independent long
+  runs (>=2000 moves, all different sha256) giving 376 ordered negative pairs,
+  against synthetic positives made by re-parsing one file and perturbing it:
+
+  | case | match | cover |
+  |---|---|---|
+  | exact replay, shifted tick epoch | **1.0000** | 1.0000 |
+  | replay, first half only (the trimmed playback) | **1.0000** | 0.4998 |
+  | replay, ONE move perturbed at 1% of the run | **0.9997** | 0.0098 |
+  | replay, 0.1% of moves perturbed | **0.9990** | 0.0047 |
+  | replay, 1% of moves perturbed | **0.9900** | 0.0006 |
+  | 376 pairs of genuinely different runs — max | **0.5242** | 0.0078 |
+  | 376 pairs of genuinely different runs — median | **0.1660** | 0.0000 |
+
+  **`match` (agreement over compared rows) IS THE DISCRIMINATOR, and `cover`
+  (exact contiguous prefix) is diagnostic only.**  That was measured, not chosen:
+  cover separates further on an exact replay (1.0000 vs 0.0078) and looks like the
+  better statistic, but it fails on the two attacks that matter — it is BRITTLE
+  (one perturbed move early drops it to 0.0098, so a playback tool that edits a
+  single input anywhere reads as completely unrelated) and it MISSES THE TRIMMED
+  PLAYBACK, the cheapest attack there is, which reads 0.4998 while `match` still
+  reads 1.0000 correctly.  A discriminator that fails on the weakest version of
+  the attack is not a discriminator.  The first cut of the tool reported cover as
+  the headline and would have shipped a gate that a partial playback walks past.
+
+  `match` separates 1.0000 against 0.5242 — **a margin of 1.91x** — and the
+  highest negative is two runs of the same map that share a common opening
+  (holding forward out of a start box, standing idle) and agree nowhere else.
+  A gate would want `match >= ~0.95` AND `compared >= ~1000` rows, so a short run
+  cannot reach the threshold by luck.
+
+  **WHY THERE IS STILL NO THRESHOLD AND NO CODE IN surfd: THE LOCAL CORPUS CANNOT
+  CALIBRATE ONE.**  It holds no two genuinely independent runs of one map.  Every
+  multi-run group here is harness output, and finding that took three passes at
+  the fixture filter, each of which let a class through:
+  * pass 1 filtered two directories and reported `surf_derpis`'s nine files as the
+    false-positive risk — they are `tools/test_reccheck.py`'s own mutants
+    (`n1late`, `n2noopen`, `n3noclose`, `n4steer`, `n6late`, `n7pe`, `n8move`,
+    `p5lag`).
+  * pass 2 added names and still reported `b88fin` vs `p356_v10` at match 1.0000 —
+    those live in `data/runs/bhop_eazy/main/`, **a real directory holding harness
+    output**.  There is no way to tell them apart by path, only by name.
+  * pass 3 found `surf_666`'s `anna-ab9ae4aa` group: three runs 2.5 min apart
+    sharing a 299-move identical prefix, all with **different sha256 and different
+    runids**.  They are the `p371*` harness on port 27641 (`cfg/test/p371sv.cfg`
+    maps surf_666).  A name filter cannot catch that either, because a harness can
+    use any player name.
+  * `surf_aura` and `surf_aweles` each turned out to be ONE FILE STORED TWICE —
+    byte-identical, same sha256, one copy under `data/p369/` and one under
+    `data/online/`.  **A byte-identical copy needs no move-column comparison at
+    all: `replays.sha` already catches it.**  What similarity adds is the
+    NON-identical duplicate — one performance recorded twice, with a different
+    nonce, a different absolute tick epoch and different file bytes.
+  * And 45 of the pairs are runs of 7–13 moves, stubs a harness produced by
+    walking out of a start box.  Two 9-move runs agree over all 9 and report a
+    perfect score.  Nine quaternions of move+buttons is not enough to identify a
+    performance, so `MIN_LEN` exists and a pair below it is NOT COMPARED and is
+    counted separately — a low score for a pair that could not have been judged is
+    the same false reading as a high one.
+
+  So `recsim.py` ships as a **census tool**, and it prints its own caveat when it
+  fires ("THIS CORPUS CANNOT CALIBRATE A THRESHOLD — it holds no two genuinely
+  independent runs of one map") rather than a bare OVERLAP that reads as "the
+  metric failed".  **The remaining work is the fleet corpus and then the surfd
+  side**, and the fleet corpus is the same blocker as BACKLOG item B's journals:
+  `data/runs/` on the Pi holds the posted runs of real players, which is exactly
+  the material this needs and which this workstation does not have.
+
+  Also measured and worth keeping: the alignment offset is searched over the
+  DIFFERENCE OF THE FIRST TICKS ±4 rows, and on all 25 synthetic positives the
+  offset found was 0 — the epoch shift was absorbed with no row shift, which is
+  what a playback does.  A wide search window was deliberately not used: a wide
+  search finds agreement that is not there, the same mistake as a join window in
+  the angle rules (`reccheck`'s `angle_lag` is read OFF the files for that reason).
+
 - **THE TIMING ASSISTS HAVE NO DETECTOR, AND THE EVENT CLASSIFIER ALREADY
   EXISTS.** `Edgebug assist`, `Jumpbug assist`, `null strafe`, `Longjump`,
   `Pixelsurf` produce physics-LEGAL motion, so `pm_verify` PASSes them by design
