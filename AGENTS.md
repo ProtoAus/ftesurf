@@ -1717,11 +1717,18 @@ script rather than passing it as an argument, where `ps` would show it.
      `git -c core.autocrlf=false archive HEAD surfd/... | ssh … tar -x` into a
      /tmp stage.
   2. Run the suite there, with `TMPDIR` set to a private dir; the tests leave
-     their temp dirs behind.
-  3. Back up `data/surfd.db` with sqlite's backup API.
+     their temp dirs behind. Stage `tools/` and `src/shared/` beside `surfd/`
+     (test_sweep and the TF_* pins read them). `test_momindex.py` is an import
+     arm, not a suite member: it needs `--db <copy> --momentum <tree>`.
+  3. Back up `data/surfd.db` with sqlite's backup API. The 647 MB copy holds a
+     read lock for ~15 s: heartbeats in that window log `database is locked`.
   4. Copy the files in under `flock /tmp/surfd-sweep.lock`.
-  5. Reload with `kill -HUP $(systemctl show surfd -p MainPID --value)` (no
-     sudo), then read the log for `surfd ready`.
+  5. Reload the gunicorn master, then read the log for `surfd ready`. SINCE
+     27 SEP THAT IS NOT THE UNIT: `surfd.service` is dead and surfd runs from
+     `run.sh` with `--pid /srv/nvme/surfd/surfd.pid`, so `systemctl show surfd
+     -p MainPID` reads 0 and `kill -HUP 0` signals your own process group (it
+     killed a deploy script on 4 Oct, mid-reload). Check the pidfile names a
+     live `surfd:app` gunicorn, then `kill -HUP $(cat …/surfd.pid)`.
 
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
