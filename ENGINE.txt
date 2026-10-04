@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   8a97e3aff2379bc3de5f6282a9e90443f622a19d
+commit   06f0967a9e80cde13f1555d34e95b21b5214c536
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,19 @@ commit   8a97e3aff2379bc3de5f6282a9e90443f622a19d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    478
+patch    481
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-10-03
+date     2026-10-04
+
+# PATCH 481: fs_load, fs_unload, fs_useaddons, fs_steamlibs, fs_cache_clear and
+# fs_indexmaps refuse an insecure caller (a server's stufftext, gamecode's localcmd).
+
+# PATCH 480: the menu's fs_addonstate -- is a game a map needs installed or mounted.
+# The map list's `needs` (ROADMAP 6) feature-detects it; an older engine draws them dim.
 
 # PATCH 473 (mod-side): a replay's Segments column is built at the recording's tick
 # (Board_Tick: board_ov_tick in the build pass).  cfg/test/p473seq.cfg.
