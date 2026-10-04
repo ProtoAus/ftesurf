@@ -393,6 +393,11 @@ float(string mapname, optional float force) downloadmap = #0:downloadmap;
 // the two compare as authored. 0 when absent. Feature-detected separately from
 // downloadmap — a Patch 465 binary has one and not the other.
 float(string mapname) mapfilekb = #0:mapfilekb;
+// Engine extension (pr_menu.c:PF_m_fs_addonstate, Patch 480) -- one
+// data/mapdeps.txt spec ("steam:Team Fortress 2/tf"): 0 not installed,
+// 1 installed, 2 mounted.  Feature-detected; an older binary draws the badges
+// without a state.
+float(string spec) fs_addonstate = #0:fs_addonstate;
 float(string name) cvar = #14;
 void(string name, string value) cvar_set = #15;
 void(string text) dprint = #16;

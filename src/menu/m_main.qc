@@ -1907,6 +1907,138 @@ void() ui_wr_load =
 };
 
 /*
+  data/mapdeps.txt -> ms_deps (ROADMAP 6): the games a map needs beyond the packs
+  mounted at boot, as indices into a small spec table whose state comes from
+  Patch 480's fs_addonstate -- asked once per spec, at load: 0 not installed,
+  1 installed, 2 mounted, -1 an engine without the builtin.  Optional like
+  mapwr.txt: no file, no badges.
+*/
+#define DEP_MAX 8
+strbuf ms_deps;
+string dep_spec[DEP_MAX];
+string dep_lbl[DEP_MAX];
+float  dep_state[DEP_MAX];
+float  dep_n;
+float  ms_depcount;
+
+// "steam:Team Fortress 2/tf" -> "TF2": the game's own short name where it has one.
+string(string spec) ui_dep_label =
+{
+	local string g;
+	local float p;
+	g = spec;
+	if (substring(g, 0, 6) == "steam:")
+		g = substring(g, 6, strlen(g) - 6);
+	p = strstrofs(g, "/", 0);
+	if (p > 0)
+		g = substring(g, 0, p);
+	if (g == "Team Fortress 2") return "TF2";
+	if (g == "Counter-Strike Global Offensive") return "CS:GO";
+	if (g == "Counter-Strike Source") return "CS:S";
+	if (g == "Half-Life 2") return "HL2";
+	if (g == "Momentum Mod Playtest") return "MOM mount";   // its mount/ folder: content it ships for other games
+	return substring(g, 0, 14);
+};
+
+float(string spec) ui_dep_index =
+{
+	local float i;
+	for (i = 0; i < dep_n; i = i + 1)
+		if (dep_spec[i] == spec)
+			return i;
+	if (dep_n >= DEP_MAX)
+		return -1;
+	dep_spec[dep_n] = strzone(spec);
+	dep_lbl[dep_n]  = strzone(ui_dep_label(spec));
+	dep_state[dep_n] = checkbuiltin(fs_addonstate) ? fs_addonstate(spec) : -1;
+	dep_n = dep_n + 1;
+	return dep_n - 1;
+};
+
+void() ui_deps_load =
+{
+	local filestream fh;
+	local hashtable byname;
+	local string ln, nm, spec, cur, say;
+	local float i, p, row, k, hit;
+
+	if (ms_deps >= 0) buf_del(ms_deps);
+	ms_deps = buf_create();
+	for (i = 0; i < ms_count; i = i + 1)
+		bufstr_add(ms_deps, "", TRUE);
+	for (i = 0; i < dep_n; i = i + 1)
+	{
+		strunzone(dep_spec[i]);
+		strunzone(dep_lbl[i]);
+	}
+	dep_n = 0;
+	ms_depcount = 0;
+
+	fh = fopen("data/mapdeps.txt", FILE_READ);
+	if (fh < 0)
+		return;
+
+	byname = hash_createtab(4096, EV_FLOAT);
+	for (i = 0; i < ms_count; i = i + 1)
+		hash_add(byname, strtolower(bufstr_get(ms_name, i)), i,
+		         HASH_REPLACE | EV_FLOAT);
+
+	hit = 0;
+	while ((ln = fgets(fh)) != "")
+	{
+		// "dep <map> <spec>": the spec has spaces ("steam:Team Fortress 2/tf"),
+		// so it is the rest of the line, not a token.
+		if (substring(ln, 0, 4) != "dep ")
+			continue;
+		p = strstrofs(ln, " ", 4);
+		if (p < 0)
+			continue;
+		nm = substring(ln, 4, p - 4);
+		spec = substring(ln, p + 1, strlen(ln) - p - 1);
+		if (substring(spec, strlen(spec) - 1, 1) == "\r")
+			spec = substring(spec, 0, strlen(spec) - 1);
+		row = hash_get(byname, strtolower(nm), -1, EV_FLOAT);
+		if (row < 0 || spec == "")
+			continue;
+		k = ui_dep_index(spec);
+		if (k < 0)
+			continue;
+		cur = bufstr_get(ms_deps, row);
+		bufstr_set(ms_deps, row, (cur == "") ? ftos(k) : strcat(cur, " ", ftos(k)));
+		hit = hit + 1;
+	}
+	fclose(fh);
+	hash_destroytab(byname);
+
+	ms_depcount = hit;
+	say = "";
+	for (i = 0; i < dep_n; i = i + 1)
+		say = sprintf("%s %s=%g", say, dep_lbl[i], dep_state[i]);
+	print(sprintf("FTESurf: %g map need(s) for an extra game;%s\n", hit, say));
+};
+
+// The row's "needs" text: each game red when this PC lacks it, plain when it has
+// it, dim when the engine cannot say.  "" for a map that needs nothing.
+string(float row) ui_deps_text =
+{
+	local string s, d;
+	local float n, i, k;
+	d = bufstr_get(ms_deps, row);
+	if (d == "")
+		return "";
+	n = tokenize(d);
+	s = "";
+	for (i = 0; i < n; i = i + 1)
+	{
+		k = stof(argv(i));
+		s = strcat(s, (s == "") ? "" : " ",
+		           (dep_state[k] == 0) ? "^1" : ((dep_state[k] > 0) ? "^7" : "^9"),
+		           dep_lbl[k]);
+	}
+	return s;
+};
+
+/*
   One atlas cell, or a placeholder.
 
   page/cell are "-" for the ~750 maps with a thumbnail id whose JPEG was never
@@ -2470,6 +2602,7 @@ void() ui_load_maps =
 	ui_data_load();             // reads ms_tierv after ui_meta_load's KSF fallback
 	run_pb_load();
 	ui_wr_load();
+	ui_deps_load();
 };
 
 // Enumerate and report, without opening the menu.  This is the diagnostic for
@@ -2823,6 +2956,19 @@ void(string arg) ui_browse_print =
 			              (bufstr_get(ms_wr, i) == "") ? "-" : bufstr_get(ms_wr, i),
 			              (bufstr_get(ms_pbv, i) == "") ? "-" : bufstr_get(ms_pbv, i),
 			              bufstr_get(ms_meta, i)));
+		if (i >= 0)
+		{
+			local string ds;
+			local float dn, dj, dk;
+			ds = "";
+			dn = tokenize(bufstr_get(ms_deps, i));
+			for (dj = 0; dj < dn; dj = dj + 1)
+			{
+				dk = stof(argv(dj));
+				ds = sprintf("%s %s=%g", ds, dep_lbl[dk], dep_state[dk]);
+			}
+			print(sprintf("ui_browse: %S needs%s\n", arg, ds));
+		}
 	}
 };
 
@@ -6462,7 +6608,7 @@ void(vector screensize) screen_create =
 				// own because it is the same word the filter chip above says, so
 				// once a mode is picked it is redundant -- and a column that is
 				// usually redundant still costs width on every row.
-				local string sub, smode;
+				local string sub, smode, mdep;
 				sub = ui_srcname(stof(bufstr_get(ms_src, real)));
 				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
 				if (smode != "")
@@ -6473,6 +6619,12 @@ void(vector screensize) screen_create =
 					sub = strcat(sub, "  ^9|^7  linear");
 				if (mbonus > 0)
 					sub = sprintf("%s, %g bonus", sub, mbonus);
+				// ROADMAP 6: the games it needs, red where this PC lacks one.
+				// Last, so the fit cuts it before the source word.  (It tokenizes:
+				// nothing below reads ms_meta's argv.)
+				mdep = ui_deps_text(real);
+				if (mdep != "")
+					sub = strcat(sub, "  ^9|^7  needs ", mdep);
 
 				/*
 				  The time, right-aligned against the row's own right edge.
@@ -6782,7 +6934,7 @@ void() m_init =
 	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
-	ms_wr = ms_dltier = ms_dataq = -1;
+	ms_wr = ms_dltier = ms_dataq = ms_deps = -1;
 	// The saved value is read in ui_create_open, beside its registercvar.
 	ms_showall = ms_applied_showall = 0;
 	ms_selected = -1;
