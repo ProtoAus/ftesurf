@@ -1246,13 +1246,43 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Imported runs (Momentum, KSF)
 
+- **Re-imported Momentum runs read every ramp as free air** (2026-10-04, the
+  re-import's review; true of the .wrpath imports too). A .mtv records no ramp
+  contact, so fl bit 16 is never set and the plane is 0 0 0 -- and readers take
+  a clear bit 16 in a 17-column file as "measured, not riding": the strafe bar
+  grades ramp ticks against the flat-air target, the segment column has no ramp
+  rows, and line marks/colour treat rides as air (cl_watch.qc:1261, 2549;
+  cl_lines.qc:573; cl_hud.qc:3725). Real ground/jump bits now make it look
+  measured: 24-43% of airborne ticks in four surf files are not free fall. FIX
+  BY INFERENCE, validated first: the per-tick wishVel and post-move velocity
+  give the expected air step (half gravity, AirAccelerate at aircap 30), and
+  the residual of a clipped tick is along the plane normal. Score it against
+  FTESurf's own recordings, which carry the engine's true bit 16 and plane, and
+  declare it in the header. Until then the alternative is a reader guard.
+- **The web run page reads 8 MiB of a recording** (recplot.py MAX_BYTES), and
+  three re-imported surf_666 main runs are 17-24 MB: their page plots and
+  times the first third. The cap keeps one request from holding the Pi's single
+  worker; the fix is a summary computed at index time, not a bigger cap.
+- **Two Momentum-demo quirks the re-import keeps** (pre-existing): 26 main
+  files claim a tick the body never reaches (the demo's time is X.5 ticks and
+  was rounded up), so the replay clamps short of the finish; and 797 of 2486
+  main files have stage splits in the demo but no `stage` records, so the
+  replay's timer panel shows the starting stage throughout. The split events
+  (type 2, major/minor) could be written as `stage` records.
+- **The web run page still calls an imported path "derived"** (board.js:563-566);
+  since the re-import it is the demo's own. Key the note on `momdemo`.
+- **momreplay.py has no memory or time bound per demo** (PC-only; every current
+  demo decodes or refuses cleanly): zstd's max_output_size is ignored when the
+  frame states a size, LZMA trusts the file's own 32-bit size, a zero-width prop
+  index loops on a count up to 2^32, and momreimport's pool has no per-job
+  timeout. Bound all four before decoding demos from strangers.
 - **A client keeps a replay it fetched forever, so a rewritten import never
   reaches it** (2026-10-04). `Online_ReplayFind` (cl_online.qc) serves any
   `data/online/**/*_r<id>.rec` before asking, and that was safe while a row's
   file never changed; `tools/momreimport.py` rewrites them under the same ids.
-  At the re-import the Momentum copies cached on Lex's PC are moved aside by
-  hand. Fix before a second rewrite: put the file's size or a version in the
-  board row and refetch on a mismatch.
+  None of Lex's 20 cached replays was an import at the re-import. Fix before a
+  second rewrite: put the file's size or a version in the board row and
+  refetch on a mismatch.
 - **THE COMBINED BOARD IS UNUSABLE ON A BUSY MAP.** It merges every tier by
   time and the client fetches one page of `OB_MAXROW` 64 with NO offset
   (`Online_Fetch` sends `limit` and never `skip`). On `surf_utopia` main, 221
