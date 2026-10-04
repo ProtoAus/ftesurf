@@ -162,6 +162,24 @@ to be wrong.
   (a server cannot load or unload content). 0.1.21 and 0.1.22 reuse the 467
   engine, so players see the `needs` names dim. Say which of the three ship,
   and I will cut one.
+- **The engine security follow-up is paused, at your request (4 Oct, night).**
+  Nothing changed in the engine beyond Patch 481. What is left to look at is in
+  your private repo (`ENGINE_SECURITY.md`); pick it up there if and when you
+  want it, or leave it.
+
+### Where I stopped (4 Oct, night)
+
+- Everything is committed and pushed. 0.1.22 is the current release, and the
+  lobbies run the same progs as this PC's build (checked by hash after the
+  release): nothing that ships has changed since, so no new release was cut.
+- Next steps are in BACKLOG.md:
+  - batch the Momentum import's board write before widening its backfill;
+  - fix the client's replay cache before any second rewrite of the Momentum
+    files;
+  - ramp contact for imported runs;
+  - the two key cases the re-import still gets wrong;
+  - a rejected Momentum recording stays linked;
+  - the demo scan's next signal (method in the private plan).
 - **The four ROADMAP questions** (end of ROADMAP.md): may the Pi
   fetch more KSF ranks or Momentum demos when a player asks; how a second
   build of a map (Momentum vs CS:S) is stored and offered; and which screen

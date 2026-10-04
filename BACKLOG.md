@@ -1295,6 +1295,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   gravity nor a ramp clip: 210 are the two ladders, and every stretch looked at
   among the other 321 (3 files) was an overlap. Find out which overlaps move
   before choosing a rule.
+- **The Momentum demo scan's first pass found nothing; its next signal is not
+  built** (4 Oct). `momscan.py` and its report live in the private repo (ROADMAP
+  11: the method stays private). The plan's "Momentum demo scan" section names
+  the next signal, and why it needs a recorded sample before it can be trusted.
 - **A rejected Momentum recording stays linked, and the link pass would link it
   again** (2026-10-04, the link pass's final review). `restand` (surfd.py:2278)
   re-derives a row only for kind 'run', so a reject on an imported replay
