@@ -674,6 +674,9 @@ string(string id, float row) HE_OptDef =
 		                      "|The run before this one fades out instead of vanishing when you restart.";
 		if (row == 24) return "hud_trail_fade|Fade time|c|1 2 4 8|1s;2s;4s;8s"
 		                      "|How long the last run takes to fade.";
+		// Appended for the reason row 21 gives; it belongs with rows 12-19.
+		if (row == 25) return "hud_lines_names|Number names|t||"
+		                      "|Say what each number is: 701 u/s, E -28, vz +120, dE +12, 1.23 s. Off leaves the bare numbers.";
 		return "";
 	}
 

@@ -2677,14 +2677,25 @@ string(float de, float gain) HUD_SeqDelCol =
   whatever unit was in force before the replay opened.  hud_seq_units 0
   visibly changed nothing (p451num N4).  The caller reads the cvar.
 */
-string(float e, float grav, float units) HUD_SeqAbsTight =
+// `named` (hud_lines_names) prefixes the speedometer's own "E" and spaces the unit.
+string(float e, float grav, float units, float named) HUD_SeqAbsTight =
 {
+	if (named)
+	{
+		if (units == 0) return sprintf("E %.0f u/s", Strafe_EquivSpeed(e, grav));
+		return sprintf("E %.0f", e);
+	}
 	if (units == 0) return sprintf("%.0fu/s", Strafe_EquivSpeed(e, grav));
 	return sprintf("%.0fe", e);
 };
 
-string(float de, float gain, float units) HUD_SeqDelTight =
+string(float de, float gain, float units, float named) HUD_SeqDelTight =
 {
+	if (named)
+	{
+		if (units == 0) return sprintf("dE %+.0f u/s", gain);
+		return sprintf("dE %+.0f", de);
+	}
 	if (units == 0) return sprintf("%+.0fu/s", gain);
 	return sprintf("%+.0fe", de);
 };

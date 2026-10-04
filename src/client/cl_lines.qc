@@ -160,7 +160,7 @@ float  ln_mkpx, ln_mkgap, ln_wpx;
 // baked in at load: the same file watched on a different sv_gravity is a
 // different run and the energy has to say so.
 float  ln_numon, ln_numspeed, ln_numenergy, ln_numvz, ln_numdelta, ln_numtime;
-float  ln_numref, ln_numsize, ln_grav, ln_units;
+float  ln_numref, ln_numsize, ln_grav, ln_units, ln_names;
 float  ln_labsz;                // the size the labels are measured and drawn at, see Line_Marks
 float  ln_z0[LN_SLOTS], ln_v20[LN_SLOTS];       // the slot's first sample: z, v.v
 float  ln_nlab;                 // labels queued, this Line_Draw
@@ -1247,6 +1247,7 @@ void() Line_ViewFrame =
 	ln_numtime   = cvar("hud_lines_time");
 	ln_numref    = cvar("hud_lines_ref");
 	ln_numsize   = cvar("hud_lines_numsize");  if (ln_numsize < 6) ln_numsize = 12;
+	ln_names     = cvar("hud_lines_names");
 	// Board_Frame's seq_units is not refreshed while a replay is up, so the
 	// label reads the cvar itself: two readers of one cvar, not two answers.
 	ln_units     = cvar("hud_seq_units");
@@ -1644,9 +1645,12 @@ void(vector q, vector c, float al) Line_Bars =
 /*
   ONE MARK'S NUMBERS, as a single string.
 
-  One sprintf and one HUD_Text, never one per number: at hud_font_outline
-  shadow HUD_TextDraw issues ten drawstrings for a string (cl_hud.qc:1342), so
-  three calls a label would be thirty draws.
+  One string and one HUD_Text, never one per number: every HUD_Text carries its
+  own shadow pass (HUD_TextDraw), so a call per number multiplies the draws.
+
+  hud_lines_names 1 says what each number is -- "701 u/s  E -28  vz +120  dE +12
+  1.23 s" -- with two spaces between fields so a name never reads as the previous
+  field's unit; 0 is the bare "701 -28e +120z +12e 1.23s".
 
   The energy zero is a choice and it is the reader's: hud_lines_ref 0 takes the
   HUD's own (HUD_EnergyRef, what the split list measures from, so the two
@@ -1658,10 +1662,11 @@ string(float s, float e) Line_Label =
 {
 	local float b, ev, en, ref, de;
 	local vector ep;                // an array element is not swizzleable
-	local string t;
+	local string t, sep, f;
 
 	b = s * LN_EVCAP;
 	t = "";
+	sep = (ln_names ? "  " : " ");
 	ev = ln_evh[b + e];
 	// E = z + |v|^2 / 2g, Strafe_Energy evaluated from what the mark carries.
 	ep = ln_ep[b + e];
@@ -1669,21 +1674,38 @@ string(float s, float e) Line_Label =
 	ref = ln_numref ? (ln_z0[s] + ln_v20[s] / (2 * ln_grav)) : HUD_EnergyRef();
 
 	if (ln_numspeed)
+	{
 		t = sprintf("%.0f", ev);
+		if (ln_names)
+			t = strcat(t, " u/s");
+	}
 	if (ln_numenergy)
-		t = strcat(t, (t != "") ? " " : "", HUD_SeqAbsTight(en - ref, ln_grav, ln_units));
+		t = strcat(t, (t != "") ? sep : "",
+		           HUD_SeqAbsTight(en - ref, ln_grav, ln_units, ln_names));
 	if (ln_numvz)
-		t = strcat(t, (t != "") ? " " : "", sprintf("%+.0fz", ln_ez[b + e]));
+	{
+		if (ln_names)
+			f = sprintf("vz %+.0f", ln_ez[b + e]);
+		else
+			f = sprintf("%+.0fz", ln_ez[b + e]);
+		t = strcat(t, (t != "") ? sep : "", f);
+	}
 	if (ln_numdelta)
 	if (e > 0)
 	{
 		ep = ln_ep[b + e - 1];
 		de = en - (ep_z + ln_e2[b + e - 1] / (2 * ln_grav));
-		t = strcat(t, (t != "") ? " " : "",
-		           HUD_SeqDelTight(de, Strafe_EquivSpeed(de, ln_grav), ln_units));
+		t = strcat(t, (t != "") ? sep : "",
+		           HUD_SeqDelTight(de, Strafe_EquivSpeed(de, ln_grav), ln_units, ln_names));
 	}
 	if (ln_numtime)
-		t = strcat(t, (t != "") ? " " : "", sprintf("%.2fs", ln_et[b + e]));
+	{
+		if (ln_names)
+			f = sprintf("%.2f s", ln_et[b + e]);
+		else
+			f = sprintf("%.2fs", ln_et[b + e]);
+		t = strcat(t, (t != "") ? sep : "", f);
+	}
 	return t;
 };
 
@@ -1987,6 +2009,8 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_time",    "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_ref",     "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_numsize","12", CVAR_ARCHIVE);
+	// Lex, 4 Oct 2026: the numbers say what they are by default.
+	registercvar("hud_lines_names",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
 };
