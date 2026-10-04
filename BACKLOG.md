@@ -19,7 +19,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   stage handover carries the taint; a box entered from outside still clears
   it. Fix (Patch 479): hand `noclip` to the engine's gate (clientcommand), and
   tag noclip let go of faster than a walk as a fast idle load is; AGENTS.md's
-  harness note ("each noclip is processed twice") changes with it.
+  harness note ("each noclip is processed twice") changes with it. Also:
+  noclip lifts the replay pin's MOVETYPE_NONE (SV_WatchFrame zeroes only the
+  velocity), so a body can creep through a stage with the clock frozen and
+  `rec_watch 0` before the boundary -- a stage time short of the creep posts
+  clean (Patch 477 round-25 integrity review, PLAUSIBLE: gaps need momentum).
+  Refuse `noclip` under a pin or hold, or have SV_WatchFrame re-impose NONE.
 - **A ghost skips cancel zones on a running run** (pre-existing; Patch 478 round-2
   integrity review, code-read). SV_TimerFrame's ghost branch returns before the
   zone scan, so a body coasting unattended through a cancel zone keeps its run;

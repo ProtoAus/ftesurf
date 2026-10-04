@@ -12303,6 +12303,18 @@ void(entity e, float z) SV_TimerTryArm =
 			stops = TRUE;
 	}
 
+	// Patch 478 review round 9 (older than 478): a finished stage run's next box
+	// is the handover's to arm, in step 1 as the hull leaves it.  Armed here --
+	// the point arriving a packet after the hull fired the finish, or a seam
+	// region of the same stage -- it dropped the finished stage's taint and Build
+	// 20's settled start.
+	if (e.run_t_state == TS_FINISHED)
+	if (e.run_t_pendarm >= 0)
+	if (zone_type[z] == ZONE_STAGE)
+	if (zone_track[z] == zone_track[e.run_t_pendarm])
+	if (zone_seg[z] == zone_seg[e.run_t_pendarm])
+		return;
+
 	/*
 	  BUILD 57: WALKING INTO A START ENDS A STAGE-1 REQUEST -- you are at the map's
 	  start and it arms the map, which is what a START has always meant.  `!s 1`
@@ -12840,13 +12852,14 @@ void(entity e) SV_TimerGhostLeft =
 	e.run_t_pendarm = -1;
 };
 
-// Patch 478 review rounds 6-8: the unghost (SV_GhostSet) takes the START latch
+// Patch 478 review rounds 6-9: the unghost (SV_GhostSet) takes the START latch
 // of where the body stands, so it arms no box -- nothing judged the ghost's
-// travel (a client can keep steering it).  The event latches stay as the ghost
-// left them, so a split or finish the body is in fires at re-attach, as pm_verify
-// replays it (round 7 took them: splits lost, the file HELD).  A box the body
-// left, or entered as a ghost, is dealt with as the scan would, except that
-// nothing arms: a START entered ends a running run (bhop map: TryArm's reset).
+// travel (a client can keep steering it).  A running run's event latches stay as
+// the ghost left them, so a split or finish the body is in fires at re-attach, as
+// pm_verify replays it; off the clock they are where the body stands, as the scan
+// keeps them -- a stale one fired at the start's own packet.  A box the body left,
+// or entered as a ghost, is dealt with as the scan would, except that nothing
+// arms: a START entered ends a running run (bhop map: TryArm's reset).
 void(entity e) SV_TimerGhostEnd =
 {
 	local vector mn, mx;
@@ -12884,12 +12897,18 @@ void(entity e) SV_TimerGhostEnd =
 		}
 	}
 	e.run_t_azone = zs_az;
+	if (e.run_t_state != TS_RUNNING)
+	{
+		e.run_t_evzone = zs_ez;
+		e.run_t_cpzone = zs_cp;
+	}
 };
 
 void(entity e) SV_TimerFrame =
 {
 	local float az, ez, cp, cancel;
 	local float bhopz, bhopstate, bhopdirty, bhopcheat;
+	local float hflags;             // Patch 478 r9: the finished stage's class, for its handover
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
@@ -13137,19 +13156,22 @@ void(entity e) SV_TimerFrame =
 		{
 			if (!SV_ZoneIn(e.run_t_pendarm, p, mn, mx))
 			{
+				hflags = e.run_t_flags;
 				SV_TimerArm(e, e.run_t_pendarm);
-				// Patch 478 review round 8 (older than 478): the finished stage's
-				// taint carries into the stage it hands over to, as the bhop launch
-				// carries its own below -- a setpos into or above the boundary,
-				// noclip off in the box, or a load short of it began the next stage
-				// clean (the arm re-reads only the movetype).
-				if (bhopdirty)
-					e.run_t_dirty = TRUE;
-				if (bhopcheat)
+				// Patch 478 review rounds 8-9 (older than 478): what reached the next
+				// stage's entry carries into it -- a teleport's cheat (setpos into or
+				// above the boundary, noclip off in the box) and a load's segment (a
+				// shadow or stitched run short of it); the arm re-reads only the
+				// movetype.  The class bits, not the latches: a freeze or a replay's
+				// pin is practice without moving the body, and a bhop map's START
+				// re-entry resets the latches.
+				if (hflags & TF_CHEAT)
 				{
 					e.run_t_cheat  = TRUE;
 					e.run_st_cheat = TRUE;
 				}
+				if (hflags & (TF_SEGMENT | TF_SHADOW))
+					SV_TimerStitched(e);
 
 				/*
 				  BUILD 20: A STAGE RUN'S START IS ALREADY OVER.

@@ -31,7 +31,7 @@ LOG = os.path.join(GAME, "logs", "p478ghost.log")
 MADE = os.path.join(GAME, "logs", "p478ghost.made.json")
 DATA = os.path.join(GAME, "data")
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
-SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G13", "G12", "G15", "G16", "G14",
+SECTIONS = ("G1", "G8", "G2", "G6", "G7", "G7A", "G10", "G9", "G11", "G13", "G12", "G15", "G16", "G17", "G14",
             "G14A", "G3", "G3P", "G3A", "G4", "G4A", "G5", "G5P", "G5A")
 EDGE_Y = 769 + 16       # surf_dune's start box +y face, plus the hull's half-width
 PROGS = {}              # the progs the run was graded on, kept in MADE
@@ -381,16 +381,35 @@ def main():
     if not (run16 and "run resumed at" in t16 and ss16):
         print("CANNOT GRADE G16: rows %s, resumed %s, startseg %s" % (rows, "run resumed at" in t16, ss16))
         return 2
-    check("G16", ss16[-1] == "0", "row %s %s; after the load startseg %s" % (run16[0], rows[run16[0]], ss16[-1]))
+    # Round 9: and still running -- a stage 1 the load had finished also reads
+    # startseg 0 until its body leaves stage 2's box.
+    check("G16", ss16[-1] == "0" and states("G16")[-1:] == ["running"],
+          "row %s %s; after the load startseg %s, %s" % (run16[0], rows[run16[0]], ss16[-1],
+                                                         states("G16")[-1:]))
+
+    # G17.  Round 9, older than 478.  Premise: a stage-2 run came of it (running,
+    # startseg 1) after the setpos landed.  Verdict: cheated, as stage 1 was.
+    t17 = "\n".join(sec["G17"])
+    ss17 = field("G17", r"\bstartseg (\d+)\b")
+    if not (states("G17")[-1:] == ["running"] and ss17[-1:] == ["1"] and "setpos: -11428 -9601 13450" in t17):
+        print("CANNOT GRADE G17: states %s, startseg %s, setpos %s" % (
+            states("G17"), ss17, "setpos: -11428 -9601 13450" in t17))
+        return 2
+    check("G17", classes("G17")[-1:] == ["cheated"], "after a side entry startseg %s class %s" % (
+        ss17[-1:], classes("G17")[-1:]))
 
     # G14.  Round 8.  Premises: running before the ghost, the setpos landed in the
     # box, the map reloaded (G14A exists, CSQC came up again).  Verdict: no paused
     # run offered after the reload.
     t14 = "\n".join(sec["G14"] + sec["G14A"])
+    # Round 9: the park's unghost ended the run in its own words -- an absence of
+    # an offer alone would also pass a park skipped for any other reason.
     if not (states("G14")[:1] == ["running"] and "setpos: -11434 650 15052" in t14
-            and "FTESurf CSQC loaded" in "\n".join(sec["G14"])):
-        print("CANNOT GRADE G14: states %s, setpos %s, reloaded %s" % (
-            states("G14"), "setpos: -11434 650 15052" in t14, "FTESurf CSQC loaded" in "\n".join(sec["G14"])))
+            and "FTESurf CSQC loaded" in "\n".join(sec["G14"])
+            and "run cancelled (back in the start as a ghost)" in t14):
+        print("CANNOT GRADE G14: states %s, setpos %s, reloaded %s, voided %s" % (
+            states("G14"), "setpos: -11434 650 15052" in t14, "FTESurf CSQC loaded" in "\n".join(sec["G14"]),
+            "run cancelled (back in the start as a ghost)" in t14))
         return 2
     check("G14", "resume: your run here is paused at" not in t14,
           "offered after the reload %s" % ("resume: your run here is paused at" in t14))
