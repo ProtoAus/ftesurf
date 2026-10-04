@@ -163,6 +163,12 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   wrong one and say so when it is. Control recipe — NOT `git stash`, which would
   take the other session's files: copy the file aside, `git checkout -- <file>`,
   build, run, copy back, rebuild, and diff the diffstat against the saved one.
+  WHEN A CONCURRENT SESSION'S UNCOMMITTED FILE DOES NOT COMPILE, do not touch it and
+  do not stash it: build the control anyway by `touch`ing that file's already-valid
+  `.o` in `engine/release/<target>/` forward, so make skips it. The two binaries then
+  differ ONLY in the files under test, which is a *better* control than a full
+  rebuild, and the peer's work is never at risk. Verify the `.o` you are advancing is
+  from a build that succeeded, and say in the entry which file was skipped and why.
 - Test-cfg recipe: `cfg_save_auto 0` FIRST -- the engine writes ftesurf.cfg on
   every disconnect and map change (`CL_ClearState`), not only at quit, and a
   harness's `cl_maxfps 100` then lands in the owner's config (measured: an
@@ -2450,6 +2456,20 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   `memalloc` (`float *p = memalloc(n * sizeof(float))`, indexed as an array;
   the heap resets with the globals at every map load) -- check numglobals in
   the .dat header before adding an array.
+- **`Cmd_IsInsecure() && !Cmd_FromGamecode()` MEANS THE OPPOSITE OF WHAT IT READS.**
+  Both are thresholds over ONE ordered value (`engine/common/cmd.h`): `RESTRICT_LOCAL`
+  29 < `RESTRICT_INSECURE` 30 < `RESTRICT_SERVER` 31, `Cmd_IsInsecure()` is `>=30`,
+  `Cmd_FromGamecode()` is `>=31`. The conjunction is therefore *exactly* level 30 --
+  it blocks csprogs/menuqc and ADMITS a server's stufftext, which arrives at
+  `RESTRICT_SERVER`. So the pair cannot separate "a remote server" from "ssqc", and
+  the tree's policy is to refuse both (Patch 481's comment says so; its `fs_*` gates
+  and `FS_RefuseInsecure` are plain `Cmd_IsInsecure()`). Cost an arm: a stuffed
+  `fs_changegame 1` under that condition switched games and crashed the client with
+  no `Blocking` line, while a strict gate beside it in the same run refused correctly.
+  A local console/cfg caller is `RESTRICT_LOCAL` and is never insecure, so a strict
+  gate costs the USER nothing -- it only costs QC. `grep` the QC before assuming that
+  matters: `fs_changegame` has no caller in `src/`, and the engine's own mod menu
+  uses `RESTRICT_LOCAL`.
 - fteqcc parses `x = a && b` as `(x = a) && b`: assignment binds tighter than
   `&&` and `||` (measured: `t = !first && FALSE` gave 1). Wrap the whole
   right-hand side, `x = (a && b);`, as the tree mostly does. Still unwrapped in
