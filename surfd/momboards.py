@@ -363,20 +363,36 @@ def main():
     report_impossible(conn, files, a)
 
     if a.link:
-        with conn:
-            cur = conn.execute(
-                "UPDATE runs SET replay_id = ("
-                "  SELECT p.id FROM replays p"
-                "   WHERE p.kind='momentum' AND p.map=runs.map AND p.track=runs.track"
-                "     AND p.leg=runs.leg AND p.player=runs.player"
-                "   ORDER BY p.millis ASC LIMIT 1)"
-                " WHERE tier=? AND replay_id=0 AND EXISTS ("
-                "  SELECT 1 FROM replays p WHERE p.kind='momentum' AND p.map=runs.map"
-                "     AND p.track=runs.track AND p.leg=runs.leg"
-                "     AND p.player=runs.player)",
-                (S.TIER_MOMENTUM,))
-            print("linked to a held demo %d row(s)" % cur.rowcount)
+        print("linked to a held demo %d row(s)" % link_demos(conn))
     return 0
+
+
+def link_demos(conn):
+    """Give a momentum `runs` row with no recording the fastest held one.
+
+    READ FIRST, WRITE ONLY THE HITS.  This was one UPDATE whose WHERE scanned
+    every momentum row with replay_id 0 -- 2.35M on the Pi, 6.2 s -- inside the
+    write transaction, past surfd's 5 s busy timeout on every */7 momwatch tick,
+    where a /api/run would have been refused (BACKLOG).  The same set comes from
+    the ~5k replays probed by runs' own key, without the write lock, and the
+    write is only the rows found -- usually none.
+    """
+    best = {}
+    for rid, mp, tr, lg, pl, ms in conn.execute(
+            "SELECT id, map, track, leg, player, millis FROM replays WHERE kind='momentum'"):
+        k = (mp, tr, lg, pl)
+        if k not in best or (ms, rid) < best[k]:
+            best[k] = (ms, rid)
+    hits = []
+    for (mp, tr, lg, pl), (_ms, rid) in best.items():
+        for (rowid,) in conn.execute(
+                "SELECT rowid FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
+                " AND player=? AND replay_id=0", (mp, tr, lg, S.TIER_MOMENTUM, pl)):
+            hits.append((rid, rowid))
+    if hits:
+        with conn:
+            conn.executemany("UPDATE runs SET replay_id=? WHERE rowid=? AND replay_id=0", hits)
+    return len(hits)
 
 
 if __name__ == "__main__":
