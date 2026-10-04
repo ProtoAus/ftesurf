@@ -5660,6 +5660,25 @@ void(vector pos, float w) ui_status_strip =
 	ui_status_bar([pos_x, pos_y + 24], tw, 3);
 };
 
+// SCREEN_MAIN's copy of the strip, without a button, so leaving the create
+// screen does not hide it.  Drawn flat after the in-world panel, above the
+// "move the mouse" hint (MM_ScreenMain) and below the panel at 720p and up.
+void(vector screensize) ui_status_toast =
+{
+	local float w;
+	local vector p;
+
+	if (ui_st_kind == ST_NONE)
+		return;
+	w = stringwidth(ui_st_text, TRUE, SZ_LABEL) + stringwidth(ui_st_figs, TRUE, SZ_LABEL) + 32;
+	w = min(screensize_x - 32, max(360, w));
+	p = [floor((screensize_x - w) * 0.5), screensize_y - 96];
+	sui_fill(p, [w, 44], COL_PANEL, 0.88, 0);
+	sui_border_box(p, [w, 44], 1, COL_BORDER, 1, 0);
+	ui_status_line(p + '16 9 0', w - 32);
+	ui_status_bar(p + '16 32 0', w - 32, 3);
+};
+
 /*
   ui_strip_test <ask|wait|held|dl> [pct|start] -- fakes that state on the strip,
   the toast and the PLAY station's charge.  Nothing is asked, downloaded or
@@ -6824,7 +6843,10 @@ void(vector screensize) m_draw =
 		MM_ScreenMusic(screensize);
 	}
 	else
+	{
 		screen_main(screensize);
+		ui_status_toast(screensize);
+	}
 
 	MM_DrawFps(screensize);
 	sui_menu_nav();
