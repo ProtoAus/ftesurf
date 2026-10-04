@@ -1014,6 +1014,96 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   cvar cannot affect its prediction at all, which is stronger than a cheat latch.
   Not measured live: no run has yet been made with the two sides deliberately disagreeing.
 
+## Engine client-security audit (the `p482` batch) — 2026-10-05
+
+Five holes in the engine's server-to-client command surface were **driven** on
+2026-10-05 — measured, not just read — against a build of engine `798fda84b`.
+The audit, the arms, the logs and the reasoning live in the private repo
+(`C:/FTESurf-private/ENGINE_SECURITY.md`, `poc/p482/`); AGENTS.md's rule is that
+live bypasses stay out of this one, so each entry here names the code site, the
+impact class and a falsifier, and no recipe.
+
+The arms are deliberately **not** in `ftesurf/cfg/test/`. They are working
+exploits for holes that are still open and this repo is published; the convention
+is that an arm ships publicly with its fix, not before it. Copy them in from
+`poc/p482/cfg/`, run, delete.
+
+- **`TP_ExecTrigger` runs a server-created alias at the user's restriction level,
+  which opens every `Cmd_IsInsecure()` gate in the engine — including Patch 481's.**
+  `client/zqtp.c` `TP_ExecTrigger`; the alias's own `execlevel` field (set to
+  `RESTRICT_SERVER` for server-created aliases in `common/cmd.c` `Cmd_Alias_f`) is
+  never consulted on that path, nor is `ALIAS_FROMSERVER`. Measured: one command
+  stuffed directly was refused by 481's gate, and the same command reached through a
+  trigger alias ran. Impact: 481 is not a boundary, it is one delivery path of two;
+  the same is true of any other gate built on `Cmd_IsInsecure()`, e.g. `condump`'s.
+  Fix in `TP_ExecTrigger`: skip `ALIAS_FROMSERVER` aliases, or execute at the
+  alias's own `execlevel` (the second is more general and needs an accessor, since
+  `Cmd_AliasExist` returns only the body string). Falsifier: re-run the arm pair
+  (`p482a6sv`/`p482a6cl`) — the trigger-delivered command must print
+  `Blocking insecure command` exactly as the directly stuffed one does, and a
+  user-defined `f_newmap` alias typed at a real console must still run, or the fix
+  has broken the legitimate feature.
+- **`R_SetRenderer_f` lets a caller name the DLL the renderer loads, unfiltered.**
+  `client/renderer.c` `R_SetRenderer_f` → `R_BuildRenderstate` (an explicit
+  subrenderer token is stored with no path filter — the filter beside it runs only
+  on the `gl_driver` fallback branch) → `GLInitialise`'s `Sys_LoadLibrary`
+  (`gl/gl_vidnt.c`), which tries system32 only after that load fails. Measured with
+  a canary DLL that appends one line and then declines the load: the line was
+  written, so native code named by the remote host ran in the client process, and
+  the client still came up. The same value at boot (it is `CVAR_ARCHIVE`, and
+  `ftesurf.cfg` carries a `vid_renderer` line) also loads it, before any map.
+  Fix: refuse insecure callers in `R_SetRenderer_f`, and apply the existing path
+  filter to an explicit subrenderer token as well. The legitimate use — a user
+  choosing their own mini driver at their own console — must keep working.
+  Falsifier: the arm's negative control (a path that does not exist) must stop
+  printing `Loading renderer dll "<that path>"`, and a local `setrenderer gl` must
+  still restart the video.
+- **`Skin_AllSkins_f` copies a caller-supplied string into `char allskins[128]`
+  with `strcpy`.** `client/skin.c`. Measured: a 300-character argument is accepted
+  with no refusal and no complaint, and its first 63 characters reach the skin
+  loader — 63 being `qwskin_t::name[64]` *downstream*, so the visible evidence is
+  produced after a write that has already passed the end of the buffer. **How far it
+  reaches and what it corrupts is NOT measured** — this toolchain has no ASan, and
+  quantifying it needs a canary build (a temporary, never-shipped `skin.c` with a
+  known word immediately after `allskins`). Do not quote an impact class beyond
+  "unbounded write of a supplied string" until that runs. Fix: `Q_strncpyz`. This
+  command MUST stay server-reachable — forcing skins is a legitimate QuakeWorld
+  server feature — so the fix is the bound, not a gate. Falsifier: the arm's
+  overlong case must be refused or truncated at the buffer, and its 63-character
+  case must still round-trip.
+- **`CL_SetInfoBlob_f` reads an arbitrary game-VFS file into the player's userinfo,
+  which is sent to the server.** `client/cl_main.c`; `FS_MallocFile(..., FS_GAME,
+  ...)` with no insecure check. Measured: a planted canary file's exact bytes went
+  out on the wire as a `setinfo` blob. **The transmission is conditional** — the
+  blob key is dropped unless the server negotiates `PEXT2_INFOBLOBS`, which is the
+  server's own `_pext_infoblobs` cvar to advertise — so whether the bytes leave is
+  the remote host's choice, not a limit the client imposes. The arm read a planted
+  canary and the mod's own 53-byte consent record, and deliberately not
+  `ftesurf.cfg` or `conhistory.txt`, which are in the same reach and can hold an
+  rcon password and a command history; their reachability is a code fact, not a
+  measurement. Fix: refuse insecure callers, the pattern `Cmd_Condump_f` already
+  uses. Falsifier: the arm's wire line must disappear while its "file does not
+  exist" control still prints, and the engine's own blob keys (vwep) must be
+  unaffected.
+- **The config writer's `data/` and `cfg/` exemption sits before its
+  `Cmd_IsInsecure()` refusal, so a remote host can write a config into either.**
+  `common/cmd.c`, the `saveconfig` path. Measured: the unprefixed form printed
+  `not allowed` and both prefixed forms wrote a 64 KB real config to disk. The
+  exemption is keyed on the path, not on who asked, though its own comment gives a
+  mod-facing reason. `data/` is where this mod reads `mapdl.txt`, `mapmeta.txt`,
+  `mapwr.txt` and `saves/**`. Fix: move the exemption after the insecure check, or
+  apply it only to non-insecure callers — the same lesson as Patch 446, hang the
+  rule on where the command ENTERS. Falsifier: the arm's two prefixed forms must
+  print `not allowed` while a locally typed `saveconfig cfg/x.cfg` still writes.
+- **Chained, the last two are a persistence path**: a written config carries
+  `vid_renderer`, and `vid_renderer` at boot names a DLL to load. Plausible, and
+  **not demonstrated end to end** — no arm here chains them. Worth deciding whether
+  the renderer fix or the config fix closes it, rather than assuming one does.
+- Items 4, 5, 6, 9 and 10 of the audit (`fs_changegame`'s early returns, `gamedir`,
+  `fs_restart`, `mapfrom`'s prefer-hint leg, `ssv`/`mapcluster`'s `CreateProcessW`)
+  are **traced in the source but not driven**, as is the sweep's lower-value list.
+  They are in the private doc; none has an arm, so none has a verdict.
+
 ## Performance
 
 - **A 999-save rescan is synchronous: 157 ms on the Pi** (profile_ssqc,

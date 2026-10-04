@@ -307,6 +307,31 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   `FS_GAME`, so `%TEMP%` or the install root opens nothing and `fopen(FILE_READ)`
   returns -1 with NO "Access denied" line — which reads as a reader bug and is a
   path bug. Cost a whole arm.
+- `alias <name>` WITH NO VALUE DELETES THE ALIAS. `Cmd_Alias_f`'s argc==2 path
+  builds an empty value and reaches `if (!*cmd && !dpcompat_console.ival)` —
+  "someone wants to wipe it. let them" — and unlinks it. So it is NOT a query, and
+  using it as one destroys the subject: two arms reported a planted alias as
+  "missing", the second written specifically to explain the first, and the item
+  they were disproving turned out to be real. The only safe read is the full
+  `alias` listing (argc==1).
+- A `+exec` CFG RUNS BELOW `rcon_level` (20), so an `alias` defined in a cfg
+  creates nothing and bare `rcon_level` prints `Unknown command` — with no refusal
+  message, because the dispatcher's `cmd '%s' was restricted.` is a `Con_TPrintf`
+  that does not reach the log at these settings. Stufftext runs at
+  `RESTRICT_SERVERSEAT(0)` = 31, so a server CAN create an alias and a cfg cannot:
+  an arm that needs one must stuff it. Related and general: **SILENT REFUSALS ARE
+  EVERYWHERE IN THE COMMAND LAYER** (`condump`'s `if (Cmd_IsInsecure()) return;`
+  prints nothing either), so grepping a log for a payload's own output cannot
+  distinguish "refused" from "never ran". Every arm needs a control that must
+  print.
+- `stuffcmd *` WITH NO `map` HAS NO CLIENT TO ADDRESS and the text vanishes with no
+  message anywhere — the same shape as the stringcmd-before-spawn trap below, one
+  level earlier. The server's userinfo dump is `user`, not `info`; `InfoBuf_Print`
+  renders a blob key as `<N BYTES>` and never dumps its content.
+- bash SPLITS `+set <cvar> "value with spaces"` INTO SEPARATE ARGUMENTS, so the cvar
+  reads back empty and the arm measures nothing while looking like a negative. Use
+  a path with no spaces (an 8.3 short name via `GetShortPathNameW`) rather than
+  trusting the quoting — and print the cvar back before believing the result.
 - STRINGCMDS SENT BEFORE THE SERVER HAS SPAWNED THE CLIENT VANISH from both logs
   with no error anywhere. A map with downloads (bhop_arcane: ~7 s of models)
   needs a wait for `spawn`, not a fixed guess, and the failure looks exactly like
@@ -544,6 +569,18 @@ thresholds and the T5 ceiling. Quote a conclusion here when you need one, never
 the document. (It was in `C:/Users/Lex/.claude/plans/` until 2026-09-18 under a
 generated slug — tool-managed, unbacked, and the only copy. That one is now
 bannered as superseded.)
+
+**A SECOND PRIVATE DOCUMENT SITS BESIDE THE PLAN: `ENGINE_SECURITY.md`**, the
+audit of what a server can make a CLIENT do — the engine's stufftext surface,
+which is the other half of the anti-cheat argument (a client that can be made to
+run things cannot be trusted to report honestly). Five of its items were DRIVEN
+on 2026-10-05, not just read; the headline is that one stuffed alias defeats
+Patch 481 and therefore every `Cmd_IsInsecure()` gate, so 481 is a delivery-path
+fix and not a boundary. What is safe to say here is in BACKLOG.md's
+"Engine client-security audit" section — code site, impact class, falsifier, no
+recipe. The arms are in `poc/p482/cfg/` there and stay there: they are working
+exploits for holes that are still open, and the convention is that an arm ships
+publicly WITH its fix, not before it.
 
 - **A CLEAR IS ONLY SAFE IF THE ILLEGITIMATE SPEED CANNOT SURVIVE IT — AND "I HAVE
   ENUMERATED EVERY PLACE THE SPEED COULD BE" IS NOT A WAY TO ESTABLISH THAT.** Most
