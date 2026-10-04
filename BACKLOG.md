@@ -7,6 +7,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Ranking integrity
 
+- **momwatch's import holds surfd's write lock past its 5 s timeout every 7
+  minutes, so a run submitted then is lost** (2026-10-04, from the re-import's
+  deploy review; measured in surfd.log). `database is locked` lands on every
+  `*/7` tick (04:21, 04:28, 04:35 ...), 2-4 a tick: 229 heartbeats and one
+  assignment lookup in the retained logs, no submission yet only because nobody
+  plays. Each tick `momboards --go --link` sets ~1200 board rows in one
+  transaction. A `/api/run` in that window gets a 500, and the lobby does not
+  retry -- it tells the player the run is saved on this machine (sv_lobby.qc
+  2680-2701) -- so it never reaches the board. Fix: commit momboards' rows in
+  small batches (and the link pass incrementally), and let the lobby retry a
+  submission surfd refused with a 5xx.
 - **`noclip` is open to every player on the lobbies** (pre-existing; Patch 478
   round-8 integrity review, traced in the engine). The engine's `noclip`
   (Cmd_Noclip_f) refuses unless SV_MayCheat -- `sv_cheats`, or a one-slot
