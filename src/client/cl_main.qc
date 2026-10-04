@@ -1290,6 +1290,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	local float bit, took;
 
 	Rewind_Track(evtype, scanx);    // Patch 477: ahead of every handler that may take a press
+	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
 
 	// Key events only: in an IE_MOUSEABS, scanx is an X COORDINATE, and 512 of
 	// them along it would otherwise read as K_MOUSE1.

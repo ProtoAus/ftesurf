@@ -27,7 +27,7 @@ PARK = SAVES + ".p477park"
 STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
-            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R18F", "R18G", "R18H", "R18I", "R18B",
+            "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R18F", "R18G", "R18H", "R18I", "R18B",
             "R19")
 
 
@@ -406,8 +406,13 @@ def main():
     # bind's (`took 1`).  Premise: the countdown was on (R13B's status).
     k13e = [m.group(1) for m in (re.search(r"vote key: scan 115 down 1 took (\d)", s)
                                  for s in sec["R13B"]) if m]
-    check("R13E", bool(st13b) and st13b[0].group(2) == "1" and k13e == ["1"],
-          "counting %s, S took %s" % (st13b[0].group(2) if st13b else None, k13e))
+    # Round 25: and the countdown says why (its own message branch): the line
+    # just before S's `vote key` line.
+    ln13b = sec["R13B"]
+    ks = [i for i, s in enumerate(ln13b) if re.search(r"vote key: scan 115 down 1 took", s)]
+    said13e = bool(ks) and ks[0] > 0 and "rewind: the save-lock waits for the rewind" in ln13b[ks[0] - 1]
+    check("R13E", bool(st13b) and st13b[0].group(2) == "1" and k13e == ["1"] and said13e,
+          "counting %s, S took %s, said %s" % (st13b[0].group(2) if st13b else None, k13e, said13e))
 
     # R22A (round 22): a key reporting scancode 0 tapped in the countdown ends
     # nothing -- 0 is the countdown hold's "no key".  Premise: counting before the
@@ -439,6 +444,9 @@ def main():
           "4 pressed %d time(s), closed before the repeat %s, saves %s" % (
               len(fk22), st22a[2].group(1) == "0" if len(st22a) > 2 else None, rd22))
 
+    # Round 25: since round 24 the draft passes that release, so R22C no longer
+    # meets the condition it was written for (M55 passes it); it guards the end
+    # result, which round 22's table clear and round 24's draft rule each give.
     # R22C (round 22): `1` pressed while browsing, its release taken by a chat
     # draft; after the close the next `1` saves.  Premises: the mode was open,
     # took the first `1`, the draft took its release, and the mode then read
@@ -548,6 +556,9 @@ def main():
         "a rewind left without a resume" in t18d,
         pn18d.group(1) if pn18d else None, pn18d.group(2) if pn18d else None))
 
+    # Round 25: as R22C -- the arrow's release now reaches the rewind past the
+    # draft, so round 17's let-go (M41) no longer shows here; the scrub stopping
+    # is still graded.
     # R18J (rounds 17-18): through the whole input chain, a press the chat draft
     # took repeats into the open rewind without a go, and a scrub whose release
     # the draft swallowed stops.  Premise: the rewind opened; the draft took the
@@ -711,8 +722,41 @@ def main():
         print("CANNOT GRADE R24B: open %s, `1` took %s" % ([m.group(1) for m in st24b], k24b))
         cannot.append("R24B")
     else:
-        n24b = t24b.count("rewind: the save-lock waits for the rewind")
-        check("R24B", n24b == 1, "said %d time(s) for a press and its repeat" % n24b)
+        # Round 25: and on the press, not the repeat -- the line falls before the
+        # first press's `vote key` line (the print comes inside its event) and
+        # none between the press and the repeat.
+        ln24b = sec["R24B"]
+        said = [i for i, s in enumerate(ln24b) if "rewind: the save-lock waits for the rewind" in s]
+        keys = [i for i, s in enumerate(ln24b) if re.search(r"vote key: scan 49 down 1 took", s)]
+        check("R24B", len(said) == 1 and len(keys) == 2 and said[0] < keys[0],
+              "said %d time(s), at line %s, the press at %s and its repeat at %s" % (
+                  len(said), said[:1], keys[:1], keys[1:2]))
+
+    # R25A (round 25): `2` held into a draft its repeat then reaches is let go by
+    # its release.  Premises: held (1, 1), the draft open (its ESC taken), the
+    # repeat sent.  Verdict: the hold gone on both sides.
+    hd25a = [(m.group(1), m.group(2)) for m in (re.search(r"saveloc: locked \S+ refkey \S+ hold (\S+) holding (\S+)", s)
+                                               for s in sec["R25A"]) if m]
+    k25a = [m.group(1) for m in (re.search(r"vote key: scan (50 down 1|27 down 1) took \d", s)
+                                 for s in sec["R25A"]) if m]
+    if not (len(hd25a) == 2 and hd25a[0] == ("1", "1") and k25a.count("50 down 1") == 2
+            and "27 down 1" in k25a):
+        print("CANNOT GRADE R25A: saveloc reads %s, keys %s" % (hd25a, k25a))
+        cannot.append("R25A")
+    else:
+        check("R25A", hd25a[1] == ("0", "0"),
+              "held %s; its repeat under the draft, then its release: %s" % (hd25a[0], hd25a[1]))
+
+    # R25B (round 25): `bind enter messagemode` -- ENTER in the rewind is its go.
+    # Premise: the rewind was open and browsing.  Verdict: the go went (sent or
+    # counting), where a draft would have left it browsing.
+    st25b = status("R25B")
+    if not (st25b[:1] and st25b[0].group(1) == "1" and st25b[0].group(2) == "0" and st25b[0].group(3) == "0"):
+        print("CANNOT GRADE R25B: %s" % [m.group(0) for m in st25b])
+        cannot.append("R25B")
+    else:
+        went = len(st25b) >= 2 and (st25b[1].group(2) == "1" or st25b[1].group(3) == "1")
+        check("R25B", went, "after ENTER: %s" % (st25b[1].group(0) if len(st25b) >= 2 else None))
 
     # R23C (round 23): sl_save under the replay pin is refused and makes nothing.
     t23c = txt("R23C")

@@ -76,6 +76,9 @@ float  chat_ordn;
 float  chat_typing;
 #define CHAT_KN 8
 float  chat_kd[CHAT_KN];        // presses the draft took, still held (Patch 477 round 24)
+#define CHAT_DN 16
+float  chat_dn[CHAT_DN];        // keys down, whoever took them (round 25)
+float  chat_rep;                // this KEYDOWN is an OS repeat of a key already down
 
 // Prototype: Chat_InputEvent submits through it, and it is defined last.
 void(string cmd, string text) Chat_RunSafe;
@@ -925,6 +928,38 @@ void() Chat_TookReset =
 		chat_kd[i] = 0;
 };
 
+// Round 25: every key event, from the top of CSQC_InputEvent beside
+// Rewind_Track.  A KEYDOWN of a key already down is an OS repeat, and a key held
+// into the draft repeats into it -- recorded as the draft's, its release was
+// swallowed after all.  0 is a free slot.
+void(float evtype, float scanx) Chat_Track =
+{
+	local float i, f;
+
+	chat_rep = FALSE;
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
+		return;
+	if (!scanx)
+		return;
+	f = -1;
+	for (i = 0; i < CHAT_DN; i = i + 1)
+	{
+		if (chat_dn[i] == scanx)
+		{
+			if (evtype == IE_KEYUP)
+				chat_dn[i] = 0;
+			else
+				chat_rep = TRUE;
+			return;
+		}
+		if (!chat_dn[i])
+			f = i;
+	}
+	if (evtype == IE_KEYDOWN)
+	if (f >= 0)
+		chat_dn[f] = scanx;
+};
+
 float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 {
 	local string b;
@@ -935,6 +970,11 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 			return FALSE;
 		b = getkeybind(scanx);
 		if (b != "messagemode" && b != "messagemode2" && b != "chat_say" && b != "chat_open")
+			return FALSE;
+		// Round 25: the rewind's own keys are its own while it is up, whatever
+		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
+		if (Rewind_Holds())
+		if (Rewind_KeyIx(scanx) >= 0)
 			return FALSE;
 		chat_typing = TRUE;
 		chat_buf    = "";
@@ -954,7 +994,8 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		chat_typing = FALSE;             // abandon, do not fight the console
 		return FALSE;
 	}
-	Chat_Took(scanx, TRUE);
+	if (!chat_rep)                   // round 25: a repeat of a key held into the draft is not its press
+		Chat_Took(scanx, TRUE);
 
 	if (scanx == K_ENTER)
 	{
