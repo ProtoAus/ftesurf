@@ -100,6 +100,7 @@ float  mm_cropx, mm_cropy;      // the share of the milk image the screen shows,
 float  mm_vispage;              // VISUALS: 0 the look, 1 speed
 float  mm_drawpanel;            // TRUE while a screen draws into a panel
 float  mm_chgon, mm_chg;        // ROADMAP 1, eased: something in flight at PLAY, and its progress
+float  mm_pulseseen, mm_pulsehere;      // ROADMAP 1: the last pulse seen, and whether it began at PLAY
 
 string mm_track[MM_TRACKS];
 float  mm_ntracks, mm_trackscan, mm_autoplayed;
@@ -783,9 +784,10 @@ void(float now, float dt) MM_Camera =
 	  ROADMAP 1: a download or a join in flight charges the PLAY station
 	  (m_main.qc's ui_charge, 0..1): the view narrows, the hue walks and the
 	  trails stream harder with its progress.  Only the milk_* outputs carry it,
-	  never mm_pos/mm_hue, so MM_Go's flight start cannot capture it.  Away from
-	  PLAY it decays as e^-5t and snaps to 0 below 0.002: 1.24 s, inside the
-	  shortest flight (the lattice's 1.7 s), so a landing panel gets MM_TANFOV.
+	  never mm_pos/mm_hue, so MM_Go's flight start cannot capture it.  Leaving
+	  PLAY it decays during the flight, and at rest anywhere else it is 0 outright:
+	  the decay runs on dt clamped to 0.1 s (MM_Frame), the flight on the wall
+	  clock, and a panel at rest needs MM_TANFOV exactly.
 	*/
 	chw = 0;
 	if (ui_charge_on)
@@ -801,6 +803,10 @@ void(float now, float dt) MM_Camera =
 	mm_chgon += (chw - mm_chgon) * (1 - pow(2.7182818, -dt * chk));
 	mm_chg += (ui_charge - mm_chg) * (1 - pow(2.7182818, -dt * 2));
 	if (!chw && mm_chgon < 0.002)
+		mm_chgon = mm_chg = 0;
+	if (mm_station != MS_PLAY)
+	if (!mm_flight0)
+	if (!mm_dive0)
 		mm_chgon = mm_chg = 0;
 	chg = mm_chgon * (0.15 + 0.85 * bound(0, mm_chg, 1));
 
@@ -852,12 +858,17 @@ void(float now, float dt) MM_Camera =
 		milk_knee = 0;
 	}
 
-	// ROADMAP 1: and when it ends, a pulse at PLAY -- a bright burst on a
-	// completion, a dim, cooled, short-trailed dip on a failure.
+	// ROADMAP 1: and when it ends, a pulse -- a bright burst on a completion, a
+	// dim, cooled, short-trailed dip on a failure.  Only one that began at PLAY,
+	// and it runs its course: at most 1.4 s, inside the shortest flight away.
+	if (ui_pulse_t0 != mm_pulseseen)
+	{
+		mm_pulseseen = ui_pulse_t0;
+		mm_pulsehere = (mm_station == MS_PLAY && mm_art < 0);
+	}
 	pa = now - ui_pulse_t0;
 	if (ui_pulse != 0)
-	if (mm_station == MS_PLAY)
-	if (mm_art < 0)
+	if (mm_pulsehere)
 	if (pa >= 0)
 	{
 		if (ui_pulse > 0 && pa < 0.9)

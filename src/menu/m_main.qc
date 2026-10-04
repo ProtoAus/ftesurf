@@ -3074,6 +3074,7 @@ float  pj_until;        // gettime(0) to give up at
 // the way m_close and Lob_Poll are declared ahead of their definitions.
 float(string addr, string mapname) ui_prejoin;
 void() ui_prejoin_tick;
+float() ui_join_busy;           // ROADMAP 1, beside the status strip
 
 /*
   ui_play_online, READ THROUGH ONE FUNCTION -- build 70, and it is a bug fix.
@@ -3238,8 +3239,9 @@ void() ui_launch =
 		return;
 
 	// ROADMAP 1: one join at a time; the status strip's cancel (or ESC) ends it.
-	// Every launch door comes through here, the rows' Play buttons too.
-	if (ui_join_pending || pj_addr != "")
+	// The start button and the rows' Play come through here; a lobby cell is
+	// ui_connect, which has its own rule.
+	if (ui_join_busy())
 		return;
 
 	/*
@@ -4084,6 +4086,13 @@ void(float i) ui_connect =
 	// door onto a public lobby, and it is the door where being called
 	// "Player" matters most.  Resume 2 re-enters HERE with the same row.
 	if (ui_name_gate(2, i))
+		return;
+
+	// ROADMAP 1: a lobby picked by hand replaces a directory ask in flight, but
+	// not a connect already held for a download -- ui_prejoin holds one only,
+	// and an ask's local fallback would leave that one to connect later.
+	ui_join_cancel();
+	if (ui_join_busy())
 		return;
 
 	addr = Lob_Addr(i);
@@ -5424,8 +5433,10 @@ float() ui_dl_cancel =
 };
 
 // End a join in flight -- the ask, the lobby's switch, or a connect held for a
-// download -- with a word on the strip.  TRUE if there was one.
-float() ui_strip_cancel_join =
+// download -- with a word on the strip.  TRUE if there was one.  withdl: the
+// held join's download goes too, if the engine can stop it (the Cancel button;
+// ESC and back leave it running).
+float(float withdl) ui_strip_cancel_join =
 {
 	if (ui_stt == ST_ASK || ui_stt == ST_WAIT || ui_stt == ST_HELD)
 	{
@@ -5445,6 +5456,7 @@ float() ui_strip_cancel_join =
 
 	print(sprintf("^5online:^7 join cancelled -- not connecting to %s\n", pj_addr));
 	ui_st_result(sprintf("Join cancelled -- %s keeps downloading", pj_map), 0);
+	if (withdl)
 	if (dl_state == DL_ACTIVE)
 	if (dl_name == pj_map)
 		ui_dl_cancel();
@@ -5463,7 +5475,7 @@ float() ui_join_busy =
 // The strip's Cancel.
 void() ui_status_cancel =
 {
-	if (ui_strip_cancel_join())
+	if (ui_strip_cancel_join(TRUE))
 		return;
 	if (ui_stt == ST_DL)
 	{
@@ -5711,6 +5723,12 @@ void(string what, string arg) ui_strip_test =
 
 	if (k != ST_NONE)
 	{
+		// Over a real one, Cancel and ESC would act on what the fake hides.
+		if (ui_join_pending || pj_addr != "" || dl_state == DL_ACTIVE)
+		{
+			print("ui_strip_test: a real join or download is in flight -- not faking over it\n");
+			return;
+		}
 		ui_stt     = k;
 		ui_stt_t0  = time;
 		ui_stt_pct = -1;
@@ -5741,7 +5759,7 @@ void(string what, string arg) ui_strip_test =
 			print("ui_strip_test: not on the create screen\n");
 		else
 		{
-			k = ui_strip_cancel_join();
+			k = ui_strip_cancel_join(FALSE);
 			if (k && what == "esc")
 				print("ui_strip_test: esc ended the join; still on the create screen\n");
 			else
@@ -6516,18 +6534,23 @@ void(vector screensize) screen_create =
 					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
 					vector ps = [dlg - 4, ROW_H - 16];
 					string pid = strcat("cs_play", ftos(idx));
-					float  ph;
+					float  ph, pb;
 
+					// ROADMAP 1: dimmed and deaf while a join is in flight, as
+					// ui_launch refuses one then.
+					pb = ui_join_busy();
 					sui_action_element(pp, ps, pid, sui_noop);
 					ph = sui_is_hovered(pid);
+					if (pb)
+						ph = FALSE;
 					sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
-					sui_border_box(pp, ps, 1, COL_PLAY, 1, 0);
+					sui_border_box(pp, ps, 1, COL_PLAY, pb ? 0.3 : 1, 0);
 
 					// Centred rather than two-line: there is no second fact to
 					// say about a map you already have, and an empty lower line
 					// is what this column is being fixed for.
 					sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
-					         ph ? COL_TEXT : COL_PLAY, 1, 0);
+					         ph ? COL_TEXT : COL_PLAY, pb ? 0.3 : 1, 0);
 
 					/*
 					  THROUGH ui_launch, not around it.  Selecting first and then
@@ -6537,6 +6560,7 @@ void(vector screensize) screen_create =
 					  is exactly the refactor ui_launch's own essay warns about.
 					*/
 					if (sui_is_released(pid))
+					if (!pb)
 					{
 						ms_selected = real;
 						ui_launch();
@@ -6614,7 +6638,7 @@ void(vector screensize) screen_create =
 	// A download keeps going.
 	if (ui_button("cs_back", [size_x - 116, by], [100, 30], "back"))
 	{
-		ui_strip_cancel_join();
+		ui_strip_cancel_join(FALSE);
 		menu_screen = SCREEN_MAIN;
 	}
 
@@ -6955,7 +6979,7 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			// ROADMAP 1: on the create screen a join in flight goes first and
 			// the screen stays; the next ESC leaves.
 			if (menu_screen == SCREEN_CREATE)
-			if (ui_strip_cancel_join())
+			if (ui_strip_cancel_join(FALSE))
 				return TRUE;
 
 			if (menu_screen == SCREEN_CREATE || menu_screen == SCREEN_VISUALS
