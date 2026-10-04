@@ -3236,6 +3236,11 @@ void() ui_launch =
 	if (mapname == "")
 		return;
 
+	// ROADMAP 1: one join at a time; the status strip's cancel (or ESC) ends it.
+	// Every launch door comes through here, the rows' Play buttons too.
+	if (ui_join_pending || pj_addr != "")
+		return;
+
 	/*
 	  BUILD 22.  Belt and braces beside m_draw's screen override: this is the
 	  single launch choke point -- the start button and the ui_bootcheck driver
@@ -5444,6 +5449,14 @@ float() ui_strip_cancel_join =
 	return TRUE;
 };
 
+// A join in flight, real or ui_strip_test's: start reads "joining..." meanwhile.
+float() ui_join_busy =
+{
+	if (ui_join_pending || pj_addr != "")
+		return TRUE;
+	return (ui_stt == ST_ASK || ui_stt == ST_WAIT || ui_stt == ST_HELD);
+};
+
 // The strip's Cancel.
 void() ui_status_cancel =
 {
@@ -5653,6 +5666,7 @@ void(vector pos, float w) ui_status_strip =
   connected.  dl/held run 0-99% over 25 s unless given a percent; "start" is the
   line before the engine knows the size.
   ui_strip_test <ok|fail|nolobby> -- that outcome and its pulse.
+  ui_strip_test <esc|back> -- what that key or button does on the create screen.
   ui_strip_test screen <create|main>, ui_strip_test off.
 */
 void(string what, string arg) ui_strip_test =
@@ -5689,6 +5703,24 @@ void(string what, string arg) ui_strip_test =
 	{
 		ui_stt = 0;
 		ui_st_msguntil = 0;
+	}
+	else if (what == "esc" || what == "back")
+	{
+		// Menu_InputEvent's ESC and screen_create's back, without a key or a click.
+		if (menu_screen != SCREEN_CREATE)
+			print("ui_strip_test: not on the create screen\n");
+		else
+		{
+			k = ui_strip_cancel_join();
+			if (k && what == "esc")
+				print("ui_strip_test: esc ended the join; still on the create screen\n");
+			else
+			{
+				menu_screen = SCREEN_MAIN;
+				print(sprintf("ui_strip_test: %s%s -- back to main\n", what,
+				              k ? " ended the join" : ""));
+			}
+		}
 	}
 	else if (what == "screen")
 	{
@@ -6539,15 +6571,22 @@ void(vector screensize) screen_create =
 	}
 
 	// ---- start / status / back ----------------------------------------
-	string slbl = (sel == "") ? "pick a map" : "start";
-	float  sbw  = max(150, stringwidth(slbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
-	if (ui_button("cs_start", [16, by], [150, 30], slbl))
+	float  busy  = ui_join_busy();
+	string stlbl = busy ? "joining..." : ((sel == "") ? "pick a map" : "start");
+	float  sbw   = max(150, stringwidth(stlbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
+	if (ui_button("cs_start", [16, by], [150, 30], stlbl))
+	if (!busy)
 		ui_launch();
 
 	ui_status_strip([16 + sbw + 24, by], size_x - 116 - 24 - (16 + sbw + 24));
 
+	// ROADMAP 1: leaving ends a join -- one nobody can see must not connect later.
+	// A download keeps going.
 	if (ui_button("cs_back", [size_x - 116, by], [100, 30], "back"))
+	{
+		ui_strip_cancel_join();
 		menu_screen = SCREEN_MAIN;
+	}
 
 	sui_pop_frame();
 };
@@ -6879,6 +6918,12 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				menu_screen = ui_name_back;
 				return TRUE;
 			}
+
+			// ROADMAP 1: on the create screen a join in flight goes first and
+			// the screen stays; the next ESC leaves.
+			if (menu_screen == SCREEN_CREATE)
+			if (ui_strip_cancel_join())
+				return TRUE;
 
 			if (menu_screen == SCREEN_CREATE || menu_screen == SCREEN_VISUALS
 			    || menu_screen == SCREEN_MUSIC)
