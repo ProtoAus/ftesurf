@@ -199,6 +199,18 @@ below is the collection side and the rules that still only note.
   rate. **Blocked on a calibration corpus**, and per the tree's own rule a
   threshold from one framerate or one map is not a threshold.
 
+  **SUPERSEDED BY THE MEASUREMENT BELOW, AND WRONG IN ITS PREMISE.**  The
+  falsifier is now answered — `tools/census/assist.py` prints exactly that rate,
+  per run and pooled, with a `control` arm.  But **`fl` bit 1 is NOT ground contact
+  on a surf run**: Source sets FL_ONGROUND only on walkable ground and sliding a
+  ramp leaves it clear, which is the whole mechanic, so only 45 of 5414 local files
+  were judgeable on it.  The bit that works is 16 (`run_rampcontact`), written only
+  by our server.  The fleet corpus then inverted the coverage (54 of 64 files carry
+  ramp ticks, 27 runs judgeable, all reading 0.0000) and the remaining blocker is
+  an assist sample that can be DRIVEN, which the CS:GO DLLs in `Cheats/` cannot be.
+  Read the paragraph above as the proposal and the measurement below as what
+  happened to it.
+
   **MEASURED 2026-10-05, `tools/census/assist.py` — the statistic is built and
   the premise it was filed on is falsified.** The proposal above was to read a
   success rate per opportunity off "`fl` bit 1 gives ground contact per tick".
@@ -280,12 +292,21 @@ below is the collection side and the rules that still only note.
   than printing a green beside a statistic nobody has seen fire.
 
   Still no threshold and no surfd code.  **The blocker has moved from "there is
-  no corpus" to "there is no assist sample"**: 27 judgeable fleet runs all read
-  0.0000, so the human side of the cut is measured, and the cheat side is not —
-  no `Edgebug assist`/`Jumpbug assist`/`Perf-Hop` sample exists in the private
-  `Cheats/` corpus to run through the same statistic.  Until one does, any cut
-  is one-sided, and the tree's own rule says a threshold from one side is not a
-  threshold.
+  no corpus" to "there is no assist sample that can be DRIVEN"**: 27 judgeable
+  fleet runs all read 0.0000, so the human side of the cut is measured, and the
+  cheat side is not.  **The samples exist and cannot be run.**  The private
+  `Cheats/` corpus holds `movementoptimizer_hotguyyy69`, `movementoptimizer_yifed256`
+  (each a `shithop_[unknowncheats.me]_.dll`) and `strafeoptimizer_Tokyodidit`
+  ("Tranquility", the one the `Edgebug assist` / `Jumpbug assist` feature names
+  came from), and every one is an IN-PROCESS DLL FOR CS:GO — its own
+  `webpagetext.md` says to inject it into CS:GO with `-disable_d3d9ex`.  There is
+  no way to inject one into this client and no headless harness can drive it, so
+  the feature list is documented and the behaviour is not measurable here.  What
+  would unblock a cut is a native FTESurf/Momentum assist someone can run against
+  a lobby; a synthetic assist-shaped `.rec` (which is what `control` builds) proves
+  the statistic fires but is the author's model of a cheat rather than a cheat.
+  Until one exists, any cut is one-sided, and the tree's own rule says a threshold
+  from one side is not a threshold.
 
 - **`reccheck`'s key-mask check is self-referential.** It derives `want` from the
   `fwd`/`side` columns and compares to the direction bits of `keys`, which reads
