@@ -514,7 +514,7 @@ def similarity_step(conn, limit=50):
     if mod is None:
         return 0, 0, ""
     try:
-        return mod.similarity_step(conn, surfd, limit=limit)
+        return mod.similarity_step(conn, surfd, limit=limit, tools_dir=TOOLS)
     except Exception as exc:
         print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
         return 0, 0, ""

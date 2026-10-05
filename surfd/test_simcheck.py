@@ -178,27 +178,58 @@ mod, why = simcheck._recsim()
 truthy("recsim.py resolved from SURFD_TOOLS", mod is not None)
 truthy("...and it has compare_paths", mod is not None and hasattr(mod, "compare_paths"))
 
-# THE HOST DEFAULT THAT DOES NOT WORK, tested rather than reasoned about.
-# sweep.TOOLS defaults to SURFD_GAME + "/tools", but SURFD_GAME is the game ROOT
-# (on the Pi, /srv/nvme/ftesurf-server/game), so that default resolves ONE LEVEL
-# ABOVE the directory the checkers live in (game/tools).  Measured on the live host
-# 2026-10-05: this module's first cut searched .../ftesurf-server/tools/census and
-# found nothing while sweep.TOOLS read .../game/tools.  So SURFD_GAME is consulted
-# on its own, and this arm pins that with SURFD_TOOLS unset.
+# THE HOST DEFAULT THAT DOES NOT WORK, tested rather than reasoned about -- and
+# tested TWICE, because the first arm passed for the wrong reason.
+#
+# `SURFD_GAME + "/tools"` LOOKS like the right fallback and is not: on the live Pi
+# SURFD_GAME is unset, and the obvious default spelling resolves to
+# `/srv/nvme/tools`, which is A STEAMCMD DIRECTORY that exists and holds nothing to
+# do with this tree.  A search built on that guess reported "no recsim.py found
+# (tried: /srv/nvme/tools/census/recsim.py)" while `sweep.TOOLS` correctly read
+# `/srv/nvme/ftesurf-server/game/tools`.  A directory that exists but holds the
+# wrong thing is worse than one that does not exist, because it reads as deployed.
+#
+# So the module takes the caller's resolved directory instead of guessing, and this
+# arm pins both halves: that what the caller passes is used, and that a guess at
+# SURFD_GAME is not.
 saved_tools = os.environ.pop("SURFD_TOOLS", None)
 saved_game = os.environ.get("SURFD_GAME")
-os.environ["SURFD_GAME"] = REPO          # so <game>/tools/census/recsim.py is real
+# (a) the caller's own directory is used, which is how sweep reaches it
+mod_c, why_c = simcheck._recsim(tools_dir=os.path.join(REPO, "tools"))
+truthy("the caller's tools_dir resolves it (sweep's path)", mod_c is not None)
+# (b) SURFD_GAME set to something real also works, via SURFD_TOOLS
+os.environ["SURFD_TOOLS"] = os.path.join(REPO, "tools")
 mod_g, why_g = simcheck._recsim()
-truthy("SURFD_GAME alone finds it (sweep's default would not)", mod_g is not None)
-# NOT TESTED HERE, and the reason is worth keeping: with neither variable set the
-# third candidate (a tools/census beside this module's parent) still resolves, and
-# on a workstation that is CORRECT -- this suite lives in the repo.  Arming "neither
-# set" would need the module staged outside the repo, which is exactly what the
-# with_census=False arm below does properly, so it is tested there and not twice.
+truthy("SURFD_TOOLS alone resolves it", mod_g is not None)
+# (c) THE TRAP THAT ACTUALLY BIT, and it is a stale module global rather than a
+#     bad default.  _SWEEP_TOOLS is set by the first caller that passes one, so a
+#     later caller that passes NOTHING would inherit the earlier directory and
+#     resolve against a host it is not running on.  Pinning that is worth more than
+#     pinning a guess about SURFD_GAME, because the guess was already removed.
+os.environ.pop("SURFD_TOOLS", None)
+simcheck._recsim(tools_dir=os.path.join(home, "emptytools"))   # set the global
+simcheck._SWEEP_TOOLS = os.path.join(home, "staletools")       # pretend it stuck
+mod_c2, why_c2 = simcheck._recsim(
+    tools_dir=os.path.join(home, "otherempty"))                # a DIFFERENT caller
+check("a later caller's tools_dir replaces the stored one",
+      simcheck._SWEEP_TOOLS, os.path.join(home, "otherempty"))
+truthy("...and the stale directory is gone from it",
+       "staletools" not in simcheck._SWEEP_TOOLS)
+truthy("...and the resolution did not come from the stale path",
+       mod_c2 is None or "staletools" not in (why_c2 or ""))
+simcheck._SWEEP_TOOLS = None
+# NOT ARMED HERE, and the reason is worth keeping: with SURFD_TOOLS unset and no
+# caller directory, the module's OWN neighbourhood is searched -- a tools/census
+# beside its parent -- which on a workstation is the repo and resolves correctly.
+# Arming "resolves to None" would need the module staged outside the repo, which is
+# exactly what the with_census=False arm below does properly.  The first cut of this
+# arm asserted it here and failed for that reason, twice.
 if saved_tools:
     os.environ["SURFD_TOOLS"] = saved_tools
 if saved_game:
     os.environ["SURFD_GAME"] = saved_game
+else:
+    os.environ.pop("SURFD_GAME", None)
 
 surfd2, sweep2, simcheck2, conn2, runs2, home2 = fresh(with_census=False)
 mod2, why2 = simcheck2._recsim()

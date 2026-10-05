@@ -60,6 +60,10 @@ import time
 #: census tool and lives in tools/census/, not tools/, so the path is explicit.
 CENSUS_SUBDIR = os.path.join("census", "recsim.py")
 
+#: The tools directory the CALLER resolved, set by `sweep.similarity_step` passing
+#: its own TOOLS.  Not a default and not a guess: see `_recsim`.
+_SWEEP_TOOLS = None
+
 #: What a caller may set instead, for a test that stages its own copy.
 _ENV_TOOLS = "SURFD_TOOLS"
 
@@ -73,21 +77,25 @@ _ENV_TOOLS = "SURFD_TOOLS"
 NOTABLE = 0.95
 
 
-def _recsim():
-    """The recsim module, or (None, why).
+def _recsim(tools_dir=None):
+    """The recsim module, or (None, why).  `tools_dir`, when given, is the caller's
+    own resolved tools directory -- sweep passes its TOOLS -- so this module never
+    has to guess at a default it does not own.
 
     Importing by path rather than by package name because tools/census is not a
     package and is not on sys.path on the host.
 
-    THREE CANDIDATES, AND THE MIDDLE ONE IS WHY THERE ARE THREE.  `SURFD_TOOLS` is
-    what sweep.py searches, and its default is `SURFD_GAME + "/tools"` -- but
-    SURFD_GAME is the game ROOT (`/srv/nvme/ftesurf-server/game`), so that default
-    resolves to `/srv/nvme/ftesurf-server/tools`, ONE LEVEL ABOVE the directory the
-    checkers actually live in (`game/tools`, which is where reccheck.py and
-    rcptcheck.py were deployed on 2026-10-05).  Measured on the live host: this
-    function's first cut searched `/srv/nvme/ftesurf-server/tools/census/recsim.py`
-    and found nothing, while `sweep.TOOLS` read `.../game/tools`.  So SURFD_TOOLS as
-    set, then SURFD_GAME's own tools/, then the repo layout for a workstation run.
+    TWO CANDIDATES, AND NEITHER OF THEM IS `SURFD_GAME + "/tools"`.
+
+    That default LOOKS right and is wrong, and getting it wrong is silent.  On this
+    host SURFD_GAME is not set, so `os.environ.get("SURFD_GAME", default)` evaluates
+    the default -- and the obvious spelling, `/srv/nvme` + `/tools`, names
+    `/srv/nvme/tools`, which is A STEAMCMD DIRECTORY that exists and has nothing to
+    do with this tree.  Measured on the live host: `sweep.TOOLS` correctly reads
+    `/srv/nvme/ftesurf-server/game/tools` while a search built from that guess
+    reported `no recsim.py found (tried: /srv/nvme/tools/census/recsim.py)`.
+    A directory that exists but holds the wrong thing is worse than one that does
+    not exist, because it reads as "deployed" rather than "missing".
 
     SURFD_SIMCHECK_PY is deliberately NOT consulted here.  The first cut of this
     module put it first in the search, and the test suite then used it to point at
@@ -98,13 +106,13 @@ def _recsim():
     wants a host without the module points SURFD_TOOLS somewhere empty and loads
     the module from outside the repo, which is what test_simcheck.py does.
     """
+    global _SWEEP_TOOLS
+    if tools_dir:
+        _SWEEP_TOOLS = tools_dir
     cands = []
-    game = os.environ.get("SURFD_GAME")
-    tools = os.environ.get("SURFD_TOOLS")
+    tools = os.environ.get("SURFD_TOOLS") or _SWEEP_TOOLS
     if tools:
         cands.append(os.path.join(tools, CENSUS_SUBDIR))
-    if game:
-        cands.append(os.path.join(game, "tools", CENSUS_SUBDIR))
     here = os.path.dirname(os.path.abspath(__file__))
     cands.append(os.path.join(os.path.dirname(here), "tools", "census", "recsim.py"))
     for path in cands:
@@ -184,7 +192,7 @@ def _row_path(surfd, row):
     return path, ""
 
 
-def compare_run(surfd, conn, row, now=None, limit_peers=200):
+def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -199,7 +207,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200):
     of one of ours, and comparing across tiers would fill the table with pairs
     that mean nothing.
     """
-    rs, why = _recsim()
+    rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, 0
     t0 = int(time.time()) if now is None else now
@@ -292,7 +300,20 @@ def similarity_step(conn, surfd, limit=50, now=None):
     measurement that cannot run must not take the checks that DO gate badges down
     with it.
     """
-    rs, why = _recsim()
+def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
+    """The sweep's entry point.  -> (pairs stored, notable, note).
+
+    `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
+    Passing it rather than re-deriving it here is the point: a default is policy,
+    and this module should not hold a second copy of the host layout.  The first cut
+    did, guessed it wrong, and the guess named a steamcmd directory that exists.
+
+    A fault here is printed and never stops the verification, exactly as the
+    receipt and evidence steps do: this is a store-only measurement, and a
+    measurement that cannot run must not take the checks that DO gate badges down
+    with it.
+    """
+    rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, "similarity skipped: %s" % why
     try:
@@ -303,7 +324,7 @@ def similarity_step(conn, surfd, limit=50, now=None):
     stored = skipped = notable = 0
     for row in rows:
         try:
-            s, k, n = compare_run(surfd, conn, row, now=now)
+            s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir)
         except Exception as exc:
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
