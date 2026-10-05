@@ -2005,6 +2005,36 @@ script rather than passing it as an argument, where `ps` would show it.
   `data/surfd.db.bak-2007afc-20261005-045845`. Verified live afterwards: run 749
   serves `momdemo e9a68559…` and no integrity key.
 
+  `490f73d` then `e11084c` to /srv/nvme/surfd at 2026-10-05 03:48 and 04:03 --
+  schema 10 (`sims`, the store-only cross-run similarity sample), eight suites
+  green in the stage including the new `test_simcheck` (40 checks), all 53 files
+  hash-matched the commit, master 2479950 unchanged, `surfd ready` 04:03:22,
+  `/health {"ok":true,"lobbies":12}`, live `user_version` 10 with 0 `sims` rows.
+  Backups `*.pre490f73d-20261005-144643` and `*.pre-e11084c-…`, plus
+  `data/surfd.db.bak-490f73d-20261005-144643`.
+
+  **THE SIMILARITY STEP STORES NOTHING ON THE PI YET, AND THAT IS EXPECTED RATHER
+  THAN BROKEN.** `tools/census/` is not deployed beside the game, so `_recsim()`
+  finds no comparison and the step degrades to storing nothing and printing its
+  reason once -- the behaviour the receipt step's lazy imports exist for.  Verified
+  live: `simcheck._recsim(sweep.TOOLS)` reports `no recsim.py found (tried:
+  /srv/nvme/ftesurf-server/game/tools/census/recsim.py, /srv/nvme/tools/
+  census/recsim.py)`.  The first path is the RIGHT one and is where reccheck.py and
+  rcptcheck.py live; putting `recsim.py` there activates the step with no code
+  change and no reload.
+  **AND NOTE THE SECOND PATH IT TRIED, BECAUSE IT IS A TRAP.** `/srv/nvme/tools`
+  EXISTS and is a steamcmd directory (linux32, linux64, steamcmd.sh) with nothing
+  to do with this tree.  A search that guessed `SURFD_GAME + "/tools"` found it and
+  read as "deployed" rather than "missing", which is worse than a path that does
+  not exist.  That guess was removed in `e11084c`: the module takes the caller's
+  resolved directory instead of holding its own copy of the host layout, because a
+  default is policy and two spellings of one policy drift.
+  The measurement this feature was for was made on a COPY of the live database and
+  reproduced `recsim.py`'s census exactly through a different code path: 24 pending
+  runs, 22 pairs, 20 compared, 2 unjudgeable, 0 notable, same-identity max 0.5866
+  (n=12) against cross-identity max 0.2146 (n=8).  Two independent derivations
+  agreeing is the strongest evidence it has.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
