@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   b2b1215996b6e31420b0520cf3576e208eef47ae
+commit   5c53c85d52bbd060f738817f40e4d19ec116ed50
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,31 @@ commit   b2b1215996b6e31420b0520cf3576e208eef47ae
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    487
+patch    488
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-04
+
+# PATCH 488: a server may no longer name the DLL the client's renderer loads.  The
+# subrenderer token that `setrenderer "gl <name>"` supplies is a DLL NAME --
+# GLInitialise hands it to Sys_LoadLibrary and the Vulkan path hands it straight to
+# LoadLibrary -- and R_BuildRenderstate stored an explicit token with NO filter while
+# the path filter beside it ("that would be too exploitable") ran only on the
+# gl_driver fallback branch.  `setrenderer` is registered with no restriction level,
+# so a remote server's stufftext reached it and got native code running inside the
+# client process: driven with a canary DLL whose DllMain wrote a marker line and then
+# declined the load.  Now refused whole from an insecure caller -- WHOLE, not screened
+# for slashes, because a bare name is also a DLL name and LoadLibrary resolves it
+# through the standard search order, which includes the client's own cwd.  The
+# renderer NAME is untouched, so a server may still ask for gl/vk/sw, and a local
+# caller keeps everything (measured: the local token still reached the loader on both
+# builds).  Driven subject/control, 5 predictions, all met on both.  CLIENT-ONLY, no
+# lobby deploy implied.  Arm is private (poc/p488/).  NOT gated: the archived
+# `vid_renderer` boot route, which is a local actor's own setting and whose only
+# server-side link was item 8, closed by Patch 483 -- see BACKLOG.
 
 # PATCH 487: a teamplay trigger alias now runs at the ALIAS's own execlevel, which
 # is what makes Patch 481 a boundary again.  TP_ExecTrigger looked the alias up with
@@ -1732,6 +1750,17 @@ date     2026-10-04
 #        files were renumbered 485 -> 486 before anything shipped.  Two
 #        collisions in two patches, both found by reading ENGINE_PATCHES.md's
 #        headings BEFORE claiming.
+#   488  engine/client/renderer.c.  A server could name the DLL the client's
+#        renderer loads: the explicit subrenderer token was stored unfiltered
+#        while the path filter beside it ran only on the gl_driver fallback, and
+#        that token goes to Sys_LoadLibrary (GL) or LoadLibrary (Vulkan).
+#        `setrenderer` had no restriction level, so stufftext reached it -- a
+#        canary DLL's DllMain ran in the client's pid.  Now refused whole from an
+#        insecure caller; a BARE name is refused too, because LoadLibrary
+#        resolves it through the search order including the client's cwd, so a
+#        slash filter would have been the incomplete fix.  CLIENT-ONLY.
+#        Arm: C:/FTESurf-private/poc/p488/ (private -- a working recipe for
+#        native code execution that every shipped engine still has).
 #   487  engine/client/zqtp.c, engine/common/cmd.c + cmd.h.  A trigger alias's
 #        body was executed at RESTRICT_LOCAL with the alias's own `execlevel`
 #        never consulted, so a server-planted `alias f_newmap "<anything>"` ran

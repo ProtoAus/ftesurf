@@ -1323,11 +1323,12 @@ is that an arm ships publicly with its fix, not before it. Copy them in from
 `poc/p482/cfg/`, run, delete.
 
 FIXED AND DRIVEN since that paragraph was written: items **4, 7, 8** (Patch 483),
-**5, 6, 9** (Patch 485) and **1** (Patch 487, `poc/p487/`). Item 1 was the one that
-defeated all the others -- a server-planted `f_newmap` alias ran its body at
-`RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate read 29 for it. STILL OPEN: item
-**2** (a server can choose the renderer DLL), item **3** (`allskins` strcpy) and item
-**10** (`fs_game`/`fs_restart` from the console, unarmed).
+**5, 6, 9** (Patch 485), **1** (Patch 487, `poc/p487/`) and **2** (Patch 488,
+`poc/p488/`). Item 1 was the one that defeated all the others -- a server-planted
+`f_newmap` alias ran its body at `RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate
+read 29 for it -- and item 2 was the last route to arbitrary native code execution,
+a server naming the DLL the renderer loads. STILL OPEN: item **3** (`allskins`
+strcpy) and item **10** (`fs_game`/`fs_restart` from the console, unarmed).
 
 - **`TP_ExecTrigger`'s multi-command branch is fixed but never DRIVEN, and the reason
   is a server-side filter that a real attacker does not have to obey.** Patch 487 sets
@@ -1349,21 +1350,30 @@ defeated all the others -- a server-planted `f_newmap` alias ran its body at
   draining during the client's own quit) and the client's `quit` re-fires `f_newmap`
   twice more, so neither position nor count is a verdict -- only presence/absence of a
   string one cause alone can produce. Patch 487 review.
-- **`R_SetRenderer_f` lets a caller name the DLL the renderer loads, unfiltered.**
-  `client/renderer.c` `R_SetRenderer_f` → `R_BuildRenderstate` (an explicit
-  subrenderer token is stored with no path filter — the filter beside it runs only
-  on the `gl_driver` fallback branch) → `GLInitialise`'s `Sys_LoadLibrary`
-  (`gl/gl_vidnt.c`), which tries system32 only after that load fails. Measured with
-  a canary DLL that appends one line and then declines the load: the line was
-  written, so native code named by the remote host ran in the client process, and
-  the client still came up. The same value at boot (it is `CVAR_ARCHIVE`, and
-  `ftesurf.cfg` carries a `vid_renderer` line) also loads it, before any map.
-  Fix: refuse insecure callers in `R_SetRenderer_f`, and apply the existing path
-  filter to an explicit subrenderer token as well. The legitimate use — a user
-  choosing their own mini driver at their own console — must keep working.
-  Falsifier: the arm's negative control (a path that does not exist) must stop
-  printing `Loading renderer dll "<that path>"`, and a local `setrenderer gl` must
-  still restart the video.
+- **A server-named renderer DLL is refused now, but the ARCHIVED route is not gated
+  and the reason is a measurement, not an oversight.** Patch 488 refuses an explicit
+  subrenderer token from an insecure caller, which closes
+  `stuffcmd * setrenderer "gl <path>"` -- the route a canary DLL proved, its `DllMain`
+  running in the client's pid. What it does NOT gate is `vid_renderer` itself: the
+  cvar is `CVAR_ARCHIVE`, `ftesurf.cfg` really carries a `vid_renderer` line, and
+  `+set vid_renderer "gl <path>"` loads the DLL at BOOT, before any map. That is a
+  LOCAL actor's own setting at `RESTRICT_LOCAL`, so gating it would take a user's
+  renderer choice away from them, and the only way a SERVER could plant that value was
+  `saveconfig` writing `cfg/` -- which Patch 483 closed. So the chain is broken at its
+  first link and the remaining link was never demonstrated end to end.
+  `client/renderer.c` `R_BuildRenderstate`; `common/cvar.c` `Cvar_LockFromServer`
+  (`CVAR_SERVEROVERRIDE`). Two falsifiers, either of which reopens this:
+  (a) drive `poc/p482/cfg/p482e.cfg` (item 8's arm) against a current build and show
+  that a server can still get a `vid_renderer` line into `cfg/` or `data/cfg/`;
+  (b) show a stuffed `set vid_renderer "gl <path>"` surviving to a later
+  `vid_restart` -- Patch 482 measured the opposite (`GLInitialise` printed `Reusing
+  renderer dll`, the canary did not run, the cvar read "" afterwards), which is the
+  only reason the obvious extra gate is not in the patch. THAT GATE WOULD BE
+  `vid_renderer.flags & CVAR_SERVEROVERRIDE`, and it is deliberately absent: it would
+  refuse a local user's explicit `setrenderer gl <path>` for as long as a server held
+  that cvar, i.e. a local false positive defending a route measured dead. If (b) ever
+  fires, add it at the `vid_restart` caller rather than in `R_BuildRenderstate`, so a
+  token the user typed themselves is never refused. Patch 488 review.
 - **`Skin_AllSkins_f` copies a caller-supplied string into `char allskins[128]`
   with `strcpy`.** `client/skin.c`. Measured: a 300-character argument is accepted
   with no refusal and no complaint, and its first 63 characters reach the skin

@@ -330,6 +330,18 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   own done marker. And `stuffcmd` REFUSES A `;` ("You're not allowed to stuffcmd
   that", `sv_ccmds.c`), so a server admin cannot stuff a multi-command alias body;
   the filter is in the console command, not in the wire path.
+- **A COMMAND'S LOCAL FORM AND ITS STUFFED FORM CAN PARSE DIFFERENTLY, and the
+  difference is silent** (measured driving Patch 488's arm). `setrenderer gl <path>`
+  UNQUOTED hands the handler `argv(1) == "gl"` ALONE -- the path is `argv(2)` and is
+  never read -- so no subrenderer token is parsed, nothing loads, nothing complains
+  and the log holds no evidence either way. `stuffcmd * setrenderer "gl <path>"`
+  delivers the whole quoted string as ONE argument, which the handler's own
+  `COM_Parse` then splits into name and token, so THAT form exercises the code path.
+  A regression control written in the local unquoted form therefore measures a
+  different path from the subject's: it would have read as "the fix broke local
+  renderer selection" on the subject while passing vacuously on the control. When an
+  arm compares a local invocation with a stuffed one, quote both identically and
+  check the control produced its own evidence line before believing either verdict.
 - `alias <name>` WITH NO VALUE DELETES THE ALIAS. `Cmd_Alias_f`'s argc==2 path
   builds an empty value and reaches `if (!*cmd && !dpcompat_console.ival)` —
   "someone wants to wipe it. let them" — and unlinks it. So it is NOT a query, and
@@ -614,18 +626,23 @@ bannered as superseded.)
 **A SECOND PRIVATE DOCUMENT SITS BESIDE THE PLAN: `ENGINE_SECURITY.md`**, the
 audit of what a server can make a CLIENT do — the engine's stufftext surface,
 which is the other half of the anti-cheat argument (a client that can be made to
-run things cannot be trusted to report honestly). Nine of its items are now
+run things cannot be trusted to report honestly). Ten of its items are now
 DRIVEN and FIXED (481's `fs_*` set, then items 4/7/8 by Patch 483, 5/6/9 by 485,
-and item 1 by 487); items **2** (a server can choose the renderer DLL) and **3**
-(`allskins` strcpy) are DRIVEN AND STILL OPEN, and **10** (`fs_game`/`fs_restart`
-from the console) is open and unarmed. THE HEADLINE ITEM 1 WAS THE ONE THAT
-DEFEATED ALL THE OTHERS: one stuffed `alias f_newmap "<anything>"` ran its body at
-`RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate read 29 for it and 481 was a
-delivery-path fix rather than a boundary. Patch 487 closed it by running a trigger
-alias at the alias's OWN execlevel. What is safe to say here is in BACKLOG.md's
+item 1 by 487 and item 2 by 488); item **3** (`allskins` strcpy) is DRIVEN AND
+STILL OPEN, and **10** (`fs_game`/`fs_restart` from the console) is open and
+unarmed. THE TWO HEADLINE ITEMS WERE THE ONES THAT DEFEATED ALL THE OTHERS: one
+stuffed `alias f_newmap "<anything>"` ran its body at `RESTRICT_LOCAL`, so every
+`Cmd_IsInsecure()` gate read 29 for it and 481 was a delivery-path fix rather than
+a boundary (Patch 487 closed it by running a trigger alias at the alias's OWN
+execlevel); and a stuffed `setrenderer "gl <path>"` named the DLL the renderer
+loads, which is native code in the client process -- driven with a canary whose
+DllMain wrote a marker line (Patch 488 closed it by refusing an explicit
+subrenderer token from an insecure caller, WHOLE rather than screened for slashes,
+because a bare name also reaches LoadLibrary through the search order). What is
+safe to say here is in BACKLOG.md's
 "Engine client-security audit" section — code site, impact class, falsifier, no
-recipe. The arms are in `poc/p482/cfg/`, `poc/p483/`, `poc/p485/` and `poc/p487/`
-there and stay there: they are working
+recipe. The arms are in `poc/p482/cfg/`, `poc/p483/`, `poc/p485/`, `poc/p487/`
+and `poc/p488/` there and stay there: they are working
 exploits for holes that are still open, and the convention is that an arm ships
 publicly WITH its fix, not before it.
 
