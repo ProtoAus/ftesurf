@@ -45,6 +45,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **The leg-0 cap count runs inside the write transaction** on a post with a
   leaf: 0.37 s on the Pi, every first finish, almost all of it walking
   imported rows. An index on `(leg, tier)` or a count kept beside the table.
+- **momboards.link_demos links a SLOWER held recording to a faster row** (review
+  of momgrab, 5 Oct): it takes the fastest recording not faster than the row,
+  with no upper bound, so a superseded personal best's demo becomes the watch
+  link of the player's newer time. momgrab links by exact time (`link_exact`)
+  and queues only each player's best; momwatch's link pass still does this.
+  Fix: an upper bound of LINK_SLACK_MS, or leave the row unlinked.
 - **The site's two in-game pictures are crops of test captures** (debug text
   cropped out). A clean screenshot session on Lex's PC would do better; not
   taken on 5 Oct because the other sessions' arms refuse to run beside a second
