@@ -20,7 +20,9 @@ if ($LASTEXITCODE) { throw "unknown engine commit $Commit" }
 if (-not (git -C $FteRoot branch -r --contains $full)) { Write-Warning "$full is not on any pushed branch" }
 
 # --exec: without it wsl.exe hands the joined line to a shell, which expands $vars on the way.
-$wslArgs = @('-d', $Distro, '-u', 'root', '--cd', '/mnt/c/FTESurf', '--exec', '/usr/bin/env', "FTESURF_LINUX_OUT=/mnt/c/FTESurf/dist/$OutName", '/bin/bash', 'tools/linux/build.sh', $full)
+# This checkout, not C:\FTESurf: a worktree's build.sh and dist\ are its own.
+$wslRoot = '/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
+$wslArgs = @('-d', $Distro, '-u', 'root', '--cd', $wslRoot, '--exec', '/usr/bin/env', "FTESURF_LINUX_OUT=$wslRoot/dist/$OutName", '/bin/bash', 'tools/linux/build.sh', $full)
 if ($ExpectSonames) { $wslArgs += '--expect-sonames' }
 & wsl.exe @wslArgs
 $rc = $LASTEXITCODE
