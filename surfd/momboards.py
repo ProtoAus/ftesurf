@@ -13,10 +13,10 @@ draws as "no watch".  Where the two describe the SAME run -- same map, track,
 leg and SteamID -- `--link` joins them, and the row becomes watchable without
 being fetched twice.
 
-NEITHER SIDE CLOBBERS THE OTHER.  The upsert here never writes `replay_id`, so
-a row that momindex gave a recording keeps it even when this runs afterwards
-with a marginally different time for the same run.  Order does not matter, which
-is the property that lets a cron run both.
+NEITHER SIDE CLOBBERS THE OTHER.  The upsert here writes `replay_id` only to
+clear it, so a row that momindex gave a recording keeps it even when this runs
+afterwards with a marginally different time (within LINK_SLACK_MS) for the same
+run.  Order does not matter, which is the property that lets a cron run both.
 
 `ticks` IS DERIVED AND `millis` IS THE FACT.  The API reports seconds; the
 schema wants a tick count, so this divides by the gamemode's interval (surf
@@ -120,8 +120,10 @@ LINK_SLACK_MS = 20       # a linked recording's time must be within this much of
 def flush(conn, rows):
     """Upsert one chunk of leaderboard rows.  Returns how many landed.
 
-    replay_id is written on INSERT only.  The update list deliberately omits it,
-    so a row momindex gave a recording keeps it.
+    replay_id is written on INSERT only, so a row momindex gave a recording keeps
+    it -- unless the new time leaves that recording more than LINK_SLACK_MS off,
+    when it is cleared for link_demos to relink (a 90 s demo once stayed the link
+    of an 85 s row, and link_demos only fills replay_id 0).
     """
     if not rows:
         return 0
@@ -134,8 +136,12 @@ def flush(conn, rows):
                 " VALUES (?,?,?,?,?,?,?,?,?,?,0,'momapi','',?,0)"
                 " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
                 "   ticks=excluded.ticks, millis=excluded.millis,"
-                "   name=excluded.name, submitted=excluded.submitted"
-                " WHERE excluded.millis < runs.millis",
+                "   name=excluded.name, submitted=excluded.submitted,"
+                "   replay_id=CASE WHEN EXISTS (SELECT 1 FROM replays p"
+                "       WHERE p.id = runs.replay_id"
+                "       AND abs(p.millis - excluded.millis) > %d)"
+                "     THEN 0 ELSE runs.replay_id END"
+                " WHERE excluded.millis < runs.millis" % LINK_SLACK_MS,
                 (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, sid, alias,
                  ticks, rate, ms, when))
             wrote += cur.rowcount
@@ -387,7 +393,12 @@ def link_demos(conn):
     where a /api/run would have been refused (BACKLOG).  The same set comes from
     the ~5k replays probed by runs' own key, without the write lock, and the
     write is only the rows found -- usually none.
+
+    unlink_stale runs first, so a row whose link it drops can relink here.
     """
+    dropped = unlink_stale(conn)
+    if dropped:
+        print("stale demo links dropped %d row(s)" % dropped)
     reps = {}
     for rid, mp, tr, lg, pl, ms in conn.execute(
             "SELECT id, map, track, leg, player, millis FROM replays WHERE kind='momentum'"):
@@ -423,6 +434,33 @@ def link_demos(conn):
             "             AND map=runs.map AND track=runs.track AND leg=runs.leg"
             "             AND player=runs.player AND abs(millis - runs.millis) <= %d)"
             % LINK_SLACK_MS, hits)
+    return conn.total_changes - t0
+
+
+def unlink_stale(conn):
+    """Clear the link of a momentum row whose recording's time is more than
+    LINK_SLACK_MS from the row's -- left by flush before it learnt to clear one,
+    or by a replay re-filed since.  -> rows cleared.
+
+    Read first, write only the hits, like link_demos: CROSS JOIN pins replays as
+    the outer loop (one runs_replay probe each), never a scan of the 2.9M runs.
+    """
+    hits = conn.execute(
+        "SELECT r.map, r.track, r.leg, r.style, r.player, r.replay_id"
+        " FROM replays p CROSS JOIN runs r ON r.replay_id = p.id"
+        " WHERE r.tier = ? AND abs(p.millis - r.millis) > ?",
+        (S.TIER_MOMENTUM, LINK_SLACK_MS)).fetchall()
+    if not hits:
+        return 0
+    t0 = conn.total_changes
+    with conn:
+        conn.executemany(
+            "UPDATE runs SET replay_id=0 WHERE map=? AND track=? AND leg=? AND tier=?"
+            " AND style=? AND player=? AND replay_id=?"
+            " AND EXISTS (SELECT 1 FROM replays p WHERE p.id = runs.replay_id"
+            "             AND abs(p.millis - runs.millis) > %d)" % LINK_SLACK_MS,
+            [(mp, tr, lg, S.TIER_MOMENTUM, st, pl, rid)
+             for mp, tr, lg, st, pl, rid in hits])
     return conn.total_changes - t0
 
 

@@ -1015,6 +1015,7 @@ def case_row_check():
 
 def case_main_evidence():
     surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS     # recsim found: no 'similarity skipped' on the line
     conn = surfd.connect()
     conn.execute(
         "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
@@ -1060,6 +1061,7 @@ def case_disk_note():
     # Patch 423.  The note goes BEFORE the sweep line, which stays last: other
     # cases (and anyone tailing the log) read the last line.
     surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS     # recsim found: no 'similarity skipped' on the line
 
     def cron():
         out = io.StringIO()

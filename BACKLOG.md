@@ -332,9 +332,10 @@ below is the collection side and the rules that still only note.
   one install: the fleet holds four identities and 53 of its 64 files are one of
   them.  `recsim.who_of` matches the trailing hex without requiring a dash, which
   costs an ambiguity (a netname ending in 8 hex characters reads as an identity)
-  and buys consistency — the dash-anchored reading cuts different filenames at
-  different places.  The ambiguity is in the safe direction: it can merge two
-  identities and so UNDER-report cross-identity pairs, never invent them.
+  and reads the bare-id segment FS_PlayerSeg writes for a name that slugs to "",
+  which a dash-anchored pattern reads as no identity.  The ambiguity is in the
+  safe direction: it can merge two identities and so UNDER-report cross-identity
+  pairs, never invent them.
 
   Also measured and worth keeping: the alignment offset is searched over the
   DIFFERENCE OF THE FIRST TICKS ±4 rows, and on all 25 synthetic positives the
