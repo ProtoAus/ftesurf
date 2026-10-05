@@ -2068,6 +2068,19 @@ script rather than passing it as an argument, where `ps` would show it.
   05:59:13 (0600, no temp left).  Backups `*.prebaadc73-20261005-165654`,
   `data/surfd.db.bak-baadc73-20261005-165654`.
 
+  `8cd56ee` to /srv/nvme/surfd at 2026-10-05 06:34 UTC -- three submit-path
+  fixes out of the b818e8a review: adopt only a `kind='run'` replay's tier (a
+  trusted post naming a momindex leaf can no longer file a board row under
+  `momentum` nor unlink the imported row's demo), the hidden `tier@runid` slot
+  now checks the stage cap (a rejected run cannot park stages past it), and the
+  leg-0 cap scan runs BEFORE the write lock instead of holding it 0.37 s on every
+  first finish (the scan is still 0.37 s -- BACKLOG keeps the index/count latency
+  follow-up, with the teeth each has).  Nine suites green in the stage including
+  the new falsifiers test_replays s15 and test_board s23/s24, all 54 files
+  hash-matched the commit, master 2479950 SIGHUP'd, `surfd ready` 06:34:18,
+  `/health {"ok":true,"lobbies":12}`, 2 processes.  Backups
+  `*.pre8cd56ee-20261005-173227` and `data/surfd.db.bak-8cd56ee-20261005-173227`.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
