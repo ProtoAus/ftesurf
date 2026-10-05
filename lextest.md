@@ -13,34 +13,39 @@ to be wrong.
 
 ## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
 
-### surf_voyager falls short -- found, not fixed yet (5 Oct, evening)
+### surf_voyager flies to the end -- 0.1.23 and the lobbies (5 Oct, night)
 
-You asked why the hands-off flight on surf_voyager falls short here when it
-works in Momentum. I compared our flight with your own Momentum run of it (66.27 s,
-22 June, which the Pi already had), tick by tick.
+The hands-off flight now finishes in **1:06.270, the same 4418 ticks as your own
+Momentum run of it.** Every tick of the first 11.6 seconds matches your recording
+to the hundredth of a unit, the first ramp seam included; after a V trough at
+11.6 s it drifts by a few units and still lands on your tick.
 
-- **Not the speed cap, not the push, not the extra bevel planes.** The map's
-  10000 cap is applied, the push leaves you in the same corner as in Momentum (to
-  a hundredth of a unit), and the bevels made no difference either way.
-- **The cause is how our engine decides you are touching a brush** when you are
-  within 1/32 of a unit of it. Source decides that slightly differently. A curved
-  ramp is many brushes, and at every seam our clip comes out a little different
-  (0.04 to 5 u/s). Voyager magnifies it: about 150 units off by the curved wall at
-  10 s, where you then lose 25% of your speed and drop.
-- **Proof:** in a test build with Source's two rules, our flight matches yours
-  tick for tick (to 0.006 u/s) for the first 11.5 seconds -- every ramp, seam and
-  wall. Today's game leaves your line in the first second.
-- **Not a finish yet.** At 11.5 s there is a V-shaped trough whose outcome comes
-  down to rounding at a thousandth of a unit; after it the test build goes its own
-  way and drops at about 17 s.
-- **Also:** the randomized start (the anti-replay rule, up to 2 units) pushed this
-  map off line within seconds in one of my two runs, on its own.
+- **What changed:** the engine traces brushes the way Source does (the 1/32-unit
+  epsilon, and Source's "never touched" marker where Quake 2 used -1), plus
+  current Momentum's slide-bug rule. It is on by default (`pm_fixrampbugs 2`), so
+  it applies to every map, and the randomized start is off on voyager only.
+  Displacements and props keep their old test for now (BACKLOG says why).
+- **Live:** release 0.1.23 (Windows and Linux), and all 12 lobbies run the new
+  engine, cfg and progs.
+- **Try:** surf_voyager on a lobby -- `!m`, walk back into the wall, let go. Then
+  a few maps you know well, for anything that feels different on ramps.
+- **Old recordings still verify.** A run made now pins the new physics version;
+  an old server binary refuses it rather than calling it a mismatch.
 
-**Your call:** putting Source's rules into the engine changes how *every* map
-collides -- closer to Momentum, which is the point, but it is a physics change: a
-new game release and server binaries, a new physics version so older recordings
-still verify, and the full review. Then the trough, and a per-map switch for the
-randomized start on auto maps like this one. Say if you want it.
+**Your call:** times set before tonight ran the old rules and rank beside the new
+ones. With no players yet the easy answer is to wipe or mark the old ones; say
+which.
+
+**One question:** type `mom_mv_bumpcount` in Momentum's console and tell me the
+number. We use 8 (Momentum 0.8.7's); the new build's default is not readable
+from its files.
+
+**Also from tonight:** the bots' work was reviewed. The journal-check fixes and
+the surfd fixes are merged and live; their Patch 444 was held back (it would
+cancel an honest run in a rare case -- BACKLOG), and Patch 455 is rebased but
+not finished (BACKLOG: finish round 11 or cut it down, your call). The board's
+database backups now take 8.9 GB on the Pi's disk (89% full); pruning them is
+`surfd-deploy.ps1 -KeepDbBackups N`, your call.
 
 ### Your player-page report (5 Oct, afternoon) -- fixed and live
 

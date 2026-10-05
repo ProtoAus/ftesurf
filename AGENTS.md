@@ -2060,6 +2060,20 @@ script rather than passing it as an argument, where `ps` would show it.
   `data/surfd.db.bak-2007afc-20261005-045845`. Verified live afterwards: run 749
   serves `momdemo e9a68559…` and no integrity key.
 
+  **2026-10-05 10:09-10:14 UTC, the 0.1.23 batch (game `44e9bd8`, engine
+  `f2630d9ad`, binaries tag `patch-494` = `6b7b70143`).** Pi engine: 38 files sent
+  to p349build from 6b7b70143 (all hash-checked), `make sv-rel` -> md5 07323ee4;
+  `tools/pigate.sh` equal to Windows on bhop_eazy and surf_ace (srctrace
+  de0ed342 / f89ef15d), boreas 0003107 PASS, p492voy.rec PASS, the old binary
+  REFUSE; swapped keeping `fteqw-svarm64.pre492-20261005-100948`. Cfgs:
+  default.cfg (pm_fixrampbugs 2, run_movebound 2000) and
+  maps/map_surf_voyager.cfg, backups `*.pre492-20261005-100948`. Progs:
+  `build.ps1 -Pi` from the clean worktree, 0 players, all 12 restarted -- read
+  back: every lobby's process is md5 07323ee4, lobby 1 `pm_fixrampbugs` 2.
+  surfd: `surfd-deploy.ps1 -Ref 44e9bd8`, `surfd ready` 10:13:01, /health ok,
+  backup `data/surfd.db.bak-44e9bd8-20261005-211108`. Release 0.1.23 published
+  10:14 (Windows sha256 AD3085A7..., Linux 1E10FEC0...).
+
   `490f73d` then `e11084c` to /srv/nvme/surfd at 2026-10-05 03:48 and 04:03 --
   schema 10 (`sims`, the store-only cross-run similarity sample), eight suites
   green in the stage including the new `test_simcheck` (40 checks), all 53 files
