@@ -1960,6 +1960,36 @@ script rather than passing it as an argument, where `ps` would show it.
   fde8420 is the floor (the length sets are strict on purpose). Deploy
   tools/ to every host that reads journals before any 468 client exists.
 
+  **DEPLOYED 2026-10-05 02:43 UTC (game repo `24b50bf`).** The rule above had
+  not been followed: `hidcheck.py` was ABSENT from the Pi and `reccheck.py` /
+  `rcptcheck.py` were at their 2026-09-21 and 2026-10-03 blobs, i.e. before Patch
+  484. All four are now at HEAD's blobs, verified by `git hash-object` ON THE PI
+  (`493097d8`, `85fcfc68`, `fbb8c624`, `bb522ba4`) and not by size or mtime.
+  Backups: `*.pre490-20261005-024331`. Installed under `flock
+  /tmp/surfd-sweep.lock` with `install` + `mv`, `__pycache__` cleared, no surfd
+  reload (the sweep re-imports per invocation, so a tools-only deploy needs no
+  `kill -HUP`).
+  WHAT THE ABSENCE COST: less than the rule implies, and it is worth knowing why
+  rather than assuming the worst. `sweep.py` imports only `rcptcheck`, which
+  imports `reccheck` and `hidcheck` LAZILY and inside a try, so a missing
+  `hidcheck` degraded `r.journal` to "" plus a note instead of taking the receipt
+  step down — and the fleet holds `0 hid` in `data/evidence/`, so nothing was
+  actually going unchecked. The stale `reccheck` was the live one: Patch 477's
+  `pin` warp kind is missing from its `WARP_KINDS_V9`, so a pinned run's warp
+  reads as an unknown kind. Verified after: `sweep.py --dry-run` exit 0 with no
+  receipt-step failure, all four import, and `rcptcheck.py data/evidence` checks
+  19 receipts of which **2 fault** — both on surf_4am, both the KNOWN save-lock
+  hold fault documented below at 33-41% of one-frame ticks (one reads 45.8% of
+  155), not a regression from this deploy. 18 of the 19 commit to evidence that is
+  not on the host, which `rcptcheck` calls absent rather than a fault.
+  **A NOTE ON VERIFYING A DEPLOY: two ssh calls made back to back can read the
+  directory in different states, and the one that ran second is not the one that
+  is right.** The install and an independent check were issued together; the check
+  reported `hidcheck.py ABSENT` and the pre-deploy hashes while the install
+  reported success. A third, single-call read settled it — all four present at
+  HEAD's hashes. Settle a contradiction with one authoritative read rather than
+  believing either of the two that disagree.
+
   Schema 8 (Patch 422, first key wins) is admin-only too. Three things an
   operator must know:
   - `receipts_v8()` runs on EVERY migrate() -- a repair, not a step. It marks
