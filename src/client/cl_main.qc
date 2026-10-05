@@ -307,6 +307,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// directory URL is lobby_dir, which the menu progs already own and archive.
 	Online_RegisterCommands();
 	Online_MigrateBegin();          // Patch 395: the flat replay cache, moved per frame
+	registercommand("timefmt");     // Patch 496: sh_time.qc's own harness handle
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
@@ -2145,6 +2146,14 @@ float(string cmd) CSQC_ConsoleCommand =
 	// the entity lump cannot answer; see cl_entview.qc.
 	if (Ev_ConsoleCommand(cmd))
 		return TRUE;
+
+	/*
+	  Patch 496: `timefmt`, sh_time.qc's harness handle.  `cmd timefmt` reaches
+	  the server's copy of the same file (sv_player.qc), so one arm grades both
+	  VMs and the tag on each line says which printed.
+	*/
+	if (argv(0) == "timefmt")
+		return Time_ConsoleCommand("cl");
 
 	// zone_goto is deliberately NOT registered here: it has to move the
 	// player, so it belongs to SSQC, which parses the same zone file with the

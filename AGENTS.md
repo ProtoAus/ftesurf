@@ -2882,6 +2882,22 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   sides; `probe`/`hit` in TG_ChainStart and Trig_ConsoleCommand (cl_triggers.qc);
   `lpd_active` in Portal_LoadForMap; `onpanel` in Ev_InputEvent; `vote_on` in
   Vote_Frame; `vbsp_retrigger` in SV_UpdateMovementServerInfo.
+- **A QC INTEGER LITERAL IS A FLOAT UNLESS IT CARRIES AN `i` SUFFIX, AND AN `int`
+  LOCAL ABSORBS ONE WITH NO WARNING.** Measured in both VMs (Patch 496): with
+  `local int x`, `x = 2144999 * 1000 + 952` stores **2144999936** and
+  `x = 2144999 * 1000i + 952i` stores **2144999952** -- the first promotes the
+  product to float32, quantises it, and the assignment truncates back. So any
+  integer arithmetic written with plain literals silently becomes float32
+  arithmetic above 2^24, which is exactly the range an int was chosen for.
+  Suffix every literal in an `int` expression (`1000i`, `0i`, `1i`), as
+  `m_board.qc`'s ms split always did. THE ONLY THING THAT SAID ANYTHING was
+  fteqcc's own **F324, `sprintf: %i requires int at arg N (got float)`** -- so
+  `%i` in a sprintf is a type assertion worth making on purpose, and a QC file
+  with int arithmetic should compile with 0 warnings rather than be read.
+  Related and older: fteqcc takes NO exponent in a literal (`1e15` is `1` then
+  the identifier `e15`, "bad suffix on number"), and `int` is a type while
+  `double` is not ("`double` is not a type"), so an exact product has to be a
+  compensated float32 pair rather than a wider scalar.
 - Every QC GLOBAL is zeroed on every map load, `map_restart` (so `retry`)
   included. Anything that must identify state across one lives in a cvar or a
   file: a per-map rewind serial let a pre-retry save rewind "warm" across the

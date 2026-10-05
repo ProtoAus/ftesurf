@@ -143,22 +143,16 @@ string(float code) Mlb_Why =
 };
 
 /*
-  Whole milliseconds as Time_TickString's m:ss.mmm / h:mm:ss.mmm.  Not
-  Time_TickString(ms, 0.001): in float32 that is 1-3 ms off on most values from
-  4,096,003 ms (68 min) up (BACKLOG), and Momentum boards hold hours-long runs.
+  This board's "--" for a row with no time, and sh_time.qc's Time_MsString for
+  everything else.  It used to hold its own integer split, written to dodge the
+  float32 chain Time_TickString(ms, 0.001) ran; Patch 496 moved that split into
+  sh_time.qc, so there is one formatter again and this keeps only the row rule.
 */
 string(int ms) Mlb_MsString =
 {
-	local int h, m, s;
-
 	if (ms <= 0)
 		return "--";
-	h = ms / 3600000i;  ms = ms - h * 3600000i;
-	m = ms / 60000i;    ms = ms - m * 60000i;
-	s = ms / 1000i;     ms = ms - s * 1000i;
-	if (h > 0)
-		return sprintf("%g:%02g:%02g.%03g", (float)h, (float)m, (float)s, (float)ms);
-	return sprintf("%g:%02g.%03g", (float)m, (float)s, (float)ms);
+	return Time_MsString(ms);
 };
 
 // Seconds east of UTC now, from the two clocks strftime can read.

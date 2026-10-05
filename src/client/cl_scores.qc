@@ -1819,15 +1819,14 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		            SBC_TEXT, 1);
 
 		/*
-		  Milliseconds formatted AS milliseconds: Time_TickString(ms, 0.001)
-		  multiplies back to exactly the number it was given, so the same
-		  m:ss.mmm formatting serves a gap that was never measured in ticks
-		  at all.  No second formatter, and no tickrate assumed for a
-		  difference between two runs that may not share one.
+		  Milliseconds formatted AS milliseconds, through the same formatter every
+		  other time in the game uses: Time_MsString takes the int, so a gap that
+		  was never measured in ticks assumes no tickrate and puts no float32
+		  product between the number surfd sent and the digit drawn.
 		*/
 		if (ref > 0 && ob_ms[idx] > ref)
 			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
-			            sprintf("+%s", Time_TickString(ob_ms[idx] - ref, 0.001)),
+			            sprintf("+%s", Time_MsString((int)ob_ms[idx] - (int)ref)),
 			            SBC_BAD, 0.9);
 		else if (ref > 0 && ob_ms[idx] == ref)
 			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
@@ -1927,7 +1926,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		             rec_sb_szrow, sprintf("%g", rec_sb_finrank), SBC_DIM, 1);
 		if (rec_sb_finbest > 0)
 			Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
-			            Time_TickString(rec_sb_finbest, 0.001), SBC_TEXT, 1);
+			            Time_MsString((int)rec_sb_finbest), SBC_TEXT, 1);
 		Font_Set(ui_font_ui);
 		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
 		            getplayerkeyvalue(player_localnum, "name"), SBC_GOOD, 0.9);

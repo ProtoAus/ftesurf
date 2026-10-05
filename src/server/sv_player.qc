@@ -955,6 +955,18 @@ void(string cmd) SV_ParseClientCommand =
 	}
 
 	/*
+	  Patch 496: `cmd timefmt` -- the server's copy of sh_time.qc's formatter.
+	  SV_TimerString is Time_TickString, so this is the code that says your
+	  finish time in chat and in the save list; the client's `timefmt` grades
+	  the same file compiled into the other VM (tools/p496time.py).
+	*/
+	if (c == "timefmt")
+	{
+		Time_ConsoleCommand("sv");
+		return;
+	}
+
+	/*
 	  Save-locks.
 
 	  ONE COMMAND PER ACTION rather than `saveloc <verb>`, because these are

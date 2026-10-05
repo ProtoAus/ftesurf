@@ -919,7 +919,11 @@ string(string path, float rep) Online_RecName =
 		ticks = rint(lastt / rate);
 		dnf = TRUE;
 	}
-	// Time_TickString's rounding, minutes unbounded.
+	// Time_TickString's OLD rounding, kept on purpose and NOT Time_TickMs: this
+	// is a cache key, not a display, and every cached .rec on disk is named by
+	// it (tools/onlinecache.py pins the names).  Patch 496 made the formatter
+	// exact; the two now disagree by 1-3 ms on a run past an hour, which is a
+	// BACKLOG item rather than a rename of everybody's cache.
 	ms = floor(ticks * rate * 1000 + 0.5);
 	m  = floor(ms / 60000);     ms = ms - m * 60000;
 	s  = floor(ms / 1000);      ms = ms - s * 1000;

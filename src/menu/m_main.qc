@@ -6578,11 +6578,13 @@ void(vector screensize) screen_create =
 				  its right until now: the name was drawn unbounded, and the moment
 				  something shares the line a long one runs straight under it.
 				
-				  Time_TickString at a rate of 0.001 is not a trick.  ms_wr is in
-				  milliseconds and a millisecond IS a tick of 0.001 s, so this goes
-				  through the one formatter every other time in the game goes
-				  through rather than adding a second rounding rule to keep in step
-				  with it.  See sh_time.qc.
+				  ms_wr is in milliseconds, so it goes to Time_MsString -- the
+				  one formatter every other time in the game goes through, entered
+				  in the unit the column already holds.  It used to go through
+				  Time_TickString(ms, 0.001) on the argument that a millisecond IS
+				  a tick of 0.001 s, and that was true of the units and false of
+				  the arithmetic: 0.001 is not a float32, so the product drifted
+				  1-3 ms on most times past an hour (Patch 496).  See sh_time.qc.
 				*/
 				local string mwr, mnmf;
 				local float  wrw;
@@ -6591,7 +6593,7 @@ void(vector screensize) screen_create =
 				wrw = 0;
 				if (mwr != "")
 				{
-					mwr = strcat("^9best  ^7", Time_TickString(stof(mwr), 0.001));
+					mwr = strcat("^9best  ^7", Time_MsString((int)stof(mwr)));
 					wrw = stringwidth(mwr, TRUE, SZ_ROW) + 16;
 				}
 

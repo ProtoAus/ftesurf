@@ -2492,16 +2492,25 @@ that was never armed (see the bullet below it), and item 10's own residual.
   mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
-- **`Time_TickString` is 1-3 ms off on most times past 68 minutes**
-  (ROADMAP 9, 2026-10-04; modelled in numpy float32, not driven). QC floats
-  are float32 and `ticks * tickrate * 1000` rounds before its `floor(+0.5)`.
-  `Time_TickString(ms, 0.001)`: first wrong at 4,096,003 ms, then 9.15M of the
-  16.78M values below 2^24, +1 to +3 ms. `(ticks, 1 / 66.6667)`: first wrong at
-  tick 273,085 (4,096,275 ms), 619k of the first 1.2M ticks, -1 to +3 ms.
-  Momentum boards hold hours-long runs. Readers include
-  screen_create's `best` column (m_main.qc, `ms_wr`) and cl_scores.qc's online
-  rows; the menu leaderboard (m_board.qc `Mlb_MsString`) splits integer ms
-  instead. Fix: an integer path in sh_time.qc, checked against the same model.
+- **`Online_CacheName` still spells its filename with the pre-496 float32
+  chain**, so a cache name and the time the board draws beside it can differ by
+  1-3 ms on a run past an hour (`src/client/cl_online.qc:Online_CacheName`;
+  `tools/onlinecache.py` is its model and returns both spellings beside each
+  other, which is how this was seen rather than inferred).  DELIBERATE and
+  load-bearing: the name is a cache key and every cached `.rec` on disk is named
+  by it, so it must not change under existing installs -- and
+  `tools/onlinecache.py`'s PINNED_NAMES would all have to be renamed with it.
+  Cost, stated: `Online_CachePath` finds a cache entry by NAME and
+  `Online_CacheScan` re-derives it from the file's own header, so both agree
+  with each other and neither agrees with the displayed ms on such a run -- a
+  row whose label reads `1:08:16.275` sits in a file called
+  `68m16.276s_..._r7.rec`.  Nothing parses the ms back out of the name, which is
+  what makes this cosmetic.  Fix if ever wanted: put a generation in the
+  directory (`data/online2/`) and let `Online_MigrateBegin` move the entries,
+  renaming on the way.  Falsifier for "it is only cosmetic": find a reader of the
+  name's ms field -- today the only parses of that filename are
+  `Online_RecName`'s writer and `onlinecache.py`'s model of it.
+
 - **Typing w/a/s/d into a menu text field moves sui's keyboard cursor, and
   Enter clicks wherever it landed** (pre-existing; ROADMAP 9 review, traced,
   not driven). `sui_menu_nav` (sui_sys.qc, called only from m_draw) reads the
