@@ -47,7 +47,7 @@ deliberately looser than an exact match: `gfx/mapthumbs/at` would be satisfied b
 only applies where the mod itself wrote no extension.
 
 AND A FOURTH, found while writing it: THE BUILTIN DECIDES WHETHER A PATH IS A LOAD.
-`ui_file_exists("gfx/env/xray1.png")` is a QUESTION and the caller has a
+`ui_file_exists("gfx/env/xray1.jpg")` is a QUESTION and the caller has a
 $blackimage fallback for the answer (m_milk.qc); `drawpic` of the same string is a
 DEMAND and substitutes a visible error texture on a miss (pr_menu.c:622-632).
 AGENTS.md already records that drawpic, drawsubpic and precache_pic behave three
@@ -78,7 +78,9 @@ on them and 4 do not --
                            (gl_warp.c:133); the name is a skybox, never a path
 
 Those four are engine-convention and no literal sweep of anything we author can
-reach them.  A clean run therefore means "no literal asset path in src/ is missing
+reach them.  (2026-10-05, after the counts below: a 14th glob, #13 gfx/env
+`xray*.jpg`, carries the vessel's films, and m_milk.qc's bind literal reaches it;
+the two xray .png DENY entries went with the .png names.  Re-run --mutate.)  A clean run therefore means "no literal asset path in src/ is missing
 from the ship set", NOT "the archive is complete" -- which is still the whole of the
 fault class that cost three reports and a re-cut release, since all three were
 literal paths in QC.
@@ -164,10 +166,6 @@ DENY_EXACT = {
     "sound/": "A search root, not a file (cl_banner.qc's Bn_SndPath).",
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",
-    "gfx/env/xray1.png": "The vessel's x-ray film. Absent on the BUILD BOX too, "
-                         "and its only call site guards on ui_file_exists and "
-                         "falls back to $blackimage (m_milk.qc).",
-    "gfx/env/xray2.png": "As xray1.png.",
     "data/chatsilence.txt": "Written at runtime by the client (cl_chat.qc).",
     "data/consent.txt": "Written at runtime; in $DenyPatterns precisely so it can "
                         "never ship, because shipping it pre-accepts the terms.",

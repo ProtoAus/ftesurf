@@ -274,6 +274,10 @@ $ShipGlobs = @(
     # local edit.  manifest.txt sits BESIDE local\ rather than in it precisely so
     # a *.json glob like this one cannot pick it up.
     @{ Path = 'ftesurf/maps/zones/local'; Filter = '*.json' }
+    # The vessel world's two films (m_milk.qc).  *.jpg only: the source PNGs beside
+    # them are not part of the install.  LAST, so shipguard's --mutate indices for
+    # the thirteen above (quoted in its docstring and AGENTS.md) do not move.
+    @{ Path = 'ftesurf/gfx/env';        Filter = 'xray*.jpg' }
 )
 
 # =============================================================================

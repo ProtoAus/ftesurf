@@ -260,6 +260,9 @@ __pycache__/
 !/ftesurf/gfx/env/
 /ftesurf/gfx/env/*
 !/ftesurf/gfx/env/milk.png
+#  The vessel world's two films (m_milk.qc), grayscale JPEG.
+!/ftesurf/gfx/env/xray1.jpg
+!/ftesurf/gfx/env/xray2.jpg
 
 
 #  ftesurf/data/ -- one hand-written file; everything else is generated or

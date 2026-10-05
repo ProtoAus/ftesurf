@@ -67,9 +67,9 @@ float BEAT;         // heartbeat: a lub-dub envelope, pushed by the bass
 float spec(float x) { return texture2D(s_spec, vec2(clamp(x, 0.02, 0.98), 0.25)).r; }
 
 #if defined(S1) || defined(S2)
-// The x-ray films, gfx/env/xray1.png (front) and xray2.png (side): local
-// images, git-ignored and never shipped; without them m_milk.qc binds
-// $blackimage and a film adds nothing.  On a lightbox: bone lines white, the
+// The x-ray films, gfx/env/xray1.jpg (front) and xray2.jpg (side), shipped as
+// grayscale JPEGs; without them m_milk.qc binds $blackimage and a film adds
+// nothing.  On a lightbox: bone lines white, the
 // rest near black, the metal glowing, harder on the big hits.  uv 0..1 over the
 // crop (markers and ruler cut off); hot is the metal's centre and half-size in
 // image uv, located by hand.
