@@ -44,11 +44,16 @@ LINEAR = {"isLinear": True, "cp_count": 4, "b_count": 0}
 
 
 class FakeKSF(object):
-    """Search rows by prefix (a typeahead, like theirs) and boards by size."""
+    """Search rows by prefix (a typeahead, like theirs), the map list in
+    KSF_LIST_PAGE pages, and boards by size: (map, zone) is Forward, and
+    (map, zone, mode) any other style.  `top` maps a board to extra players
+    ranked above everyone, as if they set times after the board was paged."""
 
-    def __init__(self, maps, boards, refuse_after=None, slow=0.0):
+    def __init__(self, maps, boards, refuse_after=None, slow=0.0, listed=None):
         self.maps, self.boards = maps, boards
         self.refuse_after, self.slow = refuse_after, slow
+        self.listed = sorted(maps) if listed is None else listed
+        self.top = {}
         self.asked = []
 
     def __call__(self, url):
@@ -61,23 +66,33 @@ class FakeKSF(object):
             hits = [dict(info, name=n) for n, info in sorted(self.maps.items())
                     if n.startswith(q)]
             return json.dumps(hits[:5])
-        m = re.match(r"/api/maps/([^/]+)/records/zone/(\d+)/(\d+)\?game=css&mode=0$",
+        m = re.match(r"/api/maps/new\?offset=(\d+)$", path)
+        if m:
+            off = int(m.group(1))
+            return json.dumps([dict(self.maps[n], name=n)
+                               for n in self.listed[off:off + K.KSF_LIST_PAGE]])
+        m = re.match(r"/api/maps/([^/]+)/records/zone/(\d+)/(\d+)\?game=css&mode=(\d)$",
                      path)
         mp, zone, start = urllib.parse.unquote(m.group(1)), int(m.group(2)), int(m.group(3))
-        total = self.boards.get((mp, zone), 0)
-        rows = [{"rank": r, "name": "p%d" % r, "steamID": "STEAM_0:1:%d" % r,
-                 "time": 30.0 + zone + r * 0.01 + self.slow, "date": 1790000000 + r}
-                for r in range(start, min(total, start + K.KSF_PAGE - 1) + 1)]
-        return json.dumps(rows)
+        mode = int(m.group(4))
+        key = (mp, zone) if mode == 0 else (mp, zone, mode)
+        extra = self.top.get(key, 0)
+        board = ([("STEAM_0:0:%d" % (900 + i), 1.0 + i) for i in range(extra)]
+                 + [("STEAM_0:1:%d" % r, 30.0 + zone + mode + r * 0.01 + self.slow)
+                    for r in range(1, self.boards.get(key, 0) + 1)])
+        return json.dumps([{"rank": start + i, "name": "p%s" % sid[10:],
+                            "steamID": sid, "time": t, "date": 1790000000 + start + i}
+                           for i, (sid, t) in enumerate(board[start - 1:start - 1 + K.KSF_PAGE])])
 
 
-def pages(fake):
-    """Board requests as (map, zone, startRank), in the order asked."""
+def pages(fake, modes=False):
+    """Board requests as (map, zone, startRank[, mode]), in the order asked."""
     out = []
     for p in fake.asked:
-        m = re.match(r"/api/maps/([^/]+)/records/zone/(\d+)/(\d+)", p)
+        m = re.match(r"/api/maps/([^/]+)/records/zone/(\d+)/(\d+)\?game=css&mode=(\d)", p)
         if m:
-            out.append((m.group(1), int(m.group(2)), int(m.group(3))))
+            t = (m.group(1), int(m.group(2)), int(m.group(3)))
+            out.append(t + (int(m.group(4)),) if modes else t)
     return out
 
 
@@ -187,7 +202,7 @@ def case_write_and_filter():
     K.fetch = fake
     cache = fresh_cache()
     rc = run_main(["--from-maps", listfile, "--cache", cache, "--delay", "0",
-                   "--maps", mapsdir, "--go"])
+                   "--maps", mapsdir, "--modes", "0", "--go"])
     check("main exits 0", rc, 0)
     check("a map this install cannot load is never asked about",
           [p for p in fake.asked if "notinstalled" in p], [])
@@ -211,7 +226,7 @@ def case_write_and_filter():
     io.open(bf, "w", encoding="utf-8").write(json.dumps(doc))
     fake.asked = []
     run_main(["--from-maps", listfile, "--cache", cache, "--delay", "0",
-              "--maps", mapsdir, "--go"])
+              "--maps", mapsdir, "--modes", "0", "--go"])
     check("a re-run of a finished cache makes no request", fake.asked, [])
     again = db.execute("SELECT millis FROM runs WHERE tier='ksf' AND map='surf_st'"
                        " AND track=0 AND leg=0 AND player=?", (pid,)).fetchone()[0]
@@ -228,7 +243,7 @@ def case_refusal():
     io.open(os.path.join(mapsdir, "surf_r.bsp"), "w").close()
     listfile = os.path.join(HOME, "maps_r.txt")
     io.open(listfile, "w", encoding="utf-8").write("surf_r\n")
-    rows = K.maps_mode(write_args(listfile, cache, mapsdir), {"surf_r"}, cache)
+    rows = K.maps_mode(write_args(listfile, cache, mapsdir, modes=[0]), {"surf_r"}, cache)
     check("a refusal stops: nothing asked after the refused request",
           len(fake.asked), 4)
     check("...and what was cached before it is still used", len(rows), 40)
@@ -277,10 +292,216 @@ def case_no_answer():
         check("...after one attempt", len(calls), 1)
 
 
+FLAT = {"isLinear": True, "cp_count": 0, "b_count": 0}
+
+
+def case_modes():
+    """Each KSF style is a board of its own, filed under its own style."""
+    fake = FakeKSF({"surf_m": STAGED, "surf_n": STAGED},
+                   {("surf_m", 0): 25, ("surf_m", 0, 1): 3, ("surf_m", 1, 1): 2,
+                    ("surf_n", 0): 4})
+    K.fetch = fake
+    cache = fresh_cache()
+    got = []
+    K.sweep_maps(["surf_m", "surf_n"], cache, -1, K.Pacer(0, 100), [0, 1], fetched=got)
+    asked = pages(fake, modes=True)
+    check("Sideways main is asked on both maps",
+          sorted((p[0], p[1]) for p in asked if p[3] == 1 and p[1] == 0),
+          [("surf_m", 0), ("surf_n", 0)])
+    check("Sideways stages and bonus only where Sideways main has rows",
+          sorted({(p[0], p[1]) for p in asked if p[3] == 1 and p[1] > 0}),
+          [("surf_m", 1), ("surf_m", 2), ("surf_m", 31)])
+    check("Forward keeps its pre-mode cache name",
+          os.path.exists(os.path.join(cache, "boards", "surf_m", "z0.json")), True)
+    check("Sideways main is its own file, 3 rows",
+          len(K.board_load(cache, "surf_m", 0, 1)["rows"]), 3)
+    rows = [r for mp, z, m, page in got
+            for r in (K.rec_row(mp, z, m, x) for x in page) if r]
+    check("a Sideways row is filed as style sw, on its stage",
+          sorted({(r["map"], r["leg"], r["style"]) for r in rows if r["style"] != "clean"}),
+          [("surf_m", 0, "sw"), ("surf_m", 1, "sw")])
+    check("every style a mode files under is one surfd reads",
+          all(v in S.STYLES_READ for v in K.KSF_MODES.values()), True)
+    check("...and none of the new ones is one a lobby can submit",
+          [v for v in K.KSF_MODES.values() if v in S.STYLES], ["clean"])
+
+
+def case_merge_and_refresh():
+    fake = FakeKSF({"surf_g": FLAT}, {("surf_g", 0): 30})
+    K.fetch = fake
+    cache = fresh_cache()
+    K.sweep_maps(["surf_g"], cache, 20, K.Pacer(0, 5))
+    fake.top[("surf_g", 0)] = 1          # a new record lands above everyone
+    K.sweep_maps(["surf_g"], cache, -1, K.Pacer(0, 5))
+    doc = K.board_load(cache, "surf_g", 0)
+    ids = [r["steamID"] for r in doc["rows"]]
+    check("a player repeated across a rank shift is held once", len(ids), len(set(ids)))
+    check("...and every player paged past is held", len(ids), 30)
+    check("...and the short page ended the board", doc["done"], True)
+    K.board_page(cache, "surf_g", 0, K.Pacer(0, 1), top=True)
+    doc = K.board_load(cache, "surf_g", 0)
+    check("a refreshed first page brings the new record in",
+          "STEAM_0:0:900" in [r["steamID"] for r in doc["rows"]], True)
+    check("...and reopens the board, whose tail moved", doc["done"], False)
+    old = [r for r in doc["rows"] if r["steamID"] == "STEAM_0:1:5"][0]["time"]
+    fake.slow = -10.0                    # everybody got faster
+    K.board_page(cache, "surf_g", 0, K.Pacer(0, 1), top=True)
+    doc = K.board_load(cache, "surf_g", 0)
+    new = [r for r in doc["rows"] if r["steamID"] == "STEAM_0:1:5"][0]["time"]
+    check("a faster time replaces the held one", round(old - new, 3), 10.0)
+    fake.slow = 0.0
+
+
+def watch_setup(n_maps, installed, rows_each=45, prefix="surf_w", **fake_kw):
+    S.migrate()
+    names = ["%s%02d" % (prefix, i) for i in range(n_maps)]
+    fake = FakeKSF({n: FLAT for n in names}, {(n, 0): rows_each for n in names}, **fake_kw)
+    K.fetch = fake
+    cache = fresh_cache()
+    mapsdir = tempfile.mkdtemp(prefix="maps-", dir=HOME)
+    for n in names[:installed]:
+        io.open(os.path.join(mapsdir, n + ".bsp"), "w").close()
+    return fake, cache, mapsdir, names
+
+
+def tick(cache, mapsdir, budget, go=True):
+    argv = ["--watch", "--cache", cache, "--maps", mapsdir, "--delay", "0",
+            "--max", str(budget)]
+    return run_main(argv + (["--go"] if go else []))
+
+
+def ksf_rows(where="1=1", args=()):
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    try:
+        return db.execute("SELECT COUNT(*) FROM runs WHERE tier='ksf' AND " + where,
+                          args).fetchone()[0]
+    finally:
+        db.close()
+
+
+def case_watch():
+    fake, cache, mapsdir, names = watch_setup(12, installed=11)
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    now = int(K.time.time())
+    db.execute("INSERT OR REPLACE INTO mapwant (map, asked, first, last)"
+               " VALUES ('surf_w07', 1, ?, ?)", (now, now))
+    db.commit()
+    db.close()
+
+    tick(cache, mapsdir, 3)
+    check("tick 1: the map list, a page at a time, then the wanted map",
+          fake.asked, ["/api/maps/new?offset=0", "/api/maps/new?offset=10",
+                       "/api/maps/surf_w07/records/zone/0/1?game=css&mode=0"])
+    check("...and only that page's rows are written",
+          ksf_rows("map='surf_w07'"), 20)
+    fake.asked = []
+    tick(cache, mapsdir, 3)
+    check("tick 2: the wanted map's other styles before any other map",
+          pages(fake, modes=True), [("surf_w07", 0, 1, 1), ("surf_w07", 0, 1, 2),
+                                    ("surf_w07", 0, 1, 3)])
+    fake.asked = []
+    tick(cache, mapsdir, 3)
+    check("tick 3: the wanted map to its end, then the shallowest board",
+          pages(fake, modes=True), [("surf_w07", 0, 21, 0), ("surf_w07", 0, 41, 0),
+                                    ("surf_w00", 0, 1, 0)])
+    check("the wanted map is whole on the board", ksf_rows("map='surf_w07'"), 45)
+    tick(cache, mapsdir, 400)
+    check("a map that is not installed is never asked about",
+          [p for p in fake.asked if "surf_w11" in p and "/new?" not in p], [])
+    check("...and nothing of it is filed", ksf_rows("map='surf_w11'"), 0)
+    check("every installed board ends up whole", ksf_rows("map LIKE 'surf_w%'"), 11 * 45)
+    fake.asked = []
+    tick(cache, mapsdir, 10)
+    check("a finished, fresh crawl asks nothing", fake.asked, [])
+    idx = json.load(io.open(os.path.join(cache, "index.json"), encoding="utf-8"))
+    check("the index knows every board it paged", len(idx), 11 * 4)
+
+
+def case_watch_refusal_parks():
+    fake, cache, mapsdir, names = watch_setup(3, installed=3, prefix="surf_p",
+                                              refuse_after=2)
+    tick(cache, mapsdir, 5)
+    park = json.load(io.open(os.path.join(cache, ".refused"), encoding="utf-8"))
+    check("a refusal parks the crawl", (park["n"], park["until"] - park["at"]),
+          (1, K.COOLDOWN))
+    check("...after the refused request, nothing", len(fake.asked), 3)
+    fake.asked = []
+    tick(cache, mapsdir, 5)
+    check("a parked tick asks nothing", fake.asked, [])
+    park["until"] = park["at"] = 1
+    io.open(os.path.join(cache, ".refused"), "w", encoding="utf-8").write(json.dumps(park))
+    fake.refuse_after = 0
+    tick(cache, mapsdir, 5)
+    park = json.load(io.open(os.path.join(cache, ".refused"), encoding="utf-8"))
+    check("a second refusal parks twice as long", park["until"] - park["at"], 2 * K.COOLDOWN)
+    park["until"] = park["at"] = 1
+    io.open(os.path.join(cache, ".refused"), "w", encoding="utf-8").write(json.dumps(park))
+    fake.refuse_after = None
+    tick(cache, mapsdir, 5)
+    check("an answered tick lifts the park",
+          os.path.exists(os.path.join(cache, ".refused")), False)
+
+
+def case_watch_dry_and_pending():
+    fake, cache, mapsdir, names = watch_setup(2, installed=2, rows_each=5,
+                                              prefix="surf_d")
+    tick(cache, mapsdir, 5, go=False)
+    check("a dry tick asks nothing: it could not write what it fetched", fake.asked, [])
+    real = K.write_rows
+
+    def locked(rows):
+        raise sqlite3.OperationalError("database is locked")
+
+    K.write_rows = locked
+    try:
+        rc = tick(cache, mapsdir, 4)
+    finally:
+        K.write_rows = real
+    held = json.load(io.open(os.path.join(cache, "pending.json"), encoding="utf-8"))
+    check("a failed write keeps the tick's rows", (rc, len(held)), (1, 5))
+    fake.asked = []
+    tick(cache, mapsdir, 0)
+    check("the next tick files them, asking nothing",
+          (ksf_rows("map='surf_d00'"), fake.asked), (5, []))
+    check("...and clears what it held",
+          os.path.exists(os.path.join(cache, "pending.json")), False)
+
+
+def case_board_reads_ksf_styles():
+    c = S.app.test_client()
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    db.execute("INSERT OR REPLACE INTO runs (map, track, leg, tier, style, player, name,"
+               " ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
+               " VALUES ('surf_hsw', 0, 0, 'ksf', 'hsw', '76561197960265729', 'h',"
+               " 100, 66.6667, 1500, 0, 'ksf', '', 1, 0)")
+    db.execute("DELETE FROM mapwant WHERE map='surf_hsw'")
+    db.commit()
+    r = c.get("/api/board?map=surf_hsw&tier=ksf&style=hsw")
+    body = json.loads(r.data)
+    check("/api/board serves a Half-Sideways board", (r.status_code, len(body["rows"])), (200, 1))
+    check("/api/board still refuses a style nobody files",
+          c.get("/api/board?map=surf_hsw&tier=ksf&style=zz").status_code, 400)
+    got = db.execute("SELECT asked FROM mapwant WHERE map='surf_hsw'").fetchone()
+    check("a short imported page queues the map for the crawl", got, (1,))
+    c.get("/api/board?map=surf_nothing_here&tier=ksf&style=hsw")
+    got = db.execute("SELECT COUNT(*) FROM mapwant WHERE map='surf_nothing_here'").fetchone()
+    check("...but a board we hold nothing for queues nothing", got, (0,))
+    c.get("/api/board?map=surf_hsw&tier=ranked&style=hsw")
+    got = db.execute("SELECT asked FROM mapwant WHERE map='surf_hsw'").fetchone()
+    check("...and nor does the ranked board", got, (1,))
+    r = c.get("/board/api/map?map=surf_hsw&tier=imported&style=hsw")
+    check("the web board opens it too", (r.status_code, json.loads(r.data)["style"]),
+          (200, "hsw"))
+    db.close()
+
+
 def main():
     for case in (case_mapping, case_exact_name, case_paging_and_depth,
                  case_shallowest_first_and_cursor, case_linear_asks_no_stages,
-                 case_write_and_filter, case_refusal, case_no_answer):
+                 case_write_and_filter, case_refusal, case_no_answer,
+                 case_modes, case_merge_and_refresh, case_watch,
+                 case_watch_refusal_parks, case_watch_dry_and_pending,
+                 case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d failed" % len(FAILED))

@@ -363,6 +363,15 @@ STYLE_CLEAN = "clean"
 STYLE_SEGMENTED = "segmented"
 STYLES = (STYLE_CLEAN, STYLE_SEGMENTED)
 
+# KSF's other surf styles (ksfimport.KSF_MODES; their Forward is `clean`).
+# Read-only like TIERS_IMPORTED: submit_run derives a style from flags and can
+# never produce one of these, so only the importer writes them.
+STYLE_SW = "sw"
+STYLE_HSW = "hsw"
+STYLE_BW = "bw"
+STYLES_KSF = (STYLE_SW, STYLE_HSW, STYLE_BW)
+STYLES_READ = STYLES + STYLES_KSF
+
 # sh_defs.qc's TF_* word, as it stood AT THE FINISH.  Kept in sync by name, and
 # test_board.py pins each value against the QC header so a renumber there fails
 # here rather than silently re-classifying every run on the board.
@@ -3171,7 +3180,7 @@ def board():
     # submit_run still accepts only TIERS so nothing can claim that tier.
     if tier not in TIERS_READ:
         return fail(400, "bad tier")
-    if style not in STYLES:
+    if style not in STYLES_READ:
         return fail(400, "bad style")
 
     limit = clamp_int(request.args.get("limit"), 1, BOARD_LIMIT_MAX,
@@ -3186,6 +3195,14 @@ def board():
         # community" without mixing trust levels in one list.
         counts = board_counts(db, mapname, track, leg, style)
         rows = board_rows(db, mapname, track, leg, tier, style, limit, offset)
+        # A short page of an imported board is a player at the end of what we
+        # hold: queue the map for the KSF and Momentum top-ups (ksfimport.py
+        # --watch, momwatch --want).  Only a board we already hold rows for,
+        # so a sweep of invented names fills nothing; see note_want.
+        if (tier in TIERS_IMPORTED + (TIER_IMPORTED, TIER_COMBINED)
+                and len(rows) < limit
+                and any(counts.get(t, 0) for t in TIERS_IMPORTED)):
+            note_want(db, mapname)
     except sqlite3.Error as exc:
         # Same contract as lobbies.json: the client must always get parseable
         # JSON with a rows array, so a storage fault reads as an empty board
@@ -3880,7 +3897,7 @@ def web_map():
     style = raw["style"] or STYLE_CLEAN
     if track is None or leg is None:
         return fail(400, "bad leg")
-    if style not in STYLES:
+    if style not in STYLES_READ:
         return fail(400, "bad style")
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
 

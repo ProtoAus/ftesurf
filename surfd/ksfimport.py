@@ -2,7 +2,8 @@
 
   python surfd/ksfimport.py --seed <file of steamid64s> [--go] [--max N]
   python surfd/ksfimport.py --from-maps [<file of map names>] [--depth N]
-                            [--max <requests>] [--delay <s>] [--go]
+                            [--modes 0,1,2,3] [--max <requests>] [--delay <s>] [--go]
+  python surfd/ksfimport.py --watch [--max <requests>] [--delay <s>] --go   (cron)
 
 TIMES ONLY, AND THAT IS A LIMIT OF THE SOURCE RATHER THAN A CHOICE.  KSF
 publishes no replay this project can USE: no Source .dem parser exists anywhere
@@ -25,6 +26,9 @@ main track only, 25 each.  MAP-SEEDED (--from-maps): every board of a map, paged
     GET /api/maps/<map>/records/zone/<zone>/<startRank>?game=css&mode=0
                                   a list of at most KSF_PAGE rows
 
+  * `mode` is KSF's surf style: 0 Forward (our `clean`), 1 Sideways, 2
+    Half-Sideways, 3 Backwards (surfd.STYLES_KSF).  Their site also has a
+    `game=css100t` board; it is a different tick rate and is not imported.
   * zone 0 is the main track, 1..cp_count the stages, 30+n bonus n.  ON A LINEAR
     MAP cp_count COUNTS CHECKPOINTS, which have no board (surf_utopia_njv:
     isLinear true, cp_count 4), so stages are asked for only when isLinear is
@@ -42,15 +46,21 @@ main track only, 25 each.  MAP-SEEDED (--from-maps): every board of a map, paged
 POLITENESS, and the rules are the wrlines reference's because its author
 reasoned them out against this same host:
   * one request at a time, never concurrent
-  * KSF_DELAY_MS between them, always
+  * KSF_DELAY_MS between them, always (WATCH_DELAY unattended)
   * a cap per invocation, so one command cannot become a thousand requests
   * a User-Agent that says what this is and where to complain
-  * never automatic: every run of this is a person typing it
   * a non-2xx is reported AS A REFUSAL and nothing is retried.  If ksf.surf does
     not want automated requests the answer is to stop, not to look more like a
-    browser.
+    browser.  Unattended, a refusal also parks every later run (COOLDOWN).
 Every answer is cached on disk, so a re-run costs nothing and the second import
 of the same seed list makes no requests at all.
+
+AUTOMATIC SINCE 5 OCT 2026, BY LEX'S DECISION.  This said "never automatic:
+every run of this is a person typing it" until Lex asked for the record list to
+fill slowly by itself.  --watch is that: on the Pi's crontab, a few requests a
+tick, the next unseen page of each board shallowest first, maps somebody is
+looking at first (mapwant).  ksf.surf's robots.txt (checked 5 Oct) carries only
+Cloudflare's content-signal preamble and no Disallow.
 
 A KSF ROW'S BUILD IS NOT CHECKED, AND "EVER" WAS TOO STRONG.  This paragraph
 said CANNOT BE CHECKED, EVER until 2026-09-29, when `/api/files/<map>.zip`
@@ -81,6 +91,7 @@ import http.client
 import io
 import json
 import os
+import sqlite3
 import sys
 import time
 import urllib.error
@@ -124,6 +135,19 @@ KSF_PAGE = 20              # rows in a records page; a shorter one ends the boar
 KSF_STAGES = 30            # zones 1..30 are stages; 30+n is bonus n
 KSF_DEPTH_DEFAULT = 100    # rows per board for --from-maps; -1 is the whole board
 KSF_REQ_DEFAULT = 300      # requests per --from-maps invocation
+
+# KSF's `mode` -> the board style its rows are filed under.
+KSF_MODES = {0: S.STYLE_CLEAN, 1: S.STYLE_SW, 2: S.STYLE_HSW, 3: S.STYLE_BW}
+KSF_LIST_PAGE = 10         # maps per /api/maps/new page (measured 5 Oct)
+
+# --watch, the unattended crawl.  10 requests every 5 minutes is ~2,900 a day.
+WATCH_MAX = 10
+WATCH_DELAY = 3.0          # s between requests
+COOLDOWN = 6 * 3600        # s parked after a refusal, doubling to COOLDOWN_MAX
+COOLDOWN_MAX = 48 * 3600
+CATALOG_DAYS = 7           # re-list KSF's maps this often
+REFRESH_DAYS = 14          # re-ask a board's first page this often
+WANT_DAYS = 14             # a map viewed this recently is crawled first
 
 
 def steam64(raw):
@@ -336,38 +360,105 @@ def map_info(mp, cache, pacer):
     return None
 
 
-def board_path(cache, mp, zone):
-    return os.path.join(cache, "boards", mp, "z%d.json" % zone)
+def board_path(cache, mp, zone, mode=0):
+    # Forward keeps the name it had before modes existed, so that cache is reused.
+    leaf = ("z%d.json" % zone) if mode == 0 else ("z%dm%d.json" % (zone, mode))
+    return os.path.join(cache, "boards", mp, leaf)
 
 
-def board_load(cache, mp, zone):
-    doc = _load(board_path(cache, mp, zone))
+def board_load(cache, mp, zone, mode=0):
+    doc = _load(board_path(cache, mp, zone, mode))
     if not isinstance(doc, dict) or not isinstance(doc.get("rows"), list):
         doc = {"rows": [], "done": False}
     return doc
 
 
-def board_page(cache, mp, zone, pacer):
-    """Fetch one board's next page and append it to the cache."""
-    doc = board_load(cache, mp, zone)
-    page = pacer.get("/api/maps/%s/records/zone/%d/%d?game=css&mode=0"
-                     % (urllib.parse.quote(mp), zone, len(doc["rows"]) + 1))
+def merge_page(doc, page):
+    """Fold a page into a board by player, keeping each player's fastest row.
+
+    Ranks move while a board is paged -- a new record pushes everyone below it
+    down one -- so a page can repeat a player already held, and appending would
+    hold them twice.  Returns how many players were new."""
+    held = {}
+    for i, r in enumerate(doc["rows"]):
+        held.setdefault(str(r.get("steamID")), i)
+    new = 0
+    for r in page:
+        k = str(r.get("steamID"))
+        i = held.get(k)
+        if i is None:
+            held[k] = len(doc["rows"])
+            doc["rows"].append(r)
+            new += 1
+        elif _secs(r) < _secs(doc["rows"][i]):
+            doc["rows"][i] = r
+    return new
+
+
+def _secs(rec):
+    t = rec.get("time")
+    return t if isinstance(t, (int, float)) and t > 0 else float("inf")
+
+
+def _ikey(mp, zone, mode):
+    return "%s|%d|%d" % (mp, zone, mode)
+
+
+def board_state(cache, idx, mp, zone, mode):
+    """[rows held, done, first page's fetch time], from `idx` when it has it.
+
+    The index exists so a cron tick need not parse every board it might page:
+    a deep board is megabytes of JSON, and the Pi has ~1 GB free."""
+    if idx is not None:
+        v = idx.get(_ikey(mp, zone, mode))
+        if v is not None:
+            return v
+    d = board_load(cache, mp, zone, mode)
+    v = [len(d["rows"]), bool(d.get("done")), int(d.get("top") or 0)]
+    if idx is not None:
+        idx[_ikey(mp, zone, mode)] = v
+    return v
+
+
+def board_page(cache, mp, zone, pacer, mode=0, top=False, idx=None):
+    """Fetch one board's next page -- or with `top` its first page again -- and
+    fold it into the cache.  Returns (doc, that page's rows)."""
+    doc = board_load(cache, mp, zone, mode)
+    start = 1 if top else len(doc["rows"]) + 1
+    page = pacer.get("/api/maps/%s/records/zone/%d/%d?game=css&mode=%d"
+                     % (urllib.parse.quote(mp), zone, start, mode))
     if not isinstance(page, list):
         raise Refused("a records page was not a list -- their format has "
                       "probably changed")
-    doc["rows"].extend(r for r in page if isinstance(r, dict))
-    doc["done"] = len(page) < KSF_PAGE
-    _save(board_path(cache, mp, zone), doc)
-    return doc
+    page = [r for r in page if isinstance(r, dict)]
+    new = merge_page(doc, page)
+    if start == 1:
+        doc["top"] = int(time.time())
+    if not top:
+        doc["done"] = len(page) < KSF_PAGE
+    elif new:
+        doc["done"] = False         # new players on top: the tail moved too
+    _save(board_path(cache, mp, zone, mode), doc)
+    if idx is not None:
+        idx[_ikey(mp, zone, mode)] = [len(doc["rows"]), bool(doc["done"]),
+                                      int(doc.get("top") or 0)]
+    return doc, page
 
 
-def wants_more(doc, depth):
-    return not doc["done"] and (depth < 0 or len(doc["rows"]) < depth)
+def wants_more(state, depth):
+    n, done = state[0], state[1]
+    return not done and (depth < 0 or n < depth)
 
 
-def sweep_maps(maps, cache, depth, pacer):
+def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
+               idx=None):
     """Look the maps up, then fetch pages shallowest first until the budget or
     the work runs out -- so an interrupted sweep leaves every board equally deep.
+
+    Boards of `prio` maps go first.  A style other than Forward is asked for its
+    stages and bonuses only once its main board has a row: most maps have no
+    Sideways times at all.  Each page fetched is appended to `fetched` as
+    (map, zone, mode, rows).
 
     Returns ({map: info}, maps KSF does not have, boards still wanting pages)."""
     infos, absent = {}, 0
@@ -380,38 +471,178 @@ def sweep_maps(maps, cache, depth, pacer):
             absent += 1
         else:
             infos[mp] = info
-    heap = [(len(d["rows"]), mp, z)
-            for mp, info in infos.items() for z in zones_of(info)
-            for d in (board_load(cache, mp, z),) if wants_more(d, depth)]
-    heapq.heapify(heap)
+    prio = set(prio)
+    heap = []
+
+    def push(mp, z, m):
+        st = board_state(cache, idx, mp, z, m)
+        if wants_more(st, depth):
+            heapq.heappush(heap, (0 if mp in prio else 1, st[0], mp, z, m))
+
+    for mp, info in infos.items():
+        zones = zones_of(info)
+        for m in modes:
+            for z in (zones if m == 0 or board_state(cache, idx, mp, 0, m)[0]
+                      else zones[:1]):
+                push(mp, z, m)
     while heap and pacer.left() > 0:
-        _, mp, z = heapq.heappop(heap)
-        d = board_page(cache, mp, z, pacer)
-        if wants_more(d, depth):
-            heapq.heappush(heap, (len(d["rows"]), mp, z))
+        _, n, mp, z, m = heapq.heappop(heap)
+        d, page = board_page(cache, mp, z, pacer, m, idx=idx)
+        if fetched is not None:
+            fetched.append((mp, z, m, page))
+        if wants_more((len(d["rows"]), d["done"]), depth):
+            push(mp, z, m)
+        if m and z == 0 and not n and d["rows"]:
+            for z2 in zones_of(infos[mp])[1:]:
+                push(mp, z2, m)
     return infos, absent, len(heap)
 
 
-def map_rows(cache, infos):
+def rec_row(mp, zone, mode, rec):
+    """One KSF record as a run row, or None when it is unusable."""
+    sid = steam64(str(rec.get("steamID") or ""))
+    t = rec.get("time")
+    if sid is None or not isinstance(t, (int, float)) or t <= 0:
+        return None
+    track, leg = zone_track_leg(zone)
+    ms = int(round(t * 1000.0))
+    return {"map": mp, "track": track, "leg": leg, "style": KSF_MODES[mode],
+            "player": str(sid),
+            "name": S.clean_text(rec.get("name") or "") or str(sid),
+            "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
+            "rate": 1.0 / KSF_TICK, "when": int(rec.get("date") or 0)}
+
+
+def map_rows(cache, infos, modes=(0,)):
     """Every cached board row as a run row, plus the count unusable."""
     rows, bad = [], 0
     for mp in sorted(infos):
-        for z in zones_of(infos[mp]):
-            track, leg = zone_track_leg(z)
-            for rec in board_load(cache, mp, z)["rows"]:
-                sid = steam64(str(rec.get("steamID") or ""))
-                t = rec.get("time")
-                if sid is None or not isinstance(t, (int, float)) or t <= 0:
-                    bad += 1
-                    continue
-                ms = int(round(t * 1000.0))
-                rows.append({
-                    "map": mp, "track": track, "leg": leg, "player": str(sid),
-                    "name": S.clean_text(rec.get("name") or "") or str(sid),
-                    "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
-                    "rate": 1.0 / KSF_TICK, "when": int(rec.get("date") or 0),
-                })
+        for m in modes:
+            for z in zones_of(infos[mp]):
+                for rec in board_load(cache, mp, z, m)["rows"]:
+                    r = rec_row(mp, z, m, rec)
+                    if r is None:
+                        bad += 1
+                    else:
+                        rows.append(r)
     return rows, bad
+
+
+def catalog_step(cache, pacer, now):
+    """Page KSF's whole map list into the map cache, again every CATALOG_DAYS.
+
+    /api/maps/new is their "new maps" list, KSF_LIST_PAGE a page by `offset`,
+    and each row is the shape the search answers -- so ~100 requests list every
+    map, where a search per installed map would be 1,800."""
+    cf = os.path.join(cache, "catalog.json")
+    cat = _load(cf)
+    if not isinstance(cat, dict) or not isinstance(cat.get("names"), list):
+        cat = {"names": [], "offset": 0, "done": False, "at": 0}
+    if cat["done"] and now - int(cat.get("at") or 0) < CATALOG_DAYS * 86400:
+        return cat
+    if cat["done"]:
+        cat.update(offset=0, done=False)
+    seen = set(cat["names"])
+    while pacer.left() > 0 and not cat["done"]:
+        page = pacer.get("/api/maps/new?offset=%d" % cat["offset"])
+        if not isinstance(page, list):
+            raise Refused("the map list was not a list -- their format has "
+                          "probably changed")
+        for row in page:
+            mp = S.clean_map(str(row.get("name") or "")) if isinstance(row, dict) else None
+            if mp is None:
+                continue
+            _save(os.path.join(cache, "maps", mp + ".json"), [row])
+            if mp not in seen:
+                seen.add(mp)
+                cat["names"].append(mp)
+        cat["offset"] += len(page)
+        if len(page) < KSF_LIST_PAGE:
+            cat["done"], cat["at"] = True, now
+        _save(cf, cat)
+    return cat
+
+
+def wanted_maps(now):
+    """Maps somebody looked at within WANT_DAYS (surfd's mapwant table)."""
+    try:
+        conn = S.connect()
+        try:
+            return {r[0].lower() for r in conn.execute(
+                "SELECT map FROM mapwant WHERE last >= ?",
+                (now - WANT_DAYS * 86400,))}
+        finally:
+            conn.close()
+    except Exception as e:      # an empty queue costs order, not the tick
+        print("  mapwant unreadable (%s): no map goes first" % e)
+        return set()
+
+
+def refresh_step(cache, idx, maps, prio, pacer, budget, now, fetched):
+    """Re-ask the first page of boards not asked for REFRESH_DAYS -- wanted
+    maps first, then the fullest -- within `budget` requests."""
+    cut = now - REFRESH_DAYS * 86400
+    cands = []
+    for key, (n, done, top) in idx.items():
+        mp, z, m = key.split("|")
+        if mp in maps and (n or done) and top < cut:
+            cands.append((0 if mp in prio else 1, -n, top, mp, int(z), int(m)))
+    cands.sort()
+    for _, _, _, mp, z, m in cands[:budget]:
+        if pacer.left() <= 0:
+            break
+        _, page = board_page(cache, mp, z, pacer, m, top=True, idx=idx)
+        fetched.append((mp, z, m, page))
+    return min(budget, len(cands))
+
+
+def watch_mode(args, have, cache):
+    """--watch: one unattended tick.  Returns the rows fetched in it."""
+    now = int(time.time())
+    pf = os.path.join(cache, ".refused")
+    park = _load(pf) or {}
+    if now < int(park.get("until") or 0):
+        print("parked: refused (%s) at %s, nothing asked until %s"
+              % (park.get("why"), time.strftime("%Y-%m-%d %H:%M", time.gmtime(park["at"])),
+                 time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(park["until"]))))
+        return []
+    pacer = Pacer(args.delay, args.max)
+    ixf = os.path.join(cache, "index.json")
+    idx = _load(ixf)
+    idx = idx if isinstance(idx, dict) else {}
+    fetched, refreshed, left, prio, maps = [], 0, 0, set(), set()
+    try:
+        cat = catalog_step(cache, pacer, now)
+        names = set(cat["names"])
+        try:
+            names |= {f[:-5] for f in os.listdir(os.path.join(cache, "maps"))
+                      if f.endswith(".json")}
+        except OSError:
+            pass
+        maps = {m for m in names if not have or m in have}
+        prio = wanted_maps(now) & maps
+        if cat["done"]:
+            refreshed = refresh_step(cache, idx, maps, prio, pacer,
+                                     max(1, args.max // 4), now, fetched)
+        _, _, left = sweep_maps(sorted(maps), cache, -1, pacer, sorted(KSF_MODES),
+                                prio, fetched, idx)
+    except Refused as e:
+        n = int(park.get("n") or 0) + 1
+        wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
+        _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
+        print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
+    else:
+        if park:
+            os.remove(pf)
+    finally:
+        _save(ixf, idx)
+    rows = []
+    for mp, z, m, page in fetched:
+        rows += [r for r in (rec_row(mp, z, m, rec) for rec in page) if r]
+    print("watch: %d request(s), %d page(s) (%d refreshed), %d row(s); %d map(s), "
+          "%d wanted; %d board(s) wanting more"
+          % (pacer.made, len(fetched), refreshed, len(rows), len(maps), len(prio), left))
+    return rows
 
 
 def known_ksf_maps():
@@ -431,8 +662,11 @@ def playable_maps():
     A row for a map with no BSP is DROPPED rather than stored: it would sit on
     a board nobody can open, and the first person to click it would meet a
     failure that looks like ours rather than like a map we do not have.
+
+    surfd's own library (MAPS_DIR) first: on the Pi the paths below hold no
+    BSP at all, and until 5 Oct this answered an empty set there.
     """
-    out = set()
+    out = {m.lower() for m in S.map_index()[0]}
     for root in (S.RUNS_DIR, S.MOMENTUM_DIR):
         base = os.path.dirname(os.path.normpath(root))
         for sub in ("maps", os.path.join("ftesurf", "maps"),
@@ -528,12 +762,13 @@ def maps_mode(args, have, cache):
                             "all" if args.depth < 0 else args.depth, budget,
                             args.delay))
     try:
-        infos, absent, left = sweep_maps(maps, cache, args.depth, pacer)
+        infos, absent, left = sweep_maps(maps, cache, args.depth, pacer, args.modes)
     except Refused as e:
         print("  refused: %s -- stopping, nothing is retried" % e)
         # What the cache already holds is still good; read it with no budget.
-        infos, absent, left = sweep_maps(maps, cache, args.depth, Pacer(0, 0))
-    rows, bad = map_rows(cache, infos)
+        infos, absent, left = sweep_maps(maps, cache, args.depth, Pacer(0, 0),
+                                         args.modes)
+    rows, bad = map_rows(cache, infos, args.modes)
     kinds = [sum(1 for r in rows if (r["track"], r["leg"]) == (0, 0)),
              sum(1 for r in rows if r["leg"] > 0),
              sum(1 for r in rows if r["track"] > 0)]
@@ -543,6 +778,9 @@ def maps_mode(args, have, cache):
     print("boards wanting  %d more page(s)" % left)
     print("records kept    %d   main %d, stage %d, bonus %d   (unusable %d)"
           % (len(rows), kinds[0], kinds[1], kinds[2], bad))
+    print("by style        %s" % ", ".join(
+        "%s %d" % (KSF_MODES[m], sum(1 for r in rows if r["style"] == KSF_MODES[m]))
+        for m in args.modes))
     return rows
 
 
@@ -556,8 +794,13 @@ def main():
                     help="page every board of these maps: a file of names, or\nnothing for the maps already holding a ksf row")
     ap.add_argument("--depth", type=int, default=KSF_DEPTH_DEFAULT,
                     help="--from-maps: rows per board, -1 for all")
-    ap.add_argument("--delay", type=float, default=KSF_DELAY_MS / 1000.0,
-                    help="--from-maps: seconds between requests")
+    ap.add_argument("--modes", default=",".join(str(m) for m in sorted(KSF_MODES)),
+                    help="--from-maps: KSF styles, 0 Forward 1 Sideways\n2 Half-Sideways 3 Backwards")
+    ap.add_argument("--watch", action="store_true",
+                    help="one unattended crawl tick, for cron (see the docstring)")
+    ap.add_argument("--delay", type=float, default=None,
+                    help="--from-maps/--watch: seconds between requests\n(default %.1f, --watch %.1f)"
+                    % (KSF_DELAY_MS / 1000.0, WATCH_DELAY))
     ap.add_argument("--cache", default=None, help="default <SURFD_HOME>/data/ksf")
     ap.add_argument("--max", type=int, default=None,
                     help="players (--seed/--from-boards, default %d) or requests\n(--from-maps, default %d) this invocation"
@@ -568,7 +811,20 @@ def main():
     args = ap.parse_args()
 
     cache = args.cache or os.path.join(S.DATA_DIR, "ksf")
-    if args.from_maps is None:
+    try:
+        args.modes = sorted({int(m) for m in str(args.modes).split(",") if m.strip()})
+    except ValueError:
+        args.modes = []
+    if not args.modes or any(m not in KSF_MODES for m in args.modes):
+        print("--modes takes numbers from %s" % sorted(KSF_MODES))
+        return 2
+    if args.delay is None:
+        args.delay = WATCH_DELAY if args.watch else KSF_DELAY_MS / 1000.0
+    if args.watch:
+        # A tick writes only the pages it fetched, so a dry one must fetch none:
+        # those rows would never reach the board.
+        args.max = 0 if not args.go else (WATCH_MAX if args.max is None else args.max)
+    elif args.from_maps is None:
         if args.max is None:
             args.max = KSF_MAX_DEFAULT
         if args.from_boards:
@@ -593,18 +849,47 @@ def main():
     else:
         have = playable_maps()
 
-    if args.from_maps is not None:
+    if args.watch:
+        rows = watch_mode(args, have, cache)
+    elif args.from_maps is not None:
         rows = maps_mode(args, have, cache)
     else:
         rows = seed_mode(args, seed, have, cache)
 
     if not args.go:
         for r in rows[:10]:
-            print("   %-28s t%d l%d %9.3fs  %s" % (r["map"], r["track"], r["leg"],
-                                                 r["millis"] / 1000.0, r["name"]))
+            print("   %-28s t%d l%d %-5s %9.3fs  %s"
+                  % (r["map"], r["track"], r["leg"], r.get("style", S.STYLE_CLEAN),
+                     r["millis"] / 1000.0, r["name"]))
         print("\nDRY RUN -- nothing written.  Pass --go.")
         return 0
 
+    if args.watch:
+        # Rows a failed write could not file wait here for the next tick: the
+        # crawl never asks for those pages again.
+        pend = os.path.join(cache, "pending.json")
+        held = _load(pend)
+        rows = (held if isinstance(held, list) else []) + rows
+        try:
+            n = write_rows(rows)
+        except sqlite3.Error as e:
+            _save(pend, rows)
+            print("write failed (%s): %d row(s) kept for the next tick" % (e, len(rows)))
+            return 1
+        if held is not None:
+            os.remove(pend)
+        print("board rows set  %d" % n)
+        return 0
+    print("board rows set  %d" % write_rows(rows))
+    return 0
+
+
+def write_rows(rows):
+    """Upsert run rows in one transaction; a slower time never replaces a faster.
+
+    --watch passes only the pages fetched in its own tick, so the write stays a
+    few hundred rows and the lock it takes stays short (momwatch's "database is
+    locked" heartbeats were one long transaction; BACKLOG)."""
     conn = S.connect()
     now = int(time.time())
     wrote = 0
@@ -621,12 +906,13 @@ def main():
                 "   ticks=excluded.ticks, millis=excluded.millis,"
                 "   name=excluded.name, submitted=excluded.submitted"
                 " WHERE excluded.millis < runs.millis",
-                (r["map"], r["track"], r["leg"], S.TIER_KSF, S.STYLE_CLEAN,
+                (r["map"], r["track"], r["leg"], S.TIER_KSF,
+                 r.get("style", S.STYLE_CLEAN),
                  r["player"], r["name"], r["ticks"], r["rate"], r["millis"],
                  r["when"] or now))
             wrote += cur.rowcount
-    print("board rows set  %d" % wrote)
-    return 0
+    conn.close()
+    return wrote
 
 
 if __name__ == "__main__":

@@ -94,6 +94,10 @@
   }
 
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  // KSF's styles sit beside our two (surfd.STYLES_KSF); tabbed only where held.
+  var KSF_STYLES = ['sw', 'hsw', 'bw'];
+  var STYLE_NAMES = { sw: 'Sideways', hsw: 'Half-Sideways', bw: 'Backwards' };
+  function styleName(s) { return STYLE_NAMES[s] || cap(s); }
 
   function showError(msg) {
     var e = $('err');
@@ -310,12 +314,14 @@
         function () { go(v, p.track, p.leg, v.style, v.tier); }));
     });
 
-    ['clean', 'segmented'].forEach(function (s) {
-      var n = 0;
-      v.boards.forEach(function (b) {
-        if (b.track === v.track && b.leg === v.leg && b.style === s) { n = b.n + n0(b.ni); }
-      });
-      styles.appendChild(tabButton(cap(s), n, s === v.style,
+    var here = {};
+    v.boards.forEach(function (b) {
+      if (b.track === v.track && b.leg === v.leg) { here[b.style] = b.n + n0(b.ni); }
+    });
+    ['clean', 'segmented'].concat(KSF_STYLES.filter(function (s) {
+      return s in here || s === v.style;
+    })).forEach(function (s) {
+      styles.appendChild(tabButton(styleName(s), here[s] || 0, s === v.style,
         function () { go(v, v.track, v.leg, s, v.tier); }));
     });
 
@@ -384,7 +390,7 @@
     pumpMore();
     var empty = $('empty');
     if (rows.length === 0) {
-      empty.textContent = 'No ' + v.style + ' times on ' +
+      empty.textContent = 'No ' + styleName(v.style).toLowerCase() + ' times on ' +
         legName(v.track, v.leg) + ' yet';
       empty.hidden = false;
     } else {
@@ -525,7 +531,7 @@
     var chip = srcChip(body.tr);
     if (chip) { sub.appendChild(chip); }
     sub.appendChild(el('span', 'why', legName(body.track, body.leg) + ' · ' +
-      cap(body.style) + ' · ' + day(body.when)));
+      styleName(body.style) + ' · ' + day(body.when)));
     if (body.ext) {
       sub.appendChild(link('dimlink',
         'https://momentum-mod.org/profile/' + encodeURIComponent(body.ext),
