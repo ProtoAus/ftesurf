@@ -68,6 +68,7 @@ def fresh(admin_pw=None, keep=None):
         SURFD_ENV=os.path.join(home, "surfd.env"),
         SURFD_RUNS=os.path.join(data, "runs"),
         SURFD_MAPS=os.path.join(home, "maps"), SURFD_ZONES=os.path.join(home, "zones"),
+        SURFD_ZONES_LOCAL=os.path.join(home, "zones_local"),
         SURFD_LOBBY_CFGS=os.path.join(home, "lobbycfg"),
         SURFD_GAME=os.path.join(home, "game"),
         SURFD_VERIFIER=os.path.join(home, "noengine"))

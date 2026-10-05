@@ -59,8 +59,11 @@ def check(label, got, want):
 # in case, and a map with no zone file -- which is the majority case in the
 # shipped library (781 of 1312) and the one most likely to be handled by
 # accident rather than on purpose.
-LIBRARY = ["surf_kitsune", "surf_lux", "surf_ace", "Bhop_Mukiology", "bhop_HeLL"]
+LIBRARY = ["surf_kitsune", "surf_lux", "surf_ace", "Bhop_Mukiology", "bhop_HeLL",
+           "surf_localonly"]
 ZONED = ["surf_kitsune", "surf_lux", "Bhop_Mukiology"]
+# The game's own overrides (SURFD_ZONES_LOCAL), which sv_zones.qc reads first.
+ZONED_LOCAL = ["surf_localonly"]
 
 
 def fresh(key="testkey", seed_v3=False, library=None, zoned=None):
@@ -119,16 +122,24 @@ def fresh(key="testkey", seed_v3=False, library=None, zoned=None):
     # stops a test ever reaching the live /srv/nvme default.
     maps = os.path.join(home, "maps")
     zones = os.path.join(maps, "zones", "online")
+    zlocal = os.path.join(maps, "zones", "local")
     os.makedirs(zones, exist_ok=True)
+    os.makedirs(zlocal, exist_ok=True)
     for name in (LIBRARY if library is None else library):
         open(os.path.join(maps, name + ".bsp"), "wb").close()
     for name in (ZONED if zoned is None else zoned):
         open(os.path.join(zones, name + ".json"), "wb").close()
+    if zoned is None:
+        for name in ZONED_LOCAL:
+            open(os.path.join(zlocal, name + ".json"), "wb").close()
 
     os.environ["SURFD_HOME"] = home
     os.environ["SURFD_DB"] = db
     os.environ["SURFD_MAPS"] = maps
     os.environ["SURFD_ZONES"] = zones
+    # Its default sits beside the live run tree: unset, the Pi's 66 real
+    # local zones joined this fixture's 3 (the 5 Oct deploy's stage).
+    os.environ["SURFD_ZONES_LOCAL"] = zlocal
     os.environ["SURFD_ENV"] = os.path.join(home, "surfd.env")
     os.environ.pop("SURFD_PUBLIC_HOST", None)
     os.environ.pop("SURFD_TRUSTED", None)
@@ -191,7 +202,7 @@ check("the library index found every bsp", len(bsp), len(LIBRARY))
 check("...keyed lowercase", sorted(bsp), sorted(n.lower() for n in LIBRARY))
 check("...storing the ON-DISK spelling", bsp["bhop_mukiology"], "Bhop_Mukiology")
 check("...and again for the other capitalised one", bsp["bhop_hell"], "bhop_HeLL")
-check("the zone set is separate and smaller", len(zoned), len(ZONED))
+check("the zone set is separate and smaller", len(zoned), len(ZONED) + len(ZONED_LOCAL))
 check("...and is keyed lowercase too", "bhop_mukiology" in zoned, True)
 
 # CONTROL: a library directory that is not there must not take surfd down with
@@ -246,6 +257,12 @@ beat(m, "p27510", "surf_ace")
 status, body = join(m, "bhop_hell")
 check("an UNZONED map is still hosted", status, 200)
 check("...and says so rather than pretending", body["timed"], 0)
+
+m = fresh()
+beat(m, "p27510", "surf_ace")
+status, body = join(m, "surf_localonly")
+check("a map zoned only in the game's local folder can be timed (surf_chaos_fix)",
+      (status, body["timed"]), (200, 1))
 
 status, body = join(m, "surf_doesnotexist")
 check("a map that is not installed is refused", status, 404)

@@ -1421,6 +1421,7 @@ priv = tempfile.mkdtemp(prefix="surfd-board-maps-")
 os.makedirs(os.path.join(priv, "zones", "online"))
 os.environ["SURFD_MAPS"] = priv
 os.environ["SURFD_ZONES"] = os.path.join(priv, "zones", "online")
+os.environ["SURFD_ZONES_LOCAL"] = os.path.join(priv, "zones", "local")
 m = fresh()
 m.time = FakeClock()
 T = int(m.time.now)
@@ -1452,6 +1453,7 @@ check("control: the approved run shows VERIFIED, the rejected one is gone",
       (rows_by_player(m)["noted"]["ver"], "hidden" in rows_by_player(m)), (1, False))
 os.environ.pop("SURFD_MAPS", None)
 os.environ.pop("SURFD_ZONES", None)
+os.environ.pop("SURFD_ZONES_LOCAL", None)
 
 # --------------------------------------------------------------------------
 print("\n--- 18. schema 6: the run a stage row was set in (`run`) ----------")

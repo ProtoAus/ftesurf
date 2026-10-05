@@ -93,6 +93,7 @@ def fresh(_file=None, **env):
     os.environ["SURFD_RUNS"] = os.path.join(home, "runs")
     os.environ["SURFD_MAPS"] = os.path.join(home, "maps")
     os.environ["SURFD_ZONES"] = os.path.join(home, "zones")
+    os.environ["SURFD_ZONES_LOCAL"] = os.path.join(home, "zones_local")
     os.environ["SURFD_LOBBY_CFGS"] = os.path.join(home, "lobbycfg")
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_ADMIN_HASH",
               "SURFD_ADMIN_SECRET", "SURFD_RCON_PASSWORD",
