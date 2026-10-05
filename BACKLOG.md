@@ -3036,10 +3036,23 @@ complete".  Extending the sweep to `.shader`/`.cfg` was measured and would add
 exactly ONE path (`glsl/milk_dot.glsl`), which is not worth the prose false
 positives those files carry.
 
-STILL UNWIRED, and this is the remaining follow-up: nothing RUNS it.  `release.ps1`'s
-pre-pack step is where it belongs, beside the deny-tripwire that already guards
-`ftesurf/particles/ftesurf.cfg`.  Falsifier for that wiring: delete a data file from
-`$ShipGameFiles` and confirm `release.ps1 -DryRun` stops before packing.
+WIRED 2026-10-05 as `release.ps1` **gate 4**, in the Gates step, so it runs before
+staging and packing and ONE call site covers both the Windows and the Linux drop
+(they share `$ShipGlobs`).  THE FALSIFIER ABOVE WAS RUN, NOT REASONED ABOUT: with
+`'ftesurf/data/mapdl.txt'` deleted from `$ShipGameFiles` -- 0.1.14's actual fault,
+reproduced -- `-Bump patch -BuildNumber 89 -DryRun -AllowDirty -AllowStale` printed
+`MISS data/mapdl.txt   src/menu/m_main.qc:2117`, `reached through fopen()`,
+`FAILED: 1 literal asset path(s) the archive would not contain.` and stopped with
+no `[5] Stage` step at all.  Restored, the identical command ran all eleven steps
+to exit 0, gate 4 reading `143 -- 56 shipped, 53 denied, 33 runtime, 1 pattern`
+and the run carrying zero warnings.  The two `-Allow*` flags were passed only to
+get past gates 1 and 2 -- a concurrent session had `ftesurf/cfg/default.cfg`
+modified and its QC newer than the installed .dat -- and gate 4 has no override.
+Three properties worth keeping if you touch it: the tool AND `python` are checked
+for existence and either missing is a hard Fail, because a gate that cannot run
+must not read as a pass; the tool's own stdout is echoed into the release log, so
+a run records what it saw rather than only that it passed; and the failure message
+names the two ways out (an allowlist entry, or a DENY with a stated reason).
 
 ## Full-depth boards are live; five things that fall out of it — 2026-09-29
 

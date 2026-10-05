@@ -704,6 +704,51 @@ if ($skew.Count) {
     else { Fail "$msg`n  Run .\src\build.ps1 -Engine to deploy the built pair, then re-run." }
 } elseif ($patchAppliesToBinary) { Good 'gate 3 (skew): shipped exe and plugin match engine\release\' }
 
+# --- gate 4: the ship set carries what the QuakeC asks for -------------------
+#  $ShipRootFiles/$ShipGameFiles/$ShipGlobs are an ALLOWLIST, and nothing else in
+#  this script compares them to the code that reads them: release.ps1 proves the
+#  archive matches the stage and the stage matches the allowlist, so a wrong
+#  allowlist is a perfect run.  Three separate "the feature is broken" reports on
+#  2026-09-28 were ONE cause -- content named by a string literal in QC that no
+#  allowlist line carried (the zone library, so 587 zoned maps drew "no zone
+#  file"; the voice icons, an error texture beside every player's name; the
+#  map-shot backdrop) -- and 0.1.15 had to be CUT because 0.1.14 shipped the
+#  map-download code with no data/mapdl.txt for it to read.  THE BUILD BOX HAS ALL
+#  OF IT, so no amount of local testing reproduces any of them and the only honest
+#  check is against the ship set itself.
+#  shipguard.py PARSES the three allowlist variables out of THIS file rather than
+#  carrying a copy, because a copy drifts and then the gate grades a ship set
+#  nobody ships.  Keep it that way if you touch either side.
+#  WHAT A PASS DOES NOT MEAN: 4 of the 13 globs (cfg, glsl, scripts, gfx/env) are
+#  resolved by ENGINE convention -- `prog milk_scene` builds the glsl filename,
+#  `r_skybox milk` loads gfx/env/milk.png -- so no literal in anything we author
+#  names them.  A pass here is "no literal asset path in src/ is missing"; step 9's
+#  listing of the archive is the claim about contents.
+$shipGuard = Join-Path $SurfDir 'tools\shipguard.py'
+if (-not (Test-Path -LiteralPath $shipGuard)) {
+    Fail "tools\shipguard.py is missing, so gate 4 cannot run. A gate that cannot run must not read as a pass: restore the tool, or delete this gate in the same commit that deletes it."
+}
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    Fail "python is not on PATH, so gate 4 (the ship-set guard) cannot run. This one is not skippable -- the fault it catches is a release that ships a working feature with no data for it to read."
+}
+# Normalised to strings: with 2>&1 a native command's stderr arrives as
+# ErrorRecord objects, and -match on one of those is not the comparison it looks
+# like.  $LASTEXITCODE is read IMMEDIATELY after the native call, before any
+# PowerShell function runs -- the trap surfd-deploy.ps1's NOTES carry.
+$sgOut = @(& python $shipGuard 2>&1 | ForEach-Object { "$_" })
+$sgCode = $LASTEXITCODE
+$sgOut | ForEach-Object { Info $_ }
+if ($sgCode -ne 0) {
+    $msg = "gate 4 (ship set): the QuakeC asks for asset(s) the archive would not contain:`n"
+    $msg += (($sgOut | Where-Object { $_ -match '^\s*(MISS|FAILED|Either|or give)' }) |
+             ForEach-Object { "      $_" }) -join "`n"
+    $msg += "`n      => add the path to `$ShipGameFiles`/`$ShipGlobs` above, or -- if its absence is"
+    $msg += "`n         correct -- a DENY entry in tools\shipguard.py WITH A STATED REASON."
+    Fail $msg
+}
+$sgLine = ($sgOut | Where-Object { $_ -match 'asset literals in src/' } | Select-Object -First 1)
+Good "gate 4 (ship set): $(if ($sgLine) { $sgLine.Trim() } else { 'no literal asset path in src/ is missing' })"
+
 # ENGINE.txt is a source document about a code relationship, not a cache this
 # script gets to rewrite. Report drift; never silently "fix" it.
 $enginePin = Join-Path $SurfDir 'ENGINE.txt'
