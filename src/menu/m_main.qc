@@ -6981,6 +6981,18 @@ void() m_init =
 	registercommand("ui_join");
 	registercommand("ui_strip_test");
 	registercommand("ui_board_test");
+	// Patch 498.  THE KEYBOARD CANNOT REACH A TEXT FIELD: sui moves its cursor by
+	// hit test, so with the mouse parked off a field no key this VM consumes can
+	// focus one -- and sui_text_input_focused, the flag that suppresses the WASD
+	// navigation keys while a field is focused, is set from a MOUSE hit, so it
+	// reads FALSE and w/a/s/d keep moving the cursor.  The field is therefore
+	// unreachable, and once focused by mouse the keys are not given back to a
+	// panel that is no longer up.  The focus is recorded by whoever typed last
+	// and asked for here, where the screens are known.
+	registercommand("ui_key");
+	registercommand("ui_focus");
+	registercommand("ui_cursor");
+	registercommand("ui_click");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -7203,6 +7215,75 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	}
 	float used = sui_input_event(evtype, scanx, chary, devid);
 
+	/*
+	  TAB MOVES THE TEXT FOCUS, BECAUSE NOTHING ELSE CAN (Patch 498).
+
+	  The engine gives every non-F1..F15 key to Menu_KeyEvent and returns
+	  (keys.c:4056-4063), so with the menu up a bind never runs: navigation here
+	  is menuqc reading the bind STRING (sui_input_dir -> getkeybind) and moving
+	  sui's cursor itself.  That cursor moves by HIT TEST, and a text field is not
+	  an element it can land on and click -- so w/a/s/d/arrows can never reach one,
+	  and the only focus route was the mouse.
+
+	  TAB is sui's own text-focus key, bound to nothing in this game (no bind, no
+	  handler anywhere in src/), so it is free and it is the key a player expects.
+	  ONE FIELD PER SCREEN, and a ring over one element means "focus the field",
+	  which is all a one-field screen can do honestly -- a shift+TAB backwards
+	  walk would need a modifier state nothing here tracks, and inventing one for
+	  a ring of one would be a claim the code cannot keep.  A screen with no field
+	  leaves the focus alone rather than clearing it, so TAB is inert there.
+	*/
+	if (evtype == IE_KEYDOWN && !used && scanx == K_TAB)
+	{
+		local string id = "";
+
+		/*
+		  ONE FIELD PER SCREEN, because that is how many there are: the create
+		  screen's search box and the name screen's name box, and no other screen
+		  has one at all (the address a create-screen join uses is picked from
+		  /lobbies.json, not typed -- ui_addr_ok validates what the directory gave
+		  it).  A ring over one element means "focus the field", and a screen with
+		  none leaves the claim alone rather than clearing it, so TAB is inert
+		  where there is nothing to type into.
+		*/
+		if (menu_screen == SCREEN_CREATE)
+			id = "cs_search";
+		else if (menu_screen == SCREEN_NAME)
+			id = "nm_field";
+
+		if (id != "")
+			// Re-pressing TAB on a one-field screen re-claims that field, which is
+			// what a ring of one means; the caret stays where the player left it,
+			// because a key that cannot move focus anywhere else must not move the
+			// text either.
+			sui_field_focus(id);
+		print(sprintf("ui_tab: focus %s\n", (id != "") ? id : "none"));
+		return TRUE;
+	}
+
+	/*
+	  THE MOUSE CURSOR IS THE ONLY THING THAT CAN CLICK AN ELEMENT, AND A
+	  HEADLESS RUN HAS NO MOUSE.
+
+	  sui's click path is _sui_mouse1_up, which hit-tests _cursor_position against
+	  the elements and fires the topmost one's action; a key is turned into that by
+	  sui_input_event, which synthesises a down on ENTER (+attack, K_GP_A) and an up
+	  on its release.  So ENTER *should* activate the hovered element -- and it does
+	  not reach anything here, for a reason worth having measured rather than
+	  assumed: `ui_cursor` prints the UNTRANSFORMED cursor position while
+	  _action_elements hold TRANSFORMED ones (sui_action_element calls
+	  sui_transform_box on its own pos before storing it), and the same mismatch is
+	  inside _cursor_kb_move, which compares the two.  Whether that is a real defect
+	  in keyboard navigation or only in the diagnostic is NOT settled here -- the
+	  cursor demonstrably moves for arrow keys, and ENTER demonstrably reaches no
+	  element on two different screens -- and it is in BACKLOG with both readings.
+
+	  What this arm needs is a click that does not depend on either: ui_click
+	  delivers the same two events at an ABSOLUTE position, which is what the engine
+	  gives for a real mouse (IE_MOUSEABS), and it fires the element whose stored
+	  box contains that point.  It is a harness handle, registered like the others.
+	*/
+
 	if (evtype == IE_KEYDOWN && !used)
 	{
 		if (getkeybind(scanx) == "toggleconsole")
@@ -7233,6 +7314,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			{
 				ui_name_resume = 0;
 				menu_screen = ui_name_back;
+				// The name field is sui's (ui_field -> sui_text_input), so its
+				// focus flag is sui's too and it does not know the screen is
+				// gone: without this the navigation keys stay dead on the screen
+				// ESC just returned to.
+				sui_text_unfocus();
 				return TRUE;
 			}
 
@@ -7241,6 +7327,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			if (menu_screen == SCREEN_CREATE)
 			{
 				ui_create_esc();
+				// THE FOCUS LEAVES WITH THE PANEL IT BELONGED TO: the create
+				// screen's search field is the one that had it, and a flag that
+				// outlived its panel would leave w/a/s/d dead in whatever is up
+				// next -- the second half of the 498 defect.
+				sui_text_unfocus();
 				return TRUE;
 			}
 
@@ -7415,6 +7506,16 @@ float(string cmd) m_consolecommand =
 		if (argv(1) == "test")
 			print(sprintf("ui_name: %S -- %s\n", argv(2),
 			              ui_name_default(argv(2)) ? "default" : "chosen"));
+		else if (argv(1) == "field")
+			/*
+			  THE FIELD'S OWN TEXT, which is not what `ui_name` alone prints: that
+			  reports the committed `name` cvar, so a keystroke that reached the
+			  field and one that did not look identical there.  Grading typing needs
+			  this one, and it is the only observable that separates "the focus claim
+			  worked" from "the field is focused and the buffer was already drained".
+			*/
+			print(sprintf("ui_name: field %S caret %g\n", ui_name_field,
+			              ui_name_caret));
 		else if (argv(1) == "screen")
 		{
 			// Force the screen up regardless of the current name, for the
@@ -7432,6 +7533,207 @@ float(string cmd) m_consolecommand =
 			print(sprintf("ui_name: name %S -- %s\n", cvar_string("name"),
 			              ui_name_default(cvar_string("name")) ? "default"
 			                                                  : "chosen"));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_key")
+	{
+		/*
+		  ONE SYNTHETIC KEYPRESS THROUGH THE MENU'S OWN HANDLER.
+
+		  A real key cannot reach a minimized harness (AGENTS.md) and the engine
+		  has no builtin that runs Menu_KeyEvent, so this is the only way to drive
+		  it headlessly -- and the more honest route for what is graded here,
+		  because `ui_key enter` reaches the SAME code a real press reaches: the
+		  verdict is about the handler, not about a duplicate of it.  The scan
+		  comes from the engine's own table, so a name the bind layer would not
+		  resolve does not resolve here either.
+
+		    ui_key <name>          a press and a release of one key
+		    ui_key <name> up       the release only
+		    ui_key <name> down 65  a press carrying that unicode character
+
+		  Prints `ui_key: <name> <scan> <unicode> took <n>`, `took` being what the
+		  menu VM returned -- the same value keys.c reads out of Menu_KeyEvent.
+
+		  NO argc() HERE: the menu VM has argv (#59) and no argc at all, so the
+		  optional arguments are tested by argv() == "" the way every other
+		  command in this file tests them.
+		*/
+		local float sc, uni, took;
+		local string a1, a2, a3;
+
+		a1  = argv(1);
+		a2  = argv(2);
+		a3  = argv(3);
+		uni = (a3 != "") ? stof(a3) : 0;
+		if (a1 == "")
+		{
+			print("ui_key: needs a key name (`ui_key enter`, `ui_key w`, "
+			      "`ui_key w down 119`)\n");
+			return TRUE;
+		}
+		sc = stringtokeynum(a1);
+		if (sc <= 0)
+		{
+			print(sprintf("ui_key: no such key '%s'\n", a1));
+			return TRUE;
+		}
+		took = Menu_InputEvent((a2 == "up") ? IE_KEYUP : IE_KEYDOWN, sc, uni, 0);
+		print(sprintf("ui_key: %s %g %g took %g\n", a1, sc, uni, took));
+		if (a2 != "up")
+			Menu_InputEvent(IE_KEYUP, sc, uni, 0);
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_focus")
+	{
+		/*
+		  WHAT THE TEXT FIELD THINKS.  `ui_focus` prints it; `ui_focus <id>`
+		  claims it, which is the keyboard route sui cannot provide and the reason
+		  the panel's own handler has to ask: with the focus claimed, w/a/s/d go
+		  to the field's text and the arrows still navigate.
+		*/
+		if (argv(1) != "")
+			sui_field_focus(argv(1));
+		// `flag` is sui's per-frame record and `held` is what gates the navigation
+		// keys, so the pair is the whole observable; the text is not printed here
+		// because the fields' contents are the screens' business (ui_name prints
+		// the name one, and the create screen's query is in `ui_maplist`'s report).
+		// keydest IS printed, and it is the one figure that explains a focus that
+		// reads held 1 and then goes stale: m_draw returns at its `!menu_active`
+		// gate before sui_begin, so when the engine has taken the key destination
+		// away (a console, a prompt) nothing draws and sui_pre_draw never clears
+		// the flag -- a focused field then keeps the navigation keys for as long as
+		// the menu is not drawing them, which is the opposite failure from the one
+		// being fixed and would otherwise read as this patch not working.
+		print(sprintf("ui_focus: field '%s'  flag %g  held %g  keydest %g\n",
+		              sui_field_focused(), sui_text_input_focused,
+		              sui_text_focus(), getkeydest()));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_cursor")
+	{
+		/*
+		  WHERE sui's CURSOR IS, AND WHAT IT IS ON.
+
+		  _cursor_position is what a navigation key moves and _cursor_relative_hover
+		  is what a click would press, so the pair is the whole observable for "did
+		  this key navigate": a WASD press that the focus flag suppressed leaves both
+		  exactly where they were.  The engine has no builtin for either -- getmousepos
+		  is the REAL cursor, which setcursormode parks -- and nothing else prints
+		  them, which is why no arm in this tree has ever graded a menu navigation key.
+		*/
+		print(sprintf("ui_cursor: %g %g  hover %g %g  elements %g\n",
+		              _cursor_position_x, _cursor_position_y,
+		              _cursor_relative_hover_x, _cursor_relative_hover_y,
+		              _action_elements_index));
+		/*
+		  THE BOXES, IN THE SAME SPACE THE HIT TEST USES.
+
+		  _action_elements hold TRANSFORMED positions (sui_action_element calls
+		  sui_transform_box on its own pos before storing it) while _cursor_position
+		  is not transformed, and `ui_cursor` prints the latter -- so the two cannot
+		  be compared from a log, and neither can an aim be computed from the panel
+		  geometry a screen lays out.  This prints the pair a hit test actually
+		  uses, which is the only way to aim `ui_click` at an element without
+		  guessing: the first two cuts of this arm aimed at the field's authored box
+		  and at a transformed estimate of it and hit nothing either time, with
+		  `down 0 up 0` as the whole evidence.
+
+		  NOT a loop over the element array with a `for` initializer: that exact
+		  spelling segfaulted fteqcc (git-6681-5662b3a23), twice, with no message
+		  and no output file -- once here and once inside sui_sys.qc.  The same loop
+		  with the initializer hoisted compiles, so this is the compiler's and not
+		  the code's; noted because a silent crash of the compiler reads as a hung
+		  build rather than as a rejected construct.
+		*/
+		local int ei;
+		int en = (int)min(MAX_ACTION_ELEMENTS, _action_elements_index);
+		/*
+		  BRACES ROUND THE LOOP BODY, and this one was learned by crashing the
+		  compiler rather than by reading anything.  A braceless `for` binds ONE
+		  statement (AGENTS.md records the trap for `if`), so the second print ran
+		  outside the loop with `ei` at its end value -- past the array -- and
+		  fteqcc (git-6681-5662b3a23) SEGFAULTED on it: no message, no output file,
+		  exit 139, which reads as a hung build and not as a rejected construct.
+		  The index is `int` for the same reason an out-of-range one is a crash
+		  rather than a compile error.
+		*/
+		for (ei = 0; ei < en; ei++)
+		{
+			vector eb = _action_elements[ei].pos;
+			vector es = _action_elements[ei].size;
+			// SIX SPECIFIERS AND NOT EIGHT: sprintf drops everything past its
+			// eighth argument with only a warning, so the id and the box go on one
+			// line and kb_nav_disabled and the hit test on the next.
+			print(sprintf("ui_element %g [%s] %g %g %g %g\n",
+			              (float)ei, _action_elements[ei].id, eb_x, eb_y, es_x, es_y));
+			print(sprintf("ui_element %g kbdis %g inside %g\n", (float)ei,
+			              _action_elements[ei].kb_nav_disabled,
+			              is_2dpoint_in_bbox(_cursor_position, eb, es)));
+		}
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_click")
+	{
+		/*
+		  ONE MOUSE CLICK AT AN ABSOLUTE POSITION.
+
+		  The pair a real mouse delivers: IE_MOUSEABS to move the cursor (which
+		  sets both _cursor_position and _cursor_relative_hover, the latter being
+		  what a click's action callback receives), then KEYDOWN/KEYUP of K_MOUSE1
+		  so sui_input_event runs _sui_mouse1_down and _sui_mouse1_up.  Absolute is
+		  the point: it is the one route that does not depend on where the keyboard
+		  cursor happens to be, so it clicks the element it is aimed at.
+
+		    ui_click <x> <y>
+
+		  Prints the click and the focus it left behind, because "the click focused
+		  the field" and "the click hit nothing" are otherwise the same silence.
+		*/
+		local float x, y, d1, u1;
+
+		x = stof(argv(1));
+		y = stof(argv(2));
+		/*
+		  THE CURSOR HAS TO BE MOVED THROUGH sui's OWN MOVER, NOT THROUGH AN EVENT,
+		  AND THE MODE HAS TO BE PUT BACK.
+
+		  IE_MOUSEABS sets _cursor_position and nothing else, while the hover set
+		  (_hover_actions, which _sui_mouse1_down copies into the hold set that a
+		  release is matched against) is filled by _sui_mouse_move -- so an
+		  absolute-position event alone leaves hold 0 and the release hits nothing.
+		  Measured, not reasoned about: `ui_element 0 [nm_field] ... inside 1` at the
+		  same instant the click reported `down 0 up 0`.  There is no setcursormove
+		  in the menu VM either, so the mover is called directly -- with is_mouse
+		  TRUE and _cursor_is_mouse_active set first, because with either missing it
+		  returns before the hover pass, and the frame's sui_end then calls
+		  _retarget_kb_cursor, which moves the cursor back to the element nearest the
+		  keyboard's last one.
+
+		  AND IT LEAVES THE CURSOR IN MOUSE MODE unless the mode is put back, which
+		  is not a detail: while _cursor_is_mouse_active is set, sui_end skips
+		  _retarget_kb_cursor and _cursor_kb_move's own activate is a no-op, so the
+		  navigation keys stop moving the cursor altogether -- and "the focus
+		  suppressed them" would then be indistinguishable from "the click parked
+		  the cursor".  C6 in the arm is the check that it was put back.
+		*/
+		activate_mouse_cursor();
+		_sui_mouse_move([x, y, 0], TRUE);
+		d1 = Menu_InputEvent(IE_KEYDOWN, K_MOUSE1, 0, 0);
+		u1 = Menu_InputEvent(IE_KEYUP, K_MOUSE1, 0, 0);
+		deactivate_mouse_cursor();
+		print(sprintf("ui_click: %g %g  down %g up %g  cursor %g %g\n",
+		              x, y, d1, u1, _cursor_position_x, _cursor_position_y));
+		// Separate print, and not a seventh specifier on the line above: sprintf
+		// drops everything past its eighth argument with only a warning, and a
+		// print that reports the wrong value under the right label is worse than
+		// two prints.
+		print(sprintf("ui_click: focus '%s' held %g\n",
+		              sui_text_input_focused_id, sui_text_focus()));
 		return TRUE;
 	}
 

@@ -669,6 +669,69 @@ _input_t _input_buffer[MAX_INPUTS];
 float _input_index;
 float _input_length;
 float sui_text_input_focused;  // TRUE when a text field has focus — suppresses WASD nav
+string sui_text_input_focused_id; // which one, so a panel going away can drop it
+string _sui_field_focus;        // the field the KEYBOARD claimed: sui_field_focus
+
+/*
+  THE KEYBOARD CANNOT REACH A TEXT FIELD, AND THE FIELD CANNOT TELL.
+
+  sui moves its cursor by hit test (_cursor_kb_move looks _action_elements up by
+  screen position) and a text field is not an element the cursor can land on and
+  click, so with the mouse parked off it no key the menu VM consumes can focus a
+  field -- and `sui_text_input_focused`, the flag that suppresses the WASD
+  navigation keys, is set from a MOUSE hit (sui_is_last_clicked), so it reads
+  FALSE and w/a/s/d keep moving the cursor.  The field is unreachable by keyboard,
+  and the flag that would have suppressed the navigation keys while someone typed
+  in it was only ever set by a mouse.
+
+  The flag is also PER-FRAME: sui_begin clears it, so whatever sets it has to set
+  it again on every draw.  That is what makes the keyboard route a CLAIM rather
+  than a flag an owner sets once -- and it is measured, not assumed: the first cut
+  of this set the flag from the key handler and left it to the field's draw, and
+  got exactly ONE frame with it set out of 899 draws in the 9 s before the next
+  keystroke, so the keystroke arrived after sui_begin had cleared it and the field
+  never consumed the buffer.  That one frame was worse than useless: the buffered
+  TAB is bound to +showscores, so sui_listen_command("+forward") reported a
+  navigation key in the buffer, `sui_block_listened` returned TRUE, and
+  Menu_KeyEvent told keys.c the VM had HANDLED it.  A claim that is not
+  re-asserted by a draw therefore does not merely fail to work, it can swallow the
+  key that made it.
+
+  The owner still has to ask, because sui has no notion of screens (it draws
+  whatever it is given) and a key belonging to a screen that is not up must stay a
+  navigation key.  It is deliberately NOT inside sui_menu_nav: that reads
+  _sui_kb_move_dir, which is written by whoever consumes the buffer, so the gate
+  has to be in sui_input_dir, where the keys are classified -- the one place both
+  the navigation and the suppression pass through.
+*/
+
+// Claim a field's focus for the next draw.  The field's own draw takes the claim
+// (sui_text_input), so it lasts exactly as long as that field is being drawn and
+// cannot outlive the screen that made it.
+void(string id) sui_field_focus =
+{
+	_sui_field_focus = id;
+}
+
+string() sui_field_focused =
+{
+	return _sui_field_focus;
+}
+
+// Drop the claim.  A panel going away calls this so its field cannot take it on a
+// later draw; the flag itself needs no clearing here, because sui_begin does that
+// every frame whether or not anyone asks.
+void() sui_text_unfocus =
+{
+	_sui_field_focus = "";
+}
+
+// TRUE when a text field holds the keyboard THIS frame, i.e. a field drew and took
+// the focus.  The owner asks, because sui cannot know which screens exist.
+float() sui_text_focus =
+{
+	return sui_text_input_focused != 0.0;
+}
 
 
 // probably good to use it like while (sui_get_input(char, scan)) { ... };
@@ -699,7 +762,7 @@ void() sui_clear_input =
 vector(float scan) sui_input_dir =
 {
 	// Don't let WASD navigate when a text field is focused
-	if (sui_text_input_focused)
+	if (sui_text_focus())
 		return '0 0 0';
 
 	string cmd = getkeybind(scan);
@@ -843,6 +906,25 @@ float() sui_listen_back =
 
 void() sui_menu_nav =
 {
+	/*
+	  THE BUFFER IS THE FIELD'S WHILE IT IS FOCUSED, AND READING IT IS CONSUMING IT.
+
+	  The four `sui_listen_*` calls below classify a key by its BIND, and the bind
+	  comes out of the input buffer -- the same buffer a focused text field reads
+	  its keystrokes from.  So this function, which m_draw calls as its last act,
+	  drained w/a/s/d before `sui_text_input` could see them, and `sui_input_dir`'s
+	  focus gate (which is what stops the cursor moving) was guarding a door the
+	  keys had already gone through.  Measured, with the gate live: `nav focus 1 up
+	 1 down 0 left 0 right 0` for exactly one frame -- the frame the `w` was in --
+	  and the field's text still empty afterwards.
+
+	  The gate has to be here and not only in `sui_input_dir`, and the arrows and
+	  the pad keep working because `sui_input_dir` classifies them by SCAN as well
+	  as by bind, so a field that wants them can still be navigated out of.
+	*/
+	if (sui_text_focus())
+		return;
+
 	if (sui_listen_up()) _cursor_kb_move('0 -1 0');
 	if (sui_listen_down()) _cursor_kb_move('0 1 0');
 	if (sui_listen_left()) _cursor_kb_move('-1 0 0');
@@ -1053,6 +1135,7 @@ void(float width, float height) sui_begin =
 	_action_elements_index = 0;
 	_sui_draw_initialized = TRUE;
 	sui_text_input_focused = FALSE;
+	sui_text_input_focused_id = "";
 	
 	sui_reset_frame();
 	sui_push_frame([0, 0], [width, height]);
@@ -1192,9 +1275,17 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 {
 	sui_action_element(pos, size, id, sui_noop);
 	if (sui_is_clicked(id)) cursor = strlen(text);
-	if (sui_is_last_clicked(id))
+	/*
+	  THE FIELD TAKES THE KEYBOARD'S CLAIM HERE, on its own draw, which is the
+	  only place that knows the field is actually on screen.  A claim made by a key
+	  handler is already one frame stale by the time the input buffer is read, and
+	  sui_begin has cleared the flag -- see the essay over sui_field_focus.
+	*/
+	if (sui_is_last_clicked(id)
+	    || (_sui_field_focus != "" && strcmp(_sui_field_focus, id) == 0))
 	{
 		sui_text_input_focused = TRUE;
+		sui_text_input_focused_id = id;
 		float char = 0;
 		float scan = 0;
 		while(sui_get_input(char, scan)) sui_handle_text_input(char, scan, text, cursor);

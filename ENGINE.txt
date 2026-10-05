@@ -25,7 +25,7 @@ commit   f2630d9ada52ee1d61b4d2163a35f5cabca4e6ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-494
-patch    499
+patch    500
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,11 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-06
 
+# PATCH 500: MOD-SIDE ONLY -- the menu's text fields get a keyboard route in (TAB
+# claims, the field's own draw takes the claim) and the navigation keys come back
+# when a panel goes away.  No engine file is touched and no engine builtin is used:
+# keys.c already gives every non-F1..F15 key to Menu_KeyEvent and returns, so with
+# the menu up a bind never runs and the whole question was menuqc's.
 # PATCH 494: fs_game, toggle and vid_renderer refuse a server, and SV_Map_f bounds
 # its start spot -- holes a review of Patches 480-491 found.  Client-side; no lobby
 # deploy implied.

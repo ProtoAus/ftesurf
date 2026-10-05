@@ -2522,16 +2522,46 @@ that was never armed (see the bullet below it), and item 10's own residual.
   name's ms field -- today the only parses of that filename are
   `Online_RecName`'s writer and `onlinecache.py`'s model of it.
 
-- **Typing w/a/s/d into a menu text field moves sui's keyboard cursor, and
-  Enter clicks wherever it landed** (pre-existing; ROADMAP 9 review, traced,
-  not driven). `sui_menu_nav` (sui_sys.qc, called only from m_draw) reads the
-  movement binds (default.cfg:152-155) from the buffer the focused field types
-  from; `sui_text_input_focused` is meant to stop that, but only
-  `sui_input_dir` reads it and `sui_input_event` drops its result. Enter never
-  reaches the field -- it is sui's confirm, a click at the cursor -- so "surf"
-  + Enter in the map search can click a lobby cell below it (`ui_connect`). The
-  leaderboard button stays off the keyboard path for this. Fix: skip the bound
-  moves in sui_menu_nav while a field is focused, keeping the arrows and pad.
+- **ENTER in a focused menu text field does not adopt what was typed**
+  (pre-existing, found driving Patch 500's arm, traced and measured).  char 13
+  reaches `sui_handle_text_input`'s "commit and deselect" branch, so ENTER is not
+  swallowed as text -- but nothing wires that to the screen's own take, so the
+  field's contents are dropped and the committed `name` keeps its default.
+  Measured: type "watwasd" into the name field, press ENTER, and `ui_name` reads
+  `name "Proto" -- chosen`, not `name "watwasd"`.  The screen has a button for it
+  (`nm_go` -> `ui_name_take(ui_name_field)`), so this is a missing wiring and not
+  a missing feature, but a player who types a name and presses ENTER gets nothing
+  and no message.  Fix: call `ui_name_take(ui_name_field)` from the name screen's
+  char-13 path (`screen_name`'s button action is the model), and the create
+  screen's search field wants the same for its query.  Falsifier:
+  `cfg/test/p498keys.cfg`'s B6 currently asserts the name is NOT the field's;
+  after the fix it should assert that it IS.
+- **ENTER is sui's confirm, and it clicks wherever the keyboard cursor landed.**
+  The half of the old w/a/s/d item that Patch 500 did not touch: with a field
+  focused the cursor no longer moves (the focus gate is in `sui_input_dir` AND in
+  `sui_menu_nav` now), so ENTER cannot be *moved* into a lobby cell by typing --
+  but it still activates whatever element the cursor was already on, and on the
+  create screen that is a map row.  Untested and unmeasured: no arm sends ENTER on
+  the create screen with the cursor on a row.  `sui_input_is_confirm` is reached
+  only through `sui_block_menu_navigation`, which is the UNUSED sibling of
+  `sui_block_input_fn` (`var` initialised to `sui_block_listened`, never
+  reassigned, no caller in `src/`), so `Menu_InputEvent` returns 0 for ENTER and
+  the click comes from the screen's own handler instead.  Fix if wanted: suppress
+  the confirm-click while a field is focused, the same shape as the two gates
+  Patch 500 added.
+- **The create screen's search field is unreachable by ANY key, focused or not**
+  (found driving Patch 500, measured).  Its scroll view calls `sui_reread_input`
+  and DRAINS the input buffer every frame, so a keystroke is consumed before
+  `sui_text_input` can read it: TAB claimed the focus (`ui_tab: focus cs_search`,
+  the claim recorded) and the TAB itself was eaten by the frame that claimed it.
+  That screen has 58 elements -- one per visible map row -- against the name
+  screen's 3, and the arm therefore grades only "the claim was recorded" there.
+  A player cannot type in the map-search box without a mouse.  Fix: have
+  `sui_scroll_view_begin` re-read only the wheel keys it consumed
+  (`sui_reread_input` exists for exactly that and is the wrong tool for a text
+  field sharing the frame), or drain after `sui_text_input` has run.
+  Falsifier: an arm that claims `cs_search`, types "surf", and reads the query
+  back -- `ui_maplist` prints the row count, which a query changes.
 - **A uri_get reply from before `menu_restart` reaches the new menu VM**
   (pre-existing; ROADMAP 9 review, read in the engine, not driven).
   `PR_uri_get_callback2` (pr_bgcmd.c) drops a reply only when the VM's
