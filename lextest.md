@@ -13,6 +13,32 @@ to be wrong.
 
 ## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
 
+### Your player-page report (5 Oct, afternoon) -- fixed and live
+
+- **"Could not load the board (HTTP 504)" on KSF and Momentum profiles.** The
+  web server gives the board 5 seconds. The list of all 57,475 players was
+  rebuilt inside a visitor's request every 5 minutes (16 s), and a big profile
+  ran one query over every board the player is on (52.8 s for Ellipsis). The
+  list is now rebuilt in the background and kept on disk; profiles load in
+  1.8 s (Ellipsis, 2,575 times), 0.6 s (levi) and 0.5 s (you).
+- **The Momentum profile link went to Momentum's 404.** Their profile pages
+  want Momentum's own user number, which we do not have, so the link is now
+  **Steam profile**, like Momentum's own site does. KSF players get **KSF
+  profile**, which opens their ksf.surf page, and every imported row has a
+  **KSF** or **MOM** button that opens that map's board on their site. I
+  opened them: levi's KSF page, surf_borderlands' KSF records (levi 4th,
+  1:30.569, the same as our row), surf_boreas on Momentum.
+- **Stage times came first.** A profile now lists Main, then Bonuses, then
+  Stages, with a heading over each; "Show more" loads the rest.
+- **surf_chaos_fix "is not installed on the servers" -- not true.** It is
+  installed and has zones, in the game's own `maps/zones/local` folder (66
+  maps), which the game reads first and the website did not read at all. It
+  does now: those 66 maps show as playable, and surf_chaos_fix's page has no
+  note.
+
+To try: Leaderboard -> Players -> levi, Ellipsis, yourself. One limit: KSF's
+map page opens on Forward, so for a Sideways row pick the style there.
+
 ### What happened (5 Oct, while the Qwen bots worked on the anti-cheat)
 
 - **The website is new and live: <https://proto.bar/ftesurf/>.** Black, big

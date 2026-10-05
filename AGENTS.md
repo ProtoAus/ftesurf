@@ -2046,6 +2046,18 @@ script rather than passing it as an argument, where `ps` would show it.
   `/health {"ok":true,"lobbies":12}`, 2 processes.  Backups
   `*.pred42165e-20261005-154500` and `data/surfd.db.bak-d42165e-20261005-154500`.
 
+  `df00b61` to /srv/nvme/surfd at 2026-10-05 04:59 UTC -- the player pages
+  (561bb1e) and the test isolation they needed.  561bb1e itself stopped in the
+  stage, nothing installed: `test_join` counted the Pi's 66 real local zones,
+  because SURFD_ZONES_LOCAL defaults beside the live run tree.  56 of the
+  commit's 58 surfd files hash-match (README.md and ftesurf@.service differ as
+  before), master 2479950 SIGHUP'd, `surfd ready` 04:59:40, `/health` ok.
+  `data/people.json` (0600, 10 MB) was then built by one local request (8.6 s
+  on 127.0.0.1:8084) so no visitor paid the first build behind nginx's 5 s;
+  deploys keep it, only `people_reset()` or a fresh install removes it.
+  Through nginx: profiles 1.77 / 0.56 / 0.47 s, directory 0.04 s.  Backups
+  `*.predf00b61-20261005-155751`, `data/surfd.db.bak-df00b61-20261005-155751`.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.

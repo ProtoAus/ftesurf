@@ -5,6 +5,19 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The player pages: what they left — 2026-10-05
+
+- **No link to a Momentum profile.** `dashboard.momentum-mod.org/profile/<id>`
+  takes Momentum's user number, and no row carries it (`momfetch` drops
+  `user.id`), so a player links to Steam. Keeping that number per SteamID
+  would give the real link.
+- **KSF's map link opens Forward.** A Sideways, Half-Sideways or Backwards
+  row's "KSF" button lands on the Forward records; whether ksf.surf takes the
+  style in its URL is not established.
+- **`data/surfd.db` is 0644 on the Pi**, and it holds ranked players' guids,
+  which are credentials. `people.json` beside it is written 0600; the database
+  never was.
+
 ## The KSF crawl, the demo grab and the site: what they left — 2026-10-05
 
 - **No per-row "Get demo".** `surfd/momgrab.py` takes the top 10 of every
