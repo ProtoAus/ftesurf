@@ -178,6 +178,28 @@ mod, why = simcheck._recsim()
 truthy("recsim.py resolved from SURFD_TOOLS", mod is not None)
 truthy("...and it has compare_paths", mod is not None and hasattr(mod, "compare_paths"))
 
+# THE HOST DEFAULT THAT DOES NOT WORK, tested rather than reasoned about.
+# sweep.TOOLS defaults to SURFD_GAME + "/tools", but SURFD_GAME is the game ROOT
+# (on the Pi, /srv/nvme/ftesurf-server/game), so that default resolves ONE LEVEL
+# ABOVE the directory the checkers live in (game/tools).  Measured on the live host
+# 2026-10-05: this module's first cut searched .../ftesurf-server/tools/census and
+# found nothing while sweep.TOOLS read .../game/tools.  So SURFD_GAME is consulted
+# on its own, and this arm pins that with SURFD_TOOLS unset.
+saved_tools = os.environ.pop("SURFD_TOOLS", None)
+saved_game = os.environ.get("SURFD_GAME")
+os.environ["SURFD_GAME"] = REPO          # so <game>/tools/census/recsim.py is real
+mod_g, why_g = simcheck._recsim()
+truthy("SURFD_GAME alone finds it (sweep's default would not)", mod_g is not None)
+# NOT TESTED HERE, and the reason is worth keeping: with neither variable set the
+# third candidate (a tools/census beside this module's parent) still resolves, and
+# on a workstation that is CORRECT -- this suite lives in the repo.  Arming "neither
+# set" would need the module staged outside the repo, which is exactly what the
+# with_census=False arm below does properly, so it is tested there and not twice.
+if saved_tools:
+    os.environ["SURFD_TOOLS"] = saved_tools
+if saved_game:
+    os.environ["SURFD_GAME"] = saved_game
+
 surfd2, sweep2, simcheck2, conn2, runs2, home2 = fresh(with_census=False)
 mod2, why2 = simcheck2._recsim()
 check("a host with no recsim.py resolves to None", mod2, None)

@@ -76,26 +76,35 @@ NOTABLE = 0.95
 def _recsim():
     """The recsim module, or (None, why).
 
-    Search order: SURFD_TOOLS/census/recsim.py (the host layout, and the only one
-    that exists in production), then a tools/census/ beside this file's parent (the
-    repo layout, which is what a workstation run finds).  Importing by path rather
-    than by package name because tools/census is not a package and is not on
-    sys.path on the host.
+    Importing by path rather than by package name because tools/census is not a
+    package and is not on sys.path on the host.
+
+    THREE CANDIDATES, AND THE MIDDLE ONE IS WHY THERE ARE THREE.  `SURFD_TOOLS` is
+    what sweep.py searches, and its default is `SURFD_GAME + "/tools"` -- but
+    SURFD_GAME is the game ROOT (`/srv/nvme/ftesurf-server/game`), so that default
+    resolves to `/srv/nvme/ftesurf-server/tools`, ONE LEVEL ABOVE the directory the
+    checkers actually live in (`game/tools`, which is where reccheck.py and
+    rcptcheck.py were deployed on 2026-10-05).  Measured on the live host: this
+    function's first cut searched `/srv/nvme/ftesurf-server/tools/census/recsim.py`
+    and found nothing, while `sweep.TOOLS` read `.../game/tools`.  So SURFD_TOOLS as
+    set, then SURFD_GAME's own tools/, then the repo layout for a workstation run.
 
     SURFD_SIMCHECK_PY is deliberately NOT consulted here.  The first cut of this
     module put it first in the search, and the test suite then used it to point at
     a path that did not exist in order to arm "a host with no recsim" -- which
     silently fell through to the repo copy and resolved anyway, so the arm passed
     by measuring the opposite of what it claimed.  AN ENVIRONMENT OVERRIDE IS A
-    FEATURE THAT LETS A TEST LIE, and nothing in production needs it: the two real
-    layouts are enough.  A test that wants a host without the module points
-    SURFD_TOOLS somewhere empty and lives in a directory with no ../tools, which is
-    what test_simcheck.py does.
+    FEATURE THAT LETS A TEST LIE, and nothing in production needs it.  A test that
+    wants a host without the module points SURFD_TOOLS somewhere empty and loads
+    the module from outside the repo, which is what test_simcheck.py does.
     """
     cands = []
+    game = os.environ.get("SURFD_GAME")
     tools = os.environ.get("SURFD_TOOLS")
     if tools:
         cands.append(os.path.join(tools, CENSUS_SUBDIR))
+    if game:
+        cands.append(os.path.join(game, "tools", CENSUS_SUBDIR))
     here = os.path.dirname(os.path.abspath(__file__))
     cands.append(os.path.join(os.path.dirname(here), "tools", "census", "recsim.py"))
     for path in cands:
