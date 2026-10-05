@@ -113,7 +113,7 @@ MIN_LEN = 50
 # mostly one identity therefore measures the pessimistic case, and one that is
 # mostly cross-identity measures the easy one.  Printing a single negative max
 # hides which was measured, and the difference is the whole calibration.
-WHO_RE = re.compile(r"-([0-9a-f]{8})$", re.IGNORECASE)
+WHO_RE = re.compile(r"([0-9a-f]{8})$", re.IGNORECASE)
 
 
 def who_of(path):
@@ -123,6 +123,23 @@ def who_of(path):
     66 has no player segment at all, and a local run has no identity to name.
     Those pairs are counted as UNKNOWN rather than folded into either side, so a
     pre-66 corpus reports that it cannot answer instead of reporting agreement.
+
+    THE HEX IS MATCHED WITHOUT A REQUIRED '-' IN FRONT, and that is deliberate
+    even though it costs an ambiguity.  The segment grammar is `<name>-<hex>`, so
+    anchoring on the dash looks like the obvious reading -- and it is wrong for
+    exactly the filenames that matter.  A netname may itself end in hex (`1proto`,
+    `kap`, and any name a player picks), and the leaf is `<ticks>_<who>_<tag>`;
+    with a dash-anchored pattern `1proto-26c95e00` yields `26c95e00` while
+    `proto-26c95e00` yields the same hex, which is right, but a name like
+    `deadbeef-26c95e00` and one like `xx-26c95e00` are then compared on strings
+    that were cut at different places.  Matching the trailing 8 hex alone compares
+    the digest and nothing else, which is the only part that identifies anybody.
+    The cost is that a name ENDING in 8 hex characters and no guid (`player-12345678`,
+    where 12345678 is all the name there is) reads as an identity; that is a
+    census imprecision in the safe direction -- it can merge two identities into
+    one bucket and so UNDER-report cross-identity pairs, never invent them -- and
+    it is why a figure quoted from the split always says how many pairs were
+    unknown.
     """
     base = os.path.basename(path.replace(os.sep, "/"))
     for part in base.rsplit(".", 1)[0].split("_"):
@@ -321,6 +338,89 @@ def prefix_len(a, b, d=0):
         i += 1
         j += 1
     return n
+
+
+# --------------------------------------------------------------------------
+# one pair, for a caller that already knows which two files it means
+# --------------------------------------------------------------------------
+
+SKIP_UNREADABLE = "unreadable"
+SKIP_NO_ROWS = "no sample rows"
+SKIP_SHORT = "too short"
+SKIP_SAME_FILE = "same file"
+
+
+def compare_paths(path_a, path_b, min_len=MIN_LEN):
+    """Compare two `.rec` files by path.  -> (verdict, detail).
+
+    THIS IS THE ONE ENTRY POINT A SECOND CALLER SHOULD USE, and the reason it
+    exists is the tree's own rule about parsers: `reccheck` owns the `.rec`
+    GRAMMAR (it counts `in` rows but does not retain them, because it is a
+    validator and not a reader), and this module owns the move STREAM.  A caller
+    that re-parses `.rec` itself creates a second source of truth for a format
+    with one authoritative comment block, which is how `rcptcheck` came to delegate
+    to `reccheck` rather than re-read the grammar beside it.
+
+    `verdict` is one of:
+      "compared"  -- `detail` is a dict of the measurement;
+      a SKIP_* string -- `detail` is a one-line reason.
+
+    A SKIP IS NOT A LOW SCORE AND IS NOT AN ERROR.  That distinction is the whole
+    lesson of MIN_LEN above: a pair that could not be judged must be counted
+    separately, because reporting it as a low score is the same false reading as
+    reporting it as a high one.  Callers store the skip so a corpus can say how
+    much of itself was judgeable, which is what `assist.py`'s coverage columns do.
+
+    `detail` keys, all measured on the fleet corpus 2026-10-05 (see
+    tools/census/README.md for what they separated on):
+      match    agreement over the rows actually compared (0..1)
+      cover    the exact prefix as a fraction of the LONGER run (0..1)
+      prefix   the exact prefix in rows
+      offset   the row shift that aligned them
+      compared rows compared, matched rows that agreed
+      moves_a, moves_b  each file's move count
+      tickrate_a, tickrate_b  each header's tickrate
+      who_a, who_b      the 8-hex FS_GuidId in each filename, or ""
+      same_who  True when both carry an identity and it is the same one
+
+    TICKRATE IS RETURNED AND DELIBERATELY NOT GATED ON.  Two runs at 66.67 and
+    125 tick cannot be a playback of one another, so a tickrate mismatch is a
+    reason to distrust a HIGH match -- but it is not a reason to refuse the
+    comparison, and refusing it would hide exactly the pairs worth reading.  The
+    caller decides; nothing here does.
+    """
+    if os.path.realpath(path_a) == os.path.realpath(path_b):
+        return SKIP_SAME_FILE, "both arguments resolve to one file"
+    recs = []
+    for p in (path_a, path_b):
+        try:
+            r = parse_rec(p)
+        except (PermissionError, OSError) as e:
+            return SKIP_UNREADABLE, "%s: %s" % (os.path.basename(p), e)
+        if r is None:
+            return SKIP_NO_ROWS, "%s has no `in` rows" % os.path.basename(p)
+        if len(r.moves) < min_len:
+            return SKIP_SHORT, "%s has %d moves, under the floor %d" % (
+                os.path.basename(p), len(r.moves), min_len)
+        recs.append(r)
+    a, b = recs
+    off, matched, compared, prefix, cover = best_offset(a, b, min_len=min_len)
+    wa, wb = who_of(a.path), who_of(b.path)
+    return "compared", {
+        "match": (matched / float(compared)) if compared else 0.0,
+        "cover": cover,
+        "prefix": prefix,
+        "offset": off,
+        "compared": compared,
+        "matched": matched,
+        "moves_a": len(a.moves),
+        "moves_b": len(b.moves),
+        "tickrate_a": a.tickrate,
+        "tickrate_b": b.tickrate,
+        "who_a": wa,
+        "who_b": wb,
+        "same_who": bool(wa) and wa == wb,
+    }
 
 
 # --------------------------------------------------------------------------

@@ -65,6 +65,18 @@ MAX_ERRORS = surfd.VERIFY_MAX_ERRORS
 VERIFY_RE = re.compile(r"^VERIFY (\S+) (PASS|HOLD|REFUSE)\b ?(.*)$")
 TICKS_RE = re.compile(r"\bticks (\d+)\b")
 
+# The simcheck module, resolved once by _simcheck(): (module, why) or (None, why).
+# Module-level and not a plain import, because a host without simcheck.py must
+# keep running every other step -- the same rule the receipt step's imports follow.
+_SIMCHECK = None
+
+
+class _NoNotable(object):
+    """Stands in for simcheck.NOTABLE in the one line that cannot be reached
+    without simcheck having imported; a fallback that is never read is still
+    better than an AttributeError in the sweep's summary."""
+    NOTABLE = 0.95
+
 
 def ensure_schema(conn):
     # surfd's migrate() already ran at import; a no-op safety net.
@@ -493,6 +505,42 @@ def evidence_step(conn):
         return 0, 0
 
 
+def similarity_step(conn, limit=50):
+    """surfd schema 10: store the cross-run similarity sample.  STORE-ONLY --
+    nothing here moves a badge or a verdict, and a fault is printed rather than
+    raised, because a measurement that cannot run must not take the checks that DO
+    gate badges down with it.  -> (pairs stored, notable, note)."""
+    mod = _simcheck()
+    if mod is None:
+        return 0, 0, ""
+    try:
+        return mod.similarity_step(conn, surfd, limit=limit)
+    except Exception as exc:
+        print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
+        return 0, 0, ""
+
+
+def _simcheck():
+    """The simcheck module, or None with the reason already printed once.
+
+    Imported lazily and cached, exactly as the receipt step imports its checkers
+    inside the function: a host without simcheck.py must keep running the
+    verification it has run since Patch 349.  The failure is printed once rather
+    than on every tick, because a cron job that repeats one unfixable line every
+    five minutes teaches the reader to skip the log.
+    """
+    global _SIMCHECK
+    if _SIMCHECK is not None:
+        return _SIMCHECK[0]
+    try:
+        import simcheck
+        _SIMCHECK = (simcheck, "")
+    except Exception as exc:
+        print("sweep: similarity step unavailable: %r" % exc, file=sys.stderr)
+        _SIMCHECK = (None, repr(exc))
+    return _SIMCHECK[0]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--limit", type=int, default=20)
@@ -501,6 +549,9 @@ def main(argv=None):
     ap.add_argument("--reread-receipts", action="store_true",
                     help="forget every stored receipt verdict so the next pass "
                          "reads them again (after a checker change)")
+    ap.add_argument("--sims", type=int, default=50,
+                    help="how many runs to compare per pass (store-only, "
+                         "schema 10; 0 disables the step)")
     args = ap.parse_args(argv)
     conn = surfd.connect()
     ensure_schema(conn)
@@ -521,16 +572,35 @@ def main(argv=None):
                                         " AND name='sweepmeta'").fetchone() else None
         print("receipts read through: %s" % (time.strftime("%Y-%m-%dT%H:%M:%S",
               time.localtime(through[0])) if through else "never"))
+        try:
+            import simcheck
+            simcheck.ensure_schema(conn)
+            print("sims pending: %d run(s) with no pair stored yet"
+                  % len(simcheck.pending(conn, 10 ** 6)))
+            line = simcheck.summary_line(conn)
+            print(line or "sims: no pairs stored yet")
+        except Exception as exc:
+            print("sims: unavailable (%r)" % exc)
         return 0
     if args.reread_receipts:
         n = mark_receipts_stale(conn)
         print("sweep: marked %d receipt verdict(s) to read again" % n)
     added, dropped = evidence_step(conn)
     rcpts, rbad = receipt_step(conn)
+    sims, simnotable, simnote = similarity_step(conn, limit=args.sims)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:
         line += " evidence +%d -%d" % (added, dropped)
+    if simnote:
+        line += " " + simnote
+    if simnotable:
+        # PRINTED WHEN IT IS NOT ZERO, for the receipt step's reason: this is the
+        # one line in this step worth a human reading.  It is NOT an accusation --
+        # nothing was demoted and nothing will be -- but a pair at or over 0.95 is
+        # worth opening, and the sweep log is where somebody looks.
+        line += " (%d SIMILAR PAIR(S) OVER %.2f -- store-only, no badge moved)" % (
+            simnotable, (_simcheck() or _NoNotable).NOTABLE)
     if rcpts:
         line += " receipts %d" % rcpts
         # PRINTED WHEN IT IS NOT ZERO, not only under a flag: a receipt that

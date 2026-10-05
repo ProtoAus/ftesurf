@@ -383,7 +383,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 # --------------------------------------------------------------------------
@@ -1304,6 +1304,38 @@ def migrate():
             conn.execute("PRAGMA user_version=9")
             conn.commit()
             version = 9
+
+        if version < 10:
+            # SCHEMA 10: `sims`, the cross-run similarity sample (BACKLOG item F).
+            # One ADDITIVE table and nothing else, so this has the same rollback
+            # property as 7 and 9: a schema-9 surfd reads this database unchanged
+            # and simply never looks at the table.
+            #
+            # STORE-ONLY, AND THAT IS THE WHOLE DESIGN.  Nothing in VER_SQL reads
+            # `sims`, no badge moves, no run is demoted and no public route
+            # exposes it -- exactly how schema 7's `receipts` and `pubkeys` were
+            # introduced.  The reason is the sample and not the statistic: the
+            # fleet corpus separated a playback (match 1.0000) from 20 honest pairs
+            # (max 0.5866) cleanly at 1.70x, but only 8 of those 20 are
+            # cross-identity, and the hardest honest case a similarity gate faces
+            # is one player replaying one map.  A threshold chosen from 20 pairs
+            # would be a guess wearing a measurement's clothes, so this collects
+            # the pairs instead and a threshold, if one is ever chosen, is chosen
+            # from what accumulated.  surfd/simcheck.py carries the argument and
+            # the measured figures.
+            #
+            # The import is local and wrapped for the same reason sweep.py's
+            # receipt step imports inside its function: a host without simcheck
+            # must keep migrating.  The table is additive, so skipping it costs
+            # the measurement and nothing else.
+            try:
+                import simcheck
+                conn.executescript(simcheck.SIMS_SQL)
+            except Exception as exc:
+                log.warning("schema 10: could not create `sims`: %r", exc)
+            conn.execute("PRAGMA user_version=10")
+            conn.commit()
+            version = 10
 
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)

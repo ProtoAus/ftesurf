@@ -1071,6 +1071,49 @@ publicly WITH its fix, not before it.
   cover reading 100%. The run is kept (`SV_TimerFreeze` marks it practice,
   which is `RT_LAST`, not `RT_NONE`), so it reaches the board. DO NOT TREAT AN
   ANGLE FAULT ON A RUN THAT MAY HAVE BEEN HELD AS A FINDING.
+- CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
+  `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
+  than a performance -- produces two clean board rows and nothing else in this tree
+  sees it, because `pm_verify` is an exactness check and PASSes a faithful playback
+  by design.  `tools/census/recsim.py` chose the statistic and the fleet corpus
+  calibrated it (positive min 1.0000 against negative max 0.5866, a clean 1.70x
+  separation over 20 independent pairs), so **the sample and not the metric is why
+  this stores and does not gate**: only 8 of those 20 pairs are cross-identity, and
+  a similarity gate's hardest honest case is one player replaying one map.  A
+  threshold picked from 20 pairs would be a guess in a measurement's clothes, so the
+  sweep accumulates pairs from live submissions instead.  THREE RULES, each of which
+  a review or a test caught:
+  - **STORE-ONLY, EXACTLY AS SCHEMA 7's `receipts` TABLE WAS.**  Nothing in
+    `VER_SQL` reads `sims`, no badge moves, no run is demoted and no public route
+    exposes it.  `test_simcheck.py` arm 4 asserts that by grepping the three files
+    that could have wired it in, which is the arm that would catch this becoming a
+    gate by accident -- the one defect here that would hurt a player.
+  - **A SKIP IS STORED AS A SKIP.**  `verdict` carries `skip` plus a reason beside
+    `compared`, because a pair that could not be judged is not a pair that
+    disagreed.  Two 9-move stubs agree over all 9 rows and read 1.0000, which is
+    arithmetically true and means nothing; arm 5 pins that the floor turns it into a
+    skip AND that the same pair with the floor lifted does read 1.0000, so the skip
+    cannot pass by never having compared anything.
+  - **THE IDENTITY IS THE GUID DIGEST, NEVER THE NAME.**  `same_who` is stored per
+    pair and every figure is reported split on it, because a single max is the number
+    that misleads.  `recsim.who_of` matches the trailing 8 hex WITHOUT requiring a
+    dash in front, deliberately: `1proto-26c95e00` and `proto-26c95e00` are one
+    install, and a dash-anchored pattern cuts different filenames at different
+    places.  The cost is that a netname ending in 8 hex characters reads as an
+    identity -- a census imprecision in the safe direction, since it can merge two
+    identities and so UNDER-report cross-identity pairs, never invent them.
+  The comparison is NOT re-implemented: `reccheck` owns the `.rec` grammar and
+  `recsim` owns the move stream, and `simcheck` calls `recsim.compare_paths`, which
+  is the rule `rcptcheck` follows when it delegates to `reccheck`.  A host without
+  `recsim.py` keeps migrating and keeps sweeping -- the step returns quietly and
+  prints its reason ONCE, because a cron line repeating one unfixable cause every
+  five minutes teaches the reader to skip the log.  `sweep.py --sims 0` disables it;
+  `--dry-run` prints the pending count and the identity split.
+  **A RUN WITH NO COMPARABLE PEER IS NOT PENDING EITHER.**  `compare_run` stores
+  nothing for it, so a `pending` selecting on "has no sims row" alone re-picked it
+  on every tick and crowded out newer runs once the limit was reached.  Imported
+  tiers are excluded for the same reason a lone run is: another community's run under
+  another game's physics cannot be a playback of ours.
 - EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA (every 416-419
   fixture drives its route with `setpos` and `noclip`) and so does nearly every
   lobby run, which is why the one-frame rule is the one that works there and

@@ -164,15 +164,32 @@ below is the collection side and the rules that still only note.
   metric: the local corpus has **zero** cross-identity pairs, so every number it
   produced is a same-player-or-unattributed figure.
 
-  **STILL NO THRESHOLD AND STILL NO CODE IN surfd**, and the reason has narrowed
-  rather than gone: 20 pairs is a small sample and only 8 of them are
-  cross-identity, while the local corpus's 376 pairs are contaminated by harness
-  output as catalogued above.  **The remaining work is the surfd side** — a
-  comparison at submit time against the runs already filed for that map — plus a
-  wider fleet sample before a number is committed to.  Note the identity is the
-  8-hex `FS_GuidId` in the filename (sha256 of the install's `qkey`), so it
-  survives a rename and does NOT separate two netnames on one install: the fleet
-  holds four identities and 53 of its 64 files are one of them.
+  **STILL NO THRESHOLD, and the reason has narrowed rather than gone.**  20 pairs
+  is a small sample and only 8 of them are cross-identity, while the local corpus's
+  376 pairs are contaminated by harness output as catalogued above.
+
+  **THE SURFD SIDE IS NOW BUILT AND STORES RATHER THAN GATES** (schema 10,
+  `surfd/simcheck.py`, `surfd/test_simcheck.py`, and a `similarity_step` in
+  `sweep.py`).  It compares each submitted run against the other run-kind rows on
+  its map/leg and stores `match`, `cover`, `prefix`, the identity split and — when
+  a pair could not be judged — a named skip with its reason.  **Nothing in `VER_SQL`
+  reads `sims`, no badge moves, no run is demoted and no public route exposes it**,
+  exactly as schema 7's `receipts` table was introduced.  That is a deliberate stop
+  short, not an unfinished one: the statistic separates cleanly and the SAMPLE is
+  too small to pick a number from, so the sweep now accumulates the cross-identity
+  pairs the calibration lacks from live submissions.  **What remains is the threshold
+  and the decision to enforce it, and both need the accumulated sample rather than
+  more engineering.**  `sweep.py --dry-run` prints the pending count and the split;
+  `--sims 0` turns the step off.
+
+  Note the identity is the 8-hex `FS_GuidId` in the filename (sha256 of the
+  install's `qkey`), so it survives a rename and does NOT separate two netnames on
+  one install: the fleet holds four identities and 53 of its 64 files are one of
+  them.  `recsim.who_of` matches the trailing hex without requiring a dash, which
+  costs an ambiguity (a netname ending in 8 hex characters reads as an identity)
+  and buys consistency — the dash-anchored reading cuts different filenames at
+  different places.  The ambiguity is in the safe direction: it can merge two
+  identities and so UNDER-report cross-identity pairs, never invent them.
 
   Also measured and worth keeping: the alignment offset is searched over the
   DIFFERENCE OF THE FIRST TICKS ±4 rows, and on all 25 synthetic positives the
