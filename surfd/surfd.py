@@ -3854,6 +3854,9 @@ def web_maps():
     return resp
 
 
+WANT_WAIT_MS = 50       # see note_want
+
+
 def note_want(db, mapname):
     """Record that somebody asked to see this map's board.  Never raises.
 
@@ -3867,16 +3870,29 @@ def note_want(db, mapname):
 
     UPSERT needs SQLite 3.24+; the Pi measured 3.40.1 and five other statements
     here already depend on it.
+
+    It waits WANT_WAIT_MS for the write lock, not the connection's 5 s: momwatch
+    holds the lock for seconds every 7 minutes, and with four gunicorn threads a
+    few board reads queued behind it would stall heartbeats and submissions
+    (review, 5 Oct: 5.47 s against 0.00 s).
     """
     try:
-        now = int(time.time())
-        db.execute(
-            "INSERT INTO mapwant (map, asked, first, last) VALUES (?, 1, ?, ?)"
-            " ON CONFLICT(map) DO UPDATE SET asked = asked + 1,"
-            "                               last  = excluded.last",
-            (mapname, now, now))
-        db.commit()
+        db.execute("PRAGMA busy_timeout=%d" % WANT_WAIT_MS)
+        try:
+            now = int(time.time())
+            db.execute(
+                "INSERT INTO mapwant (map, asked, first, last) VALUES (?, 1, ?, ?)"
+                " ON CONFLICT(map) DO UPDATE SET asked = asked + 1,"
+                "                               last  = excluded.last",
+                (mapname, now, now))
+            db.commit()
+        finally:
+            db.execute("PRAGMA busy_timeout=5000")
     except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         log.debug("mapwant note failed for %s", mapname, exc_info=True)
 
 

@@ -61,6 +61,15 @@ fill slowly by itself.  --watch is that: on the Pi's crontab, a few requests a
 tick, the next unseen page of each board shallowest first, maps somebody is
 looking at first (mapwant).  ksf.surf's robots.txt (checked 5 Oct) carries only
 Cloudflare's content-signal preamble and no Disallow.
+  * every request is counted against the run's cap in one place (Pacer.get)
+  * one ksfimport at a time per cache (take_lock), by hand or by cron
+  * a fetched board is OWED until its rows are on the board table (owed/), so
+    a run killed between the two is filed whole by the next tick
+  * a board refused STRIKES times is set aside, not the whole crawl with it
+  * an empty map library fetches and files nothing: it used to mean "no filter"
+  * WHAT IT CANNOT SEE: a player who enters a board between our first page and
+    our cursor is only picked up by a re-walk; page-1 refreshes catch new
+    records, the cursor catches the tail.  Nothing purges a run deleted upstream.
 
 A KSF ROW'S BUILD IS NOT CHECKED, AND "EVER" WAS TOO STRONG.  This paragraph
 said CANNOT BE CHECKED, EVER until 2026-09-29, when `/api/files/<map>.zip`
@@ -148,6 +157,10 @@ COOLDOWN_MAX = 48 * 3600
 CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
 WANT_DAYS = 14             # a map viewed this recently is crawled first
+STRIKES = 3                # parks on one board before it is set aside
+OWED_MAX = 200             # boards fetched and not filed before a tick only files
+RECOVER_ROWS = 5000        # rows of owed boards one tick files
+WRITE_CHUNK = 500          # rows a transaction
 
 
 def steam64(raw):
@@ -222,7 +235,16 @@ def read_seed(path):
 
 
 class Refused(Exception):
-    """ksf.surf said no to US.  Reported, never retried, stops the run."""
+    """ksf.surf said no to US.  Reported, never retried, stops the run.
+    `code` is the HTTP status when there was one."""
+
+    def __init__(self, msg, code=0):
+        Exception.__init__(self, msg)
+        self.code = code
+
+
+class OverBudget(Exception):
+    """This run's request cap is spent, so the request is not made."""
 
 
 class NoSuchPlayer(Exception):
@@ -248,7 +270,7 @@ def fetch(url):
     try:
         with urllib.request.urlopen(req, timeout=KSF_TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
-                raise Refused("HTTP %d" % r.status)
+                raise Refused("HTTP %d" % r.status, r.status)
             return r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # 500 is this host's answer for an id it does not know; anything else
@@ -257,7 +279,7 @@ def fetch(url):
         # refusing returns 500 to everything, and SKIP_STREAK in a row stops.
         if e.code == 500:
             raise NoSuchPlayer("HTTP 500")
-        raise Refused("HTTP %d" % e.code)
+        raise Refused("HTTP %d" % e.code, e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
     # No answer at all: a read past KSF_TIMEOUT, a connection dropped mid-reply.
@@ -306,24 +328,29 @@ def zones_of(info):
 
 
 class Pacer:
-    """One request at a time, `delay` seconds apart, at most `budget` of them."""
+    """One request at a time, `delay` seconds apart, at most `budget` of them.
+    The cap is checked here, the one place a request is made."""
 
     def __init__(self, delay, budget):
         self.delay, self.budget, self.made = delay, budget, 0
+        self.what = None            # the board key the last request was for
 
     def left(self):
         return self.budget - self.made
 
-    def get(self, path):
+    def get(self, path, what=None):
+        if self.left() <= 0:
+            raise OverBudget(path)
         if self.made:
             time.sleep(self.delay)
         self.made += 1
+        self.what = what
         try:
             body = fetch(KSF_BASE + path)
         except NoSuchPlayer as e:
             # "not a player of mine" is the PLAYER route's dialect; here a 500 is
             # just a refusal.
-            raise Refused(str(e))
+            raise Refused(str(e), 500)
         try:
             return json.loads(body)
         except ValueError:
@@ -348,13 +375,15 @@ def _save(path, doc):
 
 
 def map_info(mp, cache, pacer):
-    """KSF's row for exactly `mp`, or None when KSF has no map by that name."""
+    """KSF's row for exactly `mp`, or None when KSF has no map by that name.
+    Raises OverBudget when it would have to ask and may not."""
     cf = os.path.join(cache, "maps", mp + ".json")
     doc = _load(cf)
-    if doc is None:
+    if not isinstance(doc, list):
         doc = pacer.get("/api/maps/search/" + urllib.parse.quote(mp))
+        doc = doc if isinstance(doc, list) else []      # "none", asked once
         _save(cf, doc)
-    for row in doc if isinstance(doc, list) else ():
+    for row in doc:
         if isinstance(row, dict) and str(row.get("name") or "").lower() == mp:
             return row
     return None
@@ -371,6 +400,13 @@ def board_load(cache, mp, zone, mode=0):
     if not isinstance(doc, dict) or not isinstance(doc.get("rows"), list):
         doc = {"rows": [], "done": False}
     return doc
+
+
+def _next(doc):
+    """The rank the board's next page starts at.  A cache from before 5 Oct has
+    no `next`: it appended whole pages, so its row count was the cursor."""
+    n = doc.get("next")
+    return n if isinstance(n, int) and n >= 1 else len(doc["rows"]) + 1
 
 
 def merge_page(doc, page):
@@ -404,50 +440,103 @@ def _ikey(mp, zone, mode):
     return "%s|%d|%d" % (mp, zone, mode)
 
 
-def board_state(cache, idx, mp, zone, mode):
-    """[rows held, done, first page's fetch time], from `idx` when it has it.
+def _state(doc):
+    return [_next(doc) - 1, bool(doc.get("done")), int(doc.get("top") or 0),
+            bool(doc.get("skip"))]
 
-    The index exists so a cron tick need not parse every board it might page:
-    a deep board is megabytes of JSON, and the Pi has ~1 GB free."""
+
+def board_state(cache, idx, mp, zone, mode):
+    """[ranks paged, done, first page's fetch time, skipped] -- from `idx` when
+    it has the board, so a cron tick need not parse every board it might page
+    (a deep board is megabytes of JSON, and the Pi has ~1 GB free).  A stale
+    entry costs order and at most one wasted request; the board file is what
+    board_page reads its cursor from."""
     if idx is not None:
         v = idx.get(_ikey(mp, zone, mode))
-        if v is not None:
+        if isinstance(v, list) and len(v) == 4:
             return v
-    d = board_load(cache, mp, zone, mode)
-    v = [len(d["rows"]), bool(d.get("done")), int(d.get("top") or 0)]
+    v = _state(board_load(cache, mp, zone, mode))
     if idx is not None:
         idx[_ikey(mp, zone, mode)] = v
     return v
+
+
+# A board fetched into the cache and not yet filed on the board table.  The
+# marker is made BEFORE the request and removed only after the rows are
+# written, so a run that dies anywhere between -- killed, a full disk, a locked
+# database -- leaves it for the next --watch tick to file whole.
+def _owed_path(cache, mp, zone, mode):
+    return os.path.join(cache, "owed", "%s@%d@%d" % (mp, zone, mode))
+
+
+def mark_owed(cache, mp, zone, mode):
+    p = _owed_path(cache, mp, zone, mode)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    io.open(p, "a").close()
+
+
+def owed_boards(cache):
+    try:
+        names = sorted(os.listdir(os.path.join(cache, "owed")))
+    except OSError:
+        return []
+    out = []
+    for f in names:
+        b = f.split("@")
+        if len(b) == 3 and S.clean_map(b[0]) == b[0] and b[1].isdigit() and b[2].isdigit():
+            out.append((b[0], int(b[1]), int(b[2])))
+    return out
+
+
+def clear_owed(cache, boards):
+    for mp, z, m in boards:
+        try:
+            os.remove(_owed_path(cache, mp, z, m))
+        except FileNotFoundError:
+            pass
 
 
 def board_page(cache, mp, zone, pacer, mode=0, top=False, idx=None):
     """Fetch one board's next page -- or with `top` its first page again -- and
     fold it into the cache.  Returns (doc, that page's rows)."""
     doc = board_load(cache, mp, zone, mode)
-    start = 1 if top else len(doc["rows"]) + 1
+    start = 1 if top else _next(doc)
+    mark_owed(cache, mp, zone, mode)
     page = pacer.get("/api/maps/%s/records/zone/%d/%d?game=css&mode=%d"
-                     % (urllib.parse.quote(mp), zone, start, mode))
+                     % (urllib.parse.quote(mp), zone, start, mode),
+                     _ikey(mp, zone, mode))
     if not isinstance(page, list):
         raise Refused("a records page was not a list -- their format has "
                       "probably changed")
     page = [r for r in page if isinstance(r, dict)]
+    if page and not any(steam64(str(r.get("steamID") or "")) for r in page):
+        raise Refused("a records page carried no SteamID -- their format has "
+                      "probably changed")
     new = merge_page(doc, page)
     if start == 1:
         doc["top"] = int(time.time())
     if not top:
+        # The cursor is a RANK and moves by the page, never by the players new
+        # to us: counting held players stalled a board whose ranks shifted
+        # under it (review, 5 Oct: 60 of 60 requests to one URL).
+        doc["next"] = start + len(page)
         doc["done"] = len(page) < KSF_PAGE
-    elif new:
-        doc["done"] = False         # new players on top: the tail moved too
+    else:
+        doc["next"] = max(_next(doc), 1 + len(page))
+        if len(page) < KSF_PAGE:
+            doc["done"] = True           # page 1 was the whole board
+        elif new:
+            doc["done"] = False          # new players on top: the tail moved too
+    doc.pop("skip", None)
     _save(board_path(cache, mp, zone, mode), doc)
     if idx is not None:
-        idx[_ikey(mp, zone, mode)] = [len(doc["rows"]), bool(doc["done"]),
-                                      int(doc.get("top") or 0)]
+        idx[_ikey(mp, zone, mode)] = _state(doc)
     return doc, page
 
 
 def wants_more(state, depth):
-    n, done = state[0], state[1]
-    return not done and (depth < 0 or n < depth)
+    n, done, skip = state[0], state[1], state[3] if len(state) > 3 else False
+    return not done and not skip and (depth < 0 or n < depth)
 
 
 def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
@@ -463,10 +552,10 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
     Returns ({map: info}, maps KSF does not have, boards still wanting pages)."""
     infos, absent = {}, 0
     for mp in maps:
-        if pacer.left() <= 0 and not os.path.exists(
-                os.path.join(cache, "maps", mp + ".json")):
-            continue
-        info = map_info(mp, cache, pacer)
+        try:
+            info = map_info(mp, cache, pacer)
+        except OverBudget:
+            continue                    # not looked up yet: a later run asks
         if info is None:
             absent += 1
         else:
@@ -490,7 +579,7 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
         d, page = board_page(cache, mp, z, pacer, m, idx=idx)
         if fetched is not None:
             fetched.append((mp, z, m, page))
-        if wants_more((len(d["rows"]), d["done"]), depth):
+        if wants_more(_state(d), depth):
             push(mp, z, m)
         if m and z == 0 and not n and d["rows"]:
             for z2 in zones_of(infos[mp])[1:]:
@@ -498,42 +587,62 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
     return infos, absent, len(heap)
 
 
+def _when(rec):
+    try:
+        return int(rec.get("date") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def rec_row(mp, zone, mode, rec):
-    """One KSF record as a run row, or None when it is unusable."""
+    """One KSF record as a run row, or None when it is unusable.  Never raises:
+    one bad field must cost its row, not the tick."""
     sid = steam64(str(rec.get("steamID") or ""))
     t = rec.get("time")
-    if sid is None or not isinstance(t, (int, float)) or t <= 0:
+    if (sid is None or isinstance(t, bool) or not isinstance(t, (int, float))
+            or not 0 < t < 1e6):
         return None
     track, leg = zone_track_leg(zone)
     ms = int(round(t * 1000.0))
     return {"map": mp, "track": track, "leg": leg, "style": KSF_MODES[mode],
             "player": str(sid),
-            "name": S.clean_text(rec.get("name") or "") or str(sid),
+            "name": S.clean_text(str(rec.get("name") or "")) or str(sid),
             "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
-            "rate": 1.0 / KSF_TICK, "when": int(rec.get("date") or 0)}
+            "rate": 1.0 / KSF_TICK, "when": _when(rec)}
+
+
+def board_rows(cache, mp, zone, mode):
+    return [r for r in (rec_row(mp, zone, mode, x)
+                        for x in board_load(cache, mp, zone, mode)["rows"]) if r]
 
 
 def map_rows(cache, infos, modes=(0,)):
-    """Every cached board row as a run row, plus the count unusable."""
-    rows, bad = [], 0
+    """Every cached board row as a run row, plus the count unusable, plus the
+    boards they come from."""
+    rows, bad, boards = [], 0, []
     for mp in sorted(infos):
         for m in modes:
             for z in zones_of(infos[mp]):
-                for rec in board_load(cache, mp, z, m)["rows"]:
+                held = board_load(cache, mp, z, m)["rows"]
+                if held:
+                    boards.append((mp, z, m))
+                for rec in held:
                     r = rec_row(mp, z, m, rec)
                     if r is None:
                         bad += 1
                     else:
                         rows.append(r)
-    return rows, bad
+    return rows, bad, boards
 
 
 def catalog_step(cache, pacer, now):
     """Page KSF's whole map list into the map cache, again every CATALOG_DAYS.
 
-    /api/maps/new is their "new maps" list, KSF_LIST_PAGE a page by `offset`,
-    and each row is the shape the search answers -- so ~100 requests list every
-    map, where a search per installed map would be 1,800."""
+    /api/maps/new is their "new maps" list, newest first, KSF_LIST_PAGE a page
+    by `offset`, each row the shape the search answers -- ~100 requests list
+    every map, where a search per installed map would be 1,800.  A pass ends at
+    a short page or at a page with no map it has not listed: a re-list stops
+    after the new maps, and an offset the host ignores cannot loop."""
     cf = os.path.join(cache, "catalog.json")
     cat = _load(cf)
     if not isinstance(cat, dict) or not isinstance(cat.get("names"), list):
@@ -548,6 +657,7 @@ def catalog_step(cache, pacer, now):
         if not isinstance(page, list):
             raise Refused("the map list was not a list -- their format has "
                           "probably changed")
+        fresh = 0
         for row in page:
             mp = S.clean_map(str(row.get("name") or "")) if isinstance(row, dict) else None
             if mp is None:
@@ -556,8 +666,9 @@ def catalog_step(cache, pacer, now):
             if mp not in seen:
                 seen.add(mp)
                 cat["names"].append(mp)
+                fresh += 1
         cat["offset"] += len(page)
-        if len(page) < KSF_LIST_PAGE:
+        if len(page) < KSF_LIST_PAGE or not fresh:
             cat["done"], cat["at"] = True, now
         _save(cf, cat)
     return cat
@@ -583,9 +694,12 @@ def refresh_step(cache, idx, maps, prio, pacer, budget, now, fetched):
     maps first, then the fullest -- within `budget` requests."""
     cut = now - REFRESH_DAYS * 86400
     cands = []
-    for key, (n, done, top) in idx.items():
+    for key, v in idx.items():
+        if not isinstance(v, list) or len(v) != 4:
+            continue
+        n, done, top, skip = v
         mp, z, m = key.split("|")
-        if mp in maps and (n or done) and top < cut:
+        if mp in maps and not skip and (n or done) and top < cut:
             cands.append((0 if mp in prio else 1, -n, top, mp, int(z), int(m)))
     cands.sort()
     for _, _, _, mp, z, m in cands[:budget]:
@@ -596,53 +710,99 @@ def refresh_step(cache, idx, maps, prio, pacer, budget, now, fetched):
     return min(budget, len(cands))
 
 
+def strike(cache, idx, key, why):
+    """A board this host keeps refusing is set aside after STRIKES parks rather
+    than parking the whole crawl behind it for good."""
+    sf = os.path.join(cache, "strikes.json")
+    st = _load(sf)
+    st = st if isinstance(st, dict) else {}
+    st[key] = int(st.get(key) or 0) + 1
+    if st[key] >= STRIKES:
+        mp, z, m = key.split("|")
+        doc = board_load(cache, mp, int(z), int(m))
+        doc["done"], doc["skip"] = True, why
+        _save(board_path(cache, mp, int(z), int(m)), doc)
+        idx[key] = _state(doc)
+        del st[key]
+        print("  %s refused %d times: set aside (%s)" % (key, STRIKES, why))
+    _save(sf, st)
+
+
 def watch_mode(args, have, cache):
-    """--watch: one unattended tick.  Returns the rows fetched in it."""
+    """--watch: one unattended tick.  Returns (rows, the boards they file)."""
     now = int(time.time())
     pf = os.path.join(cache, ".refused")
-    park = _load(pf) or {}
-    if now < int(park.get("until") or 0):
-        print("parked: refused (%s) at %s, nothing asked until %s"
-              % (park.get("why"), time.strftime("%Y-%m-%d %H:%M", time.gmtime(park["at"])),
-                 time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(park["until"]))))
-        return []
-    pacer = Pacer(args.delay, args.max)
+    park = _load(pf)
+    park = park if isinstance(park, dict) else {}
     ixf = os.path.join(cache, "index.json")
     idx = _load(ixf)
     idx = idx if isinstance(idx, dict) else {}
+    owed = owed_boards(cache)
+    pacer = Pacer(args.delay, args.max)
     fetched, refreshed, left, prio, maps = [], 0, 0, set(), set()
-    try:
-        cat = catalog_step(cache, pacer, now)
-        names = set(cat["names"])
-        try:
-            names |= {f[:-5] for f in os.listdir(os.path.join(cache, "maps"))
-                      if f.endswith(".json")}
-        except OSError:
-            pass
-        maps = {m for m in names if not have or m in have}
-        prio = wanted_maps(now) & maps
-        if cat["done"]:
-            refreshed = refresh_step(cache, idx, maps, prio, pacer,
-                                     max(1, args.max // 4), now, fetched)
-        _, _, left = sweep_maps(sorted(maps), cache, -1, pacer, sorted(KSF_MODES),
-                                prio, fetched, idx)
-    except Refused as e:
-        n = int(park.get("n") or 0) + 1
-        wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
-        _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
-        print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
+    if now < int(park.get("until") or 0):
+        print("parked: refused (%s) at %s, nothing asked until %s"
+              % (park.get("why"), time.strftime("%Y-%m-%d %H:%M", time.gmtime(park.get("at") or 0)),
+                 time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(park["until"]))))
+    elif len(owed) > OWED_MAX:
+        print("%d board(s) fetched and not yet filed: filing, not asking" % len(owed))
     else:
-        if park:
-            os.remove(pf)
-    finally:
-        _save(ixf, idx)
-    rows = []
+        try:
+            cat = catalog_step(cache, pacer, now)
+            names = set(cat["names"])
+            try:
+                names |= {f[:-5] for f in os.listdir(os.path.join(cache, "maps"))
+                          if f.endswith(".json")}
+            except OSError:
+                pass
+            maps = {m for m in names if m in have}
+            prio = wanted_maps(now) & maps
+            if cat["done"]:
+                refreshed = refresh_step(cache, idx, maps, prio, pacer,
+                                         max(1, args.max // 4), now, fetched)
+            _, _, left = sweep_maps(sorted(maps), cache, -1, pacer, sorted(KSF_MODES),
+                                    prio, fetched, idx)
+        except Refused as e:
+            n = int(park.get("n") or 0) + 1
+            wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
+            _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
+            print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
+            if e.code and pacer.what:
+                strike(cache, idx, pacer.what, str(e))
+        else:
+            # Lifted only by an answer: a tick that asked nothing proves nothing.
+            if park and pacer.made:
+                os.remove(pf)
+        finally:
+            _save(ixf, idx)
+    if fetched:
+        sf = os.path.join(cache, "strikes.json")
+        st = _load(sf)
+        if isinstance(st, dict) and st:
+            for mp, z, m, _ in fetched:
+                st.pop(_ikey(mp, z, m), None)
+            _save(sf, st)
+    rows, files = [], []
     for mp, z, m, page in fetched:
         rows += [r for r in (rec_row(mp, z, m, rec) for rec in page) if r]
-    print("watch: %d request(s), %d page(s) (%d refreshed), %d row(s); %d map(s), "
-          "%d wanted; %d board(s) wanting more"
-          % (pacer.made, len(fetched), refreshed, len(rows), len(maps), len(prio), left))
-    return rows
+        if (mp, z, m) not in files:
+            files.append((mp, z, m))
+    # Boards an earlier run fetched and never filed, whole: the upsert is
+    # idempotent, and RECOVER_ROWS keeps the transaction short.
+    recovered = 0
+    for b in owed:
+        if b in files:
+            continue
+        if len(rows) >= RECOVER_ROWS:
+            break
+        rows += board_rows(cache, *b)
+        files.append(b)
+        recovered += 1
+    print("watch: %d request(s), %d page(s) (%d refreshed), %d owed board(s) filed, "
+          "%d row(s); %d map(s), %d wanted; %d board(s) wanting more"
+          % (pacer.made, len(fetched), refreshed, recovered, len(rows), len(maps),
+             len(prio), left))
+    return rows, files
 
 
 def known_ksf_maps():
@@ -729,7 +889,7 @@ def seed_mode(args, seed, have, cache):
             mp = S.clean_map(name)
             if mp is None:
                 continue
-            if have and mp not in have:
+            if mp not in have:
                 nomap += 1
                 continue
             ms = int(round(t * 1000.0))
@@ -738,7 +898,7 @@ def seed_mode(args, seed, have, cache):
                 "name": seed[sid],
                 "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
                 "rate": 1.0 / KSF_TICK,
-                "when": int(rec.get("date") or 0),
+                "when": _when(rec),
             })
 
     print("requests made   %d   (from cache %d)" % (asked, cached))
@@ -747,28 +907,34 @@ def seed_mode(args, seed, have, cache):
     print("dropped, no bsp %d" % nomap)
     if refused:
         print("refused         %d" % refused)
-    return rows
+    return rows, []
 
 
 def maps_mode(args, have, cache):
-    """--from-maps: page every board of each map; returns the run rows."""
+    """--from-maps: page every board of each map; returns (run rows, boards)."""
     names = (known_ksf_maps() if args.from_maps == "known"
              else read_map_list(args.from_maps))
-    maps = [m for m in names if not have or m in have]
+    maps = [m for m in names if m in have]
     budget = KSF_REQ_DEFAULT if args.max is None else args.max
     pacer = Pacer(args.delay, budget)
+    ixf = os.path.join(cache, "index.json")
+    idx = _load(ixf)
+    idx = idx if isinstance(idx, dict) else {}
     print("%d map(s) listed, %d playable here; depth %s; at most %d request(s), "
           "%.2f s apart" % (len(names), len(maps),
                             "all" if args.depth < 0 else args.depth, budget,
                             args.delay))
     try:
-        infos, absent, left = sweep_maps(maps, cache, args.depth, pacer, args.modes)
+        infos, absent, left = sweep_maps(maps, cache, args.depth, pacer, args.modes,
+                                         idx=idx)
     except Refused as e:
         print("  refused: %s -- stopping, nothing is retried" % e)
         # What the cache already holds is still good; read it with no budget.
         infos, absent, left = sweep_maps(maps, cache, args.depth, Pacer(0, 0),
-                                         args.modes)
-    rows, bad = map_rows(cache, infos, args.modes)
+                                         args.modes, idx=idx)
+    finally:
+        _save(ixf, idx)
+    rows, bad, boards = map_rows(cache, infos, args.modes)
     kinds = [sum(1 for r in rows if (r["track"], r["leg"]) == (0, 0)),
              sum(1 for r in rows if r["leg"] > 0),
              sum(1 for r in rows if r["track"] > 0)]
@@ -781,7 +947,26 @@ def maps_mode(args, have, cache):
     print("by style        %s" % ", ".join(
         "%s %d" % (KSF_MODES[m], sum(1 for r in rows if r["style"] == KSF_MODES[m]))
         for m in args.modes))
-    return rows
+    return rows, boards
+
+
+def take_lock(cache):
+    """One ksfimport at a time per cache: a --watch tick and a by-hand run
+    would otherwise ask KSF twice at once and race each other's board files."""
+    os.makedirs(cache, exist_ok=True)
+    fh = io.open(os.path.join(cache, ".lock"), "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 
 def main():
@@ -821,8 +1006,7 @@ def main():
     if args.delay is None:
         args.delay = WATCH_DELAY if args.watch else KSF_DELAY_MS / 1000.0
     if args.watch:
-        # A tick writes only the pages it fetched, so a dry one must fetch none:
-        # those rows would never reach the board.
+        # A tick files only what it fetched, so a dry one fetches nothing.
         args.max = 0 if not args.go else (WATCH_MAX if args.max is None else args.max)
     elif args.from_maps is None:
         if args.max is None:
@@ -832,7 +1016,7 @@ def main():
         elif args.seed:
             seed = read_seed(args.seed)
         else:
-            print("give --seed, --from-boards or --from-maps")
+            print("give --seed, --from-boards, --from-maps or --watch")
             return 2
         if not seed:
             print("no usable steamid64 in the seed")
@@ -848,70 +1032,74 @@ def main():
                 pass
     else:
         have = playable_maps()
+    # An empty library used to read as "no filter", which files rows for maps
+    # nobody can load -- on cron, every map KSF lists.
+    if not have:
+        print("no installed maps found (%s) -- nothing is fetched or filed"
+              % (args.maps or S.MAPS_DIR))
+        return 2
 
-    if args.watch:
-        rows = watch_mode(args, have, cache)
-    elif args.from_maps is not None:
-        rows = maps_mode(args, have, cache)
-    else:
-        rows = seed_mode(args, seed, have, cache)
+    lock = take_lock(cache)
+    if lock is None:
+        print("another ksfimport holds %s -- not running beside it" % cache)
+        return 0 if args.watch else 2
+    try:
+        if args.watch:
+            rows, boards = watch_mode(args, have, cache)
+        elif args.from_maps is not None:
+            rows, boards = maps_mode(args, have, cache)
+        else:
+            rows, boards = seed_mode(args, seed, have, cache)
 
-    if not args.go:
-        for r in rows[:10]:
-            print("   %-28s t%d l%d %-5s %9.3fs  %s"
-                  % (r["map"], r["track"], r["leg"], r.get("style", S.STYLE_CLEAN),
-                     r["millis"] / 1000.0, r["name"]))
-        print("\nDRY RUN -- nothing written.  Pass --go.")
-        return 0
-
-    if args.watch:
-        # Rows a failed write could not file wait here for the next tick: the
-        # crawl never asks for those pages again.
-        pend = os.path.join(cache, "pending.json")
-        held = _load(pend)
-        rows = (held if isinstance(held, list) else []) + rows
+        if not args.go:
+            for r in rows[:10]:
+                print("   %-28s t%d l%d %-5s %9.3fs  %s"
+                      % (r["map"], r["track"], r["leg"], r.get("style", S.STYLE_CLEAN),
+                         r["millis"] / 1000.0, r["name"]))
+            print("\nDRY RUN -- nothing written.  Pass --go.")
+            return 0
         try:
             n = write_rows(rows)
         except sqlite3.Error as e:
-            _save(pend, rows)
-            print("write failed (%s): %d row(s) kept for the next tick" % (e, len(rows)))
+            # The boards stay owed, and the next --watch tick files them.
+            print("write failed (%s): %d board(s) stay owed" % (e, len(boards)))
             return 1
-        if held is not None:
-            os.remove(pend)
+        clear_owed(cache, boards)
         print("board rows set  %d" % n)
         return 0
-    print("board rows set  %d" % write_rows(rows))
-    return 0
+    finally:
+        lock.close()
 
 
 def write_rows(rows):
-    """Upsert run rows in one transaction; a slower time never replaces a faster.
-
-    --watch passes only the pages fetched in its own tick, so the write stays a
-    few hundred rows and the lock it takes stays short (momwatch's "database is
-    locked" heartbeats were one long transaction; BACKLOG)."""
+    """Upsert run rows; a slower time never replaces a faster.  WRITE_CHUNK rows
+    a transaction, so the lock is let go between them -- momwatch's "database is
+    locked" heartbeats were one long transaction (BACKLOG)."""
     conn = S.connect()
     now = int(time.time())
     wrote = 0
-    with conn:
-        for r in rows:
-            # The seed path's rows are all (0, 0): bestrecords carries no stage
-            # or bonus (stage_id and zone_id are null on every row seen).
-            # replay_id stays 0 -- there is no recording and no way to get one.
-            cur = conn.execute(
-                "INSERT INTO runs (map, track, leg, tier, style, player, name,"
-                "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,0,'ksf','',?,0)"
-                " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
-                "   ticks=excluded.ticks, millis=excluded.millis,"
-                "   name=excluded.name, submitted=excluded.submitted"
-                " WHERE excluded.millis < runs.millis",
-                (r["map"], r["track"], r["leg"], S.TIER_KSF,
-                 r.get("style", S.STYLE_CLEAN),
-                 r["player"], r["name"], r["ticks"], r["rate"], r["millis"],
-                 r["when"] or now))
-            wrote += cur.rowcount
-    conn.close()
+    try:
+        for i in range(0, len(rows), WRITE_CHUNK):
+            with conn:
+                for r in rows[i:i + WRITE_CHUNK]:
+                    # The seed path's rows are all (0, 0): bestrecords carries no
+                    # stage or bonus (stage_id and zone_id are null on every row
+                    # seen).  replay_id stays 0 -- there is no recording.
+                    cur = conn.execute(
+                        "INSERT INTO runs (map, track, leg, tier, style, player, name,"
+                        "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,0,'ksf','',?,0)"
+                        " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
+                        "   ticks=excluded.ticks, millis=excluded.millis,"
+                        "   name=excluded.name, submitted=excluded.submitted"
+                        " WHERE excluded.millis < runs.millis",
+                        (r["map"], r["track"], r["leg"], S.TIER_KSF,
+                         r.get("style", S.STYLE_CLEAN),
+                         r["player"], r["name"], r["ticks"], r["rate"], r["millis"],
+                         r["when"] or now))
+                    wrote += cur.rowcount
+    finally:
+        conn.close()
     return wrote
 
 

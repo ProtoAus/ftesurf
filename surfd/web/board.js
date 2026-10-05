@@ -314,12 +314,17 @@
         function () { go(v, p.track, p.leg, v.style, v.tier); }));
     });
 
+    // Counted for the source tab in use: under "Ours" a KSF style is empty,
+    // and a tab that opens on "No sideways times" is a tab not to draw.
     var here = {};
     v.boards.forEach(function (b) {
-      if (b.track === v.track && b.leg === v.leg) { here[b.style] = b.n + n0(b.ni); }
+      if (b.track === v.track && b.leg === v.leg) {
+        here[b.style] = v.tier === 'ranked' ? b.n
+          : v.tier === 'imported' ? n0(b.ni) : b.n + n0(b.ni);
+      }
     });
     ['clean', 'segmented'].concat(KSF_STYLES.filter(function (s) {
-      return s in here || s === v.style;
+      return here[s] > 0 || s === v.style;
     })).forEach(function (s) {
       styles.appendChild(tabButton(styleName(s), here[s] || 0, s === v.style,
         function () { go(v, v.track, v.leg, s, v.tier); }));
@@ -785,6 +790,7 @@
         var ch = srcChip(r.tr);
         if (ch) { mp.appendChild(ch); }
       }
+      if (r.style && r.style !== 'clean') { mp.appendChild(el('span', 'of', ' ' + styleName(r.style))); }
       tr.appendChild(mp);
       tr.appendChild(el('td', 'leg', legName(r.track, r.leg)));
       tr.appendChild(el('td', 'num', fmt(r.ms)));

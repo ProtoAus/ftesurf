@@ -54,6 +54,9 @@ class FakeKSF(object):
         self.refuse_after, self.slow = refuse_after, slow
         self.listed = sorted(maps) if listed is None else listed
         self.top = {}
+        self.fail = set()           # boards answered with HTTP 500
+        self.mangle = None          # f(rows) -> rows, applied to every page
+        self.stuck_list = False     # the map list ignores its offset
         self.asked = []
 
     def __call__(self, url):
@@ -68,7 +71,7 @@ class FakeKSF(object):
             return json.dumps(hits[:5])
         m = re.match(r"/api/maps/new\?offset=(\d+)$", path)
         if m:
-            off = int(m.group(1))
+            off = 0 if self.stuck_list else int(m.group(1))
             return json.dumps([dict(self.maps[n], name=n)
                                for n in self.listed[off:off + K.KSF_LIST_PAGE]])
         m = re.match(r"/api/maps/([^/]+)/records/zone/(\d+)/(\d+)\?game=css&mode=(\d)$",
@@ -76,13 +79,16 @@ class FakeKSF(object):
         mp, zone, start = urllib.parse.unquote(m.group(1)), int(m.group(2)), int(m.group(3))
         mode = int(m.group(4))
         key = (mp, zone) if mode == 0 else (mp, zone, mode)
+        if (mp, zone, mode) in self.fail:
+            raise K.Refused("HTTP 500", 500)
         extra = self.top.get(key, 0)
         board = ([("STEAM_0:0:%d" % (900 + i), 1.0 + i) for i in range(extra)]
                  + [("STEAM_0:1:%d" % r, 30.0 + zone + mode + r * 0.01 + self.slow)
                     for r in range(1, self.boards.get(key, 0) + 1)])
-        return json.dumps([{"rank": start + i, "name": "p%s" % sid[10:],
-                            "steamID": sid, "time": t, "date": 1790000000 + start + i}
-                           for i, (sid, t) in enumerate(board[start - 1:start - 1 + K.KSF_PAGE])])
+        rows = [{"rank": start + i, "name": "p%s" % sid[10:],
+                 "steamID": sid, "time": t, "date": 1790000000 + start + i}
+                for i, (sid, t) in enumerate(board[start - 1:start - 1 + K.KSF_PAGE])]
+        return json.dumps(self.mangle(rows) if self.mangle else rows)
 
 
 def pages(fake, modes=False):
@@ -243,7 +249,7 @@ def case_refusal():
     io.open(os.path.join(mapsdir, "surf_r.bsp"), "w").close()
     listfile = os.path.join(HOME, "maps_r.txt")
     io.open(listfile, "w", encoding="utf-8").write("surf_r\n")
-    rows = K.maps_mode(write_args(listfile, cache, mapsdir, modes=[0]), {"surf_r"}, cache)
+    rows, _ = K.maps_mode(write_args(listfile, cache, mapsdir, modes=[0]), {"surf_r"}, cache)
     check("a refusal stops: nothing asked after the refused request",
           len(fake.asked), 4)
     check("...and what was cached before it is still used", len(rows), 40)
@@ -442,7 +448,7 @@ def case_watch_refusal_parks():
           os.path.exists(os.path.join(cache, ".refused")), False)
 
 
-def case_watch_dry_and_pending():
+def case_watch_dry_and_owed():
     fake, cache, mapsdir, names = watch_setup(2, installed=2, rows_each=5,
                                               prefix="surf_d")
     tick(cache, mapsdir, 5, go=False)
@@ -457,14 +463,151 @@ def case_watch_dry_and_pending():
         rc = tick(cache, mapsdir, 4)
     finally:
         K.write_rows = real
-    held = json.load(io.open(os.path.join(cache, "pending.json"), encoding="utf-8"))
-    check("a failed write keeps the tick's rows", (rc, len(held)), (1, 5))
+    check("a failed write leaves its boards owed",
+          (rc, sorted(b[0] for b in K.owed_boards(cache))), (1, ["surf_d00"] * 3))
     fake.asked = []
     tick(cache, mapsdir, 0)
-    check("the next tick files them, asking nothing",
+    check("the next tick files them whole, asking nothing",
           (ksf_rows("map='surf_d00'"), fake.asked), (5, []))
-    check("...and clears what it held",
-          os.path.exists(os.path.join(cache, "pending.json")), False)
+    check("...and they are owed no more", K.owed_boards(cache), [])
+
+    # A run killed between fetching and filing: watch_mode returns its rows and
+    # nothing writes them -- the owed markers are all that survives.
+    fake, cache, mapsdir, names = watch_setup(2, installed=2, rows_each=45,
+                                              prefix="surf_k")
+    args = argparse.Namespace(delay=0.0, max=6)
+    K.watch_mode(args, set(names), cache)
+    held = len(K.board_load(cache, "surf_k00", 0)["rows"])
+    check("control: the killed tick cached rows and filed none",
+          (held > 0, ksf_rows("map='surf_k00'")), (True, 0))
+    tick(cache, mapsdir, 0)
+    check("the next tick files every row the killed one cached",
+          ksf_rows("map='surf_k00'"), held)
+
+    # A dry by-hand run caches pages and writes nothing; the crawl files them.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, rows_each=30,
+                                              prefix="surf_h")
+    listfile = os.path.join(HOME, "maps_h.txt")
+    io.open(listfile, "w", encoding="utf-8").write("surf_h00\n")
+    run_main(["--from-maps", listfile, "--cache", cache, "--delay", "0",
+              "--maps", mapsdir, "--modes", "0"])
+    check("control: a dry --from-maps filed nothing", ksf_rows("map='surf_h00'"), 0)
+    tick(cache, mapsdir, 0)
+    check("...and the next tick files what it cached", ksf_rows("map='surf_h00'"), 30)
+
+
+def case_review_findings():
+    # 1. New players above the cursor must not stall it (60 of 60 requests to
+    #    one URL in review).
+    fake = FakeKSF({"surf_s": FLAT}, {("surf_s", 0): 100})
+    K.fetch = fake
+    cache = fresh_cache()
+    K.sweep_maps(["surf_s"], cache, 40, K.Pacer(0, 10))
+    fake.top[("surf_s", 0)] = 25
+    fake.asked = []
+    K.sweep_maps(["surf_s"], cache, -1, K.Pacer(0, 8))
+    starts = [p[2] for p in pages(fake)]
+    check("25 players above the cursor: every request a new rank", starts,
+          [41, 61, 81, 101, 121])
+    check("...and the board is walked to its end", K.board_load(cache, "surf_s", 0)["done"],
+          True)
+
+    # 2. An empty library fetches and files nothing.
+    fake = FakeKSF({"surf_e": FLAT}, {("surf_e", 0): 5})
+    K.fetch = fake
+    empty = tempfile.mkdtemp(prefix="maps-", dir=HOME)
+    rc = run_main(["--watch", "--cache", fresh_cache(), "--maps", empty, "--max", "5",
+                   "--delay", "0", "--go"])
+    check("an empty map library refuses, asking nothing", (rc, fake.asked), (2, []))
+
+    # 3. The cap holds for every request, a torn map file included.
+    fake = FakeKSF({"surf_t": FLAT}, {("surf_t", 0): 5})
+    K.fetch = fake
+    cache = fresh_cache()
+    os.makedirs(os.path.join(cache, "maps"))
+    io.open(os.path.join(cache, "maps", "surf_t.json"), "w").close()
+    K.sweep_maps(["surf_t"], cache, -1, K.Pacer(0, 0))
+    check("a zero budget asks nothing, even past a torn map file", fake.asked, [])
+    try:
+        K.Pacer(0, 0).get("/x")
+        got = "asked"
+    except K.OverBudget:
+        got = "refused"
+    check("...because Pacer.get itself refuses past its cap", got, "refused")
+
+    # 4. A park is lifted by an answer, not by a tick that asked nothing.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, prefix="surf_l")
+    pf = os.path.join(cache, ".refused")
+    io.open(pf, "w").write(json.dumps({"at": 1, "until": 1, "n": 4, "why": "HTTP 429"}))
+    tick(cache, mapsdir, 0)
+    check("an expired park survives a tick that asked nothing", os.path.exists(pf), True)
+    tick(cache, mapsdir, 2)
+    check("...and is lifted by one that was answered", os.path.exists(pf), False)
+
+    # 5. One ksfimport at a time.
+    cache = fresh_cache()
+    first = K.take_lock(cache)
+    second = K.take_lock(cache)
+    check("a second run cannot take the lock", (first is not None, second), (True, None))
+    first.close()
+    third = K.take_lock(cache)
+    check("...and can once the first lets go", third is not None, True)
+    third.close()
+
+    # 6. A board that always fails is set aside after STRIKES parks.
+    fake, cache, mapsdir, names = watch_setup(2, installed=2, rows_each=5, prefix="surf_f")
+    fake.fail.add(("surf_f00", 0, 0))
+    for _ in range(K.STRIKES):
+        io.open(os.path.join(cache, ".refused"), "w").write(json.dumps({"until": 0, "n": 0}))
+        tick(cache, mapsdir, 20)
+    doc = K.board_load(cache, "surf_f00", 0)
+    check("a board refused STRIKES times is set aside", bool(doc.get("skip")), True)
+    io.open(os.path.join(cache, ".refused"), "w").write(json.dumps({"until": 0, "n": 0}))
+    fake.asked = []
+    tick(cache, mapsdir, 20)
+    check("...and the crawl goes on without it",
+          (ksf_rows("map='surf_f01'"), [p for p in fake.asked if "surf_f00/records/zone/0/1?game=css&mode=0" in p]),
+          (5, []))
+
+    # 7. One bad field costs its row, not the tick.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, rows_each=5, prefix="surf_b")
+
+    def bad(rows):
+        if rows:
+            rows[0] = dict(rows[0], date="2026-10-05")
+            rows[1] = dict(rows[1], time="31.5")
+        return rows
+
+    fake.mangle = bad
+    rc = tick(cache, mapsdir, 3)
+    check("a page with a text date and a text time still files the rest",
+          (rc, ksf_rows("map='surf_b00' AND style='clean'")), (0, 4))
+
+    # 8. A list that ignores its offset cannot spend every tick on itself.
+    fake, cache, mapsdir, names = watch_setup(25, installed=25, prefix="surf_c")
+    fake.stuck_list = True
+    tick(cache, mapsdir, 6)
+    check("the map list stops at a page with nothing new",
+          [p for p in fake.asked if "/new?" in p],
+          ["/api/maps/new?offset=0", "/api/maps/new?offset=10"])
+
+    # 9. A page with no SteamID is a format change: refused, parked.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, prefix="surf_g")
+    fake.mangle = lambda rows: [dict(r, steamID=None, steamId=r["steamID"]) for r in rows]
+    tick(cache, mapsdir, 3)
+    park = json.load(io.open(os.path.join(cache, ".refused"), encoding="utf-8"))
+    check("rows without a SteamID park the crawl", "SteamID" in park["why"], True)
+
+    # 10. A refreshed first page that is short is the whole board.
+    fake = FakeKSF({"surf_q": FLAT}, {("surf_q", 0): 30})
+    K.fetch = fake
+    cache = fresh_cache()
+    K.sweep_maps(["surf_q"], cache, -1, K.Pacer(0, 5))
+    fake.boards[("surf_q", 0)] = 12
+    fake.top[("surf_q", 0)] = 1
+    K.board_page(cache, "surf_q", 0, K.Pacer(0, 1), top=True)
+    check("a short refreshed page 1 leaves the board done",
+          K.board_load(cache, "surf_q", 0)["done"], True)
 
 
 def case_board_reads_ksf_styles():
@@ -494,14 +637,28 @@ def case_board_reads_ksf_styles():
           (200, "hsw"))
     db.close()
 
+    # Another writer holds the lock (momwatch does, for seconds): the read that
+    # queues a map must not wait the connection's 5 s for it.
+    hold = sqlite3.connect(os.environ["SURFD_DB"], timeout=0.1)
+    hold.execute("BEGIN IMMEDIATE")
+    try:
+        t0 = K.time.time()
+        r = c.get("/api/board?map=surf_hsw&tier=ksf&style=hsw")
+        took = K.time.time() - t0
+    finally:
+        hold.rollback()
+        hold.close()
+    check("with the write lock held elsewhere the read still answers, fast",
+          (r.status_code, took < 1.0), (200, True))
+
 
 def main():
     for case in (case_mapping, case_exact_name, case_paging_and_depth,
                  case_shallowest_first_and_cursor, case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
-                 case_watch_refusal_parks, case_watch_dry_and_pending,
-                 case_board_reads_ksf_styles):
+                 case_watch_refusal_parks, case_watch_dry_and_owed,
+                 case_review_findings, case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d failed" % len(FAILED))
