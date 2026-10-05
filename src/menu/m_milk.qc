@@ -1078,14 +1078,14 @@ void() MM_Init =
 		mm_shuffle = 3;
 	mm_world = MM_WorldWant();
 	Milk_Init("mm", MM_WorldProg(mm_world, MS_MAIN), "milk_warp", "milk_comp");
-	// The vessel's x-ray films are local images, never shipped: a black film
-	// without them (milk_vessel.glsl, film()).  "map $clamp:", never
+	// The vessel's x-ray films ship as grayscale JPEGs (the shader reads .r); a
+	// black film without them (milk_vessel.glsl, film()).  "map $clamp:", never
 	// "clampmap": in a program pass only "map" opens the next texture unit
 	// (Shaderpass_DefineMap), so a clampmap overwrote mm_ui1 and left 4-5 empty.
-	mm_films = ui_file_exists("gfx/env/xray1.png") + 2 * ui_file_exists("gfx/env/xray2.png");
+	mm_films = ui_file_exists("gfx/env/xray1.jpg") + 2 * ui_file_exists("gfx/env/xray2.jpg");
 	milk_scenemaps = strzone(sprintf("map $rt:mm_ui0\nmap $rt:mm_ui1\n%s\n%s\n",
-	                         (mm_films & 1) ? "map $clamp:gfx/env/xray1.png" : "map $blackimage",
-	                         (mm_films & 2) ? "map $clamp:gfx/env/xray2.png" : "map $blackimage"));
+	                         (mm_films & 1) ? "map $clamp:gfx/env/xray1.jpg" : "map $blackimage",
+	                         (mm_films & 2) ? "map $clamp:gfx/env/xray2.jpg" : "map $blackimage"));
 	milk_sprites = MM_Sprites;
 	milk_packextra = MM_PanelPack;
 	mm_station = MS_MAIN;

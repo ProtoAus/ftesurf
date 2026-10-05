@@ -2559,8 +2559,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - `milk_grade` (VISUALS "Colour grade", `M_TIME.y`): `milk_grade()` in
   `milk_common.h`, after `aces()` -- the image cooled and a little desaturated,
   colours near a pure red, green or blue kept and pushed.
-- The vessel's x-ray films: `gfx/env/xray1.png` / `xray2.png`, local images,
-  git-ignored and never shipped. PLAY hangs one behind the plankton, VISUALS
+- The vessel's x-ray films: `gfx/env/xray1.jpg` / `xray2.jpg`, grayscale JPEGs
+  (q90, from the red channel the shader reads), tracked and in the ship set; the
+  source PNGs beside them stay git-ignored. PLAY hangs one behind the plankton, VISUALS
   mirrors the other in the cornea; without them the maps are `$blackimage`. The
   harness start line prints `films` (bit 1, bit 2) and the art tour
   (`milk_bootcheck 7`) ends with `r_imagelist`, which says whether they loaded.
@@ -3093,7 +3094,8 @@ deny key swallows its own subtree (`maps/` excused `maps/zones/local/`, the larg
 of the three faults above), and **`fopen` IS A LOAD WHEN THE MODE IS `FILE_READ`,
 NOT A PROBE** -- classing it as a probe hid `data/mapdl.txt` entirely, i.e. the
 0.1.15 fault passed clean. A read whose failure is silent is the worst thing to call
-optional. It reaches 9 of the 13 globs; the other four (`cfg`, `glsl`, `scripts`,
+optional. It reaches 9 of the 13 globs (a 14th since, #13 `gfx/env` `xray*.jpg`, is
+reached by m_milk.qc's bind literal); the other four (`cfg`, `glsl`, `scripts`,
 `gfx/env`) are ENGINE-CONVENTION -- `r_skybox milk` builds `gfx/env/milk.png`, a
 shader's `prog milk_scene` builds the glsl filename -- so no literal sweep of
 anything we author can see them, and a clean run means "no literal path in src/ is
