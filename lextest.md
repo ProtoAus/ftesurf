@@ -11,6 +11,103 @@ to be wrong.
 
 ---
 
+## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
+
+### What happened (5 Oct, while the Qwen bots worked on the anti-cheat)
+
+- **The website is new and live: <https://proto.bar/ftesurf/>.** Black, big
+  type, few words. The hero is your own ranked surf_utopia run (1:03.240) drawn
+  from its recording, coloured by speed the way the game colours a line,
+  turning slowly. There is a new **Anti-Cheat page**
+  (<https://proto.bar/ftesurf/anticheat.html>): what a ranked run goes through
+  and why that is fair, and nothing about how anything is detected. The
+  leaderboard has the same header and look. Republished for 0.1.22 with
+  `src/release/sitepage.ps1`, so no new release was needed; the old page is
+  backed up in my scratchpad and is one `ln -sfn` away if you want it back.
+- **A bug that has been refusing runs since 28 Sep: fixed.** The board's row
+  caps (200k main, 1M stage) counted the imported Momentum rows, so from the
+  28-30 Sep backfill on, every player's FIRST time on a board was refused with
+  "run limit reached". It happened at least once: a lobby's run at 12:33 UTC on
+  4 Oct. The caps now count only rows the servers sent (42 main, 131 stage).
+  If you finished a map for the first time since 28 Sep and it is not on the
+  board, that is why -- it has to be run again.
+- **Your question: could the Pi download Momentum demos it does not have? It
+  could not.** Every board row named its demo and nothing fetched one. Now
+  `momgrab.py` does, from cron: the top 10 of every board, maps people open
+  first, a few demos every 5 minutes, each checked against its own name, kept
+  for good, converted with the same rules as the 5,260 re-imported runs, and
+  linked to its row so "Watch" appears. A demo recorded on a different build of
+  the map than the one installed is refused (its line would be drawn on the
+  wrong geometry) -- and that is common for old records: the first one I tried,
+  surf_nebula's WR, is on a build we do not have.
+- **KSF past the first page, and its styles.** `ksfimport.py --watch` runs from
+  cron every 5 minutes, 10 requests at a time: first KSF's whole map list
+  (~100 requests), then the next unseen page of every board, shallowest first,
+  so everything deepens evenly. Maps somebody opens on the website, or scrolls
+  to the end of in game, go first. **All four styles** -- Forward (our Clean),
+  Sideways, Half-Sideways, Backwards -- are boards of their own, with their
+  stages and bonuses. Stages and bonuses for Forward were already there
+  (25,579 stage and 12,376 bonus times). At ~2,900 requests a day it takes
+  weeks to fill, which is what you asked for. If KSF ever says no, it stops
+  for 6 hours, then 12, 24, 48.
+
+### Things to try
+
+1. The website on your phone and your PC: the hero, the Download section, the
+   Anti-Cheat page. Does it read like what you wanted?
+2. Leaderboard -> any KSF map (try surf_utopia_njv) -> Imported: Sideways,
+   Half-Sideways and Backwards tabs appear once the crawl has reached that map
+   (opening it moves it to the front).
+3. Leaderboard -> a Momentum map you know -> the top rows: "Watch" appears on
+   more of them over the next days.
+4. In a week, on the Pi: `tail logs/ksfwatch.log logs/momgrab.log` in
+   /srv/nvme/surfd -- steady lines, no "parked".
+
+### Decisions only you can make
+
+- The site: the copy, the stats strip (1,300+ maps / 66.67 tick / 12 lobbies /
+  free), and the two in-game pictures -- they are crops of test captures with
+  the debug text cut out. A clean screenshot session on your PC would beat
+  them; I did not run the game while the bots' test arms were using it.
+- The Anti-Cheat page ends with "Found a hole? Message the developer on
+  Discord" and links the Discord channel. Is that where you want reports?
+- KSF's 100-tick boards (`css100t`): their own tier, or leave them out?
+- A per-row "Get demo" button (any rank, on demand) -- worth building?
+- The game's own leaderboard has no picker for KSF's styles yet (website only).
+- Speeds: KSF ~2,900 requests a day, demos ~1,700 a day. Faster or slower?
+
+### Where I stopped (5 Oct)
+
+Everything below is live and was read back, not assumed.
+
+- **The board server:** `cf6cd12` deployed 04:07 UTC (all 53 files hash-match
+  the commit, `/health` ok, 12 lobbies). The caps read "not full" on the live
+  database; `/api/board` serves `style=hsw`.
+- **On the Pi beside it:** momreplay/momimport/momreimport in the game's
+  `tools/` (hashes checked), `zstandard` 0.25.0 for the cron user, and two
+  crontab lines -- `ksfimport.py --watch` at :01/:06/..., `momgrab.py` at
+  :03/:08/... (old crontab in `data/crontab.bak-20261005-*`).
+- **First ticks:** the KSF crawl is still listing KSF's maps (620 so far,
+  6,010 boards queued); the demo grab took 12 demos in its first two ticks,
+  all filed and linked -- e.g. Morgan Freefarm's 3rd place on surf_fiellu
+  bonus 1 is watchable now.
+- **The site:** republished 0.1.22, every file served byte for byte.
+- **Reviews:** the KSF crawl went through two rounds (the second found ways to
+  lose rows -- fixed), the cap fix one (clean), the demo grab one (seven
+  findings -- fixed); every fix has a test that a broken copy fails. What they
+  found and I did not fix is in BACKLOG.md, "The KSF crawl, the demo grab and
+  the site".
+- **A collision you should know about:** the Qwen bots deployed the board
+  server at 03:48 and 04:03 UTC while I deployed at 03:54. My 03:54 deploy
+  left their newest work out on purpose (it was not live when I checked at
+  03:42) and so rolled it back for nine minutes, until their 04:03 deploy put
+  it back. Nothing was lost; the live server now has both. Running two
+  deployers at once wants one of us to wait for the other.
+- **Not built:** the in-game style picker, a per-row "Get demo" button, KSF's
+  100-tick boards, fresh screenshots for the site.
+
+---
+
 ## 0. Welcome back -- start here (rewritten 2026-10-04)
 
 ### What happened while you were away (3-4 Oct)
