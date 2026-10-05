@@ -2932,8 +2932,23 @@ also how each of these was confirmed fixed. `release.ps1` verifies the archive
 matches the STAGE, and the stage matches the allowlist; nothing verifies the
 allowlist matches what the code asks for.
 
-A gate could: sweep the QC for literal asset paths and assert each resolves in
-the ship set. It does not exist; BACKLOG carries it.
+A gate exists now: `python tools/shipguard.py` (2026-10-05) sweeps the QC for
+literal asset paths and asserts each resolves in the ship set, exit 1 on an
+unexplained miss. It PARSES `$ShipRootFiles`/`$ShipGameFiles`/`$ShipGlobs` out of
+release.ps1 rather than copying them, because a copy drifts and then the gate grades
+a ship set nobody ships. `--mutate N` hides the Nth glob and asserts a MISS appears
+-- run it, because a gate nobody has watched fire is not a gate. TWO THINGS IT
+TAUGHT, both of which read as a clean pass and both now in its docstring: a PREFIX
+deny key swallows its own subtree (`maps/` excused `maps/zones/local/`, the largest
+of the three faults above), and **`fopen` IS A LOAD WHEN THE MODE IS `FILE_READ`,
+NOT A PROBE** -- classing it as a probe hid `data/mapdl.txt` entirely, i.e. the
+0.1.15 fault passed clean. A read whose failure is silent is the worst thing to call
+optional. It reaches 9 of the 13 globs; the other four (`cfg`, `glsl`, `scripts`,
+`gfx/env`) are ENGINE-CONVENTION -- `r_skybox milk` builds `gfx/env/milk.png`, a
+shader's `prog milk_scene` builds the glsl filename -- so no literal sweep of
+anything we author can see them, and a clean run means "no literal path in src/ is
+missing", not "the archive is complete". STILL UNWIRED: nothing runs it; release.ps1's
+pre-pack step is where it belongs.
 
 **AND A MISS IS NOT A NO-OP.** `drawpic` substitutes
 `R2D_SafeCachePic("no_texture")` and draws it (`pr_menu.c:622-632`), so a
