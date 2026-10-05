@@ -983,6 +983,32 @@ m.time = FakeClock()
 r = submit(m, player="e", leg=2)
 check("a leafless stage row stores with rep 0", (r["stored"], r["rep"]), (True, 0))
 
+# Imported rows are not network rows: the caps must not count them.  On the Pi
+# the Momentum import alone held 639k main rows against MAX_RUNS 200k, and a
+# lobby's run was refused for it on 4 Oct.
+m = fresh()
+m.time = FakeClock()
+m.MAX_RUNS = 2
+m.MAX_STAGE_RUNS = 2
+db = sqlite3.connect(m.DB_PATH)
+for i, (tier, leg) in enumerate([("momentum", 0)] * 3 + [("ksf", 0)] * 3
+                                + [("momentum", 1)] * 3 + [("ksf", 2)] * 3):
+    db.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+               " tickrate, millis, flags, node, runid, submitted, replay_id)"
+               " VALUES ('surf_test', 0, ?, ?, 'clean', ?, 'imp', 100, 66.67, 1500,"
+               " 0, 'import', '', 1, 0)", (leg, tier, "765611979602%05d" % i))
+db.commit()
+db.close()
+r = submit(m, player="n1", leg=0)
+check("six imported main rows over a cap of 2: a new ranked row still stores",
+      r if isinstance(r, str) else r["stored"], True)
+r = submit(m, player="n1", leg=1)
+check("...and so does a new stage row over six imported ones",
+      r if isinstance(r, str) else r["stored"], True)
+submit(m, player="n2", leg=0)
+check("control: the network's own rows still fill the cap",
+      submit(m, player="n3", leg=0), "HTTP 429")
+
 # --------------------------------------------------------------------------
 print("\n--- 14. schema 5: the 4 -> 5 migration, and its race --------------")
 

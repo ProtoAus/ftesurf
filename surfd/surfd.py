@@ -2304,11 +2304,17 @@ _PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg
 
 
 def _runs_full(db, leg):
-    """True when the board table holds its cap of main (leg 0) or stage rows."""
-    if leg == 0:
-        return db.execute("SELECT COUNT(*) FROM runs WHERE leg=0").fetchone()[0] >= MAX_RUNS
-    return (db.execute("SELECT COUNT(*) FROM runs WHERE leg>0").fetchone()[0]
-            >= MAX_STAGE_RUNS)
+    """True when the board table holds its cap of main (leg 0) or stage rows.
+
+    The caps bound what the NETWORK can add, so imported tiers do not count:
+    the importers' rows (639k main, 2.0M stage on 5 Oct) filled both caps for
+    good from the 28-30 Sep backfill, and a lobby's run was refused on 4 Oct
+    ("run cap 200000 reached").
+    """
+    q = ("SELECT COUNT(*) FROM runs WHERE %s AND tier NOT IN (%s)"
+         % ("leg=0" if leg == 0 else "leg>0", ",".join("?" * len(TIERS_IMPORTED))))
+    return (db.execute(q, TIERS_IMPORTED).fetchone()[0]
+            >= (MAX_RUNS if leg == 0 else MAX_STAGE_RUNS))
 
 
 _UPSERT_RUN = """
