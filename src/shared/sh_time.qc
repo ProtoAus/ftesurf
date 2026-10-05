@@ -160,6 +160,17 @@ string(float secs) Time_Clock =
 */
 void(string tag, float ticks, float rate) Time_Print =
 {
+	/*
+	  `print`, NOT `dprint`, and the difference is whether the line exists at
+	  all.  dprint is Con_DPrintf, which RETURNS BEFORE FORMATTING unless the
+	  server has `developer` or `log_developer` set (engine common/common.c,
+	  Con_DPrintf) -- and a public lobby sets neither, so this harness handle
+	  printed nothing on the twelve lobbies while answering locally, with no
+	  error anywhere.  print is builtin 339, "unconditionally print on the local
+	  system's console, even in ssqc", and 39 sites in src/server already use it.
+	  Measured both ways on ftesurf@1 over rcon: `log_enable` and
+	  `log_developer` read "0" there and `developer` reads "1".
+	*/
 	print(sprintf("tf %s %.9g %.9g %i %s\n", tag, ticks, rate,
 	              Time_TickMs(ticks, rate), Time_TickString(ticks, rate)));
 };

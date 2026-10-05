@@ -1193,6 +1193,27 @@ publicly WITH its fix, not before it.
 - `Con_DPrintf` NEVER REACHES THE LOG FILE unless `log_developer 1` (console.c:
   `developer` echoes to the console, `log_developer` writes). A falsifier that
   greps a server log for a DPrint measures nothing.
+- **AND A SERVER QC `print()` NEVER REACHES A CLIENT'S LOG, WHICH IS THE SAME
+  SILENCE WITH A DIFFERENT CAUSE.** `print` is builtin 339, "unconditionally
+  print on the local system's console, even in ssqc" -- the local system being
+  the SERVER. It is Con_Printf, and Con_Printf reaches a connected client only
+  where the qc sends it there itself (`sprint`/`bprint`). So a client-driven arm
+  that asks the server for something answered with `print()` sees NOTHING: no
+  error, no "unknown command", no timeout -- the stringcmd went, was handled, and
+  printed somewhere the arm is not reading. Measured three ways on 2026-10-06:
+  `cmd viewpos` and `cmd timer` DO appear in the client's log because
+  SV_SaveLocStatus/SV_TimerReport answer with `sprint(self, PRINT_HIGH, ...)`,
+  while `cmd timefmt` and `cmd ent_census` -- `print(...)` -- did not, on a lobby
+  whose qwprogs.dat was sha256-verified to be the local build and which answered
+  both correctly in its OWN log. **USE `print`, NOT `dprint`, for a server-side
+  harness handle** (dprint would be invisible on a lobby too, for the
+  log_developer reason above, and a lobby has `log_enable 0`, `log_developer 0`,
+  `developer 1` -- measured over rcon), and then READ IT FROM THE SERVER:
+  `cfg/test/deploy496smoke.cfg`'s header has the rcon recipe (`log_name`,
+  `log_dir`, `log_enable 1`, one cvar per `execute()` call, put back to 0 and
+  delete the file afterwards). A command answered by `print` is still the right
+  shape for a client arm IF the arm reads the server's log -- which is the only
+  honest way to grade what the fleet is running.
 - EDITING ENGINE FILES FROM A SCRIPT: the tree is stored LF and checked out CRLF
   (`core.autocrlf`), and earlier patch blocks were written back as LF -- so ONE
   FILE HOLDS BOTH. A multi-line match must try `\r\n` and then `\n`, or it
@@ -1989,6 +2010,37 @@ script rather than passing it as an argument, where `ps` would show it.
   logs. Use the `cfg/test/p339pi.cfg` pattern — headless client into a live
   lobby, check the `trig:` census, hook-alive line and prederr count; every
   rotation map exists locally in the Steam Momentum library.
+  **"NO FILE LOGS" IS ABOUT THE CFGs, NOT ABOUT THE ENGINE, and the difference
+  matters: a lobby's file log can be TURNED ON BY RCON for the length of one
+  measurement** -- `log_name <n>`, `log_dir logs`, `log_enable 1` (one cvar per
+  `execute()` call), read `<basedir>/ftesurf/logs/<n>.log`, then `log_enable 0`
+  and delete the file. That is the only way to see server-side `print()` output
+  from the fleet, and it is what `cfg/test/deploy496smoke.cfg` needs because a
+  server QC `print()` does not reach the client's log at all (see the pitfall).
+  It is also a temporary change to a public lobby: do it on one unit, say so in
+  the entry, and put it back.
+- **A LOBBY PORT IS 27510 or 27520..27620 (cfg/lobby/lobby<N>.cfg), NOT 27698.**
+  27698 is the sweep server's, which AGENTS.md already says to avoid for hand
+  tests, and connecting to it from a smoke cfg produces `Can't "cmd", not
+  connected` four times -- which reads exactly like dead progs and was a dead
+  port. `build.ps1 -Pi` discovers the fleet's own ports over ssh rather than
+  keeping a list, so nothing else in the tree repeats this mistake by accident.
+- **`build.ps1 -Pi` MIS-BINDS ITS OWN PARAMETERS WHEN ITS OUTPUT IS REDIRECTED
+  TO A FILE, AND THE GUARD IS WHAT MAKES THAT SAFE.** Measured 2026-10-06, pwsh
+  7.6.6, same command line both times: `pwsh -NoProfile -Command
+  "./build.ps1 -Jobs 8 -Pi" *>&1 > /tmp/x.txt` reaches the Pi step with
+  `$PiGame = 'cl_progs.src'` -- a value that appears nowhere else in the script
+  except as the middle element of its own compile list -- and throws
+  `-PiGame 'build.ps1:cl_progs.src' is not a plain absolute path`. The identical
+  invocation piped (`2>&1 | grep ...`), or run bare, or run through `-File`,
+  binds correctly and deploys. Probes pin it: `$PiGame` is still correct at
+  script start, at `Step "QuakeC"`, after `Push-Location` and inside the compile
+  loop, and is wrong by `if ($Pi)`. Nothing in the script assigns it. A minimal
+  faithful reproduction does NOT reproduce it, so this is a pwsh host/binding
+  fault rather than a script one -- which is why the fix is not in the script's
+  logic. TWO RULES FOLLOW: never grade or capture a `-Pi` run with `*>&1 > file`
+  (use a pipe, or `-File`), and never remove that `$PiGame` regex guard, whose
+  only job is to stop a corrupt path reaching twelve `scp` and `ssh` calls.
 - surfd is `surfd.service` (gunicorn :8084 behind nginx), and its app log is
   `/srv/nvme/surfd/logs/surfd.log`. To deploy:
   1. Take the files FROM THE COMMIT, not the tree:
