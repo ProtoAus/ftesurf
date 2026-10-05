@@ -2888,35 +2888,67 @@ edit.
 (Its sibling -- every test cfg turns the config auto-save off -- is
 `tools/cfgguard.py` since 2026-10-03.)
 
-### A ship-set gate: does the archive contain what the code asks for?
+### A ship-set gate: DONE -- `tools/shipguard.py` (2026-10-05)
 
-Three "it's broken" reports in one session were one cause — content named by a
-string literal in QC that `release.ps1`'s allowlist never carried (zones,
-`gfx/thumbnails`, `gfx/mapshots`). See AGENTS.md's table.
+Built, and it caught two defects in itself on the way, both of which read as a
+clean pass.  The item is closed; what follows is what a future reader must not
+relearn.
 
-Nothing checks the allowlist against the code. `release.ps1` proves the
-archive matches the stage and the stage matches the allowlist; the allowlist
-itself is hand-maintained and was wrong three times.
+It parses `$ShipRootFiles`, `$ShipGameFiles` and `$ShipGlobs` straight out of
+`release.ps1` -- it must not carry a copy of them, or the two drift and the gate
+grades a ship set nobody ships -- resolves them exactly as `release.ps1` does
+(non-recursive, with each entry's Filter and Deny), then sweeps `src/**/*.qc` for
+asset paths and asks whether each one is in the result.  Exit 1 on any unexplained
+miss.
 
-**Shape of the fix:** sweep `src/**/*.qc` for literal asset paths — the
-arguments to `precache_pic`, `drawpic`, `drawsubpic`, `precache_model`,
-`Zone_LoadJson` and friends — resolve each against the resolved ship set, and
-fail the release on a miss. Two things make it harder than it sounds and both
-need answering before writing it:
+The "cheap version" this item proposed was a `data/` + literal-asset sweep.  Two
+corrections, both measured:
 
-- **Most of those strings are built, not literal.** `strcat("gfx/mapthumbs/
-  atlas", ftos(page))` and `sprintf("gfx/mapshots/%s-%s.jpg", uuid, size)` are
-  the two that mattered most, and neither is greppable as a path. A sweep that
-  only catches bare literals would have caught `gfx/thumbnails/speaking` and
-  missed the other two, which is the sample-that-is-thin problem: it would
-  have passed while two of the three faults were live.
-- **Some misses are correct.** `gfx/mapshots` is 1.1 GB and must never ship;
-  Momentum's `_cache/images` is somebody else's install. The gate needs an
-  explicit "known absent, on purpose" list or it will be turned off.
+* The DIRECTORY rule proposed here is the one that would have MISSED the
+  zone-library fault, because `Zone_LoadForMap`'s literal ends in a slash
+  (`maps/zones/local/`) and a per-file comparison against it finds nothing.  The
+  rule that works is a PREFIX over the shipped set, which is also what catches a
+  `strcat`-built name (`scripts/soundscapes_` + map + `.txt`) and an extensionless
+  one (`precache_pic("gfx/thumbnails/speaking_off")` resolves to `.png`).
+* "Some misses are correct" was right but its two named entries were not the
+  expensive ones.  The table is now DENY_EXACT vs DENY_PREFIX, 20 entries, every
+  one carrying a reason, and all 20 are ASSERTED TO FIRE -- a deny rule that cannot
+  fire claims to explain something nothing asks about.
 
-The cheap version that catches the class without solving it: assert that every
-DIRECTORY under `ftesurf/gfx/` appears in `$ShipGlobs` or in a deny list with
-a stated reason. That would have caught two of the three.
+THE TWO SELF-DEFECTS, kept because each looked like a pass:
+
+1. **A prefix deny key swallowed its own subtree.**  `maps/` is a real search-root
+   literal, and as a prefix it excused `maps/zones/local/` with a search root's
+   reason -- so the largest of the three historical faults was invisible and
+   `--mutate 12` reported NOT CAUGHT.  Splitting exact from prefix is the fix;
+   running the falsifier is what found it.
+2. **`fopen` was classified as an existence probe.**  It is a LOAD when the mode is
+   `FILE_READ`, and excusing it hid `data/mapdl.txt` entirely -- the omission that
+   forced the 0.1.15 re-cut read as a clean pass.  The MODE decides now, not the
+   builtin.  This is the most important line in the tool: a read whose failure is
+   silent (the feature draws nothing and complains nowhere) is the worst thing to
+   classify as optional.
+
+VERIFIED.  All five data files the menu reads flip to MISS when hidden, including
+`mapdl.txt`; `--mutate` catches 9 of the 13 ship globs including `gfx/thumbnails`
+and `maps/zones/local`; base run 0 misses over 143 asset literals; 0 dead deny
+entries.
+
+NOT COVERED, and it is a limit of the method rather than a bug: 4 of the 13 globs
+have no literal in anything we author naming them, because the ENGINE resolves them
+by convention -- `cfg` (the engine execs `default.cfg` itself, and no shipping cfg
+execs another), `glsl` and `scripts` (a shader says `prog milk_scene` and the engine
+builds the filename), `gfx/env` (`r_skybox milk` loads `gfx/env/milk.png`,
+gl_warp.c:133).  `csprogs.dat` is blind for the same reason.  So a clean run means
+"no literal asset path in src/ is missing from the ship set", NOT "the archive is
+complete".  Extending the sweep to `.shader`/`.cfg` was measured and would add
+exactly ONE path (`glsl/milk_dot.glsl`), which is not worth the prose false
+positives those files carry.
+
+STILL UNWIRED, and this is the remaining follow-up: nothing RUNS it.  `release.ps1`'s
+pre-pack step is where it belongs, beside the deny-tripwire that already guards
+`ftesurf/particles/ftesurf.cfg`.  Falsifier for that wiring: delete a data file from
+`$ShipGameFiles` and confirm `release.ps1 -DryRun` stops before packing.
 
 ## Full-depth boards are live; five things that fall out of it — 2026-09-29
 
