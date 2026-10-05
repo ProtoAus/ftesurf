@@ -1411,6 +1411,19 @@ below is the collection side and the rules that still only note.
   wants the writer to confirm the file (a `fsize` of the path after fclose, or a
   `recbytes` it checks) before it reports a count. sv_timer.qc SV_RecWritePrefix,
   engine PF_fopen. Patch 441 round 6.
+  **Patch 444 tried the `fsize` shape and is held back** (rebased as `p444rebase`,
+  990a6cc, on origin; review of 5 Oct, two reviewers). It returns 0 when a
+  FILE_READ re-open fails or reads empty, and: (1) SV_RecRewind refuses mark 0
+  before its in-memory restore, so a same-attempt load whose prefix did not land
+  now CANCELS a run it used to restore (buffered recorders: listen server,
+  offline); (2) a stale or short file passes -- COM_WriteFile's failed "wb" open
+  leaves the old file, reproduced with a read-only run.rec; (3) sv_saveloc.qc's
+  "the two spellings agree on every reachable retry path" becomes false and
+  round 5's `flg & TF_RECORDING` load-bearing. Its one ranked gain: an EMPTY
+  prefix plus `retry` was a clean, rankable run with no header, and 444 voids it.
+  Shape the reviewers suggest: keep `reclines` as the mark and write a separate
+  key with the byte size the writer meant, compared as SV_RecRewindStream already
+  does, which only the cold rewind refuses on.
 - **TF_RECORDING can be left set with no recorder behind it.**
   SV_RecRewindStream's two cold-failure exits destroy the old recorder and return
   FALSE without clearing the bit, and SV_RecClose early-returns on `!SV_RecLive`
