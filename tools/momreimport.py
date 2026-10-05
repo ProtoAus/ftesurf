@@ -233,8 +233,9 @@ def sample(s, start, ti, moves):
                fl, keys, fwd, side))
 
 
-def convert(row, demo, oldpath):
-    """(text, info) for one row, or raise ValueError with the reason."""
+def convert(row, demo, oldpath, header=None):
+    """(text, info) for one row, or raise ValueError with the reason.  `header`
+    stands in for the old file's lines when there is no old file (momgrab)."""
     r = momreplay.parse(demo)
     h, ticks, ti = r["header"], r["ticks"], r["tick_interval"]
     if not 0.001 <= ti <= 0.1:
@@ -301,7 +302,7 @@ def convert(row, demo, oldpath):
         prev = s
 
     out = []
-    for s in fixed_header(old_header(oldpath), leg):
+    for s in fixed_header(header if header is not None else old_header(oldpath), leg):
         k = s.split(" ", 1)[0]
         if k == "momquality":
             s = "momquality %.4f %.1f 0" % (ratio, oracle)

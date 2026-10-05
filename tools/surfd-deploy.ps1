@@ -52,7 +52,11 @@ param(
     [string[]]$Only,
     [switch]$SkipTests,
     [switch]$NoReload,
-    [switch]$NoBackup
+    [switch]$NoBackup,
+    # A deploy-only commit that reverts another session's unapproved work
+    # (AGENTS.md: revert it in the deploy worktree, never on main) cannot be
+    # on origin/main.  Say so explicitly; the commit is still what ships.
+    [switch]$AllowUnpushed
 )
 
 $ErrorActionPreference = "Stop"
@@ -129,7 +133,10 @@ try {
               "`n     (deploying the TREE is how another session's uncommitted work ships)")
     }
     $unpushed = & git log --oneline "origin/main..$Ref" 2>$null
-    if ($unpushed) {
+    if ($unpushed -and $AllowUnpushed) {
+        Write-Host $unpushed
+        Write-Host "  -AllowUnpushed: deploying $Ref, which is not on origin/main" -ForegroundColor Yellow
+    } elseif ($unpushed) {
         Write-Host $unpushed
         Fail "$Ref is not on origin/main; push it first, so the Pi can be told which commit it runs"
     }

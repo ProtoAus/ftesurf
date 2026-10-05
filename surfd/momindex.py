@@ -143,6 +143,45 @@ def read_one(path):
     }, None
 
 
+def index_one(conn, map_dir, track, leg, leaf, i, now):
+    """File one read_one() recording: its replays row and, when it is the
+    player's best, its board row.  Returns (replay added, board row set)."""
+    mp = map_dir.lower()
+    cur = conn.execute(
+        "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
+        "   style, player, name, ticks, tickrate, millis, flags, node,"
+        "   submitted, bytes, kind, bound, runid)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,'import',?,?,'momentum',1,?)"
+        " ON CONFLICT (map, track, leg, leaf) DO UPDATE SET"
+        "   ticks=excluded.ticks, tickrate=excluded.tickrate,"
+        "   millis=excluded.millis, name=excluded.name,"
+        "   bytes=excluded.bytes, player=excluded.player",
+        (mp, map_dir, track, leg, leaf, S.TIER_MOMENTUM,
+         S.STYLE_CLEAN, i["player"], i["name"], i["ticks"], i["rate"],
+         i["millis"], now, i["bytes"], i["runid"]))
+    added = cur.rowcount
+    rid = conn.execute(
+        "SELECT id FROM replays WHERE map=? AND track=? AND leg=? AND leaf=?",
+        (mp, track, leg, leaf)).fetchone()[0]
+    # One runs row per player per board: the BEST time wins, which
+    # is what the ranked board does too.  A slower import must not
+    # displace a faster one just because it was walked later.
+    cur = conn.execute(
+        "INSERT INTO runs (map, track, leg, tier, style, player, name,"
+        "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,0,'import',?,?,?)"
+        " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
+        "   ticks=excluded.ticks, tickrate=excluded.tickrate,"
+        "   millis=excluded.millis, name=excluded.name,"
+        "   runid=excluded.runid, replay_id=excluded.replay_id,"
+        "   submitted=excluded.submitted"
+        " WHERE excluded.millis < runs.millis",
+        (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, i["player"],
+         i["name"], i["ticks"], i["rate"], i["millis"], i["runid"],
+         now, rid))
+    return added, cur.rowcount
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -169,40 +208,9 @@ def main():
     if not args.dry_run:
         with conn:
             for (mp, track, leg, leaf), i in sorted(seen.items()):
-                cur = conn.execute(
-                    "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
-                    "   style, player, name, ticks, tickrate, millis, flags, node,"
-                    "   submitted, bytes, kind, bound, runid)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,'import',?,?,'momentum',1,?)"
-                    " ON CONFLICT (map, track, leg, leaf) DO UPDATE SET"
-                    "   ticks=excluded.ticks, tickrate=excluded.tickrate,"
-                    "   millis=excluded.millis, name=excluded.name,"
-                    "   bytes=excluded.bytes, player=excluded.player",
-                    (mp, i["map_dir"], track, leg, leaf, S.TIER_MOMENTUM,
-                     S.STYLE_CLEAN, i["player"], i["name"], i["ticks"], i["rate"],
-                     i["millis"], now, i["bytes"], i["runid"]))
-                if cur.rowcount:
-                    added += 1
-                rid = conn.execute(
-                    "SELECT id FROM replays WHERE map=? AND track=? AND leg=? AND leaf=?",
-                    (mp, track, leg, leaf)).fetchone()[0]
-                # One runs row per player per board: the BEST time wins, which
-                # is what the ranked board does too.  A slower import must not
-                # displace a faster one just because it was walked later.
-                cur = conn.execute(
-                    "INSERT INTO runs (map, track, leg, tier, style, player, name,"
-                    "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,0,'import',?,?,?)"
-                    " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
-                    "   ticks=excluded.ticks, tickrate=excluded.tickrate,"
-                    "   millis=excluded.millis, name=excluded.name,"
-                    "   runid=excluded.runid, replay_id=excluded.replay_id,"
-                    "   submitted=excluded.submitted"
-                    " WHERE excluded.millis < runs.millis",
-                    (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, i["player"],
-                     i["name"], i["ticks"], i["rate"], i["millis"], i["runid"],
-                     now, rid))
-                updated += cur.rowcount
+                a, u = index_one(conn, i["map_dir"], track, leg, leaf, i, now)
+                added += a
+                updated += u
 
             if args.prune:
                 gone = [r["id"] for r in conn.execute(
