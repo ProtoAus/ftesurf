@@ -62,6 +62,14 @@ vec3  PANN;             // the traced panel's normal (milk_panel.h's panTrace)
 
 float spec(float x) { return texture2D(s_spec, vec2(clamp(x, 0.02, 0.98), 0.25)).r; }
 vec2  hash22(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
+float vnoise2(vec2 p)
+{
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
+	           mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 
 float sdCapsule(vec3 p, vec3 a, vec3 b, float r)
 {
@@ -189,7 +197,15 @@ float figure(vec3 p)
 float terrace(vec3 p, out float water)
 {
 	vec3 q = p - vec3(148.0, TERR_Y - 3.0, 0.0);
-	float slab = sdBox(q, vec3(52.0, 3.0, 70.0));
+	// The floor is hummocked, not flat: root mounds, leaf drifts, the dip of a
+	// deer path.  The displacement's gradient is <= 0.09, and the whole term
+	// pays for it (x 0.91) -- an SDF that overestimates is the bug this forest
+	// was full of (see the rules under trees()).
+	// Hummocked floor: two bounded sine bumps, not a value noise -- this runs
+	// on every march step near the ground, and four sin cost half a vnoise2.
+	// Gradient 0.36, hence the 0.74.
+	float hh = (q.y < 5.0) ? 0.15 * sin(p.x * 0.40) * sin(p.z * 0.37) + 0.10 * sin(p.x * 1.3 + 2.0) * sin(p.z * 1.1) : 0.0;
+	float slab = max(max(abs(q.x) - 52.0, abs(q.z) - 70.0), max(q.y - 3.0 - hh, -q.y - 3.0)) * 0.74;
 	float sz = p.z - streamZ(p.x);
 	float chan = max(abs(sz) - 2.6, abs(p.y - TERR_Y) - 0.9);
 	slab = max(slab, -chan);
@@ -197,44 +213,158 @@ float terrace(vec3 p, out float water)
 	return slab;
 }
 
-// Trees: one jittered trunk per 12 m cell, flared at the root, a crown near
-// the top; the four nearest cells are looked at, because crowns overlap.
-// Clear of the stream and of the PLAY station.
-#define TREE_CELL 12.0
-float treeOne(vec2 q, float y, vec2 c, out float leaf)
+// --------------------------------------------------------------- the forest --
+// The terrace's trees on one 14 m grid, and its boulders on a 17 m one.  THREE
+// RULES, AND BREAKING ANY OF THEM IS WHAT MADE THIS LOOK BROKEN.
+//
+// 1. A tree stays inside TREE_REACH of its centre, and TREE_REACH <= half the
+//    cell, and the lookup is the NINE cells round the sample.  Then every tree
+//    that can contain the sample is in the window, and the nearest tree left
+//    out is at least 1.2 * CELL away -- so capping the returned distance at
+//    1.2 * CELL makes the field continuous as the window slides.  WITHOUT THE
+//    CAP THIS IS THE BUG THE OWNER ACTUALLY SAW: at a window shift a crown a
+//    metre and a half from the ray left the field, the march stepped straight
+//    through it, and the canopy came back slashed into combs that moved with
+//    the camera.  A four-cell window cannot be capped any higher than
+//    0.2 * CELL, which is why the window is nine.
+// 2. The distance returned must never exceed the true one.  milk_cone.h is
+//    "exact for a map() that never overestimates" and march() trusts it the
+//    same way; the first cut of this crown divided by 1.67 where its own
+//    gradient needed 2.8, so rays stepped through the leaves and the canopy
+//    came back holed and faceted.  Each ellipsoid below is divided by its own
+//    smallest semi-axis, the only normalisation an ellipsoid may take, and
+//    smin only ever under-estimates.
+// 3. What a step costs is what a step evaluates.  The crown is guarded by
+//    height and by radius, the boulders by height, and every cell is rejected
+//    by a squared-distance test before any hash, because most march steps in
+//    this wood are below the canopy and beside every tree.
+#define TREE_CELL 14.0
+#define TREE_REACH 6.9            // <= 0.5 * TREE_CELL: rule 1
+#define TREE_CAP  16.8            // 1.2 * TREE_CELL: rule 1's continuity cap
+#define ROCK_CELL 17.0
+#define ROCK_CAP  8.7             // 0.7 * ROCK_CELL - the boulders' reach
+
+// Where the forest is, and how thick: one field, read by the trees as a density
+// and by the light as canopy (canopyOver, in the shade).  Feathered, because a
+// wood that stops on a straight line reads as a rectangle from the balcony, and
+// clumped, because real woods come in thickets with clearings between.
+float forestDens(vec2 xz)
+{
+	float e = min(min(xz.x - (TERR_X0 + 3.0), 197.0 - xz.x), 67.0 - abs(xz.y));
+	e = min(e, abs(xz.y - streamZ(xz.x)) - 3.2);          // the stream's banks
+	e = min(e, length(xz - vec2(140.0, -20.0)) - 7.0);    // the PLAY clearing
+	return smoothstep(-1.0, 7.0, e) * (0.30 + 0.70 * vnoise2(xz * 0.055));
+}
+
+// One tree.  q is the horizontal position, y the height above the terrace.
+float treeOne(vec2 q, float y, float fd, vec2 c, out float leaf)
 {
 	leaf = 1e5;
-	vec2 h = hash22(c);
+	vec2 h  = hash22(c);
 	vec2 ctr = (c + 0.2 + 0.6 * h) * TREE_CELL;
-	if (abs(ctr.y - streamZ(ctr.x)) < 6.5 || length(ctr - vec2(140.0, -20.0)) < 10.0
-	    || ctr.x < TERR_X0 + 5.0 || ctr.x > 194.0 || abs(ctr.y) > 64.0)
+	// Before any further hash: a tree's centre sits within 0.3 * CELL of its
+	// cell's centre and nothing of it reaches past TREE_REACH, so a cell this
+	// far away is empty.  This is what most march steps hit, and a hash is not
+	// free per step.
+	vec2 cc = (c + 0.5) * TREE_CELL;
+	vec2 dq = q - cc;
+	if (dot(dq, dq) > 123.2)                             // (0.3 * TREE_CELL + TREE_REACH)^2
 		return 1e5;
-	float top = 44.0 + 26.0 * h.y;
-	vec2 bend = vec2(sin(y * 0.05 + h.y * 6.0), cos(y * 0.043 + h.x * 5.0)) * 1.2;
-	float r0 = 0.7 + 1.1 * h.x;
-	float r = r0 * (1.0 + 1.8 * exp(-y * 0.45)) * (1.0 - 0.006 * y);
-	vec2 tq = q - ctr - bend;
-	float d = length(tq) - r - 0.05 * sin(atan(tq.y, tq.x) * 11.0 + y * 0.3);
-	d = max(d, max(-y, y - top));
-	vec3 cr = vec3(tq.x, y - top + 2.0, tq.y);
-	float n = sin(cr.x * 0.9) * sin(cr.y * 1.1 + T * 0.2) * sin(cr.z * 0.8);
-	leaf = (length(cr * vec3(1.0, 1.7, 1.0)) - 6.5 - 1.6 * h.x + n * 1.1) * 0.6;
+	vec2 h2 = fract(h * 7.13 + 0.37);                    // a second draw, from the first
+	if (h2.x > fd * 0.85)                                // clearings: a closed canopy is a march crawl
+		return 1e5;
+	float top = 16.0 + 30.0 * h.y;                       // the crown's centre
+	float cs = 0.72 + 0.28 * h2.y;                       // crown size; <= 1 keeps the reach budget
+	float a = h2.y * 6.28318;                            // the tree's own axis angle
+	vec2 dirv = vec2(cos(a), sin(a));
+	float sw = clamp(y / top, 0.0, 1.0);
+	vec2 ax = ctr + dirv * ((h.x - 0.5) * 1.4) * sw * sw; // a straight root, a bent top
+	vec2 tq = q - ax;
+	// Trunk: flared at the root, tapering, and SMOOTH -- a ripple round it has a
+	// 1/radius gradient, which is the march's step size spent on bark.  The bark
+	// is in the normal and the albedo instead (shade()).  The flare is linear:
+	// an exp() per tree per march step is a measurable slice of the frame.
+	float r0 = 0.50 + 0.40 * h2.x;
+	float d = length(tq) - (r0 * (1.0 + 0.9 * max(0.0, 1.0 - y * 0.12)) * (1.0 - 0.15 * sw) + 0.05);
+	d = max(d, max(-y - 0.3, y - top - 2.6));            // sunk in the floor, capped inside the crown
+	// Crown, and only where a crown can be: most march steps below the canopy
+	// are on trunks and must not pay for leaves.  Three lobes at fixed angles
+	// round the tree's own axis, soft-unioned with the mass between them (smin
+	// only ever under-estimates, so it stays a bound); no hash inside the loop,
+	// because a hash per lobe per tree per step is what made the first cut of
+	// this eighteen times the frame cost.  Each ellipsoid is divided by its own
+	// smallest semi-axis, the only normalisation an ellipsoid may take.
+	if (abs(y - top) < 9.0 * cs && dot(tq, tq) < 51.8)   // and only within the crown's reach
+	{
+		vec2 rq = vec2(dot(tq, dirv), tq.x * -dirv.y + tq.y * dirv.x);
+		vec3 cr = vec3(rq.x, y - top, rq.y);
+		float cl = (length(cr / (vec3(4.5, 4.6, 4.5) * cs)) - 1.0) * 4.5 * cs;
+		// Below high quality the crown is the mass alone and the terrace keeps
+		// no boulders: measured, that variant is not cheaper at ultra (disjoint
+		// spheres let a ray weave into every surface behind them) but it is at
+		// the small targets q1 and q2 render, which is where a weak GPU lives.
+		if (QUAL < 2.5)
+		{
+			leaf = cl;
+			return d;
+		}
+		for (int i = ZERO; i < 3; i++)
+		{
+			float la = a * 0.5 + float(i) * 2.0944;
+			vec3 u = cr - vec3(cos(la), (float(i) - 1.0) * 1.2, sin(la)) * 2.8 * cs;
+			cl = smin(cl, (length(u / (vec3(3.4, 3.8, 3.4) * cs)) - 1.0) * 3.4 * cs, 1.5);
+		}
+		leaf = cl;   // no ripple: a smooth surface is what lets the march take full steps
+	}
 	return d;
 }
-float trees(vec3 p, out float leaf)
+float trees(vec3 p, float fd, out float leaf)
 {
 	vec2 q = p.xz;
 	float y = p.y - TERR_Y;
 	vec2 b = floor(q / TREE_CELL - 0.5);
 	float d = 1e5, l;
 	leaf = 1e5;
+	for (int i = ZERO; i < 9; i++)                       // nine cells: see rule 1
+	{
+		vec2 c = b + vec2(float(i - (i / 3) * 3 - 1), float((i / 3) - 1));
+		d = min(d, treeOne(q, y, fd, c, l));
+		leaf = min(leaf, l);
+	}
+	d = min(d, TREE_CAP);
+	leaf = min(leaf, TREE_CAP);
+	return d;
+}
+
+// Mossy boulders, the megastructure's own rubble: one ellipsoid a cell, and
+// like the trees they stay well inside it.  The floor needs something that is
+// not floor.
+float rocks(vec3 p, float fd)
+{
+	float y = p.y - TERR_Y;
+	if (y > 4.0 || y < -3.0 || QUAL < 2.5)                             // a boulder band three metres deep, no more
+		return 1e5;
+	vec2 q = p.xz;
+	vec2 b = floor(q / ROCK_CELL - 0.5);
+	float d = 1e5;
 	for (int i = ZERO; i < 4; i++)
 	{
 		vec2 c = b + vec2(float(i & 1), float(i >> 1));
-		d = min(d, treeOne(q, y, c, l));
-		leaf = min(leaf, l);
+		// As in treeOne: before any hash, a cell whose centre is out of reach is
+		// empty.  The density field is the caller's one read per step, never a
+		// read per cell -- four of those a step was a fifth of the frame.
+		vec2 cc = (c + 0.5) * ROCK_CELL;
+		vec2 dq = q - cc;
+		if (dot(dq, dq) > 68.9)                          // (0.3 * ROCK_CELL + 3.2)^2
+			continue;
+		vec2 h = hash22(c + 5.7);
+		if (h.x > 0.45 * fd)
+			continue;
+		vec2 ctr = (c + 0.2 + 0.6 * h) * ROCK_CELL;
+		vec3 u = vec3(q.x - ctr.x, y - 0.4 - 0.8 * h.y, q.y - ctr.y);
+		d = min(d, (length(u / vec3(1.6 + 1.6 * h.y, 1.1 + 0.9 * h.x, 1.6 + 1.6 * h.x)) - 1.0) * 1.1);
 	}
-	return d;
+	return min(d, ROCK_CAP);                             // the same continuity cap
 }
 
 // Falling water: the stream's source out of the east wall, the stream again
@@ -304,13 +434,15 @@ vec2 map(vec3 p)
 			d = bridge(p);  if (d < m.x) m = vec2(d, 2.0);
 			d = figure(p);  if (d < m.x) m = vec2(d, 9.0);
 		}
-		b = sdBox(p - vec3(148.0, TERR_Y + 40.0, 0.0), vec3(54.0, 48.0, 72.0));
+		b = sdBox(p - vec3(148.0, TERR_Y + 40.0, 0.0), vec3(56.0, 48.0, 74.0));
 		if (b < m.x)
 		{
+			float fd = forestDens(p.xz);                 // ONE field read per step, shared
 			d = terrace(p, w);  if (d < m.x) m = vec2(d, 5.0);
 			if (w < m.x) m = vec2(w, 6.0);
-			d = trees(p, w);    if (d < m.x) m = vec2(d, 3.0);
+			d = trees(p, fd, w);    if (d < m.x) m = vec2(d, 3.0);
 			if (w < m.x) m = vec2(w, 4.0);
+			d = rocks(p, fd);       if (d < m.x) m = vec2(d, 7.0);
 		}
 		b = min(VOID_HALF - 8.0 - p.x, max(abs(p.x - TERR_X0) - 4.0, p.y - TERR_Y - 2.0));
 		if (b < m.x)
@@ -408,13 +540,14 @@ float beamLit(vec3 p)
 	return l;
 }
 
-float vnoise2(vec2 p)
+// How much canopy is over a point: the same field the trees are drawn from
+// (forestDens), faded with height.  The floor, the trunks and the crowns all
+// read it, so the light and the geometry agree about where the forest is -- a
+// box test here would lay a seam of daylight along a straight line.
+float canopyOver(vec3 p)
 {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
-	           mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
+	return forestDens(p.xz) * smoothstep(TERR_Y - 3.0, TERR_Y + 4.0, p.y)
+	                        * (1.0 - smoothstep(TERR_Y + 34.0, TERR_Y + 62.0, p.y));
 }
 
 // Board-formed concrete: 2.4 x 1.2 m form panels with their seams and tie
@@ -516,25 +649,64 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 		vec3 cell = floor(p / vec3(10.0, 13.333, 10.0));
 		float h = hash13(cell);
 		vec3 lq = mod(p, vec3(10.0, 13.333, 10.0)) - vec3(5.0, 6.667, 5.0);
-		if (h > 0.94 && t > 60.0 && n.y < 0.3 && abs(lq.y) < 2.4 && min(abs(lq.x), abs(lq.z)) < 1.4)
+		if (h > 0.94 && t > 60.0 && n.y < 0.3 && abs(lq.y) < 2.4 && min(abs(lq.x), abs(lq.z)) < 1.4
+		    && p.y > TERR_Y + 8.0)                       // not on the terrace's boulders
 			emit = mix(vec3(1.0, 0.72, 0.4), vec3(0.6, 0.8, 1.0), fract(h * 37.0)) * (1.4 + 1.2 * fract(h * 91.0));
 	}
 	else if (id > 2.5 && id < 3.5)
 	{
-		alb = vec3(0.15, 0.11, 0.08) * (0.7 + 0.6 * vnoise2(p.xz * 2.0 + p.y * 0.25));
-		alb = mix(alb, vec3(0.07, 0.15, 0.04), smoothstep(0.55, 0.8, vnoise2(p.xy * 0.8)) * 0.8);
+		// Bark: vertical fluting in the NORMAL -- geometry that would cost the
+		// march its step size is free here -- and streaks and lichen in the
+		// albedo.  th is the angle round the trunk, so the ribs run up it.
+		float th = atan(n.z, n.x);
+		float rib = cos(th * 9.0 + 2.0 * vnoise2(vec2(th * 3.0, p.y * 0.5)));
+		n = normalize(n + 0.30 * rib * normalize(vec3(-n.z, 0.0, n.x)));
+		float st = vnoise2(vec2(th * 2.2, p.y * 0.35));
+		alb = mix(vec3(0.115, 0.085, 0.062), vec3(0.20, 0.16, 0.12), st);
+		alb = mix(alb, vec3(0.10, 0.16, 0.06), smoothstep(0.6, 0.85, vnoise2(vec2(th * 1.3 + 40.0, p.y * 0.22))) * 0.7);
 	}
 	else if (id > 3.5 && id < 4.5)
 	{
-		float v = vnoise2(p.xz * 1.7 + p.y);
-		alb = mix(vec3(0.04, 0.11, 0.03), vec3(0.15, 0.27, 0.06), v);
-		emit = vec3(0.35, 0.5, 0.1) * pow(max(dot(rd, SUN), 0.0), 3.0) * 0.6 * v;    // sun through the leaves
+		// Leaves: a species tint that varies across the wood, and light coming
+		// THROUGH them when the sun is behind the canopy -- a crown seen against
+		// the light is the brightest thing in a forest.  The green is kept
+		// saturated on purpose: milk_grade mutes secondaries, and a yellowish
+		// leaf reads as one, so a yellowish leaf comes back sage.
+		float sp = vnoise2(p.xz * 0.045 + 7.0);
+		vec3 g1 = mix(vec3(0.020, 0.085, 0.016), vec3(0.055, 0.125, 0.022), sp);
+		// Two octaves of leaf clump, fine enough to read as foliage on a 9 m
+		// crown rather than as paint on a balloon.
+		float v = vnoise2(p.xz * 4.5 + p.y * 3.1) * 0.65 + vnoise2(p.xz * 1.4 + p.y * 0.9) * 0.35;
+		alb = mix(g1 * 0.35, g1 * 1.7, v);
+		emit = vec3(0.30, 0.50, 0.08) * pow(max(dot(rd, SUN), 0.0), 2.5) * (0.3 + 0.7 * v) * 0.7;
+		// A leafy normal: the crown's silhouette is bounded (rule 2 above), so
+		// the fine break-up lives here, where it costs one shade and no march
+		// step.  Without it a crown shades like an egg.  Below high quality the
+		// crown keeps its smooth normal.
+		if (QUAL > 2.5)
+		{
+			vec3 ln = vec3(vnoise2(p.xz * 2.6 + p.y), vnoise2(p.zy * 2.6 + p.x), 0.0) - 0.5;
+			n = normalize(n + vec3(0.35, 0.35, 0.3) * vec3(ln.x, ln.y, ln.x - ln.y));
+		}
+	}
+	else if (id > 6.5 && id < 7.5)
+	{
+		// The terrace's boulders: the megastructure's own rubble, moss on the
+		// top face and dark wet stone below.  Concrete here read as marshmallow.
+		float v = vnoise2(p.xz * 1.3 + p.y * 1.1) * 0.6 + vnoise2(p.xz * 5.0) * 0.4;
+		alb = mix(vec3(0.055, 0.055, 0.06), vec3(0.13, 0.13, 0.14), v);
+		alb = mix(alb, vec3(0.05, 0.11, 0.03), smoothstep(0.35, 0.75, n.y) * (0.4 + 0.6 * v));
 	}
 	else if (id > 4.5 && id < 5.5 && !conc)
 	{
+		// The forest floor: leaf litter, moss and fern, darkening under the
+		// canopy the way a real floor does.
 		float v = vnoise2(p.xz * 0.9) * 0.6 + vnoise2(p.xz * 4.1) * 0.4;
-		alb = mix(vec3(0.045, 0.09, 0.03), vec3(0.15, 0.25, 0.06), v);
-		alb += vec3(0.5, 0.55, 0.35) * step(0.985, hash12(floor(p.xz * 6.0))) * 0.6;   // flecks: flowers, or spores
+		float fern = smoothstep(0.55, 0.80, vnoise2(p.xz * 1.6 + 3.0));
+		alb = mix(mix(vec3(0.075, 0.055, 0.030), vec3(0.14, 0.11, 0.06), v), vec3(0.05, 0.13, 0.035), fern * 0.8);
+		alb = mix(alb, vec3(0.035, 0.075, 0.025), smoothstep(0.5, 0.9, vnoise2(p.xz * 0.22)) * 0.6);
+		alb += vec3(0.5, 0.55, 0.35) * step(0.985, hash12(floor(p.xz * 6.0))) * 0.5;   // flecks: flowers, or spores
+		alb *= 1.0 - 0.45 * canopyOver(p);
 	}
 	else if (id > 5.5 && id < 7.5)
 	{
@@ -572,12 +744,24 @@ vec3 shade(vec3 p, vec3 rd, float id, float t, bool lite)
 	// of the shader.
 	vec3 sunC = vec3(1.0, 0.92, 0.78) * 2.6;
 	vec3 skyC = vec3(0.20, 0.25, 0.34);
+	float can = inCorr ? 0.0 : canopyOver(p);
+	// Dappled sun: under a closed canopy what reaches the floor is the gaps in
+	// it, so the pools of light are one drifting noise, gated by how much
+	// canopy is overhead.  Without this the terrace floor got no sun at all --
+	// `reach` is a height ramp and the floor is 60 m down in the fog.
+	float dap = 1.0 - can * (1.0 - smoothstep(0.30, 0.72, vnoise2(p.xz * 0.17 + vec2(T * 0.045, -T * 0.03))));
 	float reach = inCorr ? 0.0 : smoothstep(20.0, 240.0, p.y);
+	if (id > 3.5 && id < 4.5)
+		reach = 1.0;                       // the canopy's own top is in the sun
 	float dif = max(dot(n, SUN), 0.0);
 	float bl = inCorr ? 0.0 : beamLit(p);
-	float sky = inCorr ? 0.35 : 1.0;
-	vec3 col = alb * (sunC * dif * max(reach, bl * 0.95) + skyC * (0.35 + 0.65 * n.y) * sky
+	float sky = inCorr ? 0.35 : mix(1.0, 0.25 + 0.75 * dap, can);
+	vec3 col = alb * (sunC * dif * max(max(reach, bl * 0.95), can * dap)
+	                  + skyC * (0.35 + 0.65 * n.y) * sky
 	                  + vec3(0.025, 0.03, 0.045)) + emit;
+	// Light the floor bounces back up: without it the trunks are black poles,
+	// because a vertical normal never faces a sun that is nearly overhead.
+	col += alb * vec3(0.45, 0.48, 0.36) * (0.5 - 0.5 * n.y) * can * (0.3 + 0.7 * dap);
 	if (spc > 0.0 && !lite)
 		col += pow(max(dot(reflect(rd, n), SUN), 0.0), 60.0) * vec3(1.0, 0.95, 0.85) * 0.8;
 	return col;
