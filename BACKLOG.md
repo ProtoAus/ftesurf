@@ -2566,11 +2566,6 @@ that was never armed (see the bullet below it), and item 10's own residual.
   it is. The trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
   the first frame whenever `sv_airaccelerate` is non-zero. Found by ftesurf-a1
   reading cl_hud.qc for Patch 462.
-- **The replay reads `tickrate`, never `movetickrate`.** The grammar block says a
-  reader turning ticks into seconds must prefer `movetickrate` when present and
-  non-zero; `Watch_Open` (`rec_wt_tickrate`) and the board-line job read only
-  `tickrate`. They are written equal and momimport writes both from one value, so
-  nothing has diverged -- but nothing checks either. cl_watch.qc header parse.
 - **The live trail draws a teleport as one long segment, not a break.**
   `cl_trail.qc` feeds `Line_Point` with `brk 0` because it watches a body rather
   than reading a file, and the grammar block's rule is that a discontinuity found

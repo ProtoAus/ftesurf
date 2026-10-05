@@ -25,13 +25,13 @@ commit   f2630d9ada52ee1d61b4d2163a35f5cabca4e6ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-494
-patch    496
+patch    497
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-10-05
+date     2026-10-06
 
 # PATCH 494: fs_game, toggle and vid_renderer refuse a server, and SV_Map_f bounds
 # its start spot -- holes a review of Patches 480-491 found.  Client-side; no lobby

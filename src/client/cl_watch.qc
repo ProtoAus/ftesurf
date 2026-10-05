@@ -1013,6 +1013,7 @@ void() Watch_Scan =
 	local string s;
 	local float vp, vq;
 	local float wpseg, wpdur, wpend;
+	local float mrate;
 
 	rec_wt_rec0     = 0;
 	rec_wt_nsamp    = 0;
@@ -1020,6 +1021,7 @@ void() Watch_Scan =
 	rec_wt_endticks = 0;
 	rec_wt_recflags = -1;
 	rec_wt_tickrate = 0;
+	mrate           = 0;
 	ver            = 0;
 	rec_wt_track    = 0;
 	rec_wt_startseg = 0;
@@ -1057,6 +1059,7 @@ void() Watch_Scan =
 		if (argv(0) == "startseg")    rec_wt_startseg = stof(argv(1));
 		if (argv(0) == "leg")         rec_wt_leg      = stof(argv(1));
 		if (argv(0) == "tickrate")    rec_wt_tickrate = stof(argv(1));
+		if (argv(0) == "movetickrate") mrate           = stof(argv(1));
 		if (argv(0) == "owner")       rec_wt_owner    = argv(1);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
@@ -1080,6 +1083,18 @@ void() Watch_Scan =
 			}
 		}
 	}
+
+	/*
+	  `movetickrate` WINS, by the grammar block over SV_RecOpen: "A reader that
+	  turns ticks into seconds must prefer this one when it is present", 0 meaning
+	  the engine stated no value.  cl_online.qc's header scan already did and this
+	  one did not, so the replay and the board line could read a file's clock at a
+	  different rate from the row beside it.  Every file in data/ writes the two
+	  equal (measured over 6056: 5569 equal, 487 with no movetickrate, 0 differ),
+	  so this is the rule being kept rather than a visible defect being fixed.
+	*/
+	if (mrate > 0)
+		rec_wt_tickrate = mrate;
 
 	if (rec_wt_tickrate <= 0)
 		rec_wt_tickrate = PM_TICK;
@@ -1636,7 +1651,7 @@ void(float ra, float rb) Watch_ScanRange =
 float  wt_lj_fh;                // the file, open while wt_lj_phase is not 0
 float  wt_lj_slot, wt_lj_leg, wt_lj_phase;    // phase 1 records, 2 samples, 0 idle
 float  wt_lj_hdr;               // still in the header
-float  wt_lj_tick, wt_lj_fleg, wt_lj_seg;
+float  wt_lj_tick, wt_lj_mtick, wt_lj_fleg, wt_lj_seg;
 float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
@@ -1724,6 +1739,10 @@ float() Watch_LineJobWindow =
 
 	wt_lj_ta = 0;                   // a whole file from its clock's start: no pad
 	wt_lj_tb = 99999999;
+	// The grammar's rule for turning ticks into seconds: prefer `movetickrate`,
+	// the rate the mover divided by, when the file states one.  See Watch_Scan.
+	if (wt_lj_mtick > 0)
+		wt_lj_tick = wt_lj_mtick;
 	if (wt_lj_tick <= 0)
 		wt_lj_tick = PM_TICK;
 	// Patch 470: here, with the header read and before pass two feeds a point.
@@ -1783,6 +1802,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_phase = 1;
 	wt_lj_hdr   = TRUE;
 	wt_lj_tick  = 0;
+	wt_lj_mtick = 0;
 	wt_lj_fleg  = -1;
 	wt_lj_seg   = 0;
 	wt_lj_wseg  = -1;
@@ -1847,6 +1867,7 @@ float() Watch_LineJobStep =
 			{
 				n = tokenize(s);
 				if (argv(0) == "tickrate")  wt_lj_tick = stof(argv(1));
+				if (argv(0) == "movetickrate") wt_lj_mtick = stof(argv(1));
 				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
 				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
 				// Line_Begin(slot) already cleared this at open, above.
