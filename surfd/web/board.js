@@ -786,13 +786,10 @@
     }
 
     var bt = body.by_tier || {};
-    state.prof = { handle: body.who, shown: 0, total: n0(body.total), page: body.limit || 100,
-                   group: -1,
+    state.prof = { handle: body.who, shown: 0, total: 0, page: body.limit || 100,
                    multi: ['ranked', 'momentum', 'ksf']
                      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
-    $('prows').textContent = '';
-    profileRows(body.rows || []);
-    $('ptable').hidden = (body.rows || []).length === 0;
+    profileRows(body, state.prof.page);
   }
 
   // surfd sorts main tracks first, then bonuses, then stages (best first within
@@ -800,19 +797,23 @@
   var GROUPS = ['Main', 'Bonuses', 'Stages'];
   function groupOf(r) { return r.leg > 0 ? 2 : (r.track > 0 ? 1 : 0); }
 
-  function profileRows(rows) {
-    var P = state.prof, tbody = $('prows');
+  // The whole table from ONE response, headings included.  "Show more" re-asks
+  // for every row shown plus a page: surfd recomputes the order per request, so
+  // appending the next offset could skip or repeat rows when a board changed.
+  function profileRows(body, asked) {
+    var P = state.prof, tbody = $('prows'), rows = body.rows || [], group = -1;
+    tbody.textContent = '';
     rows.forEach(function (r) {
       var g = groupOf(r);
-      if (g !== P.group) {
-        if (P.group !== -1 || g !== 0) {
+      if (g !== group) {
+        if (group !== -1 || g !== 0) {
           var hr = el('tr', 'grp');
           var hc = el('td', null, GROUPS[g]);
           hc.colSpan = 6;
           hr.appendChild(hc);
           tbody.appendChild(hr);
         }
-        P.group = g;
+        group = g;
       }
       var multi = P.multi;
       var tr = el('tr', r.tr !== 'ranked' ? 'foreign' : '');
@@ -846,19 +847,22 @@
       tr.appendChild(act);
       tbody.appendChild(tr);
     });
-    P.shown += rows.length;
-    $('pmore').hidden = P.shown >= P.total || rows.length < P.page;
+    P.shown = rows.length;
+    P.total = n0(body.total);
+    $('ptable').hidden = rows.length === 0;
+    // Fewer rows than asked is the end, including a limit surfd capped.
+    $('pmore').hidden = P.shown >= P.total || rows.length < asked;
   }
 
   function moreProfile() {
     var P = state.prof, b = $('pmore');
     if (!P) { return; }
     b.disabled = true;
-    var seq = state.seq;
-    get('api/player/' + encodeURIComponent(P.handle) + '?offset=' + P.shown).then(function (body) {
+    var seq = state.seq, want = P.shown + P.page;
+    get('api/player/' + encodeURIComponent(P.handle) + '?offset=0&limit=' + want).then(function (body) {
       b.disabled = false;
       if (seq !== state.seq || state.prof !== P) { return; }
-      profileRows(body.rows || []);
+      profileRows(body, want);
     }, function (e) {
       b.disabled = false;
       showError(e.message);

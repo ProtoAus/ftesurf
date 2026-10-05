@@ -18,6 +18,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
 
 FAILED = []
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -250,6 +251,69 @@ def add_verdict(m, rid, verdict, at):
                  (rid, verdict, at))
     conn.commit()
     conn.close()
+
+
+def new_worker(m):
+    """Nothing in memory, as in a process that has just started."""
+    with m._people_lock:
+        m._people["at"], m._people["by_handle"], m._people["list"] = -1e9, {}, []
+
+
+def join_rebuilds():
+    for t in threading.enumerate():
+        if t.name == "people":
+            t.join(30)
+
+
+def snapshot_temps(m):
+    base = os.path.basename(m.PEOPLE_SNAPSHOT)
+    return sorted(f for f in os.listdir(os.path.dirname(m.PEOPLE_SNAPSHOT))
+                  if f.startswith(base + ".") and f.endswith(".tmp"))
+
+
+def tally(fn, calls, key, hold=False):
+    """fn, counting its calls.  `hold` keeps the first call open up to 1 s for a
+    second to start, so any second call that is coming overlaps it."""
+    lock, second = threading.Lock(), threading.Event()
+
+    def wrapped(*a, **kw):
+        with lock:
+            calls[key] += 1
+            first = calls[key] == 1
+        if hold:
+            if first:
+                second.wait(1.0)
+            else:
+                second.set()
+        return fn(*a, **kw)
+    return wrapped
+
+
+def together(m, path, n=4):
+    """n requests for one path released at once; their status codes."""
+    gate, codes = threading.Barrier(n), [None] * n
+
+    def one(i):
+        gate.wait()
+        codes[i] = get(m, path).status_code
+    ts = [threading.Thread(target=one, args=(i,)) for i in range(n)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(30)
+    return codes
+
+
+class Shim(object):
+    """A stand-in for one of surfd's module globals (`json`, `threading`) that
+    defers to the real module for anything it does not override."""
+
+    def __init__(self, real, **over):
+        self._real = real
+        self.__dict__.update(over)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
 
 
 def main():
@@ -917,6 +981,215 @@ def main():
     c.close()
     check("a broken queue does not break the board",
           get(m, "/board/api/map?map=bhop_eazy").status_code, 200)
+
+    print("\n--- 6e. the player directory: writers, cold starts, clock steps, paging --")
+    # TWO SAVES AT ONCE (two threads, or the old and new worker in a reload),
+    # held at a barrier with their temp files open; the longer payload lands
+    # first, the shorter second.  Through one shared temp name that left the
+    # short one over the long one's head, and that file was installed.
+    m = fresh()
+    submit(m, "bhop_eazy", "p1", 3000)
+    submit(m, "bhop_eazy", "p2", 3100)
+    conn = m.connect()
+    big = m._people_build(conn)
+    conn.close()
+    T = int(m.time.now)
+    real_json = m.json
+    opened, written = threading.Barrier(2, timeout=10), threading.Barrier(2, timeout=10)
+    long_done = threading.Event()
+
+    def dump_racing(obj, fh, **kw):
+        text = real_json.dumps(obj, **kw)
+        opened.wait()
+        if not obj["players"]:
+            long_done.wait(10)
+        fh.write(text)
+        fh.flush()
+        long_done.set()
+        written.wait()
+
+    m.json = Shim(real_json, dump=dump_racing)
+    try:
+        ts = [threading.Thread(target=m._people_save, args=big + (T,)),
+              threading.Thread(target=m._people_save, args=({}, [], set(), T + 1))]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(30)
+    finally:
+        m.json = real_json
+    snap = m._people_load()
+    check("two overlapping saves leave a people.json that loads, whole",
+          "unloadable" if snap is None else
+          (snap[3] - T, sorted(snap[0])) in ((0, sorted(big[0])), (1, [])), True)
+    check("...and no temp file behind them", snapshot_temps(m), [])
+
+    def dump_fails(obj, fh, **kw):
+        fh.write(real_json.dumps(obj, **kw)[:40])
+        fh.flush()
+        raise OSError(28, "No space left on device")
+
+    m._people_save(*(big + (T + 2,)))        # a good snapshot to fall back on
+    m.json = Shim(real_json, dump=dump_fails)
+    try:
+        m._people_save(*(big + (T + 5,)))
+    finally:
+        m.json = real_json
+    after = m._people_load()
+    check("a failed save removes its temp file and keeps the last good snapshot",
+          (snapshot_temps(m), after and after[3] - T), ([], 2))
+
+    # ONE COLD LOAD PER PROCESS: four first requests at once each built (or
+    # loaded) and saved the directory for themselves.
+    m = fresh()
+    for i in range(3):
+        submit(m, "bhop_eazy", "c%d" % i, 3000 + i)
+    m.people_reset()                          # a fresh install: no snapshot either
+    real_bls = (m._people_build, m._people_load, m._people_save)
+    for held in ("build", "load"):
+        calls = {"build": 0, "load": 0, "save": 0}
+        m._people_build = tally(real_bls[0], calls, "build", held == "build")
+        m._people_load = tally(real_bls[1], calls, "load", held == "load")
+        m._people_save = tally(real_bls[2], calls, "save")
+        try:
+            codes = together(m, "/board/api/players")
+        finally:
+            m._people_build, m._people_load, m._people_save = real_bls
+        if held == "build":
+            check("four first requests at once: one load, one build, one save",
+                  (codes, calls), ([200] * 4, {"build": 1, "load": 1, "save": 1}))
+            new_worker(m)                     # the snapshot is there this time
+        else:
+            check("...and from a snapshot, one load the other three wait for",
+                  (codes, calls), ([200] * 4, {"build": 0, "load": 1, "save": 0}))
+
+    # A SLOW SNAPSHOT LOAD MAY NOT INSTALL AN OLDER DIRECTORY OVER A NEWER BUILD.
+    m = fresh()
+    submit(m, "bhop_eazy", "p1", 3000)
+    T0 = int(m.time.now)
+    get(m, "/board/api/players")              # built and saved at T0
+    m.time.now += m.WEB_PEOPLE_TTL + 1
+    T1 = int(m.time.now)
+    submit(m, "bhop_eazy", "p2", 3100)
+    new_worker(m)
+    real_load, real_kick, kicks = m._people_load, m._people_kick, []
+
+    def slow_load():
+        conn = m.connect()                    # a rebuild lands mid-read
+        try:
+            m._people_install(*m._people_build(conn), at=T1)
+        finally:
+            conn.close()
+        return real_load()
+
+    m._people_load, m._people_kick = slow_load, kicks.append
+    try:
+        n = body(get(m, "/board/api/players"))["n"]
+    finally:
+        m._people_load, m._people_kick = real_load, real_kick
+    check("a slow snapshot load leaves the newer build in place (age, n, kicks)",
+          (m._people["at"] - T0, n, kicks), (T1 - T0, 2, []))
+    m._people_install({"b": "y"}, [], set(), T1)
+    check("...an equal stamp is not older, so it installs",
+          m._people["by_handle"], {"b": "y"})
+    m._people_install({"c": "z"}, [], set(), T1 + 3600)
+    m._people_install({"d": "w"}, [], set(), T1)
+    check("...and a stamp ahead of the clock is not newer: a rebuild replaces it",
+          m._people["by_handle"], {"d": "w"})
+    m.people_reset()
+    check("people_reset still clears it",
+          (m._people["at"], m._people["by_handle"]), (-1e9, {}))
+
+    # THE CLOCK STEPS BACK AN HOUR under a snapshot it stamped.  `now - at` is
+    # then negative, which read as fresh: a player new since then was a 404 with
+    # no rebuild until the clock caught up.
+    m = fresh()
+    T = int(m.time.now)
+    m.time.now = T + 3600
+    submit(m, "bhop_eazy", "p1", 3000)
+    get(m, "/board/api/players")              # built and saved at T+3600
+    m.time.now = T
+    new_worker(m)
+    submit(m, "bhop_eazy", "late", 3100)
+    path = "/board/api/player/" + m.web_handle("late")
+    first = get(m, path).status_code
+    join_rebuilds()
+    check("a snapshot from ahead of the clock is stale: 404, rebuilt, found (age 0)",
+          (first, get(m, path).status_code, m._people["at"] - T), (404, 200, 0))
+
+    # A REBUILD THREAD THAT CANNOT START left the directory marked busy, and it
+    # never refreshed again.
+    m = fresh()
+    submit(m, "bhop_eazy", "p1", 3000)
+    get(m, "/board/api/players")
+    m.time.now += m.WEB_PEOPLE_TTL + 1        # stale: the next request kicks
+    real_threading, fails = m.threading, [1]
+
+    def thread_once_failing(*a, **kw):
+        t = real_threading.Thread(*a, **kw)
+        if fails:
+            fails.pop()
+
+            def start():
+                raise RuntimeError("can't start new thread")
+            t.start = start
+        return t
+
+    m.threading = Shim(real_threading, Thread=thread_once_failing)
+    try:
+        code = get(m, "/board/api/players").status_code
+    except RuntimeError as exc:
+        code = "raised %s" % exc
+    finally:
+        m.threading = real_threading
+    check("a rebuild thread that cannot start: 200, not left busy (code, busy, fired)",
+          (code, bool(m._people.get("busy")), fails), (200, False, []))
+    get(m, "/board/api/players")              # still stale: this kick starts
+    join_rebuilds()
+    check("...so the next stale request rebuilds", m._people["at"] - int(m.time.now), 0)
+
+    # PROFILE PAGING.  "Show more" re-asks for the whole prefix (offset 0, a
+    # longer limit) and re-renders it: the order is recomputed per request, so
+    # the next fixed offset could skip or repeat rows when a board changed.
+    m = fresh()
+    W = "76561198000000042"
+    for mp in ("surf_a", "surf_b", "surf_c"):
+        imported(m, mp, W, "Wide", 5000, "momentum")
+    for k in range(2):
+        imported(m, "surf_b", "76561198000007%03d" % k, "B%d" % k, 6000 + k, "momentum")
+    for mp in ("surf_a", "surf_b"):
+        imported(m, mp, W, "Wide", 7000, "momentum", track=1)
+        imported(m, mp, W, "Wide", 900, "momentum", leg=1)
+    url = "/board/api/player/" + m.web_handle(W)
+    key = lambda p: [(x["map"], x["track"], x["leg"]) for x in p["rows"]]
+    whole = body(get(m, url + "?offset=0&limit=5000"))
+    order = key(whole)
+    check("control: the whole order is 7 rows, main then bonuses then stages",
+          ([(t, l) for _m, t, l in order], whole["total"], order[0][0]),
+          ([(0, 0)] * 3 + [(1, 0)] * 2 + [(0, 1)] * 2, 7, "surf_b"))
+    check("offset=0&limit=N is exactly the first N rows of the whole order",
+          [key(body(get(m, url + "?offset=0&limit=%d" % n))) for n in range(1, 8)],
+          [order[:n] for n in range(1, 8)])
+    check("limit is clamped to 1..WEB_PROFILE_MAX, a bad one to the page size",
+          [body(get(m, url + "?offset=0&limit=" + v))["limit"]
+           for v in ("0", "-3", "999999", "x")],
+          [1, 1, m.WEB_PROFILE_MAX, m.WEB_PROFILE_ROWS])
+    check("...and limit=0 answers one row",
+          len(body(get(m, url + "?offset=0&limit=0"))["rows"]), 1)
+    real_rows = m.WEB_PROFILE_ROWS
+    m.WEB_PROFILE_ROWS = 3
+    try:
+        p = body(get(m, url))
+    finally:
+        m.WEB_PROFILE_ROWS = real_rows
+    check("with no limit a page is WEB_PROFILE_ROWS, and says so (rows, limit, total)",
+          (len(p["rows"]), p["limit"], p["total"]), (3, 3, 7))
+    check("an offset still pages", key(body(get(m, url + "?offset=2&limit=3"))),
+          order[2:5])
+    js = open(os.path.join(HERE, "web", "board.js"), encoding="utf-8").read()
+    check("board.js's Show more asks for the whole prefix, not the next offset",
+          ("'?offset=0&limit=' + want" in js, "'?offset=' + P.shown" in js),
+          (True, False))
 
     print("\n%d failed" % len(FAILED))
     for f in FAILED:

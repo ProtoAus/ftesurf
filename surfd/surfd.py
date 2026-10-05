@@ -1534,7 +1534,9 @@ def clean_map(raw):
 # WHAT COMES BACK OUT IS THE ON-DISK SPELLING, because that is what goes to
 # `changelevel`.  FTE's own filesystem is case-sensitive on Linux too.
 _maps_lock = threading.Lock()
-_maps_cache = {"at": -1.0, "bsp": {}, "zone": frozenset()}
+# "at" None = never scanned.  -1.0 read as fresh for the first MAPS_TTL after
+# boot (monotonic() counts from boot on Linux): every map "not installed".
+_maps_cache = {"at": None, "bsp": {}, "zone": frozenset()}
 
 
 def _scan_maps():
@@ -1589,7 +1591,8 @@ def map_index(now=None):
     """The installed library, cached for MAPS_TTL.  Returns (bsp, zone)."""
     now = time.monotonic() if now is None else now
     with _maps_lock:
-        if now - _maps_cache["at"] < MAPS_TTL:
+        at = _maps_cache["at"]
+        if at is not None and now - at < MAPS_TTL:
             return _maps_cache["bsp"], _maps_cache["zone"]
     bsp, zone = _scan_maps()
     with _maps_lock:
@@ -1604,7 +1607,7 @@ def map_index(now=None):
 def maps_reset():
     """Drop the cached library.  For tests, and for a future admin control."""
     with _maps_lock:
-        _maps_cache["at"] = -1.0
+        _maps_cache["at"] = None
         _maps_cache["bsp"] = {}
         _maps_cache["zone"] = frozenset()
 
@@ -4003,6 +4006,7 @@ WEB_PEOPLE_TTL = 300     # s the player directory is reused
 WEB_PEOPLE_FLOOR = 30    # s; a miss may not rebuild more often than this
 WEB_SEARCH_MAX = 60      # players one search returns
 WEB_PROFILE_ROWS = 100   # rows on one profile page
+WEB_PROFILE_MAX = 5000   # cap on `limit`; the largest real profile is 2,575 rows
 WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
 
 # What a public run page may see of a recording's header.  AN ALLOWLIST AND NOT
@@ -4151,19 +4155,40 @@ PEOPLE_SNAPSHOT = os.environ.get("SURFD_PEOPLE",
                                  os.path.join(DATA_DIR, "people.json"))
 
 
-def _people_install(by_handle, lst, main_maps, at):
+def _within(at, now, span):
+    """`at` lies in the last `span` seconds.  A stamp ahead of the clock (it
+    stepped back) does not: read as fresh, it kept a new player's profile a 404
+    with no rebuild for as long as the step."""
+    return 0 <= now - at < span
+
+
+def _people_held():
     with _people_lock:
+        return (_people["by_handle"], _people["list"],
+                _people.get("main_maps", set()), _people["at"])
+
+
+def _people_install(by_handle, lst, main_maps, at):
+    """Install unless the directory in memory is newer; True if installed.  A
+    held stamp ahead of the clock is not newer, or no rebuild could replace it
+    until the clock caught up."""
+    with _people_lock:
+        if at < _people["at"] <= time.time():
+            return False
         _people["at"] = at
         _people["by_handle"], _people["list"] = by_handle, lst
         _people["main_maps"] = main_maps
+        return True
 
 
 def _people_save(by_handle, lst, main_maps, at):
     """The snapshot holds `runs.player` beside its handle, as surfd.db does in
     the same directory: it is never served, only read back by this module."""
+    # A temp name per writer: two saves sharing one (two threads, or the old and
+    # new worker in a reload) interleaved into a people.json nothing could load.
+    tmp = "%s.%d.%d.tmp" % (PEOPLE_SNAPSHOT, os.getpid(), threading.get_ident())
     try:
         players = {h: p for h, p in by_handle.items()}
-        tmp = PEOPLE_SNAPSHOT + ".tmp"
         # 0600: a ranked player's guid is a credential (see web_handle).
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -4172,6 +4197,12 @@ def _people_save(by_handle, lst, main_maps, at):
         os.replace(tmp, PEOPLE_SNAPSHOT)
     except (OSError, ValueError) as exc:
         log.warning("people snapshot not written: %s", exc)
+        try:
+            os.remove(tmp)
+        except FileNotFoundError:
+            pass
+        except OSError as exc2:
+            log.warning("people snapshot temp %s not removed: %s", tmp, exc2)
 
 
 def _people_load():
@@ -4200,38 +4231,46 @@ def _people_kick(now):
                 built = _people_build(conn)
             finally:
                 conn.close()
-            _people_install(*built, at=now)
-            _people_save(*built, at=now)
+            if _people_install(*built, at=now):
+                _people_save(*built, at=now)
         except Exception:
             log.exception("people directory rebuild failed")
         finally:
             with _people_lock:
                 _people["busy"] = False
 
-    threading.Thread(target=work, name="people", daemon=True).start()
+    try:
+        threading.Thread(target=work, name="people", daemon=True).start()
+    except Exception:
+        # "can't start new thread" left busy set, and nothing rebuilt again.
+        log.exception("people directory rebuild not started")
+        with _people_lock:
+            _people["busy"] = False
+
+
+# A process's first directory is loaded or built ONCE: four concurrent first
+# requests did four builds and four saves.
+_people_cold = threading.Lock()
 
 
 def _people_current(db, now):
     """(by_handle, list, main_maps, at): the directory, as fresh as it can be
     had without waiting -- see PEOPLE_SNAPSHOT."""
-    with _people_lock:
-        at = _people["at"]
-        cur = (_people["by_handle"], _people["list"],
-               _people.get("main_maps", set()), at)
-    if now - at < WEB_PEOPLE_TTL:
-        return cur
-    if at < 0:
-        snap = _people_load()
-        if snap is None:
-            built = _people_build(db)
-            _people_install(*built, at=now)
-            _people_save(*built, at=now)
-            return built + (now,)
-        _people_install(*snap)
-        cur = snap
-        if now - snap[3] < WEB_PEOPLE_TTL:
-            return cur
-    _people_kick(now)
+    cur = _people_held()
+    if cur[3] < 0:
+        with _people_cold:
+            cur = _people_held()            # installed while this one waited?
+            if cur[3] < 0:
+                snap = _people_load()
+                if snap is not None:
+                    _people_install(*snap)
+                else:
+                    built = _people_build(db) + (now,)
+                    if _people_install(*built):
+                        _people_save(*built)
+                cur = _people_held()
+    if not _within(cur[3], now, WEB_PEOPLE_TTL):
+        _people_kick(now)
     return cur
 
 
@@ -4253,7 +4292,7 @@ def player_of(db, handle, now):
     by_handle, _lst, _maps, at = _people_current(db, now)
     if handle in by_handle:
         return by_handle[handle]
-    if now - at >= WEB_PEOPLE_FLOOR:
+    if not _within(at, now, WEB_PEOPLE_FLOOR):
         _people_kick(now)
     return None
 
@@ -4347,6 +4386,10 @@ def web_player(handle):
     if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
         return fail(400, "bad player")
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+    # "Show more" asks for offset 0 and a longer limit (board.js profileRows says
+    # why); `offset` still pages for a board.js already open in a browser.
+    limit = clamp_int(request.args.get("limit"), 1, WEB_PROFILE_MAX,
+                      WEB_PROFILE_ROWS)
     try:
         db = get_db()
         player = player_of(db, handle, now)
@@ -4393,7 +4436,7 @@ def web_player(handle):
 
     bsp, _zoned = map_index()
     out = []
-    for r, rk, of in ranked[offset:offset + WEB_PROFILE_ROWS]:
+    for r, rk, of in ranked[offset:offset + limit]:
         out.append({"map": r["map"], "disp": bsp.get(r["map"], r["map"]),
                     "track": r["track"], "leg": r["leg"], "tr": r["tier"],
                     "style": r["style"], "name": r["name"], "ms": r["millis"],
@@ -4407,7 +4450,7 @@ def web_player(handle):
                               "ksf": me["ksf"]},
                   "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
                   "completion": comp, "offset": offset, "total": len(ranked),
-                  "limit": WEB_PROFILE_ROWS, "rows": out}, "max-age=30")
+                  "limit": limit, "rows": out}, "max-age=30")
 
 
 @app.get("/board/api/run/<int:rid>")

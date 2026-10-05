@@ -205,6 +205,20 @@ check("...and again for the other capitalised one", bsp["bhop_hell"], "bhop_HeLL
 check("the zone set is separate and smaller", len(zoned), len(ZONED) + len(ZONED_LOCAL))
 check("...and is keyed lowercase too", "bhop_mukiology" in zoned, True)
 
+# THE FIRST READ AFTER BOOT.  monotonic() counts from boot on Linux, and a cache
+# stamped -1.0 read as fresh for its first MAPS_TTL: every map "not installed".
+m4 = fresh()
+scans = []
+real_scan = m4._scan_maps
+m4._scan_maps = lambda: scans.append(1) or real_scan()
+bsp4, zoned4 = m4.map_index(now=10.0)
+check("10 s after boot a fresh process scans (scans, bsp, zones)",
+      (len(scans), len(bsp4), len(zoned4)),
+      (1, len(LIBRARY), len(ZONED) + len(ZONED_LOCAL)))
+m4.maps_reset()
+m4.map_index(now=10.0)
+check("...and so does the first read after maps_reset", len(scans), 2)
+
 # CONTROL: a library directory that is not there must not take surfd down with
 # it. Every other endpoint is unaffected by this one directory moving.
 m2 = fresh()
