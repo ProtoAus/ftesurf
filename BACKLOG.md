@@ -1323,12 +1323,14 @@ is that an arm ships publicly with its fix, not before it. Copy them in from
 `poc/p482/cfg/`, run, delete.
 
 FIXED AND DRIVEN since that paragraph was written: items **4, 7, 8** (Patch 483),
-**5, 6, 9** (Patch 485), **1** (Patch 487, `poc/p487/`) and **2** (Patch 488,
-`poc/p488/`). Item 1 was the one that defeated all the others -- a server-planted
-`f_newmap` alias ran its body at `RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate
-read 29 for it -- and item 2 was the last route to arbitrary native code execution,
-a server naming the DLL the renderer loads. STILL OPEN: item **3** (`allskins`
-strcpy) and item **10** (`fs_game`/`fs_restart` from the console, unarmed).
+**5, 6, 9** (Patch 485), **1** (Patch 487, `poc/p487/`), **2** (Patch 488,
+`poc/p488/`) and **3** (Patch 489, `poc/p489/`). Item 1 was the one that defeated all
+the others -- a server-planted `f_newmap` alias ran its body at `RESTRICT_LOCAL`, so
+every `Cmd_IsInsecure()` gate read 29 for it; item 2 was the last route to arbitrary
+native code execution, a server naming the DLL the renderer loads; item 3 was the last
+unbounded copy of a server-supplied string, and its canary build measured the write
+reaching 172 bytes past a 128-byte global. STILL OPEN: item **10**
+(`fs_game`/`fs_restart` from the console), which is the only unarmed one left.
 
 - **`TP_ExecTrigger`'s multi-command branch is fixed but never DRIVEN, and the reason
   is a server-side filter that a real attacker does not have to obey.** Patch 487 sets
@@ -1374,19 +1376,28 @@ strcpy) and item **10** (`fs_game`/`fs_restart` from the console, unarmed).
   that cvar, i.e. a local false positive defending a route measured dead. If (b) ever
   fires, add it at the `vid_restart` caller rather than in `R_BuildRenderstate`, so a
   token the user typed themselves is never refused. Patch 488 review.
-- **`Skin_AllSkins_f` copies a caller-supplied string into `char allskins[128]`
-  with `strcpy`.** `client/skin.c`. Measured: a 300-character argument is accepted
-  with no refusal and no complaint, and its first 63 characters reach the skin
-  loader — 63 being `qwskin_t::name[64]` *downstream*, so the visible evidence is
-  produced after a write that has already passed the end of the buffer. **How far it
-  reaches and what it corrupts is NOT measured** — this toolchain has no ASan, and
-  quantifying it needs a canary build (a temporary, never-shipped `skin.c` with a
-  known word immediately after `allskins`). Do not quote an impact class beyond
-  "unbounded write of a supplied string" until that runs. Fix: `Q_strncpyz`. This
-  command MUST stay server-reachable — forcing skins is a legitimate QuakeWorld
-  server feature — so the fix is the bound, not a gate. Falsifier: the arm's
-  overlong case must be refused or truncated at the buffer, and its 63-character
-  case must still round-trip.
+- **`Cmd_Alias_f` concatenates every argument into a fixed 65536-byte stack buffer
+  with `strcat`, and the tokenizer that supplies them is not bounded to match.**
+  `common/cmd.c`, the `for (i=2 ; i<c ; i++) { strcat (cmd, Cmd_Argv(i)); ... }` loop
+  over `char cmd[65536]`.  `MAX_ARGS` is 80, so the ARGUMENT COUNT is capped, but each
+  argument's LENGTH is not: `Cmd_TokenizeString` allocates its store with
+  `Z_Malloc(len+1)` sized to the input, so a single long argument is copied whole.
+  `alias` is server-reachable through stufftext -- which is what Patches 481/485/487
+  all exercised -- and a server-supplied value longer than the buffer would run past a
+  stack array.  FOUND BY A SWEEP, NOT BY A CRASH: Patch 489 audited the same class
+  (`strcpy`/`strcat`/`sprintf` fed directly by `Cmd_Argv`, across `client/*.c` and
+  `common/*.c`) after fixing `allskins`, and this was the one hit whose bound did not
+  obviously match its input.  **NOT MEASURED, and the missing measurement is the whole
+  question:** whether a >64 KB stufftext is deliverable at all.  `svc_stufftext` rides
+  the reliable channel, which is chunked across packets, so length is not obviously
+  capped by one datagram -- but nothing here proves it, and the cbuf may impose its own
+  limit first.  Do not quote an impact class until that is settled either way.
+  Falsifier: stuff an `alias` whose value exceeds 65535 characters and look for a crash
+  or a corrupted neighbour; if the transport refuses it first, the finding closes as
+  unreachable and THIS ENTRY should say so rather than be deleted, because the next
+  reader will sweep the same class.  A fix, if it is needed, is a bound on the
+  concatenation (refuse or truncate with a printed warning) -- not a gate, since a
+  user's own long alias is legitimate.  Patch 489 review.
 - **`CL_SetInfoBlob_f` reads an arbitrary game-VFS file into the player's userinfo,
   which is sent to the server.** `client/cl_main.c`; `FS_MallocFile(..., FS_GAME,
   ...)` with no insecure check. Measured: a planted canary file's exact bytes went

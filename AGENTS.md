@@ -330,6 +330,22 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   own done marker. And `stuffcmd` REFUSES A `;` ("You're not allowed to stuffcmd
   that", `sv_ccmds.c`), so a server admin cannot stuff a multi-command alias body;
   the filter is in the console command, not in the wire path.
+- **AN ARM WHOSE OBSERVABLE IS PRODUCED DOWNSTREAM OF THE THING IT MEASURES CANNOT
+  DISTINGUISH A FIX FROM NO FIX.** `p482c` graded `allskins` by the skin-loader line,
+  and `qwskin_t::name[64]` truncates that name to 63 characters -- so a bounded copy
+  and an unbounded one print the SAME line, and the arm passed both. Its own RESULT
+  block said the right thing ("the overrun itself was NOT measured") but the arm still
+  looked like coverage. When the only visible effect is downstream of a narrowing
+  step, MEASURE AT THE WRITE: Patch 489's canary build put a known word at the buffer's
+  end and printed it before and after the copy, which is what an AddressSanitizer build
+  would report and what this toolchain does not have (`mingw64` absent, `ucrt64` gcc
+  builds without it). Generate BOTH variants from one pristine file with a script that
+  ASSERTS they differ in exactly one line, or the instrumentation itself becomes the
+  variable. And keep the detector separate from the regression arm: the canary pair
+  proves the bound, the REAL pair proves skin forcing still works, and grading the
+  canary build for behaviour would conflate the two. Note also that a canary changes
+  the layout it instruments -- the crash it produced belongs to the instrumented build,
+  so quote the write, not the crash.
 - **A COMMAND'S LOCAL FORM AND ITS STUFFED FORM CAN PARSE DIFFERENTLY, and the
   difference is silent** (measured driving Patch 488's arm). `setrenderer gl <path>`
   UNQUOTED hands the handler `argv(1) == "gl"` ALONE -- the path is `argv(2)` and is
@@ -626,11 +642,10 @@ bannered as superseded.)
 **A SECOND PRIVATE DOCUMENT SITS BESIDE THE PLAN: `ENGINE_SECURITY.md`**, the
 audit of what a server can make a CLIENT do — the engine's stufftext surface,
 which is the other half of the anti-cheat argument (a client that can be made to
-run things cannot be trusted to report honestly). Ten of its items are now
+run things cannot be trusted to report honestly). Eleven of its items are now
 DRIVEN and FIXED (481's `fs_*` set, then items 4/7/8 by Patch 483, 5/6/9 by 485,
-item 1 by 487 and item 2 by 488); item **3** (`allskins` strcpy) is DRIVEN AND
-STILL OPEN, and **10** (`fs_game`/`fs_restart` from the console) is open and
-unarmed. THE TWO HEADLINE ITEMS WERE THE ONES THAT DEFEATED ALL THE OTHERS: one
+item 1 by 487, item 2 by 488 and item 3 by 489). **ITEM 10
+(`fs_game`/`fs_restart` from the console) IS THE ONLY ONE LEFT, AND IT IS UNARMED.** THE TWO HEADLINE ITEMS WERE THE ONES THAT DEFEATED ALL THE OTHERS: one
 stuffed `alias f_newmap "<anything>"` ran its body at `RESTRICT_LOCAL`, so every
 `Cmd_IsInsecure()` gate read 29 for it and 481 was a delivery-path fix rather than
 a boundary (Patch 487 closed it by running a trigger alias at the alias's OWN
@@ -638,11 +653,14 @@ execlevel); and a stuffed `setrenderer "gl <path>"` named the DLL the renderer
 loads, which is native code in the client process -- driven with a canary whose
 DllMain wrote a marker line (Patch 488 closed it by refusing an explicit
 subrenderer token from an insecure caller, WHOLE rather than screened for slashes,
-because a bare name also reaches LoadLibrary through the search order). What is
-safe to say here is in BACKLOG.md's
+because a bare name also reaches LoadLibrary through the search order); and `allskins`
+was a bare `strcpy` of a server-supplied argument into `char allskins[128]`, which a
+canary build measured writing 172 bytes past it (Patch 489 fixed it with the BOUND and
+not a gate, because forcing skins is a legitimate server feature that must stay
+server-reachable). What is safe to say here is in BACKLOG.md's
 "Engine client-security audit" section — code site, impact class, falsifier, no
 recipe. The arms are in `poc/p482/cfg/`, `poc/p483/`, `poc/p485/`, `poc/p487/`
-and `poc/p488/` there and stay there: they are working
+`poc/p488/` and `poc/p489/` there and stay there: they are working
 exploits for holes that are still open, and the convention is that an arm ships
 publicly WITH its fix, not before it.
 

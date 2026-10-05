@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   5c53c85d52bbd060f738817f40e4d19ec116ed50
+commit   a5d9019a61db119e487fe21b28640789342561fa
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,29 @@ commit   5c53c85d52bbd060f738817f40e4d19ec116ed50
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    488
+patch    489
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-04
+
+# PATCH 489: `allskins` no longer copies a server-supplied string past the end of its
+# buffer.  `Skin_AllSkins_f` was a bare `strcpy (allskins, Cmd_Argv(1))` into
+# `char allskins[128]`, with `qwskin_t skins[256]` declared immediately after it, and
+# the command has no restriction level and no insecure check -- so a remote server's
+# stufftext reached an unbounded write of a string it chose.  Now `Q_strncpyz`: THE
+# BOUND, NOT A GATE, because forcing skins is a legitimate QuakeWorld server feature
+# and this command must stay server-reachable.  Measured with the canary build the
+# audit had asked for and never had: a guard word at offset 128 came back holding the
+# argument's own bytes (`0x62626262`) and the client died in the next statement, while
+# the bounded build left it intact at 15, 127 and 300 characters.  Driven over FOUR
+# builds -- the canary pair as the detector and the real pair as the regression arm,
+# which behaved identically -- 5 predictions, all met on all four.  The impact class
+# stays deliberately narrow: the crash belongs to the instrumented layout and the
+# uninstrumented build survived the same argument.  CLIENT-ONLY, no lobby deploy
+# implied.  Arm is private (poc/p489/).
 
 # PATCH 488: a server may no longer name the DLL the client's renderer loads.  The
 # subrenderer token that `setrenderer "gl <name>"` supplies is a DLL NAME --
@@ -1750,6 +1766,15 @@ date     2026-10-04
 #        files were renumbered 485 -> 486 before anything shipped.  Two
 #        collisions in two patches, both found by reading ENGINE_PATCHES.md's
 #        headings BEFORE claiming.
+#   489  engine/client/skin.c.  A bare `strcpy` of a server-supplied argument into
+#        `char allskins[128]`, with the skin cache declared immediately after it, so
+#        a stuffed 300-character name wrote 172 bytes past a global.  Now
+#        `Q_strncpyz` -- the BOUND, not a gate, because forcing skins is a
+#        legitimate server feature and must stay server-reachable.  Quantified by a
+#        canary build (a guard word at offset 128 came back holding the argument's
+#        own bytes, and the client died in the next statement), with the real
+#        binaries graded separately and behaving identically before and after.
+#        CLIENT-ONLY.  Arm: C:/FTESurf-private/poc/p489/ (private).
 #   488  engine/client/renderer.c.  A server could name the DLL the client's
 #        renderer loads: the explicit subrenderer token was stored unfiltered
 #        while the path filter beside it ran only on the gl_driver fallback, and
