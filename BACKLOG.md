@@ -5,6 +5,60 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Credentials at rest, and 9.3 GB of database backups -- 2026-10-05
+
+FIXED HERE: `data/surfd.db` was `-rw-r--r--` on the Pi, and it holds `runs.player`
+for every ranked row -- a guid, which is what a keyed lobby authenticates a submit
+by. surfd now installs `os.umask(0o077)` at import and `_harden_db_files()` at the
+end of `connect()`: the umask covers what libraries create (sqlite's `-wal`/`-shm`
+appear on the first write, AFTER connect() has returned, and are unlinked again
+when the last connection closes, so neither is reachable from a startup-only
+chmod), and the chmod covers a database that already exists loose, which no umask
+can reach. `tools/surfd-deploy.ps1` chmods the backup it makes, refuses to continue
+if that backup is not 600, and tightens every `surfd.db*` file on every run --
+which is what fixed the 35 copies already on the host (`TIGHTENED=36`,
+`STILL_LOOSE=0`, live db now 600, /health and `/board/api/map` still answering).
+The arm is `test_surfd.py` section 10; it SKIPS OFF WINDOWS with a printed line
+(Windows reports no group/other bits, so both halves would be fiction) and was run
+under WSL against HEAD's `surfd.py` as a control: 4 FAILs there, 0 here, with "the
+owner can still write the hardened database" passing in both -- the half that would
+have taken the board down if a chmod had cleared the owner's write bit.
+
+Two things this measurement turned up that need a DECISION, not code:
+
+- **THE GAME'S OWN DATA TREE IS WORLD-READABLE AND ITS FILENAMES ARE GUIDS.**
+  Measured on the Pi: 10,938 of 10,938 files under
+  `/srv/nvme/ftesurf-server/game/ftesurf/data` are 0644, including 64 `.rec` named
+  `<ticks>_<name>-<guid8>_run.rec`, 37 evidence files, 45 saves and 30 resume
+  slots; `data/` and `data/runs/` are 2755. A DIRECTORY LISTING ALONE IS ENOUGH,
+  so file modes do not cover it -- the guid is in the name. The live lobby unit
+  says `UMask=0022` (`systemctl show ftesurf@1 -p UMask`), which is why. The fix is
+  `UMask=0077` in `surfd/server/ftesurf@.service` plus a reinstall (Lex's sudo) and
+  12 restarts, and it only helps files created afterwards, so the existing tree
+  wants `chmod -R go-rwx data` and `chmod 700 data` in the same pass. Nothing else
+  on the box reads those files as another uid -- surfd reads them as `proto`, nginx
+  proxies to :8084 and never aliases into the tree -- so the cost is only that a
+  future tool run as another user stops working. UNCHECKED BEFORE DOING IT: the
+  unit also has `StandardOutput=append:.../server%i.log`, and whether systemd
+  applies the service's umask to a file the MANAGER opens was not established; if it
+  does, a fresh install's log could end up root-owned 0600.
+  Falsifier: `find <basedir>/data -perm /077 | wc -l` reads 0, and a lobby still
+  writes a recording afterwards (join with `cfg/test/p339pi.cfg`, then
+  `ls -l data/parts`).
+- **THE DATABASE BACKUPS ARE 9.3 GB AND NOTHING PRUNED THEM.** 11 written by
+  surfd-deploy.ps1 (7,535 MiB, ten of them on 5 Oct alone) plus 24 hand-made copies
+  (1,814 MiB: `surfd.db.pre*`, `.post*`, `.prewipe`, `.bak-preboard`), on a 458 GB
+  volume at 88% with 53 GB free. The database is 700 MB and grows with the
+  full-depth board crawl, so the price is one copy per deploy, forever.
+  `-KeepDbBackups N` now prunes the script's own oldest after the deploy has
+  verified, and reports the hand-made ones without ever touching them (the glob is
+  anchored on `bak-<sha>-<stamp>`, because `surfd.db.bak-*` alone would have
+  swallowed `surfd.db.bak-preboard`). The default is 0 = REPORT AND DELETE NOTHING,
+  because a deploy that made the backup is not a deploy that may decide to destroy
+  older ones. Lex's call: what N is, and whether the 24 hand-made copies and
+  `game/ftesurf/data/momentum.pre-mtv-20261004-093119` (1.4 GB) are still wanted.
+  Every deploy prints the figures at step 7.
+
 ## surf_voyager: our brush traces are not Source's — 2026-10-05
 
 Reported by Lex: the auto-surf map falls short here and flies in Momentum/CS:S.
@@ -53,9 +107,6 @@ Measured against his own Momentum run, `data/momentum/surf_voyager/main/
 - **KSF's map link opens Forward.** A Sideways, Half-Sideways or Backwards
   row's "KSF" button lands on the Forward records; whether ksf.surf takes the
   style in its URL is not established.
-- **`data/surfd.db` is 0644 on the Pi**, and it holds ranked players' guids,
-  which are credentials. `people.json` beside it is written 0600; the database
-  never was.
 
 ## The KSF crawl, the demo grab and the site: what they left — 2026-10-05
 

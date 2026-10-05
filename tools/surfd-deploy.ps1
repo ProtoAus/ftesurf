@@ -12,7 +12,9 @@
       2. The suite runs in the stage, on the Pi, with tools/ and src/shared/
          beside surfd/ (test_sweep and the TF_* pins read them) and a private
          TMPDIR (the tests leave their temp dirs behind).
-      3. `data/surfd.db` is backed up through sqlite's own backup API.
+      3. `data/surfd.db` is backed up through sqlite's own backup API, and the
+         copy is chmodded 600: it holds every ranked player's guid, which is a
+         credential, and sqlite's backup API creates it 0644 & ~umask.
       4. Files are copied in under `flock /tmp/surfd-sweep.lock`, each as
          `install` to a temp name then `mv`, so no cron import can see a
          half-written file.  Every replaced file keeps a `.pre<sha>-<stamp>`
@@ -24,6 +26,10 @@
          (it killed a deploy mid-reload on 4 Oct).
       6. Verification is read back, not assumed: `surfd ready` in the app log, a
          master and a worker both alive, and /health answering.
+      7. The database backups are REPORTED -- count, bytes, oldest -- and every
+         `surfd.db*` file that is not owner-only is tightened.  They are only
+         DELETED with -KeepDbBackups N, because a deploy that made the backup is
+         not a deploy that may decide to destroy older ones.
 
     It is deliberately NOT a general sync: it deploys the surfd python tree only.
     The progs go with `src/build.ps1 -Pi`, which has its own rules.
@@ -53,6 +59,13 @@ param(
     [switch]$SkipTests,
     [switch]$NoReload,
     [switch]$NoBackup,
+    # Database-backup retention.  0 (the default) REPORTS what the backups cost
+    # and deletes nothing; N keeps the newest N of the ones THIS script wrote
+    # (`surfd.db.bak-<sha>-<stamp>`) and deletes the older ones after the deploy
+    # has verified.  Hand-made copies (`surfd.db.pre*`, `.post*`, `.prewipe`,
+    # `.bak-preboard`) are never touched by any value: they are somebody's
+    # deliberate rollback point, not this script's output.
+    [int]$KeepDbBackups = 0,
     # A deploy-only commit that reverts another session's unapproved work
     # (AGENTS.md: revert it in the deploy worktree, never on main) cannot be
     # on origin/main.  Say so explicitly; the commit is still what ships.
@@ -257,6 +270,12 @@ with dst:
 dst.close(); src.close()
 print("BACKUP_OK")
 PYEOF
+# The copy holds every ranked player's guid, and sqlite's backup API creates it
+# 0644 & ~umask -- the same mode the live database had before surfd installed a
+# 077 umask of its own.  Tighten it here, and PRINT THE MODE rather than trusting
+# the chmod: a permissions fix that is not read back is a permissions hope.
+chmod 600 data/surfd.db.TAG
+stat -c 'BACKUP_MODE=%a %n' data/surfd.db.TAG
 ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
 '@
     $bak = Invoke-PiScript -Name "backup" -AllowFail `
@@ -264,6 +283,10 @@ ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
     if ($bak -cnotmatch "BACKUP_OK") {
         Fail "the database backup did not report BACKUP_OK -- not deploying over an unbacked-up board"
     }
+    if ($bak -cnotmatch "BACKUP_MODE=600 ") {
+        Fail "the database backup is not owner-only ($($bak -join ' | ')) -- it holds every player's guid"
+    }
+    Write-Host "  $($bak | Where-Object { $_ -match 'BACKUP_MODE=' })"
 }
 else {
     Step "3. SKIPPED (-NoBackup): deploying with no fresh database backup"
@@ -432,12 +455,83 @@ ps -eo pid=,ppid=,etimes=,comm= --no-headers | awk -v m="$M" '$2==m {print}'
     Write-Host "  $countLine processes (master + worker), /health ok" -ForegroundColor Green
 }
 
-# ---- 7. clean up the stage --------------------------------------------------
-Step "7. remove the stage"
+# ---- 7. the database backups: what they cost, and whose they are -----------
+#
+# Run AFTER the verification and the reload, never before: a deploy that failed
+# has no business deleting the copies that would roll it back.
+Step "7. database backups (report; -KeepDbBackups N to prune)"
+# DASH, NOT BASH: Invoke-PiScript runs the body with `sh`, so no process
+# substitution, no [[ ]] and no arrays -- `read ... < <(...)` died on the Pi's
+# dash the first time this step was tried.
+# AND THE PLACEHOLDERS ARE __NAME__ WITH A LITERAL .Replace(), NOT -replace:
+# PowerShell's -replace is a CASE-INSENSITIVE regex, so a `KEEP` placeholder also
+# matched the English word "keeping" in the printf two lines below it and put a
+# number in the middle of a sentence.  Same family as the `-match`/`-cmatch`
+# sentinel trap this script's own NOTES carry.
+$body = @'
+set -eu
+cd __REMOTE__/data
+# ONLY the shape this script writes.  `surfd.db.bak-*` alone would swallow
+# `surfd.db.bak-preboard`, which is a hand-made rollback point from before the
+# script existed.
+OURS='^\./surfd\.db\.bak-[0-9a-f]{7,40}-[0-9]{8}-[0-9]{6}$'
+LIST=/tmp/surfd-baks.$$
+find . -maxdepth 1 -type f -regextype posix-extended -regex "$OURS" \
+     -printf '%T@ %s %f\n' | sort -n > "$LIST"
+n=$(wc -l < "$LIST")
+bytes=$(awk '{s+=$2} END {printf "%d", s+0}' "$LIST")
+printf 'OURS=%s files, %s MiB (this script wrote them)\n' "$n" "$((bytes / 1048576))"
+if [ "$n" -gt 0 ]; then
+  printf 'OLDEST=%s\n' "$(head -1 "$LIST" | awk '{print $3}')"
+fi
+# The hand-made copies are REPORTED and never deleted, whatever -KeepDbBackups
+# says: they are the ones somebody chose to keep by naming them.
+handn=$(find . -maxdepth 1 -type f -name 'surfd.db.*' \
+         -regextype posix-extended ! -regex "$OURS" | wc -l)
+handb=$(find . -maxdepth 1 -type f -name 'surfd.db.*' \
+         -regextype posix-extended ! -regex "$OURS" -printf '%s\n' |
+        awk '{s+=$1} END {printf "%d", s+0}')
+printf 'HANDMADE=%s files, %s MiB (never pruned here)\n' "$handn" "$((handb / 1048576))"
+# Any surfd.db* file left group- or other-readable is tightened.  Idempotent, and
+# it lives here rather than in a hand-run chmod because the next backup would
+# otherwise reintroduce the exposure and nothing would say so.
+loose=$(find . -maxdepth 1 -type f -name 'surfd.db*' -perm /077 | wc -l)
+if [ "$loose" -gt 0 ]; then
+  find . -maxdepth 1 -type f -name 'surfd.db*' -perm /077 -exec chmod 600 {} +
+  printf 'TIGHTENED=%s file(s) were group- or other-readable, now 600\n' "$loose"
+else
+  printf 'TIGHTENED=0 (every surfd.db* file is already owner-only)\n'
+fi
+left=$(find . -maxdepth 1 -type f -name 'surfd.db*' -perm /077 | wc -l)
+printf 'STILL_LOOSE=%s\n' "$left"
+if [ __KEEP__ -gt 0 ] && [ "$n" -gt __KEEP__ ]; then
+  drop=$((n - __KEEP__))
+  printf 'PRUNE=%s oldest deleted, newest %s kept\n' "$drop" "__KEEP__"
+  head -"$drop" "$LIST" | while read -r _t sz f; do
+    printf 'DELETE %s (%s MiB)\n' "$f" "$((sz / 1048576))"
+    rm -f -- "$f"
+  done
+elif [ __KEEP__ -gt 0 ]; then
+  printf 'PRUNE=0 (only %s held, -KeepDbBackups __KEEP__)\n' "$n"
+else
+  printf 'PRUNE=off (pass -KeepDbBackups N to prune)\n'
+fi
+rm -f "$LIST"
+[ "$left" = 0 ] || exit 1
+echo BACKUPS_DONE
+'@
+$baks = Invoke-PiScript -Name "backups" -AllowFail `
+    -Body ($body.Replace('__REMOTE__', $Remote).Replace('__KEEP__', "$KeepDbBackups"))
+if ($baks -cnotmatch "BACKUPS_DONE" -or $baks -cnotmatch "STILL_LOOSE=0") {
+    Fail "the database files are not all owner-only, or the report did not complete (output above)"
+}
+
+# ---- 8. clean up the stage --------------------------------------------------
+Step "8. remove the stage"
 Invoke-PiSsh -Cmd "rm -rf '$stage' && echo stage_removed" | Write-Host
 
 Write-Host "`nDEPLOYED $sha to ${PiHost}:$Remote" -ForegroundColor Green
-Write-Host "  database backup  $Remote/data/surfd.db.bak-$sha-$stamp"
+Write-Host "  database backup  $Remote/data/surfd.db.bak-$sha-$stamp (mode 600)"
 Write-Host "  file backups     *.$backupTag beside each replaced file"
 Write-Host "  The Pi keeps no receipt of its own: record this deploy in the commit"
 Write-Host "  or ENGINE_PATCHES.md's DEPLOYED notes, and in UTC -- the Pi talks UTC"

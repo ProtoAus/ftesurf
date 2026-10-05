@@ -46,6 +46,35 @@ DB_PATH = os.environ.get("SURFD_DB", os.path.join(DATA_DIR, "surfd.db"))
 ENV_PATH = os.environ.get("SURFD_ENV", os.path.join(BASE_DIR, "surfd.env"))
 LOG_PATH = os.path.join(LOG_DIR, "surfd.log")
 
+# EVERYTHING THIS PROCESS CREATES IS THE OWNER'S ALONE.
+#
+# `runs.player` is a client guid, and a guid is what a keyed lobby authenticates
+# a submit by, so surfd.db -- and every copy of it -- is a credential store.
+# sqlite creates a database 0644 & ~umask and the logging module does the same,
+# and the umask on the Pi is 022: measured 2026-10-05, `-rw-r--r-- data/surfd.db`
+# (700 MB, 35 backups beside it, 9.2 GB) next to a surfd.env that had been
+# chmodded 600 by hand.  Other uids do run on that box (nginx workers as
+# www-data, a --noauth public FileBrowser as `filebrowser` over /srv/nvme/
+# Public), so this is not a single-user argument.
+#
+# WHAT THE LOG CARRIES IS MEASURED, NOT ASSUMED, and it is not a credential
+# today: 0 guid-shaped and 0 digest-shaped tokens in the live surfd.log, because
+# the one warning that prints a digest (web_ext's rec-leaf check) has never
+# fired and the routine lines print node, map and address.  The log is covered by
+# this umask anyway -- a line that starts printing a player would otherwise be a
+# leak nobody decided on -- and so is `data/ksf/<steamid64>.json`, whose FILENAMES
+# are identities (public ones, but a directory listing of them is a list of every
+# player we track).
+#
+# A umask and not a chmod per file, because the files that matter are created by
+# libraries: sqlite's -wal/-shm can appear on the first write, AFTER connect()
+# returns, where no connect()-time chmod can reach them.  _harden_db_files()
+# below is the other half, because a umask cannot fix a database that already
+# exists loose.  Nothing surfd writes is read by another user -- nginx proxies to
+# :8084 rather than aliasing into this tree, and every cron job (sweep, momwatch,
+# momgrab, ksfimport) runs as this same user.
+os.umask(0o077)
+
 # WHERE THE RECORDINGS ARE, AND WHY surfd CAN JUST READ THEM.
 #
 # The five lobbies and surfd are the same machine, so a `.rec` written by
@@ -730,12 +759,57 @@ if not SECRET:
 # Database
 # --------------------------------------------------------------------------
 
+# `runs.player` is the client's guid and a guid IS A CREDENTIAL: whoever holds
+# one can file a time as that player on a keyed lobby (the reason `web_map`
+# deletes the column and publishes a digest of it instead).  sqlite creates the
+# database -- and, in the WAL mode connect() asks for, its `-wal` and `-shm` --
+# with SQLITE_DEFAULT_FILE_PERMISSIONS (0644) masked by the umask, so a default
+# install left all three world-readable.  Measured on the Pi 2026-10-05:
+# `-rw-r--r-- data/surfd.db` sitting beside a 0600 surfd.env and a 0600
+# people.json, i.e. the two files that were hardened by hand and the one that
+# was not.  Other uids do run on that box (nginx workers as www-data, the public
+# FileBrowser as `filebrowser` with --noauth over /srv/nvme/Public), so this is
+# not a "single-user machine" argument.
+#
+# WHY IT RUNS ON EVERY connect(): the WAL pragma below is what creates -wal and
+# -shm, and sqlite unlinks them again when the last connection closes, so a
+# startup-only chmod would harden files that do not exist yet and miss the ones
+# the next request recreates.  The stat first keeps the cost to three stats on a
+# host that is already correct.
+#
+# POSIX ONLY.  On Windows os.chmod moves just the read-only bit and stat always
+# reports 0666 for group/other, so the test would be false and the call would
+# mean nothing -- and test_surfd.py's arm skips there for the same reason.
+_HARDEN_WARNED = set()
+
+
+def _harden_db_files():
+    if os.name != "posix":
+        return
+    for path in (DB_PATH, DB_PATH + "-wal", DB_PATH + "-shm"):
+        try:
+            mode = os.stat(path).st_mode
+            if mode & 0o077:
+                os.chmod(path, mode & ~0o077)
+        except FileNotFoundError:
+            pass          # a sidecar another connection just closed: nothing to do
+        except OSError as exc:
+            if path == DB_PATH:
+                # The database itself is the one that matters, and a chmod that
+                # fails there is a fact an operator needs (a mount, an owner, an
+                # immutable bit) rather than a silence.  Once, not per request.
+                if DB_PATH not in _HARDEN_WARNED:
+                    _HARDEN_WARNED.add(DB_PATH)
+                    log.error("cannot restrict %s to its owner: %s", DB_PATH, exc)
+
+
 def connect():
     conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=5000")
+    _harden_db_files()
     return conn
 
 

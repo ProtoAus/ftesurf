@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-test_surfd.py -- the falsifier for surfd's address derivation and rate limit.
+test_surfd.py -- the falsifier for surfd's address derivation, rate limit and
+the permissions of the files it creates.
 
 Run it anywhere Flask is installed, against a THROWAWAY home directory:
 
@@ -24,6 +25,11 @@ Section 9 holds RATE_MAX to the Pi's real traffic: five lobbies heartbeating
 from one address used to be exactly the per-IP cap.  It plays the same traffic
 against the old cap as a control, for the same reason -- a simulation that
 cannot produce a 429 proves nothing by not producing one.
+
+Section 10 is the credential store's file mode, and it SKIPS OFF WINDOWS with
+a printed line rather than passing there: Windows reports no group/other bits,
+so both the loose control and the hardened claim would be fiction.  Run it on
+the Pi (tools/surfd-deploy.ps1 runs the whole suite there in its stage).
 """
 
 import importlib
@@ -316,6 +322,77 @@ def main():
     refused, _missing = heartbeat_storm(m11, lobby_schedule())
     check("control: the same traffic at the old cap of 60 draws a 429",
           429 in [r[2] for r in refused], True)
+
+    # ---- 10. the database is its owner's alone, and still writable ----------
+    #
+    # `runs.player` is a guid and a guid is a credential, so surfd.db is a
+    # credential store; sqlite creates it 0644 & ~umask and the Pi's umask is
+    # 022.  POSIX ONLY: on Windows os.chmod moves just the read-only bit and
+    # stat reports 0666 for group/other whatever the file really is, so every
+    # check below would be fiction there.
+    if os.name != "posix":
+        print("skip 10. file modes (Windows reports no group/other bits)")
+    else:
+        def mode_of(p):
+            try:
+                return oct(os.stat(p).st_mode & 0o777)
+            except OSError:
+                return "absent"
+
+        m12 = fresh()
+        homes.append(m12._test_home)
+        dbp = m12.DB_PATH
+
+        # THE CONTROL, TAKEN UNDER THE HOST'S OWN UMASK.  Without it this arm
+        # would also pass on a host where nothing was ever loose -- the shape of
+        # a permissions fix that was never shown to do anything.
+        prev = os.umask(0o022)
+        probe = os.path.join(m12._test_home, "under022")
+        with open(probe, "w") as fh:
+            fh.write("x")
+        loose = mode_of(probe)
+        os.remove(probe)
+        os.umask(prev)                     # surfd's own, re-installed
+        check("control: a 022 umask creates that file world-readable",
+              loose, "0o644")
+
+        born = os.path.join(m12._test_home, "under077")
+        with open(born, "w") as fh:
+            fh.write("x")
+        check("the umask surfd installs creates it owner-only instead",
+              mode_of(born), "0o600")
+
+        # An install that PREDATES the fix: the database is already there and
+        # already loose, and a umask cannot reach an existing file -- that is
+        # what connect()'s chmod is for.  The readback before it is what makes
+        # the readback after it mean something.
+        os.chmod(dbp, 0o644)
+        check("control: the database is world-readable before connect()",
+              mode_of(dbp), "0o644")
+
+        conn = m12.connect()
+        check("connect() takes group and other off the database",
+              mode_of(dbp), "0o600")
+
+        # A write is what brings -wal/-shm into existence; sqlite can create
+        # them after connect() has returned, which no connect()-time chmod can
+        # reach and is the reason the umask half above exists.
+        conn.execute("CREATE TABLE IF NOT EXISTS _hardprobe (n INTEGER)")
+        conn.execute("INSERT INTO _hardprobe VALUES (1)")
+        conn.commit()
+        check("...and the -wal a write created is owner-only",
+              mode_of(dbp + "-wal"), "0o600")
+        check("...and the -shm a write created is owner-only",
+              mode_of(dbp + "-shm"), "0o600")
+
+        # THE HALF THAT WOULD HURT.  Restricting a file must not lock its owner
+        # out: a chmod that cleared the owner's write bit would take the board
+        # down on the next submit and read as "the permissions fix broke surfd".
+        check("the owner can still write the hardened database",
+              conn.execute("SELECT COUNT(*) FROM _hardprobe").fetchone()[0], 1)
+        conn.execute("DROP TABLE _hardprobe")
+        conn.commit()
+        conn.close()
 
     for h in homes:
         shutil.rmtree(h, ignore_errors=True)
