@@ -67,9 +67,10 @@ Cloudflare's content-signal preamble and no Disallow.
     a run killed between the two is filed whole by the next tick
   * a board refused STRIKES times is set aside, not the whole crawl with it
   * an empty map library fetches and files nothing: it used to mean "no filter"
-  * WHAT IT CANNOT SEE: a player who enters a board between our first page and
-    our cursor is only picked up by a re-walk; page-1 refreshes catch new
-    records, the cursor catches the tail.  Nothing purges a run deleted upstream.
+  * WHAT IT SEES LATE: a player who enters a board between our first page and
+    our cursor waits for a re-walk, which an idle crawl gives its stalest board
+    every REWALK_DAYS; page-1 refreshes catch new records sooner, the cursor
+    the tail.  Nothing purges a run deleted upstream.
 
 A KSF ROW'S BUILD IS NOT CHECKED, AND "EVER" WAS TOO STRONG.  This paragraph
 said CANNOT BE CHECKED, EVER until 2026-09-29, when `/api/files/<map>.zip`
@@ -158,6 +159,11 @@ CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
 WANT_DAYS = 14             # a map viewed this recently is crawled first
 STRIKES = 3                # parks on one board before it is set aside
+SKIP_DAYS = 30             # how long a board stays set aside
+REWALK_DAYS = 60           # an idle crawl walks its stalest board again this often
+CATALOG_DRY = 3            # list pages in a row with no new map that end a full pass
+CATALOG_FULL_DAYS = 30     # a full list pass this often; between, new maps only
+CATALOG_MAX = 5000         # an offset past this ends a pass whatever the host says
 OWED_MAX = 200             # boards fetched and not filed before a tick only files
 RECOVER_ROWS = 5000        # rows of owed boards one tick files
 WRITE_CHUNK = 500          # rows a transaction
@@ -236,11 +242,12 @@ def read_seed(path):
 
 class Refused(Exception):
     """ksf.surf said no to US.  Reported, never retried, stops the run.
-    `code` is the HTTP status when there was one."""
+    `code` is the HTTP status when there was one; `board` marks a reply only
+    that board's request got (a page that would not parse as one)."""
 
-    def __init__(self, msg, code=0):
+    def __init__(self, msg, code=0, board=False):
         Exception.__init__(self, msg)
-        self.code = code
+        self.code, self.board = code, board
 
 
 class OverBudget(Exception):
@@ -441,8 +448,11 @@ def _ikey(mp, zone, mode):
 
 
 def _state(doc):
-    return [_next(doc) - 1, bool(doc.get("done")), int(doc.get("top") or 0),
-            bool(doc.get("skip"))]
+    """[ranks paged, done, first page's fetch time, set aside, walked to its end at]."""
+    skip = (bool(doc.get("skip"))
+            and time.time() - int(doc.get("skip_at") or 0) < SKIP_DAYS * 86400)
+    return [_next(doc) - 1, bool(doc.get("done")), int(doc.get("top") or 0), skip,
+            int(doc.get("walked") or 0)]
 
 
 def board_state(cache, idx, mp, zone, mode):
@@ -453,7 +463,7 @@ def board_state(cache, idx, mp, zone, mode):
     board_page reads its cursor from."""
     if idx is not None:
         v = idx.get(_ikey(mp, zone, mode))
-        if isinstance(v, list) and len(v) == 4:
+        if isinstance(v, list) and len(v) == 5:
             return v
     v = _state(board_load(cache, mp, zone, mode))
     if idx is not None:
@@ -507,20 +517,28 @@ def board_page(cache, mp, zone, pacer, mode=0, top=False, idx=None):
                      _ikey(mp, zone, mode))
     if not isinstance(page, list):
         raise Refused("a records page was not a list -- their format has "
-                      "probably changed")
+                      "probably changed", board=True)
     page = [r for r in page if isinstance(r, dict)]
     if page and not any(steam64(str(r.get("steamID") or "")) for r in page):
         raise Refused("a records page carried no SteamID -- their format has "
-                      "probably changed")
+                      "probably changed", board=True)
+    # A host answering a start past the end with the last full page would never
+    # let the board end; their ranks say which page it really is.
+    ranks = [r["rank"] for r in page if type(r.get("rank")) is int]
+    if not top and ranks and max(ranks) < start:
+        page = []
     new = merge_page(doc, page)
+    now = int(time.time())
     if start == 1:
-        doc["top"] = int(time.time())
+        doc["top"] = now
     if not top:
         # The cursor is a RANK and moves by the page, never by the players new
         # to us: counting held players stalled a board whose ranks shifted
         # under it (review, 5 Oct: 60 of 60 requests to one URL).
         doc["next"] = start + len(page)
         doc["done"] = len(page) < KSF_PAGE
+        if doc["done"]:
+            doc["walked"] = now
     else:
         doc["next"] = max(_next(doc), 1 + len(page))
         if len(page) < KSF_PAGE:
@@ -528,6 +546,7 @@ def board_page(cache, mp, zone, pacer, mode=0, top=False, idx=None):
         elif new:
             doc["done"] = False          # new players on top: the tail moved too
     doc.pop("skip", None)
+    doc.pop("skip_at", None)
     _save(board_path(cache, mp, zone, mode), doc)
     if idx is not None:
         idx[_ikey(mp, zone, mode)] = _state(doc)
@@ -537,6 +556,30 @@ def board_page(cache, mp, zone, pacer, mode=0, top=False, idx=None):
 def wants_more(state, depth):
     n, done, skip = state[0], state[1], state[3] if len(state) > 3 else False
     return not done and not skip and (depth < 0 or n < depth)
+
+
+def rewalk_step(cache, idx, maps, now):
+    """Send the board walked to its end longest ago back to rank 1, at most one
+    a tick and only from an idle crawl: players who entered between our first
+    page and our cursor are fetched by nothing else."""
+    best = None
+    for key, v in idx.items():
+        if not isinstance(v, list) or len(v) != 5:
+            continue
+        n, done, top, skip, walked = v
+        mp, z, m = key.split("|")
+        if (mp in maps and done and not skip and n >= KSF_PAGE
+                and walked < now - REWALK_DAYS * 86400
+                and (best is None or walked < best[0])):
+            best = (walked, mp, int(z), int(m))
+    if best is None:
+        return None
+    _, mp, z, m = best
+    doc = board_load(cache, mp, z, m)
+    doc["next"], doc["done"] = 1, False
+    _save(board_path(cache, mp, z, m), doc)
+    idx[_ikey(mp, z, m)] = _state(doc)
+    return _ikey(mp, z, m)
 
 
 def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
@@ -650,7 +693,8 @@ def catalog_step(cache, pacer, now):
     if cat["done"] and now - int(cat.get("at") or 0) < CATALOG_DAYS * 86400:
         return cat
     if cat["done"]:
-        cat.update(offset=0, done=False)
+        full = now - int(cat.get("full_at") or 0) >= CATALOG_FULL_DAYS * 86400
+        cat.update(offset=0, done=False, dry=0, full=full)
     seen = set(cat["names"])
     while pacer.left() > 0 and not cat["done"]:
         page = pacer.get("/api/maps/new?offset=%d" % cat["offset"])
@@ -668,8 +712,13 @@ def catalog_step(cache, pacer, now):
                 cat["names"].append(mp)
                 fresh += 1
         cat["offset"] += len(page)
-        if len(page) < KSF_LIST_PAGE or not fresh:
+        cat["dry"] = 0 if fresh else int(cat.get("dry") or 0) + 1
+        full = cat.get("full", True)
+        if (len(page) < KSF_LIST_PAGE or cat["offset"] >= CATALOG_MAX
+                or cat["dry"] >= (CATALOG_DRY if full else 1)):
             cat["done"], cat["at"] = True, now
+            if full:
+                cat["full_at"] = now
         _save(cf, cat)
     return cat
 
@@ -695,9 +744,9 @@ def refresh_step(cache, idx, maps, prio, pacer, budget, now, fetched):
     cut = now - REFRESH_DAYS * 86400
     cands = []
     for key, v in idx.items():
-        if not isinstance(v, list) or len(v) != 4:
+        if not isinstance(v, list) or len(v) != 5:
             continue
-        n, done, top, skip = v
+        n, done, top, skip, _walked = v
         mp, z, m = key.split("|")
         if mp in maps and not skip and (n or done) and top < cut:
             cands.append((0 if mp in prio else 1, -n, top, mp, int(z), int(m)))
@@ -720,7 +769,7 @@ def strike(cache, idx, key, why):
     if st[key] >= STRIKES:
         mp, z, m = key.split("|")
         doc = board_load(cache, mp, int(z), int(m))
-        doc["done"], doc["skip"] = True, why
+        doc["skip"], doc["skip_at"] = why, int(time.time())
         _save(board_path(cache, mp, int(z), int(m)), doc)
         idx[key] = _state(doc)
         del st[key]
@@ -762,12 +811,19 @@ def watch_mode(args, have, cache):
                                          max(1, args.max // 4), now, fetched)
             _, _, left = sweep_maps(sorted(maps), cache, -1, pacer, sorted(KSF_MODES),
                                     prio, fetched, idx)
+            if not left and pacer.left() > 0 and cat["done"]:
+                again = rewalk_step(cache, idx, maps, now)
+                if again:
+                    print("  idle: %s walked again from rank 1" % again)
         except Refused as e:
             n = int(park.get("n") or 0) + 1
             wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
             _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
             print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
-            if e.code and pacer.what:
+            # Only an answer about the board strikes it: a 403/429/503, or no
+            # answer at all, is about the host, and would set aside whichever
+            # board happened to be asked first (review, 5 Oct).
+            if pacer.what and (e.code in (404, 500) or e.board):
                 strike(cache, idx, pacer.what, str(e))
         else:
             # Lifted only by an answer: a tick that asked nothing proves nothing.
@@ -782,16 +838,27 @@ def watch_mode(args, have, cache):
             for mp, z, m, _ in fetched:
                 st.pop(_ikey(mp, z, m), None)
             _save(sf, st)
+    # A board owed by an earlier run is filed WHOLE, fetched again this tick or
+    # not: filing only this tick's page and clearing its marker lost the pages
+    # the earlier run never filed (review, 5 Oct).  The upsert is idempotent.
+    owing = set(owed)
     rows, files = [], []
     for mp, z, m, page in fetched:
-        rows += [r for r in (rec_row(mp, z, m, rec) for rec in page) if r]
-        if (mp, z, m) not in files:
-            files.append((mp, z, m))
-    # Boards an earlier run fetched and never filed, whole: the upsert is
-    # idempotent, and RECOVER_ROWS keeps the transaction short.
+        b = (mp, z, m)
+        if b not in owing:
+            rows += [r for r in (rec_row(mp, z, m, rec) for rec in page) if r]
+        elif b not in files:
+            rows += board_rows(cache, *b)       # every page this tick included
+        if b not in files:
+            files.append(b)
+    # Boards owed and not fetched: whole, RECOVER_ROWS at a time, and never for
+    # a map this install cannot load (a by-hand run may have used other maps).
     recovered = 0
     for b in owed:
         if b in files:
+            continue
+        if b[0] not in have:
+            clear_owed(cache, [b])
             continue
         if len(rows) >= RECOVER_ROWS:
             break
@@ -1076,6 +1143,9 @@ def write_rows(rows):
     a transaction, so the lock is let go between them -- momwatch's "database is
     locked" heartbeats were one long transaction (BACKLOG)."""
     conn = S.connect()
+    # FULL, not surfd's NORMAL: an owed marker is removed once this returns, and
+    # under NORMAL a power cut can roll back a WAL commit that reported success.
+    conn.execute("PRAGMA synchronous=FULL")
     now = int(time.time())
     wrote = 0
     try:

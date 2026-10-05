@@ -54,9 +54,11 @@ class FakeKSF(object):
         self.refuse_after, self.slow = refuse_after, slow
         self.listed = sorted(maps) if listed is None else listed
         self.top = {}
-        self.fail = set()           # boards answered with HTTP 500
+        self.fail = set()           # boards answered with fail_code
+        self.fail_code = 500
         self.mangle = None          # f(rows) -> rows, applied to every page
         self.stuck_list = False     # the map list ignores its offset
+        self.stuck_board = False    # a start past the end gets the last full page
         self.asked = []
 
     def __call__(self, url):
@@ -80,11 +82,13 @@ class FakeKSF(object):
         mode = int(m.group(4))
         key = (mp, zone) if mode == 0 else (mp, zone, mode)
         if (mp, zone, mode) in self.fail:
-            raise K.Refused("HTTP 500", 500)
+            raise K.Refused("HTTP %d" % self.fail_code, self.fail_code)
         extra = self.top.get(key, 0)
         board = ([("STEAM_0:0:%d" % (900 + i), 1.0 + i) for i in range(extra)]
                  + [("STEAM_0:1:%d" % r, 30.0 + zone + mode + r * 0.01 + self.slow)
                     for r in range(1, self.boards.get(key, 0) + 1)])
+        if self.stuck_board and start > len(board):
+            start = max(1, len(board) - K.KSF_PAGE + 1)
         rows = [{"rank": start + i, "name": "p%s" % sid[10:],
                  "steamID": sid, "time": t, "date": 1790000000 + start + i}
                 for i, (sid, t) in enumerate(board[start - 1:start - 1 + K.KSF_PAGE])]
@@ -587,9 +591,9 @@ def case_review_findings():
     fake, cache, mapsdir, names = watch_setup(25, installed=25, prefix="surf_c")
     fake.stuck_list = True
     tick(cache, mapsdir, 6)
-    check("the map list stops at a page with nothing new",
+    check("a list that ignores its offset ends after CATALOG_DRY pages of nothing new",
           [p for p in fake.asked if "/new?" in p],
-          ["/api/maps/new?offset=0", "/api/maps/new?offset=10"])
+          ["/api/maps/new?offset=%d" % o for o in (0, 10, 20, 30)])
 
     # 9. A page with no SteamID is a format change: refused, parked.
     fake, cache, mapsdir, names = watch_setup(1, installed=1, prefix="surf_g")
@@ -608,6 +612,79 @@ def case_review_findings():
     K.board_page(cache, "surf_q", 0, K.Pacer(0, 1), top=True)
     check("a short refreshed page 1 leaves the board done",
           K.board_load(cache, "surf_q", 0)["done"], True)
+
+
+def case_review_round2():
+    # 1. A board still owed is filed WHOLE when the next tick pages it again.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, rows_each=100, prefix="surf_o")
+    real = K.write_rows
+
+    def locked(rows):
+        raise sqlite3.OperationalError("database is locked")
+
+    K.write_rows = locked
+    try:
+        tick(cache, mapsdir, 4)             # the list, then page 1 of three styles
+    finally:
+        K.write_rows = real
+    fake.asked = []
+    tick(cache, mapsdir, 2)                 # Backwards page 1, Forward page 2
+    check("control: the second tick paged the owed Forward board again",
+          ("surf_o00", 0, 21, 0) in pages(fake, modes=True), True)
+    held = len(K.board_load(cache, "surf_o00", 0)["rows"])
+    check("...and filed every row the cache holds for it, not just its new page",
+          (held, ksf_rows("map='surf_o00' AND style='clean'")), (40, 40))
+
+    # 2. A refusal of the whole host strikes nobody; a board's own 500 does.
+    fake, cache, mapsdir, names = watch_setup(2, installed=2, rows_each=5, prefix="surf_x")
+    fake.fail.add(("surf_x00", 0, 0))
+    fake.fail_code = 403
+    for _ in range(K.STRIKES + 1):
+        io.open(os.path.join(cache, ".refused"), "w").write(json.dumps({"until": 0, "n": 0}))
+        tick(cache, mapsdir, 20)
+    check("a 403 for everything sets no board aside",
+          bool(K.board_load(cache, "surf_x00", 0).get("skip")), False)
+    fake.fail_code = 500
+    for _ in range(K.STRIKES):
+        io.open(os.path.join(cache, ".refused"), "w").write(json.dumps({"until": 0, "n": 0}))
+        tick(cache, mapsdir, 20)
+    doc = K.board_load(cache, "surf_x00", 0)
+    check("...where the board's own 500, STRIKES times, does", bool(doc.get("skip")), True)
+    check("...and it comes back after SKIP_DAYS",
+          (K._state(doc)[3], K._state(dict(doc, skip_at=1))[3]), (True, False))
+
+    # 3. Recovery files nothing for a map this install cannot load.
+    fake, cache, mapsdir, names = watch_setup(2, installed=1, rows_each=5, prefix="surf_w9")
+    K.mark_owed(cache, "surf_w901", 0, 0)
+    os.makedirs(os.path.join(cache, "boards", "surf_w901"))
+    io.open(K.board_path(cache, "surf_w901", 0), "w").write(json.dumps(
+        {"rows": [{"steamID": "STEAM_0:1:7", "time": 30.5, "name": "n", "date": 1}],
+         "done": True}))
+    tick(cache, mapsdir, 0)
+    check("an owed board of a map not installed is dropped, not filed",
+          (ksf_rows("map='surf_w901'"), K.owed_boards(cache)), (0, []))
+
+    # 4. A host that answers past the end with the last page cannot keep a
+    #    board open: the ranks say which page it is.
+    fake = FakeKSF({"surf_z": FLAT}, {("surf_z", 0): 40})   # ends on a full page
+    fake.stuck_board = True
+    K.fetch = fake
+    cache = fresh_cache()
+    K.sweep_maps(["surf_z"], cache, -1, K.Pacer(0, 20))
+    check("a past-the-end start that gets the last page still ends the board",
+          (len(pages(fake)), K.board_load(cache, "surf_z", 0)["done"]), (3, True))
+
+    # 5. An idle crawl walks its stalest finished board again from rank 1.
+    fake, cache, mapsdir, names = watch_setup(1, installed=1, rows_each=30, prefix="surf_r")
+    tick(cache, mapsdir, 50)
+    fake.asked = []
+    idx = json.load(io.open(os.path.join(cache, "index.json"), encoding="utf-8"))
+    idx["surf_r00|0|0"][4] = 1              # walked to its end long ago
+    io.open(os.path.join(cache, "index.json"), "w").write(json.dumps(idx))
+    tick(cache, mapsdir, 5)
+    tick(cache, mapsdir, 5)
+    check("the stalest board is walked again, from rank 1",
+          [p[2] for p in pages(fake, modes=True) if p[3] == 0][:2], [1, 21])
 
 
 def case_board_reads_ksf_styles():
@@ -658,7 +735,8 @@ def main():
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_watch_dry_and_owed,
-                 case_review_findings, case_board_reads_ksf_styles):
+                 case_review_findings, case_review_round2,
+                 case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d failed" % len(FAILED))
