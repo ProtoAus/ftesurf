@@ -59,44 +59,37 @@ Two things this measurement turned up that need a DECISION, not code:
   `game/ftesurf/data/momentum.pre-mtv-20261004-093119` (1.4 GB) are still wanted.
   Every deploy prints the figures at step 7.
 
-## surf_voyager: our brush traces are not Source's — 2026-10-05
+## surf_voyager: Source's brush test -- engine Patch 492, 2026-10-05
 
-Reported by Lex: the auto-surf map falls short here and flies in Momentum/CS:S.
-Measured against his own Momentum run, `data/momentum/surf_voyager/main/
-0004418_proto-2da02252_run.rec` (66.27 s, per-tick position and velocity at %.2f).
+Reported by Lex: the auto-surf map fell short here and flies in Momentum/CS:S.
+Engine Patch 492 (with its review round) puts Source's brush test and current
+Momentum's slide-bug rule behind `pm_fixrampbugs 2`, which default.cfg now sets.
+Against his Momentum run (`data/momentum/surf_voyager/main/0004418_proto-
+2da02252_run.rec`, 66.27 s, %.2f per tick) the game now finishes in 1:06.270,
+the same 4418 ticks, with every tick to 11.64 s equal (ENGINE_PATCHES.md, 492).
 
-- **Two rules differ in `BIH_ClipBoxToBrush`** (engine `common/com_bih.c:973`).
-  It decides a hit on the TRUE fractions `d1/(d1-d2)` and only pulls the reported
-  fraction back by DIST_EPSILON; Source (and Quake 2) decide on the adjusted ones
-  -- `(d1-eps)` to enter, `(d1+eps)` to leave, strict `<` across brushes. And its
-  early-out is Quake 2's `d1 > 0 && d2 >= d1` where Source's is `d1 > 0 && d2 > 0`,
-  so a box moving parallel to a face within 1/32 re-hits it at fraction 0 and the
-  ramp fix nudges it 0.2 off.
-- **Today:** at the first seam (t 0.54) Momentum clips the old face's gravity
-  part and then the new face -- hand-computed from the BSP's own planes it gives
-  Momentum's (-190.28, -710.33) to the printed digit -- and ours clips only the new
-  face (+0.04/+0.18 u/s). The ramp's end loses a contact tick (5.6 u/s). ~156 units
-  off at the curved wall (10 s), which then costs 25% (2,050 -> 1,545 u/s) where
-  Momentum loses 7%, and the run resets at 11.5 s.
-- **With both rules** (debug build, `pm_dispprobe 7`): every tick from 1 s to
-  11.5 s within 0.006 u/s of the recording, the curved ramp and the faceted wall
-  included.
-- **Left:** t 11.505, a symmetric V trough. Momentum ends the tick on the crease
-  (vy 0.00); ours re-hits the left face at fraction 0 on bump 2, takes the ramp-fix
-  nudge and ends vy -1.20. The gap sits at DIST_EPSILON inside float32's 0.001 at
-  x ~ 8700 -- rounding, not a rule. The test build then drops at ~17 s.
-- **Shipping the rules** changes collision on every map: a `pmsrcver` bump (a
-  recording pins its physics), old files verified under the old rule, review
-  rounds, a client release and the Pi's binaries. Lex's decision.
-- **The randomized start** (`run_startjitter`, 2 u) moved the pocket release by
-  3.8 u/s in one of two runs and lost the line by 3 s. An auto map wants it off.
-- **Hand-off:** engine branch `voyager-exp` (local, in the `C:\tmp\ftevoy`
-  worktree of the engine repo): `pm_dispprobe 5` dumps every tick (`TD1`/`TB1` =
-  the real player move; other tags are other callers), 6 = Quake 2's epsilon rule,
-  7 = 6 plus Source's early-out. Drive it with `cl_nopred 1`, `run_startjitter 0`
-  and `+back` released before the drop (held into the air it adds 15 u/s off the
-  pocket's 45-degree wall). Console samples arrive in bursts; match states, not
-  times. The BSP's lumps are LZMA-compressed.
+- **Left: the V trough at t 11.655.** Ours (-2675.63, 0.98, -2682.72) against
+  (-2676.22, 0.19, -2682.12); 0.6-0.8 u/s, then contacts land a tick apart and
+  positions drift to ~5 units by the finish. Not a rule this patch can name yet.
+- **Times across the switch are not marked.** A run set before the deploy ran
+  0.8.7's rules and ranks beside runs on Source's; nothing on a board row says
+  which (the `runs` key has no ruleset column), and a Multi-Session run that
+  spans the switch restates its pin per session and ranks as one run. There are
+  no players yet, so this wants a policy more than code: wipe or mark the
+  pre-492 times, or add a ruleset epoch to board rows. Lex's call.
+- **SL_RowGrounded** (sv_saveloc.qc) uses QC `tracebox`, which keeps the Quake 2
+  test while the mover uses Source's; both probe 1 unit down, so they can differ
+  only at brush ties and edges (a player gains at most ~1 unit).
+- **Bumps:** `pm_bumpcount 8` is Momentum 0.8.7's `sv_ramp_bumpcount`; 0.10's
+  `mom_mv_bumpcount` default is not readable from server.dll's strings. Typing
+  `mom_mv_bumpcount` in Momentum's console would settle it.
+- **Generated edge bevels:** voyager compiled without them and `hl2_brushbevels 1`
+  adds 13,802 planes; Source traces the brushes as compiled. The match to 11.64 s
+  says they did not matter there; another map could differ on them.
+- **Tools:** engine worktree `C:\tmp\ftevoy` (branch `p492-test`) carries the
+  per-tick dump (`pm_dispprobe 5`); a flight is `+back` for 600 ms from
+  `zone_goto 0` with `run_startjitter 0`, and the recording's rows compare
+  directly with the Momentum file's (17 fields, t x y z vx vy vz ...).
 
 ## The player pages: what they left — 2026-10-05
 
@@ -696,13 +689,19 @@ below is the collection side and the rules that still only note.
   before `sl_holdoff` -- a rewind countdown's release included, which a
   modified client times -- is cashed out on top of the handed-back speed. That
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
-- **PATCH 455 IS NOT MERGED, AND AGENTS.md TALKS AS IF IT WERE.** Its ten review
-  rounds live on the local branch `p455fix` (44b313b, worktree C:/tmp/p455fix);
-  neither a4cfe09 nor 44b313b is an ancestor of HEAD at 2026-10-03. AGENTS.md's
-  "LATENCY BOUND" paragraph and the gate fixes it describes are not in the
-  shipped Patch 454 block (sv_timer.qc, the finish forgiveness): the carrier
-  term, the vertical carrier and the `.maxspeed` cap are all still the 454
-  versions. Merge or retire it -- Lex's call, since it was another session's.
+- **PATCH 455 IS NOT MERGED, AND AGENTS.md TALKS AS IF IT WERE.** Rebased onto
+  e7b6562 on 5 Oct as one commit, branch `p455rebase` (50affaa) on origin; the
+  ten rounds are tag `archive/p455fix-r10`. AGENTS.md's "LATENCY BOUND"
+  paragraph and the gate fixes it describes are not in the shipped Patch 454
+  block: the carrier term, the vertical carrier and the `.maxspeed` cap are all
+  still 454's, and 454's check sits inside `if (!e.run_t_startok)`, so it never
+  fires on bhop maps. NOT READY TO MERGE: 44b313b's own message ends "the dwell
+  does not close the bank it was built for, which is round 11", and no round 11
+  exists; the rebase's reading (not driven) is that a write made inside the
+  packet that grants the forgiveness has no wait at all. Lex's call: finish
+  round 11, or cut the patch to round 1's fixes (right field, the mover's cap,
+  the check out of the start block, refuse held or rising bodies) and review
+  that.
 - **Patch 454's carrier term reads `run_basevelocity`, which is always zero there.**
   The finish forgiveness adds `e.run_basevelocity` to `.velocity` to judge "no
   prespeed to launder", but the engine zeroes that field at the top of every move
