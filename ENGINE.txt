@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   af6610e7e2b34d21f8609766b8ce39c3fc5f0d69
+commit   5bd4ac850b77b17c9b5d280d7de5310607a273fc
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,36 @@ commit   af6610e7e2b34d21f8609766b8ce39c3fc5f0d69
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    490
+patch    491
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-04
+
+# PATCH 491: a remote server may no longer turn a connected client into a cluster
+# master.  This was the LAST UNARMED item in the client-security audit, and arming it
+# DISPROVED the audit's own note that the route "needs a local/listen server first".
+# `mapcluster`, `ssv` and `ssv_all` are registered by SV_InitOperatorCommands with no
+# restriction level, and a CLIENT runs that too because it can host -- so a remote
+# server's stufftext reached MSV_MapCluster_Setup, whose first unconditional act is
+# CL_Disconnect(NULL), after which the victim's process became a cluster master with a
+# landing map of the server's choosing, and the subserver fork that follows is
+# CreateProcessW.  Measured: the victim was dropped (server-side `Client "Proto"
+# removed`) on a plain client that had only ever connected to somebody else's server.
+# THE GATE SITS IN MSV_MapCluster_Setup AND NOT IN THE COMMAND HANDLER, because the
+# function has TWO command legs and gating one is not gating the command (Patch 485):
+# the other is SV_Map_f's auto-offload, which a server reaches in two steps since
+# `sv_autooffload` is a plain CVARD with no CVAR_NOTFROMSERVER.  Naming Cmd_Argv(0)
+# makes the coverage observable -- the gate prints `mapcluster` on one leg and `map` on
+# the other.  `ssv`/`ssv_all` are deliberately NOT gated: the write path is inert
+# without a cluster and the no-argument listing prints only to the victim's own
+# console, so it stays available as a harmless reachability probe.  Driven over a
+# matched pair differing only in sv_cluster.c, four runs (two legs x control/subject),
+# 4 predictions each, all met on all four.  Client-affecting but SERVER-side code; no
+# QC and no cfg depends on it, so no lobby deploy is implied.  Arm is private
+# (poc/p491/).
 
 # PATCH 489: `allskins` no longer copies a server-supplied string past the end of its
 # buffer.  `Skin_AllSkins_f` was a bare `strcpy (allskins, Cmd_Argv(1))` into
@@ -1766,6 +1789,16 @@ date     2026-10-04
 #        files were renumbered 485 -> 486 before anything shipped.  Two
 #        collisions in two patches, both found by reading ENGINE_PATCHES.md's
 #        headings BEFORE claiming.
+#   491  engine/server/sv_cluster.c.  A remote server could drop a connected client
+#        and re-purpose its process into a cluster master: `mapcluster` (and
+#        `SV_Map_f`'s auto-offload, reached by setting `sv_autooffload` then stuffing
+#        a two-argument `map`) had no restriction level, and a client registers those
+#        commands too because it can host.  Now refused at the top of
+#        MSV_MapCluster_Setup, before CL_Disconnect -- at the choke point rather than
+#        in the handler, so both legs are covered and the gate names whichever command
+#        arrived.  The audit's note that this "needs a local/listen server first" was
+#        wrong, and arming the item is what showed it.  Arm:
+#        C:/FTESurf-private/poc/p491/ (private).
 #   489  engine/client/skin.c.  A bare `strcpy` of a server-supplied argument into
 #        `char allskins[128]`, with the skin cache declared immediately after it, so
 #        a stuffed 300-character name wrote 172 bytes past a global.  Now

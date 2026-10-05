@@ -330,6 +330,18 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   own done marker. And `stuffcmd` REFUSES A `;` ("You're not allowed to stuffcmd
   that", `sv_ccmds.c`), so a server admin cannot stuff a multi-command alias body;
   the filter is in the console command, not in the wire path.
+- **A SERVER-SET CVAR'S READBACK PRINTS THREE LINES AND THE FIRST ONE LIES.**
+  `stuffcmd * set foo 1` makes the client `Cvar_LockFromServer` the cvar, so a later
+  readback prints `"foo" is "0"` / `Effective value is "1"` / `Default: "0"` -- the
+  LATCHED pre-override string first and the value `.ival` actually holds second. This is
+  the same split AGENTS.md already records for string mirrors, appearing in the ENGINE'S
+  OWN cvar readback. It cost a precondition control: an arm matching the first line
+  reported a precondition that HAD held as one that had not, and the leg it was
+  guarding had in fact fired (`Operating in databaseless mode` was in the log). Match
+  `Effective value is`, not `is`, and derive the pattern against the real bytes with
+  `repr()` rather than guessing at adjacency -- every log line carries a
+  `YYYY-MM-DD HH:MM:SS ` prefix, so a pattern expecting two lines to touch can never
+  match. A NOT-REACHED grade is what stopped that from being read as a passing verdict.
 - **AN ARM WHOSE OBSERVABLE IS PRODUCED DOWNSTREAM OF THE THING IT MEASURES CANNOT
   DISTINGUISH A FIX FROM NO FIX.** `p482c` graded `allskins` by the skin-loader line,
   and `qwskin_t::name[64]` truncates that name to 63 characters -- so a bounded copy
@@ -642,10 +654,12 @@ bannered as superseded.)
 **A SECOND PRIVATE DOCUMENT SITS BESIDE THE PLAN: `ENGINE_SECURITY.md`**, the
 audit of what a server can make a CLIENT do — the engine's stufftext surface,
 which is the other half of the anti-cheat argument (a client that can be made to
-run things cannot be trusted to report honestly). Eleven of its items are now
-DRIVEN and FIXED (481's `fs_*` set, then items 4/7/8 by Patch 483, 5/6/9 by 485,
-item 1 by 487, item 2 by 488 and item 3 by 489). **ITEM 10
-(`fs_game`/`fs_restart` from the console) IS THE ONLY ONE LEFT, AND IT IS UNARMED.** THE TWO HEADLINE ITEMS WERE THE ONES THAT DEFEATED ALL THE OTHERS: one
+run things cannot be trusted to report honestly). **EVERY DRIVEN ITEM IN IT IS NOW
+FIXED** (481's `fs_*` set, then items 4/7/8 by Patch 483, 5/6/9 by 485, item 1 by
+487, item 2 by 488, item 3 by 489 and item 10 by 491). What is left is the audit's
+LOWER-VALUE list -- a census of read-only `fs_*` commands, never armed, and Patch
+485's sweep is the reason not to assume that list is harmless: `fs_indexmaps` looked
+read-only and was writing and mounting. THE TWO HEADLINE ITEMS WERE THE ONES THAT DEFEATED ALL THE OTHERS: one
 stuffed `alias f_newmap "<anything>"` ran its body at `RESTRICT_LOCAL`, so every
 `Cmd_IsInsecure()` gate read 29 for it and 481 was a delivery-path fix rather than
 a boundary (Patch 487 closed it by running a trigger alias at the alias's OWN
@@ -657,10 +671,14 @@ because a bare name also reaches LoadLibrary through the search order); and `all
 was a bare `strcpy` of a server-supplied argument into `char allskins[128]`, which a
 canary build measured writing 172 bytes past it (Patch 489 fixed it with the BOUND and
 not a gate, because forcing skins is a legitimate server feature that must stay
-server-reachable). What is safe to say here is in BACKLOG.md's
+server-reachable); and item 10 let a remote server DROP a connected client and
+re-purpose its process into a cluster master, because `mapcluster` had no restriction
+level and a client registers those commands too -- the audit's own note that the route
+"needs a local/listen server first" was wrong, and arming it is what showed that
+(Patch 491). What is safe to say here is in BACKLOG.md's
 "Engine client-security audit" section — code site, impact class, falsifier, no
 recipe. The arms are in `poc/p482/cfg/`, `poc/p483/`, `poc/p485/`, `poc/p487/`
-`poc/p488/` and `poc/p489/` there and stay there: they are working
+`poc/p488/`, `poc/p489/` and `poc/p491/` there and stay there: they are working
 exploits for holes that are still open, and the convention is that an arm ships
 publicly WITH its fix, not before it.
 

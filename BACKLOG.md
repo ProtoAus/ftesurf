@@ -1389,13 +1389,16 @@ is that an arm ships publicly with its fix, not before it. Copy them in from
 
 FIXED AND DRIVEN since that paragraph was written: items **4, 7, 8** (Patch 483),
 **5, 6, 9** (Patch 485), **1** (Patch 487, `poc/p487/`), **2** (Patch 488,
-`poc/p488/`) and **3** (Patch 489, `poc/p489/`). Item 1 was the one that defeated all
-the others -- a server-planted `f_newmap` alias ran its body at `RESTRICT_LOCAL`, so
-every `Cmd_IsInsecure()` gate read 29 for it; item 2 was the last route to arbitrary
-native code execution, a server naming the DLL the renderer loads; item 3 was the last
-unbounded copy of a server-supplied string, and its canary build measured the write
-reaching 172 bytes past a 128-byte global. STILL OPEN: item **10**
-(`fs_game`/`fs_restart` from the console), which is the only unarmed one left.
+`poc/p488/`), **3** (Patch 489, `poc/p489/`) and **10** (Patch 491, `poc/p491/`).
+Item 1 was the one that defeated all the others -- a server-planted `f_newmap` alias
+ran its body at `RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate read 29 for it;
+item 2 was the last route to arbitrary native code execution, a server naming the DLL
+the renderer loads; item 3 was the last unbounded copy of a server-supplied string,
+and its canary build measured the write reaching 172 bytes past a 128-byte global;
+item 10 was the last unarmed one, and arming it DISPROVED the audit's own note that
+the route "needs a local/listen server first" -- a plain connected client was enough.
+**EVERY DRIVEN ITEM IN THAT AUDIT IS NOW FIXED.** What is left is the lower-value list
+that was never armed (see the bullet below it), and item 10's own residual.
 
 - **`TP_ExecTrigger`'s multi-command branch is fixed but never DRIVEN, and the reason
   is a server-side filter that a real attacker does not have to obey.** Patch 487 sets
@@ -1491,10 +1494,36 @@ reaching 172 bytes past a 128-byte global. STILL OPEN: item **10**
   `vid_renderer`, and `vid_renderer` at boot names a DLL to load. Plausible, and
   **not demonstrated end to end** — no arm here chains them. Worth deciding whether
   the renderer fix or the config fix closes it, rather than assuming one does.
+- **`MSV_MapCluster_Setup`'s subserver FORK is refused now but never demonstrated, and
+  the refusal is the only thing standing between a remote server and `CreateProcessW`.**
+  Patch 491 gates the top of the function, so both command legs (`mapcluster`, and
+  `SV_Map_f`'s auto-offload reached via a server-set `sv_autooffload` plus a stuffed
+  two-argument `map`) are refused before `CL_Disconnect`. What the arm measured is that
+  the victim was no longer dropped and no longer re-purposed into a cluster master --
+  NOT that it can no longer spawn a child process, because the fork is several
+  statements past the gate and no arm reaches it. `server/sv_cluster.c`
+  `MSV_MapCluster_Setup`; `server/sys_win_threads.c` `Sys_ForkData` -> `CreateProcessW`.
+  Falsifier: get past the gate by a route that is not a stuffed command -- a local
+  console `mapcluster` with `sv_autooffload 1` set locally, which is `RESTRICT_LOCAL`
+  and must still work -- and confirm a subserver process really appears; then confirm
+  the same route stuffed from a server is refused. If a future patch ever needs the
+  fork reachable from a server, the gate has to move to the fork itself rather than to
+  Setup's entry, because Setup is also the legitimate single-player offload path.
+  Also worth knowing for any future arm here: a server-set cvar's readback prints
+  THREE lines and the first one is the LATCHED pre-override string
+  (`"sv_autooffload" is "0"` / `Effective value is "1"` / `Default: "0"`), so a
+  precondition control that matches the first line reports a held precondition as an
+  unheld one. Patch 491 review.
 - Items 4, 5, 6, 9 and 10 of the audit (`fs_changegame`'s early returns, `gamedir`,
   `fs_restart`, `mapfrom`'s prefer-hint leg, `ssv`/`mapcluster`'s `CreateProcessW`)
-  are **traced in the source but not driven**, as is the sweep's lower-value list.
-  They are in the private doc; none has an arm, so none has a verdict.
+  were **traced in the source but not driven** when that line was written. All five
+  have since been driven and fixed (483, 485, 491); what remains unarmed is the
+  audit's LOWER-VALUE list -- `fs_cache_clear`, `fs_loadlist`, `fs_whereis`,
+  `fs_filenamelist`, `fs_whichpack`, `fs_dumppathconfig`, `fs_paksettings`,
+  `fs_loadpaks`, `fs_dumpcfg`, `fs_filedigest`, `fs_manifests` -- which is a census
+  of read-only `fs_*` commands rather than a set of findings. None has an arm, so none
+  has a verdict, and Patch 485's sweep is the reason not to assume that list is
+  harmless: `fs_indexmaps` looked read-only and was writing and mounting.
 
 ## Performance
 
