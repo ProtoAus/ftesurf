@@ -2035,6 +2035,17 @@ script rather than passing it as an argument, where `ps` would show it.
   (n=12) against cross-identity max 0.2146 (n=8).  Two independent derivations
   agreeing is the strongest evidence it has.
 
+  `d42165e` to /srv/nvme/surfd at 2026-10-05 04:46 UTC -- momboards' link_demos
+  fix (a symmetric LINK_SLACK_MS bound: a superseded slower demo can never again
+  become a faster row's watch link) AND the cf6cd12 momgrab/momwatch/momindex/
+  ksfimport batch that had sat undeployed since e11084c (momwatch's change is
+  itself a logging fix -- a handler on surfd's logger so the per-tick import
+  stops reading as a restart).  Nine suites green in the stage including the new
+  `test_momboards` (9 checks), all 54 files hash-matched the commit, master
+  2479950 unchanged (SIGHUP to the pid, never the unit), `surfd ready` 04:46:46,
+  `/health {"ok":true,"lobbies":12}`, 2 processes.  Backups
+  `*.pred42165e-20261005-154500` and `data/surfd.db.bak-d42165e-20261005-154500`.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
