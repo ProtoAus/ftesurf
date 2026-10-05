@@ -693,12 +693,18 @@ below is the collection side and the rules that still only note.
   stage handover carries the taint; a box entered from outside still clears
   it. Fix (Patch 479): hand `noclip` to the engine's gate (clientcommand), and
   tag noclip let go of faster than a walk as a fast idle load is; AGENTS.md's
-  harness note ("each noclip is processed twice") changes with it. Also:
-  noclip lifts the replay pin's MOVETYPE_NONE (SV_WatchFrame zeroes only the
-  velocity), so a body can creep through a stage with the clock frozen and
-  `rec_watch 0` before the boundary -- a stage time short of the creep posts
-  clean (Patch 477 round-25 integrity review, PLAUSIBLE: gaps need momentum).
-  Refuse `noclip` under a pin or hold, or have SV_WatchFrame re-impose NONE.
+  harness note ("each noclip is processed twice") changes with it.
+  THE PIN HALF IS CLOSED (Patch 499): SV_WatchHoldMove re-imposes MOVETYPE_NONE
+  from both thinks, so a pinned body cannot be left in noclip and SV_NoclipWatch
+  cannot mark a frozen, recording run cheated (measured both ways,
+  cfg/test/p477rewind.cfg R28A/R28B: `noclip 1` and `class: cheated` on the
+  control build, `noclip 0` on the fixed one).
+  WHAT THE 477 REVIEW FEARED BESIDE IT DID NOT REPRODUCE: "a body can creep
+  through a stage with the clock frozen" -- measured 0.0 u over 900 ms of
+  `+forward` with noclip ON, because the client sends an EMPTY usercmd while
+  browsing (cl_main.qc's `rw_on && !rw_cd` branch) and SV_WatchFrame zeroes the
+  velocity every packet. The exposure was the taint, not the distance. What is
+  left here is the gate itself.
 - **A ghost skips cancel zones on a running run** (pre-existing; Patch 478 round-2
   integrity review, code-read). SV_TimerFrame's ghost branch returns before the
   zone scan, so a body coasting unattended through a cancel zone keeps its run;
@@ -869,9 +875,6 @@ below is the collection side and the rules that still only note.
   device 0) -- its next press in the rewind is swallowed once, and a chat
   bind's reads as a repeat and opens the engine's prompt (PLAUSIBLE, not tried
   on hardware).
-- **A resume's row outlives a `retry` or a map change**: `rw_goid` lives on the
-  edict, so "the next resume replaces it" is false across either, and the row stays
-  in the list as an ordinary (demoted, rewound) save. Patch 477 round-9 review.
 - **A demoted save no longer restores its HUD Segments column** (Patch 477 round
   9's trade-off): a demoted row's load reads no snapshot or seq.txt, because a
   rewind row's reused id made either another save's. A keep-window demote's file
@@ -1857,7 +1860,15 @@ that was never armed (see the bullet below it), and item 10's own residual.
   zone latches per sample, or the .rec be cut at a line index found by tick. (2)
   Rewind inside a replay or a Momentum demo ("continue from any point" of someone
   else's run): a save built from a client-supplied state, which must be practice
-  by construction and raise the hopped tag whatever its speed.
+  by construction and raise the hopped tag whatever its speed. (3) `rec_watch` is
+  the one WRITE command in this family that is not behind `SV_SaveLocRate` (the
+  dispatcher charges every `sl_` stringcmd, 20/s, and this one does not start with
+  `sl_`), so a client can pin and void at packet rate. Low harm as it stands --
+  a void ends the run, so the cost is self-inflicted, and `SV_ViewEyeAt` reuses
+  the eye entity rather than spawning one -- but it is an uncharged write and the
+  rate exists for a reason. Falsifier: a client sending `cmd rec_watch 1 rw <n>
+  <t>` / `cmd rec_watch 0 void` in a loop keeps a run ending and re-pinning with
+  no "too many" refusal, where the same loop of `cmd sl_save` is refused.
 - **A MAP THAT DISAGREES WITH THE SERVER AT THE SAME SIZE IS STILL A KICK, AND
   NOTHING CLIENT-SIDE CAN SEE IT.** `ui_prejoin` (build 89) fetches the server's
   build before connecting when the map is missing or its size differs, which is

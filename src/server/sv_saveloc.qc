@@ -3057,6 +3057,21 @@ float  rw_pit, rw_yaw, rw_dk, rw_t;
 void(entity e) SV_RewindReset =
 {
 	e.rw_n = e.rw_head = e.rw_last = e.rw_st = 0;
+	/*
+	  Patch 499: AND THE RESUME ROW'S POINTER, which used to outlive the run
+	  that wrote it.  SV_RewindReset is the documented wipe, and it runs at a
+	  run START as well as at ClientDisconnect (SV_RewindSample's state edge) --
+	  the pointer was cleared in the disconnect only, which AGENTS.md already
+	  calls the wrong place for a map change.  So a `retry` left `rw_goid`
+	  pointing at a row whose run was gone, and the next ENTER's `go` DELETED
+	  that row instead of making a new one: a save the player had, gone because
+	  they restarted.  Clearing the pointer rather than the row keeps the save --
+	  it is a real position and speed the player can load or delete -- and only
+	  gives up the "the next resume replaces it" claim, which is a property of
+	  the run that made it.
+	*/
+	e.rw_goid = 0;
+	e.rw_goseq = 0;
 };
 
 // Per packet, after the timer.  A new run, or a clock that went back (a load),
@@ -4080,6 +4095,50 @@ void(entity e) SV_WatchFrame =
 		return;
 	e.velocity = '0 0 0';
 	SV_ClearCarrier(e);
+};
+
+/*
+  Patch 499: THE PIN OWNS THE MOVETYPE, AND SV_WatchHold ONCE WAS THE ONLY
+  PLACE THAT SAID SO.
+
+  SV_WatchHold writes MOVETYPE_NONE at the press and SV_WatchRelease hands the
+  stored one back; between the two, nothing held it.  SV_WatchFrame above
+  re-asserts the velocity and the carrier every packet but not the movetype, so
+  one `cmd noclip` left a PINNED body in MOVETYPE_NOCLIP for the rest of the pin.
+  The engine's SV_Noclip_f answers that command (this mod's own branch is dead on
+  every build, as its comment says) and needs only SV_MayCheat, and
+  SV_NoclipWatch is a LEVEL check in PlayerPostThink -- so a frozen run that was
+  still recording read `noclip 1` and `class: cheated`, which under a REPLAY's
+  pin (it keeps its run through warps and thaws on release, Patch 477) survives
+  into the run the player goes on to finish.  Measured both ways,
+  cfg/test/p477rewind.cfg R28A/B: the control build reads `noclip 1` and
+  `class: cheated (seg 0 cheat 1 cheatlatch 1)`, the fixed one `noclip 0`.
+  WHAT IT IS NOT: the body does not travel.  The same arm measures 0.0 u over
+  900 ms of `+forward` with noclip on, because the client sends an EMPTY usercmd
+  while browsing (cl_main.qc's `rw_on` branch) and SV_WatchFrame zeroes the
+  velocity every packet.  The exposure is the state and the taint, not a flight.
+
+  The save-lock hold has no such hole and the reason is the one worth copying:
+  SV_SaveLocHoldFrame RE-PLACES a body that drifted.  The pin deliberately does
+  not re-place -- a teleport under it is the rewind's own business and
+  re-placing would fight it -- so the movetype is what has to be held.
+
+  Called from BOTH thinks, and the two are not redundant:
+    PlayerPreThink  -- per USERCMD and ahead of the mover, so no command is ever
+                       moved with a movetype the pin did not choose (with
+                       cl_c2spps several commands share a packet, which is why
+                       per-packet is not enough here);
+    PlayerPostThink -- ahead of SV_NoclipWatch, for a packet that carries the
+                       stringcmd and no usercmd at all (this client always sends
+                       one, empty under the mode: cl_main.qc's `rw_on` branch).
+  One spelling in one function so the two call sites cannot drift.
+*/
+void(entity e) SV_WatchHoldMove =
+{
+	if (!e.rec_wt_hold)
+		return;
+	if (e.movetype != MOVETYPE_NONE)
+		e.movetype = MOVETYPE_NONE;
 };
 
 // Patch 477: `rec_watch 0 void` -- the rewind's way out when no resume was

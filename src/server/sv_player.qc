@@ -334,8 +334,11 @@ void() ClientDisconnect =
 
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
 	SV_SpecRelease(self, "drop");
-	SV_RewindReset(self);           // Patch 477: the next player here starts empty
-	self.rw_goid = 0;               // ...and replaces none of this one's rows
+	SV_RewindReset(self);           // Patch 477: the next player here starts empty,
+	                                // Patch 499: and replaces none of this one's rows
+	                                // (rw_goid moved inside the wipe, which a run
+	                                // start also reaches -- a `retry` used to leave
+	                                // the pointer on a row whose run was gone)
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
@@ -432,6 +435,12 @@ void() PlayerPreThink =
 		                            // strip latched into a hold would outlive it
 		return;
 	}
+
+	// Patch 499: the pin owns the movetype -- per usercmd and ahead of the mover,
+	// so no command is moved with a movetype the pin did not choose.  Essay at
+	// SV_WatchHoldMove (sv_saveloc.qc); the second call site is PlayerPostThink's,
+	// ahead of SV_NoclipWatch.
+	SV_WatchHoldMove(self);
 
 	// BUILD 87 (v9): what the PREVIOUS move changed (pin, physents, portals),
 	// written before this command's `ride` and `in` rows.  See SV_RecState.
@@ -692,6 +701,7 @@ void() PlayerPostThink =
 
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
 
+	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
 	SV_NoclipWatch(self);
 
 	/*
@@ -838,6 +848,19 @@ void(string cmd) SV_ParseClientCommand =
 
 	if (c == "noclip")
 	{
+		// Patch 499: refused under the replay/rewind pin, which owns the
+		// movetype until it lets go (SV_WatchHoldMove).  DEAD for `cmd noclip`
+		// on every build, exactly as the note above this branch says -- the
+		// engine's own SV_Noclip_f answers it -- so the half that does the work
+		// is the re-imposition in the two thinks.  Kept for the client that
+		// reaches it, and there the pin must still refuse rather than fly.
+		if (self.rec_wt_hold)
+		{
+			self.movetype = MOVETYPE_NONE;
+			sprint(self, PRINT_HIGH,
+			       "^3rewind: noclip does nothing while a replay or the rewind holds you\n");
+			return;
+		}
 		if (self.movetype == MOVETYPE_NOCLIP)
 		{
 			self.movetype = MOVETYPE_WALK;

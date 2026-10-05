@@ -28,7 +28,7 @@ STAMP = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")
 SECTIONS = ("R1", "R2", "R3", "R4", "R4C", "R4B", "R5", "R5B", "R5C", "R6", "R7", "R8", "R9",
             "R10", "R11", "R12", "R13", "R13B", "R22A", "R22C", "R14", "R15", "R16", "R17", "R17B", "R18", "R18C",
             "R18D", "R18J", "R18K", "R18L", "R18M", "R18E", "R22D", "R22E", "R23A", "R23B", "R23C", "R24A", "R24B", "R25A", "R25B", "R26A", "R26B", "R27A", "R27B", "R26C", "R18F", "R18G", "R18H", "R18I", "R18B",
-            "R19")
+            "R28C", "R28D", "R28A", "R28B", "R19")
 
 
 def listing(d):
@@ -233,16 +233,27 @@ def main():
         st5b[0].group(0) if st5b else None, st5b[-1].group(1) if st5b else None,
         pr5b.group(1) if pr5b else None, "again to rewind" in txt("R5B")))
 
-    # R5C: a fast load tags, a load at rest forgives.  Its premise is that the
-    # at-rest save is row 4 -- the save's own line says so, or the arm is unsound.
+    # R5C: a fast load tags, a load at rest forgives.  Premise: the at-rest save
+    # is the NEWEST row, which is what `sl_goto 9999` loads (SV_SaveLocLoad clamps
+    # an index past the count to it).  Patch 499: the arm used to name the row
+    # absolutely (4) and a resume row that stopped being dropped across a run
+    # boundary moved it to 5 -- the save's own line beside the count is the
+    # premise now, and it is checked rather than assumed.
     t5c = txt("R5C")
     sv5c = last(r"^save (\d+) \(slot", "R5C")
+    cn5c = [m for m in (re.search(r"saves: (\d+)/(\d+)", s) for s in sec["R5C"]) if m]
     hops5c = [m.group(1) for m in (re.search(r"hopped (\d)", s) for s in sec["R5C"]) if m]
-    ok5c = (sv5c is not None and sv5c.group(1) == "4" and len(hops5c) >= 2
-            and hops5c[0] == "1" and hops5c[-1] == "0" and "hopped start is forgiven" in t5c)
-    check("R5C", ok5c, "at-rest save %s, hopped after the fast load %s, after the rest load %s, "
-          "forgiven %s" % (sv5c.group(1) if sv5c else None, hops5c[0] if hops5c else None,
-                           hops5c[-1] if hops5c else None, "hopped start is forgiven" in t5c))
+    if not (sv5c and cn5c):
+        print("CANNOT GRADE R5C: save %s, count %s"
+              % (sv5c.group(0) if sv5c else None, cn5c[0].group(0) if cn5c else None))
+        cannot.append("R5C")
+    else:
+        ok5c = (sv5c.group(1) == cn5c[0].group(2) and len(hops5c) >= 2
+                and hops5c[0] == "1" and hops5c[-1] == "0" and "hopped start is forgiven" in t5c)
+        check("R5C", ok5c, "at-rest save %s of %s rows (want the newest), hopped after the fast "
+              "load %s, after the rest load %s, forgiven %s"
+              % (sv5c.group(1), cn5c[0].group(2), hops5c[0] if hops5c else None,
+                 hops5c[-1] if hops5c else None, "hopped start is forgiven" in t5c))
 
     check("R6", "nothing kept at that time" in txt("R6"), "out-of-range ask refused")
 
@@ -282,10 +293,14 @@ def main():
             want, st8[0].group(6), got, "found" if f8 else "MISSING")
         if f8 and want is not None and got is not None:
             d = math.dist(xyz(at8[0]), vec(f8, "origin") or [1e9] * 3)
+            # Patch 499 took the absolute count out of this arm: it read 5 because
+            # the leave's resume row REPLACED one an earlier run had made, and a
+            # resume row no longer outlives its run -- so nothing is dropped and the
+            # count is whatever the sections before it left.  R28C/R28D grade the new
+            # rule; this arm keeps its own subject (the leave resumes at the head).
             ok8 = (st8[0].group(6) == "1" and abs(want - got) < 1 and "rewound 1" in f8
                    and d < 64 and "rewind: resumed" in txt("R8")
-                   and st8[-1].group(1) == "0"
-                   and lst8 is not None and lst8.group(2) == "5")
+                   and st8[-1].group(1) == "0")
             said8 += (", origin %.1f u from the cursor; left: resumed %s, closed %s, list %s"
                       % (d, "rewind: resumed" in txt("R8"), st8[-1].group(1) == "0",
                          lst8.group(0) if lst8 else None))
@@ -913,6 +928,56 @@ def main():
     ok19 = sets19 >= 5 and len(h19) >= 2 and max(h19) < 1
     check("R19", ok19, "trigger fired %d time(s) on the pinned body, horizontal pinned/released %s"
           % (sets19, h19))
+
+    # R28C/R28D (Patch 499): the resume row must not outlive the run that wrote
+    # it.  `rw_goid` was cleared in ClientDisconnect only, so a `retry` left it
+    # pointing at a row whose run was gone and the next `go` save DELETED that
+    # row instead of making a new one.  Premise: each section made a go save
+    # ("a resume point") and listed the saves.  Verdict: R28D dropped nothing
+    # and its list is one longer than R28C's.  On the control build "makes way"
+    # names R28C's row and the count does not move.
+    go28 = [re.search(r"rewind: save (\d+) \(slot (\d+)\) at \S+, \d+ u/s -- a resume point",
+                      txt(k)) for k in ("R28C", "R28D")]
+    lst28 = [last(r"saves: (\d+)/(\d+)", k) for k in ("R28C", "R28D")]
+    mk28 = re.search(r"rewind: save (\d+), the last resume point, makes way", txt("R28D"))
+    if not (go28[0] and go28[1] and lst28[0] and lst28[1]):
+        print("CANNOT GRADE R28C/R28D: go saves %s, lists %s"
+              % ([bool(g) for g in go28], [m.group(0) if m else None for m in lst28]))
+        cannot.append("R28C/R28D")
+    else:
+        n28 = [int(m.group(2)) for m in lst28]
+        check("R28D", mk28 is None and n28[1] == n28[0] + 2,
+              "saves %d -> %d (want +2: each section makes a `rewind save` and the "
+              "leave's resume), 'makes way' %s, R28C's row was slot %s"
+              % (n28[0], n28[1], mk28.group(0) if mk28 else "absent", go28[0].group(2)))
+
+    # R28A/R28B (Patch 499): the pin owns the movetype.  SV_WatchHold wrote
+    # MOVETYPE_NONE once, at the press, and nothing re-asserted it, so one
+    # `cmd noclip` flew a PINNED body for the rest of the pin with its clock
+    # frozen and no warp for SV_RewindWarped to see.  Premise: R28A -- the same
+    # gesture with no pin -- flew by more than 50 u, because a detector that
+    # cannot see a flight cannot see the fix either; and R28B's pin took
+    # (status on 1).  Verdict: R28B's body moved less than 0.5 u over the same
+    # gesture, its `cmd timer` reads `noclip 0`, and the pin was still on after.
+    posA = [re.search(r"setpos (\S+) (\S+) (\S+)", s) for s in sec["R28A"]]
+    posA = [[float(x) for x in m.groups()] for m in posA if m]
+    posB = [re.search(r"setpos (\S+) (\S+) (\S+)", s) for s in sec["R28B"]]
+    posB = [[float(x) for x in m.groups()] for m in posB if m]
+    st28 = status("R28B")
+    nc28 = last(r"\(sv_cheats \d+, noclip (\d+)\)", "R28B")
+    if len(posA) < 2 or len(posB) < 2 or not st28 or st28[0].group(1) != "1":
+        print("CANNOT GRADE R28A/R28B: viewpos A %d B %d, pin %s"
+              % (len(posA), len(posB), [m.group(1) for m in st28]))
+        cannot.append("R28A/R28B")
+    else:
+        dA = math.dist(posA[0], posA[1])
+        dB = math.dist(posB[0], posB[1])
+        check("R28A", dA > 50, "control with no pin flew %.1f u (want > 50)" % dA)
+        check("R28B", dB < 0.5 and dA > 50 and st28[-1].group(1) == "1"
+              and nc28 is not None and nc28.group(1) == "0",
+              "the pinned body moved %.2f u against the control's %.1f u, `cmd timer` read "
+              "noclip %s, the pin after %s" % (dB, dA, nc28.group(1) if nc28 else "absent",
+                                               st28[-1].group(1)))
 
     bad = len(re.findall(r"Unknown command", text))
     frames = len(re.findall(r"\w+\.qc:\d+:", text))

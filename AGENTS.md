@@ -169,6 +169,15 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   differ ONLY in the files under test, which is a *better* control than a full
   rebuild, and the peer's work is never at risk. Verify the `.o` you are advancing is
   from a build that succeeded, and say in the entry which file was skipped and why.
+- AN ARM WHOSE PREMISE IS AN ABSOLUTE ROW INDEX BREAKS ON AN UNRELATED FIX, and it
+  reads as a failure of the thing you changed. `p477rewind` R5C loaded its at-rest
+  save as `sl_goto 4` and R8 asserted `saves: 5/5`; Patch 499 stopped a resume row
+  being dropped across a run boundary, one row earlier in the list then survived,
+  and both arms failed on a build that was correct -- R5C loaded somebody else's
+  row and R7/R8 failed behind it. Address a row by a PROPERTY (`sl_goto 9999`
+  clamps to the count, i.e. the newest row) with the property CHECKED (the save's
+  own row number beside the count), and keep an absolute count out of an arm whose
+  subject is not the count.
 - Test-cfg recipe: `cfg_save_auto 0` FIRST -- the engine writes ftesurf.cfg on
   every disconnect and map change (`CL_ClearState`), not only at quit, and a
   harness's `cl_maxfps 100` then lands in the owner's config (measured: an
@@ -1327,6 +1336,16 @@ publicly WITH its fix, not before it.
 - **A frozen run's kept-abandon `inend` is the mover tick at the freeze**
   (`run_t_frzmt`), because the `in` rows stop there; pm_verify flies a last row
   to `inend`.
+- **THE PIN OWNS THE MOVETYPE (Patch 499).** `SV_WatchHoldMove` re-imposes
+  MOVETYPE_NONE from BOTH thinks -- PlayerPreThink per usercmd and ahead of the
+  mover, PlayerPostThink ahead of `SV_NoclipWatch` -- because `SV_WatchHold`
+  wrote it once at the press and nothing held it, so one `cmd noclip` left a
+  pinned, recording run reading `class: cheated`. The pin does NOT re-place the
+  body (a teleport under it is the rewind's own business); that is what the
+  save-lock hold does instead, and why only the hold was immune. A resume row's
+  "the next resume replaces it" pointer (`rw_goid`) now dies with its run:
+  `SV_RewindReset` clears it, so a `retry` no longer lets the next ENTER's `go`
+  DELETE a save from the run before it. The row stays, as an ordinary save.
 - Harness: `tools/p477rewind.py` (parks data/saves/surf_dune; its last section
   changes map to surf_embrace). `vote key <scan> <0|1>` runs a key through the
   whole input chain (CSQC_InputEvent: Rewind_Track, the chat draft, the rest);
