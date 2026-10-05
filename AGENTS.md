@@ -1913,7 +1913,16 @@ script rather than passing it as an argument, where `ps` would show it.
   one-off run: `+set sv_port <p> +map bhop_eazy +exec cfg/<x>.cfg`. A dedicated
   server with no `+map` dies with "Couldn't load a map", and the Pi has no
   `cfg/test/`: copy the cfg in, then delete it. Also `pm_verify` a known PASS
-  file, because the sweeper uses the new binary at once. An ssh that starts a
+  file, because the sweeper uses the new binary at once. SINCE PATCH 492 A PIN-1
+  FILE AND bhop_eazy CANNOT SEE THE SOURCE CLIP: `tools/pigate.sh <bin> <port>
+  <dir>` (scp it, `cfg/test/p492voy.rec` and the install's
+  `maps/zones/local/surf_voyager.json` into <dir>) prints pm_dettest on bhop_eazy
+  and surf_ace -- every line, `srctrace` included, must equal Windows -- and
+  verifies a pin-1 file and p492voy.rec (pmsrcver 2) through an overlay. The old
+  binary REFUSEs p492voy.rec, which is the control. NEVER ROLL THE SWEEPER BACK
+  PAST 492: an old verifier reads only the header's pmsrcver, so a Multi-Session
+  run parked before a 492 deploy and resumed after it (pin 1 in the header, 2 in
+  a later `pm` record) HOLDs there. An ssh that starts a
   background server does not return, so run it in the background. Run
   hand tests on a port other than 27698, which is the sweeper's. Swap by
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
