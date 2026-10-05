@@ -5885,6 +5885,51 @@ float(entity e, string path) SV_RecWritePrefix =
 	// `used - start` and write the wrong length.
 	buf_writefile(fh, e.rec_rec_buf, 0, e.rec_rec_lines);
 	fclose(fh);
+
+	/*
+	  PATCH 444: AND THEN LOOK, because until now this function's return was a
+	  count of lines it had HANDED OVER and every reader took it for a count of
+	  lines ON DISK.
+
+	  QC cannot see a write fail.  The engine's PF_fopen allocates a memory buffer
+	  for the write modes and the bytes go out at fclose, unchecked, so the `if (fh
+	  < 0)` branch above is effectively unreachable for a filesystem fault -- it
+	  can fire only when the QC handle table is full.  MEASURED, by staging a
+	  DIRECTORY on a retry slot's `run.rec` path (cfg/test/p441retryw.cfg): fopen
+	  returned a handle over the directory, no line was printed, and `reclines`
+	  landed in state.txt POSITIVE with no prefix file anywhere.
+
+	  So the count is confirmed by re-opening the path for READ, which is the one
+	  thing the engine does check: FILE_READ goes through FS_OpenVFS and returns
+	  -1 when there is nothing to open, and fsize on that handle is the real file's
+	  length.  A count this function returns now means "the bytes are on disk".
+
+	  WHAT READS IT, and why a count nobody can trust is worse than none: `reclines`
+	  is what SV_RecRewind takes as `mark`, what Patch 426 reasons about for mark-0
+	  saves, and what Patch 441's void asks about a retry point.  Each of those was
+	  trusting a number written before the bytes left the process.
+
+	  ONE EXTRA OPEN PER SAVE, on a path this function has just written; a save is a
+	  keypress.  NOT on the streamed path, which returns above: SV_RecSnapshot only
+	  QUEUES its copy (SV_RecCopyStep drains it), so there is nothing to confirm at
+	  this moment and `recbytes` keeps that documented weakness.
+	  AND IT IS A CONFIRMATION, NOT A SECOND CHANCE: the file is not rewritten, and
+	  a reader that finds a SHORTER file than the writer meant would still be
+	  trusting the count.  What this rules out is the file not being there at all.
+	*/
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+	{
+		dprint(sprintf("timer: prefix %s did not land\n", path));
+		return 0;
+	}
+	if (fsize(fh) <= 0)
+	{
+		fclose(fh);
+		dprint(sprintf("timer: prefix %s landed empty\n", path));
+		return 0;
+	}
+	fclose(fh);
 	return e.rec_rec_lines;
 };
 
