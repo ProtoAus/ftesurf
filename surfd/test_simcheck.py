@@ -29,14 +29,17 @@ likely to be wrong:
      rule the receipt step's lazy imports exist for, and it is the one most likely
      to be broken silently -- a module that raises at import takes the whole cron
      tick with it.
+  6. that the comparisons run with no write lock held (arm 10).
 """
 
 import importlib
-import importlib.util
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
+import time
 
 FAILED = []
 
@@ -72,11 +75,11 @@ def fresh(with_census=True):
                       SURFD_GAME=home, SURFD_VERIFIER=os.path.join(home, "noengine"))
     for k in ("SURFD_EVIDENCE", "SURFD_KEEP"):
         os.environ.pop(k, None)
-    # "A host with no recsim" has to be armed honestly: SURFD_TOOLS pointed at an
-    # empty directory AND a module location with no ../tools/census beside it.
-    # The first cut of this suite set an environment override to a missing path and
-    # the search fell through to the repo copy, so the arm passed by measuring the
-    # opposite of what it claimed -- which is why simcheck has no such override.
+    # "A host with no recsim": SURFD_TOOLS names an empty directory while simcheck
+    # is imported FROM THE REPO, with tools/census/recsim.py beside it -- so a
+    # search that strays from the directory it was given finds that copy and the
+    # arm fails.  (It used to stage the module outside the repo, which hid the
+    # stray search that would have run /srv/nvme/tools/census/recsim.py on the Pi.)
     if with_census:
         os.environ["SURFD_TOOLS"] = os.path.join(REPO, "tools")
     else:
@@ -88,21 +91,7 @@ def fresh(with_census=True):
     sys.path.insert(0, HERE)
     surfd = importlib.import_module("surfd")
     sweep = importlib.import_module("sweep")
-    if with_census:
-        simcheck = importlib.import_module("simcheck")
-    else:
-        # Loaded from outside the repo, so its fallback path (../tools/census)
-        # resolves to nothing: this is the host layout, not the workstation one.
-        stage = os.path.join(home, "stage")
-        os.makedirs(stage, exist_ok=True)
-        with open(os.path.join(HERE, "simcheck.py"), "r", encoding="utf-8") as fh:
-            src = fh.read()
-        with open(os.path.join(stage, "simcheck.py"), "w", encoding="utf-8") as fh:
-            fh.write(src)
-        spec = importlib.util.spec_from_file_location(
-            "simcheck", os.path.join(stage, "simcheck.py"))
-        simcheck = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(simcheck)
+    simcheck = importlib.import_module("simcheck")
     sweep._SIMCHECK = None
     surfd.migrate()          # takes no connection: it opens its own
     conn = surfd.connect()
@@ -178,79 +167,45 @@ mod, why = simcheck._recsim()
 truthy("recsim.py resolved from SURFD_TOOLS", mod is not None)
 truthy("...and it has compare_paths", mod is not None and hasattr(mod, "compare_paths"))
 
-# THE HOST DEFAULT THAT DOES NOT WORK, tested rather than reasoned about -- and
-# tested TWICE, because the first arm passed for the wrong reason.
-#
-# `SURFD_GAME + "/tools"` LOOKS like the right fallback and is not: on the live Pi
-# SURFD_GAME is unset, and the obvious default spelling resolves to
-# `/srv/nvme/tools`, which is A STEAMCMD DIRECTORY that exists and holds nothing to
-# do with this tree.  A search built on that guess reported "no recsim.py found
-# (tried: /srv/nvme/tools/census/recsim.py)" while `sweep.TOOLS` correctly read
-# `/srv/nvme/ftesurf-server/game/tools`.  A directory that exists but holds the
-# wrong thing is worse than one that does not exist, because it reads as deployed.
-#
-# So the module takes the caller's resolved directory instead of guessing, and this
-# arm pins both halves: that what the caller passes is used, and that a guess at
-# SURFD_GAME is not.
-saved_tools = os.environ.pop("SURFD_TOOLS", None)
-saved_game = os.environ.get("SURFD_GAME")
-# (a) the caller's own directory is used, which is how sweep reaches it
-mod_c, why_c = simcheck._recsim(tools_dir=os.path.join(REPO, "tools"))
-truthy("the caller's tools_dir resolves it (sweep's path)", mod_c is not None)
-# (b) SURFD_GAME set to something real also works, via SURFD_TOOLS
-os.environ["SURFD_TOOLS"] = os.path.join(REPO, "tools")
-mod_g, why_g = simcheck._recsim()
-truthy("SURFD_TOOLS alone resolves it", mod_g is not None)
-# (c) THE TRAP THAT ACTUALLY BIT, and it is a stale module global rather than a
-#     bad default.  _SWEEP_TOOLS is set by the first caller that passes one, so a
-#     later caller that passes NOTHING would inherit the earlier directory and
-#     resolve against a host it is not running on.  Pinning that is worth more than
-#     pinning a guess about SURFD_GAME, because the guess was already removed.
-os.environ.pop("SURFD_TOOLS", None)
-simcheck._recsim(tools_dir=os.path.join(home, "emptytools"))   # set the global
-simcheck._SWEEP_TOOLS = os.path.join(home, "staletools")       # pretend it stuck
-mod_c2, why_c2 = simcheck._recsim(
-    tools_dir=os.path.join(home, "otherempty"))                # a DIFFERENT caller
-check("a later caller's tools_dir replaces the stored one",
-      simcheck._SWEEP_TOOLS, os.path.join(home, "otherempty"))
-truthy("...and the stale directory is gone from it",
-       "staletools" not in simcheck._SWEEP_TOOLS)
-truthy("...and the resolution did not come from the stale path",
-       mod_c2 is None or "staletools" not in (why_c2 or ""))
-simcheck._SWEEP_TOOLS = None
-# NOT ARMED HERE, and the reason is worth keeping: with SURFD_TOOLS unset and no
-# caller directory, the module's OWN neighbourhood is searched -- a tools/census
-# beside its parent -- which on a workstation is the repo and resolves correctly.
-# Arming "resolves to None" would need the module staged outside the repo, which is
-# exactly what the with_census=False arm below does properly.  The first cut of this
-# arm asserted it here and failed for that reason, twice.
-if saved_tools:
-    os.environ["SURFD_TOOLS"] = saved_tools
-if saved_game:
-    os.environ["SURFD_GAME"] = saved_game
-else:
-    os.environ.pop("SURFD_GAME", None)
+# THE CALLER'S DIRECTORY AND NOTHING ELSE.  A copy staged outside the repo, so a
+# resolution that ignored tools_dir, or strayed anywhere else, names another path.
+staged = os.path.join(home, "stagedtools")
+os.makedirs(os.path.join(staged, "census"))
+shutil.copy(CENSUS, os.path.join(staged, "census", "recsim.py"))
+STAGED = os.path.join(staged, "census", "recsim.py")
+saved_tools = os.environ.pop("SURFD_TOOLS")
+mod_c, why_c = simcheck._recsim(tools_dir=staged)
+check("the caller's tools_dir resolves it, from that directory (sweep's path)",
+      (mod_c is not None, why_c), (True, STAGED))
+os.environ["SURFD_TOOLS"] = os.path.join(home, "emptytools")
+check("...and wins over SURFD_TOOLS", simcheck._recsim(tools_dir=staged)[1], STAGED)
+os.environ["SURFD_TOOLS"] = saved_tools
+check("SURFD_TOOLS alone resolves it",
+      simcheck._recsim()[1], os.path.join(saved_tools, "census", "recsim.py"))
+# A caller that passes nothing inherits no earlier caller's directory (a module
+# global once kept the last one) and searches nowhere else.
+os.environ.pop("SURFD_TOOLS")
+check("a caller that passes nothing, with SURFD_TOOLS unset, resolves nothing",
+      simcheck._recsim(), (None, "no tools directory given (SURFD_TOOLS unset)"))
+os.environ["SURFD_TOOLS"] = saved_tools
 
 surfd2, sweep2, simcheck2, conn2, runs2, home2 = fresh(with_census=False)
+truthy("CONTROL: the module under test has the repo's recsim.py beside it",
+       os.path.isfile(os.path.join(os.path.dirname(os.path.dirname(
+           os.path.abspath(simcheck2.__file__))), "tools", "census", "recsim.py")))
 mod2, why2 = simcheck2._recsim()
 check("a host with no recsim.py resolves to None", mod2, None)
-truthy("...and the reason names what it tried", "no recsim.py found" in why2)
+check("...and the reason names only the directory it was given", why2,
+      "no recsim.py found (tried: %s)"
+      % os.path.join(home2, "emptytools", "census", "recsim.py"))
 check("...migrate() still stamped the head schema",
       conn2.execute("PRAGMA user_version").fetchone()[0], surfd2.SCHEMA_VERSION)
-# And the step must return cleanly rather than raise: a module that cannot find
-# its comparison is a host that has not had tools/ deployed, which is a normal
-# state and not an error.
+# A host without tools/ deployed is a normal state: the step returns, never raises,
+# and its note says why (sweep appends it to every tick's line; arm 9).
 res = simcheck2.similarity_step(conn2, surfd2, limit=10)
 check("...and the step stores nothing and raises nothing", res[0], 0)
 check("...and it reports no notable pair", res[1], 0)
-# The note is NOT empty here, and that is deliberate: simcheck.similarity_step
-# returns "similarity skipped: <why>" so a reader of the module's own return can
-# tell "no recsim" from "nothing to compare".  sweep.similarity_step is the one
-# that must stay quiet, because a cron line repeating one unfixable reason every
-# five minutes teaches the reader to skip the log -- and that is arm 9's control.
-truthy("...and its note names the reason rather than pretending all is well",
-       res[2].startswith("similarity skipped"))
-truthy("...and the reason says what it tried", "no recsim.py found" in res[2])
+check("...and its note names the reason", res[2], "similarity skipped: " + why2)
 
 print("\n--- 2. a run compared against itself and against an honest re-play ---")
 
@@ -290,6 +245,14 @@ check("...prefix is the whole run", d["prefix"], N)
 check("...two netnames on ONE guid read as the SAME identity", d["same_who"], True)
 check("...and both hexes are the guid, not the name",
       (d["who_a"], d["who_b"]), ("26c95e00", "26c95e00"))
+# The case who_of's un-anchored hex exists for: FS_PlayerSeg (sh_defs.qc) files a
+# name that slugs to "" under the bare id, with no dash in front.  The two pairs
+# above pass a dash-anchored pattern too.
+write_rec(runs, "surf_test", "0001000_26c95e00_run.rec", base)
+v4, d4 = rs.compare_paths(os.path.join(P, "0001000_proto-26c95e00_run.rec"),
+                          os.path.join(P, "0001000_26c95e00_run.rec"))
+check("...and an id-only segment (an empty name slug) is the same install",
+      (d4["who_b"], d4["same_who"]), ("26c95e00", True))
 
 v3, d3 = rs.compare_paths(os.path.join(P, "0001000_proto-26c95e00_run.rec"),
                           os.path.join(P, "0001200_other-ab9ae4aa_run.rec"))
@@ -457,13 +420,79 @@ truthy("...and it flagged the playback (%d notable)" % no, no >= 1)
 st2, no2, note2 = sweep.similarity_step(conn, limit=10)
 check("a second sweep pass adds nothing", (st2, no2), (0, 0))
 
-# A host with no recsim: the sweep must still run every OTHER step.  This is the
-# arm that would catch the lazy import having become a module-level one, which
-# takes the whole cron tick down on a host that has not had tools/ deployed.
+# A HOST WITH NO RECSIM, as cron runs it: a fresh process, sweep.py and simcheck.py
+# imported from the repo (recsim.py beside them), SURFD_TOOLS empty, and a pair
+# pending.  The tick must finish, store nothing and carry the reason -- on EVERY
+# tick, since each is a new process.  The control fills the tools directory.
 surfd3, sweep3, simcheck3, conn3, runs3, home3 = fresh(with_census=False)
-st3, no3, note3 = sweep3.similarity_step(conn3, limit=10)
-check("with no recsim the sweep's step stores nothing", (st3, no3), (0, 0))
-check("...and raises nothing", note3, "")
+os.makedirs(surfd3.EVIDENCE_DIR, exist_ok=True)
+write_rec(runs3, "surf_cron", "0001000_proto-26c95e00_run.rec", big)
+write_rec(runs3, "surf_cron", "0001100_kap-ab9ae4aa_run.rec", perturbed(big))
+add_replay(conn3, "surf_cron", "0001000_proto-26c95e00_run.rec", "pa")
+add_replay(conn3, "surf_cron", "0001100_kap-ab9ae4aa_run.rec", "pb")
+EMPTY3 = os.environ["SURFD_TOOLS"]
+
+
+def cron(tools, sims=10):
+    p = subprocess.run([sys.executable, os.path.join(HERE, "sweep.py"), "--limit", "0",
+                        "--sims", str(sims)], cwd=HERE, capture_output=True, text=True,
+                       env=dict(os.environ, SURFD_TOOLS=tools))
+    lines = [ln.split(" sweep: ", 1)[1] for ln in p.stdout.splitlines() if " sweep: " in ln]
+    return p.returncode, lines[-1] if lines else (p.stdout + p.stderr)[-300:]
+
+
+nsims = lambda: conn3.execute("SELECT COUNT(*) FROM sims").fetchone()[0]
+WHY3 = ("nothing to verify similarity skipped: no recsim.py found (tried: %s)"
+        % os.path.join(EMPTY3, "census", "recsim.py"))
+check("no recsim, cron tick 1: it finishes and its line says why", cron(EMPTY3), (0, WHY3))
+check("...tick 2 says it again (a new process each tick)", cron(EMPTY3), (0, WHY3))
+check("...and no pair was stored", nsims(), 0)
+check("--sims 0 disables the step: nothing said", cron(EMPTY3, sims=0), (0, "nothing to verify"))
+rc3, line3 = cron(os.path.join(REPO, "tools"))
+check("CONTROL: the same tick with recsim deployed stores the pair",
+      (rc3, line3.startswith("nothing to verify sims +1 "), nsims()), (0, True, 1))
+
+print("\n--- 10. the comparisons hold no write lock ---")
+
+# compare_paths is ~88 ms a pair on the Pi.  Each comparison here also sleeps, then
+# a second connection with NO busy wait tries to write: it can only fail if the
+# step holds the write lock across its comparisons.  4 runs on a map = 6 pairs.
+surfd, sweep, simcheck, conn, runs, home = fresh()
+for i, pl in enumerate(("proto-26c95e00", "kap-ab9ae4aa", "other-12345678", "more-87654321")):
+    write_rec(runs, "surf_lock", "000%d000_%s_run.rec" % (i + 1, pl), perturbed(big, every=5 + i))
+    add_replay(conn, "surf_lock", "000%d000_%s_run.rec" % (i + 1, pl), "p%d" % i)
+probe = sqlite3.connect(surfd.DB_PATH, timeout=0)
+probe.execute("CREATE TABLE probe (n INTEGER)")
+probe.commit()
+real_rs = simcheck._recsim()[0]
+writes = []
+
+
+class SlowRecsim(object):
+    def compare_paths(self, a, b, **kw):
+        time.sleep(0.05)
+        try:
+            probe.execute("INSERT INTO probe VALUES (1)")
+            probe.commit()
+            writes.append("ok")
+        except sqlite3.OperationalError as exc:
+            probe.rollback()
+            writes.append(str(exc))
+        return real_rs.compare_paths(a, b, **kw)
+
+
+real_recsim = simcheck._recsim
+simcheck._recsim = lambda tools_dir=None: (SlowRecsim(), "slow")
+try:
+    st10 = simcheck.similarity_step(conn, surfd, limit=10)[0]
+finally:
+    simcheck._recsim = real_recsim
+check("CONTROL: the probe ran at every comparison", len(writes), 6)
+check("another connection could write during every comparison",
+      [w for w in writes if w != "ok"], [])
+check("...and all six pairs were stored", (st10, conn.execute(
+    "SELECT COUNT(*) FROM sims").fetchone()[0]), (6, 6))
+probe.close()
 
 print("\n" + "=" * 70)
 if FAILED:

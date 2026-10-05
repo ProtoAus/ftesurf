@@ -1097,18 +1097,23 @@ publicly WITH its fix, not before it.
   - **THE IDENTITY IS THE GUID DIGEST, NEVER THE NAME.**  `same_who` is stored per
     pair and every figure is reported split on it, because a single max is the number
     that misleads.  `recsim.who_of` matches the trailing 8 hex WITHOUT requiring a
-    dash in front, deliberately: `1proto-26c95e00` and `proto-26c95e00` are one
-    install, and a dash-anchored pattern cuts different filenames at different
-    places.  The cost is that a netname ending in 8 hex characters reads as an
-    identity -- a census imprecision in the safe direction, since it can merge two
-    identities and so UNDER-report cross-identity pairs, never invent them.
+    dash in front, deliberately: `FS_PlayerSeg` files a name that slugs to "" under
+    the bare id (`0001000_26c95e00_run.rec`), which a dash-anchored pattern reads as
+    no identity.  (`1proto-` vs `proto-26c95e00`, the case first given for it, reads
+    the same under both.)  The cost is that a netname ending in 8 hex characters
+    reads as an identity -- a census imprecision in the safe direction, since it can
+    merge two identities and so UNDER-report cross-identity pairs, never invent them.
   The comparison is NOT re-implemented: `reccheck` owns the `.rec` grammar and
   `recsim` owns the move stream, and `simcheck` calls `recsim.compare_paths`, which
   is the rule `rcptcheck` follows when it delegates to `reccheck`.  A host without
-  `recsim.py` keeps migrating and keeps sweeping -- the step returns quietly and
-  prints its reason ONCE, because a cron line repeating one unfixable cause every
-  five minutes teaches the reader to skip the log.  `sweep.py --sims 0` disables it;
-  `--dry-run` prints the pending count and the identity split.
+  `recsim.py` keeps migrating and keeps sweeping; the step stores nothing and
+  `similarity skipped: no recsim.py found (tried: <TOOLS>/census/recsim.py)` rides
+  on EVERY tick's sweep line (each tick is a new process, so the "once" this file
+  used to promise never held).  Only the caller's TOOLS, else SURFD_TOOLS, is
+  searched.  `sweep.py --sims 0` disables the step, note and import included;
+  `--dry-run` prints the pending count and the identity split.  The comparisons
+  run with no transaction open (test_simcheck arm 10): inserting between them
+  held the write lock (peers-1) x ~88 ms, and /api/run 500'd behind it.
   **A RUN WITH NO COMPARABLE PEER IS NOT PENDING EITHER.**  `compare_run` stores
   nothing for it, so a `pending` selecting on "has no sims row" alone re-picked it
   on every tick and crowded out newer runs once the limit was reached.  Imported
@@ -2016,18 +2021,18 @@ script rather than passing it as an argument, where `ps` would show it.
   **THE SIMILARITY STEP STORES NOTHING ON THE PI YET, AND THAT IS EXPECTED RATHER
   THAN BROKEN.** `tools/census/` is not deployed beside the game, so `_recsim()`
   finds no comparison and the step degrades to storing nothing and printing its
-  reason once -- the behaviour the receipt step's lazy imports exist for.  Verified
-  live: `simcheck._recsim(sweep.TOOLS)` reports `no recsim.py found (tried:
-  /srv/nvme/ftesurf-server/game/tools/census/recsim.py, /srv/nvme/tools/
-  census/recsim.py)`.  The first path is the RIGHT one and is where reccheck.py and
-  rcptcheck.py live; putting `recsim.py` there activates the step with no code
-  change and no reload.
+  reason on every sweep line -- the behaviour the receipt step's lazy imports
+  exist for.  Verified live: `simcheck._recsim(sweep.TOOLS)` reports `no
+  recsim.py found (tried: /srv/nvme/ftesurf-server/game/tools/census/recsim.py,
+  /srv/nvme/tools/census/recsim.py)`.  The first path is the RIGHT one and is
+  where reccheck.py and rcptcheck.py live; putting `recsim.py` there activates
+  the step with no code change and no reload.
   **AND NOTE THE SECOND PATH IT TRIED, BECAUSE IT IS A TRAP.** `/srv/nvme/tools`
   EXISTS and is a steamcmd directory (linux32, linux64, steamcmd.sh) with nothing
-  to do with this tree.  A search that guessed `SURFD_GAME + "/tools"` found it and
-  read as "deployed" rather than "missing", which is worse than a path that does
-  not exist.  That guess was removed in `e11084c`: the module takes the caller's
-  resolved directory instead of holding its own copy of the host layout, because a
+  to do with this tree.  It is `<surfd>/../tools`: simcheck's own-neighbourhood
+  fallback, which `e11084c` kept, so a `census/recsim.py` there would have been
+  imported and RUN by the sweep.  It is gone (branch surfdfix); the module
+  searches only the caller's resolved directory (else SURFD_TOOLS), because a
   default is policy and two spellings of one policy drift.
   The measurement this feature was for was made on a COPY of the live database and
   reproduced `recsim.py`'s census exactly through a different code path: 24 pending

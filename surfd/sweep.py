@@ -510,6 +510,8 @@ def similarity_step(conn, limit=50):
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
     gate badges down with it.  -> (pairs stored, notable, note)."""
+    if limit <= 0:          # --sims 0: nothing imported, nothing said
+        return 0, 0, ""
     mod = _simcheck()
     if mod is None:
         return 0, 0, ""
@@ -521,13 +523,13 @@ def similarity_step(conn, limit=50):
 
 
 def _simcheck():
-    """The simcheck module, or None with the reason already printed once.
+    """The simcheck module, or None with the reason already printed.
 
     Imported lazily and cached, exactly as the receipt step imports its checkers
     inside the function: a host without simcheck.py must keep running the
-    verification it has run since Patch 349.  The failure is printed once rather
-    than on every tick, because a cron job that repeats one unfixable line every
-    five minutes teaches the reader to skip the log.
+    verification it has run since Patch 349.  The cache keeps the failure to one
+    line per process; each cron tick is a new process, so a broken host prints it
+    every tick, as a failing receipt step does.
     """
     global _SIMCHECK
     if _SIMCHECK is not None:

@@ -2320,6 +2320,45 @@ finally:
     mi._runs_full = _realfull
 check("24 the cap scan runs before the write lock, not under it", seen, [False])
 
+# The leg>0 hidden-slot path too: a rejected run's stage, on a leg where the
+# player ALREADY holds a live row, was never pre-counted (the pre-count was gated
+# on prev is None), so its cap scan ran under BEGIN IMMEDIATE.
+mh = fresh()
+clockh = FakeClock()
+mh.time = clockh
+RH = "20261005-130000-0-p27510"
+wrec(mh, "surf_test", 0, 0, leaf(700, "hana"), "Hana", RH)
+hrep = run(mh, "hana", 700, runid=RH)["rep"]
+clockh.now += 1
+run(mh, "hana", 900, rec=False, leg=1, runid="other")
+clockh.now += 10
+review(mh, hrep, "reject", int(clockh.now))
+_c = mh.connect()
+rejh = mh._run_rejected(_c, ("surf_test", 0, "hana", RH))
+_c.close()
+check("24 control: hana holds a live leg-1 row, and run %s is rejected" % RH,
+      (q(mh, "SELECT millis FROM runs WHERE leg=1 AND tier='ranked'"), rejh),
+      ([(9000,)], True))
+seenh = []
+_realfullh = mh._runs_full
+
+
+def _spyh(db, leg, _f=_realfullh, _seen=seenh):
+    _seen.append(db.in_transaction)
+    return _f(db, leg)
+
+
+mh._runs_full = _spyh
+try:
+    clockh.now += 1
+    rh = run(mh, "hana", 850, rec=False, leg=1, runid=RH)
+finally:
+    mh._runs_full = _realfullh
+check("24 ...and for a rejected run's stage where the player has a live row",
+      (seenh, rh.get("stored"),
+       q(mh, "SELECT COUNT(*) FROM runs WHERE leg=1 AND tier LIKE '%@%'")),
+      ([False], False, [(1,)]))
+
 # --------------------------------------------------------------------------
 print("")
 if FAILED:

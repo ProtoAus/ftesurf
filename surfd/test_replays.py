@@ -714,11 +714,13 @@ conn.execute(
     " 66.67,85000,0,'import',1,1,'momentum',1,'momrun')", (mleaf, SID))
 mom_rid = conn.execute("SELECT id FROM replays WHERE leaf=?", (mleaf,)).fetchone()[0]
 # The imported board row that demo is filed against, with a distinctive node and
-# submitted so an overwrite by the submit path is visible.
+# submitted so an overwrite by the submit path is visible.  10 ms under its demo:
+# inside LINK_SLACK_MS, as link_demos files it, and unequal, so the pre-fix
+# replay_id UPDATE (millis = the adopted 85000) unlinks it.  At 85000 it passed.
 conn.execute(
     "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
     " tickrate, millis, flags, node, runid, submitted, replay_id)"
-    " VALUES ('surf_test',0,0,'momentum','clean',?,'Mom',1,66.67,85000,0,"
+    " VALUES ('surf_test',0,0,'momentum','clean',?,'Mom',1,66.67,84990,0,"
     " 'import','',1,?)", (SID, mom_rid))
 conn.commit()
 conn.close()
@@ -737,7 +739,7 @@ imp = one(m, "SELECT millis, submitted, replay_id, node FROM runs"
           " WHERE player=? AND tier='momentum'", (SID,))
 check("...and the imported row keeps its time, stamp, node and demo link",
       imp is not None and (imp["millis"], imp["submitted"], imp["replay_id"],
-                           imp["node"]), (85000, 1, mom_rid, "import"))
+                           imp["node"]), (84990, 1, mom_rid, "import"))
 check("...and the imported replay is left kind 'momentum'",
       one(m, "SELECT kind FROM replays WHERE id=?", (mom_rid,))["kind"],
       "momentum")

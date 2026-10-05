@@ -60,11 +60,7 @@ import time
 #: census tool and lives in tools/census/, not tools/, so the path is explicit.
 CENSUS_SUBDIR = os.path.join("census", "recsim.py")
 
-#: The tools directory the CALLER resolved, set by `sweep.similarity_step` passing
-#: its own TOOLS.  Not a default and not a guess: see `_recsim`.
-_SWEEP_TOOLS = None
-
-#: What a caller may set instead, for a test that stages its own copy.
+#: Read only when the caller passes no directory; sweep.TOOLS reads it too.
 _ENV_TOOLS = "SURFD_TOOLS"
 
 #: The highest `match` worth a human's attention.  NOT A THRESHOLD AND NOT A
@@ -78,58 +74,31 @@ NOTABLE = 0.95
 
 
 def _recsim(tools_dir=None):
-    """The recsim module, or (None, why).  `tools_dir`, when given, is the caller's
-    own resolved tools directory -- sweep passes its TOOLS -- so this module never
-    has to guess at a default it does not own.
+    """The recsim module, or (None, why).
 
-    Importing by path rather than by package name because tools/census is not a
-    package and is not on sys.path on the host.
-
-    TWO CANDIDATES, AND NEITHER OF THEM IS `SURFD_GAME + "/tools"`.
-
-    That default LOOKS right and is wrong, and getting it wrong is silent.  On this
-    host SURFD_GAME is not set, so `os.environ.get("SURFD_GAME", default)` evaluates
-    the default -- and the obvious spelling, `/srv/nvme` + `/tools`, names
-    `/srv/nvme/tools`, which is A STEAMCMD DIRECTORY that exists and has nothing to
-    do with this tree.  Measured on the live host: `sweep.TOOLS` correctly reads
-    `/srv/nvme/ftesurf-server/game/tools` while a search built from that guess
-    reported `no recsim.py found (tried: /srv/nvme/tools/census/recsim.py)`.
-    A directory that exists but holds the wrong thing is worse than one that does
-    not exist, because it reads as "deployed" rather than "missing".
-
-    SURFD_SIMCHECK_PY is deliberately NOT consulted here.  The first cut of this
-    module put it first in the search, and the test suite then used it to point at
-    a path that did not exist in order to arm "a host with no recsim" -- which
-    silently fell through to the repo copy and resolved anyway, so the arm passed
-    by measuring the opposite of what it claimed.  AN ENVIRONMENT OVERRIDE IS A
-    FEATURE THAT LETS A TEST LIE, and nothing in production needs it.  A test that
-    wants a host without the module points SURFD_TOOLS somewhere empty and loads
-    the module from outside the repo, which is what test_simcheck.py does.
+    Searched ONLY under the caller's `tools_dir` (sweep passes its TOOLS), else
+    SURFD_TOOLS.  Never beside this file: on the Pi `<surfd>/../tools` is
+    /srv/nvme/tools, a steamcmd directory we do not own, and whatever sat there
+    would be imported and run by the sweep.  No other override either -- an
+    env path to a missing file once let the "no recsim" test arm resolve the
+    repo copy and pass.  Imported by path: tools/census is not a package.
     """
-    global _SWEEP_TOOLS
-    if tools_dir:
-        _SWEEP_TOOLS = tools_dir
-    cands = []
-    tools = os.environ.get("SURFD_TOOLS") or _SWEEP_TOOLS
-    if tools:
-        cands.append(os.path.join(tools, CENSUS_SUBDIR))
-    here = os.path.dirname(os.path.abspath(__file__))
-    cands.append(os.path.join(os.path.dirname(here), "tools", "census", "recsim.py"))
-    for path in cands:
-        if not path or not os.path.isfile(path):
-            continue
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("_recsim_mod", path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if not hasattr(mod, "compare_paths"):
-                return None, "%s has no compare_paths (too old?)" % path
-            return mod, path
-        except Exception as exc:
-            return None, "importing %s failed: %r" % (path, exc)
-    return None, "no recsim.py found (tried: %s)" % ", ".join(
-        c or "<unset>" for c in cands)
+    tools = tools_dir or os.environ.get(_ENV_TOOLS)
+    if not tools:
+        return None, "no tools directory given (%s unset)" % _ENV_TOOLS
+    path = os.path.join(tools, CENSUS_SUBDIR)
+    if not os.path.isfile(path):
+        return None, "no recsim.py found (tried: %s)" % path
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_recsim_mod", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except Exception as exc:
+        return None, "importing %s failed: %r" % (path, exc)
+    if not hasattr(mod, "compare_paths"):
+        return None, "%s has no compare_paths (too old?)" % path
+    return mod, path
 
 
 # --------------------------------------------------------------------------
@@ -206,6 +175,11 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
     another community's run under another game's physics and cannot be a playback
     of one of ours, and comparing across tiers would fill the table with pairs
     that mean nothing.
+
+    Every comparison runs with NO transaction open; the rows are written in one
+    short transaction after the last.  A pair is ~88 ms on the Pi, and inserting
+    between comparisons held the write lock for all the rest: 80 peers held it
+    6.9 s, a concurrent /api/run got a 500 and `import surfd` (migrate) failed.
     """
     rs, why = _recsim(tools_dir)
     if rs is None:
@@ -221,7 +195,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
         "SELECT * FROM replays WHERE map = ? AND track = ? AND leg = ?"
         " AND kind = 'run' AND id != ? ORDER BY id LIMIT ?",
         (row["map"], row["track"], row["leg"], a_id, limit_peers)).fetchall()
-    stored = skipped = notable = 0
+    found = []
     for pr in peers:
         have = conn.execute(
             "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
@@ -248,26 +222,23 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
             ta, tb = d["tickrate_a"], d["tickrate_b"]
             who_a, who_b = d["who_a"], d["who_b"]
             same = 1 if d["same_who"] else 0
-        try:
-            conn.execute(
-                "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
-                " player_a, player_b, who_a, who_b, same_who, verdict, reason,"
-                " match, cover, prefix, offset, compared, moves_a, moves_b,"
-                " tick_a, tick_b, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (a_id, pr["id"], row["map"], row["track"], row["leg"],
-                 row["tier"], row["player"], pr["player"], who_a, who_b, same,
-                 verdict, reason if not d else "", match, cover, prefix, offset,
-                 compared, ma, mb, ta, tb, t0))
-        except Exception:
-            continue
-        stored += 1
-        if d:
-            if match >= NOTABLE:
-                notable += 1
-        else:
-            skipped += 1
-    conn.commit()
-    return stored, skipped, notable
+        found.append(((a_id, pr["id"], row["map"], row["track"], row["leg"],
+                       row["tier"], row["player"], pr["player"], who_a, who_b, same,
+                       verdict, reason if not d else "", match, cover, prefix, offset,
+                       compared, ma, mb, ta, tb, t0), d is not None, match))
+    if not found:
+        return 0, 0, 0
+    # All or nothing; a failure raises to similarity_step, which prints it.
+    with conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
+            " player_a, player_b, who_a, who_b, same_who, verdict, reason,"
+            " match, cover, prefix, offset, compared, moves_a, moves_b,"
+            " tick_a, tick_b, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [f[0] for f in found])
+    skipped = sum(1 for f in found if not f[1])
+    notable = sum(1 for f in found if f[1] and f[2] >= NOTABLE)
+    return len(found), skipped, notable
 
 
 def pending(conn, limit=50):
@@ -292,14 +263,6 @@ def pending(conn, limit=50):
         " ORDER BY r.id LIMIT ?", (limit,)).fetchall()
 
 
-def similarity_step(conn, surfd, limit=50, now=None):
-    """The sweep's entry point.  -> (pairs stored, notable, note).
-
-    A fault here is printed and never stops the verification, exactly as the
-    receipt and evidence steps do: this is a store-only measurement, and a
-    measurement that cannot run must not take the checks that DO gate badges down
-    with it.
-    """
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
     """The sweep's entry point.  -> (pairs stored, notable, note).
 
@@ -307,6 +270,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
     Passing it rather than re-deriving it here is the point: a default is policy,
     and this module should not hold a second copy of the host layout.  The first cut
     did, guessed it wrong, and the guess named a steamcmd directory that exists.
+    With no recsim the note is "similarity skipped: <why>", on every call.
 
     A fault here is printed and never stops the verification, exactly as the
     receipt and evidence steps do: this is a store-only measurement, and a

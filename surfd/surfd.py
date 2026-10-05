@@ -3097,9 +3097,16 @@ def submit_run():
                 # The check and every write after it under one lock (reviews
                 # 5, 7: a reject landing between them stood the time live, and
                 # a refill it made was overwritten).  The cap count scans the
-                # table, so it runs first (round 6).
+                # table, so it runs first (round 6) -- for a new standing row, and
+                # for a rejected run's first hidden slot, new even when prev is not.
                 if not db.in_transaction:
-                    if prev is None:
+                    if prev is None or (
+                            _run_rejected(db, (mapname, track, player, runid))
+                            and db.execute(
+                                "SELECT 1 FROM runs WHERE map=? AND track=? AND leg=?"
+                                " AND tier=? AND style=? AND player=?",
+                                (mapname, track, leg, tier + "@" + runid, style,
+                                 player)).fetchone() is None):
                         full = _runs_full(db, leg)
                     db.execute("BEGIN IMMEDIATE")
                     prev = db.execute(_PREV_SQL, pkey).fetchone()
@@ -3117,8 +3124,9 @@ def submit_run():
                     # standing write checks the cap; this one must too, or a
                     # rejected run parks its stages past it -- up to 63 legs x 2
                     # tiers x 2 styles per reject, trusted sources only.  `full`
-                    # was counted above under the lock (round 6); recompute only
-                    # when a transaction was already open and skipped that count.
+                    # was counted above, BEFORE the lock; it is None here only when
+                    # a transaction was already open or the reject/slot moved since
+                    # that probe, and then it is counted under the lock.
                     # An UPDATE of a slot that already exists (hid) does not grow
                     # the table, so it is never capped -- same rule as the normal
                     # write, which caps only its `prev is None` insert.

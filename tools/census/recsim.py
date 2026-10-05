@@ -125,15 +125,10 @@ def who_of(path):
     pre-66 corpus reports that it cannot answer instead of reporting agreement.
 
     THE HEX IS MATCHED WITHOUT A REQUIRED '-' IN FRONT, and that is deliberate
-    even though it costs an ambiguity.  The segment grammar is `<name>-<hex>`, so
-    anchoring on the dash looks like the obvious reading -- and it is wrong for
-    exactly the filenames that matter.  A netname may itself end in hex (`1proto`,
-    `kap`, and any name a player picks), and the leaf is `<ticks>_<who>_<tag>`;
-    with a dash-anchored pattern `1proto-26c95e00` yields `26c95e00` while
-    `proto-26c95e00` yields the same hex, which is right, but a name like
-    `deadbeef-26c95e00` and one like `xx-26c95e00` are then compared on strings
-    that were cut at different places.  Matching the trailing 8 hex alone compares
-    the digest and nothing else, which is the only part that identifies anybody.
+    even though it costs an ambiguity.  The segment is `<name>-<hex>`, or the bare
+    `<hex>` when the name slugs to "" (FS_PlayerSeg, sh_defs.qc: a name of colour
+    codes, unicode or punctuation), and a dash-anchored pattern reads that bare id
+    as no identity.  Every `<name>-<hex>` reads the same under both patterns.
     The cost is that a name ENDING in 8 hex characters and no guid (`player-12345678`,
     where 12345678 is all the name there is) reads as an identity; that is a
     census imprecision in the safe direction -- it can merge two identities into
