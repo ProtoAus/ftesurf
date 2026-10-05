@@ -15,19 +15,28 @@
 <script src="board.js" defer></script>
 </head>
 <body>
+<!-- The site's header (src/release/site/site.css).  data-tab is board.js's
+     hook: which one is current is a function of the hash, not of the markup.
+     The Leaderboard href is a bare fragment so that leaving a profile is a hash
+     change and not a page load. -->
+<header class="nav">
+  <nav class="nav-in" aria-label="Site">
+    <a class="brand" href="../">FTE<b>SURF</b></a>
+    <div class="links tabs">
+      <a data-tab="dl" href="../">Overview</a>
+      <a data-tab="board" href="#">Leaderboard</a>
+      <a data-tab="people" href="#who=">Players</a>
+      <a href="../anticheat.html">Anti-Cheat</a>
+    </div>
+    <a class="pill" href="../#download">Download</a>
+  </nav>
+</header>
 <div class="wrap">
 
-  <!-- data-tab is board.js's hook: which one is current is a function of the
-       hash, not of the markup. The Leaderboard href is a bare fragment so that
-       leaving a profile is a hash change and not a page load. -->
-  <nav class="tabs"><a data-tab="dl" href="../">Download</a>
-    <a data-tab="board" href="#">Leaderboard</a>
-    <a data-tab="people" href="#who=">Players</a></nav>
-
   <header class="mast">
-    <h1><a class="mark" href="../">FTE<span class="surf">SURF</span></a></h1>
-    <p class="tagline">Times from the official servers, on every zoned map &mdash; with
-      imported Momentum and KSF records beside them.</p>
+    <h1>Leaderboard</h1>
+    <p class="tagline">Times from the official servers on every zoned map, with
+      Momentum and KSF records beside them.</p>
   </header>
 
   <p id="err" class="err" role="alert" hidden></p>

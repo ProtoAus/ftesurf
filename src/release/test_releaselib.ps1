@@ -235,6 +235,35 @@ Check 'prune: rclone line endings trimmed' { (@(Select-PruneDoomed @("ftesurf-0.
 Check 'maxversion: 2.34 beats 2.3.4 and 2.29' { (Get-MaxVersion @('2.2.5', '2.34', '2.29', '2.3.4')) -ceq '2.34' }
 Check 'maxversion: junk throws' { Throws { Get-MaxVersion @('2.31', 'GLIBC_PRIVATE') } '*not a version*' }
 
+# --- the site from a receipt (sitepage.ps1) ----------------------------------------
+# 0.1.22's receipt, as release.ps1 wrote it; its page read '38.3 MB', '4 October
+# 2026', 'QuakeC build 89' and 'engine patch 467'.
+$rc = '{"version":"0.1.22","built_utc":"2026-10-04T09:36:32Z","archive":{"name":"ftesurf-0.1.22.7z","bytes":40171789,"sha256":"d11e27d234e0c71402248dc8fc3cc126bf95b890a2fcb98baac1f2b70dd0c147","url":"https://dl.proto.bar/ftesurf/ftesurf-0.1.22.7z"},"qc":{"build":89},"engine":{"patch_doc":467,"patch_applies_to_binary":true}}' | ConvertFrom-Json
+$t = Get-ReceiptTokens $rc
+Check 'receipt: keys are exactly the Windows map' { @(Compare-TokenSets @($t.Windows.Keys) $winKeys).Count -eq 0 }
+Check 'receipt: values as 0.1.22 rendered them' {
+    $t.Windows.SIZE_HUMAN -ceq '38.3 MB' -and $t.Windows.DATE -ceq '4 October 2026' -and
+        $t.Windows.QCBUILD -ceq '89' -and $t.Windows.ENGINEPATCH -ceq '467' -and $t.Windows.VERSION -ceq '0.1.22' -and
+        $t.Windows.SHA256 -ceq 'D11E27D234E0C71402248DC8FC3CC126BF95B890A2FCB98BAAC1F2B70DD0C147'
+}
+Check 'receipt: no linux section, no Linux tokens' { $null -eq $t.Linux }
+Check 'receipt: the date is the UTC day' { (Format-ReceiptDate '2026-10-04T23:59:30Z') -ceq '4 October 2026' }
+Check 'receipt: an unverified engine says so' { (Format-EngineLabel 467 $false) -ceq '467 (unverified against this binary)' }
+$rc | Add-Member -NotePropertyName linux -NotePropertyValue ('{"archive":{"name":"x.tar.xz","bytes":33528724,"sha256":"AB88","url":"https://x/x.tar.xz"},"glibc_min":"2.29","engine":{"patch_doc":427,"binary_verified":true}}' | ConvertFrom-Json)
+$t = Get-ReceiptTokens $rc
+Check 'receipt: a linux section gives exactly the Linux names' { @(Compare-TokenSets @($t.Linux.Keys) $lxKeys).Count -eq 0 }
+Check 'receipt: the Linux hash is lower case, as sha256sum wants' { $t.Linux.LINUX_SHA256 -ceq 'ab88' -and $t.Linux.LINUX_SIZE_HUMAN -ceq '32.0 MB' }
+$sd = Join-Path ([System.IO.Path]::GetTempPath()) ("site-" + [guid]::NewGuid()); New-Item -ItemType Directory $sd | Out-Null
+$sd2 = Join-Path ([System.IO.Path]::GetTempPath()) ("site-" + [guid]::NewGuid()); New-Item -ItemType Directory $sd2 | Out-Null
+try {
+    [System.IO.File]::WriteAllText((Join-Path $sd 'a.html'), "<p>@@VERSION@@</p>")
+    Check 'site files: a token in a fixed file is refused' { Throws { Copy-SiteFiles $sd $sd2 } '*template token @@VERSION@@*' }
+    Check 'site files: the real ones carry none, and all are copied' {
+        $n = @(Copy-SiteFiles (Join-Path $PSScriptRoot 'site') $sd2)
+        $n.Count -ge 5 -and $n -contains 'anticheat.html' -and $n -contains 'site.js'
+    }
+} finally { Remove-Item -LiteralPath $sd, $sd2 -Recurse -Force -ErrorAction SilentlyContinue }
+
 # --- mutation control ------------------------------------------------------------------
 # Each guard below is deleted from a copy of the library; its negative test must
 # then FAIL, or the test was not measuring that guard.
@@ -253,6 +282,15 @@ Check 'mutant: no owner guard -> its test fails' {
 }
 Check 'mutant: no CR guard -> its test fails' {
     -not (Test-Mutant 'has CR bytes' { Throws { Read-LinuxBuildInfo (BiFile $biGood.Replace("`n", "`r`n")) } '*CR*' })
+}
+
+Check 'mutant: no site-token guard -> its test fails' {
+    $a = Join-Path ([System.IO.Path]::GetTempPath()) ("site-" + [guid]::NewGuid()); $b = "$a-out"
+    New-Item -ItemType Directory $a, $b | Out-Null
+    try {
+        [System.IO.File]::WriteAllText((Join-Path $a 'a.html'), "<p>@@VERSION@@</p>")
+        -not (Test-Mutant 'holds a template token' { Throws { Copy-SiteFiles $a $b } '*template token*' })
+    } finally { Remove-Item -LiteralPath $a, $b -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 # --- linux-pack.sh in WSL ------------------------------------------------------------------

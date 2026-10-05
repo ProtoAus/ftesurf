@@ -1412,6 +1412,8 @@ if (-not $SkipSite) {
     Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\BebasNeueRegular.ttf') -Destination $pageDir
     Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\OFL.txt')              -Destination $pageDir
     Copy-Item -LiteralPath (Join-Path $SurfDir 'LICENSE')                                -Destination (Join-Path $pageDir 'LICENSE.txt')
+    # site.css, site.js, anticheat.html and the pictures (src/release/site).
+    try { $siteFiles = @(Copy-SiteFiles (Join-Path $RelDir 'site') $pageDir) } catch { Fail $_.Exception.Message }
     # THE PUBLISHED RECEIPT IS NOT A BYTE COPY OF THE dist\ ONE, and this is the
     # only field they differ in.  `tool.host` is the operator's own name for
     # their own PC; provenance-by-design is this script's ethos, but that ethos
@@ -1434,7 +1436,7 @@ if (-not $SkipSite) {
     if ($pubReceiptJson -match [regex]::Escape($env:COMPUTERNAME)) { Fail 'the published receipt still names this machine' }
     [System.IO.File]::WriteAllText((Join-Path $pageDir 'version.json'), $pubReceiptJson + "`n", (New-Object System.Text.UTF8Encoding $false))
     $pageSha = (Get-FileHash -LiteralPath (Join-Path $pageDir 'index.html') -Algorithm SHA256).Hash
-    Good "rendered index.html ($((Get-Item (Join-Path $pageDir 'index.html')).Length) bytes) + 4 companions"
+    Good "rendered index.html ($((Get-Item (Join-Path $pageDir 'index.html')).Length) bytes) + $(4 + $siteFiles.Count) companions"
 }
 
 if ($DryRun) {

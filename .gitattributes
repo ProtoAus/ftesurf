@@ -36,6 +36,7 @@
 *.tga               binary
 *.png               binary
 *.jpg               binary
+*.webp              binary
 *.wav               binary
 *.ogg               binary
 *.dat               binary

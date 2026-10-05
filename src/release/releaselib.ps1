@@ -226,3 +226,73 @@ function ConvertTo-WslPath ([string]$Distro, [string]$WinPath) {
     if ($r.Rc -ne 0 -or $r.Lines.Count -ne 1 -or -not $r.Lines[0].StartsWith('/')) { throw "wslpath failed for $WinPath`: $($r.Lines -join ' ')" }
     return $r.Lines[0]
 }
+
+
+# --- the site from a receipt (sitepage.ps1) -------------------------------------
+# release.ps1 renders the page from what it measured; sitepage.ps1 renders it
+# again from the receipt that run wrote.  Both must format a value the same way,
+# so the rules live here: release.ps1's HumanSize, its date and its labels.
+function Format-HumanSize ([long]$b) {
+    if ($b -ge 1MB) { '{0:N1} MB' -f ($b / 1MB) }
+    elseif ($b -ge 1KB) { '{0:N0} KB' -f ($b / 1KB) }
+    else { "$b bytes" }
+}
+
+function Format-EngineLabel ($Patch, $Verified) {
+    if ($Verified) { "$Patch" } else { "$Patch (unverified against this binary)" }
+}
+
+# PowerShell 7's ConvertFrom-Json turns an ISO string into a DateTime already.
+function Format-ReceiptDate ($When) {
+    $t = if ($When -is [datetime]) { $When } else {
+        [datetime]::Parse("$When", [Globalization.CultureInfo]::InvariantCulture,
+                          [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
+    }
+    $t.ToUniversalTime().ToString('d MMMM yyyy', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+# The page's token values for one receipt: Windows always, Linux only when the
+# release shipped one (else $null, and the LINUX blocks are cut).
+function Get-ReceiptTokens ($Receipt) {
+    $a = $Receipt.archive
+    $win = [ordered]@{
+        'VERSION'     = "$($Receipt.version)"
+        'FILENAME'    = "$($a.name)"
+        'URL'         = "$($a.url)"
+        'SIZE_HUMAN'  = (Format-HumanSize ([long]$a.bytes))
+        'SIZE_BYTES'  = ('{0:N0}' -f [long]$a.bytes)
+        'SHA256'      = "$($a.sha256)".ToUpper()
+        'DATE'        = (Format-ReceiptDate $Receipt.built_utc)
+        'QCBUILD'     = "$($Receipt.qc.build)"
+        'ENGINEPATCH' = (Format-EngineLabel $Receipt.engine.patch_doc $Receipt.engine.patch_applies_to_binary)
+    }
+    $lx = $null
+    if ($Receipt.PSObject.Properties.Name -contains 'linux' -and $Receipt.linux) {
+        $l = $Receipt.linux
+        $lx = [ordered]@{
+            'LINUX_URL'        = "$($l.archive.url)"
+            'LINUX_FILENAME'   = "$($l.archive.name)"
+            'LINUX_SIZE_HUMAN' = (Format-HumanSize ([long]$l.archive.bytes))
+            'LINUX_SIZE_BYTES' = ('{0:N0}' -f [long]$l.archive.bytes)
+            'LINUX_SHA256'     = "$($l.archive.sha256)".ToLower()
+            'LINUX_GLIBC'      = "$($l.glibc_min)"
+            'LINUX_ENGINE'     = (Format-EngineLabel $l.engine.patch_doc $l.engine.binary_verified)
+        }
+    }
+    [pscustomobject]@{ Windows = $win; Linux = $lx }
+}
+
+# src/release/site: fixed files copied as they are, so a token in one is a
+# mistake -- refused rather than shipped literally.  Returns the names copied.
+function Copy-SiteFiles ([string]$From, [string]$To) {
+    $names = @()
+    foreach ($f in @(Get-ChildItem -LiteralPath $From -File | Sort-Object Name)) {
+        if ($f.Extension -in '.html', '.css', '.js', '.json', '.txt', '.svg') {
+            $m = [regex]::Match([System.IO.File]::ReadAllText($f.FullName), '@@([A-Z0-9_]+)@@')
+            if ($m.Success) { throw "site file $($f.Name) holds a template token $($m.Value)" }
+        }
+        Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $To $f.Name)
+        $names += $f.Name
+    }
+    return $names
+}

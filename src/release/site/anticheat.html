@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  The anti-cheat page.  Static: release.ps1 copies it beside index.html and
+  substitutes nothing in it.
+
+  WHAT THIS PAGE MAY SAY is what the system guarantees, never how it looks for
+  cheating.  Thresholds, signals, which checks exist and what they cannot see
+  live in the private anti-cheat plan, and a sentence here that would help
+  someone shape a run around a check does not belong on this page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>FTESurf Anti-Cheat</title>
+<meta name="description" content="How FTESurf keeps its leaderboard fair: every ranked run is recorded, replayed on the server and checked before it counts.">
+<meta property="og:title" content="FTESurf Anti-Cheat">
+<meta property="og:description" content="Every record, earned. Ranked runs are recorded, replayed on our server and checked before they count.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://proto.bar/ftesurf/anticheat.html">
+<meta property="og:image" content="https://proto.bar/ftesurf/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="site.css">
+<script src="site.js" defer></script>
+</head>
+<body>
+
+<header class="nav">
+  <nav class="nav-in" aria-label="Site">
+    <a class="brand" href="./">FTE<b>SURF</b></a>
+    <div class="links">
+      <a href="./">Overview</a>
+      <a href="board/">Leaderboard</a>
+      <a href="board/#who=">Players</a>
+      <a href="anticheat.html" aria-current="page">Anti-Cheat</a>
+    </div>
+    <a class="pill" href="./#download">Download</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="band" style="padding:150px 0 120px">
+  <div class="wrap center">
+    <svg class="mark" viewBox="0 0 84 84" fill="none" aria-hidden="true">
+      <defs><linearGradient id="g1" x1="0" y1="0" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#46bee6"/><stop offset=".55" stop-color="#6edc82"/><stop offset="1" stop-color="#f0d25a"/></linearGradient></defs>
+      <path d="M42 6l28 10v22c0 19-12 32-28 40C26 70 14 57 14 38V16z" stroke="url(#g1)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M29 42l9 9 17-19" stroke="url(#g1)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <p class="eyebrow">Anti-Cheat</p>
+    <h1 class="h-xl">Every record, <span class="grad">earned.</span></h1>
+    <p class="lede">FTESurf doesn&rsquo;t just trust a time. It checks the run that set it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="center" data-reveal>
+      <h2 class="h-l">From run to record.</h2>
+      <p class="lede">Three steps between crossing the line and the top of the board.</p>
+    </div>
+    <ol class="flow" data-reveal>
+      <li><h3>Recorded.</h3>
+        <p>Every tick of a ranked run is written down as you play: where you were, how fast, where you looked and what you pressed.</p></li>
+      <li><h3>Replayed.</h3>
+        <p>Our server plays the recording back through the same physics. It has to reproduce exactly, and finish where the map&rsquo;s own zones say it does.</p></li>
+      <li><h3>Ranked.</h3>
+        <p>A run that passes earns the Verified badge, and anyone can watch it, tick by tick.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="center" data-reveal>
+      <h2 class="h-l">Built in. Not bolted on.</h2>
+      <p class="lede">Fairness is part of how FTESurf records a run, not an afterthought.</p>
+    </div>
+    <div class="pillars">
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="14" cy="16" r="8"/><circle cx="26" cy="16" r="8"/><circle cx="20" cy="26" r="8"/></svg>
+        <h3>Three witnesses.</h3>
+        <p>The server, the game and the engine each keep their own record of a run. A fake has to fool all three at once.</p>
+      </div>
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="18" width="22" height="16" rx="3"/><path d="M14 18v-5a6 6 0 0 1 12 0v5"/></svg>
+        <h3>Locked rules.</h3>
+        <p>Physics settings are fixed, and every recording carries the rules it was played under. A run under other rules can&rsquo;t pass as ranked.</p>
+      </div>
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12h24M8 20h16M8 28h10"/><path d="M27 25l4 4 6-8"/></svg>
+        <h3>Demoted, never accused.</h3>
+        <p>A run we can&rsquo;t fully check still counts, on the community board. Ranked is for runs we can prove.</p>
+      </div>
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="20" cy="13" r="6"/><path d="M8 34c1-7 6-11 12-11s11 4 12 11"/></svg>
+        <h3>People decide.</h3>
+        <p>Automated checks raise questions, not bans. A person reviews anything unusual.</p>
+      </div>
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20s6-11 17-11 17 11 17 11-6 11-17 11S3 20 3 20z"/><circle cx="20" cy="20" r="5"/></svg>
+        <h3>Public by default.</h3>
+        <p>Every ranked run can be watched by anyone, in game or on the web leaderboard. Records hold up in the open.</p>
+      </div>
+      <div class="pillar" data-reveal>
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 4l13 5v10c0 9-6 15-13 18-7-3-13-9-13-18V9z"/><path d="M15 20l4 4 7-8"/></svg>
+        <h3>Safe to join.</h3>
+        <p>We audit what a server is allowed to make your game do, and lock down what it shouldn&rsquo;t.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap split">
+    <div data-reveal>
+      <p class="eyebrow">Open source, closed playbook</p>
+      <h2 class="h-l">Read the code. Not the playbook.</h2>
+    </div>
+    <div data-reveal>
+      <p class="lede" style="margin-top:0">FTESurf&rsquo;s code is open for anyone to read. How we spot cheating isn&rsquo;t
+        published &mdash; the details stay private, so they can&rsquo;t be gamed.</p>
+      <p class="lede">Imported records from Momentum Mod and KSF live on boards of their own and never mix with ranked.
+        A Momentum replay is only drawn on the exact map build it was set on.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap center" data-reveal>
+    <h2 class="h-l">Found a hole?</h2>
+    <p class="lede">Don&rsquo;t post it. Message the developer on Discord and it gets fixed before it spreads.</p>
+    <div class="cta">
+      <a class="btn" href="https://discord.com/channels/471331861839216643/1327302504823787541">Open Discord</a>
+      <a class="more" href="board/">See the leaderboard</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="fnav">
+      <a href="./">Overview</a><a href="board/">Leaderboard</a><a href="board/#who=">Players</a>
+      <a href="anticheat.html">Anti-Cheat</a><a href="./#download">Download</a>
+      <a href="https://github.com/ProtoAus/ftesurf">Source</a>
+    </div>
+    <p>FTESurf is GPLv2 or later &mdash; <a href="LICENSE.txt">LICENSE</a>. It contains no Valve or Momentum Mod code and
+      redistributes no Source assets.</p>
+  </div>
+</footer>
+
+</body>
+</html>

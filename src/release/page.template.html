@@ -1,372 +1,257 @@
 <!doctype html>
 <!--
-  FTESurf download page -- template.
+  FTESurf landing page -- template.
 
   Rendered by src\release\release.ps1, which substitutes double-at placeholders
   with ordinal [string]::Replace() and asserts afterwards that (a) no such
   placeholder survives and (b) the token set here exactly equals its
-  substitution map. Add one here without adding it there and the script fails
-  loudly rather than shipping an unsubstituted placeholder to production.
+  substitution map. That assert reads the whole file, prose included, so never
+  write a token in a comment to explain it.
 
-  That assert reads the whole file, prose included, so do NOT write a token in
-  a comment to explain it -- an example here is indistinguishable from a real
-  placeholder, and the first version of this header tripped its own check.
+  Tokens: VERSION FILENAME URL SIZE_HUMAN SIZE_BYTES SHA256 DATE QCBUILD ENGINEPATCH,
+  and the LINUX_* set only inside the LINUX blocks.
 
-  Tokens: VERSION FILENAME URL SIZE_HUMAN SIZE_BYTES SHA256 DATE QCBUILD ENGINEPATCH
-
-  No token ever appears inside <script>. The copy buttons read textContent out of
-  the DOM, so the JS is a fixed constant in every release and a hash containing a
-  quote could never become a syntax error that takes the whole script down.
-
-  Palette is the game's own main menu, src/menu/m_main.qc:34-42 and ui_backdrop
-  at :3219-3222. Dark only -- the game has one look.
+  No token ever reaches a script: site.js is a fixed file and the copy buttons
+  read textContent out of the DOM. site.css, site.js and the pictures are
+  src/release/site/, copied beside this page by release.ps1.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- without this the browser paints a white scrollbar down a #050508 page -->
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
 <title>FTESurf</title>
-<meta name="description" content="A competitive surf and bhop game on the FTEQW engine, reproducing Counter-Strike: Source and Momentum Mod movement.">
+<meta name="description" content="Competitive surf and bhop with Counter-Strike: Source and Momentum Mod movement, playing 1,300+ maps from the games you already own.">
 <meta property="og:title" content="FTESurf @@VERSION@@">
-<meta property="og:description" content="Competitive surf and bhop with Source movement, playing the existing surf map library out of your own Steam installs.">
+<meta property="og:description" content="Surf, rebuilt. Source movement, 1,300+ maps from your own Steam library, and every ranked run replayed on the server.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://proto.bar/ftesurf">
+<meta property="og:url" content="https://proto.bar/ftesurf/">
 <meta property="og:image" content="https://proto.bar/ftesurf/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<style>
-/* Self-hosted: the page makes zero third-party requests, which is consistent
-   with a game whose whole premise is mounting content you already have.
-   Bebas Neue only -- Roboto.ttf alone is 488 KB and body copy renders fine in
-   the stack every supported platform already ships. */
-@font-face {
-  font-family: 'Bebas Neue FTE';
-  src: url('BebasNeueRegular.ttf') format('truetype');
-  font-weight: 400;
-  font-display: swap;
-}
-:root {
-  --bg:      #050508;   /* ui_backdrop, m_main.qc:3221 */
-  --panel:   #0F0F14;   /* COL_PANEL  */
-  --row:     #1C1C24;   /* COL_ROW    */
-  --hover:   #2E3342;   /* COL_ROW_HOVER */
-  --sel:     #1A4D73;   /* COL_ROW_SEL */
-  --border:  #474D5C;   /* COL_BORDER */
-  --text:    #FFFFFF;   /* COL_TEXT   */
-  --dim:     #8C8C94;   /* COL_DIM    */
-  --accent:  #59BFFF;   /* COL_ACCENT */
-  --display: 'Bebas Neue FTE', 'Haettenschweiler', 'Arial Narrow', Impact, sans-serif;
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --mono: 'Cascadia Mono', Consolas, 'SF Mono', 'DejaVu Sans Mono', monospace;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 16px/1.6 var(--sans);
-  -webkit-font-smoothing: antialiased;
-}
-.wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; padding-block: 56px 72px; }
-
-/* ---- nav: this page and the leaderboard (surfd, proxied under board/) --- */
-.tabs { display: flex; gap: 6px; margin: -24px 0 32px; }
-.tabs a {
-  font-family: var(--display); font-size: 19px; letter-spacing: 0.04em;
-  color: var(--dim); text-decoration: none;
-  padding: 5px 12px 2px; border: 1px solid var(--row); border-radius: 3px;
-}
-.tabs a:hover { color: var(--text); border-color: var(--border); }
-/* Accent edge as well as the lighter box -- board.css carries the same rule and
-   the two navs must not read differently. */
-.tabs a[aria-current="page"] {
-  color: var(--text); background: var(--row); border-color: var(--border);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-/* ---- masthead ---------------------------------------------------------- */
-.mast { margin-bottom: 40px; }
-h1 {
-  font-family: var(--display);
-  font-size: clamp(64px, 17vw, 132px);
-  line-height: 0.84;
-  margin: 0;
-  letter-spacing: 0.01em;
-}
-h1 .surf { color: var(--accent); }
-.tagline { color: var(--dim); font-size: 17px; margin: 14px 0 0; max-width: 52ch; }
-.build {
-  margin-top: 18px; font-family: var(--mono); font-size: 12.5px;
-  color: var(--dim); letter-spacing: 0.02em;
-}
-.build b { color: var(--text); font-weight: 600; }
-
-/* ---- the one panel that matters ---------------------------------------- */
-.get {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 26px;
-  margin-bottom: 40px;
-}
-.get h2 {
-  font-family: var(--display); font-size: 27px; font-weight: 400;
-  margin: 0 0 4px; letter-spacing: 0.03em;
-}
-.needs-note { color: var(--dim); font-size: 14.5px; margin: 0 0 16px; }
-.needs-note b { color: var(--text); font-weight: 600; }
-
-/* styled as the in-game map list, so these read as a list of things rather
-   than as legal text the eye slides off */
-.req { list-style: none; margin: 0 0 22px; padding: 0; }
-.req li {
-  background: var(--row);
-  border-left: 3px solid var(--accent);
-  padding: 9px 14px;
-  margin-bottom: 4px;
-  font-size: 15px;
-  display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline;
-}
-.req li.opt { border-left-color: var(--border); color: var(--dim); }
-.req .who { font-weight: 600; }
-.req .why { color: var(--dim); font-size: 13.5px; }
-.req li.opt .who { font-weight: 500; }
-
-.dl {
-  display: block; text-align: center; text-decoration: none;
-  background: var(--accent); color: #041018;
-  font-family: var(--display); font-size: 30px; letter-spacing: 0.04em;
-  padding: 15px 20px 11px; border-radius: 3px;
-  transition: background .12s ease;
-}
-.dl:hover, .dl:focus-visible { background: #8FD4FF; }
-.dl:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.dl .sub {
-  display: block; font-family: var(--sans); font-size: 12.5px;
-  letter-spacing: 0; opacity: .72; margin-top: 3px; font-weight: 600;
-}
-.meta { margin: 12px 0 0; font-size: 13px; color: var(--dim); text-align: center; }
-
-/* ---- checksum ---------------------------------------------------------- */
-details { margin-top: 16px; border-top: 1px solid var(--row); padding-top: 14px; }
-summary { cursor: pointer; color: var(--dim); font-size: 13.5px; }
-summary:hover { color: var(--text); }
-.hash, .cmd {
-  font-family: var(--mono); font-size: 12px; background: var(--bg);
-  border: 1px solid var(--row); border-radius: 3px;
-  padding: 9px 11px; margin-top: 10px;
-  overflow-x: auto; white-space: pre; word-break: normal;
-}
-.copy {
-  background: var(--row); color: var(--dim); border: 1px solid var(--border);
-  border-radius: 3px; font: inherit; font-size: 12px; padding: 3px 9px;
-  margin-top: 7px; cursor: pointer;
-}
-.copy:hover { background: var(--hover); color: var(--text); }
-
-/* ---- prose ------------------------------------------------------------- */
-h3 {
-  font-family: var(--display); font-size: 22px; font-weight: 400;
-  letter-spacing: 0.03em; margin: 36px 0 10px; color: var(--text);
-}
-ol.steps { padding-left: 20px; margin: 0; }
-ol.steps li { margin-bottom: 9px; }
-p { margin: 0 0 12px; }
-.dimtext { color: var(--dim); font-size: 14.5px; }
-code { font-family: var(--mono); font-size: 0.88em; background: var(--row); padding: 1px 5px; border-radius: 3px; }
-a { color: var(--accent); }
-a:hover { color: #8FD4FF; }
-.warn {
-  border-left: 3px solid var(--sel); background: var(--row);
-  padding: 11px 14px; margin: 16px 0; font-size: 14.5px; color: var(--dim);
-}
-.warn b { color: var(--text); font-weight: 600; }
-footer {
-  margin-top: 52px; padding-top: 22px; border-top: 1px solid var(--row);
-  color: var(--dim); font-size: 12.5px;
-}
-footer p { margin: 0 0 7px; }
-@media (max-width: 460px) {
-  .wrap { padding-block: 36px 48px; }
-  .get { padding: 18px; }
-  .req li { display: block; }
-}
-</style>
+<link rel="stylesheet" href="site.css">
+<script src="site.js" defer></script>
 </head>
 <body>
+
+<header class="nav">
+  <nav class="nav-in" aria-label="Site">
+    <a class="brand" href="./">FTE<b>SURF</b></a>
+    <div class="links">
+      <a href="./" aria-current="page">Overview</a>
+      <a href="board/">Leaderboard</a>
+      <a href="board/#who=">Players</a>
+      <a href="anticheat.html">Anti-Cheat</a>
+    </div>
+    <a class="pill" href="#download">Download</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <p class="eyebrow">FTESurf @@VERSION@@</p>
+    <h1 class="h-xl">Surf, <span class="grad">rebuilt.</span></h1>
+    <p class="lede">Counter-Strike: Source and Momentum movement, on an engine built for it.
+      Every surf map you already own.</p>
+    <div class="cta">
+      <a class="btn" href="#download">Download for Windows <small>Free &middot; @@SIZE_HUMAN@@</small></a>
+      <a class="more" href="board/">See the leaderboard</a>
+    </div>
+  </div>
+  <p class="caption">Proto on surf_utopia, 1:03.240 &mdash; a ranked run, drawn from its own recording.
+    <a href="board/#r=62">Watch it</a></p>
+</section>
+
 <div class="wrap">
-
-  <!-- Players was missing here, so the tab existed on the leaderboard and
-       nowhere else: from this page there was no way to reach it at all. The
-       fragment is what board.js routes on. -->
-  <nav class="tabs"><a href="./" aria-current="page">Download</a>
-    <a href="board/">Leaderboard</a>
-    <a href="board/#who=">Players</a></nav>
-
-  <header class="mast">
-    <h1>FTE<span class="surf">SURF</span></h1>
-    <p class="tagline">
-      A competitive surf and bhop game on the FTEQW engine, reproducing
-      Counter-Strike&nbsp;: Source and Momentum&nbsp;Mod movement &mdash; and playing the
-      existing surf map library straight out of your own Steam installs.
-    </p>
-    <p class="build">
-      <b>@@VERSION@@</b> &nbsp;&middot;&nbsp; @@DATE@@ &nbsp;&middot;&nbsp;
-      QuakeC build @@QCBUILD@@ &nbsp;&middot;&nbsp; engine patch @@ENGINEPATCH@@
-    </p>
-  </header>
-
-  <!-- The requirements and the button are deliberately one object. A player who
-       downloads without these three games gets an empty map browser and
-       concludes the game is broken; co-location is the only reliable fix. -->
-  <section class="get">
-    <h2>Download</h2>
-    <p class="needs-note">
-      FTESurf ships no Valve or Momentum content &mdash; it reads your own installs at
-      runtime. <b>You need these three on Steam first.</b>
-    </p>
-
-    <ul class="req">
-      <li><span class="who">Momentum Mod Playtest</span> <span class="why">the map library &mdash; 1,308 maps</span></li>
-      <li><span class="who">Counter-Strike: Source</span> <span class="why">materials and models most surf maps use</span></li>
-      <li><span class="who">Half-Life 2</span> <span class="why">skyboxes, dev textures, common props</span></li>
-      <li class="opt"><span class="who">CS:GO (legacy Source 1) and TF2</span> <span class="why">optional, mounted only for the maps that need them</span></li>
-    </ul>
-
-    <a class="dl" href="@@URL@@" download>
-      Download for Windows
-      <span class="sub">@@FILENAME@@ &middot; @@SIZE_HUMAN@@</span>
-    </a>
-    <p class="meta">Windows&nbsp;x64 &middot; @@SIZE_BYTES@@ bytes &middot; 7-Zip archive, no installer</p>
-
-    <details>
-      <summary>Verify the download (SHA-256)</summary>
-      <div class="hash" id="sha">@@SHA256@@</div>
-      <button class="copy" type="button" data-copy="sha" hidden>Copy hash</button>
-      <div class="cmd" id="cmd">if ((Get-FileHash .\@@FILENAME@@ -Algorithm SHA256).Hash -eq '@@SHA256@@') { 'OK' } else { 'MISMATCH' }</div>
-      <button class="copy" type="button" data-copy="cmd" hidden>Copy PowerShell check</button>
-      <p class="dimtext" style="margin-top:10px">Paste the second one in PowerShell, in the folder you downloaded to. It prints <code>OK</code> or <code>MISMATCH</code> &mdash; no need to read 64 hex characters.</p>
-    </details>
-    <!--LINUX-BEGIN-->
-    <!-- rendered only by release.ps1 -Linux; tokens LINUX_URL FILENAME SIZE_HUMAN SIZE_BYTES SHA256 GLIBC ENGINE -->
-    <a class="dl" style="margin-top:28px" href="@@LINUX_URL@@" download>
-      Download for Linux &middot; beta
-      <span class="sub">@@LINUX_FILENAME@@ &middot; @@LINUX_SIZE_HUMAN@@</span>
-    </a>
-    <p class="meta">Linux&nbsp;x86_64, glibc @@LINUX_GLIBC@@ or newer &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; tar.xz, no installer &middot; <b>beta, tested in WSL only</b> &middot; engine patch @@LINUX_ENGINE@@</p>
-    <details>
-      <summary>Verify the Linux download (SHA-256)</summary>
-      <div class="hash" id="sha-linux">@@LINUX_SHA256@@</div>
-      <button class="copy" type="button" data-copy="sha-linux" hidden>Copy hash</button>
-      <div class="cmd" id="cmd-linux">echo '@@LINUX_SHA256@@  @@LINUX_FILENAME@@' | sha256sum -c</div>
-      <button class="copy" type="button" data-copy="cmd-linux" hidden>Copy shell check</button>
-      <p class="dimtext" style="margin-top:10px">Run it in the folder you downloaded to. It prints <code>@@LINUX_FILENAME@@: OK</code>, or <code>FAILED</code> if the file is damaged.</p>
-    </details>
-    <!--LINUX-END-->
-  </section>
-
-  <h3>After it downloads</h3>
-  <ol class="steps">
-    <li>Extract the archive into a folder of its own. Nothing is written outside it, and there is no installer.</li>
-    <li>Run <code>ftesurf.bat</code>. The engine takes its game folder from the working directory rather than from the .exe's location, and the batch file sets it &mdash; a shortcut pointing straight at <code>ftesurf64.exe</code> from elsewhere stops at a mod list.</li>
-    <li>If the map browser is empty, or a mount says <span class="dimtext">not found</span>, type <code>fs_steamlibs</code> in the console. It prints where the engine looked and how each mount resolved. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code> then <code>fs_restart</code>.</li>
-  </ol>
-
-  <div class="warn">
-    <b>Upgrading from 0.1.9 or earlier?</b> Delete <code>ftesurf\ftesurf.cfg</code> once, after extracting and
-    before you start the game. Earlier builds ran Momentum Mod&rsquo;s own config at every start and saved its binds
-    into that file (R stopped restarting your run); this build no longer runs it, but the saved binds stay until the
-    file is gone. Deleting it also resets your own settings &mdash; note your sensitivity first.
+  <div class="stats" data-reveal>
+    <div class="stat"><b>1,300+</b><span>maps</span></div>
+    <div class="stat"><b>66.67</b><span>tick, like CS:S</span></div>
+    <div class="stat"><b>12</b><span>public lobbies</span></div>
+    <div class="stat"><b>Free</b><span>and open source</span></div>
   </div>
-  <!--LINUX-BEGIN-->
-
-  <h3>On Linux (beta)</h3>
-  <ol class="steps">
-    <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>. The game saves everything inside it, so your home folder works and <code>/opt</code> does not.</li>
-    <li>Run <code>./ftesurf.sh</code> from that folder, or point a launcher at it. Engine errors go to <code>stderr.log</code> beside it, and a crash writes <code>crash.log</code>.</li>
-    <li><b>Momentum Mod Playtest has no Linux version on Steam.</b> Install it with Steam Play: Properties &rsaquo; Compatibility &rsaquo; force a Proton version, then install. FTESurf only reads its maps; you never start Momentum. Counter-Strike: Source and Half-Life 2 install natively.</li>
-    <li>Native, Flatpak and Snap Steam are found automatically. For a library on another drive: <code>fs_steamlibs add /path/to/SteamLibrary</code>, then <code>fs_restart</code>.</li>
-  </ol>
-  <p class="dimtext">The first Linux build, tested only under WSL on Windows &mdash; not yet on a native Linux desktop. <b>Linux runs are not ranked during the beta</b>: the leaderboard cannot yet tell injected input from a real mouse there. Report problems, with <code>stderr.log</code> and <code>crash.log</code>, on <a href="https://discord.com/channels/471331861839216643/1327302504823787541">Discord</a>.</p>
-  <!--LINUX-END-->
-
-  <div class="warn">
-    <b>Alpha.</b> The build is not code-signed, so SmartScreen will warn the first time you run it.
-    Physics fixes between builds can invalidate previously recorded run times &mdash; this is a
-    timing game whose ruleset is still moving.
-  </div>
-
-  <h3>What it is</h3>
-  <p class="dimtext">
-    Roughly 48,000 lines of QuakeC: a per-map timing system with zones, stages and bonuses;
-    savelocs; ghosts and full run replays; a strafe-quality HUD you can lay out yourself; and a
-    browser over 1,300+ maps with tiers, thumbnails and per-map asset resolution.
-  </p>
-  <p class="dimtext">
-    Movement is engine-side rather than QC-side, in a fork of FTEQW that adds the Source movement
-    module and the hl2 plugin's <code>.phy</code> collision, VTF/VMT materials and static-prop
-    lighting. Stock FTEQW will not run it; the engine is in the archive.
-  </p>
-
-  <footer>
-    <p>
-      FTESurf is <b>GPLv2 or later</b> &mdash; <a href="LICENSE.txt">LICENSE</a> &middot;
-      <a href="https://github.com/ProtoAus/ftesurf">game source</a> &middot;
-      <a href="https://github.com/ProtoAus/ftequakers">engine fork</a> &middot;
-      <a href="version.json">build manifest</a>
-    </p>
-    <p>
-      Bebas Neue &copy; 2010 Ryoichi Tsunekawa, Dharma Type, licensed under the
-      SIL Open Font Licence 1.1 &mdash; <a href="OFL.txt">OFL.txt</a>.
-    </p>
-    <p>
-      FTESurf contains no Valve or Momentum Mod code and redistributes no Source assets.
-      Mounted Steam content is read from your own installs at runtime.
-    </p>
-  </footer>
-
 </div>
-<script>
-// Fixed and token-free in every release: the values are read out of the DOM, so
-// nothing the release script substitutes can reach a JS parser. Buttons ship
-// hidden and are revealed here, because a dead button with JS off is worse than
-// no button at all.
-(function () {
-  function copy(text, btn) {
-    var done = function () {
-      var old = btn.textContent;
-      btn.textContent = 'Copied';
-      setTimeout(function () { btn.textContent = old; }, 1400);
-    };
-    // navigator.clipboard needs a secure context; fall back rather than no-op.
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(done, function () { legacy(text, done); });
-    } else {
-      legacy(text, done);
-    }
-  }
-  function legacy(text, done) {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); done(); } catch (e) { /* leave it selectable */ }
-    document.body.removeChild(ta);
-  }
-  var btns = document.querySelectorAll('.copy[data-copy]');
-  for (var i = 0; i < btns.length; i++) {
-    (function (btn) {
-      var src = document.getElementById(btn.getAttribute('data-copy'));
-      if (!src) { return; }
-      btn.hidden = false;
-      btn.addEventListener('click', function () { copy(src.textContent, btn); });
-    })(btns[i]);
-  }
-})();
-</script>
+
+<section>
+  <div class="wrap split">
+    <div data-reveal>
+      <p class="eyebrow">Replays and ghosts</p>
+      <h2 class="h-l">Every run leaves a line.</h2>
+      <p class="lede">Race a ghost. Scrub a replay. Watch the record from the inside.</p>
+      <ul class="ticks">
+        <li><b>Lines coloured by speed,</b> so you see where the time went.</li>
+        <li><b>Full replays</b> with the keys and the mouse.</li>
+        <li><b>Ghosts</b> of the best runs on the board.</li>
+      </ul>
+    </div>
+    <div class="shot" data-reveal>
+      <img src="shot-rise.webp" width="690" height="860" loading="lazy"
+           alt="surf_rise in FTESurf: platforms over the sea, with a run's line drawn across them">
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="center" data-reveal>
+      <h2 class="h-l">Everything a run needs.</h2>
+      <p class="lede">Nothing it doesn&rsquo;t.</p>
+    </div>
+    <div class="bento">
+      <div class="tile wide photo" data-reveal>
+        <img src="shot-monolith.webp" width="860" height="740" loading="lazy" alt="">
+        <p class="big">1,300+</p>
+        <h3>Maps, ready to play.</h3>
+        <p>Read straight from Momentum Mod, Counter-Strike: Source and Half-Life&nbsp;2.
+          Nothing to download twice.</p>
+      </div>
+      <div class="tile" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 42V7"/><path d="M12 8h22l-5 7 5 7H12"/></svg>
+        <h3>Stages and bonuses.</h3>
+        <p>Each timed and ranked on its own. Save anywhere and practise one section.</p>
+      </div>
+      <div class="tile" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 34a18 18 0 0 1 36 0"/><path d="M24 34l9-11"/><circle cx="24" cy="34" r="2.5"/></svg>
+        <h3>Strafe HUD.</h3>
+        <p>Speed, gain and sync on every tick. Lay it out your way.</p>
+      </div>
+      <div class="tile" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="8" width="34" height="12" rx="3"/><rect x="7" y="28" width="34" height="12" rx="3"/><path d="M14 14h.01M14 34h.01"/></svg>
+        <h3>Twelve lobbies.</h3>
+        <p>Pick a map and a server switches to it. Vote on what&rsquo;s next.</p>
+      </div>
+      <div class="tile" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8h16v10a8 8 0 0 1-16 0z"/><path d="M16 12H9a6 6 0 0 0 7 7M32 12h7a6 6 0 0 1-7 7"/><path d="M24 26v8M17 40h14"/></svg>
+        <h3>Momentum and KSF.</h3>
+        <p>Their records beside ours, with stages, bonuses and KSF&rsquo;s styles.</p>
+      </div>
+      <div class="tile half" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14L7 24l10 10M31 14l10 10-10 10M27 9l-6 30"/></svg>
+        <h3>Open source.</h3>
+        <p>Game and engine, GPLv2. Read every line on GitHub.</p>
+      </div>
+      <div class="tile half" data-reveal>
+        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 30c8 0 10-14 18-14s10 14 18 14"/><path d="M6 38h36"/></svg>
+        <h3>Source movement.</h3>
+        <p>Air-strafing and ramps that feel the way they should.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap center" data-reveal>
+    <svg class="mark" viewBox="0 0 84 84" fill="none" aria-hidden="true">
+      <defs><linearGradient id="g1" x1="0" y1="0" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#46bee6"/><stop offset=".55" stop-color="#6edc82"/><stop offset="1" stop-color="#f0d25a"/></linearGradient></defs>
+      <path d="M42 6l28 10v22c0 19-12 32-28 40C26 70 14 57 14 38V16z" stroke="url(#g1)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M29 42l9 9 17-19" stroke="url(#g1)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2 class="h-l">Fair by design.</h2>
+    <p class="lede">Every ranked run is recorded, replayed on our server and checked before it counts.</p>
+    <a class="more" href="anticheat.html">How our anti-cheat works</a>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="center" data-reveal>
+      <h2 class="h-l">Get FTESurf.</h2>
+      <p class="lede">Free, no installer. It plays from the games below and ships none of their content.</p>
+    </div>
+
+    <!-- The requirements and the button are one object: a player who downloads
+         without these games gets an empty map browser and concludes the game is
+         broken. -->
+    <div class="needs" data-reveal>
+      <div class="need"><i>Needed</i><b>Momentum Mod Playtest</b><span>The map library: 1,308 maps.</span></div>
+      <div class="need"><i>Needed</i><b>Counter-Strike: Source</b><span>Materials and models most surf maps use.</span></div>
+      <div class="need"><i>Needed</i><b>Half-Life 2</b><span>Skyboxes, dev textures and common props.</span></div>
+    </div>
+    <p class="optional">CS:GO (legacy Source&nbsp;1) and TF2 are optional, mounted only for the maps that need them.</p>
+
+    <div class="get" data-reveal>
+      <a class="dl" href="@@URL@@" download>Download for Windows
+        <small>@@FILENAME@@ &middot; @@SIZE_HUMAN@@</small></a>
+      <p class="meta"><b>@@VERSION@@</b> &middot; @@DATE@@ &middot; Windows x64 &middot; @@SIZE_BYTES@@ bytes &middot;
+        7-Zip &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@</p>
+
+      <details>
+        <summary>Verify the download (SHA-256)</summary>
+        <div class="hash" id="sha">@@SHA256@@</div>
+        <button class="copy" type="button" data-copy="sha" hidden>Copy hash</button>
+        <div class="cmd" id="cmd">if ((Get-FileHash .\@@FILENAME@@ -Algorithm SHA256).Hash -eq '@@SHA256@@') { 'OK' } else { 'MISMATCH' }</div>
+        <button class="copy" type="button" data-copy="cmd" hidden>Copy PowerShell check</button>
+        <p>Paste the second line into PowerShell in the folder you downloaded to. It prints <code>OK</code> or <code>MISMATCH</code>.</p>
+      </details>
+      <!--LINUX-BEGIN-->
+      <a class="dl alt" href="@@LINUX_URL@@" download>Download for Linux &middot; beta
+        <small>@@LINUX_FILENAME@@ &middot; @@LINUX_SIZE_HUMAN@@</small></a>
+      <p class="meta">Linux x86_64, glibc @@LINUX_GLIBC@@ or newer &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; tar.xz &middot;
+        engine patch @@LINUX_ENGINE@@ &middot; <b>tested in WSL only</b></p>
+      <details>
+        <summary>Verify the Linux download (SHA-256)</summary>
+        <div class="hash" id="sha-linux">@@LINUX_SHA256@@</div>
+        <button class="copy" type="button" data-copy="sha-linux" hidden>Copy hash</button>
+        <div class="cmd" id="cmd-linux">echo '@@LINUX_SHA256@@  @@LINUX_FILENAME@@' | sha256sum -c</div>
+        <button class="copy" type="button" data-copy="cmd-linux" hidden>Copy shell check</button>
+        <p>Run it in the folder you downloaded to. It prints <code>@@LINUX_FILENAME@@: OK</code>, or <code>FAILED</code> if the file is damaged.</p>
+      </details>
+      <!--LINUX-END-->
+    </div>
+
+    <ol class="steps" data-reveal>
+      <li><b>Extract.</b>Into a folder of its own. Nothing is written outside it.</li>
+      <li><b>Run <code>ftesurf.bat</code>.</b>It sets the game folder; a shortcut straight to the .exe stops at a mod list.</li>
+      <li><b>Empty map list?</b>Type <code>fs_steamlibs</code> in the console to see where it looked. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code>, then <code>fs_restart</code>.</li>
+    </ol>
+
+    <div class="get">
+      <!--LINUX-BEGIN-->
+      <details>
+        <summary>On Linux (beta)</summary>
+        <ul>
+          <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>.</li>
+          <li>Run <code>./ftesurf.sh</code>. Engine errors go to <code>stderr.log</code>, a crash writes <code>crash.log</code>.</li>
+          <li>Momentum Mod Playtest has no Linux build: install it with Steam Play (Properties &rsaquo; Compatibility &rsaquo; a Proton version). FTESurf only reads its maps.</li>
+          <li>Native, Flatpak and Snap Steam are found automatically; for another drive, <code>fs_steamlibs add /path/to/SteamLibrary</code> then <code>fs_restart</code>.</li>
+          <li>Linux runs are not ranked during the beta.</li>
+        </ul>
+      </details>
+      <!--LINUX-END-->
+      <details>
+        <summary>Before you play</summary>
+        <p><b>Alpha.</b> The build is not code-signed, so SmartScreen warns the first time you run it.
+          Physics fixes between builds can invalidate earlier times.</p>
+        <p><b>Upgrading from 0.1.9 or earlier?</b> Delete <code>ftesurf\ftesurf.cfg</code> once, before you start the
+          game: older builds saved Momentum Mod&rsquo;s binds into it. That also resets your own settings, so note your
+          sensitivity first.</p>
+        <p>Problems? Bring <code>stderr.log</code> or a screenshot to
+          <a href="https://discord.com/channels/471331861839216643/1327302504823787541">Discord</a>.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="fnav">
+      <a href="./">Overview</a><a href="board/">Leaderboard</a><a href="board/#who=">Players</a>
+      <a href="anticheat.html">Anti-Cheat</a><a href="https://github.com/ProtoAus/ftesurf">Source</a>
+      <a href="version.json">Build manifest</a>
+    </div>
+    <p>FTESurf is GPLv2 or later &mdash; <a href="LICENSE.txt">LICENSE</a> &middot;
+      <a href="https://github.com/ProtoAus/ftesurf">game source</a> &middot;
+      <a href="https://github.com/ProtoAus/ftequakers">engine fork</a>.
+      It contains no Valve or Momentum Mod code and redistributes no Source assets; mounted Steam content is read
+      from your own installs at runtime.</p>
+    <p>Bebas Neue &copy; 2010 Ryoichi Tsunekawa, Dharma Type, SIL Open Font Licence 1.1 &mdash; <a href="OFL.txt">OFL.txt</a>.</p>
+  </div>
+</footer>
+
 </body>
 </html>
