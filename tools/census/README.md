@@ -23,6 +23,7 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `ssd1.py` | horizontal-only setspeed pads in a start zone (Patch 412's open case) |
 | `onjumpstart.py` | OnJump basevelocity pads vs start zones, on the live rotation (Patch 414) |
 | `recsim.py` | cross-run similarity over the server-written move columns (BACKLOG item F) |
+| `assist.py` | the timing-assist statistics, and which of them the corpus can support (BACKLOG item G) |
 
 ## READ THIS BEFORE QUOTING A NUMBER
 
@@ -86,3 +87,41 @@ not compared at all rather than being reported as a low score.
 So: run `recsim.py pairs` on a **fleet** `data/runs/` before believing any number
 here, and read the caveat it prints when it fires. Full measurement and the
 synthetic-positive table are in BACKLOG.md's item F.
+
+## `assist.py` — a census that measured its own premise and lost it
+
+BACKLOG item G asked whether a timing assist (`Edgebug assist`, `Jumpbug assist`,
+`null strafe`, `AutoBounce`, `Perf-Hop`) can be told from a human using a kept
+`.rec` alone, and proposed reading a success rate per opportunity off "`fl` bit 1
+... ground contact per tick". **That premise does not survive the corpus**, and
+the tool exists to show the measurement rather than the intention:
+
+| obstacle | measured |
+|---|---|
+| `fl` bit 1 is not contact on a surf run — Source sets FL_ONGROUND only on walkable ground, and sliding a ramp leaves it clear | 5369 of 5414 files with rows hold fewer than `MIN_OPP` fresh-press landings; 45 are judgeable |
+| a landing is not a jump opportunity | of 9855 such landings, 9122 (92.6%) see no press within 40 ticks |
+| bit 16 (`run_rampcontact`) is the signal that would work, and only our server writes it | 101 of 5571 files have one ramp tick, all native; 90 hold such a landing; 16 delays total |
+| `keys` is derived from the move signs by BOTH writers, so an overlap check is vacuous | `fl` bit 4 and `keys` FSI_JUMP agree on every row of all 5571 files — one fact, not two witnesses |
+| the null observable that does exist does not separate | clean-switch rate: median 0.9038, and **364 of 4237 runs (8.59%) read exactly 1.0000** |
+
+The one statistic with coverage is the **jump impulse**, which needs no ground bit:
+`steps` histograms every upward `vz` step and finds a sharp spike at 275–300 u/s
+(16,428 of 255,592 steps in that one bucket) sitting in a valley — `pm_jumpvelocity`
+added in a single tick, against a ramp's gradual climb. That measured band is what
+`HOP_MIN`/`HOP_MAX` are, and the interval regularity over it reads min 0.5487 on
+204 judgeable human runs against 0.0000 for a synthetic periodic chain. Wide-looking,
+but it bounds separation from **one side only**: no real assist sample exists in this
+tree, and a timer-driven assist still reacts to terrain.
+
+**A falsified explanation is in the tool's docstring and stays there.** The 73 of
+733 presses that arrive within 2 ticks are too fast for a reaction (~150–250 ms), so
+I predicted jump mashing. `delays` buckets runs by the fraction of ticks jump is
+held, and the prediction is backwards: 32.9% fast in the 0–5% bucket against 0.68%
+in the 75–100% one. What survives is either a selection artifact of excluding
+held-jump landings, or a *predicted* press timed to a visible landing — which is
+legitimate play. Neither is tested, and both say the same thing: a small delay
+cannot accuse.
+
+Run `control` before believing any zero in the output: it rewrites a real run into
+an assist-shaped one and asserts each statistic reaches 1.0000 (and the periodic
+chain reaches cv 0), so a low count reads as coverage and not as a broken statistic.

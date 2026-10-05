@@ -167,6 +167,58 @@ sweep and closed the pitch axis; these are what it could not close.
   rate. **Blocked on a calibration corpus**, and per the tree's own rule a
   threshold from one framerate or one map is not a threshold.
 
+  **MEASURED 2026-10-05, `tools/census/assist.py` — the statistic is built and
+  the premise it was filed on is falsified.** The proposal above was to read a
+  success rate per opportunity off "`fl` bit 1 gives ground contact per tick".
+  Over 5571 `.rec` files (5281 Momentum imports, 130 native, 157 with no rows)
+  that does not hold, for three separately measured reasons:
+
+  | the obstacle | measured |
+  |---|---|
+  | `fl` bit 1 is NOT contact on a surf run — Source sets FL_ONGROUND only on walkable ground, and sliding a ramp leaves it clear, which is the whole mechanic | 5369 of the 5414 files that have rows hold fewer than `MIN_OPP` 20 fresh-press landings; **45 are judgeable at all** |
+  | and a landing is not a jump opportunity | of 9855 ground-bit landings with no jump held beforehand, **9122 (92.6%) see no press within 40 ticks** — on a surf map you land and keep going |
+  | bit 16 (`run_rampcontact`) IS the signal that would work, and only our server writes it — a `.mtv` records no contact plane, so `momreimport.py` says "Never 16" | **101 of 5571 files have one ramp tick, every one native**; 90 hold such a landing; 16 delays total. The corpus with the signal has no players, the corpus with players has no signal |
+  | the null observable is not the one assumed | `keys` is DERIVED from the move signs by both writers (SV_RecKeys; momreimport applies "the same rule"), so FSI_LEFT/FSI_RIGHT are mutually exclusive by construction and an overlap check reads perfect for everybody. Corollary, measured: `fl` bit 4 and `keys` FSI_JUMP agree on **every row of all 5571 files** — they are both `e.button2`, so a `.rec` carries ONE witness for a jump, not two |
+  | and the null observable that does exist does not separate | clean-switch rate over 4237 judgeable runs: median 0.9038, p95 1.0000, and **364 runs (8.59%) read exactly 1.0000** (native 4 of 60). A gate at 1.0000 false-accuses one human run in twelve |
+
+  This is cheatanalysis Finding E's self-referential trap one layer over, and the
+  `keys` half was caught before the tool was written rather than after.
+
+  **THE ONE STATISTIC WITH COVERAGE NEEDS NO GROUND BIT.** The jump impulse is
+  visible in `vz` alone: over 200 files, 255,592 upward steps form a sharply
+  bimodal distribution — 89.6% below 150 u/s (a ramp converting horizontal to
+  vertical), **a spike of 16,428 in the 275-300 bucket alone** (`pm_jumpvelocity`
+  ~289 added in ONE tick), 3,847 above 320 (boosters, pads, teleports).
+  `assist.py steps` prints that histogram, so `HOP_MIN`/`HOP_MAX` are a measured
+  cut placed in the valley. Interval regularity over it reads **min 0.5487,
+  median 0.9130 on 204 judgeable human runs against 0.0000 for a synthetic
+  periodic chain** — wide-looking, but it bounds separation from ONE side only:
+  no real assist sample exists in this tree, and a timer-driven assist still has
+  to react to terrain, so its cv is not 0. Treat 0.5487 as the human floor.
+
+  **A FALSIFIED EXPLANATION, kept because it is the reason no gate was written.**
+  73 of the 733 landings that do see a press arrive within 2 ticks — far faster
+  than the ~150-250 ms (10-17 ticks) a reaction to an unanticipated contact
+  needs — and 46 runs (1.30%) contain one. I predicted jump MASHING: a player
+  spamming the key lands with it already down often enough to look frame-perfect.
+  `assist.py delays` buckets runs by the fraction of ticks jump is held, and the
+  prediction is BACKWARDS — the fast rate is **32.9% in the 0-5% bucket against
+  0.68% in the 75-100% one**. Two explanations survive and neither is tested,
+  because there is no assist sample to test against: (a) a selection artifact of
+  the autobunny exclusion (landings during a tap are removed, so what remains is
+  biased toward "the tap starts just after this contact"); (b) a PREDICTED press,
+  timed to a landing the player can see coming, which has no reaction delay and is
+  legitimate play. Both say the same thing about a gate: a small delay is ordinary
+  human play, so delay cannot accuse.
+
+  So the falsifier above is now answered — `assist.py` prints a per-run and a
+  pooled landing rate — and it prints the coverage beside it, because the honest
+  reading is that **45 of the 5414 files with sample rows can be judged on
+  landings, and not one Momentum run can be judged on ramp contact at all**. `control` rewrites a real run into an assist-shaped
+  one and asserts each statistic reaches 1.0000 (and the periodic chain cv 0), so
+  a zero in the output reads as coverage and not as a broken statistic. Still no
+  threshold and no surfd code, and the blocker is unchanged: the fleet corpus.
+
 - **`reccheck`'s key-mask check is self-referential.** It derives `want` from the
   `fwd`/`side` columns and compares to the direction bits of `keys`, which reads
   as a cross-check of two independent facts and is not one: the server reads both
@@ -192,23 +244,52 @@ sweep and closed the pitch axis; these are what it could not close.
   `tools/p484ident.py` Part 2, which sweeps all eight (angle, key, count, sign)
   combinations.
 
-- **`f` RECORDS ARE WRITTEN ON ROUGHLY HALF OF ALL JOURNALS, INCLUDING HONEST
-  PBs, and nothing says which half or why.** Census of all 123 `.hid` files in
-  `ftesurf/data/` 2026-10-05: **61 have zero `f` records and 62 have them**, and
-  the empty half is not confined to harness stubs -- it includes `p305_*`,
-  `p385_*` and THREE real gameplay recordings (`0000007_pb.hid`, `0000008_pb.hid`,
-  `0000009_pb.hid`).  An `f` record is the journal's own per-frame device summary,
-  distinct from `v` (the view sample `IN_Journal_View` writes), and every file in
-  the census has `v` rows -- e.g. `p486_B.hid` has 182 `v` and 0 `f`, while
-  `p484_B.hid` from the same harness family has 181 `v` and 678 `f`.  The
-  corresponding `in_journal_end` line reads `0 frames` on the empty side even when
-  the identity counter governed 181 frames, so the two counters do not agree about
-  what a frame is.  **Why it matters:** any check built on `f` silently covers
-  about half the corpus and reports the other half as clean-by-absence, which is
-  the same shape as Patch 484's arm A finding -- an unmeasured state wearing a
-  clean measurement's clothes -- one layer down and not yet caught by anything.
-  Falsifier: the census above, re-runnable as a Counter over the first token of
-  each line; and `grep -c '^f ' <file>` against `grep -c '^v ' <file>`.
+- **RESOLVED 2026-10-05: the `f`-record split is not a mystery, and half of this
+  item was wrong.** It read: 61 of 123 journals have zero `f` records, the empty
+  half includes "THREE real gameplay recordings", and "the two counters do not
+  agree about what a frame is". All three claims were checked and two are false.
+
+  THE MECHANISM, from the call site: `IN_Journal_Frame()` is called in exactly one
+  place (`in_generic.c`, inside `if (events_used != events_available)` in
+  IN_Commands' drain loop), so **`f` is written if and only if a device event was
+  drained that frame.** Its own grammar line already says so ("a drain of
+  IN_Commands began") and the header comment names a file with no rows "a journal
+  of nothing happening". The census follows exactly: files split **61 zero-`f` /
+  62 with-`f`, and the split is identical to "has any device-event record at
+  all" (`m`,`+`,`-`,`a`,`x`,`j`,`d`,`g`,`b`) with zero exceptions either way** —
+  the 62 have 34-6830 `f` rows, the 61 have none and no device events either.
+
+  THE FALSE CLAIM: `0000007_pb.hid`, `0000008_pb.hid` and `0000009_pb.hid` are not
+  gameplay recordings. They are 2130-byte files whose own trailer reads
+  `end 143712 0.143748 0 0 ...` — a **0.14-second session, 0 events, 0 frames, one
+  `v` row**, with a ~6 KB `.rec` beside them. Stub runs. Naming them "real
+  gameplay" is what made the split look unexplained; the half that has no device
+  events is the half where no device was read.
+
+  THE TWO "FRAMES" COUNTERS ARE TWO DEFINITIONS, not a disagreement, and the
+  relation between them is exact:
+
+  - `end <dt> <abs> <events> <frames> <dropped> <hidden>` — **`frames` counts
+    DRAINS, i.e. `f` rows.** Verified: `p484_B.hid` has 678 `f` rows and its
+    trailer says 678.
+  - `in_jrn484_frames` counts VIEW SAMPLES THE IDENTITY GOVERNED, i.e. `v` rows
+    minus the abstentions. Verified: `p486_B.hid` has 182 `v` rows and
+    `ftesurf/logs/p486injrn.log` reads `"in_jrn484_frames" is "181"` with
+    `in_jrn484_skipped` 0 — the difference is the first view, which
+    `IN_Journal_CheckIdentity` returns on before `vcount++` (`!in_jrn_vhavelast`).
+    So **`#v == in_jrn484_frames + in_jrn484_skipped + 1`** whenever no abstention
+    arm fires, and `CheckIdentity` sits above the `v` write and below the
+    quiet-frame return, which is what makes the identity hold per row.
+
+  **What survives of the original worry, and it is smaller than stated:** a check
+  built on `f` covers only journals where a device was read — but that is the
+  population a device check is about, and `tools/hidcheck.py` already reconciles
+  the trailer against the body (`end`'s events/frames/dropped/hidden against the
+  `+`/`-`/`f`/`!` rows) and treats a missing `end` as an unclosed file rather than
+  as clean. So the "clean-by-absence" shape this item feared is already covered by
+  an existing check. Falsifier, still re-runnable: a Counter over the first token
+  of every `.hid` in `ftesurf/data/`, split on whether any device-event token is
+  present, must equal the split on `f`.
 
 - **EVERY JOURNAL NAMES ITSELF `loadworker_3` ON ITS OWN END LINE.** Cosmetic, but
   it means no journal's end line names the file it wrote, so a harness cannot
