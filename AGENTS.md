@@ -692,6 +692,32 @@ publicly WITH its fix, not before it.
   pause or anything above 10. `tools/reccheck.py` is written from that block and
   never from the writer, so a writer that drifts from its own documentation gets
   caught. Same rule for `hidcheck.py` and `.hid`.
+- **A `.rec` CARRIES ONE WITNESS FOR THE PLAYER'S INPUT, NOT TWO, so any detector
+  that cross-checks one input column against another is vacuous in every file in
+  this tree.** `keys` is DERIVED from the move columns: `SV_RecKeys` sets
+  FSI_LEFT/RIGHT from the SIGN of `movement_y` and FSI_FWD/BACK from
+  `movement_x`, and `momreimport.py` applies "the same rule as SV_RecKeys" -- so
+  LEFT and RIGHT are mutually exclusive by construction and an overlap statistic
+  reads a perfect score for everybody. Same for jump: `fl` bit 4 and `keys`
+  FSI_JUMP are both `e.button2`, and measured they agree on every row of all 5571
+  `.rec` files in `data/`. This is why `tools/reccheck.py`'s key-mask check is
+  self-referential (BACKLOG), and the general rule is Finding E's: **a check
+  built on a field the same writer derived from the field it is checked against
+  measures nothing, however clean it reads.** Cross-check the client's `.view`
+  against the server's `.rec` instead -- those are two machines.
+  Measured by `tools/census/assist.py census`, which prints the agreement count
+  beside it so a future reader sees the 0 disagreements rather than trusting this.
+- THE `.hid`'S TWO "FRAMES" COUNTERS ARE TWO DEFINITIONS, and confusing them reads
+  as a defect: `end <dt> <abs> <events> <frames> ...` counts DRAINS, i.e. `f`
+  rows, while `in_jrn484_frames` counts VIEW SAMPLES the identity governed. The
+  relation is exact and worth remembering: `#v == in_jrn484_frames +
+  in_jrn484_skipped + 1`, the +1 being the first view, which
+  `IN_Journal_CheckIdentity` returns on before `vcount++` (`!in_jrn_vhavelast`).
+  Verified both ways on `p484_B.hid` (678 `f`, trailer 678) and `p486_B.hid` (182
+  `v`, log reads 181, skipped 0). And `f` appears **iff a device event was
+  drained** -- `IN_Journal_Frame()` has one call site, inside IN_Commands'
+  non-empty-drain branch -- so a journal with no `f` rows is a journal of nothing
+  happening, not a journal with a missing record.
 - Version bump rule: new header keys and new record types are additive and need
   no bump (readers skip what they do not know). Bump when `end` grows a field or
   an existing line CHANGES MEANING. Then update, in reccheck.py: `COLUMNS`, the
