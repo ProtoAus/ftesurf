@@ -547,6 +547,84 @@ below is the collection side and the rules that still only note.
   of every `.hid` in `ftesurf/data/`, split on whether any device-event token is
   present, must equal the split on `f`.
 
+- **TWO INTUITIVE PLAYBACK STATISTICS ARE MEASURED DEAD, and they are written down
+  here so that the next session does not re-propose either.** Measured 2026-10-05
+  over the fleet corpus (63 `.rec` files fetched read-only from the Pi's
+  `data/runs/`; 436,110 derived moves, 446,897 yaw deltas). Both are the first
+  answer anyone gives to "how do we see a playback from evidence the server wrote",
+  and both are wrong on real players. The scripts are private
+  (`cheatanalysis/dtcensus.py`, `cheatanalysis/yawstat.py`) on the rule that a
+  NEGATIVE result belongs beside the document that proposed the direction, not
+  beside the tools that get run on cron.
+
+  - **COMMAND CADENCE / PERIODICITY — DEAD, and a gate on it would accuse seven
+    players in ten.** A playback only reproduces if its cadence matches the
+    recording, so a pinned frametime looked like a signature. The per-move
+    frametime is derived exactly (`(mt[i+1]-mt[i]) * movetickrate +
+    (carry[i+1]-carry[i])`; the grammar block over `SV_RecOpen` in `sv_timer.qc`),
+    and its coefficient of variation is **EXACTLY 0 in 44 of 63 honest runs
+    (69.8%)** — p50 0.0000, p75 0.0044, p95 0.0427, max 0.1651. A constant
+    frametime is the NORMAL state of an honest run, because a client at or above
+    the tick rate builds one usercmd per rendered frame.
+    Two traps for whoever re-runs it. "Exactly one tick per move with an unchanged
+    carry" is one spelling of periodicity and reads as its ABSENCE in another:
+    five files score frac 0.0000 *with* cv 0.0000 because that client runs BELOW
+    the tick rate and the carry moves every move — so cv(dt) is the statistic and
+    frac is detail. And break the epoch on `dmt <= 0 or dmt > 8`, not on `dmt < 0`:
+    a Multi-Session resume jumps `mt` by thousands, and one such row produced the
+    two most quotable numbers of the first run (p100 frac 1.3306, p100 cv 33.38),
+    both of them artifacts of the parser rather than of any player.
+  - **TURN ROUGHNESS — DEAD, with a control that fired first.** An optimiser's
+    turn is a deterministic function of the run's own speed, smoothed and
+    quantised to integer device counts, so its per-move yaw delta should read as a
+    sampled curve where a human's reads as a sequence of corrections. The
+    statistic (`mean|d[i+1]-d[i]| / mean|d[i]|` over per-move yaw deltas, needing
+    only the server-written `in` rows — no `.hid`, no `.view`, no join between two
+    differently-sampled streams) does not separate: a reimplementation of the
+    published optimiser loop scores **0.1256 at full gain, between human p25
+    (0.1063) and p50 (0.1410)** — about a third of honest runs are SMOOTHER than
+    it — and **0.3044 at quarter gain, rougher than the human median**, i.e. it
+    INVERTS with the tool's own preset. The reason is structural rather than a bad
+    choice of statistic: an optimiser with gain and power presets produces a family
+    of turn traces that spans the human range. The one column with any gap is the
+    sign-flip rate (control 0.000–0.001 against human p0 0.0042), and a p0 over 62
+    files is a minimum, not a distribution's edge — a note at most, never a gate.
+    Falsifier for both: re-run either script over a corpus that contains a real
+    playback and watch neither move it out of the honest range.
+    Anything aimed at that class has to use the hard evidence — the `.hid` angle
+    identity (built, Patches 484/486) or the move columns (next item).
+
+- **THE MOVE COLUMNS ARE PINNED TO NO CONFIG, and Patch 493's bound is a constant
+  for want of one.** `run_movebound 2000` is a judgement over a corpus, not over a
+  rule: the four cvars that produce a move value (`cl_forwardspeed`,
+  `cl_sidespeed`, `cl_upspeed` and the `cl_movespeedkey` multiplier) are ordinary
+  ARCHIVED client cvars, so a player may set them and nothing in the run says what
+  they were.  The ranked input profile is the mechanism that already solves this
+  shape of problem -- `cl_replay.qc`'s `Rec_InputCvar` reads a named cvar and
+  refuses the run when its value is not the recorded one, and `IPH_*` is
+  RAW|FILTER|ACCEL|GRANT over four of them (`in_rawinput`, `m_filter`, `m_accel`,
+  `in_rawmice`).  Adding the four move cvars would need a fifth bit, a fifth
+  column in the `inprof` header key and the client-side refusal, and then a move
+  value could be judged against the config the client itself reported instead of
+  against 2000.
+  **WHY IT IS NOT DONE, and the reason is a measurement rather than a preference:**
+  over 1,342,728 axis values in 63 fleet runs the maximum is EXACTLY 450 with zero
+  exceptions, so the fleet is uniform today and a profile pin would refuse nobody --
+  which is also why nobody can say what a refusal would cost.  Patch 493's marker
+  is the instrument that answers it: if `moveoor` counts stay 0 while `worst` starts
+  appearing above 450 in `cmd timer` readings or in the header cross-check's
+  `worst` column, that is an honest population the constant is wrong about, and the
+  pin is what fixes it.
+  **ONE ROUTE IS UNBOUNDED AND NO CENSUS HAS SEEN IT.** A gamepad with `+speed`
+  held reaches `450 * 360 * cl_movespeedkey` before the wire bound stops it at
+  32767, because `in_generic.c`'s IN_MoveJoystick scales jstrafe by
+  `360 * cl_movespeedkey` and then multiplies by `cl_forwardspeed` without
+  re-normalising.  No joystick player appears in the fleet corpus, and "none in 63
+  files from four identities" is not "none" -- it is the specific case a profile
+  pin would settle, since a pin turns that route into a stated config rather than an
+  accusation.  Falsifier: a player on a gamepad with `+speed` whose run reads
+  `over > 0` and `moveoor 1` while being entirely honest.
+
 ## Ranking integrity
 
 - **momwatch's import holds surfd's write lock past its 5 s timeout every 7

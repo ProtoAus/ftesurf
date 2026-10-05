@@ -1556,6 +1556,75 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_NONCE   131072
 
+/*
+  PATCH 493: A USERCMD ARRIVED CARRYING A MOVE VALUE NO STOCK INPUT LAYER
+  PRODUCES -- |forwardmove|, |sidemove| or |upmove| over `run_movebound`, the
+  bound this run's file also states as a `movebnd` header key.
+
+  MARKER ONLY, like TF_MULTISESSION, TF_SPEC and TF_NONCE: not a class, not read
+  by FS_RunClass, NOT in TF_UNCERT below, not in surfd's style_of/certifiable, and
+  not named by FS_CertWhy.  Nothing is demoted for it and that is a decision
+  rather than an oversight, taken on the SV_RecCounts precedent (Patch 405:
+  "COUNTED, NOT ACTED ON.  Attaching a taint bit demotes real players, which is
+  Lex's call and not this function's").  The counters beside it are what the
+  decision gets made from -- see THE HONEST RESIDUAL.
+
+  WHAT IT OBSERVES.  The move triple is the player's intent, quantised by the
+  client's own config and copied into .movement WITH NO RANGE TEST ANYWHERE: the
+  engine's server side is a bare assignment (`sv_player->xv->movement[0] =
+  ucmd->forwardmove;`) and the only bound on the client is cl_input.c's
+  `bound(-32768, ..., 32767)`, which is a wire bound and not a plausibility one.
+  The physics is safe regardless -- PMSrc_WishDir clamps wishspeed to
+  pms_maxspeed -- which is exactly why no range test was ever needed, and why an
+  impossible value here is free evidence rather than a hazard.  A CreateMove
+  rewrite that flies the body back to a recording's start writes a DISTANCE into
+  forwardmove, and a distance is in the thousands on any map that respawns away
+  from it.
+
+  MEASURED, NOT ASSUMED.  Over the fleet's own recordings -- 1,342,728 axis
+  values in 63 runs fetched read-only from the Pi's data/runs/, beside a
+  5,571-file local corpus -- the maximum |value| is EXACTLY 450, the four move
+  cvars cfg/default.cfg ships, with zero exceptions.  The only values above it
+  anywhere are 11,460 in three files, all of them one harness's (Patch 358's
+  p358seam fixture carries `side=2325 / fwd=-1067`, a row no key can produce).
+  450 IS A CONFIG AND NOT AN INVARIANT, so the bound sits far above it: 2000 is
+  4.4x the widest value any shipped config produces and has zero honest
+  observations against it.
+
+  THE HONEST RESIDUAL, and it is why this marks instead of demoting.  Three
+  routes reach a large value with no modification at all:
+    - cl_forwardspeed / cl_sidespeed / cl_upspeed are plain archived cvars, and
+      cl_movespeedkey multiplies them under +speed.  The engine's own default for
+      cl_movespeedkey is 2.0 where default.cfg ships 1, so an honest player left
+      on the engine default who holds +speed sends 900 -- far under the bound,
+      but it says the ceiling is a config choice and not a law.
+    - A GAMEPAD WITH +speed HELD IS UNBOUNDED, and this was found by reading
+      rather than by measuring: in_generic.c's IN_MoveJoystick scales jstrafe by
+      `360 * cl_movespeedkey` under +speed and then multiplies by cl_forwardspeed
+      without re-normalising, so movements[] reaches 450 * 360 and is stopped only
+      by the wire bound at 32767.  No joystick player appears in the fleet corpus
+      (max 450 over 63 runs), and "none in 63 files from four identities" is not
+      "none".
+    - mouse-strafe (+strafe held, or lookstrafe with +mlook) adds
+      `m_side * mouse_x` to sidemove, per command.  Small in practice -- one
+      command spans one frame's device counts -- but m_side is a plain cvar too.
+  A demotion on this axis would therefore land on an honest gamepad player first,
+  which is the Patch 305 failure mode.  THE STRICTLY BETTER FORM IS TO PIN THE
+  FOUR MOVE CVARS IN THE RANKED INPUT PROFILE beside the four it already pins
+  (cl_replay.qc's Rec_InputCvar covers in_rawinput, m_filter, m_accel and
+  in_rawmice; the IPH_* mask is RAW|FILTER|ACCEL|GRANT) and then judge a value
+  against the config the client itself reported.  That is BACKLOG; this marker is
+  the measurement that says whether it is needed.
+
+  THE COUNTERS ARE THE POINT.  run_t_moveoor counts the commands that tripped it
+  and run_t_movebig the largest |value| the attempt sent at all, over the bound or
+  not, so a clean run reads `over 0  worst 450` rather than a dead `worst 0`; `cmd
+  timer` prints both beside the bound, and reccheck.py judges the bit against the
+  file's own `in` rows in BOTH directions -- a marker nobody reads is what Patch
+  484 shipped and Patch 486 had to fix.
+*/
+#define TF_MOVEOOR 262144
+
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
                      | TF_NOCOUNTS)
 

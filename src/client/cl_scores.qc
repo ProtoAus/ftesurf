@@ -378,10 +378,17 @@ float(string s, float c) Scores_LastOf = { return FS_LastOf(s, c); };
 /*
   Everything the list shows that is not in the filename, in nine fgets.
 
-  Stops at `begin`, which is the header's own terminator, and bounds itself at 24
+  Stops at `begin`, which is the header's own terminator, and bounds itself at 32
   lines as well -- a file whose header never ends is a truncated or corrupt one,
   and reading it to EOF would stall the list on exactly the file least worth
   showing.  Writes straight into the row arrays and the three buffers.
+
+  32 SINCE PATCH 493 AND NOT 24, which is what it was: that patch's `movebnd` key
+  took a full header to 22 lines and left 2 of slack, and the failure mode of
+  running out is silent -- `begin` is never reached, `flags` and the version are
+  still read because they sit early, and the row simply stops carrying whatever a
+  later key would have set.  The bound is a runaway guard, not a format rule, so
+  it is raised ahead of need rather than at it.
 */
 void(float r, string path) Scores_ReadHeader =
 {
@@ -398,7 +405,7 @@ void(float r, string path) Scores_ReadHeader =
 		return;
 
 	owner = date = "";
-	for (i = 0; i < 24; i = i + 1)
+	for (i = 0; i < 32; i = i + 1)
 	{
 		l = fgets(fh);
 		if (!l)

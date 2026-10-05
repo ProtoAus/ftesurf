@@ -291,7 +291,7 @@ HEAD_V8 = HEAD_V7
 #           difference it is not entitled to claim.  Shape only here: this tool
 #           does not know what geometry the server built, so a value it does not
 #           recognise is a note, not a fault.
-HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule"}
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd"}
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -363,6 +363,12 @@ TF_SPEC = 32768
 # recording written before 416, and every one made by a client that simply did
 # not answer, has it down.
 TF_NONCE = 131072
+# Patch 493: a usercmd carried a move value over the header's own `movebnd`.
+# Marker only, like the three above -- no class, no demotion, not named by
+# FS_CertWhy -- but UNLIKE them it is checked in the strong direction: rows over
+# the stated bound with the bit clear is a fault, because the rows and the bit are
+# written by the same command and a file cannot have one without the other.
+TF_MOVEOOR = 262144
 SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
             "setpos", "respawn", "move", "notarget")
 # The edge identity: <ticks> <mt> <carry> <ox oy oz> <vx vy vz> <fl>, token 2..11.
@@ -855,6 +861,41 @@ def check_rec(path, verbose=False):
     else:
         r.info.pop("pmpin", None)   # a stray key below v9 prints nothing new
 
+    # ---- the move-column bound, Patch 493 -----------------------------------
+    #
+    # ABSENT IS A STATE and not an omission, on the `proprule` precedent above:
+    # no bound was applied, either because the server runs `run_movebound 0` or
+    # because its progs predate the check.  Without the key NEITHER direction of
+    # the check in the flags block may run, and that is not a weakness to paper
+    # over -- it is what keeps this tool honest about the files it was written
+    # beside.  Patch 358's own fixtures carry `side=2325 / fwd=-1067` and no
+    # TF_MOVEOOR, because a harness drove them, and a reader that could not tell
+    # "no rule" from "no such rule yet" would fault every honest file written
+    # before the rule existed.
+    #
+    # The bound is written from the same per-map latch the check itself reads
+    # (run_t_movebnd, cached in SV_TimerMapInit), so a file cannot state one bound
+    # and judge its rows against another -- which is the whole of what makes the
+    # cross-check below worth running at all.
+    movebnd = None
+    if ver >= 9:
+        mb = head.get("movebnd")
+        if mb is None:
+            r.info["movebnd"] = "not stated (no bound applied)"
+        else:
+            try:
+                movebnd = float(mb)
+            except ValueError:
+                r.fault("header 'movebnd' is not a number: %r" % mb)
+            else:
+                if movebnd <= 0:
+                    r.fault("header 'movebnd' is %g -- the writer states a bound "
+                            "only when it applied one, and 0 means it applied "
+                            "none, so the key should be absent" % movebnd)
+                r.info["movebnd"] = "%g" % movebnd
+    else:
+        r.info.pop("movebnd", None)
+
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
     padding = 0
@@ -880,6 +921,11 @@ def check_rec(path, verbose=False):
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
+    # Patch 493: the move triple against the header's `movebnd`.  Counted as the
+    # rows stream past, for the reason this whole block exists.
+    in_moveoor = 0          # `in` rows whose largest |axis| exceeds the bound
+    in_moveoor_ln = None    # the first one, for the fault's own line number
+    in_movemax = 0.0        # the largest |axis| in the file, bound or no bound
     # The angle stream the sidecar is held against.  ARRAYS, per the
     # warning on the `in` branch below: three of them cost 12 bytes a row where
     # a list of tuples costs about 80.  They are still the small half -- the
@@ -1028,6 +1074,17 @@ def check_rec(path, verbose=False):
                 continue
 
             inrows += 1
+            # Patch 493.  Both counters run whether or not the file states a
+            # bound: `worst` is the number a bound gets chosen from, and reporting
+            # it for an unbounded file is what makes an abstention visible rather
+            # than silent.
+            mvx = max(abs(float(tok[4])), abs(float(tok[5])), abs(float(tok[6])))
+            if mvx > in_movemax:
+                in_movemax = mvx
+            if movebnd is not None and mvx > movebnd:
+                in_moveoor += 1
+                if in_moveoor_ln is None:
+                    in_moveoor_ln = lineno + 1
             ang_mt.append(mt)
             ang_pit.append(ang[0])
             ang_yaw.append(ang[1])
@@ -1742,6 +1799,16 @@ def check_rec(path, verbose=False):
                    "the 16-bit wire quantum (0.0055 deg) -- setpos writes "
                    "v_angle directly and is the ordinary cause"
                    % (in_offgrid, inrows))
+        # Patch 493.  Reported here and judged in the flags block, where every
+        # other header-bit cross-check lives and where `fv` exists.
+        if movebnd is not None:
+            r.info["moveoor"] = "%d of %d over %g (worst %g)" % (
+                in_moveoor, inrows, movebnd, in_movemax)
+        else:
+            r.info["moveoor"] = "not judged (no movebnd key; worst %g)" % in_movemax
+        if saw_end is None and movebnd is not None:
+            r.info["moveoor_bit"] = ("not judged (no 'end': the flags word is "
+                                     "only rewritten at a real close)")
         if in_flx:
             r.note("%d of %d 'in' rows carry fl 2 or 4 (teleport_time, movetype "
                    "not WALK), which never occur on a clean run" % (in_flx, inrows))
@@ -2249,6 +2316,50 @@ def check_rec(path, verbose=False):
                 r.fault("%d ghost window(s) in the stream, but header flags %d "
                         "does not say ghost" % (len(ghost_windows), fv))
             r.info["ghosted"] = "yes" if (fv & TF_GHOST) else "no"
+
+            # Patch 493.  THE ROWS AND THE BIT ARE WRITTEN BY THE SAME COMMAND, so
+            # they cannot disagree -- and the two directions are not equally
+            # interesting, which is why they get different registers.
+            #
+            # Rows over the bound with the bit CLEAR is a fault: either the writer
+            # stopped checking, or the file was edited to take the marker out and
+            # the editor did not know the values are in the trace beside it.  That
+            # is the anti-tamper direction and the one with a use.
+            #
+            # The bit set with NO row over the bound is a note, because two honest
+            # writers produce it and this tool can see neither: SV_TimerInFrame
+            # stops writing rows at its line cap while SV_MoveBoundFrame keeps
+            # counting commands, and a `pause` epoch can hold the rows that a
+            # marker was set beside.  Neither is a file worth accusing, and a
+            # forger has no reason to set a marker that demotes nothing.
+            #
+            # Gated on the file stating a bound AND carrying rows: without the key
+            # there is nothing to judge against (see the header block), and
+            # without rows there is nothing to judge.
+            #
+            # AND GATED ON `end`, like every other header-bit cross-check in this
+            # block, and for the reason they are all gated: THE FLAGS WORD IS ONLY
+            # REWRITTEN AT A REAL CLOSE.  SV_RecFlagLine reserves a fixed width at
+            # open and SV_RecClose / SV_RecKeepEvidence seek back to it; a
+            # Multi-Session park and a save-state prefix are closed files whose
+            # flags word is still the 0 written at open, so a marker set mid-run is
+            # not in them and its absence says nothing.  Measured, not assumed: the
+            # park this patch's own harness produced read `flags 0` beside 284 rows
+            # over the stated bound, and the first cut of this check faulted it --
+            # a false accusation against a file the writer never finished.
+            if saw_end is not None and movebnd is not None and inrows:
+                if in_moveoor and not (fv & TF_MOVEOOR):
+                    r.fault("%d 'in' rows exceed the stated movebnd %g (first at "
+                            "line %d, worst %g) and header flags %d does not say "
+                            "TF_MOVEOOR -- the trace and the marker are written by "
+                            "the same command" % (in_moveoor, movebnd,
+                                                  in_moveoor_ln, in_movemax, fv))
+                elif (fv & TF_MOVEOOR) and not in_moveoor:
+                    r.note("header flags %d says TF_MOVEOOR and no 'in' row "
+                           "exceeds the stated bound %g (worst %g) -- the line cap "
+                           "or a pause epoch can produce this honestly" % (
+                               fv, movebnd, in_movemax))
+                r.info["moveoor_bit"] = "yes" if (fv & TF_MOVEOOR) else "no"
 
             # Patch 364: the bit and the Multi-Session pauses agree, both ways.
             # A retry or a cold load starts a session too, and sets no bit.
@@ -3611,6 +3722,12 @@ def emit(r, verbose):
                   # nothing, because a run with no nonce and a run whose nonce
                   # went unanswered are different facts.
                   "nonce", "renonce",
+                  # Patch 493, same edit as the code that assigns them, per the
+                  # rule this tuple has been swallowing fields under for four
+                  # builds.  `movebnd` prints "not stated" rather than nothing so
+                  # that a file the checker abstained on is distinguishable from
+                  # one it judged and found clean.
+                  "movebnd", "moveoor", "moveoor_bit",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd",
                   # Added in the same edit as angle_join, per the rule four
