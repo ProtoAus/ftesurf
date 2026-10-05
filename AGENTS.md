@@ -3035,8 +3035,17 @@ optional. It reaches 9 of the 13 globs; the other four (`cfg`, `glsl`, `scripts`
 `gfx/env`) are ENGINE-CONVENTION -- `r_skybox milk` builds `gfx/env/milk.png`, a
 shader's `prog milk_scene` builds the glsl filename -- so no literal sweep of
 anything we author can see them, and a clean run means "no literal path in src/ is
-missing", not "the archive is complete". STILL UNWIRED: nothing runs it; release.ps1's
-pre-pack step is where it belongs.
+missing", not "the archive is complete". **WIRED 2026-10-05: `release.ps1` gate 4**, in the Gates
+step -- before staging and packing, so ONE call site covers the Windows and the Linux drop, which
+share `$ShipGlobs`. It has no override (gates 1-3 each have one), it hard-Fails if the tool or
+`python` is missing because a gate that cannot run must not read as a pass, and it echoes the tool's
+own stdout into the release log so a run records what it saw and not only that it passed. Its
+falsifier was run rather than reasoned about: deleting `'ftesurf/data/mapdl.txt'` from
+`$ShipGameFiles` -- 0.1.14's actual fault -- made `-Bump patch -BuildNumber 89 -DryRun` stop at
+`MISS data/mapdl.txt src/menu/m_main.qc:2117` / `FAILED: 1 literal asset path(s)` with no `[5] Stage`
+step at all; restored, the same command ran all eleven steps to exit 0 with zero warnings. (That run
+needed `-AllowDirty -AllowStale` to get past gates 1 and 2, because a concurrent session had
+`ftesurf/cfg/default.cfg` modified and its QC newer than the installed .dat -- gate 4 has neither.)
 
 **AND A MISS IS NOT A NO-OP.** `drawpic` substitutes
 `R2D_SafeCachePic("no_texture")` and draws it (`pr_menu.c:622-632`), so a
