@@ -667,11 +667,13 @@ def main():
     # forgiven, in the server's words.  Premise: the load raised.
     hp22e = [m.group(1) for m in (re.search(r"\bhopped (\d) rearmhop", s) for s in sec["R22E"]) if m]
     t22e = txt("R22E")
+    # The take's own words: Patch 454's, or Patch 455's on a build that carries it.
+    took22e = any(w in t22e for w in ("the hopped start died with that run",
+                                      "the hopped start was forgiven once you settled"))
     check("R22E", "rewind: resumed -- practice from here" in t22e and hp22e[-1:] == ["0"]
-          and "the hopped start died with that run" in t22e,
+          and took22e,
           "the load raised %s, after rest hopped %s, forgiven %s" % (
-              "rewind: resumed -- practice from here" in t22e, hp22e[-1:],
-              "the hopped start died with that run" in t22e))
+              "rewind: resumed -- practice from here" in t22e, hp22e[-1:], took22e))
 
     # R23A (rounds 23-24): with a draft open the release of a key held into it
     # passes (took 0); a key pressed while typing is the draft's, press and

@@ -99,7 +99,31 @@ FIELDS = {
     # prints the old `finsay`, and a pre-448 build prints none of the three.
     "finsay":    r"(cleared by the finish it marked)",
     "armsay":    r"(forgiveness armed, taken when grounded)",
-    "takesay":   r"(there is no prespeed to launder)",
+    # MATCHED ON THE EVENT, NOT THE EXPLANATION.  This was
+    # `there is no prespeed to launder`, a clause of the take's reasoning, and Patch 455
+    # round 6 reworded the reasoning -- so the arm read `takesay absent` on a build where
+    # the take had demonstrably fired (`hopped 0`, `cleanfin yes`). Anchor on the thing
+    # that happened; the sentence explaining it is not a stable interface.
+    "takesay":   r"(hopped-start taint cleared -- )",
+    # PATCH 455 ROUND 6's TWO REFUSALS.  `settlesay` is the STRUCTURAL discriminator and
+    # is graded; `movesay` is REPORTED, NOT GRADED, and the mutation run is why.
+    #
+    # With FS_FGVDWELL 0 and FS_FGVREADS 0 the `why = 4` branch is unreachable --
+    # `(time - fgvok) < 0` is false because time >= fgvok, and `fgvn < 0` is false because
+    # fgvn >= 1 -- so `settlesay` CANNOT appear on a build with the dwell removed. That is
+    # a property of the code, not of the run.
+    #
+    # `movesay` went absent on the mutant too, and I nearly graded it on the strength of
+    # that. It only appears if an AIRBORNE packet happens to be observed between the arm
+    # and the take, which varies between runs of the same build -- so grading it would put
+    # a false red in the arm on an honest run. Absence of `movesay` is not evidence of
+    # anything; absence of `settlesay` is.
+    "movesay":   r"NOT taken -- still moving: ",
+    "settlesay": r"NOT taken -- at rest but settling: ",
+    # The streak the take actually satisfied, from the gate's own numbers rather than from
+    # the log's clock -- stamps are whole seconds and 219 lines of one run share one, so a
+    # timestamp comparison would pass with the dwell removed.
+    "dwelt":     r"at rest for ([\d.]+) s over (\d+) clear reads",
     # THE RUN COUNTERS, and they are the arm's real content after the first run taught
     # me what this fixture actually does.  The end zone TELEPORTS THE PLAYER BACK to the
     # start box, and `+forward` is still held -- so the section produces TWO runs, not
@@ -108,7 +132,7 @@ FIELDS = {
     "nfin":      r"finish: ",
     "nprac":     r"finish: [^\n]*PRACTICE",
 }
-PRESENCE = ("hopsay", "finsay", "armsay", "takesay")
+PRESENCE = ("hopsay", "finsay", "armsay", "takesay", "movesay", "settlesay")
 # Counted, not matched: `cleanfin` below is derived from the pair.
 COUNTED = ("nfin", "nprac")
 
@@ -124,15 +148,20 @@ EXPECT = {
     # 454 ARMED rather than cleared (`armsay`), and because a walk is at or below
     # sv_maxspeed the forgiveness is TAKEN in the same section (`takesay`, `hopped 0`).
     # `finsay` must be ABSENT: its presence would mean the 448 clear is still in.
+    # `settlesay` present is the DWELL'S OWN EVIDENCE: Patch 455 round 6 refuses at rest
+    # until the streak is long enough, and a build with FS_FGVDWELL 0 goes straight from
+    # `movesay` to `takesay` without ever emitting it.  Grading the take alone cannot tell
+    # a dwelling build from a non-dwelling one.
     "F": {"state": "finished", "nprac": "1", "hopped": "0",
-          "armsay": "present", "takesay": "present", "finsay": "absent"},
+          "armsay": "present", "takesay": "present", "finsay": "absent",
+          "settlesay": "present"},
     "A": {"hopped": "0"},
 }
 CONTROL = {
     # The tag never clears, so BOTH runs are practice and no run finishes un-marked,
     # and none of the three finish lines exists on that build.
     "F": {"nprac": "2", "hopped": "1", "finsay": "absent",
-          "armsay": "absent", "takesay": "absent"},
+          "armsay": "absent", "takesay": "absent", "settlesay": "absent"},
     "A": {"hopped": "1"},
 }
 # ---------------------------------------------------------------------------
@@ -166,7 +195,7 @@ CONTROL = {
 REPORT = {
     "C": ("class", "practice", "azone", "jumps"),
     "J": ("startok", "jumps", "azone", "class", "practice"),
-    "F": ("startok", "jumps", "azone", "practice", "class", "nfin"),
+    "F": ("startok", "jumps", "azone", "practice", "class", "nfin", "movesay"),
     "A": ("state", "startok", "jumps", "azone", "class", "practice", "rearmhop"),
 }
 
@@ -237,6 +266,7 @@ def cleanfin(txt):
 
 
 def grade(control):
+    undemo = False
     want = {t: dict(v) for t, v in EXPECT.items()}
     if control:
         for t, over in CONTROL.items():
@@ -261,13 +291,32 @@ def grade(control):
             if k not in want.get(tag, {}):
                 print("  %-3s %-10s %-12s (reported, not graded)" % (tag, k, read(txt, k)))
     ftxt = s.get("F") or ""
+    # CLEANFIN HAS A PREMISE AND IT WAS NOT BEING CHECKED.  The whole claim is "the
+    # tainted run finishes marked and the NEXT one finishes clean", which needs TWO
+    # finishes in the section -- and this fixture does not reliably produce two. It
+    # depends on the end zone teleporting the player back with +forward still held, and
+    # on 2026-09-27 a round-8 run produced ONE finish and the check read `no` as though
+    # the patch had regressed. The gate was fine that run (`takesay` present, cleared at
+    # 0.264 s over 19 reads); the section simply never ran twice.
+    #
+    # So a one-finish run is NOT DEMONSTRATED, not a failure. Same distinction
+    # ftesurf-e0's p455hold draws, and the same reason: a check that goes red on harness
+    # variance spends the trust that makes a red mean something.
+    nfin = len(re.findall(FIELDS["nfin"], ftxt))
     got = cleanfin(ftxt)
     wantclean = not control
-    good = (got == wantclean)
-    ok = ok and good
-    print("  F   %-10s %-12s %s"
-          % ("cleanfin", "yes" if got else "no",
-             "ok" if good else "MISMATCH, want %s" % ("yes" if wantclean else "no")))
+    if nfin < 2:
+        undemo = True
+        print("  F   %-10s %-12s NOT DEMONSTRATED -- only %d finish(es) in F, and the"
+              % ("cleanfin", "yes" if got else "no", nfin))
+        print("        claim needs two (the tainted one, then the next). The fixture's")
+        print("        second run did not complete; this says nothing about the patch.")
+    else:
+        good = (got == wantclean)
+        ok = ok and good
+        print("  F   %-10s %-12s %s"
+              % ("cleanfin", "yes" if got else "no",
+                 "ok" if good else "MISMATCH, want %s" % ("yes" if wantclean else "no")))
     print("        (derived: a finish that is not a PRACTICE finish.  On the fixed build")
     print("         the tainted run finishes marked and the NEXT one finishes clean; on")
     print("         the control the tag survives and both are marked.)")
@@ -279,6 +328,16 @@ def grade(control):
         print("  UNKNOWN COMMAND(S): %s -- the gesture did not land"
               % ", ".join(sorted(set(unknown))))
         ok = False
+    if ok and undemo:
+        # A third verdict, and it exits 0 like a pass because nothing is WRONG -- but it
+        # says so, because "green" and "green except the headline claim was not tested"
+        # are different facts and a caller that cannot tell them apart will report the
+        # second as the first.
+        print()
+        print("VERDICT: PASS, EXCEPT NOT DEMONSTRATED -- every graded check held, but the")
+        print("derived claim above could not be tested on this run.  Re-run it; if the")
+        print("second finish keeps going missing, the fixture's route wants looking at,")
+        print("not the patch.")
     return ok
 
 

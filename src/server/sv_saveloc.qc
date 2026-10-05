@@ -1426,8 +1426,10 @@ float(float id, float row) SV_SaveReadLight =
   Rounds 3-6: on bhop-mode maps a box entered from anything but IDLE arms only
   through the jump commit, so the rest test below never runs, and testing
   those loads on speed alone made honest save practice practice until `!r`.
-  A tag a load raised is forgiven by Patch 454's rest test after the arm
+  A tag a load raised is forgiven by the settle gate in SV_TimerJumpWatch
   (run_t_finfgv): raised for speed, and arriving at rest is the absence of it.
+  [Patch 455 moved that gate out of the start-settle block, so the deferral
+  above no longer stops it running; the narrowing is worth revisiting.]
   FORGIVEN outright by a load that leaves the body at rest outside a run --
   the zeroed velocity every other forgiveness gives -- and SKIPPED, not
   retried, while the map still owes the body something (SV_TrigPending: a
@@ -1458,14 +1460,19 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 		down = TRUE;
 	if (up)
 	{
-		// Forgiven by coming to rest after the arm -- only a tag this load raised
+		// Forgiven by settling (SV_TimerJumpWatch's gate) -- only a tag this load raised
 		// on its speed alone.  A hop chain's, which the row's `hopped` carries, is
 		// `!r`'s alone and drops a forgiveness already pending, as a fresh tag
 		// does in SV_TimerJumpWatch (Patch 445, 454; review rounds 9, 21, 22).
+		// Patch 455: through SV_HopFgvClear, so the drop ends the latch and the
+		// streak too and the arm starts its streak fresh, as the finish's does.
 		if (hop)
-			e.run_t_finfgv = FALSE;
+			SV_HopFgvClear(e);
 		else if (!e.run_t_hopped)
+		{
+			SV_HopFgvClear(e);
 			e.run_t_finfgv = TRUE;
+		}
 		e.run_t_hopped = TRUE;
 	}
 	else if (down)
@@ -2056,7 +2063,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (hop)
 		{
 			e.run_t_hopped = TRUE;
-			e.run_t_finfgv = FALSE;     // Patch 477 review round 10: `!r`'s, as restored
+			// Patch 477 review round 10: `!r`'s, as restored.  Patch 455: the
+			// latch and the streak go with it.
+			SV_HopFgvClear(e);
 		}
 	}
 	else
@@ -3844,6 +3853,14 @@ void(entity e, float down) SV_SaveLocHold =
 	e.rec_sl_holdmove = e.movetype;
 
 	e.movetype = MOVETYPE_NONE;
+	// BEFORE the zero, because the speed being PARKED is the interesting number and a
+	// line printed after it always reads 0.  Every refusal above says why it refused
+	// and this path said nothing, so no arm could tell a hold that took from one that
+	// was declined -- b30a proves it with a SCREENSHOT and p455hold reached for the
+	// client-side `viewpos`, whose output never reaches the server log at all.
+	dprint(sprintf("hold: took on row %g, parking %.3f u/s, movetype %g back on "
+	               "release\n", e.rec_sl_holdrow, vlen(e.velocity),
+	               e.rec_sl_holdmove));
 	e.velocity = '0 0 0';
 
 	// ...and the same number published, before the first snapshot of the hold
