@@ -740,6 +740,32 @@ publicly WITH its fix, not before it.
   consistent across all three. Taint bits demote and never accuse:
   `TF_CHEAT/NOJOURNAL/NORULESET/NOPROFILE/NOMAP/NOCLOCK` in `sh_defs.qc`,
   consumed by surfd's `certifiable()`.
+- **THE MOVE TRIPLE IS THE ONE COLUMN WITH NO RANGE TEST ANYWHERE** (Patch 493,
+  mod-side): the engine copies a usercmd's `forwardmove/sidemove/upmove` into
+  `.movement` with a bare assignment, and the only bound is the client's wire bound
+  at ±32767.  `SV_MoveBoundFrame` compares each command's largest |axis| against
+  `run_movebound` (2000, 0 = off, latched per map beside `run_startcap`), counts the
+  ones over it, keeps the largest value the attempt sent AT ALL, and sets
+  **TF_MOVEOOR (262144) -- a marker, never a demotion**, because THREE HONEST ROUTES
+  PASS ANY CONSTANT: the move cvars are plain archived cvars (`cl_movespeedkey`'s
+  engine default is 2.0 where `default.cfg` ships 1, so +speed sends 900),
+  mouse-strafe adds `m_side * mouse_x` per command, and **A GAMEPAD WITH +speed HELD
+  IS UNBOUNDED** (`in_generic.c`'s IN_MoveJoystick scales jstrafe by
+  `360 * cl_movespeedkey` then multiplies by `cl_forwardspeed` without
+  re-normalising).  The 2000 is a judgement over a corpus, not over a rule: 450 is
+  the maximum of 1,342,728 axis values in 63 fleet runs.  The file states its bound
+  as a `movebnd` header key from the SAME latch the check reads, so reccheck can
+  fault the bit against the file's own `in` rows in both directions -- and no key
+  means abstention on the `proprule` precedent, which is what keeps this tree's own
+  Patch 358 fixtures (`side=2325 / fwd=-1067`, no bit) honest.
+  **THE HEADER FLAGS WORD IS ONLY REWRITTEN AT A REAL CLOSE.**  `SV_RecFlagLine`
+  reserves a fixed width at open and only `SV_RecClose` / `SV_RecKeepEvidence` seek
+  back to it, so a Multi-Session park and a save-state prefix are closed files
+  reading `flags 0` no matter what the run did.  That is why every header-bit
+  cross-check in reccheck sits behind `end`, and it is not a guess: Patch 493's own
+  first harness graded a park, got `flags 0` beside 284 rows over the bound, and the
+  ungated check accused a file the writer never finished.
+  Arm: `tools/p493move.py` (26 checks) with `cfg/test/p493{move,off}.cfg`.
 - A FORGIVENESS HUNG ON ANYTHING `SV_TimerArm` TOUCHES IS A FORGIVENESS THE MAP
   HANDS OUT. `SV_TimerArm` is reachable from ordinary map DATA, not only from a
   gesture: 21 shipped maps have two abutting start regions whose seam re-arms on

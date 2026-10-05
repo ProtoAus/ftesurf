@@ -1474,6 +1474,101 @@ def case_nonce_flag():
              "TF_NONCE in a v5 file is not checked against a key it cannot have")
 
 
+def over_bound(lines, val=5000):
+    """-> the same lines with the first `in` row's move triple over any bound.
+
+    THE ROW IS EDITED AND NOT APPENDED because the check is about the rows the
+    file already carries: `in <pk> <mt> <carry> <fwd side up> ...`, so columns 4
+    to 6 are the move triple.  A fixture that appended a row of its own would
+    also have to model the packet ordinal and the movetick, and would then be
+    testing the builder's arithmetic rather than the cross-check."""
+    out, done = [], False
+    for l in lines:
+        t = l.split()
+        if not done and t and t[0] == "in":
+            t[4] = t[5] = t[6] = str(val)
+            l = " ".join(t)
+            done = True
+        out.append(l)
+    return out
+
+
+def case_movebnd():
+    """THE BOUND, THE ROWS AND THE BIT HAVE TO AGREE.  Patch 493.
+
+    Three properties, and the arms below are in that order because each one is
+    what makes the next safe:
+
+    ABSENCE ABSTAINS.  No `movebnd` key means no bound was applied -- the server
+    runs `run_movebound 0`, or its progs predate the check -- and then NEITHER
+    direction may run.  That is not a hole: this tree's own Patch 358 fixtures
+    carry `side=2325 / fwd=-1067` and no TF_MOVEOOR, because a harness drove
+    them, and a reader that could not tell "no rule" from "no such rule yet"
+    would fault honest files for predating the rule.
+
+    THE STRONG DIRECTION IS A FAULT.  The rows and the marker are written by the
+    same command, so a file holding rows over its own stated bound with the bit
+    clear was either written by a recorder that stopped checking or edited by
+    somebody who did not know the values are in the trace beside the bit.
+
+    THE WEAK DIRECTION IS A NOTE.  Two honest writers produce a bit with no row
+    over it -- SV_TimerInFrame stops writing rows at its line cap while
+    SV_MoveBoundFrame keeps counting commands, and a `pause` epoch can hold the
+    rows a marker was set beside -- and this tool can see neither.  A forger also
+    has no reason to set a marker that demotes nothing."""
+    # THE CONTROL, and it is every recording written before Patch 493.
+    f, n = run(build())
+    check(not f and not n, "no movebnd key at all is neither a fault nor a note")
+
+    ok_clean(insert_before(build(), "begin", "movebnd 2000"),
+             "a v9 file stating movebnd, with no row over it, passes clean")
+
+    b = over_bound(insert_before(build(), "begin", "movebnd 2000"))
+    faults_with(b, "does not say TF_MOVEOOR",
+                "a row over the stated bound with the bit clear is a fault")
+    ok_clean(head(b, "flags", str(262144)),
+             "...and the same file with TF_MOVEOOR set passes clean")
+
+    # The row over the bound is not judged at all when the file states no bound.
+    f, n = run(over_bound(build()))
+    check(not f, "an over-bound row in a file with no movebnd key is not judged")
+
+    notes_with(head(insert_before(build(), "begin", "movebnd 2000"),
+                    "flags", str(262144)),
+               "line cap",
+               "the bit with no row over the bound is a note that names the cap")
+
+    # THE GATE THAT COST A RUN TO FIND.  A Multi-Session park and a save-state
+    # prefix are CLOSED files whose header flags word is still the 0 written at
+    # open: SV_RecFlagLine reserves a fixed width and only SV_RecClose /
+    # SV_RecKeepEvidence seek back to it.  So a marker set mid-run is not in them,
+    # and this arm's own first file was exactly that -- 284 rows over the stated
+    # bound beside `flags 0`, which the ungated check read as tampering.
+    # `run.rec` is what is_prefix() recognises, and the file has no `end`, which is
+    # the same gate every other header-bit cross-check in reccheck sits behind.
+    b = over_bound(insert_before(build(), "begin", "movebnd 2000"))
+    b = [l for l in b if not l.startswith("end ")]
+    f, n = run(b, name="run.rec")
+    check(not any("TF_MOVEOOR" in x for x in f),
+          "an unclosed file (a park, a save-state prefix) is not judged against "
+          "its flags word at all -- it still holds the 0 written at open")
+    f, n = run(b, name="t.rec")
+    check(any("no 'end' record" in x for x in f),
+          "...and the same rows in a file that is not a prefix FAULT on the "
+          "missing trailer, so the gate is about the flags word and not a blanket "
+          "exemption (%d fault(s))" % len(f))
+
+    # SHAPE.  A non-number, and a 0 -- the writer states a bound only when it
+    # applied one, so a stated 0 is a writer that drifted from its own grammar.
+    faults_with(insert_before(build(), "begin", "movebnd x"),
+                "not a number", "a non-numeric movebnd is a fault")
+    faults_with(insert_before(build(), "begin", "movebnd 0"),
+                "should be absent", "movebnd 0 is a fault: 0 means none applied")
+    notes_with(insert_before(build(ver=8), "begin", "movebnd 2000"),
+               "is not part of v8",
+               "the key in a v8 file is a note: v9 is where it was added")
+
+
 def case_angle_control():
     """THE PAIR THAT MUST PASS.  Everything below is a mutation of this one, so
     a fault here would make every arm under it unreadable."""
@@ -2003,6 +2098,7 @@ def main():
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
                case_nonce_header, case_nonce_record, case_nonce_flag,
+               case_movebnd,
                case_angle_control, case_angle_blind_is_said_out_loud,
                case_angle_rotated, case_angle_one_frame_rule,
                case_angle_one_frame_rule_reaches_a_still_camera,

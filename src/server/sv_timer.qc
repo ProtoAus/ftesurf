@@ -1717,6 +1717,26 @@ float() SV_RecEnabled =
 .float  run_t_pbad;
 
 /*
+  PATCH 493: THE MOVE-COLUMN RANGE MARKER'S COUNTERS.
+
+  run_t_moveoor is the number of usercmds this attempt carried whose largest
+  |move axis| exceeded run_t_movebnd, and run_t_movebig the largest |value| ANY
+  command of the attempt carried, over the bound or not.  TF_MOVEOOR is the flag;
+  these two are why the flag exists, on the SV_RecCounts precedent -- a bit says
+  "at least one" and the decision it informs is a threshold, which needs the
+  shape: one command at 2001 in an hour of play is a config, forty thousand at
+  32767 is a CreateMove rewrite.
+
+  PER ATTEMPT, not per client, so they reset where run_t_flags does and a previous
+  attempt's numbers cannot ride into the next one.  0 and not -1, unlike the three
+  latches above them: these count THIS attempt's own commands rather than
+  differencing against a sample somebody else took, so there is no "never
+  sampled" state to keep apart from a real 0.
+*/
+.float  run_t_moveoor;
+.float  run_t_movebig;
+
+/*
   WHAT THIS CLIENT'S CSQC SAID, OVER THE CHANNEL ITS CONSOLE CANNOT WRITE.
   Build 78.  The why is the sendevent block in sh_defs.qc; this is the storage.
 
@@ -2524,6 +2544,7 @@ float(entity e, string path) SV_RecSnapshot =
 .float  rec_rec_posts;           // `stagepost` records in this recording (the abandon keep)
 float   run_t_stagecap;          // run_stagecap, cached per map
 float   run_t_startcap;          // run_startcap, cached per map (Patch 403)
+float   run_t_movebnd;           // run_movebound, cached per map (Patch 493)
 // Patch 364 (v10).  Recounted from the body on every rewind, like the trailer's counts.
 .float  rec_rec_pauses;          // `pause` records: any at all makes the file v10
 .float  rec_rec_sess;            // `session` records: the trailer's 11th field
@@ -2783,8 +2804,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             This is the same sentence `warp` is about, one step
                             earlier in the run.
     flags <n>               TF_* as they stood AT THE FINISH -- see below
-    pmpin <name=value ...>  v9, build 87, AFTER `flags` (the scoreboard reads 24
-                            header lines).  THE PHYSICS PIN: the 70 values the
+    pmpin <name=value ...>  v9, build 87, AFTER `flags` (the scoreboard reads a
+                            bounded number of header lines -- 32 since Patch 493,
+                            24 before it).  THE PHYSICS PIN: the 70 values the
                             mover was handed on the start packet's last move --
                             movevars, pm_type, gamespeed, hull x/y, capsule, the
                             raw sv_maxvelocity of the pre-move clamp, the trace
@@ -2795,6 +2817,22 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             engine does not publish: the physics are then UNKNOWN.
                             Readers still take keys in any order; `after flags`
                             is where the writer puts it, not a rule to check.
+    movebnd <n>             Patch 493.  THE BOUND THIS FILE'S MOVE COLUMNS WERE
+                            JUDGED AGAINST: an `in` row whose |fwd|, |side| or |up|
+                            exceeds it sets TF_MOVEOOR in `flags` and is counted.
+                            Written from the per-map latch the check itself reads
+                            (run_t_movebnd, cached in SV_TimerMapInit beside
+                            run_startcap), so a mid-run `set run_movebound` cannot
+                            make a file disagree with its own rows -- the operator's
+                            change lands on the next map.
+                            ABSENT IS A STATE, on the `proprule` precedent: no bound
+                            was applied, either because `run_movebound` is 0 or
+                            because the progs predate the check.  A reader must not
+                            judge the bit in either direction without it, and this
+                            tree's own Patch 358 fixtures are the reason that is not
+                            hypothetical -- they carry move values in the thousands
+                            (`side=2325 / fwd=-1067`) and no bit, and they are
+                            honest harness output.
     begin                   header ends here; everything after is a record
 
   THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
@@ -5038,6 +5076,28 @@ void(entity e) SV_RecOpen =
 		SV_RecPut(e, strcat("pmpin ", pin));
 		e.rec_rec_epoch = e.run_pmepoch;
 	}
+
+	/*
+	  PATCH 493: THE BOUND THESE MOVE COLUMNS ARE JUDGED AGAINST, and the key's
+	  ABSENCE is a third state that is what makes the check safe.  Written from the
+	  same per-map latch SV_MoveBoundFrame reads, so the file cannot disagree with
+	  its own rows -- which is the whole of why reccheck.py can fault the bit in
+	  both directions.
+
+	  Absent means "this recorder applied no bound": `run_movebound 0`, or progs
+	  older than this patch.  That is the `proprule` precedent exactly, and it is not
+	  hypothetical here -- this tree's own Patch 358 fixtures carry
+	  `side=2325 / fwd=-1067` and no bit, because a harness drove them, and a reader
+	  that could not tell "no rule" from "no such rule yet" would fault every honest
+	  file written before the rule existed.
+
+	  LAST KEY BEFORE `begin` so that the scoreboard's bounded header read still
+	  reaches `flags`: this key takes the header to 22 of its 24 lines, and
+	  cl_scores.qc's bound goes to 32 in the same patch because 2 lines of slack is
+	  not a margin for the next key.
+	*/
+	if (run_t_movebnd > 0)
+		SV_RecPut(e, sprintf("movebnd %g", run_t_movebnd));
 
 	SV_RecPut(e, "begin");
 
@@ -11065,6 +11125,9 @@ void(entity e, float z) SV_TimerArm =
 	// as having started at the map load.  See run_t_starttick and SV_TickReport.
 	e.run_t_starttick   = -1;
 	e.run_t_tickcarry   = 0;
+	// Patch 493: 0, and see the declaration for why these two are not -1.
+	e.run_t_moveoor     = 0;
+	e.run_t_movebig     = 0;
 	e.run_t_frzticks    = 0;
 	/*
 	  BUILD 76: the seconds half of the same teardown.
@@ -12724,6 +12787,68 @@ void(entity e) SV_RecCounts =
 	}
 };
 
+/*
+===========================================================================
+  PATCH 493 -- ONE COMMAND'S MOVE TRIPLE, AGAINST THE BOUND THIS MAP LATCHED.
+
+  The argument -- what the axis can and cannot mean, the fleet measurement behind
+  the bound, the three honest routes to a large value, and why this MARKS instead
+  of demoting -- is in sh_defs.qc's TF_MOVEOOR essay.  What belongs here is the
+  shape of the check, and three things about it are load-bearing:
+
+  CALLED FROM PreThink BESIDE SV_TimerInFrame AND NOT FROM INSIDE IT.  That
+  function's business is writing a row and it returns early on three separate
+  counts (no mover rate, a save-lock freeze, the line cap); a run whose recorder
+  is not live -- a resumed one too big to record, `run_resume_recmb` -- still
+  submits its flags, so the observation must not depend on a file existing to put
+  it in.
+
+  PER COMMAND, NOT PER PACKET, on this tree's standing rule: PreThink is the
+  per-usercmd hook and PostThink is per packet, so anything that must see every
+  command lives here.  Patch 403 put a per-command clamp on the PostThink path and
+  a client's own packet rate chose how often it fired.
+
+  THE ENGINE HAS ALREADY COPIED THE VALUES AND NOTHING HERE WRITES THEM.  It reads
+  .movement_x/y/z, which sv_user.c filled from the usercmd before calling us, and
+  .run_t_flags, which is this run's own word.  No trace, no alloc, no print: three
+  comparisons and at most one write per command.
+===========================================================================
+*/
+void(entity e) SV_MoveBoundFrame =
+{
+	local float b, m;
+
+	if (e.run_t_state != TS_RUNNING)
+		return;
+	b = run_t_movebnd;
+	if (b <= 0)
+		return;                     // 0 is the off switch: no key, no mark
+
+	m = fabs(e.movement_x);
+	if (fabs(e.movement_y) > m)
+		m = fabs(e.movement_y);
+	if (fabs(e.movement_z) > m)
+		m = fabs(e.movement_z);
+
+	/*
+	  TRACKED BEFORE THE BOUND TEST, and that ordering is the difference between a
+	  census and a dead column.  `worst` is the largest value this attempt sent
+	  WHETHER OR NOT IT WAS OVER, so an honest run reads `over 0  worst 450` --
+	  which is the number a bound gets chosen from, and which is what says the move
+	  really reached the server at all.  Tracked only past the bound, every clean
+	  run reads `worst 0` and the column distinguishes nothing.
+	*/
+	if (m > e.run_t_movebig)
+		e.run_t_movebig = m;
+
+	if (m <= b)
+		return;
+
+	e.run_t_moveoor = e.run_t_moveoor + 1;
+	if (!(e.run_t_flags & TF_MOVEOOR))
+		e.run_t_flags = e.run_t_flags | TF_MOVEOOR;
+};
+
 void(entity e) SV_TimerInFrame =
 {
 	local float bt;                 // the three mover bits, repacked
@@ -13990,6 +14115,16 @@ void() SV_TimerMapInit =
 	registercvar("run_stageghost", "1");      // build 48
 	registercvar("run_stagecap", "290");      // Patch 360: stage fill-in's launch cap, u/s
 	registercvar("run_startcap", "290");      // Patch 403: a run may not BEGIN above this, u/s
+	/*
+	  Patch 493.  2000 = 4.4x the widest move value any shipped config produces
+	  (default.cfg's 450, and the fleet's 1,342,728 recorded axis values peak at
+	  exactly that) with zero honest observations above it -- including a gamepad
+	  with +speed held, whose unbounded route is in the TF_MOVEOOR essay.  0 turns
+	  the check off and the file then carries no `movebnd` key, which is a state a
+	  reader can see rather than a silence it has to guess at.  MARKS the run
+	  (TF_MOVEOOR); demotes nothing.
+	*/
+	registercvar("run_movebound", "2000");
 	registercvar("run_evidence_days", "30");  // Patch 360: abandoned-run evidence kept this long
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
@@ -14047,6 +14182,14 @@ void() SV_TimerMapInit =
 	run_t_stagecap    = cvar("run_stagecap");     // Patch 360
 	localcmd(sprintf("serverinfo run_stagecap %g\n", run_t_stagecap));
 	run_t_startcap    = cvar("run_startcap");     // Patch 403
+	/*
+	  Patch 493.  CACHED PER MAP, and not read live, for one reason: the header key
+	  and the check have to name the same number for the life of a file, and a cvar
+	  read twice can be changed in between.  An operator who moves the bound gets it
+	  on the next map load, which is the latency run_stagecap and run_startcap
+	  already have and the price of a file that can be checked against itself.
+	*/
+	run_t_movebnd     = cvar("run_movebound");    // Patch 493
 	localcmd(sprintf("serverinfo run_startcap %g\n", run_t_startcap));
 	localcmd("serverinfo fs_counts 1\n");     // Patch 376: clients send mouse counts
 	/*
@@ -14398,6 +14541,24 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        rec rows: in %d warp %d ride %d pm %d pe %d portal %d\n",
 	       e.rec_rec_in, e.rec_rec_warp, e.rec_rec_ride,
 	       e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal));
+	/*
+	  Patch 493.  FOUR COLUMNS BECAUSE THE BIT ALONE CANNOT INFORM THE DECISION IT
+	  EXISTS FOR.  `bound` is the per-map latch this run is being judged against --
+	  0 means the check is off and the file will carry no `movebnd` key, which is
+	  the reading that distinguishes "nothing tripped" from "nothing was looked at".
+	  `over` counts the commands that tripped it and `worst` the largest |value| ANY
+	  command of the attempt carried -- bound or not, so that an honest run reads
+	  `worst 450` and not a dead `worst 0`, and the pair is the shape a threshold
+	  decision needs where a flag gives one bit.  `moveoor` is whether the flag got
+	  set, printed even when clear on this function's own standard.
+
+	  `bound 2000  over 0  worst 450  moveoor 0` IS THE HONEST READING ON THE
+	  SHIPPED CONFIG and not a dead counter: 450 is default.cfg's own move cvars,
+	  measured as the maximum over the fleet's recordings.
+	*/
+	sprint(e, PRINT_HIGH, sprintf("        movebnd: bound %g  over %g  worst %g  moveoor %g\n",
+	       run_t_movebnd, e.run_t_moveoor, e.run_t_movebig,
+	       (e.run_t_flags & TF_MOVEOOR) ? 1 : 0));
 
 	/*
 	  BUILD 66: WHICH RECORDER, and where it is writing.

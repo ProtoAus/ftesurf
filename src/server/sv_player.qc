@@ -561,6 +561,15 @@ void() PlayerPreThink =
 	  purpose".  It stopped being true at build 15 and has been wrong ever since;
 	  corrected there rather than left to mislead the next reader of this file.
 	*/
+	/*
+	  Patch 493: the move-column range marker, and it goes immediately BEFORE the
+	  row for two reasons.  It reads .movement exactly as the engine wrote it and
+	  nothing in this function touches that, which is the property the block above
+	  is about; and SV_TimerInFrame's contract is that it is the LAST thing PreThink
+	  does, so a second reader of the same four facts has to slot in ahead of it
+	  rather than behind it.
+	*/
+	SV_MoveBoundFrame(self);
 	SV_TimerInFrame(self);
 };
 

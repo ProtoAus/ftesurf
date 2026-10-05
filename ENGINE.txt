@@ -25,13 +25,63 @@ commit   5bd4ac850b77b17c9b5d280d7de5310607a273fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-467
-patch    491
+patch    493
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-10-04
+date     2026-10-05
+
+# PATCH 493: MOD-SIDE ONLY -- no engine file is touched and no engine builtin is used,
+# so nothing here needs a rebuild and it is version-skew safe against the older Pi
+# engine.  A usercmd's move triple reaches the server with NO RANGE TEST ANYWHERE: the
+# engine's server side is a bare `sv_player->xv->movement[0] = ucmd->forwardmove;` and
+# the only client-side bound is cl_input.c's `bound(-32768, ..., 32767)`, a wire bound
+# and not a plausibility one.  The physics never needed one (PMSrc_WishDir clamps
+# wishspeed to pms_maxspeed), which is exactly why an impossible value is free evidence.
+# And the corpus says the impossible value is what this class of cheat writes: two
+# samples in C:/FTESurf-private/Cheats fly a body back to a recording's start with
+# `cmd->forwardmove = dist;` -- a DISTANCE, in the thousands on any map that respawns
+# away from its start.  SV_MoveBoundFrame now compares each command's largest |axis|
+# against `run_movebound` (2000, 0 = off, latched per map beside run_startcap so a
+# file cannot state one bound and judge its rows against another), counts the ones over
+# it, keeps the largest value the attempt sent at all, and sets TF_MOVEOOR (262144).
+# SV_RecOpen states the bound as a `movebnd` header key, `cmd timer` prints
+# `movebnd: bound N over N worst N moveoor N`, and reccheck.py cross-checks the bit
+# against the file's own `in` rows in BOTH directions -- rows over the stated bound
+# with the bit clear is a FAULT, the converse a NOTE, and no key an abstention on the
+# `proprule` precedent.  MARKER ONLY, on the SV_RecCounts precedent: no class, not in
+# TF_UNCERT, nothing demoted, because THREE HONEST ROUTES PASS THE BOUND -- the four
+# move cvars are plain archived cvars (cl_movespeedkey's engine default is 2.0 where
+# default.cfg ships 1, so +speed sends 900), mouse-strafe adds `m_side * mouse_x` per
+# command, and A GAMEPAD WITH +speed HELD IS UNBOUNDED, found by reading rather than
+# measuring: in_generic.c's IN_MoveJoystick scales jstrafe by `360 * cl_movespeedkey`
+# and then multiplies by cl_forwardspeed without re-normalising, reaching 450*360 and
+# stopped only by the wire bound.  A demotion on this axis would land on an honest
+# gamepad player first -- the Patch 305 failure mode.  The bound's value is a
+# judgement over one corpus: 1,342,728 axis values in 63 fleet runs peak at EXACTLY
+# 450 (default.cfg's own move cvars), and the only values above it in 5,571 local files
+# are 11,460 in three harness files.  Verified: test_reccheck 306 checks 0 failed (was
+# 295), a 266-file corpus sweep unchanged at 169 files with faults and no new
+# `movebnd` finding, and tools/p493move.py 26 checks 0 failed -- control `bound 2000
+# over 0 worst 450 moveoor 0`, subject at cl_forwardspeed 5000 `over 120 worst 5000
+# moveoor 1` growing to `over 283`, the closed file carrying `movebnd 2000` and
+# `flags 395013` with reccheck reading `284 of 1938 over 2000 (worst 5000)`, both
+# tamper directions faulting, and `+set run_movebound 0` giving five samples of
+# `bound 0 over 0 worst 0 moveoor 0` with a file that carries no key at all.  THE
+# PREDICTION THAT FAILED WAS THE ONE THAT MATTERED: this harness was built to grade a
+# Multi-Session park on the argument that SV_MsEligible gates on elapsed time only, and
+# the park produced a closed file reading `flags 0` beside 284 rows over the bound --
+# SV_RecFlagLine reserves a fixed width at open and only SV_RecClose/SV_RecKeepEvidence
+# seek back to rewrite it, so a marker set after the open is absent from a parked file
+# and from a save-state prefix.  The first cut of the cross-check FAULTED that file,
+# i.e. accused a recording the writer never finished; it is now gated on `end` like
+# every other header-bit cross-check, and the arm finishes its run instead (b88fin's
+# route, reachable because the zone scan is a server-side point test that a noclip
+# flight does cross).  NOT VERIFIED: no sample in the corpus runs against this engine,
+# so the subject is an ordinary archived cvar set to 5000, which measures the
+# observation and not the accusation.
 
 # PATCH 491: a remote server may no longer turn a connected client into a cluster
 # master.  This was the LAST UNARMED item in the client-security audit, and arming it
