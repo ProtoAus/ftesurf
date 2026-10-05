@@ -1802,9 +1802,11 @@ def case_pitch_clamp_not_governed():
         check(r.info.get("identity_pitch_not_governed") == clamped,
               "clamp %s: exactly the clamped frames abstain, counted (%s of %d)"
               % (side, r.info.get("identity_pitch_not_governed"), clamped))
-        check(r.info.get("identity_pitch", "").startswith("exact"),
-              "clamp %s: the frames inside the bound are still judged exact (%r)"
-              % (side, r.info.get("identity_pitch")))
+        want = "exact on all %d judged frames" % (
+            (r.info.get("identity_pitch_frames") or 0) - clamped)
+        check(r.info.get("identity_pitch", "").startswith(want),
+              "clamp %s: the frames inside the bound are still judged exact, "
+              "counted (%r)" % (side, r.info.get("identity_pitch")))
     # The engine's rule, not merely a wider skip: a CHANGE past 89 whose RESULT
     # stays inside the bound is judged.  The old rule skipped it, so a rewrite of
     # that frame passed.
@@ -2042,6 +2044,44 @@ def case_c_values_read_as_the_engine_reads_them():
           "m_filter on mid-run: the text counts the 19 frames it judged, not 39 (%s)" % got)
 
 
+def case_q_atof_is_the_engines():
+    """Q_atof (common.c) on the classes a cvar string can take; the engine's
+    own function was compiled and compared over 200k inputs in review."""
+    from hidcheck import q_atof
+    for text, want in (("-1.5", -1.5), ("  2", 2.0), ("0x1F", 31.0),
+                       ("-0x10", -16.0), ("'A'", 65.0), ("1.2.3", 12.3),
+                       ("3e2", 3.0), ("0.3x", 0.3), ("0x", 0.0), ("", 0.0),
+                       (".5", 0.5), ("-", 0.0)):
+        got = q_atof(text)
+        check(abs(got - want) < 1e-9, "q_atof(%r) = %r (want %r)" % (text, got, want))
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("sensitivity", " 0.375 ")
+        yaw += (-0.022 * 0.375 if i >= 20 else j.k) * 6
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(r.ok, "a 'c' value with spaces in its quotes is read, not dropped (%s)"
+          % (r.faults[:1] or "none"))
+    # Review of 9c672d1: a fault counts the frames it judged, not the governed
+    # ones -- 5 rewritten of the 19 judged before m_filter came on.
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("m_filter", "1")
+        yaw += j.k * (4.5 if 5 <= i < 10 or i >= 20 else 6)
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(has_fault(r, "YAW IDENTITY BROKEN on 5 of 19 judged frames"),
+          "a fault names the judged count (%s)" % (r.faults[:1] or "none"))
+
+
 def case_no_input_is_blind():
     """REVIEW OF 692503c: no 'f' and no events became a note, so a run turned
     entirely from the console (+left, recorded as the keyboard term) held on
@@ -2066,6 +2106,19 @@ def case_no_input_is_blind():
     r = run(j.end())
     check(r.ok and not r.info.get("identity_blind"),
           "CONTROL: the same journal with a mouse behind it is not blind")
+    # Review of 9c672d1: typing `+left` in the console writes key events, so
+    # the no-events rule alone missed it; no judged frame has a count.
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.hidden()
+        yaw += 0.5
+        j.view(0, 0, 10.0, yaw, kyaw=0.5)
+    r = run(j.end())
+    check(r.ok and r.info.get("identity_blind") == "no judged frame carried a mouse count",
+          "key events but no mouse count on any judged frame: blind (%s, %s)"
+          % (r.faults[:1] or "none", r.info.get("identity_blind")))
 
 
 def main():
@@ -2088,6 +2141,7 @@ def main():
                case_synth_unsourced_names_nobody, case_no_synth_no_noise,
                case_join_holds, case_join_catches_what_the_identity_cannot,
                case_c_values_read_as_the_engine_reads_them, case_no_input_is_blind,
+               case_q_atof_is_the_engines,
                case_join_declared_transform_is_not_a_break,
                case_join_pre312_is_unanswerable_not_broken,
                case_join_absolute_window_not_joinable,

@@ -649,7 +649,8 @@ def check_hid(path, verbose=False):
         clock += dt / 1000000.0
 
         want = KINDS[kind]
-        if want is not None and len(tok) != 2 + want:
+        if want is not None and (len(tok) < 2 + want if kind == "c"
+                                 else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
             continue
@@ -1829,7 +1830,8 @@ def check_identity(r, head, views):
         # Both are still deterministic functions of (dx, dy, frametime), so this
         # is a "not implemented here" rather than a "cannot be done" -- but
         # m_accel needs the frametime, which this file does not carry per frame.
-        r.note("m_filter %g / m_accel %g -- the yaw path is not the plain linear "
+        r.note("m_filter or m_accel on for every frame (header %g / %g; a 'c' "
+               "may have turned one on) -- the yaw path is not the plain linear "
                "one and this tool does not model it, so the identity is NOT "
                "checked. A ranked run must pin both to 0." % (mfilter, maccel))
         return
@@ -2021,6 +2023,12 @@ def check_identity(r, head, views):
     r.info["identity_whole"] = len(whole)
     r.info["identity_unresolved"] = len(unresolved)
     r.info["identity_judged"] = len(y_judged | p_judged)
+    # A journal whose judged frames carry no counts tested only the keyboard
+    # term: a run turned from the console holds on every frame (review of
+    # 9c672d1).  Never OK, never guilty.
+    judged = y_judged | p_judged
+    if judged and not any(c[1] or c[2] for c in applicable[1:] if c[0] in judged):
+        r.info.setdefault("identity_blind", "no judged frame carried a mouse count")
 
     if whole:
         r.note("%d frame(s) moved BOTH axes by something other than their recorded "
@@ -2038,12 +2046,12 @@ def check_identity(r, head, views):
     pg_only = [g for g in pghost if g[0] not in whole]
     if pitch_bad:
         worst = max(pitch_bad, key=lambda v: v[4])
-        r.fault("PITCH IDENTITY BROKEN on %d of %d governed frames. The pitch did "
+        r.fault("PITCH IDENTITY BROKEN on %d of %d judged frames. The pitch did "
                 "not come from the counts OR the recorded keyboard term, and the "
                 "yaw held on those frames, so this is not a whole-angle event. "
                 "Worst: line %d, %g counts should give %.6f deg, file says %.6f "
                 "(off by %.6f)."
-                % (len(pitch_bad), len(gov_pitch) - 1,
+                % (len(pitch_bad), len(p_judged),
                    worst[0], worst[1], worst[3], worst[2], worst[4]))
     elif pitch_live:
         if pb:
@@ -2106,12 +2114,12 @@ def check_identity(r, head, views):
                % (len(violations), len(applicable) - 1))
     elif yaw_bad:
         worst = max(yaw_bad, key=lambda v: v[4])
-        r.fault("YAW IDENTITY BROKEN on %d of %d governed frames. The angle did "
+        r.fault("YAW IDENTITY BROKEN on %d of %d judged frames. The angle did "
                 "not come from the counts OR the recorded keyboard turn, and the "
                 "pitch held on those frames (or this file has no pitch identity), "
                 "so this is not a whole-angle event. Worst: line %d, %g counts "
                 "should give %.6f deg, file says %.6f (off by %.6f)."
-                % (len(yaw_bad), len(applicable) - 1,
+                % (len(yaw_bad), len(y_judged),
                    worst[0], worst[1], worst[3], worst[2], worst[4]))
     elif yb:
         # "exact on all N" WHILE N FRAMES HAVE NO RECORDED CAUSE IS A CONTRADICTION,

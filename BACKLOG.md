@@ -159,11 +159,12 @@ below is the collection side and the rules that still only note.
   counts read as YAW/PITCH IDENTITY BROKEN, and 3 of the 4 local PBs faulted on
   exactly that (18 frames, all both-axis). The cost is that a rewrite of the
   WHOLE view angle no longer faults either, and a single-axis one faults only
-  where the other axis was judged on that frame. The review of 692503c drove
-  both ways round it: `-mlook` or a mid-run `m_pitch 0` leaves pitch unjudged,
-  and 0.001 deg of pitch a frame makes any yaw rewrite whole-angle -- each
-  stores BLIND, as 80 of the 123 local journals do, so BLIND does not separate
-  a cheat from an honest run. The `.hid`-to-`.rec` join -- unresolved frames
+  where the other axis was judged on that frame (or, for yaw, pitch is not live
+  anywhere in the run). The review of 692503c drove both ways round it: a
+  mid-run `-mlook` or `m_pitch 0` leaves pitch unjudged on those frames, and
+  0.001 deg of pitch a frame makes any yaw rewrite whole-angle -- each stores
+  BLIND, as most local journals do (84 of 123 at 9c672d1), so BLIND does not
+  separate a cheat from an honest run. The `.hid`-to-`.rec` join -- unresolved frames
   against `warp ... tele` rows -- is what would give that fault back. A cheaper
   discriminator to test against a real corpus: a server angle set breaks ONE
   frame, a continuous rewrite breaks runs of adjacent ones.

@@ -324,10 +324,10 @@ def case_receipt_watermark():
     keep = open(path, "rb").read()
     real_read = sweep.read_receipt
 
-    def vanishing(p):
+    def vanishing(p, **kw):
         if p == path:
             os.remove(p)
-        return real_read(p)
+        return real_read(p, **kw)
 
     sweep.read_receipt = vanishing
     try:
@@ -721,8 +721,8 @@ def case_pending_reread_moves_only_the_journal():
     real = sweep.read_receipt
     reads = []
 
-    def first_read_faults(path):
-        got = real(path)
+    def first_read_faults(path, **kw):
+        got = real(path, **kw)
         reads.append(path)
         if len(reads) == 1:
             return ("FAULT", got[1], got[2], "BROKEN", "the .rec states another nonce") \
@@ -744,6 +744,43 @@ def case_pending_reread_moves_only_the_journal():
               ("FAULT", "BROKEN", "the .rec states another nonce", "OK"))
     finally:
         sweep.read_receipt = real
+
+    # Review of 9c672d1: a LATE journal that is not the one signed must still
+    # fault the receipt -- the re-read moves the verdict toward FAULT only.
+    rid2 = "20260921-000100-0"
+    rp2, _pub = make_receipt(surfd.EVIDENCE_DIR, rid2, age=old, hid=text)
+    os.remove(rp2[:-5] + ".hid")
+    sweep.receipt_step(conn, now=now)
+    first = tuple(conn.execute("SELECT verdict, journal FROM receipts WHERE runid = ?",
+                               (rid2,)).fetchone())
+    check("a second receipt, journal not here: VALID, PENDING", first, ("VALID", "PENDING"))
+    with open(rp2[:-5] + ".hid", "wb") as fh:
+        fh.write(_journal_text(break_pitch=True).encode("utf-8"))
+    n, bad = sweep.receipt_step(conn, now=now + 600)
+    got = tuple(conn.execute("SELECT verdict, reason, journal FROM receipts WHERE runid = ?",
+                             (rid2,)).fetchone())
+    check("a different journal arrives: the receipt FAULTs on its digest",
+          (n, bad, got[0], "hashes to" in got[1]), (1, 1, "FAULT", True))
+
+    # Review of 9c672d1: a journal turned only by the keyboard term stores
+    # BLIND, saying why (the rcptcheck half of the no-input rule).
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    from test_hidcheck import Journal
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.hidden()
+        yaw += 0.5
+        j.view(0, 0, 10.0, yaw, kyaw=0.5)
+    rid3 = "20260921-000101-0"
+    make_receipt(surfd.EVIDENCE_DIR, rid3, age=old, hid=j.end().encode("utf-8"))
+    sweep.receipt_step(conn, now=now)
+    got = tuple(conn.execute("SELECT journal, journal_reason FROM receipts WHERE runid = ?",
+                             (rid3,)).fetchone())
+    check("a keyboard-only journal: BLIND, and it says why",
+          (got[0], "no judged frame carried a mouse count" in got[1]), ("BLIND", True))
 
 
 def case_receipt_step_never_takes_the_sweep_down():

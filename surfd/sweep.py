@@ -289,8 +289,11 @@ def sweep(conn, limit, runner=None, now=None):
     return counts
 
 
-def read_receipt(path):
-    """One receipt, fully joined.
+def read_receipt(path, journal_only=False):
+    """One receipt, fully joined -- or, with journal_only, everything but the
+    .rec joins: the signature, the sibling digests and the journal, for the
+    PENDING re-read, where a .rec pruned since the first read must not move
+    the verdict and a late .hid or .view must still be checked.
     -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed)
     or None; `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
@@ -307,11 +310,13 @@ def read_receipt(path):
     import rcptcheck
 
     r = rcptcheck.read(path)
-    rcptcheck.join_rec(r)
-    rcptcheck.join_ticks(r)
+    if not journal_only:
+        rcptcheck.join_rec(r)
+        rcptcheck.join_ticks(r)
     rcptcheck.join_hid(r)
     rcptcheck.join_uploaded(r, {})
-    rcptcheck.join_angles(r, {})
+    if not journal_only:
+        rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
     # tool nobody runs.  join_hid checks the digest the signature commits to and
     # join_uploaded hashes the sibling file against it, so "is this the journal
@@ -409,23 +414,32 @@ def receipt_step(conn, limit=200, now=None):
                 if is_fresh:
                     through = min(through, int(mtime) - 1)
                 continue
-            got = read_receipt(path)
+            pending_only = not is_fresh and rows[runid][0] not in (1, 2)
+            got = read_receipt(path, journal_only=pending_only)
             # Gone since the listing: rcptcheck reports "cannot read" as a FAULT,
             # and a stored row is never read again -- skip it, as a failed stat is.
             if got is None or not os.path.exists(path):
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
-            if not is_fresh and rows[runid][0] not in (1, 2):
-                # Due only because its journal was PENDING: move the journal
-                # columns and nothing else.  The rest was read when the receipt
-                # was, and a .rec pruned since must not turn a stored FAULT
-                # into VALID (review of 692503c).
+            if pending_only:
+                # Due only because its journal was PENDING.  The journal columns
+                # move, and the verdict only TOWARD FAULT: a late .hid or .view
+                # that does not hash to what was signed is a fault the first read
+                # could not see, while a .rec pruned since must not clear one
+                # (reviews of 692503c and 9c672d1).
                 if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
                     continue
+                old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?",
+                                   (runid,)).fetchone()
+                fault = verdict == "FAULT" and old is not None and old[0] != "FAULT"
                 with conn:
+                    if fault:
+                        conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?"
+                                     " WHERE runid = ?", (reason, runid))
                     conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
                                  " WHERE runid = ?", (journal, jreason, runid))
                 n += 1
+                bad += fault
                 jfault += journal == "FAULT"
                 continue
             # A signed journal that is not here yet may still be uploading, one
