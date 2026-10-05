@@ -141,6 +141,24 @@
     return a;
   }
 
+  // Outbound links in one place.  Momentum's profiles take Momentum's own user
+  // number, which no board row carries (/profile/<steamid> is their 404), so a
+  // player links to Steam, as Momentum's own dashboard does; KSF addresses its
+  // players by STEAM_0 id (`ksfid`, from surfd).  A row links to its board on
+  // the site it came from.
+  function outLink(href, text) {
+    var a = link('dimlink', href, text);
+    a.rel = 'noopener';
+    return a;
+  }
+  function steamUrl(id) { return 'https://steamcommunity.com/profiles/' + encodeURIComponent(id); }
+  function ksfUrl(id) { return 'https://ksf.surf/players/' + encodeURIComponent(id); }
+  function boardUrl(tier, map) {
+    if (tier === 'ksf') { return 'https://ksf.surf/maps/' + encodeURIComponent(map) + '/records'; }
+    if (tier === 'momentum') { return 'https://dashboard.momentum-mod.org/maps/' + encodeURIComponent(map); }
+    return null;
+  }
+
   function showOnly(id) {
     ['list', 'map', 'run', 'player', 'people'].forEach(function (k) {
       $(k).hidden = k !== id;
@@ -403,6 +421,8 @@
     }
     var note = $('mapnote');
     note.textContent = body.have ? ''
+      : body.bsp ? 'This map is on the servers but has no zones yet, so times '
+        + 'cannot be set on it here. The times below are imported.'
       : 'This map is not installed on the servers — the times below are '
         + 'imported, and you cannot play it here yet.';
     note.hidden = !!body.have;
@@ -537,11 +557,9 @@
     if (chip) { sub.appendChild(chip); }
     sub.appendChild(el('span', 'why', legName(body.track, body.leg) + ' · ' +
       styleName(body.style) + ' · ' + day(body.when)));
-    if (body.ext) {
-      sub.appendChild(link('dimlink',
-        'https://momentum-mod.org/profile/' + encodeURIComponent(body.ext),
-        'Momentum profile ↗'));
-    }
+    if (body.ext) { sub.appendChild(outLink(steamUrl(body.ext), 'Steam profile ↗')); }
+    var ob = boardUrl(body.tr, body.map);
+    if (ob) { sub.appendChild(outLink(ob, 'Momentum board ↗')); }
 
     var st = $('runstats');
     st.textContent = '';
@@ -699,11 +717,8 @@
     sub.textContent = '';
     var chip = srcChip(body.src);
     if (chip) { sub.appendChild(chip); }
-    if (body.ext) {
-      sub.appendChild(link('dimlink',
-        'https://momentum-mod.org/profile/' + encodeURIComponent(body.ext),
-        'Momentum profile ↗'));
-    }
+    if (body.ksfid) { sub.appendChild(outLink(ksfUrl(body.ksfid), 'KSF profile ↗')); }
+    if (body.ext) { sub.appendChild(outLink(steamUrl(body.ext), 'Steam profile ↗')); }
     if (body.last) { sub.appendChild(el('span', 'why', 'last time ' + ago(body.last))); }
 
     var st = $('pstats');
@@ -771,11 +786,35 @@
     }
 
     var bt = body.by_tier || {};
-    var multi = ['ranked', 'momentum', 'ksf']
-      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1;
-    var tbody = $('prows');
-    tbody.textContent = '';
-    (body.rows || []).forEach(function (r) {
+    state.prof = { handle: body.who, shown: 0, total: n0(body.total), page: body.limit || 100,
+                   group: -1,
+                   multi: ['ranked', 'momentum', 'ksf']
+                     .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
+    $('prows').textContent = '';
+    profileRows(body.rows || []);
+    $('ptable').hidden = (body.rows || []).length === 0;
+  }
+
+  // surfd sorts main tracks first, then bonuses, then stages (best first within
+  // each), so a heading goes in wherever the group changes.
+  var GROUPS = ['Main', 'Bonuses', 'Stages'];
+  function groupOf(r) { return r.leg > 0 ? 2 : (r.track > 0 ? 1 : 0); }
+
+  function profileRows(rows) {
+    var P = state.prof, tbody = $('prows');
+    rows.forEach(function (r) {
+      var g = groupOf(r);
+      if (g !== P.group) {
+        if (P.group !== -1 || g !== 0) {
+          var hr = el('tr', 'grp');
+          var hc = el('td', null, GROUPS[g]);
+          hc.colSpan = 6;
+          hr.appendChild(hc);
+          tbody.appendChild(hr);
+        }
+        P.group = g;
+      }
+      var multi = P.multi;
       var tr = el('tr', r.tr !== 'ranked' ? 'foreign' : '');
       var pos = el('td', 'num');
       pos.appendChild(el('span', r.r === 1 ? 'gold' : null, '#' + r.r));
@@ -797,10 +836,33 @@
       tr.appendChild(el('td', 'date', day(r.when)));
       var act = el('td', 'act');
       if (r.rep) { act.appendChild(link('watch', '#r=' + r.rep, 'Watch')); }
+      var ob = boardUrl(r.tr, r.map);
+      if (ob) {
+        var o = outLink(ob, r.tr === 'ksf' ? 'KSF ↗' : 'MOM ↗');
+        o.className = 'watch dim';
+        o.title = r.tr === 'ksf' ? 'This map on ksf.surf' : 'This map on Momentum Mod';
+        act.appendChild(o);
+      }
       tr.appendChild(act);
       tbody.appendChild(tr);
     });
-    $('ptable').hidden = (body.rows || []).length === 0;
+    P.shown += rows.length;
+    $('pmore').hidden = P.shown >= P.total || rows.length < P.page;
+  }
+
+  function moreProfile() {
+    var P = state.prof, b = $('pmore');
+    if (!P) { return; }
+    b.disabled = true;
+    var seq = state.seq;
+    get('api/player/' + encodeURIComponent(P.handle) + '?offset=' + P.shown).then(function (body) {
+      b.disabled = false;
+      if (seq !== state.seq || state.prof !== P) { return; }
+      profileRows(body.rows || []);
+    }, function (e) {
+      b.disabled = false;
+      showError(e.message);
+    });
   }
 
   function showProfile(handle) {
@@ -849,6 +911,7 @@
       });
     });
     $('more').addEventListener('click', more);
+    $('pmore').addEventListener('click', moreProfile);
     watchMore();
     $('pq').addEventListener('input', function () {
       var v = $('pq').value.trim();

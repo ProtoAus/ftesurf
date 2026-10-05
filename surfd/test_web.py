@@ -31,8 +31,11 @@ def check(label, got, want):
         FAILED.append("%s: got %r, want %r" % (label, got, want))
 
 
-LIBRARY = ["surf_kitsune", "surf_lux", "Bhop_Mukiology", "bhop_eazy", "surf_nozone"]
+LIBRARY = ["surf_kitsune", "surf_lux", "Bhop_Mukiology", "bhop_eazy", "surf_nozone",
+           "surf_localzone"]
 ZONED = ["surf_kitsune", "surf_lux", "Bhop_Mukiology", "bhop_eazy", "surf_nobsp"]
+# The game's own overrides, which sv_zones.qc reads first (66 maps on the Pi).
+ZONED_LOCAL = ["surf_localzone"]
 
 
 class FakeClock(object):
@@ -57,9 +60,13 @@ def fresh(admin_hash=None):
         open(os.path.join(maps, name + ".bsp"), "wb").close()
     for name in ZONED:
         open(os.path.join(zones, name + ".json"), "wb").close()
+    zlocal = os.path.join(home, "zones_local")
+    os.makedirs(zlocal)
+    for name in ZONED_LOCAL:
+        open(os.path.join(zlocal, name + ".json"), "wb").close()
     os.environ.update(SURFD_HOME=home, SURFD_DB=os.path.join(home, "test.db"),
                       SURFD_ENV=os.path.join(home, "surfd.env"),
-                      SURFD_MAPS=maps, SURFD_ZONES=zones,
+                      SURFD_MAPS=maps, SURFD_ZONES=zones, SURFD_ZONES_LOCAL=zlocal,
                       SURFD_RUNS=os.path.join(home, "runs"),
                       SURFD_WEBSHOTS=os.path.join(home, "webshots"))
     os.makedirs(os.path.join(home, "webshots"))
@@ -156,27 +163,28 @@ def write_rec(m, kind, mapname, track, leg, name, momdemo=None):
     return path
 
 
-def imported(m, mapname, player, name, ticks, tier, momdemo=None):
+def imported(m, mapname, player, name, ticks, tier, momdemo=None, track=0, leg=0,
+             submitted=1800000000):
     """One imported row plus its replay, the way momindex/momboards file them."""
     conn = sqlite3.connect(m._test_db)
     lf = leaf(ticks, player)
     rid = 0
     if tier == "momentum":
-        write_rec(m, "momentum", mapname, 0, 0, lf, momdemo=momdemo)
+        write_rec(m, "momentum", mapname, track, leg, lf, momdemo=momdemo)
         cur = conn.execute(
             "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
             " player, name, ticks, tickrate, millis, flags, node, submitted,"
-            " kind) VALUES (?,?,0,0,?,?,'clean',?,?,?,100.0,?,0,'import',?, "
+            " kind) VALUES (?,?,?,?,?,?,'clean',?,?,?,100.0,?,0,'import',?, "
             "'momentum')",
-            (mapname, mapname, lf, tier, player, name, ticks, ticks * 10,
-             1800000000))
+            (mapname, mapname, track, leg, lf, tier, player, name, ticks, ticks * 10,
+             submitted))
         rid = cur.lastrowid
     conn.execute(
         "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
         " tickrate, millis, flags, node, runid, submitted, replay_id)"
-        " VALUES (?,0,0,?,'clean',?,?,?,100.0,?,0,'import',?,?,?)",
-        (mapname, tier, player, name, ticks, ticks * 10, "i-" + player,
-         1800000000, rid))
+        " VALUES (?,?,?,?,'clean',?,?,?,100.0,?,0,'import',?,?,?)",
+        (mapname, track, leg, tier, player, name, ticks, ticks * 10, "i-" + player,
+         submitted, rid))
     conn.commit()
     conn.close()
     m.people_reset()
@@ -320,7 +328,9 @@ def main():
     got = {x["map"]: x for x in b["maps"]}
     check("maps = (zoned AND bsp) OR runs, in the disk spelling", sorted(got),
           sorted(["surf_kitsune", "surf_lux", "Bhop_Mukiology", "bhop_eazy",
-                  "surf_nobsp", "surf_ghost"]))
+                  "surf_nobsp", "surf_ghost", "surf_localzone"]))
+    check("...a zone in the game's own local folder counts (surf_chaos_fix's case)",
+          got["surf_localzone"]["have"], 1)
     check("control: a BSP without a zone and without runs is absent",
           "surf_nozone" in got, False)
     row1 = api_board(m, "bhop_mukiology")["rows"][0]
@@ -598,29 +608,101 @@ def main():
     check("...and neither of the two wrong orderings survives it",
           (got[0][0] != "surf_alone", got[0][0] != "surf_huge"), (True, True))
 
-    # THE ARM THAT MATTERS: the profile's rank comes from a window over
-    # BOARD_ORDER, rank_of() counts rows ahead one at a time.  They are two
-    # spellings of one rule and this is where they are made to agree -- on the
-    # same rows /api/board pages, imported tiers included.
+    # THE ARM THAT MATTERS: the profile ranks each row with rank_of (two
+    # counts over the board index); the reference here is a window over
+    # BOARD_ORDER, the query the profile ran until 5 Oct (52.8 s on the Pi for
+    # one profile).  Two spellings of one rule, made to agree on the same rows
+    # /api/board pages, imported tiers and a tie included.
+    imported(m, "surf_busy", "76561198000000008", "Tie", 4500, "momentum",
+             submitted=1800000000)
     conn = sqlite3.connect(m._test_db)
     conn.row_factory = sqlite3.Row
-    disagree = []
+    ref = {}
+    for r in conn.execute(
+            "SELECT map, track, leg, tier, style, player, ROW_NUMBER() OVER"
+            " (PARTITION BY map, track, leg, tier, style ORDER BY " + m.BOARD_ORDER
+            + ") AS rk, COUNT(*) OVER (PARTITION BY map, track, leg, tier, style)"
+            " AS of FROM runs"):
+        ref[(r["map"], r["track"], r["leg"], r["tier"], r["style"], r["player"])] = (
+            r["rk"], r["of"])
+    conn.close()
+    disagree, seen = [], 0
     for who in ("p1", "p2", "76561198000000001", "76561198000000002",
-                "76561198000000003"):
+                "76561198000000003", ME, "76561198000000008"):
         pr = body(get(m, "/board/api/player/" + m.web_handle(who)))
         for row in pr["rows"]:
-            db_row = conn.execute(
-                "SELECT millis, submitted FROM runs WHERE map=? AND track=?"
-                " AND leg=? AND tier=? AND style=? AND player=?",
-                (row["map"], row["track"], row["leg"], row["tr"],
-                 row["style"], who)).fetchone()
-            want = m.rank_of(conn, row["map"], row["track"], row["leg"],
-                             row["tr"], row["style"], db_row["millis"],
-                             db_row["submitted"], who)
+            seen += 1
+            want = ref[(row["map"], row["track"], row["leg"], row["tr"],
+                        row["style"], who)]
             if (row["r"], row["of"]) != want:
                 disagree.append((who, row["map"], row["r"], row["of"], want))
-    conn.close()
-    check("profile rank agrees with rank_of on every row", disagree, [])
+    check("profile rank agrees with the window over BOARD_ORDER on every row",
+          (disagree, seen > 8), ([], True))
+
+    # MAIN TRACKS LEAD, then bonuses, then stages (Lex, 5 Oct): by people beaten
+    # alone a stage board outranks its own map's main board.
+    ST = "76561198000000077"
+    imported(m, "surf_busy", ST, "Stager", 4990, "momentum")
+    for k in range(30):
+        imported(m, "surf_busy", "76561198000006%03d" % k, "S%d" % k, 6000 + k,
+                 "momentum", leg=1)
+    imported(m, "surf_busy", ST, "Stager", 5500, "momentum", leg=1)
+    imported(m, "surf_busy", ST, "Stager", 7000, "momentum", track=1)
+    ps = body(get(m, "/board/api/player/" + m.web_handle(ST)))
+    got = [(x["track"], x["leg"], x["r"], x["of"]) for x in ps["rows"]]
+    check("control: the stage row beat more people than the main row",
+          (got[2][3] - got[2][2]) > (got[0][3] - got[0][2]), True)
+    check("main first, then bonuses, then stages",
+          [(t, l) for t, l, _r, _o in got], [(0, 0), (1, 0), (0, 1)])
+
+    # Outbound ids: Steam for an imported player, KSF's STEAM_0 form only when
+    # they hold KSF rows, and nothing for one of ours.
+    KS = "76561197960265733"           # STEAM_0:1:2
+    imported(m, "surf_busy", KS, "Kay", 4800, "ksf")
+    pk = body(get(m, "/board/api/player/" + m.web_handle(KS)))
+    check("a KSF player gets their KSF id", (pk["ext"], pk["ksfid"]), (KS, "STEAM_0:1:2"))
+    check("...a Momentum-only player gets Steam and no KSF id",
+          (ps["ext"], ps["ksfid"]), (ST, None))
+    check("...and one of ours gets neither",
+          (p["ext"], p["ksfid"]), (None, None))
+
+    # THE DIRECTORY IS NEVER BUILT ON A REQUEST'S CLOCK once one exists: a build
+    # is 6 s on the Pi and nginx gives the request 5.  A stale one is served
+    # while a thread rebuilds it; a new process starts from the snapshot.
+    builds = []
+    real_build = m._people_build
+
+    def counted(db):
+        builds.append(1)
+        return real_build(db)
+
+    m._people_build = counted
+    try:
+        get(m, "/board/api/players")              # fresh: no build
+        n0 = len(builds)
+        m.time.now += m.WEB_PEOPLE_TTL + 1
+        started = []
+        real_kick = m._people_kick
+        m._people_kick = lambda now: started.append(now)
+        r = get(m, "/board/api/players")
+        check("a stale directory is served at once, the rebuild started behind it",
+              (r.status_code, len(builds) - n0, len(started)), (200, 0, 1))
+        m._people_kick = real_kick
+        check("control: the snapshot exists", os.path.exists(m.PEOPLE_SNAPSHOT), True)
+        with m._people_lock:                      # a new worker: nothing in memory
+            m._people["at"], m._people["by_handle"], m._people["list"] = -1e9, {}, []
+        m.time.now -= m.WEB_PEOPLE_TTL + 1
+        n1 = len(builds)
+        r = get(m, "/board/api/player/" + h1)
+        check("...a new process starts from the snapshot without a build",
+              (r.status_code, len(builds) - n1), (200, 0))
+        m.people_reset()
+        check("people_reset removes the snapshot", os.path.exists(m.PEOPLE_SNAPSHOT), False)
+        n2 = len(builds)
+        get(m, "/board/api/players")
+        check("...so the next request builds, as on a fresh install", len(builds) - n2, 1)
+    finally:
+        m._people_build = real_build
 
     check("an unknown handle is 404",
           get(m, "/board/api/player/" + "0" * 12).status_code, 404)

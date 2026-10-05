@@ -161,6 +161,13 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 /* An imported row wears the line's own blue on its edge. */
 .runs tr.foreign td:first-child { box-shadow: inset 3px 0 0 var(--foreign); }
 .runs tr.foreign td { color: inherit; }
+/* A profile's group heading: Main, Bonuses, Stages (board.js profileRows). */
+.runs tr.grp td {
+  padding: 22px 8px 6px; color: var(--dim); font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border);
+}
+.runs tr.grp:first-child td { padding-top: 6px; }
+.runs td.act .watch + .watch { margin-left: 6px; }
 .plink { text-decoration: none; }
 .plink:hover { text-decoration: underline; }
 .watch {

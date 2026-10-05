@@ -162,6 +162,13 @@ MAPS_DIR = os.environ.get(
 # connect on it.
 ZONES_DIR = os.environ.get(
     "SURFD_ZONES", os.path.join(MAPS_DIR, "zones", "online"))
+# ...and the game's own overrides, which sv_zones.qc reads FIRST (66 maps on the
+# Pi, surf_chaos_fix among them).  Reading only ZONES_DIR called those maps
+# unplayable on the web board (Lex, 5 Oct) and `timed 0` to /api/join.
+ZONES_LOCAL_DIR = os.environ.get(
+    "SURFD_ZONES_LOCAL",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(RUNS_DIR))),
+                 "maps", "zones", "local"))
 
 # HOW LONG THE DIRECTORY LISTING IS BELIEVED.  1312 entries is a ~2 ms scandir
 # on the NVMe and this is a single-worker process, so the cache is not about
@@ -1561,16 +1568,19 @@ def _scan_maps():
         log.warning("map library %s unreadable: %s", MAPS_DIR, exc)
         return {}, frozenset()
 
-    try:
-        with os.scandir(ZONES_DIR) as it:
-            for entry in it:
-                if entry.name.lower().endswith(".json"):
-                    zone.add(entry.name[:-5].lower())
-    except OSError as exc:
-        # NOT fatal and NOT the same failure as the one above.  With no zone
-        # directory every map reports `timed 0`, which is pessimistic and
-        # honest; with no map directory nothing can be hosted at all.
-        log.warning("zone directory %s unreadable: %s", ZONES_DIR, exc)
+    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR):
+        try:
+            with os.scandir(zdir) as it:
+                for entry in it:
+                    if entry.name.lower().endswith(".json"):
+                        zone.add(entry.name[:-5].lower())
+        except OSError as exc:
+            # NOT fatal and NOT the same failure as the one above.  With no zone
+            # directory every map reports `timed 0`, which is pessimistic and
+            # honest; with no map directory nothing can be hosted at all.  The
+            # local one is often simply absent (a box with no overrides).
+            if zdir == ZONES_DIR:
+                log.warning("zone directory %s unreadable: %s", zdir, exc)
 
     return bsp, frozenset(zone)
 
@@ -3966,6 +3976,7 @@ def web_map():
            "tier": tier, "counts": counts,
            "track": track, "leg": leg, "style": style, "n": n,
            "have": 1 if (mapname in bsp and mapname in zoned) else 0,
+           "bsp": 1 if mapname in bsp else 0,
            "offset": offset, "limit": WEB_PAGE, "rows": rows}
     if tiers is not None and mapname in tiers:
         out["mt"] = tiers[mapname]
@@ -4091,12 +4102,17 @@ def map_tiers(now=None):
 
 
 def _people_build(db):
-    """(by_handle, list) -- one pass over `runs`, the directory for search and
-    the reverse of web_handle in the same structure."""
+    """(by_handle, list, main_maps) -- ONE pass over `runs` for the directory,
+    plus the maps holding a main board for the completion table.
+
+    One GROUP BY and not two: with exactly one MAX() in it, SQLite takes the
+    bare `name` from the row that MAX(submitted) found, which is the name the
+    player filed most recently -- the window pass that did that doubled the
+    build (16.0 s against 6.2 s on the Pi, 57,475 players, 5 Oct)."""
     rows = {}
     for r in db.execute(
             "SELECT player, COUNT(*) AS n, COUNT(DISTINCT map) AS maps,"
-            "       MAX(submitted) AS last,"
+            "       MAX(submitted) AS last, name,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ranked,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS mom,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ksf"
@@ -4105,18 +4121,10 @@ def _people_build(db):
              TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall():
         rows[r["player"]] = {"n": r["n"], "maps": r["maps"], "last": r["last"],
                              "ranked": r["ranked"], "mom": r["mom"],
-                             "ksf": r["ksf"], "name": ""}
-    # The display name is the one filed most recently: `runs.name` is rewritten
-    # every time that player improves, so the newest row holds the name they go
-    # by now.  A window function, so it is one pass and not one query a player.
-    for r in db.execute(
-            "SELECT player, name FROM ("
-            "  SELECT player, name, ROW_NUMBER() OVER (PARTITION BY player"
-            "         ORDER BY submitted DESC, rowid DESC) AS k"
-            "    FROM runs WHERE tier IN (?,?,?)) WHERE k=1",
-            (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall():
-        if r["player"] in rows:
-            rows[r["player"]]["name"] = r["name"]
+                             "ksf": r["ksf"], "name": r["name"] or ""}
+    main_maps = {r[0] for r in db.execute(
+        "SELECT DISTINCT map FROM runs WHERE track=0 AND leg=0 AND tier IN (?,?,?)",
+        (TIER_RANKED, TIER_MOMENTUM, TIER_KSF))}
 
     by_handle, out = {}, []
     for player, e in rows.items():
@@ -4128,43 +4136,137 @@ def _people_build(db):
                     "momentum" if e["mom"] else "ksf")
         out.append(e)
     out.sort(key=lambda e: (-e["n"], e["key"]))
-    return by_handle, out
+    return by_handle, out, main_maps
+
+
+# THE DIRECTORY IS NEVER BUILT ON A REQUEST'S CLOCK, BAR THE FIRST ONE EVER.  A
+# build is 6 s on the Pi and nginx gives the whole request 5 (proxy_read_timeout
+# in ftesurf.nginx), so every profile asked for in the minute after the cache
+# expired was a 504 (Lex, 5 Oct).  A stale directory is served while a thread
+# rebuilds it, and the last one is kept on disk, because gunicorn recycles its
+# worker every ~5,000 requests and the lobbies' heartbeats spend those in about
+# half an hour.  Only a process with no snapshot -- a fresh install, the tests --
+# waits for a build.
+PEOPLE_SNAPSHOT = os.environ.get("SURFD_PEOPLE",
+                                 os.path.join(DATA_DIR, "people.json"))
+
+
+def _people_install(by_handle, lst, main_maps, at):
+    with _people_lock:
+        _people["at"] = at
+        _people["by_handle"], _people["list"] = by_handle, lst
+        _people["main_maps"] = main_maps
+
+
+def _people_save(by_handle, lst, main_maps, at):
+    """The snapshot holds `runs.player` beside its handle, as surfd.db does in
+    the same directory: it is never served, only read back by this module."""
+    try:
+        players = {h: p for h, p in by_handle.items()}
+        tmp = PEOPLE_SNAPSHOT + ".tmp"
+        # 0600: a ranked player's guid is a credential (see web_handle).
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"v": 1, "at": at, "players": players, "list": lst,
+                       "main_maps": sorted(main_maps)}, fh, separators=(",", ":"))
+        os.replace(tmp, PEOPLE_SNAPSHOT)
+    except (OSError, ValueError) as exc:
+        log.warning("people snapshot not written: %s", exc)
+
+
+def _people_load():
+    """(by_handle, list, main_maps, at) from the snapshot, or None."""
+    try:
+        with open(PEOPLE_SNAPSHOT, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        if doc.get("v") != 1:
+            return None
+        return (doc["players"], doc["list"], set(doc["main_maps"]), int(doc["at"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _people_kick(now):
+    """Rebuild the directory on a thread, at most one at a time."""
+    with _people_lock:
+        if _people.get("busy"):
+            return
+        _people["busy"] = True
+
+    def work():
+        try:
+            conn = connect()
+            try:
+                built = _people_build(conn)
+            finally:
+                conn.close()
+            _people_install(*built, at=now)
+            _people_save(*built, at=now)
+        except Exception:
+            log.exception("people directory rebuild failed")
+        finally:
+            with _people_lock:
+                _people["busy"] = False
+
+    threading.Thread(target=work, name="people", daemon=True).start()
+
+
+def _people_current(db, now):
+    """(by_handle, list, main_maps, at): the directory, as fresh as it can be
+    had without waiting -- see PEOPLE_SNAPSHOT."""
+    with _people_lock:
+        at = _people["at"]
+        cur = (_people["by_handle"], _people["list"],
+               _people.get("main_maps", set()), at)
+    if now - at < WEB_PEOPLE_TTL:
+        return cur
+    if at < 0:
+        snap = _people_load()
+        if snap is None:
+            built = _people_build(db)
+            _people_install(*built, at=now)
+            _people_save(*built, at=now)
+            return built + (now,)
+        _people_install(*snap)
+        cur = snap
+        if now - snap[3] < WEB_PEOPLE_TTL:
+            return cur
+    _people_kick(now)
+    return cur
 
 
 def web_people(db, now):
-    """The cached player directory, rebuilt at most every WEB_PEOPLE_TTL."""
-    with _people_lock:
-        at, by_handle, lst = _people["at"], _people["by_handle"], _people["list"]
-    if now - at < WEB_PEOPLE_TTL:
-        return by_handle, lst
-    by_handle, lst = _people_build(db)
-    with _people_lock:
-        _people["at"] = now
-        _people["by_handle"], _people["list"] = by_handle, lst
+    """The player directory: (by_handle, list)."""
+    by_handle, lst, _maps, _at = _people_current(db, now)
     return by_handle, lst
 
 
 def player_of(db, handle, now):
     """The guid behind a public handle, or None.
 
-    A MISS MAY REBUILD THE DIRECTORY, BUT NOT ON DEMAND.  Any string is a
-    candidate handle, so rebuilding on every miss hands a caller a full table
-    scan per request; below the floor a miss costs one dict lookup.
+    A MISS MAY REFRESH THE DIRECTORY, BUT NOT ON DEMAND.  Any string is a
+    candidate handle, so refreshing on every miss hands a caller a full table
+    scan per request; below the floor a miss costs one dict lookup.  Above it a
+    miss starts a refresh and still answers now: a player new since the last
+    build is found a few seconds later rather than this request timing out.
     """
-    with _people_lock:
-        at, by_handle = _people["at"], _people["by_handle"]
-    if handle in by_handle and now - at < WEB_PEOPLE_TTL:
+    by_handle, _lst, _maps, at = _people_current(db, now)
+    if handle in by_handle:
         return by_handle[handle]
-    if now - at < WEB_PEOPLE_FLOOR:
-        return by_handle.get(handle)
-    by_handle, _lst = web_people(db, now)
-    return by_handle.get(handle)
+    if now - at >= WEB_PEOPLE_FLOOR:
+        _people_kick(now)
+    return None
 
 
 def people_reset():
-    """Drop the directory and the difficulty catalogue.  For tests."""
+    """Drop the directory, its snapshot and the difficulty catalogue.  For tests."""
     with _people_lock:
         _people["at"], _people["by_handle"], _people["list"] = -1e9, {}, []
+        _people["main_maps"] = set()
+    try:
+        os.remove(PEOPLE_SNAPSHOT)
+    except OSError:
+        pass
     with _mt_lock:
         _mt["at"], _mt["tier"] = -1e9, None
 
@@ -4189,30 +4291,23 @@ def web_players():
                   "limit": WEB_SEARCH_MAX, "players": out}, "max-age=30")
 
 
-def _completion(db, player, tiers):
+def _completion(done, have_main, tiers):
     """Maps finished per difficulty tier, against what the site holds.
 
     A MAP IS FINISHED WHEN THE MAIN TRACK IS (track 0, leg 0).  A stage time is
     not a completion and neither is a bonus, which is the same rule the game's
-    own map list uses to colour a map done.
+    own map list uses to colour a map done.  `done` is the maps this player
+    finished; `have_main` the maps holding a main board (the directory's).
 
     `tiers` None (no catalogue) returns None, not an empty table: see map_tiers.
     """
     if tiers is None:
         return None
-    done = {r["map"] for r in db.execute(
-        "SELECT DISTINCT map FROM runs WHERE player=? AND track=0 AND leg=0"
-        " AND tier IN (?,?,?)",
-        (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()}
     # The denominator is the maps this site actually knows a main board for,
     # not every map Momentum has rated -- a percentage against maps nobody here
     # can load is not a completion figure.
-    have = {r["map"] for r in db.execute(
-        "SELECT DISTINCT map FROM runs WHERE track=0 AND leg=0"
-        " AND tier IN (?,?,?)",
-        (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()}
     bsp, zoned = map_index()
-    have |= (set(bsp) & set(zoned))
+    have = set(have_main) | (set(bsp) & set(zoned))
     table = {}
     for m in have:
         t = tiers.get(m)
@@ -4228,6 +4323,22 @@ def _completion(db, player, tiers):
             "done": len(done & have), "of": len(have)}
 
 
+def steam2(sid64):
+    """STEAM_0:Y:Z for a SteamID64 -- the form ksf.surf's player pages take."""
+    try:
+        v = int(sid64) - 76561197960265728
+    except (TypeError, ValueError):
+        return None
+    return "STEAM_0:%d:%d" % (v % 2, v // 2) if v >= 0 else None
+
+
+def _row_group(track, leg):
+    """Main tracks, then bonuses, then stages: by people beaten alone a stage
+    board outranks its own map's main board, and a profile led with stages
+    (Lex, 5 Oct)."""
+    return 2 if leg > 0 else (1 if track > 0 else 0)
+
+
 @app.get("/board/api/player/<handle>")
 def web_player(handle):
     now = int(time.time())
@@ -4241,84 +4352,61 @@ def web_player(handle):
         player = player_of(db, handle, now)
         if player is None:
             return fail(404, "no such player")
-        _by_handle, people = web_people(db, now)
+        _by_handle, people, main_maps, _at = _people_current(db, now)
         me = next((e for e in people if e["who"] == handle), None)
         if me is None:                       # raced the rebuild; the row is gone
             return fail(404, "no such player")
-
-        # ONE WINDOW OVER BOARD_ORDER, not a rank query per row: the ordering
-        # string is the same constant /api/board pages with, so the rank shown
-        # here and the rank shown there cannot drift.  rank_of() is the
-        # row-at-a-time form of exactly this and test_web.py compares them.
-        rows = db.execute(
-            "SELECT map, track, leg, tier, style, name, millis, ticks,"
-            "       submitted, replay_id, rk, of FROM ("
-            "  SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.map, r.track,"
-            "           r.leg, r.tier, r.style ORDER BY " + BOARD_ORDER
-            + "        ) AS rk,"
-            "         COUNT(*) OVER (PARTITION BY r.map, r.track, r.leg,"
-            "           r.tier, r.style) AS of"
-            "    FROM runs r JOIN (SELECT DISTINCT map, track, leg, tier, style"
-            "                        FROM runs WHERE player=?) m"
-            "      ON r.map=m.map AND r.track=m.track AND r.leg=m.leg"
-            "     AND r.tier=m.tier AND r.style=m.style"
-            "   WHERE r.tier IN (?,?,?))"
-            # PEOPLE BEATEN, not placing and not board size.  Both of the
-            # obvious orderings were tried against a real profile and both put
-            # nonsense at the top: `rk ASC` led with #1 of 1 (a stage board
-            # nobody else is on -- that profile has 35 of them and 0 contested
-            # firsts), and `of DESC` led with #501 of 501, dead last on the
-            # busiest board.  `of - rk` is how many people the row is ahead of,
-            # which is the thing a reader means by a good result.
-            " WHERE player=? ORDER BY (of - rk) DESC, rk ASC, millis ASC"
-            " LIMIT ? OFFSET ?",
-            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF, player,
-             WEB_PROFILE_ROWS, offset)).fetchall()
-        # A FIRST PLACE ON A BOARD OF ONE IS NOT A RECORD, and on an imported
-        # archive most stage boards have exactly one row -- the only person we
-        # hold a time for.  Counting those made a profile read "35 records"
-        # where 34 of them were boards nobody else is on.  `wr` stays the raw
-        # count; `wrc` is the contested one and is what the page leads with.
-        wr = db.execute(
-            "SELECT SUM(CASE WHEN rk = 1 THEN 1 ELSE 0 END) AS n,"
-            "       SUM(CASE WHEN rk = 1 AND of > 1 THEN 1 ELSE 0 END)"
-            "       AS contested,"
-            "       SUM(CASE WHEN of > 1 THEN 1 ELSE 0 END) AS top10"
-            "  FROM ("
-            "  SELECT r.player, ROW_NUMBER() OVER (PARTITION BY r.map, r.track,"
-            "           r.leg, r.tier, r.style ORDER BY " + BOARD_ORDER
-            + "        ) AS rk,"
-            "         COUNT(*) OVER (PARTITION BY r.map, r.track, r.leg,"
-            "           r.tier, r.style) AS of"
-            "    FROM runs r JOIN (SELECT DISTINCT map, track, leg, tier, style"
-            "                        FROM runs WHERE player=?) m"
-            "      ON r.map=m.map AND r.track=m.track AND r.leg=m.leg"
-            "     AND r.tier=m.tier AND r.style=m.style"
-            "   WHERE r.tier IN (?,?,?))"
-            " WHERE player=? AND rk <= 10",
-            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF, player)).fetchone()
-        comp = _completion(db, player, map_tiers())
+        mine = db.execute(
+            "SELECT map, track, leg, tier, style, name, millis, ticks, submitted,"
+            "       replay_id FROM runs WHERE player=? AND tier IN (?,?,?)",
+            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()
+        # rank_of's two counts per row over the board index, NOT one window over
+        # every board the player is on: a 2,575-row Momentum profile took 52.8 s
+        # that way on the Pi and ~0.5 s this way (5 Oct), and nginx gives the
+        # request 5.  One rule for the rank either way: rank_of reads
+        # BOARD_AHEAD, which /api/board's BOARD_ORDER pages by.
+        ranked = []
+        for r in mine:
+            rk, of = rank_of(db, r["map"], r["track"], r["leg"], r["tier"],
+                             r["style"], r["millis"], r["submitted"], player)
+            ranked.append((r, rk, of))
     except sqlite3.Error as exc:
         log.exception("web player db error: %s", exc)
         return fail(500, "storage error")
 
+    # A FIRST PLACE ON A BOARD OF ONE IS NOT A RECORD, and on an imported
+    # archive most stage boards have exactly one row -- the only person we hold
+    # a time for.  Counting those made a profile read "35 records" where 34 of
+    # them were boards nobody else is on.  `wr` stays the raw count; `wrc` is
+    # the contested one and is what the page leads with.
+    wr = sum(1 for _r, rk, _of in ranked if rk == 1)
+    wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
+    top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
+    # Within a group, PEOPLE BEATEN, not placing and not board size.  Both of the
+    # obvious orderings were tried against a real profile and both put nonsense
+    # at the top: rank led with #1 of 1 (a stage board nobody else is on), and
+    # board size led with #501 of 501, dead last on the busiest board.
+    ranked.sort(key=lambda x: (_row_group(x[0]["track"], x[0]["leg"]),
+                               -(x[2] - x[1]), x[1], x[0]["millis"], x[0]["map"]))
+    done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
+    comp = _completion(done, main_maps, map_tiers())
+
     bsp, _zoned = map_index()
     out = []
-    for r in rows:
+    for r, rk, of in ranked[offset:offset + WEB_PROFILE_ROWS]:
         out.append({"map": r["map"], "disp": bsp.get(r["map"], r["map"]),
                     "track": r["track"], "leg": r["leg"], "tr": r["tier"],
                     "style": r["style"], "name": r["name"], "ms": r["millis"],
                     "when": r["submitted"], "rep": r["replay_id"] or 0,
-                    "r": r["rk"], "of": r["of"]})
+                    "r": rk, "of": of})
+    ext = web_ext(me["src"], player)
     return _json({"v": 1, "t": now, "who": handle, "name": me["name"],
                   "src": me["src"], "n": me["n"], "maps": me["maps"],
-                  "last": me["last"], "wr": (wr["n"] or 0) if wr else 0,
-                  "wrc": (wr["contested"] or 0) if wr else 0,
-                  "top10": (wr["top10"] or 0) if wr else 0,
+                  "last": me["last"], "wr": wr, "wrc": wrc, "top10": top10,
                   "by_tier": {"ranked": me["ranked"], "momentum": me["mom"],
                               "ksf": me["ksf"]},
-                  "ext": web_ext(me["src"], player),
-                  "completion": comp, "offset": offset,
+                  "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
+                  "completion": comp, "offset": offset, "total": len(ranked),
                   "limit": WEB_PROFILE_ROWS, "rows": out}, "max-age=30")
 
 
