@@ -83,6 +83,17 @@ the same 4418 ticks, with every tick to 11.64 s equal (ENGINE_PATCHES.md, 492).
 - **Bumps:** `pm_bumpcount 8` is Momentum 0.8.7's `sv_ramp_bumpcount`; 0.10's
   `mom_mv_bumpcount` default is not readable from server.dll's strings. Typing
   `mom_mv_bumpcount` in Momentum's console would settle it.
+- **Triangles and props are not on Source's rules yet** (review round 2 of 492).
+  Under the clip they keep Quake 2's test on true fractions while brushes decide
+  on the adjusted enter; running them through the brush's rules, as Source's
+  `dispcoll_common.cpp` does, needs ground truth on a displacement or prop map
+  (surf_boreas's ramps are .phy props). The final review measured what the mix
+  costs: a brush plane just under 1/32 behind a triangle face can win and leave
+  the box up to 0.004 behind that face at large coordinates (176 of 9,134 crafted
+  near-ties; 0 with the clip off). And Source's own leave epsilon lets a box
+  clipping a wall's top by 0.02 end up to 1/32 inside it, brushes only, as in
+  Source. Physics only: a replay runs the same code. Nit: pm_verify's refusal
+  prints fixrampbugs with %g, so 1.9999999 reads as 2.
 - **Generated edge bevels:** voyager compiled without them and `hl2_brushbevels 1`
   adds 13,802 planes; Source traces the brushes as compiled. The match to 11.64 s
   says they did not matter there; another map could differ on them.
