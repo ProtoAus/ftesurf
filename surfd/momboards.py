@@ -114,7 +114,7 @@ def created_epoch(raw):
 
 
 CHUNK = 20000            # rows held before a flush; see the loop's comment
-LINK_SLACK_MS = 20       # a linked recording may be this much faster than its row: a tick, rounded
+LINK_SLACK_MS = 20       # a linked recording's time must be within this much of its row's, either way: a tick, rounded
 
 
 def flush(conn, rows):
@@ -377,7 +377,9 @@ def main():
 
 
 def link_demos(conn):
-    """Give a momentum `runs` row with no recording the fastest held one.
+    """Give a momentum `runs` row with no recording a held one whose time IS the
+    row's, within LINK_SLACK_MS either way -- never a faster impossible demo, never
+    a slower superseded one.
 
     READ FIRST, WRITE ONLY THE HITS.  This was one UPDATE whose WHERE scanned
     every momentum row with replay_id 0 -- 2.35M on the Pi, 6.2 s -- inside the
@@ -399,10 +401,12 @@ def link_demos(conn):
                          " AND style=? AND player=? AND replay_id=0", key).fetchone()
         if r is None:
             continue
-        # The fastest recording that is not faster than the row: a demo dropped as
-        # impossible (0.405 s on a 92 s board, 28 Sep) is the fastest held for its
-        # player, and must not become the watch link of their official time.
-        ok = sorted(x for x in lst if x[0] >= r[0] - LINK_SLACK_MS)
+        # A recording whose time IS the row's, within slack either way.  The lower
+        # bound keeps a demo dropped as impossible (0.405 s on a 92 s board, 28 Sep)
+        # from becoming the watch link of the official time; the upper bound keeps a
+        # superseded personal best -- slower than the row it would watch -- from
+        # linking to a time it does not match.  Both bounds are link_exact's rule.
+        ok = sorted(x for x in lst if abs(x[0] - r[0]) <= LINK_SLACK_MS)
         if ok:
             hits.append((ok[0][1],) + key + (ok[0][1],))
     if not hits:
@@ -417,7 +421,7 @@ def link_demos(conn):
             " AND style=? AND player=? AND replay_id=0"
             " AND EXISTS (SELECT 1 FROM replays WHERE id=? AND kind='momentum'"
             "             AND map=runs.map AND track=runs.track AND leg=runs.leg"
-            "             AND player=runs.player AND millis >= runs.millis - %d)"
+            "             AND player=runs.player AND abs(millis - runs.millis) <= %d)"
             % LINK_SLACK_MS, hits)
     return conn.total_changes - t0
 
