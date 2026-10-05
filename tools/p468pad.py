@@ -19,9 +19,9 @@ sys.path.insert(0, HERE)
 import hidcheck  # noqa: E402
 
 FAILED = []
-# hidcheck faults a journal that drained nothing ("no frame markers"); on the
-# arms whose whole point is that nothing reaches the game, that is the only
-# fault allowed (allowed, not required: a keypress drains a frame).
+# hidcheck used to fault a journal that drained nothing ("no frame markers");
+# it is a note now, so this allowance no longer matches anything.  Kept so an
+# older hidcheck still grades these arms.
 NO_EVENTS = "no frame markers"
 
 

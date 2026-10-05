@@ -108,6 +108,10 @@ MOMENTUM_DIR = os.environ.get(
     "SURFD_MOMENTUM",
     os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "momentum"))
 EVIDENCE_SETTLE = 600    # s; a file with no `end` younger than this may be mid-write
+# s; how long sweep.py holds a receipt's signed journal PENDING (re-read when
+# the .hid appears) before calling it ABSENT.  A 4 MiB journal is 5462 768-byte
+# chunks, one per round trip: 14 min at 150 ms.
+JOURNAL_WAIT = 3600
 KEEP_ORPHAN_AGE = 3600   # s; a kept file with no row older than this is removed
 
 # Patch 423: warn before the data drive fills.  run_evidence_days is 0 since
@@ -1022,7 +1026,8 @@ def receipts_v8(conn):
                           ("signed_at", "signed_at INTEGER NOT NULL DEFAULT 0"),
                           ("stale", "stale INTEGER NOT NULL DEFAULT 0"),
                           # The journal's CONTENT verdict ("" not checked,
-                          # ABSENT, OK, FAULT) and the measurement behind it.
+                          # ABSENT, PENDING, OK, BLIND, FAULT) and the
+                          # measurement behind it.
                           # NOT a schema bump: this is one more idempotent ALTER
                           # in a function that already runs on every migrate(),
                           # and bumping SCHEMA_VERSION breaks every suite that

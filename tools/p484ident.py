@@ -350,17 +350,17 @@ def part2(pattern):
     #     3 files carry any violation at all, 11 frames in 210,678 governed
     #     (0.0052%); on every one of them yaw and pitch violations are EQUAL and
     #     they are the SAME frames, so PITCH-ONLY is 0; and they are LARGE
-    #     instantaneous jumps with no input behind them (dpitch -41.8, -28.1,
-    #     -49.0 against predictions of ~0.02 deg) -- server angle sets, which the
-    #     yaw rule has faulted on since Patch 293.
+    #     instantaneous jumps (dpitch -41.8, -28.1, -49.0 against predictions of
+    #     ~0.02 deg) -- teleports on frames that also carried counts, which
+    #     hidcheck reports as whole-angle and unresolved, not as a fault.
     # So the honest claim is not "honest play is never accused" but the one that
     # matters and is checkable: THE PITCH CHECK ACCUSES NO FILE THE YAW CHECK
     # DOES NOT ALREADY.  It adds coverage of an axis nothing read, and no new
     # false positive -- which is the bar Patch 305 set for a check like this.
     check("pitch-only violations are ZERO across the corpus, i.e. the new check "
           "accuses no file the shipped yaw check does not already", tot["pitch_only"], 0)
-    check("...and the 11 frames it does report are the same ones hidcheck has "
-          "always faulted as YAW IDENTITY BROKEN", tot["violations"], tot["yaw_faults"])
+    check("...and the 11 frames it does report are the same ones hidcheck "
+          "counts as yaw violations", tot["violations"], tot["yaw_faults"])
     check("the frames that break are counted, so the claim above is a measurement "
           "and not an assurance", tot["badframes"] >= tot["violations"], True)
 

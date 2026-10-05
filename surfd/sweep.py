@@ -289,11 +289,15 @@ def sweep(conn, limit, runner=None, now=None):
     return counts
 
 
-def read_receipt(path):
-    """One receipt, fully joined.
-    -> (verdict, pub, map, angles, reason, sig, journal, journal_reason) or None;
-    `sig` is 1 when the signature verified, which a FAULT for any other reason
-    can still have.
+def read_receipt(path, journal_only=False):
+    """One receipt, fully joined -- or, with journal_only, everything but the
+    .rec joins: the signature, the sibling digests and the journal, for the
+    PENDING re-read, where a .rec pruned since the first read must not move
+    the verdict and a late .hid or .view must still be checked.
+    -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed)
+    or None; `sig` is 1 when the signature verified, which a FAULT for any other
+    reason can still have; `owed` is 1 when the journal is ABSENT and the
+    receipt signs a kept one's digest, i.e. it may still be uploading.
 
     IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
     the verification it has always run.  This step is an addition to the sweep,
@@ -306,11 +310,13 @@ def read_receipt(path):
     import rcptcheck
 
     r = rcptcheck.read(path)
-    rcptcheck.join_rec(r)
-    rcptcheck.join_ticks(r)
+    if not journal_only:
+        rcptcheck.join_rec(r)
+        rcptcheck.join_ticks(r)
     rcptcheck.join_hid(r)
     rcptcheck.join_uploaded(r, {})
-    rcptcheck.join_angles(r, {})
+    if not journal_only:
+        rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
     # tool nobody runs.  join_hid checks the digest the signature commits to and
     # join_uploaded hashes the sibling file against it, so "is this the journal
@@ -320,11 +326,19 @@ def read_receipt(path):
     # (the angle identity on both axes, the injection counters, the counts join,
     # the device-provenance table) ran only when an operator typed a path.
     rcptcheck.join_journal(r)
+    if journal_only and r.ioerror:
+        return None             # measured nothing: the row stays PENDING
+    if "hid" in r.digest_bad:
+        # The file read is not the journal that was signed, so what its content
+        # says is about some other journal (review of 70f1ea3).
+        r.journal = "FAULT"
+        r.journal_detail = "not the journal the receipt signed: %s" % r.digest_bad["hid"]
     verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
     reason = r.faults[0] if r.faults else ""
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
             r.angles, reason[:300], 1 if r.ok is True else 0,
-            r.journal, (r.journal_detail or "")[:300])
+            r.journal, (r.journal_detail or "")[:300],
+            1 if getattr(r, "journal_owed", False) else 0)
 
 
 def receipt_step(conn, limit=200, now=None):
@@ -344,13 +358,15 @@ def receipt_step(conn, limit=200, now=None):
         # the current fleet is tens of MB, and a GC for it would be a policy
         # about how long a verdict is worth keeping that nobody has asked for.
         #
-        # Nothing re-reads on its own, and that is deliberate rather than
-        # missing: the two files a receipt joins to are both written at the
-        # run's end edge, so a .rec that is not there once the settle window has
-        # passed is a run that never kept one.  What DOES go stale is the
-        # thresholds -- reccheck's are measured, and measuring them again will
-        # move them -- so an operator can say so with --reread-receipts.
-        rows = {r[0]: r[1] for r in conn.execute("SELECT runid, stale FROM receipts")}
+        # Nothing re-reads on its own except a PENDING journal (below), and
+        # that is deliberate rather than missing: the .rec and .view a receipt
+        # joins to are written at the run's end edge, so a .rec that is not there
+        # once the settle window has passed is a run that never kept one.  A
+        # journal is the one upload that can outlast that window.  What DOES go
+        # stale is the thresholds -- reccheck's are measured, and measuring them
+        # again will move them -- so an operator can say so with --reread-receipts.
+        rows = {r[0]: (r[1], r[2]) for r in
+                conn.execute("SELECT runid, stale, journal FROM receipts")}
         # THE SAME SETTLE WINDOW THE EVIDENCE INDEX USES, and for the same
         # reason one level along: the receipt is written at the run's end edge
         # and the upload it commits to arrives AFTERWARDS, so a receipt read the
@@ -364,7 +380,8 @@ def receipt_step(conn, limit=200, now=None):
         files = sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR, "*", "*.rcpt")))
         # Never-read files first and OLDEST first, so a pass that runs out of
         # room still covers everything older than what it left; then the
-        # --reread-receipts backlog (stale = 1, kept until replaced).
+        # --reread-receipts backlog (stale = 1, kept until replaced) and the
+        # rows whose journal is PENDING.
         name = lambda f: os.path.basename(f)[:-5]
         fresh = []
         for f in files:
@@ -374,8 +391,21 @@ def receipt_step(conn, limit=200, now=None):
                 except OSError:
                     pass
         fresh.sort()
+
+        def due(f):
+            stale, journal = rows[name(f)]
+            if stale in (1, 2):
+                return True
+            # PENDING: one stat a pass, and a re-read only when the journal has
+            # arrived or the wait is over (to close it ABSENT).
+            try:
+                return journal == "PENDING" and (
+                    os.path.exists(f[:-5] + ".hid")
+                    or t0 - os.path.getmtime(f) >= surfd.JOURNAL_WAIT)
+            except OSError:
+                return False
         todo = [(m, f, True) for m, f in fresh] + \
-               [(None, f, False) for f in files if rows.get(name(f)) in (1, 2)]
+               [(None, f, False) for f in files if name(f) in rows and due(f)]
         n = bad = jfault = 0
         through = cutoff
         for mtime, path, is_fresh in todo:
@@ -391,12 +421,40 @@ def receipt_step(conn, limit=200, now=None):
                 if is_fresh:
                     through = min(through, int(mtime) - 1)
                 continue
-            got = read_receipt(path)
+            pending_only = not is_fresh and rows[runid][0] not in (1, 2)
+            got = read_receipt(path, journal_only=pending_only)
             # Gone since the listing: rcptcheck reports "cannot read" as a FAULT,
             # and a stored row is never read again -- skip it, as a failed stat is.
             if got is None or not os.path.exists(path):
                 continue
-            verdict, pub, mapname, angles, reason, sig, journal, jreason = got
+            verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
+            if pending_only:
+                # Due only because its journal was PENDING.  The journal columns
+                # move, and the verdict only TOWARD FAULT: a late .hid or .view
+                # that does not hash to what was signed is a fault the first read
+                # could not see, while a .rec pruned since must not clear one
+                # (reviews of 692503c and 9c672d1).
+                if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
+                    continue
+                old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?",
+                                   (runid,)).fetchone()
+                fault = verdict == "FAULT" and old is not None and old[0] != "FAULT"
+                with conn:
+                    if fault:
+                        conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?"
+                                     " WHERE runid = ?", (reason, runid))
+                    conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
+                                 " WHERE runid = ?", (journal, jreason, runid))
+                n += 1
+                bad += fault
+                jfault += journal == "FAULT"
+                continue
+            # A signed journal that is not here yet may still be uploading, one
+            # chunk per round trip: PENDING, read again when it arrives, ABSENT
+            # once JOURNAL_WAIT after signing has passed without it.
+            if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
+                journal = "PENDING"
+                jreason = "the receipt signs a journal that has not arrived yet"
             # signed_at is the file's mtime: the lobby writes it at the run's
             # end, and a resumed run's runid is its FIRST session's.
             with conn:
@@ -412,6 +470,18 @@ def receipt_step(conn, limit=200, now=None):
             n += 1
             bad += verdict != "VALID"
             jfault += journal == "FAULT"
+        # A PENDING row whose receipt was reaped is never read again, and its
+        # journal went with it: ABSENT once the wait is over.
+        listed = set(name(f) for f in files)
+        gone = [rid for rid, (_st, jr) in rows.items()
+                if jr == "PENDING" and rid not in listed]
+        if gone:
+            with conn:
+                conn.executemany(
+                    "UPDATE receipts SET journal = 'ABSENT', journal_reason = ?"
+                    " WHERE runid = ? AND journal = 'PENDING' AND signed_at < ?",
+                    [("the journal never arrived", rid, t0 - surfd.JOURNAL_WAIT)
+                     for rid in gone])
         # THE WATERMARK.  Every never-read receipt with an mtime up to `through`
         # is now in the table -- `cutoff`, or just short of the oldest one this
         # pass had no room for -- so a board run submitted well before it with
