@@ -71,18 +71,15 @@ the same 4418 ticks, with every tick to 11.64 s equal (ENGINE_PATCHES.md, 492).
 - **Left: the V trough at t 11.655.** Ours (-2675.63, 0.98, -2682.72) against
   (-2676.22, 0.19, -2682.12); 0.6-0.8 u/s, then contacts land a tick apart and
   positions drift to ~5 units by the finish. Not a rule this patch can name yet.
-- **Times across the switch are not marked.** A run set before the deploy ran
-  0.8.7's rules and ranks beside runs on Source's; nothing on a board row says
-  which (the `runs` key has no ruleset column), and a Multi-Session run that
-  spans the switch restates its pin per session and ranks as one run. There are
-  no players yet, so this wants a policy more than code: wipe or mark the
-  pre-492 times, or add a ruleset epoch to board rows. Lex's call.
+- **Times across the switch: wiped** (Lex, 5 Oct). The fleet's 173 runs and 61
+  replays set before the 10:09 UTC deploy were deleted from the board, backup
+  `data/surfd.db.prewipe492-20261005-102446`; the imported archives stay. A future
+  rules change wants a ruleset epoch on board rows instead.
 - **SL_RowGrounded** (sv_saveloc.qc) uses QC `tracebox`, which keeps the Quake 2
   test while the mover uses Source's; both probe 1 unit down, so they can differ
   only at brush ties and edges (a player gains at most ~1 unit).
-- **Bumps:** `pm_bumpcount 8` is Momentum 0.8.7's `sv_ramp_bumpcount`; 0.10's
-  `mom_mv_bumpcount` default is not readable from server.dll's strings. Typing
-  `mom_mv_bumpcount` in Momentum's console would settle it.
+- **Bumps:** `pm_bumpcount 8` matches Momentum 0.10's `mom_mv_bumpcount` (8, read
+  from its console by Lex).
 - **Triangles and props are not on Source's rules yet** (review round 2 of 492).
   Under the clip they keep Quake 2's test on true fractions while brushes decide
   on the adjusted enter; running them through the brush's rules, as Source's
