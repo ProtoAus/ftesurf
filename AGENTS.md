@@ -1967,7 +1967,14 @@ script rather than passing it as an argument, where `ps` would show it.
   matters -- **hashes every deployed file on the Pi against `git rev-parse
   <sha>:<path>`** and fails if any differ. Use it instead of hand-running the
   above; `-SkipTests` and `-NoReload` exist and should be said out loud if used.
-  FOUR TRAPS IT PAID FOR, all of them the shape "the tool reported success while
+  IT ALSO KEEPS THE CREDENTIAL STORE OWNER-ONLY: the backup it makes is chmodded
+  600 and the deploy FAILS if that did not take, and its step 7 tightens any loose
+  `surfd.db*` file and reports what the backups cost (`OURS=` / `HANDMADE=` /
+  `TIGHTENED=` / `STILL_LOOSE=`). `-KeepDbBackups N` prunes the script's own,
+  oldest first, only after the deploy has verified; the default REPORTS AND
+  DELETES NOTHING, because a deploy that made the backup is not a deploy that may
+  decide to destroy older ones.
+  FIVE TRAPS IT PAID FOR, all of them the shape "the tool reported success while
   doing nothing":
   - **A COPY THAT PRINTS A COUNT IS NOT A COPY THAT COPIED.** Its first run
     reported `COPIED=49` having installed zero files: a variable that did not
@@ -1996,6 +2003,14 @@ script rather than passing it as an argument, where `ps` would show it.
   Also: a function named `Ssh` and the `ssh` executable are ONE name in
   PowerShell, so `& ssh` inside it recursed until "call depth overflow" -- the
   release-script `-QcBuild`/`$qcBuild` trap above, in a function name.
+  - **THE REMOTE BODIES RUN UNDER `sh`, AND POWERSHELL'S `-replace` IS A
+    CASE-INSENSIVE REGEX.** `Invoke-PiScript` pipes the body to `sh '$stage/<name>.sh'`,
+    so bash-only spelling (`read ... < <(...)`) is a syntax error on the Pi's dash --
+    `sh -n` the body over ssh before believing it. And a `KEEP` placeholder in a
+    body replaced with `-replace 'KEEP', $n` also matched the English word
+    "keeping" in the printf two lines below it, putting a number in the middle of a
+    sentence. Placeholders are `__NAME__` applied with the literal, case-sensitive
+    `.Replace()`; the same reasoning as the `-cmatch` sentinel rule above.
 
   DEPLOYED (the Pi keeps no receipt of its own, so this line is the record; UTC):
   `2007afc` to /srv/nvme/surfd at 2026-10-04 18:00 -- all 49 files hash-matched
@@ -2080,6 +2095,33 @@ script rather than passing it as an argument, where `ps` would show it.
   hash-matched the commit, master 2479950 SIGHUP'd, `surfd ready` 06:34:18,
   `/health {"ok":true,"lobbies":12}`, 2 processes.  Backups
   `*.pre8cd56ee-20261005-173227` and `data/surfd.db.bak-8cd56ee-20261005-173227`.
+
+  `a254da2` to /srv/nvme/surfd at 2026-10-05 07:30 UTC -- the board database and
+  its backups are the owner's alone (`runs.player` is a guid, and a guid is what a
+  keyed lobby authenticates a submit by; sqlite creates the db 0644 & ~umask and
+  the Pi's umask was 022).  Nine suites green in the stage including
+  `test_surfd` section 10, all 54 files hash-matched the commit, master 2479950
+  SIGHUP'd, worker re-forked to 1226126, `surfd ready` 07:30:49,
+  `/health {"ok":true,"lobbies":12}`, `/board/api/map` 200.  Backups
+  `*.prea254da2-20261005-182858` and `data/surfd.db.bak-a254da2-20261005-182858`
+  (the first one this script wrote at mode 600 -- it chmods and then FAILS if the
+  backup is not 600).  Step 7 of the deploy now reports the backups and tightens
+  any loose `surfd.db*`: `OURS=12 files, 8236 MiB`, `HANDMADE=24 files, 1814 MiB
+  (never pruned here)`, `TIGHTENED=36` on the run that fixed the existing copies
+  (0 on the deploy, which found none left), `STILL_LOOSE=0`.  Pruning needs
+  `-KeepDbBackups N` and is OFF by default -- 9.3 GB of copies on a volume at 88%
+  is Lex's decision, in BACKLOG.
+  PROVEN LIVE THREE WAYS, because a mode read once is not a mode kept: the
+  WORKER's `/proc/<pid>/status` reads `Umask: 0077` while the MASTER's still reads
+  `0022` (a SIGHUP re-forks the worker and the app is imported there, so the
+  master keeps the umask run.sh started it with until a full restart -- it writes
+  nothing sensitive); the db and its newest backup both `stat` 600; and a db
+  `chmod 644`'d BY HAND was back to 600 after ONE request that connects, which is
+  `_harden_db_files()` in production rather than in a test.  Still open and in
+  BACKLOG with its measurement: the GAME's data tree, 10,938 of 10,938 files 0644
+  under `game/ftesurf/data` with the guid IN THE `.rec` FILENAME, so a directory
+  listing alone leaks it and file modes cannot fix it (the lobby unit says
+  `UMask=0022`).
 
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
