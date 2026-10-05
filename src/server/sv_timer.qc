@@ -13938,6 +13938,35 @@ void(entity e) SV_TimerSpawn =
 };
 
 // Called once per map, from the same deferred point the zones load at.
+// A run rule from the map's own cfg (cfg/maps/map_<map>.cfg): the engine's map
+// loader applies movement cvars only, so a `set run_startjitter 0` there was read by
+// nothing.  Last `set <name> <value>` wins.  fgets gives "" for an empty line and at
+// EOF alike, so the read stops after a run of empties rather than at the first.
+float(string name, float dflt) SV_MapCfgFloat =
+{
+	local float f, i, empty, v;
+	local string k;
+	f = fopen(strcat("cfg/maps/map_", mapname, ".cfg"), FILE_READ);
+	if (f < 0)
+		return dflt;
+	v = dflt;
+	empty = 0;
+	for (i = 0; i < 400 && empty < 16; i++)
+	{
+		k = fgets(f);
+		if (k == "")
+		{
+			empty = empty + 1;
+			continue;
+		}
+		empty = 0;
+		if (tokenize(k) >= 3 && argv(0) == "set" && argv(1) == name)
+			v = stof(argv(2));
+	}
+	fclose(f);
+	return v;
+};
+
 void() SV_TimerMapInit =
 {
 	local entity p;
@@ -14212,7 +14241,8 @@ void() SV_TimerMapInit =
 	SV_EvidenceSweep();
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
-	run_t_startjit    = cvar("run_startjitter");   // build 83
+	run_t_startjit    = SV_MapCfgFloat("run_startjitter", cvar("run_startjitter"));   // build 83; a hands-off map turns it off
+	dprint(sprintf("timer: startjit rule %g on %s\n", run_t_startjit, mapname));
 	run_t_osrand      = -1;      // Patch 419: "not yet determined", which the
 	run_t_osrsaid     = FALSE;   // declaration promises and nothing else assigned
 
