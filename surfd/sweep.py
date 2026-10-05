@@ -326,6 +326,13 @@ def read_receipt(path, journal_only=False):
     # (the angle identity on both axes, the injection counters, the counts join,
     # the device-provenance table) ran only when an operator typed a path.
     rcptcheck.join_journal(r)
+    if journal_only and r.ioerror:
+        return None             # measured nothing: the row stays PENDING
+    if "hid" in r.digest_bad:
+        # The file read is not the journal that was signed, so what its content
+        # says is about some other journal (review of 70f1ea3).
+        r.journal = "FAULT"
+        r.journal_detail = "not the journal the receipt signed: %s" % r.digest_bad["hid"]
     verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
     reason = r.faults[0] if r.faults else ""
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),

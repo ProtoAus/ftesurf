@@ -169,6 +169,17 @@ below is the collection side and the rules that still only note.
   discriminator to test against a real corpus: a server angle set breaks ONE
   frame, a continuous rewrite breaks runs of adjacent ones.
 
+  **What the receipt sweep still cannot see** (integrity review of 70f1ea3): a
+  receipt is read once, or again only while its journal is PENDING, so a `.view`
+  or `.hid` landing after its last read is never hashed -- at `run_evidence_ul 1`
+  the first read is ABSENT, not PENDING, and nothing reads it again (re-hash
+  siblings newer than the row's read). The digest and the content check open
+  the `.hid` separately (a file swapped between them is checked unhashed). The
+  PENDING re-read does not check it is reading the receipt that made the row
+  (compare pub and the signed lines). A FULL read's I/O error is still stored
+  FAULT for good. And the no-mouse BLIND rule asks only whether any count
+  exists: one 1-count frame turns a console-driven run OK again.
+
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean
   runs.** `surfd/` compares no run's move stream against another's. `replays.sha`
   is a whole-file sha256 and the re-post rule asks whether "player, ticks, bytes

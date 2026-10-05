@@ -761,6 +761,38 @@ def case_pending_reread_moves_only_the_journal():
                              (rid2,)).fetchone())
     check("a different journal arrives: the receipt FAULTs on its digest",
           (n, bad, got[0], "hashes to" in got[1]), (1, 1, "FAULT", True))
+    jr = conn.execute("SELECT journal, journal_reason FROM receipts WHERE runid = ?",
+                      (rid2,)).fetchone()
+    check("...and its journal column is FAULT, naming the digest, not the content's OK",
+          (jr[0], jr[1].startswith("not the journal the receipt signed")), ("FAULT", True))
+
+    # Review of 70f1ea3: an I/O error on the PENDING re-read measured nothing,
+    # so the row stays PENDING and is read again -- never stored FAULT.
+    rid4 = "20260921-000102-0"
+    rp4, _pub = make_receipt(surfd.EVIDENCE_DIR, rid4, age=old, hid=text)
+    os.remove(rp4[:-5] + ".hid")
+    sweep.receipt_step(conn, now=now)
+    with open(rp4[:-5] + ".hid", "wb") as fh:
+        fh.write(text)
+    import builtins
+    real_open = builtins.open
+
+    def eio(f, *a, **kw):
+        if isinstance(f, str) and f.endswith(rid4 + ".rcpt"):
+            raise OSError(5, "Input/output error")
+        return real_open(f, *a, **kw)
+    builtins.open = eio
+    try:
+        sweep.receipt_step(conn, now=now + 600)
+    finally:
+        builtins.open = real_open
+    got = tuple(conn.execute("SELECT verdict, journal FROM receipts WHERE runid = ?",
+                             (rid4,)).fetchone())
+    check("an unreadable receipt on the re-read: still VALID, still PENDING", got, ("VALID", "PENDING"))
+    sweep.receipt_step(conn, now=now + 900)
+    got = tuple(conn.execute("SELECT verdict, journal FROM receipts WHERE runid = ?",
+                             (rid4,)).fetchone())
+    check("...and the next pass reads it", got, ("VALID", "OK"))
 
     # Review of 9c672d1: a journal turned only by the keyboard term stores
     # BLIND, saying why (the rcptcheck half of the no-input rule).

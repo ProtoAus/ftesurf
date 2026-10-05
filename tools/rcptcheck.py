@@ -65,6 +65,8 @@ class Receipt(object):
         self.msg = b""
         self.ok = None
         self.recpath = None         # the .rec join_rec found, for join_angles
+        self.ioerror = False        # a file could not be read: nothing was measured
+        self.digest_bad = {}        # kind -> the fault, for a sibling that is not what was signed
         # join_angles' result as a word: "" (not checked), OK, BLIND or FAULT,
         # with the measurement beside it.  A CALLER MUST NOT HAVE TO MATCH ON
         # THE WORDING OF A NOTE -- sweep.py stores this, and a note is prose
@@ -100,6 +102,7 @@ def read(path):
             lines = fh.read().splitlines()
     except OSError as e:
         r.fault("cannot read: %s" % e)
+        r.ioerror = True
         return r
 
     # THE VERSION LINE IS TAKEN VERBATIM, not parsed and re-rendered.  The first
@@ -521,23 +524,27 @@ def check_file(r, key, path, sibling=False):
         r.fault(("a %s is stored under this run's name and the receipt signs no "
                  "%s digest" % (key, key)) if sibling else
                 ("--%s given but this receipt signs no %s digest" % (key, key)))
+        r.digest_bad[key] = r.faults[-1]
         return
     digest = v.split()[0]
     if digest == "-":
         r.fault(("a %s is stored under this run's name and the receipt's %s "
                  "digest is absent" % (key, key)) if sibling else
                 ("--%s given but this receipt's %s digest is absent" % (key, key)))
+        r.digest_bad[key] = r.faults[-1]
         return
     try:
         with open(path, "rb") as fh:
             data = fh.read()
     except OSError as e:
         r.fault("--%s %s: %s" % (key, path, e))
+        r.ioerror = True
         return
     got = hashlib.sha256(data).hexdigest()
     if got != digest:
         r.fault("%s hashes to %s, the receipt commits to %s"
                 % (os.path.basename(path), got[:16], digest[:16]))
+        r.digest_bad[key] = r.faults[-1]
     else:
         r.note("%s matches the committed digest (%d bytes)"
                % (os.path.basename(path), len(data)))
