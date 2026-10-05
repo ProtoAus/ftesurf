@@ -3035,7 +3035,7 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   9 caught it on three arms that know nothing about a want-queue. The warning
   further down this file is accurate; heed it.
 
-### Keeping the imported boards fresh -- and the one source that is never cronned
+### Keeping the imported boards fresh -- KSF and the demo grab are cronned since 5 Oct
 
 - **`momwatch.py` is on the Pi's crontab, every 7 minutes**, `--stale 24
   --max 40 --delay 1.5 --index`, under `flock`. It reads the `lobbies` table,
@@ -3044,11 +3044,25 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   "live maps 12, boards already fresh 44, boards to refresh 0". 1.5 s rather
   than the 1.0 s measured tripping Momentum's 429 after 2,164 consecutive
   requests, because this one runs unattended.
-- **KSF IS DELIBERATELY NOT AUTOMATED AND MUST NOT BE.** `ksfimport.py`'s own
-  politeness contract says "never automatic: every run of this is a person
-  typing it", reasoned against that host in the wrlines reference. Do not cron
-  it; if the operator wants KSF refreshed on a schedule that is their decision
-  to make explicitly, and the docstring should change first.
+- **KSF IS CRONNED SINCE 2026-10-05, BY LEX'S EXPLICIT DECISION** ("slowly
+  fill up my record list over time"); until then the rule here was "never
+  automatic", and the docstring changed first, as that rule asked.
+  `ksfimport.py --watch --go` every 5 minutes under `flock -n
+  /tmp/surfd-ksfwatch.lock`: 10 requests 3 s apart, the next unseen page of
+  every board in all four styles, maps in `mapwant` first; a refusal parks it
+  6 h doubling to 48 h (`data/ksf/.refused`). Its own lock (`data/ksf/.lock`)
+  also keeps a by-hand `--from-maps` from running beside it. `data/ksf/owed/`
+  holds boards fetched and not yet filed; a non-empty one after a quiet hour is
+  a failing write, not a backlog. Log: `logs/ksfwatch.log`.
+- **`momgrab.py` fetches the Momentum demos the Pi does not hold** (cron, every
+  5 minutes, `flock -n /tmp/surfd-momgrab.lock`): 6 demos a tick from
+  cdn.momentum-mod.org, the top 10 of every board, converted with
+  `tools/momreimport.py`'s rules. It imports momreplay/momimport/momreimport
+  from the game's `tools/` (sweep.py's TOOLS), which `surfd-deploy.ps1` does
+  NOT ship: copy them like the sweep's tools (`install` + `mv` under the sweep
+  flock, `git hash-object` on the Pi). zstd demos (3%) need the `zstandard`
+  module in the cron user's Python. State: `data/momgrab/`; demos kept in
+  `data/momdemos/`. Log: `logs/momgrab.log`.
 - **KSF's per-map boards ARE a paged JSON API; this file said the opposite for a
   morning.** On 2026-09-29 the board looked server-embedded in `/maps/<map>` and
   "there is no API route to find" was written up as structure. The leaderboard is

@@ -26,7 +26,18 @@ Each item: **Today** (what the code does, with pointers), **Build**, **Unknowns*
 - 11: a first scan ran over the 7,177 Momentum demos on Lex's PC (4 Oct): none
   was worth a look, 1,322 too short to measure. Method, limits and the report
   are in the private repo;
-- not started: 4, 5, 8, and the four decisions at the end.
+- not started: 8.
+
+**5 Oct** (Lex answered decisions 1 and 2: fill KSF over time; fetch the
+demos we do not have):
+- 4: `surfd/momgrab.py` on the Pi's crontab fetches the demos of every
+  board's top 10, maps people view first, and files them watchable. Automatic
+  only -- the per-row "Get demo" button is not built (BACKLOG).
+- 5: `surfd/ksfimport.py --watch` on the Pi's crontab pages every KSF board to
+  its end, a few requests a tick, maps people view first; KSF's four styles
+  (Forward, Sideways, Half-Sideways, Backwards) are boards of their own, and
+  the website tabs them. Stages and bonuses were already imported. The game's
+  board has no style picker yet (BACKLOG).
 
 ---
 
@@ -260,11 +271,9 @@ not in this public file.
 
 ## Decisions for Lex
 
-1. **KSF on demand:** may a player scrolling past our KSF rows make the Pi
-   fetch one more 20-row page (rate-limited, cached), or do KSF imports stay
-   strictly by hand?
-2. **Momentum demos on demand:** fetch from Momentum's CDN when a player asks
-   (one at a time, kept for good) -- yes?
+1. ~~**KSF on demand**~~ -- answered 5 Oct: fill it slowly by itself (item 5).
+2. ~~**Momentum demos on demand**~~ -- answered 5 Oct: fetch what we do not
+   have (item 4).
 3. **Builds (8):** how a second build of a map is stored and named, and
    whether the lobbies offer both.
 4. **Where you saw 25 KSF places** (which screen).

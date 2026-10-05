@@ -5,6 +5,54 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The KSF crawl, the demo grab and the site: what they left — 2026-10-05
+
+- **No per-row "Get demo".** `surfd/momgrab.py` takes the top 10 of every
+  Momentum board on its own (maps people view first); a run deeper than that
+  never gets its demo. A button needs a queue the web GET can write (a table,
+  so a schema bump -- `test_board.py` pins `HEAD_SCHEMA`) and momgrab reading
+  it first. ROADMAP 4.
+- **The game's board has no style picker.** KSF's Sideways, Half-Sideways and
+  Backwards (styles `sw`/`hsw`/`bw`) are tabbed on the website only;
+  `cl_online.qc` sends whatever style the HUD asks for and the HUD only knows
+  clean/segmented. ROADMAP 5.
+- **KSF players who enter a board between its first page and our cursor are
+  never fetched.** Page-1 refreshes (every 14 days) catch new records and the
+  cursor catches the tail; the middle needs a re-walk, which costs the whole
+  board. Nothing purges a run deleted upstream either. `ksfimport.py`'s
+  docstring, "WHAT IT CANNOT SEE".
+- **KSF's 100-tick boards (`game=css100t`) are not imported.** A different
+  tick rate is a different measurement -- its own tier if wanted.
+- **Many Momentum WR demos are on an older build of their map, and momgrab
+  refuses them** (the line would be drawn on geometry the player never
+  touched). First real tick: surf_nebula's WR demo is AF9C49E4, the installed
+  map F8DA5606. Count after a week: `python3 -c "import json;
+  d=json.load(open('data/momgrab/state.json'))['done'];
+  print(sum(v=='otherbuild' for v in d.values()), len(d))"` on the Pi.
+  Holding the old builds would need a per-build map store (ROADMAP 8).
+- **Submit adopts the tier of ANY replays row the post names, `momentum`
+  included** (review of b818e8a, CONFIRMED, predates it): surfd.py's
+  `rep = SELECT ... FROM replays WHERE map, track, leg, leaf` then
+  `tier = rep["tier"]` when `rep["player"] == player`. A trusted post naming a
+  momindex leaf with the steamid64 as player files a row under `momentum`, and
+  the replay_id UPDATE beside it unlinks an imported row's demo. One row per
+  (map, track, leg, player) held, trusted sources only. Fix: adopt only when
+  `rep["kind"] == "run"` (needs `kind` in the SELECT) -- a submit-path change,
+  so it gets its own review. Probe: scratchpad `adopt_probe.py` of 5 Oct.
+- **The hidden-slot write never checks the cap** (same review, CONFIRMED,
+  bounded): `tier@runid` rows for a rejected run store past a full cap, at most
+  63 legs x 2 tiers x 2 styles per reject, trusted sources only.
+- **The leg-0 cap count runs inside the write transaction** on a post with a
+  leaf: 0.37 s on the Pi, every first finish, almost all of it walking
+  imported rows. An index on `(leg, tier)` or a count kept beside the table.
+- **The site's two in-game pictures are crops of test captures** (debug text
+  cropped out). A clean screenshot session on Lex's PC would do better; not
+  taken on 5 Oct because the other sessions' arms refuse to run beside a second
+  game.
+- **test_admin.py fails two checks on this PC** ("names the amplification
+  guard", "three snapshots cost no more packets than one: got 8, want 4"),
+  identically on 9fc2703 before any of this.
+
 ## Input evidence: built, and still unwired at one end — 2026-10-05
 
 Found while triaging the fifteen samples in the private `Cheats/` corpus. Ten of
