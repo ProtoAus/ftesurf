@@ -29,11 +29,19 @@ So this re-reads every header and the manifest is left for humans.
 """
 import argparse
 import hashlib
+import logging
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+
+# Importing surfd logs "surfd ready" to surfd.log, which reads as a restart on
+# every tick (sweep.py's fix): a handler on its logger first keeps it quiet.
+if not logging.getLogger("surfd").handlers:
+    _quiet = logging.StreamHandler(sys.stderr)
+    _quiet.setLevel(logging.WARNING)
+    logging.getLogger("surfd").addHandler(_quiet)
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 
@@ -143,9 +151,10 @@ def read_one(path):
     }, None
 
 
-def index_one(conn, map_dir, track, leg, leaf, i, now):
+def index_one(conn, map_dir, track, leg, leaf, i, now, board=True):
     """File one read_one() recording: its replays row and, when it is the
-    player's best, its board row.  Returns (replay added, board row set)."""
+    player's best and `board`, its board row.  Returns (replay added, board row
+    set)."""
     mp = map_dir.lower()
     cur = conn.execute(
         "INSERT INTO replays (map, map_dir, track, leg, leaf, tier,"
@@ -160,6 +169,8 @@ def index_one(conn, map_dir, track, leg, leaf, i, now):
          S.STYLE_CLEAN, i["player"], i["name"], i["ticks"], i["rate"],
          i["millis"], now, i["bytes"], i["runid"]))
     added = cur.rowcount
+    if not board:
+        return added, 0
     rid = conn.execute(
         "SELECT id FROM replays WHERE map=? AND track=? AND leg=? AND leaf=?",
         (mp, track, leg, leaf)).fetchone()[0]

@@ -52,6 +52,7 @@ remember where it got to, because the board cache is the cursor.
 """
 import argparse
 import io
+import logging
 import os
 import subprocess
 import sys
@@ -72,6 +73,13 @@ def _momfetch_path():
         if os.path.exists(p):
             return p
     raise SystemExit("cannot find momfetch.py beside %s or in ../tools" % HERE)
+
+# Importing surfd logs "surfd ready" to surfd.log, which reads as a restart on
+# every tick (sweep.py's fix): a handler on its logger first keeps it quiet.
+if not logging.getLogger("surfd").handlers:
+    _quiet = logging.StreamHandler(sys.stderr)
+    _quiet.setLevel(logging.WARNING)
+    logging.getLogger("surfd").addHandler(_quiet)
 
 import surfd as S       # noqa: E402
 import momfetch         # noqa: E402

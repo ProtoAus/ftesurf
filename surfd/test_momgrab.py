@@ -10,8 +10,8 @@ real Momentum demo, which is not committed (it is someone's run): set
 MOMGRAB_FIXTURE to a .mtv, or they are skipped and say so.
 """
 
-import argparse
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 import urllib.error
 
 FAILED = []
@@ -48,6 +49,9 @@ for _p in (FIXTURE, "C:/tmp/probe.mtv"):
 else:
     FIXTURE = ""
 
+SID = "76561198356066955"
+NOW = int(time.time())
+
 
 def board_file(d, name, mp, tt, tn, rows):
     with io.open(os.path.join(d, name), "w", encoding="utf-8") as fh:
@@ -60,7 +64,9 @@ def row(h, sid, t):
             "created": "", "url": G.CDN + h}
 
 
-SID = "76561198356066955"
+def picks(q, done=None, later=None, held=None, prio=(), n=10, zstd=True):
+    return [c[3][0] for c in G.pick(q, done or {}, later or {}, held or {}, set(prio),
+                                     n, NOW, zstd)]
 
 
 def case_queue_and_pick():
@@ -68,32 +74,51 @@ def case_queue_and_pick():
     st = tempfile.mkdtemp(prefix="state-", dir=HOME)
     board_file(bd, "1_g1_t01.json", "surf_a", 0, 1,
                [row("a" * 40, SID, 40.0), row("b" * 40, "76561198000000001", 41.0),
-                row("c" * 40, "76561198000000002", 42.0), row("bad", SID, 43.0),
-                row("d" * 40, "notasteamid", 44.0)])
-    board_file(bd, "2_g1_t11.json", "surf_b", 1, 2, [row("e" * 40, SID, 10.0)])
+                row("c" * 40, "76561198000000002", 42.0), row("d" * 40, SID, 39.5),
+                row("e" * 39 + "Z", "76561198000000003", 43.0),
+                row("f" * 40, "notasteamid", 44.0)])
+    board_file(bd, "2_g1_t11.json", "surf_b", 1, 2, [row("9" * 40, SID, 10.0)])
     q, read, unread = G.refresh_queue(bd, os.path.join(st, "queue.json"), 2, 100)
-    check("the queue holds each board's top places only",
-          [len(q["boards"][f]["rows"]) for f in sorted(q["boards"])], [2, 1])
+    b1 = q["boards"]["1_g1_t01.json"]["rows"]
+    check("a player's superseded time is not queued, only their best",
+          [r[0][0] for r in b1], ["d", "b"])
     check("...and a stage board files as its stage",
           (q["boards"]["2_g1_t11.json"]["track"], q["boards"]["2_g1_t11.json"]["leg"]), (0, 2))
     q, read, unread = G.refresh_queue(bd, os.path.join(st, "queue.json"), 2, 100)
     check("an unchanged board file is not read again", read, 0)
     q5, _, _ = G.refresh_queue(bd, os.path.join(st, "queue5.json"), 5, 100)
-    check("a row with a bad hash or no SteamID is not queued",
-          len(q5["boards"]["1_g1_t01.json"]["rows"]), 3)
-    got = [c[3][0] for c in G.pick(q, {}, set(), set(), 10, set())]
-    check("best place first, across boards", got, ["a", "e", "b"])
-    got = [c[3][0] for c in G.pick(q, {}, set(), {"surf_a"}, 10, set())]
-    check("a wanted map goes first", got, ["a", "b", "e"])
-    got = [c[3][0] for c in G.pick(q, {"a" * 40: "ok"}, {("surf_b", 0, 2, SID)}, set(), 10, set())]
-    check("settled demos and rows that hold one are skipped", got, ["b"])
+    check("a hash that is not 40 hex, or no SteamID, is never queued",
+          sorted(r[0][0] for r in q5["boards"]["1_g1_t01.json"]["rows"]), ["b", "c", "d"])
+    check("best place first, across boards", picks(q), ["d", "9", "b"])
+    check("a wanted map goes first", picks(q, prio={"surf_a"}), ["d", "b", "9"])
+    held = {("surf_a", 0, 0, SID): [39500], ("surf_b", 0, 2, SID): [9000]}
+    check("a held RUN is skipped; the same player's other run is not",
+          picks(q, held=held), ["9", "b"])
+    check("a settled demo is skipped",
+          picks(q, done={"d" * 40: "ok", "9" * 40: "gone"}), ["b"])
+    later = {"d" * 40: [G.STRIKES, NOW, "cut short"], "9" * 40: [1, NOW, "cut short"]}
+    check("one that failed STRIKES times waits; one that failed once does not",
+          picks(q, later=later), ["9", "b"])
+    check("...and after RETRY_DAYS it is asked again",
+          picks(q, later={"d" * 40: [G.STRIKES, NOW - (G.RETRY_DAYS + 1) * 86400, "x"]})[0], "d")
+    check("a zstd demo waits only while there is no zstandard",
+          (picks(q, later={"d" * 40: [1, NOW, "zstd"]}, zstd=False)[0],
+           picks(q, later={"d" * 40: [1, NOW, "zstd"]}, zstd=True)[0]), ("9", "d"))
+    old = G.MAX_SECONDS
+    G.MAX_SECONDS = 20
+    check("a run longer than MAX_SECONDS is never fetched", picks(q), ["9"])
+    G.MAX_SECONDS = old
 
 
 class FakeResp(object):
-    def __init__(self, body, status=200):
+    def __init__(self, body, status=200, length=None, cut=None):
         self.body, self.status, self.pos = body, status, 0
+        self.headers = {"Content-Length": str(len(body) if length is None else length)}
+        self.cut = cut
 
     def read(self, n):
+        if self.cut is not None and self.pos >= self.cut:
+            raise http.client.IncompleteRead(b"")
         b = self.body[self.pos:self.pos + n]
         self.pos += n
         return b
@@ -108,7 +133,7 @@ class FakeResp(object):
 def case_download():
     real = G.urllib.request.urlopen
     d = tempfile.mkdtemp(prefix="dl-", dir=HOME)
-    body = b"x" * 1000
+    body = b"x" * 200000
     h = hashlib.sha1(body).hexdigest()
     try:
         G.urllib.request.urlopen = lambda req, timeout=None: FakeResp(body)
@@ -118,23 +143,41 @@ def case_download():
         check("one that does not is refused and removed",
               (G.download("0" * 40, os.path.join(d, "z.mtv")),
                sorted(os.listdir(d))), ("badhash", [h + ".mtv"]))
+        G.urllib.request.urlopen = lambda req, timeout=None: FakeResp(body[:5000],
+                                                                     length=len(body))
+        try:
+            G.download(h, os.path.join(d, "s.mtv"))
+            got = "settled"
+        except G.Transient:
+            got = "tried again"
+        check("a body short of its Content-Length is tried again, not settled", got,
+              "tried again")
+        G.urllib.request.urlopen = lambda req, timeout=None: FakeResp(body, cut=65536)
+        try:
+            G.download(h, os.path.join(d, "i.mtv"))
+            got = "settled"
+        except G.Transient:
+            got = "tried again"
+        check("...and so is one cut off mid-read", got, "tried again")
 
         def http(code):
             def f(req, timeout=None):
                 raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
             return f
 
-        G.urllib.request.urlopen = http(404)
-        check("a 404 is the CDN's answer that it is gone",
-              G.download(h, os.path.join(d, "g.mtv")), "gone")
-        for code in (403, 429, 503):
+        for code in (403, 404, 410):
+            G.urllib.request.urlopen = http(code)
+            check("HTTP %d is the CDN's answer that it has no such file" % code,
+                  G.download(h, os.path.join(d, "g.mtv")), "gone")
+        for code, obj in ((429, False), (503, False), (500, True), (502, True)):
             G.urllib.request.urlopen = http(code)
             try:
                 G.download(h, os.path.join(d, "r.mtv"))
                 got = "kept going"
-            except G.Refused:
-                got = "refused"
-            check("HTTP %d parks the grab" % code, got, "refused")
+            except G.Refused as e:
+                got = ("parks", e.obj)
+            check("HTTP %d parks the grab%s" % (code, ", and counts against the file" if obj else ""),
+                  got, ("parks", obj))
         old = G.MAX_BYTES
         G.MAX_BYTES = 100
         G.urllib.request.urlopen = lambda req, timeout=None: FakeResp(body)
@@ -144,6 +187,28 @@ def case_download():
         G.MAX_BYTES = old
     finally:
         G.urllib.request.urlopen = real
+
+
+def case_bsp_case():
+    d = tempfile.mkdtemp(prefix="maps-", dir=HOME)
+    io.open(os.path.join(d, "bhop_HaddocK.bsp"), "wb").write(b"bsp")
+    got = G.bsp_sha1("bhop_haddock", d, os.path.join(d, "bsp.json"))
+    check("a BSP named with capitals is found for its lowercased board name",
+          got, hashlib.sha1(b"bsp").hexdigest().upper())
+
+
+def run(argv):
+    import argparse
+    old = sys.argv
+    sys.argv = ["momgrab.py"] + argv
+    try:
+        return G.main()
+    finally:
+        sys.argv = old
+
+
+def db():
+    return sqlite3.connect(os.environ["SURFD_DB"])
 
 
 def case_convert_and_file():
@@ -160,53 +225,84 @@ def case_convert_and_file():
     track, leg = G.momimport.track_leg(head["track_type"], head["track_number"])
     ti = head["tick_interval"]
     ms = int(round(round(head["run_time"] / ti) * ti * 1000.0))
-    board = {"map": head["map"].lower(), "track": track, "leg": leg}
+    mp = head["map"].lower()
+    board = {"map": mp, "track": track, "leg": leg}
     out = os.path.join(HOME, "momentum")
     real = G.bsp_sha1
     try:
-        G.bsp_sha1 = lambda mp, d, c: "0" * 40
+        G.bsp_sha1 = lambda m, d, c: "0" * 40
         check("a demo on another build of the map is refused",
               G.convert_demo(demo, board, ms, "", "", out), ("otherbuild", None))
-        G.bsp_sha1 = lambda mp, d, c: head["map_sha1"].upper()
+        G.bsp_sha1 = lambda m, d, c: head["map_sha1"].upper()
         check("one whose time disagrees with its row is refused",
               G.convert_demo(demo, board, ms + 500, "", "", out)[0], "othertime")
         check("one for another track is refused",
               G.convert_demo(demo, dict(board, leg=board["leg"] + 1), ms, "", "", out)[0],
               "othertrack")
+        old = G.MAX_SECONDS
+        G.MAX_SECONDS = 10
+        check("one longer than MAX_SECONDS is refused before converting",
+              G.convert_demo(demo, board, ms, "", "", out)[0], "toolong")
+        G.MAX_SECONDS = old
         status, rec = G.convert_demo(demo, board, ms, "", "", out)
         check("the build that matches is converted", status, "ok")
         info, why = G.momindex.read_one(rec)
         check("momindex reads what it wrote", (why, info["millis"] if info else None),
               (None, ms))
-        text = io.open(rec, encoding="utf-8").read()
-        hdr = text.split("\nbegin\n")[0].split("\n")
+        hdr = io.open(rec, encoding="utf-8").read().split("\nbegin\n")[0].split("\n")
         keys = [s.split(" ", 1)[0] for s in hdr]
         check("the header carries the demo's provenance and moves",
               [k for k in ("foreign", "mapbuild", "momdemo", "moves", "momquality") if k in keys],
               ["foreign", "mapbuild", "momdemo", "moves", "momquality"])
-        check("...and names the build it was checked against",
-              [s for s in hdr if s.startswith("mapbuild")][0].split()[-1], "ok")
         check("a second grab of the same run is the one already held",
               G.convert_demo(demo, board, ms, "", "", out)[0], "have")
-        G.bsp_sha1 = lambda mp, d, c: None
-        os.remove(rec)
-        status, rec = G.convert_demo(demo, board, ms, "", "", out)
-        check("a map with no BSP here is filed anyway, marked nomap",
-              (status, [s for s in io.open(rec, encoding="utf-8").read().split("\n")
-                        if s.startswith("mapbuild")][0].split()[-1]), ("ok", "nomap"))
 
-        # The tick end to end: a board row with no recording gets one.
+        # Filing: the replays row, and the board row linked only by its own time.
+        c = db()
+        c.execute("DELETE FROM runs WHERE tier='momentum'")
+        c.execute("DELETE FROM replays WHERE kind='momentum'")
+        c.execute("INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+                  " name, ticks, tickrate, millis, flags, node, submitted, bytes, kind, bound,"
+                  " runid) VALUES (?,?,?,?,'0009999_old-00000000_run.rec','momentum','clean',?,"
+                  " 'x',1,66.67,?,0,'import',1,1,'momentum',1,'old')",
+                  (mp, head["map"], track, leg, str(head["steam_id"]), ms + 5000))
+        old_rid = c.execute("SELECT id FROM replays WHERE leaf LIKE '%old%'").fetchone()[0]
+        c.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+                  " tickrate, millis, flags, node, runid, submitted, replay_id)"
+                  " VALUES (?,?,?,'momentum','clean',?,'x',1,66.67,?,0,'mom','',111,?)",
+                  (mp, track, leg, str(head["steam_id"]), ms + 4, old_rid))
+        c.commit()
+        conn = S.connect()
+        try:
+            added, linked = G.file_rec(conn, rec)
+        finally:
+            conn.close()
+        r = c.execute("SELECT replay_id, millis, submitted FROM runs WHERE tier='momentum'"
+                      " AND map=?", (mp,)).fetchone()
+        new_rid = c.execute("SELECT id FROM replays WHERE leaf=?",
+                            (os.path.basename(rec),)).fetchone()[0]
+        check("a player who improved: their row is moved off the old run's demo",
+              (linked, r[0] == new_rid), (1, True))
+        check("...and the row itself is not re-dated or re-timed", (r[1], r[2]), (ms + 4, 111))
+        conn = S.connect()
+        try:
+            again = G.link_exact(conn, 999999, mp, track, leg, str(head["steam_id"]), ms + 4)
+            conn.commit()
+        finally:
+            conn.close()
+        check("a row whose link is already its own run is never relinked", again, 0)
+
+        # The tick end to end, with a capitalised BSP name standing in for the map.
         bd = tempfile.mkdtemp(prefix="boards-", dir=HOME)
         board_file(bd, "9_g1_t01.json", head["map"], head["track_type"], head["track_number"],
                    [row(sha, str(head["steam_id"]), ms / 1000.0)])
-        db = sqlite3.connect(os.environ["SURFD_DB"])
-        db.execute("DELETE FROM runs WHERE tier='momentum'")
-        db.execute("DELETE FROM replays WHERE kind='momentum'")
-        db.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
-                   " tickrate, millis, flags, node, runid, submitted, replay_id)"
-                   " VALUES (?,?,?,'momentum','clean',?,'x',1,66.67,?,0,'mom','',1,0)",
-                   (board["map"], track, leg, str(head["steam_id"]), ms))
-        db.commit()
+        c.execute("DELETE FROM runs WHERE tier='momentum'")
+        c.execute("DELETE FROM replays WHERE kind='momentum'")
+        c.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+                  " tickrate, millis, flags, node, runid, submitted, replay_id)"
+                  " VALUES (?,?,?,'momentum','clean',?,'x',1,66.67,?,0,'mom','',1,0)",
+                  (mp, track, leg, str(head["steam_id"]), ms))
+        c.commit()
         os.remove(rec)
         state = tempfile.mkdtemp(prefix="state-", dir=HOME)
         demos = tempfile.mkdtemp(prefix="demos-", dir=HOME)
@@ -223,26 +319,26 @@ def case_convert_and_file():
                  "--maps", HOME, "--delay", "0", "--go"])
         finally:
             G.download = realdl
-        got = db.execute("SELECT replay_id > 0 FROM runs WHERE tier='momentum' AND map=?",
-                         (board["map"],)).fetchone()
+        got = c.execute("SELECT replay_id > 0 FROM runs WHERE tier='momentum' AND map=?",
+                        (mp,)).fetchone()
         check("a tick downloads, files and links the board row's demo", got, (1,))
         st = json.load(io.open(os.path.join(state, "state.json"), encoding="utf-8"))
         check("...and settles it, so it is never asked again", st["done"].get(sha), "ok")
-        db.close()
+        c.close()
+
+        # A conversion the OS killed: the next tick counts it as a try.
+        st["inflight"] = "e" * 40
+        io.open(os.path.join(state, "state.json"), "w").write(json.dumps(st))
+        run(["--boards", bd, "--state", state, "--demos", demos, "--out", out,
+             "--maps", HOME, "--delay", "0"])
+        st = json.load(io.open(os.path.join(state, "state.json"), encoding="utf-8"))
+        check("a demo left in flight by a killed tick counts a try",
+              (st["inflight"], st["later"].get("e" * 40, [0])[0]), (None, 1))
     finally:
         G.bsp_sha1 = real
 
 
-def run(argv):
-    old = sys.argv
-    sys.argv = ["momgrab.py"] + argv
-    try:
-        return G.main()
-    finally:
-        sys.argv = old
-
-
-def case_park():
+def case_park_and_lock():
     S.migrate()
     bd = tempfile.mkdtemp(prefix="boards-", dir=HOME)
     board_file(bd, "1_g1_t01.json", "surf_p", 0, 1,
@@ -251,38 +347,58 @@ def case_park():
     demos = tempfile.mkdtemp(prefix="demos-", dir=HOME)
     asked = []
 
-    def refuse(h, dest):
-        asked.append(h)
-        raise G.Refused("HTTP 429")
+    def refuse(code, obj):
+        def f(h, dest):
+            asked.append(h)
+            raise G.Refused("HTTP %d" % code, obj=obj)
+        return f
 
     realdl = G.download
-    G.download = refuse
     args = ["--boards", bd, "--state", state, "--demos", demos, "--out", HOME,
             "--maps", HOME, "--delay", "0", "--go"]
+    sp = os.path.join(state, "state.json")
     try:
+        G.download = refuse(429, False)
         run(args)
         check("a refusal stops the tick at once", len(asked), 1)
-        st = json.load(io.open(os.path.join(state, "state.json"), encoding="utf-8"))
+        st = json.load(io.open(sp, encoding="utf-8"))
         check("...and parks the grab", (st["park"]["n"], st["park"]["until"] - st["park"]["at"]),
               (1, G.COOLDOWN))
-        check("...without settling the demo it was refused", "1" * 40 in st["done"], False)
+        check("...without settling or striking the demo it was refused",
+              ("1" * 40 in st["done"], "1" * 40 in st["later"]), (False, False))
         asked.clear()
         run(args)
         check("a parked tick asks nothing", asked, [])
+        for _ in range(G.STRIKES):
+            st = json.load(io.open(sp, encoding="utf-8"))
+            st["park"]["until"] = 1
+            io.open(sp, "w").write(json.dumps(st))
+            G.download = refuse(500, True)
+            run(args)
+        st = json.load(io.open(sp, encoding="utf-8"))
+        check("a file the CDN keeps failing is struck, and left after STRIKES",
+              st["later"].get("1" * 40, [0])[0], G.STRIKES)
         st["park"]["until"] = 1
-        io.open(os.path.join(state, "state.json"), "w", encoding="utf-8").write(json.dumps(st))
-        G.download = lambda h, dest: "gone"
+        io.open(sp, "w").write(json.dumps(st))
+        asked.clear()
+        G.download = lambda h, dest: (asked.append(h), "gone")[1]
         run(args)
-        st = json.load(io.open(os.path.join(state, "state.json"), encoding="utf-8"))
+        check("...so the next tick moves on to the others", asked, ["2" * 40])
+        st = json.load(io.open(sp, encoding="utf-8"))
         check("an answered tick lifts the park", st["park"], {})
-        check("...and a demo the CDN no longer has is settled as gone",
-              st["done"].get("1" * 40), "gone")
+        check("...and a file the CDN no longer has is settled as gone",
+              st["done"].get("2" * 40), "gone")
     finally:
         G.download = realdl
+    first = G.take_lock(state)
+    second = G.take_lock(state)
+    check("a second momgrab cannot take the lock", (first is not None, second), (True, None))
+    first.close()
 
 
 def main():
-    for case in (case_queue_and_pick, case_download, case_convert_and_file, case_park):
+    for case in (case_queue_and_pick, case_download, case_bsp_case,
+                 case_convert_and_file, case_park_and_lock):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d failed%s" % (len(FAILED), (", skipped: " + "; ".join(SKIPPED)) if SKIPPED else ""))

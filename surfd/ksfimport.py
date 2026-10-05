@@ -100,6 +100,7 @@ import heapq
 import http.client
 import io
 import json
+import logging
 import os
 import sqlite3
 import sys
@@ -110,6 +111,13 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+
+# Importing surfd logs "surfd ready" to surfd.log, which reads as a restart on
+# every tick (sweep.py's fix): a handler on its logger first keeps it quiet.
+if not logging.getLogger("surfd").handlers:
+    _quiet = logging.StreamHandler(sys.stderr)
+    _quiet.setLevel(logging.WARNING)
+    logging.getLogger("surfd").addHandler(_quiet)
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 
