@@ -1954,6 +1954,14 @@ script rather than passing it as an argument, where `ps` would show it.
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
   immediately.
+- **AN OVERLAY BASEDIR IS LINKS INTO THE LIVE GAME, AND A GUI DELETE FOLLOWS
+  THEM.** 2026-10-05: an old overlay, /srv/nvme/p323base (126 links, 24 MB real,
+  57 GB to anything that follows links), was deleted with a file manager and
+  emptied game/ftesurf/{models,glsl,particles,scripts} and all of
+  game/momentum/maps while 12 lobbies ran. Restored the same day from the 0.1.23
+  stage and the Windows Steam Momentum install (1347 BSPs, a superset of the
+  library), rotation maps first. Remove an overlay with `rm -r <dir>` in the
+  session that made it; never leave one behind.
 - To pm_verify a fixture-zoned file on the Pi (surf_666 with p360sf) without
   touching live zones: an overlay basedir -- link every entry of game/ except
   ftesurf/, and every entry of game/ftesurf except data, logs and maps; put the
