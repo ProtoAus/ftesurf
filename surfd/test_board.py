@@ -2220,6 +2220,107 @@ check("22 CONTROL: the old encoder escapes it",
       (NAME22.encode("utf-8") in raw, b"\\u2122" in raw), (False, True))
 
 # --------------------------------------------------------------------------
+print("\n--- 23. a rejected run's hidden stage slot respects the cap -----"
+)
+# The hidden slot (tier@runid) parks a rejected run's stage times so a clear can
+# restore them.  It is a NEW row that counts against the stage cap, and the
+# standing write checks that cap -- but the hidden write never did, so a rejected
+# run could park up to 63 legs x 2 tiers x 2 styles past it.  `full` was even
+# counted beside the write (round 6) and left unused.
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+R23 = "20261005-120000-0-p27510"
+a23 = leaf(700, "alice")
+wrec(m, "surf_test", 0, 0, a23, "Alice", R23)
+main23 = run(m, "alice", 700, runid=R23)["rep"]
+check("23 control: the run is bound", main23 > 0, True)
+clock.now += 10
+review(m, main23, "reject", int(clock.now))
+_c = m.connect()
+rej = m._run_rejected(_c, ("surf_test", 0, "alice", R23))
+_c.close()
+check("23 control: the run is rejected", rej, True)
+
+# Cap NOT full: the hidden slot parks, as it always has.
+clock.now += 1
+r = run(m, "alice", 900, rec=False, leg=1, runid=R23)
+check("23 a rejected stage parks in its hidden slot when the cap has room",
+      (r.get("stored"), q(m, "SELECT COUNT(*) FROM runs WHERE tier LIKE '%@%'")),
+      (False, [(1,)]))
+
+# Cap full: the same write is refused, and the reply is still the hidden one --
+# a rejected run is not a storage failure the client should read as 507.
+m.MAX_STAGE_RUNS = 0
+clock.now += 1
+r2 = run(m, "alice", 950, rec=False, leg=2, runid=R23)
+check("23 ...and is refused when the stage cap is full",
+      q(m, "SELECT COUNT(*) FROM runs WHERE leg=2 AND tier LIKE '%@%'"), [(0,)])
+check("23 ...the reply is still 'hidden', not an error",
+      (r2.get("ok"), r2.get("stored")), (True, False))
+check("23 ...and the leg-1 slot parked before is untouched",
+      q(m, "SELECT COUNT(*) FROM runs WHERE tier LIKE '%@%'"), [(1,)])
+
+# --------------------------------------------------------------------------
+print("\n--- 24. the leg-0 cap holds for a RECORDED submit (pre-scan) ----")
+# The leg-0 cap count used to run UNDER the write lock the replay index opens
+# (0.37 s on the Pi); it now runs before it.  The behaviour is unchanged: a
+# recorded submit that would be a NEW row is refused at the cap, one that
+# improves an existing row is not (the cap only blocks new rows).  This is the
+# recorded path the pre-scan targets -- section 13's cap test is fileless, which
+# never opened the lock and so never measured the regression.
+
+m = fresh()
+clock = FakeClock()
+m.time = clock
+m.MAX_RUNS = 1
+la = leaf(700, "alice")
+wrec(m, "surf_test", 0, 0, la, "Alice", "ra")
+clock.now += 1
+check("24 a recorded leg-0 row stores under the cap",
+      run(m, "alice", 700, runid="ra", rec=la)["stored"], True)
+lb = leaf(800, "bob")
+wrec(m, "surf_test", 0, 0, lb, "Bob", "rb")
+clock.now += 1
+check("24 ...a second recorded NEW row is refused at the cap",
+      run(m, "bob", 800, runid="rb", rec=lb), "HTTP 429")
+la2 = leaf(600, "alice")
+wrec(m, "surf_test", 0, 0, la2, "Alice", "ra2")
+clock.now += 1
+check("24 ...but an improvement of the standing row still stores at the cap",
+      run(m, "alice", 600, runid="ra2", rec=la2)["stored"], True)
+check("24 ...and only one network row exists (the cap held)",
+      q(m, "SELECT COUNT(*) FROM runs WHERE leg=0 AND tier='ranked'"), [(1,)])
+
+# The property the fix is FOR: the scan runs before the write lock, not under it.
+# Functional behaviour is identical either way, so instrument _runs_full to record
+# db.in_transaction at the call.  Pre-fix a recorded leg-0 submit scanned UNDER
+# the lock the replay index opens (in_transaction True); post-fix it scans before
+# (False).  A fresh module keeps this off section 24's cap state.
+mi = fresh()
+clocki = FakeClock()
+mi.time = clocki
+seen = []
+_realfull = mi._runs_full
+
+
+def _spy(db, leg, _f=_realfull, _seen=seen):
+    _seen.append(db.in_transaction)
+    return _f(db, leg)
+
+
+mi._runs_full = _spy
+try:
+    li = leaf(700, "ivy")
+    wrec(mi, "surf_test", 0, 0, li, "Ivy", "ri")
+    clocki.now += 1
+    run(mi, "ivy", 700, runid="ri", rec=li)
+finally:
+    mi._runs_full = _realfull
+check("24 the cap scan runs before the write lock, not under it", seen, [False])
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILED" % len(FAILED))

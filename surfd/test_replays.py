@@ -694,6 +694,56 @@ else:
 
 
 # --------------------------------------------------------------------------
+print("\n--- 15. submit adopts a RUN's tier, never an imported row's -----")
+# A trusted post naming a momindex leaf whose player is the steamid64 used to
+# adopt tier='momentum' for the board row, and the replay_id UPDATE beside it
+# overwrote the imported row that demo was filed against.  restand()/restage()
+# have always refused a non-run replay ("evidence stands on no board", schema 6);
+# the submit path now does too.  The imported replay's file is never on the run
+# tree, so the post is fileless and the held row is left exactly as it was.
+
+SID = "76561198356066955"
+m = fresh()
+mleaf = leaf(4108, player=SID)              # digest = sha256(SID)[:8]
+conn = sqlite3.connect(m._test_db)
+# The imported replay, the way momindex files it: kind 'momentum', its own tier.
+conn.execute(
+    "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player,"
+    " name, ticks, tickrate, millis, flags, node, submitted, bytes, kind, bound,"
+    " runid) VALUES ('surf_test','surf_test',0,0,?,'momentum','clean',?,'Mom',1,"
+    " 66.67,85000,0,'import',1,1,'momentum',1,'momrun')", (mleaf, SID))
+mom_rid = conn.execute("SELECT id FROM replays WHERE leaf=?", (mleaf,)).fetchone()[0]
+# The imported board row that demo is filed against, with a distinctive node and
+# submitted so an overwrite by the submit path is visible.
+conn.execute(
+    "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+    " tickrate, millis, flags, node, runid, submitted, replay_id)"
+    " VALUES ('surf_test',0,0,'momentum','clean',?,'Mom',1,66.67,85000,0,"
+    " 'import','',1,?)", (SID, mom_rid))
+conn.commit()
+conn.close()
+
+got = submit(m, player=SID, name="Mom", rec=mleaf, ticks=4108)
+check("a post naming an imported leaf does not adopt its tier",
+      got.get("tier") if isinstance(got, dict) else got, "ranked")
+check("...and files no momentum-tier board row of its own",
+      rows(m, "SELECT 1 FROM runs WHERE player=? AND tier='momentum'"
+           " AND node<>'import'", (SID,)), [])
+ranked = one(m, "SELECT replay_id FROM runs WHERE player=? AND tier='ranked'",
+             (SID,))
+check("...it files the run on the ranked board, with no demo link",
+      (ranked is not None, ranked["replay_id"] if ranked else None), (True, 0))
+imp = one(m, "SELECT millis, submitted, replay_id, node FROM runs"
+          " WHERE player=? AND tier='momentum'", (SID,))
+check("...and the imported row keeps its time, stamp, node and demo link",
+      imp is not None and (imp["millis"], imp["submitted"], imp["replay_id"],
+                           imp["node"]), (85000, 1, mom_rid, "import"))
+check("...and the imported replay is left kind 'momentum'",
+      one(m, "SELECT kind FROM replays WHERE id=?", (mom_rid,))["kind"],
+      "momentum")
+
+
+# --------------------------------------------------------------------------
 print("")
 if FAILED:
     print("%d FAILURE(S):" % len(FAILED))

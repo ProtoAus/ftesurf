@@ -2917,6 +2917,24 @@ def submit_run():
             # slower and exactly tied alike.
             rid = 0
             have = None
+            # The leg-0 cap count is a whole-table scan; run it BEFORE the replay
+            # index below opens the write transaction, not under it -- under the
+            # lock a 200k-row COUNT held every other writer off the board for
+            # 0.37 s on the Pi.  The leg>0 hidden-slot scan already does this
+            # (round 6); this is the leg-0 standing write, whose first DML is the
+            # replay INSERT below.  Gated on the player's row with the SUBMITTED
+            # tier: an improvement never reaches the cap check, so it must not pay
+            # the scan.  Adoption below may still move the tier; if the row then
+            # turns out to be new, `full` stays None and the cap check recomputes
+            # under the lock (rare, and correct).  The count may be a few rows
+            # stale by the time the lock is taken -- the same trade round 6 made;
+            # the cap is a soft guard, not an exact one.  SELECTs take no write
+            # lock in legacy isolation, so this runs before the transaction opens.
+            full = None
+            if leg == 0 and db.execute(
+                    _PREV_SQL, (mapname, track, leg, tier, style, player)
+            ).fetchone() is None:
+                full = _runs_full(db, 0)
             if leaf:
                 have = db.execute(
                     "SELECT id, player, runid, submitted, tier, style, bytes"
@@ -3023,11 +3041,19 @@ def submit_run():
                                 MAX_REPLAYS, leaf)
                 rep = db.execute(
                     "SELECT id, name, tier, style, flags, tickrate, millis,"
-                    " runid, submitted, player FROM replays"
+                    " runid, submitted, player, kind FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
-                if rep is not None and rep["player"] == player:
+                # ADOPT ONLY A RUN'S EVIDENCE, never an imported row's.  Without
+                # the kind gate a trusted post naming a momindex leaf whose player
+                # is the steamid64 adopted tier='momentum' for the board row and,
+                # through the replay_id UPDATE below, unlinked the imported row's
+                # demo.  restand()/restage() have always refused a non-run replay
+                # ("evidence stands on no board", schema 6); this is the same rule
+                # on the submit path.  A submitted leaf's own replay is kind 'run'
+                # by default, so an honest post is unaffected.
+                if rep is not None and rep["player"] == player and rep["kind"] == "run":
                     # The board row is the replay's: its name, board, flags
                     # and time, as filed with its evidence -- when it is this
                     # player's (a held digest-less leaf it did not change is
@@ -3060,7 +3086,8 @@ def submit_run():
 
             pkey = (mapname, track, leg, tier, style, player)
             prev = db.execute(_PREV_SQL, pkey).fetchone()
-            full = None
+            # `full` was set above, before the write lock (the leg-0 pre-scan);
+            # the leg>0 hidden-slot block below sets it when it opens its own.
 
             # A stage time of a run a reject stands on goes straight to that
             # run's hidden slot, never over the player's live one -- a retried
@@ -3084,9 +3111,26 @@ def submit_run():
                     " AND leg=? AND tier=? AND style=? AND player=?",
                     (mapname, track, leg, ptier, style, player)).fetchone()
                 if hid is None or millis < hid["millis"]:
-                    db.execute(_UPSERT_RUN, (mapname, track, leg, ptier, style, player,
-                                             name, ticks, tickrate, millis, flags,
-                                             node, runid, now, 0))
+                    # A hidden slot is a NEW row when hid is None, and it counts
+                    # against the same stage cap as a standing row (its tier is
+                    # neither imported nor public, so _runs_full counts it).  The
+                    # standing write checks the cap; this one must too, or a
+                    # rejected run parks its stages past it -- up to 63 legs x 2
+                    # tiers x 2 styles per reject, trusted sources only.  `full`
+                    # was counted above under the lock (round 6); recompute only
+                    # when a transaction was already open and skipped that count.
+                    # An UPDATE of a slot that already exists (hid) does not grow
+                    # the table, so it is never capped -- same rule as the normal
+                    # write, which caps only its `prev is None` insert.
+                    if hid is None and (full if full is not None
+                                        else _runs_full(db, leg)):
+                        log.error("stage cap %d reached; not parking a hidden slot"
+                                  " for rejected run %s on %s leg %d",
+                                  MAX_STAGE_RUNS, runid, mapname, leg)
+                    else:
+                        db.execute(_UPSERT_RUN, (mapname, track, leg, ptier, style, player,
+                                                 name, ticks, tickrate, millis, flags,
+                                                 node, runid, now, 0))
                 log.info("run from %s is a stage of rejected run %s; hidden",
                          src, runid)
                 best = prev["millis"] if prev is not None else 0

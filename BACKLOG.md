@@ -82,21 +82,15 @@ Measured against his own Momentum run, `data/momentum/surf_voyager/main/
   d=json.load(open('data/momgrab/state.json'))['done'];
   print(sum(v=='otherbuild' for v in d.values()), len(d))"` on the Pi.
   Holding the old builds would need a per-build map store (ROADMAP 8).
-- **Submit adopts the tier of ANY replays row the post names, `momentum`
-  included** (review of b818e8a, CONFIRMED, predates it): surfd.py's
-  `rep = SELECT ... FROM replays WHERE map, track, leg, leaf` then
-  `tier = rep["tier"]` when `rep["player"] == player`. A trusted post naming a
-  momindex leaf with the steamid64 as player files a row under `momentum`, and
-  the replay_id UPDATE beside it unlinks an imported row's demo. One row per
-  (map, track, leg, player) held, trusted sources only. Fix: adopt only when
-  `rep["kind"] == "run"` (needs `kind` in the SELECT) -- a submit-path change,
-  so it gets its own review. Probe: scratchpad `adopt_probe.py` of 5 Oct.
-- **The hidden-slot write never checks the cap** (same review, CONFIRMED,
-  bounded): `tier@runid` rows for a rejected run store past a full cap, at most
-  63 legs x 2 tiers x 2 styles per reject, trusted sources only.
-- **The leg-0 cap count runs inside the write transaction** on a post with a
-  leaf: 0.37 s on the Pi, every first finish, almost all of it walking
-  imported rows. An index on `(leg, tier)` or a count kept beside the table.
+- **The leg-0 cap scan now runs BEFORE the write lock** (contention with other
+  writers gone -- it used to hold the lock 0.37 s on every first finish), **but
+  the scan itself is still 0.37 s**: it walks the imported rows (639k on the Pi)
+  to count the network's own. Both suggested follow-ups have teeth, so this stays
+  open rather than being "just add an index": an index on `(leg, tier)` only pays
+  off if `_runs_full` is rewritten to a POSITIVE tier list, and that changes what
+  is counted -- today's `tier NOT IN (imported)` counts hidden `tier@runid` rows,
+  a positive list would silently drop them. A count kept beside the table has to
+  stay in step across submit, sweep, reject cleanup and migration. Throughput-only.
 - **The site's two in-game pictures are crops of test captures** (debug text
   cropped out). A clean screenshot session on Lex's PC would do better; not
   taken on 5 Oct because the other sessions' arms refuse to run beside a second
