@@ -13,6 +13,35 @@ to be wrong.
 
 ## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
 
+### surf_voyager falls short -- found, not fixed yet (5 Oct, evening)
+
+You asked why the hands-off flight on surf_voyager falls short here when it
+works in Momentum. I compared our flight with your own Momentum run of it (66.27 s,
+22 June, which the Pi already had), tick by tick.
+
+- **Not the speed cap, not the push, not the extra bevel planes.** The map's
+  10000 cap is applied, the push leaves you in the same corner as in Momentum (to
+  a hundredth of a unit), and the bevels made no difference either way.
+- **The cause is how our engine decides you are touching a brush** when you are
+  within 1/32 of a unit of it. Source decides that slightly differently. A curved
+  ramp is many brushes, and at every seam our clip comes out a little different
+  (0.04 to 5 u/s). Voyager magnifies it: about 150 units off by the curved wall at
+  10 s, where you then lose 25% of your speed and drop.
+- **Proof:** in a test build with Source's two rules, our flight matches yours
+  tick for tick (to 0.006 u/s) for the first 11.5 seconds -- every ramp, seam and
+  wall. Today's game leaves your line in the first second.
+- **Not a finish yet.** At 11.5 s there is a V-shaped trough whose outcome comes
+  down to rounding at a thousandth of a unit; after it the test build goes its own
+  way and drops at about 17 s.
+- **Also:** the randomized start (the anti-replay rule, up to 2 units) pushed this
+  map off line within seconds in one of my two runs, on its own.
+
+**Your call:** putting Source's rules into the engine changes how *every* map
+collides -- closer to Momentum, which is the point, but it is a physics change: a
+new game release and server binaries, a new physics version so older recordings
+still verify, and the full review. Then the trough, and a per-map switch for the
+randomized start on auto maps like this one. Say if you want it.
+
 ### Your player-page report (5 Oct, afternoon) -- fixed and live
 
 - **"Could not load the board (HTTP 504)" on KSF and Momentum profiles.** The

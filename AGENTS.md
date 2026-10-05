@@ -2058,6 +2058,16 @@ script rather than passing it as an argument, where `ps` would show it.
   Through nginx: profiles 1.77 / 0.56 / 0.47 s, directory 0.04 s.  Backups
   `*.predf00b61-20261005-155751`, `data/surfd.db.bak-df00b61-20261005-155751`.
 
+  `baadc73` to /srv/nvme/surfd at 2026-10-05 05:58 UTC -- the review fixes to
+  561bb1e (per-writer snapshot temp names, a single-flight cold start, no older
+  directory over a newer one, a stamp ahead of the clock counted stale, the
+  thread-start guard, "Show more" by prefix via `limit`, and the maps cache's
+  empty answer for 300 s after a boot).  Live hashes matched df00b61 at 05:56.
+  After: a profile 2.66 s on the new worker's first request (snapshot load),
+  `limit=200` 0.62 s, people.json rewritten by the background rebuild at
+  05:59:13 (0600, no temp left).  Backups `*.prebaadc73-20261005-165654`,
+  `data/surfd.db.bak-baadc73-20261005-165654`.
+
   `migrate()` runs on EVERY `import surfd`, including sweep.py's cron import,
   so each schema step must be idempotent and safe to race. admin.py must not
   import surfd; surfd injects what it needs.
