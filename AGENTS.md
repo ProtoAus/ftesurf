@@ -290,6 +290,20 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   FTE_TARGET=win64`, then run `engine\release\fteqwsv64.exe` or `fteqw64.exe`
   with cwd `C:\FTESurf` (the basedir is the cwd). The installs keep their binary
   and a control run on `C:\FTEQuake\fteqwsv64.exe` stays one command away.
+- AND THE FLIP SIDE: AN ARM THAT PASSES SAYS NOTHING ABOUT WHAT THE OWNER IS
+  RUNNING. The bullet above is why — every arm drives `engine\release\`, so the
+  install can lag the engine tree indefinitely and every verdict stays green.
+  Measured 2026-10-05: `C:\FTESurf\ftesurf64.exe` was SIX engine patches behind
+  (485, 487, 488, 489, 490, 491 — four of them client-security fixes that protect
+  the owner's own client) while all four of Patch 491's arms passed beside it.
+  Nothing in the tree checked. `cfg/test/deploy491smoke.cfg` is that check: boot,
+  load a map, ask the server QC two questions, run one local operator command,
+  quit, and grade by presence/absence of strings only one cause can produce.
+  PROVENANCE IS AN MD5, NOT AN ARM: compare the install against
+  `engine/release/fteqw64.exe` and `C:\FTEQuake`'s copy — all three identical is
+  what "deployed" means. Reading a gate's literal out of the binary
+  (`grep -a -o "Blocking insecure renderer" | wc -l`) dates it when the stamp
+  does not, which is how the six-patch gap was found.
 - A synthetic key (`in_journal_synth`) never reaches the binds in a minimized
   headless client, so a key's effect cannot be driven. Probe the input chain's
   verdict instead: `vote key <scan> <0|1>` runs CSQC_InputEvent and prints
