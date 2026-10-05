@@ -313,6 +313,23 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   `FS_GAME`, so `%TEMP%` or the install root opens nothing and `fopen(FILE_READ)`
   returns -1 with NO "Access denied" line — which reads as a reader bug and is a
   path bug. Cost a whole arm.
+- **A TRIGGER ALIAS'S EXECUTION IS DEFERRED, AND THE CLIENT'S `quit` RE-FIRES IT — so
+  neither a marker's POSITION nor a COUNT attributes a phase** (measured driving Patch
+  487's arm). A multi-command alias body (one containing `;`) goes to
+  `Cbuf_AddText`, and text queued at a changelevel drained ~94 s later, during the
+  client's own quit. Separately, quiting reloads the menu and the map and those
+  reloads fire `f_newmap` AGAIN — two extra payload runs after the client had printed
+  its own "done" — so the control counted the planted payload 4x and the subject 3x,
+  a difference that is NOT the fix. GRADE SUCH AN ARM BY THE PRESENCE/ABSENCE OF A
+  STRING ONLY ONE CAUSE CAN PRODUCE: three different gated `fs_*` commands gave three
+  disjoint success strings and three disjoint blocking strings, and every line in the
+  log then named its own cause. Same family: `cmd viewpos`'s reply is ASYNCHRONOUS and
+  a shader reload (~150 lines) landed between request and answer, so a fixed byte
+  window read it as "not connected" — a false verdict on the one prediction that says
+  every other verdict came from a live connection. Bound that window by the client's
+  own done marker. And `stuffcmd` REFUSES A `;` ("You're not allowed to stuffcmd
+  that", `sv_ccmds.c`), so a server admin cannot stuff a multi-command alias body;
+  the filter is in the console command, not in the wire path.
 - `alias <name>` WITH NO VALUE DELETES THE ALIAS. `Cmd_Alias_f`'s argc==2 path
   builds an empty value and reaches `if (!*cmd && !dpcompat_console.ival)` —
   "someone wants to wipe it. let them" — and unlinks it. So it is NOT a query, and
@@ -320,12 +337,21 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   "missing", the second written specifically to explain the first, and the item
   they were disproving turned out to be real. The only safe read is the full
   `alias` listing (argc==1).
-- A `+exec` CFG RUNS BELOW `rcon_level` (20), so an `alias` defined in a cfg
-  creates nothing and bare `rcon_level` prints `Unknown command` — with no refusal
-  message, because the dispatcher's `cmd '%s' was restricted.` is a `Con_TPrintf`
-  that does not reach the log at these settings. Stufftext runs at
-  `RESTRICT_SERVERSEAT(0)` = 31, so a server CAN create an alias and a cfg cannot:
-  an arm that needs one must stuff it. Related and general: **SILENT REFUSALS ARE
+- A `+exec` CFG RUNS BELOW `rcon_level` (20), and bare `rcon_level` prints
+  `Unknown command` — with no refusal message, because the dispatcher's
+  `cmd '%s' was restricted.` is a `Con_TPrintf` that does not reach the log at these
+  settings. Stufftext runs at `RESTRICT_SERVERSEAT(0)` = 31.
+  **CORRECTION (Patch 487, measured): the claim this bullet used to carry — "an
+  `alias` defined in a cfg creates nothing" — IS FALSE.** `cfg/test/p487probe.cfg`
+  creates `alias f_probe "echo LOCALALIAS-RAN"` in a `+exec` cfg: the full `alias`
+  listing shows it, typing it prints `Execing alias f_probe` + `LOCALALIAS-RAN`, and
+  it also fires as an `f_newmap` trigger. WHAT A CFG CANNOT DO IS CREATE A
+  SERVER-LEVEL ALIAS, which is the distinction the old wording was reaching for:
+  `Cmd_Alias_f` stamps `execlevel = RESTRICT_SERVER` only when `Cmd_FromGamecode()`
+  (level >= 31) is true, otherwise `execlevel = 0` = "run at users exec level". A cfg
+  is RESTRICT_LOCAL, so its aliases are USER-level — which is exactly what makes one a
+  valid regression control and not a second subject. An arm that needs a SERVER alias
+  must stuff it. Related and general: **SILENT REFUSALS ARE
   EVERYWHERE IN THE COMMAND LAYER** (`condump`'s `if (Cmd_IsInsecure()) return;`
   prints nothing either), so grepping a log for a payload's own output cannot
   distinguish "refused" from "never ran". Every arm needs a control that must
@@ -588,12 +614,18 @@ bannered as superseded.)
 **A SECOND PRIVATE DOCUMENT SITS BESIDE THE PLAN: `ENGINE_SECURITY.md`**, the
 audit of what a server can make a CLIENT do — the engine's stufftext surface,
 which is the other half of the anti-cheat argument (a client that can be made to
-run things cannot be trusted to report honestly). Five of its items were DRIVEN
-on 2026-10-05, not just read; the headline is that one stuffed alias defeats
-Patch 481 and therefore every `Cmd_IsInsecure()` gate, so 481 is a delivery-path
-fix and not a boundary. What is safe to say here is in BACKLOG.md's
+run things cannot be trusted to report honestly). Nine of its items are now
+DRIVEN and FIXED (481's `fs_*` set, then items 4/7/8 by Patch 483, 5/6/9 by 485,
+and item 1 by 487); items **2** (a server can choose the renderer DLL) and **3**
+(`allskins` strcpy) are DRIVEN AND STILL OPEN, and **10** (`fs_game`/`fs_restart`
+from the console) is open and unarmed. THE HEADLINE ITEM 1 WAS THE ONE THAT
+DEFEATED ALL THE OTHERS: one stuffed `alias f_newmap "<anything>"` ran its body at
+`RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate read 29 for it and 481 was a
+delivery-path fix rather than a boundary. Patch 487 closed it by running a trigger
+alias at the alias's OWN execlevel. What is safe to say here is in BACKLOG.md's
 "Engine client-security audit" section — code site, impact class, falsifier, no
-recipe. The arms are in `poc/p482/cfg/` there and stay there: they are working
+recipe. The arms are in `poc/p482/cfg/`, `poc/p483/`, `poc/p485/` and `poc/p487/`
+there and stay there: they are working
 exploits for holes that are still open, and the convention is that an arm ships
 publicly WITH its fix, not before it.
 

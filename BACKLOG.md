@@ -1322,21 +1322,33 @@ exploits for holes that are still open and this repo is published; the conventio
 is that an arm ships publicly with its fix, not before it. Copy them in from
 `poc/p482/cfg/`, run, delete.
 
-- **`TP_ExecTrigger` runs a server-created alias at the user's restriction level,
-  which opens every `Cmd_IsInsecure()` gate in the engine — including Patch 481's.**
-  `client/zqtp.c` `TP_ExecTrigger`; the alias's own `execlevel` field (set to
-  `RESTRICT_SERVER` for server-created aliases in `common/cmd.c` `Cmd_Alias_f`) is
-  never consulted on that path, nor is `ALIAS_FROMSERVER`. Measured: one command
-  stuffed directly was refused by 481's gate, and the same command reached through a
-  trigger alias ran. Impact: 481 is not a boundary, it is one delivery path of two;
-  the same is true of any other gate built on `Cmd_IsInsecure()`, e.g. `condump`'s.
-  Fix in `TP_ExecTrigger`: skip `ALIAS_FROMSERVER` aliases, or execute at the
-  alias's own `execlevel` (the second is more general and needs an accessor, since
-  `Cmd_AliasExist` returns only the body string). Falsifier: re-run the arm pair
-  (`p482a6sv`/`p482a6cl`) — the trigger-delivered command must print
-  `Blocking insecure command` exactly as the directly stuffed one does, and a
-  user-defined `f_newmap` alias typed at a real console must still run, or the fix
-  has broken the legitimate feature.
+FIXED AND DRIVEN since that paragraph was written: items **4, 7, 8** (Patch 483),
+**5, 6, 9** (Patch 485) and **1** (Patch 487, `poc/p487/`). Item 1 was the one that
+defeated all the others -- a server-planted `f_newmap` alias ran its body at
+`RESTRICT_LOCAL`, so every `Cmd_IsInsecure()` gate read 29 for it. STILL OPEN: item
+**2** (a server can choose the renderer DLL), item **3** (`allskins` strcpy) and item
+**10** (`fs_game`/`fs_restart` from the console, unarmed).
+
+- **`TP_ExecTrigger`'s multi-command branch is fixed but never DRIVEN, and the reason
+  is a server-side filter that a real attacker does not have to obey.** Patch 487 sets
+  the level for both of `TP_ExecTrigger`'s branches (`Cmd_ExecuteString` for a
+  single-command body, `Cbuf_AddText` for one containing `;`) and for
+  `TP_SearchForMsgTriggers`, but the arm could only plant a single-command body:
+  `stuffcmd` refuses any string containing `;` or `\n` ("You're not allowed to
+  stuffcmd that", `server/sv_ccmds.c` `SV_Stuffcmd_f`). That filter is in the CONSOLE
+  COMMAND, not in the wire path, so a server sending `svc_stufftext` itself -- or its
+  own QC's `stuffcmd` trap -- still reaches the `Cbuf_AddText` branch. The fix covers
+  it by construction and the local-alias regression control exercises that branch at
+  `RESTRICT_LOCAL`, but no arm has watched a SERVER alias take it.
+  `client/zqtp.c` `TP_ExecTrigger`; `common/cmd.c` `Cmd_AliasExecLevel`.
+  Falsifier: plant a multi-command body by a route that is not the `stuffcmd` console
+  command (a test-only QC `stuffcmd`, or a raw `svc_stufftext` from a stub server),
+  change map, and grade by string -- the payload must print
+  `Blocking insecure command`, and the same body created locally must still run.
+  Note when writing it: a multi-command body's execution is DEFERRED (~94 s measured,
+  draining during the client's own quit) and the client's `quit` re-fires `f_newmap`
+  twice more, so neither position nor count is a verdict -- only presence/absence of a
+  string one cause alone can produce. Patch 487 review.
 - **`R_SetRenderer_f` lets a caller name the DLL the renderer loads, unfiltered.**
   `client/renderer.c` `R_SetRenderer_f` → `R_BuildRenderstate` (an explicit
   subrenderer token is stored with no path filter — the filter beside it runs only
