@@ -704,6 +704,48 @@ def case_receipt_journal_pending_until_it_arrives():
           tuple(jrn("20260921-000098-0")), ("ABSENT", "the journal never arrived"))
 
 
+def case_pending_reread_moves_only_the_journal():
+    """REVIEW OF 692503c: the PENDING re-read recomputed the whole receipt, so
+    a .rec pruned between the reads turned a stored FAULT into VALID.  Here the
+    first read says FAULT and the second would say VALID: only the journal
+    columns may move."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    text = _journal_text().encode("utf-8")
+    rid = "20260921-000099-0"
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, age=old, hid=text)
+    os.remove(rp[:-5] + ".hid")
+    real = sweep.read_receipt
+    reads = []
+
+    def first_read_faults(path):
+        got = real(path)
+        reads.append(path)
+        if len(reads) == 1:
+            return ("FAULT", got[1], got[2], "BROKEN", "the .rec states another nonce") \
+                + tuple(got[5:])
+        return got
+
+    def row():
+        return tuple(conn.execute("SELECT verdict, angles, reason, journal FROM receipts"
+                                  " WHERE runid = ?", (rid,)).fetchone())
+    sweep.read_receipt = first_read_faults
+    try:
+        sweep.receipt_step(conn, now=now)
+        check("first read: FAULT, journal PENDING", (row()[0], row()[3]), ("FAULT", "PENDING"))
+        with open(rp[:-5] + ".hid", "wb") as fh:
+            fh.write(text)
+        sweep.receipt_step(conn, now=now + 600)
+        check("the journal arrives: it is read again", len(reads), 2)
+        check("...and only the journal moved", row(),
+              ("FAULT", "BROKEN", "the .rec states another nonce", "OK"))
+    finally:
+        sweep.read_receipt = real
+
+
 def case_receipt_step_never_takes_the_sweep_down():
     """THE ARM THE WHOLE ADDITION RESTS ON.  This step imports three files that
     live outside surfd; on a host where they are not deployed the verification
@@ -1218,6 +1260,7 @@ def main():
                  case_receipt_journal_reaches_the_database,
                  case_receipt_journal_third_verdict,
                  case_receipt_journal_pending_until_it_arrives,
+                 case_pending_reread_moves_only_the_journal,
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_disk_note):
         print("%s:" % case.__name__)

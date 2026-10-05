@@ -270,6 +270,44 @@ VF_FREE     = 4     # the cursor was free (menu/console); counts reached neither
 # The 'c'-tracked cvars (engine in_jrn_inputcvars) that check_identity reads.
 IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel")
 
+
+def q_atof(s):
+    """The engine's Q_atof (common.c), which sets a cvar's value from the
+    string a 'c' record carries: 0x hex, a quoted character, else digits and
+    one '.' up to the first other character -- '0.3x' is 0.3, '1e2' is 1 and
+    '0x' is 0, where float() raises or says 100.  Header values are %.9g
+    numbers and stay float()."""
+    i, n = 0, len(s)
+    while i < n and s[i] == " ":
+        i += 1
+    sign = 1.0
+    if i < n and s[i] == "-":
+        sign, i = -1.0, i + 1
+    val = 0.0
+    if s[i:i + 2] in ("0x", "0X"):
+        i += 2
+        while i < n and s[i] in "0123456789abcdefABCDEF":
+            val = val * 16 + int(s[i], 16)
+            i += 1
+        return val * sign
+    if s[i:i + 1] == "'":
+        return sign * (ord(s[i + 1]) if i + 1 < n else 0)
+    decimal, total = -1, 0
+    while i < n:
+        c = s[i]
+        i += 1
+        if c == ".":
+            decimal = total
+            continue
+        if not "0" <= c <= "9":
+            break
+        val = val * 10 + (ord(c) - 48)
+        total += 1
+    while decimal != -1 and total > decimal:
+        val /= 10
+        total -= 1
+    return val * sign
+
 # Kinds that are input events, i.e. what the trailer's `events` counts.  'f' is a
 # frame, '#' and '!' are annotations, and none of the three is an event.
 EVENT_KINDS = {"m", "a", "+", "-", "x", "j"}
@@ -1526,6 +1564,10 @@ def check_hid(path, verbose=False):
             r.note("no frame markers and no input events: nothing was drained "
                    "while the journal was open -- a journal of nothing "
                    "happening, not a missing record")
+            # Any angle in such a file came from somewhere other than a
+            # device (a console +left drives one), so the identity can hold on
+            # every frame and still have measured no input: never OK.
+            r.info["identity_blind"] = "no frame markers and no input events"
 
     span = (last_f - first_f) if (first_f is not None and last_f is not None) else 0
     if first_f is not None:
@@ -1769,7 +1811,9 @@ def check_identity(r, head, views):
         ov = v[8]
         if id(ov) not in cache:
             def num(name, dflt=None):
-                s = ov.get(name, head.get(name, dflt))
+                if name in ov:
+                    return q_atof(ov[name])
+                s = head.get(name, dflt)
                 return None if s is None else float(s)
             try:
                 s_ = num("sensitivity") * scale
@@ -2008,9 +2052,10 @@ def check_identity(r, head, views):
                                         % (len(p_judged) - len(pb), len(p_judged),
                                            len(pb)))
         else:
-            r.info["identity_pitch"] = ("exact on all %d governed frames "
-                                        "(mouse + recorded keyboard term)"
-                                        % (len(gov_pitch) - 1))
+            r.info["identity_pitch"] = ("exact on all %d judged frames "
+                                        "(mouse + recorded keyboard term)%s"
+                                        % (len(p_judged), "; %d not judged" % p_abst
+                                           if p_abst else ""))
     if pg_only:
         # A note and not a fault, matching yaw: a server angle set and an
         # injected turn look identical from inside this file.
@@ -2020,6 +2065,9 @@ def check_identity(r, head, views):
                "like this and so does an injected turn -- corroborate against "
                "the .rec before concluding either." % (len(pg_only), pg_only[0][0]))
 
+    # Review of 692503c: "exact on all 59" was printed over 9 judged frames.
+    y_not = ("; %d not judged (m_filter, m_accel or a zero constant)" % y_abst
+             if y_abst else "")
     yg_only = [g for g in ghost if g[0] not in whole]
     if yg_only and not have_kbd:
         # On a pre-305 file a "ghost" is almost certainly just keyboard turn.
@@ -2071,14 +2119,14 @@ def check_identity(r, head, views):
         # control reported "exact on all 150" and "150 frames with no recorded
         # cause" in the same block, about the same 150 frames.  Unresolved frames
         # must not be silently counted as passes.
-        r.info["identity"] = ("holds on the %d frame(s) with a recorded cause; "
-                              "%d frame(s) unresolved (see the notes)"
-                              % (len(applicable) - 1 - len(yb), len(yb)))
+        r.info["identity"] = ("holds on the %d judged frame(s) with a recorded "
+                              "cause; %d frame(s) unresolved (see the notes)"
+                              % (len(y_judged) - len(yb), len(yb)))
     elif have_kbd:
-        r.info["identity"] = ("exact on all %d governed frames (mouse + recorded "
-                              "keyboard turn)" % (len(applicable) - 1))
+        r.info["identity"] = ("exact on all %d judged frames (mouse + recorded "
+                              "keyboard turn)%s" % (len(y_judged), y_not))
     else:
-        r.info["identity"] = "exact on all %d governed frames" % (len(applicable) - 1)
+        r.info["identity"] = "exact on all %d judged frames%s" % (len(y_judged), y_not)
 
 
 def cross_check(hid, viewpath):

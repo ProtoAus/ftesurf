@@ -1995,6 +1995,79 @@ def case_cvar_change_followed():
           % (r.faults[:1] or "none", r.info.get("frames_not_governed")))
 
 
+def case_c_values_read_as_the_engine_reads_them():
+    """REVIEW OF 692503c: a 'c' record carries the cvar's string, which the
+    engine reads with Q_atof -- 'sensitivity 0.375x' is 0.375, 'm_filter 0x'
+    is 0.  float() raised on both, the frames after them were skipped, and
+    the verdict text still counted them as checked."""
+    j = Journal()
+    yaw = 90.0
+    k_new = -0.022 * 0.375
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("sensitivity", "0.375x")
+        yaw += (k_new if i >= 20 else j.k) * 6
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(r.ok and not r.info.get("frames_not_governed"),
+          "'sensitivity 0.375x' is followed as 0.375 and every frame is judged (%s, %s)"
+          % (r.faults[:1] or "none", r.info.get("frames_not_governed")))
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("m_filter", "0x")
+        yaw += j.k * (6 if i < 20 else 4.5)
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(has_fault(r, "YAW IDENTITY BROKEN on 20 of"),
+          "'m_filter 0x' is off to the engine, so a rewrite after it faults (%s)"
+          % (r.faults[:1] or "none"))
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("m_filter", "1")
+        yaw += j.k * (6 if i < 20 else 4.5)
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    got = r.info.get("identity", "")
+    check(got.startswith("exact on all 19 judged frames") and "20 not judged" in got,
+          "m_filter on mid-run: the text counts the 19 frames it judged, not 39 (%s)" % got)
+
+
+def case_no_input_is_blind():
+    """REVIEW OF 692503c: no 'f' and no events became a note, so a run turned
+    entirely from the console (+left, recorded as the keyboard term) held on
+    every frame and stored OK with no device behind any of it."""
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        yaw += 0.5
+        j.view(0, 0, 10.0, yaw, kyaw=0.5)
+    r = run(j.end())
+    check(r.ok and r.info.get("identity_judged") and r.info.get("identity_blind"),
+          "no frames, no events, every angle from the keyboard term: no fault, "
+          "judged, and marked blind (%s, %s, %s)" % (r.faults[:1] or "none",
+          r.info.get("identity_judged"), r.info.get("identity_blind")))
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(r.ok and not r.info.get("identity_blind"),
+          "CONTROL: the same journal with a mouse behind it is not blind")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -2014,6 +2087,7 @@ def main():
                case_pre310_journal, case_synth_names_its_source,
                case_synth_unsourced_names_nobody, case_no_synth_no_noise,
                case_join_holds, case_join_catches_what_the_identity_cannot,
+               case_c_values_read_as_the_engine_reads_them, case_no_input_is_blind,
                case_join_declared_transform_is_not_a_break,
                case_join_pre312_is_unanswerable_not_broken,
                case_join_absolute_window_not_joinable,

@@ -490,14 +490,15 @@ def join_journal(r):
         r.journal_detail = "%s | %s" % (h.faults[0][:300], r.journal_detail)
         r.note("the journal beside this receipt does not hold up: %s"
                % h.faults[0][:300])
-    elif unresolved or not h.info.get("identity_judged"):
+    elif unresolved or not h.info.get("identity_judged") or h.info.get("identity_blind"):
         # THE THIRD VERDICT.  A teleport and a whole-angle rewrite are the same
         # bytes here, and a journal the identity judged nothing in has measured
         # nothing: neither is guilty, and neither is OK.
         r.journal = "BLIND"
         why = ("%d frame(s) unresolved (%d moved both axes)"
                % (unresolved, h.info.get("identity_whole") or 0)
-               if unresolved else "no frame the identity could judge")
+               if unresolved else "no frame the identity could judge"
+               if not h.info.get("identity_judged") else h.info["identity_blind"])
         r.journal_detail = "%s | %s" % (why, r.journal_detail) \
             if r.journal_detail else why
         r.note("the journal beside this receipt has no fault, and %s" % why)

@@ -415,6 +415,19 @@ def receipt_step(conn, limit=200, now=None):
             if got is None or not os.path.exists(path):
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
+            if not is_fresh and rows[runid][0] not in (1, 2):
+                # Due only because its journal was PENDING: move the journal
+                # columns and nothing else.  The rest was read when the receipt
+                # was, and a .rec pruned since must not turn a stored FAULT
+                # into VALID (review of 692503c).
+                if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
+                    continue
+                with conn:
+                    conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
+                                 " WHERE runid = ?", (journal, jreason, runid))
+                n += 1
+                jfault += journal == "FAULT"
+                continue
             # A signed journal that is not here yet may still be uploading, one
             # chunk per round trip: PENDING, read again when it arrives, ABSENT
             # once JOURNAL_WAIT after signing has passed without it.
