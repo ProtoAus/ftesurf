@@ -578,10 +578,16 @@ not a detector, and the three obstacles in the module docstring are the result:
     because that is the false-accusation rate a threshold at 1.0000 would have;
   * the momentum half is Source physics at the demo's own tick rate and its
     players are leaderboard players, so it is the hardest population to accuse and
-    the right one to calibrate on -- but it is not FTESurf play, and a threshold
-    for this game needs the fleet corpus (`data/runs/` on the Pi).
+    the right one to calibrate on -- but it is not FTESurf play.
+  * THE FLEET CORPUS HAS BEEN RUN (2026-10-05, the Pi's `data/runs/`; fetch it
+    read-only per tools/census/README.md and pass --root <dir>/data).  It inverts
+    the coverage problem: 54 of 64 files carry a ramp-contact tick against 101 of
+    5571 locally, 27 runs are judgeable on `land(bit16)` and EVERY ONE reads
+    0.0000.  `null` still does not separate (4 of 57 fleet runs read exactly
+    1.0000, against 8.59%% locally).  So the human side of a cut is measured and
+    the cheat side is not -- no assist sample exists to run through it.
 NO THRESHOLD IS ASSERTED ANYWHERE IN THIS FILE, and none should be added without
-a native corpus beside it.""" % MIN_OPP)
+an assist sample beside the native corpus.""" % MIN_OPP)
     return 0
 
 
@@ -776,6 +782,14 @@ def synth_assist(rows):
           following sign, so no reversal passes through a null window.
     land: every landing that needed a fresh press gets jump held ON the landing
           tick, i.e. delay 0, which is what a Perf-Hop/Jumpbug assist does.
+          BOTH CONTACT BITS, not just F_ONGROUND.  The first cut rewrote only
+          bit 1, so `control` proved the walkable-ground statistic and said
+          nothing about the ramp-contact one -- which is the statistic that
+          actually has coverage on this game's runs (bit 1 is nearly absent on
+          a surf run, obstacle 1; bit 16 is written only by our server, so the
+          fleet corpus is all of it and the Momentum corpus none).  A statistic
+          the control never fires reads 0.0000 for two opposite reasons, and
+          only the control tells them apart.
     hop:  left alone -- its control is the periodic chain below, because a
           regularity statistic cannot be forced by editing one column."""
     out = []
@@ -794,11 +808,12 @@ def synth_assist(rows):
             side = r[SIDE]
             if side == 0 and prevsign and nxt[i] and nxt[i] != prevsign:
                 side = 450.0 * nxt[i]          # close the null window
-            g_now = (fl & F_ONGROUND) != 0
-            g_prev = i > 0 and (seg[i - 1][FL] & F_ONGROUND) != 0
             j_prev = i > 0 and (seg[i - 1][FL] & F_JUMP) != 0
-            if g_now and not g_prev and not j_prev:
-                fl |= F_JUMP                   # fire on the contact tick
+            for bit in (F_ONGROUND, F_RAMP):   # F_JUMP aliases neither
+                g_now = (fl & bit) != 0
+                g_prev = i > 0 and (seg[i - 1][FL] & bit) != 0
+                if g_now and not g_prev and not j_prev:
+                    fl |= F_JUMP               # fire on the contact tick
             row = list(r)
             row[SIDE] = side
             row[FL] = fl
@@ -833,17 +848,41 @@ def _rate(st, num, den):
 def cmd_control(args):
     src = args.file
     if not src:
-        cands = [p for p in iter_recs(args.root, 600) if classify(p) == "momentum"]
-        for need_land in (True, False):
+        # MOMENTUM FIRST, THEN NATIVE, and the order is the point: the published
+        # control numbers were measured on a Momentum run, so a corpus that has
+        # one still picks one and stays reproducible.  The fallback exists
+        # because a FLEET corpus has none -- `data/runs/` on the Pi is all
+        # native, and the first cut printed "no source run" there and returned 1,
+        # i.e. the control arm was unusable on exactly the corpus that has the
+        # ramp-contact coverage.  Whichever it picked is printed below.
+        seen = set()
+        cands = []
+        for kind in ("momentum", "native", "other"):
+            for p in iter_recs(args.root, 600):
+                if classify(p) == kind and p not in seen:
+                    seen.add(p)
+                    cands.append(p)
+        # THREE PASSES, STRICTEST FIRST.  A control that exercises only some of
+        # the statistics is a control that reports green beside a statistic nobody
+        # has ever seen fire -- the shape this tree keeps finding (Patch 484's
+        # arm A: an unmeasured state wearing a clean measurement's clothes).  So
+        # ask for a source with BOTH landing bits before settling for one, and
+        # print which pass answered.  A bhop map is walkable ground with no surf
+        # ramps (landg only); a surf map is the reverse.
+        passes = (("both landing bits", lambda st: st["landg_opp"] >= 3 and st["landr_opp"] >= 3),
+                  ("either landing bit", lambda st: st["landg_opp"] >= 3 or st["landr_opp"] >= 3),
+                  ("null only, no landing coverage", lambda st: True))
+        for label, want in passes:
             for p in cands:
                 try:
                     st = run_stats(parse(p))
                 except OSError:
                     continue
-                if st["null_opp"] >= MIN_OPP and (st["landg_opp"] >= 3 or not need_land):
+                if st["null_opp"] >= MIN_OPP and want(st):
                     src = p
                     break
             if src:
+                print("control: source picked on the '%s' pass" % label)
                 break
         if not src:
             print("control: no source run with %d null opportunities under %s"
@@ -852,7 +891,8 @@ def cmd_control(args):
     rows = parse(src)
     asst = synth_assist(rows)
     a, b = run_stats(rows), run_stats(asst)
-    print("control source: %s" % src)
+    skipped = []          # statistics this source could not exercise
+    print("control source: %s  [%s]" % (src, classify(src)))
     print("  %-32s %14s %14s" % ("", "AS RECORDED", "ASSIST-SHAPED"))
     ok = True
 
@@ -896,6 +936,46 @@ def cmd_control(args):
         print("  land: the source run has ZERO fresh-press landings, so the"
               " statistic cannot fire on it at all (obstacle 1) -- the landing"
               " half of the control needs a run that touches walkable ground.")
+        skipped.append("land(bit1)")
+
+    # THE BIT-16 TWIN, and on this game's runs it is the one that matters: a
+    # surf run leaves FL_ONGROUND clear while sliding a ramp (that is the
+    # mechanic), so `landg` is unjudgeable on most of the fleet while `landr` is
+    # judgeable on 27 of 64 runs.  bit 16 is written only by our server, so the
+    # Momentum corpus has none of it and the fleet corpus is all of it -- the two
+    # halves of the control are calibrated on disjoint populations, which is why
+    # both are printed rather than one standing in for the other.
+    line("land(bit16) opportunities", "landr_opp", "landr_opp")
+    ra, rb = line("land(bit16) delay0 rate", ("landr_d0", "landr_opp"),
+                  ("landr_d0", "landr_opp"))
+    if a["landr_opp"] >= 1:
+        if rb is None or rb < 0.999999:
+            print("  FAIL: the ramp-contact landing statistic did not reach"
+                  " 1.0000 (%s) -- the detector has not fired, so a 0.0000 in the"
+                  " census is coverage and not a clean population." % rb)
+            ok = False
+        else:
+            print("  landr: FIRES.  %s -> %s over %d ramp-contact opportunities."
+                  % (fmt(ra), fmt(rb), a["landr_opp"]))
+            if a["landr_opp"] < MIN_OPP:
+                print("  AND THE OPPORTUNITY COUNT IS %d, below MIN_OPP %d --"
+                      " obstacle 1 on this run too." % (a["landr_opp"], MIN_OPP))
+    else:
+        # DO NOT ASSERT A CAUSE THE RUN HAS NOT MEASURED.  The first cut blamed
+        # obstacle 2 (a .mtv records no contact plane) unconditionally, and on a
+        # NATIVE bhop source that is false -- the reason there is no ramp contact
+        # is that a bhop map has no surf ramps.  A control that explains its own
+        # skip wrongly is worse than one that just says "skipped".
+        if classify(src) == "momentum":
+            print("  landr: the source is a MOMENTUM IMPORT, which records no"
+                  " contact plane at all (obstacle 2) -- no .mtv-derived run can"
+                  " ever fire this one.  Pass a native run to exercise it.")
+        else:
+            print("  landr: the source run has ZERO fresh ramp contacts.  On a"
+                  " native run that means the map has no surf ramps (a bhop map"
+                  " is walkable ground -- obstacle 1's mirror).  Pass a surf run"
+                  " to exercise it.")
+        skipped.append("land(bit16)")
 
     per = synth_periodic()
     hp, cvp = stat_hop(per.segs[0])
@@ -911,7 +991,22 @@ def cmd_control(args):
     else:
         print("  hop: FIRES -- a timer-driven bounce reads cv %.4f." % cvp)
 
-    print("\ncontrol: %s" % ("EVERY STATISTIC FIRED" if ok else "FAILED"))
+    # A SKIP IS NOT A PASS and the verdict must not read as one.  The search
+    # above already preferred a source that exercises everything, so what
+    # reaches here is honest coverage -- but "EVERY STATISTIC FIRED" printed
+    # beside a statistic that never ran is the false green this tree keeps
+    # paying for, so the verdict line itself is qualified.
+    if not ok:
+        verdict = "FAILED"
+    elif skipped:
+        verdict = "EVERY STATISTIC THAT RAN, FIRED"
+    else:
+        verdict = "EVERY STATISTIC FIRED"
+    print("\ncontrol: %s" % verdict)
+    if skipped:
+        print("control: NOT EXERCISED ON THIS SOURCE: %s -- the numbers above"
+              " prove nothing about those statistics.  Re-run with an explicit"
+              " file that has them." % ", ".join(skipped))
     return 0 if ok else 1
 
 

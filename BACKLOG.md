@@ -5,7 +5,7 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Input evidence: built, and still unwired at both ends — 2026-10-05
+## Input evidence: built, and still unwired at one end — 2026-10-05
 
 Found while triaging the fifteen samples in the private `Cheats/` corpus. Ten of
 them are in-process CreateMove rewrites (recorders, TAS with segmented
@@ -16,29 +16,31 @@ and the engine's own angle accumulator all come to describe the SAME angles, so
 signs mutually consistent digests, and `.rec`-vs-`.view` agrees by construction.
 The one artifact that can object is the `.hid`, because `IN_Commands` journals
 each event BEFORE dispatching it. Patch 484 wired the journal's contents into the
-sweep and closed the pitch axis; these are what it could not close.
+sweep and closed the pitch axis; **Patch 486 then shipped the counter's consumer**
+(`cl_replay.qc` reads the five `in_jrn484_*` cvars under `IJH_IDENT`, `sv_timer.qc`
+carries them as `run_t_ij*`, and the server writes them into the recording, so
+`pm_verify` replays a number bound to the evidence it describes).  What is left
+below is the collection side and the rules that still only note.
 
-- **NOTHING CONSUMES THE `in_jrn484_*` COUNTERS.** `client/in_generic.c`,
-  Patch 484. They are published, read-only, and correct — and no QC reads them, no
-  `.rec` header key carries them, and no `pm_verify` rule looks at them. A gate
-  that reads a counter nobody has ever seen nonzero is a gate nobody can
-  calibrate, which is why it stopped there. Falsifier: `grep -rn in_jrn484 src/`
-  returns nothing, and a run's `.rec` header has no identity line. The consumer is
-  the Patch 376 shape — client sends derived counters, progs write a record,
-  `pm_verify` HOLDs — and it is deliberately NOT the `inprof`/`*phash` userinfo
-  path: a star key is what a patched client lies about, while a counter written
-  into the recording pm_verify replays is bound to the evidence it describes.
-
-- **THE FLEET COLLECTS ZERO JOURNALS, so there is no corpus to calibrate
+- **THE FLEET COLLECTS ZERO JOURNALS, so there is no `.hid` corpus to calibrate
   against.** Measured on the live host 2026-10-05: `19 rcpt, 14 view, 4 rec, 0
   hid`, both lobby cfgs at `run_evidence_ul 1`. Raising it to `2` does not work
   either — at 110 KB/s the client's 4 MiB staging cap refuses any journal past
   ~38 s of run, and the transport is one ≤768-byte chunk per round trip. Two
   exits: a transport that is not the netchan (the plan's own open item), or
   ship the VERDICT instead of the file, which is what 484's counters are for and
-  costs bytes proportional to nothing. Falsifier:
+  costs bytes proportional to nothing -- **486 shipped that exit, so this item is
+  now about the raw files only, not about having no fleet signal at all.**
+  Falsifier:
   `find <basedir>/data/evidence -name '*.hid' | wc -l` on the Pi. Until this
-  moves, everything below is calibrated on local journals only.
+  moves, every `.hid` rule below is calibrated on local journals only.
+
+  **AND NOTE WHICH CORPORA ARE FLEET-SIZED ALREADY, because it is not this one.**
+  The `.rec` half IS available: the Pi's `data/runs/` holds the runs real players
+  posted, and `tools/census/README.md` now records how to fetch it read-only and
+  what it moved for `recsim.py` and `assist.py` (both of which had filed
+  themselves as blocked on exactly that corpus).  `.hid` files are the ones that
+  cannot be had remotely, because they are the artifact the netchan cannot carry.
 
 - **THE GHOST RULE IS A NOTE, AND NOTHING PERFORMS THE CORROBORATION IT ASKS
   FOR.** `hidcheck.check_identity`: a frame whose angle moved with zero device
@@ -137,10 +139,40 @@ sweep and closed the pitch axis; these are what it could not close.
   So `recsim.py` ships as a **census tool**, and it prints its own caveat when it
   fires ("THIS CORPUS CANNOT CALIBRATE A THRESHOLD — it holds no two genuinely
   independent runs of one map") rather than a bare OVERLAP that reads as "the
-  metric failed".  **The remaining work is the fleet corpus and then the surfd
-  side**, and the fleet corpus is the same blocker as BACKLOG item B's journals:
-  `data/runs/` on the Pi holds the posted runs of real players, which is exactly
-  the material this needs and which this workstation does not have.
+  metric failed".
+
+  **THE FLEET CORPUS HAS NOW BEEN RUN, AND THE DISCRIMINATOR SEPARATES ON IT.**
+  Measured 2026-10-05 on the Pi's `data/runs/` (64 `.rec`, fetched read-only; the
+  recipe is in `tools/census/README.md`): 9 map/leg groups hold more than one
+  comparable run, giving **20 negative pairs of genuinely independent posted
+  runs**, and
+
+  | | value |
+  |---|---|
+  | positive min (an exact replay) | **1.0000** |
+  | negative max | **0.5866** |
+  | separation | **CLEAN, margin 1.70x** |
+  | negative max, SAME identity | 0.5866 (12 pairs) |
+  | negative max, CROSS identity | 0.2146 (8 pairs) |
+
+  The worst pair is `surf_utopia` 0004216 vs 0004224 — one install, two runs 8
+  ticks apart in length, cover 0.0000 and prefix 0, agreeing on 59% of compared
+  rows and sharing no contiguous opening at all.  So a gate at `match >= 0.95`
+  sits 1.62x above the worst SAME-PLAYER pair and 4.4x above the worst
+  cross-player one.  `recsim.py pairs` now prints that identity split itself,
+  because which case was measured is a property of the corpus and not of the
+  metric: the local corpus has **zero** cross-identity pairs, so every number it
+  produced is a same-player-or-unattributed figure.
+
+  **STILL NO THRESHOLD AND STILL NO CODE IN surfd**, and the reason has narrowed
+  rather than gone: 20 pairs is a small sample and only 8 of them are
+  cross-identity, while the local corpus's 376 pairs are contaminated by harness
+  output as catalogued above.  **The remaining work is the surfd side** — a
+  comparison at submit time against the runs already filed for that map — plus a
+  wider fleet sample before a number is committed to.  Note the identity is the
+  8-hex `FS_GuidId` in the filename (sha256 of the install's `qkey`), so it
+  survives a rename and does NOT separate two netnames on one install: the fleet
+  holds four identities and 53 of its 64 files are one of them.
 
   Also measured and worth keeping: the alignment offset is searched over the
   DIFFERENCE OF THE FIRST TICKS ±4 rows, and on all 25 synthetic positives the
@@ -216,8 +248,44 @@ sweep and closed the pitch axis; these are what it could not close.
   reading is that **45 of the 5414 files with sample rows can be judged on
   landings, and not one Momentum run can be judged on ramp contact at all**. `control` rewrites a real run into an assist-shaped
   one and asserts each statistic reaches 1.0000 (and the periodic chain cv 0), so
-  a zero in the output reads as coverage and not as a broken statistic. Still no
-  threshold and no surfd code, and the blocker is unchanged: the fleet corpus.
+  a zero in the output reads as coverage and not as a broken statistic.
+
+  **THE FLEET CORPUS INVERTS THE COVERAGE PROBLEM, AND THAT IS THE FINDING.**
+  Measured 2026-10-05 on the Pi's `data/runs/` (64 `.rec`, all native; recipe in
+  `tools/census/README.md`).  The local obstacle was that bit 16 is written only
+  by our server, so the 5281 Momentum imports carry none of it and the corpus
+  with the signal had no players.  The fleet is the other way round:
+
+  | | local `ftesurf/data` | fleet `data/runs` |
+  |---|---|---|
+  | files with a ramp-contact tick (bit 16) | 101 of 5571 | **54 of 64** |
+  | runs judgeable on `land(bit16)` | 90 | **27** |
+  | their frame-perfect-landing rate | — | **0.0000, every one of the 27** |
+  | runs reading `null` exactly 1.0000 | 364 of 4237 (8.59%) | **4 of 57 (7.02%)** |
+  | hop-interval cv floor | 0.5487 | **0.6023** |
+
+  So **on this game's own runs not one honest landing out of thousands was
+  frame-perfect**, and `null` is still unusable as a sole gate (7.02% of honest
+  fleet runs read exactly 1.0000, matching the local 8.59%).  `control` now
+  proves the bit-16 statistic is LIVE rather than dead on a fleet run
+  (`surf_4am`, 19132 ticks: **146 ramp-contact opportunities, 0.0000 as
+  recorded, 1.0000 rewritten assist-shaped**), which it could not do before —
+  `synth_assist` only rewrote bit 1, so the control exercised `landg` and said
+  nothing about `landr`, the one statistic that actually has coverage here.
+  Its auto-search also only accepted Momentum files, so on a fleet corpus it
+  printed "no source run" and returned 1: **the control arm was unusable on
+  exactly the corpus that has the ramp coverage.**  It now falls back to native,
+  prefers a source that exercises BOTH landing bits, and qualifies its own
+  verdict (`EVERY STATISTIC THAT RAN, FIRED` plus a NOT-EXERCISED list) rather
+  than printing a green beside a statistic nobody has seen fire.
+
+  Still no threshold and no surfd code.  **The blocker has moved from "there is
+  no corpus" to "there is no assist sample"**: 27 judgeable fleet runs all read
+  0.0000, so the human side of the cut is measured, and the cheat side is not —
+  no `Edgebug assist`/`Jumpbug assist`/`Perf-Hop` sample exists in the private
+  `Cheats/` corpus to run through the same statistic.  Until one does, any cut
+  is one-sided, and the tree's own rule says a threshold from one side is not a
+  threshold.
 
 - **`reccheck`'s key-mask check is self-referential.** It derives `want` from the
   `fwd`/`side` columns and compares to the direction bits of `keys`, which reads
@@ -233,14 +301,19 @@ sweep and closed the pitch axis; these are what it could not close.
   to contradict its `fwd`/`side` and watch reccheck fault, then hand-edit the
   `.hid`'s button events to contradict the same row and watch nothing happen.
 
-- **`hidcheck.py`'s OWN SIGN COMMENT IS WRONG.** It says "The sign convention is
-  the OPPOSITE of what it looks like: mouse_x is positive to the right and a
-  positive dx should turn the view RIGHT (increasing yaw), so the identity is
-  `dyaw == +k*dx`, NOT `-k*dx`." Measured over two real PBs, `dyaw == -k*dx`
-  gives 0 violations against 38,744 for `+k*dx`, which is what the engine does at
-  `IN_MoveMouse` (`viewanglechange[YAW] -= m_yaw * mouse_x`). The CHECK was always
-  right; only the comment misleads, and a future reader "fixing" the check to
-  match its own comment would break the tree's flagship input check. Falsifier:
+- **RESOLVED 2026-10-05: `hidcheck.py`'s sign comment was wrong and no longer
+  exists.** It said "The sign convention is the OPPOSITE of what it looks like:
+  mouse_x is positive to the right and a positive dx should turn the view RIGHT
+  (increasing yaw), so the identity is `dyaw == +k*dx`, NOT `-k*dx`." Measured
+  over two real PBs, `dyaw == -k*dx` gives 0 violations against 38,744 for
+  `+k*dx`, which is what the engine does at `IN_MoveMouse`
+  (`viewanglechange[YAW] -= m_yaw * mouse_x`). The CHECK was always right; only
+  the comment misleads, and a future reader "fixing" the check to match its own
+  comment would break the tree's flagship input check.  **Patch 484 corrected the
+  comment as part of shipping the pitch axis**, so `grep -n "positive to the
+  right" tools/hidcheck.py` now returns nothing — the item is closed, and it
+  stays here only as the shape to watch for: a comment that contradicts the code
+  beside it is a defect with a long fuse.  Falsifier, still re-runnable:
   `tools/p484ident.py` Part 2, which sweeps all eight (angle, key, count, sign)
   combinations.
 
@@ -290,14 +363,6 @@ sweep and closed the pitch axis; these are what it could not close.
   an existing check. Falsifier, still re-runnable: a Counter over the first token
   of every `.hid` in `ftesurf/data/`, split on whether any device-event token is
   present, must equal the split on `f`.
-
-- **EVERY JOURNAL NAMES ITSELF `loadworker_3` ON ITS OWN END LINE.** Cosmetic, but
-  it means no journal's end line names the file it wrote, so a harness cannot
-  confirm from the log which file an arm produced.  This is the engine `va()`
-  rotating-buffer trap AGENTS.md already records (FS_Remove restarts the loader
-  threads, whose names come from `va()`, and a download was once saved as
-  `loadworker_3`), reaching `IN_Journal_End`'s print.  Falsifier: every
-  `in_journal_end:` line in every log in `ftesurf/logs/` reads `loadworker_3`.
 
 ## Ranking integrity
 

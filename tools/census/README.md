@@ -25,6 +25,79 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `recsim.py` | cross-run similarity over the server-written move columns (BACKLOG item F) |
 | `assist.py` | the timing-assist statistics, and which of them the corpus can support (BACKLOG item G) |
 
+## The fleet corpus, and how to get it
+
+`recsim.py` and `assist.py` both answer a question about a CORPUS, and the corpus
+on this workstation is the wrong one: `ftesurf/data/` is harness output, so its
+multi-run groups are one scripted route driven twice rather than two performances.
+The runs real players posted live on the Pi.  **Neither tool defaults to it and no
+number in this README was measured on it before 2026-10-05** -- the sections below
+say which corpus each figure came from, and a figure from the wrong one is not a
+weaker version of the right one, it is an answer to a different question.
+
+Read-only fetch (79 MB, 64 `.rec` at the time of writing; nothing is written on
+the host):
+
+    ssh proto@192.168.1.102 'cd /srv/nvme/ftesurf-server/game/ftesurf &&
+        tar -cf - $(find data/runs -name "*.rec")' > fleet.tar
+    mkdir fleetruns && tar -xf fleet.tar -C fleetruns
+    python tools/census/recsim.py --root fleetruns/data/runs pairs
+    python tools/census/assist.py --root fleetruns/data   census
+    python tools/census/assist.py --root fleetruns/data   control
+
+Note the two roots are DIFFERENT: `recsim` wants `data/runs`, `assist` wants
+`data` (it classifies by the `/momentum/` vs `/data/runs/` path segment).
+
+**THESE ARE PLAYER RUNS AND THEY DO NOT GO IN THE REPO.**  The filenames carry a
+name and a guid digest.  Fetch them to a scratch directory outside the tree,
+quote the numbers, and never commit the files -- `ftesurf/data/**` is gitignored
+precisely so this stays true.  The detailed write-up lives in the private
+`cheatanalysis/FINDINGS.md`, not here.
+
+**AND THE CORPUS'S COMPOSITION IS PART OF THE MEASUREMENT.**  A run's identity is
+the 8-hex `FS_GuidId` in its filename, which is sha256 of the install's `qkey` --
+so it survives a rename and it does NOT distinguish two netnames on one install.
+At the time of writing the fleet holds **four identities and 53 of its 64 files
+are one of them** (`proto-`, `kap-`, `1proto-` and `player-26c95e00` are one
+machine).  `recsim.py pairs` prints the same-identity / cross-identity /
+unknown split for exactly that reason: a similarity gate's hardest honest case is
+ONE PLAYER replaying ONE MAP, and a corpus that is mostly one identity measures
+that case while appearing to measure the general one.
+
+### What the fleet corpus moved (2026-10-05)
+
+Both tools had recorded themselves as blocked on it.  Measured, not expected:
+
+| | local `ftesurf/data` | fleet `data/runs` |
+|---|---|---|
+| `recsim` negative pairs | 7, of which 3 agree on EVERY row (harness output) | **20**, none above **0.5866** |
+| `recsim` separation | unmeasurable -- the corpus cannot calibrate | **positive min 1.0000 vs negative max 0.5866, CLEAN, margin 1.70x** |
+| `recsim` identity split | 3 same, 4 unknown, **0 cross** | **12 same (max 0.5866), 8 cross (max 0.2146)** |
+| `assist` files with a ramp-contact tick (`fl` bit 16) | 101 of 5571, every one native | **54 of 64** |
+| `assist` `land(bit16)` judgeable runs | 90 | **27, and every one reads 0.0000** |
+| `assist` `null` runs reading exactly 1.0000 | 364 of 4237 (8.59%) | **4 of 57 (7.02%)** |
+| `assist` hop-interval cv floor | 0.5487 | **0.6023** |
+
+The two findings that matter:
+
+- **`recsim`'s discriminator now separates on real runs, and the worst case is a
+  same-player one.**  0.5866 is `surf_utopia` 0004216 vs 0004224, one install,
+  two runs 8 ticks apart in length, cover 0.0000 and prefix 0 -- they agree on 59%
+  of compared rows and share no contiguous opening at all.  The cross-identity max
+  is 0.2146.  A gate at `match >= 0.95` sits 1.62x above the worst same-player
+  pair and 4.4x above the worst cross-player one.  **That is still not a shipped
+  threshold**: 20 pairs is a small sample and only 8 of them are cross-identity.
+- **`assist`'s coverage problem INVERTS on the fleet.**  The local corpus's
+  obstacle was that bit 16 is written only by our server, so the 5281 Momentum
+  imports have none of it and 101 files in the whole tree did.  The fleet is all
+  native: 54 of 64 files carry ramp ticks and 27 runs are judgeable.  **Every one
+  of the 27 reads a frame-perfect-landing rate of 0.0000**, and `control` on a
+  fleet run (`surf_4am`, 19132 ticks) proves the statistic is live rather than
+  dead: **146 ramp-contact opportunities, 0.0000 as recorded, 1.0000 rewritten
+  assist-shaped.**  So on this game's own runs, not one honest landing out of
+  thousands was frame-perfect.  `null` is still unusable as a sole gate -- 7.02%
+  of honest fleet runs read exactly 1.0000, matching the local 8.59%.
+
 ## READ THIS BEFORE QUOTING A NUMBER
 
 **An entity box from the models lump is where a brush CAN be, not where it IS.**

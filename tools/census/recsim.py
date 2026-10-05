@@ -76,6 +76,7 @@ import collections
 import glob
 import hashlib
 import os
+import re
 import sys
 
 # --------------------------------------------------------------------------
@@ -96,6 +97,39 @@ SKIPPED = []
 # that could not have been judged is the same false reading as a high one, and
 # both are worse than a count of what was skipped.
 MIN_LEN = 50
+
+# WHO SET IT, read out of the filename.  FS_RunLeaf's grammar (sh_defs.qc) is
+#   <ticks7>_<who>_<tag>.<ext>     with who = <name>-<FS_GuidId>
+# and FS_GuidId is sha256(guid)'s first FS_WHO_IDLEN hex chars -- stable across
+# renames BECAUSE THE GUID IS.  So the hex tail, not the name, is the identity:
+# `proto-26c95e00`, `kap-26c95e00`, `1proto-26c95e00` and `player-26c95e00` are
+# ONE INSTALL under four netnames (measured on the fleet corpus: 53 of its 64
+# files carry 26c95e00), because a player's guid is the `qkey` in the install
+# root and two clients from one install are one player to the server.
+#
+# WHY A SIMILARITY CENSUS NEEDS THIS.  A negative pair is "two runs that are not
+# a playback", and the hardest honest population is ONE PLAYER replaying ONE MAP
+# -- the same person's route, the same habits, the same start.  A corpus that is
+# mostly one identity therefore measures the pessimistic case, and one that is
+# mostly cross-identity measures the easy one.  Printing a single negative max
+# hides which was measured, and the difference is the whole calibration.
+WHO_RE = re.compile(r"-([0-9a-f]{8})$", re.IGNORECASE)
+
+
+def who_of(path):
+    """The identity hex of a run's filename, or '' when it carries none.
+
+    '' is its own answer and not a failure: every recording written before build
+    66 has no player segment at all, and a local run has no identity to name.
+    Those pairs are counted as UNKNOWN rather than folded into either side, so a
+    pre-66 corpus reports that it cannot answer instead of reporting agreement.
+    """
+    base = os.path.basename(path.replace(os.sep, "/"))
+    for part in base.rsplit(".", 1)[0].split("_"):
+        mo = WHO_RE.search(part)
+        if mo:
+            return mo.group(1).lower()
+    return ""
 
 
 class Rec(object):
@@ -488,7 +522,8 @@ def cmd_pairs(args):
                 frac = matched / float(compared)
                 neg.append((cover, frac, pl, max(len(a.moves), len(b.moves)),
                             m, leg, os.path.basename(ps[i]),
-                            os.path.basename(ps[j])))
+                            os.path.basename(ps[j]),
+                            who_of(ps[i]), who_of(ps[j])))
                 taken += 1
                 done += 1
 
@@ -511,6 +546,49 @@ def cmd_pairs(args):
         for n in bym[:10]:
             print("    match %.4f  cover %.4f  prefix %d  compared %d  %s/%s  %s vs %s"
                   % (n[1], n[0], n[2], n[3], n[4], n[5], n[6], n[7]))
+
+        # THE IDENTITY SPLIT, and it is the difference between a calibration and
+        # a number.  A same-identity pair is ONE PLAYER replaying ONE MAP -- the
+        # hardest honest case a similarity gate faces, because the routes, the
+        # start and the habits are all shared.  A cross-identity pair is the easy
+        # case.  Which one dominates is a property of the CORPUS, not of the
+        # metric, and printing one max hides it: measured on the fleet corpus,
+        # 53 of 64 files are one install (26c95e00) under four netnames, so its
+        # negative max is a same-player figure and reads as the pessimistic one.
+        def split(pred):
+            xs = [n[1] for n in neg if pred(n)]
+            return (len(xs), max(xs), sorted(xs)[len(xs) // 2]) if xs else (0, None, None)
+
+        for label, pred in (("SAME identity (one player, replaying -- the hard case)",
+                             lambda n: n[8] and n[8] == n[9]),
+                            ("CROSS identity (different installs -- the easy case)",
+                             lambda n: n[8] and n[9] and n[8] != n[9]),
+                            ("UNKNOWN identity (a pre-build-66 name, no who segment)",
+                             lambda n: not n[8] or not n[9])):
+            cnt, mx, md = split(pred)
+            if not cnt:
+                continue
+            print("  %-58s %3d pairs  max %.4f  median %.4f"
+                  % (label, cnt, mx, md))
+        ids = sorted({n[8] for n in neg if n[8]} | {n[9] for n in neg if n[9]})
+        ncross = sum(1 for n in neg if n[8] and n[9] and n[8] != n[9])
+        if neg and not ncross:
+            # SAY WHAT WAS NOT MEASURED, not what was.  The first cut of this
+            # note concluded "measures only the same-player case", which is not
+            # what an UNKNOWN pair says -- a pre-build-66 name carries no
+            # identity at all, so those pairs are unattributed rather than
+            # same-player.  The true statement is that the cross-player rate has
+            # no sample here, and that is what a reader needs before quoting a
+            # threshold.
+            print("  NOTE: NOT ONE CROSS-IDENTITY PAIR was measured (%d identities"
+                  " seen: %s).  The negative max above is therefore a"
+                  " same-player-or-unattributed figure.  That is the pessimistic"
+                  " direction for a gate -- one player replaying one map is the"
+                  " hardest honest case -- but it is NOT a measurement of the"
+                  " cross-player rate, and a corpus of local runs cannot give"
+                  " one."
+                  % (len(ids), ", ".join(ids) if ids else "none"))
+
         perfect = [n for n in neg if n[1] >= 0.9999]
         if perfect:
             # THIS LINE IS THE MEASUREMENT'S OWN CAVEAT AND IT FIRES ON THIS TREE.
