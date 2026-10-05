@@ -320,6 +320,7 @@ float rec_rp_prof_wasbad;
 float rec_rp_ijsent;
 float rec_rp_ij_have, rec_rp_ij_frames, rec_rp_ij_ghosts;
 float rec_rp_ij_viol, rec_rp_ij_bad, rec_rp_ij_skip;
+float rec_rp_ij_at;              // cltime of the last send: the throttle
 
 /*
   THE ACCEPTED VERSION, READ FROM THE RECORD ITSELF and not only from the cvar.
@@ -674,9 +675,9 @@ void() Rec_ProfileReport =
   `.hid` itself, which the server does not have.  Adding a key would publish six
   numbers a console can set and no reader that can catch it.
 
-  SENT ON CHANGE FROM THE PER-FRAME DRIVER, for Rec_HidReport's reason.  The
-  cache is seeded by rec_rp_ijsent, which Rec_ViewInit sets to a value no real
-  answer equals, so the first frame after every map load always sends -- which
+  SENT ON CHANGE FROM THE PER-FRAME DRIVER, for Rec_HidReport's reason, AT MOST
+  ONCE A SECOND -- see the throttle below.  rec_rp_ijsent is cleared by
+  Rec_ViewInit, so the first frame after every map load always sends -- which
   from build 78 is a correctness property rather than an optimisation, because a
   skipped send reads as "never spoke" and run_t_ijev stays 0.
 
@@ -687,7 +688,7 @@ void() Rec_ProfileReport =
   distinguishable from one that journalled and found nothing, and -1 against 0
   is the only place that distinction survives.
 */
-void() Rec_JrnIdentReport =
+void(float force) Rec_JrnIdentReport =
 {
 	local float have, frames, ghosts, viol, bad, skip;
 
@@ -703,8 +704,17 @@ void() Rec_JrnIdentReport =
 	    && viol == rec_rp_ij_viol && bad == rec_rp_ij_bad
 	    && skip == rec_rp_ij_skip)
 		return;
+	// The counters move on every governed frame and each send is a 38-byte
+	// reliable message: at frame rate that can fill the ~1.4 KB reliable buffer
+	// receipts and uploads share (500 fps x 150 ms RTT = 2.8 KB a round trip).
+	// So at most one a second while they move, plus the run end's forced one;
+	// the last change still goes out, a second late at worst, because this
+	// runs every frame.
+	if (rec_rp_ijsent && !force && cltime < rec_rp_ij_at + 1)
+		return;
 
 	rec_rp_ijsent   = TRUE;
+	rec_rp_ij_at    = cltime;
 	rec_rp_ij_have   = have;
 	rec_rp_ij_frames = frames;
 	rec_rp_ij_ghosts = ghosts;
@@ -1832,7 +1842,7 @@ void() Rec_ViewFrame =
 	// that lost the race is recorded as making no claim when it had just made
 	// one.  It carries its own cache, so this costs nothing on a frame where
 	// nothing moved.  See Rec_JrnIdentReport.
-	Rec_JrnIdentReport();
+	Rec_JrnIdentReport(FALSE);
 
 	flags = getstatf(STAT_FS_TIMERFLAGS);
 	rec = (flags & TF_RECORDING) ? TRUE : FALSE;
@@ -2025,6 +2035,10 @@ void() Rec_ViewFrame =
 			                 rec_rp_lastview == "" ? "-" : rec_rp_lastview,
 			                 rec_rp_hadhid ? 1 : 0));
 
+		// Patch 486: the counters as the run ended, past the one-a-second
+		// throttle, so the server holds them when the receipt lands.
+		Rec_JrnIdentReport(TRUE);
+
 		/*
 		  Patch 416: the run's nonce dies with the run, on BOTH branches.
 
@@ -2168,18 +2182,11 @@ void() Rec_ViewInit =
 	*/
 	rec_rp_profseen = FALSE;
 
-	/*
-	  PATCH 486: AN EXPLICIT "NEVER SENT", AND NOT FALSE.
-
-	  rec_rp_ijsent gates on ITSELF as well as on the five counters, so FALSE
-	  here would work -- but only because the five cached fields also start at 0
-	  and a fresh VM's five CVARS read 0 too on an engine where the journal never
-	  opened.  That is three facts agreeing by coincidence, and the day one of
-	  them moves the first send is silently skipped, which reads as "this client
-	  never spoke" and leaves run_t_ijev at 0 forever.  -1 is a value no real
-	  answer equals, which is rec_rp_hidsent's reason and needs no coincidence.
-	*/
-	rec_rp_ijsent = -1;
+	// Patch 486: FALSE, so the first report always goes out.  This was -1,
+	// which is TRUE in QC: rec_rp_ijsent is a flag, not a cached answer like
+	// rec_rp_hidsent, so -1 read as "sent", and a client whose five counters
+	// equal the zeroed cache (any pre-484 engine) never spoke -- `said 0`.
+	rec_rp_ijsent = FALSE;
 
 	// -1 rather than 0: the stage counter is per-connection and never resets, so
 	// a client joining a session in progress must SEED from whatever it currently

@@ -1797,8 +1797,8 @@ float() SV_RecEnabled =
   calibration and not caution: over the 113 journals in this tree (210,678
   governed frames) the honest corpus carries 11 violations on 3 files, and every
   one of those is a frame where yaw AND pitch broke together on a large
-  instantaneous jump with no input behind it -- the shape a server angle set has,
-  which the yaw rule has faulted on since Patch 293.  A gate set from 11 events
+  instantaneous jump -- a teleport on a frame that also carried counts, which
+  the engine counts as a violation, not a ghost.  A gate set from 11 events
   on 3 files is a guess, and this tree's rule is that a check which faults an
   honest run is worse than no check.  So the counters are published where an
   operator can read them and a fleet can accumulate them; the gate is BACKLOG and

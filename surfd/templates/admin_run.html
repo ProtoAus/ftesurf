@@ -284,7 +284,9 @@ function renderRun(j) {
 
   const RCPT_CLS = {VALID: "up", FAULT: "down"};
   const ANG_CLS = {OK: "up", BLIND: "warn", FAULT: "down"};
-  const JRN_CLS = {OK: "up", FAULT: "down", ABSENT: "muted"};
+  // BLIND: no fault, but frames the identity could not attribute (teleports
+  // among them) or nothing it could judge.  PENDING: a signed journal not yet here.
+  const JRN_CLS = {OK: "up", FAULT: "down", BLIND: "warn", ABSENT: "muted", PENDING: "muted"};
   const card = document.getElementById("rcptcard");
   const rdl = document.getElementById("rcpt");
   rdl.replaceChildren();

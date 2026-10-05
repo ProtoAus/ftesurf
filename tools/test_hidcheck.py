@@ -1684,13 +1684,11 @@ def case_pitch_only_rewrite():
 
 
 def case_pitch_and_yaw_rewrite():
-    """A whole-angle rewrite breaks both, and the overlap must be SAID.
-
-    Independent reporting is the point: if the two axes shared one verdict, this
-    would read as a single yaw fault and the pitch half of the evidence would be
-    invisible.  The overlap sentence is what tells a whole-angle event (a server
-    angle set, or a rewrite of viewangles themselves) from a pitch-only one.
-    """
+    """A whole-angle rewrite breaks both axes, and from inside this file it is
+    the same bytes as a teleport -- a server angle set breaks both, counts or
+    not.  So it is UNRESOLVED: counted, noted, never a fault, and never OK
+    either (rcptcheck stores BLIND).  The .rec's warp records can tell them apart;
+    this file cannot."""
     j = Journal()
     pitch, yaw = 10.0, 90.0
     for i in range(40):
@@ -1705,11 +1703,14 @@ def case_pitch_and_yaw_rewrite():
             yaw += j.k * dx
         j.view(dx, dy, pitch, yaw)
     r = run(j.end())
-    check(has_fault(r, "PITCH IDENTITY BROKEN"), "both axes: pitch faults")
-    check(has_fault(r, "YAW IDENTITY BROKEN"), "both axes: yaw faults")
-    check(has_fault(r, "5 of these also break the yaw identity"),
-          "both axes: the overlap is counted in the pitch fault (got %s)"
-          % [f for f in r.faults if "PITCH" in f])
+    check(not r.faults, "both axes: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("identity_whole") == 5 and r.info.get("identity_unresolved") == 5,
+          "both axes: the 5 frames are counted as whole-angle and unresolved (%s, %s)"
+          % (r.info.get("identity_whole"), r.info.get("identity_unresolved")))
+    check(r.info.get("identity_violations") == 5
+          and r.info.get("identity_pitch_violations") == 5,
+          "both axes: the raw per-axis counts are kept, as the engine counts them")
+    check(has_note(r, "moved BOTH axes"), "both axes: and it is said")
 
 
 def case_pitch_keyboard_term():
@@ -1767,35 +1768,62 @@ def case_pitch_strafe_y_not_governed():
           % r.info.get("identity_pitch_not_governed"))
 
 
-def case_pitch_clamp_not_governed():
-    """A frame whose prediction would leave the clamp envelope is skipped.
-
-    Pitch is clamped (cl_input.c) and yaw is not, and the bound is a SERVERINFO
-    value the file does not carry: the engine default is -70/+80 while
-    cfg/default.cfg sets -89/+89.  Guessing it is not a small error -- with
-    -70/+80 assumed against a file recorded at +-89, the same sweep produced 910
-    pitch failures of which 892 were PITCH-ONLY, i.e. 892 false accusations on one
-    honest PB.  So the frame is not governed rather than explained.
-    """
+def _clamp_journal(start, dy_of):
+    """Pitch driven by dy_of(i) from `start`, clamped to +-89 as CL_ClampPitch
+    does before the 'v' is written.  -> (journal, frames the clamp truncated)."""
     j = Journal()
-    pitch = 80.0
-    for i in range(20):
-        # 14000 * 0.0066 = 92.4 deg, which leaves the +-89 envelope from a pitch
-        # of 80.  (The first cut of this case used 4000 counts = 26.4 deg and
-        # never came near a boundary, so it "failed" by testing nothing.)
-        dy = 14000 if i == 10 else 0
+    pitch, clamped = start, 0
+    for i in range(60):
+        dy = dy_of(i)
         j.frame(3000 + i)
         if dy:
             j.mouse(0, dy)
         want = pitch + j.kp * dy
-        pitch = max(-89.0, min(89.0, want))   # what the engine would record
+        clamped += want > 89.0 or want < -89.0
+        pitch = max(-89.0, min(89.0, want))
         j.view(0, dy, pitch, 90.0)
-    r = run(j.end())
-    check(not has_fault(r, "PITCH IDENTITY BROKEN"),
-          "clamp: a truncated frame is skipped, never accused")
-    check(r.info.get("identity_pitch_not_governed", 0) >= 1,
-          "clamp: and the skip is counted (got %s)"
-          % r.info.get("identity_pitch_not_governed"))
+    return j, clamped
+
+
+def case_pitch_clamp_not_governed():
+    """A player at full up or down who keeps moving the mouse is clamped, not
+    accused.  CL_ClampPitch clamps the RESULT and the engine's gate abstains when
+    last + pred leaves the bound (in_generic.c); the old rule skipped only a
+    CHANGE past 89 degrees, which no real frame makes, so this arm used to pass
+    on a 92.4-degree single-frame jump.  Here: 30 counts a frame (0.198 deg)."""
+    for side, start, sgn in (("up", 85.0, 1), ("down", -85.0, -1)):
+        j, clamped = _clamp_journal(start, lambda i: sgn * (30 if i < 40 else -30))
+        r = run(j.end())
+        check(clamped >= 15, "clamp %s: the arm really hits the clamp (%d frames)"
+              % (side, clamped))
+        check(not has_fault(r, "PITCH IDENTITY BROKEN"),
+              "clamp %s: pushing into the clamp is not accused (%s)"
+              % (side, r.faults[:1] or "none"))
+        check(r.info.get("identity_pitch_not_governed") == clamped,
+              "clamp %s: exactly the clamped frames abstain, counted (%s of %d)"
+              % (side, r.info.get("identity_pitch_not_governed"), clamped))
+        check(r.info.get("identity_pitch", "").startswith("exact"),
+              "clamp %s: the frames inside the bound are still judged exact (%r)"
+              % (side, r.info.get("identity_pitch")))
+    # The engine's rule, not merely a wider skip: a CHANGE past 89 whose RESULT
+    # stays inside the bound is judged.  The old rule skipped it, so a rewrite of
+    # that frame passed.
+    for honest in (True, False):
+        j = Journal()
+        pitch = -80.0
+        for i in range(20):
+            dy = 14000 if i == 10 else 0         # 92.4 deg: -80 -> 12.4, unclamped
+            j.frame(3000 + i)
+            if dy:
+                j.mouse(0, dy)
+            pitch += j.kp * dy
+            j.view(0, dy, pitch if honest or i != 10 else pitch + 7.6, 90.0)
+            if not honest and i == 10:
+                pitch += 7.6
+        r = run(j.end())
+        check(has_fault(r, "PITCH IDENTITY BROKEN") != honest,
+              "a 92.4-degree change landing at 12.4 is judged: %s"
+              % ("honest, no fault" if honest else "rewritten, PITCH fault"))
 
 
 def case_pitch_no_m_pitch():
@@ -1840,6 +1868,133 @@ def case_pitch_pre305_silent():
           % r.info.get("identity_pitch_frames"))
 
 
+def _teleport_journal(dx_tp, dy_tp, nudge=False):
+    """Mouse motion on both axes, and a server angle set at frame 20 -- pitch 0
+    and a new yaw, as sv_entities.qc's teleports set them.  The record there is
+    the set angle PLUS that frame's own delta: viewangles is replaced, then
+    CL_ClampPitch adds the frame's change before the 'v' is written.  `nudge`
+    adds an honest-looking single-axis rewrite elsewhere, the control."""
+    j = Journal()
+    pitch, yaw = 20.0, 90.0
+    for i in range(40):
+        dx, dy = (dx_tp, dy_tp) if i == 20 else ((i % 5) - 2, (i % 3) - 1)
+        j.frame(3000 + i)
+        if dx or dy:
+            j.mouse(dx, dy)
+        if i == 20:
+            pitch, yaw = 0.0, -135.0
+        pitch += j.kp * dy
+        yaw += j.k * dx + (0.5 if nudge and i == 31 else 0.0)
+        j.view(dx, dy, pitch, yaw)
+    return run(j.end())
+
+
+def case_teleport_is_unresolved():
+    """FINDING 2a and 3: a teleport on a frame that carried mouse counts was a
+    YAW or PITCH IDENTITY BROKEN fault, so 3 of the tree's 4 real PBs faulted.
+    Both axes jump on a teleport whichever way the mouse moved, so every shape
+    of it is whole-angle: unresolved, never a fault."""
+    for what, dx, dy in (("counts on both axes", 7, 3),
+                         ("mouse moved only vertically", 0, 7),
+                         ("mouse moved only horizontally", 7, 0),
+                         ("no counts at all", 0, 0)):
+        r = _teleport_journal(dx, dy)
+        check(not r.faults, "teleport, %s: not a fault (%s)"
+              % (what, r.faults[:1] or "none"))
+        check(r.info.get("identity_whole") == 1
+              and r.info.get("identity_unresolved") == 1,
+              "teleport, %s: one whole-angle frame, unresolved (%s, %s)"
+              % (what, r.info.get("identity_whole"), r.info.get("identity_unresolved")))
+    r = _teleport_journal(7, 0, nudge=True)
+    check(has_fault(r, "YAW IDENTITY BROKEN on 1 of"),
+          "teleport CONTROL: a yaw-only rewrite elsewhere in the same file still "
+          "faults, and only it (%s)" % (r.faults[:1] or "none"))
+
+
+def case_teleport_at_the_clamp_is_unresolved():
+    """A teleport while the pitch abstains (at the clamp, still pushing): only
+    yaw can be seen to break, so whether it was whole-angle cannot be told --
+    unresolved, not a yaw fault."""
+    j = Journal()
+    pitch, yaw = 88.9, 90.0
+    for i in range(30):
+        dx, dy = 5, 30
+        j.frame(3000 + i)
+        j.mouse(dx, dy)
+        if i == 20:
+            pitch, yaw = 0.0, -135.0
+        pitch = max(-89.0, min(89.0, pitch + j.kp * dy))
+        yaw += j.k * dx
+        j.view(dx, dy, pitch, yaw)
+    r = run(j.end())
+    check(not r.faults, "teleport at the clamp: not a fault (%s)"
+          % (r.faults[:1] or "none"))
+    check(r.info.get("identity_unresolved") == 1 and has_note(r, "not governed on that frame"),
+          "teleport at the clamp: unresolved and said (%s)"
+          % r.info.get("identity_unresolved"))
+
+
+def case_no_frame_markers():
+    """FINDING 2b: 'f' is written iff a drain was non-empty and events are
+    journalled only inside one, so no 'f' and no events is a journal of nothing
+    happening -- not a fault.  Events with no 'f' are missing records."""
+    j = Journal()
+    yaw = 90.0
+    for i in range(20):
+        yaw += 0.05                          # +left held: a keyboard turn, no device
+        j.view(0, 0, 10.0, yaw, kyaw=0.05)
+    r = run(j.end())
+    check(r.ok, "no 'f' and no events: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(has_note(r, "nothing was drained"), "no 'f' and no events: said, as a note")
+    check(r.info.get("identity", "").startswith("exact"),
+          "no 'f' and no events: the views are still judged (%r)" % r.info.get("identity"))
+    j = Journal()
+    for i in range(5):
+        j.mouse(3, 0)
+    r = run(j.end())
+    check(has_fault(r, "and no 'f' record"),
+          "events with no 'f': a fault (%s)" % (r.faults[:1] or "none"))
+
+
+def case_cvar_change_followed():
+    """FINDING 2c: a mid-run `sensitivity` is journalled as a 'c' record above
+    the first 'v' that used it, and the identity must follow it.  The control
+    is the same record with angles that did NOT change scale."""
+    for follows in (True, False):
+        j = Journal()
+        yaw = 90.0
+        k_new = -0.022 * 0.375
+        for i in range(40):
+            j.frame(3000 + i)
+            j.mouse(6, 0)
+            if i == 20:
+                j.cvarchange("sensitivity", "0.375")
+            yaw += (k_new if i >= 20 and follows else j.k) * 6
+            j.view(6, 0, 10.0, yaw)
+        r = run(j.end())
+        if follows:
+            check(r.ok, "sensitivity changed mid-run, angles follow: no fault (%s)"
+                  % (r.faults[:1] or "none"))
+        else:
+            check(has_fault(r, "YAW IDENTITY BROKEN on 20 of"),
+                  "CONTROL, a 'c' the angles do not follow: the 20 frames fault (%s)"
+                  % (r.faults[:1] or "none"))
+    # m_filter on mid-run: those frames are not governed, as the engine skips them
+    j = Journal()
+    yaw = 90.0
+    for i in range(40):
+        j.frame(3000 + i)
+        j.mouse(6, 0)
+        if i == 20:
+            j.cvarchange("m_filter", "1")
+        yaw += j.k * (6 if i < 20 else 4.5)
+        j.view(6, 0, 10.0, yaw)
+    r = run(j.end())
+    check(r.ok and r.info.get("frames_not_governed") == 20,
+          "m_filter on mid-run: the filtered frames abstain, counted (%s, %s)"
+          % (r.faults[:1] or "none", r.info.get("frames_not_governed")))
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -1881,7 +2036,9 @@ def main():
                case_pitch_and_yaw_rewrite, case_pitch_keyboard_term,
                case_pitch_ghost_is_a_note, case_pitch_strafe_y_not_governed,
                case_pitch_clamp_not_governed, case_pitch_no_m_pitch,
-               case_pitch_pre305_silent):
+               case_pitch_pre305_silent, case_teleport_is_unresolved,
+               case_teleport_at_the_clamp_is_unresolved, case_no_frame_markers,
+               case_cvar_change_followed):
         print("%s:" % fn.__name__)
         fn()
         print("")

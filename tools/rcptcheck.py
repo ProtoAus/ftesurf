@@ -73,13 +73,18 @@ class Receipt(object):
         self.angles_detail = ""
         # The journal's CONTENT verdict, and the same rule about wording: a
         # caller must not have to match on prose.  "" = not checked, ABSENT =
-        # no journal beside this receipt, OK, or FAULT.  This is NOT the digest
+        # no journal beside this receipt, OK, FAULT, or BLIND = no fault, but
+        # frames the identity could not attribute (teleports among them) or no
+        # frame it could judge at all.  This is NOT the digest
         # check -- join_uploaded already hashes <runid>.hid against what the
         # signature committed to.  It is what hidcheck says about the file's own
         # contents: whether the angles in it could have come from the device
         # counts it recorded.
         self.journal = ""
         self.journal_detail = ""
+        # ABSENT, and the receipt signs a kept journal's digest: it may still be
+        # uploading.  sweep.py reads this to hold the row PENDING.
+        self.journal_owed = False
 
     def fault(self, m):
         self.faults.append(m)
@@ -458,6 +463,8 @@ def join_journal(r):
         # is no journal here" from "no sweep ever asked".
         r.journal = "ABSENT"
         r.journal_detail = "no journal beside this receipt"
+        f = (signed_get(r, "hid") or "").split()
+        r.journal_owed = len(f) == 3 and f[0] != "-" and f[2] == "1"
         return
     try:
         # Lazy and wrapped exactly as join_angles does it: hidcheck lives beside
@@ -477,15 +484,27 @@ def join_journal(r):
     pitch = h.info.get("identity_pitch")
     if pitch:
         r.journal_detail = "%s; pitch %s" % (r.journal_detail, pitch)
+    unresolved = h.info.get("identity_unresolved") or 0
     if h.faults:
         r.journal = "FAULT"
         r.journal_detail = "%s | %s" % (h.faults[0][:300], r.journal_detail)
         r.note("the journal beside this receipt does not hold up: %s"
                % h.faults[0][:300])
+    elif unresolved or not h.info.get("identity_judged"):
+        # THE THIRD VERDICT.  A teleport and a whole-angle rewrite are the same
+        # bytes here, and a journal the identity judged nothing in has measured
+        # nothing: neither is guilty, and neither is OK.
+        r.journal = "BLIND"
+        why = ("%d frame(s) unresolved (%d moved both axes)"
+               % (unresolved, h.info.get("identity_whole") or 0)
+               if unresolved else "no frame the identity could judge")
+        r.journal_detail = "%s | %s" % (why, r.journal_detail) \
+            if r.journal_detail else why
+        r.note("the journal beside this receipt has no fault, and %s" % why)
     else:
         r.journal = "OK"
         r.note("the journal beside this receipt holds up -- %s"
-               % (r.journal_detail or "no identity to check"))
+               % r.journal_detail)
 
 
 def check_file(r, key, path, sibling=False):

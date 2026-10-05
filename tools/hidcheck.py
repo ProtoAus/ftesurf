@@ -267,6 +267,9 @@ VF_STRAFE_X = 1     # counts went to sidemove, not yaw (+strafe / lookstrafe)
 VF_STRAFE_Y = 2     # counts went to forwardmove, not pitch
 VF_FREE     = 4     # the cursor was free (menu/console); counts reached neither
 
+# The 'c'-tracked cvars (engine in_jrn_inputcvars) that check_identity reads.
+IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel")
+
 # Kinds that are input events, i.e. what the trailer's `events` counts.  'f' is a
 # frame, '#' and '!' are annotations, and none of the three is an event.
 EVENT_KINDS = {"m", "a", "+", "-", "x", "j"}
@@ -505,7 +508,11 @@ def check_hid(path, verbose=False):
     seqs = []
     notes_seen = []
     dts = []
-    views = []           # (lineno, dx, dy, flags, pitch, yaw)  -- Patch 293
+    views = []           # (lineno, dx, dy, flags, pitch, yaw, kpitch, kyaw, idover)
+    # The identity's constants as of each 'v': {} = the header's, else the 'c'
+    # overrides in force.  The engine writes a 'c' above the first 'v' that used
+    # the new value (IN_Journal_View calls IN_Journal_RenderCvars first).
+    idover = {}
     # Patch 312: one entry per closed 'v' window --
     # (lineno, sum_mx, sum_my, raw_x, raw_y, flags, n_m, n_a, had_d)
     joins = []
@@ -644,7 +651,8 @@ def check_hid(path, verbose=False):
                 kp = float(tok[7]) if len(tok) == 9 else None
                 ky = float(tok[8]) if len(tok) == 9 else None
                 views.append((lineno + 1, float(tok[2]), float(tok[3]),
-                              int(tok[4]), float(tok[5]), float(tok[6]), kp, ky))
+                              int(tok[4]), float(tok[5]), float(tok[6]), kp, ky,
+                              idover))
                 # Patch 312: close the window this 'v' ends. The expected raw is
                 # the 'd' record if the frame had one and the v's own delta if it
                 # did not -- a missing 'd' IS the claim that they are equal.
@@ -738,6 +746,8 @@ def check_hid(path, verbose=False):
             # Patch 310: a render-integrity cvar changed mid-journal.
             nm, val = tok[2], _unquote_pair(" ".join(tok[3:]))[0]
             cvar_changes.append((nm, val))
+            if nm in IDENTITY_CVARS:
+                idover = dict(idover, **{nm: val})    # new dict: earlier views keep theirs
         elif kind == "g":
             try:
                 legacy_states.append(int(tok[2]))
@@ -1504,13 +1514,22 @@ def check_hid(path, verbose=False):
                    "before Patch 416. The .rec is what tells them apart."
                    % (len(set(nonces)), ", ".join(sorted(set(nonces)))))
 
+    # 'f' is written iff a drain was non-empty and events are journalled only
+    # inside that drain (in_generic.c IN_Commands), so no 'f' and no events is a
+    # journal of nothing happening; events with no 'f' are missing records.
     if not frames:
-        r.fault("no frame markers -- nothing was ever drained while the journal "
-                "was open")
-        return r
+        if events:
+            r.fault("%d input event(s) and no 'f' record -- events are journalled "
+                    "only inside a non-empty drain, which writes its 'f' first, "
+                    "so frame records are missing" % events)
+        else:
+            r.note("no frame markers and no input events: nothing was drained "
+                   "while the journal was open -- a journal of nothing "
+                   "happening, not a missing record")
 
     span = (last_f - first_f) if (first_f is not None and last_f is not None) else 0
-    r.info["first_frame_at"] = first_f
+    if first_f is not None:
+        r.info["first_frame_at"] = first_f
     if span > 0:
         r.info["frame_rate"] = frames / span
         if events:
@@ -1741,7 +1760,28 @@ def check_identity(r, head, views):
     k = -myaw * sens * scale
     r.info["deg_per_count"] = abs(k)
 
-    if mfilter != 0 or maccel != 0:
+    # Each frame's (yaw k, pitch k, filtered): the header's constants with any
+    # 'c' change in force applied, so a mid-run `sensitivity` is followed rather
+    # than accused.  A value that does not parse makes the frame abstain.
+    cache = {}
+
+    def consts(v):
+        ov = v[8]
+        if id(ov) not in cache:
+            def num(name, dflt=None):
+                s = ov.get(name, head.get(name, dflt))
+                return None if s is None else float(s)
+            try:
+                s_ = num("sensitivity") * scale
+                mp = num("m_pitch")
+                cache[id(ov)] = (-num("m_yaw") * s_,
+                                 None if mp is None else mp * s_,
+                                 bool(num("m_filter", "0") or num("m_accel", "0")))
+            except (TypeError, ValueError):
+                cache[id(ov)] = (None, None, True)
+        return cache[id(ov)]
+
+    if all(consts(v)[2] for v in views):
         # Both are still deterministic functions of (dx, dy, frametime), so this
         # is a "not implemented here" rather than a "cannot be done" -- but
         # m_accel needs the frametime, which this file does not carry per frame.
@@ -1750,7 +1790,7 @@ def check_identity(r, head, views):
                "checked. A ranked run must pin both to 0." % (mfilter, maccel))
         return
 
-    if k == 0:
+    if all(consts(v)[0] == 0 for v in views if not consts(v)[2]):
         r.note("m_yaw*sensitivity is zero -- no yaw can be produced from counts, "
                "identity vacuous")
         return
@@ -1807,45 +1847,27 @@ def check_identity(r, head, views):
     # i.e. NOT the zero the engine comment assumed, so on this game the axis is
     # live and a pitch-only rewrite really does move the view.
     #
-    # WHY IT FAULTS ON ITS OWN RATHER THAN ONLY WHERE YAW IS CLEAN.  If the two
-    # were reported as one verdict, a rewrite that broke BOTH axes would read as
-    # a single yaw fault and the pitch half of the evidence would be invisible.
-    # Independent reporting keeps the pair visible, and the overlap is printed so
-    # a reader can tell the two causes apart: BOTH axes breaking on one frame is
-    # a whole-angle event (a server angle set, or a rewrite of viewangles
-    # themselves), while PITCH ALONE is the narrow case this check exists for and
-    # cannot be a server angle set.
+    # MEASURED over the tree's journals: every frame that breaks pitch also
+    # breaks yaw (18 of 18), and all 18 are teleports -- 11 of them with mouse
+    # counts behind them.  See WHOLE-ANGLE FRAMES below for what is accused.
     #
-    # MEASURED BEFORE THIS WAS WRITTEN, over all 113 journals in the tree
-    # (107 with a usable header, 210,678 governed frames): 18 frames fail the
-    # pitch identity, and ALL 18 also fail yaw -- pitch-only 0.  So this check
-    # adds no new accusation on any honest file we own; it adds coverage.  The 18
-    # are large instantaneous jumps with no input behind them (dpitch -41.8,
-    # -28.1, -49.0 against predictions of ~0.02 deg), i.e. the server angle sets
-    # the yaw rule has faulted on since Patch 293.
-    #
-    # WHY FRAMES ARE SKIPPED INSTEAD OF THE CLAMP BEING MODELLED.  Pitch is
-    # clamped and yaw is not (cl_input.c: `if (vang[PITCH] > cl.maxpitch)
-    # vang[PITCH] = cl.maxpitch`), so at a boundary the recorded dpitch is
-    # whatever the clamp left, and the bound is a SERVERINFO value this file does
-    # not carry: cl_main.c reads minpitch/maxpitch out of cl.serverinfo, the
-    # engine default is -70/+80, and cfg/default.cfg sets -89/+89.  Guessing
-    # wrong is not a small error.  With -70/+80 assumed against files recorded at
-    # +-89 the same sweep produced 910 pitch failures of which 892 were
-    # PITCH-ONLY -- 892 false accusations on one honest PB -- against 18 with the
-    # right bound.  So a frame whose unclamped prediction would leave the widest
-    # envelope either bound can take is NOT GOVERNED and is counted, never
-    # faulted: an unattributable frame is skipped rather than explained.
+    # THE CLAMP.  CL_ClampPitch clamps the RESULT (cl_input.c) and the 'v' is
+    # written after it, so the engine's gate abstains when last + pred leaves
+    # [minpitch, maxpitch] (in_generic.c IN_Journal_CheckIdentity); this is that
+    # gate.  The bound is serverinfo the file does not carry: default.cfg sets
+    # +-89 and the engine's own default is -70/+80.  Guessing it wrong by
+    # MODELLING the clamp produced 892 false pitch-only accusations on one honest
+    # PB, so a frame that may have been clamped abstains, counted.
     def pitch_eps(a, b):
         return max(2e-6, max(abs(a), abs(b)) * (2.0 ** -22))
 
     PITCH_ENV = 89.0
-    kpitch = None
+    hk = None
     if "m_pitch" in head:
         try:
-            kpitch = float(head["m_pitch"]) * sens * scale
+            hk = float(head["m_pitch"]) * sens * scale
         except ValueError:
-            kpitch = None
+            hk = None
 
     # VF_STRAFE_Y is not in the `applicable` mask above, and it must not be:
     # those frames still govern yaw.  It means "counts went to forwardmove, not
@@ -1855,40 +1877,34 @@ def check_identity(r, head, views):
     gov_pitch = [v for v in applicable
                  if not (v[3] & VF_STRAFE_Y) and v[6] is not None]
     r.info["identity_pitch_frames"] = max(0, len(gov_pitch) - 1)
-    # Two exclusions, counted rather than silent: the strafe_y frames the mask
-    # above does not exclude, and the frames whose unclamped prediction would
-    # leave the clamp envelope (see PITCH_ENV).  A third thing is not counted
-    # here because it is not an exclusion -- pre-305 files have no kpitch column
-    # at all and simply produce an empty gov_pitch.
-    clamp_skipped = 0
-    if kpitch is not None:
-        for idx in range(1, len(gov_pitch)):
-            c = gov_pitch[idx]
-            if abs(kpitch * c[2] + c[6]) > PITCH_ENV:
-                clamp_skipped += 1
-    r.info["identity_pitch_not_governed"] = (
-        (len(applicable) - len(gov_pitch)) + clamp_skipped)
+    pitch_live = len(gov_pitch) >= 2 and any(
+        consts(v)[1] and not consts(v)[2] for v in gov_pitch[1:])
 
     pviolations = []
     pghost = []         # pitch moved with nothing recorded behind it
-    if kpitch is None:
-        r.note("no usable m_pitch in the header -- the PITCH identity is not "
-               "checkable from this file. Only yaw was checked.")
-    elif kpitch == 0:
-        r.note("m_pitch*sensitivity is zero -- no pitch can be produced from "
-               "counts, so the pitch identity is vacuous and was not checked")
-    elif len(gov_pitch) < 2:
-        # A pre-305 file lands here: it has no kpitch column, and ABSENT IS NOT
-        # ZERO, so a pitch residual there is unattributable exactly as a yaw one
-        # is.  No note of its own -- the pre-305 yaw note below already says the
-        # file cannot settle this.
-        pass
+    p_judged = set()    # lines whose pitch was compared, held or not
+    p_abst = 0          # clamp or constants: counted, never judged
+    if not pitch_live:
+        if hk is None:
+            r.note("no usable m_pitch in the header -- the PITCH identity is not "
+                   "checkable from this file. Only yaw was checked.")
+        elif hk == 0:
+            r.note("m_pitch*sensitivity is zero -- no pitch can be produced from "
+                   "counts, so the pitch identity is vacuous and was not checked")
+        # else pre-305 (no kpitch column): ABSENT IS NOT ZERO, and the yaw note
+        # below already says the file cannot settle this.
     else:
         for idx in range(1, len(gov_pitch)):
             p, c = gov_pitch[idx - 1], gov_pitch[idx]
-            pred = kpitch * c[2] + c[6]
-            if abs(pred) > PITCH_ENV:
-                continue        # the clamp may have truncated it: not governed
+            _ky, kpt, filt = consts(c)
+            if filt or not kpt:
+                p_abst += 1
+                continue
+            pred = kpt * c[2] + c[6]
+            if pred > PITCH_ENV - p[4] or pred < -PITCH_ENV - p[4]:
+                p_abst += 1     # the clamp may have truncated it: not governed
+                continue
+            p_judged.add(c[0])
             dpitch = c[4] - p[4]
             if dpitch > 180.0:
                 dpitch -= 360.0
@@ -1900,9 +1916,8 @@ def check_identity(r, head, views):
                     pghost.append((c[0], dpitch))
                 else:
                     pviolations.append((c[0], c[2], dpitch, pred, err))
-
-        # Reporting is below the yaw loop: it names the overlap with `violations`,
-        # which does not exist until that loop has run.
+    r.info["identity_pitch_not_governed"] = (
+        (len(applicable) - len(gov_pitch)) + p_abst)
 
     # Pre-305 files carry no keyboard term, and ABSENT IS NOT ZERO. Treating a
     # missing column as 0 would re-create the very false positive Patch 305 was
@@ -1911,71 +1926,102 @@ def check_identity(r, head, views):
 
     violations = []
     ghost = []          # yaw moved with nothing recorded behind it
+    y_judged = set()
+    y_abst = 0
     for idx in range(1, len(applicable)):
         p, c = applicable[idx - 1], applicable[idx]
+        kyw, _kp, filt = consts(c)
+        if filt or not kyw:
+            y_abst += 1
+            continue
+        y_judged.add(c[0])
         dyaw = c[5] - p[5]
         if dyaw > 180.0:
             dyaw -= 360.0
         elif dyaw < -180.0:
             dyaw += 360.0
         kyaw = c[7] if c[7] is not None else 0.0
-        pred = k * c[1] + kyaw
+        pred = kyw * c[1] + kyaw
         err = abs(dyaw - pred)
         if err > yaw_eps(p[5], c[5]) + abs(pred) * 1e-6:
             if c[1] == 0 and kyaw == 0.0:
                 ghost.append((c[0], dyaw))
             else:
                 violations.append((c[0], c[1], dyaw, pred, err))
+    if y_abst:
+        r.info["frames_not_governed"] = skipped + y_abst
+
+    # WHOLE-ANGLE FRAMES.  A server angle set (every teleport, which sets pitch
+    # and yaw) breaks both axes, with or without counts on the frame, and so does
+    # a rewrite of the whole view angle: this file cannot tell them apart.  So a
+    # break is ACCUSED only on one axis with the other judged and held; anything
+    # else that broke is UNRESOLVED -- counted and noted, never a fault.  The four
+    # per-axis counts stay raw, as the engine's counters count them.
+    yb = set(v[0] for v in violations) | set(v[0] for v in ghost)
+    pb = set(v[0] for v in pviolations) | set(v[0] for v in pghost)
+    whole = yb & pb
+    yaw_bad = [v for v in violations if have_kbd and v[0] not in pb
+               and (not pitch_live or v[0] in p_judged)]
+    pitch_bad = [v for v in pviolations if v[0] not in yb and v[0] in y_judged]
+    hidden = [v[0] for v in violations if have_kbd and v[0] not in pb
+              and pitch_live and v[0] not in p_judged] + \
+             [v[0] for v in pviolations if v[0] not in yb and v[0] not in y_judged]
+    unresolved = (yb | pb) - set(v[0] for v in yaw_bad + pitch_bad)
 
     r.info["identity_frames"] = len(applicable) - 1
     r.info["identity_violations"] = len(violations)
-
-    # The pitch verdict, now that `violations` exists to overlap against.
     r.info["identity_pitch_violations"] = len(pviolations)
-    if pviolations or pghost:
-        have_kbd_p = all(v[6] is not None for v in gov_pitch)
-        both = len(set(v[0] for v in pviolations)
-                   & set(v[0] for v in violations))
-        if pviolations and not have_kbd_p:
-            r.note("pitch identity unresolved on %d frame(s), and this file "
-                   "CANNOT SETTLE IT: it is pre-305, so the non-mouse pitch "
-                   "change (+lookup/+lookdown, cl_pitchspeed) was never "
-                   "recorded." % len(pviolations))
-        elif pviolations:
-            worst = max(pviolations, key=lambda v: v[4])
-            r.fault("PITCH IDENTITY BROKEN on %d of %d governed frames. The "
-                    "pitch did not come from the counts OR the recorded keyboard "
-                    "term. Worst: line %d, %g counts should give %.6f deg, file "
-                    "says %.6f (off by %.6f).%s"
-                    % (len(pviolations), len(gov_pitch) - 1,
-                       worst[0], worst[1], worst[3], worst[2], worst[4],
-                       ("" if not both else
-                        " %d of these also break the yaw identity, which points "
-                        "at a whole-angle event rather than a pitch-only "
-                        "injection." % both)))
-        elif pghost:
-            # A note and not a fault, matching yaw: a server angle set and an
-            # injected turn look identical from inside this file.
-            r.note("%d frame(s) where the PITCH moved with zero mouse counts AND "
-                   "zero recorded keyboard term (first at line %d). The engine "
-                   "recorded no cause for that motion. A server angle set looks "
-                   "like this and so does an injected turn -- corroborate against "
-                   "the .rec before concluding either." % (len(pghost), pghost[0][0]))
-    elif kpitch not in (None, 0) and len(gov_pitch) >= 2:
-        r.info["identity_pitch"] = ("exact on all %d governed frames "
-                                    "(mouse + recorded keyboard term)"
-                                    % (len(gov_pitch) - 1))
-
-    # Both ghost counts PUBLISHED, not only noted.  A ghost is the shape every
-    # CreateMove-level rewrite makes -- the angle moved with zero device counts
-    # and zero recorded keyboard turn -- and until this the only place its count
-    # existed was inside a note's prose, so no caller could compare it against
-    # anything or aggregate it across a corpus.  A finding that only a human can
-    # read is a finding no gate can use.
+    # Both ghost counts PUBLISHED, not only noted, so a caller can aggregate them.
     r.info["identity_ghosts"] = len(ghost)
     r.info["identity_pitch_ghosts"] = len(pghost)
+    r.info["identity_whole"] = len(whole)
+    r.info["identity_unresolved"] = len(unresolved)
+    r.info["identity_judged"] = len(y_judged | p_judged)
 
-    if ghost and not have_kbd:
+    if whole:
+        r.note("%d frame(s) moved BOTH axes by something other than their recorded "
+               "causes (first at line %d). A server angle set -- every teleport -- "
+               "does that, and so does a rewrite of the whole view angle; this file "
+               "cannot tell them apart, so they are unresolved, not faulted. The "
+               ".rec's warp records can." % (len(whole), min(whole)))
+    if hidden:
+        r.note("%d frame(s) broke one axis while the other was not governed on "
+               "that frame (the pitch clamp, +strafe, or a constant that left it "
+               "vacuous), so a whole-angle event cannot be ruled out (first at line "
+               "%d): unresolved, not faulted." % (len(hidden), min(hidden)))
+
+    # The pitch verdict.  pitch_bad is only frames where yaw was judged and held.
+    pg_only = [g for g in pghost if g[0] not in whole]
+    if pitch_bad:
+        worst = max(pitch_bad, key=lambda v: v[4])
+        r.fault("PITCH IDENTITY BROKEN on %d of %d governed frames. The pitch did "
+                "not come from the counts OR the recorded keyboard term, and the "
+                "yaw held on those frames, so this is not a whole-angle event. "
+                "Worst: line %d, %g counts should give %.6f deg, file says %.6f "
+                "(off by %.6f)."
+                % (len(pitch_bad), len(gov_pitch) - 1,
+                   worst[0], worst[1], worst[3], worst[2], worst[4]))
+    elif pitch_live:
+        if pb:
+            r.info["identity_pitch"] = ("holds on %d of %d judged frames; %d "
+                                        "unresolved (see the notes)"
+                                        % (len(p_judged) - len(pb), len(p_judged),
+                                           len(pb)))
+        else:
+            r.info["identity_pitch"] = ("exact on all %d governed frames "
+                                        "(mouse + recorded keyboard term)"
+                                        % (len(gov_pitch) - 1))
+    if pg_only:
+        # A note and not a fault, matching yaw: a server angle set and an
+        # injected turn look identical from inside this file.
+        r.note("%d frame(s) where the PITCH moved with zero mouse counts AND "
+               "zero recorded keyboard term (first at line %d). The engine "
+               "recorded no cause for that motion. A server angle set looks "
+               "like this and so does an injected turn -- corroborate against "
+               "the .rec before concluding either." % (len(pg_only), pg_only[0][0]))
+
+    yg_only = [g for g in ghost if g[0] not in whole]
+    if yg_only and not have_kbd:
         # On a pre-305 file a "ghost" is almost certainly just keyboard turn.
         # Measured on 0004976_pb: 1,938 ghost frames, and 100% of them fell
         # inside a +left or +right hold -- 0 under neither. Calling those
@@ -1984,15 +2030,15 @@ def check_identity(r, head, views):
                "line %d). On a pre-305 file this is EXPECTED and not a finding: "
                "+left/+right are default binds and their contribution was not "
                "recorded, so it cannot be told from an injected turn here. "
-               "Patch 305 separates the two." % (len(ghost), ghost[0][0]))
-    elif ghost:
+               "Patch 305 separates the two." % (len(yg_only), yg_only[0][0]))
+    elif yg_only:
         # Post-305 this MEANS something: the engine recorded the keyboard term
         # and it was zero, so the angle moved with nothing accounted for.
         r.note("%d frame(s) where the yaw moved with ZERO mouse counts AND zero "
                "recorded keyboard turn (first at line %d). The engine recorded "
                "no cause for that motion. A server angle set looks like this and "
                "so does an injected turn -- corroborate against the .rec before "
-               "concluding either." % (len(ghost), ghost[0][0]))
+               "concluding either." % (len(yg_only), yg_only[0][0]))
 
     if violations and not have_kbd:
         # PRE-305 FILE. The engine did not record the keyboard turn, so a
@@ -2010,24 +2056,24 @@ def check_identity(r, head, views):
                "not evidence of anything. Re-record on engine patch 305 or later "
                "to make this checkable."
                % (len(violations), len(applicable) - 1))
-    elif violations:
-        worst = max(violations, key=lambda v: v[4])
+    elif yaw_bad:
+        worst = max(yaw_bad, key=lambda v: v[4])
         r.fault("YAW IDENTITY BROKEN on %d of %d governed frames. The angle did "
-                "not come from the counts OR the recorded keyboard turn. Worst: "
-                "line %d, %g counts should give %.6f deg, file says %.6f "
-                "(off by %.6f)."
-                % (len(violations), len(applicable) - 1,
+                "not come from the counts OR the recorded keyboard turn, and the "
+                "pitch held on those frames (or this file has no pitch identity), "
+                "so this is not a whole-angle event. Worst: line %d, %g counts "
+                "should give %.6f deg, file says %.6f (off by %.6f)."
+                % (len(yaw_bad), len(applicable) - 1,
                    worst[0], worst[1], worst[3], worst[2], worst[4]))
-    elif ghost:
+    elif yb:
         # "exact on all N" WHILE N FRAMES HAVE NO RECORDED CAUSE IS A CONTRADICTION,
         # and it printed exactly that during the Patch 305 falsifier: the zeroed
         # control reported "exact on all 150" and "150 frames with no recorded
-        # cause" in the same block, about the same 150 frames. Ghosts are excluded
-        # from `violations` because they are a different shape of wrong -- they
-        # must not then be silently counted as passes.
+        # cause" in the same block, about the same 150 frames.  Unresolved frames
+        # must not be silently counted as passes.
         r.info["identity"] = ("holds on the %d frame(s) with a recorded cause; "
-                              "%d frame(s) had NONE (see the note below)"
-                              % (len(applicable) - 1 - len(ghost), len(ghost)))
+                              "%d frame(s) unresolved (see the notes)"
+                              % (len(applicable) - 1 - len(yb), len(yb)))
     elif have_kbd:
         r.info["identity"] = ("exact on all %d governed frames (mouse + recorded "
                               "keyboard turn)" % (len(applicable) - 1))

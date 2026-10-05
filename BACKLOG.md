@@ -111,9 +111,10 @@ signs mutually consistent digests, and `.rec`-vs-`.view` agrees by construction.
 The one artifact that can object is the `.hid`, because `IN_Commands` journals
 each event BEFORE dispatching it. Patch 484 wired the journal's contents into the
 sweep and closed the pitch axis; **Patch 486 then shipped the counter's consumer**
-(`cl_replay.qc` reads the five `in_jrn484_*` cvars under `IJH_IDENT`, `sv_timer.qc`
-carries them as `run_t_ij*`, and the server writes them into the recording, so
-`pm_verify` replays a number bound to the evidence it describes).  What is left
+(`cl_replay.qc` reads the five `in_jrn484_*` cvars under `IJH_IDENT` and sends them
+at most once a second, `sv_timer.qc` keeps the latest as `run_t_ij*` and prints it
+in `cmd timer`.  NOTHING WRITES THEM INTO THE RECORDING -- an earlier line here
+said the server did -- so no file binds them to the evidence they describe).  What is left
 below is the collection side and the rules that still only note.
 
 - **THE FLEET COLLECTS ZERO JOURNALS, so there is no `.hid` corpus to calibrate
@@ -152,6 +153,14 @@ below is the collection side and the rules that still only note.
   by nothing but the grader. **BLOCKED on the corpus above** — a threshold set
   without one is a guess, and this tree's rule is that a check which faults an
   honest run is worse than no check.
+
+  **Whole-angle frames are now in the same bucket** (`identity_whole`, unresolved,
+  the sweep stores the journal as BLIND): a teleport on a frame that carried
+  counts read as YAW/PITCH IDENTITY BROKEN, and 3 of the 4 local PBs faulted on
+  exactly that (18 frames, all both-axis). The cost is that a rewrite of the
+  WHOLE view angle no longer faults either; a single-axis one still does. The
+  same `.hid`-to-`.rec` join -- whole-angle frames against `warp ... tele` rows
+  -- is what would give that fault back.
 
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean
   runs.** `surfd/` compares no run's move stream against another's. `replays.sha`

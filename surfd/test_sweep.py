@@ -481,13 +481,14 @@ def case_receipt_angles_reach_the_database():
         rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
 
 
-def _journal_text(break_pitch=False):
+def _journal_text(break_pitch=False, teleport=False):
     """A journal hidcheck accepts, made with test_hidcheck's own writer.
 
     MADE, NOT COPIED, for the reason make_receipt gives: a fixture copied off
     this disk stops testing the format the moment the writer changes and nobody
     re-copies it.  The writer is imported rather than reimplemented so this arm
-    cannot drift from the grammar the engine actually emits.
+    cannot drift from the grammar the engine actually emits.  `teleport` puts a
+    server angle set (pitch 0, a new yaw) on frame 20, which carries counts.
     """
     if TOOLS not in sys.path:
         sys.path.insert(0, TOOLS)
@@ -499,6 +500,8 @@ def _journal_text(break_pitch=False):
         j.frame(3000 + i)
         if dx or dy:
             j.mouse(dx, dy)
+        if teleport and i == 20:
+            pitch, yaw = 0.0, -135.0
         pitch += j.kp * dy
         yaw += j.k * dx
         j.view(dx, dy, pitch, yaw)
@@ -597,6 +600,108 @@ def case_receipt_journal_reaches_the_database():
     got = jrn("20260921-000083-0")
     check("...and the journal column says OK", got[0], "OK")
     check("...carrying the identity it measured", "exact" in got[1], True)
+
+
+def case_receipt_journal_third_verdict():
+    """A TELEPORT IS NOT A FAULT AND NOT OK.  A server angle set on a frame that
+    carried counts read PITCH/YAW IDENTITY BROKEN, so 3 of the tree's 4 real PBs
+    would have stored FAULT.  It is BLIND: no fault, frames it cannot attribute.
+    So is a journal the identity judged nothing in -- a stub used to read FAULT
+    ("no frame markers"), and OK would be a check that measured nothing."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+
+    def jrn(runid):
+        return conn.execute("SELECT journal, journal_reason FROM receipts"
+                            " WHERE runid = ?", (runid,)).fetchone()
+
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000091-0", age=old,
+                 hid=_journal_text(teleport=True).encode("utf-8"))
+    # The shape of the six stubs in data/evidence: one 'v', a nonce note, no 'f'
+    # and no events -- the journal that stored FAULT "no frame markers".
+    from test_hidcheck import Journal
+    stub = Journal()
+    stub.view(0, 0, 10.0, 90.0)
+    stub.note("nonce d6c6820bca16750c77166d96dcf02787")
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000092-0", age=old,
+                 hid=stub.end().encode("utf-8"))
+    n, bad = sweep.receipt_step(conn)
+    check("a teleport journal and a stub: both read, both receipts valid",
+          (n, bad), (2, 0))
+    got = jrn("20260921-000091-0")
+    check("a teleport with counts behind it: the journal column says BLIND",
+          got[0], "BLIND")
+    check("...naming the frame it could not attribute",
+          "1 frame(s) unresolved (1 moved both axes)" in got[1], True)
+    got = jrn("20260921-000092-0")
+    check("a journal with nothing to judge: BLIND, not FAULT and not OK", got[0], "BLIND")
+    check("...and it says so", "no frame the identity could judge" in got[1], True)
+
+
+def case_receipt_journal_pending_until_it_arrives():
+    """A RECEIPT IS READ ONCE, 600 s AFTER IT LANDS, and a journal is the upload
+    that can take longer (one chunk per round trip).  So a signed, kept journal
+    that is not here yet is PENDING, read again when it arrives, and ABSENT only
+    once JOURNAL_WAIT after signing has passed without it."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    text = _journal_text().encode("utf-8")
+
+    def jrn(runid):
+        return conn.execute("SELECT journal, journal_reason FROM receipts"
+                            " WHERE runid = ?", (runid,)).fetchone()
+
+    def unsent(runid):
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, runid, age=old, hid=text)
+        os.remove(rp[:-5] + ".hid")         # signed and kept, not uploaded yet
+        return rp
+
+    rp = unsent("20260921-000095-0")
+    make_receipt(surfd.EVIDENCE_DIR, "20260921-000096-0", age=old)   # signs none
+    n, bad = sweep.receipt_step(conn, now=now)
+    check("a signed journal not here yet: read, receipt valid", (n, bad), (2, 0))
+    check("...and the journal column says PENDING, not ABSENT",
+          jrn("20260921-000095-0")[0], "PENDING")
+    check("a receipt that signs no journal is ABSENT at once, never PENDING",
+          jrn("20260921-000096-0")[0], "ABSENT")
+    n, bad = sweep.receipt_step(conn, now=now + 300)
+    check("the next pass does not re-read it while nothing has arrived", n, 0)
+    check("...and it stays PENDING", jrn("20260921-000095-0")[0], "PENDING")
+    with open(rp[:-5] + ".hid", "wb") as fh:
+        fh.write(text)
+    n, bad = sweep.receipt_step(conn, now=now + 600)
+    check("the journal arrives: the next pass reads it and stores its verdict",
+          (n, bad, jrn("20260921-000095-0")[0]), (1, 0, "OK"))
+    n, bad = sweep.receipt_step(conn, now=now + 900)
+    check("...and then stops reading it", n, 0)
+
+    # BOUNDED: still missing JOURNAL_WAIT after signing is ABSENT for good.
+    unsent("20260921-000097-0")
+    sweep.receipt_step(conn, now=now)
+    check("a second unsent journal: PENDING", jrn("20260921-000097-0")[0], "PENDING")
+    late = old + surfd.JOURNAL_WAIT + 1
+    sweep.receipt_step(conn, now=late)
+    check("...past JOURNAL_WAIT it is ABSENT", jrn("20260921-000097-0")[0], "ABSENT")
+    n, _bad = sweep.receipt_step(conn, now=late + 300)
+    check("...and is not read again", n, 0)
+
+    # AND A PENDING ROW WHOSE RECEIPT IS REAPED cannot be read again: past the
+    # wait it is ABSENT rather than PENDING forever.
+    rp = unsent("20260921-000098-0")
+    sweep.receipt_step(conn, now=now)
+    os.remove(rp)
+    os.remove(rp[:-5] + ".view")
+    sweep.receipt_step(conn, now=now + 300)
+    check("a reaped receipt inside the wait stays PENDING",
+          jrn("20260921-000098-0")[0], "PENDING")
+    sweep.receipt_step(conn, now=late)
+    check("...and past it is ABSENT, never arrived",
+          tuple(jrn("20260921-000098-0")), ("ABSENT", "the journal never arrived"))
 
 
 def case_receipt_step_never_takes_the_sweep_down():
@@ -1111,6 +1216,8 @@ def main():
                  case_receipt_reread,
                  case_receipt_angles_reach_the_database,
                  case_receipt_journal_reaches_the_database,
+                 case_receipt_journal_third_verdict,
+                 case_receipt_journal_pending_until_it_arrives,
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_disk_note):
         print("%s:" % case.__name__)
