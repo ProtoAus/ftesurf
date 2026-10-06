@@ -590,6 +590,34 @@ headless verifier per map on port 27698, with `nice 19`, idle IO and
 would index. `test_sweep.py` stubs out the engine (use a throwaway
 `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the verifier itself.
 
+### Similarity runtime support (store-only)
+
+The normal surfd stage has tools for tests; staging does **not** install them.
+`simcheck.py` imports only the caller's resolved `SURFD_TOOLS/census/recsim.py`.
+Missing support is an explicit skipped measurement, never an alternate search.
+Use `tools/simcheck_runtime.py` for the narrow runtime dependency:
+
+```text
+python tools/simcheck_runtime.py prepare --repo CLEAN_CHECKOUT --ref INSPECTED_40_HEX_SHA --output NEW_PACKAGE
+python NEW_PACKAGE/simcheck_runtime.py install --package NEW_PACKAGE --tools-dir ABSOLUTE_GAME_TOOLS --expect-previous absent
+```
+
+The second command is a dry run. Inspect its plan, serialize deployment with the
+sweep lock, then repeat with `--apply`. For an existing file, supply its inspected
+SHA-256 instead of `absent`. The package pins the exact source commit/bytes and
+installer; all four paired reader hashes must already match. Only
+`census/recsim.py` changes, with predecessor rechecks, atomic replacement and an
+exclusive rollback copy for an existing version. No loose source, whole census
+folder, credentials, host defaults or player files are shipped/read by this tool.
+Transport the package over the trusted deployment channel; the manifest is
+provenance and drift detection, not a cryptographic signer identity.
+
+Run `python tools/test_simcheck_runtime.py` before shipping. Verify installed
+module path, hashes, an acted synthetic long comparison and short/unjudgeable
+control, and unchanged badge/verdict tables after shipping. Collection stays
+store-only; `--sims 0` still disables it without importing the tool. Activating
+collection is not calibration or a guarantee of complete pair coverage.
+
 ### Evidence behind stage rows (schema 6)
 
 A lobby posts each stage of a main run with that run's `runid` and no
