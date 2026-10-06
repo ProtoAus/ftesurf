@@ -73,6 +73,7 @@ Usage:
 
 import argparse
 import glob
+import io
 import os
 import sys
 
@@ -337,9 +338,12 @@ class Report:
         return not self.faults
 
 
-def check_hid(path, verbose=False):
+def check_hid(path, verbose=False, *, data=None):
     r = Report(path)
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    # A receipt caller has already hashed these bytes. Never reopen its path.
+    stream = (open(path, "r", encoding="utf-8", errors="replace") if data is None
+              else io.StringIO(data.decode("utf-8", errors="replace"), newline=None))
+    with stream as f:
         lines = [l.rstrip("\n").rstrip("\r") for l in f]
 
     if not lines:

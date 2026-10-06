@@ -49,6 +49,7 @@ Usage:
 import argparse
 import array
 import glob
+import io
 import math
 import os
 import re
@@ -572,10 +573,17 @@ def spec_restates(r, ln, what, mt, carry, pend):
                     "from the live counter" % (ln, what, sln, rw, mt, smt))
 
 
-def check_rec(path, verbose=False):
+def read_lines(path, data=None):
+    """Preserve text-mode decoding/newlines, optionally from captured bytes."""
+    stream = (open(path, "r", encoding="utf-8", errors="replace") if data is None
+              else io.StringIO(data.decode("utf-8", errors="replace"), newline=None))
+    with stream as f:
+        return [l.rstrip("\n").rstrip("\r") for l in f]
+
+
+def check_rec(path, verbose=False, *, data=None):
     r = Report(path)
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        lines = [l.rstrip("\n").rstrip("\r") for l in f]
+    lines = read_lines(path, data)
 
     if not lines:
         r.fault("empty file")
@@ -3186,7 +3194,7 @@ def angle_join(r, rec, frames):
                 "122 across the corpus" % (longest, ANG_CUT, frac))
 
 
-def check_view(path, rec_report=None):
+def check_view(path, rec_report=None, *, data=None):
     """The angle sidecar.  cltime cmdframe ticks pitch yaw keys.
 
     VERSION 2 (build 22) added one header key, `hid`, saying whether a raw input
@@ -3196,8 +3204,7 @@ def check_view(path, rec_report=None):
     makes its own checker complain teaches everyone to stop reading it.
     """
     r = Report(path)
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        lines = [l.rstrip("\n").rstrip("\r") for l in f]
+    lines = read_lines(path, data)
 
     if not lines or not lines[0].startswith("FTESURF-VIEW"):
         r.fault("first line is not 'FTESURF-VIEW <version>'")

@@ -44,6 +44,7 @@ Usage:
 
 import glob
 import hashlib
+import io
 import os
 import sys
 
@@ -65,6 +66,10 @@ class Receipt(object):
         self.msg = b""
         self.ok = None
         self.recpath = None         # the .rec join_rec found, for join_angles
+        self.recdata = None
+        # One observation per path for this report, including absence/read errors.
+        self.file_bytes = {}
+        self.digest_checked = set()
         self.ioerror = False        # a file could not be read: nothing was measured
         self.digest_bad = {}        # kind -> the fault, for a sibling that is not what was signed
         # join_angles' result as a word: "" (not checked), OK, BLIND or FAULT,
@@ -186,6 +191,22 @@ def signed_get(r, key):
     return None
 
 
+def file_bytes(r, path):
+    """Capture once; a later join must not observe replacement or new arrival."""
+    if path not in r.file_bytes:
+        try:
+            with open(path, "rb") as fh:
+                r.file_bytes[path] = fh.read()
+        except FileNotFoundError:
+            r.file_bytes[path] = None
+        except OSError as exc:
+            r.file_bytes[path] = exc
+    data = r.file_bytes[path]
+    if isinstance(data, OSError):
+        raise data
+    return data
+
+
 def join_rec(r):
     """Join the receipt to the .rec it names, when that file is on this disk."""
     runid = r.head.get("runid", "")
@@ -201,19 +222,28 @@ def join_rec(r):
         hits += glob.glob(os.path.join(GAME, "data", "runs", mapname, leg, "*.rec"))
     for path in hits:
         try:
+            # Unrelated recordings cost only a header scan, as before. Capture
+            # the selected one's remaining text BEFORE closing this same handle.
             with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                head = {}
+                head, prefix = {}, []
                 for ln in fh:
+                    prefix.append(ln)
                     if ln.strip() == "begin":
                         break
                     k, _sp, v = ln.strip().partition(" ")
                     head[k] = v
+                if head.get("runid") != runid:
+                    continue
+                text = "".join(prefix) + fh.read()
         except OSError:
             continue
-        if head.get("runid") != runid:
-            continue
+        # No digest covers the .rec; its decoded observation is shared by the
+        # nonce and angle readers. Re-encoding preserves replacement/newlines.
+        with io.StringIO(text, newline=None) as fh:
+            lines = list(fh)
         r.note("joined %s" % os.path.relpath(path, GAME))
         r.recpath = path
+        r.recdata = text.encode("utf-8")
         want = signed_get(r, "nonce")
 
         # A FILE CAN STATE MORE THAN ONE NONCE AND THE RECEIPT SIGNS THE LAST.
@@ -225,18 +255,14 @@ def join_rec(r):
         stated = []
         if "nonce" in head:
             stated.append((0, head["nonce"], "header"))
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                body = False
-                for ln in fh:
-                    if not body:
-                        body = ln.strip() == "begin"
-                        continue
-                    f = ln.split()
-                    if len(f) == 3 and f[0] == "nonce":
-                        stated.append((len(stated), f[2], "session %d" % (len(stated) + 1)))
-        except OSError:
-            pass
+        body = False
+        for ln in lines:
+            if not body:
+                body = ln.strip() == "begin"
+                continue
+            f = ln.split()
+            if len(f) == 3 and f[0] == "nonce":
+                stated.append((len(stated), f[2], "session %d" % (len(stated) + 1)))
 
         if not stated:
             r.note("the .rec states no nonce (a recording older than Patch 416)")
@@ -334,7 +360,15 @@ def join_uploaded(r, want):
         if key in want:
             continue            # the caller named one explicitly; that wins
         path = base + "." + key
-        if not os.path.exists(path):
+        try:
+            data = file_bytes(r, path)
+        except OSError as exc:
+            # The CLI must still exit nonzero. sweep recognizes this prefix as
+            # unmeasured I/O and defers it, rather than storing an evidence fault.
+            r.ioerror = True
+            r.fault("--%s %s: %s" % (key, path, exc))
+            continue
+        if data is None:
             # ABSENT IS NOT A FAULT, BUT IT IS NOT NOTHING EITHER.  A receipt
             # that signs a real digest and has no file beside it is the only
             # on-disk trace of "the client committed to evidence and did not
@@ -368,12 +402,23 @@ def join_angles(r, want):
     if not r.recpath:
         return
     view = want.get("view") or (os.path.splitext(r.path)[0] + ".view")
-    if not os.path.exists(view):
-        return
     try:
+        data = file_bytes(r, view)
+        if data is None:
+            return
+        if ("view", view) not in r.digest_checked:
+            check_file(r, "view", view, sibling=("view" not in want))
+        if "view" in r.digest_bad:
+            r.angles = "FAULT"
+            r.angles_detail = "not the sidecar the receipt signed: %s" % r.digest_bad["view"]
+            return
         import reccheck
-        rec = reccheck.check_rec(r.recpath)
-        v = reccheck.check_view(view, rec)
+        rec = reccheck.check_rec(r.recpath, data=r.recdata)
+        v = reccheck.check_view(view, rec, data=data)
+    except OSError as exc:
+        r.ioerror = True
+        r.note("the angle cross-check is deferred (%r)" % exc)
+        return
     except Exception as exc:
         r.note("the angle cross-check did not run (%r)" % exc)
         return
@@ -457,7 +502,13 @@ def join_journal(r):
     """
     base = os.path.splitext(r.path)[0]
     path = base + ".hid"
-    if not os.path.exists(path):
+    try:
+        data = file_bytes(r, path)
+    except OSError as exc:
+        r.ioerror = True
+        r.note("the journal content check is deferred (%r)" % exc)
+        return
+    if data is None:
         # Not a fault and not nothing: `run_evidence_ul 1` takes the .view only,
         # so an absent journal is the normal case on a lobby today.  ABSENT is
         # the word that says the content question was never asked -- and it gets
@@ -469,13 +520,19 @@ def join_journal(r):
         f = (signed_get(r, "hid") or "").split()
         r.journal_owed = len(f) == 3 and f[0] != "-" and f[2] == "1"
         return
+    if ("hid", path) not in r.digest_checked:
+        check_file(r, "hid", path, sibling=True)
+    if "hid" in r.digest_bad:
+        r.journal = "FAULT"
+        r.journal_detail = "not the journal the receipt signed: %s" % r.digest_bad["hid"]
+        return
     try:
         # Lazy and wrapped exactly as join_angles does it: hidcheck lives beside
         # this file, and the sweep puts this directory on sys.path before it
         # imports rcptcheck at all.  A host that has rcptcheck but not hidcheck
         # still reports everything else the receipt knows.
         import hidcheck
-        h = hidcheck.check_hid(path)
+        h = hidcheck.check_hid(path, data=data)
     except Exception as exc:
         # A journal too broken to parse is a finding about the file, but this
         # function must not take the receipt step down with it -- the sweep's own
@@ -519,6 +576,7 @@ def check_file(r, key, path, sibling=False):
     else's disk would be stating something it cannot know.  So the join is the
     caller's to make, which is also the only honest way round -- whoever holds
     the file says which file they mean."""
+    r.digest_checked.add((key, path))
     v = signed_get(r, key)
     if not v or not v.split():
         r.fault(("a %s is stored under this run's name and the receipt signs no "
@@ -534,8 +592,9 @@ def check_file(r, key, path, sibling=False):
         r.digest_bad[key] = r.faults[-1]
         return
     try:
-        with open(path, "rb") as fh:
-            data = fh.read()
+        data = file_bytes(r, path)
+        if data is None:
+            raise FileNotFoundError(path)
     except OSError as e:
         r.fault("--%s %s: %s" % (key, path, e))
         r.ioerror = True

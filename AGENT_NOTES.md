@@ -2388,6 +2388,17 @@ script rather than passing it as an argument, where `ps` would show it.
     19 -> 20, coverage 1791203401 -> 1791272575; health stayed ok / 12 lobbies.
     No progs/lobby swap or web reload. The 19 earlier receipt rows were not
     automatically reread; paired deployment is NOT historical recalibration.
+  - Patch 503: receipt hash and content checks share captured `.view`/`.hid`
+    bytes, including captured absence/read errors; `.rec` runid/nonces/angles
+    share the selected handle's decoded observation. Parsers accept keyword-only
+    `data=` without reopening the path and retain text-mode UTF-8 replacement
+    and universal-newline behavior. Never hash a path and then reopen it to
+    claim its content was signed. `tools/test_rcptcheck.py` swaps files AFTER
+    the first read closes, with controls proving replacement and later digest
+    rejection. This is one observation, not filesystem atomicity, persisted
+    receipt identity, late-arrival scheduling or hardware attestation. Deploy
+    rcptcheck/reccheck/hidcheck together from a clean inspected commit; no
+    automatic historical reread or detector/policy change belongs in this slice.
   - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
     one that never ran). The Pi has no node and prints a skip, so run it on
     Windows after editing a template. On Windows its `amplification guard` and
