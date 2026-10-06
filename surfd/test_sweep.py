@@ -1064,7 +1064,7 @@ def case_receipt_journal_third_verdict():
 
 def case_receipt_journal_diagnostics_stored():
     """The new measurements survive the real bounded SQLite storage path."""
-    from test_journal_diagnostics import mouse_journal, unresolved_journal
+    from test_journal_diagnostics import mouse_journal, unresolved_journal, fault_journal
     from test_hidcheck import Journal
     surfd, sweep, _runs = fresh()
     sweep.TOOLS = TOOLS
@@ -1078,17 +1078,23 @@ def case_receipt_journal_diagnostics_stored():
     cases = ((mouse_journal([(2, 0)] * 6), "OK", "mouse counts on 5/5 judged frames (100.00%)"),
              (mouse_journal([(0, 0)] * 6), "BLIND", "longest no-mouse span 5 frames"),
              (unresolved_journal((3, 4, 5)), "BLIND", "unresolved spans 1, longest 3 frames"),
-             (nonlinear.end(), "BLIND", "no plain-linear frames"))
+             (nonlinear.end(), "BLIND", "no plain-linear frames"),
+             (fault_journal(unresolved_journal((3, 4))), "FAULT",
+              "unresolved spans 1, longest 2 frames"))
     for i, (text, _verdict, _detail) in enumerate(cases):
         make_receipt(surfd.EVIDENCE_DIR, "20261006-%06d-0" % (310 + i), age=old,
                      hid=text.encode("utf-8"))
-    check("CONTROL: all diagnostic receipts actually read", sweep.receipt_step(conn), (4, 0))
+    check("CONTROL: all diagnostic receipts actually read", sweep.receipt_step(conn), (5, 0))
     for i, (_text, verdict, detail) in enumerate(cases):
         row = conn.execute("SELECT verdict, journal, journal_reason FROM receipts WHERE runid = ?",
                            ("20261006-%06d-0" % (310 + i),)).fetchone()
         check("diagnostic %d: signature and journal verdict unchanged" % i,
               (row[0], row[1]), ("VALID", verdict))
         check("diagnostic %d: stored measurement/reason" % i, detail in row[2], True)
+        if verdict == "FAULT":
+            check("fault retains coverage and fault label in bounded storage",
+                  ("mouse counts on 9/9" in row[2], "YAW IDENTITY BROKEN" in row[2]),
+                  (True, True))
 
 
 def case_receipt_journal_pending_until_it_arrives():

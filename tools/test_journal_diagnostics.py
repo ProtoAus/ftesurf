@@ -44,6 +44,17 @@ def mouse_journal(counts, flags=None):
     return j.end()
 
 
+def fault_journal(text=None):
+    lines = (text or mouse_journal([(2, 0)] * 6)).splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("v "):
+            fields = line.split()
+            fields[6] = str(float(fields[6]) + 0.5)
+            lines[i] = " ".join(fields)
+            break
+    return "\n".join(lines) + "\n"
+
+
 class MouseCoverage(unittest.TestCase):
     def test_active_control_and_verbose_output(self):
         text = mouse_journal([(2, 0)] * 6)
@@ -91,15 +102,14 @@ class MouseCoverage(unittest.TestCase):
         self.assertEqual(r.info["identity_no_mouse_longest"], 4)
 
     def test_fault_precedence_and_absent_metric(self):
-        text = mouse_journal([(2, 0)] * 6)
-        lines = text.splitlines()
-        for i, line in enumerate(lines):
-            if line.startswith("v "):
-                fields = line.split()
-                fields[6] = str(float(fields[6]) + 0.5)
-                lines[i] = " ".join(fields)
-                break
-        self.assertEqual(receipt_for("\n".join(lines) + "\n").journal, "FAULT")
+        text = fault_journal()
+        h = run(text)
+        self.assertGreaterEqual(len(h.faults[0]), 300)
+        receipt = receipt_for(text)
+        self.assertEqual(receipt.journal, "FAULT")
+        self.assertIn("YAW IDENTITY BROKEN", receipt.journal_detail[:300])
+        self.assertIn("mouse counts on 5/5", receipt.journal_detail[:300])
+        self.assertIn(h.faults[0][:300], " ".join(receipt.notes))
         r = run(Journal(mfilter=1).end())
         self.assertNotIn("identity_mouse_frames", r.info)
 
@@ -142,6 +152,12 @@ class UnresolvedContinuity(unittest.TestCase):
         self.assertEqual(r.info["identity_unresolved"], 3)
         self.assertEqual(r.info["identity_unresolved_runs"], 2)
         self.assertEqual(r.info["identity_unresolved_longest"], 2)
+
+    def test_long_fault_retains_continuity(self):
+        receipt = receipt_for(fault_journal(unresolved_journal((3, 4))))
+        self.assertEqual(receipt.journal, "FAULT")
+        self.assertIn("unresolved spans 1, longest 2 frames", receipt.journal_detail[:300])
+        self.assertIn("mouse counts on 9/9", receipt.journal_detail[:300])
 
     def test_verbose_contains_continuity(self):
         r = run(unresolved_journal((3, 4)))

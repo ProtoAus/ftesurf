@@ -581,7 +581,12 @@ def join_journal(r):
         # Keep measurements before prose: the sweep retains the first 300 chars.
     if h.faults:
         r.journal = "FAULT"
-        r.journal_detail = "%s | %s" % (h.faults[0][:300], r.journal_detail)
+        # The sweep stores 300 chars. Leave room for the numeric diagnostics;
+        # keep the original fault note below and the FAULT verdict unchanged.
+        fault_summary = h.faults[0]
+        if len(fault_summary) > 96:
+            fault_summary = fault_summary[:93] + "..."
+        r.journal_detail = "%s | %s" % (fault_summary, r.journal_detail)
         r.note("the journal beside this receipt does not hold up: %s"
                % h.faults[0][:300])
     elif unresolved or not h.info.get("identity_judged") or h.info.get("identity_blind"):
