@@ -712,6 +712,19 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   signed pairs, migration and executed DOM rendering; it explicitly skips only
   DOM controls when Node is absent (83 Python checks vs 99 with Node).
   Scheduling suites compare complete rows including the detail.
+  Deployed from exact `be530ead` to the Pi, final hashes 2026-10-06 20:34:30 UTC:
+  18 staged suites pass, admin258; installed-source/reader83 controls pass. All
+  old fields of22 historical observations match the owner-only SQLite backup;
+  new details remain unknown. Live admin field/fallback and anonymous refusal,
+  unchanged real receipt pass (0 reads/faults), original master/one fresh worker
+  and health12 are proven. No lobbies/progs/binaries/configs/Windows install swap.
+  For a selected `surfd-deploy.ps1 -Only` stage, include its unchanged import
+  supports (recplot/simcheck/rcon) or staging fails before copy. Live tools default
+  to the game's `tools/`, not surfd's directory. Fixture writers may prepend their
+  own tools path: preload actual installed readers and assert module paths in
+  installed controls; byte-identical staged code is not installed-path proof.
+  The shared build57 branch diverged from main and was preserved; published source
+  is on main and the isolated p511-angle-reasons worktree.
 
 THE DESIGN IS NOT IN THIS REPO. It lives in
 `C:/FTESurf-private/anticheat-plan.md` — layers 0–3, threat classes T0–T5,
