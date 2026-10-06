@@ -2376,6 +2376,18 @@ script rather than passing it as an argument, where `ps` would show it.
     directory levels explicitly: glob silently hides unreadable map directories.
     `test_sweep.py` exercises failure/recovery, persistent-failure progress and
     source removal between a measured fault and an unmeasured join's recovery.
+    Repeating `--reread-receipts` does not supersede an in-flight partial read;
+    complete it before requesting a new reinterpretation. Permanent lost
+    unobserved receipts pause unsigned coverage until operator reconciliation.
+  - P501 deployed from clean reviewed/published `4f16963` on 2026-10-06 at
+    07:52:56 UTC: 262 sweep checks, 306 reader checks, nine app suites pass on
+    the Pi. Installed ONLY sweep/test_sweep and the matching four reader files
+    under the sweep lock, with DB/file backups and all six blob hashes verified.
+    The old live reader API lacked fields the sweeper expected (50 exceptions
+    in its last 100 log lines). New live read ACTED: 1 receipt / 0 faults, rows
+    19 -> 20, coverage 1791203401 -> 1791272575; health stayed ok / 12 lobbies.
+    No progs/lobby swap or web reload. The 19 earlier receipt rows were not
+    automatically reread; paired deployment is NOT historical recalibration.
   - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
     one that never ran). The Pi has no node and prints a skip, so run it on
     Windows after editing a template. On Windows its `amplification guard` and
