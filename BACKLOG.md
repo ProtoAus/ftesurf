@@ -292,11 +292,16 @@ below is the collection side and the rules that still only note.
   Patch 507 adds identity-bound late-view retries when a completed full read
   actually captured its absence; older unknown readiness is not inferred.
   Co-ready view/HID sources alternate, preserving old faults, journal findings
-  and key sightings. Rec-only arrivals still need bounded source-specific
-  scheduling (falsifier: late matching rec/nonce/angle contradiction ACTS, even
-  after a view-only completion, without clearing history or recounting keys).
-  Completed-source replacements and initial partial full reads without a later
-  complete observation remain outside automatic late-view readiness.
+  and key sightings. Patch 510 retains separate identity-bound recording
+  readiness after a completed full read found no recording, retaining it
+  through a view-only completion without inventing readiness for a previously
+  completed or historically unknown recording source. Late matching recordings now run nonce/angle joins
+  without HID, history resets or key recounts; all co-ready sources get turns.
+  Completed-source replacements, unknown historical readiness and initial
+  partial full reads without a later complete observation remain outside
+  automatic arrival scheduling. Header-only recording hints are bounded to
+  64 lines (4095 characters each); unusual longer headers require explicit
+  full rereads. Discovery cost at fleet scale is not yet calibrated.
   The no-mouse BLIND rule asks only
   whether any count exists: one 1-count frame turns a console-driven run OK again.
 

@@ -303,13 +303,13 @@ def receipt_identity(r):
 
 
 def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None,
-                 view_only=False, defer_view=False):
+                 view_only=False, defer_view=False, rec_only=False):
     """One receipt, fully joined -- or, with journal_only, everything but the
     .rec joins: the signature, the sibling digests and the journal, for the
     delayed-journal re-read, where a .rec pruned since the first read must not move
     the verdict and a late .hid or .view must still be checked.
     -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed,
-        partial, identity, view_missing), or None. view_only checks the view and
+        partial, identity, view_missing, rec_missing), or None. view_only checks the view and
     recording/angles without observing HID. `view_missing` is a captured absence,
     not a later stat. `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
@@ -334,22 +334,27 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
         # Before ANY joins: a replacement's signature cannot authorize content
         # under the original receipt's historical key attribution.
         raise ReceiptIdentityChanged("receipt identity changed; reread deferred")
-    if view_only:
-        # A newly arrived view is the only new source. No HID read/content join,
+    if view_only or rec_only:
+        # A newly available pair is the only new source. No HID read/content join,
         # and no replacement of the original signature or signing observation.
         rcptcheck.join_rec(r)
+        if rec_only and not r.recpath:
+            return None  # discovery was only a hint; no selected bytes measured
+        if rec_only:
+            rcptcheck.join_ticks(r)
         observed = list(r.faults)
         rcptcheck.join_uploaded(r, {"hid": True})  # exclude the unrelated sibling
         observed.extend(f for f in r.digest_bad.values() if f not in observed)
         rcptcheck.join_angles(r, {})
-        deferred = r.ioerror or r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None
+        deferred = r.ioerror or (view_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None)
         if deferred and not observed:
             return None
         faults = observed if deferred else r.faults
         verdict = "FAULT" if faults or r.ok is not True else "VALID"
         return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
                 r.angles, faults[0][:300] if faults else "", 1 if r.ok is True else 0,
-                "", "", 0, deferred, identity, False)
+                "", "", 0, deferred, identity,
+                r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None, not r.recpath)
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
@@ -368,7 +373,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
                   if journal == "FAULT" else "signed sibling read deferred after I/O")
         return ("FAULT", r.head.get("pub", ""), r.head.get("map", ""),
                 "BLIND", observed[0][:300], 1 if r.ok is True else 0,
-                journal, detail[:300], 0, True, identity, False)  # only these faults were measured
+                journal, detail[:300], 0, True, identity, False, False)  # only these faults were measured
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -391,7 +396,47 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
             r.angles, reason[:300], 1 if r.ok is True else 0,
             r.journal, (r.journal_detail or "")[:300],
             1 if getattr(r, "journal_owed", False) else 0, False, identity,
-            not journal_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None)
+            not journal_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None,
+            not journal_only and not r.recpath)
+
+
+def receipt_rec_runids(mapname):
+    """Header-only readiness hints; actual receipt joins must re-observe bytes."""
+    if surfd.clean_map(mapname) is None:
+        return set()
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    try:
+        import rcptcheck
+    except ImportError:
+        return set()
+
+    roots = [os.path.join(rcptcheck.GAME, "data", "evidence", mapname)]
+    for leg in ("main", "stage_*", "bonus_*"):
+        roots.extend(glob.glob(os.path.join(rcptcheck.GAME, "data", "runs", mapname, leg)))
+    found = set()
+    for root in roots:
+        for path in glob.glob(os.path.join(root, "*.rec")):
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    head = {}
+                    # Bounded hints only, not another recording parser. Unusual
+                    # headers can still be assessed by an explicit full reread.
+                    for _ in range(64):
+                        line = fh.readline(4096)
+                        if not line or len(line) == 4096:
+                            break
+                        if line.strip() == "begin":
+                            if head.get("runid"):
+                                found.add(head["runid"])
+                            break
+                        key, _sp, value = line.strip().partition(" ")
+                        head[key] = value
+            except OSError:
+                continue  # unknown availability cannot produce an evidence fault
+    return found
 
 
 def receipt_step(conn, limit=200, now=None):
@@ -416,13 +461,13 @@ def receipt_step(conn, limit=200, now=None):
         # read captures a missing view in scheduling metadata. Unknown historical
         # readiness is not inferred from today's files. --reread-receipts remains
         # the explicit full-read/threshold decision, never an identity waiver.
-        rows = {r[0]: (r[1], r[2], r[3], r[4], r[5]) for r in
-                conn.execute("SELECT runid, stale, journal, identity, pub, signed_at FROM receipts")}
+        rows = {r[0]: tuple(r[1:]) for r in
+                conn.execute("SELECT runid, stale, journal, identity, pub, signed_at, map FROM receipts")}
         baselines = {r[0][len("receipt_baseline:"):] for r in conn.execute(
             "SELECT k FROM sweepmeta WHERE k GLOB 'receipt_baseline:*'")}
         legacy_pending = sum(not ident and (jr == "PENDING" or st in (1, 2))
                              and rid not in baselines
-                             for rid, (st, jr, ident, _pub, _at) in rows.items())
+                             for rid, (st, jr, ident, _pub, _at, _map) in rows.items())
         if legacy_pending:
             print("receipt identity unknown: %d legacy pending reread(s) deferred"
                   % legacy_pending, file=sys.stderr)
@@ -436,6 +481,19 @@ def receipt_step(conn, limit=200, now=None):
         vkey = lambda f: "receipt_view_wait:" + os.path.relpath(f, surfd.EVIDENCE_DIR)
         view_wait = {r[0]: r[1] for r in conn.execute(
             "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_view_wait:*'")}
+        rkey = lambda f: "receipt_rec_wait:" + os.path.relpath(f, surfd.EVIDENCE_DIR)
+        rec_wait = {r[0]: r[1] for r in conn.execute(
+            "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_rec_wait:*'")}
+        rec_hints = {}
+
+        def rec_due(f):
+            if rkey(f) not in rec_wait:
+                return False
+            mapname = rows[name(f)][5]
+            if mapname not in rec_hints:
+                rec_hints[mapname] = receipt_rec_runids(mapname)
+            return name(f) in rec_hints[mapname]
+
         # glob hides unreadable map directories as well as an unreadable root.
         # Enumerate both levels explicitly: incomplete coverage must not move
         # the marker that lets admin distinguish unsigned from not read yet.
@@ -466,13 +524,13 @@ def receipt_step(conn, limit=200, now=None):
         fresh.sort(key=lambda item: (item[0] is None, item[0] or 0, item[1]))
 
         def journal_due(f):
-            _st, journal, _identity, _pub, signed_at = rows[name(f)]
+            _st, journal, _identity, _pub, signed_at, _map = rows[name(f)]
             return journal in ("PENDING", "ABSENT") and (
                 os.path.isfile(f[:-5] + ".hid")
                 or (journal == "PENDING" and t0 - signed_at >= surfd.JOURNAL_WAIT))
 
         def due(f):
-            stale, _journal, identity, _pub, _signed_at = rows[name(f)]
+            stale, _journal, identity, _pub, _signed_at, _map = rows[name(f)]
             if not identity and name(f) not in baselines:
                 return False    # migration's stale=1 is NOT operator permission
             if stale in (1, 2):
@@ -483,7 +541,7 @@ def receipt_step(conn, limit=200, now=None):
             try:
                 if vkey(f) in view_wait and os.path.isfile(f[:-5] + ".view"):
                     return True
-                return journal_due(f)
+                return journal_due(f) or rec_due(f)
             except OSError:
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
@@ -510,6 +568,9 @@ def receipt_step(conn, limit=200, now=None):
             listed_views = {vkey(f) for f in files}
             conn.executemany("DELETE FROM sweepmeta WHERE k = ?",
                              [(k,) for k in view_wait if k not in listed_views])
+            listed_recs = {rkey(f) for f in files}
+            conn.executemany("DELETE FROM sweepmeta WHERE k = ?",
+                             [(k,) for k in rec_wait if k not in listed_recs])
             conn.executemany("DELETE FROM sweepmeta WHERE k = ?",
                              [(k,) for k in queued if k not in active and k not in lost])
             for _mtime, path, _is_fresh in todo:
@@ -544,15 +605,23 @@ def receipt_step(conn, limit=200, now=None):
             # Alternate co-ready sources, not just rows. An unreadable view must
             # not monopolize its own receipt's ready HID (and vice versa).
             view_only = view_ready and (not journal_ready or view_wait[vkey(path)] != 2)
-            journal_only = delayed and journal_ready and not view_only
+            rec_ready = delayed and rec_due(path)
+            # Alternate a pending recording with other sources; the existing
+            # view/HID alternation then gives every co-ready source a turn.
+            rec_only = rec_ready and (not (view_ready or journal_ready) or rec_wait[rkey(path)] != 2)
+            view_only = view_only and not rec_only
+            journal_only = delayed and journal_ready and not (view_only or rec_only)
             attempts += 1
             sequence += 1
             with conn:
                 conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?", (sequence, qkey(path)))
-                if view_ready and journal_ready:
+                if rec_ready and (view_ready or journal_ready):
+                    conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?",
+                                 (2 if rec_only else 1, rkey(path)))
+                if view_ready and journal_ready and not rec_only:
                     conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?",
                                  (2 if view_only else 1, vkey(path)))
-            if delayed and not (view_only or journal_only):
+            if delayed and not (view_only or journal_only or rec_only):
                 # Eligibility can disappear after queueing. Consume/rotate this
                 # bounded attempt, but never fall through to an unrelated source
                 # (or a full reread) and erase its completed historical finding.
@@ -561,7 +630,8 @@ def receipt_step(conn, limit=200, now=None):
             prior = rows.get(runid)
             try:
                 got = read_receipt(path, journal_only=journal_only, view_only=view_only,
-                                   defer_view=vkey(path) in view_wait,
+                                   rec_only=rec_only,
+                                   defer_view=vkey(path) in view_wait or rkey(path) in rec_wait,
                                    expected_identity=prior[2] if prior else None,
                                    expected_pub=prior[3] if prior else None)
             except ReceiptIdentityChanged as exc:
@@ -576,7 +646,7 @@ def receipt_step(conn, limit=200, now=None):
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got[:9]
             partial, identity = got[9:11]
             signed_at = prior[4] if prior else max(1, int(mtime))
-            if view_only:
+            if view_only or rec_only:
                 old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?", (runid,)).fetchone()
                 fault = verdict == "FAULT" and old is not None and old[0] != "FAULT"
                 with conn:
@@ -589,7 +659,16 @@ def receipt_step(conn, limit=200, now=None):
                         conn.execute("UPDATE receipts SET angles = ? WHERE runid = ? AND angles != 'FAULT'",
                                      (angles, runid))
                     if not partial:
-                        conn.execute("DELETE FROM sweepmeta WHERE k IN (?, ?)", (vkey(path), qkey(path)))
+                        conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
+                        if view_only or (rec_only and not got[11]):
+                            conn.execute("DELETE FROM sweepmeta WHERE k = ?", (vkey(path),))
+                        if got[12]:
+                            # A late view may retain an observed-missing rec,
+                            # never rearm a completed/unknown recording source.
+                            if rkey(path) in rec_wait:
+                                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)", (rkey(path),))
+                        else:
+                            conn.execute("DELETE FROM sweepmeta WHERE k = ?", (rkey(path),))
                 n += 1
                 bad += fault
                 retry += partial
@@ -678,6 +757,10 @@ def receipt_step(conn, limit=200, now=None):
                         conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)", (vkey(path),))
                     else:
                         conn.execute("DELETE FROM sweepmeta WHERE k = ?", (vkey(path),))
+                    if got[12]:
+                        conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)", (rkey(path),))
+                    else:
+                        conn.execute("DELETE FROM sweepmeta WHERE k = ?", (rkey(path),))
             unread.pop(path, None)
             n += 1
             bad += verdict != "VALID"
@@ -685,7 +768,7 @@ def receipt_step(conn, limit=200, now=None):
         # A PENDING row whose receipt was reaped is never read again, and its
         # journal went with it: ABSENT once the wait is over.
         listed = set(name(f) for f in files)
-        gone = [rid for rid, (_st, jr, ident, _pub, _at) in rows.items()
+        gone = [rid for rid, (_st, jr, ident, _pub, _at, _map) in rows.items()
                 if ident and jr == "PENDING" and rid not in listed]
         if gone:
             with conn:
