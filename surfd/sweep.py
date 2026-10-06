@@ -305,7 +305,7 @@ def receipt_identity(r):
 def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None):
     """One receipt, fully joined -- or, with journal_only, everything but the
     .rec joins: the signature, the sibling digests and the journal, for the
-    PENDING re-read, where a .rec pruned since the first read must not move
+    delayed-journal re-read, where a .rec pruned since the first read must not move
     the verdict and a late .hid or .view must still be checked.
     -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed,
         partial, identity), or None; `sig` is 1 when the signature verified, which a FAULT for any other
@@ -449,12 +449,13 @@ def receipt_step(conn, limit=200, now=None):
                 return False    # migration's stale=1 is NOT operator permission
             if stale in (1, 2):
                 return True
-            # PENDING: reread when the journal arrives or the ORIGINAL signing
-            # observation expires. Touching the path cannot reset that wait.
+            # ABSENT is an observation, not a final verdict on a future upload.
+            # Only a final .hid wakes an ABSENT row; only PENDING expires on the
+            # ORIGINAL signing observation. Touching the path cannot reset it.
             try:
-                return journal == "PENDING" and (
-                    os.path.exists(f[:-5] + ".hid")
-                    or t0 - signed_at >= surfd.JOURNAL_WAIT)
+                return journal in ("PENDING", "ABSENT") and (
+                    os.path.isfile(f[:-5] + ".hid")
+                    or (journal == "PENDING" and t0 - signed_at >= surfd.JOURNAL_WAIT))
             except OSError:
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
@@ -504,14 +505,14 @@ def receipt_step(conn, limit=200, now=None):
                     continue
             if mtime > cutoff:
                 continue
-            pending_only = not is_fresh and rows[runid][0] not in (1, 2)
+            journal_only = not is_fresh and rows[runid][0] not in (1, 2)
             attempts += 1
             sequence += 1
             with conn:
                 conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?", (sequence, qkey(path)))
             prior = rows.get(runid)
             try:
-                got = read_receipt(path, journal_only=pending_only,
+                got = read_receipt(path, journal_only=journal_only,
                                    expected_identity=prior[2] if prior else None,
                                    expected_pub=prior[3] if prior else None)
             except ReceiptIdentityChanged as exc:
@@ -545,8 +546,8 @@ def receipt_step(conn, limit=200, now=None):
                 bad += old is not None and old[0] != "FAULT"
                 retry += 1
                 continue
-            if pending_only:
-                # Due only because its journal was PENDING.  The journal columns
+            if journal_only:
+                # Due to a pending or post-timeout journal. The journal columns
                 # move, and the verdict only TOWARD FAULT: a late .hid or .view
                 # that does not hash to what was signed is a fault the first read
                 # could not see, while a .rec pruned since must not clear one

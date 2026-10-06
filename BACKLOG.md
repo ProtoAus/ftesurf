@@ -221,11 +221,13 @@ below is the collection side and the rules that still only note.
   discriminator to test against a real corpus: a server angle set breaks ONE
   frame, a continuous rewrite breaks runs of adjacent ones.
 
-  **What the receipt sweep still cannot see** (integrity review of 70f1ea3): a
-  receipt is read once, or again only while its journal is PENDING, so a `.view`
-  or `.hid` landing after its last read is never hashed -- at `run_evidence_ul 1`
-  the first read is ABSENT, not PENDING, and nothing reads it again (re-hash
-  siblings newer than the row's read). The no-mouse BLIND rule asks only
+  **What the receipt sweep still cannot see** (integrity review of 70f1ea3):
+  Patch 505 now checks a final late `.hid` even after the journal was observed
+  ABSENT, using its stored receipt identity and preserving earlier faults/key
+  sightings. Unknown legacy identities still need explicit baseline permission.
+  A late `.view` or `.rec` after a completed observation still needs a bounded,
+  source-specific retry (falsifier: arrival ACTS without clearing prior faults or
+  recounting keys). The no-mouse BLIND rule asks only
   whether any count exists: one 1-count frame turns a console-driven run OK again.
 
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean

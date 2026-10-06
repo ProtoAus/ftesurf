@@ -1101,7 +1101,7 @@ def case_receipt_journal_pending_until_it_arrives():
     n, bad = sweep.receipt_step(conn, now=now + 900)
     check("...and then stops reading it", n, 0)
 
-    # BOUNDED: still missing JOURNAL_WAIT after signing is ABSENT for good.
+    # BOUNDED: still missing JOURNAL_WAIT after signing is observed ABSENT.
     unsent("20260921-000097-0")
     sweep.receipt_step(conn, now=now)
     check("a second unsent journal: PENDING", jrn("20260921-000097-0")[0], "PENDING")
@@ -1109,7 +1109,7 @@ def case_receipt_journal_pending_until_it_arrives():
     sweep.receipt_step(conn, now=late)
     check("...past JOURNAL_WAIT it is ABSENT", jrn("20260921-000097-0")[0], "ABSENT")
     n, _bad = sweep.receipt_step(conn, now=late + 300)
-    check("...and is not read again", n, 0)
+    check("...and is not read again while no journal arrives", n, 0)
 
     # AND A PENDING ROW WHOSE RECEIPT IS REAPED cannot be read again: past the
     # wait it is ABSENT rather than PENDING forever.
