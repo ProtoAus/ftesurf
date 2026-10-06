@@ -697,6 +697,30 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Journal diagnostics are frame measurements, not new detector policy**
+  (Patches 512–514). `identity_mouse_frames` counts nonzero counts only on a
+  judged axis; its denominator is the yaw/pitch judged union, counting a frame
+  once. `identity_no_mouse_longest` and `identity_unresolved_longest` follow
+  original v-record order; an unjudged/nonmatching frame breaks continuity,
+  interspersed event lines do not. These are not elapsed seconds, raw-report
+  coverage or hardware attestation. Explicit `identity_blind` reasons explain
+  existing abstentions. Fault and unresolved precedence, equations, thresholds
+  and ranking remain unchanged. Receipt journal details retain the measurements
+  before identity prose; a fault summary is limited to 96 characters so the
+  sweep's existing 300-character bound cannot discard all numeric diagnostics.
+  The original fault note remains unchanged. `test_journal_diagnostics.py` has
+  active/sparse/excluded controls; `test_sweep.py` proves five genuinely signed
+  SQLite rows including FAULT plus unresolved continuity. Independent reviews
+  caught the bounded-FAULT omission; pre-fix controls fail and retained re-review
+  closes it. Four paired readers from exact `ebf8462` deployed to the Pi and BOTH
+  Windows installs, hashes and installed-module paths/controls proven at
+  2026-10-06 21:21:56 UTC. Thirteen staged Pi suites pass. Real receipt pass read
+  0/faulted 0; generated installed-source controls ACTED, not field calibration.
+  Original gunicorn master and health/12 lobbies unchanged; no progs, engine,
+  config, schema or historical reread. Primary build57 branch/index preserved;
+  its two clean-but-stale reader paths now have owned commit-derived deployment
+  overlays. Build/release from the clean inspected worktree, not that dirty tree.
+
 - **Angle explanations are observations, not strings to reconstruct later**
   (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the
   same captured pair as `angles`; diagnostic notes include why an existing
