@@ -114,6 +114,71 @@ class MouseCoverage(unittest.TestCase):
         self.assertNotIn("identity_mouse_frames", r.info)
 
 
+class AxisCoverage(unittest.TestCase):
+    def metrics(self, r, axis):
+        return tuple(r.info["identity_%s_%s" % (axis, key)] for key in
+                     ("judged", "mouse_frames", "no_mouse_frames", "mouse_pct", "no_mouse_longest"))
+
+    def test_each_active_axis_and_union(self):
+        for counts, yaw, pitch in (([(2, 0)] * 6, 5, 0),
+                                   ([(0, 2)] * 6, 0, 5),
+                                   ([(2, 2)] * 6, 5, 5)):
+            text = mouse_journal(counts)
+            r = run(text)
+            self.assertTrue(r.ok, r.faults)
+            self.assertEqual(self.metrics(r, "yaw"), (5, yaw, 5-yaw, yaw*20.0, 5-yaw))
+            self.assertEqual(self.metrics(r, "pitch"), (5, pitch, 5-pitch, pitch*20.0, 5-pitch))
+            self.assertEqual(r.info["identity_mouse_frames"], 5)
+            self.assertEqual(receipt_for(text).journal, "OK")
+
+    def test_seed_and_excluded_pitch(self):
+        # Counts on the seed establish a predecessor, not a comparison.
+        r = run(mouse_journal([(2, 2)] + [(0, 0)] * 5))
+        self.assertEqual(self.metrics(r, "yaw"), (5, 0, 5, 0.0, 5))
+        text = mouse_journal([(0, 2)] * 6, [hidcheck.VF_STRAFE_Y] * 6)
+        r = run(text)
+        self.assertTrue(r.ok, r.faults)
+        self.assertEqual(self.metrics(r, "yaw"), (5, 0, 5, 0.0, 5))
+        self.assertEqual(self.metrics(r, "pitch"), (0, 0, 0, 0.0, 0))
+        self.assertEqual(receipt_for(text).journal, "OK")  # existing policy
+
+    def test_mode_and_profile_break_axis_gaps(self):
+        text = mouse_journal([(0, 0)] * 8, [0, 0, 0, hidcheck.VF_FREE, 0, 0, 0, 0])
+        r = run(text)
+        for axis in ("yaw", "pitch"):
+            self.assertEqual(self.metrics(r, axis), (6, 0, 6, 0.0, 4))
+        j = Journal()
+        for i in range(8):
+            j.frame(3000+i)
+            if i in (3, 4):
+                j.cvarchange("m_filter", "1" if i == 3 else "0")
+            j.view(0, 0, 10.0, 90.0)
+        r = run(j.end())
+        self.assertTrue(r.ok, r.faults)
+        for axis in ("yaw", "pitch"):
+            self.assertEqual(self.metrics(r, axis), (6, 0, 6, 0.0, 4))
+
+    def test_global_abstention_has_no_invented_axis_coverage(self):
+        j = Journal(mfilter=1)
+        for i in range(5):
+            j.frame(3000+i)
+            j.mouse(2, 0)
+            j.view(2, 0, 10.0, 90.0)
+        r = run(j.end())
+        self.assertTrue(r.ok, r.faults)
+        self.assertNotIn("identity_yaw_judged", r.info)
+        self.assertNotIn("identity_pitch_judged", r.info)
+
+    def test_verbose_reports_both_axes(self):
+        r = run(mouse_journal([(2, 0)] * 6))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            hidcheck.emit(r, True)
+        for axis in ("yaw", "pitch"):
+            self.assertIn("identity_%s_mouse_frames" % axis, out.getvalue())
+            self.assertIn("identity_%s_judged" % axis, out.getvalue())
+
+
 def unresolved_journal(changed, excluded=()):
     j = Journal()
     yaw, pitch = 90.0, 10.0

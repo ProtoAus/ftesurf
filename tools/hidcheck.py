@@ -2067,6 +2067,23 @@ def check_identity(r, head, views):
         else:
             gap = 0
     r.info["identity_no_mouse_longest"] = longest_gap
+    # The union above can hide one silent axis behind the other's counts.
+    # These denominators describe comparisons performed, not a new OK gate.
+    for axis, lines, column in (("yaw", y_judged, 1), ("pitch", p_judged, 2)):
+        mouse = {v[0] for v in views if v[0] in lines and v[column]}
+        prefix = "identity_%s_" % axis
+        r.info[prefix + "judged"] = len(lines)
+        r.info[prefix + "mouse_frames"] = len(mouse)
+        r.info[prefix + "no_mouse_frames"] = len(lines - mouse)
+        r.info[prefix + "mouse_pct"] = 100.0 * len(mouse) / len(lines) if lines else 0.0
+        gap = longest_gap = 0
+        for v in views:
+            if v[0] in lines and v[0] not in mouse:
+                gap += 1
+                longest_gap = max(longest_gap, gap)
+            else:
+                gap = 0
+        r.info[prefix + "no_mouse_longest"] = longest_gap
     if judged and not any(c[1] or c[2] for c in applicable[1:] if c[0] in judged):
         r.info.setdefault("identity_blind", "no judged frame carried a mouse count")
 
