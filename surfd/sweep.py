@@ -82,6 +82,7 @@ class _NoNotable(object):
 def ensure_schema(conn):
     # surfd's migrate() already ran at import; a no-op safety net.
     conn.executescript(surfd.VERDICTS_SQL)
+    surfd.verdict_metrics(conn)
     conn.commit()
 
 
@@ -213,6 +214,39 @@ def parse(lines):
     return out
 
 
+def parse_counts(lines):
+    """Observe counts only within the engine's matching pm_recsim/VERIFY section."""
+    out, active, observation, seen = {}, None, None, False
+    for raw in lines:
+        line = re.sub(r"\^[0-9]", "", raw).strip()
+        header = re.fullmatch(r"pm_recsim\s+(\S+)", line)
+        if header:
+            active, observation, seen = header[1], None, False
+            continue
+        verdict = VERIFY_RE.match(line)
+        if verdict:
+            out[verdict[1]] = observation if active == verdict[1] else None
+            active, observation, seen = None, None, False
+            continue
+        if active is None or not line.startswith("counts "):
+            continue
+        if seen:
+            observation = None  # ambiguous duplicate, not an invented measurement
+            continue
+        seen = True
+        if line == "counts    none -- the client predates Patch 376":
+            observation = {"version": 1, "state": "no_records", "records": 0}
+            continue
+        good = re.fullmatch(r"counts\s+(\d{1,10}) record\(s\): what the input ring delivered is what the view read", line)
+        bad = re.fullmatch(r"counts\s+(\d{1,10}) of (\d{1,10}) record\(s\) disagree, first at row (\d{1,10}) \(read - ring [-+\d.eE]{1,32} [-+\d.eE]{1,32}\)", line)
+        if good and 0 < int(good[1]) <= 2**31-1:
+            observation = {"version": 1, "state": "measured", "records": int(good[1]), "disagree": 0}
+        elif bad and 0 < int(bad[1]) <= int(bad[2]) <= 2**31-1 and int(bad[3]) <= 2**31-1:
+            observation = {"version": 1, "state": "measured", "records": int(bad[2]),
+                           "disagree": int(bad[1]), "first_row": int(bad[3])}
+    return out
+
+
 def _oom_first():
     # Raising our own oom_score_adj needs no privilege: if the box runs short,
     # the verifier dies before a lobby or the co-tenant does.
@@ -241,11 +275,12 @@ def run_verifier(map_dir, paths):
         return ["sweep: verifier failed: %s" % exc]
 
 
-def record(conn, rid, verdict, reason, ticks, engine, progs, t0):
+def record(conn, rid, verdict, reason, ticks, engine, progs, t0, counts_metrics=None):
     conn.execute(
-        "INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (rid, verdict, reason[:300], ticks, engine, progs, t0))
+        "INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at, counts_metrics)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (rid, verdict, reason[:300], ticks, engine, progs, t0,
+         json.dumps(counts_metrics, sort_keys=True, separators=(",", ":")) if counts_metrics else ""))
     # A row resubmitted (exact tie) or re-checked after t0 stays pending.
     done = "" if verdict == "ERROR" else ", checked = 1"
     conn.execute("UPDATE replays SET seen = ?" + done + " WHERE id = ?"
@@ -277,7 +312,8 @@ def sweep(conn, limit, runner=None, now=None):
         bymap.setdefault(row["map_dir"], []).append((row, path))
 
     for map_dir, items in sorted(bymap.items()):
-        verdicts = parse(runner(map_dir, [p for _, p in items]))
+        lines = list(runner(map_dir, [p for _, p in items]))
+        verdicts, observations = parse(lines), parse_counts(lines)
         with conn:
             for row, path in items:
                 v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
@@ -285,7 +321,7 @@ def sweep(conn, limit, runner=None, now=None):
                 if v != "ERROR":
                     v, reason = row_check(row, v, reason)
                     v, reason = stage_check(conn, row, v, reason)
-                record(conn, row["id"], v, reason, ticks, engine, progs, t0)
+                record(conn, row["id"], v, reason, ticks, engine, progs, t0, observations.get(path))
                 counts[v] = counts.get(v, 0) + 1
     return counts
 

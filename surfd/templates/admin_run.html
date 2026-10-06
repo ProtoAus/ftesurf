@@ -262,8 +262,15 @@ function renderRun(j) {
     const vc = el("td"); vc.appendChild(pill(v.verdict, v.current ? VERDICT_CLS[v.verdict] : ""));
     const eng = el("td", "mono", String(v.engine).slice(0, 10)); eng.title = v.engine;
     const prg = el("td", "mono", String(v.progs).slice(0, 10)); prg.title = v.progs;
+    const reason = el("td", "reason", v.reason);
+    const c = v.counts_metrics;
+    let countsText = "counts unavailable (no stored observation)";
+    if (c && c.state === "no_records") countsText = "counts: no records; ring/read agreement unmeasured";
+    else if (c) countsText = "counts: " + c.records + " records, " + c.disagree + " disagree" +
+      (c.first_row !== undefined ? ", first at row " + c.first_row : "") + " (observation only)";
+    reason.append(el("div", "muted", countsText));
     tr.append(el("td", "num mono", v.id), vc, el("td", "nowrap", fmtDate(v.at)),
-              el("td", "num mono", v.ticks), eng, prg, el("td", "reason", v.reason));
+              el("td", "num mono", v.ticks), eng, prg, reason);
     tb.appendChild(tr);
   }
   if (!j.verdicts.length) {

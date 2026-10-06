@@ -828,7 +828,8 @@ CREATE TABLE IF NOT EXISTS verdicts (
     ticks      INTEGER NOT NULL DEFAULT -1,
     engine     TEXT    NOT NULL,
     progs      TEXT    NOT NULL,
-    at         INTEGER NOT NULL
+    at         INTEGER NOT NULL,
+    counts_metrics TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
 """
@@ -1440,6 +1441,8 @@ def migrate():
             conn.commit()
             version = 10
 
+        verdict_metrics(conn)
+        conn.commit()
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:
@@ -1448,6 +1451,13 @@ def migrate():
             )
     finally:
         conn.close()
+
+
+def verdict_metrics(conn):
+    """Additive per-attempt observer, never reconstruct historical measurements."""
+    cols = {r[1] for r in conn.execute('PRAGMA table_info(verdicts)')}
+    if cols and 'counts_metrics' not in cols:
+        conn.execute("ALTER TABLE verdicts ADD COLUMN counts_metrics TEXT NOT NULL DEFAULT ''")
 
 
 def get_db():

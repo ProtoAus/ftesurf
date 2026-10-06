@@ -434,6 +434,32 @@ def receipt_metrics(raw):
         return None
 
 
+def verifier_counts(raw):
+    """The narrow versioned engine observation, or unavailable; not adjudication."""
+    if not isinstance(raw, str) or len(raw) > 512:
+        return None
+    try:
+        value = json.loads(raw)
+        if not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1:
+            return None
+        if value.get('state') == 'no_records':
+            return value if set(value) == {'version', 'state', 'records'} and type(value['records']) is int and value['records'] == 0 else None
+        if value.get('state') != 'measured' or set(value) not in (
+                {'version', 'state', 'records', 'disagree'},
+                {'version', 'state', 'records', 'disagree', 'first_row'}):
+            return None
+        if any(type(value[k]) is not int or not 0 <= value[k] <= 2**31-1
+               for k in ('records', 'disagree') + (('first_row',) if 'first_row' in value else ())):
+            return None
+        if not 0 < value['records'] or value['disagree'] > value['records']:
+            return None
+        if ('first_row' in value) != (value['disagree'] > 0):
+            return None
+        return value
+    except (ValueError, TypeError, RecursionError):
+        return None
+
+
 def clean_note(raw):
     text = " ".join(NOTE_JUNK.sub(" ", raw or "").split())
     return text[:NOTE_MAX].strip()
@@ -1530,8 +1556,12 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 if row is None:
                     return jsonify({"ok": False, "error": "no such replay"}), 404
                 sub = row["submitted"]
-                verdicts = [dict(v, current=v["at"] >= sub) for v in conn.execute(
-                    "SELECT id, verdict, reason, ticks, engine, progs, at"
+                cols = {r[1] for r in conn.execute('PRAGMA table_info(verdicts)')}
+                extra = ', counts_metrics' if 'counts_metrics' in cols else ''
+                verdicts = [dict(v, current=v["at"] >= sub,
+                                 counts_metrics=verifier_counts(v['counts_metrics']) if extra else None)
+                            for v in conn.execute(
+                    "SELECT id, verdict, reason, ticks, engine, progs, at" + extra +
                     "  FROM verdicts WHERE replay_id = ? ORDER BY id DESC LIMIT ?",
                     (rid, VERDICTS_SHOWN)).fetchall()]
                 latest = conn.execute(
