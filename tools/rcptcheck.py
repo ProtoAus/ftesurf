@@ -567,6 +567,12 @@ def join_journal(r):
     pitch = h.info.get("identity_pitch")
     if pitch:
         r.journal_detail = "%s; pitch %s" % (r.journal_detail, pitch)
+    if "identity_mouse_frames" in h.info:
+        coverage = "mouse counts on %d/%d judged frames (%.2f%%); longest no-mouse span %d frames" % (
+            h.info["identity_mouse_frames"], h.info.get("identity_judged", 0),
+            h.info["identity_mouse_pct"], h.info["identity_no_mouse_longest"])
+        r.journal_detail = "%s; %s" % (r.journal_detail, coverage) \
+            if r.journal_detail else coverage
     unresolved = h.info.get("identity_unresolved") or 0
     if h.faults:
         r.journal = "FAULT"

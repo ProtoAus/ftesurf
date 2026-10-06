@@ -2031,6 +2031,22 @@ def check_identity(r, head, views):
     # term: a run turned from the console holds on every frame (review of
     # 9c672d1).  Never OK, never guilty.
     judged = y_judged | p_judged
+    # Coverage is a measurement, not a minimum-input policy. Count only the
+    # axis actually judged; +strafe can route the other axis to movement.
+    mouse_lines = {v[0] for v in views
+                   if (v[0] in y_judged and v[1])
+                   or (v[0] in p_judged and v[2])}
+    r.info["identity_mouse_frames"] = len(mouse_lines)
+    r.info["identity_no_mouse_frames"] = len(judged - mouse_lines)
+    r.info["identity_mouse_pct"] = 100.0 * len(mouse_lines) / len(judged) if judged else 0.0
+    gap = longest_gap = 0
+    for v in views:
+        if v[0] in judged and v[0] not in mouse_lines:
+            gap += 1
+            longest_gap = max(longest_gap, gap)
+        else:
+            gap = 0
+    r.info["identity_no_mouse_longest"] = longest_gap
     if judged and not any(c[1] or c[2] for c in applicable[1:] if c[0] in judged):
         r.info.setdefault("identity_blind", "no judged frame carried a mouse count")
 
