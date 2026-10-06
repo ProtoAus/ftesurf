@@ -97,6 +97,14 @@
       honest. What the key means for this player is in the Key card.</p>
   </details>
 
+  <details class="card" id="simcard">
+    <summary>Stored similarity observations</summary>
+    <div id="similarity"></div>
+    <p class="note">Historical store-only measurements, not a gate or accusation.
+      Sources are not byte-bound here; no current-file guarantee or complete pair
+      coverage is claimed. A skipped or missing comparison is not a low score.</p>
+  </details>
+
   <details class="card" id="keycard" hidden>
     <summary>Key <span class="sum" id="keysum"></span></summary>
     <dl id="keyinfo"></dl>
@@ -368,6 +376,7 @@ function renderRun(j) {
               manykeys ? pill(c.keys.length + " keys for this player", "info") : null);
   }
   renderKey(j);
+  renderSimilarity(j.similarity);
 
   const dlink = document.getElementById("download");
   dlink.href = j.download;
@@ -407,6 +416,47 @@ function keyState(k) {
        : k.key_pub ? pill("first key", "up")
        : el("span", "muted", "unsigned" + (k.why ? " \u2014 " + k.why : ""));
 }
+function renderSimilarity(value) {
+  const box = document.getElementById("similarity");
+  box.replaceChildren();
+  if (!value || !value.available) {
+    box.append(el("p", "muted", "stored similarity unavailable (table not present)"));
+    return;
+  }
+  if (!value.pairs.length) {
+    box.append(el("p", "muted", "no stored pairs; collector availability and eligibility not assessed here"));
+    return;
+  }
+  box.append(el("p", "muted", "Showing " + value.pairs.length + " stored pairs" +
+    (value.more ? "; more observations exist beyond this bounded view" : "")));
+  const identities = {same: "same identity", cross: "cross identity", unknown: "identity unknown"};
+  const labels = {match: "agreement fraction (compared rows)", cover: "exact prefix fraction (longer run)",
+    prefix: "exact prefix rows", offset: "alignment offset (rows)", compared: "rows compared",
+    moves_a: "A moves", moves_b: "B moves", tick_a: "A tick rate (Hz)", tick_b: "B tick rate (Hz)"};
+  for (const pair of value.pairs) {
+    const panel = el("details");
+    panel.append(el("summary", "", pair.verdict + " — " + identities[pair.identity] +
+      " — observed " + fmtDate(pair.at)));
+    const links = el("p");
+    for (const [name, id] of [["A", pair.a_id], ["B", pair.b_id]]) {
+      const link = el("a", "", name + " run #" + id);
+      link.href = "/admin/run/" + id;
+      links.append(link, " ");
+    }
+    panel.append(links);
+    if (pair.reason) panel.append(el("p", "reason", pair.reason));
+    if (pair.metrics) {
+      const dl = el("dl");
+      for (const [key, label] of Object.entries(labels))
+        dl.append(el("dt", "", label), el("dd", "mono", String(pair.metrics[key])));
+      panel.append(dl);
+    } else {
+      panel.append(el("p", "muted", "comparison measurement unavailable (skip or unmeasured opportunities)"));
+    }
+    box.append(panel);
+  }
+}
+
 function renderKey(j) {
   const k = j.key, card = document.getElementById("keycard"), dl = document.getElementById("keyinfo");
   dl.replaceChildren();

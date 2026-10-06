@@ -293,7 +293,8 @@ sweepsrc = open(os.path.join(HERE, "sweep.py"), "r", errors="replace").read()
 truthy("the sweep never passes a sims row into a verdict",
        "simcheck" not in sweepsrc.split("def sweep(")[1].split("\ndef ")[0])
 admin = open(os.path.join(HERE, "admin.py"), "r", errors="replace").read()
-truthy("admin.py does not read sims either (no badge moves)", "sims" not in admin)
+truthy("admin reads stored observations only, never runs comparisons",
+       "compare_paths(" not in admin and "similarity_step(" not in admin)
 
 print("\n--- 5. a run too short to judge is stored as a skip, never as a score ---")
 

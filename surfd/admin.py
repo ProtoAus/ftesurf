@@ -143,6 +143,7 @@ RUNS_PAGE = 100
 NOTE_MAX = 200
 QUERY_MAX = 64
 VERDICTS_SHOWN = 200
+SIM_PAIRS_SHOWN = 25
 RID_TEXT = re.compile(r"^[0-9]{1,18}$")
 # C0/C1 controls and bidi overrides; a note is shown to the owner only, via textContent.
 NOTE_JUNK = re.compile("[\x00-\x1f\x7f-\x9f\u200e\u200f\u2028\u2029"
@@ -432,6 +433,56 @@ def receipt_metrics(raw):
         return snap
     except (ValueError, TypeError, RecursionError):
         return None
+
+
+def similarity_reason(verdict, raw):
+    """Project legacy prose to safe categories, never filenames/identity segments."""
+    if verdict == 'compared':
+        return ''
+    text = raw if isinstance(raw, str) else ''
+    short = re.fullmatch(r'.+ has (\d{1,10}) moves, under the floor (\d{1,10})', text)
+    if short and all(int(v) <= 2**31-1 for v in short.groups()):
+        return 'too short to compare (%s moves; minimum %s)' % short.groups()
+    if re.fullmatch(r'.+ has no `in` rows', text):
+        return 'no sample rows'
+    if text == 'both arguments resolve to one file':
+        return 'same source file'
+    if text.startswith('peer unresolved:'):
+        return 'peer unresolved'
+    return 'unjudgeable (legacy detail withheld)'
+
+
+def similarity_for(conn, rid):
+    """Bounded historical observations only; never import/execute a comparison."""
+    exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
+    out = {'available': bool(exists), 'pairs': [], 'limit': SIM_PAIRS_SHOWN,
+           'more': False, 'source_binding': False}
+    if not exists:
+        return out
+    rows = conn.execute(
+        "SELECT id, a_id, b_id, verdict, substr(reason,1,300) AS reason, at,"
+        " match, cover, prefix, offset, compared, moves_a, moves_b, tick_a, tick_b,"
+        " CASE WHEN who_a != '' AND who_b != '' THEN"
+        "   CASE same_who WHEN 1 THEN 'same' WHEN 0 THEN 'cross' ELSE 'unknown' END"
+        " ELSE 'unknown' END AS identity"
+        " FROM sims WHERE a_id=? OR b_id=? ORDER BY at DESC,id DESC LIMIT ?",
+        (rid, rid, SIM_PAIRS_SHOWN+1)).fetchall()
+    out['more'] = len(rows) > SIM_PAIRS_SHOWN
+    for r in rows[:SIM_PAIRS_SHOWN]:
+        item = {k: r[k] for k in ('id','a_id','b_id','verdict','at','identity')}
+        item['reason'] = similarity_reason(r['verdict'], r['reason'])
+        metrics = {k: r[k] for k in ('match','cover','prefix','offset','compared',
+                                     'moves_a','moves_b','tick_a','tick_b')}
+        valid = (r['verdict'] == 'compared'
+                 and all(type(metrics[k]) in (int,float) and 0 <= metrics[k] <= 1 for k in ('match','cover'))
+                 and all(type(metrics[k]) is int and 0 <= metrics[k] <= 2**31-1
+                         for k in ('prefix','compared','moves_a','moves_b'))
+                 and type(metrics['offset']) is int and abs(metrics['offset']) <= 2**31-1
+                 and all(type(metrics[k]) in (int,float) and 0 < metrics[k] <= 10000 for k in ('tick_a','tick_b'))
+                 and metrics['compared'] > 0)
+        item['metrics'] = metrics if valid else None
+        out['pairs'].append(item)
+    return out
 
 
 def verifier_counts(raw):
@@ -1582,6 +1633,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
                                    else "")
                 key = key_for(conn, rid)
+                similarity = similarity_for(conn, rid)
             except sqlite3.Error as exc:
                 log.exception("admin run %d db error: %s", rid, exc)
                 return jsonify({"ok": False, "error": "storage error"}), 500
@@ -1603,6 +1655,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                              "stages_aside": stages[2] if stages else 0,
                              "stages_linked": stages is not None},
                 "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
+                "similarity": similarity,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
                           "replay online %d" % rid],
