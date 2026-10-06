@@ -1773,6 +1773,8 @@ def check_counts_join(r, joins, post312):
 # no check, because the first false accusation is what people remember.
 def check_identity(r, head, views):
     if not views:
+        r.info["identity_blind"] = ("no view records to judge" if "sensitivity" in head
+                                    else "pre-293 journal: no recorded angle identity")
         if "sensitivity" in head:
             r.note("no 'v' records, but the header carries Patch 293's scale "
                    "terms -- the journal was opened by a 293 engine and the "
@@ -1831,6 +1833,7 @@ def check_identity(r, head, views):
         return cache[id(ov)]
 
     if all(consts(v)[2] for v in views):
+        r.info["identity_blind"] = "no plain-linear frames (m_filter/m_accel or unusable constants)"
         # Both are still deterministic functions of (dx, dy, frametime), so this
         # is a "not implemented here" rather than a "cannot be done" -- but
         # m_accel needs the frametime, which this file does not carry per frame.
@@ -1841,6 +1844,7 @@ def check_identity(r, head, views):
         return
 
     if all(consts(v)[0] == 0 for v in views if not consts(v)[2]):
+        r.info["identity_blind"] = "zero yaw scale on all plain-linear frames"
         r.note("m_yaw*sensitivity is zero -- no yaw can be produced from counts, "
                "identity vacuous")
         return
@@ -1852,6 +1856,7 @@ def check_identity(r, head, views):
         r.info["frames_not_governed"] = skipped
 
     if len(applicable) < 2:
+        r.info["identity_blind"] = "fewer than two frames in a governed view mode"
         r.note("fewer than two governed frames -- nothing to test")
         return
 
@@ -2044,6 +2049,8 @@ def check_identity(r, head, views):
     # term: a run turned from the console holds on every frame (review of
     # 9c672d1).  Never OK, never guilty.
     judged = y_judged | p_judged
+    if not judged:
+        r.info["identity_blind"] = "no transition judgeable with recorded scales and pitch limits"
     # Coverage is a measurement, not a minimum-input policy. Count only the
     # axis actually judged; +strafe can route the other axis to movement.
     mouse_lines = {v[0] for v in views

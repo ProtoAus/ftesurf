@@ -152,5 +152,60 @@ class UnresolvedContinuity(unittest.TestCase):
         self.assertIn("identity_unresolved_longest", out.getvalue())
 
 
+class AbstentionReasons(unittest.TestCase):
+    def assert_blind(self, text, why):
+        r = run(text)
+        self.assertTrue(r.ok, r.faults)
+        self.assertEqual(r.info.get("identity_blind"), why)
+        receipt = receipt_for(text)
+        self.assertEqual(receipt.journal, "BLIND")
+        self.assertIn(why, receipt.journal_detail[:300])
+        self.assertFalse(receipt.faults, receipt.faults)
+
+    def test_no_view_and_legacy(self):
+        for legacy in (False, True):
+            j = Journal(p293=not legacy)
+            for i in range(5):
+                j.frame(3000 + i)
+                j.mouse(2, 1)
+            why = "pre-293 journal: no recorded angle identity" if legacy else "no view records to judge"
+            self.assert_blind(j.end(), why)
+
+    def test_nonlinear_and_zero_yaw(self):
+        for args, why in (({"mfilter": 1}, "no plain-linear frames (m_filter/m_accel or unusable constants)"),
+                          ({"maccel": 1}, "no plain-linear frames (m_filter/m_accel or unusable constants)"),
+                          ({"myaw": 0}, "zero yaw scale on all plain-linear frames")):
+            j = Journal(**args)
+            for i in range(5):
+                j.frame(3000 + i)
+                j.mouse(2, 0)
+                j.view(2, 0, 10.0, 90.0)
+            self.assert_blind(j.end(), why)
+
+    def test_excluded_modes_and_one_frame(self):
+        self.assert_blind(mouse_journal([(2, 0)] * 5, [hidcheck.VF_FREE] * 5),
+                          "fewer than two frames in a governed view mode")
+        self.assert_blind(mouse_journal([(2, 0)]),
+                          "fewer than two frames in a governed view mode")
+
+    def test_per_frame_override_leaves_no_judged_transition(self):
+        j = Journal()
+        for i in range(5):
+            j.frame(3000 + i)
+            if i == 1:
+                j.cvarchange("m_filter", "1")
+            j.mouse(2, 0)
+            j.view(2, 0, 10.0, 90.0)
+        self.assert_blind(j.end(), "no transition judgeable with recorded scales and pitch limits")
+
+    def test_fault_precedence_and_active_control(self):
+        r = run(mouse_journal([(2, 0)] * 6))
+        self.assertTrue(r.ok, r.faults)
+        self.assertNotIn("identity_blind", r.info)
+        self.assertEqual(receipt_for(mouse_journal([(2, 0)] * 6)).journal, "OK")
+        text = mouse_journal([(2, 0)] * 6).replace("sensitivity 0.3", "sensitivity BAD")
+        self.assertEqual(receipt_for(text).journal, "FAULT")
+
+
 if __name__ == "__main__":
     unittest.main()

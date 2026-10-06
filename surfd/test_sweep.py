@@ -1058,7 +1058,37 @@ def case_receipt_journal_third_verdict():
           "1 frame(s) unresolved (1 moved both axes)" in got[1], True)
     got = jrn("20260921-000092-0")
     check("a journal with nothing to judge: BLIND, not FAULT and not OK", got[0], "BLIND")
-    check("...and it says so", "no frame the identity could judge" in got[1], True)
+    check("...and it names the missing input",
+          "no frame markers and no input events" in got[1], True)
+
+
+def case_receipt_journal_diagnostics_stored():
+    """The new measurements survive the real bounded SQLite storage path."""
+    from test_journal_diagnostics import mouse_journal, unresolved_journal
+    from test_hidcheck import Journal
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    nonlinear = Journal(mfilter=1)
+    for i in range(5):
+        nonlinear.frame(3000 + i)
+        nonlinear.mouse(2, 0)
+        nonlinear.view(2, 0, 10.0, 90.0)
+    cases = ((mouse_journal([(2, 0)] * 6), "OK", "mouse counts on 5/5 judged frames (100.00%)"),
+             (mouse_journal([(0, 0)] * 6), "BLIND", "longest no-mouse span 5 frames"),
+             (unresolved_journal((3, 4, 5)), "BLIND", "unresolved spans 1, longest 3 frames"),
+             (nonlinear.end(), "BLIND", "no plain-linear frames"))
+    for i, (text, _verdict, _detail) in enumerate(cases):
+        make_receipt(surfd.EVIDENCE_DIR, "20261006-%06d-0" % (310 + i), age=old,
+                     hid=text.encode("utf-8"))
+    check("CONTROL: all diagnostic receipts actually read", sweep.receipt_step(conn), (4, 0))
+    for i, (_text, verdict, detail) in enumerate(cases):
+        row = conn.execute("SELECT verdict, journal, journal_reason FROM receipts WHERE runid = ?",
+                           ("20261006-%06d-0" % (310 + i),)).fetchone()
+        check("diagnostic %d: signature and journal verdict unchanged" % i,
+              (row[0], row[1]), ("VALID", verdict))
+        check("diagnostic %d: stored measurement/reason" % i, detail in row[2], True)
 
 
 def case_receipt_journal_pending_until_it_arrives():
@@ -1751,6 +1781,7 @@ def main():
                  case_receipt_angles_reach_the_database,
                  case_receipt_journal_reaches_the_database,
                  case_receipt_journal_third_verdict,
+                 case_receipt_journal_diagnostics_stored,
                  case_receipt_journal_pending_until_it_arrives,
                  case_pending_reread_moves_only_the_journal,
                  case_receipt_step_never_takes_the_sweep_down,

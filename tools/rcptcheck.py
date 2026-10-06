@@ -591,8 +591,8 @@ def join_journal(r):
         r.journal = "BLIND"
         why = ("%d frame(s) unresolved (%d moved both axes)"
                % (unresolved, h.info.get("identity_whole") or 0)
-               if unresolved else "no frame the identity could judge"
-               if not h.info.get("identity_judged") else h.info["identity_blind"])
+               if unresolved else h.info.get("identity_blind")
+               or "no frame the identity could judge")
         r.journal_detail = "%s | %s" % (why, r.journal_detail) \
             if r.journal_detail else why
         r.note("the journal beside this receipt has no fault, and %s" % why)
