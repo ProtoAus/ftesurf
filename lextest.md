@@ -11,6 +11,23 @@ to be wrong.
 
 ---
 
+## 00. 6 Oct — private observer panels (Patches 521–522)
+
+The authenticated admin run page now retains per-attempt verifier counts and
+shows stored similarity observations. Synthetic signed-in API and actual Node
+renderer controls pass; the Pi application is deployed from `bf5153d` (23:42 UTC).
+This does not judge browser layout or a new real finish. No badges, rankings or
+thresholds changed.
+
+- Log in and open a run detail. Check the counts line is readable inside verifier
+  history; old attempts should say unavailable, not measured zero.
+- Expand **Stored similarity observations**. A skip must show unavailable metrics,
+  not a low score; identity is only same/cross/unknown, with safe skip explanations
+  and A/B admin links. No recording filename or identity segment should appear.
+- Check the historical/unbound/incomplete-coverage note is clear. The panel is not
+  an accusation or a new adjudication button. Real new counts/field calibration
+  and full pair coverage have not been claimed.
+
 ## 00. 6 Oct — surf_tensor2 model brightness (Patches 508–509)
 
 The first saved window-wall camera no longer has its directional light amplified
