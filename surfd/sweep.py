@@ -544,7 +544,7 @@ def receipt_step(conn, limit=200, now=None):
             # Alternate co-ready sources, not just rows. An unreadable view must
             # not monopolize its own receipt's ready HID (and vice versa).
             view_only = view_ready and (not journal_ready or view_wait[vkey(path)] != 2)
-            journal_only = delayed and not view_only
+            journal_only = delayed and journal_ready and not view_only
             attempts += 1
             sequence += 1
             with conn:
@@ -552,6 +552,12 @@ def receipt_step(conn, limit=200, now=None):
                 if view_ready and journal_ready:
                     conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?",
                                  (2 if view_only else 1, vkey(path)))
+            if delayed and not (view_only or journal_only):
+                # Eligibility can disappear after queueing. Consume/rotate this
+                # bounded attempt, but never fall through to an unrelated source
+                # (or a full reread) and erase its completed historical finding.
+                retry += 1
+                continue
             prior = rows.get(runid)
             try:
                 got = read_receipt(path, journal_only=journal_only, view_only=view_only,

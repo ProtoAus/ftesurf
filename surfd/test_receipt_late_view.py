@@ -271,6 +271,45 @@ def case_no_partial_baseline():
         restore_game(rc)
 
 
+def case_selection_race():
+    for journal_fault in (False, True):
+        for loss in ('disappear', 'stat-loss'):
+            surfd, sweep, conn, rp, _pub, now, _old, rc, view = setup(
+                '20261006-000319-0', journal_fault=journal_fault)
+            try:
+                before, before_keys = row(conn), keys(conn)
+                os.remove(rp[:-5] + '.hid')
+                put(rp[:-5] + '.view', view)
+                real_isfile = sweep.os.path.isfile
+                checks = []
+
+                def lose_readiness(path):
+                    if path == rp[:-5] + '.view':
+                        checks.append(path)
+                        if len(checks) == 1:
+                            if loss == 'disappear':os.remove(path)
+                            return True  # queued by the first positive stat
+                        return False     # no longer eligible at source selection
+                    return real_isfile(path)
+
+                label = ('FAULT' if journal_fault else 'OK') + '/' + loss
+                with mock.patch.object(sweep.os.path, 'isfile', side_effect=lose_readiness), \
+                        mock.patch.object(rc, 'read', wraps=rc.read) as reads:
+                    got = sweep.receipt_step(conn, limit=1, now=now + 60)
+                check(label + ': CONTROL crossed both eligibility checks', len(checks), 2)
+                check(label + ': no ready source means no evidence read', (got, reads.call_count), ((0, 0), 0))
+                check(label + ': completed HID/history/readiness preserved', (row(conn), keys(conn), waits(conn)),
+                      (before, before_keys, 1))
+                put(rp[:-5] + '.view', view)
+                with mock.patch.object(rc, 'join_journal', wraps=rc.join_journal) as journal:
+                    got = sweep.receipt_step(conn, now=now + 120)
+                check(label + ': stable-view restoration ACTS without HID', (got, journal.call_count), ((1, 0), 0))
+                check(label + ': restored join preserves completed HID finding', row(conn), dict(before, angles='OK'))
+                check(label + ': completion retires only view readiness', (waits(conn), keys(conn)), (0, before_keys))
+            finally:
+                restore_game(rc)
+
+
 def case_captured_absence():
     surfd, sweep, conn, rp, _pub, now, _old, rc, view = setup('20261006-000316-0')
     try:
@@ -360,7 +399,7 @@ def case_unknown_and_loss():
 
 def main():
     for case in (case_outcomes, case_binding, case_io_fairness, case_races_and_coarrival,
-                 case_source_fairness, case_no_partial_baseline, case_captured_absence,
+                 case_source_fairness, case_no_partial_baseline, case_selection_race, case_captured_absence,
                  case_deferred_fault, case_unknown_and_loss):
         print(case.__name__ + ':')
         try:case()
