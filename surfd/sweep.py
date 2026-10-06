@@ -310,11 +310,15 @@ def read_receipt(path, journal_only=False):
     import rcptcheck
 
     r = rcptcheck.read(path)
+    if r.ioerror:
+        return None             # retry a read failure, never store it as evidence
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
     rcptcheck.join_hid(r)
     rcptcheck.join_uploaded(r, {})
+    if r.ioerror:
+        return None             # the sibling digest was not measured either
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -326,8 +330,6 @@ def read_receipt(path, journal_only=False):
     # (the angle identity on both axes, the injection counters, the counts join,
     # the device-provenance table) ran only when an operator typed a path.
     rcptcheck.join_journal(r)
-    if journal_only and r.ioerror:
-        return None             # measured nothing: the row stays PENDING
     if "hid" in r.digest_bad:
         # The file read is not the journal that was signed, so what its content
         # says is about some other journal (review of 70f1ea3).
@@ -374,22 +376,32 @@ def receipt_step(conn, limit=200, now=None):
         # on its way.  Ten minutes is far past the 25 s a two-minute sidecar
         # takes at 30 ms RTT.
         cutoff = t0 - surfd.EVIDENCE_SETTLE
-        # glob answers [] for a directory that is missing or unreadable, which
-        # would pass for a complete pass and move the watermark; listdir raises.
-        os.listdir(surfd.EVIDENCE_DIR)
-        files = sorted(glob.glob(os.path.join(surfd.EVIDENCE_DIR, "*", "*.rcpt")))
+        # glob hides unreadable map directories as well as an unreadable root.
+        # Enumerate both levels explicitly: incomplete coverage must not move
+        # the marker that lets admin distinguish unsigned from not read yet.
+        files = []
+        with os.scandir(surfd.EVIDENCE_DIR) as maps:
+            for entry in maps:
+                if entry.is_dir():
+                    with os.scandir(entry.path) as evidence:
+                        files.extend(f.path for f in evidence if f.name.endswith(".rcpt"))
+        files.sort()
         # Never-read files first and OLDEST first, so a pass that runs out of
         # room still covers everything older than what it left; then the
         # --reread-receipts backlog (stale = 1, kept until replaced) and the
         # rows whose journal is PENDING.
         name = lambda f: os.path.basename(f)[:-5]
         fresh = []
+        stat_incomplete = False
+        retry = 0
         for f in files:
             if name(f) not in rows:
                 try:
                     fresh.append((os.path.getmtime(f), f))
                 except OSError:
-                    pass
+                    # Its age is unknown: no safe new coverage boundary.
+                    stat_incomplete = True
+                    retry += 1
         fresh.sort()
 
         def due(f):
@@ -406,7 +418,7 @@ def receipt_step(conn, limit=200, now=None):
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
                [(None, f, False) for f in files if name(f) in rows and due(f)]
-        n = bad = jfault = 0
+        n = bad = jfault = attempts = 0
         through = cutoff
         for mtime, path, is_fresh in todo:
             runid = name(path)
@@ -414,18 +426,23 @@ def receipt_step(conn, limit=200, now=None):
                 try:
                     mtime = os.path.getmtime(path)
                 except OSError:
+                    retry += 1
                     continue
             if mtime > cutoff:
                 continue
-            if n >= limit:
+            if attempts >= limit:
                 if is_fresh:
                     through = min(through, int(mtime) - 1)
                 continue
             pending_only = not is_fresh and rows[runid][0] not in (1, 2)
+            attempts += 1
             got = read_receipt(path, journal_only=pending_only)
-            # Gone since the listing: rcptcheck reports "cannot read" as a FAULT,
-            # and a stored row is never read again -- skip it, as a failed stat is.
+            # A failed read or a file gone since listing measured no evidence.
+            # Leave it retryable, and never claim coverage past an unread run.
             if got is None or not os.path.exists(path):
+                retry += 1
+                if is_fresh:
+                    through = min(through, int(mtime) - 1)
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
             if pending_only:
@@ -490,9 +507,15 @@ def receipt_step(conn, limit=200, now=None):
         # signed" (the three hours this step failed on 2026-09-21 would have
         # flagged every signer's runs).  A flood only slows it: 200 a pass,
         # oldest first.
-        with conn:
-            conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
-                         " VALUES ('receipts_through', ?)", (through,))
+        if not stat_incomplete:
+            with conn:
+                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                             " VALUES ('receipts_through', ?)", (through,))
+        if retry:
+            print("sweep: %d receipt read(s) deferred after an I/O failure; "
+                  "coverage %s" % (retry, "unchanged (unknown file age)"
+                                  if stat_incomplete else "bounded before unread receipts"),
+                  file=sys.stderr)
         if jfault:
             # SAID, because the column it lands in is not on any board and
             # nothing else would mention it.  A journal that does not hold up is

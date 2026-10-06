@@ -228,8 +228,7 @@ below is the collection side and the rules that still only note.
   siblings newer than the row's read). The digest and the content check open
   the `.hid` separately (a file swapped between them is checked unhashed). The
   PENDING re-read does not check it is reading the receipt that made the row
-  (compare pub and the signed lines). A FULL read's I/O error is still stored
-  FAULT for good. And the no-mouse BLIND rule asks only whether any count
+  (compare pub and the signed lines). And the no-mouse BLIND rule asks only whether any count
   exists: one 1-count frame turns a console-driven run OK again.
 
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean

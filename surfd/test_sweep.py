@@ -17,6 +17,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from unittest import mock
 
 FAILED = []
 
@@ -337,6 +338,7 @@ def case_receipt_watermark():
     row = lambda: conn.execute("SELECT verdict, sig FROM receipts"
                                " WHERE runid = '20260921-000054-0'").fetchone()
     check("a receipt gone mid-pass is not stored", row(), None)
+    check("...and coverage stops before the unread receipt", wm(), old - 1)
     with open(path, "wb") as fh:
         fh.write(keep)
     os.utime(path, (old, old))
@@ -373,6 +375,156 @@ def case_receipt_watermark():
         surfd.EVIDENCE_DIR = real
     check("a missing evidence directory: nothing read, said, watermark unmoved",
           (got, "receipt step failed" in err.getvalue(), wm()), ((0, 0), True, before))
+
+
+def case_receipt_io_retry():
+    """Temporary receipt/digest I/O is not a permanent evidence fault."""
+    import builtins
+    for kind in ("rcpt", "view", "hid"):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        now = int(time.time())
+        old = now - 2 * surfd.EVIDENCE_SETTLE
+        rid = "20261006-000110-0"
+        text = _journal_text().encode("utf-8") if kind == "hid" else None
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, age=old - 50, hid=text)
+        replay = add_replay(conn, _runs, "bhop_eazy", "0000662_retry_run.rec")
+        conn.execute("UPDATE replays SET runid = ? WHERE id = ?", (rid, replay))
+        conn.commit()
+        control = "20261006-000111-0"
+        make_receipt(surfd.EVIDENCE_DIR, control, age=old)
+        blocked = rp[:-5] + "." + kind
+        real_open = builtins.open
+
+        def eio(path, *args, **kwargs):
+            if path == blocked:
+                raise OSError(5, "Input/output error")
+            return real_open(path, *args, **kwargs)
+
+        err = io.StringIO()
+        with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(err):
+            got = sweep.receipt_step(conn, now=now)
+        check("%s I/O: CONTROL independent receipt was read" % kind, got, (1, 0))
+        check("%s I/O: unread receipt is not permanently stored" % kind,
+              conn.execute("SELECT verdict FROM receipts WHERE runid = ?", (rid,)).fetchone(), None)
+        check("%s I/O: no key sighting was invented" % kind,
+              conn.execute("SELECT COUNT(*) FROM pubkeys").fetchone()[0], 0)
+        check("%s I/O: coverage stops before the unread receipt" % kind,
+              conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
+              old - 51)
+        check("%s I/O: retry is visible in the sweep diagnostic" % kind,
+              "1 receipt read(s) deferred" in err.getvalue(), True)
+        check("%s I/O: recovery actually reads the receipt" % kind,
+              sweep.receipt_step(conn, now=now + 60), (1, 0))
+        check("%s I/O: recovery stores VALID and a verified signature" % kind,
+              tuple(conn.execute("SELECT verdict, sig FROM receipts WHERE runid = ?",
+                                 (rid,)).fetchone()), ("VALID", 1))
+        check("%s I/O: recovery binds the key exactly once" % kind,
+              conn.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
+        check("%s I/O: recovery advances the coverage marker" % kind,
+              conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
+              now + 60 - surfd.EVIDENCE_SETTLE)
+
+        # Manual stale rereads must leave the last observation in place too.
+        sweep.mark_receipts_stale(conn)
+        before = tuple(conn.execute("SELECT * FROM receipts WHERE runid = ?", (rid,)).fetchone())
+        with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+            sweep.receipt_step(conn, now=now + 120)
+        check("%s I/O: a stale row is preserved for retry" % kind,
+              tuple(conn.execute("SELECT * FROM receipts WHERE runid = ?", (rid,)).fetchone()), before)
+        check("%s I/O: stale recovery reads the preserved row" % kind,
+              sweep.receipt_step(conn, now=now + 180), (1, 0))
+
+
+def case_receipt_io_budget():
+    import builtins
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    first, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261006-000120-0", age=old - 50)
+    make_receipt(surfd.EVIDENCE_DIR, "20261006-000121-0", age=old)
+    real_open = builtins.open
+    attempts = []
+
+    def eio(path, *args, **kwargs):
+        if isinstance(path, str) and path.endswith(".rcpt"):
+            attempts.append(path)
+        if path == first:
+            raise OSError(5, "Input/output error")
+        return real_open(path, *args, **kwargs)
+
+    with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        got = sweep.receipt_step(conn, limit=1, now=now)
+    check("an I/O failure consumes the per-pass read budget", (got, attempts), ((0, 0), [first]))
+    check("budgeted recovery reads the oldest receipt", sweep.receipt_step(conn, limit=1, now=now), (1, 0))
+    check("coverage still stops before the next unread receipt",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], old - 1)
+    check("CONTROL: the following pass reads the remaining receipt",
+          sweep.receipt_step(conn, limit=1, now=now), (1, 0))
+
+
+def case_receipt_incomplete_listing():
+    for have_marker in (False, True):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        now = int(time.time())
+        old = now - 2 * surfd.EVIDENCE_SETTLE
+        blocked, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261006-000130-0", age=old - 50)
+        make_receipt(surfd.EVIDENCE_DIR, "20261006-000131-0", age=old)
+        previous = now - 3 * surfd.EVIDENCE_SETTLE if have_marker else None
+        if have_marker:
+            conn.execute("INSERT INTO sweepmeta (k, v) VALUES ('receipts_through', ?)", (previous,))
+            conn.commit()
+
+        def wm():
+            row = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()
+            return row[0] if row else None
+
+        real_mtime = os.path.getmtime
+
+        def eio(path):
+            if path == blocked:
+                raise OSError(5, "Input/output error")
+            return real_mtime(path)
+
+        err = io.StringIO()
+        with mock.patch.object(os.path, "getmtime", side_effect=eio), contextlib.redirect_stderr(err):
+            got = sweep.receipt_step(conn, now=now)
+        check("unknown age: CONTROL the independent receipt was read", got, (1, 0))
+        check("unknown age: coverage is unchanged, not guessed", wm(), previous)
+        check("unknown age: the sweep explains why coverage stayed put",
+              "unchanged (unknown file age)" in err.getvalue(), True)
+        check("unknown age: restored stat permits a real read", sweep.receipt_step(conn, now=now), (1, 0))
+        check("unknown age: complete coverage now advances", wm(), now - surfd.EVIDENCE_SETTLE)
+
+    # A readable root does not prove that its map directories were readable.
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261006-000132-0",
+                            age=now - 2 * surfd.EVIDENCE_SETTLE)
+    real_scan = os.scandir
+
+    def denied(path):
+        if path == os.path.dirname(rp):
+            raise PermissionError(13, "Permission denied")
+        return real_scan(path)
+
+    err = io.StringIO()
+    with mock.patch.object(os, "scandir", side_effect=denied), contextlib.redirect_stderr(err):
+        got = sweep.receipt_step(conn, now=now)
+    check("unreadable map directory: no receipts read", got, (0, 0))
+    check("unreadable map directory: no complete-coverage marker",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta").fetchone()[0], 0)
+    check("unreadable map directory: incomplete pass is reported",
+          "receipt step failed" in err.getvalue(), True)
+    check("CONTROL: restored directory enumeration reads the receipt",
+          sweep.receipt_step(conn, now=now), (1, 0))
 
 
 def angle_pair(runid, rot=0.0, still=True, ver=9):
@@ -1333,7 +1485,8 @@ def main():
                  case_receipt_journal_pending_until_it_arrives,
                  case_pending_reread_moves_only_the_journal,
                  case_receipt_step_never_takes_the_sweep_down,
-                 case_receipt_watermark, case_disk_note):
+                 case_receipt_watermark, case_receipt_io_retry, case_receipt_io_budget,
+                 case_receipt_incomplete_listing, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()
