@@ -571,9 +571,14 @@ def join_journal(r):
         coverage = "mouse counts on %d/%d judged frames (%.2f%%); longest no-mouse span %d frames" % (
             h.info["identity_mouse_frames"], h.info.get("identity_judged", 0),
             h.info["identity_mouse_pct"], h.info["identity_no_mouse_longest"])
-        r.journal_detail = "%s; %s" % (r.journal_detail, coverage) \
+        r.journal_detail = "%s; %s" % (coverage, r.journal_detail) \
             if r.journal_detail else coverage
     unresolved = h.info.get("identity_unresolved") or 0
+    if unresolved and "identity_unresolved_runs" in h.info:
+        continuity = "unresolved spans %d, longest %d frames" % (
+            h.info["identity_unresolved_runs"], h.info["identity_unresolved_longest"])
+        r.journal_detail = "%s; %s" % (continuity, r.journal_detail)
+        # Keep measurements before prose: the sweep retains the first 300 chars.
     if h.faults:
         r.journal = "FAULT"
         r.journal_detail = "%s | %s" % (h.faults[0][:300], r.journal_detail)

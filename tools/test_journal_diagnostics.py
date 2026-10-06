@@ -104,5 +104,53 @@ class MouseCoverage(unittest.TestCase):
         self.assertNotIn("identity_mouse_frames", r.info)
 
 
+def unresolved_journal(changed, excluded=()):
+    j = Journal()
+    yaw, pitch = 90.0, 10.0
+    for i in range(10):
+        j.frame(3000 + i)
+        j.mouse(2, 2)
+        yaw += j.k * 2
+        pitch += j.kp * 2
+        if i in changed:
+            yaw += 0.5
+            pitch += 0.5
+        j.view(2, 2, pitch, yaw, flags=hidcheck.VF_FREE if i in excluded else 0)
+    return j.end()
+
+
+class UnresolvedContinuity(unittest.TestCase):
+    def test_control_and_adjacent_frames(self):
+        for changed, want in (((), (0, 0, 0)), ((3,), (1, 1, 1)),
+                              ((3, 4, 5), (3, 1, 3)), ((2, 5, 8), (3, 3, 1))):
+            text = unresolved_journal(changed)
+            r = run(text)
+            self.assertTrue(r.ok, r.faults)
+            self.assertEqual(tuple(r.info[k] for k in ("identity_unresolved",
+                             "identity_unresolved_runs", "identity_unresolved_longest")), want)
+            receipt = receipt_for(text)
+            self.assertEqual(receipt.journal, "BLIND" if changed else "OK")
+            if changed:
+                self.assertIn("unresolved spans %d, longest %d frames" % want[1:],
+                              receipt.journal_detail[:300])
+                self.assertIn("mouse counts on 9/9", receipt.journal_detail[:300])
+
+    def test_excluded_frame_breaks_continuity(self):
+        text = unresolved_journal((3, 4, 5, 6), excluded=(4,))
+        r = run(text)
+        self.assertTrue(r.ok, r.faults)
+        self.assertEqual(r.info["identity_unresolved"], 3)
+        self.assertEqual(r.info["identity_unresolved_runs"], 2)
+        self.assertEqual(r.info["identity_unresolved_longest"], 2)
+
+    def test_verbose_contains_continuity(self):
+        r = run(unresolved_journal((3, 4)))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            hidcheck.emit(r, True)
+        self.assertIn("identity_unresolved_runs", out.getvalue())
+        self.assertIn("identity_unresolved_longest", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

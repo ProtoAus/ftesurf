@@ -2026,6 +2026,19 @@ def check_identity(r, head, views):
     r.info["identity_pitch_ghosts"] = len(pghost)
     r.info["identity_whole"] = len(whole)
     r.info["identity_unresolved"] = len(unresolved)
+    streak = longest_streak = unresolved_runs = 0
+    # Follow v-record order, not source-line adjacency: event records can sit
+    # between frames. Ordinary and ungoverned frames both break continuity.
+    for v in views:
+        if v[0] in unresolved:
+            if not streak:
+                unresolved_runs += 1
+            streak += 1
+            longest_streak = max(longest_streak, streak)
+        else:
+            streak = 0
+    r.info["identity_unresolved_runs"] = unresolved_runs
+    r.info["identity_unresolved_longest"] = longest_streak
     r.info["identity_judged"] = len(y_judged | p_judged)
     # A journal whose judged frames carry no counts tested only the keyboard
     # term: a run turned from the console holds on every frame (review of
