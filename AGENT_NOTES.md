@@ -709,8 +709,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   angle verdict says not checked, not that the recording is necessarily absent.
   This changes no thresholds, detector verdicts, signing history, ranked policy
   or automatic reread scheduling. `test_receipt_angle_reasons.py` exercises real
-  signed pairs, migration and executed DOM rendering; scheduling suites compare
-  complete rows including the detail.
+  signed pairs, migration and executed DOM rendering; it explicitly skips only
+  DOM controls when Node is absent (83 Python checks vs 99 with Node).
+  Scheduling suites compare complete rows including the detail.
 
 THE DESIGN IS NOT IN THIS REPO. It lives in
 `C:/FTESurf-private/anticheat-plan.md` — layers 0–3, threat classes T0–T5,

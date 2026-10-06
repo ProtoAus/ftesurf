@@ -9,6 +9,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -274,7 +275,13 @@ console.log(JSON.stringify({fields, summary}));
 
 
 def main():
-    for case in (case_real_observations, case_migration, case_partial_history, case_initial_partial_and_bound, case_journal_only, case_render_text):
+    cases = [case_real_observations, case_migration, case_partial_history,
+             case_initial_partial_and_bound, case_journal_only]
+    if shutil.which('node'):
+        cases.append(case_render_text)
+    else:
+        print('SKIP DOM: Node unavailable; running Python storage/migration controls only')
+    for case in cases:
         try:
             case()
         except Exception as exc:
