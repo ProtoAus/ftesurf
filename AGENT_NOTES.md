@@ -2305,15 +2305,17 @@ script rather than passing it as an argument, where `ps` would show it.
   Backups `*.pre490f73d-20261005-144643` and `*.pre-e11084c-…`, plus
   `data/surfd.db.bak-490f73d-20261005-144643`.
 
-  **THE SIMILARITY STEP STORES NOTHING ON THE PI YET, AND THAT IS EXPECTED RATHER
-  THAN BROKEN.** `tools/census/` is not deployed beside the game, so `_recsim()`
-  finds no comparison and the step degrades to storing nothing and printing its
-  reason on every sweep line -- the behaviour the receipt step's lazy imports
-  exist for.  Verified live: `simcheck._recsim(sweep.TOOLS)` reports `no
+  **[HISTORICAL: superseded by the 2026-10-06 runtime read below] THE SIMILARITY
+  STEP STORED NOTHING ON THE PI THEN, AND THAT WAS EXPECTED RATHER THAN BROKEN.**
+  At that observation `tools/census/` was not deployed beside the game, so
+  `_recsim()` found no comparison and the step degraded to storing nothing and
+  printing its reason on every sweep line -- the behaviour the receipt step's
+  lazy imports exist for. The then-live `simcheck._recsim(sweep.TOOLS)` reported `no
   recsim.py found (tried: /srv/nvme/ftesurf-server/game/tools/census/recsim.py,
   /srv/nvme/tools/census/recsim.py)`.  The first path is the RIGHT one and is
-  where reccheck.py and rcptcheck.py live; putting `recsim.py` there activates
-  the step with no code change and no reload.
+  where reccheck.py and rcptcheck.py live; installing `recsim.py` there could
+  activate the step with no code change and no reload. The 2026-10-06 read below
+  found it already installed; this old observation is not current provenance.
   **AND NOTE THE SECOND PATH IT TRIED, BECAUSE IT IS A TRAP.** `/srv/nvme/tools`
   EXISTS and is a steamcmd directory (linux32, linux64, steamcmd.sh) with nothing
   to do with this tree.  It is `<surfd>/../tools`: simcheck's own-neighbourhood
@@ -2576,6 +2578,38 @@ script rather than passing it as an argument, where `ps` would show it.
   And the live database is `<SURFD_HOME>/data/surfd.db`, NOT
   `<SURFD_HOME>/surfd.db` -- a stray empty file at the second path has existed
   since 2026-09-21 and is not it.
+
+### Observer deployment gates: resolve the live tool and bound verification
+
+Measured 2026-10-06, frozen game `bf5153d` (P521/P522 and the tooling-only
+`4c519b9` runtime installer). The old missing-similarity-tool note above was stale:
+the installed recsim.py matched published `34c2984` exactly, with two native rows
+and one stored pair. Its diff to the current canonical source was comments only.
+Use the explicit resolved tool path and inspected predecessor hash; do not
+blindly overwrite an unexpected file. `tools/simcheck_runtime.py` packages only
+clean exact-commit bytes and installs one fixed path, dry-run by default, with
+paired-reader hashes, predecessor guards and rollback. Installed long/short
+controls passed on the Pi and both Windows installs; this is not new activation,
+complete pair coverage, hardware provenance or calibration.
+
+Two private post-swap gates failed while the destination hashes were already
+correct. First, `_recsim()` returns `(module, loaded_path)` on success, not an
+empty reason: check the path, do not reject a loaded module for its path string.
+Second, a verification snapshot attempted `SELECT * FROM runs` into Python: the
+live board had over three million rows and the probe was killed. Kernel evidence
+did not establish the kill's cause; do not claim a confirmed OOM. Health stayed
+at 12 lobbies. A replacement gate denied protected-table DML with SQLite's
+authorizer (a denied no-op proves the guard acted), compared bounded metadata and
+scalar board counts, and reported 0.093 s for the collector/post-history interval
+with no new stored pairs. Never materialize the board to prove an observer did
+not modify it.
+
+Finish only missing controls after rechecking frozen destinations and rollback
+copies; do not recopy source or overwrite the first backup. All 26 Linux suites
+passed, installed API/storage/path controls acted, then master-preserving worker
+replacement/ready log and health completed at 2026-10-06T23:42:33Z. Linux Node is
+absent: actual DOM controls passed on Windows, not in a live browser. No automatic
+historical metrics reconstruction, engine/progs/config/threshold/badge change.
 
 ## Chat and `say` — the contract, and it changed in 342
 
