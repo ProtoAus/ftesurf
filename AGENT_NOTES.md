@@ -940,6 +940,18 @@ publicly WITH its fix, not before it.
   drained** -- `IN_Journal_Frame()` has one call site, inside IN_Commands'
   non-empty-drain branch -- so a journal with no `f` rows is a journal of nothing
   happening, not a journal with a missing record.
+- HID DIAGNOSTIC DENOMINATORS (Patches 515–517): union relevant-mouse coverage
+  can conceal a silent axis. Use `identity_yaw_*` / `identity_pitch_*` coverage
+  from actual judged sets, not governed-candidate totals. Each axis's exclusion
+  dictionary plus its judged count accounts for emitted `v` records; earlier
+  global gates omit unexecuted coverage rather than inventing a measured zero.
+  Seed records are not comparisons. Counts-join windows partition into initial
+  exemption, checked and absolute-input unjoinable; transforms overlay the latter
+  two groups and exclude the same initial window. Spans/windows describe source
+  records, not elapsed time or render frames. These additive measurements are
+  available in verbose HID reports, NOT durable per-receipt metric snapshots:
+  the stored 300-character reason remains bounded prose. No-window/invalid
+  profile paths cannot be reconstructed as present-day measured zeroes.
 - Version bump rule: new header keys and new record types are additive and need
   no bump (readers skip what they do not know). Bump when `end` grows a field or
   an existing line CHANGES MEANING. Then update, in reccheck.py: `COLUMNS`, the
