@@ -458,12 +458,90 @@ def case_receipt_io_budget():
 
     with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
         got = sweep.receipt_step(conn, limit=1, now=now)
-    check("an I/O failure consumes the per-pass read budget", (got, attempts), ((0, 0), [first]))
-    check("budgeted recovery reads the oldest receipt", sweep.receipt_step(conn, limit=1, now=now), (1, 0))
-    check("coverage still stops before the next unread receipt",
-          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], old - 1)
-    check("CONTROL: the following pass reads the remaining receipt",
-          sweep.receipt_step(conn, limit=1, now=now), (1, 0))
+    check("an I/O failure consumes the per-pass read budget", (got, attempts[:]), ((0, 0), [first]))
+    with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        got = sweep.receipt_step(conn, limit=1, now=now)
+    check("CONTROL: healthy receipt progresses while the first still fails", got, (1, 0))
+    check("...and the following pass still attempts only one receipt", len(attempts), 2)
+    check("rotation never covers the still-unread oldest receipt",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], old - 51)
+    check("budgeted recovery reads the deferred receipt", sweep.receipt_step(conn, limit=1, now=now), (1, 0))
+    check("complete recovery finally advances coverage",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
+          now - surfd.EVIDENCE_SETTLE)
+
+    # The same persistent failure among explicit rereads must not monopolize
+    # that queue either. The cursor is durable metadata, not module state.
+    sweep.mark_receipts_stale(conn)
+    with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        check("a failed stale reread consumes its bounded attempt",
+              sweep.receipt_step(conn, limit=1, now=now), (0, 0))
+        check("CONTROL: an unrelated stale row progresses next pass",
+              sweep.receipt_step(conn, limit=1, now=now), (1, 0))
+    check("the failed stale row remains retryable",
+          conn.execute("SELECT stale FROM receipts WHERE runid = '20261006-000120-0'").fetchone()[0], 2)
+
+
+def case_receipt_mixed_fault_io():
+    """An unmeasured sibling cannot erase an independent measured fault."""
+    import builtins
+    for kind in ("nonce", "signature", "digest"):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        now = int(time.time())
+        rid = "20261006-000140-0"
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid,
+                                age=now - 2 * surfd.EVIDENCE_SETTLE,
+                                hid=_journal_text().encode("utf-8"), tamper=(kind == "signature"))
+        rc = with_rec(surfd, sweep, rid, "FTESURF-REC 9\nrunid %s\nnonce %s\nbegin\n"
+                      % (rid, "0" * 32 if kind == "nonce" else "d6c6820bca16750c77166d96dcf02787"))
+        blocked = rp[:-5] + (".view" if kind == "nonce" else ".hid")
+        if kind == "digest":
+            with open(rp[:-5] + ".view", "ab") as fh:
+                fh.write(b"changed\n")
+        real_open = builtins.open
+
+        def eio(path, *args, **kwargs):
+            if path == blocked:
+                raise OSError(5, "Input/output error")
+            return real_open(path, *args, **kwargs)
+
+        def row():
+            r = conn.execute("SELECT verdict, sig, reason, journal FROM receipts WHERE runid = ?",
+                             (rid,)).fetchone()
+            return tuple(r) if r else None
+
+        try:
+            with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+                got = sweep.receipt_step(conn, now=now)
+            check("%s plus sibling I/O: the independent fault is stored" % kind, got, (1, 1))
+            before = row()
+            check("%s plus sibling I/O: fault and signature observation survive" % kind,
+                  before[:2] if before else None, ("FAULT", 0 if kind == "signature" else 1))
+            reason = before[2] if before else ""
+            wanted = {"nonce": "the .rec states", "signature": "SIGNATURE DOES NOT VERIFY",
+                      "digest": "hashes to"}[kind]
+            check("%s plus sibling I/O: reason is the measured fault, not I/O" % kind,
+                  (wanted in reason, "Input/output error" in reason), (True, False))
+            check("%s plus sibling I/O: the unread join remains pending" % kind,
+                  before[3] if before else None, "PENDING")
+            # Lose the source of the independent fault before the deferred join
+            # recovers: recovery must not turn that recorded observation VALID.
+            os.remove(os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec"))
+            if kind == "digest":
+                os.remove(rp[:-5] + ".view")
+            with contextlib.redirect_stderr(io.StringIO()):
+                got = sweep.receipt_step(conn, now=now + 60)
+            check("%s plus sibling I/O: recovery actually rereads the pending join" % kind,
+                  got, (1, 0))
+            after = row()
+            check("%s plus sibling I/O: source removal cannot erase the fault" % kind,
+                  after[:3] if after else None, before[:3] if before else ("FAULT",))
+            check("%s plus sibling I/O: the recovered join leaves PENDING" % kind,
+                  after[3] != "PENDING" if after else False, True)
+        finally:
+            rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
 
 
 def case_receipt_incomplete_listing():
@@ -1486,7 +1564,7 @@ def main():
                  case_pending_reread_moves_only_the_journal,
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_receipt_io_retry, case_receipt_io_budget,
-                 case_receipt_incomplete_listing, case_disk_note):
+                 case_receipt_incomplete_listing, case_receipt_mixed_fault_io, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

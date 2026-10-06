@@ -316,9 +316,20 @@ def read_receipt(path, journal_only=False):
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
     rcptcheck.join_hid(r)
+    observed = list(r.faults)
     rcptcheck.join_uploaded(r, {})
     if r.ioerror:
-        return None             # the sibling digest was not measured either
+        # An unread sibling is not a fault, but must not erase an independent
+        # signature/recording/digest fault already observed on this read.
+        observed.extend(f for f in r.digest_bad.values() if f not in observed)
+        if journal_only or not observed:
+            return None
+        journal = "FAULT" if "hid" in r.digest_bad else "PENDING"
+        detail = ("not the journal the receipt signed: %s" % r.digest_bad["hid"]
+                  if journal == "FAULT" else "signed sibling read deferred after I/O")
+        return ("FAULT", r.head.get("pub", ""), r.head.get("map", ""),
+                "BLIND", observed[0][:300], 1 if r.ok is True else 0,
+                journal, detail[:300], 0)
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -386,10 +397,10 @@ def receipt_step(conn, limit=200, now=None):
                     with os.scandir(entry.path) as evidence:
                         files.extend(f.path for f in evidence if f.name.endswith(".rcpt"))
         files.sort()
-        # Never-read files first and OLDEST first, so a pass that runs out of
-        # room still covers everything older than what it left; then the
-        # --reread-receipts backlog (stale = 1, kept until replaced) and the
-        # rows whose journal is PENDING.
+        # Base order: never-read oldest first, then stale/PENDING rereads.
+        # Rotate the bounded attempt window across passes so persistent I/O
+        # failures cannot monopolize it. Coverage is computed separately from
+        # ALL unread fresh files, not inferred from this processing order.
         name = lambda f: os.path.basename(f)[:-5]
         fresh = []
         stat_incomplete = False
@@ -418,9 +429,16 @@ def receipt_step(conn, limit=200, now=None):
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
                [(None, f, False) for f in files if name(f) in rows and due(f)]
+        cursor = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipt_cursor'").fetchone()
+        start = int(cursor[0]) % len(todo) if cursor and todo else 0
+        next_cursor = start
+        unread = {f: m for m, f in fresh if m <= cutoff}
         n = bad = jfault = attempts = 0
-        through = cutoff
-        for mtime, path, is_fresh in todo:
+        for offset in range(len(todo)):
+            if attempts >= limit:
+                break
+            mtime, path, is_fresh = todo[(start + offset) % len(todo)]
+            next_cursor = (start + offset + 1) % len(todo)
             runid = name(path)
             if mtime is None:
                 try:
@@ -430,10 +448,6 @@ def receipt_step(conn, limit=200, now=None):
                     continue
             if mtime > cutoff:
                 continue
-            if attempts >= limit:
-                if is_fresh:
-                    through = min(through, int(mtime) - 1)
-                continue
             pending_only = not is_fresh and rows[runid][0] not in (1, 2)
             attempts += 1
             got = read_receipt(path, journal_only=pending_only)
@@ -441,8 +455,6 @@ def receipt_step(conn, limit=200, now=None):
             # Leave it retryable, and never claim coverage past an unread run.
             if got is None or not os.path.exists(path):
                 retry += 1
-                if is_fresh:
-                    through = min(through, int(mtime) - 1)
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
             if pending_only:
@@ -484,6 +496,7 @@ def receipt_step(conn, limit=200, now=None):
                      max(1, int(mtime)),      # 0 means "pre-8 row" to receipts_v8
                      journal, jreason))
                 bind_key(conn, runid, pub, t0)
+            unread.pop(path, None)
             n += 1
             bad += verdict != "VALID"
             jfault += journal == "FAULT"
@@ -499,16 +512,14 @@ def receipt_step(conn, limit=200, now=None):
                     " WHERE runid = ? AND journal = 'PENDING' AND signed_at < ?",
                     [("the journal never arrived", rid, t0 - surfd.JOURNAL_WAIT)
                      for rid in gone])
-        # THE WATERMARK.  Every never-read receipt with an mtime up to `through`
-        # is now in the table -- `cutoff`, or just short of the oldest one this
-        # pass had no room for -- so a board run submitted well before it with
-        # no signed receipt has none.  A pass that raised writes nothing, and
-        # admin's "unsigned" pauses rather than reading "not read yet" as "not
-        # signed" (the three hours this step failed on 2026-09-21 would have
-        # flagged every signer's runs).  A flood only slows it: 200 a pass,
-        # oldest first.
-        if not stat_incomplete:
-            with conn:
+        # THE WATERMARK covers only the fully observed prefix, regardless of
+        # rotation, budget, or failures. Unknown ages prevent any new boundary.
+        through = min([cutoff] + [int(m) - 1 for m in unread.values()])
+        with conn:
+            if attempts:
+                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                             " VALUES ('receipt_cursor', ?)", (next_cursor,))
+            if not stat_incomplete:
                 conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
                              " VALUES ('receipts_through', ?)", (through,))
         if retry:

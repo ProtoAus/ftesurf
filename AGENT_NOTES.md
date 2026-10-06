@@ -2361,13 +2361,16 @@ script rather than passing it as an argument, where `ps` would show it.
     complete receipt pass) less 300 s, so a stalled receipt step pauses it
     instead of flagging every signer. The admin runs page says so in red after
     an hour: that note, not the flag count, is how a broken step shows now.
-  - Patch 501: initial receipt/sibling-digest I/O defers the read, like a
-    PENDING reread, rather than storing a permanent evidence FAULT. Failed
-    reads consume the pass budget; coverage stops before a fresh unread file's
-    mtime, or stays unchanged when its age is unknown. Enumerate both the
-    evidence root and map directories explicitly: glob silently hides an
-    unreadable map directory. `test_sweep.py` exercises failure AND recovery
-    for receipt/view/hid reads, stale rows, stat, enumeration and the budget.
+  - Patch 501: initial receipt/sibling-digest I/O alone defers the read, like
+    a PENDING reread, rather than storing a permanent evidence FAULT. A separate
+    measured signature/recording/digest fault survives sibling I/O; a pending
+    join's recovery cannot clear it. Failed reads consume the pass budget, with
+    a durable rotating cursor so persistent failures cannot starve healthy
+    receipts. Coverage is computed from ALL unread fresh receipts, independently
+    of that rotation, or stays unchanged when an age is unknown. Enumerate both
+    directory levels explicitly: glob silently hides unreadable map directories.
+    `test_sweep.py` exercises failure/recovery, persistent-failure progress and
+    source removal between a measured fault and an unmeasured join's recovery.
   - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
     one that never ran). The Pi has no node and prints a skip, so run it on
     Windows after editing a template. On Windows its `amplification guard` and
