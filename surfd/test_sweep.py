@@ -421,7 +421,7 @@ def case_receipt_io_retry():
               tuple(conn.execute("SELECT verdict, sig FROM receipts WHERE runid = ?",
                                  (rid,)).fetchone()), ("VALID", 1))
         check("%s I/O: recovery binds the key exactly once" % kind,
-              conn.execute("SELECT runs FROM pubkeys").fetchone()[0], 1)
+              tuple(conn.execute("SELECT runs FROM pubkeys").fetchone() or ()), (1,))
         check("%s I/O: recovery advances the coverage marker" % kind,
               conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
               now + 60 - surfd.EVIDENCE_SETTLE)
