@@ -45,6 +45,7 @@ Usage:
 import glob
 import hashlib
 import io
+import math
 import os
 import sys
 
@@ -53,6 +54,43 @@ import ed25519
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.path.join(SURFDIR, "ftesurf")
+
+# Observations only; missing keys mean unmeasured, never an invented zero.
+JOURNAL_METRICS = frozenset((
+    "view_records", "frames_not_governed", "identity_frames", "identity_pitch_frames",
+    "identity_violations", "identity_pitch_violations", "identity_ghosts",
+    "identity_pitch_ghosts", "identity_whole", "identity_unresolved",
+    "identity_unresolved_runs", "identity_unresolved_longest", "identity_judged",
+    "identity_mouse_frames", "identity_no_mouse_frames", "identity_mouse_pct",
+    "identity_no_mouse_longest", "join_checked", "join_broke", "join_transforms",
+    "join_windows", "join_first_exempt", "join_unjoinable", "join_transforms_checked",
+    "join_transforms_unjoinable",
+)) | frozenset("identity_%s_%s" % (axis, field)
+              for axis in ("yaw", "pitch") for field in
+              ("judged", "mouse_frames", "no_mouse_frames", "mouse_pct", "no_mouse_longest"))
+JOURNAL_EXCLUSIONS = frozenset((
+    "reader_profile_gate", "reader_zero_yaw_gate", "reader_short_gate", "mode",
+    "yaw_mode", "pitch_mode", "missing_pitch_term", "inactive_pitch_gate",
+    "seed", "profile", "zero_scale", "clamp",
+))
+
+
+def journal_snapshot(info):
+    """Versioned, bounded public-safe measurements; never copy HID prose/IDs."""
+    def number(v):
+        return type(v) in (int, float) and v >= 0 and math.isfinite(v)
+
+    metrics = {k: info[k] for k in sorted(JOURNAL_METRICS)
+               if k in info and number(info[k])}
+    for axis in ("yaw", "pitch"):
+        key = "identity_%s_exclusions" % axis
+        if isinstance(info.get(key), dict):
+            metrics[key] = {k: v for k, v in sorted(info[key].items())
+                            if k in JOURNAL_EXCLUSIONS and number(v)}
+    key = "join_declared_transform_profile"
+    if type(info.get(key)) is bool:
+        metrics[key] = info[key]
+    return {"version": 1, "metrics": metrics}
 
 
 class Receipt(object):
@@ -90,6 +128,7 @@ class Receipt(object):
         # counts it recorded.
         self.journal = ""
         self.journal_detail = ""
+        self.journal_metrics = None  # no content measurement; NOT measured zero
         # ABSENT, and the receipt signs a kept journal's digest: it may still be
         # uploading.  sweep.py reads this to hold the row PENDING.
         self.journal_owed = False
@@ -563,6 +602,7 @@ def join_journal(r):
         r.journal = ""
         r.note("the journal content check did not run (%r)" % exc)
         return
+    r.journal_metrics = journal_snapshot(h.info)
     r.journal_detail = (h.info.get("identity") or "")
     pitch = h.info.get("identity_pitch")
     if pitch:
