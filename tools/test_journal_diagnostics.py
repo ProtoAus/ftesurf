@@ -179,6 +179,120 @@ class AxisCoverage(unittest.TestCase):
             self.assertIn("identity_%s_judged" % axis, out.getvalue())
 
 
+class ExclusionLedger(unittest.TestCase):
+    def reconcile(self, r):
+        self.assertTrue(r.ok, r.faults)
+        for axis in ("yaw", "pitch"):
+            excluded = r.info["identity_%s_exclusions" % axis]
+            judged = r.info.get("identity_%s_judged" % axis, 0)
+            self.assertTrue(all(n > 0 for n in excluded.values()))
+            self.assertEqual(sum(excluded.values()) + judged, r.info["view_records"])
+
+    def test_active_seed_and_overlapping_modes(self):
+        r = run(mouse_journal([(2, 2)] * 6))
+        self.reconcile(r)
+        for axis in ("yaw", "pitch"):
+            self.assertEqual(r.info["identity_%s_exclusions" % axis], {"seed": 1})
+            self.assertEqual(r.info["identity_%s_judged" % axis], 5)
+        # Leading and overlapping flags count once; predecessor selection stays
+        # that of the existing mode-filtered lists, not adjacent source records.
+        flags = [hidcheck.VF_FREE | hidcheck.VF_STRAFE_Y,
+                 hidcheck.VF_STRAFE_X | hidcheck.VF_STRAFE_Y, 0,
+                 hidcheck.VF_STRAFE_Y, 0, 0]
+        r = run(mouse_journal([(0, 0)] * 6, flags))
+        self.reconcile(r)
+        self.assertEqual(r.info["identity_yaw_exclusions"], {"mode": 2, "seed": 1})
+        self.assertEqual(r.info["identity_pitch_exclusions"],
+                         {"yaw_mode": 2, "pitch_mode": 1, "seed": 1})
+        self.assertEqual(r.info["identity_yaw_judged"], 3)
+        self.assertEqual(r.info["identity_pitch_judged"], 2)
+
+    def test_profile_and_axis_zero_scale_overrides(self):
+        j = Journal()
+        for i in range(8):
+            j.frame(3000+i)
+            if i in (1, 2):
+                j.cvarchange("m_filter", "1" if i == 1 else "0")
+            if i in (3, 4):
+                j.cvarchange("m_yaw", "0" if i == 3 else "0.022")
+            if i in (5, 6):
+                j.cvarchange("m_pitch", "0" if i == 5 else "0.022")
+            j.view(0, 0, 10.0, 90.0)
+        r = run(j.end())
+        self.reconcile(r)
+        for axis in ("yaw", "pitch"):
+            self.assertEqual(r.info["identity_%s_exclusions" % axis],
+                             {"seed": 1, "profile": 1, "zero_scale": 1})
+            self.assertEqual(r.info["identity_%s_judged" % axis], 5)
+
+    def test_pitch_clamp_is_unjudged_not_a_comparison(self):
+        j = Journal()
+        yaw, pitch = 90.0, 88.99
+        for i in range(6):
+            j.frame(3000+i)
+            j.mouse(2, 20)
+            yaw += j.k*2
+            if i:
+                pitch = min(89.0, pitch+j.kp*20)
+            j.view(2, 20, pitch, yaw)
+        text = j.end()
+        r = run(text)
+        self.reconcile(r)
+        self.assertEqual(r.info["identity_pitch_exclusions"], {"seed": 1, "clamp": 5})
+        self.assertEqual(r.info["identity_pitch_judged"], 0)
+        self.assertEqual(r.info["identity_yaw_judged"], 5)
+        self.assertEqual(receipt_for(text).journal, "OK")
+
+    def test_pre305_missing_term_is_not_a_yaw_exclusion(self):
+        j = Journal()
+        for i in range(6):
+            j.frame(3000+i)
+            j.mouse(2, 0)
+            j.view_pre305(2, 0, 10.0, 90.0+j.k*2*(i+1))
+        r = run(j.end())
+        self.reconcile(r)
+        self.assertEqual(r.info["identity_yaw_exclusions"], {"seed": 1})
+        self.assertEqual(r.info["identity_yaw_judged"], 5)
+        self.assertEqual(r.info["identity_pitch_exclusions"], {"missing_pitch_term": 6})
+        self.assertEqual(r.info["identity_pitch_judged"], 0)
+
+    def test_inactive_pitch_and_missing_header_constant(self):
+        for text in (mouse_journal([(2, 0)] * 6).replace("m_pitch 0.022", "m_pitch 0"),
+                     mouse_journal([(2, 0)] * 6).replace("m_pitch 0.022\n", "")):
+            r = run(text)
+            self.reconcile(r)
+            self.assertEqual(r.info["identity_pitch_exclusions"], {"inactive_pitch_gate": 6})
+            self.assertEqual(r.info["identity_pitch_judged"], 0)
+            self.assertEqual(r.info["identity_yaw_judged"], 5)
+
+    def test_global_gate_order_not_reconstructed_pitch_eligibility(self):
+        for args, why in (({"mfilter": 1}, "reader_profile_gate"),
+                          ({"myaw": 0}, "reader_zero_yaw_gate")):
+            j = Journal(**args)
+            for i in range(6):
+                j.frame(3000+i)
+                j.mouse(0, 2)
+                j.view(0, 2, 10.0+j.kp*2*i, 90.0)
+            r = run(j.end())
+            self.reconcile(r)
+            for axis in ("yaw", "pitch"):
+                self.assertEqual(r.info["identity_%s_exclusions" % axis], {why: 6})
+                self.assertNotIn("identity_%s_judged" % axis, r.info)
+        r = run(mouse_journal([(2, 2)], [0]))
+        self.reconcile(r)
+        self.assertEqual(r.info["identity_yaw_exclusions"], {"reader_short_gate": 1})
+        r = run(mouse_journal([(2, 2)] * 6, [hidcheck.VF_STRAFE_X] * 6))
+        self.reconcile(r)
+        self.assertEqual(r.info["identity_pitch_exclusions"], {"yaw_mode": 6})
+
+    def test_absent_views_and_invalid_header_have_no_ledger(self):
+        for text in (Journal().end(),
+                     mouse_journal([(2, 0)] * 6).replace("sensitivity 0.3", "sensitivity BAD")):
+            r = run(text)
+            for axis in ("yaw", "pitch"):
+                self.assertNotIn("identity_%s_exclusions" % axis, r.info)
+
+
 def unresolved_journal(changed, excluded=()):
     j = Journal()
     yaw, pitch = 90.0, 10.0

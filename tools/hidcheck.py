@@ -1832,7 +1832,13 @@ def check_identity(r, head, views):
                 cache[id(ov)] = (None, None, True)
         return cache[id(ov)]
 
+    # Partition emitted v records by the path this reader actually takes.
+    # A seed is not a judged endpoint; early gates are not measured zeroes.
+    y_excl = r.info["identity_yaw_exclusions"] = {}
+    p_excl = r.info["identity_pitch_exclusions"] = {}
+
     if all(consts(v)[2] for v in views):
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
         r.info["identity_blind"] = "no plain-linear frames (m_filter/m_accel or unusable constants)"
         # Both are still deterministic functions of (dx, dy, frametime), so this
         # is a "not implemented here" rather than a "cannot be done" -- but
@@ -1844,6 +1850,7 @@ def check_identity(r, head, views):
         return
 
     if all(consts(v)[0] == 0 for v in views if not consts(v)[2]):
+        y_excl["reader_zero_yaw_gate"] = p_excl["reader_zero_yaw_gate"] = len(views)
         r.info["identity_blind"] = "zero yaw scale on all plain-linear frames"
         r.note("m_yaw*sensitivity is zero -- no yaw can be produced from counts, "
                "identity vacuous")
@@ -1854,8 +1861,11 @@ def check_identity(r, head, views):
     skipped = len(views) - len(applicable)
     if skipped:
         r.info["frames_not_governed"] = skipped
+        y_excl["mode"] = p_excl["yaw_mode"] = skipped
 
     if len(applicable) < 2:
+        if applicable:
+            y_excl["reader_short_gate"] = p_excl["reader_short_gate"] = len(applicable)
         r.info["identity_blind"] = "fewer than two frames in a governed view mode"
         r.note("fewer than two governed frames -- nothing to test")
         return
@@ -1931,6 +1941,12 @@ def check_identity(r, head, views):
     # it today -- but a player with +strafe bound would be accused without it.
     gov_pitch = [v for v in applicable
                  if not (v[3] & VF_STRAFE_Y) and v[6] is not None]
+    pitch_mode = sum(bool(v[3] & VF_STRAFE_Y) for v in applicable)
+    missing_pitch = len(applicable) - pitch_mode - len(gov_pitch)
+    if pitch_mode:
+        p_excl["pitch_mode"] = pitch_mode
+    if missing_pitch:
+        p_excl["missing_pitch_term"] = missing_pitch
     r.info["identity_pitch_frames"] = max(0, len(gov_pitch) - 1)
     pitch_live = len(gov_pitch) >= 2 and any(
         consts(v)[1] and not consts(v)[2] for v in gov_pitch[1:])
@@ -1940,6 +1956,8 @@ def check_identity(r, head, views):
     p_judged = set()    # lines whose pitch was compared, held or not
     p_abst = 0          # clamp or constants: counted, never judged
     if not pitch_live:
+        if gov_pitch:
+            p_excl["inactive_pitch_gate"] = len(gov_pitch)
         if hk is None:
             r.note("no usable m_pitch in the header -- the PITCH identity is not "
                    "checkable from this file. Only yaw was checked.")
@@ -1949,15 +1967,19 @@ def check_identity(r, head, views):
         # else pre-305 (no kpitch column): ABSENT IS NOT ZERO, and the yaw note
         # below already says the file cannot settle this.
     else:
+        p_excl["seed"] = 1
         for idx in range(1, len(gov_pitch)):
             p, c = gov_pitch[idx - 1], gov_pitch[idx]
             _ky, kpt, filt = consts(c)
             if filt or not kpt:
                 p_abst += 1
+                why = "profile" if filt else "zero_scale"
+                p_excl[why] = p_excl.get(why, 0) + 1
                 continue
             pred = kpt * c[2] + c[6]
             if pred > PITCH_ENV - p[4] or pred < -PITCH_ENV - p[4]:
                 p_abst += 1     # the clamp may have truncated it: not governed
+                p_excl["clamp"] = p_excl.get("clamp", 0) + 1
                 continue
             p_judged.add(c[0])
             dpitch = c[4] - p[4]
@@ -1983,11 +2005,14 @@ def check_identity(r, head, views):
     ghost = []          # yaw moved with nothing recorded behind it
     y_judged = set()
     y_abst = 0
+    y_excl["seed"] = 1
     for idx in range(1, len(applicable)):
         p, c = applicable[idx - 1], applicable[idx]
         kyw, _kp, filt = consts(c)
         if filt or not kyw:
             y_abst += 1
+            why = "profile" if filt else "zero_scale"
+            y_excl[why] = y_excl.get(why, 0) + 1
             continue
         y_judged.add(c[0])
         dyaw = c[5] - p[5]
