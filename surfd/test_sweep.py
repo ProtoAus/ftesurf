@@ -525,6 +525,48 @@ def case_receipt_retry_queue_churn():
           conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k LIKE 'receipt_retry:%'").fetchone()[0], 2)
 
 
+def case_receipt_lost_before_recovery():
+    import builtins
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    rid = "20261006-000160-0"
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, age=old - 50)
+    with open(rp, "rb") as fh:
+        saved = fh.read()
+    real_open = builtins.open
+
+    def eio(path, *args, **kwargs):
+        if path == rp:
+            raise OSError(5, "Input/output error")
+        return real_open(path, *args, **kwargs)
+
+    with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        check("lost receipt: first I/O failure leaves no observation",
+              sweep.receipt_step(conn, now=now), (0, 0))
+    os.remove(rp)
+    make_receipt(surfd.EVIDENCE_DIR, "20261006-000161-0", age=old)
+    with contextlib.redirect_stderr(io.StringIO()):
+        got = sweep.receipt_step(conn, now=now + 60)
+    check("lost receipt: CONTROL independent healthy receipt still progresses", got, (1, 0))
+    check("lost receipt: disappearance cannot advance unsigned coverage",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], old - 51)
+    check("lost receipt: pending scheduling knowledge is retained",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_retry:*'").fetchone()[0], 1)
+    with open(rp, "wb") as fh:
+        fh.write(saved)
+    os.utime(rp, (old - 50,) * 2)
+    check("lost receipt: restoration actually reads the receipt",
+          sweep.receipt_step(conn, now=now + 120), (1, 0))
+    check("lost receipt: successful observation finally retires the queue entry",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_retry:*'").fetchone()[0], 0)
+    check("lost receipt: complete coverage finally advances",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
+          now + 120 - surfd.EVIDENCE_SETTLE)
+
+
 def case_receipt_mixed_fault_io():
     """An unmeasured sibling cannot erase an independent measured fault."""
     import builtins
@@ -1662,7 +1704,8 @@ def main():
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_receipt_io_retry, case_receipt_io_budget,
                  case_receipt_incomplete_listing, case_receipt_mixed_fault_io,
-                 case_receipt_retry_queue_churn, case_receipt_stale_partial_io, case_disk_note):
+                 case_receipt_retry_queue_churn, case_receipt_stale_partial_io,
+                 case_receipt_lost_before_recovery, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

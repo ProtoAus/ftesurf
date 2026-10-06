@@ -436,10 +436,18 @@ def receipt_step(conn, limit=200, now=None):
         queued = {r[0]: r[1] for r in conn.execute(
             "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_retry:*'")}
         active = {qkey(f) for _m, f, _fresh in todo}
+        # A once-seen but unobserved receipt can disappear before recovery.
+        # Forgetting it would later turn lost evidence into an unsigned run.
+        lost = {k for k in queued if k not in active
+                and name(k[len("receipt_retry:"):]) not in rows}
+        if lost:
+            stat_incomplete = True
+            listed_keys = {qkey(f) for f in files}
+            retry += sum(k not in listed_keys for k in lost)
         sequence = max(queued.values(), default=0)
         with conn:
             conn.executemany("DELETE FROM sweepmeta WHERE k = ?",
-                             [(k,) for k in queued if k not in active])
+                             [(k,) for k in queued if k not in active and k not in lost])
             for _mtime, path, _is_fresh in todo:
                 key = qkey(path)
                 if key not in queued:
