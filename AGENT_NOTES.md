@@ -2399,6 +2399,16 @@ script rather than passing it as an argument, where `ps` would show it.
     receipt identity, late-arrival scheduling or hardware attestation. Deploy
     rcptcheck/reccheck/hidcheck together from a clean inspected commit; no
     automatic historical reread or detector/policy change belongs in this slice.
+    Selected `.rec` tail I/O must defer (not become ordinary absence); unknown
+    final-session nonce cannot be inferred from its readable header. Known
+    sibling presence can prove a missing-digest contradiction even when reading
+    bytes fails; unknown presence cannot. Final reviewed `4303a0e` deployed on
+    2026-10-06 09:52:46 UTC: 74 snapshot controls, 262 sweep, 306 reader and
+    263 HID checks all pass; nine app suites plus all three reader suites pass
+    on the Pi. Four reader/crypto files match the commit on the Pi and both
+    Windows installs. Installed caller ACTED on generated signed HID (OK) and
+    changed-digest control (FAULT), without storing test evidence; real receipt
+    step read 0. This is integration verification, not new fleet calibration.
   - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
     one that never ran). The Pi has no node and prints a skip, so run it on
     Windows after editing a template. On Windows its `amplification guard` and
