@@ -295,6 +295,9 @@ def test_unsigned_sibling_io():
     conn = surfd.connect()
     rid = "20261006-000207-0"
     rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, age=1)
+    check("unsigned sibling I/O: CONTROL seed an existing healthy row", sweep.receipt_step(conn), (1, 0))
+    conn.execute("UPDATE receipts SET stale = 2")
+    conn.commit()
     path = rp[:-5] + ".hid"
     with open(path, "wb") as fh:
         fh.write(b"unsigned sibling")
@@ -316,11 +319,17 @@ def test_unsigned_sibling_io():
         check("unsigned sibling I/O: reason names the independently signed contradiction", "hid digest is absent" in got[4], True)
         with mock.patch("builtins.open", side_effect=eio):
             check("unsigned sibling I/O: a partial fault is persisted", sweep.receipt_step(conn), (1, 1))
+        row = conn.execute("SELECT stale FROM receipts").fetchone()
+        check("unsigned sibling I/O: partial reread still needs completion", row[0], 2)
+        partial = conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k LIKE 'receipt_partial:%'").fetchone()[0]
+        check("unsigned sibling I/O: partial provenance was actually recorded", partial, 1)
         os.remove(path)
-        sweep.receipt_step(conn)
+        check("unsigned sibling I/O: CONTROL recovery ACTUALLY processed the row", sweep.receipt_step(conn), (1, 1))
         row = conn.execute("SELECT verdict, journal, stale FROM receipts").fetchone()
         check("unsigned sibling I/O: removal before recovery cannot clear stored fault", (row[0], row[1]), ("FAULT", "FAULT"))
         check("unsigned sibling I/O: CONTROL recovery completed", row[2], 0)
+        partial = conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k LIKE 'receipt_partial:%'").fetchone()[0]
+        check("unsigned sibling I/O: completion retired partial provenance", partial, 0)
         # Presence itself unmeasured: do not infer a contradiction from denial.
         with mock.patch("builtins.open", side_effect=eio), mock.patch("os.stat", side_effect=PermissionError(13, "unknown presence")):
             r = rcptcheck.read(rp)
