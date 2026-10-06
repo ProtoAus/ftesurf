@@ -79,6 +79,7 @@
   and keeping it to those is what makes it obvious what a replay overrides.
 */
 float  rec_wt_open;              // a recording is loaded (drawing or paused)
+float  rec_wt_slseq;             // a raw cmd sl_load also replaces the viewer
 float  rec_wt_tag;               // RT_*, from the filename
 float  rec_wt_pitch;
 float  rec_wt_yaw;
@@ -3439,6 +3440,7 @@ float(float seg) Watch_WindowFind;     // Patch 431, below
 
 float() Rewind_Busy;                // cl_rewind.qc compiles after this file
 void() Rewind_HandOver;
+void() Rewind_Abandon;
 
 float(string path) Watch_Open =
 {
@@ -3459,15 +3461,9 @@ float(string path) Watch_Open =
 	// pin refuses -- the replay would run over a body nobody holds once the hold
 	// lets go.  The rewind hands its pin over only while browsing.
 	if (Rewind_Busy())
-	{
-		print("^3replay:^7 wait for the rewind's resume first\n");
-		return FALSE;
-	}
+		Rewind_Abandon();
 	if (rec_sl_holding)
-	{
-		print("^3replay:^7 let go of the save-lock key first\n");
-		return FALSE;
-	}
+		SaveLoc_Release();
 
 	rec_wt_loadms = gettime(1);
 	Watch_Free();
@@ -3567,6 +3563,7 @@ float(string path) Watch_Open =
 	rec_wt_lastreal = cltime;
 	rec_wt_clkerr   = 0;
 	rec_wt_open   = TRUE;
+	rec_wt_slseq  = getstatf(STAT_FS_SLSEQ);
 
 	// The passes that cost anything at load, and between them the reason both a
 	// scrub and a frame are cheap: the drawn curve and the segment column are
@@ -4420,6 +4417,15 @@ void() Watch_Frame =
 	rec_wt_on = FALSE;
 	if (!rec_wt_open)
 		return;
+	if (getstatf(STAT_FS_SLSEQ) != rec_wt_slseq)
+	{
+		rec_wt_slseq = getstatf(STAT_FS_SLSEQ);
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		{
+			Watch_Stop();
+			return;
+		}
+	}
 
 	// The map changed under us.  The camera would be flying through another
 	// map's geometry, and the frozen player is a different edict now.

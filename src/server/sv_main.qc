@@ -388,6 +388,10 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_SLORG,          EV_VECTOR, rec_sl_curorg);     // Patch 430
 	clientstat(STAT_FS_SLANG,          EV_VECTOR, rec_sl_curang);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
+	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
+	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);
+	clientstat(STAT_FS_SLSAVEOP,       EV_FLOAT, rec_sl_answer_op);
+	clientstat(STAT_FS_SLSAVETICK,     EV_FLOAT, rec_sl_answer_tick);
 	clientstat(STAT_FS_PIN,            EV_FLOAT, rec_wt_pin);    // Patch 477
 
 	/*

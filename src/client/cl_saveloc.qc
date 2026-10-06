@@ -278,13 +278,37 @@ void() SaveLoc_Resync =
 	rec_sl_ackseen = ack;
 };
 
+string() SaveLoc_SaveCommand;   // cl_rewind.qc: live, rewind or replay cursor
+void() SaveLoc_LoadContext;
+string(string c) Trail_Command;
+float(string c) Trail_Request;
+float() Trail_RequestBusy;
+float() Trail_RequestDispatching;
+
 void(string c) SaveLoc_Cmd =
 {
+	local float holding, key, rep;
+	if (Trail_Request(c))
+		return;
 	if (substring(c, 0, 3) == "sl_")
 	{
 		SaveLoc_Resync();
 		rec_sl_sent = rec_sl_sent + 1;
 	}
+	if (c == "sl_save")
+	if (!Trail_RequestDispatching())
+		c = SaveLoc_SaveCommand();
+	if (c == "sl_load" || c == "sl_next" || c == "sl_prev" ||
+	    c == "sl_first" || c == "sl_last" || substring(c, 0, 8) == "sl_goto ")
+	{
+		holding = rec_sl_holding; key = rec_sl_holdkey; rep = rec_sl_holdrep;
+		SaveLoc_LoadContext();
+		if (Trail_RequestDispatching() && holding)
+		{
+			rec_sl_holding = TRUE; rec_sl_holdkey = key; rec_sl_holdrep = rep;
+		}
+	}
+	c = Trail_Command(c);
 	localcmd(strcat("cmd ", c, "\n"));
 };
 
@@ -483,11 +507,12 @@ void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; 
 */
 void(float scan) SaveLoc_LoadKey =
 {
-	SaveLoc_PredictLoad();              // Patch 430
+	if (!Trail_RequestBusy())
+		SaveLoc_PredictLoad();          // queued saves can change the selected row
 	SaveLoc_Cmd("sl_load");
 	SaveLoc_Cmd("sl_hold");
 	rec_sl_pv_ack = rec_sl_sent;
-	rec_sl_holdack = rec_sl_sent;       // Patch 428 r3
+	rec_sl_holdack = Trail_RequestBusy() ? 0 : rec_sl_sent; // set again on deferred hold send
 	rec_sl_holdackat = 0;
 	rec_sl_holding  = TRUE;
 	rec_sl_holdkey  = scan;
@@ -528,11 +553,7 @@ void() SaveLoc_HoldFrame =
 */
 float() SaveLoc_RunLocked =
 {
-	if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING)
-		return FALSE;
-	if (FS_RunClass(getstatf(STAT_FS_TIMERFLAGS)) != RC_CLEAN)
-		return FALSE;
-	return LT_StatsAreMine();       // unknown owner fails open
+	return FALSE;                  // a load is an explicit segmented branch
 };
 
 // The keys that load: 2, and 3-6 with the panel up (SV_SaveLocStep teleports).
@@ -751,16 +772,6 @@ float() SaveLoc_Console =
 	local string c;
 
 	c = argv(0);
-
-	// Patch 477 review round 21: the rewind owns the save-lock while it is up --
-	// a bind or an alias of any of these loaded, deleted or let go under it (the
-	// countdown is its hold).  Its own commands go out through SaveLoc_Cmd.
-	if (substring(c, 0, 3) == "sl_" || c == "+sl_hold" || c == "-sl_hold")
-	if (Rewind_Holds())
-	{
-		print("^3rewind:^7 the save-lock waits for the rewind\n");
-		return TRUE;
-	}
 
 	// The hold pair, which is Momentum's +mom_saveloc_current. SaveLoc_LoadKey
 	// is called rather than copied: its own header forbids a second copy of the

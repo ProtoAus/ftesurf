@@ -476,6 +476,9 @@ float(entity e, float r) SL_RowGrounded =
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
 .float rec_sl_ack;               // Patch 430: STAT_FS_SLACK, SV_ParseClientCommand
+.float rec_sl_eventtag;          // visual request echoed with SLOP, never authoritative state
+.float rec_sl_answer_tag, rec_sl_answer_op, rec_sl_answer_tick;
+.float rec_sl_requesttag;
 
 // The save/load event stream, for the client's half of the recording.  See
 // STAT_FS_SLSEQ in shared/sh_defs.qc.
@@ -611,6 +614,7 @@ string(float id) SL_ViewPath = { return strcat(SL_Dir(id), "run.view"); };
 // client-side state and the server has never seen it.  Named here only so the
 // delete below can remove it; see SV_SaveLocDelete for why that matters.
 string(float id) SL_SeqPath  = { return strcat(SL_Dir(id), "seq.txt"); };
+string(float id) SL_TrailPath= { return strcat(SL_Dir(id), "trail.txt"); };
 
 /*
   PATCH 333 -- WHICH BLOCK, WHICH SLICE, WHICH DIRECTORY.
@@ -2687,10 +2691,18 @@ void(entity e) SV_SaveLocSync =
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
 void(entity e, float op, float id) SV_SaveLocEvent =
 {
+	local float r;
 	// FS_SlopPack, not a literal radix -- see STAT_FS_SLOP.  The three decoders
 	// are in three other files and one of them is in another VM.
 	e.rec_sl_slop = FS_SlopPack(op, id);
+	e.rec_sl_eventtag = e.rec_sl_requesttag;
 	e.rec_sl_slseq = e.rec_sl_slseq + 1;
+	if (op == SLOP_SAVED && e.rec_sl_requesttag > 0)
+	{
+		r = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
+		e.rec_sl_answer_op = e.rec_sl_slop;
+		e.rec_sl_answer_tick = rec_sl_tick[r];
+	}
 };
 
 /*
@@ -2763,7 +2775,7 @@ float(float base, float cnt) SV_SaveFreeID =
 */
 // Patch 428: what a state file says it is -- seq, run clock (SL_DEMOTED for a
 // demoted file) and origin, the columns SV_SaveReadLight filled the row from.
-float  sl_fseq, sl_fticks;
+float  sl_fseq, sl_fticks, sl_fgo;
 vector sl_forg;
 
 float(float id) SV_SaveReadIdent =
@@ -2776,6 +2788,7 @@ float(float id) SV_SaveReadIdent =
 	if (f < 0)
 		return FALSE;
 	sl_fseq = -1;
+	sl_fgo = 0;
 	sl_fticks = 0;
 	sl_forg = '0 0 0';
 	dem = FALSE;
@@ -2786,6 +2799,7 @@ float(float id) SV_SaveReadIdent =
 			continue;
 		k = argv(0);
 		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
+		if (k == "rewindgo") { sl_fgo = stof(argv(1)); continue; }
 		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
 		if (k == "demoted") { dem = TRUE; continue; }
 		if (k == "origin")  { if (n >= 4) sl_forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
@@ -2917,6 +2931,7 @@ void(float base, float cnt) SV_SaveKeepWindow =
 void(entity e) SV_SaveLocCreate =
 {
 	local float id, seq, row, blk, base, cnt;
+	local vector parkedvel;
 
 	/*
 	  PATCH 333 -- THE REFUSAL BECAME A OWNERSHIP.  Patch 270 turned saves off in
@@ -2933,14 +2948,6 @@ void(entity e) SV_SaveLocCreate =
 	if (e.run_pmhold)
 	{
 		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
-		return;
-	}
-	// Patch 428 review round 6: a held body is the save's, not a new place --
-	// and a save taken under a hold could pass the demotion mark while it was
-	// held (hold, step, save... kept rows out of it for good).
-	if (e.rec_sl_hold)
-	{
-		sprint(e, PRINT_HIGH, "^3save: let go of the load key first\n");
 		return;
 	}
 	// Patch 477 review round 24: nor in a resume phase, whose body SV_MsFrame
@@ -2990,7 +2997,12 @@ void(entity e) SV_SaveLocCreate =
 	rec_sl_ns[blk] = rec_sl_ns[blk] + 1;
 
 	SV_SaveLocAlloc();              // Patch 428: SV_SaveLocBegin's scan has, unless it was stamped fresh
+	// A held save carries the row's speed, not the hold's zero velocity.
+	parkedvel = e.velocity;
+	if (e.rec_sl_hold)
+		e.velocity = e.rec_sl_holdvel;
 	SV_SaveWriteState(e, id, seq);
+	e.velocity = parkedvel;
 
 	// Read the light row straight back out of the file we just wrote, rather
 	// than filling it from the player here.  It is one small read, and it means
@@ -3038,10 +3050,16 @@ void(entity e) SV_SaveLocCreate =
 ===========================================================================
 */
 #define RW_EVERY   2            // run ticks between samples: ~33 a second at 0.015
-#define RW_CAP     4000         // samples kept a player: two minutes, 160 KB
-#define RW_STRIDE  10           // ticks, origin, velocity, pitch, yaw, duck
+#define RW_CAP     4000         // two minutes/player; physics + bounded save-state snapshots
+#define RW_STATEBASE 10
+#define RW_STATECOLS 50
+#define RW_SPLITBASE (RW_STATEBASE + RW_STATECOLS)
+#define RW_CPBASE    (RW_SPLITBASE + FS_MAXSPLITS)
+#define RW_STRIDE    (RW_CPBASE + FS_MAXCPS)
+void(entity e, float b) SV_RewindStateSample;
 
-// 32 slots of RW_CAP is 5 MB of the server VM's heap.  Measured on the Pi
+// 32 slots of RW_CAP with state columns is ~53 MiB, allocated lazily per
+// player (1.65 MiB). The original physics-only ring was 5 MiB. Measured on the Pi
 // 2026-10-03 (`sv_meminfo` over rcon, all 12 lobbies): 6.8-9.6 MB used of 2 GB
 // reserved -- PR_ReadBytesString gives 64-bit Linux 2 GB for the default
 // pr_ssqc_memsize -1 (pr_bgcmd.c).  A failed memalloc is SV_Error.
@@ -3052,6 +3070,7 @@ float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_st;                   // run state at the last call
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
+float  rw_statebase;
 
 // On disconnect: the next player in the slot starts empty.
 void(entity e) SV_RewindReset =
@@ -3077,6 +3096,29 @@ void(entity e) SV_RewindReset =
 // Per packet, after the timer.  A new run, or a clock that went back (a load),
 // starts the ring over -- so it only ever holds one run's ticks.  Spaced by run
 // ticks, not packets, so a client's packet rate cannot shorten what is kept.
+// Preserve the valid warm prefix; remove the cut tail synchronously, before
+// the next packet can advance past the old clock and hide a backwards load.
+void(entity e) SV_RewindRebase =
+{
+	local float *m;
+	local float p, b, t;
+	m = rw_slot[num_for_edict(e)];
+	t = SV_TimerTicks(e);
+	if (m)
+	while (e.rw_n > 0)
+	{
+		p = (e.rw_head - 1 + RW_CAP) % RW_CAP;
+		b = p * RW_STRIDE;
+		if (m[b] <= t && m[b+33] == e.rec_rec_serial)
+		if (SV_RecCutOK(e, m[b+34], m[b+29]))
+			break;
+		e.rw_head = p;
+		e.rw_n = e.rw_n - 1;
+	}
+	e.rw_st = e.run_t_state;
+	e.rw_last = t;
+};
+
 void(entity e) SV_RewindSample =
 {
 	local float s, i, t, st;
@@ -3115,6 +3157,7 @@ void(entity e) SV_RewindSample =
 	m[i + 7] = e.v_angle_x;
 	m[i + 8] = e.v_angle_y;
 	m[i + 9] = (e.pmove_flags & PMF_DUCKED) ? 1 : 0;
+	SV_RewindStateSample(e, i);
 	e.rw_head = (e.rw_head + 1) % RW_CAP;
 	if (e.rw_n < RW_CAP)
 		e.rw_n = e.rw_n + 1;
@@ -3171,6 +3214,7 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 	}
 	if (best < 0)
 		return FALSE;
+	rw_statebase = best;
 	rw_t   = m[best];
 	rw_o   = [m[best + 1], m[best + 2], m[best + 3]];
 	rw_v   = [m[best + 4], m[best + 5], m[best + 6]];
@@ -3180,11 +3224,16 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 	return TRUE;
 };
 
-// The demoted shape plus the kept velocity and `rewound` -- see REWIND.
-float(entity e, float id, float seq) SV_SaveWriteAt =
+#include "sv_rewindstate.qc"
+
+// Without a kept prefix retain the old practice-placement shape.
+float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 {
 	local filestream f;
 
+	if (rw_statebase >= 0)
+	if (SV_RewindWriteState(e, id, seq, go))
+		return TRUE;
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f < 0)
 		return FALSE;
@@ -3204,6 +3253,8 @@ float(entity e, float id, float seq) SV_SaveWriteAt =
 	fputs(f, sprintf("duck %d\n", rw_dk ? 1 : 0));
 	fputs(f, "demoted 1\n");
 	fputs(f, "rewound 1\n");
+	if (go)
+		fputs(f, sprintf("rewindgo %d\n", seq));
 	fclose(f);
 	return TRUE;
 };
@@ -3257,10 +3308,10 @@ void(entity e) SV_RewindDropGo =
 	e.rw_goid = 0;
 	if (r < 0)
 		return;
-	if (rec_sl_tick[r] != SL_DEMOTED)
-		return;
 	if (!SV_SaveReadIdent(rec_sl_id[r]) || !SV_SaveRowIs(r))
 		return;
+	if (sl_fgo != rec_sl_seq[r])
+		return;                     // only the implicit row, timed OR practice
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save %g, the last resume point, makes way\n",
 	                              r - base + 1));
 	rec_sl_quiet = TRUE;
@@ -3271,7 +3322,7 @@ void(entity e) SV_RewindDropGo =
 // `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
 // TRUE when the save was made and is the current row; `go` replaces the last
 // resume's row (SV_RewindDropGo), which the dispatcher marks once it holds.
-float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateAt =
+float(entity e, float t, vector near, float usenear, float go, float view) SV_SaveLocCreateAt =
 {
 	local float id, seq, row, blk, base, cnt, full;
 
@@ -3314,7 +3365,9 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		               SL_Cap(blk)));
 		return FALSE;
 	}
-	if (!SV_RewindFind(e, t, near, usenear))
+	if (view)
+		rw_statebase = -1;           // client replay points never assert a timed prefix
+	else if (!SV_RewindFind(e, t, near, usenear))
 	{
 		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
 		                      "two minutes of the last run are\n");
@@ -3342,7 +3395,7 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 	rec_sl_ns[blk] = rec_sl_ns[blk] + 1;
 
 	SV_SaveLocAlloc();
-	if (!SV_SaveWriteAt(e, id, seq))
+	if (!SV_SaveWriteAt(e, id, seq, go))
 	{
 		sprint(e, PRINT_HIGH, "^1rewind: cannot write the save\n");
 		return FALSE;
@@ -3354,11 +3407,13 @@ float(entity e, float t, vector near, float usenear, float go) SV_SaveLocCreateA
 		return FALSE;
 	}
 	rec_sl_seq[row] = seq;
-	rec_sl_nb[blk] = cnt + 1;      // no run copy, so no SV_SaveKeepWindow: it evicts nothing
+	rec_sl_nb[blk] = cnt + 1;
 	// The last resume's row goes once this one exists, not before: a refusal
 	// after the drop would have cost both (review round 2).
 	if (go)
 		SV_RewindDropGo(e);
+	if (blk > 0)
+		SV_SaveKeepWindow(base, rec_sl_nb[blk]);
 	e.rec_sl_index = rec_sl_nb[blk];
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s%s\n",
@@ -3434,8 +3489,9 @@ void(entity e, float r) SV_SaveLocPlace =
 
 void(entity e, float n) SV_SaveLocLoad =
 {
-	local float r, id, blk, base, cnt, dem;
+	local float r, id, blk, base, cnt, dem, oldserial;
 
+	oldserial = e.rec_rec_serial;
 	/*
 	  PATCH 333 -- load goes through the same gate as create: in a lobby the row
 	  set is the caller's own block, scanned from their own directory, so the
@@ -3448,14 +3504,6 @@ void(entity e, float n) SV_SaveLocLoad =
 	if (e.run_ms_phase)
 	{
 		sprint(e, PRINT_HIGH, "^3save: wait for the resume to finish\n");
-		return;
-	}
-	// Patch 477 review round 7: nor under the replay/rewind pin, as a hold is
-	// refused -- the tag would be judged in the pinned run's state and the
-	// rewind's way out then voids it.  A rewind's go lets go of the pin first.
-	if (e.rec_wt_hold)
-	{
-		sprint(e, PRINT_HIGH, "^3save: close the replay or rewind first\n");
 		return;
 	}
 	// Patch 478 review round 7: nor under a ghost.  A running row rewinds the
@@ -3517,6 +3565,9 @@ void(entity e, float n) SV_SaveLocLoad =
 	dem = (sl_fticks == SL_DEMOTED);
 
 	SV_SpecRelease(e, "load");          // Patch 382: before the rewind
+	// Release the viewed mode's movetype before placing, without voiding a
+	// recorder this load is about to rewind.
+	SV_WatchRelease(e);
 	SV_SaveLocPlace(e, r);
 	e.rec_sl_loadt   = time;            // Patch 428 r3: the load a hold may follow
 	e.rec_sl_loadrow = r;
@@ -3745,6 +3796,9 @@ void(entity e, float n) SV_SaveLocLoad =
 	// around while parked.
 	e.fixangle = TRUE;
 
+	if (e.rec_rec_serial != oldserial || !(e.run_t_flags & TF_RECORDING))
+		e.rw_goid = e.rw_goseq = 0; // a cold/demoted load cannot delete another run's row
+	SV_RewindRebase(e);
 	SV_SaveLocEvent(e, SLOP_LOADED, id);
 
 	if (e.run_t_state == TS_RUNNING)
@@ -4908,6 +4962,7 @@ void(entity e, float n) SV_SaveLocDeleteRow =
 	fremove(SL_RecPath(id));
 	fremove(SL_ViewPath(id));
 	fremove(SL_SeqPath(id));
+	fremove(SL_TrailPath(id));       // client-local picture, when sharing this filesystem
 
 	for (i = r + 1; i < base + cnt; i = i + 1)
 	{

@@ -13,13 +13,12 @@
   cursor (Rec_ViewFrame skips TF_FROZEN).  Resume and save both go through
   `sl_saveat`, which saves from the SERVER's record of the run.  Resume adds
   `go`: the server leaves the pin, loads that save and holds it in the same
-  call, and the countdown is the hold, released at zero.  A rewound
-  continuation is practice when it carries more than a walk or a jump could
-  -- sv_saveloc.qc, SV_SaveLoadTag.  ESC on a run that is on the clock is a resume at the
-  head: you go on from where you were with your speed (refused, you stop
-  there), and the run's clock ends either way (the pin made it practice).  A
-  thaw would carry the run past a freeze the .rec never records -- AGENTS.md,
-  the held-run fault.
+  call, and the countdown is the hold, released at zero. Patch 502 restores
+  a running snapshot and its recorder prefix as segmented, never thaws an
+  unrecorded pin gap. Without that prefix it remains a practice placement.
+  The visual prefix survives either case, including replay-derived practice.
+  First person uses the cursor's sampled stand/duck eye height and angles;
+  hud_rewind_chase 1 selects the original chase view.
 ===========================================================================
 */
 
@@ -67,6 +66,7 @@ float  rw_openat;               // cltime of the open: a pin unseen RW_LOST afte
 void() Rewind_RegisterCvars =
 {
 	registercommand("rewind");
+	registercvar("hud_rewind_chase", "0", CVAR_ARCHIVE);
 };
 
 // The key bound to `rewind` (default.cfg), else "rewind".
@@ -231,15 +231,13 @@ float() Rewind_Open =
 		print("^3rewind:^7 not while a replay, ghost, spectate or load is up\n");
 		return FALSE;
 	}
-	// Every way out of a rewind ends the run on the clock (a resume loads an idle
-	// row, a refusal voids), so any running run asks first -- Patch 391's refusal
-	// of a mid-run load, with a second press as the way through (round 6).
+	// A rewind is an explicit splice: confirm before tainting a running run.
 	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
 	if (!rw_askat || (cltime - rw_askat) >= RW_ASK || rw_askgen != tr_gen)
 	{
 		rw_askat = cltime;
 		rw_askgen = tr_gen;
-		print(sprintf("^3rewind:^7 %s again to rewind -- the run on the clock ends here\n",
+		print(sprintf("^3rewind:^7 %s again to rewind -- continuing makes this run segmented\n",
 		              Rewind_Key()));
 		return FALSE;
 	}
@@ -326,15 +324,28 @@ string() Rewind_At =
 
 void() Rewind_Save =
 {
-	SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At()));
+	SaveLoc_Cmd("sl_save");
 };
 
 // One command; Rewind_Answer reads what came of it from the load event.
 void() Rewind_Go =
 {
+	local string c;
+	if (Trail_RequestBusy())
+	{
+		print("^3rewind: waiting for the pending save\n");
+		return;
+	}
 	rw_seq = getstatf(STAT_FS_SLSEQ);
 	rw_goi = floor(rw_i);
-	SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At(), " go"));
+	Trail_ReplayClear();
+	if (tr_practice)
+	{
+		c = SaveLoc_SaveCommand();
+		SaveLoc_Cmd(strcat("sl_goview", substring(c, 11, strlen(c) - 11)));
+	}
+	else
+		SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At(), " go"));
 	rw_ack = rec_sl_sent;
 	rw_sentat = cltime;
 	rw_dir = 0;
@@ -404,6 +415,8 @@ float() Rewind_Busy =
 {
 	return rw_ack || rw_cd;
 };
+
+float() Rewind_Waiting = { return rw_ack; };
 
 // Watch_Open, just before its own pin: browsing, the rewind gives its pin up in
 // the same frame, so no key it would still read can release the replay's
@@ -516,7 +529,7 @@ void() Rewind_Frame =
 // along the line's own direction there, stopped short of walls.
 void() Rewind_Camera =
 {
-	local float n, b, j0, j1;
+	local float n, b, j0, j1, eye;
 	local vector d, a, cam;
 
 	if (!rw_on || rw_cd)
@@ -533,11 +546,19 @@ void() Rewind_Camera =
 		d = '1 0 0';
 	a = vectoangles(d);
 	makevectors([0, a_y, 0]);
-	cam = tr_cur_p - v_forward * RW_CAMBACK + '0 0 1' * RW_CAMUP;
-	traceline(tr_cur_p + '0 0 16', cam, MOVE_NOMONSTERS, world);
-	cam = trace_endpos + trace_plane_normal * 4;
+	Trail_CursorState(tr_cur_t);
+	eye = (tr_cur_flags & WT_F_DUCKED) ? cvar("pm_duckviewheight") : cvar("pm_viewheight");
+	if (eye <= 0)
+		eye = (tr_cur_flags & WT_F_DUCKED) ? 47 : 64;
+	cam = tr_cur_p + '0 0 1' * eye;
+	if (cvar("hud_rewind_chase"))
+	{
+		traceline(cam, cam - v_forward * RW_CAMBACK + '0 0 1' * RW_CAMUP,
+		          MOVE_NOMONSTERS, world);
+		cam = trace_endpos + trace_plane_normal * 4;
+	}
 	setproperty(VF_ORIGIN, cam);
-	setproperty(VF_ANGLES, [12, a_y, 0]);
+	setproperty(VF_ANGLES, cvar("hud_rewind_chase") ? [12, a_y, 0] : tr_cur_ang);
 	PVS_Publish(cam);
 };
 
@@ -654,22 +675,15 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		return TRUE;
 	}
 	slk = (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0);
-	if (k < 0)
-	if ((scanx >= '0' && scanx <= '9') || scanx == 'z' || slk)
+	if (slk || (k < 0 && ((scanx >= '0' && scanx <= '9') || scanx == 'z')))
+		return FALSE;               // save-lock commands reach their normal route
+	if (k == 0)
+	if (rw_cd || rw_ack)
 	{
-		if (Vote_Takes(scanx))
+		if (Rewind_MoveBind(getkeybind(scanx)))
 			return FALSE;
-		if (!Rewind_SwHas(scanx))   // round 24: said once a press, not in silence
-			print("^3rewind:^7 the save-lock waits for the rewind\n");
-		Rewind_SwSet(scanx);
-		return TRUE;
-	}
-	if (rw_cd)
-	if (slk)
-	if (k >= 0)
-	{
 		rw_kst[k] = 1;
-		print("^3rewind:^7 the save-lock waits for the rewind\n");
+		SaveLoc_Cmd("sl_save");
 		return TRUE;
 	}
 	if (rw_cd)
@@ -801,6 +815,7 @@ float() Rewind_Console =
 {
 	local string a;
 	local float t, busy, k, kup, oth;
+	local vector cam;
 
 	if (argv(0) != "rewind")
 		return FALSE;
@@ -815,8 +830,8 @@ float() Rewind_Console =
 	}
 	else if (a == "go" && !busy)
 		Rewind_Go();
-	else if (a == "save" && !busy)
-		Rewind_Save();
+	else if (a == "save" && rw_on)
+		SaveLoc_Cmd("sl_save");
 	else if (a == "seek" && !busy)
 	{
 		t = stof(argv(2));
@@ -851,11 +866,56 @@ float() Rewind_Console =
 		print(sprintf("rewind: at %s  %s\n", Rewind_At(),
 		              Time_TickString(tr_tick > 0 ? rint(tr_cur_t / tr_tick) : 0, tr_tick)));
 		print(sprintf("rewind: pin %g serial %g\n", getstatf(STAT_FS_PIN), rw_serial));
+		cam = getproperty(VF_ORIGIN);
+		print(sprintf("rewind: camera height %.2f chase %g\n",
+		              cam_z - tr_cur_p_z, cvar("hud_rewind_chase")));
 	}
 	return TRUE;
 };
 
 // A map change: the line is gone and the server has forgotten the pin.
+// Replay interpolation can cross 360 without wrapping its output.
+float(float a) Rewind_NormalAngle = { return a - 360 * floor((a + 180) / 360); };
+
+// The command route used by both digit keys and bound save-lock commands.
+string() SaveLoc_SaveCommand =
+{
+	Trail_ReplayClear();
+	if (rw_on && !rw_cd && !rw_ack)
+	{
+		if (!tr_practice)
+		{
+			Trail_RewindPrefix();   // also bounds the ended-run practice fallback
+			return strcat("sl_saveat ", Rewind_At());
+		}
+		Trail_CursorState(tr_cur_t);
+		Trail_RewindPrefix();
+		return sprintf("sl_saveview %s %s %.6f %.6f %g",
+		               sprintf("%.6f %.6f %.6f", tr_cur_p_x, tr_cur_p_y, tr_cur_p_z),
+		               sprintf("%.6f %.6f %.6f", tr_cur_vel_x, tr_cur_vel_y, tr_cur_vel_z),
+		               Rewind_NormalAngle(tr_cur_ang_x), Rewind_NormalAngle(tr_cur_ang_y),
+		               (tr_cur_flags & WT_F_DUCKED) ? 1 : 0);
+	}
+	if (rec_wt_open)
+	{
+		Watch_Sample();
+		Trail_ReplayPrefix();
+		return sprintf("sl_saveview %s %s %.6f %.6f %g",
+		               sprintf("%.6f %.6f %.6f", rec_wt_org_x, rec_wt_org_y, rec_wt_org_z),
+		               sprintf("%.6f %.6f %.6f", rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z),
+		               Rewind_NormalAngle(rec_wt_pitch), Rewind_NormalAngle(rec_wt_yaw), rec_wt_ducked);
+	}
+	return "sl_save";
+};
+
+void() SaveLoc_LoadContext =
+{
+	if (rw_on)
+		Rewind_Abandon();
+	if (rec_wt_open)
+		Watch_Stop();
+};
+
 void() Rewind_Reset =
 {
 	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = rw_leave = rw_atres = 0;

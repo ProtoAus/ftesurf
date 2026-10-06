@@ -1269,6 +1269,38 @@ publicly WITH its fix, not before it.
   mid-run leaves a slot there that the next run on that map is offered: clean it
   with the rest of the test data, or `set run_resume 0`.
 
+### Patch 502 — rewind/save pictures and continuation
+
+- Patch 502 supersedes placement-only running rewind. The server ring keeps
+  bounded timer/recorder snapshots beside physics; a same-lineage timed go
+  restores the prefix as **segmented**, preserves valid pre-cut snapshots,
+  and synchronously removes the abandoned tail. Ended runs without available
+  evidence still produce practice placements. Cold restores do not invent
+  historical scalar snapshots: the drawn prefix can predate the authoritative
+  ring. A cold/demoted load clears the old implicit-row pointer, not its saved
+  files; a later go on the same live lineage replaces its implicit resume row.
+- The client picture is `trail.txt` beside a save's existing `.view`. It is
+  visual data, never run evidence. Raw samples and rendered events are rebuilt
+  together on a splice. An ordinary missing picture clears the live history;
+  it must not copy another run's trail into that save. Ended/replay saves
+  capture their cutoff at request time. Replay poses remain practice-only,
+  regardless of the source recording's timer.
+- Pictures need their own terminal result, not the latest save/load operation
+  or an approximate command count. A raw list can overtake a queued save, and
+  a later load can replace its event. The client consumes the correlated saved
+  slot/cutoff before rebasing a loaded line and retains correlation through
+  display reset. Native saves serialize captured pictures; following state
+  changes wait behind them. Drain a ready load and hold **in one command-buffer
+  pass**: the server's same-time/row/sequence/position checks are intentional
+  and unchanged. Release stays immediate; deferred holds recheck ownership.
+- `tools/p502segments.py --dedicated [--stream]` isolates fixtures and uses a
+  real socket. It checks frozen timed clocks, held body/recording, release,
+  deep warm rewind, cold row retention, viewer overlap/load, vote and board
+  edges. Its display-off arm positively seeds a stale private picture after
+  the server write, at one client FPS, before the answer is consumed.
+  `tools/test_p502segments.py --rig <retained rig>` falsifies stale-report,
+  recorder, clock, board, load-event and loaded-body false greens.
+
 ## The run line (Patches 432, 449-453)
 
 - **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space

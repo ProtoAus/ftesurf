@@ -43,6 +43,13 @@ date     2026-10-06
 # No engine/progs/schema/policy/build change, and no historical reread. Deploy
 # rcptcheck/reccheck/hidcheck together; the parsers' data= API is load-bearing.
 
+# PATCH 502: MOD-SIDE ONLY -- rewind/save-lock continuations retain and trim
+# their visual prefix; authoritative warm rewind restores timer/recorder state
+# as segmented. Replay saves remain practice. Save answers survive later loads,
+# and deferred load/hold pairs retain the existing authoritative hold checks.
+# Number 502 was reserved before the later reader/surfd entries above; patch
+# remains the maximum documented requirement, not a backwards bump.
+#
 # PATCH 500: MOD-SIDE ONLY -- the menu's text fields get a keyboard route in (TAB
 # claims, the field's own draw takes the claim) and the navigation keys come back
 # when a panel goes away.  No engine file is touched and no engine builtin is used:

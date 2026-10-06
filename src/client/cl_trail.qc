@@ -88,6 +88,8 @@ float  tr_cur_on;
 float  tr_cur_t;
 vector tr_cur_p;
 
+#include "cl_trailstate.qc"
+
 /*
   Both zero is the uninitialised state and TR_S0 is not zero, so this is a
   sentinel rather than a flag.  A CSQC global is 0 after a map change
@@ -121,6 +123,11 @@ void() Trail_Reset =
 	tr_on = tr_prevon = FALSE;
 	tr_nsamp = tr_builds = tr_since = 0;
 	tr_state = 0;
+	if (tr_raw >= 1)
+		buf_del(tr_raw);
+	tr_raw = tr_stitch = tr_slseq = tr_practice = 0;
+	tr_timedgo_ack = tr_saveack = tr_rep_ack = tr_rep_go = 0;
+	Trail_ReplayClear();
 };
 
 /*
@@ -145,6 +152,7 @@ void() Trail_Open =
 
 	Line_Begin(tr_live);
 	Line_Tick(tr_live, tr_tick);
+	Trail_RawClear();
 	tr_settle = cltime + TR_SETTLE;     // Patch 477: a load can start a line from idle too
 	tr_gen    = tr_gen + 1;
 	tr_on     = TRUE;
@@ -210,7 +218,8 @@ void() Trail_Sample =
 	// clock the recording and the sidecar already share.  Two samples CAN carry
 	// the same value -- the stat moves per server tick and this runs per command
 	// -- and Line_Grade returns -1 on a zero interval, which is the handled case.
-	t = getstatf(STAT_FS_TIMERTICKS) * tr_tick;
+	t = tr_practice ? tr_practicebase + cltime - tr_practiceat
+	                : getstatf(STAT_FS_TIMERTICKS) * tr_tick;
 
 	nrm = Trail_Normal();
 	wsh = Watch_WishOf(input_angles_y, input_movevalues_x, input_movevalues_y);
@@ -222,23 +231,18 @@ void() Trail_Sample =
 	  nearest sample.  The teleport's step drops them, so the line starts where
 	  the body did.
 	*/
-	if (tr_nsamp && cltime < tr_settle && vlen(o - tr_lastp) > TR_JUMP)
-	{
-		Line_Begin(tr_live);
-		Line_Tick(tr_live, tr_tick);
-		tr_nsamp = tr_since = tr_builds = 0;
-		tr_settle = 0;
-	}
+	if (tr_stitch && cltime < tr_settle)
+	if (vlen(o - [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1),
+	              getstatf(STAT_FS_SLORG + 2)]) > TR_JUMP)
+		return;                     // load clock arrived ahead of the body
 	if (!tr_nsamp)
 		Line_Seed(tr_live, v, fl, t, input_angles_y);
 
-	// brk and stitch are both 0: this is a continuous sample stream from a body
-	// that is being watched rather than a file being replayed, so there is no
-	// teleport record to honour.  A teleport DOES leave a gap in the line here,
-	// drawn as a long segment rather than as a break -- see `trail`'s note and
-	// BACKLOG.  Marking one would mean detecting it, and the .rec grammar block
-	// is explicit that a discontinuity found by watching is not a warp record.
-	Line_Point(tr_live, o, v, fl, t, 0, 0, [input_angles_y, nrm_z, wsh * nrm]);
+	// A known save/load is a visual stitch. An unobserved teleport remains
+	// a long segment here, not an invented authoritative warp record.
+	Line_Point(tr_live, o, v, fl, t, tr_stitch, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
+	Trail_Record(o, v, fl, t, tr_stitch, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
+	tr_stitch = FALSE;
 
 	tr_lastt = t;
 	tr_lastp = o;
@@ -255,24 +259,77 @@ void() Trail_Sample =
 // Before clearscene, with the other per-frame readers.
 void() Trail_Frame =
 {
-	local float st;
+	local float st, sq, op, id, saved;
 
 	Trail_Init();
 	tr_cv = cvar("hud_trail");
 	if (!tr_cv)
 	{
+		// Do not leave an old picture at a reused id while trails are disabled.
+		sq = getstatf(STAT_FS_SLSEQ);
+		if (sq != tr_slseq && tr_saveack > 0)
+		if (getstatf(STAT_FS_SLTRAILTAG) == tr_saveack)
+		if (getstatf(STAT_FS_SLTRAILTAG) != tr_req_wait)
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_SAVED)
+			Trail_Save(FS_SlopId(getstatf(STAT_FS_SLOP)), getstatf(STAT_FS_SAVETICKS));
 		if (tr_on || tr_prevon)
 			Trail_Reset();          // turned off underneath us
+		tr_slseq = sq;
 		return;
 	}
 
 	st = getstatf(STAT_FS_TIMERSTATE);
-	if (st == TS_RUNNING && tr_state != TS_RUNNING)
+	sq = getstatf(STAT_FS_SLSEQ);
+	op = SLOP_NONE;
+	if (sq != tr_slseq)
+	{
+		tr_slseq = sq;
+		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
+		id = FS_SlopId(getstatf(STAT_FS_SLOP));
+		saved = getstatf(STAT_FS_SAVETICKS);
+		if (op == SLOP_SAVED && getstatf(STAT_FS_SLTRAILTAG) != tr_req_wait)
+		{
+			tr_rep_tracewant = tr_rep_ack;
+			tr_rep_tracegot = getstatf(STAT_FS_SLTRAILTAG);
+			if (tr_rep_raw < 1 || tr_rep_tracegot == tr_rep_ack)
+				Trail_Save(id, saved);
+		}
+		if (op == SLOP_LOADED)
+		{
+			// An implicit go may reuse its previous id. It is a new prefix,
+			// never whatever picture a remote client's old file held there.
+			if (tr_timedgo_ack > 0)
+			if (getstatf(STAT_FS_SLTRAILTAG) == tr_timedgo_ack)
+			{
+				Trail_Trim((saved >= 0) ? saved * tr_tick : tr_go_visual_t);
+				Trail_Save(id, saved);
+			}
+			if (!tr_rep_go || getstatf(STAT_FS_SLTRAILTAG) != tr_rep_ack)
+				Trail_ReplayClear();
+			if (tr_rep_raw >= 1)
+			{
+				if (tr_raw >= 1)
+					buf_del(tr_raw);
+				tr_raw = tr_rep_raw;
+				tr_rep_raw = 0;
+				tr_tick = tr_rep_tick;
+				Trail_Trim(tr_rep_end);
+				Trail_Save(id, saved);
+			}
+			if (!tr_on)
+				Trail_Open();
+			if (!Trail_Load(id, saved))
+				Trail_Trim(-1);         // no picture is better than another run's prefix
+			tr_on = TRUE;
+			tr_practice = (st != TS_RUNNING);
+			tr_practicebase = tr_lastt;
+			tr_practiceat = cltime;
+		}
+	}
+	if (st == TS_RUNNING && tr_state != TS_RUNNING && op != SLOP_LOADED)
 		Trail_Open();
-	// Patch 477: a load that winds the clock back starts the line over, as the
-	// server's rewind ring does -- so every point on it is one the ring holds.
-	else if (st == TS_RUNNING && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
-		Trail_Open();
+	else if (st == TS_RUNNING && !tr_practice && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
+		Trail_Trim(getstatf(STAT_FS_TIMERTICKS) * tr_tick);
 	tr_state = st;
 
 	// The fade, and the clear at the end of it.  Run on its own clock rather
@@ -287,7 +344,8 @@ void() Trail_Frame =
 		tr_prevon = FALSE;
 	}
 
-	if (!tr_on || st != TS_RUNNING || tr_cur_on)
+	if (!tr_on || (st != TS_RUNNING && !tr_practice) || tr_cur_on || rec_wt_open ||
+	    (getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN))
 		return;                     // a finished or cancelled run KEEPS its line
 	if (clientcommandframe == tr_frame)
 		return;
@@ -363,10 +421,12 @@ float() Trail_Console =
 	print(sprintf("trail: prev slot %g (on %g, %.2f s into a %.2f s fade)\n",
 	              tr_prev, tr_prevon,
 	              tr_prevon ? cltime - tr_prevat : 0, tr_fade));
+	print(sprintf("trail: replay prefix ticket %g echo %g, latest command ack %g\n", tr_rep_tracewant,
+	              tr_rep_tracegot, getstatf(STAT_FS_SLACK)));
 	print(sprintf("trail: run %g samples, %g Line_End passes, %g since the "
 	              "last, tick %.4f, state %g\n",
 	              tr_nsamp, tr_builds, tr_since, tr_tick, tr_state));
-	print(sprintf("trail: marks %g, breaks %g -- a teleport is drawn as a long "
+	print(sprintf("trail: marks %g, breaks %g -- an unobserved teleport is drawn as a long "
 	              "segment here, not a break\n",
 	              ln_evn[tr_live], ln_bkn[tr_live]));
 	return TRUE;

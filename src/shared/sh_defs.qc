@@ -474,6 +474,10 @@
 #define STAT_FS_SLORG          104  // + 105, 106 -- the cursor save's origin
 #define STAT_FS_SLANG          107  // + 108, 109 -- its pitch, yaw, and 1 if ducked
 #define STAT_FS_SLACK          110  // sl_* commands the server has run for this player
+#define STAT_FS_SLTRAILTAG     112  // Patch 502: latest save/load event's picture ticket
+#define STAT_FS_SLSAVEACK      113  // last tagged save's terminal answer (loads do not overwrite it)
+#define STAT_FS_SLSAVEOP       114  // its SAVED op/id, or NONE on refusal
+#define STAT_FS_SLSAVETICK     115  // its saved visual cutoff, independent of the current row
 #define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 
 /*

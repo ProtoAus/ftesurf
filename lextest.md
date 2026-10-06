@@ -11,6 +11,25 @@ to be wrong.
 
 ---
 
+## 00. 6 Oct — rewind/save-lock trail continuity
+
+Machine controls cover timed rewind/recording, retained warm prefixes, replay
+saves and replacement, cold pictures, countdown and key release. Buffered and
+streamed dedicated arms each pass 42 checks; this does not judge the rendered
+path or camera feel. Deployment is still pending.
+
+- Save/load or rewind/continue on a real surf/bhop run: the earlier path should
+  remain, the abandoned tail disappear, and the timer continue as **segmented**
+  rather than silently restarting as practice.
+- Rewind again into the retained warm prefix. Check duck/stand first-person
+  eye height and pitch, then the optional chase view. Look for a long joining
+  edge or a path that no longer follows the played route.
+- Save a replay point and load it: practice, with the correct picture and
+  position. Replace one replay with another without closing it. During the
+  countdown, try save/load; then hold/release and repress TAB.
+- Cold restarts restore pictures, not historical server timer snapshots:
+  rewind remains limited to retained authoritative history.
+
 ## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
 
 ### surf_voyager flies to the end -- 0.1.23 and the lobbies (5 Oct, night)

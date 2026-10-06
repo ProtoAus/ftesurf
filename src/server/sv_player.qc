@@ -815,14 +815,67 @@ void() PlayerPostThink =
   the engine's own handling (say, kill, ...) stops working.
 ===========================================================================
 */
+// Both authoritative rewind and replay-practice placement use the same
+// pin -> validated load -> hold handoff.
+void(entity e) SV_SaveLocGo =
+{
+	local float pinned, wrw, wser;
+	pinned = e.rec_wt_hold;
+	wrw = e.rw_pin;
+	wser = e.rec_wt_pin;
+	SV_WatchRelease(e);
+	SV_SaveLocLoad(e, e.rec_sl_index);
+	if (FS_SlopOp(e.rec_sl_slop) == SLOP_LOADED)
+	{
+		// SV_SaveLocLoad synchronously pruned only the abandoned ring tail.
+		// Remember this resume AFTER that rebase; real starts still reset it.
+		SV_SaveLocHold(e, TRUE);
+		if (SV_RewindAlone(e))
+		{
+			e.rw_goid = rec_sl_id[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1];
+			e.rw_goseq = rec_sl_seq[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1];
+		}
+	}
+	else if (pinned)
+	{
+		SV_WatchHold(e, TRUE);
+		e.rw_pin = wrw;
+		e.rec_wt_pin = wser;
+	}
+};
+
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
-	local float  cmdargc, go, pinned, won, wvoid, wrw, wser, wst0, wtk, wsq;
+	local float  cmdargc, go, won, wvoid, wrw, wser, wst0, wtk, wsq;
 	local vector was;
 
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	// The client can queue localcmd behind an already-buffered raw cmd. Its
+	// sl_* count cannot identify that save; echo a picture-only request ticket.
+	self.rec_sl_requesttag = 0;
+	if (c == "sl_save" && cmdargc >= 2)
+		self.rec_sl_requesttag = stof(argv(1));
+	if ((c == "sl_saveview" || c == "sl_goview") && cmdargc >= 11)
+		self.rec_sl_requesttag = stof(argv(10));
+	if (c == "sl_saveat")
+	{
+		if (cmdargc >= 7)
+			self.rec_sl_requesttag = stof(argv(6));
+		else if (cmdargc >= 6)
+		if (strcmp(argv(5), "go"))
+			self.rec_sl_requesttag = stof(argv(5));
+	}
+	if (!(self.rec_sl_requesttag >= 1 && self.rec_sl_requesttag <= 16000000 &&
+	      self.rec_sl_requesttag == rint(self.rec_sl_requesttag)))
+		self.rec_sl_requesttag = 0;
+	if (self.rec_sl_requesttag > 0)
+	{
+		self.rec_sl_answer_tag = self.rec_sl_requesttag;
+		self.rec_sl_answer_op = SLOP_NONE; // a refusal is also a terminal answer
+		self.rec_sl_answer_tick = -1;
+	}
 
 	// Patch 430: counted before anything can refuse it -- the client draws a load
 	// early only while every sl_ command it sent has been run.
@@ -1007,6 +1060,35 @@ void(string cmd) SV_ParseClientCommand =
 	  commands that could disagree with the cursor no longer exists.
 	*/
 	if (c == "sl_save")    { SV_SaveLocCreate(self);                     return; }
+	// A client-held replay has no authoritative server run to restore. Keep
+	// its body state as a practice placement, through the existing row writer.
+	if (c == "sl_saveview" || c == "sl_goview")
+	{
+		rw_o = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+		rw_v = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+		rw_pit = stof(argv(7));
+		rw_yaw = stof(argv(8));
+		rw_dk = (stof(argv(9)) != 0);
+		rw_t = 0;
+		if ((cmdargc != 10 && cmdargc != 11) || !SV_SaveOriginSane(rw_o) || !SV_SaveOriginSane(rw_v) ||
+		    !(vlen(rw_v) <= 32768) || !(fabs(rw_pit) <= 360) || !(fabs(rw_yaw) <= 360))
+		{
+			sprint(self, PRINT_HIGH, "^3save:^7 invalid replay body state\n");
+			return;
+		}
+		go = (c == "sl_goview");
+		if (go)
+		{
+			if (!self.rw_pin)
+				return;
+			if (!SV_SaveLocRate(self))
+				return;
+		}
+		if (SV_SaveLocCreateAt(self, 0, '0 0 0', FALSE, go, TRUE))
+		if (go)
+			SV_SaveLocGo(self);
+		return;
+	}
 	// Patch 477: `sl_saveat <ticks> [x y z [go]]` -- see REWIND in sv_saveloc.qc.
 	// `go` is off the rewind's pin and onto the save in this one call: a refused
 	// save or load leaves the pin and the run as they were, where a following
@@ -1029,30 +1111,9 @@ void(string cmd) SV_ParseClientCommand =
 			return;
 		if (SV_SaveLocCreateAt(self, stof(argv(1)),
 		                       [stof(argv(2)), stof(argv(3)), stof(argv(4))],
-		                       cmdargc >= 5, go))
+		                       cmdargc >= 5, go, FALSE))
 		if (go)
-		{
-			pinned = self.rec_wt_hold;
-			wrw = self.rw_pin;
-			wser = self.rec_wt_pin;
-			SV_WatchRelease(self);
-			SV_SaveLocLoad(self, self.rec_sl_index);
-			if (FS_SlopOp(self.rec_sl_slop) == SLOP_LOADED)
-			{
-				SV_SaveLocHold(self, TRUE);
-				if (SV_RewindAlone(self))   // as the row's own message promised
-				{
-					self.rw_goid  = rec_sl_id[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
-					self.rw_goseq = rec_sl_seq[SL_Base(SL_Blk(self)) + self.rec_sl_index - 1];
-				}
-			}
-			else if (pinned)
-			{
-				SV_WatchHold(self, TRUE);
-				self.rw_pin = wrw;
-				self.rec_wt_pin = wser;
-			}
-		}
+			SV_SaveLocGo(self);
 		return;
 	}
 	if (c == "sl_load")    { SV_SaveLocLoad(self, self.rec_sl_index);     return; }

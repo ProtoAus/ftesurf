@@ -2280,18 +2280,23 @@ float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
 float rs_pauses, rs_sess, rs_inmt, rs_incy;
 string rs_rid;
 
-float(entity e, float mark) SV_RecGenOK =
+float(entity e, float gen, float mark) SV_RecCutOK =
 {
 	local float g;
 
-	if (rs_gen < 0 || rs_gen > e.rec_rec_gen)
+	if (gen < 0 || gen > e.rec_rec_gen)
 		return FALSE;
-	if (rs_rid == "" || rs_rid != e.rec_rec_rid)
-		return FALSE;
-	for (g = rs_gen + 1; g <= e.rec_rec_gen; g = g + 1)
+	for (g = gen + 1; g <= e.rec_rec_gen; g = g + 1)
 		if (e.rec_rec_genbuf < 1 || stof(bufstr_get(e.rec_rec_genbuf, g)) < mark)
 			return FALSE;
 	return TRUE;
+};
+
+float(entity e, float mark) SV_RecGenOK =
+{
+	if (rs_rid == "" || rs_rid != e.rec_rec_rid)
+		return FALSE;
+	return SV_RecCutOK(e, rs_gen, mark);
 };
 
 void(entity e, float mark) SV_RecGenPush =

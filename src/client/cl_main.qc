@@ -136,6 +136,7 @@ void() CSQC_WorldLoaded =
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
 	Trail_Reset();
+	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
 
 	Portal_LoadFromWorld();
@@ -1165,6 +1166,20 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Scores_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	// A viewer must not swallow the engine bind which opens the board, or
+	// the save-lock's digit keys. The open board still takes priority above.
+	if (rec_wt_open || rw_on)
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+	{
+		if (!strcmp(getkeybind(scanx), "+showscores"))
+			return FALSE;
+		if (evtype == IE_KEYDOWN)
+		if (Vote_Key(scanx))
+			return TRUE;
+		if (scanx == '1' || scanx == '2' || scanx == 'z')
+		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
+			return TRUE;
+	}
 	if (rec_wt_open)
 		if (Watch_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -1414,7 +1429,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Watch_Frame();
 	// Patch 475: the live line's sampler.  Before clearscene with the other
 	// readers, and it takes at most one sample per command frame.
+	Trail_SaveAnswerFrame();
 	Trail_Frame();
+	Trail_RequestFrame();
 	Rewind_Frame();                 // Patch 477: the cursor and the countdown
 
 	clearscene();
@@ -1919,6 +1936,13 @@ float(string cmd) CSQC_ConsoleCommand =
 		              SaveLoc_RunLocked(), rec_sl_refkey,
 		              getstatf(STAT_FS_HOLD),    // Patch 428 r3: the server's side
 		              rec_sl_holding));
+		print(sprintf("saveloc: event %g op %g id %g ack %g tag %g\n",
+		              getstatf(STAT_FS_SLSEQ), FS_SlopOp(getstatf(STAT_FS_SLOP)),
+		              FS_SlopId(getstatf(STAT_FS_SLOP)), getstatf(STAT_FS_SLACK),
+		              getstatf(STAT_FS_SLTRAILTAG)));
+		print(sprintf("saveloc: save answer %g op %g ticks %g\n",
+		              getstatf(STAT_FS_SLSAVEACK), getstatf(STAT_FS_SLSAVEOP),
+		              getstatf(STAT_FS_SLSAVETICK)));
 		SaveLoc_Cmd(sprintf("sl_list %g", stof(argv(1))));        // Patch 428: from row n
 		return TRUE;
 	}
