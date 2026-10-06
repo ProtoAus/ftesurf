@@ -2507,6 +2507,24 @@ that was never armed (see the bullet below it), and item 10's own residual.
   mover rate, where the one frame IS the usercmd's.
 
 ## Cosmetic / low
+- **Source unbaked large-model lighting is still a two-slot, single-sample
+  approximation** (`plugins/hl2/mod_vbsp.c:VBSP_LightPointValues`,
+  `VBSP_AddWorldLightCube`; `plugins/hl2/glsl/vmt/vertexlit.glsl`). Patches
+  508–509 fix the minimum's directional amplification and world-wall light
+  leaks, not full Source parity. Source's shader retains six ambient faces and
+  evaluates selected local lights at vertex world positions; ours usually
+  scatters direct light at one point and folds the combined cube to two slots.
+  On surf_tensor2 prop 46, two within-bounds probes differ 3.85x in +Y direct
+  luminance. Source's material-selected half-Lambert also squares its ramp;
+  the FTE split fold uses an unsquared ramp even without that material flag.
+  No prop/mover shadow meshes or sky tracing are supplied by the world-only
+  occlusion tree. See engine HL2_MODEL_LIGHTING.md for source citations and
+  measured limits. Falsifier for a closer pipeline: rotated-model six-face
+  colours, opposite/perpendicular local lights, attenuation across a large
+  mesh, correct material cosine/half-Lambert and matched Source cameras. Keep
+  visible-light, blocked-light and unchanged-world controls. Neither disabling
+  all direct light nor enabling hl2_cubelight alone proves Source parity.
+
 - **`Online_CacheName` still spells its filename with the pre-496 float32
   chain**, so a cache name and the time the board draws beside it can differ by
   1-3 ms on a run past an hour (`src/client/cl_online.qc:Online_CacheName`;

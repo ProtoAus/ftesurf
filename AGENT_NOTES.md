@@ -2767,6 +2767,16 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+- **An isolated renderer rig must also isolate the executable's plugin directory.**
+  `-basedir <rig>` plus an original-install executable can still load that
+  executable's old HL2 DLL. For a plugin-only falsifier, copy the unchanged exe
+  and the subject DLL into the rig, launch that exe explicitly, record hashes,
+  and prove the new behavior/cvar acted. When adapting an old harness, assert
+  every source replacement matched: a silently missed exe-path replacement
+  produced a clean run of the OLD floor in the 508 investigation. That failed
+  arm was discarded, not counted as verification. Do not overwrite owner
+  installs merely to make an isolated test load the intended plugin.
+
 - **`volume 0` DOES NOT MUTE MUSIC.** Music plays at `musicvolume * mastervolume`
   (`snd_dma.c:3512`) and `volume` only scales the rest, so a harness that
   "mutes" with `volume 0` plays its music out loud -- Patch 467's did, with the

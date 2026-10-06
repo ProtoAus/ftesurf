@@ -11,6 +11,24 @@ to be wrong.
 
 ---
 
+## 00. 6 Oct — surf_tensor2 model brightness (Patches 508–509)
+
+The first saved window-wall camera no longer has its directional light amplified
+by the minimum. The second camera now rejects direct lights behind world walls
+instead of accepting every light in the PVS. Machine controls retain visible
+lights, prove blocked contributions are zero and keep adjacent world geometry
+unchanged. This is not a claim of exact Source rendering: large unbaked models
+still use one sample/two slots; the engine's HL2_MODEL_LIGHTING.md explains why.
+
+- Restart the client to pick up the new HL2 DLL; no owner game was terminated.
+- Revisit your two saved cameras and judge the default picture.
+- `hl2_lt_min 0` versus `16` should make a modest dark-base change, not multiply
+  the lit wall. No worldlight-toggle crutch is needed anymore.
+- `hl2_lt_occlusion 0` versus `1` is the old PVS-only/new world-wall control.
+  Leave `hl2_lt_worldlight 1`: bounce-only is not the reference.
+- If comparing with Momentum/CS:S, use the same BSP build, camera and exposure.
+  Judge the whole architectural model, not an assumed func_brush lightmap.
+
 ## 00. 6 Oct — rewind/save-lock trail continuity
 
 Machine controls cover timed rewind/recording, retained warm prefixes, replay
