@@ -2197,6 +2197,18 @@ script rather than passing it as an argument, where `ps` would show it.
     "keeping" in the printf two lines below it, putting a number in the middle of a
     sentence. Placeholders are `__NAME__` applied with the literal, case-sensitive
     `.Replace()`; the same reasoning as the `-cmatch` sentinel rule above.
+  - **LONG SSH COMMAND-ARGUMENT SCRIPTS CAN TRUNCATE AND STILL EXIT ZERO.**
+    Patch 507's checked 10.6k-character body copied source and ran its first
+    installed controls, then the remote shell warned that a here-document ended
+    at EOF. The remaining race probe, real receipt pass, reload and final health
+    checks had never run; the caller still printed its success line. Local syntax
+    checks prove the original body, not what transport delivered. Stream long
+    bodies through SSH stdin to an explicitly selected `bash -s` (or `sh -s` for
+    POSIX bodies), and require every final control/health/UTC sentinel plus exit
+    zero and no heredoc warning. Finish only the missing gates after verifying
+    installed/paired hashes; never recopy or reinterpret a partial deployment as
+    complete. P507's finish-only streamed arm proved the remaining controls and
+    reload at 2026-10-06 15:28:23 UTC; source and owner-only backups were retained.
 
   DEPLOYED (the Pi keeps no receipt of its own, so this line is the record; UTC):
   `2007afc` to /srv/nvme/surfd at 2026-10-04 18:00 -- all 49 files hash-matched
