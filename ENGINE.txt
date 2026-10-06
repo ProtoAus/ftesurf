@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   f2630d9ada52ee1d61b4d2163a35f5cabca4e6ef
+commit   62d9b4131c521fe73ee67e15b948e392be18a112
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,14 +24,19 @@ commit   f2630d9ada52ee1d61b4d2163a35f5cabca4e6ef
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-494
-patch    507
+tag      patch-508
+patch    508
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
 date     2026-10-06
+
+# PATCH 508: Source model minimum lifts only the shader ambient base, never
+# the directional range. Minimum changes invalidate unbaked-prop lighting live.
+# First surf_tensor2 saved camera: range unchanged, lit wall no longer boosted
+# 3.7x; dark-base, minimum-off, restored and world-geometry controls act.
 
 # PATCH 507: SURFD-ONLY -- full reads capture missing-view readiness. A final
 # late view wakes an identity-bound, view/rec/angle-only retry without touching
