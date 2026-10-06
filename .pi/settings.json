@@ -1,5 +1,5 @@
 {
-  "packages": ["npm:pi-subagents"],
+  "packages": ["npm:pi-subagents", "npm:pi-lsp", "npm:context-fold"],
   "subagents": {
     "projectRootResolution": "git-root",
     "defaultModel": "inherit",
@@ -8,9 +8,9 @@
       "worker": { "model": "inherit", "thinking": "medium" },
       "delegate": { "model": "inherit", "thinking": "medium" },
       "researcher": { "model": "inherit", "thinking": "medium" },
-      "reviewer": { "model": "inherit", "thinking": "high" },
-      "evidence-auditor": { "model": "inherit", "thinking": "high" },
-      "oracle": { "model": "inherit", "thinking": "high" }
+      "reviewer": { "model": "inherit", "thinking": "xhigh" },
+      "evidence-auditor": { "model": "inherit", "thinking": "xhigh" },
+      "oracle": { "model": "inherit", "thinking": "xhigh" }
     }
   }
 }

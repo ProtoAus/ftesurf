@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "clangd",
+      "include": ["**/*.c", "**/*.h", "**/*.cc", "**/*.hh", "**/*.cpp", "**/*.hpp", "**/*.cxx", "**/*.hxx"],
+      "exclude": ["**/release/**", "**/debug/**", "**/libs-*/**"],
+      "rootMarkers": ["compile_commands.json", ".git"],
+      "bin": "C:/Program Files/LLVM/bin/clangd.exe",
+      "args": [
+        "--background-index",
+        "-j=2",
+        "--header-insertion=never",
+        "--query-driver=C:/msys64/ucrt64/bin/gcc.exe"
+      ],
+      "env": {
+        "PATH": "C:/msys64/ucrt64/bin;C:/msys64/usr/bin;C:/Windows/System32;C:/Windows",
+        "TMP": "C:/msys64/tmp",
+        "TEMP": "C:/msys64/tmp"
+      },
+      "languageIdByExtension": {
+        ".c": "c", ".h": "c", ".cc": "cpp", ".hh": "cpp",
+        ".cpp": "cpp", ".hpp": "cpp", ".cxx": "cpp", ".hxx": "cpp"
+      },
+      "startupTimeoutMs": 45000,
+      "diagnosticsWaitMs": 2500
+    }
+  ]
+}

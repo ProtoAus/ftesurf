@@ -121,6 +121,7 @@ __pycache__/
 /.pi/*
 !/.pi/settings.json
 !/.pi/README.md
+!/.pi/lsp.example.json
 !/.pi/workflows/
 /.pi/workflows/*
 !/.pi/workflows/subagents-smoke.js
@@ -133,6 +134,7 @@ __pycache__/
 # load-bearing as CONTRIBUTING.md and belong in the history with the code they
 # describe.
 !/AGENTS.md
+!/AGENT_NOTES.md
 !/CLAUDE.md
 !/BACKLOG.md
 # The list of things waiting on a human: judgement calls on how something reads,
