@@ -1688,14 +1688,19 @@ def check_counts_join(r, joins, post312):
     # possible size is exactly one.
     TOL = 1e-3
     checked = broke = unjoinable = withd = 0
+    transformed_checked = transformed_unjoinable = 0
     worst = []
     for (ln, mx, my, rx, ry, flags, nm, na, had_d) in joins[1:]:
         if had_d:
             withd += 1
         if na:
             unjoinable += 1
+            if had_d:
+                transformed_unjoinable += 1
             continue
         checked += 1
+        if had_d:
+            transformed_checked += 1
         if abs(mx - rx) > TOL or abs(my - ry) > TOL:
             broke += 1
             if len(worst) < 8:
@@ -1703,6 +1708,15 @@ def check_counts_join(r, joins, post312):
     r.info["join_checked"] = checked
     r.info["join_broke"] = broke
     r.info["join_transforms"] = withd
+    # Opportunities are windows closed by emitted v records, not render frames.
+    # The transform counts overlay the checked/unjoinable partition, and exclude
+    # the same first window that the existing join exempts.
+    r.info["join_windows"] = len(joins)
+    r.info["join_first_exempt"] = 1
+    r.info["join_unjoinable"] = unjoinable
+    r.info["join_transforms_checked"] = transformed_checked
+    r.info["join_transforms_unjoinable"] = transformed_unjoinable
+    r.info["join_declared_transform_profile"] = bool(post312)
 
     if withd:
         r.note("%d of %d view frames carry a 'd' record: the input pipeline "

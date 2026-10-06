@@ -12,7 +12,7 @@ import unittest
 
 import hidcheck
 import rcptcheck
-from test_hidcheck import Journal, run
+from test_hidcheck import Journal, P312_INPUT, run
 
 
 def receipt_for(text):
@@ -291,6 +291,89 @@ class ExclusionLedger(unittest.TestCase):
             r = run(text)
             for axis in ("yaw", "pitch"):
                 self.assertNotIn("identity_%s_exclusions" % axis, r.info)
+
+
+def join_journal(shapes, post312=True):
+    j = Journal(inputcvars=P312_INPUT if post312 else None)
+    yaw = 90.0
+    for i, shape in enumerate(shapes):
+        j.frame(3000+i)
+        j.mouse(2, 0)
+        if "absolute" in shape:
+            j.abspos(500+i, 300)
+        if "transform" in shape:
+            j.raw(2, 0)
+        dx = -2 if "transform" in shape else 3 if shape == "mismatch" else 2
+        yaw += j.k*dx
+        j.view(dx, 0, 10.0, yaw)
+    return j.end()
+
+
+class CountsJoinLedger(unittest.TestCase):
+    def reconcile(self, r):
+        self.assertEqual(r.info["join_windows"], r.info["join_first_exempt"]
+                         + r.info["join_checked"] + r.info["join_unjoinable"])
+        self.assertEqual(r.info["join_transforms"], r.info["join_transforms_checked"]
+                         + r.info["join_transforms_unjoinable"])
+
+    def test_active_control_and_first_window_exemption(self):
+        for shapes in (["normal"] * 6, ["mismatch"] + ["normal"] * 5):
+            r = run(join_journal(shapes))
+            self.assertTrue(r.ok, r.faults)
+            self.reconcile(r)
+            self.assertEqual(r.info["join_windows"], 6)
+            self.assertEqual(r.info["join_first_exempt"], 1)
+            self.assertEqual(r.info["join_checked"], 5)
+            self.assertEqual(r.info["join_broke"], 0)
+            self.assertTrue(r.info["join_declared_transform_profile"])
+
+    def test_checked_and_unjoinable_transform_overlay(self):
+        r = run(join_journal(["absolute_transform", "normal", "transform",
+                              "absolute", "absolute_transform", "normal"]))
+        self.assertTrue(r.ok, r.faults)
+        self.reconcile(r)
+        self.assertEqual(r.info["join_checked"], 3)
+        self.assertEqual(r.info["join_unjoinable"], 2)
+        self.assertEqual(r.info["join_transforms"], 2)  # initial window not counted
+        self.assertEqual(r.info["join_transforms_checked"], 1)
+        self.assertEqual(r.info["join_transforms_unjoinable"], 1)
+
+    def test_no_joinable_windows_and_single_seed(self):
+        for shapes, unjoinable in ((["absolute_transform"] * 6, 5), (["normal"], 0)):
+            r = run(join_journal(shapes))
+            self.assertTrue(r.ok, r.faults)
+            self.reconcile(r)
+            self.assertEqual(r.info["join_checked"], 0)
+            self.assertEqual(r.info["join_unjoinable"], unjoinable)
+            self.assertIn("no joinable view frames", " ".join(r.notes))
+
+    def test_profile_distinguishes_legacy_mismatch_without_new_fault(self):
+        for post312 in (False, True):
+            text = join_journal(["mismatch"] * 6, post312=post312)
+            r = run(text)
+            self.reconcile(r)
+            self.assertEqual(r.info["join_broke"], 5)
+            self.assertEqual(r.info["identity_violations"], 0)
+            self.assertEqual(r.info["join_declared_transform_profile"], post312)
+            self.assertEqual(any("COUNTS JOIN BROKEN" in f for f in r.faults), post312)
+            self.assertEqual(receipt_for(text).journal, "FAULT" if post312 else "OK")
+            if not post312:
+                self.assertIn("PREDATES engine Patch 312", " ".join(r.notes))
+
+    def test_no_windows_does_not_invent_a_ledger(self):
+        r = run(Journal().end())
+        self.assertNotIn("join_windows", r.info)
+        self.assertNotIn("join_declared_transform_profile", r.info)
+
+    def test_verbose_retains_opportunity_and_overlay_counts(self):
+        r = run(join_journal(["normal", "transform", "absolute_transform"]))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            hidcheck.emit(r, True)
+        for key in ("join_windows", "join_first_exempt", "join_unjoinable",
+                    "join_transforms_checked", "join_transforms_unjoinable",
+                    "join_declared_transform_profile"):
+            self.assertIn(key, out.getvalue())
 
 
 def unresolved_journal(changed, excluded=()):
