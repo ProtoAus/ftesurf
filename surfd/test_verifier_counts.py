@@ -2,12 +2,16 @@
 """Per-attempt counts observations: synthetic verifier stdout + API/actual DOM."""
 import importlib
 import json
+import logging
 import os
 import shutil
 import subprocess
+import sqlite3
 import sys
+import threading
 import tempfile
 import unittest
+from unittest import mock
 
 import admin
 import test_admin as at
@@ -23,10 +27,13 @@ def section(path, diagnostic=None, verdict='PASS ticks 100 rows 80'):
 
 class Counts(unittest.TestCase):
     def setUp(self):
+        self.first_home = len(at.HOMES)
+        self.handlers = []
+        self.addCleanup(self.cleanup_home)
         self.m = at.fresh(SURFD_ADMIN_HASH=admin.hash_password('test password only', n=2**10),
                           SURFD_ADMIN_SECRET='temporary-test-secret-not-a-real-secret',
                           SURFD_ADMIN_INSECURE_COOKIE='1')
-        self.addCleanup(self.cleanup_home)
+        self.handlers = self.m.log.handlers[:]
         sys.modules.pop('sweep', None)
         self.sw = importlib.import_module('sweep')
         self.sw.GAME = self.m.BASE_DIR
@@ -36,11 +43,13 @@ class Counts(unittest.TestCase):
         self.addCleanup(self.c.close)
 
     def cleanup_home(self):
-        for h in self.m.log.handlers[:]:
-            if getattr(h,'baseFilename','').startswith(os.path.abspath(self.m.BASE_DIR)+os.sep):
-                self.m.log.removeHandler(h);h.close()
-        shutil.rmtree(self.m.BASE_DIR)
-        self.assertFalse(os.path.exists(self.m.BASE_DIR))
+        logger = logging.getLogger('surfd')
+        for home in at.HOMES[self.first_home:]:
+            for h in set(self.handlers + logger.handlers[:]):
+                if getattr(h,'baseFilename','').startswith(os.path.abspath(home)+os.sep):
+                    logger.removeHandler(h);h.close()
+            if os.path.exists(home):shutil.rmtree(home)
+            self.assertFalse(os.path.exists(home))
 
     def test_sections_and_original_parser(self):
         lines = section('a', '12 record(s): what the input ring delivered is what the view read')
@@ -111,6 +120,46 @@ class Counts(unittest.TestCase):
         self.c.execute('ALTER TABLE verdicts DROP COLUMN counts_metrics');self.c.commit()
         self.assertIsNone(client.get(route).get_json()['verdicts'][0]['counts_metrics'])
 
+    def test_concurrent_additive_migration(self):
+        rid=suite.add_replay(self.c,self.m.RUNS_DIR,'bhop_eazy','0000100_run.rec')
+        self.sw.record(self.c,rid,'PASS','historic control',100,'e','p',1);self.c.commit()
+        self.c.execute('ALTER TABLE verdicts DROP COLUMN counts_metrics');self.c.commit()
+        before = [tuple(r) for r in self.c.execute('SELECT * FROM verdicts')]
+        self.assertEqual(len(before),1)
+        barrier, errors, checked = threading.Barrier(2), [], []
+        m = self.m
+
+        def run():
+            c = sqlite3.connect(m.DB_PATH, timeout=10)
+            try:
+                class PausedCheck:
+                    first = True
+                    def execute(self, sql):
+                        if sql.startswith('PRAGMA') and self.first:
+                            rows = c.execute(sql).fetchall()
+                            self.first = False
+                            checked.append('counts_metrics' not in {r[1] for r in rows})
+                            barrier.wait(timeout=5)
+                            return rows
+                        return c.execute(sql)
+                m.verdict_metrics(PausedCheck());c.commit()
+            except Exception as e:errors.append(e)
+            finally:c.close()
+
+        workers=[threading.Thread(target=run) for _ in range(2)]
+        for w in workers:w.start()
+        for w in workers:w.join(timeout=15)
+        self.assertFalse(any(w.is_alive() for w in workers))
+        self.assertEqual(checked,[True,True])  # both saw absence before either ALTER
+        self.assertEqual(errors,[])
+        self.assertIn('counts_metrics',{r[1] for r in self.c.execute('PRAGMA table_info(verdicts)')})
+        self.assertEqual([tuple(r)[:-1] for r in self.c.execute('SELECT * FROM verdicts')],before)
+        class IOFailure:
+            def execute(self, sql):
+                if sql.startswith('PRAGMA'):return [(0,'verdict')]
+                raise sqlite3.OperationalError('synthetic disk I/O error')
+        with self.assertRaisesRegex(sqlite3.OperationalError,'disk I/O'):m.verdict_metrics(IOFailure())
+
     def test_actual_dom(self):
         if not shutil.which('node'):self.skipTest('Node absent; DOM must be tested on Windows')
         text=open(os.path.join(os.path.dirname(__file__),'templates','admin_run.html'),encoding='utf-8').read()
@@ -140,6 +189,22 @@ console.log(JSON.stringify({text:flat(tb),summary}));
                 rendered=json.loads(r.stdout)
                 self.assertIn(phrase,rendered['text']);self.assertIn(v['reason'],rendered['text'])
                 self.assertFalse(rendered['summary'])
+
+
+class StartupCleanup(unittest.TestCase):
+    def test_initial_import_failure_cleans_owned_home(self):
+        first=len(at.HOMES)
+        case=Counts('test_sections_and_original_parser')
+        real=at.importlib.import_module
+        def fail(name,*args,**kw):
+            if name=='surfd':raise RuntimeError('synthetic initial import failure')
+            return real(name,*args,**kw)
+        try:
+            with mock.patch.object(at.importlib,'import_module',side_effect=fail):
+                with self.assertRaisesRegex(RuntimeError,'initial import'):case.setUp()
+        finally:case.doCleanups()
+        self.assertTrue(at.HOMES[first:])
+        self.assertTrue(all(not os.path.exists(h) for h in at.HOMES[first:]))
 
 
 if __name__=='__main__':unittest.main()

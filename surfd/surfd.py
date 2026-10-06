@@ -1457,7 +1457,11 @@ def verdict_metrics(conn):
     """Additive per-attempt observer, never reconstruct historical measurements."""
     cols = {r[1] for r in conn.execute('PRAGMA table_info(verdicts)')}
     if cols and 'counts_metrics' not in cols:
-        conn.execute("ALTER TABLE verdicts ADD COLUMN counts_metrics TEXT NOT NULL DEFAULT ''")
+        try:
+            conn.execute("ALTER TABLE verdicts ADD COLUMN counts_metrics TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError as exc:
+            if 'duplicate column' not in str(exc):
+                raise
 
 
 def get_db():
