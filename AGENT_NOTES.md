@@ -2724,6 +2724,38 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   profile without IPH_RAW; delete those three lines to lift it). Patch 387's
   entry lists what Linux input evidence cannot see.
 
+## Source water and material menu (Patch 523)
+
+- `hl2_water` defaults to 3. Mode 4 is an opt-in capture-free approximation:
+  animated normals, alpha blending, fog colour and baked-cubemap reflection.
+  It has no depth sampler, live reflection or depth-correct above-water fog.
+  Modes 1/2 still capture refraction; 2 also captures reflection. Do not call
+  mode 1 capture-free, or claim GPU/portable FPS from local wall-frame timings.
+- Plugin_GetCvar masks CVAR_SHADERSYSTEM. The renderer now opts water alone
+  into its shader-rebuild policy. Cvar_Get2 does not retrofit that flag onto an
+  existing variable. Preserve default/early user value/archive flags and test
+  both initialization orders rather than widening every plugin flag at once.
+- Graphics material rows carry `*` when their generated shader does not update
+  automatically. Glass 0 is Translucent, not Opaque. `retry` can reuse cached
+  BSP data: it is not a promise that every map-time setting gets reread. Keep
+  that distinction in status and footer; readback alone is not rendered action.
+- Water gates must show actual camera/draw/index submission and loaded programs
+  plus full/cheap live-capture positive controls. Production builds contain no
+  diagnostic hooks. Test menu cycling through 4, an explicit isolated archive
+  save and fresh-process restore, and early startup override. Use fresh log
+  names and waitms, not frame-count waits. Test the full product CSQC too, not
+  only a standalone menu fixture; the latter intentionally omits gameplay.
+- Fresh engine worktrees lack ignored SDK headers/libraries. Copy the existing
+  dependency bundle into the owned worktree before building. Compare warnings
+  against an identically configured baseline; existing warnings are not new.
+  Build the shader generator from a relative source path so its generated
+  banner does not embed a private worktree path in public source. The generated
+  `mat_vmt_progs.h` must agree with the GLSL included by plugins/hl2/Makefile.
+- `tools/test_water_menu.py --engine <checkout>` checks source contracts, not
+  rendering. `test/p523water.cfg` is an optional isolated runtime menu smoke.
+  Depth fog/capture sharing, other menu rows, glass and particle coverage retain
+  their own acting-control gates in BACKLOG; this water patch does not close them.
+
 ## The milk visualizer (Patch 467)
 
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback

@@ -16,12 +16,11 @@
   difference is what a digit DOES: the save-lock menu's digits are verbs on
   one list, and these are one verb (cycle) on twenty-six different settings.
 
-  MAP-LATCHED ROWS ARE MARKED, and that mark is load-bearing.  Some of these
-  are CVAR_SHADERSYSTEM and apply on the next frame; the rest are read once
-  while the BSP is being parsed, which no shader flush revisits.  Changing one
-  of those and seeing nothing happen is indistinguishable from a broken
-  setting unless the menu says so first -- and key 7 is the map load it is
-  asking for.
+  REBUILD/LOAD ROWS ARE MARKED, and that mark is load-bearing. Water's live
+  policy rebuilds its shaders on the next frame; other generated-material
+  policies need an explicit rebuild, and BSP-time settings need a fresh load.
+  Seeing nothing happen is indistinguishable from a broken setting unless
+  the menu says so first. Key 7 retries, but may reuse cached BSP data.
 ===========================================================================
 */
 
@@ -182,7 +181,7 @@ void(vector scr) Gfx_DrawMissing =
       1  label
       2  the values it cycles through, space-separated
       3  what each value MEANS, `;`-separated, in the same order as field 2
-      4  "*" when the value only takes effect on the next map load
+      4  "*" when a rebuild/map load is needed (retry may reuse cached data)
 
   Field 3 is the whole reason the menu exists.  It is positional against field 2
   rather than threshold-tested against the cvar, which is what the old
@@ -229,23 +228,26 @@ void(vector scr) Gfx_DrawMissing =
 */
 string(float row) Gfx_Def =
 {
-	// -- page 1: the look, all CVAR_SHADERSYSTEM, all instant -----------------
-	if (row == 1)  return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|";
-	if (row == 2)  return "hl2_refract|Glass|0 1 2|Opaque;Refracting;Dithered|";
-	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|";
+	// -- page 1: surface policy ---------------------------------------------
+	// Plugin_GetCvar drops CVAR_SHADERSYSTEM. Water opts into the engine's
+	// live shader policy; other generated-material rows need a rebuild.
+	if (row == 1)  return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
+	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered|*";
+	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|*";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
-	  as the three above it: CVAR_SHADERSYSTEM, one read at material generation
-	  (mat_vmt.c:1114), applied on the next frame.
+	  as the three above it: one read at material generation (mat_vmt.c:1114).
+	  Its requested CVAR_SHADERSYSTEM flag is masked by Plugin_GetCvar, so a
+	  change does not rebuild an already-cached material automatically.
 
 	  Patch 195 is what made it work -- img_vtf.c had `frames = 1;//vtf->numframes;`,
 	  so a 331-frame flipbook like surf_demise's smoke could not cycle no matter
 	  what the material asked for.  It defaults to 0, which means that until this
 	  row existed the feature was both off and unreachable.
 	*/
-	if (row == 4)  return "hl2_animated|Animated|0 1|Off;On|";
-	if (row == 5)  return "hl2_dither_alpha|Dither scale|0.15 0.30 0.55 0.80 1|15%;30%;55%;80%;100%|";
-	if (row == 6)  return "hl2_dither_force|Dither level|0 0.15 0.25 0.40 0.55 0.70 0.85 1|Per material;15%;25%;40%;55%;70%;85%;100%|";
+	if (row == 4)  return "hl2_animated|Animated|0 1|Off;On|*";
+	if (row == 5)  return "hl2_dither_alpha|Dither scale|0.15 0.30 0.55 0.80 1|15%;30%;55%;80%;100%|*";
+	if (row == 6)  return "hl2_dither_force|Dither level|0 0.15 0.25 0.40 0.55 0.70 0.85 1|Per material;15%;25%;40%;55%;70%;85%;100%|*";
 	/*
 	  BUILD 20: marked map-latched, which it should always have been.
 
@@ -276,11 +278,11 @@ string(float row) Gfx_Def =
 	  Works, and stays ungreyed -- but it does NOT reach Water or Refract
 	  surfaces: mat_vmt.c:984 excludes those two material types by name, so
 	  glass and water keep their normal maps whatever this row says.  Noted
-	  here and in default.cfg rather than dimmed, because the row IS live on
-	  every ordinary material, and dimming a working row would put a new lie
-	  where build 33 removed an old one.
+	  here and in default.cfg rather than dimmed. It controls ordinary materials
+	  when they are generated; the masked shader-system flag means cached ones
+	  need a rebuild, hence the *.
 	*/
-	if (row == 10) return "hl2_bumpmap|Bump maps|0 1|Off;On|";
+	if (row == 10) return "hl2_bumpmap|Bump maps|0 1|Off;On|*";
 	if (row == 11) return "vbsp_skyroom|3D skybox|0 1|Off;On|";
 	/*
 	  BUILD 33: GAINED ITS `*`, which it should have had from the start.
@@ -437,8 +439,8 @@ string(string s, float n, string sep) Gfx_Field =
 string(float row) Gfx_Cvar  = { return Gfx_Field(Gfx_Def(row), 0, "|"); };
 string(float row) Gfx_Label = { return Gfx_Field(Gfx_Def(row), 1, "|"); };
 
-// Rows whose value is read once while the map loads: the cvar takes the new
-// value, the LOOK does not, until there is another load to read it.
+// Rows needing a material rebuild or fresh map/client load. Readback alone
+// does not prove the cached appearance changed; retry may reuse BSP data.
 float(float row) Gfx_NeedsReload =
 {
 	return Gfx_Field(Gfx_Def(row), 4, "|") == "*";
@@ -657,9 +659,9 @@ float(float scan, float down) Gfx_Key =
 
 	/*
 	  7 is the map reload, and it is on this menu rather than on a bind because
-	  the rows marked `*` only take effect on a map load: the footer has always
-	  said so, and until now the menu could not provide one.  Setting a latched
-	  row and pressing 7 is the whole interaction.
+	  some rows marked `*` need map-time setup. `retry` may reuse cached BSP
+	  data, so it does NOT guarantee application of every marked setting.
+	  A fresh map/client load may be necessary; the footer says so.
 
 	  `retry` is the engine command added for this (P167).  It reloads the
 	  current map when we are hosting it -- which, on a listen server, is always
@@ -829,7 +831,7 @@ float() Gfx_Console =
 			inert = Gfx_Inert(i);
 			print(sprintf("  %2g %-18s %-14s %-13s %s%s\n",
 			              i, Gfx_Cvar(i), Gfx_Label(i), Gfx_ValueName(i),
-			              Gfx_NeedsReload(i) ? "^3*needs map load^7 " : "",
+			              Gfx_NeedsReload(i) ? "^3*needs rebuild/map load^7 " : "",
 			              (inert != "") ? sprintf("^1inert^7: %s", inert) : ""));
 		}
 		return TRUE;
@@ -915,7 +917,10 @@ void(vector scr) Gfx_Draw =
 	y = y + h + gap;
 
 	y = y + gap * 2;
-	HUD_Text([p_x + h * 0.35, y], "* needs a map load -- press 7", lsz * 0.9,
+	HUD_Text([p_x + h * 0.35, y], "* needs rebuild / map load", lsz * 0.9,
+	         '0.55 0.58 0.62', 1);
+	y = y + lsz;
+	HUD_Text([p_x + h * 0.35, y], "retry may reuse cached data", lsz * 0.9,
 	         '0.55 0.58 0.62', 1);
 	y = y + lsz;
 

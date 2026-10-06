@@ -45,29 +45,31 @@ as proof that every source path was built into it. No FPS improvement is claimed
   `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
   this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
   smoke texture with no fallback, and inspect emitted smoke against Source.
-- **Water's cheap reflection is not Source's cheap water, and still captures
-  refraction.** `plugins/hl2/mat_vmt.c:Shader_GenerateFromVMT` emits
-  `$refraction` in mode 1 and both `$refraction`/`$reflection` in mode 2;
-  `engine/gl/gl_backend.c:GLBE_SubmitMeshesPortals` renders those extra views.
-  `plugins/hl2/glsl/vmt/water.glsl` samples the cheap cubemap using `n`, not the
-  reflected VIEW vector, and comments out `TINT_REFL` in that arm. Its Fresnel
-  compares the texture normal with an object-space eye vector rather than a
-  matching tangent frame; scrolling uses fixed 0.1/0.097 rates, while the VMT
-  scroll vectors become scale magnitudes. No `#DEPTH`/depth sampler is emitted,
-  so above-water depth fog is disabled; the dormant branch uses hardcoded 4096
-  rather than material fog start/end. The screen-UV correction hardcodes 1080.
-  Source references: `watercheap_ps20b.fxc`, `water_ps2x_helper.h` and
-  `water_vs20.fxc` in the local SDK. Falsifier: orbit a flat/perturbed surface and
-  rotate its texture frame; reflections track the camera, tint and scroll
-  vectors survive, and shallow/deep/underwater views respect the material.
-  A true budget mode should use animated normals, view-correct baked-cubemap
-  reflection and ordinary transparency with ZERO scene captures, retaining
-  flat/dither options. Balanced/full modes can then share captures per water
-  plane and use explicit resolution/update/visibility budgets. Measure scene
-  passes, CPU and GPU frame time at a fixed camera; do not infer a gain from
-  a slider or lower capture resolution alone. The initial runtime comparison
-  did not establish a clean visual/performance control, so its timings are not
-  acceptance evidence.
+- **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
+  capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.
+  Mode 1 still captures refraction; mode 2 captures refraction/reflection.
+  `plugins/hl2/mat_vmt.c:Shader_GenerateFromVMT` emits no `#DEPTH` sampler, so
+  above-water depth fog is disabled; `water.glsl`'s dormant branch hardcodes
+  4096 rather than material fog start/end, and screen-UV correction hardcodes
+  1080. `waterbudget.glsl` deliberately approximates fog colour/transparency:
+  it is not a depth-correct or Source-exact replacement. Source references:
+  `watercheap_ps20b.fxc`, `water_ps2x_helper.h`, `water_vs20.fxc` in the SDK.
+  Falsifier: shallow/deep/underwater views respect authored fog; above/below,
+  normal/no-normal and cube/no-cube cases act rather than silently fall back.
+  Balanced/full paths should share captures per plane and enforce explicit
+  resolution/update/visibility budgets with full-capture positive controls.
+  Measure scene passes and CPU/GPU time; local fixed-camera wall-frame timings
+  are not a portable FPS claim or Source visual acceptance.
+- **Graphics menu still needs a complete acting per-row audit and glass baseline.**
+  `src/client/cl_gfx.qc:Gfx_Def`/`Gfx_Inert` and engine VMT/BSP consumers must
+  agree on default/range/meaning/inert conditions and application boundary.
+  Patch 523 fixes glass 0's Translucent label and warns cached material rows
+  need rebuilding; retry can reuse BSP data. It does not widen Plugin_GetCvar's
+  masked shader/map flags. Falsifier: for each row, exercise an affected rendered
+  object, a live/rebuild/fresh-map control, menu/readback and fresh-process
+  persistence. In particular prove `hl2_refract` 0/1/2 on an actual pane, alpha
+  and visible scene-copy policy with an acting full-refraction control before
+  deciding whether a new low-budget glass shader is needed.
 
 ## Credentials at rest, and 9.3 GB of database backups -- 2026-10-05
 
