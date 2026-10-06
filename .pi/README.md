@@ -1,12 +1,22 @@
 # Pi in FTESurf
 
-Start from **C:\FTESurf**, not the engine checkout or `ftesurf/`:
+Double-click **`C:\FTESurf\Start-Pi.cmd`** to open Pi in this checkout. It is also
+a terminal command, including from another directory:
 
 ```powershell
-pwsh -NoProfile -File C:\FTESurf\tools\pi-start.ps1
+C:\FTESurf\Start-Pi.cmd
+C:\FTESurf\Start-Pi.cmd --continue
 # Static preflight, no model call, build or deploy:
-pwsh -NoProfile -File C:\FTESurf\tools\pi-start.ps1 -Check
+C:\FTESurf\Start-Pi.cmd -Check
 ```
+
+The CMD wrapper forwards arguments to `tools/pi-start.ps1`. With no arguments,
+an error stays visible until a keypress; terminal calls with arguments return
+the exit code without pausing. PowerShell 7 is required. A desktop shortcut may
+point to the CMD file with `C:\FTESurf` as its working directory.
+
+Plain Pi must start from **C:\FTESurf**, not the engine checkout or `ftesurf/`.
+The direct `pwsh -NoProfile -File C:\FTESurf\tools\pi-start.ps1` route still works.
 
 The launcher changes cwd and supplies pi-lsp's agent-directory environment; it
 never pins the model, changes permissions/trust, or starts a build/deploy.
@@ -138,6 +148,10 @@ memory, refinements, schedules and runtime reports stay ignored/private.
 
 ## Verified on this workstation — 2026-10-06 UTC
 
+- Start-Pi.cmd passes -Check and --version from an unrelated TEMP cwd; a CLI
+  validation error returns exit 1 with the wrapper's error message, without a
+  terminal pause. The local desktop shortcut's target/arguments/cwd were read
+  back and verified. Interactive drawing was not automated by these checks.
 - Pi 1.0.4, clangd 23.1.2, UCRT64 GCC; 222 m-rel translation units generated.
   Four parser tests pass, including empty input refusal and MSYS path mapping.
   Before/after SHA256s of the installed exe, both lobby progs and built engine

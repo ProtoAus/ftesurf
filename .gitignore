@@ -149,6 +149,7 @@ __pycache__/
 !/default.fmf
 !/ftesurf.bat
 !/ftesurf_debug.bat
+!/Start-Pi.cmd
 !/ftesurf.sh
 !/src/
 !/tools/
