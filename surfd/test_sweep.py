@@ -567,6 +567,47 @@ def case_receipt_lost_before_recovery():
           now + 120 - surfd.EVIDENCE_SETTLE)
 
 
+def case_receipt_first_stat_loss():
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    rid = "20261006-000162-0"
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, age=old)
+    with open(rp, "rb") as fh:
+        saved = fh.read()
+    real_mtime = os.path.getmtime
+
+    def eio(path):
+        if path == rp:
+            raise OSError(5, "Input/output error")
+        return real_mtime(path)
+
+    with mock.patch.object(os.path, "getmtime", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        check("first stat loss: unknown-age receipt is not an observation",
+              sweep.receipt_step(conn, now=now), (0, 0))
+    check("first stat loss: enumerated identity is nevertheless retained",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_retry:*'").fetchone()[0], 1)
+    os.remove(rp)
+    make_receipt(surfd.EVIDENCE_DIR, "20261006-000163-0", age=old)
+    with contextlib.redirect_stderr(io.StringIO()):
+        got = sweep.receipt_step(conn, now=now + 60)
+    check("first stat loss: CONTROL independent healthy receipt progresses", got, (1, 0))
+    check("first stat loss: disappeared unknown-age receipt still prevents guessed coverage",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone(), None)
+    with open(rp, "wb") as fh:
+        fh.write(saved)
+    os.utime(rp, (old,) * 2)
+    check("first stat loss: restoration actually reads the receipt",
+          sweep.receipt_step(conn, now=now + 120), (1, 0))
+    check("first stat loss: successful observation retires its queue identity",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_retry:*'").fetchone()[0], 0)
+    check("first stat loss: only then does complete coverage advance",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0],
+          now + 120 - surfd.EVIDENCE_SETTLE)
+
+
 def case_receipt_mixed_fault_io():
     """An unmeasured sibling cannot erase an independent measured fault."""
     import builtins
@@ -675,10 +716,21 @@ def case_receipt_stale_partial_io():
             check("stale partial: primary fault names the measurement, not I/O",
                   (row[0], "the .rec states" in row[1], "Input/output error" in row[1]),
                   ("FAULT", True, False))
+            measured_reason = row[1]
+            os.remove(os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec"))
+            with contextlib.redirect_stderr(io.StringIO()):
+                got = sweep.receipt_step(conn, now=now + 120)
+            check("stale partial: recovery actually completes the remaining joins", got, (1, 1))
+            row = conn.execute("SELECT verdict, reason FROM receipts WHERE runid = ?", (rid,)).fetchone()
+            check("stale partial: automatic recovery cannot clear the now-unreproducible fault",
+                  tuple(row), ("FAULT", measured_reason))
+            check("stale partial: completion preserves measurements and retires retry state",
+                  joins(), before[:3] + (0,))
+            completed = joins()
             os.remove(rp)
             with contextlib.redirect_stderr(io.StringIO()):
                 sweep.receipt_step(conn, now=now + surfd.JOURNAL_WAIT + 60)
-            check("stale partial: reaping cannot rewrite a measured join as never arrived", joins(), before)
+            check("stale partial: reaping cannot rewrite a measured join as never arrived", joins(), completed)
         finally:
             rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
 
@@ -1705,7 +1757,7 @@ def main():
                  case_receipt_watermark, case_receipt_io_retry, case_receipt_io_budget,
                  case_receipt_incomplete_listing, case_receipt_mixed_fault_io,
                  case_receipt_retry_queue_churn, case_receipt_stale_partial_io,
-                 case_receipt_lost_before_recovery, case_disk_note):
+                 case_receipt_lost_before_recovery, case_receipt_first_stat_loss, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

@@ -413,7 +413,8 @@ def receipt_step(conn, limit=200, now=None):
                     # Its age is unknown: no safe new coverage boundary.
                     stat_incomplete = True
                     retry += 1
-        fresh.sort()
+                    fresh.append((None, f))  # retain identity even before the first stat
+        fresh.sort(key=lambda item: (item[0] is None, item[0] or 0, item[1]))
 
         def due(f):
             stale, journal = rows[name(f)]
@@ -455,7 +456,7 @@ def receipt_step(conn, limit=200, now=None):
                     queued[key] = sequence
                     conn.execute("INSERT INTO sweepmeta (k, v) VALUES (?, ?)", (key, sequence))
         todo.sort(key=lambda item: queued[qkey(item[1])])
-        unread = {f: m for m, f in fresh if m <= cutoff}
+        unread = {f: m for m, f in fresh if m is not None and m <= cutoff}
         n = bad = jfault = attempts = 0
         for mtime, path, is_fresh in todo:
             if attempts >= limit:
@@ -496,6 +497,8 @@ def receipt_step(conn, limit=200, now=None):
                     conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?, at = ?,"
                                  " sig = CASE WHEN pub = ? THEN ? ELSE sig END WHERE runid = ?",
                                  (reason, t0, pub, sig, runid))
+                    conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)",
+                                 ("receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR),))
                     if journal == "FAULT":  # a digest mismatch WAS measured
                         conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
                                      " WHERE runid = ?", (journal, jreason, runid))
@@ -531,6 +534,21 @@ def receipt_step(conn, limit=200, now=None):
             if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
                 journal = "PENDING"
                 jreason = "the receipt signs a journal that has not arrived yet"
+            partial_key = "receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR)
+            recovering = conn.execute("SELECT v FROM sweepmeta WHERE k = ?", (partial_key,)).fetchone()
+            if recovering:
+                # This is completion of a partial reread, not a new operator
+                # decision to reinterpret the old evidence. Missing sources
+                # must not erase faults measured before the I/O interruption.
+                old = conn.execute("SELECT verdict, reason, angles, journal, journal_reason"
+                                   " FROM receipts WHERE runid = ?", (runid,)).fetchone()
+                if old:
+                    if old[0] == "FAULT":
+                        verdict, reason = old[0], old[1]
+                    if old[2] == "FAULT" or not angles:
+                        angles = old[2]
+                    if old[3] == "FAULT" or (old[3] == "OK" and journal in ("ABSENT", "PENDING", "BLIND")):
+                        journal, jreason = old[3], old[4]
             # signed_at is the file's mtime: the lobby writes it at the run's
             # end, and a resumed run's runid is its FIRST session's.
             with conn:
@@ -544,6 +562,7 @@ def receipt_step(conn, limit=200, now=None):
                      journal, jreason))
                 bind_key(conn, runid, pub, t0)
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
+                conn.execute("DELETE FROM sweepmeta WHERE k = ?", (partial_key,))
             unread.pop(path, None)
             n += 1
             bad += verdict != "VALID"
