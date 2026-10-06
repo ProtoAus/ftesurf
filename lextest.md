@@ -19,6 +19,8 @@ instead of accepting every light in the PVS. Machine controls retain visible
 lights, prove blocked contributions are zero and keep adjacent world geometry
 unchanged. This is not a claim of exact Source rendering: large unbaked models
 still use one sample/two slots; the engine's HL2_MODEL_LIGHTING.md explains why.
+The HL2 DLL is deployed to both Windows installs (6 Oct, 15:29 UTC), and cold
+launches of both installed clients passed the controls. EXEs/progs are unchanged.
 
 - Restart the client to pick up the new HL2 DLL; no owner game was terminated.
 - Revisit your two saved cameras and judge the default picture.
