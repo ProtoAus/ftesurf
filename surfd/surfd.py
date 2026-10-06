@@ -1039,6 +1039,9 @@ def receipts_v8(conn):
                           ("journal", "journal TEXT NOT NULL DEFAULT ''"),
                           ("journal_reason",
                            "journal_reason TEXT NOT NULL DEFAULT ''"),
+                          # Historical detail is unknown; never reconstruct it
+                          # from a source that may have changed since observation.
+                          ("angles_reason", "angles_reason TEXT NOT NULL DEFAULT ''"),
                           # Empty is an unbound historical observation, not a
                           # bad signature. Never backfill from today's path or
                           # automatically request reinterpretation at startup.

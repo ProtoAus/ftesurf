@@ -574,6 +574,7 @@ def review_section(pw_hash, pw):
     d = detail(rid_r)["receipt"]
     check("the verdict reaches the page", (d["verdict"], d["angles"]), ("VALID", "OK"))
     check("unmigrated receipt has an explicitly unknown reread binding", d.get("identity_bound"), False)
+    check("unmigrated angle detail is explicitly unavailable", d.get("angles_reason"), "")
     check("both names this key has signed for, with their counts",
           sorted((p["player"], p["runs"]) for p in d["players"]),
           [("rcpt", 3), ("someone_else", 1)])
@@ -597,6 +598,8 @@ def review_section(pw_hash, pw):
     check("...and a row with no journal column says NOT CHECKED, not absent",
           (d["journal"], d["journal_reason"]), ("", ""))
     check("...and the page offers both wordings", 'not checked by this sweep' in body, True)
+    check("...and the page offers historical angle-detail wording",
+          'detail unavailable (historical observation)' in body, True)
     conn = m.connect()
     try:
         with conn:
@@ -607,14 +610,19 @@ def review_section(pw_hash, pw):
             m.receipts_v8(conn)
             check("migration leaves historical receipt identity unknown",
                   conn.execute("SELECT identity FROM receipts WHERE runid = ?", (runid,)).fetchone()[0], "")
+            check("migration leaves historical angle detail unknown",
+                  conn.execute("SELECT angles_reason FROM receipts WHERE runid = ?", (runid,)).fetchone()[0], "")
             conn.execute("UPDATE receipts SET journal = 'FAULT', journal_reason ="
-                         " 'PITCH IDENTITY BROKEN on 1 of 39 governed frames', identity = ?"
-                         " WHERE runid = ?", ("v1:" + "a" * 64, runid))
+                         " 'PITCH IDENTITY BROKEN on 1 of 39 governed frames', identity = ?,"
+                         " angles_reason = ? WHERE runid = ?",
+                         ("v1:" + "a" * 64, "<img src=x onerror=alert(1)> measured angle detail", runid))
     finally:
         conn.close()
     d2 = detail(rid_r)["receipt"]
     check("bound state reaches admin without exposing the digest",
           (d2.get("identity_bound"), "identity" in d2), (True, False))
+    check("stored angle detail reaches authenticated admin as text",
+          d2.get("angles_reason"), "<img src=x onerror=alert(1)> measured angle detail")
     check("a journal verdict reaches the page beside the signature verdict",
           (d2["journal"], "PITCH IDENTITY" in d2["journal_reason"]), ("FAULT", True))
     check("...and the signature verdict did NOT move -- a journal-content fault"

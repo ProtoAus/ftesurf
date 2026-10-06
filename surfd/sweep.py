@@ -309,7 +309,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     delayed-journal re-read, where a .rec pruned since the first read must not move
     the verdict and a late .hid or .view must still be checked.
     -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed,
-        partial, identity, view_missing, rec_missing), or None. view_only checks the view and
+        partial, identity, view_missing, rec_missing, angles_reason), or None. view_only checks the view and
     recording/angles without observing HID. `view_missing` is a captured absence,
     not a later stat. `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
@@ -354,7 +354,8 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
         return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
                 r.angles, faults[0][:300] if faults else "", 1 if r.ok is True else 0,
                 "", "", 0, deferred, identity,
-                r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None, not r.recpath)
+                r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None, not r.recpath,
+                r.angles_detail[:1000])
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
@@ -373,7 +374,8 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
                   if journal == "FAULT" else "signed sibling read deferred after I/O")
         return ("FAULT", r.head.get("pub", ""), r.head.get("map", ""),
                 "BLIND", observed[0][:300], 1 if r.ok is True else 0,
-                journal, detail[:300], 0, True, identity, False, False)  # only these faults were measured
+                journal, detail[:300], 0, True, identity, False, False,
+                "angle check deferred after signed sibling I/O; no angle measurement")
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -397,7 +399,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
             r.journal, (r.journal_detail or "")[:300],
             1 if getattr(r, "journal_owed", False) else 0, False, identity,
             not journal_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None,
-            not journal_only and not r.recpath)
+            not journal_only and not r.recpath, r.angles_detail[:1000])
 
 
 def receipt_rec_runids(mapname):
@@ -645,6 +647,7 @@ def receipt_step(conn, limit=200, now=None):
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got[:9]
             partial, identity = got[9:11]
+            areason = got[13]
             signed_at = prior[4] if prior else max(1, int(mtime))
             if view_only or rec_only:
                 old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?", (runid,)).fetchone()
@@ -656,8 +659,8 @@ def receipt_step(conn, limit=200, now=None):
                     # Earlier angle faults are historical evidence; absence or a
                     # later clean/BLIND pair cannot clear them. No journal update.
                     if angles:
-                        conn.execute("UPDATE receipts SET angles = ? WHERE runid = ? AND angles != 'FAULT'",
-                                     (angles, runid))
+                        conn.execute("UPDATE receipts SET angles = ?, angles_reason = ?"
+                                     " WHERE runid = ? AND angles != 'FAULT'", (angles, areason, runid))
                     if not partial:
                         conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
                         if view_only or (rec_only and not got[11]):
@@ -726,13 +729,13 @@ def receipt_step(conn, limit=200, now=None):
                 # This is completion of a partial reread, not a new operator
                 # decision to reinterpret the old evidence. Missing sources
                 # must not erase faults measured before the I/O interruption.
-                old = conn.execute("SELECT verdict, reason, angles, journal, journal_reason"
+                old = conn.execute("SELECT verdict, reason, angles, journal, journal_reason, angles_reason"
                                    " FROM receipts WHERE runid = ?", (runid,)).fetchone()
                 if old:
                     if old[0] == "FAULT":
                         verdict, reason = old[0], old[1]
                     if old[2] == "FAULT" or not angles:
-                        angles = old[2]
+                        angles, areason = old[2], old[5]
                     if old[3] == "FAULT" or (old[3] == "OK" and journal in ("ABSENT", "PENDING", "BLIND")):
                         journal, jreason = old[3], old[4]
             # First signed_at is the file's mtime: the lobby writes it at the
@@ -742,10 +745,10 @@ def receipt_step(conn, limit=200, now=None):
                 conn.execute(
                     "INSERT OR REPLACE INTO receipts"
                     " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale,"
-                    "  journal, journal_reason, identity)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                    "  journal, journal_reason, identity, angles_reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
                     (runid, mapname, pub, verdict, angles, reason, t0, sig,
-                     signed_at, journal, jreason, prior[2] if prior and prior[2] else identity))
+                     signed_at, journal, jreason, prior[2] if prior and prior[2] else identity, areason))
                 bind_key(conn, runid, pub, t0)
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", (partial_key,))

@@ -366,6 +366,8 @@ def receipt_for(conn, rid, runid):
              if "journal" in cols and "journal_reason" in cols else "")
     if "identity" in cols:
         extra += ", identity"
+    if "angles_reason" in cols:
+        extra += ", angles_reason"
     rc = conn.execute("SELECT runid, map, pub, verdict, angles, reason, at"
                       + extra + " FROM receipts WHERE runid = ?",
                       (runid,)).fetchone()
@@ -373,6 +375,7 @@ def receipt_for(conn, rid, runid):
         return None
     out = dict(rc)
     out["identity_bound"] = bool(out.pop("identity", ""))
+    out.setdefault("angles_reason", "")
     # An unmigrated row is "this sweep never asked", which is NOT the same fact
     # as ABSENT ("it asked, and there is no journal beside this receipt").
     if "journal" not in out:

@@ -301,7 +301,10 @@ function renderRun(j) {
     // "not checked" and "checked and agreed" are different facts, and so is
     // "checked and could not have disagreed" -- see reccheck's BLIND.
     put("angles", c.angles ? pill(c.angles, ANG_CLS[c.angles])
-                           : el("span", "muted", "no recording to check against"));
+                           : el("span", "muted", "not checked by this sweep"));
+    if (c.angles) put("angles says", c.angles_reason
+      ? el("span", "reason", c.angles_reason)
+      : el("span", "muted", "detail unavailable (historical observation)"));
     // "NOT CHECKED" AND "NO JOURNAL HERE" ARE DIFFERENT FACTS, and the wording
     // has to say which: ABSENT is the normal case on a lobby today, because
     // run_evidence_ul 1 uploads the .view only, so a reader who saw one grey pill

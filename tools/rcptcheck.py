@@ -461,7 +461,9 @@ def join_angles(r, want):
         r.note("the recording carries no angle stream to check the sidecar against")
         return
     solo = v.info.get("angle_solo", "")
-    r.angles_detail = off if not solo else "%s; %s" % (off, solo)
+    detail = [off] + ([solo] if solo else [])
+    detail.extend(n for n in v.notes if n.startswith("the tight angle rule did not judge this pair:"))
+    r.angles_detail = "; ".join(detail)
     bad = [m for m in v.faults if "does not describe this recording" in m
            or "does not match its sidecar" in m
            or "the sidecar is not this recording's" in m]

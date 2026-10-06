@@ -23,6 +23,12 @@ def row(conn):
     return dict(conn.execute('SELECT * FROM receipts').fetchone())
 
 
+def angle_reason(rc, rp):
+    r = rc.read(rp)
+    rc.join_rec(r);rc.join_uploaded(r, {'hid': True});rc.join_angles(r, {})
+    return r.angles_detail[:1000]
+
+
 def keys(conn):
     return [tuple(r) for r in conn.execute('SELECT * FROM pubkeys ORDER BY pub, player')]
 
@@ -90,7 +96,7 @@ def case_outcomes():
                 conn.execute('DELETE FROM receipts');conn.execute('DELETE FROM pubkeys');conn.commit()
                 check('unsigned: new no-view statement ACTS', sweep.receipt_step(conn, now=now + 1), (1, 0))
             if kind == 'prior-angle':
-                conn.execute("UPDATE receipts SET verdict='FAULT', angles='FAULT', reason='historical angle fault'")
+                conn.execute("UPDATE receipts SET verdict='FAULT', angles='FAULT', reason='historical angle fault', angles_reason='historical angle detail'")
                 conn.commit()
             before, before_keys = row(conn), keys(conn)
             with mock.patch.object(rc, 'read', wraps=rc.read) as reads:
@@ -119,7 +125,8 @@ def case_outcomes():
             after = row(conn)
             expected = dict(before)
             if new_fault:expected.update(verdict='FAULT', reason=control.faults[0][:300])
-            if before['angles'] != 'FAULT' and control.angles:expected['angles'] = control.angles
+            if before['angles'] != 'FAULT' and control.angles:
+                expected.update(angles=control.angles, angles_reason=control.angles_detail[:1000])
             check(kind + ': only monotonic view findings change', after, expected)
             check(kind + ': no key sightings or waiting marker', (keys(conn), waits(conn)), (before_keys, 0))
             with mock.patch.object(rc, 'read', wraps=rc.read) as reads:
@@ -304,7 +311,7 @@ def case_selection_race():
                 with mock.patch.object(rc, 'join_journal', wraps=rc.join_journal) as journal:
                     got = sweep.receipt_step(conn, now=now + 120)
                 check(label + ': stable-view restoration ACTS without HID', (got, journal.call_count), ((1, 0), 0))
-                check(label + ': restored join preserves completed HID finding', row(conn), dict(before, angles='OK'))
+                check(label + ': restored join preserves completed HID finding', row(conn), dict(before, angles='OK', angles_reason=angle_reason(rc, rp)))
                 check(label + ': completion retires only view readiness', (waits(conn), keys(conn)), (0, before_keys))
             finally:
                 restore_game(rc)
@@ -357,7 +364,7 @@ def case_deferred_fault():
         # must survive the completion of this source's interrupted read.
         put(recpath, text.replace('\nnonce ' + '0' * 32, '').encode('utf-8'))
         check('partial: recovery actually finishes view check', sweep.receipt_step(conn, now=now + 120), (1, 0))
-        check('partial: recovery cannot erase fault', row(conn), dict(expected, angles='OK'))
+        check('partial: recovery cannot erase fault', row(conn), dict(expected, angles='OK', angles_reason=angle_reason(rc, rp)))
         check('partial: only completed view retires readiness', (waits(conn), keys(conn)), (0, before_keys))
     finally:
         restore_game(rc)

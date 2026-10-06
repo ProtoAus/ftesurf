@@ -9,7 +9,7 @@ import time
 from unittest import mock
 
 import test_sweep as suite
-from test_receipt_late_view import row, keys, put as put_bytes, restore_game, setup as view_setup
+from test_receipt_late_view import row, keys, angle_reason, put as put_bytes, restore_game, setup as view_setup
 
 check = suite.check
 
@@ -110,7 +110,8 @@ def case_outcomes():
                 got = sw.receipt_step(c, limit=1, now=now + 60)
             check(kind + ': recording join ACTS, never HID', (got, joins.call_count, journal.call_count),
                   ((1, int(bool(ctl.faults) and before['verdict'] != 'FAULT')), 1, 0))
-            want = dict(before, angles=ctl.angles or '', verdict='FAULT' if before['verdict'] == 'FAULT' or ctl.faults else 'VALID',
+            want = dict(before, angles=ctl.angles or '', angles_reason=ctl.angles_detail[:1000],
+                        verdict='FAULT' if before['verdict'] == 'FAULT' or ctl.faults else 'VALID',
                         reason=before['reason'] if before['verdict'] == 'FAULT' else ctl.faults[0][:300] if ctl.faults else '')
             check(kind + ': only measured pair findings change', (row(c), keys(c), waits(c)), (want, before_keys, 0))
             # A completed source replacement is outside this scheduler.
@@ -147,7 +148,7 @@ def case_arrival_order_and_locations():
                 control(rc, rp, 'OK')
                 check(leg + '/' + first + ': final pair ACTS', sw.receipt_step(c, now=now + 120), (1, 0))
                 check('arrival order: pair only, no history/key reset', (row(c), keys(c), waits(c), waits(c, 'view')),
-                      (dict(before, angles='OK'), before_keys, 0, 0))
+                      (dict(before, angles='OK', angles_reason=angle_reason(rc, rp)), before_keys, 0, 0))
             finally:
                 restore_game(rc)
 
@@ -206,7 +207,7 @@ def case_identity():
             check(kind + ': replacement rejected before joins', (got, joins.call_count, row(c), keys(c), waits(c)), ((0, 0), 0, before, before_keys, 1))
             put(rp, saved); os.utime(rp, (old,) * 2); put(rp[:-5] + '.view', view)
             check(kind + ': original recovery ACTS', sw.receipt_step(c, now=now + 120), (1, 0))
-            check(kind + ': recovery preserves binding and keys', (row(c), keys(c)), (dict(before, angles='OK'), before_keys))
+            check(kind + ': recovery preserves binding and keys', (row(c), keys(c)), (dict(before, angles='OK', angles_reason=angle_reason(rc, rp)), before_keys))
         finally:
             restore_game(rc)
 
@@ -244,7 +245,7 @@ def case_io_races_and_fairness():
             check(failure + ': unmeasured read keeps history and readiness', (got, row(c), keys(c), waits(c)), ((0, 0), before, before_keys, 1))
             put(path, rec.encode('utf-8'))
             check(failure + ': recovery ACTS', sw.receipt_step(c, now=now + 120), (1, 0))
-            check(failure + ': pair measured and readiness retired', (row(c), waits(c)), (dict(before, angles='OK'), 0))
+            check(failure + ': pair measured and readiness retired', (row(c), waits(c)), (dict(before, angles='OK', angles_reason=angle_reason(rc, rp)), 0))
         finally:
             restore_game(rc)
     s, sw, c, rp, _pub, now, old, rc, rec, view, path, hid = setup('20261006-000406-0', missing_view=True)

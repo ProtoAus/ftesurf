@@ -697,6 +697,21 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Angle explanations are observations, not strings to reconstruct later**
+  (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the
+  same captured pair as `angles`; diagnostic notes include why an existing
+  rule abstained. Late view/recording updates move verdict and detail together,
+  never overwriting an earlier angle FAULT. Partial reads/recovery keep the
+  historical detail whenever they keep its verdict; journal-only retries leave
+  both alone. A completed explicit full reread may replace both. The additive
+  migration leaves old details empty, even if sources still exist. Authenticated
+  admin renders literal text and says historical detail unavailable; an empty
+  angle verdict says not checked, not that the recording is necessarily absent.
+  This changes no thresholds, detector verdicts, signing history, ranked policy
+  or automatic reread scheduling. `test_receipt_angle_reasons.py` exercises real
+  signed pairs, migration and executed DOM rendering; scheduling suites compare
+  complete rows including the detail.
+
 THE DESIGN IS NOT IN THIS REPO. It lives in
 `C:/FTESurf-private/anticheat-plan.md` — layers 0–3, threat classes T0–T5,
 phases 0–5, experiments E1–E5. Read it before touching anything below; none of
