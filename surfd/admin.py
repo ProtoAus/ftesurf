@@ -55,6 +55,7 @@ WHAT IT DELIBERATELY DOES NOT DO
 import base64
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -368,6 +369,8 @@ def receipt_for(conn, rid, runid):
         extra += ", identity"
     if "angles_reason" in cols:
         extra += ", angles_reason"
+    if "journal_metrics" in cols:
+        extra += ", journal_metrics"
     rc = conn.execute("SELECT runid, map, pub, verdict, angles, reason, at"
                       + extra + " FROM receipts WHERE runid = ?",
                       (runid,)).fetchone()
@@ -376,6 +379,7 @@ def receipt_for(conn, rid, runid):
     out = dict(rc)
     out["identity_bound"] = bool(out.pop("identity", ""))
     out.setdefault("angles_reason", "")
+    out["journal_metrics"] = receipt_metrics(out.get("journal_metrics", ""))
     # An unmigrated row is "this sweep never asked", which is NOT the same fact
     # as ABSENT ("it asked, and there is no journal beside this receipt").
     if "journal" not in out:
@@ -398,6 +402,36 @@ def receipt_for(conn, rid, runid):
             " ORDER BY pub",
             (rid,)).fetchall()]
     return out
+
+
+def receipt_metrics(raw):
+    """Bounded typed observation, or explicit unavailable; no legacy backfill."""
+    if not isinstance(raw, str) or not raw or len(raw) > 8192:
+        return None
+    try:
+        snap = json.loads(raw)
+        if (not isinstance(snap, dict) or set(snap) != {"version", "metrics"}
+                or type(snap["version"]) is not int or snap["version"] != 1
+                or not isinstance(snap["metrics"], dict) or len(snap["metrics"]) > 64):
+            return None
+        for key, value in snap["metrics"].items():
+            if not re.fullmatch(r"(?:identity_|join_)[a-z_]{1,48}|view_records|frames_not_governed", key):
+                return None
+            if key in ("identity_yaw_exclusions", "identity_pitch_exclusions"):
+                if not isinstance(value, dict) or len(value) > 32:
+                    return None
+                if any(not re.fullmatch(r"[a-z_]{1,48}", k) or type(v) is not int
+                       or not 0 <= v <= 10**12 for k, v in value.items()):
+                    return None
+            elif key == "join_declared_transform_profile":
+                if type(value) is not bool:
+                    return None
+            elif type(value) not in (int, float) or not 0 <= value <= 10**12:
+                # The comparisons also reject NaN/Inf, without importing tools.
+                return None
+        return snap
+    except (ValueError, TypeError, RecursionError):
+        return None
 
 
 def clean_note(raw):

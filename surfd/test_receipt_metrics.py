@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sys
 from unittest import mock
 
@@ -160,12 +161,44 @@ def case_late_view_and_identity():
 
 
 def main():
-    for case in (case_full_and_no_backfill, case_migration, case_late_journal_and_io,
-                 case_partial_history, case_late_view_and_identity):
-        try:
-            case()
-        except Exception as e:
-            check(case.__name__, '%s: %s' % (type(e).__name__, e), 'no exception')
+    homes, connections, handlers = [], [], []
+    real_fresh = suite.fresh
+
+    def tracked_fresh():
+        s, sw, runs = real_fresh()
+        homes.append(s.BASE_DIR)
+        handlers.extend((s.log, h) for h in s.log.handlers
+                        if getattr(h, 'baseFilename', '').startswith(os.path.abspath(s.BASE_DIR) + os.sep))
+        real_connect = s.connect
+
+        def tracked_connect():
+            c = real_connect()
+            connections.append(c)
+            return c
+
+        s.connect = tracked_connect
+        return s, sw, runs
+
+    try:
+        with mock.patch.object(suite, 'fresh', side_effect=tracked_fresh):
+            for case in (case_full_and_no_backfill, case_migration, case_late_journal_and_io,
+                         case_partial_history, case_late_view_and_identity):
+                try:
+                    case()
+                except Exception as e:
+                    check(case.__name__, '%s: %s' % (type(e).__name__, e), 'no exception')
+    finally:
+        for c in connections:
+            c.close()
+        for logger, h in handlers:
+            logger.removeHandler(h)
+            h.close()
+        for home in homes:
+            try:
+                shutil.rmtree(home)
+                check('cleanup: owned synthetic home removed', os.path.exists(home), False)
+            except OSError as e:
+                check('cleanup: owned synthetic home removal', type(e).__name__, 'removed')
     print('%d failed' % len(suite.FAILED))
     return int(bool(suite.FAILED))
 

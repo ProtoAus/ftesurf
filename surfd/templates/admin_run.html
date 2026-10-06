@@ -315,6 +315,28 @@ function renderRun(j) {
     put("journal", c.journal ? pill(c.journal, JRN_CLS[c.journal] || "warn")
                              : el("span", "muted", "not checked by this sweep"));
     if (c.journal_reason) put("journal says", el("span", "reason", c.journal_reason));
+    if (c.journal_metrics) {
+      const panel = el("details");
+      panel.append(el("summary", "", "Stored measurements (v1; observations, not policy)"));
+      const metrics = el("dl");
+      const labels = {view_records: "view records (frame opportunities)",
+        identity_judged: "union judged frames", identity_yaw_judged: "yaw judged frames",
+        identity_pitch_judged: "pitch judged frames", join_windows: "counts-join windows",
+        join_checked: "counts-join checked windows"};
+      for (const [name, value] of Object.entries(c.journal_metrics.metrics).sort()) {
+        const text = typeof value === "object"
+          ? Object.entries(value).sort().map(([k, v]) => k + ": " + v).join(", ") || "none"
+          : String(value);
+        metrics.append(el("dt", "", labels[name] || name.replaceAll("_", " ")),
+                       el("dd", "mono", text));
+      }
+      if (!Object.keys(c.journal_metrics.metrics).length)
+        panel.append(el("span", "muted", "reader ran; no numeric measurements available"));
+      panel.append(metrics);
+      put("journal metrics", panel);
+    } else {
+      put("journal metrics", el("span", "muted", "unavailable (no stored metric snapshot)"));
+    }
     const key = el("span", "mono", String(c.pub).slice(0, 16) + "\u2026");
     key.title = c.pub;
     put("key", key);
