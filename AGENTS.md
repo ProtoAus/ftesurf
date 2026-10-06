@@ -2,6 +2,10 @@
 
 Working notes for coding-agent sessions in this repo. Read CONTRIBUTING.md too
 (git identity, `git clean -x`, line endings, `.src` ordering).
+Pi subagent setup and its read-only smoke workflow are documented in
+`.pi/README.md`. Native roles inherit the parent session's selected model via
+`.pi/settings.json`; delegation still requires an operator request. Runtime
+state under `.pi/` is ignored, not material to commit or publish.
 Keep code comments concise; long-form reasoning belongs in ENGINE_PATCHES.md
 essays, not in source files. See CLAUDE.md for the comment-style rules.
 Beta phase, not release: building, deploying and restarting the Pi lobbies are

@@ -116,6 +116,14 @@ __pycache__/
 !/.gitattributes
 !/.editorconfig
 !/.github/
+# Pi project configuration only; runtime evidence and local state stay private.
+!/.pi/
+/.pi/*
+!/.pi/settings.json
+!/.pi/README.md
+!/.pi/workflows/
+/.pi/workflows/*
+!/.pi/workflows/subagents-smoke.js
 !/README.md
 !/LICENSE
 !/CONTRIBUTING.md

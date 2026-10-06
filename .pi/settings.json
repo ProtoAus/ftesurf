@@ -1,0 +1,16 @@
+{
+  "packages": ["npm:pi-subagents"],
+  "subagents": {
+    "projectRootResolution": "git-root",
+    "defaultModel": "inherit",
+    "agentOverrides": {
+      "scout": { "model": "inherit", "thinking": "low" },
+      "worker": { "model": "inherit", "thinking": "medium" },
+      "delegate": { "model": "inherit", "thinking": "medium" },
+      "researcher": { "model": "inherit", "thinking": "medium" },
+      "reviewer": { "model": "inherit", "thinking": "high" },
+      "evidence-auditor": { "model": "inherit", "thinking": "high" },
+      "oracle": { "model": "inherit", "thinking": "high" }
+    }
+  }
+}
