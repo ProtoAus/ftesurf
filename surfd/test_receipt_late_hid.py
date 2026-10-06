@@ -10,6 +10,7 @@ must actually judge each fixture. Late view/rec scheduling is a separate task.
 import builtins
 import contextlib
 import io
+import json
 import os
 import sys
 import time
@@ -94,7 +95,10 @@ def case_outcomes():
         check(kind + ": late arrival actually joins", (got, uploaded.call_count), ((1, bad), 1))
         check(kind + ": no historical rec/angle reinterpretation", (rec.call_count, angles.call_count), (0, 0))
         after = row(conn)
-        expected = dict(before, journal=journal, journal_reason=control.journal_detail[:300])
+        expected = dict(before, journal=journal, journal_reason=control.journal_detail[:300],
+                        journal_metrics=json.dumps(control.journal_metrics, sort_keys=True,
+                                                   separators=(",", ":"), allow_nan=False)
+                        if control.journal_metrics is not None else "")
         if bad:
             expected.update(verdict="FAULT", reason=control.faults[0][:300])
         check(kind + ": only permitted evidence columns move", after, expected)
@@ -127,8 +131,9 @@ def case_pruned_recording():
         check("prune: late HID acts without rejoining removed recording", (got, rec.call_count), ((1, 0), 0))
         after = row(conn)
         check("prune: primary historical fault preserved", {k: v for k, v in after.items()
-              if k not in ("journal", "journal_reason")}, {k: v for k, v in before.items()
-              if k not in ("journal", "journal_reason")})
+              if k not in ("journal", "journal_reason", "journal_metrics")}, {k: v for k, v in before.items()
+              if k not in ("journal", "journal_reason", "journal_metrics")})
+        check("prune: late journal snapshot measured", json.loads(after["journal_metrics"])["metrics"]["identity_judged"], 39)
         check("prune: journal now OK, no new key sighting", (after["journal"], keys(conn)), ("OK", before_keys))
     finally:
         rc.GAME = os.path.join(os.path.dirname(suite.TOOLS), "ftesurf")
@@ -158,8 +163,9 @@ def case_pruned_angles():
         check("angles: late HID still ACTS after pair pruning", sweep.receipt_step(conn, now=now + 60), (1, 0))
         after = row(conn)
         check("angles: historical angle fault cannot be erased", {k: v for k, v in after.items()
-              if k not in ("journal", "journal_reason")}, {k: v for k, v in before.items()
-              if k not in ("journal", "journal_reason")})
+              if k not in ("journal", "journal_reason", "journal_metrics")}, {k: v for k, v in before.items()
+              if k not in ("journal", "journal_reason", "journal_metrics")})
+        check("angles: late journal snapshot measured", json.loads(after["journal_metrics"])["metrics"]["identity_judged"], 39)
         check("angles: arrived journal now OK", after["journal"], "OK")
     finally:
         rc.GAME = os.path.join(os.path.dirname(suite.TOOLS), "ftesurf")
