@@ -225,9 +225,7 @@ below is the collection side and the rules that still only note.
   receipt is read once, or again only while its journal is PENDING, so a `.view`
   or `.hid` landing after its last read is never hashed -- at `run_evidence_ul 1`
   the first read is ABSENT, not PENDING, and nothing reads it again (re-hash
-  siblings newer than the row's read). The
-  PENDING re-read does not check it is reading the receipt that made the row
-  (compare pub and the signed lines). And the no-mouse BLIND rule asks only
+  siblings newer than the row's read). The no-mouse BLIND rule asks only
   whether any count exists: one 1-count frame turns a console-driven run OK again.
 
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean

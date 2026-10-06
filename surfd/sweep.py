@@ -35,6 +35,7 @@ import argparse
 import filecmp
 import glob
 import hashlib
+import json
 import logging
 import os
 import re
@@ -289,13 +290,25 @@ def sweep(conn, limit, runner=None, now=None):
     return counts
 
 
-def read_receipt(path, journal_only=False):
+class ReceiptIdentityChanged(Exception):
+    """The path no longer describes the receipt whose observation we stored."""
+
+
+def receipt_identity(r):
+    # Bind the ordered signed message AND join-driving unsigned head keys,
+    # including pub/signature. Formatting alone does not change parsed values.
+    data = json.dumps(["FTESURF-receipt-identity-v1", r.first, r.head, r.signed, r.faults],
+                      sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "v1:" + hashlib.sha256(data.encode("ascii")).hexdigest()
+
+
+def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None):
     """One receipt, fully joined -- or, with journal_only, everything but the
     .rec joins: the signature, the sibling digests and the journal, for the
     PENDING re-read, where a .rec pruned since the first read must not move
     the verdict and a late .hid or .view must still be checked.
-    -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed)
-    or None; `sig` is 1 when the signature verified, which a FAULT for any other
+    -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed,
+        partial, identity), or None; `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
     receipt signs a kept one's digest, i.e. it may still be uploading.
 
@@ -312,6 +325,12 @@ def read_receipt(path, journal_only=False):
     r = rcptcheck.read(path)
     if r.ioerror:
         return None             # retry a read failure, never store it as evidence
+    identity = receipt_identity(r)
+    if ((expected_identity and identity != expected_identity) or
+            (expected_pub is not None and r.head.get("pub", "") != expected_pub)):
+        # Before ANY joins: a replacement's signature cannot authorize content
+        # under the original receipt's historical key attribution.
+        raise ReceiptIdentityChanged("receipt identity changed; reread deferred")
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
@@ -329,7 +348,7 @@ def read_receipt(path, journal_only=False):
                   if journal == "FAULT" else "signed sibling read deferred after I/O")
         return ("FAULT", r.head.get("pub", ""), r.head.get("map", ""),
                 "BLIND", observed[0][:300], 1 if r.ok is True else 0,
-                journal, detail[:300], 0, True)  # partial: only these faults were measured
+                journal, detail[:300], 0, True, identity)  # only these faults were measured
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -351,7 +370,7 @@ def read_receipt(path, journal_only=False):
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),
             r.angles, reason[:300], 1 if r.ok is True else 0,
             r.journal, (r.journal_detail or "")[:300],
-            1 if getattr(r, "journal_owed", False) else 0)
+            1 if getattr(r, "journal_owed", False) else 0, False, identity)
 
 
 def receipt_step(conn, limit=200, now=None):
@@ -378,8 +397,16 @@ def receipt_step(conn, limit=200, now=None):
         # journal is the one upload that can outlast that window.  What DOES go
         # stale is the thresholds -- reccheck's are measured, and measuring them
         # again will move them -- so an operator can say so with --reread-receipts.
-        rows = {r[0]: (r[1], r[2]) for r in
-                conn.execute("SELECT runid, stale, journal FROM receipts")}
+        rows = {r[0]: (r[1], r[2], r[3], r[4], r[5]) for r in
+                conn.execute("SELECT runid, stale, journal, identity, pub, signed_at FROM receipts")}
+        baselines = {r[0][len("receipt_baseline:"):] for r in conn.execute(
+            "SELECT k FROM sweepmeta WHERE k GLOB 'receipt_baseline:*'")}
+        legacy_pending = sum(not ident and (jr == "PENDING" or st in (1, 2))
+                             and rid not in baselines
+                             for rid, (st, jr, ident, _pub, _at) in rows.items())
+        if legacy_pending:
+            print("receipt identity unknown: %d legacy pending reread(s) deferred"
+                  % legacy_pending, file=sys.stderr)
         # THE SAME SETTLE WINDOW THE EVIDENCE INDEX USES, and for the same
         # reason one level along: the receipt is written at the run's end edge
         # and the upload it commits to arrives AFTERWARDS, so a receipt read the
@@ -417,15 +444,17 @@ def receipt_step(conn, limit=200, now=None):
         fresh.sort(key=lambda item: (item[0] is None, item[0] or 0, item[1]))
 
         def due(f):
-            stale, journal = rows[name(f)]
+            stale, journal, identity, _pub, signed_at = rows[name(f)]
+            if not identity and name(f) not in baselines:
+                return False    # migration's stale=1 is NOT operator permission
             if stale in (1, 2):
                 return True
-            # PENDING: one stat a pass, and a re-read only when the journal has
-            # arrived or the wait is over (to close it ABSENT).
+            # PENDING: reread when the journal arrives or the ORIGINAL signing
+            # observation expires. Touching the path cannot reset that wait.
             try:
                 return journal == "PENDING" and (
                     os.path.exists(f[:-5] + ".hid")
-                    or t0 - os.path.getmtime(f) >= surfd.JOURNAL_WAIT)
+                    or t0 - signed_at >= surfd.JOURNAL_WAIT)
             except OSError:
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
@@ -480,14 +509,23 @@ def receipt_step(conn, limit=200, now=None):
             sequence += 1
             with conn:
                 conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?", (sequence, qkey(path)))
-            got = read_receipt(path, journal_only=pending_only)
+            prior = rows.get(runid)
+            try:
+                got = read_receipt(path, journal_only=pending_only,
+                                   expected_identity=prior[2] if prior else None,
+                                   expected_pub=prior[3] if prior else None)
+            except ReceiptIdentityChanged as exc:
+                print("%s: %s" % (os.path.basename(path), exc), file=sys.stderr)
+                retry += 1
+                continue
             # A failed read or a file gone since listing measured no evidence.
             # Leave it retryable, and never claim coverage past an unread run.
             if got is None or not os.path.exists(path):
                 retry += 1
                 continue
             verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got[:9]
-            partial = len(got) > 9 and got[9]
+            partial, identity = got[9:11]
+            signed_at = prior[4] if prior else max(1, int(mtime))
             if partial and not is_fresh:
                 # A stale FULL reread measured a new fault but not the content
                 # joins. Preserve their prior evidence and the stale retry flag.
@@ -495,8 +533,9 @@ def receipt_step(conn, limit=200, now=None):
                                    (runid,)).fetchone()
                 with conn:
                     conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?, at = ?,"
-                                 " sig = CASE WHEN pub = ? THEN ? ELSE sig END WHERE runid = ?",
-                                 (reason, t0, pub, sig, runid))
+                                 " sig = CASE WHEN pub = ? THEN ? ELSE sig END,"
+                                 " identity = CASE WHEN identity = '' THEN ? ELSE identity END"
+                                 " WHERE runid = ?", (reason, t0, pub, sig, identity, runid))
                     conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)",
                                  ("receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR),))
                     if journal == "FAULT":  # a digest mismatch WAS measured
@@ -512,7 +551,7 @@ def receipt_step(conn, limit=200, now=None):
                 # that does not hash to what was signed is a fault the first read
                 # could not see, while a .rec pruned since must not clear one
                 # (reviews of 692503c and 9c672d1).
-                if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
+                if journal == "ABSENT" and owed and t0 - signed_at < surfd.JOURNAL_WAIT:
                     continue
                 old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?",
                                    (runid,)).fetchone()
@@ -531,7 +570,7 @@ def receipt_step(conn, limit=200, now=None):
             # A signed journal that is not here yet may still be uploading, one
             # chunk per round trip: PENDING, read again when it arrives, ABSENT
             # once JOURNAL_WAIT after signing has passed without it.
-            if journal == "ABSENT" and owed and t0 - mtime < surfd.JOURNAL_WAIT:
+            if journal == "ABSENT" and owed and t0 - signed_at < surfd.JOURNAL_WAIT:
                 journal = "PENDING"
                 jreason = "the receipt signs a journal that has not arrived yet"
             partial_key = "receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR)
@@ -549,20 +588,21 @@ def receipt_step(conn, limit=200, now=None):
                         angles = old[2]
                     if old[3] == "FAULT" or (old[3] == "OK" and journal in ("ABSENT", "PENDING", "BLIND")):
                         journal, jreason = old[3], old[4]
-            # signed_at is the file's mtime: the lobby writes it at the run's
-            # end, and a resumed run's runid is its FIRST session's.
+            # First signed_at is the file's mtime: the lobby writes it at the
+            # run's end. Preserve that observation across known rereads; a
+            # retimed copy is not a later signature. Resume runids start earlier.
             with conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO receipts"
                     " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale,"
-                    "  journal, journal_reason)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                    "  journal, journal_reason, identity)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                     (runid, mapname, pub, verdict, angles, reason, t0, sig,
-                     max(1, int(mtime)),      # 0 means "pre-8 row" to receipts_v8
-                     journal, jreason))
+                     signed_at, journal, jreason, prior[2] if prior and prior[2] else identity))
                 bind_key(conn, runid, pub, t0)
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", (partial_key,))
+                conn.execute("DELETE FROM sweepmeta WHERE k = ?", ("receipt_baseline:" + runid,))
             unread.pop(path, None)
             n += 1
             bad += verdict != "VALID"
@@ -570,8 +610,8 @@ def receipt_step(conn, limit=200, now=None):
         # A PENDING row whose receipt was reaped is never read again, and its
         # journal went with it: ABSENT once the wait is over.
         listed = set(name(f) for f in files)
-        gone = [rid for rid, (_st, jr) in rows.items()
-                if jr == "PENDING" and rid not in listed]
+        gone = [rid for rid, (_st, jr, ident, _pub, _at) in rows.items()
+                if ident and jr == "PENDING" and rid not in listed]
         if gone:
             with conn:
                 conn.executemany(
@@ -587,7 +627,7 @@ def receipt_step(conn, limit=200, now=None):
                 conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
                              " VALUES ('receipts_through', ?)", (through,))
         if retry:
-            print("sweep: %d receipt read(s) deferred after an I/O failure; "
+            print("sweep: %d receipt read(s) deferred after I/O or identity loss; "
                   "coverage %s" % (retry, "unchanged (unknown file age)"
                                   if stat_incomplete else "bounded before unread receipts"),
                   file=sys.stderr)
@@ -611,6 +651,11 @@ def mark_receipts_stale(conn):
     is untouched -- re-reading the same files must not count a run twice."""
     with conn:
         conn.executescript(surfd.RECEIPTS_SQL)
+        surfd.receipts_v8(conn)
+        # Separate explicit baseline permission from migration's stale=1.
+        # This establishes CURRENT metadata only; it cannot recover history.
+        conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
+                     " SELECT 'receipt_baseline:' || runid, 1 FROM receipts WHERE identity = ''")
         # 2, not receipts_v8's 1: the row's sig is KNOWN, so admin keeps
         # judging on it until the re-read replaces it.  A row already at 1
         # stays there -- its sig is still unknown.

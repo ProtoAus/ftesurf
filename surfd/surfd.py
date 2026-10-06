@@ -1038,7 +1038,11 @@ def receipts_v8(conn):
                           # fault must not read as a signature that failed.
                           ("journal", "journal TEXT NOT NULL DEFAULT ''"),
                           ("journal_reason",
-                           "journal_reason TEXT NOT NULL DEFAULT ''")))):
+                           "journal_reason TEXT NOT NULL DEFAULT ''"),
+                          # Empty is an unbound historical observation, not a
+                          # bad signature. Never backfill from today's path or
+                          # automatically request reinterpretation at startup.
+                          ("identity", "identity TEXT NOT NULL DEFAULT ''")))):
         cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
         for col, ddl in adds:
             if col not in cols:

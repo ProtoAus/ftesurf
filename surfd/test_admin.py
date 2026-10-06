@@ -573,6 +573,7 @@ def review_section(pw_hash, pw):
         conn.close()
     d = detail(rid_r)["receipt"]
     check("the verdict reaches the page", (d["verdict"], d["angles"]), ("VALID", "OK"))
+    check("unmigrated receipt has an explicitly unknown reread binding", d.get("identity_bound"), False)
     check("both names this key has signed for, with their counts",
           sorted((p["player"], p["runs"]) for p in d["players"]),
           [("rcpt", 3), ("someone_else", 1)])
@@ -584,6 +585,9 @@ def review_section(pw_hash, pw):
     body = page.get_data(as_text=True)
     check("the run page renders", page.status_code, 200)
     check("...and carries the receipt card", 'id="rcptcard"' in body, True)
+    check("...and renders both bound and unknown metadata states",
+          ("bound to captured receipt metadata" in body,
+           "unknown (legacy observation; automatic rereads deferred)" in body), (True, True))
     # THE JOURNAL REACHES THE PAGE.  That INSERT above names no journal column,
     # which is the compatibility case and not an oversight: the columns are added
     # by an idempotent ALTER rather than a schema bump, so a database read before
@@ -601,12 +605,16 @@ def review_section(pw_hash, pw):
             # production runs on every import -- and the arm above, which read a
             # table that never had them, is the compatibility case.
             m.receipts_v8(conn)
+            check("migration leaves historical receipt identity unknown",
+                  conn.execute("SELECT identity FROM receipts WHERE runid = ?", (runid,)).fetchone()[0], "")
             conn.execute("UPDATE receipts SET journal = 'FAULT', journal_reason ="
-                         " 'PITCH IDENTITY BROKEN on 1 of 39 governed frames'"
-                         " WHERE runid = ?", (runid,))
+                         " 'PITCH IDENTITY BROKEN on 1 of 39 governed frames', identity = ?"
+                         " WHERE runid = ?", ("v1:" + "a" * 64, runid))
     finally:
         conn.close()
     d2 = detail(rid_r)["receipt"]
+    check("bound state reaches admin without exposing the digest",
+          (d2.get("identity_bound"), "identity" in d2), (True, False))
     check("a journal verdict reaches the page beside the signature verdict",
           (d2["journal"], "PITCH IDENTITY" in d2["journal_reason"]), ("FAULT", True))
     check("...and the signature verdict did NOT move -- a journal-content fault"

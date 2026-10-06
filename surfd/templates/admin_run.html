@@ -295,6 +295,9 @@ function renderRun(j) {
     const c = j.receipt;
     const put = (k, node) => { rdl.append(el("dt", "", k)); const d = el("dd"); d.append(node); rdl.append(d); };
     put("signature", pill(c.verdict, RCPT_CLS[c.verdict]));
+    put("reread binding", el("span", "muted", c.identity_bound
+      ? "bound to captured receipt metadata"
+      : "unknown (legacy observation; automatic rereads deferred)"));
     // "not checked" and "checked and agreed" are different facts, and so is
     // "checked and could not have disagreed" -- see reccheck's BLIND.
     put("angles", c.angles ? pill(c.angles, ANG_CLS[c.angles])
