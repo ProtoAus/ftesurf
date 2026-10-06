@@ -482,6 +482,49 @@ def case_receipt_io_budget():
           conn.execute("SELECT stale FROM receipts WHERE runid = '20261006-000120-0'").fetchone()[0], 2)
 
 
+def case_receipt_retry_queue_churn():
+    """Queue compaction and new arrivals cannot skip an existing healthy row."""
+    import builtins
+    surfd, sweep, _runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    now = int(time.time())
+    old = now - 2 * surfd.EVIDENCE_SETTLE
+    stale = "20261006-000151-0"
+    make_receipt(surfd.EVIDENCE_DIR, stale, age=old - 100)
+    sweep.receipt_step(conn, now=now)
+    sweep.mark_receipts_stale(conn)
+    blocked, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261006-000149-0", age=old - 50)
+    make_receipt(surfd.EVIDENCE_DIR, "20261006-000150-0", age=old)
+    real_open = builtins.open
+    attempts = []
+
+    def eio(path, *args, **kwargs):
+        if isinstance(path, str) and path.endswith(".rcpt"):
+            attempts.append(path)
+        if path == blocked:
+            raise OSError(5, "Input/output error")
+        return real_open(path, *args, **kwargs)
+
+    per_pass = []
+    with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+        for turn in range(1, 9):
+            if turn >= 4 and turn % 2 == 0:
+                make_receipt(surfd.EVIDENCE_DIR, "20261006-%06d-0" % (151 + turn), age=old + turn)
+            before = len(attempts)
+            sweep.receipt_step(conn, limit=1, now=now)
+            per_pass.append(len(attempts) - before)
+    check("churning queue: every pass retains the one-attempt cap", per_pass, [1] * 8)
+    check("churning queue: CONTROL healthy stale row progressed despite fresh arrivals",
+          conn.execute("SELECT stale FROM receipts WHERE runid = ?", (stale,)).fetchone()[0], 0)
+    check("churning queue: failed receipt has no evidence observation",
+          conn.execute("SELECT verdict FROM receipts WHERE runid = '20261006-000149-0'").fetchone(), None)
+    check("churning queue: coverage remains before the unread failure",
+          conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], old - 51)
+    check("churning queue: metadata tracks the failure and newest unattempted receipt",
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k LIKE 'receipt_retry:%'").fetchone()[0], 2)
+
+
 def case_receipt_mixed_fault_io():
     """An unmeasured sibling cannot erase an independent measured fault."""
     import builtins
@@ -540,6 +583,60 @@ def case_receipt_mixed_fault_io():
                   after[:3] if after else None, before[:3] if before else ("FAULT",))
             check("%s plus sibling I/O: the recovered join leaves PENDING" % kind,
                   after[3] != "PENDING" if after else False, True)
+        finally:
+            rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
+
+
+def case_receipt_stale_partial_io():
+    """Partial rereads can add a fault, never erase unmeasured old joins."""
+    import builtins
+    for prior_fault in (False, True):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        now = int(time.time())
+        rid = "20261006-000145-0"
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid,
+                                age=now - 2 * surfd.EVIDENCE_SETTLE,
+                                hid=_journal_text(break_pitch=prior_fault).encode("utf-8"))
+        rc = None
+        if prior_fault:
+            rc = with_rec(surfd, sweep, rid,
+                          "FTESURF-REC 9\nrunid %s\nnonce %s\nbegin\n" % (rid, "0" * 32))
+        sweep.receipt_step(conn, now=now)
+        sweep.mark_receipts_stale(conn)
+        if not prior_fault:
+            rc = with_rec(surfd, sweep, rid,
+                          "FTESURF-REC 9\nrunid %s\nnonce %s\nbegin\n" % (rid, "0" * 32))
+
+        def joins():
+            return tuple(conn.execute("SELECT angles, journal, journal_reason, stale FROM receipts"
+                                      " WHERE runid = ?", (rid,)).fetchone())
+
+        before = joins()
+        check("stale partial: CONTROL prior journal actually had its state measured",
+              before[1], "FAULT" if prior_fault else "OK")
+        real_open = builtins.open
+
+        def eio(path, *args, **kwargs):
+            if path == rp[:-5] + ".hid":
+                raise OSError(5, "Input/output error")
+            return real_open(path, *args, **kwargs)
+
+        try:
+            with mock.patch("builtins.open", side_effect=eio), contextlib.redirect_stderr(io.StringIO()):
+                got = sweep.receipt_step(conn, now=now + 60)
+            check("stale partial: measured nonce fault is still persisted", got,
+                  (1, 0 if prior_fault else 1))
+            check("stale partial: the unmeasured prior joins and retry flag survive", joins(), before)
+            row = conn.execute("SELECT verdict, reason FROM receipts WHERE runid = ?", (rid,)).fetchone()
+            check("stale partial: primary fault names the measurement, not I/O",
+                  (row[0], "the .rec states" in row[1], "Input/output error" in row[1]),
+                  ("FAULT", True, False))
+            os.remove(rp)
+            with contextlib.redirect_stderr(io.StringIO()):
+                sweep.receipt_step(conn, now=now + surfd.JOURNAL_WAIT + 60)
+            check("stale partial: reaping cannot rewrite a measured join as never arrived", joins(), before)
         finally:
             rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
 
@@ -1074,7 +1171,7 @@ def case_receipt_step_never_takes_the_sweep_down():
     check("no tools: the step reports nothing read", got, (0, 0))
     check("...and says why, on stderr", "receipt step failed" in err.getvalue(), True)
     check("...and the watermark does not move (admin's unsigned pauses)",
-          conn.execute("SELECT COUNT(*) FROM sweepmeta").fetchone()[0], 0)
+          conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], 0)
     rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
     sweep.sweep(conn, 20, runner=lambda m, p:
                 ["VERIFY %s PASS ticks 662 rows 634" % q for q in p], now=99)
@@ -1564,7 +1661,8 @@ def main():
                  case_pending_reread_moves_only_the_journal,
                  case_receipt_step_never_takes_the_sweep_down,
                  case_receipt_watermark, case_receipt_io_retry, case_receipt_io_budget,
-                 case_receipt_incomplete_listing, case_receipt_mixed_fault_io, case_disk_note):
+                 case_receipt_incomplete_listing, case_receipt_mixed_fault_io,
+                 case_receipt_retry_queue_churn, case_receipt_stale_partial_io, case_disk_note):
         print("%s:" % case.__name__)
         try:
             case()

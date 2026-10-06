@@ -329,7 +329,7 @@ def read_receipt(path, journal_only=False):
                   if journal == "FAULT" else "signed sibling read deferred after I/O")
         return ("FAULT", r.head.get("pub", ""), r.head.get("map", ""),
                 "BLIND", observed[0][:300], 1 if r.ok is True else 0,
-                journal, detail[:300], 0)
+                journal, detail[:300], 0, True)  # partial: only these faults were measured
     if not journal_only:
         rcptcheck.join_angles(r, {})
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
@@ -398,8 +398,8 @@ def receipt_step(conn, limit=200, now=None):
                         files.extend(f.path for f in evidence if f.name.endswith(".rcpt"))
         files.sort()
         # Base order: never-read oldest first, then stale/PENDING rereads.
-        # Rotate the bounded attempt window across passes so persistent I/O
-        # failures cannot monopolize it. Coverage is computed separately from
+        # Preserve queue identities across passes so failures and fresh arrivals
+        # cannot monopolize the bounded attempt window. Coverage is separate from
         # ALL unread fresh files, not inferred from this processing order.
         name = lambda f: os.path.basename(f)[:-5]
         fresh = []
@@ -429,34 +429,72 @@ def receipt_step(conn, limit=200, now=None):
                 return False
         todo = [(m, f, True) for m, f in fresh] + \
                [(None, f, False) for f in files if name(f) in rows and due(f)]
-        cursor = conn.execute("SELECT v FROM sweepmeta WHERE k = 'receipt_cursor'").fetchone()
-        start = int(cursor[0]) % len(todo) if cursor and todo else 0
-        next_cursor = start
+        # A queue position belongs to a path, not an index into a rebuilt list.
+        # New items join the tail; an attempted item goes back to the tail.
+        # sweepmeta holds scheduling only -- never evidence or key sightings.
+        qkey = lambda f: "receipt_retry:" + os.path.relpath(f, surfd.EVIDENCE_DIR)
+        queued = {r[0]: r[1] for r in conn.execute(
+            "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_retry:*'")}
+        active = {qkey(f) for _m, f, _fresh in todo}
+        sequence = max(queued.values(), default=0)
+        with conn:
+            conn.executemany("DELETE FROM sweepmeta WHERE k = ?",
+                             [(k,) for k in queued if k not in active])
+            for _mtime, path, _is_fresh in todo:
+                key = qkey(path)
+                if key not in queued:
+                    sequence += 1
+                    queued[key] = sequence
+                    conn.execute("INSERT INTO sweepmeta (k, v) VALUES (?, ?)", (key, sequence))
+        todo.sort(key=lambda item: queued[qkey(item[1])])
         unread = {f: m for m, f in fresh if m <= cutoff}
         n = bad = jfault = attempts = 0
-        for offset in range(len(todo)):
+        for mtime, path, is_fresh in todo:
             if attempts >= limit:
                 break
-            mtime, path, is_fresh = todo[(start + offset) % len(todo)]
-            next_cursor = (start + offset + 1) % len(todo)
             runid = name(path)
             if mtime is None:
                 try:
                     mtime = os.path.getmtime(path)
                 except OSError:
+                    attempts += 1
+                    sequence += 1
+                    with conn:
+                        conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?",
+                                     (sequence, qkey(path)))
                     retry += 1
                     continue
             if mtime > cutoff:
                 continue
             pending_only = not is_fresh and rows[runid][0] not in (1, 2)
             attempts += 1
+            sequence += 1
+            with conn:
+                conn.execute("UPDATE sweepmeta SET v = ? WHERE k = ?", (sequence, qkey(path)))
             got = read_receipt(path, journal_only=pending_only)
             # A failed read or a file gone since listing measured no evidence.
             # Leave it retryable, and never claim coverage past an unread run.
             if got is None or not os.path.exists(path):
                 retry += 1
                 continue
-            verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got
+            verdict, pub, mapname, angles, reason, sig, journal, jreason, owed = got[:9]
+            partial = len(got) > 9 and got[9]
+            if partial and not is_fresh:
+                # A stale FULL reread measured a new fault but not the content
+                # joins. Preserve their prior evidence and the stale retry flag.
+                old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?",
+                                   (runid,)).fetchone()
+                with conn:
+                    conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?, at = ?,"
+                                 " sig = CASE WHEN pub = ? THEN ? ELSE sig END WHERE runid = ?",
+                                 (reason, t0, pub, sig, runid))
+                    if journal == "FAULT":  # a digest mismatch WAS measured
+                        conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
+                                     " WHERE runid = ?", (journal, jreason, runid))
+                n += 1
+                bad += old is not None and old[0] != "FAULT"
+                retry += 1
+                continue
             if pending_only:
                 # Due only because its journal was PENDING.  The journal columns
                 # move, and the verdict only TOWARD FAULT: a late .hid or .view
@@ -474,6 +512,7 @@ def receipt_step(conn, limit=200, now=None):
                                      " WHERE runid = ?", (reason, runid))
                     conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?"
                                  " WHERE runid = ?", (journal, jreason, runid))
+                    conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
                 n += 1
                 bad += fault
                 jfault += journal == "FAULT"
@@ -496,6 +535,7 @@ def receipt_step(conn, limit=200, now=None):
                      max(1, int(mtime)),      # 0 means "pre-8 row" to receipts_v8
                      journal, jreason))
                 bind_key(conn, runid, pub, t0)
+                conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
             unread.pop(path, None)
             n += 1
             bad += verdict != "VALID"
@@ -516,9 +556,6 @@ def receipt_step(conn, limit=200, now=None):
         # rotation, budget, or failures. Unknown ages prevent any new boundary.
         through = min([cutoff] + [int(m) - 1 for m in unread.values()])
         with conn:
-            if attempts:
-                conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
-                             " VALUES ('receipt_cursor', ?)", (next_cursor,))
             if not stat_incomplete:
                 conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
                              " VALUES ('receipts_through', ?)", (through,))

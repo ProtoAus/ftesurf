@@ -2364,10 +2364,12 @@ script rather than passing it as an argument, where `ps` would show it.
   - Patch 501: initial receipt/sibling-digest I/O alone defers the read, like
     a PENDING reread, rather than storing a permanent evidence FAULT. A separate
     measured signature/recording/digest fault survives sibling I/O; a pending
-    join's recovery cannot clear it. Failed reads consume the pass budget, with
-    a durable rotating cursor so persistent failures cannot starve healthy
-    receipts. Coverage is computed from ALL unread fresh receipts, independently
-    of that rotation, or stays unchanged when an age is unknown. Enumerate both
+    join's recovery cannot clear it. Partial stale rereads preserve old content
+    joins and the stale retry flag. Failed reads consume the pass budget, with
+    a durable per-path queue: arrivals/attempts go to the tail. An array cursor
+    is NOT stable under compaction and arrivals; it still starved a stale row.
+    Coverage uses ALL unread fresh receipts, independently of attempt order,
+    or stays unchanged when an age is unknown. Enumerate both
     directory levels explicitly: glob silently hides unreadable map directories.
     `test_sweep.py` exercises failure/recovery, persistent-failure progress and
     source removal between a measured fault and an unmeasured join's recovery.
