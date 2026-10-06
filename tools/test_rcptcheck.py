@@ -108,7 +108,9 @@ def test_rec_swap():
     rec, view = fx.angle_pair(rid)
     rec = rec.replace("\nbegin\n", "\nnonce " + nonce + "\nbegin\n", 1)
     replacement = rec.replace(nonce, "0" * 32).replace(
-        "\nend\n", "\nnonce 1 " + "0" * 32 + "\nend\n").encode("utf-8")
+        "\nend ", "\nnonce 1 " + "0" * 32 + "\nend ", 1).encode("utf-8")
+    check("rec swap: intended later-session nonce mutation ACTED",
+          b"\nnonce 1 " + b"0" * 32 + b"\n" in replacement, True)
     rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, view=view.encode("utf-8"))
     rc = fx.with_rec(surfd, sweep, rid, rec)
     path = os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec")
@@ -118,9 +120,16 @@ def test_rec_swap():
         check("rec swap: replacement ACTED", state["swaps"], 1)
         check("rec swap: identity, nonce and angles share one read", state["reads"], 1)
         check("rec swap: original nonce and angles still describe captured rec",
-              got[:4], ("VALID", got[1], got[2], "OK"))
+              (got[0], got[3]), ("VALID", "OK"))
         check("rec swap: CONTROL next observation catches changed nonce",
               sweep.read_receipt(rp)[0], "FAULT")
+        body_only = rec.replace("\nend ", "\nnonce 1 " + "0" * 32 + "\nend ", 1)
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(body_only)
+        r = rcptcheck.read(rp)
+        rcptcheck.join_rec(r)
+        check("rec swap: CONTROL only the final session nonce changes",
+              len(r.faults) == 1 and "later one" in r.faults[0], True)
     finally:
         rc.GAME = os.path.join(os.path.dirname(fx.TOOLS), "ftesurf")
 
@@ -214,6 +223,113 @@ def test_missing_view_and_io():
         rc.GAME = os.path.join(os.path.dirname(fx.TOOLS), "ftesurf")
 
 
+def test_selected_rec_tail_io():
+    surfd, sweep, _runs = fx.fresh()
+    sweep.TOOLS = fx.TOOLS
+    rid = "20261006-000206-0"
+    rec, view = fx.angle_pair(rid, rot=0.5)
+    rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, view=view.encode("utf-8"), age=1)
+    rc = fx.with_rec(surfd, sweep, rid, rec)
+    path = os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec")
+    real_open = builtins.open
+    attempts = []
+
+    class TailError:
+        def __init__(self, fh):
+            self.fh = fh
+
+        def __enter__(self):
+            self.fh.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.fh.__exit__(*args)
+
+        def __iter__(self):
+            return iter(self.fh)
+
+        def read(self):
+            attempts.append(path)
+            raise OSError(5, "selected recording tail I/O")
+
+    def opening(p, *args, **kwargs):
+        fh = real_open(p, *args, **kwargs)
+        return TailError(fh) if p == path else fh
+
+    try:
+        with mock.patch("builtins.open", side_effect=opening):
+            check("selected rec tail I/O: sweep defers rather than storing VALID", sweep.read_receipt(rp), None)
+        check("selected rec tail I/O: failure hook ACTED", len(attempts), 1)
+        with mock.patch("builtins.open", side_effect=opening), contextlib.redirect_stdout(io.StringIO()) as out:
+            check_result = rcptcheck.main([rp])
+        check("selected rec tail I/O: CLI exits nonzero", check_result, 1)
+        check("selected rec tail I/O: CLI explicitly reports unmeasured content", "deferred after I/O" in out.getvalue(), True)
+        got = sweep.read_receipt(rp)
+        check("selected rec tail I/O: CONTROL restored read measures angle fault", (got[0], got[3]), ("FAULT", "FAULT"))
+        conn = surfd.connect()
+        try:
+            check("selected rec tail I/O: CONTROL measured fault is stored", sweep.receipt_step(conn), (1, 1))
+            conn.execute("UPDATE receipts SET stale = 2")
+            conn.commit()
+            with mock.patch("builtins.open", side_effect=opening):
+                check("selected rec tail I/O: interrupted stale read stays retryable", sweep.receipt_step(conn), (0, 0))
+            row = conn.execute("SELECT verdict, angles, stale FROM receipts").fetchone()
+            check("selected rec tail I/O: old measured observation survives", tuple(row), ("FAULT", "FAULT", 2))
+            sweep.receipt_step(conn)
+            row = conn.execute("SELECT verdict, angles, stale FROM receipts").fetchone()
+            check("selected rec tail I/O: CONTROL healthy recovery completed", tuple(row), ("FAULT", "FAULT", 0))
+        finally:
+            conn.close()
+        with open(rp[:-5] + ".view", "ab") as fh:
+            fh.write(b"changed\n")
+        with mock.patch("builtins.open", side_effect=opening):
+            got = sweep.read_receipt(rp)
+        check("selected rec tail I/O: independent digest fault survives", (got[0], "hashes to" in got[4]), ("FAULT", True))
+    finally:
+        rc.GAME = os.path.join(os.path.dirname(fx.TOOLS), "ftesurf")
+
+
+def test_unsigned_sibling_io():
+    surfd, sweep, _runs = fx.fresh()
+    sweep.TOOLS = fx.TOOLS
+    conn = surfd.connect()
+    rid = "20261006-000207-0"
+    rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, age=1)
+    path = rp[:-5] + ".hid"
+    with open(path, "wb") as fh:
+        fh.write(b"unsigned sibling")
+    real_open = builtins.open
+    attempts = []
+
+    def eio(p, *args, **kwargs):
+        if p == path:
+            attempts.append(p)
+            raise PermissionError(13, "Permission denied")
+        return real_open(p, *args, **kwargs)
+
+    try:
+        with mock.patch("builtins.open", side_effect=eio):
+            got = sweep.read_receipt(rp)
+        check("unsigned sibling I/O: CONTROL presence is independently known", os.path.exists(path), True)
+        check("unsigned sibling I/O: denied read ACTED exactly once", len(attempts), 1)
+        check("unsigned sibling I/O: missing-digest fault survives denied bytes", (got[0], got[6]), ("FAULT", "FAULT"))
+        check("unsigned sibling I/O: reason names the independently signed contradiction", "hid digest is absent" in got[4], True)
+        with mock.patch("builtins.open", side_effect=eio):
+            check("unsigned sibling I/O: a partial fault is persisted", sweep.receipt_step(conn), (1, 1))
+        os.remove(path)
+        sweep.receipt_step(conn)
+        row = conn.execute("SELECT verdict, journal, stale FROM receipts").fetchone()
+        check("unsigned sibling I/O: removal before recovery cannot clear stored fault", (row[0], row[1]), ("FAULT", "FAULT"))
+        check("unsigned sibling I/O: CONTROL recovery completed", row[2], 0)
+        # Presence itself unmeasured: do not infer a contradiction from denial.
+        with mock.patch("builtins.open", side_effect=eio), mock.patch("os.stat", side_effect=PermissionError(13, "unknown presence")):
+            r = rcptcheck.read(rp)
+            rcptcheck.join_uploaded(r, {})
+        check("unknown presence I/O: not a measured missing-digest fault", (r.ioerror, r.digest_bad), (True, {}))
+    finally:
+        conn.close()
+
+
 def test_parser_bytes():
     surfd, sweep, _runs = fx.fresh()
     rec, view = fx.angle_pair("20261006-000204-0")
@@ -243,7 +359,8 @@ def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
              test_absent_arrives_between_phases, test_explicit_view_and_bad_digest,
-             test_missing_view_and_io, test_parser_bytes)
+             test_missing_view_and_io, test_selected_rec_tail_io,
+             test_unsigned_sibling_io, test_parser_bytes)
     for test in tests:
         try:
             test()

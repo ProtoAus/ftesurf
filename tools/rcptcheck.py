@@ -69,6 +69,7 @@ class Receipt(object):
         self.recdata = None
         # One observation per path for this report, including absence/read errors.
         self.file_bytes = {}
+        self.file_present = set()
         self.digest_checked = set()
         self.ioerror = False        # a file could not be read: nothing was measured
         self.digest_bad = {}        # kind -> the fault, for a sibling that is not what was signed
@@ -196,10 +197,19 @@ def file_bytes(r, path):
     if path not in r.file_bytes:
         try:
             with open(path, "rb") as fh:
+                r.file_present.add(path)
                 r.file_bytes[path] = fh.read()
-        except FileNotFoundError:
-            r.file_bytes[path] = None
+        except FileNotFoundError as exc:
+            r.file_bytes[path] = exc if path in r.file_present else None
         except OSError as exc:
+            # Even if opening bytes is denied, stat may independently establish
+            # a stored sibling that contradicts a missing signed digest.
+            try:
+                os.stat(path)
+            except OSError:
+                pass
+            else:
+                r.file_present.add(path)
             r.file_bytes[path] = exc
     data = r.file_bytes[path]
     if isinstance(data, OSError):
@@ -221,6 +231,7 @@ def join_rec(r):
     for leg in ("main", "stage_*", "bonus_*"):
         hits += glob.glob(os.path.join(GAME, "data", "runs", mapname, leg, "*.rec"))
     for path in hits:
+        selected = False
         try:
             # Unrelated recordings cost only a header scan, as before. Capture
             # the selected one's remaining text BEFORE closing this same handle.
@@ -234,8 +245,15 @@ def join_rec(r):
                     head[k] = v
                 if head.get("runid") != runid:
                     continue
+                selected = True
                 text = "".join(prefix) + fh.read()
-        except OSError:
+        except OSError as exc:
+            if selected:
+                # The matched recording exists, but its session nonce/angles
+                # are unmeasured. Do not silently store a permanent VALID row.
+                r.ioerror = True
+                r.note("the selected .rec read is deferred (%r)" % exc)
+                return
             continue
         # No digest covers the .rec; its decoded observation is shared by the
         # nonce and angle readers. Re-encoding preserves replacement/newlines.
@@ -363,10 +381,13 @@ def join_uploaded(r, want):
         try:
             data = file_bytes(r, path)
         except OSError as exc:
-            # The CLI must still exit nonzero. sweep recognizes this prefix as
-            # unmeasured I/O and defers it, rather than storing an evidence fault.
+            # The CLI must still exit nonzero. sweep distinguishes ioerror
+            # from independently measured faults, not by diagnostic wording.
             r.ioerror = True
-            r.fault("--%s %s: %s" % (key, path, exc))
+            if path in r.file_present:
+                check_file(r, key, path, sibling=True)
+            else:
+                r.fault("--%s %s: %s" % (key, path, exc))
             continue
         if data is None:
             # ABSENT IS NOT A FAULT, BUT IT IS NOT NOTHING EITHER.  A receipt
@@ -694,6 +715,7 @@ def main(argv):
 
     bad = 0
     missing = 0
+    deferred = 0
     for f in files:
         r = read(f)
         join_rec(r)
@@ -711,6 +733,8 @@ def main(argv):
         report(r, verbose)
         if r.faults:
             bad += 1
+        if r.ioerror:
+            deferred += 1
         if any("and no " in m for m in r.notes):
             missing += 1
     print("%d receipt(s) checked, %d with faults" % (len(files), bad))
@@ -721,7 +745,9 @@ def main(argv):
         # legitimately not arrive, and a receipt without its files is still a
         # complete receipt.
         print("%d of them commit to evidence that is not on this host" % missing)
-    return 1 if bad else 0
+    if deferred:
+        print("%d receipt read(s) deferred after I/O; some content is unmeasured" % deferred)
+    return 1 if bad or deferred else 0
 
 
 if __name__ == "__main__":
