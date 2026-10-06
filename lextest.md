@@ -16,7 +16,9 @@ to be wrong.
 Machine controls cover timed rewind/recording, retained warm prefixes, replay
 saves and replacement, cold pictures, countdown and key release. Buffered and
 streamed dedicated arms each pass 42 checks; this does not judge the rendered
-path or camera feel. Deployment is still pending.
+path or camera feel. The development progs are deployed to the primary
+Windows install, a separate FTESurf mod folder in the second install (Quakers
+unchanged), and all 12 Pi lobbies. Reload/reconnect to pick up the new progs.
 
 - Save/load or rewind/continue on a real surf/bhop run: the earlier path should
   remain, the abandoned tail disappear, and the timer continue as **segmented**
