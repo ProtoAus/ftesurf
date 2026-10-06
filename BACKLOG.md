@@ -225,9 +225,15 @@ below is the collection side and the rules that still only note.
   Patch 505 now checks a final late `.hid` even after the journal was observed
   ABSENT, using its stored receipt identity and preserving earlier faults/key
   sightings. Unknown legacy identities still need explicit baseline permission.
-  A late `.view` or `.rec` after a completed observation still needs a bounded,
-  source-specific retry (falsifier: arrival ACTS without clearing prior faults or
-  recounting keys). The no-mouse BLIND rule asks only
+  Patch 507 adds identity-bound late-view retries when a completed full read
+  actually captured its absence; older unknown readiness is not inferred.
+  Co-ready view/HID sources alternate, preserving old faults, journal findings
+  and key sightings. Rec-only arrivals still need bounded source-specific
+  scheduling (falsifier: late matching rec/nonce/angle contradiction ACTS, even
+  after a view-only completion, without clearing history or recounting keys).
+  Completed-source replacements and initial partial full reads without a later
+  complete observation remain outside automatic late-view readiness.
+  The no-mouse BLIND rule asks only
   whether any count exists: one 1-count frame turns a console-driven run OK again.
 
 - **NO CROSS-RUN SIMILARITY CHECK, so the same playback twice is two clean
