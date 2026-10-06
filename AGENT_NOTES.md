@@ -2453,6 +2453,26 @@ script rather than passing it as an argument, where `ps` would show it.
     Windows installs. Installed caller ACTED on generated signed HID (OK) and
     changed-digest control (FAULT), without storing test evidence; real receipt
     step read 0. This is integration verification, not new fleet calibration.
+  - Patch 510: missing-source readiness is a captured observation, not a later
+    filesystem inference. A successful full read can establish a missing-rec
+    wait; a late-view completion may RETAIN that wait but cannot create it.
+    Initial candidate: checked rec -> prune rec -> late view -> new rec wait ->
+    returned/replaced rec automatically judged. Review exposed that excluded
+    completed-source rearm despite 212 passing checks. Four new scope checks
+    fail on the candidate; corrected suite has 227 passes. Both completed and
+    historical-unknown cases must prove the direct reader's contradiction and
+    an explicit full reread ACT, not just assert scheduler silence.
+    `surfd/sweep.py:receipt_step` now keeps rec/view/HID turns separate; persisted
+    co-ready order is rec/view/rec/HID, with bounded attempts and row fairness.
+    Discovery headers are hints only; selected bytes and original receipt binding
+    authorize joins. A checked view is hashed again to bind a newly possible rec
+    pair, never to schedule completed-source replacements. Unknown readiness and
+    initial partial observations still need a completed explicit full read.
+    Frozen published b1be008 shipped only sweep/new recording suite on the Pi
+    at 2026-10-06 16:23:30 UTC after both re-review lenses and 18 Linux suites.
+    Installed temporary/in-memory controls ACTED; real pass 0 reads/faults and
+    two bound rows unchanged, reload/health proved. No engine/progs/schema/reader
+    or detector-policy change. Header discovery cost at fleet scale is unmeasured.
   - test_admin runs `node --check` on the admin pages' scripts (f19d477 shipped
     one that never ran). The Pi has no node and prints a skip, so run it on
     Windows after editing a template. On Windows its `amplification guard` and
