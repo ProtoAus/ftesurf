@@ -1,7 +1,7 @@
 # Map censuses
 
-Read-only sweeps over the shipped map library, used to size anti-cheat rules
-before they are written. Every number quoted in a `run_pushed` / `run_pushlift`
+Read-only sweeps over the shipped map library, used to size movement rules
+and rendering coverage before they are written. Every number quoted in a `run_pushed` / `run_pushlift`
 comment comes from one of these, and the point of committing them is that the
 number stays checkable after the session that produced it.
 
@@ -16,6 +16,7 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | script | question |
 |---|---|
 | `bsplib.py` | minimal VBSP reader: entity lump + models lump, LZMA-aware |
+| `particlecoverage.py` | Source particle entities vs embedded PCFs, registered bakes and translator support |
 | `pushcensus.py` | `trigger_push` volumes overlapping or near a start zone |
 | `pushtilt.py` | ...of those, which push UPWARD (Patch 411) |
 | `sscensus.py` | `trigger_setspeed` pads that can drive `velocity_z` over 140 |
@@ -24,6 +25,30 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `onjumpstart.py` | OnJump basevelocity pads vs start zones, on the live rotation (Patch 414) |
 | `recsim.py` | cross-run similarity over the server-written move columns (BACKLOG item F) |
 | `assist.py` | the timing-assist statistics, and which of them the corpus can support (BACKLOG item G) |
+
+## Source particle coverage
+
+From the repository root:
+
+```sh
+python tools/census/test_particlecoverage.py
+python tools/census/particlecoverage.py --json <report.json>
+```
+
+`--mapsdir`, `--index` and `--cfgdir` override the inputs. `MOMENTUM_DIR` points
+at the game directory containing `maps/`, not at `maps/` itself. The tool does
+not generate effects or change the index/player data. Only the optional JSON
+output is written. Exit 2 means an incomplete census: every failed library is
+reported, while its map/entities and other readable libraries remain counted.
+
+Measured 2026-10-06: 1,349 BSPs, 144 maps with 8,000 particle-system entities,
+96 maps with embedded PCFs, two with registered bakes, 94 embedded-library maps
+without bakes, and 23 maps with multiple PCFs. Both existing tensor2/boreas cfgs
+reproduce exactly with the current translator. Ten PCFs use unsupported DMX
+binary v5; two more fail their ZIP CRC, so the full translation census is NOT
+complete (exit 2). A translatable system is not a fidelity/runtime pass: unknown
+operators and rejected systems are reported separately, and game-pack libraries
+are not scanned. Maps without embedded PCFs do not necessarily lack a library.
 
 ## The fleet corpus, and how to get it
 

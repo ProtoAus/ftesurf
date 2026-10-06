@@ -5,6 +5,70 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Source particles and water: coverage and budget audit -- 2026-10-06
+
+Lex requested expected HL2 visuals without sacrificing high FPS. This is an
+AUDIT, not a renderer fix/deployment. Particle evidence is reproducible with
+`python tools/census/particlecoverage.py --json <report.json>` (nine synthetic
+control tests in `test_particlecoverage.py`). Water source inspected at engine
+`c4f372ab2`; the installed binary's runtime was exercised separately, not treated
+as proof that every source path was built into it. No FPS improvement is claimed.
+
+- **Particle coverage stops at two maps.** `tools/pcf.py:main` defaults `--all`
+  to tensor2/boreas; `src/client/cl_emit.qc:Emit_PsysIndex` loads only registered
+  bakes from `data/mapparticles.txt`. In 1,349 installed BSPs, 144 maps contain
+  8,000 `info_particle_system` entities, 96 embed PCFs, and 94 of those have no
+  registered bake. `surf_kitsune2` alone has 36 start-active entities referring
+  to five translatable, unbaked effects. Both existing cfgs reproduce exactly
+  with the current translator (20 tensor2 systems; 13 boreas systems plus one
+  skipped instantaneous prefill). This is not proof of Source-equivalent
+  motion/materials: the translator reports approximations, and default child
+  emission is off. Falsifier for expansion: every intended effect resolves and
+  ACTUALLY emits after a cold load/map return, with Source reference captures,
+  missing-operator/material reporting and a measured particle budget. Do not
+  blindly generate a cfg for every BSP: shared game-pack libraries need their
+  own resolver and many maps contain no particle systems.
+- **Bulk baking currently overwrites multi-PCF maps; v5/corrupt libraries block
+  coverage.** `tools/pcf.py:main` writes `<map>.cfg` and replaces that map's index
+  rows INSIDE its per-library loop. Twenty-three particle maps embed multiple
+  PCFs (`surf_ace` has two; `surf_board_this` five). Union definitions before
+  writing, report name collisions and preserve child links. The read-only audit
+  unions libraries but does not change that writer. `tools/dmx.py:parse` refuses
+  ten DMX binary-v5 PCFs; `surf_map_h`/`surf_map_njv` additionally have bad CRCs
+  for `particles/thw_river.pcf`. Falsifier: a synthetic two-library map retains
+  both effect sets and one combined index, a v5 parser reaches exact EOF on real
+  fixtures, and corrupt input remains a visible failure rather than a partial
+  successful overwrite.
+- **Boreas smoke material cannot load.** Isolated cold runtime prints
+  `materials/project_tendies/tendies_smoke.vtf: unsupported VTF image format 19`
+  and draws the missing texture. `plugins/hl2/img_vtf.c:ImageVTF_VtfToFTE` leaves
+  `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
+  this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
+  smoke texture with no fallback, and inspect emitted smoke against Source.
+- **Water's cheap reflection is not Source's cheap water, and still captures
+  refraction.** `plugins/hl2/mat_vmt.c:Shader_GenerateFromVMT` emits
+  `$refraction` in mode 1 and both `$refraction`/`$reflection` in mode 2;
+  `engine/gl/gl_backend.c:GLBE_SubmitMeshesPortals` renders those extra views.
+  `plugins/hl2/glsl/vmt/water.glsl` samples the cheap cubemap using `n`, not the
+  reflected VIEW vector, and comments out `TINT_REFL` in that arm. Its Fresnel
+  compares the texture normal with an object-space eye vector rather than a
+  matching tangent frame; scrolling uses fixed 0.1/0.097 rates, while the VMT
+  scroll vectors become scale magnitudes. No `#DEPTH`/depth sampler is emitted,
+  so above-water depth fog is disabled; the dormant branch uses hardcoded 4096
+  rather than material fog start/end. The screen-UV correction hardcodes 1080.
+  Source references: `watercheap_ps20b.fxc`, `water_ps2x_helper.h` and
+  `water_vs20.fxc` in the local SDK. Falsifier: orbit a flat/perturbed surface and
+  rotate its texture frame; reflections track the camera, tint and scroll
+  vectors survive, and shallow/deep/underwater views respect the material.
+  A true budget mode should use animated normals, view-correct baked-cubemap
+  reflection and ordinary transparency with ZERO scene captures, retaining
+  flat/dither options. Balanced/full modes can then share captures per water
+  plane and use explicit resolution/update/visibility budgets. Measure scene
+  passes, CPU and GPU frame time at a fixed camera; do not infer a gain from
+  a slider or lower capture resolution alone. The initial runtime comparison
+  did not establish a clean visual/performance control, so its timings are not
+  acceptance evidence.
+
 ## Credentials at rest, and 9.3 GB of database backups -- 2026-10-05
 
 FIXED HERE: `data/surfd.db` was `-rw-r--r--` on the Pi, and it holds `runs.player`
