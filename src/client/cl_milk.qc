@@ -37,6 +37,7 @@ void() MilkSky_WorldLoaded =
 void(string rendererdescription) CSQC_RendererRestarted =
 {
 	Milk_Invalidate();
+	Gfx_WaterSupport();
 };
 
 // Before renderscene, every frame; ticks only when the sim is due.

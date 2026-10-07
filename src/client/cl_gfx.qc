@@ -27,6 +27,7 @@
 float ui_gfx_open;              // the menu is up
 float ui_gfx_page;              // 0-based; see the paging note below
 float ui_gfx_loadtime;          // cltime when this map's CSQC came up
+float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capability
 
 /*
   WHY THIS PAGES, when ten rows fit on screen perfectly well.
@@ -47,6 +48,20 @@ float ui_gfx_loadtime;          // cltime when this map's CSQC came up
 */
 #define GFX_ROWS     28         // highest row index (build 49 added Map particles)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
+
+void() Gfx_WaterSupport =
+{
+	ui_gfx_waterbudget = checkextension("FTE_CSQC_HL2_WATER_BUDGET");
+	if (!ui_gfx_waterbudget)
+	if (cvar("hl2_water") == 4)
+	{
+		// An archived 4 can reach the BSP generator before downloaded CSQC.
+		// Old natives lack the live-policy flag: rebuild that cached material.
+		cvar_set("hl2_water", "3");
+		localcmd("flushshaders\n");
+		print("Water: Budget needs an updated OpenGL client/plugin; using Dithered and rebuilding shaders.\n");
+	}
+};
 
 void() Gfx_RegisterCvars =
 {
@@ -69,6 +84,7 @@ void() Gfx_RegisterCvars =
 
 	// CSQC_Init runs once per map load, so this is the map's own zero.
 	ui_gfx_loadtime = cltime;
+	Gfx_WaterSupport();
 };
 
 /*
@@ -231,7 +247,12 @@ string(float row) Gfx_Def =
 	// -- page 1: surface policy ---------------------------------------------
 	// Plugin_GetCvar drops CVAR_SHADERSYSTEM. Water opts into the engine's
 	// live shader policy; other generated-material rows need a rebuild.
-	if (row == 1)  return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
+	if (row == 1)
+	{
+		if (ui_gfx_waterbudget)
+			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
+		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
+	}
 	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered|*";
 	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|*";
 	/*
@@ -762,6 +783,8 @@ float() Gfx_Console =
 	local float i, n;
 	local string inert;
 
+	// No tokenization here: preserve the console command's argv below.
+	Gfx_WaterSupport();
 	if (argv(1) == "page")
 	{
 		n = stof(argv(2)) - 1;

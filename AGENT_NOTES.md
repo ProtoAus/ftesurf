@@ -2799,6 +2799,19 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   into its shader-rebuild policy. Cvar_Get2 does not retrofit that flag onto an
   existing variable. Preserve default/early user value/archive flags and test
   both initialization orders rather than widening every plugin flag at once.
+- Patch 528 gates the live 0..4 row on LOCAL extension
+  `FTE_CSQC_HL2_WATER_BUDGET`: native live policy, programmable OpenGL and a
+  loaded plugin with embedded budget source are required. Cvar existence/value
+  cannot substitute. Older engines, missing/older plugins and unverified
+  backends retain 0..3 with `*`. Unsupported archived 4 becomes 3 and queues
+  `flushshaders`, because pre-CSQC BSP generation may already have cached 4.
+  Refresh at initialization/menu command/renderer restart; preserve milk's
+  target invalidation. Availability does not promise GPU compilation success.
+  Native P523 without the new extension conservatively uses the legacy row.
+- Compatibility gates use actual old/new EXEs and both mixed plugin pairs,
+  not a fake "force old" cvar. Legacy cycles need the advertised rebuild;
+  capable cycles do not. Test the saved result as well as the readback. A
+  matching menu fixture does not replace full downloadable-product CSQC tests.
 - Graphics material rows carry `*` when their generated shader does not update
   automatically. Glass 0 is Translucent, not Opaque. `retry` can reuse cached
   BSP data: it is not a promise that every map-time setting gets reread. Keep
