@@ -80,6 +80,15 @@ class Ingestion(unittest.TestCase):
             self.assertEqual(verdict, 'compared')
             self.assertEqual((d['match'],d['compared']), (1.0,80))
 
+    def test_bounded_capture_preserves_nonascii_and_replacement_decoding(self):
+        data=source().replace(b'map synthetic\n', b'map caf\xc3\xa9_\x81\xff\n')
+        self.a.write_bytes(data)
+        original=rs.parse_rec(str(self.a),strict=True)
+        bounded=rs.parse_rec(str(self.a),strict=True,max_bytes=len(data),max_moves=80)
+        self.assertNotEqual(original.map,'synthetic')
+        self.assertTrue(any(ord(c)>127 for c in original.map))
+        self.assertEqual((bounded.map,bounded.moves),(original.map,original.moves))
+
     def test_collector_stores_limit_as_unjudgeable_not_a_measurement(self):
         conn = sqlite3.connect(':memory:');conn.row_factory = sqlite3.Row
         self.addCleanup(conn.close)

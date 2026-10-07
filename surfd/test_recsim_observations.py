@@ -74,8 +74,10 @@ class Observations(unittest.TestCase):
         self.assertEqual(stored['verdict'], 'skip')
         self.assertEqual(stored['compared'], 0)
         self.assertEqual(stored['reason'], 'malformed required move-stream input')
+        self.assertEqual(stored['skip_code'], 'malformed')
+        self.assertEqual(projected['skip_code'], 'malformed')
         self.assertIsNone(projected['metrics'])
-        self.assertEqual(projected['reason'], 'unjudgeable (legacy detail withheld)')
+        self.assertEqual(projected['reason'], 'malformed move input')
 
     def test_measured_zero_item_two(self):
         self.b.write_text(recording(other=True))
@@ -90,8 +92,10 @@ class Observations(unittest.TestCase):
             stored, projected = self.collect()
         self.assertEqual((stored['verdict'], stored['compared']), ('skip', 0))
         self.assertIn('synthetic denial', stored['reason'])
+        self.assertEqual(stored['skip_code'], 'unreadable')
+        self.assertEqual(projected['skip_code'], 'unreadable')
         self.assertIsNone(projected['metrics'])
-        self.assertEqual(projected['reason'], 'unjudgeable (legacy detail withheld)')
+        self.assertEqual(projected['reason'], 'source unreadable')
 
     def test_no_rows_control(self):
         self.a.write_text('begin\n')
