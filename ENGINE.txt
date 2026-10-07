@@ -25,14 +25,20 @@ commit   fa5aef7ad3f4521a2a918b596eee208bbb0926ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-543
-patch    553
+patch    554
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-10-07
+date     2026-10-08
 
+# PATCH 554: LIVE REWIND FOCUS CANCELLATION. Chat/menu/console or keyboard
+# focus loss cancels active scrubs, retaining press/release ownership. Return
+# and repeats cannot restart; release/fresh press acts. Main console uses the
+# existing effective cursor check. No native selection/recorder/save/go,
+# engine pin/tag or qcbuild change. Actual-device/OS delivery remains unaccepted.
+#
 # PATCH 553: ELAPSED SIMILARITY ADMISSION. Ten-second default monotonic
 # cooperative window, independent of rows/pairs. In-flight work finishes and
 # flushes; zero disables. --sims-seconds rejects negative/nonfinite CLI values.
@@ -53,7 +59,7 @@ date     2026-10-07
 # releasing either side resumes the other. Acceleration restarts only when
 # the effective direction changes. Bare binds retain physical ownership.
 # Native sampled selection, recorder/save/resume and engine pin/tag/qcbuild
-# are unchanged. Panel releases pass; cancelling on focus loss remains open.
+# are unchanged. Panel releases pass; P554 adds focus-loss cancellation.
 #
 # PATCH 549: FRACTIONAL DEMO HUD CLOCK. Main timer and full-demo chrome
 # share the visual cursor clock, bounded to zero/recorded finish. Sampled

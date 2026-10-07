@@ -19,11 +19,11 @@ def change_row(rig, label, column, value, row=0):
     path.write_text('\n'.join(lines) + '\n')
 
 
-def change_log(rig, old, new):
+def change_log(rig, old, new, last=False):
     path = rig / 'ftesurf/logs/runlines_smoke.log'
     text = path.read_text()
     assert old in text
-    path.write_text(text.replace(old, new, 1))
+    path.write_text(new.join(text.rsplit(old, 1)) if last else text.replace(old, new, 1))
 
 
 def change_body(rig, column, value):
@@ -43,7 +43,7 @@ def main():
     cases = [
         ('missing-probe', lambda g: (g / 'ftesurf/cfg/test/rewind_nav_oppose.txt').unlink()),
         ('duplicate-probe', lambda g: change_log(g, 'REWIND NAV PROBE oppose\n', 'REWIND NAV PROBE oppose\nREWIND NAV PROBE oppose\n')),
-        ('input-unacted', lambda g: change_log(g, 'REWIND NAV EVENT 0 103 1\n', '')),
+        ('input-unacted', lambda g: change_log(g, 'REWIND NAV EVENT 0 103 0 1\n', '')),
         ('run-unacted', lambda g: change_log(g, 'practice 0  recording 1', 'practice 0  recording 0')),
         ('runtime-error', lambda g: change_log(g, 'RUNLINES COMPLETE', 'QC VM error\nRUNLINES COMPLETE')),
         ('missing-completion', lambda g: change_log(g, 'RUNLINES COMPLETE', '')),
@@ -68,6 +68,25 @@ def main():
         ('body-moved', lambda g: change_body(g, 2, 99999)),
         ('clock-moved', lambda g: change_body(g, 8, 99999)),
         ('velocity-leak', lambda g: change_body(g, 5, 1)),
+        ('focus-unacted', lambda g: change_log(g, 'REWIND NAV EVENT 5 -1 0 0\n', '')),
+        ('chat-unacted', lambda g: change_row(g, 'chat_focus_stop', 1, 0, 3)),
+        ('console-unacted', lambda g: change_row(g, 'console_focus_stop', 3, 0, 3)),
+        ('menu-unacted', lambda g: change_row(g, 'menu_focus_stop', 3, 0, 3)),
+        ('focus-nonfinite', lambda g: change_row(g, 'menu_focus_stop', 3, 'nan', 3)),
+        ('chat-cancel-direction', lambda g: change_row(g, 'chat_focus_end', 5, -1)),
+        ('console-cancel-motion', lambda g: change_row(g, 'console_focus_end', 4, 100)),
+        ('menu-cancel-motion', lambda g: change_row(g, 'menu_focus_end', 4, 100)),
+        ('keyboard-cancel-motion', lambda g: change_row(g, 'keyboard_focus_end', 4, 100)),
+        ('arrow-cancel-motion', lambda g: change_row(g, 'arrow_focus_end', 4, 100)),
+        ('focus-repeat-restart', lambda g: change_row(g, 'chat_focus_repeat', 5, -1)),
+        ('focus-return-restart', lambda g: change_row(g, 'chat_focus_return', 4, 100)),
+        ('fresh-press-lost', lambda g: change_row(g, 'keyboard_focus_fresh', 5, 0)),
+        ('mouse-only-cancel', lambda g: change_row(g, 'mouse_after', 5, 0)),
+        ('opposed-release-restart', lambda g: change_row(g, 'opposed_focus_return', 4, 100)),
+        ('opposed-repeat-restart', lambda g: change_row(g, 'opposed_focus_repeat', 5, 1)),
+        ('closed-ownership-lost', lambda g: change_log(g, 'REWIND NAV EVENT 1 103 0 1\n', 'REWIND NAV EVENT 1 103 0 0\n', last=True)),
+        ('cancel-hud-creep', lambda g: change_row(g, 'chat_focus_end', 6, 99999)),
+        ('late-cancel', lambda g: change_row(g, 'chat_focus_stop', 5, -1)),
     ]
     for name, mutate in cases:
         dst = Path(tempfile.mkdtemp(prefix=name + '-', dir=a.output_dir))

@@ -2282,12 +2282,11 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   native long demos, compound/modifier binds and actual-device focus acceptance
   remain open. P550 closes live rewind opposing-key cancellation: both press
   orders stop; either release ACTS; same-side owners continue until the last
-  release. **Live rewind focus cancellation remains open:** unlike demos,
-  `cl_rewind.qc:Rewind_Frame` does not clear held navigation when chat/menu
-  opens. Synthetic baseline ACTED and continued scrolling until release;
-  falsifier: hold a bare strafe bind, open chat/menu or lose OS focus, keep it
-  held, and require a fixed cursor/no restart until a fresh press. Releases
-  delivered behind chat/console/menu do stop, including at 30/100/300 FPS.
+  release. P554 adds live focus-loss cancellation without forgetting physical
+  ownership: chat/menu/console and synthetic keyboard-focus loss stop held
+  navigation, return/repeats stay stopped, and a fresh press ACTS. Whole-chain
+  controls and delivered releases pass at 30/100/300 FPS; actual-device/OS-event
+  delivery, compound/modifier binds and broader demo acceptance remain open.
   Broader falsifier: remap/hold/release in native/imported demos, close/change
   focus while held; no dangling repeat or movement leak. Plan 12.2.
 - **Repeated stitched rewind has zero-speed pauses/time creep followed by a

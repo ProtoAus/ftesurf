@@ -1585,6 +1585,23 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- **Focus cancels activity, not ownership (Patch 554).** `rw_kactive` is separate
+  from down/taken identity. Chat/menu/modal cursor and effective console cursor
+  cancel browsing holds; IE_FOCUS cancels only keyboard=0, not unchanged -1 or
+  mouse-only loss. Return/repeats and releasing an opposing cancelled owner do
+  not restart; a released fresh press ACTS. Taken repeats/up remain owned after
+  close/rebind. `notmenu` excludes menu/cwindows but NOT the main console;
+  existing checked `getcursormode(TRUE)` supplies its effective cursor. No new
+  engine hook. Pending-go/countdown and native save/resume/body/evidence gates
+  are unchanged. Extended `rewind_navigation_smoke.py` passes at 30/100/300
+  and both installed clients, unchanged baseline ACTS/fails chat cancellation,
+  47 grader controls pass. Existing HUD 21/12 controls and reader 306/0 pass;
+  screenshot inspected. These are synthetic chain events, not real OS/device
+  delivery or human feel. Private regression launch initially lacked an output
+  directory; create it and rerun, do not call an unlaunched arm a pass. Grader
+  mutation initially expected echoed cfg text in a timestamped log; target the
+  final event instead. Compiler/VM logs, probes and failures remain private.
+
 - **Opposing live-rewind holds cancel (Patch 550).** Direction is presence of
   owned right minus presence of owned left, not the newest held key. Refresh on
   press/release and every browsing frame; reset acceleration only on an effective
@@ -1599,7 +1616,7 @@ publicly WITH its fix, not before it.
   arm. Native probe agreement is with the existing lower selected sample, NOT
   proof of low-FPS requested/native snapshot alignment. Delivered releases behind
   chat/console/menu pass; opening chat/menu without release still scrolls on the
-  baseline and remains a separate focus-cancellation defect in BACKLOG. Synthetic
+  P550 baseline; P554 closes that focus-cancellation defect. Synthetic
   chain events are not actual-device/OS-focus or camera-feel acceptance.
   Production from exact `41410d8` built with zero warnings; both Windows installs
   and all 12 empty-gated Pi lobbies carry CSQC SHA-256
@@ -1855,8 +1872,8 @@ publicly WITH its fix, not before it.
   repeats/up remain swallowed through close/rebind. Menu/chat cursor focus and
   IE_FOCUS loss cancel active scrub; console releases are observed ahead of its
   draft/other handlers. Compound/modifier binds and actual OS/device focus are
-  not covered by the synthetic input arm; live rewind still uses newest-owner
-  opposition, recorded in BACKLOG.
+  not covered by the synthetic input arm; P550 later adds live opposing-key
+  cancellation and P554 adds live focus cancellation.
   `tools/watch_navigation_smoke.py --output-dir <private dir>
   [--baseline <pre-patch ref>]`
   creates an isolated test-only overlay and real dedicated socket. 35 cursor

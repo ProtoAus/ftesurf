@@ -92,10 +92,10 @@ void() Review_Unit =
 	k = Rewind_KeyIx('v');
 	Review_Check(k >= 6 && k != leftk && Rewind_NavDir(k) == 1, "physical owners stay distinct");
 	oldi = rw_i;
-	Rewind_Track(IE_KEYDOWN, 'j');
+	Rewind_Track(IE_KEYDOWN, 'j', 0);
 	k = Rewind_InputEvent(IE_KEYDOWN, 'j', 0, 0);
 	Review_Check(k && rw_i == oldi, "OS repeat is not another press step");
-	Rewind_Track(IE_KEYUP, 'j');
+	Rewind_Track(IE_KEYUP, 'j', 0);
 	Review_Check(Rewind_InputEvent(IE_KEYUP, 'j', 0, 0), "owned navigation release consumed");
 	for (i = 0; i < RW_NAVN; i = i + 1)
 	{

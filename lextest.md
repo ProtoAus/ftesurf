@@ -11,6 +11,20 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — live rewind focus cancellation (Patch 554)
+
+After reconnect/restart, start a run and open rewind. Hold a bare strafe bind
+(or an arrow), open chat, console or menu without releasing, then return with
+it still held: the cursor should stay fixed, including repeats. Release and
+press again: scrolling should start. Also try left+right, lose/restore OS focus,
+then release one: the other cancelled hold must not restart on its own. Closing
+rewind with a taken key still held must not start movement via its repeats.
+
+Whole-chain synthetic cancellation/return/fresh-press controls pass at
+30/100/300 FPS and both installed clients. Actual keyboard/OS-event delivery,
+compound/modifier binds and camera feel still need your acceptance. Native
+save/resume selection, recorder, personal cfg and Build number are unchanged.
+
 ## 00. 8 Oct — live rewind opposing holds (Patch 550)
 
 Live rewind now cancels opposing owned directions, like demo scrolling. After
@@ -19,8 +33,8 @@ left+right should stop; releasing either should resume the remaining direction.
 Try remaps, taps and two keys bound to the same side. Whole-chain synthetic
 controls pass at 30/100/300 FPS and both installed clients, but actual keyboard/
 OS-focus behavior, compound/modifier binds and camera feel remain unaccepted.
-Chat/menu focus cancellation is a known separate defect in BACKLOG: opening a
-panel while held still scrolls until release. Delivered panel releases pass.
+P554 adds chat/menu/console and keyboard-focus cancellation; synthetic
+panel-without-release and delivered-release controls pass. Try actual devices.
 No native save/resume selection, recorder, personal cfg or Build-number change.
 
 ## 00. 8 Oct — fractional demo clock (Patch 549)
@@ -41,7 +55,7 @@ After reconnect/restart, open a native replay and an imported demo:
   accelerating backward/forward scrolling. Arrows still jump 5 seconds.
 - Try remapped keyboard binds, quick taps and releases. Hold both directions:
   demos and live rewind (P550) cancel; releasing one scrolls with the remaining
-  key. Live rewind focus cancellation remains an open item in BACKLOG.
+  key. P554 adds live focus cancellation; actual-device delivery remains to try.
 - Open chat/console/menu while held, release and return; close/reopen the demo
   while still holding. No stuck scrolling or movement when leaving the viewer.
 - Judge smoothness at your real frame rate, and that clock/speed/energy/camera

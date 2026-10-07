@@ -1316,7 +1316,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	local float bit, took;
 
 	Watch_Track(evtype, scanx, chary); // Observes releases even when an earlier panel takes them.
-	Rewind_Track(evtype, scanx);    // Patch 477: ahead of every handler that may take a press
+	Rewind_Track(evtype, scanx, chary); // Patch 477: ahead of every handler that may take a press
 	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
 
 	// Key events only: in an IE_MOUSEABS, scanx is an X COORDINATE, and 512 of
@@ -1378,6 +1378,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 {
 	local vector scr;
+	local float navfocus;
 
 	scr = [vwidth, vheight];
 
@@ -1443,7 +1444,11 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Trail_SaveAnswerFrame();
 	Trail_Frame();
 	Trail_RequestFrame();
-	Rewind_Frame();                 // Patch 477: the cursor and the countdown
+	navfocus = (notmenu && !chat_typing && !UI_CursorHeld());
+	// notmenu excludes menus/windows, not the main console. Use its effective cursor.
+	if (checkbuiltin(getcursormode))
+		if (getcursormode(TRUE)) navfocus = FALSE;
+	Rewind_Frame(navfocus);         // Patch 477: the cursor and the countdown
 
 	clearscene();
 

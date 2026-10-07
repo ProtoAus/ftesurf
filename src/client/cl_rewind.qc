@@ -59,6 +59,7 @@ float  rw_resn;                 // ...with this many samples, so the same unchan
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
+float rw_kactive[RW_KEYS];     // focus loss cancels activity, not ownership until release
 float rw_navscan[RW_NAVN], rw_navdir[RW_NAVN];
 #define RW_SWN      8
 float  rw_sw[RW_SWN];           // other keys this mode swallowed, still held: theirs until let go (round 21)
@@ -147,7 +148,7 @@ float() Rewind_NavDirection =
 
 	left = right = 0;
 	for (k = 0; k < RW_KEYS; k = k + 1)
-		if (rw_kst[k] == 1 && rw_kdown[k])
+		if (rw_kst[k] == 1 && rw_kdown[k] && rw_kactive[k])
 		{
 			dir = Rewind_NavDir(k);
 			if (dir < 0) left = 1;
@@ -166,6 +167,15 @@ void() Rewind_NavRefresh =
 		rw_dir = dir;
 		rw_dirat = cltime;
 	}
+};
+
+void() Rewind_NavClear =
+{
+	local float k;
+
+	for (k = 0; k < RW_KEYS; k = k + 1)
+		rw_kactive[k] = FALSE;
+	rw_dir = 0;
 };
 
 // Review round 17: every key event, from the top of CSQC_InputEvent, ahead of
@@ -224,13 +234,21 @@ void() Rewind_SwReset =
 		rw_sw[i] = 0;
 };
 
-void(float evtype, float scanx) Rewind_Track =
+void(float evtype, float scanx, float chary) Rewind_Track =
 {
 	local float k;
 
 	rw_krep = FALSE;
+	if (evtype == IE_FOCUS)
+	{
+		if (chary == 0) Rewind_NavClear();
+		return;
+	}
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return;
+	if (evtype == IE_KEYDOWN)
+	if (!strcmp(getkeybind(scanx), "toggleconsole") || !strcmp(getkeybind(scanx), "togglemenu"))
+		Rewind_NavClear();
 	if (evtype == IE_KEYUP)         // round 22: whoever takes it -- the chat draft took it
 		Rewind_SwClear(scanx);      // and the next press of that key was swallowed
 	k = Rewind_KeyIx(scanx);
@@ -242,7 +260,10 @@ void(float evtype, float scanx) Rewind_Track =
 		rw_kdown[k] = TRUE;
 	}
 	else
+	{
 		rw_kdown[k] = FALSE;
+		rw_kactive[k] = FALSE;
+	}
 };
 
 void() Rewind_Cursor =
@@ -337,6 +358,7 @@ float() Rewind_Open =
 	rw_openat = cltime;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
+	Rewind_NavClear();
 	for (k = 0; k < RW_KEYS; k = k + 1)     // held into the open: its repeats are not presses
 		rw_kst[k] = rw_kdown[k] ? 2 : 0;
 	// No reset of the swallowed-key table here (round 23): each entry goes with
@@ -519,7 +541,7 @@ void() Rewind_HandOver =
 	tr_cur_on = FALSE;
 };
 
-void() Rewind_Frame =
+void(float navfocus) Rewind_Frame =
 {
 	local float dt, rate, k;
 
@@ -599,6 +621,8 @@ void() Rewind_Frame =
 		Rewind_Close();
 		return;
 	}
+	// Returning focus cannot adopt a cancelled press: repeats/up keep its owner.
+	if (!navfocus) Rewind_NavClear();
 	// Match demo holds: opposing owners cancel; either release resumes the other.
 	Rewind_NavRefresh();
 	if (rw_dir)
@@ -807,6 +831,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		return k >= 0;
 	if (Rewind_NavDir(k))
 	{
+		rw_kactive[k] = TRUE;
 		Rewind_NavRefresh();
 		rw_i = rw_i + rw_dir;
 		Rewind_Cursor();
@@ -943,7 +968,7 @@ float() Rewind_Console =
 		t = stof(argv(2));
 		kup = (argv(3) == "up");
 		oth = (argv(3) == "other" || argv(4) == "other");
-		Rewind_Track(kup ? IE_KEYUP : IE_KEYDOWN, t);
+		Rewind_Track(kup ? IE_KEYUP : IE_KEYDOWN, t, 0);
 		k = oth ? 0 : Rewind_InputEvent(kup ? IE_KEYUP : IE_KEYDOWN, t, 0, 0);
 		print(sprintf("rewind: key %g %s -> %s\n", t, kup ? "up" : "down",
 		              oth ? "other" : (k ? "taken" : "passed")));
@@ -1015,4 +1040,5 @@ void() Rewind_Reset =
 	tr_cur_on = FALSE;
 	ui_rw_on = ui_rw_was = FALSE;
 	Rewind_SwReset();
+	Rewind_NavClear();
 };
