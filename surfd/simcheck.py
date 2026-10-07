@@ -246,17 +246,26 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     a_id = row["id"]
     if row["kind"] != "run":
         return 0, 0, 0
+    # Stored pairs must not occupy the bounded candidate window. Historical
+    # observations use either orientation, so exclude both before LIMIT.
+    peers = conn.execute(
+        "SELECT p.* FROM replays p WHERE p.map = ? AND p.track = ? AND p.leg = ?"
+        " AND p.kind = 'run' AND p.id != ?"
+        " AND NOT EXISTS (SELECT 1 FROM sims s"
+        "     WHERE (s.a_id = ? AND s.b_id = p.id)"
+        "        OR (s.a_id = p.id AND s.b_id = ?)) ORDER BY p.id LIMIT ?",
+        (row["map"], row["track"], row["leg"], a_id, a_id, a_id, limit_peers)).fetchall()
+    if not peers:
+        return 0, 0, 0
     pa, w = _row_path(surfd, row)
     if pa is None:
         if diagnostics is not None:
             diagnostics["source_unavailable"] += 1
         return 0, 0, 0
-    peers = conn.execute(
-        "SELECT * FROM replays WHERE map = ? AND track = ? AND leg = ?"
-        " AND kind = 'run' AND id != ? ORDER BY id LIMIT ?",
-        (row["map"], row["track"], row["leg"], a_id, limit_peers)).fetchall()
     found = []
     for pr in peers:
+        # Keep the late recheck: another writer may have stored this pair since
+        # the candidate snapshot. It must still cost no admission or comparison.
         have = conn.execute(
             "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
             (a_id, pr["id"], pr["id"], a_id)).fetchone()
