@@ -2239,6 +2239,19 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   both ways. No leaked idle tail, synthetic speed-zero plateau, clock creep at
   a fixed cursor or unexplained jolt. Real pause/teleport controls must remain
   explicit; P502 authoritative held clocks/save/go contracts still pass. Plan 12.3.
+  Measured 2026-10-07: `tools/stitched_rewind_smoke.py` has three acted warm
+  cuts after counted 5–6 second waits: retained raw prefixes exclude the future
+  and do not grow in a hold. Cold persisted picture restores. A distinct cold
+  boundary reproduces: cuts 2.0/1.5/1.0 seconds, all AFTER the loaded save,
+  select a later server sample on cut two and refuse cut three. Cold snapshots
+  lack `recrid`; `SV_RecGenOK` (sv_timer.qc) refuses the warm recorder path,
+  `SV_RecRewindStream` assigns another serial and `SV_RewindRebase`
+  (sv_saveloc.qc) removes older state snapshots. This is a confirmed re-cut
+  limit, not yet the cause of every reported visual pause. The strict control
+  intentionally remains red on those two arms. Repair needs all six cuts plus
+  stale/other-lineage refusal and recorder corpus checks; do not weaken the
+  fail-closed guard, trust client history as server state, or trim the picture
+  to a requested clock when the authoritative body went elsewhere.
 - **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:
   `cl_lines.qc:Line_Contact/Line_Point/Line_Marks`, `Board_RampHeld` and the
   native per-tick raw contact/normal producers. The line classifier uses held

@@ -345,6 +345,13 @@ and a teleport are positive controls. P502 dedicated warm/cold/held-clock arms
 must still pass. Moving-camera feel needs Lex's acceptance, not just a numeric
 interpolation test.
 
+2026-10-07 control: three warm cuts remove actual counted 5–6 second failed
+waits and exclude held time; fresh-client persisted picture restores. Cold
+re-cuts AFTER the load time reproduce later-sample selection then refusal
+because another cold recorder reload loses older server snapshots (BACKLOG).
+`stitched_rewind_smoke.py` intentionally stays red on those two arms. No splice
+or lineage fix is claimed; keep its exact oracle while fixing that boundary.
+
 ### 12.4 Contact labels at the actual surface event
 
 **Build.** Audit native "off ramp" placement against the mover's actual contact

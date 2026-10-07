@@ -1537,6 +1537,23 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- 2026-10-07 repeated-cut control `tools/stitched_rewind_smoke.py`: private
+  dump seam plus real dedicated recorder, fresh second client, no fixture or
+  install saves touched. Three warm cuts pass after counted 5–6 second waits:
+  cut head replaces future, raw hold counts/rows stay equal, release grows the
+  retained prefix. Cold persisted picture equals save001. Cold cuts at
+  2.0/1.5/1.0 (all after the load) remain RED on two/three: later server sample,
+  then refusal. Do not loosen the oracle or call warm success an idle-tail fix.
+  State files show cold snapshots lack `recrid`; SV_RecGenOK refuses warm,
+  SV_RecRewindStream makes another serial, SV_RewindRebase drops old snapshots.
+  BACKLOG carries the boundary; never fix it by passing client geometry as
+  authority or merely trimming to its requested clock. Initial test also
+  requested pre-load times and must not be cited as newly recorded history;
+  corrected after reading the bounded state-ring contract. Harness first used
+  two unregistered bare cvars before spawn: repaired to `set`, full rerun had
+  zero command/VM errors and zero compiler warnings. Strict retained grader
+  exposes the two cold failures, not an all-green claim. Run with private
+  `--output-dir`; test-only programs must NEVER ship.
 - P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
   2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
   `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;
