@@ -429,35 +429,38 @@ def summary(conn):
             return dict.fromkeys(out, None) | {"state": "missing"}
         # Old samples stay unknown; a read never migrates or infers old prose.
         columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
-        code = "skip_code" if "skip_code" in columns else "'' AS skip_code"
+        code = "skip_code" if "skip_code" in columns else "''"
+        known = sorted(KNOWN_SKIP_CODES)
+        # One sample query/snapshot. Fixed categories bound Python result rows
+        # regardless of sample size or arbitrary stored prose/codes. SQLite still
+        # scans the sample: this is not a database scan or hard elapsed-time bound.
         rows = conn.execute(
-            "SELECT verdict, match, same_who, who_a, who_b, " + code + " FROM sims").fetchall()
+            "SELECT CASE WHEN verdict = 'compared' THEN"
+            "   CASE WHEN who_a != '' AND who_b != '' THEN"
+            "     CASE WHEN same_who THEN 'same' ELSE 'cross' END"
+            "   ELSE 'unknown' END ELSE 'skip' END AS bucket,"
+            " CASE WHEN verdict = 'compared' THEN ''"
+            "   WHEN " + code + " IS NULL OR " + code + " = '' THEN 'legacy_unknown'"
+            "   WHEN " + code + " IN (" + ",".join("?" for _ in known) + ")"
+            "     THEN " + code + " ELSE 'unknown' END AS category,"
+            " COUNT(*) AS n, MAX(match) AS maximum,"
+            " SUM(CASE WHEN verdict = 'compared' AND match >= ? THEN 1 ELSE 0 END) AS notable"
+            " FROM sims GROUP BY bucket, category", (*known, NOTABLE)).fetchall()
     except Exception:
         return dict.fromkeys(out, None) | {"state": "error"}
     if rows:
         out["state"] = "available"
     for r in rows:
-        out["pairs"] += 1
-        if r["verdict"] != "compared":
-            out["skipped"] += 1
-            raw_code = r["skip_code"]
-            code = (raw_code if raw_code in KNOWN_SKIP_CODES else "unknown") if raw_code else "legacy_unknown"
-            out["skip_codes"][code] = out["skip_codes"].get(code, 0) + 1
+        n, bucket = r["n"], r["bucket"]
+        out["pairs"] += n
+        if bucket == "skip":
+            out["skipped"] += n
+            out["skip_codes"][r["category"]] = n
             continue
-        out["compared"] += 1
-        m = r["match"]
-        if m >= NOTABLE:
-            out["notable"] += 1
-        if r["who_a"] and r["who_b"]:
-            if r["same_who"]:
-                out["same_n"] += 1
-                out["same_max"] = m if out["same_max"] is None else max(out["same_max"], m)
-            else:
-                out["cross_n"] += 1
-                out["cross_max"] = m if out["cross_max"] is None else max(out["cross_max"], m)
-        else:
-            out["unknown_n"] += 1
-            out["unknown_max"] = m if out["unknown_max"] is None else max(out["unknown_max"], m)
+        out["compared"] += n
+        out["notable"] += r["notable"]
+        out[bucket + "_n"] = n
+        out[bucket + "_max"] = r["maximum"]
     return out
 
 

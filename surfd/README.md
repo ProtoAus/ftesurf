@@ -634,9 +634,20 @@ persist fixed `skip_code` categories; old rows stay empty and are reported as
 legacy unknown without reconstruction from reason prose. Authenticated admin
 projects only safe fixed labels, not source filenames or exception details.
 
-Run the focused ingestion, codes, time, collection, budget-CLI and observation
-controls alongside the deployment suite; the shipper does not discover them
-implicitly. Byte/move/time exhaustion is an operational abstention, never a
+A source stays pending while any eligible native same-map/track/leg pair is
+unobserved. Stored pairs (in either historical orientation, including skips) are
+excluded before the oldest-first 200-new-peer window. A partial sample therefore
+remains eligible after a row/pair/time stop; this is not fair retry scheduling,
+source-byte binding, remeasurement of old skips or a complete-coverage guarantee.
+
+The read-only summary aggregates one snapshot into at most 13 fixed category/
+identity result rows, instead of materializing all observations in Python. Counts,
+maxima, notable attention labels and missing/empty/error distinctions are unchanged.
+SQLite still scans the sample; this does not bound total database work or memory.
+
+Run the focused pending, peers, summary, ingestion, codes, time, collection,
+budget-CLI and observation controls alongside the deployment suite; the shipper
+does not discover them implicitly. Byte/move/time exhaustion is an operational abstention, never a
 cheat finding, coverage measurement or ranking/badge gate.
 
 ### Evidence behind stage rows (schema 6)
