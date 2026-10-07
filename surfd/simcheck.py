@@ -312,14 +312,20 @@ def summary(conn):
     one install measures that case while looking as though it measured the general
     one.  So every figure here is reported beside its identity split.
     """
-    out = {"pairs": 0, "compared": 0, "skipped": 0, "notable": 0,
+    out = {"state": "empty", "pairs": 0, "compared": 0, "skipped": 0, "notable": 0,
            "same_max": None, "cross_max": None, "same_n": 0, "cross_n": 0,
            "unknown_n": 0, "unknown_max": None}
     try:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
+        if not exists:
+            return dict.fromkeys(out, None) | {"state": "missing"}
         rows = conn.execute(
             "SELECT verdict, match, same_who, who_a, who_b FROM sims").fetchall()
     except Exception:
-        return out
+        return dict.fromkeys(out, None) | {"state": "error"}
+    if rows:
+        out["state"] = "available"
     for r in rows:
         out["pairs"] += 1
         if r["verdict"] != "compared":
@@ -343,10 +349,14 @@ def summary(conn):
 
 
 def summary_line(conn):
-    """One line for the sweep log, or '' when there is nothing to say."""
+    """One read-only line, distinguishing no sample from an unavailable sample."""
     s = summary(conn)
+    if s["state"] == "missing":
+        return "sims: unavailable (table missing)"
+    if s["state"] == "error":
+        return "sims: unavailable (query error)"
     if not s["pairs"]:
-        return ""
+        return "sims: no pairs stored yet"
     parts = ["%d pairs, %d compared, %d unjudgeable" % (s["pairs"], s["compared"],
                                                         s["skipped"])]
     if s["same_n"]:
