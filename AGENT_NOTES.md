@@ -1575,6 +1575,18 @@ publicly WITH its fix, not before it.
   negative; corrected parser rejects it and all other malformed arms. Initial
   draft corpus counts were incorrect; inspect the complete report, not line
   counts or a recalled summary, before publishing a count.
+  P539 production progs from inspected `8f87209` reached both Windows installs
+  and all 12 Pi lobbies on 2026-10-07 (completed controls 07:49:48 UTC). Pi
+  occupancy gate found a current row for every unit, all zero; no force. Hashes
+  agree and ordinary `.prev` pairs remain. Engine/plugins/menu, owner configs
+  and the second install's Quakers mod were not changed. Independent source
+  reviews and the bounded oracle recheck found no residual code blocker.
+  Two fresh private clients cold-downloaded matching CSQC, received real peer
+  streams and reached the settings/imported/native UI without command/VM/shader
+  errors. Native screenshot inspection shows the terms-unaccepted gate and a
+  missing-map-material warning: no board-row fetch, complete map appearance or
+  rendered camera/path acceptance is claimed. Isolated native cut controls,
+  not these compatibility screenshots, establish the recorder fix.
 - P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
   2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
   `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;
