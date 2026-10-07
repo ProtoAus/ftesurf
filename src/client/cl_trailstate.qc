@@ -115,7 +115,8 @@ void(float t) Trail_VisualState =
 	if (i + 1 >= buf_getsize(tr_raw)) return;
 	if (tokenize(bufstr_get(tr_raw, i + 1)) != 14) return;
 	t1 = stof(argv(0));
-	if (t1 <= t0 || (stof(argv(7)) & 0x4000000)) return;
+	// Trails store breaks/stitches separately from legacy recording flags.
+	if (t1 <= t0 || (stof(argv(7)) & 0x4000000) || stof(argv(8)) || stof(argv(9))) return;
 	f = bound(0, (t - t0) / (t1 - t0), 1);
 	tr_vis_vel = vel0 + ([stof(argv(4)), stof(argv(5)), stof(argv(6))] - vel0) * f;
 	tr_vis_ang = Interp_View(ang0, [stof(argv(13)), stof(argv(10)), 0], f);

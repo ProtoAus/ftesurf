@@ -345,12 +345,16 @@ and a teleport are positive controls. P502 dedicated warm/cold/held-clock arms
 must still pass. Moving-camera feel needs Lex's acceptance, not just a numeric
 interpolation test.
 
-2026-10-07 control: three warm cuts remove actual counted 5–6 second failed
-waits and exclude held time; fresh-client persisted picture restores. Cold
-re-cuts AFTER the load time reproduce later-sample selection then refusal
-because another cold recorder reload loses older server snapshots (BACKLOG).
-`stitched_rewind_smoke.py` intentionally stays red on those two arms. No splice
-or lineage fix is claimed; keep its exact oracle while fixing that boundary.
+2026-10-07 controls: P539 repairs the cold recorder-attachment boundary;
+streamed/buffered six-cut native body/clock/prefix/refusal controls pass at 100
+FPS. P540 repairs raw break/stitch velocity/view interpolation and chase
+camera tangents crossing unrelated spans. Compiled discontinuity controls and
+both-camera quarter-point traces pass at caps 30/100/300, preserving genuine
+counted stops. Full six-cut controls also pass streamed at 300 FPS. At 30 FPS,
+two requested-prefix arms remain red with 45 ms native selection differences;
+the unchanged P539 baseline reproduces both exactly (BACKLOG). Keep the strict
+oracle. Moving-camera feel, real teleport coverage and the broader reported
+pause/event/compare acceptance remain open; numeric traces do not settle them.
 
 ### 12.4 Contact labels at the actual surface event
 

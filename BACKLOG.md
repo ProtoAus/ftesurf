@@ -2266,7 +2266,22 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   `tools/test_stitched_rewind_smoke.py`. Human path/camera feel and the broader
   wait-tail/presentation/event/compare cases above remain open. Never trust
   client history as server state or trim the picture to a requested clock when
-  the authoritative body went elsewhere.
+  the authoritative body went elsewhere. P540 repairs two measured presentation
+  boundaries: raw break/stitch columns now stop velocity/view interpolation,
+  and chase tangents stay within the continuous span. Nine compiled controls
+  and quarter-point scans of both camera modes pass at caps 30/100/300; this is
+  not human moving-camera acceptance or complete teleport/event parity.
+- **Low-FPS requested cursor differs from the restored native snapshot.**
+  Sites: `cl_rewind.qc:Rewind_Go`, `sv_saveloc.qc:SV_RewindFind` and visual
+  prefix/trim acknowledgement. The dedicated 30-FPS buffered six-cut fixture
+  selects 0.690 for a 0.735 request and 1.545 for a 1.500 request; the strict
+  requested-prefix oracle remains red. Both failures reproduce unchanged on
+  P539 and on the P540 visual candidate. Native body/hold checks still act;
+  this is NOT evidence that those two requested clocks were restored exactly.
+  Falsifier: instrument requested sampled clock/pose, selected native snapshot
+  clock/pose and acknowledged visual bound together at 30/100/300 FPS. Repair
+  alignment without weakening body/prefix checks, inventing authoritative state
+  or retiming the recording. Keep genuine stops and discontinuities explicit.
 - **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:
   `cl_lines.qc:Line_Contact/Line_Point/Line_Marks`, `Board_RampHeld` and the
   native per-tick raw contact/normal producers. The line classifier uses held

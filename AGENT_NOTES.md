@@ -1587,6 +1587,33 @@ publicly WITH its fix, not before it.
   missing-map-material warning: no board-row fetch, complete map appearance or
   rendered camera/path acceptance is claimed. Isolated native cut controls,
   not these compatibility screenshots, establish the recorder fix.
+- P540: raw trail break/stitch columns (8/9), not only legacy flag
+  `0x4000000`, gate `Trail_VisualState` interpolation. `Rewind_Camera` bounds
+  its +/-3-point tangent to the cursor's continuous span. Compiled positives
+  for continuous/short-yaw/sampled-save/raw-break/raw-stitch/legacy-break/
+  position-break and both sides of a chase break: baseline fails four, subject
+  passes all nine. `stitched_rewind_smoke --visual` adds private quarter-point
+  first-person/chase traces, restored after scanning; never ship the probe
+  programs. Six-cut native body/clock/prefix/refusal controls pass streamed and
+  buffered at 100 FPS and streamed at 300 FPS (12,006 / 12,110 / 12,142 traced
+  cursor samples respectively). Genuine 5-second running stops stay counted.
+  Visual-only 30-FPS buffered traces pass (5,626 samples), but the full oracle
+  stays red: 0.735 requested -> 0.690 retained, 1.500 -> 1.545. Both failures
+  reproduce exactly with `--baseline` (HEAD client code, before this commit).
+  Do not call the low-FPS full matrix green or silently broaden its tolerances.
+  All 17 lineage guards, 19/18 native grader counterfactuals, 16 visual grader
+  controls and P502 main/edges pass; reader 306/0. No evidence writer/reader,
+  server selection, save clock, engine pin/tag or qcbuild change.
+  Probe compile failures were a vector component on a call result and a missing
+  forward declaration, not product defects. Initial hold probe preceded load
+  acknowledgement: allow 1.2 s before hold1, still inside the 3 s hold. At
+  30 FPS use .9/.7/.5 warm cuts to retain the existing >10-sample coverage floor;
+  changing that floor would conceal the first low-FPS fixture failure. Printed
+  six-decimal time needs a velocity tolerance derived from dt/velocity slope,
+  not arbitrary smoothing. Empty/truncated/nonfinite/missing-quarter and pose/
+  view/camera/index mutations all reject; raw angles are independently derived.
+  Numeric geometry is not screenshots, camera feel or full contact/teleport
+  truth. Those human/broader cases and low-FPS alignment remain open.
 - P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
   2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
   `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;

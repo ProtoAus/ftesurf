@@ -25,7 +25,7 @@ commit   db62965de8f7d69abf086ca3169b29300224ee6b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-538
-patch    539
+patch    540
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,11 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-07
 
+# PATCH 540: REWIND DISCONTINUITY PRESENTATION. Raw break/stitch columns
+# stop velocity/view interpolation; chase tangents stay inside the cursor's
+# continuous span. No save/recording retiming, engine pin/tag or qcbuild change.
+# Low-FPS requested-vs-native snapshot alignment and human camera feel remain open.
+#
 # PATCH 539: RECORDER ATTACHMENT LINEAGE. Repeated cold-prefix cuts keep
 # earlier server snapshots using a fresh local attachment key. Saved keys are
 # compared, never adopted as evidence run IDs/nonces. Legacy lineage guards

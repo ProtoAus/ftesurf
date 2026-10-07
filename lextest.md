@@ -11,6 +11,22 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — rewind camera at stitched breaks (Patch 540)
+
+Raw break/stitch boundaries no longer blend velocity/view across attempts,
+and chase direction stays on the current continuous span. Compiled and numeric
+controls pass; moving-camera feel still needs you. After reconnect/restart:
+
+- Make three warm and three cold cut/resume attempts, with long failed waits.
+  Scrub both ways through each stitch in first-person and chase mode. Does the
+  camera still pivot toward an unrelated attempt or show an unexplained pause?
+- Keep a genuine recorded stop and a teleport as controls: stop time must stay
+  counted, and the teleport must stay explicit rather than smoothed through walls.
+- Repeat at low/high frame caps. Two 30-FPS requested/native clock mismatches
+  remain in BACKLOG; don't treat this patch as a complete low-FPS resume fix.
+
+No authoritative recording/save retiming, engine change or Build-number bump.
+
 ## 00. 7 Oct — swimming and the sidistic palette (Patch 538)
 
 Swimming input/drag and real-recorder wet replay pass machine controls. Judge

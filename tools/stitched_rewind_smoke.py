@@ -150,7 +150,7 @@ def cuts(prefix):
         text += probe(stem + '_cursor') + 'rewind status\n'
         if prefix == 'warm' and i == 1:
             text += 'rewind save\nwaitms 500\n'
-        text += 'rewind go\nwaitms 700\n' + probe(stem + '_hold1')
+        text += 'rewind go\nwaitms 1200\n' + probe(stem + '_hold1')
         text += 'waitms 600\n' + probe(stem + '_hold2')
         text += 'waitms 2600\n+forward\nwaitms 350\n-forward\n'
         text += probe(stem + '_release') + 'rewind status\n'
@@ -269,20 +269,29 @@ def main():
     ap.add_argument('--output-dir', type=Path, required=True)
     ap.add_argument('--grade-only', type=Path)
     ap.add_argument('--buffered', action='store_true')
+    ap.add_argument('--visual', action='store_true', help='Trace both cameras and compiled visual discontinuity controls')
+    ap.add_argument('--baseline', action='store_true', help='Use HEAD client cursor/state code instead of working-tree edits')
+    ap.add_argument('--fps', type=int, choices=(30, 100, 300), default=100)
     a = ap.parse_args()
     if a.grade_only:
         grade(a.grade_only/'ftesurf', not a.buffered)
+        if a.visual:
+            from stitched_visual import grade as grade_visual
+            grade_visual(a.grade_only/'ftesurf')
         return
     a.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='stitch-source-', dir=a.output_dir))
     work.rmdir()
     subprocess.run(['git','-C',str(ROOT),'worktree','add','--detach',str(work),'HEAD'], check=True)
     shutil.copy2(ROOT/'src/fteqcc64.exe', work/'src/fteqcc64.exe')
-    for rel in ('src/client/cl_trail.qc','src/client/cl_trailstate.qc','src/client/cl_trailreplay.qc',
+    for rel in ('src/client/cl_rewind.qc','src/client/cl_trail.qc','src/client/cl_trailstate.qc','src/client/cl_trailreplay.qc',
                 'src/server/sv_timer.qc','src/server/sv_resume.qc','src/server/sv_saveloc.qc',
                 'src/server/sv_rewindstate.qc',
                 'src/server/sv_player.qc','tools/runlines_smoke.py'):
-        shutil.copy2(ROOT/rel, work/rel)
+        if a.baseline and rel in ('src/client/cl_rewind.qc', 'src/client/cl_trailstate.qc'):
+            (work/rel).write_bytes(subprocess.check_output(['git', '-C', str(ROOT), 'show', f'HEAD:{rel}']))
+        else:
+            shutil.copy2(ROOT/rel, work/rel)
     p = work/'src/client/cl_trail.qc'
     text = once(p.read_text(), 'float() Trail_Console =', SEAM+'\nfloat() Trail_Console =')
     text = once(text, 'if (argv(0) != "trail")', 'if (argv(0) == "stitch_probe") { Stitch_Probe(argv(1)); return TRUE; }\n\tif (argv(0) != "trail")')
@@ -296,10 +305,20 @@ def main():
     p = work/'src/server/sv_player.qc'
     p.write_text(once(p.read_text(), '\tif (c == "rec_nack")',
                      '\tif (c == "stitchguards") { SV_StitchGuards(); return; }\n\tif (c == "stitchprobe") { SV_StitchProbe(self, argv(1)); return; }\n\tif (c == "rec_nack")'))
+    if a.visual:
+        from stitched_visual import instrument
+        instrument(work)
     cfg = work/'ftesurf/cfg/test/stitched_rewind.cfg'
     stream = int(not a.buffered)
     warm = WARM.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
     cold = COLD.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
+    if a.visual:
+        from stitched_visual import config
+        warm = config(warm, a.fps, units=True)
+        cold = config(cold, a.fps)
+    else:
+        warm = once(warm, 'cl_maxfps 100\n', f'cl_maxfps {a.fps}\n')
+        cold = once(cold, 'cl_maxfps 100\n', f'cl_maxfps {a.fps}\n')
     # The second cfg runs in the SAME isolated rig, via a fresh client process.
     cfg.write_text(warm.replace('echo RUNLINES COMPLETE\nquit\n', 'echo RUNLINES COMPLETE\nexec cfg/test/stitch_finish.cfg\n'))
     (work/'ftesurf/cfg/test/stitch_cold.cfg').write_text(cold)
@@ -321,6 +340,9 @@ def main():
     print('Retained source:', work)
     print('Retained rig:', rig)
     grade(rig/'ftesurf', not a.buffered)
+    if a.visual:
+        from stitched_visual import grade as grade_visual
+        grade_visual(rig/'ftesurf')
 
 if __name__ == '__main__':
     main()

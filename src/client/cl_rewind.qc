@@ -603,7 +603,7 @@ void() Rewind_Frame =
 // along the line's own direction there, stopped short of walls.
 void() Rewind_Camera =
 {
-	local float n, b, j0, j1, eye;
+	local float n, b, j0, j1, eye, k;
 	local vector d, a, cam;
 
 	if (!rw_on || rw_cd)
@@ -614,6 +614,11 @@ void() Rewind_Camera =
 	b = tr_live * LN_CAP;
 	j0 = max(0, floor(rw_i) - 3);
 	j1 = min(n - 1, floor(rw_i) + 3);
+	// A chase tangent belongs to this continuous span, not the next attempt.
+	for (k = floor(rw_i); k > j0; k = k - 1)
+		if (ln_brk[b + k]) { j0 = k; break; }
+	for (k = floor(rw_i) + 1; k <= j1; k = k + 1)
+		if (ln_brk[b + k]) { j1 = k - 1; break; }
 	d = ln_pos[b + j1] - ln_pos[b + j0];
 	d_z = 0;
 	if (vlen(d) < 1)
