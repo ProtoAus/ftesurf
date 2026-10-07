@@ -1640,6 +1640,19 @@ publicly WITH its fix, not before it.
   Retry the frozen production build normally when empty, then verify remote
   hashes, every unit and fresh-cache live behavior. Do not claim fleet delivery
   or drop the connected player to finish this deployment.
+  Fleet retry completed 2026-10-07 at 12:10:46 UTC, from the SAME clean frozen
+  `72e7884` source. Normal occupancy guard found all 12 current rows empty;
+  no force. Zero-warning production rebuild matches the Windows pair. All
+  12 exact units independently active; remote CSQC is `ac19e6df...`, previous
+  CSQC is P540 `e7e519c3...`, SSQC remains `e56b81df...`. Default cfg unchanged;
+  ordinary `.prev` retained. Two fresh-cache installed clients downloaded exact
+  matching CSQC, received acted peer streams and reached the settings/imported/
+  native UI without command/VM/shader errors. Inspected native screenshot still
+  shows unaccepted terms and the known missing-map material: compatibility, not
+  board-row fetch, map completeness or moving-camera acceptance. No second
+  restart during finish controls. Windows production/protected native/plugin/
+  menu/personal/default cfg and Quakers hashes stayed unchanged. Directory had
+  all 12 rows and zero players afterward. P542 fleet delivery is now complete.
 - P540: raw trail break/stitch columns (8/9), not only legacy flag
   `0x4000000`, gate `Trail_VisualState` interpolation. `Rewind_Camera` bounds
   its +/-3-point tangent to the cursor's continuous span. Compiled positives
