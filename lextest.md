@@ -11,6 +11,22 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — red Impact ERROR art (Patch 534)
+
+The standalone `models/missing_error.md3` has extruded Impact ERROR letters,
+fullbright red faces/darker sides and a small additive outline halo. It renders
+red with bloom off, and a no-model control draws no red pixels. Judge the style,
+not an assumed Source-perfect material. `modelviewer models/missing_error.md3`
+or `exec cfg/test/p534missing.cfg` opens a local preview; restart for new assets.
+
+- Is the extrusion/letter spacing/halo the look you wanted, and is the model's
+  roughly 75x26x4-unit size sensible for a missing prop? No automatic failed-model
+  selector is installed yet, so existing invisible missing props are not fixed.
+- The authored 64x64 checker is loaded through `textures/no_texture.png` with
+  `gl_load24bit 1`. Judge its sharpness in actual play. Explicit Source VMT pass
+  maps can still go black on a missing base texture; that is in BACKLOG, not a
+  subjective acceptance item. Your personal cfg has not been changed.
+
 ## 00. 7 Oct — budget water and material menu (Patch 523)
 
 Both Windows installs now have the tested native EXE/HL2 plugin and CSQC, with

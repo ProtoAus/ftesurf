@@ -5,6 +5,29 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Missing-asset selection: Source pass maps and model failures -- 2026-10-07
+
+Patch 534 ships the 64x64 engine-checker override and a red/fullbright extruded
+Impact `models/missing_error.md3` asset, NOT automatic model-error selection.
+
+- `plugins/hl2/mat_vmt.c:Shader_GenerateFromVMT` can emit an explicit pass map
+  for UnlitGeneric; `engine/gl/gl_backend.c:Shader_BindTextureForPass`'s T_GEN_SINGLEMAP
+  binds the failed image rather than the T_GEN_DIFFUSE missing_texture fallback.
+  The isolated found-VMT/missing-$basetexture control remains black even with
+  the authored fallback loaded at64x64. Falsifier: found/missing VMT and
+  found/missing base-texture controls must produce the intended visible checker;
+  keep legitimate black/optional masks, normal/gloss fallbacks and loading
+  textures distinct. Do not generalize the successful missing drawpic control
+  into all Source shader behavior.
+- `engine/gl/gl_model.c:Mod_LoadModelWorker` sets MLS_FAILED and returns NULL
+  at the required-load boundary; optional/static-prop paths can retain mod_dummy entries.
+  Hook the ERROR model only in the appropriate renderer submission paths,
+  preserving warnings, original bounds/identity/collision and server behavior.
+  Falsifier: missing Source prop and missing ordinary model act visually while
+  real models remain identical; error-model absent/corrupt cannot recurse or
+  crash; PVS/distance/bounds and many-missing-prop costs remain bounded. No
+  loading-success lie or collision substitution belongs in an art patch.
+
 ## Source particles and water: coverage and budget audit -- 2026-10-06
 
 Lex requested expected HL2 visuals without sacrificing high FPS. This is an

@@ -25,7 +25,7 @@ commit   ee59d58f17e7cc4547db5d4304c233da28f20ad6
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-531
-patch    533
+patch    534
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,12 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-07
 
+# PATCH 534: MISSING-ASSET ART ONLY. The authored 64x64 no_texture override
+# replaces engine diffuse checkers with gl_load24bit 1. Includes a generated
+# extruded Impact ERROR model, red/fullbright with a small additive halo.
+# No automatic missing-model selection or failed Source pass-map repair yet.
+# No engine/progs rebuild, engine-pin/tag or qcbuild change.
+#
 # PATCH 533: CONTINUOUS FADES. Live samples fade by arrival age, including
 # the unbuilt tail; no stagger/restart at chunk boundaries. Demo publication
 # has one constant-rate ramp. Static spatial dither replaces 16 Bayer levels.

@@ -245,6 +245,9 @@ __pycache__/
 !/ftesurf/gfx/
 !/ftesurf/glsl/
 !/ftesurf/models/
+!/ftesurf/textures/
+/ftesurf/textures/*
+!/ftesurf/textures/no_texture.png
 !/ftesurf/scripts/
 !/ftesurf/fs_addons.default.txt
 
@@ -271,6 +274,9 @@ __pycache__/
 !/ftesurf/gfx/env/
 /ftesurf/gfx/env/*
 !/ftesurf/gfx/env/milk.png
+# Authored checker and generated ERROR-model palette (Patch 534).
+!/ftesurf/gfx/env/missingtexture.png
+!/ftesurf/gfx/env/missing_error_palette.png
 #  The vessel world's two films (m_milk.qc), grayscale JPEG.
 !/ftesurf/gfx/env/xray1.jpg
 !/ftesurf/gfx/env/xray2.jpg

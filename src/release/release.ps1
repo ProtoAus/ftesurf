@@ -214,6 +214,11 @@ $ShipGameFiles = @(
     # do not need.  A SNAPSHOT: regenerate before a release, or the archive
     # ships whatever the board held last time.
     'ftesurf/data/mapwr.txt'
+    # P534: engine no_texture replacement and the ERROR model's palette.
+    # Exact entries, not a broad textures/gfx glob or a font redistribution.
+    'ftesurf/textures/no_texture.png'
+    'ftesurf/gfx/env/missingtexture.png'
+    'ftesurf/gfx/env/missing_error_palette.png'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory

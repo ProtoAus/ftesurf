@@ -2919,6 +2919,38 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   Depth fog/capture sharing, other menu rows, glass and particle coverage retain
   their own acting-control gates in BACKLOG; this water patch does not close them.
 
+## Missing-asset art (Patch 534) -- 2026-10-07
+
+- `R2D_Init` requests the diffuse fallback as `no_texture`, with replacement
+  allowed. The standard high-res search finds `textures/no_texture.png`:
+  no engine rebuild is needed. `gfx/env/missingtexture.png` is the author's
+  source image; the alias must remain byte-identical. `gl_load24bit 1` loads
+  it at 64x64; 0 plus vid_restart restores the engine's 16x16 fallback.
+  Normal/gloss placeholders stay 4x4, not magenta checker maps.
+- `models/missing_error.md3` is a standalone extruded Impact ERROR asset,
+  not an installed automatic failed-model replacement. Its opaque faces are
+  fullbright red, sides darker; four small additive outline rings work with
+  bloom off. No font binary/Source model is redistributed. Regeneration uses
+  `tools/make_error_model.py` with a locally licensed Impact font; only the
+  generator needs fonttools/shapely/mapbox-earcut/numpy. Runtime needs the MD3,
+  `scripts/missing_assets.shader` and `gfx/env/missing_error_palette.png`.
+- A pass-level `rgbgen const` with `program default2d` rendered this GPU alias
+  mesh WHITE even though the script parsed. Use baked palette UVs instead;
+  do not grade shader parsing as red pixels. The red front/angle/off controls
+  distinguish actual rendering; 0 off pixels vs 58653/53639 red pixels, bloom0.
+  The final quantized mesh has no degenerate triangles; tiny ones removed by
+  MD3's 1/64 coordinate quantization do not change the frontal pixels.
+- This replaces ENGINE CHECKERS, not every missing Source texture path.
+  A valid Source UnlitGeneric whose explicit pass map is absent can remain
+  black: `T_GEN_SINGLEMAP` does not use the `T_GEN_DIFFUSE` fallback. A missing
+  VMT and a found VMT with a missing base texture are different controls.
+  Failed-model fallback must retain failed-load diagnostics and must NOT
+  change Source collision. Both integration tasks remain in BACKLOG.
+- `tools/test_missing_assets.py` checks MD3 bounds/offsets/triangles/materials,
+  PNG CRC/resolution/palette/alias and explicit release entries. The release
+  globs for models/scripts are nonrecursive, so the MD3 sits at their top level.
+  Do not silently put it into a subdirectory and call a local render a ship pass.
+
 ## Source fire sheets: loading is not animation -- 2026-10-07
 
 - Particle VTFs can have ONE image frame and still contain an animated sprite
