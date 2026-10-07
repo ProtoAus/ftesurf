@@ -51,6 +51,11 @@ as proof that every source path was built into it. No FPS improvement is claimed
   select the authored material. `tools/pcf.py:translate` emits a texture stem
   but no VTF sheet frame selection; native `engine/client/p_script.c`'s
   `tcoords`/`atlas` select a static cell at spawn, not animation over its life.
+  Patch 531 supplies separate native texframe/texanim stepping with bounded
+  arbitrary UV tables, lifetime/loop/clamp and a compiled-backend extension.
+  It is only the renderer prerequisite: product emitters/bake/installed bytes
+  are unchanged. Native colored-atlas and actual Dune/Anubis sheet controls act
+  in isolation; full map budgets, Source parity and deployment are not accepted.
   Dune has 65 env_fire and 42 PCF fire instances (21 dune_fire_medium_03,
   13 fire_medium_02, 8 fire_medium_02_nosmoke); Anubis has 161 env_fire and
   498 env_smokestack. All Anubis stacks name particle/SmokeStack.vmt, a
@@ -67,8 +72,8 @@ as proof that every source path was built into it. No FPS improvement is claimed
   map return/cold load and archived off/low settings. Enforce visible-site,
   sprite and overdraw budgets/LOD. Compare CPU/GPU costs against the ACTUAL
   current emitter path, not just a matching-count polygon glow control;
-  shared-PCF resolution, smoke/embers, old-client support and ship-set checks
-  remain open. Do not add mandatory full-screen bloom, depth captures or
+  production shared-PCF resolution, smoke/embers, old-client support and ship-set
+  checks remain open. Do not add mandatory full-screen bloom, depth captures or
   dynamic-light/shadow passes to obtain a cheap bright flame.
 - **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
   capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.

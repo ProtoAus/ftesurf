@@ -2889,7 +2889,9 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   resource directory: 7.1 has no 7.3 directory. Preserve/report sequence flags
   rather than guessing their byte layout from a third-party parser.
 - `p_script.c` tcoords/atlas randomize a static UV cell at spawn. They do not
-  step it as the particle ages. The PCF translator currently emits neither a
+  step it as the particle ages. Patch 531 adds separate native texframe/texanim
+  tables, but does not change those legacy commands or integrate the fire baker.
+  The PCF translator currently emits neither a
   sheet table nor animation, so registering a SpriteCard material or successfully
   baking a PCF is not evidence that its flames animate. A fit-to-life prototype
   needs a frozen pose with two different UV frames, repeated effects-off pixels
@@ -2909,6 +2911,42 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   glow vs flame timings do not compare against the installed native emitter.
   A Dune camera with missing/checker materials is a UV diagnostic only, NOT a
   valid full-map performance or visual acceptance baseline.
+
+### Native stepping prerequisite (Patch 531)
+
+- `texframe duration s1 t1 s2 t2` appends a finite normalized rectangle, up to
+  256 rows, with positive durations. `texanim static/lifetime/loop/clamp [rate]`
+  steps the existing native normal-sprite UV fields in the same material batch.
+  Lifetime mode uses the actual randomized particle lifespan. No cross-fade,
+  secondary channel, per-particle allocation, extra sample/capture/light pass.
+  `FTE_PART_TEXANIM` means compiled scripted-backend syntax; callers must still
+  select that backend. Real old/new clients render and return extension 0/1.
+- The isolated colored atlas acts for point and trail particles, lifetime
+  expiry, loop/clamp, legacy static UVs, source-reset surviving retint, set unload
+  and renderer restarts. All 256 rows survive actual QC query/export/re-exec;
+  257th/NaN/negative/bad-type/no-frame controls visibly reject. The QC query and
+  export buffers are enlarged to 64 KiB; their old 8 KiB cuts long tables.
+- Native particles are drawn/simulated from the world walk in r_surf.c.
+  `VF_DRAWWORLD 0` produces black native-particle tests with a nonempty pool:
+  that is not an animation failure or a passing off control. Keep world draw
+  enabled and inspect actual colored pixels and active/free pool counts.
+- Let particle precache mappings refresh after exec/redefinition/restart before
+  emitting via cached CSQC handles; same-command-stream emission can miss.
+  Existing particle export omits trail step spacing; a replayed trail can emit
+  nothing. This prerequisite leaves that unrelated omission alone. Restore the
+  authored step for an acting trail control instead of interpreting silence.
+- Shared env_fire definitions were located in the explicitly mounted HL2 VPK's
+  particles/fire_01.pcf. The installed shared fire_burning_character VTF is 7.6,
+  2048x2048: primary sequences3..5, secondary0..2, authored timing/flags. Do not
+  substitute Dune's flame for Anubis or confuse its separate smoke stacks with
+  flame. Inventory resolution is not yet a production shared-library resolver.
+- Native Dune/Anubis flame-only rigs act with repeated-off images identical,
+  an explicitly capped pool128, nearby sites<=8/range512 and <=72 emissions/sec.
+  They approximate size/forces/alpha/material and omit graph children. Dune's
+  diagnostic camera still has missing/checker materials. Uncapped alternating
+  local wall-frame observations are NOT GPU/whole-map/installed-path acceptance.
+  No product emitter, generated assets, owner install or fleet changed. Keep
+  BACKLOG's integration/budget/compatibility/ship-set gates open.
 
 ## The milk visualizer (Patch 467)
 
