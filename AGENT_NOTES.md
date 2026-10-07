@@ -1411,6 +1411,17 @@ publicly WITH its fix, not before it.
   hooks are never deployed. A forward call to Line_StatsReset (declared later)
   crashed fteqcc without stdout in the initial extension; removing the unnecessary
   call fixed the harness. QC definition order applies to test seams too.
+  Frozen product `4fdfbdf` deployed 2026-10-07, verified at 04:03:53 UTC:
+  both Windows CSQC hashes/backups and Pi live/previous pair match. Clean-build
+  bytes equal the tested production build; no test hooks. SSQC source is unchanged
+  from P530, Windows SSQC/menu/native untouched; Pi SSQC hash stays identical.
+  default.cfg matches on all three destinations and also catches up the earlier
+  approved P527/P529/P530 viewer defaults (their progs shipped without that cfg).
+  No movement/server-rule changes. All 12 lobbies restarted empty, remained healthy
+  and were empty after controls. Fresh-cache clients on both installed engines
+  downloaded matching CSQC, drew the 11-row pane/defaults and received live peer
+  body streams. The actual lobby map was surf_kitsune; its existing single missing
+  material is not a fade/shader or map-download fix. Owner configs/data unchanged.
 - Patch 530: `hud_lines_declutter 0` (default) keeps visible labels and lays them
   into up to 16 nearby vertical lanes instead of silently suppressing overlaps;
   `1` restores the sparse grid. The existing 128-label/frame cap, view/distance
