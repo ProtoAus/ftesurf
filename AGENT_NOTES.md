@@ -1965,6 +1965,46 @@ publicly WITH its fix, not before it.
   level name; it is not a parameter. An arm that fetches a board for a different
   map without changing map first grades the wrong board and looks correct.
 
+### In-game demo requests and graphs (Patch 545)
+
+Momentum board rows now carry `get = rowid/demo-SHA1` from the indexed upstream
+hash, not a caller-provided address. `momboards.py --all --go` backfills this
+metadata after schema 11 installation; equal-time updates attach only the same
+PB, never a slower cached row's hash. `POST /api/momentum/N/SHA1` validates the
+current Momentum/clean row and queues it; GET only polls. At most 64 active
+jobs, 10 POSTs/min/IP, TTL one day, terminal history pruned. No CDN request on
+the HTTP path. The existing locked momgrab cron prioritizes these jobs inside
+its six-demo budget and existing hash, size, duration, disk, map, time and retry
+checks. Explicit candidates also bind the demo's player. The converter/filing
+path and `/api/replay/N` remain the existing foreign-replay contract.
+
+Client requests selected line handles before round-robin polling; closing a
+board cancels watch intent, not a durable job. New picks replace old watch
+intent; a cached replay must not wait behind a queued unavailable old choice.
+A lost POST is retried idempotently rather than silently converted to a GET.
+The nginx snippet must be installed separately from the Python deploy: the new
+public GET/POST prefix is allowlisted, body-limited and rate-limited, with no
+heartbeat/run-write exposure.
+
+`cl_linegraph.qc` follows the same retained samples as displayed replay/board
+lines (slots 0..8, not live trail slots 9..10). A bounded min/max envelope builds
+2048 points/frame; mouse readings binary-search actual retained samples. It
+aligns run/stage starts, includes vz in E, and uses recorded pmpin gravity or an
+explicitly labelled g=800 assumption. E is relative to the first shown run
+sample. No endpoint clamping or interpolation over teleport/stitch/large gaps.
+`linegraph` takes cursor claim 64; the board's graphs button hands off after
+sui_end. Legend ticks hide graph curves, not the world-line loads. Escape releases
+only that cursor claim; watched-replay chrome retains its own claim. `hud_linegraph`
+and `hud_linegraph_labels` control passive graphs and world-path names.
+
+Falsifiers: `tools/p545graph.py --prepare`, its cfg and `--check <fresh log>`;
+`tools/p545mom.py` has a localhost-only HTTP stub and its own game arm. The latter
+must use a cold disposable synthetic replay id to prove body delivery; a cached
+run is not that control. `surfd/test_momrequest.py` exercises the real filing,
+linking and serving path with an explicitly doubled converter. Neither double
+claims independent codec coverage. Synthetic UI inputs and screenshots do not
+prove actual-device feel or eight long-demo performance; those remain in lextest.
+
 ### The map roster (which BUILD, not just which name)
 
 - **A MAP NAME DOES NOT IDENTIFY A MAP HERE.** Of the 1062 names present in both

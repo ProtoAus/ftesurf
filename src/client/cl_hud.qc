@@ -204,6 +204,7 @@ float  rec_sb_open;             // the leaderboard is up
 #define UIC_RESULTS  8          // cl_results.qc   -- the run card
 #define UIC_ENTVIEW  16         // cl_entview.qc   -- entity inspector (build 54)
 #define UIC_AVATAR   32         // cl_avatar.qc    -- customizer (not built yet)
+#define UIC_LINEGRAPH 64        // cl_linegraph.qc -- run comparison
 
 float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
 

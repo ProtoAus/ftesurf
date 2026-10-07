@@ -139,6 +139,32 @@ neutral maps with no authored LUT skip that pass entirely. OpenGL visuals.
 
 ---
 
+## Momentum demos and run graphs (in game)
+
+Open the leaderboard (`scores`) and select **imported**. A Momentum record
+without a cached replay has **Get demo**: click its row to ask the NanoPi to
+fetch, cache and convert the demo, then deliver the replay. **queued** is not
+a completed download: the bounded downloader runs every five minutes, and
+unavailable or unsupported demos report a failure. Closing the board cancels
+automatic watching, not the NanoPi's durable request.
+
+Tick the **line** boxes to load up to eight recorded runs together. Their speed
+and energy graphs appear while those lines are displayed. Click **graphs** in
+the board's left header, or enter `linegraph`, for mouse comparison. Move the
+mouse across either graph to read each run's speed and energy at the same elapsed
+time; use the coloured legend checkboxes to show/hide graph curves. Curve and
+visible world-path labels use matching run names and slot numbers. Escape closes
+mouse mode. A watched replay can be compared too, as slot 0.
+
+Clocks align at each run/stage start. Energy includes vertical velocity and is
+shown relative to that run's first sample, in equivalent-height units. Imported
+or legacy recordings without a gravity pin explicitly say **g=800 assumed**.
+Graph samples do not bridge teleports or save-state stitches. Set
+`hud_linegraph 0` to hide the passive graph, or `hud_linegraph_labels 0` to hide
+world-path name labels; neither clears the loaded run lines.
+
+---
+
 ## Layout
 
 | Path | |

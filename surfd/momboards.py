@@ -129,22 +129,32 @@ def flush(conn, rows):
         return 0
     wrote = 0
     with conn:
-        for (mp, track, leg, sid, alias, ticks, rate, ms, when) in rows:
+        for item in rows:
+            mp, track, leg, sid, alias, ticks, rate, ms, when = item[:9]
+            demo = item[9] if len(item) > 9 else ""
             cur = conn.execute(
                 "INSERT INTO runs (map, track, leg, tier, style, player, name,"
-                "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,0,'momapi','',?,0)"
+                "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id, momdemo)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,0,'momapi','',?,0,?)"
                 " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
                 "   ticks=excluded.ticks, millis=excluded.millis,"
-                "   name=excluded.name, submitted=excluded.submitted,"
+                "   name=excluded.name, submitted=excluded.submitted, momdemo=excluded.momdemo,"
                 "   replay_id=CASE WHEN EXISTS (SELECT 1 FROM replays p"
                 "       WHERE p.id = runs.replay_id"
                 "       AND abs(p.millis - excluded.millis) > %d)"
                 "     THEN 0 ELSE runs.replay_id END"
                 " WHERE excluded.millis < runs.millis" % LINK_SLACK_MS,
                 (mp, track, leg, S.TIER_MOMENTUM, S.STYLE_CLEAN, sid, alias,
-                 ticks, rate, ms, when))
+                 ticks, rate, ms, when, demo))
             wrote += cur.rowcount
+            # A metadata-only backfill on equal times. Never attach a slower
+            # cached PB's hash to the faster row already indexed.
+            if demo:
+                meta = conn.execute("UPDATE runs SET momdemo=? WHERE map=? AND track=? AND leg=?"
+                             " AND tier=? AND style=? AND player=? AND millis=?"
+                             " AND momdemo != ?", (demo, mp, track, leg, S.TIER_MOMENTUM,
+                             S.STYLE_CLEAN, sid, ms, demo))
+                wrote += meta.rowcount
     return wrote
 
 
@@ -332,9 +342,12 @@ def main():
                 # held to print two of them.
                 dlo = when if dlo is None else min(dlo, when)
                 dhi = when if dhi is None else max(dhi, when)
+            demo = r.get("hash") or ""
+            if not isinstance(demo, str) or not re.fullmatch(r"[0-9a-f]{40}", demo):
+                demo = ""
             rows.append((mp, track, leg, sid,
                          S.clean_text(r.get("alias") or "?") or "?",
-                         int(round(ms / 1000.0 / tick)), 1.0 / tick, ms, when))
+                         int(round(ms / 1000.0 / tick)), 1.0 / tick, ms, when, demo))
             seen += 1
         # FLUSHED PER CHUNK, not once at the end.  The whole-corpus list is what
         # made a full pass cost 2.3 GB; this caps it at CHUNK tuples.  Safe to

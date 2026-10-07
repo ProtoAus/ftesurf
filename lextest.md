@@ -172,6 +172,33 @@ thresholds changed.
   an accusation or a new adjudication button. Real new counts/field calibration
   and full pair coverage have not been claimed.
 
+## 00. 7 Oct — in-game Momentum downloads and comparison graphs (Patch 545)
+
+Machine controls cover queued/ready/missing records, cold delivery, two selected
+requests before polls, line loading, watching and replacing queued watch intent.
+Graph controls cover full vertical energy, recorded/assumed gravity, stage-start
+alignment, gaps, interpolation, selection and clearing; screenshots have been
+read. These do not settle physical-mouse feel, curve readability on a real long
+run, or the budget with eight long retained paths.
+
+- After picking up the new client progs, open `scores`, choose **imported**, and
+  click **Get demo** on a Momentum row we do not hold. The NanoPi's downloader
+  runs every five minutes; queued is not downloaded. Unsupported/unavailable
+  demos should say so rather than quietly opening something else.
+- Tick several **line** boxes, then click **graphs** in the left header (or
+  `linegraph`). Move the mouse across either panel: one elapsed-time cursor,
+  each selected run's speed and energy below, matching named curve labels.
+- Tick graph legend rows off/on; judge overlapping runs, label separation and
+  actual mouse accuracy. Close with Escape and make sure ordinary play resumes.
+- Replay plus board lines should compare as slots 0..8. Try eight long files:
+  loading may build envelopes briefly, but normal movement/HUD must remain usable.
+- Energy is relative to each run's first sample, includes vertical speed and
+  says **g=800 assumed** for imported/legacy recordings without a physics pin.
+  This is not a certification that their original gravity was 800.
+- `hud_linegraph 0` hides the passive panel; `hud_linegraph_labels 0` hides world
+  labels without unloading your chosen paths. Judge whether the default panel
+  size/placement is comfortable while surfing.
+
 ## 00. 6 Oct — surf_tensor2 model brightness (Patches 508–509)
 
 The first saved window-wall camera no longer has its directional light amplified

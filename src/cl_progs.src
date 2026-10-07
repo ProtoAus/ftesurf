@@ -214,6 +214,7 @@ client/cl_hudedit.qc
 // register in cl_hud.qc absorbs the overlap), and its two readers, this file and
 // cl_main.qc, both follow.  Move it up only if an earlier file ever needs it.
 client/cl_entview.qc
+client/cl_linegraph.qc
 // Patch 467: the visualizer sky.  Needs milk_sys.qc (above, beside sui_sys.qc)
 // and the pmove_* globals; cl_main.qc calls MilkSky_Init/_WorldLoaded/_Frame,
 // so it only has to precede that file.  Placed after cl_entview.qc so that

@@ -61,6 +61,7 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 import momindex         # noqa: E402
+import momrequest       # noqa: E402
 
 # tools/momreplay.py, momimport.py and momreimport.py: beside surfd in the repo,
 # in the game's tools/ on the Pi (sweep.py's TOOLS).
@@ -393,9 +394,13 @@ def convert_demo(path, board, ms, maps_dir, bsp_cache, out_root):
     """-> (status, the .rec written or None).  "ok"/"have" file it; "zstd" and
     "error" are passing; anything else settles the demo."""
     try:
-        head = momreplay.read_header(open(path, "rb").read(0x200))
+        with open(path, "rb") as source:
+            head = momreplay.read_header(source.read(0x200))
     except Exception:
         return "unreadable", None
+    if board.get("player"):
+        if str(head["steam_id"]) != board["player"]:
+            return "otherplayer", None
     if (head["map"] or "").lower() != board["map"]:
         return "othermap", None
     track, leg = momimport.track_leg(head["track_type"], head["track_number"])
@@ -475,6 +480,40 @@ def link_exact(conn, rid, mp, track, leg, player, ms):
 
 # --------------------------------------------------------------------------
 
+def request_picks(done, later, now, zstd):
+    """Explicit clicks go before automatic top-10 work, in the SAME budget."""
+    conn = S.connect()
+    todo = []
+    try:
+        for r in momrequest.pending(conn, now):
+            h = r["hash"]
+            if done.get(h) not in (None, "ok", "have"):
+                momrequest.set_state(conn, h, "failed", done[h], now)
+                continue
+            linked = conn.execute("SELECT replay_id FROM runs WHERE map=? AND track=?"
+                                  " AND leg=? AND tier='momentum' AND style='clean'"
+                                  " AND player=? AND millis=? AND momdemo=?",
+                                  (r["map"], r["track"], r["leg"], r["player"],
+                                   r["millis"], h)).fetchone()
+            if linked is None:
+                momrequest.set_state(conn, h, "failed", "record changed", now)
+                continue
+            if linked[0] > 0:
+                momrequest.finish(conn, h, now)
+                continue
+            if waiting(later, h, now, zstd):
+                momrequest.set_state(conn, h, "queued", "waiting for CDN retry", now)
+                continue
+            if r["millis"] > MAX_SECONDS * 1000:
+                momrequest.set_state(conn, h, "failed", "toolong", now)
+                continue
+            b = {k: r[k] for k in ("map", "track", "leg", "player")}
+            todo.append((0, 0, "request", h, r["player"], r["millis"], b))
+        return todo
+    finally:
+        conn.close()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -525,7 +564,10 @@ def run(a):
                                     a.top, QUEUE_FILES)
     held = held_runs()
     prio = wanted_maps(now)
-    todo = pick(q, done, later, held, prio, max(0, a.max), now, zstd)
+    explicit = request_picks(done, later, now, zstd) if a.go else []
+    hashes = {c[3] for c in explicit}
+    automatic = pick(q, done, later, held, prio, max(0, a.max), now, zstd)
+    todo = (explicit + [c for c in automatic if c[3] not in hashes])[:max(0, a.max)]
     print("queue: %d board(s) (%d read this tick, %d not yet); %d settled, %d waiting;"
           " %d wanted map(s); %d to take"
           % (len(q["boards"]), read, unread, len(done), len(later),
@@ -553,6 +595,7 @@ def run(a):
     try:
         for _, place, f, h, sid, ms, b in todo:
             cur = h
+            momrequest.set_state(conn, h, "working", "downloading or converting", now)
             dest = os.path.join(a.demos, h[:2], h + ".mtv")
             if not os.path.exists(dest):
                 if asked:
@@ -562,10 +605,12 @@ def run(a):
                     got = download(h, dest)
                 except Transient as e:
                     again(h, str(e))
+                    momrequest.set_state(conn, h, "queued", "transfer interrupted; retrying", now)
                     tally["cut short"] = tally.get("cut short", 0) + 1
                     break                   # the next tick tries again
                 if got != "ok":
                     done[h] = got
+                    momrequest.set_state(conn, h, "failed", got, now)
                     later.pop(h, None)
                     tally[got] = tally.get(got, 0) + 1
                     _save(sp, st)
@@ -585,6 +630,12 @@ def run(a):
                 except ValueError as e:
                     status = "unfiled"
                     print("  %s: %s" % (h, e))
+            if status in ("ok", "have"):
+                momrequest.finish(conn, h, now)
+            elif status in ("zstd", "error", "dblock"):
+                momrequest.set_state(conn, h, "queued", status, now)
+            else:
+                momrequest.set_state(conn, h, "failed", status, now)
             tally[status] = tally.get(status, 0) + 1
             if status in ("zstd", "error", "dblock"):
                 again(h, status)
@@ -604,6 +655,8 @@ def run(a):
         # CDN keeps failing would stand first in line after every park.
         if e.obj and cur:
             again(cur, str(e))
+        if cur:
+            momrequest.set_state(conn, cur, "queued", "CDN cooldown; try later", now)
     finally:
         _save(sp, st)
         conn.close()

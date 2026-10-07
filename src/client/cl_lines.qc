@@ -87,6 +87,8 @@
 */
 
 vector *ln_pos;
+string ln_owner[LN_SLOTS];
+float ln_g[LN_SLOTS], ln_g_assumed[LN_SLOTS], ln_start[LN_SLOTS], ln_graphgen[LN_SLOTS];
 float  *ln_spd;
 float  *ln_t;
 float  *ln_born;                // visual publication time, demo and two live slots
@@ -297,9 +299,13 @@ float(float s) Line_BirthBase =
 
 void(float s) Line_Clear =
 {
+	if (ln_owner[s] != "") strunzone(ln_owner[s]);
+	ln_owner[s] = "";
 	ln_on[s] = FALSE;
 	ln_n[s]  = 0;
 	ln_published[s] = 0;
+	ln_g[s] = ln_start[s] = 0;
+	ln_graphgen[s] = ln_graphgen[s] + 1;
 	ln_bkn[s] = 0;
 	ln_ia[s] = ln_ib[s] = 0;
 	ln_evn[s] = 0;
@@ -316,6 +322,31 @@ void(float s) Line_Clear =
 void(float s, float tick) Line_Tick =
 {
 	ln_tick[s] = (tick > 0) ? tick : 0.015;
+	ln_g[s] = 800;
+	ln_g_assumed[s] = TRUE;
+};
+
+// The graph does not grade against this server's gravity. pmpin supplies the
+// recorded value; imported/legacy files have no such pin, so label the 800
+// assumption explicitly rather than silently borrowing the current server.
+void(float s, string name) Line_Owner =
+{
+	if (ln_owner[s] != "") strunzone(ln_owner[s]);
+	ln_owner[s] = strzone(name);
+};
+
+void(float s, float g) Line_GraphGravity =
+{
+	ln_g_assumed[s] = !(g >= 1 && g <= 10000);
+	ln_g[s] = ln_g_assumed[s] ? 800 : g;
+};
+
+float(string header) Line_HeaderGravity =
+{
+	local float p;
+	p = strstrofs(header, " gravity=");
+	if (p < 0) return 0;
+	return stof(substring(header, p + 9, 24));
 };
 
 void() Line_Movevars =
@@ -902,6 +933,8 @@ void(float s, float ta, float tb, float tsc) Line_Range =
 	local float b, i, v, n, sum, sq, mn, mx, sd;
 
 	b = s * LN_CAP;
+	ln_start[s] = tsc;
+	ln_graphgen[s] = ln_graphgen[s] + 1;
 	ln_ia[s] = Line_Find(s, ta);
 	ln_ib[s] = Line_Find(s, tb + 0.0001) - 1;
 	n = sum = sq = 0;

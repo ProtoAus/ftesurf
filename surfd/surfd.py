@@ -432,7 +432,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 # --------------------------------------------------------------------------
@@ -1441,6 +1441,21 @@ def migrate():
             conn.commit()
             version = 10
 
+        if version < 11:
+            # Additive demo metadata and bounded request queue. Older servers
+            # ignore both; no time, trust classification or evidence changes.
+            import momrequest
+            if "momdemo" not in {r[1] for r in conn.execute("PRAGMA table_info(runs)")}:
+                try:
+                    conn.execute("ALTER TABLE runs ADD COLUMN momdemo TEXT NOT NULL DEFAULT ''")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column name" not in str(exc).lower():
+                        raise
+            conn.executescript(momrequest.SQL)
+            conn.execute("PRAGMA user_version=11")
+            conn.commit()
+            version = 11
+
         verdict_metrics(conn)
         conn.commit()
         if version == started:
@@ -2378,7 +2393,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
     else:
         where, args = ("r.tier=?", (tier,))
     for i, row in enumerate(db.execute(
-            "SELECT r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
+            "SELECT r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
             "       r.submitted, r.replay_id, r.tier AS rtier, "
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
@@ -2410,6 +2425,11 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
         # that was asked for, so it would carry no information anyway.
         if combined:
             rows[-1]["tr"] = row["rtier"]
+        if row["rtier"] == TIER_MOMENTUM:
+            import momrequest
+            token = momrequest.handle(row)
+            if token:
+                rows[-1]["get"] = token
     return rows
 
 
@@ -3405,6 +3425,25 @@ def board():
         }
     )
     return Response(body, status=200, mimetype="application/json")
+
+
+@app.route("/api/momentum/<int:rowid>/<demo>", methods=["GET", "POST"])
+def momentum_request(rowid, demo):
+    """POST queues a held board record; GET polls. The worker fetches it later."""
+    import momrequest
+    now = int(time.time())
+    post = request.method == "POST"
+    if not rate_ok(rate_key(), now, 10 if post else RUN_RATE_MAX,
+                   "mompost" if post else "mompoll"):
+        return fail(429, "rate limited")
+    try:
+        code, body = momrequest.reply(get_db(), rowid, demo, now, post)
+        resp = Response(game_json(body), status=code, mimetype="application/json")
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except sqlite3.Error:
+        log.exception("momentum request db error")
+        return fail(503, "storage error")
 
 
 def leg_dir(track, leg):

@@ -259,6 +259,7 @@ float  *ob_run;
 // surfd without it reads 0, so no mark.
 float  *ob_ver;
 
+float  ob_bget;            // strbuf: NanoPi Momentum demo handle per row
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
 
@@ -529,6 +530,7 @@ void(float i, float row) Online_RowSet =
 	ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
 	              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
 
+	bufstr_set(ob_bget, i, json_get_string(json_find_object_child(row, "get")));
 	bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 	bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 };
@@ -576,6 +578,8 @@ void(string body) Online_Parse =
 	}
 
 	Online_Alloc();
+	if (!ob_bget)
+		ob_bget = buf_create();
 	if (!ob_bname)
 		ob_bname = buf_create();
 	if (!ob_bplayer)
@@ -1264,9 +1268,144 @@ void() Online_ReplayClear =
   redeclaring it here is a type mismatch against the generated extension list,
   so Online_ReplayStore uses strlen and says why.
 */
+// Patch 545: JSON polling separate from the replay's body transfer.
+#define OM_WAIT  1
+#define OM_READY 2
+#define OM_FAIL  3
+float om_state, om_req, om_due, om_dead, om_until, om_rep, om_post, om_ack;
+string om_token, om_why;
+
+void() Online_MomClear =
+{
+	if (om_token != "") strunzone(om_token);
+	if (om_why != "") strunzone(om_why);
+	om_token = om_why = "";
+	om_state = om_req = om_rep = om_ack = om_post = 0;
+};
+
+float() Online_MomAllowed =
+{
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE) return FALSE;
+	return TRUE;
+};
+
+void(float post) Online_MomAsk =
+{
+	local string url, dir;
+	if (!Online_MomAllowed())
+	{
+		om_state = OM_FAIL;
+		om_req = 0;
+		if (om_why != "") strunzone(om_why);
+		om_why = strzone("online terms not accepted");
+		return;
+	}
+	dir = cvar_string("lobby_dir");
+	if (substring(dir, strlen(dir) - 1, 1) == "/") dir = substring(dir, 0, strlen(dir) - 1);
+	om_req = Online_NextReq();
+	om_dead = cltime + OB_DEADLINE;
+	url = strcat(dir, "/api/momentum/", om_token);
+	if (post)
+	{
+		if (uri_get(url, om_req, "application/json", "{}")) return;
+	}
+	else
+	{
+		if (uri_get(url, om_req)) return;
+	}
+	om_req = 0;
+	om_state = OM_FAIL;
+};
+
+float(string token, float post) Online_MomStart =
+{
+	if (!Online_MomAllowed())
+	{
+		print("^3scores:^7 accept the online terms before requesting a demo.\n");
+		return FALSE;
+	}
+	if (cvar_string("lobby_dir") == "" || token == "") return FALSE;
+	if (om_state == OM_WAIT) return FALSE;
+	Online_MomClear();
+	om_token = strzone(token);
+	om_state = OM_WAIT;
+	om_until = cltime + 1800;
+	om_post = post;
+	Online_MomAsk(post);
+	return TRUE;
+};
+
+void() Online_MomPoll =
+{
+	if (om_state != OM_WAIT) return;
+	if (cltime > om_until)
+	{
+		om_state = OM_FAIL;
+		om_req = 0;
+		return;
+	}
+	if (om_req)
+	{
+		if (cltime > om_dead)
+		{
+			om_req = 0;
+			om_due = cltime + 10;
+		}
+		return;
+	}
+	if (cltime >= om_due) Online_MomAsk(om_post);
+};
+
+void() Online_MomBindRow =
+{
+	local float i;
+	if (om_rep < 1) return;
+	for (i = 0; i < ob_n; i = i + 1)
+		if (!strcmp(bufstr_get(ob_bget, i), om_token)) ob_rep[i] = om_rep;
+};
+
+void(float code, string body) Online_MomReply =
+{
+	local float root;
+	local string state, why;
+	om_req = 0;
+	om_due = cltime + 10;
+	// FTE rewrites HTTP 200 to 0 for DP compatibility.
+	if (code >= 500 || code < 0) return;
+	root = json_parse(body);
+	if (!root)
+	{
+		if (code != 429) om_state = OM_FAIL;
+		return;
+	}
+	state = json_get_string(json_find_object_child(root, "state"));
+	why = substring(json_get_string(json_find_object_child(root, "why")), 0, 160);
+	if (why == "") why = substring(json_get_string(json_find_object_child(root, "error")), 0, 160);
+	if (om_why != "") strunzone(om_why);
+	om_why = (why != "") ? strzone(why) : "";
+	if (!code && state == "ready")
+	{
+		om_rep = json_get_float(json_find_object_child(root, "rep"));
+		om_state = (om_rep > 0) ? OM_READY : OM_FAIL;
+		Online_MomBindRow();
+	}
+	else if (code || state == "failed") om_state = OM_FAIL;
+	else if (state != "queued" && state != "working") om_state = OM_FAIL;
+	else { om_ack = TRUE; om_post = FALSE; }
+	json_free(root);
+};
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	local string fn;
+
+	if (om_req)
+	if (reqid == om_req)
+	{
+		Online_MomReply(responsecode, resourcebody);
+		return;
+	}
 
 	/*
 	  THE REPLAY BRANCH GOES FIRST AND TESTS or_req FOR NON-ZERO.  Both ids are

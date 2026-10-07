@@ -135,6 +135,7 @@ void() CSQC_WorldLoaded =
 
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
+	LineGraph_Reset();
 	Trail_Reset();
 	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
@@ -297,6 +298,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Vote_RegisterCvars();           // Patch 372: the vote box
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
+	LineGraph_Register();
 	// Patch 340: the chatbox, the avatar customizer and the room list.  The
 	// chatbox registers and LOADS (data/chatsilence.txt); the customizer owns
 	// the `hud_player` command and the server's two mirrors.
@@ -1165,6 +1167,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Av_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	if (LineGraph_InputEvent(evtype, scanx, chary, devid))
+		return TRUE;
+
 	if (rec_sb_open || sc_held)
 		if (Scores_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -1686,6 +1691,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
 		// and for the same reason.
 		Line_FrameEnd();
+		LineGraph_WorldLabels();
 
 		/*
 		  Build 54.  The inspector's labels, and they are here for exactly the
@@ -1788,6 +1794,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  the editor's and ahead of the card's to match.
 		*/
 		Ev_Panel(scr);
+		LineGraph_Draw(scr);
 
 		/*
 		  BUILD 31: the layout editor, over everything.
@@ -2101,6 +2108,8 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	// +showscores arrives here as a plain console command -- the engine offers
 	// TAB's bind to CSQC before it turns its own scoreboard on (sbar.c:788).
+	if (LineGraph_Command(cmd))
+		return TRUE;
 	if (Scores_ConsoleCommand(cmd))
 		return TRUE;
 

@@ -158,6 +158,9 @@ float rec_sb_tab;                // SB_T_*
   cl_online.qc.  Cleared by Scores_Close, which is what makes closing the board
   a cancel.
 */
+float rec_sb_graphpick;
+float rec_sb_momwant;            // explicit watch intent for a queued NanoPi demo
+void() LineGraph_Open;
 float rec_sb_wantrep;
 float rec_sb_wantleg;            // Patch 395: open it at this board leg (its run's file)
 float rec_sb_olpick;             // `scores olpick <row>` + 1: the next draw's click
@@ -923,7 +926,7 @@ vector() Scores_BoardNoteCol =
   survives on its own is the better answer to the same problem, and it is why
   this needs no second mark on the time.
 */
-#define SBW_REP     7
+#define SBW_REP     9
 
 #define SBX_RANK    0
 #define SBX_TIME   (SBX_RANK  + SBW_RANK)
@@ -1037,6 +1040,10 @@ float  sb_ln_st[SB_LNMAX];
   nothing binds it and no menu writes it.
 */
 float  sb_ln_llegread;           // Patch 437: the handle, mirrored per frame below
+#define SBL_MOM 6
+float sb_ln_momfetch;
+float sb_ln_momsent[SB_LNMAX], sb_ln_momdue[SB_LNMAX];
+string sb_ln_get[SB_LNMAX], sb_ln_name[SB_LNMAX];
 float  sb_ln_fetch;                   // the line the replay fetch is for, + 1
 float  rec_sb_lnpick;                 // a row's box clicked this frame, row + 1
 
@@ -1045,6 +1052,8 @@ string(float row) Scores_LineKey =
 {
 	if (Scores_IsOnline())
 	{
+		if (bufstr_get(ob_bget, row) != "")
+			return strcat("m:", bufstr_get(ob_bget, row));
 		if (Online_RowRep(row) < 1)
 			return "";
 		return sprintf("r%g:%g", Online_RowRep(row), Online_RowLeg(row));
@@ -1074,6 +1083,15 @@ void(float i) Scores_LineFree =
 		Watch_LineJobStop();
 	if (sb_ln_fetch == i + 1)
 		sb_ln_fetch = 0;
+	if (sb_ln_momfetch == i + 1)
+	{
+		sb_ln_momfetch = 0;
+		Online_MomClear();
+	}
+	if (sb_ln_get[i]) strunzone(sb_ln_get[i]);
+	if (sb_ln_name[i]) strunzone(sb_ln_name[i]);
+	sb_ln_get[i] = sb_ln_name[i] = __NULL__;
+	sb_ln_momsent[i] = sb_ln_momdue[i] = 0;
 	Line_Clear(i + 1);
 	if (sb_ln_key[i])  strunzone(sb_ln_key[i]);
 	if (sb_ln_path[i]) strunzone(sb_ln_path[i]);
@@ -1117,6 +1135,12 @@ void(float row) Scores_LineToggle =
 		// Online_ReplayFetchRow's folder: the row's leg, or its run's for a `run`.
 		sb_ln_rep[i] = Online_RowRep(row);
 		sb_ln_leg[i] = Online_RowLeg(row);
+		sb_ln_name[i] = strzone(bufstr_get(ob_bname, row));
+		if (bufstr_get(ob_bget, row) != "")
+			sb_ln_get[i] = strzone(bufstr_get(ob_bget, row));
+		if (sb_ln_rep[i] < 1)
+		if (sb_ln_get[i])
+			sb_ln_st[i] = SBL_MOM;
 		s = "";
 		if (ob_have_zoned)
 			s = Online_CacheDir(ob_have_map, ob_have_track,
@@ -1124,12 +1148,17 @@ void(float row) Scores_LineToggle =
 		sb_ln_hint[i] = strzone(s);
 		s = Online_ReplayFind(sb_ln_rep[i], s);
 		if (s == "")
-			sb_ln_st[i] = SBL_FETCH;
+		{
+			if (sb_ln_st[i] != SBL_MOM) sb_ln_st[i] = SBL_FETCH;
+		}
 		else
 			sb_ln_path[i] = strzone(s);
 	}
 	else
+	{
 		sb_ln_path[i] = strzone(bufstr_get(rec_sb_bpath, row));
+		sb_ln_name[i] = strzone(bufstr_get(rec_sb_bowner, row));
+	}
 	print(sprintf("scores: line %g on: %s\n", i + 1, key));
 };
 
@@ -1145,6 +1174,42 @@ void() Scores_LinesFrame =
 	// the call site because a line job is queued from this frame and the value has
 	// to be the one asked for, not one a previous frame latched.
 	sb_ln_llegread = cvar("sb_ln_lineleg");
+	Online_MomPoll();
+	if (sb_ln_momfetch)
+	{
+		i = sb_ln_momfetch - 1;
+		if (om_state == OM_READY)
+		{
+			sb_ln_rep[i] = om_rep;
+			sb_ln_st[i] = SBL_FETCH;
+			sb_ln_momfetch = 0;
+			Online_MomClear();
+		}
+		else if (om_ack && !om_req)
+		{
+			// A queued reply releases this JSON slot, not the durable job.
+			// Enqueue the other selected lines now, then round-robin polls.
+			sb_ln_momsent[i] = TRUE;
+			sb_ln_momdue[i] = cltime + 10;
+			sb_ln_momfetch = 0;
+			Online_MomClear();
+		}
+		else if (om_state != OM_WAIT)
+		{
+			sb_ln_st[i] = SBL_FAIL;
+			sb_ln_momfetch = 0;
+			print(sprintf("^3scores:^7 line %g demo unavailable: %s\n", i + 1, om_why));
+			Online_MomClear();
+		}
+	}
+	if (!rec_sb_momwant && !sb_ln_momfetch)
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_MOM && cltime >= sb_ln_momdue[i])
+		{
+			if (Online_MomStart(sb_ln_get[i], !sb_ln_momsent[i])) sb_ln_momfetch = i + 1;
+			else sb_ln_st[i] = SBL_FAIL;
+			break;
+		}
 
 	if (wt_lj_phase)
 	{
@@ -1261,7 +1326,8 @@ void() Scores_LinesStatus =
 		if (sb_ln_st[i] == SBL_FREE)
 			continue;
 		w = "failed";
-		if (sb_ln_st[i] == SBL_FETCH)      w = "fetching";
+		if (sb_ln_st[i] == SBL_MOM)        w = "NanoPi queued";
+		else if (sb_ln_st[i] == SBL_FETCH) w = "fetching";
 		else if (sb_ln_st[i] == SBL_QUEUE) w = "queued";
 		else if (sb_ln_st[i] == SBL_BUILD) w = "building";
 		else if (sb_ln_st[i] == SBL_ON)    w = "drawn";
@@ -1605,7 +1671,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
 	local vector lp, ncol;
-	local float idx, hot, d, ref, i, track, leg, pick, pinned;
+	local float idx, hot, d, ref, i, track, leg, pick, pinned, demo_slot;
 	local string s, rid;
 
 	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
@@ -1788,7 +1854,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (idx == ob_mine)
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
 		if (hot)
-		if (Online_RowRep(idx) > 0)
+		if (Online_RowRep(idx) > 0 || bufstr_get(ob_bget, idx) != "")
 			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
 		if (sui_is_released(rid))
 			pick = idx + 1;     // +1 so row 0 is distinguishable from "none"
@@ -1858,6 +1924,18 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (rec_sb_cols > SBX_REP)
 		{
 			s = Online_RepString(idx);
+			if (Online_RowRep(idx) < 1)
+			if (bufstr_get(ob_bget, idx) != "")
+			{
+				s = "Get demo";
+				demo_slot = Scores_LineFind(Scores_LineKey(idx));
+				if (demo_slot >= 0) s = (sb_ln_st[demo_slot] == SBL_FAIL) ? "retry" : "queued";
+				if (!strcmp(bufstr_get(ob_bget, idx), om_token))
+				{
+					if (om_state == OM_WAIT) s = "queued";
+					if (om_state == OM_FAIL) s = "retry";
+				}
+			}
 			Scores_Text([lp_x + Scores_ColX(SBX_REP), d], rec_sb_szrow,
 			            s, (Online_RowRep(idx) > 0) ? SBC_GOOD : SBC_DIM, 0.85);
 			// Patch 374: after the word; "watch" + the mark fits SBW_REP in Roboto.
@@ -1964,10 +2042,25 @@ void(float pick) Scores_OnlineHandOff =
 
 	if (pick >= 0)
 	{
+		// A new row replaces the watch intent, not a selected line's job.
+		if (rec_sb_momwant) Online_MomClear();
+		rec_sb_momwant = FALSE;
+		rec_sb_wantrep = 0;
 		// Patch 395: a stage row with no recording of its own plays its run's.
 		rep = Online_RowRep(pick);
 		leg = Online_RowLeg(pick);
-		if (rep < 1)
+		if (rep < 1 && bufstr_get(ob_bget, pick) != "")
+		{
+			if (sb_ln_momfetch || rec_sb_momwant)
+				print("^3scores:^7 demo request busy; line boxes can queue comparisons.\n");
+			else if (Online_MomStart(bufstr_get(ob_bget, pick), TRUE))
+			{
+				rec_sb_momwant = TRUE;
+				rec_sb_wantleg = leg;
+				print("scores: demo requested on NanoPi; downloader runs every five minutes.\n");
+			}
+		}
+		else if (rep < 1)
 		{
 			if (ob_have_leg > 0)
 				print("^3scores:^7 no recording was kept for that stage time -- "
@@ -1987,6 +2080,19 @@ void(float pick) Scores_OnlineHandOff =
 			else if (Online_ReplayState() == ORS_FETCH)
 				print("^3scores:^7 fetching replay...\n");
 		}
+	}
+
+	if (rec_sb_momwant)
+	{
+		if (om_state == OM_WAIT) return;
+		rec_sb_momwant = FALSE;
+		if (om_state == OM_READY)
+		{
+			rec_sb_wantrep = om_rep;
+			Online_ReplayFetchIn(om_rep, "");
+		}
+		else print(sprintf("^3scores:^7 demo unavailable: %s\n", om_why));
+		Online_MomClear();
 	}
 
 	// The deadline: nothing else polls, and the engine's HTTP client has no
@@ -2279,7 +2385,8 @@ void(vector scr) Scores_Draw =
 	// ---- the legs, down the left ----------------------------------------
 	lw = legw;
 	rp = [x0 + pad, yhead];
-	Scores_Text(rp, rec_sb_szhead, "leg", SBC_DIM, 1);
+	if (Scores_Chip("sb_graph", rp, [lw - pad * 0.5, rec_sb_szhead * 1.2], "graphs", FALSE))
+		rec_sb_graphpick = TRUE;
 
 	/*
 	  THE FOOTER IS TWO LINES NOW, AND BOTH LISTS HAVE TO KNOW.
@@ -2517,6 +2624,13 @@ void(vector scr) Scores_Draw =
 	if (Scores_SpecHandOff())
 		return;
 
+	if (rec_sb_graphpick)
+	{
+		rec_sb_graphpick = FALSE;
+		LineGraph_Open();
+		return;
+	}
+
 	// Patch 433: a `line` box, on the frame boundary like the row picks below.
 	if (rec_sb_lnpick)
 	{
@@ -2584,6 +2698,8 @@ void() Scores_Close =
 	  paths where the board is already shut and the intent must still go.
 	*/
 	rec_sb_wantrep = 0;
+	if (rec_sb_momwant) Online_MomClear();
+	rec_sb_momwant = FALSE;
 	rec_sb_wantleg = 0;
 	rec_sb_olpick  = 0;
 	sc_held = FALSE;          // PATCH 341: esc closes even mid-hold

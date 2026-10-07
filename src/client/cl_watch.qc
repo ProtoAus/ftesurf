@@ -98,6 +98,7 @@ float  rec_wt_rec0;              // first line after `begin`
 float  rec_wt_view0;             // ditto, and always FS_VIEWHEAD
 
 string rec_wt_path;              // the .rec we are playing
+float rec_wt_graphgravity;
 string rec_wt_owner;             // its `owner` header key
 string rec_wt_map;               // its `map` header key
 float  rec_wt_endticks;          // the `end` record's tick count
@@ -1028,6 +1029,7 @@ void() Watch_Scan =
 	rec_wt_startseg = 0;
 	rec_wt_leg      = -1;           // build 57: -1 = no `leg` key seen yet
 	rec_wt_owner    = "";
+	rec_wt_graphgravity = 0;
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
 	rec_wt_foreign  = FALSE;
@@ -1072,6 +1074,7 @@ void() Watch_Scan =
 		}
 		if (argv(0) == "pmpin")
 		{
+			rec_wt_graphgravity = Line_HeaderGravity(s);
 			// The file's own eye heights (sv_user.c:111 pins both by name).
 			vp = strstrofs(s, " viewheight=");
 			vq = strstrofs(s, " duckviewheight=");
@@ -1501,6 +1504,8 @@ void(float ra, float rb) Watch_ScanRange =
 	Line_Begin(0);
 	Line_Foreign(0, rec_wt_foreign);
 	Line_Tick(0, rec_wt_tickrate);
+	Line_GraphGravity(0, rec_wt_graphgravity);
+	Line_Owner(0, rec_wt_owner);
 
 	/*
 	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
@@ -1652,6 +1657,7 @@ void(float ra, float rb) Watch_ScanRange =
 float  wt_lj_fh;                // the file, open while wt_lj_phase is not 0
 float  wt_lj_slot, wt_lj_leg, wt_lj_phase;    // phase 1 records, 2 samples, 0 idle
 float  wt_lj_hdr;               // still in the header
+float wt_lj_graphgravity;
 float  wt_lj_tick, wt_lj_mtick, wt_lj_fleg, wt_lj_seg;
 float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
@@ -1749,6 +1755,7 @@ float() Watch_LineJobWindow =
 	// Patch 470: here, with the header read and before pass two feeds a point.
 	// At the job's start it handed the slot a tick of 0, i.e. the default.
 	Line_Tick(wt_lj_slot, wt_lj_tick);
+	Line_GraphGravity(wt_lj_slot, wt_lj_graphgravity);
 	if (wt_lj_fleg < 0)
 		wt_lj_fleg = FS_LegOf(wt_lj_seg, wt_lj_seg > 0);
 	if (wt_lj_leg > 0)
@@ -1804,6 +1811,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_hdr   = TRUE;
 	wt_lj_tick  = 0;
 	wt_lj_mtick = 0;
+	wt_lj_graphgravity = 0;
 	wt_lj_fleg  = -1;
 	wt_lj_seg   = 0;
 	wt_lj_wseg  = -1;
@@ -1871,6 +1879,8 @@ float() Watch_LineJobStep =
 				if (argv(0) == "movetickrate") wt_lj_mtick = stof(argv(1));
 				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
 				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
+				if (argv(0) == "pmpin") wt_lj_graphgravity = Line_HeaderGravity(s);
+				if (argv(0) == "owner") Line_Owner(wt_lj_slot, argv(1));
 				// Line_Begin(slot) already cleared this at open, above.
 				if (argv(0) == "foreign")   Line_Foreign(wt_lj_slot, TRUE);
 			}

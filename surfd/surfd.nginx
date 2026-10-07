@@ -17,6 +17,7 @@
 #                        it can claim an IDLE lobby and move it.  RATE LIMITED.
 #                        See the essay over its block for why it is proxied at
 #                        all and what makes that safe.
+#   GET/POST /api/momentum/N/SHA1 public, bounded demo queue, RATE LIMITED
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -145,6 +146,25 @@ location = /api/board {
 # response into a temp file before sending a byte of it -- latency and writes
 # on the NVMe that also holds the 45 GB map library, for no gain on a loopback
 # upstream that is already a file read.
+# Demo requests cannot supply a URL. POST spends a validated board handle,
+# capped at 10/min per IP and 64 active jobs globally; GET only polls. The
+# worker retains its six-demo budget. This outer bound also protects polling.
+location ^~ /api/momentum/ {
+    limit_req             zone=surfdboard burst=10 nodelay;
+    limit_req_status      429;
+    client_max_body_size  1k;
+    limit_except GET POST { deny all; }
+    proxy_pass         http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout    5s;
+    add_header X-Surfd-Proxied "1" always;
+}
+
 location ^~ /api/replay/ {
     limit_req             zone=surfdreplay burst=5 nodelay;
     limit_req_status      429;

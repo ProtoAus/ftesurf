@@ -134,23 +134,6 @@ carries view offsets and buttons.
 
 **Size.** Large but mechanical once the format is pinned.
 
-## 4. Fetch a Momentum demo we do not have, through the Pi
-
-**Today.** Every cached Momentum board row already carries its replay's
-address (`https://cdn.momentum-mod.org/runs/<replayHash>`, momfetch.py:268);
-nothing downloads it. The Pi serves replays as `/api/replay/<id>`
-(surfd.py:3527) and the client fetches and caches them (cl_online.qc:969).
-
-**Build.** A "Get demo" button on a Momentum board row that has none: the Pi
-fetches the `.mtv` (one at a time, rate-limited, size-capped, kept for good,
-its map-build hash checked), converts it with (3), indexes it, and answers with
-a replay id; the client takes it from there as it does today.
-
-**Unknowns.** Whether that CDN path needs a login (maps and images on the same
-CDN do not). One request settles it.
-
-**Size.** Medium, after (3).
-
 ## 5. KSF past 25 places
 
 **Today.** Nothing in our boards stops at 25: the in-game board pages to
