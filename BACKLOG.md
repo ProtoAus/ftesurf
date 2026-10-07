@@ -2189,6 +2189,49 @@ that was never armed (see the bullet below it), and item 10's own residual.
   after `sui_end` or the release fires twice (`cl_scores.qc:1273-1299` is the
   working precedent). (7) the Drive, once its link exists.
 
+## Run-line/rewind reports — Lex, 2026-10-07
+
+These are reported defects to reproduce, not confirmed root causes or fixes.
+The full requested feature plan and delivery order are in ROADMAP.md section 12.
+
+- **Rewind values should drive the normal timer/speed/energy HUD.** The cursor
+  is read by `cl_rewind.qc:Rewind_Cursor/Rewind_Draw` and
+  `cl_trailstate.qc:Trail_CursorState`; `cl_hud.qc:HUD_DrawSpeed/HUD_EnergyRef`
+  and the main clock must consume the same visual pose/time instead of a
+  duplicate readout or the frozen live body. Falsifier: park a fractional
+  cursor at a non-zero-speed point and hold it; main clock, units/speed and
+  energy match that point and do not advance. Scrub/close/resume restores live
+  values/history without a cursor energy-rate leak. Plan 12.1.
+- **Repeated stitched rewind has zero-speed pauses/time creep followed by a
+  jolt.** Lex reports several cut/resume attempts producing stationary stretches
+  while the displayed timer updates. Failed-tail/hold-time capture is only a
+  hypothesis. Sites: `cl_trailstate.qc` raw history/trim/restore,
+  `cl_trailreplay.qc:Trail_RewindPrefix/Trail_ReplayPrefix`, and
+  `cl_rewind.qc:Rewind_Cursor/Rewind_Frame/Rewind_Camera`. Falsifier: perform
+  at least three cuts with a long failed-attempt wait, warm and cold prefixes;
+  compare retained raw samples, stitch indices/times and fractional cursor pose
+  both ways. No leaked idle tail, synthetic speed-zero plateau, clock creep at
+  a fixed cursor or unexplained jolt. Real pause/teleport controls must remain
+  explicit; P502 authoritative held clocks/save/go contracts still pass. Plan 12.3.
+- **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:
+  `cl_lines.qc:Line_Contact/Line_Point/Line_Marks`, `Board_RampHeld` and the
+  native per-tick raw contact/normal producers. The line classifier uses held
+  contact; establish its contribution versus sampling/render delay before
+  changing it. Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
+  held-kind transition and rendered event position logged together, at several
+  tick/frame rates and LODs. Include ramp-to-ground, curved/prop/displacement
+  ramps and teleport controls. Place labels at measured contact events rather
+  than guessing from centre-to-surface distance. Plan 12.4.
+- **Peak/trough speed and energy labels are not reliably visible.** Existing
+  `cl_lines.qc:Line_Point` reversals are gated by `LN_EVZMIN` and `SEG_AIR`;
+  contact changes take a separate branch. `Line_Marks`/`hud_lines_nums 1`
+  defaults to contacts; 2 adds peaks. Audit missing display/defaults separately
+  from classifier coverage. Falsifier: an airborne ascending->descending apex,
+  descending->ascending ramp bottom, reversal at contact transition and a slow
+  genuine reversal show the time/speed/energy AT the reversal, while zero-noise
+  and teleport/stitch controls do not invent events. Repeat for a native run
+  and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
+
 ## Imported runs (Momentum, KSF)
 
 - **An immediate stage restart can reuse/trim the live trail** (run-line review,

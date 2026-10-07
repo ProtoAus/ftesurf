@@ -1,4 +1,4 @@
-# ROADMAP.md — maps, downloads, boards and Momentum demos
+# ROADMAP.md — maps, demos, run lines and rewind
 
 Lex's requests of 4 Oct 2026, read against the code as it stands (three surveys
 of the menu, the line and replay code, and the KSF/Momentum/Pi data paths), with
@@ -258,6 +258,259 @@ not in this public file.
 
 ---
 
+## 12. Run-line and rewind overhaul — Lex, 7 Oct 2026
+
+**Status: requested and planned, NOT implemented by this entry.** These requests
+supersede treating rewind as a separate little time/speed readout. Keep the
+reported defects in BACKLOG.md until their falsifiers pass. The chunk reveal
+and nearby-player dither fades requested earlier are a separate, in-progress
+workstream; they are not proof that this overhaul has shipped.
+
+### 12.1 One cursor state for the main HUD
+
+**Build.** During player-line rewind and demo-line inspection/rewind, the normal
+**timer, speed/units and energy displays** show the exact same cursor sample as
+the viewed body/line, including fractional interpolation. Remove the duplicate
+rewind time/speed readout; retain only useful controls and an unmistakable
+"rewinding"/source indication. Timer is cursor run time, not the advancing live
+or wall clock. Speed honours the existing units/speed mode. Energy uses the
+cursor position and full velocity with the source's gravity/reference; derived
+energy history/rate must not combine cursor samples with the stationary live
+body or stale history. Leaving rewind restores live HUD state and histories.
+
+**Sites.** `cl_rewind.qc:Rewind_Cursor/Rewind_Draw/Rewind_Camera`,
+`cl_trailstate.qc:Trail_CursorState`, `cl_hud.qc:HUD_DrawSpeed/HUD_EnergyRef` and the
+clock in `cl_main.qc`. Reuse a shared visual cursor snapshot; do not change the
+server's frozen timer/recording or create an alternative evidence clock.
+
+**Acceptance.** At first/middle/last/fractional cursor positions, main clock,
+speed and energy agree with the displayed pose and source sample. Hold still:
+all cursor readings stay still. Scrub both ways, cancel, resume, countdown and
+switch between demo/player lines: no live-HUD leakage or stale energy rate.
+
+### 12.2 Strafe binds also scroll rewind
+
+**Build.** `+moveleft` scrolls backward; `+moveright` scrolls forward, alongside
+the existing controls. Resolve the player's binds, not literal A/D keys. Held
+keys accelerate smoothly; release stops, opposing keys cancel, and a quick tap
+allows fine positioning. Browsing must continue to suppress real movement.
+
+**Sites.** `cl_rewind.qc:Rewind_MoveBind/Rewind_InputEvent/Rewind_Frame` and
+`CSQC_Input_Frame`. The movement gate already recognises these binds; that is
+NOT proof that they currently drive the cursor.
+
+**Acceptance.** Default and remapped keys, simultaneous presses, repeats,
+chat/console/menu focus, opening while a strafe is held, focus loss and closing
+rewind with a key down leave neither unwanted motion nor a stuck scroll/key.
+
+### 12.3 Smooth stitched rewind, without failed-attempt idle tails
+
+**Reported.** After several rewind cuts, scrolling reaches a stationary,
+zero-speed stretch while time continues, then the body jolts forward. Captured
+failed-attempt/hold time is a hypothesis, not a confirmed root cause.
+
+**Build.** Reproduce and trace raw cursor samples, publication/trim boundaries,
+retained prefix, loaded pose and each stitch's visual time/index mapping. Remove
+abandoned tail/hold samples from the browsable stitched continuation if they
+are incorrectly retained. Use a consistent continuous visual timeline and
+fractional position/velocity/camera interpolation on each continuous span;
+acceleration/deceleration should feel smooth in either direction and at several
+frame rates. Do not paper over a bad splice by smoothing a teleport, invent
+movement through walls, or rewrite authoritative recording/save times. Genuine
+recorded stops stay distinguishable from synthetic gaps; real teleports and
+incompatible stitches remain explicit discontinuities, never interpolation
+across unrelated attempts. This is display/history repair, not evidence retiming.
+
+**Sites.** `cl_rewind.qc:Rewind_Cursor/Rewind_Frame/Rewind_Camera`,
+`cl_trailstate.qc` raw history/restore/trim, `cl_trailreplay.qc` replay/rewind
+prefixes, and `cl_lines.qc` point/break
+indices. Preserve Patch 502's lineage, hold, save acknowledgement and timed-go
+contracts.
+
+**Acceptance.** Three or more cut/resume/fail/rewind cycles, warm and cold saved
+prefixes, with a deliberately long wait after a failure. No leaked wait, timer
+creep at a fixed cursor, zero-speed plateau or unexplained jolt. A genuine pause
+and a teleport are positive controls. P502 dedicated warm/cold/held-clock arms
+must still pass. Moving-camera feel needs Lex's acceptance, not just a numeric
+interpolation test.
+
+### 12.4 Contact labels at the actual surface event
+
+**Build.** Audit native "off ramp" placement against the mover's actual contact
+loss tick and hull/plane, not just proximity of the player's centre to a ramp.
+Keep the raw event separate from the held contact used to stabilise HUD/board
+classification. `Line_Contact` currently uses `Board_RampHeld`; that can delay a
+visual edge, but measurement must establish which delay Lex is seeing. Place
+entry/exit labels on the correct adjacent samples (or a justified interpolated
+contact crossing), independent of render batching, LOD and frame rate. Do not
+"improve detection" by fabricating collision truth from a line's appearance.
+
+**Acceptance.** Slide off a known brush ramp edge; compare actual per-tick raw
+contact/normal, held kind and final event time/position. Include ramp-to-air,
+ramp-to-ground, curved ramps, displacement/prop ramps, grazing contact and a
+teleport. Contact labels stay aligned at several tick/frame rates and LODs.
+
+### 12.5 Momentum demo labels: coverage and honest provenance
+
+**Today.** The re-imported demos now carry much more than positions, but the
+existing BACKLOG item "Re-imported Momentum runs read every ramp as free air"
+still applies: `.mtv` has no authoritative ramp-contact bit/plane. Do not treat
+missing contact as measured free air, and do not call inferred labels exact.
+
+**Build.** Audit native and imported metadata/label availability separately.
+Derive reliable timing/velocity/energy labels from available samples, with
+correct duck-origin handling, tick cadence, stage windows and source map build.
+Evaluate map-matched hull tracing and/or validated velocity/contact inference
+for missing surface events against native runs with known contact truth. Mark
+inferred or unavailable contact explicitly. Native, imported and board-line
+views of the same data must agree; no invented authoritative flag/normal and
+no silent corpus rewrite. Re-import/version migration is a separate measured
+step if the eventual fix needs stored metadata.
+
+**Acceptance.** Known native ramp/air controls, Momentum ramps/apexes/ducking,
+old formats, sparse data and mismatched map builds. Show what is measured,
+inferred or unavailable, with identical event times in all viewer modes.
+
+### 12.6 Apex and ramp-bottom speed/energy labels
+
+**Build.** Show **time, speed and energy at vertical-velocity reversals**:
+ascending -> descending is the airborne high point; descending -> ascending
+is the trough/bottom of ramping. These are height extrema, not necessarily
+extrema of speed or total energy. Label the values AT the reversal, interpolate
+between the bracketing samples when justified, and debounce near-zero noise
+without losing slow genuine reversals. A trough may lie on a ramp or coincide
+with a contact transition; it must not disappear just because the current
+classifier's reversal branch only runs in `SEG_AIR`. Respect teleports/stitches.
+
+**Today/sites.** `cl_lines.qc:Line_Point/Line_Marks` already has airborne apex/
+trough events and a 40 u/s gate; `hud_lines_nums 1` defaults to contacts only,
+while 2 adds peaks. Audit those existing behaviours rather than starting a
+second classifier or declaring all peak detection absent. Make the requested
+labels discoverable and enabled in the delivered normal/demo line experience,
+with density/visibility controls.
+
+**Acceptance.** Air apex, ramp trough, reversal at a contact transition, slow
+reversal, several near-zero jitter ticks and teleport/stitch controls. Numbers
+match the same interpolated time/position/velocity/energy, on native and
+Momentum demo lines, without duplicate or arbitrary "peak velocity" labels.
+
+### 12.7 Live nearest-fastest-line pace comparison
+
+**Build.** While running, find the corresponding point on an eligible fast
+reference line near the player's route and compare **moment by moment**:
+run-time delta (ahead/behind), speed delta and energy delta. Name the reference
+player/run and retain a visible cursor on that line. This is spatially aligned
+pace coaching, NOT comparison at equal elapsed times and NOT the leaderboard's
+current "compare" chip. Establish whether existing split/PB pace code can be
+reused; do not claim continuous nearest-line matching is already built.
+
+**Matching contract to implement and measure.** Same map build, track/stage,
+route/window and compatible run class; choose the fastest eligible reference,
+then match a plausible nearby segment with temporal/order continuity. Spatial
+nearness alone must not jump to another lap, crossing, nearby ramp or a future
+stage. Keep reference identity stable with bounded search/hysteresis; only
+switch at meaningful boundaries or an explicit user choice. Exclude noclip/
+invalid/missing data from ranked coaching. Different game's physics may still
+be a labelled visual reference, never an unqualified like-for-like result.
+Show "no matching reference" rather than a made-up delta when confidence is low.
+Time delta means player time minus time the reference reached the matched spot;
+positive is behind. Speed units and energy reference/gravity must be consistent
+or clearly identified as not comparable. Loading is bounded/asynchronous; no
+full-corpus scan or per-frame unbounded point walk.
+
+**Acceptance.** Faster/slower runs on the same route; route divergence, crossings,
+stages, teleports, backwards movement, missing demos, unlike builds/physics,
+reference changes and reconnects. A known matching run produces near-zero
+deltas; an intentionally separated line refuses a match. Measure frame cost.
+
+### 12.8 Mouse inspection and an anchored information bubble
+
+**Build.** Inspect a visible line with the mouse: highlight the selected segment
+and anchor a bubble/leader to the exact interpolated point. Show whose line it
+is (name/run/source), time, speed/units and energy there; contact/label provenance
+when relevant. Use the same point/cursor data as rewind and comparison, not a
+separate nearest-sample estimate. Pick screen-space line segments with a bounded
+hit radius, depth/visibility checks, sensible priority among overlapping lines
+and stable hover. Never pick the imaginary segment across a teleport/stitch or
+a culled/off-screen continuation. Let the mouse off the line dismiss the bubble.
+
+**Interaction.** Use explicit inspect/cursor ownership in active play so hover
+does not steal mouselook or movement. Decide on the smallest discoverable hold/
+mode control during implementation; preserve menu/board/replay/rewind input
+ownership and release on every exit/focus change. A bubble is informational,
+not an implicit placement/resume request.
+
+**Acceptance.** Own/demo/selected-board lines, crossings, near clip, occluded
+segments, off-screen points, dense marks, several resolutions/scales, focus
+loss and switching views. Bubble source and numbers match the chosen point,
+including fractional time; normal running remains controllable.
+
+### 12.9 Distinct line glow: player blue, demos yellow
+
+**Build.** Give the **player line a blue outer glow** and **demo/reference lines
+a yellow outer glow**, with controllable strength/width/colour and an off
+setting. Preserve meaningful contact/gain/energy colouring in the core; the
+identity cue must not make a scientific colour mode unreadable. Reuse the
+existing strip's soft/additive outer band where possible, instead of mandatory
+fullscreen bloom or dynamic-light passes. Define selected-board references
+consistently with demos, and keep previous/failed attempts distinguishable.
+
+**Acceptance.** Warm/dark/bright maps, several line widths, overlapping sources,
+HDR/bloom off and glow off, accessibility/custom colours, and a bounded
+multi-line GPU/CPU budget. Lex confirms the blue/yellow identity is obvious.
+
+### 12.10 Noclip/practice sections become faint or dashed
+
+**Build.** On entering noclip, transition the player line to a **faint dashed
+style** (or the chosen faint equivalent); return to normal style when valid
+movement resumes. Style is attached to the historical samples/spans, not to the
+current movement mode applied to the whole old line. Preserve it through
+publication, saved pictures, trim/splice, rewind and slot reuse. Inspect exactly
+which raw/client/server metadata establishes noclip; do not guess from high
+speed, missing ground contact or pause alone. Extend the visual-picture format
+if needed with a backward-compatible unknown state, not a recording/evidence
+change by accident. Practice markings do not alter server run eligibility.
+
+**Acceptance.** Normal -> noclip -> normal, zero-speed noclip, a legitimate
+fast airborne run, warm/cold restored pictures and multiple rewinds. Only the
+actual noclip span is dashed/faint; dash spacing remains stable under LOD and
+camera movement, and old/unknown files are not falsely marked valid.
+
+### 12.11 Remove the leaderboard "Compare" control
+
+**Today.** `cl_scores.qc:Scores_Draw` draws the `sb_tmix` chip on the imported
+board. It mixes native ranked and imported rows (`rec_sb_mixboth`); it is NOT
+the live line-by-line comparator requested above.
+
+**Build.** Remove that confusing visible chip/tab as requested. Reset/ignore
+stale UI selection that would leave the board in an invisible mixed mode; keep
+ordinary source tabs, refresh, line selection and demo viewing working. Do not
+remove unrelated backend tiers or the new pace feature merely because they
+share the word "compare". No rename-only workaround unless Lex asks for one.
+
+**Acceptance.** Fresh/remembered board state, all source tabs, imported-only
+and native-only maps, refresh/reconnect and selecting lines. No Compare chip,
+no hidden mixed-board mode, no missing rows or broken watch/line actions.
+
+### Delivery order and completion bar
+
+1. Reproduce stitched rewind/contact/label failures and pin cursor/contact
+   truth first (12.3–12.6); retain positive controls for pauses and teleports.
+2. Shared cursor -> normal HUD/energy, then strafe-bind scrolling and smooth
+   continuous browsing (12.1–12.3), plus Compare-chip removal (12.11).
+3. Accurate/native and honestly inferred imported labels, visible reversal
+   numbers, blue/yellow glow and historical noclip styling (12.4–12.6,
+   12.9–12.10). Shared metadata/provenance before cosmetic smoothing.
+4. Bounded live reference matching/pace, then mouse inspection using the same
+   cursor/segment machinery (12.7–12.8). Inspect the identity/eligibility data
+   and search budget before choosing an automatic-switch policy.
+
+Each delivery needs acting control/subject tests, clean-build verification,
+retained logs/screenshots, safe dual deployment and a recorded product patch.
+Moving rewind feel, label placement and visual identity also need Lex's manual
+acceptance. Do not mark the entire list done because the first visual effect
+or existing split timer works.
+
 ## Order
 
 - **A -- client, no decisions needed:** 2 (thickness), 10 (sort), 1 without
@@ -268,6 +521,8 @@ not in this public file.
   fetch), 11.
 - **D -- engine and server:** 1's download cancel and loading screen, 8 (builds).
 - 5 waits on the answer below.
+- **E -- current run-line/rewind request:** 12, in its staged delivery order
+  above. This is a separate plan, not an extension of the old demo-import status.
 
 ## Decisions for Lex
 
