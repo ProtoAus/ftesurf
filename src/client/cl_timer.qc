@@ -104,6 +104,8 @@ string ui_tm_lockmsg;           // strzone'd
 float  ui_tm_lastendrec;        // last STAT_FS_STAGEENDREC seen; -1 = seeding
 float  ui_tm_endword;           // the SF_* word that close reported
 
+float() Watch_ClockTicks;       // display-only fractional replay clock
+
 // Extrapolation.
 float  ui_tm_lastticks;         // the last DIFFERENT value the stat carried
 float  ui_tm_lastat;            // cltime it changed
@@ -1397,7 +1399,7 @@ void(vector scr) Timer_Draw =
 
 		// '0 0 0' for the stage state: a .rec carries no arm/fail record, so a
 		// replay has nothing honest to say about it.  See Timer_DrawPanel.
-		Timer_DrawPanel(scr, rec_wt_state, rec_wt_ticks, rec_wt_flags, rec_wt_pb,
+		Timer_DrawPanel(scr, rec_wt_state, Watch_ClockTicks(), rec_wt_flags, rec_wt_pb,
 		                tick, [rec_wt_seg, rec_wt_segs, rec_wt_track], '0 0 0');
 		Font_Reset();
 		Timer_DrawSplits(scr, tick);

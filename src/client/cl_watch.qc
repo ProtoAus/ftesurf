@@ -3021,6 +3021,16 @@ void() Watch_Parse =
 		                             * rec_wt_dkr[rec_wt_dkc]);
 };
 
+// Presentation only: sampled ticks still drive splits/events and terminal state.
+float() Watch_ClockTicks =
+{
+	local float ticks;
+	ticks = max(0, rec_wt_time / rec_wt_tickrate);
+	if (rec_wt_endticks > 0)
+		ticks = min(ticks, rec_wt_endticks);
+	return ticks;
+};
+
 /*
   Fill the override block for this frame.
 
@@ -3943,7 +3953,7 @@ void(vector scr) Watch_Chrome =
 	stitle = sprintf("%s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_abandon ? " (abandoned)" : "");
 	sclock = sprintf("%s / %s   %.2fx%s",
-	                 Time_TickString(rec_wt_ticks, rec_wt_tickrate),
+	                 Time_TickString(Watch_ClockTicks(), rec_wt_tickrate),
 	                 Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_rate, rec_wt_paused ? "  paused" : "");
 	// Patch 431: a cut reads in the stage's own time (negative in the lead-in).

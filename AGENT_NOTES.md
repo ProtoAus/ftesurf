@@ -1827,6 +1827,22 @@ publicly WITH its fix, not before it.
   This is navigation assurance, not evidence retiming, imported-camera or human
   smoothness acceptance. Engine pin/tag/qcbuild stay unchanged.
 
+- P549 fractional demo clock: `Watch_ClockTicks` is presentation-only. The
+  main timer and full-demo chrome use visual seconds / recorded tickrate,
+  bounded to zero/recorded finish; sampled `rec_wt_ticks` still own events,
+  splits and state. Live rewind and stage-cut chrome remain unchanged.
+  `tools/watch_clock_smoke.py --output-dir <private dir> [--baseline <ref>]`
+  probes actual formatted draw text and panel arguments through a private
+  dedicated overlay: 33 acted native/foreign/legacy positions, paused holds,
+  forward/backward/sub-tick seeks, stationary spans and lead-in/finish bounds.
+  Native server body stays exact. Unchanged baseline ACTS but fails the
+  fractional-input oracle. Retained screenshots show matching panel/chrome.
+  `--rig <retained rig>` runs the strict grader and 20 counterfactual rejections.
+  Foreign/legacy fixtures are reader controls, not import-codec/unknown-velocity
+  acceptance; broader HUD/camera continuity, long demos and human feel remain
+  separate. All three progs compile at zero warnings; 306 reader checks pass.
+  Unchanged checker/corpus retains 269 REC / 91 VIEW and 170 existing faults.
+
 - **The rewind rides the replay's pin, marked as its own: `rec_watch 1 rw`.** A
   pinned RUNNING run is frozen and practice, and EVERY way out of a rewind ends
   that run rather than thawing it -- a thaw past an unrecorded freeze convicts its

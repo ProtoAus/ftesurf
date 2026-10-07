@@ -259,9 +259,9 @@ by Patch 532; they are not proof that this overhaul has shipped.
 
 P535 delivers live-rewind main timer/speed/energy and duplicate-readout removal.
 `e line` uses recorded start energy; missing velocity is explicitly unavailable.
-Demo main clock/chrome are still tick-quantized at fractional positions (measured
-in the P544 navigation control); their exact cursor-clock parity remains OPEN in
-BACKLOG. Navigation delivery does not complete this HUD request.
+P549 aligns the demo main clock and full-demo chrome to the fractional visual
+cursor, retaining sampled ticks for events/splits. This bounded display fix does
+not complete broader source/HUD, imported-camera or human acceptance.
 
 **Build.** During player-line rewind and demo-line inspection/rewind, the normal
 **timer, speed/units and energy displays** show the exact same cursor sample as

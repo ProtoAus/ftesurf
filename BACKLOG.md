@@ -2285,15 +2285,6 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   right in live rewind, cursor stays fixed, release either and the remaining
   direction ACTS. Broader falsifier: remap/hold/release in native/imported demos,
   close/change focus while held; no dangling repeat or movement leak. Plan 12.2.
-- **Demo main clock is still tick-quantized (ROADMAP12.1).**
-  `cl_timer.qc:Timer_Draw` passes rec_wt_ticks to Timer_DrawPanel; unlike live
-  rewind's ui_rw_time/tick it does not use the fractional cursor clock. A P544
-  synthetic tap retained 19.985001s pose time but the timer/chrome showed
-  19.980s (1332 ticks at .015s). P544 adds navigation, not this HUD correction.
-  Falsifier: use a fractional demo seek/tap and inspect exact cursor clock,
-  Timer_DrawPanel argument and final HUD text together; body/velocity/time agree
-  without changing authoritative recording/split/event ticks. Keep genuine stop,
-  absent velocity, end-of-window and imported demos as controls.
 - **Repeated stitched rewind has zero-speed pauses/time creep followed by a
   jolt.** Lex reports several cut/resume attempts producing stationary stretches
   while the displayed timer updates. Failed-tail/hold-time capture is only a

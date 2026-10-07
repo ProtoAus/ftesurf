@@ -25,7 +25,7 @@ commit   fa5aef7ad3f4521a2a918b596eee208bbb0926ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-543
-patch    548
+patch    549
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,12 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-07
 
+# PATCH 549: FRACTIONAL DEMO HUD CLOCK. Main timer and full-demo chrome
+# share the visual cursor clock, bounded to zero/recorded finish. Sampled
+# ticks still own splits/events/state; no recording/evidence retiming.
+# Synthetic native/foreign/legacy draw controls; broader HUD/import acceptance
+# remains separate. Engine pin/tag and qcbuild are unchanged.
+#
 # PATCH 545: IN-GAME MOMENTUM DEMOS / GRAPHS. A validated held-board
 # handle queues a bounded NanoPi download, conversion and existing replay
 # delivery. Selected recorded paths get labelled speed/full-velocity energy

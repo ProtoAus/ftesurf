@@ -11,6 +11,16 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — fractional demo clock (Patch 549)
+
+The main replay timer and full-demo chrome now share the fractional cursor clock.
+Paused sub-tick seeks, backwards seeks, stationary spans, lead-in/finish bounds
+and native body pinning pass synthetic draw controls. Try a real native and an
+imported demo with taps, held scrolling and playback: timer/chrome should agree
+with the visible cursor without creeping while paused. Synthetic legacy missing
+velocity retains its old fallback; this is NOT acceptance of unknown-velocity
+labels, imported camera continuity, long-demo performance or the whole overhaul.
+
 ## 00. 7 Oct — held demo strafe scrolling (Patch 544)
 
 After reconnect/restart, open a native replay and an imported demo:
