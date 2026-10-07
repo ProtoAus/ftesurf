@@ -1387,7 +1387,7 @@ publicly WITH its fix, not before it.
   `tools/test_p502segments.py --rig <retained rig>` falsifies stale-report,
   recorder, clock, board, load-event and loaded-body false greens.
 
-### Similarity collector operational limits (P546–548)
+### Similarity collector operational limits (P546–548, P551–553)
 
 - `simcheck.summary` distinguishes missing/error (counters unavailable), empty
   (measured zero), and available. Its read-only log line explicitly states no
@@ -1399,11 +1399,31 @@ publicly WITH its fix, not before it.
   consume none; unresolved peers and raised comparisons do consume an attempt.
   Limit exhaustion creates no fake skip for unattempted pairs. Comparisons still
   run outside write transactions; only completed rows flush short transactions.
-- This is NOT a hard timeout, per-source ingestion/memory limit, complete-pair
-  scheduler or calibration. Existing pending and first-200-peer semantics remain.
-  `test_simcheck_collection.py` and `test_simcheck_budget_cli.py` are focused
-  temporary SQLite and actual sweep/locator controls; run them in addition to
-  the regular deployment suite, which does not auto-discover new suites.
+- Collector comparisons explicitly bound each source to 16 MiB / 200,000 moves.
+  Actual capture reads at most cap+1 bytes, including ignored records and growth;
+  over-budget sources abstain whole, never a measured surviving prefix. The
+  reader's standalone defaults remain unchanged. Old support without the bounded
+  capability is unavailable, not silently unbounded.
+- New skips capture allowlisted `skip_code` categories independently of prose.
+  Additive ensure leaves old codes empty; read-only old/new-schema summary/admin
+  classify them as legacy unknown without backfill. Unknown codes/details are
+  withheld. Fixed categories are availability/abstention, not player findings.
+- `--sims-seconds` adds a default ten-second monotonic cooperative admission
+  window. Loader/schema/query time counts; in-flight work and normal writes finish.
+  Zero disables before support import; invalid CLI values reject before main's
+  connection, NOT before the existing import-time database initialization.
+- NOT a hard timeout, overall RSS/DB scan bound, complete/fair pair scheduler or
+  calibration. Existing pending and first-200-peer semantics remain. Run
+  `test_simcheck_collection.py`, `test_simcheck_budget_cli.py`,
+  `test_simcheck_ingestion.py`, `test_simcheck_codes.py`, `test_simcheck_time.py`
+  and `test_recsim_observations.py` in addition to the regular deployment suite,
+  which does not auto-discover new suites. Typed observations now project fixed
+  malformed/unreadable labels; empty historical codes retain legacy withholding.
+- Fresh parallel Pi reviewers in a NEW shared worktree can race automatic npm
+  dependency installation (`ENOTEMPTY`, errno -4051). Capture state/diff and exact
+  failed run first; once dependencies are present, retry that lane with the same
+  native protocol. This setup failure is not a code review or external fallback
+  permission. Private logs retain failed controls and successful replacements.
 
 ## The run line (Patches 432, 449-453)
 

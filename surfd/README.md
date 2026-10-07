@@ -618,6 +618,27 @@ control, and unchanged badge/verdict tables after shipping. Collection stays
 store-only; `--sims 0` still disables it without importing the tool. Activating
 collection is not calibration or a guarantee of complete pair coverage.
 
+Collector budgets are independent: `--sims` caps selected source rows,
+`--sims-pairs` caps newly admitted pairs (default 200), and `--sims-seconds` caps
+elapsed admission cooperatively (default 10 seconds). Zero disables; elapsed
+CLI values must be finite and nonnegative. In-flight loading, comparison and
+normal database writes can finish after the deadline; this is not a hard timeout,
+overall memory/scan bound or fair scheduler. The CLI retains its existing
+import-time database initialization even for rejected arguments.
+
+Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
+Excess bytes (including ignored records) or moves abstain as a whole; no prefix
+is scored. Support lacking the bounded-input capability is unavailable. Optional
+reader limits do not change standalone census defaults. New unjudgeable pairs
+persist fixed `skip_code` categories; old rows stay empty and are reported as
+legacy unknown without reconstruction from reason prose. Authenticated admin
+projects only safe fixed labels, not source filenames or exception details.
+
+Run the focused ingestion, codes, time, collection, budget-CLI and observation
+controls alongside the deployment suite; the shipper does not discover them
+implicitly. Byte/move/time exhaustion is an operational abstention, never a
+cheat finding, coverage measurement or ranking/badge gate.
+
 ### Evidence behind stage rows (schema 6)
 
 A lobby posts each stage of a main run with that run's `runid` and no
