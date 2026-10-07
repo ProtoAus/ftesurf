@@ -36,11 +36,11 @@ void() Visual_LineTest =
 	Line_End(s);
 	Visual_Check(ln_published[s] == 3, "published count");
 	Visual_Check(Line_Reveal(s, 0, 0, 999999, 1) == 0, "batch starts hidden");
-	Visual_Check(ln_born[b] < ln_born[b + 2], "back starts before front");
+	Visual_Check(ln_born[b] == ln_born[b + 2], "same-frame arrivals have one age");
 	for (i = 0; i < 3; i = i + 1) ln_born[b + i] = ln_born[b + i] - dur * 0.5;
-	Visual_Check(Line_Reveal(s, 0, 0, 999999, 1) > 0.999, "back complete halfway");
+	Visual_Check(fabs(Line_Reveal(s, 0, 0, 999999, 1) - 0.5) < 0.001, "constant half fade");
 	Visual_Check(Line_Reveal(s, 1, 0, 999999, 1) > 0.49 && Line_Reveal(s, 1, 0, 999999, 1) < 0.51, "middle half opacity");
-	Visual_Check(Line_Reveal(s, 2, 0, 999999, 1) < 0.001, "front starts halfway");
+	Visual_Check(fabs(Line_Reveal(s, 2, 0, 999999, 1) - 0.5) < 0.001, "no chunk-front restart");
 	for (i = 0; i < 3; i = i + 1) ln_born[b + i] = ln_born[b + i] - dur * 0.5;
 	Visual_Check(Line_Reveal(s, 2, 0, 999999, 1) > 0.999, "front complete by duration");
 	old = ln_born[b];
@@ -65,13 +65,13 @@ void() Visual_LineTest =
 	Visual_Check(ln_published[0] == LN_CHUNK * 2, "demo published count");
 	Visual_Check(Line_Reveal(0, 0, 0, 999999, 1) == 0, "demo default-ahead publication starts hidden");
 	Visual_Check(ln_born[db] == ln_born[db + LN_CHUNK], "demo chunks start together");
-	Visual_Check(fabs(ln_born[db + LN_CHUNK - 1] - ln_born[db] - dur * 0.5) < 0.001, "demo chunk end stagger");
+	Visual_Check(ln_born[db + LN_CHUNK - 1] == ln_born[db], "demo has no chunk stagger");
 	old = ln_born[db + LN_CHUNK - 1];
 	Line_End(0);
 	Visual_Check(ln_born[db + LN_CHUNK - 1] == old, "demo rebuild preserves births");
 	for (i = 0; i < LN_CHUNK * 2; i = i + 1) ln_born[db + i] = ln_born[db + i] - dur * 0.5;
-	Visual_Check(Line_Reveal(0, 0, 0, 999999, 1) > 0.999, "demo back complete halfway");
-	Visual_Check(Line_Reveal(0, LN_CHUNK - 1, 0, 999999, 1) < 0.001, "demo front starts halfway");
+	Visual_Check(fabs(Line_Reveal(0, 0, 0, 999999, 1) - 0.5) < 0.001, "demo half fade");
+	Visual_Check(fabs(Line_Reveal(0, LN_CHUNK - 1, 0, 999999, 1) - 0.5) < 0.001, "demo no periodic reset");
 	for (i = 0; i < LN_CHUNK * 2; i = i + 1) ln_born[db + i] = ln_born[db + i] - dur * 0.5;
 	Visual_Check(Line_Reveal(0, LN_CHUNK - 1, 0, 999999, 1) > 0.999, "demo front complete by duration");
 	Visual_Check(fabs(Line_Reveal(0, 0, 1, 1.09, 0.2) - 0.6) < 0.001, "demo playhead composes with mature publication");
@@ -97,10 +97,23 @@ void() Visual_LineTest =
 	Visual_Check(Line_Reveal(0, 0, 1, 1, 0) == 1, "instant demo control");
 	Line_Clear(s);
 	Visual_Check(ln_published[s] == 0, "clear resets publication count");
+	Line_Begin(s);
+	Line_Add(s, '0 0 20', 100, 0, 0, 0, FALSE);
+	old = ln_born[b];
+	ln_born[b] = old - dur;
+	Line_End(s);
+	Visual_Check(ln_born[b] == old - dur, "live End preserves arrival birth");
+	Line_Add(s, '10 0 20', 100, 0, 0, 0.01, FALSE);
+	ln_reveal = dur;
+	Visual_Check(ln_published[s] == 1 && ln_n[s] == 2, "unbuilt live tail exists");
+	Visual_Check(Line_Reveal(s, 0, 0, 999999, 1) > 0.999 && Line_Reveal(s, 1, 0, 999999, 1) == 0, "continuous age gradient across rebuild boundary");
+	ln_born[b + 1] = cltime - dur * 0.25;
+	Visual_Check(fabs(Line_Reveal(s, 1, 0, 999999, 1) - 0.25) < 0.001, "linear quarter fade");
+	Line_Clear(s);
 	print(sprintf("VISUAL CHECKS: %g checks, %g failures\n", vf_checks, vf_fail));
 };
 
-float vf_lineon, vf_lineslot, vf_lineage;
+float vf_lineon, vf_lineslot, vf_lineage, vf_pending;
 void() Visual_LineScene =
 {
 	local float i;
@@ -108,6 +121,7 @@ void() Visual_LineScene =
 
 	vf_lineslot = stof(argv(1));
 	vf_lineage = stof(argv(2));
+	vf_pending = stof(argv(3));
 	vf_lineon = TRUE;
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
@@ -115,9 +129,12 @@ void() Visual_LineScene =
 	side = v_right;
 	Line_Begin(vf_lineslot);
 	for (i = 0; i < LN_CHUNK; i = i + 1)
+	{
+		if (vf_pending && i == LN_CHUNK - 3) Line_End(vf_lineslot);
 		Line_Add(vf_lineslot, eye + dir * 160 + side * (i * 120 / (LN_CHUNK - 1) - 60),
-		         100, 0, 0, i * 0.01, FALSE);
-	Line_End(vf_lineslot);
+		         100, 0, 0, i * 0.01, vf_pending == 2 && i == LN_CHUNK - 3);
+	}
+	if (!vf_pending) Line_End(vf_lineslot);
 	print(sprintf("VISUAL LINE: slot %g age %g\n", vf_lineslot, vf_lineage));
 };
 void() Visual_LineDraw =
@@ -129,8 +146,10 @@ void() Visual_LineDraw =
 	Line_WindowOff();
 	b = Line_BirthBase(vf_lineslot);
 	for (i = 0; i < LN_CHUNK; i = i + 1)
-		ln_born[b + i] = cltime - vf_lineage * 0.18 + 0.09 * i / (LN_CHUNK - 1);
+		ln_born[b + i] = cltime - vf_lineage * 0.18;
+	ln_npt = ln_nseg = 0;
 	Line_Draw(vf_lineslot, 999999, '0 0 0', 1, 1);
+	if (vf_pending) Visual_Check(ln_npt >= 5, "pending tail actually emitted");
 	// Flush the deferred 2D polygon without painting over the subject.
 	drawfill('0 0 0', '1 1 0', '0 0 0', 1, 0);
 };
@@ -307,7 +326,18 @@ def main():
     cfg.parent.mkdir(parents=True, exist_ok=True)
     # waitms alone can drain while an unfocused GL window isn't redrawing.
     # Require rendered frames around each retained screenshot too.
-    cfg.write_text(CFG.replace('waitms 250\n', 'waitms 250\nwait 20\n'))
+    coverage_cfg = 'cl_playerfade 1\nbody_fade_test 80\n'
+    for i in range(33):
+        coverage_cfg += (f'cl_playerfade_near {80 - i * 2}\ncl_playerfade_far {144 - i * 2}\n'
+                         f'waitms 250\nscreenshot vf_sub_{i:02d}.png\n')
+    coverage_cfg += 'body_fade_test 0\n'
+    config = CFG.replace('body_fade_test 0\nwaitms 250\nscreenshot vf_empty.png\n',
+                         'body_fade_test 0\nwaitms 250\nscreenshot vf_empty.png\n' + coverage_cfg)
+    config = config.replace('echo RUNLINES COMPLETE',
+                            'visual_line_scene 9 1 1\nwaitms 250\nscreenshot vf_pending.png\n'
+                            'visual_line_scene 9 1 2\nwaitms 250\nscreenshot vf_pending_break.png\n'
+                            'echo RUNLINES COMPLETE')
+    cfg.write_text(config.replace('waitms 250\n', 'waitms 250\nwait 20\n'))
     run(['pwsh', '-NoProfile', '-File', './build.ps1', '-Jobs', '8', '-QuakeDir', ''], work / 'src')
     result = subprocess.run([sys.executable, '-B', str(work / 'tools/runlines_smoke.py'), str(cfg),
                              '--output-dir', str(args.output_dir)], capture_output=True, text=True)
@@ -318,19 +348,19 @@ def main():
     # The runner prints its retained overlay directory as its last line.
     overlay = Path(result.stdout.strip().splitlines()[-1].removeprefix('Retained private rig: '))
     log = (overlay / 'ftesurf/logs/runlines_smoke.log').read_text(errors='replace')
-    expected_checks = LINE_TEST.count('Visual_Check(')
+    expected_checks = LINE_TEST.split('float vf_lineon')[0].count('Visual_Check(')
     if f'VISUAL CHECKS: {expected_checks} checks, 0 failures' not in log:
         raise RuntimeError('Fade alpha control/subject failed; inspect retained log')
     if not any('ftesurf/playerfade' in line and 'prog 1' in line for line in log.splitlines()):
         raise RuntimeError('Player shader did not load a program (silent fallback is not a pass)')
-    if log.count('VISUAL BODY:') != 4:
+    if log.count('VISUAL BODY:') != 5:
         raise RuntimeError('Fixture body control did not act')
     errors = ('error:', 'failed to compile', 'invalid program', 'unable to load shader')
     if any(e in log.lower() for e in errors):
         raise RuntimeError('Shader/runtime error in retained log')
     shots = sorted(overlay.rglob('vf_*.png'))
-    if len(shots) != 16:
-        raise RuntimeError(f'Expected 16 retained screenshots, got {len(shots)}')
+    if len(shots) != 51:
+        raise RuntimeError(f'Expected 51 retained screenshots, got {len(shots)}')
     from PIL import Image
     images = {p.stem: Image.open(p).convert('RGB') for p in shots}
     def data(image):
@@ -345,7 +375,7 @@ def main():
         raise RuntimeError('Far body is not fully opaque')
     ratio = pixels['vf_mid'] / pixels['vf_mid_control']
     if not 0.499 < ratio < 0.501:
-        raise RuntimeError(f'Middle body coverage should be 8/16, got {ratio:.6f}')
+        raise RuntimeError(f'Middle body coverage should be half, got {ratio:.6f}')
     if any(pixels[n] != 0 for n in ('vf_near', 'vf_inverted', 'vf_empty')):
         raise RuntimeError('Close/inverted/empty body is not hidden')
     for name in ('far', 'mid'):
@@ -354,7 +384,15 @@ def main():
         for a, b in zip(data(subject), data(control)):
             if max(a) > 0 and max(abs(x-y) for x, y in zip(a, b)) > 1:
                 raise RuntimeError('Surviving pixels changed normal body colours/lighting')
-    if log.count('VISUAL LINE:') != 8:
+    levels = [pixels[f'vf_sub_{i:02d}'] for i in range(33)]
+    if len(set(levels)) < 30 or levels != sorted(levels) or levels[0] != 0:
+        raise RuntimeError(f'Body coverage still stepped/nonmonotonic: {levels}')
+    if list(data(images['vf_sub_32'])) != list(data(images['vf_mid_control'])):
+        raise RuntimeError('Coverage sweep opaque endpoint differs from normal colours')
+    print(f'Body coverage: {len(set(levels))} distinct monotonic levels over 32 substeps (old Bayer <=17).')
+    if 'VISUAL FAIL:' in log:
+        raise RuntimeError('Pending-tail emit control failed')
+    if log.count('VISUAL LINE:') != 10:
         raise RuntimeError('Line drawing controls did not act')
     for name in ('live', 'demo'):
         start, half, full, control = (images[f'vf_{name}_{phase}'] for phase in
@@ -369,11 +407,18 @@ def main():
         w, h = half.size
         left = sum(sum(p) for p in data(half.crop((0, 0, w // 2, h))))
         right = sum(sum(p) for p in data(half.crop((w // 2, 0, w, h))))
-        if left < right * 1.5:
-            raise RuntimeError(f'{name} reveal not oldest-to-newest: left {left} right {right}')
-        print(f'Line pixels: {name} hidden -> {brightness[1] / brightness[3]:.4f} brightness -> opaque; back/front {left}/{right}.')
+        if not 0.95 < left / right < 1.05:
+            raise RuntimeError(f'{name} uniform arrivals have a restarted stagger: left {left} right {right}')
+        if not 0.49 < brightness[1] / brightness[3] < 0.51:
+            raise RuntimeError(f'{name} fade not constant-rate: {brightness}')
+        print(f'Line pixels: {name} hidden -> {brightness[1] / brightness[3]:.4f} brightness -> opaque, no chunk stagger.')
+    full = sum(sum(p) for p in data(images['vf_live_control']))
+    pending = sum(sum(p) for p in data(images['vf_pending']))
+    broken = sum(sum(p) for p in data(images['vf_pending_break']))
+    if not 0.99 < pending / full < 1.01 or not 0.92 < broken / full < 0.99:
+        raise RuntimeError(f'Pending tail/break pixels incorrect: {full} {pending} {broken}')
     print(f'Renderer: far opaque, middle {ratio:.6f}, near hidden, surviving colours preserved.')
-    print(f'{expected_checks} alpha checks and 16 renderer screenshots passed; retained screenshots:')
+    print(f'{expected_checks} alpha checks and 51 renderer screenshots passed; retained screenshots:')
     print(overlay)
     print('Retained isolated test-only source:', work)
 

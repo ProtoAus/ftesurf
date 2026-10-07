@@ -476,7 +476,16 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 	ln_vz[b + n]  = vz;
 	ln_q[b + n]   = q;
 	ln_t[b + n]   = t;
+	if (s >= LN_S_TRAIL)
+		ln_born[Line_BirthBase(s) + n] = cltime;
+	// The newest point can draw before the bulk tables' four-sample rebuild.
 	ln_brk[b + n] = (n > 0 && ln_pbrk[s]);
+	j = n;
+	for (i = 0; i < 2; i = i + 1)
+		if (j > 0)
+		if (!ln_pbrk[s] && !ln_brk[b + j])
+			j = j - 1;
+	ln_gain[b + n] = (t > ln_t[b + j]) ? (spd - ln_spd[b + j]) / (t - ln_t[b + j]) : 0;
 	ln_pbrk[s] = FALSE;
 	ln_n[s] = n + 1;
 };
@@ -706,27 +715,17 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 // The tables drawing needs: chunk spheres, the break list, the gain.
 void(float s) Line_End =
 {
-	local float b, n, c, i, i0, i1, j0, j1, k, dt, dur, first;
+	local float b, n, c, i, i0, i1, j0, j1, k, dt;
 	local vector mn, mx, p;
 
 	b = s * LN_CAP;
 	n = ln_n[s];
-	// Publish together, reveal oldest to newest. Recording/timer time is untouched.
-	if (s == 0 || s >= LN_S_TRAIL)
-	{
-		dur = bound(0, cvar("hud_lines_reveal"), 1);
-		first = ln_published[s];
-		for (i = first; i < n; i = i + 1)
-		{
-			k = (i - first) / max(1, n - first - 1);
-			// An opened demo publishes at once: reveal each drawing chunk, not
-			// a single wave across a many-minute recording.
-			if (s == 0)
-				k = (i - first - LN_CHUNK * floor((i - first) / LN_CHUNK)) / (LN_CHUNK - 1);
-			ln_born[Line_BirthBase(s) + i] = cltime + dur * 0.5 * k;
-		}
-		ln_published[s] = n;
-	}
+	// One demo fade, not a stagger restarted every chunk. Live births belong
+	// to sample arrival in Line_Add; bulk rebuilds never reset their ages.
+	if (s == 0)
+		for (i = ln_published[s]; i < n; i = i + 1)
+			ln_born[Line_BirthBase(s) + i] = cltime;
+	ln_published[s] = n;
 	ln_bkn[s] = 0;
 	for (i = 1; i < n; i = i + 1)
 		if (ln_brk[b + i])
@@ -1338,6 +1337,19 @@ void() Line_ViewFrame =
 		ln_cshi = ln_shi;
 		ln_ccmode = ln_cmode;
 	}
+	// Only the small live tail changes between bulk rebuilds. Do not invalidate
+	// the eight static board colour caches on every arrival. Contact/energy
+	// retain their existing whole-slot classifiers rather than guessing a kind.
+	for (s = LN_S_TRAIL; s < LN_SLOTS; s = s + 1)
+		if (ln_n[s] > ln_published[s])
+		{
+			if (ln_cmode == 2) Line_ColContact(s);
+			else if (ln_cmode == 3) Line_ColEnergy(s);
+			else if (ln_cmode == 4) Line_ColQuality(s);
+			else
+				for (i = s * LN_CAP + ln_published[s]; i < s * LN_CAP + ln_n[s]; i = i + 1)
+					ln_col[i] = Line_Col(i);
+		}
 };
 
 // A sphere against the view: -1 outside the frustum or past hud_watch_path_far,
@@ -1389,7 +1401,7 @@ float(float s, float c) Line_ChunkStep =
 };
 
 // Visual alpha only. Demo points brighten smoothly as their playhead passes;
-// live points use publication time, not their (possibly held/rewound) run clock.
+// live points use arrival time, not their (possibly held/rewound) run clock.
 float(float s, float i, float t, float tplay, float ahead) Line_Reveal =
 {
 	local float a, f;
@@ -1400,14 +1412,14 @@ float(float s, float i, float t, float tplay, float ahead) Line_Reveal =
 	if (s == 0)
 	{
 		f = bound(0, (tplay - t) / ln_reveal, 1);
-		a = ahead + (1 - ahead) * f * f * (3 - 2 * f);
+		a = ahead + (1 - ahead) * f;
 	}
 	if (s == 0 || s >= LN_S_TRAIL)
 	{
 		if (ln_published[s] > 0)
 		{
-			f = bound(0, (cltime - ln_born[Line_BirthBase(s) + i]) * 2 / ln_reveal, 1);
-			a = a * f * f * (3 - 2 * f);
+			f = bound(0, (cltime - ln_born[Line_BirthBase(s) + i]) / ln_reveal, 1);
+			a = a * f;
 		}
 	}
 	return a;
@@ -1973,10 +1985,16 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	local vector p0, p1;
 
 	if (!ln_on[s])
-		return;
+		if (s < LN_S_TRAIL || ln_n[s] < 2)
+			return;
 	b  = s * LN_CAP;
 	ia = ln_ia[s];
 	ib = ln_ib[s];
+	// Expose each new live sample, keeping expensive spheres/LOD batched.
+	// A deliberately cut shown range must not be extended.
+	if (s >= LN_S_TRAIL)
+	if (ib == ln_published[s] - 1)
+		ib = ln_n[s] - 1;
 	// The window narrows the shown range; the cut it was set inside still wins.
 	if (ln_winon)
 	{
@@ -2006,11 +2024,20 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	ge = -1;
 	while (i <= ib)
 	{
+		// Unbuilt tail: at most three samples in normal live capture. No stale
+		// sphere/LOD may cull or skip it; Line_Feed retains near clip and breaks.
+		if (i >= ln_published[s])
+		{
+			st = 1;
+			ce = ge = ib;
+			if (!ln_hp && i > ia && !ln_brk[b + i])
+				Line_Feed(i - 1, 1, tplay, phead, ahead);
+		}
 		// A group of LN_GROUP chunks off screen or past the far distance: skipped whole.
 		if (i > ge)
 		{
 			g  = floor(i / (LN_CHUNK * LN_GROUP));
-			ge = min(ib, (g + 1) * LN_CHUNK * LN_GROUP - 1);
+			ge = min(min(ib, ln_published[s] - 1), (g + 1) * LN_CHUNK * LN_GROUP - 1);
 			k  = s * LN_CAP / LN_CHUNK / LN_GROUP + g;
 			if (Line_Sphere(ln_gc[k], ln_gr[k]) < 0)
 			{
@@ -2024,7 +2051,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		if (i > ce)
 		{
 			c  = floor(i / LN_CHUNK);
-			ce = min(ib, (c + 1) * LN_CHUNK - 1);
+			ce = min(min(ib, ln_published[s] - 1), (c + 1) * LN_CHUNK - 1);
 			st = Line_ChunkStep(s, c);
 			if (!st)
 			{

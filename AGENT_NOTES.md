@@ -1396,6 +1396,20 @@ publicly WITH its fix, not before it.
   Stage 2 on surf_dune in the first rig teleported outside its start and launched
   immediately; that is not a valid standing-at-start control. Immediate restart
   while TS_RUNNING (and clock reset) still needs separate lifecycle handling.
+- Patch 533 supersedes P532's visible steps: live births come from Line_Add,
+  not Line_End, and alpha is a constant-rate ramp. The small unbuilt tail draws
+  with stride 1 and no stale sphere culling, including first two samples; breaks
+  still terminate joins. Full spheres/LOD/gain builds remain batched. Only live
+  tail colours refresh, not board caches; contact/energy classifiers still walk
+  the active slot rather than guessing a kind. Demo publication is one uniform
+  fade, not a restarted stagger every 32 points. Static interleaved-gradient
+  noise replaces the body's 16 Bayer levels: 33 actual distinct monotonic coverage
+  images over 32 substeps, normal survivor colours, no animated noise seed.
+  Extended private overlay: 37 alpha checks, 51 rendered screenshots including
+  pending-tail/break controls; both constant half-fades are 0.4993 brightness.
+  The separate dedicated reset regression still passes all five acted checks.
+  No all-backend or worst-case contact-mode FPS claim; owner motion feel remains
+  a human check. No authoritative evidence or movement state changes.
 - Patch 532: `hud_lines_reveal 0.18` reveals newly published live/demo chunks
   from oldest to newest; 0 restores instant drawing. Heap birth stamps belong
   only to demo slot 0 and the two live/previous slots. Rebuilding never restarts

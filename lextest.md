@@ -2002,6 +2002,8 @@ too, top right (the engine's counter was drawn underneath the menu's 3D).
 plus **Nearby players**, **Hidden within** and **Opaque beyond**. Defaults:
 0.18 seconds for new line chunks; bodies dither away between 128 and 32 units.
 Both are client-side visual effects, not run-clock or movement changes.
+Patch 533 removes chunk-boundary restarts, shows the newest samples between
+bulk rebuilds and replaces the body's 16-level pattern with fine static noise.
 
 - Surf and watch a demo: do the small chunks arrive smoothly, from back to
   front, or is 0.18 seconds too slow? Instant is the comparison.
