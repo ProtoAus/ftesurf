@@ -1614,6 +1614,19 @@ publicly WITH its fix, not before it.
   view/camera/index mutations all reject; raw angles are independently derived.
   Numeric geometry is not screenshots, camera feel or full contact/teleport
   truth. Those human/broader cases and low-FPS alignment remain open.
+  P540 frozen production `996462b` deployed to both Windows installs and all
+  12 Pi lobbies; compatibility gates finished 2026-10-07 08:44:27 UTC. CSQC
+  SHA256 `e7e519c38707aca332ff8eff8ad7ff44282187a7404c320f43b13a56aecac32f`;
+  SSQC stays `e56b81df...`, predecessor CSQC `8b3811fb...` retained as `.prev`.
+  Clean frozen builds match the production P502 subject byte-for-byte and
+  contain no probe commands. Pi occupancy gate: all 12 current rows empty,
+  no force; independent hash/status read: all active. Windows native/plugin/
+  menu/personal/default cfg and Quakers hashes unchanged. Two fresh-cache
+  installed clients downloaded matching bytes and received acted peer streams;
+  no command/VM/shader errors. Inspected settings/native screenshots still
+  show the unaccepted-terms gate and known missing-map material: compatibility,
+  not row-fetch, map appearance or camera-feel acceptance. No extra restart
+  during finish-only controls. Peer source/index edits remain untouched.
 - P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
   2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
   `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;

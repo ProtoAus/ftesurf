@@ -2278,6 +2278,10 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   requested-prefix oracle remains red. Both failures reproduce unchanged on
   P539 and on the P540 visual candidate. Native body/hold checks still act;
   this is NOT evidence that those two requested clocks were restored exactly.
+  `SV_RewindFind` already chooses the closest position within `RW_NEAR`; first
+  distinguish intended selection from an acknowledgement/visual-bound defect
+  or a grader requiring an unavailable client timestamp. Do not change native
+  selection solely to make a requested-clock oracle green.
   Falsifier: instrument requested sampled clock/pose, selected native snapshot
   clock/pose and acknowledged visual bound together at 30/100/300 FPS. Repair
   alignment without weakening body/prefix checks, inventing authoritative state
