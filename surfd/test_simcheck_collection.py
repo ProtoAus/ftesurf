@@ -92,7 +92,7 @@ class CollectorAvailability(unittest.TestCase):
         self.resolved.append(row['id'])
         return str(row['id']), ''
 
-    def compare(self, a, b):
+    def compare(self, a, b, **kw):
         self.assertFalse(self.conn.in_transaction)
         self.compared.append((a, b))
         return 'compared', dict(match=1.0, cover=1.0, prefix=80, offset=0,
@@ -110,7 +110,7 @@ class CollectorAvailability(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
 
     def test_row_failure_is_counted_and_later_rows_act(self):
-        def failing(a, b):
+        def failing(a, b, **kw):
             if a == '1':
                 self.compared.append((a, b))
                 raise RuntimeError('synthetic failure')
@@ -125,7 +125,7 @@ class CollectorAvailability(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT MIN(compared) FROM sims WHERE verdict='compared'").fetchone()[0], 80)
 
     def test_all_row_failures_still_report_when_nothing_stored(self):
-        def failing(a, b):
+        def failing(a, b, **kw):
             self.compared.append((a, b))
             raise RuntimeError('synthetic failure')
         self.reader.compare_paths.side_effect = failing
@@ -172,7 +172,7 @@ class PairBudget(CollectorAvailability):
         self.assertIn('pair limit reached', note)
 
     def test_exception_consumes_attempt_and_cannot_overrun(self):
-        def failing(a,b):
+        def failing(a,b, **kw):
             self.compared.append((a,b))
             raise RuntimeError('synthetic failure')
         self.reader.compare_paths.side_effect = failing
@@ -200,10 +200,10 @@ class PairBudget(CollectorAvailability):
         spec = importlib.util.spec_from_file_location('budget_reader', Path(__file__).resolve().parents[1]/'tools'/'census'/'recsim.py')
         rs = importlib.util.module_from_spec(spec);spec.loader.exec_module(rs)
         calls = []
-        def real(a,b):
+        def real(a,b, **kw):
             calls.append((a,b))
             self.assertFalse(self.conn.in_transaction)
-            return rs.compare_paths(a,b)
+            return rs.compare_paths(a,b, **kw)
         self.reader.compare_paths.side_effect = real
         self.surfd.replay_file.side_effect = lambda row: (str(root/('%d.rec'%row['id'])), '')
         stored, notable, note = self.step(4)

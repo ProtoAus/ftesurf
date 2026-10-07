@@ -75,6 +75,10 @@ NOTABLE = 0.95
 # Operational work cap, not a statistic threshold or a completeness guarantee.
 # Previously 50 source rows could each admit 200 peers in one cron pass.
 MAX_PAIRS = 200
+# Operational ingestion limits, not a validity or similarity threshold. Sources
+# over either budget abstain; no truncated prefix may become a measurement.
+MAX_SOURCE_BYTES = 16 << 20
+MAX_SOURCE_MOVES = 200000
 
 
 class _PairBudget:
@@ -115,6 +119,8 @@ def _recsim(tools_dir=None):
         return None, "importing %s failed: %r" % (path, exc)
     if not hasattr(mod, "compare_paths"):
         return None, "%s has no compare_paths (too old?)" % path
+    if getattr(mod, "BOUNDED_INPUT_VERSION", None) != 1:
+        return None, "recsim lacks bounded input capability (too old?)"
     return mod, path
 
 
@@ -235,7 +241,8 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         if pb is None:
             verdict, reason, d = "skip", "peer unresolved: %s" % w, None
         else:
-            verdict, reason = rs.compare_paths(pa, pb)
+            verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
+                                               max_moves=MAX_SOURCE_MOVES)
             d = reason if verdict == "compared" else None
             if verdict != "compared":
                 verdict, reason = "skip", reason
@@ -304,7 +311,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
 
     `limit` bounds selected source rows; `max_pairs` independently bounds admitted
     new pair attempts across all of them. Zero disables before loading support.
-    This is not a hard deadline, an ingestion bound or complete/fair pair coverage.
+    Each comparison source is bounded by bytes and moves. This is not a hard
+    deadline, an overall RSS bound or complete/fair pair coverage.
 
     A fault here is printed and never stops the verification, exactly as the
     receipt and evidence steps do: this is a store-only measurement, and a

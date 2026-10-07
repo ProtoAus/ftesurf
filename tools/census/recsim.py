@@ -74,6 +74,8 @@ Usage:
 import argparse
 import collections
 import glob
+import io
+import locale
 import hashlib
 import os
 import re
@@ -164,21 +166,39 @@ class MalformedRec(ValueError):
     """A required move-stream value cannot be read safely."""
 
 
-def parse_rec(path, strict=False):
-    """Read move columns; strict callers distinguish unavailable from no rows."""
+# Capability marker for collectors that must never fall back to unbounded reads.
+BOUNDED_INPUT_VERSION = 1
+
+
+class SourceLimit(ValueError):
+    """The source exceeds an operational ingestion budget, not a player fault."""
+
+
+def parse_rec(path, strict=False, max_bytes=None, max_moves=None):
+    """Read move columns; optional limits bound capture and retained move rows."""
     try:
-        return _parse_rec(path)
-    except (OSError, MalformedRec) as exc:
+        return _parse_rec(path, max_bytes=max_bytes, max_moves=max_moves)
+    except (OSError, MalformedRec, SourceLimit) as exc:
         if strict:
             raise
         SKIPPED.append((path, str(exc)))
         return None
 
 
-def _parse_rec(path):
+def _parse_rec(path, max_bytes=None, max_moves=None):
     r = Rec(path)
     body = False
-    fh = open(path, "r", errors="replace")
+    if max_bytes is None:
+        fh = open(path, "r", errors="replace")
+    else:
+        # Bound the actual capture, not stat size: files can grow during a read.
+        # StringIO preserves the text reader's universal newline/locale behavior.
+        with open(path, "rb") as raw:
+            data = raw.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise SourceLimit("source byte limit reached")
+        fh = io.StringIO(data.decode(locale.getpreferredencoding(False), errors="replace"),
+                         newline=None)
     with fh:
         for line in fh:
             if not body:
@@ -205,6 +225,8 @@ def _parse_rec(path):
                     body = True
                 continue
             if line.startswith("in "):
+                if max_moves is not None and len(r.moves) >= max_moves:
+                    raise SourceLimit("source move limit reached")
                 f = line.split()
                 # in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt> [<fl>]
                 #     0    1    2       3   4   5    6     7    8     9    10
@@ -359,9 +381,10 @@ SKIP_SHORT = "too short"
 SKIP_SAME_FILE = "same file"
 SKIP_MALFORMED = "malformed input"
 SKIP_NO_OPPORTUNITIES = "no comparison opportunities"
+SKIP_SOURCE_LIMIT = "source limit"
 
 
-def compare_paths(path_a, path_b, min_len=MIN_LEN):
+def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=None):
     """Compare two `.rec` files by path.  -> (verdict, detail).
 
     THIS IS THE ONE ENTRY POINT A SECOND CALLER SHOULD USE, and the reason it
@@ -375,6 +398,10 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN):
     `verdict` is one of:
       "compared"  -- `detail` is a dict of the measurement;
       a SKIP_* string -- `detail` is a one-line reason.
+
+    Optional max_bytes/max_moves are operational source budgets; exceeding either
+    abstains as SKIP_SOURCE_LIMIT without comparing a surviving prefix. Defaults
+    preserve standalone census behavior; fleet collectors pass explicit bounds.
 
     A SKIP IS NOT A LOW SCORE AND IS NOT AN ERROR.  That distinction is the whole
     lesson of MIN_LEN above: a pair that could not be judged must be counted
@@ -405,7 +432,9 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN):
     recs = []
     for p in (path_a, path_b):
         try:
-            r = parse_rec(p, strict=True)
+            r = parse_rec(p, strict=True, max_bytes=max_bytes, max_moves=max_moves)
+        except SourceLimit as exc:
+            return SKIP_SOURCE_LIMIT, str(exc)
         except MalformedRec:
             return SKIP_MALFORMED, "malformed required move-stream input"
         except (PermissionError, OSError) as e:
