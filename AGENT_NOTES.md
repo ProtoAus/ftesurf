@@ -1653,6 +1653,34 @@ publicly WITH its fix, not before it.
   restart during finish controls. Windows production/protected native/plugin/
   menu/personal/default cfg and Quakers hashes stayed unchanged. Directory had
   all 12 rows and zero players afterward. P542 fleet delivery is now complete.
+- Native event/stop controls (tooling after P542):
+  `python tools/native_trail_events.py --output-dir <private dir> --fps 30`
+  (also 100/300) walks out of start on a real dedicated socket, then engine
+  touches private AABB volumes using the ordinary `trigger_teleport_touch`.
+  Keep/zero velocity and view-snap modes ACT, with exact native before/after
+  destination, body, velocity and unchanged tick checks. Land on the map's
+  actual floor: an unnetworked synthetic slab does NOT provide matching client
+  prediction collision. A six-second running stop advances counted ticks and
+  raw time without body/velocity drift; a fixed cursor over 1.5 wall seconds
+  preserves clock, body, velocity and raw rows while the native pin freezes.
+  Complete quarter-point scans at 30/100/300, nine compiled controls and distinct
+  first-person/chase view-state probes pass. The captured images alias on this
+  rig, explicitly UNMEASURED for camera pixels. This is synthetic-volume/native
+  handler coverage, NOT authored BSP teleport, renderer or human acceptance.
+  `python tools/test_native_trail_events.py --rig <private rig> --output-dir
+  <private dir>` rejects 38 malformed/missing/unacted/wrong-state/body/clock/
+  mode/raw-break/camera cases; positive first. Existing visual grader's 16
+  controls still pass. Its angular oracle now accounts for the SAME independently
+  derived six-decimal time bound as velocity: `abs(short_arc)*2e-6/dt`, not a
+  tolerance chosen from a failing difference. One native trace exposed a
+  90-degree turn over serialized 9.960000..9.974999 seconds: midpoint -135 was
+  correct but a fixed .003-degree oracle rejected its .0030002 text-rounding
+  difference. Discontinuities retain the strict bound; wrong-view falsifiers
+  still reject. No product/evidence format change or new product patch.
+  Native instant poses and sampled visual endpoints are different contracts:
+  keep-velocity native-to-first-raw-break offsets vary across runs/FPS. Bracket
+  each acted touch with raw pre/post dumps, retain exact native tests and report
+  the offset; don't silently retime history or claim instant-pose equivalence.
 - P540: raw trail break/stitch columns (8/9), not only legacy flag
   `0x4000000`, gate `Trail_VisualState` interpolation. `Rewind_Camera` bounds
   its +/-3-point tangent to the cursor's continuous span. Compiled positives

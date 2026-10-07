@@ -174,7 +174,9 @@ def trace(gd, label):
     return int(n), int(rawcount), fps, rows
 
 
-def grade(gd):
+def grade(gd, *, phases=('warm', 'cold'), cuts=(1, 2, 3),
+          stop_labels=('beforewait', 'initial')):
+    """Grade complete camera scans; alternate fixtures keep the same strict oracle."""
     gd = Path(gd)
     log = (gd / 'logs/runlines_smoke.log').read_text(errors='replace')
     serverlog = (gd / 'logs/runlines_server.log').read_text(errors='replace')
@@ -192,15 +194,16 @@ def grade(gd):
     for name, ok in checks:
         print(('PASS' if ok == '1' else 'FAIL'), 'compiled', name)
     # Positive stop must have real elapsed clock, stationary positions and speed.
-    _, _, initial = dump(gd, 'initial')
-    _, _, before = dump(gd, 'beforewait')
+    _, _, initial = dump(gd, stop_labels[1])
+    _, _, before = dump(gd, stop_labels[0])
     stop = [r for r in initial if r[0] > before[-1][0] + 1]
     assert stop and stop[-1][0] - stop[0][0] > 4, 'genuine stop did not ACT'
     assert all(close(r[1:4], stop[0][1:4]) and close(r[4:7], [0, 0, 0]) for r in stop)
     print(f'PASS genuine stop: {len(stop)} samples, {stop[-1][0]-stop[0][0]:.3f}s counted')
     total = 0
-    for prefix in ('warm', 'cold'):
-        for cut in range(1, 4):
+    assert phases and cuts, 'camera phases did not ACT'
+    for prefix in phases:
+        for cut in cuts:
             label = f'{prefix}{cut}_cursor'
             _, _, raw = dump(gd, label)
             assert all(math.isfinite(x) for row in raw for x in row), label
@@ -234,11 +237,15 @@ def grade(gd):
                 precision = .003 + (max(abs(x-y) for x,y in zip(ra[4:7], rb[4:7])) * 2e-6 / dt if dt > 0 else 0)
                 assert close(r[9:12], want, precision), (label, 'velocity crosses raw break', r[0])
                 angles = [ra[13], ra[10], 0]
+                angle_precision = [.003] * 3
                 if dt > 0 and not (int(rb[7]) & 0x4000000 or rb[8] or rb[9]):
                     for k, end in enumerate((rb[13], rb[10])):
                         arc = (end-angles[k]+180) % 360-180
                         angles[k] = (angles[k]+arc*blend+180) % 360-180
-                assert all(abs((x-y+180) % 360-180) < .003 for x,y in zip(r[12:15], angles)), (label, 'view crosses raw break')
+                        # Same six-decimal time quantization bound as velocity;
+                        # discontinuities retain the strict floor.
+                        angle_precision[k] += abs(arc) * 2e-6 / dt
+                assert all(abs((x-y+180) % 360-180) < eps for x,y,eps in zip(r[12:15], angles, angle_precision)), (label, 'view crosses raw break')
                 eye = 47 if int(ra[7]) & 2 else 64
                 assert close(r[15:18], [r[6], r[7], r[8]+eye]), (label, 'first-person camera mismatch')
                 assert close(r[18:21], r[12:15]), (label, 'first-person angles mismatch')

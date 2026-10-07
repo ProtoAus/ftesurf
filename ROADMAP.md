@@ -358,8 +358,14 @@ normalize only the visual cutoff through the raw six-decimal representation.
 All six requested/native/prefix controls pass in new buffered 30/100/300 and
 streamed 30 matrices, without widening the requested-clock check. The original
 forward 45 ms native selection and general requested/native UX remain separate
-follow-ups (BACKLOG). Moving-camera feel, real teleport coverage and the broader reported
-pause/event/compare acceptance remain open; numeric traces do not settle them.
+follow-ups (BACKLOG). Native-event tooling after P542 additionally checks
+engine-driven keep/zero-velocity teleport volumes on actual map ground, a
+genuine six-second running stop and a fixed cursor over elapsed wall time.
+Complete 30/100/300 FPS camera-state scans, nine compiled controls and 39
+counterfactual checks pass. Synthetic-volume coverage is not authored BSP
+teleport coverage; saved images alias despite distinct camera state. Camera
+pixels/feel and the broader reported event/compare acceptance remain open;
+numeric traces do not settle them.
 
 ### 12.4 Contact labels at the actual surface event
 
