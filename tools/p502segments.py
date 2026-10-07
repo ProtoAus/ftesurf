@@ -245,6 +245,7 @@ def main():
     ap.add_argument("--stream", action="store_true", help="exercise streamed authoritative prefixes")
     ap.add_argument("--server", default="C:/FTEQuake/fteqwsv64.exe")
     ap.add_argument("--progs", type=pathlib.Path, default=ROOT / "ftesurf", help="compiled control/subject progs directory")
+    ap.add_argument("--content", type=pathlib.Path, default=ROOT, help="installed content root for source-only worktrees")
     ap.add_argument("--port", type=int, default=27559)
     ap.add_argument("--grade-only", type=pathlib.Path, help="existing rig root")
     ap.add_argument("--output-dir", type=pathlib.Path, help="parent for retained private test artifacts")
@@ -262,7 +263,7 @@ def main():
     gd.mkdir()
     shutil.copyfile(ROOT / "default.fmf", rig / "default.fmf")
     for name in ("maps", "gfx", "glsl", "models", "particles", "scripts"):
-        subprocess.run(["cmd", "/c", "mklink", "/J", str(gd / name), str(ROOT / "ftesurf" / name)], check=True, capture_output=True)
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(gd / name), str(args.content / "ftesurf" / name)], check=True, capture_output=True)
     for name in ("qwprogs.dat", "csprogs.dat", "menu.dat"):
         shutil.copyfile(args.progs / name, gd / name)
     shutil.copyfile(ROOT / "ftesurf/fs_addons.default.txt", gd / "fs_addons.default.txt")

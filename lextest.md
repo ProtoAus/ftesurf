@@ -124,7 +124,11 @@ unchanged), and all 12 Pi lobbies. Reload/reconnect to pick up the new progs.
   position. Replace one replay with another without closing it. During the
   countdown, try save/load; then hold/release and repress TAB.
 - Cold restarts restore pictures, not historical server timer snapshots:
-  rewind remains limited to retained authoritative history.
+  rewind remains limited to retained authoritative history. P539's isolated
+  buffered/streamed controls now pass three cuts AFTER the load, with counted
+  long failed waits, native held body/clock and resumed recording. On a real
+  route, judge this repeated-cut case too; a machine pass does not judge camera
+  jolts, visual pauses or label readability.
 
 ## 00. 5 Oct -- the website, KSF's styles, the demo grab (start here)
 

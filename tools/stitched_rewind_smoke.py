@@ -8,9 +8,9 @@ from the retained prefix. A fresh VM restores the explicit saved picture and
 repeats three cuts WITHIN newly recorded history: pre-load full server snapshots
 are not reconstructed from the picture. No idle-tail root cause is presumed.
 
-Current baseline is RED on the second/third cold cuts (BACKLOG.md): missing cold
-recorder lineage forces another cold reload and drops older state snapshots.
-Keep the strict oracle; do not treat the known limit as a passing feature.
+Pre-P539 baseline is RED on the second/third cold cuts: missing cold recorder
+lineage forces another cold reload and drops older state snapshots. Keep the
+strict oracle and native server-body/clock controls; silence is not a pass.
 """
 import argparse
 from pathlib import Path
@@ -66,8 +66,78 @@ con_notifytime_error 0
 con_notifylines 0
 '''
 
+SERVER_SEAM = r'''
+void(string label, float got, float expected) Stitch_GuardCheck =
+{
+	print(sprintf("STITCH GUARD %s %d %d\n", label, got, expected));
+};
+void() SV_StitchGuards =
+{
+	local entity e, sg_peer;
+
+	e = spawn();
+	sg_peer = spawn();
+	SV_RecKeysReset();
+	SV_RecGenBegin(e);
+	Stitch_GuardCheck("fresh-key", strlen(e.rec_rec_branch) == 32, TRUE);
+	rs_branch = strzone(e.rec_rec_branch);
+	rs_gen = 0;
+	Stitch_GuardCheck("cold-match", SV_RecGenOK(e, 10), TRUE);
+	strunzone(rs_branch); rs_branch = strzone("foreign");
+	Stitch_GuardCheck("foreign-key", SV_RecGenOK(e, 10), FALSE);
+	strunzone(rs_branch); rs_branch = "";
+	Stitch_GuardCheck("missing-cold-key", SV_RecGenOK(e, 10), FALSE);
+	rs_branch = strzone(e.rec_rec_branch);
+	rs_rid = strzone("foreign-run");
+	Stitch_GuardCheck("foreign-run", SV_RecGenOK(e, 10), FALSE);
+	strunzone(rs_rid); rs_rid = "";
+	rs_gen = -1;
+	Stitch_GuardCheck("missing-generation", SV_RecGenOK(e, 10), FALSE);
+	rs_gen = 1;
+	Stitch_GuardCheck("future-generation", SV_RecGenOK(e, 10), FALSE);
+	rs_gen = 0;
+	SV_RecGenPush(e, 20);
+	Stitch_GuardCheck("retained-earlier", SV_RecGenOK(e, 10), TRUE);
+	Stitch_GuardCheck("stale-later", SV_RecGenOK(e, 30), FALSE);
+	SV_RecGenPush(e, 5);
+	Stitch_GuardCheck("intermediate-below-mark", SV_RecGenOK(e, 10), FALSE);
+	SV_RecGenBegin(sg_peer);
+	Stitch_GuardCheck("other-attachment", SV_RecGenOK(sg_peer, 10), FALSE);
+	SV_RecGenBegin(e);
+	Stitch_GuardCheck("reattachment", SV_RecGenOK(e, 10), FALSE);
+	Stitch_GuardCheck("reset-generation", e.rec_rec_gen, 0);
+	SV_RecKeysReset(); rs_gen = 0;
+	e.rec_rec_rid = strzone("legacy-run");
+	rs_rid = strzone("legacy-run");
+	Stitch_GuardCheck("legacy-match", SV_RecGenOK(e, 10), TRUE);
+	strunzone(rs_rid); rs_rid = strzone("other-legacy");
+	Stitch_GuardCheck("legacy-foreign", SV_RecGenOK(e, 10), FALSE);
+	SV_RecKeysReset();
+	Stitch_GuardCheck("metadata-reset", rs_branch == "", TRUE);
+	SV_RecGenReset(e); SV_RecGenReset(sg_peer);
+	Stitch_GuardCheck("attachment-cleared", e.rec_rec_branch == "", TRUE);
+	strunzone(e.rec_rec_rid);
+	remove(e); remove(sg_peer);
+};
+.vector stitch_origin;
+.float stitch_ticks;
+void(entity e, string label) SV_StitchProbe =
+{
+	local filestream f;
+
+	f = fopen(strcat("cfg/test/server_", label, ".txt"), FILE_WRITE);
+	if (f < 0) { print("STITCH SERVER WRITE FAILED\n"); return; }
+	fputs(f, sprintf("expected %.9g %.9g %.9g\n", e.stitch_origin_x, e.stitch_origin_y, e.stitch_origin_z));
+	fputs(f, sprintf("body %.9g %.9g %.9g\n", e.origin_x, e.origin_y, e.origin_z));
+	fputs(f, sprintf("ticks %.9g %.9g\n", e.stitch_ticks, e.run_t_ticks));
+	fputs(f, sprintf("hold %d %d %d\n", e.rec_sl_hold, e.run_t_freeze, e.run_t_frzon));
+	fputs(f, sprintf("identity %d %d\n", strlen(e.rec_rec_rid) > 0, strlen(e.rec_rec_nonce) > 0));
+	fclose(f);
+};
+'''
+
 def probe(label):
-    return f'echo ==== STITCH {label} ====\nstitch_probe {label}\ntrail\ncmd timer\n'
+    return f'echo ==== STITCH {label} ====\nstitch_probe {label}\ntrail\ncmd timer\ncmd stitchprobe {label}\n'
 
 def cuts(prefix):
     text = ''
@@ -88,7 +158,9 @@ def cuts(prefix):
         text += 'waitms 5000\n' + probe(stem + '_wait')
     return text
 
-WARM = BASE + '''cmd zone_goto 0
+WARM = BASE + '''cmd stitchguards
+waitms 100
+cmd zone_goto 0
 waitms 400
 +forward
 waitms 2300
@@ -113,9 +185,25 @@ def dump(gd, label):
     assert all(a[0] <= b[0] for a, b in zip(rows, rows[1:])), label
     return meta, cursor, rows
 
-def grade(gd):
+def native(gd, label):
+    return {s.split()[0]: list(map(float, s.split()[1:])) for s in
+            (gd / f'cfg/test/server_{label}.txt').read_text().splitlines()}
+
+def grade(gd, streamed=True):
     log = (gd / 'logs/runlines_smoke.log').read_text(errors='replace')
     assert 'STITCH PROBE WRITE FAILED' not in log
+    serverlog = (gd / 'logs/runlines_server.log').read_text(errors='replace')
+    assert 'STITCH SERVER WRITE FAILED' not in serverlog
+    assert not any(x in log + serverlog for x in ('QC VM error', 'Unknown command', 'Cannot call', 'stack overflow'))
+    guards = re.findall(r'STITCH GUARD ([\w-]+) (\d+) (\d+)', serverlog)
+    expected_guards = {'fresh-key', 'cold-match', 'foreign-key', 'missing-cold-key',
+                       'foreign-run', 'missing-generation', 'future-generation',
+                       'retained-earlier', 'stale-later', 'intermediate-below-mark',
+                       'other-attachment', 'reattachment', 'reset-generation',
+                       'legacy-match', 'legacy-foreign', 'metadata-reset', 'attachment-cleared'}
+    assert len(guards) == len(expected_guards) and {g[0] for g in guards} == expected_guards, 'guard controls did not ACT'
+    assert all(got == want for _, got, want in guards), guards
+    print(f'PASS {len(guards)} compiled attachment/generation guards.')
     before, _, br = dump(gd, 'beforewait')
     initial, _, ir = dump(gd, 'initial')
     assert initial[0] - before[0] > 5.5 and ir[-1][0] - br[-1][0] > 5, 'initial long wait did not count'
@@ -145,6 +233,13 @@ def grade(gd):
                 print('FAIL', reason)
                 faults.append(reason)
                 continue
+            n1, n2, nr = [native(gd, stem + '_' + arm) for arm in ('hold1', 'hold2', 'release')]
+            assert all(n['hold'] == [1, 1, 1] and n['ticks'][0] == n['ticks'][1] > 0 and
+                       sum((x-y)**2 for x, y in zip(n['expected'], n['body'])) < .0001
+                       for n in (n1, n2)), (stem, 'native body or held clock differs from selected snapshot')
+            assert n1['ticks'] == n2['ticks'] and nr['hold'] == [0, 0, 0] and nr['ticks'][1] > n2['ticks'][1], (stem, 'native release did not ACT')
+            if streamed and prefix == 'cold':
+                assert all(n['identity'] == [0, 0] for n in (n1, n2, nr)), (stem, 'cold stream adopted evidence identity')
             assert h1 == h2 and hold2[0] - hold1[0] > .5, (stem, 'hold grows raw history')
             assert len(rr) > len(h2) and rr[-1][0] > h2[-1][0] + .2, (stem, 'release did not grow')
             assert wr[-1][0] > rr[-1][0] + 4, (stem, 'failed wait not counted')
@@ -162,26 +257,41 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--output-dir', type=Path, required=True)
     ap.add_argument('--grade-only', type=Path)
+    ap.add_argument('--buffered', action='store_true')
     a = ap.parse_args()
     if a.grade_only:
-        grade(a.grade_only/'ftesurf')
+        grade(a.grade_only/'ftesurf', not a.buffered)
         return
     a.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='stitch-source-', dir=a.output_dir))
     work.rmdir()
     subprocess.run(['git','-C',str(ROOT),'worktree','add','--detach',str(work),'HEAD'], check=True)
     shutil.copy2(ROOT/'src/fteqcc64.exe', work/'src/fteqcc64.exe')
-    for rel in ('src/client/cl_trail.qc','src/client/cl_trailstate.qc','src/client/cl_trailreplay.qc','tools/runlines_smoke.py'):
+    for rel in ('src/client/cl_trail.qc','src/client/cl_trailstate.qc','src/client/cl_trailreplay.qc',
+                'src/server/sv_timer.qc','src/server/sv_resume.qc','src/server/sv_saveloc.qc',
+                'src/server/sv_rewindstate.qc',
+                'src/server/sv_player.qc','tools/runlines_smoke.py'):
         shutil.copy2(ROOT/rel, work/rel)
     p = work/'src/client/cl_trail.qc'
     text = once(p.read_text(), 'float() Trail_Console =', SEAM+'\nfloat() Trail_Console =')
     text = once(text, 'if (argv(0) != "trail")', 'if (argv(0) == "stitch_probe") { Stitch_Probe(argv(1)); return TRUE; }\n\tif (argv(0) != "trail")')
     text = once(text, 'registercommand("trail");', 'registercommand("trail");\n\tregistercommand("stitch_probe");')
     p.write_text(text)
+    p = work/'src/server/sv_timer.qc'
+    p.write_text(p.read_text() + SERVER_SEAM)
+    p = work/'src/server/sv_saveloc.qc'
+    p.write_text(once(p.read_text(), '\t// At the cap there is no row or id',
+                     '\te.stitch_origin = rw_o;\n\te.stitch_ticks = rw_t;\n\t// At the cap there is no row or id'))
+    p = work/'src/server/sv_player.qc'
+    p.write_text(once(p.read_text(), '\tif (c == "rec_nack")',
+                     '\tif (c == "stitchguards") { SV_StitchGuards(); return; }\n\tif (c == "stitchprobe") { SV_StitchProbe(self, argv(1)); return; }\n\tif (c == "rec_nack")'))
     cfg = work/'ftesurf/cfg/test/stitched_rewind.cfg'
+    stream = int(not a.buffered)
+    warm = WARM.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
+    cold = COLD.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
     # The second cfg runs in the SAME isolated rig, via a fresh client process.
-    cfg.write_text(WARM.replace('echo RUNLINES COMPLETE\nquit\n', 'echo RUNLINES COMPLETE\nexec cfg/test/stitch_finish.cfg\n'))
-    (work/'ftesurf/cfg/test/stitch_cold.cfg').write_text(COLD)
+    cfg.write_text(warm.replace('echo RUNLINES COMPLETE\nquit\n', 'echo RUNLINES COMPLETE\nexec cfg/test/stitch_finish.cfg\n'))
+    (work/'ftesurf/cfg/test/stitch_cold.cfg').write_text(cold)
     subprocess.run(['pwsh','-NoProfile','-File','./build.ps1','-Jobs','8','-QuakeDir',''], cwd=work/'src', check=True)
     # Reuse the safety-conscious harness setup, but keep its owned server while
     # the first client exits and a fresh VM loads the persisted prefix.
@@ -189,6 +299,7 @@ def main():
     rt = runner.read_text()
     rt = once(rt, "client.wait(timeout=a.timeout)", "client.wait(timeout=a.timeout)\n        warm_log = gd / 'logs/runlines_smoke.log'\n        shutil.copyfile(warm_log, gd / 'logs/stitch_warm.log')\n        coldcfg = ROOT / 'ftesurf/cfg/test/stitch_cold.cfg'\n        (gd / 'cfg/test/stitch_cold.cfg').write_text(coldcfg.read_text().replace('map surf_dune\\n', f'connect 127.0.0.1:{a.port}\\n'))\n        client = subprocess.Popen([str(executable), *common, '-window', '+exec', 'cfg/test/stitch_cold.cfg'], cwd=a.content, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n        client.wait(timeout=a.timeout)")
     rt = once(rt, "target.write_text(text, encoding='utf-8')", "target.write_text(text, encoding='utf-8')\n        (gd / 'cfg/test/stitch_finish.cfg').write_text('quit\\n')")
+    rt = once(rt, "'runlines_server', '+map', 'surf_dune'", f"'runlines_server', '+set', 'rec_stream', '{stream}', '+map', 'surf_dune'")
     runner.write_text(rt)
     result = subprocess.run([sys.executable,'-B',str(runner),str(cfg),'--dedicated','--port','27618','--timeout','180','--output-dir',str(a.output_dir)], capture_output=True, text=True)
     print(result.stdout)
@@ -198,7 +309,7 @@ def main():
     rig = Path(result.stdout.strip().splitlines()[-1].removeprefix('Retained private rig: '))
     print('Retained source:', work)
     print('Retained rig:', rig)
-    grade(rig/'ftesurf')
+    grade(rig/'ftesurf', not a.buffered)
 
 if __name__ == '__main__':
     main()

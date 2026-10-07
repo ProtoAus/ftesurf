@@ -137,6 +137,9 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 			fputs(f, sprintf("runcp %d %d\n", i, m[b+RW_CPBASE+i]));
 	fputs(f, sprintf("reclines %d\nrecsamples %d\nrecpad %d\nreccp %d\nrecserial %d\nrecgen %d\n",
 	                 mark, m[b+30], m[b+31], m[b+32], m[b+33], m[b+34]));
+	// The snapshot's serial/cut gate above proves this is still its attachment.
+	if (strcmp(e.rec_rec_branch, ""))
+		fputs(f, sprintf("recbranch %s\n", e.rec_rec_branch));
 	if (strcmp(e.rec_rec_rid, ""))
 		fputs(f, sprintf("recrid %s\n", e.rec_rec_rid));
 	if (bytes > 0i)

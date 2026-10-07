@@ -682,7 +682,7 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_lastbc = e.run_boardcount;
 		e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
 		e.rec_rec_serial = SV_RecNextSerial();
-		SV_RecGenReset(e);              // Patch 375: a new lineage; the copy wrote line 0 as 10
+		SV_RecGenBegin(e);              // new local attachment; the copy wrote line 0 as 10
 		e.rec_rec_ver = 10;
 		e.rec_rec_inmt = -1;            // no `in` row read back: a cold load before one writes no pause
 		e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;

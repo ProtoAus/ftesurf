@@ -2063,6 +2063,7 @@ float() SV_RecEnabled =
 .float  rec_rec_inmt, rec_rec_incy; // the last `in` row's <mt> <carry> (or instart's, 0)
 .float  rec_rec_gen;             // warm rewinds since the serial began
 .float  rec_rec_genbuf;          // strbuf: the mark each of them truncated to
+.string rec_rec_branch;          // local attachment, NOT the evidence run ID
 .float  rec_cp_q;                // strbuf: pending save copies, "<bytes> <done> <dst>"
 .float  rec_cp_head;             // the next one to work on
 // Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
@@ -2278,7 +2279,7 @@ int   rs_bytes;                         // the save being loaded: 0 = no stream 
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
 float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
 float rs_pauses, rs_sess, rs_inmt, rs_incy;
-string rs_rid;
+string rs_rid, rs_branch;
 
 float(entity e, float gen, float mark) SV_RecCutOK =
 {
@@ -2294,8 +2295,21 @@ float(entity e, float gen, float mark) SV_RecCutOK =
 
 float(entity e, float mark) SV_RecGenOK =
 {
-	if (rs_rid == "" || rs_rid != e.rec_rec_rid)
-		return FALSE;
+	// A cold stream has no live evidence run ID. Its local attachment still
+	// has to match: saved metadata is compared, never adopted as identity.
+	if (rs_branch != "")
+	{
+		if (strcmp(rs_branch, e.rec_rec_branch) != 0)
+			return FALSE;
+		if (strcmp(rs_rid, e.rec_rec_rid) != 0)
+			return FALSE;
+	}
+	else
+	{
+		// Legacy saves keep the old nonempty-run-ID gate.
+		if (rs_rid == "" || strcmp(rs_rid, e.rec_rec_rid) != 0)
+			return FALSE;
+	}
 	return SV_RecCutOK(e, rs_gen, mark);
 };
 
@@ -2314,6 +2328,15 @@ void(entity e) SV_RecGenReset =
 		buf_del(e.rec_rec_genbuf);
 	e.rec_rec_genbuf = 0;
 	e.rec_rec_gen = 0;
+	if (e.rec_rec_branch != "")
+		strunzone(e.rec_rec_branch);
+	e.rec_rec_branch = "";
+};
+
+void(entity e) SV_RecGenBegin =
+{
+	SV_RecGenReset(e);
+	e.rec_rec_branch = strzone(SV_RandHex(16));
 };
 
 float(entity e, string path) SV_RecSnapshot =
@@ -4679,7 +4702,7 @@ void(entity e) SV_RecOpen =
 	local string pin;	// build 87
 
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
-	SV_RecGenReset(e);
+	SV_RecGenBegin(e);
 	e.rec_rec_ver = 9;
 	e.rec_rec_inmt = -1;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
@@ -5828,6 +5851,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 			            FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
 	}
 
+	SV_RecGenReset(e);
 	buf_del(e.rec_rec_buf);
 	e.rec_rec_buf = -1;
 	e.rec_rec_lines = 0;
@@ -5996,8 +6020,10 @@ float(entity e) SV_RecDestream =
   anything else rebuilds it from the slot's copy.  The file that results is the
   one the buffered path writes.
 
-  The lineage is the serial plus rec_rec_gen: each warm rewind records the mark
-  it cut to, and a save is warm only if no rewind since it cut below its mark --
+  The lineage is the local attachment key, serial and rec_rec_gen: each warm
+  rewind records the mark it cut to, and a save is warm only if no rewind since
+  it cut below its mark. The key is not an evidence run ID; cold streams keep
+  that absent. Legacy saves still require the old nonempty matching run ID --
   truncating to an earlier save destroys the bytes of every later one.  The
   buffered path takes the same test (before it, a later save loaded warm after
   an earlier one got the wrong branch as its prefix).
@@ -6006,6 +6032,8 @@ float(entity e) SV_RecDestream =
 void(entity e, filestream f) SV_RecSaveKeys =
 {
 	fputs(f, sprintf("recgen %d\n", e.rec_rec_gen));
+	if (e.rec_rec_branch != "")
+		fputs(f, sprintf("recbranch %s\n", e.rec_rec_branch));
 	if (e.rec_rec_rid != "")
 		fputs(f, sprintf("recrid %s\n", e.rec_rec_rid));
 	if (rec_snap_bytes <= 0)
@@ -6027,6 +6055,9 @@ void() SV_RecKeysReset =
 	if (rs_rid != "")
 		strunzone(rs_rid);
 	rs_rid = "";
+	if (rs_branch != "")
+		strunzone(rs_branch);
+	rs_branch = "";
 	rs_ver = 9;
 	rs_flagofs = -1;
 	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
@@ -6039,6 +6070,7 @@ float(string k, float n) SV_RecKeyRead =
 {
 	if (k == "recgen")    { rs_gen = stof(argv(1)); return TRUE; }
 	if (k == "recrid")    { if (rs_rid != "") strunzone(rs_rid); rs_rid = strzone(argv(1)); return TRUE; }
+	if (k == "recbranch") { if (rs_branch != "") strunzone(rs_branch); rs_branch = strzone(argv(1)); return TRUE; }
 	if (k == "recbytes")  { rs_bytes = stoi(argv(1)); return TRUE; }
 	if (k == "recstream" && n >= 4)
 		{ rs_ver = stof(argv(1)); rs_flagofs = stof(argv(2)); rs_pend = stof(argv(3)); return TRUE; }
@@ -6155,7 +6187,7 @@ float(entity e, string path, float mark, float serial,
 	e.rec_rec_ver = 10;
 	e.rec_rec_flagofs = (rs_flagofs >= 0) ? rs_flagofs + 15 - ofs : -1;
 	SV_RecRestore(e, mark, samples, padn, cps);
-	SV_RecGenReset(e);
+	SV_RecGenBegin(e);
 	e.rec_rec_serial = SV_RecNextSerial();
 	SV_RecNoncePublish(e, TRUE);        // Patch 416: a streamed cold load keeps none
 	rec_rewind_cold = TRUE;
@@ -6408,7 +6440,7 @@ float(entity e, string path, float mark, float serial,
 	SV_RecRecount(e);                // build 87
 
 	e.rec_rec_serial = SV_RecNextSerial();
-	SV_RecGenReset(e);
+	SV_RecGenBegin(e);
 
 	/*
 	  WHICH LEG this buffer is now for, so the client names its sidecar after the
