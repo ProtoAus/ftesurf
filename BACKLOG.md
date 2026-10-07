@@ -2280,7 +2280,7 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   held demo navigation with physical ownership and opposing-key cancellation.
   Full-chain controls at 30/100/300 and native pinned-body checks pass. Imported/
   native long demos, compound/modifier binds and actual-device focus acceptance
-  remain open. Live rewind's `cl_rewind.qc:Rewind_NavPick` still prefers the newest
+  remain open. Live rewind's `cl_rewind.qc:Rewind_Frame` still prefers the newest
   held direction, unlike demos/requested cancellation; falsifier: hold left and
   right in live rewind, cursor stays fixed, release either and the remaining
   direction ACTS. Broader falsifier: remap/hold/release in native/imported demos,
