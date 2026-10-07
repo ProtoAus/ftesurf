@@ -2817,6 +2817,105 @@ void(float t) Watch_Seek =
 	rec_wt_bdshown = -2;
 };
 
+// Bare movement binds, retained by physical press rather than re-read at up.
+// Pre-open/earlier-panel presses never become scrubs on an OS repeat. Taken
+// presses keep their repeats/up after close, without starting movement.
+#define WT_NAVN 16
+#define WT_NAVRATE0 0.45
+#define WT_NAVRATEMAX 9
+#define WT_NAVACCEL 2
+float wt_navscan[WT_NAVN], wt_navdown[WT_NAVN], wt_navowned[WT_NAVN];
+float wt_navactive[WT_NAVN], wt_navdir[WT_NAVN];
+float wt_navix, wt_navrepeat, wt_naveaten, wt_navmove, wt_navat;
+
+void() Watch_NavClear =
+{
+	local float i;
+	for (i = 0; i < WT_NAVN; i = i + 1)
+		wt_navactive[i] = FALSE;
+	wt_navmove = 0;
+};
+
+void(float evtype, float scanx, float chary) Watch_Track =
+{
+	local float i, dir;
+	local string bind;
+
+	wt_navix = -1;
+	wt_navrepeat = wt_naveaten = FALSE;
+	if (evtype == IE_FOCUS)
+	{
+		if (chary == 0) Watch_NavClear();
+		return;
+	}
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return;
+	if (!scanx) return;
+	for (i = 0; i < WT_NAVN; i = i + 1)
+		if (wt_navscan[i] == scanx && wt_navdown[i])
+		{
+			wt_navix = i;
+			wt_naveaten = wt_navowned[i];
+			if (evtype == IE_KEYDOWN) wt_navrepeat = TRUE;
+			else
+			{
+				wt_navdown[i] = wt_navowned[i] = wt_navactive[i] = FALSE;
+			}
+			return;
+		}
+	if (evtype == IE_KEYUP) return;
+	bind = getkeybind(scanx);
+	if (!strcmp(bind, "toggleconsole") || !strcmp(bind, "togglemenu"))
+		Watch_NavClear();
+	dir = 0;
+	if (!strcmp(bind, "+moveleft")) dir = -1;
+	if (!strcmp(bind, "+moveright")) dir = 1;
+	if (!dir) return;
+	for (i = 0; i < WT_NAVN; i = i + 1)
+		if (!wt_navdown[i])
+		{
+			wt_navix = i;
+			wt_navscan[i] = scanx;
+			wt_navdir[i] = dir;
+			wt_navdown[i] = TRUE;
+			wt_navowned[i] = wt_navactive[i] = FALSE;
+			return;
+		}
+};
+
+float() Watch_NavDirection =
+{
+	local float i, left, right;
+	left = right = FALSE;
+	for (i = 0; i < WT_NAVN; i = i + 1)
+		if (wt_navdown[i] && wt_navactive[i])
+		{
+			if (wt_navdir[i] < 0) left = TRUE;
+			else right = TRUE;
+		}
+	if (left == right) return 0;
+	return right ? 1 : -1;
+};
+
+void(float dt, float focus) Watch_NavFrame =
+{
+	local float dir, rate;
+	if (!focus) Watch_NavClear();
+	dir = Watch_NavDirection();
+	if (dir != wt_navmove) wt_navat = cltime;
+	wt_navmove = dir;
+	if (!dir) return;
+	rec_wt_paused = TRUE;
+	rate = WT_NAVRATE0 + (WT_NAVRATEMAX - WT_NAVRATE0)
+	       * min(1, (cltime - wt_navat) / WT_NAVACCEL);
+	Watch_Seek(rec_wt_time + dir * rate * dt);
+};
+
+float(float evtype) Watch_AfterTook =
+{
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP) return wt_naveaten;
+	return FALSE;
+};
+
 /*
   PATCH 379: tokenize rcur and rnext once per interval, and decide there what
   the interval is drawn with: SNAP from the load table, else Interp_Fit, with
@@ -3389,6 +3488,7 @@ void() Watch_Stop =
 	if (!rec_wt_open)
 		return;
 
+	Watch_NavClear();
 	rec_wt_open = FALSE;
 	rec_wt_on   = FALSE;
 	Watch_Free();
@@ -3466,6 +3566,7 @@ float(string path) Watch_Open =
 		SaveLoc_Release();
 
 	rec_wt_loadms = gettime(1);
+	Watch_NavClear();
 	Watch_Free();
 
 	if (strstrofs(path, ".rec") < 0)
@@ -4102,15 +4203,15 @@ void(vector scr) Watch_Chrome =
 			Watch_SetCut(!rec_wt_wincut);
 	}
 
-	s = "space pause   arrows seek 5s   drag to scrub   hud_watch_info 1   esc close";
+	s = "space pause   arrows seek 5s   strafe binds scrub   drag scrub   hud_watch_info 1   esc close";
 	// Build 34: measured like everything else on the panel now.  This ladder was
 	// already the only part that adapted to the width; it just did it by counting.
 	// Build 43: measured against what the toggle left, not against the whole
 	// row, or the long form runs under it on a narrow window.
 	if (stringwidth(s, TRUE, [tiny, tiny]) > w - pad * 2 - skw - gap)
-		s = "space  arrows  esc   hud_watch_info 1";
+		s = "space  arrows/strafe  esc   hud_watch_info 1";
 	if (stringwidth(s, TRUE, [tiny, tiny]) > w - pad * 2 - skw - gap)
-		s = "space  arrows  esc";
+		s = "space  arrows/strafe  esc";
 	if (stringwidth(s, TRUE, [tiny, tiny]) > w - pad * 2 - skw - gap)
 		s = "";
 	drawstring([p_x + pad, y], s, [tiny, tiny], '0.45 0.48 0.55', 1, 0);
@@ -4409,7 +4510,7 @@ void(vector scr) Watch_Draw =
   Per frame
 ===========================================================================
 */
-void() Watch_Frame =
+void(float navfocus) Watch_Frame =
 {
 	local float dt, i, dtcl, was;
 	local vector e;
@@ -4471,6 +4572,7 @@ void() Watch_Frame =
 	if (dt > 0)
 		rec_wt_fps = rec_wt_fps + ((1 / dt) - rec_wt_fps) * (dt / 0.2 > 1 ? 1 : dt / 0.2);
 
+	Watch_NavFrame(dt, navfocus);
 	if (!rec_wt_paused)
 	{
 		was = rec_wt_time;
@@ -4576,12 +4678,21 @@ float(float evtype, float scanx, float chary, float devid) Watch_InputEvent =
 		  while the chrome is up -- and the caller must not have fed them to
 		  Keys_Edge either, or the duck box lights every time you click.
 		*/
+		// The primary mouse buttons remain the chrome's, even if rebound.
 		if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 		{
 			sui_input_event(evtype, scanx, chary, devid);
 			return TRUE;
 		}
-
+		if (wt_navix >= 0)
+		{
+			if (evtype == IE_KEYUP || wt_navrepeat) return wt_naveaten;
+			wt_navowned[wt_navix] = wt_navactive[wt_navix] = TRUE;
+			rec_wt_paused = TRUE;
+			if (Watch_NavDirection())
+				Watch_Seek(rec_wt_time + wt_navdir[wt_navix] * rec_wt_tickrate);
+			return TRUE;
+		}
 		if (evtype == IE_KEYUP)
 			return FALSE;
 
@@ -4595,6 +4706,7 @@ float(float evtype, float scanx, float chary, float devid) Watch_InputEvent =
 		}
 		if (scanx == K_SPACE)
 		{
+			Watch_NavClear();
 			rec_wt_paused = !rec_wt_paused;
 			return TRUE;
 		}

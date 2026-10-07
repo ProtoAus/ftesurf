@@ -1783,6 +1783,32 @@ publicly WITH its fix, not before it.
   306 recorder-reader checks pass; unchanged checker/corpus hashes retain the
   existing 269 REC observation (164 REC faults plus six of 91 paired VIEW faults).
 
+- P544 demo navigation: `Watch_Track` runs before every input handler/release
+  gate. Up/repeat identity is physical, not a re-read bind; pre-open/chat-owned
+  repeats cannot acquire the viewer. Bounded 16-key table; bare +moveleft/right
+  only (primary mouse buttons remain chrome's). Tap seeks one recording tick;
+  held rate is 0.45..9 run seconds/wall second over 2 seconds, opposing directions
+  cancel, same-direction keys remain independent. `Watch_Seek` retains all cache
+  invalidation/window clamps. Close/open/Space cancel active scrub, but taken
+  repeats/up remain swallowed through close/rebind. Menu/chat cursor focus and
+  IE_FOCUS loss cancel active scrub; console releases are observed ahead of its
+  draft/other handlers. Compound/modifier binds and actual OS/device focus are
+  not covered by the synthetic input arm; live rewind still uses newest-owner
+  opposition, recorded in BACKLOG.
+  `tools/watch_navigation_smoke.py --output-dir <private dir>
+  [--baseline <pre-patch ref>]`
+  creates an isolated test-only overlay and real dedicated socket. 35 cursor
+  probes/55 CSQC_InputEvent events pass at 30/100/300, replay position/velocity
+  match the synthetic straight-line cursor and native pinned body stays exact.
+  Unchanged baseline ACTS but fails held-scroll oracle. The grader's 31 controls
+  reject unacted/missing/wrong ownership/time/pose/body/focus probes. Initial
+  harness used absent menu_main; togglemenu repaired both arms. Coordinate
+  oracle allows .03u for float32 interpolation at <=14500u world coordinates,
+  independent of ownership/time stop equality. 306 recorder-reader tests pass;
+  unchanged checker over 269 real REC files retains 170 existing paired faults.
+  This is navigation assurance, not evidence retiming, imported-camera or human
+  smoothness acceptance. Engine pin/tag/qcbuild stay unchanged.
+
 - **The rewind rides the replay's pin, marked as its own: `rec_watch 1 rw`.** A
   pinned RUNNING run is frozen and practice, and EVERY way out of a rewind ends
   that run rather than thawing it -- a thaw past an unrecorded freeze convicts its

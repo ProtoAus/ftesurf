@@ -11,6 +11,24 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — held demo strafe scrolling (Patch 544)
+
+After reconnect/restart, open a native replay and an imported demo:
+
+- Hold your +moveleft/+moveright binds (default A/D): one tick on press, then
+  accelerating backward/forward scrolling. Arrows still jump 5 seconds.
+- Try remapped keyboard binds, quick taps and releases. Hold both directions:
+  demos cancel; releasing one scrolls with the remaining key. Live rewind still
+  uses newest-direction ownership, an open parity item in BACKLOG.
+- Open chat/console/menu while held, release and return; close/reopen the demo
+  while still holding. No stuck scrolling or movement when leaving the viewer.
+- Judge smoothness at your real frame rate, and that clock/speed/energy/camera
+  follow the cursor across stops/teleports and imported clips. Primary mouse
+  buttons remain replay chrome's. Compound/modifier binds are not implemented.
+
+Synthetic whole-chain controls pass at 30/100/300 FPS; they do not settle actual
+keyboard/OS-focus behavior or camera feel. No personal cfg or Build-number bump.
+
 ## 00. 7 Oct — low-cost water readability (Patch 543)
 
 Restart the updated client and try the Water menu on `surf_aesthetic`:

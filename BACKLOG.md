@@ -2276,12 +2276,15 @@ that was never armed (see the bullet below it), and item 10's own residual.
 These are reported defects to reproduce, not confirmed root causes or fixes.
 The full requested feature plan and delivery order are in ROADMAP.md section 12.
 
-- **Demo parity for held strafe scrolling.** P535 delivers main cursor HUD and
-  bind-resolved held strafe scrolling for live rewind. `cl_watch.qc:Watch_InputEvent`
-  still needs equivalent demo navigation. Falsifier: remap and hold/release strafe
-  in native/imported demos, then close/change focus while held; no dangling repeat
-  or movement leak. Compound binds and the full historical input matrix are not
-  implied by P535's live-only controls. Plan 12.2.
+- **Input parity still open after P544's bare-bind demo scrolling.** P544 adds
+  held demo navigation with physical ownership and opposing-key cancellation.
+  Full-chain controls at 30/100/300 and native pinned-body checks pass. Imported/
+  native long demos, compound/modifier binds and actual-device focus acceptance
+  remain open. Live rewind's `cl_rewind.qc:Rewind_NavPick` still prefers the newest
+  held direction, unlike demos/requested cancellation; falsifier: hold left and
+  right in live rewind, cursor stays fixed, release either and the remaining
+  direction ACTS. Broader falsifier: remap/hold/release in native/imported demos,
+  close/change focus while held; no dangling repeat or movement leak. Plan 12.2.
 - **Repeated stitched rewind has zero-speed pauses/time creep followed by a
   jolt.** Lex reports several cut/resume attempts producing stationary stretches
   while the displayed timer updates. Failed-tail/hold-time capture is only a

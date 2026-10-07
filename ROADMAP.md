@@ -263,8 +263,9 @@ not in this public file.
 **Status: incremental delivery; the full overhaul is NOT implemented.** P535
 implements the main rewind cursor timer/speed/energy, removes its duplicate
 readout, adds fractional visual motion without changing sampled save state, and
-adds bind-resolved held strafe scrolling for live rewind. Demo parity, stitched
-idle-tail diagnosis, event browsing, imports and real comparison remain below.
+adds bind-resolved held strafe scrolling for live rewind. P544 adds bare-bind
+held demo scrolling. Compound/modifier binds, full device/focus acceptance,
+stitched diagnosis, event browsing, imports and real comparison remain below.
 These requests
 supersede treating rewind as a separate little time/speed readout. Keep the
 reported defects in BACKLOG.md until their falsifiers pass. The chunk reveal
@@ -298,8 +299,14 @@ switch between demo/player lines: no live-HUD leakage or stale energy rate.
 
 ### 12.2 Strafe binds also scroll rewind
 
-P535 delivers bare-command binds for live rewind; demo parity/compound binds and
-the full historical ownership acceptance matrix remain open.
+P535 delivers bare-command binds for live rewind; P544 adds them to demos.
+Demo taps move one recorded tick; holds accelerate, opposing left/right cancels,
+and same-direction presses remain independent. Physical ownership survives
+rebind/close/reopen. Arrows keep 5s jumps; primary mouse buttons remain chrome's.
+Private dedicated controls at 30/100/300 prove whole-chain navigation and a
+stationary pinned body. Live rewind retains its most-recent-owner opposing-key
+policy. Compound/modifier binds, actual-device focus behavior and human
+smoothness acceptance remain open.
 
 **Build.** `+moveleft` scrolls backward; `+moveright` scrolls forward, alongside
 the existing controls. Resolve the player's binds, not literal A/D keys. Held

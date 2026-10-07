@@ -1189,6 +1189,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (rw_on)                      // Patch 477
 		if (Rewind_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
+	if (Watch_AfterTook(evtype))
+		return TRUE;
 	if (Rewind_AfterTook(evtype, scanx))
 		return TRUE;
 
@@ -1308,6 +1310,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 {
 	local float bit, took;
 
+	Watch_Track(evtype, scanx, chary); // Observes releases even when an earlier panel takes them.
 	Rewind_Track(evtype, scanx);    // Patch 477: ahead of every handler that may take a press
 	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
 
@@ -1429,7 +1432,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  the entire cost of that.
 	*/
 	Online_MigrateFrame();
-	Watch_Frame();
+	Watch_Frame((notmenu && !chat_typing && UI_CursorHeld() == UIC_WATCH));
 	// Patch 475: the live line's sampler.  Before clearscene with the other
 	// readers, and it takes at most one sample per command frame.
 	Trail_SaveAnswerFrame();
