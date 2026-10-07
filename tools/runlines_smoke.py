@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Run a cfg in a private, retained content overlay; never use install player data.
+
+python tools/runlines_smoke.py ftesurf/cfg/test/runlines_ui.cfg \
+    --content C:/FTESurf --output-dir C:/FTESurf-private/checkpoints
+Progs and tracked configs come from this checkout. Content is read through
+junctions; only the junctions we created are removed, never their targets.
+"""
+import argparse
+import hashlib
+import pathlib
+import shutil
+import socket
+import subprocess
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CONTENT_DIRS = ('maps', 'gfx', 'glsl', 'models', 'particles', 'scripts')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('cfg', type=pathlib.Path)
+    ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
+    ap.add_argument('--output-dir', type=pathlib.Path)
+    ap.add_argument('--port', type=int, default=27619)
+    ap.add_argument('--dedicated', action='store_true')
+    ap.add_argument('--timeout', type=int, default=150)
+    a = ap.parse_args()
+    rig = pathlib.Path(tempfile.mkdtemp(prefix='ftesurf-runlines-', dir=a.output_dir))
+    gd = rig / 'ftesurf'
+    gd.mkdir()
+    junctions = []
+    server = client = None
+    try:
+        shutil.copyfile(ROOT / 'default.fmf', rig / 'default.fmf')
+        for name in CONTENT_DIRS:
+            source = a.content / 'ftesurf' / name
+            if source.is_dir():
+                target = gd / name
+                subprocess.run(['cmd', '/c', 'mklink', '/J', str(target), str(source)],
+                               check=True, capture_output=True)
+                junctions.append(target)
+        for name in ('qwprogs.dat', 'csprogs.dat', 'menu.dat'):
+            shutil.copyfile(ROOT / 'ftesurf' / name, gd / name)
+            print(name, hashlib.sha256((gd / name).read_bytes()).hexdigest())
+        shutil.copyfile(ROOT / 'ftesurf/fs_addons.default.txt', gd / 'fs_addons.default.txt')
+        paths = subprocess.check_output(['git', '-C', str(ROOT), 'ls-files',
+                                         'ftesurf/cfg'], text=True).splitlines()
+        for rel in paths:
+            source = ROOT / rel
+            target = rig / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        cfg = a.cfg if a.cfg.is_absolute() else ROOT / a.cfg
+        target = gd / 'cfg/test/runlines_smoke.cfg'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        text = cfg.read_text(encoding='utf-8')
+        if a.dedicated:
+            if not 27520 <= a.port <= 27620:
+                raise ValueError('Use a dedicated lobby-range port')
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.bind(('127.0.0.1', a.port))
+            text = text.replace('map surf_dune\n', f'connect 127.0.0.1:{a.port}\n')
+        target.write_text(text, encoding='utf-8')
+        (gd / 'downloads/csprogsvers').mkdir(parents=True)
+        subprocess.run(['python', str(ROOT / 'tools/seed_csprogs.py'), str(gd / 'csprogs.dat')],
+                       check=True, capture_output=True)
+        common = ['-basedir', str(rig), '-manifest', str(rig / 'default.fmf')]
+        if a.dedicated:
+            server = subprocess.Popen(['C:/FTEQuake/fteqwsv64.exe', *common, '+sv_public', '0',
+                                       '-port', str(a.port), '+log_enable', '1', '+log_name',
+                                       'runlines_server', '+map', 'surf_dune'], cwd=a.content,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        client = subprocess.Popen([str(a.content / 'ftesurf64.exe'), *common, '-window',
+                                   '+exec', 'cfg/test/runlines_smoke.cfg'], cwd=a.content,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        client.wait(timeout=a.timeout)
+        log = gd / 'logs/runlines_smoke.log'
+        if not log.is_file():
+            raise RuntimeError('No client log: control did not act')
+        text = log.read_text(errors='replace')
+        if 'FTESurf CSQC loaded' not in text or 'RUNLINES COMPLETE' not in text:
+            raise RuntimeError('Client did not complete the control')
+        bad = ('Unknown command', 'QC VM error', 'Cannot call', 'stack overflow')
+        if any(word in text for word in bad):
+            raise RuntimeError('Runtime errors in retained log')
+        print('Runtime completed without command/VM errors; inspect controls and screenshots.')
+        return 0
+    finally:
+        for process in (client, server):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=10)
+        for path in junctions:
+            if not path.lstat().st_file_attributes & 0x400:
+                raise RuntimeError(f'Refusing removal: not our junction: {path}')
+            path.rmdir()
+        print('Retained private rig:', rig)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

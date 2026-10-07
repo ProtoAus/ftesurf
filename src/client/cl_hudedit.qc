@@ -308,10 +308,9 @@ void() HE_BuildTable =
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
 	// Patch 385: listed for its options only -- the banner sits where it sits.
 	HE_Add("spectate","Spectate",   "",              "",              "",             0, HEA_CT,    0,   0);
-	// Patch 449: likewise -- the run line sits where the run went.  Its master
-	// switch is the existing hud_watch_path, so that cvar keeps working and the
-	// pane gets a toggle without a second name for the same thing.
-	HE_Add("lines",   "Run lines",  "",              "",              "hud_watch_path", 1, HEA_CT,  0,   0);
+	// The line types have independent switches; this row is an options pane,
+	// not a misleading master toggle that only turns off the open demo.
+	HE_Add("lines",   "Run lines",  "",              "",              "",             1, HEA_CT,  0,   0);
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	/*
@@ -609,81 +608,17 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
-	/*
-	  Patch 449.  The run line: which marks it puts on the path, how far it is
-	  visible, and how much of it is shown around where you are watching.
-
-	  hud_watch_path_far / _px / _color are the EXISTING cvars, given rows here
-	  rather than renamed: an archived config keeps working and there is one
-	  name for "how far the lines are visible", not two.
-	*/
+	// Keep this pane short. Advanced settings retain their existing cvars;
+	// `lines help` lists them without filling the editor with 29 rows.
 	if (id == "lines")
 	{
-		if (row == 0) return "hud_lines_marks|Marks|t||"
-		                     "|Where the run touched down, left the ramp, hopped, or was stitched from a save.";
-		if (row == 1) return "hud_lines_land|Touchdowns|t||"
-		                     "|A V where the run met ground or a ramp.";
-		if (row == 2) return "hud_lines_leave|Take-offs|t||"
-		                     "|A chevron where it left one without jumping -- a ramp exit, or walking off.";
-		if (row == 3) return "hud_lines_jump|Jumps|t||"
-		                     "|A double chevron where the jump button was down: a hop, not a slide off.";
-		if (row == 4) return "hud_lines_stitch|Save stitches|t||"
-		                     "|Two bars where a segmented run loaded a save. The run either side was not flown in one go.";
-		if (row == 5) return "hud_lines_size|Mark size|c|3 4 6 8|small;normal;large;huge"
-		                     "|Pixels across, before the screen scale.";
-		if (row == 6) return "hud_lines_gap|Spacing|c|24 40 64 96|tight;normal;loose;sparse"
-		                     "|Least pixels between two marks. Closer ones are dropped rather than overprinted.";
-		if (row == 7) return "hud_lines_win|Shown behind|c|0 3 6 12 30|all;3s;6s;12s;30s"
-		                     "|Seconds of the run before the playhead to draw. all = the whole line, as before.";
-		if (row == 8) return "hud_lines_winf|Shown ahead|c|0 1 2 5|none;1s;2s;5s"
-		                     "|Seconds after it. Only applies while a replay is playing; a board line is never windowed.";
-		if (row == 9) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000"
-		                     "|Units of distance. The line fades out over its last third.";
-		if (row == 10) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control"
-		                      "|Speed red-to-green; gain in u/s; contact paints ground, ramp and air; energy is what was gained or lost against the air-strafe ceiling; air control grades the turn rate the way the strafe bar does, grey where it has no answer.";
-		if (row == 11) return "hud_watch_path_ahead|Draw the future|t||"
-		                      "|The part of the run past the playhead, at half brightness.";
-		// Patch 451: the numbers on those marks.
-		if (row == 12) return "hud_lines_nums|Numbers|c|0 1 2|off;on marks;+ peaks"
-		                      "|Speed and energy at each mark. `+ peaks` adds them where the run stopped rising or falling.";
-		if (row == 13) return "hud_lines_speed|Speed|t||"
-		                      "|Horizontal speed there, u/s -- the same number the speedometer shows.";
-		if (row == 14) return "hud_lines_energy|Energy|t||"
-		                      "|What it had left to spend: height plus speed, in whichever unit the segment column is in.";
-		if (row == 15) return "hud_lines_ref|Measured from|c|0 1|the HUD's zero;the run's start"
-		                      "|The run's start is self-contained and compares two recordings of a map. The HUD's zero matches the split list.";
-		if (row == 16) return "hud_lines_delta|Change|t||"
-		                      "|How much that mark gained or lost since the one before it.";
-		if (row == 17) return "hud_lines_vz|Vertical|t||"
-		                      "|Up or down speed at the mark, signed. Useful at peaks.";
-		if (row == 18) return "hud_lines_time|Run clock|t||"
-		                      "|When it happened, in seconds into the run.";
-		if (row == 19) return "hud_lines_numsize|Number size|c|10 12 14 18|small;normal;large;huge"
-		                      "|Text height for the labels.";
-		if (row == 20) return "hud_seq_units|Units|c|0 1 2|u/s;energy;both"
-		                      "|Shared with the segment column, so the line and the panel never disagree.";
-		// Appended rather than inserted beside the other colour row: these must
-		// stay contiguous and HE_ResetAll walks them, so renumbering eighteen
-		// rows to group two would risk the reset button for a tidier list.
-		if (row == 21) return "hud_watch_path_foreign|Imported tint|c|0 0.35 0.55 0.8|off;slight;normal;strong"
-		                      "|Runs imported from Momentum Mod are pulled toward blue. A blend, not a colour mode, so `Colour by` still reads on them.";
-		// Patch 475: your own run, drawn live (cl_trail.qc).
-		if (row == 22) return "hud_trail|Your run, live|t||"
-		                      "|Your own line as you run, with the same marks. It stays when the run ends and fades when the next one starts.";
-		if (row == 23) return "hud_trail_prev|Keep the last run|t||"
-		                      "|The run before this one fades out instead of vanishing when you restart.";
-		if (row == 24) return "hud_trail_fade|Fade time|c|1 2 4 8|1s;2s;4s;8s"
-		                      "|How long the last run takes to fade.";
-		// Appended for the reason row 21 gives; it belongs with rows 12-19.
-		if (row == 25) return "hud_lines_names|Number names|t||"
-		                      "|Say what each number is: 701 u/s, E -28, vz +120, dE +12, 1.23 s. Off leaves the bare numbers.";
-		// Thickness, one row per kind of line (Line_SlotPx).
-		if (row == 26) return "hud_watch_path_px|Replay thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px"
-		                      "|Pixels across the replay you are watching. The world ribbon (path mode 1) keeps its own width.";
-		if (row == 27) return "hud_watch_path_px_board|Board thickness|c|-1 1 2 3 4 6|as replay;1 px;2 px;3 px;4 px;6 px"
-		                      "|The leaderboard runs you tick to show while you play. `as replay` follows Replay thickness.";
-		if (row == 28) return "hud_watch_path_px_trail|Your run thickness|c|-1 1 2 3 4 6|as replay;1 px;2 px;3 px;4 px;6 px"
-		                      "|Your own run's line, drawn live. `as replay` follows Replay thickness.";
+		if (row == 0) return "hud_trail|Player line|t|||Your own run. Saves and rewind retain the attached prefix.";
+		if (row == 1) return "hud_watch_path|Demo line|t|||The demo currently open in the replay viewer.";
+		if (row == 2) return "hud_lines_board|Board lines|t|||Show selected leaderboard lines without forgetting the selection.";
+		if (row == 3) return "hud_lines_nums|Labels|c|0 1 2|off;contacts;+ peaks|Numbers at surface contacts; peaks adds vertical turnarounds.";
+		if (row == 4) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control|Advanced controls: lines help in the console.";
+		if (row == 5) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
+		if (row == 6) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
 		return "";
 	}
 

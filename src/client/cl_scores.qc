@@ -1229,6 +1229,8 @@ float() Scores_LinesOn =
 // the 2D pass will use (see Watch_Path).
 void() Scores_LinesPin =
 {
+	if (!cvar("hud_lines_board"))
+		return;
 	if (!Scores_LinesOn())
 		return;
 	makevectors(getproperty(VF_ANGLES));
@@ -1240,6 +1242,8 @@ void() Scores_LinesDraw =
 {
 	local float i;
 
+	if (!cvar("hud_lines_board"))
+		return;
 	if (!Scores_LinesOn())
 		return;
 	Line_ViewFrame();

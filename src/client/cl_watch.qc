@@ -5134,7 +5134,7 @@ void() Watch_RegisterCvars =
 
 	// The path.  Drawn behind walls correctly because Zone_Line queues into the
 	// scene before renderscene; see Watch_Path.
-	registercvar("hud_watch_path", "1");
+	registercvar("hud_watch_path", "1", CVAR_ARCHIVE);
 
 	// The part of the run you have not reached yet.  On by default because a
 	// line that stops at the camera is much harder to read as a route.
