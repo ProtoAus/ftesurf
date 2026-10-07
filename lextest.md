@@ -30,6 +30,19 @@ Momentum; this is not a claim of pixel-identical Source rendering.
 
 No personal cfg, swimming, progs, evidence format or Build-number change.
 
+## 00. 7 Oct — low-FPS visual prefix boundary (Patch 542)
+
+A selected visual row must not disappear because its six-decimal clock rounds
+above the native cutoff. After reconnect/restart, repeat three warm and three
+fresh-client cold cuts at a 30 FPS cap, then at 100/300. Resume close to a visible
+sample and check whether the line loses the last row or shows an unexplained
+pause. Keep a genuine stop and teleport as controls; neither should disappear.
+
+The native server still chooses the closest position within its rewind window.
+A cursor time can differ from that selected native snapshot: this patch fixes
+visual boundary loss, not arbitrary requested/native clock equivalence or
+moving-camera/contact acceptance. No recording retiming or Build-number bump.
+
 ## 00. 7 Oct — rewind camera at stitched breaks (Patch 540)
 
 Raw break/stitch boundaries no longer blend velocity/view across attempts,

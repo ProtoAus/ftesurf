@@ -35,6 +35,12 @@ void(vector o, vector v, float fl, float t, float brk, float stitch, vector aux)
 	bufstr_set(tr_raw, buf_getsize(tr_raw), Trail_RawSample(o, v, fl, t, brk, stitch, aux, input_angles_x));
 };
 
+// Raw clocks are six-decimal text. Compare cutoffs in that same representation.
+float(float t) Trail_RawClock =
+{
+	return stof(sprintf("%.6f", t));
+};
+
 // One raw sample into the line and its live predecessor state.
 float(string s, float endt) Trail_Refeed =
 {
@@ -134,6 +140,7 @@ void(float t) Trail_Trim =
 	Line_Tick(tr_live, tr_tick);
 	tr_nsamp = 0;
 	tr_lastt = 0;
+	t = Trail_RawClock(t);
 	for (i = 0; i < n; i = i + 1)
 	{
 		s = bufstr_get(tr_raw, i);
@@ -184,6 +191,7 @@ void(float id, float ticks) Trail_Save =
 	fputs(f, sprintf("FTESURF-TRAIL 1 %.9g %g %g\n", tick, ticks, timed));
 	n = buf_getsize(raw);
 	t = timed ? ticks * tick : 99999999;
+	t = Trail_RawClock(t);
 	for (i = 0; i < n; i = i + 1)
 	{
 		s = bufstr_get(raw, i);
@@ -197,7 +205,7 @@ void(float id, float ticks) Trail_Save =
 
 float(float id, float ticks) Trail_Load =
 {
-	local float f, tick, saved, i, argc, timed;
+	local float f, tick, saved, i, argc, timed, endt;
 	local string s;
 	f = fopen(Trail_SavePath(id), FILE_READ);
 	if (f < 0)
@@ -218,12 +226,14 @@ float(float id, float ticks) Trail_Load =
 	Line_Tick(tr_live, tick);
 	tr_nsamp = 0;
 	tr_lastt = 0;
+	endt = timed ? ticks * tick : 99999999;
+	endt = Trail_RawClock(endt);
 	for (i = 0; i < LN_CAP * 4; i = i + 1)
 	{
 		s = fgets(f);
 		if (!strcmp(s, ""))
 			break;
-		if (!Trail_Refeed(s, timed ? ticks * tick : 99999999))
+		if (!Trail_Refeed(s, endt))
 			break;
 		bufstr_set(tr_raw, i, s);
 	}

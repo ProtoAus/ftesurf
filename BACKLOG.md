@@ -2297,13 +2297,17 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
 - **Low-FPS requested cursor differs from the restored native snapshot.**
   Sites: `cl_rewind.qc:Rewind_Go`, `sv_saveloc.qc:SV_RewindFind` and visual
   prefix/trim acknowledgement. The dedicated 30-FPS buffered six-cut fixture
-  selects 0.690 for a 0.735 request and 1.545 for a 1.500 request; the strict
-  requested-prefix oracle remains red. Both failures reproduce unchanged on
-  P539 and on the P540 visual candidate. Native body/hold checks still act;
-  this is NOT evidence that those two requested clocks were restored exactly.
-  `SV_RewindFind` already chooses the closest position within `RW_NEAR`; first
-  distinguish intended selection from an acknowledgement/visual-bound defect
-  or a grader requiring an unavailable client timestamp. Do not change native
+  retained 0.690 for a 0.735 request and 1.545 for a 1.500 request on both
+  P539 and P540. These are visual endpoints, not necessarily native selections:
+  the original native probes hold tick 49 (0.735) and tick 103 (1.545).
+  P542 repairs the first case's demonstrated raw-clock roundtrip loss in
+  `Trail_Trim/Trail_Save/Trail_Load`: the six-decimal 0.735 row decoded above
+  the unrounded float32 cutoff. A complete ring/request/ack audit independently
+  reproduces all six nearest-position choices and exact acknowledged prefixes
+  at 30/100/300 FPS; strict requested-clock checks also pass in the new matrices.
+  This is not universal requested/native equivalence. `SV_RewindFind` still
+  chooses the closest position within `RW_NEAR`, and the original forward
+  45 ms difference remains a separate selection/UX gate. Do not change native
   selection solely to make a requested-clock oracle green.
   Falsifier: instrument requested sampled clock/pose, selected native snapshot
   clock/pose and acknowledged visual bound together at 30/100/300 FPS. Repair

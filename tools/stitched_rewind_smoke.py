@@ -270,11 +270,17 @@ def main():
     ap.add_argument('--grade-only', type=Path)
     ap.add_argument('--buffered', action='store_true')
     ap.add_argument('--visual', action='store_true', help='Trace both cameras and compiled visual discontinuity controls')
+    ap.add_argument('--selection-audit', action='store_true', help='Independently audit native selection and exact acknowledged prefixes; original grader remains strict')
     ap.add_argument('--baseline', action='store_true', help='Use HEAD client cursor/state code instead of working-tree edits')
     ap.add_argument('--fps', type=int, choices=(30, 100, 300), default=100)
     a = ap.parse_args()
     if a.grade_only:
-        grade(a.grade_only/'ftesurf', not a.buffered)
+        try:
+            grade(a.grade_only/'ftesurf', not a.buffered)
+        finally:
+            if a.selection_audit:
+                from stitched_selection import grade as grade_selection
+                grade_selection(a.grade_only/'ftesurf')
         if a.visual:
             from stitched_visual import grade as grade_visual
             grade_visual(a.grade_only/'ftesurf')
@@ -305,6 +311,9 @@ def main():
     p = work/'src/server/sv_player.qc'
     p.write_text(once(p.read_text(), '\tif (c == "rec_nack")',
                      '\tif (c == "stitchguards") { SV_StitchGuards(); return; }\n\tif (c == "stitchprobe") { SV_StitchProbe(self, argv(1)); return; }\n\tif (c == "rec_nack")'))
+    if a.selection_audit:
+        from stitched_selection import instrument as instrument_selection
+        instrument_selection(work)
     if a.visual:
         from stitched_visual import instrument
         instrument(work)
@@ -312,6 +321,12 @@ def main():
     stream = int(not a.buffered)
     warm = WARM.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
     cold = COLD.replace('map surf_dune\n', f'set rec_stream {stream}\nmap surf_dune\n')
+    if a.selection_audit:
+        warm = warm.replace('cfg_save_auto 0\n', 'cfg_save_auto 0\nset selection_phase warm\n', 1)
+        cold = cold.replace('cfg_save_auto 0\n', 'cfg_save_auto 0\nset selection_phase cold\n', 1)
+        if a.fps == 30 and not a.visual:
+            for old, new in ((0.6, 0.9), (0.4, 0.7), (0.2, 0.5)):
+                warm = once(warm, f'rewind seek {old}\n', f'rewind seek {new}\n')
     if a.visual:
         from stitched_visual import config
         warm = config(warm, a.fps, units=True)
@@ -339,7 +354,12 @@ def main():
     rig = Path(result.stdout.strip().splitlines()[-1].removeprefix('Retained private rig: '))
     print('Retained source:', work)
     print('Retained rig:', rig)
-    grade(rig/'ftesurf', not a.buffered)
+    try:
+        grade(rig/'ftesurf', not a.buffered)
+    finally:
+        if a.selection_audit:
+            from stitched_selection import grade as grade_selection
+            grade_selection(rig/'ftesurf')
     if a.visual:
         from stitched_visual import grade as grade_visual
         grade_visual(rig/'ftesurf')

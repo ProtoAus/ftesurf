@@ -351,9 +351,14 @@ FPS. P540 repairs raw break/stitch velocity/view interpolation and chase
 camera tangents crossing unrelated spans. Compiled discontinuity controls and
 both-camera quarter-point traces pass at caps 30/100/300, preserving genuine
 counted stops. Full six-cut controls also pass streamed at 300 FPS. At 30 FPS,
-two requested-prefix arms remain red with 45 ms native selection differences;
-the unchanged P539 baseline reproduces both exactly (BACKLOG). Keep the strict
-oracle. Moving-camera feel, real teleport coverage and the broader reported
+two requested-prefix arms remained red with 45 ms endpoint differences;
+the unchanged P539 baseline reproduced both exactly. P542 distinguishes the
+0.735 native selection from its incorrectly shortened 0.690 visual prefix:
+normalize only the visual cutoff through the raw six-decimal representation.
+All six requested/native/prefix controls pass in new buffered 30/100/300 and
+streamed 30 matrices, without widening the requested-clock check. The original
+forward 45 ms native selection and general requested/native UX remain separate
+follow-ups (BACKLOG). Moving-camera feel, real teleport coverage and the broader reported
 pause/event/compare acceptance remain open; numeric traces do not settle them.
 
 ### 12.4 Contact labels at the actual surface event

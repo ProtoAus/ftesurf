@@ -1597,6 +1597,32 @@ publicly WITH its fix, not before it.
   missing-map-material warning: no board-row fetch, complete map appearance or
   rendered camera/path acceptance is claimed. Isolated native cut controls,
   not these compatibility screenshots, establish the recorder fix.
+- P542: `Trail_RawSample` serializes clocks at six decimals. Native tick 49
+  at 0.015 produces cutoff 0.734999955, but decoding its 0.735 row produces
+  0.735000014. An exact unrounded comparison dropped a whole rendered sample
+  (45 ms at 30 FPS), despite the request/native/ack clocks agreeing. The old
+  retained native probes establish tick 49 for the 0.735 -> 0.690 failure;
+  the other 1.500 -> 1.545 failure held native tick 103 and is separate.
+  `Trail_RawClock` puts trim/save/load cutoffs through the SAME six-decimal
+  formatter/parser once per operation. No new sample, FPS epsilon, native
+  selection, evidence/save-state clock or format change. It also preserves
+  negative/untimed cutoff behavior. New `--selection-audit` captures the entire
+  native ring, wire request, sampled cursor and correlated go acknowledgement;
+  independent distance/tick ordering and full raw-prefix comparisons ACT on
+  all six cuts. All strict existing checks plus six compiled clock controls
+  pass buffered at 30/100/300 and streamed at 30; 19 audit counterfactuals reject
+  wrong/missing/nonfinite selection, request, ack and raw rows. Visual 30-FPS
+  scans pass 5,646 buffered / 5,574 streamed samples and all nine compiled
+  presentation controls. Baseline 30-FPS still loses a 2.025 boundary to 1.980
+  and fails compiled clock normalization; do not weaken either grader.
+  Production P502 main/edges pass both modes, native negatives 18/19 and visual
+  negatives 16 pass; reader 306/0. Captured 269-file recording corpus: unchanged
+  baseline/candidate findings, 164 files with faults. No evidence-reader change.
+  An initial edit used an undeclared `endt` in `Trail_Trim`, causing fteqcc to
+  exit without diagnostics; fixed the variable, not the compiler or peer code.
+  New diagnostics are PRIVATE programs: never deploy probe commands/raw output.
+  General requested/native clock UX, real teleport/contact truth and human
+  moving-camera feel remain unverified. Engine commit/tag and qcbuild unchanged.
 - P540: raw trail break/stitch columns (8/9), not only legacy flag
   `0x4000000`, gate `Trail_VisualState` interpolation. `Rewind_Camera` bounds
   its +/-3-point tangent to the cursor's continuous span. Compiled positives
