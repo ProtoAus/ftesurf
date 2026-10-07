@@ -1537,6 +1537,12 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- Patch 537: final production screenshot caught the old REWIND heading
+  overlapping P535's timer caption. Hide that heading while the main cursor
+  snapshot is active; footer carries explicit mode. Controls at 0.80 and implicit
+  resume context at 0.76 avoid default speed/chat rows. Pending-go/countdown
+  heading/guards stay unchanged. Full 21/12 controls rerun, new screenshot
+  inspected; this is default-layout evidence, not every custom HUD layout.
 - Patch 535: ui_rw_* is a presentation-only snapshot, published after camera
   setup and consumed by the existing main timer/speed/energy panels. Fractional
   rw_visualt/p and tr_vis_* never serialize a save: tr_cur_t/p, raw selected

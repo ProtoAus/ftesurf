@@ -663,11 +663,14 @@ void(vector scr) Rewind_Draw =
 		Font_Reset();
 		return;
 	}
-	HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0], "REWIND", 28 * ui_cv_scale,
-	          '0.45 0.85 1', 0.95);
+	// The timer owns the browsing caption. Keep the old heading only when
+	// no cursor HUD is being presented (pending go), avoiding default overlap.
+	if (!ui_rw_on)
+		HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0], "REWIND", 28 * ui_cv_scale,
+		          '0.45 0.85 1', 0.95);
 	Font_Set(ui_font_ui);           // context/key line; main HUD owns the numbers
 	if (rw_atres)
-		HUD_TextC([scr_x * 0.5, scr_y * 0.12 + 56 * ui_cv_scale, 0],
+		HUD_TextC([scr_x * 0.5, scr_y * 0.76, 0],
 		          "where you last resumed -- what you did since is not on this line",
 		          11 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	if (rw_ack)
@@ -676,8 +679,8 @@ void(vector scr) Rewind_Draw =
 		s = "arrows/strafe binds scrub   too far back: the server keeps the last two minutes";
 	else
 		s = "arrows/strafe binds scrub   ENTER resume here   S save here";
-	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
-	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
+	s = strcat("REWIND: ", s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
+	HUD_TextC([scr_x * 0.5, scr_y * 0.80, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	Font_Reset();
 };
 
