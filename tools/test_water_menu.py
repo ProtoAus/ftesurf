@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source contracts for P523; runtime rendering requires separate acting controls.
+"""Source contracts for P523/P528; runtime needs separate old/new native controls.
 Run: python tools/test_water_menu.py --engine <FTE checkout>
 """
 from pathlib import Path
@@ -23,6 +23,10 @@ def contracts(product: Path, engine: Path) -> list[str]:
             r'if \(row == (\d+)\)\s+return "([^"\n]+)";', menu
         )
     }
+    water_defs = re.findall(r'return "(hl2_water\|[^"\n]+)";', menu)
+    check(len(water_defs) == 2, "capability selects exactly budget and legacy rows")
+    if water_defs:
+        rows[1] = water_defs[0].split("|")
     check(set(rows) == set(range(1, 29)), "all 28 stable row numbers")
     for number, fields in rows.items():
         check(len(fields) == 5, f"row {number}: five fields")
@@ -36,7 +40,24 @@ def contracts(product: Path, engine: Path) -> list[str]:
     check(water[0] == "hl2_water", "water cvar")
     check(water[2].split() == ["0", "1", "2", "3", "4"], "water mode cycle")
     check(water[3].split(";")[-1] == "Budget (no captures)", "budget meaning")
-    check(water[4] == "", "water live policy")
+    check(water[4] == "", "capable water live policy")
+    legacy = water_defs[1].split("|") if len(water_defs) == 2 else []
+    check(legacy == ["hl2_water", "Water", "0 1 2 3",
+                     "Flat sheet;Cheap reflect;Full reflect;Dithered", "*"],
+          "legacy only offers 0..3 and marks rebuild")
+    check('ui_gfx_waterbudget = checkextension("FTE_CSQC_HL2_WATER_BUDGET")' in menu
+          and "if (ui_gfx_waterbudget)" in menu,
+          "menu gates budget on local native extension")
+    check('if (cvar("hl2_water") == 4)' in menu
+          and 'cvar_set("hl2_water", "3")' in menu
+          and 'localcmd("flushshaders\\n")' in menu,
+          "unsupported archived 4 falls back and rebuilds cached shaders")
+    check(menu.count("Gfx_WaterSupport();") >= 2, "refresh at init and console entry")
+    milk = (product / "src/client/cl_milk.qc").read_text(encoding="utf-8")
+    restart = re.search(r'CSQC_RendererRestarted\s*=\s*\{([^}]+)\}', milk)
+    check(restart is not None and "Milk_Invalidate();" in restart[1]
+          and "Gfx_WaterSupport();" in restart[1],
+          "renderer refresh keeps milk invalidation and refreshes water")
     glass = rows.get(2, ["", "", "", "", ""])
     check(glass[3].split(";")[0] == "Translucent", "glass 0 is translucent")
     for number in (2, 3, 4, 5, 6, 10):
@@ -52,6 +73,18 @@ def contracts(product: Path, engine: Path) -> list[str]:
           "renderer owns default 3 and narrow shader-policy opt-in")
     check("Cvar_Register (&hl2_water_shaderpolicy," in renderer,
           "renderer registers water policy")
+    ext = (engine / "engine/common/pr_bgcmd.c").read_text(encoding="utf-8")
+    check('{"FTE_CSQC_HL2_WATER_BUDGET", check_hl2_waterbudget' in ext
+          and "return R_HL2WaterBudgetSupported();" in ext,
+          "native extension uses renderer predicate")
+    shader = (engine / "engine/gl/gl_shader.c").read_text(encoding="utf-8")
+    predicate = re.search(r'R_HL2WaterBudgetSupported\(void\)\s*\{(.*?)\n\}', shader, re.S)
+    body = predicate[1] if predicate else ""
+    check("qrenderer != QR_OPENGL || !sh_config.progs_supported" in body
+          and "materialloader[l].funcs->builtinshaders" in body
+          and 'strcmp(progs->name, "vmt/waterbudget")' in body,
+          "programmable OpenGL and embedded plugin budget source required")
+    check("Cvar_" not in body and bool(body), "predicate not spoofed by a cvar")
     plugin = (engine / "engine/common/plugin.c").read_text(encoding="utf-8")
     mask = re.search(r'^#define PLUG_CVAR_FLAGS \(([^)]+)\)', plugin, re.M)
     check(mask is not None and "CVAR_SHADERSYSTEM" not in mask[1]
