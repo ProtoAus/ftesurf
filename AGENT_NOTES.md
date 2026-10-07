@@ -1254,6 +1254,17 @@ publicly WITH its fix, not before it.
   on every tick and crowded out newer runs once the limit was reached.  Imported
   tiers are excluded for the same reason a lone run is: another community's run under
   another game's physics cannot be a playback of ours.
+  **P524-526: VALID ZERO IS NOT UNAVAILABLE.** Required malformed move columns
+  abstain for the whole source; parse to locals before parallel appends. Strict
+  shared comparisons and CLI diagnostics distinguish I/O from successfully read
+  no-input files. Tolerant standalone parsing remains available, but its None
+  is not proof of absence. A zero-agreement pair retains a positive comparison
+  denominator; a true zero-opportunity result abstains. `test_recsim_*.py` and
+  `test_recsim_observations.py` prove positive, unavailable and measured-zero
+  arms through the actual reader/storage/history boundary. This is not general
+  grammar validation, pair-completeness, calibration or historical backfill.
+  When checking corpus faults, retain sidecars: a REC-only private copy does
+  not reproduce the complete REC/view reader result.
 - EVERY v9 `.rec`/`.view` PAIR IN data/ HAS A NAILED-DOWN CAMERA (every 416-419
   fixture drives its route with `setpos` and `noclip`) and so does nearly every
   lobby run, which is why the one-frame rule is the one that works there and

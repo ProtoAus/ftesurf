@@ -160,18 +160,25 @@ class Rec(object):
         self.end_ticks = None
 
 
-def parse_rec(path):
-    """Read one .rec's move columns.  Returns None if it has no `in` rows."""
+class MalformedRec(ValueError):
+    """A required move-stream value cannot be read safely."""
+
+
+def parse_rec(path, strict=False):
+    """Read move columns; strict callers distinguish unavailable from no rows."""
+    try:
+        return _parse_rec(path)
+    except (OSError, MalformedRec) as exc:
+        if strict:
+            raise
+        SKIPPED.append((path, str(exc)))
+        return None
+
+
+def _parse_rec(path):
     r = Rec(path)
     body = False
-    try:
-        fh = open(path, "r", errors="replace")
-    except (PermissionError, OSError) as e:
-        # Parked fixtures exist in this tree -- data/saves/*.kept.pNNN are harness
-        # parks another session may hold.  A census that dies on one unreadable
-        # file reports nothing at all, and "skipped N" is the honest output.
-        SKIPPED.append((path, str(e)))
-        return None
+    fh = open(path, "r", errors="replace")
     with fh:
         for line in fh:
             if not body:
@@ -181,7 +188,10 @@ def parse_rec(path):
                     except (IndexError, ValueError):
                         r.ver = 0
                 elif line.startswith("map "):
-                    r.map = line.split()[1].strip()
+                    f = line.split()
+                    if len(f) < 2:
+                        raise MalformedRec("malformed map header")
+                    r.map = f[1].strip()
                 elif line.startswith("track ") or line.startswith("leg "):
                     f = line.split()
                     if len(f) > 1:
@@ -198,21 +208,23 @@ def parse_rec(path):
                 f = line.split()
                 # in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt> [<fl>]
                 #     0    1    2       3   4   5    6     7    8     9    10
-                if len(f) < 10:
-                    continue
+                if len(f) < 11:
+                    raise MalformedRec("malformed input row")
                 try:
-                    r.mt.append(int(float(f[2])))
-                    r.moves.append((int(float(f[4])), int(float(f[5])),
-                                    int(float(f[6]))))
-                    r.btns.append(int(float(f[10])))
-                except (ValueError, IndexError):
-                    continue
+                    mt = int(float(f[2]))
+                    move = (int(float(f[4])), int(float(f[5])), int(float(f[6])))
+                    btn = int(float(f[10]))
+                except (ValueError, OverflowError) as exc:
+                    raise MalformedRec("malformed input row") from exc
+                r.mt.append(mt)
+                r.moves.append(move)
+                r.btns.append(btn)
             elif line.startswith("end "):
                 f = line.split()
                 if len(f) > 1:
                     try:
                         r.end_ticks = int(float(f[1]))
-                    except ValueError:
+                    except (ValueError, OverflowError):
                         pass
     if not r.moves:
         return None
@@ -250,6 +262,8 @@ def stream(r):
     Angles and timing are deliberately EXCLUDED -- see the module docstring.  A
     playback reproduces this exactly; an honest re-play does not.
     """
+    if not len(r.mt) == len(r.moves) == len(r.btns):
+        raise MalformedRec("incomplete move stream")
     return list(zip(r.moves, r.btns))
 
 
@@ -314,7 +328,7 @@ def best_offset(a, b, max_shift=None, min_len=0):
             i += 1
             j += 1
         pl = prefix_len(a, b, d)
-        if matched > best[1]:
+        if matched > best[1] or (best[2] == 0 and compared > 0):
             best = (d, matched, compared, pl, pl / float(longer))
     return best
 
@@ -343,6 +357,8 @@ SKIP_UNREADABLE = "unreadable"
 SKIP_NO_ROWS = "no sample rows"
 SKIP_SHORT = "too short"
 SKIP_SAME_FILE = "same file"
+SKIP_MALFORMED = "malformed input"
+SKIP_NO_OPPORTUNITIES = "no comparison opportunities"
 
 
 def compare_paths(path_a, path_b, min_len=MIN_LEN):
@@ -389,7 +405,9 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN):
     recs = []
     for p in (path_a, path_b):
         try:
-            r = parse_rec(p)
+            r = parse_rec(p, strict=True)
+        except MalformedRec:
+            return SKIP_MALFORMED, "malformed required move-stream input"
         except (PermissionError, OSError) as e:
             return SKIP_UNREADABLE, "%s: %s" % (os.path.basename(p), e)
         if r is None:
@@ -400,6 +418,8 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN):
         recs.append(r)
     a, b = recs
     off, matched, compared, prefix, cover = best_offset(a, b, min_len=min_len)
+    if not compared:
+        return SKIP_NO_OPPORTUNITIES, "no comparison opportunities"
     wa, wb = who_of(a.path), who_of(b.path)
     return "compared", {
         "match": (matched / float(compared)) if compared else 0.0,
@@ -438,10 +458,18 @@ def cmd_census(args):
     by_map = collections.Counter()
     with_in = 0
     without = 0
+    unavailable = collections.Counter()
     grouped = collections.defaultdict(list)
     limit = args.limit or len(paths)
     for p in paths[:limit]:
-        r = parse_rec(p)
+        try:
+            r = parse_rec(p, strict=True)
+        except OSError:
+            unavailable["unreadable"] += 1
+            continue
+        except MalformedRec:
+            unavailable["malformed"] += 1
+            continue
         if r is None:
             without += 1
             continue
@@ -451,8 +479,8 @@ def cmd_census(args):
         by_map[m] += 1
         grouped[(m, leg)].append((p, len(r.moves)))
     print("  with `in` rows: %d   without (samples only): %d" % (with_in, without))
-    if SKIPPED:
-        print("  SKIPPED unreadable: %d (e.g. %s)" % (len(SKIPPED), SKIPPED[0][1][:60]))
+    for category, count in sorted(unavailable.items()):
+        print("  SKIPPED %s: %d" % (category, count))
     print("  versions:", dict(sorted(by_ver.items())))
     multi = {k: v for k, v in grouped.items() if len(v) > 1}
     print("  map/leg groups: %d, of which %d hold >1 comparable run"
@@ -467,7 +495,14 @@ def cmd_census(args):
 
 
 def cmd_one(args):
-    a, b = parse_rec(args.a), parse_rec(args.b)
+    try:
+        a, b = parse_rec(args.a, strict=True), parse_rec(args.b, strict=True)
+    except MalformedRec:
+        print('not compared: malformed required move-stream input')
+        return 1
+    except OSError:
+        print('not compared: unreadable recording')
+        return 1
     if a is None or b is None:
         print("one of those has no `in` rows")
         return 1
