@@ -310,24 +310,21 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
 
 
 def pending(conn, limit=50):
-    """Run-kind replays that have no `sims` row yet, oldest first.
+    """Run-kind replays with at least one unobserved eligible pair, oldest first.
 
-    Oldest first for the same reason the receipt step does it: a pass that runs out
-    of room still covers everything older than what it left.
-
-    A RUN THAT HAS NO PEER IS NOT PENDING EITHER, and the first cut missed this:
-    `compare_run` returns without storing anything for a row with no comparable
-    peer, so such a row stayed "pending" forever and every tick re-selected it,
-    crowding out newer runs once the limit was reached.  Excluding it here means a
-    map with one run on it is asked about once rather than on every pass, and the
-    pending count says something true about work left rather than about rows.
+    A stored observation (including a skip) suppresses only its own pair. Budgeted
+    partial work must remain eligible on a later pass. Lone runs and runs whose
+    eligible pairs are all stored are not pending. This is eligibility, not fair
+    retry scheduling: unresolved old sources can still crowd out newer sources.
     """
     return conn.execute(
         "SELECT r.* FROM replays r WHERE r.kind = 'run'"
-        " AND NOT EXISTS (SELECT 1 FROM sims s WHERE s.a_id = r.id OR s.b_id = r.id)"
         " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
         "             AND p.track = r.track AND p.leg = r.leg"
-        "             AND p.kind = 'run' AND p.id != r.id)"
+        "             AND p.kind = 'run' AND p.id != r.id"
+        "             AND NOT EXISTS (SELECT 1 FROM sims s"
+        "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
+        "                    OR (s.a_id = p.id AND s.b_id = r.id)))"
         " ORDER BY r.id LIMIT ?", (limit,)).fetchall()
 
 
