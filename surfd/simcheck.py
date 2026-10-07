@@ -48,6 +48,7 @@ it delegates to `reccheck`.  If `recsim` is not importable the step reports that
 and stores nothing -- it does not fall back to a second parser.
 """
 
+import math
 import os
 import sqlite3
 import sys
@@ -76,6 +77,7 @@ NOTABLE = 0.95
 # Operational work cap, not a statistic threshold or a completeness guarantee.
 # Previously 50 source rows could each admit 200 peers in one cron pass.
 MAX_PAIRS = 200
+MAX_SECONDS = 10.0
 # Operational ingestion limits, not a validity or similarity threshold. Sources
 # over either budget abstain; no truncated prefix may become a measurement.
 MAX_SOURCE_BYTES = 16 << 20
@@ -92,12 +94,22 @@ KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown
 
 
 class _PairBudget:
-    def __init__(self, maximum):
+    def __init__(self, maximum, seconds):
         self.remaining = maximum
         self.attempted = 0
+        self.deadline = time.monotonic() + seconds
+        self.time_exhausted = False
+
+    def expired(self):
+        if time.monotonic() >= self.deadline:
+            self.time_exhausted = True
+        return self.time_exhausted
+
+    def available(self):
+        return self.remaining > 0 and not self.expired()
 
     def take(self):
-        if self.remaining <= 0:
+        if not self.available():
             return False
         self.remaining -= 1
         self.attempted += 1
@@ -320,7 +332,7 @@ def pending(conn, limit=50):
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
-                    max_pairs=MAX_PAIRS):
+                    max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS):
     """The sweep's entry point.  -> (pairs stored, notable, note).
 
     `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
@@ -331,16 +343,22 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
 
     `limit` bounds selected source rows; `max_pairs` independently bounds admitted
     new pair attempts across all of them. Zero disables before loading support.
-    Each comparison source is bounded by bytes and moves. This is not a hard
-    deadline, an overall RSS bound or complete/fair pair coverage.
+    Each comparison source is bounded by bytes and moves. `max_seconds` stops
+    new row/pair admission cooperatively using a monotonic clock; in-flight work
+    finishes and normal results flush. Loader/schema/query time counts too, but
+    none is interrupted. This is not a hard timeout, an overall RSS bound or
+    complete/fair pair coverage.
 
     A fault here is printed and never stops the verification, exactly as the
     receipt and evidence steps do: this is a store-only measurement, and a
     measurement that cannot run must not take the checks that DO gate badges down
     with it.
     """
-    if limit <= 0 or max_pairs <= 0:
+    if not math.isfinite(max_seconds):
+        raise ValueError("max_seconds must be finite")
+    if limit <= 0 or max_pairs <= 0 or max_seconds <= 0:
         return 0, 0, ""
+    budget = _PairBudget(max_pairs, max_seconds)
     rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, "similarity skipped: %s" % why
@@ -351,9 +369,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0
     diagnostics = {"source_unavailable": 0}
-    budget = _PairBudget(max_pairs)
     for row in rows:
-        if budget.remaining <= 0:
+        if not budget.available():
             break
         try:
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
@@ -381,6 +398,10 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     if budget.remaining <= 0:
         note = (note + " " if note else "") + (
             "sims pair limit reached (%d attempted; coverage not measured)" % budget.attempted)
+    if budget.expired():
+        note = (note + " " if note else "") + (
+            "sims time limit reached (cooperative; %d attempted; coverage not measured)"
+            % budget.attempted)
     return stored, notable, note
 
 

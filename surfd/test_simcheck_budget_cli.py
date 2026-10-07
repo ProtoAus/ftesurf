@@ -34,11 +34,27 @@ for i in range(1,4):
 conn.commit()
 with mock.patch.object(sweep, '_simcheck', side_effect=AssertionError('disabled loader called')):
     assert sweep.similarity_step(conn, limit=3, max_pairs=0) == (0,0,'')
+    assert sweep.similarity_step(conn, limit=3, max_seconds=0) == (0,0,'')
 stored, notable, note = sweep.similarity_step(conn, limit=3, max_pairs=1)
 assert (stored,notable) == (1,1), (stored,notable,note)
 assert 'pair limit reached' in note, note
 assert conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0] == 1
 assert conn.execute('SELECT compared FROM sims').fetchone()[0] == 80
+with mock.patch.object(simcheck, 'similarity_step', return_value=(0,0,'')) as target:
+    sweep.similarity_step(conn, limit=3, max_pairs=2, max_seconds=0.25)
+    assert target.call_args.kwargs['max_seconds'] == 0.25
+# CLI forwards the scalar and rejects invalid budgets before its connect call.
+with mock.patch.object(surfd, 'connect', side_effect=AssertionError('parser connected')):
+    for value in ('-1','nan','inf','-inf'):
+        try:
+            sweep.main(['--sims-seconds='+value])
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError('invalid elapsed budget accepted')
+with mock.patch.object(sweep, 'similarity_step', return_value=(0,0,'')) as target:
+    sweep.main(['--limit','0','--sims','0','--sims-seconds','0.25'])
+    assert target.call_args.kwargs['max_seconds'] == 0.25
 print('WRAPPER_ACTED')
 '''
             result = subprocess.run([sys.executable, '-c', program], cwd=HERE, env=env,
@@ -51,6 +67,16 @@ print('WRAPPER_ACTED')
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             self.assertIn('sweep: nothing to verify', result.stdout)
             self.assertNotIn('sims ', result.stdout)
+
+    def test_cli_rejects_invalid_elapsed_budget(self):
+        with tempfile.TemporaryDirectory() as home:
+            for value in ('-1','nan','inf','-inf'):
+                result = subprocess.run([sys.executable, str(HERE/'sweep.py'), '--sims-seconds='+value],
+                                        cwd=HERE, env=dict(os.environ, SURFD_HOME=home,
+                                        SURFD_DB=str(Path(home)/'test.db'), SURFD_ENV=str(Path(home)/'empty.env')),
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn('--sims-seconds must be finite and nonnegative', result.stderr)
 
     def test_cli_rejects_negative_pair_budget(self):
         with tempfile.TemporaryDirectory() as home:

@@ -37,6 +37,7 @@ import glob
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -918,19 +919,21 @@ def evidence_step(conn):
         return 0, 0
 
 
-def similarity_step(conn, limit=50, max_pairs=200):
+def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0):
     """surfd schema 10: store the cross-run similarity sample.  STORE-ONLY --
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
     gate badges down with it.  -> (pairs stored, notable, note)."""
-    if limit <= 0 or max_pairs <= 0:  # disabled: nothing imported, nothing said
+    if not math.isfinite(max_seconds):
+        raise ValueError("max_seconds must be finite")
+    if limit <= 0 or max_pairs <= 0 or max_seconds <= 0:  # disabled: no import/note
         return 0, 0, ""
     mod = _simcheck()
     if mod is None:
         return 0, 0, ""
     try:
         return mod.similarity_step(conn, surfd, limit=limit, tools_dir=TOOLS,
-                                   max_pairs=max_pairs)
+                                   max_pairs=max_pairs, max_seconds=max_seconds)
     except Exception as exc:
         print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
         return 0, 0, ""
@@ -971,9 +974,14 @@ def main(argv=None):
     ap.add_argument("--sims-pairs", type=int, default=200,
                     help="maximum new similarity pair attempts per pass (default 200; "
                          "0 disables; not a timeout or coverage guarantee)")
+    ap.add_argument("--sims-seconds", type=float, default=10.0,
+                    help="cooperative similarity admission seconds (default 10; 0 disables); "
+                         "in-flight work finishes, not a hard timeout")
     args = ap.parse_args(argv)
     if args.sims_pairs < 0:
         ap.error("--sims-pairs must be nonnegative")
+    if not math.isfinite(args.sims_seconds) or args.sims_seconds < 0:
+        ap.error("--sims-seconds must be finite and nonnegative")
     conn = surfd.connect()
     ensure_schema(conn)
     if args.dry_run:
@@ -1009,7 +1017,8 @@ def main(argv=None):
     added, dropped = evidence_step(conn)
     rcpts, rbad = receipt_step(conn)
     sims, simnotable, simnote = similarity_step(conn, limit=args.sims,
-                                               max_pairs=args.sims_pairs)
+                                               max_pairs=args.sims_pairs,
+                                               max_seconds=args.sims_seconds)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:
