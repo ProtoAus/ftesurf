@@ -1537,6 +1537,22 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
+  2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
+  `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;
+  immediate `.prev` is P536 `9120d5ac...`. Clean product has no test hooks.
+  Windows SSQC/menu/native and owner configs/data unchanged; Pi coherent pair
+  preserves SSQC `951acd41...`. Default.cfg `8fd357ac...` changes only the reveal
+  comment relative to P532, with original config backups retained. No engine
+  pin/tag, qcbuild or server-rule changes. All 12 were empty for deployment;
+  verification finished separately without another swap/restart. Fresh-cache
+  clients on both installed engines downloaded those bytes, received peer body
+  streams, and drew the eleven-row settings plus separate imported/native tabs
+  without Compare. Terms deliberately unaccepted: UI/scope and stream controls,
+  not remote row-fetch/permission or all-backend acceptance. Actual map was
+  surf_kitsune with its known unresolved material; not repaired by this batch.
+  The final 21-unit/12-dedicated-phase P537 layout regression and inspected
+  screenshot remain the cursor/input proof, not these idle live clients.
 - Patch 537: final production screenshot caught the old REWIND heading
   overlapping P535's timer caption. Hide that heading while the main cursor
   snapshot is active; footer carries explicit mode. Controls at 0.80 and implicit
