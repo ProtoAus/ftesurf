@@ -106,6 +106,7 @@ entity pb_list;
 float  pb_tick;             // pm_ticrate
 float  pb_ftime, pb_fdt;
 float  pb_cv_delay, pb_cv_extrap, pb_cv_hermite, pb_cv_raw, pb_cv_fx;
+float  pb_cv_fade, pb_fadeshader;
 float  pb_tr_slot, pb_tr_n, pb_tr_dc;
 entity pb_tr_ent;
 
@@ -126,6 +127,10 @@ void() Body_ReadCvars =
 	pb_cv_hermite = cvar("cl_body_hermite");
 	pb_cv_raw     = cvar("cl_body_raw");
 	pb_cv_fx      = cvar("cl_avfx");
+	pb_cv_fade    = cvar("cl_playerfade");
+	if (pb_cv_fade)
+	if (!pb_fadeshader)
+		pb_fadeshader = Body_FadeShader();
 };
 
 void() Body_RegisterCvars =
@@ -144,6 +149,9 @@ void() Body_RegisterCvars =
 	  spawns nothing.  Your OWN trail is cl_trailself, separately.
 	*/
 	registercvar("cl_avfx",         "1", CVAR_ARCHIVE);
+	registercvar("cl_playerfade", "1", CVAR_ARCHIVE);
+	registercvar("cl_playerfade_near", "32", CVAR_ARCHIVE);
+	registercvar("cl_playerfade_far", "128", CVAR_ARCHIVE);
 	registercommand("body_stats");
 	registercommand("body_trace");
 	Body_ReadCvars();
@@ -197,6 +205,8 @@ float() Body_Predraw =
 	  wants; 0 would fall through to TOP_DEFAULT and paint a brown shirt.
 	*/
 	self.colormod = '0 0 0';
+	// Keep alpha/depth opaque; the fragment shader discards by proximity.
+	self.forceshader = pb_cv_fade ? pb_fadeshader : 0;
 	self.colormap = self.pb_slot;
 	if (self.pb_lf & PBL_GLOW)
 		self.glowmod = Body_Q32(Av_GlowModRGB(rgb));

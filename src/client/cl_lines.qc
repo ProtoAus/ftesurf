@@ -89,6 +89,9 @@
 vector *ln_pos;
 float  *ln_spd;
 float  *ln_t;
+float  *ln_born;                // visual publication time, demo and two live slots
+float  ln_published[LN_SLOTS];
+float  ln_reveal;               // seconds: chunk/playhead reveal, 0 is immediate
 float  *ln_brk;                 // 1: no segment from the previous point (a teleport)
 float  *ln_gain;
 float  *ln_vz;                  // Patch 452: the third term of the energy
@@ -251,6 +254,7 @@ void() Line_Alloc =
 	ln_pos  = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP);
 	ln_spd  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_t    = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
+	ln_born = memalloc(sizeof(float) * 3 * LN_CAP);
 	ln_brk  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	ln_gain = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
 	// +2.25 MiB, and the only per-point array the marks and the numbers did
@@ -285,10 +289,17 @@ void() Line_Alloc =
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
 };
 
+// The birth arena holds only demo/live slots, not the eight static board lines.
+float(float s) Line_BirthBase =
+{
+	return (s == 0) ? 2 * LN_CAP : (s - LN_S_TRAIL) * LN_CAP;
+};
+
 void(float s) Line_Clear =
 {
 	ln_on[s] = FALSE;
 	ln_n[s]  = 0;
+	ln_published[s] = 0;
 	ln_bkn[s] = 0;
 	ln_ia[s] = ln_ib[s] = 0;
 	ln_evn[s] = 0;
@@ -446,6 +457,8 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 			ln_vz[b + i]  = ln_vz[j];
 			ln_q[b + i]   = ln_q[j];
 			ln_t[b + i]   = ln_t[j];
+			if (s == 0 || s >= LN_S_TRAIL)
+				ln_born[Line_BirthBase(s) + i] = ln_born[Line_BirthBase(s) + 2 * i];
 			ln_brk[b + i] = ln_brk[j];
 			if (i > 0)
 			if (ln_brk[j - 1])
@@ -454,6 +467,7 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 		if (ln_brk[b + LN_CAP - 1])
 			ln_pbrk[s] = TRUE;
 		n = LN_CAP / 2;
+		ln_published[s] = ceil(ln_published[s] / 2);
 		ln_step[s] = ln_step[s] * 2;
 	}
 	ln_skip[s] = ln_step[s] - 1;
@@ -692,11 +706,27 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 // The tables drawing needs: chunk spheres, the break list, the gain.
 void(float s) Line_End =
 {
-	local float b, n, c, i, i0, i1, j0, j1, k, dt;
+	local float b, n, c, i, i0, i1, j0, j1, k, dt, dur, first;
 	local vector mn, mx, p;
 
 	b = s * LN_CAP;
 	n = ln_n[s];
+	// Publish together, reveal oldest to newest. Recording/timer time is untouched.
+	if (s == 0 || s >= LN_S_TRAIL)
+	{
+		dur = bound(0, cvar("hud_lines_reveal"), 1);
+		first = ln_published[s];
+		for (i = first; i < n; i = i + 1)
+		{
+			k = (i - first) / max(1, n - first - 1);
+			// An opened demo publishes at once: reveal each drawing chunk, not
+			// a single wave across a many-minute recording.
+			if (s == 0)
+				k = (i - first - LN_CHUNK * floor((i - first) / LN_CHUNK)) / (LN_CHUNK - 1);
+			ln_born[Line_BirthBase(s) + i] = cltime + dur * 0.5 * k;
+		}
+		ln_published[s] = n;
+	}
 	ln_bkn[s] = 0;
 	for (i = 1; i < n; i = i + 1)
 		if (ln_brk[b + i])
@@ -1228,6 +1258,7 @@ void() Line_ViewFrame =
 	ln_wpxb = cvar("hud_watch_path_px_board");
 	ln_wpxt = cvar("hud_watch_path_px_trail");
 	Line_Width(ln_wpx);
+	ln_reveal = bound(0, cvar("hud_lines_reveal"), 1);
 	ln_eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	ln_fwd = v_forward;
@@ -1357,6 +1388,31 @@ float(float s, float c) Line_ChunkStep =
 	return 1;
 };
 
+// Visual alpha only. Demo points brighten smoothly as their playhead passes;
+// live points use publication time, not their (possibly held/rewound) run clock.
+float(float s, float i, float t, float tplay, float ahead) Line_Reveal =
+{
+	local float a, f;
+
+	a = (t <= tplay) ? 1 : ahead;
+	if (ln_reveal <= 0)
+		return a;
+	if (s == 0)
+	{
+		f = bound(0, (tplay - t) / ln_reveal, 1);
+		a = ahead + (1 - ahead) * f * f * (3 - 2 * f);
+	}
+	if (s == 0 || s >= LN_S_TRAIL)
+	{
+		if (ln_published[s] > 0)
+		{
+			f = bound(0, (cltime - ln_born[Line_BirthBase(s) + i]) * 2 / ln_reveal, 1);
+			a = a * f * f * (3 - 2 * f);
+		}
+	}
+	return a;
+};
+
 // Point i of slot base b onto the strip: the near clip against the point before,
 // the subdivision of a long segment, and the playhead split.
 void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
@@ -1370,7 +1426,7 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 	c = ln_col[b + i];
 	if (ln_dtint)
 		c = c + (LN_FGNCOL - c) * ln_dtint;
-	a = ((ln_t[b + i] <= tplay) ? 1 : ahead) * ln_da;
+	a = Line_Reveal(b / LN_CAP, i, ln_t[b + i], tplay, ahead) * ln_da;
 	// The fade is by distance, as the cull is (review: by depth it cut hard at
 	// the screen's sides); only a chunk reaching into it pays the vlen.
 	if (ln_cfade)
@@ -1391,7 +1447,10 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 		if (ln_t[b + ln_pi] <= tplay && ln_t[b + i] > tplay)
 		{
 			f = (tplay - ln_t[b + ln_pi]) / max(0.0001, ln_t[b + i] - ln_t[b + ln_pi]);
-			Line_Pt(phead, ln_pc + (c - ln_pc) * f, ln_da);
+			k = ln_da;
+			if (ln_reveal > 0)
+				k = Line_Reveal(b / LN_CAP, i, tplay, tplay, ahead) * ln_da;
+			Line_Pt(phead, ln_pc + (c - ln_pc) * f, k);
 			if (ahead <= 0)
 			{
 				Line_RunEnd();
@@ -1826,7 +1885,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		else
 			continue;                   // a break: the teleport pass owns it
 		p = ln_ep[n + e];
-		al = ((ln_et[n + e] <= tplay) ? 1 : ahead) * alpha;
+		al = Line_Reveal(s, Line_Find(s, ln_et[n + e]), ln_et[n + e], tplay, ahead) * alpha;
 		if (ln_fadek > 0)
 			al = al * bound(0, (ln_far - vlen(p - ln_eye)) * ln_fadek, 1);
 		if (ln_winon)
@@ -2008,7 +2067,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 			continue;
 		p0 = ln_pos[b + j - 1];
 		p1 = ln_pos[b + j];
-		al = ((ln_t[b + j] <= tplay) ? 1 : ahead) * alpha *
+		al = Line_Reveal(s, j, ln_t[b + j], tplay, ahead) * alpha *
 		     bound(0, cvar("hud_lines_telealpha"), 1);
 		d0 = d1 = al;
 		if (ln_fadek > 0)
@@ -2080,6 +2139,7 @@ void() Line_FrameEnd =
 void() Line_RegisterCvars =
 {
 	registercommand("lines");
+	registercvar("hud_lines_reveal", "0.18", CVAR_ARCHIVE);
 	registercvar("hud_lines_board", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_marks",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_land",   "1", CVAR_ARCHIVE);
@@ -2128,7 +2188,8 @@ float() Line_Console =
 	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
 	      "  hud_lines_telealpha 0.3 (faded dashed teleport joins)\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
-	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n");
+	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n"
+	      "  hud_lines_reveal 0.18 (chunk reveal seconds; 0 instant)\n");
 	return TRUE;
 };
 

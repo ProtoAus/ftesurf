@@ -1993,3 +1993,20 @@ too, top right (the engine's counter was drawn underneath the menu's 3D).
 - The fractal stations: any you would swap out?
 - On the PC: native at your setting -- smooth? FSR 1 at high or ultra: worth
   its cost there? Checkerboard: can you see it?
+
+---
+
+## 12. Run-line and nearby-player fades (Patch 532)
+
+`hud_edit lines` now includes **Chunk fade** (instant / fast / smooth / slow)
+plus **Nearby players**, **Hidden within** and **Opaque beyond**. Defaults:
+0.18 seconds for new line chunks; bodies dither away between 128 and 32 units.
+Both are client-side visual effects, not run-clock or movement changes.
+
+- Surf and watch a demo: do the small chunks arrive smoothly, from back to
+  front, or is 0.18 seconds too slow? Instant is the comparison.
+- Approach another lobby player: does the stippled fade feel unobtrusive while
+  retaining their normal colours, or are the distances wrong? Toggle Nearby
+  players off for comparison. Ghosts and your own avatar are unchanged.
+- Judge on the high-refresh PC too: the automated pixel controls prove coverage
+  and colour, not subjective motion quality or every renderer/driver.

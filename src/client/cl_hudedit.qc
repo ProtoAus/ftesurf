@@ -619,6 +619,10 @@ string(string id, float row) HE_OptDef =
 		if (row == 4) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control|Advanced controls: lines help in the console.";
 		if (row == 5) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
 		if (row == 6) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
+		if (row == 7) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Reveal each new chunk from back to front. Seconds; never changes the run clock.";
+		if (row == 8) return "cl_playerfade|Nearby players|t|||Dither nearby lobby bodies away; surviving pixels keep normal colours and depth.";
+		if (row == 9) return "cl_playerfade_near|Hidden within|c|0 16 32 64|0;16;32;64|Camera distance in units. Bodies are fully hidden this close.";
+		if (row == 10) return "cl_playerfade_far|Opaque beyond|c|64 128 192 256|64;128;192;256|Camera distance in units. Bodies are fully opaque this far away.";
 		return "";
 	}
 

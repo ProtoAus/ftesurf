@@ -1396,6 +1396,21 @@ publicly WITH its fix, not before it.
   Stage 2 on surf_dune in the first rig teleported outside its start and launched
   immediately; that is not a valid standing-at-start control. Immediate restart
   while TS_RUNNING (and clock reset) still needs separate lifecycle handling.
+- Patch 532: `hud_lines_reveal 0.18` reveals newly published live/demo chunks
+  from oldest to newest; 0 restores instant drawing. Heap birth stamps belong
+  only to demo slot 0 and the two live/previous slots. Rebuilding never restarts
+  old births; Clear/reuse and cap compaction preserve the publication contract.
+  Mature demo publication composes with playhead reveal, not the run clock.
+  `cl_playerfade 1` is viewer-local opaque Bayer discard on streamed Body_Predraw,
+  hidden within 32 units and opaque beyond 128 (`cl_playerfade_near/far`). Existing
+  body alpha stays 1; no server rule, ghost or owner avatar change. The material
+  is embedded in CSQC so joining clients need no separately installed GLSL file.
+  `hud_edit lines` now has 11 rows including these four controls. The private
+  overlay `tools/visual_fades_smoke.py` proves 33 publication/playhead/compaction
+  assertions plus 16 actual line/body screenshots. Its test-only world-free
+  hooks are never deployed. A forward call to Line_StatsReset (declared later)
+  crashed fteqcc without stdout in the initial extension; removing the unnecessary
+  call fixed the harness. QC definition order applies to test seams too.
 - Patch 530: `hud_lines_declutter 0` (default) keeps visible labels and lays them
   into up to 16 nearby vertical lanes instead of silently suppressing overlaps;
   `1` restores the sparse grid. The existing 128-label/frame cap, view/distance

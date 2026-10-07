@@ -154,6 +154,8 @@ client/cl_avatar.qc
 // Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After
 // cl_avatar.qc (Av_ColourModRGB, Av_PaletteRGB) and cl_netmon.qc (getdeltacount);
 // before cl_players.qc, cl_scores.qc and cl_main.qc, which call Body_*.
+// Embedded material must precede Body_Predraw's viewer-local proximity fade.
+client/cl_playerfade.qc
 client/cl_body.qc
 client/cl_players.qc
 // Patch 385: spectate.  After cl_players.qc (PL_MAXSLOT), cl_body.qc, cl_ghost.qc

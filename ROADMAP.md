@@ -263,8 +263,8 @@ not in this public file.
 **Status: requested and planned, NOT implemented by this entry.** These requests
 supersede treating rewind as a separate little time/speed readout. Keep the
 reported defects in BACKLOG.md until their falsifiers pass. The chunk reveal
-and nearby-player dither fades requested earlier are a separate, in-progress
-workstream; they are not proof that this overhaul has shipped.
+and nearby-player dither fades requested earlier are implemented separately
+by Patch 532; they are not proof that this overhaul has shipped.
 
 ### 12.1 One cursor state for the main HUD
 

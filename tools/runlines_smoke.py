@@ -3,8 +3,8 @@
 
 python tools/runlines_smoke.py ftesurf/cfg/test/runlines_ui.cfg \
     --content C:/FTESurf --output-dir C:/FTESurf-private/checkpoints
-Progs and tracked configs come from this checkout. Content is read through
-junctions; only the junctions we created are removed, never their targets.
+Progs/configs and shader overrides come from this checkout. Other content is
+read through junctions; only junctions we created are removed, never targets.
 """
 import argparse
 import hashlib
@@ -22,6 +22,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('cfg', type=pathlib.Path)
     ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
+    ap.add_argument('--client', type=pathlib.Path, help='Explicit installed client for compatibility controls')
     ap.add_argument('--output-dir', type=pathlib.Path)
     ap.add_argument('--recording', type=pathlib.Path,
                     help='copy a control recording into the overlay, never alter its source')
@@ -38,8 +39,15 @@ def main():
         shutil.copyfile(ROOT / 'default.fmf', rig / 'default.fmf')
         for name in CONTENT_DIRS:
             source = a.content / 'ftesurf' / name
-            if source.is_dir():
-                target = gd / name
+            target = gd / name
+            if name in ('glsl', 'scripts'):
+                # Writable local overlays: never override a shared content junction.
+                if source.is_dir():
+                    shutil.copytree(source, target)
+                overrides = ROOT / 'ftesurf' / name
+                if overrides.is_dir():
+                    shutil.copytree(overrides, target, dirs_exist_ok=True)
+            elif source.is_dir():
                 subprocess.run(['cmd', '/c', 'mklink', '/J', str(target), str(source)],
                                check=True, capture_output=True)
                 junctions.append(target)
@@ -78,7 +86,8 @@ def main():
                                        '-port', str(a.port), '+log_enable', '1', '+log_name',
                                        'runlines_server', '+map', 'surf_dune'], cwd=a.content,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        client = subprocess.Popen([str(a.content / 'ftesurf64.exe'), *common, '-window',
+        executable = a.client or a.content / 'ftesurf64.exe'
+        client = subprocess.Popen([str(executable), *common, '-window',
                                    '+exec', 'cfg/test/runlines_smoke.cfg'], cwd=a.content,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         client.wait(timeout=a.timeout)
