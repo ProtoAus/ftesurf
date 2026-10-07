@@ -69,6 +69,7 @@
 
 float  tr_live, tr_prev;        // slot indices, swapped at a run start
 float  tr_on;                   // the live slot holds a run
+float  tr_stopped;              // retain the pre-reset head for rewind
 float  tr_prevon;               // ...and the other holds the one before it
 float  tr_prevat;               // cltime the fade began
 float  tr_frame;                // clientcommandframe of the last sample
@@ -108,7 +109,7 @@ void() Trail_RegisterCvars =
 {
 	Trail_Init();
 	registercvar("hud_trail",      "1",   CVAR_ARCHIVE);
-	registercvar("hud_trail_fade", "2.0", CVAR_ARCHIVE);
+	registercvar("hud_trail_fade", "1.0", CVAR_ARCHIVE);
 	registercvar("hud_trail_prev", "1",   CVAR_ARCHIVE);
 	registercommand("trail");
 };
@@ -120,7 +121,7 @@ void() Trail_Reset =
 	Trail_Init();
 	Line_Clear(tr_live);
 	Line_Clear(tr_prev);
-	tr_on = tr_prevon = FALSE;
+	tr_on = tr_prevon = tr_stopped = FALSE;
 	tr_nsamp = tr_builds = tr_since = 0;
 	tr_state = 0;
 	if (tr_raw >= 1)
@@ -156,6 +157,7 @@ void() Trail_Open =
 	tr_settle = cltime + TR_SETTLE;     // Patch 477: a load can start a line from idle too
 	tr_gen    = tr_gen + 1;
 	tr_on     = TRUE;
+	tr_stopped = FALSE;
 	tr_nsamp  = 0;
 	tr_builds = 0;
 	tr_since  = 0;
@@ -198,9 +200,26 @@ float() Trail_Ducked =
 	return eye < duck + (stand - duck) * TR_EYEMID;
 };
 
+// Visual occupancy only; the server still owns arming and certification.
+float(vector p) Trail_InBoundary =
+{
+	local float z, track;
+	track = getstatf(STAT_FS_TIMERTRACK);
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_track[z] != track)
+			continue;
+		if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE)
+			continue;
+		if (Zone_PointInside(z, p))
+			return TRUE;
+	}
+	return FALSE;
+};
+
 void() Trail_Sample =
 {
-	local float fl, t;
+	local float fl, t, brk, b, dt;
 	local vector o, v, nrm, wsh;
 
 	o = pmove_org;
@@ -238,10 +257,23 @@ void() Trail_Sample =
 	if (!tr_nsamp)
 		Line_Seed(tr_live, v, fl, t, input_angles_y);
 
-	// A known save/load is a visual stitch. An unobserved teleport remains
-	// a long segment here, not an invented authoritative warp record.
-	Line_Point(tr_live, o, v, fl, t, tr_stitch, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
-	Trail_Record(o, v, fl, t, tr_stitch, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
+	brk = tr_stitch;
+	if (tr_nsamp > 0)
+	{
+		b = tr_live * LN_CAP + ln_n[tr_live] - 1;
+		dt = max(tr_tick, t - tr_lastt);
+		// A drawing discontinuity, never an authoritative .rec warp.
+		if (vlen(o - tr_lastp) > max(128, (ln_spd[b] + fabs(ln_vz[b])) * dt * 3 + 64))
+			brk = TRUE;
+		if (brk && !tr_stitch && Trail_InBoundary(o))
+		{
+			tr_stopped = TRUE;
+			Line_End(tr_live);
+			return; // never attach the reset destination to the rewind head
+		}
+	}
+	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
+	Trail_Record(o, v, fl, t, brk, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
 	tr_stitch = FALSE;
 
 	tr_lastt = t;
@@ -318,15 +350,27 @@ void() Trail_Frame =
 			}
 			if (!tr_on)
 				Trail_Open();
-			if (!Trail_Load(id, saved))
-				Trail_Trim(-1);         // no picture is better than another run's prefix
-			tr_on = TRUE;
-			tr_practice = (st != TS_RUNNING);
-			tr_practicebase = tr_lastt;
-			tr_practiceat = cltime;
+			if (st == TS_ARMED && ln_n[tr_live] >= 2)
+			{
+				// Loading a start is a reset. Keep the failed line rewindable.
+				tr_stopped = TRUE;
+				tr_practice = FALSE;
+				Line_End(tr_live);
+			}
+			else
+			{
+				if (!Trail_Load(id, saved))
+					Trail_Trim(-1); // never substitute another run's picture
+				tr_on = TRUE;
+				tr_stopped = FALSE;
+				tr_practice = (st != TS_RUNNING);
+				tr_practicebase = tr_lastt;
+				tr_practiceat = cltime;
+			}
 		}
 	}
-	if (st == TS_RUNNING && tr_state != TS_RUNNING && op != SLOP_LOADED)
+	if (st == TS_RUNNING && (tr_state != TS_RUNNING ||
+	    (tr_stopped && !Trail_InBoundary(pmove_org))) && op != SLOP_LOADED)
 		Trail_Open();
 	else if (st == TS_RUNNING && !tr_practice && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
 		Trail_Trim(getstatf(STAT_FS_TIMERTICKS) * tr_tick);
@@ -337,14 +381,22 @@ void() Trail_Frame =
 	// half a second must not leave the previous one on screen for ever.
 	tr_fade = cvar("hud_trail_fade");
 	if (tr_fade <= 0)
-		tr_fade = 2;
+		tr_fade = 1;
 	if (tr_prevon && cltime - tr_prevat >= tr_fade)
 	{
 		Line_Clear(tr_prev);
 		tr_prevon = FALSE;
 	}
 
-	if (!tr_on || (st != TS_RUNNING && !tr_practice) || tr_cur_on || rec_wt_open ||
+	if (tr_on && st != TS_RUNNING && !tr_cur_on && !rec_sl_holding)
+	if (!tr_practice || (cltime >= tr_settle && Trail_InBoundary(pmove_org)))
+	{
+		if (!tr_stopped)
+			Line_End(tr_live);
+		tr_stopped = TRUE;
+		tr_practice = FALSE;
+	}
+	if (!tr_on || tr_stopped || (st != TS_RUNNING && !tr_practice) || tr_cur_on || rec_wt_open ||
 	    (getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN))
 		return;                     // a finished or cancelled run KEEPS its line
 	if (clientcommandframe == tr_frame)
@@ -426,8 +478,10 @@ float() Trail_Console =
 	print(sprintf("trail: run %g samples, %g Line_End passes, %g since the "
 	              "last, tick %.4f, state %g\n",
 	              tr_nsamp, tr_builds, tr_since, tr_tick, tr_state));
-	print(sprintf("trail: marks %g, breaks %g -- an unobserved teleport is drawn as a long "
-	              "segment here, not a break\n",
-	              ln_evn[tr_live], ln_bkn[tr_live]));
+	print(sprintf("trail: marks %g, breaks %g, stopped %g (visual discontinuities only)\n",
+	              ln_evn[tr_live], ln_bkn[tr_live], tr_stopped));
+	if (ln_n[tr_live] > 0)
+		print(sprintf("trail: head %.3f s at %v\n", ln_t[tr_live * LN_CAP + ln_n[tr_live] - 1],
+		              ln_pos[tr_live * LN_CAP + ln_n[tr_live] - 1]));
 	return TRUE;
 };

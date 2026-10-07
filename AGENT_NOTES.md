@@ -1386,6 +1386,16 @@ publicly WITH its fix, not before it.
   `tools/runlines_smoke.py ftesurf/cfg/test/runlines_ui.cfg` checks this in a
   private content overlay, retaining logs/screenshots and unlinking its content
   junctions. Never run the fixture in the owner's save/config tree.
+- Patch 529: reset/start-save loads retain the failed line and its pre-reset
+  rewind head; a new attempt begins its one-second fade. The practice extension
+  stops in a start/stage boundary after placement settles. Live discontinuities
+  beyond a speed-scaled tolerance are visual dashed breaks, never .rec warps.
+  `runlines_reset.cfg` through `runlines_smoke.py --dedicated`, graded by
+  `test_runlines_reset.py <private log>`, covers map and explicitly requested
+  stage-1 attempts. P502's full dedicated prefix/save/rewind suite also passes.
+  Stage 2 on surf_dune in the first rig teleported outside its start and launched
+  immediately; that is not a valid standing-at-start control. Immediate restart
+  while TS_RUNNING (and clock reset) still needs separate lifecycle handling.
 
 - **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space
   strip, slot 0 the open replay and 1-8 the board's ticked lines. On it:

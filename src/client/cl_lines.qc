@@ -2058,7 +2058,7 @@ float() Line_Console =
 	      "  hud_watch_path_px 1, _px_trail / _px_board -1 (inherit)\n"
 	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
-	      "  hud_trail_prev 1, hud_trail_fade 2 (seconds)\n");
+	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n");
 	return TRUE;
 };
 

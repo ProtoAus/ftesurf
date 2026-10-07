@@ -2202,6 +2202,15 @@ that was never armed (see the bullet below it), and item 10's own residual.
 
 ## Imported runs (Momentum, KSF)
 
+- **An immediate stage restart can reuse/trim the live trail** (run-line review,
+  2026-10-07): `Trail_Frame` keys a new run primarily on TS_RUNNING's rising edge.
+  A stage reset which re-arms and launches inside one transmitted snapshot keeps
+  TS_RUNNING and a backwards clock reaches `Trail_Trim`, discarding the failed
+  attempt rather than retaining/fading it. Control: surf_dune stage-2 zone_goto
+  in a private dedicated overlay can land outside its boundary and launch at
+  once. Falsifier: distinguish an authoritative new attempt from a save/rewind
+  clock-back, preserve failed attempt/head, then start/fade only after departure;
+  P502 same-frame go/save, warm-history and cold-load arms must still pass.
 - **Re-imported Momentum runs read every ramp as free air** (2026-10-04, the
   re-import's review; true of the .wrpath imports too). A .mtv records no ramp
   contact, so fl bit 16 is never set and the plane is 0 0 0 -- and readers take
