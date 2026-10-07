@@ -1387,6 +1387,24 @@ publicly WITH its fix, not before it.
   `tools/test_p502segments.py --rig <retained rig>` falsifies stale-report,
   recorder, clock, board, load-event and loaded-body false greens.
 
+### Similarity collector operational limits (P546–548)
+
+- `simcheck.summary` distinguishes missing/error (counters unavailable), empty
+  (measured zero), and available. Its read-only log line explicitly states no
+  sample or unavailable; it never repairs/migrates a missing table.
+- Each sweep reports unresolved-primary and row-failure counts, even when zero
+  pairs land. These are availability, not player findings or coverage measures.
+- `--sims` remains the source-row cap. `--sims-pairs` independently caps new pair
+  admissions across a pass (default 200; zero disables quietly). Existing pairs
+  consume none; unresolved peers and raised comparisons do consume an attempt.
+  Limit exhaustion creates no fake skip for unattempted pairs. Comparisons still
+  run outside write transactions; only completed rows flush short transactions.
+- This is NOT a hard timeout, per-source ingestion/memory limit, complete-pair
+  scheduler or calibration. Existing pending and first-200-peer semantics remain.
+  `test_simcheck_collection.py` and `test_simcheck_budget_cli.py` are focused
+  temporary SQLite and actual sweep/locator controls; run them in addition to
+  the regular deployment suite, which does not auto-discover new suites.
+
 ## The run line (Patches 432, 449-453)
 
 - Patch 527: `hud_edit lines` has seven rows, not 29. Player (`hud_trail`),

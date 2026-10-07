@@ -918,18 +918,19 @@ def evidence_step(conn):
         return 0, 0
 
 
-def similarity_step(conn, limit=50):
+def similarity_step(conn, limit=50, max_pairs=200):
     """surfd schema 10: store the cross-run similarity sample.  STORE-ONLY --
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
     gate badges down with it.  -> (pairs stored, notable, note)."""
-    if limit <= 0:          # --sims 0: nothing imported, nothing said
+    if limit <= 0 or max_pairs <= 0:  # disabled: nothing imported, nothing said
         return 0, 0, ""
     mod = _simcheck()
     if mod is None:
         return 0, 0, ""
     try:
-        return mod.similarity_step(conn, surfd, limit=limit, tools_dir=TOOLS)
+        return mod.similarity_step(conn, surfd, limit=limit, tools_dir=TOOLS,
+                                   max_pairs=max_pairs)
     except Exception as exc:
         print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
         return 0, 0, ""
@@ -967,7 +968,12 @@ def main(argv=None):
     ap.add_argument("--sims", type=int, default=50,
                     help="how many runs to compare per pass (store-only, "
                          "schema 10; 0 disables the step)")
+    ap.add_argument("--sims-pairs", type=int, default=200,
+                    help="maximum new similarity pair attempts per pass (default 200; "
+                         "0 disables; not a timeout or coverage guarantee)")
     args = ap.parse_args(argv)
+    if args.sims_pairs < 0:
+        ap.error("--sims-pairs must be nonnegative")
     conn = surfd.connect()
     ensure_schema(conn)
     if args.dry_run:
@@ -1002,7 +1008,8 @@ def main(argv=None):
         print("sweep: marked %d receipt verdict(s) to read again" % n)
     added, dropped = evidence_step(conn)
     rcpts, rbad = receipt_step(conn)
-    sims, simnotable, simnote = similarity_step(conn, limit=args.sims)
+    sims, simnotable, simnote = similarity_step(conn, limit=args.sims,
+                                               max_pairs=args.sims_pairs)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:

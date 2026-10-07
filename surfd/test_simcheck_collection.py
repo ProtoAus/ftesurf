@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import sqlite3
+import inspect
+import tempfile
 import unittest
 from unittest import mock
 
@@ -137,6 +139,77 @@ class CollectorAvailability(unittest.TestCase):
         self.assertEqual((stored, notable, len(self.compared)), (3,3,3))
         self.assertEqual(note, 'sims +3')
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 3)
+
+
+class PairBudget(CollectorAvailability):
+    def step(self, budget, limit=50):
+        # The same work ACTS on the predecessor; its absent budget API does not
+        # turn the falsifier into just an unexpected-keyword test.
+        kw = {'max_pairs': budget} if 'max_pairs' in inspect.signature(simcheck.similarity_step).parameters else {}
+        return simcheck.similarity_step(self.conn, self.surfd, limit=limit, **kw)
+
+    def test_aggregate_cap_flushes_then_second_pass_acts(self):
+        stored, notable, note = self.step(1)
+        self.assertEqual((stored, notable, len(self.compared)), (1,1,1))
+        self.assertEqual([(r['a_id'],r['b_id']) for r in self.conn.execute('SELECT * FROM sims')], [(1,2)])
+        self.assertIn('pair limit reached', note)
+        self.compared.clear()
+        stored, notable, note = self.step(1)
+        self.assertEqual((stored, notable, len(self.compared)), (1,1,1))
+        self.assertEqual(self.compared, [('3','1')])
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 2)
+        # No complete-pair scheduling claim: current pending semantics remain.
+
+    def test_unresolved_peer_consumes_attempt(self):
+        def resolve(row):
+            self.resolved.append(row['id'])
+            return (None,'unresolved') if row['id'] == 2 else (str(row['id']),'')
+        self.surfd.replay_file.side_effect = resolve
+        stored, notable, note = self.step(1)
+        self.assertEqual((stored, notable, self.compared), (1,0,[]))
+        self.assertEqual(self.resolved, [1,2])
+        self.assertEqual(self.conn.execute('SELECT verdict FROM sims').fetchone()[0], 'skip')
+        self.assertIn('pair limit reached', note)
+
+    def test_exception_consumes_attempt_and_cannot_overrun(self):
+        def failing(a,b):
+            self.compared.append((a,b))
+            raise RuntimeError('synthetic failure')
+        self.reader.compare_paths.side_effect = failing
+        stored, notable, note = self.step(1)
+        self.assertEqual((stored, notable, len(self.compared)), (0,0,1))
+        self.assertIn('1 row failed', note)
+        self.assertIn('pair limit reached', note)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
+
+    def test_zero_budget_is_import_free_and_quiet(self):
+        with mock.patch.object(simcheck, '_recsim', return_value=(self.reader, 'synthetic')) as loader:
+            self.assertEqual(self.step(0), (0,0,''))
+        loader.assert_not_called()
+        self.assertEqual(self.resolved, [])
+
+    def test_under_budget_real_comparison_retains_metrics(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        for i in range(1,4):
+            rows = ['FTESURF-REC 9','map synthetic','track 0','leg 0','tickrate 100','begin']
+            rows += ['in %d %d 0 %d 0 0 0 0 0 4' % (j,j,100+j%7) for j in range(80)]
+            rows += ['end 80']
+            (root/('%d.rec'%i)).write_text('\n'.join(rows)+'\n')
+        spec = importlib.util.spec_from_file_location('budget_reader', Path(__file__).resolve().parents[1]/'tools'/'census'/'recsim.py')
+        rs = importlib.util.module_from_spec(spec);spec.loader.exec_module(rs)
+        calls = []
+        def real(a,b):
+            calls.append((a,b))
+            self.assertFalse(self.conn.in_transaction)
+            return rs.compare_paths(a,b)
+        self.reader.compare_paths.side_effect = real
+        self.surfd.replay_file.side_effect = lambda row: (str(root/('%d.rec'%row['id'])), '')
+        stored, notable, note = self.step(4)
+        self.assertEqual((stored, notable, len(calls)), (3,3,3))
+        self.assertEqual(note, 'sims +3')
+        self.assertEqual([tuple(r) for r in self.conn.execute('SELECT match,compared FROM sims')], [(1.0,80)]*3)
 
 
 if __name__ == '__main__':

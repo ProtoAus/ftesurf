@@ -72,6 +72,23 @@ _ENV_TOOLS = "SURFD_TOOLS"
 #: will live in its own constant with its own measurement beside it.
 NOTABLE = 0.95
 
+# Operational work cap, not a statistic threshold or a completeness guarantee.
+# Previously 50 source rows could each admit 200 peers in one cron pass.
+MAX_PAIRS = 200
+
+
+class _PairBudget:
+    def __init__(self, maximum):
+        self.remaining = maximum
+        self.attempted = 0
+
+    def take(self):
+        if self.remaining <= 0:
+            return False
+        self.remaining -= 1
+        self.attempted += 1
+        return True
+
 
 def _recsim(tools_dir=None):
     """The recsim module, or (None, why).
@@ -162,7 +179,7 @@ def _row_path(surfd, row):
 
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
-                diagnostics=None):
+                diagnostics=None, budget=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -176,6 +193,10 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     another community's run under another game's physics and cannot be a playback
     of one of ours, and comparing across tiers would fill the table with pairs
     that mean nothing.
+
+    Optional diagnostics count unresolved primary sources for this pass only.
+    An optional shared budget admits new pair attempts, including unresolved
+    peers and raised comparisons; it never stores results for unattempted work.
 
     Every comparison runs with NO transaction open; the rows are written in one
     short transaction after the last.  A pair is ~88 ms on the Pi, and inserting
@@ -205,6 +226,11 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             (a_id, pr["id"], pr["id"], a_id)).fetchone()
         if have:
             continue
+        # Consume admission even when resolution/comparison fails. Already-stored
+        # pairs cost no attempt; unattempted peers get no artificial skip row.
+        if budget is not None:
+            if not budget.take():
+                break
         pb, w = _row_path(surfd, pr)
         if pb is None:
             verdict, reason, d = "skip", "peer unresolved: %s" % w, None
@@ -266,7 +292,8 @@ def pending(conn, limit=50):
         " ORDER BY r.id LIMIT ?", (limit,)).fetchall()
 
 
-def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
+def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
+                    max_pairs=MAX_PAIRS):
     """The sweep's entry point.  -> (pairs stored, notable, note).
 
     `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
@@ -275,11 +302,17 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
     did, guessed it wrong, and the guess named a steamcmd directory that exists.
     With no recsim the note is "similarity skipped: <why>", on every call.
 
+    `limit` bounds selected source rows; `max_pairs` independently bounds admitted
+    new pair attempts across all of them. Zero disables before loading support.
+    This is not a hard deadline, an ingestion bound or complete/fair pair coverage.
+
     A fault here is printed and never stops the verification, exactly as the
     receipt and evidence steps do: this is a store-only measurement, and a
     measurement that cannot run must not take the checks that DO gate badges down
     with it.
     """
+    if limit <= 0 or max_pairs <= 0:
+        return 0, 0, ""
     rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, "similarity skipped: %s" % why
@@ -290,10 +323,13 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0
     diagnostics = {"source_unavailable": 0}
+    budget = _PairBudget(max_pairs)
     for row in rows:
+        if budget.remaining <= 0:
+            break
         try:
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
-                                  diagnostics=diagnostics)
+                                  diagnostics=diagnostics, budget=budget)
         except Exception as exc:
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
@@ -314,6 +350,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
         unavailable.append("%d row failed" % failed)
     if unavailable:
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
+    if budget.remaining <= 0:
+        note = (note + " " if note else "") + (
+            "sims pair limit reached (%d attempted; coverage not measured)" % budget.attempted)
     return stored, notable, note
 
 
