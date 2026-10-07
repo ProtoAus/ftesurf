@@ -194,19 +194,13 @@ string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : 
   carries -- so the momentum tab asks for "clean" and StyleOf already answers
   that for any tab that is not SB_T_SEGMENT.
 */
-float  rec_sb_mixboth;          // the imported tab, with our own times mixed in
-
 string() Scores_TierOf =
 {
 	if (rec_sb_tab != SB_T_MOMENTUM)
 		return OB_TIER;
 	// OB_TIER_IMP and not OB_TIER_MOM: one tab shows every foreign board, each
 	// row saying which it came from, so a third source needs no fifth chip.
-	//
-	// The compare toggle is a TIER rather than a tab of its own because the
-	// question it answers is "against what", not "which board": you are still
-	// looking at the imported times, with yours interleaved for scale.
-	return rec_sb_mixboth ? OB_TIER_BOTH : OB_TIER_IMP;
+	return OB_TIER_IMP;             // imported never silently interleaves native rows
 };
 
 /*
@@ -2273,21 +2267,6 @@ void(vector scr) Scores_Draw =
 		rec_sb_tab = SB_T_MOMENTUM;
 		rec_sb_tabauto = FALSE;
 	}
-	/*
-	  `compare` interleaves our own ranked times into the imported board, so the
-	  two are read against each other rather than side by side.  Drawn only on
-	  that tab, which is what keeps the chip row at five and leaves the refresh
-	  chip its place at the right edge.
-
-	  Toggling it changes the tier the next fetch asks for, so the stored board
-	  no longer describes what is wanted -- Online_Need sees that through
-	  Online_Shows and re-asks by itself.  Nothing is invalidated by hand here.
-	*/
-	if (rec_sb_tab == SB_T_MOMENTUM)
-	if (Scores_Chip("sb_tmix", [x0 + pad * 5 + chipw * 4, ytabs], [chipw, chiph],
-	                "compare", rec_sb_mixboth))
-		rec_sb_mixboth = !rec_sb_mixboth;
-
 	if (Scores_IsOnline())
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	if (Scores_Chip("sb_tref", [x0 + w - pad - chipw, ytabs], [chipw, chiph],

@@ -1618,6 +1618,16 @@ publicly WITH its fix, not before it.
 
 ## Imported runs: Momentum Mod and KSF
 
+- Patch 536 removes the misleading imported-board Compare chip and its
+  rec_sb_mixboth state. Scores_TierOf returns imported for the imported tab,
+  ranked for native; no silent interleaving. Combined read API/database rules
+  remain intact and this is not a live/frame comparator. Private
+  tools/compare_chip_smoke.py proves both board frames actually drew, getter
+  tiers differ, Compare has zero calls and imported/refresh widgets retain
+  positive calls. Screenshots inspected; terms are unaccepted, so the arm proves
+  UI/scope, NOT remote row fetch or new permission. The first test initialized
+  its sentinel as an implicit QC constant; explicit var repaired it and rerun
+  passed with zero warnings. Test-only draw counters are never shipped.
 - **THE TIER IS THE MECHANISM, and it is not decoration.** A foreign run lands
   in its own `tier` (`momentum`, `ksf`), never in `ranked`. `tier` is in the
   runs primary key, so one player holds a time in each without either

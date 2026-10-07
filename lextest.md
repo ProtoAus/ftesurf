@@ -2037,3 +2037,6 @@ leave while held. Does the fractional camera feel continuous? Actual resume/save
 still selects the original sampled point, not an invented interpolated state.
 Normal HUD returns during countdown/after close. Live rewind only; demo held-key
 parity, stitched wait-tail faults and the broad event/comparison work remain open.
+
+**P536 board:** the confusing Compare chip is gone. Imported and native tabs
+remain separate; refresh still exists. This is not a new live/frame comparator.

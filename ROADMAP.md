@@ -489,6 +489,9 @@ camera movement, and old/unknown files are not falsely marked valid.
 
 ### 12.11 Remove the leaderboard "Compare" control
 
+Delivered by P536: chip/mixed-list state removed; imported/native remain separate.
+This is not the continuous per-frame comparator in 12.9.
+
 **Today.** `cl_scores.qc:Scores_Draw` draws the `sb_tmix` chip on the imported
 board. It mixes native ranked and imported rows (`rec_sb_mixboth`); it is NOT
 the live line-by-line comparator requested above.
