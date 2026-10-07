@@ -11,6 +11,27 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — low-cost water readability (Patch 543)
+
+Restart the updated client and try the Water menu on `surf_aesthetic`:
+
+- **Budget (no captures):** the body stays visible toward the horizon instead
+  of turning into a black baked-cubemap rim. It is still an approximation.
+- **Flat sheet:** visible, 70%-alpha material colour; switch Full -> Flat and
+  back without restarting the map. Check visibility of the floor/hazards.
+- **Cheap reflect:** keeps water colour at grazing angles, including when a
+  cube is missing or reflection is disabled. Still has one refraction capture.
+- **Dithered:** stronger default coverage (10/16); glass appearance is unchanged.
+  Explicit `hl2_dither_force` still overrides coverage, and alpha/force edits
+  now rebuild live. Check distance shimmer and readability while surfing.
+- **Full reflect:** matched fixed-normal control is pixel-identical to P541.
+  Its two extra scene renders remain expensive. Optional capture-size test:
+  `r_refractreflect_scale 0.25; flushshaders` (default is 0.5). Judge blur as
+  well as FPS; this is not a promise to recover the pre-reflection frame rate.
+  Restore your prior scale with the same `flushshaders` command afterwards.
+
+No personal setting, progs, movement or Build-number change.
+
 ## 00. 7 Oct — depth-aware live water (Patch 541)
 
 After restarting the updated client, try `surf_aesthetic` with `hl2_water 2`

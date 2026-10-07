@@ -3148,8 +3148,18 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   It has no depth sampler, live reflection or depth-correct above-water fog.
   Modes 1/2 still capture refraction; 2 also captures reflection. Do not call
   mode 1 capture-free, or claim GPU/portable FPS from local wall-frame timings.
-- Plugin_GetCvar masks CVAR_SHADERSYSTEM. The renderer now opts water alone
-  into its shader-rebuild policy. Cvar_Get2 does not retrofit that flag onto an
+- P543: shader reload must compare old/new sort after successful parsed VMT
+  and shader-file paths too, not only generator fallback. Early `continue`
+  skipped resort: cold flat water worked while a live Full -> Flat switch
+  drew before the floor. Sampler-free flat colour avoids GLSLONLY's missing
+  compatibility progless path. Water Bayer cells floor gl_FragCoord (pixel
+  centres are .5); glass intentionally keeps its older path. Coverage knobs
+  now have narrow renderer-owned shader policies, not a wider plugin flag mask.
+  `r_refractreflect_scale` is cached into material portalfboscale: change plus
+  `flushshaders` and prove actual capture dimensions before timing. A no-flush
+  scale arm is inert and proves nothing about CPU versus GPU cost.
+- Plugin_GetCvar masks CVAR_SHADERSYSTEM. P523 opted water alone into the
+  renderer's shader-rebuild policy; P543 also opts in the two coverage knobs. Cvar_Get2 does not retrofit that flag onto an
   existing variable. Preserve default/early user value/archive flags and test
   both initialization orders rather than widening every plugin flag at once.
 - Patch 528 gates the live 0..4 row on LOCAL extension

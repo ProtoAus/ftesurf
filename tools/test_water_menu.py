@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source contracts for P523/P528; runtime needs separate old/new native controls.
+"""Source contracts for water/menu policies; runtime needs acting native controls.
 Run: python tools/test_water_menu.py --engine <FTE checkout>
 """
 from pathlib import Path
@@ -110,6 +110,53 @@ def contracts(product: Path, engine: Path) -> list[str]:
           "generator includes budget shader")
     check('"vmt/waterbudget"' in embedded, "generated header embeds budget shader")
     check("FTESurf-private" not in embedded, "generated header has no private build path")
+
+    # P543: a successful parsed material used to continue before the sort check.
+    reload_body = shader[shader.index('void Shader_DoReload'): ] if 'void Shader_DoReload' in shader else shader[shader.index('Reloading shaders'): ]
+    check(reload_body.count('goto sortcheck;') == 3
+          and 'sortcheck:' in reload_body
+          and 'if (s->sort != oldsort)' in reload_body,
+          "parsed and generated shader reloads both reconsider world batch sort")
+    for knob in ('alpha', 'force'):
+        name = f'hl2_dither_{knob}_shaderpolicy'
+        check(f'Cvar_Register (&{name},' in renderer
+              and re.search(rf'{name}\s*=\s*CVARFD\("hl2_dither_{knob}"[^\n]*CVAR_SHADERSYSTEM', renderer),
+              f'dither {knob} has narrow renderer-owned live rebuild policy')
+    sheet_path = engine / 'plugins/hl2/glsl/vmt/watersheet.glsl'
+    sheet = sheet_path.read_text(encoding='utf-8') if sheet_path.exists() else ''
+    check(bool(sheet) and '!!samps' not in sheet and 'fog4blend' in sheet,
+          "flat sheet has no samplers/captures and outputs translucent colour")
+    check('vmt/watersheet#FOGTINT=' in vmt and 'ALPHA=0.7' in vmt
+          and 'watersheet' in make and '"vmt/watersheet"' in embedded,
+          "flat sheet is emitted and embedded, not a disk-only development shader")
+    dither = (engine / 'plugins/hl2/glsl/vmt/flatdither.glsl').read_text(encoding='utf-8')
+    check('#ifdef WATER' in dither and 'p = floor(p);' in dither
+          and 'vmt/flatdither#WATER=1' in vmt,
+          "water uses integer Bayer cells; glass retains its existing path")
+    check('hl2_dither_force->value <= 0' in vmt and 'a < 0.65f' in vmt,
+          "water minimum coverage does not override explicit force")
+    check('mix(colour, reflected, 0.65 * fresnel)' in budget,
+          "budget retains body colour at grazing angles")
+    live = (engine / 'plugins/hl2/glsl/vmt/water.glsl').read_text(encoding='utf-8')
+    cheap_start = live.find('#ifdef LQWATER\n#ifdef REFLECTCUBEMASK')
+    cheap = live[cheap_start:] if cheap_start >= 0 else ''
+    check('#ifdef REFLECTCUBEMASK' in cheap and 'refl = vec3(FOGTINT)' in cheap
+          and 'fres *= 0.65;' in cheap,
+          "cheap baked reflection has an absent-sampler fallback and bounded weight")
+
+    # GLSL's gl_FragCoord is at half-pixel centres. The integer water arm must
+    # cover exactly 10/16 at the default and all 16 at force .98, unlike glass.
+    def thresholds(integer: bool) -> list[float]:
+        def b2(x: float, y: float) -> float:
+            return (2*x + 3*y) % 4
+        return [(4*b2((x if integer else x+.5) % 2,
+                      (y if integer else y+.5) % 2)
+                 + b2(x//2, y//2) + .5)/16
+                for y in range(4) for x in range(4)]
+    check(sum(t <= .65 for t in thresholds(True)) == 10
+          and sum(t <= .98 for t in thresholds(True)) == 16
+          and sum(t <= .98 for t in thresholds(False)) == 14,
+          "Bayer positive and half-pixel negative arithmetic controls act")
     return failures
 
 

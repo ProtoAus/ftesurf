@@ -5,6 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Refract dither with explicit translucent flags -- 2026-10-07
+
+`plugins/hl2/mat_vmt.c:Refract` plus the shared translucent tail: a synthetic
+Refract with `$translucent 1` / `$alpha 0.4` in mode 2 changes the dither pass
+into a blended pass. On GLSL-only compatibility OpenGL that pass can disappear.
+The matching plain Refract control draws an acting dither and remains
+pixel-identical across P543. Not fixed as part of water readability.
+Falsifier: identical synthetic pane geometry/texture with and without those
+keys; prove shader bits/program and covered pixels, then preserve the chosen
+mode's discard coverage rather than silently selecting the progless blend path.
+
 ## Native build ignores NoDeploy -- 2026-10-07
 
 `src/build.ps1:BuildEngine/DeployNative`: `-Engine -NoDeploy` still copies all
@@ -21,7 +32,9 @@ backups, and missing secondary-install handling must remain explicit.
 
 P541 fixes depth binding and shallow distortion/fog in live modes 1/2;
 `plugins/hl2/glsl/vmt/water.glsl` uses eye-depth gap, not Source's fog-alpha
-capture or volumetric ray length. Modes 0/3/4 remain their existing choices.
+capture or volumetric ray length. P543 fixes mode 0 visibility/live sorting,
+strengthens water-only dither, and limits dark baked reflection in modes 1/4;
+these low-cost modes remain approximations.
 OpenGL controls pass on surf_aesthetic and neutral/fog-range/no-fog variants;
 other materials and backends are not yet runtime-verified. Falsifier: matching
 Source/reference captures from above/below, grazing/rotated and foreground
