@@ -94,6 +94,7 @@ entity vbsp_fog_default;	// the one Source would start the map on
 entity vbsp_fog_active;		// the one currently applied
 string vbsp_fog_lastname;	// last name the server asked for; edge-detect
 float  vbsp_fog_lastonoff;	// last vbsp_fog value applied; edge-detect
+string vbsp_fog_lastsettings;
 
 float  vbsp_fog_skyhave;
 vector vbsp_fog_skycol;
@@ -124,7 +125,16 @@ vector(string s) Fog_ParseColour =
 */
 void(string cmd, entity c, float scale) Fog_EmitOne =
 {
-	local float m, r, e2;
+	local float m, r, e2, distance_mul, density_mul;
+	local float sidistic;
+
+	sidistic = (strcmp(serverkey("map"), "surf_sidistic") == 0);
+	distance_mul = cvar("vbsp_fog_distance");
+	density_mul = cvar("vbsp_fog_density");
+	if (distance_mul < 0) distance_mul = sidistic ? 2 : 1;
+	if (density_mul < 0) density_mul = sidistic ? 0.5 : 1;
+	distance_mul = bound(0.1, distance_mul, 16);
+	density_mul = bound(0, density_mul, 1);
 
 	if (!c || !c.fog_on || !cvar("vbsp_fog"))
 	{
@@ -132,7 +142,7 @@ void(string cmd, entity c, float scale) Fog_EmitOne =
 		return;
 	}
 
-	m = bound(0, c.fog_maxdens, 1);
+	m = bound(0, c.fog_maxdens * density_mul, 1);
 	r = c.fog_end - c.fog_start;
 
 	/*
@@ -152,13 +162,13 @@ void(string cmd, entity c, float scale) Fog_EmitOne =
 	if (scale <= 0)
 		scale = 1;
 
-	e2 = (c.fog_start + m * r) / scale;		// the reparametrised end -- see header
+	e2 = (c.fog_start + m * r) * distance_mul / scale;		// the reparametrised end -- see header
 
 	localcmd(sprintf("%s %g %g %g %g %g %g\n", cmd,
 	                 e2,
 	                 c.fog_colour_x, c.fog_colour_y, c.fog_colour_z,
 	                 m,
-	                 c.fog_start / scale));
+	                 c.fog_start * distance_mul / scale));
 };
 
 /*
@@ -278,6 +288,7 @@ void() Fog_LoadFromWorld =
 	vbsp_fog_active   = world;
 	vbsp_fog_lastname = "";
 	vbsp_fog_lastonoff = -1;
+	vbsp_fog_lastsettings = "";
 	vbsp_fog_skyhave  = FALSE;
 	best = world;
 
@@ -385,17 +396,15 @@ void() Fog_LoadFromWorld =
 */
 void() Fog_Frame =
 {
-	local string want;
+	local string want, settings;
 	local float onoff;
 	local entity c;
-
-	if (!vbsp_fog_count && !vbsp_fog_skyhave)
-		return;
 
 	onoff = cvar("vbsp_fog") ? 1 : 0;
 	want  = getstats(STAT_FS_FOGCTRL);
 
-	if (want == vbsp_fog_lastname && onoff == vbsp_fog_lastonoff)
+	settings = strcat(cvar_string("vbsp_fog_distance"), ":", cvar_string("vbsp_fog_density"));
+	if (!strcmp(want, vbsp_fog_lastname) && onoff == vbsp_fog_lastonoff && !strcmp(settings, vbsp_fog_lastsettings))
 		return;
 
 	if (want != vbsp_fog_lastname)
@@ -411,6 +420,7 @@ void() Fog_Frame =
 
 	vbsp_fog_lastname  = want;
 	vbsp_fog_lastonoff = onoff;
+	vbsp_fog_lastsettings = settings;
 
 	Fog_Apply(vbsp_fog_active);
 	Fog_EmitSky();

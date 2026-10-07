@@ -780,6 +780,9 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  CVAR_ARCHIVE, same reason as vbsp_skyroom above.
 	*/
 	registercvar("vbsp_fog", "1", CVAR_ARCHIVE);
+	//Patch 538: -1 selects map defaults without mutating the user's settings.
+	registercvar("vbsp_fog_distance", "-1", CVAR_ARCHIVE);
+	registercvar("vbsp_fog_density", "-1", CVAR_ARCHIVE);
 
 	// Pre-strafe jump releases +forward for you.  See PreStrafe_InputFrame.
 	registercvar("run_prestrafe", "1");

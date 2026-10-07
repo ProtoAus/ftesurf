@@ -3243,6 +3243,37 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Pitfalls discovered the hard way
 
+### Source water and visual controls (Patch 538)
+
+- `CVAR_NOSET` does not defeat an early command-line `+set`: cvar registration
+  preserves an already created value. The server's `pm_sourceversion` therefore
+  derives from `PMSRC_VERSION` and is force-set immediately after registration.
+  A startup override to 2 must still advertise and record 3; later console writes
+  must be refused. Do not let prediction follow a different mover from the pin.
+- Reject non-finite ramp pins before version-3 dispatch. `IS_NAN` is an exponent
+  bit test (also rejects infinity); floating-point unordered tests can be folded
+  under fast-math. Both the header and a valid two-integer `pm` restatement need
+  a native REFUSE control. A malformed restatement which the parser ignores is
+  not that control.
+- `CL_Fog_f` blends for one second. Wait at least 1.5 seconds after fog changes
+  before comparing settled screenshots. A 750ms restore screenshot is not an
+  identity test. Underwater material fog must act with `r_waterwarp 0`; the warp
+  flag is not an immersion test. `fg_new` includes CoD/Doom: use `MDLF_SOURCEBSP`
+  when disabling Quake's orange plain-water blend for VBSP only.
+- Swimming is mover version 3; v1/v2 pins and old-server prediction retain their
+  original water drift. A dry recording repinned to 3 is only a dry regression
+  control. A fresh real-recorder wet+jump run reproduced 136/136 arrivals and
+  native PASS (144 rows /154 ticks) on Windows and aarch64; the old native engine
+  REFUSEd that version. Cross-architecture dry gates also matched all seven
+  `pm_dettest` rows on bhop_eazy and surf_ace.
+- Automatic visual knobs do not exec sticky map overrides: hue -999 and fog
+  distance/density -1 choose map defaults; explicit settings remain the user's.
+  Source hue runs after LUTs, scene-only. Neutral/no-LUT maps bypass the pass.
+  `surf_sidistic` selects 150 degrees, distance 2, max-opacity multiplier .5.
+  There is no scripted water-lip jump and no submerged portal/stair/carrier
+  collision runtime claim. Portal maps reuse the prior portal-aware slider.
+
+
 - **An isolated renderer rig must also isolate the executable's plugin directory.**
   `-basedir <rig>` plus an original-install executable can still load that
   executable's old HL2 DLL. For a plugin-only falsifier, copy the unchanged exe

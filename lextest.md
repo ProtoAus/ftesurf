@@ -11,6 +11,25 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — swimming and the sidistic palette (Patch 538)
+
+Swimming input/drag and real-recorder wet replay pass machine controls. Judge
+feel and visual taste in actual play after restarting the updated client:
+
+- On `surf_sidistic`, does the automatic blue-green hue (150 degrees), twice
+  the fog distance and half maximum fog density look pleasant and keep hazards
+  readable beyond the starting room? Try `hl2_colour_hue_strength 0.6` for a
+  subtler shift, or `hl2_colour_hue 160` for a more cyan tone.
+- `hl2_colour_hue 0`, `vbsp_fog_distance 1`, `vbsp_fog_density 1` restore the
+  map's authored look. Return to automatic with hue `-999` and fog values `-1`.
+  Check another map with these automatic settings: it keeps its original hue.
+- Judge underwater visibility with your chosen water-material mode; the orange
+  water overlay is gone, but authored material fog can intentionally be dense.
+  `r_sourcewater 0` is an appearance control, not a swimming-physics toggle.
+
+Scripted water-lip jump and submerged portal/stair/carrier assurance are in
+BACKLOG, not silently included in this acceptance. Personal cfg is untouched.
+
 ## 00. 7 Oct — red Impact ERROR art (Patch 534)
 
 The standalone `models/missing_error.md3` has extruded Impact ERROR letters,

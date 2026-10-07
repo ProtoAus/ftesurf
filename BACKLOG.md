@@ -5,6 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Source swimmer: exit and collision coverage -- 2026-10-07
+
+Patch 538 restores actual swimming input/drag and versioned wet replay. Remaining
+Source-parity/assurance work is separate from the fixed drift and orange tint:
+
+- `engine/common/pm_source.c:PMSrc_FullWalkMove` still has no Source scripted
+  water-lip jump. Falsifier: a level-2 submerged player pressing forward at a
+  climbable lip gets the Source reference's timed exit impulse; controls for a
+  solid ceiling, no lip and jump release do not get an unsolicited teleport.
+- `PMSrc_WaterMove` reuses the old portal-aware slider on portal maps, avoiding a
+  speculative down-step at an exit. Submerged portal crossing, aperture edges,
+  water stairs/sliding and carrier-collision cases are not runtime-verified.
+  Falsifier: a proven submerged portal control transforms destination/angles/
+  velocity and increments crossing count; basevelocity is removed exactly once;
+  blocked/free stair and moving-carrier arms both act and a fresh version-3 wet
+  replay reproduces them on Windows and aarch64. Do not infer this coverage from
+  ordinary free-water swimming or the dry determinism/replay gates.
+
 ## Missing-asset selection: Source pass maps and model failures -- 2026-10-07
 
 Patch 534 ships the 64x64 engine-checker override and a red/fullbright extruded

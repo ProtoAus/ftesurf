@@ -112,6 +112,33 @@ attached to the matching [GitHub Release](../../releases) — unzip it into
 
 ---
 
+## Source water and colour controls
+
+Source water supports swimming input, drag, sinking and jump-to-rise. Underwater
+appearance uses the map material's distance fog rather than Quake's orange tint;
+water with no authored fog gets a subtle blue-green fallback. This works with
+`r_waterwarp 0` and adds no blur or reflection capture. `r_sourcewater 0` restores
+the legacy appearance without changing movement.
+
+On **`surf_sidistic` only**, automatic settings rotate the red scene toward
+blue-green, double Source fog distances and halve its maximum density. Other
+maps keep their original hue and fog settings. The HUD is never colour-graded.
+Console controls are live and archived:
+
+| Cvar | Default | Meaning |
+|---|---:|---|
+| `hl2_colour_hue` | `-999` | Automatic map hue (150° on `surf_sidistic`, 0° elsewhere). An explicit degree value overrides it; `0` keeps the original hue. Applied after authored LUTs. |
+| `hl2_colour_hue_strength` | `1` | Hue blend, 0..1; `0` disables the hue change. |
+| `vbsp_fog_distance` | `-1` | Automatic distance multiplier (2 on `surf_sidistic`, 1 elsewhere). Explicit values scale fog start/end distances. |
+| `vbsp_fog_density` | `-1` | Automatic maximum-opacity multiplier (0.5 on `surf_sidistic`, 1 elsewhere). Explicit 0..1 values reduce Source's fog maximum density. |
+
+For the map's original look: `hl2_colour_hue 0`, `vbsp_fog_distance 1`,
+`vbsp_fog_density 1`. Restore the automatic defaults with `-999`, `-1`, `-1`.
+Hue uses the existing scene postprocess, not another LUT or an extra blur pass;
+neutral maps with no authored LUT skip that pass entirely. OpenGL visuals.
+
+---
+
 ## Layout
 
 | Path | |
