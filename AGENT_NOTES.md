@@ -1623,6 +1623,23 @@ publicly WITH its fix, not before it.
   New diagnostics are PRIVATE programs: never deploy probe commands/raw output.
   General requested/native clock UX, real teleport/contact truth and human
   moving-camera feel remain unverified. Engine commit/tag and qcbuild unchanged.
+  Frozen published source `72e7884` production pair installed to both Windows
+  trees at 2026-10-07 11:28:21 UTC, keeping ordinary `.prev`. CSQC SHA256
+  `ac19e6df987d33393b6c1e526f0ab3d7256d9754fa27e49f47c6741efc36e22b`;
+  SSQC remains `e56b81df...`. No private diagnostic markers in production.
+  Installed dedicated P502 main/edges ACT/pass using FTESurf's client and
+  FTEQuake's actual `fteqw64.exe`; finish verified 11:34:44 UTC. The initial
+  FTEQuake arm used absent `ftesurf64.exe` (WinError 2 before client action):
+  recheck destination hashes and finish only with the actual executable, do
+  not recopy the progs. Protected native/plugin/menu/personal/default config
+  and Quakers hashes stayed unchanged.
+  Pi deployment is PENDING: normal `-Pi` occupancy gate found one player in
+  lobby 1 and refused before copies/restarts; no force. Independent read at
+  11:32:04 UTC found predecessor `e7e519c3...` CSQC and all 12 units active.
+  A later directory read still had 12 current rows and the same occupied port.
+  Retry the frozen production build normally when empty, then verify remote
+  hashes, every unit and fresh-cache live behavior. Do not claim fleet delivery
+  or drop the connected player to finish this deployment.
 - P540: raw trail break/stitch columns (8/9), not only legacy flag
   `0x4000000`, gate `Trail_VisualState` interpolation. `Rewind_Camera` bounds
   its +/-3-point tangent to the cursor's continuous span. Compiled positives
