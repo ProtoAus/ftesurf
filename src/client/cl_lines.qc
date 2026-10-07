@@ -2014,6 +2014,8 @@ void() Line_FrameEnd =
 */
 void() Line_RegisterCvars =
 {
+	registercommand("lines");
+	registercvar("hud_lines_board", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_marks",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_land",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_leave",  "1", CVAR_ARCHIVE);
@@ -2036,6 +2038,28 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_names",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
+};
+
+// Advanced settings stay addressable by their archived names.
+float() Line_Console =
+{
+	if (argv(0) != "lines")
+		return FALSE;
+	print("lines: independent switches (0 off, 1 on):\n"
+	      "  hud_trail 1       player line\n"
+	      "  hud_watch_path 1  open demo line\n"
+	      "  hud_lines_board 1 selected board lines\n"
+	      "Labels: hud_lines_nums 0/1/2 (off/contacts/+peaks)\n"
+	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
+	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
+	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
+	      "  hud_lines_ref 0/1 (HUD/run start), hud_seq_units 0/1/2\n"
+	      "Style: hud_watch_path_color 0..4, hud_watch_path_far 6000\n"
+	      "  hud_watch_path_px 1, _px_trail / _px_board -1 (inherit)\n"
+	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
+	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
+	      "  hud_trail_prev 1, hud_trail_fade 2 (seconds)\n");
+	return TRUE;
 };
 
 void() Line_StatsReset =

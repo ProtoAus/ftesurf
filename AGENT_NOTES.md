@@ -1379,6 +1379,14 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 527: `hud_edit lines` has seven rows, not 29. Player (`hud_trail`),
+  demo (`hud_watch_path`) and selected board (`hud_lines_board`) lines are
+  independent and on by default. Turning off board drawing retains selections.
+  `lines help` lists advanced label/style cvars; their existing names still work.
+  `tools/runlines_smoke.py ftesurf/cfg/test/runlines_ui.cfg` checks this in a
+  private content overlay, retaining logs/screenshots and unlinking its content
+  junctions. Never run the fixture in the owner's save/config tree.
+
 - **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space
   strip, slot 0 the open replay and 1-8 the board's ticked lines. On it:
   `V` where the run touched ground or a ramp, a chevron where it left one, a

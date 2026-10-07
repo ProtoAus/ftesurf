@@ -1959,6 +1959,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (SaveLoc_Console())
 		return TRUE;
 
+	if (Line_Console())         // `lines help`: compact pane's console controls
+		return TRUE;
 	if (Trail_Console())        // Patch 475: `trail`
 		return TRUE;
 	if (Rewind_Console())       // Patch 477: `rewind`
