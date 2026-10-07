@@ -5,6 +5,29 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Native build ignores NoDeploy -- 2026-10-07
+
+`src/build.ps1:BuildEngine/DeployNative`: `-Engine -NoDeploy` still copies all
+native outputs into the product root and QuakeDir. Measured while isolating
+P541; copies were guarded and restored from `.prev`. Current safe workaround:
+use an isolated product worktree AND explicit private `-QuakeDir`.
+
+Falsifier for a future fix: hash both live native/progs sets before/after a
+clean isolated `-Engine -NoDeploy` build; no destination write or `.prev`
+rotation. Ordinary `-Engine` must still deploy both sets, with preserved
+backups, and missing secondary-install handling must remain explicit.
+
+## Source live water: parity and depth-cost coverage -- 2026-10-07
+
+P541 fixes depth binding and shallow distortion/fog in live modes 1/2;
+`plugins/hl2/glsl/vmt/water.glsl` uses eye-depth gap, not Source's fog-alpha
+capture or volumetric ray length. Modes 0/3/4 remain their existing choices.
+OpenGL controls pass on surf_aesthetic and neutral/fog-range/no-fog variants;
+other materials and backends are not yet runtime-verified. Falsifier: matching
+Source/reference captures from above/below, grazing/rotated and foreground
+views, with an acting depth control per arm; measure frame cost as well as
+appearance. Do not infer universal FPS from no additional scene capture.
+
 ## Source swimmer: exit and collision coverage -- 2026-10-07
 
 Patch 538 restores actual swimming input/drag and versioned wet replay. Remaining

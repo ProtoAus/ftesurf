@@ -87,6 +87,16 @@ into findings or completed tests into claims about an unverified deployed build.
 
 ## Build
 
+**Native isolation pitfall (measured P541).** `build.ps1 -Engine -NoDeploy`
+only suppresses QC deployment: the BuildEngine branch still copies native
+outputs to its product root AND QuakeDir. For an isolated engine build, the
+product root must be an isolated worktree and pass `-QuakeDir <private path>`
+explicitly (a nonexistent path skips the second native deployment). Do not
+assume NoDeploy protects C:\FTEQuake. A guarded `.prev` restoration is required
+if those files were accidentally copied; preserve any peer replacement. The
+script itself remains a follow-up in BACKLOG.
+
+
 From `src/`, with pwsh 7 (NOT `powershell`):
 
     pwsh -NoProfile -Command "./build.ps1 -Jobs 8"
@@ -3029,6 +3039,23 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   Linux runs are UNRANKED during the beta (Patch 389: SV_ProfileBroken demotes a
   profile without IPH_RAW; delete those three lines to lift it). Patch 387's
   entry lists what Linux input evidence cannot see.
+
+## Source live-water depth (Patch 541)
+
+`$refractiondepth` must set both HASREFRACT and HASREFRACTDEPTH; a sampler
+read returning zero did not prove the pass acted. The fixed-camera raw-depth
+control distinguished an absent attachment from real scene depth. Depth
+capture avoids the colour-only oblique projection: reconstruct from the actual
+m_projection, not near/far assumptions. In mode 1 leave sampler slot 1 null so
+adding depth at slot 2 does not accidentally request a planar reflection.
+
+For cloned BSP material controls, copy the map's actual `dep <map> <addon>`
+rows, not invented CSV rows. Missing dependencies made sky/brush controls
+invalid. One launch per map gave stable hundreds-of-draws readback; chained
+map loads took almost 30 seconds and could screenshot a loading frame despite
+waitmap/waitms. Prove contents at the camera: a point under a wet-looking slab
+can be solid. Neutral-normal, fog-range and no-fog controls must visibly act.
+Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Source water and material menu (Patch 523)
 

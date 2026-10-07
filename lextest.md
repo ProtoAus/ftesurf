@@ -11,6 +11,25 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — depth-aware live water (Patch 541)
+
+After restarting the updated client, try `surf_aesthetic` with `hl2_water 2`
+(your existing preference is retained). Live water now uses real refraction
+depth for shallow distortion and material fog, instead of full-screen smearing.
+Judge moving-water detail, shoreline clarity and reflection strength against
+Momentum; this is not a claim of pixel-identical Source rendering.
+
+- Look across the pool and down near pillars/steps: does it still pull a
+  foreground object across the shore or make hazards hard to judge?
+- Mode 1 keeps live refraction with cubemap reflection. Mode 4 stays the cheap,
+  capture-free approximation; mode 3 remains dither. Those are quality/cost
+  choices, not supposed to look identical to mode 2.
+- Check your actual frame rate in play. Live modes add a depth attachment to
+  their existing refraction pass, not a new scene pass; no universal FPS gain
+  is claimed. Dense authored underwater fog is retained, not made transparent.
+
+No personal cfg, swimming, progs, evidence format or Build-number change.
+
 ## 00. 7 Oct — rewind camera at stitched breaks (Patch 540)
 
 Raw break/stitch boundaries no longer blend velocity/view across attempts,
