@@ -2024,7 +2024,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	ge = -1;
 	while (i <= ib)
 	{
-		// Unbuilt tail: at most three samples in normal live capture. No stale
+		// Unbuilt tail: up to TR_BUILD-1 (15) samples in live capture. No stale
 		// sphere/LOD may cull or skip it; Line_Feed retains near clip and breaks.
 		if (i >= ln_published[s])
 		{

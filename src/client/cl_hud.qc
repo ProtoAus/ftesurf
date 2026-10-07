@@ -19,6 +19,9 @@
 
 // --- cached cvars -----------------------------------------------------------
 float  ui_cv_scale;
+// Rewind publishes a visual-only cursor frame; never fed to recorder/prediction.
+float ui_rw_on, ui_rw_was, ui_rw_time, ui_rw_tick, ui_rw_ref, ui_rw_refok, ui_rw_track, ui_rw_velok;
+vector ui_rw_vel, ui_rw_org;
 float  ui_cv_speed, ui_cv_keys, ui_cv_debug, ui_cv_energy, ui_cv_energyref;
 float  ui_cv_predicted;     // build 39: read the predicted state, not the stats
 float  ui_cv_strict;        // build 39: no ramp plane means no target, not a wrong one
@@ -2037,8 +2040,12 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	  as a blur, and rounding its input to a step of 5 would make it jump between
 	  three colours instead of sliding between them.
 	*/
-	gain = sp - ui_prev_speed;
-	ui_prev_speed = sp;
+	gain = 0;
+	if (!ui_rw_on)
+	{
+		gain = sp - ui_prev_speed;
+		ui_prev_speed = sp;
+	}
 
 	// Build 65: hud_speed_size overrides, or 0 keeps 24*hud_scale.  p_y advances by
 	// `sz` below, so the panel's own height follows the size with no second edit.
@@ -2054,7 +2061,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	// was never the thing in the way, and it is how Momentum's own
 	// speedometer reads too.
 	Font_Set(ui_font_display);
-	s  = sprintf("%d", rint(HUD_Round(ui_hl_speed)));
+	s  = (ui_rw_on && !ui_rw_velok) ? "--" : sprintf("%d", rint(HUD_Round(ui_hl_speed)));
 	bw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
 	bh = sz;
 	HUD_TextC(p, s, sz, HUD_GainColor(gain), 1);
@@ -2076,6 +2083,11 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		ref = HUD_EnergyRef();
 		if (!ui_anchor_manual && !ui_cv_energyref)
 			nozone = (ui_anchor_zone < 0);
+		if (ui_rw_on)
+		{
+			ref = ui_rw_ref;
+			nozone = !ui_rw_refok;
+		}
 
 		e    = Strafe_Energy(org, vel, gravity);
 		erel = e - ref;
@@ -2152,6 +2164,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		  the first one whose pair is genuinely matched.
 		*/
 		ehold = (ui_rs_armed || rec_sl_held);
+		if (ui_rw_on) ehold = FALSE;
 
 		if (ui_hl_tick && !ehold)
 			ui_hl_e = erel;
@@ -2176,16 +2189,18 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 			print(sprintf("tick %g hold %g nz %g\n", ui_hl_tick, ehold, nozone));
 		}
 
-		if (nozone)
+		if (ui_rw_on && !ui_rw_velok)
+			s = "-- no sampled velocity";
+		else if (nozone)
 			s = "-- no start zone";
 		else if (ui_cv_energy >= 2)
 		{
 			veq = Strafe_EquivSpeed(ui_hl_e, gravity);
 			// Build 66: no space before the unit, HUD-wide.
-			s   = sprintf("e %du/s", rint(HUD_Round(veq)));
+			s   = sprintf(ui_rw_on ? "e line %du/s" : "e %du/s", rint(HUD_Round(veq)));
 		}
 		else
-			s = sprintf("e %d", rint(HUD_Round(ui_hl_e)));
+			s = sprintf(ui_rw_on ? "e line %d" : "e %d", rint(HUD_Round(ui_hl_e)));
 
 		// Build 65: its own size, because it is a second readout inside one panel
 		// and "make the energy line bigger" is not "make the speedometer bigger".
@@ -5583,6 +5598,17 @@ void(vector scr) HUD_Draw =
 	*/
 	hude_n = 0;
 	HUD_UpdateLatch();
+	if (ui_rw_on || ui_rw_was) ui_hl_tick = TRUE;
+	ui_rw_was = ui_rw_on;
+	if (ui_rw_on)
+	{
+		// Do not differentiate scrubs as physics or mutate live board history.
+		if (ui_cv_speed) HUD_DrawSpeed(scr, ui_rw_vel, ui_rw_org);
+		if (ui_cv_mapinfo) HUD_DrawMapInfo(scr);
+		HUD_DrawSubmitWarn(scr);
+		ui_lasttime = cltime;
+		return;
+	}
 
 	// Build 47.  AFTER the latch, so a traced frame reports the same numbers the
 	// rows on screen are about to; and here rather than inside HUD_UpdateLatch

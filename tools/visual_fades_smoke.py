@@ -130,7 +130,7 @@ void() Visual_LineScene =
 	Line_Begin(vf_lineslot);
 	for (i = 0; i < LN_CHUNK; i = i + 1)
 	{
-		if (vf_pending && i == LN_CHUNK - 3) Line_End(vf_lineslot);
+		if (vf_pending && i == LN_CHUNK - (vf_pending > 2 ? vf_pending : 3)) Line_End(vf_lineslot);
 		Line_Add(vf_lineslot, eye + dir * 160 + side * (i * 120 / (LN_CHUNK - 1) - 60),
 		         100, 0, 0, i * 0.01, vf_pending == 2 && i == LN_CHUNK - 3);
 	}
@@ -150,6 +150,7 @@ void() Visual_LineDraw =
 	ln_npt = ln_nseg = 0;
 	Line_Draw(vf_lineslot, 999999, '0 0 0', 1, 1);
 	if (vf_pending) Visual_Check(ln_npt >= 5, "pending tail actually emitted");
+	if (vf_pending > 2) Visual_Check(ln_npt >= vf_pending + 2, "full 15-sample tail actually emitted");
 	// Flush the deferred 2D polygon without painting over the subject.
 	drawfill('0 0 0', '1 1 0', '0 0 0', 1, 0);
 };
@@ -292,7 +293,11 @@ def replace_once(text, old, new):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--output-dir', type=Path, required=True)
+    ap.add_argument('--grade-only', type=Path, help='Regrade an existing acted overlay; never relaunch')
     args = ap.parse_args()
+    if args.grade_only:
+        grade(args.grade_only)
+        return
     args.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='ftesurf-visual-source-', dir=args.output_dir))
     work.rmdir()
@@ -336,6 +341,7 @@ def main():
     config = config.replace('echo RUNLINES COMPLETE',
                             'visual_line_scene 9 1 1\nwaitms 250\nscreenshot vf_pending.png\n'
                             'visual_line_scene 9 1 2\nwaitms 250\nscreenshot vf_pending_break.png\n'
+                            'visual_line_scene 9 1 15\nwaitms 250\nscreenshot vf_pending_long.png\n'
                             'echo RUNLINES COMPLETE')
     cfg.write_text(config.replace('waitms 250\n', 'waitms 250\nwait 20\n'))
     run(['pwsh', '-NoProfile', '-File', './build.ps1', '-Jobs', '8', '-QuakeDir', ''], work / 'src')
@@ -347,6 +353,10 @@ def main():
         raise RuntimeError('Overlay runner failed; retained paths are printed above')
     # The runner prints its retained overlay directory as its last line.
     overlay = Path(result.stdout.strip().splitlines()[-1].removeprefix('Retained private rig: '))
+    grade(overlay, work)
+
+
+def grade(overlay, work=None):
     log = (overlay / 'ftesurf/logs/runlines_smoke.log').read_text(errors='replace')
     expected_checks = LINE_TEST.split('float vf_lineon')[0].count('Visual_Check(')
     if f'VISUAL CHECKS: {expected_checks} checks, 0 failures' not in log:
@@ -359,8 +369,8 @@ def main():
     if any(e in log.lower() for e in errors):
         raise RuntimeError('Shader/runtime error in retained log')
     shots = sorted(overlay.rglob('vf_*.png'))
-    if len(shots) != 51:
-        raise RuntimeError(f'Expected 51 retained screenshots, got {len(shots)}')
+    if len(shots) != 52:
+        raise RuntimeError(f'Expected 52 retained screenshots, got {len(shots)}')
     from PIL import Image
     images = {p.stem: Image.open(p).convert('RGB') for p in shots}
     def data(image):
@@ -387,12 +397,18 @@ def main():
     levels = [pixels[f'vf_sub_{i:02d}'] for i in range(33)]
     if len(set(levels)) < 30 or levels != sorted(levels) or levels[0] != 0:
         raise RuntimeError(f'Body coverage still stepped/nonmonotonic: {levels}')
-    if list(data(images['vf_sub_32'])) != list(data(images['vf_mid_control'])):
-        raise RuntimeError('Coverage sweep opaque endpoint differs from normal colours')
+    endpoint = images['vf_sub_32']
+    control = images['vf_mid_control']
+    if pixels['vf_sub_32'] != pixels['vf_mid_control']:
+        raise RuntimeError('Coverage sweep opaque endpoint differs from normal coverage')
+    # Five one-channel 1/255 differences occurred after the long sweep. Keep
+    # the same tight survivor tolerance used above; never forgive changed masks.
+    if any(max(abs(x-y) for x, y in zip(a, b)) > 1 for a, b in zip(data(endpoint), data(control))):
+        raise RuntimeError('Coverage sweep endpoint changed normal colours')
     print(f'Body coverage: {len(set(levels))} distinct monotonic levels over 32 substeps (old Bayer <=17).')
     if 'VISUAL FAIL:' in log:
         raise RuntimeError('Pending-tail emit control failed')
-    if log.count('VISUAL LINE:') != 10:
+    if log.count('VISUAL LINE:') != 11:
         raise RuntimeError('Line drawing controls did not act')
     for name in ('live', 'demo'):
         start, half, full, control = (images[f'vf_{name}_{phase}'] for phase in
@@ -415,12 +431,16 @@ def main():
     full = sum(sum(p) for p in data(images['vf_live_control']))
     pending = sum(sum(p) for p in data(images['vf_pending']))
     broken = sum(sum(p) for p in data(images['vf_pending_break']))
+    long_tail = sum(sum(p) for p in data(images['vf_pending_long']))
+    if not 0.99 < long_tail / full < 1.01:
+        raise RuntimeError(f'15-sample pending tail pixels incorrect: {full} {long_tail}')
     if not 0.99 < pending / full < 1.01 or not 0.92 < broken / full < 0.99:
         raise RuntimeError(f'Pending tail/break pixels incorrect: {full} {pending} {broken}')
     print(f'Renderer: far opaque, middle {ratio:.6f}, near hidden, surviving colours preserved.')
-    print(f'{expected_checks} alpha checks and 51 renderer screenshots passed; retained screenshots:')
+    print(f'{expected_checks} alpha checks and 52 renderer screenshots passed; retained screenshots:')
     print(overlay)
-    print('Retained isolated test-only source:', work)
+    if work is not None:
+        print('Retained isolated test-only source:', work)
 
 
 if __name__ == '__main__':

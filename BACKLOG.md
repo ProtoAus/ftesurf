@@ -2222,14 +2222,12 @@ that was never armed (see the bullet below it), and item 10's own residual.
 These are reported defects to reproduce, not confirmed root causes or fixes.
 The full requested feature plan and delivery order are in ROADMAP.md section 12.
 
-- **Rewind values should drive the normal timer/speed/energy HUD.** The cursor
-  is read by `cl_rewind.qc:Rewind_Cursor/Rewind_Draw` and
-  `cl_trailstate.qc:Trail_CursorState`; `cl_hud.qc:HUD_DrawSpeed/HUD_EnergyRef`
-  and the main clock must consume the same visual pose/time instead of a
-  duplicate readout or the frozen live body. Falsifier: park a fractional
-  cursor at a non-zero-speed point and hold it; main clock, units/speed and
-  energy match that point and do not advance. Scrub/close/resume restores live
-  values/history without a cursor energy-rate leak. Plan 12.1.
+- **Demo parity for held strafe scrolling.** P535 delivers main cursor HUD and
+  bind-resolved held strafe scrolling for live rewind. `cl_watch.qc:Watch_InputEvent`
+  still needs equivalent demo navigation. Falsifier: remap and hold/release strafe
+  in native/imported demos, then close/change focus while held; no dangling repeat
+  or movement leak. Compound binds and the full historical input matrix are not
+  implied by P535's live-only controls. Plan 12.2.
 - **Repeated stitched rewind has zero-speed pauses/time creep followed by a
   jolt.** Lex reports several cut/resume attempts producing stationary stretches
   while the displayed timer updates. Failed-tail/hold-time capture is only a

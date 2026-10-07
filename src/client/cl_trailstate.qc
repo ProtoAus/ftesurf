@@ -58,30 +58,67 @@ float(string s, float endt) Trail_Refeed =
 	return TRUE;
 };
 
-// Binary search on the nondecreasing run clock, including duplicate ticks.
-// Rewind's camera uses the sampled posture/angles, not today's live posture.
-void(float t) Trail_CursorState =
+// Last sample at/before t on the nondecreasing clock, including duplicates.
+float(float t) Trail_RawIndex =
 {
 	local float lo, hi, mid;
-	tr_cur_flags = 0;
-	tr_cur_ang = '0 0 0';
-	if (tr_raw < 1)
-		return;
+
+	if (tr_raw < 1) return -1;
 	lo = 0;
 	hi = buf_getsize(tr_raw) - 1;
+	if (hi < 0) return -1;
 	while (lo < hi)
 	{
 		mid = ceil((lo + hi) * 0.5);
-		if (stof(bufstr_get(tr_raw, mid)) <= t)
-			lo = mid;
-		else
-			hi = mid - 1;
+		if (stof(bufstr_get(tr_raw, mid)) <= t) lo = mid;
+		else hi = mid - 1;
 	}
-	if (tokenize(bufstr_get(tr_raw, lo)) != 14)
-		return;
+	return lo;
+};
+
+// Authoritative practice-save posture/velocity remains the selected sample.
+void(float t) Trail_CursorState =
+{
+	local float i;
+
+	tr_cur_flags = 0;
+	tr_cur_ang = '0 0 0';
+	i = Trail_RawIndex(t);
+	if (i < 0) return;
+	if (tokenize(bufstr_get(tr_raw, i)) != 14) return;
 	tr_cur_flags = stof(argv(7));
 	tr_cur_ang = [stof(argv(13)), stof(argv(10)), 0];
 	tr_cur_vel = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+};
+
+float tr_vis_ok, tr_vis_flags;
+vector tr_vis_vel, tr_vis_ang;
+// Visual interpolation has separate outputs; never used to serialize a save.
+void(float t) Trail_VisualState =
+{
+	local float i, t0, t1, f;
+	local vector vel0, ang0;
+
+	tr_vis_ok = FALSE;
+	tr_vis_flags = 0;
+	tr_vis_vel = tr_vis_ang = '0 0 0';
+	i = Trail_RawIndex(t);
+	if (i < 0) return;
+	if (tokenize(bufstr_get(tr_raw, i)) != 14) return;
+	tr_vis_ok = TRUE;
+	tr_vis_flags = stof(argv(7));
+	tr_vis_ang = [stof(argv(13)), stof(argv(10)), 0];
+	tr_vis_vel = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+	t0 = stof(argv(0));
+	vel0 = tr_vis_vel;
+	ang0 = tr_vis_ang;
+	if (i + 1 >= buf_getsize(tr_raw)) return;
+	if (tokenize(bufstr_get(tr_raw, i + 1)) != 14) return;
+	t1 = stof(argv(0));
+	if (t1 <= t0 || (stof(argv(7)) & 0x4000000)) return;
+	f = bound(0, (t - t0) / (t1 - t0), 1);
+	tr_vis_vel = vel0 + ([stof(argv(4)), stof(argv(5)), stof(argv(6))] - vel0) * f;
+	tr_vis_ang = Interp_View(ang0, [stof(argv(13)), stof(argv(10)), 0], f);
 };
 
 void(float t) Trail_Trim =

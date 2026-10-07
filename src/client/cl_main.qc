@@ -1467,6 +1467,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	if (rec_wt_on)
 		Watch_Camera();
 	Rewind_Camera();                // Patch 477: the cursor's chase view
+	Rewind_Present();               // visual cursor snapshot before HUD/timer draws
 
 	/*
 	  BUILD 30: the ghost camera, and the body it left behind.
@@ -1616,7 +1617,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// which consumes the rect this publishes.  It claims no cursor and
 		// draws with drawfill/HUD_Text only, so it has no ordering relationship
 		// with any of the panels below.
-		Trn_Draw(scr);
+		if (!ui_rw_on) Trn_Draw(scr);
 
 		/*
 		  BUILD 65 -- the Boarding window.
@@ -1635,7 +1636,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  own relationship with the strafe bar.
 		*/
 		Boarding_ReadCvars();
-		if (!spc_hud)                 // Patch 385: it is your own ramp, not the watched player's
+		if (!spc_hud && !ui_rw_on)     // no live ramp grade on an inspection cursor
 			Boarding_Draw(scr, ui_board_bottom);
 
 		/*

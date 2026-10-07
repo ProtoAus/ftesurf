@@ -31,14 +31,17 @@
 #define RW_ASK      2           // seconds a clean run's second press has
 #define RW_LOST     5           // seconds a go may go unanswered before the mode gives up
 #define RW_KEPT     7900        // run ticks back the server keeps: RW_CAP x RW_EVERY, less a margin
-#define RW_KEYS     6           // the keys rw_kst tracks, Rewind_KeyIx's order
+#define RW_NAVN    16           // simultaneous physical strafe binds
+#define RW_KEYS   22           // six fixed keys plus RW_NAVN bind slots
 
 float  rw_on;                   // the mode is up: browsing, sent or counting
 float  rw_st0;                  // STAT_FS_TIMERSTATE when it opened
 float  rw_seen;                 // the last STAT_FS_SLSEQ it saw while browsing
 float  rw_headi, rw_headt;      // the head when it opened: the leave's resume point
 vector rw_headp;
-float  rw_i;                    // cursor: a point index in the live trail slot
+float  rw_i;                    // fractional visual index; selection stays at floor
+float rw_visualt;
+vector rw_visualp;
 float  rw_dir;                  // scrub key held: -1, +1 or 0
 float  rw_dirat;                // cltime it went down
 float  rw_last;                 // cltime of the last Rewind_Frame
@@ -56,6 +59,8 @@ float  rw_resn;                 // ...with this many samples, so the same unchan
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
+float rw_navscan[RW_NAVN], rw_navdir[RW_NAVN], rw_navtime[RW_KEYS];
+float rw_moveid;                // physical owner of the repeating direction
 #define RW_SWN      8
 float  rw_sw[RW_SWN];           // other keys this mode swallowed, still held: theirs until let go (round 21)
 float  rw_krep;                 // ...and the event in hand repeats one already down
@@ -97,6 +102,29 @@ float(string b) Rewind_MoveBind =
 
 float(float scan) Rewind_KeyIx =
 {
+	local float i, k, dir;
+	local string bind;
+
+	// Retain press identity through rebinding/focus changes until release.
+	for (i = 0; i < RW_NAVN; i = i + 1)
+		if (rw_navscan[i] == scan && scan)
+		{
+			k = 6 + i;
+			if (rw_kdown[k] || rw_kst[k]) return k;
+			rw_navscan[i] = 0;
+		}
+	bind = getkeybind(scan);
+	dir = 0;
+	if (!strcmp(bind, "+moveleft")) dir = -1;
+	if (!strcmp(bind, "+moveright")) dir = 1;
+	if (dir && scan)
+		for (i = 0; i < RW_NAVN; i = i + 1)
+			if (!rw_navscan[i] || (!rw_kdown[6 + i] && !rw_kst[6 + i]))
+			{
+				rw_navscan[i] = scan;
+				rw_navdir[i] = dir;
+				return 6 + i;
+			}
 	if (scan == 's')            return 0;
 	if (scan == K_ENTER)        return 1;
 	if (scan == K_KP_ENTER)     return 2;
@@ -104,6 +132,14 @@ float(float scan) Rewind_KeyIx =
 	if (scan == K_RIGHTARROW)   return 4;
 	if (scan == K_ESCAPE)       return 5;
 	return -1;
+};
+
+float(float k) Rewind_NavDir =
+{
+	if (k == 3) return -1;
+	if (k == 4) return 1;
+	if (k >= 6 && k < RW_KEYS) return rw_navdir[k - 6];
+	return 0;
 };
 
 // Review round 17: every key event, from the top of CSQC_InputEvent, ahead of
@@ -185,7 +221,7 @@ void(float evtype, float scanx) Rewind_Track =
 
 void() Rewind_Cursor =
 {
-	local float n, b;
+	local float n, b, j, f;
 
 	n = ln_n[tr_live];
 	if (rw_i > n - 1)
@@ -193,8 +229,34 @@ void() Rewind_Cursor =
 	if (rw_i < 0)
 		rw_i = 0;
 	b = tr_live * LN_CAP + floor(rw_i);
+	j = min(tr_live * LN_CAP + n - 1, b + 1);
+	f = rw_i - floor(rw_i);
+	if (ln_brk[j] || ln_t[j] <= ln_t[b]) f = 0;
 	tr_cur_t = ln_t[b];
 	tr_cur_p = ln_pos[b];
+	rw_visualt = ln_t[b] + (ln_t[j] - ln_t[b]) * f;
+	rw_visualp = ln_pos[b] + (ln_pos[j] - ln_pos[b]) * f;
+};
+
+// Publish presentation only. Resume/save still quantize inside their existing
+// server requests; no live anchor or evidence history is rewritten by a scrub.
+void() Rewind_Present =
+{
+	local float gravity;
+
+	ui_rw_on = (rw_on && !rw_ack && !rw_cd && tr_cur_on);
+	if (!ui_rw_on) return;
+	Trail_VisualState(rw_visualt);
+	gravity = serverkeyfloat("sv_gravity");
+	if (gravity < 1) gravity = 800;
+	ui_rw_time = rw_visualt;
+	ui_rw_tick = tr_tick;
+	ui_rw_org = rw_visualp;
+	ui_rw_vel = tr_vis_vel;
+	ui_rw_velok = tr_vis_ok;
+	ui_rw_track = getstatf(STAT_FS_TIMERTRACK);
+	ui_rw_refok = (ln_n[tr_live] > 0);
+	ui_rw_ref = ln_z0[tr_live] + ln_v20[tr_live] / (2 * gravity);
 };
 
 // The cursor is further back than the server's ring reaches, so a save or a
@@ -246,6 +308,7 @@ float() Rewind_Open =
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
+	rw_moveid = -1;
 	rw_openat = cltime;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
@@ -446,12 +509,8 @@ void() Rewind_Frame =
 		return;
 	dt = cltime - rw_last;
 	rw_last = cltime;
-	if (rw_dir < 0)
-	if (!rw_kdown[3])
-		rw_dir = 0;
-	if (rw_dir > 0)
-	if (!rw_kdown[4])
-		rw_dir = 0;
+	if (rw_moveid >= 0)
+		if (!rw_kdown[rw_moveid]) rw_dir = 0;
 	if (rw_ack)
 	{
 		Rewind_Answer();
@@ -517,6 +576,21 @@ void() Rewind_Frame =
 		Rewind_Close();
 		return;
 	}
+	if (!rw_dir)
+	{
+		rw_moveid = -1;
+		for (k = 0; k < RW_KEYS; k = k + 1)
+			if (rw_kst[k] == 1 && rw_kdown[k] && Rewind_NavDir(k))
+			{
+				if (rw_moveid < 0) rw_moveid = k;
+				else if (rw_navtime[k] >= rw_navtime[rw_moveid]) rw_moveid = k;
+			}
+		if (rw_moveid >= 0)
+		{
+			rw_dir = Rewind_NavDir(rw_moveid);
+			rw_dirat = cltime;
+		}
+	}
 	if (rw_dir)
 	{
 		rate = RW_RATE0 + (RW_RATEMAX - RW_RATE0) * min(1, (cltime - rw_dirat) / RW_ACCEL);
@@ -546,11 +620,11 @@ void() Rewind_Camera =
 		d = '1 0 0';
 	a = vectoangles(d);
 	makevectors([0, a_y, 0]);
-	Trail_CursorState(tr_cur_t);
-	eye = (tr_cur_flags & WT_F_DUCKED) ? cvar("pm_duckviewheight") : cvar("pm_viewheight");
+	Trail_VisualState(rw_visualt);
+	eye = (tr_vis_flags & WT_F_DUCKED) ? cvar("pm_duckviewheight") : cvar("pm_viewheight");
 	if (eye <= 0)
-		eye = (tr_cur_flags & WT_F_DUCKED) ? 47 : 64;
-	cam = tr_cur_p + '0 0 1' * eye;
+		eye = (tr_vis_flags & WT_F_DUCKED) ? 47 : 64;
+	cam = rw_visualp + '0 0 1' * eye;
 	if (cvar("hud_rewind_chase"))
 	{
 		traceline(cam, cam - v_forward * RW_CAMBACK + '0 0 1' * RW_CAMUP,
@@ -558,13 +632,12 @@ void() Rewind_Camera =
 		cam = trace_endpos + trace_plane_normal * 4;
 	}
 	setproperty(VF_ORIGIN, cam);
-	setproperty(VF_ANGLES, cvar("hud_rewind_chase") ? [12, a_y, 0] : tr_cur_ang);
+	setproperty(VF_ANGLES, (cvar("hud_rewind_chase") || !tr_vis_ok) ? [12, a_y, 0] : tr_vis_ang);
 	PVS_Publish(cam);
 };
 
 void(vector scr) Rewind_Draw =
 {
-	local float tk;
 	local string s;
 
 	if (!rw_on)
@@ -592,12 +665,7 @@ void(vector scr) Rewind_Draw =
 	}
 	HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0], "REWIND", 28 * ui_cv_scale,
 	          '0.45 0.85 1', 0.95);
-	Font_Set(ui_font_ui);           // the readout and the key line; reset at the end
-	tk = (tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0;
-	s = sprintf("%s   %g u/s", Time_TickString(tk, tr_tick),
-	            floor(ln_spd[tr_live * LN_CAP + floor(rw_i)]));
-	HUD_TextC([scr_x * 0.5, scr_y * 0.12 + 36 * ui_cv_scale, 0], s,
-	          16 * ui_cv_scale, '1 1 1', 0.95);
+	Font_Set(ui_font_ui);           // context/key line; main HUD owns the numbers
 	if (rw_atres)
 		HUD_TextC([scr_x * 0.5, scr_y * 0.12 + 56 * ui_cv_scale, 0],
 		          "where you last resumed -- what you did since is not on this line",
@@ -605,9 +673,9 @@ void(vector scr) Rewind_Draw =
 	if (rw_ack)
 		s = "...";
 	else if (Rewind_Old())
-		s = "LEFT/RIGHT scrub   too far back: the server keeps the last two minutes";
+		s = "arrows/strafe binds scrub   too far back: the server keeps the last two minutes";
 	else
-		s = "LEFT/RIGHT scrub   ENTER resume here   S save here";
+		s = "arrows/strafe binds scrub   ENTER resume here   S save here";
 	s = strcat(s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
 	HUD_TextC([scr_x * 0.5, scr_y * 0.88, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	Font_Reset();
@@ -642,9 +710,10 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		}
 		st = rw_kst[k];
 		rw_kst[k] = 0;
-		if (st == 1)
-		if (k == 3 || k == 4)
+		if (st == 1 && rw_moveid == k)
 			rw_dir = 0;
+		if (st == 1 && Rewind_NavDir(k))
+			return TRUE;           // its down never reached the movement bind
 		// A `+` bind's release always reaches it: one held into the mode that
 		// was not seen going down would otherwise stick (round 3).
 		if (substring(getkeybind(scanx), 0, 1) == "+")
@@ -710,17 +779,19 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	// or a save-lock bind would act now (a refused go leaves the view turning, a
 	// stored -sl_hold lets go of a later hold), so it is swallowed as before.
 	if (rw_ack)
-	if (k == 0 || k == 3 || k == 4)
+	if (k == 0 || Rewind_NavDir(k))
 	if (Rewind_MoveBind(getkeybind(scanx)))
 		return FALSE;
 	if (k >= 0)
 		rw_kst[k] = 1;
 	if (rw_ack)                     // a go in flight: one round trip
 		return k >= 0;
-	if (k == 3 || k == 4)
+	if (Rewind_NavDir(k))
 	{
 		rw_dirat = cltime;
-		rw_dir = (k == 3) ? -1 : 1;
+		rw_navtime[k] = cltime;
+		rw_moveid = k;
+		rw_dir = Rewind_NavDir(k);
 		rw_i = rw_i + rw_dir;
 		Rewind_Cursor();
 		return TRUE;
@@ -802,7 +873,10 @@ float(float evtype, float scanx) Rewind_AfterTook =
 	if (rw_krep)
 		return TRUE;
 	if (evtype == IE_KEYUP)         // a release swallowed elsewhere: Rewind_Frame
+	{
 		rw_kst[k] = 0;
+		if (Rewind_NavDir(k)) return TRUE;
+	}
 	return FALSE;
 };
 
@@ -866,6 +940,8 @@ float() Rewind_Console =
 		print(sprintf("rewind: at %s  %s\n", Rewind_At(),
 		              Time_TickString(tr_tick > 0 ? rint(tr_cur_t / tr_tick) : 0, tr_tick)));
 		print(sprintf("rewind: pin %g serial %g\n", getstatf(STAT_FS_PIN), rw_serial));
+		print(sprintf("rewind: HUD %g time %.6f speed %.3f e_line %.3f index %.6f dir %g sampled %g\n",
+		              ui_rw_on, ui_rw_time, ui_hl_speed, ui_hl_e, rw_i, rw_dir, ui_rw_velok));
 		cam = getproperty(VF_ORIGIN);
 		print(sprintf("rewind: camera height %.2f chase %g\n",
 		              cam_z - tr_cur_p_z, cvar("hud_rewind_chase")));
@@ -920,6 +996,8 @@ void() Rewind_Reset =
 {
 	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = rw_leave = rw_atres = 0;
 	rw_resi = -1;
+	rw_moveid = -1;
 	tr_cur_on = FALSE;
+	ui_rw_on = ui_rw_was = FALSE;
 	Rewind_SwReset();
 };

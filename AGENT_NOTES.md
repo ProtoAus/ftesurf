@@ -1537,6 +1537,40 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- Patch 535: ui_rw_* is a presentation-only snapshot, published after camera
+  setup and consumed by the existing main timer/speed/energy panels. Fractional
+  rw_visualt/p and tr_vis_* never serialize a save: tr_cur_t/p, raw selected
+  velocity/angles and prefix bound remain at the same floor sample as before.
+  Duplicate clocks keep the last sample; position/velocity do not blend through
+  breaks. The timer says display-only; `e line` is relative to the first line
+  sample's total energy (not the current live/manual/jump anchor). Missing raw
+  velocity displays unavailable, not a fabricated zero. Live physics/board
+  derivatives and unsupported ramp/trainer panels stay out of the cursor path.
+  Entry/exit force the readout latch; pending-go/countdown use normal live HUD.
+- Bound bare +moveleft/+moveright commands now scrub live rewind, not assumed
+  A/D. Up to 16 simultaneously held physical bind identities track separately;
+  released slots recycle. Held-before-open keys are not adopted; repeats do not
+  step again; release/rebind/focus identity and overlapping-direction fallback
+  retain ownership. Movement during pending-go/countdown follows the preexisting
+  release-gate policy, not queued navigation. Compound binds and demo parity are
+  not claimed. This is not the full P477 27-round matrix or a stitched-idle fix.
+- `tools/rewind_hud_smoke.py` uses private test-only seams and a real dedicated
+  socket: 21 sample-vs-visual/unknown/ownership assertions and 12 acted HUD/input
+  phases, including native viewpos proving a stationary pinned body. Actual main
+  HUD/camera and post-resume screenshots inspected. Initial seam needed a later
+  Rewind_Reset prototype; the first grader expected `origin:` rather than the
+  actual viewpos `setpos` output. Both repaired and controls rerun. First product
+  compile caught a nonexistent tr_track and wrong Interp_Arc arity, corrected
+  using the existing stat and Interp_View before any product publication.
+- P533 tail-batch correction: TR_BUILD is 16, so a live tail can have 15 pending
+  points, not three. The implementation already handles it; extended pixel/emit
+  controls now prove the full 15-point tail. 37 alpha assertions, 52 screenshots.
+  Long-sweep opaque body had five one-channel 1/255 differences; the endpoint
+  now uses the same <=1 RGB tolerance as survivor checks, retaining exact coverage
+  masks. Original images regraded explicitly, not silently relabeled/relaunched.
+  306 recorder-reader checks pass; unchanged checker/corpus hashes retain the
+  existing 269 REC observation (164 REC faults plus six of 91 paired VIEW faults).
+
 - **The rewind rides the replay's pin, marked as its own: `rec_watch 1 rw`.** A
   pinned RUNNING run is frozen and practice, and EVERY way out of a rewind ends
   that run rather than thawing it -- a thaw past an unrecorded freeze convicts its

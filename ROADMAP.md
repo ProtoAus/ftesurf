@@ -260,13 +260,21 @@ not in this public file.
 
 ## 12. Run-line and rewind overhaul — Lex, 7 Oct 2026
 
-**Status: requested and planned, NOT implemented by this entry.** These requests
+**Status: incremental delivery; the full overhaul is NOT implemented.** P535
+implements the main rewind cursor timer/speed/energy, removes its duplicate
+readout, adds fractional visual motion without changing sampled save state, and
+adds bind-resolved held strafe scrolling for live rewind. Demo parity, stitched
+idle-tail diagnosis, event browsing, imports and real comparison remain below.
+These requests
 supersede treating rewind as a separate little time/speed readout. Keep the
 reported defects in BACKLOG.md until their falsifiers pass. The chunk reveal
 and nearby-player dither fades requested earlier are implemented separately
 by Patch 532; they are not proof that this overhaul has shipped.
 
 ### 12.1 One cursor state for the main HUD
+
+P535 delivers main timer/speed/energy and duplicate-readout removal. `e line`
+uses recorded start energy; missing velocity is explicitly unavailable.
 
 **Build.** During player-line rewind and demo-line inspection/rewind, the normal
 **timer, speed/units and energy displays** show the exact same cursor sample as
@@ -289,6 +297,9 @@ all cursor readings stay still. Scrub both ways, cancel, resume, countdown and
 switch between demo/player lines: no live-HUD leakage or stale energy rate.
 
 ### 12.2 Strafe binds also scroll rewind
+
+P535 delivers bare-command binds for live rewind; demo parity/compound binds and
+the full historical ownership acceptance matrix remain open.
 
 **Build.** `+moveleft` scrolls backward; `+moveright` scrolls forward, alongside
 the existing controls. Resolve the player's binds, not literal A/D keys. Held

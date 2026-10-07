@@ -1376,6 +1376,17 @@ void(vector scr) Timer_Draw =
 	  smooth between ticks and a stale ui_tm_lastat would make the first frame
 	  after the replay ends jump.
 	*/
+	if (ui_rw_on)
+	{
+		tick = ui_rw_tick > 0 ? ui_rw_tick : Timer_Tick();
+		y = Timer_DrawPanel(scr, TS_RUNNING, ui_rw_time / tick,
+		                    TF_PRACTICE | TF_FROZEN, 0, tick,
+		                    [0, 0, ui_rw_track], '0 0 0');
+		HUD_TextC([scr_x * ui_tm_x, y, 0], "rewind cursor -- display only",
+		          HUD_Size("hud_timer_sub_size", 8 * ui_cv_scale), TC_SHADOW, 0.95);
+		Font_Reset();
+		return;                    // no live split/pace edges from backward seeks
+	}
 	if (rec_wt_on)
 	{
 		tick = rec_wt_tickrate > 0 ? rec_wt_tickrate : Timer_Tick();

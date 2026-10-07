@@ -446,7 +446,10 @@ void() Trail_Draw =
 	if (tr_on)
 	{
 		if (tr_cur_on)
-			Line_Draw(tr_live, tr_cur_t, tr_cur_p, 0.35, 1);
+		{
+			if (ui_rw_on) Line_Draw(tr_live, ui_rw_time, ui_rw_org, 0.35, 1);
+			else Line_Draw(tr_live, tr_cur_t, tr_cur_p, 0.35, 1);
+		}
 		else
 			Line_Draw(tr_live, 99999999, '0 0 0', 1, 1);
 	}

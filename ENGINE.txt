@@ -25,7 +25,7 @@ commit   ee59d58f17e7cc4547db5d4304c233da28f20ad6
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-531
-patch    534
+patch    535
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,11 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-07
 
+# PATCH 535: REWIND PRESENTATION/CONTROLS. Main timer/speed/energy follow
+# the fractional visual cursor; e line is relative to the recorded first sample.
+# Sampled save/resume state stays separate. Bound strafe commands scroll with
+# physical press/release ownership. No engine code/tag or qcbuild change.
+#
 # PATCH 534: MISSING-ASSET ART ONLY. The authored 64x64 no_texture override
 # replaces engine diffuse checkers with gl_load24bit 1. Includes a generated
 # extruded Impact ERROR model, red/fullbright with a small additive halo.

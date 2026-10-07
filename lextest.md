@@ -2012,7 +2012,7 @@ too, top right (the engine's counter was drawn underneath the menu's 3D).
 
 ---
 
-## 12. Run-line and nearby-player fades (Patch 532)
+## 12. Run-line fades and rewind cursor controls (Patches 532–535)
 
 `hud_edit lines` now includes **Chunk fade** (instant / fast / smooth / slow)
 plus **Nearby players**, **Hidden within** and **Opaque beyond**. Defaults:
@@ -2028,3 +2028,12 @@ bulk rebuilds and replaces the body's 16-level pattern with fine static noise.
   players off for comparison. Ghosts and your own avatar are unchanged.
 - Judge on the high-refresh PC too: the automated pixel controls prove coverage
   and colour, not subjective motion quality or every renderer/driver.
+
+**P535 rewind:** the usual clock, speed and energy now follow the visual cursor;
+its clock says display-only and energy says `e line` (relative to the recorded
+line start, not today's live anchor). No second time/speed line. Try your actual
+strafe binds held/released, remapped and overlapped with arrows, then resume or
+leave while held. Does the fractional camera feel continuous? Actual resume/save
+still selects the original sampled point, not an invented interpolated state.
+Normal HUD returns during countdown/after close. Live rewind only; demo held-key
+parity, stitched wait-tail faults and the broad event/comparison work remain open.
