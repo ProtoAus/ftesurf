@@ -1560,14 +1560,21 @@ publicly WITH its fix, not before it.
   Legacy saves retain the nonempty run-ID gate. Streamed and buffered six-cut
   controls now pass, including native body/ticks at the selected snapshot,
   counted failed waits, hold/release and 17 compiled refusal/reset controls.
-  Grader counterfactuals: 11 streamed / 10 buffered pass. P502 main/edges and
+  Grader counterfactuals: 19 streamed / 18 buffered pass. P502 main/edges and
   its nine grader controls pass in both recorder modes. Reader 306/0; read-only
-  corpus remains 903 recordings / 13 faults. The first candidate omitted the
+  corpus remains 269 recordings / 164 recording faults and 91 views / 6 view
+  faults, with byte-identical before/after reports. The first candidate omitted the
   separate SV_RewindWriteState writer and correctly remained red. A diagnostic
   seam initially used nonexistent fields (fteqcc crashed without output); fix
   the probe, not product code. `p502segments --content` is needed in source-only
   worktrees: a missing map proves no gameplay. Broader visual acceptance remains
-  open; these probes do not judge rendered labels or camera feel.
+  open; these probes do not judge rendered labels or camera feel. Independent
+  review caught a vacuous `zip` native-body oracle: empty/truncated vectors
+  could pass. Enforce complete unique finite native fields and keep eight
+  malformed-field counterfactuals. Old parser accepts the acted empty-body
+  negative; corrected parser rejects it and all other malformed arms. Initial
+  draft corpus counts were incorrect; inspect the complete report, not line
+  counts or a recalled summary, before publishing a count.
 - P533/P535/P536/P537 final frozen product `2b7cced` deployment verified
   2026-10-07 at 06:07:21 UTC. Both Windows installs and Pi have CSQC SHA256
   `541accec08be6396d4e711947c8092a641183c97c0242a7661913fd74851e66a`;

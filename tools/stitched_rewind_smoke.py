@@ -13,6 +13,7 @@ lineage forces another cold reload and drops older state snapshots. Keep the
 strict oracle and native server-body/clock controls; silence is not a pass.
 """
 import argparse
+import math
 from pathlib import Path
 import re
 import shutil
@@ -186,8 +187,18 @@ def dump(gd, label):
     return meta, cursor, rows
 
 def native(gd, label):
-    return {s.split()[0]: list(map(float, s.split()[1:])) for s in
-            (gd / f'cfg/test/server_{label}.txt').read_text().splitlines()}
+    widths = {'expected': 3, 'body': 3, 'ticks': 2, 'hold': 3, 'identity': 2}
+    fields = {}
+    for row in (gd / f'cfg/test/server_{label}.txt').read_text().splitlines():
+        parts = row.split()
+        assert parts and parts[0] in widths and parts[0] not in fields, 'unknown/duplicate native field'
+        name = parts[0]
+        assert len(parts) == widths[name] + 1, 'incomplete native observation'
+        values = list(map(float, parts[1:]))
+        assert all(math.isfinite(x) for x in values), 'non-finite native observation'
+        fields[name] = values
+    assert fields.keys() == widths.keys(), 'missing native observation'
+    return fields
 
 def grade(gd, streamed=True):
     log = (gd / 'logs/runlines_smoke.log').read_text(errors='replace')

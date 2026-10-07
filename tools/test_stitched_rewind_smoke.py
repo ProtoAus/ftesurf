@@ -46,6 +46,14 @@ def main():
     source = a.rig / 'ftesurf'
     cases = [
         ('native-body', lambda gd: native_field(gd, 'cold2_hold1', 'body', '0 0 0')),
+        ('empty-body', lambda gd: native_field(gd, 'cold2_hold1', 'body', '')),
+        ('short-body', lambda gd: native_field(gd, 'cold2_hold1', 'body', '0 0')),
+        ('empty-expected', lambda gd: native_field(gd, 'cold2_hold1', 'expected', '')),
+        ('short-expected', lambda gd: native_field(gd, 'cold2_hold1', 'expected', '0 0')),
+        ('native-nan', lambda gd: native_field(gd, 'cold2_hold1', 'body', 'nan 0 0')),
+        ('native-infinity', lambda gd: native_field(gd, 'cold2_hold1', 'body', 'inf 0 0')),
+        ('short-ticks', lambda gd: native_field(gd, 'cold2_hold1', 'ticks', '1')),
+        ('duplicate-native', lambda gd: change(gd / 'cfg/test/server_cold2_hold1.txt', 'expected ', 'expected 0 0 0\nexpected ')),
         ('held-clock', lambda gd: native_field(gd, 'warm1_hold2', 'ticks', '1 2')),
         ('release-not-acted', lambda gd: native_field(gd, 'cold3_release', 'hold', '1 1 1')),
         ('missing-guard', lambda gd: change(gd / 'logs/runlines_server.log', 'STITCH GUARD cold-match', 'NOT A GUARD')),
