@@ -32,6 +32,10 @@ def head(part):
 class Reset(unittest.TestCase):
     data = None
 
+    def setUp(self):
+        if self.data is None:
+            self.skipTest('requires a retained runtime log')
+
     def test_run_acted(self):
         self.assertGreater(points(self.data['GROW1'])[1], 10)
         self.assertGreater(points(self.data['GROW2'])[1], points(self.data['GROW1'])[1])

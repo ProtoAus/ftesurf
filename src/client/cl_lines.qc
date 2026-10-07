@@ -156,7 +156,7 @@ float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 
 // The marks' own frame state: the cvars, read once, and the declutter grid.
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
-float  ln_mkpx, ln_mkgap;
+float  ln_mkpx, ln_mkgap, ln_declutter;
 // Line widths, px, read once a frame: the replay's, the board's, your own run's.
 float  ln_wpx, ln_wpxb, ln_wpxt;
 
@@ -187,6 +187,8 @@ float  ln_labover;              // ...and the ones past LN_LABMAX
 vector ln_lab_p[LN_LABMAX];
 vector ln_lab_c[LN_LABMAX];
 float  ln_lab_a[LN_LABMAX];
+float  ln_lab_w[LN_LABMAX];
+vector ln_labelpos, ln_labelscreen;
 string ln_lab_t[LN_LABMAX];
 float  ln_lab_n;
 float  *ln_cell;                // a cell's last claiming frame
@@ -623,6 +625,13 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 
 	// aux is [yaw, the plane's z, wishdir . plane] -- one parm slot rather than
 	// three, which is what keeps this call inside fteqcc's eight.
+	if (brk)
+	{
+		// A ramp hold cannot bridge a teleport into free air or another ride.
+		ln_ron[s] = FALSE;
+		ln_rlast[s] = t - 999;
+		ln_pt[s] = t;              // no turn grade across a discontinuity
+	}
 	q = Line_Grade(s, v, fl, t, aux);
 	k = Line_Contact(s, v, fl, t);
 	if (k == SEG_NONE && ln_pkind[s] != SEG_NONE)
@@ -1230,6 +1239,7 @@ void() Line_ViewFrame =
 	ln_kx = sqrt(1 + ln_tx * ln_tx);
 	ln_ky = sqrt(1 + ln_ty * ln_ty);
 	fov = getproperty(VF_SCREENPSIZE);
+	ln_labelscreen = fov;
 	ln_tolk = LN_PXERR * ln_tx / max(1, fov_x * 0.5);
 	ln_far  = cvar("hud_watch_path_far");
 	ln_fadek = (ln_far > 0) ? 3 / ln_far : 0;       // fades over its last third
@@ -1241,6 +1251,7 @@ void() Line_ViewFrame =
 	ln_mkjump   = cvar("hud_lines_jump");
 	ln_mkstitch = cvar("hud_lines_stitch");
 	ln_mkpx     = cvar("hud_lines_size");   if (ln_mkpx < 1) ln_mkpx = 4;
+	ln_declutter = cvar("hud_lines_declutter");
 	ln_mkgap    = cvar("hud_lines_gap");    if (ln_mkgap < 4) ln_mkgap = 40;
 	ln_mkgap    = ln_mkgap * ln_px;
 	ln_numon     = cvar("hud_lines_nums");
@@ -1560,6 +1571,8 @@ float(vector q, float lab) Line_Claim =
 	i = Line_CellOf(q);
 	if (i < 0)
 		return FALSE;
+	if (!ln_declutter)
+		return TRUE;
 	// Labels claim their OWN grid.  Sharing one, a label lost every cell its
 	// own glyph had just taken -- at gap 240 that was every number on screen
 	// (p451num N6: 9 marks, 0 labels), which is not thinning, it is off.
@@ -1591,6 +1604,8 @@ float(vector lp, float lw) Line_ClaimSpan =
 	i1 = Line_CellOf(lp + [lw, 0, 0]);
 	if (i0 < 0 && i1 < 0)
 		return FALSE;
+	if (!ln_declutter)
+		return TRUE;
 	if (i0 >= 0 && ln_lcell[i0] == ln_cellgen)
 		return FALSE;
 	if (i1 >= 0 && ln_lcell[i1] == ln_cellgen)
@@ -1598,6 +1613,52 @@ float(vector lp, float lw) Line_ClaimSpan =
 	if (i0 >= 0) ln_lcell[i0] = ln_cellgen;
 	if (i1 >= 0) ln_lcell[i1] = ln_cellgen;
 	return TRUE;
+};
+
+float(vector p, float w) Line_LabelOccupied =
+{
+	local float i;
+	local vector other;
+
+	for (i = 0; i < ln_lab_n; i = i + 1)
+	{
+		other = ln_lab_p[i];
+		if (fabs(p_y - other_y) >= ln_labsz + 3 * ln_px)
+			continue;
+		if (p_x < other_x + ln_lab_w[i] + 3 * ln_px &&
+		    p_x + w + 3 * ln_px > other_x)
+			return TRUE;
+	}
+	return FALSE;
+};
+
+// Complete mode moves nearby labels into bounded vertical lanes rather than
+// losing them to the overlap grid. In an impossibly dense view the fallback
+// overprints; the renderer's explicit label-cap counter still applies.
+void(vector p, float w) Line_LabelPlace =
+{
+	local float lane, dy;
+	local vector q;
+
+	ln_labelpos = p;
+	if (ln_declutter)
+		return;
+	for (lane = 0; lane < 16; lane = lane + 1)
+	{
+		q = p;
+		dy = ceil(lane / 2) * (ln_labsz + 3 * ln_px);
+		if (lane & 1)
+			q_y = p_y + dy;
+		else
+			q_y = p_y - dy;
+		if (q_y < 0 || q_y + ln_labsz > ln_labelscreen_y)
+			continue;
+		if (!Line_LabelOccupied(q, w))
+		{
+			ln_labelpos = q;
+			return;
+		}
+	}
 };
 
 // n chevrons, stacked upwards, apex up (+1) or down (-1).  Polygons and not
@@ -1798,6 +1859,8 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			{
 				lp = q + [6 * ln_px, 0 - (ln_labsz + 4) * ln_px, 0];
 				lw = stringwidth(lab, FALSE, [ln_labsz, ln_labsz]);
+				Line_LabelPlace(lp, lw);
+				lp = ln_labelpos;
 				if (Line_ClaimSpan(lp, lw))
 				{
 					if (ln_lab_n < LN_LABMAX)
@@ -1806,6 +1869,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 						ln_lab_t[ln_lab_n] = lab;
 						ln_lab_c[ln_lab_n] = c;
 						ln_lab_a[ln_lab_n] = al;
+						ln_lab_w[ln_lab_n] = lw;
 						ln_lab_n = ln_lab_n + 1;
 						ln_nlab = ln_nlab + 1;
 					}
@@ -1944,7 +2008,8 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 			continue;
 		p0 = ln_pos[b + j - 1];
 		p1 = ln_pos[b + j];
-		al = ((ln_t[b + j] <= tplay) ? 1 : ahead) * alpha;
+		al = ((ln_t[b + j] <= tplay) ? 1 : ahead) * alpha *
+		     bound(0, cvar("hud_lines_telealpha"), 1);
 		d0 = d1 = al;
 		if (ln_fadek > 0)
 		{
@@ -1953,7 +2018,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		}
 		if (d0 <= 0 && d1 <= 0)
 			continue;
-		Line_Dash(p0, p1, '0.85 0.88 0.95', 0.35 * max(d0, d1));
+		Line_Dash(p0, p1, '0.85 0.88 0.95', max(d0, d1));
 		if (d0 > 0)
 			Line_Square(p0, ln_col[b + j - 1], d0);
 		if (d1 > 0)
@@ -2023,6 +2088,9 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
+	// Complete labels by default; opt into the old sparse overlap policy.
+	registercvar("hud_lines_declutter", "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_telealpha", "0.3", CVAR_ARCHIVE);
 	// Patch 451: the numbers.  ON by default (Lex, asked when they were off):
 	// a line you have to switch on twice is a line most people never see.
 	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run.
@@ -2053,10 +2121,12 @@ float() Line_Console =
 	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
 	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
+	      "  hud_lines_declutter 0 (all labels); 1 (sparse overlaps)\n"
 	      "  hud_lines_ref 0/1 (HUD/run start), hud_seq_units 0/1/2\n"
 	      "Style: hud_watch_path_color 0..4, hud_watch_path_far 6000\n"
 	      "  hud_watch_path_px 1, _px_trail / _px_board -1 (inherit)\n"
 	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
+	      "  hud_lines_telealpha 0.3 (faded dashed teleport joins)\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
 	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n");
 	return TRUE;

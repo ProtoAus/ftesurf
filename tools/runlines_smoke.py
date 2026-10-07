@@ -23,6 +23,8 @@ def main():
     ap.add_argument('cfg', type=pathlib.Path)
     ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
     ap.add_argument('--output-dir', type=pathlib.Path)
+    ap.add_argument('--recording', type=pathlib.Path,
+                    help='copy a control recording into the overlay, never alter its source')
     ap.add_argument('--port', type=int, default=27619)
     ap.add_argument('--dedicated', action='store_true')
     ap.add_argument('--timeout', type=int, default=150)
@@ -52,6 +54,10 @@ def main():
             target = rig / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
+        if a.recording:
+            target = gd / 'cfg/test/runlines_sample.rec'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(a.recording, target)
         cfg = a.cfg if a.cfg.is_absolute() else ROOT / a.cfg
         target = gd / 'cfg/test/runlines_smoke.cfg'
         target.parent.mkdir(parents=True, exist_ok=True)

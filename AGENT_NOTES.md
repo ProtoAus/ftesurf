@@ -1396,6 +1396,22 @@ publicly WITH its fix, not before it.
   Stage 2 on surf_dune in the first rig teleported outside its start and launched
   immediately; that is not a valid standing-at-start control. Immediate restart
   while TS_RUNNING (and clock reset) still needs separate lifecycle handling.
+- Patch 530: `hud_lines_declutter 0` (default) keeps visible labels and lays them
+  into up to 16 nearby vertical lanes instead of silently suppressing overlaps;
+  `1` restores the sparse grid. The existing 128-label/frame cap, view/distance
+  culling and explicit mark switches still apply. Impossible density can still
+  overprint. `hud_lines_telealpha 0.3` fades both dashed joins and endpoint squares.
+  Ramp holds/turn grades cannot span a break. Private `runlines_labels.cfg` on a
+  supplied surf_kitsune .rec plus `test_runlines_labels.py` tests 8 complete vs 6
+  sparse labels, all numeric fields, record-derived marks and both off switches.
+  Screenshots prove the text actually draws. Native contact bits are retained;
+  adjacent ramp-plane changes and imported missing planes are NOT solved here.
+  The full dedicated P502 main/edge suite and 306 reccheck checks pass.
+- QC compiler pitfall found here: `fov` is LOCAL to `Line_ViewFrame`. Referring to
+  `fov_y` from a new helper caused the installed fteqcc to access-violate
+  (3221225477, no diagnostics). A clean same-commit build acted; storing the
+  screen size explicitly for the helper restores a zero-warning build. Do not
+  diagnose a silent compiler crash as an unexplained success or rely on LSP.
 
 - **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space
   strip, slot 0 the open replay and 1-8 the board's ticked lines. On it:
