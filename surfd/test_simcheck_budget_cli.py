@@ -18,6 +18,8 @@ class BudgetCLI(unittest.TestCase):
                        SURFD_TOOLS=str(HERE.parent/'tools'), SURFD_VERIFIER=str(Path(home)/'noengine'))
             Path(env['SURFD_ENV']).write_text('SURFD_KEY=synthetic\n')
             program = r'''
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 import surfd, sweep, simcheck
@@ -40,6 +42,16 @@ assert (stored,notable) == (1,1), (stored,notable,note)
 assert 'pair limit reached' in note, note
 assert conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0] == 1
 assert conn.execute('SELECT compared FROM sims').fetchone()[0] == 80
+# Actual CLI consumer: the two already-observed sources still have unobserved
+# pairs with the third. A count of three is not "no pair stored yet".
+before = [tuple(r) for r in conn.execute('SELECT * FROM sims ORDER BY id')]
+output = StringIO()
+with redirect_stdout(output):
+    assert sweep.main(['--dry-run']) == 0
+assert '3 run(s) with unobserved eligible pairs' in output.getvalue(), output.getvalue()
+assert 'no pair stored yet' not in output.getvalue(), output.getvalue()
+assert before == [tuple(r) for r in conn.execute('SELECT * FROM sims ORDER BY id')]
+print('DRY_RUN_ACTED')
 with mock.patch.object(simcheck, 'similarity_step', return_value=(0,0,'')) as target:
     sweep.similarity_step(conn, limit=3, max_pairs=2, max_seconds=0.25)
     assert target.call_args.kwargs['max_seconds'] == 0.25
@@ -61,6 +73,7 @@ print('WRAPPER_ACTED')
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             self.assertIn('WRAPPER_ACTED', result.stdout)
+            self.assertIn('DRY_RUN_ACTED', result.stdout)
             result = subprocess.run([sys.executable, str(HERE/'sweep.py'), '--limit','0',
                                      '--sims','3','--sims-pairs','0'], cwd=HERE, env=env,
                                     capture_output=True, text=True)

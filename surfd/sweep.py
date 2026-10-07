@@ -1004,7 +1004,7 @@ def main(argv=None):
         try:
             import simcheck
             simcheck.ensure_schema(conn)
-            print("sims pending: %d run(s) with no pair stored yet"
+            print("sims pending: %d run(s) with unobserved eligible pairs"
                   % len(simcheck.pending(conn, 10 ** 6)))
             line = simcheck.summary_line(conn)
             print(line or "sims: no pairs stored yet")
