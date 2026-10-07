@@ -247,7 +247,8 @@ not in this public file.
 implements the main rewind cursor timer/speed/energy, removes its duplicate
 readout, adds fractional visual motion without changing sampled save state, and
 adds bind-resolved held strafe scrolling for live rewind. P544 adds bare-bind
-held demo scrolling. Compound/modifier binds, full device/focus acceptance,
+held demo scrolling; P550 closes live rewind opposing-key cancellation.
+Compound/modifier binds, full device/focus acceptance,
 stitched diagnosis, event browsing, imports and real comparison remain below.
 These requests
 supersede treating rewind as a separate little time/speed readout. Keep the
@@ -290,9 +291,12 @@ Demo taps move one recorded tick; holds accelerate, opposing left/right cancels,
 and same-direction presses remain independent. Physical ownership survives
 rebind/close/reopen. Arrows keep 5s jumps; primary mouse buttons remain chrome's.
 Private dedicated controls at 30/100/300 prove whole-chain navigation and a
-stationary pinned body. Live rewind retains its most-recent-owner opposing-key
-policy. Compound/modifier binds, actual-device focus behavior and human
-smoothness acceptance remain open.
+stationary pinned body. P550 makes live rewind cancel opposing owners as well;
+either release resumes the remaining side and same-side owners stay independent.
+Native selection and save/resume are unchanged. Live rewind chat/menu focus
+cancellation is a separately reproduced defect (BACKLOG); delivered releases
+behind panels pass. Compound/modifier binds, actual-device focus behavior and
+human smoothness acceptance remain open.
 
 **Build.** `+moveleft` scrolls backward; `+moveright` scrolls forward, alongside
 the existing controls. Resolve the player's binds, not literal A/D keys. Held

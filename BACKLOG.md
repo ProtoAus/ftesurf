@@ -2280,11 +2280,16 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   held demo navigation with physical ownership and opposing-key cancellation.
   Full-chain controls at 30/100/300 and native pinned-body checks pass. Imported/
   native long demos, compound/modifier binds and actual-device focus acceptance
-  remain open. Live rewind's `cl_rewind.qc:Rewind_Frame` still prefers the newest
-  held direction, unlike demos/requested cancellation; falsifier: hold left and
-  right in live rewind, cursor stays fixed, release either and the remaining
-  direction ACTS. Broader falsifier: remap/hold/release in native/imported demos,
-  close/change focus while held; no dangling repeat or movement leak. Plan 12.2.
+  remain open. P550 closes live rewind opposing-key cancellation: both press
+  orders stop; either release ACTS; same-side owners continue until the last
+  release. **Live rewind focus cancellation remains open:** unlike demos,
+  `cl_rewind.qc:Rewind_Frame` does not clear held navigation when chat/menu
+  opens. Synthetic baseline ACTED and continued scrolling until release;
+  falsifier: hold a bare strafe bind, open chat/menu or lose OS focus, keep it
+  held, and require a fixed cursor/no restart until a fresh press. Releases
+  delivered behind chat/console/menu do stop, including at 30/100/300 FPS.
+  Broader falsifier: remap/hold/release in native/imported demos, close/change
+  focus while held; no dangling repeat or movement leak. Plan 12.2.
 - **Repeated stitched rewind has zero-speed pauses/time creep followed by a
   jolt.** Lex reports several cut/resume attempts producing stationary stretches
   while the displayed timer updates. Failed-tail/hold-time capture is only a

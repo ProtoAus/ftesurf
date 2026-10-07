@@ -11,6 +11,18 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — live rewind opposing holds (Patch 550)
+
+Live rewind now cancels opposing owned directions, like demo scrolling. After
+reconnect/restart, start a run, open rewind and hold your bare strafe binds:
+left+right should stop; releasing either should resume the remaining direction.
+Try remaps, taps and two keys bound to the same side. Whole-chain synthetic
+controls pass at 30/100/300 FPS and both installed clients, but actual keyboard/
+OS-focus behavior, compound/modifier binds and camera feel remain unaccepted.
+Chat/menu focus cancellation is a known separate defect in BACKLOG: opening a
+panel while held still scrolls until release. Delivered panel releases pass.
+No native save/resume selection, recorder, personal cfg or Build-number change.
+
 ## 00. 8 Oct — fractional demo clock (Patch 549)
 
 The main replay timer and full-demo chrome now share the fractional cursor clock.
@@ -28,8 +40,8 @@ After reconnect/restart, open a native replay and an imported demo:
 - Hold your +moveleft/+moveright binds (default A/D): one tick on press, then
   accelerating backward/forward scrolling. Arrows still jump 5 seconds.
 - Try remapped keyboard binds, quick taps and releases. Hold both directions:
-  demos cancel; releasing one scrolls with the remaining key. Live rewind still
-  uses newest-direction ownership, an open parity item in BACKLOG.
+  demos and live rewind (P550) cancel; releasing one scrolls with the remaining
+  key. Live rewind focus cancellation remains an open item in BACKLOG.
 - Open chat/console/menu while held, release and return; close/reopen the demo
   while still holding. No stuck scrolling or movement when leaving the viewer.
 - Judge smoothness at your real frame rate, and that clock/speed/energy/camera

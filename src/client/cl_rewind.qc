@@ -59,8 +59,7 @@ float  rw_resn;                 // ...with this many samples, so the same unchan
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
 float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
-float rw_navscan[RW_NAVN], rw_navdir[RW_NAVN], rw_navtime[RW_KEYS];
-float rw_moveid;                // physical owner of the repeating direction
+float rw_navscan[RW_NAVN], rw_navdir[RW_NAVN];
 #define RW_SWN      8
 float  rw_sw[RW_SWN];           // other keys this mode swallowed, still held: theirs until let go (round 21)
 float  rw_krep;                 // ...and the event in hand repeats one already down
@@ -140,6 +139,33 @@ float(float k) Rewind_NavDir =
 	if (k == 4) return 1;
 	if (k >= 6 && k < RW_KEYS) return rw_navdir[k - 6];
 	return 0;
+};
+
+float() Rewind_NavDirection =
+{
+	local float k, dir, left, right;
+
+	left = right = 0;
+	for (k = 0; k < RW_KEYS; k = k + 1)
+		if (rw_kst[k] == 1 && rw_kdown[k])
+		{
+			dir = Rewind_NavDir(k);
+			if (dir < 0) left = 1;
+			if (dir > 0) right = 1;
+		}
+	return right - left;
+};
+
+void() Rewind_NavRefresh =
+{
+	local float dir;
+
+	dir = Rewind_NavDirection();
+	if (dir != rw_dir)
+	{
+		rw_dir = dir;
+		rw_dirat = cltime;
+	}
 };
 
 // Review round 17: every key event, from the top of CSQC_InputEvent, ahead of
@@ -308,7 +334,6 @@ float() Rewind_Open =
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
-	rw_moveid = -1;
 	rw_openat = cltime;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
@@ -509,8 +534,6 @@ void() Rewind_Frame =
 		return;
 	dt = cltime - rw_last;
 	rw_last = cltime;
-	if (rw_moveid >= 0)
-		if (!rw_kdown[rw_moveid]) rw_dir = 0;
 	if (rw_ack)
 	{
 		Rewind_Answer();
@@ -576,21 +599,8 @@ void() Rewind_Frame =
 		Rewind_Close();
 		return;
 	}
-	if (!rw_dir)
-	{
-		rw_moveid = -1;
-		for (k = 0; k < RW_KEYS; k = k + 1)
-			if (rw_kst[k] == 1 && rw_kdown[k] && Rewind_NavDir(k))
-			{
-				if (rw_moveid < 0) rw_moveid = k;
-				else if (rw_navtime[k] >= rw_navtime[rw_moveid]) rw_moveid = k;
-			}
-		if (rw_moveid >= 0)
-		{
-			rw_dir = Rewind_NavDir(rw_moveid);
-			rw_dirat = cltime;
-		}
-	}
+	// Match demo holds: opposing owners cancel; either release resumes the other.
+	Rewind_NavRefresh();
 	if (rw_dir)
 	{
 		rate = RW_RATE0 + (RW_RATEMAX - RW_RATE0) * min(1, (cltime - rw_dirat) / RW_ACCEL);
@@ -718,10 +728,11 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		}
 		st = rw_kst[k];
 		rw_kst[k] = 0;
-		if (st == 1 && rw_moveid == k)
-			rw_dir = 0;
 		if (st == 1 && Rewind_NavDir(k))
+		{
+			if (!rw_ack && !rw_cd) Rewind_NavRefresh();
 			return TRUE;           // its down never reached the movement bind
+		}
 		// A `+` bind's release always reaches it: one held into the mode that
 		// was not seen going down would otherwise stick (round 3).
 		if (substring(getkeybind(scanx), 0, 1) == "+")
@@ -796,10 +807,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		return k >= 0;
 	if (Rewind_NavDir(k))
 	{
-		rw_dirat = cltime;
-		rw_navtime[k] = cltime;
-		rw_moveid = k;
-		rw_dir = Rewind_NavDir(k);
+		Rewind_NavRefresh();
 		rw_i = rw_i + rw_dir;
 		Rewind_Cursor();
 		return TRUE;
@@ -1004,7 +1012,6 @@ void() Rewind_Reset =
 {
 	rw_on = rw_ack = rw_cd = rw_dir = rw_askat = rw_leave = rw_atres = 0;
 	rw_resi = -1;
-	rw_moveid = -1;
 	tr_cur_on = FALSE;
 	ui_rw_on = ui_rw_was = FALSE;
 	Rewind_SwReset();

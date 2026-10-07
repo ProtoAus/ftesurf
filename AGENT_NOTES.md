@@ -1565,6 +1565,23 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- **Opposing live-rewind holds cancel (Patch 550).** Direction is presence of
+  owned right minus presence of owned left, not the newest held key. Refresh on
+  press/release and every browsing frame; reset acceleration only on an effective
+  direction change. Preserve physical ownership through repeats/rebinds and
+  pre-open presses. Native cursor/save/resume and pinned movement are unchanged.
+  `rewind_navigation_smoke.py` drives full-chain controls over a real dedicated
+  socket at 30/100/300 FPS and with both installed clients. The unchanged source
+  ACTS and fails cancellation; 28 grader controls reject missing/duplicate/NaN,
+  unacted, stuck-release, body/clock/native-selection and pending-HUD mutations.
+  Start its cursor at 2 s: the live line has fewer indices at 30 FPS, so the
+  original 1 s acceleration control reached its lower bound, invalidating that
+  arm. Native probe agreement is with the existing lower selected sample, NOT
+  proof of low-FPS requested/native snapshot alignment. Delivered releases behind
+  chat/console/menu pass; opening chat/menu without release still scrolls on the
+  baseline and remains a separate focus-cancellation defect in BACKLOG. Synthetic
+  chain events are not actual-device/OS-focus or camera-feel acceptance.
+
 - 2026-10-07 repeated-cut control `tools/stitched_rewind_smoke.py`: private
   dump seam plus real dedicated recorder, fresh second client, no fixture or
   install saves touched. Three warm cuts pass after counted 5–6 second waits:
