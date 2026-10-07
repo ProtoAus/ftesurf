@@ -1601,6 +1601,13 @@ publicly WITH its fix, not before it.
   directory; create it and rerun, do not call an unlaunched arm a pass. Grader
   mutation initially expected echoed cfg text in a timestamped log; target the
   final event instead. Compiler/VM logs, probes and failures remain private.
+  Production source `e1c556e`, rebuilt clean/zero warnings, deployed to both
+  Windows installs and empty-gated twelve-lobby fleet; `.prev` retains P550.
+  Non-instrumented whole-chain focus/cancel/return/fresh/pin/body/clock controls
+  pass with both installed clients and live lobby 1. SSQC/menu, default cfg,
+  engine and owner source/index/personal cfg unchanged. Final destination hashes,
+  all twelve active services, twelve empty heartbeat rows and health OK verified
+  2026-10-07 23:49:14 UTC. Actual-device acceptance remains in lextest.md.
 
 - **Opposing live-rewind holds cancel (Patch 550).** Direction is presence of
   owned right minus presence of owned left, not the newest held key. Refresh on
