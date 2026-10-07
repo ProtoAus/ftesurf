@@ -1412,6 +1412,18 @@ publicly WITH its fix, not before it.
   (3221225477, no diagnostics). A clean same-commit build acted; storing the
   screen size explicitly for the helper restores a zero-warning build. Do not
   diagnose a silent compiler crash as an unexplained success or rely on LSP.
+- P527/P529/P530 deployed from clean inspected `5ff0b3b` on 2026-10-07 UTC.
+  Both Windows installs received only CSQC with immediate `.prev` hash controls;
+  native/plugin, SSQC, menu, owner configs/data were unchanged. This preserves
+  already-deployed water code, not a new water deployment. Pi got the coherent
+  SSQC/CSQC build pair through the no-player/hash/backup/restart procedure; SSQC
+  source/shared contracts are unchanged from its deployed water baseline.
+  All 12 active units and live/previous hashes verified. Actual fresh-cache
+  downloads with both installed native clients match this CSQC; spawned editor
+  screenshots and independent help/defaults act. Heartbeats empty afterward.
+  Local map content was supplied read-only to the private overlays; this is not
+  a map-download/material-availability fix or completed Momentum/contact/compare
+  acceptance. Existing archived fade settings are not forcibly overwritten.
 
 - **What it draws.** `cl_lines.qc` renders a recording's path as a screen-space
   strip, slot 0 the open replay and 1-8 the board's ticked lines. On it:
