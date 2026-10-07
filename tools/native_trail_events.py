@@ -6,7 +6,7 @@ Synthetic AABB teleport volumes use the production handler and native mover on
 real map ground. This is not authored-map BSP coverage or human camera acceptance.
 """
 import argparse
-import hashlib
+from PIL import Image, ImageChops
 import math
 from pathlib import Path
 import re
@@ -102,18 +102,23 @@ void(string label) NativeEvent_Cursor =
 	fclose(f);
 	print("NATIVE EVENT CURSOR ", label, "\n");
 };
-void(string label) NativeEvent_View =
+// A cfg request consumed at the final render call, not recomputed outside
+// CSQC_UpdateView.
+string nev_viewlabel;
+void() NativeEvent_View =
 {
 	local float f;
 	local vector p, a;
+	if (nev_viewlabel == "") return;
 	p = getproperty(VF_ORIGIN); a = getproperty(VF_ANGLES);
-	f = fopen(strcat("cfg/test/native_view_", label, ".txt"), FILE_WRITE);
+	f = fopen(strcat("cfg/test/native_view_", nev_viewlabel, ".txt"), FILE_WRITE);
 	if (f < 0) { print("NATIVE EVENT WRITE FAILED\n"); return; }
 	fputs(f, sprintf("view %d %d %d", cvar("hud_rewind_chase"), rw_on, ui_rw_on));
 	fputs(f, sprintf(" %.6f %.6f %.6f", p_x, p_y, p_z));
 	fputs(f, sprintf(" %.6f %.6f %.6f\n", a_x, a_y, a_z));
 	fclose(f);
-	print("NATIVE EVENT VIEW ", label, "\n");
+	print("NATIVE EVENT VIEW ", nev_viewlabel, "\n");
+	nev_viewlabel = "";
 };
 '''
 CFG = BASE + '''visual_units
@@ -158,15 +163,26 @@ stitch_probe freeze_second
 native_cursor second
 cmd native_pose freeze_second
 cmd timer
-waitms 300
+// Frame barriers: PNG encoding can consume a whole waitms interval without
+// rendering the newly requested camera. Return is the reversible control.
+set hud_rewind_chase 0
+wait 12
 native_view first
-hud_rewind_chase
+wait 3
 screenshot native_events_first.png
+wait 12
 set hud_rewind_chase 1
-waitms 300
+wait 12
 native_view chase
-hud_rewind_chase
+wait 3
 screenshot native_events_chase.png
+wait 12
+set hud_rewind_chase 0
+wait 12
+native_view return
+wait 3
+screenshot native_events_return.png
+wait 12
 echo RUNLINES COMPLETE
 quit
 '''
@@ -283,7 +299,8 @@ def grade(gd):
     points = scan[::4]
     row = scan[round(first[3]*4)]
     for label, mode, pos, ang in (('first', 0, row[15:18], row[18:21]),
-                                   ('chase', 1, row[21:24], row[24:27])):
+                                  ('chase', 1, row[21:24], row[24:27]),
+                                  ('return', 0, row[15:18], row[18:21])):
         view = values(gd, f'native_view_{label}.txt', 'view', 9)
         assert view[:3] == [mode, 1, 1], (label, 'view-state mode did not ACT')
         assert near(view[3:6], pos) and near(view[6:9], ang), (label, 'view state differs from direct camera scan')
@@ -292,13 +309,21 @@ def grade(gd):
         assert any(p[27] and near(p[3:6], r[1:4]) for p in points), 'line event does not match raw'
     grade_visual(gd, phases=('native',), cuts=(1,), stop_labels=('pause_start', 'pause_end'))
     pictures = []
-    for shot in ('native_events_first.png', 'native_events_chase.png'):
+    for shot in ('native_events_first.png', 'native_events_chase.png', 'native_events_return.png'):
         paths = list(gd.rglob(shot))
         assert len(paths) == 1, ('missing/ambiguous screenshot artifact', shot)
-        pictures.append(hashlib.sha256(paths[0].read_bytes()).digest())
-    if pictures[0] == pictures[1]:
-        print('UNMEASURED camera pixels: captured images alias despite distinct view-state probes')
-    print('PASS native touches, counted stop and fixed-cursor freeze; authored BSP, camera pixels and human feel remain open.')
+        with Image.open(paths[0]) as image:
+            assert image.size == (1920, 1111), ('unexpected screenshot viewport', image.size)
+            # World-only patch: excludes timer, speed, footer and notifications.
+            pictures.append(image.convert('RGB').crop((200, 200, 1400, 650)))
+    changed = ImageChops.difference(pictures[0], pictures[1]).convert('L')
+    restored = ImageChops.difference(pictures[0], pictures[2]).convert('L')
+    changed_fraction = sum(n for v, n in enumerate(changed.histogram()) if v > 8) / (1200*450)
+    restored_fraction = sum(n for v, n in enumerate(restored.histogram()) if v > 8) / (1200*450)
+    assert changed_fraction > .05, ('camera pixels did not ACT', changed_fraction)
+    assert restored_fraction < .01, ('return camera did not restore world pixels', restored_fraction)
+    print(f'PASS camera render boundary and world pixels: changed {changed_fraction:.3f}, return {restored_fraction:.3f}')
+    print('PASS native touches, counted stop and fixed-cursor freeze; authored BSP and human feel remain open.')
 
 
 def instrument(work):
@@ -323,11 +348,13 @@ def instrument(work):
     text = once(p.read_text(), 'float() Rewind_Console =', CLIENT + '\nfloat() Rewind_Console =')
     text = once(text, 'if (argv(0) != "rewind")',
                 'if (argv(0) == "native_cursor") { NativeEvent_Cursor(argv(1)); return TRUE; }\n\t'
-                'if (argv(0) == "native_view") { NativeEvent_View(argv(1)); return TRUE; }\n\t'
+                'if (argv(0) == "native_view") { nev_viewlabel = argv(1); return TRUE; }\n\t'
                 'if (argv(0) != "rewind")')
     text = once(text, 'registercommand("rewind");',
                 'registercommand("rewind");\n\tregistercommand("native_cursor");\n\tregistercommand("native_view");')
     p.write_text(text)
+    p = work / 'src/client/cl_main.qc'
+    p.write_text(once(p.read_text(), '\trenderscene();', '\tNativeEvent_View();\n\trenderscene();'))
 
 
 def main():

@@ -1664,12 +1664,18 @@ publicly WITH its fix, not before it.
   raw time without body/velocity drift; a fixed cursor over 1.5 wall seconds
   preserves clock, body, velocity and raw rows while the native pin freezes.
   Complete quarter-point scans at 30/100/300, nine compiled controls and distinct
-  first-person/chase view-state probes pass. The captured images alias on this
-  rig, explicitly UNMEASURED for camera pixels. This is synthetic-volume/native
-  handler coverage, NOT authored BSP teleport, renderer or human acceptance.
+  first-person/chase view-state probes pass. The initial screenshots aliased:
+  PNG encoding consumed the waitms interval without drawing the changed camera.
+  Follow-up uses frame barriers and captures VF_ORIGIN/VF_ANGLES immediately
+  before renderscene, not from a console command outside CSQC_UpdateView.
+  First/chase/return at 30/100/300 changes 40.2% of a world-only image patch,
+  then restores it (0.0% changed). Screenshots were inspected. This is bounded
+  renderer/synthetic-volume/native-handler coverage, NOT authored BSP teleport
+  or human camera-feel acceptance.
   `python tools/test_native_trail_events.py --rig <private rig> --output-dir
-  <private dir>` rejects 38 malformed/missing/unacted/wrong-state/body/clock/
-  mode/raw-break/camera cases; positive first. Existing visual grader's 16
+  <private dir>` rejects 43 malformed/missing/unacted/wrong-state/body/clock/
+  mode/raw-break/camera cases, including aliased images, wrong return pixels and
+  missing/wrong return camera probes; positive first. Existing visual grader's 16
   controls still pass. Its angular oracle now accounts for the SAME independently
   derived six-decimal time bound as velocity: `abs(short_arc)*2e-6/dt`, not a
   tolerance chosen from a failing difference. One native trace exposed a

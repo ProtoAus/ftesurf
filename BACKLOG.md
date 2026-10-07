@@ -2309,14 +2309,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   not human moving-camera acceptance or complete teleport/event parity.
   Native-event tooling after P542 additionally passes engine-driven keep/zero
   velocity volumes on real map ground, counted six-second stops and fixed-cursor
-  pinning at 30/100/300 FPS, with 39 counterfactual checks. Authored BSP teleports
+  pinning at 30/100/300 FPS, with 44 counterfactual checks. Authored BSP teleports
   and human camera acceptance remain open. `tools/native_trail_events.py` reports
   native-instant/first-raw-break offsets rather than asserting pose simultaneity;
   snapshot angle/body arrival ordering needs a UX trace if the jolt persists.
-  First/chase screenshot artifacts alias on this rig despite distinct view-state
-  probes. Capture follow-up: `runlines_smoke.py` / screenshot commands; falsifier
-  is rendered images matching distinct final-camera states, not another direct
-  `Rewind_Camera` call. File existence is not pixel proof.
+  Camera capture follow-up is complete: frame barriers survive blocking PNG
+  encoding, final-render probes match first/chase/return, world pixels change
+  then restore at 30/100/300. Authored BSPs and human acceptance remain open.
 - **Low-FPS requested cursor differs from the restored native snapshot.**
   Sites: `cl_rewind.qc:Rewind_Go`, `sv_saveloc.qc:SV_RewindFind` and visual
   prefix/trim acknowledgement. The dedicated 30-FPS buffered six-cut fixture
