@@ -49,6 +49,7 @@ and stores nothing -- it does not fall back to a second parser.
 """
 
 import os
+import sqlite3
 import sys
 import time
 
@@ -79,6 +80,15 @@ MAX_PAIRS = 200
 # over either budget abstain; no truncated prefix may become a measurement.
 MAX_SOURCE_BYTES = 16 << 20
 MAX_SOURCE_MOVES = 200000
+
+# Stable store-only categories. Prose remains historical detail, not a schema.
+SKIP_CODES = {
+    "unreadable": "unreadable", "no sample rows": "no_rows",
+    "too short": "too_short", "same file": "same_file",
+    "malformed input": "malformed", "no comparison opportunities": "no_opportunities",
+    "source limit": "source_limit",
+}
+KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown"}
 
 
 class _PairBudget:
@@ -144,6 +154,7 @@ CREATE TABLE IF NOT EXISTS sims (
     same_who   INTEGER NOT NULL DEFAULT 0,
     verdict    TEXT    NOT NULL,
     reason     TEXT    NOT NULL DEFAULT '',
+    skip_code   TEXT NOT NULL DEFAULT '',
     match      REAL    NOT NULL DEFAULT 0,
     cover      REAL    NOT NULL DEFAULT 0,
     prefix     INTEGER NOT NULL DEFAULT 0,
@@ -166,6 +177,13 @@ def ensure_schema(conn):
     """Create `sims` if it is missing.  Idempotent and safe to race, because
     `migrate()` runs on EVERY `import surfd` including the sweep's cron import."""
     conn.executescript(SIMS_SQL)
+    if "skip_code" not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
+        try:
+            conn.execute("ALTER TABLE sims ADD COLUMN skip_code TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            # Another schema initializer may have added it after our read.
+            if "skip_code" not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
+                raise
 
 
 # --------------------------------------------------------------------------
@@ -240,10 +258,12 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         pb, w = _row_path(surfd, pr)
         if pb is None:
             verdict, reason, d = "skip", "peer unresolved: %s" % w, None
+            skip_code = "peer_unresolved"
         else:
             verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
                                                max_moves=MAX_SOURCE_MOVES)
             d = reason if verdict == "compared" else None
+            skip_code = "" if verdict == "compared" else SKIP_CODES.get(verdict, "unknown")
             if verdict != "compared":
                 verdict, reason = "skip", reason
         match = cover = 0.0
@@ -260,7 +280,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             same = 1 if d["same_who"] else 0
         found.append(((a_id, pr["id"], row["map"], row["track"], row["leg"],
                        row["tier"], row["player"], pr["player"], who_a, who_b, same,
-                       verdict, reason if not d else "", match, cover, prefix, offset,
+                       verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
                        compared, ma, mb, ta, tb, t0), d is not None, match))
     if not found:
         return 0, 0, 0
@@ -268,9 +288,9 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     with conn:
         conn.executemany(
             "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
-            " player_a, player_b, who_a, who_b, same_who, verdict, reason,"
+            " player_a, player_b, who_a, who_b, same_who, verdict, reason, skip_code,"
             " match, cover, prefix, offset, compared, moves_a, moves_b,"
-            " tick_a, tick_b, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " tick_a, tick_b, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [f[0] for f in found])
     skipped = sum(1 for f in found if not f[1])
     notable = sum(1 for f in found if f[1] and f[2] >= NOTABLE)
@@ -374,14 +394,17 @@ def summary(conn):
     """
     out = {"state": "empty", "pairs": 0, "compared": 0, "skipped": 0, "notable": 0,
            "same_max": None, "cross_max": None, "same_n": 0, "cross_n": 0,
-           "unknown_n": 0, "unknown_max": None}
+           "unknown_n": 0, "unknown_max": None, "skip_codes": {}}
     try:
         exists = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
         if not exists:
             return dict.fromkeys(out, None) | {"state": "missing"}
+        # Old samples stay unknown; a read never migrates or infers old prose.
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
+        code = "skip_code" if "skip_code" in columns else "'' AS skip_code"
         rows = conn.execute(
-            "SELECT verdict, match, same_who, who_a, who_b FROM sims").fetchall()
+            "SELECT verdict, match, same_who, who_a, who_b, " + code + " FROM sims").fetchall()
     except Exception:
         return dict.fromkeys(out, None) | {"state": "error"}
     if rows:
@@ -390,6 +413,9 @@ def summary(conn):
         out["pairs"] += 1
         if r["verdict"] != "compared":
             out["skipped"] += 1
+            raw_code = r["skip_code"]
+            code = (raw_code if raw_code in KNOWN_SKIP_CODES else "unknown") if raw_code else "legacy_unknown"
+            out["skip_codes"][code] = out["skip_codes"].get(code, 0) + 1
             continue
         out["compared"] += 1
         m = r["match"]
@@ -428,6 +454,8 @@ def summary_line(conn):
     if s["notable"]:
         parts.append("%d AT OR OVER %.2f -- read them, this is not a gate"
                      % (s["notable"], NOTABLE))
+    if s["skip_codes"]:
+        parts.append("skips " + ", ".join("%s=%d" % kv for kv in sorted(s["skip_codes"].items())))
     if not s["cross_n"]:
         # SAY WHAT WAS NOT MEASURED.  A sample with no cross-identity pairs has not
         # measured the case a threshold most needs, and printing only a max hides

@@ -435,14 +435,27 @@ def receipt_metrics(raw):
         return None
 
 
-def similarity_reason(verdict, raw):
-    """Project legacy prose to safe categories, never filenames/identity segments."""
+SIM_SKIP_LABELS = {
+    'unreadable': 'source unreadable', 'no_rows': 'no sample rows',
+    'too_short': 'too short to compare', 'same_file': 'same source file',
+    'malformed': 'malformed move input', 'no_opportunities': 'no comparison opportunities',
+    'source_limit': 'source ingestion limit', 'peer_unresolved': 'peer unresolved',
+    'unknown': 'unjudgeable (detail withheld)',
+}
+
+
+def similarity_reason(verdict, raw, code=''):
+    """Prefer captured fixed codes; project legacy prose without source details."""
     if verdict == 'compared':
         return ''
+    if code and code != 'too_short':
+        return SIM_SKIP_LABELS.get(code, SIM_SKIP_LABELS['unknown'])
     text = raw if isinstance(raw, str) else ''
     short = re.fullmatch(r'.+ has (\d{1,10}) moves, under the floor (\d{1,10})', text)
     if short and all(int(v) <= 2**31-1 for v in short.groups()):
         return 'too short to compare (%s moves; minimum %s)' % short.groups()
+    if code:
+        return SIM_SKIP_LABELS.get(code, SIM_SKIP_LABELS['unknown'])
     if re.fullmatch(r'.+ has no `in` rows', text):
         return 'no sample rows'
     if text == 'both arguments resolve to one file':
@@ -459,8 +472,11 @@ def similarity_for(conn, rid):
            'more': False, 'source_binding': False}
     if not exists:
         return out
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
+    code = "substr(skip_code,1,40)" if 'skip_code' in columns else "''"
     rows = conn.execute(
         "SELECT id, a_id, b_id, verdict, substr(reason,1,300) AS reason, at,"
+        + code + " AS skip_code,"
         " match, cover, prefix, offset, compared, moves_a, moves_b, tick_a, tick_b,"
         " CASE WHEN who_a != '' AND who_b != '' THEN"
         "   CASE same_who WHEN 1 THEN 'same' WHEN 0 THEN 'cross' ELSE 'unknown' END"
@@ -470,7 +486,10 @@ def similarity_for(conn, rid):
     out['more'] = len(rows) > SIM_PAIRS_SHOWN
     for r in rows[:SIM_PAIRS_SHOWN]:
         item = {k: r[k] for k in ('id','a_id','b_id','verdict','at','identity')}
-        item['reason'] = similarity_reason(r['verdict'], r['reason'])
+        captured = r['skip_code']
+        safe_code = captured if captured in SIM_SKIP_LABELS else 'unknown'
+        item['skip_code'] = (safe_code if captured else 'legacy_unknown') if r['verdict'] != 'compared' else ''
+        item['reason'] = similarity_reason(r['verdict'], r['reason'], safe_code if captured else '')
         metrics = {k: r[k] for k in ('match','cover','prefix','offset','compared',
                                      'moves_a','moves_b','tick_a','tick_b')}
         valid = (r['verdict'] == 'compared'
