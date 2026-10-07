@@ -1842,6 +1842,16 @@ publicly WITH its fix, not before it.
   acceptance; broader HUD/camera continuity, long demos and human feel remain
   separate. All three progs compile at zero warnings; 306 reader checks pass.
   Unchanged checker/corpus retains 269 REC / 91 VIEW and 170 existing faults.
+  Clean published product `11e32ba` deployed 2026-10-07 UTC: fleet restarts
+  completed 20:18:51, both Windows installs hash-match with .prev retained and
+  personal cfg preserved (including absence). Independent 20:25:57 host read:
+  both progs match, all twelve lobbies active, directory back to zero players.
+  Production client on lobby 1 ACTS on synthetic replay: inspected panel/chrome
+  agree at 1.001s, stationary 3.205s and exact 6.000s finish. No diagnostic progs,
+  server/config/engine changes or PiForce. This is clock rendering, not world
+  camera/import acceptance. `runlines_smoke.py --recording` always copies to
+  cfg/test/runlines_sample.rec; a generic no-error completion with 'nothing
+  loaded' is NOT an acted control. Preserve failed logs and repair the cfg only.
 
 - **The rewind rides the replay's pin, marked as its own: `rec_watch 1 rw`.** A
   pinned RUNNING run is frozen and practice, and EVERY way out of a rewind ends
