@@ -2622,6 +2622,25 @@ replacement/ready log and health completed at 2026-10-06T23:42:33Z. Linux Node i
 absent: actual DOM controls passed on Windows, not in a live browser. No automatic
 historical metrics reconstruction, engine/progs/config/threshold/badge change.
 
+### Comparison-reader deployment: P524-526
+
+Frozen game `4f5c47f` deployed tools-only on 2026-10-07 at 00:27:07 UTC.
+Only the fixed `tools/census/recsim.py` runtime changed on the Pi and both
+Windows installs. Use the Git-pinned installer, paired-reader and predecessor
+hash guards, and retain its `recsim.py.pre-<sha12>` rollback copies. Destination
+hashes match the commit; nine Linux stage suites and installed long/short,
+malformed/unreadable/no-input/measured-zero controls pass. The actual Pi caller
+resolves the installed reader and a real pair is measured read-only. Protected
+table counts and binary/progs/config/app/process state remain unchanged;
+health stays OK with 12 lobbies. No reload or lobby restart is needed.
+
+A private post-swap probe called a nonexistent locator after the tool was
+already installed. Recheck hashes and the original backup, repair the probe to
+use the actual shared locator with an isolated app HOME/DB, and finish missing
+gates only: never recopy a correct destination or overwrite the first backup.
+Isolated secretless app logs are not live heartbeat failures. Historical rows
+are not reclassified; this does not establish pair coverage or calibration.
+
 ## Chat and `say` — the contract, and it changed in 342
 
 Getting this wrong kills the restart keys silently, so it gets its own section.
