@@ -2820,6 +2820,37 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   Depth fog/capture sharing, other menu rows, glass and particle coverage retain
   their own acting-control gates in BACKLOG; this water patch does not close them.
 
+## Source fire sheets: loading is not animation -- 2026-10-07
+
+- Particle VTFs can have ONE image frame and still contain an animated sprite
+  sheet. The resource tag is binary 0x10, not SHT: fire_particle_4 is 2048x128
+  with five 16-frame sequences; fire_particle_2 has an 18-frame sequence plus
+  single-frame aliases. Use authored UV rectangles and durations, not a guessed
+  uniform square grid. Inspect the VTF version/header bounds before walking a
+  resource directory: 7.1 has no 7.3 directory. Preserve/report sequence flags
+  rather than guessing their byte layout from a third-party parser.
+- `p_script.c` tcoords/atlas randomize a static UV cell at spawn. They do not
+  step it as the particle ages. The PCF translator currently emits neither a
+  sheet table nor animation, so registering a SpriteCard material or successfully
+  baking a PCF is not evidence that its flames animate. A fit-to-life prototype
+  needs a frozen pose with two different UV frames, repeated effects-off pixels
+  to bound background drift, and a real-time animation control.
+- Source c_fire_smoke.cpp:Start selects env_fire_tiny/small/medium/large with
+  optional _smoke. These effects can live in shared game PCFs, even when a map
+  embeds no PCF at all. Dune combines env_fire with custom/shared PCF systems;
+  Anubis combines env_fire with hundreds of warm ParticleSphere smoke stacks.
+  Material/class identity matters: do not replace every yellow orb with fire.
+- Bright SpriteCard addself/overbrightfactor is not the same as $additive or
+  full-screen bloom. One UV-stepped additive pass can approximate a bright
+  flame without a capture/blur/light pass, but does not reproduce Source's
+  depth blend, frame cross-fade or children. Keep those limits explicit.
+- Polygon quads can batch by material and avoid one model entity per sprite;
+  that does not make them free. Bound nearby/visible sites and sprite count,
+  use smaller/fewer distant quads and measure overdraw. Equal-count polygon
+  glow vs flame timings do not compare against the installed native emitter.
+  A Dune camera with missing/checker materials is a UV diagnostic only, NOT a
+  valid full-map performance or visual acceptance baseline.
+
 ## The milk visualizer (Patch 467)
 
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback

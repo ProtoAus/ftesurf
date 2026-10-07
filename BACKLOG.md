@@ -45,6 +45,31 @@ as proof that every source path was built into it. No FPS improvement is claimed
   `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
   this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
   smoke texture with no fallback, and inspect emitted smoke against Source.
+- **Fire still uses generic orbs or unanimated sheets.** Lex identified
+  `surf_dune`/`surf_anubis`. `src/client/cl_emit.qc:Emit_LoadForMap` maps
+  `env_fire` to the generic `FX_FIRE`; its smoke-stack approximation does not
+  select the authored material. `tools/pcf.py:translate` emits a texture stem
+  but no VTF sheet frame selection; native `engine/client/p_script.c`'s
+  `tcoords`/`atlas` select a static cell at spawn, not animation over its life.
+  Dune has 65 env_fire and 42 PCF fire instances (21 dune_fire_medium_03,
+  13 fire_medium_02, 8 fire_medium_02_nosmoke); Anubis has 161 env_fire and
+  498 env_smokestack. All Anubis stacks name particle/SmokeStack.vmt, a
+  ParticleSphere material: do not reinterpret every yellow stack as atlas fire.
+  Dune's custom flame selects sequence 2 of fire_particle_4, a 16-frame
+  sequence in VTF resource 0x10. Its SpriteCard VMT asks for addself .75 and
+  overbrightfactor 3.5; neither is equivalent to merely checking $additive.
+  A private single-pass, four-sprites/site, UV-stepped prototype produced
+  visible flames with bloom off, but is NOT a shipped or Source-exact loader.
+  Falsifier for the product fix: resolve the shared env_fire libraries as well
+  as embedded PCFs; consume authored UVs/timing/sequence and size/flags; preserve
+  child graph references and report unsupported material/operators. Verify
+  frozen-pose frame-only pixel changes, a repeated no-effect control, real
+  map return/cold load and archived off/low settings. Enforce visible-site,
+  sprite and overdraw budgets/LOD. Compare CPU/GPU costs against the ACTUAL
+  current emitter path, not just a matching-count polygon glow control;
+  shared-PCF resolution, smoke/embers, old-client support and ship-set checks
+  remain open. Do not add mandatory full-screen bloom, depth captures or
+  dynamic-light/shadow passes to obtain a cheap bright flame.
 - **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
   capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.
   Mode 1 still captures refraction; mode 2 captures refraction/reflection.
