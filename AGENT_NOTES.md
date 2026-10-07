@@ -2005,6 +2005,15 @@ linking and serving path with an explicitly doubled converter. Neither double
 claims independent codec coverage. Synthetic UI inputs and screenshots do not
 prove actual-device feel or eight long-demo performance; those remain in lextest.
 
+Measured deployment controls: Linux `/tmp` had 5.1 GB free and NVMe had 80 GB.
+The downloader's unchanged 20 GB floor stopped both queue-worker test arms in
+`/tmp`; all eleven suites passed with TMPDIR and fixtures on NVMe. The deployer
+now stages on the target data volume, and `-Only` restricts installation, not the
+complete app/dependency archive used by tests. Do not lower the production floor
+to make fixtures pass. Private game cfgs use `waitms` for startup, not a long
+frame wait before any map exists. `menu_restart` reloads consent: synthetic HTTP
+controls set their test-only cvar *after* it, never in a player's install.
+
 ### The map roster (which BUILD, not just which name)
 
 - **A MAP NAME DOES NOT IDENTIFY A MAP HERE.** Of the 1062 names present in both

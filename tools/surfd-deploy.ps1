@@ -153,8 +153,10 @@ try {
         Write-Host $unpushed
         Fail "$Ref is not on origin/main; push it first, so the Pi can be told which commit it runs"
     }
-    $files = @((& git ls-tree -r --name-only $sha -- surfd) |
+    $suiteFiles = @((& git ls-tree -r --name-only $sha -- surfd) |
         Where-Object { $_ -match '\.(py|js|css|html|sh|nginx|sudoers)$' -and $_ -notmatch '/__pycache__/' })
+    # -Only restricts installation, not the app dependencies needed by tests.
+    $files = $suiteFiles
     if ($Only) { $files = @($files | Where-Object { $Only -contains $_ }) }
     if (-not $files.Count) { Fail "nothing to deploy for -Ref $sha" }
     # THE PATHS ARE RELATIVE TO $Remote, NOT TO THE REPO ROOT.  `git ls-tree`
@@ -178,7 +180,9 @@ try {
 finally { Pop-Location }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$stage = "/tmp/surfd-stage-$sha-$stamp"
+# momgrab's fixture worker checks the data disk's 20 GB floor. Root /tmp can
+# have only 5 GB free while NVMe has ample room; stage on the target volume.
+$stage = "$Remote/.deploy-stage-$sha-$stamp"
 $backupTag = "pre$sha-$stamp"
 
 # ---- 1. stage from the commit ---------------------------------------------
@@ -189,7 +193,7 @@ if ($script:PiExit -ne 0) { Fail "could not make the stage directory on the Pi" 
 Push-Location $repo
 try {
     $tmpTar = Join-Path $env:TEMP "surfd-stage-$sha.tar"
-    & git -c core.autocrlf=false archive -o $tmpTar $sha -- @($files)
+    & git -c core.autocrlf=false archive -o $tmpTar $sha -- @($suiteFiles)
     if ($LASTEXITCODE -ne 0) { Fail "git archive failed" }
     $tmpTar2 = $null
     if ($extra.Count) {
