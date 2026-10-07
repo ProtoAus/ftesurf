@@ -274,8 +274,11 @@ by Patch 532; they are not proof that this overhaul has shipped.
 
 ### 12.1 One cursor state for the main HUD
 
-P535 delivers main timer/speed/energy and duplicate-readout removal. `e line`
-uses recorded start energy; missing velocity is explicitly unavailable.
+P535 delivers live-rewind main timer/speed/energy and duplicate-readout removal.
+`e line` uses recorded start energy; missing velocity is explicitly unavailable.
+Demo main clock/chrome are still tick-quantized at fractional positions (measured
+in the P544 navigation control); their exact cursor-clock parity remains OPEN in
+BACKLOG. Navigation delivery does not complete this HUD request.
 
 **Build.** During player-line rewind and demo-line inspection/rewind, the normal
 **timer, speed/units and energy displays** show the exact same cursor sample as
