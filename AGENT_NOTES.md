@@ -1581,6 +1581,13 @@ publicly WITH its fix, not before it.
   chat/console/menu pass; opening chat/menu without release still scrolls on the
   baseline and remains a separate focus-cancellation defect in BACKLOG. Synthetic
   chain events are not actual-device/OS-focus or camera-feel acceptance.
+  Production from exact `41410d8` built with zero warnings; both Windows installs
+  and all 12 empty-gated Pi lobbies carry CSQC SHA-256
+  `676ca48a7b5d5bf26f76fe0620d50e80c30c248310758b368283841666615f2a`.
+  SSQC remains `76f4a7bf...`; menu/configs/engine are unchanged, `.prev` kept.
+  Both local production clients and live lobby 1 pass non-instrumented
+  cancel/release/pin/body/clock controls; fleet hashes/default cfg and all active
+  services rechecked 2026-10-07 22:09:02 UTC. No instrumented program deployed.
 
 - 2026-10-07 repeated-cut control `tools/stitched_rewind_smoke.py`: private
   dump seam plus real dedicated recorder, fresh second client, no fixture or
