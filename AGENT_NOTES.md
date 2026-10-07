@@ -2013,6 +2013,13 @@ complete app/dependency archive used by tests. Do not lower the production floor
 to make fixtures pass. Private game cfgs use `waitms` for startup, not a long
 frame wait before any map exists. `menu_restart` reloads consent: synthetic HTTP
 controls set their test-only cvar *after* it, never in a player's install.
+The inspected public build.ps1's QC loop only writes this checkout's generated
+progs; a successful worktree build did not update C:\FTESurf, and C:\FTEQuake's
+csprogs hash remained different too. Explicitly copy the clean build's three
+progs to both installs, retaining .prev/first rollback bytes, and compare hashes.
+The Pi swap/restart gate did match both progs and all 12 zero-player lobbies.
+Backend queue/real conversion/serving works; installing the prepared nginx prefix
+needs Lex's sudo. Do not call the public HTTPS path verified before that step.
 
 ### The map roster (which BUILD, not just which name)
 
