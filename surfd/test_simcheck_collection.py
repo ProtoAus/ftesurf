@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import sqlite3
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location('collector_subject', Path(__file__).with_name('simcheck.py'))
 simcheck = importlib.util.module_from_spec(spec)
@@ -63,6 +64,79 @@ class SummaryAvailability(unittest.TestCase):
         self.assertEqual((result['same_n'],result['cross_n'],result['unknown_n']), (1,1,1))
         self.assertEqual((result['same_max'],result['cross_max'],result['unknown_max']), (1.0,0.2,0.0))
         self.assertIn('4 pairs, 3 compared, 1 unjudgeable', simcheck.summary_line(self.conn))
+
+
+class CollectorAvailability(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(':memory:')
+        self.conn.row_factory = sqlite3.Row
+        self.addCleanup(self.conn.close)
+        simcheck.ensure_schema(self.conn)
+        self.conn.execute('CREATE TABLE replays (id INTEGER PRIMARY KEY, map TEXT, track INTEGER, leg INTEGER, kind TEXT, tier TEXT, player TEXT)')
+        for i in range(1, 4):
+            self.conn.execute("INSERT INTO replays VALUES (?, 'synthetic', 0, 0, 'run', 'ranked', 'synthetic')", (i,))
+        self.conn.commit()
+        self.resolved = []
+        self.compared = []
+        self.surfd = mock.Mock()
+        self.surfd.replay_file.side_effect = self.resolve
+        self.reader = mock.Mock()
+        self.reader.compare_paths.side_effect = self.compare
+        patcher = mock.patch.object(simcheck, '_recsim', return_value=(self.reader, 'synthetic'))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def resolve(self, row):
+        self.resolved.append(row['id'])
+        return str(row['id']), ''
+
+    def compare(self, a, b):
+        self.assertFalse(self.conn.in_transaction)
+        self.compared.append((a, b))
+        return 'compared', dict(match=1.0, cover=1.0, prefix=80, offset=0,
+                                compared=80, moves_a=80, moves_b=80,
+                                tickrate_a=100.0, tickrate_b=100.0,
+                                who_a='', who_b='', same_who=False)
+
+    def test_unresolved_primary_is_counted_without_fake_pairs(self):
+        self.surfd.replay_file.side_effect = lambda row: (self.resolved.append(row['id']) or None, 'private path not exposed')
+        stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
+        self.assertEqual(self.resolved, [1,2,3])
+        self.assertEqual((stored, notable, self.compared), (0,0,[]))
+        self.assertIn('3 source unavailable', note)
+        self.assertNotIn('private', note)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
+
+    def test_row_failure_is_counted_and_later_rows_act(self):
+        def failing(a, b):
+            if a == '1':
+                self.compared.append((a, b))
+                raise RuntimeError('synthetic failure')
+            return self.compare(a, b)
+        self.reader.compare_paths.side_effect = failing
+        stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
+        self.assertIn(('1', '2'), self.compared)
+        self.assertGreater(stored, 0)
+        self.assertGreater(notable, 0)
+        self.assertIn('1 row failed', note)
+        self.assertNotIn('synthetic failure', note)
+        self.assertEqual(self.conn.execute("SELECT MIN(compared) FROM sims WHERE verdict='compared'").fetchone()[0], 80)
+
+    def test_all_row_failures_still_report_when_nothing_stored(self):
+        def failing(a, b):
+            self.compared.append((a, b))
+            raise RuntimeError('synthetic failure')
+        self.reader.compare_paths.side_effect = failing
+        stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
+        self.assertEqual(len(self.compared), 3)
+        self.assertEqual((stored, notable), (0,0))
+        self.assertIn('3 row failed', note)
+
+    def test_normal_control_has_no_unavailable_note(self):
+        stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
+        self.assertEqual((stored, notable, len(self.compared)), (3,3,3))
+        self.assertEqual(note, 'sims +3')
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 3)
 
 
 if __name__ == '__main__':

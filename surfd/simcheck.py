@@ -161,7 +161,8 @@ def _row_path(surfd, row):
     return path, ""
 
 
-def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
+def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
+                diagnostics=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -190,6 +191,8 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None):
         return 0, 0, 0
     pa, w = _row_path(surfd, row)
     if pa is None:
+        if diagnostics is not None:
+            diagnostics["source_unavailable"] += 1
         return 0, 0, 0
     peers = conn.execute(
         "SELECT * FROM replays WHERE map = ? AND track = ? AND leg = ?"
@@ -285,13 +288,16 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
         rows = pending(conn, limit)
     except Exception as exc:
         return 0, 0, "similarity step failed: %r" % exc
-    stored = skipped = notable = 0
+    stored = skipped = notable = failed = 0
+    diagnostics = {"source_unavailable": 0}
     for row in rows:
         try:
-            s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir)
+            s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
+                                  diagnostics=diagnostics)
         except Exception as exc:
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
+            failed += 1
             continue
         stored += s
         skipped += k
@@ -301,6 +307,13 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None):
         note = "sims +%d" % stored
         if skipped:
             note += " (%d unjudgeable)" % skipped
+    unavailable = []
+    if diagnostics["source_unavailable"]:
+        unavailable.append("%d source unavailable" % diagnostics["source_unavailable"])
+    if failed:
+        unavailable.append("%d row failed" % failed)
+    if unavailable:
+        note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
     return stored, notable, note
 
 
