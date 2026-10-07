@@ -60,6 +60,17 @@ as proof that every source path was built into it. No FPS improvement is claimed
   resolution/update/visibility budgets with full-capture positive controls.
   Measure scene passes and CPU/GPU time; local fixed-camera wall-frame timings
   are not a portable FPS claim or Source visual acceptance.
+- **Gate budget-water menu on native renderer capability before Pi CSQC shipping.**
+  `src/client/cl_gfx.qc:Gfx_Def` currently assumes the ENGINE.txt-pinned P523
+  renderer. An older native client can download new CSQC from a lobby but cannot
+  implement mode 4's no-capture promise. The tested Windows EXE/plugin/CSQC pair
+  is deployed; Pi CSQC is intentionally held. Add a reliable local renderer
+  capability check and preserve the legacy 0..3 row on older clients. Falsifier:
+  the same new CSQC on pre-P523 and P523 natives advertises/cycles budget only
+  when its shader policy exists; default 3 and archived 4 remain safe through
+  startup/reconnect. Do not widen generic plugin flags or infer capability from
+  cvar readback alone. After this acting compatibility gate, deploy the paired
+  progs with the existing no-player/hash/backup/restart checks.
 - **Graphics menu still needs a complete acting per-row audit and glass baseline.**
   `src/client/cl_gfx.qc:Gfx_Def`/`Gfx_Inert` and engine VMT/BSP consumers must
   agree on default/range/meaning/inert conditions and application boundary.

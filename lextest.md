@@ -11,6 +11,28 @@ to be wrong.
 
 ---
 
+## 00. 7 Oct — budget water and material menu (Patch 523)
+
+Both Windows installs now have the tested native EXE/HL2 plugin and CSQC, with
+immediate predecessor `.prev` backups. The default remains Dithered (3). The
+menu's Water row adds **Budget (no captures)** (4): animated normals, fog colour
+and baked-cubemap reflection, not live reflections or depth-correct fog.
+Production transition/menu/archive/startup controls pass. Pi CSQC is deliberately
+unchanged pending old-native capability gating (BACKLOG); reconnecting to a lobby
+can therefore give you its previous menu. Test locally for now.
+
+- Restart the client, load a local water map and open the Graphics menu. Cycle
+  Water through Budget, Flat, Cheap, Full and Dithered. Judge the low-cost look
+  during real surfing, including above/below water and approaching the plane.
+- Compare full/cheap/budget at your normal resolution. Watch authored normal
+  motion and reflections while orbiting; report lost cues or distracting alpha
+  artifacts, not an assumed Source-parity verdict. No GPU/portable FPS claim.
+- Glass 0 now says Translucent. Starred material rows warn they need rebuilding
+  or map load, and retry may cache. The budget label/footer should remain legible
+  at your usual HUD/font scale. The full per-row acting audit is still open.
+- Keep the default 3 if you prefer it. No owner config, SSQC or menu.dat was
+  changed; use your normal explicit save choice if you want to retain 4.
+
 ## 00. 6 Oct — private observer panels (Patches 521–522)
 
 The authenticated admin run page now retains per-attempt verifier counts and
