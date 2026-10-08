@@ -938,11 +938,12 @@ Any additional high-FPS matrix is explicitly specified, not an inherited cap.
 **Next step.** Overall Stage A appearance is approved; keep it opt-in while
 interaction/lifecycle acceptance remains pending. P570's physical-native font
 baseline and guarded dual Windows delivery are complete; quality preference,
-cost and device acceptance remain separate. Stage B's existing-ABI preflight
-now proves plugin/menu/disk-texture/alpha/restart activity and reproduces the
-in-memory texture path returning handle 0 (BACKLOG.md). It does not implement
-ImGui or a QC bridge. First fix/verify the memory atlas handle/lifetime path,
-then add a separate exact-size versioned indexed-2D interface and explicit
+cost and device acceptance remain separate. Stage B's first prerequisite is
+now repaired by P581: memory images return drawable shader references, with
+replacement/restart/release/reload, invalid input/IDs and no-renderer controls.
+The P570 zero-handle defect is an acting control, not the current implementation.
+This is not ImGui or a QC bridge. Next add a separate exact-size versioned
+indexed-2D interface, generation-safe plugin-owned resources, and explicit
 MQC/CSQC submission (not Sbar hooks). Normalize physical coordinates, alpha
 and clip ownership/restoration; `srect_t` is not backend-uniform, so do not
 wrap raw `BE_Scissor` and claim renderer parity. Use the native gallery's

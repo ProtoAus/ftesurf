@@ -3821,6 +3821,38 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   artifact/asset hashes still match after testing. No primary peer
   sources/configs were changed. Next: Stage B's minimal ImGui bridge, with
   cost/aesthetic/device acceptance still separate.
+- **P581 atlas prerequisite (2026-10-08):** native engine `710087cb7` /
+  `patch-581` repairs the returned memory-image handle, guards encoded input
+  before decoding and validates positive/in-range/live shader IDs. Old IDs
+  are reference-counted shader-table slots, NOT generation-safe capabilities;
+  reacquire after UpdateVideo and balance every successful reference. Initial
+  number 577 collided with concurrently published reader P577-580; corrected
+  forward without rewriting published `51dfe46ef`/`patch-577` history. Primary
+  `tools/p581atlas_claim.md` advertises only 581 until publication completes.
+  Harness names/markers retain P577 for their pre-registered reproduction.
+  `tools/p577atlas.py --engine <subject> --control <old-client>` compiles an
+  owned C fixture with `-Werror`; control's data handle is 0 while memory/disk
+  lookup pixels ACT, subject's returned handle matches those crops exactly.
+  Replacement, renderer restart, temporary release/reload (visible pixels),
+  seven invalid inputs and four invalid-ID query/draw/quad/unload arms pass;
+  disabled-plugin arm rejects commands/no sentinel. Startup root autoload
+  proves no-renderer rejection before graphics; engine logging is not ready,
+  so the fixture flushes begin/end markers to the per-child absolute
+  `P577_NONE_MARKER` file. It subsequently opens GL and exits normally.
+  Initial `-dedicated` client reached rejection then faulted during untouched
+  shutdown; retained, NOT accepted or repaired. Do not weaken exit checks.
+  `test_p577atlas_unit.py`: 30 mutation controls. Client/server compiler arms
+  retain exactly 2/5 baseline warnings, zero new. Standalone fixture/header
+  clangd lacks its engine context; engine plugin TU has only baseline tidy
+  warnings. Actual GCC build is the gate, not that standalone diagnostic.
+  Build with MSYS2 ucrt64/usr bins explicitly on PATH: otherwise cc detection
+  can silently choose empty ARCHLIBS/NO_FREETYPE. Compute native SVN_VERSION
+  with the clean Windows-Git checkout BEFORE prepending MSYS paths (different
+  autocrlf context can give a false dirty stamp), and use an annotated tag.
+  Final clean full build is `git-7096-patch-581-0-g710087cb7`; `clangdb.py`
+  regenerated the database. Atlas, fonts at scales 1/2, exact approved-P570
+  font pixel equality and 28 dedicated/editor controls pass. Tagged final
+  delivery hashes/UTC belong in its checkpoint, not an ImGui acceptance.
 - **Stage B existing-ABI preflight (2026-10-08):** no ImGui implementation
   yet. Disposable native fixture against engine `3abccb525` (docs-only delta
   from deployed `60dfdc102`) accepts exact 2D/Input/Cmd sizes, rejects shortened
@@ -3828,8 +3860,8 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   half-alpha blue/white, before/after `vid_restart`. Disabled-plugin arm
   rejects commands/no sentinel; subject reaches 100 then 310 rendered frames.
   Valid memory TGA returns 0 and draws nothing because
-  `cl_plugin.inc:Plug_Draw_LoadImage` explicitly sets NULL for type 3; tracked
-  in BACKLOG.md. Same-name `LoadImage` after `LoadImageData` retrieves the
+  `cl_plugin.inc:Plug_Draw_LoadImage` explicitly sets NULL for type 3; this
+  historical defect is now repaired by P581 above. Same-name `LoadImage` after `LoadImageData` retrieves the
   uploaded texture, exactly matching the disk crop before/after restart.
   This proves upload acted, not the one-call returned-handle contract. Do not
   call the prerequisite probe a passed native atlas/ImGui gallery.
