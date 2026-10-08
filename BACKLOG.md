@@ -2382,7 +2382,11 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   queries and real open/ceiling-blocked duck cycles with five-arm body parity.
   A real capsule ramp/departure actor also binds winning/tick/contact snapshots
   and native hit/miss/capsule-vs-box controls, retaining explicit capsule geometry
-  ABSTAIN (no independent capsule oracle). Original eight cases stay unchanged.
+  ABSTAIN (no independent capsule oracle). A real translated/yaw world-brush
+  actor binds native instance/hull snapshots and rotation-sensitive queries,
+  with transformed geometry ABSTAIN (no independent transform oracle).
+  Identity-solid results remain counterfactual, never body contact or misses.
+  Original nine cases stay unchanged.
   This is bounded fixture coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.

@@ -3826,6 +3826,36 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P598 minimal ImGui is a diagnostic prerequisite, not migrated UI:** optional
+  pinned 1.91.9b plugin exports only NativeUI/1 service + shutdown/status; separate
+  MQC/CSQC contexts/atlases, no implicit ini/log files, no Tick/Menu/Sbar drawing.
+  Actual ImGui text/rounded control/1000-row clipped table/tooltip and overlap
+  markers pass 23 screenshots at two virtual scales, physically identical.
+  Real-source adapter/host controls pass 107 assertions per 16/32-bit arm including
+  >64K rollover, whole-data rejection and bounded splitting. Fixed scratch buffers
+  expand triangles; this is NOT cost acceptance. Submit failure returns false but
+  cannot undo previous successful batches; fallback must redraw covering content.
+  No input/widget/model transport, actual-panel/default/Build/release change.
+  Pinned vendor needs `vendor/* -text` to preserve SHA256 bytes in autocrlf clones;
+  unmodified vendor uses -O1 for GCC 16 range diagnostics, adapter -O2, both -Werror.
+  C++/pthread runtime DLL imports are eliminated by static plugin linkage. Exact
+  evidence and final frozen/delivery gates: tools/p598imgui.md. Provisional native
+  P595 collided with concurrent surfd P595-597; preserve those entries and the
+  already-published historical patch-595 tag. Canonical native source/tag is P598;
+  test command/cvar/log prefixes remain p595 for retained-rig continuity.
+- **`build.ps1 -NoDeploy` previously did not exist:** PowerShell silently accepted
+  the unknown switch in `$args`; QC wrote into the integration install and native
+  deployment still copied to the second install. P598 now declares the switch,
+  adds CmdletBinding unknown-argument refusal and rejects NoDeploy+Pi/Run. It
+  compiles through owned same-src-directory manifests (only output line changed)
+  into fresh rig directories, removes its temporary manifests and blocks native
+  deployment. This fteqcc's -o switches to new-style parsing; absolute input paths
+  in old-style manifests also failed. Both are retained failed controls, not a
+  workaround to ship dirty source. The real -Engine -NoDeploy control proves 65
+  install/rollback/progs/cfg byte/path witnesses unchanged and three zero-warning
+  QC builds. Earlier ignored-switch native copies were hash-guard restored from
+  retained rollback files; new optional DLLs were parked before proceeding.
+
 - **P594 inherited native clipping: validate AFTER physical conversion.** Final
   P593 review found inherited clipping was intersected after P589's validation.
   NaN/Inf and finite virtual-to-physical overflow must fail before callback/flush,

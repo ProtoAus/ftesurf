@@ -414,8 +414,11 @@ joint convex/AABB oracle; fixture-only/no-oracle/OFF/ON/repeat body parity and
 winning snapshot bindings ACT. A ninth real capsule ramp/departure case binds
 native tick/contact/winner snapshots and path-sensitive capsule-vs-box queries;
 it explicitly ABSTAINS from independent capsule geometry/support rather than
-substituting an AABB oracle. Transformed/triangle/displacement, airborne posture,
-explicit cached/recovery/portal paths, full capsule geometry and general-map
+substituting an AABB oracle. A tenth translated/yaw world-brush actor binds
+native instance/accepted-hull snapshots and rotation-sensitive real queries,
+retaining transformed geometry ABSTAIN and exact original-nine parity.
+Non-world/entity/embedded/triangle/displacement, airborne posture, explicit
+cached/recovery/portal paths, full capsule/transform geometry and general-map
 coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
@@ -971,9 +974,18 @@ foreign, duplicate and outside-draw rejection have real-host controls. Optional
 shared QC wrappers are compiled but no actual panel/default/input chain changes.
 P594 additionally rejects non-finite final inherited clips before service dispatch;
 NaN/Inf/physical-conversion-overflow host controls prove release to fallback.
-Next implement the minimal ImGui command-list service on this proven bridge;
-widget/model/input transport and real-panel migration remain separate work.
-No non-GL/device-input or cost acceptance is implied. Preserve legacy fallback
+P598 adds the minimal optional Dear ImGui 1.91.9b command-list service on that
+bridge: diagnostic owners only, per-VM embedded-font RGBA atlases, no implicit
+ini/log writes and bounded preflighted indexed-mesh batches. The real ImGui text,
+rounded control, clipped 1000-row table/tooltip gallery acts at both QC draw sites
+with identical physical output across virtual scales; malformed-data/16-/32-bit/
+>64K/lifecycle/fallback controls pass. The development build includes the optional
+DLL, but no real panel invokes it. Frozen-stamp build/delivery remain separate
+recorded gates in tools/p598imgui.md. Provisional native P595 was reassigned
+without rewriting the concurrently published surfd P595-597 or historical tag.
+Next design the bounded widget/model/input transport and an isolated interactive
+panel falsifier before migrating a real panel. No non-GL/device-input, modern
+appearance, font/DPI policy or cost acceptance is implied. Preserve legacy fallback
 and physical-native fonts. Measure/
 approve performance budgets before switching the scoreboard default. The
 larger menu/editor migration is conditional on those gates, not already

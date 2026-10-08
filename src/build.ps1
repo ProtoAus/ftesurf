@@ -5,6 +5,8 @@
    .\build.ps1            QC only (fast -- this is what you want 95% of the time)
    .\build.ps1 -Engine    QC + incremental engine/plugin rebuild + dual deploy
    .\build.ps1 -Engine -Full   as above, but forces a full recompile first
+   .\build.ps1 -Engine -NoDeploy   compile QC into an owned rig directory;
+                                  retain native outputs, touch neither install
    .\build.ps1 -Pi        QC, then qwprogs.dat + csprogs.dat to the NanoPi and
                           every ACTIVE lobby restarted -- the set is asked of
                           systemd, never written down here.  Refused while anyone is
@@ -83,10 +85,12 @@
  BatchMode=yes, so a missing key fails at once instead of prompting.
 ================================================================================
 #>
+[CmdletBinding()]
 param(
     [switch]$Engine,
     [switch]$Full,
     [switch]$Run,
+    [switch]$NoDeploy,
 
     # Parallel make jobs for every engine/plugin make invocation.  The engine
     # Makefile has no job count of its own and build.ps1 used to call make bare,
@@ -127,6 +131,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($NoDeploy -and ($Pi -or $Run)) { throw '-NoDeploy cannot be combined with -Pi or -Run' }
 
 # Derived from this script's own location, so a fresh clone builds wherever it
 # landed.  build.ps1 lives in <install>\src\, so the install is its parent.
@@ -171,10 +176,31 @@ then copy engine\release\fteqcc64.exe into $SrcDir, put it on PATH, or set
 # ---------------------------------------------------------------- QC ---------
 Step "QuakeC"
 Ok "fteqcc: $Fteqcc"
+if ($NoDeploy) {
+    $NoDeployDir = Join-Path $SurfDir ("rig\build-nodeploy-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $NoDeployDir | Out-Null
+    Ok "NoDeploy QC outputs: $NoDeployDir"
+}
 Push-Location $SrcDir
 try {
     foreach ($src in @('sv_progs.src', 'cl_progs.src', 'm_progs.src')) {
-        $out = & $Fteqcc $src 2>&1
+        $qcArgs = @('-srcfile', $src)
+        $controlSrc = $null
+        if ($NoDeploy) {
+            # This compiler's -o selects new-style QC input, and its old-style
+            # .src reader mishandles absolute input paths. Keep declaration
+            # order/relative inputs in a fresh same-directory manifest; change
+            # only its output line, never the canonical source manifest.
+            $manifest = @(Get-Content -LiteralPath $src)
+            $leaf = Split-Path $manifest[0] -Leaf
+            $manifest[0] = [IO.Path]::GetRelativePath($SrcDir, (Join-Path $NoDeployDir $leaf)).Replace('\','/')
+            $controlSrc = Join-Path $SrcDir ("build-nodeploy-" + [guid]::NewGuid().ToString('N') + '-' + $src)
+            Set-Content -LiteralPath $controlSrc -Value $manifest -Encoding utf8
+            Copy-Item -LiteralPath $controlSrc -Destination (Join-Path $NoDeployDir $src)
+            $qcArgs = @('-srcfile', (Split-Path $controlSrc -Leaf))
+        }
+        try { $out = & $Fteqcc @qcArgs 2>&1 }
+        finally { if ($controlSrc) { Remove-Item -LiteralPath $controlSrc } }
         if ($LASTEXITCODE -ne 0) {
             $out | Write-Host
             throw "fteqcc failed on $src"
@@ -240,8 +266,8 @@ if ($Engine) {
 
     # Bare `plugins-rel` dies on an unrelated ffmpeg target (plugins/Makefile:241),
     # so NATIVE_PLUGINS is always explicit.
-    Step "make plugins-rel (hl2 cod box3d ode)"
-    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode"
+    Step "make plugins-rel (hl2 cod box3d ode ui_imgui)"
+    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode ui_imgui"
     if ($LASTEXITCODE -ne 0) { throw "plugins-rel failed" }
 
     # ------------------------------------------------------- deploy ---------
@@ -252,23 +278,26 @@ if ($Engine) {
         Ok ((Split-Path $to -Leaf) + "  <- " + (Get-Item $from).LastWriteTime)
     }
 
-    Step "Deploy -> $SurfDir"
-    Deploy "$ReleaseDir\fteqw64.exe"             "$SurfDir\ftesurf64.exe"
-    Deploy "$ReleaseDir\fteplug_hl2_x64.dll"     "$SurfDir\fteplug_hl2_x64.dll"
-
-    # Conditional only so a fresh clone with no second install still builds.
-    # Where the second install DOES exist the dual deploy stays mandatory --
-    # see the header: the plugin gate has no data-struct canary, so a plugin
-    # built against an older engine header loads silently and corrupts memory.
-    if ($QuakeDir -and (Test-Path -LiteralPath $QuakeDir)) {
-        Step "Deploy -> $QuakeDir  (shared engine tree -- see header)"
-        Deploy "$ReleaseDir\fteqw64.exe"             "$QuakeDir\fteqw64.exe"
-        Deploy "$ReleaseDir\fteqwsv64.exe"           "$QuakeDir\fteqwsv64.exe"
-        foreach ($p in @('hl2', 'cod', 'box3d', 'ode')) {
-            Deploy "$ReleaseDir\fteplug_${p}_x64.dll" "$QuakeDir\fteplug_${p}_x64.dll"
-        }
+    if ($NoDeploy) {
+        Ok "NoDeploy: native outputs retained in $ReleaseDir; both installs untouched"
     } else {
-        Ok "second install not present ($QuakeDir) -- dual deploy skipped"
+        Step "Deploy -> $SurfDir"
+        Deploy "$ReleaseDir\fteqw64.exe"              "$SurfDir\ftesurf64.exe"
+        Deploy "$ReleaseDir\fteplug_hl2_x64.dll"      "$SurfDir\fteplug_hl2_x64.dll"
+        Deploy "$ReleaseDir\fteplug_ui_imgui_x64.dll" "$SurfDir\fteplug_ui_imgui_x64.dll"
+
+        # A fresh clone can lack the second install; where present, dual deploy
+        # is mandatory. A plugin built against old headers can corrupt memory.
+        if ($QuakeDir -and (Test-Path -LiteralPath $QuakeDir)) {
+            Step "Deploy -> $QuakeDir  (shared engine tree -- see header)"
+            Deploy "$ReleaseDir\fteqw64.exe"             "$QuakeDir\fteqw64.exe"
+            Deploy "$ReleaseDir\fteqwsv64.exe"           "$QuakeDir\fteqwsv64.exe"
+            foreach ($p in @('hl2', 'cod', 'box3d', 'ode', 'ui_imgui')) {
+                Deploy "$ReleaseDir\fteplug_${p}_x64.dll" "$QuakeDir\fteplug_${p}_x64.dll"
+            }
+        } else {
+            Ok "second install not present ($QuakeDir) -- dual deploy skipped"
+        }
     }
 }
 
