@@ -1425,6 +1425,36 @@ publicly WITH its fix, not before it.
   native protocol. This setup failure is not a code review or external fallback
   permission. Private logs retain failed controls and successful replacements.
 
+### Historical similarity byte provenance (P567-569)
+
+- Capture the existing bounded binary buffer, not a second path read or normalized
+  text/moves. Compared buffers carry version1 A/B SHA-256 and byte length; skips
+  and unbounded standalone comparisons do not. The collector stores validated
+  capture in the same short INSERT transaction as metrics. Old observations stay
+  empty, never reread/backfilled or silently rebound to current files.
+- Authenticated review retains stored A/B orientation and valid metrics when
+  capture is missing/invalid. Bound raw SQL projection as BLOB bytes: SQLite TEXT
+  slicing stops at embedded NUL and can hide malformed trailing data. Reject
+  oversize/invalid UTF-8/JSON; coalesce SQLite's empty-BLOB substring NULL so the
+  legacy-empty state remains explicit. Use text-only sinks and historical/not-
+  current/not-authenticity labels; there is no public badge or policy consumer.
+- Reload alone does not initialize an existing collector table. After a backed-up
+  rollout, run installed ensure_schema under the canonical sweep lock, checking
+  original columns/rows against the pre-deploy snapshot. This adds capture only,
+  not a comparison pass. Keep legacy captures empty and prove a measured legacy
+  projection ACTED. Explicit new reader/collector/admin *_sources.py suites are
+  required; the standard shipper does not discover them. Node-free Pi DOM cases
+  skip; Windows runs the actual renderer with an HTML-sink trap.
+- Verified deployment source a976089 on 2026-10-08 at03:36UTC: all34selected Linux
+  programs passed, installed22cases (five inherited, three DOM skips) passed, all
+  four destination hashes match and old rows/values across six live tables are
+  unchanged. Reader/SQLite/file backups retained, gunicorn reload/health/401 pass.
+  Broad Windows admin suite's two UDP/RCON failures reproduce exactly in untouched
+  e2d621b control; Linux passes. No engine/QC/progs/Build/release change. These
+  hashes prove consumed bytes, not authenticity, current files, atomic A/B capture,
+  calibrated thresholds, complete coverage, hard elapsed/RSS/DB budgets or browser
+  visual acceptance. Shared uncommitted work was never deployed.
+
 ## The run line (Patches 432, 449-453)
 
 - Patch 527: `hud_edit lines` has seven rows, not 29. Player (`hud_trail`),
