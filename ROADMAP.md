@@ -561,8 +561,8 @@ or existing split timer works.
 
 ## 13. Modern SUI + native Dear ImGui — Lex, 8 Oct 2026
 
-**Status: Stage A opt-in HUD-editor sample implemented and isolated-tested in
-Patch 566. Native ImGui (B onwards) is NOT implemented.**
+**Status: Stage A opt-in HUD-editor sample implemented, isolated/live-tested
+and deployed in Patch 566. Native ImGui (B onwards) is NOT implemented.**
 Lex wants the current SUI improved, plus native ImGui for rich scoreboards,
 graphs, HUD editing and other interactive overlays. Keep the lightweight QC
 HUD and the existing interactive panels as fallbacks. This does NOT replace
@@ -747,6 +747,16 @@ probes and font/tooltip/closed-work mutants. Existing p498 menu navigation:
 and 1.5 s rendered waits; stock fresh-rig failures were fixture prerequisites,
 not patched product code. First tests established bounds/actions only; font
 requests were corrected after Lex's warning and the revised matrix re-run.
+
+**Deployment (8 Oct UTC).** Source commit `414cd86`, rebuilt/proved in a clean
+worktree: CSQC/menu/mask copied to both Windows installs at 02:46, hashes
+verified, .prev retained, personal configs and Windows server progs unchanged.
+Guarded Pi deployment found all 12 lobbies empty, verified both progs, kept
+.prev and restarted all 12. Mask copied/hash-verified separately. At 02:57 an
+actual connected-client smoke opened the fleet-delivered editor and reported
+79 rounded draws with the asset available. UDP status omitted CSQC fields;
+it was not a checksum control. Do not infer automatic asset downloads for
+other clients, active owner-VM reload, release verification or font acceptance.
 
 Not closed: actual OS/device feel, broad nested clipping/UTF-8/lifecycle matrix,
 full CPU/GPU/percentile budgets or human font/style acceptance. No graph,
