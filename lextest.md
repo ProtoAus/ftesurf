@@ -13,14 +13,15 @@ to be wrong.
 
 ## 00. 8 Oct — modern SUI editor preview (Patches 566/570)
 
-Lex's feedback: the UI looks good; text appears improved but is still only
-"OK" against Apple-like quality. Overall appearance is approved. Advanced
+Lex's latest overall feedback: "looks epic"; appearance is approved. Earlier
+font-specific feedback was only "OK" against Apple-like quality. Advanced
 font quality is an unbuilt roadmap follow-up with a strict low recurring
 rendering budget, not a completed acceptance or permission for costly effects.
 Specific input/DPI/lifecycle checks below remain pending. P570 is deployed
 on both Windows installs as of 2026-10-08T05:28:54Z; source/tag and Pi CSQC
 are also updated. Both installed clients pass isolated font/editor controls.
-No owner settings were changed; rollback copies are retained.
+No owner settings were changed; rollback copies are retained. P581 is a
+native atlas/API prerequisite, not a new ImGui panel or changed visual style.
 
 - With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
   `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
