@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Acted static-brush native trajectories + full native/joint convex queries.
 
-No halfspace max-gap classification. The bounded fixture oracle is not a
-continuous physical-exit timestamp or arbitrary-map support/marker policy.
+No halfspace max-gap classification. Eight AABB cases use a bounded joint
+oracle; the ACTED capsule case explicitly ABSTAINS from geometry/support.
+Neither is a continuous physical-exit timestamp or general marker policy.
 """
 import argparse
 from collections import Counter
@@ -21,12 +22,12 @@ from offramp_shape import category as shape_category, decode as shape_decode
 
 LABELS = ('interior-ride', 'partial-full-side-exit', 'convex-side-exit',
           'interior-input-departure', 'ground-jump', 'overlapping-brush-seam',
-          'open-ground-duck-cycle', 'ceiling-blocked-unduck')
+          'open-ground-duck-cycle', 'ceiling-blocked-unduck', 'capsule-ramp-side-departure')
 STEPS = 32
 MAX_STEPS = 192
 
 
-def step_count(case): return STEPS if case < 6 else (96 if case == 6 else MAX_STEPS)
+def step_count(case): return STEPS if case < 6 or case == 8 else (96 if case == 6 else MAX_STEPS)
 WIDTHS = {'BEGIN': 5, 'SOURCE': 2, 'PARAM': 2, 'CASE': 4, 'BRUSH': 9, 'PLANE': 7,
           'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
 PARAMS = dict(zip(('physicsmode ticrate gravity entgravity maxspeed spectatormaxspeed maxairspeed maxvelocity '
@@ -103,7 +104,7 @@ def authored(case):
         planes = [[1, 0, 0, hi[0]], [-1, 0, 0, -lo[0]], [0, 1, 0, hi[1]], [0, -1, 0, -lo[1]],
                   [0, 0, -1, 512], [0 if case == 4 else .8, 0, 1 if case == 4 else .6, 0]]
         if case == 2: planes += [[math.sqrt(.5), math.sqrt(.5), 0, 0]]
-        if case >= 6:
+        if case in (6, 7):
             lo = [-32, -128, 50] if b else [-256, -256, -512]
             hi = [32, 128, 128] if b else [256, 256, 0]
             planes = [[1, 0, 0, hi[0]], [-1, 0, 0, -lo[0]], [0, 1, 0, hi[1]],
@@ -113,7 +114,8 @@ def authored(case):
     z = .05 if case == 4 else (12.8-.8*x+.05)/.6
     seed = [x, y, z, 0 if case == 3 else (60 if case == 4 else 300),
             250 if case in (1, 2, 5) else 0, 0 if case in (3, 4) else -400, -16, -16, 0, 16, 16, 62]
-    if case >= 6: seed = [-100, 0, .05, 0, 0, 0, -16, -16, 0, 16, 16, 62]
+    if case in (6, 7): seed = [-100, 0, .05, 0, 0, 0, -16, -16, 0, 16, 16, 62]
+    if case == 8: seed = [-100, 0, (6.4+80+.05)/.6, 300, 250, -400, -16, -16, 0, 16, 16, 62]
     return brushes, seed
 
 
@@ -124,7 +126,7 @@ def oracle_validate(row, tick, brushes):
     case, ordinal = integers(row[:2]); kind = row[2]; brush = integers(row[3:4])[0]
     v = numbers(row[4:]); start, end = v[:3], v[3:6]
     require(0 <= v[6] <= 1 and all(f in (0, 1) for f in integers(row[11:13])) and
-            v[8] <= v[7] and (kind == 'standing' or integers(row[11:13]) == [0, 0]), 'invalid/embedded authored oracle fraction/flags')
+            v[8] <= v[7] and (kind in ('standing', 'box') or integers(row[11:13]) == [0, 0]), 'invalid/embedded authored oracle fraction/flags')
     require(integers(row[13:14]) == [0], 'oracle fixture entity binding changed')
     contents = integers(row[18:])[0]
     require(0 <= contents <= 0xffffffff, 'invalid oracle contents')
@@ -137,17 +139,25 @@ def oracle_validate(row, tick, brushes):
         low = sum(n*(hi if n < 0 else lo) for n, lo, hi in zip(p[:3], mins, maxs))
         z = (p[3]-low-p[0]*pos[0]-p[1]*pos[1])/p[2]
         expected_start[2], expected_end[2] = z+2, z-2
-    else: require(kind in ('stationary', 'standing'), 'unknown oracle query kind')
+    else: require(kind in ('stationary', 'standing', 'box'), 'unknown oracle query kind')
     require(close(start, expected_start) and close(end, expected_end), 'oracle endpoints not bound to actual tick hull/point')
     subset = brushes if brush == -1 else [brushes[brush]]
     lo = [min(a, b)+m for a, b, m in zip(start, end, mins)]
     hi = [max(a, b)+m for a, b, m in zip(start, end, maxs)]
-    joint = any(joint_overlap(b['planes'], lo, hi) for b in subset)
     native = v[6] < 1 or bool(v[7] or v[8])
-    require(native == joint, 'native query disagrees with JOINT convex oracle')
+    if tick[25]:
+        require(case == 8 and kind in ('stationary', 'down2', 'box') and brush == -1,
+                'unregistered capsule query')
+    else:
+        require(kind != 'box', 'box counterfactual lacks actual capsule')
+    # Native capsule results are captured/bound, NOT independently classified.
+    # Only the explicit BOX counterfactual may use AABB feasibility here.
+    if not tick[25] or kind == 'box':
+        joint = any(joint_overlap(b['planes'], lo, hi) for b in subset)
+        require(native == joint, 'native query disagrees with JOINT convex oracle')
     if kind == 'stationary': require(not native, 'authored mover ended embedded in solid')
     if v[7] or v[8]:
-        require(kind == 'standing' and contents == 1 and
+        require(kind in ('standing', 'box') and contents == 1 and
                 (v[10:14] == [0, 0, 0, 0] or any(close(v[10:14], p) for b in subset for p in b['planes'])),
                 'counterfactual standing solid not bound to authored collider')
     elif v[6] < 1:
@@ -184,12 +194,19 @@ def bind_capture(text, case, ticks, brushes):
                 o[6] == 0 and o[7] == 1, 'accepted origin not bound to fixture brush')
         p = payloads[s['payload_id']]
         reason, _ = shape_category(o, r, s, p, 'authored_offramp_motion')
-        require(reason == 'copied-world-brush-plane-bound', 'fixture accepted unsupported winning shape')
+        expected_reason = 'capsule-hull-unsupported' if case == 8 else 'copied-world-brush-plane-bound'
+        require(reason == expected_reason, 'fixture winning shape incorrectly promoted/unsupported')
         matches = [b for b, a in enumerate(brushes) if close(p['model_local_mins'], a['mins']) and close(p['model_local_maxs'], a['maxs']) and
                    len(p['planes']) == len(a['planes']) and all(close(q, z) for q, z in zip(p['planes'], a['planes']))]
-        require(len(matches) == 1 and s['capsule'] == 0, 'winning copied shape not an authored whole brush')
+        require(len(matches) == 1 and s['capsule'] == int(case == 8), 'winning copied shape not an authored whole brush')
+        if case == 8:
+            require(r[6:9]+[r[5]] in p['planes'] and hc[i]['capsule'] == 1 and
+                    [hc[i]['pm_type'], hc[i]['ducked'], hc[i]['ducking'], hc[i]['ducktime_ms'], hc[i]['oldbuttons']] == [0]*5 and
+                    hc[i]['mins'] == [-16, -16, 0] and hc[i]['maxs'] == [16, 16, 62],
+                    'capsule accepted plane/hull snapshot not bound')
         per_tick[int(r[1])] += 1
         winners.append({'ordinal': i, 'tick': int(r[1]), 'brush': matches[0], 'leaf': o[4], 'rootleaf': o[5]})
+        if case == 8: winners[-1]['geometry_status'] = reason
     for i, (h, t) in enumerate(zip(ht, ticks)):
         require(h['mins'] == t[16:19] and h['maxs'] == t[19:22] and
                 [h['ducked'], h['ducking'], h['ducktime_ms'], h['capsule'], h['pm_type'], h['oldbuttons']] == t[22:] and
@@ -207,7 +224,7 @@ def grade(text):
         require(pos < len(rows) and rows[pos][0] == tag, f'missing/duplicate/reordered motion {tag}')
         w = rows[pos][1]; pos += 1; return w
     header = integers(take('BEGIN'))
-    require(header[0] == 2 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
+    require(header[0] == 3 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
     capture, oracle = header[1:3]
     source = take('SOURCE')
     require(re.fullmatch('[0-9a-f]{64}', source[0]) and re.fullmatch('[0-9a-f]{40}', source[1]), 'invalid fixture/source stamp')
@@ -237,18 +254,21 @@ def grade(text):
         ticks, queries = [], []
         for i in range(steps):
             t = numbers(take('TICK'))
-            forward = 250 if c >= 6 or (c == 3 and i == 3) else 0
-            buttons = (8 if 3 <= i <= (34 if c == 6 else 44) else 0) if c >= 6 else (2 if c == 4 and i == 3 else 0)
+            forward = 250 if c in (6, 7) or (c == 3 and i == 3) else 0
+            buttons = (8 if 3 <= i <= (34 if c == 6 else 44) else 0) if c in (6, 7) else (2 if c == 4 and i == 3 else 0)
             require(t[:7] == [c, i, 15, forward, 0, buttons, 1] and
                     close(t[7:8], [.015], 1e-8) and t[8] in (0, 1) and t[9] in (0, 1) and
                     t[16:21] == [-16, -16, 0, 16, 16] and t[21] in (45, 62) and
-                    t[22] in (0, 1) and t[23] in (0, 1) and 0 <= t[24] <= 1000 and t[25:27] == [0, 0] and
+                    t[22] in (0, 1) and t[23] in (0, 1) and 0 <= t[24] <= 1000 and t[25:27] == [int(c == 8), 0] and
                     t[27].is_integer() and 0 <= t[27] <= 255 and
-                    (c >= 6 or (t[21] == 62 and t[22:25] == [0, 0, 0])), 'wrong command/tick/hull actor')
+                    (c in (6, 7) or (t[21] == 62 and t[22:25] == [0, 0, 0])), 'wrong command/tick/hull actor')
             ticks.append(t)
             qrows = []
             if oracle:
-                for kind, brush in [('stationary', -1), ('down2', -1), ('projected', -1), *[('projected', b) for b in range(len(brushes))], *([('standing', -1)] if c >= 6 else [])]:
+                query_order = [('stationary', -1), ('down2', -1), ('box', -1)] if c == 8 else [
+                    ('stationary', -1), ('down2', -1), ('projected', -1),
+                    *[('projected', b) for b in range(len(brushes))], *([('standing', -1)] if c in (6, 7) else [])]
+                for kind, brush in query_order:
                     row = take('ORACLE'); require(integers(row[:2]) == [c, i] and row[2:4] == [kind, str(brush)], 'oracle not bound/ordered to native case tick')
                     qrows.append(oracle_validate(row, t, brushes))
             queries.append(qrows)
@@ -256,7 +276,9 @@ def grade(text):
         winners = bind_capture(blocks[c], c, ticks, brushes) if capture else []
         cases.append({'label': label, 'brushes': brushes, 'seed': numbers(r[1:]), 'ticks': ticks, 'oracles': queries, 'accepted': winners})
     require(integers(take('END')) == [len(LABELS)] and take('COMPLETE') == [] and pos == len(rows), 'missing/duplicate motion completion')
-    if oracle: assess_posture(*cases[6:])
+    if oracle:
+        assess_posture(*cases[6:8])
+        assess_capsule(cases[8])
     return {'capture': capture, 'oracle': oracle, 'source': source, 'cases': cases}
 
 
@@ -289,14 +311,30 @@ def assess_posture(open_cycle, ceiling):
     ceiling['released_but_ceiling_blocked_ticks'] = released
 
 
+def assess_capsule(c):
+    ts, qs = c['ticks'], c['oracles']
+    require(c['label'] == LABELS[8] and len(ts) == STEPS and all(qs), 'missing capsule native actor')
+    losses = [i for i in range(1, STEPS) if ts[i-1][8] and not ts[i][8]]
+    hits = [i for i, q in enumerate(qs) if hit(q[1])]
+    misses = [i for i, q in enumerate(qs) if not hit(q[1])]
+    differences = [i for i, q in enumerate(qs) if q[2][11] == q[2][12] == 1 and
+                   not (q[0][10] < 1 or q[0][11] or q[0][12])]
+    require(ts[0][8] == 1 and losses and hits and misses and min(hits) < max(misses) and differences and
+            all(t[25:27] == [1, 0] and t[21:25] == [62, 0, 0, 0] for t in ts),
+            'capsule native hit/miss/path difference did not ACT')
+    c.update(raw_loss_ticks=losses, native_down2_hit_ticks=hits, native_down2_miss_ticks=misses,
+             capsule_miss_box_solid_ticks=differences, geometry_acceptance='ABSTAIN-capsule-hull-unsupported',
+             independent_capsule_oracle='NOT_IMPLEMENTED')
+
+
 def assess(cases):
-    for c in cases:
+    for c in cases[:8]:
         ts, qs = c['ticks'], c['oracles']
         require(all(qs), 'missing full native query actor')
         c['raw_loss_ticks'] = [i for i in range(1, len(ts)) if ts[i-1][8] and not ts[i][8]]
         c['immediate_support_ticks'] = [i for i, q in enumerate(qs) if hit(q[1])]
         c['projected_support_ticks'] = [i for i, q in enumerate(qs) if hit(q[2])]
-    a, side, convex, interior, jump, seam, open_cycle, ceiling = cases
+    a, side, convex, interior, jump, seam, open_cycle, ceiling = cases[:8]
     require(all(t[8] for t in a['ticks']) and len(a['projected_support_ticks']) == STEPS and not a['raw_loss_ticks'], 'interior ride control failed')
     for c, edge in ((side, [0, 1, 0, 64]), (convex, [math.sqrt(.5), math.sqrt(.5), 0, 0])):
         partial = [i for i in c['projected_support_ticks'] if dot(edge[:3], c['ticks'][i][10:13]) > edge[3]]
@@ -310,6 +348,9 @@ def assess(cases):
     require(jump['ticks'][2][9] == 1 and jump['ticks'][3][5] == 2 and jump['ticks'][3][13+2] > 250 and
             jump['ticks'][3][9] == 0 and 3 not in jump['immediate_support_ticks'] and len(jump['projected_support_ticks']) == STEPS, 'real ground jump did not ACT')
     assess_posture(open_cycle, ceiling)
+    assess_capsule(cases[8])
+    require(cases[8]['accepted'] and all(w['geometry_status'] == 'capsule-hull-unsupported' for w in cases[8]['accepted']),
+            'capsule winning capture absent/promoted')
     require(len(seam['projected_support_ticks']) == STEPS and all(t[8] for t in seam['ticks']) and
             {a['brush'] for a in seam['accepted']} == {0, 1} and
             len({a['leaf'] for a in seam['accepted']}) == 2 and any(not hit(q[3]) and hit(q[4]) for q in seam['oracles']), 'union/previous-brush seam handoff did not ACT')
@@ -328,6 +369,7 @@ def compare(nooracle, control, off, on, repeat):
     return {'native_static_fixture_gates': 'PASS', 'nooracle_body_parity': 'PASS', 'capture_body_oracle_parity': 'PASS',
             'repeat_capture_binding': 'PASS', 'body_oracle_sha256': digest, 'source': reports[3]['source'],
             'cases': reports[3]['cases'], 'physical_exit_acceptance': 'NOT_TESTED', 'classifier_mark_acceptance': 'NOT_TESTED',
+            'capsule_native_path_capture_gates': 'PASS', 'capsule_support_geometry_acceptance': 'ABSTAIN',
             'unsupported_mover_paths_acceptance': 'NOT_TESTED', 'clock_render_rate_hold_acceptance': 'NOT_TESTED'}
 
 
@@ -341,7 +383,8 @@ def main():
     result = compare(*(Path(arms[n]['log']).read_text(errors='replace') for n in names))
     require(result['source'][0] == arms['on']['fixture_sha256'], 'binary fixture stamp differs from tooling template')
     result['arms'] = arms; a.output.write_text(json.dumps(result, indent=2)+'\n')
-    print('Eight acted native static-brush/posture fixtures: PASS; full native/joint query and capture parity PASS')
+    print('Eight AABB/posture fixtures + ACTED capsule path: PASS; five-arm capture/body/query parity PASS')
+    print('Capsule geometry/support: ABSTAIN (no independent capsule oracle); AABB joint queries PASS')
     print('Physical timestamp/classifier/mark/unsupported paths/clock/render/rate/hold acceptance: NOT_TESTED')
 
 

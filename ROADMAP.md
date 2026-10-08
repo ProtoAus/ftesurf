@@ -411,8 +411,11 @@ assuming the previous contact's hull. The separate authored motion command
 now drives six real static-brush edge/input/jump/seam controls plus open and
 ceiling-blocked duck/unduck cycles. Full native queries agree with a bounded
 joint convex/AABB oracle; fixture-only/no-oracle/OFF/ON/repeat body parity and
-winning snapshot bindings ACT. Capsule/transformed/triangle/displacement,
-airborne posture, explicit cached/recovery/portal paths and general-map
+winning snapshot bindings ACT. A ninth real capsule ramp/departure case binds
+native tick/contact/winner snapshots and path-sensitive capsule-vs-box queries;
+it explicitly ABSTAINS from independent capsule geometry/support rather than
+substituting an AABB oracle. Transformed/triangle/displacement, airborne posture,
+explicit cached/recovery/portal paths, full capsule geometry and general-map
 coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.

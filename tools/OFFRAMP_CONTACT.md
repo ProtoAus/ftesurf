@@ -345,10 +345,11 @@ rows exceeded the prior 120-second harness allowance on the original segment;
 180 seconds permitted completion. Output occurs after capture stops, but this
 is not a performance claim. Retain every timed-out output directory.
 
-Authored partial/full/convex edge, seam/overlap, jump, transformed/embedded/entity,
-triangle/displacement, posture-change, capsule and cached/recovery/portal motion
-trajectories, full collision/support oracle, physical-exit/classification,
-clock, render/camera/rate/LOD/hold/mark acceptance remain **NOT_TESTED**.
+The hull-only replay stage does not validate authored movement trajectories.
+The separate native command below adds bounded edge/input/jump/seam/posture
+controls and an ACTED capsule path with explicit geometry abstention. Full
+collision/support, physical-exit/classification and clock/render/camera/rate/
+LOD/hold/mark acceptance remain **NOT_TESTED**.
 
 ## Authored static-brush native trajectories (diagnostic only)
 
@@ -408,16 +409,17 @@ or continuous collision-time coverage. Mismatch is refusal, never a weakened
 physical-exit claim. Accepted whole winning snapshots must match an authored
 brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
 
-Protocol `OFFRAMPMOTION_` v2: BEGIN capture/oracle/case counts and maximum step
+Protocol `OFFRAMPMOTION_` v3: BEGIN capture/oracle/case counts and maximum step
 capacity, explicit per-CASE step counts (first six 32, open posture 96, ceiling
-posture 192), SOURCE
+posture 192, capsule 32), SOURCE
 fixture-template SHA256 and native base commit, exact ordered PARAM rows,
 CASE/BRUSH/PLANE/SEED, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
 TICK carries actual command inputs, native tick count/rate, ramp/ground state,
 body/velocity, hull/posture. ORACLE carries case/tick/kind/brush, exact endpoints,
 fraction/solid flags/entity/plane/contents. Missing/duplicate/reordered/unknown/
-malformed rows, changed input/provenance, nonfinite data, unsupported hull/pose,
-wrong bindings, quiet subject or failed actor/native query all refuse. Embedded
+malformed rows, changed input/provenance, nonfinite data, unregistered hull/pose,
+wrong bindings, quiet subject or failed actor/native query all refuse. The named
+capsule case is structurally validated but explicitly ABSTAINS from geometry. Embedded
 SOURCE is build provenance, not tamper-proof binary or map authenticity.
 
 The first successful family observes two distinct delays: side/convex projected
@@ -439,8 +441,10 @@ body/oracle/accepted bindings remain exactly equal to their retained v1 controls
 Posture cases add a separately named `standing` stationary world query at the
 actual tick position, using a LOCAL copy of the hull with the explicit profile's
 standing height. It NEVER mutates pmove. The reader checks the standing AABB
-against the same whole-brush joint oracle. Solid flags are permitted ONLY for
-this counterfactual fit query; they must not be promoted to actual-body contact.
+against the same whole-brush joint oracle. In the eight AABB cases, solid flags
+are permitted ONLY for this counterfactual fit query; they must not be promoted
+to actual-body contact. The capsule case's separately named box counterfactual
+below may also report solid, never as actual capsule contact.
 The ceiling control must block the standing query while the crouched query
 misses, retain crouch after button release, clear the ceiling, then really stand.
 The open control must never block standing. These are bounded static/AABB
@@ -449,9 +453,46 @@ The initial 96-tick ceiling attempt remained blocked and failed completion;
 its retained evidence was not called a pass. The ceiling horizon was extended,
 not its clearance/completion/parity requirements relaxed.
 
-Only this authored static fixture family and two posture cases are closed.
+## ACTED native capsule path with explicit geometry abstention
+
+A ninth 32-tick case seeds a real standing capsule on an oblique brush, then
+executes ordinary 15ms native commands through ramp ride and side departure.
+The capsule bit is set only in the seed; no mid-trajectory hull/pose/velocity
+injection. Actual tick and accepted-contact hull snapshots and winning trace
+metadata must retain capsule=1. Copied winner planes require exact membership
+in the complete authored brush, but that is snapshot binding, NOT collision
+classification. Existing shape/hull readers keep `capsule-hull-unsupported`.
+
+After each command, query native capsule `stationary` and `down2`, plus a
+separately named `box` stationary counterfactual with the SAME actual point/
+mins/maxs but capsule=false. Only the local NativeTrace argument changes;
+pmove is never mutated. Stationary capsule queries must miss throughout.
+Native capsule down2 must hit AND later miss, accepted sloped contacts and a
+raw falling edge must ACT, and at least one same-pose box must be solid while
+the capsule misses. Thus a copied metadata bit or quiet unsupported subject
+cannot close the path gate. In the bounded control, 22 accepted capsule contacts
+ACT; down2 hits ticks 0..20 and misses 21..31, raw loss is tick 22, and same-pose
+box solid/capsule miss ACTS on 0..20. These native returns are not independently
+proven capsule support or continuous exit truth.
+
+The capsule report explicitly says geometry/support **ABSTAIN** and independent
+capsule oracle **NOT_IMPLEMENTED**. Do NOT call joint AABB feasibility for actual
+capsule results or interpret the box counterfactual as capsule geometry. The
+box counterfactual itself may use the existing joint AABB oracle. Endpoint/
+finite/plane/contents checks still bind all native rows. A plausible changed
+native capsule result may survive the abstaining standalone reader; exact
+cross-arm equality must still refuse it. Units falsify accidental invocation
+of the AABB oracle; ACTED controls also refuse silent hit/miss/path differences,
+changed native/accepted/tick capsule metadata and promoted geometry status.
+
+All original eight body/oracle/winner arrays remain exactly equal to retained
+controls. Fixture-only/nooracle/control/OFF/ON/repeat parity stays mandatory;
+ON/repeat capsule snapshots match exactly. Only bounded native execution,
+query sensitivity and snapshot/abstention gates are closed for capsules, NOT a
+capsule collision/support oracle, general capsule or posture-policy acceptance.
+
 Exact physical exit time, classification/debounce/mark policy, transformed/
-embedded/entity/triangle/displacement/capsule, airborne or other posture-change
-trajectories, explicit cached/recovery/portal motion, general world support,
-P560 clock and same-input recorded/live/render/rate/camera/LOD/hold acceptance
-remain **NOT_TESTED**.
+embedded/entity/triangle/displacement, airborne or other posture trajectories,
+explicit cached/recovery/portal motion, general world support, independent
+capsule geometry, P560 clock and same-input recorded/live/render/rate/camera/
+LOD/hold acceptance remain **NOT_TESTED**.

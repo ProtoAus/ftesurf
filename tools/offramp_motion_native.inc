@@ -3,7 +3,7 @@
  * Numeric rows are copied first and printed only after each case completes.
  */
 #include "com_bih.h"
-#define OFFRAMP_MOTION_CASES 8
+#define OFFRAMP_MOTION_CASES 9
 #define OFFRAMP_MOTION_STEPS 192
 #define OFFRAMP_MOTION_BRUSHES 2
 #define OFFRAMP_MOTION_ORACLES 6
@@ -84,7 +84,9 @@ static void OfframpMotion_Query(model_t *model, struct offramp_motion_row_s *row
 	VectorCopy(row->maxs, querymaxs);
 	if (q == 5) querymaxs[2] = row->mins[2] + movevars.standheight;
 	bih_sourceclip = 1;
-	model->funcs.NativeTrace(model, 0, NULL, NULL, start, end, row->mins, querymaxs, row->capsule, MASK_PLAYERSOLID, &trace);
+	/* Capsule case q2 is a same-pose BOX counterfactual, not actual contact. */
+	model->funcs.NativeTrace(model, 0, NULL, NULL, start, end, row->mins, querymaxs,
+		q == 2 && row->capsule ? false : row->capsule, MASK_PLAYERSOLID, &trace);
 	bih_sourceclip = savedclip;
 	VectorCopy(start, row->oracle[q].start);
 	VectorCopy(end, row->oracle[q].end);
@@ -109,7 +111,7 @@ static void OfframpMotion_f(void)
 	static const char *labels[OFFRAMP_MOTION_CASES] = {
 		"interior-ride", "partial-full-side-exit", "convex-side-exit",
 		"interior-input-departure", "ground-jump", "overlapping-brush-seam",
-		"open-ground-duck-cycle", "ceiling-blocked-unduck"
+		"open-ground-duck-cycle", "ceiling-blocked-unduck", "capsule-ramp-side-departure"
 	};
 	static const char *querylabels[3] = {"stationary", "down2", "projected"};
 	movevars_t savedvars = movevars;
@@ -150,7 +152,7 @@ static void OfframpMotion_f(void)
 	VectorCopy(pms_forward, savedvectors[0]); VectorCopy(pms_right, savedvectors[1]); VectorCopy(pms_up, savedvectors[2]);
 	VectorCopy(pms_standmins, savedvectors[3]); VectorCopy(pms_standmaxs, savedvectors[4]);
 	OfframpMotion_Profile();
-	Con_Printf("OFFRAMPMOTION_BEGIN 2 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
+	Con_Printf("OFFRAMPMOTION_BEGIN 3 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
 	Con_Printf("OFFRAMPMOTION_SOURCE %s %s\n", OFFRAMP_MOTION_SOURCE_SHA256, OFFRAMP_MOTION_ENGINE_COMMIT);
 	OfframpMotion_DumpProfile();
 	memset(&surface, 0, sizeof(surface));
@@ -158,7 +160,7 @@ static void OfframpMotion_f(void)
 	for (c = 0; c < OFFRAMP_MOTION_CASES; c++)
 	{
 		nbrush = c == 5 || c == 7 ? 2 : 1;
-		nsteps = c < 6 ? 32 : (c == 6 ? 96 : OFFRAMP_MOTION_STEPS);
+		nsteps = c < 6 || c == 8 ? 32 : (c == 6 ? 96 : OFFRAMP_MOTION_STEPS);
 		memset(&world, 0, sizeof(world)); memset(single, 0, sizeof(single)); memset(leaves, 0, sizeof(leaves));
 		memset(brushes, 0, sizeof(brushes)); memset(sides, 0, sizeof(sides)); memset(planes, 0, sizeof(planes));
 		world.loadstate = MLS_LOADED;
@@ -170,7 +172,7 @@ static void OfframpMotion_f(void)
 			brushes[b].brushside = sides[b]; brushes[b].contents = FTECONTENTS_SOLID;
 			VectorSet(brushes[b].absmins, -256, c == 2 ? -256 : (b ? -8 : -64), -512);
 			VectorSet(brushes[b].absmaxs, 256, c == 2 ? 256 : (c == 5 ? (b ? 192 : 0) : 64), 512);
-			if (c >= 6)
+			if (c == 6 || c == 7)
 			{
 				VectorSet(brushes[b].absmins, b ? -32 : -256, b ? -128 : -256, b ? 50 : -512);
 				VectorSet(brushes[b].absmaxs, b ? 32 : 256, b ? 128 : 256, b ? 128 : 0);
@@ -181,7 +183,7 @@ static void OfframpMotion_f(void)
 				planes[b][i].type = 3; /* PointContents must use the full signed normal. */
 				if (i < 4) { planes[b][i].normal[i/2] = (i&1) ? -1 : 1; planes[b][i].dist = (i&1) ? -brushes[b].absmins[i/2] : brushes[b].absmaxs[i/2]; }
 				else if (i == 4) { planes[b][i].normal[2] = -1; planes[b][i].dist = -brushes[b].absmins[2]; }
-				else if (i == 5) { planes[b][i].normal[0] = c == 4 || c >= 6 ? 0 : 0.8f; planes[b][i].normal[2] = c == 4 || c >= 6 ? 1 : 0.6f; if (c >= 6) planes[b][i].dist = brushes[b].absmaxs[2]; }
+				else if (i == 5) { planes[b][i].normal[0] = c == 4 || c == 6 || c == 7 ? 0 : 0.8f; planes[b][i].normal[2] = c == 4 || c == 6 || c == 7 ? 1 : 0.6f; if (c == 6 || c == 7) planes[b][i].dist = brushes[b].absmaxs[2]; }
 				else { planes[b][i].normal[0] = planes[b][i].normal[1] = 0.7071067811865475f; }
 			}
 			leaves[b].type = BIH_BRUSH; leaves[b].data.contents = FTECONTENTS_SOLID; leaves[b].data.brush = &brushes[b];
@@ -197,9 +199,15 @@ static void OfframpMotion_f(void)
 		pmove.surfacefriction = 1; pmove.rampoff = 1;
 		VectorSet(pmove.player_mins, -16, -16, 0); VectorSet(pmove.player_maxs, 16, 16, 62);
 		VectorSet(pmove.origin, c == 2 ? -40 : -100, c == 1 ? 76 : (c == 5 ? -32 : 0), 0);
-		pmove.origin[2] = c == 4 || c >= 6 ? 0.05f : (12.8f - 0.8f*pmove.origin[0] + 0.05f) / 0.6f;
-		VectorSet(pmove.velocity, c == 3 ? 0 : (c == 4 ? 60 : 300), (c == 1 || c == 2 || c == 5) ? 250 : 0, (c == 3 || c == 4) ? 0 : -400);
-		if (c >= 6) VectorClear(pmove.velocity);
+		pmove.origin[2] = c == 4 || c == 6 || c == 7 ? 0.05f : (12.8f - 0.8f*pmove.origin[0] + 0.05f) / 0.6f;
+		VectorSet(pmove.velocity, c == 3 ? 0 : (c == 4 ? 60 : 300), (c == 1 || c == 2 || c == 5 || c == 8) ? 250 : 0, (c == 3 || c == 4) ? 0 : -400);
+		if (c == 6 || c == 7) VectorClear(pmove.velocity);
+		if (c == 8)
+		{
+			/* Native upright capsule offset authors the seed, NOT a support oracle. */
+			pmove.capsule = true;
+			pmove.origin[2] = (6.4f - 0.8f*pmove.origin[0] + 0.05f) / 0.6f;
+		}
 		Con_Printf("OFFRAMPMOTION_CASE %i %s %i %i\n", c, labels[c], nsteps, nbrush);
 		for (b = 0; b < nbrush; b++)
 		{
@@ -218,8 +226,8 @@ static void OfframpMotion_f(void)
 		for (i = 0; i < nsteps; i++)
 		{
 			struct offramp_motion_row_s *r = &rows[i];
-			pmove.cmd.msec = 15; pmove.cmd.forwardmove = c >= 6 || (c == 3 && i == 3) ? 250 : 0;
-			pmove.cmd.buttons = c >= 6 ? (i >= 3 && i <= (c == 6 ? 34 : 44) ? BUTTON_DUCK : 0) : ((c == 4 && i == 3) ? BUTTON_JUMP : 0);
+			pmove.cmd.msec = 15; pmove.cmd.forwardmove = c == 6 || c == 7 || (c == 3 && i == 3) ? 250 : 0;
+			pmove.cmd.buttons = c == 6 || c == 7 ? (i >= 3 && i <= (c == 6 ? 34 : 44) ? BUTTON_DUCK : 0) : ((c == 4 && i == 3) ? BUTTON_JUMP : 0);
 #ifdef OFFRAMP_MOTION_CAPTURE
 			PMSrc_OfframpRow(i, i+1, i);
 #endif
@@ -235,6 +243,11 @@ static void OfframpMotion_f(void)
 			OfframpMotion_Query(&world, r, 0, start, end);
 			end[2] -= 2;
 			OfframpMotion_Query(&world, r, 1, start, end);
+			if (c == 8)
+			{
+				OfframpMotion_Query(&world, r, 2, r->pos, r->pos);
+				continue;
+			}
 			minsdot = 0;
 			for (j = 0; j < 3; j++) minsdot += planes[0][5].normal[j] * (planes[0][5].normal[j] < 0 ? r->maxs[j] : r->mins[j]);
 			VectorCopy(r->pos, projected);
@@ -242,7 +255,7 @@ static void OfframpMotion_f(void)
 			VectorCopy(projected, start); VectorCopy(projected, end); start[2] += 2; end[2] -= 2;
 			OfframpMotion_Query(&world, r, 2, start, end);
 			for (b = 0; b < nbrush; b++) OfframpMotion_Query(&single[b], r, b+3, start, end);
-			if (c >= 6) OfframpMotion_Query(&world, r, 5, r->pos, r->pos);
+			if (c == 6 || c == 7) OfframpMotion_Query(&world, r, 5, r->pos, r->pos);
 		}
 #ifdef OFFRAMP_MOTION_CAPTURE
 		PMSrc_OfframpEnd();
@@ -255,11 +268,11 @@ static void OfframpMotion_f(void)
 				r->pos[0], r->pos[1], r->pos[2], r->vel[0], r->vel[1], r->vel[2], r->mins[0], r->mins[1], r->mins[2], r->maxs[0], r->maxs[1], r->maxs[2],
 				r->ducked, r->ducking, r->ducktime, r->capsule, r->pmtype, r->oldbuttons);
 			if (!oracle) continue;
-			for (q = 0; q < nbrush+3+(c >= 6); q++)
+			for (q = 0; q < (c == 8 ? 3 : nbrush+3+(c == 6 || c == 7)); q++)
 			{
 				int oq = q == nbrush+3 ? 5 : q;
 				Con_Printf("OFFRAMPMOTION_ORACLE %i %i %s %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %i %i %i %.9g %.9g %.9g %.9g %u\n", c, i,
-					q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2], q == nbrush+3 || q < 3 ? -1 : q-3,
+					c == 8 && q == 2 ? "box" : (q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2]), q == nbrush+3 || q < 3 ? -1 : q-3,
 					r->oracle[oq].start[0], r->oracle[oq].start[1], r->oracle[oq].start[2], r->oracle[oq].end[0], r->oracle[oq].end[1], r->oracle[oq].end[2],
 					r->oracle[oq].fraction, r->oracle[oq].startsolid, r->oracle[oq].allsolid, r->oracle[oq].ent,
 					r->oracle[oq].normal[0], r->oracle[oq].normal[1], r->oracle[oq].normal[2], r->oracle[oq].dist, r->oracle[oq].contents);

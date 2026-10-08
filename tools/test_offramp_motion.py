@@ -7,15 +7,15 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, step_count
+from offramp_motion import LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
 BASE_SNAPSHOT = hull_tests.snapshot
 
 
-def change(text, tag, index, value, pred=lambda r: True):
-    lines = text.splitlines(); token = f'OFFRAMPMOTION_{tag} '
+def change(text, tag, index, value, pred=lambda r: True, namespace='OFFRAMPMOTION'):
+    lines = text.splitlines(); token = f'{namespace}_{tag} '
     for i, line in enumerate(lines):
         if token not in line: continue
         prefix, tail = line.split(token, 1); row = tail.split()
@@ -23,6 +23,25 @@ def change(text, tag, index, value, pred=lambda r: True):
         row[index] = str(value); lines[i] = prefix+token+' '.join(row)
         return '\n'.join(lines)+'\n'
     raise AssertionError('Motion counterfactual did not ACT')
+
+
+def change_all(text, tag, updates, pred):
+    lines = text.splitlines(); token = f'OFFRAMPMOTION_{tag} '; count = 0
+    for i, line in enumerate(lines):
+        if token not in line: continue
+        prefix, tail = line.split(token, 1); row = tail.split()
+        if not pred(row): continue
+        for index, value in updates.items(): row[index] = str(value)
+        lines[i] = prefix+token+' '.join(row); count += 1
+    assert count, 'Bulk counterfactual did not ACT'
+    return '\n'.join(lines)+'\n'
+
+
+def capsule_query():
+    brushes, seed = authored(8)
+    tick = [8, 0, 15, 0, 0, 0, 1, .015, 1, 0]+seed[:6]+seed[6:]+[0, 0, 0, 1, 0, 0]
+    row = ['8', '0', 'stationary', '-1']+list(map(str, seed[:3]*2+[1, 0, 0, 0, 0, 0, 0, 0, 0]))
+    return brushes, tick, row
 
 
 def flat_query():
@@ -91,6 +110,28 @@ class Tests(unittest.TestCase):
         miss[4], miss[7] = '48.05', '48.05'
         oracle_validate(miss, tick, brushes)
 
+    def test_capsule_explicit_abstention_never_uses_joint_aabb(self):
+        brushes, tick, row = capsule_query()
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('AABB oracle ACTED')):
+            oracle_validate(row, tick, brushes)
+            down = row[:]; down[2], down[9] = 'down2', str(tick[12]-2)
+            down[10], down[14:19] = '.015625', ['.8', '0', '.6', '0', '1']
+            oracle_validate(down, tick, brushes)
+            box = row[:]; box[2], box[11:13], box[18] = 'box', ['1', '1'], '1'
+            with self.assertRaisesRegex(AssertionError, 'AABB oracle ACTED'):
+                oracle_validate(box, tick, brushes)
+        oracle_validate(box, tick, brushes)
+        tick[25] = 0
+        with self.assertRaisesRegex(AssertionError, 'JOINT'):
+            oracle_validate(row, tick, brushes)
+
+    def test_capsule_query_binding_and_actual_body_solids_refuse(self):
+        brushes, tick, row = capsule_query()
+        for index, value in ((0, '7'), (3, '0'), (4, '999'), (11, '1'), (18, '1')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError):
+                oracle_validate(bad, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 41)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
@@ -99,7 +140,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(len(seed), 12)
             self.assertEqual(len(brushes), 2 if c in (5, 7) else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
-            self.assertEqual(step_count(c), 32 if c < 6 else (96 if c == 6 else MAX_STEPS))
+            self.assertEqual(step_count(c), 32 if c < 6 or c == 8 else (96 if c == 6 else MAX_STEPS))
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
 
@@ -143,8 +184,28 @@ def controls(text):
         ('ceiling-no-standing-hit', 'ORACLE', 11, 0, lambda r: r[0] == '7' and r[2] == 'standing' and r[11] == '1'),
         ('ceiling-standing-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '7' and r[2] == 'standing'),
         ('ceiling-actual-body-embedded', 'ORACLE', 11, 1, lambda r: r[0] == '7' and r[2] == 'stationary'),
-        ('ceiling-wrong-clear-hull', 'TICK', 21, 45, lambda r: r[0] == '7' and r[1] == '191')):
+        ('ceiling-wrong-clear-hull', 'TICK', 21, 45, lambda r: r[0] == '7' and r[1] == '191'),
+        ('capsule-metadata-silent', 'TICK', 25, 0, lambda r: r[0] == '8'),
+        ('capsule-fake-duck', 'TICK', 22, 1, lambda r: r[0] == '8'),
+        ('capsule-wrong-command', 'TICK', 3, 250, lambda r: r[0] == '8'),
+        ('capsule-seed-box-height', 'SEED', 3, 154.75, lambda r: r[0] == '8'),
+        ('capsule-body-embedded', 'ORACLE', 11, 1, lambda r: r[0] == '8' and r[2] == 'stationary'),
+        ('capsule-query-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '8'),
+        ('capsule-query-kind-promotion', 'ORACLE', 2, 'projected', lambda r: r[0] == '8' and r[2] == 'down2'),
+        ('capsule-query-box-label', 'ORACLE', 2, 'standing', lambda r: r[0] == '8' and r[2] == 'box')):
         bad.append((label, change(text, tag, index, value, pred)))
+    for label, pred in (
+        ('capsule-native-hit-silent', lambda r: r[0] == '8' and r[2] == 'down2'),
+        ('capsule-box-difference-silent', lambda r: r[0] == '8' and r[2] == 'box')):
+        bad.append((label, change_all(text, 'ORACLE', {10: 1, 11: 0, 12: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0}, pred)))
+    bad.append(('capsule-native-miss-silent', change_all(text, 'ORACLE',
+                {10: .5, 11: 0, 12: 0, 14: .8, 15: 0, 16: .6, 17: 0, 18: 1},
+                lambda r: r[0] == '8' and r[2] == 'down2')))
+    for label, namespace, tag, index in (
+        ('capsule-winning-shape-metadata', 'OFFRAMPGEOM', 'CONTACT', 14),
+        ('capsule-accepted-hull-metadata', 'OFFRAMPHULL', 'CONTACT', 8),
+        ('capsule-tick-hull-metadata', 'OFFRAMPHULL', 'TICK', 7)):
+        bad.append((label, change(text, tag, index, 0, lambda r: r[index] == '1', namespace)))
     return bad
 
 
@@ -164,7 +225,19 @@ def acted_controls(arms):
         try: compare(texts['nooracle'], texts['control'], texts['off'], text, texts['repeat'])
         except AssertionError: continue
         raise AssertionError('Native cross-arm counterfactual accepted')
-    print(f'{len(bad)+3} ACTED native motion controls, zero failed; eight trajectory/posture actors/queries/bindings PASS')
+    # A legal single changed capsule result need not fail the standalone
+    # abstaining reader; it MUST still fail exact native cross-arm parity.
+    altered = change(texts['on'], 'ORACLE', 10, .5, lambda r: r[0] == '8' and r[2] == 'down2' and float(r[10]) < 1)
+    with unittest.TestCase().assertRaises(AssertionError):
+        compare(texts['nooracle'], texts['control'], texts['off'], altered, texts['repeat'])
+    def promote(o, contact, shape, payload, mapname):
+        if shape['capsule']: return 'copied-world-brush-plane-bound', [5]
+        return shape_category(o, contact, shape, payload, mapname)
+    with patch('offramp_motion.shape_category', side_effect=promote), unittest.TestCase().assertRaisesRegex(AssertionError, 'promoted'):
+        grade(texts['on'])
+    assert r['capsule_support_geometry_acceptance'] == 'ABSTAIN'
+    assert r['cases'][8]['independent_capsule_oracle'] == 'NOT_IMPLEMENTED'
+    print(f'{len(bad)+5} ACTED native motion controls, zero failed; eight AABB/posture + capsule actor/abstention PASS')
 
 
 def snapshot(engine):

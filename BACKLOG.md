@@ -2380,6 +2380,9 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   mistaken for a longer configured hold. Separate authored static-brush
   trajectories now bind actual hulls to full native/joint edge/input/jump/seam
   queries and real open/ceiling-blocked duck cycles with five-arm body parity.
+  A real capsule ramp/departure actor also binds winning/tick/contact snapshots
+  and native hit/miss/capsule-vs-box controls, retaining explicit capsule geometry
+  ABSTAIN (no independent capsule oracle). Original eight cases stay unchanged.
   This is bounded fixture coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
