@@ -937,3 +937,10 @@ actual summary distinguish shown counts from complete history; omitted older
 attempts cannot justify an "all stale" claim. The separate current/public verdict
 query is unchanged. No total-count scan, pagination or stored-history rewrite.
 Control: `python surfd/test_admin_verdict_history.py` (actual API/SQL/Node DOM).
+
+Historical journal/counts projections reject duplicate JSON object keys at every
+nesting level, including equivalent escaped names. Ambiguous snapshots remain
+stored unchanged but display unavailable, not last-key-wins measurements. Valid
+zero, empty metrics and no-records retain their separate meanings. Existing byte
+caps, typed/versioned allowlists and public verdicts are unchanged; no reread.
+Control: `python surfd/test_admin_metric_duplicates.py` (actual bounded API).

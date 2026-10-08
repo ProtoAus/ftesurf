@@ -25,7 +25,9 @@ commit   bed572f50475dc627df6bda482891b6da9a85495
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-594
-patch    595
+patch    596
+# Patch 596: ambiguous duplicate-key journal/counts snapshots are unavailable.
+# Strict owner-only projection; stored observations and verdicts unchanged.
 # Patch 595: owner-only verdict history exposes omitted older attempts.
 # Acquire cap+1/display 200; no public verdict, evidence or policy change.
 # Patch 594: reject non-finite final inherited clips before native dispatch.

@@ -441,13 +441,25 @@ def observation_text(raw, cap):
     return None
 
 
+def observation_json(raw):
+    """Reject ambiguous objects at every level before validating stored metrics."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate observation key")
+            value[key] = item
+        return value
+    return json.loads(raw, object_pairs_hook=unique)
+
+
 def receipt_metrics(raw):
     """Bounded typed observation, or explicit unavailable; no legacy backfill."""
     raw = observation_text(raw, JOURNAL_METRICS_MAX)
     if not raw:
         return None
     try:
-        snap = json.loads(raw)
+        snap = observation_json(raw)
         if (not isinstance(snap, dict) or set(snap) != {"version", "metrics"}
                 or type(snap["version"]) is not int or snap["version"] != 1
                 or not isinstance(snap["metrics"], dict) or len(snap["metrics"]) > 64):
@@ -559,7 +571,7 @@ def verifier_counts(raw):
     if not raw:
         return None
     try:
-        value = json.loads(raw)
+        value = observation_json(raw)
         if not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1:
             return None
         if value.get('state') == 'no_records':
