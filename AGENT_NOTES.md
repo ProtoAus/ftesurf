@@ -4429,6 +4429,51 @@ Do not turn this into mutable board/replay preservation or live-contention proof
 Both destination hashes and health/auth checks pass; rollback files/mode600 DB
 backup retained. No game/QC/engine/config/Windows artifact or owner-process restart.
 
+### Similarity ownership and scalar diagnostics (P582-585, 2026-10-08)
+
+Exact integer source/peer/pair limits reject negatives (SQLite LIMIT would mean
+unlimited), booleans, fractional/string inputs and signed-64 overflow before
+optional loading or queries. Zero does no loading/query work. CLI rejects before
+main connects, not before surfd's existing import-time initialization.
+
+Enabled collection/direct comparison require idle connections before schema/file
+work or sweep handler-slot changes. Never commit/rollback unrelated caller DML to
+make collection run. Source admission/schema writers reject active transactions;
+read-only pending/summary and disabled calls preserve ownership. Real two-connection
+controls prove pending DML stays invisible/rollbackable; an idle independent writer
+ACTS during an 80-opportunity comparison. This is an embedded API fix, not a proved
+cron-path leak. SQLite connection context managers commit/rollback but do NOT close;
+main now explicitly closes its fresh connection on normal/dry/error/interrupt exits,
+even when the caller retains the traceback. Borrowed step APIs remain usable.
+
+Dry-run counts a capped eligible-ID subquery as one scalar, never replay payloads.
+Share the pending predicate; rotating collection selection remains unchanged. Keep
+one-million cap, print at least on equality, and retain whole-query unavailable plus
+independent summary allowance. Wide-payload and real VM-interruption controls ACT;
+cap-label branch is synthetic, not million-row performance or native RSS/scan/time
+proof. No detector math, threshold, history, receipt, ranking or badge-gate change.
+
+Frozen published705ce1b passed57/57 explicit Linux programs; Windows56/57 with the
+same two UDP-admin failures reproduced on baseline. The argument-required momindex
+integration rig is not a standalone pass. Initial Linux disk-floor failures came
+from fixtures on the 4.8GB root filesystem; full unmodified rerun on NVMe passed.
+Existing test_sweep fixture ResourceWarnings reproduce20/40/12lines in baseline;
+new focused cases are warning-clean, not the entire suite. Recorder306/0;269REC and
+91pairedVIEW full reports equal on captured bytes,170faulted reports unchanged.
+Source/artifact reviewer did not re-execute or hash-attest Git; parent did. Waiting
+for final artifacts exhausted its30min budget; clean/ref proof and same-native resume
+completed review without fallback. Owned scratch was retained after failed rmdir.
+
+Only installed simcheck.py/sweep.py shipped by canonical exact-commit -Only/-NoReload,
+normal stage tests, rollback files and mode600 DB backup; no reader/progs/engine/
+Windows/config swap or live collection. Installed synthetic HOME binds actual module
+paths and reader, stores80opportunities, exercises all four seams. Protected bounded
+SQL with exact/changed/deleted controls proves original sims/receipts/verdicts/reviews
+rows match backup. Final UTC2026-10-08T08:06:26 health/auth gates pass. Mutable board/
+replay/cursor preservation, complete scheduling and hard resource bounds unclaimed.
+The shipper infers repo from PSScriptRoot; it has no -Repo parameter. Read its actual
+parameters. Existing primary-Windows reader peer-ownership blocker remains untouched.
+
 ### Similarity reliability batch (P577-580, 2026-10-08)
 
 Optional reader budgets are configuration: invalid integer/type/read-size limits
