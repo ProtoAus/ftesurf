@@ -1089,18 +1089,21 @@ def unit_state(tier):
 
 
 def tail_file(path, lines=LOG_TAIL_LINES):
-    """Last `lines` lines of a log, redacted. "" if unreadable."""
+    """Redacted complete lines from a bounded opened-file byte window."""
     try:
-        size = os.path.getsize(path)
         with open(path, "rb") as fh:
-            if size > LOG_TAIL_BYTES:
-                fh.seek(size - LOG_TAIL_BYTES)
-                fh.readline()          # discard the partial first line
-            data = fh.read()
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            limited = size > LOG_TAIL_BYTES
+            fh.seek(max(0, size - LOG_TAIL_BYTES))
+            data = fh.read(min(size, LOG_TAIL_BYTES))
+        if limited:
+            data = data.partition(b"\n")[2]  # discard partial first line in memory
     except OSError as exc:
         return "(cannot read %s: %s)" % (os.path.basename(path), exc)
     text = data.decode("utf-8", "replace")
-    return clean_reply("\n".join(text.splitlines()[-lines:]))
+    tail = clean_reply("\n".join(text.splitlines()[-lines:]))
+    return ("(log tail limited to byte window)\n" + tail) if limited else tail
 
 
 # --------------------------------------------------------------------------
