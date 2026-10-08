@@ -156,10 +156,17 @@ Corrected clean frozen game `365f43f7f8fef589254352db3f5161210050a134` and engin
   still match the OLD draw-only control hash from before these builds. No source
   or fixture has been copied into either install.
 
-Only exact-SHA publication and this docs-only verification receipt remain at this
-checkpoint. No installed/native/progs/config/player-data, Pi, server, release or
-Build-number change has been made by this workstream. Native dual deployment is
-NOT claimed: test-stage artifacts stay in the owned trees until separately gated.
+Publication confirmed at 2026-10-08T16:26:39Z: engine origin/main equals
+`c61458c94f23b2cf1552301d1232dde33e04274a`; remote annotated patch-600 dereferences
+that exact commit. Game origin/main equals verified feature/receipt snapshot
+`ad773af597aab2d977e0501f4bdc40bc18e83a66`. Both pushes used inspected literal
+SHAs, not movable branch HEADs. This final publication receipt is docs-only;
+its source matches frozen game `365f43f`. Owned worktrees are clean, shared
+original branches/files were not pulled, staged, built or repaired by this work.
+
+No installed/native/progs/config/player-data, Pi, server, release or Build-number
+change has been made by this workstream. Native dual deployment is NOT claimed:
+test-stage artifacts stay in the owned trees until separately gated.
 
 Next implementation: bounded counted model/widget snapshots plus stable row/action
 identity and freshness rejection; do not substitute owner generation for model
