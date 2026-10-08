@@ -3,7 +3,7 @@
  * Numeric rows are copied first and printed only after each case completes.
  */
 #include "com_bih.h"
-#define OFFRAMP_MOTION_CASES 10
+#define OFFRAMP_MOTION_CASES 12
 extern cvar_t pm_rotatedboxhulls;
 #define OFFRAMP_MOTION_STEPS 192
 #define OFFRAMP_MOTION_BRUSHES 2
@@ -99,9 +99,20 @@ static void OfframpMotion_Query(model_t *model, struct offramp_motion_row_s *row
 		}
 		/* q2 removes ONLY the local query's rotation, never the mover's. */
 	}
-	/* Capsule case q2 is a same-pose BOX counterfactual, not actual contact. */
-	model->funcs.NativeTrace(model, 0, NULL, queryaxis, localstart, localend, row->mins, querymaxs,
-		q == 2 && row->capsule ? false : row->capsule, MASK_PLAYERSOLID, &trace);
+	if (row->caseindex >= 10)
+	{
+		int savedcount = pmove.numphysent;
+		/* Remove ONLY the extra physent for this same-endpoint query. */
+		if (q == 2) pmove.numphysent = 1;
+		trace = PM_PlayerTrace(start, end, MASK_PLAYERSOLID);
+		pmove.numphysent = savedcount;
+	}
+	else
+	{
+		/* Capsule q2 is a same-pose BOX counterfactual, not actual contact. */
+		model->funcs.NativeTrace(model, 0, NULL, queryaxis, localstart, localend, row->mins, querymaxs,
+			q == 2 && row->capsule ? false : row->capsule, MASK_PLAYERSOLID, &trace);
+	}
 	bih_sourceclip = savedclip;
 	VectorCopy(start, row->oracle[q].start);
 	VectorCopy(end, row->oracle[q].end);
@@ -127,7 +138,7 @@ static void OfframpMotion_f(void)
 		"interior-ride", "partial-full-side-exit", "convex-side-exit",
 		"interior-input-departure", "ground-jump", "overlapping-brush-seam",
 		"open-ground-duck-cycle", "ceiling-blocked-unduck", "capsule-ramp-side-departure",
-		"translated-yaw-brush-departure"
+		"translated-yaw-brush-departure", "non-world-physent-departure", "removed-physent-control"
 	};
 	static const char *querylabels[3] = {"stationary", "down2", "projected"};
 	movevars_t savedvars = movevars;
@@ -170,14 +181,14 @@ static void OfframpMotion_f(void)
 	VectorCopy(pms_standmins, savedvectors[3]); VectorCopy(pms_standmaxs, savedvectors[4]);
 	Cvar_SetValue(&pm_rotatedboxhulls, 1);
 	OfframpMotion_Profile();
-	Con_Printf("OFFRAMPMOTION_BEGIN 4 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
+	Con_Printf("OFFRAMPMOTION_BEGIN 5 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
 	Con_Printf("OFFRAMPMOTION_SOURCE %s %s\n", OFFRAMP_MOTION_SOURCE_SHA256, OFFRAMP_MOTION_ENGINE_COMMIT);
 	OfframpMotion_DumpProfile();
 	memset(&surface, 0, sizeof(surface));
 	Q_strncpyz(surface.c.name, "authored-motion", sizeof(surface.c.name));
 	for (c = 0; c < OFFRAMP_MOTION_CASES; c++)
 	{
-		nbrush = c == 5 || c == 7 ? 2 : 1;
+		nbrush = c == 5 || c == 7 || c >= 10 ? 2 : 1;
 		nsteps = c < 6 || c >= 8 ? 32 : (c == 6 ? 96 : OFFRAMP_MOTION_STEPS);
 		memset(&world, 0, sizeof(world)); memset(single, 0, sizeof(single)); memset(leaves, 0, sizeof(leaves));
 		memset(brushes, 0, sizeof(brushes)); memset(sides, 0, sizeof(sides)); memset(planes, 0, sizeof(planes));
@@ -190,6 +201,11 @@ static void OfframpMotion_f(void)
 			brushes[b].brushside = sides[b]; brushes[b].contents = FTECONTENTS_SOLID;
 			VectorSet(brushes[b].absmins, -256, c == 2 ? -256 : (b ? -8 : -64), -512);
 			VectorSet(brushes[b].absmaxs, 256, c == 2 ? 256 : (c == 5 ? (b ? 192 : 0) : 64), 512);
+			if (c >= 10)
+			{
+				brushes[b].absmins[1] = b ? -64 : -1024;
+				brushes[b].absmaxs[1] = b ? 64 : -896;
+			}
 			if (c == 6 || c == 7)
 			{
 				VectorSet(brushes[b].absmins, b ? -32 : -256, b ? -128 : -256, b ? 50 : -512);
@@ -207,18 +223,29 @@ static void OfframpMotion_f(void)
 			leaves[b].type = BIH_BRUSH; leaves[b].data.contents = FTECONTENTS_SOLID; leaves[b].data.brush = &brushes[b];
 			VectorCopy(brushes[b].absmins, leaves[b].mins); VectorCopy(brushes[b].absmaxs, leaves[b].maxs);
 			single[b] = world;
+			if (c >= 10)
+			{
+				VectorCopy(brushes[b].absmins, single[b].mins);
+				VectorCopy(brushes[b].absmaxs, single[b].maxs);
+				if (b) Q_strncpyz(single[b].name, "*authored_offramp_entity", sizeof(single[b].name));
+			}
 			BIH_Build(&single[b], &leaves[b], 1);
 			single[b].numnodes = 1;
 		}
-		BIH_Build(&world, leaves, nbrush);
-		world.numnodes = nbrush*2-1;
+		BIH_Build(&world, leaves, c >= 10 ? 1 : nbrush);
+		world.numnodes = (c >= 10 ? 1 : nbrush)*2-1;
+		if (c >= 10)
+		{
+			VectorCopy(brushes[0].absmins, world.mins);
+			VectorCopy(brushes[0].absmaxs, world.maxs);
+		}
 		memset(&pmove, 0, sizeof(pmove)); memset(rows, 0, sizeof(rows));
 		pmove.pm_type = PM_NORMAL; pmove.numphysent = 1; pmove.physents[0].model = &world; pmove.skipent = -1;
 		pmove.surfacefriction = 1; pmove.rampoff = 1;
 		VectorSet(pmove.player_mins, -16, -16, 0); VectorSet(pmove.player_maxs, 16, 16, 62);
 		VectorSet(pmove.origin, c == 2 ? -40 : -100, c == 1 ? 76 : (c == 5 ? -32 : 0), 0);
 		pmove.origin[2] = c == 4 || c == 6 || c == 7 ? 0.05f : (12.8f - 0.8f*pmove.origin[0] + 0.05f) / 0.6f;
-		VectorSet(pmove.velocity, c == 3 ? 0 : (c == 4 ? 60 : 300), (c == 1 || c == 2 || c == 5 || c == 8) ? 250 : 0, (c == 3 || c == 4) ? 0 : -400);
+		VectorSet(pmove.velocity, c == 3 ? 0 : (c == 4 ? 60 : 300), (c == 1 || c == 2 || c == 5 || c == 8 || c >= 10) ? 250 : 0, (c == 3 || c == 4) ? 0 : -400);
 		if (c == 6 || c == 7) VectorClear(pmove.velocity);
 		if (c == 8)
 		{
@@ -236,6 +263,14 @@ static void OfframpMotion_f(void)
 				100+(16*.8f*sqrtf(2)+80+.05f)/.6f);
 			VectorSet(pmove.velocity, 50*sqrtf(.5f), 550*sqrtf(.5f), -400);
 		}
+		if (c >= 10)
+		{
+			pmove.numphysent = c == 10 ? 2 : 1;
+			pmove.physents[0].scale = 1;
+			pmove.physents[1].model = &single[1];
+			pmove.physents[1].info = 42;
+			pmove.physents[1].scale = 1;
+		}
 		Con_Printf("OFFRAMPMOTION_CASE %i %s %i %i\n", c, labels[c], nsteps, nbrush);
 		for (b = 0; b < nbrush; b++)
 		{
@@ -249,6 +284,17 @@ static void OfframpMotion_f(void)
 				pmove.physents[0].origin[0], pmove.physents[0].origin[1], pmove.physents[0].origin[2],
 				pmove.physents[0].angles[0], pmove.physents[0].angles[1], pmove.physents[0].angles[2],
 				pmove.physents[0].scale, pmove.capsule);
+		if (c >= 10)
+		{
+			Con_Printf("OFFRAMPMOTION_SET %i %i %i\n", c, pmove.numphysent, pmove.skipent);
+			for (b = 0; b < 2; b++)
+			{
+				physent_t *pe = &pmove.physents[b];
+				Con_Printf("OFFRAMPMOTION_PHYSENT %i %i %i %s %i %i\n", c, b, pe->info, pe->model->name, b, b < pmove.numphysent);
+				Con_Printf("OFFRAMPMOTION_INSTANCE %i %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %i\n", c, b,
+					pe->origin[0], pe->origin[1], pe->origin[2], pe->angles[0], pe->angles[1], pe->angles[2], pe->scale, pmove.capsule);
+			}
+		}
 		Con_Printf("OFFRAMPMOTION_SEED %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", c,
 			pmove.origin[0], pmove.origin[1], pmove.origin[2], pmove.velocity[0], pmove.velocity[1], pmove.velocity[2],
 			pmove.player_mins[0], pmove.player_mins[1], pmove.player_mins[2], pmove.player_maxs[0], pmove.player_maxs[1], pmove.player_maxs[2]);
@@ -306,7 +352,8 @@ static void OfframpMotion_f(void)
 			{
 				int oq = q == nbrush+3 ? 5 : q;
 				Con_Printf("OFFRAMPMOTION_ORACLE %i %i %s %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %i %i %i %.9g %.9g %.9g %.9g %u\n", c, i,
-					c >= 8 && q == 2 ? (c == 8 ? "box" : "identity") : (q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2]), q == nbrush+3 || q < 3 ? -1 : q-3,
+					c >= 8 && q == 2 ? (c >= 10 ? "worldonly" : (c == 8 ? "box" : "identity")) : (q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2]),
+					c >= 10 && q == 2 ? 0 : (q == nbrush+3 || q < 3 ? -1 : q-3),
 					r->oracle[oq].start[0], r->oracle[oq].start[1], r->oracle[oq].start[2], r->oracle[oq].end[0], r->oracle[oq].end[1], r->oracle[oq].end[2],
 					r->oracle[oq].fraction, r->oracle[oq].startsolid, r->oracle[oq].allsolid, r->oracle[oq].ent,
 					r->oracle[oq].normal[0], r->oracle[oq].normal[1], r->oracle[oq].normal[2], r->oracle[oq].dist, r->oracle[oq].contents);

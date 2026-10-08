@@ -2386,8 +2386,12 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   actor binds native instance/hull snapshots and rotation-sensitive queries,
   with transformed geometry ABSTAIN (no independent transform oracle).
   Identity-solid results remain counterfactual, never body contact or misses.
-  Original nine cases stay unchanged.
-  This is bounded fixture coverage, not a physical-exit or classifier fix.
+  A matched non-world/removed-physent pair now ACTS a real physent-1 ramp winner,
+  hit/miss/world-only removal queries and a different removed body trajectory.
+  Actual entity/model/brush/hull binding and active-only joint AABB fixture
+  queries pass; entity geometry/support remains ABSTAIN, never world support.
+  Original ten cases stay unchanged. General entity/map wiring and geometry
+  remain open. This is bounded fixture coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,

@@ -409,18 +409,19 @@ or continuous collision-time coverage. Mismatch is refusal, never a weakened
 physical-exit claim. Accepted whole winning snapshots must match an authored
 brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
 
-Protocol `OFFRAMPMOTION_` v4: BEGIN capture/oracle/case counts and maximum step
+Protocol `OFFRAMPMOTION_` v5: BEGIN capture/oracle/case counts and maximum step
 capacity, explicit per-CASE step counts (first six 32, open posture 96, ceiling
-posture 192, capsule 32, transformed 32), SOURCE
+posture 192, capsule 32, transformed 32, entity-present/removed 32 each), SOURCE
 fixture-template SHA256 and native base commit, exact ordered PARAM rows
 (including explicit rotated-box-hull cvar), CASE/BRUSH/PLANE/SEED, INSTANCE
-only for the transformed case, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
+for transformed/entity cases, SET/PHYSENT for the entity pair, ordered TICK and
+ORACLE rows, CASE_END, END, COMPLETE.
 TICK carries actual command inputs, native tick count/rate, ramp/ground state,
 body/velocity, hull/posture. ORACLE carries case/tick/kind/brush, exact endpoints,
 fraction/solid flags/entity/plane/contents. Missing/duplicate/reordered/unknown/
 malformed rows, changed input/provenance, nonfinite data, unregistered hull/pose,
 wrong bindings, quiet subject or failed actor/native query all refuse. Named
-capsule/transformed cases are structurally validated but explicitly ABSTAIN
+capsule/transformed/entity cases are structurally validated but explicitly ABSTAIN
 from geometry. Embedded SOURCE is build provenance, not tamper-proof binary or map authenticity.
 
 The first successful family observes two distinct delays: side/convex projected
@@ -544,8 +545,53 @@ capsule controls, including capsule ABSTAIN. Fixture-only/nooracle/control/OFF/
 ON/repeat parity and actual native/capture actuation stay mandatory. Only this
 bounded transformed execution/query sensitivity/copy binding gate is closed.
 
+## ACTED non-world physent winner and removed-entity trajectory
+
+Two further matched 32-tick cases use the SAME standing-AABB seed, velocity and
+zero commands. World physent 0 owns only a remote brush (y -1024..-896); a separate
+physent 1 owns the ordinary oblique ramp (y -64..64), named
+`*authored_offramp_entity`, info 42, untransformed and scale 1. The removed arm
+configures the same slots/models but limits the active physent list to the world.
+These are authored native model fixtures, NOT map/QC/entity-loading coverage.
+
+Ordered `SET` rows bind actual active count and skip filter. `PHYSENT` binds
+case/index/info/model/brush/active flag; `INSTANCE` binds each configured slot's
+origin/angles/scale/capsule. The present actor must produce real
+PM_PlayerMove -> PM_PlayerTrace -> BIH brush winners on physent 1. Capture binds
+accepted contact/entity index, origin route/model/direct leaf, whole brush 1,
+identity pose/scale/direct-BIH flag and actual standing hull. The shape reader's
+existing **`entity-unsupported`** category is unchanged: non-world geometry/support
+**ABSTAIN**, even though these sampled unrotated native queries can be checked.
+No entity snapshot may be promoted to world-brush support.
+
+After each command, actual `stationary` and `down2` queries call PM_PlayerTrace
+over the active physents. The named `worldonly` down2 counterfactual uses SAME
+body endpoints/hull but temporarily limits the local query's physent count to 1,
+then immediately restores it. Present hits must have native winner index 1;
+misses have -1, zero plane/contents. Stationary actual body must miss/nonembed.
+The joint convex/AABB oracle includes ONLY active brushes; `worldonly` and the
+removed actor include ONLY brush 0. An inactive entity cannot prove a collision.
+This independent bounded query check is not a generalized entity identity,
+support/physical-exit or anti-cheat oracle.
+
+The bounded present case ACTS with 22 accepted sloped entity contacts, down2
+hits 0..20 and misses 21..31, raw ramp loss 22. Every `worldonly` query misses;
+actual-hit/removal-miss differences ACT 0..20. The removed actor has no ramp bit,
+accepted contact or native down2 hit, and its first/final body states differ from
+the present trajectory. Thus the positive gate cannot pass through metadata
+alone or a quietly missing collider. Removed zero-contact captures still require
+complete tick/hull/selftest/footer envelopes, not a fabricated brush witness.
+
+No-oracle/fixture-only/OFF/ON/repeat BODY and enabled QUERY parity, ON/repeat
+whole capture equality and exact original-ten body/oracle/winner arrays remain
+mandatory. No-oracle equality also proves removal queries did not affect later
+movement. ACTED refusals cover active lists/slot/model/info/pose, world-winner or
+copied-shape substitution, cached route, silent native hits/removal, stale misses,
+query/body binding and entity-to-world geometry promotion. Capsules and
+transformed instances retain their previous explicit abstentions.
+
 Exact physical exit time, classification/debounce/mark policy, embedded/
-non-world/entity/triangle/displacement, airborne or other posture trajectories,
-explicit cached/recovery/portal motion, general world support, independent
-capsule/transform geometry, P560 clock and same-input recorded/live/render/rate/
-camera/LOD/hold acceptance remain **NOT_TESTED**.
+triangle/displacement, general non-world/entity/map wiring and geometry,
+airborne or other posture trajectories, explicit cached/recovery/portal motion,
+general world support, independent capsule/transform geometry, P560 clock and
+same-input recorded/live/render/rate/camera/LOD/hold acceptance remain **NOT_TESTED**.
