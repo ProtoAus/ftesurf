@@ -4390,6 +4390,38 @@ Do not turn this into mutable board/replay preservation or live-contention proof
 Both destination hashes and health/auth checks pass; rollback files/mode600 DB
 backup retained. No game/QC/engine/config/Windows artifact or owner-process restart.
 
+### Similarity reliability batch (P577-580, 2026-10-08)
+
+Optional reader budgets are configuration: invalid integer/type/read-size limits
+reject before I/O, not as evidence skips. None and valid zero/exact bounds retain
+behavior. Collector flush counts use insertion-local rowcount, not buffered results
+or total_changes; same-key overlapping winners and trigger writes cannot fabricate
+new additions. Admission still is not completion/reservation/exactly-once.
+
+The canonical capsule requires integer version1 bounded-input/capture capabilities
+and ACTED disposable80-row exact-capture and whole byte/move-limit abstention
+controls before destination mutation. This is trusted-code smoke testing, not
+sandbox/authenticity/hard resource proof. A collection pass uses one initially
+resolved module; direct calls and later passes re-resolve their explicit tools path.
+No process-global cache or atomic recording-content snapshot is implied.
+
+Frozen952d586 reviewed without blockers and published. All52explicit Linux programs
+pass across51first-run passes plus one retained unmodified dynamic-board timestamp
+rerun; established skips remain. Windows51/52, unchanged admin's same2UDP assertions
+reproduced on the byte-identical baseline. Recorder306/0;269REC with pairedVIEW,
+combined170faulted reports: exact source manifests and reports equal baseline.
+
+Pi reader installed07:00:37UTC and ONLY simcheck.py via canonical -Only -NoReload
+-SkipTests (52program stage already completed). Hashes/rollback/mode600DB backup
+verified;25installed cases including5inherited and isolated installed sweep wrapper
+ACT. Read-only live DML-denial/read-budget controls and bounded exact/changed/deleted
+SQL gates preserve original sims/receipts/verdicts/reviews rows vs pre-copy backup;
+no mutable board/replay preservation or live collection claim. Final gates
+07:02:31UTC, health/auth OK. Secondary Windows reader installed07:01:07UTC; exact
+hash, rollback and3installed source controls pass. PRIMARY Windows deployment is
+BLOCKED by tracked modified reader in the shared checkout: preserved unchanged,
+not overwritten. No engine/QC/progs/config/release/Build or owner-process restart.
+
 ### Selected similarity SQL read budgets (P571-573, 2026-10-08)
 
 Sweep opts into a pass-wide 1,000,000 SQLite VM instruction allowance through

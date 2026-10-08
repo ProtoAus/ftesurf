@@ -5,6 +5,20 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## P577-580 primary Windows reader deployment blocked -- 2026-10-08
+
+`C:/FTESurf/tools/census/recsim.py` is tracked and modified in the shared
+checkout, so the verified bounded reader was not installed over it. Existing
+bytes and paired readers were preserved. Pi and secondary Windows reader
+installations are verified; this is incomplete dual deployment, not a reader
+code failure. Resolve destination ownership before using the commit-pinned
+`tools/simcheck_runtime.py` capsule; do not overwrite/stash/revert peer edits.
+
+Falsifier: owner-coordinated primary target accepts the exact predecessor and
+paired-reader hashes, dry/apply succeed with rollback preserved, installed
+source-limit controls ACT, and both Windows destination hashes match the same
+verified reader. Recorded with P580 and the similarity reliability notes.
+
 ## Native plugin data textures return an unusable handle -- 2026-10-08
 
 `engine/client/cl_plugin.inc:Plug_Draw_LoadImageData/Plug_Draw_LoadImage`:
