@@ -4303,6 +4303,40 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
   against it, never the whole frame (the fps counter always moves).
 
+### Selected similarity SQL read budgets (P571-573, 2026-10-08)
+
+Sweep opts into a pass-wide 1,000,000 SQLite VM instruction allowance through
+`--sims-sql-steps`; zero disables collection. Source cursor/pending and peer cursor/
+candidate/late-recheck queries share it. Dry-run summary has an independent fresh
+allowance. Whole-query interruption means unknown/unavailable, never partial
+selection, prefix aggregates, zero agreement or full coverage. A late recheck
+must flush prior successful observations and checkpoint only admitted work.
+
+`ReadBudget` is explicit CONNECTION-OWNER authority: Python SQLite cannot retrieve
+and restore an unknown existing progress callback. Use only on the owner's otherwise
+unused slot; no-budget APIs preserve caller callbacks. Guard execution AND fetching,
+close cursors and clear callbacks before file comparison/checkpoints/writes, including
+ordinary SQL errors. Reserve a final callback quantum per statement to cover residual
+instructions conservatively; small queries may abstain before the actual cap. This
+is selected VM work, not lock waits, schema/writes, native/UDF cost, wall time, RSS,
+fairness, concurrent reservations or completion. Actual expensive SQL plus positive
+80-opportunity controls are required; mocked budget depletion alone is insufficient.
+
+The exact publication passed 43 explicit Linux programs and 15 installed SQL cases
+plus an actual installed sweep-wrapper comparison. Windows admin has the same two
+UDP/RCON failures on the untouched baseline; do not repair unrelated code. Operator
+import audits needing external input arguments are not standalone test programs.
+Keep TMPDIR on NVMe for unchanged worker free-space floors; dynamic board `t` can
+make the existing full-dict equality test flaky (see prior notes and BACKLOG).
+
+Live board rows are mutable independently of deployment and outside the sweep lock.
+An early all-table preservation gate saw board drift already in the pre-copy backup;
+evidence/verifier/review/replay tables stayed exact. Do not assert a frozen board or
+reinterpret that failure as six-table preservation. Never mirror a fleet-sized board
+into two Python dictionaries for diffing: use bounded SQL/projections or explicitly
+leave mutable-board preservation unverified. Bound lock waits and read work, retain
+failed gates, and stop only the specifically proven owned diagnostic if necessary.
+
 ### Similarity retry admission controls (P563-565, 2026-10-08)
 
 `sim_cursor` is additive INTERNAL admission state: one source position and an
@@ -4346,8 +4380,9 @@ its source has no stored observation. Stored pairs in either orientation must be
 excluded BEFORE the peer LIMIT. Four sources with row/pair budgets one should
 ACT six times, then go idle; a primary with 200 observed older peers must still
 reach newer peers. This is eligibility, not fair retry or full-coverage proof.
-The summary returns <=13 fixed aggregate rows in Python; SQLite scan/working
-memory and cooperative elapsed completion remain unbounded.
+The summary returns <=13 fixed aggregate rows in Python. Unbudgeted standalone
+SQLite reads and working memory/cooperative elapsed completion remain unbounded;
+P571-573 add optional owner-only selected-read VM budgeting, not a total RSS cap.
 
 Frozen Linux suites passed at the inspected deployment commit; 23 focused
 controls also passed with `sys.modules['simcheck']` bound to the INSTALLED file.
