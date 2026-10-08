@@ -114,7 +114,7 @@ def compare_paths(a, b, **kw):
     if kw.get('%s') == %s:
         kw['%s'] = None
     return _probe_original(a, b, **kw)
-''' % (name, 'len(open(a, "rb").read())-1' if name=='max_bytes' else '79', name)).encode()
+''' % (name, 'os.path.getsize(a)-1' if name=='max_bytes' else '79', name)).encode()
             (self.pkg/'recsim.py').write_bytes(bad)
             self.m['recsim_sha256']=runtime.digest(bad);self.manifest()
             with self.subTest(name=name):
