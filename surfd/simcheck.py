@@ -48,6 +48,7 @@ it delegates to `reccheck`.  If `recsim` is not importable the step reports that
 and stores nothing -- it does not fall back to a second parser.
 """
 
+from contextlib import contextmanager
 import json
 import math
 import os
@@ -137,6 +138,23 @@ def source_snapshot(raw):
         return source_capture(json.loads(raw, object_pairs_hook=unique))
     except (ValueError, TypeError, RecursionError):
         return None
+
+
+@contextmanager
+def lock_wait(conn, milliseconds):
+    """Owner opt-in to a per-lock-operation wait, not a pass deadline.
+
+    Owns the busy-handler slot. Restore the previous numeric timeout, not an
+    arbitrary external native handler (Python cannot retrieve that handler).
+    """
+    if type(milliseconds) is not int or not 0 <= milliseconds <= 2147483647:
+        raise ValueError("lock wait must be an integer in 0..2147483647 ms")
+    previous = _read(conn, "PRAGMA busy_timeout")[0][0]
+    try:
+        _read(conn, "PRAGMA busy_timeout=%d" % milliseconds)
+        yield
+    finally:
+        _read(conn, "PRAGMA busy_timeout=%d" % previous)
 
 
 class ReadLimit(Exception):

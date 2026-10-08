@@ -638,6 +638,15 @@ per statement, so small queries can exhaust admission before the actual cap.
 This is not elapsed time, lock waits, schema/write/file work, total RSS or complete
 coverage. Dry-run unavailable counts are not measured zero.
 
+`--sims-lock-ms` defaults to 1000 ms per SQLite lock operation for collection
+only; zero means immediate/no waiting, not disabled collection. Noninteger,
+negative and values above 2147483647 reject before main connects. Sweep explicitly
+owns the busy-handler slot, snapshots/restores its numeric timeout on every exit,
+and leaves later badge-gating steps' wait unchanged. Standalone unopted calls and
+dry-run retain their previous waits. Python cannot retrieve/restore an arbitrary
+native busy handler. This is not a pass-wide timeout, write-instruction/RSS cap,
+retry policy or coverage guarantee; a contended pass may store nothing.
+
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
 is scored. Support lacking either bounded-input or source-capture capability is
