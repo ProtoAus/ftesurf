@@ -85,7 +85,32 @@ Concurrent published Patch 602 was fast-forwarded intact into both isolated
 branches; 601 stays its earlier reservation. ENGINE.txt retains highest patch 602
 rather than downgrading peer metadata; engine pin/tag advances for this native work.
 Engine source/tag: `35370f0387b94eefb95fa506f28ccd24c6693f6e` / `patch-601`.
-Game source/test commit and final clean-source verification are being recorded.
+Game source/test: `97e5fc97b4f25768564da89e728fef119b376b4e`.
+
+Clean-commit freeze `rig/p601-build/frozen.log` / `frozen.json` uses explicit
+SVN_VERSION/SVNREVISION make inputs (+29 count offset) and Jobs 1. Both native
+client/server contain `git-7136-patch-601-0-g35370f038`. All three QC programs
+compile zero warnings; same 74 compiler-warning occurrences as the retained P600
+baseline, zero new after normalized source-location comparison. Native stages
+complete, with only the documented final-summary exit 1. Both install client/
+server/optional-DLL/progs/config byte/path witnesses match before/after; no secret
+config contents are printed or published. Native output hashes remain in that
+local provenance record.
+
+Final frozen source controls: `rig/p601-final-controls`, all 463/184 model and
+929/700 input checks plus passive controls pass. Actual Makefile DLL/runtime
+`rig/p601-model-sicdm_9i`: five arms, 42 screenshots, zero failures; all 21 reader
+falsifiers pass. Actual prior-input regression `rig/p600-input-wcdb7jua`: 33
+screenshots, zero failed; 17 input grader controls pass. Bridge grader 24 passes.
+
+Later concurrent published provenance/tooling was merged without any native,
+QC or model-fixture delta: engine publication merge
+`368a622ce99d17a44a17f1dee3b85859daf14836`, game merge
+`4e8128dbb8db56eede837a9c470d4796cb7225b7`. Diff from the frozen commits proves
+that boundary. Source/tag publication UTC and inspected branch tips are recorded
+locally in `rig/p601-build/publication.json`; native pin/tag remains the tested
+feature commit, not a claim about installed executables.
+
 No deployment/release/Build decision has been made, and no installed binary, DLL,
 progs, cfg, data or Pi swap was performed. Follow-up is a separately chosen real
 panel with explicit input ownership, covering fallback and measured budgets;
