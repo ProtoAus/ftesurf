@@ -2726,6 +2726,14 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   while leaving rows/tiers unchanged. A content-invariance control should still
   pass, while a real board-content change must fail. Keep clock checks separate;
   do not weaken public exposure assertions or repair product code for this flake.
+  **2026-10-08 P595-597 installed proof:**
+  `surfd/test_verifier_counts.py:Counts.test_migration_no_backfill_and_authenticated_api`
+  has the same complete-JSON comparison. It failed only on a one-second `t`
+  difference. Restored predecessor deterministically fails with an advancing
+  fixture clock and passes with a frozen one. That one private installed fixture
+  now freezes its clock; legacy test/product source remains unchanged. Future
+  fix must compare invariant content independently of `t` and still falsify a
+  genuine board-content change. See `tools/p595observers.md`.
 
 - **surf_aquaflow CRASHES THIS PC HEADLESS, on every engine and csprogs tried.**
   2026-10-03, `cfg/test/p474page.cfg` (minimized, listen server): the log ends at

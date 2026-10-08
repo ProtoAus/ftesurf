@@ -2281,3 +2281,12 @@ parity, stitched wait-tail faults and the broad event/comparison work remain ope
 
 **P536 board:** the confusing Compare chip is gone. Imported and native tabs
 remain separate; refresh still exists. This is not a new live/frame comparator.
+
+**P595-597 owner-only observation follow-ups:** authenticated run detail now
+labels omitted older verifier attempts rather than presenting the newest 200 as
+complete history. Check summary wording/layout in the actual browser, including
+mixed current/stale and empty history; a partial summary should say shown/older
+omitted. Unavailable journal/counts/similarity remains distinct from measured
+zero. Automated actual Node and installed API controls pass; human readability,
+real greater-than-200 history layout and detector calibration are not accepted by
+those controls. No player-facing badge/clock/physics or enforcement change.

@@ -951,3 +951,7 @@ table is missing: the whole panel stays explicitly read-limited, without partial
 pairs. Borrowed handles retain callbacks by default; only opt-in connection owners
 may supply the budget. This is not whole-request time/RSS/I/O budgeting.
 Control: `python surfd/test_admin_similarity_probe.py` (real SQLite interruption).
+
+All three are deployed/installed-verified on the Pi at 2026-10-08T13:59:52Z.
+Exact-source controls, ship set, failed procedure arms and verification limits:
+[tools/p595observers.md](../tools/p595observers.md). No game/reader/config swap.
