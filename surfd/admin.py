@@ -1687,7 +1687,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                             for v in conn.execute(
                     "SELECT id, verdict, reason, ticks, engine, progs, at" + extra +
                     "  FROM verdicts WHERE replay_id = ? ORDER BY id DESC LIMIT ?",
-                    (rid, VERDICTS_SHOWN)).fetchall()]
+                    (rid, VERDICTS_SHOWN + 1)).fetchall()]
+                verdict_history = {"limit": VERDICTS_SHOWN,
+                                   "more": len(verdicts) > VERDICTS_SHOWN}
+                verdicts = verdicts[:VERDICTS_SHOWN]
                 latest = conn.execute(
                     "SELECT verdict FROM verdicts WHERE replay_id = ? AND at >= ?"
                     " AND verdict <> 'ERROR' ORDER BY id DESC LIMIT 1",
@@ -1728,7 +1731,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                              "stages_hidden": stages[1] if stages else 0,
                              "stages_aside": stages[2] if stages else 0,
                              "stages_linked": stages is not None},
-                "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
+                "review": review, "verdicts": verdicts, "verdict_history": verdict_history,
+                "receipt": rcpt, "key": key,
                 "similarity": similarity,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,

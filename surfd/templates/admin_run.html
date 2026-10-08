@@ -243,6 +243,22 @@ function renderReceiptAssociations(c, put) {
        + partial(a.keys_more)));
   return result;
 }
+function renderVerdictSummary(verdicts, history) {
+  const cur = verdicts.filter(v => v.current), stale = verdicts.length - cur.length;
+  const partial = history && history.more;
+  const tail = partial ? " shown; older attempts omitted (limit " + history.limit + ")" : "";
+  if (!verdicts.length) {
+    summarise("verdsum", false, el("span", "muted", "not verified yet"));
+  } else if (cur.length) {
+    summarise("verdsum", cur[0].verdict !== "PASS",
+              pill(cur[0].verdict, VERDICT_CLS[cur[0].verdict]),
+              cur.length + " current" + (stale ? ", " + stale + " stale" : "") + tail);
+  } else {
+    summarise("verdsum", true, pill(verdicts[0].verdict),
+              "lapsed \u2014 " + (partial ? "" : "all ") + stale +
+              " predate this submission" + tail);
+  }
+}
 function renderRun(j) {
   const r = j.run;
   document.getElementById("title").textContent = "#" + r.id;
@@ -310,17 +326,7 @@ function renderRun(j) {
     const tr = el("tr"), td = el("td", "empty", "not verified yet");
     td.colSpan = 7; tr.appendChild(td); tb.appendChild(tr);
   }
-  const cur = j.verdicts.filter(v => v.current), stale = j.verdicts.length - cur.length;
-  if (!j.verdicts.length) {
-    summarise("verdsum", false, el("span", "muted", "not verified yet"));
-  } else if (cur.length) {
-    summarise("verdsum", cur[0].verdict !== "PASS",
-              pill(cur[0].verdict, VERDICT_CLS[cur[0].verdict]),
-              cur.length + " current" + (stale ? ", " + stale + " stale" : ""));
-  } else {
-    summarise("verdsum", true, pill(j.verdicts[0].verdict),
-              "lapsed \u2014 all " + stale + " predate this submission");
-  }
+  renderVerdictSummary(j.verdicts, j.verdict_history);
 
   const RCPT_CLS = {VALID: "up", FAULT: "down"};
   const ANG_CLS = {OK: "up", BLIND: "warn", FAULT: "down"};

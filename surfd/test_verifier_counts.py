@@ -164,6 +164,7 @@ class Counts(unittest.TestCase):
         if not shutil.which('node'):self.skipTest('Node absent; DOM must be tested on Windows')
         text=open(os.path.join(os.path.dirname(__file__),'templates','admin_run.html'),encoding='utf-8').read()
         block=text[text.index('  const tb = document.querySelector("#verdicts tbody");'):text.index('  const RCPT_CLS')]
+        helper=text[text.index('function renderVerdictSummary('):text.index('function renderRun(')]
         js=r'''
 const j={verdicts:[JSON.parse(process.argv[2])]};
 class E {constructor(tag,cls,text){this.text=String(text??'');this.children=[];}
@@ -172,7 +173,7 @@ replaceChildren(){this.children=[];} set innerHTML(v){throw Error('HTML sink');}
 const table=new E();const document={querySelector:()=>table};
 const el=(t,c,s)=>new E(t,c,s),pill=(s)=>el('span','',s),fmtDate=()=> 'date';
 const VERDICT_CLS={};let summary;const summarise=(id,bad)=>{summary=bad;};
-'''+block+r'''
+'''+helper+block+r'''
 const flat=n=>typeof n==='string'?n:n.text+n.children.map(flat).join('');
 console.log(JSON.stringify({text:flat(tb),summary}));
 '''
