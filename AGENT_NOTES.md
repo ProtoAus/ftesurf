@@ -1583,6 +1583,23 @@ publicly WITH its fix, not before it.
   listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
   reverts a typed `pm_ticrate`.
 
+- **Off-ramp stage diagnostic (not a patch or fix).** The first `surf_dune`
+  route rides a slope but reaches ground before a surf-to-air leave: native
+  contact alone does not prove the intended off-ramp arm acted. On Voyager,
+  the start's real launch pad is reached walking BACK relative to its spawn
+  view; forward merely explores the floor. `tools/OFFRAMP_CONTACT.md` describes
+  isolated per-native-tick/packet/sample/event/actual-render traces and strict
+  counterfactual gates. Live positions are predicted while flags/run clocks
+  arrive in server stats. The hold can expire on a point well after native
+  contact loss; the mark and actual render retain THAT point, so render retiming
+  is not established as the cause. A jump between sampled run clocks is not a
+  changed hold constant. Repeated timestamps retain command/input ordinals.
+  First rewind press confirms a running-run splice; the second opens. Missing
+  packet anchors (including a capture terminated between two prints) are RED;
+  preserve them before a labeled rerun. Structural PASS explicitly does not
+  close classification, jump/trough semantics, hull/brush geometry, LOD/pixel
+  acceptance, or P560's requested/native clock mismatch. Raw traces stay private.
+
 ## Rewind (Patch 477)
 
 - **Request/native captions (P560).** Fractional display, sampled wire request

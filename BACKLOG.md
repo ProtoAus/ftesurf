@@ -2359,7 +2359,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   `cl_lines.qc:Line_Contact/Line_Point/Line_Marks`, `Board_RampHeld` and the
   native per-tick raw contact/normal producers. The line classifier uses held
   contact; establish its contribution versus sampling/render delay before
-  changing it. Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
+  changing it. Initial diagnostic: `tools/OFFRAMP_CONTACT.md` separates native
+  per-tick bit/normal, sampled held kind, event creation and actual rendered
+  position; private acted 30/100/300 captures and counterfactual refusals measure
+  the stages, not a classification fix. Packet/stat clock jumps must not be
+  mistaken for a longer configured hold. Exact hull/brush-edge geometry,
+  uninstrumented cadence, LODs and broader contact controls remain open.
+  Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
   held-kind transition and rendered event position logged together, at several
   tick/frame rates and LODs. Include ramp-to-ground, curved/prop/displacement
   ramps and teleport controls. Place labels at measured contact events rather
