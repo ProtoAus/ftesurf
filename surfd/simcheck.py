@@ -207,6 +207,9 @@ def _cursor(conn, scope, source_id=0):
 def _advance(conn, scope, after_id, source_id=0):
     """Short committed admission checkpoint, never a comparison observation."""
     with conn:
+        # Direct compare_run callers may have only the historical sims table.
+        # Initialize only on an actual admitted checkpoint, never on a read.
+        conn.execute(CURSOR_SQL)
         conn.execute("INSERT INTO sim_cursor(scope,source_id,after_id) VALUES(?,?,?)"
                      " ON CONFLICT(scope,source_id) DO UPDATE SET after_id=excluded.after_id",
                      (scope, source_id, after_id))
@@ -274,13 +277,16 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         return 0, 0, 0
     # Stored pairs must not occupy the bounded candidate window. Historical
     # observations use either orientation, so exclude both before LIMIT.
+    after = _cursor(conn, "peer", a_id)
     peers = conn.execute(
         "SELECT p.* FROM replays p WHERE p.map = ? AND p.track = ? AND p.leg = ?"
         " AND p.kind = 'run' AND p.id != ?"
         " AND NOT EXISTS (SELECT 1 FROM sims s"
         "     WHERE (s.a_id = ? AND s.b_id = p.id)"
-        "        OR (s.a_id = p.id AND s.b_id = ?)) ORDER BY p.id LIMIT ?",
-        (row["map"], row["track"], row["leg"], a_id, a_id, a_id, limit_peers)).fetchall()
+        "        OR (s.a_id = p.id AND s.b_id = ?))"
+        " ORDER BY (p.id > ?) DESC, p.id LIMIT ?",
+        (row["map"], row["track"], row["leg"], a_id, a_id, a_id,
+         after, limit_peers)).fetchall()
     if not peers:
         return 0, 0, 0
     pa, w = _row_path(surfd, row)
@@ -289,46 +295,51 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             diagnostics["source_unavailable"] += 1
         return 0, 0, 0
     found = []
-    for pr in peers:
-        # Keep the late recheck: another writer may have stored this pair since
-        # the candidate snapshot. It must still cost no admission or comparison.
-        have = conn.execute(
-            "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
-            (a_id, pr["id"], pr["id"], a_id)).fetchone()
-        if have:
-            continue
-        # Consume admission even when resolution/comparison fails. Already-stored
-        # pairs cost no attempt; unattempted peers get no artificial skip row.
-        if budget is not None:
-            if not budget.take():
-                break
-        pb, w = _row_path(surfd, pr)
-        if pb is None:
-            verdict, reason, d = "skip", "peer unresolved: %s" % w, None
-            skip_code = "peer_unresolved"
-        else:
-            verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
-                                               max_moves=MAX_SOURCE_MOVES)
-            d = reason if verdict == "compared" else None
-            skip_code = "" if verdict == "compared" else SKIP_CODES.get(verdict, "unknown")
-            if verdict != "compared":
-                verdict, reason = "skip", reason
-        match = cover = 0.0
-        prefix = offset = compared = ma = mb = 0
-        ta = tb = 0.0
-        who_a = who_b = ""
-        same = 0
-        if d:
-            match, cover = d["match"], d["cover"]
-            prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
-            ma, mb = d["moves_a"], d["moves_b"]
-            ta, tb = d["tickrate_a"], d["tickrate_b"]
-            who_a, who_b = d["who_a"], d["who_b"]
-            same = 1 if d["same_who"] else 0
-        found.append(((a_id, pr["id"], row["map"], row["track"], row["leg"],
-                       row["tier"], row["player"], pr["player"], who_a, who_b, same,
-                       verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
-                       compared, ma, mb, ta, tb, t0), d is not None, match))
+    last_attempt = None
+    try:
+        for pr in peers:
+            # Late recheck remains before admission and cursor advancement.
+            have = conn.execute(
+                "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
+                (a_id, pr["id"], pr["id"], a_id)).fetchone()
+            if have:
+                continue
+            if budget is not None:
+                if not budget.take():
+                    break
+            last_attempt = pr["id"]
+            pb, w = _row_path(surfd, pr)
+            if pb is None:
+                verdict, reason, d = "skip", "peer unresolved: %s" % w, None
+                skip_code = "peer_unresolved"
+            else:
+                verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
+                                                   max_moves=MAX_SOURCE_MOVES)
+                d = reason if verdict == "compared" else None
+                skip_code = "" if verdict == "compared" else SKIP_CODES.get(verdict, "unknown")
+                if verdict != "compared":
+                    verdict, reason = "skip", reason
+            match = cover = 0.0
+            prefix = offset = compared = ma = mb = 0
+            ta = tb = 0.0
+            who_a = who_b = ""
+            same = 0
+            if d:
+                match, cover = d["match"], d["cover"]
+                prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
+                ma, mb = d["moves_a"], d["moves_b"]
+                ta, tb = d["tickrate_a"], d["tickrate_b"]
+                who_a, who_b = d["who_a"], d["who_b"]
+                same = 1 if d["same_who"] else 0
+            found.append(((a_id, pr["id"], row["map"], row["track"], row["leg"],
+                           row["tier"], row["player"], pr["player"], who_a, who_b, same,
+                           verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
+                           compared, ma, mb, ta, tb, t0), d is not None, match))
+    finally:
+        # One short checkpoint per source call, also on a raised comparison.
+        # No artificial observation for failures; unadmitted/stored peers cost none.
+        if last_attempt is not None:
+            _advance(conn, "peer", last_attempt, a_id)
     if not found:
         return 0, 0, 0
     # All or nothing; a failure raises to similarity_step, which prints it.
