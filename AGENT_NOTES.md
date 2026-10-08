@@ -3828,7 +3828,7 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   reacquire after UpdateVideo and balance every successful reference. Initial
   number 577 collided with concurrently published reader P577-580; corrected
   forward without rewriting published `51dfe46ef`/`patch-577` history. Primary
-  `tools/p581atlas_claim.md` advertises only 581 until publication completes.
+  `tools/p581atlas_claim.md` advertised only 581 until publication completed.
   Harness names/markers retain P577 for their pre-registered reproduction.
   `tools/p577atlas.py --engine <subject> --control <old-client>` compiles an
   owned C fixture with `-Werror`; control's data handle is 0 while memory/disk
@@ -3851,8 +3851,15 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   autocrlf context can give a false dirty stamp), and use an annotated tag.
   Final clean full build is `git-7096-patch-581-0-g710087cb7`; `clangdb.py`
   regenerated the database. Atlas, fonts at scales 1/2, exact approved-P570
-  font pixel equality and 28 dedicated/editor controls pass. Tagged final
-  delivery hashes/UTC belong in its checkpoint, not an ImGui acceptance.
+  font pixel equality and 28 dedicated/editor controls pass. Clean proof
+  `C:/FTESurf-atlas-proof` at game `e172392` repeats zero-warning QC, atlas and
+  all 28 editor checks; frozen native SHA256 starts `f0fe4319ac3b`. Guarded
+  native-only dual swap verified at 2026-10-08T07:51:06Z, keeping `.prev` plus
+  `rig/deploy-p581-20261008T075105Z`. Both installed-client COPIES repeat all
+  atlas arms (`p577-atlas-bcioqy63`, `p577-atlas-ifyudd87`); post-test hashes and
+  protected cfg/progs/reader bytes match. No owner process stop, progs/config/
+  reader/asset/server/Pi/release swap. Indexed-2D/QC/ImGui work is NEXT, not
+  accepted by this delivery.
 - **Stage B existing-ABI preflight (2026-10-08):** no ImGui implementation
   yet. Disposable native fixture against engine `3abccb525` (docs-only delta
   from deployed `60dfdc102`) accepts exact 2D/Input/Cmd sizes, rejects shortened
