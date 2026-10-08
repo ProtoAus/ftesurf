@@ -347,7 +347,7 @@ is not a performance claim. Retain every timed-out output directory.
 
 The hull-only replay stage does not validate authored movement trajectories.
 The separate native command below adds bounded edge/input/jump/seam/posture
-controls and an ACTED capsule path with explicit geometry abstention. Full
+controls plus ACTED capsule/transformed paths with explicit geometry abstention. Full
 collision/support, physical-exit/classification and clock/render/camera/rate/
 LOD/hold/mark acceptance remain **NOT_TESTED**.
 
@@ -409,18 +409,19 @@ or continuous collision-time coverage. Mismatch is refusal, never a weakened
 physical-exit claim. Accepted whole winning snapshots must match an authored
 brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
 
-Protocol `OFFRAMPMOTION_` v3: BEGIN capture/oracle/case counts and maximum step
+Protocol `OFFRAMPMOTION_` v4: BEGIN capture/oracle/case counts and maximum step
 capacity, explicit per-CASE step counts (first six 32, open posture 96, ceiling
-posture 192, capsule 32), SOURCE
-fixture-template SHA256 and native base commit, exact ordered PARAM rows,
-CASE/BRUSH/PLANE/SEED, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
+posture 192, capsule 32, transformed 32), SOURCE
+fixture-template SHA256 and native base commit, exact ordered PARAM rows
+(including explicit rotated-box-hull cvar), CASE/BRUSH/PLANE/SEED, INSTANCE
+only for the transformed case, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
 TICK carries actual command inputs, native tick count/rate, ramp/ground state,
 body/velocity, hull/posture. ORACLE carries case/tick/kind/brush, exact endpoints,
 fraction/solid flags/entity/plane/contents. Missing/duplicate/reordered/unknown/
 malformed rows, changed input/provenance, nonfinite data, unregistered hull/pose,
-wrong bindings, quiet subject or failed actor/native query all refuse. The named
-capsule case is structurally validated but explicitly ABSTAINS from geometry. Embedded
-SOURCE is build provenance, not tamper-proof binary or map authenticity.
+wrong bindings, quiet subject or failed actor/native query all refuse. Named
+capsule/transformed cases are structurally validated but explicitly ABSTAIN
+from geometry. Embedded SOURCE is build provenance, not tamper-proof binary or map authenticity.
 
 The first successful family observes two distinct delays: side/convex projected
 support is gone at a tick end while that tick still reports accepted ramp
@@ -491,8 +492,60 @@ ON/repeat capsule snapshots match exactly. Only bounded native execution,
 query sensitivity and snapshot/abstention gates are closed for capsules, NOT a
 capsule collision/support oracle, general capsule or posture-policy acceptance.
 
-Exact physical exit time, classification/debounce/mark policy, transformed/
-embedded/entity/triangle/displacement, airborne or other posture trajectories,
+## ACTED translated/yaw brush with explicit geometry abstention
+
+A tenth 32-tick case translates a real world-brush physent by (1000,-300,100)
+and yaws it 45 degrees. The world-aligned standing AABB executes ordinary
+native commands through ramp ride and departure. Set origin/angles/unscaled
+instance only in the seed; no mid-trajectory body or transform injection.
+`INSTANCE` binds actual physent index/origin/angles/scale/capsule before movement.
+Explicitly pin `pm_rotatedboxhulls=1`, emit it as PARAM and restore its previous
+numeric value after the command. This is an artificial transformed-world
+physent fixture; it does NOT close non-world/entity/map/PointContents wiring.
+
+Actual PM_PlayerTrace -> PM_TransformedHullCheck -> BIH_Trace must produce
+sloped contacts whose copied winning origin/angles/scale/native callback,
+whole local brush, accepted plane and actual hull snapshots match the instance.
+Existing category stays `transformed-instance-unsupported`; geometry/support
+**ABSTAIN**, independent transform oracle **NOT_IMPLEMENTED**.
+
+Native `stationary` and `down2` queries use the same actual translation/basis,
+matching the mover wrapper's AngleVectors/negated-right convention. A separately
+named `identity` down2 counterfactual uses SAME world endpoints/origin/hull but
+removes ONLY the local query's rotation argument. It never mutates pmove.
+Stationary actual body must miss/nonembed throughout; actual down2 hits AND
+later misses and raw ramp loss must ACT. At least one actual hit must coincide
+with a genuine identity MISS (fraction=1, BOTH solid flags=0), not simply an
+identity non-hit whose solid flags were ignored. In this bounded actor: 24
+accepted contacts, down2 hits 0..22 and misses 23..31, raw loss 24; genuine
+actual-hit/identity-miss differences ACT 0..7. Identity is instead allsolid on
+8..22. Those solid rows are counterfactual, NEVER actual-body contact or misses.
+
+The first rig executed but the reader rejected identity-solid rows. A strict
+named-query correction preserves the native contract: identity allsolid has
+fraction=1, both solid flags=1, ZERO plane and ZERO contents (no winning plane
+was set). Require joint local-coordinate AABB overlap for that result; absent/
+stale flags/plane/contents refuse. Actual-body solid checks remain strict.
+Keep failed rigs; do not reuse output directories or alter the movement actor.
+
+Do NOT use an unrotated AABB oracle for actual transformed geometry. Identity
+queries alone may use the existing joint oracle after subtracting translation.
+Endpoint/finiteness/schema/contents/plane binding still applies to every native
+row. BIH rotates the accepted normal to WORLD while the mover wrapper leaves
+plane.dist MODEL-local. Validate that exact mixed snapshot convention (rotated
+normal, unchanged copied local distance); do not manufacture an affine world
+plane, surface distance, support or classification result from it. Units ACT
+accidental AABB invocation and stale/world-distance promotion. Plausible changed
+native transformed fractions may survive standalone abstention, but exact
+five-arm query parity must refuse them.
+
+All original nine body/oracle/winner arrays stay EXACTLY equal to retained
+capsule controls, including capsule ABSTAIN. Fixture-only/nooracle/control/OFF/
+ON/repeat parity and actual native/capture actuation stay mandatory. Only this
+bounded transformed execution/query sensitivity/copy binding gate is closed.
+
+Exact physical exit time, classification/debounce/mark policy, embedded/
+non-world/entity/triangle/displacement, airborne or other posture trajectories,
 explicit cached/recovery/portal motion, general world support, independent
-capsule geometry, P560 clock and same-input recorded/live/render/rate/camera/
-LOD/hold acceptance remain **NOT_TESTED**.
+capsule/transform geometry, P560 clock and same-input recorded/live/render/rate/
+camera/LOD/hold acceptance remain **NOT_TESTED**.

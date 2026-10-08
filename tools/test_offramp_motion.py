@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
+from offramp_motion import INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -41,6 +41,13 @@ def capsule_query():
     brushes, seed = authored(8)
     tick = [8, 0, 15, 0, 0, 0, 1, .015, 1, 0]+seed[:6]+seed[6:]+[0, 0, 0, 1, 0, 0]
     row = ['8', '0', 'stationary', '-1']+list(map(str, seed[:3]*2+[1, 0, 0, 0, 0, 0, 0, 0, 0]))
+    return brushes, tick, row
+
+
+def transformed_query():
+    brushes, seed = authored(9)
+    tick = [9, 0, 15, 0, 0, 0, 1, .015, 1, 0]+seed[:6]+seed[6:]+[0]*6
+    row = ['9', '0', 'stationary', '-1']+list(map(str, seed[:3]*2+[1, 0, 0, 0, 0, 0, 0, 0, 0]))
     return brushes, tick, row
 
 
@@ -132,15 +139,57 @@ class Tests(unittest.TestCase):
             with self.subTest(index=index), self.assertRaises(AssertionError):
                 oracle_validate(bad, tick, brushes)
 
+    def test_transformed_actual_abstains_identity_acts_local_joint_oracle(self):
+        brushes, tick, row = transformed_query()
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('AABB oracle ACTED')):
+            oracle_validate(row, tick, brushes)
+            down = row[:]; down[2], down[9] = 'down2', str(tick[12]-2)
+            down[10], down[14:19] = '.015625', [str(.8*2**-.5), str(.8*2**-.5), '.6', '0', '1']
+            oracle_validate(down, tick, brushes)
+            identity = row[:]; identity[2], identity[9] = 'identity', str(tick[12]-2)
+            with self.assertRaisesRegex(AssertionError, 'AABB oracle ACTED'):
+                oracle_validate(identity, tick, brushes)
+        oracle_validate(identity, tick, brushes)
+        bad = down[:]; bad[2] = 'identity'
+        with self.assertRaisesRegex(AssertionError, 'JOINT'):
+            oracle_validate(bad, tick, brushes)
+
+    def test_identity_solid_is_only_a_counterfactual_without_winning_plane(self):
+        brushes, tick, row = transformed_query()
+        tick[10:13] = [1000, -300, 90]
+        row[2], row[4:10], row[11:13] = 'identity', ['1000', '-300', '90', '1000', '-300', '88'], ['1', '1']
+        oracle_validate(row, tick, brushes)
+        for index, value in ((2, 'down2'), (10, '.5'), (12, '0'), (14, '.8'), (18, '1')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError):
+                oracle_validate(bad, tick, brushes)
+        # A quiet false-negative cannot erase the identity's true box overlap.
+        bad = row[:]; bad[11:13] = ['0', '0']
+        with self.assertRaisesRegex(AssertionError, 'JOINT'):
+            oracle_validate(bad, tick, brushes)
+
+    def test_transformed_native_plane_is_not_world_affine_plane(self):
+        brushes, tick, row = transformed_query()
+        down = row[:]; down[2], down[9] = 'down2', str(tick[12]-2)
+        down[10], down[14:19] = '.015625', [str(.8*2**-.5), str(.8*2**-.5), '.6', '0', '1']
+        oracle_validate(down, tick, brushes)
+        for index, value in ((0, '8'), (3, '0'), (4, '999'), (11, '1'), (14, '.8'), (17, '600'), (18, '0')):
+            bad = down[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError):
+                oracle_validate(bad, tick, brushes)
+        actual = row[:]; actual[2] = 'box'
+        with self.assertRaises(AssertionError): oracle_validate(actual, tick, brushes)
+        self.assertEqual(INSTANCE, [9, 0, 1000, -300, 100, 0, 45, 0, 1, 0])
+
     def test_explicit_fixture_profile_and_case_schema(self):
-        self.assertEqual(len(PARAMS), 41)
+        self.assertEqual(len(PARAMS), 42)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
         for c in range(len(LABELS)):
             brushes, seed = authored(c)
             self.assertEqual(len(seed), 12)
             self.assertEqual(len(brushes), 2 if c in (5, 7) else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
-            self.assertEqual(step_count(c), 32 if c < 6 or c == 8 else (96 if c == 6 else MAX_STEPS))
+            self.assertEqual(step_count(c), 32 if c < 6 or c >= 8 else (96 if c == 6 else MAX_STEPS))
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
 
@@ -148,7 +197,7 @@ class Tests(unittest.TestCase):
 def controls(text):
     lines = text.splitlines()
     def first(tag): return next(l for l in lines if f'OFFRAMPMOTION_{tag}' in l)
-    tags = ('BEGIN', 'SOURCE', 'PARAM', 'CASE', 'BRUSH', 'PLANE', 'SEED', 'TICK', 'ORACLE', 'CASE_END', 'END', 'COMPLETE')
+    tags = ('BEGIN', 'SOURCE', 'PARAM', 'CASE', 'BRUSH', 'PLANE', 'INSTANCE', 'SEED', 'TICK', 'ORACLE', 'CASE_END', 'END', 'COMPLETE')
     bad = [(f'missing-{tag}', '\n'.join(l for l in lines if l != first(tag))) for tag in tags]
     bad += [(f'duplicate-{tag}', text+first(tag)+'\n') for tag in tags]
     bad += [('unknown', text+'OFFRAMPMOTION_WHAT 1\n'), ('capture-outside-case', text+'OFFRAMPHULL_TICK 0\n'),
@@ -206,6 +255,39 @@ def controls(text):
         ('capsule-accepted-hull-metadata', 'OFFRAMPHULL', 'CONTACT', 8),
         ('capsule-tick-hull-metadata', 'OFFRAMPHULL', 'TICK', 7)):
         bad.append((label, change(text, tag, index, 0, lambda r: r[index] == '1', namespace)))
+    for label, tag, index, value, pred in (
+        ('transform-unpinned-box-hulls', 'PARAM', 1, 0, lambda r: r[0] == 'rotatedboxhulls'),
+        ('transform-wrong-instance-case', 'INSTANCE', 0, 8, lambda r: True),
+        ('transform-wrong-physent', 'INSTANCE', 1, 1, lambda r: True),
+        ('transform-instance-origin-silent', 'INSTANCE', 2, 0, lambda r: True),
+        ('transform-instance-angles-silent', 'INSTANCE', 6, 0, lambda r: True),
+        ('transform-instance-scaled', 'INSTANCE', 8, 2, lambda r: True),
+        ('transform-instance-capsule', 'INSTANCE', 9, 1, lambda r: True),
+        ('transform-instance-nonfinite', 'INSTANCE', 2, 'nan', lambda r: True),
+        ('transform-seed-local-substitution', 'SEED', 1, -100, lambda r: r[0] == '9'),
+        ('transform-wrong-command', 'TICK', 3, 250, lambda r: r[0] == '9'),
+        ('transform-capsule-promotion', 'TICK', 25, 1, lambda r: r[0] == '9'),
+        ('transform-body-solid', 'ORACLE', 11, 1, lambda r: r[0] == '9' and r[2] == 'stationary'),
+        ('transform-query-local-endpoints', 'ORACLE', 4, -100, lambda r: r[0] == '9'),
+        ('transform-query-kind-promotion', 'ORACLE', 2, 'projected', lambda r: r[0] == '9'),
+        ('transform-native-world-dist-promotion', 'ORACLE', 17, 600, lambda r: r[0] == '9' and float(r[10]) < 1),
+        ('transform-native-normal-unrotated', 'ORACLE', 14, .8, lambda r: r[0] == '9' and float(r[10]) < 1)):
+        bad.append((label, change(text, tag, index, value, pred)))
+    bad.append(('transform-native-hit-silent', change_all(text, 'ORACLE',
+                {10: 1, 11: 0, 12: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0},
+                lambda r: r[0] == '9' and r[2] == 'down2')))
+    bad.append(('transform-native-miss-silent', change_all(text, 'ORACLE',
+                {10: .5, 11: 0, 12: 0, 14: .8*2**-.5, 15: .8*2**-.5, 16: .6, 17: 0, 18: 1},
+                lambda r: r[0] == '9' and r[2] == 'down2')))
+    for label, index, value in (
+        ('transform-identity-solid-silent', 12, 0), ('transform-identity-solid-stale-plane', 14, 1),
+        ('transform-identity-solid-stale-contents', 18, 1)):
+        bad.append((label, change(text, 'ORACLE', index, value,
+                    lambda r: r[0] == '9' and r[2] == 'identity' and r[11] == '1')))
+    for label, index, value in (
+        ('transform-copied-origin', 7, 999), ('transform-copied-angle', 11, 0),
+        ('transform-copied-scale', 13, 0), ('transform-copied-native-bih', 15, 0)):
+        bad.append((label, change(text, 'CONTACT', index, value, lambda r: r[11] == '45', 'OFFRAMPGEOM')))
     return bad
 
 
@@ -237,7 +319,17 @@ def acted_controls(arms):
         grade(texts['on'])
     assert r['capsule_support_geometry_acceptance'] == 'ABSTAIN'
     assert r['cases'][8]['independent_capsule_oracle'] == 'NOT_IMPLEMENTED'
-    print(f'{len(bad)+5} ACTED native motion controls, zero failed; eight AABB/posture + capsule actor/abstention PASS')
+    altered = change(texts['on'], 'ORACLE', 10, .5, lambda r: r[0] == '9' and r[2] == 'down2' and float(r[10]) < 1)
+    with unittest.TestCase().assertRaises(AssertionError):
+        compare(texts['nooracle'], texts['control'], texts['off'], altered, texts['repeat'])
+    def promote_transform(o, contact, shape, payload, mapname):
+        if shape['instance_angles'] == [0, 45, 0]: return 'copied-world-brush-plane-bound', [5]
+        return shape_category(o, contact, shape, payload, mapname)
+    with patch('offramp_motion.shape_category', side_effect=promote_transform), unittest.TestCase().assertRaisesRegex(AssertionError, 'promoted'):
+        grade(texts['on'])
+    assert r['transformed_support_geometry_acceptance'] == 'ABSTAIN'
+    assert r['cases'][9]['independent_transform_oracle'] == 'NOT_IMPLEMENTED'
+    print(f'{len(bad)+7} ACTED native motion controls, zero failed; eight AABB/posture + capsule/transformed actors ABSTAIN PASS')
 
 
 def snapshot(engine):

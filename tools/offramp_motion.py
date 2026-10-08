@@ -2,8 +2,8 @@
 """Acted static-brush native trajectories + full native/joint convex queries.
 
 No halfspace max-gap classification. Eight AABB cases use a bounded joint
-oracle; the ACTED capsule case explicitly ABSTAINS from geometry/support.
-Neither is a continuous physical-exit timestamp or general marker policy.
+oracle; ACTED capsule and transformed cases explicitly ABSTAIN from geometry/
+support. None is a continuous physical-exit timestamp or general marker policy.
 """
 import argparse
 from collections import Counter
@@ -22,23 +22,25 @@ from offramp_shape import category as shape_category, decode as shape_decode
 
 LABELS = ('interior-ride', 'partial-full-side-exit', 'convex-side-exit',
           'interior-input-departure', 'ground-jump', 'overlapping-brush-seam',
-          'open-ground-duck-cycle', 'ceiling-blocked-unduck', 'capsule-ramp-side-departure')
+          'open-ground-duck-cycle', 'ceiling-blocked-unduck', 'capsule-ramp-side-departure',
+          'translated-yaw-brush-departure')
+INSTANCE = [9, 0, 1000, -300, 100, 0, 45, 0, 1, 0]
 STEPS = 32
 MAX_STEPS = 192
 
 
-def step_count(case): return STEPS if case < 6 or case == 8 else (96 if case == 6 else MAX_STEPS)
+def step_count(case): return STEPS if case < 6 or case >= 8 else (96 if case == 6 else MAX_STEPS)
 WIDTHS = {'BEGIN': 5, 'SOURCE': 2, 'PARAM': 2, 'CASE': 4, 'BRUSH': 9, 'PLANE': 7,
-          'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
+          'INSTANCE': 10, 'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
 PARAMS = dict(zip(('physicsmode ticrate gravity entgravity maxspeed spectatormaxspeed maxairspeed maxvelocity '
                    'accelerate airaccelerate wateraccelerate friction waterfriction stopspeed stepheight '
                    'jumpvelocity standablenormal standheight duckheight duckspeed viewheight duckviewheight '
                    'viewscale walkspeed groundtracedist bumpcount snaptoground groundquadrants fixslopes '
                    'fixedges fixrampbugs rampretrace ladders slide stamina normalizejump jumpaddrise '
-                   'jumpzoffset autobunny flags coord_float32').split(),
+                   'jumpzoffset autobunny flags coord_float32 rotatedboxhulls').split(),
                   (1, .015, 800, 1, 250, 250, 30, 3500, 5, 150, 10, 4, 1, 75, 18,
                    301.9933774, .7, 62, 45, .34, 64, 47, .5, .52, 2, 8, 1, 1, 1, 1, 2, .2,
-                   0, 0, 0, 0, 0, 0, 0, 0, 1)))
+                   0, 0, 0, 0, 0, 0, 0, 0, 1, 1)))
 EPS = 1e-5  # Numeric feasibility tolerance, NOT a collision/classification gap.
 
 
@@ -116,7 +118,20 @@ def authored(case):
             250 if case in (1, 2, 5) else 0, 0 if case in (3, 4) else -400, -16, -16, 0, 16, 16, 62]
     if case in (6, 7): seed = [-100, 0, .05, 0, 0, 0, -16, -16, 0, 16, 16, 62]
     if case == 8: seed = [-100, 0, (6.4+80+.05)/.6, 300, 250, -400, -16, -16, 0, 16, 16, 62]
+    if case == 9:
+        s = math.sqrt(.5)
+        seed = [1000-100*s, -300-100*s, 100+(16*.8*math.sqrt(2)+80+.05)/.6,
+                50*s, 550*s, -400, -16, -16, 0, 16, 16, 62]
     return brushes, seed
+
+
+def native_plane(plane, transformed):
+    # BIH rotates normal; PM wrapper does NOT translate plane.dist. This binds
+    # the mixed native snapshot contract, NOT an independent world plane.
+    if not transformed: return plane
+    s = math.sqrt(.5)
+    x, y, z, d = plane
+    return [s*(x-y), s*(x+y), z, d]
 
 
 def hit(row): return row[10] < 1 and row[11] == row[12] == 0
@@ -126,14 +141,14 @@ def oracle_validate(row, tick, brushes):
     case, ordinal = integers(row[:2]); kind = row[2]; brush = integers(row[3:4])[0]
     v = numbers(row[4:]); start, end = v[:3], v[3:6]
     require(0 <= v[6] <= 1 and all(f in (0, 1) for f in integers(row[11:13])) and
-            v[8] <= v[7] and (kind in ('standing', 'box') or integers(row[11:13]) == [0, 0]), 'invalid/embedded authored oracle fraction/flags')
+            v[8] <= v[7] and (kind in ('standing', 'box', 'identity') or integers(row[11:13]) == [0, 0]), 'invalid/embedded authored oracle fraction/flags')
     require(integers(row[13:14]) == [0], 'oracle fixture entity binding changed')
     contents = integers(row[18:])[0]
     require(0 <= contents <= 0xffffffff, 'invalid oracle contents')
     pos, mins, maxs = tick[10:13], tick[16:19], tick[19:22]
     if kind == 'standing': maxs = maxs[:2]+[mins[2]+PARAMS['standheight']]
     expected_start, expected_end = pos[:], pos[:]
-    if kind == 'down2': expected_end[2] -= 2
+    if kind in ('down2', 'identity'): expected_end[2] -= 2
     elif kind == 'projected':
         p = brushes[0]['planes'][5]
         low = sum(n*(hi if n < 0 else lo) for n, lo, hi in zip(p[:3], mins, maxs))
@@ -150,18 +165,29 @@ def oracle_validate(row, tick, brushes):
                 'unregistered capsule query')
     else:
         require(kind != 'box', 'box counterfactual lacks actual capsule')
-    # Native capsule results are captured/bound, NOT independently classified.
-    # Only the explicit BOX counterfactual may use AABB feasibility here.
-    if not tick[25] or kind == 'box':
+    if case == 9:
+        require(tick[:2] == [case, ordinal] and tick[25] == 0 and
+                kind in ('stationary', 'down2', 'identity') and brush == -1,
+                'unregistered transformed query')
+        if kind == 'identity':
+            lo = [a-b for a, b in zip(lo, INSTANCE[2:5])]
+            hi = [a-b for a, b in zip(hi, INSTANCE[2:5])]
+    else:
+        require(kind != 'identity', 'identity query lacks transformed actor')
+    # No joint AABB substitution for actual capsule OR rotated geometry.
+    # BOX and translated-only identity counterfactuals may use joint AABB.
+    if (not tick[25] or kind == 'box') and (case != 9 or kind == 'identity'):
         joint = any(joint_overlap(b['planes'], lo, hi) for b in subset)
         require(native == joint, 'native query disagrees with JOINT convex oracle')
     if kind == 'stationary': require(not native, 'authored mover ended embedded in solid')
     if v[7] or v[8]:
-        require(kind in ('standing', 'box') and contents == 1 and
-                (v[10:14] == [0, 0, 0, 0] or any(close(v[10:14], p) for b in subset for p in b['planes'])),
-                'counterfactual standing solid not bound to authored collider')
+        require((kind == 'identity' and v[6:9] == [1, 1, 1] and v[10:14] == [0, 0, 0, 0] and contents == 0) or
+                (kind in ('standing', 'box') and contents == 1 and
+                 (v[10:14] == [0, 0, 0, 0] or any(close(v[10:14], p) for b in subset for p in b['planes']))),
+                'counterfactual solid not bound to authored collider/native contract')
     elif v[6] < 1:
-        require(any(close(v[10:14], p) for b in subset for p in b['planes']) and contents == 1,
+        require(any(close(v[10:14], native_plane(p, case == 9 and kind != 'identity'))
+                    for b in subset for p in b['planes']) and contents == 1,
                 'oracle winning plane/contents not authored collider')
     else:
         require(v[10:14] == [0, 0, 0, 0] and contents == 0, 'missed oracle query promoted stale winning data')
@@ -194,11 +220,19 @@ def bind_capture(text, case, ticks, brushes):
                 o[6] == 0 and o[7] == 1, 'accepted origin not bound to fixture brush')
         p = payloads[s['payload_id']]
         reason, _ = shape_category(o, r, s, p, 'authored_offramp_motion')
-        expected_reason = 'capsule-hull-unsupported' if case == 8 else 'copied-world-brush-plane-bound'
+        expected_reason = {8: 'capsule-hull-unsupported', 9: 'transformed-instance-unsupported'}.get(case, 'copied-world-brush-plane-bound')
         require(reason == expected_reason, 'fixture winning shape incorrectly promoted/unsupported')
         matches = [b for b, a in enumerate(brushes) if close(p['model_local_mins'], a['mins']) and close(p['model_local_maxs'], a['maxs']) and
                    len(p['planes']) == len(a['planes']) and all(close(q, z) for q, z in zip(p['planes'], a['planes']))]
         require(len(matches) == 1 and s['capsule'] == int(case == 8), 'winning copied shape not an authored whole brush')
+        if case == 9:
+            require(s['instance_origin'] == INSTANCE[2:5] and s['instance_angles'] == INSTANCE[5:8] and
+                    s['raw_instance_scale'] == INSTANCE[8] and s['direct_bih_callback'] == 1 and p['status'] == 1 and
+                    any(close(r[6:9], native_plane(plane, True)[:3], 1e-5) and r[5] == plane[3] for plane in p['planes']) and
+                    hc[i]['capsule'] == 0 and
+                    [hc[i]['pm_type'], hc[i]['ducked'], hc[i]['ducking'], hc[i]['ducktime_ms'], hc[i]['oldbuttons']] == [0]*5 and
+                    hc[i]['mins'] == [-16, -16, 0] and hc[i]['maxs'] == [16, 16, 62],
+                    'transformed instance/accepted normal/hull snapshot not bound')
         if case == 8:
             require(r[6:9]+[r[5]] in p['planes'] and hc[i]['capsule'] == 1 and
                     [hc[i]['pm_type'], hc[i]['ducked'], hc[i]['ducking'], hc[i]['ducktime_ms'], hc[i]['oldbuttons']] == [0]*5 and
@@ -206,7 +240,9 @@ def bind_capture(text, case, ticks, brushes):
                     'capsule accepted plane/hull snapshot not bound')
         per_tick[int(r[1])] += 1
         winners.append({'ordinal': i, 'tick': int(r[1]), 'brush': matches[0], 'leaf': o[4], 'rootleaf': o[5]})
-        if case == 8: winners[-1]['geometry_status'] = reason
+        if case in (8, 9): winners[-1]['geometry_status'] = reason
+        if case == 9:
+            winners[-1]['instance'] = {k: s[k] for k in ('instance_origin', 'instance_angles', 'raw_instance_scale', 'direct_bih_callback')}
     for i, (h, t) in enumerate(zip(ht, ticks)):
         require(h['mins'] == t[16:19] and h['maxs'] == t[19:22] and
                 [h['ducked'], h['ducking'], h['ducktime_ms'], h['capsule'], h['pm_type'], h['oldbuttons']] == t[22:] and
@@ -224,7 +260,7 @@ def grade(text):
         require(pos < len(rows) and rows[pos][0] == tag, f'missing/duplicate/reordered motion {tag}')
         w = rows[pos][1]; pos += 1; return w
     header = integers(take('BEGIN'))
-    require(header[0] == 3 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
+    require(header[0] == 4 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
     capture, oracle = header[1:3]
     source = take('SOURCE')
     require(re.fullmatch('[0-9a-f]{64}', source[0]) and re.fullmatch('[0-9a-f]{40}', source[1]), 'invalid fixture/source stamp')
@@ -250,6 +286,7 @@ def grade(text):
                 r = take('PLANE'); require(integers(r[:3]) == [c, b, i] and close(numbers(r[3:]), p, 1e-5), 'missing/changed/unordered authored plane')
                 planes.append(numbers(r[3:]))
             brushes.append({'mins': numbers(row[3:6]), 'maxs': numbers(row[6:]), 'planes': planes})
+        if c == 9: require(numbers(take('INSTANCE')) == INSTANCE, 'changed/invalid actual transformed instance')
         r = take('SEED'); require(integers(r[:1]) == [c] and close(numbers(r[1:]), seed), 'wrong/changed case seed')
         ticks, queries = [], []
         for i in range(steps):
@@ -265,7 +302,7 @@ def grade(text):
             ticks.append(t)
             qrows = []
             if oracle:
-                query_order = [('stationary', -1), ('down2', -1), ('box', -1)] if c == 8 else [
+                query_order = [('stationary', -1), ('down2', -1), ('box' if c == 8 else 'identity', -1)] if c >= 8 else [
                     ('stationary', -1), ('down2', -1), ('projected', -1),
                     *[('projected', b) for b in range(len(brushes))], *([('standing', -1)] if c in (6, 7) else [])]
                 for kind, brush in query_order:
@@ -275,10 +312,12 @@ def grade(text):
         require(integers(take('CASE_END')) == [c, steps] and math.dist(ticks[-1][10:13], seed[:3]) > 1, 'native trajectory did not ACT')
         winners = bind_capture(blocks[c], c, ticks, brushes) if capture else []
         cases.append({'label': label, 'brushes': brushes, 'seed': numbers(r[1:]), 'ticks': ticks, 'oracles': queries, 'accepted': winners})
+        if c == 9: cases[-1]['instance'] = INSTANCE[:]
     require(integers(take('END')) == [len(LABELS)] and take('COMPLETE') == [] and pos == len(rows), 'missing/duplicate motion completion')
     if oracle:
         assess_posture(*cases[6:8])
         assess_capsule(cases[8])
+        assess_transform(cases[9])
     return {'capture': capture, 'oracle': oracle, 'source': source, 'cases': cases}
 
 
@@ -327,6 +366,23 @@ def assess_capsule(c):
              independent_capsule_oracle='NOT_IMPLEMENTED')
 
 
+def assess_transform(c):
+    ts, qs = c['ticks'], c['oracles']
+    require(c['label'] == LABELS[9] and c['instance'] == INSTANCE and len(ts) == STEPS and all(qs),
+            'missing transformed native actor')
+    losses = [i for i in range(1, STEPS) if ts[i-1][8] and not ts[i][8]]
+    hits = [i for i, q in enumerate(qs) if hit(q[1])]
+    misses = [i for i, q in enumerate(qs) if not hit(q[1])]
+    differences = [i for i, q in enumerate(qs) if hit(q[1]) and q[2][10:13] == [1, 0, 0]]
+    identity_solid = [i for i, q in enumerate(qs) if q[2][11] or q[2][12]]
+    require(ts[0][8] == 1 and losses and hits and misses and min(hits) < max(misses) and differences and
+            all(t[21:27] == [62, 0, 0, 0, 0, 0] for t in ts),
+            'transformed native hit/miss/rotation difference did not ACT')
+    c.update(raw_loss_ticks=losses, native_down2_hit_ticks=hits, native_down2_miss_ticks=misses,
+             transformed_hit_identity_miss_ticks=differences, identity_counterfactual_solid_ticks=identity_solid,
+             geometry_acceptance='ABSTAIN-transformed-instance-unsupported', independent_transform_oracle='NOT_IMPLEMENTED')
+
+
 def assess(cases):
     for c in cases[:8]:
         ts, qs = c['ticks'], c['oracles']
@@ -351,6 +407,9 @@ def assess(cases):
     assess_capsule(cases[8])
     require(cases[8]['accepted'] and all(w['geometry_status'] == 'capsule-hull-unsupported' for w in cases[8]['accepted']),
             'capsule winning capture absent/promoted')
+    assess_transform(cases[9])
+    require(cases[9]['accepted'] and all(w['geometry_status'] == 'transformed-instance-unsupported' for w in cases[9]['accepted']),
+            'transformed winning capture absent/promoted')
     require(len(seam['projected_support_ticks']) == STEPS and all(t[8] for t in seam['ticks']) and
             {a['brush'] for a in seam['accepted']} == {0, 1} and
             len({a['leaf'] for a in seam['accepted']}) == 2 and any(not hit(q[3]) and hit(q[4]) for q in seam['oracles']), 'union/previous-brush seam handoff did not ACT')
@@ -360,7 +419,8 @@ def compare(nooracle, control, off, on, repeat):
     reports = [grade(t) for t in (nooracle, control, off, on, repeat)]
     require([(r['capture'], r['oracle']) for r in reports] == [(0, 0), (0, 1), (0, 1), (1, 1), (1, 1)], 'invalid fixture arms')
     require(all(r['source'] == reports[0]['source'] for r in reports), 'native fixture/base provenance differs')
-    canonical = lambda r: [{k: c[k] for k in ('label', 'brushes', 'seed', 'ticks', 'oracles')} for c in r['cases']]
+    canonical = lambda r: [{k: c[k] for k in ('label', 'brushes', 'seed', 'ticks', 'oracles')+(
+                            ('instance',) if c['label'] == LABELS[9] else ())} for c in r['cases']]
     require(all(canonical(r) == canonical(reports[1]) for r in reports[2:]), 'fixture-only/OFF/ON/repeat body/oracle differs')
     require(all(a['ticks'] == b['ticks'] for a, b in zip(reports[0]['cases'], reports[1]['cases'])), 'oracle queries altered later movement')
     require(reports[3] == reports[4], 'repeated captured fixture binding differs')
@@ -370,6 +430,7 @@ def compare(nooracle, control, off, on, repeat):
             'repeat_capture_binding': 'PASS', 'body_oracle_sha256': digest, 'source': reports[3]['source'],
             'cases': reports[3]['cases'], 'physical_exit_acceptance': 'NOT_TESTED', 'classifier_mark_acceptance': 'NOT_TESTED',
             'capsule_native_path_capture_gates': 'PASS', 'capsule_support_geometry_acceptance': 'ABSTAIN',
+            'transformed_native_path_capture_gates': 'PASS', 'transformed_support_geometry_acceptance': 'ABSTAIN',
             'unsupported_mover_paths_acceptance': 'NOT_TESTED', 'clock_render_rate_hold_acceptance': 'NOT_TESTED'}
 
 
@@ -383,8 +444,8 @@ def main():
     result = compare(*(Path(arms[n]['log']).read_text(errors='replace') for n in names))
     require(result['source'][0] == arms['on']['fixture_sha256'], 'binary fixture stamp differs from tooling template')
     result['arms'] = arms; a.output.write_text(json.dumps(result, indent=2)+'\n')
-    print('Eight AABB/posture fixtures + ACTED capsule path: PASS; five-arm capture/body/query parity PASS')
-    print('Capsule geometry/support: ABSTAIN (no independent capsule oracle); AABB joint queries PASS')
+    print('Eight AABB/posture + ACTED capsule/transformed paths: PASS; five-arm capture/body/query parity PASS')
+    print('Capsule/transformed geometry/support: ABSTAIN (no independent oracles); AABB joint queries PASS')
     print('Physical timestamp/classifier/mark/unsupported paths/clock/render/rate/hold acceptance: NOT_TESTED')
 
 
