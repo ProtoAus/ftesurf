@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
+from offramp_motion import ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -35,6 +35,19 @@ def change_all(text, tag, updates, pred):
         lines[i] = prefix+token+' '.join(row); count += 1
     assert count, 'Bulk counterfactual did not ACT'
     return '\n'.join(lines)+'\n'
+
+
+def change_case(text, case, tag, index, value, pred=lambda r: True, namespace='OFFRAMPMOTION'):
+    start = text.index(f'OFFRAMPMOTION_CASE {case} ')
+    end = text.index(f'OFFRAMPMOTION_CASE_END {case} ', start)
+    return text[:start]+change(text[start:end], tag, index, value, pred, namespace)+text[end:]
+
+
+def entity_query(case=10):
+    brushes, seed = authored(case)
+    tick = [case, 0, 15, 0, 0, 0, 1, .015, 1, 0]+seed[:6]+seed[6:]+[0]*6
+    row = [str(case), '0', 'down2', '-1']+list(map(str, seed[:3]+[seed[0], seed[1], seed[2]-2]+[.015625, 0, 0, 1, .8, 0, .6, 0, 1]))
+    return brushes, tick, row
 
 
 def capsule_query():
@@ -181,17 +194,50 @@ class Tests(unittest.TestCase):
         with self.assertRaises(AssertionError): oracle_validate(actual, tick, brushes)
         self.assertEqual(INSTANCE, [9, 0, 1000, -300, 100, 0, 45, 0, 1, 0])
 
+    def test_entity_native_query_joint_binding_and_world_removal(self):
+        brushes, tick, row = entity_query()
+        oracle_validate(row, tick, brushes)
+        world = row[:]; world[2:4], world[10:19] = ['worldonly', '0'], ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        oracle_validate(world, tick, brushes)
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('JOINT ACTED')):
+            with self.assertRaisesRegex(AssertionError, 'JOINT ACTED'): oracle_validate(row, tick, brushes)
+            with self.assertRaisesRegex(AssertionError, 'JOINT ACTED'): oracle_validate(world, tick, brushes)
+        fake = world[:]; fake[2:4] = ['down2', '-1']
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, tick, brushes)
+        fake = row[:]; fake[2:4] = ['worldonly', '0']
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, tick, brushes)
+        # Same body pose with the entity removed: no actual contact, even though
+        # the inactive authored entity overlaps the swept box.
+        _, removed_tick, _ = entity_query(11)
+        fake = world[:]; fake[0], fake[2:4] = '11', ['down2', '-1']
+        oracle_validate(fake, removed_tick, brushes)
+        fake = row[:]; fake[0] = '11'
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, removed_tick, brushes)
+
+    def test_entity_query_schema_winner_and_stale_miss_refuse(self):
+        brushes, tick, row = entity_query()
+        for index, value in ((0, '9'), (3, '0'), (4, '999'), (11, '1'), (13, '0'), (14, '0'), (18, '0')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+        miss = row[:]; miss[2:4], miss[10:19] = ['worldonly', '0'], ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        for index, value in ((13, '1'), (14, '.8'), (18, '1')):
+            bad = miss[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 42)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
         for c in range(len(LABELS)):
             brushes, seed = authored(c)
             self.assertEqual(len(seed), 12)
-            self.assertEqual(len(brushes), 2 if c in (5, 7) else 1)
+            self.assertEqual(len(brushes), 2 if c in (5, 7) or c >= 10 else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
             self.assertEqual(step_count(c), 32 if c < 6 or c >= 8 else (96 if c == 6 else MAX_STEPS))
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
+        self.assertEqual(authored(10), authored(11))
+        self.assertEqual([b['mins'][1] for b in authored(10)[0]], [-1024, -64])
+        self.assertEqual([b['maxs'][1] for b in authored(10)[0]], [-896, 64])
 
 
 def controls(text):
@@ -288,6 +334,52 @@ def controls(text):
         ('transform-copied-origin', 7, 999), ('transform-copied-angle', 11, 0),
         ('transform-copied-scale', 13, 0), ('transform-copied-native-bih', 15, 0)):
         bad.append((label, change(text, 'CONTACT', index, value, lambda r: r[11] == '45', 'OFFRAMPGEOM')))
+    for tag in ('SET', 'PHYSENT'):
+        line = first(tag)
+        bad += [(f'entity-missing-{tag}', text.replace(line+'\n', '', 1)),
+                (f'entity-duplicate-{tag}', text+line+'\n')]
+    for label, tag, index, value, pred in (
+        ('entity-active-count', 'SET', 1, 1, lambda r: r[0] == '10'),
+        ('entity-skip-filter', 'SET', 2, 42, lambda r: r[0] == '10'),
+        ('removed-active-count', 'SET', 1, 2, lambda r: r[0] == '11'),
+        ('entity-wrong-slot', 'PHYSENT', 1, 0, lambda r: r[:2] == ['10', '1']),
+        ('entity-wrong-info', 'PHYSENT', 2, 0, lambda r: r[:2] == ['10', '1']),
+        ('entity-world-model', 'PHYSENT', 3, 'maps/authored_offramp_motion.bsp', lambda r: r[:2] == ['10', '1']),
+        ('entity-wrong-brush', 'PHYSENT', 4, 0, lambda r: r[:2] == ['10', '1']),
+        ('entity-slot-inactive', 'PHYSENT', 5, 0, lambda r: r[:2] == ['10', '1']),
+        ('removed-slot-active', 'PHYSENT', 5, 1, lambda r: r[:2] == ['11', '1']),
+        ('entity-origin', 'INSTANCE', 2, 1000, lambda r: r[:2] == ['10', '1']),
+        ('entity-rotation', 'INSTANCE', 6, 45, lambda r: r[:2] == ['10', '1']),
+        ('entity-scale', 'INSTANCE', 8, 0, lambda r: r[:2] == ['10', '1']),
+        ('entity-capsule', 'INSTANCE', 9, 1, lambda r: r[:2] == ['10', '1']),
+        ('entity-metadata-nonfinite', 'INSTANCE', 2, 'nan', lambda r: r[:2] == ['10', '1']),
+        ('entity-ramp-silent', 'TICK', 8, 0, lambda r: r[:2] == ['10', '0']),
+        ('removed-fake-ramp', 'TICK', 8, 1, lambda r: r[:2] == ['11', '0']),
+        ('entity-command', 'TICK', 3, 250, lambda r: r[0] == '10'),
+        ('removed-seed', 'SEED', 1, -99, lambda r: r[0] == '11'),
+        ('entity-query-winner-world', 'ORACLE', 13, 0, lambda r: r[0] == '10' and float(r[10]) < 1),
+        ('entity-query-miss-stale-winner', 'ORACLE', 13, 1, lambda r: r[0] == '10' and r[2] == 'worldonly'),
+        ('entity-query-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '10'),
+        ('entity-query-solid', 'ORACLE', 11, 1, lambda r: r[0] == '10'),
+        ('entity-query-removal-label', 'ORACLE', 2, 'down2', lambda r: r[0] == '10' and r[2] == 'worldonly')):
+        bad.append((label, change(text, tag, index, value, pred)))
+    bad.append(('entity-native-hits-silent', change_all(text, 'ORACLE',
+                {10: 1, 13: -1, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0}, lambda r: r[0] == '10' and r[2] == 'down2')))
+    bad.append(('entity-removal-silent', change_all(text, 'ORACLE',
+                {10: .5, 13: 1, 14: .8, 15: 0, 16: .6, 17: 0, 18: 1}, lambda r: r[0] == '10' and r[2] == 'worldonly')))
+    for label, namespace, tag, index, value in (
+        ('entity-contact-world-winner', 'OFFRAMPBUF', 'CONTACT', 3, 0),
+        ('entity-origin-world-winner', 'OFFRAMPORIGIN', 'CONTACT', 8, 0),
+        ('entity-origin-world-model', 'OFFRAMPORIGIN', 'CONTACT', 9, 'maps/authored_offramp_motion.bsp'),
+        ('entity-origin-embedded-promotion', 'OFFRAMPORIGIN', 'CONTACT', 6, 1),
+        ('entity-origin-cached-route', 'OFFRAMPORIGIN', 'CONTACT', 2, 1),
+        ('entity-origin-wrong-leaf', 'OFFRAMPORIGIN', 'CONTACT', 4, 1),
+        ('entity-copied-world-brush', 'OFFRAMPGEOM', 'SHAPE', 4, -1024),
+        ('entity-copied-origin', 'OFFRAMPGEOM', 'CONTACT', 7, 1000),
+        ('entity-copied-scale', 'OFFRAMPGEOM', 'CONTACT', 13, 0),
+        ('entity-copied-callback', 'OFFRAMPGEOM', 'CONTACT', 15, 0),
+        ('entity-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45)):
+        bad.append((label, change_case(text, 10, tag, index, value, namespace=namespace)))
     return bad
 
 
@@ -329,7 +421,18 @@ def acted_controls(arms):
         grade(texts['on'])
     assert r['transformed_support_geometry_acceptance'] == 'ABSTAIN'
     assert r['cases'][9]['independent_transform_oracle'] == 'NOT_IMPLEMENTED'
-    print(f'{len(bad)+7} ACTED native motion controls, zero failed; eight AABB/posture + capsule/transformed actors ABSTAIN PASS')
+    def promote_entity(o, contact, shape, payload, mapname):
+        if o[8] == 1 and o[9] == ENTITY_MODEL: return 'copied-world-brush-plane-bound', [5]
+        return shape_category(o, contact, shape, payload, mapname)
+    with patch('offramp_motion.shape_category', side_effect=promote_entity), unittest.TestCase().assertRaisesRegex(AssertionError, 'promoted'):
+        grade(texts['on'])
+    altered = change(texts['on'], 'ORACLE', 10, .5, lambda r: r[0] == '10' and r[2] == 'down2' and float(r[10]) < 1)
+    with unittest.TestCase().assertRaises(AssertionError):
+        compare(texts['nooracle'], texts['control'], texts['off'], altered, texts['repeat'])
+    assert r['entity_support_geometry_acceptance'] == 'ABSTAIN'
+    assert r['entity_removal_trajectory_gates'] == 'PASS'
+    assert r['cases'][10]['accepted'] and not r['cases'][11]['accepted']
+    print(f'{len(bad)+9} ACTED native motion controls, zero failed; capsule/transformed/entity actors ABSTAIN PASS')
 
 
 def snapshot(engine):

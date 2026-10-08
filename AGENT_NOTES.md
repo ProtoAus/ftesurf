@@ -4764,6 +4764,39 @@ replay/cursor preservation, complete scheduling and hard resource bounds unclaim
 The shipper infers repo from PSScriptRoot; it has no -Repo parameter. Read its actual
 parameters. Existing primary-Windows reader peer-ownership blocker remains untouched.
 
+### Truthful historical observation follow-ups (P595-597, 2026-10-08)
+
+Verdict history acquires201/displays200 with owner-only limit/more metadata;
+partial summaries never call omitted history all-stale. Journal/counts typed
+JSON projections reject duplicate decoded keys at every nesting level. Initial
+similarity table existence now shares the owned cumulative SQL allowance with
+PRAGMA/history; exhaustion is unknown/read_limit, not confirmed missing.
+Actual predecessor behavior reds and source/fetch/DOM/SQLite greens are in
+`tools/p595observers.md`; source review was read-only, not a deploy attestation.
+
+Frozen38eb243 passes59Linux programs (includingrecorder); Windows57/58 with
+only the same two admin UDP assertions reproduced on untouched4f066479.
+New focused tests are warning-clean; full legacy fixtures are not. Node runs on
+Windows, not the Pi. Installed-source complete isolated harness22tests/fourDOM
+skips, authentic-worker API/anonymous401, worker replacement/health12, selected
+history/public board and protected support/progs/config/reader bytes ACT.
+Only admin.py/template shipped; no partially installed test-helper chain.
+
+A live online backup can restart forever under heartbeat churn. The first
+private attempt timed out BEFORE swaps and its partial file was retained/marked
+incomplete; exact owned process only was stopped. Stable source read transaction
+plus explicit90second progress deadline completes; RELEASE it before fresh
+preservation checks or the snapshot could conceal later writes. Keep mode600
+completed backups and .prev files. This Pi kernel lacks task/<pid>/children;
+portable parentage must prove worker replacement. Wrong probe-cookie name and
+that unsupported interface were private procedure failures, not product bugs.
+The interface failure restored exact predecessor files. An untouched legacy
+counts test compared transient board t across a second: advancing-clock baseline
+red/stable-clock green proves flake; freeze only isolated fixture clock, never
+repair production to satisfy it. BACKLOG retains the site/falsifier. Final
+verified UTC2026-10-08T13:59:52Z; human browser/calibration and hard whole-request
+bounds remain unverified. Read actual surfd-deploy parameters, not guessed names.
+
 ### Similarity reliability batch (P577-580, 2026-10-08)
 
 Optional reader budgets are configuration: invalid integer/type/read-size limits

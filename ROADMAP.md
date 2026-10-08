@@ -417,9 +417,14 @@ it explicitly ABSTAINS from independent capsule geometry/support rather than
 substituting an AABB oracle. A tenth translated/yaw world-brush actor binds
 native instance/accepted-hull snapshots and rotation-sensitive real queries,
 retaining transformed geometry ABSTAIN and exact original-nine parity.
-Non-world/entity/embedded/triangle/displacement, airborne posture, explicit
-cached/recovery/portal paths, full capsule/transform geometry and general-map
-coverage remain unverified. These sampled fixture controls do not establish
+A matched non-world-physent/removed-entity pair now ACTS a real physent-1 brush
+winner, native hit/miss/world-only removal queries, and physically different
+removed trajectory. Actual winner/model/whole-brush/hull snapshots bind while
+entity geometry/support remains ABSTAIN; joint AABB query checks include only
+active untransformed fixture brushes. Exact original-ten parity remains required.
+General non-world/entity/map wiring and geometry, embedded/triangle/displacement,
+airborne posture, explicit cached/recovery/portal paths, full capsule/transform
+geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
 
