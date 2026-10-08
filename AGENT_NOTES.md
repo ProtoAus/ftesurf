@@ -4509,6 +4509,45 @@ Do not turn this into mutable board/replay preservation or live-contention proof
 Both destination hashes and health/auth checks pass; rollback files/mode600 DB
 backup retained. No game/QC/engine/config/Windows artifact or owner-process restart.
 
+### Bounded log, association and plot acquisition (P590-592, 2026-10-08)
+
+Log tails size the opened handle, read only their byte window, and discard a
+partial initial line from that buffer. Newline-free and rotated/growing files
+must ACT in controls; output line limiting after an unsized read is not a bound.
+Historical associations acquire cap+1 per direction (26), display 25 and expose
+independent more flags. Their selected cumulative SQL allowance is opt-in only
+on the request-owned connection. Exhaustion withholds both lists but preserves
+the receipt; partial badges say 25+, never a manufactured exact total.
+Plot max_bytes is an exact nonnegative integer. Every normal/drain read uses
+remaining bytes, including zero/one/non-aligned boundaries. A budget-cut line
+cannot become a sample. Exact-cap files conservatively show truncated without
+an extra EOF probe; complete plots with allowance remaining retain semantics.
+
+Three new real-file/DB/DOM suites pass six tests each. Combined selected controls
+pass 25 with the following command from surfd/:
+
+```sh
+python -W error -m unittest test_admin_log_bounds test_admin_association_bounds test_recplot_budget test_admin_metric_bounds test_admin_similarity_budget
+```
+
+Node controls run locally with no skips; Linux lacks Node and skips two renderer
+arms, not an independent DOM pass.
+Existing receipt-fragment harnesses must include the actual association helper;
+compare board evidence without its generated response timestamp t. These are
+selected read/result/SQL-work bounds, not whole-request RSS/time/snapshot proof.
+
+Clean baseline/final offline script comparison has zero new failures; the same
+two legacy UDP admin failures remain. Reccheck: 306 checks, zero failures. Frozen
+corpus: 269 recordings / 101 view files, still 170 faulting recordings, unchanged
+manifest.
+Independent native review inspected source/artifacts, did not rerun tests.
+Frozen 2ea4035 shipped only eight selected surfd source/test files, after stage
+gates, mode 600 DB backup and copy under sweep lock. All destination hashes match;
+replacement worker acts on authenticated log/association/plot reads and health
+reports 12 lobbies at 2026-10-08T10:16:14Z. Rollback copies retained. No game/QC,
+engine/pin/tag/Build, verifier-tool, Windows artifact or owner-game restart.
+Browser/readability acceptance remains in lextest.md; no live evidence collection.
+
 ### Authenticated observer fetch/work limits and dry schema (P586-588, 2026-10-08)
 
 Stored journal/counts fields use cap+1 BLOB-prefix SQL projections, not TEXT substr:

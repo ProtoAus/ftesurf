@@ -11,6 +11,21 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — bounded operator history/log/plot display (Patches 590–592)
+
+Backend deployed and live read controls verified at 2026-10-08T10:16:14Z.
+Actual template DOM logic passes local Node controls; human browser readability
+is not claimed. In the authenticated admin panel, judge:
+
+- A byte-window-limited log says it is limited rather than looking complete.
+- A large historical signing group shows a lower bound (for example, 25+) and
+  "showing first 25; more available". A limited/unavailable association section
+  must not look like an exact zero or replace the receipt's signature verdict.
+- A capped plot says truncated; complete plots still look familiar. Exact-cap
+  acquisition is intentionally conservative, not a new evidence fault.
+
+No detector, ranking, key decision, engine, game binary or Build change.
+
 ## 00. 8 Oct — modern SUI editor preview (Patches 566/570)
 
 Lex's latest overall feedback: "looks epic"; appearance is approved. Earlier
