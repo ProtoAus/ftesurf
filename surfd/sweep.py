@@ -65,7 +65,7 @@ MAP_TIMEOUT = 900        # seconds for one verifier process (all of one map's fi
 MAX_ERRORS = surfd.VERIFY_MAX_ERRORS
 
 VERIFY_RE = re.compile(r"^VERIFY (\S+) (PASS|HOLD|REFUSE)\b ?(.*)$")
-TICKS_RE = re.compile(r"\bticks (\d+)\b")
+FINISH_RE = re.compile(r"^ticks ([0-9]{1,10}) rows ([0-9]{1,10})$")
 
 # The simcheck module, resolved once by _simcheck(): (module, why) or (None, why).
 # Module-level and not a plain import, because a host without simcheck.py must
@@ -103,7 +103,7 @@ def pending(conn, limit):
     # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
         """SELECT r.id, r.map, r.map_dir, r.track, r.leg, r.leaf, r.kind, r.runid,
-                  r.flags, r.tickrate, r.submitted, r.sha, r.sha_at FROM replays r
+                  r.flags, r.tickrate, r.ticks, r.submitted, r.sha, r.sha_at FROM replays r
            WHERE r.checked = 0 AND r.kind IN ('run', 'evidence')
              AND (SELECT COUNT(*) FROM verdicts v
                   WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
@@ -247,8 +247,11 @@ def parse(lines):
         if not m:
             continue
         path, verdict, reason = m.group(1), m.group(2), m.group(3).strip()
-        t = TICKS_RE.search(reason) if verdict == "PASS" else None
-        out[path] = (verdict, reason, int(t.group(1)) if t else -1)
+        t = FINISH_RE.fullmatch(reason) if verdict == "PASS" else None
+        ticks = surfd.strict_int(t[1], 0, surfd.MAX_TICKS) if t else None
+        if t and surfd.strict_int(t[2], 0, surfd.MAX_TICKS) is None:
+            ticks = None
+        out[path] = (verdict, reason, ticks if ticks is not None else -1)
     return out
 
 
@@ -365,11 +368,19 @@ def sweep(conn, limit, runner=None, now=None):
         verdicts, observations = parse(lines), parse_counts(lines)
         for row, path, sha in items:
             v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
+            measured = observations.get(path)
+            # A trajectory PASS alone cannot badge a different indexed duration.
+            # Evidence/abandon promotion has its own contract, not a board time.
+            if row["kind"] == "run" and v == "PASS":
+                if ticks < 0:
+                    v, reason = "ERROR", "verifier PASS has no usable finish duration"
+                    measured = None
+                elif ticks != row["ticks"]:
+                    v, reason = "HOLD", "verified finish ticks %d != indexed ticks %d" % (ticks, row["ticks"])
             v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
             if v != "ERROR":
                 v, reason = row_check(row, v, reason)
                 v, reason = stage_check(conn, row, v, reason)
-            measured = observations.get(path)
             if verifier_source_sha(row, path) != sha:
                 v, reason, ticks = "ERROR", "recording changed or became unavailable during verification", -1
                 measured = None

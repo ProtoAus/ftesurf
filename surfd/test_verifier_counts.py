@@ -80,7 +80,7 @@ class Counts(unittest.TestCase):
         observed=[]
         def runner(map_dir,paths):
             observed.extend(paths)
-            return (section(paths[0],'9 record(s): what the input ring delivered is what the view read')+
+            return (section(paths[0],'9 record(s): what the input ring delivered is what the view read', 'PASS ticks 662 rows 80')+
                     section(paths[1],None,'HOLD control')+['VERIFY '+paths[2]+' REFUSE early control']+
                     ['pm_recsim '+paths[3], 'counts    none -- the client predates Patch 376'])
         result=self.sw.sweep(self.c,50,runner=runner,now=9999999999)
@@ -90,7 +90,7 @@ class Counts(unittest.TestCase):
         self.assertEqual(json.loads(rows[0]['counts_metrics']),{'version':1,'state':'measured','records':9,'disagree':0})
         self.assertEqual([r['counts_metrics'] for r in rows[1:]],['','',''])
         self.assertEqual([(r['verdict'],r['reason'],r['ticks']) for r in rows],
-                         [('PASS','ticks 100 rows 80',100),('HOLD','control',-1),('REFUSE','early control',-1),('ERROR','no VERIFY line',-1)])
+                         [('PASS','ticks 662 rows 80',662),('HOLD','control',-1),('REFUSE','early control',-1),('ERROR','no VERIFY line',-1)])
         self.assertEqual([r[0] for r in self.c.execute('SELECT checked FROM replays ORDER BY id')],[1,1,1,0])
 
     def test_migration_no_backfill_and_authenticated_api(self):

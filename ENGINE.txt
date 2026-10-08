@@ -25,7 +25,11 @@ commit   c61458c94f23b2cf1552301d1232dde33e04274a
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-600
-patch    600
+patch    602
+# Patch 602: a new ranked-run PASS must match the indexed finish ticks.
+# Different duration is HOLD; unavailable/malformed finish is retryable ERROR.
+# Evidence abandon, owner reviews and historical badges retain their contracts.
+# surfd only: no schema, engine pin/tag/progs/Build or detector change.
 # Patch 600: additive bounded explicit native input/actions; diagnostic only.
 # VM/generation gates, reset, queue/text bounds and Unicode scalar preservation.
 # No dynamic model, production panel/input routing/default, progs/Pi/Build change.

@@ -747,6 +747,24 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   its two clean-but-stale reader paths now have owned commit-derived deployment
   overlays. Build/release from the clean inspected worktree, not that dirty tree.
 
+- **A reproduced trajectory must also describe the ranked duration** (Patch 602).
+  New finished-run PASS observations compare the engine's confirmed finish ticks
+  with `replays.ticks`; the submit-time filename stamp is not that independent
+  check. A different duration is HOLD, preserving measured ticks/counts. Missing,
+  ambiguous or out-of-range `ticks N rows N` output is retryable ERROR, with unknown
+  ticks and no counts snapshot, not a player finding. Evidence/abandon promotion,
+  header/stage/source fences and explicit review precedence keep their contracts.
+  No historical reread, schema, detector, engine/progs/config or Build change.
+  `surfd/test_verifier_finish.py`: real POST/file/SQLite/public-board controls with
+  an acting verifier stub; nine tests, five baseline failures, final zero. Both
+  arrival orders, grouped companions, malformed output, approvals and abandon
+  controls are explicit. Full Linux70 pass; Windows70 retain only the two existing
+  admin UDP/amplification assertions. Native Pi pm_verify positively PASSes one
+  existing recording with parseable matching ticks on an owned verifier port;
+  that is compatibility, not detector calibration. Immutable run/sidecar corpus:
+  baseline/subject269 rec,91 view,170 faulted files/173 faults, unchanged.
+  Verification and deployment limits: `tools/p602finish.md`.
+
 - **Angle explanations are observations, not strings to reconstruct later**
   (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the
   same captured pair as `angles`; diagnostic notes include why an existing
