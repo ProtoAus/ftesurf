@@ -13,6 +13,12 @@ to be wrong.
 
 ## 00. 8 Oct — modern SUI editor preview (Patch 566)
 
+Lex's feedback: the UI looks good; text appears improved but is still only
+"OK" against Apple-like quality. Overall appearance is approved. Advanced
+font quality is an unbuilt roadmap follow-up with a strict low recurring
+rendering budget, not a completed acceptance or permission for costly effects.
+Specific input/DPI/lifecycle checks below remain pending.
+
 - With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
   `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
   and actual keyboard/mouse feel; the gameplay HUD should remain familiar.
@@ -21,8 +27,10 @@ to be wrong.
   type/chat and alt-tab: no stuck input/cursor or lingering tooltip.
 - Judge native-font appearance at your normal resolution/DPI and sizes.
   Modern text snaps to physical bakes instead of stretching glyphs; size
-  steps are intentional. Layout tests do not certify that you like the
-  resulting sizes/hinting. Check moving between monitors/virtual UI scales.
+  steps are intentional. Compare future Apple-like clarity/smoothing/weight
+  improvements at matched fonts and physical sizes; measured low cost is
+  required. Check moving between monitors/virtual UI scales. Current layout
+  tests are not advanced font-quality acceptance.
 
 28 isolated runtime checks per UI arm, seven producer/grader tests and the
 controlled p498 menu checks pass. Actual OS/device delivery, full CPU/GPU

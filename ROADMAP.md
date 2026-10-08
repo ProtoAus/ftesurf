@@ -698,6 +698,33 @@ rebuild atlases every frame or substitute bitmap stretching. Apply the same
 net-physical-size rule to ImGui's font/framebuffer scaling. Larger font ranges,
 missing-glyph/DPI behaviour and human legibility remain explicit acceptance.
 
+**Font-quality follow-up — Lex, 8 Oct (not implemented).** Lex approves the
+new UI's overall appearance and thinks text is improved, but still only
+"OK" compared with Apple's text processing. Aim for **Apple-like visual
+clarity, smooth edges and consistent weights**, while remaining low-budget
+and very fast. This is a visual reference, not a promise to reproduce CoreText
+or use Apple's proprietary fonts/implementation.
+
+- First capture a font-quality baseline at matched font file, physical size,
+  DPI, foreground/background and renderer. Include small text, punctuation,
+  thin/bold strokes and light/dark backgrounds; keep native physical bakes.
+- Investigate the current rasterizer's hinting/coverage, alpha and gamma
+  handling, atlas filtering/padding and pixel alignment. Prefer correcting
+  those paths over adding expensive effects. Do not assume more smoothing
+  is automatically clearer; compare actual glyph images and let Lex judge.
+- Cache glyph rasterization/atlases and metrics by font/size/render settings.
+  No steady-frame rebaking, font-file IO, allocation churn, blur/postprocess
+  passes or layout recomputation for unchanged text. Bound cache growth and
+  account separately for cold glyphs and DPI/size changes.
+- A/B visual quality AND CPU/GPU/frame-time cost against P566 with the same
+  workload. Apply section 13.5's pre-registered performance gates, not only
+  FPS. Keep the current native-bake path as fallback; reject a quality mode
+  whose recurring cost exceeds the agreed budget. Any added sampling/shader
+  work must earn its cost with visible improvement and measured timings.
+- Carry this policy into native ImGui. Investigate/cache additional native
+  bakes when needed, not fractional enlargement of a nearby bitmap. Exact
+  platform parity and font-quality/performance acceptance remain unverified.
+
 - Shared colour/spacing/radius/focus tokens, scaled consistently. Candidate
   location: a new shared UI module ordered after fonts in both `.src` files.
   Pass the palette to native UI at setup/change, not by parsing every frame.
@@ -758,8 +785,12 @@ actual connected-client smoke opened the fleet-delivered editor and reported
 it was not a checksum control. Do not infer automatic asset downloads for
 other clients, active owner-VM reload, release verification or font acceptance.
 
+**Operator feedback (8 Oct).** Lex says the UI looks good and text seems
+better, but requests the font-quality follow-up above. This accepts the
+overall look, not every input/lifecycle case or an Apple-like quality result.
+
 Not closed: actual OS/device feel, broad nested clipping/UTF-8/lifecycle matrix,
-full CPU/GPU/percentile budgets or human font/style acceptance. No graph,
+full CPU/GPU/percentile budgets or advanced font/DPI acceptance. No graph,
 scoreboard, main-menu styling, evidence semantics or native ImGui changed.
 Full shipguard is blocked in a bare worktree by pre-existing untracked
 `ftesurf/particles`; the new exact asset entry and its missing-entry mutant
@@ -890,9 +921,11 @@ Any additional high-FPS matrix is explicitly specified, not an inherited cap.
   Fleet/release deployment needs its full operations/ship-set gates; a native
   client UI does not imply that server progs or the Pi need changes.
 
-**Next step.** Lex tries the Stage A editor/font appearance; keep it opt-in.
-Next implementation is B's native gallery/host bridge, still with legacy
-fallback and physical-native fonts. Measure/approve performance budgets
+**Next step.** Overall Stage A appearance is approved; keep it opt-in while
+interaction/lifecycle acceptance remains pending. Establish the font-quality
+baseline and bounded low-cost experiments before/alongside B's native gallery/
+host bridge, preserving legacy fallback and physical-native fonts. Measure/
+approve performance budgets
 before switching the scoreboard default. The larger menu/editor migration
 is conditional on those gates, not already authorized for release.
 
