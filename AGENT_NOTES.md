@@ -3794,6 +3794,58 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P589 native indexed-2D prerequisite (2026-10-08):** separate exact-size
+  `2DMesh/1`, immutable raw RGBA8 and non-repeating 64-bit plugin-owned tokens.
+  Cleanup on release/plugin close and BEFORE renderer shader/image teardown.
+  Whole-batch validation precedes real bounded mesh submission; CPU physical
+  triangle clipping interpolates UV/color without touching backend-dependent
+  `BE_Scissor`, caller color or blend flags. Linear/clamped straight-alpha atlas,
+  both windings. Never treat this as a hostile-pointer/thread sandbox: trusted
+  main-thread plugins call Submit only in a 2D drawing callback, not Tick.
+  Per-Submit limits are 16,384 vertices, 65,535 consumed indices, 128 commands;
+  32 textures/32 MiB per plugin and 256/128 MiB globally. No per-frame heap copy.
+  Engine `69b2c1bdb`, tag `patch-589`, clean full stamp
+  `git-7109-patch-589-0-g69b2c1bdb`; client SHA256 starts `7d125dedb98d`.
+  C/header tree equals initially verified `516a6a1f5`; only patch notes/peer
+  documentation changed before the final published tagged full rebuild.
+  Full client/server/four-plugin build has the same 74 compiler warning messages
+  and counts as P581, zero new. Engine plugin/renderer TUs have only baseline
+  tidy warnings; standalone fixture/header diagnostics lack engine context.
+  `tools/p589mesh.py`/`.md`: `p589-mesh-xro1c2lq` passes acting P581/subject1/
+  subject2/disabled/no-renderer arms, offsets/alpha/winding/clips/chunks/order,
+  invalid-second-command no-partial draw, 25 invalid/seven lifetime/61 count
+  budget assertions, foreign destroy+submit rejection, automatic 32-texture
+  cleanup, restart and main-plugin reload stale rejection. Physical screenshots
+  inspected; scale1/2/repeat/restart/reload galleries are exactly identical.
+  33 grader tests pass. Older atlas, font scales1/2 (exact P581 pixel equality)
+  and 28 dedicated/editor controls pass. Initial snprintf macro/link failure,
+  triangle-edge and bilinear-transition grader sample mistakes retained; corrected
+  positions rather than relaxing tolerance. Disabled console animation is not a
+  mesh regression; require absent sentinel/gallery pixels, not whole-screen
+  equality. Forward-renumbered after peers published P586 then P587/588;
+  preserve their full text and history; no published tag was moved.
+  No QC/ImGui/service/input bridge yet. Next: VM-local explicit MQC/CSQC draw-site
+  dispatch, with actual QC-before/native/QC-after and inherited-clip controls.
+  Native MenuEvent here is only a fixture surface, not a substitute UI bridge.
+  Non-GL parity, byte/global-budget stress, device and CPU/GPU cost remain open.
+  Clean game-ref proof: `C:/FTESurf-mesh-proof` at game
+  `2cad73344ccab9e4addeb0e638f1c98bf620afce`, engine/tag as above. Frozen
+  native artifact plus clean QC compile (zero warnings), five-arm mesh gallery
+  (`p589-mesh-bcynr8m7`) and 33 grader tests pass; proof source remains clean.
+  Guarded native-only dual swap verified 2026-10-08T09:09:48Z: client plus
+  matching hl2/cod/box3d/ode DLLs in both Windows installs, no server-binary swap.
+  All ten destination hashes match the frozen candidate; `.prev` and
+  `rig/deploy-p589-20261008T090946Z` retain predecessor/older-prev bytes.
+  BOTH installed-client COPIES repeat all mesh arms (`p589-mesh-_9isse8e`,
+  `p589-mesh-20f_971_`), zero failed; post-test hashes and protected cfg/progs/
+  reader/server bytes still match. No owner process stopped, settings edited,
+  peer dirty source deployed, progs/config/reader/asset/server/Pi/release swap or
+  Build bump. This is not a claim that the owner/fleet rendered an ImGui panel.
+  Next workstream starts from the published refs: implement the explicit
+  VM-owned QC dispatch/service bridge, preregister mixed QC/native clipping and
+  fallback/action controls, then build the minimal ImGui command-list service.
+  Budget measurement and real-panel migration remain gated after that gallery.
+
 - **P570 physical font contract:** `Font_LoadFont` converts virtual ladder
   heights to pixels; P566's QC physical conversion alone did NOT establish a
   native bake. Engine `loadfont ... "<ladder> pixels=1"` opts into physical
@@ -4728,7 +4780,7 @@ was empty.
 
 | Referenced from | Missing for | Presented as |
 |---|---|---|
-| `Zone_LoadForMap`, `maps/zones/local/<map>.json` | every release to 0.1.17 | "this map has no zone file, so it has no legs and no times" on all 587 zoned maps |
+| `Zone_LoadForMap`, `maps/zones/local/<map>.json` | every release to 0.1.17 | "this map has no zone file, so it has no legs and no times" on all 589 zoned maps |
 | `cl_players.qc:403`, `gfx/thumbnails/speaking_off` | every release ever | an error texture beside EVERY player's name, permanently |
 | `ui_bgprobe`, `gfx/mapshots/<uuid>-<size>.jpg` | every release ever (1.1 GB, never shippable) | a full-screen error texture behind the create panel |
 
