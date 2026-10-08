@@ -3779,6 +3779,23 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   unbaked +0.75px arm must visibly act on every crop. `tools/font_quality.md`
   documents hashes/commands/limits. This does not rank Apple-like aesthetics,
   measure recurring CPU/GPU cost or implement ImGui.
+  Fleet verification 2026-10-08T04:19:39Z and delivery checkpoint: source
+  `ae80bca` (published through
+  merge `efcfe0d` with peer tooling/docs only), engine `60dfdc102`/`patch-570`.
+  Clean proof `C:/FTESurf-font-proof` builds all QC with zero warnings; native
+  client stamp is `git-7076-patch-570-0-g60dfdc102`. Pi qwprogs is unchanged,
+  new csprogs SHA starts `80f2a137`; remote hashes match and all 12 units are
+  active. A live Pi client reaches connection/editor actions; its whole-panel
+  A/A pixel floor fails on the live scene (classic 11902, modern 1528), while
+  the isolated static-map arms pass. Do not relax that reader or report a live
+  pixel-noise pass. Windows deployment stopped BEFORE any swap because the
+  owner's running `C:/FTESurf/ftesurf64.exe` is locked; do not terminate it.
+  Close-game/dual-install deployment is pending. Prepared guarded script is
+  `C:/FTESurf-font-proof/rig/deploy-p570.ps1` (retains .prev and UTC backups,
+  hashes both installs and supplies absent font/mask assets). The second
+  executable is `C:/FTEQuake/fteqw64.exe`, not ftesurf64.exe. No primary peer
+  sources/configs were changed. Next: finish that swap, verify both installed
+  clients, then Stage B's minimal ImGui bridge and later cost/aesthetic gates.
 - **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
   `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
   the final PHYSICAL height is a baked size: convert first, snap with the
