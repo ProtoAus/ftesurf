@@ -2336,10 +2336,19 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   at 30/100/300 FPS; strict requested-clock checks also pass in the new matrices.
   This is not universal requested/native equivalence. `SV_RewindFind` still
   chooses the closest position within `RW_NEAR`, and the original forward
-  45 ms difference remains a separate selection/UX gate. Do not change native
-  selection solely to make a requested-clock oracle green.
+  45 ms difference remains a separate selection/UX gate. Current P554-source
+  audit passes thirty local selections at caps 30/100/300 and both clients,
+  including exact requested/native/raw 0.735; offsets are -15..+30ms, not proof
+  of universal equivalence. A configured/read-back 30ms packet-delay arm ACTS
+  and fails the unchanged requested-clock check on warm +60/+60/+45ms choices.
+  Full native-ring enumeration, correlated ack, native body/clock, exact retained
+  prefix, hold/release/counting and camera checks pass all six delayed cuts;
+  nearest-clock-only selection gives a worse position match in those captures.
+  Do not change native selection solely to make a requested-clock oracle green.
   Falsifier: instrument requested sampled clock/pose, selected native snapshot
-  clock/pose and acknowledged visual bound together at 30/100/300 FPS. Repair
+  clock/pose and acknowledged visual bound together at 30/100/300 FPS, with
+  explicit latency and repeated-pose tie controls. Establish presentation/alignment
+  semantics separately from native correctness; keep the strict-red arm. Repair
   alignment without weakening body/prefix checks, inventing authoritative state
   or retiming the recording. Keep genuine stops and discontinuities explicit.
 - **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:

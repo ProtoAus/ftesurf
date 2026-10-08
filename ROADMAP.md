@@ -357,7 +357,16 @@ normalize only the visual cutoff through the raw six-decimal representation.
 All six requested/native/prefix controls pass in new buffered 30/100/300 and
 streamed 30 matrices, without widening the requested-clock check. The original
 forward 45 ms native selection and general requested/native UX remain separate
-follow-ups (BACKLOG). Native-event tooling after P542 additionally checks
+follow-ups (BACKLOG). A fresh P554-source audit confirms thirty local native/
+acknowledged-prefix choices across caps 30/100/300, streamed/buffered30 and the
+second installed client. Three warm/three fresh-cold cuts remove deliberately
+counted >4s failed waits and exclude held time. A configured/read-back 30ms
+packet-delay arm reproduces strict requested-clock red results (+60/+60/+45ms)
+while native-ring selection, native held body/clock, exact acknowledged prefix,
+hold/release and camera/discontinuity checks pass. This isolates a clock/pose
+alignment or presentation contract, not another raw trim boundary failure.
+No native/evidence retiming or widened oracle; general UX/feel remain open.
+Native-event tooling after P542 additionally checks
 engine-driven keep/zero-velocity teleport volumes on actual map ground, a
 genuine six-second running stop and a fixed cursor over elapsed wall time.
 Complete 30/100/300 FPS camera-state scans, nine compiled controls and 39

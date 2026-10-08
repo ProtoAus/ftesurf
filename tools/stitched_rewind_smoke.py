@@ -240,10 +240,9 @@ def grade(gd, streamed=True):
             waited, _, wr = dump(gd, stem + '_wait')
             assert cut > 0 and cr[-1][0] > cut + 4, (stem, 'future long wait did not ACT')
             if abs(h1[-1][0] - cut) > .031:
-                reason = f'{stem}: requested {cut:.3f}, retained {h1[-1][0]:.3f}; not the selected prefix'
+                reason = f'{stem}: requested {cut:.3f}, retained {h1[-1][0]:.3f}; requested-clock mismatch'
                 print('FAIL', reason)
                 faults.append(reason)
-                continue
             n1, n2, nr = [native(gd, stem + '_' + arm) for arm in ('hold1', 'hold2', 'release')]
             assert all(n['hold'] == [1, 1, 1] and n['ticks'][0] == n['ticks'][1] > 0 and
                        sum((x-y)**2 for x, y in zip(n['expected'], n['body'])) < .0001
@@ -259,9 +258,9 @@ def grade(gd, streamed=True):
             assert 'frozen 1 at' in sections[stem + '_hold1'] and 'frozen 1 at' in sections[stem + '_hold2'], (stem, 'not held')
             assert 'frozen 0 at' in sections[stem + '_release'], (stem, 'not released')
             assert re.search(r'rewind: on 0 counting 0 sent 0', sections[stem + '_release']), stem
-            print(f'PASS {stem}: cut {cut:.3f}, held {len(h1)}, released {len(rr)}, future wait {wr[-1][0]-rr[-1][0]:.3f}s')
+            print(f'PASS {stem} native/hold/release: cut {cut:.3f}, held {len(h1)}, released {len(rr)}, future wait {wr[-1][0]-rr[-1][0]:.3f}s')
     if faults:
-        raise RuntimeError(f'{len(faults)} cold cut controls failed; retained evidence is a regression, not a fix')
+        raise RuntimeError(f'{len(faults)} requested-prefix controls failed; native/hold/release gates passed, but this is NOT an all-green result')
     print('PASS six acted cuts remove counted failed waits and exclude held time.')
 
 def main():
@@ -273,6 +272,7 @@ def main():
     ap.add_argument('--selection-audit', action='store_true', help='Independently audit native selection and exact acknowledged prefixes; original grader remains strict')
     ap.add_argument('--baseline', action='store_true', help='Use HEAD client cursor/state code instead of working-tree edits')
     ap.add_argument('--fps', type=int, choices=(30, 100, 300), default=100)
+    ap.add_argument('--client', type=Path, help='Installed client executable (used for both warm and fresh cold clients)')
     a = ap.parse_args()
     if a.grade_only:
         try:
@@ -281,9 +281,9 @@ def main():
             if a.selection_audit:
                 from stitched_selection import grade as grade_selection
                 grade_selection(a.grade_only/'ftesurf')
-        if a.visual:
-            from stitched_visual import grade as grade_visual
-            grade_visual(a.grade_only/'ftesurf')
+            if a.visual:
+                from stitched_visual import grade as grade_visual
+                grade_visual(a.grade_only/'ftesurf')
         return
     a.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='stitch-source-', dir=a.output_dir))
@@ -346,7 +346,10 @@ def main():
     rt = once(rt, "target.write_text(text, encoding='utf-8')", "target.write_text(text, encoding='utf-8')\n        (gd / 'cfg/test/stitch_finish.cfg').write_text('quit\\n')")
     rt = once(rt, "'runlines_server', '+map', 'surf_dune'", f"'runlines_server', '+set', 'rec_stream', '{stream}', '+map', 'surf_dune'")
     runner.write_text(rt)
-    result = subprocess.run([sys.executable,'-B',str(runner),str(cfg),'--dedicated','--port','27618','--timeout','180','--output-dir',str(a.output_dir)], capture_output=True, text=True)
+    command = [sys.executable,'-B',str(runner),str(cfg),'--dedicated','--port','27618','--timeout','180','--output-dir',str(a.output_dir)]
+    if a.client:
+        command.extend(['--client', str(a.client)])
+    result = subprocess.run(command, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode:
         print(result.stderr, file=sys.stderr)
@@ -360,9 +363,9 @@ def main():
         if a.selection_audit:
             from stitched_selection import grade as grade_selection
             grade_selection(rig/'ftesurf')
-    if a.visual:
-        from stitched_visual import grade as grade_visual
-        grade_visual(rig/'ftesurf')
+        if a.visual:
+            from stitched_visual import grade as grade_visual
+            grade_visual(rig/'ftesurf')
 
 if __name__ == '__main__':
     main()

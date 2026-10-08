@@ -1683,6 +1683,32 @@ publicly WITH its fix, not before it.
   missing-map-material warning: no board-row fetch, complete map appearance or
   rendered camera/path acceptance is claimed. Isolated native cut controls,
   not these compatibility screenshots, establish the recorder fix.
+- **Current requested/native selection audit (2026-10-08, tooling only).** Do
+  not group historical ticks 49/103 as two still-broken boundaries: P542 closes
+  tick49's raw serialization loss; tick103's forward selection was separate.
+  Fresh P554-source six-cut controls pass at caps 30/100/300, streamed/buffered
+  at 30 and with the second installed client. All thirty local selections match
+  independently enumerated native rings, correlated acknowledgements and exact
+  acknowledged raw prefixes; measured requested/native offsets are -15..+30ms,
+  not universal clock equivalence. Second-client 0.735/request/native/raw agrees.
+  An explicitly configured/read-back 30ms packet-delay arm retains strict red
+  requested-clock results on three warm cuts (+60/+60/+45ms), while all six
+  native/body/hold/release/counting/prefix and camera/discontinuity gates pass.
+  Nearest-clock-only candidates have worse position matches; do not force time
+  selection or retime evidence to satisfy the display oracle. Alignment/UX and
+  human feel remain open. The original .031s clock check is unchanged.
+  `stitched_rewind_smoke.py --client` selects both warm/fresh cold executables.
+  Requested-clock failure no longer skips per-cut native/body checks or camera
+  diagnostics, remains a nonzero result and is not mislabeled as only cold.
+  An acted pre-fix combined clock/body negative hid native corruption behind the
+  clock failure; the strengthened grader independently rejects it. Grader
+  controls: native-selection19, streamed cuts21, buffered cuts20, visual16;
+  selection/visual counterfactuals also pass on the strict-red latency captures.
+  Compiler zero warnings; reader306/0; no product/format/clock/engine/Build bump,
+  new numbered patch or deployment. Private logs/captures stay private. Initial
+  second-client launch used an unsupported flag and did not ACT; the added
+  explicit pass-through then ACTED. Final logs append warm+cold cvar readbacks:
+  expect one in the warm snapshot and two in the combined log, not one overall.
 - P542: `Trail_RawSample` serializes clocks at six decimals. Native tick 49
   at 0.015 produces cutoff 0.734999955, but decoding its 0.735 row produces
   0.735000014. An exact unrounded comparison dropped a whole rendered sample

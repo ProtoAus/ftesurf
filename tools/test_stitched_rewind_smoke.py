@@ -38,6 +38,18 @@ def freeze_release(gd):
     path.write_text(' '.join(header) + '\n' + released[1] + '\n' + '\n'.join(held[2:]) + '\n')
 
 
+def shifted_request(gd, bad_body=False):
+    path = gd / 'cfg/test/stitch_warm1_cursor.txt'
+    lines = path.read_text().splitlines()
+    words = lines[1].split()
+    assert words[0] == 'cursor'
+    words[1] = str(float(words[1]) + .2)
+    lines[1] = ' '.join(words)
+    path.write_text('\n'.join(lines) + '\n')
+    if bad_body:
+        native_field(gd, 'warm1_hold1', 'body', '0 0 0')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--rig', type=Path, required=True)
@@ -62,6 +74,8 @@ def main():
         ('release-raw-frozen', freeze_release),
         ('hold-raw-corrupted', lambda gd: change(gd / 'cfg/test/stitch_warm2_hold2.txt', '\n0.000', '\n0.001')),
         ('cold-prefix-corrupted', lambda gd: change(gd / 'data/saves/surf_dune/save001/trail.txt', '\n0.000', '\n0.001')),
+        ('requested-clock', shifted_request),
+        ('requested-clock-and-body', lambda gd: shifted_request(gd, bad_body=True)),
     ]
     if not a.buffered:
         cases.append(('cold-adopted-identity', lambda gd: native_field(gd, 'cold1_hold1', 'identity', '1 1')))
@@ -81,12 +95,18 @@ def main():
             if mutate:
                 mutate(gd)
             rejected = False
+            error = None
             with contextlib.redirect_stdout(io.StringIO()):
                 try:
                     grade(gd, not a.buffered)
-                except (AssertionError, RuntimeError):
+                except (AssertionError, RuntimeError) as exc:
                     rejected = True
+                    error = exc
             assert rejected == bool(mutate), (gd.name, 'grader accepted a negative or rejected the positive')
+            if gd.name == 'requested-clock':
+                assert isinstance(error, RuntimeError) and 'requested-prefix controls failed' in str(error), error
+            if gd.name == 'requested-clock-and-body':
+                assert isinstance(error, AssertionError) and 'native body or held clock' in str(error), error
             print('PASS', gd.name)
     print(f'{len(cases) + 1} counterfactual checks, 0 failed')
 
