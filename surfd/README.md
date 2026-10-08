@@ -645,7 +645,12 @@ standalone APIs without a `ReadBudget` preserve caller callbacks and old behavio
 Residual instructions are conservatively charged as one final callback quantum
 per statement, so small queries can exhaust admission before the actual cap.
 This is not elapsed time, lock waits, schema/write/file work, total RSS or complete
-coverage. Dry-run unavailable counts are not measured zero.
+coverage. Dry-run unavailable counts are not measured zero. The pending
+diagnostic counts an eligible-ID subquery in SQLite and returns one scalar,
+never full replay payloads. It retains the one-million source cap and prints
+'at least' at the cap. Collection uses the same eligibility predicate but its
+existing rotating row selection is unchanged. This bounds Python result shape,
+not SQLite scanning, native memory or elapsed time.
 
 `--sims-lock-ms` defaults to 1000 ms per SQLite lock operation for collection
 only; zero means immediate/no waiting, not disabled collection. Noninteger,

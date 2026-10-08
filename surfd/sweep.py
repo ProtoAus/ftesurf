@@ -1042,8 +1042,10 @@ def _main_connected(conn, args):
             if args.sims_sql_steps:
                 try:
                     reads = simcheck.ReadBudget(conn, args.sims_sql_steps)
-                    print("sims pending: %d run(s) with unobserved eligible pairs"
-                          % len(simcheck.pending(conn, 10 ** 6, read_budget=reads)))
+                    cap = 10 ** 6
+                    n = simcheck.pending_count(conn, cap, read_budget=reads)
+                    print("sims pending: %s%d run(s) with unobserved eligible pairs"
+                          % ("at least " if n == cap else "", n))
                 except simcheck.ReadLimit:
                     print("sims pending: unavailable (SQL read limit; coverage not measured)")
             else:

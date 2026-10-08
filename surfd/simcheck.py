@@ -539,6 +539,26 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     return len(inserted), skipped, notable
 
 
+_PENDING_WHERE = (
+    "r.kind = 'run'"
+    " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
+    "             AND p.track = r.track AND p.leg = r.leg"
+    "             AND p.kind = 'run' AND p.id != r.id"
+    "             AND NOT EXISTS (SELECT 1 FROM sims s"
+    "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
+    "                    OR (s.a_id = p.id AND s.b_id = r.id)))")
+
+
+def pending_count(conn, limit=1000000, read_budget=None):
+    """Diagnostic-only capped count; never materialize replay payloads or rotate."""
+    _limit("limit", limit)
+    if limit == 0:
+        return 0
+    rows = _read(conn, "SELECT COUNT(*) FROM (SELECT r.id FROM replays r WHERE "
+                 + _PENDING_WHERE + " LIMIT ?)", (limit,), read_budget)
+    return rows[0][0]
+
+
 def pending(conn, limit=50, read_budget=None):
     """Eligible sources after the last admitted ID first, then wrap ascending.
 
@@ -551,14 +571,8 @@ def pending(conn, limit=50, read_budget=None):
         return []
     after = _cursor(conn, "source", read_budget=read_budget)
     return _read(conn,
-        "SELECT r.* FROM replays r WHERE r.kind = 'run'"
-        " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
-        "             AND p.track = r.track AND p.leg = r.leg"
-        "             AND p.kind = 'run' AND p.id != r.id"
-        "             AND NOT EXISTS (SELECT 1 FROM sims s"
-        "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
-        "                    OR (s.a_id = p.id AND s.b_id = r.id)))"
-        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit), read_budget)
+        "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE
+        + " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit), read_budget)
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
