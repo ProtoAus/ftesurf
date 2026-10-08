@@ -30,6 +30,7 @@ def case_api():
     route = '/admin/api/run/%d' % rid
     anon = m.app.test_client()
     before = anon.get('/api/board?map=bhop_eazy').get_json()
+    before.pop('t')  # generated response time is not stored board evidence
     check('API: unauthenticated caller refused', anon.get(route).status_code, 401)
     client = m.app.test_client()
     check('API: login CONTROL ACTS', at.login(client, 'test password only').status_code, 302)
@@ -54,7 +55,9 @@ def case_api():
         check('API: bounded typed snapshot or explicit unknown', reply.get_json()['receipt'].get('journal_metrics'), expected)
         check('API: journal/signature/angles unchanged',
               tuple(reply.get_json()['receipt'][k] for k in ('journal','verdict','angles')), ('OK','VALID','OK'))
-    check('API: public board unchanged', anon.get('/api/board?map=bhop_eazy').get_json(), before)
+    after = anon.get('/api/board?map=bhop_eazy').get_json()
+    after.pop('t')
+    check('API: public board unchanged', after, before)
     check('API: public board exposes no metrics', 'journal_metrics' in json.dumps(before), False)
     c.execute('ALTER TABLE receipts DROP COLUMN journal_metrics');c.commit()
     reply = client.get(route)
