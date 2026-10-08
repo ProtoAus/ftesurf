@@ -81,3 +81,16 @@ uses MenuEvent only as a test surface; the production UI bridge MUST be called
 explicitly from MQC/CSQC, not substitute Sbar/Menu callbacks for that bridge.
 Delivery/rollback and clean game-ref proof are recorded in AGENT_NOTES.md.
 
+## Delivery checkpoint
+
+Clean game `2cad73344ccab9e4addeb0e638f1c98bf620afce` in
+`C:/FTESurf-mesh-proof` repeats zero-warning QC compile, all mesh arms and 33
+unit tests. `p589-mesh-bcynr8m7` is the clean proof gallery.
+At 2026-10-08T09:09:48Z, guarded native-only dual deployment ships the client
+and matching hl2/cod/box3d/ode DLLs; all ten hashes match the frozen candidate.
+Rollback: `.prev` plus `C:/FTESurf-mesh-proof/rig/deploy-p589-20261008T090946Z`.
+Installed-client COPIES repeat all five arms (`p589-mesh-_9isse8e`,
+`p589-mesh-20f_971_`), zero failed. Post-test destination and protected files
+match. No owner process stop, progs/config/reader/asset/server/Pi/release swap,
+settings edit or Build bump. This native prerequisite does not install ImGui.
+

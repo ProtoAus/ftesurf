@@ -22,7 +22,8 @@ on both Windows installs as of 2026-10-08T05:28:54Z; source/tag and Pi CSQC
 are also updated. Both installed clients pass isolated font/editor controls.
 No owner settings were changed; rollback copies are retained. P581 is a
 native atlas/API prerequisite, not a new ImGui panel or changed visual style.
-P589 adds a verified native-only indexed renderer API. It does not install an
+P589 adds a verified native-only indexed renderer API, deployed with matching
+plugins to both Windows installs at 2026-10-08T09:09:48Z. It does not install an
 ImGui panel or replace the QC editor: explicit QC dispatch/mixed clip ownership,
 non-GL/device behavior and performance acceptance are still roadmap gates.
 

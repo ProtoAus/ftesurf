@@ -3828,7 +3828,23 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   dispatch, with actual QC-before/native/QC-after and inherited-clip controls.
   Native MenuEvent here is only a fixture surface, not a substitute UI bridge.
   Non-GL parity, byte/global-budget stress, device and CPU/GPU cost remain open.
-  Clean game-ref proof and guarded native-only dual delivery follow separately.
+  Clean game-ref proof: `C:/FTESurf-mesh-proof` at game
+  `2cad73344ccab9e4addeb0e638f1c98bf620afce`, engine/tag as above. Frozen
+  native artifact plus clean QC compile (zero warnings), five-arm mesh gallery
+  (`p589-mesh-bcynr8m7`) and 33 grader tests pass; proof source remains clean.
+  Guarded native-only dual swap verified 2026-10-08T09:09:48Z: client plus
+  matching hl2/cod/box3d/ode DLLs in both Windows installs, no server-binary swap.
+  All ten destination hashes match the frozen candidate; `.prev` and
+  `rig/deploy-p589-20261008T090946Z` retain predecessor/older-prev bytes.
+  BOTH installed-client COPIES repeat all mesh arms (`p589-mesh-_9isse8e`,
+  `p589-mesh-20f_971_`), zero failed; post-test hashes and protected cfg/progs/
+  reader/server bytes still match. No owner process stopped, settings edited,
+  peer dirty source deployed, progs/config/reader/asset/server/Pi/release swap or
+  Build bump. This is not a claim that the owner/fleet rendered an ImGui panel.
+  Next workstream starts from the published refs: implement the explicit
+  VM-owned QC dispatch/service bridge, preregister mixed QC/native clipping and
+  fallback/action controls, then build the minimal ImGui command-list service.
+  Budget measurement and real-panel migration remain gated after that gallery.
 
 - **P570 physical font contract:** `Font_LoadFont` converts virtual ladder
   heights to pixels; P566's QC physical conversion alone did NOT establish a

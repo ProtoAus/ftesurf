@@ -946,8 +946,9 @@ cost and device acceptance remain separate. Stage B's first prerequisite is
 now repaired by P581: memory images return drawable shader references, with
 replacement/restart/release/reload, invalid input/IDs and no-renderer controls.
 The P570 zero-handle defect is an acting control, not the current implementation.
-P589 adds the separate exact-size `2DMesh/1` indexed-2D interface and
-non-repeating plugin-owned RGBA texture tokens, reclaimed on release, plugin
+P589 (guarded dual-native delivery 2026-10-08T09:09:48Z) adds the separate
+exact-size `2DMesh/1` indexed-2D interface and non-repeating plugin-owned RGBA
+texture tokens, reclaimed on release, plugin
 close and pre-renderer teardown. Physical CPU triangle clipping avoids raw
 backend-dependent `BE_Scissor` writes. Its native-only gallery passes offsets,
 alpha, both windings, chunks, whole-batch rejection, count budgets, legacy
