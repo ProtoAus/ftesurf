@@ -3,7 +3,10 @@ recplot.py -- a .rec file as plot data for the owner's run page (Patch 359).
 
     parse(path, max_bytes=8 MiB, max_points=1500) -> dict
 
-Stdlib only, never raises, bounded: at most max_bytes are read, a body line
+Stdlib only, never raises, bounded: max_bytes is an exact nonnegative integer.
+At most max_bytes are acquired; reaching the allowance conservatively reports
+truncation without an EOF probe, and an incomplete line at that boundary is
+not interpreted. A body line
 over 4096 bytes is skipped (a header line keeps its first 4096), and the path
 keeps at most 2*max_points samples; stats cover every sample.  Layouts
 follow the FTESURF-REC grammar block over SV_RecOpen (src/server/sv_timer.qc);
@@ -52,7 +55,8 @@ _WORD = re.compile(r"[^A-Za-z0-9_]")
 
 def parse(path, max_bytes=MAX_BYTES, max_points=MAX_POINTS):
     try:
-        max_bytes = int(max_bytes)
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("max_bytes must be a nonnegative integer")
         max_points = max(2, int(max_points))
         with open(path, "rb") as fh:
             return _parse(fh, max_bytes, max_points)
@@ -94,24 +98,28 @@ def _clean(s, cap):
 def _lines(fh, max_bytes, st):
     """Yield (text, overlong).  An overlong line yields its first 4096 bytes."""
     used = 0
-    while True:
-        chunk = fh.readline(LINE_MAX)
+    while used < max_bytes:
+        chunk = fh.readline(min(LINE_MAX, max_bytes - used))
         if not chunk:
             return
         used += len(chunk)
-        if used > max_bytes:
+        if used == max_bytes and not chunk.endswith(b"\n"):
             st["truncated"] = True
-            return
+            return  # never interpret a budget-cut line as a complete record
         overlong = len(chunk) == LINE_MAX and not chunk.endswith(b"\n")
         while overlong:
-            more = fh.readline(LINE_MAX)
+            if used == max_bytes:
+                st["truncated"] = True
+                return
+            more = fh.readline(min(LINE_MAX, max_bytes - used))
             used += len(more)
-            if used > max_bytes:
+            if used == max_bytes and not more.endswith(b"\n"):
                 st["truncated"] = True
                 return
             if not more or more.endswith(b"\n"):
                 break
         yield chunk.decode("utf-8", "replace").strip(), overlong
+    st["truncated"] = True  # no acquisition beyond the allowance to probe EOF
 
 
 def _rate(head):
