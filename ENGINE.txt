@@ -56,6 +56,8 @@ date     2026-10-08
 # peer cursors rotate attempted work above the last ID then wrap. Pair comparison
 # faults do not discard successful neighbors or invent skip/zero observations;
 # fixed availability counts distinguish pair faults from atomic storage failures.
+# Store-only peers checkpoint with observations; selected collector lock waits
+# restore prior numeric timeout; typed SQLite contention means unknown coverage.
 # Cursors are not evidence/completion counters; no full fleet fairness, source
 # binding, exactly-once, hard resource bound or gate. Engine pin/tag/Build unchanged.
 #

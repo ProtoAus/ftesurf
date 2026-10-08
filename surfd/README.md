@@ -676,7 +676,7 @@ counter; historical observations are not rewritten and cursors are not public.
 A comparison/result-building exception affects only its admitted pair: no fake
 skip/zero is stored, prior/later successful observations still flush, and a fixed
 pass-local `pair failed` count reports availability without exception prose. Row-
-level selection/checkpoint/storage failures remain row failures; storage still
+level non-contention selection/checkpoint/storage failures remain row failures; storage still
 rolls back the observation transaction. Comparisons run outside write transactions;
 source checkpoints precede work. Peer checkpoints and observations now share one
 short atomic flush: insertion/checkpoint failure rolls back both. All-failed

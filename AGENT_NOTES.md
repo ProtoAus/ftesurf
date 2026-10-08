@@ -4303,6 +4303,33 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
   against it, never the whole frame (the fps counter always moves).
 
+### Similarity atomic peer flush and contention (P574-576, 2026-10-08)
+
+Peer admission and observations share one short atomic flush after comparison;
+source admission remains a separate pre-work checkpoint, not completion/reservation.
+A real abort after the first insert must restore the old peer cursor AND discard
+all new observations across reopen. All-failed admitted pairs still checkpoint,
+without fake skips/zeros. File comparison must allow an independent writer to ACT.
+
+Sweep explicitly owns the busy-handler slot for collection: --sims-lock-ms1000
+(default) is per SQLite lock operation;0 is immediate/no wait, not disabled. Restore
+previous numeric timeout before ordinary verification, including failure/interrupt.
+Standalone unopted/dry-run waits remain unchanged. Python cannot retrieve/restore
+an arbitrary native handler. This is not a total pass deadline or RSS/write cap.
+
+Classify contention by actual SQLite BUSY/LOCKED primary result codes only. Stop
+further source admission, preserve prior committed observations, and report fixed
+coverage-not-measured availability; summary busy state has ALL counters unknown.
+Python3.10 lacks these error-code attributes and retains generic failures;3.11/3.13
+code-required controls ACT. Never infer result codes from exception prose.
+
+The new Windows3.13 atomic test exposed that SQLite context managers COMMIT but
+DO NOT CLOSE. Explicitly close owned reopened/concurrent writer fixture connections
+before temp cleanup. The older untouched source fixture shows the same cleanup
+failure on published baseline; do not repair unrelated tests to mask it. Windows
+admin UDP/RCON failures still match baseline; Linux full tests pass after one
+recorded unmodified rerun of the existing dynamic-board timestamp equality case.
+
 ### Selected similarity SQL read budgets (P571-573, 2026-10-08)
 
 Sweep opts into a pass-wide 1,000,000 SQLite VM instruction allowance through
@@ -4351,8 +4378,9 @@ that pair unobserved and keep successful neighbors eligible for normal atomic
 flush. A measured zero needs a positive comparison denominator; no fake skip or
 zero is created for thrown pairs. Selection/checkpoint/storage failures are still
 row failures; an ACTED mid-insert trigger proves observation rollback. Cursor
-progress is intentionally not atomic with observations and does not reserve work
-across competing collectors. Crashes/races can leave progress ahead of observations;
+progress originally was not atomic with observations. P574 now commits peer progress
+and observations together; source admission still precedes work. Neither reserves
+work across competing collectors. Crashes/races can leave source admission ahead;
 that is NOT completion, byte binding, exactly-once or full fleet-fairness proof.
 
 Installed-module checks ran 55 cases including inherited fixtures, not 55 unique
