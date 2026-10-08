@@ -103,7 +103,7 @@ def pending(conn, limit):
     # so a re-check (or an exact-tie resubmission) retries a spent replay.
     return conn.execute(
         """SELECT r.id, r.map, r.map_dir, r.track, r.leg, r.leaf, r.kind, r.runid,
-                  r.flags, r.tickrate FROM replays r
+                  r.flags, r.tickrate, r.submitted, r.sha, r.sha_at FROM replays r
            WHERE r.checked = 0 AND r.kind IN ('run', 'evidence')
              AND (SELECT COUNT(*) FROM verdicts v
                   WHERE v.replay_id = r.id AND v.verdict = 'ERROR'
@@ -190,6 +190,43 @@ def row_check(row, verdict, reason):
         return verdict, reason
     return "HOLD", "the file does not describe this row: %s (pm_verify %s%s)" % (
         bad, verdict, ": " + reason if reason else "")
+
+
+def source_sha(path):
+    """Fresh bytes, not the filing cache. An unstable/unreadable read is unknown.
+
+    This fences ordinary replacement around a verifier attempt, not a hostile
+    host changing and restoring its input wholly inside the engine's window.
+    """
+    if not path:
+        return None
+
+    def key(st):
+        return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+    try:
+        with open(path, "rb") as fh:
+            before = key(os.fstat(fh.fileno()))
+            h = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+            if key(os.fstat(fh.fileno())) != before:
+                return None
+        if key(os.stat(path)) != before:
+            return None
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def verifier_source_sha(row, path):
+    # Evidence has two copies: the engine reads the lobby's, row/stage checks
+    # read KEEP. Both must describe the same bytes, before AND after the attempt.
+    sha = source_sha(os.path.join(GAME, "ftesurf", *path.split("/")))
+    if row["kind"] == "evidence":
+        if source_sha(surfd.replay_file(row)[0]) != sha:
+            return None
+    return sha
 
 
 def stage_check(conn, row, verdict, reason):
@@ -310,20 +347,37 @@ def sweep(conn, limit, runner=None, now=None):
                 record(conn, row["id"], v, why, -1, engine, progs, t0)
             counts[v] = counts.get(v, 0) + 1
             continue
-        bymap.setdefault(row["map_dir"], []).append((row, path))
+        sha = verifier_source_sha(row, path)
+        reason = None
+        if sha is None:
+            reason = "recording source unavailable before verification"
+        elif row["sha"] and row["sha_at"] == row["submitted"] and sha != row["sha"]:
+            reason = "recording differs from submitted bytes; refile required"
+        if reason:
+            with conn:
+                record(conn, row["id"], "ERROR", reason, -1, engine, progs, t0)
+            counts["ERROR"] = counts.get("ERROR", 0) + 1
+            continue
+        bymap.setdefault(row["map_dir"], []).append((row, path, sha))
 
     for map_dir, items in sorted(bymap.items()):
-        lines = list(runner(map_dir, [p for _, p in items]))
+        lines = list(runner(map_dir, [p for _, p, _ in items]))
         verdicts, observations = parse(lines), parse_counts(lines)
-        with conn:
-            for row, path in items:
-                v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
-                v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
-                if v != "ERROR":
-                    v, reason = row_check(row, v, reason)
-                    v, reason = stage_check(conn, row, v, reason)
-                record(conn, row["id"], v, reason, ticks, engine, progs, t0, observations.get(path))
-                counts[v] = counts.get(v, 0) + 1
+        for row, path, sha in items:
+            v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
+            v, reason, ticks = abandoned_pass(row, v, reason) or (v, reason, ticks)
+            if v != "ERROR":
+                v, reason = row_check(row, v, reason)
+                v, reason = stage_check(conn, row, v, reason)
+            measured = observations.get(path)
+            if verifier_source_sha(row, path) != sha:
+                v, reason, ticks = "ERROR", "recording changed or became unavailable during verification", -1
+                measured = None
+            # Hashing and row checks run without a write transaction. Only the
+            # completed observation holds the writer lock.
+            with conn:
+                record(conn, row["id"], v, reason, ticks, engine, progs, t0, measured)
+            counts[v] = counts.get(v, 0) + 1
     return counts
 
 

@@ -25,7 +25,11 @@ commit   d5e828f03a9ca58a12ce70a753ac952b215e38e5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-598
-patch    598
+patch    599
+# Patch 599: verifier results require stable recording bytes across the attempt.
+# Known-current filing SHA must match; both evidence copies are checked.
+# Instability is retryable ERROR, without counts or a new badge/accusation.
+# Historical PASS/approvals, engine pin/tag/progs/Build and thresholds unchanged.
 # Patch 598: optional pinned Dear ImGui service, explicit MQC/CSQC gallery only.
 # Bounded C-ABI command-list adapter and per-VM RGBA atlases; no raw GPU hooks.
 # No real-panel/default/input/model/performance/Build change. NoDeploy acts.

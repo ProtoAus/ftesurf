@@ -707,6 +707,21 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Verifier observations need stable source bytes (Patch 599).** Fresh SHA-256
+  before runner admission must match a known-current filing digest. Fresh reads
+  after runner/row/stage checks must match the admitted bytes; evidence requires
+  both the lobby copy the engine reads and KEEP copy the row checks read. Read
+  failure/replacement becomes retryable ERROR, with unknown ticks and no counts
+  snapshot, not a cheating judgement or a new Verified badge. Hash reads compare
+  handle/path metadata and never use the filing cache. Hashing runs outside a
+  writer transaction; existing ERROR budgets/refile/recheck scheduling remain.
+  Unknown/stale filing digests retain compatibility without backfill. Run
+  `surfd/test_verifier_sources.py` alongside sweep/counts/board/replays controls.
+  This is a before/after fence, NOT immutable engine input or detection of a
+  hostile host's intermediate change-and-restore. ERROR does not revoke existing
+  PASS/owner approvals; no historical reread, schema, detector or review-policy
+  change. Sweeper-only deployment needs no web reload or game/progs swap.
+
 - **Journal diagnostics are frame measurements, not new detector policy**
   (Patches 512–514). `identity_mouse_frames` counts nonzero counts only on a
   judged axis; its denominator is the yaw/pitch judged union, counting a frame
