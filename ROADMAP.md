@@ -946,13 +946,17 @@ cost and device acceptance remain separate. Stage B's first prerequisite is
 now repaired by P581: memory images return drawable shader references, with
 replacement/restart/release/reload, invalid input/IDs and no-renderer controls.
 The P570 zero-handle defect is an acting control, not the current implementation.
-This is not ImGui or a QC bridge. Next add a separate exact-size versioned
-indexed-2D interface, generation-safe plugin-owned resources, and explicit
-MQC/CSQC submission (not Sbar hooks). Normalize physical coordinates, alpha
-and clip ownership/restoration; `srect_t` is not backend-uniform, so do not
-wrap raw `BE_Scissor` and claim renderer parity. Use the native gallery's
-acting QC-before/after, disabled-backend and reload controls before porting a
-real panel. Preserve legacy fallback and physical-native fonts. Measure/
+P589 adds the separate exact-size `2DMesh/1` indexed-2D interface and
+non-repeating plugin-owned RGBA texture tokens, reclaimed on release, plugin
+close and pre-renderer teardown. Physical CPU triangle clipping avoids raw
+backend-dependent `BE_Scissor` writes. Its native-only gallery passes offsets,
+alpha, both windings, chunks, whole-batch rejection, count budgets, legacy
+before/after markers, virtual scales 1/2, renderer restart and plugin reload.
+This is not ImGui or a QC bridge, mixed inherited QC clipping, non-GL parity or
+cost acceptance. Next add explicit MQC/CSQC draw-site dispatch (not Sbar hooks),
+with a versioned service ABI, VM-local frame/owner identity, release/fallback and
+actual QC-before/native/QC-after controls including inherited clip restoration.
+Run that mixed gallery before porting a real panel. Preserve legacy fallback and physical-native fonts. Measure/
 approve performance budgets before switching the scoreboard default. The
 larger menu/editor migration is conditional on those gates, not already
 authorized for release.

@@ -22,6 +22,9 @@ on both Windows installs as of 2026-10-08T05:28:54Z; source/tag and Pi CSQC
 are also updated. Both installed clients pass isolated font/editor controls.
 No owner settings were changed; rollback copies are retained. P581 is a
 native atlas/API prerequisite, not a new ImGui panel or changed visual style.
+P589 adds a verified native-only indexed renderer API. It does not install an
+ImGui panel or replace the QC editor: explicit QC dispatch/mixed clip ownership,
+non-GL/device behavior and performance acceptance are still roadmap gates.
 
 - With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
   `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
@@ -1809,7 +1812,7 @@ image icon, the page just starts at the title.
 You reported this on the laptop. It is much bigger than one map: **no release
 has ever contained a single zone file.** I checked all twenty release folders
 on disk; every one has zero. So a fresh install could not time or rank *any*
-of the 587 downloadable maps we hold zones for, and said "no legs and no
+of the 589 downloadable maps we hold zones for, and said "no legs and no
 times" on all of them. surf_666's zone file has been sitting in this tree the
 whole time.
 
