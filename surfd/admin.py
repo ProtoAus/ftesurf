@@ -144,6 +144,8 @@ NOTE_MAX = 200
 QUERY_MAX = 64
 VERDICTS_SHOWN = 200
 SIM_PAIRS_SHOWN = 25
+JOURNAL_METRICS_MAX = 8192
+COUNTS_METRICS_MAX = 512
 RID_TEXT = re.compile(r"^[0-9]{1,18}$")
 # C0/C1 controls and bidi overrides; a note is shown to the owner only, via textContent.
 NOTE_JUNK = re.compile("[\x00-\x1f\x7f-\x9f\u200e\u200f\u2028\u2029"
@@ -371,7 +373,7 @@ def receipt_for(conn, rid, runid):
     if "angles_reason" in cols:
         extra += ", angles_reason"
     if "journal_metrics" in cols:
-        extra += ", journal_metrics"
+        extra += ", coalesce(substr(CAST(journal_metrics AS BLOB),1,%d),X'') AS journal_metrics" % (JOURNAL_METRICS_MAX + 1)
     rc = conn.execute("SELECT runid, map, pub, verdict, angles, reason, at"
                       + extra + " FROM receipts WHERE runid = ?",
                       (runid,)).fetchone()
@@ -405,9 +407,27 @@ def receipt_for(conn, rid, runid):
     return out
 
 
+def observation_text(raw, cap):
+    """Strict bounded UTF-8; the SQL projection retains one oversize sentinel byte."""
+    if isinstance(raw, bytes):
+        if len(raw) > cap:
+            return None
+        try:
+            return raw.decode('utf-8')
+        except UnicodeError:
+            return None
+    if isinstance(raw, str) and len(raw) <= cap:
+        try:
+            return raw if len(raw.encode('utf-8')) <= cap else None
+        except UnicodeError:
+            pass
+    return None
+
+
 def receipt_metrics(raw):
     """Bounded typed observation, or explicit unavailable; no legacy backfill."""
-    if not isinstance(raw, str) or not raw or len(raw) > 8192:
+    raw = observation_text(raw, JOURNAL_METRICS_MAX)
+    if not raw:
         return None
     try:
         snap = json.loads(raw)
@@ -512,7 +532,8 @@ def similarity_for(conn, rid):
 
 def verifier_counts(raw):
     """The narrow versioned engine observation, or unavailable; not adjudication."""
-    if not isinstance(raw, str) or len(raw) > 512:
+    raw = observation_text(raw, COUNTS_METRICS_MAX)
+    if not raw:
         return None
     try:
         value = json.loads(raw)
@@ -1633,7 +1654,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     return jsonify({"ok": False, "error": "no such replay"}), 404
                 sub = row["submitted"]
                 cols = {r[1] for r in conn.execute('PRAGMA table_info(verdicts)')}
-                extra = ', counts_metrics' if 'counts_metrics' in cols else ''
+                extra = (", coalesce(substr(CAST(counts_metrics AS BLOB),1,%d),X'') AS counts_metrics" % (COUNTS_METRICS_MAX + 1)
+                         if 'counts_metrics' in cols else '')
                 verdicts = [dict(v, current=v["at"] >= sub,
                                  counts_metrics=verifier_counts(v['counts_metrics']) if extra else None)
                             for v in conn.execute(

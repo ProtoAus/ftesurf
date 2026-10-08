@@ -25,7 +25,8 @@ commit   710087cb7e30e45f17b75aba2a354fedf9a9a0f4
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-581
-patch    585
+patch    586
+# Patch 586: bounded SQL projections for authenticated stored metric snapshots.
 # Patch 581: plugin memory images return drawable shader references; invalid
 # input/non-live IDs fail closed. Restart requires reacquisition, not persistence.
 # Existing P577-named atlas harness keeps its original pre-registered probes.
