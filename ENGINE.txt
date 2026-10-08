@@ -25,7 +25,9 @@ commit   69b2c1bdb1cf916c8513df1dac2c374bd6c1f0f1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-589
-patch    590
+patch    591
+# Patch 591: capped historical associations with explicit partial/limited states.
+# Selected owner-only SQL budget; no key policy, engine/progs/pin/tag/Build change.
 # Patch 590: bounded opened-file authenticated log-tail acquisition.
 # No engine/progs/pin/tag/Build change; byte-window limits stay explicit.
 # Patch 589: independent 2DMesh/1 indexed draws and plugin-owned texture tokens.

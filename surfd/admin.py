@@ -145,6 +145,8 @@ QUERY_MAX = 64
 VERDICTS_SHOWN = 200
 SIM_PAIRS_SHOWN = 25
 SIM_SQL_STEPS = 1000000
+ASSOCIATIONS_SHOWN = 25
+ASSOCIATION_SQL_STEPS = 100000
 JOURNAL_METRICS_MAX = 8192
 COUNTS_METRICS_MAX = 512
 RID_TEXT = re.compile(r"^[0-9]{1,18}$")
@@ -344,7 +346,7 @@ RUN_STATES = {
 }
 
 
-def receipt_for(conn, rid, runid):
+def receipt_for(conn, rid, runid, *, own_association_budget=False):
     """The run's receipt verdict and what else its key has signed, or None.
 
     GUARDED ON THE TABLE EXISTING rather than on a schema number.  This page is
@@ -390,6 +392,8 @@ def receipt_for(conn, rid, runid):
         out["journal"] = ""
         out["journal_reason"] = ""
     out["players"], out["keys"] = [], []
+    out["associations"] = {"state": "not_checked" if "pubkeys" in have else "missing",
+                           "limit": ASSOCIATIONS_SHOWN, "players_more": False, "keys_more": False}
     keys = key_tables(conn)
     if "pubkeys" in have and rc["pub"]:
         # BOTH DIRECTIONS, AND NEITHER IS AN ACCUSATION.  A key that has signed
@@ -397,14 +401,26 @@ def receipt_for(conn, rid, runid):
         # player with two keys is a reinstall -- `fskey` is a local file nobody
         # backs up.  key_for's flag is first-key-wins; these are what the owner
         # needs to accept or reject it.
-        out["players"] = [dict(k) for k in conn.execute(
-            "SELECT player, runs, first_at, last_at" + (", decision" if keys else "")
-            + " FROM pubkeys WHERE pub = ? ORDER BY player", (rc["pub"],)).fetchall()]
-        out["keys"] = [dict(k) for k in conn.execute(
-            "SELECT pub, runs" + (", decision" if keys else "") + " FROM pubkeys"
-            " WHERE pub <> '' AND player = (SELECT player FROM replays WHERE id = ?)"
-            " ORDER BY pub",
-            (rid,)).fetchall()]
+        from simcheck import ReadBudget, ReadLimit, _read
+        # A fresh connection owner may budget these selected reads. Borrowed
+        # handles retain their callback; LIMIT independently caps result rows.
+        budget = ReadBudget(conn, ASSOCIATION_SQL_STEPS) if own_association_budget else None
+        try:
+            players = _read(conn,
+                "SELECT player, runs, first_at, last_at" + (", decision" if keys else "")
+                + " FROM pubkeys WHERE pub = ? ORDER BY player LIMIT ?",
+                (rc["pub"], ASSOCIATIONS_SHOWN + 1), budget)
+            signing_keys = _read(conn,
+                "SELECT pub, runs" + (", decision" if keys else "") + " FROM pubkeys"
+                " WHERE pub <> '' AND player = (SELECT player FROM replays WHERE id = ?)"
+                " ORDER BY pub LIMIT ?", (rid, ASSOCIATIONS_SHOWN + 1), budget)
+        except ReadLimit:
+            out["associations"]["state"] = "read_limit"
+        else:
+            out["players"] = [dict(k) for k in players[:ASSOCIATIONS_SHOWN]]
+            out["keys"] = [dict(k) for k in signing_keys[:ASSOCIATIONS_SHOWN]]
+            out["associations"].update(state="ok", players_more=len(players) > ASSOCIATIONS_SHOWN,
+                                       keys_more=len(signing_keys) > ASSOCIATIONS_SHOWN)
     return out
 
 
@@ -1688,7 +1704,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 rank, of = rank_of(conn, *stand) if stand else (0, 0)
                 stages = stage_counts(conn, rid)
                 rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
-                                   else "")
+                                   else "", own_association_budget=True)
                 key = key_for(conn, rid)
                 # This request owns its freshly opened connection and callback slot.
                 similarity = similarity_for(conn, rid, own_read_budget=True)

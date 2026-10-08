@@ -218,6 +218,31 @@ async function post(path, fields) {
 
 // ---- the run, its review and its verdicts ----------------------------------
 
+function renderReceiptAssociations(c, put) {
+  const a = c.associations || {state: "not_checked"};
+  const players = c.players || [], keys = c.keys || [];
+  const result = {shared: false, manykeys: false, playerCount: "", keyCount: ""};
+  if (a.state !== "ok") {
+    const why = a.state === "read_limit" ? "SQL work limit; associations not measured"
+      : a.state === "missing" ? "table not present" : "not checked";
+    put("key associations", el("span", "muted", "unavailable (" + why + ")"));
+    return result;
+  }
+  const said = x => x.decision ? ", " + x.decision + "ed" : "";
+  const partial = more => more ? " (showing first " + a.limit + "; more available)" : "";
+  result.shared = players.length > 1;
+  result.manykeys = keys.length > 1;
+  result.playerCount = String(players.length) + (a.players_more ? "+" : "");
+  result.keyCount = String(keys.length) + (a.keys_more ? "+" : "");
+  if (result.shared) put("this key has signed for",
+    el("span", "reason", players.map(p => p.player + " (" + p.runs + said(p) + ")").join(", ")
+       + partial(a.players_more)));
+  if (result.manykeys) put("this player has signed with",
+    el("span", "reason", result.keyCount + " keys: "
+       + keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + said(k) + ")").join(", ")
+       + partial(a.keys_more)));
+  return result;
+}
 function renderRun(j) {
   const r = j.run;
   document.getElementById("title").textContent = "#" + r.id;
@@ -357,23 +382,14 @@ function renderRun(j) {
     put("key", key);
     if (c.reason) put("reason", el("span", "reason", c.reason));
     put("read", el("span", "nowrap", fmtDate(c.at)));
-    const said = x => x.decision ? ", " + x.decision + "ed" : "";
-    if (c.players && c.players.length > 1) {
-      put("this key has signed for",
-          el("span", "reason", c.players.map(p => p.player + " (" + p.runs + said(p) + ")").join(", ")));
-    }
-    if (c.keys && c.keys.length > 1) {
-      put("this player has signed with",
-          el("span", "reason", c.keys.length + " keys: "
-             + c.keys.map(k => String(k.pub).slice(0, 8) + "\u2026 (" + k.runs + said(k) + ")").join(", ")));
-    }
-    const shared = (c.players || []).length > 1, manykeys = (c.keys || []).length > 1;
+    const associations = renderReceiptAssociations(c, put);
+    const {shared, manykeys} = associations;
     summarise("rcptsum", c.verdict !== "VALID" || c.angles === "FAULT" || shared,
               pill(c.verdict, RCPT_CLS[c.verdict]),
               c.angles ? pill("angles " + c.angles, ANG_CLS[c.angles])
                        : el("span", "muted", "angles unchecked"),
-              shared ? pill(c.players.length + " players on this key", "warn") : null,
-              manykeys ? pill(c.keys.length + " keys for this player", "info") : null);
+              shared ? pill(associations.playerCount + " players on this key", "warn") : null,
+              manykeys ? pill(associations.keyCount + " keys for this player", "info") : null);
   }
   renderKey(j);
   renderSimilarity(j.similarity);
