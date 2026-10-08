@@ -33,6 +33,13 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-08
 
+# PATCHES 563-565: SIMILARITY RETRY ADMISSION. Durable source and per-source
+# peer cursors rotate attempted work above the last ID then wrap. Pair comparison
+# faults do not discard successful neighbors or invent skip/zero observations;
+# fixed availability counts distinguish pair faults from atomic storage failures.
+# Cursors are not evidence/completion counters; no full fleet fairness, source
+# binding, exactly-once, hard resource bound or gate. Engine pin/tag/Build unchanged.
+#
 # PATCH 560: REWIND REQUEST/NATIVE PRESENTATION. Show sampled request,
 # waiting, and correlated selected native clock with signed delta. Practice
 # remains untimed; absent/unmatched metadata never invents a native clock.

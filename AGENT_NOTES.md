@@ -4174,6 +4174,42 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
   against it, never the whole frame (the fps counter always moves).
 
+### Similarity retry admission controls (P563-565, 2026-10-08)
+
+`sim_cursor` is additive INTERNAL admission state: one source position and an
+independent peer position per source. Select greater eligible IDs first, then
+wrap ascending. Only admitted work advances; reads never initialize or advance
+state. Historical direct `compare_run` callers may have only `sims`, so create
+cursor schema at the first actual checkpoint, not a read/disabled call.
+
+Source checkpoints commit before file work; peer checkpoints commit once per
+source call, including pair exceptions. Comparison/result-building faults leave
+that pair unobserved and keep successful neighbors eligible for normal atomic
+flush. A measured zero needs a positive comparison denominator; no fake skip or
+zero is created for thrown pairs. Selection/checkpoint/storage failures are still
+row failures; an ACTED mid-insert trigger proves observation rollback. Cursor
+progress is intentionally not atomic with observations and does not reserve work
+across competing collectors. Crashes/races can leave progress ahead of observations;
+that is NOT completion, byte binding, exactly-once or full fleet-fairness proof.
+
+Installed-module checks ran 55 cases including inherited fixtures, not 55 unique
+coverage claims. Mock fault controls use denominator 1; separate installed bounded
+reader checks ACT on real 80-opportunity fixtures: unavailable source rotation
+survives connection restarts, a faulting first peer yields to later peers then
+wraps, and a middle fault preserves successful neighbors. Additive live schema
+init preserves sample/verdict rows; protected mode=ro checks preserve cursor state
+as well. No live collection needed for temporary-fixture proof.
+
+Windows RCON polling assertions in unchanged `test_admin.py` failed identically
+in clean published-baseline and subject trees; source equality was captured, no
+unrelated repair or Windows-pass claim. Frozen Linux admin and all 31 programs
+pass. The already-recorded dynamic-board timestamp test failed once in an earlier
+stage and passed one recorded rerun; the exact publication stage passes unmodified.
+Both source reviews are read-only. Scoped `watchdog_diff` rejects an absolute
+external worktree; pause/record the exact failure and bounded clean/ref/diff proof,
+then explicitly distinguish parent attestation from reviewer independent source
+inspection. No silent alternate runner or broader tooling fallback.
+
 ### Similarity eligibility and summary controls (P557-559, 2026-10-08)
 
 `simcheck.pending()` means an eligible native pair remains unobserved, not that
