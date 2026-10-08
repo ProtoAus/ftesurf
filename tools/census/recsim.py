@@ -148,7 +148,7 @@ def who_of(path):
 
 class Rec(object):
     __slots__ = ("path", "map", "leg", "ver", "tickrate", "moves", "btns",
-                 "mt", "end_ticks")
+                 "mt", "end_ticks", "source")
 
     def __init__(self, path):
         self.path = path
@@ -160,6 +160,7 @@ class Rec(object):
         self.btns = []        # bt per simulated move
         self.mt = []          # <mt> per move: the tick epoch, for alignment
         self.end_ticks = None
+        self.source = None  # only the bounded binary buffer is captured
 
 
 class MalformedRec(ValueError):
@@ -168,6 +169,7 @@ class MalformedRec(ValueError):
 
 # Capability marker for collectors that must never fall back to unbounded reads.
 BOUNDED_INPUT_VERSION = 1
+SOURCE_CAPTURE_VERSION = 1
 
 
 class SourceLimit(ValueError):
@@ -197,6 +199,7 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
             data = raw.read(max_bytes + 1)
         if len(data) > max_bytes:
             raise SourceLimit("source byte limit reached")
+        r.source = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
         fh = io.StringIO(data.decode(locale.getpreferredencoding(False), errors="replace"),
                          newline=None)
     with fh:
@@ -402,6 +405,8 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=Non
     Optional max_bytes/max_moves are operational source budgets; exceeding either
     abstains as SKIP_SOURCE_LIMIT without comparing a surviving prefix. Defaults
     preserve standalone census behavior; fleet collectors pass explicit bounds.
+    Bounded compared results include versioned `sources` hashes/sizes from the
+    exact buffers parsed, not current-file or source-authenticity assessments.
 
     A SKIP IS NOT A LOW SCORE AND IS NOT AN ERROR.  That distinction is the whole
     lesson of MIN_LEN above: a pair that could not be judged must be counted
@@ -450,7 +455,7 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=Non
     if not compared:
         return SKIP_NO_OPPORTUNITIES, "no comparison opportunities"
     wa, wb = who_of(a.path), who_of(b.path)
-    return "compared", {
+    detail = {
         "match": (matched / float(compared)) if compared else 0.0,
         "cover": cover,
         "prefix": prefix,
@@ -465,6 +470,10 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=Non
         "who_b": wb,
         "same_who": bool(wa) and wa == wb,
     }
+    if a.source is not None and b.source is not None:
+        detail["sources"] = {"version": SOURCE_CAPTURE_VERSION,
+                             "a": a.source, "b": b.source}
+    return "compared", detail
 
 
 # --------------------------------------------------------------------------
