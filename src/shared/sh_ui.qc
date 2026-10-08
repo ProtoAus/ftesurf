@@ -92,10 +92,14 @@ vector(vector pos) _sui_pixel_align =
 void(vector pos, string text, float want, vector color, float alpha) sui_native_text =
 {
 	local vector size;
+	local float legacyfont;
+	legacyfont = drawfont;
+	drawfont = Font_NativeSlot(legacyfont);
 	size = sui_native_text_size(want);
 	sui_transform_box(pos, size);
 	pos = _sui_pixel_align(pos);
 	drawstring(pos, text, size, color, alpha, 0);
+	drawfont = legacyfont;
 	sui_style_text_calls += 1;
 };
 

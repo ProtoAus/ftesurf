@@ -3748,6 +3748,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P570 physical font contract:** `Font_LoadFont` converts virtual ladder
+  heights to pixels; P566's QC physical conversion alone did NOT establish a
+  native bake. Engine `loadfont ... "<ladder> pixels=1"` opts into physical
+  rungs and reload preserves them. `Font_NativeSlot` is lazy/separate: retain
+  `Font_Set`/`ui_font_cur` as the legacy face for `Font_Px`, use the physical
+  mirror only during draw, then restore `drawfont`. Do not shrink the legacy
+  virtual ladders (their larger scaled menu/HUD bakes are still required).
+  Engine selection uses actual physical bake heights, each axis uses its own
+  ratio, and near-integer/unit float round-trips are repaired. Gallery at
+  1280x720 and console scales 1/1.5/2 is pixel-identical; pre-patch 1 versus 2
+  changes 30,764 pixels. Same-process/menu/renderer repeats must agree and the
+  unbaked +0.75px arm must visibly act on every crop. `tools/font_quality.md`
+  documents hashes/commands/limits. This does not rank Apple-like aesthetics,
+  measure recurring CPU/GPU cost or implement ImGui.
 - **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
   `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
   the final PHYSICAL height is a baked size: convert first, snap with the

@@ -178,6 +178,9 @@ hud_edit on
 `ui_style 0` restores the classic editor. `ui_tooltip_delay` defaults to 0.35
 seconds. Modern editor text selects native **physical-pixel** font bakes and
 pixel-aligned positions; layout scale is not fractional glyph stretching.
+The corrected physical-font path requires the Patch 570 engine as well as CSQC;
+legacy virtual font slots remain unchanged. The matched gallery and falsifiers
+are documented in [tools/font_quality.md](tools/font_quality.md).
 This is SUI, not the planned native ImGui integration. Development status and
 remaining gates are in [ROADMAP.md](ROADMAP.md), section 13.
 

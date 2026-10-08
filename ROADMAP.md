@@ -562,7 +562,9 @@ or existing split timer works.
 ## 13. Modern SUI + native Dear ImGui — Lex, 8 Oct 2026
 
 **Status: Stage A opt-in HUD-editor sample implemented, isolated/live-tested
-and deployed in Patch 566. Native ImGui (B onwards) is NOT implemented.**
+and deployed in Patch 566. Patch 570 adds the matched font baseline and corrects
+native physical bakes across virtual-screen scaling. Native ImGui (B onwards)
+is NOT implemented. Apple-like aesthetic/cost acceptance remains pending.**
 Lex wants the current SUI improved, plus native ImGui for rich scoreboards,
 graphs, HUD editing and other interactive overlays. Keep the lightweight QC
 HUD and the existing interactive panels as fallbacks. This does NOT replace
@@ -852,7 +854,7 @@ Register harness controls as cvars/commands; do not rely on QC-global `set`.
 | Key ownership | Open/close while movement/jump/modifier/mouse keys are held; repeat, rebind, press both directions, lose focus, return and release. Chat/replay/rewind controls act in control arms. No lost minus-command, stuck movement, leaked UI action or revived held scroll. |
 | Cursor arbitration | Claim two legitimate owners, release each in both orders. Closing native UI must not steal the other owner's cursor; final release returns mouselook. |
 | Table identity | Empty/loading/error/one-row/large-list fixtures, duplicate/long/UTF-8 names, refresh and sort while selecting. Display IDs and resulting replay/line/room actions must match the clicked identity, not its new index. Work scales with visible rows. |
-| Scale/fonts | Compare at 1280x720, 1920x1080 and 2560x1440, UI/HUD scale 0.75/1/2 and changed virtual-screen scaling. Text and controls fit, clicks align and corner radii stay sensible. Missing font/rounded asset has a usable fallback; glyph atlas rebuilds do not occur every frame. |
+| Scale/fonts | P570's `tools/font_quality.py` gallery proves native pixel invariance at console scales 1/1.5/2, with repeat/reload/unbaked controls (see `tools/font_quality.md`). Broader gate: compare at 1280x720, 1920x1080 and 2560x1440, UI/HUD scale 0.75/1/2 and changed virtual-screen scaling. Text and controls fit, clicks align and corner radii stay sensible. Missing font/rounded asset has a usable fallback; glyph atlas rebuilds do not occur every frame. |
 | Drawing state | Draw known QC colour/clip markers before and after native UI, with overlaps and off-screen clips. Compare legacy/control pixels; no tint, alpha halo, scissor leak, changed HUD or incorrect layer. Exercise 16/32-bit index limits/vertex offsets where supported. |
 | Graph parity | Same fixture/source selection in both renderers. Check values at first/middle/last/bin boundaries, gaps, teleports, absent velocity/gravity and assumed gravity. Same numeric values/labels; no line crossing a real break or fabricated sample. |
 | Editor safety | Isolated cfg fixture: edit position, anchor, size and one option, reset and close/save. Both frontends produce the expected cvars/file changes ONLY in the rig. Dragging a widget cannot move the HUD or vice versa. |

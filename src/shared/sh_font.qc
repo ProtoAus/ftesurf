@@ -2,7 +2,7 @@
 ===========================================================================
   sh_font.qc -- real fonts, shared by CSQC and MenuQC.
 
-  THE PROBLEM.  The engine builds exactly one glyph atlas, at eight pixels:
+  THE PROBLEM.  The default font is loaded at eight virtual console units:
 
       font_default = Font_LoadFont(gl_font.string, 8, 1, ...)   r_2d.c:1300
 
@@ -17,7 +17,10 @@
   m_defs.qc:642) bakes a TrueType face at each size you name, and the draw
   path then picks the baked size closest to the one asked for
   (PR_CL_ChooseFont, pr_menu.c:114-132) and scales from THAT.  Bake the
-  sizes actually drawn and the scale factor is 1.0 everywhere.
+  sizes actually drawn and the scale factor is 1.0 at console scale 1.
+  By default these sizes are VIRTUAL: Font_LoadFont multiplies them by the
+  console-to-pixel ratio. Native physical text uses separate lazy pixels=1
+  slots below; legacy Font_Set callers keep their existing virtual ladders.
 
   FreeType is statically linked in this build -- AVAIL_FREETYPE at
   config_fteqw.h:114, -DLINK_FREETYPE at :227, and there is no freetype DLL
@@ -25,10 +28,11 @@
   locates the face with a plain FS_FLocateFile (gl_font.c:1910), so a
   gamedir-relative path is all it wants.
 
-  FAILURE IS NOT FATAL.  loadfont returns 0 -- "return default on failure",
-  pr_menu.c:259 -- and 0 is FONT_DEFAULT, the bitmap font.  So a missing or
-  unreadable .ttf degrades to exactly what build 2 shipped rather than to a
-  blank screen.  Font_Set is written so that path needs no caller changes.
+  FAILURE IS NOT FATAL. A failed slot allocation returns 0 (FONT_DEFAULT).
+  A non-zero slot is NOT proof the requested .ttf loaded: the engine may use
+  a fallback inside it. Font_Set accepts the bitmap path without caller
+  changes; the pixel gallery, copied font hashes and distinct-face controls
+  establish more than the allocation-ready flag.
 ===========================================================================
 */
 
@@ -36,7 +40,7 @@ float ui_font_ui;               // Roboto           -- labels, rows, readouts
 float ui_font_display;          // Bebas Neue       -- title, the big speed number
 float ui_font_mono;             // Google Sans Code -- the left-hand number columns
 float ui_font_dispsm;           // Bebas Neue under 24 px -- the run line's labels
-float ui_font_ready;            // all four loaded; false = something is on the bitmap
+float ui_font_ready;            // all four slots allocated, NOT face-load proof
 
 /*
   PATCH 440 -- WHY THERE IS NO OUTLINED SLOT HERE.
@@ -122,6 +126,36 @@ float ui_font_ready;            // all four loaded; false = something is on the 
 #define FONT_MONO_SIZES     "8 10 12 14 16 18 20 22 24 28 32"
 
 float ui_font_tries;
+float ui_font_native[4], ui_font_native_tries[4];
+
+// Separate physical ladders: do not shrink legacy menu/HUD virtual bakes.
+// The engine's pixels=1 option also survives font/renderer reloads.
+float(float slot) Font_NativeSlot =
+{
+	local float i;
+	local string name, face, sizes;
+
+	i = -1;
+	name = face = sizes = "";
+	if (slot)
+	{
+		if (slot == ui_font_ui)
+		{ i = 0; name = "fsui_px"; face = "gfx/fonts/Roboto.ttf"; sizes = FONT_UI_SIZES; }
+		else if (slot == ui_font_display)
+		{ i = 1; name = "fsdisp_px"; face = "gfx/fonts/BebasNeueRegular.ttf"; sizes = FONT_DISPLAY_SIZES; }
+		else if (slot == ui_font_mono)
+		{ i = 2; name = "fsmono_px"; face = "gfx/fonts/GoogleMed.ttf"; sizes = FONT_MONO_SIZES; }
+		else if (slot == ui_font_dispsm)
+		{ i = 3; name = "fsdispsm_px"; face = "gfx/fonts/BebasNeueRegular.ttf"; sizes = FONT_DISPSM_SIZES; }
+	}
+	if (i < 0) return slot;
+	if (!ui_font_native[i] && ui_font_native_tries[i] < 3)
+	{
+		ui_font_native_tries[i] += 1;
+		ui_font_native[i] = loadfont(name, face, strcat(sizes, " pixels=1"), -1, 0, 0);
+	}
+	return ui_font_native[i];
+};
 
 /*
   THE LADDERS, READ BACK.

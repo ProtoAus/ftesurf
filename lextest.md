@@ -11,7 +11,7 @@ to be wrong.
 
 ---
 
-## 00. 8 Oct — modern SUI editor preview (Patch 566)
+## 00. 8 Oct — modern SUI editor preview (Patches 566/570)
 
 Lex's feedback: the UI looks good; text appears improved but is still only
 "OK" against Apple-like quality. Overall appearance is approved. Advanced
@@ -30,7 +30,11 @@ Specific input/DPI/lifecycle checks below remain pending.
   steps are intentional. Compare future Apple-like clarity/smoothing/weight
   improvements at matched fonts and physical sizes; measured low cost is
   required. Check moving between monitors/virtual UI scales. Current layout
-  tests are not advanced font-quality acceptance.
+  tests are not advanced font-quality acceptance. P570 corrects the physical
+  bake path: matched 1280x720 galleries at `vid_conautoscale` 1/1.5/2 are now
+  pixel-identical, including menu/renderer reload and half-alpha composition.
+  At scale 1 the approved rendering is unchanged. Try fractional scaling on
+  your actual display; other renderers/DPI and CPU/GPU cost remain unmeasured.
 
 28 isolated runtime checks per UI arm, seven producer/grader tests and the
 controlled p498 menu checks pass. Actual OS/device delivery, full CPU/GPU
