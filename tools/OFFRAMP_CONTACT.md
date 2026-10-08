@@ -349,3 +349,84 @@ Authored partial/full/convex edge, seam/overlap, jump, transformed/embedded/enti
 triangle/displacement, posture-change, capsule and cached/recovery/portal motion
 trajectories, full collision/support oracle, physical-exit/classification,
 clock, render/camera/rate/LOD/hold/mark acceptance remain **NOT_TESTED**.
+
+## Authored static-brush native trajectories (diagnostic only)
+
+`offramp_motion_smoke.py` adds a PRIVATE `pm_offramp_trajectory` command in a
+NEW isolated native tree. This is a test command, **never a product command**.
+It drives the real `PM_PlayerMove` → `PMSrc_PlayerMove` → `PMSrc_Tick`, with
+explicit fixed movevars and usercmds, on in-memory authored static brush models
+built by the existing **`BIH_Build` API**. It does not mirror private BIH node
+layouts. NativeTrace/PointContents callbacks are the real builder callbacks.
+No map, progs, loader plugin, async spawn, player fixture or game process is
+needed. Free owned model groups after each case and restore saved movement
+state/config. Diagnostic query/probe output is not a production game state.
+
+Build TWO separate NEW native worktrees at the SAME inspected base:
+
+```
+python -B tools/offramp_motion_smoke.py --instrument-native <subject-tree>
+python -B tools/offramp_motion_smoke.py --instrument-native <control-tree> --fixture-only
+# sv-rel build BOTH as above, never deploy either binary.
+python -B tools/offramp_motion_smoke.py --server <subject-exe> --control-server <control-exe> --output-dir <NEW-private-dir> --port 27617
+python -B tools/offramp_motion.py --arms <dir>/arms.json --output <private-motion.json>
+python -B tools/test_offramp_motion.py --arms <dir>/arms.json
+```
+
+The independently built control is **fixture-only**, not a vanilla clean binary:
+it contains the same authored command but NO buffer/origin/shape/hull seams.
+Five arms: no-oracle control, oracle control, subject OFF, ON, repeat. Exact
+sampled body equality with/without queries proves that oracle queries do not
+alter later movement. Control/OFF/ON/repeat bodies AND query returns must be
+identical; ON/repeat captured winning geometry/hull bindings must be equal.
+The native numeric selftest runs without a map before each fixture command.
+
+First bounded family, six cases × 32 actual 15ms native ticks:
+- interior steep-face ride;
+- straight partial-to-full side exit;
+- convex diagonal side exit;
+- input-driven interior contact loss and reacquisition (NOT an injected
+  mid-trajectory velocity or a jump command);
+- real jump-button launch on a STANDABLE brush (NOT a steep-ramp jump test);
+- adjacent/overlapping coplanar brush handoff with persistent union support.
+
+After each completed command, query the full native collision kernel with that
+sample's ACTUAL hull: stationary, immediate 2u downward, and a ±2u vertical
+sweep at the authored face projection. Projected queries cover ALL brushes and
+each individual brush. These explicit query windows are fixture oracles, not
+new collision/mark thresholds. Copy results into bounded rows and dump after
+movement/capture stops; build/allocation/printing are outside the mover capture
+path. No production trace is replaced and no extra oracle is called inside it.
+
+Reader checks native queries against **joint** brush/query-AABB feasibility:
+three-plane vertices of the complete constraint intersection, all inequalities
+at the SAME point. Independently expanded planes are NOT the oracle. A unit
+counterexample has valid individual expanded inequalities but no joint overlap.
+A numeric feasibility tolerance is not a physical/classifier gap threshold.
+This bounded static convex oracle is not arbitrary map/capsule/transform/SAT
+or continuous collision-time coverage. Mismatch is refusal, never a weakened
+physical-exit claim. Accepted whole winning snapshots must match an authored
+brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
+
+Protocol `OFFRAMPMOTION_` v1: BEGIN capture/oracle/case/step counts, SOURCE
+fixture-template SHA256 and native base commit, exact ordered PARAM rows,
+CASE/BRUSH/PLANE/SEED, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
+TICK carries actual command inputs, native tick count/rate, ramp/ground state,
+body/velocity, hull/posture. ORACLE carries case/tick/kind/brush, exact endpoints,
+fraction/solid flags/entity/plane/contents. Missing/duplicate/reordered/unknown/
+malformed rows, changed input/provenance, nonfinite data, unsupported hull/pose,
+wrong bindings, quiet subject or failed actor/native query all refuse. Embedded
+SOURCE is build provenance, not tamper-proof binary or map authenticity.
+
+The first successful family observes two distinct delays: side/convex projected
+support is gone at a tick end while that tick still reports accepted ramp
+contact; the raw contact falling edge follows later. Conversely, an interior
+input-driven raw loss retains immediate AND projected native support, and a
+previous brush's support can vanish while the seam union persists. These are
+sampled diagnostic observations, **not rules to shift visible marks**.
+
+Only this authored static fixture family is closed. Exact physical exit time,
+classification/debounce/mark policy, transformed/embedded/entity/triangle/
+displacement/capsule and real posture-change trajectories, explicit cached/
+recovery/portal motion, general world support, P560 clock and same-input
+recorded/live/render/rate/camera/LOD/hold acceptance remain **NOT_TESTED**.
