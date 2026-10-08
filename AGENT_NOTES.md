@@ -3843,6 +3843,15 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   P595 collided with concurrent surfd P595-597; preserve those entries and the
   already-published historical patch-595 tag. Canonical native source/tag is P598;
   test command/cvar/log prefixes remain p595 for retained-rig continuity.
+  Canonical frozen d5e828f03 / patch-598 embeds git-7125-patch-598-0-gd5e828f03;
+  74 compiler warning occurrences / 49 distinct fingerprints match P594, zero
+  new, QC zero warnings. Guarded dual native-only delivery and repeated actual
+  installed-path galleries (46 shots) pass at 2026-10-08T14:20:11Z; four target
+  hashes/rollback and all 38 protected progs/config/data/server/DLL groups match.
+  First whole-data gate was HOLD because the scheduled public-map sweep ACTED
+  at 14:07 UTC; task/writer witness retained. Re-register a fresh whole-data
+  baseline and repeat; do NOT stop the owner's task, restore data or exclude
+  changed files to pretend the original gate passed. No progs/Pi/server swap.
 - **`build.ps1 -NoDeploy` previously did not exist:** PowerShell silently accepted
   the unknown switch in `$args`; QC wrote into the integration install and native
   deployment still copied to the second install. P598 now declares the switch,
@@ -3855,6 +3864,10 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   install/rollback/progs/cfg byte/path witnesses unchanged and three zero-warning
   QC builds. Earlier ignored-switch native copies were hash-guard restored from
   retained rollback files; new optional DLLs were parked before proceeding.
+  Frozen worktree versioning also needs actual SVN_VERSION/SVNREVISION make
+  inputs (+29 count offset): automatic .git-directory checks miss .git files,
+  and FTEBUILDNO/FTEBUILDVERSION are not consumed. Verify embedded binary bytes,
+  not just a wrapper's printed stamp. The unstamped provisional build was held.
 
 - **P594 inherited native clipping: validate AFTER physical conversion.** Final
   P593 review found inherited clipping was intersected after P589's validation.

@@ -136,12 +136,78 @@ worktree .git files; that unstamped build was rejected by binary-byte inspection
 The repaired wrapper uses actual SVN_VERSION/SVNREVISION inputs and FTE's +29
 revision offset. Canonical P598 build must re-prove its own embedded stamp.
 
-## Remaining final gates / explicit limits
+## Canonical frozen build, publication and dual delivery — complete
 
-Publish the exact inspected engine/game SHAs only after clean frozen build,
-provenance and valid-gallery regression. Guarded native-only dual deployment
-must preserve progs, configs, data, server and unrelated DLL hashes and retain
-rollback. No progs/Pi/config/data changes are needed for this service.
+Frozen engine `d5e828f03a9ca58a12ce70a753ac952b215e38e5` / immutable `patch-598`,
+game `a659cab963a66459936d763c221b91112ccc1b57`. Exact stamped build script/log,
+source/byte hashes and warning receipts: `rig/p598-build/`. Embedded client/server
+bytes independently contain **git-7125-patch-598-0-gd5e828f03**. Three QC builds
+zero warnings; 74 native compiler warning occurrences / 49 distinct fingerprints
+match frozen P594 exactly, zero new. Native plugin -Werror clean, Windows OS-only
+imports (14), no MinGW/C++/pthread DLL deployment dependency. Frozen -Full
+-NoDeploy preserves 65 install/rollback/progs/cfg byte/path witnesses.
+
+Canonical commands from C:/FTESurf-ui-integration:
+
+```
+pwsh -NoProfile -File rig/p598-build/build-frozen.ps1
+python tools/p598build.py --host --out rig/p598-build/host16
+python tools/p598build.py --host --index32 --out rig/p598-build/host32
+python tools/p598imgui.py --plugin <engine>/engine/release/fteplug_ui_imgui_x64.dll --engine <engine>/engine/release/fteqw64.exe
+python tools/test_p598imgui_unit.py rig/p595-imgui-a792wvmc
+python tools/test_p590bridge_unit.py
+python tools/test_p589mesh_unit.py
+python rig/p598-build/deploy.py
+python tools/p598imgui.py --installed --engine C:/FTESurf/ftesurf64.exe --plugin C:/FTESurf/fteplug_ui_imgui_x64.dll
+python tools/p598imgui.py --installed --engine C:/FTEQuake/fteqw64.exe --plugin C:/FTEQuake/fteplug_ui_imgui_x64.dll
+```
+
+107 host assertions each for 16/32-bit indices, zero failed. Frozen real ImGui
+`p595-imgui-a792wvmc` (23 shots), bridge `p590-bridge-0nbvbsaj` and mesh
+`p589-mesh-wta7q1j4` regressions zero failed. All 16 ImGui/24 bridge/33 mesh grader
+controls and 170 real bridge-host assertions pass. Diagnostic p595 prefixes in
+these new rigs are intentional historical fixture identifiers, not claim drift.
+Both repos were clean before frozen build. Engine source + tag published atomically
+at the exact SHA after those gates. Game publication `ae020d2` merges later
+published off-ramp tooling/docs only; QC/build/native-gallery sources compare
+identically to the frozen game. No uncommitted peer source is shipped.
+
+Guarded client/plugin-only swaps copy frozen bytes to BOTH owner Windows installs;
+previous client binaries remain .prev, older rollback chain is parked in the owned
+rig, and original absence of the new plugin is recorded. Server, other DLLs,
+progs, configs and all data are separate protected hashes/aggregate groups.
+Final repeated actual installed executable paths ACT in `p595-imgui-vf9rxfmo`
+(primary) / `p595-imgui-ozru7jbb` (second), 46 screenshots total, zero failed.
+The reported command launches each actual installed executable with disposable
+cwd/basedir and a byte-identical installed plugin fixture; it does not run the
+owner's live config/progs. All four destination hashes and rollback bytes match,
+and all 38 protected groups match across repeated runtime gates. Verified UTC:
+**2026-10-08T14:20:11.421511Z**, `rig/p598-build/deployment.json`.
+
+Final client SHA256 (both destinations):
+`e6fbc95167f6b7b6f8b1dd0a86146db08006c84fa42f8bf9a0436285cc345a28`.
+Final plugin SHA256 (both destinations):
+`c21928d2e192103ca58acc48cf082294f56a80fc329b6b0bdeea9fc199c32f6b`.
+The built server hash is retained but that server was NOT deployed.
+
+### Retained first runtime preservation HOLD
+
+First installed galleries (`p595-imgui-y5ov0u88` / `p595-imgui-ittyqjbd`) rendered
+correctly, but the post-window whole-data aggregate changed by 33 bytes; do not
+claim it stayed unchanged. Recent-write source references point to public map
+catalogue/cache files and the sweep log. Independent ScheduledTaskInfo proves
+`FTESurf map scan` / the expected mapscan_6h.ps1 ACTED at 2026-10-08T14:07:01Z,
+exit 0 / Ready, matching file mtimes inside the gallery window. No player names,
+GUIDs, filenames or contents were logged, and no data restored or excluded.
+The script was not stopped. A fresh ALL-data baseline after it finished plus
+both repeated actual installed-path galleries proves preservation; the failed
+first gate and task witness remain in the receipt/mapscan-writer.json.
+
+## Explicit limits / next checkpoint
+
+No progs/Pi/server/config/data copying or release; qcbuild remains 89. No primary
+uncommitted client work is built or shipped. Canonical public max claim is 598;
+remove only the owned primary-tree claim marker after publication, not peer files.
 No performance, input/device, non-GL, Linux/package, real-panel/modern appearance,
 release or Build-number approval. The 13px embedded-default physical font and
 triangle expansion are prototypes, not accepted font/DPI/cost policy. Multi-batch
