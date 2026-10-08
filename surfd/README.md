@@ -661,6 +661,16 @@ or backfill. Stored orientation owns A/B, and retries never refresh the first
 observation. This identifies historical bytes consumed, not simultaneous/atomic
 filesystem acquisition, present-file equality, source authenticity or calibration.
 
+Authenticated historical review projects only validated captures alongside valid
+compared metrics, retaining stored A/B orientation even on B's page. A maximum
+513-byte SQL BLOB prefix is UTF-8 decoded and parsed against the fixed schema;
+embedded NUL/invalid encoding cannot hide a malformed tail. Legacy/unbound and
+invalid/unmeasured provenance have explicit states without hiding otherwise valid
+metrics. Hashes/sizes render as text with historical/not-current/not-authenticity
+wording. Review never rereads source files, executes comparisons or migrates old
+schemas; no public badge/ranking route consumes capture. Run the reader, collector
+and admin `*_sources.py` controls explicitly; the shipper does not discover them.
+
 The read-only summary aggregates one snapshot into at most 13 fixed category/
 identity result rows, instead of materializing all observations in Python. Counts,
 maxima, notable attention labels and missing/empty/error distinctions are unchanged.

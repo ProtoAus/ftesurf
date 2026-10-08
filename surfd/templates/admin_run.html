@@ -453,6 +453,20 @@ function renderSimilarity(value) {
     } else {
       panel.append(el("p", "muted", "comparison measurement unavailable (skip or unmeasured opportunities)"));
     }
+    if (pair.sources) {
+      panel.append(el("p", "muted", "Source bytes captured for this historical comparison; current files and authenticity not assessed."));
+      const dl = el("dl");
+      for (const [side, name] of [["a", "A"], ["b", "B"]]) {
+        const source = pair.sources[side];
+        dl.append(el("dt", "", name + " SHA-256"), el("dd", "mono", source.sha256),
+                  el("dt", "", name + " source bytes"), el("dd", "mono", String(source.bytes)));
+      }
+      panel.append(dl);
+    } else {
+      panel.append(el("p", "muted", pair.source_state === "legacy_unbound"
+        ? "source-byte provenance unavailable (legacy/unbound observation)"
+        : "source-byte provenance unavailable (invalid or unmeasured capture)"));
+    }
     box.append(panel);
   }
 }

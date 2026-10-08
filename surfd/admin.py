@@ -472,11 +472,14 @@ def similarity_for(conn, rid):
            'more': False, 'source_binding': False}
     if not exists:
         return out
+    from simcheck import source_snapshot, SOURCE_SNAPSHOT_MAX
     columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
+    # TEXT substr stops at embedded NUL; retain the entire bounded raw prefix.
+    capture = "coalesce(substr(CAST(source_capture AS BLOB),1,%d),X'')" % (SOURCE_SNAPSHOT_MAX+1) if 'source_capture' in columns else "''"
     code = "substr(skip_code,1,40)" if 'skip_code' in columns else "''"
     rows = conn.execute(
         "SELECT id, a_id, b_id, verdict, substr(reason,1,300) AS reason, at,"
-        + code + " AS skip_code,"
+        + code + " AS skip_code," + capture + " AS source_capture,"
         " match, cover, prefix, offset, compared, moves_a, moves_b, tick_a, tick_b,"
         " CASE WHEN who_a != '' AND who_b != '' THEN"
         "   CASE same_who WHEN 1 THEN 'same' WHEN 0 THEN 'cross' ELSE 'unknown' END"
@@ -500,6 +503,9 @@ def similarity_for(conn, rid):
                  and all(type(metrics[k]) in (int,float) and 0 < metrics[k] <= 10000 for k in ('tick_a','tick_b'))
                  and metrics['compared'] > 0)
         item['metrics'] = metrics if valid else None
+        item['sources'] = source_snapshot(r['source_capture']) if valid else None
+        item['source_state'] = ('captured' if item['sources'] is not None else
+                                'legacy_unbound' if r['source_capture'] in ('', b'') else 'unavailable')
         out['pairs'].append(item)
     return out
 

@@ -25,7 +25,7 @@ commit   fa5aef7ad3f4521a2a918b596eee208bbb0926ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-543
-patch    568
+patch    569
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,11 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-08
 
+# PATCH 569: AUTHENTICATED HISTORICAL SOURCE PROVENANCE. Bounded review shows
+# validated compared-buffer hashes/sizes or explicit legacy/unavailable state.
+# No file reread/current-source/authenticity claim or public policy change.
+# Engine/progs/pin/tag/Build unchanged.
+#
 # PATCH 568: HISTORICAL SIMILARITY SOURCE SNAPSHOTS. Additive per-pair capture
 # stores validated exact-buffer hashes/sizes atomically with compared metrics.
 # Legacy/skipped/invalid observations remain unbound, without rereads/backfill.

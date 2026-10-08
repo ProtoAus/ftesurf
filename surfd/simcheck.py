@@ -115,6 +115,13 @@ def source_capture(value):
 
 def source_snapshot(raw):
     """Bounded versioned storage projection; malformed/legacy input is unbound."""
+    if isinstance(raw, bytes):
+        if len(raw) > SOURCE_SNAPSHOT_MAX:
+            return None
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeError:
+            return None
     if not isinstance(raw, str) or len(raw) > SOURCE_SNAPSHOT_MAX:
         return None
     def unique(pairs):
