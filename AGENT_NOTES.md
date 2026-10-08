@@ -4443,6 +4443,52 @@ Do not turn this into mutable board/replay preservation or live-contention proof
 Both destination hashes and health/auth checks pass; rollback files/mode600 DB
 backup retained. No game/QC/engine/config/Windows artifact or owner-process restart.
 
+### Authenticated observer fetch/work limits and dry schema (P586-588, 2026-10-08)
+
+Stored journal/counts fields use cap+1 BLOB-prefix SQL projections, not TEXT substr:
+NUL and multibyte payloads must retain a byte oversize sentinel. Strict UTF-8 and
+existing typed/versioned validation preserve measured zero and legacy unavailable;
+invalid snapshots do not trigger historical rereads/backfill. These are selected
+result-field limits, not bounds on the entire review response, SQL scan or RSS.
+
+The historical similarity panel owns only its fresh request connection's callback
+slot. Existing ReadBudget supplies one million selected VM instructions over PRAGMA
+and history reads; the first sqlite_master existence probe is OUTSIDE that allowance.
+ReadLimit withholds the entire optional panel (state read_limit), not partial pairs
+or false empty history, while useful run review remains. Missing stays distinct;
+other storage errors still error. Borrowed similarity_for calls default to no budget
+and retain caller callbacks. Owner opt-in cannot restore an unknown foreign handler.
+Actual related-pair sorting must ACT: unrelated rows can use indexes and prove no
+exhaustion. Default recovery must retain a positive 80-opportunity control.
+
+Only the similarity dry-run subsection is non-initializing: existence-aware scalar
+counts/summary never create/ALTER sims or sim_cursor. Main/import general schema
+setup still mutates. A real authorizer distinguishes absent, legacy and current
+schemas; the actual normal collector must still initialize and store a comparison.
+Python3.10 authorizer teardown uses an explicit allow callback in the new fixture.
+
+Frozen b4f4d31: 60/60 explicit Linux programs; Windows59/60 with the same two UDP
+assertions in byte-identical test_admin source reproduced on baseline56/57. Argument-
+required momindex is excluded, not a pass. New3/4/4 tests are warning-clean; recorder
+306/0, captured269REC/91VIEW hashes and full fault lists match (170 existing faulted
+reports). Source/evidence review found no concrete blocker but did not rerun tests.
+Windows actual Node DOM passes; Linux Node/conversion capability skips remain.
+
+Canonical exact-commit -Only (repo-relative paths) shipped ONLY admin.py,
+templates/admin_run.html and sweep.py, with NORMAL shipper tests, no skip/reload
+flags. First preflight used wrong allowlist names and changed nothing; corrected
+invocation used the shipper's actual NVMe staging. Master2479950 retained, new
+worker/ready09:05:04UTC; all destination AND predecessor rollback blobs match.
+Mode600 DB backup retained. Installed modules are bound to actual paths in isolated
+HOME/DB:11cases, ten pass/one absent-Node skip; live authenticated detail200/anonymous
+401 and read-only diagnostics ACT. Bounded SQLite EXCEPT proves original
+sims/receipts/verdicts/reviews rows match backup, with exact/changed/deleted oracle
+controls. Initial finish probes expected wrong summary state and streamed CRLF;
+finish-only corrections completed, no recopy/reload. Final host09:11:25UTC healthOK,
+12lobbies active. No live collection/reread, reader/engine/progs/Windows/config swap;
+no mutable board/replay/cursor preservation, hard time/RSS, calibration or live-
+browser acceptance claim. Shared peer trees are untouched.
+
 ### Similarity ownership and scalar diagnostics (P582-585, 2026-10-08)
 
 Exact integer source/peer/pair limits reject negatives (SQLite LIMIT would mean
