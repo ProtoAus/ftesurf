@@ -54,7 +54,19 @@ caller colour/flags/scissor restoration, reentrant bracket rejection, target
 refusal and exact-handle exhaustion. The isolated published predecessor and
 subject full builds have identical 74 compiler warning message/count fingerprints;
 all QC compiles have zero warnings. Engine commit `25ad9d56e582e60d8d03fadf56c4dcfa4a049bc1`,
-local tag `patch-593`; publication/frozen stamped build/delivery still pending.
+published tag `patch-593`; game feature `d3b7174`. Clean frozen rebuild is stamped
+`git-7115-patch-593-0-g25ad9d56e`; bridge `p590-bridge-3nyqfybl` and mesh
+`p589-mesh-hei0vtp6` pass. Actual installed Windows executable paths ACT in
+`p590-bridge-hmrva9oz` / `-gvq91c1r`, zero failed, at 2026-10-08T11:00:43Z.
+Guarded native+CSQC+MQC swaps retained rollback; unchanged SSQC was not replaced;
+configs/data/server/DLL digests remain unchanged. Pi progs swap kept `.prev` with
+zero players; 12 fresh lobbies advertise the exact new cached CSQC CRC/size,
+protected engine/config hashes match and health is 12 (2026-10-08T10:54:38Z).
+No fixture DLL was shipped. No Build-number or release operation.
+
+Final review's non-finite inherited-clip correction is separately P594; see
+`tools/p594clip.md`. The P593 source/tag is immutable. Current installed native
+is P594; original P593 progs remain unchanged.
 
 Retained initial failures: Bash-to-pwsh argument conversion and inherited MSYS
 conversion exclusions broke Make paths; a clean worktree lacked the ignored SDK

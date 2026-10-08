@@ -3834,9 +3834,18 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   assertions plus 24 grader controls. They use FTE-equivalent NaN/Inf bit semantics,
   not libc finite assumptions. This is host robustness, not malformed-driver
   injection or a native-module sandbox. `tools/p594clip.md` records the falsifier;
-  published P593 tag remains immutable. Local source/tag `bed572f50` / `patch-594`;
-  frozen build/publication/native delivery are separate pending gates. QC/progs,
-  panels, input/model ABI, preferences and Build number are unchanged by this fix.
+  published P593 tag remains immutable. Published source/tag `bed572f50` /
+  `patch-594`; frozen game source/test `9e820a7`, integration `8206480` only adds
+  peer off-ramp tooling/docs (not shipped). Clean full build stamped
+  `git-7118-patch-594-0-gbed572f50`: same 74 baseline warning fingerprints, zero new;
+  QC zero warnings. Frozen galleries `p590-bridge-u16xorn0` / `p589-mesh-n418owc1`
+  pass. Actual installed Windows executable paths ACT in `p590-bridge-qksc2vm_` /
+  `-ek419z65`, zero failed, after guarded native-only swaps retaining P593 rollback;
+  destination hashes and progs/config/data/server/DLL preservation verified
+  2026-10-08T11:34:11Z. No second Pi swap; existing P593 payloads are byte-identical.
+  The no-flush assertions concern the rejected Draw path; resource cleanup may
+  independently flush for P589 texture lifetime. No fixture DLL, QC/progs, panel,
+  input/model ABI, preference, release or Build-number change in this fix.
 
 - **P593 native bridge prerequisite: explicit QC draw sites, not plugin overlay
   hooks.** `NativeUI/1` copies an exact service table; optional named MQC/CSQC
