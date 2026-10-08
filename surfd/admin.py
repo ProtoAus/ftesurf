@@ -441,13 +441,25 @@ def observation_text(raw, cap):
     return None
 
 
+def observation_json(raw):
+    """Reject ambiguous objects at every level before validating stored metrics."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate observation key")
+            value[key] = item
+        return value
+    return json.loads(raw, object_pairs_hook=unique)
+
+
 def receipt_metrics(raw):
     """Bounded typed observation, or explicit unavailable; no legacy backfill."""
     raw = observation_text(raw, JOURNAL_METRICS_MAX)
     if not raw:
         return None
     try:
-        snap = json.loads(raw)
+        snap = observation_json(raw)
         if (not isinstance(snap, dict) or set(snap) != {"version", "metrics"}
                 or type(snap["version"]) is not int or snap["version"] != 1
                 or not isinstance(snap["metrics"], dict) or len(snap["metrics"]) > 64):
@@ -504,15 +516,17 @@ def similarity_reason(verdict, raw, code=''):
 
 def similarity_for(conn, rid, *, own_read_budget=False, max_sql_steps=None):
     """Historical observations; callback authority is explicit for borrowed handles."""
-    exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
-    out = {'available': bool(exists), 'state': 'ok' if exists else 'missing',
+    out = {'available': False, 'state': 'missing',
            'pairs': [], 'limit': SIM_PAIRS_SHOWN, 'more': False, 'source_binding': False}
-    if not exists:
-        return out
     from simcheck import source_snapshot, SOURCE_SNAPSHOT_MAX, ReadBudget, ReadLimit, _read
     budget = (ReadBudget(conn, SIM_SQL_STEPS if max_sql_steps is None else max_sql_steps)
               if own_read_budget else None)
     try:
+        exists = _read(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'",
+                       read_budget=budget)
+        if not exists:
+            return out
+        out.update(available=True, state='ok')
         columns = {r[1] for r in _read(conn, "PRAGMA table_info(sims)", read_budget=budget)}
         # TEXT substr stops at embedded NUL; retain the entire bounded raw prefix.
         capture = "coalesce(substr(CAST(source_capture AS BLOB),1,%d),X'')" % (SOURCE_SNAPSHOT_MAX+1) if 'source_capture' in columns else "''"
@@ -559,7 +573,7 @@ def verifier_counts(raw):
     if not raw:
         return None
     try:
-        value = json.loads(raw)
+        value = observation_json(raw)
         if not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1:
             return None
         if value.get('state') == 'no_records':
@@ -1687,7 +1701,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                             for v in conn.execute(
                     "SELECT id, verdict, reason, ticks, engine, progs, at" + extra +
                     "  FROM verdicts WHERE replay_id = ? ORDER BY id DESC LIMIT ?",
-                    (rid, VERDICTS_SHOWN)).fetchall()]
+                    (rid, VERDICTS_SHOWN + 1)).fetchall()]
+                verdict_history = {"limit": VERDICTS_SHOWN,
+                                   "more": len(verdicts) > VERDICTS_SHOWN}
+                verdicts = verdicts[:VERDICTS_SHOWN]
                 latest = conn.execute(
                     "SELECT verdict FROM verdicts WHERE replay_id = ? AND at >= ?"
                     " AND verdict <> 'ERROR' ORDER BY id DESC LIMIT 1",
@@ -1728,7 +1745,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                              "stages_hidden": stages[1] if stages else 0,
                              "stages_aside": stages[2] if stages else 0,
                              "stages_linked": stages is not None},
-                "review": review, "verdicts": verdicts, "receipt": rcpt, "key": key,
+                "review": review, "verdicts": verdicts, "verdict_history": verdict_history,
+                "receipt": rcpt, "key": key,
                 "similarity": similarity,
                 "download": "/api/replay/%d" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,

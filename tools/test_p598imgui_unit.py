@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import unittest
 from PIL import Image
-from p595imgui import grade, ROOT
+from p598imgui import grade, ROOT
 
 
 class Mutations(unittest.TestCase):

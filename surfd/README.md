@@ -928,3 +928,26 @@ catch-all `location /`.** surfd derives each lobby's advertised address from
 the socket peer; proxied, every heartbeat would arrive from `127.0.0.1` and
 every row would advertise an address nobody can reach. The game servers are on
 the same box and post straight to `127.0.0.1:8084`.
+
+## Historical observer projection follow-ups (2026-10-08)
+
+Owner-only run detail acquires at most 201 verifier attempts and displays the
+newest 200, in id order. Additive `verdict_history.limit/more` metadata and the
+actual summary distinguish shown counts from complete history; omitted older
+attempts cannot justify an "all stale" claim. The separate current/public verdict
+query is unchanged. No total-count scan, pagination or stored-history rewrite.
+Control: `python surfd/test_admin_verdict_history.py` (actual API/SQL/Node DOM).
+
+Historical journal/counts projections reject duplicate JSON object keys at every
+nesting level, including equivalent escaped names. Ambiguous snapshots remain
+stored unchanged but display unavailable, not last-key-wins measurements. Valid
+zero, empty metrics and no-records retain their separate meanings. Existing byte
+caps, typed/versioned allowlists and public verdicts are unchanged; no reread.
+Control: `python surfd/test_admin_metric_duplicates.py` (actual bounded API).
+
+The optional similarity panel's initial table probe now shares the same selected
+SQL allowance as its PRAGMA/history reads. An exhausted probe cannot claim the
+table is missing: the whole panel stays explicitly read-limited, without partial
+pairs. Borrowed handles retain callbacks by default; only opt-in connection owners
+may supply the budget. This is not whole-request time/RSS/I/O budgeting.
+Control: `python surfd/test_admin_similarity_probe.py` (real SQLite interruption).

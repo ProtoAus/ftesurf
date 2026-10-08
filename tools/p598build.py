@@ -26,7 +26,7 @@ def build(fte: Path, out: Path, cc: Path, host=False, index32=False):
     out.mkdir(parents=True, exist_ok=True)
     objects, entries = [], []
     sources = [source/'backend.cpp']
-    sources += [ROOT/'tools/fixtures/p595imgui_host.cpp' if host else source/'ui_imgui.cpp']
+    sources += [ROOT/'tools/fixtures/p598imgui_host.cpp' if host else source/'ui_imgui.cpp']
     sources += [source/'vendor'/p for p in VENDOR]
     with (out/'compile.log').open('w') as log:
         for p in sources:

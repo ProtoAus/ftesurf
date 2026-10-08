@@ -1,4 +1,4 @@
-# Patch 595 — minimal Dear ImGui draw-list service
+# Patch 598 — minimal Dear ImGui draw-list service
 
 ## Scope / pre-registered falsifiers
 
@@ -41,7 +41,8 @@ Pre-register before implementation/testing:
 ## Initial verified implementation
 
 Engine feature `61393769e`; byte-provenance correction `38413ccdf704265c46b99507bbd0d7094e4388f9`
-is the local, not-yet-published `patch-595` candidate. Game baseline advanced by
+was the provisional local `patch-595` candidate (later publication/collision is
+recorded below). Game baseline advanced by
 fast-forward to published `4f06647` before docs/pin edits. Dear ImGui tag
 `v1.91.9b` resolves to `f5befd2d29e66809cd1110a152e375a7f1981f06`;
 11 upstream files are unmodified, MIT license included, vendor SHA256.json pins
@@ -105,6 +106,35 @@ that is not the actual compiler/parser gate. No user LSP settings changed.
 - A previous retained P581 control path had disappeared; use the still-present,
   inspected acting P581 control from `p589-mesh-4jpv7z06`, not the P589+ bridge
   baseline which would not be a missing-mesh falsifier.
+
+## Canonical claim correction and immutable history
+
+During final fetch, another session had published surfd-only P595-597. Exact
+main pushes were blocked by ancestry checks, but the provisional native tag
+`patch-595` at `38413ccdf` had already been published. Do NOT delete/rewrite it.
+Canonical native feature is **P598**, engine merge `d5e828f03a9ca58a12ce70a753ac952b215e38e5`
+and local tag `patch-598`; peer P595-597 entries/code are preserved by
+merging origin/main, not reverted or deployed as part of this client-only work.
+After fetching both origins and checking headings/untracked claims, max was 597.
+An owned marker `C:/FTESurf/tools/p598imgui.md` exposes this active isolated claim
+to other sessions until publication. No unrelated primary-tree files are changed.
+Canonical tooling/fixtures were renamed p598; imports/fixture paths follow that
+rename. Existing diagnostic command/cvar/log/rig prefixes remain p595 so retained
+controls still grade. They are not real-panel activation or product patch claims.
+The above commands/results are the exact **provisional** runs; current equivalents
+are tools/p598build.py, tools/p598imgui.py, tools/test_p598imgui_unit.py,
+tools/test_p598nodeploy.py and tools/fixtures/p598imgui_host.cpp / p598imgui.qc.
+
+Provisional clean full build at `38413ccdf` + game `ef3ad1d` is byte-verified as
+`git-7121-patch-595-0-g38413ccdf`: 74 compiler warning occurrences / 49 distinct
+fingerprints, identical to frozen P594, zero new; all three QC builds zero warnings.
+Frozen native hashes are in rig/p595-build/frozen-hashes.json. Its final galleries
+`p595-imgui-_8z3ga91`, `p590-bridge-arlnqfci`, `p589-mesh-v8g6aft8` pass, but are
+NOT canonical P598 delivery proof. Initial wrapper FTEBUILDNO/FTEBUILDVERSION
+variables were not consumed and the Makefile's .git-directory check misses
+worktree .git files; that unstamped build was rejected by binary-byte inspection.
+The repaired wrapper uses actual SVN_VERSION/SVNREVISION inputs and FTE's +29
+revision offset. Canonical P598 build must re-prove its own embedded stamp.
 
 ## Remaining final gates / explicit limits
 

@@ -3826,7 +3826,7 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
-- **P595 minimal ImGui is a diagnostic prerequisite, not migrated UI:** optional
+- **P598 minimal ImGui is a diagnostic prerequisite, not migrated UI:** optional
   pinned 1.91.9b plugin exports only NativeUI/1 service + shutdown/status; separate
   MQC/CSQC contexts/atlases, no implicit ini/log files, no Tick/Menu/Sbar drawing.
   Actual ImGui text/rounded control/1000-row clipped table/tooltip and overlap
@@ -3839,10 +3839,13 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   Pinned vendor needs `vendor/* -text` to preserve SHA256 bytes in autocrlf clones;
   unmodified vendor uses -O1 for GCC 16 range diagnostics, adapter -O2, both -Werror.
   C++/pthread runtime DLL imports are eliminated by static plugin linkage. Exact
-  evidence and final frozen/delivery gates: tools/p595imgui.md.
+  evidence and final frozen/delivery gates: tools/p598imgui.md. Provisional native
+  P595 collided with concurrent surfd P595-597; preserve those entries and the
+  already-published historical patch-595 tag. Canonical native source/tag is P598;
+  test command/cvar/log prefixes remain p595 for retained-rig continuity.
 - **`build.ps1 -NoDeploy` previously did not exist:** PowerShell silently accepted
   the unknown switch in `$args`; QC wrote into the integration install and native
-  deployment still copied to the second install. P595 now declares the switch,
+  deployment still copied to the second install. P598 now declares the switch,
   adds CmdletBinding unknown-argument refusal and rejects NoDeploy+Pi/Run. It
   compiles through owned same-src-directory manifests (only output line changed)
   into fresh rig directories, removes its temporary manifests and blocks native
@@ -4664,7 +4667,10 @@ result-field limits, not bounds on the entire review response, SQL scan or RSS.
 
 The historical similarity panel owns only its fresh request connection's callback
 slot. Existing ReadBudget supplies one million selected VM instructions over PRAGMA
-and history reads; the first sqlite_master existence probe is OUTSIDE that allowance.
+and history reads. **P597 (2026-10-08)** also charges the initial sqlite_master probe
+within that allowance; its former unbudgeted exception is now closed. An interrupted
+probe says read_limit, not confirmed missing. Real initial-probe interruption and
+handler teardown ACT in `surfd/test_admin_similarity_probe.py`.
 ReadLimit withholds the entire optional panel (state read_limit), not partial pairs
 or false empty history, while useful run review remains. Missing stays distinct;
 other storage errors still error. Borrowed similarity_for calls default to no budget

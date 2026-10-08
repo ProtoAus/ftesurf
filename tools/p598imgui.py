@@ -14,7 +14,7 @@ import tempfile
 from PIL import Image, ImageChops
 from p590bridge import sha
 from test_ui_modern import make_map
-from p595build import build
+from p598build import build
 ROOT = Path(__file__).resolve().parents[1]
 ARMS = ('absent', 'scale1', 'scale2')
 SHOTS = ('menu', 'menu_restart', 'client', 'client_close', 'both', 'plugin_off',
@@ -133,9 +133,9 @@ def run(a):
     plugin = a.plugin or build(a.fte.resolve(),rig/'build',a.cc.resolve())
     qc = rig/'qc'; qc.mkdir()
     for name in ('m_defs','cl_defs'): shutil.copy2(ROOT/'src/defs'/f'{name}.qc',qc/f'{name}.qc')
-    for p in (ROOT/'src/shared/sh_nativeui.qc',ROOT/'tools/fixtures/p595imgui.qc'): shutil.copy2(p,qc/p.name)
+    for p in (ROOT/'src/shared/sh_nativeui.qc',ROOT/'tools/fixtures/p598imgui.qc'): shutil.copy2(p,qc/p.name)
     for name,defs in (('menu','m_defs'),('csprogs','cl_defs')):
-        (qc/'progs.src').write_text(f'{rig/name}.dat\n{defs}.qc\nsh_nativeui.qc\np595imgui.qc\n')
+        (qc/'progs.src').write_text(f'{rig/name}.dat\n{defs}.qc\nsh_nativeui.qc\np598imgui.qc\n')
         with (rig/f'compile-{name}.log').open('w') as out:
             rc = subprocess.run([str(ROOT/'src/fteqcc64.exe'),'-srcfile','progs.src'],cwd=qc,stdout=out,stderr=subprocess.STDOUT).returncode
         if rc or 'Done. 0 warnings' not in (rig/f'compile-{name}.log').read_text(errors='replace'):
