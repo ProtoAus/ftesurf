@@ -162,8 +162,8 @@ def compose(edits):
     return result
 
 
-def instrument(engine):
-    isolated(engine)
+def prepare(engine):
+    """Validate and compose every output in memory, without writing files."""
     edits, src, calls = plan(engine)
     prepared = compose(edits)
     for old, _ in calls:
@@ -190,6 +190,12 @@ def instrument(engine):
     prepared[targets[1]] = (ROOT / 'tools/offramp_origin_native.inc').read_text()
     prepared[targets[2]] = (ROOT / 'tools/offramp_origin_selftest.inc').read_text()
     prepared[common / 'com_bih.c'] += '\n#include "offramp_origin_selftest.inc"\n'
+    return prepared
+
+
+def instrument(engine):
+    isolated(engine)
+    prepared = prepare(engine)
     for p, text in prepared.items():
         p.write_text(text)
     print('Private return-bound origin seams installed:', engine)

@@ -199,8 +199,9 @@ row carries the native move tick and input/command/packet ordinals. They retain 
 BIH kind (0 unknown / 1 brush / 2 triangle / 3 patch), runtime leaf/root-leaf,
 embedded depth, contents and model resource name. Internal pointers never
 serialize. **Runtime BIH leaf ordinals are not Source brush-lump indices.** The
-current snapshot identifies collider provenance; it does not export the
+origin-only snapshot identifies collider provenance; it does not export the
 winning brush's halfspaces or authenticate the earlier offline candidates.
+The optional whole-brush snapshot seam below exports the loaded halfspaces.
 World triangles remain unresolved, not guessed to be displacement faces;
 embedded models, inline/dynamic entities, solids and recovery/portal paths do
 not become supported exit geometry merely because a model is identified.
@@ -222,3 +223,71 @@ compilation provenance also remains external. Structural/provenance PASS
 leaves winning-leaf geometry, cached/recovery/portal movement-path coverage,
 physical exit, classification, live stages/rates and camera acceptance
 **NOT_TESTED**. Do not switch marks to every raw contact loss on this evidence.
+
+## Copied winning brush halfspaces (diagnostic only)
+
+`offramp_shape_smoke.py` installs all three measurement layers together in a
+**new** clean isolated engine worktree. It validates original/generated seams
+and all include collisions before writes. Original buffer/origin installers
+remain independent; never layer installations onto an instrumented tree.
+
+```
+python -B tools/offramp_shape_smoke.py --instrument-native <new-isolated-fte-worktree>
+# Build the private sv-rel server as above. NEVER deploy it.
+python -B tools/offramp_buffer_smoke.py --control-server <clean-server> --server <shape-server> --recording <private-exact-state.rec> --progs <unmodified-progs-dir> --output-dir <new-private-dir> --packets 10000
+python -B tools/offramp_shape.py --arms <new-private-dir>/arms.json --output <private-shape.json>
+python -B tools/test_offramp_shape.py --arms <new-private-dir>/arms.json
+```
+
+At the actual winning brush leaf, fixed-copy the complete **loaded** side
+planes and model-local bounds, including loader-generated bevels absent from
+the BSP plane lumps. Later probes, source-plane mutations or losing nested/
+physent candidates cannot replace these copied values. Capture instance
+origin/angles/raw scale, capsule status and direct-BIH callback ownership at
+the winning return/physent comparison. A wrapper returning an inner BIH result
+is NOT direct callback ownership. No source geometry is reopened at dump.
+No extra trace, allocation, I/O or cvar lookup enters the mover capture path.
+
+There is a fixed **64-side** whole-shape cap. Over-cap brushes retain bounds/
+source side count and explicit ABSTAIN, never a partial plane list disguised as
+complete. Unknown/triangle/patch leaves clear old brush values. Fourteen
+setup-only native controls check copies, exact plane membership, mutation/
+probe independence, nested/physent winners, cap/invalid-source/triangle cases,
+pose/capsule metadata and hybrid callback abstention. These are not surf
+edge/jump/seam, capsule-movement or displacement-loader trajectory fixtures.
+
+Repeated plane I/O can timeout despite correct physics. Protocol v2 deduplicates
+**already copied** immutable payloads AFTER capture using a fixed bounded table.
+It emits BEGIN (version/side cap/table cap), SHAPE (payload ID/status/count/
+bounds), PLANE (payload ID/side ordinal/normal/distance), CONTACT (contact/tick
+ordinal, payload ID, winning leaf/root/depth/contents and instance metadata),
+then END (contact/complete/capped/payload counts). A payload is defined once
+before first use. Payload IDs are neither collider IDs nor Source lump indices;
+even distinct colliders may share identical copied payloads. The dictionary
+points only into private captured entries, never live brush storage.
+
+The reader verifies complete finite unit planes, bounds/counts, ordinals,
+unknown/nonbrush clearing, native setup checks and quiet clean/OFF plus repeat
+parity. A static runtime leaf cannot change geometry mid-capture. Static world
+AABB diagnostics require direct untransformed BIH, ordinary world model,
+noncapsule hull and exact accepted normal/distance membership in the copied
+planes. No collision/matching tolerance is enlarged. Identical duplicate side
+planes are membership matches, not a guessed unique Source face. Raw scale 0
+is recorded/allowed for the inspected unscaled world convention: BIH's native
+call takes no scale argument; convex fallback remains unstamped/unsupported.
+Embedded/entity geometry, transformed/scaled instances, capsules, recovery/
+portal normals and non-direct callbacks remain unsupported for these queries.
+
+Valid unsupported rows remain ABSTAIN. With no supported contact the overall
+snapshot gate is ABSTAIN, not structural REFUSE or a false positive PASS. The
+actual immutable-input acceptance control must still prove a supported copy
+ACTED. Unmatched accepted planes retain their payload but abstain.
+
+Loss reports include exact copied payloads and raw side-gap diagnostics at the
+accepted sweep point and tick ends, expanded using the **previous contact's
+recorded AABB**. The loss tick's actual hull/posture is NOT captured here;
+bounds are retained separately, and numeric halfspace queries are NOT a full
+engine collision/support oracle. No gap threshold, exit time interpolation,
+debounce or new marker policy is introduced. Winning movement geometry,
+physical exits, rate/camera/LOD/hold/render/classification acceptance stay
+**NOT_TESTED** pending authored mover trajectories and same-input live stages.

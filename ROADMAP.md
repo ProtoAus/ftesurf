@@ -402,10 +402,14 @@ candidates without per-tick logging. It reports raw gaps, not authenticated
 winning geometry or physical exits; no-match geometry abstains. A third private
 seam now snapshots return-bound winning BIH provenance with nested/physent,
 triangle, equal-fraction, overwrite and unsupported-path controls. Runtime leaf
-identity is not a Source brush-lump ID or winning-halfspace proof; cached/
-recovery/portal movement paths and authored edge/jump/seam departures remain
-unverified. This does not close the classifier, FPS/tick-rate, held/render, LOD
-or human acceptance above.
+identity is not a Source brush-lump ID. An optional whole-brush snapshot now
+copies actual loaded side planes/bounds at the win, with exact plane membership,
+finite/cap/pose/callback abstention and immutable payload repeat controls. Side
+gap diagnostics use the previous contact hull, not a newly captured loss-tick
+hull; they are not a collision/support oracle. Winning mover geometry, cached/
+recovery/portal paths and authored edge/jump/seam departures remain unverified.
+This does not close the classifier, FPS/tick-rate, held/render, LOD or human
+acceptance above.
 
 ### 12.5 Momentum demo labels: coverage and honest provenance
 

@@ -1661,6 +1661,20 @@ publicly WITH its fix, not before it.
   jump/seam motion, cached/recovery/portal movement paths or classification.
   Use a fresh clean engine worktree and retain private raw output. No product
   patch/ABI/recorder/hold/mark/Build/deployment changes belong to this tool.
+- **Copied brush geometry (tooling only).** Offline BSP plane lumps omit loaded
+  bevels; a known winning runtime leaf is not a lump brush index. The optional
+  `offramp_shape_smoke.py` seam copies all loaded side planes/bounds AT THE WIN,
+  with a fixed 64-side whole-shape cap/ABSTAIN and instance/capsule/direct-BIH
+  metadata. Never reopen source geometry at dump. Repeating every plane for
+  every contact can exhaust the harness timeout: deduplicate only immutable
+  captured payloads AFTER capture, not live geometry. Payload IDs are not
+  collider identities. Exact accepted-plane membership and unchanged numeric
+  tick/contact+origin captures validate copied static data, not a physical exit.
+  Extended/hybrid callbacks, pose/scale/capsules, embedded/entity geometry,
+  recovery/portals and over-cap shapes abstain. Halfspace gaps at a loss use the
+  PREVIOUS contact hull; the new tick's posture/hull is not recorded here.
+  Bounds are retained, but side-gap math is not the full collision/support
+  oracle. Keep authored edge/jump/seam and same-input mark/render gates open.
 
 ## Rewind (Patch 477)
 
