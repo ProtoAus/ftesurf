@@ -167,3 +167,58 @@ candidate's nonface boundary, so placing a leave on every raw loss is not yet
 justified. Full render/held-stage FPS/tick-rate, geometry-winning identity,
 jump/edge/seam discrimination, camera/LOD and P560 resume-clock acceptance stay
 **NOT_TESTED** by this control.
+
+## Return-bound winning-trace provenance
+
+`offramp_origin_smoke.py` composes the buffer plan with a private BIH witness.
+Use another **new**, clean isolated engine worktree; do not layer it over either
+installed seam. All original-text anchors and include collisions are checked
+before writes. Disjoint edits are composed from original spans, not against
+successively changed source. The shared buffer installer still works alone.
+
+```
+python -B tools/offramp_origin_smoke.py --instrument-native <new-isolated-fte-worktree>
+# Build its private sv-rel server using the procedure above.
+python -B tools/offramp_buffer_smoke.py --control-server <clean-server> --server <origin-server> --recording <private-exact-state.rec> --progs <unmodified-progs-dir> --output-dir <new-private-dir> --packets 10000
+python -B tools/offramp_origin.py --arms <new-private-dir>/arms.json --output <private-origin.json>
+python -B tools/test_offramp_origin.py --arms <new-private-dir>/arms.json
+```
+
+The witness lives in each BIH trace. A leaf's actual accepted clip updates it,
+including the legacy equal-fraction replacement (Source's brush rule keeps the
+first equal-fraction winner). Nested-model and physent comparisons carry ONLY
+the winner. A result is stamped with its exact output trace address; each native
+call clears the stamp, so nonparticipating paths cannot promote an old result.
+TryPlayerMove saves provenance immediately before validation/ground probes can
+replace the shared result. A cached firsttrace carries its own copy. Recovery
+has an explicit route because its synthesized accepted normal is not the
+normal of the underlying collider. Portal paths conservatively abstain.
+
+Origin rows bind to buffer contact/tick ordinals and physent index; the tick
+row carries the native move tick and input/command/packet ordinals. They retain route (0 fresh / 1 cached / 2 recovery / 3 portal),
+BIH kind (0 unknown / 1 brush / 2 triangle / 3 patch), runtime leaf/root-leaf,
+embedded depth, contents and model resource name. Internal pointers never
+serialize. **Runtime BIH leaf ordinals are not Source brush-lump indices.** The
+current snapshot identifies collider provenance; it does not export the
+winning brush's halfspaces or authenticate the earlier offline candidates.
+World triangles remain unresolved, not guessed to be displacement faces;
+embedded models, inline/dynamic entities, solids and recovery/portal paths do
+not become supported exit geometry merely because a model is identified.
+
+Before replay rows, sixteen authored setup-only native controls exercise the
+real BIH/physent merge: leaf competition, both equal-fraction rules, triangle
+identity, nested winner/loser, unstamped results, no-hit/solid abstention,
+output-address mismatch, a later probe, physent winner/loser and conservative
+portal abstention. They restore pmove/probe/clip-mode state. They are NOT
+partial/full/convex edge, jump, seam or portal-traversal motion fixtures. No
+extra trace or I/O is added to the mover capture path; output is buffered until
+capture ends. Only the single-threaded exact replay is supported.
+
+The same clean/OFF/ON/repeat gates still apply, with exact repeated origin rows
+and no origin output in clean/OFF. The runner's game source ref identifies the
+tooling/config tree, not necessarily an externally supplied progs compilation;
+retain the separate progs build provenance and hashes. The installed loader's
+compilation provenance also remains external. Structural/provenance PASS
+leaves winning-leaf geometry, cached/recovery/portal movement-path coverage,
+physical exit, classification, live stages/rates and camera acceptance
+**NOT_TESTED**. Do not switch marks to every raw contact loss on this evidence.

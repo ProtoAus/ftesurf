@@ -1646,6 +1646,21 @@ publicly WITH its fix, not before it.
   not authenticate the winning brush. Short raw losses can lack a nonface
   boundary crossing; no-match/unsupported geometry abstains. This still does
   not decide the early label, live render/tick-rate cadence, or P560 clock.
+- **Winning trace provenance (tooling only).** A later validation/ground trace
+  can overwrite BIH probe globals. `offramp_origin_smoke.py` keeps the witness
+  local to each BIH trace, stamps the exact output address and carries only
+  the winning nested-model/physent result into the accepted ramp buffer row.
+  Fraction decrease alone is insufficient: legacy brush clips replace an
+  equal-fraction winner while Source clips retain the first; actual accepted
+  leaf updates must drive the witness. Cached firsttrace needs its own copy;
+  recovery's synthesized normal is not the underlying collider's plane.
+  Runtime leaf ordinals are not VBSP brush-lump IDs. Missing/nonparticipating
+  traces, portals and solids abstain; triangles stay unresolved, not guessed
+  displacement identities. Sixteen setup-only native collider controls and
+  four-arm repeat/parity validate provenance, NOT winning halfspaces, edge/
+  jump/seam motion, cached/recovery/portal movement paths or classification.
+  Use a fresh clean engine worktree and retain private raw output. No product
+  patch/ABI/recorder/hold/mark/Build/deployment changes belong to this tool.
 
 ## Rewind (Patch 477)
 

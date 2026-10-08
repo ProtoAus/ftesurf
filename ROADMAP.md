@@ -399,8 +399,13 @@ teleport. Contact labels stay aligned at several tick/frame rates and LODs.
 live stage traces and a separate buffered immutable-input replay control. The
 latter compares clean/OFF/ON/repeated native results and offline static brush
 candidates without per-tick logging. It reports raw gaps, not authenticated
-winning geometry or physical exits; no-match geometry abstains. This does not
-close the classifier, FPS/tick-rate, held/render, LOD or human acceptance above.
+winning geometry or physical exits; no-match geometry abstains. A third private
+seam now snapshots return-bound winning BIH provenance with nested/physent,
+triangle, equal-fraction, overwrite and unsupported-path controls. Runtime leaf
+identity is not a Source brush-lump ID or winning-halfspace proof; cached/
+recovery/portal movement paths and authored edge/jump/seam departures remain
+unverified. This does not close the classifier, FPS/tick-rate, held/render, LOD
+or human acceptance above.
 
 ### 12.5 Momentum demo labels: coverage and honest provenance
 

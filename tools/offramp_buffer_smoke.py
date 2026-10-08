@@ -22,12 +22,11 @@ from offramp_buffer import compare
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def instrument(engine):
-    isolated(engine)
+def seams(engine):
+    """Return the original-text edit plan; do not mutate a checkout."""
     source = engine / 'engine/common/pm_source.c'
     server = engine / 'engine/server/sv_ccmds.c'
-    # Validate all seams before touching any tracked file.
-    edits = [
+    return [
         (source, 'void PM_AddTouchedEnt (int num);',
          'void PM_AddTouchedEnt (int num);\n#include "offramp_buffer_native.inc"'),
         (source, '\t\tVectorMA (fixed_origin, time_left, pmove.velocity, end);',
@@ -48,6 +47,12 @@ def instrument(engine):
         (server, '\t\t}\n\n\t\tif (nrestart && verify)',
          '\t\t\tPMSrc_OfframpEnd();\n\t\t}\n\n\t\tif (nrestart && verify)'),
     ]
+
+
+def instrument(engine):
+    isolated(engine)
+    edits = seams(engine)
+    # Validate all seams before touching any tracked file.
     for path, old, _ in edits:
         if path.read_text().count(old) != 1:
             raise RuntimeError(f'Expected one seam: {path}: {old[:75]!r}')
@@ -55,7 +60,7 @@ def instrument(engine):
     if target.exists():
         raise RuntimeError('Refusing to overwrite an existing native buffer include')
     shutil.copyfile(ROOT / 'tools/offramp_buffer_native.inc', target)
-    for path in (source, server):
+    for path in dict.fromkeys(p for p, _, _ in edits):
         text = path.read_text()
         for p, old, new in edits:
             if p == path:
