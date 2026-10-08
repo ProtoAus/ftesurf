@@ -109,7 +109,7 @@ class CollectorAvailability(unittest.TestCase):
         self.assertNotIn('private', note)
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
 
-    def test_row_failure_is_counted_and_later_rows_act(self):
+    def test_pair_failure_is_counted_and_later_rows_act(self):
         def failing(a, b, **kw):
             if a == '1':
                 self.compared.append((a, b))
@@ -120,19 +120,22 @@ class CollectorAvailability(unittest.TestCase):
         self.assertIn(('1', '2'), self.compared)
         self.assertGreater(stored, 0)
         self.assertGreater(notable, 0)
-        self.assertIn('1 row failed', note)
+        self.assertIn('2 pair failed', note)
+        self.assertNotIn('row failed', note)
         self.assertNotIn('synthetic failure', note)
         self.assertEqual(self.conn.execute("SELECT MIN(compared) FROM sims WHERE verdict='compared'").fetchone()[0], 80)
 
-    def test_all_row_failures_still_report_when_nothing_stored(self):
+    def test_all_pair_failures_still_report_when_nothing_stored(self):
         def failing(a, b, **kw):
             self.compared.append((a, b))
             raise RuntimeError('synthetic failure')
         self.reader.compare_paths.side_effect = failing
         stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
-        self.assertEqual(len(self.compared), 3)
+        # Every admitted failure counts, including later reverse retries; no
+        # unique-pair/exactly-once coverage inference is made from this count.
+        self.assertEqual(len(self.compared), 6)
         self.assertEqual((stored, notable), (0,0))
-        self.assertIn('3 row failed', note)
+        self.assertIn('6 pair failed', note)
 
     def test_normal_control_has_no_unavailable_note(self):
         stored, notable, note = simcheck.similarity_step(self.conn, self.surfd)
@@ -178,7 +181,7 @@ class PairBudget(CollectorAvailability):
         self.reader.compare_paths.side_effect = failing
         stored, notable, note = self.step(1)
         self.assertEqual((stored, notable, len(self.compared)), (0,0,1))
-        self.assertIn('1 row failed', note)
+        self.assertIn('1 pair failed', note)
         self.assertIn('pair limit reached', note)
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
 

@@ -636,18 +636,30 @@ projects only safe fixed labels, not source filenames or exception details.
 
 A source stays pending while any eligible native same-map/track/leg pair is
 unobserved. Stored pairs (in either historical orientation, including skips) are
-excluded before the oldest-first 200-new-peer window. A partial sample therefore
-remains eligible after a row/pair/time stop; this is not fair retry scheduling,
-source-byte binding, remeasurement of old skips or a complete-coverage guarantee.
+excluded before the 200-new-peer window. Admission rotates above the last admitted
+ID, then wraps ascending: one durable source cursor and independent per-source
+peer cursors in additive internal `sim_cursor` state. Failed admissions advance;
+stored/rechecked/unadmitted work does not. Reads never create/advance cursors; old
+databases start at zero. This is attempt progress, never a judgment or a coverage
+counter; historical observations are not rewritten and cursors are not public.
+
+A comparison/result-building exception affects only its admitted pair: no fake
+skip/zero is stored, prior/later successful observations still flush, and a fixed
+pass-local `pair failed` count reports availability without exception prose. Row-
+level selection/checkpoint/storage failures remain row failures; storage still
+rolls back the observation transaction. Comparisons run outside write transactions;
+source checkpoints precede work and one peer checkpoint follows each source call,
+including faults. Rotating finite fixtures does not prove full fleet fairness,
+source-byte binding, remeasurement of old skips, exactly-once or complete coverage.
 
 The read-only summary aggregates one snapshot into at most 13 fixed category/
 identity result rows, instead of materializing all observations in Python. Counts,
 maxima, notable attention labels and missing/empty/error distinctions are unchanged.
 SQLite still scans the sample; this does not bound total database work or memory.
 
-Run the focused pending, peers, summary, ingestion, codes, time, collection,
-budget-CLI and observation controls alongside the deployment suite; the shipper
-does not discover them implicitly. Byte/move/time exhaustion is an operational abstention, never a
+Run the focused source-cursor, peer-cursor, pair-fault, pending, peers, summary,
+ingestion, codes, time, collection, budget-CLI and observation controls alongside
+the deployment suite; the shipper does not discover them implicitly. Byte/move/time exhaustion is an operational abstention, never a
 cheat finding, coverage measurement or ranking/badge gate.
 
 ### Evidence behind stage rows (schema 6)

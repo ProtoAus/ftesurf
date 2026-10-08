@@ -64,7 +64,7 @@ class ElapsedBudget(CollectorAvailability):
         self.reader.compare_paths.side_effect=failing
         stored,notable,note=self.step()
         self.assertEqual((stored,notable,len(self.compared)),(0,0,1))
-        self.assertIn('1 row failed',note);self.assertIn('time limit reached',note)
+        self.assertIn('1 pair failed',note);self.assertIn('time limit reached',note)
 
     def test_zero_elapsed_budget_disables_before_support_import(self):
         with mock.patch.object(simcheck,'_recsim',return_value=(self.reader,'')) as loader:

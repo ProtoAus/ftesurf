@@ -243,6 +243,37 @@ def _row_path(surfd, row):
     return path, ""
 
 
+def _pair_result(rs, surfd, row, peer, pa, now):
+    """Build one observation; exceptions leave this admitted pair unmeasured."""
+    pb, why = _row_path(surfd, peer)
+    if pb is None:
+        verdict, reason, d = "skip", "peer unresolved: %s" % why, None
+        skip_code = "peer_unresolved"
+    else:
+        verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
+                                          max_moves=MAX_SOURCE_MOVES)
+        d = reason if verdict == "compared" else None
+        skip_code = "" if verdict == "compared" else SKIP_CODES.get(verdict, "unknown")
+        if verdict != "compared":
+            verdict, reason = "skip", reason
+    match = cover = 0.0
+    prefix = offset = compared = ma = mb = 0
+    ta = tb = 0.0
+    who_a = who_b = ""
+    same = 0
+    if d:
+        match, cover = d["match"], d["cover"]
+        prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
+        ma, mb = d["moves_a"], d["moves_b"]
+        ta, tb = d["tickrate_a"], d["tickrate_b"]
+        who_a, who_b = d["who_a"], d["who_b"]
+        same = 1 if d["same_who"] else 0
+    return ((row["id"], peer["id"], row["map"], row["track"], row["leg"],
+             row["tier"], row["player"], peer["player"], who_a, who_b, same,
+             verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
+             compared, ma, mb, ta, tb, now), d is not None, match)
+
+
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
                 diagnostics=None, budget=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
@@ -308,33 +339,15 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
                 if not budget.take():
                     break
             last_attempt = pr["id"]
-            pb, w = _row_path(surfd, pr)
-            if pb is None:
-                verdict, reason, d = "skip", "peer unresolved: %s" % w, None
-                skip_code = "peer_unresolved"
-            else:
-                verdict, reason = rs.compare_paths(pa, pb, max_bytes=MAX_SOURCE_BYTES,
-                                                   max_moves=MAX_SOURCE_MOVES)
-                d = reason if verdict == "compared" else None
-                skip_code = "" if verdict == "compared" else SKIP_CODES.get(verdict, "unknown")
-                if verdict != "compared":
-                    verdict, reason = "skip", reason
-            match = cover = 0.0
-            prefix = offset = compared = ma = mb = 0
-            ta = tb = 0.0
-            who_a = who_b = ""
-            same = 0
-            if d:
-                match, cover = d["match"], d["cover"]
-                prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
-                ma, mb = d["moves_a"], d["moves_b"]
-                ta, tb = d["tickrate_a"], d["tickrate_b"]
-                who_a, who_b = d["who_a"], d["who_b"]
-                same = 1 if d["same_who"] else 0
-            found.append(((a_id, pr["id"], row["map"], row["track"], row["leg"],
-                           row["tier"], row["player"], pr["player"], who_a, who_b, same,
-                           verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
-                           compared, ma, mb, ta, tb, t0), d is not None, match))
+            try:
+                found.append(_pair_result(rs, surfd, row, pr, pa, t0))
+            except Exception as exc:
+                # One faulty pair must not discard prior measurements or prevent
+                # later admitted peers. Never invent a skip/zero observation for it.
+                if diagnostics is not None:
+                    diagnostics["pair_failed"] = diagnostics.get("pair_failed", 0) + 1
+                print("simcheck: pair %s/%s failed: %r" % (a_id, pr["id"], exc),
+                      file=sys.stderr)
     finally:
         # One short checkpoint per source call, also on a raised comparison.
         # No artificial observation for failures; unadmitted/stored peers cost none.
@@ -411,7 +424,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     except Exception as exc:
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0
-    diagnostics = {"source_unavailable": 0}
+    diagnostics = {"source_unavailable": 0, "pair_failed": 0}
     for row in rows:
         if not budget.available():
             break
@@ -439,6 +452,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         unavailable.append("%d source unavailable" % diagnostics["source_unavailable"])
     if failed:
         unavailable.append("%d row failed" % failed)
+    if diagnostics["pair_failed"]:
+        unavailable.append("%d pair failed" % diagnostics["pair_failed"])
     if unavailable:
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
     if budget.remaining <= 0:
