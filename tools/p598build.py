@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ('imgui.cpp', 'imgui_draw.cpp', 'imgui_tables.cpp', 'imgui_widgets.cpp')
 
 
-def build(fte: Path, out: Path, cc: Path, host=False, index32=False):
+def build(fte: Path, out: Path, cc: Path, host=False, index32=False, host_source=None):
     source = fte/'plugins/ui_imgui'
     checks = json.loads((source/'vendor/SHA256.json').read_text())
     for name, expected in checks.items():
@@ -18,7 +18,7 @@ def build(fte: Path, out: Path, cc: Path, host=False, index32=False):
             raise RuntimeError('Pinned vendor hash differs: '+name)
     env = os.environ.copy()
     env['PATH'] = str(cc.parent)+os.pathsep+env['PATH']
-    flags = ['-std=c++17', '-DFTEPLUGIN', '-Wall', '-Wextra', '-Werror']
+    flags = ['-std=c++17', '-DFTEPLUGIN', '-DIMGUI_USE_WCHAR32', '-Wall', '-Wextra', '-Werror']
     flags += ['-I'+str(fte/p) for p in ('plugins', 'engine/client', 'engine/common', 'engine/server', 'engine/gl')]
     flags += ['-I'+str(source)]
     if index32:
@@ -26,7 +26,7 @@ def build(fte: Path, out: Path, cc: Path, host=False, index32=False):
     out.mkdir(parents=True, exist_ok=True)
     objects, entries = [], []
     sources = [source/'backend.cpp']
-    sources += [ROOT/'tools/fixtures/p598imgui_host.cpp' if host else source/'ui_imgui.cpp']
+    sources += [(host_source or ROOT/'tools/fixtures/p598imgui_host.cpp') if host else source/'ui_imgui.cpp']
     sources += [source/'vendor'/p for p in VENDOR]
     with (out/'compile.log').open('w') as log:
         for p in sources:
@@ -54,5 +54,9 @@ if __name__ == '__main__':
     p.add_argument('--cc', type=Path, default=Path('C:/msys64/ucrt64/bin/g++.exe'))
     p.add_argument('--host', action='store_true')
     p.add_argument('--index32', action='store_true')
+    p.add_argument('--host-source', type=Path, help='Alternate real-source host control fixture (requires --host)')
     a = p.parse_args()
-    print(build(a.fte.resolve(), a.out.resolve(), a.cc.resolve(), a.host, a.index32))
+    if a.host_source and not a.host:
+        p.error('--host-source requires --host')
+    print(build(a.fte.resolve(), a.out.resolve(), a.cc.resolve(), a.host, a.index32,
+                a.host_source.resolve() if a.host_source else None))

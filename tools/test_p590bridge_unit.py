@@ -139,12 +139,12 @@ class Grader(unittest.TestCase):
         self.assertTrue(subject.grade(self.rig))
 
 
-def host_controls(fte: Path, cc: Path) -> int:
+def host_controls(fte: Path, cc: Path, fixture=None) -> int:
     with tempfile.TemporaryDirectory(prefix='p590-host-') as directory:
         root = Path(directory)
         header = (fte/'plugins/plugin.h').read_text()
         start = header.index('//ExportInterface: one trusted synchronous service;')
-        end = header.index('#define pluguiservice_name "NativeUI/1"', start)
+        end = header.index('#define pluguiinputservice_name "NativeUIInput/1"', start)
         end = header.index('\n', end)
         (root/'ui_abi.h').write_text(header[start:end]+'\n')
         #These implementation includes have no host state; stubs live in fixture TU.
@@ -154,7 +154,7 @@ def host_controls(fte: Path, cc: Path) -> int:
         exe = root/('host.exe' if os.name == 'nt' else 'host')
         command = [str(cc), '-std=c99', '-Wall', '-Wextra', '-Werror', '-O2',
                    '-I'+str(root), '-I'+str(fte/'engine/client'),
-                   str(subject.ROOT/'tools/fixtures/p590bridge_host.c'), '-o', str(exe)]
+                   str(fixture or subject.ROOT/'tools/fixtures/p590bridge_host.c'), '-o', str(exe)]
         result = subprocess.run(command, env=env, capture_output=True, text=True)
         if result.returncode or result.stdout or result.stderr:
             print(result.stdout+result.stderr)

@@ -3842,6 +3842,25 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P600 native input queues must be bounded across frames, not just per Draw:**
+  ImGui trickles alternating edges across NewFrame. Resetting a per-frame event
+  counter does not bound the residual queue. Limit BOTH host accepted events
+  (128 per host frame, reopening cannot bypass) and actual ImGui queued events
+  (128 across frames); reset must still act at the limit, clear queued/held
+  keys/mouse/text and abandon active widgets/actions. The acting backlog control
+  proves residual edges, repeated refill refusal and reset reclamation. Host
+  failure closes once; polling is draw-bracket/success/VM/generation gated and
+  capped at 16. No native command/bind/scancode interception. Compact keys and
+  Unicode scalars are separate; build ALL upstream/adapter units with
+  IMGUI_USE_WCHAR32 so supplementary text survives as exact UTF-8. Default atlas
+  glyph coverage is NOT non-Latin font acceptance. Static interactive gallery
+  owners 103/204 are not a dynamic model protocol: owner generation cannot stand
+  in for snapshot/row generations. Synthetic QC events do not establish physical
+  device routing, cursor ownership or movement-minus/modifier/real-panel safety.
+  Exact scope, controls and remaining gates: tools/p600input.md. Probe namespace
+  p599/P599 is retained solely for preregistered rig continuity; concurrent
+  verifier P599 remains intact. No production panel/progs/Pi/Build/default change.
+
 - **P598 minimal ImGui is a diagnostic prerequisite, not migrated UI:** optional
   pinned 1.91.9b plugin exports only NativeUI/1 service + shutdown/status; separate
   MQC/CSQC contexts/atlases, no implicit ini/log files, no Tick/Menu/Sbar drawing.

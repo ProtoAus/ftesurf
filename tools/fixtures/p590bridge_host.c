@@ -12,10 +12,14 @@
 typedef int qboolean;
 typedef float vec4_t[4];
 typedef struct pubprogfuncs_s { int id; } pubprogfuncs_t;
-struct globalvars_s { float value[2]; };
+struct globalvars_s { float value[15]; };
 #define G_FLOAT(ofs) (pr_globals->value[ofs])
+#define G_VECTOR(ofs) (pr_globals->value+(ofs))
 #define OFS_RETURN 0
-#define OFS_PARM0 1
+#define OFS_PARM0 3
+#define OFS_PARM1 6
+#define OFS_PARM2 9
+#define OFS_PARM3 12
 #define countof(a) (sizeof(a)/sizeof((a)[0]))
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
@@ -56,7 +60,7 @@ static struct globalvars_s globals;
 static pluguiframe_t captured;
 #define CHECK(x) do { checks++; if (!(x)) { errors++; fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); } } while(0)
 static float Call(void (*fn)(pubprogfuncs_t *,struct globalvars_s *),pubprogfuncs_t *vm,float arg)
-{ globals.value[0]=-999; globals.value[1]=arg; fn(vm,&globals); return globals.value[0]; }
+{ globals.value[0]=-999; globals.value[OFS_PARM0]=arg; fn(vm,&globals); return globals.value[0]; }
 static qboolean QDECL Open(const pluguiowner_t *o)
 {
 	opens++;
@@ -98,6 +102,7 @@ int main(void)
 	float invalidclip[3] = {NAN,INFINITY,3.4e38f};
 	unsigned int j;
 	currentplug=&plugins[0];
+	CHECK(!Plug_NativeUI_InputRegister(NULL,0));
 	CHECK(!Plug_NativeUI_Register(NULL,sizeof(service)));
 	CHECK(!Plug_NativeUI_Register(&service,sizeof(service)-1));
 	CHECK(!Plug_NativeUI_Register(&service,sizeof(service)+1));

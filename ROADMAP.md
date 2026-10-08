@@ -602,8 +602,9 @@ or existing split timer works.
 
 **Status: Stage A opt-in HUD-editor sample implemented, isolated/live-tested
 and deployed in Patch 566. Patch 570 adds the matched font baseline and corrects
-native physical bakes across virtual-screen scaling. Native ImGui (B onwards)
-is NOT implemented. Apple-like aesthetic/cost acceptance remains pending.**
+native physical bakes across virtual-screen scaling. P598 supplies the optional
+native drawing backend; P600 adds bounded diagnostic input/actions. Native real
+panels (B onwards) are NOT migrated. Aesthetic/cost acceptance remains pending.**
 Lex wants the current SUI improved, plus native ImGui for rich scoreboards,
 graphs, HUD editing and other interactive overlays. Keep the lightweight QC
 HUD and the existing interactive panels as fallbacks. This does NOT replace
@@ -996,9 +997,14 @@ native-only delivery are complete, separately recorded in tools/p598imgui.md;
 actual installed paths act and repeated protected-data/config/progs hashes stay
 unchanged. Provisional native P595 was reassigned without rewriting the
 concurrently published surfd P595-597 or historical tag.
-Next design the bounded widget/model/input transport and an isolated interactive
-panel falsifier before migrating a real panel. No non-GL/device-input, modern
-appearance, font/DPI policy or cost acceptance is implied. Preserve legacy fallback
+P600 adds exact-size optional NativeUIInput/1 scalar events and generation-tagged
+actions without changing NativeUI/1. Interactive diagnostic owners perform real
+button/checkbox/text edits; both VM contexts, reset/queue/text bounds, UTF-8 scalar
+preservation, fallback and lifecycle controls pass. Synthetic QC event dispatch
+proves transport, NOT physical device routing or real-panel cursor/minus safety.
+Next define bounded widget/model snapshots and stable row/action identities
+before migrating a real panel. No non-GL/device-input, modern appearance,
+font/DPI policy or cost acceptance is implied. Preserve covering legacy fallback
 and physical-native fonts. Measure/
 approve performance budgets before switching the scoreboard default. The
 larger menu/editor migration is conditional on those gates, not already

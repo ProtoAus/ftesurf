@@ -9,6 +9,8 @@ using namespace FteImGui;
 static unsigned checks, faults, calls, creates, destroys;
 static bool failcreate, failsubmit;
 static pluguiservice_t service;
+static pluguiinputservice_t inputservice;
+static bool inputavailable = true;
 static std::set<plugmeshtex_t> live;
 static std::vector<plugmeshvertex_t> ink;
 static std::vector<plugmeshcommand_t> commands;
@@ -54,6 +56,12 @@ static void *QDECL GetInterface(const char *name, size_t size)
 }
 static qboolean QDECL ExportInterface(const char *name, void *p, size_t size)
 {
+	if (!std::strcmp(name,pluguiinputservice_name))
+	{
+		Check(size == sizeof(inputservice),"exact additive input service");
+		if (!inputavailable) return qfalse;
+		std::memcpy(&inputservice,p,sizeof(inputservice)); return qtrue;
+	}
 	Check(!std::strcmp(name,pluguiservice_name) && size == sizeof(service),"exact exported service");
 	std::memcpy(&service,p,sizeof(service)); return qtrue;
 }
