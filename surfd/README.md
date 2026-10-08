@@ -647,6 +647,15 @@ dry-run retain their previous waits. Python cannot retrieve/restore an arbitrary
 native busy handler. This is not a pass-wide timeout, write-instruction/RSS cap,
 retry policy or coverage guarantee; a contended pass may store nothing.
 
+Actual SQLite BUSY/LOCKED primary result codes (including extended variants)
+produce a fixed database-busy/coverage-not-measured note and stop further source
+admission, retaining prior committed observations. No message parsing or retries;
+no contention becomes a fake skip or measured zero. Summary reports a distinct
+busy/unavailable state with all counters unknown and sample-not-measured wording.
+Other query/storage failures keep their original behavior. Python without SQLite
+error-code attributes retains generic failure/error reporting, never guesses from
+exception prose. This is availability telemetry, not a finding about the player.
+
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
 is scored. Support lacking either bounded-input or source-capture capability is

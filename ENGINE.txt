@@ -25,7 +25,7 @@ commit   60dfdc102b7ba39bae81815ed7b4315133f0733d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-570
-patch    575
+patch    576
 # Patch 570: modern text uses separate pixels=1 physical font ladders;
 # legacy virtual bakes remain intact. See tools/font_quality.md for controls.
 qcbuild  89

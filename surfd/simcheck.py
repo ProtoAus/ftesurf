@@ -157,6 +157,16 @@ def lock_wait(conn, milliseconds):
         _read(conn, "PRAGMA busy_timeout=%d" % previous)
 
 
+def _database_busy(exc):
+    """Primary SQLite result codes only; old Python errors remain unclassified."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    return (isinstance(exc, sqlite3.Error) and type(code) is int
+            and (code & 255) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED))
+
+
+_BUSY_NOTE = "sims unavailable: database busy (coverage not measured)"
+
+
 class ReadLimit(Exception):
     """No complete result is available within the selected SQL read allowance."""
 
@@ -560,8 +570,11 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     except ReadLimit:
         return 0, 0, "sims SQL read limit reached (coverage not measured)"
     except Exception as exc:
+        if _database_busy(exc):
+            return 0, 0, _BUSY_NOTE
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0
+    database_busy = False
     diagnostics = {"source_unavailable": 0, "pair_failed": 0}
     for row in rows:
         if not budget.available():
@@ -576,6 +589,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         except ReadLimit:
             break
         except Exception as exc:
+            if _database_busy(exc):
+                database_busy = True
+                break  # no retry or further admission on a contended connection
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
             failed += 1
@@ -599,6 +615,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         unavailable.append("%d pair failed" % diagnostics["pair_failed"])
     if unavailable:
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
+    if database_busy:
+        note = (note + " " if note else "") + _BUSY_NOTE
     if read_budget is not None and read_budget.exhausted:
         note = (note + " " if note else "") + "sims SQL read limit reached (coverage not measured)"
     if budget.remaining <= 0:
@@ -650,8 +668,8 @@ def summary(conn, read_budget=None):
             " FROM sims GROUP BY bucket, category", (*known, NOTABLE), read_budget)
     except ReadLimit:
         return dict.fromkeys(out, None) | {"state": "limited"}
-    except Exception:
-        return dict.fromkeys(out, None) | {"state": "error"}
+    except Exception as exc:
+        return dict.fromkeys(out, None) | {"state": "busy" if _database_busy(exc) else "error"}
     if rows:
         out["state"] = "available"
     for r in rows:
@@ -671,6 +689,8 @@ def summary(conn, read_budget=None):
 def summary_line(conn, read_budget=None):
     """One read-only line, distinguishing no sample from an unavailable sample."""
     s = summary(conn, read_budget=read_budget)
+    if s["state"] == "busy":
+        return "sims: unavailable (database busy; sample not measured)"
     if s["state"] == "limited":
         return "sims: unavailable (SQL read limit; sample not measured)"
     if s["state"] == "missing":
