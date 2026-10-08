@@ -555,6 +555,291 @@ Moving rewind feel, label placement and visual identity also need Lex's manual
 acceptance. Do not mark the entire list done because the first visual effect
 or existing split timer works.
 
+## 13. Modern SUI + native Dear ImGui — Lex, 8 Oct 2026
+
+**Status: proposed implementation and test plan; no UI code built or deployed.**
+Lex wants the current SUI improved, plus native ImGui for rich scoreboards,
+graphs, HUD editing and other interactive overlays. Keep the lightweight QC
+HUD and the existing interactive panels as fallbacks. This does NOT replace
+item 12's cursor, rewind, contact or comparison contracts.
+
+### 13.1 Findings and scope
+
+Inspected local source on 8 Oct: FTESurf `87b2411f7240`, engine
+`f05d29419875`, and the separate wrlines reference `6a60d6b205bf`.
+The FTESurf tree is shared/dirty, including graph/font work; these refs are
+inspection anchors, NOT claims that every observed file belongs to those
+commits or that any binary runs that source. Remote main has advanced and has
+item 12; choose a freshly inspected clean implementation base before coding.
+
+- `src/sui_sys.qc`: immediate-mode-like action registration, frames, clipping,
+  scrolling, keyboard navigation, sliders and text fields already exist.
+  `sui_fill`, `sui_subpic`, `sui_border_box` and `sui_text` are useful extension
+  sites. Preserve existing calls and interaction IDs.
+- `src/shared/sh_font.qc`: shared TrueType faces, physical/virtual pixel
+  conversion and a baked size ladder already exist. Improve presentation;
+  do not rediscover fonts or undo the physical-pixel text-size fix.
+- `src/client/cl_hudedit.qc`: `HE_Tip` supplies descriptions, `HE_Chip`
+  latches hover text and `HE_DrawTip` draws local tooltips; generalize that
+  experience. `HUD_EditClose` explicitly queues
+  `cfg_save` when dirty: `cfg_save_auto 0` alone does NOT protect test settings.
+- `src/client/cl_scores.qc`: held `+showscores` is a passive peek; MOUSE2 or
+  `scores open` pins an interactive board. `-showscores` closes it. Existing
+  loading, source tabs, line selection, watch and room actions remain owners
+  of the data/actions, regardless of which frontend draws them.
+- `src/client/cl_linegraph.qc`: `LineGraph_Prepare/Plot/Draw` already provide
+  incremental preparation, nine source slots, 384 display bins, breaks,
+  hover values and recorded/assumed gravity labels. Keep these semantics;
+  a new renderer is not a second replay reader or energy calculation.
+- `src/client/cl_hud.qc`: `UI_CursorClaim/Release` own the mouse through a
+  shared bitmask. Panel visibility is separate from cursor ownership.
+  `cl_main.qc:CL_InputChain`, `CSQC_InputEvent` and `CSQC_UpdateView` define
+  input priority and overlay order; native UI must participate there.
+- Engine `plugins/plugin.h` and `engine/client/cl_plugin.inc`: the published
+  `plug2dfuncs_t` has images/quads/text/lines and menu focus, but not the full
+  indexed-triangle/scissor submission API needed by an ImGui renderer.
+  Image upload exists, but its alpha convention also needs verification.
+- Engine `engine/common/plugin.c`: `MenuEvent`, `UpdateVideo`, shutdown and
+  Sbar hooks exist. `ExportInterface` accepts named, known interfaces, NOT
+  arbitrary new ones without engine work. In `pr_csqc.c:PF_R_RenderScene`,
+  `Plug_SBar` is conditional on engine-HUD drawing; FTESurf sets
+  `VF_DRAWENGINESBAR` to 0. A standalone `SbarOverlay` is not the integration.
+- wrlines uses an ImGui context, restrained rounding, font-size selection,
+  tables and custom graph drawing. Adapt style/presentation as useful; do
+  NOT bring over its injector, DX11 Present hook or Momentum memory access.
+
+**Non-goals for the first deliveries.** No movement, recording, evidence,
+rewind mathematics, board/download protocol or stored run-format changes.
+No wholesale HUD/main-menu rewrite, fullscreen blur, docking, separate OS
+windows, web UI or arbitrary native function/pointer calls from QC.
+
+### 13.2 Architecture and compatibility
+
+**Preferred prototype: a native C++ UI plugin plus a small engine host.**
+Keep Dear ImGui and its FTE backend together, with a versioned C ABI at the
+engine boundary. If plugin registration/lifecycle makes this substantially
+less maintainable, decide explicitly on a compiled-in optional module at
+Gate B; do not create two production backends.
+
+1. Add a separately versioned 2D mesh interface: texture handles, vertices,
+   colours, UVs, indices, clipping and bounded batch submission. Do not grow
+   the existing exact-size `2D` ABI and silently break older plugins. Use
+   FTE's renderer abstraction, not raw DX11/GL hooks. Flush pending QC 2D
+   work at the boundary and restore clipping, blend, colour and other state.
+   Handle physical framebuffer vs virtual UI coordinates, clip origins,
+   premultiplied vs straight alpha, index limits and vertex offsets.
+2. Add a known native-UI service registration and narrowly scoped, named QC
+   builtins in the engine's CSQC/MQC builtin tables. QC remains the owner of
+   panel state, cvars, data selection and game actions. Native code handles
+   widgets/layout and drawing; the engine host handles validation/lifecycle.
+   Do not use direct VM-pointer access or invent a gameplay command channel.
+3. Start with capability/status, begin/end panel, text, button, checkbox,
+   tooltip and bounded table-row primitives. Design the real calls after a
+   widget/bridge benchmark, not a speculative wrapper for every ImGui API.
+   Copy transient strings; validate buffer lengths, counts and handles.
+   Graphs use bounded batches/cached data, not one QC call per raw point.
+4. Check availability with nested `checkbuiltin`/capability tests: QC logical
+   operators do not short-circuit. Missing module, old engine, unsupported
+   renderer, failed atlas or incompatible ABI selects the existing panel.
+   Backend preference and actual active backend are separate status fields.
+5. Preserve `UIC_SCORES`, `UIC_HUDEDIT` and `UIC_LINEGRAPH` for their panels,
+   regardless of frontend. Do not allocate a second claim for each renderer.
+   Preserve the passive-board/active-board distinction. ImGui capture flags
+   inform routing within the active panel; they are NOT authority to take
+   the cursor or to intercept the entire input chain.
+6. Route engine mouse/key/Unicode events through the existing input owners.
+   Opening-frame capture, repeats, press/release ownership, bound minus
+   commands and focus loss need explicit handling; a previous-frame
+   `WantCaptureKeyboard` flag alone cannot settle them. Keep chat, replay,
+   rewind, console/menu and editor priorities; do not feed/consume one click
+   twice through SUI and ImGui. Release stale native input on close/reset.
+7. Use stable row/element IDs, not display names or sorted row positions.
+   Resolve queued actions against the same identity/generation after drawing;
+   a refresh must not redirect a click to another run. Convert engine colour
+   escapes deliberately, treat strings as text rather than format strings,
+   and handle UTF-8, duplicate names, long names and missing glyphs.
+8. One native frame per active frontend/VM, not one per panel. Start with CSQC;
+   add MQC after its menu/input lifecycle passes. Keep contexts/state distinct
+   across VMs. Closed native panels skip NewFrame, widget building and mesh
+   submission. Bound caches/allocator growth; keep optional diagnostics quiet.
+9. In the prototype disable ImGui's implicit ini/log writes. Later window
+   persistence must use an explicit game-filesystem location, never a bare
+   `imgui.ini` in CWD or the owner's cfg. HUD layout stays in existing cvars.
+10. Pin a tested Dear ImGui version with its MIT notice. Keep vendor sources
+    separate from the adapter. Update engine/plugin build targets together,
+    including the explicit `NATIVE_PLUGINS` list, both Windows installs and
+    eventual Linux packaging/ship-set checks. A dedicated server must not
+    acquire a client UI/C++ runtime dependency. No runtime downloads of code.
+
+**Frontend selection.** Proposed per-panel preferences (names not yet API):
+`ui_scores_backend`, `ui_graph_backend`, `ui_hudedit_backend`, with legacy as
+prototype default and native opt-in. Apply switches at a closed-panel boundary
+or perform an orderly close/reopen; never leave two frontends owning input.
+Native failure must release state and reopen the usable legacy equivalent,
+not just leave the player with a basic HUD and no interactive controls.
+
+### 13.3 Independent SUI improvements
+
+These should help even installations that never load ImGui.
+
+- Shared colour/spacing/radius/focus tokens, scaled consistently. Candidate
+  location: a new shared UI module ordered after fonts in both `.src` files.
+  Pass the palette to native UI at setup/change, not by parsing every frame.
+- Add rounded panel/button helpers using a small preloaded nine-slice asset
+  with antialiased corners. Apply frame transforms once, preserve clipping,
+  clamp corners for tiny controls and retain rectangular hit targets.
+  Existing `sui_fill` remains unchanged. Asset licensing and release ship-set
+  coverage are part of this delivery; no per-frame image-size queries.
+- General tooltip registration by stable interaction ID: short hover delay,
+  wrapped text, screen-edge clamping and explicit layering above scroll
+  clips. Reset on ID change, drag, focus loss and panel close; a tooltip is
+  informational, not another input/cursor owner. Generalize the existing
+  `HE_Chip`/`HE_DrawTip` mechanism while retaining `HE_Tip`'s descriptions.
+- Reusable button/tab/checkbox styles with hover, pressed, disabled and
+  keyboard-focus states. Focus cannot rely on colour alone. Keep existing
+  callbacks and keyboard navigation; style is not a binding-system rewrite.
+- First apply to a small existing settings/HUD-editor area. Retain classic
+  style during testing. Later add subtle shadows, icons and popup helpers
+  only after measured visual/input tests. No mandatory animation/blur.
+
+### 13.4 Delivery sequence and gates
+
+**A — baseline and SUI sample (small/medium).** Capture the existing board,
+HUD editor and graph at fixed settings; record source/binary hashes, fonts,
+resolution, renderer and input behaviour. Implement tokens, rounded helpers
+and a shared tooltip on one real panel, with a classic/modern comparison.
+Gate: visible improvement, identical action IDs/results, no new warnings,
+correct clipping/scaling and no idle tooltip work when not shown.
+
+**B — native plumbing and isolated gallery (large; highest-risk step).**
+Bring up one opt-in CSQC test window with text, rounded controls, nested
+scrolling, a tooltip and a bounded table. Explicitly submit through the QC
+bridge; do not use the disabled Sbar route. Exercise image upload, mixed
+QC/native drawing, large index batches and lifecycle before porting panels.
+Gate: measured counters prove native execution, backend absence proves the
+legacy path, input is returned correctly, and graphics state is restored.
+Decide plugin vs compiled-in module here, using actual build/adapter evidence.
+
+**C — scoreboard first (medium after B).** Preserve the existing read/refresh,
+source tabs, paging, download/watch/line/room actions and empty/loading/error
+states. Build ImGui tables with visible-row processing, tooltips and stable
+row identity. Keep hold-to-peek and MOUSE2/pinned interaction exactly usable.
+Do not resurrect item 12's removed mixed-list Compare chip.
+Gate: row/content/action parity with legacy; scrolling and refreshing cannot
+select another run; release/focus controls pass and legacy fallback works.
+
+**D — graph presentation (medium after B; can follow C independently).**
+Use the same retained samples, incremental preparation, bins and source IDs.
+Add cleaner axes/legend, hover readout and display selection; defer graph
+zoom/pan until the existing behaviour passes. Keep the basic passive graph
+on QC initially so an always-visible HUD graph does not activate ImGui.
+Gate: numerical/identity parity, real breaks stay unjoined, missing metadata
+stays honest, and nine-source graph work stays bounded during loading.
+
+**E — HUD editor inspector (medium/large after C/D).** First port only the
+options inspector: controls, descriptions, grouping and tooltips. Keep the
+current HUD preview/rectangles, drag/anchor machinery and cvars. Never let a
+window move and a HUD element drag act on the same press. Retain reset/save
+semantics; undo/presets are separate follow-ups, not necessary for this gate.
+Gate: same cvar outcomes and placement, correct scale/hit tests, safe close,
+no accidental cfg/ini writes in the isolated rig, and legacy editor fallback.
+
+**F — optional wider adoption.** Consider MQC main-menu/map/board screens,
+more replay/practice windows and an explicitly owned line-inspection bubble
+only after the earlier gates. Item 12 owns that bubble's point selection and
+provenance; ImGui only supplies presentation. Docking and multi-viewport stay
+out unless Lex separately asks and their input/performance cost is justified.
+
+### 13.5 Pre-registered tests and falsifiers
+
+Every arm needs an acting control. A blank screenshot, no log line or no
+crash does not prove either frontend ran. Add planned diagnostic handles
+for active backend, cursor mask, focused ID, action ID/generation, native
+frame/submission counts, geometry counts, allocator growth and UI CPU time.
+Register harness controls as cvars/commands; do not rely on QC-global `set`.
+
+| Test | Control/subject and failure condition |
+|---|---|
+| Capability/fallback | Legacy control visibly opens the real panel. Native subject reports an active context/submission and draws it. Missing/disabled module, old engine and unsupported renderer still open the legacy panel, with no unresolved builtin call. |
+| SUI styling | Same real control/action in classic and modern styles. Rounded pixels and delayed tooltip must be present; both actions/cvar results must agree. Nested frames, tiny controls and scroll clips must not offset hitboxes. |
+| Tooltip geometry | Hover centre and all four screen edges, move IDs, drag and close. Wrapped/clamped tip appears after the declared delay and disappears on each reset, without consuming clicks. |
+| Board modes | Hold showscores while walking/mouselooking: passive board, no cursor claim. MOUSE2 pins: native table responds. Release showscores, Escape, console/menu and focus changes must follow existing contracts and leave no orphan claim. |
+| Key ownership | Open/close while movement/jump/modifier/mouse keys are held; repeat, rebind, press both directions, lose focus, return and release. Chat/replay/rewind controls act in control arms. No lost minus-command, stuck movement, leaked UI action or revived held scroll. |
+| Cursor arbitration | Claim two legitimate owners, release each in both orders. Closing native UI must not steal the other owner's cursor; final release returns mouselook. |
+| Table identity | Empty/loading/error/one-row/large-list fixtures, duplicate/long/UTF-8 names, refresh and sort while selecting. Display IDs and resulting replay/line/room actions must match the clicked identity, not its new index. Work scales with visible rows. |
+| Scale/fonts | Compare at 1280x720, 1920x1080 and 2560x1440, UI/HUD scale 0.75/1/2 and changed virtual-screen scaling. Text and controls fit, clicks align and corner radii stay sensible. Missing font/rounded asset has a usable fallback; glyph atlas rebuilds do not occur every frame. |
+| Drawing state | Draw known QC colour/clip markers before and after native UI, with overlaps and off-screen clips. Compare legacy/control pixels; no tint, alpha halo, scissor leak, changed HUD or incorrect layer. Exercise 16/32-bit index limits/vertex offsets where supported. |
+| Graph parity | Same fixture/source selection in both renderers. Check values at first/middle/last/bin boundaries, gaps, teleports, absent velocity/gravity and assumed gravity. Same numeric values/labels; no line crossing a real break or fabricated sample. |
+| Editor safety | Isolated cfg fixture: edit position, anchor, size and one option, reset and close/save. Both frontends produce the expected cvars/file changes ONLY in the rig. Dragging a widget cannot move the HUD or vice versa. |
+| Lifecycle | Repeated open/close, map change, disconnect/reconnect, CSQC reload, menu restart, resize, fullscreen/alt-tab and renderer restart. Restore fonts/textures correctly, clear stale input/actions, and bound memory after warm-up. Test module absence separately from an initialized-module failure. |
+| Closed cost | Same gameplay/HUD control with native disabled vs loaded but all native panels closed. Counters prove zero native frames/submissions and no recurring native allocator growth; repeated timing arms must exclude a repeatable regression beyond the agreed bound. |
+| Open cost | Legacy and native show the same rows/graph workload. Prove scrolling/hover/input acted. Report UI CPU, geometry/draw counts, memory and real frame distributions, not only headline FPS. |
+
+**Performance policy, not measured claims.** Pre-register exact fixtures,
+row counts (candidate 1,000-row table) and graph workload (all nine available
+slots), rendering/settings and run duration before implementation testing.
+Candidate budgets for Lex to approve: closed-path median active-frame delta
+<= 0.05 ms and p99 delta <= 0.10 ms; warmed open-panel UI CPU median <= 0.50 ms
+and p99 <= 1.00 ms. Also report whole-frame impact and GPU time if trustworthy
+timestamps exist; do not infer GPU cost from CPU or FPS. Record first-open
+atlas/upload/loading spikes separately instead of hiding them in warm-up.
+If A/A control drift exceeds the closed bound, the result is inconclusive,
+not a pass. Investigate or agree a different budget BEFORE rerunning.
+
+Alternate A/B order over at least three warmed runs per arm with a fixed
+camera/workload, foreground client, resolution, fonts, vsync/pacing settings
+and explicit `cl_idlefps 0`, `cl_maxfps 100`. Record actual effective cvars.
+Use UI-specific instrumentation plus `profile_csqc`/`r_speeds_dump` for CPU
+attribution. FTE's refresh-only headline omits the listen server; include
+server cost and use sampled frame times for percentiles. The cap can conceal
+headroom loss: active UI/host work must be measured separately from pacing.
+Any additional high-FPS matrix is explicitly specified, not an inherited cap.
+
+### 13.6 Harness, build and delivery safety
+
+- Use an isolated clean worktree and test install/home/config for runtime
+  arms; owner content/settings and another session's processes are not test
+  fixtures. Account for explicit `cfg_save` as well as automatic saving.
+  Fresh log/screenshot names; start configs with `cfg_save_auto 0` and set
+  every measured cvar. Launch with WorkingDirectory `C:\FTESurf`.
+- A local socket/dedicated server is required for real client-prediction/input
+  arms. Use `C:\FTEQuake\fteqwsv64.exe` on a designated test port, not the
+  game exe's dedicated mode or the sweep port. After CSQC rebuild seed with
+  `python tools/seed_csprogs.py` and restart the test server. For main-menu
+  arms issue `menu_restart`; for in-game HUD arms close the builtin menu.
+- Build from `src/` with pwsh 7. QC:
+  `pwsh -NoProfile -Command "./build.ps1 -Jobs 8 -NoDeploy"`.
+  Engine/interface work adds `-Engine -Full`
+  and uses isolated `-FteRoot`/install paths; do not repoint/copy over shared
+  engine objects. Regenerate clangd's database after build-flag changes and
+  inspect LSP diagnostics, but the compiler/runtime remain the actual gates.
+- Reuse relevant existing falsifiers: `tools/p498keys.py` (whole-chain input),
+  `tools/p440font.py` (font/scale pixels), `tools/p545graph.py` (graph fixtures)
+  and the SUI/editor/cursor fixtures. Inspect each driver's fixture/process
+  operations before running it. Add a bounded UI driver with explicit reached,
+  acted and graded stages; capture screenshots as well as status/counters.
+- Keep .src ordering load-bearing. Regenerate builtin definitions by the
+  normal engine/QC procedure; do not hand-edit generated `src/defs/*.qc`.
+  Evidence/reader changes are out of scope; if scope expands, stop and apply
+  their separate design/contracts/corpus gates first.
+- Lex accepts the actual appearance, legibility, tooltip timing and mouse
+  feel. Numeric traces and screenshots cannot certify those preferences.
+  Record remaining human-only acceptance in `lextest.md` at delivery, not as
+  completed work in this proposal.
+- Each implemented milestone gets its own verified product patch; fetch both
+  repos and claim max+1 only then. No patch/build bump for this plan. Verify
+  and commit only owned changes, prove the commit in a clean tree, then do
+  the normal approved dual deployment with destination hashes/provenance.
+  Fleet/release deployment needs its full operations/ship-set gates; a native
+  client UI does not imply that server progs or the Pi need changes.
+
+**Next decision.** Start A and B as separate opt-in prototypes, compare the
+results on Lex's laptop, and approve the visual style/performance budgets
+before switching the scoreboard default. The larger menu/editor migration
+is conditional on these gates, not already authorized for release.
+
+---
+
 ## Order
 
 - **A -- client, no decisions needed:** 2 (thickness), 10 (sort), 1 without
