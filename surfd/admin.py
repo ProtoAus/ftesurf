@@ -144,6 +144,7 @@ NOTE_MAX = 200
 QUERY_MAX = 64
 VERDICTS_SHOWN = 200
 SIM_PAIRS_SHOWN = 25
+SIM_SQL_STEPS = 1000000
 JOURNAL_METRICS_MAX = 8192
 COUNTS_METRICS_MAX = 512
 RID_TEXT = re.compile(r"^[0-9]{1,18}$")
@@ -485,27 +486,33 @@ def similarity_reason(verdict, raw, code=''):
     return 'unjudgeable (legacy detail withheld)'
 
 
-def similarity_for(conn, rid):
-    """Bounded historical observations only; never import/execute a comparison."""
+def similarity_for(conn, rid, *, own_read_budget=False, max_sql_steps=None):
+    """Historical observations; callback authority is explicit for borrowed handles."""
     exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
-    out = {'available': bool(exists), 'pairs': [], 'limit': SIM_PAIRS_SHOWN,
-           'more': False, 'source_binding': False}
+    out = {'available': bool(exists), 'state': 'ok' if exists else 'missing',
+           'pairs': [], 'limit': SIM_PAIRS_SHOWN, 'more': False, 'source_binding': False}
     if not exists:
         return out
-    from simcheck import source_snapshot, SOURCE_SNAPSHOT_MAX
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
-    # TEXT substr stops at embedded NUL; retain the entire bounded raw prefix.
-    capture = "coalesce(substr(CAST(source_capture AS BLOB),1,%d),X'')" % (SOURCE_SNAPSHOT_MAX+1) if 'source_capture' in columns else "''"
-    code = "substr(skip_code,1,40)" if 'skip_code' in columns else "''"
-    rows = conn.execute(
-        "SELECT id, a_id, b_id, verdict, substr(reason,1,300) AS reason, at,"
-        + code + " AS skip_code," + capture + " AS source_capture,"
-        " match, cover, prefix, offset, compared, moves_a, moves_b, tick_a, tick_b,"
-        " CASE WHEN who_a != '' AND who_b != '' THEN"
-        "   CASE same_who WHEN 1 THEN 'same' WHEN 0 THEN 'cross' ELSE 'unknown' END"
-        " ELSE 'unknown' END AS identity"
-        " FROM sims WHERE a_id=? OR b_id=? ORDER BY at DESC,id DESC LIMIT ?",
-        (rid, rid, SIM_PAIRS_SHOWN+1)).fetchall()
+    from simcheck import source_snapshot, SOURCE_SNAPSHOT_MAX, ReadBudget, ReadLimit, _read
+    budget = (ReadBudget(conn, SIM_SQL_STEPS if max_sql_steps is None else max_sql_steps)
+              if own_read_budget else None)
+    try:
+        columns = {r[1] for r in _read(conn, "PRAGMA table_info(sims)", read_budget=budget)}
+        # TEXT substr stops at embedded NUL; retain the entire bounded raw prefix.
+        capture = "coalesce(substr(CAST(source_capture AS BLOB),1,%d),X'')" % (SOURCE_SNAPSHOT_MAX+1) if 'source_capture' in columns else "''"
+        code = "substr(skip_code,1,40)" if 'skip_code' in columns else "''"
+        rows = _read(conn,
+            "SELECT id, a_id, b_id, verdict, substr(reason,1,300) AS reason, at,"
+            + code + " AS skip_code," + capture + " AS source_capture,"
+            " match, cover, prefix, offset, compared, moves_a, moves_b, tick_a, tick_b,"
+            " CASE WHEN who_a != '' AND who_b != '' THEN"
+            "   CASE same_who WHEN 1 THEN 'same' WHEN 0 THEN 'cross' ELSE 'unknown' END"
+            " ELSE 'unknown' END AS identity"
+            " FROM sims WHERE a_id=? OR b_id=? ORDER BY at DESC,id DESC LIMIT ?",
+            (rid, rid, SIM_PAIRS_SHOWN+1), read_budget=budget)
+    except ReadLimit:
+        out.update(available=False, state='read_limit')
+        return out
     out['more'] = len(rows) > SIM_PAIRS_SHOWN
     for r in rows[:SIM_PAIRS_SHOWN]:
         item = {k: r[k] for k in ('id','a_id','b_id','verdict','at','identity')}
@@ -1680,7 +1687,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 rcpt = receipt_for(conn, rid, row["runid"] if "runid" in row.keys()
                                    else "")
                 key = key_for(conn, rid)
-                similarity = similarity_for(conn, rid)
+                # This request owns its freshly opened connection and callback slot.
+                similarity = similarity_for(conn, rid, own_read_budget=True)
             except sqlite3.Error as exc:
                 log.exception("admin run %d db error: %s", rid, exc)
                 return jsonify({"ok": False, "error": "storage error"}), 500

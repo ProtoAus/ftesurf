@@ -420,7 +420,9 @@ function renderSimilarity(value) {
   const box = document.getElementById("similarity");
   box.replaceChildren();
   if (!value || !value.available) {
-    box.append(el("p", "muted", "stored similarity unavailable (table not present)"));
+    box.append(el("p", "muted", value && value.state === "read_limit"
+      ? "stored similarity unavailable (SQL work limit; no partial observations shown)"
+      : "stored similarity unavailable (table not present)"));
     return;
   }
   if (!value.pairs.length) {
