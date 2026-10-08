@@ -763,7 +763,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   existing recording with parseable matching ticks on an owned verifier port;
   that is compatibility, not detector calibration. Immutable run/sidecar corpus:
   baseline/subject269 rec,91 view,170 faulted files/173 faults, unchanged.
-  Verification and deployment limits: `tools/p602finish.md`.
+  Deployed exact a4a75be at2026-10-08T20:27:40Z to the Pi: only sweep and two
+  controls, destination hashes exact; actual installed finish9/counts7/sources15
+  pass. Canonical lock, mode600 completed DB/source rollback retained;137
+  protected files/history/scalar board counts/master+worker/health12 unchanged.
+  No reload or Windows game swap. Provenance/limits: `tools/p602finish.md`.
 
 - **Angle explanations are observations, not strings to reconstruct later**
   (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the

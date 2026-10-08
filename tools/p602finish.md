@@ -70,13 +70,31 @@ setup error is retained, not presented as an executed test or product defect.
 
 ## Publication and deployment
 
-Publication/deployment provenance is recorded after the exact commit is inspected.
-Selected runtime ship set: `surfd/sweep.py`, `surfd/test_verifier_finish.py`, and
-its updated `surfd/test_verifier_counts.py` control. A standalone sweep source
-swap needs no gunicorn reload. Destination hashes and actual installed-module
-controls, protected source/history/process identity and health are deployment
-gates. Windows game installs, lobbies, engine/progs/config and player data are
-outside this surfd-only ship set.
+Product `a4a75beb14bf7a131c96084b9810c190c7ab690c` and changelog-only engine
+`b0811131cc29cdc025a2f278a009228eccdda4f8` were inspected and pushed by exact SHA
+to their origins/main. The isolated source stage's456 public-file hashes match
+the clean product commit; no shared-tree source or staged work shipped.
+
+**Deployed 2026-10-08T20:27:40Z to `/srv/nvme/surfd` on the Pi**, under the existing
+canonical sweep lock using the prior bounded selected-file deployment procedure:
+
+| Installed file | SHA256 |
+| --- | --- |
+| sweep.py | fbccc5726e1dd9a2593357e2645225fb4ec8db3d542e96ebaf2cf90900264bd0 |
+| test_verifier_finish.py | 9294807efa9d78754f735b1f28e19d1bbed910b55972207932ddd9a182f60c06 |
+| test_verifier_counts.py | fef178f9b5013c675eea92cac753d2ff0d356d27c4e3e9f753449d037f58a8c1 |
+
+Predecessor sweep hash and absent new test paths were checked under lock; atomic
+source swaps keep `rollback-p602-20261008-202727`, including a completed owner-only
+mode600 SQLite backup. Destination bytes match the commit. Actual installed test
+paths and helpers pass finish9/counts7/sources15 controls in temporary homes;
+there is no live synthetic row. All137 protected source/support/game files,
+historical verdict/review/receipt digests, scalar run/replay counts, original web
+master/worker identity and health `{ok:true,lobbies:12}` are unchanged.
+
+No worker reload is needed for the standalone sweeper. Windows game installs,
+lobbies, engine/progs/config and player data were not swapped. Primary dirty
+game/engine trees and shared staged indexes remain outside the deployment.
 
 ## Remaining limits
 
