@@ -291,3 +291,61 @@ engine collision/support oracle. No gap threshold, exit time interpolation,
 debounce or new marker policy is introduced. Winning movement geometry,
 physical exits, rate/camera/LOD/hold/render/classification acceptance stay
 **NOT_TESTED** pending authored mover trajectories and same-input live stages.
+
+## Actual contact and tick-end hull/posture (diagnostic only)
+
+`offramp_hull_smoke.py` composes buffer/origin/shape plus a fourth optional layer
+in a **new clean isolated** native worktree. All original/generated anchors and
+include collisions are checked before writes. Do not layer it onto an already
+instrumented tree; do not ship the resulting server.
+
+```
+python -B tools/offramp_hull_smoke.py --instrument-native <new-isolated-fte-worktree>
+# Build the private sv-rel server as above. NEVER deploy it.
+python -B tools/offramp_buffer_smoke.py --control-server <same-ref-clean-server> --server <hull-server> --recording <private-exact-state.rec> --progs <unmodified-progs-dir> --output-dir <new-private-dir> --packets 4418 --timeout 180
+python -B tools/offramp_hull.py --arms <new-private-dir>/arms.json --output <private-hull.json>
+python -B tools/test_offramp_hull.py --arms <new-private-dir>/arms.json
+```
+
+Capture the ACTUAL `pmove.player_mins/maxs`, capsule and movement type, ducked/
+ducking flags, duck timer, old buttons and **RAW** `movevars.standheight`/
+`duckheight` at accepted contacts and at each completed native tick. Raw cvar
+heights may use fallback values; they are NOT observed hull dimensions. Do not
+infer a small hull merely from a transition flag. Snapshots are fixed copies,
+not pointers. No new trace, allocation, I/O or cvar lookup is added to capture.
+
+Seven setup-only native controls invoke the real `PMSrc_ApplyHull`, checking
+nondefault standing/crouched dimensions, transition posture, capsule/movement
+metadata, immutable copies, distinct contact/tick snapshots and raw-height
+fallbacks. Restore the full pmove, movevars and stand-bound globals before
+replay. These are hull application/copy checks, **NOT** motion trajectories,
+capsule collision tests or full posture-transition-policy acceptance.
+
+Independent protocol v1: CHECK ordinal/name/pass rows, SELFTEST total/failures,
+BEGIN version/tick-contact capacity, contiguous TICK rows, contiguous CONTACT
+rows, then END tick/contact counts. TICK begins with native tick ordinal;
+CONTACT begins with accepted-contact ordinal/native tick ordinal. Both then
+carry fourteen fields: mins XYZ, maxs XYZ, capsule, pm_type, ducked, ducking,
+ducktime, oldbuttons, raw standheight, raw duckheight. Exact envelope, widths,
+finite fields, nondegenerate bounds, legal integer ranges, ordinals and footer
+are mandatory. Contact bounds/capsule must match accepted trace metadata.
+Clean/OFF are quiet; ON/repeat have equal canonical snapshots and replay
+summaries against an independently clean binary at the same inspected ref.
+
+This reader replaces the shape reader's previous-contact-hull-only numeric view
+with EACH POINT's actual captured hull: accepted sweep, previous tick end and
+raw-loss tick end. A legally changed later hull must change that point's side
+gaps. Capsule or non-normal movement samples abstain from AABB diagnostics;
+other shape/origin unsupported categories remain abstentions. No gap threshold,
+exit interpolation, collider identity, classifier or marker policy is inferred.
+
+The initial real replay control observes only standing tick hulls. It validates
+capture/parity, NOT live crouch or posture-change movement coverage. Extra dump
+rows exceeded the prior 120-second harness allowance on the original segment;
+180 seconds permitted completion. Output occurs after capture stops, but this
+is not a performance claim. Retain every timed-out output directory.
+
+Authored partial/full/convex edge, seam/overlap, jump, transformed/embedded/entity,
+triangle/displacement, posture-change, capsule and cached/recovery/portal motion
+trajectories, full collision/support oracle, physical-exit/classification,
+clock, render/camera/rate/LOD/hold/mark acceptance remain **NOT_TESTED**.
