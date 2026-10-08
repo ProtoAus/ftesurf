@@ -720,7 +720,8 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   This is a before/after fence, NOT immutable engine input or detection of a
   hostile host's intermediate change-and-restore. ERROR does not revoke existing
   PASS/owner approvals; no historical reread, schema, detector or review-policy
-  change. Sweeper-only deployment needs no web reload or game/progs swap.
+  change. Sweeper-only deployment needs no web reload or game/progs swap. Exact
+  controls, full boundary and installed-source/hash gates: `tools/p599sources.md`.
 
 - **Journal diagnostics are frame measurements, not new detector policy**
   (Patches 512–514). `identity_mouse_frames` counts nonzero counts only on a
@@ -4800,7 +4801,10 @@ Only admin.py/template shipped; no partially installed test-helper chain.
 A live online backup can restart forever under heartbeat churn. The first
 private attempt timed out BEFORE swaps and its partial file was retained/marked
 incomplete; exact owned process only was stopped. Stable source read transaction
-plus explicit90second progress deadline completes; RELEASE it before fresh
+plus explicit90second progress deadline completes. `BEGIN` alone is deferred:
+P599's first attempt still timed out before swaps; actually read sqlite_master
+(or another safe table) before backup to establish the source snapshot. Its
+corrected completed backup preceded the selected source copy. RELEASE it before fresh
 preservation checks or the snapshot could conceal later writes. Keep mode600
 completed backups and .prev files. This Pi kernel lacks task/<pid>/children;
 portable parentage must prove worker replacement. Wrong probe-cookie name and
