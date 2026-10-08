@@ -25,7 +25,8 @@ commit   710087cb7e30e45f17b75aba2a354fedf9a9a0f4
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-581
-patch    587
+patch    588
+# Patch 588: similarity dry-run diagnostics no longer initialize collector schema.
 # Patch 587: owner-budgeted historical similarity panel; explicit SQL-limit abstention.
 # Patch 586: bounded SQL projections for authenticated stored metric snapshots.
 # Patch 581: plugin memory images return drawable shader references; invalid

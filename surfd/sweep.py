@@ -1038,14 +1038,19 @@ def _main_connected(conn, args):
               time.localtime(through[0])) if through else "never"))
         try:
             import simcheck
-            simcheck.ensure_schema(conn)
+            # Only this diagnostic subsection is non-initializing; main's general
+            # schema/import setup is unchanged. Missing history is not empty history.
             if args.sims_sql_steps:
                 try:
                     reads = simcheck.ReadBudget(conn, args.sims_sql_steps)
-                    cap = 10 ** 6
-                    n = simcheck.pending_count(conn, cap, read_budget=reads)
-                    print("sims pending: %s%d run(s) with unobserved eligible pairs"
-                          % ("at least " if n == cap else "", n))
+                    exists = reads.rows("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'")
+                    if exists:
+                        cap = 10 ** 6
+                        n = simcheck.pending_count(conn, cap, read_budget=reads)
+                        print("sims pending: %s%d run(s) with unobserved eligible pairs"
+                              % ("at least " if n == cap else "", n))
+                    else:
+                        print("sims pending: unavailable (table missing)")
                 except simcheck.ReadLimit:
                     print("sims pending: unavailable (SQL read limit; coverage not measured)")
             else:
