@@ -252,8 +252,35 @@ class Tests(unittest.TestCase):
             bad = miss[:]; bad[index] = value
             with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
 
+    def test_triangle_native_query_never_substitutes_joint_aabb(self):
+        brushes, tick, row = entity_query(14); row[13] = '0'
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('NO_TRIANGLE_ORACLE')):
+            self.assertEqual(oracle_validate(row, tick, brushes)[10], .015625)
+        row[2:4], row[10:19] = ['untriangled', '0'], ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        self.assertEqual(oracle_validate(row, tick, brushes)[10:14], [1, 0, 0, -1])
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('REMOTE_QUERY_ACTED')):
+            with self.assertRaisesRegex(AssertionError, 'REMOTE_QUERY_ACTED'): oracle_validate(row, tick, brushes)
+
+    def test_triangle_query_family_winner_hull_plane_and_body_solids_refuse(self):
+        brushes, tick, row = entity_query(14); row[13] = '0'
+        for index, value in ((0, '12'), (2, 'unembedded'), (3, '0'), (4, '999'), (11, '1'), (12, '1'), (13, '1'), (14, '0'), (18, '0')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+        row[2] = 'stationary'; row[7:10] = row[4:7]
+        with self.assertRaisesRegex(AssertionError, 'ended embedded'): oracle_validate(row, tick, brushes)
+
+    def test_removed_triangle_queries_act_joint_remote_only(self):
+        brushes, tick, row = entity_query(15)
+        row[10:19] = ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        self.assertEqual(oracle_validate(row, tick, brushes)[10:14], [1, 0, 0, -1])
+        for index, value in ((13, '0'), (14, '.8'), (18, '1')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('REMOVED_ACTED')):
+            with self.assertRaisesRegex(AssertionError, 'REMOVED_ACTED'): oracle_validate(row, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
-        self.assertEqual(len(PARAMS), 42)
+        self.assertEqual(len(PARAMS), 43)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
         for c in range(len(LABELS)):
             brushes, seed = authored(c)
@@ -462,6 +489,65 @@ def controls(text):
         ('embedded-copied-root-callback', 'OFFRAMPGEOM', 'CONTACT', 15, 0),
         ('embedded-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45)):
         bad.append((label, change_case(text, 12, tag, index, value, namespace=namespace)))
+    triangle_line = first('TRIANGLE')
+    removed_triangle = next(l for l in lines if 'OFFRAMPMOTION_TRIANGLE 15 ' in l)
+    bad += [('triangle-missing-wiring', text.replace(triangle_line+'\n', '', 1)),
+            ('triangle-missing-removed-wiring', text.replace(removed_triangle+'\n', '', 1)),
+            ('triangle-duplicate-wiring', text+triangle_line+'\n'),
+            ('triangle-width', text.replace(triangle_line, triangle_line.rsplit(' ', 1)[0], 1))]
+    for label, tag, index, value, pred in (
+        ('triangle-unpinned-bevels', 'PARAM', 1, 0, lambda r: r[0] == 'trisoup_bevels'),
+        ('triangle-active-count', 'SET', 1, 2, lambda r: r[0] == '14'),
+        ('triangle-skip-filter', 'SET', 2, 0, lambda r: r[0] == '14'),
+        ('triangle-world-model', 'PHYSENT', 3, EMBEDDED_MODEL, lambda r: r[0] == '14'),
+        ('triangle-brush-promotion', 'PHYSENT', 4, 0, lambda r: r[0] == '14'),
+        ('triangle-instance-origin', 'INSTANCE', 2, 1000, lambda r: r[0] == '14'),
+        ('triangle-instance-scale', 'INSTANCE', 8, 0, lambda r: r[0] == '14'),
+        ('triangle-instance-capsule', 'INSTANCE', 9, 1, lambda r: r[0] == '14'),
+        ('triangle-wiring-inactive', 'TRIANGLE', 1, 0, lambda r: r[0] == '14'),
+        ('triangle-wiring-leaf', 'TRIANGLE', 2, 1, lambda r: r[0] == '14'),
+        ('triangle-wiring-index', 'TRIANGLE', 3, 2, lambda r: r[0] == '14'),
+        ('triangle-wiring-vertex', 'TRIANGLE', 6, -255, lambda r: r[0] == '14'),
+        ('triangle-wiring-nonfinite', 'TRIANGLE', 8, 'nan', lambda r: r[0] == '14'),
+        ('triangle-removed-wiring-active', 'TRIANGLE', 1, 1, lambda r: r[0] == '15'),
+        ('triangle-removed-wiring-leaf', 'TRIANGLE', 2, 0, lambda r: r[0] == '15'),
+        ('triangle-ramp-silent', 'TICK', 8, 0, lambda r: r[:2] == ['14', '0']),
+        ('triangle-removed-fake-ramp', 'TICK', 8, 1, lambda r: r[:2] == ['15', '0']),
+        ('triangle-command', 'TICK', 3, 250, lambda r: r[0] == '14'),
+        ('triangle-removed-seed', 'SEED', 1, -99, lambda r: r[0] == '15'),
+        ('triangle-query-winner-entity', 'ORACLE', 13, 1, lambda r: r[0] == '14' and float(r[10]) < 1),
+        ('triangle-query-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '14'),
+        ('triangle-query-body-solid', 'ORACLE', 11, 1, lambda r: r[0] == '14'),
+        ('triangle-query-removal-label', 'ORACLE', 2, 'unembedded', lambda r: r[0] == '14' and r[2] == 'untriangled'),
+        ('triangle-query-plane-nonunit', 'ORACLE', 14, 0, lambda r: r[0] == '14' and float(r[10]) < 1),
+        ('triangle-query-hit-contents', 'ORACLE', 18, 0, lambda r: r[0] == '14' and float(r[10]) < 1)):
+        bad.append((label, change(text, tag, index, value, pred)))
+    bad.append(('triangle-native-hits-silent', change_all(text, 'ORACLE',
+                {10: 1, 13: -1, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0}, lambda r: r[0] == '14' and r[2] == 'down2')))
+    bad.append(('triangle-native-misses-silent', change_all(text, 'ORACLE',
+                {10: .5, 13: 0, 14: .8, 15: 0, 16: .6, 17: 0, 18: 1}, lambda r: r[0] == '14' and r[2] == 'down2')))
+    bad.append(('triangle-removal-silent', change_all(text, 'ORACLE',
+                {10: .5, 13: 0, 14: .8, 15: 0, 16: .6, 17: 0, 18: 1}, lambda r: r[0] == '14' and r[2] == 'untriangled')))
+    for label, namespace, tag, index, value in (
+        ('triangle-contact-entity', 'OFFRAMPBUF', 'CONTACT', 3, 1),
+        ('triangle-contact-solid', 'OFFRAMPBUF', 'CONTACT', 22, 1),
+        ('triangle-origin-cached', 'OFFRAMPORIGIN', 'CONTACT', 2, 1),
+        ('triangle-origin-brush-promotion', 'OFFRAMPORIGIN', 'CONTACT', 3, 1),
+        ('triangle-origin-leaf', 'OFFRAMPORIGIN', 'CONTACT', 4, 1),
+        ('triangle-origin-root', 'OFFRAMPORIGIN', 'CONTACT', 5, 1),
+        ('triangle-origin-nested-promotion', 'OFFRAMPORIGIN', 'CONTACT', 6, 1),
+        ('triangle-origin-contents', 'OFFRAMPORIGIN', 'CONTACT', 7, 0),
+        ('triangle-origin-entity', 'OFFRAMPORIGIN', 'CONTACT', 8, 1),
+        ('triangle-origin-model', 'OFFRAMPORIGIN', 'CONTACT', 9, EMBEDDED_MODEL),
+        ('triangle-shape-stale-bounds', 'OFFRAMPGEOM', 'SHAPE', 3, -256),
+        ('triangle-shape-stale-sides', 'OFFRAMPGEOM', 'SHAPE', 2, 6),
+        ('triangle-shape-origin', 'OFFRAMPGEOM', 'CONTACT', 7, 1000),
+        ('triangle-shape-scale', 'OFFRAMPGEOM', 'CONTACT', 13, 0),
+        ('triangle-shape-capsule', 'OFFRAMPGEOM', 'CONTACT', 14, 1),
+        ('triangle-shape-callback', 'OFFRAMPGEOM', 'CONTACT', 15, 0),
+        ('triangle-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45),
+        ('triangle-accepted-capsule', 'OFFRAMPHULL', 'CONTACT', 8, 1)):
+        bad.append((label, change_case(text, 14, tag, index, value, namespace=namespace)))
     return bad
 
 
@@ -525,7 +611,20 @@ def acted_controls(arms):
     assert r['embedded_support_geometry_acceptance'] == 'ABSTAIN'
     assert r['embedded_removal_trajectory_gates'] == 'PASS'
     assert r['cases'][12]['accepted'] and not r['cases'][13]['accepted']
-    print(f'{len(bad)+11} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded actors ABSTAIN PASS')
+    def promote_triangle(o, contact, shape, payload, mapname):
+        if o[3] == 2: return 'copied-world-brush-plane-bound', [5]
+        return shape_category(o, contact, shape, payload, mapname)
+    with patch('offramp_motion.shape_category', side_effect=promote_triangle), unittest.TestCase().assertRaisesRegex(AssertionError, 'promoted'):
+        grade(texts['on'])
+    altered = change(texts['on'], 'ORACLE', 10, .5, lambda r: r[0] == '14' and r[2] == 'down2' and float(r[10]) < 1)
+    grade(altered)  # A legal changed native result is NOT independent geometry proof.
+    with unittest.TestCase().assertRaises(AssertionError):
+        compare(texts['nooracle'], texts['control'], texts['off'], altered, texts['repeat'])
+    assert r['triangle_support_geometry_acceptance'] == 'ABSTAIN'
+    assert r['triangle_removal_trajectory_gates'] == 'PASS'
+    assert r['cases'][14]['independent_triangle_query_oracle'] == 'NOT_IMPLEMENTED'
+    assert r['cases'][14]['accepted'] and not r['cases'][15]['accepted']
+    print(f'{len(bad)+13} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded/triangle actors ABSTAIN PASS')
 
 
 def snapshot(engine):

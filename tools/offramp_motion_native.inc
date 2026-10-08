@@ -3,8 +3,8 @@
  * Numeric rows are copied first and printed only after each case completes.
  */
 #include "com_bih.h"
-#define OFFRAMP_MOTION_CASES 14
-extern cvar_t pm_rotatedboxhulls;
+#define OFFRAMP_MOTION_CASES 16
+extern cvar_t pm_rotatedboxhulls, pm_trisoup_bevels;
 #define OFFRAMP_MOTION_STEPS 192
 #define OFFRAMP_MOTION_BRUSHES 2
 #define OFFRAMP_MOTION_ORACLES 6
@@ -77,6 +77,7 @@ static void OfframpMotion_DumpProfile(void)
 #undef MOTION_PARAM
 	Con_Printf("OFFRAMPMOTION_PARAM coord_float32 %i\n", movevars.coordtype == COORDTYPE_FLOAT_32);
 	Con_Printf("OFFRAMPMOTION_PARAM rotatedboxhulls %i\n", pm_rotatedboxhulls.ival);
+	Con_Printf("OFFRAMPMOTION_PARAM trisoup_bevels %i\n", pm_trisoup_bevels.ival);
 }
 static void OfframpMotion_Query(model_t *model, struct offramp_motion_row_s *row, int q, vec3_t start, vec3_t end)
 {
@@ -105,7 +106,7 @@ static void OfframpMotion_Query(model_t *model, struct offramp_motion_row_s *row
 		model_t *savedmodel = pmove.physents[0].model;
 		if (q == 2)
 		{
-			/* Remove ONLY the extra physent OR embedded root for this query. */
+			/* Remove ONLY the extra physent, embedded root or triangle for this query. */
 			if (row->caseindex >= 12) pmove.physents[0].model = model;
 			else pmove.numphysent = 1;
 		}
@@ -133,6 +134,8 @@ static void OfframpMotion_Query(model_t *model, struct offramp_motion_row_s *row
 static void OfframpMotion_f(void)
 {
 	static playermove_t saved;
+	static vecV_t triangle[3];
+	static index_t triangleindexes[3] = {0, 1, 2};
 	static model_t world, single[OFFRAMP_MOTION_BRUSHES];
 	static struct bihleaf_s leaves[OFFRAMP_MOTION_BRUSHES];
 	static struct bihtransform_s embedded;
@@ -146,7 +149,8 @@ static void OfframpMotion_f(void)
 		"interior-input-departure", "ground-jump", "overlapping-brush-seam",
 		"open-ground-duck-cycle", "ceiling-blocked-unduck", "capsule-ramp-side-departure",
 		"translated-yaw-brush-departure", "non-world-physent-departure", "removed-physent-control",
-		"embedded-model-departure", "removed-embedded-model-control"
+		"embedded-model-departure", "removed-embedded-model-control",
+		"triangle-departure", "removed-triangle-control"
 	};
 	static const char *querylabels[3] = {"stationary", "down2", "projected"};
 	movevars_t savedvars = movevars;
@@ -155,6 +159,7 @@ static void OfframpMotion_f(void)
 	int savedflags[7] = {pms_warned_hullfloor, pms_surfed, pms_portalcrossed, pms_haveportals, pms_anyslide, pms_slidecontact, pms_slidetick};
 	int savedclip = bih_sourceclip;
 	float savedrotatedboxhulls = pm_rotatedboxhulls.value;
+	float savedtrisoupbevels = pm_trisoup_bevels.value;
 	int capture = atoi(Cmd_Argv(1)), oracle = atoi(Cmd_Argv(2));
 	int c, b, i, j, q, nbrush, nsteps;
 	vec3_t start, end, projected;
@@ -188,8 +193,9 @@ static void OfframpMotion_f(void)
 	VectorCopy(pms_forward, savedvectors[0]); VectorCopy(pms_right, savedvectors[1]); VectorCopy(pms_up, savedvectors[2]);
 	VectorCopy(pms_standmins, savedvectors[3]); VectorCopy(pms_standmaxs, savedvectors[4]);
 	Cvar_SetValue(&pm_rotatedboxhulls, 1);
+	Cvar_SetValue(&pm_trisoup_bevels, 1);
 	OfframpMotion_Profile();
-	Con_Printf("OFFRAMPMOTION_BEGIN 6 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
+	Con_Printf("OFFRAMPMOTION_BEGIN 7 %i %i %i %i\n", capture, oracle, OFFRAMP_MOTION_CASES, OFFRAMP_MOTION_STEPS);
 	Con_Printf("OFFRAMPMOTION_SOURCE %s %s\n", OFFRAMP_MOTION_SOURCE_SHA256, OFFRAMP_MOTION_ENGINE_COMMIT);
 	OfframpMotion_DumpProfile();
 	memset(&surface, 0, sizeof(surface));
@@ -240,7 +246,23 @@ static void OfframpMotion_f(void)
 			BIH_Build(&single[b], &leaves[b], 1);
 			single[b].numnodes = 1;
 		}
-		if (c >= 12)
+		if (c >= 14)
+		{
+			VectorSet(triangle[0], -256, -64, 256*.8f/.6f);
+			VectorSet(triangle[1], -256, 64, 256*.8f/.6f);
+			VectorSet(triangle[2], 256, 0, -256*.8f/.6f);
+			if (c == 14)
+			{
+				memset(&leaves[0], 0, sizeof(leaves[0]));
+				leaves[0].type = BIH_TRIANGLE;
+				leaves[0].data.contents = FTECONTENTS_SOLID;
+				leaves[0].data.tri.xyz = triangle;
+				leaves[0].data.tri.indexes = triangleindexes;
+				VectorSet(leaves[0].mins, -256, -64, triangle[2][2]);
+				VectorSet(leaves[0].maxs, 256, 64, triangle[0][2]);
+			}
+		}
+		else if (c >= 12)
 		{
 			memset(&embedded, 0, sizeof(embedded));
 			for (i = 0; i < 3; i++) embedded.axis[i][i] = 1;
@@ -316,12 +338,18 @@ static void OfframpMotion_f(void)
 			for (b = 0; b < (c >= 12 ? 1 : 2); b++)
 			{
 				physent_t *pe = &pmove.physents[b];
-				Con_Printf("OFFRAMPMOTION_PHYSENT %i %i %i %s %i %i\n", c, b, pe->info, pe->model->name, c == 12 ? -1 : b, b < pmove.numphysent);
+				Con_Printf("OFFRAMPMOTION_PHYSENT %i %i %i %s %i %i\n", c, b, pe->info, pe->model->name, c == 12 || c == 14 ? -1 : b, b < pmove.numphysent);
 				Con_Printf("OFFRAMPMOTION_INSTANCE %i %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %i\n", c, b,
 					pe->origin[0], pe->origin[1], pe->origin[2], pe->angles[0], pe->angles[1], pe->angles[2], pe->scale, pmove.capsule);
 			}
 		}
-		if (c >= 12)
+		if (c >= 14)
+			Con_Printf("OFFRAMPMOTION_TRIANGLE %i %i %i %u %u %u %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n",
+				c, c == 14, c == 14 ? 0 : -1,
+				(unsigned int)triangleindexes[0], (unsigned int)triangleindexes[1], (unsigned int)triangleindexes[2],
+				triangle[0][0], triangle[0][1], triangle[0][2], triangle[1][0], triangle[1][1], triangle[1][2],
+				triangle[2][0], triangle[2][1], triangle[2][2]);
+		else if (c >= 12)
 			Con_Printf("OFFRAMPMOTION_EMBED %i 0 0 %i %i %s %s %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n",
 				c, world.numnodes, leaves[0].type == BIH_MODEL, leaves[0].type == BIH_MODEL ? "model" : "brush", single[1].name,
 				embedded.origin[0], embedded.origin[1], embedded.origin[2],
@@ -385,7 +413,7 @@ static void OfframpMotion_f(void)
 			{
 				int oq = q == nbrush+3 ? 5 : q;
 				Con_Printf("OFFRAMPMOTION_ORACLE %i %i %s %i %.9g %.9g %.9g %.9g %.9g %.9g %.9g %i %i %i %.9g %.9g %.9g %.9g %u\n", c, i,
-					c >= 8 && q == 2 ? (c >= 12 ? "unembedded" : (c >= 10 ? "worldonly" : (c == 8 ? "box" : "identity"))) : (q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2]),
+					c >= 8 && q == 2 ? (c >= 14 ? "untriangled" : (c >= 12 ? "unembedded" : (c >= 10 ? "worldonly" : (c == 8 ? "box" : "identity")))) : (q == nbrush+3 ? "standing" : querylabels[q < 3 ? q : 2]),
 					c >= 10 && q == 2 ? 0 : (q == nbrush+3 || q < 3 ? -1 : q-3),
 					r->oracle[oq].start[0], r->oracle[oq].start[1], r->oracle[oq].start[2], r->oracle[oq].end[0], r->oracle[oq].end[1], r->oracle[oq].end[2],
 					r->oracle[oq].fraction, r->oracle[oq].startsolid, r->oracle[oq].allsolid, r->oracle[oq].ent,
@@ -400,6 +428,7 @@ static void OfframpMotion_f(void)
 	Cvar_SetValue(&offrampbuf_replay, savedcapture);
 #endif
 	Cvar_SetValue(&pm_rotatedboxhulls, savedrotatedboxhulls);
+	Cvar_SetValue(&pm_trisoup_bevels, savedtrisoupbevels);
 	pmove = saved; movevars = savedvars; bih_sourceclip = savedclip;
 	pms_frametime = savedfloats[0]; pms_forwardmove = savedfloats[1]; pms_sidemove = savedfloats[2]; pms_upmove = savedfloats[3]; pms_maxspeed = savedfloats[4];
 	VectorCopy(savedvectors[0], pms_forward); VectorCopy(savedvectors[1], pms_right); VectorCopy(savedvectors[2], pms_up);

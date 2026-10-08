@@ -2412,7 +2412,14 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   actual-body nonembedded checks stay strict. Identity-fixture queries include
   only active child geometry. Original twelve cases stay unchanged. General
   entity/embedded/map wiring, nested transforms and geometry remain open.
-  This is bounded fixture coverage, not a physical-exit or classifier fix.
+  A matched actual BIH_TRIANGLE/removed-triangle pair now ACTS a kind-2 world
+  winner, native hit/miss/same-pose removal queries and different removed movement.
+  Origin/model/leaf/hull/identity instance bind with an empty brush payload;
+  authored vertices/indices are wiring, not copied accepted geometry. Triangle
+  support remains ABSTAIN (no independent triangle oracle); original fourteen
+  full case/winner arrays stay exact. Real-map triangle/displacement/prop
+  geometry and identity remain open. This is bounded fixture coverage, not a
+  physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,

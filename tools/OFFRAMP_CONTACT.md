@@ -638,3 +638,51 @@ non-world/entity geometry, airborne or other posture trajectories, explicit
 cached/recovery/portal motion, general world support, independent capsule/
 transform geometry, P560 clock and same-input recorded/live/render/rate/camera/
 LOD/hold acceptance remain **NOT_TESTED**.
+
+## ACTED native BIH_TRIANGLE winner and removed-triangle trajectory
+
+Two additional matched 32-tick standing-AABB cases use the entity pair's exact
+seed/velocity/zero commands. Present world physent 0 owns one actual BIH_TRIANGLE
+leaf, indices 0/1/2, vertices (-256,-64,256*.8/.6), (-256,64,256*.8/.6),
+(256,0,-256*.8/.6). The removed world has only remote brush 0. Both use BIH_Build
+and the existing native triangle collision code, not a brush-shaped substitute.
+Pin `pm_trisoup_bevels=1`, emit its PARAM, restore the prior numeric value.
+Ordered `TRIANGLE` rows bind case/active flag/runtime leaf/indices/vertices;
+these are **authored fixture wiring, NOT copied accepted triangle geometry**.
+SET/PHYSENT/INSTANCE still bind actual world/count/filter/model/identity pose.
+
+Real PM_PlayerMove -> PM_PlayerTrace -> BIH_TRIANGLE contacts must bind origin
+kind 2, route 0, world physent 0, runtime leaf/root 0, depth 0, world model,
+identity instance/scale/direct-BIH callback and actual accepted standing hull.
+The brush snapshot must be empty with no stale sides/bounds/planes. Native
+accepted planes remain native triangle/slab/bevel results, not a brush payload.
+At least one accepted/query plane must be the authored sloped face. Existing
+**`world-triangle-unresolved`** category stays intact; triangle geometry/support
+**ABSTAIN**, independent triangle query oracle **NOT_IMPLEMENTED**. Unit/finite
+plane checks bind the native protocol, not a triangle-support oracle. No general
+triangle, displacement, mesh adjacency or real-map prop acceptance is implied.
+
+After every command actual stationary/down2 queries call PM_PlayerTrace. Named
+`untriangled` repeats SAME down2 endpoints/hull with only the local query's world
+model replaced by remote brush 0, then restores it. Native hits require winner 0;
+misses require -1 and zero plane/contents. Actual stationary/body solids refuse.
+Do NOT substitute joint AABB feasibility for actual triangle queries. Only the
+remote-brush removal/removed queries use that bounded oracle. Plausible changed
+triangle fractions may survive standalone native-result abstention; exact
+cross-arm parity must still refuse them.
+
+Present produces 14 actual triangle contacts, down2 hits 0..13, misses 14..31,
+raw contact loss 14. Every same-pose removal query misses; native-hit/removal-miss
+sensitivity ACTS 0..13. Removed moves without any contact/ramp/downward hit;
+first/final body states differ. Empty removed captures require full envelopes.
+All five-arm parity checks and exact original-fourteen full case/winner arrays
+remain mandatory; nooracle body parity proves the extra queries do not mutate
+later movement. Nineteen motion units and 271 ACTED native refusal controls pass,
+including all retained controls, triangle wiring/origin/model/leaf/hull/empty
+payload faults, silent hit/miss/removal and geometry-promotion refusal.
+
+This closes only the bounded native triangle execution/query/capture-binding
+control. Independent slab/bevel/support/continuous-exit geometry, real-map
+triangle/displacement/props, airborne posture, explicit cached/recovery/portal
+actors, classifier/live marker and clock/render/rates/LOD/hold acceptance remain
+**NOT_TESTED**. No product mover or collision behavior changes or deployment.

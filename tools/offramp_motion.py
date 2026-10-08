@@ -2,7 +2,7 @@
 """Acted static-brush native trajectories + full native/joint convex queries.
 
 No halfspace max-gap classification. Eight AABB cases use a bounded joint
-oracle; ACTED capsule, transformed, non-world and embedded cases ABSTAIN
+oracle; ACTED capsule, transformed, non-world, embedded and triangle cases ABSTAIN
 from geometry/support. None is a continuous physical-exit timestamp or general marker policy.
 """
 import argparse
@@ -24,7 +24,9 @@ LABELS = ('interior-ride', 'partial-full-side-exit', 'convex-side-exit',
           'interior-input-departure', 'ground-jump', 'overlapping-brush-seam',
           'open-ground-duck-cycle', 'ceiling-blocked-unduck', 'capsule-ramp-side-departure',
           'translated-yaw-brush-departure', 'non-world-physent-departure', 'removed-physent-control',
-          'embedded-model-departure', 'removed-embedded-model-control')
+          'embedded-model-departure', 'removed-embedded-model-control',
+          'triangle-departure', 'removed-triangle-control')
+TRIANGLE_VERTICES = [-256, -64, 256*.8/.6, -256, 64, 256*.8/.6, 256, 0, -256*.8/.6]
 ENTITY_MODEL = '*authored_offramp_entity'
 EMBEDDED_MODEL = '*authored_offramp_embedded'
 EMBEDDED_AXIS = [1, 0, 0, 0, 1, 0, 0, 0, 1]
@@ -36,16 +38,16 @@ MAX_STEPS = 192
 
 def step_count(case): return STEPS if case < 6 or case >= 8 else (96 if case == 6 else MAX_STEPS)
 WIDTHS = {'BEGIN': 5, 'SOURCE': 2, 'PARAM': 2, 'CASE': 4, 'BRUSH': 9, 'PLANE': 7,
-          'INSTANCE': 10, 'SET': 3, 'PHYSENT': 6, 'EMBED': 19, 'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
+          'INSTANCE': 10, 'SET': 3, 'PHYSENT': 6, 'EMBED': 19, 'TRIANGLE': 15, 'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
 PARAMS = dict(zip(('physicsmode ticrate gravity entgravity maxspeed spectatormaxspeed maxairspeed maxvelocity '
                    'accelerate airaccelerate wateraccelerate friction waterfriction stopspeed stepheight '
                    'jumpvelocity standablenormal standheight duckheight duckspeed viewheight duckviewheight '
                    'viewscale walkspeed groundtracedist bumpcount snaptoground groundquadrants fixslopes '
                    'fixedges fixrampbugs rampretrace ladders slide stamina normalizejump jumpaddrise '
-                   'jumpzoffset autobunny flags coord_float32 rotatedboxhulls').split(),
+                   'jumpzoffset autobunny flags coord_float32 rotatedboxhulls trisoup_bevels').split(),
                   (1, .015, 800, 1, 250, 250, 30, 3500, 5, 150, 10, 4, 1, 75, 18,
                    301.9933774, .7, 62, 45, .34, 64, 47, .5, .52, 2, 8, 1, 1, 1, 1, 2, .2,
-                   0, 0, 0, 0, 0, 0, 0, 0, 1, 1)))
+                   0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1)))
 EPS = 1e-5  # Numeric feasibility tolerance, NOT a collision/classification gap.
 
 
@@ -153,7 +155,7 @@ def oracle_validate(row, tick, brushes):
     pos, mins, maxs = tick[10:13], tick[16:19], tick[19:22]
     if kind == 'standing': maxs = maxs[:2]+[mins[2]+PARAMS['standheight']]
     expected_start, expected_end = pos[:], pos[:]
-    if kind in ('down2', 'identity', 'worldonly', 'unembedded'): expected_end[2] -= 2
+    if kind in ('down2', 'identity', 'worldonly', 'unembedded', 'untriangled'): expected_end[2] -= 2
     elif kind == 'projected':
         p = brushes[0]['planes'][5]
         low = sum(n*(hi if n < 0 else lo) for n, lo, hi in zip(p[:3], mins, maxs))
@@ -162,14 +164,14 @@ def oracle_validate(row, tick, brushes):
     else: require(kind in ('stationary', 'standing', 'box'), 'unknown oracle query kind')
     require(close(start, expected_start) and close(end, expected_end), 'oracle endpoints not bound to actual tick hull/point')
     if case >= 10:
-        removal = 'unembedded' if case >= 12 else 'worldonly'
+        removal = 'untriangled' if case >= 14 else ('unembedded' if case >= 12 else 'worldonly')
         require(tick[:2] == [case, ordinal] and tick[25] == 0 and
                 kind in ('stationary', 'down2', removal) and brush == (0 if kind == removal else -1),
-                'unregistered entity/embedded query')
+                'unregistered entity/embedded/triangle query')
     else:
-        require(kind not in ('worldonly', 'unembedded') and -1 <= brush < len(brushes), 'unregistered query brush/removal')
+        require(kind not in ('worldonly', 'unembedded', 'untriangled') and -1 <= brush < len(brushes), 'unregistered query brush/removal')
     subset = brushes if brush == -1 else [brushes[brush]]
-    if case in (11, 13): subset = brushes[:1]
+    if case in (11, 13, 14, 15): subset = brushes[:1]
     elif case == 12 and kind != 'unembedded': subset = brushes[1:2]
     lo = [min(a, b)+m for a, b, m in zip(start, end, mins)]
     hi = [max(a, b)+m for a, b, m in zip(start, end, maxs)]
@@ -190,9 +192,10 @@ def oracle_validate(row, tick, brushes):
             hi = [a-b for a, b in zip(hi, INSTANCE[2:5])]
     else:
         require(kind != 'identity', 'identity query lacks transformed actor')
-    # No joint AABB substitution for actual capsule OR rotated geometry.
-    # BOX and translated-only identity counterfactuals may use joint AABB.
-    if (not tick[25] or kind == 'box') and (case != 9 or kind == 'identity'):
+    # No joint AABB substitution for actual capsule, rotated or triangle geometry.
+    # BOX, translated-only identity and remote-only queries may use joint AABB.
+    if ((not tick[25] or kind == 'box') and (case != 9 or kind == 'identity') and
+            (case != 14 or kind == 'untriangled')):
         joint = any(joint_overlap(b['planes'], lo, hi) for b in subset)
         require(native == joint, 'native query disagrees with JOINT convex oracle')
     if kind == 'stationary': require(not native, 'authored mover ended embedded in solid')
@@ -201,6 +204,10 @@ def oracle_validate(row, tick, brushes):
                 (kind in ('standing', 'box') and contents == 1 and
                  (v[10:14] == [0, 0, 0, 0] or any(close(v[10:14], p) for b in subset for p in b['planes']))),
                 'counterfactual solid not bound to authored collider/native contract')
+    elif v[6] < 1 and case == 14:
+        # Native triangle/slab/bevel plane only. No brush oracle substitution.
+        require(contents == 1 and abs(math.sqrt(dot(v[10:13], v[10:13]))-1) < 1e-5,
+                'triangle native winning plane/contents invalid')
     elif v[6] < 1:
         winner_brushes = brushes[1:2] if case >= 10 else subset
         require(any(close(v[10:14], native_plane(p, case == 9 and kind != 'identity'))
@@ -233,12 +240,28 @@ def bind_capture(text, case, ticks, brushes):
     for i, (r, o, s) in enumerate(zip(contacts, origin_rows, shapes)):
         require(r[0] == i and int(r[1]) == r[1] and 0 <= r[1] < steps and 0 <= r[4] <= 1 and
                 int(r[2]) == r[2] and 0 <= r[2] < 8 and r[3] == (1 if case == 10 else 0) and r[21:] == [0, 0, 0], 'invalid accepted fixture trace')
-        require(o[:2] == [i, int(r[1])] and o[8] == (1 if case == 10 else 0) and o[3] == 1 and o[4] >= 0 and o[5] >= 0 and
-                o[6] == (1 if case == 12 else 0) and o[7] == 1, 'accepted origin not bound to fixture brush')
+        require(o[:2] == [i, int(r[1])] and o[8] == (1 if case == 10 else 0) and o[3] == (2 if case == 14 else 1) and o[4] >= 0 and o[5] >= 0 and
+                o[6] == (1 if case == 12 else 0) and o[7] == 1, 'accepted origin not bound to fixture collider')
         p = payloads[s['payload_id']]
         reason, _ = shape_category(o, r, s, p, 'authored_offramp_motion')
-        expected_reason = {8: 'capsule-hull-unsupported', 9: 'transformed-instance-unsupported', 10: 'entity-unsupported', 12: 'embedded-model-unsupported'}.get(case, 'copied-world-brush-plane-bound')
+        expected_reason = {8: 'capsule-hull-unsupported', 9: 'transformed-instance-unsupported', 10: 'entity-unsupported', 12: 'embedded-model-unsupported', 14: 'world-triangle-unresolved'}.get(case, 'copied-world-brush-plane-bound')
         require(reason == expected_reason, 'fixture winning shape incorrectly promoted/unsupported')
+        if case == 14:
+            require(o[2] == 0 and o[4:7] == [0, 0, 0] and o[9] == WORLD_MODEL and
+                    p['status'] == 0 and p['source_side_count'] == 0 and not p['planes'] and
+                    s['capsule'] == 0 and s['direct_bih_callback'] == 1 and
+                    s['instance_origin'] == s['instance_angles'] == [0]*3 and s['raw_instance_scale'] == 1 and
+                    hc[i]['capsule'] == 0 and
+                    [hc[i]['pm_type'], hc[i]['ducked'], hc[i]['ducking'], hc[i]['ducktime_ms'], hc[i]['oldbuttons']] == [0]*5 and
+                    hc[i]['mins'] == [-16, -16, 0] and hc[i]['maxs'] == [16, 16, 62] and
+                    abs(math.sqrt(dot(r[6:9], r[6:9]))-1) < 1e-5,
+                    'triangle winner/empty brush payload/instance/hull not bound')
+            per_tick[int(r[1])] += 1
+            winners.append({'ordinal': i, 'tick': int(r[1]), 'leaf': o[4], 'rootleaf': o[5],
+                            'physent_index': o[8], 'model': o[9], 'geometry_status': reason,
+                            'native_plane': r[6:9]+[r[5]],
+                            'instance': {k: s[k] for k in ('instance_origin', 'instance_angles', 'raw_instance_scale', 'direct_bih_callback')}})
+            continue
         matches = [b for b, a in enumerate(brushes) if close(p['model_local_mins'], a['mins']) and close(p['model_local_maxs'], a['maxs']) and
                    len(p['planes']) == len(a['planes']) and all(close(q, z) for q, z in zip(p['planes'], a['planes']))]
         require(len(matches) == 1 and s['capsule'] == int(case == 8), 'winning copied shape not an authored whole brush')
@@ -295,7 +318,7 @@ def grade(text):
         require(pos < len(rows) and rows[pos][0] == tag, f'missing/duplicate/reordered motion {tag}')
         w = rows[pos][1]; pos += 1; return w
     header = integers(take('BEGIN'))
-    require(header[0] == 6 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
+    require(header[0] == 7 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
     capture, oracle = header[1:3]
     source = take('SOURCE')
     require(re.fullmatch('[0-9a-f]{64}', source[0]) and re.fullmatch('[0-9a-f]{40}', source[1]), 'invalid fixture/source stamp')
@@ -329,11 +352,15 @@ def grade(text):
             for b in range(1 if c >= 12 else 2):
                 pe = take('PHYSENT')
                 require(pe == [str(c), str(b), str(42 if b else 0), ENTITY_MODEL if b else WORLD_MODEL,
-                               str(-1 if c == 12 else b), str(int(b < entity_set[1]))], 'changed/unordered entity physent binding')
+                               str(-1 if c in (12, 14) else b), str(int(b < entity_set[1]))], 'changed/unordered entity physent binding')
                 instance = numbers(take('INSTANCE'))
                 require(instance == [c, b, 0, 0, 0, 0, 0, 0, 1, 0], 'changed/invalid entity instance')
                 physents.append(pe); instances.append(instance)
-        if c >= 12:
+        if c >= 14:
+            triangle = take('TRIANGLE')
+            require(integers(triangle[:6]) == [c, int(c == 14), 0 if c == 14 else -1, 0, 1, 2] and
+                    close(numbers(triangle[6:]), TRIANGLE_VERTICES), 'changed/invalid triangle fixture wiring')
+        elif c >= 12:
             embed = take('EMBED')
             require(integers(embed[:5]) == [c, 0, 0, 1, int(c == 12)] and
                     embed[5:7] == ['model' if c == 12 else 'brush', EMBEDDED_MODEL] and
@@ -353,7 +380,7 @@ def grade(text):
             ticks.append(t)
             qrows = []
             if oracle:
-                query_order = [('stationary', -1), ('down2', -1), ('unembedded' if c >= 12 else 'worldonly', 0)] if c >= 10 else (
+                query_order = [('stationary', -1), ('down2', -1), ('untriangled' if c >= 14 else ('unembedded' if c >= 12 else 'worldonly'), 0)] if c >= 10 else (
                     [('stationary', -1), ('down2', -1), ('box' if c == 8 else 'identity', -1)] if c >= 8 else [
                     ('stationary', -1), ('down2', -1), ('projected', -1),
                     *[('projected', b) for b in range(len(brushes))], *([('standing', -1)] if c in (6, 7) else [])])
@@ -366,7 +393,8 @@ def grade(text):
         cases.append({'label': label, 'brushes': brushes, 'seed': numbers(r[1:]), 'ticks': ticks, 'oracles': queries, 'accepted': winners})
         if c == 9: cases[-1]['instance'] = INSTANCE[:]
         if c >= 10: cases[-1].update(physent_set=entity_set, physents=physents, instances=instances)
-        if c >= 12: cases[-1]['embedded'] = embed
+        if c >= 14: cases[-1]['triangle'] = triangle
+        elif c >= 12: cases[-1]['embedded'] = embed
     require(integers(take('END')) == [len(LABELS)] and take('COMPLETE') == [] and pos == len(rows), 'missing/duplicate motion completion')
     if oracle:
         assess_posture(*cases[6:8])
@@ -374,6 +402,7 @@ def grade(text):
         assess_transform(cases[9])
         assess_entity(*cases[10:12])
         assess_embedded(*cases[12:14])
+        assess_triangle(*cases[14:16])
     return {'capture': capture, 'oracle': oracle, 'source': source, 'cases': cases}
 
 
@@ -481,6 +510,29 @@ def assess_embedded(present, removed):
     removed.update(removed_embedded_trajectory_gates='PASS', geometry_acceptance='ABSTAIN-no-accepted-contact')
 
 
+def assess_triangle(present, removed):
+    require(present['label'] == LABELS[14] and removed['label'] == LABELS[15] and
+            present['seed'] == removed['seed'] and all(len(c['ticks']) == STEPS and all(c['oracles']) for c in (present, removed)),
+            'missing matched native triangle actors')
+    ts, qs = present['ticks'], present['oracles']
+    losses = [i for i in range(1, STEPS) if ts[i-1][8] and not ts[i][8]]
+    hits = [i for i, q in enumerate(qs) if hit(q[1])]
+    misses = [i for i, q in enumerate(qs) if not hit(q[1])]
+    differences = [i for i, q in enumerate(qs) if hit(q[1]) and q[2][10:14] == [1, 0, 0, -1]]
+    require(ts[0][8] == 1 and losses and hits and misses and min(hits) < max(misses) and differences and
+            any(close(q[1][14:18], [.8, 0, .6, 0]) for q in qs if hit(q[1])) and
+            all(q[2][10:14] == [1, 0, 0, -1] for q in qs) and
+            all(t[8:10] == [0, 0] for t in removed['ticks']) and
+            all(all(q[10:14] == [1, 0, 0, -1] for q in tick) for tick in removed['oracles']) and
+            ts[0][10:16] != removed['ticks'][0][10:16] and ts[-1][10:16] != removed['ticks'][-1][10:16],
+            'triangle winner/hit/miss/removal trajectory control did not ACT')
+    present.update(raw_loss_ticks=losses, native_down2_hit_ticks=hits, native_down2_miss_ticks=misses,
+                   triangle_hit_untriangled_miss_ticks=differences, geometry_acceptance='ABSTAIN-triangle-unsupported',
+                   independent_triangle_query_oracle='NOT_IMPLEMENTED',
+                   triangle_fixture_vertices_basis='AUTHORED_WIRING_NOT_COPIED_ACCEPTED_GEOMETRY')
+    removed.update(removed_triangle_trajectory_gates='PASS', geometry_acceptance='ABSTAIN-no-accepted-contact')
+
+
 def assess(cases):
     for c in cases[:8]:
         ts, qs = c['ticks'], c['oracles']
@@ -510,6 +562,10 @@ def assess(cases):
             'transformed winning capture absent/promoted')
     assess_entity(*cases[10:12])
     assess_embedded(*cases[12:14])
+    assess_triangle(*cases[14:16])
+    require(cases[14]['accepted'] and all(w['geometry_status'] == 'world-triangle-unresolved' for w in cases[14]['accepted']) and
+            any(close(w['native_plane'], [.8, 0, .6, 0]) for w in cases[14]['accepted']) and not cases[15]['accepted'],
+            'triangle winning capture absent/promoted or removal capture nonempty')
     require(cases[12]['accepted'] and all(w['geometry_status'] == 'embedded-model-unsupported' for w in cases[12]['accepted']) and
             not cases[13]['accepted'], 'embedded winning capture absent/promoted or removal capture nonempty')
     require(cases[10]['accepted'] and all(w['geometry_status'] == 'entity-unsupported' for w in cases[10]['accepted']) and
@@ -529,7 +585,8 @@ def compare(nooracle, control, off, on, repeat):
             keys = ('label', 'brushes', 'seed', 'ticks', 'oracles')
             if c['label'] == LABELS[9]: keys += ('instance',)
             elif c['label'] in LABELS[10:]: keys += ('physent_set', 'physents', 'instances')
-            if c['label'] in LABELS[12:]: keys += ('embedded',)
+            if c['label'] in LABELS[14:]: keys += ('triangle',)
+            elif c['label'] in LABELS[12:14]: keys += ('embedded',)
             rows.append({k: c[k] for k in keys})
         return rows
     require(all(canonical(r) == canonical(reports[1]) for r in reports[2:]), 'fixture-only/OFF/ON/repeat body/oracle differs')
@@ -546,6 +603,8 @@ def compare(nooracle, control, off, on, repeat):
             'entity_support_geometry_acceptance': 'ABSTAIN',
             'embedded_native_path_capture_gates': 'PASS', 'embedded_removal_trajectory_gates': 'PASS',
             'embedded_support_geometry_acceptance': 'ABSTAIN',
+            'triangle_native_path_capture_gates': 'PASS', 'triangle_removal_trajectory_gates': 'PASS',
+            'triangle_support_geometry_acceptance': 'ABSTAIN',
             'unsupported_mover_paths_acceptance': 'NOT_TESTED', 'clock_render_rate_hold_acceptance': 'NOT_TESTED'}
 
 
@@ -559,8 +618,8 @@ def main():
     result = compare(*(Path(arms[n]['log']).read_text(errors='replace') for n in names))
     require(result['source'][0] == arms['on']['fixture_sha256'], 'binary fixture stamp differs from tooling template')
     result['arms'] = arms; a.output.write_text(json.dumps(result, indent=2)+'\n')
-    print('AABB/posture + ACTED capsule/transformed/entity/embedded paths: PASS; five-arm parity PASS')
-    print('Capsule/transformed/entity/embedded geometry/support: ABSTAIN; bounded AABB queries and native removal controls PASS')
+    print('AABB/posture + ACTED capsule/transformed/entity/embedded/triangle paths: PASS; five-arm parity PASS')
+    print('Capsule/transformed/entity/embedded/triangle geometry/support: ABSTAIN; bounded AABB queries and native removal controls PASS')
     print('Physical timestamp/classifier/mark/unsupported paths/clock/render/rate/hold acceptance: NOT_TESTED')
 
 
