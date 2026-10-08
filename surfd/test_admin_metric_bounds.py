@@ -39,6 +39,9 @@ class MetricBounds(ObservationFixture):
             def __init__(self, cursor, column):
                 self.cursor, self.column = cursor, column
 
+            def __getattr__(self, key):
+                return getattr(self.cursor, key)
+
             def observe(self, row):
                 if row is not None and self.column:
                     value = row[self.column]

@@ -28,6 +28,8 @@ tag      patch-589
 patch    589
 # Patch 589: independent 2DMesh/1 indexed draws and plugin-owned texture tokens.
 # Native-only renderer prerequisite; explicit MQC/CSQC/ImGui bridge remains next.
+# Patch 588: similarity dry-run diagnostics no longer initialize collector schema.
+# Patch 587: owner-budgeted historical similarity panel; explicit SQL-limit abstention.
 # Patch 586: bounded SQL projections for authenticated stored metric snapshots.
 # Patch 581: plugin memory images return drawable shader references; invalid
 # input/non-live IDs fail closed. Restart requires reacquisition, not persistence.
