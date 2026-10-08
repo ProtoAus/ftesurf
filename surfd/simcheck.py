@@ -80,6 +80,8 @@ NOTABLE = 0.95
 # Previously 50 source rows could each admit 200 peers in one cron pass.
 MAX_PAIRS = 200
 MAX_SECONDS = 10.0
+# Selected SQLite read instructions only; not time, lock waits, writes or RSS.
+MAX_SQL_STEPS = 1000000
 # Operational ingestion limits, not a validity or similarity threshold. Sources
 # over either budget abstain; no truncated prefix may become a measurement.
 MAX_SOURCE_BYTES = 16 << 20
@@ -135,6 +137,64 @@ def source_snapshot(raw):
         return source_capture(json.loads(raw, object_pairs_hook=unique))
     except (ValueError, TypeError, RecursionError):
         return None
+
+
+class ReadLimit(Exception):
+    """No complete result is available within the selected SQL read allowance."""
+
+
+class ReadBudget:
+    """Explicit connection-owner opt-in; owns the progress-handler slot per read.
+
+    Python SQLite cannot retrieve an existing callback. Never use this on a
+    connection whose callback belongs to another caller. Unbudgeted APIs leave
+    that slot alone. A reserved final quantum conservatively charges residual
+    instructions even for short statements; this may abstain before the cap.
+    """
+    def __init__(self, conn, steps):
+        if type(steps) is not int or steps <= 0:
+            raise ValueError("SQL read steps must be a positive integer")
+        self.conn = conn
+        self.remaining = steps
+        self.exhausted = False
+
+    def rows(self, sql, parameters=()):
+        if self.remaining <= 0:
+            self.exhausted = True
+            raise ReadLimit()
+        quantum = min(1000, self.remaining)
+        self.remaining -= quantum
+        def progress():
+            if self.remaining < quantum:
+                self.exhausted = True
+                return 1
+            self.remaining -= quantum
+            return 0
+        cursor = None
+        self.conn.set_progress_handler(progress, quantum)
+        try:
+            cursor = self.conn.execute(sql, parameters)
+            return cursor.fetchall()
+        except sqlite3.OperationalError:
+            if self.exhausted:
+                raise ReadLimit() from None
+            raise
+        finally:
+            if cursor is not None:
+                cursor.close()
+            self.conn.set_progress_handler(None, 0)
+
+
+def _read(conn, sql, parameters=(), read_budget=None):
+    if read_budget is not None:
+        if read_budget.conn is not conn:
+            raise ValueError("SQL read budget belongs to another connection")
+        return read_budget.rows(sql, parameters)
+    cursor = conn.execute(sql, parameters)
+    try:
+        return cursor.fetchall()
+    finally:
+        cursor.close()
 
 
 class _PairBudget:
@@ -242,13 +302,14 @@ CREATE TABLE IF NOT EXISTS sim_cursor (
 """
 
 
-def _cursor(conn, scope, source_id=0):
+def _cursor(conn, scope, source_id=0, read_budget=None):
     """Read-only; historical databases have no admission state yet."""
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='sim_cursor'").fetchone():
+    if not _read(conn, "SELECT 1 FROM sqlite_master WHERE name='sim_cursor'",
+                 read_budget=read_budget):
         return 0
-    row = conn.execute("SELECT after_id FROM sim_cursor WHERE scope=? AND source_id=?",
-                       (scope, source_id)).fetchone()
-    return row[0] if row else 0
+    rows = _read(conn, "SELECT after_id FROM sim_cursor WHERE scope=? AND source_id=?",
+                 (scope, source_id), read_budget)
+    return rows[0][0] if rows else 0
 
 
 def _advance(conn, scope, after_id, source_id=0):
@@ -327,7 +388,7 @@ def _pair_result(rs, surfd, row, peer, pa, now):
 
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
-                diagnostics=None, budget=None):
+                diagnostics=None, budget=None, read_budget=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -360,8 +421,8 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         return 0, 0, 0
     # Stored pairs must not occupy the bounded candidate window. Historical
     # observations use either orientation, so exclude both before LIMIT.
-    after = _cursor(conn, "peer", a_id)
-    peers = conn.execute(
+    after = _cursor(conn, "peer", a_id, read_budget=read_budget)
+    peers = _read(conn,
         "SELECT p.* FROM replays p WHERE p.map = ? AND p.track = ? AND p.leg = ?"
         " AND p.kind = 'run' AND p.id != ?"
         " AND NOT EXISTS (SELECT 1 FROM sims s"
@@ -369,7 +430,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         "        OR (s.a_id = p.id AND s.b_id = ?))"
         " ORDER BY (p.id > ?) DESC, p.id LIMIT ?",
         (row["map"], row["track"], row["leg"], a_id, a_id, a_id,
-         after, limit_peers)).fetchall()
+         after, limit_peers), read_budget)
     if not peers:
         return 0, 0, 0
     pa, w = _row_path(surfd, row)
@@ -382,9 +443,12 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     try:
         for pr in peers:
             # Late recheck remains before admission and cursor advancement.
-            have = conn.execute(
-                "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
-                (a_id, pr["id"], pr["id"], a_id)).fetchone()
+            try:
+                have = _read(conn,
+                    "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
+                    (a_id, pr["id"], pr["id"], a_id), read_budget)
+            except ReadLimit:
+                break  # flush prior results; this peer was never admitted
             if have:
                 continue
             if budget is not None:
@@ -420,15 +484,15 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     return len(found), skipped, notable
 
 
-def pending(conn, limit=50):
+def pending(conn, limit=50, read_budget=None):
     """Eligible sources after the last admitted ID first, then wrap ascending.
 
     Observations suppress only their own pairs; admission state is not evidence.
     Reads never advance/create state. Rotating finite source fixtures prevents an
     unavailable oldest source monopolizing later passes, not full fleet coverage.
     """
-    after = _cursor(conn, "source")
-    return conn.execute(
+    after = _cursor(conn, "source", read_budget=read_budget)
+    return _read(conn,
         "SELECT r.* FROM replays r WHERE r.kind = 'run'"
         " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
         "             AND p.track = r.track AND p.leg = r.leg"
@@ -436,11 +500,11 @@ def pending(conn, limit=50):
         "             AND NOT EXISTS (SELECT 1 FROM sims s"
         "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
         "                    OR (s.a_id = p.id AND s.b_id = r.id)))"
-        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit)).fetchall()
+        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit), read_budget)
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
-                    max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS):
+                    max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS, read_budget=None):
     """The sweep's entry point.  -> (pairs stored, notable, note).
 
     `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
@@ -453,8 +517,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     new pair attempts across all of them. Zero disables before loading support.
     Each comparison source is bounded by bytes and moves. `max_seconds` stops
     new row/pair admission cooperatively using a monotonic clock; in-flight work
-    finishes and normal results flush. Loader/schema/query time counts too, but
-    none is interrupted. This is not a hard timeout, an overall RSS bound or
+    finishes and normal results flush. Loader/schema/query time counts too.
+    An explicit owner ReadBudget interrupts selected SQL reads as whole queries,
+    preserving prior comparisons. This is not a hard timeout, an overall RSS bound or
     complete/fair pair coverage.
 
     A fault here is printed and never stops the verification, exactly as the
@@ -472,7 +537,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         return 0, 0, "similarity skipped: %s" % why
     try:
         ensure_schema(conn)
-        rows = pending(conn, limit)
+        rows = pending(conn, limit, read_budget=read_budget)
+    except ReadLimit:
+        return 0, 0, "sims SQL read limit reached (coverage not measured)"
     except Exception as exc:
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0
@@ -485,7 +552,10 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             # Commit before comparison so no file work holds a write transaction.
             _advance(conn, "source", row["id"])
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
-                                  diagnostics=diagnostics, budget=budget)
+                                  diagnostics=diagnostics, budget=budget,
+                                  read_budget=read_budget)
+        except ReadLimit:
+            break
         except Exception as exc:
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
@@ -494,6 +564,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         stored += s
         skipped += k
         notable += n
+        if read_budget is not None and read_budget.exhausted:
+            break
     note = ""
     if stored:
         note = "sims +%d" % stored
@@ -508,6 +580,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         unavailable.append("%d pair failed" % diagnostics["pair_failed"])
     if unavailable:
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
+    if read_budget is not None and read_budget.exhausted:
+        note = (note + " " if note else "") + "sims SQL read limit reached (coverage not measured)"
     if budget.remaining <= 0:
         note = (note + " " if note else "") + (
             "sims pair limit reached (%d attempted; coverage not measured)" % budget.attempted)
@@ -518,7 +592,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     return stored, notable, note
 
 
-def summary(conn):
+def summary(conn, read_budget=None):
     """The stored sample, split the only way that means anything.
 
     -> dict.  A single max over all pairs is the number that misleads, because the
@@ -530,18 +604,20 @@ def summary(conn):
            "same_max": None, "cross_max": None, "same_n": 0, "cross_n": 0,
            "unknown_n": 0, "unknown_max": None, "skip_codes": {}}
     try:
-        exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
+        exists = _read(conn,
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'",
+            read_budget=read_budget)
         if not exists:
             return dict.fromkeys(out, None) | {"state": "missing"}
         # Old samples stay unknown; a read never migrates or infers old prose.
-        columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
+        columns = {r[1] for r in _read(conn, "PRAGMA table_info(sims)",
+                                     read_budget=read_budget)}
         code = "skip_code" if "skip_code" in columns else "''"
         known = sorted(KNOWN_SKIP_CODES)
         # One sample query/snapshot. Fixed categories bound Python result rows
         # regardless of sample size or arbitrary stored prose/codes. SQLite still
-        # scans the sample: this is not a database scan or hard elapsed-time bound.
-        rows = conn.execute(
+        # scans the sample; only an explicit owner read budget bounds VM work.
+        rows = _read(conn,
             "SELECT CASE WHEN verdict = 'compared' THEN"
             "   CASE WHEN who_a != '' AND who_b != '' THEN"
             "     CASE WHEN same_who THEN 'same' ELSE 'cross' END"
@@ -552,7 +628,9 @@ def summary(conn):
             "     THEN " + code + " ELSE 'unknown' END AS category,"
             " COUNT(*) AS n, MAX(match) AS maximum,"
             " SUM(CASE WHEN verdict = 'compared' AND match >= ? THEN 1 ELSE 0 END) AS notable"
-            " FROM sims GROUP BY bucket, category", (*known, NOTABLE)).fetchall()
+            " FROM sims GROUP BY bucket, category", (*known, NOTABLE), read_budget)
+    except ReadLimit:
+        return dict.fromkeys(out, None) | {"state": "limited"}
     except Exception:
         return dict.fromkeys(out, None) | {"state": "error"}
     if rows:
@@ -571,9 +649,11 @@ def summary(conn):
     return out
 
 
-def summary_line(conn):
+def summary_line(conn, read_budget=None):
     """One read-only line, distinguishing no sample from an unavailable sample."""
-    s = summary(conn)
+    s = summary(conn, read_budget=read_budget)
+    if s["state"] == "limited":
+        return "sims: unavailable (SQL read limit; sample not measured)"
     if s["state"] == "missing":
         return "sims: unavailable (table missing)"
     if s["state"] == "error":

@@ -626,6 +626,18 @@ normal database writes can finish after the deadline; this is not a hard timeout
 overall memory/scan bound or fair scheduler. The CLI retains its existing
 import-time database initialization even for rejected arguments.
 
+`--sims-sql-steps` defaults to 1,000,000 SQLite VM instructions across selected
+collector reads; zero disables collection. Source cursor/pending and peer cursor/
+candidate/late-recheck reads share the allowance. Queries abstain as a whole on
+exhaustion, without partial selection or invented observations. Late-recheck
+exhaustion still flushes prior successful comparisons; no new peer is admitted.
+The sweep connection owner explicitly grants the progress-handler slot per read;
+standalone APIs without a `ReadBudget` preserve caller callbacks and old behavior.
+Residual instructions are conservatively charged as one final callback quantum
+per statement, so small queries can exhaust admission before the actual cap.
+This is not elapsed time, lock waits, schema/write/file work, total RSS or complete
+coverage. Dry-run unavailable counts are not measured zero.
+
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
 is scored. Support lacking either bounded-input or source-capture capability is
@@ -674,7 +686,12 @@ and admin `*_sources.py` controls explicitly; the shipper does not discover them
 The read-only summary aggregates one snapshot into at most 13 fixed category/
 identity result rows, instead of materializing all observations in Python. Counts,
 maxima, notable attention labels and missing/empty/error distinctions are unchanged.
-SQLite still scans the sample; this does not bound total database work or memory.
+SQLite still scans the sample. Dry-run grants summary an independent selected-read
+VM allowance, including metadata and aggregate fetching. Exhaustion returns a
+fixed unavailable/sample-not-measured line with all counters unknown, never a
+partial aggregate, measured zero or false empty. Legacy summaries without an
+explicit owner budget remain unbounded and preserve existing callback ownership;
+this is not a bound on total database work/memory, elapsed time or lock waits.
 
 Run the focused source-cursor, peer-cursor, pair-fault, pending, peers, summary,
 ingestion, codes, time, collection, budget-CLI and observation controls alongside

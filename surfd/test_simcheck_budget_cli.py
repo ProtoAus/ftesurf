@@ -37,6 +37,7 @@ conn.commit()
 with mock.patch.object(sweep, '_simcheck', side_effect=AssertionError('disabled loader called')):
     assert sweep.similarity_step(conn, limit=3, max_pairs=0) == (0,0,'')
     assert sweep.similarity_step(conn, limit=3, max_seconds=0) == (0,0,'')
+    assert sweep.similarity_step(conn, limit=3, max_sql_steps=0) == (0,0,'')
 stored, notable, note = sweep.similarity_step(conn, limit=3, max_pairs=1)
 assert (stored,notable) == (1,1), (stored,notable,note)
 assert 'pair limit reached' in note, note
@@ -51,12 +52,30 @@ with redirect_stdout(output):
 assert '3 run(s) with unobserved eligible pairs' in output.getvalue(), output.getvalue()
 assert 'no pair stored yet' not in output.getvalue(), output.getvalue()
 assert before == [tuple(r) for r in conn.execute('SELECT * FROM sims ORDER BY id')]
+output = StringIO()
+with redirect_stdout(output):
+    assert sweep.main(['--dry-run', '--sims-sql-steps', '1']) == 0
+assert 'sims pending: unavailable (SQL read limit; coverage not measured)' in output.getvalue(), output.getvalue()
+assert 'sims: unavailable (SQL read limit; sample not measured)' in output.getvalue(), output.getvalue()
+output = StringIO()
+with redirect_stdout(output):
+    assert sweep.main(['--dry-run', '--sims-sql-steps', '0']) == 0
+assert 'SQL reads disabled' in output.getvalue(), output.getvalue()
+assert 'no pairs stored' not in output.getvalue(), output.getvalue()
+assert before == [tuple(r) for r in conn.execute('SELECT * FROM sims ORDER BY id')]
 print('DRY_RUN_ACTED')
 with mock.patch.object(simcheck, 'similarity_step', return_value=(0,0,'')) as target:
     sweep.similarity_step(conn, limit=3, max_pairs=2, max_seconds=0.25)
     assert target.call_args.kwargs['max_seconds'] == 0.25
 # CLI forwards the scalar and rejects invalid budgets before its connect call.
 with mock.patch.object(surfd, 'connect', side_effect=AssertionError('parser connected')):
+    for value in ('-1','1.5','nan'):
+        try:
+            sweep.main(['--sims-sql-steps='+value])
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError('invalid SQL read budget accepted')
     for value in ('-1','nan','inf','-inf'):
         try:
             sweep.main(['--sims-seconds='+value])
@@ -65,8 +84,9 @@ with mock.patch.object(surfd, 'connect', side_effect=AssertionError('parser conn
         else:
             raise AssertionError('invalid elapsed budget accepted')
 with mock.patch.object(sweep, 'similarity_step', return_value=(0,0,'')) as target:
-    sweep.main(['--limit','0','--sims','0','--sims-seconds','0.25'])
+    sweep.main(['--limit','0','--sims','0','--sims-seconds','0.25','--sims-sql-steps','1234'])
     assert target.call_args.kwargs['max_seconds'] == 0.25
+    assert target.call_args.kwargs['max_sql_steps'] == 1234
 print('WRAPPER_ACTED')
 '''
             result = subprocess.run([sys.executable, '-c', program], cwd=HERE, env=env,
