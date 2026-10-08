@@ -395,6 +395,13 @@ contact/normal, held kind and final event time/position. Include ramp-to-air,
 ramp-to-ground, curved ramps, displacement/prop ramps, grazing contact and a
 teleport. Contact labels stay aligned at several tick/frame rates and LODs.
 
+**Measurement tooling, not implementation.** `tools/OFFRAMP_CONTACT.md` documents
+live stage traces and a separate buffered immutable-input replay control. The
+latter compares clean/OFF/ON/repeated native results and offline static brush
+candidates without per-tick logging. It reports raw gaps, not authenticated
+winning geometry or physical exits; no-match geometry abstains. This does not
+close the classifier, FPS/tick-rate, held/render, LOD or human acceptance above.
+
 ### 12.5 Momentum demo labels: coverage and honest provenance
 
 **Today.** The re-imported demos now carry much more than positions, but the
