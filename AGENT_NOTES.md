@@ -4637,7 +4637,10 @@ result-field limits, not bounds on the entire review response, SQL scan or RSS.
 
 The historical similarity panel owns only its fresh request connection's callback
 slot. Existing ReadBudget supplies one million selected VM instructions over PRAGMA
-and history reads; the first sqlite_master existence probe is OUTSIDE that allowance.
+and history reads. **P597 (2026-10-08)** also charges the initial sqlite_master probe
+within that allowance; its former unbudgeted exception is now closed. An interrupted
+probe says read_limit, not confirmed missing. Real initial-probe interruption and
+handler teardown ACT in `surfd/test_admin_similarity_probe.py`.
 ReadLimit withholds the entire optional panel (state read_limit), not partial pairs
 or false empty history, while useful run review remains. Missing stays distinct;
 other storage errors still error. Borrowed similarity_for calls default to no budget

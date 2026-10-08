@@ -25,7 +25,9 @@ commit   bed572f50475dc627df6bda482891b6da9a85495
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-594
-patch    596
+patch    597
+# Patch 597: the initial similarity schema probe shares owned SQL allowance.
+# Missing versus limited stays distinct; borrowed callbacks remain untouched.
 # Patch 596: ambiguous duplicate-key journal/counts snapshots are unavailable.
 # Strict owner-only projection; stored observations and verdicts unchanged.
 # Patch 595: owner-only verdict history exposes omitted older attempts.

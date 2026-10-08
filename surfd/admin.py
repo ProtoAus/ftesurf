@@ -516,15 +516,17 @@ def similarity_reason(verdict, raw, code=''):
 
 def similarity_for(conn, rid, *, own_read_budget=False, max_sql_steps=None):
     """Historical observations; callback authority is explicit for borrowed handles."""
-    exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
-    out = {'available': bool(exists), 'state': 'ok' if exists else 'missing',
+    out = {'available': False, 'state': 'missing',
            'pairs': [], 'limit': SIM_PAIRS_SHOWN, 'more': False, 'source_binding': False}
-    if not exists:
-        return out
     from simcheck import source_snapshot, SOURCE_SNAPSHOT_MAX, ReadBudget, ReadLimit, _read
     budget = (ReadBudget(conn, SIM_SQL_STEPS if max_sql_steps is None else max_sql_steps)
               if own_read_budget else None)
     try:
+        exists = _read(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'",
+                       read_budget=budget)
+        if not exists:
+            return out
+        out.update(available=True, state='ok')
         columns = {r[1] for r in _read(conn, "PRAGMA table_info(sims)", read_budget=budget)}
         # TEXT substr stops at embedded NUL; retain the entire bounded raw prefix.
         capture = "coalesce(substr(CAST(source_capture AS BLOB),1,%d),X'')" % (SOURCE_SNAPSHOT_MAX+1) if 'source_capture' in columns else "''"

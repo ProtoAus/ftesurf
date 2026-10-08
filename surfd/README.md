@@ -944,3 +944,10 @@ stored unchanged but display unavailable, not last-key-wins measurements. Valid
 zero, empty metrics and no-records retain their separate meanings. Existing byte
 caps, typed/versioned allowlists and public verdicts are unchanged; no reread.
 Control: `python surfd/test_admin_metric_duplicates.py` (actual bounded API).
+
+The optional similarity panel's initial table probe now shares the same selected
+SQL allowance as its PRAGMA/history reads. An exhausted probe cannot claim the
+table is missing: the whole panel stays explicitly read-limited, without partial
+pairs. Borrowed handles retain callbacks by default; only opt-in connection owners
+may supply the budget. This is not whole-request time/RSS/I/O budgeting.
+Control: `python surfd/test_admin_similarity_probe.py` (real SQLite interruption).
