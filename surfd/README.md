@@ -660,8 +660,11 @@ skip/zero is stored, prior/later successful observations still flush, and a fixe
 pass-local `pair failed` count reports availability without exception prose. Row-
 level selection/checkpoint/storage failures remain row failures; storage still
 rolls back the observation transaction. Comparisons run outside write transactions;
-source checkpoints precede work and one peer checkpoint follows each source call,
-including faults. Rotating finite fixtures does not prove full fleet fairness,
+source checkpoints precede work. Peer checkpoints and observations now share one
+short atomic flush: insertion/checkpoint failure rolls back both. All-failed
+admitted pairs still checkpoint without fake observations; unadmitted work does
+not. Source admission remains separate, not completion or a reservation. No
+process-crash durability claim. Rotating finite fixtures does not prove full fleet fairness,
 remeasurement of old skips, exactly-once or complete coverage.
 
 New compared observations atomically retain a version-1 `source_capture` snapshot

@@ -312,15 +312,20 @@ def _cursor(conn, scope, source_id=0, read_budget=None):
     return rows[0][0] if rows else 0
 
 
+def _checkpoint(conn, scope, after_id, source_id=0):
+    """Admission state; caller owns the short write transaction."""
+    # Direct compare_run callers may have only the historical sims table.
+    # Initialize only on an actual admitted checkpoint, never on a read.
+    conn.execute(CURSOR_SQL)
+    conn.execute("INSERT INTO sim_cursor(scope,source_id,after_id) VALUES(?,?,?)"
+                 " ON CONFLICT(scope,source_id) DO UPDATE SET after_id=excluded.after_id",
+                 (scope, source_id, after_id))
+
+
 def _advance(conn, scope, after_id, source_id=0):
-    """Short committed admission checkpoint, never a comparison observation."""
+    """Short committed source admission, not completion or a reservation."""
     with conn:
-        # Direct compare_run callers may have only the historical sims table.
-        # Initialize only on an actual admitted checkpoint, never on a read.
-        conn.execute(CURSOR_SQL)
-        conn.execute("INSERT INTO sim_cursor(scope,source_id,after_id) VALUES(?,?,?)"
-                     " ON CONFLICT(scope,source_id) DO UPDATE SET after_id=excluded.after_id",
-                     (scope, source_id, after_id))
+        _checkpoint(conn, scope, after_id, source_id)
 
 
 def ensure_schema(conn):
@@ -440,39 +445,35 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         return 0, 0, 0
     found = []
     last_attempt = None
-    try:
-        for pr in peers:
-            # Late recheck remains before admission and cursor advancement.
-            try:
-                have = _read(conn,
-                    "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
-                    (a_id, pr["id"], pr["id"], a_id), read_budget)
-            except ReadLimit:
-                break  # flush prior results; this peer was never admitted
-            if have:
-                continue
-            if budget is not None:
-                if not budget.take():
-                    break
-            last_attempt = pr["id"]
-            try:
-                found.append(_pair_result(rs, surfd, row, pr, pa, t0))
-            except Exception as exc:
-                # One faulty pair must not discard prior measurements or prevent
-                # later admitted peers. Never invent a skip/zero observation for it.
-                if diagnostics is not None:
-                    diagnostics["pair_failed"] = diagnostics.get("pair_failed", 0) + 1
-                print("simcheck: pair %s/%s failed: %r" % (a_id, pr["id"], exc),
-                      file=sys.stderr)
-    finally:
-        # One short checkpoint per source call, also on a raised comparison.
-        # No artificial observation for failures; unadmitted/stored peers cost none.
-        if last_attempt is not None:
-            _advance(conn, "peer", last_attempt, a_id)
-    if not found:
+    for pr in peers:
+        # Late recheck remains before admission and cursor advancement.
+        try:
+            have = _read(conn,
+                "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
+                (a_id, pr["id"], pr["id"], a_id), read_budget)
+        except ReadLimit:
+            break  # flush prior results; this peer was never admitted
+        if have:
+            continue
+        if budget is not None:
+            if not budget.take():
+                break
+        last_attempt = pr["id"]
+        try:
+            found.append(_pair_result(rs, surfd, row, pr, pa, t0))
+        except Exception as exc:
+            # One faulty pair must not discard prior measurements or prevent
+            # later admitted peers. Never invent a skip/zero observation for it.
+            if diagnostics is not None:
+                diagnostics["pair_failed"] = diagnostics.get("pair_failed", 0) + 1
+            print("simcheck: pair %s/%s failed: %r" % (a_id, pr["id"], exc),
+                  file=sys.stderr)
+    if last_attempt is None:
         return 0, 0, 0
-    # All or nothing; a failure raises to similarity_step, which prints it.
+    # Peer checkpoint and observations commit together, including an all-failed
+    # admission with no observations. No file work holds this write transaction.
     with conn:
+        _checkpoint(conn, "peer", last_attempt, a_id)
         conn.executemany(
             "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
             " player_a, player_b, who_a, who_b, same_who, verdict, reason, skip_code,"
