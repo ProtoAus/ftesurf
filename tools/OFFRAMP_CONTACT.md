@@ -105,3 +105,65 @@ gaps, sustained exits, ground landings, steep ramps, walls, seams and tiny steps
 Jump-off versus downhill-edge, sloped-air troughs, LOD placement, ordinary camera
 acceptance and human tests are separate. Do not substitute elapsed-time retiming
 or a look-ahead threshold for those semantics.
+
+## Buffered immutable-input replay control
+
+The live stage seam above prints per native tick. To isolate that overhead from
+raw-contact behaviour, `offramp_buffer_smoke.py` installs a **different** private
+seam in a fresh clean engine worktree. Do not combine the two seam installers.
+Build and retain an uninstrumented `sv-rel` server at the inspected engine commit
+**first**, then install/build the buffered subject:
+
+```
+python -B tools/offramp_buffer_smoke.py --instrument-native <new-isolated-fte-worktree>
+```
+
+Use the same pwsh/native build procedure above; build uninstrumented game progs
+in an isolated game worktree without deploying. The buffer include is a tooling
+fixture, not product C source or a mover change. Never ship either diagnostic.
+
+```
+python -B tools/offramp_buffer_smoke.py --control-server <clean-server> --server <buffered-server> --recording <private-exact-state.rec> --output-dir <new-private-dir> --packets 10000
+python -B tools/test_offramp_buffer.py
+python -B tools/test_offramp_buffer.py --arms <new-private-dir>/arms.json
+python -B tools/offramp_geometry.py --arms <new-private-dir>/arms.json --map <runtime-map.bsp> --output <private-geometry.json>
+```
+
+The Windows runner uses private rigs, local executable/plugin copies and only
+its own processes. It copies the isolated game's configs/progs, loads the same
+installed HL2 loader explicitly, and removes only its own content junctions.
+The loader's source/build provenance is external to this control; its hash is
+recorded and equal across arms, not declared freshly compiled. Map, input,
+plugin and progs hashes must agree; the BSP is also hashed before/after each arm.
+`--packets` is an upper limit, not a promise that the file contains that many.
+A failed/aborted rig remains evidence; do not reuse its output directory.
+
+Four arms must ACT: clean server, buffered server with capture OFF, capture ON,
+and repeated ON. Existing `pm_recsim` clock/world/body summaries must agree and
+its open loop must reproduce every selected packet's six recorded body numbers.
+This is the recorder's own text precision, **not** a new bit-exact clean/ON
+state proof. ON/repeat numeric trace rows must match exactly. OFF/clean must be
+quiet. The current grader intentionally refuses discontinuous/session-reset
+native clocks; do not widen it merely to fit a rewind file.
+
+Capture stores fixed-size tick/contact records only: no formatting, I/O,
+allocation, cvar lookup or added trace in the native hot path. The accepted ramp
+trace retains its fraction/plane, sweep endpoints, hull, physent index and
+recovery flag. Arrays are capped at 32768 ticks and contacts each; a dropped
+record or missing footer rejects the capture. Dumping occurs after capture is
+disabled, before the existing summaries. This is lower-overhead by construction,
+not a measured uninstrumented performance benchmark or a live FPS comparison.
+
+Offline geometry returns **all candidates**, never an authenticated winning
+brush. It considers only model 0's referenced solid/playerclip VBSP brushes,
+matching the last accepted world non-recovery plane and the preceding hull.
+It preserves the Source compressed lump header's declared output size, as the
+plugin does; raw LZMA decoder padding is not another leaf. Face support gaps and
+nonface halfspace gaps are numeric candidate diagnostics. The 0.0625-unit
+candidate envelope is not a new contact/hold/classification threshold. No
+matching brush abstains: triangle/displacement hits and recovery/moving/portal
+geometry need other evidence. Short raw gaps can occur without crossing a
+candidate's nonface boundary, so placing a leave on every raw loss is not yet
+justified. Full render/held-stage FPS/tick-rate, geometry-winning identity,
+jump/edge/seam discrimination, camera/LOD and P560 resume-clock acceptance stay
+**NOT_TESTED** by this control.

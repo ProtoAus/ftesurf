@@ -1629,6 +1629,23 @@ publicly WITH its fix, not before it.
   preserve them before a labeled rerun. Structural PASS explicitly does not
   close classification, jump/trough semantics, hull/brush geometry, LOD/pixel
   acceptance, or P560's requested/native clock mismatch. Raw traces stay private.
+- **Buffered off-ramp replay (tooling only).** The live per-tick `Con_Printf`
+  seam perturbs sampling; use a separate clean native worktree for the buffered
+  exact-input control in `tools/OFFRAMP_CONTACT.md`. Build/retain the clean server
+  before instrumenting. Capture OFF/ON/repeated ON must match the clean mover
+  summaries and reproduce the file's own body text; this is not bit-exact clean
+  state proof. Fixed buffers dump only after capture stops; overflow rejects.
+  A bare `sv-rel` server/rig cannot load VBSP: copy the installed HL2 loader into
+  the PRIVATE executable directory, copy isolated default configs, and load HL2
+  before `map`. Hash that external loader rather than asserting a clean build.
+  Offline brush candidates must use model 0's reachable leaf brushes, not the
+  entire global brush lump (inline models are in there too). Python raw LZMA
+  decoding can return padding beyond Source's declared `actual` output size;
+  the plugin caps at `actual`, so the geometry reader must too, not invent a
+  trailing leaf or weaken alignment checks. Candidate hull/plane halfspaces do
+  not authenticate the winning brush. Short raw losses can lack a nonface
+  boundary crossing; no-match/unsupported geometry abstains. This still does
+  not decide the early label, live render/tick-rate cadence, or P560 clock.
 
 ## Rewind (Patch 477)
 
