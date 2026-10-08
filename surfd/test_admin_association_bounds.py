@@ -21,6 +21,9 @@ class Associations(ObservationFixture):
 		self.c.execute("INSERT INTO receipts(runid,map,pub,verdict,angles,reason,at)"
 			" VALUES('synthetic-assoc','bhop_eazy',?,'VALID','OK','control',1)", (self.pub,))
 		self.c.execute("UPDATE replays SET runid='synthetic-assoc' WHERE id=?", (self.rid,))
+		self.c.execute("INSERT INTO runs(map,track,leg,tier,style,player,name,ticks,tickrate,millis,"
+			"flags,node,runid,submitted,replay_id) VALUES('bhop_eazy',0,0,'ranked','clean',?,'synthetic',"
+			"100,100,1000,0,'1','synthetic-assoc',1,?)", (self.player, self.rid))
 		self.c.commit()
 
 	def seed(self, n):
@@ -31,7 +34,7 @@ class Associations(ObservationFixture):
 
 	def history(self):
 		return {t: [tuple(r) for r in self.c.execute('SELECT * FROM ' + t)]
-			for t in ('pubkeys', 'receipts', 'replays', 'reviews', 'verdicts')}
+			for t in ('pubkeys', 'receipts', 'replays', 'reviews', 'verdicts', 'runs')}
 
 	def test_positive_both_directions_and_anonymous_refusal(self):
 		self.seed(2)
@@ -49,6 +52,8 @@ class Associations(ObservationFixture):
 	def test_acquisition_is_cap_plus_one_and_history_board_do_not_move(self):
 		self.seed(1000)
 		before, board = self.history(), self.m.app.test_client().get('/api/board?map=bhop_eazy').get_json()
+		self.assertEqual(len(board['rows']), 1)  # visible public control, not an empty board
+		board.pop('t')  # response-generation time is not historical board evidence
 		seen = []
 		read = simcheck._read
 		def observe(conn, sql, parameters=(), read_budget=None):
@@ -65,7 +70,9 @@ class Associations(ObservationFixture):
 		self.assertTrue(value['associations']['players_more'])
 		self.assertTrue(value['associations']['keys_more'])
 		self.assertEqual(self.history(), before)
-		self.assertEqual(self.m.app.test_client().get('/api/board?map=bhop_eazy').get_json(), board)
+		after_board = self.m.app.test_client().get('/api/board?map=bhop_eazy').get_json()
+		after_board.pop('t')
+		self.assertEqual(after_board, board)
 
 	def test_owned_budget_interrupts_whole_association_panel_and_recovers(self):
 		self.seed(100)
