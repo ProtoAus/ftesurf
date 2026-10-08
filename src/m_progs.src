@@ -4,6 +4,7 @@ defs/m_defs.qc
 shared/sh_defs.qc
 shared/sh_time.qc
 shared/sh_font.qc
+shared/sh_nativeui.qc
 // Patch 270.  The other two .src files have had this for a long time and this
 // one never did, because until public lobbies the menu had no reason to read
 // JSON.  The MENU VM really does have the builtins -- pr_menu.c:2463-2472

@@ -4,6 +4,7 @@ defs/cl_defs.qc
 shared/sh_defs.qc
 shared/sh_time.qc
 shared/sh_font.qc
+shared/sh_nativeui.qc
 shared/sh_json.qc
 shared/sh_zones.qc
 shared/sh_portal.qc

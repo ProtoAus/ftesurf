@@ -953,11 +953,17 @@ close and pre-renderer teardown. Physical CPU triangle clipping avoids raw
 backend-dependent `BE_Scissor` writes. Its native-only gallery passes offsets,
 alpha, both windings, chunks, whole-batch rejection, count budgets, legacy
 before/after markers, virtual scales 1/2, renderer restart and plugin reload.
-This is not ImGui or a QC bridge, mixed inherited QC clipping, non-GL parity or
-cost acceptance. Next add explicit MQC/CSQC draw-site dispatch (not Sbar hooks),
-with a versioned service ABI, VM-local frame/owner identity, release/fallback and
-actual QC-before/native/QC-after controls including inherited clip restoration.
-Run that mixed gallery before porting a real panel. Preserve legacy fallback and physical-native fonts. Measure/
+P593 adds the prerequisite explicit MQC/CSQC draw-site dispatch (not Sbar hooks):
+copied `NativeUI/1` service ABI, non-reused VM-local owner handles, frame identity,
+physical dimensions/inherited clip, synchronous failure fallback and lifecycle
+release. The acting mixed QC-before/native/QC-after gallery passes in both VMs,
+with independent virtual scales and full CSQC UpdateView; caller state and stale,
+foreign, duplicate and outside-draw rejection have real-host controls. Optional
+shared QC wrappers are compiled but no actual panel/default/input chain changes.
+Next implement the minimal ImGui command-list service on this proven bridge;
+widget/model/input transport and real-panel migration remain separate work.
+No non-GL/device-input or cost acceptance is implied. Preserve legacy fallback
+and physical-native fonts. Measure/
 approve performance budgets before switching the scoreboard default. The
 larger menu/editor migration is conditional on those gates, not already
 authorized for release.

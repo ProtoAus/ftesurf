@@ -3808,6 +3808,35 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P593 native bridge prerequisite: explicit QC draw sites, not plugin overlay
+  hooks.** `NativeUI/1` copies an exact service table; optional named MQC/CSQC
+  status/open/draw/close builtins provide one owner per VM, non-reused float-exact
+  handles, per-host-frame dispatch, physical/virtual dimensions and inherited
+  physical clip. QC-before/native/QC-after flushing restores caller colour, flags
+  and backend scissor. Explicit close, failed open/draw, VM teardown, plugin unload
+  and renderer shutdown release owners; renderer cleanup precedes P589 textures.
+  Draw outside the frontend callback, stale/fractional/foreign/duplicate handles,
+  exhausted handle space and render targets fail closed to caller QC fallback.
+  Open/Close allocate/release only; trusted callbacks may not retain frame pointers
+  or reenter engine services. This is not a hostile native-module sandbox.
+  `src/shared/sh_nativeui.qc` supplies nested optional-builtin guards in both progs;
+  no real panel, input chain, preference, default or Build-number change.
+  Final candidate `p590-bridge-z7lgogbi` passes five acting arms and 52 screenshots:
+  P589 legacy baseline, absent service, two MQC/simple-CSQC virtual scales and full
+  CSQC UpdateView. Actual-core host controls: 149 assertions; grader controls: 24.
+  P589 regression `p589-mesh-4jpv7z06` passes; its 33 grader controls also pass.
+  Isolated predecessor/subject full builds have identical 74 compiler warning
+  message/count fingerprints, zero new; QC compiles are zero-warning. Initial
+  path/SDK/API/fixture failures remain recorded in `tools/p590bridge.md`; after a
+  renderer reset, reacquire the SAME owner before testing alternate-owner rejection
+  or the fixture itself creates another valid owner. P590 fixture names are kept
+  after forward-renumbering to the one product patch 593 (peers published 590-592).
+  Published engine implementation/tag: `25ad9d56e` / `patch-593`; main's
+  `452c8814a` merge adds only the peer P590-592 delivery record. Game publication,
+  frozen stamped verification and deployment are recorded separately when complete.
+  Next: minimal ImGui command-list service; widget/model/input transport, real
+  panels, non-GL/device-input acceptance and CPU/GPU budgets remain separate gates.
+
 - **P589 native indexed-2D prerequisite (2026-10-08):** separate exact-size
   `2DMesh/1`, immutable raw RGBA8 and non-repeating 64-bit plugin-owned tokens.
   Cleanup on release/plugin close and BEFORE renderer shader/image teardown.
